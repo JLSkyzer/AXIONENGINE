@@ -1,0 +1,18 @@
+[package]
+name = "ax-model"
+description = "Modele de donnees d'AXION ENGINE et source unique de la configuration"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints.rust]
+# `deny` et non `forbid` : la bibliotheque ne contient aucun bloc `unsafe`, mais
+# `forbid` ne peut pas etre leve localement et interdirait a un test d'installer
+# un allocateur global compteur pour prouver qu'un chemin n'alloue pas.
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[dependencies]

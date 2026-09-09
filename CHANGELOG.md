@@ -10,6 +10,10 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M0.2 — `ax-model` : source unique de la configuration (C-04). Les 160 options
+  des trois fichiers TOML y sont declarees une fois, avec defaut, domaine et
+  description. `CONFIGURATION.md` en est genere, et un test compare le registre
+  a l'ANNEXE A.3 du cahier des charges (R-430, R-2400).
 - M0.1 — quatre premiers crates natifs :
   - `ax-math` (C-11) : conventions du repere et origine flottante (R-460..R-462) ;
   - `ax-mem` (C-13) : quatre classes d'arene, comptage des allocations et

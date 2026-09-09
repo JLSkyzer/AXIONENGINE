@@ -85,11 +85,24 @@ Tâches :
       - les codes d'erreur sont pour l'instant définis dans chaque crate.
         DM-19 les centralisera dans `ax-model` (M1), qui n'existe pas encore ;
         `ax-mem` et `ax-core` ne peuvent pas dépendre d'un crate absent.
-- [ ] **M0.2** C-04 Configuration : défauts compilés, `axion-common.toml`,
-      `axion-client.toml`, `axion-server.toml`, surcharges `-Daxion.*`,
-      validation type/plage/défaut, encodage CBOR vers `axion_init`.
-      R-430 : `CONFIGURATION.md` est **généré** depuis la source unique, et une
-      option non documentée casse le build (T-021).
+- [ ] **M0.2** C-04 Configuration. **Partie Rust faite**, partie Java à écrire.
+      - [x] `ax-model` : les 160 options des trois fichiers déclarées une seule
+            fois, avec défaut, domaine et description. Rendu TOML et
+            `CONFIGURATION.md` générés depuis ce registre (R-430).
+      - [x] Test de non-divergence avec l'ANNEXE A.3 du cahier des charges
+            (R-2400) : il échoue sur une option oubliée comme sur un défaut mal
+            recopié — vérifié par mutation dans les deux sens.
+      - [ ] Génération de la classe Java du schéma depuis `ax-model`
+            (`tools/codegen`), avec le test de parité T-005.
+      - [ ] Côté Java : lecture des trois fichiers, surcharges `-Daxion.*`,
+            validation contre le schéma, écriture des fichiers manquants.
+      - [ ] Encodage CBOR vers `axion_init` — dépend de la frontière FFI, donc
+            de M0.4 ; à brancher là.
+      - [ ] Compléter `hot` (R-431) et `server_authoritative` (R-1830) : seules
+            les options manifestement concernées sont marquées aujourd'hui —
+            `debug`, `overlay` pour l'une, `sim` et `physics` pour l'autre. Les
+            listes exactes se fixent avec le rechargement à chaud et le
+            handshake, sans quoi elles seraient devinées.
 - [ ] **M0.3** C-03 Native Loader : extraction depuis `/natives/<os>-<arch>/`,
       vérification SHA-256 obligatoire (E-1003), chemin versionné par hash,
       `System.load` sur chemin absolu — jamais `System.loadLibrary` (R-420).
