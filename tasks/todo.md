@@ -141,6 +141,25 @@ ses critères vérifiés **mécaniquement**.
       `RELEASING.md`, `SECURITY.md`, `CONTRIBUTING.md`. Aucun n'existe. Les
       écrire au fil des jalons concernés, jamais en bloc à la fin, et **jamais
       vides** : un fichier vide vaut un placeholder.
+
+      **Attention : `CONFIGURATION.md`, `API.md` et `NOTICE` ne s'écrivent pas
+      à la main.** Le job CI `docs` les **génère** depuis la source unique
+      (34.3), et R-430 fait échouer le build sur une option de configuration
+      non documentée (T-021). Écrire ces trois fichiers à la main crée
+      exactement la divergence que la checklist finale interdit
+      (« documentation complète, générée sans divergence »).
+
+      La documentation n'est pas une tâche de fin de projet : « documentation à
+      jour (fichier .md + Javadoc/rustdoc) » est une case de la Definition of
+      Done de **chaque** composant (PARTIE 37.3), et R-2172 refuse le statut
+      `STABLE` à un composant sans sa documentation.
+
+      Côté développeurs tiers, la release publie `axion-api` en jar + sources
+      + **javadoc** (34.4). R-1754 : chaque méthode de l'API documente son
+      effet, le thread autorisé, son coût et ses conditions d'échec.
+
+      Le CDC ne prévoit **aucun wiki ni site externe**. Si l'on en veut un, il
+      doit être généré depuis ces fichiers, jamais tenu en parallèle.
 - [ ] **`docs/decisions/`.** Le CDC veut une copie des ADR-001..ADR-026, qui ne
       vivent aujourd'hui que dans le CDC (`sed -n '6891,7004p' ...`). Les ADR
       propres au dépôt commencent à ADR-100 pour éviter toute collision.
