@@ -10,6 +10,10 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M0.3 — chargeur de bibliotheque native (C-03) : detection des cinq
+  plateformes supportees, empreinte SHA-256 obligatoire, chemin versionne par
+  empreinte, extraction atomique, repli sur le repertoire temporaire et echec
+  propre en mode DISABLED (R-420, R-421).
 - M0.2 — configuration data-driven de bout en bout (C-04) :
   - `ax-model` : source unique des 160 options des trois fichiers TOML, avec
     defaut, domaine et description ;

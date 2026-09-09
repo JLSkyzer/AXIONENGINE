@@ -11,7 +11,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon en cours : M0 — Squelette et frontière native. M0.1 fait, M0.2 suivant.**
+**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.3 faits, M0.4 suivant.**
 
 Ce qui est en place :
 
@@ -107,10 +107,24 @@ Tâches :
             `debug`, `overlay` pour l'une, `sim` et `physics` pour l'autre. Les
             listes exactes se fixent avec le rechargement à chaud et le
             handshake, sans quoi elles seraient devinées.
-- [ ] **M0.3** C-03 Native Loader : extraction depuis `/natives/<os>-<arch>/`,
-      vérification SHA-256 obligatoire (E-1003), chemin versionné par hash,
-      `System.load` sur chemin absolu — jamais `System.loadLibrary` (R-420).
-      Repli sur `java.io.tmpdir` si le système de fichiers est `noexec` (R-421).
+- [x] **M0.3** C-03 Native Loader. 26 tests (T-120..T-124).
+      - `NativePlatform` : les cinq plateformes de la table 34.2, détectées
+        depuis les valeurs réellement rapportées par les JVM.
+      - `NativeLoader` : empreinte SHA-256 obligatoire (E-1003), chemin
+        versionné par empreinte, extraction atomique par fichier temporaire
+        voisin, `System.load` sur chemin absolu (R-420).
+      - Le fichier déjà extrait est **revérifié** avant réutilisation : son
+        chemin porte l'empreinte attendue, ce qui ne dit rien de son contenu
+        (interdiction 3.13).
+      - Repli sur `java.io.tmpdir` quand un emplacement refuse l'écriture ou le
+        chargement — lecture seule et `noexec` se traitent pareil (R-421) —
+        puis échec propre, jamais une exception qui remonte.
+      - `ResourceSource` et `NativeBinder` sont injectables : c'est ce qui rend
+        le repli `noexec` et l'empreinte invalide réellement testables, sans
+        bibliothèque native ni système de fichiers particulier.
+      Reste lié : le branchement dans le bootstrap (M0.5) et l'empaquetage des
+      binaires dans le JAR (M0.8). D'ici là, `RESOURCE_MISSING` est le cas
+      nominal, et le mod le signale sans planter.
 - [ ] **M0.4** **`[EFFORT MAX]`** — prévenir l'utilisateur et attendre sa
       réponse avant de commencer. C-14 FFI Bridge et handshake ABI (IF-01) :
       versionnement, contrôle, mémoire partagée et anneaux de transfert

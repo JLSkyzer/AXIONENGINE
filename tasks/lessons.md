@@ -61,6 +61,23 @@ Voir `Minecraft/compatibilityLevel des mixins sur Forge 47`.
 
 ---
 
+## Code
+
+**[2026-09-09] | La détection de plateforme classait macOS comme Windows :
+`"darwin".contains("win")` est vrai | Ne jamais identifier un système par une
+sous-chaîne courte sans vérifier l'ordre des tests.**
+
+`os.name` vaut `Darwin` sur certaines JVM macOS. Un test `contains("win")` placé
+avant celui de macOS l'attrape, et la plateforme était refusée — aucun binaire
+Windows ARM n'existant. Corrigé en testant macOS d'abord et Windows par
+`startsWith("windows")`.
+
+Le test l'a attrapé parce que la table des cas contenait `Darwin` en plus de
+`Mac OS X` : **une table de plateformes ne vaut que par les valeurs réellement
+rapportées par les JVM**, pas par celles qu'on suppose.
+
+---
+
 ## Structure du projet
 
 **[2026-09-09] | Le MDK Forge a été généré avec `mod_id=axionengine` et
