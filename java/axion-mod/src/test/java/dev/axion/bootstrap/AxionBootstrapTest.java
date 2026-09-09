@@ -37,6 +37,7 @@ class AxionBootstrapTest {
         private long initResult = 0x4158_494F_0000_0001L;
         private boolean acquireSucceeds = true;
         private final List<Long> closed = new ArrayList<>();
+        private final List<Integer> released = new ArrayList<>();
         private int abiCalls;
 
         @Override
@@ -66,6 +67,12 @@ class AxionBootstrapTest {
                 return null;
             }
             return ByteBuffer.allocateDirect((int) minCapacity + 32).order(ByteOrder.LITTLE_ENDIAN);
+        }
+
+        @Override
+        public int release(long context, int kind, int generation) {
+            released.add(kind);
+            return 0;
         }
 
         @Override
@@ -109,6 +116,14 @@ class AxionBootstrapTest {
         assertTrue(Files.exists(configDir.resolve("axion-common.toml")));
         assertTrue(Files.exists(configDir.resolve("axion-server.toml")));
         assertTrue(api.closed.isEmpty(), "le contexte ne doit pas être refermé");
+
+        // Non-regression : le tampon de controle etait acquis et jamais rendu,
+        // ce qui faussait le bilan d'allocations de l'arret (R-322). Le defaut
+        // n'est apparu qu'au premier demarrage reel du serveur.
+        assertEquals(
+                List.of(dev.axion.bridge.BufferKinds.SIM_OUT),
+                api.released,
+                "le tampon de contrôle doit être rendu");
     }
 
     @Test

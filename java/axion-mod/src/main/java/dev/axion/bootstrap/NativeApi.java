@@ -47,6 +47,16 @@ public interface NativeApi {
     ByteBuffer acquire(long context, int kind, long minCapacity);
 
     /**
+     * Libère un tampon de transfert.
+     *
+     * @param context jeton de contexte
+     * @param kind nature du tampon
+     * @param generation génération courante, lue dans l'en-tête
+     * @return {@code 0} en succès, sinon un code d'erreur
+     */
+    int release(long context, int kind, int generation);
+
+    /**
      * {@return le dernier message d'erreur du contexte}
      *
      * @param context jeton de contexte
@@ -76,6 +86,11 @@ public interface NativeApi {
             @Override
             public ByteBuffer acquire(long context, int kind, long minCapacity) {
                 return NativeBridge.acquire(context, kind, minCapacity);
+            }
+
+            @Override
+            public int release(long context, int kind, int generation) {
+                return NativeBridge.release(context, kind, generation);
             }
 
             @Override

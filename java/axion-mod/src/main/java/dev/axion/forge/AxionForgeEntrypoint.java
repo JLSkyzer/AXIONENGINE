@@ -15,6 +15,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
 
 /**
@@ -45,12 +46,15 @@ public final class AxionForgeEntrypoint {
     /**
      * Construit le mod et abonne AXION aux événements de la plateforme.
      *
-     * <p>Le bus est injecté par FML plutôt que récupéré depuis un contexte
-     * statique, dont l'accès est déprécié et voué au retrait.
-     *
-     * @param modBus bus d'événements de ce mod
+     * <p>Le bus est récupéré depuis {@link FMLJavaModLoadingContext}, dont
+     * l'accès est marqué déprécié. C'est pourtant la seule forme qui fonctionne
+     * sur Forge 47 : l'injection du bus dans le constructeur n'y existe pas
+     * encore, et un constructeur qui la réclame fait échouer le chargement du
+     * mod avec {@code NoSuchMethodException}. Un avertissement de dépréciation
+     * n'autorise pas à employer une API absente de la version visée.
      */
-    public AxionForgeEntrypoint(IEventBus modBus) {
+    public AxionForgeEntrypoint() {
+        IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
         modBus.addListener(EventPriority.HIGHEST, this::onCommonSetup);
         modBus.addListener(EventPriority.LOWEST, this::onLoadComplete);
 
@@ -107,7 +111,16 @@ public final class AxionForgeEntrypoint {
     /** Relâche les ressources natives à l'arrêt du serveur. */
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onServerStopping(ServerStoppingEvent event) {
+        int before = runtime.transitions().size();
         runtime.onStopping();
+
+        // R-322 : le bilan des allocations est journalisé à l'arrêt. Sans cette
+        // trace, un déséquilibre resterait invisible — et c'est justement à
+        // l'arrêt qu'il se constate.
+        runtime.transitions().stream()
+                .skip(before)
+                .forEach(line -> LOGGER.info("AXION : {}", line));
+
         platform.setServer(null);
         reportDisabledHooks();
     }

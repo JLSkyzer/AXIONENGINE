@@ -10,6 +10,9 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M0.10 — acceptance sur serveur dedie : chargement, bibliotheque native
+  verifiee et chargee, /axion status, arret propre a bilan nul, et mode
+  DISABLED laissant le serveur jouable. Zero erreur au journal.
 - M0.9 — bilan d'allocations a l'arret (R-322) : un tampon jamais relache est
   signale par E-2003, la session se fermant quand meme. Ajout de T-014, qui
   verifie qu'aucun systeme ne reference RUSTFORGE-X hors de C-76 (INV-06).

@@ -11,7 +11,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.9 faits, M0.10 suivant.**
+**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.9 faits ; M0.10 validé côté serveur, client à vérifier.**
 
 Ce qui est en place :
 
@@ -265,9 +265,27 @@ Tâches :
         des composants qui n'existent pas.
       - **T-710** (build reproductible) — vérifié à la main en M0.8, à
         automatiser avec le reste du packaging en M12.
-- [ ] **M0.10** Vérifier l'acceptance de bout en bout : JAR installé sur un
-      client et sur un serveur dédié réels, natif absent donnant un `DISABLED`
-      jouable.
+- [~] **M0.10** Acceptance. **Serveur dédié validé**, client à vérifier.
+      Sur `runServer`, log à l'appui, zéro erreur :
+      - mod construit sur `forge-47`, bibliothèque native extraite et chargée
+        depuis `run/axion/native/<sha256>/` après vérification d'empreinte ;
+      - aller-retour FFI mesuré à 100 ns — cohérent avec l'hypothèse H-07, qui
+        annonçait 20 à 100 ns, sans que rien n'ait été supposé ;
+      - `/axion status` répond avec l'état, la phase, le coût mesuré et les
+        diagnostics ;
+      - arrêt propre : `RUNNING_SERVER -> STOPPING -> UNLOADED`, contexte natif
+        fermé **code 0** — bilan d'allocations équilibré (R-322) ;
+      - `general.enabled=false` : serveur démarré normalement, cause affichée,
+        zéro erreur. Le jeu reste jouable, ce qu'exige l'acceptance du jalon.
+
+      Trois défauts trouvés, qu'aucun test n'aurait montrés :
+      - le constructeur du mod prenant `IEventBus` n'existe pas sur Forge 47 ;
+      - `build/natives` est déjà pris par ForgeGradle ;
+      - le bootstrap ne relâchait pas son tampon de contrôle — trouvé par le
+        bilan R-322 dès sa première exécution réelle.
+
+      Reste : `runClient`, à vérifier de visu. Le log serveur est conservé
+      hors de `run/logs/`, que `runClient` archive en le remplaçant.
 
 ---
 

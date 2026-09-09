@@ -69,8 +69,12 @@ def axionRustTriple = { String target ->
     }
 }
 
-/** Repertoire ou les natifs sont rassembles avant d'entrer dans le JAR. */
-def axionNativesDir = layout.buildDirectory.dir('natives')
+/** Repertoire ou les natifs sont rassembles avant d'entrer dans le JAR.
+ *
+ * Surtout pas `build/natives` : ForgeGradle y extrait deja les natifs de LWJGL
+ * avec sa propre tache `extractNatives`, et Gradle refuse — a juste titre — que
+ * deux taches se disputent un repertoire sans dependance declaree. */
+def axionNativesDir = layout.buildDirectory.dir('axion-natives')
 
 /** Marqueur pose des qu'une cible demandee n'a pas pu etre produite. */
 def axionPartialMarker = layout.buildDirectory.file('natives-partial.txt')

@@ -83,6 +83,17 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+// ForgeGradle cree ses taches run apres l'evaluation du script : `tasks.named`
+// echouerait ici, `tasks.matching {}.configureEach` configure la tache des
+// qu'elle apparait.
+tasks.matching { it.name in ['runServer', 'runClient', 'runGameTestServer'] }.configureEach {
+    // Sans cela, la console du serveur ne lit rien : impossible de lui envoyer
+    // une commande, ni `stop`. Or un serveur tue par un timeout ne declenche
+    // jamais son evenement d'arret, et l'arret propre ne serait donc jamais
+    // verifie.
+    standardInput = System.in
+}
+
 tasks.named('test', Test).configure {
     useJUnitPlatform()
     // Le test de la frontiere charge la bibliotheque native construite par

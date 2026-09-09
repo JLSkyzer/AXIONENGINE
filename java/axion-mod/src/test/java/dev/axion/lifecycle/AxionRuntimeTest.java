@@ -100,6 +100,11 @@ class AxionRuntimeTest {
         }
 
         @Override
+        public int release(long context, int kind, int generation) {
+            return 0;
+        }
+
+        @Override
         public String lastErrorMessage(long context) {
             return "";
         }

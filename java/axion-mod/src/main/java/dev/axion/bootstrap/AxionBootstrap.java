@@ -9,6 +9,7 @@ import dev.axion.config.AxionConfig;
 import dev.axion.config.ConfigLoader;
 import dev.axion.config.ConfigSchema.Scope;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -52,6 +53,9 @@ public final class AxionBootstrap {
 
     /** Taille demandée à l'acquisition de contrôle des tampons, en octets. */
     private static final long PROBE_CAPACITY = 4096;
+
+    /** Position de la génération dans l'en-tête d'un tampon (IF-02). */
+    private static final int GENERATION_OFFSET = 8;
 
     private AxionBootstrap() {
         throw new AssertionError("classe utilitaire, non instanciable");
@@ -211,6 +215,18 @@ public final class AxionBootstrap {
             // démarrage qui n'aboutit pas.
             native_.close(context);
             return disabled(config, Reason.BUFFERS_UNAVAILABLE, detail, diagnostics);
+        }
+
+        // Le tampon de contrôle est rendu aussitôt vérifié. Le garder ouvert
+        // fausserait le bilan d'allocations de l'arrêt (R-322) — c'est
+        // exactement ce que le bilan a signalé au premier démarrage réel — et
+        // le protocole veut de toute façon qu'on acquière à chaque tick plutôt
+        // que de conserver une vue (R-270).
+        probe.order(ByteOrder.LITTLE_ENDIAN);
+        int generation = probe.getInt(GENERATION_OFFSET);
+        int released = native_.release(context, BufferKinds.SIM_OUT, generation);
+        if (released != 0) {
+            diagnostics.add("tampon de contrôle non relâché, code " + released);
         }
 
         return new BootstrapOutcome(

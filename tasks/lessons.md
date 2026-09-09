@@ -152,6 +152,35 @@ valeur. Retiré, avec `preserveFileTimestamps = false` et
 `reproducibleFileOrder = true` sur les archives. La vérification tient en deux
 constructions et une comparaison de SHA-256.
 
+**[2026-09-10] | Le mod ne se chargeait plus : `NoSuchMethodException:
+AxionForgeEntrypoint.<init>()` | Sur Forge 47, le bus d'événements ne s'injecte
+pas dans le constructeur du mod.**
+
+`FMLJavaModLoadingContext.get().getModEventBus()` est marqué déprécié, et j'avais
+« corrigé » l'avertissement en déclarant un constructeur prenant `IEventBus` —
+forme valable sur des versions ultérieures, absente de Forge 47. Le mod
+échouait au chargement, ce qu'aucun test n'aurait montré : seul un lancement
+réel le révèle.
+
+**Un avertissement de dépréciation n'autorise pas à employer une API absente de
+la version visée.**
+
+**[2026-09-10] | Gradle a refusé le build : deux tâches se disputaient
+`build/natives` | ForgeGradle y extrait déjà les natifs de LWJGL avec sa propre
+tâche `extractNatives`.**
+
+Le répertoire d'AXION s'appelle désormais `build/axion-natives`. Gradle a
+raison de refuser : sans dépendance déclarée, l'ordre des deux tâches n'est pas
+garanti, et le résultat aurait pu être correct un jour sur deux.
+
+**[2026-09-10] | Le premier démarrage réel du serveur a signalé `E-2003` à
+l'arrêt | Le bootstrap acquérait un tampon de contrôle sans jamais le rendre.**
+
+Le bilan d'allocations de R-322, écrit une heure plus tôt, a trouvé son premier
+défaut dès sa première exécution en conditions réelles. Le tampon est maintenant
+relâché après vérification, et un test de non-régression le couvre. Le protocole
+veut de toute façon qu'on acquière à chaque tick plutôt que de conserver une vue.
+
 ---
 
 ## Structure du projet
