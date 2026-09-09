@@ -76,10 +76,12 @@ Tâches :
       vérification SHA-256 obligatoire (E-1003), chemin versionné par hash,
       `System.load` sur chemin absolu — jamais `System.loadLibrary` (R-420).
       Repli sur `java.io.tmpdir` si le système de fichiers est `noexec` (R-421).
-- [ ] **M0.4** C-14 FFI Bridge et handshake ABI (IF-01) : versionnement,
-      contrôle, mémoire partagée et anneaux de transfert (IF-02). Aucune panic
-      Rust ne traverse la frontière (interdiction 3.7). Jamais d'appel FFI par
-      élément là où un lot est possible (3.8).
+- [ ] **M0.4** **`[EFFORT MAX]`** — prévenir l'utilisateur et attendre sa
+      réponse avant de commencer. C-14 FFI Bridge et handshake ABI (IF-01) :
+      versionnement, contrôle, mémoire partagée et anneaux de transfert
+      (IF-02). Aucune panic Rust ne traverse la frontière (interdiction 3.7).
+      Jamais d'appel FFI par élément là où un lot est possible (3.8).
+      Le layout mémoire choisi ici ne se change plus après M3.
 - [ ] **M0.5** C-02 Bootstrap : machine à états
       `INIT -> CONFIG -> LOAD_NATIVE -> HANDSHAKE -> PROBE -> READY | DEGRADED | DISABLED`.
       R-410 : en `DISABLED`, les entités AXION restent inertes et **leur NBT
@@ -109,11 +111,13 @@ Tâches :
 Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 - [ ] **M1** Assets, noyau déterministe, jobs — C-12, C-15, C-16, C-20, C-21, C-22, C-24, C-71
+      · **C-16 : `[EFFORT MAX]`**, prévenir avant de commencer
 - [ ] **M2** Scene graph, cache, optimizer, entité, API — C-23, C-25, C-27, C-30, C-50, C-70, C-72, C-74
 - [ ] **M3** Physique et premier rendu — C-31, C-32, C-38, C-39, C-40, C-60..C-63, C-67, C-26
 - [ ] **M4** Réseau, animation, culling/LOD, joints, persistance — C-34, C-37, C-51, C-52, C-64, C-65, C-66
 - [ ] **M5** Véhicules, sièges, attaches, gouverneur, overlay — C-33, C-48, C-53, C-73, C-77
 - [ ] **M6** Impacts et déformation continue *(jalon central)* — C-28, C-41, C-42, C-45, C-68
+      · **`[EFFORT MAX]`** sur tout le jalon, prévenir avant de commencer
 - [ ] **M7** Structure, rupture, détachement, réparation — C-43, C-44, C-46
 - [ ] **M8** Particules unifiées — C-36
 - [ ] **M9** Rendu avancé — C-69, C-80..C-83, C-75, C-47

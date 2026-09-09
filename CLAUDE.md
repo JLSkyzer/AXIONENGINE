@@ -62,12 +62,17 @@ optionnel : ce projet interdit les raccourcis — pas de placeholder, pas de
 périmètre réduit « pour raison de coût » — et c'est vers là que dérive un modèle
 pressé.
 
-**Effort maximal pour :**
+**Effort maximal pour les tâches ci-dessous. Claude ne peut pas changer son
+propre niveau d'effort : avant d'entamer l'une d'elles, l'annoncer à
+l'utilisateur, recommander de passer à l'effort maximal, et attendre sa réponse
+avant d'écrire du code.** Les tâches concernées portent le marqueur
+`[EFFORT MAX]` dans `tasks/todo.md`.
 
 - M0.4 — frontière FFI, ABI, mémoire partagée et anneaux de transfert
 - C-16 — noyau déterministe (bit-exactitude, FMA, ordre d'itération)
 - M6 — déformation continue
-- tout crash natif : SIGSEGV, corruption mémoire, comportement indéfini
+- tout crash natif : SIGSEGV, corruption mémoire, comportement indéfini —
+  celui-ci n'est pas planifiable : le signaler dès qu'il survient
 
 Le critère : **effort maximal quand l'erreur serait silencieuse ou coûteuse à
 défaire** — une divergence de bit qui ne se voit que des mois plus tard, un
