@@ -56,29 +56,35 @@ La liste complète des 25 interdictions et des 14 obligations est dans le CDC :
 Le modèle se choisit **à l'ouverture d'une session** et ne change plus jusqu'à
 sa fin : basculer en cours de route force la relecture de toute la session.
 
-**Par défaut : Sonnet, effort élevé.** L'essentiel du travail est spécifié ligne
-par ligne par le cahier des charges. L'effort élevé n'est pas optionnel : ce
-projet interdit les raccourcis — pas de placeholder, pas de périmètre réduit
-« pour raison de coût » — et c'est vers là que dérive un modèle pressé.
+**Modèle : Opus. Effort élevé par défaut.** L'essentiel du travail est spécifié
+ligne par ligne par le cahier des charges, mais l'effort élevé n'est pas
+optionnel : ce projet interdit les raccourcis — pas de placeholder, pas de
+périmètre réduit « pour raison de coût » — et c'est vers là que dérive un modèle
+pressé.
 
-**Ouvrir une session Opus dédiée pour :**
+**Effort maximal pour :**
 
 - M0.4 — frontière FFI, ABI, mémoire partagée et anneaux de transfert
 - C-16 — noyau déterministe (bit-exactitude, FMA, ordre d'itération)
 - M6 — déformation continue
 - tout crash natif : SIGSEGV, corruption mémoire, comportement indéfini
 
-Ces choix se paient longtemps et leurs erreurs sont silencieuses. Le critère
-général : **si un test peut dire que c'est faux, Sonnet suffit ; si l'erreur est
-silencieuse ou coûteuse à défaire, c'est Opus.** Il recouvre la liste du CDC de
-ce qu'un agent ne décide pas seul — contrat `IF-xx`, ABI, `DM-xx`, `INV-xx`,
+Le critère : **effort maximal quand l'erreur serait silencieuse ou coûteuse à
+défaire** — une divergence de bit qui ne se voit que des mois plus tard, un
+layout mémoire qu'on ne peut plus changer après M3. Quand un test peut dire que
+c'est faux, l'effort élevé suffit. Ce critère recouvre la liste du CDC de ce
+qu'un agent ne décide pas seul : contrat `IF-xx`, ABI, `DM-xx`, `INV-xx`,
 dépendance structurante, cible Mixin.
 
-**Si un bug résiste après trois tentatives, ne pas basculer en cours de
+Inutile de pousser au maximum sur le travail mécanique — créer des crates,
+écrire des tests déjà nommés, les tâches Gradle : le résultat est le même et le
+budget manquera sur M6.
+
+**Si un bug résiste après trois tentatives, ne pas monter l'effort en cours de
 session.** Consigner l'état dans `tasks/todo.md` et les pistes écartées dans
-`tasks/lessons.md`, fermer la session, en rouvrir une en Opus. Le contexte du
-projet vit dans ces fichiers, pas dans le fil : une session neuve reprend en
-trois lectures.
+`tasks/lessons.md`, fermer la session, en rouvrir une. Le contexte du projet vit
+dans ces fichiers, pas dans le fil : une session neuve reprend en trois lectures,
+sans traîner trois échecs derrière elle.
 
 ## Commandes
 
