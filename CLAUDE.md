@@ -112,5 +112,5 @@ Le CDC impose de citer les identifiants concernés :
 feat(C-42): champ de déformation plastique quantifié [R-1420, T-802]
 ```
 
-Le dépôt n'a **aucun remote** : les commits restent locaux tant qu'il n'en a pas.
-Ne jamais laisser croire qu'un travail est poussé.
+Le dépôt suit `origin` (`github.com/JLSkyzer/AXIONENGINE`) : pousser dans la
+foulée de chaque commit.
