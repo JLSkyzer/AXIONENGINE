@@ -131,17 +131,47 @@ pub fn open() -> Result<u64, i32> {
     Ok(token)
 }
 
-/// Ferme la session désignée.
+/// Bilan des allocations au moment de l'arrêt (R-322).
+///
+/// Un bilan non nul ne signale pas une fuite mémoire — la session possède ses
+/// tampons et les relâche en se fermant — mais un déséquilibre entre
+/// acquisitions et libérations, c'est-à-dire un défaut d'usage de l'ABI. Le
+/// taire reviendrait à laisser ce défaut grandir jusqu'à devenir une vraie
+/// fuite quand les durées de vie se compliqueront.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AllocationBalance {
+    /// Tampons encore détenus à la fermeture.
+    pub live_buffers: usize,
+    /// Octets correspondants.
+    pub live_bytes: usize,
+}
+
+impl AllocationBalance {
+    /// Indique si tout ce qui a été acquis a été relâché.
+    #[must_use]
+    pub const fn is_balanced(&self) -> bool {
+        self.live_buffers == 0 && self.live_bytes == 0
+    }
+}
+
+/// Ferme la session désignée et rend son bilan d'allocations.
+///
+/// La session est fermée dans tous les cas : un bilan non nul se signale, il
+/// n'empêche pas l'arrêt.
 ///
 /// # Erreurs
 ///
 /// `E-2001` si le jeton ne désigne pas la session vivante.
-pub fn close(token: u64) -> Result<(), i32> {
+pub fn close(token: u64) -> Result<AllocationBalance, i32> {
     let mut slot = sessions();
-    match slot.as_ref() {
+    match slot.as_mut() {
         Some(session) if session.token == token => {
+            let balance = AllocationBalance {
+                live_buffers: session.buffers.live_buffers(),
+                live_bytes: session.buffers.total_bytes(),
+            };
             *slot = None;
-            Ok(())
+            Ok(balance)
         }
         _ => Err(ax_core::CoreError::InvalidHandle.code()),
     }

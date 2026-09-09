@@ -10,6 +10,9 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M0.9 — bilan d'allocations a l'arret (R-322) : un tampon jamais relache est
+  signale par E-2003, la session se fermant quand meme. Ajout de T-014, qui
+  verifie qu'aucun systeme ne reference RUSTFORGE-X hors de C-76 (INV-06).
 - M0.8 — chaine de build native (34.1) : codegen verifie, buildNatives produit
   la bibliotheque et son empreinte, packageNatives la place dans les ressources,
   validateJar controle l'artefact et refuse un JAR partial a la publication.

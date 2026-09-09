@@ -473,8 +473,8 @@ mod tests {
         assert_eq!(*table.get(b).unwrap(), 20);
     }
 
-    /// T-151 / INV-09 — un slot recyclé porte une nouvelle génération : le
-    /// handle rendu ne désigne jamais l'objet qui a pris sa place (R-450).
+    /// T-151, T-017 / INV-09 — un slot recyclé porte une nouvelle génération :
+    /// le handle rendu ne désigne jamais l'objet qui a pris sa place (R-450).
     #[test]
     fn slot_recycle_invalide_l_ancien_handle() {
         let mut table: HandleTable<&'static str> = HandleTable::new();

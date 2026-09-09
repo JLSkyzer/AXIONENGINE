@@ -11,7 +11,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.8 faits, M0.9 suivant.**
+**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.9 faits, M0.10 suivant.**
 
 Ce qui est en place :
 
@@ -228,8 +228,43 @@ Tâches :
       chaîne complète par plateforme ; la CI les produira sur leurs machines
       (M11). `validateJar` contrôlera la LUT BRDF et les shaders en M9, et la
       table de symboles via `tools/ffi/check_exports.py` quand T-661 sera écrit.
-- [ ] **M0.9** Tests T-100..T-103, T-110..T-114, T-120..T-124, T-130..T-133,
-      T-150..T-152, plus T-020 et T-021.
+- [x] **M0.9** Tests du jalon. 39 identifiants couverts, 80 tests Java et
+      66 tests Rust verts.
+
+      | Identifiants | Où |
+      |---|---|
+      | T-005 | `tools/codegen/tests/parite_java.rs` |
+      | T-013, T-190, T-191 | `crates/ax-ffi` (`abi.rs`, `tests/cycle_abi.rs`), `NativeBridgeTest` |
+      | T-014 | `RustforgexIsolationTest` |
+      | T-016 | `crates/ax-mem`, `tests/cycle_abi.rs` |
+      | T-017, T-150..T-152 | `crates/ax-core` |
+      | T-020 | `ForgeIsolationTest` |
+      | T-021 | `crates/ax-model/src/config` |
+      | T-022 | `NoOutboundNetworkTest` |
+      | T-023 | `ErrorCodesDocumentedTest` |
+      | T-100..T-103 | `AxionRuntimeTest` |
+      | T-110..T-114 | `AxionBootstrapTest` |
+      | T-120..T-124 | `NativePlatformTest`, `NativeLoaderTest` |
+      | T-130..T-133 | `ConfigLoaderTest` |
+      | T-140, T-141 | `StatusReportTest` |
+      | T-160..T-162 | `crates/ax-math` |
+      | T-180, T-181 | `crates/ax-mem` |
+
+      Ajouté en M0.9 : le bilan d'allocations à `axion_shutdown` (R-322)
+      manquait — un tampon jamais relâché est maintenant signalé par `E-2003`,
+      la session se fermant quand même. Vérifié par mutation. Et T-014, qui
+      arrête à la première marche la pente menant à une dépendance envers
+      RUSTFORGE-X (INV-06).
+
+      Reportés, faute du composant qu'ils mesurent :
+      - **T-012** (INV-04, moins de 32 traversées FFI par tick) — il n'y a pas
+        encore de boucle de simulation à mesurer. M3/M4.
+      - **T-004** (graphe de dépendances vérifié mécaniquement) — utile quand
+        il y aura assez de modules pour qu'un cycle soit possible.
+      - **T-006, T-007, T-011, T-015, T-018, T-019** — invariants portant sur
+        des composants qui n'existent pas.
+      - **T-710** (build reproductible) — vérifié à la main en M0.8, à
+        automatiser avec le reste du packaging en M12.
 - [ ] **M0.10** Vérifier l'acceptance de bout en bout : JAR installé sur un
       client et sur un serveur dédié réels, natif absent donnant un `DISABLED`
       jouable.

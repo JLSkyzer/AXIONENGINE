@@ -21,7 +21,7 @@ use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use axion_native::abi::{
     axion_abi_version, axion_buffer_acquire, axion_buffer_release, axion_init, axion_last_error,
     axion_shutdown, AxionBufferInfo, AXION_ABI_VERSION, AXION_E_INVALID_BUFFER,
-    AXION_E_INVALID_HANDLE, AXION_OK,
+    AXION_E_INVALID_HANDLE, AXION_E_LEAK, AXION_OK,
 };
 
 fn config_cbor() -> Vec<u8> {
@@ -158,6 +158,28 @@ fn cycle_complet_de_l_abi() {
             axion_buffer_acquire(ctx, BufferKind::SimIn.as_u32(), 16, &raw mut apres),
             AXION_E_INVALID_HANDLE
         );
+    }
+
+    // T-016, R-322 : un tampon jamais relâché fait apparaître un bilan non nul
+    // à l'arrêt. La session se ferme quand même — un déséquilibre se signale,
+    // il n'empêche pas de s'arrêter.
+    let mut fuite: u64 = 0;
+    // SAFETY: pointeurs locaux valides.
+    unsafe {
+        assert_eq!(axion_init(std::ptr::null(), 0, &raw mut fuite), AXION_OK);
+        let mut oublie = empty_info();
+        assert_eq!(
+            axion_buffer_acquire(fuite, BufferKind::Events.as_u32(), 32, &raw mut oublie),
+            AXION_OK
+        );
+        // Pas de axion_buffer_release : c'est tout l'objet du test.
+        assert_eq!(
+            axion_shutdown(fuite),
+            AXION_E_LEAK,
+            "un tampon non relâché devrait être signalé"
+        );
+        // Et la session est bien fermée malgré le signalement.
+        assert_eq!(axion_shutdown(fuite), AXION_E_INVALID_HANDLE);
     }
 
     // Un arrêt propre autorise un redémarrage : le cas d'un serveur qui

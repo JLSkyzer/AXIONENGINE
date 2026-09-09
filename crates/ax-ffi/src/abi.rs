@@ -46,6 +46,12 @@ pub const AXION_E_INVALID_HANDLE: i32 = -2001;
 /// Tampon ou pointeur invalide (`E-2002`).
 pub const AXION_E_INVALID_BUFFER: i32 = -2002;
 
+/// Ressource non libérée à l'arrêt (`E-2003`).
+///
+/// R-322 : le bilan des allocations est rendu à `axion_shutdown`. Un bilan non
+/// nul n'empêche pas l'arrêt — il le signale.
+pub const AXION_E_LEAK: i32 = -2003;
+
 /// Configuration refusée.
 ///
 /// L'ANNEXE A.1 n'attribue aucun code propre à la configuration ; `E-2002`
@@ -167,7 +173,11 @@ pub unsafe extern "C" fn axion_init(config_cbor: *const u8, len: usize, out_ctx:
 #[no_mangle]
 pub unsafe extern "C" fn axion_shutdown(ctx: u64) -> i32 {
     shielded(Some(ctx), || match context::close(ctx) {
-        Ok(()) => AXION_OK,
+        // R-322 : la session est fermée dans tous les cas ; un déséquilibre
+        // entre acquisitions et libérations est rendu à l'appelant, qui le
+        // journalise. C'est ce que T-016 vérifie.
+        Ok(balance) if balance.is_balanced() => AXION_OK,
+        Ok(_) => AXION_E_LEAK,
         Err(code) => code,
     })
 }
@@ -525,8 +535,8 @@ mod tests {
         assert!(apply_config(&[0xFF, 0xFF, 0xFF]).is_err());
     }
 
-    /// Le bouclier transforme une panic en code d'erreur, sans la laisser
-    /// traverser (INV-05).
+    /// T-013 — le bouclier transforme une panic en code d'erreur, sans la
+    /// laisser traverser (INV-05).
     #[test]
     fn une_panic_ne_traverse_pas_la_frontiere() {
         let code = shielded(None, || panic!("échec simulé"));

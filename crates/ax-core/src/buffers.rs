@@ -228,6 +228,12 @@ impl BufferPool {
         self.reallocations
     }
 
+    /// Nombre de tampons encore detenus.
+    #[must_use]
+    pub fn live_buffers(&self) -> usize {
+        self.slots.iter().filter(|slot| slot.is_some()).count()
+    }
+
     /// Libère tous les tampons.
     pub fn clear(&mut self) {
         for slot in &mut self.slots {
