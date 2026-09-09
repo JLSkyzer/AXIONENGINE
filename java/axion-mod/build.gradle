@@ -82,6 +82,11 @@ dependencies {
 
 tasks.named('test', Test).configure {
     useJUnitPlatform()
+    // Le test de la frontiere charge la bibliotheque native construite par
+    // cargo. M0.8 rendra cette construction dependance du build ; d'ici la, le
+    // test se declare non applicable si le binaire n'est pas la, en disant
+    // comment le produire.
+    systemProperty 'axion.native.dir', rootProject.file('target/release').absolutePath
     testLogging {
         events 'failed'
         exceptionFormat 'full'

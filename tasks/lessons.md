@@ -88,6 +88,25 @@ Le test l'a attrapé parce que la table des cas contenait `Darwin` en plus de
 `Mac OS X` : **une table de plateformes ne vaut que par les valeurs réellement
 rapportées par les JVM**, pas par celles qu'on suppose.
 
+**[2026-09-10] | Un test d'intégration importait `ax_ffi::` et ne compilait pas |
+Le crate `ax-ffi` produit une bibliothèque nommée `axion_native` : c'est ce nom
+qu'on importe, pas celui du paquet.**
+
+`[lib] name = "axion_native"` est imposé par R-420, qui exige un nom de
+bibliothèque propre au projet. Le nom du paquet Cargo et celui de la
+bibliothèque sont alors deux choses distinctes, et c'est le second que voient
+`use` et le linker.
+
+**[2026-09-10] | Un fichier Java généré est sorti avec neuf espaces
+d'indentation parasites sur chaque ligne | Dans un générateur de code, assembler
+des lignes plutôt qu'un littéral à continuations `\`.**
+
+Les continuations de ligne d'un littéral Rust recopient l'indentation du source
+dans la chaîne produite. Assembler un `Vec<String>` puis le joindre n'a pas ce
+défaut, et se relit mieux. Le fichier compilait quand même : seule l'inspection
+visuelle l'a montré — d'où l'intérêt de relire une sortie générée au moins une
+fois.
+
 ---
 
 ## Structure du projet

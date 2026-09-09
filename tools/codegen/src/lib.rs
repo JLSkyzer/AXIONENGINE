@@ -7,6 +7,7 @@
 //! **générée** depuis le registre, et un test de parité (T-005) vérifie qu'elle
 //! n'a pas été modifiée à la main.
 
+use ax_model::buffer::{BufferKind, HEADER_BYTES, MAGIC};
 use ax_model::config::{ConfigDomain, ConfigOption, ConfigScope, ConfigValue};
 
 /// Chemin du fichier Java généré, relatif à la racine du dépôt.
@@ -21,6 +22,93 @@ pub const TOML_RESOURCE_DIR: &str = "java/axion-mod/src/main/resources/axion/con
 #[must_use]
 pub fn toml_resource_path(scope: ConfigScope) -> String {
     format!("{TOML_RESOURCE_DIR}/{}", scope.file_name())
+}
+
+/// Chemin du fichier Java des constantes de tampon, relatif à la racine.
+pub const JAVA_BUFFER_PATH: &str = "java/axion-mod/src/main/java/dev/axion/bridge/BufferKinds.java";
+
+/// Rend la classe Java des constantes de tampon (IF-02).
+///
+/// Les valeurs numériques des kinds et la disposition de l'en-tête font partie
+/// de l'ABI : les tenir à la main des deux côtés serait la garantie qu'elles
+/// divergent un jour.
+///
+/// Le rendu assemble des lignes plutôt qu'un littéral à continuations : ces
+/// dernières recopient l'indentation du source Rust dans le fichier produit.
+#[must_use]
+pub fn render_java_buffer_kinds() -> String {
+    // « AXNB » relu comme un entier little-endian, tel que Java le lira dans un
+    // ByteBuffer configuré selon R-271.
+    let magic_le = u32::from_le_bytes(MAGIC);
+
+    let mut lines: Vec<String> = vec![
+        "package dev.axion.bridge;".to_owned(),
+        String::new(),
+        "/**".to_owned(),
+        " * Constantes des tampons de transfert (IF-02).".to_owned(),
+        " *".to_owned(),
+        " * <p><strong>Fichier généré — ne pas modifier à la main.</strong> La source est"
+            .to_owned(),
+        " * {@code crates/ax-model/src/buffer.rs}. Régénérer avec :".to_owned(),
+        " *".to_owned(),
+        " * <pre>cargo run -p axion-codegen --bin gen_java_config</pre>".to_owned(),
+        " *".to_owned(),
+        " * <p>Les valeurs numériques font partie de l'ABI : les changer romprait la".to_owned(),
+        " * compatibilité avec un binaire déjà distribué.".to_owned(),
+        " */".to_owned(),
+        "public final class BufferKinds {".to_owned(),
+        String::new(),
+        "    private BufferKinds() {".to_owned(),
+        "        throw new AssertionError(\"classe de constantes, non instanciable\");".to_owned(),
+        "    }".to_owned(),
+        String::new(),
+        "    /** Taille de l'en-tête de tout tampon, en octets. */".to_owned(),
+        format!("    public static final int HEADER_BYTES = {HEADER_BYTES};"),
+        String::new(),
+        "    /**".to_owned(),
+        "     * Magic ouvrant tout tampon, lu comme un entier little-endian.".to_owned(),
+        "     *".to_owned(),
+        "     * <p>Correspond aux quatre octets {@code 'A' 'X' 'N' 'B'}. Un".to_owned(),
+        "     * {@link java.nio.ByteBuffer} doit être en little-endian (R-271) pour que".to_owned(),
+        "     * cette comparaison ait un sens.".to_owned(),
+        "     */".to_owned(),
+        format!("    public static final int MAGIC = 0x{magic_le:08X};"),
+    ];
+
+    for kind in BufferKind::ALL {
+        lines.push(String::new());
+        lines.push(format!("    /** {}. */", describe_kind(kind)));
+        lines.push(format!(
+            "    public static final int {} = {};",
+            kind.name(),
+            kind.as_u32()
+        ));
+    }
+
+    lines.push("}".to_owned());
+    lines.join(
+        "
+",
+    ) + "
+"
+}
+
+fn describe_kind(kind: BufferKind) -> &'static str {
+    match kind {
+        BufferKind::SimIn => "Commandes de simulation, Java vers le natif",
+        BufferKind::SimOut => "États de bodies, natif vers Java",
+        BufferKind::Events => "Événements physiques, de dommage, de rupture et de détachement",
+        BufferKind::ImpactIn => "Impacts d'origine Minecraft",
+        BufferKind::DeformOut => "Pages de champ de déformation modifiées",
+        BufferKind::DeformNet => "Paquets de déformation sérialisés",
+        BufferKind::RenderOut => "Instances visibles, matrices, palettes, décalques, LOD",
+        BufferKind::ShadowOut => "Instances de la passe d'ombre",
+        BufferKind::AssetIn => "Source d'un asset à compiler",
+        BufferKind::AssetOut => "Asset compilé",
+        BufferKind::NetOut => "Charges utiles réseau sérialisées",
+        BufferKind::Persist => "Blobs de persistance sérialisés",
+        BufferKind::Debug => "Géométrie de debug",
+    }
 }
 
 /// Rend la classe Java du schéma de configuration.

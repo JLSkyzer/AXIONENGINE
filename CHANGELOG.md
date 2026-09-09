@@ -10,6 +10,10 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M0.4 — frontiere Java/Rust operationnelle (C-14) : ABI versionnee, contexte
+  opaque, tampons de transfert a generations, pont JNI par RegisterNatives, et
+  encodeur CBOR cote Java. Un test charge la bibliotheque reelle et exerce le
+  cycle complet (IF-01, IF-02, R-260..R-265, R-310..R-313).
 - M0.3 — chargeur de bibliotheque native (C-03) : detection des cinq
   plateformes supportees, empreinte SHA-256 obligatoire, chemin versionne par
   empreinte, extraction atomique, repli sur le repertoire temporaire et echec

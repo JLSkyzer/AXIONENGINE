@@ -30,6 +30,7 @@
 
 pub mod abi;
 pub mod context;
+pub mod jni_bridge;
 
 pub use abi::{
     AXION_ABI_VERSION, AXION_E_CONFIG, AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE,

@@ -38,6 +38,49 @@ fn la_classe_java_est_a_jour() {
 }
 
 #[test]
+fn les_constantes_de_tampon_sont_a_jour() {
+    // Les valeurs numériques des kinds et la disposition de l'en-tête font
+    // partie de l'ABI : si le fichier Java diverge du registre Rust, les deux
+    // côtés de la frontière ne parlent plus du même format, sans qu'aucune
+    // erreur de compilation ne le signale.
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(axion_codegen::JAVA_BUFFER_PATH);
+
+    let sur_disque = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "{} illisible ({err}) — le générer avec : cargo run -p axion-codegen --bin gen_java_config",
+            path.display()
+        )
+    });
+
+    let attendu = axion_codegen::render_java_buffer_kinds().replace("\r\n", "\n");
+    assert_eq!(
+        sur_disque.replace("\r\n", "\n"),
+        attendu,
+        "les constantes de tampon ont divergé — les régénérer avec : cargo run -p axion-codegen --bin gen_java_config"
+    );
+}
+
+#[test]
+fn chaque_kind_figure_dans_les_constantes_java() {
+    let java = axion_codegen::render_java_buffer_kinds();
+    for kind in ax_model::buffer::BufferKind::ALL {
+        assert!(
+            java.contains(&format!("int {} = {};", kind.name(), kind.as_u32())),
+            "{kind} absent des constantes Java, ou mal numéroté"
+        );
+    }
+    // L'en-tête et le magic doivent traverser tels quels.
+    assert!(java.contains(&format!(
+        "HEADER_BYTES = {};",
+        ax_model::buffer::HEADER_BYTES
+    )));
+    let magic = u32::from_le_bytes(ax_model::buffer::MAGIC);
+    assert!(java.contains(&format!("MAGIC = 0x{magic:08X};")));
+}
+
+#[test]
 fn toute_option_du_registre_figure_dans_la_classe() {
     // Une vérification indépendante du rendu : même si la mise en forme
     // changeait, chaque chemin d'option doit rester présent. Ce test attrape

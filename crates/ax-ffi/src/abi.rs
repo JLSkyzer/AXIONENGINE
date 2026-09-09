@@ -22,7 +22,7 @@
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-use ax_model::buffer::BufferKind;
+use ax_model::buffer::{BufferHeader, BufferKind};
 use ax_model::config::{self, ConfigScope, ParsedValue};
 
 use crate::context;
@@ -262,7 +262,22 @@ pub unsafe extern "C" fn axion_buffer_acquire(
         };
 
         let info = context::with(ctx, false, |session| {
-            session.buffers().acquire(kind, min_capacity)
+            let info = session.buffers().acquire(kind, min_capacity);
+            // L'en-tête est posé dès l'acquisition : Java y lit la génération
+            // sans second appel, et un tampon fraîchement acquis n'est jamais
+            // dans un état que `BufferHeader::read` refuserait.
+            if let Some(buffer) = session.buffers().get_mut(kind) {
+                BufferHeader {
+                    kind,
+                    generation: info.generation,
+                    schema_version: 0,
+                    payload_len: 0,
+                    element_count: 0,
+                    crc32c: 0,
+                }
+                .write(buffer.as_mut_slice());
+            }
+            info
         });
         match info {
             Ok(info) => {

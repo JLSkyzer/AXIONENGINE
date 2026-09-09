@@ -11,7 +11,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.3 faits, M0.4 suivant.**
+**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.4 faits, M0.5 suivant.**
 
 Ce qui est en place :
 
@@ -108,8 +108,9 @@ Tâches :
             type erroné, hors-plage, hors-énumération et NaN. Une entrée
             refusée conserve la précédente et devient un diagnostic — le mod
             démarre toujours. 8 tests JUnit (T-130..T-133).
-      - [ ] Encodage CBOR vers `axion_init` — dépend de la frontière FFI, donc
-            de M0.4 ; à brancher là.
+      - [x] Encodage CBOR vers `axion_init` : `CborWriter` côté Java, décodage
+            et revalidation côté natif (fait en M0.4). Reste à l'appeler depuis
+            le bootstrap, ce qui est M0.5.
       - [ ] Compléter `hot` (R-431) et `server_authoritative` (R-1830) : seules
             les options manifestement concernées sont marquées aujourd'hui —
             `debug`, `overlay` pour l'une, `sim` et `physics` pour l'autre. Les
@@ -133,12 +134,27 @@ Tâches :
       Reste lié : le branchement dans le bootstrap (M0.5) et l'empaquetage des
       binaires dans le JAR (M0.8). D'ici là, `RESOURCE_MISSING` est le cas
       nominal, et le mod le signale sans planter.
-- [ ] **M0.4** **`[EFFORT MAX]`** — prévenir l'utilisateur et attendre sa
-      réponse avant de commencer. C-14 FFI Bridge et handshake ABI (IF-01) :
-      versionnement, contrôle, mémoire partagée et anneaux de transfert
-      (IF-02). Aucune panic Rust ne traverse la frontière (interdiction 3.7).
-      Jamais d'appel FFI par élément là où un lot est possible (3.8).
-      Le layout mémoire choisi ici ne se change plus après M3.
+- [x] **M0.4** C-14 FFI Bridge et handshake ABI. La frontière fonctionne de
+      bout en bout : un test Java charge la vraie bibliothèque, initialise,
+      acquiert un tampon, écrit, libère et arrête.
+      - ABI IF-01 : `axion_abi_version`, `axion_init`, `axion_shutdown`,
+        `axion_last_error`. Contexte = `u64` opaque à motif, jamais un pointeur.
+      - Tampons IF-02 : `axion_buffer_acquire` / `release`, treize kinds,
+        en-tête de 32 octets little-endian, générations, croissance par
+        doublement.
+      - Chaque point d'entrée valide ses arguments et passe par `catch_unwind` ;
+        une panic empoisonne le contexte et renvoie `E-2000` (INV-05).
+      - `panic = "abort"` retiré du profil release : R-312 l'interdit, et il
+        aurait rendu `catch_unwind` inopérant.
+      - Pont JNI par `RegisterNatives` depuis `JNI_OnLoad`, pour que la
+        bibliothèque n'exporte que `JNI_OnLoad` et six symboles `axion_*`
+        (R-2020), vérifié par `tools/ffi/check_exports.py`.
+      - `CborWriter` : encodeur maison validé contre les vecteurs de la RFC
+        8949 — aucune dépendance shadée n'étant permise par `validateJar`.
+      - `BufferKinds.java` généré depuis `ax-model`, avec test de parité.
+      Reste lié : `axion_set_quality` attend `AxionQualityProfile`, que le
+      cahier des charges ne décrit nulle part ; il viendra avec C-77 (M5).
+      Ajouter une fonction n'est pas une rupture d'ABI.
 - [ ] **M0.5** C-02 Bootstrap : machine à états
       `INIT -> CONFIG -> LOAD_NATIVE -> HANDSHAKE -> PROBE -> READY | DEGRADED | DISABLED`.
       R-410 : en `DISABLED`, les entités AXION restent inertes et **leur NBT

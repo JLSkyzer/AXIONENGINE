@@ -28,6 +28,7 @@ missing_docs = "warn"
 ax-core.workspace = true
 ax-model.workspace = true
 ciborium.workspace = true
+jni.workspace = true
 
 [dev-dependencies]
 # Le test d'integration exerce l'ABI comme Java le fera : il doit pouvoir
