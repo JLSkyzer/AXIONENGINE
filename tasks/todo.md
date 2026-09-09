@@ -304,6 +304,12 @@ Tâches :
       - `RUNNING_CLIENT` était par ailleurs inatteignable : `onClientStarted`
         n'était branché nulle part. Le premier tick client y fait entrer.
 
+      Correction vérifiée sur un client réel, log à l'appui : monde solo →
+      `actif`, retour au menu → `RUNNING_SERVER -> RUNNING_CLIENT` sans
+      fermeture du contexte, monde rechargé → `actif` de nouveau, fermeture du
+      jeu → `contexte natif fermé, code 0`. Zéro erreur. Vérifiée aussi par
+      mutation : forcer l'ancien comportement fait échouer le test.
+
       Les logs serveur sont conservés hors de `run/logs/`, que `runClient`
       archive en le remplaçant.
 
