@@ -5,20 +5,202 @@ Ce produit inclut des logiciels developpes dans le cadre du projet AXION ENGINE,
 distribues sous licence Apache-2.0 (voir le fichier LICENSE).
 
 --------------------------------------------------------------------------------
-Dependances tierces
+Fichier genere
 --------------------------------------------------------------------------------
 
-Ce fichier est genere et verifie en integration continue (R-2290) : il doit
-lister l'integralite des dependances, de leurs licences et des attributions
-requises.
+Ne pas modifier a la main. Regenerer avec :
 
-Rust
-  glam 0.33 — MIT OR Apache-2.0 — https://github.com/bitshifter/glam-rs
-    Types vectoriels et matriciels. Impose par R-460, qui interdit a tout crate
-    d'AXION de definir son propre type vecteur ou matrice.
+    python tools/deps/gen_notice.py
 
-Java
-  Aucune dependance tierce : le module ne depend que de la plateforme.
+La liste ci-dessous est extraite de l'arbre de dependances reel (cargo
+metadata), transitives comprises : une dependance qu'on n'a pas choisie doit
+figurer dans les attributions au meme titre que les autres (R-2290).
+
+
+--------------------------------------------------------------------------------
+Dependances Rust
+--------------------------------------------------------------------------------
+
+42 paquets, transitives comprises.
+
+  bytes 1.12.1
+    Licence : MIT
+    Source  : https://github.com/tokio-rs/bytes
+
+  cesu8 1.1.0
+    Licence : Apache-2.0/MIT
+    Source  : https://github.com/emk/cesu8-rs
+
+  cfg-if 1.0.4
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/cfg-if
+
+  ciborium 0.2.2
+    Licence : Apache-2.0
+    Source  : https://github.com/enarx/ciborium
+
+  ciborium-io 0.2.2
+    Licence : Apache-2.0
+    Source  : https://github.com/enarx/ciborium
+
+  ciborium-ll 0.2.2
+    Licence : Apache-2.0
+    Source  : https://github.com/enarx/ciborium
+
+  combine 4.6.8
+    Licence : MIT
+    Source  : https://github.com/Marwes/combine
+
+  crunchy 0.2.4
+    Licence : MIT
+    Source  : https://github.com/eira-fransham/crunchy
+
+  glam 0.33.7
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/bitshifter/glam-rs
+
+  half 2.7.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/VoidStarKat/half-rs
+
+  jni 0.21.1
+    Licence : MIT/Apache-2.0
+    Source  : https://github.com/jni-rs/jni-rs
+
+  jni-sys 0.3.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/jni-rs/jni-sys
+
+  jni-sys 0.4.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/jni-rs/jni-sys
+
+  jni-sys-macros 0.4.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/jni-rs/jni-sys
+
+  log 0.4.34
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/log
+
+  memchr 2.8.3
+    Licence : Unlicense OR MIT
+    Source  : https://github.com/BurntSushi/memchr
+
+  proc-macro2 1.0.107
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/dtolnay/proc-macro2
+
+  quote 1.0.47
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/dtolnay/quote
+
+  same-file 1.0.6
+    Licence : Unlicense/MIT
+    Source  : https://github.com/BurntSushi/same-file
+
+  serde 1.0.229
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/serde-rs/serde
+
+  serde_core 1.0.229
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/serde-rs/serde
+
+  serde_derive 1.0.229
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/serde-rs/serde
+
+  syn 2.0.119
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/dtolnay/syn
+
+  syn 3.0.5
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/dtolnay/syn
+
+  thiserror 1.0.69
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/dtolnay/thiserror
+
+  thiserror-impl 1.0.69
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/dtolnay/thiserror
+
+  unicode-ident 1.0.24
+    Licence : (MIT OR Apache-2.0) AND Unicode-3.0
+    Source  : https://github.com/dtolnay/unicode-ident
+
+  walkdir 2.5.0
+    Licence : Unlicense/MIT
+    Source  : https://github.com/BurntSushi/walkdir
+
+  winapi-util 0.1.11
+    Licence : Unlicense OR MIT
+    Source  : https://github.com/BurntSushi/winapi-util
+
+  windows-link 0.2.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/microsoft/windows-rs
+
+  windows-sys 0.45.0
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/microsoft/windows-rs
+
+  windows-sys 0.61.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/microsoft/windows-rs
+
+  windows-targets 0.42.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/microsoft/windows-rs
+
+  windows_aarch64_gnullvm 0.42.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/microsoft/windows-rs
+
+  windows_aarch64_msvc 0.42.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/microsoft/windows-rs
+
+  windows_i686_gnu 0.42.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/microsoft/windows-rs
+
+  windows_i686_msvc 0.42.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/microsoft/windows-rs
+
+  windows_x86_64_gnu 0.42.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/microsoft/windows-rs
+
+  windows_x86_64_gnullvm 0.42.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/microsoft/windows-rs
+
+  windows_x86_64_msvc 0.42.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/microsoft/windows-rs
+
+  zerocopy 0.8.57
+    Licence : BSD-2-Clause OR Apache-2.0 OR MIT
+    Source  : https://github.com/google/zerocopy
+
+  zerocopy-derive 0.8.57
+    Licence : BSD-2-Clause OR Apache-2.0 OR MIT
+    Source  : https://github.com/google/zerocopy
+
+--------------------------------------------------------------------------------
+Dependances Java
+--------------------------------------------------------------------------------
+
+Aucune dependance tierce n'est embarquee. Le module ne depend que de la
+plateforme, fournie par l'utilisateur :
+
+  Minecraft, Minecraft Forge   non redistribues
+  Mixin (via Forge)            MIT
+  Gson, NightConfig (via la plateforme)
 
 --------------------------------------------------------------------------------
 Plateforme, non redistribuee
