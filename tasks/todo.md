@@ -27,13 +27,21 @@ Ce qui est en place :
 - [x] Index du CDC : `docs/spec/INDEX.md` (452 sections) et
       `docs/spec/ID-MAP.tsv` (1331 identifiants).
 
-- [x] Quatre premiers crates natifs (M0.1) : `ax-math`, `ax-mem`, `ax-core`,
-      `ax-ffi`. `cargo test --workspace --all-features` est vert (22 tests) et
-      `cargo build --release -p ax-ffi` produit `axion_native.dll`.
+- [x] Cinq crates natifs : `ax-math`, `ax-mem`, `ax-core`, `ax-ffi` (M0.1) et
+      `ax-model` (M0.2). `cargo build --release -p ax-ffi` produit
+      `axion_native.dll`.
+- [x] Configuration data-driven (M0.2) : source unique de 160 options, dont
+      dérivent `CONFIGURATION.md`, les TOML de référence et le schéma Java.
+- [x] Chargeur de bibliothèque native (M0.3) : plateformes, empreinte,
+      extraction, repli.
+- [x] `cargo test --workspace` (17 blocs) et `./gradlew build` (34 tests JUnit)
+      verts.
 
-Ce qui n'existe pas encore : **le moteur**. Aucun chargement du natif depuis
-Java, aucune configuration, aucun handshake ABI, aucune physique, aucun rendu.
-La bibliothèque native se construit mais n'exporte encore aucun point d'entrée.
+Ce qui n'existe pas encore : **le moteur**. Aucun point d'entrée dans la
+bibliothèque native, donc aucun handshake ABI ; le bootstrap n'est pas câblé,
+et il n'y a ni physique, ni entité, ni rendu. Les pièces de M0.2 et M0.3 sont
+écrites et testées mais **pas encore reliées entre elles** : c'est M0.5 qui les
+assemble, une fois la frontière FFI posée en M0.4.
 
 ---
 
