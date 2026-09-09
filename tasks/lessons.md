@@ -45,6 +45,22 @@ restent adaptés au code et aux fichiers courts sans apostrophes.
 
 ---
 
+## Méthode
+
+**[2026-09-09] | `axion.mixins.json` a été écrit avec
+`"compatibilityLevel": "JAVA_17"`, alors que la base de connaissances documentait
+déjà que Forge 47 plafonne à `JAVA_16` | Consulter `D:\BDC` **avant** d'écrire un
+fichier de configuration Forge, pas après.**
+
+Sur Forge 47, la version de Mixin embarquée plafonne à `JAVA_13` et son service
+annonce `JAVA_16` ; déclarer `JAVA_17` produit un avertissement au lancement,
+même si le mod est bien compilé pour Java 17. La version du langage et le niveau
+de compatibilité de Mixin sont deux échelles indépendantes. Le fait était déjà
+consigné dans `D:\BDC` — la relecture du coffre aurait évité l'aller-retour.
+Voir `Minecraft/compatibilityLevel des mixins sur Forge 47`.
+
+---
+
 ## Structure du projet
 
 **[2026-09-09] | Le MDK Forge a été généré avec `mod_id=axionengine` et
