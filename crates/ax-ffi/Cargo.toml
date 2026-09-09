@@ -1,0 +1,27 @@
+[package]
+name = "ax-ffi"
+description = "C-14 : bibliothèque native d'AXION ENGINE et points d'entrée JNI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+# Le nom de la bibliothèque produite est fixé par R-420 : il doit être unique au
+# projet, car le chargeur Java appelle `System.load` sur un chemin absolu et ne
+# doit jamais entrer en collision avec la bibliothèque native d'un autre mod.
+name = "axion_native"
+# `cdylib` pour la bibliothèque chargée par la JVM ; `rlib` pour que les tests
+# et les outils du workspace puissent lier le crate.
+crate-type = ["cdylib", "rlib"]
+
+[lints.rust]
+# `deny` et non `forbid` : les points d'entrée exportés vers la JVM sont
+# nécessairement `unsafe`, et chaque bloc portera sa justification `// SAFETY:`.
+# `forbid` ne pourrait pas être levé localement.
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[dependencies]

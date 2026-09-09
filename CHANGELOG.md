@@ -10,6 +10,13 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M0.1 — quatre premiers crates natifs :
+  - `ax-math` (C-11) : conventions du repere et origine flottante (R-460..R-462) ;
+  - `ax-mem` (C-13) : quatre classes d'arene, comptage des allocations et
+    allocateur de pages de 1 KiB a liste libre (R-480..R-482) ;
+  - `ax-core` (C-10) : table de handles a generations et unicite du contexte
+    natif (R-450, R-311) ;
+  - `ax-ffi` (C-14) : bibliotheque dynamique `axion_native`.
 - Arborescence du depot conforme a la PARTIE 33 : build Gradle multi-projet
   (`:axion-api`, `:axion-mod`) et workspace Cargo.
 - Index de navigation du cahier des charges (`docs/spec/`), genere par

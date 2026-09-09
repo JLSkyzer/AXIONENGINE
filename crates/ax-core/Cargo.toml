@@ -1,0 +1,19 @@
+[package]
+name = "ax-core"
+description = "C-10 : contexte natif, handles et états du runtime d'AXION ENGINE"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints.rust]
+# `deny` et non `forbid` : la bibliothèque ne contient aucun bloc `unsafe`, mais
+# `forbid` ne peut pas être levé localement et interdirait à un test d'installer
+# un allocateur global compteur — `GlobalAlloc` est un trait `unsafe` — pour
+# prouver qu'un chemin de code n'alloue pas (INV-08, T-016).
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[dependencies]

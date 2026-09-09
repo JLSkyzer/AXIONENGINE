@@ -8,11 +8,7 @@
 # les points d'entree JNI. Tous les autres sont des rlib internes.
 [workspace]
 resolver = "2"
-# Aucun crate n'existe encore : le premier jalon M0 cree ax-core (C-10),
-# ax-math (C-11), ax-mem (C-13) et ax-ffi (C-14). Des qu'un crate existe,
-# remplacer cette liste vide par le glob members = ["crates/*"], qui les
-# reprend alors tous automatiquement.
-members = []
+members = ["crates/*"]
 
 [workspace.package]
 version = "1.0.0"
@@ -26,6 +22,19 @@ authors = ["JLSkyzer"]
 # Les versions communes se declarent ici pour rester alignees entre crates.
 # R-2300 : toute nouvelle dependance exige justification, licence compatible,
 # alternative evaluee, ajout au SBOM et au NOTICE, et un ADR si structurante.
+
+# C-11 : impose par R-460, qui interdit a tout crate d'AXION de definir son
+# propre type vecteur ou matrice. Licence MIT OR Apache-2.0, dans l'allowlist
+# de deny.toml.
+# `float-types` fournit les types f64 (DVec3, DMat4...), indispensables aux
+# positions monde exigees par R-462. Les types entiers ne sont pas actives
+# tant qu'aucun composant n'en a besoin.
+glam = { version = "0.33", default-features = false, features = ["std", "float-types"] }
+
+# Crates internes.
+ax-math = { path = "crates/ax-math" }
+ax-mem = { path = "crates/ax-mem" }
+ax-core = { path = "crates/ax-core" }
 
 # Les profils s'appliquent a tout le workspace.
 [profile.release]

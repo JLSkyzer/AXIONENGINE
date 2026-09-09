@@ -11,7 +11,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon en cours : M0 — Squelette et frontière native. Non commencé.**
+**Jalon en cours : M0 — Squelette et frontière native. M0.1 fait, M0.2 suivant.**
 
 Ce qui est en place :
 
@@ -27,8 +27,13 @@ Ce qui est en place :
 - [x] Index du CDC : `docs/spec/INDEX.md` (452 sections) et
       `docs/spec/ID-MAP.tsv` (1331 identifiants).
 
-Ce qui n'existe pas encore : **tout le moteur**. Aucun crate Rust, aucune
-bibliothèque native, aucun chargement, aucune physique, aucun rendu.
+- [x] Quatre premiers crates natifs (M0.1) : `ax-math`, `ax-mem`, `ax-core`,
+      `ax-ffi`. `cargo test --workspace --all-features` est vert (22 tests) et
+      `cargo build --release -p ax-ffi` produit `axion_native.dll`.
+
+Ce qui n'existe pas encore : **le moteur**. Aucun chargement du natif depuis
+Java, aucune configuration, aucun handshake ABI, aucune physique, aucun rendu.
+La bibliothèque native se construit mais n'exporte encore aucun point d'entrée.
 
 ---
 
@@ -64,9 +69,22 @@ Lire avant de commencer, dans l'ordre :
 
 Tâches :
 
-- [ ] **M0.1** Créer les crates `ax-core` (C-10), `ax-math` (C-11), `ax-mem`
-      (C-13), `ax-ffi` (C-14). Repasser `members` au glob `["crates/*"]` dans
-      `Cargo.toml`. `ax-ffi` est le seul `cdylib`, nommé `axion_native`.
+- [x] **M0.1** Crates `ax-math` (C-11), `ax-mem` (C-13), `ax-core` (C-10) et
+      `ax-ffi` (C-14) créés, `members` repassé au glob. 22 tests verts, clippy
+      sans avertissement, `cargo fmt` conforme, `axion_native.dll` produit.
+      Couvre R-450, R-460..R-462, R-480..R-482, R-311, INV-09.
+      Trois points sont volontairement reportés, chacun à son jalon :
+      - le `Context` complet de C-10 (13 champs) s'assemblera quand `Config`,
+        `QualityProfile`, `Telemetry`, `JobSystem` et `BufferPool` existeront ;
+        aujourd'hui seuls la table de handles et le jeton d'unicité sont écrits ;
+      - les deux premières étapes de R-481 — compactage des champs saturés puis
+        éviction LRU des assemblies lointaines — relèvent de C-42 (M6) : elles
+        supposent de connaître champs et assemblies, que l'allocateur ignore.
+        `ax-mem` refuse avec `E-2004` ; C-42 branchera la récupération avant ce
+        refus et traduira en `E-8001` ;
+      - les codes d'erreur sont pour l'instant définis dans chaque crate.
+        DM-19 les centralisera dans `ax-model` (M1), qui n'existe pas encore ;
+        `ax-mem` et `ax-core` ne peuvent pas dépendre d'un crate absent.
 - [ ] **M0.2** C-04 Configuration : défauts compilés, `axion-common.toml`,
       `axion-client.toml`, `axion-server.toml`, surcharges `-Daxion.*`,
       validation type/plage/défaut, encodage CBOR vers `axion_init`.
@@ -173,3 +191,12 @@ ses critères vérifiés **mécaniquement**.
       hôte et laisser la CI ajouter les autres.
 - [ ] **Dépôt sans remote.** `git remote -v` est vide : les commits restent
       locaux. Rien n'est poussé tant qu'un remote n'est pas configuré.
+
+- [ ] **glam et déterminisme.** `glam` sélectionne des chemins SIMD selon la
+      cible, et `Vec3A` est explicitement un type aligné SIMD. C-16 exige des
+      résultats bit-identiques entre client et serveur sur la matrice de
+      validation déterministe, sans contraction FMA ni réassociation. **Avant
+      d'écrire le noyau déterministe (M1), vérifier quels types et quelles
+      opérations de `glam` sont utilisables dedans**, et documenter le verdict :
+      il est probable que le noyau doive s'en tenir à `f32` scalaire, `glam`
+      restant réservé au reste du moteur.

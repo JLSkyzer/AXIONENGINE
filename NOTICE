@@ -12,8 +12,13 @@ Ce fichier est genere et verifie en integration continue (R-2290) : il doit
 lister l'integralite des dependances, de leurs licences et des attributions
 requises.
 
-A ce jour, le projet ne declare aucune dependance tierce : le workspace Rust est
-vide et le module Java ne depend que de la plateforme.
+Rust
+  glam 0.33 — MIT OR Apache-2.0 — https://github.com/bitshifter/glam-rs
+    Types vectoriels et matriciels. Impose par R-460, qui interdit a tout crate
+    d'AXION de definir son propre type vecteur ou matrice.
+
+Java
+  Aucune dependance tierce : le module ne depend que de la plateforme.
 
 --------------------------------------------------------------------------------
 Plateforme, non redistribuee
