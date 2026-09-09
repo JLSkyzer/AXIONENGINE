@@ -1,0 +1,119 @@
+// Le mod Forge AXION ENGINE.
+//
+// Les classes de :axion-api sont embarquees dans le JAR final : l'artefact
+// publie contient dev/axion/**/*.class, y compris dev/axion/api/** (33.2).
+// L'API est aussi publiee separement comme artefact propre (R-1750).
+evaluationDependsOn(':axion-api')
+
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'org.spongepowered.mixin'
+
+base {
+    archivesName = mod_id
+}
+
+minecraft {
+    mappings channel: mapping_channel, version: mapping_version
+
+    // Requis par ce template : fait tourner processResources sur les sorties de
+    // l'IDE avant le lancement du jeu.
+    copyIdeResources = true
+
+    runs {
+        configureEach {
+            // Les repertoires de travail restent a la racine du depot.
+            workingDirectory rootProject.file('run')
+
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                    // L'API fait partie du meme mod en developpement.
+                    source project(':axion-api').sourceSets.main
+                }
+            }
+        }
+
+        client {
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+
+        server {
+            property 'forge.enabledGameTestNamespaces', mod_id
+            args '--nogui'
+        }
+
+        gameTestServer {
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+
+        data {
+            workingDirectory rootProject.file('run-data')
+            args '--mod', mod_id, '--all',
+                    '--output', file('src/generated/resources/'),
+                    '--existing', file('src/main/resources/')
+        }
+    }
+}
+
+mixin {
+    add sourceSets.main, "${mod_id}.refmap.json"
+    config "${mod_id}.mixins.json"
+}
+
+// Ressources produites par les generateurs de donnees.
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    implementation project(':axion-api')
+
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+}
+
+// Developpe les proprietes du projet dans les ressources qui les referencent.
+// Une propriete manquante fait echouer le build.
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            minecraft_version   : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            forge_version       : forge_version,
+            forge_version_range : forge_version_range,
+            loader_version_range: loader_version_range,
+            mod_id              : mod_id,
+            mod_name            : mod_name,
+            mod_license         : mod_license,
+            mod_version         : mod_version,
+            mod_authors         : mod_authors,
+            mod_description     : mod_description,
+    ]
+
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    // Embarque l'API dans l'artefact du mod ; reobfJar traite ensuite
+    // l'ensemble, API comprise.
+    from project(':axion-api').sourceSets.main.output
+
+    manifest {
+        attributes([
+                "Specification-Title"     : mod_id,
+                "Specification-Vendor"    : mod_authors,
+                "Specification-Version"   : "1",
+                "Implementation-Title"    : project.name,
+                "Implementation-Version"  : project.jar.archiveVersion,
+                "Implementation-Vendor"   : mod_authors,
+                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+        ])
+    }
+
+    finalizedBy 'reobfJar'
+}

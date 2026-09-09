@@ -1,0 +1,32 @@
+# Manifeste de chargement d'AXION ENGINE.
+# Les valeurs entre accolades sont developpees au build depuis gradle.properties.
+modLoader = "javafml"
+loaderVersion = "${loader_version_range}"
+license = "${mod_license}"
+
+[[mods]]
+modId = "${mod_id}"
+version = "${mod_version}"
+displayName = "${mod_name}"
+authors = "${mod_authors}"
+# MATCH_VERSION : le mod a une part serveur et une part client, les versions
+# doivent concorder entre les deux.
+displayTest = "MATCH_VERSION"
+description = '''${mod_description}'''
+
+# AXION ne declare aucune dependance envers un mod tiers. En particulier, et de
+# facon normative, RUSTFORGE-X n'est jamais declare ici : il n'est une
+# dependance ni obligatoire ni optionnelle (contrat d'implementation, point 6).
+[[dependencies."${mod_id}"]]
+modId = "forge"
+mandatory = true
+versionRange = "${forge_version_range}"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "minecraft"
+mandatory = true
+versionRange = "${minecraft_version_range}"
+ordering = "NONE"
+side = "BOTH"

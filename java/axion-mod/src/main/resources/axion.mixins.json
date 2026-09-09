@@ -1,9 +1,9 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "fr.eriniumgroup.axionengine.mixin",
-  "compatibilityLevel": "JAVA_8",
-  "refmap": "axionengine.refmap.json",
+  "package": "dev.axion.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "axion.refmap.json",
   "mixins": [
   ],
   "client": [

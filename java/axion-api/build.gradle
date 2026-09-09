@@ -1,0 +1,24 @@
+// C-70 : API publique d'AXION ENGINE.
+//
+// R-1750 : module Gradle separe, publie independamment, sans dependance a
+// l'implementation ni au natif. Il depend en revanche des types Minecraft
+// (Level, Entity) qu'il expose dans sa surface (PARTIE 23.2), d'ou ForgeGradle.
+// R-1751 : versionnement semantique propre, independant de celui du mod.
+// R-1752 : aucune annotation @Internal ici.
+apply plugin: 'net.minecraftforge.gradle'
+
+base {
+    archivesName = 'axion-api'
+}
+
+minecraft {
+    mappings channel: mapping_channel, version: mapping_version
+}
+
+java {
+    withSourcesJar()
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+}

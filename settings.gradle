@@ -12,4 +12,12 @@ plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.7.0'
 }
 
-rootProject.name = 'AXIONENGINE'
+rootProject.name = 'axion-engine'
+
+// Arborescence figee par la PARTIE 33 du cahier des charges : les modules Java
+// vivent sous java/, les crates Rust sous crates/.
+include ':axion-api'
+project(':axion-api').projectDir = file('java/axion-api')
+
+include ':axion-mod'
+project(':axion-mod').projectDir = file('java/axion-mod')

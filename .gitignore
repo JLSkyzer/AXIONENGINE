@@ -1,21 +1,27 @@
-# MacOS DS_Store files
+# Fichiers .DS_Store de macOS
 .DS_Store
 
-# Gradle cache folder
+# Cache et sorties de Gradle
 .gradle
+build/
 
-# Gradle build folder
-build
+# Sorties de Cargo
+target/
 
 # IntelliJ
 out/
 .idea
 *.iml
-# mpeltonen/sbt-idea plugin
 .idea_modules/
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+# Journaux de crash de la JVM
 hs_err_pid*
+replay_pid*
 
-# Common working directory
-run
+# Repertoires de travail des lancements de developpement
+run/
+run-data/
+
+# Ressources produites par les generateurs de donnees Minecraft
+src/generated/
+java/axion-mod/src/generated/

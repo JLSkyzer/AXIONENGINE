@@ -1,0 +1,27 @@
+AXION ENGINE
+Copyright 2026 JLSkyzer
+
+Ce produit inclut des logiciels developpes dans le cadre du projet AXION ENGINE,
+distribues sous licence Apache-2.0 (voir le fichier LICENSE).
+
+--------------------------------------------------------------------------------
+Dependances tierces
+--------------------------------------------------------------------------------
+
+Ce fichier est genere et verifie en integration continue (R-2290) : il doit
+lister l'integralite des dependances, de leurs licences et des attributions
+requises.
+
+A ce jour, le projet ne declare aucune dependance tierce : le workspace Rust est
+vide et le module Java ne depend que de la plateforme.
+
+--------------------------------------------------------------------------------
+Plateforme, non redistribuee
+--------------------------------------------------------------------------------
+
+AXION ENGINE ne redistribue ni Minecraft, ni Minecraft Forge, ni leurs assets,
+ni aucun mod tiers, ni aucun asset dont la licence ne le permet pas (R-2291).
+Ces composants sont fournis par l'utilisateur final.
+
+Minecraft est une marque de Mojang AB. Ce projet n'est ni affilie a Mojang AB,
+ni approuve par Mojang AB ou Microsoft.
