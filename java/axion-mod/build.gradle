@@ -87,6 +87,9 @@ tasks.named('test', Test).configure {
     // test se declare non applicable si le binaire n'est pas la, en disant
     // comment le produire.
     systemProperty 'axion.native.dir', rootProject.file('target/release').absolutePath
+    // T-020 verifie R-401 sur les sources : aucune classe hors de
+    // dev.axion.forge n'importe net.minecraftforge.
+    systemProperty 'axion.source.dir', file('src/main/java').absolutePath
     testLogging {
         events 'failed'
         exceptionFormat 'full'

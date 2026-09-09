@@ -11,7 +11,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.5 faits, M0.6 suivant.**
+**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.6 faits, M0.7 suivant.**
 
 Ce qui est en place :
 
@@ -175,11 +175,23 @@ Tâches :
       l'invoque pas (M0.6). Deux étapes de la fiche attendent leur composant —
       capacités GPU (M3) et profil de qualité initial de C-77 (M5) — ce qui ne
       change pas la séquence.
-- [ ] **M0.6** C-01 Forge Integration : abonnements `HIGHEST` sur PRE et
-      `LOWEST` sur POST, chaque hook enveloppé d'un `try/catch` qui ne relance
-      jamais, désactivation après 5 échecs consécutifs (E-1010, mode `SAFE`).
-      Vérifier T-020 : aucune classe hors de `dev.axion.forge` n'importe
-      `net.minecraftforge.*` (R-401) — voir `docs/decisions/ADR-100.md`.
+- [x] **M0.6** C-01 Forge Integration. 24 tests (T-020, T-100..T-103).
+      - `PlatformAdapter` (IF-10) : tout ce qu'AXION demande à son hôte tient
+        en neuf méthodes, et rien d'autre ne traverse.
+      - `AxionRuntime` porte le cycle de vie **sans connaître Forge**, ce qui
+        le rend testable sans démarrer le jeu.
+      - `HookGuard` : rien ne remonte jamais d'un hook (R-400), et cinq échecs
+        consécutifs le désactivent avec `E-1010`. Un succès remet le compteur à
+        zéro : c'est la répétition qui condamne, pas l'incident.
+      - `AxionForgeEntrypoint` : abonnements `HIGHEST` à l'ouverture, `LOWEST`
+        à la fermeture, et le bus injecté par FML plutôt que pris dans un
+        contexte statique déprécié.
+      - **T-020 est désormais un test**, plus un contrôle shell : il lit les
+        sources, nomme fichier et ligne, et vérifie sa propre pertinence — un
+        `dev.axion.forge` qui n'importerait plus Forge rendrait l'isolation
+        triviale.
+      Reste lié : la boucle de simulation du tick attend C-40, et les hooks de
+      dommage attendent C-50 (M2). Les événements de rendu viennent en M3.
 - [ ] **M0.7** C-05 Diagnostics et commande `/axion status` : budgets mesurés,
       niveaux de qualité et causes.
 - [ ] **M0.8** Chaîne de build : tâches Gradle `buildNatives`, `packageNatives`,

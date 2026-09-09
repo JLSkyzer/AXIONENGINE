@@ -10,6 +10,10 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M0.6 — integration Forge (C-01) : adaptateur de plateforme, cycle de vie
+  independant de Forge, garde de hook qui absorbe tout et se desactive apres
+  cinq echecs consecutifs. T-020 verifie mecaniquement que seul
+  dev.axion.forge importe net.minecraftforge (R-400, R-401, E-1010).
 - M0.5 — sequence de demarrage (C-02) : configuration, chargement du natif,
   handshake ABI, calibration FFI mesuree et acquisition des tampons. Tout echec
   conduit a DISABLED avec sa cause, sans exception ni jeu injouable (R-410).
