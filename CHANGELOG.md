@@ -10,6 +10,10 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M0.7 — diagnostics et commande /axion status (C-05, C-71) : etat du runtime,
+  cause d'une desactivation, cout FFI mesure et hooks desactives. Deux
+  verifications d'architecture s'ajoutent : aucune connexion reseau sortante
+  (T-022, R-440) et tout code d'erreur documente en ANNEXE A.1 (T-023, R-443).
 - M0.6 — integration Forge (C-01) : adaptateur de plateforme, cycle de vie
   independant de Forge, garde de hook qui absorbe tout et se desactive apres
   cinq echecs consecutifs. T-020 verifie mecaniquement que seul

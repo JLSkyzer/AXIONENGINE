@@ -180,3 +180,4 @@ de l'implémentation sont numérotées **à partir de ADR-100** dans
 |---|---|
 | [ADR-100](decisions/ADR-100.md) | Point d'entrée Forge séparé de `AxionMod` |
 | [ADR-101](decisions/ADR-101.md) | Documentation publiée comme site MkDocs Material |
+| [ADR-102](decisions/ADR-102.md) | Une configuration refusée est signalée par `E-2002` |

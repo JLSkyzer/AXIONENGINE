@@ -5,6 +5,7 @@ import dev.axion.AxionMod;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
@@ -83,6 +84,17 @@ public final class AxionForgeEntrypoint {
 
     private void onLoadComplete(FMLLoadCompleteEvent event) {
         runtime.onLoadComplete();
+    }
+
+    /**
+     * Enregistre les commandes d'AXION.
+     *
+     * <p>Priorité normale : la commande n'entre en concurrence avec aucune
+     * autre, son littéral racine lui étant propre.
+     */
+    @SubscribeEvent
+    public void onRegisterCommands(RegisterCommandsEvent event) {
+        AxionCommands.register(event.getDispatcher(), runtime);
     }
 
     /** Prend note du serveur qui démarre. */

@@ -375,10 +375,10 @@ impl ConfigOption {
 pub enum ConfigError {
     /// Aucune option ne porte ce chemin.
     ///
-    /// Code `E-1005`. Une option inconnue n'est jamais ignorée en silence :
-    /// c'est le plus souvent une faute de frappe dans un fichier ou dans une
-    /// propriété `-Daxion.*`, et l'ignorer laisserait l'utilisateur croire que
-    /// son réglage s'applique.
+    /// Une option inconnue n'est jamais ignorée en silence : c'est le plus
+    /// souvent une faute de frappe dans un fichier ou dans une propriété
+    /// `-Daxion.*`, et l'ignorer laisserait l'utilisateur croire que son
+    /// réglage s'applique.
     UnknownOption {
         /// Chemin refusé.
         path: String,
@@ -399,20 +399,6 @@ pub enum ConfigError {
         /// Domaine admis.
         domain: ConfigDomain,
     },
-}
-
-impl ConfigError {
-    /// Code d'erreur numérique de l'ANNEXE A.1.
-    ///
-    /// `-1000..-1099` couvre le bootstrap et le natif (DM-19) : une
-    /// configuration invalide empêche le démarrage nominal.
-    #[must_use]
-    pub fn code(&self) -> i32 {
-        match self {
-            ConfigError::UnknownOption { .. } => -1005,
-            ConfigError::TypeMismatch { .. } | ConfigError::OutOfRange { .. } => -1006,
-        }
-    }
 }
 
 impl fmt::Display for ConfigError {
@@ -640,7 +626,6 @@ mod tests {
 
         let hors_plage = validate(scope, "sim.max_substeps", ConfigValue::Int(99)).unwrap_err();
         assert!(matches!(hors_plage, ConfigError::OutOfRange { .. }));
-        assert_eq!(hors_plage.code(), -1006);
 
         let mauvais_type =
             validate(scope, "sim.max_substeps", ConfigValue::Bool(true)).unwrap_err();
@@ -648,7 +633,6 @@ mod tests {
 
         let inconnue = validate(scope, "sim.pas_une_option", ConfigValue::Int(1)).unwrap_err();
         assert!(matches!(inconnue, ConfigError::UnknownOption { .. }));
-        assert_eq!(inconnue.code(), -1005);
     }
 
     /// Une énumération n'accepte que ses valeurs déclarées.

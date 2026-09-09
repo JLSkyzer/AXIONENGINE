@@ -11,7 +11,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.6 faits, M0.7 suivant.**
+**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.7 faits, M0.8 suivant.**
 
 Ce qui est en place :
 
@@ -192,8 +192,22 @@ Tâches :
         triviale.
       Reste lié : la boucle de simulation du tick attend C-40, et les hooks de
       dommage attendent C-50 (M2). Les événements de rendu viennent en M3.
-- [ ] **M0.7** C-05 Diagnostics et commande `/axion status` : budgets mesurés,
-      niveaux de qualité et causes.
+- [x] **M0.7** C-05 Diagnostics et `/axion status`. 11 tests (T-022, T-023,
+      T-140, T-141).
+      - `StatusReport` se compose hors de toute API de plateforme : l'état, la
+        cause d'un `DISABLED`, le coût FFI mesuré, les hooks désactivés. Aucune
+        donnée de monde, de chat ou de joueur (R-442).
+      - `/axion status` demande le niveau opérateur : la commande ne divulgue
+        rien de personnel mais décrit l'installation, et c'est l'option
+        conservatrice.
+      - **T-022** vérifie qu'aucune connexion sortante n'existe, des deux côtés
+        de la frontière, et qu'aucune dépendance réseau n'entre dans le
+        workspace (R-440).
+      - **T-023** vérifie que tout `E-xxxx` cité figure à l'ANNEXE A.1 (R-443).
+        Il a immédiatement relevé deux codes inventés en M0.2 — voir ADR-102.
+      Reste lié : le journal natif dans `<gameDir>/axion/logs/` avec rotation
+      (R-441) attend la journalisation côté Rust, et `/axion diag dump` (R-442)
+      vient avec le reste de C-71 en M1.
 - [ ] **M0.8** Chaîne de build : tâches Gradle `buildNatives`, `packageNatives`,
       `validateJar` (PARTIE 34.1). `validateJar` vérifie que les natifs et leurs
       `.sha256` sont présents, qu'aucune dépendance n'est shadée, que

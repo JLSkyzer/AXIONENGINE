@@ -46,8 +46,13 @@ pub const AXION_E_INVALID_HANDLE: i32 = -2001;
 /// Tampon ou pointeur invalide (`E-2002`).
 pub const AXION_E_INVALID_BUFFER: i32 = -2002;
 
-/// Configuration refusée (`E-1006`).
-pub const AXION_E_CONFIG: i32 = -1006;
+/// Configuration refusée.
+///
+/// L'ANNEXE A.1 n'attribue aucun code propre à la configuration ; `E-2002`
+/// — « tampon invalide ou périmé », domaine ffi — est le seul qui couvre une
+/// donnée externe refusée à la frontière. En inventer un nouveau reviendrait à
+/// étendre l'annexe sans y toucher (obligation 4.8). Voir ADR-102.
+pub const AXION_E_CONFIG: i32 = AXION_E_INVALID_BUFFER;
 
 /// Exécute `action` en interceptant toute panic (R-310, INV-05).
 ///

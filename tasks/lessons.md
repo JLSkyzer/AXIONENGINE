@@ -107,6 +107,20 @@ défaut, et se relit mieux. Le fichier compilait quand même : seule l'inspectio
 visuelle l'a montré — d'où l'intérêt de relire une sortie générée au moins une
 fois.
 
+**[2026-09-10] | Les codes d'erreur `E-1005` et `E-1006` avaient été inventés en
+M0.2 ; T-023 les a trouvés dès son écriture | Ne jamais attribuer un identifiant
+normatif que le cahier des charges ne définit pas.**
+
+L'obligation 4.8 veut que tout nouveau code figure à l'ANNEXE A.1. Le cahier des
+charges étant gelé, cette voie est fermée : un code inventé produit un message
+qu'aucun utilisateur ne peut rechercher et qu'aucun support ne sait expliquer.
+La conduite juste est de réutiliser un code existant s'il est sémantiquement
+exact, sinon de n'en attribuer aucun — et d'écrire un ADR
+(`docs/decisions/ADR-102.md`).
+
+La leçon vaut au-delà des codes d'erreur : `R-`, `T-`, `INV-` et les autres
+familles se citent, elles ne s'inventent pas.
+
 ---
 
 ## Structure du projet
