@@ -85,17 +85,21 @@ Tâches :
       - les codes d'erreur sont pour l'instant définis dans chaque crate.
         DM-19 les centralisera dans `ax-model` (M1), qui n'existe pas encore ;
         `ax-mem` et `ax-core` ne peuvent pas dépendre d'un crate absent.
-- [ ] **M0.2** C-04 Configuration. **Partie Rust faite**, partie Java à écrire.
+- [ ] **M0.2** C-04 Configuration. **Fait, sauf l'encodage CBOR qui dépend de M0.4.**
       - [x] `ax-model` : les 160 options des trois fichiers déclarées une seule
             fois, avec défaut, domaine et description. Rendu TOML et
             `CONFIGURATION.md` générés depuis ce registre (R-430).
       - [x] Test de non-divergence avec l'ANNEXE A.3 du cahier des charges
             (R-2400) : il échoue sur une option oubliée comme sur un défaut mal
             recopié — vérifié par mutation dans les deux sens.
-      - [ ] Génération de la classe Java du schéma depuis `ax-model`
-            (`tools/codegen`), avec le test de parité T-005.
-      - [ ] Côté Java : lecture des trois fichiers, surcharges `-Daxion.*`,
-            validation contre le schéma, écriture des fichiers manquants.
+      - [x] `tools/codegen` génère la classe Java `ConfigSchema` et les trois
+            fichiers TOML de référence embarqués dans le JAR, avec le test de
+            parité T-005.
+      - [x] Côté Java : `ConfigLoader` empile défauts, fichier et surcharges
+            `-Daxion.*` en validant chaque valeur ; `ConfigValidation` refuse
+            type erroné, hors-plage, hors-énumération et NaN. Une entrée
+            refusée conserve la précédente et devient un diagnostic — le mod
+            démarre toujours. 8 tests JUnit (T-130..T-133).
       - [ ] Encodage CBOR vers `axion_init` — dépend de la frontière FFI, donc
             de M0.4 ; à brancher là.
       - [ ] Compléter `hot` (R-431) et `server_authoritative` (R-1830) : seules

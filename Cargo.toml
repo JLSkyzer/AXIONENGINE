@@ -8,7 +8,9 @@
 # les points d'entree JNI. Tous les autres sont des rlib internes.
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+# `tools/codegen` genere le code Java depuis ax-model (PARTIE 33) ; il vit hors
+# de crates/ parce qu'il ne fait pas partie de la bibliotheque native livree.
+members = ["crates/*", "tools/codegen"]
 
 [workspace.package]
 version = "1.0.0"
@@ -35,6 +37,7 @@ glam = { version = "0.33", default-features = false, features = ["std", "float-t
 ax-math = { path = "crates/ax-math" }
 ax-mem = { path = "crates/ax-mem" }
 ax-core = { path = "crates/ax-core" }
+ax-model = { path = "crates/ax-model" }
 
 # Les profils s'appliquent a tout le workspace.
 [profile.release]

@@ -26,6 +26,13 @@ name = "ax-model"
 version = "1.0.0"
 
 [[package]]
+name = "axion-codegen"
+version = "1.0.0"
+dependencies = [
+ "ax-model",
+]
+
+[[package]]
 name = "glam"
 version = "0.33.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

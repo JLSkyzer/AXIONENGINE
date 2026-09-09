@@ -1,0 +1,162 @@
+# axion-common.toml
+
+[general]
+enabled = true
+maturity_allow_experimental = false
+
+[sim]
+fixed_dt = 0.0166667              # 0.0333333 | 0.0166667 | 0.0083333
+max_substeps = 4                  # 1..8
+simulation_radius = 128.0         # 16.0..512.0
+
+[physics]
+gravity = -9.81                   # -50.0..0.0
+velocity_iterations = 4           # 2..16
+position_iterations = 1           # 0..8
+broadphase_cell_size = 2.0        # 0.5..16.0
+contact_event_threshold = 0.5     # 0.0..100.0
+max_events_per_tick = 4096        # 256..65536
+
+[damage]
+enabled = true
+max_impacts_per_tick = 512        # 32..8192
+min_impact_energy = 5.0           # 0.0..1000.0
+max_impact_energy = 5000000.0     # 1000.0..1000000000.0
+max_propagation_depth = 4         # 0..8
+max_assemblies_per_tick = 64      # 4..1024
+pending_queue_max = 4096          # 0..
+max_detach_per_tick = 4           # 0..64
+max_debris = 96                   # 0..512
+max_debris_generation = 2         # 0..4
+debris_lifetime_s = 90            # 5..1200
+debris_sleep_s = 5                # 0..
+persist_debris = false
+explosion_sample_area = 0.5       # 0.0..
+default_sharp_factor = 8.0        # 1.0..64.0
+default_blunt_factor = 2.0        # 1.0..16.0
+default_shear_ratio = 0.6         # 0.0..1.0
+
+[struct]
+max_gap = 0.05                    # 0.0..0.5
+max_link_area = 4.0               # 0.01..64.0
+auto_links = true
+
+[deformation]
+enabled = true
+quality = "auto"                  # auto | off | low | medium | high | ultra
+max_field_bytes_per_assembly = 262144# 0..
+max_residual_vertices = 4096      # 0..
+collider_refit_threshold = 0.04   # 0.005..0.25
+mass_update_threshold = 0.05      # 0.0..
+elastic_release_s = 5.0           # 0.0..
+tear_enabled = false
+tear_max_cells_per_region = 0.08  # 0.0..
+
+[particles]
+enabled = true
+quality = "auto"                  # auto | off | low | medium | high | ultra
+max_sets = 48                     # 0..
+max_sets_server = 16              # 0..
+self_collide = false
+tear = false
+visual_drift_max = 0.25           # 0.02..2.0
+visual_freeze_ms = 500            # 100..5000
+
+[budgets]
+sim_ns_per_tick = 3000000         # 0..
+damage_ns_per_tick = 1000000      # 0..
+deformation_ns_per_tick = 1500000 # 0..
+particles_ns_per_tick = 1000000   # 0..
+render_prep_ns = 2000000          # 0..
+occlusion_ns = 800000             # 0..
+asset_ns_per_tick = 1000000       # 0..
+idle_hook_ns = 50000              # 0..
+submit_ns = 200000                # 0..
+native_mem_bytes = 536870912      # 0..
+deform_mem_bytes = 134217728      # 0..
+gpu_mem_bytes = 536870912         # 0..
+max_active_bodies = 2048          # 0..
+max_deformed_assemblies = 256     # 0..
+max_collider_refits_per_tick = 8  # 0..
+max_visible_instances = 512       # 0..
+max_triangles_frame = 3000000     # 0..
+max_decals_frame = 512            # 0..
+max_shadow_instances = 128        # 0..
+
+[jobs]
+max_workers = 0                   # 0..
+
+[assets]
+max_source_bytes = 134217728      # 0..
+max_compiled_bytes = 268435456    # 0..
+max_deform_bytes = 4194304        # 0..
+max_compile_ms = 30000            # 0..
+cache_max_bytes = 2147483648      # 0..
+startup_timeout_s = 120           # 0..
+unload_delay_s = 60               # 0..
+
+[world]
+tiles_per_tick = 8                # 1..64
+tile_radius = 3                   # 1..8
+
+[vehicle]
+debris_ignore_s = 1.0             # 0.0..
+max_suspension_misalignment = 0.15# 0.0..
+
+[attachment]
+max_chain = 8                     # 0..
+
+[net]
+snapshot_rate_hz = 10             # 2..20
+sync_radius = 96.0                # 0.0..
+interpolation_delay_ms = 100      # 0..
+extrapolation_max_ms = 250        # 0..
+snap_threshold = 2.0              # 0.0..
+prediction = true
+prediction_max_ping = 400         # 0..
+max_bytes_per_second_per_player = 32768# 0..
+max_packets_per_second = 40       # 0..
+max_impacts_per_packet = 64       # 0..
+digest_interval_ticks = 40        # 0..
+max_deform_snapshots_per_second = 4# 0..
+max_deform_snapshots_per_second_fallback = 16# 0..
+divergence_tolerance = 3          # 1..32
+
+[persistence]
+max_bytes_per_assembly = 65536    # 0..
+max_custom_bytes = 16384          # 0..
+max_persisted_decals = 16         # 0..
+max_load_ns_per_tick = 500000     # 0..
+journal_enabled = true
+journal_ns_per_tick = 200000      # 0..2000000
+journal_max_bytes = 268435456     # 0..
+
+[limits]
+max_assemblies_per_dimension = 4096# 0..
+max_spawn_per_command = 64        # 0..
+
+[watchdog]
+job_timeout_ms = 5000             # 0..
+
+[modules]
+vehicles = true
+joints = true
+damage = true
+deformation = true
+structure = true
+repair = true
+wear = true
+particles = true
+animation = true
+attachments = true
+blocks = true
+
+[integration.rustforgex]
+mode = "auto"                     # auto | off
+cpu_share = "auto"                # auto | half | full | <entier>
+bridge = true
+hint_no_transform = true
+
+[debug]
+checksum_buffers = false
+record_incidents = false

@@ -72,6 +72,20 @@ dependencies {
     implementation project(':axion-api')
 
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+
+    // Tests unitaires cote Java. La CI execute `cargo nextest` et JUnit cote a
+    // cote (34.3, job test-unit).
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+    testLogging {
+        events 'failed'
+        exceptionFormat 'full'
+    }
 }
 
 // Developpe les proprietes du projet dans les ressources qui les referencent.

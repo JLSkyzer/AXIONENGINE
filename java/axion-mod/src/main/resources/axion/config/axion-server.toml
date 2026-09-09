@@ -1,0 +1,6 @@
+# axion-server.toml
+
+[server]
+allow_client_prediction = true
+kick_on_input_abuse = true
+allow_experimental_authority = false

@@ -1,0 +1,45 @@
+# axion-client.toml
+
+[render]
+backend = "auto"                  # auto | native | vanilla
+max_distance = 128.0              # 0.0..
+lod_bias = 0                      # -2..3
+instancing_threshold = 4          # 0..
+indirect = true
+compute = true
+max_skinned_instances = 64        # 0..
+max_palette_bones = 128           # 0..
+max_deform_pages_per_frame = 256  # 0..
+max_decals_per_assembly = 64      # 0..
+max_morph_targets_per_asset = 8   # 0..
+max_shader_variants = 64          # 0..
+vanilla_max_skinned_vertices = 50000# 0..
+vanilla_max_deformed_vertices = 100000# 0..
+vanilla_max_decals = 64           # 0..
+per_node_lightmap = false
+item_max_triangles = 20000        # 0..
+shadow = "map"                    # map | contact | none
+shadow_ground_quad = true
+shadow_ns = 1500000               # 0..
+probe_interval_frames = 20        # 0..
+ssr_max_roughness = 0.25          # 0.0..
+max_occluders = 512               # 0..
+backend_silhouette_tolerance = 0.01# 0.0..0.05
+
+[quality]
+deformation = "auto"              # auto | off | low | medium | high | ultra
+particles = "auto"                # auto | off | low | medium | high | ultra
+shadows = "auto"                  # auto | off | low | medium | high | ultra
+decals = "auto"                   # auto | off | low | medium | high | ultra
+occlusion = "auto"                # auto | off | low | medium | high | ultra
+lighting = "auto"                 # auto | off | low | medium | high | ultra
+skinning = "auto"                 # auto | off | low | medium | high | ultra
+reflections = "auto"              # auto | off | low | medium | high | ultra
+parallax = "auto"                 # auto | off | low | medium | high | ultra
+
+[overlay]
+enabled = false
+key = "unbound"                   # texte libre
+
+[debug]
+gl = false
