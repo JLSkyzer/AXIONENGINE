@@ -11,7 +11,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.4 faits, M0.5 suivant.**
+**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.5 faits, M0.6 suivant.**
 
 Ce qui est en place :
 
@@ -155,10 +155,26 @@ Tâches :
       Reste lié : `axion_set_quality` attend `AxionQualityProfile`, que le
       cahier des charges ne décrit nulle part ; il viendra avec C-77 (M5).
       Ajouter une fonction n'est pas une rupture d'ABI.
-- [ ] **M0.5** C-02 Bootstrap : machine à états
-      `INIT -> CONFIG -> LOAD_NATIVE -> HANDSHAKE -> PROBE -> READY | DEGRADED | DISABLED`.
-      R-410 : en `DISABLED`, les entités AXION restent inertes et **leur NBT
-      n'est pas modifié** (INV-11).
+- [x] **M0.5** C-02 Bootstrap. Machine à états
+      `INIT -> CONFIG -> LOAD_NATIVE -> HANDSHAKE -> PROBE -> READY | DISABLED`,
+      10 tests (T-110..T-114).
+      - Aucune étape ne lève d'exception : tout échec entre la plateforme et
+        l'acquisition des tampons conduit à `DISABLED` avec sa cause. Le mod se
+        charge, le jeu reste jouable.
+      - `general.enabled=false` désactive **sans même charger** la
+        bibliothèque, ce qu'un test vérifie.
+      - Calibration FFI mesurée sur 10 000 itérations, médiane retenue (R-330).
+        La médiane et non la moyenne : une pause du ramasse-miettes suffirait à
+        décaler celle-ci.
+      - Un démarrage qui échoue après `axion_init` referme le contexte : rien
+        ne reste ouvert derrière.
+      - `NativeApi` est injectable, sans quoi ni le refus d'ABI ni un
+        `axion_init` fautif ne seraient jamais testés — or ce sont eux qui
+        garantissent que le jeu reste jouable.
+      Reste lié : le bootstrap n'est appelé par personne tant que C-01 ne
+      l'invoque pas (M0.6). Deux étapes de la fiche attendent leur composant —
+      capacités GPU (M3) et profil de qualité initial de C-77 (M5) — ce qui ne
+      change pas la séquence.
 - [ ] **M0.6** C-01 Forge Integration : abonnements `HIGHEST` sur PRE et
       `LOWEST` sur POST, chaque hook enveloppé d'un `try/catch` qui ne relance
       jamais, désactivation après 5 échecs consécutifs (E-1010, mode `SAFE`).

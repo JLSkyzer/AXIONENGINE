@@ -10,6 +10,9 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M0.5 — sequence de demarrage (C-02) : configuration, chargement du natif,
+  handshake ABI, calibration FFI mesuree et acquisition des tampons. Tout echec
+  conduit a DISABLED avec sa cause, sans exception ni jeu injouable (R-410).
 - M0.4 — frontiere Java/Rust operationnelle (C-14) : ABI versionnee, contexte
   opaque, tampons de transfert a generations, pont JNI par RegisterNatives, et
   encodeur CBOR cote Java. Un test charge la bibliotheque reelle et exerce le
