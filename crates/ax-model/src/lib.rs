@@ -6,4 +6,5 @@
 //!
 //! Il ne depend d'aucun autre crate d'AXION : tout le reste peut en dependre.
 
+pub mod buffer;
 pub mod config;

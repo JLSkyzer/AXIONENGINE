@@ -25,3 +25,6 @@ unsafe_code = "deny"
 missing_docs = "warn"
 
 [dependencies]
+ax-core.workspace = true
+ax-model.workspace = true
+ciborium.workspace = true

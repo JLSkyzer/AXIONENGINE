@@ -33,6 +33,14 @@ authors = ["JLSkyzer"]
 # tant qu'aucun composant n'en a besoin.
 glam = { version = "0.33", default-features = false, features = ["std", "float-types"] }
 
+# C-04 : la configuration traverse la frontiere en CBOR (IF-01, `axion_init`).
+# Retenus par la table des dependances du cahier des charges (32.2).
+serde = { version = "1", default-features = false, features = ["std", "derive"] }
+ciborium = { version = "0.2", default-features = false }
+
+# C-14 : points d'entree JNI. Egalement retenu par 32.2.
+jni = { version = "0.21", default-features = false }
+
 # Crates internes.
 ax-math = { path = "crates/ax-math" }
 ax-mem = { path = "crates/ax-mem" }
@@ -44,7 +52,11 @@ ax-model = { path = "crates/ax-model" }
 opt-level = 3
 lto = "thin"
 codegen-units = 1
-panic = "abort"
+# `panic = "abort"` est INTERDIT (R-312). La bibliotheque native enveloppe
+# chaque point d'entree dans `catch_unwind` pour qu'aucune panic ne traverse la
+# frontiere FFI (INV-05) ; avec `abort`, le processus mourrait avant d'etre
+# capture, et le jeu crasherait au lieu de basculer en DISABLED.
+panic = "unwind"
 debug = 1
 
 # Le noyau deterministe (C-16) exige des resultats bit-identiques entre client

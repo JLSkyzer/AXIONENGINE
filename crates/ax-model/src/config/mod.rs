@@ -190,6 +190,84 @@ impl fmt::Display for ConfigDomain {
     }
 }
 
+impl ConfigDomain {
+    /// Indique si le domaine accepte un booléen.
+    #[must_use]
+    pub const fn accepts_bool(&self) -> bool {
+        matches!(self, ConfigDomain::Boolean)
+    }
+
+    /// Indique si le domaine accepte cet entier.
+    #[must_use]
+    pub const fn accepts_int(&self, value: i64) -> bool {
+        match self {
+            ConfigDomain::IntRange { min, max } => *min <= value && value <= *max,
+            _ => false,
+        }
+    }
+
+    /// Indique si le domaine accepte ce flottant.
+    ///
+    /// NaN et les infinis sont refusés d'emblée : ils n'appartiennent à aucun
+    /// intervalle, et une comparaison naïve laisserait passer NaN, faux pour
+    /// tout opérateur.
+    #[must_use]
+    pub fn accepts_float(&self, value: f64) -> bool {
+        if !value.is_finite() {
+            return false;
+        }
+        match self {
+            ConfigDomain::FloatRange { min, max } => *min <= value && value <= *max,
+            ConfigDomain::FloatSet(allowed) => allowed.contains(&value),
+            _ => false,
+        }
+    }
+
+    /// Indique si le domaine accepte cette chaîne.
+    #[must_use]
+    pub fn accepts_str(&self, value: &str) -> bool {
+        match self {
+            ConfigDomain::Enumeration(allowed) => allowed.contains(&value),
+            ConfigDomain::KeywordOrCount(allowed) => {
+                allowed.contains(&value)
+                    || (!value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()))
+            }
+            ConfigDomain::FreeText => true,
+            _ => false,
+        }
+    }
+}
+
+/// Valeur venue de l'extérieur, dont les chaînes ne sont pas statiques.
+///
+/// Une configuration décodée depuis un fichier ou depuis le CBOR reçu de Java
+/// porte des chaînes possédées ; [`ConfigValue`] ne convient qu'aux défauts
+/// compilés.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParsedValue {
+    /// Booléen.
+    Bool(bool),
+    /// Entier signé.
+    Int(i64),
+    /// Flottant double précision.
+    Float(f64),
+    /// Chaîne possédée.
+    Str(String),
+}
+
+impl ParsedValue {
+    /// Nom du type, pour les messages de diagnostic.
+    #[must_use]
+    pub const fn type_name(&self) -> &'static str {
+        match self {
+            ParsedValue::Bool(_) => "booléen",
+            ParsedValue::Int(_) => "entier",
+            ParsedValue::Float(_) => "flottant",
+            ParsedValue::Str(_) => "chaîne",
+        }
+    }
+}
+
 /// Une option de configuration, décrite une fois pour toutes.
 #[derive(Debug, Clone, Copy)]
 pub struct ConfigOption {
@@ -241,69 +319,50 @@ impl ConfigOption {
     /// [`ConfigError::TypeMismatch`] si le type ne correspond pas à celui du
     /// défaut, [`ConfigError::OutOfRange`] si la valeur sort du domaine.
     pub fn validate(&self, value: ConfigValue) -> Result<(), ConfigError> {
-        match (self.domain, value) {
-            (ConfigDomain::Boolean, ConfigValue::Bool(_)) => Ok(()),
-            (ConfigDomain::IntRange { min, max }, ConfigValue::Int(v)) => {
-                if (min..=max).contains(&v) {
-                    Ok(())
-                } else {
-                    Err(ConfigError::OutOfRange {
-                        path: self.path,
-                        domain: self.domain,
-                    })
-                }
-            }
-            (ConfigDomain::FloatRange { min, max }, ConfigValue::Float(v)) => {
-                // `v != v` écarte NaN, qui n'appartient à aucun intervalle et
-                // qu'une simple comparaison laisserait passer pour valide.
-                if v >= min && v <= max {
-                    Ok(())
-                } else {
-                    Err(ConfigError::OutOfRange {
-                        path: self.path,
-                        domain: self.domain,
-                    })
-                }
-            }
-            (ConfigDomain::FloatSet(allowed), ConfigValue::Float(v)) => {
-                // Comparaison exacte assumée : ces valeurs sont recopiées
-                // depuis la documentation, jamais calculées.
-                if allowed.contains(&v) {
-                    Ok(())
-                } else {
-                    Err(ConfigError::OutOfRange {
-                        path: self.path,
-                        domain: self.domain,
-                    })
-                }
-            }
-            (ConfigDomain::Enumeration(allowed), ConfigValue::Str(v)) => {
-                if allowed.contains(&v) {
-                    Ok(())
-                } else {
-                    Err(ConfigError::OutOfRange {
-                        path: self.path,
-                        domain: self.domain,
-                    })
-                }
-            }
-            (ConfigDomain::KeywordOrCount(allowed), ConfigValue::Str(v)) => {
-                let is_count = !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit());
-                if allowed.contains(&v) || is_count {
-                    Ok(())
-                } else {
-                    Err(ConfigError::OutOfRange {
-                        path: self.path,
-                        domain: self.domain,
-                    })
-                }
-            }
-            (ConfigDomain::FreeText, ConfigValue::Str(_)) => Ok(()),
-            _ => Err(ConfigError::TypeMismatch {
+        let parsed = match value {
+            ConfigValue::Bool(v) => ParsedValue::Bool(v),
+            ConfigValue::Int(v) => ParsedValue::Int(v),
+            ConfigValue::Float(v) => ParsedValue::Float(v),
+            ConfigValue::Str(v) => ParsedValue::Str(v.to_owned()),
+        };
+        self.validate_parsed(&parsed)
+    }
+
+    /// Valide une valeur décodée depuis une source externe.
+    ///
+    /// # Erreurs
+    ///
+    /// [`ConfigError::TypeMismatch`] si le type ne correspond pas à celui de
+    /// l'option, [`ConfigError::OutOfRange`] si la valeur sort du domaine.
+    pub fn validate_parsed(&self, value: &ParsedValue) -> Result<(), ConfigError> {
+        let type_matches = matches!(
+            (&self.default, value),
+            (ConfigValue::Bool(_), ParsedValue::Bool(_))
+                | (ConfigValue::Int(_), ParsedValue::Int(_))
+                | (ConfigValue::Float(_), ParsedValue::Float(_))
+                | (ConfigValue::Str(_), ParsedValue::Str(_))
+        );
+        if !type_matches {
+            return Err(ConfigError::TypeMismatch {
                 path: self.path,
                 expected: self.default.type_name(),
                 found: value.type_name(),
-            }),
+            });
+        }
+
+        let accepted = match value {
+            ParsedValue::Bool(_) => self.domain.accepts_bool(),
+            ParsedValue::Int(v) => self.domain.accepts_int(*v),
+            ParsedValue::Float(v) => self.domain.accepts_float(*v),
+            ParsedValue::Str(v) => self.domain.accepts_str(v),
+        };
+        if accepted {
+            Ok(())
+        } else {
+            Err(ConfigError::OutOfRange {
+                path: self.path,
+                domain: self.domain,
+            })
         }
     }
 }

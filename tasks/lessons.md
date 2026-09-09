@@ -63,6 +63,18 @@ Voir `Minecraft/compatibilityLevel des mixins sur Forge 47`.
 
 ## Code
 
+**[2026-09-09] | Le profil release portait `panic = "abort"`, que R-312 interdit
+explicitement | Ne pas poser d'option de profil de compilation « par réflexe
+d'optimisation » sans la confronter au cahier des charges.**
+
+`abort` avait été mis en M0.1 avec `lto` et `codegen-units = 1`, comme un
+réglage de performance banal. Mais chaque point d'entrée FFI doit être
+enveloppé dans `catch_unwind` pour qu'aucune panic ne traverse la frontière
+(INV-05) : avec `abort`, le processus meurt avant toute capture, et le jeu
+crasherait au lieu de basculer en `DISABLED`. Le réglage annulait donc une
+garantie centrale, sans rien casser de visible — aucun test ne l'aurait montré
+avant le premier vrai panic en production.
+
 **[2026-09-09] | La détection de plateforme classait macOS comme Windows :
 `"darwin".contains("win")` est vrai | Ne jamais identifier un système par une
 sous-chaîne courte sans vérifier l'ordre des tests.**

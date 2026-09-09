@@ -22,10 +22,16 @@
 //! - les échanges se font par lots, jamais élément par élément (interdiction
 //!   3.8), sous la barre de trente-deux traversées par tick (INV-04).
 //!
-//! # État
+//! # Organisation
 //!
-//! Le crate ne déclare encore aucun point d'entrée : l'ABI, le handshake et les
-//! anneaux de transfert sont l'objet de la tâche M0.4, dont le contrat est
-//! spécifié en PARTIE 4 du cahier des charges (IF-01, IF-02). Construire la
-//! bibliothèque dès maintenant valide la chaîne de production du binaire au bon
-//! nom, sur laquelle s'appuient `buildNatives` et `packageNatives` (M0.8).
+//! - [`abi`] : les points d'entrée exportés, leur validation d'arguments et le
+//!   bouclier `catch_unwind` qui empêche toute panic de traverser ;
+//! - [`context`] : la session native, son jeton opaque et son état.
+
+pub mod abi;
+pub mod context;
+
+pub use abi::{
+    AXION_ABI_VERSION, AXION_E_CONFIG, AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE,
+    AXION_E_PANIC, AXION_OK,
+};
