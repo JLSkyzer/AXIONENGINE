@@ -197,8 +197,15 @@ ses critères vérifiés **mécaniquement**.
       + **javadoc** (34.4). R-1754 : chaque méthode de l'API documente son
       effet, le thread autorisé, son coût et ses conditions d'échec.
 
-      Le CDC ne prévoit **aucun wiki ni site externe**. Si l'on en veut un, il
-      doit être généré depuis ces fichiers, jamais tenu en parallèle.
+      **La documentation se publie comme un site MkDocs Material**
+      ([ADR-101](../docs/decisions/ADR-101.md)) : les `.md` restent la source
+      unique versionnée, le site est un artefact de build régénéré depuis eux.
+      Les conventions d'écriture — encadrés `!!! warning`, tableaux
+      « nom, type, description, défaut », formules LaTeX, lien vers la page
+      suivante — s'appliquent **dès le premier fichier écrit**, pour éviter une
+      reprise complète en M12. L'organisation est par public (utilisation,
+      création de contenu, référence technique, développement), pas par ordre
+      alphabétique ; le tableau est dans l'ADR.
 - [ ] **`docs/decisions/`.** Le CDC veut une copie des ADR-001..ADR-026, qui ne
       vivent aujourd'hui que dans le CDC (`sed -n '6891,7004p' ...`). Les ADR
       propres au dépôt commencent à ADR-100 pour éviter toute collision.

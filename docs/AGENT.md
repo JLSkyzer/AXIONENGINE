@@ -94,14 +94,22 @@ existent aussi.
 cargo test --workspace --all-features
 ```
 
-Tests de la partie native. Le workspace est vide tant que M0.1 n'a pas créé les
-premiers crates.
+Tests de la partie native.
 
 ```bash
 python tools/spec/spec_index.py
 ```
 
 Régénère l'index du CDC.
+
+```bash
+cargo run -p ax-model --bin gen_config_docs
+cargo run -p axion-codegen --bin gen_java_config
+```
+
+Régénèrent ce qui dérive de la source unique de configuration :
+`CONFIGURATION.md`, les fichiers TOML de référence et la classe Java
+`ConfigSchema`. Des tests échouent si l'un d'eux a divergé (R-430, T-005).
 
 ---
 
@@ -171,3 +179,4 @@ de l'implémentation sont numérotées **à partir de ADR-100** dans
 | ADR | Sujet |
 |---|---|
 | [ADR-100](decisions/ADR-100.md) | Point d'entrée Forge séparé de `AxionMod` |
+| [ADR-101](decisions/ADR-101.md) | Documentation publiée comme site MkDocs Material |
