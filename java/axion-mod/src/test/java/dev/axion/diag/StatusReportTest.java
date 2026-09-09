@@ -147,7 +147,7 @@ class StatusReportTest {
         for (int index = 0; index < 5; index++) {
             runtime.onConstructed(new FakePlatform(dir));
             runtime.onSetup(new Properties());
-            runtime.onStopping();
+            runtime.onGameShuttingDown();
         }
 
         String report = joined(StatusReport.of(runtime));

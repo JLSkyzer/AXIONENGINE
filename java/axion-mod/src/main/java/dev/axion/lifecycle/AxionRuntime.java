@@ -34,6 +34,7 @@ public final class AxionRuntime {
     private LifecyclePhase phase = LifecyclePhase.UNLOADED;
     private PlatformAdapter platform;
     private BootstrapOutcome outcome;
+    private boolean shuttingDown;
 
     /** Crée un runtime qui démarre AXION par la séquence normale. */
     public AxionRuntime() {
@@ -120,9 +121,23 @@ public final class AxionRuntime {
         guard("serverStarting").run(() -> transitionTo(LifecyclePhase.RUNNING_SERVER));
     }
 
-    /** Signale qu'un client est prêt. */
-    public void onClientStarted() {
-        guard("clientStarted").run(() -> transitionTo(LifecyclePhase.RUNNING_CLIENT));
+    /**
+     * Signale un tick du client.
+     *
+     * <p>C'est le premier tick qui fait entrer en {@code RUNNING_CLIENT} : un
+     * client tourne dès que sa boucle de jeu tourne, et aucun événement de
+     * Forge ne dit cela plus tôt sans mentir — {@code FMLClientSetupEvent}
+     * précède {@code LOAD_COMPLETE} et décrirait un client qui charge encore.
+     *
+     * <p>Les ticks suivants ne font rien et ne consignent rien : une transition
+     * refusée par tick remplirait le journal des transitions sans fin.
+     */
+    public void onClientTick() {
+        guard("clientTick").run(() -> {
+            if (phase == LifecyclePhase.LOAD_COMPLETE) {
+                transitionTo(LifecyclePhase.RUNNING_CLIENT);
+            }
+        });
     }
 
     /**
@@ -143,30 +158,81 @@ public final class AxionRuntime {
         });
     }
 
-    /** Signale l'arrêt : les ressources natives sont relâchées. */
-    public void onStopping() {
-        guard("stopping").run(() -> {
-            if (!transitionTo(LifecyclePhase.STOPPING)) {
+    /**
+     * Signale l'arrêt d'un serveur.
+     *
+     * <p>Sur un serveur dédié, la fin de la session est la fin du processus :
+     * le runtime natif se ferme ici. <strong>Sur un client, non</strong> —
+     * revenir au menu principal arrête le serveur intégré sans quitter le jeu,
+     * et le monde suivant a besoin du même contexte natif. Fermer ici laissait
+     * AXION mort pour tout le reste de la session, sans qu'aucune erreur ne le
+     * dise ; c'est le premier lancement réel du client qui l'a montré.
+     */
+    public void onServerStopping() {
+        guard("serverStopping").run(() -> {
+            if (processIsEnding()) {
+                shutdown();
                 return;
             }
-            if (outcome != null && outcome.isReady()) {
-                try {
-                    // R-322 : l'arrêt journalise le bilan des allocations ; il
-                    // doit donc avoir lieu, même si le jeu se ferme
-                    // brutalement après.
-                    int code = nativeApi.close(outcome.context());
-                    transitions.add("contexte natif fermé, code " + code);
-                } catch (Throwable failure) {
-                    // Une fermeture qui échoue ne doit pas laisser le cycle
-                    // bloqué en STOPPING : l'arrêt doit toujours aboutir, quitte
-                    // à abandonner des ressources que le processus va de toute
-                    // façon rendre en se terminant.
-                    transitions.add("fermeture du contexte natif impossible : " + failure);
-                }
-            }
-            outcome = null;
-            transitionTo(LifecyclePhase.UNLOADED);
+            transitionTo(LifecyclePhase.RUNNING_CLIENT);
         });
+    }
+
+    /**
+     * Signale que le jeu s'arrête, client comme serveur dédié.
+     *
+     * <p>Il n'y a rien à faire ici quand un serveur tourne encore : la fin de
+     * session doit avoir lieu pendant que le contexte natif existe, faute de
+     * quoi rien ne pourrait plus être persisté à l'arrêt. Rien non plus quand
+     * le cycle est déjà refermé — c'est le cas courant du serveur dédié, dont
+     * Forge émet les deux événements dans cet ordre. Ce n'est donc pas une
+     * transition inattendue, et la journaliser comme telle inquiéterait pour
+     * rien.
+     */
+    public void onGameShuttingDown() {
+        guard("gameShuttingDown").run(() -> {
+            shuttingDown = true;
+            if (phase == LifecyclePhase.RUNNING_SERVER
+                    || !phase.canTransitionTo(LifecyclePhase.STOPPING)) {
+                return;
+            }
+            shutdown();
+        });
+    }
+
+    /**
+     * Indique si l'arrêt du serveur en cours est aussi celui du processus.
+     *
+     * <p>Le drapeau seul suffirait si {@code GameShuttingDownEvent} arrivait
+     * toujours ; l'absence de client est la seconde raison, et elle est
+     * indépendante : un serveur dédié qui s'arrête ne rouvrira pas de monde.
+     */
+    private boolean processIsEnding() {
+        return shuttingDown || platform == null || !platform.isClient();
+    }
+
+    /** Relâche le runtime natif et ramène le cycle en {@code UNLOADED}. */
+    private void shutdown() {
+        if (!transitionTo(LifecyclePhase.STOPPING)) {
+            return;
+        }
+        if (outcome != null && outcome.isReady()) {
+            try {
+                // R-322 : l'arrêt journalise le bilan des allocations ; il
+                // doit donc avoir lieu, même si le jeu se ferme brutalement
+                // après.
+                int code = nativeApi.close(outcome.context());
+                transitions.add("contexte natif fermé, code " + code);
+            } catch (Throwable failure) {
+                // Une fermeture qui échoue ne doit pas laisser le cycle bloqué
+                // en STOPPING : l'arrêt doit toujours aboutir, quitte à
+                // abandonner des ressources que le processus va de toute façon
+                // rendre en se terminant.
+                transitions.add("fermeture du contexte natif impossible : " + failure);
+            }
+        }
+        outcome = null;
+        transitionTo(LifecyclePhase.UNLOADED);
     }
 
     /**

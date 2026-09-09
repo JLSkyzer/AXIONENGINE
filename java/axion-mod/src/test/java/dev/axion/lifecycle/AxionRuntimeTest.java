@@ -157,7 +157,7 @@ class AxionRuntimeTest {
         runtime.onTick();
         runtime.onTick();
 
-        runtime.onStopping();
+        runtime.onServerStopping();
         assertEquals(LifecyclePhase.UNLOADED, runtime.phase());
         assertNull(runtime.outcome(), "l'issue devrait être relâchée à l'arrêt");
         assertFalse(runtime.isOperational());
@@ -181,7 +181,7 @@ class AxionRuntimeTest {
         runtime.onSetup(new Properties());
         runtime.onLoadComplete();
         runtime.onServerStarting();
-        runtime.onStopping();
+        runtime.onServerStopping();
 
         // Rester bloqué en STOPPING empêcherait tout redémarrage propre.
         assertEquals(LifecyclePhase.UNLOADED, runtime.phase());
@@ -206,7 +206,7 @@ class AxionRuntimeTest {
         assertFalse(runtime.isOperational(), "opérationnel malgré un natif absent");
 
         runtime.onTick();
-        runtime.onStopping();
+        runtime.onServerStopping();
         assertEquals(LifecyclePhase.UNLOADED, runtime.phase());
     }
 
@@ -270,7 +270,7 @@ class AxionRuntimeTest {
         runtime.onConstructed(new FakePlatform(gameDir, true));
         runtime.onSetup(new Properties());
         runtime.onLoadComplete();
-        runtime.onClientStarted();
+        runtime.onClientTick();
         assertEquals(LifecyclePhase.RUNNING_CLIENT, runtime.phase());
 
         // Ouvrir un monde solo démarre un serveur intégré sans quitter le
@@ -278,6 +278,124 @@ class AxionRuntimeTest {
         runtime.onServerStarting();
         assertEquals(LifecyclePhase.RUNNING_SERVER, runtime.phase());
         assertTrue(runtime.isOperational());
+    }
+
+
+    @Test
+    @DisplayName("Revenir au menu principal ne ferme pas le runtime natif")
+    void retourAuMenuPrincipal() {
+        RecordingNative api = new RecordingNative();
+        AxionRuntime runtime = new AxionRuntime((platform, properties) -> ready(), api);
+
+        runtime.onConstructed(new FakePlatform(gameDir, true));
+        runtime.onSetup(new Properties());
+        runtime.onLoadComplete();
+        runtime.onClientTick();
+        runtime.onServerStarting();
+        assertTrue(runtime.isOperational());
+
+        // Quitter un monde solo arrête le serveur intégré. Le jeu, lui,
+        // continue de tourner : fermer le contexte natif ici laissait AXION
+        // mort pour tout le reste de la session, sans qu'aucune erreur ne le
+        // signale. Le premier lancement réel du client l'a montré.
+        runtime.onServerStopping();
+        assertEquals(LifecyclePhase.RUNNING_CLIENT, runtime.phase());
+        assertNotNull(runtime.outcome(), "l'issue du démarrage a été relâchée");
+        assertEquals(List.of(), api.closed, "contexte natif fermé au retour au menu");
+
+        // Le monde suivant retrouve un moteur opérationnel.
+        runtime.onServerStarting();
+        assertEquals(LifecyclePhase.RUNNING_SERVER, runtime.phase());
+        assertTrue(runtime.isOperational(), "AXION est resté inactif au second monde");
+
+        // Et c'est bien l'arrêt du jeu qui rend le contexte, une seule fois.
+        runtime.onGameShuttingDown();
+        runtime.onServerStopping();
+        assertEquals(LifecyclePhase.UNLOADED, runtime.phase());
+        assertEquals(List.of(42L), api.closed, "contexte natif non rendu à l'arrêt du jeu");
+    }
+
+    @Test
+    @DisplayName("Quitter le jeu depuis le menu principal rend le contexte natif")
+    void arretDepuisLeMenuPrincipal() {
+        RecordingNative api = new RecordingNative();
+        AxionRuntime runtime = new AxionRuntime((platform, properties) -> ready(), api);
+
+        runtime.onConstructed(new FakePlatform(gameDir, true));
+        runtime.onSetup(new Properties());
+        runtime.onLoadComplete();
+        runtime.onClientTick();
+
+        // Aucun serveur n'a jamais tourné : rien ne viendra après, la
+        // fermeture a lieu tout de suite.
+        runtime.onGameShuttingDown();
+        assertEquals(LifecyclePhase.UNLOADED, runtime.phase());
+        assertEquals(List.of(42L), api.closed, "contexte natif non rendu");
+    }
+
+    @Test
+    @DisplayName("L'ordre d'arrêt d'un serveur dédié ne signale aucune anomalie")
+    void ordreDArretDuServeurDedie() {
+        RecordingNative api = new RecordingNative();
+        AxionRuntime runtime = new AxionRuntime((platform, properties) -> ready(), api);
+
+        runtime.onConstructed(new FakePlatform(gameDir, false));
+        runtime.onSetup(new Properties());
+        runtime.onLoadComplete();
+        runtime.onServerStarting();
+
+        // Forge émet ServerStopping puis GameShuttingDown sur un serveur
+        // dédié : c'est l'ordre courant, constaté au lancement réel.
+        runtime.onServerStopping();
+        runtime.onGameShuttingDown();
+
+        assertEquals(LifecyclePhase.UNLOADED, runtime.phase());
+        assertEquals(List.of(42L), api.closed, "contexte natif fermé plusieurs fois");
+        // Journaliser une « transition ignorée » ici inquiéterait pour rien :
+        // il ne s'est rien passé d'inattendu.
+        assertTrue(
+                runtime.transitions().stream().noneMatch(line -> line.contains("ignorée")),
+                () -> "arrêt nominal signalé comme anomalie : " + runtime.transitions());
+    }
+
+    @Test
+    @DisplayName("Le contexte natif n'est rendu qu'une fois")
+    void fermetureIdempotente() {
+        RecordingNative api = new RecordingNative();
+        AxionRuntime runtime = new AxionRuntime((platform, properties) -> ready(), api);
+
+        runtime.onConstructed(new FakePlatform(gameDir, false));
+        runtime.onSetup(new Properties());
+        runtime.onLoadComplete();
+        runtime.onServerStarting();
+
+        runtime.onServerStopping();
+        runtime.onServerStopping();
+
+        // Fermer deux fois le même contexte serait un appel natif sur un jeton
+        // périmé : le cycle doit l'empêcher, pas la bibliothèque.
+        assertEquals(List.of(42L), api.closed, "contexte natif fermé plusieurs fois");
+        assertEquals(LifecyclePhase.UNLOADED, runtime.phase());
+    }
+
+    @Test
+    @DisplayName("Les ticks du client ne remplissent pas le journal des transitions")
+    void ticksClientSilencieuxApresLePremier() {
+        AxionRuntime runtime = new AxionRuntime((platform, properties) -> ready());
+
+        runtime.onConstructed(new FakePlatform(gameDir, true));
+        runtime.onSetup(new Properties());
+        runtime.onLoadComplete();
+        runtime.onClientTick();
+
+        int apresLePremier = runtime.transitions().size();
+        for (int index = 0; index < 100; index++) {
+            runtime.onClientTick();
+        }
+
+        // Une transition refusée par tick ferait grossir le journal sans fin.
+        assertEquals(apresLePremier, runtime.transitions().size(),
+                () -> "journal grossi par les ticks : " + runtime.transitions());
     }
 
     @Test

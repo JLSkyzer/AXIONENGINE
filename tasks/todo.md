@@ -11,7 +11,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.9 faits ; M0.10 validé côté serveur, client à vérifier.**
+**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.10 faits ; reste la Definition of Done du jalon.**
 
 Ce qui est en place :
 
@@ -265,7 +265,7 @@ Tâches :
         des composants qui n'existent pas.
       - **T-710** (build reproductible) — vérifié à la main en M0.8, à
         automatiser avec le reste du packaging en M12.
-- [~] **M0.10** Acceptance. **Serveur dédié validé**, client à vérifier.
+- [x] **M0.10** Acceptance. **Serveur dédié et client validés.**
       Sur `runServer`, log à l'appui, zéro erreur :
       - mod construit sur `forge-47`, bibliothèque native extraite et chargée
         depuis `run/axion/native/<sha256>/` après vérification d'empreinte ;
@@ -284,8 +284,28 @@ Tâches :
       - le bootstrap ne relâchait pas son tampon de contrôle — trouvé par le
         bilan R-322 dès sa première exécution réelle.
 
-      Reste : `runClient`, à vérifier de visu. Le log serveur est conservé
-      hors de `run/logs/`, que `runClient` archive en le remplaçant.
+      **Client validé aussi**, log à l'appui, zéro erreur : mod chargé,
+      natif extrait et chargé, aller-retour FFI mesuré, `/axion status`
+      répond dans un monde solo, arrêt propre contexte fermé code 0. La seule
+      exception du log vient de Realms, qui ne s'authentifie pas sur un compte
+      de développement — vanilla, sans rapport avec AXION.
+
+      **Quatrième défaut, trouvé dans le log du client** : quitter un monde
+      solo pour revenir au menu principal émet `ServerStoppingEvent`, que le
+      cycle de vie traitait comme la fin du processus. Le contexte natif était
+      donc fermé, et AXION restait mort pour tout le reste de la session —
+      silencieusement : le monde suivant affichait « inactif / phase UNLOADED »
+      sans qu'aucune erreur ne soit journalisée. Corrigé :
+      - `GameShuttingDownEvent` (émis par `Minecraft` comme par
+        `DedicatedServer` sur Forge 47) marque la fin du processus ;
+      - `ServerStoppingEvent` ne ferme le contexte que si le processus s'arrête
+        ou si l'on est sur un serveur dédié ; sinon le cycle revient en
+        `RUNNING_CLIENT`, transition que la machine à états prévoyait déjà ;
+      - `RUNNING_CLIENT` était par ailleurs inatteignable : `onClientStarted`
+        n'était branché nulle part. Le premier tick client y fait entrer.
+
+      Les logs serveur sont conservés hors de `run/logs/`, que `runClient`
+      archive en le remplaçant.
 
 ---
 

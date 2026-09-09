@@ -5,6 +5,7 @@ import dev.axion.AxionMod;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.GameShuttingDownEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
@@ -108,21 +109,59 @@ public final class AxionForgeEntrypoint {
         runtime.onServerStarting();
     }
 
-    /** Relâche les ressources natives à l'arrêt du serveur. */
+    /**
+     * Prend note de l'arrêt d'un serveur.
+     *
+     * <p>Sur un serveur dédié, c'est l'arrêt du jeu. Sur un client, ce n'est
+     * que la fin d'un monde solo : le cycle de vie décide, pas ce point
+     * d'ancrage.
+     */
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onServerStopping(ServerStoppingEvent event) {
-        int before = runtime.transitions().size();
-        runtime.onStopping();
+        logTransitions(runtime::onServerStopping);
+        platform.setServer(null);
+        reportDisabledHooks();
+    }
 
-        // R-322 : le bilan des allocations est journalisé à l'arrêt. Sans cette
-        // trace, un déséquilibre resterait invisible — et c'est justement à
-        // l'arrêt qu'il se constate.
+    /**
+     * Relâche les ressources natives quand le jeu s'arrête.
+     *
+     * <p>Forge émet cet événement depuis {@code Minecraft} comme depuis
+     * {@code DedicatedServer} : c'est le seul signal qui distingue « ce monde
+     * se ferme » de « le processus se termine ».
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onGameShuttingDown(GameShuttingDownEvent event) {
+        logTransitions(runtime::onGameShuttingDown);
+        reportDisabledHooks();
+    }
+
+    /**
+     * Fait entrer AXION en {@code RUNNING_CLIENT} au premier tick du client.
+     *
+     * <p>Seul le premier tick produit quelque chose ; les suivants ne coûtent
+     * qu'une comparaison de phase.
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) {
+            runtime.onClientTick();
+        }
+    }
+
+    /**
+     * Exécute une transition et journalise ce qu'elle a produit.
+     *
+     * <p>R-322 : le bilan des allocations est journalisé à l'arrêt. Sans cette
+     * trace, un déséquilibre resterait invisible — et c'est justement à l'arrêt
+     * qu'il se constate.
+     */
+    private void logTransitions(Runnable transition) {
+        int before = runtime.transitions().size();
+        transition.run();
         runtime.transitions().stream()
                 .skip(before)
                 .forEach(line -> LOGGER.info("AXION : {}", line));
-
-        platform.setServer(null);
-        reportDisabledHooks();
     }
 
     /**

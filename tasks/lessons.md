@@ -193,3 +193,19 @@ Le `mod_id` entre dans les espaces de noms `assets/`, `data/`, les
 `ResourceLocation` et les clés NBT persistées : le changer après coup casse les
 mondes existants. Corrigé avant tout code — voir `docs/decisions/ADR-100.md`
 pour la tension R-401 / PARTIE 33 sur le point d'entrée.
+
+## 2026-09-10 | Un événement d'arrêt ne dit pas toujours que le processus s'arrête
+
+`ServerStoppingEvent` était traité comme la fin du jeu. Sur un client, il n'est
+que la fin d'un monde solo : le contexte natif était fermé au retour au menu
+principal, et AXION restait mort pour toute la session, sans erreur ni message.
+
+**Règle.** Sur un client, tout ce qui touche au serveur décrit une *session*,
+pas le processus. La fin du processus, c'est `GameShuttingDownEvent`, émis des
+deux côtés — et Forge l'émet **après** `ServerStoppingEvent` sur un serveur
+dédié, l'inverse de ce que laisse croire la lecture du bytecode de
+`DedicatedServer.stopServer`. Vérifier l'ordre réel dans un log, pas le déduire.
+
+**Corollaire.** Les états d'un cycle de vie qu'aucun événement n'atteint sont
+des états morts : `RUNNING_CLIENT` existait depuis M0.1 sans que rien n'y mène.
+Chercher, pour chaque état déclaré, l'événement qui y fait entrer.
