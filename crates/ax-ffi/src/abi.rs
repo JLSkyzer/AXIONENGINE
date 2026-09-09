@@ -22,6 +22,7 @@
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
+use ax_model::buffer::BufferKind;
 use ax_model::config::{self, ConfigScope, ParsedValue};
 
 use crate::context;
@@ -211,6 +212,98 @@ pub unsafe extern "C" fn axion_last_error(
                 unsafe { out_len.write(written) };
                 AXION_OK
             }
+            Err(code) => code,
+        }
+    })
+}
+
+/// Description d'un tampon telle qu'elle traverse la frontière (IF-02).
+///
+/// `repr(C)` est obligatoire : R-262 interdit qu'une structure `repr(Rust)`
+/// traverse, sa disposition n'étant garantie par rien.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AxionBufferInfo {
+    /// Adresse du premier octet du tampon.
+    pub ptr: *mut u8,
+    /// Capacité utilisable, en octets.
+    pub capacity: u64,
+    /// Nature du tampon.
+    pub kind: u32,
+    /// Génération : Java ré-acquiert dès qu'elle change (R-270).
+    pub generation: u32,
+}
+
+/// Acquiert un tampon de transfert.
+///
+/// `min_capacity` s'entend en octets de charge utile : la place de l'en-tête
+/// est réservée en plus. Le tampon existant est réutilisé s'il suffit ; sinon
+/// il est remplacé et la génération avance, ce qui invalide la vue que Java
+/// détenait (R-270).
+///
+/// # Safety
+///
+/// `out` doit pointer sur un [`AxionBufferInfo`] accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_buffer_acquire(
+    ctx: u64,
+    kind: u32,
+    min_capacity: u64,
+    out: *mut AxionBufferInfo,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if out.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        // Un kind venu de Java est une donnée externe : il est traduit, jamais
+        // utilisé comme indice tel quel (interdiction 3.13).
+        let Some(kind) = BufferKind::from_u32(kind) else {
+            return AXION_E_INVALID_BUFFER;
+        };
+
+        let info = context::with(ctx, false, |session| {
+            session.buffers().acquire(kind, min_capacity)
+        });
+        match info {
+            Ok(info) => {
+                // SAFETY: `out` est non nul, et le contrat impose qu'il soit
+                // accessible en écriture.
+                unsafe {
+                    out.write(AxionBufferInfo {
+                        ptr: info.ptr,
+                        capacity: info.capacity,
+                        kind: info.kind,
+                        generation: info.generation,
+                    });
+                }
+                AXION_OK
+            }
+            Err(code) => code,
+        }
+    })
+}
+
+/// Libère un tampon de transfert.
+///
+/// La génération doit être celle du tampon courant : une génération périmée
+/// signale que l'appelant raisonne sur un tampon qui n'existe plus, et l'appel
+/// est refusé avec `E-2002` plutôt que de libérer le mauvais (R-270).
+///
+/// # Safety
+///
+/// Aucun paramètre n'est déréférencé ; la fonction est `unsafe` par symétrie
+/// avec le reste de l'ABI.
+#[no_mangle]
+pub unsafe extern "C" fn axion_buffer_release(ctx: u64, kind: u32, generation: u32) -> i32 {
+    shielded(Some(ctx), || {
+        let Some(kind) = BufferKind::from_u32(kind) else {
+            return AXION_E_INVALID_BUFFER;
+        };
+        match context::with(ctx, false, |session| {
+            session.buffers().release(kind, generation)
+        }) {
+            Ok(true) => AXION_OK,
+            Ok(false) => AXION_E_INVALID_BUFFER,
             Err(code) => code,
         }
     })

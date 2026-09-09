@@ -10,7 +10,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use ax_core::{ContextGuard, RuntimeState};
+use ax_core::{BufferPool, ContextGuard, RuntimeState};
 
 /// Motif porté par les bits de poids fort d'un jeton de contexte.
 ///
@@ -34,6 +34,7 @@ pub struct Session {
     state: RuntimeState,
     last_error: Option<String>,
     panics: u64,
+    buffers: BufferPool,
     /// Détenu pour la durée de la session : c'est lui qui garantit l'unicité du
     /// contexte dans le processus (R-450).
     _guard: ContextGuard,
@@ -63,6 +64,12 @@ impl Session {
     /// Enregistre un message d'erreur, qui remplace le précédent.
     pub fn set_last_error(&mut self, message: impl Into<String>) {
         self.last_error = Some(message.into());
+    }
+
+    /// Tampons de transfert de la session (IF-02).
+    #[must_use]
+    pub fn buffers(&mut self) -> &mut BufferPool {
+        &mut self.buffers
     }
 
     /// Enregistre une panic capturée et empoisonne le contexte.
@@ -118,6 +125,7 @@ pub fn open() -> Result<u64, i32> {
         state: RuntimeState::Ready,
         last_error: None,
         panics: 0,
+        buffers: BufferPool::new(),
         _guard: guard,
     });
     Ok(token)

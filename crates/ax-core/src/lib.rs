@@ -13,6 +13,10 @@
 //!
 //! Exigences : R-450, R-311. Invariants : INV-09. Tests : T-150..T-152.
 
+pub mod buffers;
+
+pub use buffers::{BufferInfo, BufferPool, SharedBuffer};
+
 use core::fmt;
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicBool, Ordering};

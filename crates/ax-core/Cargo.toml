@@ -9,11 +9,13 @@ repository.workspace = true
 authors.workspace = true
 
 [lints.rust]
-# `deny` et non `forbid` : la bibliothèque ne contient aucun bloc `unsafe`, mais
-# `forbid` ne peut pas être levé localement et interdirait à un test d'installer
-# un allocateur global compteur — `GlobalAlloc` est un trait `unsafe` — pour
-# prouver qu'un chemin de code n'alloue pas (INV-08, T-016).
+# `deny` et non `forbid` : `forbid` ne peut pas être levé localement, et deux
+# dérogations justifiées sont nécessaires — la vue en octets d'un tampon
+# partagé (IF-02), et un test qui installerait un allocateur global compteur,
+# `GlobalAlloc` étant un trait `unsafe` (INV-08, T-016). Chaque bloc porte sa
+# justification `// SAFETY:`.
 unsafe_code = "deny"
 missing_docs = "warn"
 
 [dependencies]
+ax-model.workspace = true
