@@ -121,6 +121,37 @@ exact, sinon de n'en attribuer aucun — et d'écrire un ADR
 La leçon vaut au-delà des codes d'erreur : `R-`, `T-`, `INV-` et les autres
 familles se citent, elles ne s'inventent pas.
 
+**[2026-09-10] | `validateJar` signalait une empreinte manquante alors que le
+fichier `.sha256` était bien dans le JAR | En Groovy, `List<String>.contains(GString)`
+est toujours faux.**
+
+`entries.contains("${lib}.sha256")` interpole en `GString`, dont `equals` avec une
+`String` renvoie faux. Le test échouait donc sur un artefact correct. Concaténer
+— `lib + '.sha256'` — ou appeler `.toString()`. Le piège vaut pour toute
+comparaison, pas seulement `contains`.
+
+**[2026-09-10] | Un test JUnit a échoué sur « Failed to delete temp directory »
+après avoir chargé la bibliothèque native | Une bibliothèque chargée par
+`System.load` reste verrouillée par la JVM jusqu'à sa fin.**
+
+Sous Windows, son fichier ne peut plus être supprimé, et `@TempDir` échoue en
+tentant de vider le répertoire. Utiliser `@TempDir(cleanup = CleanupMode.NEVER)`
+pour un test qui charge réellement, et un binder simulé partout ailleurs.
+
+C'est aussi la raison d'être du chemin versionné par empreinte
+(`<racine>/axion/native/<sha256>/`) : une mise à jour n'a jamais à écraser un
+fichier que la JVM tient peut-être encore ouvert.
+
+**[2026-09-10] | Deux constructions du même code produisaient deux JAR
+différents | Le manifeste portait un `Implementation-Timestamp`, hérité du
+modèle MDK.**
+
+R-2342 impose un build reproductible. Une date d'assemblage suffit à rendre deux
+artefacts du même code différents, donc à priver toute empreinte publiée de sa
+valeur. Retiré, avec `preserveFileTimestamps = false` et
+`reproducibleFileOrder = true` sur les archives. La vérification tient en deux
+constructions et une comparaison de SHA-256.
+
 ---
 
 ## Structure du projet

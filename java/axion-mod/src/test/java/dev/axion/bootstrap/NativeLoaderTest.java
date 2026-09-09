@@ -275,19 +275,30 @@ class NativeLoaderTest {
     }
 
     @Test
-    @DisplayName("Une plateforme non supportée n'entraîne aucune tentative de chargement")
-    void plateformeNonSupportee() {
-        NativeLoadResult result = NativeLoader.load(gameDir.resolve("absent"));
+    @DisplayName("M0.8 : la bibliothèque livrée dans les ressources a une empreinte valide")
+    void bibliothequeLivreeDansLesRessources() {
+        NativePlatform platform = NativePlatform.detect().orElseThrow();
 
-        // Sur une plateforme supportée — le cas de la CI —, l'absence de
-        // ressource est le motif ; sinon c'est la plateforme elle-même. Les
-        // deux sont des échecs propres, jamais une exception.
+        // Le vrai classpath, mais une liaison simulée : charger réellement
+        // verrouillerait le fichier, et le répertoire temporaire ne pourrait
+        // plus être supprimé. Le chargement réel est exercé une seule fois,
+        // par NativeBridgeTest.
+        FakeBinder binder = new FakeBinder();
+        NativeLoadResult result = NativeLoader.load(
+                platform, List.of(gameDir), NativeLoader.class::getResourceAsStream, binder);
+
         if (result instanceof Failed failed) {
-            assertTrue(
-                    failed.reason() == Reason.RESOURCE_MISSING
-                            || failed.reason() == Reason.PLATFORM_UNSUPPORTED,
-                    () -> "motif inattendu : " + failed);
+            // Sans chaîne Rust, la ressource est absente : c'est un échec
+            // propre et attendu, jamais une exception.
+            assertEquals(Reason.RESOURCE_MISSING, failed.reason(), failed.detail());
             assertFalse(failed.detail().isBlank(), "un échec doit toujours s'expliquer");
+            return;
         }
+
+        // Chaîne de build passée : l'empreinte du fichier livré correspond à
+        // celle que le JAR annonce, sans quoi le chargement serait refusé.
+        Loaded ok = (Loaded) result;
+        assertEquals(1, binder.bound.size());
+        assertTrue(ok.path().toString().contains(ok.sha256()), ok.path().toString());
     }
 }

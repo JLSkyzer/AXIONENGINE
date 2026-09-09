@@ -11,7 +11,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.7 faits, M0.8 suivant.**
+**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.8 faits, M0.9 suivant.**
 
 Ce qui est en place :
 
@@ -208,11 +208,26 @@ Tâches :
       Reste lié : le journal natif dans `<gameDir>/axion/logs/` avec rotation
       (R-441) attend la journalisation côté Rust, et `/axion diag dump` (R-442)
       vient avec le reste de C-71 en M1.
-- [ ] **M0.8** Chaîne de build : tâches Gradle `buildNatives`, `packageNatives`,
-      `validateJar` (PARTIE 34.1). `validateJar` vérifie que les natifs et leurs
-      `.sha256` sont présents, qu'aucune dépendance n'est shadée, que
-      `mods.toml` est valide et qu'aucune classe client n'est dans le chemin
-      serveur.
+- [x] **M0.8** Chaîne de build (`gradle/natives.gradle`).
+      - `codegen` échoue si le code généré a divergé du registre — vérifié par
+        mutation.
+      - `buildNatives` produit la bibliothèque et son empreinte SHA-256 ; une
+        cible non hôte est ignorée avec un avertissement et le JAR marqué
+        `partial` (R-2341). Un développeur sans chaîne Rust peut construire.
+      - `packageNatives` passe par les ressources et non par le JAR seul :
+        c'est la seule façon que `runClient` les trouve en développement.
+      - `validateJar` vérifie `mods.toml` développé, l'absence de dépendance
+        shadée, la présence d'une empreinte par bibliothèque, et **refuse un
+        JAR `partial` en mode release** (`-Paxion.release`).
+      - **R-2342 vérifié** : deux constructions donnent le même SHA-256, après
+        retrait de l'horodatage de manifeste hérité du MDK.
+      - Le test de la frontière charge désormais la bibliothèque **par le vrai
+        chargeur, depuis les ressources** : extraction, empreinte, chargement
+        et JNI sont exercés d'un bloc.
+      Reste lié : la compilation croisée des quatre autres cibles suppose une
+      chaîne complète par plateforme ; la CI les produira sur leurs machines
+      (M11). `validateJar` contrôlera la LUT BRDF et les shaders en M9, et la
+      table de symboles via `tools/ffi/check_exports.py` quand T-661 sera écrit.
 - [ ] **M0.9** Tests T-100..T-103, T-110..T-114, T-120..T-124, T-130..T-133,
       T-150..T-152, plus T-020 et T-021.
 - [ ] **M0.10** Vérifier l'acceptance de bout en bout : JAR installé sur un

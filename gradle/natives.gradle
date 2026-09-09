@@ -1,0 +1,327 @@
+// Chaine de production de la bibliotheque native (PARTIE 34.1).
+//
+//   buildNatives    cargo build --release -p ax-ffi, par cible
+//   packageNatives  copie dans natives/<os>-<arch>/ avec son empreinte SHA-256
+//   validateJar     controles d'artefact avant publication
+//
+// R-2341 : une cible indisponible n'echoue pas le build. Elle est ignoree avec
+// un avertissement et le JAR est marque `partial`. Un developpeur Java sans
+// chaine Rust doit pouvoir construire le mod ; le JAR obtenu se charge alors en
+// mode DISABLED, ce qui est un comportement prevu, pas une panne.
+
+import java.security.MessageDigest
+
+/** Identifiant de la plateforme hote, au format de l'arborescence 33.2. */
+def axionHostTarget = {
+    String os = System.getProperty('os.name', '').toLowerCase(Locale.ROOT)
+    String arch = System.getProperty('os.arch', '').toLowerCase(Locale.ROOT)
+
+    // macOS d'abord : « darwin » contient « win », et l'ordre inverse
+    // classerait macOS comme Windows.
+    String family
+    if (os.contains('mac') || os.contains('darwin')) {
+        family = 'macos'
+    } else if (os.startsWith('windows')) {
+        family = 'windows'
+    } else if (os.contains('linux')) {
+        family = 'linux'
+    } else {
+        family = 'unsupported'
+    }
+
+    String cpu
+    switch (arch) {
+        case ['amd64', 'x86_64', 'x64']: cpu = 'x86_64'; break
+        case ['aarch64', 'arm64']: cpu = 'aarch64'; break
+        default: cpu = 'unsupported'
+    }
+    return "${family}-${cpu}"
+}
+
+/** Cibles a produire : la cible hote par defaut, ou -Paxion.targets=a,b. */
+def axionTargets = {
+    if (project.hasProperty('axion.targets')) {
+        return project.property('axion.targets').toString().split(',')*.trim().findAll { it }
+    }
+    return [axionHostTarget()]
+}
+
+/** Nom du fichier de bibliotheque sur une cible donnee. */
+def axionLibraryFileName = { String target ->
+    if (target.startsWith('windows')) {
+        return 'axion_native.dll'
+    }
+    if (target.startsWith('macos')) {
+        return 'libaxion_native.dylib'
+    }
+    return 'libaxion_native.so'
+}
+
+/** Triplet Rust correspondant a une cible AXION. */
+def axionRustTriple = { String target ->
+    switch (target) {
+        case 'windows-x86_64': return 'x86_64-pc-windows-msvc'
+        case 'linux-x86_64': return 'x86_64-unknown-linux-gnu'
+        case 'linux-aarch64': return 'aarch64-unknown-linux-gnu'
+        case 'macos-x86_64': return 'x86_64-apple-darwin'
+        case 'macos-aarch64': return 'aarch64-apple-darwin'
+        default: return null
+    }
+}
+
+/** Repertoire ou les natifs sont rassembles avant d'entrer dans le JAR. */
+def axionNativesDir = layout.buildDirectory.dir('natives')
+
+/** Marqueur pose des qu'une cible demandee n'a pas pu etre produite. */
+def axionPartialMarker = layout.buildDirectory.file('natives-partial.txt')
+
+tasks.register('codegen') {
+    group = 'axion'
+    description = 'Verifie que le code genere depuis ax-model reste conforme'
+
+    outputs.upToDateWhen { false }
+
+    doLast {
+        // « echec si divergence » (34.1) : le test de parite compare la classe
+        // Java, les fichiers TOML de reference et CONFIGURATION.md au registre
+        // Rust qui les produit. Il echoue si l'un a ete modifie a la main ou
+        // n'a pas ete regenere.
+        def output = new ByteArrayOutputStream()
+        def result = exec {
+            commandLine 'cargo', 'test', '-p', 'axion-codegen', '-p', 'ax-model', '--quiet'
+            workingDir rootProject.projectDir
+            ignoreExitValue = true
+            standardOutput = output
+            errorOutput = output
+        }
+        if (result.exitValue == 0) {
+            logger.lifecycle('AXION : code genere conforme au registre')
+            return
+        }
+        String text = output.toString()
+        if (text.contains('cargo') && text.contains('not found')) {
+            logger.warn('AXION : cargo absent, verification du code genere ignoree')
+            return
+        }
+        throw new GradleException(
+                'Le code genere a diverge du registre. Le regenerer avec : '
+                        + 'cargo run -p ax-model --bin gen_config_docs, puis '
+                        + 'cargo run -p axion-codegen --bin gen_java_config.'
+                        + System.lineSeparator() + text)
+    }
+}
+
+tasks.named('compileJava').configure {
+    dependsOn 'codegen'
+}
+
+tasks.register('buildNatives') {
+    group = 'axion'
+    description = 'Construit la bibliotheque native pour les cibles demandees'
+
+    outputs.dir(axionNativesDir)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        File outDir = axionNativesDir.get().asFile
+        outDir.deleteDir()
+        outDir.mkdirs()
+
+        List<String> missing = []
+        String host = axionHostTarget()
+
+        for (String target : axionTargets()) {
+            String triple = axionRustTriple(target)
+            if (triple == null) {
+                logger.warn("AXION : cible inconnue, ignoree : ${target}")
+                missing << target
+                continue
+            }
+
+            // La compilation croisee demande une chaine complete pour la cible
+            // (editeur de liens, bibliotheques systeme). On ne tente que la
+            // cible hote ; la CI produit les autres sur leurs machines.
+            if (target != host) {
+                logger.warn("AXION : ${target} n'est pas la cible hote (${host}), ignoree")
+                missing << target
+                continue
+            }
+
+            def result = exec {
+                commandLine 'cargo', 'build', '--release', '-p', 'ax-ffi'
+                workingDir rootProject.projectDir
+                ignoreExitValue = true
+                // Une chaine Rust absente ne doit pas faire echouer le build.
+                standardOutput = new ByteArrayOutputStream()
+                errorOutput = new ByteArrayOutputStream()
+            }
+
+            File produced = new File(
+                    rootProject.projectDir,
+                    "target/release/${axionLibraryFileName(target)}")
+
+            if (result.exitValue != 0 || !produced.exists()) {
+                logger.warn("AXION : construction de ${target} impossible "
+                        + "(cargo absent ou en echec) — JAR marque partial")
+                missing << target
+                continue
+            }
+
+            File targetDir = new File(outDir, target)
+            targetDir.mkdirs()
+            File copied = new File(targetDir, produced.name)
+            copied.bytes = produced.bytes
+
+            // R-420 : l'empreinte accompagne la bibliotheque, et le chargeur la
+            // verifie avant tout chargement.
+            String digest = MessageDigest.getInstance('SHA-256')
+                    .digest(copied.bytes)
+                    .encodeHex()
+                    .toString()
+            new File(targetDir, "${produced.name}.sha256").text = "${digest}  ${produced.name}\n"
+
+            logger.lifecycle("AXION : ${target} produit (${copied.length()} octets, ${digest.take(16)}…)")
+        }
+
+        File marker = axionPartialMarker.get().asFile
+        marker.parentFile.mkdirs()
+        if (missing.isEmpty()) {
+            marker.delete()
+        } else {
+            marker.text = missing.join('\n') + '\n'
+        }
+    }
+}
+
+/** Ressources generees : le repertoire passe par processResources. */
+def axionGeneratedResources = layout.buildDirectory.dir('generated/resources')
+
+tasks.register('packageNatives', Copy) {
+    group = 'axion'
+    description = 'Place les natifs produits dans les ressources du mod'
+    dependsOn 'buildNatives'
+
+    from axionNativesDir
+    into axionGeneratedResources.map { it.dir('natives') }
+}
+
+// Les natifs passent par les ressources plutot que d'etre ajoutes au JAR
+// directement : c'est la seule facon qu'ils soient aussi trouves en
+// developpement, ou le mod se charge depuis le classpath et non depuis un JAR.
+sourceSets.main.resources.srcDir(axionGeneratedResources)
+
+tasks.named('processResources', ProcessResources).configure {
+    dependsOn 'packageNatives'
+    // Une bibliotheque native ne doit surtout pas passer par le moteur de
+    // template : seuls mods.toml et pack.mcmeta y sont soumis.
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
+tasks.named('jar', Jar).configure {
+    // R-2342 : build reproductible. Deux constructions du meme code doivent
+    // produire le meme artefact, sans quoi une empreinte publiee ne prouve
+    // rien.
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+
+    manifest {
+        attributes([
+                // R-2341 : un JAR auquel manque une cible est marque, et la
+                // publication le refuse.
+                'Axion-Build': provider {
+                    axionPartialMarker.get().asFile.exists() ? 'partial' : 'complete'
+                },
+        ])
+    }
+}
+
+tasks.register('validateJar') {
+    group = 'axion'
+    description = "Controles d'artefact avant publication (34.1)"
+    dependsOn 'jar'
+
+    doLast {
+        File archive = tasks.named('jar', Jar).get().archiveFile.get().asFile
+        if (!archive.exists()) {
+            throw new GradleException("JAR introuvable : ${archive}")
+        }
+
+        List<String> problems = []
+        List<String> entries = []
+        String modsToml = null
+        // Une seule ouverture, et une boucle explicite : `each` sur une
+        // Enumeration depend de conversions Groovy qu'il vaut mieux ne pas
+        // supposer ici.
+        new java.util.zip.ZipFile(archive).withCloseable { zip ->
+            for (def entry : zip.entries()) {
+                entries.add(entry.name)
+            }
+            def toml = zip.getEntry('META-INF/mods.toml')
+            if (toml != null) {
+                modsToml = zip.getInputStream(toml).getText('UTF-8')
+            }
+        }
+
+        // mods.toml valide : present, et developpe — un ${...} restant
+        // signalerait que processResources n'a pas fait son travail.
+        if (modsToml == null) {
+            problems << 'mods.toml absent'
+        } else {
+            if (modsToml.contains('${')) {
+                problems << 'mods.toml contient des proprietes non developpees'
+            }
+            if (!modsToml.contains('modId = "axion"')) {
+                problems << 'mods.toml ne declare pas le modid axion'
+            }
+        }
+
+        // Aucune dependance shadee : tout ce qui est compile appartient a
+        // AXION. Une bibliotheque tierce embarquee entrerait en conflit avec
+        // celle d'un autre mod.
+        List<String> foreign = entries.findAll {
+            it.endsWith('.class') && !it.startsWith('dev/axion/')
+        }
+        if (!foreign.isEmpty()) {
+            problems << "classes hors dev/axion/ dans le JAR : ${foreign.take(5)}"
+        }
+
+        // R-420 : chaque bibliotheque native est accompagnee de son empreinte.
+        List<String> libs = entries.findAll {
+            it.startsWith('natives/') && !it.endsWith('.sha256') && !it.endsWith('/')
+        }
+        libs.each { lib ->
+            // Concatenation et non interpolation : `"${lib}.sha256"` produit un
+            // GString, et `List<String>.contains(GString)` est toujours faux.
+            if (!entries.contains(lib + '.sha256')) {
+                problems << "empreinte manquante pour ${lib}"
+            }
+        }
+
+        boolean partial = axionPartialMarker.get().asFile.exists()
+        if (partial) {
+            String missing = axionPartialMarker.get().asFile.text.trim()
+            if (project.hasProperty('axion.release')) {
+                // R-2341 : un JAR partial ne se publie pas.
+                problems << "JAR partial, cibles manquantes : ${missing.replace('\n', ', ')}"
+            } else {
+                logger.warn("AXION : JAR partial — cibles manquantes : "
+                        + missing.replace('\n', ', '))
+                logger.warn('AXION : il se chargera en mode DISABLED. '
+                        + 'Construire les natifs avec : cargo build --release -p ax-ffi')
+            }
+        }
+
+        if (!problems.isEmpty()) {
+            throw new GradleException(
+                    "validateJar a releve ${problems.size()} probleme(s) :\n  "
+                            + problems.join('\n  '))
+        }
+        logger.lifecycle("AXION : validateJar — ${entries.size()} entrees, "
+                + "${libs.size()} bibliotheque(s) native(s), "
+                + (partial ? 'artefact partial' : 'artefact complet'))
+    }
+}
+
+tasks.named('check').configure {
+    dependsOn 'validateJar'
+}

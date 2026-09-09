@@ -10,6 +10,10 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M0.8 — chaine de build native (34.1) : codegen verifie, buildNatives produit
+  la bibliotheque et son empreinte, packageNatives la place dans les ressources,
+  validateJar controle l'artefact et refuse un JAR partial a la publication.
+  Build reproductible verifie (R-2341, R-2342).
 - M0.7 — diagnostics et commande /axion status (C-05, C-71) : etat du runtime,
   cause d'une desactivation, cout FFI mesure et hooks desactives. Deux
   verifications d'architecture s'ajoutent : aucune connexion reseau sortante

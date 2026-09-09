@@ -6,15 +6,18 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import dev.axion.bootstrap.NativeLoadResult;
+import dev.axion.bootstrap.NativeLoader;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.CleanupMode;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * T-190, T-191 — la frontière JNI, exercée sur la vraie bibliothèque native.
@@ -30,36 +33,35 @@ import org.junit.jupiter.api.Test;
  */
 class NativeBridgeTest {
 
-    private static Path libraryPath() {
-        String dir = System.getProperty("axion.native.dir");
-        if (dir == null) {
-            return null;
-        }
-        String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
-        String fileName;
-        if (os.contains("mac") || os.contains("darwin")) {
-            fileName = "libaxion_native.dylib";
-        } else if (os.startsWith("windows")) {
-            fileName = "axion_native.dll";
-        } else {
-            fileName = "libaxion_native.so";
-        }
-        return Path.of(dir, fileName);
-    }
+    /**
+     * Repertoire d'extraction, jamais nettoye.
+     *
+     * <p>Une bibliotheque chargee par {@code System.load} reste verrouillee par
+     * la JVM jusqu'a sa fin : sous Windows, son fichier ne peut plus etre
+     * supprime, et JUnit echouerait en tentant de vider le repertoire. C'est
+     * aussi la raison pour laquelle le chemin d'extraction est versionne par
+     * empreinte plutot que reecrit.
+     */
+    @TempDir(cleanup = CleanupMode.NEVER)
+    Path gameDir;
 
     @Test
-    @DisplayName("T-190 : cycle complet à travers la frontière JNI")
+    @DisplayName("T-190 : cycle complet, du chargeur natif a la frontiere JNI")
     void cycleCompletAtraversLaFrontiere() {
-        Path library = libraryPath();
+        // La bibliotheque est chargee par le vrai chargeur (C-03), depuis les
+        // ressources que la chaine de build y a placees (M0.8). Le test couvre
+        // donc l'extraction, la verification SHA-256 et le chargement, en plus
+        // de la frontiere elle-meme : c'est le chemin qu'empruntera le jeu.
+        NativeLoadResult loaded = NativeLoader.load(gameDir);
         assumeTrue(
-                library != null && Files.isReadable(library),
-                () -> "bibliothèque native absente (" + library + ") — la construire avec :\n"
-                        + "  cargo build --release -p ax-ffi");
+                loaded instanceof NativeLoadResult.Loaded,
+                () -> "bibliotheque native absente des ressources — la produire avec : "
+                        + "./gradlew :axion-mod:packageNatives");
 
-        // System.load exige un chemin absolu (R-420) : jamais loadLibrary, qui
-        // dépendrait de java.library.path et pourrait charger la bibliothèque
-        // d'un autre mod.
-        System.load(library.toAbsolutePath().toString());
+        NativeLoadResult.Loaded ok = (NativeLoadResult.Loaded) loaded;
+        // Le chemin d'extraction porte l'empreinte verifiee (R-420).
+        assertTrue(ok.path().toString().contains(ok.sha256()), ok.path().toString());
+        assertTrue(ok.path().startsWith(gameDir), "extrait hors du repertoire de jeu");
 
         // R-260 : la version d'ABI se demande avant toute autre chose. Si
         // RegisterNatives avait échoué, cet appel lèverait déjà

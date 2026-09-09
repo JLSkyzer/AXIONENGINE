@@ -8,6 +8,9 @@ evaluationDependsOn(':axion-api')
 apply plugin: 'net.minecraftforge.gradle'
 apply plugin: 'org.spongepowered.mixin'
 
+// Production, empaquetage et controle de la bibliotheque native (34.1).
+apply from: rootProject.file('gradle/natives.gradle')
+
 base {
     archivesName = mod_id
 }
@@ -138,7 +141,10 @@ tasks.named('jar', Jar).configure {
                 "Implementation-Title"    : project.name,
                 "Implementation-Version"  : project.jar.archiveVersion,
                 "Implementation-Vendor"   : mod_authors,
-                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+                // Pas d'horodatage : R-2342 impose un build reproductible, et
+                // une date d'assemblage suffirait a rendre deux artefacts du
+                // meme code differents — donc a priver toute empreinte publiee
+                // de sa valeur.
         ])
     }
 
