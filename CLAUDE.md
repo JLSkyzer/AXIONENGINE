@@ -51,6 +51,35 @@ testés. Un travail n'est terminé que quand sa Definition of Done est cochée.
 La liste complète des 25 interdictions et des 14 obligations est dans le CDC :
 `sed -n '8160,8217p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`.
 
+## Choix du modèle
+
+Le modèle se choisit **à l'ouverture d'une session** et ne change plus jusqu'à
+sa fin : basculer en cours de route force la relecture de toute la session.
+
+**Par défaut : Sonnet, effort élevé.** L'essentiel du travail est spécifié ligne
+par ligne par le cahier des charges. L'effort élevé n'est pas optionnel : ce
+projet interdit les raccourcis — pas de placeholder, pas de périmètre réduit
+« pour raison de coût » — et c'est vers là que dérive un modèle pressé.
+
+**Ouvrir une session Opus dédiée pour :**
+
+- M0.4 — frontière FFI, ABI, mémoire partagée et anneaux de transfert
+- C-16 — noyau déterministe (bit-exactitude, FMA, ordre d'itération)
+- M6 — déformation continue
+- tout crash natif : SIGSEGV, corruption mémoire, comportement indéfini
+
+Ces choix se paient longtemps et leurs erreurs sont silencieuses. Le critère
+général : **si un test peut dire que c'est faux, Sonnet suffit ; si l'erreur est
+silencieuse ou coûteuse à défaire, c'est Opus.** Il recouvre la liste du CDC de
+ce qu'un agent ne décide pas seul — contrat `IF-xx`, ABI, `DM-xx`, `INV-xx`,
+dépendance structurante, cible Mixin.
+
+**Si un bug résiste après trois tentatives, ne pas basculer en cours de
+session.** Consigner l'état dans `tasks/todo.md` et les pistes écartées dans
+`tasks/lessons.md`, fermer la session, en rouvrir une en Opus. Le contexte du
+projet vit dans ces fichiers, pas dans le fil : une session neuve reprend en
+trois lectures.
+
 ## Commandes
 
 ```bash
