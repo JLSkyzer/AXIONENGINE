@@ -34,6 +34,10 @@ class ErrorCodesDocumentedTest {
 
     private static final Pattern ERROR_CODE = Pattern.compile("E-(\\d{4})");
 
+    /** Plage de codes, telle que l'annexe l'écrit : {@code E-3020..E-3060}. */
+    private static final Pattern CODE_RANGE =
+            Pattern.compile("E-(\\d{4})\\.\\.E-(\\d{4})");
+
     private static Path spec() {
         String path = System.getProperty("axion.spec.file");
         assertTrue(path != null && !path.isBlank(), "axion.spec.file non fourni par le build");
@@ -51,6 +55,20 @@ class ErrorCodesDocumentedTest {
         String annex = end > start ? content.substring(start, end) : content.substring(start);
 
         Set<String> codes = new TreeSet<>();
+
+        // L'annexe écrit certaines familles comme des plages — « E-3020..E-3060
+        // | violations de validation ». Ne lire que les bornes laisserait tout
+        // ce qu'il y a entre elles pour non documenté, alors que la ligne les
+        // déclare précisément ensemble.
+        Matcher range = CODE_RANGE.matcher(annex);
+        while (range.find()) {
+            int from = Integer.parseInt(range.group(1));
+            int to = Integer.parseInt(range.group(2));
+            for (int code = from; code <= to; code++) {
+                codes.add(String.format("E-%04d", code));
+            }
+        }
+
         Matcher matcher = ERROR_CODE.matcher(annex);
         while (matcher.find()) {
             codes.add(matcher.group());

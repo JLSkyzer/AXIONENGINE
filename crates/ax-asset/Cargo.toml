@@ -17,5 +17,8 @@ unsafe_code = "deny"
 missing_docs = "warn"
 
 [dependencies]
+# Le modele de donnees (DM-*) : le validateur examine ses structures, il ne
+# les redeclare pas.
+ax-model.workspace = true
 crc32c.workspace = true
 zstd.workspace = true

@@ -89,10 +89,13 @@ mod tests {
 
     #[test]
     fn t230_les_bornes_encadrent_bien_leur_domaine() {
-        assert!(MIN_UV < MAX_UV);
-        assert!(MIN_PART_MASS < MAX_PART_MASS);
-        assert!(MIN_QUAT_NORM < MAX_QUAT_NORM);
-        assert!(MIN_TRIANGLE_AREA > 0.0);
-        assert!(MAX_AABB_EXTENT > 0.0);
+        // Des bornes inversées feraient tout refuser, ou tout accepter, sans
+        // qu'aucun test de validation ne le montre : ils passeraient tous.
+        // Vérifié à la compilation, ces valeurs étant des constantes.
+        const _: () = assert!(MIN_UV < MAX_UV);
+        const _: () = assert!(MIN_PART_MASS < MAX_PART_MASS);
+        const _: () = assert!(MIN_QUAT_NORM < MAX_QUAT_NORM);
+        const _: () = assert!(MIN_TRIANGLE_AREA > 0.0);
+        const _: () = assert!(MAX_AABB_EXTENT > 0.0);
     }
 }

@@ -6,6 +6,7 @@ version = 4
 name = "ax-asset"
 version = "1.0.0"
 dependencies = [
+ "ax-model",
  "crc32c",
  "zstd",
 ]

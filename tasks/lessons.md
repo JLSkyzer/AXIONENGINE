@@ -224,3 +224,16 @@ code » ne suffit pas, il faut aussi « tout élément du code est dans la liste
 
 **Corollaire.** Deux listes qu'on écrit soi-même ne se valident pas l'une
 l'autre. Le test qui compte est celui qui compare le code à la source figée.
+
+## 2026-09-11 | Une plage écrite dans une annexe n'est pas deux valeurs
+
+T-023 vérifie que tout code `E-xxxx` cité dans le code figure à l'ANNEXE A.1.
+Il en extrayait les codes par expression régulière — et lisait
+`E-3020..E-3060` comme deux codes isolés. Les trente-neuf codes intermédiaires
+passaient pour non documentés, alors que la ligne les déclare précisément
+ensemble.
+
+**Règle.** Un test qui lit une source figée doit lire sa **notation**, pas
+seulement ses jetons. Une plage, un « et suivants », un renvoi : chacun demande
+d'être compris, sinon le test refuse ce que la source autorise — et l'on finit
+par contourner le test au lieu de le corriger.

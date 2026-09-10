@@ -20,8 +20,8 @@ workspace désigne.
 | `ax-mem` | C-13 | Arènes, pool de pages de déformation, comptage des allocations |
 | `ax-jobs` | C-12 | Pool dédié, annulation, deadlines, granularité adaptative |
 | `ax-telemetry` | C-15 | Registre de métriques, métriques de budget, export JSON |
-| `ax-model` | DM-* | Modèles de données, registre des budgets, configuration, génération Java |
-| `ax-asset` | C-24 | Conteneur A3D : écriture, lecture durcie, sections |
+| `ax-model` | DM-* | Structures du modèle, registre des budgets, configuration, génération Java |
+| `ax-asset` | C-22, C-24 | Conteneur A3D et validation des assets |
 | `ax-ffi` | C-14 | `cdylib`, ABI, points d'entrée JNI |
 | `tools/codegen` | — | Génère le code Java depuis `ax-model` ; hors `crates/`, il ne fait pas partie de la bibliothèque livrée |
 

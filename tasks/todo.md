@@ -12,7 +12,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 ## État courant
 
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
-**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12, C-15 et C-24 faits.**
+**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12, C-15, C-22 et C-24 faits.**
 
 Ce qui est en place :
 
@@ -449,7 +449,37 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       avec les composants qui les produisent. Le conteneur les transporte sans
       les interpréter, ce qui est exactement son rôle.
 - [ ] **C-21** Importers GLB/glTF/OBJ/STL — `gltf`, `tobj`, `stl_io`.
-- [ ] **C-22** Validateur d'assets — la liste de contrôle de la fiche 5.15.
+- [x] **C-22 — Validateur d'assets.** 42 tests d'acceptance, plus les DM
+      transcrits dans `ax-model` avec leurs tests de disposition.
+      - la liste de contrôle de la fiche 5.15, **groupe par groupe** :
+        structure, limites, géométrie, UV, normales, skin, physique,
+        déformation, graphe structurel, noms ;
+      - chaque violation est **nommée et localisée** (R-541) — « sommet 148 372 »
+        et non « poids non normalisés », qui n'aide personne sur un modèle de
+        deux millions de sommets ;
+      - la validation **ne s'arrête pas à la première** : un auteur qui corrige
+        son modèle veut la liste, pas un défaut à la fois ;
+      - réparations de R-542 en liste **fermée**, chacune journalisée. Des poids
+        de somme nulle ne sont **pas** réparés : les répartir au hasard
+        produirait un mouvement absurde plutôt qu'une erreur visible.
+
+      **Trois points relevés en chemin :**
+      - le contrôle des UV porte sur les valeurs **avant** normalisation, celles
+        que R-142 borne à `[-8, 9]`. Une fois l'asset compilé, ce sont des
+        `UNORM16` : la question ne se pose plus. Le validateur les reçoit donc
+        à part, et la tranche est vide au chargement ;
+      - il n'y a **pas** de détection de cycle dans la hiérarchie de nodes.
+        R-130 exige l'ordre topologique, et l'exiger rend un cycle impossible :
+        une détection séparée serait du code inatteignable. Le graphe de parts,
+        lui, n'a pas cette contrainte et se parcourt ;
+      - T-023 ne lisait que les codes d'erreur exacts de l'ANNEXE A.1, alors
+        qu'elle écrit certaines familles comme des plages — `E-3020..E-3060`.
+        Tout ce qui est entre les bornes passait pour non documenté. Corrigé.
+
+      **Ce qui reste hors de portée pour l'instant** : la seconde passe de
+      R-540, au chargement, demande de reconstruire une `AssetView` depuis les
+      sections d'un A3D. Les sections ne portent pas encore leur contenu — c'est
+      C-21 qui le produira.
 - [ ] **C-20** Orchestrateur — découverte, clés de cache, compilation
       asynchrone, budget par tick, asset de secours.
 - [ ] **C-23, C-25** Optimizer et cache — M1 pour le cache, M2 pour l'optimizer.
