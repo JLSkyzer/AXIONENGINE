@@ -98,6 +98,10 @@ public final class NativeBridge {
 
     static native int metricsExport(long ctx, byte[] out);
 
+    static native int assetCompile(long ctx, long assetId, int format, long sourceLen);
+
+    static native int assetPoll(long ctx, int jobId, long[] out);
+
     // --- API ---------------------------------------------------------------
 
     /**
@@ -196,6 +200,63 @@ public final class NativeBridge {
             return "";
         }
         return new String(scratch, 0, written, StandardCharsets.UTF_8);
+    }
+
+    /** Compilation en cours : ni aboutie, ni échouée (SM-01). */
+    public static final int ASSET_PENDING = 0;
+
+    /** Compilation aboutie ; l'asset attend dans le tampon de sortie. */
+    public static final int ASSET_COMPILED = 1;
+
+    /** Compilation échouée. */
+    public static final int ASSET_FAILED = 2;
+
+    /** Nombre de valeurs que {@link #pollAsset} écrit. */
+    public static final int ASSET_POLL_SLOTS = 3;
+
+    /**
+     * Lance la compilation d'un asset (IF-06).
+     *
+     * <p>La source doit avoir été écrite dans le tampon
+     * {@code AXION_BUF_ASSET_IN} avant l'appel : R-313 interdit à une fonction
+     * FFI d'allouer côté Java, et faire traverser un pointeur de plus
+     * n'apporterait qu'un pointeur de plus à valider.
+     *
+     * <p>La compilation est <strong>asynchrone</strong> (R-521). Elle ne bloque
+     * jamais le thread appelant ; c'est {@link #pollAsset} qui rapporte son
+     * avancement, aucun rappel ne venant du natif (INV-07).
+     *
+     * @param ctx jeton de contexte
+     * @param assetId identifiant de l'asset produit
+     * @param format code de format, voir {@code SourceFormats}
+     * @param sourceLen longueur de la source écrite dans le tampon d'entrée
+     * @return l'identifiant du travail, strictement positif, ou un code d'erreur
+     */
+    public static int compileAsset(long ctx, long assetId, int format, long sourceLen) {
+        return assetCompile(ctx, assetId, format, sourceLen);
+    }
+
+    /**
+     * Sonde une compilation lancée (IF-06).
+     *
+     * <p>Le tableau reçoit {@code [état, taille, code d'erreur]}. Une
+     * compilation aboutie dépose son A3D dans le tampon
+     * {@code AXION_BUF_ASSET_OUT}, et son résultat n'est rendu
+     * <strong>qu'une fois</strong> : sonder de nouveau rend
+     * {@link #E_INVALID_HANDLE}, ce qui vaut mieux qu'une seconde lecture d'un
+     * tampon qui a pu changer.
+     *
+     * @param ctx jeton de contexte
+     * @param jobId identifiant rendu par {@link #compileAsset}
+     * @param out tableau d'au moins {@link #ASSET_POLL_SLOTS} éléments
+     * @return {@link #OK}, ou un code d'erreur négatif
+     */
+    public static int pollAsset(long ctx, int jobId, long[] out) {
+        if (out == null || out.length < ASSET_POLL_SLOTS) {
+            throw new IllegalArgumentException(
+                    "le tableau de sondage compte au moins " + ASSET_POLL_SLOTS + " éléments");
+        }
+        return assetPoll(ctx, jobId, out);
     }
 
     /**

@@ -555,13 +555,32 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         rend `E-2001`, ce qui vaut mieux qu'une seconde lecture d'un tampon qui
         a pu changer entre-temps.
 
-      **Ce qui reste, entièrement côté Java :** l'énumération des ressources à
-      `AddReloadListenerEvent`, la clé `sha256(contenu || options ||
-      COMPILER_VERSION)` — `MessageDigest` est là, aucune dépendance Rust n'est
-      nécessaire —, la machine à états SM-01, le sondage à chaque tick sous
-      `budgets.asset_ns_per_tick`, la barrière de démarrage de R-521, l'asset de
-      secours `axion:builtin/missing` de R-522, et la recompilation des seuls
-      assets dont la clé a changé (R-520).
+      - **orchestrateur Java** : machine à états SM-01 avec transitions
+        vérifiées — sauter un état sauterait ce qu'il garantit, la validation
+        de C-22 pour ne citer qu'elle ; clé `sha256(contenu || options ||
+        COMPILER_VERSION)`, SHA-256 et non une empreinte rapide parce qu'une
+        collision ici ne produit pas une erreur mais **le mauvais asset**,
+        silencieusement ; sondage borné par `budgets.asset_ns_per_tick`, le
+        budget étant vérifié **entre** deux assets et jamais au milieu d'un —
+        abandonner une soumission à moitié faite laisserait un travail en vol
+        que personne ne sonderait plus, et le dépassement est rapporté ;
+      - R-520 : seuls les assets dont la clé a changé repartent ; une source
+        disparue quitte le registre, ce qui distingue un pack rechargé d'un pack
+        qui grossit sans fin ; une source corrigée reprend sa chance ;
+      - R-522 : un asset refusé est journalisé **une fois** — le répéter à
+        chaque tick noierait tout le reste — et `resolve()` rend
+        `axion:builtin/missing`. Le monde se charge, la pièce manquante se voit,
+        rien ne s'arrête ;
+      - `NativeAssetCompiler` relie l'orchestrateur à IF-06. Le tampon est
+        **ré-acquis à chaque soumission** : R-270 autorise sa réallocation entre
+        deux ticks, et une vue conservée écrirait dans de la mémoire qui ne lui
+        appartient plus. Vérifié sur la vraie bibliothèque — un OBJ écrit depuis
+        Java ressort compilé.
+
+      **Ce qui reste** : la source réelle sur le `ResourceManager` de Minecraft,
+      l'énumération à `AddReloadListenerEvent`, le branchement du sondage sur le
+      tick serveur, et la barrière de démarrage de R-521. `AssetSource` est
+      l'interface qui les attend.
 
       **Dette** : R-562 veut que `COMPILER_VERSION` soit incrémentée à toute
       modification de C-21, C-22, C-23 ou C-28 qui change la sortie,

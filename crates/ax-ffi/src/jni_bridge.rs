@@ -32,13 +32,14 @@
 
 use std::ffi::c_void;
 
-use jni::objects::{JByteArray, JClass, JObject};
+use jni::objects::{JByteArray, JClass, JLongArray, JObject};
 use jni::sys::{jint, jlong, JNI_ERR, JNI_VERSION_1_6};
 use jni::{JNIEnv, JavaVM, NativeMethod};
 
 use crate::abi::{
-    axion_abi_version, axion_buffer_acquire, axion_buffer_release, axion_init, axion_last_error,
-    axion_metrics_export, axion_shutdown, AxionBufferInfo, AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_abi_version, axion_asset_compile, axion_asset_poll, axion_buffer_acquire,
+    axion_buffer_release, axion_init, axion_last_error, axion_metrics_export, axion_shutdown,
+    AxionBufferInfo, AXION_E_INVALID_BUFFER, AXION_OK,
 };
 
 /// Classe Java qui déclare les méthodes natives (R-492 : une seule).
@@ -103,6 +104,16 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "metricsExport".into(),
             sig: "(J[B)I".into(),
             fn_ptr: jni_metrics_export as *mut c_void,
+        },
+        NativeMethod {
+            name: "assetCompile".into(),
+            sig: "(JJIJ)I".into(),
+            fn_ptr: jni_asset_compile as *mut c_void,
+        },
+        NativeMethod {
+            name: "assetPoll".into(),
+            sig: "(JI[J)I".into(),
+            fn_ptr: jni_asset_poll as *mut c_void,
         },
     ];
 
@@ -229,6 +240,82 @@ extern "system" fn jni_metrics_export(
         }
     }
     jint::try_from(needed).unwrap_or(jint::MAX)
+}
+
+/// `NativeBridge.assetCompile(long, long, int, long)`.
+///
+/// Rend l'identifiant du travail, strictement positif, ou un code d'erreur
+/// négatif. La source a été écrite par Java dans le tampon `ASSET_IN`.
+extern "system" fn jni_asset_compile(
+    _env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    asset_id: jlong,
+    format: jint,
+    source_len: jlong,
+) -> jint {
+    let mut job: u32 = 0;
+    // SAFETY: `options_cbor` peut être nul quand sa longueur l'est, et `job`
+    // est une variable locale accessible en écriture.
+    let code = unsafe {
+        axion_asset_compile(
+            ctx as u64,
+            asset_id as u64,
+            u32::try_from(format).unwrap_or(u32::MAX),
+            source_len.max(0) as u64,
+            std::ptr::null(),
+            0,
+            &raw mut job,
+        )
+    };
+    if code == AXION_OK {
+        jint::try_from(job).unwrap_or(AXION_E_INVALID_BUFFER)
+    } else {
+        code
+    }
+}
+
+/// `NativeBridge.assetPoll(long, int, long[])`.
+///
+/// Écrit `[état, taille, code d'erreur]` dans le tableau fourni, qui doit
+/// compter au moins trois éléments, et rend le code de l'appel.
+extern "system" fn jni_asset_poll(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    job_id: jint,
+    out: JLongArray,
+) -> jint {
+    if out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(&out) {
+        Ok(length) if length >= 3 => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+
+    let mut status: u32 = 0;
+    let mut size: u64 = 0;
+    let mut error: i32 = 0;
+    // SAFETY: les trois pointeurs désignent des variables locales.
+    let code = unsafe {
+        axion_asset_poll(
+            ctx as u64,
+            u32::try_from(job_id).unwrap_or(u32::MAX),
+            &raw mut status,
+            &raw mut size,
+            &raw mut error,
+        )
+    };
+    if code != AXION_OK {
+        return code;
+    }
+
+    let values = [jlong::from(status), size as jlong, jlong::from(error)];
+    match env.set_long_array_region(&out, 0, &values) {
+        Ok(()) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
 }
 
 /// `NativeBridge.bufferAcquire(long, int, long)`.

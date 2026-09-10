@@ -45,6 +45,13 @@ class NativeBridgeTest {
     @TempDir(cleanup = CleanupMode.NEVER)
     Path gameDir;
 
+    /** Lit la génération courante d'un tampon, dans son en-tête. */
+    private static int lireGeneration(long ctx, int kind) {
+        java.nio.ByteBuffer buffer = NativeBridge.acquire(ctx, kind, 0);
+        assertNotNull(buffer, "tampon absent");
+        return buffer.getInt(8);
+    }
+
     @Test
     @DisplayName("T-190 : cycle complet, du chargeur natif a la frontiere JNI")
     void cycleCompletAtraversLaFrontiere() {
@@ -158,6 +165,45 @@ class NativeBridgeTest {
         // Et un redémarrage propre reste possible.
         long reprise = NativeBridge.initialize(null, NativeBridge.SIDE_SERVER);
         assertTrue(reprise > 0, () -> "réinitialisation refusée, code " + reprise);
+
+        // T-210 : une compilation d'asset traverse la frontière, sur la vraie
+        // bibliothèque. C'est le chemin complet de C-20 : écrire la source,
+        // lancer, sonder, relire.
+        dev.axion.asset.NativeAssetCompiler compilateur =
+                new dev.axion.asset.NativeAssetCompiler(reprise);
+        byte[] source = String.join(
+                        "\n", "v 0 0 0", "v 1 0 0", "v 0 1 0", "f 1 2 3", "")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        int job = compilateur.submit(0x4242L, dev.axion.asset.SourceFormats.OBJ, source);
+        assertTrue(job > 0, () -> "compilation refusée, code " + job);
+
+        dev.axion.asset.AssetCompiler.CompileStatus etat = null;
+        for (int essai = 0; essai < 100_000; essai++) {
+            etat = compilateur.poll(job);
+            if (etat.state() != dev.axion.asset.AssetState.COMPILING) {
+                break;
+            }
+            Thread.onSpinWait();
+        }
+        assertEquals(
+                dev.axion.asset.AssetState.COMPILED,
+                etat.state(),
+                () -> "compilation échouée");
+        assertTrue(etat.size() > 0, "asset compilé vide");
+
+        // Le résultat n'est rendu qu'une fois : le redemander vaut mieux qu'une
+        // seconde lecture d'un tampon qui a pu changer.
+        assertEquals(
+                dev.axion.asset.AssetState.FAILED,
+                compilateur.poll(job).state(),
+                "un travail repris devrait être oublié");
+
+        assertEquals(
+                NativeBridge.OK,
+                NativeBridge.release(reprise, BufferKinds.ASSET_IN, lireGeneration(reprise, BufferKinds.ASSET_IN)));
+        assertEquals(
+                NativeBridge.OK,
+                NativeBridge.release(reprise, BufferKinds.ASSET_OUT, lireGeneration(reprise, BufferKinds.ASSET_OUT)));
 
         // R-502 : l'export des métriques traverse la frontière et porte les
         // métriques de budget qu'INV-19 exige.
