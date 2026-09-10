@@ -26,7 +26,9 @@ use ax_model::buffer::{BufferHeader, BufferKind};
 use ax_model::config::{self, ConfigScope, ParsedValue};
 
 use crate::context;
-use ax_jobs::{CpuShare, JobBudgets, Side, WorkerPolicy};
+use ax_asset::compile::CompileOptions;
+use ax_asset::import::{ImportLimits, SourceFormat};
+use ax_jobs::{CpuShare, JobBudgets, JobKind, Side, WorkerPolicy};
 use ax_model::budgets::Budget;
 
 /// Version de l'ABI.
@@ -67,6 +69,17 @@ pub const AXION_SIDE_CLIENT: u32 = 0;
 
 /// Côté serveur dédié, tel qu'`axion_init` l'attend.
 pub const AXION_SIDE_SERVER: u32 = 1;
+
+/// Compilation en cours : ni aboutie, ni échouée (SM-01, `QUEUED` ou
+/// `COMPILING`).
+pub const AXION_ASSET_PENDING: u32 = 0;
+
+/// Compilation aboutie ; l'asset attend dans le tampon de sortie (SM-01,
+/// `COMPILED`).
+pub const AXION_ASSET_COMPILED: u32 = 1;
+
+/// Compilation échouée (SM-01, `FAILED`).
+pub const AXION_ASSET_FAILED: u32 = 2;
 
 /// Exécute `action` en interceptant toute panic (R-310, INV-05).
 ///
@@ -348,6 +361,162 @@ pub unsafe extern "C" fn axion_metrics_export(
         }
         AXION_OK
     })
+}
+
+/// Lance la compilation d'un asset (IF-06).
+///
+/// La source est lue dans le tampon `ASSET_IN`, où Java l'a écrite : R-313
+/// interdit à une fonction FFI d'allouer côté Java, et faire traverser un
+/// pointeur de plus n'apporterait rien qu'un pointeur de plus à valider.
+///
+/// La compilation est **asynchrone** (R-521) : elle part sur le pool de jobs,
+/// et l'appelant sonde `axion_asset_poll`. Aucun rappel de Rust vers Java
+/// (INV-07).
+///
+/// # Safety
+///
+/// `options_cbor` doit pointer sur `options_len` octets lisibles, et
+/// `out_job_id` sur un `u32` accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_asset_compile(
+    ctx: u64,
+    asset_id: u64,
+    source_format: u32,
+    source_len: u64,
+    options_cbor: *const u8,
+    options_len: usize,
+    out_job_id: *mut u32,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if out_job_id.is_null() || (options_cbor.is_null() && options_len != 0) {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let Some(format) = decode_source_format(source_format) else {
+            return AXION_E_CONFIG;
+        };
+
+        let submitted = context::with(ctx, false, |session| {
+            // La source est copiée hors du tampon partagé : celui-ci peut être
+            // réalloué au tick suivant (R-270), et le worker travaillerait
+            // alors sur de la mémoire qui ne lui appartient plus.
+            let Some(source) = session.buffers().payload(BufferKind::AssetIn, source_len) else {
+                return Err(AXION_E_INVALID_BUFFER);
+            };
+            let source = source.to_vec();
+
+            let options = CompileOptions {
+                asset_id,
+                source_hash: 0,
+                limits: ImportLimits::new(source_len.max(1)),
+                dynamic_body: true,
+            };
+
+            let Some(jobs) = session.jobs() else {
+                // Sans pool, la compilation se ferait sur le thread appelant,
+                // ce que R-521 interdit. C'est un refus, pas un repli.
+                return Err(AXION_E_INVALID_HANDLE);
+            };
+            let handle = jobs.submit(JobKind::Asset, move |_| {
+                ax_asset::compile::compile(&source, format, &options, |_| None)
+            });
+            Ok(handle)
+        });
+
+        match submitted {
+            Ok(Ok(handle)) => {
+                let id = context::with(ctx, false, move |session| {
+                    session.register_asset_job(handle)
+                });
+                match id {
+                    Ok(id) => {
+                        // SAFETY: nullité écartée ci-dessus.
+                        unsafe { out_job_id.write(id) };
+                        AXION_OK
+                    }
+                    Err(code) => code,
+                }
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Sonde une compilation lancée (IF-06).
+///
+/// `out_status` reçoit [`AXION_ASSET_PENDING`], [`AXION_ASSET_COMPILED`] ou
+/// [`AXION_ASSET_FAILED`]. Sur succès, l'asset est déposé dans le tampon
+/// `ASSET_OUT` et `out_size` reçoit sa taille ; sur échec, `out_error` reçoit
+/// le code de l'ANNEXE A.1.
+///
+/// Un travail dont le résultat a été repris est **oublié** : le redemander rend
+/// `E-2001`, ce qui vaut mieux que de rendre deux fois un asset dont le tampon
+/// a pu changer entre-temps.
+///
+/// # Safety
+///
+/// Les trois pointeurs de sortie doivent être accessibles en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_asset_poll(
+    ctx: u64,
+    job_id: u32,
+    out_status: *mut u32,
+    out_size: *mut u64,
+    out_error: *mut i32,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if out_status.is_null() || out_size.is_null() || out_error.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+
+        let outcome = context::with(ctx, false, |session| {
+            let Some(job) = session.poll_asset_job(job_id) else {
+                return Err(AXION_E_INVALID_HANDLE);
+            };
+            match job {
+                context::AssetJob::Running(_) => Ok((AXION_ASSET_PENDING, 0u64, AXION_OK)),
+                context::AssetJob::Failed(code) => {
+                    let code = *code;
+                    session.forget_asset_job(job_id);
+                    Ok((AXION_ASSET_FAILED, 0, code))
+                }
+                context::AssetJob::Done(asset) => {
+                    let bytes = asset.bytes.clone();
+                    let written = session
+                        .buffers()
+                        .write_payload(BufferKind::AssetOut, &bytes);
+                    session.forget_asset_job(job_id);
+                    match written {
+                        Some(size) => Ok((AXION_ASSET_COMPILED, size, AXION_OK)),
+                        None => Ok((AXION_ASSET_FAILED, 0, AXION_E_INVALID_BUFFER)),
+                    }
+                }
+            }
+        });
+
+        match outcome {
+            Ok(Ok((status, size, error))) => {
+                // SAFETY: nullité écartée ci-dessus.
+                unsafe {
+                    out_status.write(status);
+                    out_size.write(size);
+                    out_error.write(error);
+                }
+                AXION_OK
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Traduit le code de format de source de l'ABI.
+fn decode_source_format(raw: u32) -> Option<SourceFormat> {
+    match raw {
+        0 => Some(SourceFormat::Glb),
+        1 => Some(SourceFormat::Gltf),
+        2 => Some(SourceFormat::Obj),
+        3 => Some(SourceFormat::Stl),
+        _ => None,
+    }
 }
 
 /// Description d'un tampon telle qu'elle traverse la frontière (IF-02).

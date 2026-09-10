@@ -198,6 +198,36 @@ impl BufferPool {
         self.slots[Self::index(kind)].as_mut()
     }
 
+    /// Emprunte la charge utile d'un tampon, en-tête exclu.
+    ///
+    /// Rend `None` si le tampon n'existe pas ou si la longueur demandée dépasse
+    /// ce qu'il contient : une charge utile plus longue que son tampon est
+    /// exactement ce que R-491 fait refuser.
+    #[must_use]
+    pub fn payload(&self, kind: BufferKind, len: u64) -> Option<&[u8]> {
+        let buffer = self.slots[Self::index(kind)].as_ref()?;
+        let start = HEADER_BYTES;
+        let end = start.checked_add(usize::try_from(len).ok()?)?;
+        buffer.as_slice().get(start..end)
+    }
+
+    /// Écrit une charge utile dans un tampon, en l'acquérant si besoin.
+    ///
+    /// Rend le nombre d'octets écrits. Le tampon est agrandi si nécessaire, ce
+    /// qui fait avancer sa génération et invalide la vue que Java détenait
+    /// (R-270) — c'est précisément pour cela qu'elle est réacquise à chaque
+    /// tick.
+    pub fn write_payload(&mut self, kind: BufferKind, bytes: &[u8]) -> Option<u64> {
+        let len = u64::try_from(bytes.len()).ok()?;
+        self.acquire(kind, len);
+
+        let buffer = self.slots[Self::index(kind)].as_mut()?;
+        let slice = buffer.as_mut_slice();
+        let end = HEADER_BYTES.checked_add(bytes.len())?;
+        slice.get_mut(HEADER_BYTES..end)?.copy_from_slice(bytes);
+        Some(len)
+    }
+
     /// Vérifie qu'une vue présentée par l'appelant est encore valide.
     #[must_use]
     pub fn is_current(&self, kind: BufferKind, generation: u32) -> bool {

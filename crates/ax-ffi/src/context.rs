@@ -10,10 +10,13 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use ax_asset::compile::{CompileError, CompiledAsset};
 use ax_core::{BufferPool, ContextGuard, RuntimeState};
 use ax_jobs::{JobBudgets, JobSystem, Side, WorkerPolicy};
+use ax_jobs::{JobHandle, JobOutcome};
 use ax_model::budgets::Budget;
 use ax_telemetry::{BudgetMetrics, MetricId, Telemetry};
+use std::collections::HashMap;
 
 /// Motif porté par les bits de poids fort d'un jeton de contexte.
 ///
@@ -76,9 +79,28 @@ pub struct Session {
     /// qu'elle : les créer par travail coûterait plus cher que le travail.
     jobs: Option<JobSystem>,
     metrics: SessionMetrics,
+    /// Compilations d'assets en vol, par identifiant de travail (IF-06).
+    ///
+    /// Les résultats y restent jusqu'à ce que Java vienne les chercher : R-472
+    /// veut qu'un travail en dépassement soit repris au cycle suivant, et
+    /// INV-07 interdit à Rust de rappeler Java pour le prévenir.
+    asset_jobs: HashMap<u32, AssetJob>,
+    /// Identifiant du prochain travail d'asset.
+    next_asset_job: u32,
     /// Détenu pour la durée de la session : c'est lui qui garantit l'unicité du
     /// contexte dans le processus (R-450).
     _guard: ContextGuard,
+}
+
+/// Une compilation d'asset, en vol ou terminée.
+#[derive(Debug)]
+pub enum AssetJob {
+    /// Le travail est soumis ; son résultat n'a pas encore été repris.
+    Running(JobHandle<Result<CompiledAsset, CompileError>>),
+    /// Le travail a abouti ; l'asset attend d'être lu.
+    Done(CompiledAsset),
+    /// Le travail a échoué ; le code attend d'être lu.
+    Failed(i32),
 }
 
 impl Session {
@@ -168,6 +190,50 @@ impl Session {
         }
     }
 
+    /// Retient une compilation d'asset et rend son identifiant (IF-06).
+    ///
+    /// L'identifiant repart à un pour chaque session et ne se réutilise jamais
+    /// en son sein : un jeton périmé désigne alors « rien », plutôt que la
+    /// compilation d'un autre asset.
+    pub fn register_asset_job(
+        &mut self,
+        handle: JobHandle<Result<CompiledAsset, CompileError>>,
+    ) -> u32 {
+        let id = self.next_asset_job;
+        self.next_asset_job = self.next_asset_job.wrapping_add(1).max(1);
+        self.asset_jobs.insert(id, AssetJob::Running(handle));
+        id
+    }
+
+    /// Fait avancer une compilation et rend son état.
+    ///
+    /// Reprendre le résultat du travail au plus tôt libère le worker ; le
+    /// garder ici jusqu'à ce que Java vienne le chercher respecte INV-07, qui
+    /// interdit à Rust de rappeler Java.
+    pub fn poll_asset_job(&mut self, id: u32) -> Option<&AssetJob> {
+        let entry = self.asset_jobs.get_mut(&id)?;
+        if let AssetJob::Running(handle) = entry {
+            if let Some(result) = handle.poll() {
+                *entry = match result.outcome {
+                    JobOutcome::Done(Ok(asset)) => AssetJob::Done(asset),
+                    JobOutcome::Done(Err(error)) => AssetJob::Failed(error.code()),
+                    // Un travail annulé ou paniqué ne rend pas d'asset : il est
+                    // rapporté comme un échec, ce qu'il est du point de vue de
+                    // l'appelant.
+                    JobOutcome::Cancelled | JobOutcome::Panicked => {
+                        AssetJob::Failed(crate::abi::AXION_E_PANIC)
+                    }
+                };
+            }
+        }
+        self.asset_jobs.get(&id)
+    }
+
+    /// Oublie une compilation dont le résultat a été lu.
+    pub fn forget_asset_job(&mut self, id: u32) {
+        self.asset_jobs.remove(&id);
+    }
+
     /// Enregistre une panic capturée et empoisonne le contexte.
     ///
     /// R-310 : la panic est comptée, et le contexte passe en `POISONED` dès
@@ -234,6 +300,8 @@ pub fn open(side: Side, workers: WorkerPolicy, budgets: JobBudgets) -> Result<u6
         side,
         jobs,
         metrics,
+        asset_jobs: HashMap::new(),
+        next_asset_job: 1,
         _guard: guard,
     });
     Ok(token)

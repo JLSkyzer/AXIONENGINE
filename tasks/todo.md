@@ -535,9 +535,39 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       R-540, au chargement, demande de reconstruire une `AssetView` depuis les
       sections d'un A3D. Les sections ne portent pas encore leur contenu — c'est
       C-21 qui le produira.
-- [ ] **C-20** Orchestrateur — découverte, clés de cache, compilation
-      asynchrone, budget par tick, asset de secours.
-- [ ] **C-23, C-25** Optimizer et cache — M1 pour le cache, M2 pour l'optimizer.
+- [~] **C-20 — Orchestrateur.** Le natif est prêt et appelable ; **la partie
+      Java reste**.
+      - **chaîne de compilation** : une source entre, un A3D sort — importer
+        (C-21), valider (C-22), écrire (C-24). Le refus se produit au plus tôt,
+        parce qu'à chaque étape franchie le coût du refus augmente. Sortie
+        déterministe, ce qu'un test vérifie : sans cela la clé de cache ne
+        dirait rien, deux compilations d'une même source produisant deux
+        entrées ;
+      - **IF-06 câblé** : `axion_asset_compile` lit la source dans `ASSET_IN`,
+        soumet un travail `ASSET` au pool de C-12 et rend un identifiant ;
+        `axion_asset_poll` sonde, dépose l'A3D dans `ASSET_OUT` et rend la
+        taille. La compilation ne touche jamais le thread appelant (R-521), et
+        aucun rappel ne remonte de Rust vers Java (INV-07) ;
+      - la source est **copiée** hors du tampon partagé avant de partir sur un
+        worker : le tampon peut être réalloué au tick suivant (R-270), et le
+        worker travaillerait alors sur de la mémoire qui ne lui appartient plus ;
+      - un travail dont le résultat a été repris est **oublié** : le redemander
+        rend `E-2001`, ce qui vaut mieux qu'une seconde lecture d'un tampon qui
+        a pu changer entre-temps.
+
+      **Ce qui reste, entièrement côté Java :** l'énumération des ressources à
+      `AddReloadListenerEvent`, la clé `sha256(contenu || options ||
+      COMPILER_VERSION)` — `MessageDigest` est là, aucune dépendance Rust n'est
+      nécessaire —, la machine à états SM-01, le sondage à chaque tick sous
+      `budgets.asset_ns_per_tick`, la barrière de démarrage de R-521, l'asset de
+      secours `axion:builtin/missing` de R-522, et la recompilation des seuls
+      assets dont la clé a changé (R-520).
+
+      **Dette** : R-562 veut que `COMPILER_VERSION` soit incrémentée à toute
+      modification de C-21, C-22, C-23 ou C-28 qui change la sortie,
+      **vérifié en CI**. La constante existe ; le contrôle non.
+- [ ] **C-25** Cache d'assets — clés, index, éviction LRU, hors du monde.
+- [ ] **C-23** Optimizer — tangentes, cache de sommets, décomposition convexe (M2).
 - [ ] **C-71** Commandes — `/axion status` existe déjà, ses autres branches
       arrivent avec les composants qu'elles pilotent.
 

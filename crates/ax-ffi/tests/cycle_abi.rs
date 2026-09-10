@@ -18,9 +18,23 @@
 // Le crate `ax-ffi` produit une bibliotheque nommee `axion_native` ([lib] name),
 // imposee par R-420 : c'est ce nom-la qu'on importe, pas celui du paquet.
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
+
+/// R-450 impose **un contexte par processus**. Les tests d'intégration
+/// partagent ce processus : sans ce verrou, deux d'entre eux s'ouvriraient en
+/// même temps et le second recevrait `E-1004` — un échec qui ne dirait rien du
+/// code testé.
+static CONTEXTE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Prend le contexte du processus pour la durée d'un test.
+fn contexte() -> std::sync::MutexGuard<'static, ()> {
+    CONTEXTE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 use axion_native::abi::{
-    axion_abi_version, axion_buffer_acquire, axion_buffer_release, axion_init, axion_last_error,
-    axion_metrics_export, axion_shutdown, AxionBufferInfo, AXION_ABI_VERSION,
+    axion_abi_version, axion_asset_compile, axion_asset_poll, axion_buffer_acquire,
+    axion_buffer_release, axion_init, axion_last_error, axion_metrics_export, axion_shutdown,
+    AxionBufferInfo, AXION_ABI_VERSION, AXION_ASSET_COMPILED, AXION_ASSET_PENDING,
     AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE, AXION_E_LEAK, AXION_OK, AXION_SIDE_SERVER,
 };
 
@@ -51,6 +65,7 @@ fn empty_info() -> AxionBufferInfo {
 
 #[test]
 fn cycle_complet_de_l_abi() {
+    let _contexte = contexte();
     // R-260 : la version d'ABI se demande avant toute autre chose, et sans
     // contexte — c'est ce qui permet de la comparer avant d'initialiser.
     assert_eq!(axion_abi_version(), AXION_ABI_VERSION as i32);
@@ -278,4 +293,115 @@ fn exporte_les_metriques(ctx: u64) {
     // SAFETY: aucun pointeur déréférencé, la capacité étant nulle.
     let code = unsafe { axion_metrics_export(0, std::ptr::null_mut(), 0, &raw mut ignore) };
     assert_eq!(code, AXION_E_INVALID_HANDLE, "export sur jeton invalide");
+}
+
+/// T-210 — IF-06 : une compilation d'asset traverse la frontière.
+///
+/// Le chemin complet, tel que Java l'empruntera : écrire la source dans
+/// `ASSET_IN`, lancer, sonder jusqu'à l'aboutissement, lire l'A3D dans
+/// `ASSET_OUT`.
+#[test]
+fn t210_une_compilation_d_asset_traverse_la_frontiere() {
+    let _contexte = contexte();
+    let mut ctx: u64 = 0;
+    // SAFETY: `ctx` est une variable locale accessible en écriture.
+    let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) };
+    assert_eq!(code, AXION_OK, "initialisation refusée");
+
+    const SOURCE: &[u8] = b"v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 0.0 1.0 0.0
+f 1 2 3
+";
+
+    // Java écrit la source dans le tampon d'entrée.
+    let mut info = empty_info();
+    // SAFETY: `info` est accessible en écriture.
+    let code = unsafe {
+        axion_buffer_acquire(
+            ctx,
+            BufferKind::AssetIn.as_u32(),
+            SOURCE.len() as u64,
+            &raw mut info,
+        )
+    };
+    assert_eq!(code, AXION_OK);
+    // SAFETY: le tampon appartient au contexte vivant et fait au moins
+    // `info.capacity` octets.
+    let view = unsafe {
+        std::slice::from_raw_parts_mut(info.ptr, usize::try_from(info.capacity).unwrap())
+    };
+    view[HEADER_BYTES..HEADER_BYTES + SOURCE.len()].copy_from_slice(SOURCE);
+
+    // Format 2 : OBJ.
+    let mut job: u32 = 0;
+    // SAFETY: `options_cbor` peut être nul quand sa longueur est nulle.
+    let code = unsafe {
+        axion_asset_compile(
+            ctx,
+            0x4242,
+            2,
+            SOURCE.len() as u64,
+            std::ptr::null(),
+            0,
+            &raw mut job,
+        )
+    };
+    assert_eq!(code, AXION_OK, "compilation refusée");
+    assert_ne!(job, 0);
+
+    // Sondage, comme Java le fera à chaque tick (R-521).
+    let mut status = AXION_ASSET_PENDING;
+    let mut size: u64 = 0;
+    let mut error: i32 = 0;
+    for _ in 0..100_000 {
+        // SAFETY: les trois pointeurs de sortie sont des variables locales.
+        let code =
+            unsafe { axion_asset_poll(ctx, job, &raw mut status, &raw mut size, &raw mut error) };
+        assert_eq!(code, AXION_OK);
+        if status != AXION_ASSET_PENDING {
+            break;
+        }
+        std::thread::yield_now();
+    }
+
+    assert_eq!(
+        status, AXION_ASSET_COMPILED,
+        "compilation échouée, code {error}"
+    );
+    assert!(size > 0, "asset vide");
+
+    // L'A3D attend dans le tampon de sortie.
+    let mut out = empty_info();
+    // SAFETY: `out` est accessible en écriture.
+    let code = unsafe { axion_buffer_acquire(ctx, BufferKind::AssetOut.as_u32(), 0, &raw mut out) };
+    assert_eq!(code, AXION_OK);
+    // SAFETY: mêmes garanties que pour le tampon d'entrée.
+    let compiled =
+        unsafe { std::slice::from_raw_parts(out.ptr, usize::try_from(out.capacity).unwrap()) };
+    assert_eq!(
+        &compiled[HEADER_BYTES..HEADER_BYTES + 4],
+        b"A3D ",
+        "le tampon de sortie ne porte pas un A3D"
+    );
+
+    // Un travail dont le résultat a été repris est oublié : le redemander vaut
+    // mieux qu'une seconde lecture d'un tampon qui a pu changer.
+    // SAFETY: mêmes garanties.
+    let code =
+        unsafe { axion_asset_poll(ctx, job, &raw mut status, &raw mut size, &raw mut error) };
+    assert_eq!(code, AXION_E_INVALID_HANDLE);
+
+    // SAFETY: aucun pointeur déréférencé.
+    unsafe {
+        assert_eq!(
+            axion_buffer_release(ctx, BufferKind::AssetIn.as_u32(), info.generation),
+            AXION_OK
+        );
+        assert_eq!(
+            axion_buffer_release(ctx, BufferKind::AssetOut.as_u32(), out.generation),
+            AXION_OK
+        );
+        assert_eq!(axion_shutdown(ctx), AXION_OK);
+    }
 }
