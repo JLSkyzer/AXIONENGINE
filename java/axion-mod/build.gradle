@@ -104,6 +104,9 @@ tasks.named('test', Test).configure {
     // T-020 verifie R-401 sur les sources : aucune classe hors de
     // dev.axion.forge n'importe net.minecraftforge.
     systemProperty 'axion.source.dir', file('src/main/java').absolutePath
+    // R-2392 verifie que les tests declares par un jalon clos existent
+    // toujours ; il lit pour cela les sources de test, des deux cotes.
+    systemProperty 'axion.test.dir', file('src/test/java').absolutePath
     // T-022 et T-023 verifient sur les deux cotes : aucune connexion sortante,
     // et tout code d'erreur documente en ANNEXE A.1.
     systemProperty 'axion.crates.dir', rootProject.file('crates').absolutePath

@@ -38,12 +38,35 @@ def axionHostTarget = {
     return "${family}-${cpu}"
 }
 
-/** Cibles a produire : la cible hote par defaut, ou -Paxion.targets=a,b. */
+/**
+ * Plateformes supportees (PARTIE 34.2).
+ *
+ * `linux-aarch64` en est absente a dessein : la table la donne « best effort,
+ * non bloquant », et l'exiger d'un artefact publiable serait plus strict que le
+ * cahier des charges.
+ */
+def axionSupportedTargets = [
+        'windows-x86_64',
+        'linux-x86_64',
+        'macos-aarch64',
+        'macos-x86_64',
+]
+
+/**
+ * Cibles a produire : -Paxion.targets=a,b si elle est donnee, sinon toutes les
+ * plateformes supportees pour un artefact destine a la publication, et la seule
+ * cible hote pour un build de developpement.
+ *
+ * R-2341 interdit de publier un JAR `partial`. Encore faut-il qu'un JAR
+ * incomplet se declare tel : attendre la seule cible hote ferait passer pour
+ * complet un artefact ne portant qu'une plateforme sur quatre, et la regle
+ * n'arreterait plus rien.
+ */
 def axionTargets = {
     if (project.hasProperty('axion.targets')) {
         return project.property('axion.targets').toString().split(',')*.trim().findAll { it }
     }
-    return [axionHostTarget()]
+    return project.hasProperty('axion.release') ? axionSupportedTargets : [axionHostTarget()]
 }
 
 /** Nom du fichier de bibliotheque sur une cible donnee. */

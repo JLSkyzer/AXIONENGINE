@@ -11,7 +11,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon en cours : M0 — Squelette et frontière native. M0.1 à M0.10 faits ; reste la Definition of Done du jalon.**
+**Jalon M0 — Squelette et frontière native : terminé, Definition of Done prononcée le 2026-09-10. Jalon suivant : M1.**
 
 Ce qui est en place :
 
@@ -313,6 +313,43 @@ Tâches :
       Les logs serveur sont conservés hors de `run/logs/`, que `runClient`
       archive en le remplaçant.
 
+### Definition of Done de M0
+
+Prononcée le 2026-09-10. Acceptance du CDC (PARTIE 37.2) :
+`sed -n '7180,7189p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+
+- [x] **JAR installable.** `validateJar` : 62 entrées, `META-INF/mods.toml`,
+      `axion.mixins.json`, une bibliothèque native avec son empreinte, aucune
+      classe hors de `dev/axion/`, aucune dépendance shadée. Build reproductible
+      (R-2342), horodatages normalisés.
+- [x] **Boot `READY`.** Serveur dédié et client lancés pour de vrai : natif
+      extrait et chargé après vérification SHA-256, handshake ABI, aller-retour
+      FFI mesuré, `/axion status` complet. *Sur `windows-x86_64` seulement* —
+      voir la dette « Plateformes non vérifiées ».
+- [x] **Natif absent → `DISABLED`, jeu jouable.** Vérifié sur un lancement réel
+      en retirant les natifs du classpath : `NATIVE_UNAVAILABLE :
+      RESOURCE_MISSING`, serveur démarré et arrêté normalement, **zéro erreur**.
+- [x] **ABI incompatible → `DISABLED`, jeu jouable.** Vérifié en construisant
+      un natif portant réellement `AXION_ABI_VERSION = 2` : `ABI 2 côté natif,
+      1 attendue — réinstaller le JAR complet`, aucun contexte ouvert, **zéro
+      erreur**. Constante restaurée et natif reconstruit après coup.
+- [x] **Bilan d'allocations nul.** `contexte natif fermé, code 0` à chaque
+      arrêt, serveur comme client (R-322). C'est ce bilan qui a révélé le
+      tampon de contrôle non relâché en M0.10.
+- [x] **Tests du jalon présents et verts.** T-100..T-103, T-110..T-114,
+      T-120..T-124, T-130..T-133, T-150..T-152 — vérifié **mécaniquement**
+      (R-2392) par `MilestoneTestsCoveredTest`, qui lit la liste dans le CDC
+      lui-même et échoue si l'un d'eux disparaît. Vérifié par mutation.
+- [x] **Suites vertes.** 86 tests Java, 66 tests Rust, `cargo clippy` sans
+      remarque.
+- [x] **R-2341 rendu effectif.** Un JAR ne portant pas les quatre plateformes
+      supportées se déclare `partial` en release et `validateJar` refuse de le
+      publier. Le trou était réel : la cible attendue était la seule cible
+      hôte, donc un artefact Windows seul passait pour complet.
+
+Réserve, portée en dette et non masquée : « sur les plateformes » n'est tenu
+que sur une seule. Rien d'autre du critère d'acceptance n'est en suspens.
+
 ---
 
 ## Jalons suivants
@@ -383,13 +420,18 @@ ses critères vérifiés **mécaniquement**.
 - [ ] **`docs/decisions/`.** Le CDC veut une copie des ADR-001..ADR-026, qui ne
       vivent aujourd'hui que dans le CDC (`sed -n '6891,7004p' ...`). Les ADR
       propres au dépôt commencent à ADR-100 pour éviter toute collision.
+- [ ] **Plateformes non vérifiées.** L'acceptance de M0 demande un boot
+      `READY` « sur les plateformes ». Seule `windows-x86_64` a été lancée : ni
+      Linux ni macOS n'ont de natif ici, la compilation croisée demandant une
+      chaîne complète par cible. Le build refuse désormais de publier un JAR
+      qui ne les porte pas toutes (R-2341), mais **la preuve d'exécution
+      manque** tant que la CI des trois plateformes n'existe pas (PARTIE 34.3).
+      À monter avant toute publication, et de toute façon avant M1 : les
+      vecteurs d'or déterministes de C-16 s'y vérifient sur les trois.
 - [ ] **Cibles Rust dans `rust-toolchain.toml`.** Les cinq cibles de la matrice
       déterministe y sont listées, ce qui fait télécharger cinq bibliothèques
       standard sur chaque poste. Si c'est trop lourd, ne garder que la cible
       hôte et laisser la CI ajouter les autres.
-- [ ] **Dépôt sans remote.** `git remote -v` est vide : les commits restent
-      locaux. Rien n'est poussé tant qu'un remote n'est pas configuré.
-
 - [ ] **glam et déterminisme.** `glam` sélectionne des chemins SIMD selon la
       cible, et `Vec3A` est explicitement un type aligné SIMD. C-16 exige des
       résultats bit-identiques entre client et serveur sur la matrice de
