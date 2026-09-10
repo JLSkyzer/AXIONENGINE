@@ -11,7 +11,8 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 ## État courant
 
-**Jalon M0 — Squelette et frontière native : terminé, Definition of Done prononcée le 2026-09-10. Jalon suivant : M1.**
+**Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
+**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12 fait.**
 
 Ce qui est en place :
 
@@ -349,6 +350,49 @@ Prononcée le 2026-09-10. Acceptance du CDC (PARTIE 37.2) :
 
 Réserve, portée en dette et non masquée : « sur les plateformes » n'est tenu
 que sur une seule. Rien d'autre du critère d'acceptance n'est en suspens.
+
+---
+
+## M1 — Assets, noyau déterministe, jobs
+
+Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+
+- [x] **C-12 — Job System.** Crate `ax-jobs`, 33 tests.
+      - pool **dédié** au-dessus de `rayon` (R-470). Le pool global est partagé
+        par tout le processus, donc par les autres mods : le configurer
+        reviendrait à décider pour eux, y soumettre son travail reviendrait à
+        attendre derrière le leur. Vérifié **statiquement** — aucun test
+        dynamique ne le pourrait, l'appel réussissant une fois par processus ;
+      - dimensionnement R-471 et partage CPU de la PARTIE 27.4, avec les quatre
+        formes de `cpu_share` que R-2060 exige (`full | half | auto | <n>`) ;
+      - annulation **coopérative** et deadlines : un travail en dépassement est
+        marqué, jamais tué, et son résultat reste repris au cycle suivant
+        (R-472). Le temps passé en file n'est pas imputé au budget ;
+      - granularité adaptative visant 100 µs par tâche, **mesurée** ; une mesure
+        inexploitable est ignorée plutôt qu'extrapolée (R-473) ;
+      - huit types de travaux, chacun rattaché à un budget de DM-18 et portant
+        ses propres métriques de consommation et de dépassement (R-474, INV-19) ;
+      - une panic dans un travail est capturée : elle ne traverse pas le pool,
+        elle est comptée, et le travail suivant s'exécute normalement (INV-05).
+
+      **Deux points ouverts, consignés et non masqués :**
+      - `ANIM` et `CULL` s'imputent tous deux sur `budgets.render_prep_ns` :
+        DM-18 ne déclare pas de budget d'animation, et sa structure `Budgets`
+        traverse la frontière en `repr(C)` — lui ajouter un champ modifierait un
+        modèle de données, ce qui ne se décide pas seul. Leurs métriques restent
+        distinctes, donc leur consommation reste distinguable ;
+      - **le crate n'est pas encore câblé au contexte natif.** R-471 fait
+        dépendre le plafond de workers du côté — 4 client, 8 serveur — mais
+        `axion_init` ne reçoit qu'une configuration, où rien ne dit d'où elle
+        vient (IF-01). Transmettre le côté est une modification de contrat, à
+        décider avant le câblage. `Side` est donc un paramètre.
+- [ ] **C-15** Télémétrie et journalisation — c'est elle qui fera remonter les
+      métriques de C-12 jusqu'à `/axion status`.
+- [ ] **C-16** Noyau déterministe. **`[EFFORT MAX]`**, prévenir avant de
+      commencer. La dette « glam et déterminisme » se règle d'abord.
+- [ ] **C-20, C-21, C-22, C-24** Compilation d'assets GLB/OBJ/STL vers A3D.
+- [ ] **C-71** Commandes — `/axion status` existe déjà, ses autres branches
+      arrivent avec les composants qu'elles pilotent.
 
 ---
 

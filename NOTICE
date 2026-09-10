@@ -21,7 +21,7 @@ figurer dans les attributions au meme titre que les autres (R-2290).
 Dependances Rust
 --------------------------------------------------------------------------------
 
-42 paquets, transitives comprises.
+48 paquets, transitives comprises.
 
   bytes 1.12.1
     Licence : MIT
@@ -51,9 +51,25 @@ Dependances Rust
     Licence : MIT
     Source  : https://github.com/Marwes/combine
 
+  crossbeam-deque 0.8.8
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/crossbeam-rs/crossbeam
+
+  crossbeam-epoch 0.9.21
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/crossbeam-rs/crossbeam
+
+  crossbeam-utils 0.8.23
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/crossbeam-rs/crossbeam
+
   crunchy 0.2.4
     Licence : MIT
     Source  : https://github.com/eira-fransham/crunchy
+
+  either 1.18.0
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rayon-rs/either
 
   glam 0.33.7
     Licence : MIT OR Apache-2.0
@@ -94,6 +110,14 @@ Dependances Rust
   quote 1.0.47
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/dtolnay/quote
+
+  rayon 1.12.0
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rayon-rs/rayon
+
+  rayon-core 1.13.0
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rayon-rs/rayon
 
   same-file 1.0.6
     Licence : Unlicense/MIT

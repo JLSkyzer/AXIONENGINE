@@ -41,10 +41,17 @@ ciborium = { version = "0.2", default-features = false }
 # C-14 : points d'entree JNI. Egalement retenu par 32.2.
 jni = { version = "0.21", default-features = false }
 
+# C-12 : impose par la fiche du composant, « pool dedie au-dessus de rayon,
+# jamais le pool global » (R-470). Retenu par 32.2, licence MIT OR Apache-2.0.
+# AXION n'utilise que `ThreadPoolBuilder` et `ThreadPool::spawn` : ni pool
+# global, ni iterateurs paralleles implicites, qui s'executeraient dessus.
+rayon = { version = "1.11", default-features = false }
+
 # Crates internes.
 ax-math = { path = "crates/ax-math" }
 ax-mem = { path = "crates/ax-mem" }
 ax-core = { path = "crates/ax-core" }
+ax-jobs = { path = "crates/ax-jobs" }
 ax-model = { path = "crates/ax-model" }
 
 # Les profils s'appliquent a tout le workspace.
