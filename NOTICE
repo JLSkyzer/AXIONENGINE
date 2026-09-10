@@ -21,7 +21,15 @@ figurer dans les attributions au meme titre que les autres (R-2290).
 Dependances Rust
 --------------------------------------------------------------------------------
 
-62 paquets, transitives comprises.
+68 paquets, transitives comprises.
+
+  autocfg 1.5.1
+    Licence : Apache-2.0 OR MIT
+    Source  : https://github.com/cuviper/autocfg
+
+  byteorder 1.5.0
+    Licence : Unlicense OR MIT
+    Source  : https://github.com/BurntSushi/byteorder
 
   bytes 1.12.1
     Licence : MIT
@@ -83,6 +91,10 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-lang/cc-rs
 
+  float-cmp 0.9.0
+    Licence : MIT
+    Source  : https://github.com/mikedilger/float-cmp
+
   getrandom 0.4.3
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-random/getrandom
@@ -126,6 +138,10 @@ Dependances Rust
   memchr 2.8.3
     Licence : Unlicense OR MIT
     Source  : https://github.com/BurntSushi/memchr
+
+  num-traits 0.2.19
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-num/num-traits
 
   pkg-config 0.3.34
     Licence : MIT OR Apache-2.0
@@ -179,6 +195,10 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/comex/rust-shlex
 
+  stl_io 0.8.6
+    Licence : MIT
+    Source  : https://github.com/hmeyer/stl_io
+
   syn 2.0.119
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/dtolnay/syn
@@ -194,6 +214,10 @@ Dependances Rust
   thiserror-impl 1.0.69
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/dtolnay/thiserror
+
+  tobj 4.0.5
+    Licence : MIT
+    Source  : https://github.com/Twinklebear/tobj
 
   unicode-ident 1.0.24
     Licence : (MIT OR Apache-2.0) AND Unicode-3.0

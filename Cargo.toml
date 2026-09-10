@@ -58,6 +58,13 @@ crc32c = { version = "0.6", default-features = false }
 # bornee par une taille de sortie connue a l'avance (R-902).
 zstd = { version = "0.13", default-features = false }
 
+# C-21 : import OBJ et MTL. Retenu par 32.2, licence MIT, alternative evaluee
+# « parseur propre ». Pur Rust, sans dependance C.
+tobj = { version = "4", default-features = false }
+
+# C-21 : import STL. Retenu par 32.2, licence MIT. Pur Rust.
+stl_io = { version = "0.8", default-features = false }
+
 # Crates internes.
 ax-math = { path = "crates/ax-math" }
 ax-mem = { path = "crates/ax-mem" }

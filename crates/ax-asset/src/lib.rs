@@ -34,4 +34,5 @@
 //! Tests : T-230..T-233, T-250..T-253.
 
 pub mod a3d;
+pub mod import;
 pub mod validate;

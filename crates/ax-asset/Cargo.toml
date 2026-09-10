@@ -21,4 +21,6 @@ missing_docs = "warn"
 # les redeclare pas.
 ax-model.workspace = true
 crc32c.workspace = true
+stl_io.workspace = true
+tobj.workspace = true
 zstd.workspace = true

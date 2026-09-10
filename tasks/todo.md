@@ -12,7 +12,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 ## État courant
 
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
-**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12, C-15, C-22 et C-24 faits.**
+**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12, C-15, C-22 et C-24 faits ; C-21 à moitié.**
 
 Ce qui est en place :
 
@@ -448,7 +448,36 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       `NodeDesc`, `MeshDesc`, `Vertex`, `ColliderDesc` et les autres viennent
       avec les composants qui les produisent. Le conteneur les transporte sans
       les interpréter, ce qui est exactement son rôle.
-- [ ] **C-21** Importers GLB/glTF/OBJ/STL — `gltf`, `tobj`, `stl_io`.
+- [~] **C-21 — Importers.** Infrastructure commune, **STL et OBJ faits**,
+      glTF à venir. 25 tests d'import plus 4 de bout en bout.
+      - les trois règles qui encadrent une source s'appliquent avant tout :
+        R-533 refuse une source trop volumineuse **sans lecture complète** —
+        refuser après avoir lu 4 Gio ne protège de rien ; R-531 refuse tout
+        chemin absolu ou remontant, antislash et lettre de lecteur compris ;
+        R-532 **désigne** les images sans les décoder — un décodeur d'image est
+        la plus large surface d'attaque qu'un format d'asset puisse offrir, et
+        celui de Minecraft est déjà là et déjà audité ;
+      - **STL** : binaire et ASCII, normale par facette reportée sur les
+        sommets — la lecture fidèle du format, lisser déciderait à la place de
+        l'auteur. Le dénombrement de triangles de l'en-tête est comparé à la
+        taille réelle **avant** d'appeler l'analyseur : quatre octets annonçant
+        quatre milliards de triangles sont le vecteur d'attaque le plus simple
+        du format ;
+      - **OBJ** : meshes, UV, normales, matériaux et `mtllib`. Les `mtllib`
+        sont vérifiés sur le texte source, avant que l'analyseur ne résolve
+        quoi que ce soit. Les quads sont triangulés ;
+      - les coordonnées de texture **avant** normalisation sont conservées : ce
+        sont elles que R-142 borne, et une fois quantifiées en `UNORM16` elles
+        ne diraient plus rien. Le validateur les reçoit à part — c'est le
+        paramètre que C-22 attendait déjà.
+
+      **Ce qui reste : glTF.** C'est la plus grosse moitié — extensions de
+      R-530, extras AXION de la PARTIE 8, hiérarchie, skins (128 os),
+      animations, textures embarquées. À prendre en début de session.
+
+      **Non fait ici, et non oublié** : ni tangentes, ni décomposition convexe,
+      ni optimisation de cache de sommets. C'est C-23, et les mélanger rendrait
+      chacun invérifiable.
 - [x] **C-22 — Validateur d'assets.** 42 tests d'acceptance, plus les DM
       transcrits dans `ax-model` avec leurs tests de disposition.
       - la liste de contrôle de la fiche 5.15, **groupe par groupe** :
