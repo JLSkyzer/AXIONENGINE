@@ -21,7 +21,7 @@ figurer dans les attributions au meme titre que les autres (R-2290).
 Dependances Rust
 --------------------------------------------------------------------------------
 
-68 paquets, transitives comprises.
+76 paquets, transitives comprises.
 
   autocfg 1.5.1
     Licence : Apache-2.0 OR MIT
@@ -103,9 +103,29 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/bitshifter/glam-rs
 
+  gltf 1.4.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/gltf-rs/gltf
+
+  gltf-derive 1.4.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/gltf-rs/gltf
+
+  gltf-json 1.4.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/gltf-rs/gltf
+
   half 2.7.1
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/VoidStarKat/half-rs
+
+  inflections 1.1.1
+    Licence : MIT
+    Source  : https://docs.rs/inflections
+
+  itoa 1.0.18
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/dtolnay/itoa
 
   jni 0.21.1
     Licence : MIT/Apache-2.0
@@ -126,6 +146,10 @@ Dependances Rust
   jobserver 0.1.35
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-lang/jobserver-rs
+
+  lazy_static 1.5.0
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang-nursery/lazy-static.rs
 
   libc 0.2.189
     Licence : MIT OR Apache-2.0
@@ -190,6 +214,10 @@ Dependances Rust
   serde_derive 1.0.229
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/serde-rs/serde
+
+  serde_json 1.0.151
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/serde-rs/json
 
   shlex 2.0.1
     Licence : MIT OR Apache-2.0
@@ -282,6 +310,10 @@ Dependances Rust
   zerocopy-derive 0.8.57
     Licence : BSD-2-Clause OR Apache-2.0 OR MIT
     Source  : https://github.com/google/zerocopy
+
+  zmij 1.0.23
+    Licence : MIT
+    Source  : https://github.com/dtolnay/zmij
 
   zstd 0.13.3
     Licence : MIT

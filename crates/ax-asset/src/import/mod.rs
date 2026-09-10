@@ -23,9 +23,13 @@
 //! optimisation de cache de sommets. C'est C-23, et les mélanger rendrait
 //! chacun invérifiable.
 
+mod gltf;
+mod gltf_extras;
 mod obj;
 mod stl;
 
+pub use gltf::{import_gltf, GltfReport, ImageRef, SUPPORTED_EXTENSIONS};
+pub use gltf_extras::{NodeAnnotations, NodeRole};
 pub use obj::import_obj;
 pub use stl::import_stl;
 
@@ -139,6 +143,15 @@ pub enum ImportError {
     },
     /// Chemin absolu ou sortant du répertoire de l'asset (R-531, `E-3002`).
     ExternalPath(String),
+    /// Extension glTF requise et non supportée (R-530, `E-3003`).
+    UnsupportedExtension(String),
+    /// Image dans un format autre que PNG (R-532, `E-3004`).
+    UnsupportedImage {
+        /// Image concernée : son URI, ou « embarquée ».
+        designation: String,
+        /// Type MIME déclaré.
+        mime_type: String,
+    },
     /// Source illisible ou mal formée.
     Malformed {
         /// Format concerné.
@@ -170,6 +183,10 @@ impl ImportError {
         match self {
             // `E-3002` : URI externe ou chemin sortant.
             ImportError::ExternalPath(_) => -3002,
+            // `E-3003` : extension glTF requise non supportée.
+            ImportError::UnsupportedExtension(_) => -3003,
+            // `E-3004` : format d'image non supporté.
+            ImportError::UnsupportedImage { .. } => -3004,
             // `E-3005` : source trop volumineuse.
             ImportError::SourceTooLarge { .. } => -3005,
             // Le reste refuse une source qu'on ne sait pas lire. L'ANNEXE A.1
@@ -194,6 +211,17 @@ impl fmt::Display for ImportError {
             ImportError::ExternalPath(path) => write!(
                 formatter,
                 "chemin « {path} » : absolu ou sortant du répertoire de l'asset"
+            ),
+            ImportError::UnsupportedExtension(extension) => write!(
+                formatter,
+                "extension glTF « {extension} » requise et non supportée"
+            ),
+            ImportError::UnsupportedImage {
+                designation,
+                mime_type,
+            } => write!(
+                formatter,
+                "image « {designation} » de type {mime_type} : seul le PNG est lu"
             ),
             ImportError::Malformed { format, detail } => {
                 write!(formatter, "source {} mal formée : {detail}", format.name())

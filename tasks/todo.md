@@ -12,7 +12,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 ## État courant
 
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
-**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12, C-15, C-22 et C-24 faits ; C-21 à moitié.**
+**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12, C-15, C-21, C-22 et C-24 faits.**
 
 Ce qui est en place :
 
@@ -448,8 +448,8 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       `NodeDesc`, `MeshDesc`, `Vertex`, `ColliderDesc` et les autres viennent
       avec les composants qui les produisent. Le conteneur les transporte sans
       les interpréter, ce qui est exactement son rôle.
-- [~] **C-21 — Importers.** Infrastructure commune, **STL et OBJ faits**,
-      glTF à venir. 25 tests d'import plus 4 de bout en bout.
+- [x] **C-21 — Importers.** Les quatre formats : glTF, GLB, OBJ, STL.
+      40 tests d'import plus 4 de bout en bout.
       - les trois règles qui encadrent une source s'appliquent avant tout :
         R-533 refuse une source trop volumineuse **sans lecture complète** —
         refuser après avoir lu 4 Gio ne protège de rien ; R-531 refuse tout
@@ -471,9 +471,35 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         ne diraient plus rien. Le validateur les reçoit à part — c'est le
         paramètre que C-22 attendait déjà.
 
-      **Ce qui reste : glTF.** C'est la plus grosse moitié — extensions de
-      R-530, extras AXION de la PARTIE 8, hiérarchie, skins (128 os),
-      animations, textures embarquées. À prendre en début de session.
+      - **glTF et GLB** : hiérarchie remise **en ordre topologique** — glTF
+        n'en impose aucun, R-130 l'exige, et le parcours en largeur depuis les
+        racines le donne sans tri après coup ; une primitive donne un mesh ;
+        matériaux, squelettes plafonnés à 128 os, poids d'os requantifiés pour
+        sommer exactement 255. Rien n'est converti : la convention de glTF —
+        Y vers le haut, main droite, une unité pour un bloc — est déjà celle
+        d'AXION, et une conversion silencieuse est ce qui fait qu'un modèle
+        arrive à l'envers sans que personne ne sache où ;
+      - **extensions (R-530)** : la politique est appliquée **avant** l'analyse,
+        sur le JSON brut. La déléguer à la bibliothèque ferait dépendre ce
+        qu'AXION accepte de ce qu'elle implémente — et elle n'en modélise que
+        cinq des huit que R-530 déclare supportées. Un asset aurait été refusé
+        pour la mauvaise raison ;
+      - **annotations `axion` (PARTIE 8.2)** : rôles, part, matériau, LOD,
+        groupe de déformation, profil d'usure. R-910 : un collider, un socket,
+        une zone de dommage, une région ou un ancrage n'est jamais rendu.
+        R-911 : ce qui n'est pas compris est **conservé** pour la section
+        `EXTR`, jamais deviné. R-912 : un rôle inconnu avertit et retombe sur
+        le défaut. R-913 : un GLB sans la moindre annotation produit un asset
+        complet, ce qu'un test vérifie ;
+      - le décodage base64 des URI `data:` est écrit ici : trente lignes ne
+        justifient pas une dépendance de plus, et celle-ci se placerait sur un
+        chemin qui lit des données hostiles.
+
+      **Ce que l'import glTF ne fait pas encore** : les animations, et
+      l'interprétation des annotations profondes — régions de déformation,
+      liaisons structurelles, zones de dommage. Elles demandent de résoudre des
+      noms, de calculer des OBB et de construire un graphe : c'est C-28, et
+      leur JSON est conservé pour lui.
 
       **Non fait ici, et non oublié** : ni tangentes, ni décomposition convexe,
       ni optimisation de cache de sommets. C'est C-23, et les mélanger rendrait

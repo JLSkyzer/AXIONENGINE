@@ -58,6 +58,27 @@ crc32c = { version = "0.6", default-features = false }
 # bornee par une taille de sortie connue a l'avance (R-902).
 zstd = { version = "0.13", default-features = false }
 
+# C-21 : import glTF 2.0 et GLB. Retenu par 32.2, licence MIT OR Apache-2.0.
+# `default-features = false` ecarte la fonctionnalite `import`, qui lit des
+# fichiers et resout des URI toute seule : R-531 veut que ce soit AXION qui
+# decide ce qui est lisible, et un analyseur qui ouvre des chemins pour nous
+# rendrait la regle inapplicable.
+gltf = { version = "1.4", default-features = false, features = [
+    "utils",
+    "names",
+    "extras",
+    # `extensions` conserve les extensions que le parseur ne modelise pas, au
+    # lieu de refuser le document : R-530 en declare huit supportees, dont
+    # trois que la bibliotheque ne connait pas. Les refuser reviendrait a etre
+    # plus strict que le cahier des charges.
+    "extensions",
+    "KHR_materials_emissive_strength",
+    "KHR_materials_ior",
+    "KHR_materials_specular",
+    "KHR_materials_unlit",
+    "KHR_texture_transform",
+] }
+
 # C-21 : import OBJ et MTL. Retenu par 32.2, licence MIT, alternative evaluee
 # « parseur propre ». Pur Rust, sans dependance C.
 tobj = { version = "4", default-features = false }
