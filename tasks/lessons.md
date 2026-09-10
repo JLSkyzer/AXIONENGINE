@@ -237,3 +237,20 @@ ensemble.
 seulement ses jetons. Une plage, un « et suivants », un renvoi : chacun demande
 d'être compris, sinon le test refuse ce que la source autorise — et l'on finit
 par contourner le test au lieu de le corriger.
+
+## 2026-09-11 | Un evenement de plateforme n'arrive pas quand on le croit
+
+La decouverte d'assets exigeait que le cycle de vie soit « en cours ». Forge
+emet AddReloadListenerEvent AVANT ServerStartingEvent : la condition n'etait
+jamais vraie, et la decouverte passait a cote a chaque demarrage sans qu'aucune
+erreur ne le dise.
+
+**Regle.** Avant de conditionner un traitement a une phase, verifier dans un log
+reel l'ordre des evenements qui la produisent. L'ordre suppose est faux une fois
+sur deux, et l'erreur est silencieuse : il ne se passe rien, ce qui ressemble a
+« il n'y avait rien a faire ».
+
+**Corollaire.** Un traitement qui reussit doit le dire, pas seulement echouer
+bruyamment. Un silence ne distingue pas un travail reussi d'un travail qui n'a
+pas eu lieu — c'est en ajoutant une ligne de compte rendu que le defaut est
+apparu.

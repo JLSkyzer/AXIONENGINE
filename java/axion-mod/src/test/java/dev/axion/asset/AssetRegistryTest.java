@@ -75,7 +75,7 @@ class AssetRegistryTest {
                 return CompileStatus.pending();
             }
             restants.remove(jobId);
-            return failCompile ? CompileStatus.failed(-3050) : CompileStatus.compiled(1024);
+            return failCompile ? CompileStatus.failed(-3050) : CompileStatus.compiled(new byte[1024]);
         }
     }
 

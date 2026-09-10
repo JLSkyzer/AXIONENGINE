@@ -4,7 +4,11 @@ import com.mojang.logging.LogUtils;
 import dev.axion.AxionMod;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
+import net.minecraft.util.profiling.ProfilerFiller;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.GameShuttingDownEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
@@ -102,11 +106,49 @@ public final class AxionForgeEntrypoint {
         AxionCommands.register(event.getDispatcher(), runtime);
     }
 
+    /**
+     * Énumère les sources d'assets à chaque rechargement de ressources (C-20).
+     *
+     * <p>L'énumération et la lecture ont lieu dans la phase de préparation, que
+     * Minecraft exécute hors du thread principal : R-521 interdit de le
+     * bloquer, et lire quelques mégaoctets de modèles suffirait à le faire.
+     */
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public void onAddReloadListener(AddReloadListenerEvent event) {
+        event.addListener(new SimplePreparableReloadListener<ResourceAssetSource>() {
+            @Override
+            protected ResourceAssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {
+                return new ResourceAssetSource(manager, ResourceAssetSource.MODELS);
+            }
+
+            @Override
+            protected void apply(
+                    ResourceAssetSource source, ResourceManager manager, ProfilerFiller profiler) {
+                logTransitions(() -> {
+                    source.failures().forEach(failure ->
+                            LOGGER.warn("AXION : ressource illisible — {}", failure));
+                    runtime.onAssetReload(source);
+                });
+            }
+        });
+    }
+
     /** Prend note du serveur qui démarre. */
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onServerStarting(ServerStartingEvent event) {
         platform.setServer(event.getServer());
         runtime.onServerStarting();
+
+        // R-521 : barrière de démarrage. Sans elle, le monde se chargerait
+        // avant ses assets, et les premières entités apparaîtraient inertes
+        // sans que rien n'explique pourquoi.
+        logTransitions(() -> {
+            long timeout = runtime.assetStartupTimeoutNanos();
+            if (timeout > 0 && !runtime.awaitAssets(timeout)) {
+                LOGGER.warn("AXION : des assets n'ont pas compilé dans le délai de démarrage "
+                        + "(E-3001) ; les definitions concernées sont désactivées");
+            }
+        });
     }
 
     /**

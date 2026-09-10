@@ -18,7 +18,7 @@ public final class AssetEntry {
 
     private AssetState state = AssetState.DISCOVERED;
     private int jobId;
-    private long compiledSize;
+    private byte[] compiled;
     private boolean logged;
 
     AssetEntry(String path, int format, AssetKey key, byte[] content) {
@@ -82,7 +82,17 @@ public final class AssetEntry {
 
     /** {@return la taille de l'asset compilé, en octets} */
     public long compiledSize() {
-        return compiledSize;
+        return compiled == null ? 0 : compiled.length;
+    }
+
+    /**
+     * {@return le conteneur A3D compile, ou {@code null}}
+     *
+     * Il attend ici que le cache de C-25 le range. Le laisser dans le tampon
+     * partage n'etait pas une option : celui-ci sert a la compilation suivante.
+     */
+    public byte[] compiled() {
+        return compiled;
     }
 
     /**
@@ -114,8 +124,19 @@ public final class AssetEntry {
         transitionTo(AssetState.COMPILING);
     }
 
-    void setCompiledSize(long size) {
-        this.compiledSize = size;
+    /**
+     * Force le passage en échec, quel que soit l'état courant.
+     *
+     * <p>Réservé à la barrière de démarrage : un asset encore en compilation
+     * n'a pas de transition normale vers l'échec — il n'a rien fait de mal, on
+     * a simplement cessé de l'attendre.
+     */
+    void forceFailed() {
+        state = AssetState.FAILED;
+    }
+
+    void setCompiled(byte[] payload) {
+        this.compiled = payload;
     }
 
     /**

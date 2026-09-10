@@ -32,24 +32,28 @@ public interface AssetCompiler {
     /**
      * Avancement d'une compilation.
      *
+     * <p>L'asset compile voyage avec l'avancement plutot que de rester dans le
+     * tampon partage : celui-ci sert a la compilation suivante (R-270), et ce
+     * qu'on y laisserait appartiendrait alors a un autre asset.
+     *
      * @param state etat courant
-     * @param size taille de l'asset compile, en octets
+     * @param payload conteneur A3D compile, ou {@code null}
      * @param error code d'erreur de l'ANNEXE A.1, ou zero
      */
-    record CompileStatus(AssetState state, long size, int error) {
+    record CompileStatus(AssetState state, byte[] payload, int error) {
 
         /** {@return un avancement disant que le travail continue} */
         public static CompileStatus pending() {
-            return new CompileStatus(AssetState.COMPILING, 0, 0);
+            return new CompileStatus(AssetState.COMPILING, null, 0);
         }
 
         /**
          * {@return un avancement disant que le travail a abouti}
          *
-         * @param size taille de l'asset compile
+         * @param payload conteneur A3D compile
          */
-        public static CompileStatus compiled(long size) {
-            return new CompileStatus(AssetState.COMPILED, size, 0);
+        public static CompileStatus compiled(byte[] payload) {
+            return new CompileStatus(AssetState.COMPILED, payload, 0);
         }
 
         /**
@@ -58,7 +62,12 @@ public interface AssetCompiler {
          * @param error code d'erreur
          */
         public static CompileStatus failed(int error) {
-            return new CompileStatus(AssetState.FAILED, 0, error);
+            return new CompileStatus(AssetState.FAILED, null, error);
+        }
+
+        /** {@return la taille de l'asset compile, en octets} */
+        public long size() {
+            return payload == null ? 0 : payload.length;
         }
     }
 }

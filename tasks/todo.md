@@ -12,7 +12,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 ## État courant
 
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
-**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12, C-15, C-21, C-22 et C-24 faits.**
+**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12, C-15, C-20, C-21, C-22 et C-24 faits. Restent C-25 et C-16.**
 
 Ce qui est en place :
 
@@ -535,8 +535,7 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       R-540, au chargement, demande de reconstruire une `AssetView` depuis les
       sections d'un A3D. Les sections ne portent pas encore leur contenu — c'est
       C-21 qui le produira.
-- [~] **C-20 — Orchestrateur.** Le natif est prêt et appelable ; **la partie
-      Java reste**.
+- [x] **C-20 — Orchestrateur.** Complet, vérifié sur un serveur dédié réel.
       - **chaîne de compilation** : une source entre, un A3D sort — importer
         (C-21), valider (C-22), écrire (C-24). Le refus se produit au plus tôt,
         parce qu'à chaque étape franchie le coût du refus augmente. Sortie
@@ -577,10 +576,25 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         appartient plus. Vérifié sur la vraie bibliothèque — un OBJ écrit depuis
         Java ressort compilé.
 
-      **Ce qui reste** : la source réelle sur le `ResourceManager` de Minecraft,
-      l'énumération à `AddReloadListenerEvent`, le branchement du sondage sur le
-      tick serveur, et la barrière de démarrage de R-521. `AssetSource` est
-      l'interface qui les attend.
+      - `ResourceAssetSource` lit les fichiers **au moment de l'énumération** :
+        un `ResourceManager` est remplacé à chaque rechargement, et le garder
+        pour lire plus tard reviendrait à lire dans un gestionnaire périmé.
+        L'énumération a lieu dans la phase de préparation, hors du thread
+        principal, R-521 interdisant de le bloquer ;
+      - asset de secours `axion:builtin/missing` embarqué (R-522) : un cube
+        d'un bloc, volontairement le plus simple possible — il doit compiler
+        partout où AXION démarre, sans quoi le repli aurait besoin d'un repli ;
+      - barrière de démarrage de R-521, et `/axion status` montre les assets
+        prêts, refusés et leur total.
+
+      **Vérifié sur un serveur dédié réel** : `1 asset(s) à compiler`,
+      `1 asset(s) prêt(s) sur 1`, `contexte natif fermé, code 0`, zéro erreur.
+
+      **Deux défauts que seul un lancement réel pouvait montrer :** la
+      découverte exigeait une phase en cours alors que Forge émet le
+      rechargement **avant** le démarrage du serveur — elle passait à côté à
+      chaque fois, en silence ; et les tampons `ASSET_IN`/`ASSET_OUT` n'étaient
+      jamais rendus, ce que R-322 a signalé au premier arrêt.
 
       **Dette** : R-562 veut que `COMPILER_VERSION` soit incrémentée à toute
       modification de C-21, C-22, C-23 ou C-28 qui change la sortie,

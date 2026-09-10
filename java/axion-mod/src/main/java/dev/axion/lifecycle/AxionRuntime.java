@@ -1,5 +1,8 @@
 package dev.axion.lifecycle;
 
+import dev.axion.asset.AssetRegistry;
+import dev.axion.asset.AssetSource;
+import dev.axion.asset.NativeAssetCompiler;
 import dev.axion.bootstrap.AxionBootstrap;
 import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.bootstrap.NativeApi;
@@ -35,6 +38,7 @@ public final class AxionRuntime {
     private PlatformAdapter platform;
     private BootstrapOutcome outcome;
     private boolean shuttingDown;
+    private AssetRegistry assets;
 
     /** Crée un runtime qui démarre AXION par la séquence normale. */
     public AxionRuntime() {
@@ -141,21 +145,112 @@ public final class AxionRuntime {
     }
 
     /**
+     * Signale un rechargement de ressources (C-20 étape 1).
+     *
+     * <p>Le registre est reconstruit sur la nouvelle source, mais **conserve
+     * son état** : R-520 veut que seuls les assets dont la clé a changé soient
+     * recompilés, et repartir de zéro à chaque rechargement rendrait la
+     * commande inutilisable sur un pack un peu fourni.
+     *
+     * @param source sources énumérées par le gestionnaire de ressources
+     * @return le nombre d'assets à recompiler
+     */
+    public int onAssetReload(AssetSource source) {
+        // Le runtime natif suffit ; la phase, non. Forge émet le rechargement
+        // des ressources **avant** le démarrage du serveur, donc avant
+        // `RUNNING_SERVER` : exiger une phase en cours ferait passer la
+        // découverte à côté à chaque démarrage, sans qu'aucune erreur ne le
+        // dise. C'est le premier lancement réel qui l'a montré.
+        if (!hasNativeRuntime()) {
+            return 0;
+        }
+        int changed = 0;
+        HookGuard guard = guard("assetReload");
+        guard.run(() -> {
+            assets = new AssetRegistry(
+                    source,
+                    new NativeAssetCompiler(outcome.context()),
+                    dev.axion.asset.CompilerVersion.CURRENT,
+                    System::nanoTime);
+            transitions.add(assets.discover() + " asset(s) à compiler");
+        });
+        if (assets != null) {
+            changed = (int) assets.entries().stream()
+                    .filter(entry -> entry.state().isPending())
+                    .count();
+        }
+        return changed;
+    }
+
+    /**
+     * Attend la compilation des assets, sans dépasser un délai (R-521).
+     *
+     * <p>La barrière du démarrage d'un serveur dédié. Au-delà du délai, les
+     * assets encore en attente sont désactivés : un serveur qui ne démarre
+     * jamais est pire qu'un serveur auquel il manque une pièce.
+     *
+     * @param timeoutNanos délai maximal, en nanosecondes
+     * @return vrai si tout a abouti dans le délai
+     */
+    public boolean awaitAssets(long timeoutNanos) {
+        if (assets == null) {
+            return true;
+        }
+        boolean[] settled = {true};
+        guard("assetBarrier").run(() -> {
+            settled[0] = assets.awaitSettled(timeoutNanos);
+            long prets = assets.entries().stream()
+                    .filter(entry -> entry.state().isUsable())
+                    .count();
+            // Le dire même quand tout va bien : un silence ne distingue pas un
+            // travail réussi d'un travail qui n'a pas eu lieu, et c'est
+            // précisément ce qui a caché une découverte muette au premier
+            // démarrage réel.
+            transitions.add(prets + " asset(s) prêt(s) sur " + assets.entries().size());
+            assets.diagnostics().forEach(transitions::add);
+        });
+        return settled[0];
+    }
+
+    /**
      * Signale un tick du thread autoritatif.
      *
-     * <p>Ne fait rien tant qu'aucune assembly n'existe : le budget
-     * {@code budgets.idle_hook_ns} plafonne précisément ce que coûte un tick à
-     * vide, et il n'y a rien à faire avant que le moteur n'ait du contenu à
-     * simuler.
+     * <p>Le tick fait avancer les compilations d'assets sous le budget
+     * {@code budgets.asset_ns_per_tick} (R-521). Tant qu'aucune assembly
+     * n'existe, il ne coûte que ce passage : {@code budgets.idle_hook_ns}
+     * plafonne précisément cela.
      */
     public void onTick() {
         guard("tick").run(() -> {
             if (!isOperational()) {
                 return;
             }
+            if (assets != null && !assets.isSettled()) {
+                assets.pump(outcome.config().getInt("budgets.asset_ns_per_tick"));
+            }
             // La boucle de simulation arrive avec C-40 ; d'ici là, un tick ne
             // coûte que ce passage.
         });
+    }
+
+    /**
+     * {@return le délai de la barrière de démarrage, en nanosecondes}
+     *
+     * <p>Zéro lorsqu'il n'y a rien à attendre : sans runtime natif, aucun asset
+     * n'a été découvert, et attendre reviendrait à retarder le démarrage pour
+     * rien.
+     */
+    public long assetStartupTimeoutNanos() {
+        if (assets == null || !hasNativeRuntime()) {
+            return 0;
+        }
+        long seconds = outcome.config().getInt("assets.startup_timeout_s");
+        return seconds * 1_000_000_000L;
+    }
+
+    /** {@return le registre d'assets, ou {@code null} avant tout rechargement} */
+    public AssetRegistry assets() {
+        return assets;
     }
 
     /**
@@ -261,6 +356,16 @@ public final class AxionRuntime {
     /** {@return le répertoire de jeu, ou {@code null} avant la construction} */
     public java.nio.file.Path gameDir() {
         return platform == null ? null : platform.gameDir();
+    }
+
+    /**
+     * {@return vrai si le runtime natif est démarré}
+     *
+     * <p>Indépendamment de la phase : certains travaux — la découverte
+     * d'assets, notamment — ont lieu avant qu'un serveur ne tourne.
+     */
+    private boolean hasNativeRuntime() {
+        return outcome != null && outcome.isReady();
     }
 
     /**

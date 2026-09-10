@@ -39,6 +39,9 @@ public final class AssetRegistry {
     /** Options de compilation, telles qu'elles entrent dans la clé. */
     private static final String OPTIONS = "";
 
+    /** `E-3001` : asset requis indisponible au démarrage. */
+    private static final int STARTUP_TIMEOUT_CODE = -3001;
+
     private final AssetSource source;
     private final AssetCompiler compiler;
     private final int compilerVersion;
@@ -153,6 +156,40 @@ public final class AssetRegistry {
         return new PumpResult(submitted, completed, elapsed, budgetNanos > 0 && elapsed > budgetNanos);
     }
 
+    /**
+     * Attend que tout soit compilé, sans dépasser un délai (R-521).
+     *
+     * <p>C'est la barrière du démarrage d'un serveur dédié : sans elle, le
+     * monde se chargerait avant ses assets, et les premières entités
+     * apparaîtraient inertes sans que rien n'explique pourquoi.
+     *
+     * <p>Au-delà du délai, les assets encore en attente sont
+     * <strong>désactivés</strong> avec {@code E-3001} plutôt que d'être
+     * attendus indéfiniment : un serveur qui ne démarre jamais est pire qu'un
+     * serveur auquel il manque une pièce.
+     *
+     * @param timeoutNanos délai maximal, en nanosecondes
+     * @return vrai si tout a abouti dans le délai
+     */
+    public boolean awaitSettled(long timeoutNanos) {
+        long start = clock.getAsLong();
+        while (!isSettled()) {
+            if (clock.getAsLong() - start >= timeoutNanos) {
+                for (AssetEntry entry : entries.values()) {
+                    if (entry.state().isPending()) {
+                        entry.forceFailed();
+                        fail(entry, STARTUP_TIMEOUT_CODE, "non compilé dans le délai de démarrage");
+                    }
+                }
+                return false;
+            }
+            // Budget levé : la barrière est précisément le moment où le temps
+            // passé en compilation est celui qu'on accepte de passer.
+            pump(0);
+        }
+        return true;
+    }
+
     private boolean submit(AssetEntry entry) {
         entry.transitionTo(AssetState.QUEUED);
         int job = compiler.submit(entry.assetId(), entry.format(), entry.content());
@@ -169,7 +206,7 @@ public final class AssetRegistry {
         switch (status.state()) {
             case COMPILED -> {
                 entry.transitionTo(AssetState.COMPILED);
-                entry.setCompiledSize(status.size());
+                entry.setCompiled(status.payload());
                 return true;
             }
             case FAILED -> {

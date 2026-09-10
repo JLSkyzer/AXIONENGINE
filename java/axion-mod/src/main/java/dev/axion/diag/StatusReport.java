@@ -57,6 +57,20 @@ public final class StatusReport {
             outcome.diagnostics().forEach(line -> lines.add("    " + line));
         }
 
+        if (runtime.assets() != null) {
+            long prets = runtime.assets().entries().stream()
+                    .filter(entry -> entry.state().isUsable())
+                    .count();
+            long refuses = runtime.assets().entries().stream()
+                    .filter(entry -> entry.state() == dev.axion.asset.AssetState.FAILED)
+                    .count();
+            lines.add("  assets : " + prets + " prêt(s), " + refuses + " refusé(s), sur "
+                    + runtime.assets().entries().size());
+            // Un asset refusé se voit ici et nulle part ailleurs après son
+            // unique passage au journal (R-522).
+            runtime.assets().diagnostics().forEach(line -> lines.add("    " + line));
+        }
+
         List<HookGuard> disabled = runtime.guards().values().stream()
                 .filter(HookGuard::isDisabled)
                 .toList();
