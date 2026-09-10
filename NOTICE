@@ -21,11 +21,15 @@ figurer dans les attributions au meme titre que les autres (R-2290).
 Dependances Rust
 --------------------------------------------------------------------------------
 
-48 paquets, transitives comprises.
+62 paquets, transitives comprises.
 
   bytes 1.12.1
     Licence : MIT
     Source  : https://github.com/tokio-rs/bytes
+
+  cc 1.4.5
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/cc-rs
 
   cesu8 1.1.0
     Licence : Apache-2.0/MIT
@@ -51,6 +55,10 @@ Dependances Rust
     Licence : MIT
     Source  : https://github.com/Marwes/combine
 
+  crc32c 0.6.8
+    Licence : Apache-2.0/MIT
+    Source  : https://github.com/zowens/crc32c
+
   crossbeam-deque 0.8.8
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/crossbeam-rs/crossbeam
@@ -70,6 +78,14 @@ Dependances Rust
   either 1.18.0
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rayon-rs/either
+
+  find-msvc-tools 0.1.12
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/cc-rs
+
+  getrandom 0.4.3
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-random/getrandom
 
   glam 0.33.7
     Licence : MIT OR Apache-2.0
@@ -95,6 +111,14 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/jni-rs/jni-sys
 
+  jobserver 0.1.35
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/jobserver-rs
+
+  libc 0.2.189
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/libc
+
   log 0.4.34
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-lang/log
@@ -102,6 +126,10 @@ Dependances Rust
   memchr 2.8.3
     Licence : Unlicense OR MIT
     Source  : https://github.com/BurntSushi/memchr
+
+  pkg-config 0.3.34
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/pkg-config-rs
 
   proc-macro2 1.0.107
     Licence : MIT OR Apache-2.0
@@ -111,6 +139,10 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/dtolnay/quote
 
+  r-efi 6.0.0
+    Licence : MIT OR Apache-2.0 OR LGPL-2.1-or-later
+    Source  : https://github.com/r-efi/r-efi
+
   rayon 1.12.0
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rayon-rs/rayon
@@ -119,9 +151,17 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rayon-rs/rayon
 
+  rustc_version 0.4.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/djc/rustc-version-rs
+
   same-file 1.0.6
     Licence : Unlicense/MIT
     Source  : https://github.com/BurntSushi/same-file
+
+  semver 1.0.28
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/dtolnay/semver
 
   serde 1.0.229
     Licence : MIT OR Apache-2.0
@@ -134,6 +174,10 @@ Dependances Rust
   serde_derive 1.0.229
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/serde-rs/serde
+
+  shlex 2.0.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/comex/rust-shlex
 
   syn 2.0.119
     Licence : MIT OR Apache-2.0
@@ -214,6 +258,18 @@ Dependances Rust
   zerocopy-derive 0.8.57
     Licence : BSD-2-Clause OR Apache-2.0 OR MIT
     Source  : https://github.com/google/zerocopy
+
+  zstd 0.13.3
+    Licence : MIT
+    Source  : https://github.com/gyscos/zstd-rs
+
+  zstd-safe 7.3.0
+    Licence : BSD-3-Clause
+    Source  : https://github.com/gyscos/zstd-rs
+
+  zstd-sys 2.1.0+zstd.1.5.7
+    Licence : BSD-3-Clause
+    Source  : https://github.com/gyscos/zstd-rs
 
 --------------------------------------------------------------------------------
 Dependances Java

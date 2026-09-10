@@ -12,7 +12,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 ## État courant
 
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
-**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12 et C-15 faits.**
+**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12, C-15 et C-24 faits.**
 
 Ce qui est en place :
 
@@ -415,7 +415,44 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         il faudrait que Java pousse la valeur mesurée.
 - [ ] **C-16** Noyau déterministe. **`[EFFORT MAX]`**, prévenir avant de
       commencer. La dette « glam et déterminisme » se règle d'abord.
-- [ ] **C-20, C-21, C-22, C-24** Compilation d'assets GLB/OBJ/STL vers A3D.
+- [x] **C-24 — Conteneur A3D.** Crate `ax-asset`, 36 tests, format de la
+      PARTIE 7 écrit et relu octet pour octet.
+      - en-tête de 64 octets, table de sections de 32 octets par entrée,
+        sections alignées sur 16 (R-881), little-endian ;
+      - **rien n'est cru sur parole** : le CRC d'en-tête couvre `total_size`,
+        donc toutes les vérifications de bornes qui s'appuient dessus (R-900) ;
+        chaque taille annoncée est plafonnée avant allocation (R-901) ; chaque
+        charge utile est comparée à son CRC **avant** décompression (R-882), et
+        la décompression est bornée par une taille connue d'avance (R-902) ;
+      - un tag inconnu est ignoré proprement (R-880), une version mineure
+        supérieure se lit (R-891), une majeure inconnue est refusée (R-890) ;
+      - compression zstd par section, avec repli sur le stockage brut quand elle
+        n'y gagne rien ; sortie **déterministe**, remplissage nul ;
+      - chargement partiel par masque de sections (objectif 7.1) : un serveur
+        dédié ne charge ni matériaux ni textures ;
+      - **fixture versionnée** `tests/fixtures/a3d/v1.1-minimal.a3d` : le test
+        la relit et vérifie que l'écrivain la reproduit octet pour octet. Un
+        changement de format fait échouer ce test, ce qui pose la question de
+        R-893 — version incrémentée, migration écrite, ancien fichier conservé —
+        au bon moment.
+
+      **Deux points relevés dans la spécification, tranchés et documentés :**
+      - la PARTIE 7 écrit `u32 magic = 0x41_33_44_00 ("A3D ")`, deux notations
+        qui ne coïncident pas en little-endian. Ce sont les **octets** qui font
+        foi, comme pour l'en-tête des tampons partagés : un fichier A3D commence
+        par `A3D ` lisible dans un éditeur hexadécimal ;
+      - la table des sections nomme `PART_SET`, qui ne tient pas dans les quatre
+        octets d'un tag. `PSET` est la forme retenue, `PART` étant déjà pris.
+
+      **Ce que le fichier ne contient pas encore** : le *contenu* des sections.
+      `NodeDesc`, `MeshDesc`, `Vertex`, `ColliderDesc` et les autres viennent
+      avec les composants qui les produisent. Le conteneur les transporte sans
+      les interpréter, ce qui est exactement son rôle.
+- [ ] **C-21** Importers GLB/glTF/OBJ/STL — `gltf`, `tobj`, `stl_io`.
+- [ ] **C-22** Validateur d'assets — la liste de contrôle de la fiche 5.15.
+- [ ] **C-20** Orchestrateur — découverte, clés de cache, compilation
+      asynchrone, budget par tick, asset de secours.
+- [ ] **C-23, C-25** Optimizer et cache — M1 pour le cache, M2 pour l'optimizer.
 - [ ] **C-71** Commandes — `/axion status` existe déjà, ses autres branches
       arrivent avec les composants qu'elles pilotent.
 

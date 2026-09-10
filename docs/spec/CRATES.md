@@ -21,6 +21,7 @@ workspace désigne.
 | `ax-jobs` | C-12 | Pool dédié, annulation, deadlines, granularité adaptative |
 | `ax-telemetry` | C-15 | Registre de métriques, métriques de budget, export JSON |
 | `ax-model` | DM-* | Modèles de données, registre des budgets, configuration, génération Java |
+| `ax-asset` | C-24 | Conteneur A3D : écriture, lecture durcie, sections |
 | `ax-ffi` | C-14 | `cdylib`, ABI, points d'entrée JNI |
 | `tools/codegen` | — | Génère le code Java depuis `ax-model` ; hors `crates/`, il ne fait pas partie de la bibliothèque livrée |
 
@@ -47,6 +48,6 @@ interdit. Les prochains, par ordre de jalon :
 | Crate | Composant | Jalon |
 |---|---|---|
 | `ax-det` | C-16 — noyau déterministe et vecteurs d'or | M1 |
-| `ax-asset` | C-20..C-25 — compilation et cache d'assets | M1, M2 |
+| — | C-20..C-23, C-25 rejoignent `ax-asset` : orchestrateur, importers, validateur, cache | M1, M2 |
 | `ax-scene` | C-30 — graphe de scène | M2 |
 | `ax-physics` | C-31, C-32, C-38..C-40 | M3 |

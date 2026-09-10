@@ -47,12 +47,24 @@ jni = { version = "0.21", default-features = false }
 # global, ni iterateurs paralleles implicites, qui s'executeraient dessus.
 rayon = { version = "1.11", default-features = false }
 
+# C-24 : integrite des sections A3D (R-882). CRC32C, et non CRC32 : c'est
+# celui que R-271 impose deja a l'en-tete des tampons partages, et une seule
+# fonction d'integrite pour tout le projet vaut mieux que deux. Retenu par 32.2,
+# licence Apache-2.0.
+crc32c = { version = "0.6", default-features = false }
+
+# C-24 : compression des sections A3D. Retenu par 32.2, licence BSD-3-Clause,
+# avec `lz4_flex` comme alternative evaluee. La decompression est toujours
+# bornee par une taille de sortie connue a l'avance (R-902).
+zstd = { version = "0.13", default-features = false }
+
 # Crates internes.
 ax-math = { path = "crates/ax-math" }
 ax-mem = { path = "crates/ax-mem" }
 ax-core = { path = "crates/ax-core" }
 ax-jobs = { path = "crates/ax-jobs" }
 ax-telemetry = { path = "crates/ax-telemetry" }
+ax-asset = { path = "crates/ax-asset" }
 ax-model = { path = "crates/ax-model" }
 
 # Les profils s'appliquent a tout le workspace.
