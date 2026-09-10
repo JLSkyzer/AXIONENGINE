@@ -1,6 +1,7 @@
 //! Métriques par type de travail (R-474, R-500, INV-19).
 
-use crate::kind::{BudgetKey, JobKind};
+use crate::kind::JobKind;
+use ax_model::budgets::Budget;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 /// Compteurs d'un type de travail.
@@ -117,10 +118,10 @@ impl JobMetrics {
     /// Les types qui partagent un budget s'y additionnent : c'est le budget qui
     /// est consommé, pas le type.
     #[must_use]
-    pub fn budget_elapsed_nanos(&self, key: BudgetKey) -> u64 {
+    pub fn budget_elapsed_nanos(&self, budget: Budget) -> u64 {
         JobKind::ALL
             .iter()
-            .filter(|kind| kind.budget() == key)
+            .filter(|kind| kind.budget() == budget)
             .map(|kind| self.kind(*kind).elapsed_nanos)
             .sum()
     }
@@ -129,10 +130,10 @@ impl JobMetrics {
     ///
     /// C'est la métrique de dépassement qu'exigent R-241 et R-500.
     #[must_use]
-    pub fn budget_overruns(&self, key: BudgetKey) -> u64 {
+    pub fn budget_overruns(&self, budget: Budget) -> u64 {
         JobKind::ALL
             .iter()
-            .filter(|kind| kind.budget() == key)
+            .filter(|kind| kind.budget() == budget)
             .map(|kind| self.kind(*kind).overran)
             .sum()
     }
@@ -171,8 +172,8 @@ mod tests {
         metrics.record_submitted(JobKind::Cull);
         metrics.record_completed(JobKind::Cull, 2_000, false);
 
-        assert_eq!(metrics.budget_elapsed_nanos(BudgetKey::RenderPrepNs), 3_000);
-        assert_eq!(metrics.budget_overruns(BudgetKey::RenderPrepNs), 1);
+        assert_eq!(metrics.budget_elapsed_nanos(Budget::RenderPrepNs), 3_000);
+        assert_eq!(metrics.budget_overruns(Budget::RenderPrepNs), 1);
         // Et restent distinguables l'un de l'autre.
         assert_eq!(metrics.kind(JobKind::Anim).elapsed_nanos, 1_000);
         assert_eq!(metrics.kind(JobKind::Cull).elapsed_nanos, 2_000);

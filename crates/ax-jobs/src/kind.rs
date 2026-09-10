@@ -1,5 +1,6 @@
 //! Types de travaux et budgets associés (R-474).
 
+use ax_model::budgets::Budget;
 use core::fmt;
 
 /// Nature d'un travail soumis au système de jobs (R-474).
@@ -61,24 +62,23 @@ impl JobKind {
         self as usize
     }
 
-    /// Budget de DM-18 auquel le temps de ce type s'impute.
+    /// Budget du registre auquel le temps de ce type s'impute.
     ///
-    /// `ANIM` et `CULL` s'imputent tous deux sur `render_prep_ns` : DM-18 ne
-    /// déclare pas de budget d'animation, et la structure `Budgets` traverse la
-    /// frontière en `repr(C)` — lui ajouter un champ serait modifier un modèle
-    /// de données, ce qui ne se décide pas ici. Les deux types gardent en
-    /// revanche leurs métriques propres, si bien que leur consommation reste
-    /// distinguable dans le budget qu'ils partagent.
+    /// `ANIM` et `CULL` s'imputent tous deux sur `budgets.render_prep_ns` : le
+    /// registre ne déclare pas de budget d'animation, et en inventer un
+    /// reviendrait à ajouter un budget que le cahier des charges ne connaît
+    /// pas. Les deux types gardent en revanche leurs métriques propres, si bien
+    /// que leur consommation reste distinguable dans le budget qu'ils partagent.
     #[must_use]
-    pub const fn budget(self) -> BudgetKey {
+    pub const fn budget(self) -> Budget {
         match self {
-            JobKind::Physics => BudgetKey::SimNsPerTick,
-            JobKind::Damage => BudgetKey::DamageNsPerTick,
-            JobKind::Deform => BudgetKey::DeformationNsPerTick,
-            JobKind::Particles => BudgetKey::ParticlesNsPerTick,
-            JobKind::Anim | JobKind::Cull => BudgetKey::RenderPrepNs,
-            JobKind::Occlusion => BudgetKey::OcclusionNs,
-            JobKind::Asset => BudgetKey::AssetNsPerTick,
+            JobKind::Physics => Budget::SimNsPerTick,
+            JobKind::Damage => Budget::DamageNsPerTick,
+            JobKind::Deform => Budget::DeformationNsPerTick,
+            JobKind::Particles => Budget::ParticlesNsPerTick,
+            JobKind::Anim | JobKind::Cull => Budget::RenderPrepNs,
+            JobKind::Occlusion => Budget::OcclusionNs,
+            JobKind::Asset => Budget::AssetNsPerTick,
         }
     }
 }
@@ -89,110 +89,67 @@ impl fmt::Display for JobKind {
     }
 }
 
-/// Budget temporel de DM-18 sur lequel un travail s'impute.
-///
-/// Seuls les budgets de durée y figurent : les plafonds de mémoire et de
-/// dénombrement de DM-18 ne bornent pas un travail, ils bornent un état.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(u8)]
-pub enum BudgetKey {
-    /// `budgets.sim_ns_per_tick`.
-    SimNsPerTick = 0,
-    /// `budgets.damage_ns_per_tick`.
-    DamageNsPerTick = 1,
-    /// `budgets.deformation_ns_per_tick`.
-    DeformationNsPerTick = 2,
-    /// `budgets.particles_ns_per_tick`.
-    ParticlesNsPerTick = 3,
-    /// `budgets.render_prep_ns`.
-    RenderPrepNs = 4,
-    /// `budgets.occlusion_ns`.
-    OcclusionNs = 5,
-    /// `budgets.asset_ns_per_tick`.
-    AssetNsPerTick = 6,
-}
-
-impl BudgetKey {
-    /// Tous les budgets temporels, dans l'ordre de leur discriminant.
-    pub const ALL: [BudgetKey; 7] = [
-        BudgetKey::SimNsPerTick,
-        BudgetKey::DamageNsPerTick,
-        BudgetKey::DeformationNsPerTick,
-        BudgetKey::ParticlesNsPerTick,
-        BudgetKey::RenderPrepNs,
-        BudgetKey::OcclusionNs,
-        BudgetKey::AssetNsPerTick,
-    ];
-
-    /// Chemin de l'option de configuration qui porte ce budget.
-    #[must_use]
-    pub const fn config_path(self) -> &'static str {
-        match self {
-            BudgetKey::SimNsPerTick => "budgets.sim_ns_per_tick",
-            BudgetKey::DamageNsPerTick => "budgets.damage_ns_per_tick",
-            BudgetKey::DeformationNsPerTick => "budgets.deformation_ns_per_tick",
-            BudgetKey::ParticlesNsPerTick => "budgets.particles_ns_per_tick",
-            BudgetKey::RenderPrepNs => "budgets.render_prep_ns",
-            BudgetKey::OcclusionNs => "budgets.occlusion_ns",
-            BudgetKey::AssetNsPerTick => "budgets.asset_ns_per_tick",
-        }
-    }
-
-    /// Position du budget dans les tables indexées par budget.
-    #[must_use]
-    pub const fn index(self) -> usize {
-        self as usize
-    }
-}
-
 /// Budgets temporels en vigueur, en nanosecondes.
 ///
-/// Il n'y a **pas** de `Default` : les valeurs par défaut vivent dans le
+/// Il n'y a **pas** de `Default` porteur de valeurs : les défauts vivent dans le
 /// registre de configuration (`ax-model`), source unique documentée par
 /// `CONFIGURATION.md` (R-430). Les recopier ici en créerait une seconde, qui
-/// divergerait à la première modification.
+/// divergerait à la première modification. Un budget non renseigné vaut zéro,
+/// c'est-à-dire **aucune deadline** : le travail n'est jamais marqué en
+/// dépassement, faute de quoi le comparer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct JobBudgets {
-    nanos: [u64; 7],
+    nanos: [u64; Budget::ALL.len()],
+}
+
+impl Default for JobBudgets {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl JobBudgets {
-    /// Construit les budgets depuis les valeurs de configuration résolues.
-    ///
-    /// L'ordre des paramètres est celui de la structure `Budgets` de DM-18.
+    /// Crée des budgets tous nuls, donc sans deadline.
     #[must_use]
-    pub const fn new(
-        sim_ns_per_tick: u64,
-        damage_ns_per_tick: u64,
-        deformation_ns_per_tick: u64,
-        particles_ns_per_tick: u64,
-        render_prep_ns: u64,
-        occlusion_ns: u64,
-        asset_ns_per_tick: u64,
-    ) -> Self {
+    pub const fn new() -> Self {
         Self {
-            nanos: [
-                sim_ns_per_tick,
-                damage_ns_per_tick,
-                deformation_ns_per_tick,
-                particles_ns_per_tick,
-                render_prep_ns,
-                occlusion_ns,
-                asset_ns_per_tick,
-            ],
+            nanos: [0; Budget::ALL.len()],
         }
+    }
+
+    /// Renseigne un budget, en nanosecondes.
+    ///
+    /// # Panics
+    ///
+    /// Si le budget ne borne pas une durée : un plafond de mémoire ou de
+    /// dénombrement ne fixe pas de deadline, et l'employer comme tel
+    /// marquerait des dépassements qui n'ont pas de sens.
+    pub fn set(&mut self, budget: Budget, nanos: u64) {
+        assert!(
+            budget.is_duration(),
+            "{budget} ne borne pas une durée : il ne peut pas fixer de deadline"
+        );
+        self.nanos[budget.index()] = nanos;
+    }
+
+    /// Renseigne un budget et rend la valeur modifiée, pour l'écriture en
+    /// chaîne.
+    #[must_use]
+    pub fn with(mut self, budget: Budget, nanos: u64) -> Self {
+        self.set(budget, nanos);
+        self
     }
 
     /// Budget d'un travail de ce type, en nanosecondes.
     #[must_use]
-    pub const fn for_kind(&self, kind: JobKind) -> u64 {
+    pub fn for_kind(&self, kind: JobKind) -> u64 {
         self.nanos[kind.budget().index()]
     }
 
     /// Budget désigné, en nanosecondes.
     #[must_use]
-    pub const fn get(&self, key: BudgetKey) -> u64 {
-        self.nanos[key.index()]
+    pub fn get(&self, budget: Budget) -> u64 {
+        self.nanos[budget.index()]
     }
 }
 
@@ -201,12 +158,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tout_type_porte_un_budget_et_un_nom() {
+    fn tout_type_porte_un_budget_de_duree() {
         // R-474 : aucun type ne peut exister sans budget, sous peine d'être un
-        // sous-système sans budget déclaré (INV-19).
+        // sous-système sans budget déclaré (INV-19). Et ce budget doit borner
+        // une durée : un travail se mesure en temps.
         for kind in JobKind::ALL {
             assert!(!kind.name().is_empty());
-            assert!(BudgetKey::ALL.contains(&kind.budget()));
+            assert!(kind.budget().is_duration(), "{kind} : budget hors durée");
         }
     }
 
@@ -215,31 +173,28 @@ mod tests {
         for (position, kind) in JobKind::ALL.iter().enumerate() {
             assert_eq!(position, kind.index(), "{kind} mal indexé");
         }
-        for (position, key) in BudgetKey::ALL.iter().enumerate() {
-            assert_eq!(position, key.index(), "{key:?} mal indexé");
-        }
-    }
-
-    #[test]
-    fn chaque_budget_designe_une_option_de_configuration() {
-        // Le chemin doit être celui du registre : une faute de frappe ferait
-        // lire un budget qui n'existe pas.
-        for key in BudgetKey::ALL {
-            assert!(key.config_path().starts_with("budgets."), "{key:?}");
-        }
     }
 
     #[test]
     fn les_budgets_se_lisent_par_type() {
-        let budgets = JobBudgets::new(
-            3_000_000, 1_000_000, 1_500_000, 1_000_000, 2_000_000, 800_000, 1_000_000,
-        );
+        let budgets = JobBudgets::new()
+            .with(Budget::SimNsPerTick, 3_000_000)
+            .with(Budget::OcclusionNs, 800_000)
+            .with(Budget::RenderPrepNs, 2_000_000);
 
         assert_eq!(budgets.for_kind(JobKind::Physics), 3_000_000);
         assert_eq!(budgets.for_kind(JobKind::Occlusion), 800_000);
         // ANIM et CULL partagent render_prep_ns, faute de budget d'animation
-        // dans DM-18.
+        // au registre.
         assert_eq!(budgets.for_kind(JobKind::Anim), 2_000_000);
         assert_eq!(budgets.for_kind(JobKind::Cull), 2_000_000);
+        // Un budget non renseigné vaut zéro : aucune deadline.
+        assert_eq!(budgets.for_kind(JobKind::Asset), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "ne borne pas une durée")]
+    fn un_plafond_de_memoire_ne_fixe_pas_de_deadline() {
+        let _ = JobBudgets::new().with(Budget::NativeMemBytes, 1_000);
     }
 }

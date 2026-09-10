@@ -8,8 +8,8 @@
 //! Le système repose sur quatre pièces indépendantes, chacune vérifiable seule :
 //!
 //! - [`WorkerPolicy`] dimensionne le pool (R-471, PARTIE 27.4) ;
-//! - [`JobKind`] et [`JobBudgets`] rattachent chaque travail à un budget de
-//!   DM-18 (R-474) ;
+//! - [`JobKind`] et [`JobBudgets`] rattachent chaque travail à un budget du
+//!   registre de la PARTIE 25.2, tenu par `ax-model` (R-474) ;
 //! - [`Granularity`] découpe les lots en tâches d'environ 100 µs, **mesurées**
 //!   et non supposées (R-473) ;
 //! - [`JobSystem`] soumet, annule et marque les dépassements (R-472).
@@ -45,7 +45,7 @@ mod system;
 mod workers;
 
 pub use granularity::{Granularity, TARGET_TASK_NANOS};
-pub use kind::{BudgetKey, JobBudgets, JobKind};
+pub use kind::{JobBudgets, JobKind};
 pub use metrics::{JobMetrics, KindMetrics};
 pub use system::{CancelToken, JobContext, JobError, JobHandle, JobOutcome, JobResult, JobSystem};
 pub use workers::{CpuShare, Side, WorkerPolicy, RESERVED_CORES};

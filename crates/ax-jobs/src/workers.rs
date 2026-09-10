@@ -8,7 +8,13 @@ use core::fmt;
 /// le rendu ou les entrées-sorties. AXION ne prend jamais toute la machine.
 pub const RESERVED_CORES: usize = 2;
 
-/// Part de parallélisme qu'AXION s'autorise (`integration.rustforgex.cpu_share`).
+/// Part de parallélisme qu'AXION s'autorise (PARTIE 27.4).
+///
+/// L'option de configuration qui la porte n'est pas nommée ici : elle appartient
+/// au pont d'interopérabilité optionnel, et INV-06 veut qu'aucun système
+/// d'AXION ne référence ce mod hors de C-76. Le pool ne sait donc rien de plus
+/// que « un autre gros consommateur de CPU est présent », ce qui est tout ce
+/// dont il a besoin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CpuShare {
     /// Tout ce que R-471 autorise, quelle que soit la présence d'un tiers.

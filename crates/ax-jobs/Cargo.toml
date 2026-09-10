@@ -17,4 +17,7 @@ unsafe_code = "deny"
 missing_docs = "warn"
 
 [dependencies]
+# Le registre des budgets (PARTIE 25.2) y vit : ax-jobs le lit, il ne le
+# redeclare pas.
+ax-model.workspace = true
 rayon.workspace = true

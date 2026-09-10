@@ -374,13 +374,21 @@ impl JobSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kind::BudgetKey;
     use crate::workers::{CpuShare, Side};
+    use ax_model::budgets::Budget;
 
     const SECONDE: Duration = Duration::from_secs(5);
 
+    /// Donne la même valeur à tous les budgets de durée : les tests portent
+    /// sur le comportement des deadlines, pas sur leur répartition.
     fn budgets(nanos: u64) -> JobBudgets {
-        JobBudgets::new(nanos, nanos, nanos, nanos, nanos, nanos, nanos)
+        let mut budgets = JobBudgets::new();
+        for budget in Budget::ALL {
+            if budget.is_duration() {
+                budgets.set(budget, nanos);
+            }
+        }
+        budgets
     }
 
     fn system(workers: u32, budget_nanos: u64) -> JobSystem {
@@ -485,8 +493,7 @@ mod tests {
             "un travail en dépassement doit compter comme terminé"
         );
         assert_eq!(
-            jobs.metrics()
-                .budget_overruns(BudgetKey::ParticlesNsPerTick),
+            jobs.metrics().budget_overruns(Budget::ParticlesNsPerTick),
             1
         );
     }
@@ -552,7 +559,9 @@ mod tests {
 
     #[test]
     fn t173_chaque_type_est_soumis_avec_son_budget() {
-        let budgets = JobBudgets::new(1, 2, 3, 4, 5, 6, 7);
+        let budgets = JobBudgets::new()
+            .with(Budget::SimNsPerTick, 1)
+            .with(Budget::AssetNsPerTick, 7);
         let policy = WorkerPolicy {
             cores: 4,
             side: Side::Server,
