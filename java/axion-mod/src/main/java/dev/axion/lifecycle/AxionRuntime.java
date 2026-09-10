@@ -236,6 +236,34 @@ public final class AxionRuntime {
     }
 
     /**
+     * {@return l'export JSON des métriques natives, ou {@code null} si le
+     * runtime n'est pas opérationnel}
+     *
+     * <p>R-502. Un runtime inactif n'a pas de métriques à donner : rendre un
+     * document vide laisserait croire qu'il n'a rien mesuré, alors qu'il n'a
+     * rien pu mesurer.
+     */
+    public String metricsJson() {
+        if (!isOperational()) {
+            return null;
+        }
+        try {
+            return nativeApi.metricsJson(outcome.context());
+        } catch (RuntimeException | UnsatisfiedLinkError failure) {
+            // Un export qui échoue ne doit pas remonter jusqu'à la commande :
+            // R-400 veut qu'aucun hook ne lève, et une commande de diagnostic
+            // encore moins.
+            transitions.add("export des métriques impossible : " + failure);
+            return null;
+        }
+    }
+
+    /** {@return le répertoire de jeu, ou {@code null} avant la construction} */
+    public java.nio.file.Path gameDir() {
+        return platform == null ? null : platform.gameDir();
+    }
+
+    /**
      * {@return vrai si le runtime natif est utilisable en ce moment}
      */
     public boolean isOperational() {

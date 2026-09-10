@@ -11,6 +11,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use ax_core::{BufferPool, ContextGuard, RuntimeState};
+use ax_jobs::{JobBudgets, JobSystem, Side, WorkerPolicy};
+use ax_model::budgets::Budget;
+use ax_telemetry::{BudgetMetrics, MetricId, Telemetry};
 
 /// Motif porté par les bits de poids fort d'un jeton de contexte.
 ///
@@ -27,6 +30,37 @@ static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 /// La session vivante, s'il y en a une.
 static SESSION: Mutex<Option<Session>> = Mutex::new(None);
 
+/// Motif du dernier refus survenu **avant** l'ouverture d'une session.
+///
+/// Une configuration refusée n'ouvre pas de session, et il n'y a donc nulle
+/// part où ranger la cause. Sans cet emplacement, Java recevrait un code sans
+/// message là où il en a le plus besoin — au démarrage, quand rien ne
+/// fonctionne encore.
+static INIT_ERROR: Mutex<Option<String>> = Mutex::new(None);
+
+/// Retient le motif d'un refus survenu avant l'ouverture d'une session.
+pub fn set_init_error(message: &str) {
+    *recover(INIT_ERROR.lock()) = Some(message.to_owned());
+}
+
+/// Rend le motif du dernier refus survenu avant l'ouverture d'une session.
+#[must_use]
+pub fn init_error() -> Option<String> {
+    recover(INIT_ERROR.lock()).clone()
+}
+
+/// Ce que la session mesure d'elle-même (C-15).
+///
+/// Les identifiants sont conservés à la déclaration : mesurer ne doit pas
+/// coûter une recherche par nom (R-501).
+#[derive(Debug)]
+struct SessionMetrics {
+    registry: Telemetry,
+    budgets: BudgetMetrics,
+    panics: MetricId,
+    workers: MetricId,
+}
+
 /// État interne d'une session native.
 #[derive(Debug)]
 pub struct Session {
@@ -35,6 +69,13 @@ pub struct Session {
     last_error: Option<String>,
     panics: u64,
     buffers: BufferPool,
+    /// Côté sur lequel tourne le runtime : il ne change pas la nature des
+    /// travaux, seulement le plafond de workers par défaut (R-471).
+    side: Side,
+    /// Pool de jobs de la session (C-12). Ses threads vivent aussi longtemps
+    /// qu'elle : les créer par travail coûterait plus cher que le travail.
+    jobs: Option<JobSystem>,
+    metrics: SessionMetrics,
     /// Détenu pour la durée de la session : c'est lui qui garantit l'unicité du
     /// contexte dans le processus (R-450).
     _guard: ContextGuard,
@@ -70,6 +111,61 @@ impl Session {
     #[must_use]
     pub fn buffers(&mut self) -> &mut BufferPool {
         &mut self.buffers
+    }
+
+    /// Côté sur lequel tourne le runtime.
+    #[must_use]
+    pub fn side(&self) -> Side {
+        self.side
+    }
+
+    /// Pool de jobs de la session, s'il a pu être créé.
+    ///
+    /// Son absence n'est pas une panne : R-2062 veut qu'un parallélisme
+    /// indisponible allonge le calcul, pas qu'il retire une fonctionnalité. Le
+    /// travail se fera alors sur le thread appelant.
+    #[must_use]
+    pub fn jobs(&self) -> Option<&JobSystem> {
+        self.jobs.as_ref()
+    }
+
+    /// Produit l'export JSON des métriques (R-502).
+    ///
+    /// Les compteurs du système de jobs y sont reportés juste avant : ils
+    /// vivent dans le pool, et les recopier en continu coûterait un travail
+    /// permanent pour une lecture occasionnelle.
+    #[must_use]
+    pub fn metrics_json(&self) -> String {
+        self.publish_metrics();
+        ax_telemetry::to_json(&self.metrics.registry)
+    }
+
+    /// Reporte dans le registre ce que les autres composants ont mesuré.
+    fn publish_metrics(&self) {
+        let metrics = &self.metrics;
+        metrics.registry.set(metrics.panics, self.panics);
+
+        let Some(jobs) = self.jobs.as_ref() else {
+            return;
+        };
+        metrics.registry.set(metrics.workers, jobs.workers() as u64);
+
+        // La consommation d'un budget est la somme de ce qu'y ont passé les
+        // types de travaux qui s'y imputent ; ses dépassements, la somme des
+        // leurs.
+        for budget in Budget::ALL {
+            if !budget.is_duration() {
+                continue;
+            }
+            let elapsed = jobs.metrics().budget_elapsed_nanos(budget);
+            let overruns = jobs.metrics().budget_overruns(budget);
+            metrics
+                .registry
+                .set(metrics.budgets.consumed_id(budget), elapsed);
+            metrics
+                .registry
+                .set(metrics.budgets.overruns_id(budget), overruns);
+        }
     }
 
     /// Enregistre une panic capturée et empoisonne le contexte.
@@ -109,7 +205,7 @@ fn sessions() -> MutexGuard<'static, Option<Session>> {
 ///
 /// Renvoie le code `E-1004` si une session est déjà ouverte dans ce processus
 /// (R-450).
-pub fn open() -> Result<u64, i32> {
+pub fn open(side: Side, workers: WorkerPolicy, budgets: JobBudgets) -> Result<u64, i32> {
     let mut slot = sessions();
     if slot.is_some() {
         return Err(ax_core::CoreError::AlreadyInitialized.code());
@@ -118,17 +214,58 @@ pub fn open() -> Result<u64, i32> {
     // composant détient déjà le contexte, l'ouverture échoue ici.
     let guard = ContextGuard::acquire().map_err(|error| error.code())?;
 
+    let metrics = build_metrics();
+
+    // Un pool qui refuse de naître ne fait pas échouer l'ouverture : R-2062
+    // veut que le calcul soit plus long, pas absent. La cause est consignée.
+    let (jobs, jobs_error) = match JobSystem::new(&workers, budgets) {
+        Ok(system) => (Some(system), None),
+        Err(error) => (None, Some(error.to_string())),
+    };
+
     let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     let token = TOKEN_TAG | session;
     *slot = Some(Session {
         token,
         state: RuntimeState::Ready,
-        last_error: None,
+        last_error: jobs_error,
         panics: 0,
         buffers: BufferPool::new(),
+        side,
+        jobs,
+        metrics,
         _guard: guard,
     });
     Ok(token)
+}
+
+/// Déclare les métriques de la session (C-15).
+///
+/// Les métriques de budget sont déclarées d'un bloc, pour tous les budgets du
+/// registre : c'est ce qu'exige INV-19, et les déclarer une par une laisserait
+/// la porte ouverte à l'oubli.
+///
+/// La déclaration ne peut échouer qu'en cas de nom invalide ou de doublon, deux
+/// fautes de programmation que les tests attrapent ; l'échec est donc fatal ici
+/// plutôt que propagé jusqu'à un appelant qui n'en pourrait rien faire.
+fn build_metrics() -> SessionMetrics {
+    let mut builder = Telemetry::builder();
+    let budgets = BudgetMetrics::register(&mut builder).expect("métriques de budget");
+    // R-310 : chaque panic capturée incrémente `axion.native.panics`.
+    let panics = builder
+        .gauge("axion.native.panics", "count")
+        .expect("métrique de panics");
+    // R-2060 : le nombre de workers retenu est visible, pas seulement décidé.
+    let workers = builder
+        .gauge("axion.jobs.workers", "count")
+        .expect("métrique de workers");
+
+    SessionMetrics {
+        registry: builder.build(),
+        budgets,
+        panics,
+        workers,
+    }
 }
 
 /// Bilan des allocations au moment de l'arrêt (R-322).
@@ -220,6 +357,21 @@ pub(crate) fn reset_for_tests() {
 
 #[cfg(test)]
 mod tests {
+    /// Ouvre une session de test : un seul worker, aucun budget.
+    ///
+    /// Les tests de ce module portent sur le cycle de vie du contexte, pas sur
+    /// le dimensionnement du pool ; un pool minimal suffit et reste rapide.
+    fn open_for_test() -> Result<u64, i32> {
+        let policy = WorkerPolicy {
+            cores: 4,
+            side: Side::Server,
+            max_workers: 1,
+            cpu_share: ax_jobs::CpuShare::Fixed(1),
+            third_party_present: false,
+        };
+        open(Side::Server, policy, JobBudgets::new())
+    }
+
     use super::*;
 
     /// Le registre est un état global au processus : les tests qui l'ouvrent
@@ -230,14 +382,14 @@ mod tests {
         reset_for_tests();
         assert!(!is_open());
 
-        let token = open().expect("première ouverture refusée");
+        let token = open_for_test().expect("première ouverture refusée");
         assert!(is_open());
         // Le jeton porte le motif : ni zéro, ni un petit entier.
         assert_eq!(token & 0xFFFF_FFFF_0000_0000, TOKEN_TAG);
         assert_ne!(token, 0);
 
         // R-450 : une seconde ouverture est refusée avec E-1004.
-        assert_eq!(open().unwrap_err(), -1004);
+        assert_eq!(open_for_test().unwrap_err(), -1004);
 
         // Un jeton forgé ne désigne rien.
         for forge in [0, 1, token ^ 1, TOKEN_TAG] {
@@ -280,7 +432,7 @@ mod tests {
         // Le jeton d'une session fermée ne désigne plus rien, et la session
         // suivante en reçoit un différent.
         assert_eq!(with(token, true, |_| ()).unwrap_err(), -2001);
-        let next = open().expect("réouverture refusée");
+        let next = open_for_test().expect("réouverture refusée");
         assert_ne!(next, token, "jeton réutilisé d'une session à l'autre");
         close(next).unwrap();
     }

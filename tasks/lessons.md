@@ -209,3 +209,18 @@ dédié, l'inverse de ce que laisse croire la lecture du bytecode de
 **Corollaire.** Les états d'un cycle de vie qu'aucun événement n'atteint sont
 des états morts : `RUNNING_CLIENT` existait depuis M0.1 sans que rien n'y mène.
 Chercher, pour chaque état déclaré, l'événement qui y fait entrer.
+
+## 2026-09-10 | Une structure qui traverse la frontière n'est pas un registre
+
+La structure `Budgets` de DM-18 avait l'air d'être la liste des budgets. Elle en
+porte dix-sept sur vingt : c'est le sous-ensemble qui traverse la frontière avec
+le profil de qualité, pas le registre. Trois budgets seraient restés hors audit.
+
+**Règle.** Avant de prendre une structure du cahier des charges pour une liste
+de référence, chercher la **table** qui l'énumère — ici la PARTIE 25.2. Une
+structure sert un transport ; une table sert un inventaire. Écrire l'audit dans
+les deux sens le montre tout de suite : « tout élément de la liste est dans le
+code » ne suffit pas, il faut aussi « tout élément du code est dans la liste ».
+
+**Corollaire.** Deux listes qu'on écrit soi-même ne se valident pas l'une
+l'autre. Le test qui compte est celui qui compare le code à la source figée.

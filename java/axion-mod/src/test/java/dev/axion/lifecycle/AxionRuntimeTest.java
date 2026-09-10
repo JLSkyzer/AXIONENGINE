@@ -84,7 +84,7 @@ class AxionRuntimeTest {
         }
 
         @Override
-        public long initialize(byte[] configCbor) {
+        public long initialize(byte[] configCbor, int side) {
             return 1L;
         }
 
@@ -107,6 +107,11 @@ class AxionRuntimeTest {
         @Override
         public String lastErrorMessage(long context) {
             return "";
+        }
+
+        @Override
+        public String metricsJson(long context) {
+            return "{}";
         }
     }
 

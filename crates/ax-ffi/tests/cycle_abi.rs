@@ -20,8 +20,8 @@
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use axion_native::abi::{
     axion_abi_version, axion_buffer_acquire, axion_buffer_release, axion_init, axion_last_error,
-    axion_shutdown, AxionBufferInfo, AXION_ABI_VERSION, AXION_E_INVALID_BUFFER,
-    AXION_E_INVALID_HANDLE, AXION_E_LEAK, AXION_OK,
+    axion_metrics_export, axion_shutdown, AxionBufferInfo, AXION_ABI_VERSION,
+    AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE, AXION_E_LEAK, AXION_OK, AXION_SIDE_SERVER,
 };
 
 fn config_cbor() -> Vec<u8> {
@@ -69,14 +69,21 @@ fn cycle_complet_de_l_abi() {
     let mut ctx: u64 = 0;
     // SAFETY: `cbor` est vivant pour la durée de l'appel, `ctx` est accessible
     // en écriture.
-    let code = unsafe { axion_init(cbor.as_ptr(), cbor.len(), &raw mut ctx) };
+    let code = unsafe { axion_init(cbor.as_ptr(), cbor.len(), AXION_SIDE_SERVER, &raw mut ctx) };
     assert_eq!(code, AXION_OK, "initialisation refusée");
     assert_ne!(ctx, 0, "jeton de contexte nul");
 
     // Une seconde initialisation est refusée : un contexte par processus.
     let mut second: u64 = 0;
     // SAFETY: mêmes garanties.
-    let code = unsafe { axion_init(cbor.as_ptr(), cbor.len(), &raw mut second) };
+    let code = unsafe {
+        axion_init(
+            cbor.as_ptr(),
+            cbor.len(),
+            AXION_SIDE_SERVER,
+            &raw mut second,
+        )
+    };
     assert_eq!(code, -1004, "double initialisation acceptée");
 
     // Acquisition d'un tampon, puis écriture d'une charge utile complète.
@@ -166,7 +173,10 @@ fn cycle_complet_de_l_abi() {
     let mut fuite: u64 = 0;
     // SAFETY: pointeurs locaux valides.
     unsafe {
-        assert_eq!(axion_init(std::ptr::null(), 0, &raw mut fuite), AXION_OK);
+        assert_eq!(
+            axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut fuite),
+            AXION_OK
+        );
         let mut oublie = empty_info();
         assert_eq!(
             axion_buffer_acquire(fuite, BufferKind::Events.as_u32(), 32, &raw mut oublie),
@@ -182,15 +192,90 @@ fn cycle_complet_de_l_abi() {
         assert_eq!(axion_shutdown(fuite), AXION_E_INVALID_HANDLE);
     }
 
+    // T-201 : l'export des métriques traverse la frontière (R-502). Il est
+    // demandé ici, sur une session qui a vécu — tampons acquis, relâchés, et
+    // un déséquilibre signalé — plutôt que sur une session neuve.
+    let mut reprise: u64 = 0;
+    // SAFETY: mêmes garanties qu'à la première initialisation.
+    let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut reprise) };
+    assert_eq!(code, AXION_OK, "réinitialisation refusée");
+    exporte_les_metriques(reprise);
+    // SAFETY: aucun pointeur déréférencé.
+    unsafe {
+        assert_eq!(axion_shutdown(reprise), AXION_OK);
+    }
+
     // Un arrêt propre autorise un redémarrage : le cas d'un serveur qui
     // recharge le mod.
     let mut reprise: u64 = 0;
     // SAFETY: mêmes garanties qu'à la première initialisation.
-    let code = unsafe { axion_init(std::ptr::null(), 0, &raw mut reprise) };
+    let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut reprise) };
     assert_eq!(code, AXION_OK, "réinitialisation refusée");
     assert_ne!(reprise, ctx, "jeton réutilisé d'une session à l'autre");
     // SAFETY: aucun pointeur déréférencé.
     unsafe {
         assert_eq!(axion_shutdown(reprise), AXION_OK);
     }
+}
+
+/// T-201 — R-502 : l'export JSON des métriques traverse la frontière.
+///
+/// Le protocole est celui de la fonction : `out_len` reçoit toujours la
+/// longueur complète, et rien n'est écrit tant que la capacité ne suffit pas.
+fn exporte_les_metriques(ctx: u64) {
+    // Capacité nulle : on demande seulement la taille.
+    let mut needed: usize = 0;
+    // SAFETY: `out_utf8` peut être nul quand `cap` vaut zéro, `needed` est local.
+    let code = unsafe { axion_metrics_export(ctx, std::ptr::null_mut(), 0, &raw mut needed) };
+    assert_eq!(code, AXION_OK, "export refusé");
+    assert!(needed > 0, "export vide");
+
+    // Capacité insuffisante : rien n'est écrit, un JSON tronqué n'étant pas un
+    // JSON.
+    let mut trop_petit = vec![0xAA_u8; needed - 1];
+    let mut encore: usize = 0;
+    // SAFETY: le tampon fait bien `needed - 1` octets.
+    let code = unsafe {
+        axion_metrics_export(
+            ctx,
+            trop_petit.as_mut_ptr(),
+            trop_petit.len(),
+            &raw mut encore,
+        )
+    };
+    assert_eq!(code, AXION_OK);
+    assert_eq!(encore, needed, "longueur requise non rendue");
+    assert!(
+        trop_petit.iter().all(|byte| *byte == 0xAA),
+        "un export tronqué a été écrit"
+    );
+
+    // Capacité suffisante : le document complet.
+    let mut buffer = vec![0_u8; needed];
+    let mut written: usize = 0;
+    // SAFETY: le tampon fait `needed` octets.
+    let code =
+        unsafe { axion_metrics_export(ctx, buffer.as_mut_ptr(), buffer.len(), &raw mut written) };
+    assert_eq!(code, AXION_OK);
+    assert_eq!(written, needed);
+
+    let json = std::str::from_utf8(&buffer).expect("export non UTF-8");
+    assert!(json.starts_with('{'), "{json}");
+    assert!(json.contains("\"schema_version\""), "{json}");
+    // Les métriques de budget y sont toutes, INV-19 l'exigeant.
+    assert!(
+        json.contains("axion.budget.sim_ns_per_tick.consumed"),
+        "{json}"
+    );
+    assert!(
+        json.contains("axion.budget.sim_ns_per_tick.overruns"),
+        "{json}"
+    );
+    assert!(json.contains("axion.jobs.workers"), "{json}");
+
+    // Un jeton invalide ne rend pas d'export.
+    let mut ignore: usize = 0;
+    // SAFETY: aucun pointeur déréférencé, la capacité étant nulle.
+    let code = unsafe { axion_metrics_export(0, std::ptr::null_mut(), 0, &raw mut ignore) };
+    assert_eq!(code, AXION_E_INVALID_HANDLE, "export sur jeton invalide");
 }

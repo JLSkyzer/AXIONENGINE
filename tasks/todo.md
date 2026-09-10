@@ -12,7 +12,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 ## État courant
 
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
-**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12 fait.**
+**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12 et C-15 faits.**
 
 Ce qui est en place :
 
@@ -23,6 +23,8 @@ Ce qui est en place :
       `dev/axion/**` API comprise, `META-INF/mods.toml` et `axion.mixins.json`.
 - [x] `axion-api` publie aussi son propre artefact (R-1750) et ses sources.
 - [x] Identité figée : `mod_id` = `axion`, paquet `dev.axion`, Apache-2.0.
+- [x] **ABI 2** depuis [ADR-103](../docs/decisions/ADR-103.md) : `axion_init`
+      reçoit le côté de démarrage, `axion_metrics_export` rend l'export JSON.
 - [x] Workspace Cargo et `rust-toolchain.toml` (rustc 1.94.0 épinglé, C-16).
 - [x] `deny.toml` : allowlist de licences, RustSec bloquant, crates.io seul (R-2301).
 - [x] Index du CDC : `docs/spec/INDEX.md` (452 sections) et
@@ -381,13 +383,36 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         traverse la frontière en `repr(C)` — lui ajouter un champ modifierait un
         modèle de données, ce qui ne se décide pas seul. Leurs métriques restent
         distinctes, donc leur consommation reste distinguable ;
-      - **le crate n'est pas encore câblé au contexte natif.** R-471 fait
-        dépendre le plafond de workers du côté — 4 client, 8 serveur — mais
-        `axion_init` ne reçoit qu'une configuration, où rien ne dit d'où elle
-        vient (IF-01). Transmettre le côté est une modification de contrat, à
-        décider avant le câblage. `Side` est donc un paramètre.
-- [ ] **C-15** Télémétrie et journalisation — c'est elle qui fera remonter les
-      métriques de C-12 jusqu'à `/axion status`.
+      - **câblé au contexte natif** depuis [ADR-103](../docs/decisions/ADR-103.md) :
+        `axion_init` reçoit le côté, le pool naît avec la session et meurt avec
+        elle. Vérifié sur un serveur dédié réel — `axion.jobs.workers : 8`,
+        c'est-à-dire le plafond serveur de R-471.
+- [x] **C-15 — Télémétrie native.** Crate `ax-telemetry`, 21 tests, plus le
+      registre des budgets dans `ax-model` et l'audit T-007.
+      - registre de métriques figé après déclaration : mesurer coûte un
+        `fetch_add` atomique sur une case désignée par index, sans recherche par
+        nom ni verrou. Un nom hors convention `axion.<domaine>.<mesure>` est
+        **refusé**, pas corrigé — une métrique mal nommée est invisible de qui
+        la cherche, ce qui est pire que son absence ;
+      - trois types : compteur, jauge, durée. Une durée retient cumul, nombre de
+        mesures et maximum ; sa moyenne se déduit plutôt que de s'entretenir ;
+      - **chaque** budget du registre porte sa métrique de consommation et sa
+        métrique de dépassement, déclarées d'un bloc pour qu'aucun ne soit
+        oublié (R-500, R-1850, INV-19). Vérifié sur le serveur : 42 métriques ;
+      - export JSON versionné (R-502), écrit à la main — la table 32.2 écarte
+        un analyseur JSON du runtime, le JSON étant lu côté Java par Gson.
+        Rien n'est écrit si la capacité ne suffit pas : un JSON tronqué n'est
+        pas un JSON ;
+      - `/axion metrics` résume les métriques non nulles, `/axion metrics
+        export` écrit le document dans `<gameDir>/axion/metrics-<horodatage>.json`.
+
+      **Deux points ouverts :**
+      - le coût de la télémétrie sous 1 % du composant mesuré (R-501) n'est
+        **pas mesuré** : c'est le benchmark B-08, avec les autres en M12. La
+        conception y tend, ce qui n'est pas la même chose ;
+      - `axion.ffi.roundtrip_ns` (R-330) est mesuré au démarrage et affiché par
+        `/axion status`, mais n'est pas encore une métrique du registre natif :
+        il faudrait que Java pousse la valeur mesurée.
 - [ ] **C-16** Noyau déterministe. **`[EFFORT MAX]`**, prévenir avant de
       commencer. La dette « glam et déterminisme » se règle d'abord.
 - [ ] **C-20, C-21, C-22, C-24** Compilation d'assets GLB/OBJ/STL vers A3D.

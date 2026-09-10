@@ -38,6 +38,7 @@ class AxionBootstrapTest {
         private boolean acquireSucceeds = true;
         private final List<Long> closed = new ArrayList<>();
         private final List<Integer> released = new ArrayList<>();
+        private final List<Integer> sides = new ArrayList<>();
         private int abiCalls;
 
         @Override
@@ -47,7 +48,8 @@ class AxionBootstrapTest {
         }
 
         @Override
-        public long initialize(byte[] configCbor) {
+        public long initialize(byte[] configCbor, int side) {
+            sides.add(side);
             // Le natif reçoit toujours quelque chose à décoder : la
             // configuration résolue, jamais un tableau vide.
             assertNotNull(configCbor);
@@ -78,6 +80,11 @@ class AxionBootstrapTest {
         @Override
         public String lastErrorMessage(long context) {
             return "message simulé";
+        }
+
+        @Override
+        public String metricsJson(long context) {
+            return "{}";
         }
     }
 
@@ -124,6 +131,13 @@ class AxionBootstrapTest {
                 List.of(dev.axion.bridge.BufferKinds.SIM_OUT),
                 api.released,
                 "le tampon de contrôle doit être rendu");
+
+        // R-471 : le côté est transmis au natif, qui en déduit le plafond de
+        // workers. Le déduire des clés reçues créerait un couplage implicite.
+        assertEquals(
+                List.of(dev.axion.bridge.NativeBridge.SIDE_SERVER),
+                api.sides,
+                "le côté n'a pas été transmis");
     }
 
     @Test

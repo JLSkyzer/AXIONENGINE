@@ -1,0 +1,22 @@
+[package]
+name = "ax-telemetry"
+description = "C-15 : métriques, budgets mesurés et export de diagnostic d'AXION ENGINE"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints.rust]
+# `deny` et non `forbid` : la bibliothèque ne contient aucun bloc `unsafe`, mais
+# `forbid` ne peut pas être levé localement et interdirait à un test d'installer
+# un allocateur global compteur — `GlobalAlloc` est un trait `unsafe` — pour
+# prouver qu'un chemin de code n'alloue pas (INV-08, T-016).
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[dependencies]
+# Le registre des budgets (PARTIE 25.2) : la télémétrie en dérive les métriques
+# de consommation et de dépassement qu'exige R-1850.
+ax-model.workspace = true

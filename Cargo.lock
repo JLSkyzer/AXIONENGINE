@@ -14,7 +14,9 @@ name = "ax-ffi"
 version = "1.0.0"
 dependencies = [
  "ax-core",
+ "ax-jobs",
  "ax-model",
+ "ax-telemetry",
  "ciborium",
  "jni",
 ]
@@ -23,6 +25,7 @@ dependencies = [
 name = "ax-jobs"
 version = "1.0.0"
 dependencies = [
+ "ax-model",
  "rayon",
 ]
 
@@ -40,6 +43,13 @@ version = "1.0.0"
 [[package]]
 name = "ax-model"
 version = "1.0.0"
+
+[[package]]
+name = "ax-telemetry"
+version = "1.0.0"
+dependencies = [
+ "ax-model",
+]
 
 [[package]]
 name = "axion-codegen"

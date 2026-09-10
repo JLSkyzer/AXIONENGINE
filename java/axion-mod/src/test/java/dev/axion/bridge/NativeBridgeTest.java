@@ -79,12 +79,12 @@ class NativeBridgeTest {
         config.put("deformation.quality", "high");
         byte[] cbor = CborWriter.encodeMap(config);
 
-        long ctx = NativeBridge.initialize(cbor);
+        long ctx = NativeBridge.initialize(cbor, NativeBridge.SIDE_SERVER);
         assertTrue(ctx > 0, () -> "initialisation refusée, code " + ctx);
 
         try {
             // Un contexte par processus.
-            assertEquals(NativeBridge.E_ALREADY_INITIALIZED, NativeBridge.initialize(cbor));
+            assertEquals(NativeBridge.E_ALREADY_INITIALIZED, NativeBridge.initialize(cbor, NativeBridge.SIDE_SERVER));
 
             ByteBuffer buffer = NativeBridge.acquire(ctx, BufferKinds.SIM_OUT, 128);
             assertNotNull(buffer, "acquisition refusée");
@@ -142,12 +142,30 @@ class NativeBridgeTest {
         // que Java lui envoie (interdiction 3.13).
         Map<String, Object> invalide = new LinkedHashMap<>();
         invalide.put("sim.max_substeps", 99L);
-        long refus = NativeBridge.initialize(CborWriter.encodeMap(invalide));
+        long refus = NativeBridge.initialize(
+                CborWriter.encodeMap(invalide), NativeBridge.SIDE_SERVER);
         assertTrue(refus < 0, () -> "configuration hors plage acceptée, jeton " + refus);
+        // Le jeton nul porte la cause du refus : sans elle, Java n'aurait
+        // qu'un code au moment où il en a le plus besoin.
+        String cause = NativeBridge.lastErrorMessage(0L);
+        assertTrue(cause.contains("sim.max_substeps"), () -> "cause muette : " + cause);
+
+        // Un côté inconnu est refusé plutôt que deviné : en supposer un
+        // donnerait un pool mal dimensionné sans que rien ne le signale.
+        long cote = NativeBridge.initialize(null, 42);
+        assertTrue(cote < 0, () -> "côté inconnu accepté, jeton " + cote);
 
         // Et un redémarrage propre reste possible.
-        long reprise = NativeBridge.initialize(null);
+        long reprise = NativeBridge.initialize(null, NativeBridge.SIDE_SERVER);
         assertTrue(reprise > 0, () -> "réinitialisation refusée, code " + reprise);
+
+        // R-502 : l'export des métriques traverse la frontière et porte les
+        // métriques de budget qu'INV-19 exige.
+        String metriques = NativeBridge.metricsJson(reprise);
+        assertTrue(metriques.startsWith("{"), metriques);
+        assertTrue(metriques.contains("axion.budget.sim_ns_per_tick.consumed"), metriques);
+        assertTrue(metriques.contains("axion.jobs.workers"), metriques);
+
         assertEquals(NativeBridge.OK, NativeBridge.close(reprise));
     }
 }

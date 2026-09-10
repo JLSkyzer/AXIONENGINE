@@ -32,7 +32,7 @@ public final class NativeBridge {
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
      * {@code E-1002}.
      */
-    public static final int EXPECTED_ABI_VERSION = 1;
+    public static final int EXPECTED_ABI_VERSION = 2;
 
     /** Succès. */
     public static final int OK = 0;
@@ -51,6 +51,18 @@ public final class NativeBridge {
 
     /** Capacité du tampon de lecture des messages d'erreur, en octets. */
     private static final int ERROR_BUFFER_BYTES = 4096;
+
+    /**
+     * Taille du premier tampon d'export des métriques.
+     *
+     * Assez grande pour l'export courant, sans qu'aucune valeur ne soit
+     * supposée : si elle ne suffit pas, le natif rend la taille exacte et
+     * l'appel est refait avec elle.
+     */
+    private static final int EXPORT_INITIAL_BYTES = 16384;
+
+    /** Nombre maximal de tentatives d'export. */
+    private static final int EXPORT_MAX_ATTEMPTS = 3;
 
     /**
      * Tampon de lecture des messages d'erreur, alloué une fois.
@@ -74,7 +86,7 @@ public final class NativeBridge {
 
     static native int abiVersion();
 
-    static native long init(byte[] configCbor);
+    static native long init(byte[] configCbor, int side);
 
     static native int shutdown(long ctx);
 
@@ -83,6 +95,8 @@ public final class NativeBridge {
     static native ByteBuffer bufferAcquire(long ctx, int kind, long minCapacity);
 
     static native int bufferRelease(long ctx, int kind, int generation);
+
+    static native int metricsExport(long ctx, byte[] out);
 
     // --- API ---------------------------------------------------------------
 
@@ -102,16 +116,56 @@ public final class NativeBridge {
         return nativeAbiVersion() == EXPECTED_ABI_VERSION;
     }
 
+    /** Côté client, tel qu'{@code axion_init} l'attend. */
+    public static final int SIDE_CLIENT = 0;
+
+    /** Côté serveur dédié, tel qu'{@code axion_init} l'attend. */
+    public static final int SIDE_SERVER = 1;
+
     /**
      * Initialise le contexte natif.
      *
+     * <p>Le côté est un paramètre et non une option de configuration : ce n'est
+     * pas un réglage, c'est une donnée de démarrage. R-471 en fait dépendre le
+     * plafond de workers du pool de jobs — quatre sur un client, huit sur un
+     * serveur dédié.
+     *
      * @param configCbor configuration encodée en CBOR, ou {@code null} pour
      *     s'en tenir aux défauts compilés
+     * @param side {@link #SIDE_CLIENT} ou {@link #SIDE_SERVER}
      * @return le jeton de contexte, strictement positif, ou un code d'erreur
      *     négatif de l'ANNEXE A.1
      */
-    public static long initialize(byte[] configCbor) {
-        return init(configCbor);
+    public static long initialize(byte[] configCbor, int side) {
+        return init(configCbor, side);
+    }
+
+    /**
+     * {@return l'export JSON des métriques natives (R-502)}
+     *
+     * <p>Le tampon est agrandi et l'appel refait tant que la capacité ne suffit
+     * pas : le natif rend toujours la longueur complète et n'écrit rien de
+     * partiel, un JSON tronqué n'étant pas un JSON.
+     *
+     * @param ctx jeton de contexte
+     * @throws IllegalStateException si le natif refuse l'export
+     */
+    public static String metricsJson(long ctx) {
+        byte[] buffer = new byte[EXPORT_INITIAL_BYTES];
+        for (int attempt = 0; attempt < EXPORT_MAX_ATTEMPTS; attempt++) {
+            int needed = metricsExport(ctx, buffer);
+            if (needed < 0) {
+                throw new IllegalStateException("export des métriques refusé, code " + needed);
+            }
+            if (needed <= buffer.length) {
+                return new String(buffer, 0, needed, StandardCharsets.UTF_8);
+            }
+            buffer = new byte[needed];
+        }
+        // Le natif rend la taille exacte : une seconde tentative suffit
+        // toujours. Y arriver signalerait un export qui grossit entre deux
+        // appels, ce qu'aucun chemin ne produit.
+        throw new IllegalStateException("export des métriques instable");
     }
 
     /**

@@ -24,9 +24,11 @@ public interface NativeApi {
      * Ouvre le contexte natif.
      *
      * @param configCbor configuration encodée en CBOR
+     * @param side {@link NativeBridge#SIDE_CLIENT} ou
+     *     {@link NativeBridge#SIDE_SERVER}
      * @return le jeton, strictement positif, ou un code d'erreur négatif
      */
-    long initialize(byte[] configCbor);
+    long initialize(byte[] configCbor, int side);
 
     /**
      * Ferme le contexte natif.
@@ -59,9 +61,19 @@ public interface NativeApi {
     /**
      * {@return le dernier message d'erreur du contexte}
      *
+     * <p>Le jeton {@code 0} désigne un refus survenu avant qu'une session
+     * n'existe — une configuration refusée, typiquement.
+     *
      * @param context jeton de contexte
      */
     String lastErrorMessage(long context);
+
+    /**
+     * {@return l'export JSON des métriques natives (R-502)}
+     *
+     * @param context jeton de contexte
+     */
+    String metricsJson(long context);
 
     /**
      * {@return l'implémentation qui appelle la bibliothèque native chargée}
@@ -74,8 +86,8 @@ public interface NativeApi {
             }
 
             @Override
-            public long initialize(byte[] configCbor) {
-                return NativeBridge.initialize(configCbor);
+            public long initialize(byte[] configCbor, int side) {
+                return NativeBridge.initialize(configCbor, side);
             }
 
             @Override
@@ -96,6 +108,11 @@ public interface NativeApi {
             @Override
             public String lastErrorMessage(long context) {
                 return NativeBridge.lastErrorMessage(context);
+            }
+
+            @Override
+            public String metricsJson(long context) {
+                return NativeBridge.metricsJson(context);
             }
         };
     }

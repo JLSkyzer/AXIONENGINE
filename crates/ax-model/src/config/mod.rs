@@ -27,6 +27,17 @@ mod defaults;
 
 pub use defaults::{CLIENT, COMMON, SERVER};
 
+/// Chemin de l'option qui fixe la part de parallélisme d'AXION (PARTIE 27.4).
+///
+/// Cette constante existe pour que les composants puissent lire l'option sans
+/// la nommer : INV-06 veut qu'aucun système d'AXION ne référence le mod
+/// d'optimisation tiers hors de C-76, et le registre de configuration est l'un
+/// des rares endroits où son nom est admis — l'ANNEXE A.3 la déclare.
+pub const CPU_SHARE_PATH: &str = "integration.rustforgex.cpu_share";
+
+/// Chemin de l'option qui plafonne le nombre de workers (R-471).
+pub const MAX_WORKERS_PATH: &str = "jobs.max_workers";
+
 use core::fmt;
 
 /// Fichier de configuration auquel une option appartient (24.4).

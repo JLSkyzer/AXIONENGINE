@@ -191,17 +191,21 @@ public final class AxionBootstrap {
         // --- PROBE ---------------------------------------------------------
         long context;
         try {
-            context = native_.initialize(encodeConfig(config, sideConfig));
+            context = native_.initialize(encodeConfig(config, sideConfig), nativeSide(scope));
         } catch (RuntimeException failure) {
             return disabled(
                     config, Reason.INIT_REFUSED, "axion_init a échoué : " + failure, diagnostics);
         }
         if (context <= 0) {
-            return disabled(
-                    config,
-                    Reason.INIT_REFUSED,
-                    "axion_init a refusé, code " + context,
-                    diagnostics);
+            // Le jeton nul désigne le refus survenu avant qu'une session
+            // n'existe : c'est là que le natif range la cause, et sans elle un
+            // refus de configuration ne serait qu'un code.
+            String cause = native_.lastErrorMessage(0L);
+            String detail = "axion_init a refusé, code " + context;
+            if (!cause.isBlank()) {
+                detail += " — " + cause;
+            }
+            return disabled(config, Reason.INIT_REFUSED, detail, diagnostics);
         }
 
         long roundtrip = calibrate(native_);
@@ -231,6 +235,23 @@ public final class AxionBootstrap {
 
         return new BootstrapOutcome(
                 Phase.READY, context, config, null, "", roundtrip, diagnostics);
+    }
+
+    /**
+     * Traduit la portée de configuration en code de côté de l'ABI.
+     *
+     * <p>{@link Scope#COMMON} n'est pas une portée de démarrage : elle décrit
+     * le fichier partagé, jamais un côté. La rencontrer ici signalerait un
+     * appel hors séquence, et supposer un côté produirait un pool mal
+     * dimensionné sans que rien ne le dise.
+     */
+    private static int nativeSide(Scope scope) {
+        return switch (scope) {
+            case CLIENT -> NativeBridge.SIDE_CLIENT;
+            case SERVER -> NativeBridge.SIDE_SERVER;
+            case COMMON -> throw new IllegalArgumentException(
+                    "portée COMMON : le côté de démarrage n'est pas déterminé");
+        };
     }
 
     /**

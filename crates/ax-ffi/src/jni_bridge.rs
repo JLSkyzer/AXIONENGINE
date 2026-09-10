@@ -38,7 +38,7 @@ use jni::{JNIEnv, JavaVM, NativeMethod};
 
 use crate::abi::{
     axion_abi_version, axion_buffer_acquire, axion_buffer_release, axion_init, axion_last_error,
-    axion_shutdown, AxionBufferInfo, AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_metrics_export, axion_shutdown, AxionBufferInfo, AXION_E_INVALID_BUFFER, AXION_OK,
 };
 
 /// Classe Java qui déclare les méthodes natives (R-492 : une seule).
@@ -76,7 +76,7 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
         },
         NativeMethod {
             name: "init".into(),
-            sig: "([B)J".into(),
+            sig: "([BI)J".into(),
             fn_ptr: jni_init as *mut c_void,
         },
         NativeMethod {
@@ -99,6 +99,11 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             sig: "(JII)I".into(),
             fn_ptr: jni_buffer_release as *mut c_void,
         },
+        NativeMethod {
+            name: "metricsExport".into(),
+            sig: "(J[B)I".into(),
+            fn_ptr: jni_metrics_export as *mut c_void,
+        },
     ];
 
     env.register_native_methods(&class, &methods)
@@ -109,11 +114,11 @@ extern "system" fn jni_abi_version(_env: JNIEnv, _class: JClass) -> jint {
     axion_abi_version()
 }
 
-/// `NativeBridge.init(byte[])`.
+/// `NativeBridge.init(byte[], int)`.
 ///
 /// Renvoie le jeton de contexte, toujours positif — son motif commence par
 /// `0x41`, donc le bit de signe reste à zéro —, ou un code d'erreur négatif.
-extern "system" fn jni_init(env: JNIEnv, _class: JClass, config: JByteArray) -> jlong {
+extern "system" fn jni_init(env: JNIEnv, _class: JClass, config: JByteArray, side: jint) -> jlong {
     let bytes = if config.is_null() {
         Vec::new()
     } else {
@@ -126,7 +131,8 @@ extern "system" fn jni_init(env: JNIEnv, _class: JClass, config: JByteArray) -> 
     let mut ctx: u64 = 0;
     // SAFETY: `bytes` reste vivant pendant l'appel, et `ctx` est une variable
     // locale accessible en écriture.
-    let code = unsafe { axion_init(bytes.as_ptr(), bytes.len(), &raw mut ctx) };
+    let side = u32::try_from(side).unwrap_or(u32::MAX);
+    let code = unsafe { axion_init(bytes.as_ptr(), bytes.len(), side, &raw mut ctx) };
     if code == AXION_OK {
         // Le jeton tient sur 63 bits utiles : la conversion préserve sa valeur
         // et reste distinguable d'un code d'erreur.
@@ -184,6 +190,45 @@ extern "system" fn jni_last_error(
 fn bytemuck_cast(bytes: &[u8]) -> &[i8] {
     // SAFETY: même disposition mémoire, même longueur.
     unsafe { core::slice::from_raw_parts(bytes.as_ptr().cast::<i8>(), bytes.len()) }
+}
+
+/// `NativeBridge.metricsExport(long, byte[])`.
+///
+/// Renvoie la longueur **complète** de l'export, que le tableau ait suffi ou
+/// non, ou un code d'erreur négatif. L'appelant qui trouve la longueur
+/// supérieure à la taille de son tableau rappelle avec un plus grand : rien
+/// n'a alors été écrit, un JSON tronqué n'étant pas un JSON.
+extern "system" fn jni_metrics_export(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    out: JByteArray,
+) -> jint {
+    if out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    let capacity = match env.get_array_length(&out) {
+        Ok(length) => length.max(0) as usize,
+        Err(_) => return AXION_E_INVALID_BUFFER,
+    };
+
+    let mut scratch = vec![0u8; capacity];
+    let mut needed: usize = 0;
+    // SAFETY: `scratch` fait `capacity` octets, et `needed` est local.
+    let code = unsafe {
+        axion_metrics_export(ctx as u64, scratch.as_mut_ptr(), capacity, &raw mut needed)
+    };
+    if code != AXION_OK {
+        return code;
+    }
+
+    if needed <= capacity {
+        let signed: &[i8] = bytemuck_cast(&scratch[..needed]);
+        if env.set_byte_array_region(&out, 0, signed).is_err() {
+            return AXION_E_INVALID_BUFFER;
+        }
+    }
+    jint::try_from(needed).unwrap_or(jint::MAX)
 }
 
 /// `NativeBridge.bufferAcquire(long, int, long)`.

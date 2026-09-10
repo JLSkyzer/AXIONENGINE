@@ -52,6 +52,7 @@ ax-math = { path = "crates/ax-math" }
 ax-mem = { path = "crates/ax-mem" }
 ax-core = { path = "crates/ax-core" }
 ax-jobs = { path = "crates/ax-jobs" }
+ax-telemetry = { path = "crates/ax-telemetry" }
 ax-model = { path = "crates/ax-model" }
 
 # Les profils s'appliquent a tout le workspace.

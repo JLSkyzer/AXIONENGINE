@@ -26,13 +26,15 @@ use ax_model::buffer::{BufferHeader, BufferKind};
 use ax_model::config::{self, ConfigScope, ParsedValue};
 
 use crate::context;
+use ax_jobs::{CpuShare, JobBudgets, Side, WorkerPolicy};
+use ax_model::budgets::Budget;
 
 /// Version de l'ABI.
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
 /// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`).
-pub const AXION_ABI_VERSION: u32 = 1;
+pub const AXION_ABI_VERSION: u32 = 2;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -59,6 +61,12 @@ pub const AXION_E_LEAK: i32 = -2003;
 /// donnée externe refusée à la frontière. En inventer un nouveau reviendrait à
 /// étendre l'annexe sans y toucher (obligation 4.8). Voir ADR-102.
 pub const AXION_E_CONFIG: i32 = AXION_E_INVALID_BUFFER;
+
+/// Côté client, tel qu'`axion_init` l'attend.
+pub const AXION_SIDE_CLIENT: u32 = 0;
+
+/// Côté serveur dédié, tel qu'`axion_init` l'attend.
+pub const AXION_SIDE_SERVER: u32 = 1;
 
 /// Exécute `action` en interceptant toute panic (R-310, INV-05).
 ///
@@ -114,7 +122,14 @@ pub extern "C" fn axion_abi_version() -> i32 {
 /// - `config_cbor` : configuration encodée en CBOR, une map de chemins d'option
 ///   vers leurs valeurs. Peut être nul si `len` vaut 0.
 /// - `len` : longueur de `config_cbor`, en octets.
+/// - `side` : [`AXION_SIDE_CLIENT`] ou [`AXION_SIDE_SERVER`].
 /// - `out_ctx` : reçoit le jeton de contexte en cas de succès.
+///
+/// Le côté est un paramètre et non une option de configuration : ce n'est pas
+/// un réglage, c'est une donnée de démarrage. R-471 en fait dépendre le plafond
+/// de workers — quatre sur un client, huit sur un serveur dédié — et le déduire
+/// des clés reçues créerait un couplage qui casserait le jour où les portées
+/// bougeraient.
 ///
 /// # Safety
 ///
@@ -123,7 +138,12 @@ pub extern "C" fn axion_abi_version() -> i32 {
 /// possible — un pointeur nul est refusé —, mais aucune API ne permet de
 /// vérifier qu'un pointeur non nul est valide.
 #[no_mangle]
-pub unsafe extern "C" fn axion_init(config_cbor: *const u8, len: usize, out_ctx: *mut u64) -> i32 {
+pub unsafe extern "C" fn axion_init(
+    config_cbor: *const u8,
+    len: usize,
+    side: u32,
+    out_ctx: *mut u64,
+) -> i32 {
     shielded(None, || {
         if out_ctx.is_null() {
             return AXION_E_INVALID_BUFFER;
@@ -131,6 +151,11 @@ pub unsafe extern "C" fn axion_init(config_cbor: *const u8, len: usize, out_ctx:
         if config_cbor.is_null() && len != 0 {
             return AXION_E_INVALID_BUFFER;
         }
+        let Some(side) = decode_side(side) else {
+            // Un côté inconnu n'est pas deviné : en supposer un donnerait un
+            // pool mal dimensionné sans que rien ne le signale.
+            return AXION_E_CONFIG;
+        };
 
         let config = if len == 0 {
             &[][..]
@@ -140,24 +165,55 @@ pub unsafe extern "C" fn axion_init(config_cbor: *const u8, len: usize, out_ctx:
             unsafe { std::slice::from_raw_parts(config_cbor, len) }
         };
 
-        let token = match context::open() {
+        // La configuration est validée **avant** d'ouvrir quoi que ce soit :
+        // elle dimensionne le pool de jobs, et l'ouvrir pour le refermer
+        // aussitôt ferait naître puis mourir ses threads pour rien.
+        let applied = match apply_config(config) {
+            Ok(applied) => applied,
+            Err(message) => {
+                last_init_error(&message);
+                return AXION_E_CONFIG;
+            }
+        };
+
+        let workers = WorkerPolicy {
+            cores: WorkerPolicy::available_cores(),
+            side,
+            max_workers: applied.max_workers,
+            cpu_share: applied.cpu_share,
+            // C-76 n'existe pas encore : rien ne détecte de tiers, et le
+            // supposer présent réduirait le parallélisme sans raison.
+            third_party_present: false,
+        };
+
+        let token = match context::open(side, workers, applied.budgets) {
             Ok(token) => token,
             Err(code) => return code,
         };
-
-        if let Err(message) = apply_config(config) {
-            // La configuration est refusée : la session est refermée pour ne
-            // pas laisser un contexte à moitié initialisé derrière soi.
-            let _ = context::with(token, true, |session| session.set_last_error(&message));
-            let _ = context::close(token);
-            return AXION_E_CONFIG;
-        }
 
         // SAFETY: `out_ctx` est non nul, et le contrat impose qu'il soit
         // accessible en écriture.
         unsafe { out_ctx.write(token) };
         AXION_OK
     })
+}
+
+/// Retient le motif d'un refus survenu avant l'ouverture de la session.
+///
+/// Il n'y a alors pas de session où le ranger. La configuration refusée est le
+/// cas courant, et Java a besoin de la cause : le message est conservé le temps
+/// que `axion_last_error` vienne le chercher, avec le jeton nul.
+fn last_init_error(message: &str) {
+    context::set_init_error(message);
+}
+
+/// Traduit le code de côté de l'ABI.
+fn decode_side(side: u32) -> Option<Side> {
+    match side {
+        AXION_SIDE_CLIENT => Some(Side::Client),
+        AXION_SIDE_SERVER => Some(Side::Server),
+        _ => None,
+    }
 }
 
 /// Ferme le contexte natif.
@@ -209,6 +265,23 @@ pub unsafe extern "C" fn axion_last_error(
             return AXION_E_INVALID_BUFFER;
         }
 
+        // Le jeton nul désigne le refus survenu avant qu'une session n'existe.
+        // C'est le cas d'une configuration refusée, où le message compte le
+        // plus : sans lui, Java n'aurait qu'un code.
+        if ctx == 0 {
+            let message = context::init_error().unwrap_or_default();
+            let end = utf8_boundary(&message, cap);
+            let bytes = &message.as_bytes()[..end];
+            if !bytes.is_empty() {
+                // SAFETY: `out_utf8` est non nul dès que `cap` l'est, et
+                // `bytes` ne dépasse pas `cap` par construction.
+                unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_utf8, bytes.len()) };
+            }
+            // SAFETY: nullité écartée ci-dessus.
+            unsafe { out_len.write(bytes.len()) };
+            return AXION_OK;
+        }
+
         let copied = context::with(ctx, true, |session| {
             let message = session.last_error().unwrap_or("");
             let end = utf8_boundary(message, cap);
@@ -229,6 +302,51 @@ pub unsafe extern "C" fn axion_last_error(
             }
             Err(code) => code,
         }
+    })
+}
+
+/// Copie l'export JSON des métriques (R-502).
+///
+/// `out_len` reçoit **toujours** la longueur complète du document, que la
+/// capacité ait suffi ou non. Un appelant qui la trouve supérieure à `cap`
+/// rappelle avec un tampon plus grand.
+///
+/// Contrairement à [`axion_last_error`], rien n'est écrit quand la capacité ne
+/// suffit pas : un message de diagnostic tronqué reste lisible, un document
+/// JSON tronqué ne l'est pas — il ne se distinguerait même pas d'un document
+/// complet décrivant autre chose.
+///
+/// # Safety
+///
+/// `out_utf8` doit pointer sur `cap` octets accessibles en écriture, et
+/// `out_len` sur un `usize` accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_metrics_export(
+    ctx: u64,
+    out_utf8: *mut u8,
+    cap: usize,
+    out_len: *mut usize,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if out_len.is_null() || (out_utf8.is_null() && cap != 0) {
+            return AXION_E_INVALID_BUFFER;
+        }
+
+        let json = match context::with(ctx, false, |session| session.metrics_json()) {
+            Ok(json) => json,
+            Err(code) => return code,
+        };
+
+        let bytes = json.as_bytes();
+        // SAFETY: nullité écartée ci-dessus.
+        unsafe { out_len.write(bytes.len()) };
+
+        if bytes.len() <= cap && !bytes.is_empty() {
+            // SAFETY: `out_utf8` est non nul dès que `cap` l'est, et la
+            // longueur vient d'être comparée à la capacité.
+            unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_utf8, bytes.len()) };
+        }
+        AXION_OK
     })
 }
 
@@ -358,9 +476,10 @@ fn utf8_boundary(text: &str, cap: usize) -> usize {
 /// valeur du bon type et dans son domaine — les mêmes règles que celles
 /// appliquées côté Java, vérifiées une seconde fois ici parce que la frontière
 /// ne fait pas confiance à son appelant.
-fn apply_config(cbor: &[u8]) -> Result<usize, String> {
+fn apply_config(cbor: &[u8]) -> Result<AppliedConfig, String> {
+    let mut applied = AppliedConfig::from_defaults();
     if cbor.is_empty() {
-        return Ok(0);
+        return Ok(applied);
     }
 
     let value: ciborium::Value = ciborium::from_reader(cbor)
@@ -370,7 +489,6 @@ fn apply_config(cbor: &[u8]) -> Result<usize, String> {
         .as_map()
         .ok_or_else(|| "configuration CBOR : une map est attendue".to_owned())?;
 
-    let mut accepted = 0usize;
     for (key, raw) in entries {
         let path = key
             .as_text()
@@ -387,9 +505,106 @@ fn apply_config(cbor: &[u8]) -> Result<usize, String> {
         option
             .validate_parsed(&parsed)
             .map_err(|error| error.to_string())?;
-        accepted += 1;
+        applied.accepted += 1;
+        applied.accept(path, &parsed);
     }
-    Ok(accepted)
+    Ok(applied)
+}
+
+/// Ce que la configuration reçue dit au runtime natif.
+///
+/// Toutes les options sont validées ; seules celles-ci sont **retenues**, parce
+/// que la frontière s'en sert tout de suite. Le reste appartient aux composants
+/// qui les liront quand ils existeront.
+#[derive(Debug, Clone, Copy)]
+struct AppliedConfig {
+    /// Nombre d'options validées. Une configuration muette n'en compte aucune :
+    /// les défauts s'appliquent sans avoir été transmis.
+    accepted: usize,
+    max_workers: u32,
+    cpu_share: CpuShare,
+    budgets: JobBudgets,
+}
+
+impl AppliedConfig {
+    /// Part des valeurs par défaut du registre.
+    ///
+    /// Elles ne sont pas recopiées ici : elles sont **lues** dans `ax-model`,
+    /// source unique (R-430). Une configuration muette sur une option doit
+    /// produire exactement ce que produirait le fichier de référence.
+    fn from_defaults() -> Self {
+        let mut applied = Self {
+            accepted: 0,
+            max_workers: 0,
+            cpu_share: CpuShare::Auto,
+            budgets: JobBudgets::new(),
+        };
+        for path in Self::interesting_paths() {
+            if let Some(option) = ConfigScope::ALL
+                .into_iter()
+                .find_map(|scope| config::find(scope, path))
+            {
+                applied.accept(path, &default_as_parsed(&option.default));
+            }
+        }
+        applied
+    }
+
+    /// Chemins que la frontière retient.
+    fn interesting_paths() -> Vec<&'static str> {
+        let mut paths = vec![config::MAX_WORKERS_PATH, config::CPU_SHARE_PATH];
+        paths.extend(
+            Budget::ALL
+                .iter()
+                .filter(|budget| budget.is_duration())
+                .map(|budget| budget.config_path()),
+        );
+        paths
+    }
+
+    /// Retient une valeur, si elle en fait partie.
+    fn accept(&mut self, path: &str, parsed: &ParsedValue) {
+        if path == config::MAX_WORKERS_PATH {
+            if let ParsedValue::Int(value) = parsed {
+                self.max_workers = u32::try_from(*value).unwrap_or(0);
+            }
+            return;
+        }
+        if path == config::CPU_SHARE_PATH {
+            match parsed {
+                ParsedValue::Str(value) => {
+                    if let Some(share) = CpuShare::parse(value) {
+                        self.cpu_share = share;
+                    }
+                }
+                // La forme entière de R-2060 : un nombre de threads imposé.
+                ParsedValue::Int(value) => {
+                    self.cpu_share = CpuShare::Fixed(u32::try_from(*value).unwrap_or(0));
+                }
+                _ => {}
+            }
+            return;
+        }
+        if let Some(budget) = Budget::ALL
+            .iter()
+            .find(|budget| budget.is_duration() && budget.config_path() == path)
+        {
+            if let ParsedValue::Int(value) = parsed {
+                self.budgets
+                    .set(*budget, u64::try_from(*value).unwrap_or(0));
+            }
+        }
+    }
+}
+
+/// Rend une valeur par défaut sous la forme que la validation manipule.
+fn default_as_parsed(value: &config::ConfigValue) -> ParsedValue {
+    match value {
+        config::ConfigValue::Bool(inner) => ParsedValue::Bool(*inner),
+        config::ConfigValue::Int(inner) => ParsedValue::Int(*inner),
+        config::ConfigValue::Float(inner) => ParsedValue::Float(*inner),
+        config::ConfigValue::Str(inner) => ParsedValue::Str((*inner).to_owned()),
+    }
 }
 
 /// Convertit une valeur CBOR en valeur de configuration.
@@ -442,7 +657,7 @@ mod tests {
     /// Une configuration vide est acceptée : tous les défauts s'appliquent.
     #[test]
     fn configuration_vide_acceptee() {
-        assert_eq!(apply_config(&[]).unwrap(), 0);
+        assert_eq!(apply_config(&[]).unwrap().accepted, 0);
     }
 
     fn encode(pairs: &[(&str, ciborium::Value)]) -> Vec<u8> {
@@ -475,7 +690,7 @@ mod tests {
             ),
         ]);
 
-        assert_eq!(apply_config(&cbor).unwrap(), 5);
+        assert_eq!(apply_config(&cbor).unwrap().accepted, 5);
     }
 
     /// Rien de ce qui vient de Java n'est cru sur parole : chemin inconnu,
@@ -552,12 +767,12 @@ mod tests {
         // SAFETY: précisément ce que la fonction doit détecter sans lire.
         unsafe {
             assert_eq!(
-                axion_init(std::ptr::null(), 0, std::ptr::null_mut()),
+                axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, std::ptr::null_mut()),
                 AXION_E_INVALID_BUFFER
             );
             let mut ctx = 0u64;
             assert_eq!(
-                axion_init(std::ptr::null(), 4, &raw mut ctx),
+                axion_init(std::ptr::null(), 4, AXION_SIDE_SERVER, &raw mut ctx),
                 AXION_E_INVALID_BUFFER
             );
             assert_eq!(
