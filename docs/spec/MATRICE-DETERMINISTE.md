@@ -104,6 +104,14 @@ reporter ici l'empreinte et le résultat, puis seulement passer son `validated` 
 `true` dans `VALIDATION_MATRIX`. Dans cet ordre : le drapeau reflète le tableau,
 jamais l'inverse.
 
+Ce qui suppose que la suite **tourne** sur une cible non encore validée — c'est
+en la jouant qu'on produit la preuve. D'où la distinction entre
+[`is_matrix_target`](../../crates/ax-det/src/profile.rs), propriété de la
+machine, et `is_in_validation_matrix`, fait du dépôt. Les confondre rend toute
+première validation impossible : la configuration ne pourrait être validée que
+si elle l'était déjà. C'est ce qui a fait échouer `x86_64-apple-darwin` au
+passage du 2026-09-11, sans qu'aucun bit n'ait divergé.
+
 **Incrémenter `DET_KERNEL_VERSION`.** Les vecteurs d'or changent de fichier
 (`kernel-v<N>.txt`), donc toutes les lignes de ce tableau perdent leur valeur :
 elles attestaient d'un fichier qui n'est plus celui que le noyau produit. Repasser

@@ -377,3 +377,25 @@ git ls-remote origin <branche>
 Le SHA rendu doit être celui de `git rev-parse HEAD`. En cas de doute, repasser
 par `git push` sans `rtk` : sa sortie nomme explicitement l'avance de référence
 (`d6e06b0..9fbd349`).
+
+---
+
+## 2026-09-11 | Une porte de validation ne peut pas exiger ce qu'elle valide
+
+R-516 veut qu'une configuration ne soit déclarée déterministe qu'après avoir
+rejoué les vecteurs d'or. J'ai donc ajouté un drapeau `validated`, et fait
+échouer `is_in_validation_matrix()` sans lui. Le test qui vérifie que la machine
+courante appartient à la matrice s'appuyait sur cette même fonction : sur
+`x86_64-apple-darwin`, en attente de sa première validation, il a échoué — et en
+échouant, il a **arrêté la suite avant les vecteurs d'or**. La configuration ne
+pouvait donc être validée que si elle l'était déjà.
+
+**Règle.** Séparer la propriété **de la machine** du fait **du dépôt**. Ici,
+`is_matrix_target()` — le triplet et le jeu d'instructions correspondent — et
+`is_in_validation_matrix()` — quelqu'un l'a rejouée et archivée. La porte de
+validation s'appuie sur la première, jamais sur la seconde.
+
+**Corollaire.** Le symptôme trompait : le job s'appelait `det-vectors` et
+échouait, ce qui ressemblait à une divergence de bits — un défaut bloquant. Il
+n'y en avait aucune ; les vecteurs n'avaient simplement pas été joués. Avant de
+conclure d'un job en échec à ce que son nom suggère, lire **quel test** a échoué.

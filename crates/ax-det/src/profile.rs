@@ -156,22 +156,52 @@ pub const VALIDATION_MATRIX: [MatrixEntry; 5] = [
 ///
 /// Une entrée **non validée** rend `false`, même si la cible correspond :
 /// R-516 réserve la déclaration de détermination aux configurations dont les
-/// vecteurs d'or ont été rejoués et le résultat archivé.
+/// vecteurs d'or ont été rejoués et le résultat archivé. Pour distinguer les
+/// deux, voir [`is_matrix_target`].
 ///
 /// R-515 : une configuration hors matrice ne fait **jamais** refuser AXION. Elle
 /// fait basculer la réplication en `SNAPSHOT`, ce qui ne retire aucune
 /// fonctionnalité (R-514).
 #[must_use]
 pub fn is_in_validation_matrix() -> bool {
+    current_entry().is_some_and(|entry| entry.validated)
+}
+
+/// Indique si la configuration courante est une **cible** de la matrice.
+///
+/// À distinguer de [`is_in_validation_matrix`], et la nuance n'est pas
+/// scolastique : elle sépare une propriété **de la machine** d'un fait **du
+/// dépôt**.
+///
+/// Être une cible, c'est porter un triplet de la matrice de 5.12bis et avoir
+/// été bâti sur le jeu d'instructions de base. Être validée, c'est en plus que
+/// quelqu'un y ait rejoué les vecteurs d'or et archivé le résultat (R-516).
+///
+/// Les deux diffèrent exactement pendant l'**amorçage** d'une configuration :
+/// entre le moment où la machine existe et celui où elle est validée, elle est
+/// une cible sans être validée. Les confondre rend la validation impossible —
+/// la machine ne pourrait être validée que si elle l'était déjà.
+#[must_use]
+pub fn is_matrix_target() -> bool {
+    current_entry().is_some()
+}
+
+/// L'entrée de matrice correspondant à la configuration courante, s'il y en a.
+///
+/// Le jeu d'instructions compte autant que le triplet : un binaire construit
+/// pour la bonne cible mais avec `-C target-cpu=native` n'est pas cette
+/// configuration-là, et le dire est tout l'intérêt de cette fonction.
+#[must_use]
+pub fn current_entry() -> Option<&'static MatrixEntry> {
     if cfg!(target_feature = "fma") {
         // La contraction fusionnée change le résultat d'un `a·b + c` sans
         // qu'aucune ligne de code ne bouge. La matrice l'exclut.
-        return false;
+        return None;
     }
     if cfg!(target_feature = "avx") || cfg!(target_feature = "avx2") {
         // Au-delà du jeu de base, le compilateur vectorise autrement et l'ordre
         // des réductions change (R-511).
-        return false;
+        return None;
     }
 
     let arch = std::env::consts::ARCH;
@@ -179,7 +209,7 @@ pub fn is_in_validation_matrix() -> bool {
     let env = target_env();
     VALIDATION_MATRIX
         .iter()
-        .any(|entry| entry.validated && entry.arch == arch && entry.os == os && entry.env == env)
+        .find(|entry| entry.arch == arch && entry.os == os && entry.env == env)
 }
 
 /// Mode de réplication qu'impose une paire d'empreintes (5.12bis).
@@ -313,15 +343,39 @@ mod tests {
     }
 
     #[test]
-    fn t820_la_configuration_de_test_est_dans_la_matrice() {
+    fn t820_la_machine_de_test_est_une_cible_de_la_matrice() {
         // Ce test n'affirme rien d'universel : il dit que la machine qui joue
-        // la suite fait partie de la matrice. Sur une machine hors matrice, il
-        // échouerait — et ce serait la bonne réponse, puisque les vecteurs d'or
-        // n'y valent alors rien.
+        // la suite est une cible de la matrice. Ailleurs, il échouerait — et ce
+        // serait la bonne réponse, puisque les vecteurs d'or n'y valent rien.
+        //
+        // Il porte sur `is_matrix_target` et **non** sur
+        // `is_in_validation_matrix`, parce que c'est en rejouant cette suite
+        // qu'une cible devient validée. Exiger ici qu'elle le soit déjà rendrait
+        // toute première validation impossible : c'est ce qui a fait échouer
+        // `x86_64-apple-darwin` au passage du 2026-09-11, sans qu'aucun bit
+        // n'ait diverge.
         assert!(
-            is_in_validation_matrix(),
+            is_matrix_target(),
             "configuration hors matrice : {}",
             det_profile_string()
         );
+    }
+
+    #[test]
+    fn t820_une_cible_non_validee_rejoue_quand_meme_les_vecteurs() {
+        // L'amorçage, énoncé en clair : être une cible n'implique pas être
+        // validée, et c'est précisément l'état dans lequel une configuration se
+        // trouve juste avant sa première validation.
+        if is_matrix_target() && !is_in_validation_matrix() {
+            let entree = current_entry().expect("cible sans entrée");
+            assert!(
+                !entree.validated,
+                "incohérence : {entree:?} est déclarée validée mais \
+                 is_in_validation_matrix() rend false"
+            );
+        }
+
+        // Et l'implication qui, elle, tient toujours : validée => cible.
+        assert!(!is_in_validation_matrix() || is_matrix_target());
     }
 }

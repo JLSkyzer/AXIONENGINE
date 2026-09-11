@@ -67,8 +67,8 @@ pub use divergence::{
 };
 pub use kernel::{clamp, dequantize_i8, falloff, inv_sqrt, quantize_i8, smooth01, QUANT_MAX};
 pub use profile::{
-    det_profile, det_profile_string, is_in_validation_matrix, negotiate, MatrixEntry,
-    ReplicationMode, VALIDATION_MATRIX,
+    current_entry, det_profile, det_profile_string, is_in_validation_matrix, is_matrix_target,
+    negotiate, MatrixEntry, ReplicationMode, VALIDATION_MATRIX,
 };
 pub use rng::DetRng;
 

@@ -22,6 +22,21 @@ fn main() {
 
     if dans_la_matrice {
         println!("matrice       : oui — la reconstruction par evenements est garantie ici");
+    } else if ax_det::is_matrix_target() {
+        // Etat d'amorcage : la machine est une cible de la matrice, mais
+        // personne n'y a encore rejoue les vecteurs d'or. R-516 refuse de la
+        // declarer deterministe avant cette preuve, et c'est en jouant la suite
+        // ici qu'on la produit.
+        println!("matrice       : cible NON VALIDEE");
+        println!();
+        println!("Les vecteurs d'or n'ont pas encore ete rejoues sur cette");
+        println!("configuration. R-516 : une configuration non validee n'est");
+        println!("jamais declaree deterministe, meme si elle passe en pratique.");
+        println!();
+        println!("Pour la valider, dans cet ordre :");
+        println!("  1. cargo test -p ax-det");
+        println!("  2. reporter le resultat dans docs/spec/MATRICE-DETERMINISTE.md");
+        println!("  3. basculer son drapeau `validated` dans VALIDATION_MATRIX");
     } else {
         // Pas une erreur, et le code de sortie le dit : R-515 interdit qu'une
         // configuration hors matrice fasse refuser AXION. Elle bascule en
