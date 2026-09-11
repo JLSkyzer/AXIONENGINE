@@ -29,10 +29,16 @@ pub fn import_stl(bytes: &[u8], limits: &ImportLimits) -> Result<ImportedAsset, 
     limits.check_size(SourceFormat::Stl, bytes.len() as u64)?;
     check_declared_triangles(bytes)?;
 
-    let mut cursor = std::io::Cursor::new(bytes);
-    let mesh = stl_io::read_stl(&mut cursor).map_err(|error| ImportError::Malformed {
-        format: SourceFormat::Stl,
-        detail: error.to_string(),
+    // Même filet que pour les deux autres importeurs : `stl_io` est un
+    // analyseur tiers qui reçoit du contenu non fiable, et rien ne garantit
+    // qu'il ne panique pas. Le fuzzing n'y a rien trouvé à ce jour, mais ne pas
+    // l'envelopper serait le traiter autrement que ses voisins sans raison.
+    let mesh = super::catch_parser_panic(SourceFormat::Stl, || {
+        let mut cursor = std::io::Cursor::new(bytes);
+        stl_io::read_stl(&mut cursor).map_err(|error| ImportError::Malformed {
+            format: SourceFormat::Stl,
+            detail: error.to_string(),
+        })
     })?;
 
     let mut asset = ImportedAsset::default();

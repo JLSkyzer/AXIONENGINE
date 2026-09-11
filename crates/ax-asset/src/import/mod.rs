@@ -174,6 +174,28 @@ pub enum ImportError {
         /// Nombre que la taille du fichier permet.
         possible: u64,
     },
+    /// L'analyseur tiers a **paniqué** sur cette source.
+    ///
+    /// Séparée de [`ImportError::Malformed`] alors qu'elle porte le même code
+    /// `E-3050`, et la distinction n'est pas cosmétique : une source refusée est
+    /// un comportement attendu, un analyseur qui panique est un **défaut** —
+    /// chez lui ou dans ce qu'on lui a laissé passer. Les deux ne se traitent
+    /// pas pareil.
+    ///
+    /// Ce que la distinction permet :
+    ///
+    /// - en production, l'asset est refusé proprement et le journal dit
+    ///   pourquoi, au lieu de remonter une panique opaque ;
+    /// - **en fuzzing, les cibles échouent dessus.** Sans cette variante,
+    ///   attraper les paniques les rendrait invisibles au fuzzer, et R-903 — qui
+    ///   veut la tolérance zéro — cesserait d'avoir un moyen de la constater.
+    ///   Le filet protège le joueur sans aveugler l'outil.
+    ParserPanicked {
+        /// Format concerné.
+        format: SourceFormat,
+        /// Le message de la panique, tel quel.
+        detail: String,
+    },
 }
 
 impl ImportError {
@@ -189,9 +211,11 @@ impl ImportError {
             ImportError::UnsupportedImage { .. } => -3004,
             // `E-3005` : source trop volumineuse.
             ImportError::SourceTooLarge { .. } => -3005,
-            // Le reste refuse une source qu'on ne sait pas lire. L'ANNEXE A.1
-            // range les violations de contenu dans la plage de validation ;
-            // aucun code n'est inventé (voir ADR-102).
+            // Le reste refuse une source qu'on ne sait pas lire, panique
+            // d'analyseur comprise : l'ANNEXE A.1 range les violations de
+            // contenu dans la plage de validation, et aucun code n'est inventé
+            // (voir ADR-102). La variante `ParserPanicked` se distingue par son
+            // type, pas par son numero.
             _ => -3050,
         }
     }
@@ -237,11 +261,64 @@ impl fmt::Display for ImportError {
                  au vu de la taille du fichier",
                 format.name()
             ),
+            ImportError::ParserPanicked { format, detail } => write!(
+                formatter,
+                "source {} : l'analyseur a paniqué — {detail}",
+                format.name()
+            ),
         }
     }
 }
 
 impl std::error::Error for ImportError {}
+
+/// Exécute une analyse tierce en retenant une éventuelle panique.
+///
+/// # Pourquoi un filet et pas seulement des vérifications préalables
+///
+/// Les deux analyseurs retenus par la table 32.2 paniquent sur des sources
+/// qu'un pack de contenu peut porter. Le fuzzing (R-903) en a trouvé quatre en
+/// vingt minutes, à quatre endroits différents : un `unreachable!()` dans
+/// `gltf`, un débordement d'entier dans `tobj`, une indexation sans borne dans
+/// `gltf-json`, un `unwrap()` sur un `Vec` trop court dans `tobj` encore. Chaque
+/// correctif en a découvert un suivant.
+///
+/// Les vérifications préalables restent — elles sont conformes au format, elles
+/// donnent un diagnostic précis, et elles évitent d'avoir à compter sur ce
+/// filet. Mais reproduire chez nous l'ensemble des invariants internes de deux
+/// analyseurs reviendrait à les réécrire, et cette réécriture dériverait à la
+/// première mise à jour.
+///
+/// Le filet est **au point de délégation**, là où du contenu non fiable entre
+/// dans du code qu'AXION ne contrôle pas. C'est le même raisonnement qui met un
+/// `catch_unwind` à la frontière FFI et dans le pool de jobs.
+///
+/// # Ce que le filet suppose
+///
+/// Que l'analyseur est une fonction des octets vers un résultat, sans état
+/// partagé qu'une panique laisserait incohérent. C'est le cas des deux :
+/// `tobj::load_obj_buf` et `gltf::Gltf::from_slice` lisent un tampon et
+/// construisent une valeur. `AssertUnwindSafe` dit cela, et le dit ici plutôt
+/// qu'au petit bonheur sur chaque appel.
+pub(crate) fn catch_parser_panic<T>(
+    format: SourceFormat,
+    action: impl FnOnce() -> Result<T, ImportError>,
+) -> Result<T, ImportError> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(action)) {
+        Ok(resultat) => resultat,
+        Err(charge) => {
+            // Le message est repris tel quel : c'est lui qui nomme la
+            // bibliothèque et la ligne, donc ce qui permet de rapporter le
+            // défaut en amont.
+            let detail = charge
+                .downcast_ref::<&str>()
+                .map(|message| (*message).to_string())
+                .or_else(|| charge.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "panique sans message".to_owned());
+            Err(ImportError::ParserPanicked { format, detail })
+        }
+    }
+}
 
 /// Vérifie qu'un chemin relatif reste sous le répertoire de l'asset (R-531).
 ///

@@ -10,7 +10,7 @@
 
 #![no_main]
 
-use ax_asset::import::{import_obj, ImportLimits};
+use ax_asset::import::{ImportError, import_obj, ImportLimits};
 use libfuzzer_sys::fuzz_target;
 
 /// Voir la note de `a3d_reader` : un mébioctet, comme les tests.
@@ -25,5 +25,20 @@ fuzz_target!(|data: &str| {
     // Le résolveur rend le maillage comme bibliothèque de matériaux : un `.mtl`
     // syntaxiquement absurde est précisément ce qu'on veut lui donner, et un
     // pack qui porte l'un porte l'autre, de la même main.
-    let _ = import_obj(data, &LIMITS, |_nom| Some(data.to_string()));
+    let resultat = import_obj(data, &LIMITS, |_nom| Some(data.to_string()));
+    refuse_une_panique(&resultat);
 });
+
+/// Fait echouer la cible sur une panique retenue par le filet.
+///
+/// `import_*` attrape les paniques des analyseurs tiers et les rend sous la
+/// forme d'une erreur : en production, l'asset est refuse proprement au lieu de
+/// remonter une panique opaque. Ici, c'est l'inverse qu'on veut — sans cette
+/// verification, le filet rendrait ces paniques **invisibles au fuzzer**, et
+/// R-903, qui exige la tolerance zero, n'aurait plus aucun moyen de les
+/// constater.
+fn refuse_une_panique<T>(resultat: &Result<T, ImportError>) {
+    if let Err(ImportError::ParserPanicked { format, detail }) = resultat {
+        panic!("l'analyseur {format:?} a panique : {detail}");
+    }
+}

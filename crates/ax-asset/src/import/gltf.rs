@@ -82,6 +82,24 @@ pub fn import_gltf(
     };
     limits.check_size(format, bytes.len() as u64)?;
 
+    // Le filet couvre l'analyse **et** la lecture des primitives : les deux
+    // paniquent, et à des endroits différents — la validation de `gltf-json`
+    // indexe `root.accessors[...]` sans borne, `gltf::read_indices` atteint un
+    // `unreachable!()`. Les envelopper séparément laisserait à chaque ajout le
+    // soin de se souvenir du filet.
+    //
+    // Notre propre code se retrouve dedans, et c'est assumé : une panique de
+    // notre fait deviendrait `ParserPanicked` au lieu de remonter, mais les
+    // cibles de fuzzing échouent sur cette variante — elle est donc constatée,
+    // pas absorbée.
+    super::catch_parser_panic(format, || import_gltf_inner(bytes, format, &mut resolve))
+}
+
+fn import_gltf_inner(
+    bytes: &[u8],
+    format: SourceFormat,
+    resolve: &mut impl FnMut(&str) -> Option<Vec<u8>>,
+) -> Result<(ImportedAsset, GltfReport), ImportError> {
     // La politique d'extensions est celle de R-530, pas celle de la
     // bibliothèque : elle s'applique donc **avant** l'analyse. La déléguer
     // ferait dépendre ce qu'AXION accepte de ce que la bibliothèque implémente,
@@ -94,7 +112,7 @@ pub fn import_gltf(
         detail: error.to_string(),
     })?;
 
-    let buffers = load_buffers(&document, format, &mut resolve)?;
+    let buffers = load_buffers(&document, format, resolve)?;
     collect_images(&document, &mut report)?;
 
     let mut asset = ImportedAsset::default();

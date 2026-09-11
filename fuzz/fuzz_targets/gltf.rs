@@ -11,7 +11,7 @@
 
 #![no_main]
 
-use ax_asset::import::{import_gltf, ImportLimits};
+use ax_asset::import::{ImportError, import_gltf, ImportLimits};
 use libfuzzer_sys::fuzz_target;
 
 /// Voir la note de `a3d_reader` : un mébioctet, comme les tests.
@@ -29,5 +29,20 @@ fuzz_target!(|data: &[u8]| {
     // vérifie-t-il la longueur qu'il a reçue contre celle que le JSON annonce,
     // ou la croit-il sur parole ? Le cas de la ressource **absente** est, lui,
     // couvert par les tests d'intégration (T-228).
-    let _ = import_gltf(data, &LIMITS, |_nom| Some(data.to_vec()));
+    let resultat = import_gltf(data, &LIMITS, |_nom| Some(data.to_vec()));
+    refuse_une_panique(&resultat);
 });
+
+/// Fait echouer la cible sur une panique retenue par le filet.
+///
+/// `import_*` attrape les paniques des analyseurs tiers et les rend sous la
+/// forme d'une erreur : en production, l'asset est refuse proprement au lieu de
+/// remonter une panique opaque. Ici, c'est l'inverse qu'on veut — sans cette
+/// verification, le filet rendrait ces paniques **invisibles au fuzzer**, et
+/// R-903, qui exige la tolerance zero, n'aurait plus aucun moyen de les
+/// constater.
+fn refuse_une_panique<T>(resultat: &Result<T, ImportError>) {
+    if let Err(ImportError::ParserPanicked { format, detail }) = resultat {
+        panic!("l'analyseur {format:?} a panique : {detail}");
+    }
+}

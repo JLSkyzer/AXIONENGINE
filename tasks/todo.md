@@ -741,6 +741,33 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         parti de `triangle.gltf` et de `mtllib-indices-negatifs.obj`, et a
         trouvé en moins de dix minutes. C'est la démonstration que R-903
         attendait d'un corpus versionné.
+- [x] **Un filet au point de délégation**, après que corriger panique par
+      panique se soit révélé sans fin. Deux campagnes de dix minutes ont donné
+      **quatre** paniques, à quatre endroits, dans deux dépendances — et chaque
+      correctif en a découvert un suivant.
+      - `catch_parser_panic` enveloppe les trois analyseurs tiers et rend
+        `ImportError::ParserPanicked`. Même code `E-3050` que les autres refus,
+        aucun code inventé (ADR-102) ; c'est la **variante** qui distingue.
+      - La distinction porte tout le dessin : en production l'asset est refusé
+        proprement, et **en fuzzing les cibles échouent dessus**. Sans elle, le
+        filet rendrait les paniques invisibles au fuzzer, et R-903 n'aurait plus
+        de moyen de les constater. Le filet protège le joueur sans aveugler
+        l'outil.
+      - Les vérifications préalables restent : elles sont conformes au format,
+        donnent un diagnostic précis, et évitent d'avoir à compter sur le filet.
+        Mais reproduire chez nous tous les invariants internes de deux
+        analyseurs reviendrait à les réécrire, et cette réécriture dériverait à
+        la première mise à jour.
+- [ ] **Deux bugs à rapporter en amont.** Les quatre paniques sont des défauts
+      de bibliothèque, pas de leur usage :
+      - `gltf-json` 1.4.1 indexe `root.accessors[…]` avec un indice venu du
+        document, **sans vérifier la borne** — dans son propre code de
+        validation. Seul cas des quatre qui n'a **pas** de correctif racine chez
+        nous : le détecter exigerait de réanalyser le JSON avant la
+        bibliothèque. Il est retenu par le filet et gardé par un test nommé ;
+      - `tobj` 4.0.5, deux fois : `vn * 3 + 2 >= normal.len()` calcule le produit
+        avant de comparer, et `parse_float3` fait `.try_into().unwrap()` sur un
+        `Vec` qu'il vient de collecter — `Ka 0.0 0.0` suffit.
 - [x] **Le corpus est rejoué sans `nightly`**, par
       `crates/ax-asset/tests/corpus_fuzzing.rs`, sur les quatre plateformes et à
       chaque exécution de la CI. Il vérifie deux choses qu'une campagne ne
