@@ -17,8 +17,14 @@ version = "1.0.0"
 edition = "2021"
 rust-version = "1.94"
 license = "Apache-2.0"
-repository = "https://github.com/JLSkyzer/axion-engine"
+# Le depot reel. L'ancienne valeur, « axion-engine », ne designait rien :
+# elle voyageait pourtant dans le NOTICE et dans la SBOM.
+repository = "https://github.com/JLSkyzer/AXIONENGINE"
 authors = ["JLSkyzer"]
+# Aucun crate de ce workspace ne se publie sur un registre. AXION se livre
+# en JAR, et ces crates sont internes : une publication accidentelle
+# exposerait une bibliotheque que personne ne doit dependre directement.
+publish = false
 
 [workspace.dependencies]
 # Les versions communes se declarent ici pour rester alignees entre crates.
