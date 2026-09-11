@@ -973,7 +973,16 @@ ses critères vérifiés **mécaniquement**.
       **L'outillage existe et a servi** — cibles, corpus, workflow, et quatre
       défauts trouvés. Ce qui reste, pour prononcer la Definition of Done :
 
-      - `a3d_reader`, `obj`, `stl` : campagne d'une heure, à constater ;
+      - `a3d_reader`, `obj`, `stl` : **campagne d'une heure passée sans
+        incident** le 2026-09-12
+        ([run 34648731184](https://github.com/JLSkyzer/AXIONENGINE/actions/runs/34648731184)).
+        861 281 634 exécutions sur `a3d_reader`, 95 909 008 sur `stl`,
+        4 703 443 sur `obj` — ce dernier est plus lent par nature, chaque
+        exécution analysant du texte, un `.mtl` et une triangulation ;
+      - le corpus a grossi de 235, 3 476 et 23 635 entrées respectivement. Elles
+        ne sont **pas versées telles quelles** : `cargo fuzz cmin` les réduirait
+        à ce qui apporte de la couverture, et c'est ce résultat-là qu'on
+        verserait. Les artefacts du run les portent 14 jours ;
       - **`gltf` ne peut pas la passer aujourd'hui.** `gltf-json` 1.4.1 indexe
         `root.accessors[…]` sans vérifier la borne, et le détecter avant lui
         demanderait de réanalyser le JSON nous-mêmes. La cible **reste dans la
