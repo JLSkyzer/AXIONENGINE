@@ -12,7 +12,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 ## État courant
 
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
-**Jalon en cours : M1 — Assets, noyau déterministe, jobs. C-12, C-15, C-20, C-21, C-22 et C-24 faits. Restent C-25 et C-16.**
+**Jalon en cours : M1 — Assets, noyau déterministe, jobs. Tout est fait sauf C-16 et C-71.**
 
 Ce qui est en place :
 
@@ -599,7 +599,27 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       **Dette** : R-562 veut que `COMPILER_VERSION` soit incrémentée à toute
       modification de C-21, C-22, C-23 ou C-28 qui change la sortie,
       **vérifié en CI**. La constante existe ; le contrôle non.
-- [ ] **C-25** Cache d'assets — clés, index, éviction LRU, hors du monde.
+- [x] **C-25 — Cache d'assets.** Vérifié sur deux démarrages successifs d'un
+      serveur dédié réel : le second ne compile rien.
+      - entrées sous `<gameDir>/axion/cache/<2 hex>/<clé>.a3d`, **hors du
+        monde** (R-563, INV-10) — un cache rangé dans une sauvegarde la ferait
+        grossir de données reconstructibles et la rendrait non transportable ;
+      - magic, version de schéma et CRC32C sur chaque entrée (R-560). Le fichier
+        A3D a les siens, mais ils ne couvrent que ce qu'ils décrivent : une
+        entrée tronquée par un disque plein resterait un en-tête A3D valide
+        suivi de rien. Une entrée invalide est **supprimée**, pas réparée ;
+      - éviction LRU sous `assets.cache_max_bytes` (R-561). Une entrée employée
+        repasse en queue de file, sans quoi le cache évincerait précisément ce
+        qui sert ;
+      - écriture par fichier temporaire puis renommage : une entrée n'apparaît
+        que complète ;
+      - l'index n'est pas la vérité, les fichiers le sont. Un index corrompu ne
+        coûte qu'un parcours d'arborescence au démarrage suivant.
+
+      **La clé gagne un terme.** La fiche C-20 en énumère trois, la fiche C-25
+      quatre — l'ABI en plus. C'est la seconde qui fait foi, puisque c'est elle
+      qui spécifie le cache : sans ce terme, un asset resterait en cache après
+      une mise à jour de la frontière qui en change la lecture.
 - [ ] **C-23** Optimizer — tangentes, cache de sommets, décomposition convexe (M2).
 - [ ] **C-71** Commandes — `/axion status` existe déjà, ses autres branches
       arrivent avec les composants qu'elles pilotent.

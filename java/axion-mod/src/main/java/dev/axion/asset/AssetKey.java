@@ -9,15 +9,21 @@ import java.util.HexFormat;
  * Clé de cache d'un asset (C-20 étape 2, C-25).
  *
  * <pre>
- * clé = sha256(contenu || options || COMPILER_VERSION)
+ * clé = sha256(contenu || options || COMPILER_VERSION || ABI)
  * </pre>
  *
  * <p>Elle répond à une seule question : <em>ce fichier, compilé par ce
- * compilateur avec ces options, a-t-il déjà été compilé ?</em> Les trois termes
- * comptent. Sans le contenu, une source modifiée passerait pour à jour ; sans
- * les options, deux compilations différentes se partageraient une entrée ; sans
- * la version du compilateur, une correction de C-21 n'atteindrait jamais les
- * assets déjà compilés (R-562, R-892).
+ * compilateur avec ces options, pour cette version d'ABI, a-t-il déjà été
+ * compilé ?</em> Les quatre termes comptent. Sans le contenu, une source
+ * modifiée passerait pour à jour ; sans les options, deux compilations
+ * différentes se partageraient une entrée ; sans la version du compilateur, une
+ * correction de C-21 n'atteindrait jamais les assets déjà compilés (R-562,
+ * R-892) ; sans l'ABI, un asset resterait en cache après une mise à jour de la
+ * frontière qui en change la lecture.
+ *
+ * <p>La fiche C-20 n'énumère que les trois premiers termes, la fiche C-25 les
+ * quatre. C'est la seconde qui fait foi : c'est elle qui spécifie le cache, et
+ * un terme en moins produit une entrée reprise à tort.
  *
  * <p>SHA-256 et non une empreinte rapide : une collision ici ne produit pas une
  * erreur, elle produit <strong>le mauvais asset</strong>, silencieusement.
@@ -43,15 +49,19 @@ public final class AssetKey {
      * @param content contenu du fichier source
      * @param options options de compilation, telles qu'elles seront transmises
      * @param compilerVersion version du compilateur natif
+     * @param abiVersion version de l'ABI attendue
      * @return la clé, en hexadécimal minuscule
      */
-    public static AssetKey of(byte[] content, String options, int compilerVersion) {
+    public static AssetKey of(
+            byte[] content, String options, int compilerVersion, int abiVersion) {
         MessageDigest digest = digest();
         digest.update(content);
         digest.update(SEPARATOR);
         digest.update(options.getBytes(StandardCharsets.UTF_8));
         digest.update(SEPARATOR);
         digest.update(intBytes(compilerVersion));
+        digest.update(SEPARATOR);
+        digest.update(intBytes(abiVersion));
         return new AssetKey(HexFormat.of().formatHex(digest.digest()));
     }
 

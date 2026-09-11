@@ -1,5 +1,6 @@
 package dev.axion.lifecycle;
 
+import dev.axion.asset.AssetCache;
 import dev.axion.asset.AssetRegistry;
 import dev.axion.asset.AssetSource;
 import dev.axion.asset.NativeAssetCompiler;
@@ -167,12 +168,27 @@ public final class AxionRuntime {
         int changed = 0;
         HookGuard guard = guard("assetReload");
         guard.run(() -> {
+            // R-563, INV-10 : le cache vit sous `<gameDir>/axion/`, jamais
+            // dans une sauvegarde. Un cache range dans un monde le ferait
+            // grossir de donnees reconstructibles et le rendrait non
+            // transportable.
+            AssetCache cache = new AssetCache(
+                    platform.gameDir().resolve("axion").resolve("cache"),
+                    outcome.config().getInt("assets.cache_max_bytes"));
+
             assets = new AssetRegistry(
                     source,
                     new NativeAssetCompiler(outcome.context()),
                     dev.axion.asset.CompilerVersion.CURRENT,
-                    System::nanoTime);
-            transitions.add(assets.discover() + " asset(s) à compiler");
+                    dev.axion.bridge.NativeBridge.EXPECTED_ABI_VERSION,
+                    System::nanoTime,
+                    cache);
+
+            int aCompiler = assets.discover();
+            long reprises = assets.entries().stream()
+                    .filter(entry -> entry.state() == dev.axion.asset.AssetState.CACHED)
+                    .count();
+            transitions.add(aCompiler + " asset(s) à compiler, " + reprises + " repris du cache");
         });
         if (assets != null) {
             changed = (int) assets.entries().stream()
@@ -308,6 +324,12 @@ public final class AxionRuntime {
 
     /** Relâche le runtime natif et ramène le cycle en {@code UNLOADED}. */
     private void shutdown() {
+        // L'index du cache est écrit avant tout le reste : il évite de
+        // parcourir l'arborescence au prochain démarrage, et le perdre ne coûte
+        // qu'un cache qui se remplit de nouveau.
+        if (assets != null && assets.cache() != null) {
+            assets.cache().writeIndex();
+        }
         if (!transitionTo(LifecyclePhase.STOPPING)) {
             return;
         }

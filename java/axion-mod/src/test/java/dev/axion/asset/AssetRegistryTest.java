@@ -338,14 +338,15 @@ class AssetRegistryTest {
     @DisplayName("La clé dépend du contenu, des options et de la version du compilateur")
     void laCleDependDeSesTroisTermes() {
         byte[] contenu = "v 0 0 0".getBytes(StandardCharsets.UTF_8);
-        AssetKey reference = AssetKey.of(contenu, "", 1);
+        AssetKey reference = AssetKey.of(contenu, "", 1, 1);
 
-        assertEquals(reference, AssetKey.of(contenu, "", 1));
-        assertNotEquals(reference, AssetKey.of("v 1 1 1".getBytes(StandardCharsets.UTF_8), "", 1));
-        assertNotEquals(reference, AssetKey.of(contenu, "lod=2", 1));
+        assertEquals(reference, AssetKey.of(contenu, "", 1, 1));
+        assertNotEquals(
+                reference, AssetKey.of("v 1 1 1".getBytes(StandardCharsets.UTF_8), "", 1, 1));
+        assertNotEquals(reference, AssetKey.of(contenu, "lod=2", 1, 1));
         // Sans ce terme, une correction du compilateur n'atteindrait jamais les
         // assets déjà compilés (R-562).
-        assertNotEquals(reference, AssetKey.of(contenu, "", 2));
+        assertNotEquals(reference, AssetKey.of(contenu, "", 2, 1));
 
         assertEquals(64, reference.hex().length());
         assertEquals(reference.hex().substring(0, 2), reference.shard());

@@ -45,7 +45,9 @@ public final class AssetRegistry {
     private final AssetSource source;
     private final AssetCompiler compiler;
     private final int compilerVersion;
+    private final int abiVersion;
     private final LongSupplier clock;
+    private final AssetCache cache;
 
     private final Map<String, AssetEntry> entries = new LinkedHashMap<>();
     private final List<String> diagnostics = new ArrayList<>();
@@ -60,10 +62,32 @@ public final class AssetRegistry {
      */
     public AssetRegistry(
             AssetSource source, AssetCompiler compiler, int compilerVersion, LongSupplier clock) {
+        this(source, compiler, compilerVersion, 0, clock, null);
+    }
+
+    /**
+     * Cree un orchestrateur adosse a un cache.
+     *
+     * @param source d'ou viennent les sources
+     * @param compiler qui les compile
+     * @param compilerVersion version du compilateur, entrant dans la cle
+     * @param abiVersion version de l'ABI, entrant dans la cle (C-25)
+     * @param clock horloge en nanosecondes, pour tenir le budget
+     * @param cache cache des assets compiles, ou {@code null}
+     */
+    public AssetRegistry(
+            AssetSource source,
+            AssetCompiler compiler,
+            int compilerVersion,
+            int abiVersion,
+            LongSupplier clock,
+            AssetCache cache) {
         this.source = source;
         this.compiler = compiler;
         this.compilerVersion = compilerVersion;
+        this.abiVersion = abiVersion;
         this.clock = clock;
+        this.cache = cache;
     }
 
     /**
@@ -97,14 +121,24 @@ public final class AssetRegistry {
                 continue;
             }
 
-            AssetKey key = AssetKey.of(content, OPTIONS, compilerVersion);
+            AssetKey key = AssetKey.of(content, OPTIONS, compilerVersion, abiVersion);
             AssetEntry existing = entries.get(path);
             if (existing != null && key.equals(existing.key())) {
                 // R-520 : rien n'a changé, rien n'est refait.
                 continue;
             }
 
-            entries.put(path, new AssetEntry(path, format, key, content));
+            AssetEntry entry = new AssetEntry(path, format, key, content);
+            entries.put(path, entry);
+
+            // C-25 : une entree valide evite toute la compilation. C'est le
+            // seul cas ou un asset atteint son contenu sans passer par le pool.
+            byte[] cached = cache == null ? null : cache.get(key);
+            if (cached != null) {
+                entry.transitionTo(AssetState.CACHED);
+                entry.setCompiled(cached);
+                continue;
+            }
             changed++;
         }
 
@@ -207,6 +241,9 @@ public final class AssetRegistry {
             case COMPILED -> {
                 entry.transitionTo(AssetState.COMPILED);
                 entry.setCompiled(status.payload());
+                if (cache != null && entry.key() != null) {
+                    cache.put(entry.key(), status.payload());
+                }
                 return true;
             }
             case FAILED -> {
@@ -268,9 +305,18 @@ public final class AssetRegistry {
         return entries.values().stream().noneMatch(entry -> entry.state().isPending());
     }
 
-    /** {@return les diagnostics accumulés, chacun émis une seule fois} */
+    /** {@return les diagnostics accumules, chacun emis une seule fois} */
     public List<String> diagnostics() {
-        return List.copyOf(diagnostics);
+        List<String> all = new ArrayList<>(diagnostics);
+        if (cache != null) {
+            all.addAll(cache.diagnostics());
+        }
+        return List.copyOf(all);
+    }
+
+    /** {@return le cache adosse a l'orchestrateur, ou {@code null}} */
+    public AssetCache cache() {
+        return cache;
     }
 
     /**
