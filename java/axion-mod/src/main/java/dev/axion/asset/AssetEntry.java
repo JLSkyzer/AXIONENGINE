@@ -135,6 +135,20 @@ public final class AssetEntry {
         state = AssetState.FAILED;
     }
 
+    /**
+     * Ramene l'entree a la decouverte, prete a etre recompilee.
+     *
+     * <p>Le drapeau de journalisation est remis a zero : un asset qui echouera
+     * de nouveau doit le redire, sans quoi une recompilation demandee
+     * expressement resterait muette sur ce qui cloche.
+     */
+    void reset() {
+        state = AssetState.DISCOVERED;
+        jobId = 0;
+        compiled = null;
+        logged = false;
+    }
+
     void setCompiled(byte[] payload) {
         this.compiled = payload;
     }

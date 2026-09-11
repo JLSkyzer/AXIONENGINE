@@ -314,6 +314,25 @@ public final class AssetRegistry {
         return List.copyOf(all);
     }
 
+    /**
+     * Force la recompilation de tous les assets, cache compris.
+     *
+     * <p>C'est ce que fait {@code /axion assets reload} : les sources n'ont pas
+     * change — {@code /reload} s'en charge —, mais leur resultat, si. On
+     * l'emploie apres une correction du compilateur, ou pour repartir d'un
+     * cache dont on doute.
+     *
+     * @return le nombre d'assets a recompiler
+     */
+    public int forceRecompile() {
+        int count = 0;
+        for (AssetEntry entry : entries.values()) {
+            entry.reset();
+            count++;
+        }
+        return count;
+    }
+
     /** {@return le cache adosse a l'orchestrateur, ou {@code null}} */
     public AssetCache cache() {
         return cache;

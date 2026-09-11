@@ -12,7 +12,7 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 ## État courant
 
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
-**Jalon en cours : M1 — Assets, noyau déterministe, jobs. Tout est fait sauf C-16 et C-71.**
+**Jalon en cours : M1 — Assets, noyau déterministe, jobs. Tout est fait sauf C-16.**
 
 Ce qui est en place :
 
@@ -621,8 +621,28 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       qui spécifie le cache : sans ce terme, un asset resterait en cache après
       une mise à jour de la frontière qui en change la lecture.
 - [ ] **C-23** Optimizer — tangentes, cache de sommets, décomposition convexe (M2).
-- [ ] **C-71** Commandes — `/axion status` existe déjà, ses autres branches
-      arrivent avec les composants qu'elles pilotent.
+- [x] **C-71 — Commandes.** Les branches dont les composants existent.
+      `/axion status`, `/axion metrics [export]`, `/axion assets list | info
+      <chemin> | reload`, `/axion config get <clé>`. Vérifiées sur un serveur
+      réel.
+      - `assets list` groupe par état plutôt que d'énumérer : sur un pack
+        fourni, la liste complète dépasse ce qu'un chat peut montrer, et c'est
+        la répartition qui dit si quelque chose ne va pas. Les refusés sont
+        nommés — ce sont eux qu'on cherche en tapant la commande ;
+      - `assets info` dit l'état, le format, la clé et les deux tailles. Un
+        chemin inconnu est **nommé** plutôt que rendu « introuvable » : sur un
+        pack fourni, c'est presque toujours une faute de frappe ;
+      - `assets reload` force la recompilation, cache compris, et remet à zéro
+        le drapeau de journalisation — une recompilation demandée expressément
+        ne doit pas rester muette sur ce qui cloche. Commande mutante, donc
+        **journalisée avec son auteur** (R-810) ;
+      - `config get` distingue une option inconnue d'une valeur vide : les deux
+        se ressemblent, seule la première se corrige.
+
+      **Les autres branches attendent leurs composants** : `spawn`, `sim`,
+      `damage`, `deform`, `repair`, `attach`, `debug`, `render`, `bench`,
+      `defs`, `diag dump` et `compat`. Les écrire maintenant produirait des
+      commandes qui ne pilotent rien, ce que R-001 interdit.
 
 ---
 
