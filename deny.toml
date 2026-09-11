@@ -34,10 +34,19 @@ allow = [
 confidence-threshold = 0.93
 
 [bans]
-# Un doublon de version est un signal de derive de dependances : il doit etre
-# justifie explicitement ici plutot que subi.
+# Un doublon de version est signale sans bloquer : les doublons observes
+# viennent tous d'arbres transitifs qu'AXION ne choisit pas — `jni` tire une
+# vieille `windows-sys`, `gltf` une autre version de `syn`. Bloquer la-dessus
+# reviendrait a exiger de corriger le graphe d'autrui. Un doublon parmi les
+# dependances *directes*, lui, se verrait dans la revue de Cargo.toml.
 multiple-versions = "warn"
+# Une dependance sans version est un joker, et un joker laisse la resolution
+# decider a notre place.
 wildcards = "deny"
+# Sauf entre crates du workspace, relies par chemin : aucune resolution n'entre
+# en jeu, la version est celle du dossier d'a cote. L'option ne vaut que pour des
+# crates prives, d'ou le `publish = false` du workspace.
+allow-wildcard-paths = true
 deny = []
 skip = []
 
