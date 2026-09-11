@@ -29,6 +29,7 @@ pub fn import_obj(
 ) -> Result<ImportedAsset, ImportError> {
     limits.check_size(SourceFormat::Obj, source.len() as u64)?;
     check_mtllib_paths(source)?;
+    check_face_indices(source)?;
 
     // L'analyseur veut un `Fn` pour résoudre les bibliothèques ; l'appelant,
     // lui, a toutes les raisons de tenir un état — un cache, un compteur de
@@ -101,6 +102,108 @@ fn check_mtllib_paths(source: &str) -> Result<(), ImportError> {
         for path in rest.split_whitespace() {
             check_relative_path(path)?;
         }
+    }
+    Ok(())
+}
+
+/// Refuse un indice de face hors bornes **avant** de confier le texte à
+/// l'analyseur.
+///
+/// Trouvé par fuzzing (R-903). `tobj` résout un indice négatif en le comptant
+/// depuis la fin, puis vérifie ses bornes par `vn * 3 + 2 >= normal.len()` — le
+/// produit est calculé **avant** la comparaison. Un indice de `-21` avec une
+/// seule normale déclarée donne `1 - 21 = -20`, qui devient un `usize` immense,
+/// et la multiplication déborde. La panique était contenue par le pool de jobs
+/// et par la frontière FFI, mais un OBJ malformé se refuse ; il ne panique pas.
+///
+/// Le contrôle est **conservateur** : il ne refuse que ce qui est hors bornes
+/// sous toute lecture du format. Un indice positif est comparé au total du
+/// fichier, un indice négatif au nombre d'éléments déjà déclarés — la règle que
+/// `tobj` applique. Un fichier valide passe donc, quelle que soit la lecture.
+fn check_face_indices(source: &str) -> Result<(), ImportError> {
+    let totaux = declared_counts(source);
+    let mut vus = Counts::default();
+
+    for line in source.lines() {
+        let mut mots = line.split_whitespace();
+        match mots.next() {
+            Some("v") => vus.positions += 1,
+            Some("vt") => vus.texcoords += 1,
+            Some("vn") => vus.normals += 1,
+            Some("f") => {
+                for reference in mots {
+                    // Trois champs au plus — `sommet/texture/normale`. Ce qui
+                    // suit n'appartient pas au format ; l'analyseur l'ignore, et
+                    // le vérifier reviendrait à inventer une règle.
+                    for (rang, champ) in reference.split('/').take(3).enumerate() {
+                        if champ.is_empty() {
+                            continue;
+                        }
+                        let (total, deja_vus, nom) = match rang {
+                            0 => (totaux.positions, vus.positions, "sommet"),
+                            1 => (totaux.texcoords, vus.texcoords, "coordonnée de texture"),
+                            _ => (totaux.normals, vus.normals, "normale"),
+                        };
+                        check_index(champ, total, deja_vus, nom)?;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Nombre d'éléments de chaque sorte.
+#[derive(Debug, Default, Clone, Copy)]
+struct Counts {
+    positions: i64,
+    texcoords: i64,
+    normals: i64,
+}
+
+/// Compte ce que le fichier déclare, sans rien interpréter.
+fn declared_counts(source: &str) -> Counts {
+    let mut counts = Counts::default();
+    for line in source.lines() {
+        match line.split_whitespace().next() {
+            Some("v") => counts.positions += 1,
+            Some("vt") => counts.texcoords += 1,
+            Some("vn") => counts.normals += 1,
+            _ => {}
+        }
+    }
+    counts
+}
+
+/// Vérifie un indice unique.
+///
+/// `i64` et non `usize` : c'est le seul type qui représente à la fois un indice
+/// négatif du format et un entier assez grand pour que l'analyse échoue plutôt
+/// que de déborder. Un nombre qui n'entre pas dans un `i64` est refusé comme
+/// illisible, ce qu'il est.
+fn check_index(champ: &str, total: i64, deja_vus: i64, nom: &str) -> Result<(), ImportError> {
+    let Ok(indice) = champ.parse::<i64>() else {
+        return Err(ImportError::Malformed {
+            format: SourceFormat::Obj,
+            detail: format!("indice de {nom} illisible : « {champ} »"),
+        });
+    };
+
+    let hors_bornes = if indice == 0 {
+        // L'OBJ compte à partir de 1 ; zéro ne désigne rien.
+        true
+    } else if indice > 0 {
+        indice > total
+    } else {
+        -indice > deja_vus
+    };
+
+    if hors_bornes {
+        return Err(ImportError::Malformed {
+            format: SourceFormat::Obj,
+            detail: format!("indice de {nom} hors bornes : {indice}, pour {total} déclaré(s)"),
+        });
     }
     Ok(())
 }
@@ -412,6 +515,64 @@ map_Kd textures/carrosserie.png
     fn t221_une_source_trop_volumineuse_est_refusee() {
         let refus = import_obj(TRIANGLE, &ImportLimits::new(16), sans_mtl).unwrap_err();
         assert_eq!(refus.code(), -3005);
+    }
+
+    #[test]
+    fn t680_un_indice_negatif_hors_bornes_est_refuse_et_ne_panique_pas() {
+        // Trouvé par fuzzing (R-903), à partir d'une graine du corpus. `tobj`
+        // résout `-21` en `1 - 21 = -20`, qui devient un `usize` immense, puis
+        // `vn * 3` déborde — le contrôle de bornes calcule le produit avant de
+        // comparer. Sans la passe de vérification, cet appel **panique**.
+        let source = "\
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 0.0 1.0 0.0
+vn 0.0 0.0 1.0
+f 1//-1 2//-21 3//-1
+";
+        let refus = import_obj(source, &limits(), sans_mtl).unwrap_err();
+        assert!(
+            matches!(refus, ImportError::Malformed { .. }),
+            "refus attendu, obtenu {refus:?}"
+        );
+    }
+
+    #[test]
+    fn t680_les_indices_hors_bornes_sont_refuses_dans_les_trois_champs() {
+        // Les trois champs d'une référence de face ont chacun leur compte.
+        // Vérifier le premier et oublier les deux autres était exactement la
+        // faute de `tobj`.
+        let base = "v 0.0 0.0 0.0\nvt 0.0 0.0\nvn 0.0 0.0 1.0\n";
+        for face in [
+            "f 9/1/1 1/1/1 1/1/1",                    // sommet
+            "f 1/9/1 1/1/1 1/1/1",                    // coordonnée de texture
+            "f 1/1/9 1/1/1 1/1/1",                    // normale
+            "f 0/1/1 1/1/1 1/1/1",                    // zéro : l'OBJ compte à partir de 1
+            "f 1/1/1 1/1/99999999999999999999 1/1/1", // au-delà d'un i64
+        ] {
+            let source = format!("{base}{face}\n");
+            let resultat = import_obj(&source, &limits(), sans_mtl);
+            assert!(
+                resultat.is_err(),
+                "« {face} » aurait dû être refusé, il a été accepté"
+            );
+        }
+    }
+
+    #[test]
+    fn t680_un_indice_negatif_valide_reste_accepte() {
+        // La réciproque, qui dit que la passe ne refuse pas ce que le format
+        // autorise : compter depuis la fin est légal, et un fichier qui le fait
+        // doit passer.
+        let source = "\
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 0.0 1.0 0.0
+vn 0.0 0.0 1.0
+f -3//-1 -2//-1 -1//-1
+";
+        let asset = import_obj(source, &limits(), sans_mtl).expect("indices négatifs valides");
+        assert_eq!(asset.vertices.len(), 3);
     }
 
     #[test]

@@ -714,6 +714,33 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         ce qui fait qu'un vrai fichier déposé dans `corpus/<cible>/` est une
         graine telle quelle. Une entrée structurée lirait ses longueurs depuis
         la fin du tampon, et un `.gltf` n'y désignerait plus un document.
+- [x] **Deux paniques trouvées dès la première campagne de contrôle**, toutes
+      deux dans des analyseurs **tiers**, toutes deux atteignables depuis un
+      pack de contenu, toutes deux corrigées par une vérification préalable dans
+      notre code.
+      - `gltf` 1.4.1 — `read_indices()` atteint un `unreachable!()` dès que le
+        `componentType` de l'accesseur d'indices n'est ni `U8`, ni `U16`, ni
+        `U32`. Un fichier déclarant `5122` (`SHORT`, signé) suffit, et un
+        exportateur qui confond `5122` et `5123` en produit un que tous les
+        autres champs rendent plausible. `import_gltf` vérifie désormais le type
+        avant toute lecture — refuser est **conforme à glTF 2.0**, qui n'admet
+        que des entiers non signés pour des indices ;
+      - `tobj` 4.0.5 — `attempt to multiply with overflow` : le contrôle de
+        bornes s'écrit `vn * 3 + 2 >= normal.len()`, le produit étant calculé
+        **avant** la comparaison. Un indice négatif de `-21` avec une seule
+        normale déclarée donne `1 - 21 = -20`, qui devient un `usize` immense.
+        `import_obj` valide désormais chaque indice de face contre les comptes
+        déclarés, à côté de la passe qui vérifie déjà les `mtllib` ;
+      - les deux paniques étaient **contenues** — le pool de jobs et la
+        frontière FFI les captent —, mais un asset qui doit être refusé se
+        refuse ; il ne panique pas. R-903 ne tolère rien d'autre.
+      - Les deux entrées fautives sont versées au corpus comme graines de
+        régression, et chacune a son test nommé : le corpus dit « ne panique
+        pas », le test dit « refuse pour la bonne raison ».
+      - **Les deux sont des mutations de mes propres graines.** Le fuzzer est
+        parti de `triangle.gltf` et de `mtllib-indices-negatifs.obj`, et a
+        trouvé en moins de dix minutes. C'est la démonstration que R-903
+        attendait d'un corpus versionné.
 - [x] **Le corpus est rejoué sans `nightly`**, par
       `crates/ax-asset/tests/corpus_fuzzing.rs`, sur les quatre plateformes et à
       chaque exécution de la CI. Il vérifie deux choses qu'une campagne ne

@@ -469,6 +469,35 @@ fn import_meshes(
                 });
             }
 
+            // Le type de composant des indices est vérifié **avant** toute
+            // lecture. glTF 2.0 n'admet pour un accesseur d'indices que
+            // `UNSIGNED_BYTE`, `UNSIGNED_SHORT` et `UNSIGNED_INT` ; le refuser
+            // ici est donc conforme à la spécification, pas un contournement.
+            //
+            // Sans cette vérification, `read_indices` du crate `gltf` atteint
+            // un `unreachable!()` et **panique**. Trouvé par fuzzing (R-903) :
+            // un accesseur déclarant `5122` — `SHORT`, signé — suffit, et un
+            // exportateur bogué peut l'émettre. La panique était contenue par
+            // le pool de jobs et par la frontière FFI, mais un asset qui doit
+            // être refusé se refuse ; il ne panique pas.
+            if let Some(indices) = primitive.indices() {
+                let data_type = indices.data_type();
+                if !matches!(
+                    data_type,
+                    gltf::accessor::DataType::U8
+                        | gltf::accessor::DataType::U16
+                        | gltf::accessor::DataType::U32
+                ) {
+                    return Err(ImportError::Malformed {
+                        format,
+                        detail: format!(
+                            "accesseur d'indices de type {data_type:?} : glTF 2.0 \
+                             n'admet que des entiers non signés"
+                        ),
+                    });
+                }
+            }
+
             let reader = primitive.reader(|buffer| buffers.get(buffer.index()).map(Vec::as_slice));
             let vertex_offset = asset.vertices.len() as u32;
             let index_offset = asset.indices.len() as u32;
