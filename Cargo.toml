@@ -11,6 +11,11 @@ resolver = "2"
 # `tools/codegen` genere le code Java depuis ax-model (PARTIE 33) ; il vit hors
 # de crates/ parce qu'il ne fait pas partie de la bibliotheque native livree.
 members = ["crates/*", "tools/codegen"]
+# `fuzz/` est un workspace a lui seul : ses cibles dependent de
+# `libfuzzer-sys`, qui exige une chaine nightly et un desinfecteur. Les
+# inclure ici ferait echouer `cargo test --workspace` sur la chaine epinglee
+# dont la matrice deterministe de C-16 depend.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "1.0.0"
