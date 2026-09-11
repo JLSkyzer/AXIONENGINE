@@ -1,0 +1,23 @@
+[package]
+name = "ax-det"
+description = "C-16 : noyau deterministe d'AXION ENGINE et ses vecteurs d'or"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints.rust]
+# `deny` et non `forbid` : la bibliotheque ne contient aucun bloc `unsafe`, mais
+# `forbid` ne peut pas etre leve localement et interdirait a un test d'installer
+# un allocateur global compteur (INV-08, T-016).
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[dependencies]
+# C-16 : empreinte de champ (`digest64`). Retenu par 32.2, licence BSD-2-Clause.
+# La version est epinglee au correctif pres : une implementation d'empreinte qui
+# changerait invaliderait toute reconstruction deja repliquee. Les vecteurs d'or
+# le verraient, mais mieux vaut que cela n'arrive pas.
+xxhash-rust = { workspace = true, features = ["xxh64"] }

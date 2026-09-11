@@ -86,6 +86,13 @@ tobj = { version = "4", default-features = false }
 # C-21 : import STL. Retenu par 32.2, licence MIT. Pur Rust.
 stl_io = { version = "0.8", default-features = false }
 
+# C-16 : empreinte de champ deterministe (digest64). Retenu par 32.2, qui lui
+# attribue BSD-2-Clause ; le crate est en realite sous BSL-1.0, ecart consigne
+# dans docs/decisions/ADR-105.md. Epingle au correctif pres : l'empreinte entre
+# dans la verification de reconstruction, et une implementation qui changerait
+# invaliderait tout ce qui a deja ete replique.
+xxhash-rust = { version = "=0.8.15", default-features = false }
+
 # Crates internes.
 ax-math = { path = "crates/ax-math" }
 ax-mem = { path = "crates/ax-mem" }
@@ -93,6 +100,7 @@ ax-core = { path = "crates/ax-core" }
 ax-jobs = { path = "crates/ax-jobs" }
 ax-telemetry = { path = "crates/ax-telemetry" }
 ax-asset = { path = "crates/ax-asset" }
+ax-det = { path = "crates/ax-det" }
 ax-model = { path = "crates/ax-model" }
 
 # Les profils s'appliquent a tout le workspace.

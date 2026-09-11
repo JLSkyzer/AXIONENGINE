@@ -1,0 +1,9 @@
+# Vecteurs d'or du noyau déterministe (C-16, R-513).
+#
+# Fins de ligne figées, et sur toutes les copies de travail. Ce fichier est
+# rejoué sur chaque configuration de la matrice de validation (5.12bis) : un
+# Windows configuré en `core.autocrlf=true` le verrait autrement qu'un Linux,
+# et le générateur, qui écrit toujours en LF, le réécrirait entièrement à chaque
+# passage. Un artefact de 10 000 lignes dont la différence porte sur les 10 000
+# cesse de se relire.
+crates/ax-det/tests/golden/*.txt text eol=lf

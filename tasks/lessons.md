@@ -238,19 +238,79 @@ seulement ses jetons. Une plage, un « et suivants », un renvoi : chacun demand
 d'être compris, sinon le test refuse ce que la source autorise — et l'on finit
 par contourner le test au lieu de le corriger.
 
-## 2026-09-11 | Un evenement de plateforme n'arrive pas quand on le croit
+## 2026-09-11 | Un événement de plateforme n'arrive pas quand on le croit
 
-La decouverte d'assets exigeait que le cycle de vie soit « en cours ». Forge
-emet AddReloadListenerEvent AVANT ServerStartingEvent : la condition n'etait
-jamais vraie, et la decouverte passait a cote a chaque demarrage sans qu'aucune
+La découverte d'assets exigeait que le cycle de vie soit « en cours ». Forge
+émet `AddReloadListenerEvent` AVANT `ServerStartingEvent` : la condition n'était
+jamais vraie, et la découverte passait à côté à chaque démarrage sans qu'aucune
 erreur ne le dise.
 
-**Regle.** Avant de conditionner un traitement a une phase, verifier dans un log
-reel l'ordre des evenements qui la produisent. L'ordre suppose est faux une fois
-sur deux, et l'erreur est silencieuse : il ne se passe rien, ce qui ressemble a
-« il n'y avait rien a faire ».
+**Règle.** Avant de conditionner un traitement à une phase, vérifier dans un log
+réel l'ordre des événements qui la produisent. L'ordre supposé est faux une fois
+sur deux, et l'erreur est silencieuse : il ne se passe rien, ce qui ressemble à
+« il n'y avait rien à faire ».
 
-**Corollaire.** Un traitement qui reussit doit le dire, pas seulement echouer
-bruyamment. Un silence ne distingue pas un travail reussi d'un travail qui n'a
-pas eu lieu — c'est en ajoutant une ligne de compte rendu que le defaut est
+**Corollaire.** Un traitement qui réussit doit le dire, pas seulement échouer
+bruyamment. Un silence ne distingue pas un travail réussi d'un travail qui n'a
+pas eu lieu — c'est en ajoutant une ligne de compte rendu que le défaut est
 apparu.
+
+---
+
+## 2026-09-11 | Un garde-fou à l'entrée ne garantit pas la sortie
+
+`quantize_i8` et `dequantize_i8` refusaient tous les deux un pas non fini, nul ou
+négatif, et le module promettait en toutes lettres de ne jamais rendre de valeur
+non finie. Les deux mentaient.
+
+`v / step` déborde quand le pas est subnormal : le quotient devient un infini,
+que `clamp` ramène à sa borne **basse** — une valeur franchement positive
+quantifiait donc en pas franchement négatif, c'est-à-dire en son opposé.
+`dequantize_i8` rendait un infini dès que `128 × pas` n'entrait plus dans un
+`f32`. Aucun des deux n'était atteignable par une entrée plausible, et aucun test
+écrit à partir de la formule ne les voyait.
+
+**Règle.** Quand une fonction promet quelque chose sur sa **sortie**, la vérifier
+sur les extrêmes du **type**, pas sur ceux de l'usage attendu : subnormaux,
+`f32::MAX`, `i8::MIN`, infinis, `NaN`, et les valeurs à un ULP d'une frontière.
+Les deux défauts ci-dessus ont été trouvés en dressant cette liste pour les
+vecteurs d'or — avant d'exécuter quoi que ce soit.
+
+**Corollaire.** `i8::MIN` vaut `-128` quand la quantification n'émet que `-127`.
+Un garde-fou en sortie se raisonne à partir de ce que le type admet, car la
+valeur peut venir d'un fichier plutôt que du moteur.
+
+---
+
+## 2026-09-11 | Un fichier d'or ne tire pas ses entrées de ce qu'il fige
+
+Le générateur des 10 000 vecteurs d'or de C-16 aurait pu tirer ses entrées avec
+`DetRng`. Il aurait alors suffi de modifier `DetRng` pour que **toutes** les
+lignes du fichier changent à la régénération suivante, et la différence entre
+deux versions de l'artefact — la seule chose qui dise ce qui a bougé — serait
+devenue illisible.
+
+**Règle.** Les entrées d'un fichier de référence viennent d'une source
+indépendante de ce qu'il fige : ici un xorshift écrit en clair dans le
+générateur. La différence entre deux versions est alors exactement la liste des
+sorties qui ont changé.
+
+**Corollaire.** Le fichier porte la version dans son nom
+(`kernel-v1.txt`). Incrémenter `DET_KERNEL_VERSION` sans régénérer laisse le
+rejeu sans fichier, donc en échec : un noyau qui change ne peut pas rester sans
+vecteurs à jour.
+
+---
+
+## 2026-09-11 | `write_text` de Python réécrit les fins de ligne sous Windows
+
+Trois fichiers sont passés en CRLF sans que rien ne le signale, parce que
+`pathlib.Path.write_text` applique la traduction de fins de ligne de la
+plateforme. Le dépôt a `core.autocrlf=true`, donc `git status` ne montrait rien
+d'anormal — la conversion se voyait seulement en lisant les octets.
+
+**Règle.** Pour modifier un fichier du dépôt en Python, lire et écrire en
+**binaire** (`read_bytes` / `write_bytes`) et gérer les fins de ligne
+explicitement : les normaliser en saut simple pour éditer, restituer le style
+d'origine à l'écriture. `tasks/todo.md` et `tasks/lessons.md` sont en CRLF — le
+premier avec BOM —, la plupart des autres fichiers en LF.

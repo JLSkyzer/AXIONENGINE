@@ -1,0 +1,28 @@
+# Discipline arithmétique du noyau déterministe (C-16, R-510).
+#
+# `-C llvm-args=-fp-contract=off` interdit à LLVM de fusionner `a·b + c` en une
+# multiplication-addition unique. Une contraction n'arrondit qu'une fois là où
+# le calcul séparé arrondit deux fois : les deux résultats diffèrent sur une
+# infinité d'entrées, sans qu'aucune ligne de code ne change. Un client qui
+# contracte et un serveur qui ne contracte pas ne calculent pas le même champ.
+#
+# `-C target-feature=-fma` retire l'instruction qui permettrait cette fusion.
+# Elle ne porte que sur x86-64, seule architecture où `fma` est le nom d'une
+# fonctionnalité ; sur ARM, l'opération fusionnée fait partie du jeu de base et
+# c'est `-fp-contract` qui décide seul. D'où les deux blocs : R-510 dit « sur
+# les cibles concernées ».
+#
+# Ces drapeaux sont une **promesse**. La constatation est ailleurs :
+# `crates/ax-det/tests/no_fma.rs` interroge le binaire réellement produit, parce
+# qu'une variable d'environnement `RUSTFLAGS` a priorité sur ce fichier et le
+# remplace en silence.
+#
+# Les portées ne se cumulent pas : quand un bloc `[target.…]` s'applique, cargo
+# ignore `[build] rustflags`. Le drapeau commun est donc répété plutôt que
+# factorisé — le factoriser reviendrait à ne l'appliquer nulle part.
+
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-Cllvm-args=-fp-contract=off", "-Ctarget-feature=-fma"]
+
+[target.'cfg(not(target_arch = "x86_64"))']
+rustflags = ["-Cllvm-args=-fp-contract=off"]

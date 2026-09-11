@@ -1,4 +1,4 @@
-# AXION ENGINE — plan de travail
+﻿# AXION ENGINE — plan de travail
 
 Source de vérité : `cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md` (8270 lignes,
 FINAL / FROZEN). Ne jamais le lire en entier : passer par
@@ -12,7 +12,10 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 ## État courant
 
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
-**Jalon en cours : M1 — Assets, noyau déterministe, jobs. Tout est fait sauf C-16.**
+**Jalon en cours : M1 — Assets, noyau déterministe, jobs. Les huit composants
+sont faits ; la Definition of Done attend deux preuves qui ne peuvent pas être
+produites ici (voir « Dette et points ouverts ») : une heure de fuzzing sans
+incident, et les vecteurs d'or verts sur les trois plateformes de CI.**
 
 Ce qui est en place :
 
@@ -413,8 +416,47 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       - `axion.ffi.roundtrip_ns` (R-330) est mesuré au démarrage et affiché par
         `/axion status`, mais n'est pas encore une métrique du registre natif :
         il faudrait que Java pousse la valeur mesurée.
-- [ ] **C-16** Noyau déterministe. **`[EFFORT MAX]`**, prévenir avant de
-      commencer. La dette « glam et déterminisme » se règle d'abord.
+- [x] **C-16 — Noyau déterministe.** Crate `ax-det`, 62 tests, 10 000 vecteurs
+      d'or. Mené à l'effort maximal, comme le marqueur l'exigeait.
+      - **scalaire, et c'est la réponse à la dette « glam et déterminisme »**
+        ([ADR-104](../docs/decisions/ADR-104.md)) : R-510 n'autorise que
+        `+ - * / sqrt` et les fonctions de `det`, toutes scalaires, donc R-460
+        et C-16 ne se contredisent jamais. Un chemin déterministe qui manipule
+        un vecteur le traite composante par composante ;
+      - **aucune fonction de libm**, pas même `round`, `abs` ou `is_finite` :
+        « exactement spécifiée » et « identiquement implémentée partout » ne
+        sont pas la même chose. `finite(x)` s'écrit `x - x == 0.0`, et
+        l'arrondi demi-loin-de-zéro passe par la troncature entière ;
+      - **`DetRng`**, PCG32 semée par `(assembly_uuid, impact.seq)` (R-512),
+        sans générateur global, avec rejet sans biais modulo ;
+      - **empreinte de champ** XXH64, version épinglée au correctif près et
+        ancrée par un vecteur officiel : une empreinte qui changerait ferait
+        diverger toutes les assemblies déjà répliquées ;
+      - **matrice de validation** (5.12bis) et empreinte de configuration lue
+        des `target_feature` réellement compilés, donc sensible à un
+        `-C target-cpu=native` que le triplet ne trahirait pas ;
+      - **repli à deux niveaux** : préventif au handshake (`negotiate`), curatif
+        au seuil (`DivergenceTracker`, T-820d). Jamais un refus, jamais une
+        fonctionnalité retirée (R-514, R-515) ;
+      - **vecteurs d'or (R-513)** : 10 000 cas d'entrée-sortie versionnés dans
+        `crates/ax-det/tests/golden/kernel-v1.txt`, engendrés par une source
+        d'entrées **indépendante du noyau**, pour qu'une différence entre deux
+        versions du fichier soit exactement la liste des sorties qui ont bougé.
+        Tête systématique — produit croisé des valeurs remarquables, balayage
+        dense du domaine, voisinage des demi-pas à l'ULP près — puis queue
+        aléatoire. Vérifiés par mutation : réécrire `x·x·(3 - 2x)` en
+        `3x² - 2x³`, algébriquement neutre et que tout autre test accepterait,
+        fait diverger 510 cas d'un ULP ;
+      - **T-820 sur le binaire produit** : la contraction en multiplication-
+        addition fusionnée y est constatée absente, et non promise par un
+        drapeau de compilation ;
+      - **T-821, T-822** : mille impacts rejoués indépendamment donnent le même
+        champ, et répartir les nœuds sur 1 à 16 fils n'y change rien.
+      - Deux défauts trouvés en préparant le corpus pathologique, corrigés :
+        `quantize_i8` quantifiait une valeur très positive en pas très
+        **négatif** quand la division débordait — un pas subnormal suffisait —,
+        et `dequantize_i8` rendait un infini pour un pas dont la plage ne tient
+        pas dans un `f32`, ce que le module s'interdit explicitement.
 - [x] **C-24 — Conteneur A3D.** Crate `ax-asset`, 36 tests, format de la
       PARTIE 7 écrit et relu octet pour octet.
       - en-tête de 64 octets, table de sections de 32 octets par entrée,
@@ -644,6 +686,14 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       `defs`, `diag dump` et `compat`. Les écrire maintenant produirait des
       commandes qui ne pilotent rien, ce que R-001 interdit.
 
+      `compat` a désormais sa moitié locale : C-16 sait dire l'empreinte de
+      configuration et l'appartenance à la matrice. Il lui manque l'autre
+      moitié — l'empreinte **distante** et le mode négocié —, qui vient avec le
+      handshake de M4. Ce que la commande dirait aujourd'hui d'un mode de
+      réplication serait une supposition, et 5.12bis la veut affichée avec sa
+      cause. Exposer `det_profile` par la frontière native se fait donc avec le
+      composant qui le consomme, pas avant.
+
 ---
 
 ## Jalons suivants
@@ -651,7 +701,7 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 - [ ] **M1** Assets, noyau déterministe, jobs — C-12, C-15, C-16, C-20, C-21, C-22, C-24, C-71
-      · **C-16 : `[EFFORT MAX]`**, prévenir avant de commencer
+      · les huit composants sont faits ; l'acceptance attend le fuzzing et la CI
 - [ ] **M2** Scene graph, cache, optimizer, entité, API — C-23, C-25, C-27, C-30, C-50, C-70, C-72, C-74
 - [ ] **M3** Physique et premier rendu — C-31, C-32, C-38, C-39, C-40, C-60..C-63, C-67, C-26
 - [ ] **M4** Réseau, animation, culling/LOD, joints, persistance — C-34, C-37, C-51, C-52, C-64, C-65, C-66
@@ -726,11 +776,19 @@ ses critères vérifiés **mécaniquement**.
       déterministe y sont listées, ce qui fait télécharger cinq bibliothèques
       standard sur chaque poste. Si c'est trop lourd, ne garder que la cible
       hôte et laisser la CI ajouter les autres.
-- [ ] **glam et déterminisme.** `glam` sélectionne des chemins SIMD selon la
-      cible, et `Vec3A` est explicitement un type aligné SIMD. C-16 exige des
-      résultats bit-identiques entre client et serveur sur la matrice de
-      validation déterministe, sans contraction FMA ni réassociation. **Avant
-      d'écrire le noyau déterministe (M1), vérifier quels types et quelles
-      opérations de `glam` sont utilisables dedans**, et documenter le verdict :
-      il est probable que le noyau doive s'en tenir à `f32` scalaire, `glam`
-      restant réservé au reste du moteur.
+- [x] **glam et déterminisme.** Réglé par
+      [ADR-104](../docs/decisions/ADR-104.md) : aucun type de `glam` n'entre
+      dans le noyau déterministe, parce que R-510 n'y autorise que des
+      opérations scalaires. `ax-det` ne dépend que de `xxhash-rust`. Un chemin
+      déterministe qui manipule un vecteur le décompose ; `glam` reste employé
+      partout ailleurs, R-460 inchangé.
+- [ ] **Acceptance de M1 : fuzzing une heure.** La fiche M1 demande « fuzzing
+      1 h sans incident » sur la chaîne d'assets. Rien ne le lance aujourd'hui :
+      ni cible `cargo-fuzz`, ni corpus. À monter avant de prononcer la
+      Definition of Done de M1.
+- [ ] **Vecteurs d'or sur une seule plateforme.** R-513 les veut rejoués sur
+      **chaque** configuration de la matrice ; seule `x86_64-windows-msvc` les a
+      joués. Le rejeu est écrit pour tourner partout, et son message distingue
+      déjà une divergence dans la matrice — défaut bloquant — d'une divergence
+      hors matrice, qui n'en est pas un. Il ne manque que les machines,
+      c'est-à-dire la CI.

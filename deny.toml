@@ -25,6 +25,11 @@ allow = [
     "Zlib",
     "Unicode-3.0",
     "CC0-1.0",
+    # Boost Software License : permissive, approuvee par l'OSI, plus souple que
+    # BSD-2-Clause. Ajoutee pour xxhash-rust, que la table 32.2 retient en
+    # annoncant BSD-2-Clause alors que le crate est sous BSL-1.0. L'ecart est
+    # consigne dans docs/decisions/ADR-105.md.
+    "BSL-1.0",
 ]
 confidence-threshold = 0.93
 

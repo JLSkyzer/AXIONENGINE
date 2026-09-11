@@ -19,6 +19,7 @@ workspace désigne.
 | `ax-math` | C-11 | Types mathématiques (`glam`), origine flottante |
 | `ax-mem` | C-13 | Arènes, pool de pages de déformation, comptage des allocations |
 | `ax-jobs` | C-12 | Pool dédié, annulation, deadlines, granularité adaptative |
+| `ax-det` | C-16 | Noyau déterministe scalaire, `DetRng`, empreinte de champ, matrice de validation, vecteurs d'or |
 | `ax-telemetry` | C-15 | Registre de métriques, métriques de budget, export JSON |
 | `ax-model` | DM-* | Structures du modèle, registre des budgets, configuration, génération Java |
 | `ax-asset` | C-21, C-22, C-24 | Import de sources, validation, conteneur A3D |
@@ -34,7 +35,9 @@ workspace désigne.
   R-2120. Les autres crates le refusent par lint, avec la justification du choix
   entre `deny` et `forbid` dans leur `Cargo.toml`.
 - **Aucun crate ne définit son propre type vecteur ou matrice** (R-460) : ils
-  viennent tous de `ax-math`, donc de `glam`.
+  viennent tous de `ax-math`, donc de `glam`. `ax-det` n'en emploie aucun : le
+  noyau déterministe est scalaire, et les chemins déterministes qui manipulent
+  des vecteurs le font composante par composante ([ADR-104](../decisions/ADR-104.md)).
 - **Aucune dépendance hors de la table 32.2** sans justification, licence
   compatible, alternative évaluée, entrée au `NOTICE` et ADR si elle est
   structurante (R-2300).
@@ -47,7 +50,6 @@ interdit. Les prochains, par ordre de jalon :
 
 | Crate | Composant | Jalon |
 |---|---|---|
-| `ax-det` | C-16 — noyau déterministe et vecteurs d'or | M1 |
 | — | C-20..C-23, C-25 rejoignent `ax-asset` : orchestrateur, importers, validateur, cache | M1, M2 |
 | `ax-scene` | C-30 — graphe de scène | M2 |
 | `ax-physics` | C-31, C-32, C-38..C-40 | M3 |
