@@ -694,6 +694,36 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       cause. Exposer `det_profile` par la frontière native se fait donc avec le
       composant qui le consomme, pas avant.
 
+### Fuzzing de la chaîne d'assets (R-903, T-680..T-682)
+
+- [x] **Quatre cibles et leur corpus versionné.** `fuzz/`, workspace à part :
+      `cargo-fuzz` exige une chaîne `nightly` et un désinfecteur, et l'inclure
+      au workspace principal ferait échouer `cargo test --workspace` sur la
+      chaîne épinglée — celle dont la matrice déterministe de C-16 dépend.
+      - `a3d_reader` — le nom vient de R-903, qui le donne explicitement ;
+        l'arborescence de la PARTIE 33 écrit `a3d` dans une énumération
+        abrégée, et l'exigence numérotée l'emporte. C'est la cible qui compte
+        le plus : le lecteur A3D est le seul composant qui lit un fichier
+        **fourni par un tiers** et en tire des tailles, des décalages et des
+        longueurs de décompression ;
+      - `gltf`, `obj`, `stl` pour les importeurs (T-680) ;
+      - `packets`, `impacts`, `deform_snapshot` et `nbt` attendent leurs
+        décodeurs, en M4 et M6. Une cible sans sujet passerait au vert sans
+        rien chercher ;
+      - **entrées prises brutes**, sans structure dérivée d'`arbitrary` : c'est
+        ce qui fait qu'un vrai fichier déposé dans `corpus/<cible>/` est une
+        graine telle quelle. Une entrée structurée lirait ses longueurs depuis
+        la fin du tampon, et un `.gltf` n'y désignerait plus un document.
+- [x] **Le corpus est rejoué sans `nightly`**, par
+      `crates/ax-asset/tests/corpus_fuzzing.rs`, sur les quatre plateformes et à
+      chaque exécution de la CI. Il vérifie deux choses qu'une campagne ne
+      vérifie pas : qu'aucune graine ne fait paniquer un lecteur **maintenant**
+      plutôt qu'à la prochaine campagne, et qu'au moins une graine par cible est
+      encore **acceptée**. Une graine qu'un changement de code ferait refuser
+      d'emblée cesse d'être un point de départ, et le fuzzer repartirait de rien
+      sans que rien ne le dise. Vérifié par mutation : un octet ajouté à la
+      graine glTF fait échouer le test.
+
 ### Intégration continue (PARTIE 34.3)
 
 - [x] **Chaîne de CI.** `.github/workflows/ci.yml`, cinq jobs. La
@@ -838,6 +868,13 @@ ses critères vérifiés **mécaniquement**.
       une machine par plateforme : les cinq cibles faisaient télécharger cinq
       bibliothèques standard partout pour n'en utiliser qu'une. La matrice reste
       déclarée là où elle sert, dans `VALIDATION_MATRIX`.
+- [ ] **Campagne de fuzzing nocturne non programmée.** 34.3 prévoit une heure
+      par cible chaque nuit. Quatre cibles font 240 minutes par nuit, soit
+      7 200 par mois sur un dépôt privé qui en compte 2 000 : un `cron`
+      épuiserait le quota en quatre nuits. Le workflow se déclenche donc à la
+      main, et `fuzz-short` — dix minutes par cible — tourne sur les PR qui
+      touchent la chaîne d'assets. À reprendre si le dépôt passe public ou
+      change de plan.
 - [ ] **glibc du binaire Linux.** 34.2 annonce « Linux x86_64 (glibc ≥ 2.28) ».
       La CI construit sur `ubuntu-22.04`, dont la glibc est 2.35 : le `.so`
       produit exige donc 2.35, pas 2.28, et l'annonce est en avance sur le fait.
@@ -879,19 +916,14 @@ ses critères vérifiés **mécaniquement**.
       ni cible `cargo-fuzz`, ni corpus. À monter avant de prononcer la
       Definition of Done de M1.
 
-      Ce qu'il faudra, pour ne pas le redécouvrir : R-903 nomme la cible
-      `a3d_reader`, exige un corpus versionné sous `fuzz/corpus/<cible>/` et une
-      tolérance zéro ; la PARTIE 33 prévoit aussi `gltf`, `obj`, `stl`,
-      `packets` et `impacts`. T-680..T-682 demandent dix millions d'exécutions
-      par cible, ce qui relève du jalon final, quand 34.3 ne met que
-      `fuzz-short`, dix minutes par cible, sur les PR.
+      **L'outillage existe désormais** — cibles, corpus, workflow. Ce qui
+      manque est l'**exécution** : déclencher `Fuzzing` avec
+      `minutes_par_cible: 60` et constater quatre campagnes sans incident.
+      Tolérance zéro (R-903) : une panique, un débordement ou une boucle est un
+      défaut, pas un cas limite.
 
-      `cargo-fuzz` a besoin de `nightly` — le désinfecteur d'adresses n'est pas
-      stable. Cela ne remet pas en cause l'épinglage de `rust-toolchain.toml` :
-      le job de fuzzing appelle `cargo +nightly fuzz`, et rien de ce qui est
-      livré n'est construit par cette chaîne. Le noyau déterministe, lui, reste
-      compilé par la version épinglée, sans quoi la matrice de validation ne
-      voudrait plus rien dire.
+      T-680..T-682 demandent dix millions d'exécutions par cible, ce qui relève
+      du jalon final et non de M1.
 - [x] **Vecteurs d'or sur une seule plateforme.** Réglé : la CI les rejoue sur
       quatre des cinq configurations de la matrice, et le résultat est archivé
       dans [`docs/spec/MATRICE-DETERMINISTE.md`](../docs/spec/MATRICE-DETERMINISTE.md)

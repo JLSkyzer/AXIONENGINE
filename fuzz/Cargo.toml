@@ -1,0 +1,66 @@
+# Cibles de fuzzing (R-903, T-680..T-682, PARTIE 33).
+#
+# Workspace a part, et pas par gout de la separation : les cibles dependent de
+# `libfuzzer-sys`, qui exige une chaine `nightly` et un desinfecteur. Les inclure
+# au workspace principal ferait echouer `cargo test --workspace` sur la chaine
+# epinglee — celle-la meme dont C-16 depend pour sa matrice deterministe.
+#
+#     cargo +nightly fuzz run a3d_reader -- -max_total_time=600
+#
+# La marche a suivre complete est dans fuzz/README.md.
+
+[package]
+name = "axion-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Racine de workspace a elle seule : `fuzz/` vit sous le workspace principal sans
+# en faire partie.
+[workspace]
+
+[dependencies]
+# Seule dependance directe. `arbitrary` entre par elle, mais aucune cible n'en
+# derive de structure : les entrees sont prises brutes, pour qu'un vrai fichier
+# depose dans `corpus/<cible>/` soit une graine telle quelle (R-903).
+libfuzzer-sys = "0.4"
+
+[dependencies.ax-asset]
+path = "../crates/ax-asset"
+
+# `cargo-fuzz` construit en release avec les informations de debogage : une pile
+# d'appels lisible vaut la taille qu'elle coute, et un defaut trouve en fuzzing
+# se reproduit d'abord par sa pile.
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "a3d_reader"
+path = "fuzz_targets/a3d_reader.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "gltf"
+path = "fuzz_targets/gltf.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "obj"
+path = "fuzz_targets/obj.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stl"
+path = "fuzz_targets/stl.rs"
+test = false
+doc = false
+bench = false
