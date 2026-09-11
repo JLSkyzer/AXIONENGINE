@@ -970,11 +970,25 @@ ses critères vérifiés **mécaniquement**.
       ni cible `cargo-fuzz`, ni corpus. À monter avant de prononcer la
       Definition of Done de M1.
 
-      **L'outillage existe désormais** — cibles, corpus, workflow. Ce qui
-      manque est l'**exécution** : déclencher `Fuzzing` avec
-      `minutes_par_cible: 60` et constater quatre campagnes sans incident.
-      Tolérance zéro (R-903) : une panique, un débordement ou une boucle est un
-      défaut, pas un cas limite.
+      **L'outillage existe et a servi** — cibles, corpus, workflow, et quatre
+      défauts trouvés. Ce qui reste, pour prononcer la Definition of Done :
+
+      - `a3d_reader`, `obj`, `stl` : campagne d'une heure, à constater ;
+      - **`gltf` ne peut pas la passer aujourd'hui.** `gltf-json` 1.4.1 indexe
+        `root.accessors[…]` sans vérifier la borne, et le détecter avant lui
+        demanderait de réanalyser le JSON nous-mêmes. La cible **reste dans la
+        matrice par défaut et reste bloquante** : la retirer pour faire passer
+        le build serait désactiver un test, ce que le projet interdit. Elle est
+        simplement exclue de la campagne longue tant que le chemin glTF n'est
+        pas durci.
+
+      **Le durcissement du chemin glTF**, à mener en session dédiée : passer à
+      `Gltf::from_slice_without_validation` et écrire nos propres contrôles de
+      références — accesseurs, bufferViews, buffers. C'est l'architecture juste
+      — valider ce qu'on utilise, avec notre code, plutôt que dépendre d'un
+      validateur tiers qui panique — mais sauter la validation peut repousser
+      des paniques plus loin dans la lecture, et cela se vérifie au fuzzer, pas
+      au raisonnement.
 
       T-680..T-682 demandent dix millions d'exécutions par cible, ce qui relève
       du jalon final et non de M1.

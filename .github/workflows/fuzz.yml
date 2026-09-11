@@ -40,6 +40,14 @@ on:
           incident.
         type: string
         default: "10"
+      cibles:
+        description: >-
+          Cibles a faire tourner, en JSON. Les quatre par defaut. Restreindre la
+          liste sert a mener une campagne longue sur les cibles saines pendant
+          qu'une autre attend un correctif amont ; cela ne retire RIEN de la
+          matrice par defaut, qui reste bloquante sur les PR.
+        type: string
+        default: '["a3d_reader", "gltf", "obj", "stl"]'
   pull_request:
     paths:
       - "crates/ax-asset/**"
@@ -60,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cible: [a3d_reader, gltf, obj, stl]
+        cible: ${{ fromJSON(inputs.cibles || '["a3d_reader", "gltf", "obj", "stl"]') }}
     steps:
       - uses: actions/checkout@v4
 

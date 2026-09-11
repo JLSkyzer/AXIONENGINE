@@ -10,12 +10,20 @@
 
 #![no_main]
 
-use ax_asset::import::{ImportError, import_obj, ImportLimits};
+use ax_asset::import::{import_obj, ImportLimits};
 use libfuzzer_sys::fuzz_target;
 
 /// Voir la note de `a3d_reader` : un mébioctet, comme les tests.
 const LIMITS: ImportLimits = ImportLimits::new(1 << 20);
 
+// Le filet de `catch_parser_panic` n'aveugle pas cette cible, et il n'y a rien a
+// faire pour cela : `libfuzzer-sys` installe un hook de panique qui **avorte le
+// processus avant le deroulement de pile**, precisement pour que le fuzzer
+// puisse lire les cadres. `catch_unwind` n'a donc jamais la main ici, et une
+// panique d'analyseur reste vue comme un crash.
+//
+// Constate le 2026-09-11 : une panique de `gltf-json` a atteint libFuzzer alors
+// que l'importeur etait deja enveloppe.
 fuzz_target!(|data: &str| {
     // `&str` plutôt que `&[u8]` : l'entrée est prise en entier comme texte, ce
     // qui fait d'un `.obj` déposé dans `corpus/obj/` une graine telle quelle.
@@ -25,20 +33,5 @@ fuzz_target!(|data: &str| {
     // Le résolveur rend le maillage comme bibliothèque de matériaux : un `.mtl`
     // syntaxiquement absurde est précisément ce qu'on veut lui donner, et un
     // pack qui porte l'un porte l'autre, de la même main.
-    let resultat = import_obj(data, &LIMITS, |_nom| Some(data.to_string()));
-    refuse_une_panique(&resultat);
+    let _ = import_obj(data, &LIMITS, |_nom| Some(data.to_string()));
 });
-
-/// Fait echouer la cible sur une panique retenue par le filet.
-///
-/// `import_*` attrape les paniques des analyseurs tiers et les rend sous la
-/// forme d'une erreur : en production, l'asset est refuse proprement au lieu de
-/// remonter une panique opaque. Ici, c'est l'inverse qu'on veut — sans cette
-/// verification, le filet rendrait ces paniques **invisibles au fuzzer**, et
-/// R-903, qui exige la tolerance zero, n'aurait plus aucun moyen de les
-/// constater.
-fn refuse_une_panique<T>(resultat: &Result<T, ImportError>) {
-    if let Err(ImportError::ParserPanicked { format, detail }) = resultat {
-        panic!("l'analyseur {format:?} a panique : {detail}");
-    }
-}
