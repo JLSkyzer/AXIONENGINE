@@ -353,3 +353,27 @@ contourner.
 `\bplaceholder\b` ne reconnaissait pas `PLACEHOLDER_ROUGE` — la limite de mot
 échoue devant un tiret bas. Le motif était trop étroit, et seule une mesure
 extérieure pouvait le dire.
+
+---
+
+## 2026-09-11 | Un « ok » de `rtk git push` ne prouve pas que le commit est parti
+
+Un second commit a été poussé, la sortie a affiché `ok`, et le dépôt distant est
+resté sur le premier. Rien ne l'aurait dit : c'est la CI, restée sur l'ancien
+commit, qui a trahi l'affaire — le correctif poussé n'y changeait rien puisqu'il
+n'y était pas.
+
+`rtk` compacte la sortie des commandes, et la compaction ne distingue pas
+toujours ce qui a réussi de ce qui n'a rien fait. Le risque est propre à la règle
+qu'on suit ici : « pousser dans la foulée de chaque commit » n'a de valeur que si
+la poussée a eu lieu.
+
+**Règle.** Après un push, constater l'état distant plutôt que lire la sortie :
+
+```bash
+git ls-remote origin <branche>
+```
+
+Le SHA rendu doit être celui de `git rev-parse HEAD`. En cas de doute, repasser
+par `git push` sans `rtk` : sa sortie nomme explicitement l'avance de référence
+(`d6e06b0..9fbd349`).

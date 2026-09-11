@@ -83,7 +83,6 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-            target
           key: cargo-lint-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-lint-${{ runner.os }}-
 
@@ -154,7 +153,6 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-            target
           key: cargo-test-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-test-${{ runner.os }}-
 
@@ -215,6 +213,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Seul job dont `target` est mis en cache. Ailleurs, recompiler coute
+      # trois minutes Linux ; ici, la meme recompilation se facture deux fois sur
+      # Windows et dix fois sur macOS. Le cache d'un depot est plafonne a dix
+      # gigaoctets et evince au plus ancien : le garder partout ferait s'evincer
+      # les caches entre eux, et aucun ne servirait plus.
       - uses: actions/cache@v4
         with:
           path: |
@@ -243,13 +246,21 @@ jobs:
         shell: bash
         run: cargo build --release -p ax-ffi
 
+      # `shasum` existe sur macOS et dans Git Bash, `sha256sum` sur Linux et dans
+      # Git Bash : aucun des deux n'est partout, et supposer l'un ferait echouer
+      # un job de matrice pour une empreinte accessoire.
       - name: Empreinte de la bibliotheque produite
         shell: bash
         run: |
           cd target/release
+          empreinte() {
+            if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"
+            elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1"
+            else echo "aucun outil d'empreinte disponible" >&2; return 1; fi
+          }
           for nom in axion_native.dll libaxion_native.so libaxion_native.dylib; do
             if [ -f "$nom" ]; then
-              shasum -a 256 "$nom" | tee "$nom.sha256"
+              empreinte "$nom" | tee "$nom.sha256"
             fi
           done
 

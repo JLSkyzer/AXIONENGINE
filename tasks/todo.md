@@ -694,6 +694,45 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       cause. Exposer `det_profile` par la frontière native se fait donc avec le
       composant qui le consomme, pas avant.
 
+### Intégration continue (PARTIE 34.3)
+
+- [x] **Chaîne de CI.** `.github/workflows/ci.yml`, cinq jobs. La
+      correspondance avec la liste de 34.3 est écrite dans l'en-tête du
+      workflow, y compris pour les jobs absents et la raison de leur absence.
+      - `lint-rust`, `lint-no-fiction`, `deps` et `build-and-test` tournent sur
+        chaque push et chaque PR ; `build-and-test` enchaîne `gradlew build`,
+        donc `codegen` (T-005), la suite JUnit — T-007, T-014, T-020..T-023,
+        R-2392 — et `validateJar` ;
+      - la **matrice de plateformes** ne tourne que sur `master` et sur
+        déclenchement manuel. Le dépôt est privé : une minute macOS en compte
+        dix, et la matrice complète coûte environ 250 minutes facturées quand
+        les jobs Linux en coûtent quinze. Un `workflow_dispatch` permet de la
+        décocher ;
+      - elle couvre les quatre configurations de la matrice de validation
+        déterministe que GitHub sait fournir, et y rejoue les vecteurs d'or
+        (R-513). Linux aarch64 en est absent : « best effort » selon 34.2, et
+        aucun runner ARM sur le plan de ce dépôt — un job qui attend un runner
+        inexistant n'échoue pas, il attend ;
+      - `lint-no-fiction` était le seul lint sans garde-fou : T-014 couvre déjà
+        INV-01 côté Java **et** côté Rust, `pas_de_pool_global.rs` couvre R-470.
+        Le script s'exclut du balayage — il contient les motifs qu'il traque —
+        et bouche ce trou par un autotest à deux listes, écrites indépendamment
+        des expressions régulières. Vérifié par mutation dans les deux sens.
+- [x] **Trois défauts que seule la CI pouvait révéler**, tous corrigés avant
+      qu'elle ne tourne :
+      - `gradlew` était en mode `100644`. Le dépôt étant né sous Windows, git
+        n'a jamais enregistré son bit d'exécution ; `gradlew.bat` masquait le
+        problème. Le premier runner Linux aurait répondu « Permission denied » ;
+      - `cargo deny check` n'avait **jamais** été exécuté, faute d'outil
+        installé et de CI. Il échouait sur `wildcards = "deny"` : les crates
+        internes se référencent par chemin, sans version. Réglé par
+        `allow-wildcard-paths`, qui exige des crates privés — d'où le
+        `publish = false` du workspace, correct en soi puisque rien de tout
+        cela n'a vocation à partir sur un registre ;
+      - `repository` désignait `github.com/JLSkyzer/axion-engine`, qui n'existe
+        pas. L'adresse fausse voyageait dans les métadonnées de chaque crate.
+
+
 ---
 
 ## Jalons suivants
@@ -772,10 +811,16 @@ ses critères vérifiés **mécaniquement**.
       manque** tant que la CI des trois plateformes n'existe pas (PARTIE 34.3).
       À monter avant toute publication, et de toute façon avant M1 : les
       vecteurs d'or déterministes de C-16 s'y vérifient sur les trois.
-- [ ] **Cibles Rust dans `rust-toolchain.toml`.** Les cinq cibles de la matrice
-      déterministe y sont listées, ce qui fait télécharger cinq bibliothèques
-      standard sur chaque poste. Si c'est trop lourd, ne garder que la cible
-      hôte et laisser la CI ajouter les autres.
+- [x] **Cibles Rust dans `rust-toolchain.toml`.** Retirées. Rien ne compile en
+      croisé — `natives.gradle` ne construit que la cible hôte — et la CI donne
+      une machine par plateforme : les cinq cibles faisaient télécharger cinq
+      bibliothèques standard partout pour n'en utiliser qu'une. La matrice reste
+      déclarée là où elle sert, dans `VALIDATION_MATRIX`.
+- [ ] **glibc du binaire Linux.** 34.2 annonce « Linux x86_64 (glibc ≥ 2.28) ».
+      La CI construit sur `ubuntu-22.04`, dont la glibc est 2.35 : le `.so`
+      produit exige donc 2.35, pas 2.28, et l'annonce est en avance sur le fait.
+      Se règle par un conteneur `manylinux_2_28` ou par `cargo-zigbuild`, à
+      monter avant la première release.
 - [x] **glam et déterminisme.** Réglé par
       [ADR-104](../docs/decisions/ADR-104.md) : aucun type de `glam` n'entre
       dans le noyau déterministe, parce que R-510 n'y autorise que des
@@ -786,6 +831,20 @@ ses critères vérifiés **mécaniquement**.
       1 h sans incident » sur la chaîne d'assets. Rien ne le lance aujourd'hui :
       ni cible `cargo-fuzz`, ni corpus. À monter avant de prononcer la
       Definition of Done de M1.
+
+      Ce qu'il faudra, pour ne pas le redécouvrir : R-903 nomme la cible
+      `a3d_reader`, exige un corpus versionné sous `fuzz/corpus/<cible>/` et une
+      tolérance zéro ; la PARTIE 33 prévoit aussi `gltf`, `obj`, `stl`,
+      `packets` et `impacts`. T-680..T-682 demandent dix millions d'exécutions
+      par cible, ce qui relève du jalon final, quand 34.3 ne met que
+      `fuzz-short`, dix minutes par cible, sur les PR.
+
+      `cargo-fuzz` a besoin de `nightly` — le désinfecteur d'adresses n'est pas
+      stable. Cela ne remet pas en cause l'épinglage de `rust-toolchain.toml` :
+      le job de fuzzing appelle `cargo +nightly fuzz`, et rien de ce qui est
+      livré n'est construit par cette chaîne. Le noyau déterministe, lui, reste
+      compilé par la version épinglée, sans quoi la matrice de validation ne
+      voudrait plus rien dire.
 - [ ] **Vecteurs d'or sur une seule plateforme.** R-513 les veut rejoués sur
       **chaque** configuration de la matrice ; seule `x86_64-windows-msvc` les a
       joués. Le rejeu est écrit pour tourner partout, et son message distingue
