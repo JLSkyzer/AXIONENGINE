@@ -82,6 +82,21 @@ pub struct MatrixEntry {
     pub os: &'static str,
     /// Environnement du triplet.
     pub env: &'static str,
+    /// Les vecteurs d'or de la version courante y ont-ils été **rejoués** ?
+    ///
+    /// R-516 : « une configuration non validée n'est jamais déclarée
+    /// déterministe, **même si elle passe en pratique** ». Figurer dans la
+    /// matrice du cahier des charges dit qu'AXION vise cette configuration ;
+    /// seule une exécution archivée dit qu'elle tient.
+    ///
+    /// Une entrée à `false` bascule donc en `SNAPSHOT`, ce qui ne retire aucune
+    /// fonctionnalité (R-514) et ne refuse rien (R-515) — là où la déclarer
+    /// déterministe sans preuve promettrait une bit-exactitude que personne n'a
+    /// constatée.
+    ///
+    /// Le registre des exécutions est
+    /// [`docs/spec/MATRICE-DETERMINISTE.md`](../../../docs/spec/MATRICE-DETERMINISTE.md).
+    pub validated: bool,
 }
 
 /// La matrice de validation déterministe de la V1.0.
@@ -89,31 +104,46 @@ pub struct MatrixEntry {
 /// Cinq configurations, et **seulement** elles. R-517 : « déterministe » et
 /// « bit-identique » renvoient toujours à cette portée, jamais à une garantie
 /// universelle.
+///
+/// Le drapeau [`MatrixEntry::validated`] distingue ce que le cahier des charges
+/// **vise** de ce qu'une exécution a **constaté**. Les deux ne coïncident pas
+/// aujourd'hui, et les confondre serait exactement ce que R-516 interdit.
 pub const VALIDATION_MATRIX: [MatrixEntry; 5] = [
     MatrixEntry {
         arch: "x86_64",
         os: "windows",
         env: "msvc",
+        validated: true,
     },
     MatrixEntry {
         arch: "x86_64",
         os: "linux",
         env: "gnu",
+        validated: true,
     },
     MatrixEntry {
         arch: "aarch64",
         os: "macos",
         env: "none",
+        validated: true,
     },
     MatrixEntry {
         arch: "x86_64",
         os: "macos",
         env: "none",
+        validated: false,
     },
     MatrixEntry {
+        // `linux-aarch64` est « best effort, non bloquant » en 34.2, et GitHub
+        // ne fournit pas de runner ARM sur le plan de ce dépôt : les vecteurs
+        // d'or n'y ont jamais été rejoués. Les deux axes le sont pourtant
+        // séparément — même architecture que `aarch64-macos`, même système et
+        // même libc que `x86_64-linux-gnu` —, et c'est précisément le
+        // raisonnement que R-516 refuse : « même si elle passe en pratique ».
         arch: "aarch64",
         os: "linux",
         env: "gnu",
+        validated: false,
     },
 ];
 
@@ -123,6 +153,10 @@ pub const VALIDATION_MATRIX: [MatrixEntry; 5] = [
 /// base, contraction fusionnée désactivée**. Un binaire construit pour la bonne
 /// cible mais avec `-C target-cpu=native` n'en fait pas partie, et le dire est
 /// tout l'intérêt de cette fonction.
+///
+/// Une entrée **non validée** rend `false`, même si la cible correspond :
+/// R-516 réserve la déclaration de détermination aux configurations dont les
+/// vecteurs d'or ont été rejoués et le résultat archivé.
 ///
 /// R-515 : une configuration hors matrice ne fait **jamais** refuser AXION. Elle
 /// fait basculer la réplication en `SNAPSHOT`, ce qui ne retire aucune
@@ -145,7 +179,7 @@ pub fn is_in_validation_matrix() -> bool {
     let env = target_env();
     VALIDATION_MATRIX
         .iter()
-        .any(|entry| entry.arch == arch && entry.os == os && entry.env == env)
+        .any(|entry| entry.validated && entry.arch == arch && entry.os == os && entry.env == env)
 }
 
 /// Mode de réplication qu'impose une paire d'empreintes (5.12bis).
@@ -233,6 +267,37 @@ mod tests {
     #[test]
     fn t820_deux_extremites_identiques_et_dans_la_matrice_reconstruisent() {
         assert_eq!(negotiate(42, 42, true, true), ReplicationMode::Reconstruct);
+    }
+
+    #[test]
+    fn t820_une_configuration_non_validee_ne_se_declare_pas_deterministe() {
+        // R-516 : la validation se constate, elle ne se déduit pas. Ce test
+        // existe pour que retirer le drapeau — ou l'ignorer dans le filtre —
+        // casse quelque chose de nommé, plutôt que de rendre silencieusement
+        // déterministe une configuration que personne n'a rejouée.
+        let non_validees: Vec<&MatrixEntry> =
+            VALIDATION_MATRIX.iter().filter(|e| !e.validated).collect();
+
+        for entree in &non_validees {
+            let courante = entree.arch == std::env::consts::ARCH
+                && entree.os == std::env::consts::OS
+                && entree.env == target_env();
+            assert!(
+                !courante || !is_in_validation_matrix(),
+                "{entree:?} n'est pas validée et se déclare pourtant déterministe"
+            );
+        }
+
+        // Et la réciproque, qui dit que le drapeau sert vraiment à quelque
+        // chose : `aarch64-unknown-linux-gnu` figure dans la matrice du cahier
+        // des charges sans avoir jamais été rejouée ici.
+        assert!(
+            non_validees
+                .iter()
+                .any(|e| e.arch == "aarch64" && e.os == "linux" && e.env == "gnu"),
+            "linux-aarch64 déclarée validée : l'archivage exigé par R-516 doit \
+             alors exister dans docs/spec/MATRICE-DETERMINISTE.md"
+        );
     }
 
     #[test]

@@ -718,6 +718,29 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         Le script s'exclut du balayage — il contient les motifs qu'il traque —
         et bouche ce trou par un autotest à deux listes, écrites indépendamment
         des expressions régulières. Vérifié par mutation dans les deux sens.
+- [x] **Matrice déterministe rejouée et archivée (R-516).** Trois
+      configurations sur cinq sont validées : `x86_64-windows-msvc`,
+      `x86_64-linux-gnu` et `aarch64-macos-none`. Les mêmes 10 000 cas
+      produisent les **mêmes bits** sur trois systèmes, trois libc et **deux
+      architectures** — un binaire ARM/NEON calcule au bit près ce que calcule
+      un binaire x86-64/SSE2 sous MSVC, subnormaux compris. Registre :
+      [`docs/spec/MATRICE-DETERMINISTE.md`](../docs/spec/MATRICE-DETERMINISTE.md).
+      - `MatrixEntry` porte désormais un drapeau `validated`, et
+        `is_in_validation_matrix()` ne rend `true` que pour une ligne rejouée.
+        R-516 est explicite : « une configuration non validée n'est jamais
+        déclarée déterministe, **même si elle passe en pratique** ». Le code
+        déclarait `aarch64-unknown-linux-gnu` sans qu'elle ait jamais été
+        rejouée ;
+      - `x86_64-apple-darwin` n'a pas pu être rejouée : le job demandait
+        `macos-13`, que GitHub a retiré de ses runners standard. Une étiquette
+        retirée ne produit **aucune erreur** — le job reste en file jusqu'au
+        délai de six heures. Quarante-six minutes sans runner, là où les trois
+        autres plateformes finissaient en moins de huit. Diagnostiqué par une
+        sonde jetable comparant les étiquettes côte à côte ; `macos-15-intel`
+        obtient un runner en moins de trente secondes.
+- [ ] **`x86_64-apple-darwin` reste à valider.** L'étiquette est corrigée dans
+      `ci.yml` ; la ligne du registre et son `validated` se remplissent à la
+      première exécution réussie de la matrice, dans cet ordre.
 - [x] **Trois défauts que seule la CI pouvait révéler**, tous corrigés avant
       qu'elle ne tourne :
       - `gradlew` était en mode `100644`. Le dépôt étant né sous Windows, git
@@ -827,6 +850,31 @@ ses critères vérifiés **mécaniquement**.
       opérations scalaires. `ax-det` ne dépend que de `xxhash-rust`. Un chemin
       déterministe qui manipule un vecteur le décompose ; `glam` reste employé
       partout ailleurs, R-460 inchangé.
+- [ ] **Le handshake ne reconstruira jamais entre deux plateformes.** À trancher
+      en M4, quand le handshake de la PARTIE 21.3 sera écrit.
+
+      5.12bis définit `det_profile` comme le hash de **(triplet cible,
+      `DET_KERNEL_VERSION`, jeu d'instructions compilé, drapeaux flottants)**, et
+      sa règle 1 n'accorde `RECONSTRUCT` qu'à deux empreintes **égales**. Le
+      triplet en faisant partie, deux plateformes différentes ne s'accordent
+      jamais : un client Windows sur un serveur Linux — le déploiement le plus
+      courant de Minecraft — serait toujours en `SNAPSHOT`. `RECONSTRUCT` ne
+      servirait qu'en solo, en LAN homogène, ou entre machines de même triplet.
+
+      L'implémentation actuelle est **fidèle au cahier des charges** et ne doit
+      pas être modifiée sans arbitrage : c'est une règle conservatrice, et
+      R-514 garantit que `SNAPSHOT` ne retire aucune fonctionnalité.
+
+      Mais la première exécution de la matrice a produit la mesure qui rend la
+      question légitime : les mêmes vecteurs d'or passent bit pour bit sur
+      `x86_64-windows-msvc`, `x86_64-linux-gnu` et `aarch64-macos-none`
+      (voir [la matrice validée](../docs/spec/MATRICE-DETERMINISTE.md)). Ces
+      configurations **s'accordent entre elles**, ce que leurs empreintes
+      distinctes ne disent pas. Une relaxation — `RECONSTRUCT` dès que les deux
+      extrémités sont dans la matrice **et** partagent `DET_KERNEL_VERSION` —
+      serait couverte par les vecteurs d'or, mais c'est une déviation du CDC
+      gelé : elle demande un ADR et la décision de l'utilisateur, pas une
+      initiative.
 - [ ] **Acceptance de M1 : fuzzing une heure.** La fiche M1 demande « fuzzing
       1 h sans incident » sur la chaîne d'assets. Rien ne le lance aujourd'hui :
       ni cible `cargo-fuzz`, ni corpus. À monter avant de prononcer la

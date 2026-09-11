@@ -40,6 +40,14 @@ name: CI
 on:
   push:
     branches: [master]
+    # Un commit qui ne touche que de la prose ne peut rien casser de ce que ces
+    # jobs verifient, et la matrice se facture. `paths-ignore` ne saute le run
+    # que si *tous* les fichiers modifies correspondent : un commit mixte passe
+    # par la CI comme les autres.
+    paths-ignore:
+      - "**/*.md"
+      - "tasks/**"
+      - "docs/**"
   pull_request:
   workflow_dispatch:
     inputs:
@@ -209,7 +217,13 @@ jobs:
           - cible: macos-aarch64
             runner: macos-latest
           - cible: macos-x86_64
-            runner: macos-13
+            # `macos-15-intel` et non `macos-13` : GitHub a retire l'image 13 de
+            # ses runners standard, et une etiquette retiree ne produit aucune
+            # erreur — le job reste simplement en file jusqu'au delai de six
+            # heures. Constate le 2026-09-11 : quarante-six minutes sans runner
+            # attribue, la ou `macos-15-intel` en obtient un en moins de trente
+            # secondes (Core i7-8700B, x86_64, macOS 15.7.9).
+            runner: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
