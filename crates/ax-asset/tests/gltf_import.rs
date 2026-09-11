@@ -121,6 +121,45 @@ fn t220_un_gltf_minimal_donne_son_triangle() {
 }
 
 #[test]
+fn t680_un_accesseur_d_indices_signe_est_refuse_et_ne_panique_pas() {
+    // Trouvé par fuzzing (R-903), à partir de la graine `triangle.gltf` du
+    // corpus. `5122` est `SHORT`, signé ; glTF 2.0 n'admet pour des indices que
+    // des entiers non signés, et `read_indices` du crate `gltf` atteint un
+    // `unreachable!()` sur tout le reste. Sans la vérification préalable, cet
+    // appel **panique**.
+    //
+    // Le cas n'est pas théorique : un exportateur qui confond `5122` et `5123`
+    // produit un fichier que tous les autres champs rendent plausible.
+    let source = triangle("", "").replace("\"componentType\": 5123", "\"componentType\": 5122");
+    let refus = import_gltf(source.as_bytes(), &LIMITS, |_| None).unwrap_err();
+
+    let message = format!("{refus:?}");
+    assert!(
+        message.contains("indices"),
+        "le refus doit désigner l'accesseur fautif : {message}"
+    );
+}
+
+#[test]
+fn t680_les_trois_types_d_indices_admis_restent_acceptes() {
+    // La réciproque : la vérification ne doit refuser que ce que glTF interdit.
+    // `5121` est `UNSIGNED_BYTE`, `5123` `UNSIGNED_SHORT`, `5125`
+    // `UNSIGNED_INT` — les trois seuls que la spécification admet.
+    for composant in ["5121", "5123", "5125"] {
+        let source = triangle("", "").replace(
+            "\"componentType\": 5123",
+            &format!("\"componentType\": {composant}"),
+        );
+        let resultat = import_gltf(source.as_bytes(), &LIMITS, |_| None);
+        assert!(
+            resultat.is_ok(),
+            "componentType {composant} refusé : {:?}",
+            resultat.err()
+        );
+    }
+}
+
+#[test]
 fn t220_un_gltf_importe_est_accepte_par_le_validateur() {
     let source = triangle("", "");
     let (asset, _) = import_gltf(source.as_bytes(), &LIMITS, |_| None).expect("import refusé");

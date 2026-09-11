@@ -380,6 +380,61 @@ par `git push` sans `rtk` : sa sortie nomme explicitement l'avance de référenc
 
 ---
 
+## 2026-09-11 | Un analyseur tiers panique sur ce qu'il ne modélise pas
+
+La première campagne de fuzzing, dix minutes par cible, a trouvé deux paniques.
+Aucune dans notre code, les deux dans des dépendances :
+
+- `gltf` 1.4.1 : `read_indices()` fait `unreachable!()` dès que le
+  `componentType` de l'accesseur d'indices n'est pas un entier non signé ;
+- `tobj` 4.0.5 : le contrôle de bornes s'écrit `vn * 3 + 2 >= normal.len()`, et
+  calcule le produit **avant** de comparer — un indice négatif hors bornes
+  déborde.
+
+Les deux sont atteignables depuis un pack de contenu, c'est-à-dire depuis un
+fichier que le projet ne contrôle pas.
+
+**Règle.** Ce qu'une dépendance accepte en entrée n'est pas ce qu'elle
+**modélise**. Avant de lui confier une donnée tierce, vérifier soi-même ce que
+le format autorise — et se souvenir qu'un `Result` dans sa signature ne promet
+rien sur les chemins où elle a écrit `unreachable!()`.
+
+**Corollaire.** Les deux vérifications ajoutées sont **conformes au format**,
+pas des contournements : glTF 2.0 n'admet que des indices non signés, et un
+indice OBJ hors des comptes déclarés n'est valide sous aucune lecture. Une
+vérification qui se justifie par la spécification survit à la mise à jour de la
+dépendance ; un contournement qui se justifie par le bug d'une version, non.
+
+**Corollaire.** Une panique contenue reste un défaut. Le pool de jobs et la
+frontière FFI captent celles-ci, donc rien ne tombe — mais l'asset remonte une
+panique opaque au lieu d'une erreur diagnosticable, et R-903 exige la tolérance
+zéro. « Ça ne casse rien » n'est pas « c'est correct ».
+
+---
+
+## 2026-09-11 | Un fuzzer part des graines qu'on lui donne, et y revient
+
+Les deux entrées fautives trouvées ci-dessus sont des **mutations de graines du
+corpus** : `triangle.gltf` dont un `5123` est devenu `5122`, et
+`mtllib-indices-negatifs.obj` dont un `-1` est devenu `-21`. Dix minutes par
+cible ont suffi.
+
+**Règle.** Un corpus de graines valides n'est pas une commodité, c'est ce qui
+détermine la profondeur de la campagne. Partir de rien ferait passer l'essentiel
+du temps à réinventer un en-tête que le format rejette.
+
+**Corollaire.** Les graines gagnent à être **variées dans leurs pathologies**,
+pas seulement valides. `mtllib-indices-negatifs.obj` a été écrit pour couvrir
+des indices comptés depuis la fin — une forme légale et rarement testée. C'est
+précisément celle que le fuzzer a poussée jusqu'au débordement.
+
+**Corollaire.** Une entrée fautive devient une graine de régression **et** un
+test nommé. Le corpus constate qu'on ne panique plus ; le test dit qu'on refuse
+pour la bonne raison, et c'est lui qui échouera si la vérification est un jour
+remplacée par un `catch_unwind`.
+
+---
+
 ## 2026-09-11 | Une porte de validation ne peut pas exiger ce qu'elle valide
 
 R-516 veut qu'une configuration ne soit déclarée déterministe qu'après avoir
