@@ -23,7 +23,7 @@
 use std::path::{Path, PathBuf};
 
 use ax_asset::a3d::{A3dFile, A3dLimits, SectionMask, SectionTag};
-use ax_asset::import::{import_gltf, import_obj, import_stl, ImportLimits};
+use ax_asset::import::{import_gltf, import_obj, import_stl, ImportError, ImportLimits};
 
 /// Les mêmes plafonds que les cibles de fuzzing.
 const IMPORT_LIMITS: ImportLimits = ImportLimits::new(1 << 20);
@@ -53,6 +53,22 @@ fn graines(cible: &str) -> Vec<PathBuf> {
          et un fuzzer parti de rien passe son temps à réinventer un en-tête"
     );
     fichiers
+}
+
+/// Refuse une panique retenue par le filet du point de delegation.
+///
+/// `import_*` attrape les paniques des analyseurs tiers et les rend sous forme
+/// d'erreur, pour qu'un asset soit refuse proprement au lieu de laisser remonter
+/// une panique opaque. Ici comme dans les cibles de fuzzing, on veut l'inverse :
+/// sans cette verification, le filet rendrait une panique **invisible**, et
+/// R-903 exige la tolerance zero.
+fn refuse_une_panique<T>(chemin: &Path, resultat: &Result<T, ImportError>) {
+    if let Err(ImportError::ParserPanicked { format, detail }) = resultat {
+        panic!(
+            "{} fait paniquer l'analyseur {format:?} : {detail}",
+            chemin.display()
+        );
+    }
 }
 
 fn octets(chemin: &Path) -> Vec<u8> {
@@ -89,7 +105,9 @@ fn t680_le_corpus_gltf_se_rejoue_sans_paniquer() {
     let mut acceptees = 0;
     for chemin in graines("gltf") {
         let data = octets(&chemin);
-        if import_gltf(&data, &IMPORT_LIMITS, |_nom| Some(data.clone())).is_ok() {
+        let resultat = import_gltf(&data, &IMPORT_LIMITS, |_nom| Some(data.clone()));
+        refuse_une_panique(&chemin, &resultat);
+        if resultat.is_ok() {
             acceptees += 1;
         }
     }
@@ -106,14 +124,21 @@ fn t680_le_corpus_obj_se_rejoue_sans_paniquer() {
     let mut acceptees = 0;
     for chemin in graines("obj") {
         let data = octets(&chemin);
-        let Ok(texte) = String::from_utf8(data) else {
-            panic!(
-                "{} n'est pas de l'UTF-8 : la cible obj prend du texte, \
-                    une telle graine ne serait jamais lue",
-                chemin.display()
-            );
+
+        // Le plus long préfixe UTF-8 valide, exactement comme la cible : elle
+        // reçoit un `&str` construit par `arbitrary_take_rest`, qui tronque à la
+        // première séquence invalide plutôt que de refuser l'entrée.
+        //
+        // Refuser ici une graine non UTF-8 serait plus strict que le fuzzer, et
+        // exclurait du corpus des entrées qu'il produit lui-même — la graine de
+        // régression `mtl-triplet-incomplet` en est une.
+        let texte = match std::str::from_utf8(&data) {
+            Ok(texte) => texte.to_string(),
+            Err(erreur) => String::from_utf8_lossy(&data[..erreur.valid_up_to()]).into_owned(),
         };
-        if import_obj(&texte, &IMPORT_LIMITS, |_nom| Some(texte.clone())).is_ok() {
+        let resultat = import_obj(&texte, &IMPORT_LIMITS, |_nom| Some(texte.clone()));
+        refuse_une_panique(&chemin, &resultat);
+        if resultat.is_ok() {
             acceptees += 1;
         }
     }
@@ -125,7 +150,9 @@ fn t680_le_corpus_obj_se_rejoue_sans_paniquer() {
 fn t680_le_corpus_stl_se_rejoue_sans_paniquer() {
     let mut acceptees = 0;
     for chemin in graines("stl") {
-        if import_stl(&octets(&chemin), &IMPORT_LIMITS).is_ok() {
+        let resultat = import_stl(&octets(&chemin), &IMPORT_LIMITS);
+        refuse_une_panique(&chemin, &resultat);
+        if resultat.is_ok() {
             acceptees += 1;
         }
     }

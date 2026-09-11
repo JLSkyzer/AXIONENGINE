@@ -4,7 +4,7 @@
 //! binaire cacherait ce qui est testé, alors que ce sont précisément les
 //! détails du document qui font l'objet de chaque test.
 
-use ax_asset::import::{import_gltf, ImportLimits, SUPPORTED_EXTENSIONS};
+use ax_asset::import::{import_gltf, ImportError, ImportLimits, SUPPORTED_EXTENSIONS};
 use ax_asset::validate::{validate, AssetView, NamedEntry};
 use ax_model::dm::scene::node_flags;
 
@@ -157,6 +157,29 @@ fn t680_les_trois_types_d_indices_admis_restent_acceptes() {
             resultat.err()
         );
     }
+}
+
+#[test]
+fn t680_une_panique_d_analyseur_est_retenue_et_nommee() {
+    // Trouvé par fuzzing (R-903). `gltf-json` valide le document en indexant
+    // `root.accessors[...]` avec un indice venu du document, **sans vérifier la
+    // borne** : un `POSITION` désignant l'accesseur 99 quand deux sont déclarés
+    // fait paniquer la bibliothèque.
+    //
+    // Ce cas-ci n'est pas couvert par une vérification préalable, et c'est le
+    // sujet du test : reproduire chez nous tous les invariants internes de deux
+    // analyseurs reviendrait à les réécrire. Le filet du point de délégation
+    // rend l'asset refusé au lieu de laisser remonter la panique.
+    let source = triangle("", "").replace("\"POSITION\": 0", "\"POSITION\": 99");
+    let refus = import_gltf(source.as_bytes(), &LIMITS, |_| None).unwrap_err();
+
+    assert!(
+        matches!(refus, ImportError::ParserPanicked { .. }),
+        "la panique doit être retenue et nommée comme telle, obtenu {refus:?}"
+    );
+    // Et elle est **nommée** : c'est cette variante que les cibles de fuzzing
+    // font échouer, sans quoi le filet rendrait le défaut invisible au fuzzer.
+    assert_eq!(refus.code(), -3050, "code de l'ANNEXE A.1 inchangé");
 }
 
 #[test]

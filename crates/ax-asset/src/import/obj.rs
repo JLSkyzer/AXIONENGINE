@@ -36,31 +36,43 @@ pub fn import_obj(
     // lectures. La cellule fait le pont sans imposer l'un ou l'autre.
     let resolve_mtl = std::cell::RefCell::new(resolve_mtl);
     let mut cursor = std::io::BufReader::new(source.as_bytes());
-    let (models, materials) = tobj::load_obj_buf(
-        &mut cursor,
-        &tobj::LoadOptions {
-            // Le moteur ne connaît que des triangles : les quads d'un OBJ sont
-            // triangulés ici plutôt que refusés, c'est une lecture fidèle du
-            // format et non une réparation.
-            triangulate: true,
-            single_index: true,
-            ..tobj::LoadOptions::default()
-        },
-        |path| {
-            let name = path.to_string_lossy().to_string();
-            match (resolve_mtl.borrow_mut())(&name) {
-                Some(content) => {
-                    tobj::load_mtl_buf(&mut std::io::BufReader::new(content.as_bytes()))
+    let (models, materials) = super::catch_parser_panic(SourceFormat::Obj, || {
+        tobj::load_obj_buf(
+            &mut cursor,
+            &tobj::LoadOptions {
+                // Le moteur ne connaît que des triangles : les quads d'un OBJ sont
+                // triangulés ici plutôt que refusés, c'est une lecture fidèle du
+                // format et non une réparation.
+                triangulate: true,
+                single_index: true,
+                ..tobj::LoadOptions::default()
+            },
+            |path| {
+                let name = path.to_string_lossy().to_string();
+                match (resolve_mtl.borrow_mut())(&name) {
+                    Some(content) => {
+                        // La bibliothèque de matériaux est vérifiée avant d'être
+                        // confiée à l'analyseur, pour la même raison que les
+                        // indices de face : `tobj::parse_float3` termine par
+                        // `.try_into().unwrap()` sur un `Vec` qu'il vient de
+                        // collecter, et un `Ka 0.0 0.0` — deux valeurs là où le
+                        // format en veut trois — le fait paniquer. Trouvé par
+                        // fuzzing (R-903).
+                        if check_mtl_triplets(&content).is_err() {
+                            return Err(tobj::LoadError::MaterialParseError);
+                        }
+                        tobj::load_mtl_buf(&mut std::io::BufReader::new(content.as_bytes()))
+                    }
+                    // Une bibliothèque absente n'est pas une erreur : l'OBJ garde
+                    // ses matériaux par défaut.
+                    None => Ok((Vec::new(), std::collections::HashMap::new())),
                 }
-                // Une bibliothèque absente n'est pas une erreur : l'OBJ garde
-                // ses matériaux par défaut.
-                None => Ok((Vec::new(), std::collections::HashMap::new())),
-            }
-        },
-    )
-    .map_err(|error| ImportError::Malformed {
-        format: SourceFormat::Obj,
-        detail: error.to_string(),
+            },
+        )
+        .map_err(|error| ImportError::Malformed {
+            format: SourceFormat::Obj,
+            detail: error.to_string(),
+        })
     })?;
 
     let mut asset = ImportedAsset::default();
@@ -101,6 +113,30 @@ fn check_mtllib_paths(source: &str) -> Result<(), ImportError> {
         // `mtllib` accepte plusieurs bibliothèques sur une ligne.
         for path in rest.split_whitespace() {
             check_relative_path(path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Refuse une déclaration de couleur à moins de trois composantes.
+///
+/// `Ka`, `Kd`, `Ks`, `Ke` et `Tf` désignent chacun un triplet. `tobj` les lit
+/// par `parse_float3`, qui collecte au plus trois valeurs puis fait
+/// `.try_into().unwrap()` : deux valeurs suffisent à le faire paniquer.
+///
+/// Le contrôle ne juge que le **nombre** de composantes. Une valeur illisible
+/// reste l'affaire de l'analyseur, qui la refuse proprement par
+/// `MaterialParseError` — la reprendre ici dédoublerait sa grammaire.
+fn check_mtl_triplets(mtl: &str) -> Result<(), ()> {
+    const TRIPLETS: [&str; 5] = ["Ka", "Kd", "Ks", "Ke", "Tf"];
+
+    for line in mtl.lines() {
+        let mut mots = line.split_whitespace();
+        let Some(mot_cle) = mots.next() else {
+            continue;
+        };
+        if TRIPLETS.contains(&mot_cle) && mots.take(3).count() < 3 {
+            return Err(());
         }
     }
     Ok(())
