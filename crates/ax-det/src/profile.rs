@@ -131,7 +131,7 @@ pub const VALIDATION_MATRIX: [MatrixEntry; 5] = [
         arch: "x86_64",
         os: "macos",
         env: "none",
-        validated: false,
+        validated: true,
     },
     MatrixEntry {
         // `linux-aarch64` est « best effort, non bloquant » en 34.2, et GitHub

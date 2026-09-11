@@ -29,20 +29,23 @@ empreinte `0xF9B9055B2A735248`, engendrés sur `x86_64-windows-msvc`.
 | `axion-det/1 x86_64-windows-msvc [sse2]` | `0x65E1A6E0CBA5EDC0` | 10 000 / 10 000 | oui |
 | `axion-det/1 x86_64-linux-gnu [sse2]` | `0x95D705D1B36391B3` | 10 000 / 10 000 | oui |
 | `axion-det/1 aarch64-macos-none [neon]` | `0x21DCB8C01457AD72` | 10 000 / 10 000 | oui |
-| `x86_64-apple-darwin` | — | **jamais rejoués** | **non** |
+| `axion-det/1 x86_64-macos-none [sse2]` | `0xB3229A1740C32752` | 10 000 / 10 000 | oui |
 | `aarch64-unknown-linux-gnu` | — | **jamais rejoués** | **non** |
 
-**Exécution** : [run 34619831725](https://github.com/JLSkyzer/AXIONENGINE/actions/runs/34619831725),
-sur `7d1eac0380d3cbfdbc07faa15c64aa1fd7b2801e` (2026-09-11).
+**Exécutions.** Les trois premières lignes viennent du
+[run 34619831725](https://github.com/JLSkyzer/AXIONENGINE/actions/runs/34619831725)
+sur `7d1eac0`, la quatrième du
+[run 34625238522](https://github.com/JLSkyzer/AXIONENGINE/actions/runs/34625238522)
+sur `4bc1a36` (2026-09-11).
 
-`x86_64-apple-darwin` n'a pas pu être rejouée ce jour-là : le job demandait
-l'étiquette `macos-13`, que GitHub a retirée de ses runners standard. Une
-étiquette retirée ne produit aucune erreur — le job est resté en file
-quarante-six minutes sans qu'aucun runner ne lui soit attribué, pendant que les
-trois autres plateformes finissaient en moins de huit. `ci.yml` demande
-désormais `macos-15-intel`, qui obtient un runner en moins de trente secondes
-(Core i7-8700B, `x86_64`, macOS 15.7.9). La ligne sera complétée à la première
-exécution réussie, et son `validated` basculera **ensuite**.
+`x86_64-apple-darwin` a demandé deux passages, pour deux raisons qui n'avaient
+rien à voir avec le déterminisme. Le job demandait d'abord l'étiquette
+`macos-13`, que GitHub a retirée de ses runners standard : une étiquette retirée
+ne produit **aucune erreur**, et le job est resté en file quarante-six minutes
+sans runner attribué, là où les trois autres plateformes finissaient en moins de
+huit. Puis, l'étiquette corrigée en `macos-15-intel`, la suite s'est arrêtée sur
+un test qui exigeait que la configuration soit **déjà** validée — voir plus bas,
+« Tenir ce fichier à jour ».
 
 ### Bibliothèques produites au même passage
 
@@ -51,6 +54,7 @@ exécution réussie, et son `validated` basculera **ensuite**.
 | `windows-x86_64` | `axion_native.dll` | `995296b70df57e62ff0409a8e88136e7aac34cc7553437b5a70dc7ee99683d36` |
 | `linux-x86_64` | `libaxion_native.so` | `2f12837683997b542c83558c1794f297d9d18caed4178094dd0e5ad3e569e254` |
 | `macos-aarch64` | `libaxion_native.dylib` | `c37c8f56feebe7a33b1166d866769c966d95ee980370591637a3cba2f5619c4c` |
+| `macos-x86_64` | `libaxion_native.dylib` | `588eebd6654d73c5ed0b15ace2051f3adf57326a8f9c5abf207c7ce8cb8cbb5e` |
 
 ## Ce que ce tableau établit
 
@@ -73,18 +77,13 @@ configurations, cette version de `rustc`, ces drapeaux, et cette version du
 noyau. Un binaire bâti avec `-C target-cpu=native` n'y figure pas, et
 `det_profile` le distingue précisément parce que le jeu d'instructions y entre.
 
-**Rien sur les deux configurations non rejouées.**
-
-`aarch64-unknown-linux-gnu` est dans la matrice du cahier des charges, elle est
-« best effort, non bloquant » en 34.2, et GitHub ne fournit pas de runner ARM
-sur le plan de ce dépôt. Ses deux axes sont validés séparément — même
-architecture que `aarch64-macos`, même système et même libc que
+**Rien sur `aarch64-unknown-linux-gnu`.** Elle est dans la matrice du cahier des
+charges, elle est « best effort, non bloquant » en 34.2, et GitHub ne fournit pas
+de runner ARM sur le plan de ce dépôt. Ses deux axes sont validés séparément —
+même architecture que `aarch64-macos`, même système et même libc que
 `x86_64-linux-gnu` — et c'est exactement le raisonnement que R-516 refuse.
-
-`x86_64-apple-darwin` est un accident d'outillage, pas une impossibilité : le
-runner existe, l'étiquette avait changé. Elle sera validée au prochain passage
-de la matrice. En attendant, elle n'est pas déclarée déterministe, et un joueur
-sur un Mac Intel jouera en `SNAPSHOT` — ce qui ne lui retire rien (R-514).
+Tant qu'elle n'est pas rejouée, un joueur sur un Linux ARM jouera en `SNAPSHOT`,
+ce qui ne lui retire rien (R-514).
 
 **Une conséquence à trancher en M4.** `det_profile` intègre le triplet cible, et
 la règle 1 de 5.12bis n'accorde `RECONSTRUCT` qu'à deux empreintes **égales** :

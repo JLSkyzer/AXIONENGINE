@@ -718,13 +718,15 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         Le script s'exclut du balayage — il contient les motifs qu'il traque —
         et bouche ce trou par un autotest à deux listes, écrites indépendamment
         des expressions régulières. Vérifié par mutation dans les deux sens.
-- [x] **Matrice déterministe rejouée et archivée (R-516).** Trois
-      configurations sur cinq sont validées : `x86_64-windows-msvc`,
-      `x86_64-linux-gnu` et `aarch64-macos-none`. Les mêmes 10 000 cas
-      produisent les **mêmes bits** sur trois systèmes, trois libc et **deux
-      architectures** — un binaire ARM/NEON calcule au bit près ce que calcule
-      un binaire x86-64/SSE2 sous MSVC, subnormaux compris. Registre :
+- [x] **Matrice déterministe rejouée et archivée (R-516).** **Quatre
+      configurations sur cinq** sont validées : `x86_64-windows-msvc`,
+      `x86_64-linux-gnu`, `aarch64-macos-none` et `x86_64-macos-none`. Les mêmes
+      10 000 cas produisent les **mêmes bits** sur trois systèmes, trois libc et
+      **deux architectures** — un binaire ARM/NEON calcule au bit près ce que
+      calcule un binaire x86-64/SSE2 sous MSVC, subnormaux compris. Registre :
       [`docs/spec/MATRICE-DETERMINISTE.md`](../docs/spec/MATRICE-DETERMINISTE.md).
+      Seule `aarch64-unknown-linux-gnu` reste non validée, faute de runner ARM
+      sur le plan de ce dépôt ; elle est « best effort » en 34.2.
       - `MatrixEntry` porte désormais un drapeau `validated`, et
         `is_in_validation_matrix()` ne rend `true` que pour une ligne rejouée.
         R-516 est explicite : « une configuration non validée n'est jamais
@@ -738,9 +740,6 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         autres plateformes finissaient en moins de huit. Diagnostiqué par une
         sonde jetable comparant les étiquettes côte à côte ; `macos-15-intel`
         obtient un runner en moins de trente secondes.
-- [ ] **`x86_64-apple-darwin` reste à valider.** L'étiquette est corrigée dans
-      `ci.yml` ; la ligne du registre et son `validated` se remplissent à la
-      première exécution réussie de la matrice, dans cet ordre.
 - [x] **Trois défauts que seule la CI pouvait révéler**, tous corrigés avant
       qu'elle ne tourne :
       - `gradlew` était en mode `100644`. Le dépôt étant né sous Windows, git
@@ -893,9 +892,13 @@ ses critères vérifiés **mécaniquement**.
       livré n'est construit par cette chaîne. Le noyau déterministe, lui, reste
       compilé par la version épinglée, sans quoi la matrice de validation ne
       voudrait plus rien dire.
-- [ ] **Vecteurs d'or sur une seule plateforme.** R-513 les veut rejoués sur
-      **chaque** configuration de la matrice ; seule `x86_64-windows-msvc` les a
-      joués. Le rejeu est écrit pour tourner partout, et son message distingue
-      déjà une divergence dans la matrice — défaut bloquant — d'une divergence
-      hors matrice, qui n'en est pas un. Il ne manque que les machines,
-      c'est-à-dire la CI.
+- [x] **Vecteurs d'or sur une seule plateforme.** Réglé : la CI les rejoue sur
+      quatre des cinq configurations de la matrice, et le résultat est archivé
+      dans [`docs/spec/MATRICE-DETERMINISTE.md`](../docs/spec/MATRICE-DETERMINISTE.md)
+      comme R-516 l'exige.
+- [ ] **`aarch64-unknown-linux-gnu` jamais rejouée.** Dernière case vide de la
+      matrice. GitHub ne fournit pas de runner ARM Linux sur le plan de ce
+      dépôt ; 34.2 la donne « best effort, non bloquant », et son `validated`
+      reste à `false`, donc elle bascule en `SNAPSHOT`. À rejouer le jour où un
+      runner ARM est disponible — machine personnelle, runner auto-hébergé, ou
+      changement de plan.
