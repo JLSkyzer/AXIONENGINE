@@ -314,3 +314,42 @@ d'anormal — la conversion se voyait seulement en lisant les octets.
 explicitement : les normaliser en saut simple pour éditer, restituer le style
 d'origine à l'écriture. `tasks/todo.md` et `tasks/lessons.md` sont en CRLF — le
 premier avec BOM —, la plupart des autres fichiers en LF.
+
+---
+
+## 2026-09-11 | `gradlew` n'avait pas son bit d'exécution
+
+Le dépôt a été initialisé sous Windows, où le bit d'exécution n'existe pas. Git
+a donc enregistré `gradlew` en mode `100644`. Tant que le build ne tourne que
+sur cette machine, rien ne le dit : `gradlew.bat` prend le relais. Le premier
+runner Linux, lui, aurait répondu `./gradlew: Permission denied` — et l'erreur
+n'aurait désigné ni le dépôt, ni Windows, ni le mode du fichier.
+
+**Règle.** Avant d'ajouter un job de CI qui exécute un script du dépôt, vérifier
+son mode : `git ls-files -s <script>` doit rendre `100755`. Se corrige par
+`git update-index --chmod=+x <script>`, et le mode voyage alors dans le commit.
+
+**Corollaire.** La même question se pose pour tout ce qu'un dépôt né sous
+Windows exécute ailleurs : scripts d'outillage, crochets, entrypoints.
+
+---
+
+## 2026-09-11 | Un autotest qui se cherche dans sa propre définition ne prouve rien
+
+`tools/ci/lint_no_fiction.py` s'exclut du balayage — il contient forcément les
+motifs qu'il traque. Pour boucher ce trou, la première version vérifiait que
+chaque expression régulière se reconnaissait dans le fichier. C'était creux : le
+fichier contient le texte de l'expression, donc une expression **mal écrite** s'y
+reconnaissait tout aussi bien. La mutation l'a montré — `\bFIXMEZZZ\b` passait au
+vert.
+
+**Règle.** Un autotest se juge sur des exemples écrits **indépendamment** de ce
+qu'ils testent, et dans les deux sens : une liste de cas qui doivent être
+attrapés, une liste de cas légitimes qui ne doivent pas l'être. La seconde n'est
+pas un luxe : un motif trop large est pire qu'absent, parce qu'on finit par le
+contourner.
+
+**Corollaire.** C'est la liste des innocents qui a fait apparaître que
+`\bplaceholder\b` ne reconnaissait pas `PLACEHOLDER_ROUGE` — la limite de mot
+échoue devant un tiret bas. Le motif était trop étroit, et seule une mesure
+extérieure pouvait le dire.
