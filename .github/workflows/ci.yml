@@ -1,0 +1,265 @@
+# CI d'AXION ENGINE — PARTIE 34.3.
+#
+# R-2350 : l'echec d'un job lint-*, codegen-parity, det-vectors, deps, test-* ou
+# validate-jar bloque la fusion.
+#
+# # Correspondance avec la liste de 34.3
+#
+# La PARTIE 34.3 enumere des jobs ; ce fichier en realise ceux dont le sujet
+# existe, et en groupe certains par etapes nommees. Le groupement n'est pas une
+# commodite : une installation de chaine Rust ou de Forge coute plusieurs
+# minutes, et les repeter par job les facturerait autant de fois — macOS compte
+# dix fois sur un depot prive. L'interface d'Actions nomme l'etape en echec, si
+# bien qu'un echec reste aussi lisible qu'avec un job par ligne.
+#
+#   lint-rust          -> job lint-rust
+#   lint-no-fiction    -> job lint-no-fiction
+#   deps               -> job deps (cargo-deny, puis fraicheur du NOTICE)
+#   docs               -> job deps, etape « NOTICE a jour »
+#   codegen-parity     -> job build-and-test, etape codegen (T-005)
+#   lint-budgets       -> job build-and-test, T-007 dans la suite JUnit
+#   lint-no-mod-names  -> job build-and-test, T-014 dans la suite JUnit
+#   lint-no-global-pool-> job build-and-test, crates/ax-jobs/tests/pas_de_pool_global.rs
+#   test-unit          -> job build-and-test (cargo + JUnit) et job platform
+#   validate-jar       -> job build-and-test, etape finale de `gradlew build`
+#   det-vectors        -> job platform, etape nommee (T-820, R-513)
+#   build-natives      -> job platform, etape nommee (34.2)
+#
+# Ce qui manque, et pourquoi : lint-java attend spotless, lint-units attend les
+# annotations dimensionnelles de 11.5, fuzz-short attend les cibles de fuzzing,
+# et test-integration, test-gametest, test-render, test-e2e, test-compat,
+# test-rustforgex et bench-quick attendent les composants qu'ils exercent. Les
+# ecrire maintenant produirait des jobs verts qui ne verifient rien.
+#
+# Linux aarch64 est « best effort, non bloquant » (34.2) et n'apparait pas :
+# GitHub ne fournit pas de runner ARM sur le plan de ce depot, et un job en
+# attente d'un runner inexistant ne s'arrete jamais de lui-meme.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      matrice:
+        description: >-
+          Executer la matrice de plateformes (build-natives et det-vectors).
+          La decocher ne lance que les verifications Linux, ce qui coute une
+          quinzaine de minutes au lieu de deux cent cinquante.
+        type: boolean
+        default: true
+
+# Une nouvelle poussee annule la precedente : rien ne sert de payer deux fois
+# la verification d'un etat deja depasse.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Un avertissement de compilation est un defaut qui n'a pas encore coute.
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  lint-rust:
+    name: lint-rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rustup lit rust-toolchain.toml et installe la version epinglee avec
+      # rustfmt et clippy. Aucune action tierce n'est necessaire pour cela.
+      - name: Chaine Rust epinglee
+        run: |
+          rustup show active-toolchain
+          rustc --version
+          cargo --version
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-lint-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-lint-${{ runner.os }}-
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: clippy -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  lint-no-fiction:
+    name: lint-no-fiction
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: R-001 — aucune fiction dans un module livre
+        run: python3 tools/ci/lint_no_fiction.py
+
+  deps:
+    name: deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/bin
+          key: cargo-deps-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'deny.toml') }}
+          restore-keys: cargo-deps-${{ runner.os }}-
+
+      - name: Installer cargo-deny
+        run: |
+          if ! command -v cargo-deny >/dev/null; then
+            cargo install cargo-deny --locked
+          fi
+          cargo deny --version
+
+      # R-2301 : licence hors allowlist, avis RustSec, doublon non justifie ou
+      # source hors crates.io bloquent.
+      - name: cargo deny check
+        run: cargo deny check
+
+      # Le NOTICE est engendre depuis l'arbre de dependances reel (R-2290). S'il
+      # differe apres regeneration, c'est qu'une dependance a bouge sans que les
+      # attributions suivent.
+      - name: NOTICE a jour
+        run: |
+          python3 tools/deps/gen_notice.py
+          git diff --exit-code -- NOTICE
+
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-test-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-test-${{ runner.os }}-
+
+      # ForgeGradle telecharge et decompile Minecraft au premier passage. Le
+      # cache evite de recommencer a chaque execution, ce qui dominerait tout le
+      # reste en duree.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: test-unit (cote natif)
+        run: cargo test --workspace --all-features
+
+      # `gradlew build` enchaine codegen (T-005, codegen-parity), la compilation
+      # Java, la suite JUnit — dont T-007, T-014, T-020..T-023 et R-2392 —,
+      # buildNatives pour la cible hote, puis validateJar.
+      - name: codegen-parity, JUnit et validate-jar
+        run: ./gradlew build --no-daemon --stacktrace
+
+      - name: Rapports de test en cas d'echec
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapports-junit
+          path: java/*/build/reports/tests/
+          retention-days: 7
+
+  platform:
+    name: platform (${{ matrix.cible }})
+    # La matrice couvre les configurations de la matrice de validation
+    # deterministe (5.12bis). Elle ne tourne pas sur chaque branche : sur un
+    # depot prive, une minute macOS en coute dix, et les jobs ci-dessus
+    # attrapent deja tout ce qui ne depend pas de la plateforme.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.matrice)
+      || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cible: windows-x86_64
+            runner: windows-latest
+          - cible: linux-x86_64
+            # 22.04 plutot que la derniere : la glibc y est plus ancienne, donc
+            # le binaire produit tourne sur davantage de systemes. 34.2 demande
+            # glibc >= 2.28, que meme celle-ci ne garantit pas — voir la dette
+            # notee dans tasks/todo.md.
+            runner: ubuntu-22.04
+          - cible: macos-aarch64
+            runner: macos-latest
+          - cible: macos-x86_64
+            runner: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-platform-${{ matrix.cible }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-platform-${{ matrix.cible }}-
+
+      - name: Configuration deterministe de cette machine
+        shell: bash
+        run: cargo run --quiet -p ax-det --example profil
+
+      # R-513 : les vecteurs d'or sont rejoues sur chaque configuration de la
+      # matrice. Une divergence sur l'une d'elles est un defaut BLOQUANT.
+      - name: det-vectors (T-820, R-513)
+        shell: bash
+        run: cargo test -p ax-det
+
+      - name: test-unit (cote natif)
+        shell: bash
+        run: cargo test --workspace --all-features
+
+      - name: build-natives (34.2)
+        shell: bash
+        run: cargo build --release -p ax-ffi
+
+      - name: Empreinte de la bibliotheque produite
+        shell: bash
+        run: |
+          cd target/release
+          for nom in axion_native.dll libaxion_native.so libaxion_native.dylib; do
+            if [ -f "$nom" ]; then
+              shasum -a 256 "$nom" | tee "$nom.sha256"
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: natif-${{ matrix.cible }}
+          path: |
+            target/release/axion_native.dll
+            target/release/libaxion_native.so
+            target/release/libaxion_native.dylib
+            target/release/*.sha256
+          if-no-files-found: error
+          retention-days: 14

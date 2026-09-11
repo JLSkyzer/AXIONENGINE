@@ -3,14 +3,18 @@
 # C-16 : la matrice de validation deterministe est definie pour cette version
 # exacte. Un changement de version majeure impose de rejouer, et si necessaire
 # de regenerer, les vecteurs d'or, avec increment de DET_KERNEL_VERSION.
+#
+# Aucune cible n'est declaree ici, et c'est un choix. Rien ne compile en croise :
+# `gradle/natives.gradle` ne construit que la cible hote et ignore les autres
+# avec un avertissement (R-2341), et la CI donne une machine par plateforme.
+# Lister les cinq cibles de la matrice faisait donc telecharger cinq
+# bibliotheques standard sur chaque poste et sur chaque runner, pour n'en
+# utiliser qu'une.
+#
+# La matrice elle-meme est declaree la ou elle sert : `VALIDATION_MATRIX` dans
+# crates/ax-det/src/profile.rs, ou un test constate que la machine courante en
+# fait partie. Une liste ici n'aurait ete qu'une seconde source a tenir a jour.
 [toolchain]
 channel = "1.94.0"
 components = ["rustfmt", "clippy"]
-targets = [
-    "x86_64-pc-windows-msvc",
-    "x86_64-unknown-linux-gnu",
-    "aarch64-apple-darwin",
-    "x86_64-apple-darwin",
-    "aarch64-unknown-linux-gnu",
-]
 profile = "minimal"
