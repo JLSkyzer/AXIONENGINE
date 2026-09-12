@@ -64,6 +64,141 @@ fn triangle(extras: &str, extensions: &str) -> String {
     )
 }
 
+/// Un triangle éclairé : positions, UV, normales et tangentes au choix, et un
+/// matériau à normal map.
+fn triangle_eclaire(normales: bool, tangentes: bool) -> String {
+    let mut buffer = Vec::new();
+    let mut views = Vec::new();
+    let mut accessors = Vec::new();
+    let mut attributes = Vec::new();
+
+    let mut ajoute = |buffer: &mut Vec<u8>, valeurs: &[f32], nombre: usize, genre: &str| {
+        let debut = buffer.len();
+        for valeur in valeurs {
+            buffer.extend_from_slice(&valeur.to_le_bytes());
+        }
+        views.push(format!(
+            "{{ \"buffer\": 0, \"byteOffset\": {debut}, \"byteLength\": {} }}",
+            buffer.len() - debut
+        ));
+        let bornes = if genre == "VEC3" && accessors.is_empty() {
+            ", \"min\": [0.0, 0.0, 0.0], \"max\": [1.0, 1.0, 0.0]"
+        } else {
+            ""
+        };
+        accessors.push(format!(
+            "{{ \"bufferView\": {}, \"componentType\": 5126, \"count\": {nombre}, \
+             \"type\": \"{genre}\"{bornes} }}",
+            views.len() - 1
+        ));
+        accessors.len() - 1
+    };
+
+    let position = ajoute(
+        &mut buffer,
+        &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        3,
+        "VEC3",
+    );
+    attributes.push(format!("\"POSITION\": {position}"));
+    let uv = ajoute(&mut buffer, &[0.0, 0.0, 1.0, 0.0, 0.0, 1.0], 3, "VEC2");
+    attributes.push(format!("\"TEXCOORD_0\": {uv}"));
+    if normales {
+        let normal = ajoute(
+            &mut buffer,
+            &[0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            3,
+            "VEC3",
+        );
+        attributes.push(format!("\"NORMAL\": {normal}"));
+    }
+    if tangentes {
+        let tangent = ajoute(
+            &mut buffer,
+            &[
+                1.0, 0.0, 0.0, -1.0, 1.0, 0.0, 0.0, -1.0, 1.0, 0.0, 0.0, -1.0,
+            ],
+            3,
+            "VEC4",
+        );
+        attributes.push(format!("\"TANGENT\": {tangent}"));
+    }
+
+    let debut = buffer.len();
+    for index in [0u16, 1, 2] {
+        buffer.extend_from_slice(&index.to_le_bytes());
+    }
+    views.push(format!(
+        "{{ \"buffer\": 0, \"byteOffset\": {debut}, \"byteLength\": 6 }}"
+    ));
+    accessors.push(format!(
+        "{{ \"bufferView\": {}, \"componentType\": 5123, \"count\": 3, \"type\": \"SCALAR\" }}",
+        views.len() - 1
+    ));
+    let indices = accessors.len() - 1;
+
+    let encoded = encode(&buffer);
+    let len = buffer.len();
+    format!(
+        "{{
+  \"asset\": {{ \"version\": \"2.0\" }},
+  \"scene\": 0,
+  \"scenes\": [{{ \"nodes\": [0] }}],
+  \"nodes\": [{{ \"name\": \"triangle\", \"mesh\": 0 }}],
+  \"meshes\": [{{
+    \"name\": \"triangle\",
+    \"primitives\": [{{ \"attributes\": {{ {} }}, \"indices\": {indices}, \"material\": 0 }}]
+  }}],
+  \"materials\": [{{ \"name\": \"relief\", \"normalTexture\": {{ \"index\": 0 }} }}],
+  \"textures\": [{{ \"source\": 0 }}],
+  \"images\": [{{ \"uri\": \"relief.png\" }}],
+  \"accessors\": [{}],
+  \"bufferViews\": [{}],
+  \"buffers\": [{{ \"byteLength\": {len}, \"uri\": \"{DATA_PREFIX}{encoded}\" }}]
+}}",
+        attributes.join(", "),
+        accessors.join(", "),
+        views.join(", ")
+    )
+}
+
+#[test]
+fn t220_une_normal_map_est_reperee_sur_le_materiau() {
+    let (asset, _) = import_gltf(triangle_eclaire(true, false).as_bytes(), &LIMITS, |_| None)
+        .expect("import refusé");
+    assert!(asset.materials[0].has_normal_map);
+
+    // Le triangle de base n'a qu'une couleur.
+    let (asset, _) =
+        import_gltf(triangle("", "").as_bytes(), &LIMITS, |_| None).expect("import refusé");
+    assert!(!asset.materials[0].has_normal_map);
+}
+
+#[test]
+fn t220_les_tangentes_ecrites_par_la_source_sont_lues() {
+    let (asset, _) = import_gltf(triangle_eclaire(true, true).as_bytes(), &LIMITS, |_| None)
+        .expect("import refusé");
+
+    // w = -1 : la bitangente est retournée, et le signe doit survivre.
+    for vertex in &asset.vertices {
+        assert_eq!(vertex.tangent, [127, 0, 0, -127]);
+    }
+    assert_eq!(asset.authored_tangents, [true; 3]);
+}
+
+#[test]
+fn t220_sans_normale_les_tangentes_ecrites_sont_ignorees() {
+    // glTF 2.0 : sans NORMAL, les tangentes fournies doivent être ignorées.
+    let (asset, _) = import_gltf(triangle_eclaire(false, true).as_bytes(), &LIMITS, |_| None)
+        .expect("import refusé");
+
+    for vertex in &asset.vertices {
+        assert_eq!(vertex.tangent, [0; 4]);
+    }
+    assert_eq!(asset.authored_tangents, [false; 3]);
+    assert_eq!(asset.missing_normals, [true; 3]);
+}
+
 const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// Encode en base64 standard, avec remplissage.

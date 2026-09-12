@@ -21,11 +21,15 @@ figurer dans les attributions au meme titre que les autres (R-2290).
 Dependances Rust
 --------------------------------------------------------------------------------
 
-77 paquets, transitives comprises.
+84 paquets, transitives comprises.
 
   autocfg 1.5.1
     Licence : Apache-2.0 OR MIT
     Source  : https://github.com/cuviper/autocfg
+
+  bitflags 2.13.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/bitflags/bitflags
 
   byteorder 1.5.0
     Licence : Unlicense OR MIT
@@ -91,6 +95,10 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-lang/cc-rs
 
+  float-cmp 0.10.0
+    Licence : MIT
+    Source  : https://github.com/mikedilger/float-cmp
+
   float-cmp 0.9.0
     Licence : MIT
     Source  : https://github.com/mikedilger/float-cmp
@@ -98,6 +106,10 @@ Dependances Rust
   getrandom 0.4.3
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-random/getrandom
+
+  glam 0.15.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/bitshifter/glam-rs
 
   glam 0.33.7
     Licence : MIT OR Apache-2.0
@@ -162,6 +174,16 @@ Dependances Rust
   memchr 2.8.3
     Licence : Unlicense OR MIT
     Source  : https://github.com/BurntSushi/memchr
+
+  meshopt 0.6.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/gwihlidal/meshopt-rs
+    Inclut  : meshoptimizer (C++), Copyright (c) 2016-2025 Arseny Kapoulkine, licence MIT
+
+  mikktspace 0.3.0
+    Licence : MIT/Apache-2.0
+    Source  : https://github.com/gltf-rs/mikktspace
+    Inclut  : derive de MikkTSpace, Copyright (C) 2011 Morten S. Mikkelsen, licence zlib
 
   num-traits 0.2.19
     Licence : MIT OR Apache-2.0
@@ -239,7 +261,15 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/dtolnay/thiserror
 
+  thiserror 2.0.20
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/dtolnay/thiserror
+
   thiserror-impl 1.0.69
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/dtolnay/thiserror
+
+  thiserror-impl 2.0.20
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/dtolnay/thiserror
 

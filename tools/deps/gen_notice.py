@@ -73,6 +73,17 @@ ni approuve par Mojang AB ou Microsoft.
 """
 
 
+# Code tiers embarque par un crate, dont l'attribution ne se lit pas dans les
+# metadonnees cargo : le crate y declare sa propre licence, pas celle du code
+# qu'il compile ou dont il derive (ADR-106).
+EMBEDDED = {
+    "meshopt": "meshoptimizer (C++), Copyright (c) 2016-2025 Arseny Kapoulkine, "
+    "licence MIT",
+    "mikktspace": "derive de MikkTSpace, Copyright (C) 2011 Morten S. Mikkelsen, "
+    "licence zlib",
+}
+
+
 def allowed_licenses():
     """Licences autorisees, lues dans deny.toml (source unique, R-2301)."""
     text = DENY.read_text(encoding="utf-8")
@@ -145,6 +156,8 @@ def render(packages):
         lines.append(f"    Licence : {package['license'] or 'non declaree'}")
         if package["repository"]:
             lines.append(f"    Source  : {package['repository']}")
+        if package["name"] in EMBEDDED:
+            lines.append(f"    Inclut  : {EMBEDDED[package['name']]}")
         lines.append("")
     lines.append(FOOTER.strip())
     lines.append("")

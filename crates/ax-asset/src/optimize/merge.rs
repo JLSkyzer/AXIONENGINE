@@ -3,9 +3,9 @@
 //! # Tolérances déclarées
 //!
 //! Deux sommets fusionnent quand ils sont **identiques au bit près une fois
-//! quantifiés** au format canonique, et portent le même marqueur de normale
-//! absente. Les tolérances sont donc celles de la quantification faite par les
-//! importeurs, et nulles au-delà :
+//! quantifiés** au format canonique, et portent les mêmes marqueurs de normale
+//! absente et de tangente écrite. Les tolérances sont donc celles de la
+//! quantification faite par les importeurs, et nulles au-delà :
 //!
 //! | Attribut | Tolérance |
 //! |---|---|
@@ -37,11 +37,13 @@ const UNASSIGNED: u32 = u32::MAX;
 /// Fusionne les sommets identiques de chaque mesh.
 ///
 /// Les indices restent locaux au mesh ; offsets et dénombrements sont mis à
-/// jour, `raw_uvs` et `missing_normals` suivent leurs sommets.
+/// jour, `raw_uvs`, `missing_normals` et `authored_tangents` suivent leurs
+/// sommets.
 pub(super) fn merge_vertices(asset: &mut ImportedAsset) {
     let mut vertices = Vec::with_capacity(asset.vertices.len());
     let mut raw_uvs = Vec::with_capacity(asset.vertices.len());
     let mut missing_normals = Vec::with_capacity(asset.vertices.len());
+    let mut authored_tangents = Vec::with_capacity(asset.vertices.len());
     let mut indices = Vec::with_capacity(asset.indices.len());
 
     // Réutilisés d'un mesh à l'autre.
@@ -52,12 +54,17 @@ pub(super) fn merge_vertices(asset: &mut ImportedAsset) {
     for mesh in &mut asset.meshes {
         let vertex_offset = mesh.vertex_offset as usize;
         let source = &asset.vertices[vertex_offset..vertex_offset + mesh.vertex_count as usize];
-        let missing = |local: usize| {
-            asset
-                .missing_normals
-                .get(vertex_offset + local)
-                .copied()
-                .unwrap_or(false)
+        // Marqueurs d'un sommet : normale absente, tangente écrite.
+        let flags = |local: usize| {
+            let global = vertex_offset + local;
+            (
+                asset.missing_normals.get(global).copied().unwrap_or(false),
+                asset
+                    .authored_tangents
+                    .get(global)
+                    .copied()
+                    .unwrap_or(false),
+            )
         };
 
         // Tri des sommets, départagé par l'index d'origine : l'ordre est total,
@@ -66,7 +73,7 @@ pub(super) fn merge_vertices(asset: &mut ImportedAsset) {
         order.extend(0..mesh.vertex_count);
         order.sort_unstable_by(|&a, &b| {
             let (a, b) = (a as usize, b as usize);
-            compare(&source[a], missing(a), &source[b], missing(b)).then(a.cmp(&b))
+            compare(&source[a], flags(a), &source[b], flags(b)).then(a.cmp(&b))
         });
 
         representative.clear();
@@ -78,9 +85,9 @@ pub(super) fn merge_vertices(asset: &mut ImportedAsset) {
                 let current = local as usize;
                 compare(
                     &source[previous],
-                    missing(previous),
+                    flags(previous),
                     &source[current],
-                    missing(current),
+                    flags(current),
                 ) != Ordering::Equal
             };
             if starts_group {
@@ -107,7 +114,9 @@ pub(super) fn merge_vertices(asset: &mut ImportedAsset) {
                         .copied()
                         .unwrap_or([0.0; 2]),
                 );
-                missing_normals.push(missing(kept));
+                let (missing, authored) = flags(kept);
+                missing_normals.push(missing);
+                authored_tangents.push(authored);
             }
             indices.push(remap[kept]);
         }
@@ -120,6 +129,7 @@ pub(super) fn merge_vertices(asset: &mut ImportedAsset) {
     asset.vertices = vertices;
     asset.raw_uvs = raw_uvs;
     asset.missing_normals = missing_normals;
+    asset.authored_tangents = authored_tangents;
     asset.indices = indices;
 }
 
@@ -127,7 +137,7 @@ pub(super) fn merge_vertices(asset: &mut ImportedAsset) {
 ///
 /// Le remplissage `_pad` n'y entre pas : il est réservé, et écrit à zéro quelle
 /// que soit sa valeur en mémoire.
-fn compare(a: &Vertex, a_missing: bool, b: &Vertex, b_missing: bool) -> Ordering {
+fn compare(a: &Vertex, a_flags: (bool, bool), b: &Vertex, b_flags: (bool, bool)) -> Ordering {
     position_key(a)
         .cmp(&position_key(b))
         .then_with(|| a.normal.cmp(&b.normal))
@@ -139,7 +149,7 @@ fn compare(a: &Vertex, a_missing: bool, b: &Vertex, b_missing: bool) -> Ordering
         .then_with(|| a.weights.cmp(&b.weights))
         .then_with(|| a.region.cmp(&b.region))
         .then_with(|| a.def_w.cmp(&b.def_w))
-        .then_with(|| a_missing.cmp(&b_missing))
+        .then_with(|| a_flags.cmp(&b_flags))
 }
 
 /// Clé de position : les bits du `f32`, les deux zéros confondus.

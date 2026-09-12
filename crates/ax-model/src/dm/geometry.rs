@@ -197,6 +197,22 @@ pub fn encode_normal(normal: [f32; 3]) -> [i8; 4] {
     encoded
 }
 
+/// Encode une tangente, telle que [`Vertex`] la porte : direction en `i8`
+/// normalisée, signe de la bitangente en `w` (`+127` ou `-127`).
+///
+/// Même règle que [`encode_normal`] : une direction inexploitable rend `[0; 4]`,
+/// jamais un axe choisi à la place de la source. Le signe suit la convention
+/// glTF et MikkTSpace, `bitangente = w · (normale × tangente)`.
+#[must_use]
+pub fn encode_tangent(tangent: [f32; 4]) -> [i8; 4] {
+    let mut encoded = encode_normal([tangent[0], tangent[1], tangent[2]]);
+    if encoded == [0; 4] {
+        return encoded;
+    }
+    encoded[3] = if tangent[3] < 0.0 { -127 } else { 127 };
+    encoded
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +308,14 @@ mod tests {
         assert_eq!(encode_normal([f32::NAN, 1.0, 0.0]), [0; 4]);
         assert_eq!(encode_normal([f32::INFINITY, 0.0, 0.0]), [0; 4]);
         assert_eq!(encode_normal([1e-9, 0.0, 0.0]), [0; 4]);
+    }
+
+    #[test]
+    fn t230_une_tangente_porte_le_signe_de_sa_bitangente() {
+        assert_eq!(encode_tangent([2.0, 0.0, 0.0, 1.0]), [127, 0, 0, 127]);
+        assert_eq!(encode_tangent([0.0, -1.0, 0.0, -1.0]), [0, -127, 0, -127]);
+        // Direction inexploitable : rien, pas même un signe.
+        assert_eq!(encode_tangent([0.0, 0.0, 0.0, -1.0]), [0; 4]);
     }
 
     #[test]

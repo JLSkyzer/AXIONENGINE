@@ -699,8 +699,26 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
               sommets par position, et la dernière facette écrasait la normale
               de ses voisines sur toute arête vive. La fusion de C-23 refond
               ensuite ceux qui sont identiques en tout.
-      - [ ] Tranche B — tangentes MikkTSpace (étape 3), cache de sommets et
-            localité (étape 5).
+      - [x] **Tranche B — tangentes et cache de sommets** (étapes 3 et 5).
+            `COMPILER_VERSION` passe à 3.
+            - `mikktspace` et `meshopt`, comme le retient la table 32.2.
+              Déterministes **par plateforme** seulement (`acos`, C++) : les
+              assets ne passent jamais par le réseau (R-1640), et tangentes et
+              ordre des indices ne servent qu'au rendu. Les étapes 8 et 9, dont
+              la physique dépend, devront l'être entre plateformes.
+              `docs/decisions/ADR-106.md`, qui consigne aussi que `mikktspace`
+              est sous MIT OR Apache-2.0 et non Zlib.
+            - tangentes générées si le matériau porte une normal map (glTF
+              `normalTexture`, MTL `map_Bump`, `bump`, `norm`). Le parallax n'a
+              aucune source à la compilation : le slot `height` est résolu au
+              rendu par C-26.
+            - tangentes glTF `TANGENT` lues et conservées, ignorées sans
+              `NORMAL` comme l'exige glTF 2.0.
+            - mesh déplié en coins, puis fusion rejouée : seuls les sommets de
+              couture en miroir restent dédoublés.
+            - `NOTICE` : les codes embarqués (meshoptimizer, MikkTSpace)
+              attribués explicitement par `gen_notice.py`.
+            - un compilateur C++ est désormais requis au build natif.
       - [ ] Tranche C — LOD (étape 6, R-550, T-801).
       - [ ] Tranche D — décomposition convexe bornée et points d'enveloppe
             (étapes 8 et 9, R-551).

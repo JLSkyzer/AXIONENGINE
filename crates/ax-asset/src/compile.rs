@@ -32,8 +32,9 @@ use core::fmt;
 /// n'atteindrait jamais les assets déjà compilés.
 ///
 /// Historique : 2 — C-23 tranche A (fusion des sommets, normales générées,
-/// boîtes recalculées) et sommets STL propres à chaque facette.
-pub const COMPILER_VERSION: u32 = 2;
+/// boîtes recalculées) et sommets STL propres à chaque facette ; 3 — C-23
+/// tranche B (tangentes MikkTSpace, tangentes glTF lues, cache de sommets).
+pub const COMPILER_VERSION: u32 = 3;
 
 /// Ce qui empêche de compiler un asset.
 #[derive(Debug, Clone, PartialEq)]
@@ -126,12 +127,13 @@ pub fn compile(
     options: &CompileOptions,
     resolve: impl FnMut(&str) -> Option<Vec<u8>>,
 ) -> Result<CompiledAsset, CompileError> {
-    let (mut asset, warnings) = import(source, format, options, resolve)?;
+    let (mut asset, mut warnings) = import(source, format, options, resolve)?;
 
     // Les normales absentes de la source sont exemptées : C-23 les génère.
     check(&asset, options, &asset.missing_normals)?;
 
     let optimized = optimize(&mut asset);
+    warnings.extend(optimized.warnings);
 
     // La sortie de C-23, sans exemption : c'est ce que le chargement vérifiera
     // (R-540). Le vérifier dès ici fait d'un défaut de l'optimizer un refus à

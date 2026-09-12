@@ -12,7 +12,9 @@ use super::gltf_refs;
 use super::{
     check_relative_path, ImportError, ImportLimits, ImportedAsset, ImportedMaterial, SourceFormat,
 };
-use ax_model::dm::geometry::{encode_normal, MeshDesc, Transform, Vertex, NO_REGION_U8};
+use ax_model::dm::geometry::{
+    encode_normal, encode_tangent, MeshDesc, Transform, Vertex, NO_REGION_U8,
+};
 use ax_model::dm::limits;
 use ax_model::dm::scene::{node_flags, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 
@@ -545,6 +547,17 @@ fn import_meshes(
                 .read_normals()
                 .map(Iterator::collect)
                 .unwrap_or_default();
+            // glTF 2.0 : sans `NORMAL`, les tangentes fournies doivent être
+            // ignorées. Elles se rapportaient à des normales que la source ne
+            // porte pas, et que C-23 génère.
+            let tangents: Vec<[f32; 4]> = if normals.is_empty() {
+                Vec::new()
+            } else {
+                reader
+                    .read_tangents()
+                    .map(Iterator::collect)
+                    .unwrap_or_default()
+            };
             let uvs: Vec<[f32; 2]> = reader
                 .read_tex_coords(0)
                 .map(|coords| coords.into_f32().collect())
@@ -568,11 +581,15 @@ fn import_meshes(
                     Some(normal) => (encode_normal(*normal), false),
                     None => ([0; 4], true),
                 };
+                // Écrite par la source, ou générée par C-23 (MikkTSpace) si le
+                // matériau porte une normal map.
+                let tangent = tangents
+                    .get(index)
+                    .map_or([0; 4], |tangent| encode_tangent(*tangent));
                 asset.vertices.push(Vertex {
                     position: *position,
                     normal,
-                    // Les tangentes viennent de C-23, par mikktspace.
-                    tangent: [0; 4],
+                    tangent,
                     uv0: quantize_uv(uv),
                     uv1: [0; 2],
                     color: [255; 4],
@@ -594,6 +611,9 @@ fn import_meshes(
                 // R-142 porte sur les valeurs avant normalisation.
                 asset.raw_uvs.push(uv);
                 asset.missing_normals.push(missing);
+                // Une tangente inexploitable n'est pas une tangente écrite :
+                // C-23 la génère comme si la source n'en portait pas.
+                asset.authored_tangents.push(tangent != [0; 4]);
             }
 
             match reader.read_indices() {
@@ -658,6 +678,7 @@ fn import_materials(document: &gltf::Gltf, asset: &mut ImportedAsset) -> Result<
             name: material.name().unwrap_or("material").to_owned(),
             base_color: pbr.base_color_factor(),
             base_color_texture: texture,
+            has_normal_map: material.normal_texture().is_some(),
         });
         asset
             .names

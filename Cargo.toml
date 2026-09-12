@@ -97,6 +97,21 @@ tobj = { version = "4", default-features = false }
 # C-21 : import STL. Retenu par 32.2, licence MIT. Pur Rust.
 stl_io = { version = "0.8", default-features = false }
 
+# C-23, etape 3 : tangentes MikkTSpace. Retenu par 32.2 (« reference »), avec
+# l'alternative evaluee « implementation propre ». Licence reelle MIT OR
+# Apache-2.0 et non Zlib comme l'annonce la table ; le code derive de MikkTSpace
+# (zlib) est attribue dans le NOTICE. Voir docs/decisions/ADR-106.md.
+# `glam` plutot que `nalgebra`, fonctionnalite par defaut : le crate n'en
+# utilise que les types vecteurs, et `glam` 0.15 n'a aucune dependance quand
+# `nalgebra` 0.26 en tire une dizaine.
+mikktspace = { version = "0.3", default-features = false, features = ["glam"] }
+
+# C-23, etape 5 : cache de sommets. Retenu par 32.2, licence MIT OR Apache-2.0,
+# alternative evaluee « Forsyth propre ». Compile meshoptimizer (C++, MIT) par
+# `cc` : un compilateur C++ est requis au build, ce que les runners de la CI
+# fournissent sur les trois systemes. Voir docs/decisions/ADR-106.md.
+meshopt = { version = "0.6", default-features = false }
+
 # C-16 : empreinte de champ deterministe (digest64). Retenu par 32.2, qui lui
 # attribue BSD-2-Clause ; le crate est en realite sous BSL-1.0, ecart consigne
 # dans docs/decisions/ADR-105.md. Epingle au correctif pres : l'empreinte entre

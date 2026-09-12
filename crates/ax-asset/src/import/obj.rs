@@ -395,6 +395,12 @@ fn convert_material(material: &tobj::Material) -> Result<ImportedMaterial, Impor
             material.dissolve.unwrap_or(1.0),
         ],
         base_color_texture,
+        // `map_Bump` et `bump` sont rangés par `tobj` en `normal_texture` ;
+        // `norm`, l'extension PBR du MTL, lui est inconnue et reste dans les
+        // paramètres bruts. Les deux désignent une carte de relief, et l'une
+        // comme l'autre demande des tangentes.
+        has_normal_map: material.normal_texture.is_some()
+            || material.unknown_param.contains_key("norm"),
     })
 }
 
@@ -415,6 +421,26 @@ f 1/1/1 2/2/1 3/3/1
 
     fn limits() -> ImportLimits {
         ImportLimits::new(1 << 20)
+    }
+
+    #[test]
+    fn t221_une_carte_de_relief_du_mtl_est_reperee() {
+        let source = "mtllib relief.mtl\nusemtl relief\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+        // `map_Bump` est rangé par `tobj` ; `norm`, l'extension PBR, ne l'est
+        // pas et doit être cherché dans les paramètres bruts.
+        for ligne in ["map_Bump relief.png", "bump relief.png", "norm relief.png"] {
+            let asset = import_obj(source, &limits(), |_| {
+                Some(format!("newmtl relief\n{ligne}\n"))
+            })
+            .expect("import refusé");
+            assert!(asset.materials[0].has_normal_map, "{ligne}");
+        }
+
+        let asset = import_obj(source, &limits(), |_| {
+            Some("newmtl relief\nKd 1 1 1\n".to_owned())
+        })
+        .expect("import refusé");
+        assert!(!asset.materials[0].has_normal_map);
     }
 
     fn sans_mtl(_: &str) -> Option<String> {

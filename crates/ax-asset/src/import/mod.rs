@@ -371,6 +371,12 @@ pub struct ImportedMaterial {
     pub base_color: [f32; 4],
     /// Chemin relatif de la texture de couleur de base, s'il y en a une.
     pub base_color_texture: Option<String>,
+    /// Le matériau porte une normal map.
+    ///
+    /// Un booléen et non un chemin : une texture embarquée dans un GLB n'en a
+    /// pas, et c'est la présence de la carte qui décide si C-23 génère des
+    /// tangentes (étape 3), pas l'endroit où elle se trouve.
+    pub has_normal_map: bool,
 }
 
 /// Ce qu'une source produit, avant optimisation.
@@ -395,6 +401,13 @@ pub struct ImportedAsset {
     /// écrit une normale nulle », que le validateur refuse : sans lui, les deux
     /// se confondent dans la même valeur.
     pub missing_normals: Vec<bool>,
+    /// Tangentes **écrites par la source**, dans l'ordre des sommets ; vide si
+    /// aucune.
+    ///
+    /// C-23 ne génère des tangentes que là où la source n'en porte pas : une
+    /// tangente écrite l'a été pour la normal map qui l'accompagne, et la
+    /// recalculer pourrait la contredire.
+    pub authored_tangents: Vec<bool>,
     /// Matériaux.
     pub materials: Vec<ImportedMaterial>,
     /// Noms déclarés par la source, par catégorie.
