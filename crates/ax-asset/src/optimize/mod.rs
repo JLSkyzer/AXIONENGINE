@@ -19,9 +19,10 @@
 //! | 6. LOD, régions conservées | module `lod`, section `LODM` |
 //! | 7. AABB par mesh et par asset | module `bounds` |
 //!
-//! Les étapes 8 et 9 — décomposition convexe, points d'enveloppe — sont la
-//! tranche suivante du jalon M2 ; l'étape 11 est l'écriture du conteneur, dans
-//! `compile`.
+//! Les étapes 8 et 9 — décomposition convexe, points d'enveloppe — viennent en
+//! M3, avec C-32 qui produit les colliders `auto_convex` qu'elles traitent ;
+//! leur budget est fixé par `docs/decisions/ADR-108.md`. L'étape 10 est C-28,
+//! l'étape 11 l'écriture du conteneur, dans `compile`.
 //!
 //! # Déterminisme (R-553)
 //!

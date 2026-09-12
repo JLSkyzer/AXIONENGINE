@@ -741,8 +741,20 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
               meshes de LOD de `GEOM` ; le lecteur de `LODM` (C-64, M4) devra
               la valider au chargement (R-540) ; les options `lod` de
               `.axion.json` ne sont pas lues (valeurs de la PARTIE 6.4).
-      - [ ] Tranche D — décomposition convexe bornée et points d'enveloppe
+      - [ ] **Tranche D — reportée en M3, avec C-32** (décision de Killian,
+            2026-09-13). Décomposition convexe bornée et points d'enveloppe
             (étapes 8 et 9, R-551).
+            - pourquoi : l'étape 8 ne traite que les colliders `auto_convex`,
+              que seul C-32 (M3) produit ; l'import ne crée aucun
+              `ColliderDesc`. L'acceptance de M2 ne l'exige pas, et `parry3d`
+              entrera avec `rapier3d`, à la même version.
+            - voie retenue : `parry3d` avec `enhanced-determinism` (`libm`
+              logicielle, sans SIMD, `indexmap`) — les points d'enveloppe
+              pilotent le refit des deux côtés et doivent être identiques
+              entre plateformes (ADR-106, point 3).
+            - **budget déterministe** : travail borné par des paramètres fixes,
+              temps mesuré et signalé sans changer la sortie. Écart avec la
+              lettre de R-551 consigné dans `docs/decisions/ADR-108.md`.
       - **Ouvert, hors C-23** : un mesh glTF à plusieurs primitives ne rattache
         que la première à son node (`bind_meshes`). Les suivantes ne sont
         portées par aucun node, et la boîte d'asset les ignore donc aussi.
