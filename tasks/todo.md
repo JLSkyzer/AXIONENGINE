@@ -17,15 +17,18 @@ sont faits, et la Definition of Done tient à un seul point.**
 
 - Vecteurs d'or : **acquis**. Rejoués sur quatre configurations de la matrice,
   résultat archivé (R-516).
-- Fuzzing : **acquis sur trois cibles sur quatre**. `a3d_reader`, `obj` et `stl`
-  ont passé l'heure sans incident le 2026-09-12.
-- **Ce qui bloque : la cible `gltf`.** `gltf-json` 1.4.1 indexe
-  `root.accessors[…]` sans vérifier la borne, dans son propre code de
-  validation. Conséquence immédiate, en plus de la DoD : **la CI est rouge sur
-  toute PR touchant `crates/ax-asset/**` ou `fuzz/**`**, puisque la cible reste
-  bloquante — la retirer serait désactiver un test.
+- Fuzzing : **acquis sur les quatre cibles**. `a3d_reader`, `obj` et `stl` en
+  CI le 2026-09-12 ; `gltf` en local le même jour, après durcissement —
+  9 483 383 exécutions en une heure, sans incident.
 
-C'est donc le prochain travail : durcir le chemin glTF.
+**Les deux preuves de la Definition of Done de M1 sont donc réunies.** Reste à
+la prononcer, une fois la CI de nouveau disponible pour un passage complet.
+
+⚠ **Les minutes GitHub Actions sont épuisées.** Les jobs ne démarrent plus —
+« The job was not started because recent account payments have failed or your
+spending limit needs to be increased ». Le fuzzing a été mené en local pour
+cette raison ; les tests, clippy et les lints tournent aussi en local. À régler
+avant de reprendre un travail qui dépende de la CI.
 
 Ce qui est en place :
 
