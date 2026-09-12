@@ -93,11 +93,25 @@ dérivée d'`arbitrary` : c'est ce qui fait qu'un vrai fichier déposé ici est 
 graine telle quelle. Une entrée structurée lirait ses longueurs depuis la fin du
 tampon, et un `.gltf` n'y désignerait plus un document.
 
-**Le corpus enrichi par une campagne n'est pas commité automatiquement.** Une
-heure de fuzzing produit des milliers d'entrées, et un corpus qu'on laisse
-grossir sans regard cesse d'être relisible. La CI le publie en artefact ;
-`cargo fuzz cmin <cible>` le réduit à ce qui apporte de la couverture, et c'est
-ce résultat-là qu'on verse.
+**Le corpus enrichi par une campagne n'est pas versé.** Ni automatiquement, ni
+après minimisation : la question a été tranchée le 2026-09-12, campagne d'une
+heure en main.
+
+Cette heure a produit **30 509 entrées**. `cargo fuzz cmin` les aurait réduites,
+mais la réduction elle-même est longue sur autant de petits fichiers, et son
+résultat reste des milliers de blobs que personne ne relira. Ce que le versement
+aurait apporté : une campagne future repartant de la frontière atteinte plutôt
+que de la redécouvrir.
+
+Ce que la mesure dit de ce gain : les campagnes du 2026-09-12 sont parties de
+**trois graines** et ont atteint une couverture de 6168 en une heure. Le point de
+départ n'est donc pas ce qui limite une campagne. Le versement achèterait du
+confort au prix de la lisibilité du dépôt — et c'est le mauvais côté du marché.
+
+Ce qui est versé reste donc : une graine valide par cible, plus les entrées de
+régression que le fuzzer a trouvées et qu'un correctif a fermées. Celles-là ont
+un nom, une provenance, et un test qui leur correspond. La CI publie le corpus
+enrichi en artefact pour qui en aurait l'usage sur une campagne précise.
 
 ## Le corpus est aussi rejoué sans nightly
 
