@@ -39,6 +39,7 @@ fn view<'a>(asset: &'a ImportedAsset, names: &'a [NamedEntry<'a>]) -> AssetView<
         animation_count: 0,
         bone_count: 0,
         dynamic_body: true,
+        missing_normals: &asset.missing_normals,
         ..AssetView::default()
     }
 }

@@ -9,7 +9,7 @@
 //! Chaque réparation est **journalisée** : elle a changé la donnée de l'auteur,
 //! et il doit pouvoir le savoir.
 
-use ax_model::dm::geometry::Vertex;
+use ax_model::dm::geometry::{encode_normal, Vertex};
 
 /// Une réparation appliquée.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,20 +101,11 @@ pub fn renormalize_weights(vertex: &mut Vertex) -> bool {
 /// Rend `false` si la normale du triangle n'est pas utilisable : on ne remplace
 /// pas une normale absente par une direction inventée.
 pub fn recompute_normal(vertex: &mut Vertex, triangle_normal: [f32; 3]) -> bool {
-    let length = (triangle_normal[0] * triangle_normal[0]
-        + triangle_normal[1] * triangle_normal[1]
-        + triangle_normal[2] * triangle_normal[2])
-        .sqrt();
-    if !length.is_finite() || length <= f32::EPSILON {
+    let normal = encode_normal(triangle_normal);
+    if normal == [0; 4] {
         return false;
     }
-
-    for (index, value) in triangle_normal.iter().enumerate() {
-        let unit = value / length;
-        // `i8` normalisé : 127 pour 1.0, arrondi au plus proche.
-        vertex.normal[index] = (unit * 127.0).round().clamp(-127.0, 127.0) as i8;
-    }
-    vertex.normal[3] = 0;
+    vertex.normal = normal;
     true
 }
 

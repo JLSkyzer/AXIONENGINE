@@ -387,6 +387,14 @@ pub struct ImportedAsset {
     /// Coordonnées de texture **avant** normalisation, dans l'ordre des
     /// sommets. C'est sur elles que porte R-142.
     pub raw_uvs: Vec<[f32; 2]>,
+    /// Normales **absentes de la source**, dans l'ordre des sommets.
+    ///
+    /// Un sommet marqué porte la normale `[0; 4]` ; C-22 ne la lui reproche pas
+    /// et C-23 la génère depuis la géométrie (étape 2). Le marqueur est ce qui
+    /// sépare « l'auteur n'a rien dit », que l'optimizer comble, de « l'auteur a
+    /// écrit une normale nulle », que le validateur refuse : sans lui, les deux
+    /// se confondent dans la même valeur.
+    pub missing_normals: Vec<bool>,
     /// Matériaux.
     pub materials: Vec<ImportedMaterial>,
     /// Noms déclarés par la source, par catégorie.

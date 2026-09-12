@@ -341,6 +341,9 @@ fn t220_un_gltf_importe_est_accepte_par_le_validateur() {
             names: &names,
             material_count: asset.materials.len(),
             dynamic_body: true,
+            // Le triangle ne porte pas de normale : absente, pas nulle, et
+            // C-23 la générera.
+            missing_normals: &asset.missing_normals,
             ..AssetView::default()
         },
         &asset.raw_uvs,

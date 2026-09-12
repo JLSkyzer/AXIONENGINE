@@ -46,6 +46,13 @@ pub struct AssetView<'a> {
     /// R-160 n'interdit `TriMesh` et `Heightfield` que là ; sur un body
     /// statique — la géométrie du monde — ce sont les formes normales.
     pub dynamic_body: bool,
+    /// Sommets dont la normale est absente de la source, dans l'ordre des
+    /// sommets ; vide si aucun.
+    ///
+    /// N'existe qu'à la compilation, entre C-21 et C-23 : une normale absente y
+    /// est attendue, et C-23 la génère. Au chargement, la vue est vide et toute
+    /// normale nulle est une violation.
+    pub missing_normals: &'a [bool],
 }
 
 /// Un nom déclaré par l'asset, avec sa catégorie.

@@ -255,16 +255,18 @@ fn append_model(asset: &mut ImportedAsset, model: &tobj::Model) {
             mesh.positions[vertex * 3 + 2],
         ];
 
-        let normal = if mesh.normals.len() >= (vertex + 1) * 3 {
-            encode_normal([
+        let (normal, missing) = if mesh.normals.len() >= (vertex + 1) * 3 {
+            let normal = encode_normal([
                 mesh.normals[vertex * 3],
                 mesh.normals[vertex * 3 + 1],
                 mesh.normals[vertex * 3 + 2],
-            ])
+            ]);
+            // Un `vn 0 0 0` écrit par l'auteur reste nul : C-22 le refuse.
+            (normal, false)
         } else {
-            // Une normale absente n'est pas inventée : C-23 la calculera depuis
-            // la géométrie, ce qu'il fait mieux qu'une valeur par défaut.
-            [0, 127, 0, 0]
+            // Une normale absente n'est pas inventée : elle est marquée, et
+            // C-23 la génère depuis la géométrie.
+            ([0; 4], true)
         };
 
         let uv = if mesh.texcoords.len() >= (vertex + 1) * 2 {
@@ -290,6 +292,7 @@ fn append_model(asset: &mut ImportedAsset, model: &tobj::Model) {
         // R-142 porte sur les valeurs avant normalisation : elles sont
         // conservées telles quelles pour que C-22 puisse les examiner.
         asset.raw_uvs.push(uv);
+        asset.missing_normals.push(missing);
     }
 
     // Les indices restent **locaux au mesh** : c'est son `vertex_offset` qui

@@ -511,3 +511,27 @@ validation s'appuie sur la première, jamais sur la seconde.
 échouait, ce qui ressemblait à une divergence de bits — un défaut bloquant. Il
 n'y en avait aucune ; les vecteurs n'avaient simplement pas été joués. Avant de
 conclure d'un job en échec à ce que son nom suggère, lire **quel test** a échoué.
+
+---
+
+## 2026-09-13 | Une valeur par défaut valide efface le signal d'absence
+
+Les trois importeurs écrivaient `[0, 127, 0, 0]` quand la source ne portait pas
+de normale, avec le commentaire « C-23 la calculera ». C-23 ne l'aurait jamais
+pu : cette valeur est aussi un `+Y` parfaitement légitime, et une fois écrite,
+plus rien ne distinguait « l'auteur n'a rien dit » de « l'auteur a dit +Y ». Le
+validateur, lui, l'acceptait. L'intention était juste ; la représentation
+rendait l'étape suivante impossible sans que rien ne le signale.
+
+Même famille, trouvée en écrivant la fusion : le STL reportait la normale de
+chaque facette sur des sommets que `stl_io` avait déjà partagés par position.
+La dernière facette gagnait, et le test ne voyait qu'un triangle — jamais deux
+facettes voisines.
+
+**Règle.** Une absence que l'aval doit traiter se **marque**, elle ne se
+remplace pas par une valeur valide. Soit une valeur que le validateur refuse
+(`[0; 4]`), soit un marqueur à côté (`missing_normals`) — ici les deux, pour
+que la normale écrite nulle reste refusée.
+
+**Corollaire.** Un test d'importeur sur une seule primitive ne dit rien de ce qui
+se passe à la jonction de deux. Tester au moins une arête partagée.

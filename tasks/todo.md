@@ -675,7 +675,39 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       quatre — l'ABI en plus. C'est la seconde qui fait foi, puisque c'est elle
       qui spécifie le cache : sans ce terme, un asset resterait en cache après
       une mise à jour de la frontière qui en change la lecture.
-- [ ] **C-23** Optimizer — tangentes, cache de sommets, décomposition convexe (M2).
+- [ ] **C-23** Optimizer (M2). Placé entre C-22 et C-24, comme le veut le CDC
+      (ligne 496) : il reçoit un asset validé, et sa sortie repasse la même
+      liste de contrôle, sans exemption, avant d'être écrite.
+      - [x] **Tranche A — fusion, normales, boîtes** (étapes 1, 2, 7).
+            `crates/ax-asset/src/optimize/`. `COMPILER_VERSION` passe à 2.
+            - fusion **par tri**, départagé par l'index d'origine : aucune
+              `HashMap`, dont l'ordre est semé au hasard (R-553, T-243) ;
+            - tolérances déclarées dans `merge.rs` : aucune sur la position,
+              le pas de quantification sur le reste. Rapprocher deux positions
+              pourrait aplatir un triangle que C-22 a accepté ;
+            - normales pondérées par l'angle, arc tangente écrite avec les
+              seules opérations IEEE exactement arrondies — pas de `libm` ;
+            - boîte d'asset par la chaîne des nodes, arrondie vers l'extérieur.
+              Le format A3D n'a pas de champ pour elle : elle est rendue dans
+              `CompiledAsset::bounds`.
+            - **normale absente ≠ normale nulle.** Les importeurs écrivaient
+              `[0, 127, 0, 0]` pour une normale absente, indiscernable d'un `+Y`
+              écrit par l'auteur. Ils la marquent désormais dans
+              `ImportedAsset::missing_normals` ; C-22 l'exempte, C-23 la génère.
+              Une normale écrite nulle (`vn 0 0 0`) est refusée.
+            - **STL : un sommet par coin de facette.** `stl_io` fusionne les
+              sommets par position, et la dernière facette écrasait la normale
+              de ses voisines sur toute arête vive. La fusion de C-23 refond
+              ensuite ceux qui sont identiques en tout.
+      - [ ] Tranche B — tangentes MikkTSpace (étape 3), cache de sommets et
+            localité (étape 5).
+      - [ ] Tranche C — LOD (étape 6, R-550, T-801).
+      - [ ] Tranche D — décomposition convexe bornée et points d'enveloppe
+            (étapes 8 et 9, R-551).
+      - **Ouvert, hors C-23** : un mesh glTF à plusieurs primitives ne rattache
+        que la première à son node (`bind_meshes`). Les suivantes ne sont
+        portées par aucun node, et la boîte d'asset les ignore donc aussi.
+        Tâche séparée proposée.
 - [x] **C-71 — Commandes.** Les branches dont les composants existent.
       `/axion status`, `/axion metrics [export]`, `/axion assets list | info
       <chemin> | reload`, `/axion config get <clé>`. Vérifiées sur un serveur

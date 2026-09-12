@@ -560,11 +560,17 @@ fn import_meshes(
 
             for (index, position) in positions.iter().enumerate() {
                 let uv = uvs.get(index).copied().unwrap_or([0.0, 0.0]);
+                // Une normale absente est marquée, pas inventée : C-23 la
+                // génère depuis la géométrie. Une normale présente mais nulle
+                // reste nulle, et C-22 la refuse — glTF 2.0 exige des normales
+                // unitaires, et l'auteur doit l'apprendre.
+                let (normal, missing) = match normals.get(index) {
+                    Some(normal) => (encode_normal(*normal), false),
+                    None => ([0; 4], true),
+                };
                 asset.vertices.push(Vertex {
                     position: *position,
-                    normal: normals
-                        .get(index)
-                        .map_or([0, 127, 0, 0], |normal| encode_normal(*normal)),
+                    normal,
                     // Les tangentes viennent de C-23, par mikktspace.
                     tangent: [0; 4],
                     uv0: quantize_uv(uv),
@@ -587,6 +593,7 @@ fn import_meshes(
                 });
                 // R-142 porte sur les valeurs avant normalisation.
                 asset.raw_uvs.push(uv);
+                asset.missing_normals.push(missing);
             }
 
             match reader.read_indices() {

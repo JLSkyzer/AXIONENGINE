@@ -36,4 +36,5 @@
 pub mod a3d;
 pub mod compile;
 pub mod import;
+pub mod optimize;
 pub mod validate;

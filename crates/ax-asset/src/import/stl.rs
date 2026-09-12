@@ -43,30 +43,41 @@ pub fn import_stl(bytes: &[u8], limits: &ImportLimits) -> Result<ImportedAsset, 
 
     let mut asset = ImportedAsset::default();
 
-    for vertex in &mesh.vertices {
-        let position = [vertex[0], vertex[1], vertex[2]];
-        asset.vertices.push(canonical_vertex(position));
-        // Le format ne porte pas d'UV : rien à contrôler côté R-142, et en
-        // inventer donnerait un plaquage arbitraire.
-        asset.raw_uvs.push([0.0, 0.0]);
-    }
-
     for face in &mesh.faces {
         let normal = encode_normal([face.normal[0], face.normal[1], face.normal[2]]);
+        // Beaucoup d'exportateurs écrivent une normale de facette nulle faute
+        // de la calculer : dans ce format, elle dit « rien », pas « nulle ».
+        // Elle est marquée absente, et C-23 la génère depuis la géométrie.
+        let missing = normal == [0; 4];
+
         for index in face.vertices {
-            let Ok(index) = u32::try_from(index) else {
+            let Some(corner) = mesh.vertices.get(index) else {
                 return Err(ImportError::Malformed {
                     format: SourceFormat::Stl,
-                    detail: "index de sommet hors des bornes d'un u32".to_owned(),
+                    detail: format!("facette désignant le sommet {index}, absent"),
                 });
             };
-            asset.indices.push(index);
-            // Le STL porte une normale **par facette**. La reporter sur les
-            // sommets donne un rendu à facettes, ce qui est la lecture fidèle
-            // du format ; lisser reviendrait à décider à la place de l'auteur.
-            if let Some(vertex) = asset.vertices.get_mut(index as usize) {
-                vertex.normal = normal;
-            }
+            let Ok(local) = u32::try_from(asset.vertices.len()) else {
+                return Err(ImportError::Malformed {
+                    format: SourceFormat::Stl,
+                    detail: "nombre de sommets hors des bornes d'un u32".to_owned(),
+                });
+            };
+
+            // Le STL porte une normale **par facette** : chaque coin reçoit son
+            // propre sommet. `stl_io` fusionne les sommets de même position, et
+            // reporter la normale sur ce sommet partagé laissait la dernière
+            // facette écraser celle de ses voisines — un rendu faux sur toute
+            // arête vive. C-23 refusionne ensuite ceux qui sont identiques en
+            // tout, normale comprise.
+            let mut vertex = canonical_vertex([corner[0], corner[1], corner[2]]);
+            vertex.normal = normal;
+            asset.vertices.push(vertex);
+            // Le format ne porte pas d'UV : rien à contrôler côté R-142, et en
+            // inventer donnerait un plaquage arbitraire.
+            asset.raw_uvs.push([0.0, 0.0]);
+            asset.missing_normals.push(missing);
+            asset.indices.push(local);
         }
     }
 
@@ -118,9 +129,8 @@ fn check_declared_triangles(bytes: &[u8]) -> Result<(), ImportError> {
 fn canonical_vertex(position: [f32; 3]) -> Vertex {
     Vertex {
         position,
-        // La normale est posée par la facette ; celle-ci n'est qu'un point de
-        // départ valide, jamais rendu tel quel.
-        normal: [0, 127, 0, 0],
+        // Posée ensuite par la facette.
+        normal: [0; 4],
         // Les tangentes viennent de C-23, par mikktspace. Les inventer ici
         // produirait un éclairage faux plutôt qu'un éclairage absent.
         tangent: [0; 4],
@@ -238,6 +248,38 @@ mod tests {
         for vertex in &asset.vertices {
             assert_eq!(vertex.normal, [0, 0, 127, 0]);
         }
+        assert_eq!(asset.missing_normals, [false; 3]);
+    }
+
+    #[test]
+    fn t223_deux_facettes_voisines_gardent_chacune_leur_normale() {
+        // Une arête vive partagée par deux facettes. `stl_io` fusionne les
+        // sommets de même position : reporter la normale sur le sommet partagé
+        // laissait la seconde facette écraser la première.
+        let bytes = binaire(&[
+            (
+                [0.0, 0.0, 1.0],
+                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            ),
+            (
+                [0.0, -1.0, 0.0],
+                [[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [1.0, 0.0, 0.0]],
+            ),
+        ]);
+
+        let asset = import_stl(&bytes, &limits()).expect("import refusé");
+        assert_eq!(asset.vertices.len(), 6);
+        for (rank, &index) in asset.indices.iter().enumerate() {
+            let attendue = if rank < 3 {
+                [0, 0, 127, 0]
+            } else {
+                [0, -127, 0, 0]
+            };
+            assert_eq!(
+                asset.vertices[index as usize].normal, attendue,
+                "coin {rank}"
+            );
+        }
     }
 
     #[test]
@@ -248,9 +290,12 @@ mod tests {
         )]);
 
         let asset = import_stl(&bytes, &limits()).expect("import refusé");
+        // Aucune direction, et marquée absente : C-23 la génère depuis la
+        // géométrie.
         for vertex in &asset.vertices {
-            assert_eq!(vertex.normal, [0, 127, 0, 0], "direction inventée");
+            assert_eq!(vertex.normal, [0; 4], "direction inventée");
         }
+        assert_eq!(asset.missing_normals, [true; 3]);
     }
 
     #[test]

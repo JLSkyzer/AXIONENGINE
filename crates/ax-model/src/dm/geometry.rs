@@ -174,14 +174,17 @@ impl Vertex {
 ///
 /// **Une direction inexploitable n'est pas remplacée par une direction
 /// inventée.** Une normale nulle, infinie ou d'une longueur sous le seuil rend
-/// l'axe `Y`, valeur de départ convenue : en fabriquer une à partir de rien
-/// donnerait un éclairage qui a l'air juste et ne l'est pas, ce qui est plus
-/// difficile à diagnostiquer qu'une face manifestement plate.
+/// `[0; 4]`, c'est-à-dire « pas de direction » : C-22 la refuse comme non
+/// normalisable (R-541), ou C-23 la génère depuis la géométrie quand l'importeur
+/// l'a déclarée absente. Rendre un axe par défaut, comme le faisait la première
+/// version, effaçait la différence entre une normale `+Y` écrite par l'auteur
+/// et une normale qui n'existait pas — et plus rien en aval ne pouvait la
+/// retrouver.
 #[must_use]
 pub fn encode_normal(normal: [f32; 3]) -> [i8; 4] {
     let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
     if !length.is_finite() || length <= f32::EPSILON {
-        return [0, 127, 0, 0];
+        return [0; 4];
     }
 
     let mut encoded = [0i8; 4];
@@ -276,6 +279,19 @@ mod tests {
         let mut transform = Transform::identity();
         transform.rotation = [0.0, 0.0, 0.0, 2.0];
         assert!((transform.rotation_norm() - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn t230_une_normale_inexploitable_ne_recoit_aucune_direction() {
+        assert_eq!(encode_normal([0.0, 0.0, 2.0]), [0, 0, 127, 0]);
+        assert_eq!(encode_normal([-3.0, 0.0, 0.0]), [-127, 0, 0, 0]);
+        // Nulle, non finie ou trop courte : « pas de direction », que C-22
+        // refuse ou que C-23 génère — jamais un axe choisi à la place de
+        // l'auteur.
+        assert_eq!(encode_normal([0.0; 3]), [0; 4]);
+        assert_eq!(encode_normal([f32::NAN, 1.0, 0.0]), [0; 4]);
+        assert_eq!(encode_normal([f32::INFINITY, 0.0, 0.0]), [0; 4]);
+        assert_eq!(encode_normal([1e-9, 0.0, 0.0]), [0; 4]);
     }
 
     #[test]

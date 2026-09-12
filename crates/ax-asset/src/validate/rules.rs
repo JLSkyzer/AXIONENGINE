@@ -275,7 +275,8 @@ fn check_vertices(asset: &AssetView<'_>, report: &mut ValidationReport) {
         if !vertex.position.iter().all(|value| value.is_finite()) {
             report.push(Violation::NotFinite("la position"), at);
         }
-        if vertex.normal[0..3].iter().all(|value| *value == 0) {
+        let missing = asset.missing_normals.get(index).copied().unwrap_or(false);
+        if !missing && vertex.normal[0..3].iter().all(|value| *value == 0) {
             report.push(Violation::NormalNotNormalizable, at);
         }
         if skinned {

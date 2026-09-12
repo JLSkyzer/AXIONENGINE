@@ -161,6 +161,7 @@ struct Scene {
     names: Vec<NamedEntry<'static>>,
     bone_count: usize,
     dynamic_body: bool,
+    missing_normals: Vec<bool>,
 }
 
 impl Scene {
@@ -186,6 +187,7 @@ impl Scene {
             ],
             bone_count: 0,
             dynamic_body: true,
+            missing_normals: Vec::new(),
         }
     }
 
@@ -206,6 +208,7 @@ impl Scene {
             animation_count: 0,
             names: &self.names,
             dynamic_body: self.dynamic_body,
+            missing_normals: &self.missing_normals,
         }
     }
 
@@ -408,6 +411,20 @@ fn t232_une_normale_nulle_est_refusee() {
     scene.vertices[0].normal = [0, 0, 0, 0];
 
     seule(&scene.valider(), &Violation::NormalNotNormalizable);
+}
+
+#[test]
+fn t232_une_normale_absente_de_la_source_n_est_pas_reprochee() {
+    // Entre C-21 et C-23, une normale absente est attendue : l'optimizer la
+    // génère. Seul le sommet marqué en profite.
+    let mut scene = Scene::valide();
+    scene.vertices[0].normal = [0; 4];
+    scene.vertices[1].normal = [0; 4];
+    scene.missing_normals = vec![true];
+
+    let report = scene.valider();
+    seule(&report, &Violation::NormalNotNormalizable);
+    assert_eq!(report.errors[0].at, Located::Vertex(1));
 }
 
 #[test]

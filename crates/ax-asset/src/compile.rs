@@ -1,9 +1,12 @@
 //! Compilation d'un asset, de la source au conteneur (C-20, étape 3).
 //!
 //! Une source entre, un A3D sort. Le chemin est toujours le même : importer
-//! (C-21), valider (C-22), écrire (C-24). Le refus se produit **au plus tôt** —
-//! une source trop grosse n'est jamais lue, un asset invalide n'est jamais
-//! écrit — parce qu'à chaque étape franchie, le coût du refus augmente.
+//! (C-21), valider (C-22), optimiser (C-23), écrire (C-24). Le refus se produit
+//! **au plus tôt** — une source trop grosse n'est jamais lue, un asset invalide
+//! n'est jamais optimisé — parce qu'à chaque étape franchie, le coût du refus
+//! augmente. La sortie de l'optimizer repasse la même liste de contrôle avant
+//! d'être écrite : un asset invalide n'est jamais écrit, même par la faute de
+//! C-23.
 //!
 //! # Ce que ce module ne fait pas
 //!
@@ -16,6 +19,7 @@ use crate::a3d::{A3dWriter, SectionTag};
 use crate::import::{
     import_gltf, import_obj, import_stl, ImportError, ImportLimits, ImportedAsset, SourceFormat,
 };
+use crate::optimize::{optimize, Aabb};
 use crate::validate::{validate, AssetView, NamedEntry, ValidationReport};
 use ax_model::dm::geometry::Vertex;
 use core::fmt;
@@ -26,7 +30,10 @@ use core::fmt;
 /// la sortie.** Elle entre dans la clé de cache : sans incrément, une entrée
 /// produite par l'ancien compilateur passerait pour à jour, et le changement
 /// n'atteindrait jamais les assets déjà compilés.
-pub const COMPILER_VERSION: u32 = 1;
+///
+/// Historique : 2 — C-23 tranche A (fusion des sommets, normales générées,
+/// boîtes recalculées) et sommets STL propres à chaque facette.
+pub const COMPILER_VERSION: u32 = 2;
 
 /// Ce qui empêche de compiler un asset.
 #[derive(Debug, Clone, PartialEq)]
@@ -96,6 +103,12 @@ pub struct CompiledAsset {
     pub vertex_count: usize,
     /// Nombre de meshes compilés.
     pub mesh_count: usize,
+    /// Boîte englobante de l'asset, en espace asset (C-23, étape 7) ; `None`
+    /// si aucun node ne porte de géométrie.
+    ///
+    /// Le format A3D figé n'a pas de champ pour elle : elle est rendue ici, et
+    /// se recalcule au chargement depuis les boîtes de mesh et les nodes.
+    pub bounds: Option<Aabb>,
     /// Avertissements rencontrés, à journaliser une fois (R-912, R-530).
     pub warnings: Vec<String>,
 }
@@ -113,8 +126,34 @@ pub fn compile(
     options: &CompileOptions,
     resolve: impl FnMut(&str) -> Option<Vec<u8>>,
 ) -> Result<CompiledAsset, CompileError> {
-    let (asset, warnings) = import(source, format, options, resolve)?;
+    let (mut asset, warnings) = import(source, format, options, resolve)?;
 
+    // Les normales absentes de la source sont exemptées : C-23 les génère.
+    check(&asset, options, &asset.missing_normals)?;
+
+    let optimized = optimize(&mut asset);
+
+    // La sortie de C-23, sans exemption : c'est ce que le chargement vérifiera
+    // (R-540). Le vérifier dès ici fait d'un défaut de l'optimizer un refus à
+    // la compilation, plutôt qu'une entrée de cache refusée à chaque chargement.
+    check(&asset, options, &[])?;
+
+    let bytes = write_container(&asset, options)?;
+    Ok(CompiledAsset {
+        bytes,
+        vertex_count: asset.vertices.len(),
+        mesh_count: asset.meshes.len(),
+        bounds: optimized.bounds,
+        warnings,
+    })
+}
+
+/// Passe un asset à la liste de contrôle de C-22.
+fn check(
+    asset: &ImportedAsset,
+    options: &CompileOptions,
+    missing_normals: &[bool],
+) -> Result<(), CompileError> {
     let names: Vec<NamedEntry<'_>> = asset
         .names
         .iter()
@@ -130,6 +169,7 @@ pub fn compile(
             names: &names,
             material_count: asset.materials.len(),
             dynamic_body: options.dynamic_body,
+            missing_normals,
             ..AssetView::default()
         },
         &asset.raw_uvs,
@@ -140,14 +180,7 @@ pub fn compile(
         // se diagnostique moins bien.
         return Err(CompileError::Invalid(report));
     }
-
-    let bytes = write_container(&asset, options)?;
-    Ok(CompiledAsset {
-        bytes,
-        vertex_count: asset.vertices.len(),
-        mesh_count: asset.meshes.len(),
-        warnings,
-    })
+    Ok(())
 }
 
 fn import(
@@ -478,6 +511,75 @@ f 1 2 3
         })
         .expect("compilation refusée");
         assert_eq!(compiled.vertex_count, 3);
+
+        // Et C-23 l'a bien générée : le triangle est dans le plan XY, tourné
+        // vers +Z. La normale du premier sommet suit l'en-tête de 16 octets,
+        // le mesh de 48 et la position de 12.
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+        let geom = file
+            .section(SectionTag::GEOM)
+            .expect("GEOM")
+            .expect("section absente");
+        let normal = 16 + 48 + 12;
+        assert_eq!(&geom[normal..normal + 4], &[0, 0, 127, 0]);
+    }
+
+    #[test]
+    fn t214_une_normale_nulle_ecrite_par_l_auteur_est_refusee() {
+        // `vn 0 0 0` n'est pas une normale absente : l'auteur en a écrit une,
+        // et elle n'a pas de direction. C-22 le lui dit plutôt que C-23 la
+        // remplace en silence.
+        let nulle = "\
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 0.0 1.0 0.0
+vn 0.0 0.0 0.0
+f 1//1 2//1 3//1
+";
+        let refus = compile(nulle.as_bytes(), SourceFormat::Obj, &OPTIONS, |_| None).unwrap_err();
+        assert!(matches!(refus, CompileError::Invalid(_)), "{refus:?}");
+    }
+
+    #[test]
+    fn t240_la_compilation_fusionne_les_sommets_identiques() {
+        // Deux facettes STL coplanaires : six coins à l'import, quatre sommets
+        // distincts une fois la diagonale fusionnée.
+        let mut bytes = vec![0u8; 80];
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        let facettes = [
+            [[0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+            [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+        ];
+        for coins in facettes {
+            for value in [0.0f32, 0.0, 1.0] {
+                bytes.extend_from_slice(&value.to_le_bytes());
+            }
+            for coin in coins {
+                for value in coin {
+                    bytes.extend_from_slice(&value.to_le_bytes());
+                }
+            }
+            bytes.extend_from_slice(&0u16.to_le_bytes());
+        }
+
+        let compiled =
+            compile(&bytes, SourceFormat::Stl, &OPTIONS, |_| None).expect("compilation refusée");
+        assert_eq!(compiled.vertex_count, 4);
+    }
+
+    #[test]
+    fn t242_la_boite_englobante_de_l_asset_est_rendue() {
+        let compiled = compile(TRIANGLE_OBJ.as_bytes(), SourceFormat::Obj, &OPTIONS, |_| {
+            None
+        })
+        .expect("compilation refusée");
+        assert_eq!(
+            compiled.bounds,
+            Some(Aabb {
+                min: [0.0, 0.0, 0.0],
+                max: [1.0, 1.0, 0.0],
+            })
+        );
     }
 
     #[test]
