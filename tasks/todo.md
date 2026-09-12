@@ -13,9 +13,19 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
 **Jalon en cours : M1 — Assets, noyau déterministe, jobs. Les huit composants
-sont faits ; la Definition of Done attend deux preuves qui ne peuvent pas être
-produites ici (voir « Dette et points ouverts ») : une heure de fuzzing sans
-incident, et les vecteurs d'or verts sur les trois plateformes de CI.**
+sont faits, et la Definition of Done tient à un seul point.**
+
+- Vecteurs d'or : **acquis**. Rejoués sur quatre configurations de la matrice,
+  résultat archivé (R-516).
+- Fuzzing : **acquis sur trois cibles sur quatre**. `a3d_reader`, `obj` et `stl`
+  ont passé l'heure sans incident le 2026-09-12.
+- **Ce qui bloque : la cible `gltf`.** `gltf-json` 1.4.1 indexe
+  `root.accessors[…]` sans vérifier la borne, dans son propre code de
+  validation. Conséquence immédiate, en plus de la DoD : **la CI est rouge sur
+  toute PR touchant `crates/ax-asset/**` ou `fuzz/**`**, puisque la cible reste
+  bloquante — la retirer serait désactiver un test.
+
+C'est donc le prochain travail : durcir le chemin glTF.
 
 Ce qui est en place :
 
