@@ -6,7 +6,7 @@
 
 use ax_asset::import::{import_gltf, ImportError, ImportLimits, SUPPORTED_EXTENSIONS};
 use ax_asset::validate::{validate, AssetView, NamedEntry};
-use ax_model::dm::scene::node_flags;
+use ax_model::dm::scene::{node_flags, ALL_LODS};
 
 const LIMITS: ImportLimits = ImportLimits::new(1 << 20);
 
@@ -631,7 +631,10 @@ fn t913_un_gltf_sans_annotation_produit_un_asset_complet() {
     let (asset, _) = import_gltf(source.as_bytes(), &LIMITS, |_| None).expect("import refusé");
 
     assert_ne!(asset.nodes[0].flags & node_flags::VISIBLE, 0);
-    assert_eq!(asset.nodes[0].lod_mask, 1, "le node doit exister au LOD 0");
+    assert_eq!(
+        asset.nodes[0].lod_mask, ALL_LODS,
+        "le node doit exister à tous les niveaux de détail"
+    );
     assert_eq!(asset.meshes.len(), 1);
 }
 

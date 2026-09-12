@@ -26,6 +26,7 @@ mod rules;
 pub use error::{Located, ValidationError, Violation};
 pub use model::{AssetView, NamedEntry};
 pub use repair::{recompute_normal, renormalize_weights, Repair, RepairLog};
+pub(crate) use rules::triangle_area;
 pub use rules::validate;
 
 /// Issue d'une validation.

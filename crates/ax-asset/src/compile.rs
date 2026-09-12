@@ -19,7 +19,7 @@ use crate::a3d::{A3dWriter, SectionTag};
 use crate::import::{
     import_gltf, import_obj, import_stl, ImportError, ImportLimits, ImportedAsset, SourceFormat,
 };
-use crate::optimize::{optimize, Aabb};
+use crate::optimize::{optimize, Aabb, LodOptions, LodTable};
 use crate::validate::{validate, AssetView, NamedEntry, ValidationReport};
 use ax_model::dm::geometry::Vertex;
 use core::fmt;
@@ -33,8 +33,10 @@ use core::fmt;
 ///
 /// Historique : 2 — C-23 tranche A (fusion des sommets, normales générées,
 /// boîtes recalculées) et sommets STL propres à chaque facette ; 3 — C-23
-/// tranche B (tangentes MikkTSpace, tangentes glTF lues, cache de sommets).
-pub const COMPILER_VERSION: u32 = 3;
+/// tranche B (tangentes MikkTSpace, tangentes glTF lues, cache de sommets) ;
+/// 4 — C-23 tranche C (LOD et section `LODM`), nodes sans annotation visibles
+/// à tous les niveaux.
+pub const COMPILER_VERSION: u32 = 4;
 
 /// Ce qui empêche de compiler un asset.
 #[derive(Debug, Clone, PartialEq)]
@@ -80,7 +82,7 @@ impl fmt::Display for CompileError {
 impl std::error::Error for CompileError {}
 
 /// Options d'une compilation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CompileOptions {
     /// Identifiant de l'asset produit.
     pub asset_id: u64,
@@ -93,6 +95,8 @@ pub struct CompileOptions {
     /// R-160 n'interdit `TriMesh` et `Heightfield` que là : sur la géométrie du
     /// monde, ce sont les formes normales.
     pub dynamic_body: bool,
+    /// Niveaux de détail (C-23, étape 6 ; bloc `lod` de la PARTIE 6.4).
+    pub lod: LodOptions,
 }
 
 /// Ce qu'une compilation réussie produit.
@@ -132,7 +136,7 @@ pub fn compile(
     // Les normales absentes de la source sont exemptées : C-23 les génère.
     check(&asset, options, &asset.missing_normals)?;
 
-    let optimized = optimize(&mut asset);
+    let optimized = optimize(&mut asset, &options.lod);
     warnings.extend(optimized.warnings);
 
     // La sortie de C-23, sans exemption : c'est ce que le chargement vérifiera
@@ -140,7 +144,7 @@ pub fn compile(
     // la compilation, plutôt qu'une entrée de cache refusée à chaque chargement.
     check(&asset, options, &[])?;
 
-    let bytes = write_container(&asset, options)?;
+    let bytes = write_container(&asset, optimized.lods.as_ref(), options)?;
     Ok(CompiledAsset {
         bytes,
         vertex_count: asset.vertices.len(),
@@ -232,6 +236,7 @@ fn import(
 /// qui décrit un asset dont le composant producteur n'existe pas encore.
 fn write_container(
     asset: &ImportedAsset,
+    lods: Option<&LodTable>,
     options: &CompileOptions,
 ) -> Result<Vec<u8>, CompileError> {
     let mut writer = A3dWriter::new(options.asset_id, options.source_hash, COMPILER_VERSION);
@@ -249,6 +254,12 @@ fn write_container(
     if !asset.materials.is_empty() {
         writer
             .section(SectionTag::MATL, &materials_bytes(asset))
+            .map_err(CompileError::Container)?;
+    }
+    if let Some(lods) = lods {
+        // Section purement visuelle : le serveur l'ignore (R-041).
+        writer
+            .section(SectionTag::LODM, &lods.to_bytes())
             .map_err(CompileError::Container)?;
     }
 
@@ -371,7 +382,61 @@ mod tests {
         source_hash: 0x5678,
         limits: ImportLimits::new(1 << 20),
         dynamic_body: true,
+        lod: LodOptions::DEFAULT,
     };
+
+    /// Une grille plane de `cote × cote` carrés, en OBJ.
+    fn grille_obj(cote: u32) -> String {
+        let mut source = String::new();
+        for y in 0..=cote {
+            for x in 0..=cote {
+                source.push_str(&format!("v {x}.0 {y}.0 0.0\n"));
+            }
+        }
+        for y in 0..cote {
+            for x in 0..cote {
+                let a = y * (cote + 1) + x + 1;
+                let (b, c, d) = (a + 1, a + cote + 2, a + cote + 1);
+                source.push_str(&format!("f {a} {b} {c}\nf {a} {c} {d}\n"));
+            }
+        }
+        source
+    }
+
+    #[test]
+    fn t550_les_lod_voyagent_dans_la_section_lodm() {
+        let compiled = compile(
+            grille_obj(16).as_bytes(),
+            SourceFormat::Obj,
+            &OPTIONS,
+            |_| None,
+        )
+        .expect("compilation refusée");
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 22)).expect("relecture");
+
+        // Un mesh source et trois LOD, que la table désigne dans l'ordre.
+        assert_eq!(compiled.mesh_count, 4);
+        let lodm = file
+            .section(SectionTag::LODM)
+            .expect("LODM")
+            .expect("section absente");
+        let mots: Vec<u32> = lodm
+            .chunks_exact(4)
+            .map(|mot| u32::from_le_bytes(mot.try_into().unwrap()))
+            .collect();
+        assert_eq!(mots, [4, 1, 0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn t550_sans_lod_genere_la_section_lodm_n_est_pas_ecrite() {
+        // Un triangle ne se simplifie pas : aucune table à écrire.
+        let compiled = compile(TRIANGLE_OBJ.as_bytes(), SourceFormat::Obj, &OPTIONS, |_| {
+            None
+        })
+        .expect("compilation refusée");
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+        assert!(!file.has(SectionTag::LODM));
+    }
 
     const TRIANGLE_OBJ: &str = "\
 v 0.0 0.0 0.0

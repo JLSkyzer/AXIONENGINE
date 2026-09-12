@@ -719,7 +719,28 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             - `NOTICE` : les codes embarqués (meshoptimizer, MikkTSpace)
               attribués explicitement par `gen_notice.py`.
             - un compilateur C++ est désormais requis au build natif.
-      - [ ] Tranche C — LOD (étape 6, R-550, T-801).
+      - [x] **Tranche C — LOD** (étape 6, R-550, T-801). `COMPILER_VERSION`
+            passe à 4. Décisions dans `docs/decisions/ADR-107.md`.
+            - simplificateur de meshoptimizer ; un LOD **partage la plage de
+              sommets** de sa source et n'ajoute que des indices. R-550 tient
+              par construction : chaque sommet d'un LOD est un sommet source.
+            - bords et coutures : topologie préservée sans `LockBorder`, qui
+              empêcherait de simplifier une coque ouverte ;
+            - section `LODM` : `u32 levels`, `u32 row_count`, puis une ligne
+              de meshes par mesh source. Écrite seulement si un LOD existe.
+            - **`lod_mask` par défaut : tous les niveaux** (`ALL_LODS`). La
+              valeur `1` aurait fait disparaître tout node sans annotation au
+              premier LOD, contre R-913.
+            - LOD d'auteur par les masques, sans convention de nom : un mesh
+              est simplifié depuis le plus bas niveau où il est visible, ratios
+              relatifs à ce niveau ;
+            - triangles aplatis retirés avec la fonction d'aire de C-22 ;
+              niveaux restants abandonnés, avec avertissement, si le plafond
+              de 6 000 000 indices serait dépassé.
+            - **Reste dû** : le chargeur serveur (C-40) devra ignorer les
+              meshes de LOD de `GEOM` ; le lecteur de `LODM` (C-64, M4) devra
+              la valider au chargement (R-540) ; les options `lod` de
+              `.axion.json` ne sont pas lues (valeurs de la PARTIE 6.4).
       - [ ] Tranche D — décomposition convexe bornée et points d'enveloppe
             (étapes 8 et 9, R-551).
       - **Ouvert, hors C-23** : un mesh glTF à plusieurs primitives ne rattache

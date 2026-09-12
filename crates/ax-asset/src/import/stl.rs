@@ -6,7 +6,7 @@
 
 use super::{ImportError, ImportLimits, ImportedAsset, SourceFormat};
 use ax_model::dm::geometry::{encode_normal, MeshDesc, Transform, Vertex, NO_REGION_U8};
-use ax_model::dm::scene::{node_flags, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
+use ax_model::dm::scene::{node_flags, NodeDesc, ALL_LODS, NONE_U16, NONE_U32, NO_PARENT};
 
 /// Taille de l'en-tête d'un STL binaire, en octets.
 const BINARY_HEADER_BYTES: u64 = 80;
@@ -187,7 +187,8 @@ fn root_node() -> NodeDesc {
         bone: NONE_U32,
         part: NONE_U16,
         region: NONE_U16,
-        lod_mask: 1,
+        // Le STL ne porte aucune annotation : visible à tous les niveaux (R-913).
+        lod_mask: ALL_LODS,
         state: 0,
         _pad: [0; 2],
     }

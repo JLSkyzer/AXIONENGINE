@@ -16,11 +16,12 @@
 //! | 3. tangentes MikkTSpace si normal map | module `tangents`, puis fusion rejouée |
 //! | 4. quantification vers le format `Vertex` canonique | importeurs, C-21 |
 //! | 5. cache de sommets et localité | module `cache`, puis fusion rejouée |
+//! | 6. LOD, régions conservées | module `lod`, section `LODM` |
 //! | 7. AABB par mesh et par asset | module `bounds` |
 //!
-//! Les étapes 6, 8 et 9 — LOD, décomposition convexe, points d'enveloppe —
-//! sont les tranches suivantes du jalon M2 ; l'étape 11 est l'écriture du
-//! conteneur, dans `compile`.
+//! Les étapes 8 et 9 — décomposition convexe, points d'enveloppe — sont la
+//! tranche suivante du jalon M2 ; l'étape 11 est l'écriture du conteneur, dans
+//! `compile`.
 //!
 //! # Déterminisme (R-553)
 //!
@@ -36,7 +37,7 @@
 //!   seules opérations : celle de la bibliothèque C n'est pas tenue d'être
 //!   correctement arrondie, et ne l'est pas de la même façon d'une plateforme à
 //!   l'autre. Ces étapes sont donc identiques **entre plateformes** ;
-//! - **tangentes et cache de sommets : identiques sur une même plateforme.**
+//! - **tangentes, cache de sommets et LOD : identiques sur une même plateforme.**
 //!   MikkTSpace pondère par `acos`, meshoptimizer est du C++ dont le
 //!   compilateur peut contracter les flottants. Ces sorties ne servent qu'au
 //!   rendu, et les assets ne passent jamais par le réseau (R-1640) : c'est la
@@ -44,11 +45,13 @@
 
 mod bounds;
 mod cache;
+mod lod;
 mod merge;
 mod normals;
 mod tangents;
 
 pub use bounds::Aabb;
+pub use lod::{LodOptions, LodTable, MAX_LOD_LEVELS};
 
 use crate::import::ImportedAsset;
 
@@ -66,6 +69,8 @@ pub struct OptimizeReport {
     /// Boîte englobante de l'asset, en espace asset ; `None` si aucun node ne
     /// porte de géométrie.
     pub bounds: Option<Aabb>,
+    /// Table LOD → meshes, ou `None` si aucun LOD n'a été généré.
+    pub lods: Option<LodTable>,
     /// Avertissements, à journaliser une fois (R-912).
     pub warnings: Vec<String>,
 }
@@ -74,7 +79,7 @@ pub struct OptimizeReport {
 ///
 /// L'asset doit avoir passé [`crate::validate::validate`] : l'optimizer indexe
 /// ses tableaux sans revérifier les bornes que le validateur garantit.
-pub(crate) fn optimize(asset: &mut ImportedAsset) -> OptimizeReport {
+pub(crate) fn optimize(asset: &mut ImportedAsset, lod_options: &LodOptions) -> OptimizeReport {
     let before = asset.vertices.len();
     let mut warnings = Vec::new();
 
@@ -94,6 +99,10 @@ pub(crate) fn optimize(asset: &mut ImportedAsset) -> OptimizeReport {
     cache::optimize_vertex_cache(asset);
     merge::merge_vertices(asset);
 
+    // Les LOD viennent après la dernière fusion : ils partagent les sommets de
+    // leur source, et une fusion rejouée donnerait à chacun sa propre copie.
+    let lods = lod::generate(asset, lod_options, &mut warnings);
+
     // Les boîtes se calculent en dernier : la fusion a pu retirer des sommets
     // qui les élargissaient sans être rendus.
     bounds::update_mesh_bounds(asset);
@@ -103,6 +112,7 @@ pub(crate) fn optimize(asset: &mut ImportedAsset) -> OptimizeReport {
         generated_normals,
         tangent_meshes,
         bounds: bounds::asset_bounds(asset),
+        lods,
         warnings,
     }
 }
@@ -223,8 +233,8 @@ mod tests {
 
         let mut une = source.clone();
         let mut deux = source.clone();
-        let rapport_une = optimize(&mut une);
-        let rapport_deux = optimize(&mut deux);
+        let rapport_une = optimize(&mut une, &LodOptions::DEFAULT);
+        let rapport_deux = optimize(&mut deux, &LodOptions::DEFAULT);
 
         assert_eq!(rapport_une, rapport_deux);
         assert_eq!(une, deux);
@@ -248,8 +258,8 @@ mod tests {
 
         let mut une = source.clone();
         let mut deux = source.clone();
-        let rapport_une = optimize(&mut une);
-        let rapport_deux = optimize(&mut deux);
+        let rapport_une = optimize(&mut une, &LodOptions::DEFAULT);
+        let rapport_deux = optimize(&mut deux, &LodOptions::DEFAULT);
 
         assert_eq!(rapport_une, rapport_deux);
         assert_eq!(une, deux);

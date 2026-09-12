@@ -224,7 +224,11 @@ fn check_triangles(
 }
 
 /// Aire d'un triangle, moitié de la norme du produit vectoriel.
-fn triangle_area(positions: &[[f32; 3]; 3]) -> f32 {
+///
+/// Partagée avec C-23 : un LOD généré écarte ses triangles dégénérés avec
+/// **cette** fonction, pour que la validation de sortie ne puisse pas en juger
+/// autrement à un arrondi près.
+pub(crate) fn triangle_area(positions: &[[f32; 3]; 3]) -> f32 {
     let edge = |from: usize, to: usize| {
         [
             positions[to][0] - positions[from][0],

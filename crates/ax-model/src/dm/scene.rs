@@ -55,6 +55,13 @@ pub const NONE_U32: u32 = u32::MAX;
 /// Valeur signifiant « aucune » dans un champ d'index `u16`.
 pub const NONE_U16: u16 = u16::MAX;
 
+/// `lod_mask` d'un node visible à tous les niveaux de détail.
+///
+/// C'est la valeur d'un node sans annotation : R-913 veut qu'une annotation
+/// contrôle et n'active pas, et un node qui disparaîtrait dès le premier LOD
+/// généré faute d'annotation contredirait la règle.
+pub const ALL_LODS: u8 = u8::MAX;
+
 /// Node de la hiérarchie d'un asset (DM-03).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]

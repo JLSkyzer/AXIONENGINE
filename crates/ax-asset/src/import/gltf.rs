@@ -16,7 +16,7 @@ use ax_model::dm::geometry::{
     encode_normal, encode_tangent, MeshDesc, Transform, Vertex, NO_REGION_U8,
 };
 use ax_model::dm::limits;
-use ax_model::dm::scene::{node_flags, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
+use ax_model::dm::scene::{node_flags, NodeDesc, ALL_LODS, NONE_U16, NONE_U32, NO_PARENT};
 
 /// Extensions glTF supportées (R-530).
 ///
@@ -446,9 +446,11 @@ fn node_desc(node: &gltf::Node, parent: u32, annotation: &NodeAnnotations) -> No
         bone: NONE_U32,
         part: NONE_U16,
         region: NONE_U16,
-        // Un node sans annotation de LOD apparaît au niveau zéro : l'absence
-        // d'annotation ne doit pas rendre le node invisible (R-913).
-        lod_mask: if lod_mask == 0 { 1 } else { lod_mask },
+        // Un node sans annotation de LOD apparaît à tous les niveaux : l'absence
+        // d'annotation ne doit rendre le node invisible à aucune distance
+        // (R-913). La première version le limitait au niveau zéro, ce qui l'eût
+        // fait disparaître dès le premier LOD généré par C-23.
+        lod_mask: if lod_mask == 0 { ALL_LODS } else { lod_mask },
         state: 0,
         _pad: [0; 2],
     }
