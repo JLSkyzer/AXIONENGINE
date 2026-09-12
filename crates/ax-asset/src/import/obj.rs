@@ -7,7 +7,7 @@
 use super::{
     check_relative_path, ImportError, ImportLimits, ImportedAsset, ImportedMaterial, SourceFormat,
 };
-use ax_model::dm::geometry::{MeshDesc, Transform, Vertex, NO_REGION_U8};
+use ax_model::dm::geometry::{encode_normal, MeshDesc, Transform, Vertex, NO_REGION_U8};
 use ax_model::dm::scene::{node_flags, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 
 /// Importe une source OBJ.
@@ -313,18 +313,6 @@ fn quantize_uv(uv: [f32; 2]) -> [u16; 2] {
         }
     };
     [encode(uv[0]), encode(uv[1])]
-}
-
-fn encode_normal(normal: [f32; 3]) -> [i8; 4] {
-    let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
-    if !length.is_finite() || length <= f32::EPSILON {
-        return [0, 127, 0, 0];
-    }
-    let mut encoded = [0i8; 4];
-    for (index, value) in normal.iter().enumerate() {
-        encoded[index] = ((value / length) * 127.0).round().clamp(-127.0, 127.0) as i8;
-    }
-    encoded
 }
 
 fn mesh_desc(

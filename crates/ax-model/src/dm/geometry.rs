@@ -164,6 +164,36 @@ impl Vertex {
     }
 }
 
+/// Encode une normale en `i8` normalisée, telle que [`Vertex`] la porte.
+///
+/// La quantification fait partie du format canonique de DM-12, pas du travail
+/// d'un importeur : elle vit donc ici, avec le type qu'elle sert. Elle en était
+/// recopiée à l'identique dans les trois importeurs, et l'optimizer en aurait
+/// fait une quatrième copie — trois endroits où une correction n'aurait pas
+/// suivi partout.
+///
+/// **Une direction inexploitable n'est pas remplacée par une direction
+/// inventée.** Une normale nulle, infinie ou d'une longueur sous le seuil rend
+/// l'axe `Y`, valeur de départ convenue : en fabriquer une à partir de rien
+/// donnerait un éclairage qui a l'air juste et ne l'est pas, ce qui est plus
+/// difficile à diagnostiquer qu'une face manifestement plate.
+#[must_use]
+pub fn encode_normal(normal: [f32; 3]) -> [i8; 4] {
+    let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+    if !length.is_finite() || length <= f32::EPSILON {
+        return [0, 127, 0, 0];
+    }
+
+    let mut encoded = [0i8; 4];
+    for (index, value) in normal.iter().enumerate() {
+        // `127` et non `128` : la plage `i8` est asymétrique, et l'employer
+        // entièrement rendrait `-1` et `+1` de magnitudes différentes une fois
+        // décodés.
+        encoded[index] = ((value / length) * 127.0).round().clamp(-127.0, 127.0) as i8;
+    }
+    encoded
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
