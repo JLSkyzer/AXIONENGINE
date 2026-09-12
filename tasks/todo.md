@@ -993,21 +993,26 @@ ses critères vérifiés **mécaniquement**.
         ne sont **pas versées telles quelles** : `cargo fuzz cmin` les réduirait
         à ce qui apporte de la couverture, et c'est ce résultat-là qu'on
         verserait. Les artefacts du run les portent 14 jours ;
-      - **`gltf` ne peut pas la passer aujourd'hui.** `gltf-json` 1.4.1 indexe
-        `root.accessors[…]` sans vérifier la borne, et le détecter avant lui
-        demanderait de réanalyser le JSON nous-mêmes. La cible **reste dans la
-        matrice par défaut et reste bloquante** : la retirer pour faire passer
-        le build serait désactiver un test, ce que le projet interdit. Elle est
-        simplement exclue de la campagne longue tant que le chemin glTF n'est
-        pas durci.
+      - **`gltf` : chemin durci, campagne d'une heure à mener.** AXION ne
+        confie plus le jugement du document au validateur de `gltf-json`, qui
+        indexait `root.accessors[…]` sans borne. Le document est désérialisé
+        sans validation, et `import/gltf_refs.rs` vérifie **toutes** les
+        références avant d'en déréférencer une seule — ce n'était pas
+        optionnel : les accesseurs du crate déréférencent par
+        `.nth(index).unwrap()`, donc s'en remettre à
+        `from_slice_without_validation` seul aurait déplacé la panique au lieu
+        de la retirer.
 
-      **Le durcissement du chemin glTF**, à mener en session dédiée : passer à
-      `Gltf::from_slice_without_validation` et écrire nos propres contrôles de
-      références — accesseurs, bufferViews, buffers. C'est l'architecture juste
-      — valider ce qu'on utilise, avec notre code, plutôt que dépendre d'un
-      validateur tiers qui panique — mais sauter la validation peut repousser
-      des paniques plus loin dans la lecture, et cela se vérifie au fuzzer, pas
-      au raisonnement.
+        Le balayage est exhaustif sur le document, et non limité à ce que
+        l'import lit aujourd'hui : accessors, bufferViews, images, textures,
+        materials, meshes et leurs morph targets, nodes, skins, scenes,
+        animations. Se limiter à ce qu'on déréférence obligerait à revenir à
+        chaque champ nouvellement lu.
+
+        Le gain n'est pas que l'absence de panique : le refus **désigne le champ
+        fautif** — « meshes[0].primitives[0].attributes désigne l'accesseur
+        n°99, il n'y en a que 2 » — là où une panique retenue ne disait que
+        « l'analyseur a paniqué ».
 
       T-680..T-682 demandent dix millions d'exécutions par cible, ce qui relève
       du jalon final et non de M1.

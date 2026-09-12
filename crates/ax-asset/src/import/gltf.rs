@@ -8,6 +8,7 @@
 //! l'envers sans que personne ne sache où.
 
 use super::gltf_extras::{NodeAnnotations, NodeRole};
+use super::gltf_refs;
 use super::{
     check_relative_path, ImportError, ImportLimits, ImportedAsset, ImportedMaterial, SourceFormat,
 };
@@ -107,10 +108,22 @@ fn import_gltf_inner(
     let mut report = GltfReport::default();
     check_extensions(json_text(bytes, format)?, &mut report)?;
 
-    let document = gltf::Gltf::from_slice(bytes).map_err(|error| ImportError::Malformed {
-        format,
-        detail: error.to_string(),
+    // `from_slice_without_validation` et non `from_slice` : le validateur de
+    // `gltf-json` indexe `root.accessors[…]` sans verifier la borne, donc il
+    // panique sur le document meme qu'il est cense juger. Trouve par fuzzing
+    // (R-903).
+    //
+    // S'en passer ne suffit pas : les accesseurs du crate deréférencent par
+    // `.nth(index).unwrap()`, ce qui deplacerait simplement la panique. C'est
+    // pourquoi les references sont verifiees ici, **avant** d'en deréférencer
+    // une seule.
+    let document = gltf::Gltf::from_slice_without_validation(bytes).map_err(|error| {
+        ImportError::Malformed {
+            format,
+            detail: error.to_string(),
+        }
     })?;
+    gltf_refs::check_references(document.document.as_json(), format)?;
 
     let buffers = load_buffers(&document, format, resolve)?;
     collect_images(&document, &mut report)?;
