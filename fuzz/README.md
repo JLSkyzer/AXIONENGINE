@@ -48,6 +48,27 @@ cargo +nightly fuzz run a3d_reader -- -max_total_time=600 -timeout=10
 cargo +nightly fuzz run a3d_reader fuzz/artifacts/a3d_reader/crash-<empreinte>
 ```
 
+### Sous Windows
+
+`cargo-fuzz` **se construit et tourne sous Windows MSVC**, contrairement à ce
+qu'on lit souvent. Il ne manque qu'une chose : la bibliothèque d'exécution du
+désinfecteur d'adresses doit être sur le `PATH`, faute de quoi le binaire se
+construit puis meurt au démarrage sur un `STATUS_DLL_NOT_FOUND` (0xc0000135) qui
+ne nomme rien.
+
+```bash
+export PATH="/c/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64:$PATH"
+cargo +nightly fuzz run gltf -- -max_total_time=600 -timeout=10
+```
+
+Le chemin exact dépend de la version des Build Tools installée ; le fichier
+cherché est `clang_rt.asan_dynamic-x86_64.dll`, sous
+`VC/Tools/MSVC/<version>/bin/Hostx64/x64/`.
+
+Cela compte au-delà du confort : c'est ce qui a permis de mener cinq campagnes
+successives et de fermer l'acceptance de M1 pendant que la CI était bloquée
+faute de minutes Actions.
+
 En CI, le workflow `Fuzzing` fait la même chose sur les quatre cibles en
 parallèle. Son entrée `minutes_par_cible` vaut `10` par défaut ; l'acceptance de
 M1 demande `60`.

@@ -435,6 +435,63 @@ remplacée par un `catch_unwind`.
 
 ---
 
+## 2026-09-12 | Couvrir une famille de défauts ne dit rien des autres
+
+Le durcissement du chemin glTF a demandé **cinq** passages. À chaque fois, la
+campagne butait sur une nature de défaut que le passage précédent n'avait pas
+rendue visible :
+
+1. indices hors bornes — `"POSITION": 99` ;
+2. énumérations inconnues — `"mode": 99` ;
+3. formes d'attribut — `POSITION` déclaré en `SCALAR` ;
+4. champs obligatoires — une image sans `uri` ni `bufferView` ;
+5. contraintes numériques — `"count": 0`, `byteStride` aberrant.
+
+Après le premier passage, tout indiquait que c'était réglé : la campagne allait
+plus loin, la couverture montait, et le raisonnement ne suggérait rien d'autre.
+Elle butait dix minutes plus tard.
+
+**Règle.** Devant un analyseur qui fait confiance à son entrée, ne jamais
+conclure d'un correctif qu'il ferme le sujet. Relancer jusqu'à ce qu'une
+campagne **longue** passe — ici vingt minutes, puis une heure. La couverture qui
+monte à chaque tour (3069, 4282, 5414, 6168) est le signe qu'on atteint du code
+neuf, pas qu'on a fini.
+
+**Corollaire.** Chaque vérification ajoutée se justifie par la **spécification**,
+jamais par le bug d'une version : glTF fixe les valeurs de ses énumérations, la
+forme de chaque sémantique, les champs obligatoires d'une image, les bornes de
+`count` et `byteStride`. Une vérification ainsi fondée survit à la mise à jour
+de la dépendance ; un contournement, non.
+
+**Corollaire.** Écrire la réciproque à chaque fois. Refuser en bloc aurait
+rejeté des fichiers légaux — un attribut personnalisé `_BATCHID`, un
+`byteStride` de 12, les trois types d'indices que glTF admet.
+
+---
+
+## 2026-09-12 | Un défaut qui ne plante pas en release est le plus dangereux
+
+Deux des cinq familles ci-dessus **ne paniquent pas** dans le binaire livré :
+
+- la forme d'attribut est gardée par un `debug_assert_eq!`, absent en release :
+  le lecteur poursuit et rend une géométrie fausse, sans rien dire ;
+- `count: 0` fait calculer `stride * (count - 1)`, qui **boucle** l'entier en
+  release au lieu de déborder : l'accesseur rend silencieusement du vide.
+
+Le fuzzer ne les a vues que parce que `cargo-fuzz` construit avec les assertions
+de débogage et les contrôles de débordement actifs.
+
+**Règle.** Le fuzzing vaut même quand rien ne « plante » en production. Un
+`debug_assert!` ou un débordement d'entier signale une hypothèse violée ; qu'elle
+soit silencieuse en release la rend pire, pas bénigne — le défaut devient une
+donnée fausse au lieu d'un arrêt net.
+
+**Corollaire.** Ne pas conclure « ça ne casse rien en release » d'une panique qui
+n'apparaît qu'en debug. Lire ce que le code fait **sans** l'assertion : c'est
+cela, le comportement livré.
+
+---
+
 ## 2026-09-11 | Une porte de validation ne peut pas exiger ce qu'elle valide
 
 R-516 veut qu'une configuration ne soit déclarée déterministe qu'après avoir
