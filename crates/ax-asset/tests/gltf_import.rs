@@ -160,26 +160,52 @@ fn t680_les_trois_types_d_indices_admis_restent_acceptes() {
 }
 
 #[test]
-fn t680_une_panique_d_analyseur_est_retenue_et_nommee() {
+fn t680_une_reference_hors_bornes_est_refusee_et_designee() {
     // Trouvé par fuzzing (R-903). `gltf-json` valide le document en indexant
-    // `root.accessors[...]` avec un indice venu du document, **sans vérifier la
+    // `root.accessors[…]` avec un indice venu du document, **sans vérifier la
     // borne** : un `POSITION` désignant l'accesseur 99 quand deux sont déclarés
-    // fait paniquer la bibliothèque.
+    // faisait paniquer la bibliothèque dans son propre validateur.
     //
-    // Ce cas-ci n'est pas couvert par une vérification préalable, et c'est le
-    // sujet du test : reproduire chez nous tous les invariants internes de deux
-    // analyseurs reviendrait à les réécrire. Le filet du point de délégation
-    // rend l'asset refusé au lieu de laisser remonter la panique.
+    // AXION ne lui confie plus ce jugement. Le document est désérialisé sans
+    // validation, et les références sont vérifiées ici — ce qui rend un refus
+    // **et** un message qui désigne le champ fautif, là où une panique retenue
+    // ne disait que « l'analyseur a paniqué ».
     let source = triangle("", "").replace("\"POSITION\": 0", "\"POSITION\": 99");
     let refus = import_gltf(source.as_bytes(), &LIMITS, |_| None).unwrap_err();
 
     assert!(
-        matches!(refus, ImportError::ParserPanicked { .. }),
-        "la panique doit être retenue et nommée comme telle, obtenu {refus:?}"
+        matches!(refus, ImportError::Malformed { .. }),
+        "refus attendu, et non une panique retenue : {refus:?}"
     );
-    // Et elle est **nommée** : c'est cette variante que les cibles de fuzzing
-    // font échouer, sans quoi le filet rendrait le défaut invisible au fuzzer.
+    let message = format!("{refus}");
+    assert!(
+        message.contains("meshes[0].primitives[0].attributes") && message.contains("99"),
+        "le message doit désigner le champ fautif : {message}"
+    );
     assert_eq!(refus.code(), -3050, "code de l'ANNEXE A.1 inchangé");
+}
+
+#[test]
+fn t680_toutes_les_familles_de_reference_sont_verifiees() {
+    // Le balayage est exhaustif sur le document, pas seulement sur ce que
+    // l'import lit aujourd'hui : se limiter à ce qu'on déréférence obligerait à
+    // revenir ici à chaque champ nouvellement lu, et c'est le genre de dette
+    // qu'on oublie jusqu'à la panique suivante.
+    for (quoi, avant, apres) in [
+        ("accesseur d'indices", "\"indices\": 1", "\"indices\": 7"),
+        ("matériau", "\"material\": 0", "\"material\": 7"),
+        ("mesh d'un node", "\"mesh\": 0", "\"mesh\": 7"),
+        ("bufferView", "\"bufferView\": 0", "\"bufferView\": 7"),
+        ("buffer", "\"buffer\": 0", "\"buffer\": 7"),
+        ("node d'une scène", "\"nodes\": [0]", "\"nodes\": [7]"),
+    ] {
+        let source = triangle("", "").replace(avant, apres);
+        let resultat = import_gltf(source.as_bytes(), &LIMITS, |_| None);
+        assert!(
+            resultat.is_err(),
+            "une référence « {quoi} » hors bornes a été acceptée"
+        );
+    }
 }
 
 #[test]

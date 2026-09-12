@@ -25,6 +25,7 @@
 
 mod gltf;
 mod gltf_extras;
+mod gltf_refs;
 mod obj;
 mod stl;
 
@@ -395,6 +396,47 @@ pub struct ImportedAsset {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn t680_le_filet_retient_une_panique_et_en_garde_le_message() {
+        // Le filet est éprouvé par son mécanisme et non par une entrée connue,
+        // et c'est délibéré : chaque panique d'analyseur qu'on découvre finit
+        // par recevoir un contrôle préalable, si bien qu'aucune entrée ne reste
+        // longtemps un déclencheur. Un test qui dépendrait de l'une d'elles
+        // cesserait de vérifier le filet le jour où elle serait corrigée —
+        // exactement le jour où il faudrait qu'il tienne encore.
+        let retenu = catch_parser_panic(SourceFormat::Gltf, || -> Result<(), ImportError> {
+            panic!("analyseur tiers hors de lui")
+        })
+        .unwrap_err();
+
+        match &retenu {
+            ImportError::ParserPanicked { format, detail } => {
+                assert_eq!(*format, SourceFormat::Gltf);
+                // Le message est repris tel quel : c'est lui qui nomme la
+                // bibliothèque et la ligne, donc ce qui permet de rapporter le
+                // défaut en amont.
+                assert!(detail.contains("hors de lui"), "{detail}");
+            }
+            autre => panic!("panique non retenue : {autre:?}"),
+        }
+        assert_eq!(retenu.code(), -3050, "code de l'ANNEXE A.1");
+    }
+
+    #[test]
+    fn t680_le_filet_laisse_passer_ce_qui_ne_panique_pas() {
+        // La réciproque : un filet qui transformerait aussi les retours
+        // ordinaires ne serait plus un filet mais un tamis.
+        assert_eq!(
+            catch_parser_panic(SourceFormat::Obj, || Ok(42)).expect("succès attendu"),
+            42
+        );
+        let refus = catch_parser_panic(SourceFormat::Obj, || -> Result<(), ImportError> {
+            Err(ImportError::ExternalPath("../ailleurs".to_owned()))
+        })
+        .unwrap_err();
+        assert!(matches!(refus, ImportError::ExternalPath(_)), "{refus:?}");
+    }
 
     #[test]
     fn t220_les_extensions_sont_reconnues_quelle_que_soit_la_casse() {
