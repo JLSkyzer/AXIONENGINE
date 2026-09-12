@@ -186,6 +186,124 @@ fn t680_une_reference_hors_bornes_est_refusee_et_designee() {
 }
 
 #[test]
+fn t680_une_enumeration_inconnue_est_refusee() {
+    // Seconde famille de mines, trouvée par le fuzzer **après** que les indices
+    // aient été couverts : `gltf-json` modélise par `Checked<T>` les champs dont
+    // glTF fixe les valeurs, et tout `.unwrap()` sur un `Invalid` panique.
+    // `Primitive::mode()` en est un, et l'import l'appelle en premier.
+    for (quoi, avant, apres) in [
+        (
+            "mode de primitive",
+            "\"indices\": 1",
+            "\"mode\": 99, \"indices\": 1",
+        ),
+        (
+            "componentType",
+            "\"componentType\": 5126",
+            "\"componentType\": 1234",
+        ),
+        (
+            "type d'accesseur",
+            "\"type\": \"VEC3\"",
+            "\"type\": \"VEC9\"",
+        ),
+    ] {
+        let source = triangle("", "").replace(avant, apres);
+        let resultat = import_gltf(source.as_bytes(), &LIMITS, |_| None);
+        assert!(
+            resultat.is_err(),
+            "une valeur inconnue de « {quoi} » a été acceptée"
+        );
+    }
+}
+
+#[test]
+fn t680_une_image_sans_source_est_refusee() {
+    // Quatrième famille : les champs que glTF rend obligatoires. Une image
+    // porte soit un `uri`, soit une `bufferView` — `Image::source()` du crate
+    // déballe les deux sans vérifier.
+    let sans_rien = triangle("", "").replace(
+        "\"materials\": [",
+        "\"images\": [{ \"name\": \"vide\" }],\n  \"materials\": [",
+    );
+    assert!(
+        import_gltf(sans_rien.as_bytes(), &LIMITS, |_| None).is_err(),
+        "une image sans uri ni bufferView a été acceptée"
+    );
+
+    // Et la `bufferView` sans `mimeType` : rien ne dirait ce que les octets
+    // contiennent.
+    let sans_mime = triangle("", "").replace(
+        "\"materials\": [",
+        "\"images\": [{ \"bufferView\": 0 }],\n  \"materials\": [",
+    );
+    assert!(
+        import_gltf(sans_mime.as_bytes(), &LIMITS, |_| None).is_err(),
+        "une image en bufferView sans mimeType a été acceptée"
+    );
+}
+
+#[test]
+fn t680_les_contraintes_numeriques_du_format_sont_tenues() {
+    // Cinquième famille. Le lecteur calcule `stride * (count - 1)` : un `count`
+    // nul y soustrait sous zéro. En release l'entier boucle et l'accesseur rend
+    // silencieusement du vide — c'est le comportement le plus dangereux des
+    // deux, et celui qu'aucune panique ne signalerait.
+    for (quoi, avant, apres) in [
+        (
+            "count nul",
+            "\"count\": 3, \"type\": \"VEC3\"",
+            "\"count\": 0, \"type\": \"VEC3\"",
+        ),
+        (
+            "byteStride non multiple de quatre",
+            "\"byteOffset\": 0, \"byteLength\": 36",
+            "\"byteOffset\": 0, \"byteLength\": 36, \"byteStride\": 7",
+        ),
+        (
+            "byteStride au-delà de 252",
+            "\"byteOffset\": 0, \"byteLength\": 36",
+            "\"byteOffset\": 0, \"byteLength\": 36, \"byteStride\": 256",
+        ),
+    ] {
+        let source = triangle("", "").replace(avant, apres);
+        assert!(
+            import_gltf(source.as_bytes(), &LIMITS, |_| None).is_err(),
+            "« {quoi} » a été accepté"
+        );
+    }
+
+    // La réciproque : un pas valide reste accepté.
+    let valide = triangle("", "").replace(
+        "\"byteOffset\": 0, \"byteLength\": 36",
+        "\"byteOffset\": 0, \"byteLength\": 36, \"byteStride\": 12",
+    );
+    assert!(
+        import_gltf(valide.as_bytes(), &LIMITS, |_| None).is_ok(),
+        "un byteStride de 12 a été refusé"
+    );
+}
+
+#[test]
+fn t680_un_attribut_personnalise_reste_accepte() {
+    // La réciproque, et elle compte : glTF autorise les attributs préfixés d'un
+    // tiret bas. Refuser toute énumération inconnue en bloc rejetterait des
+    // fichiers parfaitement légaux si la bibliothèque les classait `Invalid`.
+    // La fonctionnalité `extras` est activée pour cette raison : elle les
+    // capture au lieu de les invalider.
+    let source = triangle("", "").replace(
+        "\"attributes\": { \"POSITION\": 0 }",
+        "\"attributes\": { \"POSITION\": 0, \"_BATCHID\": 0 }",
+    );
+    let resultat = import_gltf(source.as_bytes(), &LIMITS, |_| None);
+    assert!(
+        resultat.is_ok(),
+        "un attribut personnalisé a été refusé : {:?}",
+        resultat.err()
+    );
+}
+
+#[test]
 fn t680_toutes_les_familles_de_reference_sont_verifiees() {
     // Le balayage est exhaustif sur le document, pas seulement sur ce que
     // l'import lit aujourd'hui : se limiter à ce qu'on déréférence obligerait à
