@@ -1,0 +1,1257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AXION ENGINE — definition, schéma 1",
+  "description": "Forme publiée du schéma de definition 1 (R-1783), rendue depuis le validateur d'AXION et lue selon l'ADR-109. AXION vérifie en plus, au chargement, ce que JSON Schema n'exprime pas : unicité des noms par catégorie (x-axion-declares), résolution des références internes (x-axion-refers), liaison entre deux parts distinctes, absence de cycle de zones parentes, module vehicles actif pour kind vehicle. Les noms d'asset (node, mesh, région, clip, os, collider) se résolvent contre l'asset compilé. Un plafond d'assembly dépassé porte E-3050 (x-axion-code), une version de schéma inconnue E-7003, toute autre faute E-7001.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "integer",
+      "const": 1,
+      "x-axion-code": "E-7003"
+    },
+    "asset": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.-]+:(?!axion/)[a-z0-9/._-]+$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "static",
+        "rigid_object",
+        "vehicle",
+        "articulated",
+        "character",
+        "visual",
+        "structure",
+        "machine",
+        "soft_object"
+      ]
+    },
+    "physics": {
+      "type": "object",
+      "properties": {
+        "mass": {
+          "type": "number"
+        },
+        "center_of_mass": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "linear_damping": {
+          "type": "number"
+        },
+        "angular_damping": {
+          "type": "number"
+        },
+        "ccd": {
+          "type": "boolean"
+        },
+        "collision_group": {
+          "type": "string"
+        },
+        "collides_with": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "bodies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-declares": "body"
+          },
+          "root_node": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "node"
+          },
+          "colliders": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 64,
+      "x-axion-code": "E-3050"
+    },
+    "joints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-declares": "joint"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "fixed",
+              "revolute",
+              "prismatic",
+              "spherical",
+              "generic",
+              "rope",
+              "spring"
+            ]
+          },
+          "a": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "body"
+          },
+          "b_node": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "node"
+          },
+          "axis": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "limits": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "motor": {
+            "type": "object",
+            "properties": {
+              "speed": {
+                "type": "number"
+              },
+              "max_force": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          },
+          "break_force": {
+            "type": "number"
+          },
+          "jam_curve": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 128,
+      "x-axion-code": "E-3050"
+    },
+    "wheels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-declares": "wheel"
+          },
+          "steering": {
+            "type": "boolean"
+          },
+          "powered": {
+            "type": "boolean"
+          },
+          "radius": {
+            "type": "number"
+          },
+          "width": {
+            "type": "number"
+          },
+          "mass": {
+            "type": "number"
+          },
+          "tire": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+          },
+          "suspension": {
+            "type": "object",
+            "properties": {
+              "rest_length": {
+                "type": "number"
+              },
+              "max_travel": {
+                "type": "number"
+              },
+              "stiffness": {
+                "type": "number"
+              },
+              "damping_compression": {
+                "type": "number"
+              },
+              "damping_rebound": {
+                "type": "number"
+              },
+              "max_force": {
+                "type": "number"
+              },
+              "anti_roll": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 32
+    },
+    "powertrain": {
+      "type": "object",
+      "properties": {
+        "engine": {
+          "type": "object",
+          "properties": {
+            "torque_curve": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            "idle_rpm": {
+              "type": "number"
+            },
+            "max_rpm": {
+              "type": "number"
+            },
+            "inertia": {
+              "type": "number"
+            },
+            "braking_torque": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        "transmission": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string"
+            },
+            "gears": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "final_drive": {
+              "type": "number"
+            },
+            "shift_time": {
+              "type": "number"
+            },
+            "auto_shift_up_rpm": {
+              "type": "number"
+            },
+            "auto_shift_down_rpm": {
+              "type": "number"
+            },
+            "efficiency": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        "differential": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "open",
+                "locked",
+                "limited_slip"
+              ]
+            },
+            "front_rear_split": {
+              "type": "number"
+            },
+            "lock": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        "drive_wheels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "wheel"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "steering": {
+      "type": "object",
+      "properties": {
+        "max_angle": {
+          "type": "number"
+        },
+        "speed": {
+          "type": "number"
+        },
+        "return_speed": {
+          "type": "number"
+        },
+        "speed_sensitivity": {
+          "type": "number"
+        },
+        "ackermann": {
+          "type": "number"
+        },
+        "steered_wheels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "wheel"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "brakes": {
+      "type": "object",
+      "properties": {
+        "max_torque_front": {
+          "type": "number"
+        },
+        "max_torque_rear": {
+          "type": "number"
+        },
+        "handbrake_torque": {
+          "type": "number"
+        },
+        "handbrake_wheels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "wheel"
+          }
+        },
+        "abs": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "slip_threshold": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "aero": {
+      "type": "object",
+      "properties": {
+        "drag_coefficient": {
+          "type": "number"
+        },
+        "frontal_area": {
+          "type": "number"
+        },
+        "downforce_front": {
+          "type": "number"
+        },
+        "downforce_rear": {
+          "type": "number"
+        },
+        "surfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "node": {
+                "type": "string",
+                "pattern": "^[ -~]{1,64}$",
+                "x-axion-refers": "node"
+              },
+              "area": {
+                "type": "number"
+              },
+              "cl": {
+                "type": "number"
+              },
+              "cd": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-declares": "part"
+          },
+          "root_node": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "node"
+          },
+          "material": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+          },
+          "health": {
+            "type": "number"
+          },
+          "structural_capacity": {
+            "type": "number"
+          },
+          "detach_threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "propagation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "mass": {
+            "type": "number",
+            "minimum": 0.001,
+            "maximum": 1000000
+          },
+          "meshes": {
+            "type": "object",
+            "properties": {
+              "intact": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[ -~]{1,64}$",
+                    "x-axion-refers": "mesh"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "damaged": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[ -~]{1,64}$",
+                    "x-axion-refers": "mesh"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "destroyed": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[ -~]{1,64}$",
+                    "x-axion-refers": "mesh"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "detachable",
+                "critical",
+                "hide_when_destroyed",
+                "structural",
+                "internal",
+                "no_deform",
+                "repairable",
+                "spawns_debris"
+              ]
+            }
+          },
+          "deform_regions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[ -~]{1,64}$",
+              "x-axion-refers": "region"
+            }
+          },
+          "collider_variants": {
+            "type": "object",
+            "propertyNames": {
+              "enum": [
+                "INTACT",
+                "SCRATCHED",
+                "DAMAGED",
+                "HEAVY",
+                "DESTROYED",
+                "DETACHED"
+              ],
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^[ -~]{1,64}$",
+              "x-axion-refers": "collider"
+            }
+          },
+          "repair_item": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 64,
+      "x-axion-code": "E-3050"
+    },
+    "structural_links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-declares": "link"
+          },
+          "a": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "part"
+          },
+          "b": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "part"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "weld",
+              "bolt",
+              "hinge",
+              "glue",
+              "organic",
+              "snap"
+            ]
+          },
+          "capacity": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "tensile": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "shear": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "torque": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "joint": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "joint"
+          },
+          "propagation": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "load_bearing",
+                "severable",
+                "reformable"
+              ]
+            }
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 256,
+      "x-axion-code": "E-3050"
+    },
+    "damage_zones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-declares": "zone"
+          },
+          "part": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "part"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "region"
+          },
+          "multiplier": {
+            "type": "number"
+          },
+          "deform_multiplier": {
+            "type": "number"
+          },
+          "node": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "node"
+          },
+          "parent": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "zone"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "deformation": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "min_quality": {
+          "type": "string",
+          "enum": [
+            "off",
+            "low",
+            "medium",
+            "high",
+            "ultra"
+          ]
+        },
+        "extras": {
+          "type": "object",
+          "properties": {
+            "bones": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "bone": {
+                    "type": "string",
+                    "pattern": "^[ -~]{1,64}$",
+                    "x-axion-refers": "bone"
+                  },
+                  "driven_by": {
+                    "type": "string"
+                  },
+                  "axis": {
+                    "type": "string"
+                  },
+                  "scale": {
+                    "type": "number"
+                  },
+                  "max_angle": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "morphs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string"
+                  },
+                  "driven_by": {
+                    "type": "string"
+                  },
+                  "map": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "wear": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "particles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-declares": "particles"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cloth",
+              "rope",
+              "cable",
+              "net",
+              "soft"
+            ]
+          },
+          "authority": {
+            "type": "string",
+            "enum": [
+              "visual",
+              "server_simple",
+              "server_full"
+            ]
+          },
+          "mesh": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "mesh"
+          },
+          "anchors": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[ -~]{1,64}$",
+              "x-axion-refers": "node"
+            }
+          },
+          "stiffness": {
+            "type": "number"
+          },
+          "bending": {
+            "type": "number"
+          },
+          "damping": {
+            "type": "number"
+          },
+          "mass_per_particle": {
+            "type": "number"
+          },
+          "wind_influence": {
+            "type": "number"
+          },
+          "collision_proxies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "node": {
+                  "type": "string",
+                  "pattern": "^[ -~]{1,64}$",
+                  "x-axion-refers": "node"
+                },
+                "radius": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "max_distance_from_anchor": {
+            "type": "number"
+          },
+          "from": {
+            "type": "object",
+            "properties": {
+              "assembly": {
+                "type": "string"
+              },
+              "socket": {
+                "type": "string",
+                "pattern": "^[ -~]{1,64}$",
+                "x-axion-refers": "socket"
+              }
+            },
+            "additionalProperties": false
+          },
+          "to": {
+            "type": "object",
+            "properties": {
+              "attachment": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "segments": {
+            "type": "integer"
+          },
+          "server_segments": {
+            "type": "integer"
+          },
+          "max_length": {
+            "type": "number"
+          },
+          "break_force": {
+            "type": "number"
+          },
+          "radius": {
+            "type": "number"
+          },
+          "material": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+          },
+          "tear_threshold": {
+            "type": "number"
+          },
+          "self_collide": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 8,
+      "x-axion-code": "E-3050"
+    },
+    "seats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-declares": "seat"
+          },
+          "node": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "node"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "driver",
+              "passenger"
+            ]
+          },
+          "exit_offsets": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "controls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 16,
+      "x-axion-code": "E-3050"
+    },
+    "sockets": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[ -~]{1,64}$",
+        "x-axion-declares": "socket"
+      }
+    },
+    "procedural": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "node"
+          },
+          "bone": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "bone"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "axis": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "pattern": "^(?:vehicle\\.(?:speed|forward_speed|throttle|brake|steer|handbrake)|engine\\.(?:rpm|load|running)|transmission\\.(?:gear|shifting)|wheel\\.[ -~]{1,64}\\.(?:spin_angle|steer_angle|compression|slip_long|slip_lat|on_ground|damage)|body\\.(?:linear_speed|angular_speed|pitch|roll|yaw|on_ground|in_fluid)|part\\.[ -~]{1,64}\\.(?:health|integrity|stage|absorbed|jammed|revealed)|region\\.[ -~]{1,64}\\.(?:mean_disp|max_disp|max_strain|energy|version)|deform\\.[ -~]{1,64}\\.(?:mean_disp|max_disp|max_strain)|link\\.[ -~]{1,64}\\.(?:integrity|broken)|structure\\.(?:connected_parts_ratio)|wear\\.[ -~]{1,64}\\.(?:scratch|soil|burn|rust)|joint\\.[ -~]{1,64}\\.(?:position|velocity|force|jammed)|socket\\.[ -~]{1,64}\\.(?:misalignment)|attach\\.[ -~]{1,64}\\.(?:length|tension|attached)|seat\\.[ -~]{1,64}\\.(?:occupied)|particles\\.[ -~]{1,64}\\.(?:max_stretch|torn_ratio)|time\\.(?:seconds)|var\\..+)$"
+          },
+          "scale": {
+            "type": "number"
+          },
+          "map": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "clamp": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "animations": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[ -~]{1,64}$",
+        "x-axion-declares": "animation",
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "clip": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "clip"
+          },
+          "layer": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "drives_joint": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "joint"
+          },
+          "trigger": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "maxProperties": 128,
+      "x-axion-code": "E-3050"
+    },
+    "on_part_stage": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[ -~]{1,64}$",
+        "x-axion-refers": "part",
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "enum": [
+            "INTACT",
+            "SCRATCHED",
+            "DAMAGED",
+            "HEAVY",
+            "DESTROYED",
+            "DETACHED"
+          ],
+          "type": "string"
+        },
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "set_variable": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "emit_event": {
+              "type": "string"
+            },
+            "hide_node": {
+              "type": "string",
+              "pattern": "^[ -~]{1,64}$",
+              "x-axion-refers": "node"
+            },
+            "show_node": {},
+            "swap_mesh": {
+              "type": "string",
+              "pattern": "^[ -~]{1,64}$",
+              "x-axion-refers": "mesh"
+            },
+            "jam_joint": {
+              "type": "string",
+              "pattern": "^[ -~]{1,64}$",
+              "x-axion-refers": "joint"
+            },
+            "break_joint": {},
+            "detach_part": {},
+            "disable_seat": {},
+            "spawn_debris": {
+              "type": "string",
+              "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+            },
+            "play_animation": {},
+            "set_material_param": {}
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "on_detach": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[ -~]{1,64}$",
+        "x-axion-refers": "part",
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "set_variable": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "emit_event": {
+            "type": "string"
+          },
+          "hide_node": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "node"
+          },
+          "show_node": {},
+          "swap_mesh": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "mesh"
+          },
+          "jam_joint": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "joint"
+          },
+          "break_joint": {},
+          "detach_part": {},
+          "disable_seat": {},
+          "spawn_debris": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+          },
+          "play_animation": {},
+          "set_material_param": {}
+        },
+        "additionalProperties": false
+      }
+    },
+    "render": {
+      "type": "object",
+      "properties": {
+        "shadow": {
+          "type": "string",
+          "enum": [
+            "map",
+            "contact",
+            "none"
+          ]
+        },
+        "max_distance": {
+          "type": "number"
+        },
+        "lod_bias": {
+          "type": "integer",
+          "minimum": -2,
+          "maximum": 3
+        },
+        "decals": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "interaction": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "node"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "sit",
+              "toggle_animation",
+              "play_animation",
+              "open_container",
+              "emit_event",
+              "set_variable",
+              "repair",
+              "attach",
+              "detach"
+            ]
+          },
+          "animation": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "animation"
+          },
+          "seat": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "seat"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "repair_rule": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+    },
+    "custom": {
+      "type": "object",
+      "additionalProperties": {}
+    }
+  },
+  "required": [
+    "schema",
+    "asset",
+    "kind"
+  ],
+  "additionalProperties": false
+}

@@ -58,6 +58,11 @@ enum NameCategory {
         return label;
     }
 
+    /** {@return le nom de la catégorie dans le schéma publié, en snake_case} */
+    String jsonName() {
+        return name().toLowerCase(java.util.Locale.ROOT);
+    }
+
     /** {@return vrai si la definition déclare elle-même les noms de la catégorie} */
     boolean internal() {
         return internal;

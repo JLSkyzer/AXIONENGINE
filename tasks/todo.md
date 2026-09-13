@@ -847,8 +847,25 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
               d'unicité de C-22 sous le nom « node », si bien que deux nodes
               sans nom faisaient refuser un glTF valide ;
             - `COMPILER_VERSION` passe à 5. 456 tests Rust.
-      - [ ] Tranche 4 — `docs/schema/definition-1.json` publié et vérifié en CI
-            contre les definitions du dépôt (R-1783).
+      - [x] **Tranche 4 — schéma publié** (R-1783). 5 tests JUnit (T-284),
+            suite Java à 161. **La part M2 de C-27 est terminée** ; la case du
+            composant reste ouverte pour ce qui attend M3 (ci-dessous).
+            - `docs/schema/definition-1.json`, JSON Schema 2020-12, **rendu**
+              depuis l'arbre du validateur (`SchemaExport`), jamais écrit à la
+              main : un test échoue dès que le fichier en diffère. Régénérer :
+              `./gradlew :axion-mod:test --tests
+              dev.axion.definition.PublishedSchemaTest -Daxion.schema.update=true` ;
+            - ce que JSON Schema n'exprime pas (unicité des noms, références,
+              cycles, module `vehicles`) en annotations `x-axion-*`, vérifié par
+              AXION ; expression des sources procédurales testée contre la
+              grammaire du vérificateur ;
+            - la CI juge **toute** definition `data/<ns>/axion/definitions/**`
+              du dépôt (hors `build`, `target`, `run`…) avec le validateur. Le
+              dépôt n'en contient aucune aujourd'hui : les cinq exemples de
+              R-1790 (T-630..T-634) seront jugés dès leur ajout. Aucun
+              validateur JSON Schema tiers ajouté (§32.4, ADR-109 point 17).
+            - piège noté : `JsonObject.isEmpty()` n'existe pas dans le Gson de
+              Minecraft 1.20.1 ; `size()` à la place.
       - Reste dû hors M2 : `CompiledDefinition` et fonction d'ABI (M3, ADR) ;
         `physics_materials`, `collision_groups`, `block_materials` (M3),
         `wear_profiles`, `repair_rules` (M5) ; synchronisation (C-51, M4).

@@ -535,3 +535,17 @@ que la normale écrite nulle reste refusée.
 
 **Corollaire.** Un test d'importeur sur une seule primitive ne dit rien de ce qui
 se passe à la jonction de deux. Tester au moins une arête partagée.
+
+---
+
+## 2026-09-13 | Gson est celui de Minecraft, pas le dernier publié
+
+`SchemaExport` appelait `JsonObject.isEmpty()`. La compilation a échoué : Gson
+n'est pas une dépendance d'AXION, c'est celui que Minecraft 1.20.1 fournit, et
+sa version est antérieure à cette méthode. La documentation en ligne décrit la
+dernière version, pas celle qui est sur le classpath.
+
+**Règle.** Côté Java, une bibliothèque héritée de la plateforme (Gson,
+NightConfig, Mixin) s'emploie avec l'API de **sa** version. Préférer les
+méthodes anciennes et stables (`size()` plutôt que `isEmpty()`) et compiler
+avant de conclure, plutôt que se fier à une documentation.

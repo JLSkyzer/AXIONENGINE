@@ -112,6 +112,12 @@ tasks.named('test', Test).configure {
     systemProperty 'axion.crates.dir', rootProject.file('crates').absolutePath
     systemProperty 'axion.spec.file',
             rootProject.file('cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md').absolutePath
+    // T-284 (R-1783) : le schema publie est le rendu exact du validateur, et
+    // toute definition du depot le respecte. `-Daxion.schema.update=true`
+    // regenere le fichier au lieu de seulement le comparer.
+    systemProperty 'axion.schema.file', rootProject.file('docs/schema/definition-1.json').absolutePath
+    systemProperty 'axion.repo.dir', rootProject.projectDir.absolutePath
+    systemProperty 'axion.schema.update', System.getProperty('axion.schema.update', 'false')
     testLogging {
         events 'failed'
         exceptionFormat 'full'
