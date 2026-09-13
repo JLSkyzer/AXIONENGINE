@@ -384,6 +384,13 @@ pub struct ImportedMaterial {
 pub struct ImportedAsset {
     /// Hiérarchie, en ordre topologique.
     pub nodes: Vec<NodeDesc>,
+    /// Nom de chaque node, dans l'ordre des nodes ; vide s'il n'en a pas.
+    ///
+    /// C'est le nom dont `name_hash` est l'empreinte, et celui qu'écrit la
+    /// section `NODE` (ADR-110). Il se distingue de `names`, qui sert à la
+    /// règle d'unicité de C-22 : un node sans nom n'y figure pas, puisqu'il n'a
+    /// rien à rendre unique.
+    pub node_names: Vec<String>,
     /// Meshes.
     pub meshes: Vec<MeshDesc>,
     /// Sommets, au format canonique.

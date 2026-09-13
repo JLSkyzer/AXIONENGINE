@@ -15,7 +15,7 @@
 //! ici, on compile ce qu'on nous donne. Les mélanger rendrait la compilation
 //! intestable sans un gestionnaire de ressources autour.
 
-use crate::a3d::{A3dWriter, SectionTag};
+use crate::a3d::{encode_nodes, A3dWriter, SectionTag};
 use crate::import::{
     import_gltf, import_obj, import_stl, ImportError, ImportLimits, ImportedAsset, SourceFormat,
 };
@@ -35,8 +35,9 @@ use core::fmt;
 /// boîtes recalculées) et sommets STL propres à chaque facette ; 3 — C-23
 /// tranche B (tangentes MikkTSpace, tangentes glTF lues, cache de sommets) ;
 /// 4 — C-23 tranche C (LOD et section `LODM`), nodes sans annotation visibles
-/// à tous les niveaux.
-pub const COMPILER_VERSION: u32 = 4;
+/// à tous les niveaux ; 5 — section `NODE` avec sa table des noms et ses nodes
+/// sur 80 octets (ADR-110), empreintes de nom des nodes OBJ et STL.
+pub const COMPILER_VERSION: u32 = 5;
 
 /// Ce qui empêche de compiler un asset.
 #[derive(Debug, Clone, PartialEq)]
@@ -242,8 +243,10 @@ fn write_container(
     let mut writer = A3dWriter::new(options.asset_id, options.source_hash, COMPILER_VERSION);
 
     if !asset.nodes.is_empty() {
+        let nodes =
+            encode_nodes(&asset.nodes, &asset.node_names).map_err(CompileError::Container)?;
         writer
-            .section(SectionTag::NODE, &nodes_bytes(asset))
+            .section(SectionTag::NODE, &nodes)
             .map_err(CompileError::Container)?;
     }
     if !asset.vertices.is_empty() || !asset.indices.is_empty() {
@@ -264,40 +267,6 @@ fn write_container(
     }
 
     writer.finish().map_err(CompileError::Container)
-}
-
-/// Sérialise les nodes, tels quels.
-///
-/// Les structures sont `repr(C)` et lues en place à la relecture (R-881) : la
-/// sérialisation est une copie d'octets, pas une conversion. Elle est écrite à
-/// la main plutôt que déléguée, parce qu'une bibliothèque de sérialisation
-/// choisirait sa propre disposition, et la disposition est justement ce qui est
-/// figé.
-fn nodes_bytes(asset: &ImportedAsset) -> Vec<u8> {
-    let mut out = Vec::with_capacity(asset.nodes.len() * 80);
-    for node in &asset.nodes {
-        out.extend_from_slice(&node.name_hash.to_le_bytes());
-        out.extend_from_slice(&node.parent.to_le_bytes());
-        for value in node.local.translation {
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-        for value in node.local.rotation {
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-        for value in node.local.scale {
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-        out.extend_from_slice(&node.flags.to_le_bytes());
-        out.extend_from_slice(&node.mesh.to_le_bytes());
-        out.extend_from_slice(&node.collider.to_le_bytes());
-        out.extend_from_slice(&node.bone.to_le_bytes());
-        out.extend_from_slice(&node.part.to_le_bytes());
-        out.extend_from_slice(&node.region.to_le_bytes());
-        out.push(node.lod_mask);
-        out.push(node.state);
-        out.extend_from_slice(&[0, 0]);
-    }
-    out
 }
 
 /// Sérialise meshes, sommets et indices.
@@ -425,6 +394,27 @@ mod tests {
             .map(|mot| u32::from_le_bytes(mot.try_into().unwrap()))
             .collect();
         assert_eq!(mots, [4, 1, 0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn t211_la_section_node_porte_le_nom_de_chaque_node() {
+        let source = format!("o triangle\n{TRIANGLE_OBJ}");
+        let compiled = compile(source.as_bytes(), SourceFormat::Obj, &OPTIONS, |_| None)
+            .expect("compilation refusée");
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+        let node = file
+            .section(SectionTag::NODE)
+            .expect("NODE")
+            .expect("section absente");
+
+        // Le nom se relit, et son empreinte est celle du node : un nom de
+        // definition se résoudra contre elle (ADR-110).
+        let table = crate::a3d::decode_nodes(&node).expect("table des nodes");
+        assert_eq!(table.names, ["triangle"]);
+        assert_eq!(
+            table.nodes[0].name_hash,
+            ax_model::dm::scene::name_hash("triangle")
+        );
     }
 
     #[test]

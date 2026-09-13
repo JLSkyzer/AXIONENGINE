@@ -828,9 +828,25 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
               de zones parentes refusés ; sources de l'ANNEXE A.4 analysées et
               leurs noms résolus. Nodes, meshes et régions : forme seulement,
               résolution en tranche 3.
-      - [ ] Tranche 3 — références à l'asset : table des noms de la section
-            `NODE` (C-24, écart de M1), puis nodes, sockets et régions résolus
-            contre l'asset compilé.
+      - [x] **Tranche 3 — noms dans la section `NODE`** (`docs/decisions/ADR-110.md`).
+            Périmètre révisé par Killian le 2026-09-13 : la **résolution des
+            noms d'asset** désignés par une definition (nodes, meshes, régions,
+            clips, os, colliders) se fera **côté natif en M3**, à la
+            transmission de la definition. Un lecteur A3D Java aurait doublé un
+            analyseur de données hostiles pour ne résoudre que les nodes, les
+            autres catégories n'existant dans l'asset qu'en M3.
+            - `NODE` : `u32 count`, `u32 names_size`, nodes sur **80 octets**
+              (l'écrivain de M1 en écrivait 76, sans le remplissage de fin :
+              illisible en place malgré R-881), références de noms, noms UTF-8 ;
+            - nom et empreinte liés : encodeur et décodeur refusent une
+              empreinte qui n'est pas celle du nom ; décodeur borné avant
+              allocation (R-901), `E-3007` ; fuzzé par `a3d_reader` ;
+            - `name_hash` (FNV-1a 64) déplacé dans `ax-model` ; nodes OBJ et
+              STL enfin hachés ; positions des champs de `NodeDesc` figées ;
+            - **défaut corrigé** : un node glTF sans nom entrait dans la règle
+              d'unicité de C-22 sous le nom « node », si bien que deux nodes
+              sans nom faisaient refuser un glTF valide ;
+            - `COMPILER_VERSION` passe à 5. 456 tests Rust.
       - [ ] Tranche 4 — `docs/schema/definition-1.json` publié et vérifié en CI
             contre les definitions du dépôt (R-1783).
       - Reste dû hors M2 : `CompiledDefinition` et fonction d'ABI (M3, ADR) ;

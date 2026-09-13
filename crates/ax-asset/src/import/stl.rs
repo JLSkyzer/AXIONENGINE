@@ -6,7 +6,12 @@
 
 use super::{ImportError, ImportLimits, ImportedAsset, SourceFormat};
 use ax_model::dm::geometry::{encode_normal, MeshDesc, Transform, Vertex, NO_REGION_U8};
-use ax_model::dm::scene::{node_flags, NodeDesc, ALL_LODS, NONE_U16, NONE_U32, NO_PARENT};
+use ax_model::dm::scene::{
+    name_hash, node_flags, NodeDesc, ALL_LODS, NONE_U16, NONE_U32, NO_PARENT,
+};
+
+/// Nom de l'unique node d'un STL, qui ne porte pas de hiérarchie.
+const ROOT_NAME: &str = "stl_root";
 
 /// Taille de l'en-tête d'un STL binaire, en octets.
 const BINARY_HEADER_BYTES: u64 = 80;
@@ -83,7 +88,8 @@ pub fn import_stl(bytes: &[u8], limits: &ImportLimits) -> Result<ImportedAsset, 
 
     asset.meshes.push(mesh_desc(&asset));
     asset.nodes.push(root_node());
-    asset.names.push(("node", "stl_root".to_owned()));
+    asset.names.push(("node", ROOT_NAME.to_owned()));
+    asset.node_names.push(ROOT_NAME.to_owned());
 
     Ok(asset)
 }
@@ -178,7 +184,7 @@ fn mesh_desc(asset: &ImportedAsset) -> MeshDesc {
 
 fn root_node() -> NodeDesc {
     NodeDesc {
-        name_hash: 0,
+        name_hash: name_hash(ROOT_NAME),
         parent: NO_PARENT,
         local: Transform::identity(),
         flags: node_flags::VISIBLE,

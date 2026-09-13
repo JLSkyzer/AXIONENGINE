@@ -14,7 +14,7 @@
 
 #![no_main]
 
-use ax_asset::a3d::{A3dFile, A3dLimits, SectionMask, SectionTag};
+use ax_asset::a3d::{decode_nodes, A3dFile, A3dLimits, SectionMask, SectionTag};
 use libfuzzer_sys::fuzz_target;
 
 /// Plafond employé pour le fuzzing.
@@ -54,5 +54,12 @@ fuzz_target!(|data: &[u8]| {
         let _ = fichier.has(tag);
         let _ = fichier.section(tag);
         let _ = fichier.stored_bytes(tag);
+    }
+
+    // Une section intègre n'est pas une section bien formée : la table des
+    // nodes tire elle aussi des dénombrements, des décalages et des longueurs
+    // de ses octets (ADR-110), et un CRC juste ne dit rien de leur cohérence.
+    if let Ok(Some(nodes)) = fichier.section(SectionTag::NODE) {
+        let _ = decode_nodes(&nodes);
     }
 });

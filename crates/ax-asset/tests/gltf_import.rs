@@ -625,6 +625,43 @@ fn t228_un_role_inconnu_avertit_sans_faire_echouer_l_import() {
 }
 
 #[test]
+fn t220_deux_nodes_sans_nom_ne_sont_pas_des_doublons() {
+    // Un node sans nom entrait dans la règle d'unicité sous le nom « node » :
+    // deux d'entre eux faisaient refuser un glTF valide pour doublon.
+    let source = triangle("", "").replace(
+        "\"nodes\": [{ \"name\": \"triangle\", \"mesh\": 0 }]",
+        "\"nodes\": [{ \"mesh\": 0, \"children\": [1] }, { }]",
+    );
+    assert!(
+        source.contains("\"children\""),
+        "le document de test a changé"
+    );
+    let (asset, _) = import_gltf(source.as_bytes(), &LIMITS, |_| None).expect("import refusé");
+
+    assert_eq!(asset.node_names, ["", ""]);
+    let names: Vec<NamedEntry<'_>> = asset
+        .names
+        .iter()
+        .map(|(category, name)| NamedEntry::new(category, name.as_str()))
+        .collect();
+    let report = validate(
+        &AssetView {
+            nodes: &asset.nodes,
+            meshes: &asset.meshes,
+            vertices: &asset.vertices,
+            indices: &asset.indices,
+            names: &names,
+            material_count: asset.materials.len(),
+            dynamic_body: true,
+            missing_normals: &asset.missing_normals,
+            ..AssetView::default()
+        },
+        &asset.raw_uvs,
+    );
+    assert!(report.is_valid(), "{:?}", report.errors);
+}
+
+#[test]
 fn t913_un_gltf_sans_annotation_produit_un_asset_complet() {
     // R-913 : les annotations contrôlent, elles n'activent pas.
     let source = triangle("", "");

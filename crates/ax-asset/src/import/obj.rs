@@ -8,7 +8,9 @@ use super::{
     check_relative_path, ImportError, ImportLimits, ImportedAsset, ImportedMaterial, SourceFormat,
 };
 use ax_model::dm::geometry::{encode_normal, MeshDesc, Transform, Vertex, NO_REGION_U8};
-use ax_model::dm::scene::{node_flags, NodeDesc, ALL_LODS, NONE_U16, NONE_U32, NO_PARENT};
+use ax_model::dm::scene::{
+    name_hash, node_flags, NodeDesc, ALL_LODS, NONE_U16, NONE_U32, NO_PARENT,
+};
 
 /// Importe une source OBJ.
 ///
@@ -85,8 +87,11 @@ pub fn import_obj(
         asset
             .meshes
             .push(mesh_desc(&asset, model, vertex_offset, index_offset));
-        asset.nodes.push(node_for(index));
-        asset.names.push(("node", model.name.clone()));
+        asset.nodes.push(node_for(index, &model.name));
+        if !model.name.is_empty() {
+            asset.names.push(("node", model.name.clone()));
+        }
+        asset.node_names.push(model.name.clone());
     }
 
     if let Ok(materials) = materials {
@@ -355,9 +360,9 @@ fn mesh_desc(
     }
 }
 
-fn node_for(index: usize) -> NodeDesc {
+fn node_for(index: usize, name: &str) -> NodeDesc {
     NodeDesc {
-        name_hash: 0,
+        name_hash: name_hash(name),
         parent: NO_PARENT,
         local: Transform::identity(),
         flags: node_flags::VISIBLE,

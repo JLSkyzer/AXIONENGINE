@@ -1,8 +1,10 @@
 //! Conteneur A3D (C-24, PARTIE 7).
 
+mod node;
 mod read;
 mod write;
 
+pub use node::{decode_nodes, encode_nodes, NodeTable, NODE_BYTES};
 pub use read::{A3dFile, A3dLimits};
 pub use write::A3dWriter;
 
@@ -308,6 +310,13 @@ pub enum A3dError {
     DuplicateSection(SectionTag),
     /// La charge utile dépasse ce qu'une entrée de table peut décrire.
     SectionUnwritable(SectionTag),
+    /// Le contenu d'une section ne suit pas sa disposition.
+    MalformedSection {
+        /// Section fautive.
+        tag: SectionTag,
+        /// Ce qui ne va pas.
+        detail: &'static str,
+    },
 }
 
 impl A3dError {
@@ -356,6 +365,9 @@ impl fmt::Display for A3dError {
             A3dError::DuplicateSection(tag) => write!(formatter, "section {tag} en double"),
             A3dError::SectionUnwritable(tag) => {
                 write!(formatter, "section {tag} trop grande pour être décrite")
+            }
+            A3dError::MalformedSection { tag, detail } => {
+                write!(formatter, "section {tag} mal formée : {detail}")
             }
         }
     }

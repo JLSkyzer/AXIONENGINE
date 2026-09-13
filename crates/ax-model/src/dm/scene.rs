@@ -89,6 +89,25 @@ pub mod node_state {
     }
 }
 
+/// Empreinte d'un nom, champ `name_hash` des descripteurs : FNV-1a 64 bits.
+///
+/// C'est l'empreinte des identifiants du cahier des charges (DM-01). Elle vit
+/// ici, avec les descripteurs qui la portent : l'importeur glTF la calculait
+/// seul, et les nodes OBJ et STL restaient à zéro — une empreinte que personne
+/// ne pouvait retrouver depuis un nom.
+#[must_use]
+pub const fn name_hash(name: &str) -> u64 {
+    let bytes = name.as_bytes();
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    let mut index = 0;
+    while index < bytes.len() {
+        hash ^= bytes[index] as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        index += 1;
+    }
+    hash
+}
+
 /// Node de la hiérarchie d'un asset (DM-03).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -296,6 +315,29 @@ mod tests {
         // déplacé rendrait illisibles les assets déjà compilés, et ce test
         // pose la question au moment où le changement est fait.
         assert_eq!(size_of::<NodeDesc>(), 80);
+        // La section NODE (ADR-110) écrit chaque node à ces positions, et les
+        // quatre derniers octets sont le remplissage de fin qu'impose
+        // l'alignement sur le `u64` de tête.
+        assert_eq!(core::mem::offset_of!(NodeDesc, name_hash), 0);
+        assert_eq!(core::mem::offset_of!(NodeDesc, parent), 8);
+        assert_eq!(core::mem::offset_of!(NodeDesc, local), 12);
+        assert_eq!(core::mem::offset_of!(NodeDesc, flags), 52);
+        assert_eq!(core::mem::offset_of!(NodeDesc, mesh), 56);
+        assert_eq!(core::mem::offset_of!(NodeDesc, collider), 60);
+        assert_eq!(core::mem::offset_of!(NodeDesc, bone), 64);
+        assert_eq!(core::mem::offset_of!(NodeDesc, part), 68);
+        assert_eq!(core::mem::offset_of!(NodeDesc, region), 70);
+        assert_eq!(core::mem::offset_of!(NodeDesc, lod_mask), 72);
+        assert_eq!(core::mem::offset_of!(NodeDesc, state), 73);
+        assert_eq!(core::mem::offset_of!(NodeDesc, _pad), 74);
+    }
+
+    #[test]
+    fn l_empreinte_de_nom_est_fnv1a_64() {
+        // Vecteurs de référence de FNV-1a 64 bits.
+        assert_eq!(name_hash(""), 0xcbf2_9ce4_8422_2325);
+        assert_eq!(name_hash("a"), 0xaf63_dc4c_8601_ec8c);
+        assert_eq!(name_hash("foobar"), 0x8594_4171_f739_67e8);
         assert_eq!(size_of::<PartDesc>(), 72);
     }
 }

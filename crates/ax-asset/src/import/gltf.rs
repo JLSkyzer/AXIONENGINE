@@ -16,7 +16,9 @@ use ax_model::dm::geometry::{
     encode_normal, encode_tangent, MeshDesc, Transform, Vertex, NO_REGION_U8,
 };
 use ax_model::dm::limits;
-use ax_model::dm::scene::{node_flags, NodeDesc, ALL_LODS, NONE_U16, NONE_U32, NO_PARENT};
+use ax_model::dm::scene::{
+    name_hash, node_flags, NodeDesc, ALL_LODS, NONE_U16, NONE_U32, NO_PARENT,
+};
 
 /// Extensions glTF supportées (R-530).
 ///
@@ -393,9 +395,14 @@ fn import_hierarchy(
         let index = asset.nodes.len() as u32;
         placement[node.index()] = Some(index);
         asset.nodes.push(node_desc(&node, parent, &annotation));
-        asset
-            .names
-            .push(("node", node.name().unwrap_or("node").to_owned()));
+        // Un node sans nom n'entre pas dans la règle d'unicité de C-22. Il y
+        // entrait sous le nom « node », si bien que deux nodes sans nom — un
+        // cas courant — faisaient refuser un glTF valide pour doublon.
+        let name = node.name().unwrap_or("").to_owned();
+        if !name.is_empty() {
+            asset.names.push(("node", name.clone()));
+        }
+        asset.node_names.push(name);
         annotations.push(annotation);
 
         for child in node.children() {
@@ -432,7 +439,7 @@ fn node_desc(node: &gltf::Node, parent: u32, annotation: &NodeAnnotations) -> No
         .fold(0u8, |mask, level| mask | (1 << level));
 
     NodeDesc {
-        name_hash: fnv1a64(node.name().unwrap_or("")),
+        name_hash: name_hash(node.name().unwrap_or("")),
         parent,
         local: Transform {
             translation,
@@ -767,16 +774,6 @@ fn quantize_weights(weights: [f32; 4]) -> [u8; 4] {
         out[index] = u8::try_from(*value).unwrap_or(u8::MAX);
     }
     out
-}
-
-/// FNV-1a 64 bits, l'empreinte de nom de DM-01.
-fn fnv1a64(value: &str) -> u64 {
-    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    for byte in value.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
 }
 
 #[cfg(test)]
