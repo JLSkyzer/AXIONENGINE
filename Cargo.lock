@@ -73,6 +73,15 @@ name = "ax-model"
 version = "1.0.0"
 
 [[package]]
+name = "ax-scene"
+version = "1.0.0"
+dependencies = [
+ "ax-math",
+ "ax-model",
+ "ax-telemetry",
+]
+
+[[package]]
 name = "ax-telemetry"
 version = "1.0.0"
 dependencies = [

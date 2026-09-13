@@ -128,6 +128,7 @@ ax-telemetry = { path = "crates/ax-telemetry" }
 ax-asset = { path = "crates/ax-asset" }
 ax-det = { path = "crates/ax-det" }
 ax-model = { path = "crates/ax-model" }
+ax-scene = { path = "crates/ax-scene" }
 
 # Les profils s'appliquent a tout le workspace.
 [profile.release]

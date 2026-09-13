@@ -62,6 +62,33 @@ pub const NONE_U16: u16 = u16::MAX;
 /// généré faute d'annotation contredirait la règle.
 pub const ALL_LODS: u8 = u8::MAX;
 
+/// États de node (SM-03, PARTIE 9.2), valeurs du champ [`NodeDesc::state`].
+///
+/// Le cahier des charges nomme les états sans leur donner de valeur. Ils sont
+/// numérotés dans l'**ordre de priorité de R-930** : entre deux sources, la plus
+/// grande valeur l'emporte, et une comparaison suffit à l'arbitrer. `STATIC`
+/// vaut zéro, ce qu'écrit tout importeur pour un node sans annotation.
+pub mod node_state {
+    /// Transform locale constante depuis l'asset.
+    pub const STATIC: u8 = 0;
+    /// Transform locale issue d'une piste d'animation.
+    pub const ANIMATION_DRIVEN: u8 = 1;
+    /// Transform locale calculée par un système : roue, direction, suspension.
+    pub const PROCEDURAL: u8 = 2;
+    /// Transform locale issue de l'état d'un joint physique.
+    pub const JOINT_DRIVEN: u8 = 3;
+    /// Transform monde issue d'un body ; la locale en est recalculée.
+    pub const PHYSICS_DRIVEN: u8 = 4;
+    /// Le node appartient désormais à une autre assembly.
+    pub const DETACHED: u8 = 5;
+
+    /// Indique si la valeur désigne un état connu.
+    #[must_use]
+    pub const fn is_known(state: u8) -> bool {
+        state <= DETACHED
+    }
+}
+
 /// Node de la hiérarchie d'un asset (DM-03).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]

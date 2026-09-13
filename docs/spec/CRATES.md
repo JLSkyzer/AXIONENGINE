@@ -22,7 +22,8 @@ workspace désigne.
 | `ax-det` | C-16 | Noyau déterministe scalaire, `DetRng`, empreinte de champ, matrice de validation, vecteurs d'or |
 | `ax-telemetry` | C-15 | Registre de métriques, métriques de budget, export JSON |
 | `ax-model` | DM-* | Structures du modèle, registre des budgets, configuration, génération Java |
-| `ax-asset` | C-21, C-22, C-24 | Import de sources, validation, conteneur A3D |
+| `ax-asset` | C-21..C-24 | Import de sources, validation, optimizer, conteneur A3D |
+| `ax-scene` | C-30 | Graphe de scène : propagation, états de node, visibilité |
 | `ax-ffi` | C-14 | `cdylib`, ABI, points d'entrée JNI |
 | `tools/codegen` | — | Génère le code Java depuis `ax-model` ; hors `crates/`, il ne fait pas partie de la bibliothèque livrée |
 
@@ -51,5 +52,4 @@ interdit. Les prochains, par ordre de jalon :
 | Crate | Composant | Jalon |
 |---|---|---|
 | — | C-20..C-23, C-25 rejoignent `ax-asset` : orchestrateur, importers, validateur, cache | M1, M2 |
-| `ax-scene` | C-30 — graphe de scène | M2 |
 | `ax-physics` | C-31, C-32, C-38..C-40 | M3 |

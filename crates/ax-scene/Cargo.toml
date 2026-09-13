@@ -1,0 +1,26 @@
+[package]
+name = "ax-scene"
+description = "C-30 : graphe de scène d'AXION ENGINE"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints.rust]
+# `deny` et non `forbid` : la bibliothèque ne contient aucun bloc `unsafe`, mais
+# `forbid` ne peut pas être levé localement et interdirait à un test d'installer
+# un allocateur global compteur — `GlobalAlloc` est un trait `unsafe` — pour
+# prouver qu'un chemin de code n'alloue pas (INV-08, T-016).
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[dependencies]
+# Transformations : R-460 interdit tout type matrice propre.
+ax-math.workspace = true
+# DM-02 et DM-03 : le graphe se construit depuis les nodes d'un asset.
+ax-model.workspace = true
+# `axion.scene.propagate_ns`, compté dans `budgets.sim_ns_per_tick`.
+ax-telemetry.workspace = true

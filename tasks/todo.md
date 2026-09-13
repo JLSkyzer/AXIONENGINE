@@ -759,6 +759,30 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         que la première à son node (`bind_meshes`). Les suivantes ne sont
         portées par aucun node, et la boîte d'asset les ignore donc aussi.
         Tâche séparée proposée.
+- [x] **C-30 — Scene Graph.** Nouveau crate `ax-scene`.
+      - colonnes de la fiche en tableaux parallèles, en lecture seule : les
+        écritures passent par `set_local`, `set_physics_world`, `detach`,
+        `set_revealed`, qui tiennent le suivi des nodes sales ;
+      - propagation linéaire en ordre topologique, sans récursion ; seuls les
+        nodes sales et leurs descendants sont recalculés, `changed()` dit
+        lesquels ont bougé ;
+      - R-600 : un node `PHYSICS_DRIVEN` reçoit sa transform monde avant
+        propagation ; si seul son parent bouge, le body garde sa place et seule
+        la locale suit. R-931 refusé à la construction (`E-7002`) ;
+      - R-930 : une source ne pilote que les nodes de son état ; un node
+        `STATIC` est constant ;
+      - détachement d'un sous-arbre (débris), visibilité par drapeaux, parents
+        et révélation des nodes `INTERNAL` (R-952) ;
+      - `axion.scene.propagate_ns` mesuré par graphe ; `SceneGraph` est `Send`,
+        la répartition entre assemblies revient à l'ordonnanceur du tick.
+      - **états de node numérotés** dans `ax-model` (`node_state`) : le CDC
+        les nomme sans valeur ; ordre de priorité de R-930, `STATIC` = 0.
+      - codes d'erreur pris dans l'ANNEXE A.1 sans en créer : `E-3021`,
+        `E-3050`, `E-2010`, `E-7002`, `E-2001`, `E-2030`.
+      - **Ouvert** : les transforms passent par `glam` en SIMD. Si le graphe
+        entre dans un chemin répliqué entre plateformes (M4), il faudra
+        trancher avec la question du handshake : `glam` en `scalar-math`, ou
+        transforms calculées côté serveur seulement.
 - [x] **C-71 — Commandes.** Les branches dont les composants existent.
       `/axion status`, `/axion metrics [export]`, `/axion assets list | info
       <chemin> | reload`, `/axion config get <clé>`. Vérifiées sur un serveur
