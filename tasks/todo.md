@@ -783,6 +783,43 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         entre dans un chemin répliqué entre plateformes (M4), il faudra
         trancher avec la question du handshake : `glam` en `scalar-math`, ou
         transforms calculées côté serveur seulement.
+- [ ] **C-27 — Definitions data-driven** (M2). Périmètre décidé par Killian le
+      2026-09-13 : **definitions seules** ; transfert au natif et format
+      `CompiledDefinition` reportés en M3, avec leur premier consommateur (pas
+      d'extension d'IF-01 en M2) ; les cinq autres familles viennent avec leurs
+      composants (M3 à M5) ; la synchronisation serveur → client avec C-51 (M4).
+      Lecture du schéma 1 fixée par `docs/decisions/ADR-109.md` : le §23.4 est
+      un exemple, sans défauts ni casse ni graphie de `kind` écrits.
+      - [x] **Tranche 1 — chargement.** Paquet `dev.axion.definition`, sans
+            Forge ; 15 tests JUnit (T-280, T-281), suite Java à 144.
+            - JSON strict construit jeton par jeton : `JsonParser` de Gson est
+              permissif (commentaires, clés sans guillemets, **dernière de deux
+              clés identiques gardée en silence**). Refusés : clé en double,
+              contenu après la racine, BOM, UTF-8 invalide, imbrication au-delà
+              de 64, nombre hors de la plage d'un double ; nombres gardés exacts.
+            - `schema` absent ou non entier `E-7001`, autre que 1 `E-7003` ;
+              `asset` `<ns>:<chemin>` vérifié contre les modèles découverts ;
+              `kind` en `snake_case`, `vehicle` refusé si `modules.vehicles`
+              est désactivé.
+            - refus individuel nommé avec chemin JSON (R-580) ; identifiant
+              `<ns>:<chemin>` ; empreinte SHA-256 de la registry, indépendante
+              de l'ordre des packs (pour R-1640).
+            - écouteur de rechargement après celui des modèles ; la registry est
+              remplacée d'un bloc.
+            - **non vérifié en jeu** : le chargement réel sur un serveur reste à
+              observer au prochain lancement.
+      - [ ] Tranche 2 — structure : listes fermées, plages et plafonds que le
+            CDC écrit (R-190, C-22, R-1170, C-34, C-53, A.4), clés inconnues
+            refusées hors `custom`, références internes à la definition
+            (bodies, joints, parts, zones, animations, sièges).
+      - [ ] Tranche 3 — références à l'asset : table des noms de la section
+            `NODE` (C-24, écart de M1), puis nodes, sockets et régions résolus
+            contre l'asset compilé.
+      - [ ] Tranche 4 — `docs/schema/definition-1.json` publié et vérifié en CI
+            contre les definitions du dépôt (R-1783).
+      - Reste dû hors M2 : `CompiledDefinition` et fonction d'ABI (M3, ADR) ;
+        `physics_materials`, `collision_groups`, `block_materials` (M3),
+        `wear_profiles`, `repair_rules` (M5) ; synchronisation (C-51, M4).
 - [x] **C-71 — Commandes.** Les branches dont les composants existent.
       `/axion status`, `/axion metrics [export]`, `/axion assets list | info
       <chemin> | reload`, `/axion config get <clé>`. Vérifiées sur un serveur

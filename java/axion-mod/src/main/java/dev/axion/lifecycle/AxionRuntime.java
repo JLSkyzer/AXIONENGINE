@@ -8,6 +8,8 @@ import dev.axion.bootstrap.AxionBootstrap;
 import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.bootstrap.NativeApi;
 import dev.axion.config.ConfigSchema.Scope;
+import dev.axion.definition.DefinitionRegistry;
+import dev.axion.definition.DefinitionRules;
 import dev.axion.platform.PlatformAdapter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -40,6 +42,7 @@ public final class AxionRuntime {
     private BootstrapOutcome outcome;
     private boolean shuttingDown;
     private AssetRegistry assets;
+    private DefinitionRegistry definitions = DefinitionRegistry.empty();
 
     /** Crée un runtime qui démarre AXION par la séquence normale. */
     public AxionRuntime() {
@@ -262,6 +265,42 @@ public final class AxionRuntime {
         }
         long seconds = outcome.config().getInt("assets.startup_timeout_s");
         return seconds * 1_000_000_000L;
+    }
+
+    /**
+     * Charge les definitions d'un rechargement de données (C-27).
+     *
+     * <p>La registry est reconstruite d'un bloc puis remplacée : une entité en
+     * cours d'apparition ne voit jamais un mélange de l'ancienne et de la
+     * nouvelle. Les refus sont journalisés un par un (R-580).
+     *
+     * @param source ressources sous {@code axion/definitions}
+     * @return le nombre de definitions acceptées
+     */
+    public int onDefinitionReload(AssetSource source) {
+        // Même condition que les assets, pour la même raison : le rechargement
+        // précède le démarrage du serveur, et une definition ne sert à rien
+        // sans runtime natif pour l'instancier.
+        if (!hasNativeRuntime()) {
+            return 0;
+        }
+        guard("definitionReload").run(() -> {
+            AssetRegistry known = assets;
+            DefinitionRules rules = new DefinitionRules(
+                    outcome.config().getBoolean("modules.vehicles"),
+                    path -> known != null && known.entry(path) != null);
+            DefinitionRegistry loaded = DefinitionRegistry.load(source, rules);
+            definitions = loaded;
+            transitions.add(loaded.size() + " definition(s) chargée(s), "
+                    + loaded.refusals().size() + " refusée(s)");
+            loaded.refusals().forEach(transitions::add);
+        });
+        return definitions.size();
+    }
+
+    /** {@return la registry des definitions, vide avant tout rechargement} */
+    public DefinitionRegistry definitions() {
+        return definitions;
     }
 
     /** {@return le registre d'assets, ou {@code null} avant tout rechargement} */

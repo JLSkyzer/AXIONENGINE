@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -31,18 +32,33 @@ public final class ResourceAssetSource implements AssetSource {
     /** Préfixe des modèles, relatif à la racine du gestionnaire. */
     public static final String MODELS = "axion/models";
 
+    /** Préfixe des definitions (C-27), relatif à la racine du gestionnaire. */
+    public static final String DEFINITIONS = "axion/definitions";
+
     private final Map<String, byte[]> files = new LinkedHashMap<>();
     private final List<String> failures = new ArrayList<>();
 
     /**
-     * Énumère et lit les sources sous un préfixe.
+     * Énumère et lit les sources de modèles sous un préfixe.
      *
      * @param manager gestionnaire de ressources du rechargement en cours
      * @param prefix préfixe à explorer, par exemple {@link #MODELS}
      */
     public ResourceAssetSource(ResourceManager manager, String prefix) {
+        this(manager, prefix, ResourceAssetSource::isSource);
+    }
+
+    /**
+     * Énumère et lit les ressources sous un préfixe, filtrées par chemin.
+     *
+     * @param manager gestionnaire de ressources du rechargement en cours
+     * @param prefix préfixe à explorer
+     * @param accepted indique si un chemin est à lire
+     */
+    public ResourceAssetSource(
+            ResourceManager manager, String prefix, Predicate<String> accepted) {
         Map<ResourceLocation, Resource> found =
-                manager.listResources(prefix, location -> isSource(location.getPath()));
+                manager.listResources(prefix, location -> accepted.test(location.getPath()));
 
         // L'ordre décide de l'ordre de compilation, donc de ce qui est prêt en
         // premier. Trié pour que deux démarrages du même pack produisent la

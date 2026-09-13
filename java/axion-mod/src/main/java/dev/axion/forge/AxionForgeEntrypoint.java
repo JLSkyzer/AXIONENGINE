@@ -2,6 +2,7 @@ package dev.axion.forge;
 
 import com.mojang.logging.LogUtils;
 import dev.axion.AxionMod;
+import dev.axion.definition.DefinitionRegistry;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
 import net.minecraft.util.profiling.ProfilerFiller;
@@ -128,6 +129,29 @@ public final class AxionForgeEntrypoint {
                     source.failures().forEach(failure ->
                             LOGGER.warn("AXION : ressource illisible — {}", failure));
                     runtime.onAssetReload(source);
+                });
+            }
+        });
+
+        // Les definitions après les modèles : Minecraft applique les écouteurs
+        // dans l'ordre d'ajout, et une definition vérifie que le modèle qu'elle
+        // désigne a été découvert (C-27, étape 3).
+        event.addListener(new SimplePreparableReloadListener<ResourceAssetSource>() {
+            @Override
+            protected ResourceAssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {
+                return new ResourceAssetSource(
+                        manager,
+                        ResourceAssetSource.DEFINITIONS,
+                        path -> path.endsWith(DefinitionRegistry.EXTENSION));
+            }
+
+            @Override
+            protected void apply(
+                    ResourceAssetSource source, ResourceManager manager, ProfilerFiller profiler) {
+                logTransitions(() -> {
+                    source.failures().forEach(failure ->
+                            LOGGER.warn("AXION : definition illisible — {}", failure));
+                    runtime.onDefinitionReload(source);
                 });
             }
         });
