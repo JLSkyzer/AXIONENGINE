@@ -43,4 +43,9 @@ public record Definition(
     public JsonObject root() {
         return root.deepCopy();
     }
+
+    /** {@return l'identifiant 64 bits de la definition, tel que le NBT le porte} */
+    public long hash() {
+        return DefinitionIds.hash(id);
+    }
 }

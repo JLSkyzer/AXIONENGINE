@@ -10,12 +10,16 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.function.ToLongFunction;
 import java.util.regex.Pattern;
 
 /**
@@ -47,19 +51,23 @@ public final class DefinitionRegistry {
     static final Pattern RESOURCE_PATH = Pattern.compile("[a-z0-9/._-]+");
 
     private final SortedMap<String, Definition> definitions;
+    private final Map<Long, Definition> byHash;
     private final List<String> refusals;
     private final String fingerprint;
 
     private DefinitionRegistry(
-            SortedMap<String, Definition> definitions, List<String> refusals) {
+            SortedMap<String, Definition> definitions,
+            Map<Long, Definition> byHash,
+            List<String> refusals) {
         this.definitions = definitions;
+        this.byHash = byHash;
         this.refusals = List.copyOf(refusals);
         this.fingerprint = fingerprintOf(definitions);
     }
 
     /** {@return une registry vide, avant tout rechargement} */
     public static DefinitionRegistry empty() {
-        return new DefinitionRegistry(new TreeMap<>(), List.of());
+        return new DefinitionRegistry(new TreeMap<>(), new HashMap<>(), List.of());
     }
 
     /**
@@ -70,6 +78,22 @@ public final class DefinitionRegistry {
      * @return la registry, definitions refusées exclues
      */
     public static DefinitionRegistry load(AssetSource source, DefinitionRules rules) {
+        return load(source, rules, DefinitionIds::hash);
+    }
+
+    /**
+     * Charge les definitions avec une empreinte donnée.
+     *
+     * <p>Deux identifiants distincts de même empreinte FNV-1a 64 bits sont
+     * rarissimes, et introuvables pour un test ; celui-ci fournit la sienne.
+     *
+     * @param source ressources sous {@link #PREFIX}
+     * @param rules ce que la validation consulte hors du document
+     * @param hasher empreinte d'un identifiant
+     * @return la registry, definitions refusées exclues
+     */
+    static DefinitionRegistry load(
+            AssetSource source, DefinitionRules rules, ToLongFunction<String> hasher) {
         SortedMap<String, Definition> accepted = new TreeMap<>();
         List<String> refusals = new ArrayList<>();
 
@@ -84,7 +108,31 @@ public final class DefinitionRegistry {
                 refusals.add("E-7001 " + location + " — illisible : " + failure.getMessage());
             }
         }
-        return new DefinitionRegistry(accepted, refusals);
+
+        // E-3010 : deux identifiants de même empreinte. Le NBT d'une assembly ne
+        // porte que l'empreinte (axion:def) ; garder l'une des deux ferait
+        // recharger une entité avec la definition de l'autre. Les deux sont
+        // refusées, et l'auteur renomme.
+        Map<Long, String> first = new HashMap<>();
+        Set<String> colliding = new TreeSet<>();
+        for (Definition definition : accepted.values()) {
+            String other = first.putIfAbsent(hasher.applyAsLong(definition.id()), definition.id());
+            if (other != null) {
+                colliding.add(other);
+                colliding.add(definition.id());
+            }
+        }
+        for (String id : colliding) {
+            Definition definition = accepted.remove(id);
+            refusals.add("E-3010 " + definition.location() + " — $ : empreinte d'identifiant "
+                    + "partagée avec une autre definition ; renommer l'une des deux");
+        }
+
+        Map<Long, Definition> byHash = new HashMap<>();
+        for (Definition definition : accepted.values()) {
+            byHash.put(hasher.applyAsLong(definition.id()), definition);
+        }
+        return new DefinitionRegistry(accepted, byHash, refusals);
     }
 
     /**
@@ -267,6 +315,15 @@ public final class DefinitionRegistry {
      */
     public Optional<Definition> get(String id) {
         return Optional.ofNullable(definitions.get(id));
+    }
+
+    /**
+     * {@return la definition d'un identifiant 64 bits, ou vide}
+     *
+     * @param hash empreinte, telle que {@code axion:def} la porte
+     */
+    public Optional<Definition> byHash(long hash) {
+        return Optional.ofNullable(byHash.get(hash));
     }
 
     /** {@return les identifiants, triés} */

@@ -5,6 +5,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.axion.diag.AssetsReport;
 import dev.axion.diag.MetricsReport;
 import dev.axion.diag.StatusReport;
+import dev.axion.entity.AssemblySpawns;
 import dev.axion.lifecycle.AxionRuntime;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -12,18 +13,29 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collection;
 import java.util.List;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.CompoundTagArgument;
+import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.commands.arguments.coordinates.Vec3Argument;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Commandes d'AXION (C-71).
  *
- * <p>Seule {@code /axion status} existe à ce stade : c'est le livrable du
- * premier jalon, et la seule commande qui ait du sens tant que le moteur n'a
- * ni assets ni assemblies à manipuler. Les autres branches arrivent avec les
- * composants qu'elles pilotent.
+ * <p>Les branches existent à mesure que les composants qu'elles pilotent
+ * existent : état, métriques, assets, configuration, et depuis C-50 la
+ * création et le retrait d'assemblies.
  *
  * <p>La commande exige le niveau de permission des opérateurs. Elle ne divulgue
  * aucune donnée de joueur, mais décrit l'installation — chemins, versions,
@@ -79,6 +91,37 @@ final class AxionCommands {
                                                                         context, "chemin"))))))
                                 .then(Commands.literal("reload")
                                         .executes(context -> reloadAssets(context.getSource(), runtime))))
+                        .then(Commands.literal("spawn")
+                                .then(Commands.argument("definition", ResourceLocationArgument.id())
+                                        .suggests((context, builder) -> SharedSuggestionProvider.suggest(
+                                                runtime.definitions().ids(), builder))
+                                        .executes(context -> spawn(
+                                                context.getSource(),
+                                                runtime,
+                                                ResourceLocationArgument.getId(context, "definition"),
+                                                context.getSource().getPosition(),
+                                                null))
+                                        .then(Commands.argument("position", Vec3Argument.vec3())
+                                                .executes(context -> spawn(
+                                                        context.getSource(),
+                                                        runtime,
+                                                        ResourceLocationArgument.getId(context, "definition"),
+                                                        Vec3Argument.getVec3(context, "position"),
+                                                        null))
+                                                .then(Commands.argument("nbt", CompoundTagArgument.compoundTag())
+                                                        .executes(context -> spawn(
+                                                                context.getSource(),
+                                                                runtime,
+                                                                ResourceLocationArgument.getId(
+                                                                        context, "definition"),
+                                                                Vec3Argument.getVec3(context, "position"),
+                                                                CompoundTagArgument.getCompoundTag(
+                                                                        context, "nbt")))))))
+                        .then(Commands.literal("remove")
+                                .then(Commands.argument("cibles", EntityArgument.entities())
+                                        .executes(context -> remove(
+                                                context.getSource(),
+                                                EntityArgument.getEntities(context, "cibles")))))
                         .then(Commands.literal("config")
                                 .then(Commands.literal("get")
                                         .then(Commands.argument("clé", StringArgumentType.greedyString())
@@ -108,6 +151,83 @@ final class AxionCommands {
         source.sendSuccess(
                 () -> Component.literal("AXION : " + count + " asset(s) à recompiler"), true);
         return 1;
+    }
+
+    /**
+     * Crée une assembly (C-50, C-71).
+     *
+     * <p>L'entité est construite comme {@code /summon} le fait, pour que le NBT
+     * donné s'applique de la même façon, puis liée à sa definition. Commande
+     * mutante : journalisée avec son auteur et ses paramètres (R-810).
+     */
+    private static int spawn(
+            CommandSourceStack source,
+            AxionRuntime runtime,
+            ResourceLocation definition,
+            Vec3 position,
+            CompoundTag nbt) {
+        var outcome = runtime.outcome();
+        if (outcome == null) {
+            source.sendFailure(Component.literal("AXION : configuration non chargée"));
+            return 0;
+        }
+        AssemblySpawns.Decision decision = AssemblySpawns.check(
+                runtime.definitions(),
+                definition.toString(),
+                1,
+                outcome.config().getInt("limits.max_spawn_per_command"));
+        if (!decision.accepted()) {
+            source.sendFailure(Component.literal("AXION : " + decision.refusal()));
+            return 0;
+        }
+
+        ServerLevel level = source.getLevel();
+        CompoundTag tag = nbt == null ? new CompoundTag() : nbt.copy();
+        tag.putString("id", AxionEntities.ASSEMBLY.getId().toString());
+        Entity entity = EntityType.loadEntityRecursive(tag, level, created -> {
+            created.moveTo(position.x, position.y, position.z, created.getYRot(), created.getXRot());
+            return created;
+        });
+        if (!(entity instanceof AxionEntity assembly)) {
+            source.sendFailure(Component.literal("AXION : l'entité n'a pas pu être construite"));
+            return 0;
+        }
+        assembly.bind(decision.definition());
+        if (!level.tryAddFreshEntityWithPassengers(assembly)) {
+            // Même refus que `/summon` : un UUID déjà présent dans le monde.
+            source.sendFailure(Component.literal("AXION : UUID déjà présent dans le monde"));
+            return 0;
+        }
+
+        LOGGER.info("AXION : /axion spawn {} en {} demandé par {}",
+                definition, position, source.getTextName());
+        source.sendSuccess(() -> Component.literal("AXION : assembly " + definition + " créée"), true);
+        return 1;
+    }
+
+    /**
+     * Retire des assemblies (C-71).
+     *
+     * <p>Seules les AxionEntity parmi les cibles sont retirées : un sélecteur trop
+     * large ne supprime rien d'autre. Journalisée avec son auteur (R-810).
+     */
+    private static int remove(CommandSourceStack source, Collection<? extends Entity> targets) {
+        int removed = 0;
+        for (Entity target : targets) {
+            if (target instanceof AxionEntity) {
+                target.discard();
+                removed++;
+            }
+        }
+        LOGGER.info("AXION : /axion remove demandé par {} — {} assembly(s) retirée(s)",
+                source.getTextName(), removed);
+        if (removed == 0) {
+            source.sendFailure(Component.literal("AXION : aucune assembly parmi les cibles"));
+            return 0;
+        }
+        int count = removed;
+        source.sendSuccess(() -> Component.literal("AXION : " + count + " assembly(s) retirée(s)"), true);
+        return count;
     }
 
     /** Affiche la valeur effective d'une option de configuration (C-71). */

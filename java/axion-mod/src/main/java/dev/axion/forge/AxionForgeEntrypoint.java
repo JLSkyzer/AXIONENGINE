@@ -63,6 +63,7 @@ public final class AxionForgeEntrypoint {
         IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
         modBus.addListener(EventPriority.HIGHEST, this::onCommonSetup);
         modBus.addListener(EventPriority.LOWEST, this::onLoadComplete);
+        AxionEntities.register(modBus, runtime);
 
         MinecraftForge.EVENT_BUS.register(this);
 

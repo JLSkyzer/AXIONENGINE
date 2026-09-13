@@ -783,6 +783,36 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         entre dans un chemin répliqué entre plateformes (M4), il faudra
         trancher avec la question du handshake : `glam` en `scalar-math`, ou
         transforms calculées côté serveur seulement.
+- [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
+      AxionEntity persistante avec rendu de debug. Décisions de Killian du
+      2026-09-13 : **hitbox provisoire d'un bloc** jusqu'à M3 (R-702 avec l'AABB
+      physique ; la boîte de l'asset n'atteint pas Java sans étendre l'ABI) ;
+      **rendu de debug = hitbox vanilla (F3+B) + libellé** de la definition,
+      affiché seulement quand les hitbox le sont (C-67 et ses overlays en M3).
+      - [x] `EntityType` unique `axion:assembly` (`AxionEntities`), `AxionEntity`
+            hors de `LivingEntity` et `VehicleEntity`, `tick()` sans physique
+            (R-700, R-701).
+      - [x] NBT de §22.2 : `axion:v` (2) et `axion:def` (empreinte FNV-1a 64 de
+            l'identifiant, `DefinitionIds`, mêmes vecteurs que `name_hash` en
+            Rust), toute autre clé `axion:*` recopiée à l'identique ; definition
+            inconnue ou version autre que 2 → inerte et intacte (R-704, R-1710,
+            `AssemblyBinding`) ; collision d'empreinte : les deux definitions
+            refusées (`E-3010`).
+      - [x] données d'apparition : definition et état inerte, chaîne bornée
+            comme toute chaîne réseau (R-703, pour ce qui existe).
+      - [x] `/axion spawn <definition> [pos] [nbt]` (construite comme
+            `/summon`), `/axion remove <selector>` (AxionEntity seulement),
+            plafond R-811 (`AssemblySpawns`), journalisation R-810.
+      - [x] rendu client : libellé de la definition, « inerte » le cas échéant
+            et « hitbox provisoire », seulement quand les hitbox vanilla sont
+            affichées ; classe abonnée pour le client seul.
+      - 11 tests JUnit (T-400..T-404), suite Java à 172.
+      - **Non vérifié en jeu** : aucun lancement de serveur ni de client n'a
+        encore montré l'entité, sa sauvegarde ni son libellé. À faire avant de
+        cocher le composant, avec un datapack contenant une definition.
+      - Reste dû : assembly native créée par C-40 (M3), R-702 AABB physique
+        (M3), persistance complète C-52 (M4), R-705 dégâts → `ImpactDesc` (M6),
+        état des parts et empreinte de déformation dans R-703 (M6-M7).
 - [ ] **C-27 — Definitions data-driven** (M2). Périmètre décidé par Killian le
       2026-09-13 : **definitions seules** ; transfert au natif et format
       `CompiledDefinition` reportés en M3, avec leur premier consommateur (pas
@@ -867,6 +897,7 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             - piège noté : `JsonObject.isEmpty()` n'existe pas dans le Gson de
               Minecraft 1.20.1 ; `size()` à la place.
       - Reste dû hors M2 : `CompiledDefinition` et fonction d'ABI (M3, ADR) ;
+        résolution des noms d'asset (M3, natif) ;
         `physics_materials`, `collision_groups`, `block_materials` (M3),
         `wear_profiles`, `repair_rules` (M5) ; synchronisation (C-51, M4).
 - [x] **C-71 — Commandes.** Les branches dont les composants existent.
