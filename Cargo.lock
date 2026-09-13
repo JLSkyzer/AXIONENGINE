@@ -23,6 +23,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ax-cli"
+version = "1.0.0"
+dependencies = [
+ "ax-asset",
+ "ax-model",
+]
+
+[[package]]
 name = "ax-core"
 version = "1.0.0"
 dependencies = [

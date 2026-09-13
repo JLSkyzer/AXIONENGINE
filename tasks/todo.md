@@ -783,6 +783,25 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         entre dans un chemin répliqué entre plateformes (M4), il faudra
         trancher avec la question du handshake : `glam` en `scalar-math`, ou
         transforms calculées côté serveur seulement.
+- [ ] **C-74 — CLI `axion-cli`** (M2). Nouveau crate `ax-cli`. Tranche des
+      commandes que la chaîne d'assets d'aujourd'hui (C-21..C-24) permet.
+      - [x] `compile <src> -o <out.a3d> [--static-body]` : appelle
+            `ax_asset::compile::compile`, **exactement le code du jeu** (R-830) ;
+            plafonds tirés du registre (`assets.max_source_bytes`), `asset_id`
+            et `source_hash` en FNV-1a 64 (mêmes vecteurs que `name_hash`),
+            compilation déterministe (T-213). Références voisines lues à côté de
+            la source, remontées et chemins absolus refusés (`sibling_path`).
+      - [x] `inspect <file.a3d>` : en-tête, sections, et table des nodes décodée
+            (noms, ADR-110), par `A3dFile` + `decode_nodes`.
+      - [x] analyse d'arguments écrite à la main (aucune dépendance ajoutée,
+            R-2300) ; `help` ; mésusage en code 2, échec de traitement en 1.
+      - logique dans la bibliothèque `ax_cli`, testée sans disque ; le binaire
+            n'ajoute que les I/O. 20 tests (T-580), essai de bout en bout
+            `compile`→`inspect` concluant. `cargo test --workspace` vert.
+      - **Reste dû** (jalons suivants, avec leurs composants) : `deform` et
+        `replay` (C-28, C-41, C-42, M6), `diff`, `lod` sur un `.a3d`,
+        `validate`, `bench-asset`, et l'option `--options <json>` (lecture des
+        options de `.axion.json`, qui exige un analyseur JSON).
 - [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
       AxionEntity persistante avec rendu de debug. Décisions de Killian du
       2026-09-13 : **hitbox provisoire d'un bloc** jusqu'à M3 (R-702 avec l'AABB

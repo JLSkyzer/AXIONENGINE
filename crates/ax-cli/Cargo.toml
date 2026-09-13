@@ -1,0 +1,36 @@
+[package]
+name = "ax-cli"
+description = "C-74 : outil en ligne de commande axion-cli d'AXION ENGINE"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints.rust]
+# `deny` et non `forbid` : la bibliothèque ne contient aucun bloc `unsafe`, mais
+# `forbid` ne peut pas être levé localement et interdirait à un test d'installer
+# un allocateur global compteur — `GlobalAlloc` est un trait `unsafe` — pour
+# prouver qu'un chemin de code n'alloue pas (INV-08, T-016).
+unsafe_code = "deny"
+missing_docs = "warn"
+
+# La bibliothèque porte la logique testable ; le binaire n'en est qu'une couche
+# d'entrées-sorties. R-830 veut que la CLI partage exactement le code du jeu :
+# `compile` appelle `ax_asset::compile`, sans chemin parallèle.
+[lib]
+name = "ax_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "axion-cli"
+path = "src/main.rs"
+
+[dependencies]
+# C-21..C-24 : la CLI compile et relit un A3D par le même code que le jeu.
+ax-asset.workspace = true
+# DM-* et le registre de configuration, source unique des plafonds (R-533,
+# assets.max_compiled_bytes).
+ax-model.workspace = true

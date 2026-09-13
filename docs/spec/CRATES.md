@@ -24,6 +24,7 @@ workspace désigne.
 | `ax-model` | DM-* | Structures du modèle, registre des budgets, configuration, génération Java |
 | `ax-asset` | C-21..C-24 | Import de sources, validation, optimizer, conteneur A3D |
 | `ax-scene` | C-30 | Graphe de scène : propagation, états de node, visibilité |
+| `ax-cli` | C-74 | Outil `axion-cli` : compile et inspecte un A3D par le même code que le jeu (R-830) |
 | `ax-ffi` | C-14 | `cdylib`, ABI, points d'entrée JNI |
 | `tools/codegen` | — | Génère le code Java depuis `ax-model` ; hors `crates/`, il ne fait pas partie de la bibliothèque livrée |
 
