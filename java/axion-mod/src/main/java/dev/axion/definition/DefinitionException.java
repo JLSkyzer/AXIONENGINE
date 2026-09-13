@@ -1,5 +1,7 @@
 package dev.axion.definition;
 
+import java.util.List;
+
 /**
  * Refus d'une definition (R-580).
  *
@@ -16,6 +18,9 @@ public final class DefinitionException extends Exception {
 
     /** {@code E-7003} : schéma inconnu (R-1780). */
     public static final int UNKNOWN_SCHEMA = -7003;
+
+    /** {@code E-3050} : plafond d'assembly dépassé (R-190). */
+    public static final int LIMIT = -3050;
 
     private final int code;
     private final String path;
@@ -44,6 +49,30 @@ public final class DefinitionException extends Exception {
      */
     static DefinitionException unknownSchema(String path, String message) {
         return new DefinitionException(UNKNOWN_SCHEMA, path, message);
+    }
+
+    /**
+     * {@return un refus qui rassemble toutes les fautes d'une definition}
+     *
+     * <p>Le code et le chemin sont ceux de la première faute ; le message les
+     * énumère toutes, pour qu'un seul rechargement suffise à les corriger.
+     *
+     * @param issues fautes relevées, au moins une
+     */
+    static DefinitionException fromIssues(List<DefinitionChecker.Issue> issues) {
+        DefinitionChecker.Issue first = issues.get(0);
+        StringBuilder message = new StringBuilder(first.message());
+        if (issues.size() > 1) {
+            message.append(" ; et ").append(issues.size() - 1).append(" autre(s) faute(s) : ");
+            for (int index = 1; index < issues.size(); index++) {
+                DefinitionChecker.Issue issue = issues.get(index);
+                if (index > 1) {
+                    message.append(" ; ");
+                }
+                message.append(issue.path()).append(" : ").append(issue.message());
+            }
+        }
+        return new DefinitionException(first.code(), first.path(), message.toString());
     }
 
     /** {@return le code négatif de l'annexe} */

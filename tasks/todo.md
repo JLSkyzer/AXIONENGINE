@@ -808,10 +808,26 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
               remplacée d'un bloc.
             - **non vérifié en jeu** : le chargement réel sur un serveur reste à
               observer au prochain lancement.
-      - [ ] Tranche 2 — structure : listes fermées, plages et plafonds que le
-            CDC écrit (R-190, C-22, R-1170, C-34, C-53, A.4), clés inconnues
-            refusées hors `custom`, références internes à la definition
-            (bodies, joints, parts, zones, animations, sièges).
+      - [x] **Tranche 2 — structure et références internes.** 12 tests JUnit
+            (T-282, T-283), suite Java à 156. Précisions 10 à 16 de l'ADR-109.
+            - schéma décrit **comme une donnée** (`SchemaNode`, `SchemaOne`) :
+              le même arbre servira à publier `definition-1.json` (tranche 4),
+              au lieu d'une seconde transcription qui divergerait ;
+            - clés inconnues refusées hors `custom` ; objets renvoyés ailleurs
+              (`powertrain`, `particles`, `procedural`…) remplis selon leur
+              section ; `on_part_disabled` exclu, faute d'emplacement écrit ;
+            - listes fermées C-34, DM-11, DM-14, DM-16, C-53, R-1170, A.4 ;
+              plages et règles **identiques au validateur d'asset** (masse de
+              part, fractions, quatre capacités > 0, liaison entre parts
+              distinctes) ;
+            - plafonds R-190 et C-22 en `E-3050`, le reste en `E-7001` ;
+            - toutes les fautes d'une definition rendues en un seul refus,
+              dans l'ordre du document ;
+            - références internes résolues (bodies, joints, roues, parts,
+              liaisons, zones, sièges, sockets, animations, particules), cycles
+              de zones parentes refusés ; sources de l'ANNEXE A.4 analysées et
+              leurs noms résolus. Nodes, meshes et régions : forme seulement,
+              résolution en tranche 3.
       - [ ] Tranche 3 — références à l'asset : table des noms de la section
             `NODE` (C-24, écart de M1), puis nodes, sockets et régions résolus
             contre l'asset compilé.

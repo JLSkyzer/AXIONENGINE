@@ -41,10 +41,10 @@ public final class DefinitionRegistry {
     public static final int SCHEMA = 1;
 
     /** Espace de noms d'une {@code ResourceLocation}. */
-    private static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]+");
+    static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]+");
 
     /** Chemin d'une {@code ResourceLocation}. */
-    private static final Pattern RESOURCE_PATH = Pattern.compile("[a-z0-9/._-]+");
+    static final Pattern RESOURCE_PATH = Pattern.compile("[a-z0-9/._-]+");
 
     private final SortedMap<String, Definition> definitions;
     private final List<String> refusals;
@@ -108,6 +108,12 @@ public final class DefinitionRegistry {
         int schema = schemaOf(root);
         String asset = assetOf(root, rules);
         AssemblyKind kind = kindOf(root, rules);
+
+        // Étapes 2 et 3 : structure du schéma 1 et références internes.
+        List<DefinitionChecker.Issue> issues = DefinitionChecker.check(root);
+        if (!issues.isEmpty()) {
+            throw DefinitionException.fromIssues(issues);
+        }
 
         return new Definition(id, location, schema, asset, kind, root, sha256(content));
     }
