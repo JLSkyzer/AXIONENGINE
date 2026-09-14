@@ -858,9 +858,19 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             sur régression. Boucle archive→comparaison vérifiée de bout en
             bout. 34 tests, clippy et fmt verts ; aucune dépendance externe
             nouvelle.
-      - [ ] **Tranche 4+** : JMH côté Java (dont B-07, aller-retour FFI) ;
-            harnais en jeu (monde déterministe, entrées scriptées) ; et les
-            benches restants à mesure que leurs composants arrivent.
+      - [x] **Tranche 4** : `tools/bench/` (PARTIE 33 : « harnais,
+            agrégation, comparaison »). Outil Python `bench.py` — `check`
+            (provenance R-2231 des résultats archivés), `summary`, `compare`
+            (p95, seuil 20 %, R-2250/R-2251) — lisant le schéma 2 quel que
+            soit le harnais producteur, avec la même comparaison que
+            `ax-bench::regress` (ADR-111). 16 tests ; vérifié sur les
+            résultats réels de `bench-ci`.
+      - [ ] **Tranche 5+** : JMH côté Java (dont B-07, aller-retour FFI via
+            `NativeBridge.nativeAbiVersion()`, exige la lib native chargée) ;
+            harnais en jeu (`/axion bench`, monde déterministe, entrées
+            scriptées) ; et les benches restants à mesure que leurs
+            composants arrivent. Placement JMH dans l'arbre figé à décider
+            avec Killian.
 - [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
       AxionEntity persistante avec rendu de debug. Décisions de Killian du
       2026-09-13 : **hitbox provisoire d'un bloc** jusqu'à M3 (R-702 avec l'AABB
