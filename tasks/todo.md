@@ -839,13 +839,20 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             (ADR-111). Une seule dépendance, `serde_json`, déjà dans l'arbre
             via `tools/codegen` (NOTICE inchangé). 21 tests, clippy et
             cargo-deny verts.
-      - [ ] **Tranche 2** : `criterion` (R-2240) et les benches des
-            composants mesurables — B-02 (scene graph), B-07 (FFI), B-09
-            (compilation d'asset) —, puis le sous-ensemble CI de
-            non-régression (R-2250, R-2251).
-      - [ ] **Tranche 3+** : JMH côté Java, harnais en jeu (monde
-            déterministe, entrées scriptées), et les benches restants à
-            mesure que leurs composants arrivent.
+      - [x] **Tranche 2** : `criterion` (R-2240, `default-features = false`)
+            et les benches des composants mesurables en Rust pur — B-02
+            (scene graph, propagation vs nombre de nodes, `iter_batched` sur
+            un graphe tout-sale) et B-09 (compilation d'asset, cube et
+            grilles générées). `cargo bench` exécute les deux ; vérifiés en
+            mode `--test`. B-07 (aller-retour FFI) exige un JVM pour mesurer
+            la traversée → benchmark JMH, reporté en tranche 3. criterion et
+            son arbre validés par cargo-deny ; NOTICE régénéré (84 → 102
+            paquets).
+      - [ ] **Tranche 3+** : primitif de mesure schéma 2 (méthodologie
+            PARTIE 30.3) et bin de non-régression CI (R-2250, R-2251) ; JMH
+            côté Java (dont B-07) ; harnais en jeu (monde déterministe,
+            entrées scriptées) ; et les benches restants à mesure que leurs
+            composants arrivent.
 - [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
       AxionEntity persistante avec rendu de debug. Décisions de Killian du
       2026-09-13 : **hitbox provisoire d'un bloc** jusqu'à M3 (R-702 avec l'AABB

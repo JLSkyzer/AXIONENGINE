@@ -21,7 +21,19 @@ figurer dans les attributions au meme titre que les autres (R-2290).
 Dependances Rust
 --------------------------------------------------------------------------------
 
-84 paquets, transitives comprises.
+102 paquets, transitives comprises.
+
+  aho-corasick 1.1.5
+    Licence : Unlicense OR MIT
+    Source  : https://github.com/BurntSushi/aho-corasick
+
+  anes 0.1.6
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/zrzka/anes-rs
+
+  anstyle 1.0.14
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-cli/anstyle.git
 
   autocfg 1.5.1
     Licence : Apache-2.0 OR MIT
@@ -38,6 +50,10 @@ Dependances Rust
   bytes 1.12.1
     Licence : MIT
     Source  : https://github.com/tokio-rs/bytes
+
+  cast 0.3.0
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/japaric/cast.rs
 
   cc 1.4.5
     Licence : MIT OR Apache-2.0
@@ -63,6 +79,18 @@ Dependances Rust
     Licence : Apache-2.0
     Source  : https://github.com/enarx/ciborium
 
+  clap 4.6.7
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/clap-rs/clap
+
+  clap_builder 4.6.7
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/clap-rs/clap
+
+  clap_lex 1.1.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/clap-rs/clap
+
   combine 4.6.8
     Licence : MIT
     Source  : https://github.com/Marwes/combine
@@ -70,6 +98,14 @@ Dependances Rust
   crc32c 0.6.8
     Licence : Apache-2.0/MIT
     Source  : https://github.com/zowens/crc32c
+
+  criterion 0.5.1
+    Licence : Apache-2.0 OR MIT
+    Source  : https://github.com/bheisler/criterion.rs
+
+  criterion-plot 0.5.0
+    Licence : MIT/Apache-2.0
+    Source  : https://github.com/bheisler/criterion.rs
 
   crossbeam-deque 0.8.8
     Licence : MIT OR Apache-2.0
@@ -131,9 +167,21 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/VoidStarKat/half-rs
 
+  hermit-abi 0.5.3
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/hermit-os/hermit-rs
+
   inflections 1.1.1
     Licence : MIT
     Source  : https://docs.rs/inflections
+
+  is-terminal 0.4.17
+    Licence : MIT
+    Source  : https://github.com/sunfishcode/is-terminal
+
+  itertools 0.10.5
+    Licence : MIT/Apache-2.0
+    Source  : https://github.com/rust-itertools/itertools
 
   itoa 1.0.18
     Licence : MIT OR Apache-2.0
@@ -189,6 +237,14 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-num/num-traits
 
+  once_cell 1.21.4
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/matklad/once_cell
+
+  oorandom 11.1.5
+    Licence : MIT
+    Source  : https://hg.sr.ht/~icefox/oorandom
+
   pkg-config 0.3.34
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-lang/pkg-config-rs
@@ -212,6 +268,18 @@ Dependances Rust
   rayon-core 1.13.0
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rayon-rs/rayon
+
+  regex 1.13.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/regex
+
+  regex-automata 0.4.18
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/regex
+
+  regex-syntax 0.8.11
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/regex
 
   rustc_version 0.4.1
     Licence : MIT OR Apache-2.0
@@ -272,6 +340,10 @@ Dependances Rust
   thiserror-impl 2.0.20
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/dtolnay/thiserror
+
+  tinytemplate 1.2.1
+    Licence : Apache-2.0 OR MIT
+    Source  : https://github.com/bheisler/TinyTemplate
 
   tobj 4.0.5
     Licence : MIT
