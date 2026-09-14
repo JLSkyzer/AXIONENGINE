@@ -20,6 +20,13 @@ missing_docs = "warn"
 # Modele de resultat schema 2 (PARTIE 30.4) : serialise en JSON.
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+# Composants mesures. Le module `cases` (partage entre benches et coureur CI) et
+# le binaire `bench-ci` les appellent : ce sont des dependances de bibliotheque,
+# pas seulement de test. Le harnais mesure ces crates, il est donc normal qu'il
+# en depende.
+ax-scene.workspace = true
+ax-model.workspace = true
+ax-asset.workspace = true
 
 [dev-dependencies]
 # R-2240 : criterion pour les micro-benchmarks Rust. `default-features = false`
@@ -29,11 +36,12 @@ serde_json.workspace = true
 criterion = { version = "0.5", default-features = false, features = [
     "cargo_bench_support",
 ] }
-# Composants mesures. Dev seulement : le harnais ne depend d'eux que pour les
-# bencher, jamais en bibliotheque.
-ax-scene.workspace = true
-ax-model.workspace = true
-ax-asset.workspace = true
+
+# Coureur de non-regression (R-2250) : mesure le sous-ensemble rapide, archive
+# les resultats schema 2 et compare au dernier resultat archive.
+[[bin]]
+name = "bench-ci"
+path = "src/bin/bench_ci.rs"
 
 # B-02 : propagation du graphe de scene vs nombre de nodes (PARTIE 30.2).
 [[bench]]

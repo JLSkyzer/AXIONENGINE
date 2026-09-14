@@ -12,10 +12,15 @@
 //! refuse d'en ecrire un incomplet ; il n'en fabrique jamais le contenu.
 
 pub mod archive;
+pub mod cases;
+pub mod measure;
+pub mod regress;
 pub mod result;
 pub mod stats;
 
-pub use archive::{archive, to_json, validate, ArchiveError};
+pub use archive::{archive, platform_slug, to_json, validate, ArchiveError};
+pub use measure::{measure, measure_with_clock, MeasureConfig};
+pub use regress::{compare_p95, latest_baseline, Regression, REGRESSION_TOLERANCE};
 pub use result::{
     BenchmarkResult, Platform, Run, HARNESS_VERSION, HARNESS_VERSION_KEY, SCHEMA_VERSION,
 };

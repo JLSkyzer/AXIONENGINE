@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::result::{BenchmarkResult, HARNESS_VERSION_KEY, SCHEMA_VERSION};
+use crate::result::{BenchmarkResult, Platform, HARNESS_VERSION_KEY, SCHEMA_VERSION};
 
 /// Raison pour laquelle un resultat ne peut etre archive.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,7 +107,7 @@ pub fn archive(result: &BenchmarkResult, root: &Path) -> Result<PathBuf, Archive
 
     let dir = root
         .join(&result.benchmark)
-        .join(platform_slug(&result.platform.os, &result.platform.cpu));
+        .join(platform_slug(&result.platform));
     std::fs::create_dir_all(&dir).map_err(|e| ArchiveError::Io(e.to_string()))?;
 
     let name = format!(
@@ -124,8 +124,14 @@ pub fn archive(result: &BenchmarkResult, root: &Path) -> Result<PathBuf, Archive
 }
 
 /// Slug de plateforme, `<os>-<cpu>`, sur des caracteres surs pour un chemin.
-fn platform_slug(os: &str, cpu: &str) -> String {
-    let slug = slugify(&format!("{os}-{cpu}"));
+///
+/// C'est le sous-dossier ou vivent les resultats d'une meme machine ; la
+/// non-regression (R-2250) s'en sert pour ne comparer qu'entre resultats d'une
+/// meme plateforme.
+///
+/// Effet : aucun. Thread : quelconque. Cout : O(taille des chaines).
+pub fn platform_slug(platform: &Platform) -> String {
+    let slug = slugify(&format!("{}-{}", platform.os, platform.cpu));
     if slug.is_empty() {
         "inconnu".to_string()
     } else {

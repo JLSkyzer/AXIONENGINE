@@ -848,11 +848,19 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             la traversée → benchmark JMH, reporté en tranche 3. criterion et
             son arbre validés par cargo-deny ; NOTICE régénéré (84 → 102
             paquets).
-      - [ ] **Tranche 3+** : primitif de mesure schéma 2 (méthodologie
-            PARTIE 30.3) et bin de non-régression CI (R-2250, R-2251) ; JMH
-            côté Java (dont B-07) ; harnais en jeu (monde déterministe,
-            entrées scriptées) ; et les benches restants à mesure que leurs
-            composants arrivent.
+      - [x] **Tranche 3** : chaîne de non-régression Rust complète. Primitif
+            de mesure schéma 2 (`measure`, méthodologie PARTIE 30.3, horloge
+            injectable donc testable), comparateur p95 (`compare_p95`, seuil
+            20 %, R-2251 ; jamais entre harnais différents, ADR-111),
+            `latest_baseline`, module `cases` partagé entre benches et
+            coureur, et binaire `bench-ci` qui mesure le sous-ensemble rapide
+            (R-2250), archive si la provenance est complète (R-2231) et bloque
+            sur régression. Boucle archive→comparaison vérifiée de bout en
+            bout. 34 tests, clippy et fmt verts ; aucune dépendance externe
+            nouvelle.
+      - [ ] **Tranche 4+** : JMH côté Java (dont B-07, aller-retour FFI) ;
+            harnais en jeu (monde déterministe, entrées scriptées) ; et les
+            benches restants à mesure que leurs composants arrivent.
 - [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
       AxionEntity persistante avec rendu de debug. Décisions de Killian du
       2026-09-13 : **hitbox provisoire d'un bloc** jusqu'à M3 (R-702 avec l'AABB
