@@ -25,3 +25,7 @@ run-data/
 # Ressources produites par les generateurs de donnees Minecraft
 src/generated/
 java/axion-mod/src/generated/
+
+# Cache de bytecode Python (outillage sous tools/)
+__pycache__/
+*.pyc

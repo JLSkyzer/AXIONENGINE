@@ -549,3 +549,22 @@ dernière version, pas celle qui est sur le classpath.
 NightConfig, Mixin) s'emploie avec l'API de **sa** version. Préférer les
 méthodes anciennes et stables (`size()` plutôt que `isEmpty()`) et compiler
 avant de conclure, plutôt que se fier à une documentation.
+
+## 2026-09-15 | `git add tools/bench/` a emporté un `__pycache__/*.pyc` généré
+
+Après avoir écrit un outil Python et l'avoir exécuté, `git add tools/bench/` a
+stagé le dossier entier — y compris le `__pycache__/bench.cpython-314.pyc` que
+l'interpréteur venait de produire. Le commit est parti avec, sur le remote,
+avant que je le remarque : un fichier d'état local dans l'historique, ce que le
+CLAUDE.md interdit explicitement.
+
+**Règle.** Ne jamais `git add <dossier>/` quand le dossier a pu recevoir des
+fichiers générés (bytecode, sorties de build, caches). Stager les fichiers
+**nommés**, ou relire `git status --short` **avant** de committer et refuser
+tout ce qui n'a pas été écrit à la main. Exécuter un script Python crée un
+`__pycache__/` dans la foulée ; l'ignorer (`.gitignore`) ne protège que
+l'avenir, pas le `git add` du même tour.
+
+**Corollaire.** Le correctif : `git rm --cached` le fichier, ajouter la règle
+`.gitignore`, committer la suppression. La règle d'ignore seule ne retire pas ce
+qui est déjà suivi.
