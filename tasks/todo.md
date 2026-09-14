@@ -827,6 +827,25 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             vehicle, animation…). Ajouts compatibles en 1.x (R-1751).
       - **Note** : la CLI/Gradle passent par un JDK ; seul un JDK 21 est
         provisionné (`~/.gradle/jdks`), employé comme lanceur.
+- [x] **C-72 — Harnais de benchmarks** (M2). Crate `ax-bench`. La
+      plupart des B-xx (physique, rendu, véhicules, animation, particules,
+      déformation) visent des sous-systèmes de M3/M6 ; le harnais ne mesure
+      pas ce qui n'existe pas et n'inscrit aucun benchmark vide (R-001).
+      - [x] **Tranche 1 — fondation** : format de résultat schéma 2 (PARTIE
+            30.4), capture de plateforme, statistiques normatives
+            p50/p95/p99/min/max/écart-type (rang le plus proche, PARTIE 30.3),
+            archivage sous `benchmarks/results/` refusant toute provenance
+            incomplète (R-2230, R-2231) ; version du harnais dans `config`
+            (ADR-111). Une seule dépendance, `serde_json`, déjà dans l'arbre
+            via `tools/codegen` (NOTICE inchangé). 21 tests, clippy et
+            cargo-deny verts.
+      - [ ] **Tranche 2** : `criterion` (R-2240) et les benches des
+            composants mesurables — B-02 (scene graph), B-07 (FFI), B-09
+            (compilation d'asset) —, puis le sous-ensemble CI de
+            non-régression (R-2250, R-2251).
+      - [ ] **Tranche 3+** : JMH côté Java, harnais en jeu (monde
+            déterministe, entrées scriptées), et les benches restants à
+            mesure que leurs composants arrivent.
 - [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
       AxionEntity persistante avec rendu de debug. Décisions de Killian du
       2026-09-13 : **hitbox provisoire d'un bloc** jusqu'à M3 (R-702 avec l'AABB

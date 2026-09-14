@@ -23,6 +23,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ax-bench"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ax-cli"
 version = "1.0.0"
 dependencies = [

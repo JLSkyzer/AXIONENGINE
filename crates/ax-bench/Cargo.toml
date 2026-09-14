@@ -1,0 +1,22 @@
+[package]
+name = "ax-bench"
+description = "C-72 : harnais de benchmarks d'AXION ENGINE"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints.rust]
+# `deny` et non `forbid` : le crate ne contient aucun bloc `unsafe`, mais
+# `forbid` interdirait a un test d'installer un allocateur compteur pour prouver
+# l'absence d'allocation sur un chemin donne.
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[dependencies]
+# Modele de resultat schema 2 (PARTIE 30.4) : serialise en JSON.
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

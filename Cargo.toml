@@ -49,6 +49,15 @@ glam = { version = "0.33", default-features = false, features = ["std", "float-t
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 ciborium = { version = "0.2", default-features = false }
 
+# C-72 : le harnais de benchmarks ecrit ses resultats en JSON (schema 2, PARTIE
+# 30.4) ; R-2230 exige un fichier genere par le harnais. serde_json plutot qu'un
+# ecrivain maison : l'echappement JSON correct est exactement ce qu'une
+# implementation propre rate en silence, et le format archive doit etre fiable
+# (R-2231). Licence MIT OR Apache-2.0, dans l'allowlist ; ses transitives (itoa,
+# ryu, memchr) le sont aussi. Sa `Map` par defaut trie les cles, ce qui rend la
+# sortie stable et diffable dans git.
+serde_json = { version = "1", default-features = false, features = ["std"] }
+
 # C-14 : points d'entree JNI. Egalement retenu par 32.2.
 jni = { version = "0.21", default-features = false }
 
