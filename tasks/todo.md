@@ -802,6 +802,31 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         `replay` (C-28, C-41, C-42, M6), `diff`, `lod` sur un `.a3d`,
         `validate`, `bench-asset`, et l'option `--options <json>` (lecture des
         options de `.axion.json`, qui exige un analyseur JSON).
+- [ ] **C-70 — API publique `axion-api`** (M2). Module Gradle `axion-api`,
+      publié seul, sans dépendance à l'implémentation ni au natif (R-1750) ;
+      dépend des types Minecraft/JOML qu'il expose. `gradlew :axion-api:build`
+      vert, lint R-001 vert.
+      - [x] **Tranche 1 — surface d'assembly et de dommage** (§23.2). 40 types.
+            Décision de Killian (2026-09-13) : ce que le §23.2 spécifie est
+            transcrit fidèlement ; les types seulement nommés sont déclarés en
+            interfaces `@Stable` vides, documentées « complétées par C-xx », pour
+            que la façade compile sans rien inventer.
+            - façade `AxionApi` (accès par `ServiceLoader`, sans point d'entrée
+              mutant, R-1750) ; `Assembly`, `AssemblyService`, `DamageService`,
+              `ImpactSpec` (+`Builder`, validé/borné R-1762), vues `PartView`,
+              `StructureView`, `SurfaceView`, `DeformationView`, `Socket` ;
+            - annotations `@Stable`/`@Experimental`/`@Internal` (R-1752, aucun
+              `@Internal` employé) ; enums `PartStage`, `QualityLevel`,
+              `ImpactFlag`, `RepairLevel` ; records `ApiVersion`, `Transform`,
+              `DefinitionRef` ;
+            - chaque méthode documente effet, thread, coût et échec (R-1754) ;
+              nullabilité en prose (pas d'annotation `@Nullable` externe).
+      - [ ] **Tranche 2** : les 18 événements du §23.2 et l'abonnement typé de
+            `EventBus` ; puis, à mesure de leurs composants, la surface des
+            services seulement nommés (physics, deformation, attachments,
+            vehicle, animation…). Ajouts compatibles en 1.x (R-1751).
+      - **Note** : la CLI/Gradle passent par un JDK ; seul un JDK 21 est
+        provisionné (`~/.gradle/jdks`), employé comme lanceur.
 - [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
       AxionEntity persistante avec rendu de debug. Décisions de Killian du
       2026-09-13 : **hitbox provisoire d'un bloc** jusqu'à M3 (R-702 avec l'AABB
