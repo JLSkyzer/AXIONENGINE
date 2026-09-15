@@ -568,3 +568,25 @@ l'avenir, pas le `git add` du même tour.
 **Corollaire.** Le correctif : `git rm --cached` le fichier, ajouter la règle
 `.gitignore`, committer la suppression. La règle d'ignore seule ne retire pas ce
 qui est déjà suivi.
+
+## 2026-09-15 | JMH resplit `-jvmArgs` sur les espaces, un chemin en pâtit
+
+Le benchmark JMH B-07 devait charger la bibliothèque native depuis un dossier
+passé au JVM forké par `-jvmArgsAppend "-Daxion.native.dir=<chemin>"`. Le run
+échouait sur `ClassNotFoundException: Minecraft\AXIONENGINE\target\release` :
+le chemin du dépôt contient un espace (`Mods Minecraft`), et JMH **découpe la
+valeur de ses `-jvmArgs` sur les espaces** avant de la passer au fork. La
+seconde moitié du chemin devenait un argument, pris pour une classe principale.
+Le processus JMH rendait pourtant `0`, sans mesure : un échec silencieux au
+niveau du build.
+
+**Règle.** Ne jamais passer à JMH un `-jvmArgs` dont la valeur contient un
+espace. Pour transmettre un chemin au JVM forké, une **variable
+d'environnement** (`environment 'X', valeur` sur la tâche `JavaExec`) : le fork
+en hérite, et une variable porte un espace sans être coupée. Le benchmark la lit
+par `System.getenv`.
+
+**Corollaire.** Un harnais qui rend `0` n'a pas forcément mesuré. Vérifier qu'un
+run de benchmark produit bien une ligne de résultat (`Score`), pas seulement un
+code de sortie nul — comme pour un push qui affiche `ok` sans avoir avancé le
+remote.

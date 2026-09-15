@@ -865,12 +865,19 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             soit le harnais producteur, avec la même comparaison que
             `ax-bench::regress` (ADR-111). 16 tests ; vérifié sur les
             résultats réels de `bench-ci`.
-      - [ ] **Tranche 5+** : JMH côté Java (dont B-07, aller-retour FFI via
-            `NativeBridge.nativeAbiVersion()`, exige la lib native chargée) ;
-            harnais en jeu (`/axion bench`, monde déterministe, entrées
-            scriptées) ; et les benches restants à mesure que leurs
-            composants arrivent. Placement JMH dans l'arbre figé à décider
-            avec Killian.
+      - [x] **Tranche 5** : JMH côté Java (R-2240) en scope test (arbre figé,
+            `src/test/java`, « tests seulement », jamais embarqué dans le
+            JAR). `B07FfiRoundtrip` mesure l'aller-retour FFI vide via
+            `NativeBridge.nativeAbiVersion()` (point d'entrée existant, sans
+            toucher l'ABI) ; tâche Gradle `jmh` chargeant la lib native depuis
+            `AXION_NATIVE_DIR` (variable d'env, robuste aux espaces du chemin
+            du dépôt). Vérifié : compile, tourne (~5,6 ns/op sur le natif
+            réel), tests existants intacts.
+      - [ ] **Tranche 6+** : B-07 facette « coût par élément en lot »
+            (contexte natif vivant + tampon de transfert) ; pont sortie JMH →
+            schéma 2 pour `benchmarks/results/` et `tools/bench` ; harnais en
+            jeu (`/axion bench`, monde déterministe, entrées scriptées) ;
+            benches restants à mesure que leurs composants arrivent.
 - [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
       AxionEntity persistante avec rendu de debug. Décisions de Killian du
       2026-09-13 : **hitbox provisoire d'un bloc** jusqu'à M3 (R-702 avec l'AABB

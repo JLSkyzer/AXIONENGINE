@@ -81,6 +81,14 @@ dependencies {
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // R-2240 : JMH pour les micro-benchmarks Java (B-07, aller-retour FFI). La
+    // PARTIE 32.2 le retient en « tests seulement » : il n'est jamais embarque
+    // dans le JAR du mod, seulement present a l'execution des benchmarks. Les
+    // classes @Benchmark vivent dans src/test/java (arbre fige, PARTIE 33), sans
+    // nouveau source set.
+    testImplementation 'org.openjdk.jmh:jmh-core:1.37'
+    testAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
 }
 
 // ForgeGradle cree ses taches run apres l'evaluation du script : `tasks.named`
@@ -121,6 +129,27 @@ tasks.named('test', Test).configure {
     testLogging {
         events 'failed'
         exceptionFormat 'full'
+    }
+}
+
+// R-2240 : lance les micro-benchmarks JMH (classes @Benchmark de src/test/java).
+// La bibliotheque native doit exister ; on la construit avec
+// `cargo build -p ax-ffi --release`, et le dossier ou la trouver est passe au
+// benchmark. JMH fork un JVM par benchmark : le fork herite de l'environnement
+// du processus, on passe donc le dossier par une variable d'environnement. Un
+// -jvmArgs ne marcherait pas ici : JMH resplit sa valeur sur les espaces, et le
+// chemin du depot en contient un.
+tasks.register('jmh', JavaExec) {
+    group = 'verification'
+    description = 'Micro-benchmarks JMH (B-07, aller-retour FFI)'
+    dependsOn 'testClasses'
+    mainClass = 'org.openjdk.jmh.Main'
+    classpath = sourceSets.test.runtimeClasspath
+    environment 'AXION_NATIVE_DIR', rootProject.file('target/release').absolutePath
+    // Des arguments JMH supplementaires se passent par -Pjmh.args="..." (regex de
+    // benchmark, nombre d'iterations, forks) et surchargent les annotations.
+    if (project.hasProperty('jmh.args')) {
+        args((project.property('jmh.args') as String).split('\\s+'))
     }
 }
 
