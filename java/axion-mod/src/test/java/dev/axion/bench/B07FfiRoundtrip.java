@@ -1,9 +1,6 @@
 package dev.axion.bench;
 
 import dev.axion.bridge.NativeBridge;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -22,12 +19,8 @@ import org.openjdk.jmh.annotations.Warmup;
  * <p>Mesure le coût fixe d'un appel natif : {@link NativeBridge#nativeAbiVersion()}
  * ne fait que traverser la frontière JNI et revenir, sans contexte ni travail.
  * C'est l'« aller-retour vide » de B-07. Le point d'entrée existe déjà (C-14) :
- * ce benchmark ne touche pas l'ABI, il la mesure.
- *
- * <p><strong>La facette « coût par élément en lot » de B-07 n'est pas ici.</strong>
- * Elle exige un contexte natif vivant ({@code axion_init}) et une opération de
- * lot sur un tampon de transfert : un benchmark à part, à écrire quand cette
- * mesure aura son cas. On ne mesure pas à vide ce qui se mesure en charge.
+ * ce benchmark ne touche pas l'ABI, il la mesure. La facette « coût par élément
+ * en lot » est mesurée à part, par {@link B07FfiBatch}.
  *
  * <h2>Exécution</h2>
  *
@@ -35,11 +28,6 @@ import org.openjdk.jmh.annotations.Warmup;
  * cargo build -p ax-ffi --release
  * ./gradlew :axion-mod:jmh
  * </pre>
- *
- * <p>La bibliothèque native est chargée depuis {@code axion.native.dir}, que la
- * tâche {@code jmh} renseigne vers {@code target/release} et propage au JVM
- * forké. Sans elle, le {@link #loadNative() setup} échoue en disant comment la
- * produire, plutôt que de mesurer un appel qui ne peut pas aboutir.
  */
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.AverageTime)
@@ -49,43 +37,10 @@ import org.openjdk.jmh.annotations.Warmup;
 @Fork(1)
 public class B07FfiRoundtrip {
 
-    /** Nom logique de la bibliothèque native, sans préfixe ni extension. */
-    private static final String LIBRARY = "axion_native";
-
-    /**
-     * Charge la bibliothèque native une fois par exécution, puis vérifie l'ABI.
-     *
-     * <p>Le nom de fichier est celui de la plateforme
-     * ({@code axion_native.dll}, {@code libaxion_native.so},
-     * {@code libaxion_native.dylib}), résolu par {@link System#mapLibraryName}.
-     */
+    /** Charge la bibliothèque native et vérifie l'ABI avant de mesurer. */
     @Setup
     public void loadNative() {
-        // La variable d'environnement passe le chemin au JVM forké sans le couper
-        // sur ses espaces ; la propriété système reste un repli pour un lancement
-        // manuel. Voir la tâche `jmh` du build.
-        String dir = System.getenv("AXION_NATIVE_DIR");
-        if (dir == null || dir.isBlank()) {
-            dir = System.getProperty("axion.native.dir");
-        }
-        if (dir == null || dir.isBlank()) {
-            throw new IllegalStateException(
-                    "AXION_NATIVE_DIR absent : lancer via ./gradlew :axion-mod:jmh, "
-                            + "qui le renseigne vers target/release et le propage au fork");
-        }
-        Path library = Paths.get(dir, System.mapLibraryName(LIBRARY));
-        if (!Files.exists(library)) {
-            throw new IllegalStateException(
-                    "bibliothèque native absente : " + library
-                            + " — la construire : cargo build -p ax-ffi --release");
-        }
-        System.load(library.toAbsolutePath().toString());
-
-        int abi = NativeBridge.nativeAbiVersion();
-        if (abi != NativeBridge.EXPECTED_ABI_VERSION) {
-            throw new IllegalStateException(
-                    "ABI " + abi + " inattendue, " + NativeBridge.EXPECTED_ABI_VERSION + " attendue");
-        }
+        NativeBenchSupport.loadOnce();
     }
 
     /**

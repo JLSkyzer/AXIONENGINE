@@ -158,9 +158,10 @@ def jmh_entry(
     name: str = "dev.axion.bench.B07FfiRoundtrip.emptyRoundtrip",
     raw: list | None = None,
     unit: str = "ns/op",
+    params: dict | None = None,
 ) -> dict:
     """Une entree JSON de JMH synthetique, minimale mais fidele."""
-    return {
+    entry = {
         "jmhVersion": "1.37",
         "benchmark": name,
         "mode": "avgt",
@@ -170,6 +171,9 @@ def jmh_entry(
             "rawData": raw if raw is not None else [[5.1, 5.9, 6.2]],
         },
     }
+    if params:
+        entry["params"] = params
+    return entry
 
 
 def t_slugify_matches_axbench():
@@ -263,6 +267,70 @@ def t_import_jmh_writes_valid_archive():
         result = json.loads(files[0].read_text(encoding="utf-8"))
         assert result["benchmark"] == "B-07"
         assert bench.validate_result(result) == []
+        assert bench.cmd_check(root) == 0
+
+
+# --- Benchmarks parametres ------------------------------------------------------
+
+
+def t_archive_result_suffixes_params():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        parametre = result(100)
+        parametre["parameters"] = {"elements": "64"}
+        with_suffix = bench.archive_result(root, parametre)
+        assert "__elements-64" in with_suffix.name, with_suffix.name
+
+        sans = result(100)
+        sans["parameters"] = {}
+        without = bench.archive_result(root, sans)
+        assert "__" not in without.name, without.name
+
+
+def t_compare_separates_by_params():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        a = result(100)
+        a["parameters"] = {"elements": "64"}
+        b = result(1000)
+        b["parameters"] = {"elements": "256"}
+        bench.archive_result(root, a)
+        bench.archive_result(root, b)
+        # Deux jeux de parametres, un resultat chacun : aucune comparaison, donc
+        # aucune fausse regression malgre 100 vs 1000.
+        assert bench.cmd_compare(root, None, None, every=True) == 0
+
+
+def t_compare_within_same_params_detects_regression():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        old = result(100)
+        old["parameters"] = {"elements": "64"}
+        old["date"] = "2026-01-01T00:00:00Z"
+        new = result(150)
+        new["parameters"] = {"elements": "64"}
+        new["date"] = "2026-06-01T00:00:00Z"
+        bench.archive_result(root, old)
+        bench.archive_result(root, new)
+        assert bench.cmd_compare(root, None, None, every=True) == 1
+
+
+def t_import_jmh_facets_coexist():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp) / "results"
+        jmh_file = pathlib.Path(tmp) / "jmh.json"
+        entries = [
+            jmh_entry(name="dev.axion.bench.B07FfiRoundtrip.emptyRoundtrip"),
+            jmh_entry(name="dev.axion.bench.B07FfiBatch.batchTransfer", params={"elements": "64"}),
+        ]
+        jmh_file.write_text(json.dumps(entries), encoding="utf-8")
+        rc = bench.cmd_import_jmh(
+            root, jmh_file, "abc", "2026-09-16T00:00:00Z", "cpu", "windows", 8
+        )
+        assert rc == 0
+        # Les deux facettes partagent l'identifiant B-07 mais s'archivent a part.
+        files = list(root.rglob("*.json"))
+        assert len(files) == 2, files
         assert bench.cmd_check(root) == 0
 
 

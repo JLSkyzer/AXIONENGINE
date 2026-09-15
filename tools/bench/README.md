@@ -43,6 +43,16 @@ python tools/bench/bench.py import-jmh <jmh.json> --commit SHA --date ISO --cpu 
   argument (R-2231). Une fois importés, ces résultats se `summary`ent et se
   `compare`nt comme les autres : JMH devient un producteur de premier rang.
 
+## Benchmarks paramétrés et facettes
+
+Un `B-xx` peut porter plusieurs mesures : B-07 mesure à la fois l'aller-retour
+vide et le coût d'un transfert en lot, à plusieurs tailles. Elles partagent
+l'identifiant mais se distinguent par leurs **paramètres** (`{}` d'un côté,
+`{elements: N}` de l'autre). L'archivage suffixe le nom de fichier avec les
+paramètres, et `summary`/`compare` regroupent par (benchmark, plateforme,
+paramètres) : chaque série se compare à elle-même dans le temps, jamais une
+facette à une autre.
+
 ## Cohérence avec le crate `ax-bench`
 
 La comparaison est **identique** à celle de `ax-bench::regress` : même métrique

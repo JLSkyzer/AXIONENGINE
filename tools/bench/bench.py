@@ -257,18 +257,48 @@ def jmh_to_results(
     return results
 
 
+def params_signature(result: dict) -> str:
+    """Signature canonique des parametres d'un resultat.
+
+    Deux resultats du meme benchmark ne se comparent que s'ils ont les memes
+    parametres : un aller-retour vide et un transfert de lot partagent
+    l'identifiant B-07 mais mesurent des choses differentes, et leurs parametres
+    (`{}` d'un cote, `{elements: N}` de l'autre) les distinguent.
+    """
+    return json.dumps(result.get("parameters") or {}, sort_keys=True)
+
+
+def params_slug(result: dict) -> str:
+    """Slug des parametres, pour le nom de fichier ; vide si aucun parametre."""
+    params = result.get("parameters") or {}
+    if not params:
+        return ""
+    return slugify("-".join(f"{key}-{params[key]}" for key in sorted(params)))
+
+
+def params_label(result: dict) -> str:
+    """Libelle lisible des parametres, ou chaine vide si aucun."""
+    params = result.get("parameters") or {}
+    return ", ".join(f"{key}={params[key]}" for key in sorted(params))
+
+
 def archive_result(root: pathlib.Path, result: dict) -> pathlib.Path:
     """Ecrit un resultat schema 2 sous la disposition d'ax-bench.
 
-    `<root>/<benchmark>/<os-cpu>/<date>_<commit>.json`, meme slug et meme
-    arborescence que le crate.
+    `<root>/<benchmark>/<os-cpu>/<date>_<commit>[__<params>].json`. Le suffixe de
+    parametres n'apparait que pour un benchmark parametre : sans lui, deux jeux
+    de parametres du meme benchmark mesures au meme commit ecraseraient le meme
+    fichier. Un resultat sans parametre garde le nom d'ax-bench.
     """
     platform = result["platform"]
     slug = slugify(f"{platform['os']}-{platform['cpu']}") or "inconnu"
     directory = root / result["benchmark"] / slug
     directory.mkdir(parents=True, exist_ok=True)
-    name = f"{slugify(result['date'])}_{slugify(result['commit'])[:12]}.json"
-    path = directory / name
+    stem = f"{slugify(result['date'])}_{slugify(result['commit'])[:12]}"
+    suffix = params_slug(result)
+    if suffix:
+        stem = f"{stem}__{suffix}"
+    path = directory / f"{stem}.json"
     path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return path
 
@@ -298,67 +328,81 @@ def cmd_check(root: pathlib.Path) -> int:
 
 
 def cmd_summary(root: pathlib.Path) -> int:
-    by_group: dict[tuple[str, str], list[pathlib.Path]] = {}
+    groups: dict[tuple[str, str, str], list[tuple[pathlib.Path, dict]]] = {}
     for benchmark, platform, path in iter_results(root):
-        by_group.setdefault((benchmark, platform), []).append(path)
+        try:
+            result = load_result(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        groups.setdefault((benchmark, platform, params_signature(result)), []).append(
+            (path, result)
+        )
 
-    if not by_group:
+    if not groups:
         print("bench summary : aucun resultat archive")
         return 0
 
-    for (benchmark, platform), paths in sorted(by_group.items()):
-        latest = paths[-1]
-        try:
-            result = load_result(latest)
-        except (OSError, json.JSONDecodeError) as error:
-            print(f"{benchmark} / {platform} : illisible ({error})")
-            continue
+    for (benchmark, platform, _sig), items in sorted(groups.items()):
+        items.sort(key=lambda pair: pair[0].name)
+        result = items[-1][1]
+        label = f"{benchmark} / {platform}"
+        extra = params_label(result)
+        if extra:
+            label = f"{label} / {extra}"
         stats = result.get("stats", {})
         print(
-            f"{benchmark} / {platform} : "
-            f"p50={stats.get('p50_ns')} p95={stats.get('p95_ns')} "
+            f"{label} : p50={stats.get('p50_ns')} p95={stats.get('p95_ns')} "
             f"p99={stats.get('p99_ns')} ns "
-            f"({len(paths)} resultat(s), dernier {result.get('date')})"
+            f"({len(items)} resultat(s), dernier {result.get('date')})"
         )
     return 0
 
 
 def cmd_compare(root: pathlib.Path, benchmark: str | None, platform: str | None, every: bool) -> int:
-    groups: dict[tuple[str, str], list[pathlib.Path]] = {}
+    if not every and (not benchmark or not platform):
+        print("bench compare : --benchmark et --platform requis (ou --all)", file=sys.stderr)
+        return 2
+
+    # Une serie se compare a elle-meme : meme benchmark, meme plateforme, memes
+    # parametres. Deux facettes d'un B-xx (aller-retour vide, transfert de lot)
+    # ne se comparent donc jamais l'une a l'autre.
+    groups: dict[tuple[str, str, str], list[tuple[pathlib.Path, dict]]] = {}
+    matched = False
     for bench, plat, path in iter_results(root):
-        groups.setdefault((bench, plat), []).append(path)
-
-    if not every:
-        if not benchmark or not platform:
-            print("bench compare : --benchmark et --platform requis (ou --all)", file=sys.stderr)
-            return 2
-        selected = {k: v for k, v in groups.items() if k == (benchmark, platform)}
-        if not selected:
-            print(f"bench compare : aucun resultat pour {benchmark} / {platform}", file=sys.stderr)
-            return 2
-        groups = selected
-
-    regressed = False
-    compared = 0
-    for (bench, plat), paths in sorted(groups.items()):
-        if len(paths) < 2:
-            print(f"{bench} / {plat} : un seul resultat, rien a comparer")
+        if not every and (bench, plat) != (benchmark, platform):
             continue
+        matched = True
         try:
-            current = load_result(paths[-1])
-            baseline = load_result(paths[-2])
+            result = load_result(path)
         except (OSError, json.JSONDecodeError) as error:
             print(f"{bench} / {plat} : illisible ({error})", file=sys.stderr)
             return 1
-        verdict, ratio = compare_p95(current, baseline)
+        groups.setdefault((bench, plat, params_signature(result)), []).append((path, result))
+
+    if not every and not matched:
+        print(f"bench compare : aucun resultat pour {benchmark} / {platform}", file=sys.stderr)
+        return 2
+
+    regressed = False
+    compared = 0
+    for (bench, plat, _sig), items in sorted(groups.items()):
+        items.sort(key=lambda pair: pair[0].name)
+        label = f"{bench} / {plat}"
+        extra = params_label(items[-1][1])
+        if extra:
+            label = f"{label} / {extra}"
+        if len(items) < 2:
+            print(f"{label} : un seul resultat, rien a comparer")
+            continue
+        verdict, ratio = compare_p95(items[-1][1], items[-2][1])
         compared += 1
         if verdict == "no-baseline":
-            print(f"{bench} / {plat} : pas de reference comparable")
+            print(f"{label} : pas de reference comparable")
         elif verdict == "ok":
-            print(f"{bench} / {plat} : p95 {ratio * 100:+.1f} % vs precedent — ok")
+            print(f"{label} : p95 {ratio * 100:+.1f} % vs precedent — ok")
         else:
             regressed = True
-            print(f"{bench} / {plat} : p95 {ratio * 100:+.1f} % vs precedent — REGRESSION (> 20 %)")
+            print(f"{label} : p95 {ratio * 100:+.1f} % vs precedent — REGRESSION (> 20 %)")
 
     if regressed:
         print("bench compare : regression p95 superieure a 20 % (R-2251)", file=sys.stderr)

@@ -881,10 +881,19 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             (R-2231), stats au rang le plus proche comme le crate. JMH
             rejoint `summary`/`compare` : tous les harnais alimentent un seul
             format. 26 tests ; vérifié sur la vraie sortie JMH de B-07.
-      - [ ] **Tranche 7+** : B-07 facette « coût par élément en lot »
-            (contexte natif vivant + tampon de transfert) ; harnais en jeu
-            (`/axion bench`, monde déterministe, entrées scriptées) ; benches
-            restants à mesure que leurs composants arrivent.
+      - [x] **Tranche 7** : B-07 facette « coût par élément en lot »
+            (`B07FfiBatch`). Mesure le transfert d'un lot de N éléments par le
+            tampon partagé (init contexte → acquire SIM_IN → écriture →
+            release), `@Param` sur N ; vérifié sur le natif réel (64→254 ns,
+            1024→521 ns) et scale. `tools/bench` rendu param-aware :
+            archivage suffixé par les paramètres, `summary`/`compare`
+            regroupés par (benchmark, plateforme, paramètres) — les deux
+            facettes de B-07 coexistent sans se comparer l'une à l'autre.
+            30 tests ; import des deux facettes vérifié.
+      - [ ] **Tranche 8+** : harnais en jeu (`/axion bench`, monde
+            déterministe, entrées scriptées, sortie schéma 2) ; benches
+            restants à mesure que leurs composants (physique, rendu,
+            déformation…) arrivent.
 - [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
       AxionEntity persistante avec rendu de debug. Décisions de Killian du
       2026-09-13 : **hitbox provisoire d'un bloc** jusqu'à M3 (R-702 avec l'AABB
