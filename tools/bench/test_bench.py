@@ -151,6 +151,121 @@ def t_summary_on_empty_root_is_zero():
         assert bench.cmd_summary(pathlib.Path(tmp)) == 0
 
 
+# --- Pont JMH -> schema 2 -------------------------------------------------------
+
+
+def jmh_entry(
+    name: str = "dev.axion.bench.B07FfiRoundtrip.emptyRoundtrip",
+    raw: list | None = None,
+    unit: str = "ns/op",
+) -> dict:
+    """Une entree JSON de JMH synthetique, minimale mais fidele."""
+    return {
+        "jmhVersion": "1.37",
+        "benchmark": name,
+        "mode": "avgt",
+        "jdkVersion": "21.0.8",
+        "primaryMetric": {
+            "scoreUnit": unit,
+            "rawData": raw if raw is not None else [[5.1, 5.9, 6.2]],
+        },
+    }
+
+
+def t_slugify_matches_axbench():
+    assert bench.slugify("Intel(R) Core") == "intel-r--core"
+
+
+def t_compute_stats_nearest_rank():
+    s = bench.compute_stats(list(range(1, 101)))
+    assert (s["p50_ns"], s["p95_ns"], s["p99_ns"], s["min_ns"], s["max_ns"]) == (
+        50,
+        95,
+        99,
+        1,
+        100,
+    )
+
+
+def t_compute_stats_population_stddev():
+    s = bench.compute_stats([2, 4, 4, 4, 5, 5, 7, 9])
+    assert abs(s["stddev_ns"] - 2.0) < 1e-9
+
+
+def t_benchmark_id_from_jmh():
+    assert (
+        bench.benchmark_id_from_jmh("dev.axion.bench.B07FfiRoundtrip.emptyRoundtrip") == "B-07"
+    )
+
+
+def t_benchmark_id_rejects_non_bnn():
+    try:
+        bench.benchmark_id_from_jmh("dev.axion.bench.FooBench.run")
+        assert False, "aurait du lever"
+    except ValueError:
+        pass
+
+
+def t_unit_factor():
+    assert bench.unit_factor("ns/op") == 1.0
+    assert bench.unit_factor("us/op") == 1_000.0
+    assert bench.unit_factor("ms/op") == 1_000_000.0
+
+
+def t_unit_factor_rejects_unknown():
+    try:
+        bench.unit_factor("furlong/op")
+        assert False, "aurait du lever"
+    except ValueError:
+        pass
+
+
+def t_jmh_to_results_is_valid_schema2():
+    results = bench.jmh_to_results(
+        [jmh_entry()],
+        commit="abc123",
+        date="2026-09-15T00:00:00Z",
+        cpu="CPU test",
+        os_name="windows",
+        cores=8,
+    )
+    assert len(results) == 1
+    r = results[0]
+    assert r["benchmark"] == "B-07"
+    assert r["config"]["harness"] == "jmh"
+    assert r["runs"][0]["samples_ns"] == [5, 6, 6]
+    assert bench.validate_result(r) == []
+
+
+def t_jmh_to_results_converts_units():
+    results = bench.jmh_to_results(
+        [jmh_entry(raw=[[1.0, 2.0]], unit="us/op")],
+        commit="c",
+        date="d",
+        cpu="cpu",
+        os_name="os",
+        cores=1,
+    )
+    assert results[0]["runs"][0]["samples_ns"] == [1000, 2000]
+
+
+def t_import_jmh_writes_valid_archive():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp) / "results"
+        jmh_file = pathlib.Path(tmp) / "jmh.json"
+        jmh_file.write_text(json.dumps([jmh_entry()]), encoding="utf-8")
+        rc = bench.cmd_import_jmh(
+            root, jmh_file, "abc123", "2026-09-15T00:00:00Z", "CPU test", "windows", 8
+        )
+        assert rc == 0
+        files = list(root.rglob("*.json"))
+        assert len(files) == 1, files
+        result = json.loads(files[0].read_text(encoding="utf-8"))
+        assert result["benchmark"] == "B-07"
+        assert bench.validate_result(result) == []
+        assert bench.cmd_check(root) == 0
+
+
 def run() -> int:
     tests = [value for name, value in sorted(globals().items()) if name.startswith("t_")]
     failures = 0

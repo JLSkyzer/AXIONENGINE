@@ -17,6 +17,7 @@ l'archive entière, tous producteurs confondus.
 python tools/bench/bench.py check   [--root DIR]
 python tools/bench/bench.py summary [--root DIR]
 python tools/bench/bench.py compare [--root DIR] [--all | --benchmark B --platform P]
+python tools/bench/bench.py import-jmh <jmh.json> --commit SHA --date ISO --cpu MODELE --os OS --cores N [--root DIR]
 ```
 
 `--root` vaut `benchmarks/results` par défaut.
@@ -33,6 +34,14 @@ python tools/bench/bench.py compare [--root DIR] [--all | --benchmark B --platfo
 - **`compare`** — compare le p95 des deux résultats les plus récents d'une même
   plateforme. Une hausse de plus de 20 % bloque (R-2251). `--all` balaie toutes
   les paires benchmark/plateforme de l'archive.
+
+- **`import-jmh`** — convertit une sortie JSON de JMH (`./gradlew :axion-mod:jmh
+  -Pjmh.args="-rf json -rff <fichier>"`) en résultats schéma 2 et les archive.
+  L'identifiant `B-xx` vient du nom de la classe (`B07FfiRoundtrip` → `B-07`), les
+  échantillons bruts des `rawData` de JMH, la JVM de la sortie JMH ; la
+  provenance que JMH ne connaît pas — commit, date, machine — est passée en
+  argument (R-2231). Une fois importés, ces résultats se `summary`ent et se
+  `compare`nt comme les autres : JMH devient un producteur de premier rang.
 
 ## Cohérence avec le crate `ax-bench`
 

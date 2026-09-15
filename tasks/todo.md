@@ -873,11 +873,18 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             `AXION_NATIVE_DIR` (variable d'env, robuste aux espaces du chemin
             du dépôt). Vérifié : compile, tourne (~5,6 ns/op sur le natif
             réel), tests existants intacts.
-      - [ ] **Tranche 6+** : B-07 facette « coût par élément en lot »
-            (contexte natif vivant + tampon de transfert) ; pont sortie JMH →
-            schéma 2 pour `benchmarks/results/` et `tools/bench` ; harnais en
-            jeu (`/axion bench`, monde déterministe, entrées scriptées) ;
-            benches restants à mesure que leurs composants arrivent.
+      - [x] **Tranche 6** : pont sortie JMH → schéma 2 (`bench.py
+            import-jmh`). Convertit le JSON de JMH (`-rf json`) en résultats
+            schéma 2 archivés sous la même disposition qu'`ax-bench` :
+            identifiant `B-xx` déduit du nom de classe, échantillons des
+            `rawData`, provenance (commit, date, machine) en argument
+            (R-2231), stats au rang le plus proche comme le crate. JMH
+            rejoint `summary`/`compare` : tous les harnais alimentent un seul
+            format. 26 tests ; vérifié sur la vraie sortie JMH de B-07.
+      - [ ] **Tranche 7+** : B-07 facette « coût par élément en lot »
+            (contexte natif vivant + tampon de transfert) ; harnais en jeu
+            (`/axion bench`, monde déterministe, entrées scriptées) ; benches
+            restants à mesure que leurs composants arrivent.
 - [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
       AxionEntity persistante avec rendu de debug. Décisions de Killian du
       2026-09-13 : **hitbox provisoire d'un bloc** jusqu'à M3 (R-702 avec l'AABB

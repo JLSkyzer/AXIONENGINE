@@ -26,13 +26,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import pathlib
+import re
 import sys
 
 SCHEMA_VERSION = 2
 HARNESS_VERSION_KEY = "harness_version"
 # R-2251 : au-dela de cette hausse relative du p95, la fusion est bloquee.
 REGRESSION_TOLERANCE = 0.20
+
+# Version du pont JMH -> schema 2. Distincte de celle du harnais Rust : les deux
+# ne mesurent pas la meme chose (ADR-111). A incrementer si la conversion change
+# de methode.
+JMH_BRIDGE_VERSION = 1
 
 DEFAULT_ROOT = pathlib.Path("benchmarks/results")
 
@@ -135,6 +142,137 @@ def compare_p95(current: dict, baseline: dict) -> tuple[str, float | None]:
     return "ok", ratio
 
 
+# --- Pont JMH -> schema 2 -------------------------------------------------------
+
+
+def slugify(text: str) -> str:
+    """Minuscules alphanumeriques ASCII, tout autre caractere en tiret, sans
+    tiret en bordure.
+
+    Identique au slug du crate ax-bench, pour que les deux ecrivent au meme
+    endroit et que `summary`/`compare` retrouvent les uns comme les autres.
+    """
+    out = [ch.lower() if ch.isascii() and ch.isalnum() else "-" for ch in text]
+    return "".join(out).strip("-")
+
+
+def compute_stats(samples: list[int]) -> dict:
+    """Agregats d'echantillons (ns), meme methode qu'ax-bench.
+
+    Centiles au rang le plus proche sur les echantillons tries, ecart-type de
+    population. `samples` est suppose non vide.
+    """
+    ordered = sorted(samples)
+    n = len(ordered)
+
+    def percentile(p: int) -> int:
+        rank = max(1, min(n, -(-p * n // 100)))  # ceil(p * n / 100)
+        return ordered[rank - 1]
+
+    mean = sum(ordered) / n
+    variance = sum((x - mean) ** 2 for x in ordered) / n
+    return {
+        "p50_ns": percentile(50),
+        "p95_ns": percentile(95),
+        "p99_ns": percentile(99),
+        "min_ns": ordered[0],
+        "max_ns": ordered[-1],
+        "stddev_ns": math.sqrt(variance),
+    }
+
+
+_UNIT_TO_NS = {"ns": 1.0, "us": 1_000.0, "ms": 1_000_000.0, "s": 1_000_000_000.0}
+
+
+def unit_factor(score_unit: str) -> float:
+    """Facteur convertissant une unite JMH (`ns/op`, `us/op`...) en nanosecondes."""
+    unit = score_unit.split("/")[0].strip().lower()
+    if unit not in _UNIT_TO_NS:
+        raise ValueError(f"unite JMH non geree : {score_unit!r}")
+    return _UNIT_TO_NS[unit]
+
+
+def benchmark_id_from_jmh(full_name: str) -> str:
+    """Deduit l'identifiant B-xx du nom qualifie d'un benchmark JMH.
+
+    `dev.axion.bench.B07FfiRoundtrip.emptyRoundtrip` -> `B-07`. La convention est
+    qu'une classe de benchmark commence par `Bnn` (PARTIE 30.2).
+    """
+    simple = full_name.split(".")[-2] if "." in full_name else full_name
+    match = re.match(r"[Bb](\d+)", simple)
+    if not match:
+        raise ValueError(f"classe JMH sans prefixe Bnn : {simple!r} (attendu p. ex. B07...)")
+    return f"B-{int(match.group(1)):02d}"
+
+
+def jmh_to_results(
+    jmh: list, *, commit: str, date: str, cpu: str, os_name: str, cores: int
+) -> list:
+    """Convertit une sortie JSON de JMH en resultats schema 2.
+
+    Chaque benchmark JMH devient un resultat ; les echantillons bruts sont les
+    valeurs par iteration de `rawData` (une execution par fork), converties en
+    nanosecondes. La provenance que JMH ne connait pas — commit, date, machine —
+    vient de l'appelant (R-2231).
+    """
+    results = []
+    for entry in jmh:
+        metric = entry["primaryMetric"]
+        factor = unit_factor(metric["scoreUnit"])
+        runs = []
+        pooled: list[int] = []
+        for fork in metric["rawData"]:
+            samples = [round(value * factor) for value in fork]
+            if samples:
+                runs.append({"samples_ns": samples})
+                pooled.extend(samples)
+        if not pooled:
+            continue
+        results.append(
+            {
+                "schema": SCHEMA_VERSION,
+                "benchmark": benchmark_id_from_jmh(entry["benchmark"]),
+                "commit": commit,
+                "date": date,
+                "platform": {
+                    "os": os_name,
+                    "cpu": cpu,
+                    "cores": cores,
+                    "gpu": "",
+                    "driver": "",
+                    "jvm": entry.get("jdkVersion", ""),
+                },
+                "config": {
+                    HARNESS_VERSION_KEY: JMH_BRIDGE_VERSION,
+                    "harness": "jmh",
+                    "jmh_version": entry.get("jmhVersion", ""),
+                    "mode": entry.get("mode", ""),
+                    "method": entry["benchmark"].split(".")[-1],
+                },
+                "parameters": entry.get("params") or {},
+                "runs": runs,
+                "stats": compute_stats(pooled),
+            }
+        )
+    return results
+
+
+def archive_result(root: pathlib.Path, result: dict) -> pathlib.Path:
+    """Ecrit un resultat schema 2 sous la disposition d'ax-bench.
+
+    `<root>/<benchmark>/<os-cpu>/<date>_<commit>.json`, meme slug et meme
+    arborescence que le crate.
+    """
+    platform = result["platform"]
+    slug = slugify(f"{platform['os']}-{platform['cpu']}") or "inconnu"
+    directory = root / result["benchmark"] / slug
+    directory.mkdir(parents=True, exist_ok=True)
+    name = f"{slugify(result['date'])}_{slugify(result['commit'])[:12]}.json"
+    path = directory / name
+    path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def cmd_check(root: pathlib.Path) -> int:
     count = 0
     failed = 0
@@ -230,6 +368,45 @@ def cmd_compare(root: pathlib.Path, benchmark: str | None, platform: str | None,
     return 0
 
 
+def cmd_import_jmh(
+    root: pathlib.Path,
+    jmh_path: pathlib.Path,
+    commit: str,
+    date: str,
+    cpu: str,
+    os_name: str,
+    cores: int,
+) -> int:
+    try:
+        jmh = json.loads(pathlib.Path(jmh_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"bench import-jmh : lecture impossible ({error})", file=sys.stderr)
+        return 1
+    try:
+        results = jmh_to_results(
+            jmh, commit=commit, date=date, cpu=cpu, os_name=os_name, cores=cores
+        )
+    except (KeyError, ValueError, TypeError) as error:
+        print(f"bench import-jmh : conversion impossible ({error})", file=sys.stderr)
+        return 1
+    if not results:
+        print("bench import-jmh : aucun benchmark converti", file=sys.stderr)
+        return 1
+    for result in results:
+        problems = validate_result(result)
+        if problems:
+            print(
+                f"bench import-jmh : resultat converti mal forme ({result['benchmark']})",
+                file=sys.stderr,
+            )
+            for problem in problems:
+                print(f"    - {problem}", file=sys.stderr)
+            return 1
+        path = archive_result(root, result)
+        print(f"{result['benchmark']} : p95={result['stats']['p95_ns']} ns -> {path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     # `--root` est commun a toutes les sous-commandes et se place apres elles
     # (`bench.py check --root DIR`), la ou on l'attend.
@@ -251,6 +428,18 @@ def main(argv: list[str] | None = None) -> int:
     compare.add_argument("--benchmark", help="identifiant du benchmark, p. ex. B-02")
     compare.add_argument("--platform", help="slug de plateforme, p. ex. windows-cpu-test")
 
+    imp = sub.add_parser(
+        "import-jmh",
+        parents=[common],
+        help="convertit une sortie JSON de JMH (-rf json) en resultats schema 2 archives",
+    )
+    imp.add_argument("jmh", type=pathlib.Path, help="fichier JSON produit par JMH")
+    imp.add_argument("--commit", required=True, help="empreinte du commit mesure")
+    imp.add_argument("--date", required=True, help="date ISO 8601 de la mesure")
+    imp.add_argument("--cpu", required=True, help="modele de processeur (provenance)")
+    imp.add_argument("--os", dest="os_name", required=True, help="systeme, p. ex. windows")
+    imp.add_argument("--cores", type=int, required=True, help="nombre de coeurs logiques")
+
     args = parser.parse_args(argv)
 
     if args.command == "check":
@@ -259,6 +448,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_summary(args.root)
     if args.command == "compare":
         return cmd_compare(args.root, args.benchmark, args.platform, args.all)
+    if args.command == "import-jmh":
+        return cmd_import_jmh(
+            args.root, args.jmh, args.commit, args.date, args.cpu, args.os_name, args.cores
+        )
     parser.error("commande inconnue")
     return 2
 
