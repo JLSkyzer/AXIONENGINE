@@ -890,9 +890,18 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             regroupés par (benchmark, plateforme, paramètres) — les deux
             facettes de B-07 coexistent sans se comparer l'une à l'autre.
             30 tests ; import des deux facettes vérifié.
-      - [ ] **Tranche 8+** : harnais en jeu (`/axion bench`, monde
-            déterministe, entrées scriptées, sortie schéma 2) ; benches
-            restants à mesure que leurs composants (physique, rendu,
+      - [x] **Tranche 8** : harnais en jeu — sous-commande `/axion bench
+            <scénario>` (C-71/C-72) et scénario `ffi`. `BenchRunner` mesure
+            l'aller-retour FFI **par lot** (temps d'un lot / taille), ce qui
+            passe sous la résolution de `nanoTime` (~100 ns) et rejoint le
+            ~5 ns de JMH B-07 — là où la calibration de démarrage (R-330,
+            `nanoTime` par appel) bute sur le plancher du timer. Refuse si le
+            natif n'est pas prêt. Compile, `BenchRunnerTest` vert, tests
+            axion-mod intacts. Constat du test en jeu : `/axion status`
+            affichait 100 ns par cet artefact de timer.
+      - [ ] **Tranche 9+** : scénarios en jeu à monde déterministe + entrées
+            scriptées, sortie schéma 2 vers `benchmarks/results/` (`--json`) ;
+            benches restants à mesure que leurs composants (physique, rendu,
             déformation…) arrivent.
 - [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
       AxionEntity persistante avec rendu de debug. Décisions de Killian du

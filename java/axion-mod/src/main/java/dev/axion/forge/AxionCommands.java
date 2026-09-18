@@ -2,7 +2,9 @@ package dev.axion.forge;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import dev.axion.bridge.NativeBridge;
 import dev.axion.diag.AssetsReport;
+import dev.axion.diag.BenchRunner;
 import dev.axion.diag.MetricsReport;
 import dev.axion.diag.StatusReport;
 import dev.axion.entity.AssemblySpawns;
@@ -129,7 +131,46 @@ final class AxionCommands {
                                                         context.getSource(),
                                                         runtime,
                                                         StringArgumentType.getString(
-                                                                context, "clé")))))));
+                                                                context, "clé"))))))
+                        .then(Commands.literal("bench")
+                                .then(Commands.argument("scénario", StringArgumentType.word())
+                                        .suggests((context, builder) -> SharedSuggestionProvider.suggest(
+                                                List.of("ffi"), builder))
+                                        .executes(context -> bench(
+                                                context.getSource(),
+                                                runtime,
+                                                StringArgumentType.getString(context, "scénario"))))));
+    }
+
+    /**
+     * Exécute un scénario de benchmark en jeu (C-72) et affiche ses statistiques.
+     *
+     * <p>Refuse si le runtime natif n'est pas prêt : le scénario {@code ffi}
+     * mesure un aller-retour natif, qui n'aboutirait pas sinon. La mesure est
+     * par lot, donc juste même sous la résolution de {@code nanoTime} (voir
+     * {@link BenchRunner}) — contrairement à la calibration de démarrage.
+     */
+    private static int bench(CommandSourceStack source, AxionRuntime runtime, String scenario) {
+        if (!"ffi".equals(scenario)) {
+            source.sendFailure(Component.literal(
+                    "AXION : scénario inconnu — " + scenario + " (connus : ffi)"));
+            return 0;
+        }
+        var outcome = runtime.outcome();
+        if (outcome == null || !outcome.isReady()) {
+            source.sendFailure(Component.literal("AXION : runtime natif non prêt"));
+            return 0;
+        }
+        BenchRunner.Result result = BenchRunner.ffi(NativeBridge::nativeAbiVersion);
+        LOGGER.info("AXION : /axion bench {} demandé par {} — p50 {} ns/appel",
+                scenario, source.getTextName(), String.format(java.util.Locale.ROOT, "%.1f", result.p50Ns()));
+        return send(source, List.of(
+                "AXION ENGINE — benchmark ffi (aller-retour FFI, mesuré par lot)",
+                String.format(java.util.Locale.ROOT,
+                        "  p50=%.1f p95=%.1f p99=%.1f ns/appel (min %.1f, max %.1f)",
+                        result.p50Ns(), result.p95Ns(), result.p99Ns(),
+                        result.minNs(), result.maxNs()),
+                "  " + result.calls() + " appels mesurés"));
     }
 
     /**
