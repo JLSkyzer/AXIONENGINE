@@ -295,12 +295,42 @@ def archive_result(root: pathlib.Path, result: dict) -> pathlib.Path:
     directory = root / result["benchmark"] / slug
     directory.mkdir(parents=True, exist_ok=True)
     stem = f"{slugify(result['date'])}_{slugify(result['commit'])[:12]}"
+    marks = []
+    harness = (result.get("config") or {}).get("harness")
+    if harness:
+        marks.append(slugify(str(harness)))
     suffix = params_slug(result)
     if suffix:
-        stem = f"{stem}__{suffix}"
+        marks.append(suffix)
+    if marks:
+        stem = stem + "__" + "__".join(marks)
     path = directory / f"{stem}.json"
     path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def harness_of(result: dict) -> str:
+    """Identité du harnais producteur d'un résultat.
+
+    Deux harnais mesurent le même B-xx différemment (JMH ~5 ns, harnais en jeu
+    ~8 ns pour B-07) : les comparer ferait passer un écart de méthode pour une
+    régression. Le nom explicite (`config.harness`) prime ; à défaut, la version
+    du harnais. Les résultats du crate ax-bench, sans nom, gardent leur version.
+    """
+    config = result.get("config") or {}
+    return str(config.get("harness") or config.get(HARNESS_VERSION_KEY) or "")
+
+
+def series_label(benchmark: str, platform: str, result: dict) -> str:
+    """Libellé d'une série : benchmark, plateforme, harnais nommé et paramètres."""
+    label = f"{benchmark} / {platform}"
+    harness = (result.get("config") or {}).get("harness")
+    if harness:
+        label = f"{label} / {harness}"
+    params = params_label(result)
+    if params:
+        label = f"{label} / {params}"
+    return label
 
 
 def cmd_check(root: pathlib.Path) -> int:
@@ -328,27 +358,23 @@ def cmd_check(root: pathlib.Path) -> int:
 
 
 def cmd_summary(root: pathlib.Path) -> int:
-    groups: dict[tuple[str, str, str], list[tuple[pathlib.Path, dict]]] = {}
+    groups: dict[tuple[str, str, str, str], list[tuple[pathlib.Path, dict]]] = {}
     for benchmark, platform, path in iter_results(root):
         try:
             result = load_result(path)
         except (OSError, json.JSONDecodeError):
             continue
-        groups.setdefault((benchmark, platform, params_signature(result)), []).append(
-            (path, result)
-        )
+        key = (benchmark, platform, harness_of(result), params_signature(result))
+        groups.setdefault(key, []).append((path, result))
 
     if not groups:
         print("bench summary : aucun resultat archive")
         return 0
 
-    for (benchmark, platform, _sig), items in sorted(groups.items()):
+    for (benchmark, platform, _harness, _sig), items in sorted(groups.items()):
         items.sort(key=lambda pair: pair[0].name)
         result = items[-1][1]
-        label = f"{benchmark} / {platform}"
-        extra = params_label(result)
-        if extra:
-            label = f"{label} / {extra}"
+        label = series_label(benchmark, platform, result)
         stats = result.get("stats", {})
         print(
             f"{label} : p50={stats.get('p50_ns')} p95={stats.get('p95_ns')} "
@@ -363,10 +389,11 @@ def cmd_compare(root: pathlib.Path, benchmark: str | None, platform: str | None,
         print("bench compare : --benchmark et --platform requis (ou --all)", file=sys.stderr)
         return 2
 
-    # Une serie se compare a elle-meme : meme benchmark, meme plateforme, memes
-    # parametres. Deux facettes d'un B-xx (aller-retour vide, transfert de lot)
-    # ne se comparent donc jamais l'une a l'autre.
-    groups: dict[tuple[str, str, str], list[tuple[pathlib.Path, dict]]] = {}
+    # Une serie se compare a elle-meme : meme benchmark, meme plateforme, meme
+    # harnais, memes parametres. Deux facettes d'un B-xx (aller-retour vide,
+    # transfert de lot) ne se comparent jamais l'une a l'autre, ni deux harnais
+    # qui mesurent le meme B-xx differemment (JMH vs harnais en jeu).
+    groups: dict[tuple[str, str, str, str], list[tuple[pathlib.Path, dict]]] = {}
     matched = False
     for bench, plat, path in iter_results(root):
         if not every and (bench, plat) != (benchmark, platform):
@@ -377,7 +404,8 @@ def cmd_compare(root: pathlib.Path, benchmark: str | None, platform: str | None,
         except (OSError, json.JSONDecodeError) as error:
             print(f"{bench} / {plat} : illisible ({error})", file=sys.stderr)
             return 1
-        groups.setdefault((bench, plat, params_signature(result)), []).append((path, result))
+        key = (bench, plat, harness_of(result), params_signature(result))
+        groups.setdefault(key, []).append((path, result))
 
     if not every and not matched:
         print(f"bench compare : aucun resultat pour {benchmark} / {platform}", file=sys.stderr)
@@ -385,12 +413,9 @@ def cmd_compare(root: pathlib.Path, benchmark: str | None, platform: str | None,
 
     regressed = False
     compared = 0
-    for (bench, plat, _sig), items in sorted(groups.items()):
+    for (bench, plat, _harness, _sig), items in sorted(groups.items()):
         items.sort(key=lambda pair: pair[0].name)
-        label = f"{bench} / {plat}"
-        extra = params_label(items[-1][1])
-        if extra:
-            label = f"{label} / {extra}"
+        label = series_label(bench, plat, items[-1][1])
         if len(items) < 2:
             print(f"{label} : un seul resultat, rien a comparer")
             continue

@@ -6,6 +6,7 @@ import dev.axion.bridge.NativeBridge;
 import dev.axion.diag.AssetsReport;
 import dev.axion.diag.BenchRunner;
 import dev.axion.diag.MetricsReport;
+import dev.axion.diag.SchemaTwoWriter;
 import dev.axion.diag.StatusReport;
 import dev.axion.entity.AssemblySpawns;
 import dev.axion.lifecycle.AxionRuntime;
@@ -15,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import net.minecraft.commands.CommandSourceStack;
@@ -139,7 +141,16 @@ final class AxionCommands {
                                         .executes(context -> bench(
                                                 context.getSource(),
                                                 runtime,
-                                                StringArgumentType.getString(context, "scénario"))))));
+                                                StringArgumentType.getString(context, "scénario"),
+                                                null))
+                                        .then(Commands.literal("--json")
+                                                .then(Commands.argument("fichier", StringArgumentType.greedyString())
+                                                        .executes(context -> bench(
+                                                                context.getSource(),
+                                                                runtime,
+                                                                StringArgumentType.getString(context, "scénario"),
+                                                                StringArgumentType.getString(
+                                                                        context, "fichier"))))))));
     }
 
     /**
@@ -150,7 +161,8 @@ final class AxionCommands {
      * par lot, donc juste même sous la résolution de {@code nanoTime} (voir
      * {@link BenchRunner}) — contrairement à la calibration de démarrage.
      */
-    private static int bench(CommandSourceStack source, AxionRuntime runtime, String scenario) {
+    private static int bench(
+            CommandSourceStack source, AxionRuntime runtime, String scenario, String jsonPath) {
         if (!"ffi".equals(scenario)) {
             source.sendFailure(Component.literal(
                     "AXION : scénario inconnu — " + scenario + " (connus : ffi)"));
@@ -164,13 +176,25 @@ final class AxionCommands {
         BenchRunner.Result result = BenchRunner.ffi(NativeBridge::nativeAbiVersion);
         LOGGER.info("AXION : /axion bench {} demandé par {} — p50 {} ns/appel",
                 scenario, source.getTextName(), String.format(java.util.Locale.ROOT, "%.1f", result.p50Ns()));
-        return send(source, List.of(
-                "AXION ENGINE — benchmark ffi (aller-retour FFI, mesuré par lot)",
-                String.format(java.util.Locale.ROOT,
-                        "  p50=%.1f p95=%.1f p99=%.1f ns/appel (min %.1f, max %.1f)",
-                        result.p50Ns(), result.p95Ns(), result.p99Ns(),
-                        result.minNs(), result.maxNs()),
-                "  " + result.calls() + " appels mesurés"));
+
+        List<String> lines = new ArrayList<>();
+        lines.add("AXION ENGINE — benchmark ffi (aller-retour FFI, mesuré par lot)");
+        lines.add(String.format(java.util.Locale.ROOT,
+                "  p50=%.1f p95=%.1f p99=%.1f ns/appel (min %.1f, max %.1f)",
+                result.p50Ns(), result.p95Ns(), result.p99Ns(), result.minNs(), result.maxNs()));
+        lines.add("  " + result.calls() + " appels mesurés");
+
+        if (jsonPath != null) {
+            try {
+                Path out = Path.of(jsonPath);
+                SchemaTwoWriter.write("B-07", scenario, "ingame-dev", result, out);
+                lines.add("  résultat schéma 2 écrit dans " + out.toAbsolutePath());
+            } catch (IOException | RuntimeException error) {
+                source.sendFailure(Component.literal(
+                        "AXION : écriture du JSON échouée — " + error.getMessage()));
+            }
+        }
+        return send(source, lines);
     }
 
     /**

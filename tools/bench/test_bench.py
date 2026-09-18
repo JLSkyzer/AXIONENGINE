@@ -334,6 +334,31 @@ def t_import_jmh_facets_coexist():
         assert bench.cmd_check(root) == 0
 
 
+# --- Distinction des harnais ----------------------------------------------------
+
+
+def t_archive_result_suffixes_harness():
+    with tempfile.TemporaryDirectory() as tmp:
+        r = result(100, benchmark="B-07")
+        r["config"]["harness"] = "jmh"
+        path = bench.archive_result(pathlib.Path(tmp), r)
+        assert "__jmh" in path.name, path.name
+
+
+def t_compare_separates_by_harness():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        jmh = result(50, benchmark="B-07")
+        jmh["config"]["harness"] = "jmh"
+        ingame = result(80, benchmark="B-07")
+        ingame["config"]["harness"] = "axion-ingame"
+        bench.archive_result(root, jmh)
+        bench.archive_result(root, ingame)
+        # Deux harnais du même B-07 : séries distinctes, aucune comparaison
+        # croisée — donc pas de fausse régression malgré 50 vs 80.
+        assert bench.cmd_compare(root, None, None, every=True) == 0
+
+
 def run() -> int:
     tests = [value for name, value in sorted(globals().items()) if name.startswith("t_")]
     failures = 0

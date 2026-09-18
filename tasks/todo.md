@@ -899,10 +899,20 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             natif n'est pas prêt. Compile, `BenchRunnerTest` vert, tests
             axion-mod intacts. Constat du test en jeu : `/axion status`
             affichait 100 ns par cet artefact de timer.
-      - [ ] **Tranche 9+** : scénarios en jeu à monde déterministe + entrées
-            scriptées, sortie schéma 2 vers `benchmarks/results/` (`--json`) ;
-            benches restants à mesure que leurs composants (physique, rendu,
-            déformation…) arrivent.
+      - [x] **Tranche 9** : sortie schéma 2 du harnais en jeu — `/axion bench
+            ffi --json <fichier>` écrit un résultat schéma 2 (`SchemaTwoWriter`,
+            Gson, provenance en jeu : os, cpu via `PROCESSOR_IDENTIFIER`,
+            cœurs, JVM ; stats au rang le plus proche) lisible par
+            `tools/bench`. Le harnais est marqué `config.harness =
+            axion-ingame`, et `tools/bench` rendu **conscient du harnais**
+            (archivage + `summary`/`compare` groupent par harnais) : la
+            mesure en jeu de B-07 (~8 ns) ne se compare jamais à celle de JMH
+            (~5 ns). 34 tests Python, 2 tests Java ; compile et suite
+            axion-mod vertes.
+      - [ ] **Tranche 10+** : scénarios en jeu à monde déterministe + entrées
+            scriptées (tick complet B-16, frame B-17…) ; benches restants à
+            mesure que leurs composants (physique, rendu, déformation…)
+            arrivent.
 - [ ] **C-50 — Axion Entity** (M2). Livrable : `/axion spawn` crée une
       AxionEntity persistante avec rendu de debug. Décisions de Killian du
       2026-09-13 : **hitbox provisoire d'un bloc** jusqu'à M3 (R-702 avec l'AABB

@@ -33,8 +33,19 @@ public final class BenchRunner {
         throw new AssertionError("classe utilitaire, non instanciable");
     }
 
-    /** Statistiques d'un scénario, en nanosecondes par appel. */
-    public record Result(double p50Ns, double p95Ns, double p99Ns, double minNs, double maxNs, long calls) {}
+    /**
+     * Résultat d'un scénario : statistiques par appel (en ns, pour l'affichage)
+     * et échantillons bruts arrondis à la nanoseconde entière (pour le schéma 2,
+     * comme le pont JMH). {@code samplesNs} porte un échantillon par lot.
+     */
+    public record Result(
+            double p50Ns,
+            double p95Ns,
+            double p99Ns,
+            double minNs,
+            double maxNs,
+            long calls,
+            long[] samplesNs) {}
 
     /**
      * Mesure l'aller-retour FFI avec la configuration par défaut.
@@ -74,13 +85,18 @@ public final class BenchRunner {
             throw new IllegalStateException("valeur impossible");
         }
         Arrays.sort(perCall);
+        long[] samplesNs = new long[perCall.length];
+        for (int index = 0; index < perCall.length; index++) {
+            samplesNs[index] = Math.round(perCall[index]);
+        }
         return new Result(
                 percentile(perCall, 50),
                 percentile(perCall, 95),
                 percentile(perCall, 99),
                 perCall[0],
                 perCall[perCall.length - 1],
-                (long) runs * batch);
+                (long) runs * batch,
+                samplesNs);
     }
 
     /** Centile au rang le plus proche, comme le crate ax-bench et le pont JMH. */
