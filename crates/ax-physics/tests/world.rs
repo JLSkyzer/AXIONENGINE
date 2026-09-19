@@ -368,3 +368,87 @@ fn plafond_non_atteint_n_endort_personne() {
     }
     assert!(world.enforce_active_body_cap(Vec3::ZERO, 5).is_empty());
 }
+
+fn bille_haute(world: &mut PhysicsWorld) -> ax_physics::BodyId {
+    world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 10.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
+        .expect("une bille est valide")
+}
+
+#[test]
+fn la_trainee_ralentit_la_chute() {
+    // §10.6 : une forte traînée plafonne la vitesse de chute à une valeur
+    // terminale bien inférieure à la chute libre.
+    let mut world = PhysicsWorld::new(config());
+    let libre = bille_haute(&mut world);
+    let freinee = bille_haute(&mut world);
+    world.set_drag(freinee, 2.0, 1.0); // Cd·A = 2 m²
+    for _ in 0..120 {
+        world.advance(1.0 / 60.0);
+    }
+    let y_libre = world.pose(libre).unwrap().translation.y;
+    let y_freinee = world.pose(freinee).unwrap().translation.y;
+    assert!(
+        y_freinee > y_libre + 5.0,
+        "la bille freinée doit être bien plus haut (libre={y_libre}, freinée={y_freinee})"
+    );
+    // Sa vitesse de chute est plafonnée (terminale), loin de la chute libre.
+    let vy_freinee = world.velocity(freinee).unwrap().y;
+    let vy_libre = world.velocity(libre).unwrap().y;
+    assert!(vy_freinee > vy_libre + 5.0, "vitesse plafonnée (freinée={vy_freinee}, libre={vy_libre})");
+}
+
+#[test]
+fn le_vent_pousse_via_la_trainee() {
+    // §10.6 : le vent n'agit qu'à travers la traînée. Corps sans gravité, vent
+    // de +x : la traînée le pousse vers +x.
+    let mut world = PhysicsWorld::new(config());
+    let voile = world
+        .add_body(BodyKind::Dynamic, Vec3::ZERO, Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    world.set_gravity_scale(voile, 0.0);
+    world.set_drag(voile, 2.0, 2.0);
+    world.set_wind(Vec3::new(5.0, 0.0, 0.0));
+    for _ in 0..60 {
+        world.advance(1.0 / 60.0);
+    }
+    let x = world.pose(voile).unwrap().translation.x;
+    assert!(x > 0.5, "le vent aurait dû pousser le corps vers +x (x={x})");
+}
+
+#[test]
+fn meme_sequence_meme_resultat_avec_forces() {
+    // R-1020 : le profil de forces vit dans une HashMap consultée par clé pendant
+    // l'itération déterministe de rapier ; deux exécutions doivent coïncider.
+    let run = || {
+        let mut world = PhysicsWorld::new(config());
+        world.set_wind(Vec3::new(3.0, 0.0, -1.0));
+        let ball = bille_haute(&mut world);
+        world.set_drag(ball, 1.5, 0.8);
+        for _ in 0..200 {
+            world.advance(1.0 / 60.0);
+        }
+        world.pose(ball).unwrap()
+    };
+    assert_eq!(run(), run(), "la simulation avec forces reste reproductible");
+}
+
+#[test]
+fn gravity_scale_zero_fait_flotter() {
+    // §10.6 : gravity_scale nul annule la chute.
+    let mut world = PhysicsWorld::new(config());
+    let flotteur = world
+        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    world.set_gravity_scale(flotteur, 0.0);
+    for _ in 0..120 {
+        world.advance(1.0 / 60.0);
+    }
+    let y = world.pose(flotteur).unwrap().translation.y;
+    assert!((y - 5.0).abs() < 0.01, "sans gravité le corps ne tombe pas (y={y})");
+}

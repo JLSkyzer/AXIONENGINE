@@ -12,6 +12,22 @@ use crate::body::{
 };
 use crate::config::PhysicsConfig;
 use crate::groups::CollisionGroups;
+use std::collections::HashMap;
+
+/// Masse volumique de l'air au niveau de la mer, en kg/m³ (§10.6, terme ρ de la
+/// traînée). Valeur physique standard, non un chiffre de performance.
+const AIR_DENSITY: f32 = 1.225;
+
+/// Paramètres de force environnementale attachés à un corps (§10.6).
+///
+/// En tranche 2d, seule la traînée est portée. La portance (surfaces déclarées)
+/// et la flottabilité (fluide) enrichiront ce profil dans les tranches
+/// suivantes.
+#[derive(Debug, Clone, Copy, Default)]
+struct AeroProfile {
+    /// Produit `Cd · A` (coefficient de traînée × aire de référence), en m².
+    drag_cd_a: f32,
+}
 
 /// Pose rigide d'un corps : translation et rotation, sans échelle.
 ///
@@ -39,6 +55,12 @@ pub struct PhysicsWorld {
     /// Temps écoulé non encore simulé, en s. Toujours dans `[0, fixed_dt)` après
     /// [`advance`](Self::advance).
     accumulator: f32,
+    /// Vent de la dimension (§10.6, `physics.wind`), défaut nul.
+    wind: Vec3,
+    /// Profils de force par corps. **Consultée par clé** pendant l'itération
+    /// déterministe des corps `rapier`, jamais itérée elle-même : son ordre de
+    /// parcours n'entre donc dans aucun résultat de simulation (R-1020).
+    aero: HashMap<BodyId, AeroProfile>,
 }
 
 impl PhysicsWorld {
@@ -60,6 +82,8 @@ impl PhysicsWorld {
             inner,
             config,
             accumulator: 0.0,
+            wind: Vec3::ZERO,
+            aero: HashMap::new(),
         }
     }
 
@@ -112,11 +136,50 @@ impl PhysicsWorld {
         self.accumulator = (self.accumulator + frame_dt.max(0.0)).min(ceiling);
         let mut substeps = 0;
         while self.accumulator >= dt {
+            self.apply_aero_forces();
             self.inner.step();
             self.accumulator -= dt;
             substeps += 1;
         }
         substeps
+    }
+
+    /// Applique les forces environnementales de chaque corps avant un sous-pas
+    /// (§10.6). En tranche 2d : la traînée, relative au vent.
+    ///
+    /// Les forces `rapier` persistent d'un pas à l'autre ; on les remet à zéro
+    /// puis on les repose à chaque sous-pas, à partir de la vitesse courante. La
+    /// gravité, appliquée par `rapier`, n'est pas touchée. L'ordre de parcours
+    /// est celui, déterministe, des corps `rapier` (R-1020).
+    fn apply_aero_forces(&mut self) {
+        if self.aero.is_empty() {
+            return;
+        }
+        let wind = self.wind;
+        let updates: Vec<(RigidBodyHandle, Vec3)> = self
+            .inner
+            .bodies
+            .iter()
+            .filter(|(_, body)| body.is_dynamic() && !body.is_sleeping())
+            .filter_map(|(handle, body)| {
+                let profile = self.aero.get(&BodyId::from_handle(handle))?;
+                let relative = body.linvel() - wind;
+                let speed = relative.length();
+                let drag = if profile.drag_cd_a > 0.0 && speed > f32::EPSILON {
+                    // F = −0.5·ρ·Cd·A·|v|·v : opposée à la vitesse relative.
+                    relative * (-0.5 * AIR_DENSITY * profile.drag_cd_a * speed)
+                } else {
+                    Vec3::ZERO
+                };
+                Some((handle, drag))
+            })
+            .collect();
+        for (handle, drag) in updates {
+            if let Some(body) = self.inner.bodies.get_mut(handle) {
+                body.reset_forces(false);
+                body.add_force(drag, false);
+            }
+        }
     }
 
     /// Pose courante d'un corps, ou `None` s'il n'existe plus.
@@ -188,6 +251,52 @@ impl PhysicsWorld {
         self.inner.bodies.get(id.handle()).map(rapier3d::prelude::RigidBody::is_ccd_enabled)
     }
 
+    /// Vitesse linéaire d'un corps, en m/s, ou `None` s'il n'existe pas.
+    #[must_use]
+    pub fn velocity(&self, id: BodyId) -> Option<Vec3> {
+        self.inner.bodies.get(id.handle()).map(rapier3d::prelude::RigidBody::linvel)
+    }
+
+    /// Fixe le vent de la dimension (§10.6, `physics.wind`).
+    ///
+    /// Le vent n'agit qu'à travers la traînée : un corps sans traînée l'ignore.
+    pub fn set_wind(&mut self, wind: Vec3) {
+        self.wind = wind;
+    }
+
+    /// Vent courant de la dimension.
+    #[must_use]
+    pub fn wind(&self) -> Vec3 {
+        self.wind
+    }
+
+    /// Multiplie la gravité ressentie par un corps (§10.6, `gravity_scale`).
+    ///
+    /// Sans effet si le corps n'existe pas. `0` fait flotter le corps, `2` le
+    /// rend deux fois plus lourd.
+    pub fn set_gravity_scale(&mut self, id: BodyId, scale: f32) {
+        if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
+            body.set_gravity_scale(scale, true);
+        }
+    }
+
+    /// Déclare la traînée d'un corps (§10.6) par son coefficient et son aire de
+    /// référence. La force vaut `−0.5·ρ·Cd·A·|v|·v`, relative au vent.
+    ///
+    /// Sans effet si le corps n'existe pas. Un produit `Cd·A` nul retire la
+    /// traînée.
+    pub fn set_drag(&mut self, id: BodyId, drag_coefficient: f32, area: f32) {
+        if self.inner.bodies.get(id.handle()).is_none() {
+            return;
+        }
+        self.aero.insert(
+            id,
+            AeroProfile {
+                drag_cd_a: drag_coefficient * area,
+            },
+        );
+    }
+
     /// Endort les corps dynamiques éveillés au-delà de `radius` autour de
     /// `center` (R-612). Renvoie le nombre endormi.
     ///
@@ -247,6 +356,7 @@ impl PhysicsWorld {
 
     /// Retire un corps ; renvoie vrai s'il existait.
     pub fn remove_body(&mut self, id: BodyId) -> bool {
+        self.aero.remove(&id);
         self.inner.remove_body(id.handle()).is_some()
     }
 

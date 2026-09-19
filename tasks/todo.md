@@ -1291,11 +1291,24 @@ substituable sans changer rapier »).
             le surplus au-delà du plafond, des plus éloignés aux plus anciens,
             déterministe (tri stable sur l'ordre d'itération) et rendant la
             liste pour journalisation (R-613). 6 tests dédiés.
-      - [ ] **Tranche 2d — forces environnementales (§10.6).** Flottabilité
-            (V immergé par 8 points de l'AABB), traînée (Cd·A·v·|v|), portance
-            sur surfaces déclarées, vent par dimension. Descripteur de forces
-            par corps + application par sous-pas ; les coefficients et surfaces
-            sont des données déclaratives (définitions/C-32).
+      - [x] **Tranche 2d — infrastructure de forces + aéro (§10.6).**
+            Profil de force par corps (`HashMap` consultée par clé, jamais
+            itérée, R-1020), application par sous-pas dans `advance` (remise à
+            zéro puis repose des forces `rapier`, gravité intacte). Gravité par
+            corps (`set_gravity_scale`), vent de dimension (`set_wind`,
+            `physics.wind`), traînée `−0.5·ρ·Cd·A·|v|·v` relative au vent
+            (`set_drag`), requête `velocity`. 4 tests (chute freinée à vitesse
+            terminale, vent poussant via la traînée, `gravity_scale` nul qui
+            flotte, déterminisme avec forces).
+      - [ ] **Tranche 2e — portance (§10.6, R-1000).** Surfaces portantes
+            déclarées (aire, coefficient `Cl`, orientation) ; `F = 0.5·ρ·Cl·A·
+            |v|²` par surface, appliquée au point de la surface. C'est ce qui
+            rend avions et bateaux possibles sans système dédié.
+      - [ ] **Tranche 2f — flottabilité (§10.6).** Volume immergé approché par
+            les 8 points de l'AABB contre un fluide de dimension (surface,
+            densité) ; `F = ρ_fluide·V_immergé·g`. La présence réelle du fluide
+            (eau par bloc) viendra du monde (C-38) ; ici un fluide de niveau
+            plat suffit à porter le modèle.
       - [ ] **Tranche 3 — événements et données de contact (DM-xx → C-41).**
             `PhysicsEvent` `#[repr(C)]` (§10.7) ; la narrow phase publie
             point/normale/impulsions/vitesse relative/masses/matériaux (R-615) ;
