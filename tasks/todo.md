@@ -1307,11 +1307,13 @@ substituable sans changer rapier »).
             l'écoulement, selon la composante de la normale qui lui est
             orthogonale (documenté sur `LiftSurface`). 2 tests : une aile dans
             le vent porte, une aile de profil ne porte pas.
-      - [ ] **Tranche 2f — flottabilité (§10.6).** Volume immergé approché par
-            les 8 points de l'AABB contre un fluide de dimension (surface,
-            densité) ; `F = ρ_fluide·V_immergé·g`. La présence réelle du fluide
-            (eau par bloc) viendra du monde (C-38) ; ici un fluide de niveau
-            plat suffit à porter le modèle.
+      - [x] **Tranche 2f — flottabilité (§10.6).** `FluidEnvironment` de
+            dimension (surface plate, densité), optionnel. Volume immergé
+            approché par la fraction des 8 coins de l'AABB sous la surface ;
+            `F = −gravity·ρ·V` appliquée au centre de poussée (centroïde des
+            coins immergés) → moment de redressement d'un bateau. La présence
+            réelle de l'eau par bloc viendra de C-38. 2 tests : un fluide plus
+            dense fait remonter, un corps plus dense coule.
       - [ ] **Tranche 3 — événements et données de contact (DM-xx → C-41).**
             `PhysicsEvent` `#[repr(C)]` (§10.7) ; la narrow phase publie
             point/normale/impulsions/vitesse relative/masses/matériaux (R-615) ;

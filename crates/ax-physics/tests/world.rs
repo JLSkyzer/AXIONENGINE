@@ -2,8 +2,8 @@
 
 use ax_math::{Quat, Vec3};
 use ax_physics::{
-    BodyError, BodyKind, CollisionGroups, CompoundPart, ConfigError, LiftSurface, PhysicsConfig,
-    PhysicsWorld, Shape,
+    BodyError, BodyKind, CollisionGroups, CompoundPart, ConfigError, FluidEnvironment, LiftSurface,
+    PhysicsConfig, PhysicsWorld, Shape,
 };
 
 fn config() -> PhysicsConfig {
@@ -492,6 +492,50 @@ fn une_aile_de_profil_ne_porte_pas() {
     }
     let end = world.pose(wing).unwrap().translation;
     assert!((end - start).length() < 0.01, "une aile de profil ne devrait pas bouger");
+}
+
+/// Une caisse cubique immergée à y = −3, dans un fluide dont la densité est
+/// donnée relativement à celle du corps (1 par défaut chez rapier).
+fn caisse_immergee(world: &mut PhysicsWorld, densite_fluide: f32) -> ax_physics::BodyId {
+    world.set_fluid(Some(FluidEnvironment {
+        surface_y: 0.0,
+        density: densite_fluide,
+    }));
+    world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, -3.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [0.5, 0.5, 0.5],
+            },
+        )
+        .expect("une caisse est valide")
+}
+
+#[test]
+fn flottabilite_fait_remonter() {
+    // §10.6 : un fluide plus dense que le corps le fait remonter vers la surface.
+    let mut world = PhysicsWorld::new(config());
+    let caisse = caisse_immergee(&mut world, 2.0);
+    world.set_drag(caisse, 1.0, 1.0); // amortit l'oscillation
+    for _ in 0..180 {
+        world.advance(1.0 / 60.0);
+    }
+    let y = world.pose(caisse).unwrap().translation.y;
+    assert!(y > -1.5, "la caisse aurait dû remonter vers la surface (y={y})");
+}
+
+#[test]
+fn corps_plus_dense_que_le_fluide_coule() {
+    // §10.6 : un fluide moins dense que le corps ne le soutient pas — il coule.
+    let mut world = PhysicsWorld::new(config());
+    let caisse = caisse_immergee(&mut world, 0.5);
+    for _ in 0..120 {
+        world.advance(1.0 / 60.0);
+    }
+    let y = world.pose(caisse).unwrap().translation.y;
+    assert!(y < -3.5, "la caisse trop dense aurait dû couler (y={y})");
 }
 
 #[test]

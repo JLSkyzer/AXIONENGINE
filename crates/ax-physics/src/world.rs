@@ -2,8 +2,8 @@
 
 use ax_math::{Quat, Vec3};
 use rapier3d::prelude::{
-    ColliderBuilder, Pose as RapierPose, PhysicsWorld as RapierWorld, RigidBody, RigidBodyBuilder,
-    RigidBodyHandle, RigidBodyType, SharedShape,
+    ColliderBuilder, ColliderSet, Pose as RapierPose, PhysicsWorld as RapierWorld, RigidBody,
+    RigidBodyBuilder, RigidBodyHandle, RigidBodyType, SharedShape,
 };
 
 use crate::body::{
@@ -11,7 +11,7 @@ use crate::body::{
     MIN_CONVEX_HULL_POINTS,
 };
 use crate::config::PhysicsConfig;
-use crate::forces::LiftSurface;
+use crate::forces::{FluidEnvironment, LiftSurface};
 use crate::groups::CollisionGroups;
 use std::collections::HashMap;
 
@@ -66,6 +66,8 @@ pub struct PhysicsWorld {
     accumulator: f32,
     /// Vent de la dimension (§10.6, `physics.wind`), défaut nul.
     wind: Vec3,
+    /// Fluide de la dimension pour la flottabilité (§10.6), absent par défaut.
+    fluid: Option<FluidEnvironment>,
     /// Profils de force par corps. **Consultée par clé** pendant l'itération
     /// déterministe des corps `rapier`, jamais itérée elle-même : son ordre de
     /// parcours n'entre donc dans aucun résultat de simulation (R-1020).
@@ -92,6 +94,7 @@ impl PhysicsWorld {
             config,
             accumulator: 0.0,
             wind: Vec3::ZERO,
+            fluid: None,
             aero: HashMap::new(),
         }
     }
@@ -161,26 +164,43 @@ impl PhysicsWorld {
     /// gravité, appliquée par `rapier`, n'est pas touchée. L'ordre de parcours
     /// est celui, déterministe, des corps `rapier` (R-1020).
     fn apply_aero_forces(&mut self) {
-        if self.aero.is_empty() {
+        if self.aero.is_empty() && self.fluid.is_none() {
             return;
         }
         let wind = self.wind;
+        let fluid = self.fluid;
+        let gravity = self.inner.gravity;
         // Passe 1, en lecture : calcule le plan de chaque corps dans l'ordre
-        // déterministe de `rapier`, en consultant son profil par clé.
+        // déterministe de `rapier`, en consultant son profil par clé. Avec un
+        // fluide, **tout** corps dynamique est planifié — même hors de l'eau —
+        // pour que sa poussée précédente soit remise à zéro à la sortie.
         let plans: Vec<BodyForcePlan> = self
             .inner
             .bodies
             .iter()
             .filter(|(_, body)| body.is_dynamic() && !body.is_sleeping())
             .filter_map(|(handle, body)| {
-                let profile = self.aero.get(&BodyId::from_handle(handle))?;
-                let central = drag_force(body, wind, profile.drag_cd_a);
-                let pose = body.position();
-                let at_points = profile
-                    .lift_surfaces
-                    .iter()
-                    .filter_map(|surface| lift_force(body, pose, wind, surface))
-                    .collect();
+                let profile = self.aero.get(&BodyId::from_handle(handle));
+                if profile.is_none() && fluid.is_none() {
+                    return None;
+                }
+                let mut central = Vec3::ZERO;
+                let mut at_points = Vec::new();
+                if let Some(profile) = profile {
+                    central = drag_force(body, wind, profile.drag_cd_a);
+                    let pose = body.position();
+                    at_points.extend(
+                        profile
+                            .lift_surfaces
+                            .iter()
+                            .filter_map(|surface| lift_force(body, pose, wind, surface)),
+                    );
+                }
+                if let Some(fluid) = fluid {
+                    if let Some(app) = buoyancy_force(body, &self.inner.colliders, gravity, &fluid) {
+                        at_points.push(app);
+                    }
+                }
                 Some(BodyForcePlan {
                     handle,
                     central,
@@ -287,6 +307,20 @@ impl PhysicsWorld {
     #[must_use]
     pub fn wind(&self) -> Vec3 {
         self.wind
+    }
+
+    /// Fixe (ou retire, avec `None`) le fluide de la dimension (§10.6).
+    ///
+    /// Tant qu'un fluide est présent, tout corps dynamique dont l'AABB plonge
+    /// sous la surface reçoit une poussée d'Archimède.
+    pub fn set_fluid(&mut self, fluid: Option<FluidEnvironment>) {
+        self.fluid = fluid;
+    }
+
+    /// Fluide courant de la dimension, ou `None`.
+    #[must_use]
+    pub fn fluid(&self) -> Option<FluidEnvironment> {
+        self.fluid
     }
 
     /// Multiplie la gravité ressentie par un corps (§10.6, `gravity_scale`).
@@ -499,4 +533,54 @@ fn lift_force(
     let direction = perpendicular / perpendicular_length;
     let magnitude = 0.5 * AIR_DENSITY * surface.lift_coefficient * surface.area * speed * speed;
     Some((direction * magnitude, world_point))
+}
+
+/// Poussée d'Archimède d'un corps (§10.6), appliquée au centre de poussée.
+///
+/// Le volume immergé est approché par la fraction des **huit coins de l'AABB**
+/// sous la surface (§10.6). La force `−gravity · ρ · V` s'applique au centroïde
+/// des coins immergés : sous COM quand le corps émerge à moitié, elle produit
+/// alors le moment de redressement d'un bateau. `None` si aucun coin n'est
+/// immergé.
+fn buoyancy_force(
+    body: &RigidBody,
+    colliders: &ColliderSet,
+    gravity: Vec3,
+    fluid: &FluidEnvironment,
+) -> Option<(Vec3, Vec3)> {
+    if fluid.density <= 0.0 {
+        return None;
+    }
+    let handle = *body.colliders().first()?;
+    let aabb = colliders.get(handle)?.compute_aabb();
+    let (lo, hi) = (aabb.mins, aabb.maxs);
+    let corners = [
+        Vec3::new(lo.x, lo.y, lo.z),
+        Vec3::new(hi.x, lo.y, lo.z),
+        Vec3::new(lo.x, hi.y, lo.z),
+        Vec3::new(hi.x, hi.y, lo.z),
+        Vec3::new(lo.x, lo.y, hi.z),
+        Vec3::new(hi.x, lo.y, hi.z),
+        Vec3::new(lo.x, hi.y, hi.z),
+        Vec3::new(hi.x, hi.y, hi.z),
+    ];
+    let mut submerged = 0u32;
+    let mut sum = Vec3::ZERO;
+    for corner in corners {
+        if corner.y < fluid.surface_y {
+            submerged += 1;
+            sum += corner;
+        }
+    }
+    if submerged == 0 {
+        return None;
+    }
+    let extents = hi - lo;
+    let volume = extents.x * extents.y * extents.z;
+    let immersed = (submerged as f32 / 8.0) * volume;
+    if immersed <= 0.0 {
+        return None;
+    }
+    let center_of_buoyancy = sum / submerged as f32;
+    Some((-gravity * (fluid.density * immersed), center_of_buoyancy))
 }

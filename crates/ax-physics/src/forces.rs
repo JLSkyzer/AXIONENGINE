@@ -2,6 +2,22 @@
 
 use ax_math::Vec3;
 
+/// Le fluide d'une dimension, pour la flottabilité (§10.6).
+///
+/// Modèle simple : une surface **plate** au niveau `surface_y` et une densité
+/// uniforme. La présence réelle de l'eau, par bloc, viendra du fournisseur de
+/// collision du monde (C-38) ; ce niveau plat suffit à porter le modèle de
+/// flottabilité, dont le volume immergé est de toute façon approché par les huit
+/// coins de l'AABB d'un corps.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FluidEnvironment {
+    /// Altitude de la surface du fluide, en blocs. Un point d'altitude
+    /// inférieure est immergé.
+    pub surface_y: f32,
+    /// Masse volumique du fluide, en kg/m³ (eau douce ≈ 1000).
+    pub density: f32,
+}
+
 /// Une surface portante déclarée sur un corps (§10.6, R-1000).
 ///
 /// C'est ce qui rend avions et bateaux possibles **sans système dédié** : une
