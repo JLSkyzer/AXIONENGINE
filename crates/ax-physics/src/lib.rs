@@ -19,7 +19,9 @@
 //! (§10.3) : primitives, `ConvexHull` (4..256 points) et `Compound` (≤64), avec
 //! validation à l'ajout. Les formes concaves du monde (`TriMesh`, `Heightfield`)
 //! arrivent avec C-38 (INV-13). Groupes de collision data-driven par nom (§10.4,
-//! R-980) avec les huit groupes réservés. Les forces (§10.6), les événements
+//! R-980) avec les huit groupes réservés. Gestion d'activité : CCD déclarée,
+//! sommeil forcé hors du rayon de simulation (R-612), plafond de corps actifs
+//! déterministe (R-613). Les forces environnementales (§10.6), les événements
 //! (§10.7, DM → C-41) et la frontière FFI arrivent dans les tranches suivantes.
 //!
 //! Exigences : R-460, R-462, R-610, R-611, R-990, R-1020, R-1753 ; PARTIE 10.

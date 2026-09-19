@@ -627,3 +627,18 @@ l'intuition géométrique. Le contrat qu'on expose (ici `DegenerateConvexHull`)
 doit refléter le comportement réel de la dépendance, sous peine d'un garde-fou
 qui ment sur ce qu'il rejette. Même famille que les paniques de `gltf`/`tobj` :
 ce qu'une dépendance accepte n'est pas ce qu'on suppose.
+
+## 2026-09-19 | rapier 0.35 rattrape les corps rapides sans CCD (contacts spéculatifs)
+
+Un test voulait prouver la CCD de C-31 en faisant traverser un mur fin à une
+bille rapide **sans** CCD, puis en l'arrêtant **avec**. La bille ne traversait
+jamais, même à ~0.3 m de déplacement par pas contre un mur de 4 cm : rapier
+0.35 emploie des **contacts spéculatifs** qui prédisent le contact dans une
+marge et arrêtent les corps rapides avant le tunneling, CCD ou non.
+
+**Règle.** Ne pas éprouver une option par un comportement que la dépendance
+assure déjà par un autre mécanisme : on finit par tuner une scène de plus en
+plus extrême contre la robustesse du moteur. Tester ce que **notre** code
+contrôle — ici la pose du drapeau (`is_ccd_enabled` round-trip) et l'absence
+de régression de la simulation — et laisser l'anti-traversée au contrat de
+rapier, qui le teste chez lui.

@@ -1283,11 +1283,19 @@ substituable sans changer rapier »).
             **Reste de §10.4** : l'exclusion intra-assembly (sauf déclaration)
             exige un tag d'assembly par collider et un `PhysicsHooks` ; elle
             va avec l'intégration des assemblies dans le monde (tranche 5).
-      - [ ] **Tranche 2c — forces, CCD, rayon, plafond.** Forces
-            environnementales (§10.6 : flottabilité, traînée, portance, vent),
-            CCD (déclaré ou |v|·dt > 0.5·min_dim), `simulation_radius` sommeil
-            forcé (R-612), plafond `max_active_bodies` déterministe et
-            journalisé (R-613).
+      - [x] **Tranche 2c — gestion d'activité (CCD, rayon, plafond).** CCD
+            déclarée par corps (`set_ccd_enabled`/`is_ccd_enabled`) ; rapier en
+            tire les sous-pas, ses contacts spéculatifs jouant l'« automatique »
+            de la fiche. `enforce_simulation_radius` endort — jamais ne supprime
+            (R-612) — les corps hors du rayon ; `enforce_active_body_cap` endort
+            le surplus au-delà du plafond, des plus éloignés aux plus anciens,
+            déterministe (tri stable sur l'ordre d'itération) et rendant la
+            liste pour journalisation (R-613). 6 tests dédiés.
+      - [ ] **Tranche 2d — forces environnementales (§10.6).** Flottabilité
+            (V immergé par 8 points de l'AABB), traînée (Cd·A·v·|v|), portance
+            sur surfaces déclarées, vent par dimension. Descripteur de forces
+            par corps + application par sous-pas ; les coefficients et surfaces
+            sont des données déclaratives (définitions/C-32).
       - [ ] **Tranche 3 — événements et données de contact (DM-xx → C-41).**
             `PhysicsEvent` `#[repr(C)]` (§10.7) ; la narrow phase publie
             point/normale/impulsions/vitesse relative/masses/matériaux (R-615) ;

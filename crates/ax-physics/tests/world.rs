@@ -281,3 +281,90 @@ fn groupes_incompatibles_la_bille_traverse() {
     let y = hauteur_bille_apres_3s(&[1], &[1]);
     assert!(y < -1.0, "la bille aurait dû traverser le sol (y={y})");
 }
+
+#[test]
+fn ccd_se_declare_sur_un_corps() {
+    // La CCD se déclare et se retire par corps ; rapier en tire ensuite les
+    // sous-pas d'interpolation. Le comportement anti-traversée est le contrat de
+    // rapier (renforcé par ses contacts spéculatifs) ; ici on vérifie que la
+    // déclaration prend bien, et qu'elle n'empêche pas la simulation normale.
+    let mut world = PhysicsWorld::new(config());
+    let ball = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 10.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.2 },
+        )
+        .expect("une bille est valide");
+    assert_eq!(world.is_ccd_enabled(ball), Some(false), "désactivée par défaut");
+    world.set_ccd_enabled(ball, true);
+    assert_eq!(world.is_ccd_enabled(ball), Some(true));
+    // Un corps avec CCD tombe toujours normalement.
+    let start = world.pose(ball).unwrap().translation.y;
+    for _ in 0..30 {
+        world.advance(1.0 / 60.0);
+    }
+    assert!(world.pose(ball).unwrap().translation.y < start, "la bille tombe malgré la CCD");
+    world.set_ccd_enabled(ball, false);
+    assert_eq!(world.is_ccd_enabled(ball), Some(false));
+}
+
+#[test]
+fn sommeil_force_hors_du_rayon() {
+    // R-612 : au-delà du rayon, sommeil forcé — jamais suppression.
+    let mut world = PhysicsWorld::new(config());
+    let proche = world
+        .add_body(BodyKind::Dynamic, Vec3::new(2.0, 0.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    let loin = world
+        .add_body(BodyKind::Dynamic, Vec3::new(50.0, 0.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    assert_eq!(world.enforce_simulation_radius(Vec3::ZERO, 10.0), 1);
+    assert_eq!(world.is_sleeping(proche), Some(false));
+    assert_eq!(world.is_sleeping(loin), Some(true));
+    // Jamais supprimé : les deux corps existent toujours.
+    assert_eq!(world.body_count(), 2);
+}
+
+#[test]
+fn plafond_endort_les_plus_eloignes() {
+    // R-613 : au-delà du plafond, les plus éloignés s'endorment, déterministe.
+    let mut world = PhysicsWorld::new(config());
+    let ids: Vec<_> = (1..=5)
+        .map(|i| {
+            world
+                .add_body(
+                    BodyKind::Dynamic,
+                    Vec3::new(i as f32, 0.0, 0.0),
+                    Quat::IDENTITY,
+                    Shape::Ball { radius: 0.3 },
+                )
+                .unwrap()
+        })
+        .collect();
+    let slept = world.enforce_active_body_cap(Vec3::ZERO, 2);
+    assert_eq!(slept.len(), 3, "trois corps de trop doivent s'endormir");
+    // Les deux plus proches restent éveillés, les trois plus éloignés dorment.
+    assert_eq!(world.is_sleeping(ids[0]), Some(false));
+    assert_eq!(world.is_sleeping(ids[1]), Some(false));
+    assert_eq!(world.is_sleeping(ids[2]), Some(true));
+    assert_eq!(world.is_sleeping(ids[3]), Some(true));
+    assert_eq!(world.is_sleeping(ids[4]), Some(true));
+}
+
+#[test]
+fn plafond_non_atteint_n_endort_personne() {
+    let mut world = PhysicsWorld::new(config());
+    for i in 0..3 {
+        world
+            .add_body(
+                BodyKind::Dynamic,
+                Vec3::new(i as f32, 0.0, 0.0),
+                Quat::IDENTITY,
+                Shape::Ball { radius: 0.3 },
+            )
+            .unwrap();
+    }
+    assert!(world.enforce_active_body_cap(Vec3::ZERO, 5).is_empty());
+}

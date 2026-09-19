@@ -3,7 +3,7 @@
 use ax_math::{Quat, Vec3};
 use rapier3d::prelude::{
     ColliderBuilder, Pose as RapierPose, PhysicsWorld as RapierWorld, RigidBodyBuilder,
-    RigidBodyType, SharedShape,
+    RigidBodyHandle, RigidBodyType, SharedShape,
 };
 
 use crate::body::{
@@ -162,6 +162,87 @@ impl PhysicsWorld {
                 collider.set_collision_groups(interaction);
             }
         }
+    }
+
+    /// Active ou désactive la détection continue de collision (CCD) d'un corps.
+    ///
+    /// Sans effet si le corps n'existe pas. Une fois activée, `rapier` déclenche
+    /// de lui-même les sous-pas CCD quand le corps se déplace assez vite pour
+    /// traverser une forme fine en un pas — l'« automatique » de la fiche (le
+    /// seuil interne de `rapier` joue le rôle de `|v|·dt > 0.5·min_dim`).
+    pub fn set_ccd_enabled(&mut self, id: BodyId, enabled: bool) {
+        if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
+            body.enable_ccd(enabled);
+        }
+    }
+
+    /// Indique si un corps dort, ou `None` s'il n'existe pas.
+    #[must_use]
+    pub fn is_sleeping(&self, id: BodyId) -> Option<bool> {
+        self.inner.bodies.get(id.handle()).map(rapier3d::prelude::RigidBody::is_sleeping)
+    }
+
+    /// Indique si la CCD est activée sur un corps, ou `None` s'il n'existe pas.
+    #[must_use]
+    pub fn is_ccd_enabled(&self, id: BodyId) -> Option<bool> {
+        self.inner.bodies.get(id.handle()).map(rapier3d::prelude::RigidBody::is_ccd_enabled)
+    }
+
+    /// Endort les corps dynamiques éveillés au-delà de `radius` autour de
+    /// `center` (R-612). Renvoie le nombre endormi.
+    ///
+    /// **Endort, jamais ne supprime** (R-612) : un corps hors du rayon de
+    /// simulation garde son état et se réveille s'il y rentre. L'itération suit
+    /// l'ordre déterministe de `rapier` (R-1020).
+    pub fn enforce_simulation_radius(&mut self, center: Vec3, radius: f32) -> usize {
+        let radius_squared = radius * radius;
+        let beyond: Vec<RigidBodyHandle> = self
+            .inner
+            .bodies
+            .iter()
+            .filter(|(_, body)| body.is_dynamic() && !body.is_sleeping())
+            .filter(|(_, body)| (body.translation() - center).length_squared() > radius_squared)
+            .map(|(handle, _)| handle)
+            .collect();
+        for handle in &beyond {
+            if let Some(body) = self.inner.bodies.get_mut(*handle) {
+                body.sleep();
+            }
+        }
+        beyond.len()
+    }
+
+    /// Fait respecter le plafond de corps actifs (R-613) autour de `center`.
+    ///
+    /// Si plus de `cap` corps dynamiques sont éveillés, endort le surplus en
+    /// commençant par **les plus éloignés** ; à distance égale, par **les plus
+    /// anciens** — un tri stable sur l'ordre d'itération déterministe de `rapier`
+    /// suffit à départager (R-1020). Renvoie la liste endormie, dans l'ordre où
+    /// elle a été endormie, pour que l'appelant la journalise (R-613).
+    pub fn enforce_active_body_cap(&mut self, center: Vec3, cap: usize) -> Vec<BodyId> {
+        let mut awake: Vec<(RigidBodyHandle, f32)> = self
+            .inner
+            .bodies
+            .iter()
+            .filter(|(_, body)| body.is_dynamic() && !body.is_sleeping())
+            .map(|(handle, body)| (handle, (body.translation() - center).length_squared()))
+            .collect();
+        if awake.len() <= cap {
+            return Vec::new();
+        }
+        // Tri **stable** par distance décroissante : à distance égale, l'ordre
+        // d'itération (déterministe, ~ ancienneté) reste, donc les plus anciens
+        // partent en premier.
+        awake.sort_by(|left, right| right.1.total_cmp(&left.1));
+        let excess = awake.len() - cap;
+        let mut slept = Vec::with_capacity(excess);
+        for (handle, _) in awake.into_iter().take(excess) {
+            if let Some(body) = self.inner.bodies.get_mut(handle) {
+                body.sleep();
+            }
+            slept.push(BodyId::from_handle(handle));
+        }
+        slept
     }
 
     /// Retire un corps ; renvoie vrai s'il existait.
