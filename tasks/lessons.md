@@ -612,3 +612,18 @@ retenu. `tools/ci/check_compiler_version.py` le fait maintenant.
 la constante : un renommage la cacherait, et un contrôle qui ne lit plus rien
 passe au vert en ne comparant rien. Le silence ne prouve pas l'égalité, il
 prouve l'absence de mesure.
+
+## 2026-09-19 | `convex_hull` de parry tolère les coplanaires, pas les confondus
+
+Un test de C-31 supposait que `SharedShape::convex_hull` rendrait `None` pour
+quatre points **coplanaires** (aucun volume). Faux : parry en fait une
+enveloppe plate et rend `Some`. Il ne rend `None` que pour une entrée
+réellement dégénérée — points confondus ou colinéaires, moins de trois points
+distincts. Le test échouait en refusant ce que la bibliothèque accepte.
+
+**Règle.** Avant d'affirmer dans un test qu'une bibliothèque **refuse** une
+entrée limite, vérifier son vrai seuil de refus dans sa source, pas dans
+l'intuition géométrique. Le contrat qu'on expose (ici `DegenerateConvexHull`)
+doit refléter le comportement réel de la dépendance, sous peine d'un garde-fou
+qui ment sur ce qu'il rejette. Même famille que les paniques de `gltf`/`tobj` :
+ce qu'une dépendance accepte n'est pas ce qu'on suppose.

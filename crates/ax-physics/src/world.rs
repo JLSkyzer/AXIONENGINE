@@ -3,10 +3,13 @@
 use ax_math::{Quat, Vec3};
 use rapier3d::prelude::{
     ColliderBuilder, Pose as RapierPose, PhysicsWorld as RapierWorld, RigidBodyBuilder,
-    RigidBodyType,
+    RigidBodyType, SharedShape,
 };
 
-use crate::body::{BodyId, BodyKind, Shape};
+use crate::body::{
+    BodyError, BodyId, BodyKind, CompoundPart, Shape, MAX_COMPOUND_PARTS, MAX_CONVEX_HULL_POINTS,
+    MIN_CONVEX_HULL_POINTS,
+};
 use crate::config::PhysicsConfig;
 
 /// Pose rigide d'un corps : translation et rotation, sans échelle.
@@ -59,8 +62,23 @@ impl PhysicsWorld {
         }
     }
 
-    /// Ajoute un corps et son collider primitif ; renvoie sa référence.
-    pub fn add_body(&mut self, kind: BodyKind, position: Vec3, rotation: Quat, shape: Shape) -> BodyId {
+    /// Ajoute un corps et son collider ; renvoie sa référence.
+    ///
+    /// La forme est validée **avant** la création du corps : si elle est refusée
+    /// (§10.3), rien n'est inséré dans le monde.
+    ///
+    /// # Errors
+    /// [`BodyError`] si la forme est invalide — enveloppe convexe hors de 4..256
+    /// points ou dégénérée, composé vide ou de plus de 64 formes filles.
+    pub fn add_body(
+        &mut self,
+        kind: BodyKind,
+        position: Vec3,
+        rotation: Quat,
+        shape: Shape,
+    ) -> Result<BodyId, BodyError> {
+        let collider = ColliderBuilder::new(shared_shape_of(&shape)?).build();
+
         let body_type = match kind {
             BodyKind::Static => RigidBodyType::Fixed,
             BodyKind::Kinematic => RigidBodyType::KinematicPositionBased,
@@ -76,8 +94,8 @@ impl PhysicsWorld {
         activation.angular_threshold = self.config.sleep_angular_threshold;
         activation.time_until_sleep = self.config.sleep_time;
 
-        let (handle, _collider) = self.inner.insert(body, collider_of(shape));
-        BodyId::from_handle(handle)
+        let (handle, _collider) = self.inner.insert(body, collider);
+        Ok(BodyId::from_handle(handle))
     }
 
     /// Avance la simulation d'au plus `max_substeps` sous-pas de `fixed_dt`,
@@ -136,12 +154,60 @@ impl PhysicsWorld {
     }
 }
 
-/// Construit le collider primitif d'une forme.
-fn collider_of(shape: Shape) -> rapier3d::prelude::Collider {
+/// Construit la forme `parry` d'une [`Shape`], en validant §10.3.
+///
+/// Un seul chemin de construction, récursif pour [`Shape::Compound`] : primitive
+/// ou collider composé, la validation est la même partout.
+fn shared_shape_of(shape: &Shape) -> Result<SharedShape, BodyError> {
     match shape {
         Shape::Cuboid {
             half_extents: [hx, hy, hz],
-        } => ColliderBuilder::cuboid(hx, hy, hz).build(),
-        Shape::Ball { radius } => ColliderBuilder::ball(radius).build(),
+        } => Ok(SharedShape::cuboid(*hx, *hy, *hz)),
+        Shape::Ball { radius } => Ok(SharedShape::ball(*radius)),
+        Shape::Capsule {
+            half_height,
+            radius,
+        } => Ok(SharedShape::capsule_y(*half_height, *radius)),
+        Shape::Cylinder {
+            half_height,
+            radius,
+        } => Ok(SharedShape::cylinder(*half_height, *radius)),
+        Shape::Cone {
+            half_height,
+            radius,
+        } => Ok(SharedShape::cone(*half_height, *radius)),
+        Shape::ConvexHull { points } => {
+            if points.len() < MIN_CONVEX_HULL_POINTS {
+                return Err(BodyError::ConvexHullTooFewPoints);
+            }
+            if points.len() > MAX_CONVEX_HULL_POINTS {
+                return Err(BodyError::ConvexHullTooManyPoints);
+            }
+            let cloud: Vec<Vec3> = points.iter().map(|point| Vec3::from_array(*point)).collect();
+            // `rapier` rend `None` si les points ne forment aucun volume
+            // (coplanaires, colinéaires, ou confondus) : la forme n'existe pas.
+            SharedShape::convex_hull(&cloud).ok_or(BodyError::DegenerateConvexHull)
+        }
+        Shape::Compound { parts } => {
+            if parts.is_empty() {
+                return Err(BodyError::EmptyCompound);
+            }
+            if parts.len() > MAX_COMPOUND_PARTS {
+                return Err(BodyError::CompoundTooManyParts);
+            }
+            let mut children = Vec::with_capacity(parts.len());
+            for part in parts {
+                let CompoundPart {
+                    translation,
+                    rotation,
+                    shape,
+                } = part;
+                children.push((
+                    RapierPose::from_parts(*translation, *rotation),
+                    shared_shape_of(shape)?,
+                ));
+            }
+            Ok(SharedShape::compound(children))
+        }
     }
 }

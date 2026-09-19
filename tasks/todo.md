@@ -1265,9 +1265,20 @@ substituable sans changer rapier »).
             - tests : chute sous gravité vers la position attendue ; **même
               séquence → transforms bit-identiques** (R-1020) ; `fixed_dt`
               refuse une valeur hors ensemble ; clamp de l'accumulateur.
-      - [ ] **Tranche 2 — formes, groupes, forces.** Jeu complet des formes
-            (§10.3, R-970/R-971 : pas de TriMesh/Heightfield sur dynamique,
-            INV-13), filtre et groupes réservés (§10.4, R-980), forces
+      - [x] **Tranche 2a — catalogue des formes dynamiques (§10.3).**
+            Primitives (Cuboid, Ball, Capsule, Cylinder, Cone), `ConvexHull`
+            (4..256 points, seule refitable) et `Compound` (≤64 filles,
+            récursif). `add_body` rend un `Result` et valide la forme avant
+            tout ajout. `TriMesh`/`Heightfield` (statique/kinematic, R-971)
+            différés à C-38, leur source de données : c'est là que R-970
+            (INV-13) s'appliquera à du vrai terrain, sans dépendance `ndarray`
+            prématurée. 14 tests, clippy et lint verts.
+      - [ ] **Tranche 2b — groupes et filtre de collision (§10.4, R-980).**
+            Groupes data-driven par nom, réservés (`world`, `assembly`,
+            `part`, `debris`, `entity_proxy`, `sensor`, `particle`, `debug`) ;
+            filtre `(group & other.mask) && (other.group & mask)` + exclusion
+            intra-assembly sauf déclaration.
+      - [ ] **Tranche 2c — forces, CCD, rayon, plafond.** Forces
             environnementales (§10.6 : flottabilité, traînée, portance, vent),
             CCD (déclaré ou |v|·dt > 0.5·min_dim), `simulation_radius` sommeil
             forcé (R-612), plafond `max_active_bodies` déterministe et

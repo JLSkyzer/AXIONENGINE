@@ -1,7 +1,9 @@
-//! Tests de la tranche 1 de C-31 : fondation du monde physique.
+//! Tests de C-31 : fondation du monde physique et catalogue des formes.
 
 use ax_math::{Quat, Vec3};
-use ax_physics::{BodyKind, ConfigError, PhysicsConfig, PhysicsWorld, Shape};
+use ax_physics::{
+    BodyError, BodyKind, CompoundPart, ConfigError, PhysicsConfig, PhysicsWorld, Shape,
+};
 
 fn config() -> PhysicsConfig {
     PhysicsConfig::new(1.0 / 60.0, 4).expect("configuration par défaut valide")
@@ -10,12 +12,14 @@ fn config() -> PhysicsConfig {
 #[test]
 fn une_bille_tombe_sous_la_gravite() {
     let mut world = PhysicsWorld::new(config());
-    let ball = world.add_body(
-        BodyKind::Dynamic,
-        Vec3::new(0.0, 10.0, 0.0),
-        Quat::IDENTITY,
-        Shape::Ball { radius: 0.5 },
-    );
+    let ball = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 10.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
+        .expect("une bille est une forme valide");
     let start = world.pose(ball).unwrap().translation.y;
     // Une seconde de simulation, un tick à la fois.
     for _ in 0..60 {
@@ -32,20 +36,24 @@ fn meme_sequence_meme_resultat() {
     // R-1020 : reproductibilité sur une même machine et un même binaire.
     let run = || {
         let mut world = PhysicsWorld::new(config());
-        let _sol = world.add_body(
-            BodyKind::Static,
-            Vec3::new(0.0, 0.0, 0.0),
-            Quat::IDENTITY,
-            Shape::Cuboid {
-                half_extents: [5.0, 0.5, 5.0],
-            },
-        );
-        let ball = world.add_body(
-            BodyKind::Dynamic,
-            Vec3::new(0.1, 5.0, -0.2),
-            Quat::IDENTITY,
-            Shape::Ball { radius: 0.5 },
-        );
+        world
+            .add_body(
+                BodyKind::Static,
+                Vec3::new(0.0, 0.0, 0.0),
+                Quat::IDENTITY,
+                Shape::Cuboid {
+                    half_extents: [5.0, 0.5, 5.0],
+                },
+            )
+            .expect("un sol est valide");
+        let ball = world
+            .add_body(
+                BodyKind::Dynamic,
+                Vec3::new(0.1, 5.0, -0.2),
+                Quat::IDENTITY,
+                Shape::Ball { radius: 0.5 },
+            )
+            .expect("une bille est valide");
         // Cinq secondes : la bille tombe, rebondit un peu, puis s'endort.
         for _ in 0..300 {
             world.advance(1.0 / 60.0);
@@ -79,16 +87,150 @@ fn accumulateur_clampe_pas_de_spirale() {
 #[test]
 fn un_corps_retire_n_a_plus_de_pose() {
     let mut world = PhysicsWorld::new(config());
-    let ball = world.add_body(
-        BodyKind::Dynamic,
-        Vec3::new(0.0, 1.0, 0.0),
-        Quat::IDENTITY,
-        Shape::Ball { radius: 0.25 },
-    );
+    let ball = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 1.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.25 },
+        )
+        .expect("une bille est valide");
     assert_eq!(world.body_count(), 1);
     assert!(world.remove_body(ball));
     assert_eq!(world.body_count(), 0);
     assert!(world.pose(ball).is_none());
     // Un second retrait ne trouve plus rien.
     assert!(!world.remove_body(ball));
+}
+
+#[test]
+fn toutes_les_primitives_s_ajoutent() {
+    // §10.3 : le catalogue portable par un corps dynamique.
+    let mut world = PhysicsWorld::new(config());
+    let primitives = [
+        Shape::Cuboid {
+            half_extents: [0.5, 0.5, 0.5],
+        },
+        Shape::Ball { radius: 0.5 },
+        Shape::Capsule {
+            half_height: 0.5,
+            radius: 0.25,
+        },
+        Shape::Cylinder {
+            half_height: 0.5,
+            radius: 0.25,
+        },
+        Shape::Cone {
+            half_height: 0.5,
+            radius: 0.25,
+        },
+    ];
+    for shape in primitives {
+        world
+            .add_body(BodyKind::Dynamic, Vec3::new(0.0, 2.0, 0.0), Quat::IDENTITY, shape)
+            .expect("chaque primitive est valide");
+    }
+    assert_eq!(world.body_count(), 5);
+}
+
+#[test]
+fn enveloppe_convexe_valide() {
+    // Un tétraèdre : quatre points non coplanaires.
+    let mut world = PhysicsWorld::new(config());
+    let shape = Shape::ConvexHull {
+        points: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+    };
+    assert!(world
+        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 2.0, 0.0), Quat::IDENTITY, shape)
+        .is_ok());
+}
+
+#[test]
+fn enveloppe_convexe_trop_peu_de_points() {
+    let mut world = PhysicsWorld::new(config());
+    let shape = Shape::ConvexHull {
+        points: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+    };
+    assert_eq!(
+        world.add_body(BodyKind::Dynamic, Vec3::ZERO, Quat::IDENTITY, shape),
+        Err(BodyError::ConvexHullTooFewPoints)
+    );
+}
+
+#[test]
+fn enveloppe_convexe_trop_de_points() {
+    let mut world = PhysicsWorld::new(config());
+    let shape = Shape::ConvexHull {
+        points: vec![[0.0, 0.0, 0.0]; 257],
+    };
+    assert_eq!(
+        world.add_body(BodyKind::Dynamic, Vec3::ZERO, Quat::IDENTITY, shape),
+        Err(BodyError::ConvexHullTooManyPoints)
+    );
+}
+
+#[test]
+fn enveloppe_convexe_degeneree() {
+    // Quatre points confondus : un seul point distinct, aucune enveloppe. rapier
+    // tolère des points coplanaires (il en fait une enveloppe plate) ; il ne rend
+    // `None` que pour une entrée réellement dégénérée, ce que ce cas garantit.
+    let mut world = PhysicsWorld::new(config());
+    let shape = Shape::ConvexHull {
+        points: vec![[0.5, 0.5, 0.5]; 4],
+    };
+    assert_eq!(
+        world.add_body(BodyKind::Dynamic, Vec3::ZERO, Quat::IDENTITY, shape),
+        Err(BodyError::DegenerateConvexHull)
+    );
+}
+
+#[test]
+fn compose_valide() {
+    let mut world = PhysicsWorld::new(config());
+    let shape = Shape::Compound {
+        parts: vec![
+            CompoundPart {
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+                shape: Shape::Ball { radius: 0.5 },
+            },
+            CompoundPart {
+                translation: Vec3::new(1.0, 0.0, 0.0),
+                rotation: Quat::IDENTITY,
+                shape: Shape::Cuboid {
+                    half_extents: [0.5, 0.5, 0.5],
+                },
+            },
+        ],
+    };
+    assert!(world
+        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 2.0, 0.0), Quat::IDENTITY, shape)
+        .is_ok());
+}
+
+#[test]
+fn compose_vide_refuse() {
+    let mut world = PhysicsWorld::new(config());
+    let shape = Shape::Compound { parts: vec![] };
+    assert_eq!(
+        world.add_body(BodyKind::Dynamic, Vec3::ZERO, Quat::IDENTITY, shape),
+        Err(BodyError::EmptyCompound)
+    );
+}
+
+#[test]
+fn compose_trop_de_parts_refuse() {
+    let mut world = PhysicsWorld::new(config());
+    let part = CompoundPart {
+        translation: Vec3::ZERO,
+        rotation: Quat::IDENTITY,
+        shape: Shape::Ball { radius: 0.1 },
+    };
+    let shape = Shape::Compound {
+        parts: vec![part; 65],
+    };
+    assert_eq!(
+        world.add_body(BodyKind::Dynamic, Vec3::ZERO, Quat::IDENTITY, shape),
+        Err(BodyError::CompoundTooManyParts)
+    );
 }
