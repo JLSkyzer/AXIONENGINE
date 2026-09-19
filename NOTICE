@@ -21,11 +21,15 @@ figurer dans les attributions au meme titre que les autres (R-2290).
 Dependances Rust
 --------------------------------------------------------------------------------
 
-102 paquets, transitives comprises.
+144 paquets, transitives comprises.
 
   aho-corasick 1.1.5
     Licence : Unlicense OR MIT
     Source  : https://github.com/BurntSushi/aho-corasick
+
+  allocator-api2 0.2.21
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/zakarumych/allocator-api2
 
   anes 0.1.6
     Licence : MIT OR Apache-2.0
@@ -35,6 +39,14 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-cli/anstyle.git
 
+  approx 0.5.1
+    Licence : Apache-2.0
+    Source  : https://github.com/brendanzab/approx
+
+  arrayvec 0.7.8
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/bluss/arrayvec
+
   autocfg 1.5.1
     Licence : Apache-2.0 OR MIT
     Source  : https://github.com/cuviper/autocfg
@@ -42,6 +54,10 @@ Dependances Rust
   bitflags 2.13.2
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/bitflags/bitflags
+
+  bytemuck 1.25.2
+    Licence : Zlib OR Apache-2.0 OR MIT
+    Source  : https://github.com/Lokathor/bytemuck
 
   byteorder 1.5.0
     Licence : Unlicense OR MIT
@@ -123,9 +139,21 @@ Dependances Rust
     Licence : MIT
     Source  : https://github.com/eira-fransham/crunchy
 
+  downcast-rs 2.0.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/marcianx/downcast-rs
+
   either 1.18.0
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rayon-rs/either
+
+  ena 0.14.4
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/ena
+
+  equivalent 1.0.2
+    Licence : Apache-2.0 OR MIT
+    Source  : https://github.com/indexmap-rs/equivalent
 
   find-msvc-tools 0.1.12
     Licence : MIT OR Apache-2.0
@@ -139,6 +167,10 @@ Dependances Rust
     Licence : MIT
     Source  : https://github.com/mikedilger/float-cmp
 
+  foldhash 0.2.0
+    Licence : Zlib
+    Source  : https://github.com/orlp/foldhash
+
   getrandom 0.4.3
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-random/getrandom
@@ -147,9 +179,25 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/bitshifter/glam-rs
 
+  glam 0.30.10
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/bitshifter/glam-rs
+
+  glam 0.31.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/bitshifter/glam-rs
+
+  glam 0.32.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/bitshifter/glam-rs
+
   glam 0.33.7
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/bitshifter/glam-rs
+
+  glamx 0.3.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/dimforge/glamx
 
   gltf 1.4.1
     Licence : MIT OR Apache-2.0
@@ -166,6 +214,22 @@ Dependances Rust
   half 2.7.1
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/VoidStarKat/half-rs
+
+  hash32 0.3.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/japaric/hash32
+
+  hashbrown 0.16.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/hashbrown
+
+  hashbrown 0.17.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-lang/hashbrown
+
+  heapless 0.8.0
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-embedded/heapless
 
   hermit-abi 0.5.3
     Licence : MIT OR Apache-2.0
@@ -215,9 +279,17 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-lang/libc
 
+  libm 0.2.16
+    Licence : MIT
+    Source  : https://github.com/rust-lang/compiler-builtins
+
   log 0.4.34
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-lang/log
+
+  matrixmultiply 0.3.11
+    Licence : MIT/Apache-2.0
+    Source  : https://github.com/bluss/matrixmultiply/
 
   memchr 2.8.3
     Licence : Unlicense OR MIT
@@ -233,6 +305,34 @@ Dependances Rust
     Source  : https://github.com/gltf-rs/mikktspace
     Inclut  : derive de MikkTSpace, Copyright (C) 2011 Morten S. Mikkelsen, licence zlib
 
+  nalgebra 0.35.0
+    Licence : Apache-2.0
+    Source  : https://github.com/dimforge/nalgebra
+
+  nalgebra-macros 0.3.0
+    Licence : Apache-2.0
+    Source  : https://github.com/dimforge/nalgebra
+
+  num-bigint 0.4.8
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-num/num-bigint
+
+  num-complex 0.4.6
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-num/num-complex
+
+  num-derive 0.4.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-num/num-derive
+
+  num-integer 0.1.47
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-num/num-integer
+
+  num-rational 0.4.2
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/rust-num/num-rational
+
   num-traits 0.2.19
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-num/num-traits
@@ -245,6 +345,14 @@ Dependances Rust
     Licence : MIT
     Source  : https://hg.sr.ht/~icefox/oorandom
 
+  ordered-float 5.5.0
+    Licence : MIT
+    Source  : https://github.com/reem/rust-ordered-float
+
+  parry3d 0.30.2
+    Licence : Apache-2.0
+    Source  : https://github.com/dimforge/parry
+
   pkg-config 0.3.34
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-lang/pkg-config-rs
@@ -253,6 +361,14 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/dtolnay/proc-macro2
 
+  profiling 1.0.18
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/aclysma/profiling
+
+  profiling-procmacros 1.0.18
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/aclysma/profiling
+
   quote 1.0.47
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/dtolnay/quote
@@ -260,6 +376,14 @@ Dependances Rust
   r-efi 6.0.0
     Licence : MIT OR Apache-2.0 OR LGPL-2.1-or-later
     Source  : https://github.com/r-efi/r-efi
+
+  rapier3d 0.35.3
+    Licence : Apache-2.0
+    Source  : https://github.com/dimforge/rapier
+
+  rawpointer 0.2.1
+    Licence : MIT/Apache-2.0
+    Source  : https://github.com/bluss/rawpointer/
 
   rayon 1.12.0
     Licence : MIT OR Apache-2.0
@@ -281,9 +405,21 @@ Dependances Rust
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/rust-lang/regex
 
+  robust 1.2.0
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/georust/robust
+
+  rstar 0.13.0
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/georust/rstar
+
   rustc_version 0.4.1
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/djc/rustc-version-rs
+
+  safe_arch 1.2.0
+    Licence : Zlib OR Apache-2.0 OR MIT
+    Source  : https://github.com/Lokathor/safe_arch
 
   same-file 1.0.6
     Licence : Unlicense/MIT
@@ -312,6 +448,30 @@ Dependances Rust
   shlex 2.0.1
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/comex/rust-shlex
+
+  simba 0.10.2
+    Licence : Apache-2.0
+    Source  : https://github.com/dimforge/simba
+
+  slab 0.4.12
+    Licence : MIT
+    Source  : https://github.com/tokio-rs/slab
+
+  smallvec 1.16.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/servo/rust-smallvec
+
+  spade 2.15.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/Stoeoef/spade
+
+  stable_deref_trait 1.2.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/storyyeller/stable_deref_trait
+
+  static_assertions 1.1.0
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/nvzqz/static-assertions-rs
 
   stl_io 0.8.6
     Licence : MIT
@@ -349,6 +509,10 @@ Dependances Rust
     Licence : MIT
     Source  : https://github.com/Twinklebear/tobj
 
+  typenum 1.20.1
+    Licence : MIT OR Apache-2.0
+    Source  : https://github.com/paholg/typenum
+
   unicode-ident 1.0.24
     Licence : (MIT OR Apache-2.0) AND Unicode-3.0
     Source  : https://github.com/dtolnay/unicode-ident
@@ -356,6 +520,10 @@ Dependances Rust
   walkdir 2.5.0
     Licence : Unlicense/MIT
     Source  : https://github.com/BurntSushi/walkdir
+
+  wide 1.7.1
+    Licence : Zlib OR Apache-2.0 OR MIT
+    Source  : https://github.com/Lokathor/wide
 
   winapi-util 0.1.11
     Licence : Unlicense OR MIT

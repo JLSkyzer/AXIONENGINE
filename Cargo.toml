@@ -128,6 +128,23 @@ meshopt = { version = "0.6", default-features = false }
 # invaliderait tout ce qui a deja ete replique.
 xxhash-rust = { version = "=0.8.15", default-features = false }
 
+# C-31 : moteur physique (bodies, colliders, joints, CCD, sommeil). Décidé par
+# ADR-002 et retenu par la table 32.2, licence Apache-2.0 ; alternatives évaluées
+# et écartées là-bas (moteur propre — coût ; PhysX/Bullet/Jolt — build C++).
+# Features par défaut seulement (`dim3`, `f32`, `std`, `alloc`) : ni `parallel`
+# ni `enhanced-determinism`. ADR-005 n'exige pas de déterminisme inter-machines,
+# et l'exiger (`enhanced-determinism`, via libm, sans SIMD) coûterait pour une
+# garantie inutile ; le mono-thread suffit à la reproductibilité même-machine de
+# R-1020. `parry3d` et `nalgebra` (table 32.2) arrivent transitivement et sont
+# ré-exportés par `rapier3d` (`rapier3d::parry`, `rapier3d::na`) ; ils
+# deviendront des dépendances directes quand C-32/C-39 useront de leurs API.
+# Les types Rapier ne franchissent jamais la frontière du crate (R-1753).
+rapier3d = { version = "0.35", default-features = false, features = [
+    "dim3",
+    "f32",
+    "std",
+] }
+
 # Crates internes.
 ax-math = { path = "crates/ax-math" }
 ax-mem = { path = "crates/ax-mem" }
@@ -138,6 +155,7 @@ ax-asset = { path = "crates/ax-asset" }
 ax-det = { path = "crates/ax-det" }
 ax-model = { path = "crates/ax-model" }
 ax-scene = { path = "crates/ax-scene" }
+ax-physics = { path = "crates/ax-physics" }
 
 # Les profils s'appliquent a tout le workspace.
 [profile.release]

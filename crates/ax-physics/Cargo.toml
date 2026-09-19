@@ -1,0 +1,25 @@
+[package]
+name = "ax-physics"
+description = "C-31 : monde physique d'AXION ENGINE (rapier3d)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints.rust]
+# `deny` et non `forbid` : la bibliothèque ne contient aucun bloc `unsafe`, mais
+# `forbid` interdirait à un test d'installer un allocateur compteur (INV-08).
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[dependencies]
+# C-11, R-460 : aucun type vecteur/matrice propre ; on prend ceux de `glam` via
+# `ax-math`. `rapier` 0.35 expose lui aussi `glam` (par `glamx`), unifié à la
+# même version : la frontière du crate se traverse sans conversion.
+ax-math.workspace = true
+# C-31 : le moteur physique. Ses handles restent internes au crate (R-1753) ;
+# `rapier3d` ré-exporte `parry` et `glamx`, qui suffisent à la tranche 1.
+rapier3d.workspace = true

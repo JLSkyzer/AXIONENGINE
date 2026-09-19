@@ -1222,6 +1222,73 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 ---
 
+## M3 — Physique et premier rendu (en cours)
+
+Démarré le 2026-09-19, **effort maximal** (décision de Killian). M3 a deux
+moitiés : la **physique** (C-31 → C-32 → C-38 → C-39 → C-40) et le **premier
+rendu** (C-60..C-63, C-26, C-67). On commence par C-31, fondation de la chaîne
+physique.
+
+**Déterminisme (ADR-005, §10.9, R-1020).** La physique n'est **pas** bit-exacte
+entre machines : autorité serveur, `rapier` en f32 avec SIMD admis. L'exigence
+est la reproductibilité **sur une même machine et un même binaire** : ordre
+d'itération stable (jamais de `HashMap` non ordonnée dans un chemin de
+simulation), fusion parallèle dans un ordre fixe, PRNG à graine explicite. La
+chaîne de dommage bit-exacte (C-16) est un sujet distinct (ADR-018, M6).
+
+**Frontière (R-1753, R-460).** Aucun type `rapier`/`nalgebra` n'est exposé : ils
+restent internes à `ax-physics`, convertis vers les types AXION (glam) à la
+frontière. `nalgebra` est admis pour ce seul crate (table 32.2, « non
+substituable sans changer rapier »).
+
+- [ ] **C-31 — Physics World** (M3, `[EFFORT MAX]`). Crate `ax-physics`,
+      `rapier3d`+`parry3d`+`nalgebra` (ADR-002). Fiche 5.23, PARTIE 10.
+      - [x] **Tranche 1 — fondation du monde (Rust pur, sans FFI).** Rien
+            d'irréversible n'est gelé (aucune struct DM, aucun point d'entrée
+            ABI) : tout est prouvable par test. Crate `ax-physics`
+            (`rapier3d 0.35.3`, cargo-deny et NOTICE verts) ; `PhysicsConfig`
+            validée (R-990), `PhysicsWorld` mono-thread à pas fixe clampé,
+            corps STATIC/KINEMATIC/DYNAMIC + colliders primitifs, gravité par
+            monde. 6 tests dont **même séquence → même pose** (R-1020) ;
+            clippy `-D warnings` et lint R-001 verts. Écarts rapier 0.35 ↔
+            CDC (BVH, solveur TGS-soft, sommeil angulaire) consignés en
+            ADR-112. Types `glam` partagés sans conversion (R-460).
+            - crate `ax-physics` + deps workspace (deny.toml, NOTICE, ADR) ;
+            - `PhysicsConfig` : `sim.fixed_dt` ∈ {1/30,1/60,1/120} validé
+              (R-990), `max_substeps`, gravité (R-611), itérations solveur
+              (§10.5), seuils de sommeil (fiche) ;
+            - `PhysicsWorld` : ensembles rapier (bodies, colliders, joints,
+              pipeline, CCD, query) ; corps STATIC/KINEMATIC/DYNAMIC (§10.2)
+              avec collider primitif — jeu complet des formes en tranche 2 ;
+            - `step` : accumulateur à pas fixe **clampé**, aucune spirale de
+              rattrapage (R-990) ; mono-thread d'abord (déterminisme garanti) ;
+            - tests : chute sous gravité vers la position attendue ; **même
+              séquence → transforms bit-identiques** (R-1020) ; `fixed_dt`
+              refuse une valeur hors ensemble ; clamp de l'accumulateur.
+      - [ ] **Tranche 2 — formes, groupes, forces.** Jeu complet des formes
+            (§10.3, R-970/R-971 : pas de TriMesh/Heightfield sur dynamique,
+            INV-13), filtre et groupes réservés (§10.4, R-980), forces
+            environnementales (§10.6 : flottabilité, traînée, portance, vent),
+            CCD (déclaré ou |v|·dt > 0.5·min_dim), `simulation_radius` sommeil
+            forcé (R-612), plafond `max_active_bodies` déterministe et
+            journalisé (R-613).
+      - [ ] **Tranche 3 — événements et données de contact (DM-xx → C-41).**
+            `PhysicsEvent` `#[repr(C)]` (§10.7) ; la narrow phase publie
+            point/normale/impulsions/vitesse relative/masses/matériaux (R-615) ;
+            lot borné `max_events_per_tick` avec agrégation par paire (R-1011),
+            seuils (R-1012 : transmission à C-41 même sous le seuil Java).
+            **Le format se gèle ici — soin maximal, cœur de l'irréversible.**
+      - [ ] **Tranche 4 — frontière FFI/ABI.** Points d'entrée `ax-ffi` :
+            création/destruction de monde, `step`, récupération des transforms
+            (`WorldTransform`, f64 pos / f32 rot, R-103) et des événements par
+            lot. **Layout ABI figé — soin maximal.**
+      - [ ] **Tranche 5 — intégration Java et proxies vanilla.** Monde par
+            dimension créé/détruit à la demande (R-610), proxies cinématiques
+            des entités vanilla reconstruits chaque tick (R-614), effets
+            appliqués côté Java sur le thread autoritatif. Défaillances FM-20
+            (NaN → E-2030), FM-21 (budget → sous-pas puis sommeil), FM-22
+            (empilement → amortissement puis sommeil). Tests T-300..T-307.
+
 ## Jalons suivants
 
 Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
