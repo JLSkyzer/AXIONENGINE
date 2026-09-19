@@ -2,7 +2,7 @@
 
 use ax_math::{Quat, Vec3};
 use rapier3d::prelude::{
-    ColliderBuilder, Pose as RapierPose, PhysicsWorld as RapierWorld, RigidBodyBuilder,
+    ColliderBuilder, Pose as RapierPose, PhysicsWorld as RapierWorld, RigidBody, RigidBodyBuilder,
     RigidBodyHandle, RigidBodyType, SharedShape,
 };
 
@@ -11,6 +11,7 @@ use crate::body::{
     MIN_CONVEX_HULL_POINTS,
 };
 use crate::config::PhysicsConfig;
+use crate::forces::LiftSurface;
 use crate::groups::CollisionGroups;
 use std::collections::HashMap;
 
@@ -20,13 +21,21 @@ const AIR_DENSITY: f32 = 1.225;
 
 /// Paramètres de force environnementale attachés à un corps (§10.6).
 ///
-/// En tranche 2d, seule la traînée est portée. La portance (surfaces déclarées)
-/// et la flottabilité (fluide) enrichiront ce profil dans les tranches
-/// suivantes.
-#[derive(Debug, Clone, Copy, Default)]
+/// La flottabilité (fluide) enrichira ce profil dans une tranche suivante.
+#[derive(Debug, Clone, Default)]
 struct AeroProfile {
     /// Produit `Cd · A` (coefficient de traînée × aire de référence), en m².
     drag_cd_a: f32,
+    /// Surfaces portantes déclarées (§10.6, R-1000).
+    lift_surfaces: Vec<LiftSurface>,
+}
+
+/// Le plan de forces d'un corps pour un sous-pas : une force centrale (traînée)
+/// et des forces appliquées à des points (portances, qui créent un moment).
+struct BodyForcePlan {
+    handle: RigidBodyHandle,
+    central: Vec3,
+    at_points: Vec<(Vec3, Vec3)>,
 }
 
 /// Pose rigide d'un corps : translation et rotation, sans échelle.
@@ -156,28 +165,38 @@ impl PhysicsWorld {
             return;
         }
         let wind = self.wind;
-        let updates: Vec<(RigidBodyHandle, Vec3)> = self
+        // Passe 1, en lecture : calcule le plan de chaque corps dans l'ordre
+        // déterministe de `rapier`, en consultant son profil par clé.
+        let plans: Vec<BodyForcePlan> = self
             .inner
             .bodies
             .iter()
             .filter(|(_, body)| body.is_dynamic() && !body.is_sleeping())
             .filter_map(|(handle, body)| {
                 let profile = self.aero.get(&BodyId::from_handle(handle))?;
-                let relative = body.linvel() - wind;
-                let speed = relative.length();
-                let drag = if profile.drag_cd_a > 0.0 && speed > f32::EPSILON {
-                    // F = −0.5·ρ·Cd·A·|v|·v : opposée à la vitesse relative.
-                    relative * (-0.5 * AIR_DENSITY * profile.drag_cd_a * speed)
-                } else {
-                    Vec3::ZERO
-                };
-                Some((handle, drag))
+                let central = drag_force(body, wind, profile.drag_cd_a);
+                let pose = body.position();
+                let at_points = profile
+                    .lift_surfaces
+                    .iter()
+                    .filter_map(|surface| lift_force(body, pose, wind, surface))
+                    .collect();
+                Some(BodyForcePlan {
+                    handle,
+                    central,
+                    at_points,
+                })
             })
             .collect();
-        for (handle, drag) in updates {
-            if let Some(body) = self.inner.bodies.get_mut(handle) {
+        // Passe 2, en écriture : remise à zéro une seule fois par corps, puis
+        // repose de toutes ses forces (les forces `rapier` s'accumulent).
+        for plan in plans {
+            if let Some(body) = self.inner.bodies.get_mut(plan.handle) {
                 body.reset_forces(false);
-                body.add_force(drag, false);
+                body.add_force(plan.central, false);
+                for (force, point) in plan.at_points {
+                    body.add_force_at_point(force, point, false);
+                }
             }
         }
     }
@@ -289,12 +308,19 @@ impl PhysicsWorld {
         if self.inner.bodies.get(id.handle()).is_none() {
             return;
         }
-        self.aero.insert(
-            id,
-            AeroProfile {
-                drag_cd_a: drag_coefficient * area,
-            },
-        );
+        self.aero.entry(id).or_default().drag_cd_a = drag_coefficient * area;
+    }
+
+    /// Déclare les surfaces portantes d'un corps (§10.6, R-1000).
+    ///
+    /// Sans effet si le corps n'existe pas. Remplace les surfaces déclarées ; une
+    /// liste vide retire la portance. C'est le seul mécanisme du « vol » : il n'y
+    /// a ni système avion ni système bateau, seulement des surfaces.
+    pub fn set_lift_surfaces(&mut self, id: BodyId, surfaces: Vec<LiftSurface>) {
+        if self.inner.bodies.get(id.handle()).is_none() {
+            return;
+        }
+        self.aero.entry(id).or_default().lift_surfaces = surfaces;
     }
 
     /// Endort les corps dynamiques éveillés au-delà de `radius` autour de
@@ -423,4 +449,54 @@ fn shared_shape_of(shape: &Shape) -> Result<SharedShape, BodyError> {
             Ok(SharedShape::compound(children))
         }
     }
+}
+
+/// Traînée d'un corps : force centrale opposée à la vitesse relative au vent.
+fn drag_force(body: &RigidBody, wind: Vec3, drag_cd_a: f32) -> Vec3 {
+    if drag_cd_a <= 0.0 {
+        return Vec3::ZERO;
+    }
+    let relative = body.linvel() - wind;
+    let speed = relative.length();
+    if speed <= f32::EPSILON {
+        return Vec3::ZERO;
+    }
+    // F = −0.5·ρ·Cd·A·|v|·v.
+    relative * (-0.5 * AIR_DENSITY * drag_cd_a * speed)
+}
+
+/// Portance d'une surface, appliquée au point de la surface (§10.6, R-1000).
+///
+/// Perpendiculaire à l'écoulement au point, dans la direction de la composante
+/// de la normale qui lui est orthogonale. `None` si la surface est de profil
+/// (normale alignée à l'écoulement) ou immobile relativement au vent.
+fn lift_force(
+    body: &RigidBody,
+    pose: &RapierPose,
+    wind: Vec3,
+    surface: &LiftSurface,
+) -> Option<(Vec3, Vec3)> {
+    if surface.lift_coefficient == 0.0 || surface.area <= 0.0 {
+        return None;
+    }
+    let world_point = pose.translation + pose.rotation * surface.local_point;
+    let world_normal = (pose.rotation * surface.local_normal).normalize_or_zero();
+    if world_normal == Vec3::ZERO {
+        return None;
+    }
+    let relative = body.velocity_at_point(world_point) - wind;
+    let speed = relative.length();
+    if speed <= f32::EPSILON {
+        return None;
+    }
+    let flow = relative / speed;
+    // Composante de la normale orthogonale à l'écoulement.
+    let perpendicular = world_normal - flow * world_normal.dot(flow);
+    let perpendicular_length = perpendicular.length();
+    if perpendicular_length <= f32::EPSILON {
+        return None;
+    }
+    let direction = perpendicular / perpendicular_length;
+    let magnitude = 0.5 * AIR_DENSITY * surface.lift_coefficient * surface.area * speed * speed;
+    Some((direction * magnitude, world_point))
 }

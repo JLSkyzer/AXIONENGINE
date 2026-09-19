@@ -2,8 +2,8 @@
 
 use ax_math::{Quat, Vec3};
 use ax_physics::{
-    BodyError, BodyKind, CollisionGroups, CompoundPart, ConfigError, PhysicsConfig, PhysicsWorld,
-    Shape,
+    BodyError, BodyKind, CollisionGroups, CompoundPart, ConfigError, LiftSurface, PhysicsConfig,
+    PhysicsWorld, Shape,
 };
 
 fn config() -> PhysicsConfig {
@@ -436,6 +436,62 @@ fn meme_sequence_meme_resultat_avec_forces() {
         world.pose(ball).unwrap()
     };
     assert_eq!(run(), run(), "la simulation avec forces reste reproductible");
+}
+
+/// Une aile plate (boîte fine) sans gravité, portant une surface de normale et
+/// d'aire données, placée dans un vent horizontal de +x.
+fn aile(world: &mut PhysicsWorld, normal: Vec3) -> ax_physics::BodyId {
+    let wing = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [1.0, 0.1, 1.0],
+            },
+        )
+        .expect("une aile est valide");
+    world.set_gravity_scale(wing, 0.0);
+    world.set_lift_surfaces(
+        wing,
+        vec![LiftSurface {
+            local_point: Vec3::ZERO,
+            local_normal: normal,
+            area: 1.0,
+            lift_coefficient: 0.5,
+        }],
+    );
+    world.set_wind(Vec3::new(5.0, 0.0, 0.0));
+    wing
+}
+
+#[test]
+fn une_aile_dans_le_vent_porte() {
+    // §10.6, R-1000 : une aile de normale +y dans un vent horizontal porte vers
+    // le haut — le « vol » sans système dédié.
+    let mut world = PhysicsWorld::new(config());
+    let wing = aile(&mut world, Vec3::Y);
+    let start = world.pose(wing).unwrap().translation.y;
+    for _ in 0..60 {
+        world.advance(1.0 / 60.0);
+    }
+    let end = world.pose(wing).unwrap().translation.y;
+    assert!(end > start + 0.5, "l'aile aurait dû s'élever (start={start}, end={end})");
+}
+
+#[test]
+fn une_aile_de_profil_ne_porte_pas() {
+    // Normale +x, alignée avec l'axe de l'écoulement (le vent est en x) : la
+    // composante de la normale orthogonale à l'écoulement est nulle, pas de
+    // portance. Sans gravité ni traînée, l'aile ne bouge pas.
+    let mut world = PhysicsWorld::new(config());
+    let wing = aile(&mut world, Vec3::X);
+    let start = world.pose(wing).unwrap().translation;
+    for _ in 0..60 {
+        world.advance(1.0 / 60.0);
+    }
+    let end = world.pose(wing).unwrap().translation;
+    assert!((end - start).length() < 0.01, "une aile de profil ne devrait pas bouger");
 }
 
 #[test]

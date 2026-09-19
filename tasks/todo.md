@@ -1300,10 +1300,13 @@ substituable sans changer rapier »).
             (`set_drag`), requête `velocity`. 4 tests (chute freinée à vitesse
             terminale, vent poussant via la traînée, `gravity_scale` nul qui
             flotte, déterminisme avec forces).
-      - [ ] **Tranche 2e — portance (§10.6, R-1000).** Surfaces portantes
-            déclarées (aire, coefficient `Cl`, orientation) ; `F = 0.5·ρ·Cl·A·
-            |v|²` par surface, appliquée au point de la surface. C'est ce qui
-            rend avions et bateaux possibles sans système dédié.
+      - [x] **Tranche 2e — portance (§10.6, R-1000).** `LiftSurface` déclarée
+            par corps (point local, normale, aire, `Cl`) ; `F = 0.5·ρ·Cl·A·|v|²`
+            au point de la surface (donc avec moment). Le §10.6 fixe la
+            magnitude, pas la direction : choisie perpendiculaire à
+            l'écoulement, selon la composante de la normale qui lui est
+            orthogonale (documenté sur `LiftSurface`). 2 tests : une aile dans
+            le vent porte, une aile de profil ne porte pas.
       - [ ] **Tranche 2f — flottabilité (§10.6).** Volume immergé approché par
             les 8 points de l'AABB contre un fluide de dimension (surface,
             densité) ; `F = ρ_fluide·V_immergé·g`. La présence réelle du fluide

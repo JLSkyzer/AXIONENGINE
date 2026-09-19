@@ -22,19 +22,21 @@
 //! R-980) avec les huit groupes réservés. Gestion d'activité : CCD déclarée,
 //! sommeil forcé hors du rayon de simulation (R-612), plafond de corps actifs
 //! déterministe (R-613). Forces environnementales (§10.6) : gravité par corps,
-//! vent de dimension et traînée relative au vent, appliquées par sous-pas ; la
-//! portance (surfaces déclarées) et la flottabilité (fluide) suivent. Les
-//! événements (§10.7, DM → C-41) et la frontière FFI arrivent ensuite.
+//! vent de dimension, traînée relative au vent et portance sur surfaces
+//! déclarées (R-1000), appliquées par sous-pas ; la flottabilité (fluide) suit.
+//! Les événements (§10.7, DM → C-41) et la frontière FFI arrivent ensuite.
 //!
 //! Exigences : R-460, R-462, R-610, R-611, R-990, R-1020, R-1753 ; PARTIE 10.
 //! Correspondance avec `rapier` 0.35 : `docs/decisions/ADR-112.md`.
 
 mod body;
 mod config;
+mod forces;
 mod groups;
 mod world;
 
 pub use body::{BodyError, BodyId, BodyKind, CompoundPart, Shape};
 pub use config::{ConfigError, PhysicsConfig};
+pub use forces::LiftSurface;
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
 pub use world::{PhysicsWorld, Pose};
