@@ -821,10 +821,18 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
               `DefinitionRef` ;
             - chaque méthode documente effet, thread, coût et échec (R-1754) ;
               nullabilité en prose (pas d'annotation `@Nullable` externe).
-      - [ ] **Tranche 2** : les 18 événements du §23.2 et l'abonnement typé de
-            `EventBus` ; puis, à mesure de leurs composants, la surface des
+      - [x] **Tranche 2** : les 18 événements du §23.2 (`AxionEvent` +
+            `AssemblySpawnEvent`…`DegradationEvent`, interfaces `@Stable`) et
+            l'abonnement typé de `EventBus`
+            (`subscribe(Class<E>, Consumer<E>)` rendant un `Subscription`
+            révocable ; R-1760/R-1761 documentés). Comme en tranche 1
+            (décision de Killian), les types seulement nommés sont minimaux ;
+            leurs accesseurs s'ajoutent de façon compatible (R-1751) à mesure
+            de leurs composants. `:axion-api:build` vert, lint R-001.
+      - [ ] **Tranche 3** : à mesure de leurs composants, la surface des
             services seulement nommés (physics, deformation, attachments,
-            vehicle, animation…). Ajouts compatibles en 1.x (R-1751).
+            vehicle, animation…) et les accesseurs des événements. Ajouts
+            compatibles en 1.x (R-1751).
       - **Note** : la CLI/Gradle passent par un JDK ; seul un JDK 21 est
         provisionné (`~/.gradle/jdks`), employé comme lanceur.
 - [x] **C-72 — Harnais de benchmarks** (M2). Crate `ax-bench`. La
