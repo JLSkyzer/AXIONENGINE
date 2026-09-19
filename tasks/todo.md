@@ -651,9 +651,15 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       chaque fois, en silence ; et les tampons `ASSET_IN`/`ASSET_OUT` n'étaient
       jamais rendus, ce que R-322 a signalé au premier arrêt.
 
-      **Dette** : R-562 veut que `COMPILER_VERSION` soit incrémentée à toute
-      modification de C-21, C-22, C-23 ou C-28 qui change la sortie,
-      **vérifié en CI**. La constante existe ; le contrôle non.
+      **Dette levée (R-562).** Le contrôle CI existe :
+      `tools/ci/check_compiler_version.py` refuse tout écart entre
+      `ax_asset::compile::COMPILER_VERSION` et
+      `dev.axion.asset.CompilerVersion.CURRENT`, ajouté au workflow comme job
+      `compiler-version`. Il a trouvé une dérive **réelle** dès son écriture :
+      le Rust était passé à 5 (C-23 A/B/C puis section `NODE`), le Java était
+      resté à 1 — la clé de cache ne reflétait donc plus la version du
+      compilateur, et un asset périmé aurait été repris en silence. Java remis
+      à 5 ; les tests d'asset T-260..T-263 restent verts.
 - [x] **C-25 — Cache d'assets.** Vérifié sur deux démarrages successifs d'un
       serveur dédié réel : le second ne compile rien.
       - entrées sous `<gameDir>/axion/cache/<2 hex>/<clé>.a3d`, **hors du

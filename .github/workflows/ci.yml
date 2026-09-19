@@ -14,6 +14,7 @@
 #
 #   lint-rust          -> job lint-rust
 #   lint-no-fiction    -> job lint-no-fiction
+#   R-562 (fiche C-25) -> job compiler-version (parite des deux COMPILER_VERSION)
 #   deps               -> job deps (cargo-deny, puis fraicheur du NOTICE)
 #   docs               -> job deps, etape « NOTICE a jour »
 #   codegen-parity     -> job build-and-test, etape codegen (T-005)
@@ -107,6 +108,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: R-001 — aucune fiction dans un module livre
         run: python3 tools/ci/lint_no_fiction.py
+
+  compiler-version:
+    name: compiler-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: R-562 — COMPILER_VERSION Rust et Java coincident
+        run: python3 tools/ci/check_compiler_version.py
 
   deps:
     name: deps

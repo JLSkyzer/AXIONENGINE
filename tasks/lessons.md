@@ -590,3 +590,25 @@ par `System.getenv`.
 run de benchmark produit bien une ligne de résultat (`Score`), pas seulement un
 code de sortie nul — comme pour un push qui affiche `ok` sans avoir avancé le
 remote.
+
+## 2026-09-19 | Deux constantes censées être égales dérivent en silence
+
+La fiche C-25 (R-562) veut que `COMPILER_VERSION` soit la même côté Rust
+(`ax_asset::compile`) et côté Java (`dev.axion.asset.CompilerVersion.CURRENT`) :
+la première l'estampille dans l'en-tête A3D, la seconde la mêle à la clé de
+cache. Le Rust était passé à 5 au fil de C-23 (A/B/C) puis de la section
+`NODE` ; le Java était resté à 1. Rien ne le disait — le cache restait
+cohérent avec lui-même —, mais la clé ne reflétait plus la version réelle du
+compilateur : un asset produit par un compilateur plus ancien aurait été
+repris, et R-562 existe précisément pour l'empêcher.
+
+**Règle.** Quand une exigence demande à deux valeurs d'avancer ensemble dans
+deux fichiers, la seule garde qui tienne est un contrôle qui les **compare**,
+branché en CI — pas une consigne dans un commentaire. La spec le disait
+(« vérifié en CI ») ; tant que le contrôle n'existait pas, la consigne n'a rien
+retenu. `tools/ci/check_compiler_version.py` le fait maintenant.
+
+**Corollaire.** Un tel contrôle doit échouer aussi quand il ne **trouve pas**
+la constante : un renommage la cacherait, et un contrôle qui ne lit plus rien
+passe au vert en ne comparant rien. Le silence ne prouve pas l'égalité, il
+prouve l'absence de mesure.
