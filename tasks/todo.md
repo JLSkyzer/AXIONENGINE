@@ -1314,12 +1314,27 @@ substituable sans changer rapier »).
             coins immergés) → moment de redressement d'un bateau. La présence
             réelle de l'eau par bloc viendra de C-38. 2 tests : un fluide plus
             dense fait remonter, un corps plus dense coule.
-      - [ ] **Tranche 3 — événements et données de contact (DM-xx → C-41).**
-            `PhysicsEvent` `#[repr(C)]` (§10.7) ; la narrow phase publie
-            point/normale/impulsions/vitesse relative/masses/matériaux (R-615) ;
-            lot borné `max_events_per_tick` avec agrégation par paire (R-1011),
-            seuils (R-1012 : transmission à C-41 même sous le seuil Java).
-            **Le format se gèle ici — soin maximal, cœur de l'irréversible.**
+      - [x] **Tranche 3a — structure DM figée + événements SLEEP/WAKE.**
+            `PhysicsEvent` `#[repr(C)]` (§10.7) dans `ax-model::dm::physics`
+            (foyer DM), avec `Handle` DM-01 `#[repr(C)]` et le module
+            `event_kind` (0..12). **Disposition gelée : 76 octets, align 4,
+            offsets verrouillés par test.** Transcrit AVEC son consommateur
+            (règle de `dm/mod.rs`) : identité de corps (`set_body_identity`),
+            transitions SLEEP/WAKE émises, lot borné avec compteur de pertes
+            (R-1011, aucune perte silencieuse), `drain_events`. Décisions ABI
+            en ADR-113. `ax-physics` dépend de `ax-model`. 4 tests +
+            2 tests de disposition. **Cœur irréversible : layout figé.**
+      - [ ] **Tranche 3b — événements de contact (R-615).** CONTACT_START/END/
+            IMPULSE depuis les événements et paires de contact rapier ;
+            peuplement complet point/normale/impulsions/vitesse relative/
+            **masse effective calculée** (masse et inertie inverses)/matériaux ;
+            agrégation par paire au plafond (R-1011), seuil `contact_event_
+            threshold` (R-1012 : sous le seuil Java mais transmis à C-41 si
+            au-dessus du seuil d'usure).
+      - [ ] **Tranche 3c — capteurs et liaisons.** SENSOR_ENTER/EXIT à mesure
+            des capteurs ; JOINT_BROKEN/JAMMED avec les joints (M4) ;
+            ATTACH/DETACH avec les attaches (M5) ; CLAMPED/RECOVERED avec les
+            modes de défaillance.
       - [ ] **Tranche 4 — frontière FFI/ABI.** Points d'entrée `ax-ffi` :
             création/destruction de monde, `step`, récupération des transforms
             (`WorldTransform`, f64 pos / f32 rot, R-103) et des événements par

@@ -24,8 +24,10 @@
 //! déterministe (R-613). Forces environnementales complètes (§10.6) : gravité
 //! par corps, vent de dimension, traînée relative au vent, portance sur surfaces
 //! déclarées (R-1000) et flottabilité (volume immergé par les 8 coins de l'AABB
-//! contre un fluide de dimension), appliquées par sous-pas. Les événements
-//! (§10.7, DM → C-41) et la frontière FFI arrivent ensuite.
+//! contre un fluide de dimension), appliquées par sous-pas. Événements (§10.7,
+//! DM → C-41) : la structure `PhysicsEvent` figée, l'identité de corps, le lot
+//! borné (R-1011) et les transitions SLEEP/WAKE ; les événements de contact
+//! (données R-615) et de capteur suivent. La frontière FFI arrive ensuite.
 //!
 //! Exigences : R-460, R-462, R-610, R-611, R-990, R-1020, R-1753 ; PARTIE 10.
 //! Correspondance avec `rapier` 0.35 : `docs/decisions/ADR-112.md`.
@@ -41,3 +43,8 @@ pub use config::{ConfigError, PhysicsConfig};
 pub use forces::{FluidEnvironment, LiftSurface};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
 pub use world::{PhysicsWorld, Pose};
+
+// §10.7 : les événements sont une structure DM figée dans `ax-model` ; on les
+// réexporte pour que l'API du monde physique soit autonome.
+pub use ax_model::dm::handle::Handle;
+pub use ax_model::dm::physics::{event_kind, PhysicsEvent};

@@ -20,6 +20,9 @@ missing_docs = "warn"
 # `ax-math`. `rapier` 0.35 expose lui aussi `glam` (par `glamx`), unifié à la
 # même version : la frontière du crate se traverse sans conversion.
 ax-math.workspace = true
+# §10.7 : les événements physiques sont une structure DM (`PhysicsEvent`), dont
+# la disposition figée vit dans `ax-model::dm` avec les autres types DM.
+ax-model.workspace = true
 # C-31 : le moteur physique. Ses handles restent internes au crate (R-1753) ;
 # `rapier3d` ré-exporte `parry` et `glamx`, qui suffisent à la tranche 1.
 rapier3d.workspace = true

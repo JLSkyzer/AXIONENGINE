@@ -13,7 +13,12 @@ use crate::body::{
 use crate::config::PhysicsConfig;
 use crate::forces::{FluidEnvironment, LiftSurface};
 use crate::groups::CollisionGroups;
+use ax_model::dm::handle::Handle;
+use ax_model::dm::physics::{event_kind, PhysicsEvent};
 use std::collections::HashMap;
+
+/// Plafond par défaut d'événements par tick (§10.7, `physics.max_events_per_tick`).
+const DEFAULT_MAX_EVENTS_PER_TICK: usize = 4096;
 
 /// Masse volumique de l'air au niveau de la mer, en kg/m³ (§10.6, terme ρ de la
 /// traînée). Valeur physique standard, non un chiffre de performance.
@@ -36,6 +41,16 @@ struct BodyForcePlan {
     handle: RigidBodyHandle,
     central: Vec3,
     at_points: Vec<(Vec3, Vec3)>,
+}
+
+/// Identité d'un corps pour les événements (§10.7) : à quelle assembly, quel
+/// node et quel matériau il correspond. Un corps sans identité déclarée émet des
+/// événements à [`Handle::ABSENT`].
+#[derive(Debug, Clone, Copy, Default)]
+struct BodyIdentity {
+    assembly: Handle,
+    node: u32,
+    material: u16,
 }
 
 /// Pose rigide d'un corps : translation et rotation, sans échelle.
@@ -72,6 +87,18 @@ pub struct PhysicsWorld {
     /// déterministe des corps `rapier`, jamais itérée elle-même : son ordre de
     /// parcours n'entre donc dans aucun résultat de simulation (R-1020).
     aero: HashMap<BodyId, AeroProfile>,
+    /// Identités des corps, pour peupler les événements (§10.7).
+    identity: HashMap<BodyId, BodyIdentity>,
+    /// Dernier état de sommeil connu de chaque corps dynamique, pour détecter les
+    /// transitions SLEEP/WAKE. Consultée par clé, jamais itérée (R-1020).
+    sleep_state: HashMap<BodyId, bool>,
+    /// Lot d'événements du tick courant (§10.7), vidé par `drain_events`.
+    events: Vec<PhysicsEvent>,
+    /// Plafond d'événements par tick (R-1011).
+    max_events_per_tick: usize,
+    /// Compteur cumulé d'événements perdus faute de place (R-1011, aucune perte
+    /// silencieuse).
+    dropped_events: u64,
 }
 
 impl PhysicsWorld {
@@ -96,6 +123,11 @@ impl PhysicsWorld {
             wind: Vec3::ZERO,
             fluid: None,
             aero: HashMap::new(),
+            identity: HashMap::new(),
+            sleep_state: HashMap::new(),
+            events: Vec::new(),
+            max_events_per_tick: DEFAULT_MAX_EVENTS_PER_TICK,
+            dropped_events: 0,
         }
     }
 
@@ -150,10 +182,66 @@ impl PhysicsWorld {
         while self.accumulator >= dt {
             self.apply_aero_forces();
             self.inner.step();
+            self.collect_sleep_events();
             self.accumulator -= dt;
             substeps += 1;
         }
         substeps
+    }
+
+    /// Émet les événements SLEEP/WAKE (§10.7) des corps qui ont changé d'état de
+    /// sommeil au dernier sous-pas, dans l'ordre déterministe de `rapier`.
+    fn collect_sleep_events(&mut self) {
+        let current: Vec<(BodyId, bool)> = self
+            .inner
+            .bodies
+            .iter()
+            .filter(|(_, body)| body.is_dynamic())
+            .map(|(handle, body)| (BodyId::from_handle(handle), body.is_sleeping()))
+            .collect();
+        for (id, sleeping) in current {
+            // `insert` rend l'état précédent : une transition n'existe que s'il
+            // était connu et différent. Première apparition d'un corps = pas
+            // d'événement.
+            if let Some(previous) = self.sleep_state.insert(id, sleeping) {
+                if previous != sleeping {
+                    let kind = if sleeping { event_kind::SLEEP } else { event_kind::WAKE };
+                    self.push_single_body_event(id, kind);
+                }
+            }
+        }
+    }
+
+    /// Construit et met en file un événement portant sur un seul corps (§10.7).
+    fn push_single_body_event(&mut self, id: BodyId, kind: u32) {
+        let identity = self.identity.get(&id).copied().unwrap_or_default();
+        let event = PhysicsEvent {
+            kind,
+            assembly_a: identity.assembly,
+            assembly_b: Handle::ABSENT,
+            node_a: identity.node,
+            node_b: 0,
+            point: [0.0; 3],
+            normal: [0.0; 3],
+            impulse: 0.0,
+            tangent_impulse: 0.0,
+            relative_velocity: 0.0,
+            effective_mass: 0.0,
+            material_a: identity.material,
+            material_b: 0,
+            data: 0,
+        };
+        self.push_event(event);
+    }
+
+    /// Met un événement en file, ou compte une perte si le lot est plein
+    /// (R-1011, aucune perte silencieuse).
+    fn push_event(&mut self, event: PhysicsEvent) {
+        if self.events.len() >= self.max_events_per_tick {
+            self.dropped_events += 1;
+        } else {
+            self.events.push(event);
+        }
     }
 
     /// Applique les forces environnementales de chaque corps avant un sous-pas
@@ -323,6 +411,48 @@ impl PhysicsWorld {
         self.fluid
     }
 
+    /// Déclare l'identité d'un corps pour ses événements (§10.7) : l'assembly, le
+    /// node et le matériau qu'il représente. Sans effet si le corps n'existe pas.
+    ///
+    /// À défaut, un corps émet ses événements à [`Handle::ABSENT`]. Le monde ne
+    /// fait que transporter cette identité : il n'en interprète rien (moteur
+    /// générique, pas de branche sur un contenu).
+    pub fn set_body_identity(&mut self, id: BodyId, assembly: Handle, node: u32, material: u16) {
+        if self.inner.bodies.get(id.handle()).is_none() {
+            return;
+        }
+        self.identity.insert(
+            id,
+            BodyIdentity {
+                assembly,
+                node,
+                material,
+            },
+        );
+    }
+
+    /// Fixe le plafond d'événements par tick (R-1011). Au moins 1.
+    pub fn set_max_events_per_tick(&mut self, max: usize) {
+        self.max_events_per_tick = max.max(1);
+    }
+
+    /// Retire et renvoie le lot d'événements accumulé (§10.7, R-1010).
+    ///
+    /// À appeler une fois par tick, côté autoritatif. Le lot est vidé ; les
+    /// événements du tick suivant repartent de zéro.
+    pub fn drain_events(&mut self) -> Vec<PhysicsEvent> {
+        core::mem::take(&mut self.events)
+    }
+
+    /// Nombre cumulé d'événements perdus faute de place dans un lot (R-1011).
+    ///
+    /// Jamais de perte silencieuse : ce compteur croît dès qu'un événement est
+    /// écarté pour cause de plafond atteint.
+    #[must_use]
+    pub fn dropped_event_count(&self) -> u64 {
+        self.dropped_events
+    }
+
     /// Multiplie la gravité ressentie par un corps (§10.6, `gravity_scale`).
     ///
     /// Sans effet si le corps n'existe pas. `0` fait flotter le corps, `2` le
@@ -417,6 +547,8 @@ impl PhysicsWorld {
     /// Retire un corps ; renvoie vrai s'il existait.
     pub fn remove_body(&mut self, id: BodyId) -> bool {
         self.aero.remove(&id);
+        self.identity.remove(&id);
+        self.sleep_state.remove(&id);
         self.inner.remove_body(id.handle()).is_some()
     }
 

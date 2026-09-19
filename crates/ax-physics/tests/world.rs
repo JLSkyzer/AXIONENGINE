@@ -2,8 +2,8 @@
 
 use ax_math::{Quat, Vec3};
 use ax_physics::{
-    BodyError, BodyKind, CollisionGroups, CompoundPart, ConfigError, FluidEnvironment, LiftSurface,
-    PhysicsConfig, PhysicsWorld, Shape,
+    event_kind, BodyError, BodyId, BodyKind, CollisionGroups, CompoundPart, ConfigError,
+    FluidEnvironment, Handle, LiftSurface, PhysicsConfig, PhysicsWorld, Shape,
 };
 
 fn config() -> PhysicsConfig {
@@ -551,4 +551,114 @@ fn gravity_scale_zero_fait_flotter() {
     }
     let y = world.pose(flotteur).unwrap().translation.y;
     assert!((y - 5.0).abs() < 0.01, "sans gravité le corps ne tombe pas (y={y})");
+}
+
+/// Un sol statique et une bille posée dessus, au repos : elle finit par dormir.
+fn bille_au_repos(world: &mut PhysicsWorld) -> BodyId {
+    world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, -0.5, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [5.0, 0.5, 5.0],
+            },
+        )
+        .expect("un sol est valide");
+    world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 0.5, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
+        .expect("une bille est valide")
+}
+
+#[test]
+fn un_corps_qui_s_endort_emet_sleep() {
+    // §10.7 : l'endormissement d'un corps produit un événement SLEEP portant son
+    // identité (assembly, node, matériau).
+    let mut world = PhysicsWorld::new(config());
+    let ball = bille_au_repos(&mut world);
+    world.set_body_identity(ball, Handle::new(7, 1), 3, 42);
+    for _ in 0..180 {
+        world.advance(1.0 / 60.0);
+    }
+    assert_eq!(world.is_sleeping(ball), Some(true), "la bille devrait dormir");
+    let events = world.drain_events();
+    let sleep = events
+        .iter()
+        .find(|event| event.kind == event_kind::SLEEP)
+        .expect("un événement SLEEP");
+    assert_eq!(sleep.assembly_a, Handle::new(7, 1));
+    assert_eq!(sleep.node_a, 3);
+    assert_eq!(sleep.material_a, 42);
+    assert_eq!(sleep.assembly_b, Handle::ABSENT);
+    // Vidé : un second drain ne rend rien.
+    assert!(world.drain_events().is_empty());
+}
+
+#[test]
+fn sans_identite_l_evenement_est_absent() {
+    // §10.7 : un corps sans identité déclarée émet à Handle::ABSENT.
+    let mut world = PhysicsWorld::new(config());
+    let _ball = bille_au_repos(&mut world);
+    for _ in 0..180 {
+        world.advance(1.0 / 60.0);
+    }
+    let events = world.drain_events();
+    let sleep = events
+        .iter()
+        .find(|event| event.kind == event_kind::SLEEP)
+        .expect("un événement SLEEP");
+    assert_eq!(sleep.assembly_a, Handle::ABSENT);
+}
+
+#[test]
+fn le_plafond_compte_les_pertes() {
+    // R-1011 : au-delà du plafond, les événements sont écartés mais comptés —
+    // jamais de perte silencieuse.
+    let mut world = PhysicsWorld::new(config());
+    world.set_max_events_per_tick(1);
+    world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, -0.5, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [10.0, 0.5, 10.0],
+            },
+        )
+        .expect("un sol est valide");
+    for i in 0..5 {
+        world
+            .add_body(
+                BodyKind::Dynamic,
+                Vec3::new(i as f32 * 2.0, 0.5, 0.0),
+                Quat::IDENTITY,
+                Shape::Ball { radius: 0.5 },
+            )
+            .expect("une bille est valide");
+    }
+    for _ in 0..180 {
+        world.advance(1.0 / 60.0);
+    }
+    assert!(world.dropped_event_count() > 0, "les SLEEP au-delà du plafond doivent être comptés");
+    assert!(world.drain_events().len() <= 1, "le lot ne dépasse pas le plafond");
+}
+
+#[test]
+fn evenements_deterministes() {
+    // R-1020 : le lot d'événements est reproductible d'une exécution à l'autre.
+    let run = || {
+        let mut world = PhysicsWorld::new(config());
+        let ball = bille_au_repos(&mut world);
+        world.set_body_identity(ball, Handle::new(1, 1), 0, 0);
+        for _ in 0..180 {
+            world.advance(1.0 / 60.0);
+        }
+        world.drain_events()
+    };
+    assert_eq!(run(), run());
 }

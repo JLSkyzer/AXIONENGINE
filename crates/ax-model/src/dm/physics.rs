@@ -1,6 +1,7 @@
-//! DM-06 — colliders.
+//! DM-06 — colliders. §10.7 — événements physiques.
 
 use super::geometry::Transform;
+use super::handle::Handle;
 
 /// Forme d'un collider (DM-06).
 ///
@@ -210,9 +211,127 @@ impl ColliderDesc {
     }
 }
 
+/// Genres d'un [`PhysicsEvent`] (§10.7), valeurs du champ `kind`.
+///
+/// Les valeurs ne sont pas fixées par le cahier des charges ; elles sont
+/// attribuées ici dans l'ordre d'énumération du §10.7 et gelées avec la
+/// structure (voir `docs/decisions/ADR-113.md`). Un lecteur qui rencontre un
+/// genre inconnu l'ignore sans erreur — c'est pourquoi le champ est un `u32`
+/// ouvert plutôt qu'une énumération fermée.
+pub mod event_kind {
+    /// Début d'un contact.
+    pub const CONTACT_START: u32 = 0;
+    /// Fin d'un contact.
+    pub const CONTACT_END: u32 = 1;
+    /// Impulsion d'un contact persistant.
+    pub const CONTACT_IMPULSE: u32 = 2;
+    /// Entrée dans un capteur.
+    pub const SENSOR_ENTER: u32 = 3;
+    /// Sortie d'un capteur.
+    pub const SENSOR_EXIT: u32 = 4;
+    /// Rupture d'une liaison.
+    pub const JOINT_BROKEN: u32 = 5;
+    /// Blocage d'une liaison.
+    pub const JOINT_JAMMED: u32 = 6;
+    /// Endormissement d'un corps.
+    pub const SLEEP: u32 = 7;
+    /// Réveil d'un corps.
+    pub const WAKE: u32 = 8;
+    /// Grandeur clampée (budget dépassé).
+    pub const CLAMPED: u32 = 9;
+    /// Retour à un état valide.
+    pub const RECOVERED: u32 = 10;
+    /// Attache d'un élément.
+    pub const ATTACH: u32 = 11;
+    /// Détachement d'un attachement.
+    pub const DETACH_ATTACHMENT: u32 = 12;
+}
+
+/// Événement physique produit en natif (§10.7, DM).
+///
+/// Transmis par lot et appliqué côté Java sur le thread autoritatif (R-1010).
+/// C'est le contrat de données vers C-41 (R-615) : chaque contact publie point,
+/// normale, impulsions normale et tangentielle, vitesse relative, masse
+/// effective et matériaux. `assembly_b` vaut [`Handle::ABSENT`] pour un
+/// événement à un seul corps (sommeil, réveil) ou contre le monde.
+///
+/// **Disposition figée en V1.0** : 76 octets, alignement 4, champs dans l'ordre
+/// du §10.7. Le test de disposition la verrouille — un champ déplacé rendrait
+/// illisible tout lot déjà échangé, sans qu'aucune erreur ne le dise.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PhysicsEvent {
+    /// Genre, voir [`event_kind`].
+    pub kind: u32,
+    /// Premier corps concerné.
+    pub assembly_a: Handle,
+    /// Second corps, ou [`Handle::ABSENT`] si aucun (monde, entité vanilla,
+    /// événement à un corps).
+    pub assembly_b: Handle,
+    /// Node du premier corps.
+    pub node_a: u32,
+    /// Node du second corps.
+    pub node_b: u32,
+    /// Point de contact, en coordonnées monde locales.
+    pub point: [f32; 3],
+    /// Normale de contact.
+    pub normal: [f32; 3],
+    /// Impulsion normale, en N·s.
+    pub impulse: f32,
+    /// Impulsion tangentielle (frottement), en N·s.
+    pub tangent_impulse: f32,
+    /// Vitesse relative au point de contact, en m/s.
+    pub relative_velocity: f32,
+    /// Masse effective au contact, en kg.
+    pub effective_mass: f32,
+    /// Matériau du premier corps.
+    pub material_a: u16,
+    /// Matériau du second corps.
+    pub material_b: u16,
+    /// Charge utile propre au genre.
+    pub data: u32,
+}
+
+impl PhysicsEvent {
+    /// Taille de la structure sur la frontière, en octets.
+    pub const BYTES: usize = 76;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dm_physics_event_disposition_figee() {
+        use core::mem::{align_of, offset_of, size_of};
+        assert_eq!(size_of::<PhysicsEvent>(), PhysicsEvent::BYTES);
+        assert_eq!(align_of::<PhysicsEvent>(), 4);
+        assert_eq!(offset_of!(PhysicsEvent, kind), 0);
+        assert_eq!(offset_of!(PhysicsEvent, assembly_a), 4);
+        assert_eq!(offset_of!(PhysicsEvent, assembly_b), 12);
+        assert_eq!(offset_of!(PhysicsEvent, node_a), 20);
+        assert_eq!(offset_of!(PhysicsEvent, node_b), 24);
+        assert_eq!(offset_of!(PhysicsEvent, point), 28);
+        assert_eq!(offset_of!(PhysicsEvent, normal), 40);
+        assert_eq!(offset_of!(PhysicsEvent, impulse), 52);
+        assert_eq!(offset_of!(PhysicsEvent, tangent_impulse), 56);
+        assert_eq!(offset_of!(PhysicsEvent, relative_velocity), 60);
+        assert_eq!(offset_of!(PhysicsEvent, effective_mass), 64);
+        assert_eq!(offset_of!(PhysicsEvent, material_a), 68);
+        assert_eq!(offset_of!(PhysicsEvent, material_b), 70);
+        assert_eq!(offset_of!(PhysicsEvent, data), 72);
+    }
+
+    #[test]
+    fn dm_handle_disposition_figee() {
+        use core::mem::{align_of, offset_of, size_of};
+        assert_eq!(size_of::<Handle>(), 8);
+        assert_eq!(align_of::<Handle>(), 4);
+        assert_eq!(offset_of!(Handle, index), 0);
+        assert_eq!(offset_of!(Handle, generation), 4);
+        assert!(Handle::ABSENT.is_absent());
+        assert!(!Handle::new(3, 1).is_absent());
+    }
 
     #[test]
     fn t230_les_formes_sans_volume_sont_interdites_sur_un_body_dynamique() {

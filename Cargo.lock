@@ -139,6 +139,7 @@ name = "ax-physics"
 version = "1.0.0"
 dependencies = [
  "ax-math",
+ "ax-model",
  "rapier3d",
 ]
 
