@@ -2,7 +2,8 @@
 
 use ax_math::{Quat, Vec3};
 use ax_physics::{
-    BodyError, BodyKind, CompoundPart, ConfigError, PhysicsConfig, PhysicsWorld, Shape,
+    BodyError, BodyKind, CollisionGroups, CompoundPart, ConfigError, PhysicsConfig, PhysicsWorld,
+    Shape,
 };
 
 fn config() -> PhysicsConfig {
@@ -233,4 +234,50 @@ fn compose_trop_de_parts_refuse() {
         world.add_body(BodyKind::Dynamic, Vec3::ZERO, Quat::IDENTITY, shape),
         Err(BodyError::CompoundTooManyParts)
     );
+}
+
+/// Hauteur d'une bille après 3 s, lâchée à y = 3 au-dessus d'un sol statique du
+/// groupe 0. Les groupes de la bille décident si elle rencontre le sol (§10.4).
+fn hauteur_bille_apres_3s(ball_memberships: &[u32], ball_filter: &[u32]) -> f32 {
+    let mut world = PhysicsWorld::new(config());
+    let ground = world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, 0.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [5.0, 0.5, 5.0],
+            },
+        )
+        .expect("un sol est valide");
+    world.set_collision_groups(ground, CollisionGroups::from_indices(&[0], &[0]));
+    let ball = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 3.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
+        .expect("une bille est valide");
+    world.set_collision_groups(ball, CollisionGroups::from_indices(ball_memberships, ball_filter));
+    for _ in 0..180 {
+        world.advance(1.0 / 60.0);
+    }
+    world.pose(ball).unwrap().translation.y
+}
+
+#[test]
+fn groupes_compatibles_la_bille_repose() {
+    // R-980 : bille membre du groupe 0 et filtrant 0, comme le sol — elles se
+    // rencontrent, la bille s'arrête au-dessus du sol (sommet en y = 0.5).
+    let y = hauteur_bille_apres_3s(&[0], &[0]);
+    assert!(y > 0.5, "la bille aurait dû reposer sur le sol (y={y})");
+}
+
+#[test]
+fn groupes_incompatibles_la_bille_traverse() {
+    // R-980 : bille membre du groupe 1 et filtrant 1 ; le sol est dans le groupe
+    // 0. Le test AND échoue des deux côtés — aucune collision, la bille traverse.
+    let y = hauteur_bille_apres_3s(&[1], &[1]);
+    assert!(y < -1.0, "la bille aurait dû traverser le sol (y={y})");
 }

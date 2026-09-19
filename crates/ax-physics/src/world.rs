@@ -11,6 +11,7 @@ use crate::body::{
     MIN_CONVEX_HULL_POINTS,
 };
 use crate::config::PhysicsConfig;
+use crate::groups::CollisionGroups;
 
 /// Pose rigide d'un corps : translation et rotation, sans échelle.
 ///
@@ -139,6 +140,27 @@ impl PhysicsWorld {
     pub fn set_kinematic_pose(&mut self, id: BodyId, position: Vec3, rotation: Quat) {
         if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
             body.set_next_kinematic_position(RapierPose::from_parts(position, rotation));
+        }
+    }
+
+    /// Attribue ses groupes de collision à un corps (§10.4, R-980).
+    ///
+    /// Sans effet si le corps n'existe pas. Le corps porte un seul collider ; le
+    /// filtre s'y applique. À défaut d'appel, un corps est membre de tous les
+    /// groupes et entre en collision avec tous ([`CollisionGroups::ALL`]).
+    pub fn set_collision_groups(&mut self, id: BodyId, groups: CollisionGroups) {
+        // On copie les handles avant de muter : `bodies` et `colliders` sont deux
+        // ensembles distincts, mais l'emprunt du corps doit finir avant l'accès
+        // mutable aux colliders.
+        let handles: Vec<_> = match self.inner.bodies.get(id.handle()) {
+            Some(body) => body.colliders().to_vec(),
+            None => return,
+        };
+        let interaction = groups.to_rapier();
+        for handle in handles {
+            if let Some(collider) = self.inner.colliders.get_mut(handle) {
+                collider.set_collision_groups(interaction);
+            }
         }
     }
 

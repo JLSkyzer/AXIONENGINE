@@ -1273,11 +1273,16 @@ substituable sans changer rapier »).
             différés à C-38, leur source de données : c'est là que R-970
             (INV-13) s'appliquera à du vrai terrain, sans dépendance `ndarray`
             prématurée. 14 tests, clippy et lint verts.
-      - [ ] **Tranche 2b — groupes et filtre de collision (§10.4, R-980).**
-            Groupes data-driven par nom, réservés (`world`, `assembly`,
-            `part`, `debris`, `entity_proxy`, `sensor`, `particle`, `debug`) ;
-            filtre `(group & other.mask) && (other.group & mask)` + exclusion
-            intra-assembly sauf déclaration.
+      - [x] **Tranche 2b — groupes et filtre de collision (§10.4, R-980).**
+            Module `groups` : huit groupes réservés (`world`…`debug`) à bits
+            fixes, `GroupRegistry` data-driven par nom (bits 8..31 à la
+            demande), `CollisionGroups` traduit en `InteractionGroups` mode
+            AND — la formule symétrique de §10.4. `set_collision_groups` pose
+            le filtre sur le collider d'un corps. 5 tests unitaires + 2 tests
+            de comportement (compatibles → repose, incompatibles → traverse).
+            **Reste de §10.4** : l'exclusion intra-assembly (sauf déclaration)
+            exige un tag d'assembly par collider et un `PhysicsHooks` ; elle
+            va avec l'intégration des assemblies dans le monde (tranche 5).
       - [ ] **Tranche 2c — forces, CCD, rayon, plafond.** Forces
             environnementales (§10.6 : flottabilité, traînée, portance, vent),
             CCD (déclaré ou |v|·dt > 0.5·min_dim), `simulation_radius` sommeil
