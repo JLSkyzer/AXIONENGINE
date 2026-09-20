@@ -534,6 +534,28 @@ impl PhysicsWorld {
         }
     }
 
+    /// Fixe la gravité de la dimension (§10.6, R-611). Prend effet au prochain
+    /// pas.
+    pub fn set_gravity(&mut self, gravity: Vec3) {
+        self.inner.gravity = gravity;
+    }
+
+    /// Applique une impulsion à un corps (§10.5, API), instantanée.
+    ///
+    /// Sans effet si le corps n'existe pas ou n'est pas dynamique. Au point
+    /// `local_point` (coordonnées locales du corps) si `at_point`, sinon au
+    /// centre de masse ; réveille le corps.
+    pub fn apply_impulse(&mut self, id: BodyId, impulse: Vec3, local_point: Vec3, at_point: bool) {
+        if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
+            if at_point {
+                let world_point = body.position().transform_point(local_point);
+                body.apply_impulse_at_point(impulse, world_point, true);
+            } else {
+                body.apply_impulse(impulse, true);
+            }
+        }
+    }
+
     /// Attribue ses groupes de collision à un corps (§10.4, R-980).
     ///
     /// Sans effet si le corps n'existe pas. Le corps porte un seul collider ; le

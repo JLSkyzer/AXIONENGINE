@@ -1390,6 +1390,20 @@ substituable sans changer rapier »).
                   silencieux) ; `cancel` ; cycle non clos → R-282
                   (`axion.sim.unbalanced`). Pas fixe / accumulateur : R-283
                   (déjà dans `PhysicsWorld::advance`).
+                  - [x] **4b-i — `SimDriver`** (ax-physics) : mondes par
+                        dimension (BTreeMap déterministe, R-610), `advance_all`,
+                        `collect_states`/`drain_events`. 3 tests.
+                  - [x] **4b-ii — commandes `SimIn`** : structs ADR-114
+                        (`ax-model::dm::commands`, layout figé + test) + parseur
+                        **sûr** (champ à champ, sans `unsafe`) + routage
+                        handle→corps + application (REMOVE_ASSEMBLY,
+                        SET_KINEMATIC, APPLY_IMPULSE, SET_DIMENSION_ENV). 5 tests
+                        (flux réels). CREATE_ASSEMBLY (C-32) et APPLY_FORCE
+                        continu comptés **différés**, jamais des stubs.
+                  - [ ] **4b-iii — points d'entrée `ax-ffi`** :
+                        `axion_sim_submit`/`collect`/`cancel`, enveloppe mince
+                        lisant `SimIn` et remplissant `SimOut`/`Events`, sur le
+                        patron async d'`asset_compile`/`poll` ; `AxionCollectResult`.
             - [ ] **4c — packing des tampons + garde-fous** : sérialiser
                   BodyState[] (position monde `f64` via l'origine flottante) et
                   PhysicsEvent[] avec en-têtes/CRC ; R-180 (clamp

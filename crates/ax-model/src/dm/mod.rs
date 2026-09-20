@@ -20,6 +20,7 @@
 //! en avance figerait des dispositions mémoire avant que la première fonction
 //! ne s'en serve, ce qui est exactement la décision qu'on ne peut plus défaire.
 
+pub mod commands;
 pub mod geometry;
 pub mod handle;
 pub mod integrity;

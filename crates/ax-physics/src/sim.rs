@@ -10,9 +10,12 @@
 //! parcours est déterministe, donc l'ordre de `BodyState[]` et du lot
 //! d'événements l'est aussi (R-1020).
 
+use crate::body::BodyId;
 use crate::config::PhysicsConfig;
+use crate::forces::FluidEnvironment;
 use crate::world::PhysicsWorld;
-use ax_math::FloatingOrigin;
+use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
+use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyState, PhysicsEvent};
 use std::collections::BTreeMap;
 
@@ -22,10 +25,20 @@ struct DimensionSim {
     origin: FloatingOrigin,
 }
 
+/// Clé de routage d'un handle : génération en poids fort, index en poids faible.
+fn handle_key(handle: Handle) -> u64 {
+    (u64::from(handle.generation) << 32) | u64::from(handle.index)
+}
+
 /// Pilote de simulation : un monde physique par dimension (R-610).
+///
+/// Tient aussi le routage d'un handle d'assembly vers son corps et sa dimension,
+/// pour appliquer les commandes de `SimIn` (ADR-114) qui ciblent un handle.
 #[derive(Default)]
 pub struct SimDriver {
     dimensions: BTreeMap<u64, DimensionSim>,
+    /// handle → (dimension, corps). Consultée par clé, jamais itérée (R-1020).
+    routes: BTreeMap<u64, (u64, BodyId)>,
 }
 
 impl SimDriver {
@@ -108,6 +121,78 @@ impl SimDriver {
             events.extend(sim.world.drain_events());
         }
         events
+    }
+
+    /// Attache une identité d'assembly à un corps et l'enregistre au routage.
+    ///
+    /// C'est ce que fera `CREATE_ASSEMBLY` une fois C-32 disponible ; les tests
+    /// s'en servent pour poser des corps routables.
+    pub fn register_body(
+        &mut self,
+        dimension: u64,
+        handle: Handle,
+        body: BodyId,
+        node: u32,
+        material: u16,
+    ) {
+        let exists = if let Some(sim) = self.dimensions.get_mut(&dimension) {
+            sim.world.set_body_identity(body, handle, node, material);
+            true
+        } else {
+            false
+        };
+        if exists {
+            self.routes.insert(handle_key(handle), (dimension, body));
+        }
+    }
+
+    /// Applique `REMOVE_ASSEMBLY` : retire le corps et son routage. Rend vrai s'il
+    /// existait.
+    pub fn apply_remove_assembly(&mut self, handle: Handle) -> bool {
+        let Some((dimension, body)) = self.routes.remove(&handle_key(handle)) else {
+            return false;
+        };
+        self.dimensions
+            .get_mut(&dimension)
+            .is_some_and(|sim| sim.world.remove_body(body))
+    }
+
+    /// Applique `SET_KINEMATIC` : la pose monde imposée est ramenée au repère
+    /// local de la dimension par l'origine flottante.
+    pub fn apply_set_kinematic(&mut self, handle: Handle, world_position: DVec3, rotation: Quat) {
+        if let Some(&(dimension, body)) = self.routes.get(&handle_key(handle)) {
+            if let Some(sim) = self.dimensions.get_mut(&dimension) {
+                let local = sim.origin.to_local(world_position);
+                sim.world.set_kinematic_pose(body, local, rotation);
+            }
+        }
+    }
+
+    /// Applique `APPLY_IMPULSE`.
+    pub fn apply_impulse(&mut self, handle: Handle, impulse: Vec3, point: Vec3, at_point: bool) {
+        if let Some(&(dimension, body)) = self.routes.get(&handle_key(handle)) {
+            if let Some(sim) = self.dimensions.get_mut(&dimension) {
+                sim.world.apply_impulse(body, impulse, point, at_point);
+            }
+        }
+    }
+
+    /// Applique `SET_DIMENSION_ENV` : gravité, vent et fluide d'une dimension,
+    /// créée au besoin (§10.6).
+    pub fn apply_dimension_env(
+        &mut self,
+        dimension: u64,
+        gravity: Vec3,
+        wind: Vec3,
+        fluid: Option<FluidEnvironment>,
+    ) {
+        let sim = self.dimensions.entry(dimension).or_insert_with(|| DimensionSim {
+            world: PhysicsWorld::new(PhysicsConfig::default()),
+            origin: FloatingOrigin::new(DVec3::ZERO),
+        });
+        sim.world.set_gravity(gravity);
+        sim.world.set_wind(wind);
+        sim.world.set_fluid(fluid);
     }
 }
 
