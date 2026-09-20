@@ -29,6 +29,24 @@ const DEFAULT_CONTACT_EVENT_THRESHOLD: f32 = 0.5;
 /// traînée). Valeur physique standard, non un chiffre de performance.
 const AIR_DENSITY: f32 = 1.225;
 
+/// Borne linéaire par défaut, en m/s (R-180). Au-delà, la vitesse est clampée.
+const DEFAULT_MAX_LINEAR_VEL: f32 = 300.0;
+
+/// Borne angulaire par défaut, en rad/s (R-180). Au-delà, la vitesse est clampée.
+const DEFAULT_MAX_ANGULAR_VEL: f32 = 100.0;
+
+/// Période minimale entre deux journalisations de clamp d'un même corps, en s
+/// (R-180 : « au plus une fois par body et par minute »). Comptée en temps
+/// simulé, donc déterministe.
+const CLAMP_JOURNAL_PERIOD: f64 = 60.0;
+
+/// Borne de coordonnée locale au-delà de laquelle une position est jugée hors du
+/// monde (R-181). En repère d'origine flottante les coordonnées restent proches
+/// de zéro ; une valeur au-delà de dix millions de blocs — bien en deçà du
+/// débordement `f32`, bien au-delà de toute position légitime — signale une
+/// explosion du solveur, à traiter comme FM-20.
+const WORLD_COORD_LIMIT: f32 = 1.0e7;
+
 /// Paramètres de force environnementale attachés à un corps (§10.6).
 ///
 /// La flottabilité (fluide) enrichira ce profil dans une tranche suivante.
@@ -56,6 +74,14 @@ struct BodyIdentity {
     assembly: Handle,
     node: u32,
     material: u16,
+}
+
+/// Dernière pose finie et dans le monde d'un corps, mémorisée pour la
+/// restauration de R-181 (retour au dernier état valide sur NaN ou débordement).
+#[derive(Debug, Clone, Copy)]
+struct ValidPose {
+    translation: Vec3,
+    rotation: Quat,
 }
 
 /// Collecteur d'événements de collision d'un sous-pas.
@@ -164,6 +190,27 @@ pub struct PhysicsWorld {
     /// Compteur cumulé d'événements perdus faute de place (R-1011, aucune perte
     /// silencieuse).
     dropped_events: u64,
+    /// Bornes de vitesse propres à un corps (R-180). À défaut, les valeurs par
+    /// défaut de la fiche (300 m/s, 100 rad/s) s'appliquent. Consultée par clé,
+    /// jamais itérée (R-1020).
+    velocity_limits: HashMap<BodyId, (f32, f32)>,
+    /// Dernière pose valide connue de chaque corps, pour la restauration R-181.
+    /// Semée à la création du corps. Consultée par clé, jamais itérée (R-1020).
+    last_valid: HashMap<BodyId, ValidPose>,
+    /// Drapeaux de garde-fou du tick courant (R-180 CLAMPED), peuplés pendant
+    /// `advance` et lus par `body_states`. Reconstruits à chaque `advance` :
+    /// un corps clampé à un tick antérieur ne le reste pas. Consultée par clé,
+    /// jamais itérée (R-1020).
+    guard_flags: HashMap<BodyId, u32>,
+    /// Instant simulé de la dernière journalisation de clamp par corps, pour le
+    /// débit d'au plus une par minute (R-180). Consultée par clé (R-1020).
+    clamp_journal_at: HashMap<BodyId, f64>,
+    /// Horloge simulée cumulée, en s, qui cadence le débit de journalisation.
+    sim_clock: f64,
+    /// Nombre cumulé de clamps journalisés (R-180), après filtrage par le débit.
+    clamp_journal_count: u64,
+    /// Nombre cumulé d'états invalides restaurés (R-181, `E-2030`).
+    invalid_state_count: u64,
 }
 
 impl PhysicsWorld {
@@ -194,6 +241,13 @@ impl PhysicsWorld {
             max_events_per_tick: DEFAULT_MAX_EVENTS_PER_TICK,
             contact_event_threshold: DEFAULT_CONTACT_EVENT_THRESHOLD,
             dropped_events: 0,
+            velocity_limits: HashMap::new(),
+            last_valid: HashMap::new(),
+            guard_flags: HashMap::new(),
+            clamp_journal_at: HashMap::new(),
+            sim_clock: 0.0,
+            clamp_journal_count: 0,
+            invalid_state_count: 0,
         }
     }
 
@@ -232,7 +286,19 @@ impl PhysicsWorld {
         activation.time_until_sleep = self.config.sleep_time;
 
         let (handle, _collider) = self.inner.insert(body, collider);
-        Ok(BodyId::from_handle(handle))
+        let id = BodyId::from_handle(handle);
+        // Pose de départ comme premier état valide, si elle l'est : une
+        // restauration R-181 dès le premier sous-pas a alors un repli fini vers
+        // lequel revenir. Un corps placé hors du monde n'est pas semé — on ne
+        // reviendrait pas à une pose invalide ; à défaut de repli, la
+        // restauration le parque à l'origine, endormi.
+        if state_is_valid(position, rotation, Vec3::ZERO, Vec3::ZERO) {
+            self.last_valid.insert(id, ValidPose {
+                translation: position,
+                rotation,
+            });
+        }
+        Ok(id)
     }
 
     /// Avance la simulation d'au plus `max_substeps` sous-pas de `fixed_dt`,
@@ -246,11 +312,20 @@ impl PhysicsWorld {
         let dt = self.config.fixed_dt();
         let ceiling = dt * self.config.max_substeps() as f32;
         self.accumulator = (self.accumulator + frame_dt.max(0.0)).min(ceiling);
+        // Les drapeaux de garde-fou ne valent que pour le tick courant : un corps
+        // clampé à un tick antérieur ne l'est plus tant qu'il ne dépasse pas de
+        // nouveau. On repart donc de zéro à chaque `advance`, même à 0 sous-pas.
+        self.guard_flags.clear();
         let mut substeps = 0;
         while self.accumulator >= dt {
+            self.sim_clock += f64::from(dt);
             self.apply_aero_forces();
             let collector = ContactCollector::default();
             self.inner.step_with_events(&(), &collector);
+            // Garde-fous R-180/R-181 avant la récolte d'événements : les vitesses
+            // sont ramenées sous leurs bornes et un état non fini est restauré, si
+            // bien que les événements du sous-pas se lisent sur un état sain.
+            self.enforce_body_guardrails();
             self.collect_contact_events(&collector);
             self.collect_contact_impulses();
             self.collect_sleep_events();
@@ -258,6 +333,135 @@ impl PhysicsWorld {
             substeps += 1;
         }
         substeps
+    }
+
+    /// Fait respecter les garde-fous par corps après un sous-pas (R-180, R-181).
+    ///
+    /// Deux sources d'état invalide (R-181, `E-2030`), traitées dans cet ordre :
+    ///
+    /// 1. **Non fini** (NaN, infini) — `rapier` le détecte à ses points de
+    ///    contrôle, ramène la pose au dernier état valide, annule vitesses et
+    ///    forces, et **désactive** le corps (sa quarantaine, qui contient aussi
+    ///    la propagation par les contacts et la CCD). On lit ce rapport, on
+    ///    convertit la désactivation en **sommeil forcé** — fidèle à R-181 et au
+    ///    principe « endort, jamais ne supprime » (R-612) — et on compte l'E-2030.
+    /// 2. **Fini mais hors du monde** (au-delà de [`WORLD_COORD_LIMIT`]) — que la
+    ///    quarantaine de `rapier` ne couvre pas, une telle valeur étant finie. On
+    ///    le détecte soi-même, on restaure le dernier état valide connu et on
+    ///    endort.
+    ///
+    /// Puis R-180 : les vitesses d'un corps sain dépassant leurs bornes sont
+    /// clampées, le drapeau `CLAMPED` posé et le fait journalisé au plus une fois
+    /// par corps et par minute ; sa pose devient le dernier état valide.
+    ///
+    /// Comme [`apply_aero_forces`](Self::apply_aero_forces), on relève d'abord
+    /// l'état dans l'ordre déterministe de `rapier`, puis on agit : l'emprunt en
+    /// lecture des corps est clos avant les mutations.
+    fn enforce_body_guardrails(&mut self) {
+        // (1) Quarantaine de `rapier` : le non-fini, déjà ramené au dernier état
+        // valide et désactivé. On réveille pour endormir — un corps endormi
+        // reste dans la simulation et pourra se réveiller, un corps désactivé en
+        // sort. Le rapport est propre à ce monde et vidé à chaque pas.
+        let quarantined: Vec<RigidBodyHandle> = self.inner.quarantine().bodies().to_vec();
+        for handle in quarantined {
+            if let Some(body) = self.inner.bodies.get_mut(handle) {
+                body.set_enabled(true);
+                body.sleep();
+            }
+            self.invalid_state_count += 1;
+        }
+
+        // (2) Bornes de vitesse (R-180) et hors-monde fini (R-181).
+        let snapshot: Vec<(BodyId, RigidBodyHandle, Vec3, Quat, Vec3, Vec3)> = self
+            .inner
+            .bodies
+            .iter()
+            .filter(|(_, body)| body.is_dynamic())
+            .map(|(handle, body)| {
+                let pose = body.position();
+                (
+                    BodyId::from_handle(handle),
+                    handle,
+                    pose.translation,
+                    pose.rotation,
+                    body.linvel(),
+                    body.angvel(),
+                )
+            })
+            .collect();
+
+        for (id, handle, translation, rotation, linvel, angvel) in snapshot {
+            if !state_is_valid(translation, rotation, linvel, angvel) {
+                self.restore_last_valid(id, handle);
+                continue;
+            }
+            self.clamp_velocities(id, handle, linvel, angvel);
+            // Cette pose finie devient le repli d'une éventuelle restauration.
+            self.last_valid.insert(id, ValidPose { translation, rotation });
+        }
+    }
+
+    /// Restaure un corps à son dernier état valide connu et l'endort (R-181,
+    /// `E-2030`), pour une position finie mais hors du monde.
+    fn restore_last_valid(&mut self, id: BodyId, handle: RigidBodyHandle) {
+        // Un corps passé par `add_body` a toujours un repli semé ; à défaut,
+        // l'origine et l'identité, finies par construction.
+        let valid = self.last_valid.get(&id).copied().unwrap_or(ValidPose {
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+        });
+        if let Some(body) = self.inner.bodies.get_mut(handle) {
+            body.set_position(RapierPose::from_parts(valid.translation, valid.rotation), false);
+            body.set_linvel(Vec3::ZERO, false);
+            body.set_angvel(Vec3::ZERO, false);
+            // Sommeil forcé : un corps parti hors du monde ne poursuit pas sa
+            // course ce tick.
+            body.sleep();
+        }
+        self.invalid_state_count += 1;
+    }
+
+    /// Clampe les vitesses d'un corps à leurs bornes (R-180) ; pose le drapeau
+    /// `CLAMPED` et journalise (débit d'une par minute) si une borne a mordu.
+    fn clamp_velocities(&mut self, id: BodyId, handle: RigidBodyHandle, linvel: Vec3, angvel: Vec3) {
+        let (max_linear, max_angular) = self
+            .velocity_limits
+            .get(&id)
+            .copied()
+            .unwrap_or((DEFAULT_MAX_LINEAR_VEL, DEFAULT_MAX_ANGULAR_VEL));
+        let mut clamped = false;
+        if let Some(body) = self.inner.bodies.get_mut(handle) {
+            let linear_speed = linvel.length();
+            if linear_speed > max_linear && linear_speed > 0.0 {
+                body.set_linvel(linvel * (max_linear / linear_speed), false);
+                clamped = true;
+            }
+            let angular_speed = angvel.length();
+            if angular_speed > max_angular && angular_speed > 0.0 {
+                body.set_angvel(angvel * (max_angular / angular_speed), false);
+                clamped = true;
+            }
+        }
+        if clamped {
+            *self.guard_flags.entry(id).or_default() |= body_state_flags::CLAMPED;
+            self.journalise_clamp(id);
+        }
+    }
+
+    /// Journalise un clamp au plus une fois par corps et par minute simulée
+    /// (R-180). Sans framework de log dans ce crate pur, la journalisation prend
+    /// la forme d'un compteur, à l'image de `dropped_events` : la frontière (C-15)
+    /// l'exposera en métrique. Le débit reste testable.
+    fn journalise_clamp(&mut self, id: BodyId) {
+        let now = self.sim_clock;
+        let due = match self.clamp_journal_at.get(&id) {
+            Some(&last) => now - last >= CLAMP_JOURNAL_PERIOD,
+            None => true,
+        };
+        if due {
+            self.clamp_journal_at.insert(id, now);
+            self.clamp_journal_count += 1;
+        }
     }
 
     /// Construit les événements de contact (§10.7, R-615) du dernier sous-pas.
@@ -607,6 +811,12 @@ impl PhysicsWorld {
         self.inner.bodies.get(id.handle()).map(rapier3d::prelude::RigidBody::linvel)
     }
 
+    /// Vitesse angulaire d'un corps, en rad/s, ou `None` s'il n'existe pas.
+    #[must_use]
+    pub fn angular_velocity(&self, id: BodyId) -> Option<Vec3> {
+        self.inner.bodies.get(id.handle()).map(rapier3d::prelude::RigidBody::angvel)
+    }
+
     /// Fixe le vent de la dimension (§10.6, `physics.wind`).
     ///
     /// Le vent n'agit qu'à travers la traînée : un corps sans traînée l'ignore.
@@ -684,6 +894,34 @@ impl PhysicsWorld {
         self.dropped_events
     }
 
+    /// Fixe les bornes de vitesse d'un corps (R-180), en m/s et rad/s.
+    ///
+    /// Sans effet si le corps n'existe pas. À défaut d'appel, les défauts de la
+    /// fiche s'appliquent (300 m/s, 100 rad/s). Une borne négative ou nulle
+    /// n'aurait pas de sens : elles sont ramenées à zéro, ce qui fige la vitesse
+    /// correspondante — usage légitime pour un corps qu'on veut immobiliser.
+    pub fn set_velocity_limits(&mut self, id: BodyId, max_linear: f32, max_angular: f32) {
+        if self.inner.bodies.get(id.handle()).is_none() {
+            return;
+        }
+        self.velocity_limits
+            .insert(id, (max_linear.max(0.0), max_angular.max(0.0)));
+    }
+
+    /// Nombre cumulé de clamps journalisés (R-180), après le débit d'au plus un
+    /// par corps et par minute. Destiné à la métrique de la frontière (C-15).
+    #[must_use]
+    pub fn clamp_journal_count(&self) -> u64 {
+        self.clamp_journal_count
+    }
+
+    /// Nombre cumulé d'états non finis ou hors du monde restaurés (R-181,
+    /// `E-2030`). Jamais de restauration silencieuse : ce compteur en fait foi.
+    #[must_use]
+    pub fn invalid_state_count(&self) -> u64 {
+        self.invalid_state_count
+    }
+
     /// Produit l'état des corps mobiles identifiés (DM-08), pour le cycle de
     /// simulation (IF-03).
     ///
@@ -693,9 +931,9 @@ impl PhysicsWorld {
     /// `f32` par l'origine flottante de la dimension (R-462). L'ordre suit
     /// l'itération déterministe de `rapier` (R-1020).
     ///
-    /// Flags peuplés en tranche 4a : SLEEPING et IN_FLUID. Les autres
-    /// (TOUCHING_GROUND, CLAMPED, DEFORMED, DAMAGED) s'ajoutent avec leur source
-    /// (garde-fous R-180/181 puis M6).
+    /// Flags peuplés : SLEEPING, IN_FLUID et CLAMPED (garde-fou R-180 du tick).
+    /// Les autres (TOUCHING_GROUND, DEFORMED, DAMAGED) s'ajouteront avec leur
+    /// source (contacts sol puis M6).
     #[must_use]
     pub fn body_states(&self, origin: &FloatingOrigin) -> Vec<BodyState> {
         let mut states = Vec::new();
@@ -703,14 +941,16 @@ impl PhysicsWorld {
             if !body.is_dynamic_or_kinematic() {
                 continue;
             }
-            let identity = match self.identity.get(&BodyId::from_handle(handle)) {
+            let id = BodyId::from_handle(handle);
+            let identity = match self.identity.get(&id) {
                 Some(identity) if !identity.assembly.is_absent() => identity,
                 _ => continue,
             };
             let pose = body.position();
             let world = origin.to_world(pose.translation);
 
-            let mut flags = 0;
+            // Drapeaux de garde-fou du tick (CLAMPED), posés pendant `advance`.
+            let mut flags = self.guard_flags.get(&id).copied().unwrap_or(0);
             if body.is_sleeping() {
                 flags |= body_state_flags::SLEEPING;
             }
@@ -853,6 +1093,10 @@ impl PhysicsWorld {
         self.aero.remove(&id);
         self.identity.remove(&id);
         self.sleep_state.remove(&id);
+        self.velocity_limits.remove(&id);
+        self.last_valid.remove(&id);
+        self.guard_flags.remove(&id);
+        self.clamp_journal_at.remove(&id);
         self.inner.remove_body(id.handle()).is_some()
     }
 
@@ -919,6 +1163,19 @@ fn shared_shape_of(shape: &Shape) -> Result<SharedShape, BodyError> {
             Ok(SharedShape::compound(children))
         }
     }
+}
+
+/// Vrai si l'état d'un corps est fini et dans le monde (R-181).
+///
+/// Rejette toute composante non finie (NaN, infini) de la pose ou des vitesses,
+/// ainsi qu'une translation dont un axe dépasse [`WORLD_COORD_LIMIT`] — les deux
+/// symptômes d'une explosion du solveur (FM-20).
+fn state_is_valid(translation: Vec3, rotation: Quat, linvel: Vec3, angvel: Vec3) -> bool {
+    translation.is_finite()
+        && rotation.is_finite()
+        && linvel.is_finite()
+        && angvel.is_finite()
+        && translation.abs().max_element() <= WORLD_COORD_LIMIT
 }
 
 /// Traînée d'un corps : force centrale opposée à la vitesse relative au vent.

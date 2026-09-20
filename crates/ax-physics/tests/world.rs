@@ -928,3 +928,167 @@ fn evenements_deterministes() {
     };
     assert_eq!(run(), run());
 }
+
+// --- Garde-fous R-180 / R-181 (tranche 4c) ---------------------------------
+
+#[test]
+fn le_clamp_borne_la_vitesse_lineaire() {
+    // R-180 : au-delà de la borne, la vitesse est ramenée à celle-ci, le drapeau
+    // CLAMPED est posé et le fait est journalisé.
+    let mut world = PhysicsWorld::new(config());
+    let ball = world
+        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    world.set_body_identity(ball, Handle::new(1, 1), 0, 0);
+    world.set_velocity_limits(ball, 5.0, 100.0);
+    // Une forte impulsion propulse la bille bien au-delà de 5 m/s.
+    world.apply_impulse(ball, Vec3::new(1000.0, 0.0, 0.0), Vec3::ZERO, false);
+
+    world.advance(1.0 / 60.0);
+
+    let speed = world.velocity(ball).unwrap().length();
+    assert!((speed - 5.0).abs() < 1.0e-2, "vitesse ramenée à la borne, obtenu {speed}");
+    let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
+    assert_eq!(states.len(), 1);
+    assert!(states[0].flags & body_state_flags::CLAMPED != 0, "drapeau CLAMPED posé");
+    assert_eq!(world.clamp_journal_count(), 1, "un clamp journalisé");
+    assert_eq!(world.invalid_state_count(), 0, "aucun état invalide");
+}
+
+#[test]
+fn le_clamp_borne_la_vitesse_angulaire() {
+    // R-180 : la borne angulaire agit indépendamment de la linéaire.
+    let mut world = PhysicsWorld::new(config());
+    let ball = world
+        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    world.set_velocity_limits(ball, 300.0, 2.0);
+    // Impulsion appliquée hors du centre : elle crée une rotation rapide.
+    world.apply_impulse(ball, Vec3::new(0.0, 0.0, 500.0), Vec3::new(0.4, 0.0, 0.0), true);
+
+    world.advance(1.0 / 60.0);
+
+    let ang_speed = world.angular_velocity(ball).unwrap().length();
+    assert!(ang_speed <= 2.0 + 1.0e-2, "vitesse angulaire bornée, obtenu {ang_speed}");
+    assert_eq!(world.clamp_journal_count(), 1);
+}
+
+#[test]
+fn sans_depassement_aucun_clamp() {
+    // Sous les bornes par défaut (300 m/s), une impulsion modérée ne clampe rien.
+    let mut world = PhysicsWorld::new(config());
+    let ball = world
+        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    world.set_body_identity(ball, Handle::new(2, 1), 0, 0);
+    world.apply_impulse(ball, Vec3::new(1.0, 0.0, 0.0), Vec3::ZERO, false);
+
+    world.advance(1.0 / 60.0);
+
+    let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
+    assert!(states[0].flags & body_state_flags::CLAMPED == 0, "pas de clamp");
+    assert_eq!(world.clamp_journal_count(), 0);
+}
+
+#[test]
+fn un_etat_non_fini_est_restaure_et_endormi() {
+    // R-181 / FM-20 / E-2030 : une impulsion NaN rend l'état non fini ; le corps
+    // revient au dernier état valide (sa pose de départ) et est endormi.
+    let mut world = PhysicsWorld::new(config());
+    let spawn = Vec3::new(0.0, 5.0, 0.0);
+    let ball = world
+        .add_body(BodyKind::Dynamic, spawn, Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    world.set_body_identity(ball, Handle::new(3, 1), 0, 0);
+    world.apply_impulse(ball, Vec3::NAN, Vec3::ZERO, false);
+
+    world.advance(1.0 / 60.0);
+
+    assert_eq!(world.invalid_state_count(), 1, "un état invalide restauré");
+    let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
+    assert_eq!(states.len(), 1);
+    let position = states[0].position;
+    assert!(position.iter().all(|c| c.is_finite()), "position finie après restauration");
+    assert!((position[1] - 5.0).abs() < 1.0e-3, "revenu à la pose de départ, y={}", position[1]);
+    assert!(states[0].flags & body_state_flags::SLEEPING != 0, "endormi de force");
+}
+
+#[test]
+fn une_position_hors_du_monde_est_restauree() {
+    // R-181 : une position finie mais hors des limites du monde déclenche une
+    // restauration. Un corps dynamique ne peut y parvenir par la dynamique (sa
+    // vitesse est bornée) ; on l'y place donc directement, cas qu'un appelant
+    // fautif pourrait provoquer. Faute d'état valide antérieur, il est parqué à
+    // l'origine, endormi.
+    let mut world = PhysicsWorld::new(config());
+    let ball = world
+        .add_body(BodyKind::Dynamic, Vec3::new(2.0e7, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    world.set_body_identity(ball, Handle::new(5, 1), 0, 0);
+
+    world.advance(1.0 / 60.0);
+
+    assert_eq!(world.invalid_state_count(), 1, "un état hors du monde restauré");
+    let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
+    let position = states[0].position;
+    assert!(position.iter().all(|c| c.is_finite()), "position finie après restauration");
+    assert!(position[0].abs() < 1.0, "parqué à l'origine, x={}", position[0]);
+    assert!(states[0].flags & body_state_flags::SLEEPING != 0, "endormi de force");
+}
+
+#[test]
+fn la_journalisation_du_clamp_est_debitee_par_minute() {
+    // R-180 : un clamp est journalisé au plus une fois par corps et par minute.
+    // On maintient la bille au-dessus de sa borne à chaque tick ; le compteur ne
+    // bouge qu'une fois avant la minute, une seconde fois après l'avoir franchie.
+    let mut world = PhysicsWorld::new(config());
+    let ball = world
+        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    world.set_velocity_limits(ball, 1.0, 100.0);
+
+    // Dix ticks (bien en deçà d'une minute) : un seul clamp journalisé.
+    for _ in 0..10 {
+        world.apply_impulse(ball, Vec3::new(100.0, 0.0, 0.0), Vec3::ZERO, false);
+        world.advance(1.0 / 60.0);
+    }
+    assert_eq!(world.clamp_journal_count(), 1, "un seul clamp dans la première minute");
+
+    // Assez de ticks pour franchir 60 s simulées (3600 sous-pas) : un second.
+    for _ in 0..3600 {
+        world.apply_impulse(ball, Vec3::new(100.0, 0.0, 0.0), Vec3::ZERO, false);
+        world.advance(1.0 / 60.0);
+    }
+    assert_eq!(world.clamp_journal_count(), 2, "un second clamp après la minute");
+}
+
+#[test]
+fn les_garde_fous_sont_deterministes() {
+    // R-1020 : clamp et restauration produisent le même état d'une exécution à
+    // l'autre.
+    let run = || {
+        let mut world = PhysicsWorld::new(config());
+        let a = world
+            .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+            .unwrap();
+        world.set_body_identity(a, Handle::new(7, 1), 0, 0);
+        world.set_velocity_limits(a, 5.0, 100.0);
+        let b = world
+            .add_body(BodyKind::Dynamic, Vec3::new(3.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+            .unwrap();
+        world.set_body_identity(b, Handle::new(8, 1), 0, 0);
+        world.apply_impulse(a, Vec3::new(1000.0, 0.0, 0.0), Vec3::ZERO, false);
+        world.apply_impulse(b, Vec3::NAN, Vec3::ZERO, false);
+        for _ in 0..30 {
+            world.advance(1.0 / 60.0);
+        }
+        (
+            world.body_states(&FloatingOrigin::new(DVec3::ZERO)),
+            world.clamp_journal_count(),
+            world.invalid_state_count(),
+        )
+    };
+    assert_eq!(run(), run());
+}
+
+

@@ -1407,12 +1407,21 @@ substituable sans changer rapier »).
                         d'intégration `sim_abi.rs` (cycle init -> SimIn ->
                         submit -> collect -> cancel -> shutdown, bilan
                         équilibré R-322) vert ; 9 tests ax-ffi verts.
-            - [ ] **4c — packing des tampons + garde-fous** : sérialiser
+            - [x] **4c — packing des tampons + garde-fous** : sérialiser
                   BodyState[] (position monde `f64` via l'origine flottante) et
                   PhysicsEvent[] avec en-têtes/CRC ; R-180 (clamp
                   `max_linear_vel`/`max_angular_vel` + flag CLAMPED, journalisé) ;
                   R-181 / FM-20 (position NaN ou hors monde → sommeil forcé,
-                  `E-2030`, dernier état valide). Tests Rust du packing.
+                  `E-2030`, dernier état valide). **Fait** : R-180 (clamp
+                  linéaire/angulaire par corps, défauts 300 m/s / 100 rad/s, flag
+                  CLAMPED, journalisation débitée à une par corps et par minute) ;
+                  R-181/FM-20 via la quarantaine de rapier pour le non-fini (NaN,
+                  infini → sommeil forcé, E-2030, rollback rapier) et une borne de
+                  coordonnée locale pour le hors-monde fini. 7 tests Rust. Le
+                  packing suit la convention AssetOut (comptes via
+                  AxionCollectResult, charge via write_payload) ; CRC sur écriture
+                  reste optionnel sous debug.checksum_buffers (champ présent, 0 par
+                  défaut).
             - [ ] **4d — côté Java** : `NativeBridge` (submit/collect/cancel),
                   lecture de `SimOut`/`Events`, application sur le thread
                   autoritatif. Test **en jeu**.

@@ -662,3 +662,27 @@ les deux lectures possibles.
 **Corollaire.** Quand le nom d'un champ d'une dépendance et sa doc semblent se
 contredire, lire le code qui le produit ou le consomme, et se donner un cas
 analytique (ici `r×n = 0`) qui distingue les interprétations.
+
+## 2026-09-20 | rapier 0.35 neutralise déjà le non-fini (quarantaine) | garde-fou FM-20/R-181
+
+**Ce qui a coûté.** Écrit un garde-fou R-181 qui, après le pas, détectait une
+pose/vitesse NaN pour la restaurer. Le test à impulsion NaN échouait
+(`invalid_state_count == 0`) : la bille ne bougeait pas et sa vitesse revenait
+à zéro. rapier 0.35 a un module `quarantine` (pipeline) qui détecte le non-fini
+(NaN, infini) à deux points de contrôle, ramène la pose au dernier état valide,
+annule vitesses et forces, **désactive** le corps (`set_enabled(false)`) et le
+reporte via `PhysicsWorld::quarantine().bodies()` (vidé à chaque pas). Il
+contient aussi la propagation par contacts/CCD. Un garde-fou maison ne voit donc
+jamais le NaN : rapier l'a neutralisé avant.
+
+**Règle.** Pour FM-20/R-181, consommer `quarantine().bodies()` après le pas
+(compter l'E-2030, convertir la désactivation en sommeil forcé) au lieu de
+redétecter. La quarantaine ne couvre **que** le non-fini : le fini-hors-monde
+reste à la charge du moteur (borne de coordonnée locale).
+
+**Corollaire.** rapier plafonne aussi la vitesse linéaire à
+`normalized_max_linear_velocity` (défaut **400 m/s**) avant intégration : un
+corps dynamique ne peut donc pas sortir du monde en un pas, et R-180 (clamp à
+300 m/s) s'applique **après** le pas, par-dessus ce plafond global. Un cas de
+garde-fou qui ne peut être atteint par la dynamique se teste en **plaçant** le
+corps dans l'état fautif (spawn hors borne), pas en l'y poussant.
