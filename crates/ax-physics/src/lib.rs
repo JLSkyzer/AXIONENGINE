@@ -36,12 +36,14 @@ mod body;
 mod config;
 mod forces;
 mod groups;
+mod sim;
 mod world;
 
 pub use body::{BodyError, BodyId, BodyKind, CompoundPart, Shape};
 pub use config::{ConfigError, PhysicsConfig};
 pub use forces::{FluidEnvironment, LiftSurface};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
+pub use sim::SimDriver;
 pub use world::{PhysicsWorld, Pose};
 
 // §10.7 : les événements sont une structure DM figée dans `ax-model` ; on les
