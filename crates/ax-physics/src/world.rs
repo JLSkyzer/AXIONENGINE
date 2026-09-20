@@ -21,6 +21,10 @@ use std::collections::HashMap;
 /// Plafond par défaut d'événements par tick (§10.7, `physics.max_events_per_tick`).
 const DEFAULT_MAX_EVENTS_PER_TICK: usize = 4096;
 
+/// Seuil par défaut sous lequel un contact ne remonte pas à Java (§10.7,
+/// `physics.contact_event_threshold`), en N·s.
+const DEFAULT_CONTACT_EVENT_THRESHOLD: f32 = 0.5;
+
 /// Masse volumique de l'air au niveau de la mer, en kg/m³ (§10.6, terme ρ de la
 /// traînée). Valeur physique standard, non un chiffre de performance.
 const AIR_DENSITY: f32 = 1.225;
@@ -155,6 +159,8 @@ pub struct PhysicsWorld {
     events: Vec<PhysicsEvent>,
     /// Plafond d'événements par tick (R-1011).
     max_events_per_tick: usize,
+    /// Seuil d'impulsion sous lequel un CONTACT_IMPULSE ne remonte pas (R-1012).
+    contact_event_threshold: f32,
     /// Compteur cumulé d'événements perdus faute de place (R-1011, aucune perte
     /// silencieuse).
     dropped_events: u64,
@@ -186,6 +192,7 @@ impl PhysicsWorld {
             sleep_state: HashMap::new(),
             events: Vec::new(),
             max_events_per_tick: DEFAULT_MAX_EVENTS_PER_TICK,
+            contact_event_threshold: DEFAULT_CONTACT_EVENT_THRESHOLD,
             dropped_events: 0,
         }
     }
@@ -245,6 +252,7 @@ impl PhysicsWorld {
             let collector = ContactCollector::default();
             self.inner.step_with_events(&(), &collector);
             self.collect_contact_events(&collector);
+            self.collect_contact_impulses();
             self.collect_sleep_events();
             self.accumulator -= dt;
             substeps += 1;
@@ -264,7 +272,7 @@ impl PhysicsWorld {
             if sensor {
                 continue;
             }
-            if let Some(event) = self.build_contact_start(a, b) {
+            if let Some(event) = self.build_contact_event(a, b, event_kind::CONTACT_START) {
                 self.push_event(event);
             }
         }
@@ -277,9 +285,15 @@ impl PhysicsWorld {
         }
     }
 
-    /// Construit un CONTACT_START peuplé des données R-615 de la paire, ou `None`
-    /// si la paire n'a plus de contact profond exploitable.
-    fn build_contact_start(&self, a: ColliderHandle, b: ColliderHandle) -> Option<PhysicsEvent> {
+    /// Construit un événement de contact peuplé des données R-615 de la paire,
+    /// ou `None` si la paire n'a plus de contact profond exploitable. Sert pour
+    /// CONTACT_START comme pour CONTACT_IMPULSE.
+    fn build_contact_event(
+        &self,
+        a: ColliderHandle,
+        b: ColliderHandle,
+        kind: u32,
+    ) -> Option<PhysicsEvent> {
         let pair = self.inner.contact_pair(a, b)?;
         let (manifold, contact) = pair.find_deepest_contact()?;
         let normal = manifold.data.normal;
@@ -294,7 +308,7 @@ impl PhysicsWorld {
         let relative_velocity = (velocity_a - velocity_b).dot(normal);
 
         Some(PhysicsEvent {
-            kind: event_kind::CONTACT_START,
+            kind,
             assembly_a: identity_a.assembly,
             assembly_b: identity_b.assembly,
             node_a: identity_a.node,
@@ -309,6 +323,30 @@ impl PhysicsWorld {
             material_b: identity_b.material,
             data: 0,
         })
+    }
+
+    /// Émet un CONTACT_IMPULSE (§10.7) par paire de contact active dont
+    /// l'impulsion dépasse le seuil (R-1012), une fois par sous-pas.
+    ///
+    /// Un seul événement par paire (le contact le plus profond) : c'est
+    /// l'agrégation par paire de R-1011, impulsion maximale conservée. Le seuil
+    /// écarte les contacts légers de la remontée vers Java — et, au passage, le
+    /// bruit des contacts au repos, dont l'impulsion par pas (`mg·dt`) reste
+    /// faible. La voie « sous seuil mais vers C-41 » (usure) attend C-41.
+    fn collect_contact_impulses(&mut self) {
+        let pairs: Vec<(ColliderHandle, ColliderHandle)> = self
+            .inner
+            .contact_pairs()
+            .map(|pair| (pair.collider1, pair.collider2))
+            .collect();
+        let threshold = self.contact_event_threshold;
+        for (a, b) in pairs {
+            if let Some(event) = self.build_contact_event(a, b, event_kind::CONTACT_IMPULSE) {
+                if event.impulse >= threshold {
+                    self.push_event(event);
+                }
+            }
+        }
     }
 
     /// Construit un CONTACT_END : identités seules, les champs de contact étant
@@ -594,6 +632,14 @@ impl PhysicsWorld {
     /// Fixe le plafond d'événements par tick (R-1011). Au moins 1.
     pub fn set_max_events_per_tick(&mut self, max: usize) {
         self.max_events_per_tick = max.max(1);
+    }
+
+    /// Fixe le seuil d'impulsion des CONTACT_IMPULSE (§10.7, R-1012), en N·s.
+    ///
+    /// En dessous, un contact ne remonte pas dans le lot (destiné à Java). Une
+    /// valeur négative laisse tout passer.
+    pub fn set_contact_event_threshold(&mut self, threshold: f32) {
+        self.contact_event_threshold = threshold;
     }
 
     /// Retire et renvoie le lot d'événements accumulé (§10.7, R-1010).

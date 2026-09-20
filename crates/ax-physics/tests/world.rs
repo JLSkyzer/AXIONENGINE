@@ -739,6 +739,45 @@ fn la_fin_d_un_contact_emet_contact_end() {
 }
 
 #[test]
+fn un_impact_emet_contact_impulse() {
+    // §10.7 : un contact persistant assez fort produit un CONTACT_IMPULSE
+    // au-dessus du seuil (R-1012).
+    let (mut world, _ball, _ground) = monde_impact();
+    let mut found = None;
+    for _ in 0..90 {
+        world.advance(1.0 / 60.0);
+        if let Some(event) = world
+            .drain_events()
+            .into_iter()
+            .find(|event| event.kind == event_kind::CONTACT_IMPULSE)
+        {
+            found = Some(event);
+            break;
+        }
+    }
+    let event = found.expect("un CONTACT_IMPULSE pendant l'impact");
+    assert!(event.impulse >= 0.5, "impulsion au-dessus du seuil : {}", event.impulse);
+    assert!(event.effective_mass > 0.0, "masse effective peuplée");
+}
+
+#[test]
+fn un_seuil_haut_filtre_les_impulsions() {
+    // R-1012 : sous un seuil très élevé, aucun CONTACT_IMPULSE ne remonte.
+    let (mut world, _ball, _ground) = monde_impact();
+    world.set_contact_event_threshold(1.0e6);
+    let mut impulses = 0;
+    for _ in 0..120 {
+        world.advance(1.0 / 60.0);
+        impulses += world
+            .drain_events()
+            .into_iter()
+            .filter(|event| event.kind == event_kind::CONTACT_IMPULSE)
+            .count();
+    }
+    assert_eq!(impulses, 0, "aucun CONTACT_IMPULSE sous un seuil énorme");
+}
+
+#[test]
 fn contacts_deterministes() {
     // R-1020 : le lot d'événements de contact est reproductible.
     let run = || {

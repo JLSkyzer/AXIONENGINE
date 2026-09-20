@@ -1333,10 +1333,14 @@ substituable sans changer rapier »).
             `effective_inv_mass` + angulaire `|M√⁻¹·(r×n)|²`), matériaux ;
             CONTACT_END aux identités seules. Validé par un test d'impact réel
             (masse effective ≈ masse de la bille). 3 tests dont déterminisme.
-      - [ ] **Tranche 3b-ii — CONTACT_IMPULSE et seuils.** Contacts persistants
-            émis chaque tick, agrégation par paire au plafond (R-1011),
-            `contact_event_threshold` (R-1012 : sous le seuil Java mais transmis
-            à C-41 si au-dessus du seuil d'usure — la voie C-41 attend C-41).
+      - [x] **Tranche 3b-ii — CONTACT_IMPULSE et seuil.** Un CONTACT_IMPULSE
+            par paire de contact active et par sous-pas (contact le plus
+            profond = impulsion max, agrégation par paire de R-1011), filtré
+            par `contact_event_threshold` (R-1012, défaut 0.5 N·s) — ce qui
+            écarte aussi le bruit des contacts au repos (`mg·dt` < seuil).
+            `set_contact_event_threshold`. 2 tests (impact au-dessus du seuil,
+            seuil élevé qui filtre tout). La voie « sous seuil → C-41 » (usure)
+            attend C-41.
       - [ ] **Tranche 3c — capteurs et liaisons.** SENSOR_ENTER/EXIT à mesure
             des capteurs ; JOINT_BROKEN/JAMMED avec les joints (M4) ;
             ATTACH/DETACH avec les attaches (M5) ; CLAMPED/RECOVERED avec les
