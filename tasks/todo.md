@@ -1324,13 +1324,19 @@ substituable sans changer rapier »).
             (R-1011, aucune perte silencieuse), `drain_events`. Décisions ABI
             en ADR-113. `ax-physics` dépend de `ax-model`. 4 tests +
             2 tests de disposition. **Cœur irréversible : layout figé.**
-      - [ ] **Tranche 3b — événements de contact (R-615).** CONTACT_START/END/
-            IMPULSE depuis les événements et paires de contact rapier ;
-            peuplement complet point/normale/impulsions/vitesse relative/
-            **masse effective calculée** (masse et inertie inverses)/matériaux ;
-            agrégation par paire au plafond (R-1011), seuil `contact_event_
-            threshold` (R-1012 : sous le seuil Java mais transmis à C-41 si
-            au-dessus du seuil d'usure).
+      - [x] **Tranche 3b — événements de contact CONTACT_START/END (R-615).**
+            Colliders en `ActiveEvents::COLLISION_EVENTS`, `step_with_events`
+            avec un `EventHandler` custom, reconstruction après le pas via
+            `contact_pair`/`find_deepest_contact`. CONTACT_START peuplé :
+            point monde, normale, impulsion, impulsion tangentielle, vitesse
+            relative, **masse effective calculée** (terme linéaire
+            `effective_inv_mass` + angulaire `|M√⁻¹·(r×n)|²`), matériaux ;
+            CONTACT_END aux identités seules. Validé par un test d'impact réel
+            (masse effective ≈ masse de la bille). 3 tests dont déterminisme.
+      - [ ] **Tranche 3b-ii — CONTACT_IMPULSE et seuils.** Contacts persistants
+            émis chaque tick, agrégation par paire au plafond (R-1011),
+            `contact_event_threshold` (R-1012 : sous le seuil Java mais transmis
+            à C-41 si au-dessus du seuil d'usure — la voie C-41 attend C-41).
       - [ ] **Tranche 3c — capteurs et liaisons.** SENSOR_ENTER/EXIT à mesure
             des capteurs ; JOINT_BROKEN/JAMMED avec les joints (M4) ;
             ATTACH/DETACH avec les attaches (M5) ; CLAMPED/RECOVERED avec les

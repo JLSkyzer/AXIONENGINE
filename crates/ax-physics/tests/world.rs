@@ -648,6 +648,111 @@ fn le_plafond_compte_les_pertes() {
     assert!(world.drain_events().len() <= 1, "le lot ne dépasse pas le plafond");
 }
 
+/// Un sol statique (sommet en y = 0) et une bille lâchée de y = 2, avec leurs
+/// identités. Renvoie (monde, bille, sol) après câblage, avant simulation.
+fn monde_impact() -> (PhysicsWorld, BodyId, BodyId) {
+    let mut world = PhysicsWorld::new(config());
+    let ground = world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, -0.5, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [5.0, 0.5, 5.0],
+            },
+        )
+        .expect("un sol est valide");
+    world.set_body_identity(ground, Handle::new(1, 1), 0, 3);
+    let ball = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 2.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
+        .expect("une bille est valide");
+    world.set_body_identity(ball, Handle::new(5, 1), 2, 9);
+    (world, ball, ground)
+}
+
+#[test]
+fn un_contact_emet_contact_start_complet() {
+    // §10.7, R-615 : l'impact produit un CONTACT_START peuplé.
+    let (mut world, _ball, _ground) = monde_impact();
+    let mut start = None;
+    for _ in 0..90 {
+        world.advance(1.0 / 60.0);
+        if let Some(event) = world
+            .drain_events()
+            .into_iter()
+            .find(|event| event.kind == event_kind::CONTACT_START)
+        {
+            start = Some(event);
+            break;
+        }
+    }
+    let event = start.expect("un CONTACT_START à l'impact");
+
+    // Normale quasi verticale, contact près du sol.
+    assert!(event.normal[1].abs() > 0.9, "normale verticale attendue : {:?}", event.normal);
+    assert!(event.point[1].abs() < 0.2, "contact près du sol : {:?}", event.point);
+    assert!(event.impulse > 0.0, "impulsion positive attendue : {}", event.impulse);
+
+    // Masse effective : au contact bas d'une sphère, r×n = 0, donc la masse
+    // effective vaut la masse de la bille (rayon 0.5, densité 1) ≈ 0.524 kg. Le
+    // sol statique n'y contribue pas.
+    assert!(
+        (0.45..0.65).contains(&event.effective_mass),
+        "masse effective ≈ masse de la bille : {}",
+        event.effective_mass
+    );
+
+    // La paire porte les deux identités, dans un ordre quelconque.
+    let paire = [
+        (event.assembly_a, event.material_a),
+        (event.assembly_b, event.material_b),
+    ];
+    assert!(paire.contains(&(Handle::new(5, 1), 9)), "identité de la bille : {paire:?}");
+    assert!(paire.contains(&(Handle::new(1, 1), 3)), "identité du sol : {paire:?}");
+}
+
+#[test]
+fn la_fin_d_un_contact_emet_contact_end() {
+    // §10.7 : quand le contact cesse (ici le sol est retiré), un CONTACT_END est
+    // émis, sans données de contact.
+    let (mut world, _ball, ground) = monde_impact();
+    // Laisse la bille se poser et vide les CONTACT_START.
+    for _ in 0..120 {
+        world.advance(1.0 / 60.0);
+    }
+    let _ = world.drain_events();
+    // Le retrait du sol fait cesser le contact.
+    assert!(world.remove_body(ground));
+    world.advance(1.0 / 60.0);
+    let events = world.drain_events();
+    let end = events
+        .iter()
+        .find(|event| event.kind == event_kind::CONTACT_END)
+        .expect("un CONTACT_END après le retrait du sol");
+    assert_eq!(end.impulse, 0.0);
+    assert_eq!(end.point, [0.0; 3]);
+}
+
+#[test]
+fn contacts_deterministes() {
+    // R-1020 : le lot d'événements de contact est reproductible.
+    let run = || {
+        let (mut world, _b, _g) = monde_impact();
+        let mut events = Vec::new();
+        for _ in 0..90 {
+            world.advance(1.0 / 60.0);
+            events.extend(world.drain_events());
+        }
+        events
+    };
+    assert_eq!(run(), run());
+}
+
 #[test]
 fn evenements_deterministes() {
     // R-1020 : le lot d'événements est reproductible d'une exécution à l'autre.

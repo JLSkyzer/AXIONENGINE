@@ -2,8 +2,9 @@
 
 use ax_math::{Quat, Vec3};
 use rapier3d::prelude::{
-    ColliderBuilder, ColliderSet, Pose as RapierPose, PhysicsWorld as RapierWorld, RigidBody,
-    RigidBodyBuilder, RigidBodyHandle, RigidBodyType, SharedShape,
+    ActiveEvents, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent, CollisionEventFlags,
+    ContactPair, EventHandler, Pose as RapierPose, PhysicsWorld as RapierWorld, Real, RigidBody,
+    RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, SharedShape,
 };
 
 use crate::body::{
@@ -51,6 +52,64 @@ struct BodyIdentity {
     assembly: Handle,
     node: u32,
     material: u16,
+}
+
+/// Collecteur d'événements de collision d'un sous-pas.
+///
+/// `rapier` appelle son gestionnaire pendant `step_with_events` ; on n'y retient
+/// que les paires de colliders et le drapeau capteur, puis on reconstruit les
+/// événements après le pas, où l'on a accès aux identités et aux paires de
+/// contact. Le `Mutex` satisfait le `Send + Sync` du trait ; le monde étant
+/// mono-thread, il n'est jamais contendu.
+#[derive(Default)]
+struct ContactCollector {
+    started: std::sync::Mutex<Vec<(ColliderHandle, ColliderHandle, bool)>>,
+    stopped: std::sync::Mutex<Vec<(ColliderHandle, ColliderHandle, bool)>>,
+}
+
+impl ContactCollector {
+    fn take_started(&self) -> Vec<(ColliderHandle, ColliderHandle, bool)> {
+        std::mem::take(&mut self.started.lock().expect("collecteur non empoisonné"))
+    }
+
+    fn take_stopped(&self) -> Vec<(ColliderHandle, ColliderHandle, bool)> {
+        std::mem::take(&mut self.stopped.lock().expect("collecteur non empoisonné"))
+    }
+}
+
+impl EventHandler for ContactCollector {
+    fn handle_collision_event(
+        &self,
+        _bodies: &RigidBodySet,
+        _colliders: &ColliderSet,
+        event: CollisionEvent,
+        _contact_pair: Option<&ContactPair>,
+    ) {
+        match event {
+            CollisionEvent::Started(a, b, flags) => self
+                .started
+                .lock()
+                .expect("collecteur non empoisonné")
+                .push((a, b, flags.contains(CollisionEventFlags::SENSOR))),
+            CollisionEvent::Stopped(a, b, flags) => self
+                .stopped
+                .lock()
+                .expect("collecteur non empoisonné")
+                .push((a, b, flags.contains(CollisionEventFlags::SENSOR))),
+        }
+    }
+
+    fn handle_contact_force_event(
+        &self,
+        _dt: Real,
+        _bodies: &RigidBodySet,
+        _colliders: &ColliderSet,
+        _contact_pair: &ContactPair,
+        _total_force_magnitude: Real,
+    ) {
+        // Les forces de contact ne sont pas employées ici : les impulsions se
+        // lisent sur la paire de contact après le pas.
+    }
 }
 
 /// Pose rigide d'un corps : translation et rotation, sans échelle.
@@ -146,7 +205,9 @@ impl PhysicsWorld {
         rotation: Quat,
         shape: Shape,
     ) -> Result<BodyId, BodyError> {
-        let collider = ColliderBuilder::new(shared_shape_of(&shape)?).build();
+        let collider = ColliderBuilder::new(shared_shape_of(&shape)?)
+            .active_events(ActiveEvents::COLLISION_EVENTS)
+            .build();
 
         let body_type = match kind {
             BodyKind::Static => RigidBodyType::Fixed,
@@ -181,12 +242,111 @@ impl PhysicsWorld {
         let mut substeps = 0;
         while self.accumulator >= dt {
             self.apply_aero_forces();
-            self.inner.step();
+            let collector = ContactCollector::default();
+            self.inner.step_with_events(&(), &collector);
+            self.collect_contact_events(&collector);
             self.collect_sleep_events();
             self.accumulator -= dt;
             substeps += 1;
         }
         substeps
+    }
+
+    /// Construit les événements de contact (§10.7, R-615) du dernier sous-pas.
+    ///
+    /// CONTACT_START à l'apparition d'un contact (données complètes de la paire),
+    /// CONTACT_END à sa disparition (identités seules, plus de contact). Les
+    /// paires de capteurs sont ignorées ici — leurs événements SENSOR arrivent
+    /// avec les capteurs (tranche suivante). L'ordre suit l'émission déterministe
+    /// de `rapier` (R-1020).
+    fn collect_contact_events(&mut self, collector: &ContactCollector) {
+        for (a, b, sensor) in collector.take_started() {
+            if sensor {
+                continue;
+            }
+            if let Some(event) = self.build_contact_start(a, b) {
+                self.push_event(event);
+            }
+        }
+        for (a, b, sensor) in collector.take_stopped() {
+            if sensor {
+                continue;
+            }
+            let event = self.build_contact_end(a, b);
+            self.push_event(event);
+        }
+    }
+
+    /// Construit un CONTACT_START peuplé des données R-615 de la paire, ou `None`
+    /// si la paire n'a plus de contact profond exploitable.
+    fn build_contact_start(&self, a: ColliderHandle, b: ColliderHandle) -> Option<PhysicsEvent> {
+        let pair = self.inner.contact_pair(a, b)?;
+        let (manifold, contact) = pair.find_deepest_contact()?;
+        let normal = manifold.data.normal;
+        let world_point = self.inner.colliders.get(a)?.position().transform_point(contact.local_p1);
+
+        let (identity_a, body_a) = self.contact_body(a);
+        let (identity_b, body_b) = self.contact_body(b);
+
+        let velocity_a = body_a.map_or(Vec3::ZERO, |body| body.velocity_at_point(world_point));
+        let velocity_b = body_b.map_or(Vec3::ZERO, |body| body.velocity_at_point(world_point));
+        // Vitesse relative projetée sur la normale : la vitesse de rapprochement.
+        let relative_velocity = (velocity_a - velocity_b).dot(normal);
+
+        Some(PhysicsEvent {
+            kind: event_kind::CONTACT_START,
+            assembly_a: identity_a.assembly,
+            assembly_b: identity_b.assembly,
+            node_a: identity_a.node,
+            node_b: identity_b.node,
+            point: world_point.to_array(),
+            normal: normal.to_array(),
+            impulse: contact.data.impulse,
+            tangent_impulse: contact.data.tangent_impulse.norm(),
+            relative_velocity,
+            effective_mass: effective_mass_at(world_point, normal, body_a, body_b),
+            material_a: identity_a.material,
+            material_b: identity_b.material,
+            data: 0,
+        })
+    }
+
+    /// Construit un CONTACT_END : identités seules, les champs de contact étant
+    /// nuls puisqu'il n'y a plus de contact.
+    fn build_contact_end(&self, a: ColliderHandle, b: ColliderHandle) -> PhysicsEvent {
+        let (identity_a, _) = self.contact_body(a);
+        let (identity_b, _) = self.contact_body(b);
+        PhysicsEvent {
+            kind: event_kind::CONTACT_END,
+            assembly_a: identity_a.assembly,
+            assembly_b: identity_b.assembly,
+            node_a: identity_a.node,
+            node_b: identity_b.node,
+            point: [0.0; 3],
+            normal: [0.0; 3],
+            impulse: 0.0,
+            tangent_impulse: 0.0,
+            relative_velocity: 0.0,
+            effective_mass: 0.0,
+            material_a: identity_a.material,
+            material_b: identity_b.material,
+            data: 0,
+        }
+    }
+
+    /// Rend l'identité et le corps parent d'un collider.
+    fn contact_body(&self, collider: ColliderHandle) -> (BodyIdentity, Option<&RigidBody>) {
+        let parent = self.inner.colliders.get(collider).and_then(|collider| collider.parent());
+        let body = parent.and_then(|handle| self.inner.bodies.get(handle));
+        let identity = parent
+            .map(|handle| {
+                self.identity
+                    .get(&BodyId::from_handle(handle))
+                    .copied()
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+        (identity, body)
     }
 
     /// Émet les événements SLEEP/WAKE (§10.7) des corps qui ont changé d'état de
@@ -715,4 +875,44 @@ fn buoyancy_force(
     }
     let center_of_buoyancy = sum / submerged as f32;
     Some((-gravity * (fluid.density * immersed), center_of_buoyancy))
+}
+
+/// Masse effective au contact le long de la normale (§10.7, R-615), en kg.
+///
+/// `1/m_eff = Σ_corps ( n·(invMass ⊙ n) + |M√⁻¹·(r×n)|² )`, où `r` va du centre
+/// de masse au point, et `M√⁻¹` est la racine de l'inverse de l'inertie monde
+/// (le champ `effective_world_inv_inertia` de `rapier`). Un corps statique n'y
+/// contribue pas (masse et inertie inverses nulles).
+fn effective_mass_at(
+    point: Vec3,
+    normal: Vec3,
+    body_a: Option<&RigidBody>,
+    body_b: Option<&RigidBody>,
+) -> f32 {
+    let inverse = inverse_effective_mass_term(body_a, point, normal)
+        + inverse_effective_mass_term(body_b, point, normal);
+    if inverse > f32::EPSILON {
+        1.0 / inverse
+    } else {
+        0.0
+    }
+}
+
+/// Contribution d'un corps à l'inverse de la masse effective (terme linéaire +
+/// angulaire). Nulle pour un corps absent, statique ou cinématique.
+fn inverse_effective_mass_term(body: Option<&RigidBody>, point: Vec3, normal: Vec3) -> f32 {
+    let Some(body) = body else {
+        return 0.0;
+    };
+    let mass_properties = body.mass_properties();
+    // Terme linéaire : Σ n_i² · invMass_i (anisotrope si des axes sont verrouillés).
+    let linear = (normal * normal).dot(mass_properties.effective_inv_mass);
+    // Terme angulaire : (r×n)·I⁻¹·(r×n) = |M√⁻¹·(r×n)|².
+    let lever = point - mass_properties.world_com;
+    let lever_cross_normal = lever.cross(normal);
+    let angular = mass_properties
+        .effective_world_inv_inertia
+        .mul_vec(lever_cross_normal)
+        .length_squared();
+    linear + angular
 }

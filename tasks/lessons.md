@@ -642,3 +642,23 @@ plus extrême contre la robustesse du moteur. Tester ce que **notre** code
 contrôle — ici la pose du drapeau (`is_ccd_enabled` round-trip) et l'absence
 de régression de la simulation — et laisser l'anti-traversée au contrat de
 rapier, qui le teste chez lui.
+
+## 2026-09-20 | `effective_world_inv_inertia` de rapier est la *racine* de l'inverse
+
+Pour calculer la masse effective au contact (R-615), il faut le terme
+angulaire `(r×n)·I⁻¹·(r×n)`. Le champ public `RigidBodyMassProps::
+effective_world_inv_inertia` a un nom qui laisse croire à l'inverse de
+l'inertie, mais sa doc et le code de `effective_angular_inertia()` le montrent :
+c'est la **racine** de cet inverse (S, avec S·S = I⁻¹). La méthode
+`effective_angular_inertia()`, elle, **inverse** cette racine et rend l'inertie
+non inversée. Deux pièges de nom opposés dans la même structure.
+
+**Règle.** Le terme angulaire se calcule `|S·(r×n)|²` (`mul_vec` puis
+`length_squared`), pas `(r×n)·M·(r×n)` avec la méthode. Vérifié par un test
+d'impact : au contact bas d'une sphère `r×n = 0`, donc la masse effective doit
+valoir exactement la masse du corps — un repère numérique qui tranche entre
+les deux lectures possibles.
+
+**Corollaire.** Quand le nom d'un champ d'une dépendance et sa doc semblent se
+contredire, lire le code qui le produit ou le consomme, et se donner un cas
+analytique (ici `r×n = 0`) qui distingue les interprétations.
