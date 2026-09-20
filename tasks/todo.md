@@ -1341,10 +1341,13 @@ substituable sans changer rapier »).
             `set_contact_event_threshold`. 2 tests (impact au-dessus du seuil,
             seuil élevé qui filtre tout). La voie « sous seuil → C-41 » (usure)
             attend C-41.
-      - [ ] **Tranche 3c — capteurs et liaisons.** SENSOR_ENTER/EXIT à mesure
-            des capteurs ; JOINT_BROKEN/JAMMED avec les joints (M4) ;
-            ATTACH/DETACH avec les attaches (M5) ; CLAMPED/RECOVERED avec les
-            modes de défaillance.
+      - [x] **Tranche 3c-i — capteurs (SENSOR_ENTER/EXIT).** Drapeau capteur
+            par corps (`set_sensor`) ; une paire capteur émet SENSOR_ENTER à
+            l'entrée, SENSOR_EXIT à la sortie, aux identités seules (un capteur
+            ne résout aucun contact). 1 test : une bille traverse un capteur.
+      - [ ] **Tranche 3c-ii — liaisons et défaillances (gelé).** JOINT_BROKEN/
+            JAMMED avec les joints (M4) ; ATTACH/DETACH avec les attaches (M5) ;
+            CLAMPED/RECOVERED avec les modes de défaillance (FM-20/21/22).
       - [ ] **Tranche 4 — frontière FFI/ABI.** Points d'entrée `ax-ffi` :
             création/destruction de monde, `step`, récupération des transforms
             (`WorldTransform`, f64 pos / f32 rot, R-103) et des événements par

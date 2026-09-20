@@ -270,17 +270,19 @@ impl PhysicsWorld {
     fn collect_contact_events(&mut self, collector: &ContactCollector) {
         for (a, b, sensor) in collector.take_started() {
             if sensor {
-                continue;
-            }
-            if let Some(event) = self.build_contact_event(a, b, event_kind::CONTACT_START) {
+                let event = self.build_identity_event(a, b, event_kind::SENSOR_ENTER);
+                self.push_event(event);
+            } else if let Some(event) = self.build_contact_event(a, b, event_kind::CONTACT_START) {
                 self.push_event(event);
             }
         }
         for (a, b, sensor) in collector.take_stopped() {
-            if sensor {
-                continue;
-            }
-            let event = self.build_contact_end(a, b);
+            let kind = if sensor {
+                event_kind::SENSOR_EXIT
+            } else {
+                event_kind::CONTACT_END
+            };
+            let event = self.build_identity_event(a, b, kind);
             self.push_event(event);
         }
     }
@@ -349,13 +351,14 @@ impl PhysicsWorld {
         }
     }
 
-    /// Construit un CONTACT_END : identités seules, les champs de contact étant
-    /// nuls puisqu'il n'y a plus de contact.
-    fn build_contact_end(&self, a: ColliderHandle, b: ColliderHandle) -> PhysicsEvent {
+    /// Construit un événement aux identités seules, les champs de contact étant
+    /// nuls : CONTACT_END (plus de contact) ou SENSOR_ENTER/EXIT (un capteur ne
+    /// résout aucun contact, il ne rapporte qu'un chevauchement).
+    fn build_identity_event(&self, a: ColliderHandle, b: ColliderHandle, kind: u32) -> PhysicsEvent {
         let (identity_a, _) = self.contact_body(a);
         let (identity_b, _) = self.contact_body(b);
         PhysicsEvent {
-            kind: event_kind::CONTACT_END,
+            kind,
             assembly_a: identity_a.assembly,
             assembly_b: identity_b.assembly,
             node_a: identity_a.node,
@@ -748,6 +751,23 @@ impl PhysicsWorld {
             slept.push(BodyId::from_handle(handle));
         }
         slept
+    }
+
+    /// Fait d'un corps un capteur, ou l'en retire (§10.4).
+    ///
+    /// Sans effet si le corps n'existe pas. Un capteur détecte les
+    /// chevauchements — il émet SENSOR_ENTER/SENSOR_EXIT (§10.7) — mais ne
+    /// résout aucun contact : rien ne rebondit dessus.
+    pub fn set_sensor(&mut self, id: BodyId, is_sensor: bool) {
+        let handles: Vec<_> = match self.inner.bodies.get(id.handle()) {
+            Some(body) => body.colliders().to_vec(),
+            None => return,
+        };
+        for handle in handles {
+            if let Some(collider) = self.inner.colliders.get_mut(handle) {
+                collider.set_sensor(is_sensor);
+            }
+        }
     }
 
     /// Retire un corps ; renvoie vrai s'il existait.

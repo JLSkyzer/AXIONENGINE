@@ -778,6 +778,57 @@ fn un_seuil_haut_filtre_les_impulsions() {
 }
 
 #[test]
+fn un_capteur_emet_enter_puis_exit() {
+    // §10.7 : un corps traversant un capteur produit SENSOR_ENTER puis
+    // SENSOR_EXIT ; le capteur ne l'arrête pas.
+    let mut world = PhysicsWorld::new(config());
+    let sensor = world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, 0.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [2.0, 0.5, 2.0],
+            },
+        )
+        .expect("un capteur est valide");
+    world.set_sensor(sensor, true);
+    world.set_body_identity(sensor, Handle::new(9, 1), 0, 0);
+    let ball = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.3 },
+        )
+        .expect("une bille est valide");
+    world.set_body_identity(ball, Handle::new(4, 1), 0, 0);
+
+    let mut enter = None;
+    let mut exit = false;
+    for _ in 0..180 {
+        world.advance(1.0 / 60.0);
+        for event in world.drain_events() {
+            if event.kind == event_kind::SENSOR_ENTER {
+                enter = Some(event);
+            }
+            if event.kind == event_kind::SENSOR_EXIT {
+                exit = true;
+            }
+        }
+    }
+    let enter = enter.expect("un SENSOR_ENTER quand la bille entre");
+    assert!(exit, "un SENSOR_EXIT quand la bille ressort (elle traverse)");
+    // Le capteur ne résout rien : pas de données de contact.
+    assert_eq!(enter.impulse, 0.0);
+    let paire = [enter.assembly_a, enter.assembly_b];
+    assert!(paire.contains(&Handle::new(9, 1)), "identité du capteur");
+    assert!(paire.contains(&Handle::new(4, 1)), "identité de la bille");
+    // La bille a bien traversé, pas rebondi.
+    assert!(world.pose(ball).unwrap().translation.y < -1.0, "la bille traverse le capteur");
+}
+
+#[test]
 fn contacts_deterministes() {
     // R-1020 : le lot d'événements de contact est reproductible.
     let run = || {
