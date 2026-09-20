@@ -1368,12 +1368,16 @@ substituable sans changer rapier »).
             = **DM-08** (§3.8), spécifiés mais **non transcrits**.
 
             **Sous-tranches proposées :**
-            - [ ] **4a — DM-08 (`BodyState`, `BodyDesc`) dans `ax-model::dm`**,
-                  `#[repr(C)]`, layout figé + test, transcrits AVEC leur
-                  consommateur (le collect), comme pour `PhysicsEvent` (règle
-                  de `dm/mod.rs`). `BodyState` : handle, position `[f64;3]`,
-                  rotation `[f32;4]`, lin_vel/ang_vel `[f32;3]`, flags (SLEEPING,
-                  TOUCHING_GROUND, IN_FLUID, CLAMPED, DEFORMED, DAMAGED).
+            - [x] **4a — `BodyState` (DM-08) + packer.** `BodyState`
+                  `#[repr(C)]` dans `ax-model::dm::physics` (80 octets, align 8,
+                  offsets **verrouillés par test**) + module `body_state_flags`.
+                  Transcrit AVEC son consommateur : `PhysicsWorld::body_states
+                  (&FloatingOrigin)` sérialise les corps mobiles identifiés,
+                  position monde `f64` recomposée par l'origine flottante,
+                  flags SLEEPING + IN_FLUID (les autres avec leur source).
+                  3 tests (composition monde, filtrage statiques/anonymes,
+                  IN_FLUID). `BodyDesc` (entrée) viendra avec le traitement des
+                  commandes en 4b, avec son consommateur.
             - [ ] **4b — orchestration dans le `Session`** : loger un
                   `PhysicsWorld` par dimension ; `submit` lit `SimIn`
                   (commands+impacts), planifie le pas sur le système de jobs

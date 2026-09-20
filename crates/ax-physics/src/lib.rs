@@ -47,4 +47,4 @@ pub use world::{PhysicsWorld, Pose};
 // §10.7 : les événements sont une structure DM figée dans `ax-model` ; on les
 // réexporte pour que l'API du monde physique soit autonome.
 pub use ax_model::dm::handle::Handle;
-pub use ax_model::dm::physics::{event_kind, PhysicsEvent};
+pub use ax_model::dm::physics::{body_state_flags, event_kind, BodyState, PhysicsEvent};

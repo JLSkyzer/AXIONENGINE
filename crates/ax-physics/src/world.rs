@@ -1,6 +1,6 @@
 //! Le monde physique d'une dimension (C-31, fiche 5.23).
 
-use ax_math::{Quat, Vec3};
+use ax_math::{FloatingOrigin, Quat, Vec3};
 use rapier3d::prelude::{
     ActiveEvents, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent, CollisionEventFlags,
     ContactPair, EventHandler, Pose as RapierPose, PhysicsWorld as RapierWorld, Real, RigidBody,
@@ -15,7 +15,7 @@ use crate::config::PhysicsConfig;
 use crate::forces::{FluidEnvironment, LiftSurface};
 use crate::groups::CollisionGroups;
 use ax_model::dm::handle::Handle;
-use ax_model::dm::physics::{event_kind, PhysicsEvent};
+use ax_model::dm::physics::{body_state_flags, event_kind, BodyState, PhysicsEvent};
 use std::collections::HashMap;
 
 /// Plafond par défaut d'événements par tick (§10.7, `physics.max_events_per_tick`).
@@ -660,6 +660,62 @@ impl PhysicsWorld {
     #[must_use]
     pub fn dropped_event_count(&self) -> u64 {
         self.dropped_events
+    }
+
+    /// Produit l'état des corps mobiles identifiés (DM-08), pour le cycle de
+    /// simulation (IF-03).
+    ///
+    /// Un seul état par corps **non statique** portant une identité : les corps
+    /// statiques ne bougent pas, et un corps sans identité n'est pas routable
+    /// vers Java. La position monde (`f64`) est recomposée depuis la simulation
+    /// `f32` par l'origine flottante de la dimension (R-462). L'ordre suit
+    /// l'itération déterministe de `rapier` (R-1020).
+    ///
+    /// Flags peuplés en tranche 4a : SLEEPING et IN_FLUID. Les autres
+    /// (TOUCHING_GROUND, CLAMPED, DEFORMED, DAMAGED) s'ajoutent avec leur source
+    /// (garde-fous R-180/181 puis M6).
+    #[must_use]
+    pub fn body_states(&self, origin: &FloatingOrigin) -> Vec<BodyState> {
+        let mut states = Vec::new();
+        for (handle, body) in self.inner.bodies.iter() {
+            if !body.is_dynamic_or_kinematic() {
+                continue;
+            }
+            let identity = match self.identity.get(&BodyId::from_handle(handle)) {
+                Some(identity) if !identity.assembly.is_absent() => identity,
+                _ => continue,
+            };
+            let pose = body.position();
+            let world = origin.to_world(pose.translation);
+
+            let mut flags = 0;
+            if body.is_sleeping() {
+                flags |= body_state_flags::SLEEPING;
+            }
+            if self.fluid.is_some_and(|fluid| self.body_in_fluid(handle, &fluid)) {
+                flags |= body_state_flags::IN_FLUID;
+            }
+
+            states.push(BodyState {
+                handle: identity.assembly,
+                position: world.to_array(),
+                rotation: pose.rotation.to_array(),
+                lin_vel: body.linvel().to_array(),
+                ang_vel: body.angvel().to_array(),
+                flags,
+            });
+        }
+        states
+    }
+
+    /// Indique si l'AABB du corps plonge sous la surface du fluide.
+    fn body_in_fluid(&self, handle: RigidBodyHandle, fluid: &FluidEnvironment) -> bool {
+        self.inner
+            .bodies
+            .get(handle)
+            .and_then(|body| body.colliders().first().copied())
+            .and_then(|collider| self.inner.colliders.get(collider))
+            .is_some_and(|collider| collider.compute_aabb().mins.y < fluid.surface_y)
     }
 
     /// Multiplie la gravité ressentie par un corps (§10.6, `gravity_scale`).

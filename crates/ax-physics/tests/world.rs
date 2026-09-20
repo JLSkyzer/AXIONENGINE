@@ -1,9 +1,9 @@
 //! Tests de C-31 : fondation du monde physique et catalogue des formes.
 
-use ax_math::{Quat, Vec3};
+use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_physics::{
-    event_kind, BodyError, BodyId, BodyKind, CollisionGroups, CompoundPart, ConfigError,
-    FluidEnvironment, Handle, LiftSurface, PhysicsConfig, PhysicsWorld, Shape,
+    body_state_flags, event_kind, BodyError, BodyId, BodyKind, CollisionGroups, CompoundPart,
+    ConfigError, FluidEnvironment, Handle, LiftSurface, PhysicsConfig, PhysicsWorld, Shape,
 };
 
 fn config() -> PhysicsConfig {
@@ -826,6 +826,77 @@ fn un_capteur_emet_enter_puis_exit() {
     assert!(paire.contains(&Handle::new(4, 1)), "identité de la bille");
     // La bille a bien traversé, pas rebondi.
     assert!(world.pose(ball).unwrap().translation.y < -1.0, "la bille traverse le capteur");
+}
+
+#[test]
+fn body_states_compose_la_position_monde() {
+    // DM-08 : la position monde (f64) est recomposée depuis la simulation f32 par
+    // l'origine flottante de la dimension.
+    let mut world = PhysicsWorld::new(config());
+    let ball = world
+        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    world.set_body_identity(ball, Handle::new(3, 1), 7, 2);
+    let origin = FloatingOrigin::new(DVec3::new(1000.0, 0.0, 0.0));
+    let states = world.body_states(&origin);
+    assert_eq!(states.len(), 1);
+    let state = states[0];
+    assert_eq!(state.handle, Handle::new(3, 1));
+    assert!((state.position[0] - 1000.0).abs() < 1e-3, "x monde : {}", state.position[0]);
+    assert!((state.position[1] - 5.0).abs() < 1e-3, "y monde : {}", state.position[1]);
+}
+
+#[test]
+fn body_states_filtre_statiques_et_anonymes() {
+    // DM-08 : seuls les corps mobiles identifiés sont rapportés.
+    let mut world = PhysicsWorld::new(config());
+    let sol = world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, -0.5, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [5.0, 0.5, 5.0],
+            },
+        )
+        .unwrap();
+    world.set_body_identity(sol, Handle::new(1, 1), 0, 0);
+    // Dynamique sans identité : exclu.
+    world
+        .add_body(BodyKind::Dynamic, Vec3::new(3.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    // Dynamique identifié : inclus.
+    let ball = world
+        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 0.5, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    world.set_body_identity(ball, Handle::new(9, 1), 0, 0);
+    for _ in 0..180 {
+        world.advance(1.0 / 60.0);
+    }
+    let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
+    assert_eq!(states.len(), 1, "seul le dynamique identifié");
+    assert_eq!(states[0].handle, Handle::new(9, 1));
+    assert!(
+        states[0].flags & body_state_flags::SLEEPING != 0,
+        "la bille posée finit par dormir"
+    );
+}
+
+#[test]
+fn body_states_marque_in_fluid() {
+    // DM-08 : un corps immergé porte le drapeau IN_FLUID.
+    let mut world = PhysicsWorld::new(config());
+    world.set_fluid(Some(FluidEnvironment {
+        surface_y: 10.0,
+        density: 2.0,
+    }));
+    let ball = world
+        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .unwrap();
+    world.set_body_identity(ball, Handle::new(4, 1), 0, 0);
+    let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
+    assert_eq!(states.len(), 1);
+    assert!(states[0].flags & body_state_flags::IN_FLUID != 0, "immergé sous la surface");
 }
 
 #[test]

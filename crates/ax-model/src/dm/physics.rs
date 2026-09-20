@@ -297,6 +297,53 @@ impl PhysicsEvent {
     pub const BYTES: usize = 76;
 }
 
+/// Drapeaux d'un [`BodyState`] (DM-08), champ `flags`.
+pub mod body_state_flags {
+    /// Le corps dort.
+    pub const SLEEPING: u32 = 1 << 0;
+    /// Le corps touche le sol (collision avec le groupe `world`).
+    pub const TOUCHING_GROUND: u32 = 1 << 1;
+    /// Le corps est immergé dans un fluide.
+    pub const IN_FLUID: u32 = 1 << 2;
+    /// Une vitesse a été clampée à sa borne (R-180).
+    pub const CLAMPED: u32 = 1 << 3;
+    /// Le corps est déformé.
+    pub const DEFORMED: u32 = 1 << 4;
+    /// Le corps est endommagé.
+    pub const DAMAGED: u32 = 1 << 5;
+}
+
+/// État d'un corps rapporté par le cycle de simulation (DM-08, IF-03).
+///
+/// La position est en coordonnées **monde** (`f64`, R-462) ; la simulation
+/// travaille en `f32` autour d'une origine flottante, recomposée ici. Vitesses
+/// linéaire et angulaire en repère monde.
+///
+/// **Disposition figée en V1.0** : 80 octets, alignement 8 (imposé par la
+/// position `f64`), 4 octets de remplissage final. Le test de disposition la
+/// verrouille.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BodyState {
+    /// Corps concerné.
+    pub handle: Handle,
+    /// Position monde, en blocs.
+    pub position: [f64; 3],
+    /// Rotation, quaternion `(x, y, z, w)` (R-461).
+    pub rotation: [f32; 4],
+    /// Vitesse linéaire, en m/s.
+    pub lin_vel: [f32; 3],
+    /// Vitesse angulaire, en rad/s.
+    pub ang_vel: [f32; 3],
+    /// Drapeaux, voir [`body_state_flags`].
+    pub flags: u32,
+}
+
+impl BodyState {
+    /// Taille de la structure sur la frontière, en octets (remplissage compris).
+    pub const BYTES: usize = 80;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,6 +367,19 @@ mod tests {
         assert_eq!(offset_of!(PhysicsEvent, material_a), 68);
         assert_eq!(offset_of!(PhysicsEvent, material_b), 70);
         assert_eq!(offset_of!(PhysicsEvent, data), 72);
+    }
+
+    #[test]
+    fn dm_body_state_disposition_figee() {
+        use core::mem::{align_of, offset_of, size_of};
+        assert_eq!(size_of::<BodyState>(), BodyState::BYTES);
+        assert_eq!(align_of::<BodyState>(), 8);
+        assert_eq!(offset_of!(BodyState, handle), 0);
+        assert_eq!(offset_of!(BodyState, position), 8);
+        assert_eq!(offset_of!(BodyState, rotation), 32);
+        assert_eq!(offset_of!(BodyState, lin_vel), 48);
+        assert_eq!(offset_of!(BodyState, ang_vel), 60);
+        assert_eq!(offset_of!(BodyState, flags), 72);
     }
 
     #[test]
