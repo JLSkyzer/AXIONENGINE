@@ -102,6 +102,12 @@ public final class NativeBridge {
 
     static native int assetPoll(long ctx, int jobId, long[] out);
 
+    static native int simSubmit(long ctx, long tick, int commandCount, int impactCount);
+
+    static native int simCollect(long ctx, long deadlineNs, long[] out);
+
+    static native int simCancel(long ctx);
+
     // --- API ---------------------------------------------------------------
 
     /**
@@ -291,5 +297,93 @@ public final class NativeBridge {
      */
     public static int release(long ctx, int kind, int generation) {
         return bufferRelease(ctx, kind, generation);
+    }
+
+    // --- Cycle de simulation (IF-03) --------------------------------------
+
+    /** Nombre de valeurs qu'{@link #collect} écrit, une par champ du résultat. */
+    public static final int SIM_COLLECT_SLOTS = 7;
+
+    /** Index de {@code state_count} (BodyState déposés) dans le tableau de collect. */
+    public static final int SIM_STATE_COUNT = 0;
+
+    /** Index de {@code event_count} (PhysicsEvent déposés). */
+    public static final int SIM_EVENT_COUNT = 1;
+
+    /** Index de {@code deform_page_count} (pages de déformation, M6). */
+    public static final int SIM_DEFORM_PAGE_COUNT = 2;
+
+    /** Index de {@code refit_count} (colliders refités, M6). */
+    public static final int SIM_REFIT_COUNT = 3;
+
+    /** Index de {@code detach_count} (détachements, M7). */
+    public static final int SIM_DETACH_COUNT = 4;
+
+    /** Index de {@code net_bytes} (octets réseau prêts, M4). */
+    public static final int SIM_NET_BYTES = 5;
+
+    /** Index de {@code flags} ({@link #SIM_INCOMPLETE}, {@link #SIM_DEGRADED}). */
+    public static final int SIM_FLAGS = 6;
+
+    /** Drapeau collect : tout n'a pas été produit dans le délai (R-281). */
+    public static final int SIM_INCOMPLETE = 1;
+
+    /** Drapeau collect : la simulation tourne en qualité dégradée. */
+    public static final int SIM_DEGRADED = 1 << 1;
+
+    /**
+     * Soumet les entrées d'un tick de simulation (IF-03).
+     *
+     * <p>Les commandes ont été écrites dans le tampon {@code SIM_IN} avant
+     * l'appel ; leur nombre voyage en paramètre, pas dans l'en-tête (convention
+     * IF-02, comme {@link #compileAsset}). R-280 : l'appel ne bloque pas au-delà
+     * de {@code budgets.submit_ns}. Un cycle laissé ouvert par un
+     * {@code submit} sans {@link #collect} est refermé au prochain {@code submit}
+     * (R-282).
+     *
+     * @param ctx jeton de contexte
+     * @param tick numéro de tick du serveur autoritatif
+     * @param commandCount nombre de commandes écrites dans {@code SIM_IN}
+     * @param impactCount nombre d'impacts écrits dans {@code IMPACT_IN} (0 avant M6)
+     * @return {@link #OK}, ou un code d'erreur négatif
+     */
+    public static int submit(long ctx, long tick, int commandCount, int impactCount) {
+        return simSubmit(ctx, tick, commandCount, impactCount);
+    }
+
+    /**
+     * Récolte le résultat d'un tick (IF-03).
+     *
+     * <p>Avance la simulation, dépose les {@code BodyState} dans {@code SIM_OUT}
+     * et les {@code PhysicsEvent} dans {@code EVENTS}, et écrit les sept
+     * compteurs du résultat dans {@code out} — non signés, aux index
+     * {@link #SIM_STATE_COUNT}..{@link #SIM_FLAGS}. R-281 : un résultat
+     * {@link #SIM_INCOMPLETE} n'est jamais un abandon ; l'appelant conserve
+     * l'état précédent et le travail se poursuit au tick suivant.
+     *
+     * @param ctx jeton de contexte
+     * @param deadlineNs délai en nanosecondes, {@code 0} pour « sans limite »
+     * @param out tableau d'au moins {@link #SIM_COLLECT_SLOTS} éléments
+     * @return {@link #OK}, ou un code d'erreur négatif
+     */
+    public static int collect(long ctx, long deadlineNs, long[] out) {
+        if (out == null || out.length < SIM_COLLECT_SLOTS) {
+            throw new IllegalArgumentException(
+                    "le tableau de collecte compte au moins " + SIM_COLLECT_SLOTS + " éléments");
+        }
+        return simCollect(ctx, deadlineNs, out);
+    }
+
+    /**
+     * Annule le cycle de simulation courant (IF-03).
+     *
+     * <p>Les entrées soumises sont abandonnées et rien n'est avancé. Annuler un
+     * cycle déjà clos est inoffensif.
+     *
+     * @param ctx jeton de contexte
+     * @return {@link #OK}, ou un code d'erreur négatif
+     */
+    public static int cancel(long ctx) {
+        return simCancel(ctx);
     }
 }

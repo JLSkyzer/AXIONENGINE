@@ -1431,10 +1431,11 @@ substituable sans changer rapier »).
                         `axion_sim_submit` : `BufferHeader::read` (magic/kind SimIn)
                         → `E-2002` si invalide ; longueur reste par paramètre.
                         Test signatures + rejet magic.
-                  - [ ] **4d-ii — `NativeBridge.java` + `NativeApi`** : 3 `native` +
+                  - [x] **4d-ii — `NativeBridge.java` + `NativeApi`** : 3 `native` +
                         wrappers publics `submit`/`collect`/`cancel`, constantes
                         (slots=7, drapeaux INCOMPLETE/DEGRADED), offsets d'en-tête
-                        nommés sur `BufferKinds` (generation=8, schema=12, len=16).
+                        locaux (BufferKinds est généré) ; NativeApi inchangé —
+                        la physique appelle NativeBridge directement, comme les assets.
                   - [ ] **4d-iii — types + codecs Java** : `BodyState` (80 o) et
                         `PhysicsEvent` (76 o) décodés LE aux offsets figés ; writer
                         `SimIn` (patron `NativeAssetCompiler.submit`) ; lecteurs
