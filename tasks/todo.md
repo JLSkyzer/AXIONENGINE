@@ -1348,10 +1348,50 @@ substituable sans changer rapier »).
       - [ ] **Tranche 3c-ii — liaisons et défaillances (gelé).** JOINT_BROKEN/
             JAMMED avec les joints (M4) ; ATTACH/DETACH avec les attaches (M5) ;
             CLAMPED/RECOVERED avec les modes de défaillance (FM-20/21/22).
-      - [ ] **Tranche 4 — frontière FFI/ABI.** Points d'entrée `ax-ffi` :
-            création/destruction de monde, `step`, récupération des transforms
-            (`WorldTransform`, f64 pos / f32 rot, R-103) et des événements par
-            lot. **Layout ABI figé — soin maximal.**
+      - [ ] **Tranche 4 — IF-03, cycle de simulation (FFI/ABI, `[EFFORT MAX]`).**
+            **À faire en session neuve, effort maximal.** C'est un contrat
+            **IF-xx** (que l'agent ne fige pas seul) : à mener avec soin et,
+            pour les layouts non fixés par la spec, un ADR + un test de
+            disposition. Non testable en unité pour la partie Java — l'exercice
+            se fait dans le jeu.
+
+            **Acquis de l'étude (2026-09-20)** : IF-03 (§4.5) est un cycle
+            **submit/collect asynchrone** : `axion_sim_submit(ctx, tick,
+            command_count, impact_count)`, `axion_sim_collect(ctx, deadline_ns,
+            *AxionCollectResult)`, `axion_sim_cancel(ctx)`. `AxionCollectResult`
+            = {state_count (BodyState[]), event_count (PhysicsEvent[] +
+            DamageEvent[]), deform_page_count, refit_count, detach_count,
+            net_bytes, flags}. Les **kinds de tampons existent déjà** dans
+            `ax-core::buffers` : `SimIn` (entrées : commands + impacts),
+            `SimOut` (BodyState[]), `Events` (PhysicsEvent[]), `DeformOut`.
+            `axion_sim_*` **ne sont pas encore écrits**. `BodyState`/`BodyDesc`
+            = **DM-08** (§3.8), spécifiés mais **non transcrits**.
+
+            **Sous-tranches proposées :**
+            - [ ] **4a — DM-08 (`BodyState`, `BodyDesc`) dans `ax-model::dm`**,
+                  `#[repr(C)]`, layout figé + test, transcrits AVEC leur
+                  consommateur (le collect), comme pour `PhysicsEvent` (règle
+                  de `dm/mod.rs`). `BodyState` : handle, position `[f64;3]`,
+                  rotation `[f32;4]`, lin_vel/ang_vel `[f32;3]`, flags (SLEEPING,
+                  TOUCHING_GROUND, IN_FLUID, CLAMPED, DEFORMED, DAMAGED).
+            - [ ] **4b — orchestration dans le `Session`** : loger un
+                  `PhysicsWorld` par dimension ; `submit` lit `SimIn`
+                  (commands+impacts), planifie le pas sur le système de jobs
+                  sans bloquer au-delà de `budgets.submit_ns` (R-280) ; `collect`
+                  attend jusqu'à `deadline_ns`, remplit `SimOut`+`Events`, rend
+                  `AxionCollectResult` (incomplet → R-281, jamais d'abandon
+                  silencieux) ; `cancel` ; cycle non clos → R-282
+                  (`axion.sim.unbalanced`). Pas fixe / accumulateur : R-283
+                  (déjà dans `PhysicsWorld::advance`).
+            - [ ] **4c — packing des tampons + garde-fous** : sérialiser
+                  BodyState[] (position monde `f64` via l'origine flottante) et
+                  PhysicsEvent[] avec en-têtes/CRC ; R-180 (clamp
+                  `max_linear_vel`/`max_angular_vel` + flag CLAMPED, journalisé) ;
+                  R-181 / FM-20 (position NaN ou hors monde → sommeil forcé,
+                  `E-2030`, dernier état valide). Tests Rust du packing.
+            - [ ] **4d — côté Java** : `NativeBridge` (submit/collect/cancel),
+                  lecture de `SimOut`/`Events`, application sur le thread
+                  autoritatif. Test **en jeu**.
       - [ ] **Tranche 5 — intégration Java et proxies vanilla.** Monde par
             dimension créé/détruit à la demande (R-610), proxies cinématiques
             des entités vanilla reconstruits chaque tick (R-614), effets
