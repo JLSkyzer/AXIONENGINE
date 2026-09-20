@@ -682,8 +682,22 @@ pub unsafe extern "C" fn axion_sim_submit(
             }
             // La tranche de commandes est copiée hors du tampon partagé, qui peut
             // être réalloué (R-270) ; le parseur travaille sur cette copie.
+            //
+            // R-491 : l'en-tête est validé (magic, kind) avant toute lecture d'un
+            // tampon fourni par Java. La longueur, elle, voyage par paramètre
+            // (`command_count`) et non dans `payload_len` — convention IF-02, où
+            // le natif pré-remplit l'en-tête à l'acquisition et Java n'écrit que la
+            // charge : on lit donc le tail, borné ensuite par le parseur.
             let bytes = match session.buffers().get_mut(BufferKind::SimIn) {
-                Some(buffer) => buffer.as_slice().get(HEADER_BYTES..).unwrap_or(&[]).to_vec(),
+                Some(buffer) => {
+                    let raw = buffer.as_slice();
+                    match BufferHeader::read(raw) {
+                        Ok(header) if header.kind == BufferKind::SimIn => {
+                            raw.get(HEADER_BYTES..).unwrap_or(&[]).to_vec()
+                        }
+                        _ => return AXION_E_INVALID_BUFFER,
+                    }
+                }
                 None => return AXION_E_INVALID_BUFFER,
             };
             match ax_physics::apply_command_stream(session.physics(), &bytes, command_count) {

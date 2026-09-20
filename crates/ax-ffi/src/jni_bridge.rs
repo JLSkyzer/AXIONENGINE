@@ -39,11 +39,15 @@ use jni::{JNIEnv, JavaVM, NativeMethod};
 use crate::abi::{
     axion_abi_version, axion_asset_compile, axion_asset_poll, axion_buffer_acquire,
     axion_buffer_release, axion_init, axion_last_error, axion_metrics_export, axion_shutdown,
-    AxionBufferInfo, AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
+    AXION_E_INVALID_BUFFER, AXION_OK,
 };
 
 /// Classe Java qui déclare les méthodes natives (R-492 : une seule).
 const BRIDGE_CLASS: &str = "dev/axion/bridge/NativeBridge";
+
+/// Nombre de valeurs qu'`simCollect` écrit, une par champ d'[`AxionCollectResult`].
+const SIM_COLLECT_SLOTS: i32 = 7;
 
 /// Enregistre les méthodes natives au chargement de la bibliothèque.
 ///
@@ -114,6 +118,21 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "assetPoll".into(),
             sig: "(JI[J)I".into(),
             fn_ptr: jni_asset_poll as *mut c_void,
+        },
+        NativeMethod {
+            name: "simSubmit".into(),
+            sig: "(JJII)I".into(),
+            fn_ptr: jni_sim_submit as *mut c_void,
+        },
+        NativeMethod {
+            name: "simCollect".into(),
+            sig: "(JJ[J)I".into(),
+            fn_ptr: jni_sim_collect as *mut c_void,
+        },
+        NativeMethod {
+            name: "simCancel".into(),
+            sig: "(J)I".into(),
+            fn_ptr: jni_sim_cancel as *mut c_void,
         },
     ];
 
@@ -376,6 +395,81 @@ extern "system" fn jni_buffer_release(
     unsafe { axion_buffer_release(ctx as u64, kind as u32, generation as u32) }
 }
 
+/// `NativeBridge.simSubmit(long, long, int, int)` (IF-03).
+///
+/// Les commandes ont été écrites par Java dans le tampon `SIM_IN` ; leur nombre
+/// voyage en paramètre, pas dans l'en-tête (convention IF-02, comme `assetCompile`).
+extern "system" fn jni_sim_submit(
+    _env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    tick: jlong,
+    command_count: jint,
+    impact_count: jint,
+) -> jint {
+    // SAFETY: aucun pointeur n'est déréférencé.
+    unsafe {
+        axion_sim_submit(
+            ctx as u64,
+            tick as u64,
+            u32::try_from(command_count).unwrap_or(u32::MAX),
+            u32::try_from(impact_count).unwrap_or(u32::MAX),
+        )
+    }
+}
+
+/// `NativeBridge.simCollect(long, long, long[])` (IF-03).
+///
+/// Avance la simulation et dépose `BodyState[]`/`PhysicsEvent[]` dans
+/// `SIM_OUT`/`EVENTS`. Les sept champs d'[`AxionCollectResult`] sont écrits, non
+/// signés, dans le tableau fourni — qui doit compter au moins
+/// [`SIM_COLLECT_SLOTS`] éléments —, à l'image de `assetPoll` : le JNI ne fait
+/// pas traverser de `struct`, seulement des tableaux de sortie.
+extern "system" fn jni_sim_collect(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    deadline_ns: jlong,
+    out: JLongArray,
+) -> jint {
+    if out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(&out) {
+        Ok(length) if length >= SIM_COLLECT_SLOTS => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+
+    let mut result = AxionCollectResult::default();
+    // SAFETY: `result` est une variable locale accessible en écriture.
+    let code = unsafe { axion_sim_collect(ctx as u64, deadline_ns.max(0) as u64, &raw mut result) };
+    if code != AXION_OK {
+        return code;
+    }
+
+    // Chaque `u32` devient un `long` non signé : les compteurs restent lisibles
+    // côté Java sans piège de signe.
+    let values = [
+        jlong::from(result.state_count),
+        jlong::from(result.event_count),
+        jlong::from(result.deform_page_count),
+        jlong::from(result.refit_count),
+        jlong::from(result.detach_count),
+        jlong::from(result.net_bytes),
+        jlong::from(result.flags),
+    ];
+    match env.set_long_array_region(&out, 0, &values) {
+        Ok(()) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
+}
+
+/// `NativeBridge.simCancel(long)` (IF-03).
+extern "system" fn jni_sim_cancel(_env: JNIEnv, _class: JClass, ctx: jlong) -> jint {
+    // SAFETY: aucun pointeur n'est déréférencé.
+    unsafe { axion_sim_cancel(ctx as u64) }
+}
+
 #[cfg(test)]
 mod tests {
     /// Les signatures JNI sont des chaînes non vérifiées par le compilateur :
@@ -388,11 +482,14 @@ mod tests {
         // (nom, signature, description du type Java)
         let attendu = [
             ("abiVersion", "()I"),
-            ("init", "([B)J"),
+            ("init", "([BI)J"),
             ("shutdown", "(J)I"),
             ("lastError", "(J[B)I"),
             ("bufferAcquire", "(JIJ)Ljava/nio/ByteBuffer;"),
             ("bufferRelease", "(JII)I"),
+            ("simSubmit", "(JJII)I"),
+            ("simCollect", "(JJ[J)I"),
+            ("simCancel", "(J)I"),
         ];
 
         for (nom, signature) in attendu {
