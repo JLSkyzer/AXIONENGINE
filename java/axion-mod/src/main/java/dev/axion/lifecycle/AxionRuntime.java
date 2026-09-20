@@ -10,6 +10,9 @@ import dev.axion.bootstrap.NativeApi;
 import dev.axion.config.ConfigSchema.Scope;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
+import dev.axion.physics.CollectResult;
+import dev.axion.physics.NativeSimulation;
+import dev.axion.physics.SimCommandStream;
 import dev.axion.platform.PlatformAdapter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -43,6 +46,15 @@ public final class AxionRuntime {
     private boolean shuttingDown;
     private AssetRegistry assets;
     private DefinitionRegistry definitions = DefinitionRegistry.empty();
+
+    /** Pilote du cycle de simulation (IF-03), créé au premier tick opérationnel. */
+    private NativeSimulation simulation;
+
+    /**
+     * Le cycle de simulation était-il sain au tick précédent ? Sert à ne
+     * journaliser qu'aux transitions (sain ↔ refusé), jamais à chaque tick.
+     */
+    private boolean simulationHealthy = true;
 
     /** Crée un runtime qui démarre AXION par la séquence normale. */
     public AxionRuntime() {
@@ -247,9 +259,40 @@ public final class AxionRuntime {
             if (assets != null && !assets.isSettled()) {
                 assets.pump(outcome.config().getInt("budgets.asset_ns_per_tick"));
             }
-            // La boucle de simulation arrive avec C-40 ; d'ici là, un tick ne
-            // coûte que ce passage.
+            driveSimulation();
         });
+    }
+
+    /**
+     * Déroule un tick du cycle de simulation (IF-03) sur le thread autoritatif.
+     *
+     * <p>Tant qu'aucune assembly n'existe ({@code CREATE_ASSEMBLY} attend C-32),
+     * le cycle avance à vide : aucune commande soumise, zéro état, zéro événement
+     * — mais toute la frontière {@code submit}→{@code collect}→lecture est
+     * traversée à chaque tick, et le bilan d'allocations reste équilibré (R-322).
+     * L'application des états aux entités et l'envoi de commandes de dimension
+     * arrivent avec la création de corps.
+     *
+     * <p>Un {@code collect} refusé n'est jamais un abandon silencieux (R-281) ; il
+     * est journalisé, mais seulement à la transition sain → refusé, pour ne pas
+     * inonder les diagnostics à chaque tick.
+     */
+    private void driveSimulation() {
+        if (simulation == null) {
+            simulation = new NativeSimulation(outcome.context());
+        }
+        long tick = platform.currentTick();
+        // Aucune commande et aucun délai : le cycle avance la simulation et
+        // récolte l'état, qui est vide tant qu'aucun corps n'existe.
+        CollectResult result = simulation.tick(tick, new SimCommandStream(), 0L);
+        // L'application des BodyState arrive ici quand des corps existeront ;
+        // `result.bodies()` est vide d'ici là.
+        if (result.ok() != simulationHealthy) {
+            simulationHealthy = result.ok();
+            transitions.add(result.ok()
+                    ? "cycle de simulation rétabli au tick " + tick
+                    : "collect refusé au tick " + tick + " (code " + result.code() + ")");
+        }
     }
 
     /**
@@ -388,6 +431,10 @@ public final class AxionRuntime {
             }
         }
         outcome = null;
+        // Le pilote de simulation référençait le contexte qu'on vient de fermer :
+        // un redémarrage en recréera un sur le nouveau contexte.
+        simulation = null;
+        simulationHealthy = true;
         transitionTo(LifecyclePhase.UNLOADED);
     }
 

@@ -212,6 +212,43 @@ class NativeBridgeTest {
         assertTrue(metriques.contains("axion.budget.sim_ns_per_tick.consumed"), metriques);
         assertTrue(metriques.contains("axion.jobs.workers"), metriques);
 
+        // T-190 (suite) : le cycle de simulation IF-03 traverse la frontière via
+        // NativeSimulation, sur la vraie bibliothèque. C'est le chemin qu'empruntera
+        // le thread autoritatif à chaque tick.
+        dev.axion.physics.NativeSimulation simulation =
+                new dev.axion.physics.NativeSimulation(reprise);
+
+        // Un tick à vide : aucune commande, aucun corps (CREATE_ASSEMBLY attend
+        // C-32). Le cycle avance et récolte un état vide.
+        dev.axion.physics.CollectResult vide =
+                simulation.tick(1L, new dev.axion.physics.SimCommandStream(), 0L);
+        assertTrue(vide.ok(), () -> "collect à vide refusé, code " + vide.code());
+        assertEquals(0, vide.stateCount(), "aucun corps");
+        assertEquals(0, vide.eventCount(), "aucun événement");
+        assertTrue(vide.bodies().isEmpty());
+        assertTrue(vide.events().isEmpty());
+
+        // Un tick portant une commande SET_DIMENSION_ENV : le flux SimIn est écrit,
+        // soumis et appliqué (le natif crée la dimension). Toujours aucun corps,
+        // mais tout le chemin submit→collect avec commande est traversé.
+        dev.axion.physics.SimCommandStream commandes =
+                new dev.axion.physics.SimCommandStream()
+                        .setDimensionEnv(
+                                0L,
+                                new float[] {0.0f, -9.81f, 0.0f},
+                                new float[] {0.0f, 0.0f, 0.0f},
+                                0.0f,
+                                0.0f,
+                                false);
+        dev.axion.physics.CollectResult apresCommande = simulation.tick(2L, commandes, 0L);
+        assertTrue(apresCommande.ok(), () -> "collect après commande refusé, code " + apresCommande.code());
+        assertEquals(0, apresCommande.stateCount(), "aucun corps créé par SET_DIMENSION_ENV");
+
+        // Annuler après un cycle clos est inoffensif.
+        assertEquals(NativeBridge.OK, simulation.cancel());
+
+        // Les tampons du cycle ont été relâchés à chaque tick : la fermeture ne
+        // signale aucune fuite (R-322).
         assertEquals(NativeBridge.OK, NativeBridge.close(reprise));
     }
 }

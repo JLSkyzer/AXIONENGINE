@@ -1441,7 +1441,7 @@ substituable sans changer rapier »).
                         `SimIn` (patron `NativeAssetCompiler.submit`) ; lecteurs
                         `SimOut`/`Events` (acquérir cap 0, compte via
                         `AxionCollectResult`, release — R-322). Tests JUnit décodage.
-                  - [ ] **4d-iv — intégration `onTick`** (thread autoritatif) :
+                  - [x] **4d-iv — intégration `onTick`** (thread autoritatif) :
                         `AxionRuntime.onTick` déroule submit→collect→lecture→release
                         après le pump d'assets ; n° de tick via `currentTick()`.
                   - [ ] **4d-v — preuve** : étendre `NativeBridgeTest` (vraie `.dll`)
