@@ -1378,7 +1378,10 @@ substituable sans changer rapier »).
                   3 tests (composition monde, filtrage statiques/anonymes,
                   IN_FLUID). `BodyDesc` (entrée) viendra avec le traitement des
                   commandes en 4b, avec son consommateur.
-            - [ ] **4b — orchestration dans le `Session`** : loger un
+            - [ ] **4b — orchestration dans le `Session`** (contrat d'entrée
+                  proposé dans **ADR-114** — `SimIn` : flux de commandes
+                  opcode+longueur, extensible ; **à ratifier avant d'écrire**).
+                  Loger un
                   `PhysicsWorld` par dimension ; `submit` lit `SimIn`
                   (commands+impacts), planifie le pas sur le système de jobs
                   sans bloquer au-delà de `budgets.submit_ns` (R-280) ; `collect`
