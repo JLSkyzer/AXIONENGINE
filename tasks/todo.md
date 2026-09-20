@@ -1400,10 +1400,13 @@ substituable sans changer rapier »).
                         SET_KINEMATIC, APPLY_IMPULSE, SET_DIMENSION_ENV). 5 tests
                         (flux réels). CREATE_ASSEMBLY (C-32) et APPLY_FORCE
                         continu comptés **différés**, jamais des stubs.
-                  - [ ] **4b-iii — points d'entrée `ax-ffi`** :
+                  - [x] **4b-iii — points d'entrée `ax-ffi`** :
                         `axion_sim_submit`/`collect`/`cancel`, enveloppe mince
                         lisant `SimIn` et remplissant `SimOut`/`Events`, sur le
-                        patron async d'`asset_compile`/`poll` ; `AxionCollectResult`.
+                        patron async d'`asset_compile`/`poll` ; `AxionCollectResult`. **Fait** : test
+                        d'intégration `sim_abi.rs` (cycle init -> SimIn ->
+                        submit -> collect -> cancel -> shutdown, bilan
+                        équilibré R-322) vert ; 9 tests ax-ffi verts.
             - [ ] **4c — packing des tampons + garde-fous** : sérialiser
                   BodyState[] (position monde `f64` via l'origine flottante) et
                   PhysicsEvent[] avec en-têtes/CRC ; R-180 (clamp

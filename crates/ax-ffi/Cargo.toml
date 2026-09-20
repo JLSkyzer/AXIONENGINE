@@ -32,6 +32,9 @@ ax-asset.workspace = true
 # C-12 : le pool de jobs appartient a la session, comme les tampons.
 ax-jobs.workspace = true
 ax-model.workspace = true
+# C-31 : le cycle de simulation (IF-03) pilote la physique ; le Session détient
+# un SimDriver, et axion_sim_submit/collect l'entraînent.
+ax-physics.workspace = true
 # C-15 : les metriques appartiennent a la session aussi, et l'export de R-502
 # traverse la frontiere.
 ax-telemetry.workspace = true

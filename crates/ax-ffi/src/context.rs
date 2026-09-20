@@ -15,6 +15,7 @@ use ax_core::{BufferPool, ContextGuard, RuntimeState};
 use ax_jobs::{JobBudgets, JobSystem, Side, WorkerPolicy};
 use ax_jobs::{JobHandle, JobOutcome};
 use ax_model::budgets::Budget;
+use ax_physics::SimDriver;
 use ax_telemetry::{BudgetMetrics, MetricId, Telemetry};
 use std::collections::HashMap;
 
@@ -87,6 +88,12 @@ pub struct Session {
     asset_jobs: HashMap<u32, AssetJob>,
     /// Identifiant du prochain travail d'asset.
     next_asset_job: u32,
+    /// Cycle de simulation (C-31, IF-03) : un monde physique par dimension.
+    physics: SimDriver,
+    /// Un `axion_sim_submit` est en cours, en attente de son `collect` (R-282).
+    sim_pending: bool,
+    /// Cycles `submit` clos implicitement faute de `collect` (R-282).
+    sim_unbalanced: u64,
     /// Détenu pour la durée de la session : c'est lui qui garantit l'unicité du
     /// contexte dans le processus (R-450).
     _guard: ContextGuard,
@@ -139,6 +146,38 @@ impl Session {
     #[must_use]
     pub fn side(&self) -> Side {
         self.side
+    }
+
+    /// Pilote du cycle de simulation (C-31, IF-03).
+    #[must_use]
+    pub fn physics(&mut self) -> &mut SimDriver {
+        &mut self.physics
+    }
+
+    /// Indique si un `submit` attend son `collect`.
+    #[must_use]
+    pub fn sim_pending(&self) -> bool {
+        self.sim_pending
+    }
+
+    /// Ouvre un cycle de simulation. Si un cycle était déjà ouvert sans avoir été
+    /// collecté, il est clos implicitement et compté (R-282).
+    pub fn open_sim_cycle(&mut self) {
+        if self.sim_pending {
+            self.sim_unbalanced += 1;
+        }
+        self.sim_pending = true;
+    }
+
+    /// Ferme le cycle de simulation courant.
+    pub fn close_sim_cycle(&mut self) {
+        self.sim_pending = false;
+    }
+
+    /// Nombre de cycles clos implicitement faute de `collect` (R-282).
+    #[must_use]
+    pub fn sim_unbalanced(&self) -> u64 {
+        self.sim_unbalanced
     }
 
     /// Pool de jobs de la session, s'il a pu être créé.
@@ -302,6 +341,9 @@ pub fn open(side: Side, workers: WorkerPolicy, budgets: JobBudgets) -> Result<u6
         metrics,
         asset_jobs: HashMap::new(),
         next_asset_job: 1,
+        physics: SimDriver::new(),
+        sim_pending: false,
+        sim_unbalanced: 0,
         _guard: guard,
     });
     Ok(token)

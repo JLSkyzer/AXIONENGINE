@@ -106,6 +106,7 @@ dependencies = [
  "ax-core",
  "ax-jobs",
  "ax-model",
+ "ax-physics",
  "ax-telemetry",
  "ciborium",
  "jni",

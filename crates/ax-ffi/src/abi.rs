@@ -22,7 +22,7 @@
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-use ax_model::buffer::{BufferHeader, BufferKind};
+use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::config::{self, ConfigScope, ParsedValue};
 
 use crate::context;
@@ -625,6 +625,136 @@ pub unsafe extern "C" fn axion_buffer_release(ctx: u64, kind: u32, generation: u
         }) {
             Ok(true) => AXION_OK,
             Ok(false) => AXION_E_INVALID_BUFFER,
+            Err(code) => code,
+        }
+    })
+}
+
+/// Résultat d'un [`axion_sim_collect`] (IF-03).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AxionCollectResult {
+    /// Nombre de `BodyState` déposés dans `SimOut`.
+    pub state_count: u32,
+    /// Nombre de `PhysicsEvent` (+ `DamageEvent`, M6) déposés dans `Events`.
+    pub event_count: u32,
+    /// Pages de champ de déformation modifiées (M6).
+    pub deform_page_count: u32,
+    /// Colliders refités ce tick (M6).
+    pub refit_count: u32,
+    /// Détachements décidés (M7).
+    pub detach_count: u32,
+    /// Octets prêts à émettre sur le réseau (M4).
+    pub net_bytes: u32,
+    /// Drapeaux, voir [`AXION_SIM_INCOMPLETE`] et [`AXION_SIM_DEGRADED`].
+    pub flags: u32,
+}
+
+/// Drapeau de collect : tout n'a pas été produit dans le délai (R-281).
+pub const AXION_SIM_INCOMPLETE: u32 = 1 << 0;
+/// Drapeau de collect : la simulation tourne en qualité dégradée.
+pub const AXION_SIM_DEGRADED: u32 = 1 << 1;
+
+/// Pas de simulation par tick (défaut `sim.fixed_dt`, R-283).
+const SIM_TICK_DT: f32 = 1.0 / 60.0;
+
+/// Soumet les entrées d'un tick de simulation (IF-03).
+///
+/// Lit `command_count` commandes du tampon `SimIn` (protocole ADR-114) et les
+/// applique. Un cycle non collecté est clos implicitement et compté (R-282). Les
+/// impacts (M6) ne sont pas encore lus : `impact_count` doit valoir 0.
+///
+/// # Safety
+/// Aucun pointeur n'est déréférencé ; `unsafe` par symétrie avec le reste de
+/// l'ABI.
+#[no_mangle]
+pub unsafe extern "C" fn axion_sim_submit(
+    ctx: u64,
+    _tick: u64,
+    command_count: u32,
+    _impact_count: u32,
+) -> i32 {
+    shielded(Some(ctx), || {
+        match context::with(ctx, false, |session| {
+            session.open_sim_cycle();
+            if command_count == 0 {
+                return AXION_OK;
+            }
+            // La tranche de commandes est copiée hors du tampon partagé, qui peut
+            // être réalloué (R-270) ; le parseur travaille sur cette copie.
+            let bytes = match session.buffers().get_mut(BufferKind::SimIn) {
+                Some(buffer) => buffer.as_slice().get(HEADER_BYTES..).unwrap_or(&[]).to_vec(),
+                None => return AXION_E_INVALID_BUFFER,
+            };
+            match ax_physics::apply_command_stream(session.physics(), &bytes, command_count) {
+                Ok(_) => AXION_OK,
+                Err(_) => AXION_E_INVALID_BUFFER,
+            }
+        }) {
+            Ok(code) | Err(code) => code,
+        }
+    })
+}
+
+/// Récolte le résultat d'un tick (IF-03) : avance la simulation, dépose les
+/// `BodyState` dans `SimOut` et les `PhysicsEvent` dans `Events`, et remplit
+/// `out`.
+///
+/// # Safety
+/// `out` doit être non nul et accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_sim_collect(
+    ctx: u64,
+    _deadline_ns: u64,
+    out: *mut AxionCollectResult,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if out.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let result = match context::with(ctx, false, |session| {
+            session.physics().advance_all(SIM_TICK_DT);
+            let states = session.physics().collect_states();
+            let events = session.physics().drain_events();
+
+            let mut states_bytes = Vec::new();
+            for state in &states {
+                state.write_le(&mut states_bytes);
+            }
+            let mut events_bytes = Vec::new();
+            for event in &events {
+                event.write_le(&mut events_bytes);
+            }
+            session.buffers().write_payload(BufferKind::SimOut, &states_bytes);
+            session.buffers().write_payload(BufferKind::Events, &events_bytes);
+            session.close_sim_cycle();
+
+            AxionCollectResult {
+                state_count: u32::try_from(states.len()).unwrap_or(u32::MAX),
+                event_count: u32::try_from(events.len()).unwrap_or(u32::MAX),
+                ..AxionCollectResult::default()
+            }
+        }) {
+            Ok(result) => result,
+            Err(code) => return code,
+        };
+        // SAFETY: `out` non nul (vérifié), accessible en écriture par contrat.
+        unsafe { out.write(result) };
+        AXION_OK
+    })
+}
+
+/// Annule le cycle de simulation courant (IF-03) : les entrées soumises sont
+/// abandonnées, rien n'est avancé.
+///
+/// # Safety
+/// Aucun pointeur n'est déréférencé ; `unsafe` par symétrie avec le reste de
+/// l'ABI.
+#[no_mangle]
+pub unsafe extern "C" fn axion_sim_cancel(ctx: u64) -> i32 {
+    shielded(Some(ctx), || {
+        match context::with(ctx, false, |session| session.close_sim_cycle()) {
+            Ok(()) => AXION_OK,
             Err(code) => code,
         }
     })

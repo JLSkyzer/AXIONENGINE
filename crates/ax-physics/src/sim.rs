@@ -41,6 +41,16 @@ pub struct SimDriver {
     routes: BTreeMap<u64, (u64, BodyId)>,
 }
 
+impl std::fmt::Debug for SimDriver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Les mondes `rapier` ne sont pas `Debug` ; on n'expose que leur nombre.
+        f.debug_struct("SimDriver")
+            .field("dimensions", &self.dimensions.len())
+            .field("routes", &self.routes.len())
+            .finish()
+    }
+}
+
 impl SimDriver {
     /// Crée un pilote sans aucune dimension.
     #[must_use]
