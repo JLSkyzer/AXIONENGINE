@@ -295,6 +295,36 @@ pub struct PhysicsEvent {
 impl PhysicsEvent {
     /// Taille de la structure sur la frontière, en octets.
     pub const BYTES: usize = 76;
+
+    /// Sérialise l'événement en little-endian, dans la disposition figée (76
+    /// octets), à la fin de `out`.
+    ///
+    /// Champ à champ plutôt que par transtypage : le résultat est identique à la
+    /// mémoire `repr(C)` sur une plateforme little-endian (ce que le test de
+    /// disposition garantit par les offsets), sans exiger de `unsafe` ni la
+    /// définition d'octets de remplissage.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.kind.to_le_bytes());
+        out.extend_from_slice(&self.assembly_a.index.to_le_bytes());
+        out.extend_from_slice(&self.assembly_a.generation.to_le_bytes());
+        out.extend_from_slice(&self.assembly_b.index.to_le_bytes());
+        out.extend_from_slice(&self.assembly_b.generation.to_le_bytes());
+        out.extend_from_slice(&self.node_a.to_le_bytes());
+        out.extend_from_slice(&self.node_b.to_le_bytes());
+        for value in self.point {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in self.normal {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        out.extend_from_slice(&self.impulse.to_le_bytes());
+        out.extend_from_slice(&self.tangent_impulse.to_le_bytes());
+        out.extend_from_slice(&self.relative_velocity.to_le_bytes());
+        out.extend_from_slice(&self.effective_mass.to_le_bytes());
+        out.extend_from_slice(&self.material_a.to_le_bytes());
+        out.extend_from_slice(&self.material_b.to_le_bytes());
+        out.extend_from_slice(&self.data.to_le_bytes());
+    }
 }
 
 /// Drapeaux d'un [`BodyState`] (DM-08), champ `flags`.
@@ -342,6 +372,27 @@ pub struct BodyState {
 impl BodyState {
     /// Taille de la structure sur la frontière, en octets (remplissage compris).
     pub const BYTES: usize = 80;
+
+    /// Sérialise l'état en little-endian, dans la disposition figée (80 octets,
+    /// remplissage final compris), à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.handle.index.to_le_bytes());
+        out.extend_from_slice(&self.handle.generation.to_le_bytes());
+        for value in self.position {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in self.rotation {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in self.lin_vel {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in self.ang_vel {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        out.extend_from_slice(&self.flags.to_le_bytes());
+        out.extend_from_slice(&[0u8; 4]); // remplissage final
+    }
 }
 
 #[cfg(test)]
@@ -367,6 +418,52 @@ mod tests {
         assert_eq!(offset_of!(PhysicsEvent, material_a), 68);
         assert_eq!(offset_of!(PhysicsEvent, material_b), 70);
         assert_eq!(offset_of!(PhysicsEvent, data), 72);
+    }
+
+    #[test]
+    fn body_state_write_le_respecte_la_disposition() {
+        let state = BodyState {
+            handle: Handle::new(3, 7),
+            position: [1.0, 2.0, 3.0],
+            rotation: [0.1, 0.2, 0.3, 0.4],
+            lin_vel: [4.0, 5.0, 6.0],
+            ang_vel: [7.0, 8.0, 9.0],
+            flags: 0b101,
+        };
+        let mut bytes = Vec::new();
+        state.write_le(&mut bytes);
+        assert_eq!(bytes.len(), BodyState::BYTES);
+        assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), 3);
+        assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 7);
+        assert_eq!(f64::from_le_bytes(bytes[8..16].try_into().unwrap()), 1.0);
+        assert_eq!(f32::from_le_bytes(bytes[32..36].try_into().unwrap()), 0.1);
+        assert_eq!(u32::from_le_bytes(bytes[72..76].try_into().unwrap()), 0b101);
+    }
+
+    #[test]
+    fn physics_event_write_le_respecte_la_disposition() {
+        let event = PhysicsEvent {
+            kind: 2,
+            assembly_a: Handle::new(1, 1),
+            assembly_b: Handle::ABSENT,
+            node_a: 5,
+            node_b: 0,
+            point: [1.0, 2.0, 3.0],
+            normal: [0.0, 1.0, 0.0],
+            impulse: 4.0,
+            tangent_impulse: 0.5,
+            relative_velocity: -2.0,
+            effective_mass: 0.5,
+            material_a: 9,
+            material_b: 3,
+            data: 0,
+        };
+        let mut bytes = Vec::new();
+        event.write_le(&mut bytes);
+        assert_eq!(bytes.len(), PhysicsEvent::BYTES);
+        assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), 2);
+        assert_eq!(f32::from_le_bytes(bytes[52..56].try_into().unwrap()), 4.0);
+        assert_eq!(u16::from_le_bytes(bytes[68..70].try_into().unwrap()), 9);
     }
 
     #[test]
