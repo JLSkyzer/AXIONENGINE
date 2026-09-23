@@ -1460,6 +1460,36 @@ substituable sans changer rapier »).
             (NaN → E-2030), FM-21 (budget → sous-pas puis sommeil), FM-22
             (empilement → amortissement puis sommeil). Tests T-300..T-307.
 
+      - [ ] **C-32 — Collider Builder** (fiche 5.24, R-620..623, T-310..312).
+            Produit les colliders (`ColliderDesc`, DM-06) à la compilation et les
+            porte jusqu'à l'A3D (section PHYS). DM-06 figé, validation C-22 prête.
+            Périmètre : **complet, PHYS inclus** ; gels COM/PHYS derrière un ADR
+            ratifié. La session est en effort max.
+            - [ ] **T1 — transport** : `colliders: Vec<ColliderDesc>` + tableaux
+                  annexes (points convexes, enfants de compound, points
+                  d'enveloppe) sur `ImportedAsset`, câblés dans `compile.rs`
+                  (`AssetView.colliders`) pour que la validation tourne sur du
+                  réel. Réversible, testable.
+            - [ ] **T2 — sourcing + auto-génération** (R-620/621) : chaîne extras
+                  node → definition → `auto_box` (AABB) / `auto_sphere` / 
+                  `auto_capsule` / `auto_compound` (enfants, R-621) → aucun.
+                  `auto_convex` marqué pour V-HACD (étape C-23, différée). Extras
+                  glTF : lire forme/densité/material/no_refit.
+            - [ ] **T3 — masse/COM** (R-622) `[gel → ADR]` : masse déclarée
+                  prioritaire, sinon calculée depuis les densités ; COM calculable
+                  ou déclarable. Où stocker le COM (ni ColliderDesc ni PartDesc
+                  n'en ont) → ADR + ratification avant de figer.
+            - [ ] **T4 — REFITTABLE/NO_REFIT** (R-623) : REFITTABLE par défaut sur
+                  un collider de body dynamique dont la part porte ≥1 région ;
+                  NO_REFIT auteur honoré.
+            - [ ] **T5 — layout PHYS + sérialisation** `[gel → ADR]` : empaquetage
+                  figé de `ColliderDesc[]` + tableaux annexes, écrit dans
+                  `write_container`, test de disposition, ADR + ratification,
+                  `COMPILER_VERSION++` (invalide le cache, R-892).
+            - Différé : V-HACD `auto_convex` + points d'enveloppe (étapes 8-9 de
+              C-23, ADR-108) ; pont runtime `ColliderShape→Shape` + CREATE_ASSEMBLY
+              (intégration M3, débloque le test physique en jeu).
+
 ## Jalons suivants
 
 Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
