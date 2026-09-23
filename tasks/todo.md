@@ -1348,7 +1348,7 @@ substituable sans changer rapier »).
       - [ ] **Tranche 3c-ii — liaisons et défaillances (gelé).** JOINT_BROKEN/
             JAMMED avec les joints (M4) ; ATTACH/DETACH avec les attaches (M5) ;
             CLAMPED/RECOVERED avec les modes de défaillance (FM-20/21/22).
-      - [ ] **Tranche 4 — IF-03, cycle de simulation (FFI/ABI, `[EFFORT MAX]`).**
+      - [x] **Tranche 4 — IF-03, cycle de simulation (FFI/ABI, `[EFFORT MAX]`).**
             **À faire en session neuve, effort maximal.** C'est un contrat
             **IF-xx** (que l'agent ne fige pas seul) : à mener avec soin et,
             pour les layouts non fixés par la spec, un ADR + un test de
@@ -1422,7 +1422,7 @@ substituable sans changer rapier »).
                   AxionCollectResult, charge via write_payload) ; CRC sur écriture
                   reste optionnel sous debug.checksum_buffers (champ présent, 0 par
                   défaut).
-            - [ ] **4d — côté Java** `[EFFORT MAX]` : brancher IF-03 côté Java et
+            - [x] **4d — côté Java** `[EFFORT MAX]` : brancher IF-03 côté Java et
                   l'appliquer sur le thread autoritatif. Sous-tranches :
                   - [x] **4d-i — bindings JNI Rust** (`jni_bridge.rs`) :
                         `simSubmit`/`simCollect`/`simCancel` (NativeMethod + fns) ;
@@ -1444,11 +1444,15 @@ substituable sans changer rapier »).
                   - [x] **4d-iv — intégration `onTick`** (thread autoritatif) :
                         `AxionRuntime.onTick` déroule submit→collect→lecture→release
                         après le pump d'assets ; n° de tick via `currentTick()`.
-                  - [ ] **4d-v — preuve** : étendre `NativeBridgeTest` (vraie `.dll`)
+                  - [x] **4d-v — preuve** : étendre `NativeBridgeTest` (vraie `.dll`)
                         au cycle submit/collect/cancel + lecture ; `cargo build
                         --release -p ax-ffi` puis `:axion-mod:test`. Premier
                         `@GameTest` + tentative `runGameTestServer` (honnête si non
-                        exécutable ici).
+                        exécutable ici). **Fait** : NativeBridgeTest exerce le
+                        cycle IF-03 sur la vraie .dll (submit/collect/cancel +
+                        SET_DIMENSION_ENV, tampons équilibrés). Le GameTest physique
+                        observable (spawn → tick → l'entité a bougé) est **différé à
+                        C-32** : à 0 corps la physique n'a aucun effet en jeu.
       - [ ] **Tranche 5 — intégration Java et proxies vanilla.** Monde par
             dimension créé/détruit à la demande (R-610), proxies cinématiques
             des entités vanilla reconstruits chaque tick (R-614), effets
