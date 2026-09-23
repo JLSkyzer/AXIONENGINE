@@ -1465,11 +1465,16 @@ substituable sans changer rapier »).
             porte jusqu'à l'A3D (section PHYS). DM-06 figé, validation C-22 prête.
             Périmètre : **complet, PHYS inclus** ; gels COM/PHYS derrière un ADR
             ratifié. La session est en effort max.
-            - [ ] **T1 — transport** : `colliders: Vec<ColliderDesc>` + tableaux
+            - [x] **T1 — transport** : `colliders: Vec<ColliderDesc>` + tableaux
                   annexes (points convexes, enfants de compound, points
                   d'enveloppe) sur `ImportedAsset`, câblés dans `compile.rs`
                   (`AssetView.colliders`) pour que la validation tourne sur du
                   réel. Réversible, testable.
+                  **Fait** : `colliders: Vec<ColliderDesc>` sur `ImportedAsset`,
+                  câblé dans `compile.rs` (généré après `optimize`, validé) ;
+                  `CompiledAsset.collider_count` ; module `collider` avec
+                  `ColliderMode` (source par definition) et le générateur
+                  `auto_box` (repli). 5 tests (T-310). Reste en T2 : extras node.
             - [ ] **T2 — sourcing + auto-génération** (R-620/621) : chaîne extras
                   node → definition → `auto_box` (AABB) / `auto_sphere` / 
                   `auto_capsule` / `auto_compound` (enfants, R-621) → aucun.

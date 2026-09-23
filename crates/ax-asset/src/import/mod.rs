@@ -35,6 +35,7 @@ pub use obj::import_obj;
 pub use stl::import_stl;
 
 use ax_model::dm::geometry::{MeshDesc, Vertex};
+use ax_model::dm::physics::ColliderDesc;
 use ax_model::dm::scene::NodeDesc;
 use core::fmt;
 use std::path::{Component, Path};
@@ -417,6 +418,12 @@ pub struct ImportedAsset {
     pub authored_tangents: Vec<bool>,
     /// Matériaux.
     pub materials: Vec<ImportedMaterial>,
+    /// Colliders (DM-06), produits par C-32 après l'optimisation.
+    ///
+    /// Vide à la sortie d'import : les colliders sont générés une fois les
+    /// bornes de mesh connues (`crate::collider`). Un node les référence par
+    /// l'index de son champ `collider`.
+    pub colliders: Vec<ColliderDesc>,
     /// Noms déclarés par la source, par catégorie.
     pub names: Vec<(&'static str, String)>,
 }

@@ -26,6 +26,7 @@ use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::config::{self, ConfigScope, ParsedValue};
 
 use crate::context;
+use ax_asset::collider::ColliderMode;
 use ax_asset::compile::CompileOptions;
 use ax_asset::import::{ImportLimits, SourceFormat};
 use ax_asset::optimize::LodOptions;
@@ -411,8 +412,10 @@ pub unsafe extern "C" fn axion_asset_compile(
                 limits: ImportLimits::new(source_len.max(1)),
                 dynamic_body: true,
                 // Les options de `<modele>.axion.json` (PARTIE 6.4) ne sont pas
-                // encore lues : les valeurs par défaut du cahier des charges.
+                // encore lues : les valeurs par défaut du cahier des charges. Le
+                // mode de collider de la definition (C-32) n'y voyage pas encore.
                 lod: LodOptions::DEFAULT,
+                collider_mode: ColliderMode::None,
             };
 
             let Some(jobs) = session.jobs() else {

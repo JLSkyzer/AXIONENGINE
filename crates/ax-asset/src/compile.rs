@@ -16,6 +16,7 @@
 //! intestable sans un gestionnaire de ressources autour.
 
 use crate::a3d::{encode_nodes, A3dWriter, SectionTag};
+use crate::collider::{build_colliders, ColliderMode};
 use crate::import::{
     import_gltf, import_obj, import_stl, ImportError, ImportLimits, ImportedAsset, SourceFormat,
 };
@@ -98,6 +99,10 @@ pub struct CompileOptions {
     pub dynamic_body: bool,
     /// Niveaux de détail (C-23, étape 6 ; bloc `lod` de la PARTIE 6.4).
     pub lod: LodOptions,
+    /// Mode de génération automatique de collider réclamé par la definition
+    /// (C-32, R-620). [`ColliderMode::None`] par défaut : rien n'est généré sans
+    /// demande explicite.
+    pub collider_mode: ColliderMode,
 }
 
 /// Ce qu'une compilation réussie produit.
@@ -115,6 +120,8 @@ pub struct CompiledAsset {
     /// Le format A3D figé n'a pas de champ pour elle : elle est rendue ici, et
     /// se recalcule au chargement depuis les boîtes de mesh et les nodes.
     pub bounds: Option<Aabb>,
+    /// Nombre de colliders générés (C-32).
+    pub collider_count: usize,
     /// Avertissements rencontrés, à journaliser une fois (R-912, R-530).
     pub warnings: Vec<String>,
 }
@@ -140,6 +147,11 @@ pub fn compile(
     let optimized = optimize(&mut asset, &options.lod);
     warnings.extend(optimized.warnings);
 
+    // C-32 : les colliders se génèrent une fois les bornes connues (l'optimizer
+    // calcule les boîtes à l'étape 7). Ils repassent donc la liste de contrôle
+    // ci-dessous, au même titre que la géométrie optimisée.
+    asset.colliders = build_colliders(options.collider_mode, optimized.bounds);
+
     // La sortie de C-23, sans exemption : c'est ce que le chargement vérifiera
     // (R-540). Le vérifier dès ici fait d'un défaut de l'optimizer un refus à
     // la compilation, plutôt qu'une entrée de cache refusée à chaque chargement.
@@ -151,6 +163,7 @@ pub fn compile(
         vertex_count: asset.vertices.len(),
         mesh_count: asset.meshes.len(),
         bounds: optimized.bounds,
+        collider_count: asset.colliders.len(),
         warnings,
     })
 }
@@ -173,6 +186,7 @@ fn check(
             meshes: &asset.meshes,
             vertices: &asset.vertices,
             indices: &asset.indices,
+            colliders: &asset.colliders,
             names: &names,
             material_count: asset.materials.len(),
             dynamic_body: options.dynamic_body,
@@ -352,6 +366,7 @@ mod tests {
         limits: ImportLimits::new(1 << 20),
         dynamic_body: true,
         lod: LodOptions::DEFAULT,
+        collider_mode: ColliderMode::None,
     };
 
     /// Une grille plane de `cote × cote` carrés, en OBJ.
@@ -435,6 +450,57 @@ v 0.0 1.0 0.0
 vn 0.0 0.0 1.0
 f 1//1 2//1 3//1
 ";
+
+    /// Un cube unité `[0,1]³`, sans normale (C-23 les génère). Non plat : un
+    /// `auto_box` en tire une boîte non dégénérée.
+    const CUBE_OBJ: &str = "\
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 1.0 1.0 0.0
+v 0.0 1.0 0.0
+v 0.0 0.0 1.0
+v 1.0 0.0 1.0
+v 1.0 1.0 1.0
+v 0.0 1.0 1.0
+f 1 2 3
+f 1 3 4
+f 5 7 6
+f 5 8 7
+f 1 5 6
+f 1 6 2
+f 4 3 7
+f 4 7 8
+f 1 4 8
+f 1 8 5
+f 2 6 7
+f 2 7 3
+";
+
+    #[test]
+    fn t310_le_mode_autobox_produit_un_collider() {
+        // La definition réclame `auto_box` : le compilateur génère une boîte
+        // englobante, qui repasse la validation (densité positive, dimensions
+        // valides) puisque la compilation aboutit.
+        let options = CompileOptions {
+            collider_mode: ColliderMode::AutoBox,
+            ..OPTIONS
+        };
+        let compiled = compile(CUBE_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| None)
+            .expect("compilation refusée");
+        assert_eq!(compiled.collider_count, 1, "auto_box génère un collider");
+    }
+
+    #[test]
+    fn t310_sans_mode_aucun_collider() {
+        // Le défaut est « aucun » : une géométrie ordinaire ne gagne pas de
+        // collider par surprise.
+        let compiled = compile(CUBE_OBJ.as_bytes(), SourceFormat::Obj, &OPTIONS, |_| None)
+            .expect("compilation refusée");
+        assert_eq!(
+            compiled.collider_count, 0,
+            "aucune source ne réclame de collider"
+        );
+    }
 
     fn stl_triangle() -> Vec<u8> {
         let mut bytes = vec![0u8; 80];
