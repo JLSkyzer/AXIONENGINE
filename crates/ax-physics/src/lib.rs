@@ -41,9 +41,9 @@ mod sim;
 mod world;
 
 pub use body::{BodyError, BodyId, BodyKind, CompoundPart, Shape};
+pub use commands::{apply_command_stream, CommandError, CommandOutcome};
 pub use config::{ConfigError, PhysicsConfig};
 pub use forces::{FluidEnvironment, LiftSurface};
-pub use commands::{apply_command_stream, CommandError, CommandOutcome};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
 pub use sim::SimDriver;
 pub use world::{PhysicsWorld, Pose};

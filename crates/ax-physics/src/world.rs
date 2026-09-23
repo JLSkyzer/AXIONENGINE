@@ -2,9 +2,10 @@
 
 use ax_math::{FloatingOrigin, Quat, Vec3};
 use rapier3d::prelude::{
-    ActiveEvents, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent, CollisionEventFlags,
-    ContactPair, EventHandler, Pose as RapierPose, PhysicsWorld as RapierWorld, Real, RigidBody,
-    RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, SharedShape,
+    ActiveEvents, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent,
+    CollisionEventFlags, ContactPair, EventHandler, PhysicsWorld as RapierWorld,
+    Pose as RapierPose, Real, RigidBody, RigidBodyBuilder, RigidBodyHandle, RigidBodySet,
+    RigidBodyType, SharedShape,
 };
 
 use crate::body::{
@@ -293,10 +294,13 @@ impl PhysicsWorld {
         // reviendrait pas à une pose invalide ; à défaut de repli, la
         // restauration le parque à l'origine, endormi.
         if state_is_valid(position, rotation, Vec3::ZERO, Vec3::ZERO) {
-            self.last_valid.insert(id, ValidPose {
-                translation: position,
-                rotation,
-            });
+            self.last_valid.insert(
+                id,
+                ValidPose {
+                    translation: position,
+                    rotation,
+                },
+            );
         }
         Ok(id)
     }
@@ -397,7 +401,13 @@ impl PhysicsWorld {
             }
             self.clamp_velocities(id, handle, linvel, angvel);
             // Cette pose finie devient le repli d'une éventuelle restauration.
-            self.last_valid.insert(id, ValidPose { translation, rotation });
+            self.last_valid.insert(
+                id,
+                ValidPose {
+                    translation,
+                    rotation,
+                },
+            );
         }
     }
 
@@ -411,7 +421,10 @@ impl PhysicsWorld {
             rotation: Quat::IDENTITY,
         });
         if let Some(body) = self.inner.bodies.get_mut(handle) {
-            body.set_position(RapierPose::from_parts(valid.translation, valid.rotation), false);
+            body.set_position(
+                RapierPose::from_parts(valid.translation, valid.rotation),
+                false,
+            );
             body.set_linvel(Vec3::ZERO, false);
             body.set_angvel(Vec3::ZERO, false);
             // Sommeil forcé : un corps parti hors du monde ne poursuit pas sa
@@ -423,7 +436,13 @@ impl PhysicsWorld {
 
     /// Clampe les vitesses d'un corps à leurs bornes (R-180) ; pose le drapeau
     /// `CLAMPED` et journalise (débit d'une par minute) si une borne a mordu.
-    fn clamp_velocities(&mut self, id: BodyId, handle: RigidBodyHandle, linvel: Vec3, angvel: Vec3) {
+    fn clamp_velocities(
+        &mut self,
+        id: BodyId,
+        handle: RigidBodyHandle,
+        linvel: Vec3,
+        angvel: Vec3,
+    ) {
         let (max_linear, max_angular) = self
             .velocity_limits
             .get(&id)
@@ -503,7 +522,12 @@ impl PhysicsWorld {
         let pair = self.inner.contact_pair(a, b)?;
         let (manifold, contact) = pair.find_deepest_contact()?;
         let normal = manifold.data.normal;
-        let world_point = self.inner.colliders.get(a)?.position().transform_point(contact.local_p1);
+        let world_point = self
+            .inner
+            .colliders
+            .get(a)?
+            .position()
+            .transform_point(contact.local_p1);
 
         let (identity_a, body_a) = self.contact_body(a);
         let (identity_b, body_b) = self.contact_body(b);
@@ -558,7 +582,12 @@ impl PhysicsWorld {
     /// Construit un événement aux identités seules, les champs de contact étant
     /// nuls : CONTACT_END (plus de contact) ou SENSOR_ENTER/EXIT (un capteur ne
     /// résout aucun contact, il ne rapporte qu'un chevauchement).
-    fn build_identity_event(&self, a: ColliderHandle, b: ColliderHandle, kind: u32) -> PhysicsEvent {
+    fn build_identity_event(
+        &self,
+        a: ColliderHandle,
+        b: ColliderHandle,
+        kind: u32,
+    ) -> PhysicsEvent {
         let (identity_a, _) = self.contact_body(a);
         let (identity_b, _) = self.contact_body(b);
         PhysicsEvent {
@@ -581,7 +610,11 @@ impl PhysicsWorld {
 
     /// Rend l'identité et le corps parent d'un collider.
     fn contact_body(&self, collider: ColliderHandle) -> (BodyIdentity, Option<&RigidBody>) {
-        let parent = self.inner.colliders.get(collider).and_then(|collider| collider.parent());
+        let parent = self
+            .inner
+            .colliders
+            .get(collider)
+            .and_then(|collider| collider.parent());
         let body = parent.and_then(|handle| self.inner.bodies.get(handle));
         let identity = parent
             .map(|handle| {
@@ -610,7 +643,11 @@ impl PhysicsWorld {
             // d'événement.
             if let Some(previous) = self.sleep_state.insert(id, sleeping) {
                 if previous != sleeping {
-                    let kind = if sleeping { event_kind::SLEEP } else { event_kind::WAKE };
+                    let kind = if sleeping {
+                        event_kind::SLEEP
+                    } else {
+                        event_kind::WAKE
+                    };
                     self.push_single_body_event(id, kind);
                 }
             }
@@ -690,7 +727,8 @@ impl PhysicsWorld {
                     );
                 }
                 if let Some(fluid) = fluid {
-                    if let Some(app) = buoyancy_force(body, &self.inner.colliders, gravity, &fluid) {
+                    if let Some(app) = buoyancy_force(body, &self.inner.colliders, gravity, &fluid)
+                    {
                         at_points.push(app);
                     }
                 }
@@ -796,25 +834,37 @@ impl PhysicsWorld {
     /// Indique si un corps dort, ou `None` s'il n'existe pas.
     #[must_use]
     pub fn is_sleeping(&self, id: BodyId) -> Option<bool> {
-        self.inner.bodies.get(id.handle()).map(rapier3d::prelude::RigidBody::is_sleeping)
+        self.inner
+            .bodies
+            .get(id.handle())
+            .map(rapier3d::prelude::RigidBody::is_sleeping)
     }
 
     /// Indique si la CCD est activée sur un corps, ou `None` s'il n'existe pas.
     #[must_use]
     pub fn is_ccd_enabled(&self, id: BodyId) -> Option<bool> {
-        self.inner.bodies.get(id.handle()).map(rapier3d::prelude::RigidBody::is_ccd_enabled)
+        self.inner
+            .bodies
+            .get(id.handle())
+            .map(rapier3d::prelude::RigidBody::is_ccd_enabled)
     }
 
     /// Vitesse linéaire d'un corps, en m/s, ou `None` s'il n'existe pas.
     #[must_use]
     pub fn velocity(&self, id: BodyId) -> Option<Vec3> {
-        self.inner.bodies.get(id.handle()).map(rapier3d::prelude::RigidBody::linvel)
+        self.inner
+            .bodies
+            .get(id.handle())
+            .map(rapier3d::prelude::RigidBody::linvel)
     }
 
     /// Vitesse angulaire d'un corps, en rad/s, ou `None` s'il n'existe pas.
     #[must_use]
     pub fn angular_velocity(&self, id: BodyId) -> Option<Vec3> {
-        self.inner.bodies.get(id.handle()).map(rapier3d::prelude::RigidBody::angvel)
+        self.inner
+            .bodies
+            .get(id.handle())
+            .map(rapier3d::prelude::RigidBody::angvel)
     }
 
     /// Fixe le vent de la dimension (§10.6, `physics.wind`).
@@ -954,7 +1004,10 @@ impl PhysicsWorld {
             if body.is_sleeping() {
                 flags |= body_state_flags::SLEEPING;
             }
-            if self.fluid.is_some_and(|fluid| self.body_in_fluid(handle, &fluid)) {
+            if self
+                .fluid
+                .is_some_and(|fluid| self.body_in_fluid(handle, &fluid))
+            {
                 flags |= body_state_flags::IN_FLUID;
             }
 
@@ -1136,7 +1189,10 @@ fn shared_shape_of(shape: &Shape) -> Result<SharedShape, BodyError> {
             if points.len() > MAX_CONVEX_HULL_POINTS {
                 return Err(BodyError::ConvexHullTooManyPoints);
             }
-            let cloud: Vec<Vec3> = points.iter().map(|point| Vec3::from_array(*point)).collect();
+            let cloud: Vec<Vec3> = points
+                .iter()
+                .map(|point| Vec3::from_array(*point))
+                .collect();
             // `rapier` rend `None` si les points ne forment aucun volume
             // (coplanaires, colinéaires, ou confondus) : la forme n'existe pas.
             SharedShape::convex_hull(&cloud).ok_or(BodyError::DegenerateConvexHull)

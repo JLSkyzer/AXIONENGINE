@@ -686,3 +686,23 @@ corps dynamique ne peut donc pas sortir du monde en un pas, et R-180 (clamp à
 300 m/s) s'applique **après** le pas, par-dessus ce plafond global. Un cas de
 garde-fou qui ne peut être atteint par la dynamique se teste en **plaçant** le
 corps dans l'état fautif (spawn hors borne), pas en l'y poussant.
+
+## 2026-09-23 | `cargo fmt` jamais vérifié → format cassé accumulé, masqué par une CI bloquée | vérifier fmt avant commit
+
+**Ce qui a coûté.** Plusieurs commits de C-31 (4b-iii → 4d) poussés sans
+`cargo fmt --all -- --check`. La CI, bloquée pour une raison de **facturation**
+GitHub (jobs jamais démarrés, tous en échec), ne les a jamais rattrapés : le
+format a divergé sur 10 fichiers ax-ffi/ax-physics, invisible tant que la CI
+était rouge pour une autre cause.
+
+**Règle.** Lancer `cargo fmt --all -- --check` avant chaque commit Rust, au même
+titre que `clippy -D warnings` et les tests — la toolchain est épinglée
+(`rust-toolchain.toml`, 1.94.0), donc le rustfmt local produit exactement ce que
+la CI exige. Un vert local **partiel** (tests + clippy sur un crate) n'est pas
+une CI verte.
+
+**Corollaire.** Une CI rouge en continu peut masquer des régressions de qualité
+(format, lint) qu'on ne voit qu'au déblocage. Devant des échecs Actions, lire la
+cause réelle (`gh run view <id>`) avant de conclure : ici « job not started —
+account payments failed / spending limit », soit un problème de compte, pas de
+code.

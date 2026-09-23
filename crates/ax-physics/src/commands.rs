@@ -119,10 +119,11 @@ fn apply_one(
             let gravity = read_vec3(payload, 8);
             let wind = read_vec3(payload, 20);
             let flags = read_u32(payload, 40);
-            let fluid = (flags & dimension_env_flags::FLUID_PRESENT != 0).then(|| FluidEnvironment {
-                surface_y: read_f32(payload, 32),
-                density: read_f32(payload, 36),
-            });
+            let fluid =
+                (flags & dimension_env_flags::FLUID_PRESENT != 0).then(|| FluidEnvironment {
+                    surface_y: read_f32(payload, 32),
+                    density: read_f32(payload, 36),
+                });
             driver.apply_dimension_env(dimension, gravity, wind, fluid);
             outcome.applied += 1;
         }
@@ -148,19 +149,35 @@ fn align_up(value: usize, alignment: usize) -> usize {
 }
 
 fn read_u32(bytes: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes(bytes[offset..offset + 4].try_into().expect("borne vérifiée"))
+    u32::from_le_bytes(
+        bytes[offset..offset + 4]
+            .try_into()
+            .expect("borne vérifiée"),
+    )
 }
 
 fn read_u64(bytes: &[u8], offset: usize) -> u64 {
-    u64::from_le_bytes(bytes[offset..offset + 8].try_into().expect("borne vérifiée"))
+    u64::from_le_bytes(
+        bytes[offset..offset + 8]
+            .try_into()
+            .expect("borne vérifiée"),
+    )
 }
 
 fn read_f32(bytes: &[u8], offset: usize) -> f32 {
-    f32::from_le_bytes(bytes[offset..offset + 4].try_into().expect("borne vérifiée"))
+    f32::from_le_bytes(
+        bytes[offset..offset + 4]
+            .try_into()
+            .expect("borne vérifiée"),
+    )
 }
 
 fn read_f64(bytes: &[u8], offset: usize) -> f64 {
-    f64::from_le_bytes(bytes[offset..offset + 8].try_into().expect("borne vérifiée"))
+    f64::from_le_bytes(
+        bytes[offset..offset + 8]
+            .try_into()
+            .expect("borne vérifiée"),
+    )
 }
 
 fn read_vec3(bytes: &[u8], offset: usize) -> Vec3 {
@@ -212,7 +229,12 @@ mod tests {
     fn body_in(driver: &mut SimDriver, dimension: u64, handle: Handle) -> BodyId {
         let body = driver
             .world_or_create(dimension, config(), FloatingOrigin::new(DVec3::ZERO))
-            .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+            .add_body(
+                BodyKind::Dynamic,
+                Vec3::new(0.0, 5.0, 0.0),
+                Quat::IDENTITY,
+                Shape::Ball { radius: 0.5 },
+            )
             .unwrap();
         driver.register_body(dimension, handle, body, 0, 0);
         body
@@ -231,11 +253,20 @@ mod tests {
         push(&mut bytes, opcode::SET_DIMENSION_ENV, &payload);
 
         let outcome = apply_command_stream(&mut driver, &bytes, 1).unwrap();
-        assert_eq!(outcome, CommandOutcome { applied: 1, deferred: 0, ignored: 0 });
+        assert_eq!(
+            outcome,
+            CommandOutcome {
+                applied: 1,
+                deferred: 0,
+                ignored: 0
+            }
+        );
         assert_eq!(driver.dimension_count(), 1);
         let world = driver.world_mut(0).unwrap();
         assert_eq!(world.wind(), Vec3::new(3.0, 0.0, 0.0));
-        assert!(world.fluid().is_some_and(|f| f.surface_y == 10.0 && f.density == 2.0));
+        assert!(world
+            .fluid()
+            .is_some_and(|f| f.surface_y == 10.0 && f.density == 2.0));
     }
 
     #[test]
@@ -254,7 +285,11 @@ mod tests {
 
         apply_command_stream(&mut driver, &bytes, 1).unwrap();
         let velocity = driver.world_mut(0).unwrap().velocity(ball).unwrap();
-        assert!(velocity.y > 5.0, "l'impulsion accélère vers le haut : {}", velocity.y);
+        assert!(
+            velocity.y > 5.0,
+            "l'impulsion accélère vers le haut : {}",
+            velocity.y
+        );
     }
 
     #[test]
@@ -268,7 +303,12 @@ mod tests {
         let mut bytes = stream();
         push(&mut bytes, opcode::REMOVE_ASSEMBLY, &payload);
 
-        assert_eq!(apply_command_stream(&mut driver, &bytes, 1).unwrap().applied, 1);
+        assert_eq!(
+            apply_command_stream(&mut driver, &bytes, 1)
+                .unwrap()
+                .applied,
+            1
+        );
         assert_eq!(driver.world_mut(0).unwrap().body_count(), 0);
     }
 
@@ -279,7 +319,14 @@ mod tests {
         push(&mut bytes, opcode::CREATE_ASSEMBLY, &[0u8; 8]); // différé (C-32)
         push(&mut bytes, 9999, &[0u8; 8]); // inconnu
         let outcome = apply_command_stream(&mut driver, &bytes, 2).unwrap();
-        assert_eq!(outcome, CommandOutcome { applied: 0, deferred: 1, ignored: 1 });
+        assert_eq!(
+            outcome,
+            CommandOutcome {
+                applied: 0,
+                deferred: 1,
+                ignored: 1
+            }
+        );
     }
 
     #[test]

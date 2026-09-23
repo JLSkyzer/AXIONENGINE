@@ -739,8 +739,12 @@ pub unsafe extern "C" fn axion_sim_collect(
             for event in &events {
                 event.write_le(&mut events_bytes);
             }
-            session.buffers().write_payload(BufferKind::SimOut, &states_bytes);
-            session.buffers().write_payload(BufferKind::Events, &events_bytes);
+            session
+                .buffers()
+                .write_payload(BufferKind::SimOut, &states_bytes);
+            session
+                .buffers()
+                .write_payload(BufferKind::Events, &events_bytes);
             session.close_sim_cycle();
 
             AxionCollectResult {

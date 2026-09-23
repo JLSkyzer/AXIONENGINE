@@ -29,7 +29,10 @@ fn une_bille_tombe_sous_la_gravite() {
     let end = world.pose(ball).unwrap().translation.y;
     // Chute libre : ½·g·t² ≈ 4.9 m en 1 s. On exige une chute nette sans imposer
     // la valeur analytique, le solveur intégrant par pas.
-    assert!(end < start - 4.0, "la bille aurait dû tomber (start={start}, end={end})");
+    assert!(
+        end < start - 4.0,
+        "la bille aurait dû tomber (start={start}, end={end})"
+    );
 }
 
 #[test]
@@ -61,20 +64,30 @@ fn meme_sequence_meme_resultat() {
         }
         world.pose(ball).unwrap()
     };
-    assert_eq!(run(), run(), "deux exécutions identiques doivent donner la même pose");
+    assert_eq!(
+        run(),
+        run(),
+        "deux exécutions identiques doivent donner la même pose"
+    );
 }
 
 #[test]
 fn fixed_dt_hors_ensemble_refuse() {
     // R-990 : 1/50 n'appartient pas à {1/30, 1/60, 1/120}.
-    assert_eq!(PhysicsConfig::new(1.0 / 50.0, 4), Err(ConfigError::FixedDtNotAllowed));
+    assert_eq!(
+        PhysicsConfig::new(1.0 / 50.0, 4),
+        Err(ConfigError::FixedDtNotAllowed)
+    );
     assert!(PhysicsConfig::new(1.0 / 30.0, 4).is_ok());
     assert!(PhysicsConfig::new(1.0 / 120.0, 4).is_ok());
 }
 
 #[test]
 fn max_substeps_nul_refuse() {
-    assert_eq!(PhysicsConfig::new(1.0 / 60.0, 0), Err(ConfigError::ZeroMaxSubsteps));
+    assert_eq!(
+        PhysicsConfig::new(1.0 / 60.0, 0),
+        Err(ConfigError::ZeroMaxSubsteps)
+    );
 }
 
 #[test]
@@ -82,7 +95,10 @@ fn accumulateur_clampe_pas_de_spirale() {
     // R-990 : un gros retard ne déclenche jamais plus de max_substeps sous-pas.
     let mut world = PhysicsWorld::new(config());
     let substeps = world.advance(10.0); // dix secondes d'un coup
-    assert_eq!(substeps, 4, "au plus max_substeps sous-pas malgré le retard");
+    assert_eq!(
+        substeps, 4,
+        "au plus max_substeps sous-pas malgré le retard"
+    );
 }
 
 #[test]
@@ -128,7 +144,12 @@ fn toutes_les_primitives_s_ajoutent() {
     ];
     for shape in primitives {
         world
-            .add_body(BodyKind::Dynamic, Vec3::new(0.0, 2.0, 0.0), Quat::IDENTITY, shape)
+            .add_body(
+                BodyKind::Dynamic,
+                Vec3::new(0.0, 2.0, 0.0),
+                Quat::IDENTITY,
+                shape,
+            )
             .expect("chaque primitive est valide");
     }
     assert_eq!(world.body_count(), 5);
@@ -139,10 +160,20 @@ fn enveloppe_convexe_valide() {
     // Un tétraèdre : quatre points non coplanaires.
     let mut world = PhysicsWorld::new(config());
     let shape = Shape::ConvexHull {
-        points: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        points: vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
     };
     assert!(world
-        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 2.0, 0.0), Quat::IDENTITY, shape)
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 2.0, 0.0),
+            Quat::IDENTITY,
+            shape
+        )
         .is_ok());
 }
 
@@ -205,7 +236,12 @@ fn compose_valide() {
         ],
     };
     assert!(world
-        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 2.0, 0.0), Quat::IDENTITY, shape)
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 2.0, 0.0),
+            Quat::IDENTITY,
+            shape
+        )
         .is_ok());
 }
 
@@ -259,7 +295,10 @@ fn hauteur_bille_apres_3s(ball_memberships: &[u32], ball_filter: &[u32]) -> f32 
             Shape::Ball { radius: 0.5 },
         )
         .expect("une bille est valide");
-    world.set_collision_groups(ball, CollisionGroups::from_indices(ball_memberships, ball_filter));
+    world.set_collision_groups(
+        ball,
+        CollisionGroups::from_indices(ball_memberships, ball_filter),
+    );
     for _ in 0..180 {
         world.advance(1.0 / 60.0);
     }
@@ -297,7 +336,11 @@ fn ccd_se_declare_sur_un_corps() {
             Shape::Ball { radius: 0.2 },
         )
         .expect("une bille est valide");
-    assert_eq!(world.is_ccd_enabled(ball), Some(false), "désactivée par défaut");
+    assert_eq!(
+        world.is_ccd_enabled(ball),
+        Some(false),
+        "désactivée par défaut"
+    );
     world.set_ccd_enabled(ball, true);
     assert_eq!(world.is_ccd_enabled(ball), Some(true));
     // Un corps avec CCD tombe toujours normalement.
@@ -305,7 +348,10 @@ fn ccd_se_declare_sur_un_corps() {
     for _ in 0..30 {
         world.advance(1.0 / 60.0);
     }
-    assert!(world.pose(ball).unwrap().translation.y < start, "la bille tombe malgré la CCD");
+    assert!(
+        world.pose(ball).unwrap().translation.y < start,
+        "la bille tombe malgré la CCD"
+    );
     world.set_ccd_enabled(ball, false);
     assert_eq!(world.is_ccd_enabled(ball), Some(false));
 }
@@ -315,10 +361,20 @@ fn sommeil_force_hors_du_rayon() {
     // R-612 : au-delà du rayon, sommeil forcé — jamais suppression.
     let mut world = PhysicsWorld::new(config());
     let proche = world
-        .add_body(BodyKind::Dynamic, Vec3::new(2.0, 0.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(2.0, 0.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     let loin = world
-        .add_body(BodyKind::Dynamic, Vec3::new(50.0, 0.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(50.0, 0.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     assert_eq!(world.enforce_simulation_radius(Vec3::ZERO, 10.0), 1);
     assert_eq!(world.is_sleeping(proche), Some(false));
@@ -400,7 +456,10 @@ fn la_trainee_ralentit_la_chute() {
     // Sa vitesse de chute est plafonnée (terminale), loin de la chute libre.
     let vy_freinee = world.velocity(freinee).unwrap().y;
     let vy_libre = world.velocity(libre).unwrap().y;
-    assert!(vy_freinee > vy_libre + 5.0, "vitesse plafonnée (freinée={vy_freinee}, libre={vy_libre})");
+    assert!(
+        vy_freinee > vy_libre + 5.0,
+        "vitesse plafonnée (freinée={vy_freinee}, libre={vy_libre})"
+    );
 }
 
 #[test]
@@ -409,7 +468,12 @@ fn le_vent_pousse_via_la_trainee() {
     // de +x : la traînée le pousse vers +x.
     let mut world = PhysicsWorld::new(config());
     let voile = world
-        .add_body(BodyKind::Dynamic, Vec3::ZERO, Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     world.set_gravity_scale(voile, 0.0);
     world.set_drag(voile, 2.0, 2.0);
@@ -418,7 +482,10 @@ fn le_vent_pousse_via_la_trainee() {
         world.advance(1.0 / 60.0);
     }
     let x = world.pose(voile).unwrap().translation.x;
-    assert!(x > 0.5, "le vent aurait dû pousser le corps vers +x (x={x})");
+    assert!(
+        x > 0.5,
+        "le vent aurait dû pousser le corps vers +x (x={x})"
+    );
 }
 
 #[test]
@@ -435,7 +502,11 @@ fn meme_sequence_meme_resultat_avec_forces() {
         }
         world.pose(ball).unwrap()
     };
-    assert_eq!(run(), run(), "la simulation avec forces reste reproductible");
+    assert_eq!(
+        run(),
+        run(),
+        "la simulation avec forces reste reproductible"
+    );
 }
 
 /// Une aile plate (boîte fine) sans gravité, portant une surface de normale et
@@ -476,7 +547,10 @@ fn une_aile_dans_le_vent_porte() {
         world.advance(1.0 / 60.0);
     }
     let end = world.pose(wing).unwrap().translation.y;
-    assert!(end > start + 0.5, "l'aile aurait dû s'élever (start={start}, end={end})");
+    assert!(
+        end > start + 0.5,
+        "l'aile aurait dû s'élever (start={start}, end={end})"
+    );
 }
 
 #[test]
@@ -491,7 +565,10 @@ fn une_aile_de_profil_ne_porte_pas() {
         world.advance(1.0 / 60.0);
     }
     let end = world.pose(wing).unwrap().translation;
-    assert!((end - start).length() < 0.01, "une aile de profil ne devrait pas bouger");
+    assert!(
+        (end - start).length() < 0.01,
+        "une aile de profil ne devrait pas bouger"
+    );
 }
 
 /// Une caisse cubique immergée à y = −3, dans un fluide dont la densité est
@@ -523,7 +600,10 @@ fn flottabilite_fait_remonter() {
         world.advance(1.0 / 60.0);
     }
     let y = world.pose(caisse).unwrap().translation.y;
-    assert!(y > -1.5, "la caisse aurait dû remonter vers la surface (y={y})");
+    assert!(
+        y > -1.5,
+        "la caisse aurait dû remonter vers la surface (y={y})"
+    );
 }
 
 #[test]
@@ -543,14 +623,22 @@ fn gravity_scale_zero_fait_flotter() {
     // §10.6 : gravity_scale nul annule la chute.
     let mut world = PhysicsWorld::new(config());
     let flotteur = world
-        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     world.set_gravity_scale(flotteur, 0.0);
     for _ in 0..120 {
         world.advance(1.0 / 60.0);
     }
     let y = world.pose(flotteur).unwrap().translation.y;
-    assert!((y - 5.0).abs() < 0.01, "sans gravité le corps ne tombe pas (y={y})");
+    assert!(
+        (y - 5.0).abs() < 0.01,
+        "sans gravité le corps ne tombe pas (y={y})"
+    );
 }
 
 /// Un sol statique et une bille posée dessus, au repos : elle finit par dormir.
@@ -585,7 +673,11 @@ fn un_corps_qui_s_endort_emet_sleep() {
     for _ in 0..180 {
         world.advance(1.0 / 60.0);
     }
-    assert_eq!(world.is_sleeping(ball), Some(true), "la bille devrait dormir");
+    assert_eq!(
+        world.is_sleeping(ball),
+        Some(true),
+        "la bille devrait dormir"
+    );
     let events = world.drain_events();
     let sleep = events
         .iter()
@@ -644,8 +736,14 @@ fn le_plafond_compte_les_pertes() {
     for _ in 0..180 {
         world.advance(1.0 / 60.0);
     }
-    assert!(world.dropped_event_count() > 0, "les SLEEP au-delà du plafond doivent être comptés");
-    assert!(world.drain_events().len() <= 1, "le lot ne dépasse pas le plafond");
+    assert!(
+        world.dropped_event_count() > 0,
+        "les SLEEP au-delà du plafond doivent être comptés"
+    );
+    assert!(
+        world.drain_events().len() <= 1,
+        "le lot ne dépasse pas le plafond"
+    );
 }
 
 /// Un sol statique (sommet en y = 0) et une bille lâchée de y = 2, avec leurs
@@ -694,9 +792,21 @@ fn un_contact_emet_contact_start_complet() {
     let event = start.expect("un CONTACT_START à l'impact");
 
     // Normale quasi verticale, contact près du sol.
-    assert!(event.normal[1].abs() > 0.9, "normale verticale attendue : {:?}", event.normal);
-    assert!(event.point[1].abs() < 0.2, "contact près du sol : {:?}", event.point);
-    assert!(event.impulse > 0.0, "impulsion positive attendue : {}", event.impulse);
+    assert!(
+        event.normal[1].abs() > 0.9,
+        "normale verticale attendue : {:?}",
+        event.normal
+    );
+    assert!(
+        event.point[1].abs() < 0.2,
+        "contact près du sol : {:?}",
+        event.point
+    );
+    assert!(
+        event.impulse > 0.0,
+        "impulsion positive attendue : {}",
+        event.impulse
+    );
 
     // Masse effective : au contact bas d'une sphère, r×n = 0, donc la masse
     // effective vaut la masse de la bille (rayon 0.5, densité 1) ≈ 0.524 kg. Le
@@ -712,8 +822,14 @@ fn un_contact_emet_contact_start_complet() {
         (event.assembly_a, event.material_a),
         (event.assembly_b, event.material_b),
     ];
-    assert!(paire.contains(&(Handle::new(5, 1), 9)), "identité de la bille : {paire:?}");
-    assert!(paire.contains(&(Handle::new(1, 1), 3)), "identité du sol : {paire:?}");
+    assert!(
+        paire.contains(&(Handle::new(5, 1), 9)),
+        "identité de la bille : {paire:?}"
+    );
+    assert!(
+        paire.contains(&(Handle::new(1, 1), 3)),
+        "identité du sol : {paire:?}"
+    );
 }
 
 #[test]
@@ -756,7 +872,11 @@ fn un_impact_emet_contact_impulse() {
         }
     }
     let event = found.expect("un CONTACT_IMPULSE pendant l'impact");
-    assert!(event.impulse >= 0.5, "impulsion au-dessus du seuil : {}", event.impulse);
+    assert!(
+        event.impulse >= 0.5,
+        "impulsion au-dessus du seuil : {}",
+        event.impulse
+    );
     assert!(event.effective_mass > 0.0, "masse effective peuplée");
 }
 
@@ -818,14 +938,20 @@ fn un_capteur_emet_enter_puis_exit() {
         }
     }
     let enter = enter.expect("un SENSOR_ENTER quand la bille entre");
-    assert!(exit, "un SENSOR_EXIT quand la bille ressort (elle traverse)");
+    assert!(
+        exit,
+        "un SENSOR_EXIT quand la bille ressort (elle traverse)"
+    );
     // Le capteur ne résout rien : pas de données de contact.
     assert_eq!(enter.impulse, 0.0);
     let paire = [enter.assembly_a, enter.assembly_b];
     assert!(paire.contains(&Handle::new(9, 1)), "identité du capteur");
     assert!(paire.contains(&Handle::new(4, 1)), "identité de la bille");
     // La bille a bien traversé, pas rebondi.
-    assert!(world.pose(ball).unwrap().translation.y < -1.0, "la bille traverse le capteur");
+    assert!(
+        world.pose(ball).unwrap().translation.y < -1.0,
+        "la bille traverse le capteur"
+    );
 }
 
 #[test]
@@ -834,7 +960,12 @@ fn body_states_compose_la_position_monde() {
     // l'origine flottante de la dimension.
     let mut world = PhysicsWorld::new(config());
     let ball = world
-        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     world.set_body_identity(ball, Handle::new(3, 1), 7, 2);
     let origin = FloatingOrigin::new(DVec3::new(1000.0, 0.0, 0.0));
@@ -842,8 +973,16 @@ fn body_states_compose_la_position_monde() {
     assert_eq!(states.len(), 1);
     let state = states[0];
     assert_eq!(state.handle, Handle::new(3, 1));
-    assert!((state.position[0] - 1000.0).abs() < 1e-3, "x monde : {}", state.position[0]);
-    assert!((state.position[1] - 5.0).abs() < 1e-3, "y monde : {}", state.position[1]);
+    assert!(
+        (state.position[0] - 1000.0).abs() < 1e-3,
+        "x monde : {}",
+        state.position[0]
+    );
+    assert!(
+        (state.position[1] - 5.0).abs() < 1e-3,
+        "y monde : {}",
+        state.position[1]
+    );
 }
 
 #[test]
@@ -863,11 +1002,21 @@ fn body_states_filtre_statiques_et_anonymes() {
     world.set_body_identity(sol, Handle::new(1, 1), 0, 0);
     // Dynamique sans identité : exclu.
     world
-        .add_body(BodyKind::Dynamic, Vec3::new(3.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(3.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     // Dynamique identifié : inclus.
     let ball = world
-        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 0.5, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 0.5, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     world.set_body_identity(ball, Handle::new(9, 1), 0, 0);
     for _ in 0..180 {
@@ -891,12 +1040,20 @@ fn body_states_marque_in_fluid() {
         density: 2.0,
     }));
     let ball = world
-        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     world.set_body_identity(ball, Handle::new(4, 1), 0, 0);
     let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
     assert_eq!(states.len(), 1);
-    assert!(states[0].flags & body_state_flags::IN_FLUID != 0, "immergé sous la surface");
+    assert!(
+        states[0].flags & body_state_flags::IN_FLUID != 0,
+        "immergé sous la surface"
+    );
 }
 
 #[test]
@@ -937,7 +1094,12 @@ fn le_clamp_borne_la_vitesse_lineaire() {
     // CLAMPED est posé et le fait est journalisé.
     let mut world = PhysicsWorld::new(config());
     let ball = world
-        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     world.set_body_identity(ball, Handle::new(1, 1), 0, 0);
     world.set_velocity_limits(ball, 5.0, 100.0);
@@ -947,10 +1109,16 @@ fn le_clamp_borne_la_vitesse_lineaire() {
     world.advance(1.0 / 60.0);
 
     let speed = world.velocity(ball).unwrap().length();
-    assert!((speed - 5.0).abs() < 1.0e-2, "vitesse ramenée à la borne, obtenu {speed}");
+    assert!(
+        (speed - 5.0).abs() < 1.0e-2,
+        "vitesse ramenée à la borne, obtenu {speed}"
+    );
     let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
     assert_eq!(states.len(), 1);
-    assert!(states[0].flags & body_state_flags::CLAMPED != 0, "drapeau CLAMPED posé");
+    assert!(
+        states[0].flags & body_state_flags::CLAMPED != 0,
+        "drapeau CLAMPED posé"
+    );
     assert_eq!(world.clamp_journal_count(), 1, "un clamp journalisé");
     assert_eq!(world.invalid_state_count(), 0, "aucun état invalide");
 }
@@ -960,16 +1128,29 @@ fn le_clamp_borne_la_vitesse_angulaire() {
     // R-180 : la borne angulaire agit indépendamment de la linéaire.
     let mut world = PhysicsWorld::new(config());
     let ball = world
-        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     world.set_velocity_limits(ball, 300.0, 2.0);
     // Impulsion appliquée hors du centre : elle crée une rotation rapide.
-    world.apply_impulse(ball, Vec3::new(0.0, 0.0, 500.0), Vec3::new(0.4, 0.0, 0.0), true);
+    world.apply_impulse(
+        ball,
+        Vec3::new(0.0, 0.0, 500.0),
+        Vec3::new(0.4, 0.0, 0.0),
+        true,
+    );
 
     world.advance(1.0 / 60.0);
 
     let ang_speed = world.angular_velocity(ball).unwrap().length();
-    assert!(ang_speed <= 2.0 + 1.0e-2, "vitesse angulaire bornée, obtenu {ang_speed}");
+    assert!(
+        ang_speed <= 2.0 + 1.0e-2,
+        "vitesse angulaire bornée, obtenu {ang_speed}"
+    );
     assert_eq!(world.clamp_journal_count(), 1);
 }
 
@@ -978,7 +1159,12 @@ fn sans_depassement_aucun_clamp() {
     // Sous les bornes par défaut (300 m/s), une impulsion modérée ne clampe rien.
     let mut world = PhysicsWorld::new(config());
     let ball = world
-        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     world.set_body_identity(ball, Handle::new(2, 1), 0, 0);
     world.apply_impulse(ball, Vec3::new(1.0, 0.0, 0.0), Vec3::ZERO, false);
@@ -986,7 +1172,10 @@ fn sans_depassement_aucun_clamp() {
     world.advance(1.0 / 60.0);
 
     let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
-    assert!(states[0].flags & body_state_flags::CLAMPED == 0, "pas de clamp");
+    assert!(
+        states[0].flags & body_state_flags::CLAMPED == 0,
+        "pas de clamp"
+    );
     assert_eq!(world.clamp_journal_count(), 0);
 }
 
@@ -997,7 +1186,12 @@ fn un_etat_non_fini_est_restaure_et_endormi() {
     let mut world = PhysicsWorld::new(config());
     let spawn = Vec3::new(0.0, 5.0, 0.0);
     let ball = world
-        .add_body(BodyKind::Dynamic, spawn, Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            spawn,
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     world.set_body_identity(ball, Handle::new(3, 1), 0, 0);
     world.apply_impulse(ball, Vec3::NAN, Vec3::ZERO, false);
@@ -1008,9 +1202,19 @@ fn un_etat_non_fini_est_restaure_et_endormi() {
     let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
     assert_eq!(states.len(), 1);
     let position = states[0].position;
-    assert!(position.iter().all(|c| c.is_finite()), "position finie après restauration");
-    assert!((position[1] - 5.0).abs() < 1.0e-3, "revenu à la pose de départ, y={}", position[1]);
-    assert!(states[0].flags & body_state_flags::SLEEPING != 0, "endormi de force");
+    assert!(
+        position.iter().all(|c| c.is_finite()),
+        "position finie après restauration"
+    );
+    assert!(
+        (position[1] - 5.0).abs() < 1.0e-3,
+        "revenu à la pose de départ, y={}",
+        position[1]
+    );
+    assert!(
+        states[0].flags & body_state_flags::SLEEPING != 0,
+        "endormi de force"
+    );
 }
 
 #[test]
@@ -1022,18 +1226,37 @@ fn une_position_hors_du_monde_est_restauree() {
     // l'origine, endormi.
     let mut world = PhysicsWorld::new(config());
     let ball = world
-        .add_body(BodyKind::Dynamic, Vec3::new(2.0e7, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(2.0e7, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     world.set_body_identity(ball, Handle::new(5, 1), 0, 0);
 
     world.advance(1.0 / 60.0);
 
-    assert_eq!(world.invalid_state_count(), 1, "un état hors du monde restauré");
+    assert_eq!(
+        world.invalid_state_count(),
+        1,
+        "un état hors du monde restauré"
+    );
     let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
     let position = states[0].position;
-    assert!(position.iter().all(|c| c.is_finite()), "position finie après restauration");
-    assert!(position[0].abs() < 1.0, "parqué à l'origine, x={}", position[0]);
-    assert!(states[0].flags & body_state_flags::SLEEPING != 0, "endormi de force");
+    assert!(
+        position.iter().all(|c| c.is_finite()),
+        "position finie après restauration"
+    );
+    assert!(
+        position[0].abs() < 1.0,
+        "parqué à l'origine, x={}",
+        position[0]
+    );
+    assert!(
+        states[0].flags & body_state_flags::SLEEPING != 0,
+        "endormi de force"
+    );
 }
 
 #[test]
@@ -1043,7 +1266,12 @@ fn la_journalisation_du_clamp_est_debitee_par_minute() {
     // bouge qu'une fois avant la minute, une seconde fois après l'avoir franchie.
     let mut world = PhysicsWorld::new(config());
     let ball = world
-        .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
         .unwrap();
     world.set_velocity_limits(ball, 1.0, 100.0);
 
@@ -1052,14 +1280,22 @@ fn la_journalisation_du_clamp_est_debitee_par_minute() {
         world.apply_impulse(ball, Vec3::new(100.0, 0.0, 0.0), Vec3::ZERO, false);
         world.advance(1.0 / 60.0);
     }
-    assert_eq!(world.clamp_journal_count(), 1, "un seul clamp dans la première minute");
+    assert_eq!(
+        world.clamp_journal_count(),
+        1,
+        "un seul clamp dans la première minute"
+    );
 
     // Assez de ticks pour franchir 60 s simulées (3600 sous-pas) : un second.
     for _ in 0..3600 {
         world.apply_impulse(ball, Vec3::new(100.0, 0.0, 0.0), Vec3::ZERO, false);
         world.advance(1.0 / 60.0);
     }
-    assert_eq!(world.clamp_journal_count(), 2, "un second clamp après la minute");
+    assert_eq!(
+        world.clamp_journal_count(),
+        2,
+        "un second clamp après la minute"
+    );
 }
 
 #[test]
@@ -1069,12 +1305,22 @@ fn les_garde_fous_sont_deterministes() {
     let run = || {
         let mut world = PhysicsWorld::new(config());
         let a = world
-            .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+            .add_body(
+                BodyKind::Dynamic,
+                Vec3::new(0.0, 5.0, 0.0),
+                Quat::IDENTITY,
+                Shape::Ball { radius: 0.5 },
+            )
             .unwrap();
         world.set_body_identity(a, Handle::new(7, 1), 0, 0);
         world.set_velocity_limits(a, 5.0, 100.0);
         let b = world
-            .add_body(BodyKind::Dynamic, Vec3::new(3.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+            .add_body(
+                BodyKind::Dynamic,
+                Vec3::new(3.0, 5.0, 0.0),
+                Quat::IDENTITY,
+                Shape::Ball { radius: 0.5 },
+            )
             .unwrap();
         world.set_body_identity(b, Handle::new(8, 1), 0, 0);
         world.apply_impulse(a, Vec3::new(1000.0, 0.0, 0.0), Vec3::ZERO, false);
@@ -1090,5 +1336,3 @@ fn les_garde_fous_sont_deterministes() {
     };
     assert_eq!(run(), run());
 }
-
-

@@ -53,8 +53,9 @@ fn submit_refuse_un_entete_corrompu() {
     assert!(!info.ptr.is_null());
 
     // Corrompre le magic (octets 0..4) : l'en-tête n'est plus un tampon AXION.
-    let view =
-        unsafe { std::slice::from_raw_parts_mut(info.ptr, usize::try_from(info.capacity).unwrap()) };
+    let view = unsafe {
+        std::slice::from_raw_parts_mut(info.ptr, usize::try_from(info.capacity).unwrap())
+    };
     view[0] ^= 0xFF;
 
     // Une commande annoncée par le paramètre, mais l'en-tête est invalide :

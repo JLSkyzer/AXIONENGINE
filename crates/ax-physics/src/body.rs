@@ -118,7 +118,9 @@ impl fmt::Display for BodyError {
         let message = match self {
             Self::ConvexHullTooFewPoints => "une enveloppe convexe exige au moins 4 points",
             Self::ConvexHullTooManyPoints => "une enveloppe convexe admet au plus 256 points",
-            Self::DegenerateConvexHull => "les points de l'enveloppe convexe ne forment aucun volume",
+            Self::DegenerateConvexHull => {
+                "les points de l'enveloppe convexe ne forment aucun volume"
+            }
             Self::EmptyCompound => "un composé doit avoir au moins une forme fille",
             Self::CompoundTooManyParts => "un composé admet au plus 64 formes filles",
         };

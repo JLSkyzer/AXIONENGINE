@@ -81,7 +81,9 @@ impl SimDriver {
     /// Rend le monde d'une dimension existante, ou `None`.
     #[must_use]
     pub fn world_mut(&mut self, dimension: u64) -> Option<&mut PhysicsWorld> {
-        self.dimensions.get_mut(&dimension).map(|sim| &mut sim.world)
+        self.dimensions
+            .get_mut(&dimension)
+            .map(|sim| &mut sim.world)
     }
 
     /// Fixe l'origine flottante d'une dimension existante.
@@ -196,10 +198,13 @@ impl SimDriver {
         wind: Vec3,
         fluid: Option<FluidEnvironment>,
     ) {
-        let sim = self.dimensions.entry(dimension).or_insert_with(|| DimensionSim {
-            world: PhysicsWorld::new(PhysicsConfig::default()),
-            origin: FloatingOrigin::new(DVec3::ZERO),
-        });
+        let sim = self
+            .dimensions
+            .entry(dimension)
+            .or_insert_with(|| DimensionSim {
+                world: PhysicsWorld::new(PhysicsConfig::default()),
+                origin: FloatingOrigin::new(DVec3::ZERO),
+            });
         sim.world.set_gravity(gravity);
         sim.world.set_wind(wind);
         sim.world.set_fluid(fluid);
@@ -235,16 +240,36 @@ mod tests {
         let mut driver = SimDriver::new();
         // Dimension 0 : origine décalée, une bille identifiée.
         let ball0 = driver
-            .world_or_create(0, config(), FloatingOrigin::new(DVec3::new(1000.0, 0.0, 0.0)))
-            .add_body(BodyKind::Dynamic, Vec3::new(0.0, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+            .world_or_create(
+                0,
+                config(),
+                FloatingOrigin::new(DVec3::new(1000.0, 0.0, 0.0)),
+            )
+            .add_body(
+                BodyKind::Dynamic,
+                Vec3::new(0.0, 5.0, 0.0),
+                Quat::IDENTITY,
+                Shape::Ball { radius: 0.5 },
+            )
             .unwrap();
-        driver.world_mut(0).unwrap().set_body_identity(ball0, Handle::new(10, 1), 0, 0);
+        driver
+            .world_mut(0)
+            .unwrap()
+            .set_body_identity(ball0, Handle::new(10, 1), 0, 0);
         // Dimension 1 : origine à zéro, une bille identifiée.
         let ball1 = driver
             .world_or_create(1, config(), FloatingOrigin::new(DVec3::ZERO))
-            .add_body(BodyKind::Dynamic, Vec3::new(0.0, 2.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+            .add_body(
+                BodyKind::Dynamic,
+                Vec3::new(0.0, 2.0, 0.0),
+                Quat::IDENTITY,
+                Shape::Ball { radius: 0.5 },
+            )
             .unwrap();
-        driver.world_mut(1).unwrap().set_body_identity(ball1, Handle::new(20, 1), 0, 0);
+        driver
+            .world_mut(1)
+            .unwrap()
+            .set_body_identity(ball1, Handle::new(20, 1), 0, 0);
 
         driver.advance_all(1.0 / 60.0);
         let states = driver.collect_states();
@@ -262,9 +287,17 @@ mod tests {
             let mut driver = SimDriver::new();
             let ball = driver
                 .world_or_create(3, config(), FloatingOrigin::new(DVec3::ZERO))
-                .add_body(BodyKind::Dynamic, Vec3::new(0.1, 5.0, 0.0), Quat::IDENTITY, Shape::Ball { radius: 0.5 })
+                .add_body(
+                    BodyKind::Dynamic,
+                    Vec3::new(0.1, 5.0, 0.0),
+                    Quat::IDENTITY,
+                    Shape::Ball { radius: 0.5 },
+                )
                 .unwrap();
-            driver.world_mut(3).unwrap().set_body_identity(ball, Handle::new(1, 1), 0, 0);
+            driver
+                .world_mut(3)
+                .unwrap()
+                .set_body_identity(ball, Handle::new(1, 1), 0, 0);
             for _ in 0..120 {
                 driver.advance_all(1.0 / 60.0);
             }

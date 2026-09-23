@@ -83,7 +83,9 @@ fn cycle_de_simulation_aboutit() {
     };
     assert_eq!(code, AXION_OK, "acquire SimIn");
     assert!(!info.ptr.is_null());
-    let view = unsafe { std::slice::from_raw_parts_mut(info.ptr, usize::try_from(info.capacity).unwrap()) };
+    let view = unsafe {
+        std::slice::from_raw_parts_mut(info.ptr, usize::try_from(info.capacity).unwrap())
+    };
     let header = BufferHeader {
         kind: BufferKind::SimIn,
         generation: info.generation,
@@ -96,7 +98,11 @@ fn cycle_de_simulation_aboutit() {
     view[HEADER_BYTES..HEADER_BYTES + stream.len()].copy_from_slice(&stream);
 
     // Soumet une commande, puis collecte.
-    assert_eq!(unsafe { axion_sim_submit(ctx, 1, 1, 0) }, AXION_OK, "submit");
+    assert_eq!(
+        unsafe { axion_sim_submit(ctx, 1, 1, 0) },
+        AXION_OK,
+        "submit"
+    );
 
     let mut result = AxionCollectResult::default();
     assert_eq!(

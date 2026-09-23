@@ -114,14 +114,20 @@ impl GroupRegistry {
     /// Crée un registre avec les huit groupes réservés déjà en place.
     #[must_use]
     pub fn new() -> Self {
-        let names = ReservedGroup::ALL.iter().map(|group| group.name().to_string()).collect();
+        let names = ReservedGroup::ALL
+            .iter()
+            .map(|group| group.name().to_string())
+            .collect();
         Self { names }
     }
 
     /// Indice de bit d'un groupe déjà connu, ou `None`.
     #[must_use]
     pub fn index_of(&self, name: &str) -> Option<u32> {
-        self.names.iter().position(|known| known == name).map(|index| index as u32)
+        self.names
+            .iter()
+            .position(|known| known == name)
+            .map(|index| index as u32)
     }
 
     /// Enregistre un groupe par nom et rend son indice de bit.
@@ -227,7 +233,9 @@ mod tests {
             assert_eq!(group.bit(), position as u32, "{} mal placé", group.name());
         }
         // Huit bits distincts.
-        let mask = ReservedGroup::ALL.iter().fold(0u32, |m, g| m | (1 << g.bit()));
+        let mask = ReservedGroup::ALL
+            .iter()
+            .fold(0u32, |m, g| m | (1 << g.bit()));
         assert_eq!(mask.count_ones(), 8);
     }
 
@@ -257,7 +265,9 @@ mod tests {
     fn le_registre_refuse_au_dela_de_32_groupes() {
         let mut registry = GroupRegistry::new();
         for i in 0..24 {
-            registry.register(&format!("g{i}")).expect("les bits 8..31 sont libres");
+            registry
+                .register(&format!("g{i}"))
+                .expect("les bits 8..31 sont libres");
         }
         assert_eq!(registry.len(), 32);
         assert_eq!(registry.register("un_de_trop"), Err(GroupError::Full));
