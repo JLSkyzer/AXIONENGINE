@@ -14,10 +14,11 @@ import java.util.List;
  * natif ({@code crates/ax-model/src/dm/commands.rs}) et little-endian (R-271) ;
  * le test {@code SimCommandStreamTest} l'épingle ici.
  *
- * <p>Seul {@code SET_DIMENSION_ENV} est porté pour l'instant : régler
- * l'environnement d'une dimension ne dépend d'aucun corps. Les commandes qui
- * ciblent un handle (retrait, cinématique, impulsion) et {@code CREATE_ASSEMBLY}
- * arrivent avec la création de corps (C-32).
+ * <p>{@code SET_DIMENSION_ENV} règle l'environnement d'une dimension (aucun corps
+ * requis) ; {@code CREATE_ASSEMBLY} crée un corps depuis les colliders d'un asset
+ * (C-32, Option A d'ADR-115 : les octets de la section {@code PHYS} suivent
+ * l'en-tête dans le même payload). Les commandes qui ciblent un handle existant
+ * (retrait, cinématique, impulsion) arriveront avec leur consommateur.
  */
 public final class SimCommandStream {
 
@@ -38,6 +39,24 @@ public final class SimCommandStream {
 
     /** Drapeau {@code FLUID_PRESENT} de {@code SetDimensionEnv}. */
     public static final int FLUID_PRESENT = 1;
+
+    /** Opcode {@code CREATE_ASSEMBLY} (ADR-114). */
+    public static final int OP_CREATE_ASSEMBLY = 0;
+
+    /**
+     * Taille de l'en-tête {@code CreateAssembly}, en octets (hors octets {@code
+     * PHYS} qui le suivent). Figé côté natif : {@code CreateAssembly::BYTES}.
+     */
+    public static final int CREATE_ASSEMBLY_HEADER_BYTES = 64;
+
+    /** {@code body_kind} : corps statique (miroir de {@code BodyKind::Static}). */
+    public static final int BODY_STATIC = 0;
+
+    /** {@code body_kind} : corps cinématique ({@code BodyKind::Kinematic}). */
+    public static final int BODY_KINEMATIC = 1;
+
+    /** {@code body_kind} : corps dynamique ({@code BodyKind::Dynamic}). */
+    public static final int BODY_DYNAMIC = 2;
 
     private final List<byte[]> commands = new ArrayList<>();
 
@@ -79,6 +98,82 @@ public final class SimCommandStream {
         // Les 4 derniers octets du payload sont le remplissage, laissés à zéro.
         commands.add(command.array());
         return this;
+    }
+
+    /**
+     * Ajoute une commande {@code CREATE_ASSEMBLY} (§4.5, ADR-114 ; Option A
+     * d'ADR-115).
+     *
+     * <p>Le payload est l'en-tête {@code CreateAssembly} (64 o) suivi des octets de
+     * la section {@code PHYS} de l'asset — que l'appelant extrait de l'A3D
+     * ({@link dev.axion.asset.A3dSections}). Le natif décode ces colliders, en
+     * construit une forme (unique ou composée) et crée le corps à sa pose de spawn.
+     * La masse et le centre de masse sont calculés par le moteur depuis les
+     * densités des colliders (R-622).
+     *
+     * @param handleIndex rang du handle d'assembly (routage du corps)
+     * @param handleGeneration génération du handle ({@code 0} est invalide)
+     * @param dimension dimension d'accueil (R-610)
+     * @param position position monde de spawn {@code [x, y, z]}, en blocs
+     * @param rotation quaternion de spawn {@code [x, y, z, w]}
+     * @param bodyKind {@link #BODY_STATIC}, {@link #BODY_KINEMATIC} ou
+     *     {@link #BODY_DYNAMIC}
+     * @param phys octets de la section {@code PHYS} (colliders compilés)
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream createAssembly(
+            int handleIndex,
+            int handleGeneration,
+            long dimension,
+            double[] position,
+            float[] rotation,
+            int bodyKind,
+            byte[] phys) {
+        if (position.length != 3) {
+            throw new IllegalArgumentException("la position est un vecteur à 3 composantes");
+        }
+        if (rotation.length != 4) {
+            throw new IllegalArgumentException("la rotation est un quaternion à 4 composantes");
+        }
+        if (bodyKind < BODY_STATIC || bodyKind > BODY_DYNAMIC) {
+            throw new IllegalArgumentException("body_kind inconnu : " + bodyKind);
+        }
+        if (phys == null) {
+            throw new IllegalArgumentException("les octets PHYS sont requis");
+        }
+
+        // Le payload (en-tête + PHYS) est aligné sur 8 octets : le lecteur natif
+        // avance d'un multiple de 8 après chaque commande, pour lire la suivante
+        // en place (R-271, R-881).
+        int payloadLen = CREATE_ASSEMBLY_HEADER_BYTES + phys.length;
+        int padded = alignUp8(payloadLen);
+        ByteBuffer command = ByteBuffer.allocate(COMMAND_HEADER_BYTES + padded)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        command.putInt(OP_CREATE_ASSEMBLY);
+        // La longueur annoncée est celle du payload utile, sans le remplissage.
+        command.putInt(payloadLen);
+        // En-tête CreateAssembly (disposition figée, ax-model/dm/commands.rs).
+        command.putInt(handleIndex);
+        command.putInt(handleGeneration);
+        command.putLong(dimension);
+        command.putDouble(position[0]);
+        command.putDouble(position[1]);
+        command.putDouble(position[2]);
+        command.putFloat(rotation[0]);
+        command.putFloat(rotation[1]);
+        command.putFloat(rotation[2]);
+        command.putFloat(rotation[3]);
+        command.put((byte) bodyKind);
+        // Les 7 octets de _pad et le remplissage d'alignement restent à zéro.
+        command.position(COMMAND_HEADER_BYTES + CREATE_ASSEMBLY_HEADER_BYTES);
+        command.put(phys);
+        commands.add(command.array());
+        return this;
+    }
+
+    /** {@return {@code value} arrondi au prochain multiple de 8} */
+    private static int alignUp8(int value) {
+        return (value + 7) & ~7;
     }
 
     /** {@return le nombre de commandes, à passer à {@code submit}} */
