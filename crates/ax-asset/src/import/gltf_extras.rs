@@ -133,6 +133,11 @@ pub struct NodeAnnotations {
     pub part: Option<String>,
     /// Matériau physique, par son identifiant.
     pub material: Option<String>,
+    /// Forme de collision réclamée sur un node `role=collider` (C-32) :
+    /// `auto_box`, `auto_sphere`, `auto_capsule`, `auto_convex`, `auto_compound`.
+    /// Brut ici ; interprété par C-32, qui avertit sur une forme non prise en
+    /// charge (R-912).
+    pub collider_shape: Option<String>,
     /// Niveaux de détail où le node apparaît.
     pub lod: Vec<u8>,
     /// Groupe de sommets portant le poids de déformation.
@@ -178,6 +183,7 @@ impl NodeAnnotations {
         }
         annotations.part = string_value(&axion, "part");
         annotations.material = string_value(&axion, "material");
+        annotations.collider_shape = string_value(&axion, "shape");
         annotations.deform_weight_group = string_value(&axion, "deform_weight_group");
         annotations.wear_profile = string_value(&axion, "wear_profile");
         annotations.lod = number_array(&axion, "lod");
@@ -292,6 +298,7 @@ mod tests {
     const EXTRAS: &str = r#"{
       "axion": {
         "role": "collider",
+        "shape": "auto_convex",
         "part": "fender_fl",
         "material": "axion:steel",
         "deform_weight_group": "axion_deform",
@@ -306,6 +313,7 @@ mod tests {
         let annotations = NodeAnnotations::parse(EXTRAS);
 
         assert_eq!(annotations.role, NodeRole::Collider);
+        assert_eq!(annotations.collider_shape.as_deref(), Some("auto_convex"));
         assert_eq!(annotations.part.as_deref(), Some("fender_fl"));
         assert_eq!(annotations.material.as_deref(), Some("axion:steel"));
         assert_eq!(

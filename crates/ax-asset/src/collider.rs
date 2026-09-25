@@ -57,6 +57,24 @@ pub enum ColliderMode {
     AutoSphere,
 }
 
+impl ColliderMode {
+    /// Traduit la valeur textuelle d'un extra `shape` (C-32).
+    ///
+    /// Rend `Some` pour une forme automatique **prise en charge** (`auto_box`,
+    /// `auto_sphere`), `None` sinon. Les formes reconnues du CDC mais pas encore
+    /// générées (`auto_capsule`, `auto_convex`, `auto_compound`) rendent aussi
+    /// `None` : l'appelant avertit et n'attache pas de collider, plutôt que d'en
+    /// fabriquer un que l'auteur n'a pas décrit.
+    #[must_use]
+    pub fn parse(shape: &str) -> Option<Self> {
+        match shape {
+            "auto_box" => Some(ColliderMode::AutoBox),
+            "auto_sphere" => Some(ColliderMode::AutoSphere),
+            _ => None,
+        }
+    }
+}
+
 /// Produit les colliders d'un asset (C-32).
 ///
 /// En T1, seule la source par definition est câblée : `mode` décide. `bounds`
@@ -142,6 +160,19 @@ mod tests {
 
     fn bounds(min: [f32; 3], max: [f32; 3]) -> Aabb {
         Aabb { min, max }
+    }
+
+    #[test]
+    fn parse_reconnait_les_formes_prises_en_charge() {
+        assert_eq!(ColliderMode::parse("auto_box"), Some(ColliderMode::AutoBox));
+        assert_eq!(
+            ColliderMode::parse("auto_sphere"),
+            Some(ColliderMode::AutoSphere)
+        );
+        // Reconnues du CDC mais pas encore générées, et inconnues : `None`.
+        assert_eq!(ColliderMode::parse("auto_convex"), None);
+        assert_eq!(ColliderMode::parse("auto_compound"), None);
+        assert_eq!(ColliderMode::parse("teleporteur"), None);
     }
 
     #[test]
