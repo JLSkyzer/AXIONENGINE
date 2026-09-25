@@ -136,6 +136,35 @@ impl SetDimensionEnv {
     pub const BYTES: usize = 48;
 }
 
+/// En-tête de `CREATE_ASSEMBLY` (IF-03, ADR-114 ; colliders en ligne, ADR-115).
+///
+/// Suivi **dans le même payload de commande** des octets de la section `PHYS` de
+/// l'asset : Java les extrait de l'A3D et les envoie, le natif les décode
+/// (Option A). Les octets PHYS occupent `payload_len - CreateAssembly::BYTES`
+/// octets après l'en-tête. Les champs runtime de `AssemblyDesc` (DM-09) — asset,
+/// definition, propriétaire, qualité — s'ajouteront avec leur consommateur (cache
+/// d'assets natif, suivi de propriété), pas avant.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CreateAssembly {
+    /// Handle d'assembly attribué par Java, pour le routage du corps.
+    pub handle: Handle,
+    /// Dimension d'accueil (R-610).
+    pub dimension: u64,
+    /// Pose monde de spawn.
+    pub spawn: WorldTransform,
+    /// Type de corps : `0` statique, `1` cinématique, `2` dynamique (miroir de
+    /// `BodyKind`).
+    pub body_kind: u8,
+    /// Réservé, à zéro.
+    pub _pad: [u8; 7],
+}
+
+impl CreateAssembly {
+    /// Taille de l'en-tête sur la frontière, en octets (hors octets `PHYS`).
+    pub const BYTES: usize = 64;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,5 +202,12 @@ mod tests {
         assert_eq!(offset_of!(SetDimensionEnv, fluid_surface), 32);
         assert_eq!(offset_of!(SetDimensionEnv, fluid_density), 36);
         assert_eq!(offset_of!(SetDimensionEnv, flags), 40);
+
+        assert_eq!(size_of::<CreateAssembly>(), CreateAssembly::BYTES);
+        assert_eq!(align_of::<CreateAssembly>(), 8);
+        assert_eq!(offset_of!(CreateAssembly, handle), 0);
+        assert_eq!(offset_of!(CreateAssembly, dimension), 8);
+        assert_eq!(offset_of!(CreateAssembly, spawn), 16);
+        assert_eq!(offset_of!(CreateAssembly, body_kind), 56);
     }
 }
