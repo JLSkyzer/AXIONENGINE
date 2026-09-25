@@ -491,6 +491,18 @@ f 2 7 3
     }
 
     #[test]
+    fn t310_le_mode_autosphere_produit_un_collider() {
+        // Une sphère englobante passe elle aussi la validation de bout en bout.
+        let options = CompileOptions {
+            collider_mode: ColliderMode::AutoSphere,
+            ..OPTIONS
+        };
+        let compiled = compile(CUBE_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| None)
+            .expect("compilation refusée");
+        assert_eq!(compiled.collider_count, 1, "auto_sphere génère un collider");
+    }
+
+    #[test]
     fn t310_sans_mode_aucun_collider() {
         // Le défaut est « aucun » : une géométrie ordinaire ne gagne pas de
         // collider par surprise.

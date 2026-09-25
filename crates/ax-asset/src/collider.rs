@@ -53,6 +53,8 @@ pub enum ColliderMode {
     None,
     /// Une boîte englobante alignée sur les axes (`auto_box`).
     AutoBox,
+    /// Une sphère englobante (`auto_sphere`).
+    AutoSphere,
 }
 
 /// Produit les colliders d'un asset (C-32).
@@ -64,8 +66,18 @@ pub enum ColliderMode {
 pub fn build_colliders(mode: ColliderMode, bounds: Option<Aabb>) -> Vec<ColliderDesc> {
     match (mode, bounds) {
         (ColliderMode::AutoBox, Some(bounds)) => vec![auto_box(bounds)],
+        (ColliderMode::AutoSphere, Some(bounds)) => vec![auto_sphere(bounds)],
         _ => Vec::new(),
     }
+}
+
+/// Milieu des bornes.
+fn center(bounds: Aabb) -> [f32; 3] {
+    [
+        (bounds.max[0] + bounds.min[0]) * 0.5,
+        (bounds.max[1] + bounds.min[1]) * 0.5,
+        (bounds.max[2] + bounds.min[2]) * 0.5,
+    ]
 }
 
 /// Génère une boîte alignée sur les axes depuis les bornes de l'asset
@@ -81,15 +93,30 @@ fn auto_box(bounds: Aabb) -> ColliderDesc {
         (bounds.max[1] - bounds.min[1]) * 0.5,
         (bounds.max[2] - bounds.min[2]) * 0.5,
     ];
-    let center = [
-        (bounds.max[0] + bounds.min[0]) * 0.5,
-        (bounds.max[1] + bounds.min[1]) * 0.5,
-        (bounds.max[2] + bounds.min[2]) * 0.5,
-    ];
+    primitive_collider(ColliderShape::Box { half_extents }, center(bounds))
+}
+
+/// Génère une sphère englobante depuis les bornes de l'asset (`auto_sphere`),
+/// centrée sur le milieu des bornes.
+///
+/// Le rayon vaut la **demi-diagonale** de la boîte : la sphère contient alors ses
+/// huit coins, donc toute la géométrie qu'elle borne. C'est un englobant lâche
+/// mais correct — jamais plus petit que l'objet.
+fn auto_sphere(bounds: Aabb) -> ColliderDesc {
+    let dx = bounds.max[0] - bounds.min[0];
+    let dy = bounds.max[1] - bounds.min[1];
+    let dz = bounds.max[2] - bounds.min[2];
+    let radius = 0.5 * (dx * dx + dy * dy + dz * dz).sqrt();
+    primitive_collider(ColliderShape::Sphere { radius }, center(bounds))
+}
+
+/// Construit un `ColliderDesc` pour une forme primitive auto-générée, centrée en
+/// `translation`, avec les défauts communs (densité, groupes, références absentes).
+fn primitive_collider(shape: ColliderShape, translation: [f32; 3]) -> ColliderDesc {
     ColliderDesc {
-        shape: ColliderShape::Box { half_extents },
+        shape,
         local: Transform {
-            translation: center,
+            translation,
             ..Transform::identity()
         },
         material: NONE_U16,
@@ -149,5 +176,28 @@ mod tests {
         );
         assert_eq!(collider.part, NONE_U16, "aucune part attachée en T1");
         assert_eq!(collider.flags, 0, "REFITTABLE arrive plus tard");
+    }
+
+    #[test]
+    fn auto_sphere_contient_les_coins() {
+        // Cube [0,2]³ : la sphère est centrée en (1,1,1) et de rayon égal à la
+        // demi-diagonale (√3), donc passe exactement par les huit coins.
+        let colliders = build_colliders(ColliderMode::AutoSphere, Some(bounds([0.0; 3], [2.0; 3])));
+        assert_eq!(colliders.len(), 1);
+        let collider = colliders[0];
+        assert_eq!(collider.local.translation, [1.0, 1.0, 1.0]);
+        let ColliderShape::Sphere { radius } = collider.shape else {
+            panic!("attendu une sphère, obtenu {:?}", collider.shape);
+        };
+        let demi_diagonale = 3.0_f32.sqrt();
+        assert!(
+            (radius - demi_diagonale).abs() < 1.0e-5,
+            "rayon = demi-diagonale, obtenu {radius}"
+        );
+        // Un coin est à distance √3 du centre : la sphère l'atteint (englobe).
+        assert!(
+            radius >= demi_diagonale - 1.0e-5,
+            "la sphère doit contenir les coins"
+        );
     }
 }
