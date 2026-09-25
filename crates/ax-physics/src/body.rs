@@ -1,6 +1,7 @@
 //! Corps rigides et formes de collision (§10.2, §10.3).
 
 use ax_math::{Quat, Vec3};
+use ax_model::dm::physics::ColliderShape;
 use core::fmt;
 use rapier3d::prelude::RigidBodyHandle;
 
@@ -97,6 +98,83 @@ pub struct CompoundPart {
     pub shape: Shape,
 }
 
+impl Shape {
+    /// Convertit une forme de collider compilée ([`ColliderShape`], DM-06) en
+    /// forme runtime (C-32, pont d'ADR-115).
+    ///
+    /// Les primitives (`Sphere`, `Box`, `Capsule`, `Cylinder`, `Cone`) passent
+    /// directement. Les formes **indexées** (`ConvexHull`, `Compound`) portent
+    /// leurs points/enfants dans des tableaux annexes que la section `PHYS` ne
+    /// produit pas encore : les convertir exigera de passer ces annexes, aussi
+    /// sont-elles refusées ici ([`ShapeConversionError::IndexedShapeUnsupported`]).
+    /// `TriMesh` et `Heightfield` restent **interdits sur un corps dynamique**
+    /// (R-160, INV-13) : ils sont refusés
+    /// ([`ShapeConversionError::ForbiddenOnDynamicBody`]).
+    ///
+    /// # Errors
+    ///
+    /// [`ShapeConversionError`] selon la forme refusée.
+    pub fn from_collider_shape(shape: &ColliderShape) -> Result<Self, ShapeConversionError> {
+        Ok(match *shape {
+            ColliderShape::Sphere { radius } => Shape::Ball { radius },
+            ColliderShape::Box { half_extents } => Shape::Cuboid { half_extents },
+            ColliderShape::Capsule {
+                half_height,
+                radius,
+            } => Shape::Capsule {
+                half_height,
+                radius,
+            },
+            ColliderShape::Cylinder {
+                half_height,
+                radius,
+            } => Shape::Cylinder {
+                half_height,
+                radius,
+            },
+            ColliderShape::Cone {
+                half_height,
+                radius,
+            } => Shape::Cone {
+                half_height,
+                radius,
+            },
+            ColliderShape::ConvexHull { .. } | ColliderShape::Compound { .. } => {
+                return Err(ShapeConversionError::IndexedShapeUnsupported);
+            }
+            ColliderShape::TriMesh { .. } | ColliderShape::Heightfield { .. } => {
+                return Err(ShapeConversionError::ForbiddenOnDynamicBody);
+            }
+        })
+    }
+}
+
+/// Ce qui empêche de convertir un [`ColliderShape`] (DM-06) en [`Shape`] runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShapeConversionError {
+    /// Forme indexée (`ConvexHull`/`Compound`) : ses tableaux annexes (points,
+    /// enfants) ne sont pas encore produits par `PHYS` (C-32, ADR-115).
+    IndexedShapeUnsupported,
+    /// `TriMesh`/`Heightfield` : interdits sur un corps dynamique (R-160, INV-13).
+    ForbiddenOnDynamicBody,
+}
+
+impl fmt::Display for ShapeConversionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::IndexedShapeUnsupported => {
+                "forme de collision indexée (ConvexHull/Compound) pas encore produite"
+            }
+            Self::ForbiddenOnDynamicBody => {
+                "TriMesh et Heightfield sont interdits sur un corps dynamique"
+            }
+        };
+        f.write_str(message)
+    }
+}
+
+impl std::error::Error for ShapeConversionError {}
+
 /// Ce qui empêche d'ajouter un corps (§10.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BodyError {
@@ -146,5 +224,74 @@ impl BodyId {
     /// Handle rapier sous-jacent, réservé au crate.
     pub(crate) fn handle(self) -> RigidBodyHandle {
         self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn conversion_des_primitives() {
+        assert_eq!(
+            Shape::from_collider_shape(&ColliderShape::Sphere { radius: 2.0 }).unwrap(),
+            Shape::Ball { radius: 2.0 }
+        );
+        assert_eq!(
+            Shape::from_collider_shape(&ColliderShape::Box {
+                half_extents: [1.0, 2.0, 3.0]
+            })
+            .unwrap(),
+            Shape::Cuboid {
+                half_extents: [1.0, 2.0, 3.0]
+            }
+        );
+        assert_eq!(
+            Shape::from_collider_shape(&ColliderShape::Capsule {
+                half_height: 1.0,
+                radius: 0.5
+            })
+            .unwrap(),
+            Shape::Capsule {
+                half_height: 1.0,
+                radius: 0.5
+            }
+        );
+    }
+
+    #[test]
+    fn conversion_refuse_les_formes_indexees_et_interdites() {
+        assert_eq!(
+            Shape::from_collider_shape(&ColliderShape::ConvexHull {
+                points_offset: 0,
+                points_count: 4
+            }),
+            Err(ShapeConversionError::IndexedShapeUnsupported)
+        );
+        assert_eq!(
+            Shape::from_collider_shape(&ColliderShape::Compound {
+                children_offset: 0,
+                children_count: 2
+            }),
+            Err(ShapeConversionError::IndexedShapeUnsupported)
+        );
+        assert_eq!(
+            Shape::from_collider_shape(&ColliderShape::TriMesh {
+                vertices_offset: 0,
+                vertices_count: 3,
+                indices_offset: 0,
+                indices_count: 3
+            }),
+            Err(ShapeConversionError::ForbiddenOnDynamicBody)
+        );
+        assert_eq!(
+            Shape::from_collider_shape(&ColliderShape::Heightfield {
+                rows: 2,
+                cols: 2,
+                data_offset: 0,
+                scale: [1.0, 1.0, 1.0]
+            }),
+            Err(ShapeConversionError::ForbiddenOnDynamicBody)
+        );
     }
 }

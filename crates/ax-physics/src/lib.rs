@@ -40,7 +40,7 @@ mod groups;
 mod sim;
 mod world;
 
-pub use body::{BodyError, BodyId, BodyKind, CompoundPart, Shape};
+pub use body::{BodyError, BodyId, BodyKind, CompoundPart, Shape, ShapeConversionError};
 pub use commands::{apply_command_stream, CommandError, CommandOutcome};
 pub use config::{ConfigError, PhysicsConfig};
 pub use forces::{FluidEnvironment, LiftSurface};
