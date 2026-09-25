@@ -6,23 +6,30 @@
 //! → d'aucune source. La génération est faite **à la compilation** (R-620),
 //! jamais au runtime.
 //!
-//! # État (tranche T1)
+//! # État
 //!
-//! Cette tranche porte la source par **definition** (un mode demandé pour tout
-//! l'asset) et le générateur `auto_box` : un asset dont la definition réclame
-//! `AutoBox` reçoit une boîte englobante alignée sur ses bornes. Le défaut est
-//! [`ColliderMode::None`] — « → aucun » : un asset qui ne réclame rien ne reçoit
-//! aucun collider, si bien qu'aucune géométrie existante n'en gagne un par
-//! surprise.
+//! Deux sources sont câblées, dans l'ordre de priorité R-620 :
 //!
-//! Les sources par **extras de node**, les autres formes automatiques
-//! (`auto_sphere`, `auto_capsule`, `auto_compound`), la masse/le COM (R-622) et
-//! le marquage REFITTABLE (R-623) arrivent aux tranches suivantes. La
-//! sérialisation vers la section A3D `PHYS` (T5) attend un ADR de disposition.
+//! 1. **extras de node** — un node `role=collider` porte une forme (`shape`)
+//!    résolue en [`ColliderRequest`] à l'import ; son collider est tiré de la
+//!    boîte de **son** mesh. C'est la voie principale d'un asset authoré ;
+//! 2. **definition** — à défaut de tout node collider, un [`ColliderMode`]
+//!    demandé pour l'asset entier tire un englobant de ses bornes.
+//!
+//! Le défaut est [`ColliderMode::None`] et aucune requête : rien n'est généré
+//! sans demande explicite.
+//!
+//! Formes prises en charge : `auto_box`, `auto_sphere`. `auto_capsule`,
+//! `auto_convex` (V-HACD, étape C-23) et `auto_compound` (R-621) sont reconnues
+//! mais pas encore générées : une requête qui les vise est **avertie et ignorée**
+//! (R-912), jamais remplacée par une forme que l'auteur n'a pas décrite. La
+//! masse/le COM (R-622), le marquage REFITTABLE (R-623) et la sérialisation vers
+//! la section A3D `PHYS` (gel derrière ADR) suivent.
 
 use crate::optimize::Aabb;
-use ax_model::dm::geometry::Transform;
+use ax_model::dm::geometry::{MeshDesc, Transform};
 use ax_model::dm::physics::{ColliderDesc, ColliderShape};
+use ax_model::dm::scene::{NodeDesc, NONE_U32};
 
 /// Densité par défaut d'un collider auto-généré, en kg/m³.
 ///
@@ -75,18 +82,106 @@ impl ColliderMode {
     }
 }
 
+/// Requête de collider issue des extras d'un node (R-620, priorité 1).
+///
+/// Construite à l'import pour chaque node `role=collider` dont la forme est prise
+/// en charge ; consommée par [`build_colliders`], qui tire la géométrie de la
+/// boîte du mesh du node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ColliderRequest {
+    /// Index du node, dans l'ordre des nodes de l'asset.
+    pub node: u32,
+    /// Forme automatique demandée (prise en charge : `AutoBox`, `AutoSphere`).
+    pub mode: ColliderMode,
+}
+
+/// Ce que [`build_colliders`] produit : les colliders et les avertissements.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ColliderBuild {
+    /// Colliders générés (DM-06), dans l'ordre de production.
+    pub colliders: Vec<ColliderDesc>,
+    /// Avertissements (R-912), à journaliser une fois.
+    pub warnings: Vec<String>,
+}
+
 /// Produit les colliders d'un asset (C-32).
 ///
-/// En T1, seule la source par definition est câblée : `mode` décide. `bounds`
-/// est la boîte englobante de l'asset, telle que l'optimizer la calcule (C-23,
-/// étape 7) ; `None` (aucune géométrie) ne produit aucun collider.
+/// Priorité R-620 : si des `requests` (extras de node) existent, les colliders en
+/// sont tirés — un par node, depuis la boîte de son mesh. Sinon, `definition_mode`
+/// tire un englobant des `bounds` de l'asset (l'optimizer les calcule, C-23 étape
+/// 7). `nodes` est muté pour lier chaque node à son collider (`node.collider`).
 #[must_use]
-pub fn build_colliders(mode: ColliderMode, bounds: Option<Aabb>) -> Vec<ColliderDesc> {
-    match (mode, bounds) {
+pub fn build_colliders(
+    nodes: &mut [NodeDesc],
+    meshes: &[MeshDesc],
+    requests: &[ColliderRequest],
+    definition_mode: ColliderMode,
+    bounds: Option<Aabb>,
+) -> ColliderBuild {
+    if !requests.is_empty() {
+        return per_node_colliders(nodes, meshes, requests);
+    }
+    let colliders = match (definition_mode, bounds) {
         (ColliderMode::AutoBox, Some(bounds)) => vec![auto_box(bounds)],
         (ColliderMode::AutoSphere, Some(bounds)) => vec![auto_sphere(bounds)],
         _ => Vec::new(),
+    };
+    ColliderBuild {
+        colliders,
+        warnings: Vec::new(),
     }
+}
+
+/// Génère un collider par requête, depuis la boîte du mesh du node visé, et lie
+/// le node à son collider.
+fn per_node_colliders(
+    nodes: &mut [NodeDesc],
+    meshes: &[MeshDesc],
+    requests: &[ColliderRequest],
+) -> ColliderBuild {
+    let mut build = ColliderBuild::default();
+    for request in requests {
+        // On relève d'abord ce dont on a besoin, pour clore l'emprunt en lecture
+        // du node avant de le muter.
+        let Some((mesh_index, part)) = nodes
+            .get(request.node as usize)
+            .map(|node| (node.mesh, node.part))
+        else {
+            continue;
+        };
+        if mesh_index == NONE_U32 {
+            build
+                .warnings
+                .push(format!("node collider {} sans mesh, ignoré", request.node));
+            continue;
+        }
+        let Some(mesh) = meshes.get(mesh_index as usize) else {
+            build
+                .warnings
+                .push(format!("node collider {} : mesh introuvable", request.node));
+            continue;
+        };
+        let aabb = Aabb {
+            min: mesh.aabb_min,
+            max: mesh.aabb_max,
+        };
+        let mut collider = match request.mode {
+            ColliderMode::AutoBox => auto_box(aabb),
+            ColliderMode::AutoSphere => auto_sphere(aabb),
+            // Une requête ne porte que des formes prises en charge : les autres
+            // sont écartées à l'import, avant d'arriver ici.
+            ColliderMode::None => continue,
+        };
+        // Le collider hérite de la part du node : c'est ce lien que R-623 lira
+        // pour décider du marquage REFITTABLE.
+        collider.part = part;
+        let index = build.colliders.len() as u32;
+        if let Some(node) = nodes.get_mut(request.node as usize) {
+            node.collider = index;
+        }
+        build.colliders.push(collider);
+    }
+    build
 }
 
 /// Milieu des bornes.
@@ -162,6 +257,46 @@ mod tests {
         Aabb { min, max }
     }
 
+    /// Colliders produits par la source **definition** (aucune requête de node).
+    fn from_definition(mode: ColliderMode, bounds: Option<Aabb>) -> Vec<ColliderDesc> {
+        build_colliders(&mut [], &[], &[], mode, bounds).colliders
+    }
+
+    /// Un node de test référençant un mesh et une part.
+    fn node(mesh: u32, part: u16) -> NodeDesc {
+        NodeDesc {
+            name_hash: 0,
+            parent: u32::MAX,
+            local: Transform::identity(),
+            flags: 0,
+            mesh,
+            collider: NONE_U32,
+            bone: NONE_U32,
+            part,
+            region: NONE_U16,
+            lod_mask: u8::MAX,
+            state: 0,
+            _pad: [0; 2],
+        }
+    }
+
+    /// Un mesh de test réduit à sa boîte englobante.
+    fn mesh(aabb_min: [f32; 3], aabb_max: [f32; 3]) -> MeshDesc {
+        MeshDesc {
+            vertex_offset: 0,
+            vertex_count: 0,
+            index_offset: 0,
+            index_count: 0,
+            material: 0,
+            lod: 0,
+            flags: 0,
+            aabb_min,
+            aabb_max,
+            region: NONE_U16,
+            _pad: 0,
+        }
+    }
+
     #[test]
     fn parse_reconnait_les_formes_prises_en_charge() {
         assert_eq!(ColliderMode::parse("auto_box"), Some(ColliderMode::AutoBox));
@@ -177,18 +312,18 @@ mod tests {
 
     #[test]
     fn le_mode_none_ne_genere_aucun_collider() {
-        assert!(build_colliders(ColliderMode::None, Some(bounds([0.0; 3], [1.0; 3]))).is_empty());
+        assert!(from_definition(ColliderMode::None, Some(bounds([0.0; 3], [1.0; 3]))).is_empty());
     }
 
     #[test]
     fn sans_bornes_aucun_collider() {
-        assert!(build_colliders(ColliderMode::AutoBox, None).is_empty());
+        assert!(from_definition(ColliderMode::AutoBox, None).is_empty());
     }
 
     #[test]
     fn auto_box_couvre_les_bornes_et_se_centre() {
         // Bornes asymétriques : la boîte doit être centrée sur leur milieu.
-        let colliders = build_colliders(
+        let colliders = from_definition(
             ColliderMode::AutoBox,
             Some(bounds([-1.0, 0.0, 2.0], [3.0, 4.0, 6.0])),
         );
@@ -205,7 +340,6 @@ mod tests {
             collider.density > 0.0,
             "densité strictement positive (DM-06)"
         );
-        assert_eq!(collider.part, NONE_U16, "aucune part attachée en T1");
         assert_eq!(collider.flags, 0, "REFITTABLE arrive plus tard");
     }
 
@@ -213,7 +347,7 @@ mod tests {
     fn auto_sphere_contient_les_coins() {
         // Cube [0,2]³ : la sphère est centrée en (1,1,1) et de rayon égal à la
         // demi-diagonale (√3), donc passe exactement par les huit coins.
-        let colliders = build_colliders(ColliderMode::AutoSphere, Some(bounds([0.0; 3], [2.0; 3])));
+        let colliders = from_definition(ColliderMode::AutoSphere, Some(bounds([0.0; 3], [2.0; 3])));
         assert_eq!(colliders.len(), 1);
         let collider = colliders[0];
         assert_eq!(collider.local.translation, [1.0, 1.0, 1.0]);
@@ -229,6 +363,73 @@ mod tests {
         assert!(
             radius >= demi_diagonale - 1.0e-5,
             "la sphère doit contenir les coins"
+        );
+    }
+
+    #[test]
+    fn un_node_collider_recoit_une_boite_depuis_son_mesh() {
+        // La requête (extras de node) prime sur le mode de definition.
+        let mut nodes = vec![node(0, 5)];
+        let meshes = vec![mesh([0.0, 0.0, 0.0], [2.0, 4.0, 6.0])];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::AutoBox,
+        }];
+
+        let build = build_colliders(&mut nodes, &meshes, &requests, ColliderMode::None, None);
+
+        assert_eq!(build.colliders.len(), 1);
+        assert_eq!(
+            build.colliders[0].shape,
+            ColliderShape::Box {
+                half_extents: [1.0, 2.0, 3.0],
+            }
+        );
+        assert_eq!(
+            build.colliders[0].part, 5,
+            "le collider hérite de la part du node"
+        );
+        assert_eq!(nodes[0].collider, 0, "le node est lié à son collider");
+        assert!(build.warnings.is_empty());
+    }
+
+    #[test]
+    fn un_node_collider_sans_mesh_est_averti_et_ignore() {
+        let mut nodes = vec![node(NONE_U32, NONE_U16)];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::AutoBox,
+        }];
+
+        let build = build_colliders(&mut nodes, &[], &requests, ColliderMode::None, None);
+
+        assert!(build.colliders.is_empty(), "aucun collider sans mesh");
+        assert_eq!(build.warnings.len(), 1, "l'ignorance est avertie (R-912)");
+        assert_eq!(nodes[0].collider, NONE_U32, "aucun lien posé");
+    }
+
+    #[test]
+    fn les_requetes_l_emportent_sur_le_mode_definition() {
+        // Un node collider présent : le mode de definition n'est pas consulté.
+        let mut nodes = vec![node(0, NONE_U16)];
+        let meshes = vec![mesh([0.0; 3], [1.0; 3])];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::AutoSphere,
+        }];
+
+        let build = build_colliders(
+            &mut nodes,
+            &meshes,
+            &requests,
+            ColliderMode::AutoBox,
+            Some(bounds([0.0; 3], [10.0; 3])),
+        );
+
+        assert_eq!(build.colliders.len(), 1, "une seule source à la fois");
+        assert!(
+            matches!(build.colliders[0].shape, ColliderShape::Sphere { .. }),
+            "la requête de node (sphère) prime sur le mode definition (boîte)"
         );
     }
 }

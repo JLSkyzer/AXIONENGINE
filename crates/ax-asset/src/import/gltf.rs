@@ -12,6 +12,7 @@ use super::gltf_refs;
 use super::{
     check_relative_path, ImportError, ImportLimits, ImportedAsset, ImportedMaterial, SourceFormat,
 };
+use crate::collider::{ColliderMode, ColliderRequest};
 use ax_model::dm::geometry::{
     encode_normal, encode_tangent, MeshDesc, Transform, Vertex, NO_REGION_U8,
 };
@@ -144,7 +145,48 @@ fn import_gltf_inner(
     // mesh est posé maintenant, une fois que chacun connaît sa place.
     bind_meshes(&document, &placement, &mut asset);
 
+    // Les requêtes de collider se lisent une fois les nodes connus ; C-32 les
+    // consomme après l'optimisation, quand les boîtes de mesh existent.
+    build_collider_requests(&annotations, &mut asset, &mut report);
+
     Ok((asset, report))
+}
+
+/// Construit les requêtes de collider depuis les extras des nodes (R-620).
+///
+/// Un node `role=collider` réclame une forme via l'extra `shape` ; à défaut, le
+/// défaut du CDC est `auto_convex`. Une forme non prise en charge — dont
+/// `auto_convex` tant que la décomposition convexe de C-23 n'existe pas — est
+/// avertie et le node ignoré (R-912), jamais remplacée par une autre forme que
+/// l'auteur n'a pas décrite.
+///
+/// `annotations` est parallèle à `asset.nodes` : le rang y est l'index du node.
+fn build_collider_requests(
+    annotations: &[NodeAnnotations],
+    asset: &mut ImportedAsset,
+    report: &mut GltfReport,
+) {
+    for (index, annotation) in annotations.iter().enumerate() {
+        if annotation.role != NodeRole::Collider {
+            continue;
+        }
+        let shape = annotation
+            .collider_shape
+            .as_deref()
+            .unwrap_or("auto_convex");
+        match ColliderMode::parse(shape) {
+            Some(mode) => asset.collider_requests.push(ColliderRequest {
+                node: index as u32,
+                mode,
+            }),
+            None => {
+                let name = asset.node_names.get(index).map_or("", String::as_str);
+                report.warnings.push(format!(
+                    "node collider « {name} » : forme « {shape} » pas encore prise en charge, ignoré"
+                ));
+            }
+        }
+    }
 }
 
 /// Rend le texte JSON du document.

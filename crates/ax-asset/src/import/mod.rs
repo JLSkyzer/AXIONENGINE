@@ -34,6 +34,7 @@ pub use gltf_extras::{NodeAnnotations, NodeRole};
 pub use obj::import_obj;
 pub use stl::import_stl;
 
+use crate::collider::ColliderRequest;
 use ax_model::dm::geometry::{MeshDesc, Vertex};
 use ax_model::dm::physics::ColliderDesc;
 use ax_model::dm::scene::NodeDesc;
@@ -424,6 +425,9 @@ pub struct ImportedAsset {
     /// bornes de mesh connues (`crate::collider`). Un node les référence par
     /// l'index de son champ `collider`.
     pub colliders: Vec<ColliderDesc>,
+    /// Requêtes de collider issues des extras des nodes `role=collider` (R-620,
+    /// priorité 1), lues à l'import et consommées par C-32 après l'optimisation.
+    pub collider_requests: Vec<ColliderRequest>,
     /// Noms déclarés par la source, par catégorie.
     pub names: Vec<(&'static str, String)>,
 }

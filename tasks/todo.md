@@ -1475,7 +1475,13 @@ substituable sans changer rapier »).
                   `CompiledAsset.collider_count` ; module `collider` avec
                   `ColliderMode` (source par definition) et le générateur
                   `auto_box` (repli). 5 tests (T-310). Reste en T2 : extras node.
-            - [ ] **T2 — sourcing + auto-génération** (R-620/621) : chaîne extras
+            - [x] **T2 — sourcing + auto-génération** (R-620/621) : chaîne extras
+                  **Fait** : extra `shape` lu (`NodeAnnotations`), requêtes
+                  `ColliderRequest` par node `role=collider` (défaut auto_convex
+                  → averti/ignoré tant que V-HACD n'existe pas), génération par
+                  node depuis l'AABB du mesh (auto_box/auto_sphere), lien
+                  `node.collider`, `collider.part` hérité du node. Reste :
+                  auto_capsule/convex/compound + densité/no_refit des extras.
                   node → definition → `auto_box` (AABB) / `auto_sphere` / 
                   `auto_capsule` / `auto_compound` (enfants, R-621) → aucun.
                   `auto_convex` marqué pour V-HACD (étape C-23, différée). Extras

@@ -149,8 +149,17 @@ pub fn compile(
 
     // C-32 : les colliders se génèrent une fois les bornes connues (l'optimizer
     // calcule les boîtes à l'étape 7). Ils repassent donc la liste de contrôle
-    // ci-dessous, au même titre que la géométrie optimisée.
-    asset.colliders = build_colliders(options.collider_mode, optimized.bounds);
+    // ci-dessous, au même titre que la géométrie optimisée. Les requêtes issues
+    // des extras de node priment sur le mode de definition (R-620).
+    let built = build_colliders(
+        &mut asset.nodes,
+        &asset.meshes,
+        &asset.collider_requests,
+        options.collider_mode,
+        optimized.bounds,
+    );
+    warnings.extend(built.warnings);
+    asset.colliders = built.colliders;
 
     // La sortie de C-23, sans exemption : c'est ce que le chargement vérifiera
     // (R-540). Le vérifier dès ici fait d'un défaut de l'optimizer un refus à

@@ -4,6 +4,7 @@
 //! binaire cacherait ce qui est testé, alors que ce sont précisément les
 //! détails du document qui font l'objet de chaque test.
 
+use ax_asset::collider::ColliderMode;
 use ax_asset::import::{import_gltf, ImportError, ImportLimits, SUPPORTED_EXTENSIONS};
 use ax_asset::validate::{validate, AssetView, NamedEntry};
 use ax_model::dm::scene::{node_flags, ALL_LODS};
@@ -607,7 +608,42 @@ fn t228_les_annotations_axion_sont_lues() {
         0,
         "un collider ne doit pas être rendu"
     );
-    assert!(report.warnings.is_empty());
+    // Le node collider ne déclare pas de forme : le défaut du CDC est
+    // `auto_convex`, dont la décomposition (C-23) n'existe pas encore. C-32
+    // avertit et n'attache pas de collider — jamais un silence (R-912).
+    assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
+    assert!(
+        report.warnings[0].contains("auto_convex"),
+        "{:?}",
+        report.warnings
+    );
+    assert!(
+        asset.collider_requests.is_empty(),
+        "forme non générée : aucune requête"
+    );
+}
+
+#[test]
+fn t310_un_node_collider_avec_forme_prise_en_charge_donne_une_requete() {
+    // Un node `role=collider, shape=auto_box` produit une requête (R-620,
+    // priorité 1), sans avertissement, que C-32 transformera en boîte.
+    let source = triangle(
+        ", \"extras\": { \"axion\": { \"role\": \"collider\", \"shape\": \"auto_box\" } }",
+        "",
+    );
+    let (asset, report) = import_gltf(source.as_bytes(), &LIMITS, |_| None).expect("import refusé");
+
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+    assert_eq!(asset.collider_requests.len(), 1);
+    assert_eq!(
+        asset.collider_requests[0].node, 0,
+        "le node zéro porte le collider"
+    );
+    assert_eq!(
+        asset.collider_requests[0].mode,
+        ColliderMode::AutoBox,
+        "la forme auto_box est reconnue"
+    );
 }
 
 #[test]
