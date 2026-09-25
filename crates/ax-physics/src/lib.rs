@@ -41,7 +41,7 @@ mod sim;
 mod world;
 
 pub use body::{BodyError, BodyId, BodyKind, CompoundPart, Shape, ShapeConversionError};
-pub use commands::{apply_command_stream, CommandError, CommandOutcome};
+pub use commands::{apply_command_stream, create_assembly_payloads, CommandError, CommandOutcome};
 pub use config::{ConfigError, PhysicsConfig};
 pub use forces::{FluidEnvironment, LiftSurface};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};

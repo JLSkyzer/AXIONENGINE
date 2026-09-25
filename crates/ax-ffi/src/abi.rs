@@ -26,12 +26,19 @@ use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::config::{self, ConfigScope, ParsedValue};
 
 use crate::context;
+use ax_asset::a3d::decode_colliders;
 use ax_asset::collider::ColliderMode;
 use ax_asset::compile::CompileOptions;
 use ax_asset::import::{ImportLimits, SourceFormat};
 use ax_asset::optimize::LodOptions;
 use ax_jobs::{CpuShare, JobBudgets, JobKind, Side, WorkerPolicy};
+use ax_math::{Quat, Vec3};
 use ax_model::budgets::Budget;
+use ax_model::dm::commands::CreateAssembly;
+use ax_model::dm::geometry::WorldTransform;
+use ax_model::dm::handle::Handle;
+use ax_model::dm::physics::ColliderDesc;
+use ax_physics::{BodyKind, CompoundPart, Shape, SimDriver};
 
 /// Version de l'ABI.
 ///
@@ -703,6 +710,16 @@ pub unsafe extern "C" fn axion_sim_submit(
                 }
                 None => return AXION_E_INVALID_BUFFER,
             };
+            // CREATE_ASSEMBLY dépend d'ax-asset (décodage de la section PHYS) : la
+            // frontière — seule à lier ax-asset et ax-physics — l'extrait et
+            // l'applique ici, avant le reste du flux (qu'ax-physics reporte).
+            let assemblies = match ax_physics::create_assembly_payloads(&bytes, command_count) {
+                Ok(payloads) => payloads,
+                Err(_) => return AXION_E_INVALID_BUFFER,
+            };
+            for payload in &assemblies {
+                apply_create_assembly(session.physics(), payload);
+            }
             match ax_physics::apply_command_stream(session.physics(), &bytes, command_count) {
                 Ok(_) => AXION_OK,
                 Err(_) => AXION_E_INVALID_BUFFER,
@@ -711,6 +728,88 @@ pub unsafe extern "C" fn axion_sim_submit(
             Ok(code) | Err(code) => code,
         }
     })
+}
+
+/// Applique une commande `CREATE_ASSEMBLY` (Option A, ADR-115) : lit l'en-tête,
+/// décode les colliders de la section `PHYS` jointe, les convertit en forme
+/// runtime et crée le corps dans le pilote.
+///
+/// Un payload trop court, une section `PHYS` illisible ou une forme non
+/// convertible fait **abandonner cette assembly** sans créer de corps — jamais
+/// de panique ni de corps à moitié formé. La commande a déjà été lue par
+/// `create_assembly_payloads`, qui a validé les bornes du flux.
+fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
+    if payload.len() < CreateAssembly::BYTES {
+        return;
+    }
+    let handle = Handle::new(read_le_u32(payload, 0), read_le_u32(payload, 4));
+    let dimension = read_le_u64(payload, 8);
+    let spawn = WorldTransform {
+        position: [
+            read_le_f64(payload, 16),
+            read_le_f64(payload, 24),
+            read_le_f64(payload, 32),
+        ],
+        rotation: [
+            read_le_f32(payload, 40),
+            read_le_f32(payload, 44),
+            read_le_f32(payload, 48),
+            read_le_f32(payload, 52),
+        ],
+    };
+    let kind = match payload[56] {
+        0 => BodyKind::Static,
+        1 => BodyKind::Kinematic,
+        // Tout autre code (dont 2) : dynamique, le défaut d'un corps mobile.
+        _ => BodyKind::Dynamic,
+    };
+
+    let colliders = match decode_colliders(&payload[CreateAssembly::BYTES..]) {
+        Ok(colliders) => colliders,
+        Err(_) => return,
+    };
+    let Some(shape) = assembly_shape(&colliders) else {
+        return;
+    };
+    physics.create_assembly(dimension, handle, spawn, kind, shape);
+}
+
+/// Construit la forme d'un corps depuis ses colliders : la forme unique s'il n'y
+/// en a qu'un, sinon un composé de leurs formes placées. `None` si aucun collider
+/// ou si l'un n'est pas convertible (forme indexée/interdite).
+fn assembly_shape(colliders: &[ColliderDesc]) -> Option<Shape> {
+    match colliders {
+        [] => None,
+        [single] => Shape::from_collider_shape(&single.shape).ok(),
+        many => {
+            let mut parts = Vec::with_capacity(many.len());
+            for collider in many {
+                let shape = Shape::from_collider_shape(&collider.shape).ok()?;
+                parts.push(CompoundPart {
+                    translation: Vec3::from_array(collider.local.translation),
+                    rotation: Quat::from_array(collider.local.rotation),
+                    shape,
+                });
+            }
+            Some(Shape::Compound { parts })
+        }
+    }
+}
+
+fn read_le_u32(bytes: &[u8], at: usize) -> u32 {
+    u32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne vérifiée"))
+}
+
+fn read_le_u64(bytes: &[u8], at: usize) -> u64 {
+    u64::from_le_bytes(bytes[at..at + 8].try_into().expect("borne vérifiée"))
+}
+
+fn read_le_f32(bytes: &[u8], at: usize) -> f32 {
+    f32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne vérifiée"))
+}
+
+fn read_le_f64(bytes: &[u8], at: usize) -> f64 {
+    f64::from_le_bytes(bytes[at..at + 8].try_into().expect("borne vérifiée"))
 }
 
 /// Récolte le résultat d'un tick (IF-03) : avance la simulation, dépose les

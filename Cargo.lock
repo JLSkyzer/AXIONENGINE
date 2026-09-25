@@ -105,6 +105,7 @@ dependencies = [
  "ax-asset",
  "ax-core",
  "ax-jobs",
+ "ax-math",
  "ax-model",
  "ax-physics",
  "ax-telemetry",

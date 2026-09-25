@@ -105,6 +105,7 @@ pub mod asset {
     use super::{BTreeMap, CiCase, Value};
     use crate::measure::{measure, MeasureConfig};
     use crate::result::Run;
+    use ax_asset::collider::ColliderMode;
     use ax_asset::compile::{compile, CompileOptions};
     use ax_asset::import::{ImportLimits, SourceFormat};
     use ax_asset::optimize::LodOptions;
@@ -174,6 +175,8 @@ f 1/1/1 3/3/1 4/4/1
             limits: ImportLimits::new(128 * 1024 * 1024),
             dynamic_body: true,
             lod: LodOptions::DEFAULT,
+            // Un bench de compilation ne réclame pas d'auto-collider (C-32).
+            collider_mode: ColliderMode::None,
         }
     }
 

@@ -47,6 +47,45 @@ pub fn apply_command_stream(
     bytes: &[u8],
     command_count: u32,
 ) -> Result<CommandOutcome, CommandError> {
+    let mut outcome = CommandOutcome::default();
+    for_each_command(bytes, command_count, |op, payload| {
+        apply_one(driver, op, payload, &mut outcome)
+    })?;
+    Ok(outcome)
+}
+
+/// Extrait les payloads des commandes `CREATE_ASSEMBLY` d'un flux, pour la
+/// frontière (ax-ffi) — seule à savoir décoder les colliders (dépendance
+/// ax-asset). Le reste du flux est ensuite appliqué par [`apply_command_stream`],
+/// qui reporte `CREATE_ASSEMBLY`.
+///
+/// Les payloads sont **copiés** (possédés) : une signature de fermeture à
+/// lifetime universel ne peut pas rendre de tranches empruntées au flux.
+///
+/// # Errors
+/// [`CommandError::Truncated`] / [`CommandError::UnsupportedSchema`] comme
+/// [`apply_command_stream`].
+pub fn create_assembly_payloads(
+    bytes: &[u8],
+    command_count: u32,
+) -> Result<Vec<Vec<u8>>, CommandError> {
+    let mut payloads = Vec::new();
+    for_each_command(bytes, command_count, |op, payload| {
+        if op == opcode::CREATE_ASSEMBLY {
+            payloads.push(payload.to_vec());
+        }
+        Ok(())
+    })?;
+    Ok(payloads)
+}
+
+/// Itère les `command_count` commandes du flux et appelle `visit(op, payload)`
+/// sur chacune. Valide l'en-tête et les bornes (donnée externe, interdiction
+/// 3.13).
+fn for_each_command<F>(bytes: &[u8], command_count: u32, mut visit: F) -> Result<(), CommandError>
+where
+    F: FnMut(u32, &[u8]) -> Result<(), CommandError>,
+{
     if bytes.len() < CommandStreamHeader::BYTES {
         return Err(CommandError::Truncated);
     }
@@ -55,7 +94,6 @@ pub fn apply_command_stream(
     }
 
     let mut offset = CommandStreamHeader::BYTES;
-    let mut outcome = CommandOutcome::default();
     for _ in 0..command_count {
         if offset + SimCommandHeader::BYTES > bytes.len() {
             return Err(CommandError::Truncated);
@@ -66,11 +104,10 @@ pub fn apply_command_stream(
         if payload_offset + payload_len > bytes.len() {
             return Err(CommandError::Truncated);
         }
-        let payload = &bytes[payload_offset..payload_offset + payload_len];
-        apply_one(driver, op, payload, &mut outcome)?;
+        visit(op, &bytes[payload_offset..payload_offset + payload_len])?;
         offset = payload_offset + align_up(payload_len, 8);
     }
-    Ok(outcome)
+    Ok(())
 }
 
 /// Applique une commande décodée, ou compte son report / son rejet.
@@ -127,8 +164,10 @@ fn apply_one(
             driver.apply_dimension_env(dimension, gravity, wind, fluid);
             outcome.applied += 1;
         }
-        // Connus mais reportés : CREATE_ASSEMBLY attend C-32, APPLY_FORCE continu
-        // attend son intégration à la boucle de forces.
+        // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
+        // par la frontière (ax-ffi, `create_assembly_payloads`), qui seule décode
+        // les colliders ; APPLY_FORCE continu attend la boucle de forces. Les deux
+        // sont comptés « reportés » du point de vue d'ax-physics.
         opcode::CREATE_ASSEMBLY | opcode::APPLY_FORCE => outcome.deferred += 1,
         // Inconnu : ignoré, comme les genres d'événements (ADR-113/114).
         _ => outcome.ignored += 1,

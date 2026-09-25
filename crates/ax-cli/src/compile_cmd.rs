@@ -6,6 +6,7 @@
 //! sa sortie.
 
 use crate::CliError;
+use ax_asset::collider::ColliderMode;
 use ax_asset::compile::{compile, CompileOptions};
 use ax_asset::import::{ImportLimits, SourceFormat};
 use ax_asset::optimize::LodOptions;
@@ -70,6 +71,9 @@ pub fn options(source_name: &str, source: &[u8], static_body: bool) -> CompileOp
         // dynamique. `--static-body` sert à compiler la géométrie du monde.
         dynamic_body: !static_body,
         lod: LodOptions::DEFAULT,
+        // La CLI ne réclame pas d'auto-collider : la génération suit les extras
+        // de node de la source (C-32).
+        collider_mode: ColliderMode::None,
     }
 }
 

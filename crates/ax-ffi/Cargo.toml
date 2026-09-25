@@ -29,6 +29,9 @@ missing_docs = "warn"
 ax-core.workspace = true
 # C-20..C-24 : la compilation d'un asset traverse la frontiere (IF-06).
 ax-asset.workspace = true
+# C-32 : le pont CREATE_ASSEMBLY construit des formes composées (Vec3/Quat) à
+# partir des colliders compilés avant de les remettre à ax-physics.
+ax-math.workspace = true
 # C-12 : le pool de jobs appartient a la session, comme les tampons.
 ax-jobs.workspace = true
 ax-model.workspace = true

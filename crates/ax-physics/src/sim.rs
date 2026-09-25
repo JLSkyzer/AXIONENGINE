@@ -10,11 +10,12 @@
 //! parcours est déterministe, donc l'ordre de `BodyState[]` et du lot
 //! d'événements l'est aussi (R-1020).
 
-use crate::body::BodyId;
+use crate::body::{BodyId, BodyKind, Shape};
 use crate::config::PhysicsConfig;
 use crate::forces::FluidEnvironment;
 use crate::world::PhysicsWorld;
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
+use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyState, PhysicsEvent};
 use std::collections::BTreeMap;
@@ -158,6 +159,36 @@ impl SimDriver {
         }
     }
 
+    /// Crée une assembly (`CREATE_ASSEMBLY`, IF-03) : un corps dans la dimension
+    /// (créée au besoin, R-610), à la pose monde `spawn` ramenée au repère local
+    /// par l'origine flottante, puis l'enregistre au routage.
+    ///
+    /// Rend le corps créé, ou `None` si la forme est refusée par le monde. La
+    /// forme est déjà convertie depuis les colliders compilés par la frontière
+    /// (ax-ffi), qui seule dépend d'`ax-asset`.
+    pub fn create_assembly(
+        &mut self,
+        dimension: u64,
+        handle: Handle,
+        spawn: WorldTransform,
+        kind: BodyKind,
+        shape: Shape,
+    ) -> Option<BodyId> {
+        let sim = self
+            .dimensions
+            .entry(dimension)
+            .or_insert_with(|| DimensionSim {
+                world: PhysicsWorld::new(PhysicsConfig::default()),
+                origin: FloatingOrigin::new(DVec3::ZERO),
+            });
+        let local = sim.origin.to_local(DVec3::from_array(spawn.position));
+        let rotation = Quat::from_array(spawn.rotation);
+        let body = sim.world.add_body(kind, local, rotation, shape).ok()?;
+        // L'emprunt de `sim` s'achève ici ; le routage réutilise `register_body`.
+        self.register_body(dimension, handle, body, 0, 0);
+        Some(body)
+    }
+
     /// Applique `REMOVE_ASSEMBLY` : retire le corps et son routage. Rend vrai s'il
     /// existait.
     pub fn apply_remove_assembly(&mut self, handle: Handle) -> bool {
@@ -233,6 +264,48 @@ mod tests {
         assert!(driver.world_mut(7).is_none());
         assert!(driver.remove_dimension(0));
         assert!(!driver.remove_dimension(0));
+    }
+
+    #[test]
+    fn create_assembly_cree_un_corps_route_a_sa_pose_monde() {
+        let mut driver = SimDriver::new();
+        let spawn = WorldTransform {
+            position: [10.0, 5.0, -3.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        };
+        let created = driver.create_assembly(
+            0,
+            Handle::new(1, 1),
+            spawn,
+            BodyKind::Dynamic,
+            Shape::Ball { radius: 0.5 },
+        );
+        assert!(created.is_some(), "le corps doit être créé");
+        assert_eq!(
+            driver.dimension_count(),
+            1,
+            "la dimension est créée au besoin"
+        );
+
+        // Le corps est identifié et routé : il apparaît dans l'état collecté, à sa
+        // pose monde (origine à zéro → local = monde).
+        driver.advance_all(1.0 / 60.0);
+        let states = driver.collect_states();
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].handle, Handle::new(1, 1));
+        assert!((states[0].position[0] - 10.0).abs() < 1.0e-3);
+        assert!((states[0].position[2] + 3.0).abs() < 1.0e-3);
+
+        // Routable : une impulsion adressée au handle atteint bien le corps.
+        driver.apply_impulse(
+            Handle::new(1, 1),
+            Vec3::new(5.0, 0.0, 0.0),
+            Vec3::ZERO,
+            false,
+        );
+        driver.advance_all(1.0 / 60.0);
+        let apres = driver.collect_states();
+        assert!(apres[0].lin_vel[0] > 0.0, "l'impulsion a bien été routée");
     }
 
     #[test]
