@@ -1486,7 +1486,7 @@ substituable sans changer rapier »).
                   `auto_capsule` / `auto_compound` (enfants, R-621) → aucun.
                   `auto_convex` marqué pour V-HACD (étape C-23, différée). Extras
                   glTF : lire forme/densité/material/no_refit.
-            - [~] **T3 — PHYS + pont runtime** `[EFFORT MAX]`, **ADR-115** (proposé,
+            - [~] **T3 — PHYS + pont runtime** `[EFFORT MAX]`, **ADR-115** (ratifié,
                   à ratifier) : sérialiser la section `PHYS` (header `collider_count`
                   + `ColliderDesc[]`, test de disposition, `COMPILER_VERSION++`) ;
                   lecteur runtime ; conversion `ColliderShape → ax_physics::Shape`
@@ -1494,6 +1494,14 @@ substituable sans changer rapier »).
                   (Rust FFI + Java). Masse/COM : calculées par rapier depuis les
                   densités (R-622) ; surcharge déclarée via CREATE_ASSEMBLY. Gèle
                   PHYS **avec** son consommateur. Débloque le test physique en jeu.
+                  Reprise (session neuve), étapes ordonnées, chacune buildée+testée :
+                  1) `encode_colliders` + écriture `PHYS` dans `write_container`
+                     (compile.rs) + test de disposition ; `COMPILER_VERSION` 5→6.
+                  2) lecteur `PHYS` (a3d/read) + revalidation C-22 au chargement.
+                  3) `ColliderShape → ax_physics::Shape` (Box/Ball ; indexées
+                     refusées) dans un pont (ax-ffi ou ax-scene).
+                  4) `CREATE_ASSEMBLY` : lire PHYS → add_body ; masse/COM déclarés
+                     surchargent rapier. 5) test physique en jeu (spawn→tick→bouge).
             - Différé (avec leur consommateur/producteur) : masse/COM pré-calculée +
               `BodyDesc` ; REFITTABLE/NO_REFIT (R-623, dépend des parts/régions) ;
               annexes PHYS convex/compound + V-HACD `auto_convex` (étapes 8-9 de C-23,
