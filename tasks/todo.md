@@ -1486,20 +1486,18 @@ substituable sans changer rapier »).
                   `auto_capsule` / `auto_compound` (enfants, R-621) → aucun.
                   `auto_convex` marqué pour V-HACD (étape C-23, différée). Extras
                   glTF : lire forme/densité/material/no_refit.
-            - [ ] **T3 — masse/COM** (R-622) `[gel → ADR]` : masse déclarée
-                  prioritaire, sinon calculée depuis les densités ; COM calculable
-                  ou déclarable. Où stocker le COM (ni ColliderDesc ni PartDesc
-                  n'en ont) → ADR + ratification avant de figer.
-            - [ ] **T4 — REFITTABLE/NO_REFIT** (R-623) : REFITTABLE par défaut sur
-                  un collider de body dynamique dont la part porte ≥1 région ;
-                  NO_REFIT auteur honoré.
-            - [ ] **T5 — layout PHYS + sérialisation** `[gel → ADR]` : empaquetage
-                  figé de `ColliderDesc[]` + tableaux annexes, écrit dans
-                  `write_container`, test de disposition, ADR + ratification,
-                  `COMPILER_VERSION++` (invalide le cache, R-892).
-            - Différé : V-HACD `auto_convex` + points d'enveloppe (étapes 8-9 de
-              C-23, ADR-108) ; pont runtime `ColliderShape→Shape` + CREATE_ASSEMBLY
-              (intégration M3, débloque le test physique en jeu).
+            - [~] **T3 — PHYS + pont runtime** `[EFFORT MAX]`, **ADR-115** (proposé,
+                  à ratifier) : sérialiser la section `PHYS` (header `collider_count`
+                  + `ColliderDesc[]`, test de disposition, `COMPILER_VERSION++`) ;
+                  lecteur runtime ; conversion `ColliderShape → ax_physics::Shape`
+                  (Box/Ball ; formes indexées refusées) ; `CREATE_ASSEMBLY → add_body`
+                  (Rust FFI + Java). Masse/COM : calculées par rapier depuis les
+                  densités (R-622) ; surcharge déclarée via CREATE_ASSEMBLY. Gèle
+                  PHYS **avec** son consommateur. Débloque le test physique en jeu.
+            - Différé (avec leur consommateur/producteur) : masse/COM pré-calculée +
+              `BodyDesc` ; REFITTABLE/NO_REFIT (R-623, dépend des parts/régions) ;
+              annexes PHYS convex/compound + V-HACD `auto_convex` (étapes 8-9 de C-23,
+              ADR-108) ; `auto_capsule` ; densité/no_refit des extras.
 
 ## Jalons suivants
 
