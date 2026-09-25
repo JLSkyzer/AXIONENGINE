@@ -1501,10 +1501,18 @@ substituable sans changer rapier »).
                   3) ✅ `ColliderShape → ax_physics::Shape` (Box/Ball ; indexées
                      refusées) dans un pont (ax-ffi ou ax-scene).
                   4) `CREATE_ASSEMBLY` : lire PHYS → add_body ; masse/COM déclarés
-                     ⚠ à trancher d'abord : comment le natif obtient les
-                     colliders d'un asset (Java décode PHYS et les envoie dans
-                     le payload SimIn, vs le natif charge/cache l'A3D par AssetId)
-                     — décision structurante, possible ADR.
+                     **Décision : Option A** (Java envoie PHYS). Pièces :
+                     a) `CreateAssembly` (opcode 0, ADR-114) : payload = en-tête
+                        repr(C) {handle, dimension, spawn WorldTransform, body_kind}
+                        + octets PHYS à la suite. Struct + test dans ax-model/commands.
+                     b) **traité dans ax-ffi** (seul à dépendre d'ax-asset ET
+                        ax-physics) : décode PHYS (`decode_colliders`) → convertit
+                        (`Shape::from_collider_shape`) → 1 corps (compound si N>1) →
+                        `SimDriver::register_body`. NB : le parseur SimIn d'ax-physics
+                        ne peut pas (pas de dep ax-asset).
+                     c) Java : localiser la section PHYS dans l'A3D (petit lecteur
+                        d'en-tête/table de sections) + envoyer via SimIn.
+                     d) Test Rust d'intégration (PHYS → corps dans le SimDriver).
                      surchargent rapier. 5) test physique en jeu (spawn→tick→bouge).
             - Différé (avec leur consommateur/producteur) : masse/COM pré-calculée +
               `BodyDesc` ; REFITTABLE/NO_REFIT (R-623, dépend des parts/régions) ;
