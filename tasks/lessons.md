@@ -706,3 +706,29 @@ une CI verte.
 cause réelle (`gh run view <id>`) avant de conclure : ici « job not started —
 account payments failed / spending limit », soit un problème de compte, pas de
 code.
+
+
+## 2026-09-25 | Le bootstrap de `gradlew` réclame un JAVA_HOME, même en toolchain auto
+
+**Ce qui a coûté.** `./gradlew` (Bash comme PowerShell) échoue d'emblée :
+« JAVA_HOME is not set and no 'java' command could be found ». Aucun JDK n'est
+sur le PATH de cette machine, et le projet s'appuie sur l'auto-provisioning de
+toolchain Gradle — mais ce mécanisme sert la *compilation*, pas le lancement de
+la JVM Gradle elle-même, qui a besoin d'un JDK pour démarrer.
+
+**Règle.** Avant tout `gradlew` ici, pointer JAVA_HOME vers le JDK 17 que Gradle
+a déjà provisionné, sous `~/.gradle/jdks/eclipse_adoptium-17-amd64-windows/`
+(dossier `jdk-17.0.20.1+1`). En PowerShell : `$env:JAVA_HOME = "<...ce JDK...>"`
+puis `.\gradlew.bat`. Un JDK 21 provisionné est aussi présent ; Forge 1.20.1
+veut du 17.
+
+## 2026-09-25 | Message de commit multi-ligne accentué : `-F`, jamais un here-string PowerShell
+
+**Ce qui a coûté.** `git commit -m @'...'@` (here-string PowerShell) passé à
+l'outil Bash, qui est du POSIX sh : la syntaxe n'existe pas, le message a été
+découpé sur les espaces (« pathspec 'validée' did not match ») et les
+parenthèses ont cassé la ligne.
+
+**Règle.** Pour un message multi-ligne, a fortiori en français, l'écrire dans un
+fichier (scratchpad) et `git commit -F <fichier>`. Le heredoc Bash `<<'EOF'`
+convient aussi ; `-F` reste le plus sûr avec accents et parenthèses.
