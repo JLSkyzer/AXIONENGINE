@@ -1495,9 +1495,9 @@ substituable sans changer rapier »).
                   densités (R-622) ; surcharge déclarée via CREATE_ASSEMBLY. Gèle
                   PHYS **avec** son consommateur. Débloque le test physique en jeu.
                   Reprise (session neuve), étapes ordonnées, chacune buildée+testée :
-                  1) `encode_colliders` + écriture `PHYS` dans `write_container`
+                  1) ✅ `encode_colliders` + écriture `PHYS` dans `write_container`
                      (compile.rs) + test de disposition ; `COMPILER_VERSION` 5→6.
-                  2) lecteur `PHYS` (a3d/read) + revalidation C-22 au chargement.
+                  2) ✅ lecteur `PHYS` (`decode_colliders`) (a3d/read) + revalidation C-22 au chargement.
                   3) `ColliderShape → ax_physics::Shape` (Box/Ball ; indexées
                      refusées) dans un pont (ax-ffi ou ax-scene).
                   4) `CREATE_ASSEMBLY` : lire PHYS → add_body ; masse/COM déclarés

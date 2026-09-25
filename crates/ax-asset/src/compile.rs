@@ -15,7 +15,7 @@
 //! ici, on compile ce qu'on nous donne. Les mélanger rendrait la compilation
 //! intestable sans un gestionnaire de ressources autour.
 
-use crate::a3d::{encode_nodes, A3dWriter, SectionTag};
+use crate::a3d::{encode_colliders, encode_nodes, A3dWriter, SectionTag};
 use crate::collider::{build_colliders, ColliderMode};
 use crate::import::{
     import_gltf, import_obj, import_stl, ImportError, ImportLimits, ImportedAsset, SourceFormat,
@@ -37,8 +37,9 @@ use core::fmt;
 /// tranche B (tangentes MikkTSpace, tangentes glTF lues, cache de sommets) ;
 /// 4 — C-23 tranche C (LOD et section `LODM`), nodes sans annotation visibles
 /// à tous les niveaux ; 5 — section `NODE` avec sa table des noms et ses nodes
-/// sur 80 octets (ADR-110), empreintes de nom des nodes OBJ et STL.
-pub const COMPILER_VERSION: u32 = 5;
+/// sur 80 octets (ADR-110), empreintes de nom des nodes OBJ et STL ; 6 — section
+/// `PHYS` (colliders C-32, ADR-115).
+pub const COMPILER_VERSION: u32 = 6;
 
 /// Ce qui empêche de compiler un asset.
 #[derive(Debug, Clone, PartialEq)]
@@ -288,6 +289,13 @@ fn write_container(
             .section(SectionTag::LODM, &lods.to_bytes())
             .map_err(CompileError::Container)?;
     }
+    if !asset.colliders.is_empty() {
+        // Section `PHYS` : les colliders du runtime (C-32, ADR-115).
+        let phys = encode_colliders(&asset.colliders).map_err(CompileError::Container)?;
+        writer
+            .section(SectionTag::PHYS, &phys)
+            .map_err(CompileError::Container)?;
+    }
 
     writer.finish().map_err(CompileError::Container)
 }
@@ -521,6 +529,42 @@ f 2 7 3
             compiled.collider_count, 0,
             "aucune source ne réclame de collider"
         );
+    }
+
+    #[test]
+    fn t311_les_colliders_voyagent_dans_la_section_phys() {
+        // Le collider auto-généré traverse le conteneur : la section PHYS se
+        // relit et redonne une boîte (ADR-115).
+        let options = CompileOptions {
+            collider_mode: ColliderMode::AutoBox,
+            ..OPTIONS
+        };
+        let compiled = compile(CUBE_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| None)
+            .expect("compilation refusée");
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+        let phys = file
+            .section(SectionTag::PHYS)
+            .expect("PHYS")
+            .expect("section absente");
+        let colliders = crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
+        assert_eq!(colliders.len(), 1);
+        assert!(
+            matches!(
+                colliders[0].shape,
+                ax_model::dm::physics::ColliderShape::Box { .. }
+            ),
+            "une boîte englobante"
+        );
+    }
+
+    #[test]
+    fn t311_sans_collider_pas_de_section_phys() {
+        // Une section absente ne dit rien : c'est ce qu'on veut d'un asset sans
+        // collider, plutôt qu'une section vide.
+        let compiled = compile(CUBE_OBJ.as_bytes(), SourceFormat::Obj, &OPTIONS, |_| None)
+            .expect("compilation refusée");
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+        assert!(!file.has(SectionTag::PHYS));
     }
 
     fn stl_triangle() -> Vec<u8> {
