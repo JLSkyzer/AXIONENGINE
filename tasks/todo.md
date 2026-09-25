@@ -1486,7 +1486,7 @@ substituable sans changer rapier »).
                   `auto_capsule` / `auto_compound` (enfants, R-621) → aucun.
                   `auto_convex` marqué pour V-HACD (étape C-23, différée). Extras
                   glTF : lire forme/densité/material/no_refit.
-            - [~] **T3 — PHYS + pont runtime** `[EFFORT MAX]`, **ADR-115** (ratifié,
+            - [x] **T3 — PHYS + pont runtime** `[EFFORT MAX]`, **ADR-115** (ratifié,
                   à ratifier) : sérialiser la section `PHYS` (header `collider_count`
                   + `ColliderDesc[]`, test de disposition, `COMPILER_VERSION++`) ;
                   lecteur runtime ; conversion `ColliderShape → ax_physics::Shape`
@@ -1500,7 +1500,7 @@ substituable sans changer rapier »).
                   2) ✅ lecteur `PHYS` (`decode_colliders`) (a3d/read) + revalidation C-22 au chargement.
                   3) ✅ `ColliderShape → ax_physics::Shape` (Box/Ball ; indexées
                      refusées) dans un pont (ax-ffi ou ax-scene).
-                  4) `CREATE_ASSEMBLY` : lire PHYS → add_body ; masse/COM déclarés
+                  4) ✅ `CREATE_ASSEMBLY` : lire PHYS → add_body ; masse/COM déclarés
                      **Décision : Option A** (Java envoie PHYS). Pièces :
                      a) ✅ `CreateAssembly` (opcode 0, ADR-114) : payload = en-tête
                         repr(C) {handle, dimension, spawn WorldTransform, body_kind}
@@ -1513,7 +1513,7 @@ substituable sans changer rapier »).
                      c) ✅ Java : localiser la section PHYS dans l'A3D (petit lecteur
                         d'en-tête/table de sections) + envoyer via SimIn.
                      d) ✅ Test Rust d'intégration (PHYS → corps dans le SimDriver).
-                     surchargent rapier. 5) test physique en jeu (spawn→tick→bouge).
+                     surchargent rapier. 5) ✅ test physique en jeu (spawn→tick→bouge).
             - Différé (avec leur consommateur/producteur) : masse/COM pré-calculée +
               `BodyDesc` ; REFITTABLE/NO_REFIT (R-623, dépend des parts/régions) ;
               annexes PHYS convex/compound + V-HACD `auto_convex` (étapes 8-9 de C-23,

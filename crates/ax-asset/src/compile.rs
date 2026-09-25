@@ -557,6 +557,58 @@ f 2 7 3
         );
     }
 
+    /// glTF minimal dont l'unique node porte `role=collider`, `shape=auto_box`.
+    /// Trois sommets couvrant l'AABB [0,0,0]–[1,1,1] (non dégénéré sur les trois
+    /// axes, donc une boîte valide). Buffer en base64 : positions f32 puis indices
+    /// u16.
+    const GLTF_COLLIDER: &str = concat!(
+        r#"{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"#,
+        r#""nodes":[{"name":"collideur","mesh":0,"extras":{"axion":"#,
+        r#"{"role":"collider","shape":"auto_box"}}}],"#,
+        r#""meshes":[{"name":"boite","primitives":[{"attributes":{"POSITION":0},"indices":1}]}],"#,
+        r#""accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","#,
+        r#""min":[0.0,0.0,0.0],"max":[1.0,1.0,1.0]},"#,
+        r#"{"bufferView":1,"componentType":5123,"count":3,"type":"SCALAR"}],"#,
+        r#""bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},"#,
+        r#"{"buffer":0,"byteOffset":36,"byteLength":6}],"#,
+        r#""buffers":[{"byteLength":42,"uri":"data:application/octet-stream;base64,"#,
+        "AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AAABAAIA",
+        r#""}]}"#,
+    );
+
+    #[test]
+    fn t311_un_node_collider_gltf_produit_une_section_phys() {
+        // Le chemin authoré (R-620, priorité 1) : un node `role=collider` de la
+        // source produit sa boîte, sérialisée dans PHYS et relisible. C'est ce que
+        // le runtime consommera (Option A, ADR-115).
+        let compiled = compile(
+            GLTF_COLLIDER.as_bytes(),
+            SourceFormat::Gltf,
+            &OPTIONS,
+            |_| None,
+        )
+        .expect("compilation refusée");
+        assert_eq!(
+            compiled.collider_count, 1,
+            "le node collider produit une boîte"
+        );
+
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+        let phys = file
+            .section(SectionTag::PHYS)
+            .expect("PHYS")
+            .expect("section absente");
+        let colliders = crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
+        assert_eq!(colliders.len(), 1);
+        let ax_model::dm::physics::ColliderShape::Box { half_extents } = colliders[0].shape else {
+            panic!("attendu une boîte, obtenu {:?}", colliders[0].shape);
+        };
+        // AABB [0,1]³ → demi-dimensions [0.5, 0.5, 0.5].
+        for extent in half_extents {
+            assert!((extent - 0.5).abs() < 1.0e-6, "demi-dimension {extent}");
+        }
+    }
+
     #[test]
     fn t311_sans_collider_pas_de_section_phys() {
         // Une section absente ne dit rien : c'est ce qu'on veut d'un asset sans

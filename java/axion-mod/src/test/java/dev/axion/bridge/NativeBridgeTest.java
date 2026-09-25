@@ -34,6 +34,27 @@ import org.junit.jupiter.api.io.TempDir;
 class NativeBridgeTest {
 
     /**
+     * glTF minimal dont l'unique node porte {@code role=collider},
+     * {@code shape=auto_box} : trois sommets couvrant l'AABB [0,0,0]–[1,1,1], donc
+     * une boîte valide. Compilé au runtime, il produit une section {@code PHYS}
+     * (vérifié aussi côté Rust, {@code compile.rs}). Sert à prouver CREATE_ASSEMBLY
+     * de bout en bout (C-32, Option A, ADR-115).
+     */
+    private static final String GLTF_COLLIDER =
+            "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
+                    + "\"nodes\":[{\"name\":\"collideur\",\"mesh\":0,\"extras\":{\"axion\":"
+                    + "{\"role\":\"collider\",\"shape\":\"auto_box\"}}}],"
+                    + "\"meshes\":[{\"name\":\"boite\",\"primitives\":[{\"attributes\":"
+                    + "{\"POSITION\":0},\"indices\":1}]}],"
+                    + "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
+                    + "\"type\":\"VEC3\",\"min\":[0.0,0.0,0.0],\"max\":[1.0,1.0,1.0]},"
+                    + "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+                    + "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+                    + "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}],"
+                    + "\"buffers\":[{\"byteLength\":42,\"uri\":\"data:application/octet-stream;base64,"
+                    + "AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AAABAAIA\"}]}";
+
+    /**
      * Repertoire d'extraction, jamais nettoye.
      *
      * <p>Une bibliotheque chargee par {@code System.load} reste verrouillee par
@@ -218,8 +239,8 @@ class NativeBridgeTest {
         dev.axion.physics.NativeSimulation simulation =
                 new dev.axion.physics.NativeSimulation(reprise);
 
-        // Un tick à vide : aucune commande, aucun corps (CREATE_ASSEMBLY attend
-        // C-32). Le cycle avance et récolte un état vide.
+        // Un tick à vide : aucune commande, aucun corps encore créé. Le cycle
+        // avance et récolte un état vide.
         dev.axion.physics.CollectResult vide =
                 simulation.tick(1L, new dev.axion.physics.SimCommandStream(), 0L);
         assertTrue(vide.ok(), () -> "collect à vide refusé, code " + vide.code());
@@ -243,6 +264,73 @@ class NativeBridgeTest {
         dev.axion.physics.CollectResult apresCommande = simulation.tick(2L, commandes, 0L);
         assertTrue(apresCommande.ok(), () -> "collect après commande refusé, code " + apresCommande.code());
         assertEquals(0, apresCommande.stateCount(), "aucun corps créé par SET_DIMENSION_ENV");
+
+        // T-310/T-311 : CREATE_ASSEMBLY de bout en bout (C-32, Option A, ADR-115).
+        // Un glTF à node collider est compilé, Java localise sa section PHYS et
+        // l'envoie dans une commande CREATE_ASSEMBLY ; le natif crée un corps
+        // dynamique qui, ticks suivants, tombe sous la gravité. C'est le chemin
+        // complet colliders compilés → corps qui bouge en jeu.
+        byte[] gltf = GLTF_COLLIDER.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        int jobCollider = compilateur.submit(0x4343L, dev.axion.asset.SourceFormats.GLTF, gltf);
+        assertTrue(jobCollider > 0, () -> "compilation du glTF collider refusée, code " + jobCollider);
+
+        dev.axion.asset.AssetCompiler.CompileStatus etatCollider = null;
+        for (int essai = 0; essai < 100_000; essai++) {
+            etatCollider = compilateur.poll(jobCollider);
+            if (etatCollider.state() != dev.axion.asset.AssetState.COMPILING) {
+                break;
+            }
+            Thread.onSpinWait();
+        }
+        assertEquals(
+                dev.axion.asset.AssetState.COMPILED,
+                etatCollider.state(),
+                () -> "compilation du glTF collider échouée");
+        byte[] a3d = etatCollider.payload();
+
+        // Les tampons de compilation sont relâchés (R-322), avant d'ouvrir un cycle.
+        assertEquals(
+                NativeBridge.OK,
+                NativeBridge.release(reprise, BufferKinds.ASSET_IN, lireGeneration(reprise, BufferKinds.ASSET_IN)));
+        assertEquals(
+                NativeBridge.OK,
+                NativeBridge.release(reprise, BufferKinds.ASSET_OUT, lireGeneration(reprise, BufferKinds.ASSET_OUT)));
+
+        // Java détient l'A3D et en extrait la section PHYS (chemin de spawn réel).
+        byte[] phys = dev.axion.asset.A3dSections.section(a3d, "PHYS");
+        assertNotNull(phys, "section PHYS absente de l'A3D compilé");
+
+        // Spawn d'un corps dynamique haut dans la dimension 0.
+        dev.axion.physics.SimCommandStream spawn = new dev.axion.physics.SimCommandStream()
+                .createAssembly(
+                        1,
+                        1,
+                        0L,
+                        new double[] {0.0, 100.0, 0.0},
+                        new float[] {0.0f, 0.0f, 0.0f, 1.0f},
+                        dev.axion.physics.SimCommandStream.BODY_DYNAMIC,
+                        phys);
+        dev.axion.physics.CollectResult cree = simulation.tick(3L, spawn, 0L);
+        assertTrue(cree.ok(), () -> "collect après CREATE_ASSEMBLY refusé, code " + cree.code());
+        assertEquals(1, cree.stateCount(), "un corps créé depuis la section PHYS");
+        dev.axion.physics.BodyState corps = cree.bodies().get(0);
+        assertEquals(1, corps.handleIndex(), "le corps est routé sur son handle");
+        assertEquals(1, corps.handleGeneration());
+        double yDepart = corps.position()[1];
+
+        // Ticks à vide : le corps tombe sous la gravité par défaut (−9,81 m/s²).
+        double yCourant = yDepart;
+        for (int t = 0; t < 30; t++) {
+            dev.axion.physics.CollectResult pas =
+                    simulation.tick(4L + t, new dev.axion.physics.SimCommandStream(), 0L);
+            assertTrue(pas.ok(), () -> "collect refusé pendant la chute, code " + pas.code());
+            assertEquals(1, pas.stateCount(), "le corps persiste d'un tick à l'autre");
+            yCourant = pas.bodies().get(0).position()[1];
+        }
+        double yFinal = yCourant;
+        assertTrue(
+                yFinal < yDepart - 0.1,
+                () -> "le corps dynamique doit tomber : y " + yDepart + " -> " + yFinal);
 
         // Annuler après un cycle clos est inoffensif.
         assertEquals(NativeBridge.OK, simulation.cancel());
