@@ -149,10 +149,12 @@ rapier3d = { version = "0.35", default-features = false, features = [
 
 # C-32 : décomposition convexe (VHACD) à la compilation d'asset. Même `parry3d`
 # que celui de `rapier3d` (version et features unifiées, dont `enhanced-determinism`).
+# `alloc` porte le module `transformation` (VHACD).
 parry3d = { version = "0.30", default-features = false, features = [
     "dim3",
     "f32",
     "std",
+    "alloc",
 ] }
 
 # Crates internes.

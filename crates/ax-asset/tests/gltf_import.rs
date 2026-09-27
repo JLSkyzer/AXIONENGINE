@@ -609,18 +609,16 @@ fn t228_les_annotations_axion_sont_lues() {
         "un collider ne doit pas être rendu"
     );
     // Le node collider ne déclare pas de forme : le défaut du CDC est
-    // `auto_convex`, dont la décomposition (C-23) n'existe pas encore. C-32
-    // avertit et n'attache pas de collider — jamais un silence (R-912).
-    assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
-    assert!(
-        report.warnings[0].contains("auto_convex"),
-        "{:?}",
-        report.warnings
+    // `auto_convex`. La décomposition VHACD (C-32, ADR-108) existe désormais — une
+    // requête est émise à l'import, sans avertissement ; la décomposition elle-même
+    // a lieu à la compilation, pas ici.
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+    assert_eq!(
+        asset.collider_requests.len(),
+        1,
+        "une requête auto_convex émise"
     );
-    assert!(
-        asset.collider_requests.is_empty(),
-        "forme non générée : aucune requête"
-    );
+    assert_eq!(asset.collider_requests[0].mode, ColliderMode::AutoConvex);
 }
 
 #[test]

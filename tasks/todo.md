@@ -1519,13 +1519,13 @@ substituable sans changer rapier »).
               en découlent — `BodyCollider`, `add_assembly`). Reste **différé** (avec
               son producteur) : la voie **déclarée** masse/COM pré-calculée + `BodyDesc`
               (DM-08, gel), qui attend le câblage des definitions physiques ; REFITTABLE/NO_REFIT (R-623, dépend des parts/régions) ;
-              annexes PHYS `ConvexHull` (producteur `convex` : sommets du mesh →
-              enveloppe, R-161) et `Compound` (producteur `auto_compound`, R-621 :
-              boîtes des nodes enfants regroupées) **faites** ; reste la
-              **décomposition V-HACD `auto_convex`** (concave → convexes, étapes 8-9
-              de C-23, ADR-108). `auto_capsule` (capsule Y de l'AABB) et la lecture
-              **densité/no_refit des extras** (R-622/R-623) sont **faites** ; restent
-              la masse/COM **déclarée** (definitions) et `REFITTABLE` (déformation M6).
+              **toutes les formes de collider sont faites** : `auto_box`, `auto_sphere`,
+              `auto_capsule`, `convex`, `auto_compound`, et la **décomposition VHACD
+              `auto_convex`** (parry3d + enhanced-determinism, ADR-108/ADR-116 ; bornes
+              32/64, repli enveloppe globale) ; + `density`/`no_refit` des extras
+              (R-622/R-623). Restent, différés avec leur dépendance : la masse/COM
+              **déclarée** (`BodyDesc`/definitions) et `REFITTABLE` par défaut
+              (déformation M6) ; la résolution VHACD à mesurer en M3 (ADR-108).
 
 ## Jalons suivants
 

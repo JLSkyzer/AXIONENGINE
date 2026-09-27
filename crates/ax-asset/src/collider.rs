@@ -32,6 +32,8 @@ use ax_model::dm::physics::{
     collider_flags, ColliderDesc, ColliderShape, CONVEX_MAX_POINTS, CONVEX_MIN_POINTS,
 };
 use ax_model::dm::scene::{NodeDesc, NONE_U32};
+use parry3d::math::Vector;
+use parry3d::transformation::vhacd::{VHACDParameters, VHACD};
 
 /// Densité par défaut d'un collider auto-généré, en kg/m³.
 ///
@@ -44,6 +46,14 @@ const AUTO_COLLIDER_DENSITY: f32 = 1000.0;
 /// Nombre maximal de formes filles d'un composé (§10.3, R-621) : au-delà,
 /// `auto_compound` avertit et n'en regroupe pas davantage.
 const MAX_COMPOUND_PARTS: usize = 64;
+
+/// Nombre maximal d'enveloppes d'une décomposition convexe (R-551, ADR-108).
+/// Au-delà, repli sur l'enveloppe globale.
+const DECOMP_MAX_HULLS: u32 = 32;
+
+/// Nombre maximal de points par enveloppe d'une décomposition (R-551). Une
+/// enveloppe plus dense fait replier sur l'enveloppe globale (ADR-108).
+const DECOMP_MAX_HULL_VERTICES: usize = 64;
 
 /// Groupe et masque par défaut : membre de tous les groupes, entre en collision
 /// avec tous (comme `CollisionGroups::ALL` au runtime). Le filtrage fin
@@ -88,6 +98,13 @@ pub enum ColliderMode {
     /// contribue une boîte englobante de son mesh, placée à sa pose, réunies en un
     /// seul collider `Compound` (une pièce rigide, un matériau).
     Compound,
+    /// Décomposition convexe automatique du mesh (`auto_convex`, R-162, R-551).
+    ///
+    /// Le mesh concave est décomposé en un composé d'enveloppes convexes (VHACD,
+    /// `parry3d`, ADR-108) à la compilation. Bornes fixes `DECOMP_MAX_HULLS` /
+    /// `DECOMP_MAX_HULL_VERTICES` ; repli sur l'enveloppe convexe globale si la
+    /// décomposition ne tient pas dans ses bornes (R-551).
+    AutoConvex,
 }
 
 impl ColliderMode {
@@ -106,6 +123,7 @@ impl ColliderMode {
             "auto_capsule" => Some(ColliderMode::AutoCapsule),
             "convex" => Some(ColliderMode::Convex),
             "auto_compound" => Some(ColliderMode::Compound),
+            "auto_convex" => Some(ColliderMode::AutoConvex),
             _ => None,
         }
     }
@@ -156,12 +174,13 @@ pub fn build_colliders(
     nodes: &mut [NodeDesc],
     meshes: &[MeshDesc],
     vertices: &[Vertex],
+    indices: &[u32],
     requests: &[ColliderRequest],
     definition_mode: ColliderMode,
     bounds: Option<Aabb>,
 ) -> ColliderBuild {
     if !requests.is_empty() {
-        return per_node_colliders(nodes, meshes, vertices, requests);
+        return per_node_colliders(nodes, meshes, vertices, indices, requests);
     }
     // Par definition : englobant de l'asset. `Convex` n'a pas de source à ce
     // niveau (il tire ses points d'un mesh de node), aussi n'y est-il pas produit.
@@ -184,6 +203,7 @@ fn per_node_colliders(
     nodes: &mut [NodeDesc],
     meshes: &[MeshDesc],
     vertices: &[Vertex],
+    indices: &[u32],
     requests: &[ColliderRequest],
 ) -> ColliderBuild {
     let mut build = ColliderBuild::default();
@@ -234,6 +254,30 @@ fn per_node_colliders(
                 ColliderMode::Convex => {
                     match convex_from_mesh(mesh, vertices, &mut build.hull_points) {
                         Ok(collider) => collider,
+                        Err(reason) => {
+                            build
+                                .warnings
+                                .push(format!("node collider {} : {reason}, ignoré", request.node));
+                            continue;
+                        }
+                    }
+                }
+                ColliderMode::AutoConvex => {
+                    match convex_decomposition(
+                        mesh,
+                        vertices,
+                        indices,
+                        &mut build.hull_points,
+                        &mut build.compound_children,
+                    ) {
+                        Ok((collider, fallback)) => {
+                            if let Some(reason) = fallback {
+                                build
+                                    .warnings
+                                    .push(format!("node collider {} : {reason}", request.node));
+                            }
+                            collider
+                        }
                         Err(reason) => {
                             build
                                 .warnings
@@ -304,6 +348,121 @@ fn convex_from_mesh(
         ColliderShape::ConvexHull {
             points_offset: offset,
             points_count: point_count as u32,
+        },
+        [0.0; 3],
+    ))
+}
+
+/// Décompose le mesh d'un node `shape: auto_convex` en enveloppes convexes (VHACD,
+/// `parry3d`, ADR-108), à la compilation. Rend `(collider, repli)` : `collider` est
+/// un `Compound` de `ConvexHull` (plusieurs pièces) ou une `ConvexHull` unique (mesh
+/// déjà quasi convexe) ; `repli`, s'il est `Some`, porte l'avertissement du repli
+/// sur l'enveloppe convexe globale quand la décomposition n'a pas tenu dans ses
+/// bornes (R-551).
+///
+/// Les indices sont **locaux au mesh** (0-based, cf. `import`) : ils indexent
+/// directement les sommets du mesh, sans décalage.
+///
+/// # Errors
+/// Géométrie inexploitable : sommets/indices hors du tampon, mesh trop maigre, ou
+/// enveloppe globale de repli elle-même impossible.
+fn convex_decomposition(
+    mesh: &MeshDesc,
+    vertices: &[Vertex],
+    indices: &[u32],
+    points: &mut Vec<[f32; 3]>,
+    children: &mut Vec<ColliderDesc>,
+) -> Result<(ColliderDesc, Option<String>), String> {
+    let vstart = mesh.vertex_offset as usize;
+    let Some(verts) = vertices.get(vstart..vstart.saturating_add(mesh.vertex_count as usize))
+    else {
+        return Err("sommets du mesh hors du tampon".to_owned());
+    };
+    let istart = mesh.index_offset as usize;
+    let Some(idx) = indices.get(istart..istart.saturating_add(mesh.index_count as usize)) else {
+        return Err("indices du mesh hors du tampon".to_owned());
+    };
+    if verts.len() < CONVEX_MIN_POINTS as usize || idx.len() < 3 {
+        return Err("mesh trop maigre pour une décomposition".to_owned());
+    }
+
+    let cloud: Vec<Vector> = verts
+        .iter()
+        .map(|v| Vector::new(v.position[0], v.position[1], v.position[2]))
+        .collect();
+    let mut tris: Vec<[u32; 3]> = Vec::with_capacity(idx.len() / 3);
+    for triangle in idx.chunks_exact(3) {
+        if triangle.iter().any(|i| *i as usize >= verts.len()) {
+            return Err("indice de triangle hors du mesh".to_owned());
+        }
+        tris.push([triangle[0], triangle[1], triangle[2]]);
+    }
+
+    // Bornes fixes d'ADR-108 (R-551) ; la résolution reste le défaut de parry (64),
+    // à ajuster en M3 sur mesures — jamais un chiffre inventé ici.
+    let params = VHACDParameters {
+        max_convex_hulls: DECOMP_MAX_HULLS,
+        ..VHACDParameters::default()
+    };
+    let decomposition = VHACD::decompose(&params, &cloud, &tris, false);
+
+    // Enveloppes exploitables : 4..=64 points (R-161 borné par R-551).
+    let valid: Vec<Vec<[f32; 3]>> = decomposition
+        .compute_convex_hulls(params.convex_hull_downsampling)
+        .into_iter()
+        .map(|(hull, _)| {
+            hull.into_iter()
+                .map(|v| [v.x, v.y, v.z])
+                .collect::<Vec<_>>()
+        })
+        .filter(|hull| {
+            hull.len() >= CONVEX_MIN_POINTS as usize && hull.len() <= DECOMP_MAX_HULL_VERTICES
+        })
+        .collect();
+
+    // Repli (R-551, ADR-108) : rien d'exploitable ou trop d'enveloppes → l'enveloppe
+    // convexe globale du mesh.
+    if valid.is_empty() || valid.len() > DECOMP_MAX_HULLS as usize {
+        let collider = convex_from_mesh(mesh, vertices, points)?;
+        return Ok((
+            collider,
+            Some("décomposition hors bornes, repli sur l'enveloppe globale".to_owned()),
+        ));
+    }
+
+    // Une seule enveloppe : un `ConvexHull` simple.
+    if let [hull] = valid.as_slice() {
+        return Ok((push_hull(hull, points)?, None));
+    }
+
+    // Plusieurs enveloppes : un `Compound` dont chaque fille est une `ConvexHull`.
+    let child_offset =
+        u32::try_from(children.len()).map_err(|_| "pool d'enfants saturé".to_owned())?;
+    for hull in &valid {
+        let child = push_hull(hull, points)?;
+        children.push(child);
+    }
+    Ok((
+        primitive_collider(
+            ColliderShape::Compound {
+                children_offset: child_offset,
+                children_count: valid.len() as u32,
+            },
+            [0.0; 3],
+        ),
+        None,
+    ))
+}
+
+/// Ajoute une enveloppe au pool de points et rend le `ColliderDesc` `ConvexHull`
+/// qui la référence.
+fn push_hull(hull: &[[f32; 3]], points: &mut Vec<[f32; 3]>) -> Result<ColliderDesc, String> {
+    let offset = u32::try_from(points.len()).map_err(|_| "pool de points saturé".to_owned())?;
+    points.extend_from_slice(hull);
+    Ok(primitive_collider(
+        ColliderShape::ConvexHull {
+            points_offset: offset,
+            points_count: hull.len() as u32,
         },
         [0.0; 3],
     ))
@@ -466,7 +625,7 @@ mod tests {
 
     /// Colliders produits par la source **definition** (aucune requête de node).
     fn from_definition(mode: ColliderMode, bounds: Option<Aabb>) -> Vec<ColliderDesc> {
-        build_colliders(&mut [], &[], &[], &[], mode, bounds).colliders
+        build_colliders(&mut [], &[], &[], &[], &[], mode, bounds).colliders
     }
 
     /// Un node de test référençant un mesh et une part.
@@ -520,9 +679,10 @@ mod tests {
             ColliderMode::parse("auto_compound"),
             Some(ColliderMode::Compound)
         );
-        // `auto_convex` (décomposition V-HACD) est distinct de `convex` (une seule
-        // enveloppe des sommets du mesh) et reste différé ; inconnu : `None`.
-        assert_eq!(ColliderMode::parse("auto_convex"), None);
+        assert_eq!(
+            ColliderMode::parse("auto_convex"),
+            Some(ColliderMode::AutoConvex)
+        );
         assert_eq!(ColliderMode::parse("teleporteur"), None);
     }
 
@@ -598,6 +758,7 @@ mod tests {
             &mut nodes,
             &meshes,
             &[],
+            &[],
             &requests,
             ColliderMode::None,
             None,
@@ -628,7 +789,15 @@ mod tests {
             no_refit: false,
         }];
 
-        let build = build_colliders(&mut nodes, &[], &[], &requests, ColliderMode::None, None);
+        let build = build_colliders(
+            &mut nodes,
+            &[],
+            &[],
+            &[],
+            &requests,
+            ColliderMode::None,
+            None,
+        );
 
         assert!(build.colliders.is_empty(), "aucun collider sans mesh");
         assert_eq!(build.warnings.len(), 1, "l'ignorance est avertie (R-912)");
@@ -650,6 +819,7 @@ mod tests {
         let build = build_colliders(
             &mut nodes,
             &meshes,
+            &[],
             &[],
             &requests,
             ColliderMode::AutoBox,
@@ -709,6 +879,7 @@ mod tests {
             &mut nodes,
             &meshes,
             &vertices,
+            &[],
             &requests,
             ColliderMode::None,
             None,
@@ -760,6 +931,7 @@ mod tests {
             &mut nodes,
             &meshes,
             &vertices,
+            &[],
             &requests,
             ColliderMode::None,
             None,
@@ -794,6 +966,7 @@ mod tests {
         let build = build_colliders(
             &mut nodes,
             &meshes,
+            &[],
             &[],
             &requests,
             ColliderMode::None,
@@ -837,7 +1010,15 @@ mod tests {
             no_refit: false,
         }];
 
-        let build = build_colliders(&mut nodes, &[], &[], &requests, ColliderMode::None, None);
+        let build = build_colliders(
+            &mut nodes,
+            &[],
+            &[],
+            &[],
+            &requests,
+            ColliderMode::None,
+            None,
+        );
 
         assert!(build.colliders.is_empty(), "aucun compound sans enfant");
         assert_eq!(build.warnings.len(), 1, "l'ignorance est avertie (R-912)");
@@ -859,6 +1040,7 @@ mod tests {
         let build = build_colliders(
             &mut nodes,
             &meshes,
+            &[],
             &[],
             &requests,
             ColliderMode::None,
@@ -898,6 +1080,7 @@ mod tests {
             &mut nodes,
             &meshes,
             &[],
+            &[],
             &requests,
             ColliderMode::None,
             None,
@@ -930,6 +1113,7 @@ mod tests {
             &mut nodes,
             &meshes,
             &[],
+            &[],
             &requests,
             ColliderMode::None,
             None,
@@ -945,5 +1129,61 @@ mod tests {
             0,
             "NO_REFIT posé (R-623)"
         );
+    }
+
+    #[test]
+    fn auto_convex_produit_un_collider_deterministe() {
+        // Un tétraèdre (convexe) : VHACD en tire une enveloppe. Le mesh porte ses
+        // 4 sommets et 4 faces (indices locaux).
+        let meshes = vec![MeshDesc {
+            vertex_offset: 0,
+            vertex_count: 4,
+            index_offset: 0,
+            index_count: 12,
+            ..mesh([0.0; 3], [1.0; 3])
+        }];
+        let vertices = vec![
+            sommet([0.0, 0.0, 0.0]),
+            sommet([1.0, 0.0, 0.0]),
+            sommet([0.0, 1.0, 0.0]),
+            sommet([0.0, 0.0, 1.0]),
+        ];
+        let indices: Vec<u32> = vec![0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::AutoConvex,
+            density: None,
+            no_refit: false,
+        }];
+        let run = || {
+            let mut nodes = vec![node(0, NONE_U16)];
+            build_colliders(
+                &mut nodes,
+                &meshes,
+                &vertices,
+                &indices,
+                &requests,
+                ColliderMode::None,
+                None,
+            )
+        };
+
+        let a = run();
+        assert_eq!(a.colliders.len(), 1);
+        assert!(
+            matches!(
+                a.colliders[0].shape,
+                ColliderShape::ConvexHull { .. } | ColliderShape::Compound { .. }
+            ),
+            "une enveloppe ou un composé, obtenu {:?}",
+            a.colliders[0].shape
+        );
+        assert!(!a.hull_points.is_empty(), "l'annexe porte les points");
+
+        // Déterminisme (R-553, ADR-108) : deux exécutions, même sortie bit à bit.
+        let b = run();
+        assert_eq!(a.colliders, b.colliders);
+        assert_eq!(a.hull_points, b.hull_points);
+        assert_eq!(a.compound_children, b.compound_children);
     }
 }

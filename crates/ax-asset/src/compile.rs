@@ -156,6 +156,7 @@ pub fn compile(
         &mut asset.nodes,
         &asset.meshes,
         &asset.vertices,
+        &asset.indices,
         &asset.collider_requests,
         options.collider_mode,
         optimized.bounds,
