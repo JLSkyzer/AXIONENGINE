@@ -19,12 +19,12 @@
 //! Le défaut est [`ColliderMode::None`] et aucune requête : rien n'est généré
 //! sans demande explicite.
 //!
-//! Formes prises en charge : `auto_box`, `auto_sphere`. `auto_capsule`,
-//! `auto_convex` (V-HACD, étape C-23) et `auto_compound` (R-621) sont reconnues
-//! mais pas encore générées : une requête qui les vise est **avertie et ignorée**
-//! (R-912), jamais remplacée par une forme que l'auteur n'a pas décrite. La
-//! masse/le COM (R-622), le marquage REFITTABLE (R-623) et la sérialisation vers
-//! la section A3D `PHYS` (gel derrière ADR) suivent.
+//! Formes prises en charge : `auto_box`, `auto_sphere`, `auto_capsule`, `convex`
+//! (enveloppe des sommets du mesh) et `auto_compound` (R-621). Seule `auto_convex`
+//! (décomposition concave V-HACD, étape C-23) n'est **pas encore générée** : une
+//! requête qui la vise est **avertie et ignorée** (R-912), jamais remplacée par une
+//! forme que l'auteur n'a pas décrite. Le marquage REFITTABLE (R-623) et la
+//! masse/COM déclarée (R-622) suivent avec leurs consommateurs.
 
 use crate::optimize::Aabb;
 use ax_model::dm::geometry::{MeshDesc, Transform, Vertex};
@@ -66,6 +66,13 @@ pub enum ColliderMode {
     AutoBox,
     /// Une sphère englobante (`auto_sphere`).
     AutoSphere,
+    /// Une capsule englobante d'axe Y (`auto_capsule`).
+    ///
+    /// Le rayon couvre l'étendue en X et Z, la hauteur du segment couvre l'étendue
+    /// en Y au-delà du rayon. La capsule du moteur est d'axe Y (DM-06) : une forme
+    /// allongée selon X ou Z est donc englobée lâchement — un mesh non vertical se
+    /// décrit mieux par `convex` ou `auto_box`.
+    AutoCapsule,
     /// Une enveloppe convexe des sommets du mesh (`convex`).
     ///
     /// L'auteur déclare que le mesh du node est (ou peut être traité comme) convexe :
@@ -84,16 +91,17 @@ pub enum ColliderMode {
 impl ColliderMode {
     /// Traduit la valeur textuelle d'un extra `shape` (C-32).
     ///
-    /// Rend `Some` pour une forme automatique **prise en charge** (`auto_box`,
-    /// `auto_sphere`), `None` sinon. Les formes reconnues du CDC mais pas encore
-    /// générées (`auto_capsule`, `auto_convex`, `auto_compound`) rendent aussi
-    /// `None` : l'appelant avertit et n'attache pas de collider, plutôt que d'en
-    /// fabriquer un que l'auteur n'a pas décrit.
+    /// Rend `Some` pour une forme **prise en charge** (`auto_box`, `auto_sphere`,
+    /// `auto_capsule`, `convex`, `auto_compound`), `None` sinon. `auto_convex`
+    /// (V-HACD), reconnue du CDC mais pas encore générée, rend aussi `None` :
+    /// l'appelant avertit et n'attache pas de collider, plutôt que d'en fabriquer un
+    /// que l'auteur n'a pas décrit.
     #[must_use]
     pub fn parse(shape: &str) -> Option<Self> {
         match shape {
             "auto_box" => Some(ColliderMode::AutoBox),
             "auto_sphere" => Some(ColliderMode::AutoSphere),
+            "auto_capsule" => Some(ColliderMode::AutoCapsule),
             "convex" => Some(ColliderMode::Convex),
             "auto_compound" => Some(ColliderMode::Compound),
             _ => None,
@@ -214,6 +222,7 @@ fn per_node_colliders(
             match request.mode {
                 ColliderMode::AutoBox => auto_box(aabb),
                 ColliderMode::AutoSphere => auto_sphere(aabb),
+                ColliderMode::AutoCapsule => auto_capsule(aabb),
                 ColliderMode::Convex => {
                     match convex_from_mesh(mesh, vertices, &mut build.hull_points) {
                         Ok(collider) => collider,
@@ -381,6 +390,29 @@ fn auto_sphere(bounds: Aabb) -> ColliderDesc {
     primitive_collider(ColliderShape::Sphere { radius }, center(bounds))
 }
 
+/// Génère une capsule englobante d'axe Y depuis les bornes (`auto_capsule`),
+/// centrée sur le milieu des bornes.
+///
+/// Le rayon vaut la plus grande demi-dimension en X ou Z — la section circulaire
+/// couvre les deux —, et la demi-hauteur du segment couvre ce qui dépasse en Y.
+/// Quand la demi-hauteur en Y n'excède pas le rayon (mesh trapu), le segment est
+/// nul et la capsule dégénère en sphère de ce rayon : un englobant lâche mais
+/// correct, jamais plus petit que l'objet.
+fn auto_capsule(bounds: Aabb) -> ColliderDesc {
+    let half_x = (bounds.max[0] - bounds.min[0]) * 0.5;
+    let half_y = (bounds.max[1] - bounds.min[1]) * 0.5;
+    let half_z = (bounds.max[2] - bounds.min[2]) * 0.5;
+    let radius = half_x.max(half_z);
+    let half_height = (half_y - radius).max(0.0);
+    primitive_collider(
+        ColliderShape::Capsule {
+            half_height,
+            radius,
+        },
+        center(bounds),
+    )
+}
+
 /// Construit un `ColliderDesc` pour une forme primitive auto-générée, centrée en
 /// `translation`, avec les défauts communs (densité, groupes, références absentes).
 fn primitive_collider(shape: ColliderShape, translation: [f32; 3]) -> ColliderDesc {
@@ -461,6 +493,10 @@ mod tests {
         assert_eq!(
             ColliderMode::parse("auto_sphere"),
             Some(ColliderMode::AutoSphere)
+        );
+        assert_eq!(
+            ColliderMode::parse("auto_capsule"),
+            Some(ColliderMode::AutoCapsule)
         );
         assert_eq!(ColliderMode::parse("convex"), Some(ColliderMode::Convex));
         assert_eq!(
@@ -775,5 +811,71 @@ mod tests {
         assert!(build.colliders.is_empty(), "aucun compound sans enfant");
         assert_eq!(build.warnings.len(), 1, "l'ignorance est avertie (R-912)");
         assert!(build.compound_children.is_empty());
+    }
+
+    #[test]
+    fn un_node_auto_capsule_recoit_une_capsule_depuis_son_mesh() {
+        // Un mesh haut (Y) et étroit (X, Z) : demi-dimensions [0.5, 2.0, 0.5].
+        let mut nodes = vec![node(0, NONE_U16)];
+        let meshes = vec![mesh([-0.5, -2.0, -0.5], [0.5, 2.0, 0.5])];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::AutoCapsule,
+        }];
+
+        let build = build_colliders(
+            &mut nodes,
+            &meshes,
+            &[],
+            &requests,
+            ColliderMode::None,
+            None,
+        );
+
+        assert_eq!(build.colliders.len(), 1);
+        let ColliderShape::Capsule {
+            half_height,
+            radius,
+        } = build.colliders[0].shape
+        else {
+            panic!("attendu une capsule, obtenu {:?}", build.colliders[0].shape);
+        };
+        assert_eq!(radius, 0.5, "rayon = max(demi-X, demi-Z)");
+        assert_eq!(
+            half_height, 1.5,
+            "demi-hauteur = demi-Y − rayon = 2.0 − 0.5"
+        );
+        assert!(build.warnings.is_empty());
+    }
+
+    #[test]
+    fn auto_capsule_trapue_degenere_en_sphere() {
+        // Un mesh large et plat : demi-dimensions [2.0, 0.5, 2.0]. Le rayon couvre
+        // X/Z et déjà Y, donc le segment est nul (capsule = sphère englobante).
+        let mut nodes = vec![node(0, NONE_U16)];
+        let meshes = vec![mesh([-2.0, -0.5, -2.0], [2.0, 0.5, 2.0])];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::AutoCapsule,
+        }];
+
+        let build = build_colliders(
+            &mut nodes,
+            &meshes,
+            &[],
+            &requests,
+            ColliderMode::None,
+            None,
+        );
+
+        let ColliderShape::Capsule {
+            half_height,
+            radius,
+        } = build.colliders[0].shape
+        else {
+            panic!("attendu une capsule");
+        };
+        assert_eq!(radius, 2.0);
+        assert_eq!(half_height, 0.0, "segment nul : la capsule est une sphère");
     }
 }
