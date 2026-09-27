@@ -98,6 +98,26 @@ pub struct CompoundPart {
     pub shape: Shape,
 }
 
+/// Un collider d'un corps : sa forme, sa densité et sa pose relative au corps.
+///
+/// C'est l'unité d'assemblage d'un corps multi-colliders
+/// ([`add_assembly`](crate::PhysicsWorld::add_assembly)) : chaque collider porte
+/// **sa** densité, si bien que la masse, le centre de masse et l'inertie du corps
+/// sont ceux des matériaux déclarés (R-622, moitié « calculée depuis les densités »),
+/// et non d'une densité unique. Une carrosserie d'acier et des pneus de caoutchouc
+/// donnent ainsi la bonne masse et le bon centre de masse.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BodyCollider {
+    /// Forme de collision.
+    pub shape: Shape,
+    /// Masse volumique, en kg/m³ (DM-06, R-622). Strictement positive.
+    pub density: f32,
+    /// Translation relative au corps, en blocs.
+    pub translation: Vec3,
+    /// Rotation relative au corps, quaternion `(x, y, z, w)` (R-461).
+    pub rotation: Quat,
+}
+
 impl Shape {
     /// Convertit une forme de collider compilée ([`ColliderShape`], DM-06) en
     /// forme runtime (C-32, pont d'ADR-115).

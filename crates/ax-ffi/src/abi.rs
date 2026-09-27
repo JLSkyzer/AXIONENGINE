@@ -38,7 +38,7 @@ use ax_model::dm::commands::CreateAssembly;
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::ColliderDesc;
-use ax_physics::{BodyKind, CompoundPart, Shape, SimDriver};
+use ax_physics::{BodyCollider, BodyKind, Shape, SimDriver};
 
 /// Version de l'ABI.
 ///
@@ -768,32 +768,32 @@ fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
         Ok(colliders) => colliders,
         Err(_) => return,
     };
-    let Some(shape) = assembly_shape(&colliders) else {
+    let Some(runtime_colliders) = body_colliders(&colliders) else {
         return;
     };
-    physics.create_assembly(dimension, handle, spawn, kind, shape);
+    physics.create_assembly(dimension, handle, spawn, kind, &runtime_colliders);
 }
 
-/// Construit la forme d'un corps depuis ses colliders : la forme unique s'il n'y
-/// en a qu'un, sinon un composé de leurs formes placées. `None` si aucun collider
-/// ou si l'un n'est pas convertible (forme indexée/interdite).
-fn assembly_shape(colliders: &[ColliderDesc]) -> Option<Shape> {
-    match colliders {
-        [] => None,
-        [single] => Shape::from_collider_shape(&single.shape).ok(),
-        many => {
-            let mut parts = Vec::with_capacity(many.len());
-            for collider in many {
-                let shape = Shape::from_collider_shape(&collider.shape).ok()?;
-                parts.push(CompoundPart {
-                    translation: Vec3::from_array(collider.local.translation),
-                    rotation: Quat::from_array(collider.local.rotation),
-                    shape,
-                });
-            }
-            Some(Shape::Compound { parts })
-        }
+/// Convertit les colliders compilés (DM-06) en colliders runtime, chacun avec sa
+/// densité et sa pose locale : rapier en tire masse, centre de masse et inertie
+/// (R-622). `None` si aucun collider, ou si l'un porte une forme non convertible
+/// (indexée/interdite) — l'assembly entière est alors abandonnée, jamais formée à
+/// moitié.
+fn body_colliders(colliders: &[ColliderDesc]) -> Option<Vec<BodyCollider>> {
+    if colliders.is_empty() {
+        return None;
     }
+    let mut runtime = Vec::with_capacity(colliders.len());
+    for collider in colliders {
+        let shape = Shape::from_collider_shape(&collider.shape).ok()?;
+        runtime.push(BodyCollider {
+            shape,
+            density: collider.density,
+            translation: Vec3::from_array(collider.local.translation),
+            rotation: Quat::from_array(collider.local.rotation),
+        });
+    }
+    Some(runtime)
 }
 
 fn read_le_u32(bytes: &[u8], at: usize) -> u32 {

@@ -10,7 +10,7 @@
 //! parcours est déterministe, donc l'ordre de `BodyState[]` et du lot
 //! d'événements l'est aussi (R-1020).
 
-use crate::body::{BodyId, BodyKind, Shape};
+use crate::body::{BodyCollider, BodyId, BodyKind};
 use crate::config::PhysicsConfig;
 use crate::forces::FluidEnvironment;
 use crate::world::PhysicsWorld;
@@ -163,16 +163,17 @@ impl SimDriver {
     /// (créée au besoin, R-610), à la pose monde `spawn` ramenée au repère local
     /// par l'origine flottante, puis l'enregistre au routage.
     ///
-    /// Rend le corps créé, ou `None` si la forme est refusée par le monde. La
-    /// forme est déjà convertie depuis les colliders compilés par la frontière
-    /// (ax-ffi), qui seule dépend d'`ax-asset`.
+    /// Rend le corps créé, ou `None` si une forme est refusée par le monde. Les
+    /// colliders sont déjà convertis depuis la section `PHYS` compilée par la
+    /// frontière (ax-ffi), qui seule dépend d'`ax-asset` ; chacun porte sa densité,
+    /// d'où la masse et le centre de masse du corps (R-622).
     pub fn create_assembly(
         &mut self,
         dimension: u64,
         handle: Handle,
         spawn: WorldTransform,
         kind: BodyKind,
-        shape: Shape,
+        colliders: &[BodyCollider],
     ) -> Option<BodyId> {
         let sim = self
             .dimensions
@@ -183,7 +184,10 @@ impl SimDriver {
             });
         let local = sim.origin.to_local(DVec3::from_array(spawn.position));
         let rotation = Quat::from_array(spawn.rotation);
-        let body = sim.world.add_body(kind, local, rotation, shape).ok()?;
+        let body = sim
+            .world
+            .add_assembly(kind, local, rotation, colliders)
+            .ok()?;
         // L'emprunt de `sim` s'achève ici ; le routage réutilise `register_body`.
         self.register_body(dimension, handle, body, 0, 0);
         Some(body)
@@ -245,7 +249,7 @@ impl SimDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::body::{BodyKind, Shape};
+    use crate::body::{BodyCollider, BodyKind, Shape};
     use crate::Handle;
     use ax_math::{DVec3, Quat, Vec3};
 
@@ -278,7 +282,12 @@ mod tests {
             Handle::new(1, 1),
             spawn,
             BodyKind::Dynamic,
-            Shape::Ball { radius: 0.5 },
+            &[BodyCollider {
+                shape: Shape::Ball { radius: 0.5 },
+                density: 1000.0,
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
         );
         assert!(created.is_some(), "le corps doit être créé");
         assert_eq!(

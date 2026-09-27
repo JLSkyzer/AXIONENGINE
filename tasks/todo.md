@@ -1514,8 +1514,11 @@ substituable sans changer rapier »).
                         d'en-tête/table de sections) + envoyer via SimIn.
                      d) ✅ Test Rust d'intégration (PHYS → corps dans le SimDriver).
                      surchargent rapier. 5) ✅ test physique en jeu (spawn→tick→bouge).
-            - Différé (avec leur consommateur/producteur) : masse/COM pré-calculée +
-              `BodyDesc` ; REFITTABLE/NO_REFIT (R-623, dépend des parts/régions) ;
+            - R-622 masse/COM : le **calcul depuis les densités** est câblé au runtime (un
+              collider rapier par ColliderDesc avec sa densité ; masse, COM et inertie
+              en découlent — `BodyCollider`, `add_assembly`). Reste **différé** (avec
+              son producteur) : la voie **déclarée** masse/COM pré-calculée + `BodyDesc`
+              (DM-08, gel), qui attend le câblage des definitions physiques ; REFITTABLE/NO_REFIT (R-623, dépend des parts/régions) ;
               annexes PHYS convex/compound + V-HACD `auto_convex` (étapes 8-9 de C-23,
               ADR-108) ; `auto_capsule` ; densité/no_refit des extras.
 

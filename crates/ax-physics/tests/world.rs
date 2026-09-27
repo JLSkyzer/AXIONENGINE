@@ -2,8 +2,9 @@
 
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_physics::{
-    body_state_flags, event_kind, BodyError, BodyId, BodyKind, CollisionGroups, CompoundPart,
-    ConfigError, FluidEnvironment, Handle, LiftSurface, PhysicsConfig, PhysicsWorld, Shape,
+    body_state_flags, event_kind, BodyCollider, BodyError, BodyId, BodyKind, CollisionGroups,
+    CompoundPart, ConfigError, FluidEnvironment, Handle, LiftSurface, PhysicsConfig, PhysicsWorld,
+    Shape,
 };
 
 fn config() -> PhysicsConfig {
@@ -1335,4 +1336,103 @@ fn les_garde_fous_sont_deterministes() {
         )
     };
     assert_eq!(run(), run());
+}
+
+#[test]
+fn la_masse_vient_de_la_densite_du_collider() {
+    // R-622 : la masse est calculée depuis la densité du collider. Un cube de
+    // demi-dimensions [1,1,1] occupe 2×2×2 = 8 m³ ; à 1000 kg/m³, il pèse 8000 kg.
+    let mut world = PhysicsWorld::new(config());
+    let cube = world
+        .add_assembly(
+            BodyKind::Dynamic,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            &[BodyCollider {
+                shape: Shape::Cuboid {
+                    half_extents: [1.0, 1.0, 1.0],
+                },
+                density: 1000.0,
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
+        )
+        .expect("un cube est une forme valide");
+    let mass = world.body_mass(cube).expect("le corps existe");
+    assert!(
+        (mass - 8000.0).abs() < 1.0,
+        "masse = densité × volume, attendu 8000, obtenu {mass}"
+    );
+}
+
+#[test]
+fn la_masse_est_proportionnelle_a_la_densite() {
+    // Doubler la densité double la masse (R-622) : c'est ce qui distingue le vrai
+    // câblage des densités d'un défaut rapier uniforme.
+    let masse = |density: f32| {
+        let mut world = PhysicsWorld::new(config());
+        let ball = world
+            .add_assembly(
+                BodyKind::Dynamic,
+                Vec3::ZERO,
+                Quat::IDENTITY,
+                &[BodyCollider {
+                    shape: Shape::Ball { radius: 0.5 },
+                    density,
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                }],
+            )
+            .expect("une bille est valide");
+        world.body_mass(ball).expect("le corps existe")
+    };
+    let simple = masse(1000.0);
+    let double = masse(2000.0);
+    assert!(simple > 0.0, "masse strictement positive");
+    assert!(
+        (double - 2.0 * simple).abs() < simple * 1.0e-3,
+        "densité doublée → masse doublée, {double} vs 2×{simple}"
+    );
+}
+
+#[test]
+fn le_centre_de_masse_penche_vers_le_collider_dense() {
+    // Deux cubes identiques, l'un en +x, l'autre en −x ; le +x deux fois plus
+    // dense. Le centre de masse doit pencher vers le cube dense (R-622,
+    // multi-matériaux). COM analytique : (2000·(+1) + 1000·(−1)) / 3000 = +1/3.
+    let cube = || Shape::Cuboid {
+        half_extents: [0.5, 0.5, 0.5],
+    };
+    let mut world = PhysicsWorld::new(config());
+    let body = world
+        .add_assembly(
+            BodyKind::Dynamic,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            &[
+                BodyCollider {
+                    shape: cube(),
+                    density: 2000.0,
+                    translation: Vec3::new(1.0, 0.0, 0.0),
+                    rotation: Quat::IDENTITY,
+                },
+                BodyCollider {
+                    shape: cube(),
+                    density: 1000.0,
+                    translation: Vec3::new(-1.0, 0.0, 0.0),
+                    rotation: Quat::IDENTITY,
+                },
+            ],
+        )
+        .expect("deux cubes sont valides");
+    let com = world.body_center_of_mass(body).expect("le corps existe");
+    assert!(
+        (com.x - 1.0 / 3.0).abs() < 0.05,
+        "le COM penche vers le cube dense (+1/3 en x), obtenu {}",
+        com.x
+    );
+    assert!(
+        com.y.abs() < 1.0e-3 && com.z.abs() < 1.0e-3,
+        "le COM reste centré en y et z, obtenu {com:?}"
+    );
 }

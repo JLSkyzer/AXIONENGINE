@@ -9,8 +9,8 @@ use rapier3d::prelude::{
 };
 
 use crate::body::{
-    BodyError, BodyId, BodyKind, CompoundPart, Shape, MAX_COMPOUND_PARTS, MAX_CONVEX_HULL_POINTS,
-    MIN_CONVEX_HULL_POINTS,
+    BodyCollider, BodyError, BodyId, BodyKind, CompoundPart, Shape, MAX_COMPOUND_PARTS,
+    MAX_CONVEX_HULL_POINTS, MIN_CONVEX_HULL_POINTS,
 };
 use crate::config::PhysicsConfig;
 use crate::forces::{FluidEnvironment, LiftSurface};
@@ -267,9 +267,48 @@ impl PhysicsWorld {
         rotation: Quat,
         shape: Shape,
     ) -> Result<BodyId, BodyError> {
-        let collider = ColliderBuilder::new(shared_shape_of(&shape)?)
-            .active_events(ActiveEvents::COLLISION_EVENTS)
-            .build();
+        // Un seul collider, densité neutre 1.0 (défaut rapier) : ce chemin sert la
+        // collision et le mouvement, pas la masse déclarée — voir `add_assembly`.
+        self.add_assembly(
+            kind,
+            position,
+            rotation,
+            &[BodyCollider {
+                shape,
+                density: 1.0,
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
+        )
+    }
+
+    /// Ajoute un corps composé d'un ou plusieurs colliders, chacun avec sa densité
+    /// et sa pose relative ; renvoie sa référence.
+    ///
+    /// rapier somme les propriétés de masse des colliders : la masse, le centre de
+    /// masse et l'inertie du corps découlent des **densités déclarées** (R-622,
+    /// moitié « calculée depuis les densités »), un collider par matériau. Les
+    /// propriétés sont recalculées dès l'insertion, sans attendre un pas.
+    ///
+    /// Toutes les formes sont validées **avant** toute insertion : si l'une est
+    /// refusée (§10.3), rien n'entre dans le monde.
+    ///
+    /// # Errors
+    /// [`BodyError`] à la première forme invalide — enveloppe convexe hors de
+    /// 4..256 points ou dégénérée, composé vide ou de plus de 64 formes filles.
+    pub fn add_assembly(
+        &mut self,
+        kind: BodyKind,
+        position: Vec3,
+        rotation: Quat,
+        colliders: &[BodyCollider],
+    ) -> Result<BodyId, BodyError> {
+        // Valider toutes les formes d'abord : un corps à moitié inséré serait pire
+        // qu'un refus propre.
+        let mut shapes = Vec::with_capacity(colliders.len());
+        for collider in colliders {
+            shapes.push(shared_shape_of(&collider.shape)?);
+        }
 
         let body_type = match kind {
             BodyKind::Static => RigidBodyType::Fixed,
@@ -286,7 +325,26 @@ impl PhysicsWorld {
         activation.angular_threshold = self.config.sleep_angular_threshold;
         activation.time_until_sleep = self.config.sleep_time;
 
-        let (handle, _collider) = self.inner.insert(body, collider);
+        let handle = self.inner.bodies.insert(body);
+        for (shape, collider) in shapes.into_iter().zip(colliders) {
+            let built = ColliderBuilder::new(shape)
+                .density(collider.density)
+                .position(RapierPose::from_parts(
+                    collider.translation,
+                    collider.rotation,
+                ))
+                .active_events(ActiveEvents::COLLISION_EVENTS)
+                .build();
+            self.inner
+                .colliders
+                .insert_with_parent(built, handle, &mut self.inner.bodies);
+        }
+        // Masse à jour dès la création : recalcul depuis les colliders, sans
+        // attendre un pas de simulation (utile aux lectures immédiates de masse).
+        if let Some(body) = self.inner.bodies.get_mut(handle) {
+            body.recompute_mass_properties_from_colliders(&self.inner.colliders);
+        }
+
         let id = BodyId::from_handle(handle);
         // Pose de départ comme premier état valide, si elle l'est : une
         // restauration R-181 dès le premier sous-pas a alors un repli fini vers
@@ -303,6 +361,28 @@ impl PhysicsWorld {
             );
         }
         Ok(id)
+    }
+
+    /// {@return la masse du corps, en kg, ou `None` s'il n'existe pas}
+    ///
+    /// Somme des masses de ses colliders (densité × volume, R-622). Un corps
+    /// statique ou cinématique a une masse effective nulle du point de vue du
+    /// solveur (masse « infinie ») : rapier rapporte alors `0.0`.
+    #[must_use]
+    pub fn body_mass(&self, id: BodyId) -> Option<f32> {
+        self.inner.bodies.get(id.handle()).map(RigidBody::mass)
+    }
+
+    /// {@return le centre de masse du corps, en repère monde, ou `None`}
+    ///
+    /// Décalé vers les colliders les plus denses (R-622). Pour un corps à l'origine
+    /// sans rotation, le repère monde coïncide avec le repère local.
+    #[must_use]
+    pub fn body_center_of_mass(&self, id: BodyId) -> Option<Vec3> {
+        self.inner
+            .bodies
+            .get(id.handle())
+            .map(|body| body.mass_properties().world_com)
     }
 
     /// Avance la simulation d'au plus `max_substeps` sous-pas de `fixed_dt`,
