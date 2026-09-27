@@ -131,15 +131,25 @@ xxhash-rust = { version = "=0.8.15", default-features = false }
 # C-31 : moteur physique (bodies, colliders, joints, CCD, sommeil). Décidé par
 # ADR-002 et retenu par la table 32.2, licence Apache-2.0 ; alternatives évaluées
 # et écartées là-bas (moteur propre — coût ; PhysX/Bullet/Jolt — build C++).
-# Features par défaut seulement (`dim3`, `f32`, `std`, `alloc`) : ni `parallel`
-# ni `enhanced-determinism`. ADR-005 n'exige pas de déterminisme inter-machines,
-# et l'exiger (`enhanced-determinism`, via libm, sans SIMD) coûterait pour une
-# garantie inutile ; le mono-thread suffit à la reproductibilité même-machine de
-# R-1020. `parry3d` et `nalgebra` (table 32.2) arrivent transitivement et sont
-# ré-exportés par `rapier3d` (`rapier3d::parry`, `rapier3d::na`) ; ils
-# deviendront des dépendances directes quand C-32/C-39 useront de leurs API.
+# `enhanced-determinism` activé (ADR-116, exécutant ADR-108) : la décomposition
+# convexe de C-32 (parry3d, en jeu) doit être identique entre plateformes, et
+# `parry3d` étant partagé (unification des features Cargo), la garantie s'étend à
+# toute la physique runtime. C'est un choix assumé — libm logicielle, sans SIMD —
+# qui réconcilie ADR-005 (qui l'écartait pour la perf) : le déterminisme
+# inter-machines sert le refit (PARTIE 14.9) et, à terme, le réseau (C-16).
+# `parry3d` et `nalgebra` sont ré-exportés par `rapier3d` (`rapier3d::parry`,
+# `rapier3d::na`) ; `parry3d` devient dépendance directe d'ax-asset pour la VHACD.
 # Les types Rapier ne franchissent jamais la frontière du crate (R-1753).
 rapier3d = { version = "0.35", default-features = false, features = [
+    "dim3",
+    "f32",
+    "std",
+    "enhanced-determinism",
+] }
+
+# C-32 : décomposition convexe (VHACD) à la compilation d'asset. Même `parry3d`
+# que celui de `rapier3d` (version et features unifiées, dont `enhanced-determinism`).
+parry3d = { version = "0.30", default-features = false, features = [
     "dim3",
     "f32",
     "std",

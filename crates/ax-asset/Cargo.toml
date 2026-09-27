@@ -25,6 +25,10 @@ crc32c.workspace = true
 gltf.workspace = true
 meshopt.workspace = true
 mikktspace.workspace = true
+# C-32, étapes 8-9 (R-551, ADR-108) : décomposition convexe VHACD à la
+# compilation. Même `parry3d` que `rapier3d`, `enhanced-determinism` unifié pour
+# un résultat identique entre plateformes (ADR-108/ADR-116).
+parry3d.workspace = true
 stl_io.workspace = true
 tobj.workspace = true
 zstd.workspace = true
