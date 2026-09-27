@@ -178,6 +178,8 @@ fn build_collider_requests(
             Some(mode) => asset.collider_requests.push(ColliderRequest {
                 node: index as u32,
                 mode,
+                density: annotation.collider_density,
+                no_refit: annotation.collider_no_refit,
             }),
             None => {
                 let name = asset.node_names.get(index).map_or("", String::as_str);

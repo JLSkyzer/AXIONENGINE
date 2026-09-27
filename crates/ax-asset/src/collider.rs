@@ -28,7 +28,9 @@
 
 use crate::optimize::Aabb;
 use ax_model::dm::geometry::{MeshDesc, Transform, Vertex};
-use ax_model::dm::physics::{ColliderDesc, ColliderShape, CONVEX_MAX_POINTS, CONVEX_MIN_POINTS};
+use ax_model::dm::physics::{
+    collider_flags, ColliderDesc, ColliderShape, CONVEX_MAX_POINTS, CONVEX_MIN_POINTS,
+};
 use ax_model::dm::scene::{NodeDesc, NONE_U32};
 
 /// Densité par défaut d'un collider auto-généré, en kg/m³.
@@ -114,12 +116,18 @@ impl ColliderMode {
 /// Construite à l'import pour chaque node `role=collider` dont la forme est prise
 /// en charge ; consommée par [`build_colliders`], qui tire la géométrie de la
 /// boîte du mesh du node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// `Eq` n'est pas dérivable : `density` porte un `f32`. `PartialEq` suffit aux tests.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ColliderRequest {
     /// Index du node, dans l'ordre des nodes de l'asset.
     pub node: u32,
-    /// Forme automatique demandée (prise en charge : `AutoBox`, `AutoSphere`).
+    /// Forme automatique demandée (prise en charge : `AutoBox`, `AutoSphere`,
+    /// `AutoCapsule`, `Convex`, `Compound`).
     pub mode: ColliderMode,
+    /// Masse volumique déclarée (kg/m³, R-622), ou le défaut du générateur.
+    pub density: Option<f32>,
+    /// Collider figé au refit (`NO_REFIT`, R-623).
+    pub no_refit: bool,
 }
 
 /// Ce que [`build_colliders`] produit : les colliders et les avertissements.
@@ -241,6 +249,15 @@ fn per_node_colliders(
         // Le collider hérite de la part du node : c'est ce lien que R-623 lira
         // pour décider du marquage REFITTABLE.
         collider.part = part;
+        // Surcharges déclarées par les extras (R-620/R-622/R-623) : la densité
+        // prime sur le défaut du générateur (la validation C-22 exige `> 0`) ;
+        // `no_refit` fige le collider au refit.
+        if let Some(density) = request.density {
+            collider.density = density;
+        }
+        if request.no_refit {
+            collider.flags |= collider_flags::NO_REFIT;
+        }
         let index = build.colliders.len() as u32;
         if let Some(node) = nodes.get_mut(request.node as usize) {
             node.collider = index;
@@ -573,6 +590,8 @@ mod tests {
         let requests = vec![ColliderRequest {
             node: 0,
             mode: ColliderMode::AutoBox,
+            density: None,
+            no_refit: false,
         }];
 
         let build = build_colliders(
@@ -605,6 +624,8 @@ mod tests {
         let requests = vec![ColliderRequest {
             node: 0,
             mode: ColliderMode::AutoBox,
+            density: None,
+            no_refit: false,
         }];
 
         let build = build_colliders(&mut nodes, &[], &[], &requests, ColliderMode::None, None);
@@ -622,6 +643,8 @@ mod tests {
         let requests = vec![ColliderRequest {
             node: 0,
             mode: ColliderMode::AutoSphere,
+            density: None,
+            no_refit: false,
         }];
 
         let build = build_colliders(
@@ -678,6 +701,8 @@ mod tests {
         let requests = vec![ColliderRequest {
             node: 0,
             mode: ColliderMode::Convex,
+            density: None,
+            no_refit: false,
         }];
 
         let build = build_colliders(
@@ -727,6 +752,8 @@ mod tests {
         let requests = vec![ColliderRequest {
             node: 0,
             mode: ColliderMode::Convex,
+            density: None,
+            no_refit: false,
         }];
 
         let build = build_colliders(
@@ -760,6 +787,8 @@ mod tests {
         let requests = vec![ColliderRequest {
             node: 0,
             mode: ColliderMode::Compound,
+            density: None,
+            no_refit: false,
         }];
 
         let build = build_colliders(
@@ -804,6 +833,8 @@ mod tests {
         let requests = vec![ColliderRequest {
             node: 0,
             mode: ColliderMode::Compound,
+            density: None,
+            no_refit: false,
         }];
 
         let build = build_colliders(&mut nodes, &[], &[], &requests, ColliderMode::None, None);
@@ -821,6 +852,8 @@ mod tests {
         let requests = vec![ColliderRequest {
             node: 0,
             mode: ColliderMode::AutoCapsule,
+            density: None,
+            no_refit: false,
         }];
 
         let build = build_colliders(
@@ -857,6 +890,8 @@ mod tests {
         let requests = vec![ColliderRequest {
             node: 0,
             mode: ColliderMode::AutoCapsule,
+            density: None,
+            no_refit: false,
         }];
 
         let build = build_colliders(
@@ -877,5 +912,38 @@ mod tests {
         };
         assert_eq!(radius, 2.0);
         assert_eq!(half_height, 0.0, "segment nul : la capsule est une sphère");
+    }
+
+    #[test]
+    fn les_extras_density_et_no_refit_surchargent_le_collider() {
+        // Densité déclarée (acier) et no_refit posés par les extras du node.
+        let mut nodes = vec![node(0, NONE_U16)];
+        let meshes = vec![mesh([0.0; 3], [1.0; 3])];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::AutoBox,
+            density: Some(7850.0),
+            no_refit: true,
+        }];
+
+        let build = build_colliders(
+            &mut nodes,
+            &meshes,
+            &[],
+            &requests,
+            ColliderMode::None,
+            None,
+        );
+
+        assert_eq!(build.colliders.len(), 1);
+        assert_eq!(
+            build.colliders[0].density, 7850.0,
+            "la densité déclarée prime sur le défaut du générateur"
+        );
+        assert_ne!(
+            build.colliders[0].flags & collider_flags::NO_REFIT,
+            0,
+            "NO_REFIT posé (R-623)"
+        );
     }
 }

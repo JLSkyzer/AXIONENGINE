@@ -1523,8 +1523,9 @@ substituable sans changer rapier »).
               enveloppe, R-161) et `Compound` (producteur `auto_compound`, R-621 :
               boîtes des nodes enfants regroupées) **faites** ; reste la
               **décomposition V-HACD `auto_convex`** (concave → convexes, étapes 8-9
-              de C-23, ADR-108) ; densité/no_refit des extras. `auto_capsule` **faite**
-              (capsule Y englobante depuis l'AABB du mesh).
+              de C-23, ADR-108). `auto_capsule` (capsule Y de l'AABB) et la lecture
+              **densité/no_refit des extras** (R-622/R-623) sont **faites** ; restent
+              la masse/COM **déclarée** (definitions) et `REFITTABLE` (déformation M6).
 
 ## Jalons suivants
 

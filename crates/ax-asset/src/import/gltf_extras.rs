@@ -138,6 +138,12 @@ pub struct NodeAnnotations {
     /// Brut ici ; interprété par C-32, qui avertit sur une forme non prise en
     /// charge (R-912).
     pub collider_shape: Option<String>,
+    /// Masse volumique déclarée du collider, en kg/m³ (C-32, R-622). À défaut, le
+    /// défaut du générateur s'applique ; la validation C-22 exige `> 0`.
+    pub collider_density: Option<f32>,
+    /// Le collider est-il figé au refit (`no_refit`, R-623) ? Un châssis structurel
+    /// que la déformation ne doit pas réajuster.
+    pub collider_no_refit: bool,
     /// Niveaux de détail où le node apparaît.
     pub lod: Vec<u8>,
     /// Groupe de sommets portant le poids de déformation.
@@ -184,6 +190,8 @@ impl NodeAnnotations {
         annotations.part = string_value(&axion, "part");
         annotations.material = string_value(&axion, "material");
         annotations.collider_shape = string_value(&axion, "shape");
+        annotations.collider_density = number_value(&axion, "density");
+        annotations.collider_no_refit = bool_value(&axion, "no_refit").unwrap_or(false);
         annotations.deform_weight_group = string_value(&axion, "deform_weight_group");
         annotations.wear_profile = string_value(&axion, "wear_profile");
         annotations.lod = number_array(&axion, "lod");
@@ -282,6 +290,32 @@ fn number_array(source: &str, key: &str) -> Vec<u8> {
         .collect()
 }
 
+/// Extrait la valeur d'une clé dont la valeur est un nombre scalaire.
+///
+/// Lit le jeton jusqu'au prochain séparateur (`,`, `}`, `]` ou espace) et le
+/// convertit ; rend `None` si la clé est absente ou le jeton non numérique.
+fn number_value(source: &str, key: &str) -> Option<f32> {
+    let start = find_key(source, key)?;
+    let rest = source[start..].trim_start();
+    let end = rest
+        .find(|c: char| c == ',' || c == '}' || c == ']' || c.is_whitespace())
+        .unwrap_or(rest.len());
+    rest[..end].parse::<f32>().ok()
+}
+
+/// Extrait la valeur d'une clé dont la valeur est un booléen JSON.
+fn bool_value(source: &str, key: &str) -> Option<bool> {
+    let start = find_key(source, key)?;
+    let rest = source[start..].trim_start();
+    if rest.starts_with("true") {
+        Some(true)
+    } else if rest.starts_with("false") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 /// Position juste après le deux-points d'une clé, au premier niveau.
 fn find_key(source: &str, key: &str) -> Option<usize> {
     let needle = format!("\"{key}\"");
@@ -326,6 +360,25 @@ mod tests {
         );
         assert_eq!(annotations.lod, vec![0, 1, 2]);
         assert!(annotations.warnings.is_empty());
+        // `EXTRAS` ne déclare ni densité ni no_refit : défauts.
+        assert_eq!(annotations.collider_density, None);
+        assert!(!annotations.collider_no_refit);
+    }
+
+    #[test]
+    fn t227_la_densite_et_no_refit_du_collider_sont_lus() {
+        let extras = r#"{ "axion": {
+            "role": "collider", "shape": "auto_box",
+            "density": 7850.0, "no_refit": true
+        } }"#;
+        let annotations = NodeAnnotations::parse(extras);
+        assert_eq!(annotations.collider_density, Some(7850.0));
+        assert!(annotations.collider_no_refit);
+
+        // Une densité entière (sans point) se lit aussi ; no_refit absent → faux.
+        let entier = NodeAnnotations::parse(r#"{"axion":{"role":"collider","density":1000}}"#);
+        assert_eq!(entier.collider_density, Some(1000.0));
+        assert!(!entier.collider_no_refit);
     }
 
     #[test]
