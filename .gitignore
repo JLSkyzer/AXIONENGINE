@@ -18,6 +18,9 @@ out/
 hs_err_pid*
 replay_pid*
 
+# Journaux d'execution du mod (log4j), produits par les runs et les tests
+java/axion-mod/logs/
+
 # Repertoires de travail des lancements de developpement
 run/
 run-data/
