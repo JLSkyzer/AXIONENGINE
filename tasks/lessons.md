@@ -732,3 +732,22 @@ parenthèses ont cassé la ligne.
 **Règle.** Pour un message multi-ligne, a fortiori en français, l'écrire dans un
 fichier (scratchpad) et `git commit -F <fichier>`. Le heredoc Bash `<<'EOF'`
 convient aussi ; `-F` reste le plus sûr avec accents et parenthèses.
+
+
+## 2026-09-27 | Un item « différé » a souvent un ADR qui l'a différé — le lire avant de le construire
+
+**Ce qui a coûté.** Sur « go C-32 masse/COM », j'ai failli construire la masse/COM
+pré-calculée puis la surcharge déclarée. Deux fois, la relecture a montré que la
+voie était **bloquée en amont** (pas d'effort en cause) : ADR-115, *ratifié*,
+avait déjà tranché — masse/COM **calculées au runtime par rapier depuis les
+densités** (ce que j'ai livré), la surcharge **déclarée** confiée à CREATE_ASSEMBLY
+*avec sa source* (les definitions, non câblées), et le **pré-calcul BodyDesc**
+renvoyé à un ADR distinct « si un besoin émerge ». Construire l'un des deux
+maintenant, c'était du transport avant son producteur — l'anti-pattern qu'ADR-115
+proscrit lui-même.
+
+**Règle.** Avant de traiter un item de la liste « Différé », relire l'ADR (ou la
+note) qui l'a différé : il dit en général **pourquoi** et **à quelle condition**
+le reprendre. Un producteur/consommateur absent est une dépendance, pas un manque
+d'effort — passer en effort max ne le lève pas. Choisir alors un item **débloqué**
+(ici : colliders ConvexHull, dont ADR-115 §1 avait pré-autorisé l'annexe PHYS).
