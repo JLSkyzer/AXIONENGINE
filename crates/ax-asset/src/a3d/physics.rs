@@ -40,24 +40,46 @@ const POINT_BYTES: usize = 12;
 /// au plus `MAX_COLLIDERS` colliders, chacun `CONVEX_MAX_POINTS` points.
 const MAX_HULL_POINTS: usize = limits::MAX_COLLIDERS * CONVEX_MAX_POINTS as usize;
 
-/// Encode une section `PHYS` : les colliders puis l'annexe des points d'enveloppe.
+/// Nombre maximal de formes filles d'un compound (§10.3).
+const MAX_COMPOUND_PARTS: usize = 64;
+
+/// Plafond du nombre total d'enfants de compound, avant toute allocation (R-901) :
+/// au plus `MAX_COLLIDERS` compounds, chacun d'au plus [`MAX_COMPOUND_PARTS`] filles.
+const MAX_COMPOUND_CHILDREN: usize = limits::MAX_COLLIDERS * MAX_COMPOUND_PARTS;
+
+/// Ce qu'une section `PHYS` décodée rend : les colliders, l'annexe des points
+/// d'enveloppe (`ConvexHull`) et l'annexe des enfants de compound.
+pub type DecodedPhys = (Vec<ColliderDesc>, Vec<[f32; 3]>, Vec<ColliderDesc>);
+
+/// Encode une section `PHYS` : les colliders, l'annexe des points d'enveloppe, puis
+/// l'annexe des enfants de compound.
 ///
-/// Les formes `ConvexHull` référencent l'annexe par `points_offset`/`points_count`
-/// (indices de points) ; c'est à l'appelant d'avoir posé ces indices en accord
-/// avec `points`.
+/// Les formes `ConvexHull` référencent l'annexe des points par
+/// `points_offset`/`points_count` (indices de points) ; les formes `Compound`
+/// référencent l'annexe des enfants par `children_offset`/`children_count` (indices
+/// d'enfants). C'est à l'appelant d'avoir posé ces indices en accord avec `points`
+/// et `children`. Un enfant est un `ColliderDesc` comme un autre (même disposition),
+/// sa pose relative portée par son `local` ; il ne doit pas être lui-même un
+/// `Compound` (pas d'imbrication).
 ///
 /// # Errors
 ///
-/// [`A3dError::SectionUnwritable`] si le nombre de colliders ou de points dépasse
-/// ce qu'un `u32` décrit.
+/// [`A3dError::SectionUnwritable`] si un dénombrement dépasse ce qu'un `u32` décrit.
 pub fn encode_colliders(
     colliders: &[ColliderDesc],
     points: &[[f32; 3]],
+    children: &[ColliderDesc],
 ) -> Result<Vec<u8>, A3dError> {
     let count = u32::try_from(colliders.len()).map_err(|_| unwritable())?;
     let point_count = u32::try_from(points.len()).map_err(|_| unwritable())?;
+    let child_count = u32::try_from(children.len()).map_err(|_| unwritable())?;
     let mut out = Vec::with_capacity(
-        HEADER_BYTES + colliders.len() * COLLIDER_BYTES + HEADER_BYTES + points.len() * POINT_BYTES,
+        HEADER_BYTES
+            + colliders.len() * COLLIDER_BYTES
+            + HEADER_BYTES
+            + points.len() * POINT_BYTES
+            + HEADER_BYTES
+            + children.len() * COLLIDER_BYTES,
     );
     out.extend_from_slice(&count.to_le_bytes());
     for collider in colliders {
@@ -69,19 +91,25 @@ pub fn encode_colliders(
             out.extend_from_slice(&value.to_le_bytes());
         }
     }
+    out.extend_from_slice(&child_count.to_le_bytes());
+    for child in children {
+        write_collider(&mut out, child);
+    }
     Ok(out)
 }
 
 /// Décode une section `PHYS` venue d'un fichier qu'on ne croit pas sur parole :
-/// rend les colliders et l'annexe des points d'enveloppe.
+/// rend les colliders, l'annexe des points d'enveloppe et l'annexe des enfants de
+/// compound.
 ///
 /// # Errors
 ///
-/// [`A3dError::MalformedSection`] au premier écart : en-tête tronqué, plus de
-/// colliders ou de points que C-22 n'en admet — vérifié **avant** toute allocation
-/// (R-901) —, taille incohérente, forme de discriminant inconnu, ou `ConvexHull`
-/// dont les points débordent de l'annexe.
-pub fn decode_colliders(bytes: &[u8]) -> Result<(Vec<ColliderDesc>, Vec<[f32; 3]>), A3dError> {
+/// [`A3dError::MalformedSection`] au premier écart : en-tête tronqué, dénombrement
+/// au-delà de ce que C-22 admet — vérifié **avant** toute allocation (R-901) —,
+/// taille incohérente, discriminant inconnu, `ConvexHull` dont les points débordent
+/// de l'annexe, ou `Compound` dont les enfants débordent de l'annexe ou sont
+/// eux-mêmes des `Compound` (pas d'imbrication).
+pub fn decode_colliders(bytes: &[u8]) -> Result<DecodedPhys, A3dError> {
     if bytes.len() < HEADER_BYTES {
         return Err(malformed("en-tête tronqué"));
     }
@@ -101,7 +129,19 @@ pub fn decode_colliders(bytes: &[u8]) -> Result<(Vec<ColliderDesc>, Vec<[f32; 3]
         return Err(malformed("plus de points d'enveloppe qu'admis"));
     }
     let points_start = points_header + HEADER_BYTES;
-    if points_start.checked_add(point_count * POINT_BYTES) != Some(bytes.len()) {
+    // En-tête de l'annexe des enfants, juste après les points.
+    let Some(children_header) = points_start.checked_add(point_count * POINT_BYTES) else {
+        return Err(malformed("annexe des points démesurée"));
+    };
+    if children_header + HEADER_BYTES > bytes.len() {
+        return Err(malformed("annexe des enfants absente"));
+    }
+    let child_count = read_u32(bytes, children_header) as usize;
+    if child_count > MAX_COMPOUND_CHILDREN {
+        return Err(malformed("plus d'enfants de compound qu'admis"));
+    }
+    let children_start = children_header + HEADER_BYTES;
+    if children_start.checked_add(child_count * COLLIDER_BYTES) != Some(bytes.len()) {
         return Err(malformed("taille incohérente avec le dénombrement"));
     }
 
@@ -118,22 +158,57 @@ pub fn decode_colliders(bytes: &[u8]) -> Result<(Vec<ColliderDesc>, Vec<[f32; 3]
             f32::from_le_bytes(array(bytes, at + 8)),
         ]);
     }
+    let mut children = Vec::with_capacity(child_count);
+    for index in 0..child_count {
+        children.push(read_collider(
+            bytes,
+            children_start + index * COLLIDER_BYTES,
+        )?);
+    }
 
-    // Une enveloppe convexe ne doit référencer que des points présents : un
-    // débordement viendrait d'un cache altéré (R-901).
+    // Vérifications de cohérence sur données potentiellement altérées (R-901).
     for collider in &colliders {
-        if let ColliderShape::ConvexHull {
+        check_indices(&collider.shape, point_count, child_count)?;
+    }
+    for child in &children {
+        // Un enfant peut porter une enveloppe convexe (ses points dans l'annexe),
+        // mais pas être lui-même un compound : rapier ne les imbrique pas.
+        if matches!(child.shape, ColliderShape::Compound { .. }) {
+            return Err(malformed("compound imbriqué dans un compound"));
+        }
+        check_indices(&child.shape, point_count, 0)?;
+    }
+    Ok((colliders, points, children))
+}
+
+/// Vérifie que les index d'une forme indexée restent dans leurs annexes.
+fn check_indices(
+    shape: &ColliderShape,
+    point_count: usize,
+    child_count: usize,
+) -> Result<(), A3dError> {
+    match *shape {
+        ColliderShape::ConvexHull {
             points_offset,
             points_count,
-        } = collider.shape
-        {
+        } => {
             let end = (points_offset as usize).checked_add(points_count as usize);
             if end.is_none_or(|end| end > point_count) {
                 return Err(malformed("points d'une enveloppe convexe hors de l'annexe"));
             }
         }
+        ColliderShape::Compound {
+            children_offset,
+            children_count,
+        } => {
+            let end = (children_offset as usize).checked_add(children_count as usize);
+            if end.is_none_or(|end| end > child_count) {
+                return Err(malformed("enfants d'un compound hors de l'annexe"));
+            }
+        }
+        _ => {}
     }
-    Ok((colliders, points))
+    Ok(())
 }
 
 fn malformed(detail: &'static str) -> A3dError {
@@ -385,15 +460,16 @@ mod tests {
             }),
             collider(ColliderShape::Sphere { radius: 2.0 }),
         ];
-        let bytes = encode_colliders(&colliders, &[]).expect("encodage");
-        // + en-tête d'annexe des points (point_count = 0), même sans point.
+        let bytes = encode_colliders(&colliders, &[], &[]).expect("encodage");
+        // + en-têtes des annexes points et enfants (comptes nuls), même sans contenu.
         assert_eq!(
             bytes.len(),
-            HEADER_BYTES + 2 * COLLIDER_BYTES + HEADER_BYTES
+            HEADER_BYTES + 2 * COLLIDER_BYTES + HEADER_BYTES + HEADER_BYTES
         );
-        let (decoded, points) = decode_colliders(&bytes).expect("décodage");
+        let (decoded, points, children) = decode_colliders(&bytes).expect("décodage");
         assert_eq!(decoded, colliders);
         assert!(points.is_empty());
+        assert!(children.is_empty());
     }
 
     #[test]
@@ -409,10 +485,58 @@ mod tests {
             points_offset: 0,
             points_count: 4,
         })];
-        let bytes = encode_colliders(&colliders, &cloud).expect("encodage");
-        let (decoded, points) = decode_colliders(&bytes).expect("décodage");
+        let bytes = encode_colliders(&colliders, &cloud, &[]).expect("encodage");
+        let (decoded, points, _children) = decode_colliders(&bytes).expect("décodage");
         assert_eq!(decoded, colliders);
         assert_eq!(points, cloud);
+    }
+
+    #[test]
+    fn t311_un_compound_fait_l_aller_retour_avec_ses_enfants() {
+        // Un compound de deux enfants (une boîte, une sphère), placés par leur
+        // `local` ; les enfants vivent dans l'annexe dédiée.
+        let parent = collider(ColliderShape::Compound {
+            children_offset: 0,
+            children_count: 2,
+        });
+        let children = vec![
+            collider(ColliderShape::Box {
+                half_extents: [0.5, 0.5, 0.5],
+            }),
+            collider(ColliderShape::Sphere { radius: 0.25 }),
+        ];
+        let bytes = encode_colliders(&[parent], &[], &children).expect("encodage");
+        let (decoded, _points, decoded_children) = decode_colliders(&bytes).expect("décodage");
+        assert_eq!(decoded, vec![parent]);
+        assert_eq!(decoded_children, children);
+    }
+
+    #[test]
+    fn t311_un_compound_imbrique_est_refuse() {
+        // Un enfant ne peut pas être lui-même un compound (rapier ne les imbrique
+        // pas) : refusé au décodage.
+        let parent = collider(ColliderShape::Compound {
+            children_offset: 0,
+            children_count: 1,
+        });
+        let children = vec![collider(ColliderShape::Compound {
+            children_offset: 0,
+            children_count: 0,
+        })];
+        let bytes = encode_colliders(&[parent], &[], &children).expect("encodage");
+        assert!(decode_colliders(&bytes).is_err());
+    }
+
+    #[test]
+    fn t311_un_compound_hors_annexe_est_refuse() {
+        // Le compound réclame deux enfants mais l'annexe n'en porte qu'un.
+        let parent = collider(ColliderShape::Compound {
+            children_offset: 0,
+            children_count: 2,
+        });
+        let children = vec![collider(ColliderShape::Sphere { radius: 1.0 })];
+        let bytes = encode_colliders(&[parent], &[], &children).expect("encodage");
+        assert!(decode_colliders(&bytes).is_err());
     }
 
     #[test]
@@ -423,7 +547,7 @@ mod tests {
             points_count: 4,
         })];
         let cloud = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
-        let bytes = encode_colliders(&colliders, &cloud).expect("encodage");
+        let bytes = encode_colliders(&colliders, &cloud, &[]).expect("encodage");
         assert!(decode_colliders(&bytes).is_err());
     }
 
@@ -434,7 +558,7 @@ mod tests {
         let colliders = vec![collider(ColliderShape::Box {
             half_extents: [0.5, 1.0, 1.5],
         })];
-        let bytes = encode_colliders(&colliders, &[]).expect("encodage");
+        let bytes = encode_colliders(&colliders, &[], &[]).expect("encodage");
 
         let mut attendu = Vec::new();
         attendu.extend_from_slice(&1u32.to_le_bytes()); // collider_count
@@ -461,15 +585,19 @@ mod tests {
         attendu.extend_from_slice(&0u32.to_le_bytes()); // hull_points_offset
         attendu.extend_from_slice(&0u32.to_le_bytes()); // hull_points_count
         attendu.extend_from_slice(&0u32.to_le_bytes()); // point_count de l'annexe
+        attendu.extend_from_slice(&0u32.to_le_bytes()); // child_count de l'annexe
 
-        assert_eq!(bytes.len(), HEADER_BYTES + COLLIDER_BYTES + HEADER_BYTES);
+        assert_eq!(
+            bytes.len(),
+            HEADER_BYTES + COLLIDER_BYTES + HEADER_BYTES + HEADER_BYTES
+        );
         assert_eq!(bytes, attendu);
     }
 
     #[test]
     fn t311_une_section_phys_mensongere_est_refusee_sans_paniquer() {
         let colliders = vec![collider(ColliderShape::Sphere { radius: 1.0 })];
-        let bytes = encode_colliders(&colliders, &[]).expect("encodage");
+        let bytes = encode_colliders(&colliders, &[], &[]).expect("encodage");
 
         // Tronquée, ou prolongée d'un octet.
         assert!(decode_colliders(&bytes[..bytes.len() - 1]).is_err());

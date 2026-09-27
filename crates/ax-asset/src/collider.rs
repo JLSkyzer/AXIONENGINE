@@ -39,6 +39,10 @@ use ax_model::dm::scene::{NodeDesc, NONE_U32};
 /// garantit.
 const AUTO_COLLIDER_DENSITY: f32 = 1000.0;
 
+/// Nombre maximal de formes filles d'un composé (§10.3, R-621) : au-delà,
+/// `auto_compound` avertit et n'en regroupe pas davantage.
+const MAX_COMPOUND_PARTS: usize = 64;
+
 /// Groupe et masque par défaut : membre de tous les groupes, entre en collision
 /// avec tous (comme `CollisionGroups::ALL` au runtime). Le filtrage fin
 /// (`collision_group` / `collides_with` de la definition) arrive plus tard.
@@ -69,6 +73,12 @@ pub enum ColliderMode {
     /// d'`auto_convex`, qui **décompose** une forme concave en plusieurs convexes
     /// (V-HACD, R-162) et reste différé.
     Convex,
+    /// Un composé regroupant les boîtes des nodes enfants (`auto_compound`, R-621).
+    ///
+    /// Le mode recommandé pour une carrosserie : chaque node enfant du node porteur
+    /// contribue une boîte englobante de son mesh, placée à sa pose, réunies en un
+    /// seul collider `Compound` (une pièce rigide, un matériau).
+    Compound,
 }
 
 impl ColliderMode {
@@ -85,6 +95,7 @@ impl ColliderMode {
             "auto_box" => Some(ColliderMode::AutoBox),
             "auto_sphere" => Some(ColliderMode::AutoSphere),
             "convex" => Some(ColliderMode::Convex),
+            "auto_compound" => Some(ColliderMode::Compound),
             _ => None,
         }
     }
@@ -111,6 +122,9 @@ pub struct ColliderBuild {
     /// Points d'enveloppe convexe, référencés par les formes `ConvexHull`
     /// (`points_offset`/`points_count`, en indices). Sérialisés dans `PHYS`.
     pub hull_points: Vec<[f32; 3]>,
+    /// Formes filles des composés, référencées par les formes `Compound`
+    /// (`children_offset`/`children_count`, en indices). Sérialisées dans `PHYS`.
+    pub compound_children: Vec<ColliderDesc>,
     /// Avertissements (R-912), à journaliser une fois.
     pub warnings: Vec<String>,
 }
@@ -143,6 +157,7 @@ pub fn build_colliders(
     ColliderBuild {
         colliders,
         hull_points: Vec::new(),
+        compound_children: Vec::new(),
         warnings: Vec::new(),
     }
 }
@@ -165,39 +180,54 @@ fn per_node_colliders(
         else {
             continue;
         };
-        if mesh_index == NONE_U32 {
-            build
-                .warnings
-                .push(format!("node collider {} sans mesh, ignoré", request.node));
-            continue;
-        }
-        let Some(mesh) = meshes.get(mesh_index as usize) else {
-            build
-                .warnings
-                .push(format!("node collider {} : mesh introuvable", request.node));
-            continue;
-        };
-        let aabb = Aabb {
-            min: mesh.aabb_min,
-            max: mesh.aabb_max,
-        };
-        let mut collider = match request.mode {
-            ColliderMode::AutoBox => auto_box(aabb),
-            ColliderMode::AutoSphere => auto_sphere(aabb),
-            ColliderMode::Convex => {
-                match convex_from_mesh(mesh, vertices, &mut build.hull_points) {
-                    Ok(collider) => collider,
-                    Err(reason) => {
-                        build
-                            .warnings
-                            .push(format!("node collider {} : {reason}, ignoré", request.node));
-                        continue;
-                    }
+        // `Compound` regroupe les enfants : il ne dépend pas du mesh propre du
+        // node porteur (qui peut ne pas en avoir). Les autres modes tirent leur
+        // forme du mesh du node.
+        let mut collider = if request.mode == ColliderMode::Compound {
+            match compound_from_children(request.node, nodes, meshes, &mut build.compound_children)
+            {
+                Ok(collider) => collider,
+                Err(reason) => {
+                    build
+                        .warnings
+                        .push(format!("node collider {} : {reason}, ignoré", request.node));
+                    continue;
                 }
             }
-            // Une requête ne porte que des formes prises en charge : les autres
-            // sont écartées à l'import, avant d'arriver ici.
-            ColliderMode::None => continue,
+        } else {
+            if mesh_index == NONE_U32 {
+                build
+                    .warnings
+                    .push(format!("node collider {} sans mesh, ignoré", request.node));
+                continue;
+            }
+            let Some(mesh) = meshes.get(mesh_index as usize) else {
+                build
+                    .warnings
+                    .push(format!("node collider {} : mesh introuvable", request.node));
+                continue;
+            };
+            let aabb = Aabb {
+                min: mesh.aabb_min,
+                max: mesh.aabb_max,
+            };
+            match request.mode {
+                ColliderMode::AutoBox => auto_box(aabb),
+                ColliderMode::AutoSphere => auto_sphere(aabb),
+                ColliderMode::Convex => {
+                    match convex_from_mesh(mesh, vertices, &mut build.hull_points) {
+                        Ok(collider) => collider,
+                        Err(reason) => {
+                            build
+                                .warnings
+                                .push(format!("node collider {} : {reason}, ignoré", request.node));
+                            continue;
+                        }
+                    }
+                }
+                // `Compound` est traité plus haut ; `None` n'arrive pas en requête.
+                ColliderMode::Compound | ColliderMode::None => continue,
+            }
         };
         // Le collider hérite de la part du node : c'est ce lien que R-623 lira
         // pour décider du marquage REFITTABLE.
@@ -248,6 +278,65 @@ fn convex_from_mesh(
         ColliderShape::ConvexHull {
             points_offset: offset,
             points_count: point_count as u32,
+        },
+        [0.0; 3],
+    ))
+}
+
+/// Construit un collider `Compound` (R-621) regroupant les boîtes des nodes enfants
+/// du node `parent` : chaque enfant portant un mesh contribue une boîte englobante,
+/// placée à la pose du node enfant, ajoutée au pool d'enfants.
+///
+/// La pose de chaque boîte compose la pose du node enfant et le centre de sa boîte.
+/// La composition est exacte quand le node enfant n'a pas de rotation (le cas d'une
+/// carrosserie et du test) ; sous rotation, le décalage du centre n'est pas encore
+/// tourné — un raffinement quand des pièces tournées de compound arriveront.
+///
+/// Rend `Err(raison)` s'il n'y a aucun enfant avec mesh à regrouper.
+fn compound_from_children(
+    parent: u32,
+    nodes: &[NodeDesc],
+    meshes: &[MeshDesc],
+    pool: &mut Vec<ColliderDesc>,
+) -> Result<ColliderDesc, String> {
+    let offset = u32::try_from(pool.len()).map_err(|_| "pool d'enfants saturé".to_owned())?;
+    let mut count = 0u32;
+    for node in nodes.iter().filter(|node| node.parent == parent) {
+        if node.mesh == NONE_U32 {
+            continue;
+        }
+        let Some(mesh) = meshes.get(node.mesh as usize) else {
+            continue;
+        };
+        if count as usize >= MAX_COMPOUND_PARTS {
+            return Err(format!("plus de {MAX_COMPOUND_PARTS} formes filles"));
+        }
+        let aabb = Aabb {
+            min: mesh.aabb_min,
+            max: mesh.aabb_max,
+        };
+        // Boîte du mesh (centrée sur le centre de l'AABB), placée à la pose du node
+        // enfant : translation additionnée, rotation et échelle transmises.
+        let mut child = auto_box(aabb);
+        let center = child.local.translation;
+        child.local.translation = [
+            node.local.translation[0] + center[0],
+            node.local.translation[1] + center[1],
+            node.local.translation[2] + center[2],
+        ];
+        child.local.rotation = node.local.rotation;
+        child.local.scale = node.local.scale;
+        pool.push(child);
+        count += 1;
+    }
+    if count == 0 {
+        return Err("aucun enfant avec mesh à regrouper".to_owned());
+    }
+    // Le composé porte sa propre pose à l'identité : les enfants portent la leur.
+    Ok(primitive_collider(
+        ColliderShape::Compound {
+            children_offset: offset,
+            children_count: count,
         },
         [0.0; 3],
     ))
@@ -374,11 +463,13 @@ mod tests {
             Some(ColliderMode::AutoSphere)
         );
         assert_eq!(ColliderMode::parse("convex"), Some(ColliderMode::Convex));
-        // Reconnues du CDC mais pas encore générées, et inconnues : `None`.
+        assert_eq!(
+            ColliderMode::parse("auto_compound"),
+            Some(ColliderMode::Compound)
+        );
         // `auto_convex` (décomposition V-HACD) est distinct de `convex` (une seule
-        // enveloppe des sommets du mesh) et reste différé.
+        // enveloppe des sommets du mesh) et reste différé ; inconnu : `None`.
         assert_eq!(ColliderMode::parse("auto_convex"), None);
-        assert_eq!(ColliderMode::parse("auto_compound"), None);
         assert_eq!(ColliderMode::parse("teleporteur"), None);
     }
 
@@ -614,5 +705,75 @@ mod tests {
         assert!(build.colliders.is_empty(), "aucune enveloppe sous 4 points");
         assert_eq!(build.warnings.len(), 1, "l'ignorance est avertie (R-912)");
         assert!(build.hull_points.is_empty());
+    }
+
+    #[test]
+    fn auto_compound_regroupe_les_boites_des_enfants() {
+        // Node porteur (index 0, sans mesh) et deux enfants avec mesh, en ±x.
+        let parent = node(NONE_U32, NONE_U16);
+        let mut enfant_gauche = node(0, NONE_U16);
+        enfant_gauche.parent = 0;
+        enfant_gauche.local.translation = [-1.0, 0.0, 0.0];
+        let mut enfant_droit = node(1, NONE_U16);
+        enfant_droit.parent = 0;
+        enfant_droit.local.translation = [1.0, 0.0, 0.0];
+        let mut nodes = vec![parent, enfant_gauche, enfant_droit];
+        // Deux meshes centrés sur l'origine : le centre de l'AABB est nul, donc la
+        // pose de chaque boîte est exactement celle du node enfant.
+        let meshes = vec![mesh([-0.5; 3], [0.5; 3]), mesh([-0.5; 3], [0.5; 3])];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::Compound,
+        }];
+
+        let build = build_colliders(
+            &mut nodes,
+            &meshes,
+            &[],
+            &requests,
+            ColliderMode::None,
+            None,
+        );
+
+        // Un seul collider (le compound) sur le node porteur ; deux enfants.
+        assert_eq!(build.colliders.len(), 1);
+        assert_eq!(
+            build.colliders[0].shape,
+            ColliderShape::Compound {
+                children_offset: 0,
+                children_count: 2,
+            }
+        );
+        assert_eq!(nodes[0].collider, 0, "le node porteur est lié au compound");
+        assert_eq!(build.compound_children.len(), 2);
+        // Chaque enfant est une boîte, placée à la pose de son node.
+        for child in &build.compound_children {
+            assert!(matches!(child.shape, ColliderShape::Box { .. }));
+        }
+        assert_eq!(
+            build.compound_children[0].local.translation,
+            [-1.0, 0.0, 0.0]
+        );
+        assert_eq!(
+            build.compound_children[1].local.translation,
+            [1.0, 0.0, 0.0]
+        );
+        assert!(build.warnings.is_empty());
+    }
+
+    #[test]
+    fn auto_compound_sans_enfant_avec_mesh_est_averti() {
+        // Un node porteur sans enfant : rien à regrouper.
+        let mut nodes = vec![node(NONE_U32, NONE_U16)];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::Compound,
+        }];
+
+        let build = build_colliders(&mut nodes, &[], &[], &requests, ColliderMode::None, None);
+
+        assert!(build.colliders.is_empty(), "aucun compound sans enfant");
+        assert_eq!(build.warnings.len(), 1, "l'ignorance est avertie (R-912)");
+        assert!(build.compound_children.is_empty());
     }
 }

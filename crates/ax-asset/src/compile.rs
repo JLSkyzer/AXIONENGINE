@@ -163,6 +163,7 @@ pub fn compile(
     warnings.extend(built.warnings);
     asset.colliders = built.colliders;
     asset.hull_points = built.hull_points;
+    asset.compound_children = built.compound_children;
 
     // La sortie de C-23, sans exemption : c'est ce que le chargement vérifiera
     // (R-540). Le vérifier dès ici fait d'un défaut de l'optimizer un refus à
@@ -293,8 +294,12 @@ fn write_container(
     }
     if !asset.colliders.is_empty() {
         // Section `PHYS` : les colliders du runtime (C-32, ADR-115).
-        let phys = encode_colliders(&asset.colliders, &asset.hull_points)
-            .map_err(CompileError::Container)?;
+        let phys = encode_colliders(
+            &asset.colliders,
+            &asset.hull_points,
+            &asset.compound_children,
+        )
+        .map_err(CompileError::Container)?;
         writer
             .section(SectionTag::PHYS, &phys)
             .map_err(CompileError::Container)?;
@@ -549,7 +554,8 @@ f 2 7 3
             .section(SectionTag::PHYS)
             .expect("PHYS")
             .expect("section absente");
-        let (colliders, _points) = crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
+        let (colliders, _points, _children) =
+            crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
         assert_eq!(colliders.len(), 1);
         assert!(
             matches!(
@@ -601,7 +607,8 @@ f 2 7 3
             .section(SectionTag::PHYS)
             .expect("PHYS")
             .expect("section absente");
-        let (colliders, _points) = crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
+        let (colliders, _points, _children) =
+            crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
         assert_eq!(colliders.len(), 1);
         let ax_model::dm::physics::ColliderShape::Box { half_extents } = colliders[0].shape else {
             panic!("attendu une boîte, obtenu {:?}", colliders[0].shape);
@@ -648,7 +655,8 @@ f 2 7 3
             .section(SectionTag::PHYS)
             .expect("PHYS")
             .expect("section absente");
-        let (colliders, points) = crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
+        let (colliders, points, _children) =
+            crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
         assert_eq!(colliders.len(), 1);
         let ax_model::dm::physics::ColliderShape::ConvexHull {
             points_offset,
@@ -663,6 +671,67 @@ f 2 7 3
         assert_eq!(points_offset, 0);
         assert_eq!(points_count, 4, "les quatre sommets du tétraèdre");
         assert_eq!(points.len(), 4, "l'annexe porte les quatre points");
+    }
+
+    /// glTF dont le node porteur `role=collider shape=auto_compound` a deux enfants
+    /// à mesh (un cube réutilisé), placés en ±x. Buffer base64 : positions f32 (8
+    /// sommets) puis indices u16 (12 faces).
+    const GLTF_COMPOUND: &str = concat!(
+        r#"{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"#,
+        r#""nodes":[{"name":"corps","extras":{"axion":{"role":"collider","#,
+        r#""shape":"auto_compound"}},"children":[1,2]},"#,
+        r#"{"name":"g","mesh":0,"translation":[-1.0,0.0,0.0]},"#,
+        r#"{"name":"d","mesh":0,"translation":[1.0,0.0,0.0]}],"#,
+        r#""meshes":[{"name":"cube","primitives":[{"attributes":{"POSITION":0},"indices":1}]}],"#,
+        r#""accessors":[{"bufferView":0,"componentType":5126,"count":8,"type":"VEC3","#,
+        r#""min":[-0.5,-0.5,-0.5],"max":[0.5,0.5,0.5]},"#,
+        r#"{"bufferView":1,"componentType":5123,"count":36,"type":"SCALAR"}],"#,
+        r#""bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":96},"#,
+        r#"{"buffer":0,"byteOffset":96,"byteLength":72}],"#,
+        r#""buffers":[{"byteLength":168,"uri":"data:application/octet-stream;base64,"#,
+        "AAAAvwAAAL8AAAC/AAAAPwAAAL8AAAC/AAAAPwAAAD8AAAC/AAAAvwAAAD8AAAC/AAAAvwAAAL8A",
+        "AAA/AAAAPwAAAL8AAAA/AAAAPwAAAD8AAAA/AAAAvwAAAD8AAAA/AAACAAEAAAADAAIABAAFAAYA",
+        "BAAGAAcAAAABAAUAAAAFAAQAAgADAAcAAgAHAAYAAQACAAYAAQAGAAUAAAAEAAcAAAAHAAMA",
+        r#""}]}"#,
+    );
+
+    #[test]
+    fn t311_un_node_auto_compound_gltf_produit_un_compound_dans_phys() {
+        // Le chemin authoré compound (R-621) : les meshes des nodes enfants sont
+        // regroupés en un seul collider Compound, ses filles dans l'annexe.
+        let compiled = compile(
+            GLTF_COMPOUND.as_bytes(),
+            SourceFormat::Gltf,
+            &OPTIONS,
+            |_| None,
+        )
+        .expect("compilation refusée");
+        assert_eq!(compiled.collider_count, 1, "un seul collider : le compound");
+
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+        let phys = file
+            .section(SectionTag::PHYS)
+            .expect("PHYS")
+            .expect("section absente");
+        let (colliders, _points, children) =
+            crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
+        assert_eq!(colliders.len(), 1);
+        let ax_model::dm::physics::ColliderShape::Compound {
+            children_offset,
+            children_count,
+        } = colliders[0].shape
+        else {
+            panic!("attendu un compound, obtenu {:?}", colliders[0].shape);
+        };
+        assert_eq!(children_offset, 0);
+        assert_eq!(children_count, 2, "deux enfants regroupés");
+        assert_eq!(children.len(), 2);
+        for child in &children {
+            assert!(matches!(
+                child.shape,
+                ax_model::dm::physics::ColliderShape::Box { .. }
+            ));
+        }
     }
 
     #[test]

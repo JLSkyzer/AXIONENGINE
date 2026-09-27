@@ -432,6 +432,10 @@ pub struct ImportedAsset {
     /// (`points_offset`/`points_count`). Rempli avec les colliders (`crate::collider`),
     /// sérialisé dans la section `PHYS` à la suite des colliders.
     pub hull_points: Vec<[f32; 3]>,
+    /// Pool des formes filles de compound, référencé par les formes `Compound`
+    /// (`children_offset`/`children_count`). Rempli avec les colliders, sérialisé
+    /// dans `PHYS` après les points d'enveloppe.
+    pub compound_children: Vec<ColliderDesc>,
     /// Noms déclarés par la source, par catégorie.
     pub names: Vec<(&'static str, String)>,
 }
