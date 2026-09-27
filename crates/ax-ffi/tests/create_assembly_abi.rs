@@ -59,7 +59,7 @@ fn box_collider() -> ColliderDesc {
 /// Construit le flux `SimIn` : en-tête + une commande CREATE_ASSEMBLY (en-tête
 /// `CreateAssembly` + octets `PHYS`).
 fn command_stream() -> Vec<u8> {
-    let phys = encode_colliders(&[box_collider()]).expect("encodage PHYS");
+    let phys = encode_colliders(&[box_collider()], &[]).expect("encodage PHYS");
 
     // En-tête CreateAssembly (64 octets).
     let mut header = Vec::new();

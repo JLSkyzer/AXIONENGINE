@@ -155,12 +155,14 @@ pub fn compile(
     let built = build_colliders(
         &mut asset.nodes,
         &asset.meshes,
+        &asset.vertices,
         &asset.collider_requests,
         options.collider_mode,
         optimized.bounds,
     );
     warnings.extend(built.warnings);
     asset.colliders = built.colliders;
+    asset.hull_points = built.hull_points;
 
     // La sortie de C-23, sans exemption : c'est ce que le chargement vérifiera
     // (R-540). Le vérifier dès ici fait d'un défaut de l'optimizer un refus à
@@ -291,7 +293,8 @@ fn write_container(
     }
     if !asset.colliders.is_empty() {
         // Section `PHYS` : les colliders du runtime (C-32, ADR-115).
-        let phys = encode_colliders(&asset.colliders).map_err(CompileError::Container)?;
+        let phys = encode_colliders(&asset.colliders, &asset.hull_points)
+            .map_err(CompileError::Container)?;
         writer
             .section(SectionTag::PHYS, &phys)
             .map_err(CompileError::Container)?;
@@ -546,7 +549,7 @@ f 2 7 3
             .section(SectionTag::PHYS)
             .expect("PHYS")
             .expect("section absente");
-        let colliders = crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
+        let (colliders, _points) = crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
         assert_eq!(colliders.len(), 1);
         assert!(
             matches!(
@@ -598,7 +601,7 @@ f 2 7 3
             .section(SectionTag::PHYS)
             .expect("PHYS")
             .expect("section absente");
-        let colliders = crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
+        let (colliders, _points) = crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
         assert_eq!(colliders.len(), 1);
         let ax_model::dm::physics::ColliderShape::Box { half_extents } = colliders[0].shape else {
             panic!("attendu une boîte, obtenu {:?}", colliders[0].shape);
@@ -607,6 +610,59 @@ f 2 7 3
         for extent in half_extents {
             assert!((extent - 0.5).abs() < 1.0e-6, "demi-dimension {extent}");
         }
+    }
+
+    /// glTF dont l'unique node porte `role=collider`, `shape=convex` : un tétraèdre
+    /// de quatre sommets non coplanaires. Buffer base64 : positions f32 puis indices
+    /// u16 (quatre faces).
+    const GLTF_CONVEX: &str = concat!(
+        r#"{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"#,
+        r#""nodes":[{"name":"coque","mesh":0,"extras":{"axion":"#,
+        r#"{"role":"collider","shape":"convex"}}}],"#,
+        r#""meshes":[{"name":"tetra","primitives":[{"attributes":{"POSITION":0},"indices":1}]}],"#,
+        r#""accessors":[{"bufferView":0,"componentType":5126,"count":4,"type":"VEC3","#,
+        r#""min":[0.0,0.0,0.0],"max":[1.0,1.0,1.0]},"#,
+        r#"{"bufferView":1,"componentType":5123,"count":12,"type":"SCALAR"}],"#,
+        r#""bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":48},"#,
+        r#"{"buffer":0,"byteOffset":48,"byteLength":24}],"#,
+        r#""buffers":[{"byteLength":72,"uri":"data:application/octet-stream;base64,"#,
+        "AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAACAAEAAAABAAMAAAADAAIAAQACAAMA",
+        r#""}]}"#,
+    );
+
+    #[test]
+    fn t311_un_node_convex_gltf_produit_une_enveloppe_dans_phys() {
+        // Le chemin authoré convexe (R-620 priorité 1, R-161) : les sommets du mesh
+        // deviennent les points d'enveloppe, sérialisés dans PHYS et relisibles.
+        let compiled = compile(GLTF_CONVEX.as_bytes(), SourceFormat::Gltf, &OPTIONS, |_| {
+            None
+        })
+        .expect("compilation refusée");
+        assert_eq!(
+            compiled.collider_count, 1,
+            "le node convexe produit une enveloppe"
+        );
+
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+        let phys = file
+            .section(SectionTag::PHYS)
+            .expect("PHYS")
+            .expect("section absente");
+        let (colliders, points) = crate::a3d::decode_colliders(&phys).expect("décodage PHYS");
+        assert_eq!(colliders.len(), 1);
+        let ax_model::dm::physics::ColliderShape::ConvexHull {
+            points_offset,
+            points_count,
+        } = colliders[0].shape
+        else {
+            panic!(
+                "attendu une enveloppe convexe, obtenu {:?}",
+                colliders[0].shape
+            );
+        };
+        assert_eq!(points_offset, 0);
+        assert_eq!(points_count, 4, "les quatre sommets du tétraèdre");
+        assert_eq!(points.len(), 4, "l'annexe porte les quatre points");
     }
 
     #[test]

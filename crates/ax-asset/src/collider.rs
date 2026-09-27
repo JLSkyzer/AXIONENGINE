@@ -27,8 +27,8 @@
 //! la section A3D `PHYS` (gel derrière ADR) suivent.
 
 use crate::optimize::Aabb;
-use ax_model::dm::geometry::{MeshDesc, Transform};
-use ax_model::dm::physics::{ColliderDesc, ColliderShape};
+use ax_model::dm::geometry::{MeshDesc, Transform, Vertex};
+use ax_model::dm::physics::{ColliderDesc, ColliderShape, CONVEX_MAX_POINTS, CONVEX_MIN_POINTS};
 use ax_model::dm::scene::{NodeDesc, NONE_U32};
 
 /// Densité par défaut d'un collider auto-généré, en kg/m³.
@@ -62,6 +62,13 @@ pub enum ColliderMode {
     AutoBox,
     /// Une sphère englobante (`auto_sphere`).
     AutoSphere,
+    /// Une enveloppe convexe des sommets du mesh (`convex`).
+    ///
+    /// L'auteur déclare que le mesh du node est (ou peut être traité comme) convexe :
+    /// ses sommets deviennent les points d'enveloppe (R-161, 4..256). Distinct
+    /// d'`auto_convex`, qui **décompose** une forme concave en plusieurs convexes
+    /// (V-HACD, R-162) et reste différé.
+    Convex,
 }
 
 impl ColliderMode {
@@ -77,6 +84,7 @@ impl ColliderMode {
         match shape {
             "auto_box" => Some(ColliderMode::AutoBox),
             "auto_sphere" => Some(ColliderMode::AutoSphere),
+            "convex" => Some(ColliderMode::Convex),
             _ => None,
         }
     }
@@ -100,6 +108,9 @@ pub struct ColliderRequest {
 pub struct ColliderBuild {
     /// Colliders générés (DM-06), dans l'ordre de production.
     pub colliders: Vec<ColliderDesc>,
+    /// Points d'enveloppe convexe, référencés par les formes `ConvexHull`
+    /// (`points_offset`/`points_count`, en indices). Sérialisés dans `PHYS`.
+    pub hull_points: Vec<[f32; 3]>,
     /// Avertissements (R-912), à journaliser une fois.
     pub warnings: Vec<String>,
 }
@@ -114,13 +125,16 @@ pub struct ColliderBuild {
 pub fn build_colliders(
     nodes: &mut [NodeDesc],
     meshes: &[MeshDesc],
+    vertices: &[Vertex],
     requests: &[ColliderRequest],
     definition_mode: ColliderMode,
     bounds: Option<Aabb>,
 ) -> ColliderBuild {
     if !requests.is_empty() {
-        return per_node_colliders(nodes, meshes, requests);
+        return per_node_colliders(nodes, meshes, vertices, requests);
     }
+    // Par definition : englobant de l'asset. `Convex` n'a pas de source à ce
+    // niveau (il tire ses points d'un mesh de node), aussi n'y est-il pas produit.
     let colliders = match (definition_mode, bounds) {
         (ColliderMode::AutoBox, Some(bounds)) => vec![auto_box(bounds)],
         (ColliderMode::AutoSphere, Some(bounds)) => vec![auto_sphere(bounds)],
@@ -128,6 +142,7 @@ pub fn build_colliders(
     };
     ColliderBuild {
         colliders,
+        hull_points: Vec::new(),
         warnings: Vec::new(),
     }
 }
@@ -137,6 +152,7 @@ pub fn build_colliders(
 fn per_node_colliders(
     nodes: &mut [NodeDesc],
     meshes: &[MeshDesc],
+    vertices: &[Vertex],
     requests: &[ColliderRequest],
 ) -> ColliderBuild {
     let mut build = ColliderBuild::default();
@@ -168,6 +184,17 @@ fn per_node_colliders(
         let mut collider = match request.mode {
             ColliderMode::AutoBox => auto_box(aabb),
             ColliderMode::AutoSphere => auto_sphere(aabb),
+            ColliderMode::Convex => {
+                match convex_from_mesh(mesh, vertices, &mut build.hull_points) {
+                    Ok(collider) => collider,
+                    Err(reason) => {
+                        build
+                            .warnings
+                            .push(format!("node collider {} : {reason}, ignoré", request.node));
+                        continue;
+                    }
+                }
+            }
             // Une requête ne porte que des formes prises en charge : les autres
             // sont écartées à l'import, avant d'arriver ici.
             ColliderMode::None => continue,
@@ -182,6 +209,48 @@ fn per_node_colliders(
         build.colliders.push(collider);
     }
     build
+}
+
+/// Construit un collider `ConvexHull` depuis les sommets du mesh d'un node
+/// `role=collider shape=convex` : leurs positions deviennent les points d'enveloppe,
+/// ajoutés au `pool`. rapier calcule l'enveloppe elle-même au runtime.
+///
+/// Rend `Err(raison)` si les sommets sortent du tampon, ou si leur nombre est hors
+/// de `[4, 256]` (R-161) — réduire un nuage plus dense relève d'`auto_convex`
+/// (V-HACD, R-162), pas encore disponible ; un mesh trop maigre n'est pas un volume.
+fn convex_from_mesh(
+    mesh: &MeshDesc,
+    vertices: &[Vertex],
+    pool: &mut Vec<[f32; 3]>,
+) -> Result<ColliderDesc, String> {
+    let start = mesh.vertex_offset as usize;
+    let end = start.saturating_add(mesh.vertex_count as usize);
+    let Some(slice) = vertices.get(start..end) else {
+        return Err("sommets du mesh hors du tampon".to_owned());
+    };
+    let point_count = slice.len();
+    if point_count < CONVEX_MIN_POINTS as usize {
+        return Err(format!(
+            "enveloppe convexe de {point_count} points, moins que le minimum {CONVEX_MIN_POINTS}"
+        ));
+    }
+    if point_count > CONVEX_MAX_POINTS as usize {
+        return Err(format!(
+            "enveloppe convexe de {point_count} points, plus que {CONVEX_MAX_POINTS} — \
+             la réduction (auto_convex/V-HACD) n'est pas encore disponible"
+        ));
+    }
+    let offset = u32::try_from(pool.len()).map_err(|_| "pool de points saturé".to_owned())?;
+    pool.extend(slice.iter().map(|vertex| vertex.position));
+    // Les points sont déjà dans le repère du mesh : le collider n'a pas de
+    // translation de recentrage (contrairement à auto_box/auto_sphere).
+    Ok(primitive_collider(
+        ColliderShape::ConvexHull {
+            points_offset: offset,
+            points_count: point_count as u32,
+        },
+        [0.0; 3],
+    ))
 }
 
 /// Milieu des bornes.
@@ -259,7 +328,7 @@ mod tests {
 
     /// Colliders produits par la source **definition** (aucune requête de node).
     fn from_definition(mode: ColliderMode, bounds: Option<Aabb>) -> Vec<ColliderDesc> {
-        build_colliders(&mut [], &[], &[], mode, bounds).colliders
+        build_colliders(&mut [], &[], &[], &[], mode, bounds).colliders
     }
 
     /// Un node de test référençant un mesh et une part.
@@ -304,7 +373,10 @@ mod tests {
             ColliderMode::parse("auto_sphere"),
             Some(ColliderMode::AutoSphere)
         );
+        assert_eq!(ColliderMode::parse("convex"), Some(ColliderMode::Convex));
         // Reconnues du CDC mais pas encore générées, et inconnues : `None`.
+        // `auto_convex` (décomposition V-HACD) est distinct de `convex` (une seule
+        // enveloppe des sommets du mesh) et reste différé.
         assert_eq!(ColliderMode::parse("auto_convex"), None);
         assert_eq!(ColliderMode::parse("auto_compound"), None);
         assert_eq!(ColliderMode::parse("teleporteur"), None);
@@ -376,7 +448,14 @@ mod tests {
             mode: ColliderMode::AutoBox,
         }];
 
-        let build = build_colliders(&mut nodes, &meshes, &requests, ColliderMode::None, None);
+        let build = build_colliders(
+            &mut nodes,
+            &meshes,
+            &[],
+            &requests,
+            ColliderMode::None,
+            None,
+        );
 
         assert_eq!(build.colliders.len(), 1);
         assert_eq!(
@@ -401,7 +480,7 @@ mod tests {
             mode: ColliderMode::AutoBox,
         }];
 
-        let build = build_colliders(&mut nodes, &[], &requests, ColliderMode::None, None);
+        let build = build_colliders(&mut nodes, &[], &[], &requests, ColliderMode::None, None);
 
         assert!(build.colliders.is_empty(), "aucun collider sans mesh");
         assert_eq!(build.warnings.len(), 1, "l'ignorance est avertie (R-912)");
@@ -421,6 +500,7 @@ mod tests {
         let build = build_colliders(
             &mut nodes,
             &meshes,
+            &[],
             &requests,
             ColliderMode::AutoBox,
             Some(bounds([0.0; 3], [10.0; 3])),
@@ -431,5 +511,108 @@ mod tests {
             matches!(build.colliders[0].shape, ColliderShape::Sphere { .. }),
             "la requête de node (sphère) prime sur le mode definition (boîte)"
         );
+    }
+
+    /// Un sommet de test à la position donnée (autres champs neutres).
+    fn sommet(position: [f32; 3]) -> Vertex {
+        Vertex {
+            position,
+            normal: [0; 4],
+            tangent: [0; 4],
+            uv0: [0; 2],
+            uv1: [0; 2],
+            color: [255; 4],
+            bones: [0; 4],
+            weights: [255, 0, 0, 0],
+            region: ax_model::dm::geometry::NO_REGION_U8,
+            def_w: 0,
+            _pad: [0; 6],
+        }
+    }
+
+    #[test]
+    fn un_node_convex_produit_une_enveloppe_de_ses_sommets() {
+        // Un node `shape: convex` : les sommets de son mesh deviennent les points
+        // d'enveloppe (R-161), ajoutés au pool ; le collider les référence par
+        // offset/count.
+        let mut nodes = vec![node(0, NONE_U16)];
+        let meshes = vec![MeshDesc {
+            vertex_offset: 0,
+            vertex_count: 4,
+            ..mesh([0.0; 3], [1.0; 3])
+        }];
+        // Un tétraèdre : quatre sommets non coplanaires.
+        let vertices = vec![
+            sommet([0.0, 0.0, 0.0]),
+            sommet([1.0, 0.0, 0.0]),
+            sommet([0.0, 1.0, 0.0]),
+            sommet([0.0, 0.0, 1.0]),
+        ];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::Convex,
+        }];
+
+        let build = build_colliders(
+            &mut nodes,
+            &meshes,
+            &vertices,
+            &requests,
+            ColliderMode::None,
+            None,
+        );
+
+        assert_eq!(build.colliders.len(), 1);
+        assert_eq!(
+            build.colliders[0].shape,
+            ColliderShape::ConvexHull {
+                points_offset: 0,
+                points_count: 4,
+            }
+        );
+        assert!(build.warnings.is_empty());
+        assert_eq!(
+            build.hull_points,
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ]
+        );
+        assert_eq!(nodes[0].collider, 0, "le node est lié à son collider");
+    }
+
+    #[test]
+    fn un_node_convex_sans_assez_de_sommets_est_averti() {
+        // Trois sommets ne forment pas un volume (R-161 : au moins quatre).
+        let mut nodes = vec![node(0, NONE_U16)];
+        let meshes = vec![MeshDesc {
+            vertex_offset: 0,
+            vertex_count: 3,
+            ..mesh([0.0; 3], [1.0; 3])
+        }];
+        let vertices = vec![
+            sommet([0.0, 0.0, 0.0]),
+            sommet([1.0, 0.0, 0.0]),
+            sommet([0.0, 1.0, 0.0]),
+        ];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::Convex,
+        }];
+
+        let build = build_colliders(
+            &mut nodes,
+            &meshes,
+            &vertices,
+            &requests,
+            ColliderMode::None,
+            None,
+        );
+
+        assert!(build.colliders.is_empty(), "aucune enveloppe sous 4 points");
+        assert_eq!(build.warnings.len(), 1, "l'ignorance est avertie (R-912)");
+        assert!(build.hull_points.is_empty());
     }
 }

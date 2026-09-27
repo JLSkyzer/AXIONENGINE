@@ -764,11 +764,11 @@ fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
         _ => BodyKind::Dynamic,
     };
 
-    let colliders = match decode_colliders(&payload[CreateAssembly::BYTES..]) {
-        Ok(colliders) => colliders,
+    let (colliders, points) = match decode_colliders(&payload[CreateAssembly::BYTES..]) {
+        Ok(decoded) => decoded,
         Err(_) => return,
     };
-    let Some(runtime_colliders) = body_colliders(&colliders) else {
+    let Some(runtime_colliders) = body_colliders(&colliders, &points) else {
         return;
     };
     physics.create_assembly(dimension, handle, spawn, kind, &runtime_colliders);
@@ -779,13 +779,13 @@ fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
 /// (R-622). `None` si aucun collider, ou si l'un porte une forme non convertible
 /// (indexée/interdite) — l'assembly entière est alors abandonnée, jamais formée à
 /// moitié.
-fn body_colliders(colliders: &[ColliderDesc]) -> Option<Vec<BodyCollider>> {
+fn body_colliders(colliders: &[ColliderDesc], points: &[[f32; 3]]) -> Option<Vec<BodyCollider>> {
     if colliders.is_empty() {
         return None;
     }
     let mut runtime = Vec::with_capacity(colliders.len());
     for collider in colliders {
-        let shape = Shape::from_collider_shape(&collider.shape).ok()?;
+        let shape = Shape::from_collider_shape(&collider.shape, points).ok()?;
         runtime.push(BodyCollider {
             shape,
             density: collider.density,

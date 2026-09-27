@@ -428,6 +428,10 @@ pub struct ImportedAsset {
     /// Requêtes de collider issues des extras des nodes `role=collider` (R-620,
     /// priorité 1), lues à l'import et consommées par C-32 après l'optimisation.
     pub collider_requests: Vec<ColliderRequest>,
+    /// Pool des points d'enveloppe convexe, référencé par les formes `ConvexHull`
+    /// (`points_offset`/`points_count`). Rempli avec les colliders (`crate::collider`),
+    /// sérialisé dans la section `PHYS` à la suite des colliders.
+    pub hull_points: Vec<[f32; 3]>,
     /// Noms déclarés par la source, par catégorie.
     pub names: Vec<(&'static str, String)>,
 }

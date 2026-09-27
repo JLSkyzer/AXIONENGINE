@@ -1,23 +1,28 @@
-//! Section `PHYS` : `ColliderDesc[]` (C-32, DM-06).
+//! Section `PHYS` : `ColliderDesc[]` + points d'enveloppe (C-32, DM-06).
 //!
-//! Disposition, en petit-boutiste, fixée par `docs/decisions/ADR-115.md` :
+//! Disposition, en petit-boutiste, fixée par `docs/decisions/ADR-115.md` (§1 :
+//! les tableaux annexes des formes indexées « ajoutés à la suite », `COMPILER_VERSION`
+//! incrémenté à leur arrivée) :
 //!
 //! ```text
 //! u32 collider_count
 //! ColliderDesc[collider_count]      104 octets chacun, disposition repr(C)
+//! u32 point_count                   annexe des points d'enveloppe (ConvexHull)
+//! [f32;3] hull_points[point_count]  12 octets chacun
 //! ```
 //!
 //! Les colliders sont écrits sur leurs **104 octets** `repr(C)` — la forme
 //! (`ColliderShape`, enum `repr(C, u32)`) sur ses 28 octets, discriminant en
 //! tête puis l'union dimensionnée sur la plus grande variante, remplissage à
-//! zéro. Seules `Sphere` et `Box` sont produites aujourd'hui ; les variantes
-//! indexées et leurs tableaux annexes viendront avec leur producteur, en
-//! incrémentant `COMPILER_VERSION` (ADR-115).
+//! zéro. Une forme `ConvexHull` porte `points_offset`/`points_count` **en indices
+//! de points** dans l'annexe : ses points sont `hull_points[offset .. offset+count]`.
+//! `Compound` (enfants) reste à venir avec `auto_compound`, en incrémentant de
+//! nouveau `COMPILER_VERSION`.
 
 use super::{A3dError, SectionTag};
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::limits;
-use ax_model::dm::physics::{ColliderDesc, ColliderShape};
+use ax_model::dm::physics::{ColliderDesc, ColliderShape, CONVEX_MAX_POINTS};
 
 /// Taille d'une forme sérialisée : celle de `ColliderShape` (`repr(C, u32)`).
 const SHAPE_BYTES: usize = 28;
@@ -28,30 +33,55 @@ pub const COLLIDER_BYTES: usize = 104;
 /// En-tête de la section : nombre de colliders.
 const HEADER_BYTES: usize = 4;
 
-/// Encode une section `PHYS`.
+/// Taille d'un point d'enveloppe sérialisé (`[f32; 3]`).
+const POINT_BYTES: usize = 12;
+
+/// Plafond du nombre total de points d'enveloppe, avant toute allocation (R-901) :
+/// au plus `MAX_COLLIDERS` colliders, chacun `CONVEX_MAX_POINTS` points.
+const MAX_HULL_POINTS: usize = limits::MAX_COLLIDERS * CONVEX_MAX_POINTS as usize;
+
+/// Encode une section `PHYS` : les colliders puis l'annexe des points d'enveloppe.
+///
+/// Les formes `ConvexHull` référencent l'annexe par `points_offset`/`points_count`
+/// (indices de points) ; c'est à l'appelant d'avoir posé ces indices en accord
+/// avec `points`.
 ///
 /// # Errors
 ///
-/// [`A3dError::SectionUnwritable`] si le nombre de colliders dépasse ce qu'un
-/// `u32` décrit.
-pub fn encode_colliders(colliders: &[ColliderDesc]) -> Result<Vec<u8>, A3dError> {
+/// [`A3dError::SectionUnwritable`] si le nombre de colliders ou de points dépasse
+/// ce qu'un `u32` décrit.
+pub fn encode_colliders(
+    colliders: &[ColliderDesc],
+    points: &[[f32; 3]],
+) -> Result<Vec<u8>, A3dError> {
     let count = u32::try_from(colliders.len()).map_err(|_| unwritable())?;
-    let mut out = Vec::with_capacity(HEADER_BYTES + colliders.len() * COLLIDER_BYTES);
+    let point_count = u32::try_from(points.len()).map_err(|_| unwritable())?;
+    let mut out = Vec::with_capacity(
+        HEADER_BYTES + colliders.len() * COLLIDER_BYTES + HEADER_BYTES + points.len() * POINT_BYTES,
+    );
     out.extend_from_slice(&count.to_le_bytes());
     for collider in colliders {
         write_collider(&mut out, collider);
     }
+    out.extend_from_slice(&point_count.to_le_bytes());
+    for point in points {
+        for value in point {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+    }
     Ok(out)
 }
 
-/// Décode une section `PHYS` venue d'un fichier qu'on ne croit pas sur parole.
+/// Décode une section `PHYS` venue d'un fichier qu'on ne croit pas sur parole :
+/// rend les colliders et l'annexe des points d'enveloppe.
 ///
 /// # Errors
 ///
 /// [`A3dError::MalformedSection`] au premier écart : en-tête tronqué, plus de
-/// colliders que C-22 n'en admet — vérifié **avant** toute allocation (R-901) —,
-/// taille incohérente, ou forme de discriminant inconnu.
-pub fn decode_colliders(bytes: &[u8]) -> Result<Vec<ColliderDesc>, A3dError> {
+/// colliders ou de points que C-22 n'en admet — vérifié **avant** toute allocation
+/// (R-901) —, taille incohérente, forme de discriminant inconnu, ou `ConvexHull`
+/// dont les points débordent de l'annexe.
+pub fn decode_colliders(bytes: &[u8]) -> Result<(Vec<ColliderDesc>, Vec<[f32; 3]>), A3dError> {
     if bytes.len() < HEADER_BYTES {
         return Err(malformed("en-tête tronqué"));
     }
@@ -59,7 +89,19 @@ pub fn decode_colliders(bytes: &[u8]) -> Result<Vec<ColliderDesc>, A3dError> {
     if count > limits::MAX_COLLIDERS {
         return Err(malformed("plus de colliders que C-22 n'en admet"));
     }
-    if HEADER_BYTES.checked_add(count * COLLIDER_BYTES) != Some(bytes.len()) {
+    // Bornes du tableau de colliders, puis de l'en-tête de l'annexe des points.
+    let Some(points_header) = HEADER_BYTES.checked_add(count * COLLIDER_BYTES) else {
+        return Err(malformed("dénombrement de colliders démesuré"));
+    };
+    if points_header + HEADER_BYTES > bytes.len() {
+        return Err(malformed("annexe des points absente"));
+    }
+    let point_count = read_u32(bytes, points_header) as usize;
+    if point_count > MAX_HULL_POINTS {
+        return Err(malformed("plus de points d'enveloppe qu'admis"));
+    }
+    let points_start = points_header + HEADER_BYTES;
+    if points_start.checked_add(point_count * POINT_BYTES) != Some(bytes.len()) {
         return Err(malformed("taille incohérente avec le dénombrement"));
     }
 
@@ -67,7 +109,31 @@ pub fn decode_colliders(bytes: &[u8]) -> Result<Vec<ColliderDesc>, A3dError> {
     for index in 0..count {
         colliders.push(read_collider(bytes, HEADER_BYTES + index * COLLIDER_BYTES)?);
     }
-    Ok(colliders)
+    let mut points = Vec::with_capacity(point_count);
+    for index in 0..point_count {
+        let at = points_start + index * POINT_BYTES;
+        points.push([
+            f32::from_le_bytes(array(bytes, at)),
+            f32::from_le_bytes(array(bytes, at + 4)),
+            f32::from_le_bytes(array(bytes, at + 8)),
+        ]);
+    }
+
+    // Une enveloppe convexe ne doit référencer que des points présents : un
+    // débordement viendrait d'un cache altéré (R-901).
+    for collider in &colliders {
+        if let ColliderShape::ConvexHull {
+            points_offset,
+            points_count,
+        } = collider.shape
+        {
+            let end = (points_offset as usize).checked_add(points_count as usize);
+            if end.is_none_or(|end| end > point_count) {
+                return Err(malformed("points d'une enveloppe convexe hors de l'annexe"));
+            }
+        }
+    }
+    Ok((colliders, points))
 }
 
 fn malformed(detail: &'static str) -> A3dError {
@@ -319,10 +385,46 @@ mod tests {
             }),
             collider(ColliderShape::Sphere { radius: 2.0 }),
         ];
-        let bytes = encode_colliders(&colliders).expect("encodage");
-        assert_eq!(bytes.len(), HEADER_BYTES + 2 * COLLIDER_BYTES);
-        let decoded = decode_colliders(&bytes).expect("décodage");
+        let bytes = encode_colliders(&colliders, &[]).expect("encodage");
+        // + en-tête d'annexe des points (point_count = 0), même sans point.
+        assert_eq!(
+            bytes.len(),
+            HEADER_BYTES + 2 * COLLIDER_BYTES + HEADER_BYTES
+        );
+        let (decoded, points) = decode_colliders(&bytes).expect("décodage");
         assert_eq!(decoded, colliders);
+        assert!(points.is_empty());
+    }
+
+    #[test]
+    fn t311_une_enveloppe_convexe_fait_l_aller_retour_avec_ses_points() {
+        // Un tétraèdre : quatre points, une enveloppe convexe qui les référence.
+        let cloud = vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        let colliders = vec![collider(ColliderShape::ConvexHull {
+            points_offset: 0,
+            points_count: 4,
+        })];
+        let bytes = encode_colliders(&colliders, &cloud).expect("encodage");
+        let (decoded, points) = decode_colliders(&bytes).expect("décodage");
+        assert_eq!(decoded, colliders);
+        assert_eq!(points, cloud);
+    }
+
+    #[test]
+    fn t311_une_enveloppe_hors_annexe_est_refusee() {
+        // La forme réclame 4 points mais l'annexe n'en porte que 3 : débordement.
+        let colliders = vec![collider(ColliderShape::ConvexHull {
+            points_offset: 0,
+            points_count: 4,
+        })];
+        let cloud = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let bytes = encode_colliders(&colliders, &cloud).expect("encodage");
+        assert!(decode_colliders(&bytes).is_err());
     }
 
     #[test]
@@ -332,7 +434,7 @@ mod tests {
         let colliders = vec![collider(ColliderShape::Box {
             half_extents: [0.5, 1.0, 1.5],
         })];
-        let bytes = encode_colliders(&colliders).expect("encodage");
+        let bytes = encode_colliders(&colliders, &[]).expect("encodage");
 
         let mut attendu = Vec::new();
         attendu.extend_from_slice(&1u32.to_le_bytes()); // collider_count
@@ -358,15 +460,16 @@ mod tests {
         attendu.extend_from_slice(&0u16.to_le_bytes()); // _pad2
         attendu.extend_from_slice(&0u32.to_le_bytes()); // hull_points_offset
         attendu.extend_from_slice(&0u32.to_le_bytes()); // hull_points_count
+        attendu.extend_from_slice(&0u32.to_le_bytes()); // point_count de l'annexe
 
-        assert_eq!(bytes.len(), HEADER_BYTES + COLLIDER_BYTES);
+        assert_eq!(bytes.len(), HEADER_BYTES + COLLIDER_BYTES + HEADER_BYTES);
         assert_eq!(bytes, attendu);
     }
 
     #[test]
     fn t311_une_section_phys_mensongere_est_refusee_sans_paniquer() {
         let colliders = vec![collider(ColliderShape::Sphere { radius: 1.0 })];
-        let bytes = encode_colliders(&colliders).expect("encodage");
+        let bytes = encode_colliders(&colliders, &[]).expect("encodage");
 
         // Tronquée, ou prolongée d'un octet.
         assert!(decode_colliders(&bytes[..bytes.len() - 1]).is_err());

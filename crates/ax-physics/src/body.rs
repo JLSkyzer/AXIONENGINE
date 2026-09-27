@@ -123,18 +123,24 @@ impl Shape {
     /// forme runtime (C-32, pont d'ADR-115).
     ///
     /// Les primitives (`Sphere`, `Box`, `Capsule`, `Cylinder`, `Cone`) passent
-    /// directement. Les formes **indexées** (`ConvexHull`, `Compound`) portent
-    /// leurs points/enfants dans des tableaux annexes que la section `PHYS` ne
-    /// produit pas encore : les convertir exigera de passer ces annexes, aussi
-    /// sont-elles refusées ici ([`ShapeConversionError::IndexedShapeUnsupported`]).
-    /// `TriMesh` et `Heightfield` restent **interdits sur un corps dynamique**
-    /// (R-160, INV-13) : ils sont refusés
+    /// directement. `ConvexHull` lit ses points dans `points` (l'annexe de la
+    /// section `PHYS`) via `points_offset`/`points_count`, en indices de points :
+    /// le nombre de points admissible (4..256, R-161) et la non-dégénérescence sont
+    /// ensuite vérifiés par [`PhysicsWorld::add_assembly`](crate::PhysicsWorld::add_assembly).
+    /// `Compound` (enfants) reste refusé tant que son annexe n'est pas produite
+    /// ([`ShapeConversionError::IndexedShapeUnsupported`]). `TriMesh` et
+    /// `Heightfield` restent **interdits sur un corps dynamique** (R-160, INV-13)
     /// ([`ShapeConversionError::ForbiddenOnDynamicBody`]).
     ///
     /// # Errors
     ///
-    /// [`ShapeConversionError`] selon la forme refusée.
-    pub fn from_collider_shape(shape: &ColliderShape) -> Result<Self, ShapeConversionError> {
+    /// [`ShapeConversionError`] selon la forme refusée, ou
+    /// [`ShapeConversionError::HullPointsOutOfRange`] si une enveloppe convexe
+    /// référence des points hors de `points`.
+    pub fn from_collider_shape(
+        shape: &ColliderShape,
+        points: &[[f32; 3]],
+    ) -> Result<Self, ShapeConversionError> {
         Ok(match *shape {
             ColliderShape::Sphere { radius } => Shape::Ball { radius },
             ColliderShape::Box { half_extents } => Shape::Cuboid { half_extents },
@@ -159,7 +165,20 @@ impl Shape {
                 half_height,
                 radius,
             },
-            ColliderShape::ConvexHull { .. } | ColliderShape::Compound { .. } => {
+            ColliderShape::ConvexHull {
+                points_offset,
+                points_count,
+            } => {
+                let start = points_offset as usize;
+                let end = start
+                    .checked_add(points_count as usize)
+                    .filter(|end| *end <= points.len())
+                    .ok_or(ShapeConversionError::HullPointsOutOfRange)?;
+                Shape::ConvexHull {
+                    points: points[start..end].to_vec(),
+                }
+            }
+            ColliderShape::Compound { .. } => {
                 return Err(ShapeConversionError::IndexedShapeUnsupported);
             }
             ColliderShape::TriMesh { .. } | ColliderShape::Heightfield { .. } => {
@@ -172,21 +191,27 @@ impl Shape {
 /// Ce qui empêche de convertir un [`ColliderShape`] (DM-06) en [`Shape`] runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShapeConversionError {
-    /// Forme indexée (`ConvexHull`/`Compound`) : ses tableaux annexes (points,
-    /// enfants) ne sont pas encore produits par `PHYS` (C-32, ADR-115).
+    /// Forme indexée (`Compound`) : son tableau annexe d'enfants n'est pas encore
+    /// produit par `PHYS` (C-32, ADR-115).
     IndexedShapeUnsupported,
     /// `TriMesh`/`Heightfield` : interdits sur un corps dynamique (R-160, INV-13).
     ForbiddenOnDynamicBody,
+    /// `ConvexHull` dont `points_offset`/`points_count` sort de l'annexe des points
+    /// fournie — cache altéré ou incohérent (R-901).
+    HullPointsOutOfRange,
 }
 
 impl fmt::Display for ShapeConversionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
             Self::IndexedShapeUnsupported => {
-                "forme de collision indexée (ConvexHull/Compound) pas encore produite"
+                "forme de collision indexée (Compound) pas encore produite"
             }
             Self::ForbiddenOnDynamicBody => {
                 "TriMesh et Heightfield sont interdits sur un corps dynamique"
+            }
+            Self::HullPointsOutOfRange => {
+                "les points d'une enveloppe convexe sortent de l'annexe fournie"
             }
         };
         f.write_str(message)
@@ -254,23 +279,29 @@ mod tests {
     #[test]
     fn conversion_des_primitives() {
         assert_eq!(
-            Shape::from_collider_shape(&ColliderShape::Sphere { radius: 2.0 }).unwrap(),
+            Shape::from_collider_shape(&ColliderShape::Sphere { radius: 2.0 }, &[]).unwrap(),
             Shape::Ball { radius: 2.0 }
         );
         assert_eq!(
-            Shape::from_collider_shape(&ColliderShape::Box {
-                half_extents: [1.0, 2.0, 3.0]
-            })
+            Shape::from_collider_shape(
+                &ColliderShape::Box {
+                    half_extents: [1.0, 2.0, 3.0]
+                },
+                &[]
+            )
             .unwrap(),
             Shape::Cuboid {
                 half_extents: [1.0, 2.0, 3.0]
             }
         );
         assert_eq!(
-            Shape::from_collider_shape(&ColliderShape::Capsule {
-                half_height: 1.0,
-                radius: 0.5
-            })
+            Shape::from_collider_shape(
+                &ColliderShape::Capsule {
+                    half_height: 1.0,
+                    radius: 0.5
+                },
+                &[]
+            )
             .unwrap(),
             Shape::Capsule {
                 half_height: 1.0,
@@ -280,37 +311,75 @@ mod tests {
     }
 
     #[test]
+    fn conversion_de_l_enveloppe_convexe() {
+        // Les points viennent de l'annexe, tranchés par offset/count.
+        let cloud = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        assert_eq!(
+            Shape::from_collider_shape(
+                &ColliderShape::ConvexHull {
+                    points_offset: 0,
+                    points_count: 4
+                },
+                &cloud
+            )
+            .unwrap(),
+            Shape::ConvexHull {
+                points: cloud.to_vec()
+            }
+        );
+        // Des points hors de l'annexe : refusé, jamais de panique.
+        assert_eq!(
+            Shape::from_collider_shape(
+                &ColliderShape::ConvexHull {
+                    points_offset: 2,
+                    points_count: 4
+                },
+                &cloud
+            ),
+            Err(ShapeConversionError::HullPointsOutOfRange)
+        );
+    }
+
+    #[test]
     fn conversion_refuse_les_formes_indexees_et_interdites() {
+        // Compound : son annexe d'enfants n'est pas encore produite.
         assert_eq!(
-            Shape::from_collider_shape(&ColliderShape::ConvexHull {
-                points_offset: 0,
-                points_count: 4
-            }),
+            Shape::from_collider_shape(
+                &ColliderShape::Compound {
+                    children_offset: 0,
+                    children_count: 2
+                },
+                &[]
+            ),
             Err(ShapeConversionError::IndexedShapeUnsupported)
         );
         assert_eq!(
-            Shape::from_collider_shape(&ColliderShape::Compound {
-                children_offset: 0,
-                children_count: 2
-            }),
-            Err(ShapeConversionError::IndexedShapeUnsupported)
-        );
-        assert_eq!(
-            Shape::from_collider_shape(&ColliderShape::TriMesh {
-                vertices_offset: 0,
-                vertices_count: 3,
-                indices_offset: 0,
-                indices_count: 3
-            }),
+            Shape::from_collider_shape(
+                &ColliderShape::TriMesh {
+                    vertices_offset: 0,
+                    vertices_count: 3,
+                    indices_offset: 0,
+                    indices_count: 3
+                },
+                &[]
+            ),
             Err(ShapeConversionError::ForbiddenOnDynamicBody)
         );
         assert_eq!(
-            Shape::from_collider_shape(&ColliderShape::Heightfield {
-                rows: 2,
-                cols: 2,
-                data_offset: 0,
-                scale: [1.0, 1.0, 1.0]
-            }),
+            Shape::from_collider_shape(
+                &ColliderShape::Heightfield {
+                    rows: 2,
+                    cols: 2,
+                    data_offset: 0,
+                    scale: [1.0, 1.0, 1.0]
+                },
+                &[]
+            ),
             Err(ShapeConversionError::ForbiddenOnDynamicBody)
         );
     }
