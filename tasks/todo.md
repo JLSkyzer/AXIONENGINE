@@ -1527,6 +1527,33 @@ substituable sans changer rapier »).
               **déclarée** (`BodyDesc`/definitions) et `REFITTABLE` par défaut
               (déformation M6) ; la résolution VHACD à mesurer en M3 (ADR-108).
 
+      - [ ] **C-38 — World Collision Provider** (fiche 5.30, R-640..643, T-370..375).
+            Java construit des tuiles de collision (sections 16³) via
+            `Level.getBlockCollisions` → boîtes → **corps STATIC** natifs ; C-31/C-32
+            l'attendent (TriMesh/Heightfield du monde, R-970/INV-13). Java + Rust +
+            frontière. Découpage, chacune buildée+testée :
+            - [x] **T1 — natif : magasin de tuiles** (sans Forge, testable). Une tuile =
+                  corps STATIC portant N colliders `Cuboid` (un par boîte, pas le
+                  Compound plafonné à 64 des assemblies) via `add_assembly`. `SimDriver` :
+                  `set_world_tile(dim, section, boxes)` / `remove_world_tile` / compte.
+                  Clé (dim, section [i32;3]) déterministe. Test : un corps dynamique
+                  repose sur une tuile (ne la traverse pas).
+            - [ ] **T1b — Heightfield** (repli R-641 > 4096 boîtes) : ajout à
+                  `ax_physics::Shape` + `shared_shape_of` (parry heightfield).
+            - [ ] **T1c — matériau de tuile** (R-643) : friction/restitution du collider
+                  statique depuis le matériau physique dominant.
+            - [ ] **T1d — fluides = capteurs de flottabilité** (R-642) : volumes de
+                  fluide échantillonnés (8 points de l'AABB), poussée + traînée.
+            - [ ] **T2 — frontière `[EFFORT MAX]`, ADR-117** : opcodes IF-03
+                  `SET_WORLD_TILE` / `REMOVE_WORLD_TILE` (ABI, à ratifier) : Java envoie
+                  coord de section + boîtes (+ matériau) par SimIn.
+            - [ ] **T3 — Java + Forge** : cache de tuiles, `getBlockCollisions`,
+                  quantification 1/16, envoi par lot, invalidation (BlockEvent /
+                  LevelChunkEvent), reconstruction amortie (`world.tiles_per_tick`),
+                  libération des tuiles lointaines (`world.tile_radius`), mappage
+                  `block_materials` (data-driven, héritage par tag), R-640 (section non
+                  chargée = pleine et solide), R-641 (> 4096 → heightfield).
+
 ## Jalons suivants
 
 Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`

@@ -10,7 +10,7 @@
 //! parcours est déterministe, donc l'ordre de `BodyState[]` et du lot
 //! d'événements l'est aussi (R-1020).
 
-use crate::body::{BodyCollider, BodyId, BodyKind};
+use crate::body::{BodyCollider, BodyId, BodyKind, Shape};
 use crate::config::PhysicsConfig;
 use crate::forces::FluidEnvironment;
 use crate::world::PhysicsWorld;
@@ -40,6 +40,9 @@ pub struct SimDriver {
     dimensions: BTreeMap<u64, DimensionSim>,
     /// handle → (dimension, corps). Consultée par clé, jamais itérée (R-1020).
     routes: BTreeMap<u64, (u64, BodyId)>,
+    /// (dimension, section 16³) → corps statique de la tuile de collision monde
+    /// (C-38). Ordonnée : parcours déterministe (R-1020).
+    tiles: BTreeMap<(u64, [i32; 3]), BodyId>,
 }
 
 impl std::fmt::Debug for SimDriver {
@@ -48,6 +51,7 @@ impl std::fmt::Debug for SimDriver {
         f.debug_struct("SimDriver")
             .field("dimensions", &self.dimensions.len())
             .field("routes", &self.routes.len())
+            .field("tiles", &self.tiles.len())
             .finish()
     }
 }
@@ -104,6 +108,95 @@ impl SimDriver {
     #[must_use]
     pub fn dimension_count(&self) -> usize {
         self.dimensions.len()
+    }
+
+    /// Pose (ou remplace) la tuile de collision du monde d'une section 16³ (C-38).
+    ///
+    /// Une tuile est un corps **statique** portant une boîte `Cuboid` par entrée de
+    /// `boxes` — un corps statique n'a pas de plafond de formes filles, contrairement
+    /// au `Compound` d'une assembly (§10.3). Les boîtes sont en blocs, **relatives à
+    /// l'origine de la section** (`section × 16`) ; leur pose monde en découle, ramenée
+    /// au repère local par l'origine flottante de la dimension (créée au besoin, R-610).
+    ///
+    /// Rend vrai si une tuile a été posée. Une liste vide — ou dont aucune boîte n'est
+    /// finie et non dégénérée — **retire** la tuile existante et rend faux : une section
+    /// sans collision n'a pas de corps.
+    pub fn set_world_tile(
+        &mut self,
+        dimension: u64,
+        section: [i32; 3],
+        boxes: &[[f32; 6]],
+    ) -> bool {
+        // Une tuile est remplacée en bloc : l'ancienne part d'abord.
+        self.remove_world_tile(dimension, section);
+
+        let mut colliders = Vec::with_capacity(boxes.len());
+        for b in boxes {
+            let half = [
+                (b[3] - b[0]) * 0.5,
+                (b[4] - b[1]) * 0.5,
+                (b[5] - b[2]) * 0.5,
+            ];
+            // Une boîte dégénérée ou non finie est ignorée, plutôt que de faire
+            // refuser toute la tuile (donnée venue du monde, jamais crue sur parole).
+            if half.iter().any(|h| !h.is_finite() || *h <= 0.0) {
+                continue;
+            }
+            let center = Vec3::new(
+                (b[0] + b[3]) * 0.5,
+                (b[1] + b[4]) * 0.5,
+                (b[2] + b[5]) * 0.5,
+            );
+            colliders.push(BodyCollider {
+                shape: Shape::Cuboid { half_extents: half },
+                // Sans effet : un corps statique a une masse infinie.
+                density: 1.0,
+                translation: center,
+                rotation: Quat::IDENTITY,
+            });
+        }
+        if colliders.is_empty() {
+            return false;
+        }
+
+        let sim = self
+            .dimensions
+            .entry(dimension)
+            .or_insert_with(|| DimensionSim {
+                world: PhysicsWorld::new(PhysicsConfig::default()),
+                origin: FloatingOrigin::new(DVec3::ZERO),
+            });
+        let world_origin = DVec3::new(
+            f64::from(section[0]) * 16.0,
+            f64::from(section[1]) * 16.0,
+            f64::from(section[2]) * 16.0,
+        );
+        let local = sim.origin.to_local(world_origin);
+        let Ok(body) = sim
+            .world
+            .add_assembly(BodyKind::Static, local, Quat::IDENTITY, &colliders)
+        else {
+            return false;
+        };
+        self.tiles.insert((dimension, section), body);
+        true
+    }
+
+    /// Retire la tuile de collision d'une section ; rend vrai si elle existait.
+    pub fn remove_world_tile(&mut self, dimension: u64, section: [i32; 3]) -> bool {
+        let Some(body) = self.tiles.remove(&(dimension, section)) else {
+            return false;
+        };
+        if let Some(sim) = self.dimensions.get_mut(&dimension) {
+            sim.world.remove_body(body);
+        }
+        true
+    }
+
+    /// Nombre de tuiles de collision monde actives, toutes dimensions confondues.
+    #[must_use]
+    pub fn world_tile_count(&self) -> usize {
+        self.tiles.len()
     }
 
     /// Avance toutes les dimensions du temps réel écoulé.
@@ -386,5 +479,62 @@ mod tests {
             driver.collect_states()
         };
         assert_eq!(run(), run());
+    }
+
+    #[test]
+    fn un_corps_repose_sur_une_tuile_de_collision_monde() {
+        let mut driver = SimDriver::new();
+        // Une tuile-sol : une dalle 16×1×16 au bas de la section (0, 0, 0).
+        let posee = driver.set_world_tile(0, [0, 0, 0], &[[0.0, 0.0, 0.0, 16.0, 1.0, 16.0]]);
+        assert!(posee, "la tuile est posée");
+        assert_eq!(driver.world_tile_count(), 1);
+
+        // Un corps dynamique lâché au-dessus de la dalle.
+        let spawn = WorldTransform {
+            position: [8.0, 6.0, 8.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        };
+        driver.create_assembly(
+            0,
+            Handle::new(1, 1),
+            spawn,
+            BodyKind::Dynamic,
+            &[BodyCollider {
+                shape: Shape::Ball { radius: 0.5 },
+                density: 1000.0,
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
+        );
+
+        // Une chute : le corps doit reposer sur la dalle, pas la traverser.
+        for _ in 0..180 {
+            driver.advance_all(1.0 / 60.0);
+        }
+        let states = driver.collect_states();
+        // La tuile est statique : seule la bille dynamique est collectée.
+        assert_eq!(states.len(), 1, "seul le corps dynamique est collecté");
+        let y = states[0].position[1];
+        // Sommet de la dalle à y=1, plus le rayon 0.5 : le centre repose vers 1.5,
+        // franchement au-dessus de 1 (pas de traversée) et bien en deçà du départ (6).
+        assert!(y > 1.0, "le corps a traversé la dalle (y={y})");
+        assert!(
+            y < 2.0,
+            "le corps ne s'est pas immobilisé sur la dalle (y={y})"
+        );
+    }
+
+    #[test]
+    fn une_tuile_se_remplace_et_se_retire() {
+        let mut driver = SimDriver::new();
+        assert!(driver.set_world_tile(0, [1, 0, 2], &[[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]]));
+        // Reposer la même section remplace la tuile sans en cumuler une seconde.
+        assert!(driver.set_world_tile(0, [1, 0, 2], &[[0.0, 0.0, 0.0, 2.0, 2.0, 2.0]]));
+        assert_eq!(driver.world_tile_count(), 1);
+        // Une liste vide retire la tuile.
+        assert!(!driver.set_world_tile(0, [1, 0, 2], &[]));
+        assert_eq!(driver.world_tile_count(), 0);
+        // Retirer une tuile absente est faux, sans paniquer.
+        assert!(!driver.remove_world_tile(0, [9, 9, 9]));
     }
 }
