@@ -58,6 +58,45 @@ public final class SimCommandStream {
     /** {@code body_kind} : corps dynamique ({@code BodyKind::Dynamic}). */
     public static final int BODY_DYNAMIC = 2;
 
+    /** Opcode {@code SET_WORLD_COLLISION} (C-38, ADR-117). */
+    public static final int OP_SET_WORLD_COLLISION = 6;
+
+    /** Opcode {@code SET_WORLD_HEIGHTFIELD} (C-38, ADR-117). */
+    public static final int OP_SET_WORLD_HEIGHTFIELD = 7;
+
+    /** Opcode {@code SET_WORLD_FLUID} (C-38, ADR-117). */
+    public static final int OP_SET_WORLD_FLUID = 8;
+
+    /** Opcode {@code REMOVE_WORLD_COLLISION} (C-38, ADR-117). */
+    public static final int OP_REMOVE_WORLD_COLLISION = 9;
+
+    /** Opcode {@code REMOVE_WORLD_FLUID} (C-38, ADR-117). */
+    public static final int OP_REMOVE_WORLD_FLUID = 10;
+
+    /** Taille de l'en-tête {@code SetWorldCollision}, en octets (hors boîtes). */
+    public static final int SET_WORLD_COLLISION_HEADER_BYTES = 32;
+
+    /** Taille de l'en-tête {@code SetWorldHeightfield}, en octets (hors hauteurs). */
+    public static final int SET_WORLD_HEIGHTFIELD_HEADER_BYTES = 48;
+
+    /** Taille de l'en-tête {@code SetWorldFluid}, en octets (hors boîtes). */
+    public static final int SET_WORLD_FLUID_HEADER_BYTES = 32;
+
+    /** Taille du payload {@code RemoveWorldTile}, en octets. */
+    public static final int REMOVE_WORLD_TILE_BYTES = 24;
+
+    /** Octets d'une boîte {@code [f32;6]} sur la frontière. */
+    public static final int BOX_BYTES = 24;
+
+    /**
+     * Plafond de boîtes d'une tuile (le natif refuse au-delà, ADR-117 / R-641) : au-delà,
+     * la collision doit passer en champ de hauteurs.
+     */
+    public static final int MAX_WORLD_TILE_BOXES = 4096;
+
+    /** Plafond des dimensions d'un champ de hauteurs de tuile (ADR-117). */
+    public static final int MAX_WORLD_HEIGHTFIELD_DIM = 64;
+
     private final List<byte[]> commands = new ArrayList<>();
 
     /**
@@ -169,6 +208,200 @@ public final class SimCommandStream {
         command.put(phys);
         commands.add(command.array());
         return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_WORLD_COLLISION} (C-38, R-640 ; ADR-117).
+     *
+     * <p>Pose une tuile de collision solide : {@code boxes} boîtes {@code [minx, miny,
+     * minz, maxx, maxy, maxz]}, en blocs **relatives à l'origine de la section**
+     * ({@code section × 16}), quantifiées en 1/16. Toutes portent le matériau dominant
+     * (R-643). Une liste vide retire la tuile de collision.
+     *
+     * @param dimension dimension visée (R-610)
+     * @param section index de section 16³ {@code [x, y, z]} ({@code coord_bloc >> 4})
+     * @param boxes boîtes de collision, section-relatives ; chacune de longueur 6
+     * @param friction frottement du matériau dominant
+     * @param restitution restitution du matériau dominant
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setWorldCollision(
+            long dimension, int[] section, float[][] boxes, float friction, float restitution) {
+        checkSection(section);
+        checkBoxes(boxes);
+        int payloadLen = SET_WORLD_COLLISION_HEADER_BYTES + boxes.length * BOX_BYTES;
+        ByteBuffer command = beginCommand(OP_SET_WORLD_COLLISION, payloadLen);
+        command.putLong(dimension);
+        putSection(command, section);
+        command.putInt(boxes.length);
+        command.putFloat(friction);
+        command.putFloat(restitution);
+        putBoxes(command, boxes);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_WORLD_HEIGHTFIELD} (C-38, R-641 ; ADR-117).
+     *
+     * <p>Pose une tuile de collision en champ de hauteurs (repli quand la section dépasse
+     * {@link #MAX_WORLD_TILE_BOXES} boîtes). {@code heights} est ligne-major
+     * ({@code height[row * cols + col]}, {@code row} sur z) ; la hauteur monde d'un sommet
+     * vaut {@code height × scale[1]}.
+     *
+     * @param dimension dimension visée (R-610)
+     * @param section index de section 16³
+     * @param rows nombre de lignes (axe z), {@code 2..=}{@link #MAX_WORLD_HEIGHTFIELD_DIM}
+     * @param cols nombre de colonnes (axe x), même plage
+     * @param heights hauteurs ligne-major, de longueur {@code rows × cols}
+     * @param scale échelle {@code [x, y, z]}
+     * @param friction frottement du matériau dominant
+     * @param restitution restitution du matériau dominant
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setWorldHeightfield(
+            long dimension,
+            int[] section,
+            int rows,
+            int cols,
+            float[] heights,
+            float[] scale,
+            float friction,
+            float restitution) {
+        checkSection(section);
+        if (scale.length != 3) {
+            throw new IllegalArgumentException("l'échelle est un vecteur à 3 composantes");
+        }
+        if (rows < 2 || cols < 2 || rows > MAX_WORLD_HEIGHTFIELD_DIM || cols > MAX_WORLD_HEIGHTFIELD_DIM) {
+            throw new IllegalArgumentException("rows et cols sont dans 2.." + MAX_WORLD_HEIGHTFIELD_DIM);
+        }
+        if (heights.length != rows * cols) {
+            throw new IllegalArgumentException("heights doit contenir rows × cols valeurs");
+        }
+        int payloadLen = SET_WORLD_HEIGHTFIELD_HEADER_BYTES + heights.length * 4;
+        ByteBuffer command = beginCommand(OP_SET_WORLD_HEIGHTFIELD, payloadLen);
+        command.putLong(dimension);
+        putSection(command, section);
+        command.putInt(rows);
+        command.putInt(cols);
+        command.putFloat(friction);
+        command.putFloat(restitution);
+        command.putFloat(scale[0]);
+        command.putFloat(scale[1]);
+        command.putFloat(scale[2]);
+        for (float height : heights) {
+            command.putFloat(height);
+        }
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_WORLD_FLUID} (C-38, R-642 ; ADR-117).
+     *
+     * <p>Pose des volumes de fluide (« capteurs » de flottabilité) : {@code boxes} boîtes
+     * section-relatives, de masse volumique {@code density}. Une liste vide ou une densité
+     * {@code ≤ 0} retire les volumes de fluide.
+     *
+     * @param dimension dimension visée (R-610)
+     * @param section index de section 16³
+     * @param boxes boîtes de fluide, section-relatives ; chacune de longueur 6
+     * @param density masse volumique du fluide (eau douce ≈ 1000)
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setWorldFluid(
+            long dimension, int[] section, float[][] boxes, float density) {
+        checkSection(section);
+        checkBoxes(boxes);
+        int payloadLen = SET_WORLD_FLUID_HEADER_BYTES + boxes.length * BOX_BYTES;
+        ByteBuffer command = beginCommand(OP_SET_WORLD_FLUID, payloadLen);
+        command.putLong(dimension);
+        putSection(command, section);
+        command.putInt(boxes.length);
+        command.putFloat(density);
+        command.putInt(0); // _pad
+        putBoxes(command, boxes);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code REMOVE_WORLD_COLLISION} (C-38 ; ADR-117) : retire la
+     * tuile de collision d'une section.
+     *
+     * @param dimension dimension visée
+     * @param section index de section 16³ à retirer
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream removeWorldCollision(long dimension, int[] section) {
+        return removeWorldTile(OP_REMOVE_WORLD_COLLISION, dimension, section);
+    }
+
+    /**
+     * Ajoute une commande {@code REMOVE_WORLD_FLUID} (C-38 ; ADR-117) : retire les volumes
+     * de fluide d'une section.
+     *
+     * @param dimension dimension visée
+     * @param section index de section 16³ à retirer
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream removeWorldFluid(long dimension, int[] section) {
+        return removeWorldTile(OP_REMOVE_WORLD_FLUID, dimension, section);
+    }
+
+    private SimCommandStream removeWorldTile(int opcode, long dimension, int[] section) {
+        checkSection(section);
+        ByteBuffer command = beginCommand(opcode, REMOVE_WORLD_TILE_BYTES);
+        command.putLong(dimension);
+        putSection(command, section);
+        command.putInt(0); // _pad
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Alloue le tampon d'une commande (en-tête + payload rembourré à 8 octets) et écrit
+     * son {@code SimCommandHeader}. Le lecteur natif avance d'un multiple de 8 après
+     * chaque commande (R-271, R-881) ; {@code payload_len} reste la longueur utile.
+     */
+    private static ByteBuffer beginCommand(int opcode, int payloadLen) {
+        ByteBuffer command = ByteBuffer.allocate(COMMAND_HEADER_BYTES + alignUp8(payloadLen))
+                .order(ByteOrder.LITTLE_ENDIAN);
+        command.putInt(opcode);
+        command.putInt(payloadLen);
+        return command;
+    }
+
+    private static void putSection(ByteBuffer buffer, int[] section) {
+        buffer.putInt(section[0]);
+        buffer.putInt(section[1]);
+        buffer.putInt(section[2]);
+    }
+
+    private static void putBoxes(ByteBuffer buffer, float[][] boxes) {
+        for (float[] box : boxes) {
+            for (int i = 0; i < 6; i++) {
+                buffer.putFloat(box[i]);
+            }
+        }
+    }
+
+    private static void checkSection(int[] section) {
+        if (section.length != 3) {
+            throw new IllegalArgumentException("la section est un index à 3 composantes");
+        }
+    }
+
+    private static void checkBoxes(float[][] boxes) {
+        if (boxes.length > MAX_WORLD_TILE_BOXES) {
+            throw new IllegalArgumentException(
+                    "au plus " + MAX_WORLD_TILE_BOXES + " boîtes par tuile (R-641)");
+        }
+        for (float[] box : boxes) {
+            if (box.length != 6) {
+                throw new IllegalArgumentException("une boîte est [minx,miny,minz,maxx,maxy,maxz]");
+            }
+        }
     }
 
     /** {@return {@code value} arrondi au prochain multiple de 8} */

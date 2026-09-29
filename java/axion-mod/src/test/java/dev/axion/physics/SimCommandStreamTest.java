@@ -177,4 +177,116 @@ class SimCommandStreamTest {
                                 7, // hors de {0, 1, 2}
                                 new byte[] {1}));
     }
+
+    @Test
+    void encodeUneCommandeSetWorldCollision() {
+        // Une dalle 16×1×16 sur la section (0, 0, 0), matériau (0.6, 0.1).
+        SimCommandStream stream = new SimCommandStream()
+                .setWorldCollision(
+                        4L,
+                        new int[] {1, 0, -2},
+                        new float[][] {{0f, 0f, 0f, 16f, 1f, 16f}},
+                        0.6f,
+                        0.1f);
+        byte[] bytes = stream.toBytes();
+        // en-tête flux (8) + en-tête cmd (8) + en-tête payload (32) + 1 boîte (24)
+        assertEquals(8 + 8 + 32 + 24, bytes.length);
+
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_SET_WORLD_COLLISION, b.getInt(8), "opcode");
+        assertEquals(32 + 24, b.getInt(12), "payload_len");
+        assertEquals(4L, b.getLong(16), "dimension");
+        assertEquals(1, b.getInt(24), "section.x");
+        assertEquals(0, b.getInt(28), "section.y");
+        assertEquals(-2, b.getInt(32), "section.z");
+        assertEquals(1, b.getInt(36), "box_count");
+        assertEquals(0.6f, b.getFloat(40), "friction");
+        assertEquals(0.1f, b.getFloat(44), "restitution");
+        // Boîte à l'offset 48 (16 + en-tête 32).
+        assertEquals(0f, b.getFloat(48), "box.minx");
+        assertEquals(16f, b.getFloat(60), "box.maxx");
+        assertEquals(1f, b.getFloat(64), "box.maxy");
+        assertEquals(16f, b.getFloat(68), "box.maxz");
+    }
+
+    @Test
+    void encodeUneCommandeSetWorldFluid() {
+        SimCommandStream stream = new SimCommandStream()
+                .setWorldFluid(0L, new int[] {0, 0, 0}, new float[][] {{0f, 1f, 0f, 16f, 9f, 16f}}, 1000f);
+        byte[] bytes = stream.toBytes();
+        assertEquals(8 + 8 + 32 + 24, bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_SET_WORLD_FLUID, b.getInt(8), "opcode");
+        assertEquals(32 + 24, b.getInt(12), "payload_len");
+        assertEquals(1, b.getInt(36), "box_count");
+        assertEquals(1000f, b.getFloat(40), "density");
+        assertEquals(0, b.getInt(44), "_pad");
+        assertEquals(1f, b.getFloat(52), "box.miny"); // offset 48 + 4
+    }
+
+    @Test
+    void encodeUneCommandeSetWorldHeightfield() {
+        // 3×3 hauteurs : payload 48 + 36 = 84, non multiple de 8 → aligné à 88.
+        float[] heights = {0f, 0f, 0f, 1f, 1f, 1f, 2f, 2f, 2f};
+        SimCommandStream stream = new SimCommandStream()
+                .setWorldHeightfield(
+                        0L, new int[] {0, 0, 0}, 3, 3, heights, new float[] {16f, 1f, 16f}, 0.5f, 0f);
+        byte[] bytes = stream.toBytes();
+        // en-tête flux (8) + en-tête cmd (8) + payload aligné (88)
+        assertEquals(8 + 8 + 88, bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_SET_WORLD_HEIGHTFIELD, b.getInt(8), "opcode");
+        assertEquals(48 + 36, b.getInt(12), "payload_len (utile, sans remplissage)");
+        assertEquals(3, b.getInt(36), "rows");
+        assertEquals(3, b.getInt(40), "cols");
+        assertEquals(0.5f, b.getFloat(44), "friction");
+        assertEquals(0f, b.getFloat(48), "restitution");
+        assertEquals(16f, b.getFloat(52), "scale.x");
+        assertEquals(1f, b.getFloat(56), "scale.y");
+        assertEquals(16f, b.getFloat(60), "scale.z");
+        assertEquals(0f, b.getFloat(64), "height[0]"); // hauteurs à l'offset 64
+        assertEquals(2f, b.getFloat(64 + 8 * 4), "height[8]");
+    }
+
+    @Test
+    void encodeUnRetraitDeTuile() {
+        byte[] bytes = new SimCommandStream().removeWorldCollision(2L, new int[] {3, 4, 5}).toBytes();
+        assertEquals(8 + 8 + 24, bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_REMOVE_WORLD_COLLISION, b.getInt(8), "opcode");
+        assertEquals(24, b.getInt(12), "payload_len");
+        assertEquals(2L, b.getLong(16), "dimension");
+        assertEquals(3, b.getInt(24), "section.x");
+        assertEquals(5, b.getInt(32), "section.z");
+
+        byte[] fluid = new SimCommandStream().removeWorldFluid(0L, new int[] {0, 0, 0}).toBytes();
+        assertEquals(SimCommandStream.OP_REMOVE_WORLD_FLUID, wrap(fluid).getInt(8), "opcode fluide");
+    }
+
+    @Test
+    void uneTuileVideEncodeUnRetraitImplicite() {
+        // box_count 0 : le natif y retire la tuile (alias défini, ADR-117).
+        byte[] bytes = new SimCommandStream()
+                .setWorldCollision(0L, new int[] {0, 0, 0}, new float[0][], 0.5f, 0f)
+                .toBytes();
+        assertEquals(8 + 8 + 32, bytes.length);
+        assertEquals(0, wrap(bytes).getInt(36), "box_count nul");
+    }
+
+    @Test
+    void setWorldCollisionRefuseAuDelaDuPlafond() {
+        float[][] boxes = new float[SimCommandStream.MAX_WORLD_TILE_BOXES + 1][6];
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimCommandStream().setWorldCollision(0L, new int[] {0, 0, 0}, boxes, 0.5f, 0f));
+    }
+
+    @Test
+    void setWorldHeightfieldRefuseUneTailleIncoherente() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimCommandStream()
+                        .setWorldHeightfield(
+                                0L, new int[] {0, 0, 0}, 2, 2, new float[3], new float[] {1, 1, 1}, 0.5f, 0f));
+    }
 }
