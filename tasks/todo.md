@@ -1559,9 +1559,12 @@ substituable sans changer rapier »).
                   immergée ; volumes localisés (pas de plan infini), priment sur la surface
                   plate de dimension. Tests : léger flotte, dense coule, volume localisé,
                   remplace/retire.
-            - [ ] **T2 — frontière `[EFFORT MAX]`, ADR-117** : opcodes IF-03
-                  `SET_WORLD_TILE` / `REMOVE_WORLD_TILE` (ABI, à ratifier) : Java envoie
-                  coord de section + boîtes (+ matériau) par SimIn.
+            - [ ] **T2 — frontière `[EFFORT MAX]`, ADR-117 ratifié (2026-09-30)** :
+                  transcrire dans `dm/commands.rs` les 5 opcodes (6–10) SET_WORLD_COLLISION
+                  / SET_WORLD_HEIGHTFIELD / SET_WORLD_FLUID / REMOVE_WORLD_COLLISION /
+                  REMOVE_WORLD_FLUID (structs `repr(C)` + tests de disposition), puis les
+                  décoder dans `apply_command_stream` (en ligne, sans ax-asset) : Java envoie
+                  section + boîtes/hauteurs + matériau/densité par SimIn.
             - [ ] **T3 — Java + Forge** : cache de tuiles, `getBlockCollisions`,
                   quantification 1/16, envoi par lot, invalidation (BlockEvent /
                   LevelChunkEvent), reconstruction amortie (`world.tiles_per_tick`),
