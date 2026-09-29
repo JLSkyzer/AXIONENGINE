@@ -41,7 +41,8 @@ mod sim;
 mod world;
 
 pub use body::{
-    BodyCollider, BodyError, BodyId, BodyKind, CompoundPart, Shape, ShapeConversionError,
+    BodyCollider, BodyError, BodyId, BodyKind, CompoundPart, ContactMaterial, Shape,
+    ShapeConversionError,
 };
 pub use commands::{apply_command_stream, create_assembly_payloads, CommandError, CommandOutcome};
 pub use config::{ConfigError, PhysicsConfig};

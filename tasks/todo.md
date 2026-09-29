@@ -1545,8 +1545,13 @@ substituable sans changer rapier »).
                   un compound). Setter `SimDriver::set_world_tile_heightfield`.
                   Tests : un corps repose sur un champ plat ; refus sur dynamique ;
                   validation des dimensions.
-            - [ ] **T1c — matériau de tuile** (R-643) : friction/restitution du collider
-                  statique depuis le matériau physique dominant.
+            - [x] **T1c — matériau de tuile** (R-643) : type runtime `ContactMaterial`
+                  (friction, restitution — sous-ensemble contact de DM-07) porté par
+                  `BodyCollider`, appliqué dans `add_assembly`, avec assainissement
+                  (non fini → défaut, bornage [0,2]/[0,1]). Les setters de tuile prennent
+                  le matériau dominant. Modes de combinaison + rolling_friction : câblage
+                  DM-07 complet ultérieur. Tests : friction et rebond A/B changent le
+                  comportement ; défaut neutre ; assainissement.
             - [ ] **T1d — fluides = capteurs de flottabilité** (R-642) : volumes de
                   fluide échantillonnés (8 points de l'AABB), poussée + traînée.
             - [ ] **T2 — frontière `[EFFORT MAX]`, ADR-117** : opcodes IF-03

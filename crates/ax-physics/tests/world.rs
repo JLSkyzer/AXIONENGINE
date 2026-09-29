@@ -3,8 +3,8 @@
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_physics::{
     body_state_flags, event_kind, BodyCollider, BodyError, BodyId, BodyKind, CollisionGroups,
-    CompoundPart, ConfigError, FluidEnvironment, Handle, LiftSurface, PhysicsConfig, PhysicsWorld,
-    Shape,
+    CompoundPart, ConfigError, ContactMaterial, FluidEnvironment, Handle, LiftSurface,
+    PhysicsConfig, PhysicsWorld, Shape,
 };
 
 fn config() -> PhysicsConfig {
@@ -1353,6 +1353,7 @@ fn la_masse_vient_de_la_densite_du_collider() {
                     half_extents: [1.0, 1.0, 1.0],
                 },
                 density: 1000.0,
+                material: ContactMaterial::default(),
                 translation: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }],
@@ -1379,6 +1380,7 @@ fn la_masse_est_proportionnelle_a_la_densite() {
                 &[BodyCollider {
                     shape: Shape::Ball { radius: 0.5 },
                     density,
+                    material: ContactMaterial::default(),
                     translation: Vec3::ZERO,
                     rotation: Quat::IDENTITY,
                 }],
@@ -1413,12 +1415,14 @@ fn le_centre_de_masse_penche_vers_le_collider_dense() {
                 BodyCollider {
                     shape: cube(),
                     density: 2000.0,
+                    material: ContactMaterial::default(),
                     translation: Vec3::new(1.0, 0.0, 0.0),
                     rotation: Quat::IDENTITY,
                 },
                 BodyCollider {
                     shape: cube(),
                     density: 1000.0,
+                    material: ContactMaterial::default(),
                     translation: Vec3::new(-1.0, 0.0, 0.0),
                     rotation: Quat::IDENTITY,
                 },

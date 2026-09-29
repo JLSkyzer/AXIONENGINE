@@ -116,7 +116,63 @@ pub struct CompoundPart {
     pub shape: Shape,
 }
 
-/// Un collider d'un corps : sa forme, sa densité et sa pose relative au corps.
+/// Propriétés de **contact** d'un collider — le sous-ensemble runtime de DM-07 que
+/// rapier combine à chaque contact pour la friction et le rebond.
+///
+/// La table de matériaux complète de DM-07 (rayure, déformation, rupture, densité…)
+/// est câblée ailleurs ; ici ne vivent que les deux coefficients de contact que R-643
+/// fait porter à une tuile du monde — ce qui « alimente la friction des roues et
+/// l'énergie des impacts contre le monde ». Le mode de combinaison reste le défaut de
+/// rapier (moyenne), le plus courant.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ContactMaterial {
+    /// Coefficient de frottement, plage DM-07 `[0, 2]`.
+    pub friction: f32,
+    /// Coefficient de restitution (rebond), plage DM-07 `[0, 1]`.
+    pub restitution: f32,
+}
+
+impl ContactMaterial {
+    /// Frottement par défaut — celui de rapier, un contact neutre.
+    pub const DEFAULT_FRICTION: f32 = 0.5;
+    /// Restitution par défaut — celle de rapier : aucun rebond ajouté.
+    pub const DEFAULT_RESTITUTION: f32 = 0.0;
+
+    /// Matériau **assaini** depuis des valeurs venues de données (R-643 : jamais
+    /// crues sur parole). Une composante non finie retombe sur son défaut, puis
+    /// friction et restitution sont bornées aux plages DM-07 (`[0, 2]`, `[0, 1]`).
+    /// Une valeur hors plage est ramenée, pas rejetée : un sol n'a pas de collision
+    /// « invalide », seulement un matériau borné.
+    #[must_use]
+    pub fn sanitized(friction: f32, restitution: f32) -> Self {
+        let friction = if friction.is_finite() {
+            friction
+        } else {
+            Self::DEFAULT_FRICTION
+        };
+        let restitution = if restitution.is_finite() {
+            restitution
+        } else {
+            Self::DEFAULT_RESTITUTION
+        };
+        Self {
+            friction: friction.clamp(0.0, 2.0),
+            restitution: restitution.clamp(0.0, 1.0),
+        }
+    }
+}
+
+impl Default for ContactMaterial {
+    fn default() -> Self {
+        Self {
+            friction: Self::DEFAULT_FRICTION,
+            restitution: Self::DEFAULT_RESTITUTION,
+        }
+    }
+}
+
+/// Un collider d'un corps : sa forme, sa densité, son matériau de contact et sa pose
+/// relative au corps.
 ///
 /// C'est l'unité d'assemblage d'un corps multi-colliders
 /// ([`add_assembly`](crate::PhysicsWorld::add_assembly)) : chaque collider porte
@@ -130,6 +186,9 @@ pub struct BodyCollider {
     pub shape: Shape,
     /// Masse volumique, en kg/m³ (DM-06, R-622). Strictement positive.
     pub density: f32,
+    /// Matériau de contact (friction, restitution). [`ContactMaterial::default`] pour
+    /// un contact neutre.
+    pub material: ContactMaterial,
     /// Translation relative au corps, en blocs.
     pub translation: Vec3,
     /// Rotation relative au corps, quaternion `(x, y, z, w)` (R-461).
@@ -543,5 +602,36 @@ mod tests {
             ),
             Err(ShapeConversionError::ForbiddenOnDynamicBody)
         );
+    }
+
+    #[test]
+    fn le_materiau_de_contact_par_defaut_est_neutre() {
+        // Le défaut reprend celui de rapier : aucun changement de comportement là où
+        // aucun matériau n'est déclaré.
+        let m = ContactMaterial::default();
+        assert_eq!(m.friction, ContactMaterial::DEFAULT_FRICTION);
+        assert_eq!(m.restitution, ContactMaterial::DEFAULT_RESTITUTION);
+    }
+
+    #[test]
+    fn le_materiau_assaini_borne_et_neutralise() {
+        // Hors plage → ramené aux bornes DM-07 ; non fini → défaut. Jamais rejeté :
+        // un sol garde sa collision, seulement un matériau borné.
+        let bas = ContactMaterial::sanitized(-1.0, -0.5);
+        assert_eq!(bas.friction, 0.0);
+        assert_eq!(bas.restitution, 0.0);
+
+        let haut = ContactMaterial::sanitized(9.0, 9.0);
+        assert_eq!(haut.friction, 2.0); // plage [0, 2]
+        assert_eq!(haut.restitution, 1.0); // plage [0, 1]
+
+        let non_fini = ContactMaterial::sanitized(f32::NAN, f32::INFINITY);
+        assert_eq!(non_fini.friction, ContactMaterial::DEFAULT_FRICTION);
+        assert_eq!(non_fini.restitution, ContactMaterial::DEFAULT_RESTITUTION);
+
+        // Une valeur déjà dans la plage passe inchangée.
+        let ok = ContactMaterial::sanitized(1.2, 0.3);
+        assert_eq!(ok.friction, 1.2);
+        assert_eq!(ok.restitution, 0.3);
     }
 }

@@ -38,7 +38,7 @@ use ax_model::dm::commands::CreateAssembly;
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::ColliderDesc;
-use ax_physics::{BodyCollider, BodyKind, Shape, SimDriver};
+use ax_physics::{BodyCollider, BodyKind, ContactMaterial, Shape, SimDriver};
 
 /// Version de l'ABI.
 ///
@@ -793,6 +793,9 @@ fn body_colliders(
         runtime.push(BodyCollider {
             shape,
             density: collider.density,
+            // L'index `collider.material` (DM-06) se résoudra en friction/restitution
+            // via la table DM-07 quand elle sera décodée ; d'ici là, contact neutre.
+            material: ContactMaterial::default(),
             translation: Vec3::from_array(collider.local.translation),
             rotation: Quat::from_array(collider.local.rotation),
         });

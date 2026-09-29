@@ -10,7 +10,7 @@
 //! parcours est déterministe, donc l'ordre de `BodyState[]` et du lot
 //! d'événements l'est aussi (R-1020).
 
-use crate::body::{BodyCollider, BodyId, BodyKind, Shape};
+use crate::body::{BodyCollider, BodyId, BodyKind, ContactMaterial, Shape};
 use crate::config::PhysicsConfig;
 use crate::forces::FluidEnvironment;
 use crate::world::PhysicsWorld;
@@ -118,6 +118,10 @@ impl SimDriver {
     /// l'origine de la section** (`section × 16`) ; leur pose monde en découle, ramenée
     /// au repère local par l'origine flottante de la dimension (créée au besoin, R-610).
     ///
+    /// Toutes les boîtes portent le **matériau physique dominant** de la section
+    /// (`material`, R-643) : sa friction et sa restitution alimentent la friction des
+    /// roues et l'énergie des impacts contre le monde.
+    ///
     /// Rend vrai si une tuile a été posée. Une liste vide — ou dont aucune boîte n'est
     /// finie et non dégénérée — **retire** la tuile existante et rend faux : une section
     /// sans collision n'a pas de corps.
@@ -126,6 +130,7 @@ impl SimDriver {
         dimension: u64,
         section: [i32; 3],
         boxes: &[[f32; 6]],
+        material: ContactMaterial,
     ) -> bool {
         // Une tuile est remplacée en bloc : l'ancienne part d'abord.
         self.remove_world_tile(dimension, section);
@@ -151,6 +156,7 @@ impl SimDriver {
                 shape: Shape::Cuboid { half_extents: half },
                 // Sans effet : un corps statique a une masse infinie.
                 density: 1.0,
+                material,
                 translation: center,
                 rotation: Quat::IDENTITY,
             });
@@ -193,10 +199,16 @@ impl SimDriver {
     /// monde d'un sommet vaut `origine_y_section + height × scale.y`. Les hauteurs sont
     /// en disposition ligne-major (`heights[row * cols + col]`, `row` sur z, `col` sur x).
     ///
+    /// Le champ porte le **matériau physique dominant** de la section (`material`,
+    /// R-643), comme une tuile en boîtes.
+    ///
     /// Rend vrai si la tuile a été posée. Un champ invalide — moins de 2 lignes/colonnes,
     /// taille incohérente, échelle x/z non positive, ou hauteur non finie — **retire** la
     /// tuile existante et rend faux, sans panique (donnée venue du monde, jamais crue sur
     /// parole).
+    // Sept paramètres tous distincts et irréductibles (où, géométrie du champ, matériau) :
+    // les envelopper dans une struct pour un unique setter serait une abstraction sans gain.
+    #[allow(clippy::too_many_arguments)]
     pub fn set_world_tile_heightfield(
         &mut self,
         dimension: u64,
@@ -205,6 +217,7 @@ impl SimDriver {
         cols: u32,
         heights: Vec<f32>,
         scale: [f32; 3],
+        material: ContactMaterial,
     ) -> bool {
         // Une tuile est remplacée en bloc : l'ancienne part d'abord.
         self.remove_world_tile(dimension, section);
@@ -218,6 +231,7 @@ impl SimDriver {
             },
             // Sans effet : un corps statique a une masse infinie.
             density: 1.0,
+            material,
             translation: Vec3::new(scale[0] * 0.5, 0.0, scale[2] * 0.5),
             rotation: Quat::IDENTITY,
         };
@@ -443,6 +457,7 @@ mod tests {
             &[BodyCollider {
                 shape: Shape::Ball { radius: 0.5 },
                 density: 1000.0,
+                material: ContactMaterial::default(),
                 translation: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }],
@@ -550,7 +565,12 @@ mod tests {
     fn un_corps_repose_sur_une_tuile_de_collision_monde() {
         let mut driver = SimDriver::new();
         // Une tuile-sol : une dalle 16×1×16 au bas de la section (0, 0, 0).
-        let posee = driver.set_world_tile(0, [0, 0, 0], &[[0.0, 0.0, 0.0, 16.0, 1.0, 16.0]]);
+        let posee = driver.set_world_tile(
+            0,
+            [0, 0, 0],
+            &[[0.0, 0.0, 0.0, 16.0, 1.0, 16.0]],
+            ContactMaterial::default(),
+        );
         assert!(posee, "la tuile est posée");
         assert_eq!(driver.world_tile_count(), 1);
 
@@ -567,6 +587,7 @@ mod tests {
             &[BodyCollider {
                 shape: Shape::Ball { radius: 0.5 },
                 density: 1000.0,
+                material: ContactMaterial::default(),
                 translation: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }],
@@ -601,6 +622,7 @@ mod tests {
             2,
             vec![1.0, 1.0, 1.0, 1.0],
             [16.0, 1.0, 16.0],
+            ContactMaterial::default(),
         );
         assert!(posee, "la tuile champ de hauteurs est posée");
         assert_eq!(driver.world_tile_count(), 1);
@@ -618,6 +640,7 @@ mod tests {
             &[BodyCollider {
                 shape: Shape::Ball { radius: 0.5 },
                 density: 1000.0,
+                material: ContactMaterial::default(),
                 translation: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }],
@@ -650,6 +673,7 @@ mod tests {
             2,
             vec![1.0, 1.0, 1.0],
             [16.0, 1.0, 16.0],
+            ContactMaterial::default(),
         ));
         assert_eq!(driver.world_tile_count(), 0);
         // Un champ valide se pose, puis un champ invalide sur la même section la retire.
@@ -660,6 +684,7 @@ mod tests {
             2,
             vec![0.0, 0.0, 0.0, 0.0],
             [16.0, 1.0, 16.0],
+            ContactMaterial::default(),
         ));
         assert_eq!(driver.world_tile_count(), 1);
         assert!(!driver.set_world_tile_heightfield(
@@ -669,19 +694,146 @@ mod tests {
             2,
             vec![0.0, 0.0],
             [16.0, 1.0, 16.0],
+            ContactMaterial::default(),
         ));
         assert_eq!(driver.world_tile_count(), 0);
     }
 
     #[test]
+    fn le_materiau_de_tuile_change_la_friction() {
+        // R-643 : la friction de la tuile freine un corps qui glisse dessus. Même
+        // impulsion horizontale, deux frottements : le corps glisse plus loin sur la
+        // tuile la moins rugueuse — c'est la friction des roues contre le monde.
+        let distance_glissee = |friction: f32| {
+            let mut driver = SimDriver::new();
+            driver.set_world_tile(
+                0,
+                [0, 0, 0],
+                &[[0.0, 0.0, 0.0, 16.0, 1.0, 16.0]],
+                ContactMaterial::sanitized(friction, 0.0),
+            );
+            // Une caisse posée sur la dalle (sommet y=1, demi-hauteur 0.5 → centre 1.5).
+            let spawn = WorldTransform {
+                position: [8.0, 1.5, 8.0],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+            };
+            driver.create_assembly(
+                0,
+                Handle::new(1, 1),
+                spawn,
+                BodyKind::Dynamic,
+                &[BodyCollider {
+                    shape: Shape::Cuboid {
+                        half_extents: [0.5, 0.5, 0.5],
+                    },
+                    density: 1000.0,
+                    material: ContactMaterial::default(),
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                }],
+            );
+            // Laisser la caisse se poser franchement avant de la pousser.
+            for _ in 0..30 {
+                driver.advance_all(1.0 / 60.0);
+            }
+            let depart = driver.collect_states()[0].position[0];
+            // Une forte impulsion horizontale, au centre de masse (sans couple).
+            driver.apply_impulse(
+                Handle::new(1, 1),
+                Vec3::new(4000.0, 0.0, 0.0),
+                Vec3::ZERO,
+                false,
+            );
+            for _ in 0..180 {
+                driver.advance_all(1.0 / 60.0);
+            }
+            driver.collect_states()[0].position[0] - depart
+        };
+        let peu_rugueux = distance_glissee(0.0);
+        let tres_rugueux = distance_glissee(2.0);
+        assert!(
+            peu_rugueux > 0.0,
+            "l'impulsion pousse la caisse en +x (glissé {peu_rugueux})"
+        );
+        assert!(
+            peu_rugueux > tres_rugueux * 1.5,
+            "la caisse glisse plus loin sur une tuile peu rugueuse : {peu_rugueux} vs {tres_rugueux}"
+        );
+    }
+
+    #[test]
+    fn le_materiau_de_tuile_change_le_rebond() {
+        // R-643 : la restitution de la tuile renvoie un corps qui la percute — c'est
+        // l'énergie des impacts contre le monde. Un sol rebondissant relance la bille
+        // plus haut qu'un sol amortissant.
+        let sommet_apres_impact = |restitution: f32| {
+            let mut driver = SimDriver::new();
+            driver.set_world_tile(
+                0,
+                [0, 0, 0],
+                &[[0.0, 0.0, 0.0, 16.0, 1.0, 16.0]],
+                ContactMaterial::sanitized(0.5, restitution),
+            );
+            let spawn = WorldTransform {
+                position: [8.0, 6.0, 8.0],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+            };
+            driver.create_assembly(
+                0,
+                Handle::new(1, 1),
+                spawn,
+                BodyKind::Dynamic,
+                &[BodyCollider {
+                    shape: Shape::Ball { radius: 0.5 },
+                    density: 1000.0,
+                    material: ContactMaterial::default(),
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                }],
+            );
+            // Chute, impact, rebond : on suit le sommet atteint après le premier contact.
+            // La position monde est recomposée en f64 par l'origine flottante.
+            let mut a_touche = false;
+            let mut sommet = 0.0_f64;
+            for _ in 0..240 {
+                driver.advance_all(1.0 / 60.0);
+                let y = driver.collect_states()[0].position[1];
+                if !a_touche && y < 1.7 {
+                    a_touche = true;
+                }
+                if a_touche {
+                    sommet = sommet.max(y);
+                }
+            }
+            sommet
+        };
+        let rebondissant = sommet_apres_impact(1.0);
+        let amortissant = sommet_apres_impact(0.0);
+        assert!(
+            rebondissant > amortissant + 0.2,
+            "un sol rebondissant relance plus haut : {rebondissant} vs {amortissant}"
+        );
+    }
+
+    #[test]
     fn une_tuile_se_remplace_et_se_retire() {
         let mut driver = SimDriver::new();
-        assert!(driver.set_world_tile(0, [1, 0, 2], &[[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]]));
+        assert!(driver.set_world_tile(
+            0,
+            [1, 0, 2],
+            &[[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]],
+            ContactMaterial::default()
+        ));
         // Reposer la même section remplace la tuile sans en cumuler une seconde.
-        assert!(driver.set_world_tile(0, [1, 0, 2], &[[0.0, 0.0, 0.0, 2.0, 2.0, 2.0]]));
+        assert!(driver.set_world_tile(
+            0,
+            [1, 0, 2],
+            &[[0.0, 0.0, 0.0, 2.0, 2.0, 2.0]],
+            ContactMaterial::default()
+        ));
         assert_eq!(driver.world_tile_count(), 1);
         // Une liste vide retire la tuile.
-        assert!(!driver.set_world_tile(0, [1, 0, 2], &[]));
+        assert!(!driver.set_world_tile(0, [1, 0, 2], &[], ContactMaterial::default()));
         assert_eq!(driver.world_tile_count(), 0);
         // Retirer une tuile absente est faux, sans paniquer.
         assert!(!driver.remove_world_tile(0, [9, 9, 9]));

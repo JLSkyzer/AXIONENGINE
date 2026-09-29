@@ -10,8 +10,8 @@ use rapier3d::prelude::{
 };
 
 use crate::body::{
-    BodyCollider, BodyError, BodyId, BodyKind, CompoundPart, Shape, MAX_COMPOUND_PARTS,
-    MAX_CONVEX_HULL_POINTS, MIN_CONVEX_HULL_POINTS,
+    BodyCollider, BodyError, BodyId, BodyKind, CompoundPart, ContactMaterial, Shape,
+    MAX_COMPOUND_PARTS, MAX_CONVEX_HULL_POINTS, MIN_CONVEX_HULL_POINTS,
 };
 use crate::config::PhysicsConfig;
 use crate::forces::{FluidEnvironment, LiftSurface};
@@ -277,6 +277,7 @@ impl PhysicsWorld {
             &[BodyCollider {
                 shape,
                 density: 1.0,
+                material: ContactMaterial::default(),
                 translation: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
             }],
@@ -339,6 +340,10 @@ impl PhysicsWorld {
         for (shape, collider) in shapes.into_iter().zip(colliders) {
             let built = ColliderBuilder::new(shape)
                 .density(collider.density)
+                // Friction et restitution du matériau de contact (R-643) : ce que
+                // rapier combine au contact — friction des roues, énergie des impacts.
+                .friction(collider.material.friction)
+                .restitution(collider.material.restitution)
                 .position(RapierPose::from_parts(
                     collider.translation,
                     collider.rotation,
