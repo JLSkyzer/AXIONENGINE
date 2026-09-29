@@ -1552,8 +1552,13 @@ substituable sans changer rapier »).
                   le matériau dominant. Modes de combinaison + rolling_friction : câblage
                   DM-07 complet ultérieur. Tests : friction et rebond A/B changent le
                   comportement ; défaut neutre ; assainissement.
-            - [ ] **T1d — fluides = capteurs de flottabilité** (R-642) : volumes de
-                  fluide échantillonnés (8 points de l'AABB), poussée + traînée.
+            - [x] **T1d — fluides = capteurs de flottabilité** (R-642) : `FluidVolume`
+                  (boîtes d'eau localisées par section) dans `PhysicsWorld` + setters
+                  `SimDriver::set_world_fluid_tile` / remove / count. Poussée d'Archimède
+                  et traînée du fluide échantillonnées aux 8 coins de l'AABB, sur la part
+                  immergée ; volumes localisés (pas de plan infini), priment sur la surface
+                  plate de dimension. Tests : léger flotte, dense coule, volume localisé,
+                  remplace/retire.
             - [ ] **T2 — frontière `[EFFORT MAX]`, ADR-117** : opcodes IF-03
                   `SET_WORLD_TILE` / `REMOVE_WORLD_TILE` (ABI, à ratifier) : Java envoie
                   coord de section + boîtes (+ matériau) par SimIn.

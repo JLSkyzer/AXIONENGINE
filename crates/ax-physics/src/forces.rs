@@ -18,6 +18,38 @@ pub struct FluidEnvironment {
     pub density: f32,
 }
 
+/// Un volume de fluide **localisé**, produit par le fournisseur de collision du monde
+/// (C-38, R-642) : une boîte d'eau (ou autre fluide) en coordonnées **locales** du monde
+/// physique, avec sa densité.
+///
+/// Les fluides sont des **volumes de flottabilité** — des « capteurs » : ils ne
+/// collisionnent pas solidement, ils portent et freinent les corps qui les traversent.
+/// Le volume immergé d'un corps y est approché par l'échantillonnage des **huit coins de
+/// son AABB** (§10.6) : chaque coin dans un volume compte pour un huitième du corps. Le
+/// modèle est explicitement approximatif et assumé comme tel.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FluidVolume {
+    /// Coin bas (min) de la boîte, en blocs (coords locales du monde physique).
+    pub min: Vec3,
+    /// Coin haut (max) de la boîte, en blocs (coords locales du monde physique).
+    pub max: Vec3,
+    /// Masse volumique du fluide, en kg/m³ (eau douce ≈ 1000). Strictement positive.
+    pub density: f32,
+}
+
+impl FluidVolume {
+    /// Vrai si le point (coords locales) est dans la boîte, bornes incluses.
+    #[must_use]
+    pub fn contains(&self, p: Vec3) -> bool {
+        p.x >= self.min.x
+            && p.x <= self.max.x
+            && p.y >= self.min.y
+            && p.y <= self.max.y
+            && p.z >= self.min.z
+            && p.z <= self.max.z
+    }
+}
+
 /// Une surface portante déclarée sur un corps (§10.6, R-1000).
 ///
 /// C'est ce qui rend avions et bateaux possibles **sans système dédié** : une

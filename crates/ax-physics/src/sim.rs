@@ -13,6 +13,7 @@
 use crate::body::{BodyCollider, BodyId, BodyKind, ContactMaterial, Shape};
 use crate::config::PhysicsConfig;
 use crate::forces::FluidEnvironment;
+use crate::forces::FluidVolume;
 use crate::world::PhysicsWorld;
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::geometry::WorldTransform;
@@ -276,6 +277,82 @@ impl SimDriver {
     #[must_use]
     pub fn world_tile_count(&self) -> usize {
         self.tiles.len()
+    }
+
+    /// Pose (ou remplace) les **volumes de fluide** d'une section 16³ (C-38, R-642) :
+    /// des boîtes d'eau (« capteurs » de flottabilité), et non de la collision solide.
+    ///
+    /// Comme pour [`set_world_tile`](Self::set_world_tile), les boîtes sont en blocs,
+    /// **relatives à l'origine de la section** (`section × 16`), et ramenées au repère
+    /// local par l'origine flottante de la dimension (créée au besoin, R-610). `density`
+    /// est la masse volumique du fluide (eau douce ≈ 1000), en kg/m³.
+    ///
+    /// Rend vrai si des volumes ont été posés. Une densité non positive, une liste vide,
+    /// ou des boîtes toutes dégénérées/non finies **retirent** les volumes de la section
+    /// et rendent faux (donnée venue du monde, jamais crue sur parole).
+    pub fn set_world_fluid_tile(
+        &mut self,
+        dimension: u64,
+        section: [i32; 3],
+        boxes: &[[f32; 6]],
+        density: f32,
+    ) -> bool {
+        let sim = self
+            .dimensions
+            .entry(dimension)
+            .or_insert_with(|| DimensionSim {
+                world: PhysicsWorld::new(PhysicsConfig::default()),
+                origin: FloatingOrigin::new(DVec3::ZERO),
+            });
+        // Une densité non finie ou non positive n'est pas un fluide : on retire.
+        if !density.is_finite() || density <= 0.0 {
+            sim.world.remove_fluid_volumes(section);
+            return false;
+        }
+        let section_origin = DVec3::new(
+            f64::from(section[0]) * 16.0,
+            f64::from(section[1]) * 16.0,
+            f64::from(section[2]) * 16.0,
+        );
+        let mut volumes = Vec::with_capacity(boxes.len());
+        for b in boxes {
+            let min = sim.origin.to_local(
+                section_origin + DVec3::new(f64::from(b[0]), f64::from(b[1]), f64::from(b[2])),
+            );
+            let max = sim.origin.to_local(
+                section_origin + DVec3::new(f64::from(b[3]), f64::from(b[4]), f64::from(b[5])),
+            );
+            // Une boîte dégénérée ou non finie est ignorée, pas toute la tuile.
+            if !min.is_finite() || !max.is_finite() {
+                continue;
+            }
+            if max.x <= min.x || max.y <= min.y || max.z <= min.z {
+                continue;
+            }
+            volumes.push(FluidVolume { min, max, density });
+        }
+        if volumes.is_empty() {
+            sim.world.remove_fluid_volumes(section);
+            return false;
+        }
+        sim.world.set_fluid_volumes(section, volumes);
+        true
+    }
+
+    /// Retire les volumes de fluide d'une section ; rend vrai s'ils existaient.
+    pub fn remove_world_fluid_tile(&mut self, dimension: u64, section: [i32; 3]) -> bool {
+        self.dimensions
+            .get_mut(&dimension)
+            .is_some_and(|sim| sim.world.remove_fluid_volumes(section))
+    }
+
+    /// Nombre de sections portant des volumes de fluide, toutes dimensions confondues.
+    #[must_use]
+    pub fn world_fluid_tile_count(&self) -> usize {
+        self.dimensions
+            .values()
+            .map(|sim| sim.world.fluid_volume_count())
+            .sum()
     }
 
     /// Avance toutes les dimensions du temps réel écoulé.
@@ -813,6 +890,116 @@ mod tests {
             rebondissant > amortissant + 0.2,
             "un sol rebondissant relance plus haut : {rebondissant} vs {amortissant}"
         );
+    }
+
+    /// Lâche un cube de densité donnée dans une section pourvue d'un sol de collision
+    /// et, si `eau`, d'un volume d'eau (densité 1000) de y=1 à y=9. Rend l'altitude du
+    /// corps après stabilisation. Le cube porte une traînée pour amortir le ballant.
+    fn altitude_apres_chute(densite: f32, eau: bool, x: f64) -> f64 {
+        let mut driver = SimDriver::new();
+        // Sol de collision : dalle 16×1×16 au bas de la section.
+        driver.set_world_tile(
+            0,
+            [0, 0, 0],
+            &[[0.0, 0.0, 0.0, 16.0, 1.0, 16.0]],
+            ContactMaterial::default(),
+        );
+        if eau {
+            // Eau localisée en x ∈ [0, 4], toute la profondeur, de y=1 à y=9.
+            driver.set_world_fluid_tile(0, [0, 0, 0], &[[0.0, 1.0, 0.0, 4.0, 9.0, 16.0]], 1000.0);
+        }
+        let spawn = WorldTransform {
+            position: [x, 7.0, 8.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        };
+        let body = driver
+            .create_assembly(
+                0,
+                Handle::new(1, 1),
+                spawn,
+                BodyKind::Dynamic,
+                &[BodyCollider {
+                    // Un cube : volume = volume de l'AABB, flottabilité sans biais.
+                    shape: Shape::Cuboid {
+                        half_extents: [0.5, 0.5, 0.5],
+                    },
+                    density: densite,
+                    material: ContactMaterial::default(),
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                }],
+            )
+            .expect("le corps est créé");
+        // Une traînée amortit le ballant dans l'eau : le corps se stabilise.
+        driver.world_mut(0).unwrap().set_drag(body, 1.0, 1.0);
+        for _ in 0..600 {
+            driver.advance_all(1.0 / 60.0);
+        }
+        driver.collect_states()[0].position[1]
+    }
+
+    #[test]
+    fn un_corps_leger_flotte_dans_un_volume_de_fluide() {
+        // R-642 : un cube moins dense que l'eau (500 < 1000) flotte, porté par le
+        // volume de fluide de la tuile — il se stabilise près de la surface (y=9), très
+        // au-dessus du fond (sommet de dalle y=1).
+        let y = altitude_apres_chute(500.0, true, 2.0);
+        assert!(y > 6.0, "le cube léger flotte près de la surface (y={y})");
+        assert!(y < 11.0, "le cube léger ne s'envole pas (y={y})");
+    }
+
+    #[test]
+    fn le_volume_de_fluide_est_localise() {
+        // R-642 : le fluide est un volume, pas un plan infini. Deux cubes légers
+        // identiques : celui dans l'eau (x=2, boîte x∈[0,4]) flotte ; celui hors de
+        // l'eau (x=10) tombe et repose sur le sol (y≈1.5).
+        let dans_l_eau = altitude_apres_chute(500.0, true, 2.0);
+        let hors_de_l_eau = altitude_apres_chute(500.0, true, 10.0);
+        assert!(
+            dans_l_eau > hors_de_l_eau + 3.0,
+            "le cube dans l'eau flotte bien au-dessus de celui hors de l'eau : {dans_l_eau} vs {hors_de_l_eau}"
+        );
+        assert!(
+            hors_de_l_eau < 3.0,
+            "hors de l'eau, le cube repose sur le sol (y={hors_de_l_eau})"
+        );
+    }
+
+    #[test]
+    fn un_corps_dense_coule_dans_un_volume_de_fluide() {
+        // R-642 : un cube plus dense que l'eau (2000 > 1000) coule malgré la poussée et
+        // repose sur le sol, tandis que le même cube léger flotte.
+        let lourd = altitude_apres_chute(2000.0, true, 2.0);
+        let leger = altitude_apres_chute(500.0, true, 2.0);
+        assert!(lourd < 3.0, "le cube dense coule au fond (y={lourd})");
+        assert!(
+            leger > lourd + 3.0,
+            "le cube léger flotte bien au-dessus du dense : {leger} vs {lourd}"
+        );
+    }
+
+    #[test]
+    fn une_tuile_de_fluide_se_remplace_et_se_retire() {
+        let mut driver = SimDriver::new();
+        assert!(driver.set_world_fluid_tile(
+            0,
+            [1, 0, 2],
+            &[[0.0, 0.0, 0.0, 4.0, 4.0, 4.0]],
+            1000.0
+        ));
+        // Reposer la même section remplace le volume sans en cumuler un second.
+        assert!(driver.set_world_fluid_tile(
+            0,
+            [1, 0, 2],
+            &[[0.0, 0.0, 0.0, 8.0, 8.0, 8.0]],
+            1000.0
+        ));
+        assert_eq!(driver.world_fluid_tile_count(), 1);
+        // Une densité non positive retire le volume.
+        assert!(!driver.set_world_fluid_tile(0, [1, 0, 2], &[[0.0, 0.0, 0.0, 4.0, 4.0, 4.0]], 0.0));
+        assert_eq!(driver.world_fluid_tile_count(), 0);
+        // Retirer une tuile de fluide absente est faux, sans paniquer.
+        assert!(!driver.remove_world_fluid_tile(0, [9, 9, 9]));
     }
 
     #[test]

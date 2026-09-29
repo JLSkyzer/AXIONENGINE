@@ -46,7 +46,7 @@ pub use body::{
 };
 pub use commands::{apply_command_stream, create_assembly_payloads, CommandError, CommandOutcome};
 pub use config::{ConfigError, PhysicsConfig};
-pub use forces::{FluidEnvironment, LiftSurface};
+pub use forces::{FluidEnvironment, FluidVolume, LiftSurface};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
 pub use sim::SimDriver;
 pub use world::{PhysicsWorld, Pose};
