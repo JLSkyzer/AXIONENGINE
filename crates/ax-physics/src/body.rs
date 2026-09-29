@@ -85,6 +85,24 @@ pub enum Shape {
         /// Formes filles, chacune avec sa pose relative.
         parts: Vec<CompoundPart>,
     },
+    /// Champ de hauteurs sur le plan x-z, centré sur l'origine du collider — la
+    /// forme du terrain du fournisseur de collision du monde (C-38, R-641), le
+    /// repli d'une section trop découpée pour des boîtes. **Interdite sur un corps
+    /// dynamique** (INV-13, R-970) : elle n'existe que sur du décor statique.
+    Heightfield {
+        /// Nombre de lignes (axe z), ≥ 2.
+        rows: u32,
+        /// Nombre de colonnes (axe x), ≥ 2.
+        cols: u32,
+        /// Hauteurs normalisées, en disposition **ligne-major** :
+        /// `heights[row * cols + col]`, `row` sur z et `col` sur x. Longueur exacte
+        /// `rows * cols`. La hauteur monde d'un sommet vaut `height * scale.y`.
+        heights: Vec<f32>,
+        /// Échelle `[x, y, z]` : étendue en blocs sur x et z (le champ couvre
+        /// `[-x/2, x/2] × [-z/2, z/2]`), facteur de hauteur sur y. `x` et `z`
+        /// strictement positifs, tous finis.
+        scale: [f32; 3],
+    },
 }
 
 /// Une forme fille d'un [`Shape::Compound`], avec sa pose relative au corps.
@@ -261,6 +279,18 @@ pub enum BodyError {
     EmptyCompound,
     /// `Compound` avec plus de 64 formes filles.
     CompoundTooManyParts,
+    /// `Heightfield` de moins de 2 lignes ou 2 colonnes : aucune cellule.
+    HeightfieldTooSmall,
+    /// `Heightfield` dont `heights.len()` ne vaut pas `rows * cols`.
+    HeightfieldSizeMismatch,
+    /// `Heightfield` dont l'échelle x/z n'est pas strictement positive, ou dont une
+    /// composante d'échelle n'est pas finie.
+    HeightfieldInvalidScale,
+    /// `Heightfield` dont une hauteur n'est pas finie (NaN ou infinie).
+    HeightfieldNonFiniteHeight,
+    /// `Heightfield` portée par un corps dynamique : interdit (INV-13, R-970). Les
+    /// formes concaves ne vivent que sur du décor statique ou kinematic.
+    HeightfieldOnDynamicBody,
 }
 
 impl fmt::Display for BodyError {
@@ -273,6 +303,21 @@ impl fmt::Display for BodyError {
             }
             Self::EmptyCompound => "un composé doit avoir au moins une forme fille",
             Self::CompoundTooManyParts => "un composé admet au plus 64 formes filles",
+            Self::HeightfieldTooSmall => {
+                "un champ de hauteurs exige au moins 2 lignes et 2 colonnes"
+            }
+            Self::HeightfieldSizeMismatch => {
+                "le nombre de hauteurs doit valoir exactement lignes × colonnes"
+            }
+            Self::HeightfieldInvalidScale => {
+                "l'échelle x et z d'un champ de hauteurs doit être finie et strictement positive"
+            }
+            Self::HeightfieldNonFiniteHeight => {
+                "un champ de hauteurs n'admet aucune hauteur non finie"
+            }
+            Self::HeightfieldOnDynamicBody => {
+                "un champ de hauteurs ne peut pas être porté par un corps dynamique (INV-13)"
+            }
         };
         f.write_str(message)
     }

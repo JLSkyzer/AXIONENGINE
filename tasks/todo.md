@@ -1538,8 +1538,13 @@ substituable sans changer rapier »).
                   `set_world_tile(dim, section, boxes)` / `remove_world_tile` / compte.
                   Clé (dim, section [i32;3]) déterministe. Test : un corps dynamique
                   repose sur une tuile (ne la traverse pas).
-            - [ ] **T1b — Heightfield** (repli R-641 > 4096 boîtes) : ajout à
-                  `ax_physics::Shape` + `shared_shape_of` (parry heightfield).
+            - [x] **T1b — Heightfield** (repli R-641 > 4096 boîtes) : variante
+                  `ax_physics::Shape::Heightfield` (hauteurs ligne-major, champ
+                  centré x-z) + `shared_shape_of` (parry `Array2` colonne-major) +
+                  garde INV-13 (concave interdite sur dynamique, même enfouie dans
+                  un compound). Setter `SimDriver::set_world_tile_heightfield`.
+                  Tests : un corps repose sur un champ plat ; refus sur dynamique ;
+                  validation des dimensions.
             - [ ] **T1c — matériau de tuile** (R-643) : friction/restitution du collider
                   statique depuis le matériau physique dominant.
             - [ ] **T1d — fluides = capteurs de flottabilité** (R-642) : volumes de

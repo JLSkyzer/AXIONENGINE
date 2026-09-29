@@ -182,6 +182,71 @@ impl SimDriver {
         true
     }
 
+    /// Pose (ou remplace) une tuile de collision du monde sous forme de **champ de
+    /// hauteurs** (C-38, R-641) : le repli d'une section trop découpée pour tenir en
+    /// boîtes. Une tuile champ de hauteurs est, comme une tuile en boîtes, un corps
+    /// **statique** — INV-13 (R-970) réserve les formes concaves au décor non dynamique.
+    ///
+    /// Le champ est **centré** sur son collider ; on le décale d'une demi-étendue
+    /// (`scale.x/2`, `scale.z/2`) pour que son empreinte parte du coin `[0, 0]` de la
+    /// section, comme les boîtes de [`set_world_tile`](Self::set_world_tile). La hauteur
+    /// monde d'un sommet vaut `origine_y_section + height × scale.y`. Les hauteurs sont
+    /// en disposition ligne-major (`heights[row * cols + col]`, `row` sur z, `col` sur x).
+    ///
+    /// Rend vrai si la tuile a été posée. Un champ invalide — moins de 2 lignes/colonnes,
+    /// taille incohérente, échelle x/z non positive, ou hauteur non finie — **retire** la
+    /// tuile existante et rend faux, sans panique (donnée venue du monde, jamais crue sur
+    /// parole).
+    pub fn set_world_tile_heightfield(
+        &mut self,
+        dimension: u64,
+        section: [i32; 3],
+        rows: u32,
+        cols: u32,
+        heights: Vec<f32>,
+        scale: [f32; 3],
+    ) -> bool {
+        // Une tuile est remplacée en bloc : l'ancienne part d'abord.
+        self.remove_world_tile(dimension, section);
+
+        let collider = BodyCollider {
+            shape: Shape::Heightfield {
+                rows,
+                cols,
+                heights,
+                scale,
+            },
+            // Sans effet : un corps statique a une masse infinie.
+            density: 1.0,
+            translation: Vec3::new(scale[0] * 0.5, 0.0, scale[2] * 0.5),
+            rotation: Quat::IDENTITY,
+        };
+
+        let sim = self
+            .dimensions
+            .entry(dimension)
+            .or_insert_with(|| DimensionSim {
+                world: PhysicsWorld::new(PhysicsConfig::default()),
+                origin: FloatingOrigin::new(DVec3::ZERO),
+            });
+        let world_origin = DVec3::new(
+            f64::from(section[0]) * 16.0,
+            f64::from(section[1]) * 16.0,
+            f64::from(section[2]) * 16.0,
+        );
+        let local = sim.origin.to_local(world_origin);
+        // Un champ invalide fait échouer `add_assembly` (validé par `shared_shape_of`) :
+        // la tuile reste retirée, aucun corps n'entre.
+        let Ok(body) = sim
+            .world
+            .add_assembly(BodyKind::Static, local, Quat::IDENTITY, &[collider])
+        else {
+            return false;
+        };
+        self.tiles.insert((dimension, section), body);
+        true
+    }
+
     /// Retire la tuile de collision d'une section ; rend vrai si elle existait.
     pub fn remove_world_tile(&mut self, dimension: u64, section: [i32; 3]) -> bool {
         let Some(body) = self.tiles.remove(&(dimension, section)) else {
@@ -522,6 +587,90 @@ mod tests {
             y < 2.0,
             "le corps ne s'est pas immobilisé sur la dalle (y={y})"
         );
+    }
+
+    #[test]
+    fn un_corps_repose_sur_une_tuile_champ_de_hauteurs() {
+        let mut driver = SimDriver::new();
+        // Une tuile-sol en champ de hauteurs : grille 2×2 plate à hauteur 1,
+        // étendue 16×16, sur la section (0, 0, 0). Surface à y = 0 + 1×1 = 1.
+        let posee = driver.set_world_tile_heightfield(
+            0,
+            [0, 0, 0],
+            2,
+            2,
+            vec![1.0, 1.0, 1.0, 1.0],
+            [16.0, 1.0, 16.0],
+        );
+        assert!(posee, "la tuile champ de hauteurs est posée");
+        assert_eq!(driver.world_tile_count(), 1);
+
+        // Un corps dynamique lâché au-dessus du champ.
+        let spawn = WorldTransform {
+            position: [8.0, 6.0, 8.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        };
+        driver.create_assembly(
+            0,
+            Handle::new(1, 1),
+            spawn,
+            BodyKind::Dynamic,
+            &[BodyCollider {
+                shape: Shape::Ball { radius: 0.5 },
+                density: 1000.0,
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
+        );
+
+        for _ in 0..180 {
+            driver.advance_all(1.0 / 60.0);
+        }
+        let states = driver.collect_states();
+        // La tuile est statique : seule la bille dynamique est collectée.
+        assert_eq!(states.len(), 1, "seul le corps dynamique est collecté");
+        let y = states[0].position[1];
+        // Surface à y=1, plus le rayon 0.5 : le centre repose vers 1.5, au-dessus de
+        // 1 (pas de traversée) et bien en deçà du départ (6).
+        assert!(y > 1.0, "le corps a traversé le champ de hauteurs (y={y})");
+        assert!(
+            y < 2.0,
+            "le corps ne s'est pas immobilisé sur le champ (y={y})"
+        );
+    }
+
+    #[test]
+    fn une_tuile_champ_de_hauteurs_invalide_ne_se_pose_pas() {
+        let mut driver = SimDriver::new();
+        // Nombre de hauteurs incohérent avec rows×cols : refus propre, sans panique.
+        assert!(!driver.set_world_tile_heightfield(
+            0,
+            [0, 0, 0],
+            2,
+            2,
+            vec![1.0, 1.0, 1.0],
+            [16.0, 1.0, 16.0],
+        ));
+        assert_eq!(driver.world_tile_count(), 0);
+        // Un champ valide se pose, puis un champ invalide sur la même section la retire.
+        assert!(driver.set_world_tile_heightfield(
+            0,
+            [0, 0, 0],
+            2,
+            2,
+            vec![0.0, 0.0, 0.0, 0.0],
+            [16.0, 1.0, 16.0],
+        ));
+        assert_eq!(driver.world_tile_count(), 1);
+        assert!(!driver.set_world_tile_heightfield(
+            0,
+            [0, 0, 0],
+            1, // moins de 2 lignes : invalide
+            2,
+            vec![0.0, 0.0],
+            [16.0, 1.0, 16.0],
+        ));
+        assert_eq!(driver.world_tile_count(), 0);
     }
 
     #[test]

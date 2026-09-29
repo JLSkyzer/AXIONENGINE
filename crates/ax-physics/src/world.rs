@@ -1,11 +1,12 @@
 //! Le monde physique d'une dimension (C-31, fiche 5.23).
 
 use ax_math::{FloatingOrigin, Quat, Vec3};
+use rapier3d::parry::utils::Array2;
 use rapier3d::prelude::{
     ActiveEvents, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent,
     CollisionEventFlags, ContactPair, EventHandler, PhysicsWorld as RapierWorld,
     Pose as RapierPose, Real, RigidBody, RigidBodyBuilder, RigidBodyHandle, RigidBodySet,
-    RigidBodyType, SharedShape,
+    RigidBodyType, SharedShape, Vector,
 };
 
 use crate::body::{
@@ -303,6 +304,15 @@ impl PhysicsWorld {
         rotation: Quat,
         colliders: &[BodyCollider],
     ) -> Result<BodyId, BodyError> {
+        // INV-13 (R-970) : les formes concaves du monde — ici `Heightfield` — ne
+        // vivent que sur du décor non dynamique. Refus avant toute construction.
+        if matches!(kind, BodyKind::Dynamic)
+            && colliders
+                .iter()
+                .any(|collider| shape_forbids_dynamic(&collider.shape))
+        {
+            return Err(BodyError::HeightfieldOnDynamicBody);
+        }
         // Valider toutes les formes d'abord : un corps à moitié inséré serait pire
         // qu'un refus propre.
         let mut shapes = Vec::with_capacity(colliders.len());
@@ -1244,6 +1254,17 @@ impl PhysicsWorld {
 ///
 /// Un seul chemin de construction, récursif pour [`Shape::Compound`] : primitive
 /// ou collider composé, la validation est la même partout.
+/// Vrai si la forme — elle-même ou l'une de ses filles — est interdite sur un corps
+/// dynamique (INV-13, R-970). Seule `Heightfield` l'est aujourd'hui ; la recherche
+/// descend dans les `Compound` par prudence, une fille concave restant interdite.
+fn shape_forbids_dynamic(shape: &Shape) -> bool {
+    match shape {
+        Shape::Heightfield { .. } => true,
+        Shape::Compound { parts } => parts.iter().any(|part| shape_forbids_dynamic(&part.shape)),
+        _ => false,
+    }
+}
+
 fn shared_shape_of(shape: &Shape) -> Result<SharedShape, BodyError> {
     match shape {
         Shape::Cuboid {
@@ -1297,6 +1318,35 @@ fn shared_shape_of(shape: &Shape) -> Result<SharedShape, BodyError> {
                 ));
             }
             Ok(SharedShape::compound(children))
+        }
+        Shape::Heightfield {
+            rows,
+            cols,
+            heights,
+            scale,
+        } => {
+            let rows = *rows as usize;
+            let cols = *cols as usize;
+            // parry exige au moins une cellule (≥ 2 lignes et 2 colonnes) et
+            // paniquerait sinon : on refuse proprement en amont.
+            if rows < 2 || cols < 2 {
+                return Err(BodyError::HeightfieldTooSmall);
+            }
+            if heights.len() != rows * cols {
+                return Err(BodyError::HeightfieldSizeMismatch);
+            }
+            let [sx, sy, sz] = *scale;
+            if !sx.is_finite() || !sy.is_finite() || !sz.is_finite() || sx <= 0.0 || sz <= 0.0 {
+                return Err(BodyError::HeightfieldInvalidScale);
+            }
+            if heights.iter().any(|h| !h.is_finite()) {
+                return Err(BodyError::HeightfieldNonFiniteHeight);
+            }
+            // Nos hauteurs sont ligne-major (`row * cols + col`, `row` sur z) ;
+            // l'`Array2` de parry est colonne-major et indexé `(i = ligne z, j = col x)`.
+            // `from_fn` remplit dans l'ordre colonne-major : la conversion est exacte.
+            let matrix = Array2::from_fn(rows, cols, |i, j| heights[i * cols + j]);
+            Ok(SharedShape::heightfield(matrix, Vector::new(sx, sy, sz)))
         }
     }
 }

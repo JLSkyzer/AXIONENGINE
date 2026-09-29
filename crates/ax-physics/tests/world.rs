@@ -1436,3 +1436,131 @@ fn le_centre_de_masse_penche_vers_le_collider_dense() {
         "le COM reste centré en y et z, obtenu {com:?}"
     );
 }
+
+/// Un champ de hauteurs plat, minimal (2×2), pour les tests de forme.
+fn flat_heightfield() -> Shape {
+    Shape::Heightfield {
+        rows: 2,
+        cols: 2,
+        heights: vec![0.0, 0.0, 0.0, 0.0],
+        scale: [16.0, 1.0, 16.0],
+    }
+}
+
+#[test]
+fn un_champ_de_hauteurs_est_refuse_sur_un_corps_dynamique() {
+    // INV-13 (R-970) : les formes concaves du monde n'existent pas sur du dynamique.
+    let mut world = PhysicsWorld::new(config());
+    let err = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            flat_heightfield(),
+        )
+        .expect_err("un champ de hauteurs dynamique est refusé");
+    assert_eq!(err, BodyError::HeightfieldOnDynamicBody);
+    // Refus avant toute insertion : le monde reste vide.
+    assert_eq!(world.body_count(), 0);
+}
+
+#[test]
+fn un_champ_de_hauteurs_dynamique_est_refuse_meme_enfoui_dans_un_compound() {
+    // La garde INV-13 descend dans les compounds : une fille concave reste interdite.
+    let mut world = PhysicsWorld::new(config());
+    let err = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            Shape::Compound {
+                parts: vec![CompoundPart {
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                    shape: flat_heightfield(),
+                }],
+            },
+        )
+        .expect_err("un compound à fille champ de hauteurs est refusé sur dynamique");
+    assert_eq!(err, BodyError::HeightfieldOnDynamicBody);
+    assert_eq!(world.body_count(), 0);
+}
+
+#[test]
+fn un_champ_de_hauteurs_est_accepte_sur_un_corps_statique() {
+    // Sur du décor statique, le champ de hauteurs est une forme valide (C-38, R-641).
+    let mut world = PhysicsWorld::new(config());
+    let body = world
+        .add_body(
+            BodyKind::Static,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            flat_heightfield(),
+        )
+        .expect("un champ de hauteurs statique est accepté");
+    assert_eq!(world.body_count(), 1);
+    assert!(world.body_center_of_mass(body).is_some());
+}
+
+#[test]
+fn un_champ_de_hauteurs_valide_ses_dimensions() {
+    let mut world = PhysicsWorld::new(config());
+    let attempt = |world: &mut PhysicsWorld, shape: Shape| {
+        world.add_body(BodyKind::Static, Vec3::ZERO, Quat::IDENTITY, shape)
+    };
+
+    // Moins de 2 lignes : aucune cellule.
+    assert_eq!(
+        attempt(
+            &mut world,
+            Shape::Heightfield {
+                rows: 1,
+                cols: 2,
+                heights: vec![0.0, 0.0],
+                scale: [16.0, 1.0, 16.0],
+            }
+        ),
+        Err(BodyError::HeightfieldTooSmall)
+    );
+    // Nombre de hauteurs incohérent.
+    assert_eq!(
+        attempt(
+            &mut world,
+            Shape::Heightfield {
+                rows: 2,
+                cols: 2,
+                heights: vec![0.0, 0.0, 0.0],
+                scale: [16.0, 1.0, 16.0],
+            }
+        ),
+        Err(BodyError::HeightfieldSizeMismatch)
+    );
+    // Échelle x nulle.
+    assert_eq!(
+        attempt(
+            &mut world,
+            Shape::Heightfield {
+                rows: 2,
+                cols: 2,
+                heights: vec![0.0, 0.0, 0.0, 0.0],
+                scale: [0.0, 1.0, 16.0],
+            }
+        ),
+        Err(BodyError::HeightfieldInvalidScale)
+    );
+    // Hauteur non finie.
+    assert_eq!(
+        attempt(
+            &mut world,
+            Shape::Heightfield {
+                rows: 2,
+                cols: 2,
+                heights: vec![0.0, f32::NAN, 0.0, 0.0],
+                scale: [16.0, 1.0, 16.0],
+            }
+        ),
+        Err(BodyError::HeightfieldNonFiniteHeight)
+    );
+    // Aucun de ces refus n'a inséré de corps.
+    assert_eq!(world.body_count(), 0);
+}
