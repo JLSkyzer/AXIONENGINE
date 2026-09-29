@@ -26,6 +26,21 @@ pub mod opcode {
     pub const APPLY_IMPULSE: u32 = 4;
     /// Régler l'environnement d'une dimension (payload [`super::SetDimensionEnv`]).
     pub const SET_DIMENSION_ENV: u32 = 5;
+    /// Poser une tuile de collision solide du monde (C-38, R-640 ; en-tête
+    /// [`super::SetWorldCollision`] + `box_count × [f32;6]`). ADR-117.
+    pub const SET_WORLD_COLLISION: u32 = 6;
+    /// Poser une tuile de collision en champ de hauteurs (C-38, R-641 ; en-tête
+    /// [`super::SetWorldHeightfield`] + `rows × cols × f32`). ADR-117.
+    pub const SET_WORLD_HEIGHTFIELD: u32 = 7;
+    /// Poser des volumes de fluide du monde (C-38, R-642 ; en-tête
+    /// [`super::SetWorldFluid`] + `box_count × [f32;6]`). ADR-117.
+    pub const SET_WORLD_FLUID: u32 = 8;
+    /// Retirer la tuile de collision d'une section (payload [`super::RemoveWorldTile`]).
+    /// ADR-117.
+    pub const REMOVE_WORLD_COLLISION: u32 = 9;
+    /// Retirer les volumes de fluide d'une section (payload [`super::RemoveWorldTile`]).
+    /// ADR-117.
+    pub const REMOVE_WORLD_FLUID: u32 = 10;
 }
 
 /// Drapeaux de [`SetDimensionEnv`], champ `flags`.
@@ -165,6 +180,103 @@ impl CreateAssembly {
     pub const BYTES: usize = 64;
 }
 
+/// En-tête de `SET_WORLD_COLLISION` (C-38, R-640 ; ADR-117).
+///
+/// Suivi **dans le même payload** de `box_count` boîtes `[f32; 6]`
+/// (`[minx, miny, minz, maxx, maxy, maxz]`), **relatives à l'origine de la section**
+/// (`section × 16`), en blocs quantifiés en 1/16. Toutes portent le matériau dominant
+/// de la section (R-643). `box_count == 0` retire la tuile de collision.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SetWorldCollision {
+    /// Dimension visée (R-610).
+    pub dimension: u64,
+    /// Index de la section 16³ (`coord_bloc >> 4`).
+    pub section: [i32; 3],
+    /// Nombre de boîtes qui suivent.
+    pub box_count: u32,
+    /// Frottement du matériau dominant (R-643).
+    pub friction: f32,
+    /// Restitution du matériau dominant (R-643).
+    pub restitution: f32,
+}
+
+impl SetWorldCollision {
+    /// Taille de l'en-tête sur la frontière, en octets (hors boîtes).
+    pub const BYTES: usize = 32;
+}
+
+/// En-tête de `SET_WORLD_HEIGHTFIELD` (C-38, R-641 ; ADR-117).
+///
+/// Suivi **dans le même payload** de `rows × cols` hauteurs `f32`, en disposition
+/// ligne-major (`row` sur z, `col` sur x). Le champ couvre la section, centré sur le
+/// plan x-z ; la hauteur monde d'un sommet vaut `height × scale.y`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SetWorldHeightfield {
+    /// Dimension visée (R-610).
+    pub dimension: u64,
+    /// Index de la section 16³.
+    pub section: [i32; 3],
+    /// Nombre de lignes (axe z), ≥ 2.
+    pub rows: u32,
+    /// Nombre de colonnes (axe x), ≥ 2.
+    pub cols: u32,
+    /// Frottement du matériau dominant (R-643).
+    pub friction: f32,
+    /// Restitution du matériau dominant (R-643).
+    pub restitution: f32,
+    /// Échelle `[x, y, z]` : étendue en blocs sur x et z, facteur de hauteur sur y.
+    pub scale: [f32; 3],
+}
+
+impl SetWorldHeightfield {
+    /// Taille de l'en-tête sur la frontière, en octets (hors hauteurs).
+    pub const BYTES: usize = 48;
+}
+
+/// En-tête de `SET_WORLD_FLUID` (C-38, R-642 ; ADR-117).
+///
+/// Suivi **dans le même payload** de `box_count` boîtes `[f32; 6]`, relatives à la
+/// section, quantifiées 1/16. `density` est la masse volumique du fluide (eau douce
+/// ≈ 1000). `box_count == 0` ou `density ≤ 0` retire les volumes de fluide.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SetWorldFluid {
+    /// Dimension visée (R-610).
+    pub dimension: u64,
+    /// Index de la section 16³.
+    pub section: [i32; 3],
+    /// Nombre de boîtes de fluide qui suivent.
+    pub box_count: u32,
+    /// Masse volumique du fluide, en kg/m³.
+    pub density: f32,
+    /// Réservé, à zéro.
+    pub _pad: u32,
+}
+
+impl SetWorldFluid {
+    /// Taille de l'en-tête sur la frontière, en octets (hors boîtes).
+    pub const BYTES: usize = 32;
+}
+
+/// Payload de `REMOVE_WORLD_COLLISION` et `REMOVE_WORLD_FLUID` (C-38 ; ADR-117).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RemoveWorldTile {
+    /// Dimension visée (R-610).
+    pub dimension: u64,
+    /// Index de la section 16³ à retirer.
+    pub section: [i32; 3],
+    /// Réservé, à zéro.
+    pub _pad: u32,
+}
+
+impl RemoveWorldTile {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 24;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,5 +321,39 @@ mod tests {
         assert_eq!(offset_of!(CreateAssembly, dimension), 8);
         assert_eq!(offset_of!(CreateAssembly, spawn), 16);
         assert_eq!(offset_of!(CreateAssembly, body_kind), 56);
+    }
+
+    #[test]
+    fn dm_world_tile_payloads_disposition_figee() {
+        // ADR-117 : dispositions figées des opcodes de tuiles du monde (6–10).
+        assert_eq!(size_of::<SetWorldCollision>(), SetWorldCollision::BYTES);
+        assert_eq!(align_of::<SetWorldCollision>(), 8);
+        assert_eq!(offset_of!(SetWorldCollision, dimension), 0);
+        assert_eq!(offset_of!(SetWorldCollision, section), 8);
+        assert_eq!(offset_of!(SetWorldCollision, box_count), 20);
+        assert_eq!(offset_of!(SetWorldCollision, friction), 24);
+        assert_eq!(offset_of!(SetWorldCollision, restitution), 28);
+
+        assert_eq!(size_of::<SetWorldHeightfield>(), SetWorldHeightfield::BYTES);
+        assert_eq!(align_of::<SetWorldHeightfield>(), 8);
+        assert_eq!(offset_of!(SetWorldHeightfield, dimension), 0);
+        assert_eq!(offset_of!(SetWorldHeightfield, section), 8);
+        assert_eq!(offset_of!(SetWorldHeightfield, rows), 20);
+        assert_eq!(offset_of!(SetWorldHeightfield, cols), 24);
+        assert_eq!(offset_of!(SetWorldHeightfield, friction), 28);
+        assert_eq!(offset_of!(SetWorldHeightfield, restitution), 32);
+        assert_eq!(offset_of!(SetWorldHeightfield, scale), 36);
+
+        assert_eq!(size_of::<SetWorldFluid>(), SetWorldFluid::BYTES);
+        assert_eq!(align_of::<SetWorldFluid>(), 8);
+        assert_eq!(offset_of!(SetWorldFluid, dimension), 0);
+        assert_eq!(offset_of!(SetWorldFluid, section), 8);
+        assert_eq!(offset_of!(SetWorldFluid, box_count), 20);
+        assert_eq!(offset_of!(SetWorldFluid, density), 24);
+
+        assert_eq!(size_of::<RemoveWorldTile>(), RemoveWorldTile::BYTES);
+        assert_eq!(align_of::<RemoveWorldTile>(), 8);
+        assert_eq!(offset_of!(RemoveWorldTile, dimension), 0);
+        assert_eq!(offset_of!(RemoveWorldTile, section), 8);
     }
 }

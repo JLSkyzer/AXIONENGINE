@@ -5,14 +5,24 @@
 //! little-endian, jamais par transtypage en place. C'est la couche FFI qui, elle,
 //! lit les structures DM en place ; ici on décode, on valide, on applique.
 
+use crate::body::ContactMaterial;
 use crate::forces::FluidEnvironment;
 use crate::sim::SimDriver;
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::commands::{
-    dimension_env_flags, opcode, ApplyForce, CommandStreamHeader, RemoveAssembly, SetDimensionEnv,
-    SetKinematic, SimCommandHeader,
+    dimension_env_flags, opcode, ApplyForce, CommandStreamHeader, RemoveAssembly, RemoveWorldTile,
+    SetDimensionEnv, SetKinematic, SetWorldCollision, SetWorldFluid, SetWorldHeightfield,
+    SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
+
+/// Plafond de boîtes d'une tuile (collision ou fluide), donnée hostile bornée avant
+/// allocation (R-901, ADR-117). C'est le seuil de R-641 : au-delà, la collision passe en
+/// champ de hauteurs, jamais en boîtes.
+const MAX_WORLD_TILE_BOXES: u32 = 4096;
+/// Plafond des dimensions d'un champ de hauteurs de tuile (R-901, ADR-117) : au plus
+/// `MAX_WORLD_HEIGHTFIELD_DIM²` hauteurs, borne large pour une section 16³.
+const MAX_WORLD_HEIGHTFIELD_DIM: u32 = 64;
 
 /// Bilan de l'application d'un flux de commandes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -164,6 +174,31 @@ fn apply_one(
             driver.apply_dimension_env(dimension, gravity, wind, fluid);
             outcome.applied += 1;
         }
+        // Tuiles de collision du monde (C-38, ADR-117) : payloads à corps variable,
+        // décodés en place ici (aucune dépendance ax-asset, contrairement à
+        // CREATE_ASSEMBLY). Les boîtes/hauteurs sont des f32 bruts ; le natif assainit.
+        opcode::SET_WORLD_COLLISION => {
+            apply_set_world_collision(driver, payload)?;
+            outcome.applied += 1;
+        }
+        opcode::SET_WORLD_HEIGHTFIELD => {
+            apply_set_world_heightfield(driver, payload)?;
+            outcome.applied += 1;
+        }
+        opcode::SET_WORLD_FLUID => {
+            apply_set_world_fluid(driver, payload)?;
+            outcome.applied += 1;
+        }
+        opcode::REMOVE_WORLD_COLLISION => {
+            let (dimension, section) = read_remove_world_tile(payload)?;
+            driver.remove_world_tile(dimension, section);
+            outcome.applied += 1;
+        }
+        opcode::REMOVE_WORLD_FLUID => {
+            let (dimension, section) = read_remove_world_tile(payload)?;
+            driver.remove_world_fluid_tile(dimension, section);
+            outcome.applied += 1;
+        }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
         // par la frontière (ax-ffi, `create_assembly_payloads`), qui seule décode
         // les colliders ; APPLY_FORCE continu attend la boucle de forces. Les deux
@@ -173,6 +208,119 @@ fn apply_one(
         _ => outcome.ignored += 1,
     }
     Ok(())
+}
+
+/// Décode `SET_WORLD_COLLISION` (ADR-117) et pose la tuile de collision.
+fn apply_set_world_collision(driver: &mut SimDriver, payload: &[u8]) -> Result<(), CommandError> {
+    if payload.len() < SetWorldCollision::BYTES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let dimension = read_u64(payload, 0);
+    let section = read_section(payload, 8);
+    let box_count = read_u32(payload, 20);
+    let friction = read_f32(payload, 24);
+    let restitution = read_f32(payload, 28);
+    let boxes = read_boxes(payload, SetWorldCollision::BYTES, box_count)?;
+    driver.set_world_tile(
+        dimension,
+        section,
+        &boxes,
+        ContactMaterial::sanitized(friction, restitution),
+    );
+    Ok(())
+}
+
+/// Décode `SET_WORLD_HEIGHTFIELD` (ADR-117) et pose la tuile champ de hauteurs.
+fn apply_set_world_heightfield(driver: &mut SimDriver, payload: &[u8]) -> Result<(), CommandError> {
+    if payload.len() < SetWorldHeightfield::BYTES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let dimension = read_u64(payload, 0);
+    let section = read_section(payload, 8);
+    let rows = read_u32(payload, 20);
+    let cols = read_u32(payload, 24);
+    let friction = read_f32(payload, 28);
+    let restitution = read_f32(payload, 32);
+    let scale = [
+        read_f32(payload, 36),
+        read_f32(payload, 40),
+        read_f32(payload, 44),
+    ];
+    // Bornes avant allocation (R-901) : 2 ≤ rows, cols ≤ plafond.
+    if !(2..=MAX_WORLD_HEIGHTFIELD_DIM).contains(&rows)
+        || !(2..=MAX_WORLD_HEIGHTFIELD_DIM).contains(&cols)
+    {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let count = rows as usize * cols as usize;
+    let body = SetWorldHeightfield::BYTES;
+    if payload.len() != body + count * 4 {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let mut heights = Vec::with_capacity(count);
+    for i in 0..count {
+        heights.push(read_f32(payload, body + i * 4));
+    }
+    driver.set_world_tile_heightfield(
+        dimension,
+        section,
+        rows,
+        cols,
+        heights,
+        scale,
+        ContactMaterial::sanitized(friction, restitution),
+    );
+    Ok(())
+}
+
+/// Décode `SET_WORLD_FLUID` (ADR-117) et pose les volumes de fluide.
+fn apply_set_world_fluid(driver: &mut SimDriver, payload: &[u8]) -> Result<(), CommandError> {
+    if payload.len() < SetWorldFluid::BYTES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let dimension = read_u64(payload, 0);
+    let section = read_section(payload, 8);
+    let box_count = read_u32(payload, 20);
+    let density = read_f32(payload, 24);
+    let boxes = read_boxes(payload, SetWorldFluid::BYTES, box_count)?;
+    driver.set_world_fluid_tile(dimension, section, &boxes, density);
+    Ok(())
+}
+
+/// Décode le payload partagé des retraits (`RemoveWorldTile`, ADR-117).
+fn read_remove_world_tile(payload: &[u8]) -> Result<(u64, [i32; 3]), CommandError> {
+    expect_len(payload, RemoveWorldTile::BYTES)?;
+    Ok((read_u64(payload, 0), read_section(payload, 8)))
+}
+
+/// Lit `box_count` boîtes `[f32;6]` après l'en-tête, en vérifiant la borne (R-901) et la
+/// longueur **exacte** du corps (ADR-117). Un compte nul rend une liste vide — le natif
+/// y retire alors la tuile.
+fn read_boxes(
+    payload: &[u8],
+    header: usize,
+    box_count: u32,
+) -> Result<Vec<[f32; 6]>, CommandError> {
+    if box_count > MAX_WORLD_TILE_BOXES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let count = box_count as usize;
+    if payload.len() != header + count * 24 {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let mut boxes = Vec::with_capacity(count);
+    for i in 0..count {
+        let at = header + i * 24;
+        boxes.push([
+            read_f32(payload, at),
+            read_f32(payload, at + 4),
+            read_f32(payload, at + 8),
+            read_f32(payload, at + 12),
+            read_f32(payload, at + 16),
+            read_f32(payload, at + 20),
+        ]);
+    }
+    Ok(boxes)
 }
 
 fn expect_len(payload: &[u8], expected: usize) -> Result<(), CommandError> {
@@ -229,6 +377,15 @@ fn read_vec3(bytes: &[u8], offset: usize) -> Vec3 {
 
 fn read_handle(bytes: &[u8], offset: usize) -> Handle {
     Handle::new(read_u32(bytes, offset), read_u32(bytes, offset + 4))
+}
+
+/// Lit un index de section `[i32; 3]` (petit-boutiste) à `offset`.
+fn read_section(bytes: &[u8], offset: usize) -> [i32; 3] {
+    [
+        read_u32(bytes, offset) as i32,
+        read_u32(bytes, offset + 4) as i32,
+        read_u32(bytes, offset + 8) as i32,
+    ]
 }
 
 #[cfg(test)]
@@ -390,5 +547,138 @@ mod tests {
             apply_command_stream(&mut driver, &bytes, 1),
             Err(CommandError::BadPayloadLength)
         );
+    }
+
+    /// Sérialise un index de section `[i32; 3]`.
+    fn section_bytes(section: [i32; 3]) -> Vec<u8> {
+        section.iter().flat_map(|v| v.to_le_bytes()).collect()
+    }
+
+    #[test]
+    fn set_world_collision_pose_et_retire() {
+        let mut driver = SimDriver::new();
+        // En-tête (32) : dim 0, section [0,0,0], box_count 1, friction 0.5, restitution 0.
+        let mut payload = 0u64.to_le_bytes().to_vec();
+        payload.extend(section_bytes([0, 0, 0]));
+        payload.extend(1u32.to_le_bytes());
+        payload.extend(f32s(&[0.5, 0.0]));
+        // Corps : une dalle 16×1×16.
+        payload.extend(f32s(&[0.0, 0.0, 0.0, 16.0, 1.0, 16.0]));
+        assert_eq!(payload.len(), SetWorldCollision::BYTES + 24);
+        let mut bytes = stream();
+        push(&mut bytes, opcode::SET_WORLD_COLLISION, &payload);
+        assert_eq!(
+            apply_command_stream(&mut driver, &bytes, 1)
+                .unwrap()
+                .applied,
+            1
+        );
+        assert_eq!(driver.world_tile_count(), 1);
+
+        // Retrait explicite.
+        let mut rm = 0u64.to_le_bytes().to_vec();
+        rm.extend(section_bytes([0, 0, 0]));
+        rm.extend(0u32.to_le_bytes()); // _pad
+        assert_eq!(rm.len(), RemoveWorldTile::BYTES);
+        let mut bytes = stream();
+        push(&mut bytes, opcode::REMOVE_WORLD_COLLISION, &rm);
+        assert_eq!(
+            apply_command_stream(&mut driver, &bytes, 1)
+                .unwrap()
+                .applied,
+            1
+        );
+        assert_eq!(driver.world_tile_count(), 0);
+    }
+
+    #[test]
+    fn set_world_heightfield_pose() {
+        let mut driver = SimDriver::new();
+        let mut payload = 0u64.to_le_bytes().to_vec();
+        payload.extend(section_bytes([0, 0, 0]));
+        payload.extend(2u32.to_le_bytes()); // rows
+        payload.extend(2u32.to_le_bytes()); // cols
+        payload.extend(f32s(&[0.5, 0.0])); // friction, restitution
+        payload.extend(f32s(&[16.0, 1.0, 16.0])); // scale
+        assert_eq!(payload.len(), SetWorldHeightfield::BYTES);
+        payload.extend(f32s(&[1.0, 1.0, 1.0, 1.0])); // 2×2 hauteurs
+        let mut bytes = stream();
+        push(&mut bytes, opcode::SET_WORLD_HEIGHTFIELD, &payload);
+        assert_eq!(
+            apply_command_stream(&mut driver, &bytes, 1)
+                .unwrap()
+                .applied,
+            1
+        );
+        assert_eq!(driver.world_tile_count(), 1);
+    }
+
+    #[test]
+    fn set_world_fluid_pose_et_retire() {
+        let mut driver = SimDriver::new();
+        let mut payload = 0u64.to_le_bytes().to_vec();
+        payload.extend(section_bytes([0, 0, 0]));
+        payload.extend(1u32.to_le_bytes()); // box_count
+        payload.extend(f32s(&[1000.0])); // density
+        payload.extend(0u32.to_le_bytes()); // _pad
+        payload.extend(f32s(&[0.0, 1.0, 0.0, 16.0, 9.0, 16.0]));
+        assert_eq!(payload.len(), SetWorldFluid::BYTES + 24);
+        let mut bytes = stream();
+        push(&mut bytes, opcode::SET_WORLD_FLUID, &payload);
+        assert_eq!(
+            apply_command_stream(&mut driver, &bytes, 1)
+                .unwrap()
+                .applied,
+            1
+        );
+        assert_eq!(driver.world_fluid_tile_count(), 1);
+
+        let mut rm = 0u64.to_le_bytes().to_vec();
+        rm.extend(section_bytes([0, 0, 0]));
+        rm.extend(0u32.to_le_bytes());
+        let mut bytes = stream();
+        push(&mut bytes, opcode::REMOVE_WORLD_FLUID, &rm);
+        assert_eq!(
+            apply_command_stream(&mut driver, &bytes, 1)
+                .unwrap()
+                .applied,
+            1
+        );
+        assert_eq!(driver.world_fluid_tile_count(), 0);
+    }
+
+    #[test]
+    fn une_tuile_a_corps_incoherent_est_refusee() {
+        let mut driver = SimDriver::new();
+        // box_count = 2, mais une seule boîte fournie : longueur du corps incohérente.
+        let mut payload = 0u64.to_le_bytes().to_vec();
+        payload.extend(section_bytes([0, 0, 0]));
+        payload.extend(2u32.to_le_bytes());
+        payload.extend(f32s(&[0.5, 0.0]));
+        payload.extend(f32s(&[0.0, 0.0, 0.0, 1.0, 1.0, 1.0])); // 1 boîte
+        let mut bytes = stream();
+        push(&mut bytes, opcode::SET_WORLD_COLLISION, &payload);
+        assert_eq!(
+            apply_command_stream(&mut driver, &bytes, 1),
+            Err(CommandError::BadPayloadLength)
+        );
+        assert_eq!(driver.world_tile_count(), 0);
+    }
+
+    #[test]
+    fn une_tuile_au_dela_du_plafond_est_refusee() {
+        let mut driver = SimDriver::new();
+        // box_count annoncé au-delà du plafond : refus avant toute allocation.
+        let mut payload = 0u64.to_le_bytes().to_vec();
+        payload.extend(section_bytes([0, 0, 0]));
+        payload.extend((MAX_WORLD_TILE_BOXES + 1).to_le_bytes());
+        payload.extend(f32s(&[0.5, 0.0]));
+        let mut bytes = stream();
+        push(&mut bytes, opcode::SET_WORLD_COLLISION, &payload);
+        assert_eq!(
+            apply_command_stream(&mut driver, &bytes, 1),
+            Err(CommandError::BadPayloadLength)
+        );
+        assert_eq!(driver.world_tile_count(), 0);
     }
 }
