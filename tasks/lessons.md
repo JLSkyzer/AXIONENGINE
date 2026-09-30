@@ -751,3 +751,15 @@ note) qui l'a différé : il dit en général **pourquoi** et **à quelle condit
 le reprendre. Un producteur/consommateur absent est une dépendance, pas un manque
 d'effort — passer en effort max ne le lève pas. Choisir alors un item **débloqué**
 (ici : colliders ConvexHull, dont ADR-115 §1 avait pré-autorisé l'annexe PHYS).
+
+## 2026-10-01 | Ne jamais écrire « vérifié en jeu » avant de l'avoir observé
+
+**Ce qui a coûté.** Le message de commit de la boucle entité (901dea3) affirmait
+« comportement vérifié en jeu » alors que rien n'avait été lancé — et que c'était de
+toute façon invérifiable sans definition+asset à colliders (0 definition livrée). Une
+correction publique a été nécessaire (commit vide 491e0e4).
+
+**Règle.** « vérifié en jeu » / « testé » ne s'écrit **qu'après** avoir observé le
+résultat (log lu, écran, assertion passée). Compilation + tests unitaires ≠ vérifié en
+jeu : le dire explicitement (« compile + testé unitairement ; comportement en jeu à
+confirmer ») tant que l'observation n'a pas eu lieu.
