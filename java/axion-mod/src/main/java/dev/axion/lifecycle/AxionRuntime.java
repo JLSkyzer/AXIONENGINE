@@ -12,6 +12,7 @@ import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
 import dev.axion.physics.CollectResult;
 import dev.axion.physics.NativeSimulation;
+import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.platform.PlatformAdapter;
 import java.util.ArrayList;
@@ -49,6 +50,11 @@ public final class AxionRuntime {
 
     /** Pilote du cycle de simulation (IF-03), créé au premier tick opérationnel. */
     private NativeSimulation simulation;
+    /**
+     * Source des commandes de tick (tuiles du monde C-38 ; à venir C-40), posée par la
+     * couche Forge quand un serveur démarre. Absente → cycle à vide (flux de commandes vide).
+     */
+    private SimCommandProvider worldCommandProvider;
 
     /**
      * Le cycle de simulation était-il sain au tick précédent ? Sert à ne
@@ -282,9 +288,12 @@ public final class AxionRuntime {
             simulation = new NativeSimulation(outcome.context());
         }
         long tick = platform.currentTick();
-        // Aucune commande et aucun délai : le cycle avance la simulation et
-        // récolte l'état, qui est vide tant qu'aucun corps n'existe.
-        CollectResult result = simulation.tick(tick, new SimCommandStream(), 0L);
+        // Les commandes de tick viennent de la couche Forge quand elle est branchée
+        // (tuiles du monde C-38) ; sinon le cycle avance à vide. Le délai reste nul.
+        SimCommandProvider provider = worldCommandProvider;
+        SimCommandStream commands =
+                provider != null ? provider.commandsForTick(tick) : new SimCommandStream();
+        CollectResult result = simulation.tick(tick, commands, 0L);
         // L'application des BodyState arrive ici quand des corps existeront ;
         // `result.bodies()` est vide d'ici là.
         if (result.ok() != simulationHealthy) {
@@ -293,6 +302,17 @@ public final class AxionRuntime {
                     ? "cycle de simulation rétabli au tick " + tick
                     : "collect refusé au tick " + tick + " (code " + result.code() + ")");
         }
+    }
+
+    /**
+     * Pose (ou retire, avec {@code null}) la source des commandes de tick, branchée par la
+     * couche Forge au démarrage d'un serveur (tuiles du monde C-38). Sans elle, le cycle
+     * avance à vide.
+     *
+     * @param provider fournisseur de commandes par tick, ou {@code null} pour le retirer
+     */
+    public void setWorldCommandProvider(SimCommandProvider provider) {
+        this.worldCommandProvider = provider;
     }
 
     /**

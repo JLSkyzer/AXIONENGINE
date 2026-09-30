@@ -5,6 +5,7 @@ import dev.axion.AxionMod;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
+import dev.axion.world.BlockMaterials;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
@@ -48,6 +49,9 @@ public final class AxionForgeEntrypoint {
 
     private final AxionRuntime runtime = new AxionRuntime();
     private final ForgePlatformAdapter platform = new ForgePlatformAdapter();
+
+    /** Pont des tuiles de collision du monde (C-38), vivant le temps d'un serveur. */
+    private WorldTileBridge worldTileBridge;
 
     /**
      * Construit le mod et abonne AXION aux événements de la plateforme.
@@ -164,6 +168,17 @@ public final class AxionForgeEntrypoint {
         platform.setServer(event.getServer());
         runtime.onServerStarting();
 
+        // C-38 : brancher le fournisseur de tuiles de collision du monde. Le runtime natif
+        // porte la config ; sans lui (outcome absent), on ne branche rien.
+        if (runtime.outcome() != null) {
+            int radius = (int) runtime.outcome().config().getInt("world.tile_radius");
+            int perTick = (int) runtime.outcome().config().getInt("world.tiles_per_tick");
+            worldTileBridge =
+                    new WorldTileBridge(
+                            event.getServer(), WorldTileBridge.loadMaterials(), radius, perTick);
+            runtime.setWorldCommandProvider(worldTileBridge);
+        }
+
         // R-521 : barrière de démarrage. Sans elle, le monde se chargerait
         // avant ses assets, et les premières entités apparaîtraient inertes
         // sans que rien n'explique pourquoi.
@@ -185,6 +200,12 @@ public final class AxionForgeEntrypoint {
      */
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onServerStopping(ServerStoppingEvent event) {
+        // C-38 : débrancher le pont des tuiles avant de couper le serveur.
+        if (worldTileBridge != null) {
+            runtime.setWorldCommandProvider(null);
+            worldTileBridge.close();
+            worldTileBridge = null;
+        }
         logTransitions(runtime::onServerStopping);
         platform.setServer(null);
         reportDisabledHooks();
