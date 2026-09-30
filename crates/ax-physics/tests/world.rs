@@ -4,7 +4,7 @@ use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_physics::{
     body_state_flags, event_kind, BodyCollider, BodyError, BodyId, BodyKind, CollisionGroups,
     CompoundPart, ConfigError, ContactMaterial, FluidEnvironment, Handle, LiftSurface,
-    PhysicsConfig, PhysicsWorld, Shape, SpatialFilter,
+    PhysicsConfig, PhysicsWorld, Shape, SimMode, SpatialFilter, Stage,
 };
 
 fn config() -> PhysicsConfig {
@@ -1728,4 +1728,59 @@ fn le_raycast_par_lot_rend_un_resultat_par_rayon() {
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].expect("touche").body, ground);
     assert!(results[1].is_none(), "le second rayon manque");
+}
+
+// --- C-40 : ordonnanceur de simulation (fiche 5.32) ------------------------------------
+
+#[test]
+fn le_serveur_integre_et_mesure_l_etape() {
+    // Mode serveur (défaut) : une bille tombe, et l'étape d'intégration est mesurée.
+    let mut world = PhysicsWorld::new(config());
+    let ball = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 10.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
+        .unwrap();
+    let before = world.pose(ball).unwrap().translation.y;
+    let substeps = world.advance(1.0 / 60.0);
+    assert!(substeps >= 1, "le serveur exécute au moins un sous-pas");
+    assert!(
+        world.pose(ball).unwrap().translation.y < before,
+        "la bille tombe sous la gravité"
+    );
+    // R-661 : l'étape d'intégration a une métrique (non nulle après un sous-pas).
+    assert!(
+        world.stage_duration(Stage::Integration) > 0,
+        "l'étape d'intégration est mesurée"
+    );
+}
+
+#[test]
+fn le_client_n_integre_pas_l_autoritaire() {
+    // R-662 (INV-17) : en mode client, aucune intégration autoritaire — la bille ne bouge
+    // pas et aucun sous-pas ne s'exécute.
+    let mut world = PhysicsWorld::new(config());
+    world.set_mode(SimMode::Client);
+    assert_eq!(world.mode(), SimMode::Client);
+    let ball = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 10.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
+        .unwrap();
+    let before = world.pose(ball).unwrap().translation.y;
+    for _ in 0..10 {
+        assert_eq!(world.advance(1.0 / 60.0), 0, "aucun sous-pas côté client");
+    }
+    assert_eq!(
+        world.pose(ball).unwrap().translation.y,
+        before,
+        "la bille ne bouge pas sans intégration autoritaire"
+    );
+    assert_eq!(world.stage_duration(Stage::Integration), 0);
 }

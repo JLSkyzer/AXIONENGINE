@@ -11,6 +11,8 @@ use rapier3d::prelude::{
 };
 
 use crate::query::{RayHit, SensorMode, SpatialFilter, SweepHit};
+use crate::scheduler::{SimMode, Stage, StageDurations};
+use std::time::Instant;
 
 use crate::body::{
     BodyCollider, BodyError, BodyId, BodyKind, CompoundPart, ContactMaterial, Shape,
@@ -182,6 +184,10 @@ pub struct PhysicsWorld {
     /// Volumes de fluide localisés du fournisseur de collision du monde (C-38, R-642),
     /// en coordonnées locales, par section 16³. Chaque section porte ses boîtes d'eau.
     fluid_volumes: HashMap<[i32; 3], Vec<FluidVolume>>,
+    /// Rôle de la simulation (C-40, R-662) : serveur autoritaire par défaut.
+    mode: SimMode,
+    /// Durées par étape du dernier tick (C-40, R-661), observationnelles.
+    stage_durations: StageDurations,
     /// Profils de force par corps. **Consultée par clé** pendant l'itération
     /// déterministe des corps `rapier`, jamais itérée elle-même : son ordre de
     /// parcours n'entre donc dans aucun résultat de simulation (R-1020).
@@ -245,6 +251,8 @@ impl PhysicsWorld {
             wind: Vec3::ZERO,
             fluid: None,
             fluid_volumes: HashMap::new(),
+            mode: SimMode::default(),
+            stage_durations: StageDurations::default(),
             aero: HashMap::new(),
             identity: HashMap::new(),
             sleep_state: HashMap::new(),
@@ -417,6 +425,12 @@ impl PhysicsWorld {
     /// évite la spirale où chaque tick prend plus de retard qu'il n'en comble
     /// (R-990).
     pub fn advance(&mut self, frame_dt: f32) -> u32 {
+        self.stage_durations.reset();
+        // R-662 (INV-17) : le client n'exécute pas l'intégration physique autoritaire — il
+        // reçoit les états du serveur et interpole. Aucun sous-pas de ce côté.
+        if self.mode == SimMode::Client {
+            return 0;
+        }
         let dt = self.config.fixed_dt();
         let ceiling = dt * self.config.max_substeps() as f32;
         self.accumulator = (self.accumulator + frame_dt.max(0.0)).min(ceiling);
@@ -427,19 +441,34 @@ impl PhysicsWorld {
         let mut substeps = 0;
         while self.accumulator >= dt {
             self.sim_clock += f64::from(dt);
+
+            // Étape 4 (C-40, R-660) : intégration physique — forces, intégration Rapier,
+            // puis garde-fous R-180/R-181 avant la récolte, pour lire un état sain.
+            let integration_start = Instant::now();
             self.apply_aero_forces();
             let collector = ContactCollector::default();
             self.inner.step_with_events(&(), &collector);
-            // Garde-fous R-180/R-181 avant la récolte d'événements : les vitesses
-            // sont ramenées sous leurs bornes et un état non fini est restauré, si
-            // bien que les événements du sous-pas se lisent sur un état sain.
             self.enforce_body_guardrails();
+            self.stage_durations
+                .add(Stage::Integration, elapsed_nanos(integration_start));
+
+            // Étape 6 (C-40, R-660) : collecte des contacts et des événements.
+            let contacts_start = Instant::now();
             self.collect_contact_events(&collector);
             self.collect_contact_impulses();
             self.collect_sleep_events();
+            self.stage_durations
+                .add(Stage::Contacts, elapsed_nanos(contacts_start));
+
             self.accumulator -= dt;
             substeps += 1;
         }
+
+        // Étapes 7 à 12 (C-40, R-660) : la **chaîne de dommage** s'exécute une seule fois
+        // par tick, après le dernier sous-pas, pour rendre son coût indépendant du nombre
+        // de sous-pas. Réservée aux composants C-41..C-45 (M6) : aucun travail à ce jalon,
+        // mais son créneau est ici, à sa place normative.
+
         substeps
     }
 
@@ -1303,6 +1332,25 @@ impl PhysicsWorld {
         self.inner.bodies.len()
     }
 
+    /// Fixe le rôle de la simulation (C-40, R-662). En [`SimMode::Client`], `advance`
+    /// n'exécute pas l'intégration autoritaire.
+    pub fn set_mode(&mut self, mode: SimMode) {
+        self.mode = mode;
+    }
+
+    /// Rôle courant de la simulation (C-40).
+    #[must_use]
+    pub fn mode(&self) -> SimMode {
+        self.mode
+    }
+
+    /// Durée cumulée d'une étape sur le dernier tick, en nanosecondes (C-40, R-661,
+    /// observationnel).
+    #[must_use]
+    pub fn stage_duration(&self, stage: Stage) -> u64 {
+        self.stage_durations.get(stage)
+    }
+
     // --- C-39 : requêtes spatiales (fiche 5.31) -----------------------------------------
     // Toutes en lecture seule (`&self`, R-650) ; elles lisent la géométrie de collision
     // laissée par le dernier `advance` (l'état du début du tick, R-651).
@@ -1464,6 +1512,11 @@ impl PhysicsWorld {
             .and_then(Collider::parent)
             .map(BodyId::from_handle)
     }
+}
+
+/// Nanosecondes écoulées depuis `start` (métrique d'étape C-40, R-661).
+fn elapsed_nanos(start: Instant) -> u64 {
+    start.elapsed().as_nanos() as u64
 }
 
 /// Traduit un [`SpatialFilter`] AXION en `QueryFilter` de `rapier`.
