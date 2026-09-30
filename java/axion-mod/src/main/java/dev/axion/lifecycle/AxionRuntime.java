@@ -14,6 +14,7 @@ import dev.axion.physics.CollectResult;
 import dev.axion.physics.NativeSimulation;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
+import dev.axion.physics.SimStateSink;
 import dev.axion.platform.PlatformAdapter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -51,10 +52,16 @@ public final class AxionRuntime {
     /** Pilote du cycle de simulation (IF-03), créé au premier tick opérationnel. */
     private NativeSimulation simulation;
     /**
-     * Source des commandes de tick (tuiles du monde C-38 ; à venir C-40), posée par la
-     * couche Forge quand un serveur démarre. Absente → cycle à vide (flux de commandes vide).
+     * Sources des commandes de tick (tuiles du monde C-38, assemblies C-40), posées par la
+     * couche Forge quand un serveur démarre. Vide → cycle à vide (aucune commande). Les flux
+     * sont fusionnés dans l'ordre d'ajout.
      */
-    private SimCommandProvider worldCommandProvider;
+    private final List<SimCommandProvider> commandProviders = new ArrayList<>();
+    /**
+     * Puits des états collectés (boucle C-40 ↔ C-50), posé par la couche Forge. Absent → les
+     * états ne sont pas réappliqués (aucune entité à piloter).
+     */
+    private SimStateSink stateSink;
 
     /**
      * Le cycle de simulation était-il sain au tick précédent ? Sert à ne
@@ -288,14 +295,19 @@ public final class AxionRuntime {
             simulation = new NativeSimulation(outcome.context());
         }
         long tick = platform.currentTick();
-        // Les commandes de tick viennent de la couche Forge quand elle est branchée
-        // (tuiles du monde C-38) ; sinon le cycle avance à vide. Le délai reste nul.
-        SimCommandProvider provider = worldCommandProvider;
-        SimCommandStream commands =
-                provider != null ? provider.commandsForTick(tick) : new SimCommandStream();
+        // Étape 1 (C-40) : les commandes de tick viennent des fournisseurs Forge branchés
+        // (tuiles du monde C-38, assemblies C-40), fusionnés dans l'ordre. Sans fournisseur,
+        // le cycle avance à vide. Le délai reste nul.
+        SimCommandStream commands = new SimCommandStream();
+        for (SimCommandProvider provider : commandProviders) {
+            commands.merge(provider.commandsForTick(tick));
+        }
         CollectResult result = simulation.tick(tick, commands, 0L);
-        // L'application des BodyState arrive ici quand des corps existeront ;
-        // `result.bodies()` est vide d'ici là.
+        // Étape 15 (C-40) : les états collectés sont réappliqués aux entités liées via le
+        // puits Forge (boucle C-40 ↔ C-50). Absent → rien à piloter.
+        if (stateSink != null) {
+            stateSink.applyStates(tick, result.bodies());
+        }
         if (result.ok() != simulationHealthy) {
             simulationHealthy = result.ok();
             transitions.add(result.ok()
@@ -305,14 +317,28 @@ public final class AxionRuntime {
     }
 
     /**
-     * Pose (ou retire, avec {@code null}) la source des commandes de tick, branchée par la
-     * couche Forge au démarrage d'un serveur (tuiles du monde C-38). Sans elle, le cycle
-     * avance à vide.
+     * Ajoute une source de commandes de tick, branchée par la couche Forge au démarrage d'un
+     * serveur (tuiles du monde C-38, assemblies C-40). Les flux sont fusionnés dans l'ordre
+     * d'ajout.
      *
-     * @param provider fournisseur de commandes par tick, ou {@code null} pour le retirer
+     * @param provider fournisseur de commandes par tick
      */
-    public void setWorldCommandProvider(SimCommandProvider provider) {
-        this.worldCommandProvider = provider;
+    public void addCommandProvider(SimCommandProvider provider) {
+        this.commandProviders.add(provider);
+    }
+
+    /** Retire toutes les sources de commandes (arrêt du serveur). */
+    public void clearCommandProviders() {
+        this.commandProviders.clear();
+    }
+
+    /**
+     * Pose (ou retire, avec {@code null}) le puits des états collectés (boucle C-40 ↔ C-50).
+     *
+     * @param sink puits d'états, ou {@code null} pour le retirer
+     */
+    public void setStateSink(SimStateSink sink) {
+        this.stateSink = sink;
     }
 
     /**

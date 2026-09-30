@@ -53,6 +53,9 @@ public final class AxionForgeEntrypoint {
     /** Pont des tuiles de collision du monde (C-38), vivant le temps d'un serveur. */
     private WorldTileBridge worldTileBridge;
 
+    /** Runtime des assemblies (boucle C-40 ↔ C-50), vivant le temps d'un serveur. */
+    private AssemblyRuntime assemblyRuntime;
+
     /**
      * Construit le mod et abonne AXION aux événements de la plateforme.
      *
@@ -168,15 +171,19 @@ public final class AxionForgeEntrypoint {
         platform.setServer(event.getServer());
         runtime.onServerStarting();
 
-        // C-38 : brancher le fournisseur de tuiles de collision du monde. Le runtime natif
-        // porte la config ; sans lui (outcome absent), on ne branche rien.
+        // C-38/C-40 : brancher les fournisseurs de commandes et le puits d'états. Le runtime
+        // natif porte la config ; sans lui (outcome absent), on ne branche rien.
         if (runtime.outcome() != null) {
             int radius = (int) runtime.outcome().config().getInt("world.tile_radius");
             int perTick = (int) runtime.outcome().config().getInt("world.tiles_per_tick");
             worldTileBridge =
                     new WorldTileBridge(
                             event.getServer(), WorldTileBridge.loadMaterials(), radius, perTick);
-            runtime.setWorldCommandProvider(worldTileBridge);
+            runtime.addCommandProvider(worldTileBridge);
+            // C-40 ↔ C-50 : les entités liées deviennent des corps natifs et reçoivent leur état.
+            assemblyRuntime = new AssemblyRuntime(runtime.definitions(), runtime.assets());
+            runtime.addCommandProvider(assemblyRuntime);
+            runtime.setStateSink(assemblyRuntime);
         }
 
         // R-521 : barrière de démarrage. Sans elle, le monde se chargerait
@@ -200,11 +207,16 @@ public final class AxionForgeEntrypoint {
      */
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onServerStopping(ServerStoppingEvent event) {
-        // C-38 : débrancher le pont des tuiles avant de couper le serveur.
+        // C-38/C-40 : débrancher les fournisseurs et le puits avant de couper le serveur.
+        runtime.clearCommandProviders();
+        runtime.setStateSink(null);
         if (worldTileBridge != null) {
-            runtime.setWorldCommandProvider(null);
             worldTileBridge.close();
             worldTileBridge = null;
+        }
+        if (assemblyRuntime != null) {
+            assemblyRuntime.close();
+            assemblyRuntime = null;
         }
         logTransitions(runtime::onServerStopping);
         platform.setServer(null);

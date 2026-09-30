@@ -43,6 +43,12 @@ public final class SimCommandStream {
     /** Opcode {@code CREATE_ASSEMBLY} (ADR-114). */
     public static final int OP_CREATE_ASSEMBLY = 0;
 
+    /** Opcode {@code REMOVE_ASSEMBLY} (ADR-114). */
+    public static final int OP_REMOVE_ASSEMBLY = 1;
+
+    /** Taille du payload {@code RemoveAssembly} (un {@code Handle}), en octets. */
+    public static final int REMOVE_ASSEMBLY_BYTES = 8;
+
     /**
      * Taille de l'en-tête {@code CreateAssembly}, en octets (hors octets {@code
      * PHYS} qui le suivent). Figé côté natif : {@code CreateAssembly::BYTES}.
@@ -404,6 +410,22 @@ public final class SimCommandStream {
         }
     }
 
+    /**
+     * Ajoute une commande {@code REMOVE_ASSEMBLY} (ADR-114) : retire l'assembly (et ses
+     * corps) désignée par son handle.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream removeAssembly(int handleIndex, int handleGeneration) {
+        ByteBuffer command = beginCommand(OP_REMOVE_ASSEMBLY, REMOVE_ASSEMBLY_BYTES);
+        command.putInt(handleIndex);
+        command.putInt(handleGeneration);
+        commands.add(command.array());
+        return this;
+    }
+
     /** {@return {@code value} arrondi au prochain multiple de 8} */
     private static int alignUp8(int value) {
         return (value + 7) & ~7;
@@ -412,6 +434,18 @@ public final class SimCommandStream {
     /** {@return le nombre de commandes, à passer à {@code submit}} */
     public int count() {
         return commands.size();
+    }
+
+    /**
+     * Ajoute à ce flux toutes les commandes d'un autre, dans l'ordre (composition de
+     * plusieurs fournisseurs pour un même tick — tuiles du monde, assemblies…).
+     *
+     * @param other flux dont les commandes sont ajoutées à la fin de celui-ci
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream merge(SimCommandStream other) {
+        commands.addAll(other.commands);
+        return this;
     }
 
     /**

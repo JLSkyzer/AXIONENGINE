@@ -289,4 +289,30 @@ class SimCommandStreamTest {
                         .setWorldHeightfield(
                                 0L, new int[] {0, 0, 0}, 2, 2, new float[3], new float[] {1, 1, 1}, 0.5f, 0f));
     }
+
+    @Test
+    void encodeUnRemoveAssembly() {
+        byte[] bytes = new SimCommandStream().removeAssembly(7, 1).toBytes();
+        // en-tête flux (8) + en-tête cmd (8) + payload Handle (8)
+        assertEquals(8 + 8 + 8, bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_REMOVE_ASSEMBLY, b.getInt(8), "opcode");
+        assertEquals(8, b.getInt(12), "payload_len");
+        assertEquals(7, b.getInt(16), "handle.index");
+        assertEquals(1, b.getInt(20), "handle.generation");
+    }
+
+    @Test
+    void mergeConcateneLesCommandes() {
+        SimCommandStream a = new SimCommandStream().removeAssembly(1, 1);
+        SimCommandStream b = new SimCommandStream()
+                .setDimensionEnv(0L, new float[] {0, -9.81f, 0}, new float[] {0, 0, 0}, 0, 0, false);
+        a.merge(b);
+        assertEquals(2, a.count(), "les deux commandes sont présentes");
+        byte[] bytes = a.toBytes();
+        assertEquals(SimCommandStream.OP_REMOVE_ASSEMBLY, wrap(bytes).getInt(8), "première commande");
+        // Seconde commande : après l'en-tête de flux + REMOVE_ASSEMBLY (8 + 8).
+        int second = 8 + (8 + 8);
+        assertEquals(SimCommandStream.OP_SET_DIMENSION_ENV, wrap(bytes).getInt(second), "seconde commande");
+    }
 }
