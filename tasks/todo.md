@@ -1598,6 +1598,23 @@ substituable sans changer rapier »).
             (glam), aucun type rapier exposé. Tests : rayon touche/manque, filtre
             d'exclusion, overlap, sweep, non-mutation, lot (couvre T-380..T-384). R-652
             (géométrie déformée) et T-856 : avec la déformation, en M6.
+      - [x] **C-40 — Simulation Scheduler** (fiche 5.32, R-660..662) — **composant
+            implémenté**. Module `ax_physics::scheduler` : ordre normatif du pas **figé**
+            (`Stage`/`Stage::ORDER`, 15 étapes, R-660 ; variation = ADR), chaîne de dommage
+            (7-12) une fois par tick, étapes client (R-662). `advance` exécute ses étapes
+            dans l'ordre explicite (intégration 4, contacts 6 par sous-pas ; créneau réservé
+            chaîne de dommage après le dernier sous-pas), métrique par étape (`StageDurations`,
+            R-661, observationnelle). `SimMode` : le client n'intègre pas l'autoritaire
+            (INV-17). Étapes 2,3,5,7-13 réservées (composants futurs). Tests : ordre R-660,
+            chaîne 7-12, étapes client, serveur intègre/mesure, client skip.
+            - [ ] **Boucle entité (intégration C-40 ↔ C-50, payoff visible en jeu)** — non
+                  faite. Dépendance vérifiée présente : `Definition.asset` → `AssetRegistry`/
+                  `AssetCache` (octets A3D) → `A3dSections.section("PHYS")` → `CREATE_ASSEMBLY`.
+                  Reste à câbler : allocation de handle + mapping entité↔handle
+                  (`AssemblyBinding`), émission de `CREATE_ASSEMBLY` au spawn / `REMOVE_ASSEMBLY`
+                  au despawn, application des `BodyState` collectés → `entity.moveTo`
+                  (driveSimulation ignore encore `result.bodies()`). Vérif en jeu (une entité
+                  spawnée tombe/repose). C'est ce qui rend la physique visible.
 
 ## Jalons suivants
 
