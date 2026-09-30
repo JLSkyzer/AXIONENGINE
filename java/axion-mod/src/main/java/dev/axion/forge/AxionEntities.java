@@ -37,6 +37,12 @@ public final class AxionEntities {
             ENTITY_TYPES.register("assembly", () -> EntityType.Builder
                     .<AxionEntity>of(AxionEntity::new, MobCategory.MISC)
                     .sized(PROVISIONAL_SIZE, PROVISIONAL_SIZE)
+                    // Corps repositionné à chaque tick par la physique serveur (C-40) : on
+                    // transmet sa position au client à chaque tick, et non tous les 3 (défaut
+                    // de Minecraft), sans quoi une chute à vitesse réelle s'affiche « bloc par
+                    // bloc ». Le lissage sous-tick (interpolation au rendu) relève de la
+                    // chaîne de rendu (C-60+) et complétera ce câblage réseau.
+                    .updateInterval(1)
                     .build(AxionMod.MODID + ":assembly"));
 
     /**
