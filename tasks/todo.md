@@ -1618,15 +1618,25 @@ substituable sans changer rapier »).
                   par Killian → le cube **tombe** (payoff atteint). Aussi : mécanisme natif
                   prouvé par composition (tests `sim.rs` + `create_assembly_abi` FFI), encodage
                   testé, contenu charge (cube compilé, 1 definition 0 refusée).
-                  **Finitions à faire** (non bloquantes) :
-                  - [ ] **Flottement d'~1 bloc au repos** : cause probable = tuile de sol
-                    construite en retard (pompe amortie) → le corps entre dans le sol puis est
-                    repoussé ; secondaire = collider de test décalé (AABB `[0,1]`, non centré) vs
-                    position « pieds » de l'entité. Fix : centrer le collider + aligner
-                    `BodyState → entité` sur le bas du collider + prioriser la tuile sous une
-                    entité qui apparaît.
-                  - [ ] **Saccade au spawn** : pas d'interpolation client (setPos par tick, 20/s) ;
-                    lissage viendra avec la chaîne de rendu (C-60+).
+                  **Finitions (2026-10-01) — résolues :**
+                  - [x] **Chute au ralenti (1/3 de la vitesse)** : la frontière FFI injectait
+                    `SIM_TICK_DT = 1/60` dans l'accumulateur (R-283) à chaque tick serveur
+                    (1/20 s) → un seul sous-pas au lieu de trois. Corrigé : temps réel du tick
+                    (`SERVER_TICK_DT = 1/20`, 3 sous-pas). Vitesse réelle observée en jeu.
+                    Commit 80081ac.
+                  - [x] **Flottement d'~1 bloc au repos** : ne se reproduit plus (observé par
+                    Killian). La cause suspectée (tuile de sol en retard) est par ailleurs
+                    traitée par la priorité de tuile ci-dessous.
+                  - [x] **Saccade / chute « bloc par bloc »** : `Entity.lerpTo` téléporte à
+                    chaque paquet ; ajout d'une interpolation client sur `AxionEntity` (mémorise
+                    la cible, y glisse en `steps` ticks) + `updateInterval(1)`. Chute observée
+                    **quasi fluide** par Killian ; le lissage sous-tick et le rendu orienté
+                    restent à C-60+. Commit a129aa1.
+                  - [x] **Cube enfoncé sous les blocs au rechargement** : au redémarrage du
+                    serveur le planificateur de tuiles repart froid ; le corps recréé tombait
+                    avant que sa section soit reconstruite. `WorldTilePlanner` bâtit désormais en
+                    priorité la section abritant une assembly (+ test). Commit a13e3e4.
+                    **Scénario de rechargement pas encore ré-observé en jeu.**
 
 ## Jalons suivants
 

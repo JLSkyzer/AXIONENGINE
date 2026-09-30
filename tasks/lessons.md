@@ -763,3 +763,46 @@ correction publique a été nécessaire (commit vide 491e0e4).
 résultat (log lu, écran, assertion passée). Compilation + tests unitaires ≠ vérifié en
 jeu : le dire explicitement (« compile + testé unitairement ; comportement en jeu à
 confirmer ») tant que l'observation n'a pas eu lieu.
+
+## 2026-10-01 | Un accumulateur à pas fixe se nourrit du temps réel écoulé, pas de son pas
+
+**Ce qui a coûté.** La frontière FFI passait `SIM_TICK_DT = 1/60` à `advance_all` à chaque
+tick serveur, alors qu'un tick Minecraft dure 1/20 s. L'accumulateur de R-283 (pas fixe
+`sim.fixed_dt` = 1/60, clampé à `max_substeps`) n'exécutait donc qu'un sous-pas par tick au
+lieu de trois : la simulation avançait à 1/3 de la vitesse réelle. Chute au ralenti, perçue
+en jeu comme du lag/saccade, qu'aucun test unitaire ne voyait — ils appellent `advance_all`
+avec leur propre dt.
+
+**Règle.** Un accumulateur à pas fixe reçoit le **temps réel écoulé** depuis le dernier
+appel, jamais la taille de son pas. Sur un serveur à cadence fixe (Minecraft, 20 Hz), c'est
+la période du tick, 1/20 s ; l'accumulateur en déduit le nombre de sous-pas. Injecter le
+pas fixe lui-même neutralise l'accumulateur (un seul sous-pas, jamais de rattrapage) et
+divise la vitesse par `réel / fixe`. La présence d'un clamp anti-spirale est justement
+l'indice qu'on attend du temps réel, pas un pas constant.
+
+**Corollaire.** Une erreur de vitesse de simulation reste invisible en test unitaire quand
+les tests fixent eux-mêmes le dt ; elle ne se révèle qu'en jeu, ou par un test d'intégration
+mesurant la distance de chute par seconde réelle. Nommer la constante d'après ce qu'elle est
+(`SERVER_TICK_DT`) plutôt que d'après le pas de sim évite la confusion sémantique qui a
+produit le bug.
+
+## 2026-10-01 | Un corps recréé au chargement coule si son sol n'est pas bâti en priorité
+
+**Ce qui a coûté.** Au retour dans un monde solo (déconnexion/reconnexion = redémarrage du
+serveur intégré), le cube d'assembly apparaissait enfoncé sous les blocs. Le planificateur
+de tuiles de collision (C-38) repart de zéro à chaque démarrage : `onChunkLoad` invalide
+toutes les sections chargées, puis la reconstruction est amortie à `tiles_per_tick`. La
+section portant le corps était reconstruite quand son tour venait dans ce backlog, mais
+`AssemblyRuntime.onJoin` recrée le corps dynamique **aussitôt** — il tombait donc sans sol
+plusieurs ticks. Au premier spawn de la même session, les tuiles autour du joueur étaient
+déjà chargées : pas de trou, donc bug invisible jusqu'au rechargement.
+
+**Règle.** Quand un consommateur est créé aussitôt (un corps physique) mais que son
+producteur (le sol de collision) est produit de façon amortie et repart froid à chaque
+démarrage, prioriser explicitement ce dont le consommateur a besoin au tick même de sa
+création. `WorldTilePlanner` vide désormais en tête de file les sections **abritant** une
+assembly, à budget constant : le sol existe au tick où le corps est créé.
+
+**Corollaire.** Un défaut de séquencement au démarrage à froid ne se reproduit pas en régime
+établi. Le tester, c'est repartir de zéro (nouveau planificateur, backlog plein) et vérifier
+que la ressource critique sort en tête — pas observer l'état stable.
