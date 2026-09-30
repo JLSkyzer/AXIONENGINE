@@ -1,13 +1,16 @@
 //! Le monde physique d'une dimension (C-31, fiche 5.23).
 
 use ax_math::{FloatingOrigin, Quat, Vec3};
+use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::parry::utils::Array2;
 use rapier3d::prelude::{
-    ActiveEvents, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent,
+    ActiveEvents, Collider, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent,
     CollisionEventFlags, ContactPair, EventHandler, PhysicsWorld as RapierWorld,
-    Pose as RapierPose, Real, RigidBody, RigidBodyBuilder, RigidBodyHandle, RigidBodySet,
-    RigidBodyType, SharedShape, Vector,
+    Pose as RapierPose, QueryFilter as RapierQueryFilter, QueryFilterFlags, Ray, Real, RigidBody,
+    RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, SharedShape, Vector,
 };
+
+use crate::query::{RayHit, SensorMode, SpatialFilter, SweepHit};
 
 use crate::body::{
     BodyCollider, BodyError, BodyId, BodyKind, CompoundPart, ContactMaterial, Shape,
@@ -1298,6 +1301,185 @@ impl PhysicsWorld {
     #[must_use]
     pub fn body_count(&self) -> usize {
         self.inner.bodies.len()
+    }
+
+    // --- C-39 : requêtes spatiales (fiche 5.31) -----------------------------------------
+    // Toutes en lecture seule (`&self`, R-650) ; elles lisent la géométrie de collision
+    // laissée par le dernier `advance` (l'état du début du tick, R-651).
+
+    /// Lance un rayon et rend le premier corps heurté (C-39, R-650).
+    ///
+    /// `direction` est normalisée ; `max_distance` borne la portée, en blocs. `None` si le
+    /// rayon ne heurte rien, si la direction est nulle ou si `max_distance` est non fini/≤ 0.
+    #[must_use]
+    pub fn raycast(
+        &self,
+        origin: Vec3,
+        direction: Vec3,
+        max_distance: f32,
+        filter: SpatialFilter,
+    ) -> Option<RayHit> {
+        let dir = direction.normalize_or_zero();
+        if dir == Vec3::ZERO || !max_distance.is_finite() || max_distance <= 0.0 {
+            return None;
+        }
+        let rfilter = to_rapier_filter(&filter);
+        let pipeline = self.query_pipeline(rfilter);
+        let ray = Ray::new(origin, dir);
+        let (handle, hit) = pipeline.cast_ray_and_get_normal(&ray, max_distance, true)?;
+        let body = self.body_of_collider(handle)?;
+        Some(RayHit {
+            body,
+            distance: hit.time_of_impact,
+            point: origin + dir * hit.time_of_impact,
+            normal: hit.normal,
+        })
+    }
+
+    /// Balaye une forme le long de `direction` et rend le premier corps heurté (C-39).
+    ///
+    /// `max_distance` borne la distance parcourue, en blocs. `None` si aucun impact, si la
+    /// direction est nulle, ou si la forme de requête est invalide.
+    #[must_use]
+    pub fn sweep(
+        &self,
+        shape: &Shape,
+        position: Vec3,
+        rotation: Quat,
+        direction: Vec3,
+        max_distance: f32,
+        filter: SpatialFilter,
+    ) -> Option<SweepHit> {
+        let dir = direction.normalize_or_zero();
+        if dir == Vec3::ZERO || !max_distance.is_finite() || max_distance <= 0.0 {
+            return None;
+        }
+        let shared = shared_shape_of(shape).ok()?;
+        let rfilter = to_rapier_filter(&filter);
+        let pipeline = self.query_pipeline(rfilter);
+        let pose = RapierPose::from_parts(position, rotation);
+        let options = ShapeCastOptions::with_max_time_of_impact(max_distance);
+        let (handle, hit) = pipeline.cast_shape(&pose, dir, shared.as_ref(), options)?;
+        let body = self.body_of_collider(handle)?;
+        Some(SweepHit {
+            body,
+            time_of_impact: hit.time_of_impact,
+            point: hit.witness1,
+            normal: hit.normal1,
+        })
+    }
+
+    /// Rend tous les corps dont un collider recouvre la forme donnée (C-39), sans doublon.
+    ///
+    /// Liste vide si la forme de requête est invalide.
+    #[must_use]
+    pub fn overlap(
+        &self,
+        shape: &Shape,
+        position: Vec3,
+        rotation: Quat,
+        filter: SpatialFilter,
+    ) -> Vec<BodyId> {
+        let Ok(shared) = shared_shape_of(shape) else {
+            return Vec::new();
+        };
+        let rfilter = to_rapier_filter(&filter);
+        let pipeline = self.query_pipeline(rfilter);
+        let pose = RapierPose::from_parts(position, rotation);
+        let mut bodies = Vec::new();
+        for (handle, _collider) in pipeline.intersect_shape(pose, shared.as_ref()) {
+            if let Some(body) = self.body_of_collider(handle) {
+                if !bodies.contains(&body) {
+                    bodies.push(body);
+                }
+            }
+        }
+        bodies
+    }
+
+    /// Version par lot de [`raycast`](Self::raycast) : un rayon `(origine, direction,
+    /// distance max)` par entrée. Chaque requête est indépendante et sans effet de bord
+    /// (R-650) — parallélisable ; l'implémentation reste séquentielle et déterministe.
+    #[must_use]
+    pub fn raycast_batch(
+        &self,
+        rays: &[(Vec3, Vec3, f32)],
+        filter: SpatialFilter,
+    ) -> Vec<Option<RayHit>> {
+        rays.iter()
+            .map(|&(origin, direction, max)| self.raycast(origin, direction, max, filter))
+            .collect()
+    }
+
+    /// Version par lot de [`sweep`](Self::sweep) : la **même** forme balayée depuis
+    /// plusieurs poses `(position, rotation, direction, distance max)`.
+    #[must_use]
+    pub fn sweep_batch(
+        &self,
+        shape: &Shape,
+        motions: &[(Vec3, Quat, Vec3, f32)],
+        filter: SpatialFilter,
+    ) -> Vec<Option<SweepHit>> {
+        motions
+            .iter()
+            .map(|&(position, rotation, direction, max)| {
+                self.sweep(shape, position, rotation, direction, max, filter)
+            })
+            .collect()
+    }
+
+    /// Version par lot d'[`overlap`](Self::overlap) : la **même** forme testée à plusieurs
+    /// poses `(position, rotation)`.
+    #[must_use]
+    pub fn overlap_batch(
+        &self,
+        shape: &Shape,
+        poses: &[(Vec3, Quat)],
+        filter: SpatialFilter,
+    ) -> Vec<Vec<BodyId>> {
+        poses
+            .iter()
+            .map(|&(position, rotation)| self.overlap(shape, position, rotation, filter))
+            .collect()
+    }
+
+    /// Construit la `QueryPipeline` de `rapier` sur l'état courant, avec le filtre donné.
+    fn query_pipeline<'a>(
+        &'a self,
+        filter: RapierQueryFilter<'a>,
+    ) -> rapier3d::prelude::QueryPipeline<'a> {
+        self.inner.broad_phase.as_query_pipeline(
+            self.inner.narrow_phase.query_dispatcher(),
+            &self.inner.bodies,
+            &self.inner.colliders,
+            filter,
+        )
+    }
+
+    /// Corps parent d'un collider, ou `None` (collider sans parent).
+    fn body_of_collider(&self, handle: ColliderHandle) -> Option<BodyId> {
+        self.inner
+            .colliders
+            .get(handle)
+            .and_then(Collider::parent)
+            .map(BodyId::from_handle)
+    }
+}
+
+/// Traduit un [`SpatialFilter`] AXION en `QueryFilter` de `rapier`.
+fn to_rapier_filter(filter: &SpatialFilter) -> RapierQueryFilter<'_> {
+    let mut flags = QueryFilterFlags::empty();
+    match filter.sensors {
+        SensorMode::SolidsOnly => flags |= QueryFilterFlags::EXCLUDE_SENSORS,
+        SensorMode::SensorsOnly => flags |= QueryFilterFlags::EXCLUDE_SOLIDS,
+        SensorMode::Both => {}
+    }
+    RapierQueryFilter {
+        flags,
+        groups: filter.groups.map(CollisionGroups::to_rapier),
+        exclude_collider: None,
+        exclude_rigid_body: filter.exclude_body.map(BodyId::handle),
+        predicate: None,
     }
 }
 

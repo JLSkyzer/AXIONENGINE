@@ -37,6 +37,7 @@ mod commands;
 mod config;
 mod forces;
 mod groups;
+mod query;
 mod sim;
 mod world;
 
@@ -48,6 +49,7 @@ pub use commands::{apply_command_stream, create_assembly_payloads, CommandError,
 pub use config::{ConfigError, PhysicsConfig};
 pub use forces::{FluidEnvironment, FluidVolume, LiftSurface};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
+pub use query::{RayHit, SensorMode, SpatialFilter, SweepHit};
 pub use sim::SimDriver;
 pub use world::{PhysicsWorld, Pose};
 

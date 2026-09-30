@@ -4,7 +4,7 @@ use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_physics::{
     body_state_flags, event_kind, BodyCollider, BodyError, BodyId, BodyKind, CollisionGroups,
     CompoundPart, ConfigError, ContactMaterial, FluidEnvironment, Handle, LiftSurface,
-    PhysicsConfig, PhysicsWorld, Shape,
+    PhysicsConfig, PhysicsWorld, Shape, SpatialFilter,
 };
 
 fn config() -> PhysicsConfig {
@@ -1567,4 +1567,165 @@ fn un_champ_de_hauteurs_valide_ses_dimensions() {
     );
     // Aucun de ces refus n'a inséré de corps.
     assert_eq!(world.body_count(), 0);
+}
+
+// --- C-39 : requêtes spatiales (fiche 5.31) --------------------------------------------
+
+/// Un sol statique 20×2×20 centré à l'origine, avancé un pas pour peupler le broad-phase.
+fn world_with_ground() -> (PhysicsWorld, BodyId) {
+    let mut world = PhysicsWorld::new(config());
+    let ground = world
+        .add_body(
+            BodyKind::Static,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [10.0, 1.0, 10.0],
+            },
+        )
+        .expect("un sol est valide");
+    // Une requête lit la géométrie laissée par le dernier pas : on avance une fois pour
+    // que le collider entre dans le broad-phase.
+    world.advance(1.0 / 60.0);
+    (world, ground)
+}
+
+#[test]
+fn un_rayon_touche_le_sol() {
+    let (world, ground) = world_with_ground();
+    let hit = world
+        .raycast(
+            Vec3::new(0.0, 10.0, 0.0),
+            Vec3::new(0.0, -1.0, 0.0),
+            50.0,
+            SpatialFilter::new(),
+        )
+        .expect("le rayon touche le sol");
+    assert_eq!(hit.body, ground);
+    // Sommet du sol à y=1 : distance 10 - 1 = 9.
+    assert!(
+        (hit.distance - 9.0).abs() < 1.0e-3,
+        "distance {}",
+        hit.distance
+    );
+    assert!(
+        (hit.point.y - 1.0).abs() < 1.0e-3,
+        "point.y {}",
+        hit.point.y
+    );
+    assert!(
+        hit.normal.y > 0.9,
+        "normale vers le haut, obtenu {:?}",
+        hit.normal
+    );
+}
+
+#[test]
+fn un_rayon_dans_le_vide_ne_touche_rien() {
+    let (world, _) = world_with_ground();
+    assert!(
+        world
+            .raycast(
+                Vec3::new(0.0, 10.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0), // vers le haut, loin du sol
+                50.0,
+                SpatialFilter::new(),
+            )
+            .is_none(),
+        "aucun corps au-dessus"
+    );
+}
+
+#[test]
+fn le_filtre_exclut_un_corps() {
+    let (world, ground) = world_with_ground();
+    let hit = world.raycast(
+        Vec3::new(0.0, 10.0, 0.0),
+        Vec3::new(0.0, -1.0, 0.0),
+        50.0,
+        SpatialFilter::new().excluding(ground),
+    );
+    assert!(hit.is_none(), "le sol exclu n'est plus heurté");
+}
+
+#[test]
+fn overlap_trouve_le_sol() {
+    let (world, ground) = world_with_ground();
+    // Une petite boîte à l'origine recouvre le sol.
+    let bodies = world.overlap(
+        &Shape::Cuboid {
+            half_extents: [0.5, 0.5, 0.5],
+        },
+        Vec3::new(0.0, 0.5, 0.0),
+        Quat::IDENTITY,
+        SpatialFilter::new(),
+    );
+    assert!(
+        bodies.contains(&ground),
+        "le sol est recouvert, obtenu {bodies:?}"
+    );
+    // Loin du sol : aucun recouvrement.
+    let none = world.overlap(
+        &Shape::Ball { radius: 0.5 },
+        Vec3::new(0.0, 50.0, 0.0),
+        Quat::IDENTITY,
+        SpatialFilter::new(),
+    );
+    assert!(none.is_empty(), "rien à 50 blocs de haut, obtenu {none:?}");
+}
+
+#[test]
+fn un_sweep_touche_le_sol_devant() {
+    let (world, ground) = world_with_ground();
+    // Une bille lâchée de haut, balayée vers le bas, touche le sol.
+    let hit = world
+        .sweep(
+            &Shape::Ball { radius: 0.5 },
+            Vec3::new(0.0, 10.0, 0.0),
+            Quat::IDENTITY,
+            Vec3::new(0.0, -1.0, 0.0),
+            50.0,
+            SpatialFilter::new(),
+        )
+        .expect("le balayage touche le sol");
+    assert_eq!(hit.body, ground);
+    // Contact quand le bas de la bille atteint y=1 : centre à y≈1.5, distance ≈ 8.5.
+    assert!(
+        (hit.time_of_impact - 8.5).abs() < 0.1,
+        "toi {}",
+        hit.time_of_impact
+    );
+}
+
+#[test]
+fn une_requete_ne_mute_pas_le_monde() {
+    // R-650 : les requêtes sont en lecture seule.
+    let (world, _) = world_with_ground();
+    let before = world.body_count();
+    let _ = world.raycast(
+        Vec3::new(0.0, 10.0, 0.0),
+        Vec3::NEG_Y,
+        50.0,
+        SpatialFilter::new(),
+    );
+    let _ = world.overlap(
+        &Shape::Ball { radius: 1.0 },
+        Vec3::ZERO,
+        Quat::IDENTITY,
+        SpatialFilter::new(),
+    );
+    assert_eq!(world.body_count(), before, "aucun corps ajouté ni retiré");
+}
+
+#[test]
+fn le_raycast_par_lot_rend_un_resultat_par_rayon() {
+    let (world, ground) = world_with_ground();
+    let rays = [
+        (Vec3::new(0.0, 10.0, 0.0), Vec3::NEG_Y, 50.0), // touche
+        (Vec3::new(0.0, 10.0, 0.0), Vec3::Y, 50.0),     // manque
+    ];
+    let results = world.raycast_batch(&rays, SpatialFilter::new());
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].expect("touche").body, ground);
+    assert!(results[1].is_none(), "le second rayon manque");
 }

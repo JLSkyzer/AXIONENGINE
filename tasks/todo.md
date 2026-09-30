@@ -1590,6 +1590,14 @@ substituable sans changer rapier »).
                     bloc/chunk, chargement `block_materials`), câblage démarrage/arrêt
                     serveur. Compilé contre Forge, tests du mod verts ; comportement
                     visible en attente de corps dynamiques (C-40).
+      - [x] **C-39 — Spatial Queries** (fiche 5.31, R-650..652) — **implémenté**. Module
+            `ax_physics::query` : `raycast`, `sweep`, `overlap` + versions par lot, filtres
+            par groupe/masque, exclusion d'assembly, capteurs (`SpatialFilter`/`SensorMode`).
+            Sur la `QueryPipeline` de rapier (broad-phase courant) ; lecture seule (R-650),
+            géométrie du dernier pas = début de tick (R-651). Types de résultat AXION
+            (glam), aucun type rapier exposé. Tests : rayon touche/manque, filtre
+            d'exclusion, overlap, sweep, non-mutation, lot (couvre T-380..T-384). R-652
+            (géométrie déformée) et T-856 : avec la déformation, en M6.
 
 ## Jalons suivants
 
