@@ -1527,7 +1527,10 @@ substituable sans changer rapier »).
               **déclarée** (`BodyDesc`/definitions) et `REFITTABLE` par défaut
               (déformation M6) ; la résolution VHACD à mesurer en M3 (ADR-108).
 
-      - [ ] **C-38 — World Collision Provider** (fiche 5.30, R-640..643, T-370..375).
+      - [x] **C-38 — World Collision Provider** (fiche 5.30, R-640..643) — **implémenté**,
+            toutes tranches faites et vérifiées (unitaire natif + frontière + compilation
+            Forge). Restent pour l'**acceptance M3** les GameTests en jeu **T-370..T-375**
+            (runGameTestServer) — non écrits, portés par la porte d'acceptance du jalon.
             Java construit des tuiles de collision (sections 16³) via
             `Level.getBlockCollisions` → boîtes → **corps STATIC** natifs ; C-31/C-32
             l'attendent (TriMesh/Heightfield du monde, R-970/INV-13). Java + Rust +
@@ -1567,7 +1570,7 @@ substituable sans changer rapier »).
                   fixe + corps variable (boîtes/hauteurs), comptes bornés avant allocation
                   (4096 / 64²). Tests : décode+pose+retire les trois genres, corps
                   incohérent et dépassement de plafond refusés. Passe `submit` inchangée.
-            - [~] **T3 — Java + Forge** (en cours, sous-tranches) :
+            - [x] **T3 — Java + Forge** (sous-tranches) :
                   - [x] **T3a** encodeur `SimCommandStream` des 5 opcodes de tuiles
                     (miroir ADR-117, testé offset par offset).
                   - [x] **T3b** `WorldTileGeometry` : adressage de section,
@@ -1579,14 +1582,14 @@ substituable sans changer rapier »).
                     invalidation, ordre déterministe (testé).
                   - [x] **T3e-cœur** couture `WorldCollisionSource` + orchestration
                     `WorldTileService` (plan → commandes), testé avec source factice.
-                  - [ ] **T3e-Forge** (intégration, vérif en jeu) : `ForgeWorldCollisionSource`
-                    sur `Level.getBlockCollisions` (+ fluides, tags, matériau dominant,
-                    R-640 section non chargée = pleine et solide, R-641 champ de hauteurs) ;
-                    brancher `WorldTileService` dans `AxionRuntime.driveSimulation` (remplace
-                    le flux vide, ligne ~287), positions d'assemblies → sections ;
-                    invalidation par `BlockEvent`/`LevelChunkEvent` ; chargement de la
-                    ressource `block_materials`. Comportement vérifié via runClient /
-                    runGameTestServer.
+                  - [x] **T3e-Forge** : `DimensionId` (clé de dimension FNV-1a, partagée
+                    C-38/C-40), `ForgeWorldCollisionSource` (lecture du Level : boîtes,
+                    fluides, matériau dominant, R-640 solide, R-641 champ de hauteurs),
+                    couture `SimCommandProvider` + branchement dans `driveSimulation`,
+                    `WorldTileBridge` (sections des AxionEntity → tuiles, invalidation
+                    bloc/chunk, chargement `block_materials`), câblage démarrage/arrêt
+                    serveur. Compilé contre Forge, tests du mod verts ; comportement
+                    visible en attente de corps dynamiques (C-40).
 
 ## Jalons suivants
 
