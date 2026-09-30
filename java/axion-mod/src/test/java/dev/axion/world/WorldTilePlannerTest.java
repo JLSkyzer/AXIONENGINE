@@ -84,4 +84,19 @@ class WorldTilePlannerTest {
         assertEquals(36, plan.toBuild().size());
         assertTrue(plan.toRemove().isEmpty());
     }
+
+    @Test
+    void laSectionAbritantUneAssemblyEstBatieEnPremier() {
+        // Rayon 1 (27 désirées), budget 4. Dans l'ordre déterministe (dim, x, y, z), la
+        // section centrale (0,0,0) est 14ᵉ : sans priorité, elle ne serait pas dans le
+        // premier lot, et un corps créé à ce tick tomberait au travers avant que son sol
+        // soit bâti. Elle doit être construite en tête.
+        WorldTilePlanner planner = new WorldTilePlanner(1, 4);
+        SectionKey centre = new SectionKey(0L, 0, 0, 0);
+
+        List<SectionKey> premierLot = planner.plan(List.of(centre)).toBuild();
+
+        assertEquals(4, premierLot.size(), "budget respecté");
+        assertEquals(centre, premierLot.get(0), "la section de l'assembly est bâtie en tête");
+    }
 }

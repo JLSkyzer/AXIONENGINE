@@ -112,13 +112,34 @@ public final class WorldTilePlanner {
         // Une invalidation hors du voisinage désiré est élaguée (elle n'a plus à être bâtie).
         dirty.removeIf(key -> !desired.contains(key));
 
-        // Étape 4 : vider la file au plus à tilesPerTick, en tête (ordre stable).
+        // Étape 4 : vider la file au plus à tilesPerTick. Les sections qui ABRITENT une
+        // assembly passent en tête : un corps dynamique créé (ou rechargé après un
+        // redémarrage de serveur, où le backlog de reconstruction repart de zéro) doit
+        // trouver son sol au tick même de sa création, sinon il tombe au travers avant que
+        // sa section soit reconstruite. Priorité triée puis reste en ordre d'insertion :
+        // l'ordre de construction reste déterministe à entrée égale.
+        List<SectionKey> priority = new ArrayList<>();
+        for (SectionKey center : assemblySections) {
+            if (dirty.contains(center) && !priority.contains(center)) {
+                priority.add(center);
+            }
+        }
+        priority.sort(ORDER);
+
         List<SectionKey> toBuild = new ArrayList<>();
-        for (SectionKey key : dirty) {
+        for (SectionKey key : priority) {
             if (toBuild.size() >= tilesPerTick) {
                 break;
             }
             toBuild.add(key);
+        }
+        for (SectionKey key : dirty) {
+            if (toBuild.size() >= tilesPerTick) {
+                break;
+            }
+            if (!toBuild.contains(key)) {
+                toBuild.add(key);
+            }
         }
         toBuild.forEach(dirty::remove);
         loaded.addAll(toBuild);
