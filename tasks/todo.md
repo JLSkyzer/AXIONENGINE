@@ -1614,12 +1614,19 @@ substituable sans changer rapier »).
                   `REMOVE_ASSEMBLY` au despawn. `SimCommandStream.removeAssembly`/`merge`,
                   `AxionRuntime` multi-fournisseurs + puits. Contenu de test : `axion:test_cube`
                   (cube glTF à collider `auto_box`).
-                  **Vérifié** : mécanisme natif prouvé par composition (tests `sim.rs`
-                  create_assembly→chute/repos + `create_assembly_abi` FFI), encodage testé,
-                  câblage compile + tourne sans crash en jeu, contenu charge (serveur : cube
-                  compilé, 1 definition chargée 0 refusée). **Reste à observer** : le visuel
-                  « entité spawnée tombe » via `/axion spawn axion:test_cube` (non tapé faute
-                  d'accès au chat en jeu depuis ici) — mécanisme prouvé en amont.
+                  **Vérifié + OBSERVÉ EN JEU (2026-10-01)** : `/axion spawn axion:test_cube`
+                  par Killian → le cube **tombe** (payoff atteint). Aussi : mécanisme natif
+                  prouvé par composition (tests `sim.rs` + `create_assembly_abi` FFI), encodage
+                  testé, contenu charge (cube compilé, 1 definition 0 refusée).
+                  **Finitions à faire** (non bloquantes) :
+                  - [ ] **Flottement d'~1 bloc au repos** : cause probable = tuile de sol
+                    construite en retard (pompe amortie) → le corps entre dans le sol puis est
+                    repoussé ; secondaire = collider de test décalé (AABB `[0,1]`, non centré) vs
+                    position « pieds » de l'entité. Fix : centrer le collider + aligner
+                    `BodyState → entité` sur le bas du collider + prioriser la tuile sous une
+                    entité qui apparaît.
+                  - [ ] **Saccade au spawn** : pas d'interpolation client (setPos par tick, 20/s) ;
+                    lissage viendra avec la chaîne de rendu (C-60+).
 
 ## Jalons suivants
 
