@@ -1572,13 +1572,21 @@ substituable sans changer rapier »).
                     (miroir ADR-117, testé offset par offset).
                   - [x] **T3b** `WorldTileGeometry` : adressage de section,
                     quantification 1/16, boîte section-relative, seuil R-641 (testé).
-                  - [ ] **T3c** `block_materials` data-driven (héritage par tag, défaut).
-                  - [ ] **T3d** cache de tuiles + pompe amortie (`world.tiles_per_tick`)
-                    + éviction par rayon (`world.tile_radius`) + invalidation.
-                  - [ ] **T3e** câblage Forge : `getBlockCollisions`, tick, BlockEvent /
-                    LevelChunkEvent, R-640 (section non chargée = pleine et solide),
-                    extension de `PlatformAdapter`. Vérification en jeu (runClient /
-                    runGameTestServer).
+                  - [x] **T3c** `block_materials` data-driven (bloc > tag > défaut) +
+                    ressource livrée `block_materials.json` (testé).
+                  - [x] **T3d** `WorldTilePlanner` : voisinage désiré, pompe amortie
+                    (`world.tiles_per_tick`), éviction par rayon (`world.tile_radius`),
+                    invalidation, ordre déterministe (testé).
+                  - [x] **T3e-cœur** couture `WorldCollisionSource` + orchestration
+                    `WorldTileService` (plan → commandes), testé avec source factice.
+                  - [ ] **T3e-Forge** (intégration, vérif en jeu) : `ForgeWorldCollisionSource`
+                    sur `Level.getBlockCollisions` (+ fluides, tags, matériau dominant,
+                    R-640 section non chargée = pleine et solide, R-641 champ de hauteurs) ;
+                    brancher `WorldTileService` dans `AxionRuntime.driveSimulation` (remplace
+                    le flux vide, ligne ~287), positions d'assemblies → sections ;
+                    invalidation par `BlockEvent`/`LevelChunkEvent` ; chargement de la
+                    ressource `block_materials`. Comportement vérifié via runClient /
+                    runGameTestServer.
 
 ## Jalons suivants
 
