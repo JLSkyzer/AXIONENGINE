@@ -1567,12 +1567,18 @@ substituable sans changer rapier »).
                   fixe + corps variable (boîtes/hauteurs), comptes bornés avant allocation
                   (4096 / 64²). Tests : décode+pose+retire les trois genres, corps
                   incohérent et dépassement de plafond refusés. Passe `submit` inchangée.
-            - [ ] **T3 — Java + Forge** : cache de tuiles, `getBlockCollisions`,
-                  quantification 1/16, envoi par lot, invalidation (BlockEvent /
-                  LevelChunkEvent), reconstruction amortie (`world.tiles_per_tick`),
-                  libération des tuiles lointaines (`world.tile_radius`), mappage
-                  `block_materials` (data-driven, héritage par tag), R-640 (section non
-                  chargée = pleine et solide), R-641 (> 4096 → heightfield).
+            - [~] **T3 — Java + Forge** (en cours, sous-tranches) :
+                  - [x] **T3a** encodeur `SimCommandStream` des 5 opcodes de tuiles
+                    (miroir ADR-117, testé offset par offset).
+                  - [x] **T3b** `WorldTileGeometry` : adressage de section,
+                    quantification 1/16, boîte section-relative, seuil R-641 (testé).
+                  - [ ] **T3c** `block_materials` data-driven (héritage par tag, défaut).
+                  - [ ] **T3d** cache de tuiles + pompe amortie (`world.tiles_per_tick`)
+                    + éviction par rayon (`world.tile_radius`) + invalidation.
+                  - [ ] **T3e** câblage Forge : `getBlockCollisions`, tick, BlockEvent /
+                    LevelChunkEvent, R-640 (section non chargée = pleine et solide),
+                    extension de `PlatformAdapter`. Vérification en jeu (runClient /
+                    runGameTestServer).
 
 ## Jalons suivants
 
