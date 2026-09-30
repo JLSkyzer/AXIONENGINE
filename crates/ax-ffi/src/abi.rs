@@ -665,8 +665,15 @@ pub const AXION_SIM_INCOMPLETE: u32 = 1 << 0;
 /// Drapeau de collect : la simulation tourne en qualité dégradée.
 pub const AXION_SIM_DEGRADED: u32 = 1 << 1;
 
-/// Pas de simulation par tick (défaut `sim.fixed_dt`, R-283).
-const SIM_TICK_DT: f32 = 1.0 / 60.0;
+/// Durée réelle d'un tick serveur (Minecraft : 1/20 s), injectée telle quelle
+/// dans l'accumulateur à pas fixe (R-283). Celui-ci exécute alors autant de
+/// sous-pas de `sim.fixed_dt` que le temps écoulé le permet — 3 au défaut
+/// (1/20 ÷ 1/60) — clampés à `sim.max_substeps`, sans spirale de rattrapage.
+///
+/// Injecter ici `sim.fixed_dt` neutralisait l'accumulateur (un seul sous-pas par
+/// tick) et faisait tourner la simulation à `fixed_dt ÷ (1/20)` de la vitesse
+/// réelle — 1/3 au défaut, soit une chute au ralenti.
+const SERVER_TICK_DT: f32 = 1.0 / 20.0;
 
 /// Soumet les entrées d'un tick de simulation (IF-03).
 ///
@@ -836,7 +843,7 @@ pub unsafe extern "C" fn axion_sim_collect(
             return AXION_E_INVALID_BUFFER;
         }
         let result = match context::with(ctx, false, |session| {
-            session.physics().advance_all(SIM_TICK_DT);
+            session.physics().advance_all(SERVER_TICK_DT);
             let states = session.physics().collect_states();
             let events = session.physics().drain_events();
 
