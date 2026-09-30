@@ -1,0 +1,19 @@
+{
+  "_comment": "Mappage data-driven bloc -> materiau physique de contact (C-38, R-643). friction dans [0,2], restitution dans [0,1]. Resolution : bloc exact, puis etiquette, puis default.",
+  "default": { "friction": 0.6, "restitution": 0.0 },
+  "blocks": {
+    "minecraft:ice": { "friction": 0.05, "restitution": 0.0 },
+    "minecraft:packed_ice": { "friction": 0.05, "restitution": 0.0 },
+    "minecraft:blue_ice": { "friction": 0.02, "restitution": 0.0 },
+    "minecraft:slime_block": { "friction": 0.8, "restitution": 0.8 },
+    "minecraft:honey_block": { "friction": 1.4, "restitution": 0.0 }
+  },
+  "tags": {
+    "minecraft:logs": { "friction": 0.7, "restitution": 0.0 },
+    "minecraft:planks": { "friction": 0.7, "restitution": 0.0 },
+    "minecraft:wool": { "friction": 0.9, "restitution": 0.0 },
+    "minecraft:sand": { "friction": 0.7, "restitution": 0.0 },
+    "minecraft:base_stone_overworld": { "friction": 0.6, "restitution": 0.0 },
+    "minecraft:dirt": { "friction": 0.65, "restitution": 0.0 }
+  }
+}
