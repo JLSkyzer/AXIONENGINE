@@ -1607,14 +1607,19 @@ substituable sans changer rapier »).
             R-661, observationnelle). `SimMode` : le client n'intègre pas l'autoritaire
             (INV-17). Étapes 2,3,5,7-13 réservées (composants futurs). Tests : ordre R-660,
             chaîne 7-12, étapes client, serveur intègre/mesure, client skip.
-            - [ ] **Boucle entité (intégration C-40 ↔ C-50, payoff visible en jeu)** — non
-                  faite. Dépendance vérifiée présente : `Definition.asset` → `AssetRegistry`/
-                  `AssetCache` (octets A3D) → `A3dSections.section("PHYS")` → `CREATE_ASSEMBLY`.
-                  Reste à câbler : allocation de handle + mapping entité↔handle
-                  (`AssemblyBinding`), émission de `CREATE_ASSEMBLY` au spawn / `REMOVE_ASSEMBLY`
-                  au despawn, application des `BodyState` collectés → `entity.moveTo`
-                  (driveSimulation ignore encore `result.bodies()`). Vérif en jeu (une entité
-                  spawnée tombe/repose). C'est ce qui rend la physique visible.
+            - [x] **Boucle entité (intégration C-40 ↔ C-50)** — câblée. `SimStateSink` +
+                  `AssemblyRuntime` (Forge) : au spawn d'une entité liée → résolution PHYS de
+                  l'asset + handle + `CREATE_ASSEMBLY` ; chaque tick, `driveSimulation` applique
+                  les `BodyState` collectés → `entity.setPos` (n'ignore plus `result.bodies()`) ;
+                  `REMOVE_ASSEMBLY` au despawn. `SimCommandStream.removeAssembly`/`merge`,
+                  `AxionRuntime` multi-fournisseurs + puits. Contenu de test : `axion:test_cube`
+                  (cube glTF à collider `auto_box`).
+                  **Vérifié** : mécanisme natif prouvé par composition (tests `sim.rs`
+                  create_assembly→chute/repos + `create_assembly_abi` FFI), encodage testé,
+                  câblage compile + tourne sans crash en jeu, contenu charge (serveur : cube
+                  compilé, 1 definition chargée 0 refusée). **Reste à observer** : le visuel
+                  « entité spawnée tombe » via `/axion spawn axion:test_cube` (non tapé faute
+                  d'accès au chat en jeu depuis ici) — mécanisme prouvé en amont.
 
 ## Jalons suivants
 
