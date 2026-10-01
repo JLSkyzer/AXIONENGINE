@@ -1636,7 +1636,7 @@ substituable sans changer rapier »).
                     serveur le planificateur de tuiles repart froid ; le corps recréé tombait
                     avant que sa section soit reconstruite. `WorldTilePlanner` bâtit désormais en
                     priorité la section abritant une assembly (+ test). Commit a13e3e4.
-                    **Scénario de rechargement pas encore ré-observé en jeu.**
+                    **Rechargement observé en jeu (2026-10-01) : le cube reste posé.**
 
 ## Jalons suivants
 
