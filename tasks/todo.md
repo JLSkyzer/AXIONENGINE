@@ -1637,6 +1637,19 @@ substituable sans changer rapier »).
                     avant que sa section soit reconstruite. `WorldTilePlanner` bâtit désormais en
                     priorité la section abritant une assembly (+ test). Commit a13e3e4.
                     **Rechargement observé en jeu (2026-10-01) : le cube reste posé.**
+      - [ ] **C-61 — Backend VANILLA_CONSUMER** (fiche 5.48, PARTIE 19) — ouvre la chaîne de
+            rendu, **vanilla d'abord** puis C-60 natif (ADR-118, ratifié 2026-10-01).
+            - [x] **T1 — couture + preuve de passe** : `RenderBackend`, sélection pure
+                  `BackendSelection` (R-1490/R-1491, 5 tests), passe centrale
+                  `AxionRenderPass` @ `AFTER_ENTITIES` (R-1570), backend vanilla dessinant une
+                  boîte à la position interpolée, sans GL direct (R-741). **Observé en jeu** :
+                  la boîte s'affiche et tombe de façon fluide. Commit 18434fd.
+            - [ ] **T2 — vrai maillage** `[EFFORT MAX]` : fonction FFI de décodage GEOM (natif),
+                  accesseur assets client + cache de renderable par asset, rendu du maillage
+                  réel (T-474). Solo d'abord ; multi différé.
+            - [ ] **T3+** : plafonds CPU skinning/déformation (R-742), décalques (R-743),
+                  bascule Iris→vanilla (R-740/T-490), matrice de capacités (R-1493) ; puis
+                  backend natif C-60 (son propre ADR).
 
 ## Jalons suivants
 
