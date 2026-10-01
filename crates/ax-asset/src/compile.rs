@@ -22,7 +22,7 @@ use crate::import::{
 };
 use crate::optimize::{optimize, Aabb, LodOptions, LodTable};
 use crate::validate::{validate, AssetView, NamedEntry, ValidationReport};
-use ax_model::dm::geometry::Vertex;
+use ax_model::dm::geometry::{MeshDesc, Vertex};
 use core::fmt;
 
 /// Version du compilateur (R-562).
@@ -312,7 +312,9 @@ fn write_container(
 /// Sérialise meshes, sommets et indices.
 fn geometry_bytes(asset: &ImportedAsset) -> Vec<u8> {
     let mut out = Vec::with_capacity(
-        asset.meshes.len() * 48 + asset.vertices.len() * Vertex::BYTES + asset.indices.len() * 4,
+        16 + asset.meshes.len() * MeshDesc::BYTES
+            + asset.vertices.len() * Vertex::BYTES
+            + asset.indices.len() * 4,
     );
 
     // Trois dénombrements en tête : la section se relit sans avoir à deviner où
@@ -322,42 +324,13 @@ fn geometry_bytes(asset: &ImportedAsset) -> Vec<u8> {
     out.extend_from_slice(&(asset.indices.len() as u32).to_le_bytes());
     out.extend_from_slice(&0u32.to_le_bytes());
 
+    // La sérialisation de DM-04 vit avec ses types : le transfert de géométrie
+    // vers Java (ADR-119) emploie la même, et une seconde copie divergerait.
     for mesh in &asset.meshes {
-        out.extend_from_slice(&mesh.vertex_offset.to_le_bytes());
-        out.extend_from_slice(&mesh.vertex_count.to_le_bytes());
-        out.extend_from_slice(&mesh.index_offset.to_le_bytes());
-        out.extend_from_slice(&mesh.index_count.to_le_bytes());
-        out.extend_from_slice(&mesh.material.to_le_bytes());
-        out.push(mesh.lod);
-        out.push(mesh.flags);
-        for value in mesh.aabb_min {
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-        for value in mesh.aabb_max {
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-        out.extend_from_slice(&mesh.region.to_le_bytes());
-        out.extend_from_slice(&0u16.to_le_bytes());
+        mesh.write_le(&mut out);
     }
-
     for vertex in &asset.vertices {
-        for value in vertex.position {
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-        out.extend_from_slice(&vertex.normal.map(|value| value as u8));
-        out.extend_from_slice(&vertex.tangent.map(|value| value as u8));
-        for value in vertex.uv0 {
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-        for value in vertex.uv1 {
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-        out.extend_from_slice(&vertex.color);
-        out.extend_from_slice(&vertex.bones);
-        out.extend_from_slice(&vertex.weights);
-        out.push(vertex.region);
-        out.push(vertex.def_w);
-        out.extend_from_slice(&[0; 6]);
+        vertex.write_le(&mut out);
     }
 
     for index in &asset.indices {

@@ -29,6 +29,7 @@
 //! - [`context`] : la session native, son jeton opaque et son état.
 
 pub mod abi;
+pub mod asset_store;
 pub mod context;
 pub mod jni_bridge;
 

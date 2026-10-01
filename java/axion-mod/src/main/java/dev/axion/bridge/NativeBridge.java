@@ -108,6 +108,12 @@ public final class NativeBridge {
 
     static native int simCancel(long ctx);
 
+    static native int assetLoad(long ctx, long assetId, int sectionsMask, long[] out);
+
+    static native int assetGeometry(long ctx, int index, int generation, long[] out);
+
+    static native int assetUnload(long ctx, int index, int generation);
+
     // --- API ---------------------------------------------------------------
 
     /**
@@ -385,5 +391,76 @@ public final class NativeBridge {
      */
     public static int cancel(long ctx) {
         return simCancel(ctx);
+    }
+
+    // --- Assets chargés (IF-06, ADR-119) -----------------------------------
+
+    /**
+     * Bit de la section {@code NODE} dans un masque de sections : le rang du tag
+     * dans la table normative de la PARTIE 7 (ADR-119).
+     */
+    public static final int SECTION_NODE = 1;
+
+    /** Bit de la section {@code GEOM} dans un masque de sections (ADR-119). */
+    public static final int SECTION_GEOM = 1 << 1;
+
+    /** Nombre de valeurs que {@link #loadAsset} écrit : index et génération du handle. */
+    public static final int ASSET_LOAD_SLOTS = 2;
+
+    /**
+     * Charge un asset compilé dans le natif et rend son handle (IF-06, ADR-119).
+     *
+     * <p>Le conteneur A3D doit avoir été écrit dans la charge utile du tampon
+     * {@code AXION_BUF_ASSET_IN} avant l'appel ; il se délimite lui-même. Le
+     * tableau reçoit {@code [index, génération]}. Le handle appartient à
+     * l'appelant, qui doit le rendre par {@link #unloadAsset} (R-321) : un handle
+     * oublié est signalé à l'arrêt.
+     *
+     * @param ctx jeton de contexte
+     * @param assetId identifiant de l'asset, celui que porte son en-tête
+     * @param sectionsMask sections à charger, {@link #SECTION_NODE} et
+     *     {@link #SECTION_GEOM} seulement
+     * @param out tableau d'au moins {@link #ASSET_LOAD_SLOTS} éléments
+     * @return {@link #OK}, ou un code d'erreur négatif
+     */
+    public static int loadAsset(long ctx, long assetId, int sectionsMask, long[] out) {
+        if (out == null || out.length < ASSET_LOAD_SLOTS) {
+            throw new IllegalArgumentException(
+                    "le tableau de chargement compte au moins " + ASSET_LOAD_SLOTS + " éléments");
+        }
+        return assetLoad(ctx, assetId, sectionsMask, out);
+    }
+
+    /**
+     * Dépose dans {@code AXION_BUF_ASSET_OUT} la géométrie d'un asset chargé et
+     * sa liste de dessin au repos (ADR-119) ; {@code out[0]} reçoit la taille de
+     * la charge utile.
+     *
+     * @param ctx jeton de contexte
+     * @param index index du handle
+     * @param generation génération du handle
+     * @param out tableau d'au moins un élément
+     * @return {@link #OK}, {@link #E_INVALID_HANDLE} si le handle est périmé,
+     *     {@link #E_INVALID_BUFFER} si l'asset n'a pas été chargé avec
+     *     {@code NODE | GEOM}
+     */
+    public static int geometryOf(long ctx, int index, int generation, long[] out) {
+        if (out == null || out.length < 1) {
+            throw new IllegalArgumentException("le tableau de géométrie compte au moins un élément");
+        }
+        return assetGeometry(ctx, index, generation, out);
+    }
+
+    /**
+     * Rend un asset chargé (IF-06) : son handle devient périmé (R-110).
+     *
+     * @param ctx jeton de contexte
+     * @param index index du handle
+     * @param generation génération du handle
+     * @return {@link #OK}, ou {@link #E_INVALID_HANDLE} si le handle est déjà
+     *     périmé
+     */
+    public static int unloadAsset(long ctx, int index, int generation) {
+        return assetUnload(ctx, index, generation);
     }
 }

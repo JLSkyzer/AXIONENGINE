@@ -69,6 +69,15 @@ pub enum SceneError {
         /// Node visé.
         node: u32,
     },
+    /// Un node désigne un mesh que la géométrie de l'asset ne contient pas.
+    MeshOutOfRange {
+        /// Node fautif.
+        node: u32,
+        /// Mesh désigné.
+        mesh: u32,
+        /// Nombre de meshes de l'asset.
+        count: u32,
+    },
 }
 
 impl SceneError {
@@ -87,7 +96,8 @@ impl SceneError {
             SceneError::ParentAfterChild { .. } => -3021,
             SceneError::TooManyNodes { .. }
             | SceneError::UnknownState { .. }
-            | SceneError::NotFiniteInAsset { .. } => -3050,
+            | SceneError::NotFiniteInAsset { .. }
+            | SceneError::MeshOutOfRange { .. } => -3050,
             SceneError::RotationNotNormalizable { .. } => -2010,
             SceneError::PhysicsUnderAnimatedParent { .. } => -7002,
             SceneError::NodeOutOfRange { .. } | SceneError::WrongSource { .. } => -2001,
@@ -133,6 +143,10 @@ impl fmt::Display for SceneError {
             SceneError::NotFiniteInput { node } => {
                 write!(formatter, "node {node} : transform reçue non finie")
             }
+            SceneError::MeshOutOfRange { node, mesh, count } => write!(
+                formatter,
+                "node {node} : mesh {mesh} absent d'une géométrie de {count} meshes"
+            ),
         }
     }
 }

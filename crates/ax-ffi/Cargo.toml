@@ -41,6 +41,11 @@ ax-physics.workspace = true
 # C-15 : les metriques appartiennent a la session aussi, et l'export de R-502
 # traverse la frontiere.
 ax-telemetry.workspace = true
+# C-30 / ADR-119 : la liste de dessin au repos d'un asset chargé est calculée par
+# le scene graph, qui en détient la propagation et la règle de visibilité.
+ax-scene.workspace = true
+# C-13 / ADR-119 : les assets chargés sont imputés à l'arène PERSISTENT (R-480).
+ax-mem.workspace = true
 ciborium.workspace = true
 jni.workspace = true
 

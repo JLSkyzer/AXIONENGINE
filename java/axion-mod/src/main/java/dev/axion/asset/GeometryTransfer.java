@@ -1,0 +1,244 @@
+package dev.axion.asset;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Géométrie d'un asset chargé, telle que le natif la remet (ADR-119 §3).
+ *
+ * <pre>
+ * u32 mesh_count, u32 vertex_count, u32 index_count, u32 draw_count
+ * MeshDesc[mesh_count]       48 octets (DM-04)
+ * Vertex[vertex_count]       48 octets (DM-04, R-140)
+ * u32 indices[index_count]   locaux au mesh : sommet = vertexOffset + indice
+ * RestDraw[draw_count]       64 octets : mesh, node, drapeaux du node, réservé, mat4x3
+ * </pre>
+ *
+ * <p>Le natif a vérifié la cohérence avant de déposer (plages, triangles, indices locaux,
+ * maillages désignés) ; Java ne décode jamais le contenu d'un A3D. Ce lecteur ne contrôle
+ * que la <strong>longueur annoncée</strong> — un écart y serait un défaut de la frontière,
+ * qui doit se voir — et dé-quantifie <strong>une fois</strong> les attributs dont le rendu a
+ * besoin, plutôt qu'à chaque frame.
+ *
+ * <p>Les tableaux rendus par les accesseurs sont ceux de l'instance, sans copie : le rendu
+ * les lit à chaque frame. Ils ne doivent pas être modifiés.
+ */
+public final class GeometryTransfer {
+
+    /** Taille de l'en-tête : quatre dénombrements. */
+    public static final int HEADER_BYTES = 16;
+
+    /** Taille d'un {@code MeshDesc} (DM-04). */
+    public static final int MESH_BYTES = 48;
+
+    /** Taille d'un {@code Vertex} (DM-04). */
+    public static final int VERTEX_BYTES = 48;
+
+    /** Taille d'un {@code RestDraw} (ADR-119). */
+    public static final int DRAW_BYTES = 64;
+
+    /** Drapeau de mesh : déformé par un squelette. */
+    public static final int MESH_SKINNED = 1;
+
+    /** Drapeau de mesh : les deux faces sont rendues. */
+    public static final int MESH_DOUBLE_SIDED = 1 << 1;
+
+    /** Drapeau de mesh : passe transparente. */
+    public static final int MESH_TRANSPARENT = 1 << 2;
+
+    /** Drapeau de mesh : soumis à la déformation continue. */
+    public static final int MESH_DEFORMABLE = 1 << 3;
+
+    /**
+     * Un mesh (DM-04).
+     *
+     * @param vertexOffset premier sommet, dans le tableau des sommets
+     * @param vertexCount nombre de sommets
+     * @param indexOffset premier indice, dans le tableau des indices
+     * @param indexCount nombre d'indices, multiple de trois
+     * @param material matériau de rendu
+     * @param lod niveau de détail
+     * @param flags drapeaux {@code MESH_*}
+     */
+    public record Mesh(
+            int vertexOffset,
+            int vertexCount,
+            int indexOffset,
+            int indexCount,
+            int material,
+            int lod,
+            int flags) {
+
+        /** {@return vrai si le mesh porte ce drapeau} */
+        public boolean has(int flag) {
+            return (flags & flag) != 0;
+        }
+    }
+
+    /**
+     * Un mesh à dessiner dans la pose de repos (ADR-119).
+     *
+     * @param mesh index du mesh
+     * @param node node qui le porte
+     * @param nodeFlags drapeaux du node (DM-03)
+     * @param model transformation de repos du node, {@code mat4x3} colonne-major : trois
+     *     axes puis la translation, douze flottants
+     */
+    public record Draw(int mesh, int node, int nodeFlags, float[] model) {}
+
+    private final List<Mesh> meshes;
+    private final float[] positions;
+    private final float[] normals;
+    private final float[] uvs;
+    private final byte[] colors;
+    private final int[] indices;
+    private final List<Draw> draws;
+
+    private GeometryTransfer(
+            List<Mesh> meshes,
+            float[] positions,
+            float[] normals,
+            float[] uvs,
+            byte[] colors,
+            int[] indices,
+            List<Draw> draws) {
+        this.meshes = meshes;
+        this.positions = positions;
+        this.normals = normals;
+        this.uvs = uvs;
+        this.colors = colors;
+        this.indices = indices;
+        this.draws = draws;
+    }
+
+    /**
+     * Lit un transfert.
+     *
+     * @param bytes charge utile déposée par {@code axion_asset_geometry}
+     * @return la géométrie, attributs dé-quantifiés
+     * @throws IllegalArgumentException si la longueur ne correspond pas aux dénombrements
+     */
+    public static GeometryTransfer parse(byte[] bytes) {
+        if (bytes.length < HEADER_BYTES) {
+            throw new IllegalArgumentException("transfert de " + bytes.length + " octets : en-tête tronqué");
+        }
+        ByteBuffer in = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+        long meshCount = Integer.toUnsignedLong(in.getInt(0));
+        long vertexCount = Integer.toUnsignedLong(in.getInt(4));
+        long indexCount = Integer.toUnsignedLong(in.getInt(8));
+        long drawCount = Integer.toUnsignedLong(in.getInt(12));
+        long expected = HEADER_BYTES
+                + meshCount * MESH_BYTES
+                + vertexCount * VERTEX_BYTES
+                + indexCount * Integer.BYTES
+                + drawCount * DRAW_BYTES;
+        if (expected != bytes.length) {
+            throw new IllegalArgumentException("transfert de " + bytes.length
+                    + " octets, " + expected + " annoncés par ses dénombrements");
+        }
+
+        int meshesAt = HEADER_BYTES;
+        int verticesAt = meshesAt + (int) meshCount * MESH_BYTES;
+        int indicesAt = verticesAt + (int) vertexCount * VERTEX_BYTES;
+        int drawsAt = indicesAt + (int) indexCount * Integer.BYTES;
+
+        List<Mesh> meshes = new ArrayList<>((int) meshCount);
+        for (int rank = 0; rank < meshCount; rank++) {
+            int at = meshesAt + rank * MESH_BYTES;
+            meshes.add(new Mesh(
+                    in.getInt(at),
+                    in.getInt(at + 4),
+                    in.getInt(at + 8),
+                    in.getInt(at + 12),
+                    Short.toUnsignedInt(in.getShort(at + 16)),
+                    Byte.toUnsignedInt(in.get(at + 18)),
+                    Byte.toUnsignedInt(in.get(at + 19))));
+        }
+
+        int vertices = (int) vertexCount;
+        float[] positions = new float[vertices * 3];
+        float[] normals = new float[vertices * 3];
+        float[] uvs = new float[vertices * 2];
+        byte[] colors = new byte[vertices * 4];
+        for (int vertex = 0; vertex < vertices; vertex++) {
+            int at = verticesAt + vertex * VERTEX_BYTES;
+            for (int axis = 0; axis < 3; axis++) {
+                positions[vertex * 3 + axis] = in.getFloat(at + axis * 4);
+                // Normale i8 normalisée : ±127 code ±1 (DM-04).
+                normals[vertex * 3 + axis] = Math.max(-1.0f, in.get(at + 12 + axis) / 127.0f);
+            }
+            // uv0 UNORM16, à l'offset 20.
+            uvs[vertex * 2] = Short.toUnsignedInt(in.getShort(at + 20)) / 65535.0f;
+            uvs[vertex * 2 + 1] = Short.toUnsignedInt(in.getShort(at + 22)) / 65535.0f;
+            // Couleur RGBA, à l'offset 28.
+            for (int channel = 0; channel < 4; channel++) {
+                colors[vertex * 4 + channel] = in.get(at + 28 + channel);
+            }
+        }
+
+        int[] indices = new int[(int) indexCount];
+        for (int rank = 0; rank < indices.length; rank++) {
+            indices[rank] = in.getInt(indicesAt + rank * Integer.BYTES);
+        }
+
+        List<Draw> draws = new ArrayList<>((int) drawCount);
+        for (int rank = 0; rank < drawCount; rank++) {
+            int at = drawsAt + rank * DRAW_BYTES;
+            float[] model = new float[12];
+            for (int value = 0; value < 12; value++) {
+                model[value] = in.getFloat(at + 16 + value * 4);
+            }
+            draws.add(new Draw(in.getInt(at), in.getInt(at + 4), in.getInt(at + 8), model));
+        }
+
+        return new GeometryTransfer(
+                List.copyOf(meshes), positions, normals, uvs, colors, indices, List.copyOf(draws));
+    }
+
+    /** {@return les meshes, dans l'ordre du transfert} */
+    public List<Mesh> meshes() {
+        return meshes;
+    }
+
+    /** {@return la liste de dessin au repos} */
+    public List<Draw> draws() {
+        return draws;
+    }
+
+    /** {@return le nombre de sommets} */
+    public int vertexCount() {
+        return positions.length / 3;
+    }
+
+    /** {@return le nombre d'indices} */
+    public int indexCount() {
+        return indices.length;
+    }
+
+    /** {@return les positions, trois flottants par sommet, en espace du node} */
+    public float[] positions() {
+        return positions;
+    }
+
+    /** {@return les normales dé-quantifiées, trois flottants par sommet} */
+    public float[] normals() {
+        return normals;
+    }
+
+    /** {@return les coordonnées de texture principales, deux flottants par sommet} */
+    public float[] uvs() {
+        return uvs;
+    }
+
+    /** {@return les couleurs RGBA, quatre octets par sommet (à lire non signés)} */
+    public byte[] colors() {
+        return colors;
+    }
+
+    /** {@return les indices, locaux à leur mesh} */
+    public int[] indices() {
+        return indices;
+    }
+}

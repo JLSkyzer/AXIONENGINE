@@ -35,6 +35,14 @@ public final class NativeAssetCompiler implements AssetCompiler {
 
     @Override
     public int submit(long assetId, int format, byte[] source) {
+        // Le tampon est partagé avec le chargement des maillages côté client
+        // (ADR-119) : toute la séquence se fait sous le verrou des tampons d'asset.
+        synchronized (AssetBuffers.LOCK) {
+            return submitLocked(assetId, format, source);
+        }
+    }
+
+    private int submitLocked(long assetId, int format, byte[] source) {
         ByteBuffer buffer = NativeBridge.acquire(context, BufferKinds.ASSET_IN, source.length);
         if (buffer == null) {
             return NativeBridge.E_INVALID_BUFFER;
@@ -60,6 +68,14 @@ public final class NativeAssetCompiler implements AssetCompiler {
 
     @Override
     public CompileStatus poll(int jobId) {
+        // Le sondage d'une compilation aboutie écrit lui-même ASSET_OUT côté natif :
+        // il entre sous le verrou avec la relecture qui le suit (ADR-119 §8).
+        synchronized (AssetBuffers.LOCK) {
+            return pollLocked(jobId);
+        }
+    }
+
+    private CompileStatus pollLocked(int jobId) {
         int code = NativeBridge.pollAsset(context, jobId, scratch);
         if (code != NativeBridge.OK) {
             // Un jeton périmé ou un contexte fermé : le travail est perdu, et

@@ -226,6 +226,36 @@ class NativeBridgeTest {
                 NativeBridge.OK,
                 NativeBridge.release(reprise, BufferKinds.ASSET_OUT, lireGeneration(reprise, BufferKinds.ASSET_OUT)));
 
+        // ADR-119 : l'asset compilé se charge dans le natif, sa géométrie revient par
+        // ASSET_OUT, puis son handle se rend — à travers la vraie JNI, ce qui prouve
+        // aussi l'enregistrement des trois méthodes. Le triangle OBJ a un node
+        // visible : il se dessine une fois.
+        byte[] triangle = etat.payload();
+        dev.axion.asset.NativeAssetLoader chargeur = new dev.axion.asset.NativeAssetLoader(reprise);
+        dev.axion.asset.NativeAssetLoader.Loaded charge = chargeur.load(0x4242L, triangle);
+        assertTrue(
+                charge.ok(),
+                () -> "chargement refusé, code " + charge.code() + " : "
+                        + NativeBridge.lastErrorMessage(reprise));
+        dev.axion.asset.GeometryTransfer geometrie =
+                dev.axion.asset.GeometryTransfer.parse(charge.transfer());
+        assertEquals(1, geometrie.draws().size(), "un node visible, un dessin");
+        dev.axion.asset.GeometryTransfer.Mesh dessine =
+                geometrie.meshes().get(geometrie.draws().get(0).mesh());
+        assertEquals(3, dessine.indexCount(), "un triangle");
+        assertEquals(0, dessine.lod(), "niveau de détail 0");
+        assertTrue(geometrie.vertexCount() >= 3);
+
+        // Les octets d'un autre asset que celui annoncé sont refusés (E-2002) ; rien
+        // n'est rangé, et les tampons sont relâchés quand même.
+        assertEquals(NativeBridge.E_INVALID_BUFFER, chargeur.load(0x9999L, triangle).code());
+
+        // Rendu, puis périmé (R-110) : la fermeture finale ne verra aucun handle.
+        assertEquals(NativeBridge.OK, chargeur.unload(charge.index(), charge.generation()));
+        assertEquals(
+                NativeBridge.E_INVALID_HANDLE,
+                chargeur.unload(charge.index(), charge.generation()));
+
         // R-502 : l'export des métriques traverse la frontière et porte les
         // métriques de budget qu'INV-19 exige.
         String metriques = NativeBridge.metricsJson(reprise);

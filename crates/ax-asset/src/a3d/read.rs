@@ -36,6 +36,24 @@ impl A3dLimits {
     }
 }
 
+/// Taille totale qu'annonce l'en-tête d'un conteneur A3D, sans le valider.
+///
+/// Sert à qui doit **copier** un conteneur hors d'une mémoire partagée avant de
+/// l'ouvrir (ADR-119) : la copie se borne ainsi à ce que le conteneur annonce,
+/// plafonné par l'appelant (R-901), et c'est [`A3dFile::open`], sur la copie, qui
+/// juge l'en-tête — CRC, version, cohérence de cette taille avec la réalité.
+/// Rend `None` si les octets sont trop courts pour un en-tête ou ne commencent
+/// pas par le magic : il n'y a alors pas de taille à croire, même provisoirement.
+#[must_use]
+pub fn announced_total_size(bytes: &[u8]) -> Option<u64> {
+    if bytes.len() < HEADER_BYTES || bytes[0..4] != MAGIC {
+        return None;
+    }
+    Some(u64::from_le_bytes(
+        bytes[40..48].try_into().expect("huit octets"),
+    ))
+}
+
 /// Fichier A3D ouvert, sans copie.
 ///
 /// L'ouverture valide l'en-tête et la table des sections ; les charges utiles
@@ -313,6 +331,22 @@ mod tests {
             file.section(SectionTag::GEOM).expect("GEOM"),
             Some(vec![7u8; 4096])
         );
+    }
+
+    #[test]
+    fn la_taille_annoncee_se_lit_sans_ouvrir_le_conteneur() {
+        let bytes = fichier();
+        assert_eq!(announced_total_size(&bytes), Some(bytes.len() as u64));
+        // Des octets en plus derrière ne changent pas ce qu'annonce l'en-tête :
+        // c'est le cas d'un tampon partagé plus grand que le conteneur.
+        let mut prolonge = bytes.clone();
+        prolonge.extend_from_slice(&[0xEE; 100]);
+        assert_eq!(announced_total_size(&prolonge), Some(bytes.len() as u64));
+        // Trop court, ou pas un A3D : aucune taille à croire.
+        assert_eq!(announced_total_size(&bytes[..HEADER_BYTES - 1]), None);
+        let mut faux = bytes;
+        faux[0] = b'Z';
+        assert_eq!(announced_total_size(&faux), None);
     }
 
     #[test]

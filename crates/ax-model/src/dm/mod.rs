@@ -26,4 +26,5 @@ pub mod handle;
 pub mod integrity;
 pub mod limits;
 pub mod physics;
+pub mod render;
 pub mod scene;

@@ -1,13 +1,15 @@
 //! Conteneur A3D (C-24, PARTIE 7).
 
+mod geometry;
 mod node;
 mod physics;
 mod read;
 mod write;
 
+pub use geometry::{decode_geometry, DecodedGeometry};
 pub use node::{decode_nodes, encode_nodes, NodeTable, NODE_BYTES};
 pub use physics::{decode_colliders, encode_colliders, COLLIDER_BYTES};
-pub use read::{A3dFile, A3dLimits};
+pub use read::{announced_total_size, A3dFile, A3dLimits};
 pub use write::A3dWriter;
 
 use core::fmt;

@@ -25,8 +25,12 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::config::{self, ConfigScope, ParsedValue};
 
+use crate::asset_store::{decode_render_asset, supported_sections};
 use crate::context;
-use ax_asset::a3d::decode_colliders;
+use ax_asset::a3d::{
+    announced_total_size, decode_colliders, A3dLimits, SectionMask,
+    HEADER_BYTES as A3D_HEADER_BYTES,
+};
 use ax_asset::collider::ColliderMode;
 use ax_asset::compile::CompileOptions;
 use ax_asset::import::{ImportLimits, SourceFormat};
@@ -208,7 +212,11 @@ pub unsafe extern "C" fn axion_init(
             third_party_present: false,
         };
 
-        let token = match context::open(side, workers, applied.budgets) {
+        let assets = context::AssetLimits {
+            container: A3dLimits::new(applied.max_compiled_bytes),
+            persistent_bytes: usize::try_from(applied.native_mem_bytes).unwrap_or(usize::MAX),
+        };
+        let token = match context::open(side, workers, applied.budgets, assets) {
             Ok(token) => token,
             Err(code) => return code,
         };
@@ -518,6 +526,157 @@ pub unsafe extern "C" fn axion_asset_poll(
                 AXION_OK
             }
             Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Bit de la section `NODE` dans un masque de sections (IF-06, ADR-119) : le
+/// rang du tag dans la table normative de la PARTIE 7.
+pub const AXION_SECTION_NODE: u32 = 1 << 0;
+
+/// Bit de la section `GEOM` dans un masque de sections (IF-06, ADR-119).
+pub const AXION_SECTION_GEOM: u32 = 1 << 1;
+
+/// Charge un asset compilé et rend son handle (IF-06, ADR-119).
+///
+/// Le conteneur A3D a été écrit par Java dans la charge utile du tampon
+/// `ASSET_IN` ; il se délimite lui-même par le `total_size` de son en-tête (§7.2)
+/// — la signature du cahier des charges n'a pas de longueur, et n'en a pas
+/// besoin. Le natif **copie** le conteneur hors du tampon partagé sous le verrou
+/// de session, le **décode hors verrou** — un gros asset ne fige pas le cycle de
+/// simulation —, puis range le résultat sous verrou, imputé à l'arène
+/// `PERSISTENT` (R-480).
+///
+/// `sections_mask` porte le bit *i* pour le *i*-ème tag de la table de la PARTIE
+/// 7 ; seuls [`AXION_SECTION_NODE`] et [`AXION_SECTION_GEOM`] sont pris en
+/// charge. Un masque vide ou portant un autre bit est refusé (`E-2002`) : un
+/// chargement qui « réussirait » sans rien charger ferait croire le contraire.
+///
+/// Chaque appel crée un handle indépendant, que Java possède et doit rendre par
+/// [`axion_asset_unload`] (R-321) ; un handle non rendu est signalé à l'arrêt
+/// (`E-2003`).
+///
+/// # Safety
+///
+/// `out` doit pointer sur un [`Handle`] accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_asset_load(
+    ctx: u64,
+    asset_id: u64,
+    sections_mask: u32,
+    out: *mut Handle,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if out.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let supported = supported_sections().bits();
+        if sections_mask == 0 || sections_mask & !supported != 0 {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let sections = SectionMask::from_bits(sections_mask);
+
+        // Copie sous verrou, bornée par ce qu'annonce le conteneur et par le
+        // plafond de la configuration (R-901) : après elle, le tampon peut être
+        // réalloué sans que le décodage en souffre.
+        let copied = context::with(ctx, false, |session| {
+            let limits = session.a3d_limits();
+            let Some(buffer) = session.buffers().get_mut(BufferKind::AssetIn) else {
+                return Err(AXION_E_INVALID_BUFFER);
+            };
+            let payload = buffer.as_slice().get(HEADER_BYTES..).unwrap_or(&[]);
+            let take = match announced_total_size(payload) {
+                Some(total) => usize::try_from(total.min(limits.max_bytes()))
+                    .unwrap_or(usize::MAX)
+                    .min(payload.len()),
+                // Pas un A3D : l'en-tête seul suffit à le dire, rien de plus n'est
+                // copié.
+                None => payload.len().min(A3D_HEADER_BYTES),
+            };
+            Ok((payload[..take].to_vec(), limits))
+        });
+        let (container, limits) = match copied {
+            Ok(Ok(copy)) => copy,
+            Ok(Err(code)) | Err(code) => return code,
+        };
+
+        // Décodage hors verrou : décompression, contrôles et pose de repos.
+        let asset = match decode_render_asset(&container, asset_id, sections, limits) {
+            Ok(asset) => asset,
+            Err(error) => {
+                let message = format!("axion_asset_load {asset_id:#018x} : {error}");
+                let _ = context::with(ctx, false, |session| session.set_last_error(message));
+                return error.code();
+            }
+        };
+
+        let stored = context::with(ctx, false, |session| match session.insert_asset(asset) {
+            Ok(handle) => Ok(handle),
+            Err(error) => {
+                session.set_last_error(format!("axion_asset_load {asset_id:#018x} : {error}"));
+                Err(error.code())
+            }
+        });
+        match stored {
+            Ok(Ok(handle)) => {
+                // SAFETY: nullité écartée ci-dessus ; le contrat impose que `out`
+                // soit accessible en écriture.
+                unsafe { out.write(handle) };
+                AXION_OK
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Dépose dans `ASSET_OUT` la géométrie d'un asset chargé et sa liste de dessin
+/// au repos (ajout à IF-06, ADR-119 §3) ; `out_size` reçoit la taille de la
+/// charge utile.
+///
+/// La charge utile est rebâtie depuis l'asset résident à chaque appel : Java
+/// peut la redemander sans recharger l'asset, par exemple pour reconstruire ses
+/// ressources GPU après un changement de resource pack (R-752).
+///
+/// Rend `E-2001` si le handle est périmé, `E-2002` si l'asset n'a pas été chargé
+/// avec `NODE | GEOM`.
+///
+/// # Safety
+///
+/// `out_size` doit pointer sur un `u64` accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_asset_geometry(ctx: u64, handle: Handle, out_size: *mut u64) -> i32 {
+    shielded(Some(ctx), || {
+        if out_size.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        match context::with(ctx, false, |session| {
+            session.write_geometry_transfer(handle)
+        }) {
+            Ok(Ok(size)) => {
+                // SAFETY: nullité écartée ci-dessus.
+                unsafe { out_size.write(size) };
+                AXION_OK
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Rend un asset chargé (IF-06) : ses octets quittent l'arène `PERSISTENT` et
+/// son handle devient périmé (R-110). Un handle déjà périmé rend `E-2001`, sans
+/// effet de bord.
+///
+/// # Safety
+///
+/// Aucun pointeur n'est déréférencé ; la fonction est `unsafe` par symétrie avec
+/// le reste de l'ABI.
+#[no_mangle]
+pub unsafe extern "C" fn axion_asset_unload(ctx: u64, handle: Handle) -> i32 {
+    shielded(Some(ctx), || {
+        match context::with(ctx, false, |session| session.remove_asset(handle)) {
+            Ok(true) => AXION_OK,
+            Ok(false) => AXION_E_INVALID_HANDLE,
+            Err(code) => code,
         }
     })
 }
@@ -961,7 +1120,17 @@ struct AppliedConfig {
     max_workers: u32,
     cpu_share: CpuShare,
     budgets: JobBudgets,
+    /// `assets.max_compiled_bytes` : plafond d'un conteneur A3D chargé (R-901).
+    max_compiled_bytes: u64,
+    /// `budgets.native_mem_bytes` : plafond de l'arène `PERSISTENT` (R-480).
+    native_mem_bytes: u64,
 }
+
+/// Chemin de l'option qui plafonne un conteneur A3D chargé (ADR-119).
+const MAX_COMPILED_BYTES_PATH: &str = "assets.max_compiled_bytes";
+
+/// Chemin de l'option qui plafonne la mémoire native (ADR-119).
+const NATIVE_MEM_BYTES_PATH: &str = "budgets.native_mem_bytes";
 
 impl AppliedConfig {
     /// Part des valeurs par défaut du registre.
@@ -975,6 +1144,8 @@ impl AppliedConfig {
             max_workers: 0,
             cpu_share: CpuShare::Auto,
             budgets: JobBudgets::new(),
+            max_compiled_bytes: 0,
+            native_mem_bytes: 0,
         };
         for path in Self::interesting_paths() {
             if let Some(option) = ConfigScope::ALL
@@ -989,7 +1160,12 @@ impl AppliedConfig {
 
     /// Chemins que la frontière retient.
     fn interesting_paths() -> Vec<&'static str> {
-        let mut paths = vec![config::MAX_WORKERS_PATH, config::CPU_SHARE_PATH];
+        let mut paths = vec![
+            config::MAX_WORKERS_PATH,
+            config::CPU_SHARE_PATH,
+            MAX_COMPILED_BYTES_PATH,
+            NATIVE_MEM_BYTES_PATH,
+        ];
         paths.extend(
             Budget::ALL
                 .iter()
@@ -1001,6 +1177,17 @@ impl AppliedConfig {
 
     /// Retient une valeur, si elle en fait partie.
     fn accept(&mut self, path: &str, parsed: &ParsedValue) {
+        if path == MAX_COMPILED_BYTES_PATH || path == NATIVE_MEM_BYTES_PATH {
+            if let ParsedValue::Int(value) = parsed {
+                let value = u64::try_from(*value).unwrap_or(0);
+                if path == MAX_COMPILED_BYTES_PATH {
+                    self.max_compiled_bytes = value;
+                } else {
+                    self.native_mem_bytes = value;
+                }
+            }
+            return;
+        }
         if path == config::MAX_WORKERS_PATH {
             if let ParsedValue::Int(value) = parsed {
                 self.max_workers = u32::try_from(*value).unwrap_or(0);
@@ -1068,6 +1255,43 @@ mod tests {
     fn version_d_abi_positive() {
         assert!(axion_abi_version() > 0);
         assert_eq!(axion_abi_version(), AXION_ABI_VERSION as i32);
+    }
+
+    /// ADR-119 : le bit *i* du masque désigne le *i*-ème tag de la PARTIE 7.
+    /// Java envoie ces valeurs ; les dériver ailleurs les ferait diverger.
+    #[test]
+    fn les_bits_de_section_sont_ceux_de_la_partie_7() {
+        use ax_asset::a3d::SectionTag;
+        assert_eq!(
+            SectionMask::of(&[SectionTag::NODE]).bits(),
+            AXION_SECTION_NODE
+        );
+        assert_eq!(
+            SectionMask::of(&[SectionTag::GEOM]).bits(),
+            AXION_SECTION_GEOM
+        );
+        assert_eq!(
+            supported_sections().bits(),
+            AXION_SECTION_NODE | AXION_SECTION_GEOM
+        );
+    }
+
+    /// Un chemin renommé dans le registre ferait retomber le plafond à zéro sans
+    /// rien dire — et tout chargement serait refusé. Le contrôle doit échouer
+    /// s'il ne **trouve** plus l'option, pas seulement si elle diffère.
+    #[test]
+    fn les_plafonds_d_asset_sont_lus_dans_le_registre() {
+        for path in [MAX_COMPILED_BYTES_PATH, NATIVE_MEM_BYTES_PATH] {
+            assert!(
+                ConfigScope::ALL
+                    .into_iter()
+                    .any(|scope| config::find(scope, path).is_some()),
+                "{path} absent du registre"
+            );
+        }
+        let applied = AppliedConfig::from_defaults();
+        assert!(applied.max_compiled_bytes > 0);
+        assert!(applied.native_mem_bytes > 0);
     }
 
     /// La troncature tombe toujours sur une frontière de caractère : un message

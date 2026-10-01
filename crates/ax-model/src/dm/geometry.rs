@@ -162,6 +162,123 @@ impl Vertex {
     pub fn weight_sum(&self) -> u16 {
         self.weights.iter().map(|weight| u16::from(*weight)).sum()
     }
+
+    /// Écrit le sommet sur ses 48 octets, en petit-boutiste, à la suite de `out`.
+    ///
+    /// C'est **la** sérialisation du sommet canonique : la section `GEOM` du
+    /// compilateur et le transfert de géométrie vers Java (ADR-119) l'emploient
+    /// tous deux. Deux écritures du même format divergeraient à la première
+    /// correction — c'est ce qui était arrivé à la quantification des normales.
+    /// La zone réservée est écrite à zéro, quelle que soit sa valeur en mémoire :
+    /// un octet non initialisé rendrait un asset non reproductible.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        for value in self.position {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        out.extend_from_slice(&self.normal.map(|value| value as u8));
+        out.extend_from_slice(&self.tangent.map(|value| value as u8));
+        for value in self.uv0 {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in self.uv1 {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        out.extend_from_slice(&self.color);
+        out.extend_from_slice(&self.bones);
+        out.extend_from_slice(&self.weights);
+        out.push(self.region);
+        out.push(self.def_w);
+        out.extend_from_slice(&[0; 6]);
+    }
+
+    /// Lit un sommet depuis ses 48 octets petit-boutistes.
+    ///
+    /// Le tableau de taille fixe porte la vérification de bornes : l'appelant
+    /// découpe la tranche, et une tranche trop courte est refusée par la
+    /// conversion, jamais lue au-delà. La zone réservée est rendue à zéro.
+    #[must_use]
+    pub fn read_le(bytes: &[u8; Self::BYTES]) -> Self {
+        let f32_at = |at: usize| {
+            f32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])
+        };
+        let u16_at = |at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]);
+        let i8x4_at = |at: usize| {
+            [
+                bytes[at] as i8,
+                bytes[at + 1] as i8,
+                bytes[at + 2] as i8,
+                bytes[at + 3] as i8,
+            ]
+        };
+        let u8x4_at = |at: usize| [bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]];
+        Self {
+            position: [f32_at(0), f32_at(4), f32_at(8)],
+            normal: i8x4_at(12),
+            tangent: i8x4_at(16),
+            uv0: [u16_at(20), u16_at(22)],
+            uv1: [u16_at(24), u16_at(26)],
+            color: u8x4_at(28),
+            bones: u8x4_at(32),
+            weights: u8x4_at(36),
+            region: bytes[40],
+            def_w: bytes[41],
+            _pad: [0; 6],
+        }
+    }
+}
+
+impl MeshDesc {
+    /// Taille du descripteur, en octets (DM-04).
+    pub const BYTES: usize = 48;
+
+    /// Écrit le descripteur sur ses 48 octets, en petit-boutiste, à la suite de
+    /// `out`.
+    ///
+    /// Sérialisation unique, partagée par la section `GEOM` et le transfert de
+    /// géométrie (ADR-119). Le champ réservé est écrit à zéro.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.vertex_offset.to_le_bytes());
+        out.extend_from_slice(&self.vertex_count.to_le_bytes());
+        out.extend_from_slice(&self.index_offset.to_le_bytes());
+        out.extend_from_slice(&self.index_count.to_le_bytes());
+        out.extend_from_slice(&self.material.to_le_bytes());
+        out.push(self.lod);
+        out.push(self.flags);
+        for value in self.aabb_min {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in self.aabb_max {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        out.extend_from_slice(&self.region.to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+    }
+
+    /// Lit un descripteur depuis ses 48 octets petit-boutistes ; le champ
+    /// réservé est rendu à zéro.
+    #[must_use]
+    pub fn read_le(bytes: &[u8; Self::BYTES]) -> Self {
+        let u32_at = |at: usize| {
+            u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])
+        };
+        let f32_at = |at: usize| {
+            f32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])
+        };
+        let u16_at = |at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]);
+        Self {
+            vertex_offset: u32_at(0),
+            vertex_count: u32_at(4),
+            index_offset: u32_at(8),
+            index_count: u32_at(12),
+            material: u16_at(16),
+            lod: bytes[18],
+            flags: bytes[19],
+            aabb_min: [f32_at(20), f32_at(24), f32_at(28)],
+            aabb_max: [f32_at(32), f32_at(36), f32_at(40)],
+            region: u16_at(44),
+            _pad: 0,
+        }
+    }
 }
 
 /// Encode une normale en `i8` normalisée, telle que [`Vertex`] la porte.
@@ -326,5 +443,114 @@ mod tests {
         assert_eq!(size_of::<MeshDesc>(), 48);
         assert_eq!(size_of::<Transform>(), 40);
         assert_eq!(size_of::<WorldTransform>(), 40);
+    }
+
+    fn sommet_type() -> Vertex {
+        Vertex {
+            position: [1.5, -2.0, 0.25],
+            normal: [0, 127, -127, 0],
+            tangent: [127, 0, 0, -127],
+            uv0: [0x1234, 0xFFFF],
+            uv1: [7, 8],
+            color: [255, 128, 64, 32],
+            bones: [1, 2, 3, 4],
+            weights: [200, 55, 0, 0],
+            region: 9,
+            def_w: 250,
+            // Une zone réservée non nulle en mémoire ne doit pas fuir à l'écriture.
+            _pad: [0xAA; 6],
+        }
+    }
+
+    fn mesh_type() -> MeshDesc {
+        MeshDesc {
+            vertex_offset: 10,
+            vertex_count: 24,
+            index_offset: 30,
+            index_count: 36,
+            material: 0x0102,
+            lod: 3,
+            flags: mesh_flags::DOUBLE_SIDED | mesh_flags::DEFORMABLE,
+            aabb_min: [-0.5, 0.0, -0.5],
+            aabb_max: [0.5, 1.0, 0.5],
+            region: NO_REGION_U16,
+            _pad: 0xBEEF,
+        }
+    }
+
+    #[test]
+    fn t230_l_ecriture_du_sommet_est_figee_octet_par_octet() {
+        // Octets écrits à la main : c'est la disposition de DM-04 qui est
+        // vérifiée, pas la cohérence de l'écriture avec elle-même. Ce sont aussi
+        // ceux que produisait l'écrivain de `GEOM` avant d'adopter cette
+        // fonction : l'adopter ne change aucun octet d'un asset compilé.
+        let mut attendu = Vec::new();
+        for value in [1.5f32, -2.0, 0.25] {
+            attendu.extend_from_slice(&value.to_le_bytes());
+        }
+        attendu.extend_from_slice(&[0, 127, 0x81, 0]); // normale, i8 -> octet
+        attendu.extend_from_slice(&[127, 0, 0, 0x81]); // tangente
+        attendu.extend_from_slice(&0x1234u16.to_le_bytes());
+        attendu.extend_from_slice(&0xFFFFu16.to_le_bytes());
+        attendu.extend_from_slice(&7u16.to_le_bytes());
+        attendu.extend_from_slice(&8u16.to_le_bytes());
+        attendu.extend_from_slice(&[255, 128, 64, 32]);
+        attendu.extend_from_slice(&[1, 2, 3, 4]);
+        attendu.extend_from_slice(&[200, 55, 0, 0]);
+        attendu.push(9);
+        attendu.push(250);
+        attendu.extend_from_slice(&[0; 6]);
+
+        let mut ecrit = Vec::new();
+        sommet_type().write_le(&mut ecrit);
+        assert_eq!(ecrit.len(), Vertex::BYTES);
+        assert_eq!(ecrit, attendu);
+    }
+
+    #[test]
+    fn t230_l_ecriture_du_mesh_est_figee_octet_par_octet() {
+        let mut attendu = Vec::new();
+        for value in [10u32, 24, 30, 36] {
+            attendu.extend_from_slice(&value.to_le_bytes());
+        }
+        attendu.extend_from_slice(&0x0102u16.to_le_bytes());
+        attendu.push(3);
+        attendu.push(mesh_flags::DOUBLE_SIDED | mesh_flags::DEFORMABLE);
+        for value in [-0.5f32, 0.0, -0.5, 0.5, 1.0, 0.5] {
+            attendu.extend_from_slice(&value.to_le_bytes());
+        }
+        attendu.extend_from_slice(&NO_REGION_U16.to_le_bytes());
+        attendu.extend_from_slice(&[0, 0]);
+
+        let mut ecrit = Vec::new();
+        mesh_type().write_le(&mut ecrit);
+        assert_eq!(ecrit.len(), MeshDesc::BYTES);
+        assert_eq!(ecrit, attendu);
+    }
+
+    #[test]
+    fn t230_sommet_et_mesh_font_l_aller_retour() {
+        let mut octets = Vec::new();
+        sommet_type().write_le(&mut octets);
+        let relu = Vertex::read_le(octets.as_slice().try_into().expect("48 octets"));
+        // La zone réservée revient à zéro : seule elle diffère de l'original.
+        assert_eq!(
+            relu,
+            Vertex {
+                _pad: [0; 6],
+                ..sommet_type()
+            }
+        );
+
+        let mut octets = Vec::new();
+        mesh_type().write_le(&mut octets);
+        let relu = MeshDesc::read_le(octets.as_slice().try_into().expect("48 octets"));
+        assert_eq!(
+            relu,
+            MeshDesc {
+                _pad: 0,
+                ..mesh_type()
+            }
+        );
     }
 }

@@ -37,17 +37,21 @@ use jni::sys::{jint, jlong, JNI_ERR, JNI_VERSION_1_6};
 use jni::{JNIEnv, JavaVM, NativeMethod};
 
 use crate::abi::{
-    axion_abi_version, axion_asset_compile, axion_asset_poll, axion_buffer_acquire,
-    axion_buffer_release, axion_init, axion_last_error, axion_metrics_export, axion_shutdown,
-    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
-    AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_abi_version, axion_asset_compile, axion_asset_geometry, axion_asset_load,
+    axion_asset_poll, axion_asset_unload, axion_buffer_acquire, axion_buffer_release, axion_init,
+    axion_last_error, axion_metrics_export, axion_shutdown, axion_sim_cancel, axion_sim_collect,
+    axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_E_INVALID_BUFFER, AXION_OK,
 };
+use ax_model::dm::handle::Handle;
 
 /// Classe Java qui déclare les méthodes natives (R-492 : une seule).
 const BRIDGE_CLASS: &str = "dev/axion/bridge/NativeBridge";
 
 /// Nombre de valeurs qu'`simCollect` écrit, une par champ d'[`AxionCollectResult`].
 const SIM_COLLECT_SLOTS: i32 = 7;
+
+/// Nombre de valeurs qu'`assetLoad` écrit : l'index et la génération du handle.
+const ASSET_LOAD_SLOTS: i32 = 2;
 
 /// Enregistre les méthodes natives au chargement de la bibliothèque.
 ///
@@ -133,6 +137,21 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "simCancel".into(),
             sig: "(J)I".into(),
             fn_ptr: jni_sim_cancel as *mut c_void,
+        },
+        NativeMethod {
+            name: "assetLoad".into(),
+            sig: "(JJI[J)I".into(),
+            fn_ptr: jni_asset_load as *mut c_void,
+        },
+        NativeMethod {
+            name: "assetGeometry".into(),
+            sig: "(JII[J)I".into(),
+            fn_ptr: jni_asset_geometry as *mut c_void,
+        },
+        NativeMethod {
+            name: "assetUnload".into(),
+            sig: "(JII)I".into(),
+            fn_ptr: jni_asset_unload as *mut c_void,
         },
     ];
 
@@ -470,6 +489,104 @@ extern "system" fn jni_sim_cancel(_env: JNIEnv, _class: JClass, ctx: jlong) -> j
     unsafe { axion_sim_cancel(ctx as u64) }
 }
 
+/// Handle d'asset rebâti depuis les deux entiers que Java détient.
+///
+/// Les `int` de Java portent les bits du `u32` natif : la conversion les
+/// réinterprète sans rien perdre, et un handle forgé reste refusé par la
+/// génération (R-110).
+fn asset_handle(index: jint, generation: jint) -> Handle {
+    Handle::new(index as u32, generation as u32)
+}
+
+/// `NativeBridge.assetLoad(long, long, int, long[])` (IF-06, ADR-119).
+///
+/// Le conteneur A3D a été écrit par Java dans `ASSET_IN`. Écrit
+/// `[index, génération]` du handle dans le tableau fourni — qui doit compter au
+/// moins [`ASSET_LOAD_SLOTS`] éléments — et rend le code de l'appel. Le masque
+/// est un champ de bits : ses bits sont transmis tels quels, et un bit inconnu
+/// est refusé par le natif.
+extern "system" fn jni_asset_load(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    asset_id: jlong,
+    sections_mask: jint,
+    out: JLongArray,
+) -> jint {
+    if out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(&out) {
+        Ok(length) if length >= ASSET_LOAD_SLOTS => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+
+    let mut handle = Handle::ABSENT;
+    // SAFETY: `handle` est une variable locale accessible en écriture.
+    let code = unsafe {
+        axion_asset_load(
+            ctx as u64,
+            asset_id as u64,
+            sections_mask as u32,
+            &raw mut handle,
+        )
+    };
+    if code != AXION_OK {
+        return code;
+    }
+
+    let values = [jlong::from(handle.index), jlong::from(handle.generation)];
+    match env.set_long_array_region(&out, 0, &values) {
+        Ok(()) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
+}
+
+/// `NativeBridge.assetGeometry(long, int, int, long[])` (ADR-119).
+///
+/// Dépose la géométrie de l'asset dans `ASSET_OUT` et écrit sa taille dans
+/// `out[0]`.
+extern "system" fn jni_asset_geometry(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    index: jint,
+    generation: jint,
+    out: JLongArray,
+) -> jint {
+    if out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(&out) {
+        Ok(length) if length >= 1 => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+
+    let mut size: u64 = 0;
+    // SAFETY: `size` est une variable locale accessible en écriture.
+    let code =
+        unsafe { axion_asset_geometry(ctx as u64, asset_handle(index, generation), &raw mut size) };
+    if code != AXION_OK {
+        return code;
+    }
+    match env.set_long_array_region(&out, 0, &[size as jlong]) {
+        Ok(()) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
+}
+
+/// `NativeBridge.assetUnload(long, int, int)` (IF-06).
+extern "system" fn jni_asset_unload(
+    _env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    index: jint,
+    generation: jint,
+) -> jint {
+    // SAFETY: aucun pointeur n'est déréférencé.
+    unsafe { axion_asset_unload(ctx as u64, asset_handle(index, generation)) }
+}
+
 #[cfg(test)]
 mod tests {
     /// Les signatures JNI sont des chaînes non vérifiées par le compilateur :
@@ -490,6 +607,9 @@ mod tests {
             ("simSubmit", "(JJII)I"),
             ("simCollect", "(JJ[J)I"),
             ("simCancel", "(J)I"),
+            ("assetLoad", "(JJI[J)I"),
+            ("assetGeometry", "(JII[J)I"),
+            ("assetUnload", "(JII)I"),
         ];
 
         for (nom, signature) in attendu {

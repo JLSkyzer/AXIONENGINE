@@ -39,7 +39,9 @@
 mod bitset;
 mod graph;
 mod metrics;
+mod rest;
 
 pub use bitset::BitSet;
 pub use graph::{SceneError, SceneGraph};
 pub use metrics::SceneMetrics;
+pub use rest::rest_draws;

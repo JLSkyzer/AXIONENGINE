@@ -10,11 +10,16 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use crate::asset_store::{AssetStore, LoadedAsset};
+use ax_asset::a3d::A3dLimits;
 use ax_asset::compile::{CompileError, CompiledAsset};
 use ax_core::{BufferPool, ContextGuard, RuntimeState};
 use ax_jobs::{JobBudgets, JobSystem, Side, WorkerPolicy};
 use ax_jobs::{JobHandle, JobOutcome};
+use ax_mem::{ArenaClass, ArenaCounter, MemoryError};
 use ax_model::budgets::Budget;
+use ax_model::buffer::BufferKind;
+use ax_model::dm::handle::Handle;
 use ax_physics::SimDriver;
 use ax_telemetry::{BudgetMetrics, MetricId, Telemetry};
 use std::collections::HashMap;
@@ -94,9 +99,27 @@ pub struct Session {
     sim_pending: bool,
     /// Cycles `submit` clos implicitement faute de `collect` (R-282).
     sim_unbalanced: u64,
+    /// Assets chargés (IF-06, ADR-119) : Rust les possède, Java n'en tient que
+    /// des handles (§4.10).
+    assets: AssetStore,
+    /// Comptage de l'arène `PERSISTENT`, où s'imputent les assets chargés
+    /// (C-13, R-480) ; plafonnée par `budgets.native_mem_bytes`.
+    persistent: ArenaCounter,
+    /// Plafonds de lecture des conteneurs A3D (`assets.max_compiled_bytes`,
+    /// R-901).
+    a3d_limits: A3dLimits,
     /// Détenu pour la durée de la session : c'est lui qui garantit l'unicité du
     /// contexte dans le processus (R-450).
     _guard: ContextGuard,
+}
+
+/// Plafonds des assets, connus dès l'ouverture d'une session (ADR-119).
+#[derive(Debug, Clone, Copy)]
+pub struct AssetLimits {
+    /// Plafond d'un conteneur A3D comme d'une section (`assets.max_compiled_bytes`).
+    pub container: A3dLimits,
+    /// Plafond de l'arène `PERSISTENT`, en octets (`budgets.native_mem_bytes`).
+    pub persistent_bytes: usize,
 }
 
 /// Une compilation d'asset, en vol ou terminée.
@@ -273,6 +296,56 @@ impl Session {
         self.asset_jobs.remove(&id);
     }
 
+    /// Plafonds de lecture des conteneurs A3D (R-901).
+    #[must_use]
+    pub fn a3d_limits(&self) -> A3dLimits {
+        self.a3d_limits
+    }
+
+    /// Range un asset chargé et rend son handle, en imputant ses octets à
+    /// l'arène `PERSISTENT` (R-480).
+    ///
+    /// # Errors
+    ///
+    /// [`MemoryError::BudgetExceeded`] (`E-2004`) si l'arène est pleine ; rien
+    /// n'est alors rangé, ni compté.
+    pub fn insert_asset(&mut self, asset: LoadedAsset) -> Result<Handle, MemoryError> {
+        self.persistent.acquire(asset.resident_bytes())?;
+        Ok(self.assets.insert(asset))
+    }
+
+    /// Dépose dans `ASSET_OUT` le transfert de géométrie d'un asset chargé
+    /// (ADR-119 §3) et rend la taille de la charge utile.
+    ///
+    /// # Errors
+    ///
+    /// `E-2001` si le handle est périmé ; `E-2002` si l'asset n'a pas été chargé
+    /// avec `NODE | GEOM`, ou si le tampon ne peut être écrit.
+    pub fn write_geometry_transfer(&mut self, handle: Handle) -> Result<u64, i32> {
+        let asset = self
+            .assets
+            .get(handle)
+            .ok_or(crate::abi::AXION_E_INVALID_HANDLE)?;
+        let transfer = asset
+            .geometry_transfer()
+            .ok_or(crate::abi::AXION_E_INVALID_BUFFER)?;
+        self.buffers
+            .write_payload(BufferKind::AssetOut, transfer)
+            .ok_or(crate::abi::AXION_E_INVALID_BUFFER)
+    }
+
+    /// Rend un asset chargé et libère ses octets ; faux si le handle est périmé,
+    /// sans effet de bord (R-110).
+    pub fn remove_asset(&mut self, handle: Handle) -> bool {
+        match self.assets.remove(handle) {
+            Some(asset) => {
+                self.persistent.release(asset.resident_bytes());
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Enregistre une panic capturée et empoisonne le contexte.
     ///
     /// R-310 : la panic est comptée, et le contexte passe en `POISONED` dès
@@ -310,7 +383,12 @@ fn sessions() -> MutexGuard<'static, Option<Session>> {
 ///
 /// Renvoie le code `E-1004` si une session est déjà ouverte dans ce processus
 /// (R-450).
-pub fn open(side: Side, workers: WorkerPolicy, budgets: JobBudgets) -> Result<u64, i32> {
+pub fn open(
+    side: Side,
+    workers: WorkerPolicy,
+    budgets: JobBudgets,
+    assets: AssetLimits,
+) -> Result<u64, i32> {
     let mut slot = sessions();
     if slot.is_some() {
         return Err(ax_core::CoreError::AlreadyInitialized.code());
@@ -344,6 +422,9 @@ pub fn open(side: Side, workers: WorkerPolicy, budgets: JobBudgets) -> Result<u6
         physics: SimDriver::new(),
         sim_pending: false,
         sim_unbalanced: 0,
+        assets: AssetStore::new(),
+        persistent: ArenaCounter::new(ArenaClass::Persistent, assets.persistent_bytes),
+        a3d_limits: assets.container,
         _guard: guard,
     });
     Ok(token)
@@ -391,13 +472,21 @@ pub struct AllocationBalance {
     pub live_buffers: usize,
     /// Octets correspondants.
     pub live_bytes: usize,
+    /// Assets encore chargés à la fermeture : un handle que Java n'a pas rendu
+    /// (R-321).
+    pub live_assets: usize,
+    /// Octets encore comptés dans l'arène `PERSISTENT` (INV-08).
+    pub persistent_bytes: usize,
 }
 
 impl AllocationBalance {
     /// Indique si tout ce qui a été acquis a été relâché.
     #[must_use]
     pub const fn is_balanced(&self) -> bool {
-        self.live_buffers == 0 && self.live_bytes == 0
+        self.live_buffers == 0
+            && self.live_bytes == 0
+            && self.live_assets == 0
+            && self.persistent_bytes == 0
     }
 }
 
@@ -416,6 +505,8 @@ pub fn close(token: u64) -> Result<AllocationBalance, i32> {
             let balance = AllocationBalance {
                 live_buffers: session.buffers.live_buffers(),
                 live_bytes: session.buffers.total_bytes(),
+                live_assets: session.assets.live(),
+                persistent_bytes: session.persistent.used_bytes(),
             };
             *slot = None;
             Ok(balance)
@@ -479,7 +570,11 @@ mod tests {
             cpu_share: ax_jobs::CpuShare::Fixed(1),
             third_party_present: false,
         };
-        open(Side::Server, policy, JobBudgets::new())
+        let assets = AssetLimits {
+            container: A3dLimits::new(1 << 24),
+            persistent_bytes: 1 << 26,
+        };
+        open(Side::Server, policy, JobBudgets::new(), assets)
     }
 
     use super::*;
