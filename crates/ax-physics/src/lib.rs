@@ -53,9 +53,11 @@ pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROU
 pub use query::{RayHit, SensorMode, SpatialFilter, SweepHit};
 pub use scheduler::{SimMode, Stage, StageDurations};
 pub use sim::SimDriver;
-pub use world::{PhysicsWorld, Pose};
+pub use world::{BodyReports, PhysicsWorld, Pose};
 
 // §10.7 : les événements sont une structure DM figée dans `ax-model` ; on les
 // réexporte pour que l'API du monde physique soit autonome.
 pub use ax_model::dm::handle::Handle;
-pub use ax_model::dm::physics::{body_state_flags, event_kind, BodyState, PhysicsEvent};
+pub use ax_model::dm::physics::{
+    body_state_flags, event_kind, BodyBounds, BodyState, PhysicsEvent,
+};

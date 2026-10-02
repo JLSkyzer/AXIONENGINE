@@ -85,6 +85,25 @@ pub fn render_java_buffer_kinds() -> String {
         ));
     }
 
+    // Versions de schéma des charges utiles (R-262), pour les seuls kinds qui en
+    // déclarent une : le natif l'écrit dans l'en-tête, Java la compare avant de
+    // lire ce qu'elle annonce.
+    for kind in BufferKind::ALL {
+        let version = kind.schema_version();
+        if version == 0 {
+            continue;
+        }
+        lines.push(String::new());
+        lines.push(format!(
+            "    /** Version du schéma de la charge de {{@code {}}}, lue à l'octet 12 de l'en-tête. */",
+            kind.name()
+        ));
+        lines.push(format!(
+            "    public static final int {}_SCHEMA = {version};",
+            kind.name()
+        ));
+    }
+
     lines.push("}".to_owned());
     lines.join(
         "

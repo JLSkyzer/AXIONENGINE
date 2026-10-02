@@ -21,6 +21,9 @@ import java.util.List;
  * @param netBytes octets réseau prêts à émettre (M4)
  * @param flags drapeaux du collect
  * @param bodies états décodés, dans l'ordre déterministe du natif (R-1020)
+ * @param bounds emprises des mêmes corps (ADR-120) : {@code bounds.get(i)} est celle de
+ *     {@code bodies.get(i)} ; liste vide si le {@code SIM_OUT} du natif précède le schéma 1
+ *     — l'appelant garde alors ses boîtes provisoires
  * @param events événements décodés, dans l'ordre d'émission
  */
 public record CollectResult(
@@ -33,11 +36,12 @@ public record CollectResult(
         int netBytes,
         int flags,
         List<BodyState> bodies,
+        List<BodyBounds> bounds,
         List<PhysicsEvent> events) {
 
     /** Résultat d'un collect en échec (code négatif), sans donnée. */
     static CollectResult failed(int code) {
-        return new CollectResult(code, 0, 0, 0, 0, 0, 0, 0, List.of(), List.of());
+        return new CollectResult(code, 0, 0, 0, 0, 0, 0, 0, List.of(), List.of(), List.of());
     }
 
     /** {@return vrai si le collect a abouti} */

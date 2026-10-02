@@ -2,9 +2,9 @@
 
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_physics::{
-    body_state_flags, event_kind, BodyCollider, BodyError, BodyId, BodyKind, CollisionGroups,
-    CompoundPart, ConfigError, ContactMaterial, FluidEnvironment, Handle, LiftSurface,
-    PhysicsConfig, PhysicsWorld, Shape, SimMode, SpatialFilter, Stage,
+    body_state_flags, event_kind, BodyBounds, BodyCollider, BodyError, BodyId, BodyKind,
+    CollisionGroups, CompoundPart, ConfigError, ContactMaterial, FluidEnvironment, Handle,
+    LiftSurface, PhysicsConfig, PhysicsWorld, Shape, SimMode, SpatialFilter, Stage,
 };
 
 fn config() -> PhysicsConfig {
@@ -1783,4 +1783,251 @@ fn le_client_n_integre_pas_l_autoritaire() {
         "la bille ne bouge pas sans intégration autoritaire"
     );
     assert_eq!(world.stage_duration(Stage::Integration), 0);
+}
+// --- ADR-120 : emprise physique courante des corps rapportés ------------------
+
+/// Écart toléré sur une emprise calculée en `f32`.
+const EPS_EMPRISE: f32 = 1.0e-5;
+
+/// Vérifie une emprise rapportée, composante par composante.
+fn assert_emprise(bounds: &BodyBounds, min: [f32; 3], max: [f32; 3]) {
+    for axis in 0..3 {
+        assert!(
+            (bounds.min[axis] - min[axis]).abs() < EPS_EMPRISE,
+            "min[{axis}] = {}, attendu {} ({bounds:?})",
+            bounds.min[axis],
+            min[axis]
+        );
+        assert!(
+            (bounds.max[axis] - max[axis]).abs() < EPS_EMPRISE,
+            "max[{axis}] = {}, attendu {} ({bounds:?})",
+            bounds.max[axis],
+            max[axis]
+        );
+    }
+}
+
+/// Le cube de test d'AXION : une boîte de 1 bloc posée sur l'origine du corps
+/// (bas-centre), comme le collider `auto_box` du contenu de test.
+fn cube_bas_centre() -> BodyCollider {
+    BodyCollider {
+        shape: Shape::Cuboid {
+            half_extents: [0.5, 0.5, 0.5],
+        },
+        density: 1.0,
+        material: ContactMaterial::default(),
+        translation: Vec3::new(0.0, 0.5, 0.0),
+        rotation: Quat::IDENTITY,
+    }
+}
+
+#[test]
+fn adr120_etats_et_emprises_sont_apparies() {
+    // Un même parcours produit les deux tableaux : même longueur, même ordre, et
+    // l'emprise de rang i est celle du corps de rang i — ici des formes de
+    // tailles distinctes, reconnaissables. Statique et anonyme : ni état ni
+    // emprise.
+    let mut world = PhysicsWorld::new(config());
+    let sol = world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, -0.5, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [5.0, 0.5, 5.0],
+            },
+        )
+        .unwrap();
+    world.set_body_identity(sol, Handle::new(1, 1), 0, 0);
+    world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(9.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 3.0 },
+        )
+        .unwrap();
+    let bille = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
+        .unwrap();
+    world.set_body_identity(bille, Handle::new(2, 1), 0, 0);
+    let caisse = world
+        .add_body(
+            BodyKind::Kinematic,
+            Vec3::new(4.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [1.0, 2.0, 3.0],
+            },
+        )
+        .unwrap();
+    world.set_body_identity(caisse, Handle::new(3, 1), 0, 0);
+
+    let reports = world.body_reports(&FloatingOrigin::new(DVec3::ZERO));
+    assert_eq!(reports.states.len(), 2);
+    assert_eq!(reports.bounds.len(), reports.states.len());
+    for (state, bounds) in reports.states.iter().zip(&reports.bounds) {
+        if state.handle == Handle::new(2, 1) {
+            assert_emprise(bounds, [-0.5; 3], [0.5; 3]);
+        } else {
+            assert_eq!(state.handle, Handle::new(3, 1));
+            assert_emprise(bounds, [-1.0, -2.0, -3.0], [1.0, 2.0, 3.0]);
+        }
+    }
+    assert_eq!(world.bounds_unavailable_count(), 0);
+}
+
+#[test]
+fn adr120_l_emprise_suit_l_orientation_du_corps() {
+    // Le cas observé en jeu : le cube posé sur son origine (bas-centre). Droit,
+    // son emprise est [-0.5, 0.5] × [0, 1] × [-0.5, 0.5] ; tourné, elle englobe.
+    let demi_diagonale = std::f32::consts::FRAC_1_SQRT_2;
+    let cas = [
+        // Droit.
+        (Quat::IDENTITY, [-0.5, 0.0, -0.5], [0.5, 1.0, 0.5]),
+        // 45° autour de Y : demi-largeur 0.5·√2 en x et z, hauteur inchangée.
+        (
+            Quat::from_rotation_y(std::f32::consts::FRAC_PI_4),
+            [-demi_diagonale, 0.0, -demi_diagonale],
+            [demi_diagonale, 1.0, demi_diagonale],
+        ),
+        // Basculé de 90° autour de X : le centre passe de (0, 0.5, 0) à
+        // (0, 0, 0.5) ; l'origine est au milieu d'une face latérale.
+        (
+            Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+            [-0.5, -0.5, 0.0],
+            [0.5, 0.5, 1.0],
+        ),
+    ];
+    for (rotation, min, max) in cas {
+        let mut world = PhysicsWorld::new(config());
+        let cube = world
+            .add_assembly(
+                BodyKind::Dynamic,
+                Vec3::new(3.0, 7.0, -2.0),
+                rotation,
+                &[cube_bas_centre()],
+            )
+            .unwrap();
+        world.set_body_identity(cube, Handle::new(1, 1), 0, 0);
+        let reports = world.body_reports(&FloatingOrigin::new(DVec3::ZERO));
+        assert_emprise(&reports.bounds[0], min, max);
+    }
+}
+
+#[test]
+fn adr120_l_emprise_est_l_union_des_colliders() {
+    // Plusieurs colliders, dont une forme composée : l'emprise les couvre tous.
+    let mut world = PhysicsWorld::new(config());
+    let bille_deportee = BodyCollider {
+        shape: Shape::Ball { radius: 0.25 },
+        density: 1.0,
+        material: ContactMaterial::default(),
+        translation: Vec3::new(2.0, 0.0, 0.0),
+        rotation: Quat::IDENTITY,
+    };
+    let compose = BodyCollider {
+        shape: Shape::Compound {
+            parts: vec![CompoundPart {
+                translation: Vec3::new(0.0, 0.0, -3.0),
+                rotation: Quat::IDENTITY,
+                shape: Shape::Cuboid {
+                    half_extents: [0.5, 0.5, 0.5],
+                },
+            }],
+        },
+        density: 1.0,
+        material: ContactMaterial::default(),
+        translation: Vec3::ZERO,
+        rotation: Quat::IDENTITY,
+    };
+    let corps = world
+        .add_assembly(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 10.0, 0.0),
+            Quat::IDENTITY,
+            &[cube_bas_centre(), bille_deportee, compose],
+        )
+        .unwrap();
+    world.set_body_identity(corps, Handle::new(1, 1), 0, 0);
+    let reports = world.body_reports(&FloatingOrigin::new(DVec3::ZERO));
+    assert_emprise(&reports.bounds[0], [-0.5, -0.5, -3.5], [2.25, 1.0, 0.5]);
+}
+
+#[test]
+fn adr120_l_emprise_suit_la_pose_restauree() {
+    // R-181 : un corps hors du monde est ramené à l'origine par `set_position`,
+    // qui ne resynchronise ses colliders qu'au pas suivant. Une emprise lue dans
+    // le cache des colliders resterait à 2e7 blocs de la pose rapportée ; celle
+    // d'ADR-120 part de la pose rapportée.
+    let mut world = PhysicsWorld::new(config());
+    let bille = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(2.0e7, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
+        .unwrap();
+    world.set_body_identity(bille, Handle::new(5, 1), 0, 0);
+
+    world.advance(1.0 / 60.0);
+
+    assert_eq!(
+        world.invalid_state_count(),
+        1,
+        "la pose a bien été restaurée"
+    );
+    let reports = world.body_reports(&FloatingOrigin::new(DVec3::ZERO));
+    assert!(reports.states[0].position[0].abs() < 1.0, "pose restaurée");
+    assert_emprise(&reports.bounds[0], [-0.5; 3], [0.5; 3]);
+}
+
+#[test]
+fn adr120_l_emprise_ne_perd_rien_loin_de_l_origine() {
+    // L'emprise est calculée sous la seule rotation du corps : loin de l'origine
+    // de simulation, elle garde la précision d'un corps à l'origine. Une
+    // soustraction « emprise absolue − translation » y perdrait de l'ordre d'un
+    // ulp de 3e4 (environ 2e-3), bien au-delà de la tolérance.
+    let angle = std::f32::consts::FRAC_PI_6;
+    let mut world = PhysicsWorld::new(config());
+    let caisse = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(30_000.3, 5.0, -30_000.7),
+            Quat::from_rotation_z(angle),
+            Shape::Cuboid {
+                half_extents: [0.5, 0.5, 0.5],
+            },
+        )
+        .unwrap();
+    world.set_body_identity(caisse, Handle::new(1, 1), 0, 0);
+    let reports = world.body_reports(&FloatingOrigin::new(DVec3::ZERO));
+    // Demi-étendue d'une boîte tournée de 30° autour de z : 0.5·(cos 30° + sin 30°).
+    let demi = 0.5 * (angle.cos() + angle.sin());
+    assert_emprise(&reports.bounds[0], [-demi, -demi, -0.5], [demi, demi, 0.5]);
+}
+
+#[test]
+fn adr120_une_emprise_incalculable_est_nulle_et_comptee() {
+    // Un corps sans collider n'a pas d'emprise : il est rapporté avec la boîte
+    // nulle, jamais une valeur inventée, et l'événement est compté.
+    let mut world = PhysicsWorld::new(config());
+    let vide = world
+        .add_assembly(
+            BodyKind::Kinematic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            &[],
+        )
+        .unwrap();
+    world.set_body_identity(vide, Handle::new(1, 1), 0, 0);
+    let reports = world.body_reports(&FloatingOrigin::new(DVec3::ZERO));
+    assert_eq!(reports.bounds, vec![BodyBounds::EMPTY]);
+    assert_eq!(world.bounds_unavailable_count(), 1);
 }

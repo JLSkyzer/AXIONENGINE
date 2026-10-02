@@ -41,7 +41,7 @@ use ax_model::budgets::Budget;
 use ax_model::dm::commands::CreateAssembly;
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
-use ax_model::dm::physics::ColliderDesc;
+use ax_model::dm::physics::{BodyBounds, BodyState, ColliderDesc};
 use ax_physics::{BodyCollider, BodyKind, ContactMaterial, Shape, SimDriver};
 
 /// Version de l'ABI.
@@ -740,12 +740,14 @@ pub unsafe extern "C" fn axion_buffer_acquire(
             let info = session.buffers().acquire(kind, min_capacity);
             // L'en-tête est posé dès l'acquisition : Java y lit la génération
             // sans second appel, et un tampon fraîchement acquis n'est jamais
-            // dans un état que `BufferHeader::read` refuserait.
+            // dans un état que `BufferHeader::read` refuserait. La version de
+            // schéma est celle du kind (R-262) : elle dit à Java comment lire la
+            // charge — pour SIM_OUT, si les emprises suivent les états (ADR-120).
             if let Some(buffer) = session.buffers().get_mut(kind) {
                 BufferHeader {
                     kind,
                     generation: info.generation,
-                    schema_version: 0,
+                    schema_version: kind.schema_version(),
                     payload_len: 0,
                     element_count: 0,
                     crc32c: 0,
@@ -986,8 +988,12 @@ fn read_le_f64(bytes: &[u8], at: usize) -> f64 {
 }
 
 /// Récolte le résultat d'un tick (IF-03) : avance la simulation, dépose les
-/// `BodyState` dans `SimOut` et les `PhysicsEvent` dans `Events`, et remplit
-/// `out`.
+/// `BodyState` puis leurs `BodyBounds` dans `SimOut` (schéma 1, ADR-120) et les
+/// `PhysicsEvent` dans `Events`, et remplit `out`.
+///
+/// États et emprises forment **un seul lot** (R-250) : `BodyBounds[i]`, à
+/// l'offset `80 × state_count + 24 × i` de la charge, est l'emprise du corps de
+/// `BodyState[i]`.
 ///
 /// # Safety
 /// `out` doit être non nul et accessible en écriture.
@@ -1003,12 +1009,20 @@ pub unsafe extern "C" fn axion_sim_collect(
         }
         let result = match context::with(ctx, false, |session| {
             session.physics().advance_all(SERVER_TICK_DT);
-            let states = session.physics().collect_states();
+            let reports = session.physics().collect_reports();
+            let states = &reports.states;
+            // Appariement garanti par construction (un même parcours) ; Java
+            // lit les emprises au rang des états.
+            debug_assert_eq!(states.len(), reports.bounds.len());
             let events = session.physics().drain_events();
 
-            let mut states_bytes = Vec::new();
-            for state in &states {
-                state.write_le(&mut states_bytes);
+            let mut sim_out_bytes =
+                Vec::with_capacity(states.len() * (BodyState::BYTES + BodyBounds::BYTES));
+            for state in states {
+                state.write_le(&mut sim_out_bytes);
+            }
+            for bounds in &reports.bounds {
+                bounds.write_le(&mut sim_out_bytes);
             }
             let mut events_bytes = Vec::new();
             for event in &events {
@@ -1016,7 +1030,7 @@ pub unsafe extern "C" fn axion_sim_collect(
             }
             session
                 .buffers()
-                .write_payload(BufferKind::SimOut, &states_bytes);
+                .write_payload(BufferKind::SimOut, &sim_out_bytes);
             session
                 .buffers()
                 .write_payload(BufferKind::Events, &events_bytes);

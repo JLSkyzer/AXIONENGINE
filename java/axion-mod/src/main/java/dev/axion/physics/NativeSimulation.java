@@ -27,6 +27,15 @@ public final class NativeSimulation {
     /** Position de la génération dans l'en-tête d'un tampon (IF-02). */
     private static final int GENERATION_OFFSET = 8;
 
+    /** Position de la version de schéma dans l'en-tête d'un tampon (IF-02, R-271). */
+    private static final int SCHEMA_OFFSET = 12;
+
+    /**
+     * Premier schéma de {@code SIM_OUT} où les emprises suivent les états (ADR-120). Fixe :
+     * un schéma ultérieur n'ajoute qu'en fin, et garde ce préfixe.
+     */
+    private static final int BOUNDS_SINCE_SCHEMA = 1;
+
     private final long context;
 
     /** Réutilisé à chaque {@code collect} : aucune allocation par tick. */
@@ -114,7 +123,7 @@ public final class NativeSimulation {
 
         int stateCount = (int) collectScratch[NativeBridge.SIM_STATE_COUNT];
         int eventCount = (int) collectScratch[NativeBridge.SIM_EVENT_COUNT];
-        List<BodyState> bodies = readBodies(stateCount);
+        SimOut simOut = readSimOut(stateCount);
         List<PhysicsEvent> events = readEvents(eventCount);
 
         return new CollectResult(
@@ -126,7 +135,8 @@ public final class NativeSimulation {
                 (int) collectScratch[NativeBridge.SIM_DETACH_COUNT],
                 (int) collectScratch[NativeBridge.SIM_NET_BYTES],
                 (int) collectScratch[NativeBridge.SIM_FLAGS],
-                bodies,
+                simOut.bodies(),
+                simOut.bounds(),
                 events);
     }
 
@@ -139,22 +149,43 @@ public final class NativeSimulation {
         return NativeBridge.cancel(context);
     }
 
-    /** Lit les {@code state_count} états de {@code SIM_OUT}, puis relâche (R-322). */
-    private List<BodyState> readBodies(int count) {
+    /** Ce que {@code SIM_OUT} porte : les états, et leurs emprises s'il les annonce. */
+    private record SimOut(List<BodyState> bodies, List<BodyBounds> bounds) {}
+
+    /**
+     * Lit les {@code state_count} états de {@code SIM_OUT} et, depuis le schéma 1, leurs
+     * emprises (ADR-120), puis relâche (R-322).
+     *
+     * <p>Les emprises suivent les états, au même rang. Elles ne sont lues que si l'en-tête
+     * annonce un schéma qui les contient <strong>et</strong> si le tampon les couvre : un
+     * natif antérieur dégrade en liste vide, il ne fait pas lire au-delà de sa charge.
+     */
+    private SimOut readSimOut(int count) {
         ByteBuffer buffer = NativeBridge.acquire(context, BufferKinds.SIM_OUT, 0);
         if (buffer == null) {
-            return List.of();
+            return new SimOut(List.of(), List.of());
         }
         int generation = buffer.getInt(GENERATION_OFFSET);
+        int schema = buffer.getInt(SCHEMA_OFFSET);
         List<BodyState> bodies = new ArrayList<>(count);
-        int available = Math.max(0, buffer.capacity() - BufferKinds.HEADER_BYTES);
-        if (count * BodyState.BYTES <= available) {
+        List<BodyBounds> bounds = List.of();
+        long available = Math.max(0, buffer.capacity() - BufferKinds.HEADER_BYTES);
+        if ((long) count * BodyState.BYTES <= available) {
             for (int i = 0; i < count; i++) {
                 bodies.add(BodyState.decode(buffer, BufferKinds.HEADER_BYTES + i * BodyState.BYTES));
             }
+            long withBounds = (long) count * (BodyState.BYTES + BodyBounds.BYTES);
+            if (schema >= BOUNDS_SINCE_SCHEMA && withBounds <= available) {
+                int boundsAt = BufferKinds.HEADER_BYTES + count * BodyState.BYTES;
+                List<BodyBounds> read = new ArrayList<>(count);
+                for (int i = 0; i < count; i++) {
+                    read.add(BodyBounds.decode(buffer, boundsAt + i * BodyBounds.BYTES));
+                }
+                bounds = read;
+            }
         }
         NativeBridge.release(context, BufferKinds.SIM_OUT, generation);
-        return bodies;
+        return new SimOut(bodies, bounds);
     }
 
     /** Lit les {@code event_count} événements d'{@code EVENTS}, puis relâche (R-322). */

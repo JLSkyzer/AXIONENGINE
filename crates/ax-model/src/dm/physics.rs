@@ -395,6 +395,66 @@ impl BodyState {
     }
 }
 
+/// Emprise d'un corps rapporté (ajout à DM-08, ADR-120) : sa boîte englobante
+/// alignée sur les axes du monde, **relative à la position** de son
+/// [`BodyState`], en blocs.
+///
+/// C'est la source de la hitbox vanilla (R-702) : Java la recompose avec la
+/// position `f64` de l'état. Union des emprises de tous les colliders du corps,
+/// calculée depuis la pose rapportée. Garanties : composantes finies,
+/// `min <= max` sur chaque axe ; une emprise incalculable est la boîte nulle
+/// [`BodyBounds::EMPTY`].
+///
+/// Dans `SIM_OUT`, le tableau `BodyBounds[state_count]` suit `BodyState[]`,
+/// dans le même ordre (schéma 1 du tampon).
+///
+/// **Disposition figée** : 24 octets, alignement 4, aucun remplissage.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BodyBounds {
+    /// Coin minimal, relatif à la position du corps.
+    pub min: [f32; 3],
+    /// Coin maximal, relatif à la position du corps.
+    pub max: [f32; 3],
+}
+
+impl BodyBounds {
+    /// Taille de la structure sur la frontière, en octets.
+    pub const BYTES: usize = 24;
+
+    /// Boîte nulle, rapportée pour un corps dont l'emprise ne peut être calculée.
+    pub const EMPTY: BodyBounds = BodyBounds {
+        min: [0.0; 3],
+        max: [0.0; 3],
+    };
+
+    /// Sérialise l'emprise en little-endian, dans la disposition figée, à la fin
+    /// de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        for value in self.min.iter().chain(self.max.iter()) {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+
+    /// Relit une emprise écrite par [`BodyBounds::write_le`].
+    #[must_use]
+    pub fn read_le(bytes: &[u8; Self::BYTES]) -> Self {
+        let at = |rank: usize| {
+            let start = rank * 4;
+            f32::from_le_bytes([
+                bytes[start],
+                bytes[start + 1],
+                bytes[start + 2],
+                bytes[start + 3],
+            ])
+        };
+        BodyBounds {
+            min: [at(0), at(1), at(2)],
+            max: [at(3), at(4), at(5)],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,6 +537,46 @@ mod tests {
         assert_eq!(offset_of!(BodyState, lin_vel), 48);
         assert_eq!(offset_of!(BodyState, ang_vel), 60);
         assert_eq!(offset_of!(BodyState, flags), 72);
+    }
+
+    #[test]
+    fn dm_body_bounds_disposition_figee() {
+        // ADR-120 : 24 octets, alignement 4, `min` puis `max`, aucun remplissage.
+        use core::mem::{align_of, offset_of, size_of};
+        assert_eq!(size_of::<BodyBounds>(), BodyBounds::BYTES);
+        assert_eq!(align_of::<BodyBounds>(), 4);
+        assert_eq!(offset_of!(BodyBounds, min), 0);
+        assert_eq!(offset_of!(BodyBounds, max), 12);
+    }
+
+    #[test]
+    fn body_bounds_write_le_respecte_la_disposition() {
+        let bounds = BodyBounds {
+            min: [-0.5, 0.0, -1.25],
+            max: [0.5, 1.0, 2.5],
+        };
+        let mut bytes = Vec::new();
+        bounds.write_le(&mut bytes);
+        assert_eq!(bytes.len(), BodyBounds::BYTES);
+        // Octet par octet, d'après la disposition : six f32 little-endian.
+        let attendus: [f32; 6] = [-0.5, 0.0, -1.25, 0.5, 1.0, 2.5];
+        for (rank, value) in attendus.iter().enumerate() {
+            let at = rank * 4;
+            assert_eq!(
+                bytes[at..at + 4],
+                value.to_le_bytes(),
+                "composante {rank} mal placée"
+            );
+        }
+        let relue = BodyBounds::read_le(bytes.as_slice().try_into().unwrap());
+        assert_eq!(relue, bounds);
+    }
+
+    #[test]
+    fn body_bounds_vide_est_la_boite_nulle() {
+        let mut bytes = Vec::new();
+        BodyBounds::EMPTY.write_le(&mut bytes);
+        assert_eq!(bytes, vec![0u8; BodyBounds::BYTES]);
     }
 
     #[test]

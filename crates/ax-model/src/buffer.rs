@@ -141,6 +141,24 @@ impl BufferKind {
         }
     }
 
+    /// Version du schéma de la charge utile, propre au kind (R-262, R-271).
+    ///
+    /// Écrite dans l'en-tête à chaque acquisition : c'est ce qui dit à Java
+    /// comment lire ce qui suit. Elle ne change qu'avec la disposition de la
+    /// charge, et seulement par ajout en fin — un lecteur d'une version
+    /// antérieure lit encore son préfixe.
+    ///
+    /// - `SIM_OUT` = 1 (ADR-120) : `BodyState[state_count]` puis
+    ///   `BodyBounds[state_count]`, dans le même ordre ;
+    /// - tous les autres kinds : 0, leur charge n'est pas encore versionnée.
+    #[must_use]
+    pub const fn schema_version(self) -> u32 {
+        match self {
+            BufferKind::SimOut => 1,
+            _ => 0,
+        }
+    }
+
     /// Sens de circulation de la donnée.
     #[must_use]
     pub const fn direction(self) -> Direction {
@@ -478,5 +496,14 @@ mod tests {
         assert_eq!(BufferKind::ImpactIn.direction(), Direction::JavaToNative);
         assert_eq!(BufferKind::SimOut.direction(), Direction::NativeToJava);
         assert_eq!(BufferKind::RenderOut.direction(), Direction::NativeToJava);
+    }
+
+    #[test]
+    fn versions_de_schema_des_kinds() {
+        // ADR-120 : seul SIM_OUT porte un schéma versionné (1 : états puis emprises).
+        for kind in BufferKind::ALL {
+            let attendue = if kind == BufferKind::SimOut { 1 } else { 0 };
+            assert_eq!(kind.schema_version(), attendue, "{kind}");
+        }
     }
 }

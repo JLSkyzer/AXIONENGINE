@@ -22,8 +22,9 @@ use crate::config::PhysicsConfig;
 use crate::forces::{FluidEnvironment, FluidVolume, LiftSurface};
 use crate::groups::CollisionGroups;
 use ax_model::dm::handle::Handle;
-use ax_model::dm::physics::{body_state_flags, event_kind, BodyState, PhysicsEvent};
+use ax_model::dm::physics::{body_state_flags, event_kind, BodyBounds, BodyState, PhysicsEvent};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Plafond par défaut d'événements par tick (§10.7, `physics.max_events_per_tick`).
 const DEFAULT_MAX_EVENTS_PER_TICK: usize = 4096;
@@ -227,6 +228,32 @@ pub struct PhysicsWorld {
     clamp_journal_count: u64,
     /// Nombre cumulé d'états invalides restaurés (R-181, `E-2030`).
     invalid_state_count: u64,
+    /// Nombre cumulé d'emprises incalculables (ADR-120). Atomique parce que le
+    /// rapport se produit en lecture (`&self`) ; aucun accès concurrent n'existe
+    /// aujourd'hui, l'ordre relâché suffit.
+    bounds_unavailable: AtomicU64,
+}
+
+/// États et emprises des corps rapportés par un tick (DM-08, ADR-120).
+///
+/// Deux tableaux parallèles, produits par un même parcours : `bounds[i]` est
+/// l'emprise du corps de `states[i]`. C'est la forme dans laquelle ils
+/// traversent la frontière, l'un après l'autre dans `SIM_OUT`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BodyReports {
+    /// États des corps.
+    pub states: Vec<BodyState>,
+    /// Emprises des mêmes corps, dans le même ordre.
+    pub bounds: Vec<BodyBounds>,
+}
+
+impl BodyReports {
+    /// Ajoute les rapports d'un autre lot à la suite de celui-ci, en gardant
+    /// l'appariement.
+    pub fn append(&mut self, mut other: BodyReports) {
+        self.states.append(&mut other.states);
+        self.bounds.append(&mut other.bounds);
+    }
 }
 
 impl PhysicsWorld {
@@ -267,6 +294,7 @@ impl PhysicsWorld {
             sim_clock: 0.0,
             clamp_journal_count: 0,
             invalid_state_count: 0,
+            bounds_unavailable: AtomicU64::new(0),
         }
     }
 
@@ -1145,21 +1173,38 @@ impl PhysicsWorld {
         self.invalid_state_count
     }
 
-    /// Produit l'état des corps mobiles identifiés (DM-08), pour le cycle de
-    /// simulation (IF-03).
+    /// Nombre cumulé d'emprises incalculables, rapportées comme la boîte nulle
+    /// (ADR-120). Jamais de valeur inventée en silence : ce compteur en fait foi.
+    #[must_use]
+    pub fn bounds_unavailable_count(&self) -> u64 {
+        self.bounds_unavailable.load(Ordering::Relaxed)
+    }
+
+    /// Produit l'état des corps mobiles identifiés (DM-08) — vue des seuls
+    /// états de [`body_reports`](Self::body_reports).
+    #[must_use]
+    pub fn body_states(&self, origin: &FloatingOrigin) -> Vec<BodyState> {
+        self.body_reports(origin).states
+    }
+
+    /// Produit l'état et l'emprise des corps mobiles identifiés (DM-08,
+    /// ADR-120), pour le cycle de simulation (IF-03).
     ///
-    /// Un seul état par corps **non statique** portant une identité : les corps
-    /// statiques ne bougent pas, et un corps sans identité n'est pas routable
-    /// vers Java. La position monde (`f64`) est recomposée depuis la simulation
-    /// `f32` par l'origine flottante de la dimension (R-462). L'ordre suit
-    /// l'itération déterministe de `rapier` (R-1020).
+    /// Un seul rapport par corps **non statique** portant une identité : les
+    /// corps statiques ne bougent pas, et un corps sans identité n'est pas
+    /// routable vers Java. La position monde (`f64`) est recomposée depuis la
+    /// simulation `f32` par l'origine flottante de la dimension (R-462). L'ordre
+    /// suit l'itération déterministe de `rapier` (R-1020).
+    ///
+    /// États et emprises sortent de **ce même parcours** : `bounds[i]` est
+    /// l'emprise du corps de `states[i]`, par construction.
     ///
     /// Flags peuplés : SLEEPING, IN_FLUID et CLAMPED (garde-fou R-180 du tick).
     /// Les autres (TOUCHING_GROUND, DEFORMED, DAMAGED) s'ajouteront avec leur
     /// source (contacts sol puis M6).
     #[must_use]
-    pub fn body_states(&self, origin: &FloatingOrigin) -> Vec<BodyState> {
-        let mut states = Vec::new();
+    pub fn body_reports(&self, origin: &FloatingOrigin) -> BodyReports {
+        let mut reports = BodyReports::default();
         for (handle, body) in self.inner.bodies.iter() {
             if !body.is_dynamic_or_kinematic() {
                 continue;
@@ -1183,7 +1228,7 @@ impl PhysicsWorld {
                 flags |= body_state_flags::IN_FLUID;
             }
 
-            states.push(BodyState {
+            reports.states.push(BodyState {
                 handle: identity.assembly,
                 position: world.to_array(),
                 rotation: pose.rotation.to_array(),
@@ -1191,8 +1236,52 @@ impl PhysicsWorld {
                 ang_vel: body.angvel().to_array(),
                 flags,
             });
+            reports
+                .bounds
+                .push(self.body_bounds(body).unwrap_or_else(|| {
+                    self.bounds_unavailable.fetch_add(1, Ordering::Relaxed);
+                    BodyBounds::EMPTY
+                }));
         }
-        states
+        reports
+    }
+
+    /// Emprise d'un corps (ADR-120) : union des emprises de ses colliders,
+    /// alignée sur les axes du monde, **relative à sa translation**.
+    ///
+    /// Calculée depuis la **pose courante du corps** — celle que rapporte
+    /// [`body_reports`](Self::body_reports) — composée avec la pose locale de
+    /// chaque collider, jamais depuis la position de collider en cache : une
+    /// restauration R-181 (`set_position`) ne resynchronise les colliders qu'au
+    /// pas suivant, et l'emprise contredirait alors la pose rapportée.
+    ///
+    /// Le calcul se fait sous la seule **rotation** du corps : l'emprise d'une
+    /// forme translatée n'est que l'emprise translatée, si bien que le résultat
+    /// sort directement relatif à l'origine du corps — sans soustraction de deux
+    /// grandeurs voisines, ni dépendance à l'origine flottante.
+    ///
+    /// `None` si l'emprise est incalculable : aucun collider, collider sans
+    /// parent, valeur non finie.
+    fn body_bounds(&self, body: &RigidBody) -> Option<BodyBounds> {
+        let orientation = RapierPose::from_parts(Vec3::ZERO, body.position().rotation);
+        let mut union: Option<(Vec3, Vec3)> = None;
+        for handle in body.colliders() {
+            let collider = self.inner.colliders.get(*handle)?;
+            let local = collider.position_wrt_parent()?;
+            let aabb = collider.shape().compute_aabb(&(orientation * local));
+            union = Some(match union {
+                None => (aabb.mins, aabb.maxs),
+                Some((min, max)) => (min.min(aabb.mins), max.max(aabb.maxs)),
+            });
+        }
+        let (min, max) = union?;
+        if !(min.is_finite() && max.is_finite()) {
+            return None;
+        }
+        Some(BodyBounds {
+            min: min.to_array(),
+            max: max.to_array(),
+        })
     }
 
     /// Indique si un coin de l'AABB du corps est immergé — dans un volume localisé ou

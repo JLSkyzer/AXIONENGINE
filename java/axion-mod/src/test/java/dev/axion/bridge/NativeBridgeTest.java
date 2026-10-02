@@ -1,5 +1,6 @@
 package dev.axion.bridge;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -348,6 +349,20 @@ class NativeBridgeTest {
         assertEquals(1, corps.handleGeneration());
         double yDepart = corps.position()[1];
 
+        // ADR-120 : l'emprise suit l'état dans SIM_OUT (schéma 1). Le collider auto_box
+        // du triangle couvre [0, 1]³ dans l'asset ; le spawn est sans rotation, d'où une
+        // emprise de (0, 0, 0) à (1, 1, 1) relative à la position du corps.
+        assertEquals(1, cree.bounds().size(), "une emprise par état");
+        assertArrayEquals(new float[] {0.0f, 0.0f, 0.0f}, cree.bounds().get(0).min(), 1.0e-5f);
+        assertArrayEquals(new float[] {1.0f, 1.0f, 1.0f}, cree.bounds().get(0).max(), 1.0e-5f);
+        ByteBuffer simOut = NativeBridge.acquire(reprise, BufferKinds.SIM_OUT, 0);
+        assertNotNull(simOut);
+        assertEquals(
+                BufferKinds.SIM_OUT_SCHEMA,
+                simOut.getInt(12),
+                "l'en-tête de SIM_OUT annonce le schéma du registre");
+        assertEquals(NativeBridge.OK, NativeBridge.release(reprise, BufferKinds.SIM_OUT, simOut.getInt(8)));
+
         // Ticks à vide : le corps tombe sous la gravité par défaut (−9,81 m/s²).
         double yCourant = yDepart;
         for (int t = 0; t < 30; t++) {
@@ -361,6 +376,10 @@ class NativeBridgeTest {
         assertTrue(
                 yFinal < yDepart - 0.1,
                 () -> "le corps dynamique doit tomber : y " + yDepart + " -> " + yFinal);
+        // Chute libre sans couple : l'emprise, relative à la position, n'a pas bougé.
+        dev.axion.physics.CollectResult apresChute =
+                simulation.tick(40L, new dev.axion.physics.SimCommandStream(), 0L);
+        assertArrayEquals(new float[] {1.0f, 1.0f, 1.0f}, apresChute.bounds().get(0).max(), 1.0e-5f);
 
         // Annuler après un cycle clos est inoffensif.
         assertEquals(NativeBridge.OK, simulation.cancel());

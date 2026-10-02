@@ -14,7 +14,7 @@ use crate::body::{BodyCollider, BodyId, BodyKind, ContactMaterial, Shape};
 use crate::config::PhysicsConfig;
 use crate::forces::FluidEnvironment;
 use crate::forces::FluidVolume;
-use crate::world::PhysicsWorld;
+use crate::world::{BodyReports, PhysicsWorld};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
@@ -362,17 +362,26 @@ impl SimDriver {
         }
     }
 
-    /// Récolte l'état des corps mobiles de toutes les dimensions (DM-08).
-    ///
-    /// Concaténés dans l'ordre déterministe des dimensions puis des corps
-    /// (R-1020).
+    /// Récolte l'état des corps mobiles de toutes les dimensions (DM-08) — vue
+    /// des seuls états de [`collect_reports`](Self::collect_reports).
     #[must_use]
     pub fn collect_states(&self) -> Vec<BodyState> {
-        let mut states = Vec::new();
+        self.collect_reports().states
+    }
+
+    /// Récolte l'état et l'emprise des corps mobiles de toutes les dimensions
+    /// (DM-08, ADR-120).
+    ///
+    /// Concaténés dans l'ordre déterministe des dimensions puis des corps
+    /// (R-1020), états et emprises ensemble : l'appariement de chaque dimension
+    /// est conservé.
+    #[must_use]
+    pub fn collect_reports(&self) -> BodyReports {
+        let mut reports = BodyReports::default();
         for sim in self.dimensions.values() {
-            states.extend(sim.world.body_states(&sim.origin));
+            reports.append(sim.world.body_reports(&sim.origin));
         }
-        states
+        reports
     }
 
     /// Vide et concatène les lots d'événements de toutes les dimensions (§10.7).
@@ -611,6 +620,54 @@ mod tests {
         assert!((states[0].position[0] - 1000.0).abs() < 1e-3);
         assert_eq!(states[1].handle, Handle::new(20, 1));
         assert!(states[1].position[0].abs() < 1e-3);
+    }
+
+    #[test]
+    fn collect_reports_garde_l_appariement_entre_dimensions() {
+        // ADR-120 : la concaténation des dimensions garde chaque emprise au rang
+        // de son état — des formes de tailles distinctes le rendent visible.
+        let mut driver = SimDriver::new();
+        let petite = driver
+            .world_or_create(0, config(), FloatingOrigin::new(DVec3::ZERO))
+            .add_body(
+                BodyKind::Dynamic,
+                Vec3::new(0.0, 5.0, 0.0),
+                Quat::IDENTITY,
+                Shape::Ball { radius: 0.5 },
+            )
+            .unwrap();
+        driver
+            .world_mut(0)
+            .unwrap()
+            .set_body_identity(petite, Handle::new(10, 1), 0, 0);
+        let grande = driver
+            .world_or_create(
+                1,
+                config(),
+                FloatingOrigin::new(DVec3::new(5000.0, 0.0, 0.0)),
+            )
+            .add_body(
+                BodyKind::Dynamic,
+                Vec3::new(0.0, 5.0, 0.0),
+                Quat::IDENTITY,
+                Shape::Cuboid {
+                    half_extents: [1.0, 2.0, 3.0],
+                },
+            )
+            .unwrap();
+        driver
+            .world_mut(1)
+            .unwrap()
+            .set_body_identity(grande, Handle::new(20, 1), 0, 0);
+
+        let reports = driver.collect_reports();
+        assert_eq!(reports.states.len(), 2);
+        assert_eq!(reports.bounds.len(), 2);
+        assert_eq!(reports.states[0].handle, Handle::new(10, 1));
+        assert_eq!(reports.bounds[0].max, [0.5, 0.5, 0.5]);
+        assert_eq!(reports.states[1].handle, Handle::new(20, 1));
+        assert_eq!(reports.bounds[1].max, [1.0, 2.0, 3.0]);
+        assert_eq!(reports.bounds[1].min, [-1.0, -2.0, -3.0]);
     }
 
     #[test]

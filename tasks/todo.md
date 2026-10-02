@@ -960,12 +960,20 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       - [ ] **R-702 — emprise physique courante → hitbox** (ADR-120, ratifié le
             2026-10-02). Constat en jeu (T2c) : après une bascule, la hitbox 1×1 ancrée
             à l'origine du corps flotte d'un demi-bloc à côté du cube.
-            - [ ] **T-a** `[EFFORT MAX]` — `BodyBounds` (24 o, relatif à la position,
+            - [x] **T-a** `[EFFORT MAX]` — `BodyBounds` (24 o, relatif à la position,
                   axes du monde) dans `ax-model` + test de disposition ; calcul dans
                   `ax-physics` depuis la **pose rapportée** (pas le cache des colliders,
                   que R-181 peut laisser en retard d'un pas), même parcours que les
                   états ; dépôt dans `SIM_OUT` après `BodyState[]`, `schema_version` 1
                   écrit par `axion_buffer_acquire` ; test d'ABI ; lecture Java (JNI réelle).
+                  Fait (2026-10-02) : emprise calculée sous la seule rotation du corps
+                  (aucune soustraction, précision gardée loin de l'origine) ; 12 tests Rust
+                  (disposition, appariement, orientation, union, pose restaurée R-181,
+                  précision, emprise incalculable, ABI de bout en bout), dont deux prouvés
+                  discriminants (la variante cache + soustraction les fait échouer) ;
+                  `SIM_OUT_SCHEMA` généré ; Java : `BodyBounds`, `CollectResult.bounds`,
+                  lecture conditionnée au schéma, JNI réelle. cargo 703 verts, clippy/fmt
+                  propres, Java 264 verts.
             - [ ] **T-b** — `AxionEntity.makeBoundingBox()` depuis l'emprise, contrôle
                   (finie, min ≤ max, ±1024), pont client `VECTOR3` × 2 interpolé, libellé
                   « provisoire » retiré à la première emprise ; vérifié en jeu (F3+B).
