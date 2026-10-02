@@ -114,6 +114,16 @@ public final class NativeBridge {
 
     static native int assetUnload(long ctx, int index, int generation);
 
+    static native int debugFill(
+            long ctx,
+            long overlayMask,
+            long dimension,
+            double cameraX,
+            double cameraY,
+            double cameraZ,
+            int maxSegments,
+            long[] out);
+
     // --- API ---------------------------------------------------------------
 
     /**
@@ -462,5 +472,47 @@ public final class NativeBridge {
      */
     public static int unloadAsset(long ctx, int index, int generation) {
         return assetUnload(ctx, index, generation);
+    }
+
+    // --- Géométrie de debug (C-67, ADR-121) --------------------------------
+
+    /**
+     * Overlay {@code colliders} : bit 0 du masque, rang de l'overlay dans la liste du §31.4
+     * (ADR-121).
+     */
+    public static final long OVERLAY_COLLIDERS = 1L;
+
+    /**
+     * Dépose dans {@code AXION_BUF_DEBUG} la géométrie des overlays demandés (ADR-121) :
+     * corps d'assembly de la dimension, les plus proches de la caméra d'abord, au plus
+     * {@code maxSegments} segments en repère du corps ; {@code out[0]} reçoit la taille de
+     * la charge utile.
+     *
+     * <p>À n'appeler que lorsqu'un overlay est allumé (R-800). Lecture seule côté natif.
+     *
+     * @param ctx jeton de contexte
+     * @param overlayMask overlays demandés, {@link #OVERLAY_COLLIDERS} seulement
+     * @param dimension identifiant de dimension, celui des commandes de simulation
+     * @param cameraX position monde de la caméra
+     * @param cameraY position monde de la caméra
+     * @param cameraZ position monde de la caméra
+     * @param maxSegments budget de segments, positif ou nul
+     * @param out tableau d'au moins un élément
+     * @return {@link #OK}, ou {@link #E_INVALID_BUFFER} pour un masque, une caméra ou un
+     *     budget refusé
+     */
+    public static int fillDebug(
+            long ctx,
+            long overlayMask,
+            long dimension,
+            double cameraX,
+            double cameraY,
+            double cameraZ,
+            int maxSegments,
+            long[] out) {
+        if (out == null || out.length < 1) {
+            throw new IllegalArgumentException("le tableau de debug compte au moins un élément");
+        }
+        return debugFill(ctx, overlayMask, dimension, cameraX, cameraY, cameraZ, maxSegments, out);
     }
 }

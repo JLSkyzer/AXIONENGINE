@@ -19,8 +19,10 @@ use crate::body::{
     MAX_COMPOUND_PARTS, MAX_CONVEX_HULL_POINTS, MIN_CONVEX_HULL_POINTS,
 };
 use crate::config::PhysicsConfig;
+use crate::debug::{append_outline, ColliderOutline};
 use crate::forces::{FluidEnvironment, FluidVolume, LiftSurface};
 use crate::groups::CollisionGroups;
+use ax_model::dm::debug::debug_body_flags;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{body_state_flags, event_kind, BodyBounds, BodyState, PhysicsEvent};
 use std::collections::HashMap;
@@ -1282,6 +1284,53 @@ impl PhysicsWorld {
             min: min.to_array(),
             max: max.to_array(),
         })
+    }
+
+    /// Arêtes des colliders de chaque corps d'assembly, en repère du corps, pour
+    /// l'overlay `colliders` (C-67, ADR-121).
+    ///
+    /// Lecture seule. Corps retenus : ceux qui portent une identité d'assembly,
+    /// **statiques compris** — les tuiles de collision du monde n'en ont pas et
+    /// relèvent d'un autre overlay. Forme courante de chaque collider, à sa pose
+    /// relative au corps ; position monde (`f64`) recomposée par l'origine
+    /// flottante, pour le tri par distance. Ordre de `rapier` (R-1020).
+    #[must_use]
+    pub fn collider_outlines(&self, origin: &FloatingOrigin) -> Vec<ColliderOutline> {
+        let mut outlines = Vec::new();
+        for (handle, body) in self.inner.bodies.iter() {
+            let identity = match self.identity.get(&BodyId::from_handle(handle)) {
+                Some(identity) if !identity.assembly.is_absent() => identity,
+                _ => continue,
+            };
+            let mut flags = 0;
+            if body.is_fixed() {
+                flags |= debug_body_flags::STATIC;
+            } else if body.is_kinematic() {
+                flags |= debug_body_flags::KINEMATIC;
+            }
+            if body.is_sleeping() {
+                flags |= debug_body_flags::SLEEPING;
+            }
+            let mut segments = Vec::new();
+            for collider_handle in body.colliders() {
+                let Some(collider) = self.inner.colliders.get(*collider_handle) else {
+                    continue;
+                };
+                // Un collider rattaché à un corps a toujours sa pose relative ;
+                // sans elle, il n'est pas de ce corps.
+                let Some(local) = collider.position_wrt_parent() else {
+                    continue;
+                };
+                append_outline(collider.shape(), local, &mut segments);
+            }
+            outlines.push(ColliderOutline {
+                handle: identity.assembly,
+                flags,
+                position: origin.to_world(body.position().translation),
+                segments,
+            });
+        }
+        outlines
     }
 
     /// Indique si un coin de l'AABB du corps est immergé — dans un volume localisé ou

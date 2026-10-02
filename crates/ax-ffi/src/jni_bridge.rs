@@ -33,14 +33,15 @@
 use std::ffi::c_void;
 
 use jni::objects::{JByteArray, JClass, JLongArray, JObject};
-use jni::sys::{jint, jlong, JNI_ERR, JNI_VERSION_1_6};
+use jni::sys::{jdouble, jint, jlong, JNI_ERR, JNI_VERSION_1_6};
 use jni::{JNIEnv, JavaVM, NativeMethod};
 
 use crate::abi::{
     axion_abi_version, axion_asset_compile, axion_asset_geometry, axion_asset_load,
-    axion_asset_poll, axion_asset_unload, axion_buffer_acquire, axion_buffer_release, axion_init,
-    axion_last_error, axion_metrics_export, axion_shutdown, axion_sim_cancel, axion_sim_collect,
-    axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_asset_poll, axion_asset_unload, axion_buffer_acquire, axion_buffer_release,
+    axion_debug_fill, axion_init, axion_last_error, axion_metrics_export, axion_shutdown,
+    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
+    AXION_E_INVALID_BUFFER, AXION_OK,
 };
 use ax_model::dm::handle::Handle;
 
@@ -152,6 +153,11 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "assetUnload".into(),
             sig: "(JII)I".into(),
             fn_ptr: jni_asset_unload as *mut c_void,
+        },
+        NativeMethod {
+            name: "debugFill".into(),
+            sig: "(JJJDDDI[J)I".into(),
+            fn_ptr: jni_debug_fill as *mut c_void,
         },
     ];
 
@@ -587,6 +593,58 @@ extern "system" fn jni_asset_unload(
     unsafe { axion_asset_unload(ctx as u64, asset_handle(index, generation)) }
 }
 
+/// `NativeBridge.debugFill(long, long, long, double, double, double, int, long[])`
+/// (C-67, ADR-121).
+///
+/// Dépose la géométrie de debug dans `DEBUG` et écrit sa taille dans `out[0]`.
+/// Un budget négatif est refusé : il ne désigne aucun nombre de segments.
+#[allow(clippy::too_many_arguments)] // forme JNI de la signature d'ADR-121
+extern "system" fn jni_debug_fill(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    overlay_mask: jlong,
+    dimension: jlong,
+    camera_x: jdouble,
+    camera_y: jdouble,
+    camera_z: jdouble,
+    max_segments: jint,
+    out: JLongArray,
+) -> jint {
+    if out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(&out) {
+        Ok(length) if length >= 1 => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+    let Ok(max_segments) = u32::try_from(max_segments) else {
+        return AXION_E_INVALID_BUFFER;
+    };
+
+    let mut size: u64 = 0;
+    // SAFETY: `size` est une variable locale accessible en écriture.
+    let code = unsafe {
+        axion_debug_fill(
+            ctx as u64,
+            overlay_mask as u64,
+            dimension as u64,
+            camera_x,
+            camera_y,
+            camera_z,
+            max_segments,
+            &raw mut size,
+        )
+    };
+    if code != AXION_OK {
+        return code;
+    }
+    match env.set_long_array_region(&out, 0, &[size as jlong]) {
+        Ok(()) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     /// Les signatures JNI sont des chaînes non vérifiées par le compilateur :
@@ -610,6 +668,7 @@ mod tests {
             ("assetLoad", "(JJI[J)I"),
             ("assetGeometry", "(JII[J)I"),
             ("assetUnload", "(JII)I"),
+            ("debugFill", "(JJJDDDI[J)I"),
         ];
 
         for (nom, signature) in attendu {

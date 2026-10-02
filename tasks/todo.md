@@ -1727,11 +1727,18 @@ substituable sans changer rapier »).
       - [ ] **C-67 — overlay `colliders`** (ADR-121, ratifié le 2026-10-02) : voir la vraie
             forme du corps, tournée avec lui. `/axion debug colliders on|off`, commande client,
             mode développeur requis (`-Daxion.dev=true`).
-            - [ ] **T-a** `[EFFORT MAX]` — `DebugBody`/`DebugSegment` (24 o) + tests de
+            - [x] **T-a** `[EFFORT MAX]` — `DebugBody`/`DebugSegment` (24 o) + tests de
                   disposition ; tracé des colliders en repère du corps (parry `to_outline`,
                   vraies arêtes des convexes, composés, pose locale) ; tri par distance,
                   budget, omissions ; lecture seule prouvée ; `axion_debug_fill`, `DEBUG`
                   schéma 1, test d'ABI ; lecture Java (JNI réelle).
+                  Fait (2026-10-02) : parry 0.30.2 ne compile ni le tracé du convexe ni
+                  celui du champ de hauteurs — convexe par contour de faces (`edges()` en
+                  donne 18 pour un cube, prouvé), champ de hauteurs par ses triangles de
+                  collision. 19 tests Rust (disposition, formes, statiques, sommeil, tri,
+                  budget, dimension inconnue, lecture seule bit à bit, ABI de bout en bout) ;
+                  Java : `DebugGeometry`, `NativeDebugLoader`, JNI réelle. cargo 722 verts,
+                  clippy/fmt propres, Java 270 verts.
             - [ ] **T-b** — commande client, état des overlays, appel par tick, dessin à la
                   pose interpolée, index de handle = identifiant d'entité ; vérifié en jeu.
             - Hors portée, nommé : 34 autres overlays, multijoueur, mesure T-551 (C-72).

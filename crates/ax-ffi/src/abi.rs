@@ -36,9 +36,10 @@ use ax_asset::compile::CompileOptions;
 use ax_asset::import::{ImportLimits, SourceFormat};
 use ax_asset::optimize::LodOptions;
 use ax_jobs::{CpuShare, JobBudgets, JobKind, Side, WorkerPolicy};
-use ax_math::{Quat, Vec3};
+use ax_math::{DVec3, Quat, Vec3};
 use ax_model::budgets::Budget;
 use ax_model::dm::commands::CreateAssembly;
+use ax_model::dm::debug::{debug_flags, encode_debug_payload, overlay};
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyBounds, BodyState, ColliderDesc};
@@ -676,6 +677,75 @@ pub unsafe extern "C" fn axion_asset_unload(ctx: u64, handle: Handle) -> i32 {
         match context::with(ctx, false, |session| session.remove_asset(handle)) {
             Ok(true) => AXION_OK,
             Ok(false) => AXION_E_INVALID_HANDLE,
+            Err(code) => code,
+        }
+    })
+}
+
+/// Overlay `colliders` (C-67, ADR-121) : bit 0 du masque, rang de l'overlay dans
+/// la liste du §31.4.
+pub const AXION_OVERLAY_COLLIDERS: u64 = overlay::COLLIDERS;
+
+/// Overlays dont cette version sait produire la géométrie.
+const SUPPORTED_OVERLAYS: u64 = AXION_OVERLAY_COLLIDERS;
+
+/// Dépose dans `DEBUG` la géométrie des overlays demandés (C-67, ADR-121) :
+/// pour les corps d'assembly de `dimension`, les plus proches de la caméra
+/// d'abord, au plus `max_segments` segments en repère du corps. `out_size`
+/// reçoit la taille de la charge utile (schéma 1 de `DEBUG`).
+///
+/// Lecture seule : le monde physique n'est pas modifié. Appelée seulement quand
+/// un overlay est allumé (R-800) ; un masque vide ou portant un overlay que cette
+/// version ne trace pas est refusé `E-2002` — un appel qui « réussit » sans rien
+/// produire ferait croire à un overlay tracé. Une caméra non finie aussi.
+///
+/// # Safety
+///
+/// `out_size` doit pointer sur un `u64` accessible en écriture.
+#[no_mangle]
+#[allow(clippy::too_many_arguments)] // signature d'ABI fixée par ADR-121
+pub unsafe extern "C" fn axion_debug_fill(
+    ctx: u64,
+    overlay_mask: u64,
+    dimension: u64,
+    camera_x: f64,
+    camera_y: f64,
+    camera_z: f64,
+    max_segments: u32,
+    out_size: *mut u64,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if out_size.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        if overlay_mask == 0 || overlay_mask & !SUPPORTED_OVERLAYS != 0 {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let camera = DVec3::new(camera_x, camera_y, camera_z);
+        if !camera.is_finite() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let written = context::with(ctx, false, |session| {
+            let debug = session
+                .physics()
+                .debug_colliders(dimension, camera, max_segments);
+            let flags = if debug.omitted_bodies > 0 {
+                debug_flags::TRUNCATED
+            } else {
+                0
+            };
+            let payload =
+                encode_debug_payload(&debug.bodies, &debug.segments, flags, debug.omitted_bodies)?;
+            session.buffers().write_payload(BufferKind::Debug, &payload)
+        });
+        match written {
+            Ok(Some(size)) => {
+                // SAFETY: nullité écartée ci-dessus ; le contrat impose que
+                // `out_size` soit accessible en écriture.
+                unsafe { out_size.write(size) };
+                AXION_OK
+            }
+            Ok(None) => AXION_E_INVALID_BUFFER,
             Err(code) => code,
         }
     })

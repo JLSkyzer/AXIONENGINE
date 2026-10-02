@@ -12,6 +12,7 @@
 
 use crate::body::{BodyCollider, BodyId, BodyKind, ContactMaterial, Shape};
 use crate::config::PhysicsConfig;
+use crate::debug::{select_outlines, DebugColliders};
 use crate::forces::FluidEnvironment;
 use crate::forces::FluidVolume;
 use crate::world::{BodyReports, PhysicsWorld};
@@ -28,7 +29,7 @@ struct DimensionSim {
 }
 
 /// Clé de routage d'un handle : génération en poids fort, index en poids faible.
-fn handle_key(handle: Handle) -> u64 {
+pub(crate) fn handle_key(handle: Handle) -> u64 {
     (u64::from(handle.generation) << 32) | u64::from(handle.index)
 }
 
@@ -367,6 +368,27 @@ impl SimDriver {
     #[must_use]
     pub fn collect_states(&self) -> Vec<BodyState> {
         self.collect_reports().states
+    }
+
+    /// Géométrie de l'overlay `colliders` d'une dimension (C-67, ADR-121) : les
+    /// corps d'assembly les plus proches de `camera` (position monde) d'abord, au
+    /// plus `max_segments` segments en repère du corps ; un corps qui ne tient
+    /// pas est omis et compté. Dimension inconnue : rien. Lecture seule.
+    #[must_use]
+    pub fn debug_colliders(
+        &self,
+        dimension: u64,
+        camera: DVec3,
+        max_segments: u32,
+    ) -> DebugColliders {
+        match self.dimensions.get(&dimension) {
+            Some(sim) => select_outlines(
+                sim.world.collider_outlines(&sim.origin),
+                camera,
+                max_segments,
+            ),
+            None => DebugColliders::default(),
+        }
     }
 
     /// Récolte l'état et l'emprise des corps mobiles de toutes les dimensions

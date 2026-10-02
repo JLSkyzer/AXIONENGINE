@@ -150,11 +150,12 @@ impl BufferKind {
     ///
     /// - `SIM_OUT` = 1 (ADR-120) : `BodyState[state_count]` puis
     ///   `BodyBounds[state_count]`, dans le même ordre ;
+    /// - `DEBUG` = 1 (ADR-121) : en-tête, `DebugBody[]` puis `DebugSegment[]` ;
     /// - tous les autres kinds : 0, leur charge n'est pas encore versionnée.
     #[must_use]
     pub const fn schema_version(self) -> u32 {
         match self {
-            BufferKind::SimOut => 1,
+            BufferKind::SimOut | BufferKind::Debug => 1,
             _ => 0,
         }
     }
@@ -500,9 +501,14 @@ mod tests {
 
     #[test]
     fn versions_de_schema_des_kinds() {
-        // ADR-120 : seul SIM_OUT porte un schéma versionné (1 : états puis emprises).
+        // ADR-120 : SIM_OUT au schéma 1 (états puis emprises) ; ADR-121 : DEBUG au
+        // schéma 1 (géométrie de debug). Les autres kinds ne sont pas versionnés.
         for kind in BufferKind::ALL {
-            let attendue = if kind == BufferKind::SimOut { 1 } else { 0 };
+            let attendue = if matches!(kind, BufferKind::SimOut | BufferKind::Debug) {
+                1
+            } else {
+                0
+            };
             assert_eq!(kind.schema_version(), attendue, "{kind}");
         }
     }

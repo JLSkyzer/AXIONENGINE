@@ -363,6 +363,27 @@ class NativeBridgeTest {
                 "l'en-tête de SIM_OUT annonce le schéma du registre");
         assertEquals(NativeBridge.OK, NativeBridge.release(reprise, BufferKinds.SIM_OUT, simOut.getInt(8)));
 
+        // ADR-121 : la géométrie de l'overlay `colliders`, par la vraie JNI. Le collider
+        // auto_box du triangle couvre [0, 1]³ en repère du corps : 12 arêtes dont toutes
+        // les coordonnées valent 0 ou 1, quelle que soit la pose du corps.
+        dev.axion.debug.NativeDebugLoader debug = new dev.axion.debug.NativeDebugLoader(reprise);
+        dev.axion.debug.NativeDebugLoader.Fetched trace =
+                debug.fetch(NativeBridge.OVERLAY_COLLIDERS, 0L, 0.0, 100.0, 0.0, 1024);
+        assertTrue(trace.ok(), () -> "géométrie de debug refusée, code " + trace.code());
+        assertEquals(1, trace.geometry().bodies().size(), "un corps d'assembly tracé");
+        dev.axion.debug.DebugGeometry.Body trace1 = trace.geometry().bodyOf(1, 1);
+        assertNotNull(trace1, "tracé sous le handle du corps");
+        assertEquals(12, trace1.segmentCount());
+        for (float coordonnee : trace1.segments()) {
+            assertTrue(
+                    Math.abs(coordonnee) < 1.0e-5f || Math.abs(coordonnee - 1.0f) < 1.0e-5f,
+                    () -> "coordonnée hors des coins du cube unité : " + coordonnee);
+        }
+        // Un overlay que cette version ne trace pas (aabb, rang 1) est refusé net.
+        assertEquals(
+                NativeBridge.E_INVALID_BUFFER,
+                debug.fetch(1L << 1, 0L, 0.0, 100.0, 0.0, 1024).code());
+
         // Ticks à vide : le corps tombe sous la gravité par défaut (−9,81 m/s²).
         double yCourant = yDepart;
         for (int t = 0; t < 30; t++) {

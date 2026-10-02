@@ -35,6 +35,7 @@
 mod body;
 mod commands;
 mod config;
+mod debug;
 mod forces;
 mod groups;
 mod query;
@@ -48,6 +49,7 @@ pub use body::{
 };
 pub use commands::{apply_command_stream, create_assembly_payloads, CommandError, CommandOutcome};
 pub use config::{ConfigError, PhysicsConfig};
+pub use debug::{select_outlines, ColliderOutline, DebugColliders, ROUND_SUBDIVISIONS};
 pub use forces::{FluidEnvironment, FluidVolume, LiftSurface};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
 pub use query::{RayHit, SensorMode, SpatialFilter, SweepHit};
