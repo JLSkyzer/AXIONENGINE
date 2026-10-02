@@ -957,7 +957,7 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       - Reste dû : assembly native créée par C-40 (M3), R-702 AABB physique
         (M3), persistance complète C-52 (M4), R-705 dégâts → `ImpactDesc` (M6),
         état des parts et empreinte de déformation dans R-703 (M6-M7).
-      - [ ] **R-702 — emprise physique courante → hitbox** (ADR-120, ratifié le
+      - [x] **R-702 — emprise physique courante → hitbox** (ADR-120, ratifié le
             2026-10-02). Constat en jeu (T2c) : après une bascule, la hitbox 1×1 ancrée
             à l'origine du corps flotte d'un demi-bloc à côté du cube.
             - [x] **T-a** `[EFFORT MAX]` — `BodyBounds` (24 o, relatif à la position,
@@ -974,9 +974,13 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
                   `SIM_OUT_SCHEMA` généré ; Java : `BodyBounds`, `CollectResult.bounds`,
                   lecture conditionnée au schéma, JNI réelle. cargo 703 verts, clippy/fmt
                   propres, Java 264 verts.
-            - [ ] **T-b** — `AxionEntity.makeBoundingBox()` depuis l'emprise, contrôle
+            - [x] **T-b** — `AxionEntity.makeBoundingBox()` depuis l'emprise, contrôle
                   (finie, min ≤ max, ±1024), pont client `VECTOR3` × 2 interpolé, libellé
                   « provisoire » retiré à la première emprise ; vérifié en jeu (F3+B).
+                  **Observé en jeu (2026-10-02)** : la hitbox englobe le cube dans toutes
+                  ses poses, sans décalage après bascule ; la visée l'accroche (libellé
+                  de debug « — visée », la ligne « Targeted Entity » de F3 étant réservée
+                  aux entités vivantes). Arrêt du natif « code 0 ». Java 266 verts.
             - Hors portée, nommé : corps statiques (boîte provisoire), grandes assemblies
               (marge de recherche d'entités vanilla : 2 blocs X/Z, 4 en Y).
 - [ ] **C-27 — Definitions data-driven** (M2). Périmètre décidé par Killian le

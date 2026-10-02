@@ -22,10 +22,11 @@ public final class AxionEntities {
     /**
      * Côté de la hitbox, en blocs : <strong>provisoire</strong>.
      *
-     * <p>R-702 veut l'AABB physique courante, qui arrive avec la physique en M3.
-     * La boîte de l'asset n'atteint pas Java sans étendre l'ABI, et Killian a
-     * décidé le 2026-09-13 d'attendre M3 plutôt que de figer ce contrat. D'ici
-     * là, la hitbox fait un bloc, et le libellé de debug le dit.
+     * <p>R-702 veut l'AABB physique courante : depuis ADR-120, le natif rapporte
+     * l'emprise de chaque corps et {@link AxionEntity#makeBoundingBox} en fait la
+     * hitbox. Cette boîte d'un bloc ne sert plus que tant qu'aucune emprise n'a été
+     * reçue — avant le premier tick simulé, ou pour une assembly sans corps
+     * (statique, ou sans collider) — et le libellé de debug le dit.
      */
     static final float PROVISIONAL_SIZE = 1.0f;
 

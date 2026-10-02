@@ -26,6 +26,35 @@ public record BodyBounds(float[] min, float[] max) {
     public static final int BYTES = 24;
 
     /**
+     * Plus grande composante admise, en blocs (ADR-120) : au-delà de ce qu'un asset valide —
+     * dont C-22 borne l'AABB à 512 blocs — peut atteindre en tournant.
+     */
+    public static final float MAX_EXTENT = 1024.0f;
+
+    /**
+     * {@return vrai si l'emprise est utilisable comme hitbox}
+     *
+     * <p>Contrôle d'une donnée venue du natif, comme toute donnée externe : composantes
+     * finies, {@code min <= max} sur chaque axe, aucune au-delà de {@link #MAX_EXTENT}. La
+     * boîte nulle d'une emprise incalculable passe : elle dit honnêtement « aucune
+     * étendue ».
+     */
+    public boolean isPlausible() {
+        for (int axis = 0; axis < 3; axis++) {
+            float lo = min[axis];
+            float hi = max[axis];
+            if (!Float.isFinite(lo)
+                    || !Float.isFinite(hi)
+                    || lo > hi
+                    || Math.abs(lo) > MAX_EXTENT
+                    || Math.abs(hi) > MAX_EXTENT) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * Décode une emprise depuis un tampon little-endian, à l'octet {@code base}.
      *
      * <p>Lecture absolue, comme {@link BodyState#decode} : la position du tampon n'est pas

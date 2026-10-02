@@ -806,3 +806,19 @@ assembly, à budget constant : le sol existe au tick où le corps est créé.
 **Corollaire.** Un défaut de séquencement au démarrage à froid ne se reproduit pas en régime
 établi. Le tester, c'est repartir de zéro (nouveau planificateur, backlog plein) et vérifier
 que la ressource critique sort en tête — pas observer l'état stable.
+
+## 2026-10-02 | Un indicateur de jeu peut ignorer la classe d'objet testée — vérifier sa source avant d'en faire un test
+
+**Ce qui a mal tourné.** Pour vérifier la visée d'une assembly (R-702), j'ai demandé de lire la
+ligne « Targeted Entity » de l'écran F3. Elle est restée vide, et la visée a été déclarée
+cassée — à tort : `GameRenderer.pick` ne renseigne `crosshairPickEntity`, qui alimente cette
+ligne, que pour une `LivingEntity` ou un `ItemFrame` (bytecode lu). Une `AxionEntity` n'est ni
+l'un ni l'autre (R-700) : le test ne pouvait que « échouer ». Le « Targeted Block » du même
+écran vient d'un rayon propre à F3, qui ignore les entités : il ne prouve rien non plus.
+
+**Cause.** Un indicateur choisi sur sa promesse (« entité visée ») sans vérifier ce qu'il lit
+réellement ni pour quels types il le lit.
+
+**Règle.** Avant de donner un indicateur comme critère de vérification, lire ce qui le
+renseigne et vérifier qu'il couvre le type testé. À défaut, exposer la grandeur vraie soi-même
+— ici `Minecraft.hitResult`, affichée dans le libellé de debug (« — visée »).

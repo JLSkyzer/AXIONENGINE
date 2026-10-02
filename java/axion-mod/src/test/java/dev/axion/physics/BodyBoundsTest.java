@@ -2,6 +2,8 @@ package dev.axion.physics;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -49,5 +51,31 @@ class BodyBoundsTest {
 
         assertEquals(-3.0f, bounds.min()[0], 0.0f);
         assertEquals(7.0f, bounds.max()[2], 0.0f);
+    }
+
+    @Test
+    void uneEmpriseValideEstPlausible() {
+        assertTrue(new BodyBounds(new float[] {-0.5f, 0.0f, -0.5f}, new float[] {0.5f, 1.0f, 0.5f})
+                .isPlausible());
+        // La boîte nulle d'une emprise incalculable dit « aucune étendue » : elle passe.
+        assertTrue(new BodyBounds(new float[3], new float[3]).isPlausible());
+        // Aux bornes exactes.
+        float m = BodyBounds.MAX_EXTENT;
+        assertTrue(new BodyBounds(new float[] {-m, -m, -m}, new float[] {m, m, m}).isPlausible());
+    }
+
+    @Test
+    void uneEmpriseAberranteEstRefusee() {
+        float[] zero = {0.0f, 0.0f, 0.0f};
+        float[] un = {1.0f, 1.0f, 1.0f};
+        // Non finie.
+        assertFalse(new BodyBounds(new float[] {Float.NaN, 0.0f, 0.0f}, un).isPlausible());
+        assertFalse(new BodyBounds(zero, new float[] {1.0f, Float.POSITIVE_INFINITY, 1.0f})
+                .isPlausible());
+        // Coins inversés.
+        assertFalse(new BodyBounds(un, zero).isPlausible());
+        // Au-delà de ce qu'un asset valide peut atteindre.
+        assertFalse(new BodyBounds(zero, new float[] {1.0f, 1.0f, BodyBounds.MAX_EXTENT + 1.0f})
+                .isPlausible());
     }
 }

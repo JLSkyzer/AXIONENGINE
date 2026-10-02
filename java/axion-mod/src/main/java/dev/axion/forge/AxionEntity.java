@@ -11,12 +11,15 @@ import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import java.util.List;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import net.minecraftforge.entity.IEntityAdditionalSpawnData;
 import net.minecraftforge.network.NetworkHooks;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 
 /**
@@ -46,11 +49,23 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             SynchedEntityData.defineId(AxionEntity.class, EntityDataSerializers.QUATERNION);
 
     /**
-     * Pas d'interpolation d'une orientation reçue : autant que de position
-     * ({@code lerpTo} reçoit 3 du suivi d'entité), pour que rotation et translation restent
-     * en phase.
+     * Emprise physique courante du corps (R-702, ADR-120) : coins de sa boîte englobante,
+     * relatifs à la position, en axes du monde. Même pont provisoire que {@link #ROTATION},
+     * remplacé par C-51 en M4. {@code NaN} : aucune emprise reçue — la hitbox reste la boîte
+     * provisoire des dimensions de l'entité.
      */
-    private static final int ROTATION_LERP_STEPS = 3;
+    private static final EntityDataAccessor<Vector3f> BOUNDS_MIN =
+            SynchedEntityData.defineId(AxionEntity.class, EntityDataSerializers.VECTOR3);
+
+    private static final EntityDataAccessor<Vector3f> BOUNDS_MAX =
+            SynchedEntityData.defineId(AxionEntity.class, EntityDataSerializers.VECTOR3);
+
+    /**
+     * Pas d'interpolation d'un état reçu (orientation, emprise) : autant que de position
+     * ({@code lerpTo} reçoit 3 du suivi d'entité), pour que rotation, hitbox et translation
+     * restent en phase.
+     */
+    private static final int LERP_STEPS = 3;
 
     /** Clés {@code axion:*} du NBT, gardées pour être réécrites telles quelles. */
     private CompoundTag stored = new CompoundTag();
@@ -86,6 +101,22 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     private int rotationSteps;
 
     /**
+     * Emprise courante, relative à la position — celle qu'applique {@link #makeBoundingBox} —,
+     * la dernière reçue, et les pas restants pour l'atteindre côté client. {@code NaN} :
+     * aucune. Nuls pendant la construction d'{@code Entity}, dont le premier {@code setPos}
+     * appelle déjà {@link #makeBoundingBox}.
+     */
+    private final Vector3f boundsMin = new Vector3f(Float.NaN);
+
+    private final Vector3f boundsMax = new Vector3f(Float.NaN);
+
+    private final Vector3f boundsMinTarget = new Vector3f(Float.NaN);
+
+    private final Vector3f boundsMaxTarget = new Vector3f(Float.NaN);
+
+    private int boundsSteps;
+
+    /**
      * Construit une entité, comme Minecraft le fait au chargement.
      *
      * @param type {@code axion:assembly}
@@ -105,8 +136,52 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     @Override
     protected void defineSynchedData() {
         // La definition ne change pas après l'apparition : elle voyage dans les données
-        // d'apparition. Seule l'orientation du corps est synchronisée.
+        // d'apparition. Seuls l'orientation et l'emprise du corps sont synchronisées.
         entityData.define(ROTATION, new Quaternionf());
+        entityData.define(BOUNDS_MIN, new Vector3f(Float.NaN));
+        entityData.define(BOUNDS_MAX, new Vector3f(Float.NaN));
+    }
+
+    /**
+     * Cale la hitbox sur l'emprise physique du corps (serveur, fin de tick, R-702). L'emprise
+     * a été contrôlée par l'appelant ; inchangée, elle n'est pas renvoyée au client.
+     *
+     * @param min coin minimal, relatif à la position
+     * @param max coin maximal, relatif à la position
+     */
+    void setBodyBounds(float[] min, float[] max) {
+        boundsMin.set(min[0], min[1], min[2]);
+        boundsMax.set(max[0], max[1], max[2]);
+        entityData.set(BOUNDS_MIN, new Vector3f(boundsMin));
+        entityData.set(BOUNDS_MAX, new Vector3f(boundsMax));
+        setBoundingBox(makeBoundingBox());
+    }
+
+    /**
+     * {@return vrai si la hitbox suit l'emprise physique du corps, et non la boîte provisoire}
+     */
+    public boolean hasPhysicalBounds() {
+        return boundsMin != null && boundsMin.isFinite() && boundsMax.isFinite();
+    }
+
+    /**
+     * La hitbox vanilla : l'emprise physique courante du corps autour de sa position (R-702),
+     * ou, faute d'emprise reçue, la boîte provisoire des dimensions de l'entité.
+     *
+     * <p>Minecraft l'appelle à chaque {@code setPos} — dès la construction d'{@code Entity},
+     * avant que les champs de cette classe n'existent : d'où la garde.
+     */
+    @Override
+    protected AABB makeBoundingBox() {
+        if (!hasPhysicalBounds()) {
+            return super.makeBoundingBox();
+        }
+        double x = getX();
+        double y = getY();
+        double z = getZ();
+        return new AABB(
+                x + boundsMin.x, y + boundsMin.y, z + boundsMin.z,
+                x + boundsMax.x, y + boundsMax.y, z + boundsMax.z);
     }
 
     /**
@@ -147,7 +222,41 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             rotationSteps = 0;
             return;
         }
-        rotationSteps = ROTATION_LERP_STEPS;
+        rotationSteps = LERP_STEPS;
+    }
+
+    /**
+     * Emprise reçue côté client. Traitée ici, une fois toutes les valeurs du paquet affectées
+     * — les rappels par donnée tombent entre l'affectation d'un coin et celle de l'autre.
+     */
+    @Override
+    public void onSyncedDataUpdated(List<SynchedEntityData.DataValue<?>> values) {
+        super.onSyncedDataUpdated(values);
+        if (!level().isClientSide() || !touchesBounds(values)) {
+            return;
+        }
+        boundsMinTarget.set(entityData.get(BOUNDS_MIN));
+        boundsMaxTarget.set(entityData.get(BOUNDS_MAX));
+        boolean targetKnown = boundsMinTarget.isFinite() && boundsMaxTarget.isFinite();
+        if (tickCount == 0 || !hasPhysicalBounds() || !targetKnown) {
+            // Première emprise, emprise reçue à l'apparition, ou retour à la boîte
+            // provisoire : rien d'où glisser.
+            boundsMin.set(boundsMinTarget);
+            boundsMax.set(boundsMaxTarget);
+            boundsSteps = 0;
+            setBoundingBox(makeBoundingBox());
+            return;
+        }
+        boundsSteps = LERP_STEPS;
+    }
+
+    private static boolean touchesBounds(List<SynchedEntityData.DataValue<?>> values) {
+        for (SynchedEntityData.DataValue<?> value : values) {
+            if (value.id() == BOUNDS_MIN.getId() || value.id() == BOUNDS_MAX.getId()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -193,6 +302,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (rotationSteps > 0) {
             rotation.slerp(rotationTarget, 1.0f / rotationSteps);
             rotationSteps--;
+        }
+        // Et pour l'emprise : un pas vers la dernière reçue, puis la hitbox recalculée — la
+        // position a pu ne pas bouger alors que l'emprise, elle, a changé.
+        if (boundsSteps > 0) {
+            float step = 1.0f / boundsSteps;
+            boundsMin.lerp(boundsMinTarget, step);
+            boundsMax.lerp(boundsMaxTarget, step);
+            boundsSteps--;
+            setBoundingBox(makeBoundingBox());
         }
     }
 
@@ -259,8 +377,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return inert;
     }
 
-    /** {@return le libellé affiché avec les hitbox vanilla} */
+    /**
+     * {@return le libellé affiché avec les hitbox vanilla}
+     *
+     * <p>« hitbox provisoire » tant que la hitbox n'est pas l'emprise physique du corps
+     * (R-702) : avant le premier tick simulé, ou pour une assembly sans corps.
+     */
     public Component debugLabel() {
-        return Component.literal(definitionId + (inert ? " — inerte" : "") + " — hitbox provisoire");
+        return Component.literal(definitionId
+                + (inert ? " — inerte" : "")
+                + (hasPhysicalBounds() ? "" : " — hitbox provisoire"));
     }
 }

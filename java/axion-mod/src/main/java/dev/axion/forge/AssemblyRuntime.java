@@ -1,27 +1,33 @@
 package dev.axion.forge;
 
+import com.mojang.logging.LogUtils;
 import dev.axion.asset.A3dSections;
 import dev.axion.asset.AssetEntry;
 import dev.axion.asset.AssetRegistry;
 import dev.axion.definition.AssemblyKind;
 import dev.axion.definition.Definition;
 import dev.axion.definition.DefinitionRegistry;
+import dev.axion.physics.BodyBounds;
 import dev.axion.physics.BodyState;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.physics.SimStateSink;
 import dev.axion.world.DimensionId;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.EntityLeaveLevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import org.joml.Quaternionf;
+import org.slf4j.Logger;
 
 /**
  * Boucle d'exécution des assemblies (intégration C-40 ↔ C-50) : relie chaque
@@ -33,17 +39,20 @@ import org.joml.Quaternionf;
  *       {@code CREATE_ASSEMBLY} (étape 1 du pas, C-40).
  *   <li>Chaque tick : les commandes en file (création, retrait) sont émises via
  *       {@link SimCommandProvider}.
- *   <li>Fin de tick : les {@code BodyState} collectés repositionnent les entités par handle
+ *   <li>Fin de tick : les {@code BodyState} collectés repositionnent et orientent les entités
+ *       par handle, et leurs {@code BodyBounds} calent leur hitbox (R-702, ADR-120)
  *       ({@link SimStateSink}).
  *   <li>À la disparition d'une entité : {@code REMOVE_ASSEMBLY}.
  * </ul>
  *
- * <p>Seul {@code dev.axion.forge} touche Minecraft (R-401). L'orientation initiale est
- * l'identité (l'entité vanilla n'a qu'un lacet/tangage) ; le rendu orienté et l'interpolation
- * viendront avec la chaîne de rendu (C-60+). Les handles sont attribués en mémoire pour la
- * session : la persistance de l'état natif est un sujet distinct (C-52, M4).
+ * <p>Seul {@code dev.axion.forge} touche Minecraft (R-401). Le corps est créé avec
+ * l'orientation sauvegardée de l'entité ({@code axion:rot}, identité pour une entité neuve).
+ * Les handles sont attribués en mémoire pour la session : la persistance de l'état natif est
+ * un sujet distinct (C-52, M4).
  */
 public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     /** Génération de handle fixe pour la session (l'index suffit à distinguer). */
     private static final int GENERATION = 1;
@@ -58,6 +67,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     private final Map<Integer, AxionEntity> entityByHandle = new HashMap<>();
     /** Commandes de création/retrait en attente d'émission au prochain tick. */
     private final Deque<Pending> pending = new ArrayDeque<>();
+    /** Entités dont une emprise aberrante a déjà été signalée : une fois chacune. */
+    private final Set<Integer> implausibleBounds = new HashSet<>();
 
     private record Pending(
             boolean create,
@@ -121,6 +132,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             return;
         }
         entityByHandle.remove(index);
+        implausibleBounds.remove(assembly.getId());
         pending.add(new Pending(false, index, 0L, null, null, 0, null));
     }
 
@@ -146,8 +158,12 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     }
 
     @Override
-    public void applyStates(long tick, List<BodyState> states) {
-        for (BodyState state : states) {
+    public void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds) {
+        // ADR-120 : l'emprise de rang i est celle de l'état de rang i. Sans emprises (natif
+        // antérieur au schéma 1 de SIM_OUT), les hitbox restent provisoires.
+        boolean withBounds = bounds.size() == states.size();
+        for (int i = 0; i < states.size(); i++) {
+            BodyState state = states.get(i);
             if (state.handleGeneration() != GENERATION) {
                 continue;
             }
@@ -161,6 +177,28 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             entity.setPos(p[0], p[1], p[2]);
             float[] q = state.rotation();
             entity.setBodyRotation(q[0], q[1], q[2], q[3]);
+            if (withBounds) {
+                applyBounds(entity, bounds.get(i));
+            }
+        }
+    }
+
+    /**
+     * Cale la hitbox d'une entité sur l'emprise de son corps (R-702), après contrôle : une
+     * donnée venue du natif reste une donnée externe. Aberrante, elle est ignorée pour ce
+     * tick, la précédente gardée, et l'écart dit une seule fois par entité.
+     */
+    private void applyBounds(AxionEntity entity, BodyBounds bounds) {
+        if (bounds.isPlausible()) {
+            entity.setBodyBounds(bounds.min(), bounds.max());
+            return;
+        }
+        if (implausibleBounds.add(entity.getId())) {
+            LOGGER.warn(
+                    "AXION : emprise aberrante ignorée pour l'assembly {} — min {}, max {}",
+                    entity.getUUID(),
+                    Arrays.toString(bounds.min()),
+                    Arrays.toString(bounds.max()));
         }
     }
 
