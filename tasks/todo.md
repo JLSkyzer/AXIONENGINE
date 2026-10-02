@@ -1724,6 +1724,17 @@ substituable sans changer rapier »).
                   contact et se posent à plat, rotation fluide. Persistance au rechargement
                   couverte par les tests seulement (un cube posé à plat n'en montre rien).
                   Constaté : la hitbox reste un carré 1×1 → R-702 (tranche suivante).
+      - [ ] **C-67 — overlay `colliders`** (ADR-121, ratifié le 2026-10-02) : voir la vraie
+            forme du corps, tournée avec lui. `/axion debug colliders on|off`, commande client,
+            mode développeur requis (`-Daxion.dev=true`).
+            - [ ] **T-a** `[EFFORT MAX]` — `DebugBody`/`DebugSegment` (24 o) + tests de
+                  disposition ; tracé des colliders en repère du corps (parry `to_outline`,
+                  vraies arêtes des convexes, composés, pose locale) ; tri par distance,
+                  budget, omissions ; lecture seule prouvée ; `axion_debug_fill`, `DEBUG`
+                  schéma 1, test d'ABI ; lecture Java (JNI réelle).
+            - [ ] **T-b** — commande client, état des overlays, appel par tick, dessin à la
+                  pose interpolée, index de handle = identifiant d'entité ; vérifié en jeu.
+            - Hors portée, nommé : 34 autres overlays, multijoueur, mesure T-551 (C-72).
             - [ ] **T3+** : plafonds CPU skinning/déformation (R-742), décalques (R-743),
                   bascule Iris→vanilla (R-740/T-490), matrice de capacités (R-1493) ; puis
                   backend natif C-60 (son propre ADR).
