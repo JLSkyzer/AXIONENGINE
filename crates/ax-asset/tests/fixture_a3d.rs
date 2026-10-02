@@ -9,10 +9,18 @@
 //! à franchir : c'est la question « la version a-t-elle été incrémentée, la
 //! migration écrite, et l'ancien fichier conservé ? » posée au bon moment.
 
-use ax_asset::a3d::{A3dFile, A3dLimits, A3dWriter, SectionTag, VERSION_MAJOR, VERSION_MINOR};
+use ax_asset::a3d::{
+    decode_geometry, decode_materials, A3dFile, A3dLimits, A3dWriter, DecodedMaterials, SectionTag,
+    VERSION_MAJOR, VERSION_MINOR,
+};
 
 /// Fichier de référence, tel qu'il est versionné.
 const FIXTURE: &[u8] = include_bytes!("fixtures/a3d/v1.1-minimal.a3d");
+
+/// Triangle à un matériau, compilé par le compilateur 6, avant ADR-122 : sa
+/// section `MATL` a la disposition provisoire — un compte, puis par matériau
+/// quatre flottants de couleur et un chemin. Conservé pour R-893.
+const MATL_PROVISOIRE: &[u8] = include_bytes!("fixtures/a3d/v1.1-matl-provisoire.a3d");
 
 const LIMITS: A3dLimits = A3dLimits::new(1 << 20);
 
@@ -86,4 +94,32 @@ fn t591_l_ecrivain_reproduit_le_fichier_de_reference() {
             FIXTURE[divergence], produit[divergence]
         );
     }
+}
+
+#[test]
+fn t590_un_matl_anterieur_a_adr_122_est_ignore_sans_refuser_l_asset() {
+    let file = A3dFile::open(MATL_PROVISOIRE, LIMITS).expect("fichier illisible");
+    assert_eq!(file.header().compiler_version, 6, "produit avant ADR-122");
+
+    // La disposition provisoire n'est pas celle d'ADR-122 : son second mot est
+    // le rouge de la couleur du matériau, 0,8. La section est ignorée, pas
+    // refusée — le matériau par défaut s'appliquera.
+    let matl = file
+        .section(SectionTag::MATL)
+        .expect("MATL lisible")
+        .expect("MATL présente");
+    assert_eq!(
+        decode_materials(&matl),
+        Ok(DecodedMaterials::UnknownLayout(0.8f32.to_bits()))
+    );
+
+    // Le reste de l'asset se lit toujours.
+    let geom = file
+        .section(SectionTag::GEOM)
+        .expect("GEOM lisible")
+        .expect("GEOM présente");
+    assert_eq!(
+        decode_geometry(&geom).expect("GEOM décodée").meshes.len(),
+        1
+    );
 }

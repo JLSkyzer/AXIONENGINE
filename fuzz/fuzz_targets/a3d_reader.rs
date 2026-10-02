@@ -14,7 +14,9 @@
 
 #![no_main]
 
-use ax_asset::a3d::{decode_nodes, A3dFile, A3dLimits, SectionMask, SectionTag};
+use ax_asset::a3d::{
+    decode_materials, decode_nodes, decode_textures, A3dFile, A3dLimits, SectionMask, SectionTag,
+};
 use libfuzzer_sys::fuzz_target;
 
 /// Plafond employé pour le fuzzing.
@@ -61,5 +63,13 @@ fuzz_target!(|data: &[u8]| {
     // de ses octets (ADR-110), et un CRC juste ne dit rien de leur cohérence.
     if let Ok(Some(nodes)) = fichier.section(SectionTag::NODE) {
         let _ = decode_nodes(&nodes);
+    }
+    // `MATL` et `TEXR` (ADR-122) tirent eux aussi des comptes, des décalages et
+    // des tailles de leurs octets.
+    if let Ok(Some(materiaux)) = fichier.section(SectionTag::MATL) {
+        let _ = decode_materials(&materiaux);
+    }
+    if let Ok(Some(textures)) = fichier.section(SectionTag::TEXR) {
+        let _ = decode_textures(&textures);
     }
 });

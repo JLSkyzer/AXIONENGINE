@@ -1802,17 +1802,36 @@ substituable sans changer rapier »).
             pour une assembly suivie) plutôt que se fier à la paire Join/Leave. Voir la note
             BDC « Sur Forge 47 une entité entre au monde à son ajout mais en sort à la fin de
             son suivi ».
+      - [ ] **R-903 — le fuzzing ne tourne jamais** (constaté le 2026-10-02) : `fuzz.yml` ne se
+            déclenche que sur pull request touchant `crates/ax-asset/**`, ou à la main ; tout
+            est poussé sur `master`, donc aucune campagne depuis le 12/09, dont les trois
+            derniers runs avaient échoué en 4 s. `fuzz/Cargo.lock` était périmé (sans
+            `parry3d`) : rafraîchi avec T-a1 de C-26. À décider : déclenchement sur push, ou
+            campagne manuelle régulière.
       - [ ] **C-26 — textures et matériaux (client)** (ADR-122, ratifié le 2026-10-02) : MATL
             = DM-05 tel quel, TEXR (image + échantillonneur, EMBEDDED en PNG non décodé ou
             RESOURCE en chemin relatif), UV par mesh (`MeshDesc._pad` → `uv0_range`, R-142),
             primitives multiples (`NodeDesc._pad` → `mesh_count`), filtrage par défaut au plus
             proche ; `RenderType` propres (mipmaps R-570), passes translucide et émissive.
-            - [ ] **T-a** `[EFFORT MAX]` — format et frontière : `MaterialDesc`, `TextureDesc`,
-                  `MATL`/`TEXR`, import glTF/OBJ/STL (matériaux complets, images,
-                  échantillonneurs, `COLOR_0`, transformation de texture), matériau par
-                  défaut, UV par mesh, primitives multiples, validation, `COMPILER_VERSION` 7,
-                  migration (R-893), `axion_asset_materials`/`axion_asset_texture`,
-                  `ASSET_OUT` schéma 1, pont JNI ; lecture Java contre la vraie JNI.
+            - [ ] **T-a** `[EFFORT MAX]` — format et frontière, en quatre sous-tranches :
+                  - [x] **T-a1 — format** : `MaterialDesc` (DM-05, 96 o) et `TextureDesc`
+                        (16 o) dans `ax-model`, contrôles et tests de disposition ; sections
+                        `MATL`/`TEXR` (`ax-asset`, encodage et décodage, disposition inconnue
+                        ignorée) ; `png` (signature et IHDR, sans décodage, R-532) ;
+                        migration R-893 (`v1.1-matl-provisoire.a3d`, compilateur 6) ;
+                        décodeurs ajoutés au fuzzing et au rejeu du corpus. Le compilateur
+                        écrit encore l'ancien `MATL` : `COMPILER_VERSION` inchangé (6).
+                        cargo 744 verts (22 nouveaux), Java 292 verts.
+                  - [ ] **T-a2 — import** : glTF/OBJ/STL → DM-05 et TEXR (images embarquées et
+                        chemins, échantillonneurs, `COLOR_0`, `KHR_texture_transform`,
+                        extensions), matériau par défaut, drapeaux de mesh recopiés ; le
+                        compilateur écrit `MATL` et `TEXR` ; validation ; `COMPILER_VERSION` 7.
+                  - [ ] **T-a3 — UV et primitives** : `uv0_range` par mesh (R-142),
+                        `mesh_count` (DM-03) ; liste de dessin, bornes, LOD, validation ;
+                        `COMPILER_VERSION` 8.
+                  - [ ] **T-a4 — frontière** : `axion_asset_load` (MATL | TEXR),
+                        `axion_asset_materials`, `axion_asset_texture`, `ASSET_OUT` schéma 1,
+                        pont JNI ; lecture Java contre la vraie JNI.
             - [ ] **T-b** — client : textures (arrière-plan, PNG seul, ≤ 4096, mipmaps,
                   variante CUTOUT, libérations R-752), `RenderType` propres, passes
                   translucide (`AFTER_TRANSLUCENT_BLOCKS`) et émissive, matrice de capacités ;

@@ -38,4 +38,5 @@ pub mod collider;
 pub mod compile;
 pub mod import;
 pub mod optimize;
+pub mod png;
 pub mod validate;

@@ -26,6 +26,9 @@ pub const MAX_MATERIALS: usize = 256;
 /// Nombre maximal de textures par asset (fiche C-22).
 pub const MAX_TEXTURES: usize = 128;
 
+/// Côté maximal d'une texture, en pixels (R-570, `E-3006`).
+pub const MAX_TEXTURE_SIDE: u32 = 4096;
+
 /// Nombre maximal d'animations par asset (fiche C-22).
 pub const MAX_ANIMATIONS: usize = 128;
 

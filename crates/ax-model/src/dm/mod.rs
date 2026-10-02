@@ -14,7 +14,8 @@
 //! DM-02 et DM-04 (transformations, meshes, sommets), DM-03 et DM-11 (nodes,
 //! parts), DM-06 (colliders), DM-12 et DM-14 (régions de déformation, graphe
 //! structurel), et les plafonds de [`limits`]. Ce sont ceux que le validateur
-//! C-22 examine.
+//! C-22 examine. DM-05 (matériaux) et le descripteur de texture d'ADR-122 sont
+//! venus avec C-26.
 //!
 //! Les autres viendront avec les composants qui les emploient. Les transcrire
 //! en avance figerait des dispositions mémoire avant que la première fonction
@@ -26,6 +27,7 @@ pub mod geometry;
 pub mod handle;
 pub mod integrity;
 pub mod limits;
+pub mod material;
 pub mod physics;
 pub mod render;
 pub mod scene;

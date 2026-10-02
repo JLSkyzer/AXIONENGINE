@@ -22,7 +22,9 @@
 
 use std::path::{Path, PathBuf};
 
-use ax_asset::a3d::{A3dFile, A3dLimits, SectionMask, SectionTag};
+use ax_asset::a3d::{
+    decode_materials, decode_nodes, decode_textures, A3dFile, A3dLimits, SectionMask, SectionTag,
+};
 use ax_asset::import::{import_gltf, import_obj, import_stl, ImportError, ImportLimits};
 
 /// Les mêmes plafonds que les cibles de fuzzing.
@@ -89,6 +91,15 @@ fn t681_le_corpus_a3d_se_rejoue_sans_paniquer() {
                 let _ = fichier.has(tag);
                 let _ = fichier.section(tag);
                 let _ = fichier.stored_bytes(tag);
+            }
+            if let Ok(Some(nodes)) = fichier.section(SectionTag::NODE) {
+                let _ = decode_nodes(&nodes);
+            }
+            if let Ok(Some(materiaux)) = fichier.section(SectionTag::MATL) {
+                let _ = decode_materials(&materiaux);
+            }
+            if let Ok(Some(textures)) = fichier.section(SectionTag::TEXR) {
+                let _ = decode_textures(&textures);
             }
         }
     }
