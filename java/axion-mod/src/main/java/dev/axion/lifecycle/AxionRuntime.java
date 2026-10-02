@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiFunction;
 
 /**
@@ -46,8 +47,20 @@ public final class AxionRuntime {
     private PlatformAdapter platform;
     private BootstrapOutcome outcome;
     private boolean shuttingDown;
-    private AssetRegistry assets;
-    private DefinitionRegistry definitions = DefinitionRegistry.empty();
+    /**
+     * Registres remplacés d'un bloc à chaque rechargement, et lus depuis le thread de rendu
+     * client (ADR-119 §8) : {@code volatile}, pour que ce thread voie le registre publié et non
+     * une référence périmée ou à moitié construite.
+     */
+    private volatile AssetRegistry assets;
+    private volatile DefinitionRegistry definitions = DefinitionRegistry.empty();
+
+    /**
+     * Ce qui détient des handles natifs hors du runtime (cache de maillages client, R-321) et
+     * doit les rendre avant la fermeture du contexte (R-322). Appelés dans {@link #shutdown()},
+     * sur le thread qui arrête — d'où une liste sûre entre threads.
+     */
+    private final List<Runnable> nativeReleasers = new CopyOnWriteArrayList<>();
 
     /** Pilote du cycle de simulation (IF-03), créé au premier tick opérationnel. */
     private NativeSimulation simulation;
@@ -204,7 +217,7 @@ public final class AxionRuntime {
                     platform.gameDir().resolve("axion").resolve("cache"),
                     outcome.config().getInt("assets.cache_max_bytes"));
 
-            assets = new AssetRegistry(
+            AssetRegistry registry = new AssetRegistry(
                     source,
                     new NativeAssetCompiler(outcome.context()),
                     dev.axion.asset.CompilerVersion.CURRENT,
@@ -212,8 +225,12 @@ public final class AxionRuntime {
                     System::nanoTime,
                     cache);
 
-            int aCompiler = assets.discover();
-            long reprises = assets.entries().stream()
+            // Publié une fois découvert : le rendu client, qui lit depuis son thread, ne voit
+            // jamais un registre vide entre deux rechargements — ce qui ferait clignoter tous
+            // les maillages vers leur boîte de repli.
+            int aCompiler = registry.discover();
+            assets = registry;
+            long reprises = registry.entries().stream()
                     .filter(entry -> entry.state() == dev.axion.asset.AssetState.CACHED)
                     .count();
             transitions.add(aCompiler + " asset(s) à compiler, " + reprises + " repris du cache");
@@ -325,6 +342,21 @@ public final class AxionRuntime {
      */
     public void addCommandProvider(SimCommandProvider provider) {
         this.commandProviders.add(provider);
+    }
+
+    /**
+     * Ajoute un libérateur de handles natifs, appelé à l'arrêt avant la fermeture du contexte
+     * (R-321, R-322).
+     *
+     * <p>Le contexte natif d'un client vit jusqu'à la fin du processus, et l'arrêt peut avoir
+     * lieu sur le thread du serveur intégré : celui qui détient des handles ne peut donc pas
+     * compter sur ses propres événements pour les rendre à temps.
+     *
+     * @param releaser rend tous les handles détenus ; appelé à l'arrêt, depuis le thread qui
+     *     arrête
+     */
+    public void addNativeReleaser(Runnable releaser) {
+        nativeReleasers.add(releaser);
     }
 
     /** Retire toutes les sources de commandes (arrêt du serveur). */
@@ -462,6 +494,16 @@ public final class AxionRuntime {
             return;
         }
         if (outcome != null && outcome.isReady()) {
+            // R-321 : les handles détenus hors du runtime sont rendus avant la fermeture, sans
+            // quoi le bilan qui suit les compterait comme oubliés. Un libérateur qui échoue
+            // n'empêche ni les autres ni la fermeture.
+            for (Runnable releaser : nativeReleasers) {
+                try {
+                    releaser.run();
+                } catch (RuntimeException failure) {
+                    transitions.add("libération native impossible : " + failure);
+                }
+            }
             try {
                 // R-322 : l'arrêt journalise le bilan des allocations ; il
                 // doit donc avoir lieu, même si le jeu se ferme brutalement

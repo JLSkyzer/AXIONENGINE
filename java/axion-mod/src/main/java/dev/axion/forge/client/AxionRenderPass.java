@@ -1,17 +1,28 @@
 package dev.axion.forge.client;
 
 import dev.axion.AxionMod;
+import dev.axion.asset.AssetRegistry;
+import dev.axion.asset.GeometryTransfer;
+import dev.axion.asset.NativeAssetLoader;
+import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.config.AxionConfig;
 import dev.axion.config.ConfigLoader;
 import dev.axion.config.ConfigSchema.Scope;
+import dev.axion.definition.Definition;
 import dev.axion.forge.AxionEntity;
+import dev.axion.forge.RuntimeAccess;
+import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.render.BackendSelection;
+import dev.axion.render.MeshCache;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -31,7 +42,9 @@ import org.slf4j.LoggerFactory;
  * {@code AFTER_ENTITIES} (R-1570).
  *
  * <p>Le backend est choisi au chargement de chaque monde client (R-1490), d'après
- * {@code render.backend} relu à ce moment-là. Tout se passe sur le render thread.
+ * {@code render.backend} relu à ce moment-là. Tout se passe sur le render thread, sauf le
+ * chargement des maillages (ADR-119) : le {@link MeshCache} le confie à un thread de fond, et
+ * le backend dessine une boîte de repli tant qu'il n'a pas abouti.
  */
 @Mod.EventBusSubscriber(modid = AxionMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class AxionRenderPass {
@@ -49,6 +62,20 @@ public final class AxionRenderPass {
 
     /** Vrai après une erreur de rendu : la passe se tait plutôt que d'échouer à chaque frame. */
     private static boolean failed;
+
+    /**
+     * Thread de fond des chargements de maillage (décision 2 d'ADR-119) : dédié, pour qu'un
+     * décodage ne prenne jamais la place d'un travail de Minecraft, et démon, pour ne pas
+     * retenir la fermeture du processus.
+     */
+    private static final Executor LOADER = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "AXION mesh loader");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /** Maillages chargés ; créé au premier besoin. Render thread seul. */
+    private static MeshCache meshes;
 
     private AxionRenderPass() {}
 
@@ -80,11 +107,12 @@ public final class AxionRenderPass {
         if (level == null) {
             return;
         }
-        List<AxionEntity> assemblies = new ArrayList<>();
+        AxionRuntime runtime = RuntimeAccess.get();
+        List<RenderBackend.Assembly> assemblies = new ArrayList<>();
         for (Entity entity : level.entitiesForRendering()) {
             // Une assembly inerte n'a pas de definition, donc rien à dessiner.
             if (entity instanceof AxionEntity assembly && !assembly.isInert()) {
-                assemblies.add(assembly);
+                assemblies.add(new RenderBackend.Assembly(assembly, meshOf(runtime, assembly)));
             }
         }
         if (assemblies.isEmpty()) {
@@ -104,6 +132,68 @@ public final class AxionRenderPass {
             failed = true;
             LOGGER.error("AXION : passe de rendu désactivée après une erreur", failure);
         }
+    }
+
+    /**
+     * Sortie d'un monde : les handles de maillage sont rendus au natif (ADR-119 §8, R-321).
+     *
+     * <p>Le cache resservira au monde suivant. Quitter le jeu depuis un monde passe aussi par
+     * ici ; le libérateur posé sur le runtime couvre l'arrêt du natif dans tous les cas.
+     *
+     * @param event déconnexion du joueur local
+     */
+    @SubscribeEvent
+    public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        if (meshes != null) {
+            meshes.releaseAll();
+        }
+    }
+
+    /**
+     * {@return la géométrie prête d'une assembly, ou {@code null}}
+     *
+     * <p>Definition → asset → contenu publié → maillage. Chaque maillon peut manquer : runtime
+     * natif absent, monde distant (definitions et assets ne vivent qu'avec le serveur intégré —
+     * le maillage en multijoueur est hors portée d'ADR-119), asset en compilation ou refusé,
+     * maillage en chargement. Le backend dessine alors la boîte de repli.
+     */
+    private static GeometryTransfer meshOf(AxionRuntime runtime, AxionEntity assembly) {
+        if (runtime == null) {
+            return null;
+        }
+        Definition definition = runtime.definitions().get(assembly.definitionId()).orElse(null);
+        AssetRegistry assets = runtime.assets();
+        if (definition == null || assets == null) {
+            return null;
+        }
+        AssetRegistry.Published source = assets.published(definition.asset());
+        if (source == null) {
+            return null;
+        }
+        MeshCache cache = meshCache(runtime);
+        return cache == null ? null : cache.get(definition.asset(), source);
+    }
+
+    /**
+     * {@return le cache de maillages, créé au premier besoin, ou {@code null} sans natif}
+     *
+     * <p>Il vit autant que le contexte natif : son libérateur, posé sur le runtime, rend ses
+     * handles avant la fermeture du contexte, sur le thread qui arrête (R-322).
+     */
+    private static MeshCache meshCache(AxionRuntime runtime) {
+        if (meshes == null) {
+            BootstrapOutcome outcome = runtime.outcome();
+            if (outcome == null || !outcome.isReady()) {
+                return null;
+            }
+            MeshCache cache = new MeshCache(
+                    new NativeAssetLoader(outcome.context()),
+                    LOADER,
+                    line -> LOGGER.warn("AXION : maillage {}", line));
+            runtime.addNativeReleaser(cache::close);
+            meshes = cache;
+        }
+        return meshes;
     }
 
     /** Choisit le backend d'après la configuration client et l'environnement. */

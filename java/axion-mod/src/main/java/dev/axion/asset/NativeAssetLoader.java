@@ -17,7 +17,7 @@ import java.nio.ByteBuffer;
  * <p>Le handle rendu appartient à l'appelant, qui doit le rendre par {@link #unload}
  * (R-321) ; un handle oublié est signalé à l'arrêt du natif.
  */
-public final class NativeAssetLoader {
+public final class NativeAssetLoader implements AssetLoader {
 
     /** Sections chargées pour le rendu : les nodes et la géométrie (ADR-119). */
     public static final int RENDER_SECTIONS = NativeBridge.SECTION_NODE | NativeBridge.SECTION_GEOM;
@@ -28,26 +28,6 @@ public final class NativeAssetLoader {
     private final long context;
     private final long[] handleOut = new long[NativeBridge.ASSET_LOAD_SLOTS];
     private final long[] sizeOut = new long[1];
-
-    /**
-     * Ce qu'un chargement a produit.
-     *
-     * @param code {@link NativeBridge#OK}, ou le code d'erreur de l'ANNEXE A.1
-     * @param index index du handle, si le chargement a abouti
-     * @param generation génération du handle, si le chargement a abouti
-     * @param transfer charge utile de géométrie (ADR-119), vide en cas d'échec
-     */
-    public record Loaded(int code, int index, int generation, byte[] transfer) {
-
-        /** {@return vrai si l'asset est chargé et sa géométrie lue} */
-        public boolean ok() {
-            return code == NativeBridge.OK;
-        }
-
-        static Loaded failed(int code) {
-            return new Loaded(code, 0, 0, new byte[0]);
-        }
-    }
 
     /**
      * Crée un chargeur adossé à un contexte natif.
@@ -69,6 +49,7 @@ public final class NativeAssetLoader {
      * @param a3d conteneur A3D compilé
      * @return le handle et la géométrie, ou le code de l'échec
      */
+    @Override
     public Loaded load(long assetId, byte[] a3d) {
         synchronized (AssetBuffers.LOCK) {
             ByteBuffer in = NativeBridge.acquire(context, BufferKinds.ASSET_IN, a3d.length);
@@ -109,6 +90,7 @@ public final class NativeAssetLoader {
      * @return {@link NativeBridge#OK}, ou {@link NativeBridge#E_INVALID_HANDLE} si le handle
      *     est déjà périmé
      */
+    @Override
     public int unload(int index, int generation) {
         return NativeBridge.unloadAsset(context, index, generation);
     }

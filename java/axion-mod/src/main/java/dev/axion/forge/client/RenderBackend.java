@@ -1,6 +1,7 @@
 package dev.axion.forge.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.axion.asset.GeometryTransfer;
 import dev.axion.forge.AxionEntity;
 import dev.axion.render.BackendSelection;
 import java.util.List;
@@ -43,5 +44,15 @@ interface RenderBackend {
             Vec3 camera,
             float partialTick,
             MultiBufferSource.BufferSource buffers,
-            List<AxionEntity> assemblies) {}
+            List<Assembly> assemblies) {}
+
+    /**
+     * Une assembly et sa géométrie.
+     *
+     * @param entity entité de l'assembly
+     * @param mesh géométrie et pose de repos décodées par le natif (ADR-119), ou {@code null}
+     *     tant qu'aucune n'est prête — chargement en cours, échec, ou multijoueur : le backend
+     *     dessine alors sa boîte de repli
+     */
+    record Assembly(AxionEntity entity, GeometryTransfer mesh) {}
 }

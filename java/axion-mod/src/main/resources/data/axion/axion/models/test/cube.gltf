@@ -1,36 +1,98 @@
 {
-  "asset": { "version": "2.0", "generator": "AXION test content" },
+  "asset": {
+    "version": "2.0",
+    "generator": "AXION test content"
+  },
   "scene": 0,
-  "scenes": [{ "nodes": [0] }],
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        1
+      ]
+    }
+  ],
   "nodes": [
+    {
+      "name": "cube",
+      "mesh": 0
+    },
     {
       "name": "collideur",
       "mesh": 0,
-      "extras": { "axion": { "role": "collider", "shape": "auto_box" } }
+      "extras": {
+        "axion": {
+          "role": "collider",
+          "shape": "auto_box"
+        }
+      }
     }
   ],
   "meshes": [
-    { "name": "boite", "primitives": [{ "attributes": { "POSITION": 0 }, "indices": 1 }] }
+    {
+      "name": "boite",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1
+          },
+          "indices": 2
+        }
+      ]
+    }
   ],
   "accessors": [
     {
       "bufferView": 0,
       "componentType": 5126,
-      "count": 3,
+      "count": 24,
       "type": "VEC3",
-      "min": [0.0, 0.0, 0.0],
-      "max": [1.0, 1.0, 1.0]
+      "min": [
+        -0.5,
+        0.0,
+        -0.5
+      ],
+      "max": [
+        0.5,
+        1.0,
+        0.5
+      ]
     },
-    { "bufferView": 1, "componentType": 5123, "count": 3, "type": "SCALAR" }
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5123,
+      "count": 36,
+      "type": "SCALAR"
+    }
   ],
   "bufferViews": [
-    { "buffer": 0, "byteOffset": 0, "byteLength": 36 },
-    { "buffer": 0, "byteOffset": 36, "byteLength": 6 }
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 288
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 288,
+      "byteLength": 288
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 576,
+      "byteLength": 72
+    }
   ],
   "buffers": [
     {
-      "byteLength": 42,
-      "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AAABAAIA"
+      "byteLength": 648,
+      "uri": "data:application/octet-stream;base64,AAAAPwAAAAAAAAC/AAAAPwAAgD8AAAC/AAAAPwAAgD8AAAA/AAAAPwAAAAAAAAA/AAAAvwAAAAAAAAC/AAAAvwAAAAAAAAA/AAAAvwAAgD8AAAA/AAAAvwAAgD8AAAC/AAAAvwAAgD8AAAC/AAAAvwAAgD8AAAA/AAAAPwAAgD8AAAA/AAAAPwAAgD8AAAC/AAAAvwAAAAAAAAC/AAAAPwAAAAAAAAC/AAAAPwAAAAAAAAA/AAAAvwAAAAAAAAA/AAAAvwAAAAAAAAA/AAAAPwAAAAAAAAA/AAAAPwAAgD8AAAA/AAAAvwAAgD8AAAA/AAAAvwAAAAAAAAC/AAAAvwAAgD8AAAC/AAAAPwAAgD8AAAC/AAAAPwAAAAAAAAC/AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAABAAIAAAACAAMABAAFAAYABAAGAAcACAAJAAoACAAKAAsADAANAA4ADAAOAA8AEAARABIAEAASABMAFAAVABYAFAAWABcA"
     }
   ]
 }

@@ -196,6 +196,37 @@ class AxionRuntimeTest {
     }
 
     @Test
+    @DisplayName("R-321 : les handles détenus hors du runtime sont rendus avant la fermeture")
+    void lesLiberateursPassentAvantLaFermeture() {
+        List<String> ordre = new java.util.ArrayList<>();
+        RecordingNative api = new RecordingNative() {
+            @Override
+            public int close(long context) {
+                ordre.add("fermeture");
+                return super.close(context);
+            }
+        };
+        AxionRuntime runtime = new AxionRuntime((platform, properties) -> ready(), api);
+        runtime.addNativeReleaser(() -> {
+            throw new IllegalStateException("libérateur fautif");
+        });
+        runtime.addNativeReleaser(() -> ordre.add("libération"));
+
+        runtime.onConstructed(new FakePlatform(gameDir, false));
+        runtime.onSetup(new Properties());
+        runtime.onLoadComplete();
+        runtime.onServerStarting();
+        runtime.onServerStopping();
+
+        // Un handle encore vivant à la fermeture compterait comme oublié (R-322) ; un
+        // libérateur fautif n'empêche ni les autres ni la fermeture.
+        assertEquals(List.of("libération", "fermeture"), ordre);
+        assertTrue(
+                runtime.transitions().stream().anyMatch(line -> line.contains("libérateur fautif")),
+                () -> "échec de libération non consigné : " + runtime.transitions());
+    }
+
+    @Test
     @DisplayName("T-101 : un démarrage désactivé laisse le cycle se dérouler")
     void cycleAvecDemarrageDesactive() {
         AxionRuntime runtime = new AxionRuntime((platform, properties) -> disabled());

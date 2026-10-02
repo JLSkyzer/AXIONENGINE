@@ -9,12 +9,12 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.inventory.InventoryMenu;
 
 /**
- * Rendu de debug d'une AxionEntity en M2.
+ * Rendu de debug d'une AxionEntity.
  *
- * <p>L'entité n'a pas encore de géométrie rendue : le rendu d'assets arrive en
- * M3 (C-60..C-63), avec les overlays du debug renderer (C-67). En M2, elle se
- * voit par les hitbox vanilla ({@code F3+B}), que Minecraft dessine pour toute
- * entité, et ce rendu y ajoute le libellé de sa definition.
+ * <p>La géométrie de l'entité n'est pas dessinée ici mais par la passe centrale
+ * ({@link AxionRenderPass}, C-61) : une passe pour toutes les assemblies, pas un
+ * rendu par entité. Ce rendu-ci ajoute aux hitbox vanilla ({@code F3+B}) le
+ * libellé de la definition, en attendant les overlays du debug renderer (C-67).
  *
  * <p>Le libellé n'est produit que lorsque les hitbox sont affichées : sans
  * elles, le rendu ne coûte qu'un test de drapeau, dans l'esprit de R-800

@@ -1644,9 +1644,43 @@ substituable sans changer rapier »).
                   `AxionRenderPass` @ `AFTER_ENTITIES` (R-1570), backend vanilla dessinant une
                   boîte à la position interpolée, sans GL direct (R-741). **Observé en jeu** :
                   la boîte s'affiche et tombe de façon fluide. Commit 18434fd.
-            - [ ] **T2 — vrai maillage** `[EFFORT MAX]` : fonction FFI de décodage GEOM (natif),
-                  accesseur assets client + cache de renderable par asset, rendu du maillage
-                  réel (T-474). Solo d'abord ; multi différé.
+            - [x] **T2 — vrai maillage** (ADR-119, ratifié 2026-10-01) :
+                  - [x] **T2a** `[EFFORT MAX]` — natif : `axion_asset_load/geometry/unload`,
+                        `decode_geometry`, liste de dessin au repos, arène PERSISTENT, bilan
+                        d'arrêt ; pont JNI ; `NativeAssetLoader`, `GeometryTransfer`. Commit f27b216.
+                  - [x] **T2b** (effort élevé, Java seul, aucun contrat touché) :
+                        1. `AxionRuntime` : `definitions`/`assets` volatiles ; registry d'assets
+                           publiée après `discover()` ; libérateurs natifs exécutés dans
+                           `shutdown()` avant `nativeApi.close`.
+                        2. `AssetRegistry` : publication des A3D utilisables dans une table
+                           concurrente (`Published(assetId, key, a3d)`), retirée à l'échec, au
+                           changement de clé, à la disparition, à `forceRecompile`.
+                        3. `AssetLoader` (interface, comme `AssetCompiler`) implémentée par
+                           `NativeAssetLoader`.
+                        4. `MeshCache` (`dev.axion.render`, pur) : `get` du thread de rendu sans
+                           blocage (table concurrente) ; chargement sur un thread de fond dédié ;
+                           verrou natif + époque : chaque chargement vérifie époque/fermeture
+                           sous verrou, un chargement supplanté rend son handle ; même clé
+                           d'asset = même maillage (pas de rechargement) ; `releaseAll` (sortie
+                           du monde, `ClientPlayerNetworkEvent.LoggingOut`) et `close`
+                           (libérateur natif). Ordre Forge vérifié : quitter depuis un monde émet
+                           `GameShuttingDownEvent` (stop) puis LoggingOut (clearLevel), puis
+                           l'arrêt natif sur le thread serveur.
+                        5. Backend vanilla : `entitySolid` (texture blanche `axion:textures/
+                           misc/white.png`), `entityCutoutNoCull` si `DOUBLE_SIDED`, meshes
+                           `TRANSPARENT` différés (T3) ; triangles en quads dégénérés ; modèle
+                           mat4x3 → `Matrix4f`, normales par l'inverse-transposée, renormalisées ;
+                           déterminant négatif → ordre inversé ; boîte de T1 tant que le maillage
+                           n'est pas prêt (et en multijoueur).
+                        6. `cube.gltf` : vrai cube 24 sommets / 36 indices, bas-centre
+                           `[-0.5,0.5]×[0,1]×[-0.5,0.5]`, node visible + node collider
+                           `auto_box`. Origine du corps = origine de l'asset (`body.position()`,
+                           pas le centre de masse) : maillage, collider et hitbox alignés.
+                        7. Vérifié : 258 tests Java verts (dont 10 du cache, 5 de publication,
+                           1 d'ordre libération → fermeture) ; cube compilé par `axion-cli`
+                           (24 sommets, boîte [-0.5,0,-0.5]→[0.5,1,0.5], 2 nodes, PHYS).
+                           **Observé en jeu (2026-10-02)** : le cube blanc s'affiche et tombe
+                           de façon fluide ; arrêt du natif « code 0 » (aucun handle oublié).
             - [ ] **T3+** : plafonds CPU skinning/déformation (R-742), décalques (R-743),
                   bascule Iris→vanilla (R-740/T-490), matrice de capacités (R-1493) ; puis
                   backend natif C-60 (son propre ADR).

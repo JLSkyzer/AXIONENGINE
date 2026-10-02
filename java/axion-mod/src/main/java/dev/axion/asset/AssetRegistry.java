@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
 /**
@@ -51,6 +52,16 @@ public final class AssetRegistry {
 
     private final Map<String, AssetEntry> entries = new LinkedHashMap<>();
     private final List<String> diagnostics = new ArrayList<>();
+
+    /**
+     * Assets utilisables, publiés pour les autres threads (ADR-119 §8).
+     *
+     * <p>Les entrées vivent sur le thread qui recharge et sur le thread autoritatif ; le rendu
+     * client les lit depuis le sien. Plutôt que de rendre toute l'orchestration concurrente,
+     * seul ce qui sort d'ici l'est : un instantané immuable par asset, posé quand l'asset
+     * devient utilisable et retiré dès qu'il cesse de l'être.
+     */
+    private final Map<String, Published> published = new ConcurrentHashMap<>();
 
     /**
      * Crée un orchestrateur.
@@ -130,6 +141,8 @@ public final class AssetRegistry {
 
             AssetEntry entry = new AssetEntry(path, format, key, content);
             entries.put(path, entry);
+            // L'ancien contenu n'est plus celui de la source : il cesse d'être servi.
+            published.remove(path);
 
             // C-25 : une entree valide evite toute la compilation. C'est le
             // seul cas ou un asset atteint son contenu sans passer par le pool.
@@ -137,6 +150,7 @@ public final class AssetRegistry {
             if (cached != null) {
                 entry.transitionTo(AssetState.CACHED);
                 entry.setCompiled(cached);
+                publish(entry);
                 continue;
             }
             changed++;
@@ -145,6 +159,7 @@ public final class AssetRegistry {
         // Une source disparue laisse son entrée derrière elle : la retirer est
         // ce qui distingue un pack rechargé d'un pack qui grossit sans fin.
         entries.keySet().removeIf(path -> !paths.contains(path));
+        published.keySet().removeIf(path -> !paths.contains(path));
         return changed;
     }
 
@@ -244,6 +259,7 @@ public final class AssetRegistry {
                 if (cache != null && entry.key() != null) {
                     cache.put(entry.key(), status.payload());
                 }
+                publish(entry);
                 return true;
             }
             case FAILED -> {
@@ -256,8 +272,14 @@ public final class AssetRegistry {
         }
     }
 
+    /** Publie le contenu compilé d'une entrée devenue utilisable. */
+    private void publish(AssetEntry entry) {
+        published.put(entry.path(), new Published(entry.assetId(), entry.key(), entry.compiled()));
+    }
+
     private void fail(AssetEntry entry, int code, String reason) {
         entry.transitionTo(AssetState.FAILED);
+        published.remove(entry.path());
         // R-522 : journalisé **une fois**. Un asset refusé le reste jusqu'au
         // prochain rechargement, et répéter son message à chaque tick noierait
         // tout le reste.
@@ -330,13 +352,37 @@ public final class AssetRegistry {
             entry.reset();
             count++;
         }
+        published.clear();
         return count;
+    }
+
+    /**
+     * {@return le contenu publié d'un chemin, ou {@code null} s'il n'est pas utilisable}
+     *
+     * <p>Lisible depuis n'importe quel thread : c'est par là que le rendu client atteint les
+     * assets compilés (ADR-119 §8), sans jamais toucher aux entrées.
+     *
+     * @param path chemin de la ressource
+     */
+    public Published published(String path) {
+        return published.get(path);
     }
 
     /** {@return le cache adosse a l'orchestrateur, ou {@code null}} */
     public AssetCache cache() {
         return cache;
     }
+
+    /**
+     * Un asset utilisable, tel qu'il est publié aux autres threads.
+     *
+     * <p>Immuable une fois publié. Le tableau n'est pas recopié : il ne doit pas être modifié.
+     *
+     * @param assetId identifiant natif de l'asset
+     * @param key clé de cache du contenu : même clé, même conteneur compilé (C-25)
+     * @param a3d conteneur A3D compilé
+     */
+    public record Published(long assetId, AssetKey key, byte[] a3d) {}
 
     /**
      * Ce qu'un tick de sondage a fait.

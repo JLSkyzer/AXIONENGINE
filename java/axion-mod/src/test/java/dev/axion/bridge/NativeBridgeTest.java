@@ -232,7 +232,7 @@ class NativeBridgeTest {
         // visible : il se dessine une fois.
         byte[] triangle = etat.payload();
         dev.axion.asset.NativeAssetLoader chargeur = new dev.axion.asset.NativeAssetLoader(reprise);
-        dev.axion.asset.NativeAssetLoader.Loaded charge = chargeur.load(0x4242L, triangle);
+        dev.axion.asset.AssetLoader.Loaded charge = chargeur.load(0x4242L, triangle);
         assertTrue(
                 charge.ok(),
                 () -> "chargement refusé, code " + charge.code() + " : "

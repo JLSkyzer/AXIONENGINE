@@ -1,19 +1,25 @@
 package dev.axion.asset;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.axion.asset.AssetCompiler.CompileStatus;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** T-210..T-214 — orchestration des assets (C-20). */
 class AssetRegistryTest {
@@ -366,5 +372,106 @@ class AssetRegistryTest {
         assertFalse(entry.transitionTo(AssetState.LOADED));
         assertEquals(AssetState.DISCOVERED, entry.state());
         assertTrue(entry.transitionTo(AssetState.QUEUED));
+    }
+
+    @Test
+    @DisplayName("ADR-119 : un asset compilé est publié, avec son identité et sa clé")
+    void unAssetCompileEstPublie() {
+        FakeSource source = new FakeSource().put("m.obj", "v 0 0 0");
+        AssetRegistry registry = registry(source, new FakeCompiler());
+        registry.discover();
+        assertNull(registry.published("m.obj"), "publié avant d'être compilé");
+
+        registry.pump(0);
+        registry.pump(0);
+        AssetEntry entry = registry.entry("m.obj");
+        AssetRegistry.Published published = registry.published("m.obj");
+        assertNotNull(published);
+        assertEquals(entry.assetId(), published.assetId());
+        assertEquals(entry.key(), published.key());
+        assertSame(entry.compiled(), published.a3d());
+    }
+
+    @Test
+    @DisplayName("ADR-119 : un rechargement sans changement garde la même publication")
+    void unRechargementSansChangementGardeLaPublication() {
+        FakeSource source = new FakeSource().put("m.obj", "v 0 0 0");
+        AssetRegistry registry = registry(source, new FakeCompiler());
+        registry.discover();
+        registry.pump(0);
+        registry.pump(0);
+        AssetRegistry.Published avant = registry.published("m.obj");
+
+        assertEquals(0, registry.discover());
+        assertSame(avant, registry.published("m.obj"));
+    }
+
+    @Test
+    @DisplayName("ADR-119 : un contenu périmé, refusé ou disparu cesse d'être publié")
+    void unContenuQuiNEstPlusUtilisableCesseDEtrePublie() {
+        FakeSource source = new FakeSource().put("a.obj", "v 0 0 0").put("b.obj", "v 1 1 1");
+        FakeCompiler compiler = new FakeCompiler();
+        AssetRegistry registry = registry(source, compiler);
+        registry.discover();
+        registry.pump(0);
+        registry.pump(0);
+        assertNotNull(registry.published("a.obj"));
+        assertNotNull(registry.published("b.obj"));
+
+        // La source change : l'ancien conteneur n'est plus le sien.
+        source.put("a.obj", "v 2 2 2");
+        registry.discover();
+        assertNull(registry.published("a.obj"), "contenu périmé encore servi");
+
+        // La nouvelle compilation échoue : rien n'est servi (R-522, secours).
+        compiler.failCompile = true;
+        registry.pump(0);
+        registry.pump(0);
+        assertEquals(AssetState.FAILED, registry.entry("a.obj").state());
+        assertNull(registry.published("a.obj"));
+
+        // La source disparaît : sa publication aussi.
+        source.files.remove("b.obj");
+        registry.discover();
+        assertNull(registry.published("b.obj"));
+    }
+
+    @Test
+    @DisplayName("ADR-119 : une recompilation forcée retire les publications")
+    void uneRecompilationForceeRetireLesPublications() {
+        FakeSource source = new FakeSource().put("m.obj", "v 0 0 0");
+        AssetRegistry registry = registry(source, new FakeCompiler());
+        registry.discover();
+        registry.pump(0);
+        registry.pump(0);
+        assertNotNull(registry.published("m.obj"));
+
+        registry.forceRecompile();
+        assertNull(registry.published("m.obj"), "conteneur servi pendant sa recompilation");
+        registry.pump(0);
+        registry.pump(0);
+        assertNotNull(registry.published("m.obj"));
+    }
+
+    @Test
+    @DisplayName("ADR-119 : un asset repris du cache est publié dès la découverte")
+    void unAssetReprisDuCacheEstPublieDesLaDecouverte(@TempDir Path dossier) {
+        FakeSource source = new FakeSource().put("m.obj", "v 0 0 0");
+        AssetCache cache = new AssetCache(dossier, 1 << 20);
+        AssetRegistry premier =
+                new AssetRegistry(source, new FakeCompiler(), COMPILER_VERSION, 1, () -> 0L, cache);
+        premier.discover();
+        premier.pump(0);
+        premier.pump(0);
+
+        // Un nouveau registre — le rechargement suivant — reprend le cache sans compiler.
+        AssetRegistry second =
+                new AssetRegistry(source, new FakeCompiler(), COMPILER_VERSION, 1, () -> 0L, cache);
+        assertEquals(0, second.discover());
+        assertEquals(AssetState.CACHED, second.entry("m.obj").state());
+        AssetRegistry.Published published = second.published("m.obj");
+        assertNotNull(published);
+        assertEquals(premier.published("m.obj").key(), published.key());
+        assertArrayEquals(premier.published("m.obj").a3d(), published.a3d());
     }
 }
