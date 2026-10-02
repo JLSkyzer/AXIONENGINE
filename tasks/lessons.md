@@ -853,3 +853,19 @@ contrat de l'ADR avaient été lus avant de dessiner.
 backends) : ce sont des exigences transverses qu'aucune fiche de composant ne rappelle. Plus
 largement, chercher la notion en jeu (« passe », « stage ») dans `docs/spec/INDEX.md`, pas
 seulement l'identifiant du composant.
+
+## 2026-10-02 | Une CI rouge ne se voit pas tant qu'on ne regarde pas le run
+
+**Ce qui a mal tourné.** La CI de `master` a échoué à chaque push du 2026-09-25 au 2026-10-02,
+pour quatre causes indépendantes : `COMPILER_VERSION` désaccordé (Rust 6, Java 5), `NOTICE`
+périmé, un marqueur R-001 dans un commentaire, un test de chemin qui ne passait que sous
+Windows. Les vérifications locales (Windows) passaient toutes ; seul le contrôle de parité,
+jamais lancé localement, aurait vu la première.
+
+**Cause.** Un push était tenu pour vérifié dès que `git ls-remote` égalait `HEAD` ; le run de CI
+du commit n'était jamais consulté. Et les contrôles de `tools/ci/` ne tournaient qu'en CI.
+
+**Règle.** Une tranche n'est terminée qu'avec le run de CI de son dernier commit au vert
+(`gh run list --limit 1`, puis `gh run view <id>`). Avant de pousser, lancer aussi les
+contrôles de `tools/ci/` et `tools/deps/gen_notice.py` : ils sont rapides et voient ce qu'un
+build Windows ne voit pas. Un test qui manipule des chemins se lit en pensant à Linux.
