@@ -8,6 +8,7 @@ import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.config.AxionConfig;
 import dev.axion.config.ConfigLoader;
 import dev.axion.config.ConfigSchema.Scope;
+import dev.axion.debug.DebugOverlays;
 import dev.axion.definition.Definition;
 import dev.axion.forge.AxionEntity;
 import dev.axion.forge.RuntimeAccess;
@@ -24,6 +25,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModList;
@@ -45,6 +47,10 @@ import org.slf4j.LoggerFactory;
  * {@code render.backend} relu à ce moment-là. Tout se passe sur le render thread, sauf le
  * chargement des maillages (ADR-119) : le {@link MeshCache} le confie à un thread de fond, et
  * le backend dessine une boîte de repli tant qu'il n'a pas abouti.
+ *
+ * <p>Les overlays de debug (C-67, ADR-121) se dessinent dans la même passe, par-dessus les
+ * assemblies ; leur géométrie est demandée au natif une fois par tick client, et seulement
+ * s'ils sont allumés (R-2280). Une erreur les éteint sans arrêter la passe.
  */
 @Mod.EventBusSubscriber(modid = AxionMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class AxionRenderPass {
@@ -77,7 +83,18 @@ public final class AxionRenderPass {
     /** Maillages chargés ; créé au premier besoin. Render thread seul. */
     private static MeshCache meshes;
 
+    /** Overlays de debug allumés : la commande client les modifie, la passe les lit. */
+    private static final DebugOverlays OVERLAYS = new DebugOverlays();
+
+    /** Géométrie et dessin des overlays de debug. Thread client seul. */
+    private static final DebugOverlayRenderer DEBUG = new DebugOverlayRenderer(OVERLAYS);
+
     private AxionRenderPass() {}
+
+    /** {@return les overlays de debug, que la commande client allume et éteint} */
+    static DebugOverlays overlays() {
+        return OVERLAYS;
+    }
 
     /**
      * Chargement d'un monde client : (re)choix du backend (R-1490).
@@ -122,16 +139,54 @@ public final class AxionRenderPass {
             if (backend == null) {
                 backend = select();
             }
-            backend.renderOpaque(new RenderBackend.Frame(
+            RenderBackend.Frame frame = new RenderBackend.Frame(
                     event.getPoseStack(),
                     event.getCamera().getPosition(),
                     event.getPartialTick(),
                     minecraft.renderBuffers().bufferSource(),
-                    assemblies));
+                    assemblies);
+            backend.renderOpaque(frame);
+            drawOverlays(frame);
         } catch (RuntimeException failure) {
             failed = true;
             LOGGER.error("AXION : passe de rendu désactivée après une erreur", failure);
         }
+    }
+
+    /**
+     * Fin de tick client : géométrie des overlays de debug allumés (ADR-121) — un appel natif
+     * par tick, aucun quand tous sont éteints (R-2280).
+     *
+     * @param event tick client
+     */
+    @SubscribeEvent
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || failed) {
+            return;
+        }
+        try {
+            DEBUG.tick(RuntimeAccess.get(), Minecraft.getInstance());
+        } catch (RuntimeException failure) {
+            disableOverlays(failure);
+        }
+    }
+
+    /** Overlays de debug, par-dessus les assemblies de la frame. */
+    private static void drawOverlays(RenderBackend.Frame frame) {
+        try {
+            DEBUG.draw(frame);
+        } catch (RuntimeException failure) {
+            disableOverlays(failure);
+        }
+    }
+
+    /** Après une erreur, les overlays s'éteignent : la passe continue, sans eux. */
+    private static void disableOverlays(RuntimeException failure) {
+        for (DebugOverlays.Overlay overlay : DebugOverlays.Overlay.values()) {
+            OVERLAYS.set(overlay, false);
+        }
+        DEBUG.reset();
+        LOGGER.error("AXION : overlays de debug éteints après une erreur", failure);
     }
 
     /**
@@ -147,6 +202,9 @@ public final class AxionRenderPass {
         if (meshes != null) {
             meshes.releaseAll();
         }
+        // Un identifiant d'entité ne vaut que pour le serveur qui l'a donné : une géométrie
+        // gardée d'ici se poserait, au monde suivant, sur d'autres assemblies.
+        DEBUG.reset();
     }
 
     /**

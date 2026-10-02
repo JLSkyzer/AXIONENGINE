@@ -6,17 +6,12 @@ import dev.axion.AxionMod;
 import dev.axion.asset.GeometryTransfer;
 import dev.axion.forge.AxionEntity;
 import dev.axion.render.BackendSelection;
-import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
-import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
-import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 /**
@@ -37,8 +32,9 @@ import org.joml.Vector3f;
  * (T3).
  *
  * <p>Le maillage tourne avec le corps, autour de son origine — celle de l'asset, au bas-centre
- * —, à l'orientation interpolée entre deux ticks. La hitbox vanilla, elle, reste alignée sur
- * les axes : c'est son AABB que R-702 fera suivre au corps.
+ * —, à l'orientation interpolée entre deux ticks, posé par {@link AssemblyPlacement}. La
+ * hitbox vanilla, elle, reste alignée sur les axes : c'est l'AABB qui enclôt le corps tourné
+ * (R-702, ADR-120).
  */
 final class VanillaConsumerBackend implements RenderBackend {
 
@@ -112,7 +108,7 @@ final class VanillaConsumerBackend implements RenderBackend {
             if (mesh == null) {
                 continue;
             }
-            Placement at = null;
+            AssemblyPlacement at = null;
             for (GeometryTransfer.Draw draw : mesh.draws()) {
                 GeometryTransfer.Mesh part = mesh.meshes().get(draw.mesh());
                 if (part.has(GeometryTransfer.MESH_TRANSPARENT)
@@ -123,7 +119,7 @@ final class VanillaConsumerBackend implements RenderBackend {
                     out = frame.buffers().getBuffer(type);
                 }
                 if (at == null) {
-                    at = Placement.of(frame, assembly.entity());
+                    at = AssemblyPlacement.of(frame.partialTick(), assembly.entity());
                 }
                 drawPart(frame, at, mesh, part, draw, out);
             }
@@ -141,7 +137,7 @@ final class VanillaConsumerBackend implements RenderBackend {
      */
     private static void drawPart(
             Frame frame,
-            Placement at,
+            AssemblyPlacement at,
             GeometryTransfer mesh,
             GeometryTransfer.Mesh part,
             GeometryTransfer.Draw draw,
@@ -180,10 +176,10 @@ final class VanillaConsumerBackend implements RenderBackend {
                 b = c;
                 c = swap;
             }
-            vertex(out, position, normal, scratch, mesh, a, at.light);
-            vertex(out, position, normal, scratch, mesh, b, at.light);
-            vertex(out, position, normal, scratch, mesh, c, at.light);
-            vertex(out, position, normal, scratch, mesh, c, at.light);
+            vertex(out, position, normal, scratch, mesh, a, at.light());
+            vertex(out, position, normal, scratch, mesh, b, at.light());
+            vertex(out, position, normal, scratch, mesh, c, at.light());
+            vertex(out, position, normal, scratch, mesh, c, at.light());
         }
         pose.popPose();
     }
@@ -222,35 +218,6 @@ final class VanillaConsumerBackend implements RenderBackend {
                 .endVertex();
     }
 
-    /**
-     * Pose interpolée d'une assembly et lumière du monde à son centre.
-     *
-     * @param x position interpolée de l'origine du corps (bas-centre de l'entité)
-     * @param y position interpolée
-     * @param z position interpolée
-     * @param rotation orientation interpolée du corps, autour de son origine
-     * @param light lumière empaquetée (bloc et ciel)
-     */
-    private record Placement(double x, double y, double z, Quaternionf rotation, int light) {
-
-        static Placement of(Frame frame, AxionEntity assembly) {
-            float pt = frame.partialTick();
-            double x = Mth.lerp(pt, assembly.xo, assembly.getX());
-            double y = Mth.lerp(pt, assembly.yo, assembly.getY());
-            double z = Mth.lerp(pt, assembly.zo, assembly.getZ());
-            Quaternionf rotation = assembly.renderRotation(pt, new Quaternionf());
-            int light = LevelRenderer.getLightColor(
-                    assembly.level(), BlockPos.containing(x, y + assembly.getBbHeight() / 2.0, z));
-            return new Placement(x, y, z, rotation, light);
-        }
-
-        /** Place la pile à l'origine du corps, dans son orientation. */
-        void apply(PoseStack pose, Vec3 camera) {
-            pose.translate(x - camera.x, y - camera.y, z - camera.z);
-            pose.mulPose(rotation);
-        }
-    }
-
     /** Boîtes de repli des assemblies sans géométrie prête, en un lot. */
     private static void drawBoxes(Frame frame) {
         RenderType type = RenderType.debugQuads();
@@ -264,11 +231,11 @@ final class VanillaConsumerBackend implements RenderBackend {
     }
 
     private static void drawBox(Frame frame, AxionEntity assembly, VertexConsumer out) {
-        Placement at = Placement.of(frame, assembly);
+        AssemblyPlacement at = AssemblyPlacement.of(frame.partialTick(), assembly);
         float half = assembly.getBbWidth() / 2.0f;
         float height = assembly.getBbHeight();
 
-        int level = Math.max(LightTexture.block(at.light), LightTexture.sky(at.light));
+        int level = Math.max(LightTexture.block(at.light()), LightTexture.sky(at.light()));
         float light = MIN_LIGHT + (1.0f - MIN_LIGHT) * level / 15.0f;
 
         PoseStack pose = frame.pose();

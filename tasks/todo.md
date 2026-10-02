@@ -1724,7 +1724,7 @@ substituable sans changer rapier »).
                   contact et se posent à plat, rotation fluide. Persistance au rechargement
                   couverte par les tests seulement (un cube posé à plat n'en montre rien).
                   Constaté : la hitbox reste un carré 1×1 → R-702 (tranche suivante).
-      - [ ] **C-67 — overlay `colliders`** (ADR-121, ratifié le 2026-10-02) : voir la vraie
+      - [x] **C-67 — overlay `colliders`** (ADR-121, ratifié le 2026-10-02) : voir la vraie
             forme du corps, tournée avec lui. `/axion debug colliders on|off`, commande client,
             mode développeur requis (`-Daxion.dev=true`).
             - [x] **T-a** `[EFFORT MAX]` — `DebugBody`/`DebugSegment` (24 o) + tests de
@@ -1739,12 +1739,31 @@ substituable sans changer rapier »).
                   budget, dimension inconnue, lecture seule bit à bit, ABI de bout en bout) ;
                   Java : `DebugGeometry`, `NativeDebugLoader`, JNI réelle. cargo 722 verts,
                   clippy/fmt propres, Java 270 verts.
-            - [ ] **T-b** — commande client, état des overlays, appel par tick, dessin à la
+            - [x] **T-b** — commande client, état des overlays, appel par tick, dessin à la
                   pose interpolée, index de handle = identifiant d'entité ; vérifié en jeu.
+                  Fait (2026-10-02) : `AxionClientCommands` (racine client `axion` ne
+                  portant que `debug`, refus hors mode développeur) ; `DevMode` ;
+                  `DebugOverlays` (bit = rang du §31.4) ; `DebugOverlayRenderer` (un appel
+                  natif par tick client, lignes vanilla posées par `AssemblyPlacement`,
+                  la pose du maillage ; couleur selon le corps ; budget de 16 384
+                  segments, valeur de conception non mesurée ; une erreur éteint les
+                  overlays, pas la passe) ; `AssemblyRuntime.handleIndexOf` = identifiant
+                  d'entité ; `runClient` passe `-Daxion.dev=true`. Java 285 verts (15
+                  nouveaux : T-702, état des overlays, arbre de commandes, lignes émises).
+                  **Observé en jeu (2026-10-02)** : les lignes suivent le cube qui
+                  bascule ; `/axion spawn` toujours transmis au serveur ; arrêt du natif
+                  « code 0 ». Non exercés en jeu : `off` et le passage au gris-bleu d'un
+                  corps endormi (couverts par les tests).
             - Hors portée, nommé : 34 autres overlays, multijoueur, mesure T-551 (C-72).
             - [ ] **T3+** : plafonds CPU skinning/déformation (R-742), décalques (R-743),
                   bascule Iris→vanilla (R-740/T-490), matrice de capacités (R-1493) ; puis
                   backend natif C-60 (son propre ADR).
+      - [ ] **C-50 — avertissement parasite au spawn** (constaté à l'essai de C-67 T-b) :
+            chaque `/axion spawn` portant `axion:rot` journalise « assembly … inerte — NBT
+            sans axion:v ni axion:def », alors que l'entité est liée juste après. La garde
+            « entité fraîche de commande » de `readAdditionalSaveData` teste
+            `stored.isEmpty()`, que `axion:rot` (T2c) contourne. Ne signaler que
+            l'assembly qui entre dans le monde encore inerte.
 
 ## Jalons suivants
 

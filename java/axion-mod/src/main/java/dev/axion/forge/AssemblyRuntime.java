@@ -47,23 +47,25 @@ import org.slf4j.Logger;
  *
  * <p>Seul {@code dev.axion.forge} touche Minecraft (R-401). Le corps est créé avec
  * l'orientation sauvegardée de l'entité ({@code axion:rot}, identité pour une entité neuve).
- * Les handles sont attribués en mémoire pour la session : la persistance de l'état natif est
- * un sujet distinct (C-52, M4).
+ * L'index de son handle est l'identifiant réseau de l'entité (ADR-121), valable le temps de
+ * la session : la persistance de l'état natif est un sujet distinct (C-52, M4).
  */
 public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
     /** Génération de handle fixe pour la session (l'index suffit à distinguer). */
-    private static final int GENERATION = 1;
+    public static final int GENERATION = 1;
 
     private final DefinitionRegistry definitions;
     private final AssetRegistry assets;
 
-    private int nextIndex = 1;
-    /** entityId → index de handle : évite une double création, route le retrait. */
-    private final Map<Integer, Integer> handleByEntity = new HashMap<>();
-    /** index de handle → entité : route l'application des états. */
+    /**
+     * Index de handle → entité : route l'application des états, évite une double création
+     * et route le retrait. L'index est l'identifiant réseau de l'entité (ADR-121) : unique
+     * dans une session de serveur, jamais réemployé, et connu du client — qui retrouve ainsi
+     * le corps natif de chaque entité qu'il dessine sans donnée de plus.
+     */
     private final Map<Integer, AxionEntity> entityByHandle = new HashMap<>();
     /** Commandes de création/retrait en attente d'émission au prochain tick. */
     private final Deque<Pending> pending = new ArrayDeque<>();
@@ -95,7 +97,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         if (event.getLevel().isClientSide() || !(event.getEntity() instanceof AxionEntity assembly)) {
             return;
         }
-        if (assembly.isInert() || handleByEntity.containsKey(assembly.getId())) {
+        int index = handleIndexOf(assembly);
+        if (assembly.isInert() || entityByHandle.containsKey(index)) {
             return;
         }
         Definition definition = definitions.get(assembly.definitionId()).orElse(null);
@@ -107,7 +110,6 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             // Asset non prêt ou sans collider : pas de corps (l'entité reste inerte au physique).
             return;
         }
-        int index = nextIndex++;
         long dimension =
                 DimensionId.of(((Level) event.getLevel()).dimension().location().toString());
         double[] position = {assembly.getX(), assembly.getY(), assembly.getZ()};
@@ -117,7 +119,6 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         float[] rotation = {saved.x(), saved.y(), saved.z(), saved.w()};
         pending.add(
                 new Pending(true, index, dimension, position, rotation, bodyKind(definition.kind()), phys));
-        handleByEntity.put(assembly.getId(), index);
         entityByHandle.put(index, assembly);
     }
 
@@ -127,13 +128,25 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         if (event.getLevel().isClientSide() || !(event.getEntity() instanceof AxionEntity assembly)) {
             return;
         }
-        Integer index = handleByEntity.remove(assembly.getId());
-        if (index == null) {
+        int index = handleIndexOf(assembly);
+        if (entityByHandle.remove(index) == null) {
             return;
         }
-        entityByHandle.remove(index);
-        implausibleBounds.remove(assembly.getId());
+        implausibleBounds.remove(index);
         pending.add(new Pending(false, index, 0L, null, null, 0, null));
+    }
+
+    /**
+     * {@return l'index du handle natif d'une assembly : l'identifiant réseau de son entité}
+     *
+     * <p>Le même des deux côtés (ADR-121) : le serveur crée le corps sous cet index, le client
+     * y retrouve le corps de chaque entité qu'il dessine, sous la génération
+     * {@link #GENERATION}.
+     *
+     * @param assembly entité de l'assembly
+     */
+    public static int handleIndexOf(AxionEntity assembly) {
+        return assembly.getId();
     }
 
     @Override

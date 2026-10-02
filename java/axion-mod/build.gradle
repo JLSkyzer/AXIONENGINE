@@ -41,6 +41,10 @@ minecraft {
 
         client {
             property 'forge.enabledGameTestNamespaces', mod_id
+            // Mode developpeur d'AXION (paragraphe 31.3, ADR-121) : rend les overlays de
+            // debug disponibles. Le client de developpement seulement ; inerte en
+            // production (R-2270).
+            property 'axion.dev', 'true'
         }
 
         server {
