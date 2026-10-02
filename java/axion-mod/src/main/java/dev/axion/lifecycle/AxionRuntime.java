@@ -16,6 +16,7 @@ import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.physics.SimStateSink;
 import dev.axion.platform.PlatformAdapter;
+import dev.axion.render.RenderCapabilities;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,6 +55,14 @@ public final class AxionRuntime {
      */
     private volatile AssetRegistry assets;
     private volatile DefinitionRegistry definitions = DefinitionRegistry.empty();
+
+    /**
+     * Capacités du backend de rendu du client (R-1493), posées par la passe de rendu à chaque
+     * choix de backend ; {@code null} sur un serveur dédié, ou tant qu'aucun monde client n'a
+     * été chargé. {@code volatile} : posées sur le thread de rendu, lues par
+     * {@code /axion status} sur le thread du serveur intégré.
+     */
+    private volatile RenderCapabilities renderCapabilities;
 
     /**
      * Ce qui détient des handles natifs hors du runtime (cache de maillages client, R-321) et
@@ -427,6 +436,23 @@ public final class AxionRuntime {
     /** {@return le registre d'assets, ou {@code null} avant tout rechargement} */
     public AssetRegistry assets() {
         return assets;
+    }
+
+    /**
+     * Retient les capacités du backend de rendu que le client vient de choisir (R-1493).
+     *
+     * @param capabilities capacités du backend retenu
+     */
+    public void setRenderCapabilities(RenderCapabilities capabilities) {
+        renderCapabilities = capabilities;
+    }
+
+    /**
+     * {@return les capacités du backend de rendu du client, ou {@code null} sur un serveur
+     * dédié et tant qu'aucun monde client n'a été chargé}
+     */
+    public RenderCapabilities renderCapabilities() {
+        return renderCapabilities;
     }
 
     /**

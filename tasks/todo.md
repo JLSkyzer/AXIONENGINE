@@ -1755,9 +1755,30 @@ substituable sans changer rapier »).
                   « code 0 ». Non exercés en jeu : `off` et le passage au gris-bleu d'un
                   corps endormi (couverts par les tests).
             - Hors portée, nommé : 34 autres overlays, multijoueur, mesure T-551 (C-72).
-            - [ ] **T3+** : plafonds CPU skinning/déformation (R-742), décalques (R-743),
-                  bascule Iris→vanilla (R-740/T-490), matrice de capacités (R-1493) ; puis
-                  backend natif C-60 (son propre ADR).
+            - [x] **T3 — stages de passes et matrice de capacités** (décision de Killian,
+                  2026-10-02 : l'actionnable de T3+ d'abord, puis C-26) :
+                  1. R-1570 : passe DEBUG (overlay `colliders`) au stage `AFTER_PARTICLES` —
+                     elle était à `AFTER_ENTITIES` depuis C-67 T-b, écart corrigé ; l'opaque
+                     reste à `AFTER_ENTITIES`.
+                  2. R-1493 : matrice de capacités du §19.2bis par backend, en pur Java
+                     (`RenderCapabilities`), en trois états — disponible, indisponible dans ce
+                     backend (désactivée, avec son repli), pas encore livrée (avec le composant
+                     qui l'apportera). Entrée de log unique au démarrage du backend ; section
+                     « rendu » de `/axion status` (solo : backend du client ; serveur dédié :
+                     sans objet).
+                  Fait (2026-10-02) : `RenderCapabilities` (`dev.axion.render`, pur Java) ;
+                  entrée de log au démarrage du backend ; `AxionRuntime.renderCapabilities`,
+                  lue par `StatusReport` ; passes par stage dans `AxionRenderPass`. Java 292
+                  verts (7 nouveaux). **Observé en jeu (2026-10-02)** : entrée de log au
+                  chargement de chaque monde ; section « rendu » de `/axion status` (confirmée
+                  par Killian) ; overlay `colliders` allumé et cubes spawnés, sans erreur au
+                  journal.
+            - [ ] **T4+ — rattaché aux composants qui le rendent possible** : R-742 (skinning
+                  CPU avec C-66, déformation CPU en M6) ; R-743 (décalques, C-69) ; R-744,
+                  T-490..T-492 et réévaluation de R-1490 au changement de resource pack et de
+                  shaderpack (second backend, C-60) ; indicateur de capacités dans l'overlay
+                  (C-73, M5) ; exposition API de R-1495 (`render()` absent de l'API du §23.2 :
+                  ADR à rédiger) ; backend natif C-60 (son propre ADR).
       - [x] **C-50 — avertissement parasite au spawn** (constaté à l'essai de C-67 T-b) :
             chaque `/axion spawn` portant `axion:rot` journalise « assembly … inerte — NBT
             sans axion:v ni axion:def », alors que l'entité est liée juste après. La garde
@@ -1769,8 +1790,22 @@ substituable sans changer rapier »).
             (bytecode lu) ; la raison d'inertie lue y est gardée. `/summon axion:assembly`
             sans données, que l'ancienne garde taisait, est désormais signalé (R-704).
             **Observé en jeu (2026-10-02)** : `/axion spawn` avec `axion:rot` ne signale
-            plus rien ; `/summon axion:assembly` signale une fois. Non exercé : la
-            réouverture d'un monde contenant l'assembly invoquée.
+            plus rien ; `/summon axion:assembly` signale une fois ; à la réouverture du
+            monde (session suivante), l'assembly invoquée le redit une fois et les cubes
+            liés ne disent rien.
+      - [ ] **C-40/C-50 — risque : corps perdu quand un tronçon redevient visible avant son
+            déchargement** (lu dans le bytecode de Forge 47.4.23, non observé en jeu) :
+            `EntityLeaveLevelEvent` part à chaque fin de suivi (tronçon passé `HIDDEN`), mais
+            `EntityJoinLevelEvent` seulement à l'ajout. Si le tronçon redevient visible avant
+            `processUnloads`, la même entité est de nouveau suivie sans Join : `AssemblyRuntime`
+            a retiré son corps et ne le recrée pas. À traiter : réconcilier (corps manquant
+            pour une assembly suivie) plutôt que se fier à la paire Join/Leave. Voir la note
+            BDC « Sur Forge 47 une entité entre au monde à son ajout mais en sort à la fin de
+            son suivi ».
+      - [ ] **C-26 — textures et matériaux (client)** (après T3 de C-61, décision de Killian
+            du 2026-10-02) : ADR d'abord — MATL selon DM-05 (`blend_mode`, `cull_mode`,
+            facteurs, slots de texture), textures (TextureManager, `DynamicTexture`, atlas
+            ≤ 256²), passes translucide (`AFTER_TRANSLUCENT_BLOCKS`) et cutout (R-1570).
 
 ## Jalons suivants
 

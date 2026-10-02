@@ -15,6 +15,7 @@ import dev.axion.forge.RuntimeAccess;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.render.BackendSelection;
 import dev.axion.render.MeshCache;
+import dev.axion.render.RenderCapabilities;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -40,17 +41,19 @@ import org.slf4j.LoggerFactory;
  * <p>AXION dessine ses objets <b>en plus</b> du monde vanilla, dans le même framebuffer, sans
  * altérer aucune passe vanilla (§19.1). Une seule passe collecte les assemblies visibles et
  * les confie au backend actif — pas un rendu par entité — pour que culling (C-64) et
- * instancing (C-65) puissent s'y loger. Premier périmètre : passe OPAQUE au stage
- * {@code AFTER_ENTITIES} (R-1570).
+ * instancing (C-65) puissent s'y loger. Chaque passe a son stage (R-1570) : OPAQUE à
+ * {@code AFTER_ENTITIES}, DEBUG à {@code AFTER_PARTICLES} ; la passe translucide viendra avec
+ * les matériaux (C-26), à {@code AFTER_TRANSLUCENT_BLOCKS}.
  *
  * <p>Le backend est choisi au chargement de chaque monde client (R-1490), d'après
  * {@code render.backend} relu à ce moment-là. Tout se passe sur le render thread, sauf le
  * chargement des maillages (ADR-119) : le {@link MeshCache} le confie à un thread de fond, et
- * le backend dessine une boîte de repli tant qu'il n'a pas abouti.
+ * le backend dessine une boîte de repli tant qu'il n'a pas abouti. Chaque choix de backend
+ * journalise, en une entrée, ce qu'il sait faire et ce qu'il ne sait pas faire (R-1493).
  *
- * <p>Les overlays de debug (C-67, ADR-121) se dessinent dans la même passe, par-dessus les
- * assemblies ; leur géométrie est demandée au natif une fois par tick client, et seulement
- * s'ils sont allumés (R-2280). Une erreur les éteint sans arrêter la passe.
+ * <p>Les overlays de debug (C-67, ADR-121) forment la passe DEBUG ; leur géométrie est
+ * demandée au natif une fois par tick client, et seulement s'ils sont allumés (R-2280). Une
+ * erreur les éteint sans arrêter le rendu des assemblies.
  */
 @Mod.EventBusSubscriber(modid = AxionMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class AxionRenderPass {
@@ -110,28 +113,29 @@ public final class AxionRenderPass {
     }
 
     /**
-     * Dessine les assemblies au stage de leur passe.
+     * Dessine chaque passe à son stage (R-1570) : OPAQUE à {@code AFTER_ENTITIES}, DEBUG à
+     * {@code AFTER_PARTICLES}.
      *
      * @param event étape du rendu du niveau
      */
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (failed || event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+        if (failed) {
             return;
         }
+        RenderLevelStageEvent.Stage stage = event.getStage();
+        if (stage == RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+            renderOpaque(event);
+        } else if (stage == RenderLevelStageEvent.Stage.AFTER_PARTICLES && OVERLAYS.mask() != 0L) {
+            // Éteints, les overlays ne coûtent que ce test (R-2280).
+            renderDebug(event);
+        }
+    }
+
+    /** Passe OPAQUE (§19.10, passe 1). */
+    private static void renderOpaque(RenderLevelStageEvent event) {
         Minecraft minecraft = Minecraft.getInstance();
-        ClientLevel level = minecraft.level;
-        if (level == null) {
-            return;
-        }
-        AxionRuntime runtime = RuntimeAccess.get();
-        List<RenderBackend.Assembly> assemblies = new ArrayList<>();
-        for (Entity entity : level.entitiesForRendering()) {
-            // Une assembly inerte n'a pas de definition, donc rien à dessiner.
-            if (entity instanceof AxionEntity assembly && !assembly.isInert()) {
-                assemblies.add(new RenderBackend.Assembly(assembly, meshOf(runtime, assembly)));
-            }
-        }
+        List<RenderBackend.Assembly> assemblies = assemblies(minecraft.level, true);
         if (assemblies.isEmpty()) {
             return;
         }
@@ -139,18 +143,56 @@ public final class AxionRenderPass {
             if (backend == null) {
                 backend = select();
             }
-            RenderBackend.Frame frame = new RenderBackend.Frame(
-                    event.getPoseStack(),
-                    event.getCamera().getPosition(),
-                    event.getPartialTick(),
-                    minecraft.renderBuffers().bufferSource(),
-                    assemblies);
-            backend.renderOpaque(frame);
-            drawOverlays(frame);
+            backend.renderOpaque(frame(event, minecraft, assemblies));
         } catch (RuntimeException failure) {
             failed = true;
             LOGGER.error("AXION : passe de rendu désactivée après une erreur", failure);
         }
+    }
+
+    /** Passe DEBUG (§19.10, passe 6) : les overlays allumés, après le reste du niveau. */
+    private static void renderDebug(RenderLevelStageEvent event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        List<RenderBackend.Assembly> assemblies = assemblies(minecraft.level, false);
+        if (assemblies.isEmpty()) {
+            return;
+        }
+        try {
+            DEBUG.draw(frame(event, minecraft, assemblies));
+        } catch (RuntimeException failure) {
+            disableOverlays(failure);
+        }
+    }
+
+    /**
+     * {@return les assemblies à dessiner, avec leur géométrie si la passe en a besoin}
+     *
+     * <p>Une assembly inerte n'a pas de definition, donc rien à dessiner. La passe DEBUG ne
+     * dessine que des lignes : elle ne demande pas les maillages.
+     */
+    private static List<RenderBackend.Assembly> assemblies(ClientLevel level, boolean withMeshes) {
+        List<RenderBackend.Assembly> assemblies = new ArrayList<>();
+        if (level == null) {
+            return assemblies;
+        }
+        AxionRuntime runtime = withMeshes ? RuntimeAccess.get() : null;
+        for (Entity entity : level.entitiesForRendering()) {
+            if (entity instanceof AxionEntity assembly && !assembly.isInert()) {
+                GeometryTransfer mesh = withMeshes ? meshOf(runtime, assembly) : null;
+                assemblies.add(new RenderBackend.Assembly(assembly, mesh));
+            }
+        }
+        return assemblies;
+    }
+
+    private static RenderBackend.Frame frame(
+            RenderLevelStageEvent event, Minecraft minecraft, List<RenderBackend.Assembly> assemblies) {
+        return new RenderBackend.Frame(
+                event.getPoseStack(),
+                event.getCamera().getPosition(),
+                event.getPartialTick(),
+                minecraft.renderBuffers().bufferSource(),
+                assemblies);
     }
 
     /**
@@ -166,15 +208,6 @@ public final class AxionRenderPass {
         }
         try {
             DEBUG.tick(RuntimeAccess.get(), Minecraft.getInstance());
-        } catch (RuntimeException failure) {
-            disableOverlays(failure);
-        }
-    }
-
-    /** Overlays de debug, par-dessus les assemblies de la frame. */
-    private static void drawOverlays(RenderBackend.Frame frame) {
-        try {
-            DEBUG.draw(frame);
         } catch (RuntimeException failure) {
             disableOverlays(failure);
         }
@@ -264,7 +297,13 @@ public final class AxionRenderPass {
         }
         BackendSelection.Selection selection = BackendSelection.select(
                 config.getString("render.backend"), NATIVE_GL_AVAILABLE, shaderMod);
-        LOGGER.info("AXION : backend de rendu {} ({})", selection.kind(), selection.reason());
+        RenderCapabilities capabilities = RenderCapabilities.of(selection);
+        // R-1493 : une entrée unique au démarrage du backend, ce qu'il ne sait pas faire compris.
+        LOGGER.info("AXION : rendu — {}", String.join("\n  ", capabilities.describe()));
+        AxionRuntime runtime = RuntimeAccess.get();
+        if (runtime != null) {
+            runtime.setRenderCapabilities(capabilities);
+        }
         return switch (selection.kind()) {
             case VANILLA -> new VanillaConsumerBackend();
             case NATIVE -> throw new IllegalStateException(

@@ -3,6 +3,7 @@ package dev.axion.diag;
 import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
+import dev.axion.render.RenderCapabilities;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -69,6 +70,16 @@ public final class StatusReport {
             // Un asset refusé se voit ici et nulle part ailleurs après son
             // unique passage au journal (R-522).
             runtime.assets().diagnostics().forEach(line -> lines.add("    " + line));
+        }
+
+        RenderCapabilities render = runtime.renderCapabilities();
+        if (render == null) {
+            lines.add("  rendu : aucun backend client (serveur dédié, ou aucun monde chargé)");
+        } else {
+            // R-1493 : ce que le backend actif ne sait pas faire se lit ici, avec son repli.
+            List<String> description = render.describe();
+            lines.add("  rendu : " + description.get(0));
+            description.subList(1, description.size()).forEach(line -> lines.add("    " + line));
         }
 
         List<HookGuard> disabled = runtime.guards().values().stream()

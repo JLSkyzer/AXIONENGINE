@@ -9,6 +9,8 @@ import dev.axion.config.ConfigLoader;
 import dev.axion.config.ConfigSchema.Scope;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.platform.PlatformAdapter;
+import dev.axion.render.BackendSelection;
+import dev.axion.render.RenderCapabilities;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
@@ -154,6 +156,28 @@ class StatusReportTest {
 
         assertTrue(report.contains("E-1010"), report);
         assertTrue(report.contains("setup"), report);
+    }
+
+    @Test
+    @DisplayName("R-1493 : sans backend de rendu client, la section rendu le dit")
+    void renduSansBackendClient() {
+        String report = joined(StatusReport.of(new AxionRuntime((p, q) -> null)));
+
+        assertTrue(report.contains("rendu : aucun backend client"), report);
+    }
+
+    @Test
+    @DisplayName("R-1493 : la section rendu donne le backend du client et ce qu'il ne sait pas faire")
+    void renduDuClient() {
+        AxionRuntime runtime = new AxionRuntime((p, q) -> null);
+        runtime.setRenderCapabilities(RenderCapabilities.of(new BackendSelection.Selection(
+                BackendSelection.Kind.VANILLA, "render.backend = vanilla")));
+
+        String report = joined(StatusReport.of(runtime));
+
+        assertTrue(report.contains("  rendu : backend VANILLA (render.backend = vanilla)"), report);
+        assertTrue(report.contains("    indisponibles dans ce backend : "), report);
+        assertTrue(report.contains("    pas encore livrées : "), report);
     }
 
     @Test
