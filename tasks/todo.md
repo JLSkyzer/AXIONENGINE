@@ -1802,10 +1802,25 @@ substituable sans changer rapier »).
             pour une assembly suivie) plutôt que se fier à la paire Join/Leave. Voir la note
             BDC « Sur Forge 47 une entité entre au monde à son ajout mais en sort à la fin de
             son suivi ».
-      - [ ] **C-26 — textures et matériaux (client)** (après T3 de C-61, décision de Killian
-            du 2026-10-02) : ADR d'abord — MATL selon DM-05 (`blend_mode`, `cull_mode`,
-            facteurs, slots de texture), textures (TextureManager, `DynamicTexture`, atlas
-            ≤ 256²), passes translucide (`AFTER_TRANSLUCENT_BLOCKS`) et cutout (R-1570).
+      - [ ] **C-26 — textures et matériaux (client)** (ADR-122, ratifié le 2026-10-02) : MATL
+            = DM-05 tel quel, TEXR (image + échantillonneur, EMBEDDED en PNG non décodé ou
+            RESOURCE en chemin relatif), UV par mesh (`MeshDesc._pad` → `uv0_range`, R-142),
+            primitives multiples (`NodeDesc._pad` → `mesh_count`), filtrage par défaut au plus
+            proche ; `RenderType` propres (mipmaps R-570), passes translucide et émissive.
+            - [ ] **T-a** `[EFFORT MAX]` — format et frontière : `MaterialDesc`, `TextureDesc`,
+                  `MATL`/`TEXR`, import glTF/OBJ/STL (matériaux complets, images,
+                  échantillonneurs, `COLOR_0`, transformation de texture), matériau par
+                  défaut, UV par mesh, primitives multiples, validation, `COMPILER_VERSION` 7,
+                  migration (R-893), `axion_asset_materials`/`axion_asset_texture`,
+                  `ASSET_OUT` schéma 1, pont JNI ; lecture Java contre la vraie JNI.
+            - [ ] **T-b** — client : textures (arrière-plan, PNG seul, ≤ 4096, mipmaps,
+                  variante CUTOUT, libérations R-752), `RenderType` propres, passes
+                  translucide (`AFTER_TRANSLUCENT_BLOCKS`) et émissive, matrice de capacités ;
+                  contenu de test ; vérifié en jeu.
+            - [ ] **T-c** — atlas AXION des textures ≤ 256² (meshes dans `[0,1]`).
+            - Hors portée, nommé : usage natif (C-60/C-63), multijoueur, `.mtl` et buffers
+              externes en jeu (C-20/C-21), décalques (C-69), `TINTABLE`, usure (C-47),
+              `max_texture_size`, `uv1`.
 
 ## Jalons suivants
 
