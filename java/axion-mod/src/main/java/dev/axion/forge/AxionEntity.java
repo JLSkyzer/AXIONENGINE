@@ -74,6 +74,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     private boolean inert = true;
 
     /**
+     * Pourquoi l'assembly est inerte, tel que sa lecture l'a établi : dit à son entrée dans le
+     * monde si elle l'est encore ({@link #onAddedToWorld}). Sans objet une fois liée.
+     */
+    private String inertReason = "créée sans definition";
+
+    /**
      * Cible d'interpolation côté client et nombre de ticks restants pour l'atteindre.
      * La physique serveur (C-40) repositionne l'entité à chaque tick et l'envoie au
      * client à 20 Hz ; sans lissage, la hitbox « saute » d'un tick à l'autre. Ces
@@ -322,13 +328,25 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 AssemblyTags.definition(stored),
                 AxionEntities.definitions());
         inert = binding.isInert();
+        inertReason = binding.inertReason();
         definitionId = binding.bound().map(Definition::id).orElse(AssemblyTags.describe(stored));
         // §22.2 : le corps sera recréé avec l'orientation sauvegardée (identité si absente).
         entityData.set(ROTATION, AssemblyTags.rotation(stored));
-        // Une entité fraîchement créée par commande passe ici sans clé d'AXION :
-        // elle sera liée juste après, et n'a rien d'anormal à signaler.
-        if (inert && !stored.isEmpty()) {
-            LOGGER.warn("AXION : assembly {} inerte — {}", getUUID(), binding.inertReason());
+    }
+
+    /**
+     * Entrée dans le monde : une assembly qui y entre encore inerte le dit, côté serveur.
+     *
+     * <p>Pas à la lecture de son NBT : {@code /axion spawn} lit l'entité depuis le NBT donné,
+     * {@code axion:rot} compris, puis la lie avant de l'ajouter — elle n'a rien d'anormal à
+     * signaler. Forge appelle ce crochet une fois par entité ajoutée, fraîche ou chargée
+     * depuis le disque.
+     */
+    @Override
+    public void onAddedToWorld() {
+        super.onAddedToWorld();
+        if (inert && !level().isClientSide()) {
+            LOGGER.warn("AXION : assembly {} inerte — {}", getUUID(), inertReason);
         }
     }
 

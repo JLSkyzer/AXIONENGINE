@@ -822,3 +822,20 @@ réellement ni pour quels types il le lit.
 **Règle.** Avant de donner un indicateur comme critère de vérification, lire ce qui le
 renseigne et vérifier qu'il couvre le type testé. À défaut, exposer la grandeur vraie soi-même
 — ici `Minecraft.hitResult`, affichée dans le libellé de debug (« — visée »).
+
+## 2026-10-02 | Une garde qui déduit la provenance du contenu casse quand le contenu s'enrichit
+
+**Ce qui a mal tourné.** Chaque `/axion spawn` incliné journalisait « assembly … inerte — NBT
+sans axion:v ni axion:def », alors que l'entité était liée l'instant d'après. La garde de
+`readAdditionalSaveData` taisait l'avertissement pour une entité « fraîche de commande »,
+reconnue à son NBT sans clé `axion:*` (`stored.isEmpty()`). T2c a fait d'`axion:rot` une clé
+légitime au spawn : la garde ne reconnaissait plus l'entité. Elle taisait aussi, à tort, une
+assembly invoquée par `/summon` sans données — réellement inerte.
+
+**Cause.** La provenance (« vient de `/axion spawn`, sera liée ») était déduite de la forme des
+données lues, qui n'en dit rien et qu'une autre tranche a changée.
+
+**Règle.** Juger un état au moment du cycle de vie qui le tranche, pas sur la forme des données
+lues avant : ici l'entrée dans le monde (`onAddedToWorld`), après la liaison. Quand une tranche
+ajoute une clé ou un champ, chercher les gardes qui testent « vide » ou « absent » sur la même
+structure.

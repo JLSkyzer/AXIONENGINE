@@ -1758,12 +1758,19 @@ substituable sans changer rapier »).
             - [ ] **T3+** : plafonds CPU skinning/déformation (R-742), décalques (R-743),
                   bascule Iris→vanilla (R-740/T-490), matrice de capacités (R-1493) ; puis
                   backend natif C-60 (son propre ADR).
-      - [ ] **C-50 — avertissement parasite au spawn** (constaté à l'essai de C-67 T-b) :
+      - [x] **C-50 — avertissement parasite au spawn** (constaté à l'essai de C-67 T-b) :
             chaque `/axion spawn` portant `axion:rot` journalise « assembly … inerte — NBT
             sans axion:v ni axion:def », alors que l'entité est liée juste après. La garde
             « entité fraîche de commande » de `readAdditionalSaveData` teste
             `stored.isEmpty()`, que `axion:rot` (T2c) contourne. Ne signaler que
             l'assembly qui entre dans le monde encore inerte.
+            Fait (2026-10-02) : avertissement déplacé dans `onAddedToWorld` (côté serveur),
+            que Forge appelle une fois par entité ajoutée, fraîche ou chargée du disque
+            (bytecode lu) ; la raison d'inertie lue y est gardée. `/summon axion:assembly`
+            sans données, que l'ancienne garde taisait, est désormais signalé (R-704).
+            **Observé en jeu (2026-10-02)** : `/axion spawn` avec `axion:rot` ne signale
+            plus rien ; `/summon axion:assembly` signale une fois. Non exercé : la
+            réouverture d'un monde contenant l'assembly invoquée.
 
 ## Jalons suivants
 
