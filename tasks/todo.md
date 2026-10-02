@@ -1681,6 +1681,23 @@ substituable sans changer rapier »).
                            (24 sommets, boîte [-0.5,0,-0.5]→[0.5,1,0.5], 2 nodes, PHYS).
                            **Observé en jeu (2026-10-02)** : le cube blanc s'affiche et tombe
                            de façon fluide ; arrêt du natif « code 0 » (aucun handle oublié).
+            - [x] **T2c — orientation du corps au client** (décisions de Killian, 2026-10-02 :
+                  pont provisoire vanilla jusqu'à C-51/M4 ; rotation persistée) :
+                  1. `AxionEntity` : donnée synchronisée `QUATERNION` posée par `applyStates`
+                     depuis `BodyState.rotation` ; côté client, slerp en 3 pas comme la
+                     position (`lerpTo`), puis entre deux ticks au rendu.
+                  2. NBT : `axion:rot`, 4 flottants `(x,y,z,w)` (§22.2, R-461) ; relu au
+                     chargement, et le corps est recréé avec cette orientation (plus
+                     d'identité forcée dans `AssemblyRuntime`). Test : spawn incliné par NBT.
+                  3. Rendu : `mulPose(rotation)` autour de l'origine du corps (bas-centre),
+                     maillage et boîte de repli.
+                  4. Remplacé tel quel par `S2C_Snapshot` (rotation smallest three, slerp,
+                     PARTIE 21.5/21.7) en M4.
+                  Vérifié : 261 tests Java verts (3 sur `axion:rot`). **Observé en jeu
+                  (2026-10-02)** : cubes apparus inclinés par NBT (arête, coin), basculent au
+                  contact et se posent à plat, rotation fluide. Persistance au rechargement
+                  couverte par les tests seulement (un cube posé à plat n'en montre rien).
+                  Constaté : la hitbox reste un carré 1×1 → R-702 (tranche suivante).
             - [ ] **T3+** : plafonds CPU skinning/déformation (R-742), décalques (R-743),
                   bascule Iris→vanilla (R-740/T-490), matrice de capacités (R-1493) ; puis
                   backend natif C-60 (son propre ADR).

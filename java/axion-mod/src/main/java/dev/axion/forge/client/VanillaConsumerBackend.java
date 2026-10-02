@@ -16,6 +16,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 /**
@@ -33,11 +34,23 @@ import org.joml.Vector3f;
  *
  * <p>Pas de matériaux encore (section MATL hors périmètre d'ADR-119) : une texture blanche,
  * modulée par la couleur des sommets. Les meshes transparents attendent la passe translucide
- * (T3) ; l'orientation du corps, sa propre tranche.
+ * (T3).
+ *
+ * <p>Le maillage tourne avec le corps, autour de son origine — celle de l'asset, au bas-centre
+ * —, à l'orientation interpolée entre deux ticks. La hitbox vanilla, elle, reste alignée sur
+ * les axes : c'est son AABB que R-702 fera suivre au corps.
  */
 final class VanillaConsumerBackend implements RenderBackend {
 
-    /** Texture neutre : la couleur vient des sommets. */
+    /**
+     * Texture neutre : la couleur vient des sommets.
+     *
+     * <p>Le constructeur est marqué déprécié, mais il vient de Minecraft 1.20.1 et existe dans
+     * toute la branche Forge 47 ; {@code fromNamespaceAndPath}, rétroporté de 1.21, n'est
+     * vérifié que dans la version de compilation (47.4.23), alors que le mod accepte
+     * {@code [47,)}. Le remplacer risquerait un {@code NoSuchMethodError} sur une 47
+     * antérieure.
+     */
     private static final ResourceLocation WHITE =
             new ResourceLocation(AxionMod.MODID, "textures/misc/white.png");
 
@@ -134,9 +147,8 @@ final class VanillaConsumerBackend implements RenderBackend {
             GeometryTransfer.Draw draw,
             VertexConsumer out) {
         PoseStack pose = frame.pose();
-        Vec3 camera = frame.camera();
         pose.pushPose();
-        pose.translate(at.x - camera.x, at.y - camera.y, at.z - camera.z);
+        at.apply(pose, frame.camera());
 
         // mat4x3 colonne-major (ADR-119) : trois axes puis la translation. Le constructeur
         // de JOML prend lui aussi les colonnes dans l'ordre.
@@ -211,23 +223,31 @@ final class VanillaConsumerBackend implements RenderBackend {
     }
 
     /**
-     * Position interpolée d'une assembly et lumière du monde à son centre.
+     * Pose interpolée d'une assembly et lumière du monde à son centre.
      *
-     * @param x position interpolée, bas-centre de l'entité
+     * @param x position interpolée de l'origine du corps (bas-centre de l'entité)
      * @param y position interpolée
      * @param z position interpolée
+     * @param rotation orientation interpolée du corps, autour de son origine
      * @param light lumière empaquetée (bloc et ciel)
      */
-    private record Placement(double x, double y, double z, int light) {
+    private record Placement(double x, double y, double z, Quaternionf rotation, int light) {
 
         static Placement of(Frame frame, AxionEntity assembly) {
             float pt = frame.partialTick();
             double x = Mth.lerp(pt, assembly.xo, assembly.getX());
             double y = Mth.lerp(pt, assembly.yo, assembly.getY());
             double z = Mth.lerp(pt, assembly.zo, assembly.getZ());
+            Quaternionf rotation = assembly.renderRotation(pt, new Quaternionf());
             int light = LevelRenderer.getLightColor(
                     assembly.level(), BlockPos.containing(x, y + assembly.getBbHeight() / 2.0, z));
-            return new Placement(x, y, z, light);
+            return new Placement(x, y, z, rotation, light);
+        }
+
+        /** Place la pile à l'origine du corps, dans son orientation. */
+        void apply(PoseStack pose, Vec3 camera) {
+            pose.translate(x - camera.x, y - camera.y, z - camera.z);
+            pose.mulPose(rotation);
         }
     }
 
@@ -252,9 +272,8 @@ final class VanillaConsumerBackend implements RenderBackend {
         float light = MIN_LIGHT + (1.0f - MIN_LIGHT) * level / 15.0f;
 
         PoseStack pose = frame.pose();
-        Vec3 camera = frame.camera();
         pose.pushPose();
-        pose.translate(at.x - camera.x, at.y - camera.y, at.z - camera.z);
+        at.apply(pose, frame.camera());
         Matrix4f m = pose.last().pose();
 
         float x0 = -half;

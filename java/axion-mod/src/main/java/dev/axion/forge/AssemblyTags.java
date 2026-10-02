@@ -5,8 +5,12 @@ import java.util.HexFormat;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.FloatTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
+import org.joml.Quaternionf;
+import org.joml.Quaternionfc;
 
 /**
  * NBT et données d'apparition d'une AxionEntity (PARTIE 22.2, R-703).
@@ -27,6 +31,12 @@ final class AssemblyTags {
 
     /** Identifiant 64 bits de la definition. */
     static final String DEFINITION = "axion:def";
+
+    /** Orientation du corps : quaternion {@code (x, y, z, w)}, quatre flottants (R-461). */
+    static final String ROTATION = "axion:rot";
+
+    /** En deçà, un quaternion n'a pas de direction : il ne décrit aucune rotation. */
+    private static final float MIN_QUATERNION_NORM_SQUARED = 1e-6f;
 
     /** Longueur maximale d'un identifiant transmis, celle des chaînes réseau de Minecraft. */
     static final int MAX_ID_CHARS = 32767;
@@ -86,6 +96,37 @@ final class AssemblyTags {
         out.putInt(VERSION, AssemblyBinding.NBT_SCHEMA);
         out.putLong(DEFINITION, definitionHash);
         return out;
+    }
+
+    /**
+     * {@return l'orientation gardée, normalisée, ou l'identité}
+     *
+     * <p>Un NBT sans orientation — entité d'avant cette clé, ou créée par commande — décrit
+     * un corps droit. Une orientation inexploitable (mauvais type, composante non finie,
+     * quaternion nul) aussi : un corps recréé avec une rotation absurde serait pire qu'un
+     * corps redressé.
+     */
+    static Quaternionf rotation(CompoundTag stored) {
+        ListTag list = stored.getList(ROTATION, Tag.TAG_FLOAT);
+        if (list.size() == 4) {
+            Quaternionf rotation =
+                    new Quaternionf(list.getFloat(0), list.getFloat(1), list.getFloat(2), list.getFloat(3));
+            float norm = rotation.lengthSquared();
+            if (Float.isFinite(norm) && norm > MIN_QUATERNION_NORM_SQUARED) {
+                return rotation.normalize();
+            }
+        }
+        return new Quaternionf();
+    }
+
+    /** Pose l'orientation dans les clés gardées (§22.2). */
+    static void putRotation(CompoundTag stored, Quaternionfc rotation) {
+        ListTag list = new ListTag();
+        list.add(FloatTag.valueOf(rotation.x()));
+        list.add(FloatTag.valueOf(rotation.y()));
+        list.add(FloatTag.valueOf(rotation.z()));
+        list.add(FloatTag.valueOf(rotation.w()));
+        stored.put(ROTATION, list);
     }
 
     /** {@return ce qu'on peut dire d'une definition non résolue} */

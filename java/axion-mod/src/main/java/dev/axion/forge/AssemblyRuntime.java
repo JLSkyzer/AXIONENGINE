@@ -21,6 +21,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.EntityLeaveLevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import org.joml.Quaternionf;
 
 /**
  * Boucle d'exécution des assemblies (intégration C-40 ↔ C-50) : relie chaque
@@ -99,7 +100,10 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         long dimension =
                 DimensionId.of(((Level) event.getLevel()).dimension().location().toString());
         double[] position = {assembly.getX(), assembly.getY(), assembly.getZ()};
-        float[] rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+        // Orientation sauvegardée (§22.2, axion:rot), identité pour une entité neuve : un
+        // corps tombé sur le flanc le reste après rechargement.
+        Quaternionf saved = assembly.bodyRotation();
+        float[] rotation = {saved.x(), saved.y(), saved.z(), saved.w()};
         pending.add(
                 new Pending(true, index, dimension, position, rotation, bodyKind(definition.kind()), phys));
         handleByEntity.put(assembly.getId(), index);
@@ -155,6 +159,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             // Position autoritaire du natif (coords monde recomposées par l'origine flottante).
             // Appliquée en fin de tick, elle prime sur toute position vanilla.
             entity.setPos(p[0], p[1], p[2]);
+            float[] q = state.rotation();
+            entity.setBodyRotation(q[0], q[1], q[2], q[3]);
         }
     }
 
