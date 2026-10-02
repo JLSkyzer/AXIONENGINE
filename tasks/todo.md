@@ -957,6 +957,20 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       - Reste dû : assembly native créée par C-40 (M3), R-702 AABB physique
         (M3), persistance complète C-52 (M4), R-705 dégâts → `ImpactDesc` (M6),
         état des parts et empreinte de déformation dans R-703 (M6-M7).
+      - [ ] **R-702 — emprise physique courante → hitbox** (ADR-120, ratifié le
+            2026-10-02). Constat en jeu (T2c) : après une bascule, la hitbox 1×1 ancrée
+            à l'origine du corps flotte d'un demi-bloc à côté du cube.
+            - [ ] **T-a** `[EFFORT MAX]` — `BodyBounds` (24 o, relatif à la position,
+                  axes du monde) dans `ax-model` + test de disposition ; calcul dans
+                  `ax-physics` depuis la **pose rapportée** (pas le cache des colliders,
+                  que R-181 peut laisser en retard d'un pas), même parcours que les
+                  états ; dépôt dans `SIM_OUT` après `BodyState[]`, `schema_version` 1
+                  écrit par `axion_buffer_acquire` ; test d'ABI ; lecture Java (JNI réelle).
+            - [ ] **T-b** — `AxionEntity.makeBoundingBox()` depuis l'emprise, contrôle
+                  (finie, min ≤ max, ±1024), pont client `VECTOR3` × 2 interpolé, libellé
+                  « provisoire » retiré à la première emprise ; vérifié en jeu (F3+B).
+            - Hors portée, nommé : corps statiques (boîte provisoire), grandes assemblies
+              (marge de recherche d'entités vanilla : 2 blocs X/Z, 4 en Y).
 - [ ] **C-27 — Definitions data-driven** (M2). Périmètre décidé par Killian le
       2026-09-13 : **definitions seules** ; transfert au natif et format
       `CompiledDefinition` reportés en M3, avec leur premier consommateur (pas
