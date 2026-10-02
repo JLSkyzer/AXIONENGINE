@@ -839,3 +839,17 @@ données lues, qui n'en dit rien et qu'une autre tranche a changée.
 lues avant : ici l'entrée dans le monde (`onAddedToWorld`), après la liaison. Quand une tranche
 ajoute une clé ou un champ, chercher les gardes qui testent « vide » ou « absent » sur la même
 structure.
+
+## 2026-10-02 | Une exigence transverse de la PARTIE 19 s'impose sans que la fiche du composant la rappelle
+
+**Ce qui a mal tourné.** L'overlay `colliders` (C-67, T-b d'ADR-121) a été dessiné au stage
+`AFTER_ENTITIES`, dans la passe des assemblies. R-1570 (§19.10) place la passe DEBUG à
+`AFTER_PARTICLES`. L'écart, livré et validé en jeu, n'a été vu qu'en préparant T3 de C-61.
+
+**Cause.** Ni la fiche de C-67 (5.54) ni l'ADR ne citent R-1570 : seuls la fiche et le
+contrat de l'ADR avaient été lus avant de dessiner.
+
+**Règle.** Avant tout dessin, lire §19.10 (passes et stages) et §19.2bis (invariants entre
+backends) : ce sont des exigences transverses qu'aucune fiche de composant ne rappelle. Plus
+largement, chercher la notion en jeu (« passe », « stage ») dans `docs/spec/INDEX.md`, pas
+seulement l'identifiant du composant.
