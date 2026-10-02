@@ -12,8 +12,20 @@ use std::path::{Component, Path, PathBuf};
 /// Rend `None` si le chemin est absolu ou remonte l'arborescence : l'importeur
 /// traite alors la référence comme absente, ce qui est un refus propre plutôt
 /// qu'une lecture hors du répertoire de l'asset.
+///
+/// Le refus ne dépend pas de la plateforme, comme celui de l'importeur
+/// (`check_relative_path`) : un antislash ou une lettre de lecteur est refusé
+/// partout, sans quoi un même asset se résoudrait sous Linux et non sous Windows.
 #[must_use]
 pub fn sibling_path(source_dir: &Path, relative: &str) -> Option<PathBuf> {
+    // Séparateur sur l'une des plateformes supportées, simple caractère ailleurs.
+    if relative.contains('\\') {
+        return None;
+    }
+    // Une lettre de lecteur — « C: » — est une racine sans être un `/`.
+    if relative.len() >= 2 && relative.as_bytes()[1] == b':' {
+        return None;
+    }
     let candidate = Path::new(relative);
     for component in candidate.components() {
         match component {

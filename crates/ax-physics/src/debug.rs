@@ -50,8 +50,9 @@ pub struct DebugColliders {
 /// — `edges()` garde les arêtes supprimées à la fusion des faces coplanaires.
 /// Champ de hauteurs : les arêtes de ses triangles de collision. parry 0.30.2 ne
 /// compile le `to_outline` ni de l'un ni de l'autre (modules commentés, celui du
-/// champ de hauteurs n'étant qu'un `todo!()`). Forme composée : chaque enfant à
-/// sa pose. Toute autre forme : sa boîte locale, plutôt que rien.
+/// champ de hauteurs n'étant qu'un bouchon qui panique à l'appel). Forme
+/// composée : chaque enfant à sa pose. Toute autre forme : sa boîte locale,
+/// plutôt que rien.
 pub(crate) fn append_outline(
     shape: &dyn ParryShape,
     pose: &RapierPose,

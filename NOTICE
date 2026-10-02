@@ -21,7 +21,7 @@ figurer dans les attributions au meme titre que les autres (R-2290).
 Dependances Rust
 --------------------------------------------------------------------------------
 
-144 paquets, transitives comprises.
+145 paquets, transitives comprises.
 
   aho-corasick 1.1.5
     Licence : Unlicense OR MIT
@@ -234,6 +234,10 @@ Dependances Rust
   hermit-abi 0.5.3
     Licence : MIT OR Apache-2.0
     Source  : https://github.com/hermit-os/hermit-rs
+
+  indexmap 2.14.2
+    Licence : Apache-2.0 OR MIT
+    Source  : https://github.com/indexmap-rs/indexmap
 
   inflections 1.1.1
     Licence : MIT
