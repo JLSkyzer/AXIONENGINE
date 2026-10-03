@@ -104,6 +104,14 @@ cargo test --workspace --all-features
 `./gradlew runClient`, `runServer`, `runData`, `runGameTestServer` lancent le jeu
 en développement.
 
+```bash
+python tools/ci/local_ci.py
+```
+
+rejoue les jobs de `ci.yml` sur la machine (configuration de l'hôte seulement,
+pas la matrice de plateformes). Tant que GitHub refuse les jobs pour facturation,
+c'est elle qui ferme une tranche : la noter « CI locale verte », jamais « CI verte ».
+
 ## Commits
 
 Le CDC impose de citer les identifiants concernés :
