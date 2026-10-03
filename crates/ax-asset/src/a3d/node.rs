@@ -292,7 +292,7 @@ mod tests {
     }
 
     #[test]
-    fn t252_une_table_mensongere_est_refusee_sans_paniquer() {
+    fn t253_une_table_mensongere_est_refusee_sans_paniquer() {
         let (nodes, names) = table();
         let bytes = encode_nodes(&nodes, &names).expect("encodage");
 

@@ -452,7 +452,7 @@ f 1/1/1 2/2/1 3/3/1
     }
 
     #[test]
-    fn t221_une_carte_de_relief_du_mtl_est_reperee() {
+    fn t225_une_carte_de_relief_du_mtl_est_reperee() {
         let source = "mtllib relief.mtl\nusemtl relief\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
         // `map_Bump` est rangé par `tobj` ; `norm`, l'extension PBR, ne l'est
         // pas et doit être cherché dans les paramètres bruts.

@@ -29,6 +29,11 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Le CDC reste la source : la liste n'est pas recopiée ici, elle en est
  * extraite. Une modification du cahier des charges se répercute donc d'elle-même.
+ *
+ * <p>Un test porte son identifiant de deux façons, toutes deux admises : écrit
+ * {@code T-231} dans un fichier de test, ou en préfixe du nom de la fonction de
+ * test, {@code fn t231_…} — la convention des tests Rust, que ce contrôle ignorait
+ * avant la clôture de M1, dont tous les identifiants sont portés ainsi.
  */
 class MilestoneTestsCoveredTest {
 
@@ -40,6 +45,24 @@ class MilestoneTestsCoveredTest {
      * rouge en permanence ne dit plus rien.
      */
     private static final List<String> COMPLETED_MILESTONES = List.of("M0");
+
+    /**
+     * {@return vrai si une source de test porte cet identifiant : écrit tel quel, ou en
+     * préfixe d'une fonction — {@code fn t231_…(} en Rust, {@code void t231_…(} en Java}
+     *
+     * <p>Une fonction, pas une simple mention : le préfixe doit nommer ce que déclare
+     * {@code fn} ou {@code void}, et être suivi de ses paramètres.
+     *
+     * @param content contenu d'un fichier de test
+     * @param identifier identifiant, {@code T-231}
+     */
+    static boolean carries(String content, String identifier) {
+        if (content.contains(identifier)) {
+            return true;
+        }
+        String prefix = "t" + identifier.substring(2) + "_";
+        return Pattern.compile("\\b(?:fn|void)\\s+" + prefix + "\\w*\\s*\\(").matcher(content).find();
+    }
 
     /** Identifiant seul, ou plage {@code T-100..T-103}. */
     private static final Pattern IDENTIFIER =
@@ -119,7 +142,7 @@ class MilestoneTestsCoveredTest {
         List<String> missing = new ArrayList<>();
         for (String milestone : COMPLETED_MILESTONES) {
             for (String identifier : declaredTests(spec, milestone)) {
-                if (sources.stream().noneMatch(content -> content.contains(identifier))) {
+                if (sources.stream().noneMatch(content -> carries(content, identifier))) {
                     missing.add(milestone + " : " + identifier);
                 }
             }
@@ -129,5 +152,18 @@ class MilestoneTestsCoveredTest {
                 missing.isEmpty(),
                 () -> "R-2391 violé — des tests d'un jalon clos ont disparu :\n  "
                         + String.join("\n  ", missing));
+    }
+
+    @Test
+    @DisplayName("Un identifiant compte écrit tel quel ou en nom de fonction de test, pas en simple mention")
+    void unIdentifiantSeLitEnToutesLettresOuEnNomDeTest() {
+        assertTrue(carries("//! T-231 — structure", "T-231"));
+        assertTrue(carries("#[test]\n    fn t231_un_parent_inexistant_est_refuse() {", "T-231"));
+        assertTrue(carries("@Test\n    void t231_unCas() {", "T-231"));
+        assertFalse(carries("// voir t231_un_cas, ailleurs", "T-231"), "une mention n'est pas un test");
+        assertFalse(carries("fn t2310_un_autre_test() {", "T-231"), "T-2310 n'est pas T-231");
+        assertFalse(carries("fn xt231_un_cas() {", "T-231"), "le préfixe ouvre le nom");
+        assertFalse(carries("let t231_valeur = 3;", "T-231"), "une variable n'est pas une fonction de test");
+        assertFalse(carries("let x = t231_aide();", "T-231"), "un appel n'est pas une déclaration");
     }
 }
