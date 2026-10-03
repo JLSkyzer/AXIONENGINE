@@ -12,6 +12,7 @@ import dev.axion.render.MeshLook;
 import dev.axion.render.RenderAsset;
 import dev.axion.render.SurfacePass;
 import dev.axion.render.TextureBinding;
+import dev.axion.render.TextureRegion;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,7 +33,8 @@ import org.joml.Vector3f;
  * <p>Chaque assembly est dessinée avec la géométrie que le natif a décodée (ADR-119) : un dessin
  * par mesh de node visible, à sa transformation de repos, sous la position interpolée de
  * l'entité. Chaque mesh y prend l'apparence de son matériau (ADR-122 §7) : sa texture d'albedo,
- * filtrée comme à son téléversement, ou la texture neutre ; la couleur de ses sommets, établie au
+ * filtrée comme à son téléversement — texture individuelle, ou tuile de l'atlas de l'asset dont
+ * ses coordonnées de texture sont ramenées à la place (T-c) —, ou la texture neutre ; la couleur de ses sommets, établie au
  * chargement ; la pleine lumière s'il est sans éclairage. Les sommets passent par les shaders
  * d'entité de Minecraft, ce qui leur donne la lumière du monde (lightmap) et l'ombrage
  * directionnel des entités vanilla.
@@ -129,7 +131,7 @@ final class VanillaConsumerBackend implements RenderBackend {
                 if (placed == null) {
                     placed = new Placed(asset, AssemblyPlacement.of(frame.partialTick(), assembly.entity()));
                 }
-                parts.add(new Part(placed, draw, look));
+                parts.add(new Part(placed, draw, look, asset.albedo(draw.mesh())));
             }
         }
         if (parts.isEmpty()) {
@@ -145,10 +147,9 @@ final class VanillaConsumerBackend implements RenderBackend {
         VertexConsumer out = null;
         for (int rank : DepthOrder.farToNear(distances)) {
             Part part = parts.get(rank);
-            TextureBinding albedo = part.assembly().asset().albedo(part.draw().mesh());
             boolean doubleSided = part.look().doubleSided();
             RenderType type = AxionRenderTypes.entity(
-                    albedo == null ? NEUTRAL : albedo,
+                    bound(part.region()),
                     EntityShader.of(SurfacePass.TRANSLUCENT, doubleSided),
                     doubleSided);
             if (type != current) {
@@ -195,12 +196,10 @@ final class VanillaConsumerBackend implements RenderBackend {
                 if (look.pass() != pass || !look.visible()) {
                     continue;
                 }
-                TextureBinding albedo = asset.albedo(draw.mesh());
+                TextureRegion albedo = asset.albedo(draw.mesh());
                 RenderType type = AxionRenderTypes.entity(
-                        albedo == null ? NEUTRAL : albedo,
-                        EntityShader.of(pass, look.doubleSided()),
-                        look.doubleSided());
-                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(new Part(assembly, draw, look));
+                        bound(albedo), EntityShader.of(pass, look.doubleSided()), look.doubleSided());
+                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(new Part(assembly, draw, look, albedo));
             }
         }
         drawBatches(frame, batches, false);
@@ -219,13 +218,17 @@ final class VanillaConsumerBackend implements RenderBackend {
                 if (!look.visible() || !asset.emits(draw.mesh())) {
                     continue;
                 }
-                TextureBinding emission = asset.emission(draw.mesh());
-                RenderType type = AxionRenderTypes.entity(
-                        emission == null ? NEUTRAL : emission, EntityShader.EYES, look.doubleSided());
-                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(new Part(assembly, draw, look));
+                TextureRegion emission = asset.emission(draw.mesh());
+                RenderType type = AxionRenderTypes.entity(bound(emission), EntityShader.EYES, look.doubleSided());
+                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(new Part(assembly, draw, look, emission));
             }
         }
         drawBatches(frame, batches, true);
+    }
+
+    /** {@return la texture que lie le type de rendu : celle de la région, ou la neutre} */
+    private static TextureBinding bound(TextureRegion region) {
+        return region == null ? NEUTRAL : region.binding();
     }
 
     /**
@@ -281,6 +284,7 @@ final class VanillaConsumerBackend implements RenderBackend {
         Matrix4f position = last.pose();
         Matrix3f normal = last.normal();
         Vector3f scratch = new Vector3f();
+        TextureRegion region = part.region();
         int[] indices = mesh.indices();
         int base = desc.vertexOffset();
         int end = desc.indexOffset() + desc.indexCount();
@@ -296,10 +300,10 @@ final class VanillaConsumerBackend implements RenderBackend {
             int colorA = emission ? look.emissiveColor() : look.colorOf(a);
             int colorB = emission ? look.emissiveColor() : look.colorOf(b);
             int colorC = emission ? look.emissiveColor() : look.colorOf(c);
-            vertex(out, position, normal, scratch, mesh, base + a, colorA, light);
-            vertex(out, position, normal, scratch, mesh, base + b, colorB, light);
-            vertex(out, position, normal, scratch, mesh, base + c, colorC, light);
-            vertex(out, position, normal, scratch, mesh, base + c, colorC, light);
+            vertex(out, position, normal, scratch, mesh, region, base + a, colorA, light);
+            vertex(out, position, normal, scratch, mesh, region, base + b, colorB, light);
+            vertex(out, position, normal, scratch, mesh, region, base + c, colorC, light);
+            vertex(out, position, normal, scratch, mesh, region, base + c, colorC, light);
         }
         pose.popPose();
     }
@@ -307,6 +311,7 @@ final class VanillaConsumerBackend implements RenderBackend {
     /**
      * Émet un sommet.
      *
+     * @param region place de l'image dans la texture liée ; {@code null} pour la texture neutre
      * @param vertex rang du sommet dans le tableau des sommets
      * @param color couleur ARGB du sommet
      */
@@ -316,6 +321,7 @@ final class VanillaConsumerBackend implements RenderBackend {
             Matrix3f normal,
             Vector3f scratch,
             GeometryTransfer mesh,
+            TextureRegion region,
             int vertex,
             int color,
             int light) {
@@ -331,9 +337,15 @@ final class VanillaConsumerBackend implements RenderBackend {
         }
         scratch.normalize();
 
+        float u = uvs[vertex * 2];
+        float v = uvs[vertex * 2 + 1];
+        if (region != null) {
+            u = region.u(u);
+            v = region.v(v);
+        }
         out.vertex(position, positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2])
                 .color((color >>> 16) & 0xFF, (color >>> 8) & 0xFF, color & 0xFF, color >>> 24)
-                .uv(uvs[vertex * 2], uvs[vertex * 2 + 1])
+                .uv(u, v)
                 .overlayCoords(OverlayTexture.NO_OVERLAY)
                 .uv2(light)
                 .normal(scratch.x(), scratch.y(), scratch.z())
@@ -402,6 +414,9 @@ final class VanillaConsumerBackend implements RenderBackend {
     /** Une assembly prête, posée une fois pour la frame. */
     private record Placed(RenderAsset asset, AssemblyPlacement at) {}
 
-    /** Un mesh à dessiner : son assembly, son dessin au repos, son apparence. */
-    private record Part(Placed assembly, GeometryTransfer.Draw draw, MeshLook look) {}
+    /**
+     * Un mesh à dessiner : son assembly, son dessin au repos, son apparence, et où lire sa texture
+     * pour ce dessin — albedo ou émission ; {@code null} pour la texture neutre.
+     */
+    private record Part(Placed assembly, GeometryTransfer.Draw draw, MeshLook look, TextureRegion region) {}
 }

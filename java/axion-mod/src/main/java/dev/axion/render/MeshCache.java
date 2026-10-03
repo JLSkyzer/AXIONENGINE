@@ -32,7 +32,8 @@ import java.util.function.Consumer;
  *       et libère les textures : il est seul à toucher au contexte graphique (R-751) ;
  *   <li><b>le thread de fond</b> exécute les chargements, établit l'apparence des meshes —
  *       matériau, couleurs de sommets — et prépare les textures — lecture, contrôles, découpe,
- *       mipmaps. Un gros modèle s'y décode sans à-coup à l'écran ;
+ *       atlas des petites textures (T-c), mipmaps. Un gros modèle s'y décode sans à-coup à
+ *       l'écran ;
  *   <li><b>le thread qui arrête</b> — rendu à la sortie d'un monde, serveur intégré à l'arrêt
  *       du jeu — rend tous les handles par {@link #releaseAll} ou {@link #close}, avant la
  *       fermeture du natif (R-321, R-322).
@@ -217,8 +218,8 @@ public final class MeshCache {
     }
 
     /**
-     * Thread de fond : charge dans le natif, prépare les textures hors du verrou, puis confie le
-     * téléversement au fil de rendu.
+     * Thread de fond : charge dans le natif, prépare les textures hors du verrou — l'atlas de
+     * l'asset, puis les textures individuelles —, puis confie le téléversement au fil de rendu.
      */
     private void load(String path, Loading loading) {
         Decoded decoded = loadNative(path, loading);
@@ -230,25 +231,122 @@ public final class MeshCache {
             return;
         }
         Set<Integer> reported = new HashSet<>(decoded.refused);
+        List<Pending> pending = new ArrayList<>();
         List<Staged> staged = new ArrayList<>();
-        for (TexturePipeline.Request request : decoded.requests) {
-            int rank = request.key().origin();
-            try {
-                TexturePipeline.Prepared prepared = textures.prepare(request);
-                staged.add(new Staged(request.key(), prepared));
-                if (prepared.note() != null && reported.add(rank)) {
-                    diagnostics.accept(path + " — texture " + rank + " : " + prepared.note());
+        try {
+            for (TexturePipeline.Request request : decoded.requests) {
+                int rank = request.key().origin();
+                try {
+                    TexturePipeline.Image image = textures.decode(request);
+                    pending.add(new Pending(request, image));
+                    String note = image.sampling().note();
+                    if (note != null && reported.add(rank)) {
+                        diagnostics.accept(path + " — texture " + rank + " : " + note);
+                    }
+                } catch (TextureRefusal refusal) {
+                    refuse(path, rank, refusal.getMessage(), reported);
+                } catch (RuntimeException failure) {
+                    refuse(path, rank, "préparation impossible : " + failure, reported);
                 }
-            } catch (TextureRefusal refusal) {
-                refuse(path, rank, refusal.getMessage(), reported);
+            }
+            try {
+                atlas(path, loading, decoded, looks, pending, staged);
             } catch (RuntimeException failure) {
-                refuse(path, rank, "préparation impossible : " + failure, reported);
+                // Les pages déjà composées restent ; le reste se prépare une à une.
+                diagnostics.accept(path + " — atlas impossible : " + failure + " ; textures préparées une à une");
+            }
+            for (Pending one : pending) {
+                if (one.taken) {
+                    continue;
+                }
+                one.taken = true;
+                try {
+                    TexturePipeline.Prepared prepared = textures.prepare(one.request, one.image);
+                    staged.add(new Staged(prepared, List.of(one.request.key()), null));
+                } catch (RuntimeException failure) {
+                    refuse(path, one.request.key().origin(), "préparation impossible : " + failure, reported);
+                }
+            }
+        } finally {
+            // Les images rangées dans un atlas, qui les a seulement lues, et celles qu'un échec a
+            // laissées en route.
+            for (Pending one : pending) {
+                if (!one.taken || one.packed) {
+                    textures.close(one.image);
+                }
             }
         }
         if (!submit(renderThread, () -> install(path, loading, decoded, looks, staged))) {
             staged.forEach(stage -> textures.discard(stage.prepared));
             retire(decoded.handle);
             settleFailed(path, loading, "téléversement impossible, fil de rendu arrêté");
+        }
+    }
+
+    /**
+     * Thread de fond : l'atlas de l'asset (ADR-122 T-c). Les textures de côtés ≤ 256 que tous
+     * leurs meshes lisent dans {@code [0, 1]} s'y rangent, par filtrage — au plus proche, puis
+     * linéaire —, dès qu'un filtrage en réunit deux. Une page qui ne se compose pas laisse ses
+     * textures se préparer une à une, signalé une fois.
+     */
+    private void atlas(
+            String path,
+            Loading loading,
+            Decoded decoded,
+            List<MeshLook> looks,
+            List<Pending> pending,
+            List<Staged> staged) {
+        Set<TextureKey> unrepeated = AtlasPlan.unrepeated(decoded.mesh, looks);
+        int levels = -1;
+        int pages = 0;
+        boolean failed = false;
+        for (boolean blur : new boolean[] {false, true}) {
+            List<Pending> group = new ArrayList<>();
+            for (Pending one : pending) {
+                if (unrepeated.contains(one.request.key())
+                        && one.image.sampling().blur() == blur
+                        && AtlasLayout.fits(one.image.width(), one.image.height())) {
+                    group.add(one);
+                }
+            }
+            if (group.size() < 2) {
+                continue;
+            }
+            if (levels < 0) {
+                levels = Math.max(0, Math.min(4, textures.mipmapSetting()));
+            }
+            int[] widths = new int[group.size()];
+            int[] heights = new int[group.size()];
+            for (int index = 0; index < group.size(); index++) {
+                widths[index] = group.get(index).image.width();
+                heights[index] = group.get(index).image.height();
+            }
+            for (AtlasLayout.Page page : AtlasLayout.pack(widths, heights, levels)) {
+                List<TexturePipeline.Image> images = new ArrayList<>();
+                List<TextureKey> keys = new ArrayList<>();
+                for (AtlasLayout.Tile tile : page.tiles()) {
+                    images.add(group.get(tile.index()).image);
+                    keys.add(group.get(tile.index()).request.key());
+                }
+                String location = TextureLocations.atlas(path, loading.serial, pages++);
+                TexturePipeline.Prepared prepared;
+                try {
+                    prepared = textures.atlas(location, blur, page, images);
+                } catch (RuntimeException failure) {
+                    if (!failed) {
+                        failed = true;
+                        diagnostics.accept(path + " — atlas impossible : " + failure
+                                + " ; textures préparées une à une");
+                    }
+                    continue;
+                }
+                staged.add(new Staged(prepared, List.copyOf(keys), page));
+                for (AtlasLayout.Tile tile : page.tiles()) {
+                    Pending one = group.get(tile.index());
+                    one.taken = true;
+                    one.packed = true;
+                }
+            }
         }
     }
 
@@ -426,17 +524,23 @@ public final class MeshCache {
             submit(executor, () -> retire(decoded.handle));
             return;
         }
-        Map<TextureKey, TextureBinding> uploaded = new HashMap<>();
+        Map<TextureKey, TextureRegion> uploaded = new HashMap<>();
         List<String> registered = new ArrayList<>();
         for (Staged stage : staged) {
+            TextureBinding binding = stage.prepared.binding();
             try {
                 textures.upload(stage.prepared);
-                uploaded.put(stage.key, stage.prepared.binding());
-                registered.add(stage.prepared.binding().location());
             } catch (RuntimeException failure) {
                 textures.discard(stage.prepared);
-                diagnostics.accept(path + " — texture " + stage.key.origin()
+                diagnostics.accept(path + " — " + stage.describe()
                         + " : téléversement impossible : " + failure + " ; texture neutre");
+                continue;
+            }
+            registered.add(binding.location());
+            for (int index = 0; index < stage.keys.size(); index++) {
+                uploaded.put(stage.keys.get(index), stage.page == null
+                        ? TextureRegion.whole(binding)
+                        : stage.page.region(stage.page.tiles().get(index), binding));
             }
         }
         RenderAsset asset = new RenderAsset(decoded.mesh, decoded.materials, looks, uploaded);
@@ -510,8 +614,45 @@ public final class MeshCache {
             List<TexturePipeline.Request> requests,
             Set<Integer> refused) {}
 
-    /** Une texture préparée, et la clé sous laquelle l'asset la retrouvera. */
-    private record Staged(TextureKey key, TexturePipeline.Prepared prepared) {}
+    /**
+     * Une texture décodée, en attente de préparation.
+     *
+     * <p>{@code taken} : une préparation l'a prise, ou un atlas l'a rangée ; {@code packed} :
+     * rangée dans un atlas, qui l'a seulement lue — elle reste à rendre.
+     */
+    private static final class Pending {
+        final TexturePipeline.Request request;
+        final TexturePipeline.Image image;
+        boolean taken;
+        boolean packed;
+
+        Pending(TexturePipeline.Request request, TexturePipeline.Image image) {
+            this.request = request;
+            this.image = image;
+        }
+    }
+
+    /**
+     * Une texture préparée, et les clés sous lesquelles l'asset la retrouvera.
+     *
+     * @param prepared texture individuelle, ou page d'atlas
+     * @param keys sa clé ; pour une page, celle de chaque tuile, dans l'ordre des tuiles
+     * @param page disposition de la page ; {@code null} pour une texture individuelle
+     */
+    private record Staged(TexturePipeline.Prepared prepared, List<TextureKey> keys, AtlasLayout.Page page) {
+
+        /** {@return ce qu'un diagnostic en nomme} */
+        String describe() {
+            if (page == null) {
+                return "texture " + keys.get(0).origin();
+            }
+            List<Integer> ranks = new ArrayList<>();
+            for (TextureKey key : keys) {
+                ranks.add(key.origin());
+            }
+            return "atlas des textures " + ranks;
+        }
+    }
 
     /**
      * État d'un chemin. Comparé par <b>identité</b> : les remplacements conditionnels de la

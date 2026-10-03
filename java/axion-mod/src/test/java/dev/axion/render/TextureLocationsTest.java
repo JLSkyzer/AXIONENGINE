@@ -56,4 +56,12 @@ class TextureLocationsTest {
         assertTrue(!TextureLocations.registered(ASSET, 7, TextureKey.plain(0))
                 .equals(TextureLocations.registered(ASSET, 8, TextureKey.plain(0))));
     }
+
+    @Test
+    @DisplayName("Une page d'atlas porte l'asset, le chargement et son rang, à part des textures individuelles")
+    void unePageDAtlasPorteSonRang() {
+        assertEquals("axion:texture/axion/axion/models/test/cube.gltf/7/atlas/1", TextureLocations.atlas(ASSET, 7, 1));
+        assertTrue(!TextureLocations.atlas(ASSET, 7, 0).equals(TextureLocations.atlas(ASSET, 8, 0)));
+        assertTrue(!TextureLocations.atlas(ASSET, 7, 0).equals(TextureLocations.registered(ASSET, 7, TextureKey.plain(0))));
+    }
 }

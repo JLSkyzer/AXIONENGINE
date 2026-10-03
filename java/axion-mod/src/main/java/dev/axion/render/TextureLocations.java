@@ -76,4 +76,18 @@ public final class TextureLocations {
         }
         return key.cutout() ? base + "/cutout/" + threshold : base;
     }
+
+    /**
+     * {@return le nom sous lequel enregistrer une page d'atlas}
+     *
+     * <p>{@code axion:texture/<asset>/<chargement>/atlas/<page>} : propre au chargement, comme les
+     * textures individuelles, pour la même raison.
+     *
+     * @param asset clé de l'asset, {@code <ns>:<chemin>}
+     * @param load numéro du chargement
+     * @param page rang de la page parmi celles du chargement
+     */
+    public static String atlas(String asset, long load, int page) {
+        return NAMESPACE + ":texture/" + asset.replace(':', '/') + "/" + load + "/atlas/" + page;
+    }
 }

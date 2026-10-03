@@ -34,4 +34,11 @@ public record TextureSampling(boolean blur, boolean clamp, boolean mixedClamp) {
         boolean clamp = (clampU && clampV) || Boolean.TRUE.equals(metadataClamp);
         return new TextureSampling(blur, clamp, clampU != clampV && !clamp);
     }
+
+    /** {@return ce qu'il faut signaler une fois au sujet de cet échantillonnage, ou {@code null}} */
+    public String note() {
+        return mixedClamp
+                ? "un seul axe écrêté : rendue en répétition, le rendu vanilla n'écrêtant que les deux à la fois"
+                : null;
+    }
 }

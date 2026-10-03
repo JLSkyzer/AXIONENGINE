@@ -36,4 +36,13 @@ class TextureSamplingTest {
         assertEquals(new TextureSampling(false, true, false),
                 TextureSampling.of(SAMPLER_CLAMP_V, null, true), "le .mcmeta écrête les deux");
     }
+
+    @Test
+    @DisplayName("Seul l'écrêtage d'un axe sur deux est à signaler")
+    void seulLEcretageDUnAxeEstSignale() {
+        assertEquals(null, TextureSampling.of(SAMPLER_CLAMP_U | SAMPLER_CLAMP_V, null, null).note());
+        assertEquals(null, TextureSampling.of(0, null, null).note());
+        String note = TextureSampling.of(SAMPLER_CLAMP_V, null, null).note();
+        assertEquals(true, note != null && note.contains("un seul axe"), note);
+    }
 }

@@ -1931,7 +1931,34 @@ substituable sans changer rapier »).
                         lumineuses sans lueur dans les trous ; vitre transparente sous « Fabuleux » ;
                         F3 + T sans perte. Le collage Minecraft de T-b1 à T-b3 est ainsi exercé.
                         CI verte, même run que T-b2.
-            - [ ] **T-c** — atlas AXION des textures ≤ 256² (meshes dans `[0,1]`).
+            - [x] **T-c** — atlas AXION des textures ≤ 256² (meshes dans `[0,1]`).
+                  Plan (2026-10-03, d'après le code et le bytecode de `MipmapGenerator` lus) :
+                  1. **Un atlas par chargement d'asset et par filtrage** (au plus proche, linéaire) : les
+                     textures préparées, variantes comprises, de côtés ≤ 256, dont chaque mesh qui les
+                     désigne a ses UV dans `[0,1]` ; au moins deux par groupe. Les autres restent
+                     individuelles. Cycle de vie inchangé : la page est une texture de l'asset comme les
+                     autres, enregistrée sous `…/<chargement>/atlas/<page>`, libérée avec lui ;
+                  2. **Disposition** : marge de `2^L` texels (`L` = réglage des mipmaps) remplie selon
+                     l'échantillonnage — texels enroulés en répétition, bord recopié en écrêtage —, ce
+                     qui rend au bord le texel que la texture seule aurait rendu, à tous les niveaux ;
+                     emplacements alignés et arrondis à `2^L` ; rangées par hauteur décroissante ;
+                     largeur puissance de deux, côtés ≤ 4096 (R-570) ; débordement → page suivante ;
+                  3. **Mipmaps par tuile** (`MipmapGenerator` sur la tuile margée, comme la texture
+                     seule — Forge ne remplit pas un niveau au-delà de `log2(min(l, h))`, que la marge
+                     garantit), recopiés niveau par niveau dans la page ;
+                  4. **UV** : transformation affine par texture, appliquée à l'émission des sommets ;
+                     l'asset sert une région (texture liée + transformation), un type de rendu par page ;
+                  5. échec de composition → textures du groupe préparées une à une, signalé ;
+                  6. tests sans Minecraft (disposition, marges, UV, éligibilité, cycle de vie, composition
+                     sur tableaux) ; en jeu : panneau (trois tuiles linéaires) et un modèle d'essai
+                     d'atlas fait dans Blender (petites textures contrastées, bords à 0 et 1).
+                  Hors portée, nommé : atlas commun à plusieurs assets ; `max_texture_size`, option de
+                  compilation que Java ne reçoit pas (format).
+                  Fait : `AtlasLayout`, `AtlasTexels`, `AtlasPlan`, `TextureRegion` ; pipeline en deux
+                  temps (décodage, puis texture seule ou page) ; « Précisions de T-c ». Java 393 verts
+                  (28 nouveaux, douze mutations attrapées). Vérifié en jeu le 2026-10-03 par Killian,
+                  contenu `axion:test/materiaux/atlas` (source `atlas_t-c.blend`) : pages de 256×96 et
+                  256×160, texture répétée restée seule, panneau en page de 1024×288 ; bords intacts.
             - Hors portée, nommé : usage natif (C-60/C-63), multijoueur, `.mtl` et buffers
               externes en jeu (C-20/C-21), décalques (C-69), `TINTABLE`, usure (C-47),
               `max_texture_size`, `uv1`.

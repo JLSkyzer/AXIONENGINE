@@ -16,14 +16,16 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Les textures liées à chaque mesh d'un asset prêt (ADR-122 §7). */
+/** Les textures liées à chaque mesh d'un asset prêt (ADR-122 §7, T-c). */
 class RenderAssetTest {
 
-    private static final TextureBinding PLAIN = new TextureBinding("axion:texture/a/1/0", true, true);
-    private static final TextureBinding CUT = new TextureBinding("axion:texture/a/1/0/cutout/3f000000", false, true);
+    private static final TextureRegion PLAIN =
+            TextureRegion.whole(new TextureBinding("axion:texture/a/1/0", true, true));
+    private static final TextureRegion CUT =
+            TextureRegion.whole(new TextureBinding("axion:texture/a/1/0/cutout/3f000000", false, true));
 
     /** Trois meshes : opaque texturé, découpé sur la même image, sans texture. */
-    private static RenderAsset asset(Map<TextureKey, TextureBinding> textures) {
+    private static RenderAsset asset(Map<TextureKey, TextureRegion> textures) {
         GeometryTransfer geometry = TestGeometry.of(
                 TestGeometry.white(0, 0), TestGeometry.white(1, 0), TestGeometry.white(2, 0));
         MaterialTransfer materials = table(
@@ -64,7 +66,7 @@ class RenderAssetTest {
                         material().emissive(1, 1, 1, 1),
                         material()),
                 EMBEDDED, EMBEDDED);
-        TextureBinding glow = new TextureBinding("axion:texture/a/1/0", false, true);
+        TextureRegion glow = TextureRegion.whole(new TextureBinding("axion:texture/a/1/0", false, true));
         RenderAsset asset = new RenderAsset(
                 geometry, materials, MeshLooks.of(geometry, materials).looks(), Map.of(TextureKey.plain(0), glow));
 
@@ -83,7 +85,8 @@ class RenderAssetTest {
         MaterialTransfer materials = table(
                 List.of(material().albedo(0).cutout(0.5f).emissive(MaterialTransfer.NO_TEXTURE, 1, 1, 1)), EMBEDDED);
         List<MeshLook> looks = MeshLooks.of(geometry, materials).looks();
-        TextureBinding mask = new TextureBinding("axion:texture/a/1/blanc/masque/0/3f000000", false, true);
+        TextureRegion mask =
+                TextureRegion.whole(new TextureBinding("axion:texture/a/1/blanc/masque/0/3f000000", false, true));
 
         RenderAsset masked = new RenderAsset(
                 geometry, materials, looks, Map.of(TextureKey.masked(MaterialTransfer.NO_TEXTURE, 0, 0.5f), mask));
@@ -92,6 +95,19 @@ class RenderAssetTest {
 
         RenderAsset lost = new RenderAsset(geometry, materials, looks, Map.of());
         assertFalse(lost.emits(0), "jamais de blanc sans masque : il brillerait dans les trous");
+    }
+
+    @Test
+    @DisplayName("Deux meshes rangés dans un même atlas lisent la même page, chacun à sa tuile")
+    void deuxMeshesDUnAtlasLisentLaMemePage() {
+        TextureBinding page = new TextureBinding("axion:texture/a/1/atlas/0", false, true);
+        TextureRegion left = new TextureRegion(page, 0.0625f, 0.125f, 0.25f, 0.5f);
+        TextureRegion right = new TextureRegion(page, 0.5625f, 0.125f, 0.25f, 0.5f);
+        RenderAsset asset = asset(Map.of(TextureKey.plain(0), left, TextureKey.cutout(0, 0.5f), right));
+
+        assertEquals(left, asset.albedo(0));
+        assertEquals(right, asset.albedo(1));
+        assertEquals(asset.albedo(0).binding(), asset.albedo(1).binding(), "une page, un type de rendu");
     }
 
     @Test

@@ -11,7 +11,8 @@ import java.util.Map;
  *
  * <p>Construit sur le fil de rendu, une fois les textures téléversées : chaque mesh y reçoit la
  * texture d'albedo qu'il désigne, ou la texture neutre si elle manque — refusée, ou perdue au
- * téléversement. Lu ensuite à chaque frame, sans calcul.
+ * téléversement —, avec la place qu'y occupe son image : toute la texture, ou une tuile de l'atlas
+ * de l'asset (T-c). Lu ensuite à chaque frame, sans calcul.
  *
  * <p>L'émission suit la fiche C-26 : sans texture d'émissive, le facteur seul, sur du blanc
  * (sémantique glTF) ; texture d'émissive manquante, la neutre est noire — le mesh n'émet pas,
@@ -22,13 +23,13 @@ public final class RenderAsset {
     private final GeometryTransfer mesh;
     private final MaterialTransfer materials;
     private final List<MeshLook> looks;
-    private final Map<TextureKey, TextureBinding> textures;
+    private final Map<TextureKey, TextureRegion> textures;
 
-    /** Texture d'albedo liée de chaque mesh ; {@code null} pour la texture neutre. */
-    private final TextureBinding[] albedos;
+    /** Texture d'albedo de chaque mesh ; {@code null} pour la texture neutre. */
+    private final TextureRegion[] albedos;
 
-    /** Texture d'émission liée de chaque mesh ; {@code null} pour du blanc. */
-    private final TextureBinding[] emissions;
+    /** Texture d'émission de chaque mesh ; {@code null} pour du blanc. */
+    private final TextureRegion[] emissions;
 
     /** Vrai pour un mesh qui émet, et dont l'émission est là. */
     private final boolean[] emitting;
@@ -39,15 +40,15 @@ public final class RenderAsset {
      * @param mesh géométrie et pose de repos
      * @param materials matériaux et textures, tels que le natif les remet
      * @param looks apparence de chaque mesh, dans l'ordre des meshes
-     * @param textures textures téléversées, par clé ; une texture absente est remplacée par la
-     *     texture neutre
+     * @param textures textures téléversées, par clé, et la place qu'y occupe chaque image ; une
+     *     texture absente est remplacée par la texture neutre
      * @throws IllegalArgumentException si les apparences ne sont pas une par mesh
      */
     public RenderAsset(
             GeometryTransfer mesh,
             MaterialTransfer materials,
             List<MeshLook> looks,
-            Map<TextureKey, TextureBinding> textures) {
+            Map<TextureKey, TextureRegion> textures) {
         if (looks.size() != mesh.meshes().size()) {
             throw new IllegalArgumentException(
                     looks.size() + " apparences pour " + mesh.meshes().size() + " meshes");
@@ -56,8 +57,8 @@ public final class RenderAsset {
         this.materials = materials;
         this.looks = List.copyOf(looks);
         this.textures = Map.copyOf(textures);
-        this.albedos = new TextureBinding[this.looks.size()];
-        this.emissions = new TextureBinding[this.looks.size()];
+        this.albedos = new TextureRegion[this.looks.size()];
+        this.emissions = new TextureRegion[this.looks.size()];
         this.emitting = new boolean[this.looks.size()];
         for (int rank = 0; rank < albedos.length; rank++) {
             MeshLook look = this.looks.get(rank);
@@ -88,11 +89,11 @@ public final class RenderAsset {
     }
 
     /**
-     * {@return la texture d'albedo liée d'un mesh, ou {@code null} : la texture neutre}
+     * {@return la texture d'albedo d'un mesh, ou {@code null} : la texture neutre}
      *
      * @param rank rang du mesh
      */
-    public TextureBinding albedo(int rank) {
+    public TextureRegion albedo(int rank) {
         return albedos[rank];
     }
 
@@ -106,11 +107,11 @@ public final class RenderAsset {
     }
 
     /**
-     * {@return la texture d'émission liée d'un mesh qui émet, ou {@code null} : du blanc}
+     * {@return la texture d'émission d'un mesh qui émet, ou {@code null} : du blanc}
      *
      * @param rank rang du mesh
      */
-    public TextureBinding emission(int rank) {
+    public TextureRegion emission(int rank) {
         return emissions[rank];
     }
 
@@ -119,7 +120,7 @@ public final class RenderAsset {
      *
      * @param key texture et variante, ou {@code null} pour un slot vide
      */
-    public TextureBinding texture(TextureKey key) {
+    public TextureRegion texture(TextureKey key) {
         return key == null ? null : textures.get(key);
     }
 }

@@ -18,12 +18,24 @@ final class TestGeometry {
      * @param material index de son matériau dans la table
      * @param flags drapeaux {@code MESH_*}
      * @param rgba couleur de ses trois sommets, quatre octets chacun
+     * @param uvRange plage de décodage de ses UV (ADR-122 §4) ; {@code 0} pour {@code [0, 1]}
      */
-    record Mesh(int material, int flags, int[] rgba) {}
+    record Mesh(int material, int flags, int[] rgba, int uvRange) {
 
-    /** {@return un mesh à trois sommets blancs} */
+        /** Un mesh dont les UV sont dans {@code [0, 1]}. */
+        Mesh(int material, int flags, int[] rgba) {
+            this(material, flags, rgba, 0);
+        }
+    }
+
+    /** {@return un mesh à trois sommets blancs, ses UV dans {@code [0, 1]}} */
     static Mesh white(int material, int flags) {
         return new Mesh(material, flags, new int[] {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255});
+    }
+
+    /** {@return un mesh à trois sommets blancs, dont les UV couvrent {@code [0, 3]} : répétés} */
+    static Mesh repeated(int material) {
+        return new Mesh(material, 0, white(material, 0).rgba(), 0x0300);
     }
 
     /** {@return les octets du transfert de ces meshes} */
@@ -39,7 +51,7 @@ final class TestGeometry {
             out.putInt(rank * 3).putInt(3).putInt(rank * 3).putInt(3);
             out.putShort((short) meshes[rank].material()).put((byte) 0).put((byte) meshes[rank].flags());
             out.putFloat(0).putFloat(0).putFloat(0).putFloat(1).putFloat(1).putFloat(1);
-            out.putShort((short) 0xFFFF).putShort((short) 0);
+            out.putShort((short) 0xFFFF).putShort((short) meshes[rank].uvRange());
         }
 
         // Vertex (48 o) : position, normale, tangente, uv0, uv1, couleur, os, poids, région,

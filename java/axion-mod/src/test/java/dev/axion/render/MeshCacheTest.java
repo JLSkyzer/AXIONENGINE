@@ -105,24 +105,102 @@ class MeshCacheTest {
         }
     }
 
-    /** Pipeline simulé : il ne décode rien, il compte. */
+    /** Une image simulée : ses dimensions, son échantillonnage, et combien de fois elle a été rendue. */
+    private static final class FakeImage implements TexturePipeline.Image {
+        private final int width;
+        private final int height;
+        private final TextureSampling sampling;
+        private int returns;
+
+        FakeImage(int width, int height, TextureSampling sampling) {
+            this.width = width;
+            this.height = height;
+            this.sampling = sampling;
+        }
+
+        @Override
+        public int width() {
+            return width;
+        }
+
+        @Override
+        public int height() {
+            return height;
+        }
+
+        @Override
+        public TextureSampling sampling() {
+            return sampling;
+        }
+    }
+
+    /**
+     * Une page d'atlas demandée.
+     *
+     * @param location nom de la page
+     * @param blur filtrage de la page
+     * @param page disposition
+     * @param images images rangées, dans l'ordre des tuiles
+     */
+    private record AtlasCall(String location, boolean blur, AtlasLayout.Page page, List<TexturePipeline.Image> images) {}
+
+    /**
+     * Pipeline simulé : il ne décode rien, il compte. Une image fait 512×512 — trop grande pour
+     * un atlas — sauf dimensions données par rang.
+     */
     private static final class FakePipeline implements TexturePipeline {
         private final List<Request> requests = new ArrayList<>();
+        private final List<FakeImage> decoded = new ArrayList<>();
+        private final List<AtlasCall> atlases = new ArrayList<>();
         private final List<String> uploaded = new ArrayList<>();
         private final List<String> released = new ArrayList<>();
         private final List<String> discarded = new ArrayList<>();
         private final Set<Integer> refused = new HashSet<>();
+        private final Map<Integer, int[]> sizes = new HashMap<>();
+        private final Set<Integer> blurred = new HashSet<>();
         private boolean blur;
         private boolean mipmap;
         private boolean failUploads;
+        private boolean failAtlas;
+        private int mipmapSetting = 4;
 
         @Override
-        public Prepared prepare(Request request) throws TextureRefusal {
+        public Image decode(Request request) throws TextureRefusal {
             requests.add(request);
-            if (refused.contains(request.key().origin())) {
+            int rank = request.key().origin();
+            if (refused.contains(rank)) {
                 throw new TextureRefusal("E-3004 : pas un PNG (R-532)");
             }
+            int[] size = sizes.getOrDefault(rank, new int[] {512, 512});
+            FakeImage image = new FakeImage(
+                    size[0], size[1], new TextureSampling(blur || blurred.contains(rank), false, false));
+            decoded.add(image);
+            return image;
+        }
+
+        @Override
+        public Prepared prepare(Request request, Image image) {
+            ((FakeImage) image).returns++;
             return new Staged(new TextureBinding(request.location(), blur, mipmap));
+        }
+
+        @Override
+        public Prepared atlas(String location, boolean blur, AtlasLayout.Page page, List<Image> images) {
+            if (failAtlas) {
+                throw new IllegalStateException("mémoire native épuisée");
+            }
+            atlases.add(new AtlasCall(location, blur, page, List.copyOf(images)));
+            return new Staged(new TextureBinding(location, blur, page.levels() > 0));
+        }
+
+        @Override
+        public int mipmapSetting() {
+            return mipmapSetting;
+        }
+
+        @Override
+        public void close(Image image) {
+            ((FakeImage) image).returns++;
         }
 
         @Override
@@ -143,12 +221,14 @@ class MeshCacheTest {
             discarded.add(prepared.binding().location());
         }
 
-        private record Staged(TextureBinding binding) implements Prepared {
-            @Override
-            public String note() {
-                return null;
+        /** Chaque image décodée a été prise ou rendue, une fois. */
+        void assertImagesReturned() {
+            for (FakeImage image : decoded) {
+                assertEquals(1, image.returns, "image décodée rendue " + image.returns + " fois");
             }
         }
+
+        private record Staged(TextureBinding binding) implements Prepared {}
     }
 
     private final Manual executor = new Manual();
@@ -345,8 +425,9 @@ class MeshCacheTest {
         assertNotNull(asset);
         String location = textures.requests.get(0).location();
         assertEquals(List.of(location), textures.uploaded);
-        assertEquals(location, asset.texture(TextureKey.plain(0)).location());
+        assertEquals(location, asset.texture(TextureKey.plain(0)).binding().location());
         assertEquals(1, cache.liveTextures());
+        textures.assertImagesReturned();
         assertTrue(diagnostics.isEmpty(), () -> diagnostics.toString());
     }
 
@@ -435,6 +516,7 @@ class MeshCacheTest {
         settle();
         assertEquals(1, textures.discarded.size());
         assertTrue(textures.uploaded.isEmpty());
+        textures.assertImagesReturned();
         assertEquals(List.of(1), loader.unloads, "handle rendu deux fois, ou jamais");
         assertEquals(0, cache.liveHandles());
     }
@@ -565,7 +647,7 @@ class MeshCacheTest {
         assertNotNull(asset);
         assertSame(loader.materials.materials().get(0), asset.look(0).material());
         assertSame(loader.materials.materials().get(1), asset.look(1).material());
-        TextureBinding albedo = asset.albedo(0);
+        TextureBinding albedo = asset.albedo(0).binding();
         assertEquals(textures.uploaded.get(0), albedo.location());
         assertTrue(albedo.blur() && albedo.mipmap(), "filtrage du téléversement perdu");
         assertFalse(asset.look(0).doubleSided());
@@ -641,5 +723,188 @@ class MeshCacheTest {
         assertEquals(0, cache.liveHandles());
         assertEquals(1, diagnostics.size(), () -> diagnostics.toString());
         assertTrue(diagnostics.get(0).contains("apparence impossible"));
+    }
+
+    /** Une texture embarquée par rang, de ces dimensions, et un matériau opaque par texture. */
+    private void smallTextures(int[]... sizes) {
+        List<TestMaterials.Material> materials = new ArrayList<>();
+        String[] sources = new String[sizes.length];
+        for (int rank = 0; rank < sizes.length; rank++) {
+            materials.add(material().albedo(rank));
+            sources[rank] = EMBEDDED;
+            loader.pngs.put(rank, new byte[] {(byte) rank});
+            textures.sizes.put(rank, sizes[rank]);
+        }
+        loader.materials = table(materials, sources);
+    }
+
+    /** {@return la tuile d'une page qui range l'image de ces dimensions — uniques dans ces tests} */
+    private static AtlasLayout.Tile tileOf(AtlasLayout.Page page, int[] size) {
+        return page.tiles().stream()
+                .filter(tile -> tile.width() == size[0] && tile.height() == size[1])
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("aucune tuile de " + size[0] + "×" + size[1]));
+    }
+
+    @Test
+    @DisplayName("T-c : les petites textures lues dans [0,1] se rangent dans une page, que leurs meshes lient")
+    void lesPetitesTexturesSeRangentDansUnAtlas() {
+        loader.transfer = TestGeometry.bytes(TestGeometry.white(0, 0), TestGeometry.white(1, 0), TestGeometry.white(2, 0));
+        smallTextures(new int[] {16, 16}, new int[] {64, 32}, new int[] {256, 256});
+        Published source = published("caisse");
+        cache.get(PATH, source);
+        settle();
+
+        RenderAsset asset = cache.get(PATH, source);
+        assertNotNull(asset);
+        assertEquals(1, textures.atlases.size(), () -> textures.atlases.toString());
+        AtlasCall call = textures.atlases.get(0);
+        assertEquals(TextureLocations.atlas(PATH, 1, 0), call.location());
+        assertEquals(List.of(call.location()), textures.uploaded, "une page, aucune texture individuelle");
+        assertEquals(1, cache.liveTextures());
+        assertEquals(4, call.page().levels(), "le réglage des mipmaps du jeu");
+        for (int rank = 0; rank < 3; rank++) {
+            TextureRegion region = asset.albedo(rank);
+            assertEquals(call.location(), region.binding().location(), "mesh " + rank + " hors de la page");
+            AtlasLayout.Tile tile = tileOf(call.page(), textures.sizes.get(rank));
+            assertEquals(call.page().region(tile, region.binding()), region, "mesh " + rank + " : pas sa tuile");
+            assertSame(textures.decoded.get(rank), call.images().get(call.page().tiles().indexOf(tile)),
+                    "tuile " + rank + " remplie d'une autre image");
+        }
+        textures.assertImagesReturned();
+        assertTrue(diagnostics.isEmpty(), () -> diagnostics.toString());
+    }
+
+    @Test
+    @DisplayName("T-c : une texture répétée par un mesh, ou trop grande, garde sa texture individuelle")
+    void uneTextureRepeteeOuTropGrandeResteIndividuelle() {
+        // Meshes 3 et 4 : petites textures lues dans [0,1]. Mesh 1 : sa texture est répétée.
+        // Mesh 2 : texture de 512. Mesh 5 répète la texture du mesh 0, qui sort donc de l'atlas.
+        loader.transfer = TestGeometry.bytes(
+                TestGeometry.white(0, 0), TestGeometry.repeated(1), TestGeometry.white(2, 0),
+                TestGeometry.white(3, 0), TestGeometry.white(4, 0), TestGeometry.repeated(0));
+        smallTextures(new int[] {16, 16}, new int[] {32, 32}, new int[] {512, 512}, new int[] {64, 64},
+                new int[] {128, 128});
+        Published source = published("mélange");
+        cache.get(PATH, source);
+        settle();
+
+        RenderAsset asset = cache.get(PATH, source);
+        assertNotNull(asset);
+        assertEquals(1, textures.atlases.size(), () -> textures.atlases.toString());
+        String page = textures.atlases.get(0).location();
+        assertEquals(2, textures.atlases.get(0).page().tiles().size(), "seules les textures 3 et 4");
+        assertEquals(page, asset.albedo(3).binding().location());
+        assertEquals(page, asset.albedo(4).binding().location());
+        for (int mesh : new int[] {0, 1, 2, 5}) {
+            TextureRegion region = asset.albedo(mesh);
+            assertFalse(region.binding().location().equals(page), "mesh " + mesh + " rangé dans l'atlas");
+            assertEquals(TextureRegion.whole(region.binding()), region, "mesh " + mesh + " : toute sa texture");
+        }
+        assertEquals(4, textures.uploaded.size(), "une page et trois textures individuelles");
+        textures.assertImagesReturned();
+    }
+
+    @Test
+    @DisplayName("T-c : une page par filtrage ; un filtrage seul dans son cas n'en fait pas")
+    void unePageParFiltrage() {
+        loader.transfer = TestGeometry.bytes(
+                TestGeometry.white(0, 0), TestGeometry.white(1, 0), TestGeometry.white(2, 0), TestGeometry.white(3, 0));
+        smallTextures(new int[] {16, 16}, new int[] {32, 32}, new int[] {64, 64}, new int[] {128, 128});
+        textures.blurred.add(2);
+        textures.blurred.add(3);
+        cache.get(PATH, published("deux filtrages"));
+        settle();
+
+        assertEquals(2, textures.atlases.size(), () -> textures.atlases.toString());
+        assertFalse(textures.atlases.get(0).blur(), "au plus proche d'abord");
+        assertTrue(textures.atlases.get(1).blur());
+        assertEquals(TextureLocations.atlas(PATH, 1, 1), textures.atlases.get(1).location());
+        textures.assertImagesReturned();
+    }
+
+    @Test
+    @DisplayName("T-c : une seule petite texture par filtrage ne fait pas de page")
+    void uneSeuleTextureParFiltrageNeFaitPasDePage() {
+        loader.transfer = TestGeometry.bytes(TestGeometry.white(0, 0), TestGeometry.white(1, 0));
+        smallTextures(new int[] {16, 16}, new int[] {32, 32});
+        textures.blurred.add(1);
+        cache.get(PATH, published("seules"));
+        settle();
+
+        assertTrue(textures.atlases.isEmpty(), () -> textures.atlases.toString());
+        assertEquals(2, textures.uploaded.size());
+        textures.assertImagesReturned();
+    }
+
+    @Test
+    @DisplayName("T-c : un atlas impossible laisse ses textures se préparer une à une, signalé une fois")
+    void unAtlasImpossibleLaisseLesTexturesIndividuelles() {
+        loader.transfer = TestGeometry.bytes(TestGeometry.white(0, 0), TestGeometry.white(1, 0));
+        smallTextures(new int[] {16, 16}, new int[] {32, 32});
+        textures.failAtlas = true;
+        Published source = published("caisse");
+        cache.get(PATH, source);
+        settle();
+
+        RenderAsset asset = cache.get(PATH, source);
+        assertNotNull(asset);
+        assertEquals(2, textures.uploaded.size());
+        assertNotNull(asset.albedo(0));
+        assertNotNull(asset.albedo(1));
+        assertEquals(1, diagnostics.size(), () -> diagnostics.toString());
+        assertTrue(diagnostics.get(0).contains("atlas impossible"), diagnostics.get(0));
+        textures.assertImagesReturned();
+    }
+
+    @Test
+    @DisplayName("T-c : une page perdue au téléversement laisse la texture neutre à toutes ses tuiles")
+    void unePagePerdueLaisseLaNeutre() {
+        loader.transfer = TestGeometry.bytes(TestGeometry.white(0, 0), TestGeometry.white(1, 0));
+        smallTextures(new int[] {16, 16}, new int[] {32, 32});
+        textures.failUploads = true;
+        Published source = published("caisse");
+        cache.get(PATH, source);
+        settle();
+
+        RenderAsset asset = cache.get(PATH, source);
+        assertNotNull(asset);
+        assertNull(asset.albedo(0));
+        assertNull(asset.albedo(1));
+        assertEquals(List.of(textures.atlases.get(0).location()), textures.discarded);
+        assertEquals(0, cache.liveTextures());
+        assertEquals(1, diagnostics.size(), () -> diagnostics.toString());
+        assertTrue(diagnostics.get(0).contains("atlas des textures"), diagnostics.get(0));
+    }
+
+    @Test
+    @DisplayName("T-c : la page suit le réglage des mipmaps, sa marge aussi")
+    void laPageSuitLeReglageDesMipmaps() {
+        loader.transfer = TestGeometry.bytes(TestGeometry.white(0, 0), TestGeometry.white(1, 0));
+        smallTextures(new int[] {16, 16}, new int[] {32, 32});
+        textures.mipmapSetting = 2;
+        cache.get(PATH, published("caisse"));
+        settle();
+
+        AtlasLayout.Page page = textures.atlases.get(0).page();
+        assertEquals(2, page.levels());
+        assertTrue(page.tiles().stream().allMatch(tile -> tile.margin() == 4), page::toString);
+    }
+
+    @Test
+    @DisplayName("T-c : un chargement supplanté abandonne sa page, et rend ses images")
+    void unChargementSupplanteAbandonneSaPage() {
+        loader.transfer = TestGeometry.bytes(TestGeometry.white(0, 0), TestGeometry.white(1, 0));
+        smallTextures(new int[] {16, 16}, new int[] {32, 32});
+        cache.get(PATH, published("v1"));
+        executor.runAll();
+        String v1 = textures.atlases.get(0).location();
+
+        cache.get(PATH, published("v2"));
+        settle();
+        assertEquals(List.of(v1), textures.discarded);
+        assertFalse(textures.uploaded.contains(v1), "page d'un contenu supplanté téléversée");
+        assertEquals(1, cache.liveTextures());
+        textures.assertImagesReturned();
     }
 }

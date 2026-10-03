@@ -1,6 +1,9 @@
 package dev.axion.forge.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.logging.LogUtils;
+import dev.axion.render.AtlasLayout;
+import dev.axion.render.AtlasTexels;
 import dev.axion.render.TextureBinding;
 import dev.axion.render.TextureKey;
 import dev.axion.render.TexturePipeline;
@@ -10,6 +13,7 @@ import dev.axion.render.TextureSampling;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Optional;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.MipmapGenerator;
@@ -17,20 +21,23 @@ import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.resources.metadata.texture.TextureMetadataSection;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
+import org.slf4j.Logger;
 
 /**
- * Textures des assets par les moyens du rendu vanilla (C-61, C-26, ADR-122 §7).
+ * Textures des assets par les moyens du rendu vanilla (C-61, C-26, ADR-122 §7 et T-c).
  *
  * <p>Décodage par {@link NativeImage}, après contrôle de la signature PNG, toujours en RGBA ;
  * variantes — alpha binarisé d'une découpe, émissive masquée par l'albedo — texel par texel ;
- * mipmaps par {@link MipmapGenerator}, la recette de l'atlas vanilla ; téléversement dans une
- * {@link AxionTexture} enregistrée auprès du {@code TextureManager}. Aucun appel OpenGL direct
- * (R-741).
+ * mipmaps par {@link MipmapGenerator}, la recette de l'atlas vanilla, pour une texture seule
+ * comme pour chaque tuile d'une page d'atlas ; téléversement dans une {@link AxionTexture}
+ * enregistrée auprès du {@code TextureManager}. Aucun appel OpenGL direct (R-741).
  */
 final class VanillaTexturePipeline implements TexturePipeline {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     @Override
-    public Prepared prepare(Request request) throws TextureRefusal {
+    public Image decode(Request request) throws TextureRefusal {
         TextureKey key = request.key();
         Decoded image = null;
         Decoded mask = null;
@@ -50,22 +57,10 @@ final class VanillaTexturePipeline implements TexturePipeline {
                     binarize(texture, key.threshold());
                 }
             }
-            int levels = TextureRules.mipLevels(
-                    Minecraft.getInstance().options.mipmapLevels().get(),
-                    texture.getWidth(),
-                    texture.getHeight());
-            NativeImage[] mips = MipmapGenerator.generateMipLevels(new NativeImage[] {texture}, levels);
-            String note = sampling.mixedClamp()
-                    ? "un seul axe écrêté : rendue en répétition, le rendu vanilla n'écrêtant que"
-                            + " les deux à la fois"
-                    : null;
-            Prepared prepared = new PreparedTexture(
-                    new TextureBinding(request.location(), sampling.blur(), levels > 0),
-                    new AxionTexture(mips, sampling.blur(), sampling.clamp()),
-                    note);
-            // Ses niveaux appartiennent désormais à la texture préparée.
+            Decoded decoded = new Decoded(texture, sampling);
+            // L'image appartient désormais à la texture décodée.
             texture = null;
-            return prepared;
+            return decoded;
         } finally {
             close(image);
             close(mask);
@@ -73,6 +68,94 @@ final class VanillaTexturePipeline implements TexturePipeline {
                 texture.close();
             }
         }
+    }
+
+    @Override
+    public Prepared prepare(Request request, Image image) {
+        Decoded decoded = (Decoded) image;
+        NativeImage texture = decoded.image();
+        try {
+            int levels = TextureRules.mipLevels(mipmapSetting(), texture.getWidth(), texture.getHeight());
+            NativeImage[] mips = MipmapGenerator.generateMipLevels(new NativeImage[] {texture}, levels);
+            TextureSampling sampling = decoded.sampling();
+            Prepared prepared = new PreparedTexture(
+                    new TextureBinding(request.location(), sampling.blur(), levels > 0),
+                    new AxionTexture(mips, sampling.blur(), sampling.clamp()));
+            // Ses niveaux appartiennent désormais à la texture préparée.
+            texture = null;
+            return prepared;
+        } finally {
+            if (texture != null) {
+                texture.close();
+            }
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Chaque tuile est remplie de son image et de sa marge, ses mipmaps produits comme ceux de
+     * la texture seule, puis recopiés niveau par niveau à leur place : la page n'est jamais
+     * réduite d'un bloc, aucun texel d'une tuile ne déteint sur une autre. Les zones libres de la
+     * page restent transparentes. La page s'écrête : les tuiles portent leur répétition dans leur
+     * marge.
+     */
+    @Override
+    public Prepared atlas(String location, boolean blur, AtlasLayout.Page page, List<Image> images) {
+        int levels = page.levels();
+        NativeImage[] pageLevels = new NativeImage[levels + 1];
+        try {
+            for (int level = 0; level <= levels; level++) {
+                pageLevels[level] = new NativeImage(page.width() >> level, page.height() >> level, true);
+            }
+            for (int index = 0; index < page.tiles().size(); index++) {
+                compose(page.tiles().get(index), (Decoded) images.get(index), levels, pageLevels);
+            }
+            Prepared prepared = new PreparedTexture(
+                    new TextureBinding(location, blur, levels > 0), new AxionTexture(pageLevels, blur, true));
+            LOGGER.debug("AXION : atlas {} — {} texture(s), {}×{}, {} niveau(x) de mipmaps",
+                    location, page.tiles().size(), page.width(), page.height(), levels);
+            // Ses niveaux appartiennent désormais à la page préparée.
+            pageLevels = null;
+            return prepared;
+        } finally {
+            if (pageLevels != null) {
+                for (NativeImage level : pageLevels) {
+                    if (level != null) {
+                        level.close();
+                    }
+                }
+            }
+        }
+    }
+
+    /** Remplit une tuile, en produit les mipmaps, et les recopie dans les niveaux de la page. */
+    private static void compose(AtlasLayout.Tile tile, Decoded image, int levels, NativeImage[] pageLevels) {
+        NativeImage slot = new NativeImage(tile.slotWidth(), tile.slotHeight(), false);
+        NativeImage[] mips = new NativeImage[] {slot};
+        try {
+            AtlasTexels.fill(pixels(image.image()), pixels(slot), tile.margin(), image.sampling().clamp());
+            mips = MipmapGenerator.generateMipLevels(mips, levels);
+            for (int level = 0; level <= levels; level++) {
+                AtlasTexels.copy(pixels(mips[level]), pixels(pageLevels[level]), tile.x() >> level, tile.y() >> level);
+            }
+        } finally {
+            for (NativeImage mip : mips) {
+                if (mip != null) {
+                    mip.close();
+                }
+            }
+        }
+    }
+
+    @Override
+    public int mipmapSetting() {
+        return Minecraft.getInstance().options.mipmapLevels().get();
+    }
+
+    @Override
+    public void close(Image image) {
+        ((Decoded) image).image().close();
     }
 
     @Override
@@ -205,6 +288,31 @@ final class VanillaTexturePipeline implements TexturePipeline {
         }
     }
 
+    /** Les texels d'une {@code NativeImage}, tels que les lit et les écrit l'atlas. */
+    private static AtlasTexels.Pixels pixels(NativeImage image) {
+        return new AtlasTexels.Pixels() {
+            @Override
+            public int width() {
+                return image.getWidth();
+            }
+
+            @Override
+            public int height() {
+                return image.getHeight();
+            }
+
+            @Override
+            public int get(int x, int y) {
+                return image.getPixelRGBA(x, y);
+            }
+
+            @Override
+            public void set(int x, int y, int texel) {
+                image.setPixelRGBA(x, y, texel);
+            }
+        };
+    }
+
     /** Une {@code ResourceLocation} que le cache a déjà validée. */
     static ResourceLocation location(String location) {
         ResourceLocation id = ResourceLocation.tryParse(location);
@@ -215,12 +323,23 @@ final class VanillaTexturePipeline implements TexturePipeline {
     }
 
     /**
-     * Une image décodée en RGBA, et l'échantillonnage que sa source déclare.
+     * Une image décodée en RGBA, variante produite, et l'échantillonnage que sa source déclare.
      *
      * @param image l'image
      * @param sampling filtrage et répétition, de l'échantillonneur ou du {@code .mcmeta}
      */
-    private record Decoded(NativeImage image, TextureSampling sampling) {}
+    private record Decoded(NativeImage image, TextureSampling sampling) implements Image {
+
+        @Override
+        public int width() {
+            return image.getWidth();
+        }
+
+        @Override
+        public int height() {
+            return image.getHeight();
+        }
+    }
 
     /**
      * Octets d'un fichier et réglages de son {@code .mcmeta}.
@@ -232,11 +351,10 @@ final class VanillaTexturePipeline implements TexturePipeline {
     private record Loaded(byte[] bytes, Boolean blur, Boolean clamp) {}
 
     /**
-     * Une texture prête à téléverser.
+     * Une texture ou une page d'atlas prête à téléverser.
      *
      * @param binding nom sous lequel l'enregistrer, et filtrage du téléversement
      * @param texture la texture et ses niveaux de mipmaps
-     * @param note ce qu'il faut signaler une fois, ou {@code null}
      */
-    private record PreparedTexture(TextureBinding binding, AxionTexture texture, String note) implements Prepared {}
+    private record PreparedTexture(TextureBinding binding, AxionTexture texture) implements Prepared {}
 }
