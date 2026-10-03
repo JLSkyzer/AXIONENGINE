@@ -1,0 +1,5 @@
+{
+  "schema": 1,
+  "asset": "axion:models/test/materiaux/panneau_emissif.glb",
+  "kind": "rigid_object"
+}

@@ -1920,6 +1920,11 @@ substituable sans changer rapier »).
                         découpée, panneau émissif, mesh multi-matériau, sol répété, texture
                         PNG de plus de 64 Kio), gardés
                         dans le dépôt et rejoués à chaque étape.
+                        Contenu fait le 2026-10-03 par le MCP de Blender, dans `src/devcontent`,
+                        branché sur les seuls lancements de développement (R-1790) : sept modèles
+                        compilés par `axion-cli`, definitions `axion:test/materiaux/*`, source
+                        `src/devcontent/blender/materiaux_t-b4.blend`. Reste la vérification en
+                        jeu par Killian.
             - [ ] **T-c** — atlas AXION des textures ≤ 256² (meshes dans `[0,1]`).
             - Hors portée, nommé : usage natif (C-60/C-63), multijoueur, `.mtl` et buffers
               externes en jeu (C-20/C-21), décalques (C-69), `TINTABLE`, usure (C-47),

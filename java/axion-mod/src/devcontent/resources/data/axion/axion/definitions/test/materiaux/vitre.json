@@ -1,0 +1,5 @@
+{
+  "schema": 1,
+  "asset": "axion:models/test/materiaux/vitre.glb",
+  "kind": "rigid_object"
+}

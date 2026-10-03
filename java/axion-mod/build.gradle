@@ -15,6 +15,13 @@ base {
     archivesName = mod_id
 }
 
+// Contenu d'essai (T-b4 d'ADR-122) : modèles et definitions chargés par les lancements de
+// développement, jamais empaquetés — le mod livré n'embarque que ses definitions de
+// démonstration (R-1790).
+sourceSets {
+    devcontent
+}
+
 minecraft {
     mappings channel: mapping_channel, version: mapping_version
 
@@ -35,6 +42,8 @@ minecraft {
                     source sourceSets.main
                     // L'API fait partie du meme mod en developpement.
                     source project(':axion-api').sourceSets.main
+                    // Le contenu d'essai aussi, en developpement seulement.
+                    source sourceSets.devcontent
                 }
             }
         }
