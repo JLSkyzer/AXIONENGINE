@@ -1816,12 +1816,14 @@ substituable sans changer rapier »).
             23:02:37, 25 s après un spawn) : cible ne désignant pas le cube, ou cube disparu ?
             Non élucidé ; Killian : « on verra ça plus tard ». Rejouer avec
             `/axion remove @e[type=axion:assembly]` en regardant si le cube est encore là.
-      - [ ] **R-903 — le fuzzing ne tourne jamais** (constaté le 2026-10-02) : `fuzz.yml` ne se
+      - [x] **R-903 — le fuzzing ne tourne jamais** (constaté le 2026-10-02) : `fuzz.yml` ne se
             déclenche que sur pull request touchant `crates/ax-asset/**`, ou à la main ; tout
             est poussé sur `master`, donc aucune campagne depuis le 12/09, dont les trois
             derniers runs avaient échoué en 4 s. `fuzz/Cargo.lock` était périmé (sans
             `parry3d`) : rafraîchi avec T-a1 de C-26. À décider : déclenchement sur push, ou
             campagne manuelle régulière.
+            Décidé par Killian le 2026-10-03 : chaque nuit. `schedule` à 02:17 UTC, une heure par
+            cible comme le prévoit 34.3, gratuit depuis que le dépôt est public.
       - [x] **C-26 — textures et matériaux (client)** (ADR-122, ratifié le 2026-10-02) : MATL
             = DM-05 tel quel, TEXR (image + échantillonneur, EMBEDDED en PNG non décodé ou
             RESOURCE en chemin relatif), UV par mesh (`MeshDesc._pad` → `uv0_range`, R-142),

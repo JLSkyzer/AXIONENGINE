@@ -12,12 +12,14 @@
 #
 #   - `fuzz-short` est ici, declenche par les PR qui touchent la chaine d'assets
 #     ou les cibles elles-memes. Quarante minutes Linux, facturees au simple.
-#   - **La campagne nocturne n'est pas programmee.** Quatre cibles pendant une
-#     heure, chaque nuit, font sept mille deux cents minutes par mois sur un
-#     depot prive qui en compte deux mille. La declencher a la main reste
-#     possible — c'est ce que `minutes_par_cible: 60` fait —, et l'ecart avec
-#     34.3 est consigne dans tasks/todo.md plutot que masque par un `cron` qui
-#     epuiserait le quota en quatre nuits.
+#   - La campagne nocturne tourne chaque nuit, une heure par cible (`schedule`).
+#     Elle n'etait pas programmee tant que le depot etait prive : sept mille deux
+#     cents minutes par mois pour un quota de deux mille. Depot public depuis le
+#     2026-10-03, les minutes Linux ne se facturent plus (decision de Killian).
+#     GitHub suspend un `schedule` apres soixante jours sans activite du depot :
+#     a relancer depuis l'onglet Actions s'il s'arrete.
+#   - A la main, `minutes_par_cible` regle la duree : 10 pour un controle, 60
+#     comme la campagne nocturne.
 #
 # # Ce qu'un echec veut dire
 #
@@ -31,6 +33,10 @@
 name: Fuzzing
 
 on:
+  # Campagne nocturne (34.3), a 02:17 UTC : hors de l'heure pleine, ou la
+  # file des runners est la plus chargee.
+  schedule:
+    - cron: "17 2 * * *"
   workflow_dispatch:
     inputs:
       minutes_par_cible:
@@ -106,7 +112,9 @@ jobs:
 
       - name: Campagne
         env:
-          MINUTES: ${{ inputs.minutes_par_cible || '10' }}
+          # Une heure la nuit (34.3) ; dix minutes sur une PR ; la valeur saisie
+          # pour un lancement manuel.
+          MINUTES: ${{ inputs.minutes_par_cible || (github.event_name == 'schedule' && '60' || '10') }}
         run: |
           set -o pipefail
           secondes=$(( MINUTES * 60 ))
