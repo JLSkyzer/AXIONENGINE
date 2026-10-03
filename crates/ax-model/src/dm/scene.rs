@@ -134,8 +134,11 @@ pub struct NodeDesc {
     pub lod_mask: u8,
     /// Source de l'état visuel du node.
     pub state: u8,
-    /// Réservé, à zéro.
-    pub _pad: [u8; 2],
+    /// Nombre de meshes portés, consécutifs à partir de `mesh` (ADR-122 §5) :
+    /// une primitive glTF donne un mesh, et un mesh glTF en porte plusieurs.
+    /// `0` vaut un quand `mesh` en désigne un — la lecture de tout asset
+    /// compilé avant lui. Voir [`NodeDesc::meshes`].
+    pub mesh_count: u16,
 }
 
 impl NodeDesc {
@@ -143,6 +146,25 @@ impl NodeDesc {
     #[must_use]
     pub const fn has(&self, flag: u32) -> bool {
         self.flags & flag != 0
+    }
+
+    /// Les meshes portés : `mesh .. mesh + mesh_count`, vide si le node n'en
+    /// porte aucun.
+    ///
+    /// `mesh_count` nul vaut un (ADR-122 §5). La plage n'est pas bornée ici par
+    /// le nombre de meshes de l'asset, que seul son lecteur connaît : C-22 le
+    /// vérifie à la compilation, la liste de dessin au chargement.
+    #[must_use]
+    pub const fn meshes(&self) -> core::ops::Range<u32> {
+        if self.mesh == NONE_U32 {
+            return 0..0;
+        }
+        let count = if self.mesh_count == 0 {
+            1
+        } else {
+            self.mesh_count as u32
+        };
+        self.mesh..self.mesh.saturating_add(count)
     }
 
     /// Indique si le node est une racine.
@@ -298,7 +320,7 @@ mod tests {
             region: NONE_U16,
             lod_mask: 1,
             state: 0,
-            _pad: [0; 2],
+            mesh_count: 0,
         };
         assert!(node.is_root());
         assert!(node.has(node_flags::VISIBLE));
@@ -306,6 +328,33 @@ mod tests {
 
         node.parent = 0;
         assert!(!node.is_root());
+    }
+
+    #[test]
+    fn t291_un_node_porte_la_plage_de_ses_meshes() {
+        let node = |mesh: u32, mesh_count: u16| NodeDesc {
+            name_hash: 0,
+            parent: NO_PARENT,
+            local: Transform::identity(),
+            flags: node_flags::VISIBLE,
+            mesh,
+            collider: NONE_U32,
+            bone: NONE_U32,
+            part: NONE_U16,
+            region: NONE_U16,
+            lod_mask: 1,
+            state: 0,
+            mesh_count,
+        };
+        // Zéro vaut un : la lecture de tout asset compilé avant ADR-122.
+        assert_eq!(node(3, 0).meshes(), 3..4);
+        assert_eq!(node(3, 1).meshes(), 3..4);
+        assert_eq!(node(3, 4).meshes(), 3..7);
+        // Sans mesh, rien, quel que soit le compte.
+        assert!(node(NONE_U32, 0).meshes().is_empty());
+        assert!(node(NONE_U32, 5).meshes().is_empty());
+        // Une plage qui déborderait d'un `u32` s'arrête au bord : C-22 la refuse.
+        assert_eq!(node(u32::MAX - 2, 9).meshes().end, u32::MAX);
     }
 
     #[test]
@@ -329,7 +378,7 @@ mod tests {
         assert_eq!(core::mem::offset_of!(NodeDesc, region), 70);
         assert_eq!(core::mem::offset_of!(NodeDesc, lod_mask), 72);
         assert_eq!(core::mem::offset_of!(NodeDesc, state), 73);
-        assert_eq!(core::mem::offset_of!(NodeDesc, _pad), 74);
+        assert_eq!(core::mem::offset_of!(NodeDesc, mesh_count), 74);
     }
 
     #[test]

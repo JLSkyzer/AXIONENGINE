@@ -46,7 +46,7 @@ fn node(parent: u32) -> NodeDesc {
         region: NONE_U16,
         lod_mask: 1,
         state: 0,
-        _pad: [0; 2],
+        mesh_count: 0,
     }
 }
 
@@ -63,7 +63,7 @@ fn mesh() -> MeshDesc {
         aabb_min: [0.0, 0.0, 0.0],
         aabb_max: [1.0, 1.0, 0.0],
         region: NONE_U16,
-        _pad: 0,
+        uv0_range: 0,
     }
 }
 
@@ -914,6 +914,88 @@ fn t270_plus_de_256_materiaux_sont_refuses() {
             limit: 256,
         },
     );
+}
+
+#[test]
+fn t291_un_node_porte_des_meshes_qui_existent() {
+    // ADR-122 §5 : un node porte `mesh .. mesh + mesh_count`.
+    let mut scene = Scene::valide();
+    let mut second = mesh();
+    second.vertex_offset = 0;
+    scene.meshes.push(second);
+    scene.nodes[1].mesh = 0;
+    scene.nodes[1].mesh_count = 2;
+    assert!(
+        scene.valider().is_valid(),
+        "deux meshes portés, deux présents"
+    );
+
+    scene.nodes[1].mesh = 1;
+    let report = scene.valider();
+    seule(
+        &report,
+        &Violation::MeshRangeOutOfAsset {
+            mesh: 1,
+            count: 2,
+            mesh_total: 2,
+        },
+    );
+    assert_eq!(report.errors[0].at, Located::Node(1));
+    assert_eq!(report.code(), -3050);
+}
+
+#[test]
+fn t291_une_plage_de_meshes_qui_deborde_d_un_u32_est_refusee() {
+    // La somme de deux `u32` déborde : comptée de travers, elle reviendrait
+    // dans les bornes.
+    let mut scene = Scene::valide();
+    scene.nodes[1].mesh = u32::MAX - 1;
+    scene.nodes[1].mesh_count = 5;
+    seule(
+        &scene.valider(),
+        &Violation::MeshRangeOutOfAsset {
+            mesh: u32::MAX - 1,
+            count: 5,
+            mesh_total: 1,
+        },
+    );
+}
+
+#[test]
+fn t291_un_node_sans_mesh_n_en_compte_aucun() {
+    let mut scene = Scene::valide();
+    scene.nodes[0].mesh_count = 3;
+    let report = scene.valider();
+    seule(&report, &Violation::MeshCountWithoutMesh { count: 3 });
+    assert_eq!(report.errors[0].at, Located::Node(0));
+}
+
+#[test]
+fn t230_une_plage_d_uv_invalide_est_refusee() {
+    let mut scene = Scene::valide();
+    scene.meshes[0].uv0_range = 0x0005;
+    let report = scene.valider();
+    seule(&report, &Violation::InvalidUvRange { bits: 0x0005 });
+    assert_eq!(report.errors[0].at, Located::Mesh(0));
+}
+
+#[test]
+fn t230_des_sommets_partages_sous_deux_plages_sont_refuses() {
+    // Le second mesh relit les sommets du premier, comme un LOD — mais sous
+    // une autre plage d'UV.
+    let mut scene = Scene::valide();
+    let mut second = mesh();
+    second.uv0_range = ax_model::dm::geometry::UvRange::new(0, 2)
+        .expect("[0, 2]")
+        .to_bits();
+    scene.meshes.push(second);
+    let report = scene.valider();
+    seule(&report, &Violation::UvRangeConflict { other: 1 });
+    assert_eq!(report.errors[0].at, Located::Mesh(0));
+
+    // Même plage : un LOD ordinaire.
+    scene.meshes[1].uv0_range = 0;
+    assert!(scene.valider().is_valid());
 }
 
 #[test]

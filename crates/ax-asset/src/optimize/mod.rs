@@ -14,7 +14,7 @@
 //! | 1. fusion des vertices identiques, tolérances déclarées | module `merge` |
 //! | 2. génération des normales manquantes, angle-weighted | module `normals` |
 //! | 3. tangentes MikkTSpace si normal map | module `tangents`, puis fusion rejouée |
-//! | 4. quantification vers le format `Vertex` canonique | importeurs, C-21 |
+//! | 4. quantification vers le format `Vertex` canonique, UV ramenés dans `[0, 1]` par mesh (R-142) | importeurs, C-21 ; module `uv` |
 //! | 5. cache de sommets et localité | module `cache`, puis fusion rejouée |
 //! | 6. LOD, régions conservées | module `lod`, section `LODM` |
 //! | 7. AABB par mesh et par asset | module `bounds` |
@@ -50,6 +50,7 @@ mod lod;
 mod merge;
 mod normals;
 mod tangents;
+mod uv;
 
 pub use bounds::Aabb;
 pub use lod::{LodOptions, LodTable, MAX_LOD_LEVELS};
@@ -84,6 +85,9 @@ pub(crate) fn optimize(asset: &mut ImportedAsset, lod_options: &LodOptions) -> O
     let before = asset.vertices.len();
     let mut warnings = Vec::new();
 
+    // Les UV d'abord : la fusion ne réunit que des sommets identiques une fois
+    // quantifiés, et c'est la quantification dans la plage du mesh qui compte.
+    uv::normalize_uvs(asset);
     merge::merge_vertices(asset);
     let generated_normals = normals::generate_missing(asset);
 
@@ -154,7 +158,7 @@ mod tests {
             region: NONE_U16,
             lod_mask: 1,
             state: 0,
-            _pad: [0; 2],
+            mesh_count: 0,
         }
     }
 
@@ -177,7 +181,7 @@ mod tests {
                 aabb_min: [-1000.0; 3],
                 aabb_max: [1000.0; 3],
                 region: NONE_U16,
-                _pad: 0,
+                uv0_range: 0,
             }],
             raw_uvs: vec![[0.0; 2]; count],
             missing_normals: vec![missing; count],

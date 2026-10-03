@@ -3,7 +3,7 @@
 use super::error::{Located, Violation};
 use super::model::AssetView;
 use super::ValidationReport;
-use ax_model::dm::geometry::{mesh_flags, MeshDesc};
+use ax_model::dm::geometry::{mesh_flags, uv_range_conflict, MeshDesc, UvRange};
 use ax_model::dm::limits;
 use ax_model::dm::material::NO_TEXTURE;
 use ax_model::dm::physics::{ColliderShape, CONVEX_MAX_POINTS, CONVEX_MIN_POINTS};
@@ -21,6 +21,7 @@ pub fn validate(asset: &AssetView<'_>, raw_uvs: &[[f32; 2]]) -> ValidationReport
 
     check_limits(asset, &mut report);
     check_hierarchy(asset, &mut report);
+    check_node_meshes(asset, &mut report);
     check_geometry(asset, &mut report);
     check_materials(asset, &mut report);
     check_raw_uvs(raw_uvs, &mut report);
@@ -132,10 +133,58 @@ fn check_hierarchy(asset: &AssetView<'_>, report: &mut ValidationReport) {
     }
 }
 
-/// GÉOMÉTRIE — plages, indices, aires de triangle, boîtes englobantes.
+/// STRUCTURE — les meshes que chaque node porte existent (ADR-122 §5).
+///
+/// `mesh .. mesh + mesh_count` doit tenir dans le tableau de l'asset, compté en
+/// `u64` : la somme de deux `u32` peut déborder, et un débordement ramènerait
+/// une plage fausse dans les bornes. Un node sans mesh n'en compte aucun.
+fn check_node_meshes(asset: &AssetView<'_>, report: &mut ValidationReport) {
+    for (index, node) in asset.nodes.iter().enumerate() {
+        let at = Located::Node(index);
+        if node.mesh == NONE_U32 {
+            if node.mesh_count != 0 {
+                report.push(
+                    Violation::MeshCountWithoutMesh {
+                        count: node.mesh_count,
+                    },
+                    at,
+                );
+            }
+            continue;
+        }
+        let count = u32::from(node.mesh_count.max(1));
+        if u64::from(node.mesh) + u64::from(count) > asset.meshes.len() as u64 {
+            report.push(
+                Violation::MeshRangeOutOfAsset {
+                    mesh: node.mesh,
+                    count,
+                    mesh_total: asset.meshes.len(),
+                },
+                at,
+            );
+        }
+    }
+}
+
+/// GÉOMÉTRIE — plages, indices, aires de triangle, boîtes englobantes, plages
+/// d'UV.
 fn check_geometry(asset: &AssetView<'_>, report: &mut ValidationReport) {
+    // Un sommet partagé ne se décode que d'une façon (ADR-122 §4).
+    if let Some((first, other)) = uv_range_conflict(asset.meshes) {
+        report.push(Violation::UvRangeConflict { other }, Located::Mesh(first));
+    }
+
     for (index, mesh) in asset.meshes.iter().enumerate() {
         let at = Located::Mesh(index);
+
+        if UvRange::from_bits(mesh.uv0_range).is_none() {
+            report.push(
+                Violation::InvalidUvRange {
+                    bits: mesh.uv0_range,
+                },
+                at,
+            );
+        }
 
         if !within(mesh.vertex_offset, mesh.vertex_count, asset.vertices.len()) {
             report.push(Violation::RangeOutOfAsset { what: "sommets" }, at);

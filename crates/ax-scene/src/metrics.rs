@@ -67,7 +67,7 @@ mod tests {
             region: NONE_U16,
             lod_mask: ALL_LODS,
             state: node_state::PROCEDURAL,
-            _pad: [0; 2],
+            mesh_count: 0,
         }];
         let mut graph = SceneGraph::from_nodes(&nodes).expect("graphe");
 

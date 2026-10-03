@@ -158,14 +158,17 @@ pub(super) fn generate(
     };
 
     // Niveaux où chaque mesh est rendu : l'union des nodes visibles qui le
-    // portent. Un node non rendu — collider, socket (R-910) — ne compte pas.
+    // portent, chacun avec tous ses meshes (ADR-122 §5). Un node non rendu —
+    // collider, socket (R-910) — ne compte pas.
     let mut visible = vec![0u8; asset.meshes.len()];
     for node in &asset.nodes {
         if node.flags & node_flags::VISIBLE == 0 {
             continue;
         }
-        if let Some(mask) = visible.get_mut(node.mesh as usize) {
-            *mask |= node.lod_mask;
+        for rank in node.meshes() {
+            if let Some(mask) = visible.get_mut(rank as usize) {
+                *mask |= node.lod_mask;
+            }
         }
     }
 
@@ -418,6 +421,34 @@ mod tests {
                 }
             }
             assert_eq!((min, max), ([0.0; 2], [COTE as f32; 2]), "LOD {mesh}");
+        }
+    }
+
+    #[test]
+    fn t550_tous_les_meshes_d_un_node_recoivent_leurs_lod() {
+        // Un mesh glTF à deux primitives : le node les porte toutes deux, et la
+        // seconde n'était ni comptée visible, ni simplifiée.
+        let mut asset = grille();
+        let mut second = asset.meshes[0];
+        second.vertex_offset = asset.vertices.len() as u32;
+        second.index_offset = asset.indices.len() as u32;
+        second.uv0_range = ax_model::dm::geometry::UvRange::new(0, 4)
+            .expect("[0, 4]")
+            .to_bits();
+        asset.vertices.extend_from_within(..);
+        asset.indices.extend_from_within(..);
+        asset.raw_uvs.extend_from_within(..);
+        asset.missing_normals.extend_from_within(..);
+        asset.meshes.push(second);
+        asset.nodes[0].mesh_count = 2;
+
+        let table = generate(&mut asset, &LodOptions::DEFAULT, &mut Vec::new()).expect("des LOD");
+        assert_eq!(table.rows.len(), 2);
+        assert_eq!(asset.meshes.len(), 8, "deux sources, trois LOD chacune");
+        assert_eq!(table.rows[1], [1, 5, 6, 7, 1, 1, 1, 1]);
+        // Un LOD garde la plage d'UV de sa source (ADR-122 §4).
+        for rang in &table.rows[1][1..4] {
+            assert_eq!(asset.meshes[*rang as usize].uv0_range, second.uv0_range);
         }
     }
 

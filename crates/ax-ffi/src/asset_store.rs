@@ -340,6 +340,59 @@ f 2 7 3
     }
 
     #[test]
+    fn un_node_a_deux_meshes_donne_deux_dessins() {
+        // Un objet OBJ à deux matériaux : `tobj` le découpe en deux morceaux,
+        // l'import les range sous un node qui porte les deux (ADR-122 §5), et la
+        // liste de dessin en émet un par mesh — même node, même pose.
+        const CAISSE_OBJ: &str = "\
+mtllib caisse.mtl
+o caisse
+usemtl bois
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 0.0 1.0 0.0
+v 1.0 1.0 0.0
+f 1 2 3
+usemtl metal
+f 2 4 3
+";
+        let options = CompileOptions {
+            asset_id: 7,
+            source_hash: 0,
+            limits: ImportLimits::new(1 << 20),
+            dynamic_body: true,
+            lod: LodOptions::DEFAULT,
+            collider_mode: ColliderMode::None,
+        };
+        let bytes = compile(CAISSE_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| {
+            Some(b"newmtl bois\nKd 1 0 0\nnewmtl metal\nKd 0 0 1\n".to_vec())
+        })
+        .expect("compilation refusée")
+        .bytes;
+        let asset =
+            decode_render_asset(&bytes, 7, supported_sections(), LIMITS).expect("chargement");
+        let transfer = asset.geometry_transfer().expect("NODE | GEOM chargés");
+
+        let meshes = u32_at(transfer, 0) as usize;
+        let draws = u32_at(transfer, 12) as usize;
+        assert_eq!(meshes, 2);
+        assert_eq!(draws, 2, "un dessin par mesh du node");
+        let draws_start = transfer.len() - draws * RestDraw::BYTES;
+        let dessin = |rank: usize| {
+            let at = draws_start + rank * RestDraw::BYTES;
+            RestDraw::read_le(
+                transfer[at..at + RestDraw::BYTES]
+                    .try_into()
+                    .expect("64 octets"),
+            )
+        };
+        let (premier, second) = (dessin(0), dessin(1));
+        assert_eq!((premier.mesh, second.mesh), (0, 1));
+        assert_eq!(premier.node, second.node);
+        assert_eq!(premier.model, second.model);
+    }
+
+    #[test]
     fn un_cube_compile_se_charge_et_se_transfere() {
         let asset =
             decode_render_asset(&cube(42), 42, supported_sections(), LIMITS).expect("chargement");

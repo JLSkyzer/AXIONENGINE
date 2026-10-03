@@ -134,25 +134,29 @@ pub(super) fn asset_bounds(asset: &ImportedAsset) -> Option<Aabb> {
             .map_or(local, |parent| parent.then_inner(&local));
         world.push(placed);
 
-        let Some(mesh) = asset.meshes.get(node.mesh as usize) else {
-            continue;
-        };
-        if mesh.vertex_count == 0 {
-            continue;
-        }
-        any = true;
-        for corner in 0..8 {
-            let pick = |axis: usize| {
-                if corner & (1 << axis) == 0 {
-                    f64::from(mesh.aabb_min[axis])
-                } else {
-                    f64::from(mesh.aabb_max[axis])
-                }
+        // Tous les meshes du node (ADR-122 §5) : un mesh glTF à plusieurs
+        // primitives n'en comptait que la première.
+        for rank in node.meshes() {
+            let Some(mesh) = asset.meshes.get(rank as usize) else {
+                continue;
             };
-            let point = placed.apply([pick(0), pick(1), pick(2)]);
-            for axis in 0..3 {
-                min[axis] = min[axis].min(point[axis]);
-                max[axis] = max[axis].max(point[axis]);
+            if mesh.vertex_count == 0 {
+                continue;
+            }
+            any = true;
+            for corner in 0..8 {
+                let pick = |axis: usize| {
+                    if corner & (1 << axis) == 0 {
+                        f64::from(mesh.aabb_min[axis])
+                    } else {
+                        f64::from(mesh.aabb_max[axis])
+                    }
+                };
+                let point = placed.apply([pick(0), pick(1), pick(2)]);
+                for axis in 0..3 {
+                    min[axis] = min[axis].min(point[axis]);
+                    max[axis] = max[axis].max(point[axis]);
+                }
             }
         }
     }
@@ -245,6 +249,35 @@ mod tests {
                 "{bounds:?}"
             );
         }
+    }
+
+    #[test]
+    fn t242_la_boite_de_l_asset_couvre_tous_les_meshes_d_un_node() {
+        // Un mesh glTF à deux primitives : le second triangle, en x ∈ [2, 3],
+        // n'entrait pas dans la boîte quand le node ne portait que le premier.
+        let mut asset = triangle_unite();
+        let mut second = asset.meshes[0];
+        second.vertex_offset = 3;
+        asset.meshes.push(second);
+        asset.vertices.extend([
+            sommet([2.0, 0.0, 0.0]),
+            sommet([3.0, 0.0, 0.0]),
+            sommet([2.0, 1.0, 0.0]),
+        ]);
+        asset.nodes[0].mesh_count = 2;
+        update_mesh_bounds(&mut asset);
+
+        assert_eq!(
+            asset_bounds(&asset),
+            Some(Aabb {
+                min: [0.0, 0.0, 0.0],
+                max: [3.0, 1.0, 0.0],
+            })
+        );
+
+        // Un seul mesh déclaré : le second n'est pas porté.
+        asset.nodes[0].mesh_count = 1;
+        assert_eq!(asset_bounds(&asset).map(|boite| boite.max[0]), Some(1.0));
     }
 
     #[test]

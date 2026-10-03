@@ -168,8 +168,10 @@ fn write_node(out: &mut Vec<u8>, node: &NodeDesc) {
     out.extend_from_slice(&node.region.to_le_bytes());
     out.push(node.lod_mask);
     out.push(node.state);
-    // `_pad`, puis le remplissage de fin : réservés, écrits à zéro.
-    out.extend_from_slice(&[0; 6]);
+    out.extend_from_slice(&node.mesh_count.to_le_bytes());
+    // Le remplissage de fin, qu'impose l'alignement sur le `u64` de tête :
+    // réservé, écrit à zéro.
+    out.extend_from_slice(&[0; 4]);
 }
 
 /// Lit un node ; `at + NODE_BYTES` est dans les bornes, l'appelant l'a vérifié.
@@ -191,7 +193,7 @@ fn read_node(bytes: &[u8], at: usize) -> NodeDesc {
         region: u16::from_le_bytes(array(bytes, at + 70)),
         lod_mask: bytes[at + 72],
         state: bytes[at + 73],
-        _pad: [0; 2],
+        mesh_count: u16::from_le_bytes(array(bytes, at + 74)),
     }
 }
 
@@ -226,14 +228,18 @@ mod tests {
             region: NONE_U16,
             lod_mask: ALL_LODS,
             state: 0,
-            _pad: [0; 2],
+            mesh_count: 0,
         }
     }
 
     fn table() -> (Vec<NodeDesc>, Vec<String>) {
         (
             vec![
-                node("chassis", NO_PARENT),
+                // Un mesh glTF à deux primitives : deux meshes, un node.
+                NodeDesc {
+                    mesh_count: 2,
+                    ..node("chassis", NO_PARENT)
+                },
                 node("", 0),
                 node("roue_avant", 0),
             ],
@@ -255,7 +261,10 @@ mod tests {
         // Octets écrits à la main, champ par champ, sans passer par
         // l'encodeur : c'est la disposition de l'ADR-110 qui est vérifiée,
         // pas la cohérence de l'encodeur avec lui-même.
-        let nodes = vec![node("a", NO_PARENT)];
+        let nodes = vec![NodeDesc {
+            mesh_count: 3,
+            ..node("a", NO_PARENT)
+        }];
         let bytes = encode_nodes(&nodes, &["a".to_owned()]).expect("encodage");
 
         let mut attendu = Vec::new();
@@ -272,7 +281,8 @@ mod tests {
         attendu.extend_from_slice(&u32::MAX.to_le_bytes());
         attendu.extend_from_slice(&u16::MAX.to_le_bytes());
         attendu.extend_from_slice(&u16::MAX.to_le_bytes());
-        attendu.extend_from_slice(&[ALL_LODS, 0, 0, 0, 0, 0, 0, 0]);
+        // lod_mask, state, mesh_count (ADR-122 §5), remplissage de fin.
+        attendu.extend_from_slice(&[ALL_LODS, 0, 3, 0, 0, 0, 0, 0]);
         attendu.extend_from_slice(&0u32.to_le_bytes());
         attendu.extend_from_slice(&1u32.to_le_bytes());
         attendu.push(b'a');

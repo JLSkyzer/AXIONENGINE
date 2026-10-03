@@ -19,9 +19,9 @@ package dev.axion.asset;
  * <p>Historique, tenu en regard du côté Rust : 2 — C-23 tranche A ; 3 — C-23
  * tranche B ; 4 — C-23 tranche C ; 5 — section {@code NODE} et empreintes de nom
  * (ADR-110) ; 6 — section {@code PHYS} (colliders C-32, ADR-115) ; 7 — sections
- * {@code MATL} (DM-05) et {@code TEXR}, matériaux et textures importés (ADR-122). À
- * incrémenter des deux côtés à toute modification de C-21, C-22, C-23 ou C-28 qui
- * change la sortie.
+ * {@code MATL} (DM-05) et {@code TEXR}, matériaux et textures importés (ADR-122) ; 8 —
+ * plage d'UV par mesh et meshes multiples par node (ADR-122 §4 et §5). À incrémenter des
+ * deux côtés à toute modification de C-21, C-22, C-23 ou C-28 qui change la sortie.
  */
 public final class CompilerVersion {
 
@@ -31,7 +31,7 @@ public final class CompilerVersion {
      * <p>La CI ({@code tools/ci/check_compiler_version.py}) refuse tout écart
      * entre cette valeur et celle du crate {@code ax-asset}.
      */
-    public static final int CURRENT = 7;
+    public static final int CURRENT = 8;
 
     private CompilerVersion() {
         throw new AssertionError("classe utilitaire, non instanciable");

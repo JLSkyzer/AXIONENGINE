@@ -44,8 +44,11 @@ use core::fmt;
 /// `PHYS` (colliders C-32, ADR-115) ; 7 — sections `MATL` (DM-05) et `TEXR`
 /// (ADR-122) : matériaux et textures importés, matériau par défaut, drapeaux de
 /// mesh recopiés, couleurs de sommet `COLOR_0`, projection de l'albedo cuite
-/// dans `uv0`, `v` des OBJ compté depuis le haut de l'image.
-pub const COMPILER_VERSION: u32 = 7;
+/// dans `uv0`, `v` des OBJ compté depuis le haut de l'image ; 8 — UV ramenés
+/// dans `[0, 1]` sous une plage par mesh (`uv0_range`, R-142), un node porte
+/// tous ses meshes (`mesh_count`) : primitives glTF, morceaux d'un objet OBJ
+/// (ADR-122 §4 et §5).
+pub const COMPILER_VERSION: u32 = 8;
 
 /// Ce qui empêche de compiler un asset.
 #[derive(Debug, Clone, PartialEq)]
@@ -388,6 +391,7 @@ fn geometry_bytes(asset: &ImportedAsset) -> Vec<u8> {
 mod tests {
     use super::*;
     use crate::a3d::{A3dFile, A3dLimits};
+    use ax_model::dm::geometry::UvRange;
 
     const OPTIONS: CompileOptions = CompileOptions {
         asset_id: 0x1234,
@@ -1114,5 +1118,110 @@ f 1//1 2//1 3//1
         // La section se relit sans avoir à deviner où finit chaque tableau.
         let attendu = 16 + 48 + 3 * Vertex::BYTES + 3 * 4;
         assert_eq!(geom.len(), attendu);
+    }
+
+    /// Un node portant un mesh glTF à deux primitives : la première aux UV
+    /// répétées — u jusqu'à 3, v jusqu'à 2 —, la seconde décalée en x ∈ [2, 3].
+    fn gltf_deux_primitives() -> String {
+        let mut buffer = Vec::new();
+        for value in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+            buffer.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in [0.0f32, 0.0, 3.0, 0.0, 0.0, 2.0] {
+            buffer.extend_from_slice(&value.to_le_bytes());
+        }
+        for index in [0u16, 1, 2] {
+            buffer.extend_from_slice(&index.to_le_bytes());
+        }
+        // Alignement des positions suivantes sur quatre octets.
+        buffer.extend_from_slice(&[0, 0]);
+        for value in [2.0f32, 0.0, 0.0, 3.0, 0.0, 0.0, 2.0, 1.0, 0.0] {
+            buffer.extend_from_slice(&value.to_le_bytes());
+        }
+        for index in [0u16, 1, 2] {
+            buffer.extend_from_slice(&index.to_le_bytes());
+        }
+        format!(
+            concat!(
+                r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],"#,
+                r#""nodes":[{{"name":"caisse","mesh":0}}],"#,
+                r#""meshes":[{{"primitives":["#,
+                r#"{{"attributes":{{"POSITION":0,"TEXCOORD_0":1}},"indices":2}},"#,
+                r#"{{"attributes":{{"POSITION":3}},"indices":4}}]}}],"#,
+                r#""accessors":["#,
+                r#"{{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","#,
+                r#""min":[0.0,0.0,0.0],"max":[1.0,1.0,0.0]}},"#,
+                r#"{{"bufferView":1,"componentType":5126,"count":3,"type":"VEC2"}},"#,
+                r#"{{"bufferView":2,"componentType":5123,"count":3,"type":"SCALAR"}},"#,
+                r#"{{"bufferView":3,"componentType":5126,"count":3,"type":"VEC3","#,
+                r#""min":[2.0,0.0,0.0],"max":[3.0,1.0,0.0]}},"#,
+                r#"{{"bufferView":4,"componentType":5123,"count":3,"type":"SCALAR"}}],"#,
+                r#""bufferViews":[{{"buffer":0,"byteOffset":0,"byteLength":36}},"#,
+                r#"{{"buffer":0,"byteOffset":36,"byteLength":24}},"#,
+                r#"{{"buffer":0,"byteOffset":60,"byteLength":6}},"#,
+                r#"{{"buffer":0,"byteOffset":68,"byteLength":36}},"#,
+                r#"{{"buffer":0,"byteOffset":104,"byteLength":6}}],"#,
+                r#""buffers":[{{"byteLength":{longueur},"uri":"data:application/octet-stream;base64,{tampon}"}}]}}"#,
+            ),
+            longueur = buffer.len(),
+            tampon = encode_base64(&buffer),
+        )
+    }
+
+    #[test]
+    fn t291_un_node_porte_toutes_ses_primitives_sous_leurs_plages_d_uv() {
+        let compiled = compile(
+            gltf_deux_primitives().as_bytes(),
+            SourceFormat::Gltf,
+            &OPTIONS,
+            |_| None,
+        )
+        .expect("compilation refusée");
+
+        // La boîte couvre les deux primitives : la seconde n'y entrait pas.
+        assert_eq!(
+            compiled.bounds,
+            Some(Aabb {
+                min: [0.0, 0.0, 0.0],
+                max: [3.0, 1.0, 0.0],
+            })
+        );
+        assert_eq!(compiled.mesh_count, 2);
+
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+        assert_eq!(file.header().compiler_version, COMPILER_VERSION);
+        let nodes = crate::a3d::decode_nodes(
+            &file
+                .section(SectionTag::NODE)
+                .expect("NODE")
+                .expect("section absente"),
+        )
+        .expect("table des nodes")
+        .nodes;
+        assert_eq!(nodes[0].meshes(), 0..2, "le node porte ses deux primitives");
+
+        let geom = crate::a3d::decode_geometry(
+            &file
+                .section(SectionTag::GEOM)
+                .expect("GEOM")
+                .expect("section absente"),
+        )
+        .expect("géométrie");
+        // La primitive répétée garde ses tuiles, sous la plage [0, 3] ; l'autre,
+        // sans UV, reste dans [0, 1].
+        let plage = UvRange::from_bits(geom.meshes[0].uv0_range).expect("plage valide");
+        assert_eq!((plage.min(), plage.span()), (0, 3));
+        assert_eq!(geom.meshes[1].uv0_range, 0);
+
+        let premier = &geom.meshes[0];
+        let debut = premier.vertex_offset as usize;
+        let relues: Vec<[f32; 2]> = geom.vertices[debut..debut + premier.vertex_count as usize]
+            .iter()
+            .map(|vertex| vertex.uv0.map(|q| plage.dequantize(q)))
+            .collect();
+        let max = relues.iter().fold([f32::MIN; 2], |max, uv| {
+            [max[0].max(uv[0]), max[1].max(uv[1])]
+        });
+        assert_eq!(max, [3.0, 2.0], "u jusqu'à 3, v jusqu'à 2 : {relues:?}");
     }
 }

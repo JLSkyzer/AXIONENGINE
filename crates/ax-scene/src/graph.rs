@@ -167,7 +167,7 @@ pub struct SceneGraph {
     world: Vec<Affine3A>,
     flags: Vec<u32>,
     dirty: BitSet,
-    mesh: Vec<u32>,
+    meshes: Vec<core::ops::Range<u32>>,
     bone: Vec<u32>,
     part: Vec<u16>,
     region: Vec<u16>,
@@ -238,7 +238,7 @@ impl SceneGraph {
             world: vec![Affine3A::IDENTITY; count],
             flags: nodes.iter().map(|node| node.flags).collect(),
             dirty: BitSet::filled(count),
-            mesh: nodes.iter().map(|node| node.mesh).collect(),
+            meshes: nodes.iter().map(NodeDesc::meshes).collect(),
             bone: nodes.iter().map(|node| node.bone).collect(),
             part: nodes.iter().map(|node| node.part).collect(),
             region: nodes.iter().map(|node| node.region).collect(),
@@ -297,10 +297,11 @@ impl SceneGraph {
         &self.flags
     }
 
-    /// Mesh porté par chaque node.
+    /// Meshes portés par chaque node, plage vide s'il n'en porte aucun
+    /// (ADR-122 §5).
     #[must_use]
-    pub fn meshes(&self) -> &[u32] {
-        &self.mesh
+    pub fn meshes(&self) -> &[core::ops::Range<u32>] {
+        &self.meshes
     }
 
     /// Os associé à chaque node.
@@ -624,7 +625,7 @@ mod tests {
             region: NONE_U16,
             lod_mask: ALL_LODS,
             state,
-            _pad: [0; 2],
+            mesh_count: 0,
         }
     }
 

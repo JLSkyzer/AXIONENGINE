@@ -14,7 +14,7 @@ use super::material::UvMapping;
 use super::{check_relative_path, ImportError, ImportLimits, ImportedAsset, SourceFormat};
 use crate::collider::{ColliderMode, ColliderRequest};
 use ax_model::dm::geometry::{
-    encode_normal, encode_tangent, mesh_flags, MeshDesc, Transform, Vertex, NO_REGION_U8,
+    encode_normal, encode_tangent, mesh_flags, MeshDesc, Transform, UvRange, Vertex, NO_REGION_U8,
 };
 use ax_model::dm::limits;
 use ax_model::dm::material::{material_flags, NO_TEXTURE};
@@ -149,7 +149,7 @@ fn import_gltf_inner(
 
     // Les nodes ont été créés avant que les meshes n'existent : leur index de
     // mesh est posé maintenant, une fois que chacun connaît sa place.
-    bind_meshes(&document, &placement, &mut asset);
+    bind_meshes(&document, &placement, &mut asset, format)?;
 
     // Les requêtes de collider se lisent une fois les nodes connus ; C-32 les
     // consomme après l'optimisation, quand les boîtes de mesh existent.
@@ -499,34 +499,64 @@ fn node_desc(node: &gltf::Node, parent: u32, annotation: &NodeAnnotations) -> No
         // fait disparaître dès le premier LOD généré par C-23.
         lod_mask: if lod_mask == 0 { ALL_LODS } else { lod_mask },
         state: 0,
-        _pad: [0; 2],
+        mesh_count: 0,
     }
 }
 
-/// Associe à chaque node l'index du premier mesh de sa primitive.
+/// Associe à chaque node les meshes de toutes ses primitives (ADR-122 §5).
 ///
 /// « Une primitive = un mesh » : un mesh glTF à plusieurs primitives en produit
-/// plusieurs, et le node désigne le premier.
+/// plusieurs, consécutifs, et le node les porte tous — `mesh` désigne le
+/// premier, `mesh_count` les compte. glTF découpe un mesh par matériau : ne
+/// porter que le premier n'affichait qu'une partie de tout modèle
+/// multi-matériau.
 ///
 /// L'association passe par la table de placement, pas par le nom : deux nodes
 /// peuvent porter le même nom — glTF ne l'interdit pas — et les retrouver par
 /// là ferait désigner le mauvais mesh à l'un des deux.
-fn bind_meshes(document: &gltf::Gltf, placement: &[Option<u32>], asset: &mut ImportedAsset) {
-    let mut first_of_gltf_mesh = Vec::with_capacity(document.meshes().len());
+///
+/// # Errors
+///
+/// [`ImportError::Malformed`] sur un mesh sans primitive — glTF en exige au
+/// moins une, et son node désignerait les meshes d'un autre — ou à plus de
+/// 65 535 primitives, que `mesh_count` ne compte pas.
+fn bind_meshes(
+    document: &gltf::Gltf,
+    placement: &[Option<u32>],
+    asset: &mut ImportedAsset,
+    format: SourceFormat,
+) -> Result<(), ImportError> {
+    let mut ranges = Vec::with_capacity(document.meshes().len());
     let mut cursor = 0u32;
     for mesh in document.meshes() {
-        first_of_gltf_mesh.push(cursor);
-        cursor += mesh.primitives().len() as u32;
+        let primitives = mesh.primitives().len();
+        let count = u16::try_from(primitives)
+            .ok()
+            .filter(|count| *count > 0)
+            .ok_or_else(|| ImportError::Malformed {
+                format,
+                detail: format!(
+                    "meshes[{}] : {primitives} primitive(s), de 1 à 65 535 attendues",
+                    mesh.index()
+                ),
+            })?;
+        ranges.push((cursor, count));
+        cursor = cursor.saturating_add(u32::from(count));
     }
 
     for node in document.nodes() {
         let (Some(mesh), Some(Some(placed))) = (node.mesh(), placement.get(node.index())) else {
             continue;
         };
-        if let Some(desc) = asset.nodes.get_mut(*placed as usize) {
-            desc.mesh = first_of_gltf_mesh[mesh.index()];
+        if let (Some(desc), Some((first, count))) = (
+            asset.nodes.get_mut(*placed as usize),
+            ranges.get(mesh.index()),
+        ) {
+            desc.mesh = *first;
+            desc.mesh_count = *count;
         }
     }
+    Ok(())
 }
 
 /// Construit les meshes : une primitive glTF donne un mesh AXION.
@@ -685,7 +715,9 @@ fn import_meshes(
                     position: *position,
                     normal,
                     tangent,
-                    uv0: quantize_uv(uv),
+                    // Dans `[0, 1]`, saturé : l'optimizer requantifie dans
+                    // la plage du mesh, depuis les valeurs brutes (R-142).
+                    uv0: uv.map(|value| UvRange::UNIT.quantize(value)),
                     uv1: [0; 2],
                     color: colors.get(index).copied().unwrap_or([255; 4]),
                     bones: joints.get(index).map_or([0; 4], |joint| {
@@ -741,7 +773,7 @@ fn import_meshes(
                 aabb_min,
                 aabb_max,
                 region: NONE_U16,
-                _pad: 0,
+                uv0_range: 0,
             });
         }
     }
@@ -775,17 +807,6 @@ fn bounds(vertices: &[Vertex]) -> ([f32; 3], [f32; 3]) {
         }
     }
     (min, max)
-}
-
-fn quantize_uv(uv: [f32; 2]) -> [u16; 2] {
-    let encode = |value: f32| {
-        if value.is_finite() {
-            (value.clamp(0.0, 1.0) * f32::from(u16::MAX)).round() as u16
-        } else {
-            0
-        }
-    };
-    [encode(uv[0]), encode(uv[1])]
 }
 
 /// Quantifie une couleur de sommet `COLOR_0` en `UNORM8`, sans changer

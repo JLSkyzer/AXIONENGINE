@@ -23,16 +23,21 @@ class GeometryTransferTest {
 
     /** Un mesh transparent à double face, trois sommets, un triangle, un dessin translaté. */
     private static byte[] transfert() {
+        return transfert(0);
+    }
+
+    /** Le même, ses UV décodées sous la plage {@code uv0Range} (ADR-122 §4). */
+    private static byte[] transfert(int uv0Range) {
         ByteBuffer out = ByteBuffer.allocate(16 + 48 + 3 * 48 + 3 * 4 + 64).order(ByteOrder.LITTLE_ENDIAN);
         // En-tête : meshes, sommets, indices, dessins.
         out.putInt(1).putInt(3).putInt(3).putInt(1);
 
-        // MeshDesc (48 o) : plages, matériau 7, LOD 0, drapeaux, AABB, région, réservé.
+        // MeshDesc (48 o) : plages, matériau 7, LOD 0, drapeaux, AABB, région, plage d'UV.
         out.putInt(0).putInt(3).putInt(0).putInt(3);
         out.putShort((short) 7).put((byte) 0)
                 .put((byte) (GeometryTransfer.MESH_TRANSPARENT | GeometryTransfer.MESH_DOUBLE_SIDED));
         out.putFloat(0).putFloat(0).putFloat(0).putFloat(1).putFloat(1).putFloat(2);
-        out.putShort((short) 0xFFFF).putShort((short) 0);
+        out.putShort((short) 0xFFFF).putShort((short) uv0Range);
 
         // Trois Vertex (48 o chacun).
         float[][] positions = {{0, 0, 0}, {1, 0.5f, 0}, {0, 0, 2}};
@@ -104,6 +109,32 @@ class GeometryTransferTest {
         assertEquals(255, Byte.toUnsignedInt(geometrie.colors()[0]));
         assertEquals(128, Byte.toUnsignedInt(geometrie.colors()[1]));
         assertEquals(40, Byte.toUnsignedInt(geometrie.colors()[11]));
+    }
+
+    @Test
+    void lesUvSeDecodentDansLaPlageDeLeurMesh() {
+        // [-2, 1] : -2 en complément à deux (0xFE), puis l'étendue 3 — ADR-122 §4.
+        GeometryTransfer geometrie = GeometryTransfer.parse(transfert(0x03FE));
+        GeometryTransfer.Mesh mesh = geometrie.meshes().get(0);
+        assertEquals(0x03FE, mesh.uv0Range());
+        assertEquals(-2.0f, mesh.uvMin());
+        assertEquals(3.0f, mesh.uvSpan());
+
+        // Les bornes de la plage sont atteintes exactement : q = 0 vaut -2, q = 65535 vaut 1.
+        assertEquals(-2.0f, geometrie.uvs()[0]);
+        assertEquals(1.0f, geometrie.uvs()[2]);
+        // q = 32768 : -2 + 32768 / 65535 × 3, dans cet ordre. Le motif binaire est celui que
+        // rend le natif (`UvRange::dequantize`, épinglé au même motif côté Rust).
+        assertEquals(0xbefffd00, Float.floatToIntBits(geometrie.uvs()[3]));
+    }
+
+    @Test
+    void sansPlageLesUvRestentDansLUnite() {
+        // Le code 0 vaut [0, 1] : la lecture de tout asset compilé avant ADR-122.
+        GeometryTransfer.Mesh mesh = GeometryTransfer.parse(transfert()).meshes().get(0);
+        assertEquals(0, mesh.uv0Range());
+        assertEquals(0.0f, mesh.uvMin());
+        assertEquals(1.0f, mesh.uvSpan());
     }
 
     @Test

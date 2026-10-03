@@ -65,7 +65,7 @@ pub mod scene {
                 region: NONE_U16,
                 lod_mask: ALL_LODS,
                 state: node_state::STATIC,
-                _pad: [0; 2],
+                mesh_count: 0,
             })
             .collect()
     }

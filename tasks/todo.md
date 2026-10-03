@@ -1839,9 +1839,17 @@ substituable sans changer rapier »).
                         plusieurs nodes de même nom, que C-22 refuse pour doublon — un node,
                         plusieurs meshes (`mesh_count`). Pour T-b : chemin `RESOURCE` pris tel
                         quel par Java, sans décodage `%`, revalidé (R-531).
-                  - [ ] **T-a3 — UV et primitives** : `uv0_range` par mesh (R-142),
-                        `mesh_count` (DM-03) ; liste de dessin, bornes, LOD, validation ;
-                        `COMPILER_VERSION` 8.
+                  - [x] **T-a3 — UV et primitives** : `uv0_range` par mesh (R-142) et
+                        `mesh_count` (DM-03), selon les §4-5 et les « Précisions de T-a3 ».
+                        `UvRange` dans `ax-model` (codage, quantification, décodage épinglé au
+                        bit, Rust et Java) ; normalisation dans l'optimizer avant la fusion ;
+                        plage de meshes parcourue par les bornes, les LOD, la liste de dessin (un
+                        `RestDraw` par mesh), le graphe et les colliders ; glTF : toutes les
+                        primitives d'un mesh, mesh sans primitive refusé ; OBJ : un objet
+                        découpé par `usemtl` = un node ; C-22 et décodeur `GEOM` : plages de
+                        meshes, `uv0_range`, sommets partagés sous une seule plage ; Java
+                        `GeometryTransfer` décode chaque sommet dans sa plage ; `COMPILER_VERSION`
+                        8 des deux côtés ; fixture R-893 du compilateur 7 (graine de fuzzing).
                   - [ ] **T-a4 — frontière** : `axion_asset_load` (MATL | TEXR),
                         `axion_asset_materials`, `axion_asset_texture`, `ASSET_OUT` schéma 1,
                         pont JNI ; lecture Java contre la vraie JNI.

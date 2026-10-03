@@ -263,6 +263,31 @@ pub enum Violation {
         /// Ce que le matériau impose.
         material_flags: u8,
     },
+    /// Node dont les meshes sortent du tableau de l'asset (ADR-122 §5).
+    MeshRangeOutOfAsset {
+        /// Premier mesh porté.
+        mesh: u32,
+        /// Nombre de meshes portés.
+        count: u32,
+        /// Nombre de meshes de l'asset.
+        mesh_total: usize,
+    },
+    /// Node sans mesh qui déclare pourtant en porter plusieurs.
+    MeshCountWithoutMesh {
+        /// Compte déclaré.
+        count: u16,
+    },
+    /// Plage d'UV hors de `[-8, 9]` ou d'étendue nulle (R-142, ADR-122 §4).
+    InvalidUvRange {
+        /// Codage fautif.
+        bits: u16,
+    },
+    /// Deux meshes partagent des sommets sans partager leur plage d'UV : un
+    /// sommet partagé ne se décode que d'une façon.
+    UvRangeConflict {
+        /// L'autre mesh en cause.
+        other: usize,
+    },
 }
 
 impl Violation {
@@ -439,6 +464,26 @@ impl fmt::Display for Violation {
                 material_mesh_flags(*mesh_flags),
                 material_mesh_flags(*material_flags)
             ),
+            Violation::MeshRangeOutOfAsset {
+                mesh,
+                count,
+                mesh_total,
+            } => write!(
+                formatter,
+                "{count} mesh(es) à partir du mesh {mesh}, hors des {mesh_total} de l'asset"
+            ),
+            Violation::MeshCountWithoutMesh { count } => write!(
+                formatter,
+                "{count} meshes déclarés sur un node qui n'en porte aucun"
+            ),
+            Violation::InvalidUvRange { bits } => write!(
+                formatter,
+                "plage d'UV {bits:#06x} hors de [-8, 9] ou d'étendue nulle"
+            ),
+            Violation::UvRangeConflict { other } => write!(
+                formatter,
+                "partage des sommets avec le mesh {other} sous une autre plage d'UV"
+            ),
         }
     }
 }
@@ -529,6 +574,14 @@ mod tests {
                 mesh_flags: 0,
                 material_flags: 4,
             },
+            Violation::MeshRangeOutOfAsset {
+                mesh: 3,
+                count: 2,
+                mesh_total: 4,
+            },
+            Violation::MeshCountWithoutMesh { count: 2 },
+            Violation::InvalidUvRange { bits: 0x0005 },
+            Violation::UvRangeConflict { other: 1 },
         ];
         for violation in cas {
             let code = violation.code();

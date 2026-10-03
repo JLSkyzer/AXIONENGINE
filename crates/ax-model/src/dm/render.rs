@@ -169,7 +169,7 @@ mod tests {
             aabb_min: [0.0; 3],
             aabb_max: [1.0; 3],
             region: NO_REGION_U16,
-            _pad: 0,
+            uv0_range: 0,
         };
         let sommet = |x: f32| Vertex {
             position: [x, 0.0, 0.0],

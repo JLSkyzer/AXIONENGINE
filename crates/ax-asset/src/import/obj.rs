@@ -9,7 +9,7 @@ use super::obj_material;
 use super::{
     check_relative_path, ImportError, ImportLimits, ImportedAsset, ImportedMaterial, SourceFormat,
 };
-use ax_model::dm::geometry::{encode_normal, MeshDesc, Transform, Vertex, NO_REGION_U8};
+use ax_model::dm::geometry::{encode_normal, MeshDesc, Transform, UvRange, Vertex, NO_REGION_U8};
 use ax_model::dm::scene::{
     name_hash, node_flags, NodeDesc, ALL_LODS, NONE_U16, NONE_U32, NO_PARENT,
 };
@@ -135,11 +135,25 @@ pub fn import_obj(
             material,
             flags,
         ));
-        asset.nodes.push(node_for(index, &model.name));
-        if !model.name.is_empty() {
-            asset.names.push(("node", model.name.clone()));
+
+        // `tobj` découpe un objet à chaque `usemtl` : ses morceaux arrivent
+        // consécutifs, sous le même nom, et leurs meshes aussi. Ils forment un
+        // seul node, qui les porte tous (ADR-122 §5) ; deux nodes du même nom
+        // seraient refusés pour doublon (C-22). Au-delà de ce que `mesh_count`
+        // compte, un second node naît — et le doublon le fait refuser, plutôt
+        // qu'un mesh porté par personne.
+        let continues = index > 0 && models[index - 1].name == model.name;
+        match asset.nodes.last_mut() {
+            Some(node) if continues && node.mesh_count < u16::MAX => node.mesh_count += 1,
+            _ => {
+                let mesh = u32::try_from(asset.meshes.len() - 1).unwrap_or(u32::MAX);
+                asset.nodes.push(node_for(mesh, &model.name));
+                if !model.name.is_empty() {
+                    asset.names.push(("node", model.name.clone()));
+                }
+                asset.node_names.push(model.name.clone());
+            }
         }
-        asset.node_names.push(model.name.clone());
     }
 
     Ok(asset)
@@ -335,7 +349,10 @@ fn append_model(asset: &mut ImportedAsset, model: &tobj::Model, mapping: UvMappi
             normal,
             // Les tangentes viennent de C-23, par mikktspace.
             tangent: [0; 4],
-            uv0: quantize_uv(uv),
+            // Dans `[0, 1]`, **saturé**, jamais replié : l'optimizer
+            // requantifie dans la plage du mesh, depuis les valeurs brutes
+            // conservées à côté — c'est sur elles que porte R-142.
+            uv0: uv.map(|value| UvRange::UNIT.quantize(value)),
             uv1: [0; 2],
             color: [255; 4],
             bones: [0; 4],
@@ -354,23 +371,6 @@ fn append_model(asset: &mut ImportedAsset, model: &tobj::Model, mapping: UvMappi
     // les situe dans l'asset. Les rendre absolus ici les ferait sortir de
     // `vertex_count`, que le validateur compare précisément à chacun.
     asset.indices.extend_from_slice(&mesh.indices);
-}
-
-/// Ramène une coordonnée de texture en `UNORM16`.
-///
-/// Les valeurs hors de `[0, 1]` sont **saturées**, pas repliées : c'est
-/// l'optimizer qui les ramènera proprement (R-142), et un repli ici
-/// déplacerait la texture sans que rien ne le signale. Les valeurs brutes sont
-/// conservées à côté, et c'est sur elles que porte le contrôle.
-fn quantize_uv(uv: [f32; 2]) -> [u16; 2] {
-    let encode = |value: f32| {
-        if value.is_finite() {
-            (value.clamp(0.0, 1.0) * f32::from(u16::MAX)).round() as u16
-        } else {
-            0
-        }
-    };
-    [encode(uv[0]), encode(uv[1])]
 }
 
 fn mesh_desc(
@@ -407,17 +407,18 @@ fn mesh_desc(
         aabb_min: min,
         aabb_max: max,
         region: NONE_U16,
-        _pad: 0,
+        uv0_range: 0,
     }
 }
 
-fn node_for(index: usize, name: &str) -> NodeDesc {
+/// Le node d'un objet, portant son premier mesh.
+fn node_for(mesh: u32, name: &str) -> NodeDesc {
     NodeDesc {
         name_hash: name_hash(name),
         parent: NO_PARENT,
         local: Transform::identity(),
         flags: node_flags::VISIBLE,
-        mesh: index as u32,
+        mesh,
         collider: NONE_U32,
         bone: NONE_U32,
         part: NONE_U16,
@@ -425,7 +426,7 @@ fn node_for(index: usize, name: &str) -> NodeDesc {
         // L'OBJ ne porte aucune annotation : visible à tous les niveaux (R-913).
         lod_mask: ALL_LODS,
         state: 0,
-        _pad: [0; 2],
+        mesh_count: 1,
     }
 }
 
@@ -788,6 +789,80 @@ f -3//-1 -2//-1 -1//-1
 ";
         let asset = import_obj(source, &limits(), sans_mtl).expect("indices négatifs valides");
         assert_eq!(asset.vertices.len(), 3);
+    }
+
+    #[test]
+    fn t225_un_objet_a_plusieurs_materiaux_est_un_seul_node() {
+        // `tobj` découpe l'objet à chaque `usemtl` : deux modèles du même nom.
+        // Ils étaient deux nodes « caisse », et C-22 refusait l'asset pour
+        // doublon — tout OBJ multi-matériau de Blender.
+        let source = "\
+mtllib caisse.mtl
+o caisse
+usemtl bois
+v 0 0 0
+v 1 0 0
+v 0 1 0
+v 1 1 0
+f 1 2 3
+usemtl metal
+f 2 4 3
+o roue
+usemtl metal
+v 5 0 0
+v 6 0 0
+v 5 1 0
+f 5 6 7
+";
+        let asset = import_obj(source, &limits(), |_| {
+            Some("newmtl bois\nKd 1 0 0\nnewmtl metal\nKd 0 0 1\n".to_owned())
+        })
+        .expect("import refusé");
+
+        assert_eq!(asset.meshes.len(), 3);
+        assert_eq!(asset.node_names, ["caisse", "roue"]);
+        assert_eq!(
+            asset.nodes[0].meshes(),
+            0..2,
+            "la caisse porte ses deux meshes"
+        );
+        assert_eq!(asset.nodes[1].meshes(), 2..3);
+        let materiaux: Vec<u16> = asset.meshes.iter().map(|mesh| mesh.material).collect();
+        assert_eq!(materiaux, [0, 1, 1]);
+        assert_eq!(
+            asset
+                .names
+                .iter()
+                .filter(|(categorie, _)| *categorie == "node")
+                .count(),
+            2
+        );
+
+        // Et C-22 l'accepte, là où il refusait le doublon.
+        let names: Vec<crate::validate::NamedEntry<'_>> = asset
+            .names
+            .iter()
+            .map(|(categorie, nom)| crate::validate::NamedEntry::new(categorie, nom.as_str()))
+            .collect();
+        let materials: Vec<_> = asset
+            .materials
+            .iter()
+            .map(|material| material.desc)
+            .collect();
+        let report = crate::validate::validate(
+            &crate::validate::AssetView {
+                nodes: &asset.nodes,
+                meshes: &asset.meshes,
+                vertices: &asset.vertices,
+                indices: &asset.indices,
+                names: &names,
+                materials: Some(&materials),
+                missing_normals: &asset.missing_normals,
+                ..crate::validate::AssetView::default()
+            },
+            &asset.raw_uvs,
+        );
+        assert!(report.is_valid(), "{:?}", report.errors);
     }
 
     #[test]

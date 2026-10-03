@@ -102,8 +102,10 @@ pub struct MeshDesc {
     pub aabb_max: [f32; 3],
     /// Région de déformation dominante, `u16::MAX` si aucune.
     pub region: u16,
-    /// Réservé, à zéro.
-    pub _pad: u16,
+    /// Plage de décodage de `uv0` (R-142, ADR-122 §4) : octet bas, borne
+    /// inférieure `i8` ; octet haut, étendue `u8`. `0` code `[0, 1]`, la plage
+    /// de tout asset compilé avant elle. Voir [`UvRange`].
+    pub uv0_range: u16,
 }
 
 /// Valeur signifiant « aucune région » dans un champ `u16`.
@@ -235,7 +237,7 @@ impl MeshDesc {
     /// `out`.
     ///
     /// Sérialisation unique, partagée par la section `GEOM` et le transfert de
-    /// géométrie (ADR-119). Le champ réservé est écrit à zéro.
+    /// géométrie (ADR-119).
     pub fn write_le(&self, out: &mut Vec<u8>) {
         out.extend_from_slice(&self.vertex_offset.to_le_bytes());
         out.extend_from_slice(&self.vertex_count.to_le_bytes());
@@ -251,11 +253,13 @@ impl MeshDesc {
             out.extend_from_slice(&value.to_le_bytes());
         }
         out.extend_from_slice(&self.region.to_le_bytes());
-        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&self.uv0_range.to_le_bytes());
     }
 
-    /// Lit un descripteur depuis ses 48 octets petit-boutistes ; le champ
-    /// réservé est rendu à zéro.
+    /// Lit un descripteur depuis ses 48 octets petit-boutistes.
+    ///
+    /// `uv0_range` est rendu tel quel : sa validité se juge ailleurs —
+    /// [`UvRange::from_bits`] —, par le lecteur qui sait quoi faire d'un refus.
     #[must_use]
     pub fn read_le(bytes: &[u8; Self::BYTES]) -> Self {
         let u32_at = |at: usize| {
@@ -276,9 +280,167 @@ impl MeshDesc {
             aabb_min: [f32_at(20), f32_at(24), f32_at(28)],
             aabb_max: [f32_at(32), f32_at(36), f32_at(40)],
             region: u16_at(44),
-            _pad: 0,
+            uv0_range: u16_at(46),
         }
     }
+}
+
+/// Plage entière où se décodent les coordonnées de texture `uv0` d'un mesh
+/// (R-142, ADR-122 §4), portée par [`MeshDesc::uv0_range`].
+///
+/// Les UV sont stockés en `UNORM16`, donc dans `[0, 1]` ; la plage les ramène
+/// dans `[min, min + span]`, commune à U et V. Une texture répétée garde ainsi
+/// ses tuiles — jusqu'à dix-sept, de -8 à 9, les bornes de R-142 —, et un mesh
+/// qui reste dans `[0, 1]` garde toute la précision d'un `UNORM16`.
+///
+/// Encodage `q = round((u − min) / span × 65535)` ; décodage
+/// `u = min + q / 65535 × span`, **dans cet ordre exact** : Java le reproduit à
+/// l'identique, et deux ordres d'opérations ne donnent pas les mêmes flottants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UvRange {
+    min: i8,
+    span: u8,
+}
+
+/// Borne inférieure des UV avant normalisation (R-142), en entier.
+const UV_RANGE_MIN: i8 = -8;
+
+/// Borne supérieure des UV avant normalisation (R-142), en entier.
+const UV_RANGE_MAX: i8 = 9;
+
+impl UvRange {
+    /// `[0, 1]` : la plage de tout asset compilé avant elle, codée `0`.
+    pub const UNIT: Self = Self { min: 0, span: 1 };
+
+    /// La plage `[min, min + span]` ; `None` si elle sort de `[-8, 9]`
+    /// (R-142) ou si son étendue est nulle.
+    #[must_use]
+    pub const fn new(min: i8, span: u8) -> Option<Self> {
+        if span == 0 || min < UV_RANGE_MIN || min as i16 + span as i16 > UV_RANGE_MAX as i16 {
+            return None;
+        }
+        Some(Self { min, span })
+    }
+
+    /// La plage que code `MeshDesc::uv0_range` ; `None` si elle est invalide.
+    #[must_use]
+    pub const fn from_bits(bits: u16) -> Option<Self> {
+        if bits == 0 {
+            return Some(Self::UNIT);
+        }
+        let [low, high] = bits.to_le_bytes();
+        Self::new(low as i8, high)
+    }
+
+    /// Le codage de la plage ; `[0, 1]` est toujours codée `0`.
+    #[must_use]
+    pub const fn to_bits(self) -> u16 {
+        if self.min == 0 && self.span == 1 {
+            0
+        } else {
+            u16::from_le_bytes([self.min as u8, self.span])
+        }
+    }
+
+    /// La plus petite plage entière qui contient `[low, high]` — `[0, 1]` dès
+    /// qu'elle suffit.
+    ///
+    /// `None` si une borne n'est pas finie, si `low > high`, ou si la plage
+    /// sortirait de `[-8, 9]` : C-22 refuse de tels UV (R-142, `E-3030`) avant
+    /// que la plage ne soit calculée.
+    #[must_use]
+    pub fn covering(low: f32, high: f32) -> Option<Self> {
+        if !low.is_finite() || !high.is_finite() || low > high {
+            return None;
+        }
+        if low >= 0.0 && high <= 1.0 {
+            return Some(Self::UNIT);
+        }
+        let min = low.floor();
+        // Des UV tous égaux au même entier n'ont pas d'étendue : la tuile qui
+        // commence là les contient.
+        let max = high.ceil().max(min + 1.0);
+        if min < f32::from(UV_RANGE_MIN) || max > f32::from(UV_RANGE_MAX) {
+            return None;
+        }
+        // Entiers de [-8, 9] : les conversions sont exactes.
+        Self::new(min as i8, (max - min) as u8)
+    }
+
+    /// Borne inférieure.
+    #[must_use]
+    pub const fn min(self) -> i8 {
+        self.min
+    }
+
+    /// Étendue, de 1 à 17.
+    #[must_use]
+    pub const fn span(self) -> u8 {
+        self.span
+    }
+
+    /// Quantifie une coordonnée en `UNORM16` ; une valeur hors de la plage est
+    /// saturée, jamais repliée — un repli déplacerait la texture sans rien
+    /// qui le signale.
+    #[must_use]
+    pub fn quantize(self, value: f32) -> u16 {
+        // En `f64` : la soustraction d'un entier y est exacte pour tout `f32`
+        // de [-8, 9], et seule la division arrondit — loin sous le pas d'un
+        // `UNORM16`, ce que `f32` ne garantirait pas.
+        let normalized = (f64::from(value) - f64::from(self.min)) / f64::from(self.span);
+        let scaled = (normalized * f64::from(u16::MAX)).round();
+        if scaled.is_nan() {
+            0
+        } else {
+            scaled.clamp(0.0, f64::from(u16::MAX)) as u16
+        }
+    }
+
+    /// Décode une coordonnée : `min + q / 65535 × span`, dans cet ordre.
+    #[must_use]
+    pub fn dequantize(self, quantized: u16) -> f32 {
+        f32::from(self.min) + f32::from(quantized) / f32::from(u16::MAX) * f32::from(self.span)
+    }
+}
+
+/// Deux meshes qui partagent des sommets sans partager leur plage d'UV : un
+/// sommet partagé ne se décode que d'une façon.
+///
+/// Un LOD partage les sommets de son mesh source, et en reprend la plage ; deux
+/// meshes d'import ont des sommets disjoints. Un conflit ne vient donc que d'un
+/// fichier corrompu — mais un lecteur qui décode les UV sommet par sommet,
+/// comme celui de Java, lirait alors l'un des deux meshes de travers, sans rien
+/// qui le signale.
+///
+/// Rend les rangs des deux premiers meshes en conflit, le plus petit d'abord.
+/// Deux codages de la même plage ne sont pas un conflit ; une plage invalide se
+/// juge à part, par [`UvRange::from_bits`].
+#[must_use]
+pub fn uv_range_conflict(meshes: &[MeshDesc]) -> Option<(usize, usize)> {
+    let mut order: Vec<usize> = (0..meshes.len())
+        .filter(|rank| meshes[*rank].vertex_count > 0)
+        .collect();
+    order.sort_by_key(|rank| (meshes[*rank].vertex_offset, *rank));
+
+    // Balayage par début de plage : `reach` est la fin la plus lointaine du
+    // groupe de meshes qui se chevauchent, `owner` celui dont la plage fait foi.
+    let mut group: Option<(u64, usize)> = None;
+    for rank in order {
+        let mesh = &meshes[rank];
+        let start = u64::from(mesh.vertex_offset);
+        let end = start + u64::from(mesh.vertex_count);
+        match group {
+            Some((reach, owner)) if start < reach => {
+                if UvRange::from_bits(mesh.uv0_range) != UvRange::from_bits(meshes[owner].uv0_range)
+                {
+                    return Some((owner.min(rank), owner.max(rank)));
+                }
+                group = Some((reach.max(end), owner));
+            }
+            _ => group = Some((end, rank)),
+        }
+    }
+    None
 }
 
 /// Encode une normale en `i8` normalisée, telle que [`Vertex`] la porte.
@@ -474,7 +636,8 @@ mod tests {
             aabb_min: [-0.5, 0.0, -0.5],
             aabb_max: [0.5, 1.0, 0.5],
             region: NO_REGION_U16,
-            _pad: 0xBEEF,
+            // [-2, 1] : -2 en complément à deux, puis l'étendue 3.
+            uv0_range: 0x03FE,
         }
     }
 
@@ -520,7 +683,8 @@ mod tests {
             attendu.extend_from_slice(&value.to_le_bytes());
         }
         attendu.extend_from_slice(&NO_REGION_U16.to_le_bytes());
-        attendu.extend_from_slice(&[0, 0]);
+        // uv0_range : octet bas la borne -2 (0xFE), octet haut l'étendue 3.
+        attendu.extend_from_slice(&[0xFE, 0x03]);
 
         let mut ecrit = Vec::new();
         mesh_type().write_le(&mut ecrit);
@@ -542,15 +706,123 @@ mod tests {
             }
         );
 
+        // Le mesh revient entier : sa plage d'UV fait partie du format.
         let mut octets = Vec::new();
         mesh_type().write_le(&mut octets);
         let relu = MeshDesc::read_le(octets.as_slice().try_into().expect("48 octets"));
+        assert_eq!(relu, mesh_type());
+    }
+
+    #[test]
+    fn t240_la_plage_d_uv_se_code_et_se_decode() {
+        assert_eq!(UvRange::from_bits(0), Some(UvRange::UNIT));
+        assert_eq!(UvRange::UNIT.to_bits(), 0, "[0, 1] est toujours codée 0");
+        let plage = UvRange::new(-2, 3).expect("[-2, 1]");
+        assert_eq!(plage.to_bits(), 0x03FE);
+        assert_eq!(UvRange::from_bits(0x03FE), Some(plage));
+        assert_eq!((plage.min(), plage.span()), (-2, 3));
+        // [0, 1] écrite hors de sa forme canonique se lit encore.
+        assert_eq!(UvRange::from_bits(0x0100), Some(UvRange::UNIT));
+
+        // R-142 : rien hors de [-8, 9], et une étendue nulle ne décode rien.
+        assert_eq!(UvRange::new(-8, 17).map(UvRange::span), Some(17));
+        assert_eq!(UvRange::new(-9, 1), None);
+        assert_eq!(UvRange::new(0, 10), None, "0 + 10 > 9");
+        assert_eq!(UvRange::from_bits(0x0005), None, "étendue nulle");
+        assert_eq!(UvRange::from_bits(0x1200), None, "étendue 18");
+    }
+
+    #[test]
+    fn t240_la_plage_couvre_au_plus_juste() {
+        assert_eq!(UvRange::covering(0.0, 1.0), Some(UvRange::UNIT));
+        assert_eq!(UvRange::covering(0.25, 0.5), Some(UvRange::UNIT));
+        assert_eq!(UvRange::covering(0.0, 3.0), UvRange::new(0, 3));
+        assert_eq!(UvRange::covering(-0.5, 0.5), UvRange::new(-1, 2));
+        assert_eq!(UvRange::covering(2.5, 2.75), UvRange::new(2, 1));
+        // Tous égaux au même entier : la tuile qui commence là.
+        assert_eq!(UvRange::covering(3.0, 3.0), UvRange::new(3, 1));
+        assert_eq!(UvRange::covering(-8.0, 9.0), UvRange::new(-8, 17));
+        assert_eq!(UvRange::covering(-8.5, 0.0), None, "hors de R-142");
+        assert_eq!(UvRange::covering(0.0, 9.25), None, "hors de R-142");
+        assert_eq!(UvRange::covering(f32::NAN, 1.0), None);
+        assert_eq!(UvRange::covering(1.0, 0.0), None);
+    }
+
+    #[test]
+    fn t240_quantifier_puis_decoder_rend_la_valeur_au_pas_pres() {
+        let plage = UvRange::new(-2, 3).expect("[-2, 1]");
+        assert_eq!(plage.quantize(-2.0), 0);
+        assert_eq!(plage.quantize(1.0), u16::MAX);
+        assert_eq!(plage.dequantize(0), -2.0);
+        assert_eq!(plage.dequantize(u16::MAX), 1.0);
+        // Un pas vaut span / 65535 : l'aller-retour reste sous le demi-pas.
+        let pas = 3.0 / 65535.0;
+        for valeur in [-1.999f32, -0.5, 0.0, 0.123_456, 0.999] {
+            let relu = plage.dequantize(plage.quantize(valeur));
+            assert!(
+                (relu - valeur).abs() <= pas * 0.5 + 1e-6,
+                "{valeur} → {relu}"
+            );
+        }
+        // Hors de la plage : saturée, jamais repliée.
+        assert_eq!(plage.quantize(5.0), u16::MAX);
+        assert_eq!(plage.quantize(-7.0), 0);
+        assert_eq!(UvRange::UNIT.quantize(f32::NAN), 0);
+        // [0, 1] garde la quantification de toujours : q = round(u × 65535).
+        assert_eq!(UvRange::UNIT.quantize(0.5), 32768);
+        // Le décodage est épinglé au bit : Java (`GeometryTransfer`) attend ce
+        // même motif — -2 + 32768 / 65535 × 3, opération par opération en `f32`.
+        assert_eq!(plage.dequantize(32768).to_bits(), 0xbeff_fd00);
+    }
+
+    #[test]
+    fn t240_des_meshes_qui_partagent_des_sommets_partagent_leur_plage() {
+        let mesh = |vertex_offset: u32, vertex_count: u32, uv0_range: u16| MeshDesc {
+            vertex_offset,
+            vertex_count,
+            uv0_range,
+            ..mesh_type()
+        };
+        let deux_tuiles = UvRange::new(0, 2).expect("[0, 2]").to_bits();
+
+        // Sommets disjoints : chacun sa plage.
         assert_eq!(
-            relu,
-            MeshDesc {
-                _pad: 0,
-                ..mesh_type()
-            }
+            uv_range_conflict(&[mesh(0, 3, 0), mesh(3, 3, deux_tuiles)]),
+            None
         );
+        // Un LOD sur les sommets de sa source, même plage : rien à redire.
+        assert_eq!(
+            uv_range_conflict(&[
+                mesh(0, 6, deux_tuiles),
+                mesh(9, 3, 0),
+                mesh(0, 6, deux_tuiles)
+            ]),
+            None
+        );
+        // Deux codages de [0, 1] ne sont pas un conflit.
+        assert_eq!(
+            uv_range_conflict(&[mesh(0, 3, 0), mesh(0, 3, 0x0100)]),
+            None
+        );
+        // Un chevauchement partiel suffit, quel que soit l'ordre des meshes.
+        assert_eq!(
+            uv_range_conflict(&[mesh(10, 4, deux_tuiles), mesh(4, 4, 0), mesh(0, 6, 0)]),
+            None
+        );
+        assert_eq!(
+            uv_range_conflict(&[mesh(5, 4, deux_tuiles), mesh(0, 6, 0)]),
+            Some((0, 1))
+        );
+        // Un mesh vide ne partage rien.
+        assert_eq!(
+            uv_range_conflict(&[mesh(0, 6, 0), mesh(2, 0, deux_tuiles)]),
+            None
+        );
+    }
+
+    #[test]
+    fn t240_les_bornes_entieres_sont_celles_de_r142() {
+        assert_eq!(f32::from(UV_RANGE_MIN), crate::dm::limits::MIN_UV);
+        assert_eq!(f32::from(UV_RANGE_MAX), crate::dm::limits::MAX_UV);
     }
 }

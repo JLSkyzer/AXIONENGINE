@@ -18,7 +18,7 @@
 //! indexer sans contrôler de nouveau.
 
 use super::{A3dError, SectionTag};
-use ax_model::dm::geometry::{MeshDesc, Vertex};
+use ax_model::dm::geometry::{uv_range_conflict, MeshDesc, UvRange, Vertex};
 use ax_model::dm::limits;
 
 /// En-tête de la section : trois dénombrements et un mot réservé.
@@ -43,7 +43,9 @@ pub struct DecodedGeometry {
 /// sommets ou d'indices que R-143 n'en admet — vérifié **avant** toute
 /// allocation (R-901) —, taille incohérente avec les dénombrements, mesh dont
 /// les sommets ou les indices débordent de leur tableau, dont les indices ne
-/// forment pas des triangles, ou dont un indice désigne un sommet hors du mesh.
+/// forment pas des triangles, dont un indice désigne un sommet hors du mesh, ou
+/// dont la plage d'UV est invalide ; deux meshes qui partagent des sommets sans
+/// partager leur plage d'UV (ADR-122 §4).
 pub fn decode_geometry(bytes: &[u8]) -> Result<DecodedGeometry, A3dError> {
     if bytes.len() < HEADER_BYTES {
         return Err(malformed("en-tête tronqué"));
@@ -108,6 +110,13 @@ pub fn decode_geometry(bytes: &[u8]) -> Result<DecodedGeometry, A3dError> {
     for mesh in &meshes {
         check_mesh(mesh, vertex_count, &indices)?;
     }
+    // Java décode les UV sommet par sommet (ADR-119) : un sommet partagé par
+    // deux plages se lirait de travers pour l'un des deux meshes.
+    if uv_range_conflict(&meshes).is_some() {
+        return Err(malformed(
+            "deux meshes partagent des sommets sans partager leur plage d'UV",
+        ));
+    }
 
     Ok(DecodedGeometry {
         meshes,
@@ -139,6 +148,9 @@ fn check_mesh(mesh: &MeshDesc, vertex_count: usize, indices: &[u32]) -> Result<(
     // désignerait le sommet d'un autre, ou rien du tout.
     if range.iter().any(|local| *local >= mesh.vertex_count) {
         return Err(malformed("indice hors des sommets de son mesh"));
+    }
+    if UvRange::from_bits(mesh.uv0_range).is_none() {
+        return Err(malformed("plage d'UV hors de [-8, 9] ou d'étendue nulle"));
     }
     Ok(())
 }
@@ -204,7 +216,7 @@ mod tests {
             aabb_min: [0.0; 3],
             aabb_max: [1.0; 3],
             region: NO_REGION_U16,
-            _pad: 0,
+            uv0_range: 0,
         }
     }
 
@@ -420,5 +432,38 @@ f 2 7 3
     fn une_section_vide_est_valide() {
         let decoded = decode_geometry(&section(&[], &[], &[])).expect("décodage");
         assert!(decoded.meshes.is_empty() && decoded.vertices.is_empty());
+    }
+
+    #[test]
+    fn t253_une_plage_d_uv_invalide_est_refusee() {
+        // ADR-122 §4 : la plage sort de [-8, 9], ou n'a pas d'étendue. Java la
+        // décoderait sans contrôle : c'est ici qu'elle se refuse.
+        for invalide in [0x0005u16, 0x1200, 0x0AF7] {
+            let (mut meshes, vertices, indices) = deux_triangles();
+            meshes[1].uv0_range = invalide;
+            let refus = decode_geometry(&section(&meshes, &vertices, &indices)).unwrap_err();
+            assert_eq!(refus.code(), -3007, "{invalide:#06x}");
+        }
+
+        // Une plage valide passe, et revient telle quelle.
+        let (mut meshes, vertices, indices) = deux_triangles();
+        meshes[1].uv0_range = UvRange::new(-1, 3).expect("[-1, 2]").to_bits();
+        let decoded = decode_geometry(&section(&meshes, &vertices, &indices)).expect("décodage");
+        assert_eq!(decoded.meshes, meshes);
+    }
+
+    #[test]
+    fn t253_des_sommets_partages_sous_deux_plages_sont_refuses() {
+        // Le second mesh relit les sommets du premier, comme un LOD — mais sous
+        // une autre plage : un sommet partagé ne se décode que d'une façon.
+        let (mut meshes, vertices, indices) = deux_triangles();
+        meshes[1].vertex_offset = 0;
+        meshes[1].uv0_range = UvRange::new(0, 2).expect("[0, 2]").to_bits();
+        let refus = decode_geometry(&section(&meshes, &vertices, &indices)).unwrap_err();
+        assert_eq!(refus.code(), -3007);
+
+        // Même plage : c'est un LOD ordinaire.
+        meshes[1].uv0_range = 0;
+        assert!(decode_geometry(&section(&meshes, &vertices, &indices)).is_ok());
     }
 }

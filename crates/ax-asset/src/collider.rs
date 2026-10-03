@@ -31,7 +31,7 @@ use ax_model::dm::geometry::{MeshDesc, Transform, Vertex};
 use ax_model::dm::physics::{
     collider_flags, ColliderDesc, ColliderShape, CONVEX_MAX_POINTS, CONVEX_MIN_POINTS,
 };
-use ax_model::dm::scene::{NodeDesc, NONE_U32};
+use ax_model::dm::scene::NodeDesc;
 use parry3d::math::Vector;
 use parry3d::transformation::vhacd::{VHACDParameters, VHACD};
 
@@ -210,9 +210,9 @@ fn per_node_colliders(
     for request in requests {
         // On relève d'abord ce dont on a besoin, pour clore l'emprunt en lecture
         // du node avant de le muter.
-        let Some((mesh_index, part)) = nodes
+        let Some((carried, part)) = nodes
             .get(request.node as usize)
-            .map(|node| (node.mesh, node.part))
+            .map(|node| (node.meshes(), node.part))
         else {
             continue;
         };
@@ -231,28 +231,29 @@ fn per_node_colliders(
                 }
             }
         } else {
-            if mesh_index == NONE_U32 {
+            if carried.is_empty() {
                 build
                     .warnings
                     .push(format!("node collider {} sans mesh, ignoré", request.node));
                 continue;
             }
-            let Some(mesh) = meshes.get(mesh_index as usize) else {
+            // Tous les meshes du node (ADR-122 §5) : un collider glTF à
+            // plusieurs primitives n'en couvrait que la première.
+            let Some((own, aabb)) = meshes
+                .get(carried.start as usize..carried.end as usize)
+                .and_then(|own| union_aabb(own).map(|aabb| (own, aabb)))
+            else {
                 build
                     .warnings
                     .push(format!("node collider {} : mesh introuvable", request.node));
                 continue;
-            };
-            let aabb = Aabb {
-                min: mesh.aabb_min,
-                max: mesh.aabb_max,
             };
             match request.mode {
                 ColliderMode::AutoBox => auto_box(aabb),
                 ColliderMode::AutoSphere => auto_sphere(aabb),
                 ColliderMode::AutoCapsule => auto_capsule(aabb),
                 ColliderMode::Convex => {
-                    match convex_from_mesh(mesh, vertices, &mut build.hull_points) {
+                    match convex_from_meshes(own, vertices, &mut build.hull_points) {
                         Ok(collider) => collider,
                         Err(reason) => {
                             build
@@ -264,7 +265,7 @@ fn per_node_colliders(
                 }
                 ColliderMode::AutoConvex => {
                     match convex_decomposition(
-                        mesh,
+                        own,
                         vertices,
                         indices,
                         &mut build.hull_points,
@@ -311,24 +312,20 @@ fn per_node_colliders(
     build
 }
 
-/// Construit un collider `ConvexHull` depuis les sommets du mesh d'un node
+/// Construit un collider `ConvexHull` depuis les sommets des meshes d'un node
 /// `role=collider shape=convex` : leurs positions deviennent les points d'enveloppe,
 /// ajoutés au `pool`. rapier calcule l'enveloppe elle-même au runtime.
 ///
 /// Rend `Err(raison)` si les sommets sortent du tampon, ou si leur nombre est hors
 /// de `[4, 256]` (R-161) — réduire un nuage plus dense relève d'`auto_convex`
 /// (V-HACD, R-162), pas encore disponible ; un mesh trop maigre n'est pas un volume.
-fn convex_from_mesh(
-    mesh: &MeshDesc,
+fn convex_from_meshes(
+    meshes: &[MeshDesc],
     vertices: &[Vertex],
     pool: &mut Vec<[f32; 3]>,
 ) -> Result<ColliderDesc, String> {
-    let start = mesh.vertex_offset as usize;
-    let end = start.saturating_add(mesh.vertex_count as usize);
-    let Some(slice) = vertices.get(start..end) else {
-        return Err("sommets du mesh hors du tampon".to_owned());
-    };
-    let point_count = slice.len();
+    let positions = mesh_positions(meshes, vertices)?;
+    let point_count = positions.len();
     if point_count < CONVEX_MIN_POINTS as usize {
         return Err(format!(
             "enveloppe convexe de {point_count} points, moins que le minimum {CONVEX_MIN_POINTS}"
@@ -341,7 +338,7 @@ fn convex_from_mesh(
         ));
     }
     let offset = u32::try_from(pool.len()).map_err(|_| "pool de points saturé".to_owned())?;
-    pool.extend(slice.iter().map(|vertex| vertex.position));
+    pool.extend(positions);
     // Les points sont déjà dans le repère du mesh : le collider n'a pas de
     // translation de recentrage (contrairement à auto_box/auto_sphere).
     Ok(primitive_collider(
@@ -360,42 +357,48 @@ fn convex_from_mesh(
 /// sur l'enveloppe convexe globale quand la décomposition n'a pas tenu dans ses
 /// bornes (R-551).
 ///
-/// Les indices sont **locaux au mesh** (0-based, cf. `import`) : ils indexent
-/// directement les sommets du mesh, sans décalage.
+/// Les indices sont **locaux à leur mesh** (0-based, cf. `import`) : ceux de
+/// chaque mesh du node sont décalés du nombre de sommets qui le précèdent dans le
+/// nuage commun.
 ///
 /// # Errors
 /// Géométrie inexploitable : sommets/indices hors du tampon, mesh trop maigre, ou
 /// enveloppe globale de repli elle-même impossible.
 fn convex_decomposition(
-    mesh: &MeshDesc,
+    meshes: &[MeshDesc],
     vertices: &[Vertex],
     indices: &[u32],
     points: &mut Vec<[f32; 3]>,
     children: &mut Vec<ColliderDesc>,
 ) -> Result<(ColliderDesc, Option<String>), String> {
-    let vstart = mesh.vertex_offset as usize;
-    let Some(verts) = vertices.get(vstart..vstart.saturating_add(mesh.vertex_count as usize))
-    else {
-        return Err("sommets du mesh hors du tampon".to_owned());
-    };
-    let istart = mesh.index_offset as usize;
-    let Some(idx) = indices.get(istart..istart.saturating_add(mesh.index_count as usize)) else {
-        return Err("indices du mesh hors du tampon".to_owned());
-    };
-    if verts.len() < CONVEX_MIN_POINTS as usize || idx.len() < 3 {
-        return Err("mesh trop maigre pour une décomposition".to_owned());
-    }
-
-    let cloud: Vec<Vector> = verts
-        .iter()
-        .map(|v| Vector::new(v.position[0], v.position[1], v.position[2]))
-        .collect();
-    let mut tris: Vec<[u32; 3]> = Vec::with_capacity(idx.len() / 3);
-    for triangle in idx.chunks_exact(3) {
-        if triangle.iter().any(|i| *i as usize >= verts.len()) {
-            return Err("indice de triangle hors du mesh".to_owned());
+    let mut cloud: Vec<Vector> = Vec::new();
+    let mut tris: Vec<[u32; 3]> = Vec::new();
+    for mesh in meshes {
+        let vstart = mesh.vertex_offset as usize;
+        let Some(verts) = vertices.get(vstart..vstart.saturating_add(mesh.vertex_count as usize))
+        else {
+            return Err("sommets du mesh hors du tampon".to_owned());
+        };
+        let istart = mesh.index_offset as usize;
+        let Some(idx) = indices.get(istart..istart.saturating_add(mesh.index_count as usize))
+        else {
+            return Err("indices du mesh hors du tampon".to_owned());
+        };
+        let base = u32::try_from(cloud.len()).map_err(|_| "nuage de points saturé".to_owned())?;
+        for triangle in idx.chunks_exact(3) {
+            if triangle.iter().any(|i| *i as usize >= verts.len()) {
+                return Err("indice de triangle hors du mesh".to_owned());
+            }
+            tris.push([base + triangle[0], base + triangle[1], base + triangle[2]]);
         }
-        tris.push([triangle[0], triangle[1], triangle[2]]);
+        cloud.extend(
+            verts
+                .iter()
+                .map(|v| Vector::new(v.position[0], v.position[1], v.position[2])),
+        );
+    }
+    if cloud.len() < CONVEX_MIN_POINTS as usize || tris.is_empty() {
+        return Err("mesh trop maigre pour une décomposition".to_owned());
     }
 
     // Bornes fixes d'ADR-108 (R-551) ; la résolution reste le défaut de parry (64),
@@ -423,7 +426,7 @@ fn convex_decomposition(
     // Repli (R-551, ADR-108) : rien d'exploitable ou trop d'enveloppes → l'enveloppe
     // convexe globale du mesh.
     if valid.is_empty() || valid.len() > DECOMP_MAX_HULLS as usize {
-        let collider = convex_from_mesh(mesh, vertices, points)?;
+        let collider = convex_from_meshes(meshes, vertices, points)?;
         return Ok((
             collider,
             Some("décomposition hors bornes, repli sur l'enveloppe globale".to_owned()),
@@ -487,19 +490,17 @@ fn compound_from_children(
     let offset = u32::try_from(pool.len()).map_err(|_| "pool d'enfants saturé".to_owned())?;
     let mut count = 0u32;
     for node in nodes.iter().filter(|node| node.parent == parent) {
-        if node.mesh == NONE_U32 {
-            continue;
-        }
-        let Some(mesh) = meshes.get(node.mesh as usize) else {
+        let carried = node.meshes();
+        // Tous les meshes de l'enfant (ADR-122 §5), en une boîte.
+        let Some(aabb) = meshes
+            .get(carried.start as usize..carried.end as usize)
+            .and_then(union_aabb)
+        else {
             continue;
         };
         if count as usize >= MAX_COMPOUND_PARTS {
             return Err(format!("plus de {MAX_COMPOUND_PARTS} formes filles"));
         }
-        let aabb = Aabb {
-            min: mesh.aabb_min,
-            max: mesh.aabb_max,
-        };
         // Boîte du mesh (centrée sur le centre de l'AABB), placée à la pose du node
         // enfant : translation additionnée, rotation et échelle transmises.
         let mut child = auto_box(aabb);
@@ -525,6 +526,51 @@ fn compound_from_children(
         },
         [0.0; 3],
     ))
+}
+
+/// Boîte englobant les meshes d'un node : l'union de leurs boîtes, en espace du
+/// node.
+///
+/// Un mesh sans sommet n'y entre pas — sa boîte nulle tirerait l'union vers
+/// l'origine, et les bornes de l'asset l'écartent de même. Si aucun n'a de
+/// sommet, la boîte du premier, comme lorsqu'un node n'en portait qu'un. `None`
+/// sans mesh.
+fn union_aabb(meshes: &[MeshDesc]) -> Option<Aabb> {
+    let boxed = |mesh: &MeshDesc| Aabb {
+        min: mesh.aabb_min,
+        max: mesh.aabb_max,
+    };
+    let mut filled = meshes
+        .iter()
+        .filter(|mesh| mesh.vertex_count > 0)
+        .map(boxed);
+    let first = filled.next().or_else(|| meshes.first().map(boxed))?;
+    Some(filled.fold(first, |union, next| Aabb {
+        min: [
+            union.min[0].min(next.min[0]),
+            union.min[1].min(next.min[1]),
+            union.min[2].min(next.min[2]),
+        ],
+        max: [
+            union.max[0].max(next.max[0]),
+            union.max[1].max(next.max[1]),
+            union.max[2].max(next.max[2]),
+        ],
+    }))
+}
+
+/// Les positions des sommets de plusieurs meshes, mises bout à bout.
+fn mesh_positions(meshes: &[MeshDesc], vertices: &[Vertex]) -> Result<Vec<[f32; 3]>, String> {
+    let mut positions = Vec::new();
+    for mesh in meshes {
+        let start = mesh.vertex_offset as usize;
+        let end = start.saturating_add(mesh.vertex_count as usize);
+        let Some(slice) = vertices.get(start..end) else {
+            return Err("sommets du mesh hors du tampon".to_owned());
+        };
+        positions.extend(slice.iter().map(|vertex| vertex.position));
+    }
+    Ok(positions)
 }
 
 /// Milieu des bornes.
@@ -618,6 +664,7 @@ fn primitive_collider(shape: ColliderShape, translation: [f32; 3]) -> ColliderDe
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ax_model::dm::scene::NONE_U32;
 
     fn bounds(min: [f32; 3], max: [f32; 3]) -> Aabb {
         Aabb { min, max }
@@ -642,7 +689,7 @@ mod tests {
             region: NONE_U16,
             lod_mask: u8::MAX,
             state: 0,
-            _pad: [0; 2],
+            mesh_count: 0,
         }
     }
 
@@ -659,7 +706,7 @@ mod tests {
             aabb_min,
             aabb_max,
             region: NONE_U16,
-            _pad: 0,
+            uv0_range: 0,
         }
     }
 
@@ -802,6 +849,75 @@ mod tests {
         assert!(build.colliders.is_empty(), "aucun collider sans mesh");
         assert_eq!(build.warnings.len(), 1, "l'ignorance est avertie (R-912)");
         assert_eq!(nodes[0].collider, NONE_U32, "aucun lien posé");
+    }
+
+    #[test]
+    fn un_node_collider_couvre_tous_ses_meshes() {
+        // Un collider glTF à deux primitives : la boîte couvre les deux, là où
+        // elle ne couvrait que la première (ADR-122 §5).
+        let rempli = |aabb_min: [f32; 3], aabb_max: [f32; 3]| MeshDesc {
+            vertex_count: 3,
+            ..mesh(aabb_min, aabb_max)
+        };
+        let mut nodes = vec![NodeDesc {
+            mesh_count: 2,
+            ..node(0, NONE_U16)
+        }];
+        let meshes = vec![
+            rempli([0.0; 3], [1.0; 3]),
+            rempli([2.0, 0.0, 0.0], [3.0, 1.0, 1.0]),
+        ];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::AutoBox,
+            density: None,
+            no_refit: false,
+        }];
+
+        let build = build_colliders(
+            &mut nodes,
+            &meshes,
+            &[],
+            &[],
+            &requests,
+            ColliderMode::None,
+            None,
+        );
+
+        assert_eq!(build.colliders.len(), 1);
+        let ColliderShape::Box { half_extents } = build.colliders[0].shape else {
+            panic!("attendu une boîte, obtenu {:?}", build.colliders[0].shape);
+        };
+        assert_eq!(half_extents, [1.5, 0.5, 0.5]);
+        assert_eq!(build.colliders[0].local.translation, [1.5, 0.5, 0.5]);
+        assert!(build.warnings.is_empty(), "{:?}", build.warnings);
+    }
+
+    #[test]
+    fn l_union_des_boites_ecarte_les_meshes_vides() {
+        let rempli = MeshDesc {
+            vertex_count: 3,
+            ..mesh([2.0; 3], [3.0; 3])
+        };
+        // Un mesh vide porte une boîte nulle : elle tirerait l'union vers
+        // l'origine.
+        let vide = mesh([0.0; 3], [0.0; 3]);
+        assert_eq!(
+            union_aabb(&[vide, rempli]),
+            Some(Aabb {
+                min: [2.0; 3],
+                max: [3.0; 3],
+            })
+        );
+        // Tous vides : la boîte du premier, comme avec un seul mesh.
+        assert_eq!(
+            union_aabb(&[vide]),
+            Some(Aabb {
+                min: [0.0; 3],
+                max: [0.0; 3]
+            })
+        );
+        assert_eq!(union_aabb(&[]), None);
     }
 
     #[test]

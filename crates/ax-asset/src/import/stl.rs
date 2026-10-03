@@ -185,7 +185,7 @@ fn mesh_desc(asset: &ImportedAsset) -> MeshDesc {
         aabb_min: min,
         aabb_max: max,
         region: NONE_U16,
-        _pad: 0,
+        uv0_range: 0,
     }
 }
 
@@ -203,7 +203,7 @@ fn root_node() -> NodeDesc {
         // Le STL ne porte aucune annotation : visible à tous les niveaux (R-913).
         lod_mask: ALL_LODS,
         state: 0,
-        _pad: [0; 2],
+        mesh_count: 1,
     }
 }
 

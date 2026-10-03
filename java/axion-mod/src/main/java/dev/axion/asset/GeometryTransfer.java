@@ -3,6 +3,7 @@ package dev.axion.asset;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -61,6 +62,8 @@ public final class GeometryTransfer {
      * @param material matériau de rendu
      * @param lod niveau de détail
      * @param flags drapeaux {@code MESH_*}
+     * @param uv0Range plage de décodage des UV (ADR-122 §4) : octet bas la borne inférieure,
+     *     signée ; octet haut l'étendue ; {@code 0} pour {@code [0, 1]}
      */
     public record Mesh(
             int vertexOffset,
@@ -69,12 +72,33 @@ public final class GeometryTransfer {
             int indexCount,
             int material,
             int lod,
-            int flags) {
+            int flags,
+            int uv0Range) {
 
         /** {@return vrai si le mesh porte ce drapeau} */
         public boolean has(int flag) {
             return (flags & flag) != 0;
         }
+
+        /** {@return la borne inférieure de la plage d'UV} */
+        public float uvMin() {
+            return rangeMin(uv0Range);
+        }
+
+        /** {@return l'étendue de la plage d'UV, de 1 à 17} */
+        public float uvSpan() {
+            return rangeSpan(uv0Range);
+        }
+    }
+
+    /** {@return la borne inférieure que code {@code uv0_range} : son octet bas, signé} */
+    static float rangeMin(int range) {
+        return (byte) range;
+    }
+
+    /** {@return l'étendue que code {@code uv0_range} : son octet haut ; 1 pour le code 0} */
+    static float rangeSpan(int range) {
+        return range == 0 ? 1.0f : (range >>> 8) & 0xFF;
     }
 
     /**
@@ -154,10 +178,22 @@ public final class GeometryTransfer {
                     in.getInt(at + 12),
                     Short.toUnsignedInt(in.getShort(at + 16)),
                     Byte.toUnsignedInt(in.get(at + 18)),
-                    Byte.toUnsignedInt(in.get(at + 19))));
+                    Byte.toUnsignedInt(in.get(at + 19)),
+                    Short.toUnsignedInt(in.getShort(at + 46))));
         }
 
         int vertices = (int) vertexCount;
+        // La plage d'UV de chaque sommet est celle du mesh qui le porte (ADR-122 §4). Un LOD
+        // partage les sommets de sa source et en reprend la plage : le natif a vérifié qu'un
+        // sommet partagé n'en a qu'une, et qu'aucun mesh ne sort du tableau.
+        int[] uvRanges = new int[vertices];
+        for (Mesh mesh : meshes) {
+            if (mesh.uv0Range() != 0) {
+                Arrays.fill(uvRanges, mesh.vertexOffset(), mesh.vertexOffset() + mesh.vertexCount(),
+                        mesh.uv0Range());
+            }
+        }
+
         float[] positions = new float[vertices * 3];
         float[] normals = new float[vertices * 3];
         float[] uvs = new float[vertices * 2];
@@ -169,9 +205,12 @@ public final class GeometryTransfer {
                 // Normale i8 normalisée : ±127 code ±1 (DM-04).
                 normals[vertex * 3 + axis] = Math.max(-1.0f, in.get(at + 12 + axis) / 127.0f);
             }
-            // uv0 UNORM16, à l'offset 20.
-            uvs[vertex * 2] = Short.toUnsignedInt(in.getShort(at + 20)) / 65535.0f;
-            uvs[vertex * 2 + 1] = Short.toUnsignedInt(in.getShort(at + 22)) / 65535.0f;
+            // uv0 UNORM16, à l'offset 20, décodé dans sa plage : min + q / 65535 × étendue, dans
+            // l'ordre exact du natif — un autre ordre ne donnerait pas les mêmes flottants.
+            float uvMin = rangeMin(uvRanges[vertex]);
+            float uvSpan = rangeSpan(uvRanges[vertex]);
+            uvs[vertex * 2] = uvMin + Short.toUnsignedInt(in.getShort(at + 20)) / 65535.0f * uvSpan;
+            uvs[vertex * 2 + 1] = uvMin + Short.toUnsignedInt(in.getShort(at + 22)) / 65535.0f * uvSpan;
             // Couleur RGBA, à l'offset 28.
             for (int channel = 0; channel < 4; channel++) {
                 colors[vertex * 4 + channel] = in.get(at + 28 + channel);
@@ -227,7 +266,10 @@ public final class GeometryTransfer {
         return normals;
     }
 
-    /** {@return les coordonnées de texture principales, deux flottants par sommet} */
+    /**
+     * {@return les coordonnées de texture principales, deux flottants par sommet, décodées dans la
+     * plage de leur mesh : une texture répétée y garde ses tuiles, hors de {@code [0, 1]}}
+     */
     public float[] uvs() {
         return uvs;
     }
