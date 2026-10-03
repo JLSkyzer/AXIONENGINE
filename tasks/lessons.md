@@ -898,3 +898,18 @@ précédent, resté sur le disque, sans aucun échec.
 **Règle.** Appeler `gradlew.bat` par son chemin absolu. Avant chaque passage d'une
 mutation, effacer le rapport qu'on va lire, et traiter son absence comme une erreur — jamais
 comme un résultat. Une mutation déclarée survivante se rejoue à la main avant d'y croire.
+
+## 2026-10-03 | Une texture libérée pendant la frame qui pouvait encore la lier
+
+**Ce qui a mal tourné.** T-b1 libérait les textures d'un asset remplacé dès que
+`MeshCache.schedule` voyait le nouveau contenu. Or `schedule` tourne pendant la collecte des
+assemblies d'une frame : une autre assembly de cette frame avait pu recevoir l'ancien asset
+juste avant, et T-b2 allait lier ses textures. Trouvé à la relecture du collage, pas par un
+test : aucun ne liait encore de texture.
+
+**Cause.** Le moment de la libération était pensé du point de vue du cache — l'asset n'est
+plus servi —, pas de celui de la frame — plus personne ne le dessine.
+
+**Règle.** Une ressource du fil de rendu ne se libère pas pendant la frame qui peut encore
+s'en servir : la libération se confie au passage suivant du fil de rendu. Relire chaque chemin
+de libération en se demandant qui tient encore la ressource à cet instant.

@@ -2,7 +2,6 @@ package dev.axion.forge.client;
 
 import dev.axion.AxionMod;
 import dev.axion.asset.AssetRegistry;
-import dev.axion.asset.GeometryTransfer;
 import dev.axion.asset.NativeAssetLoader;
 import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.config.AxionConfig;
@@ -42,15 +41,17 @@ import org.slf4j.LoggerFactory;
  * <p>AXION dessine ses objets <b>en plus</b> du monde vanilla, dans le même framebuffer, sans
  * altérer aucune passe vanilla (§19.1). Une seule passe collecte les assemblies visibles et
  * les confie au backend actif — pas un rendu par entité — pour que culling (C-64) et
- * instancing (C-65) puissent s'y loger. Chaque passe a son stage (R-1570) : OPAQUE à
- * {@code AFTER_ENTITIES}, DEBUG à {@code AFTER_PARTICLES} ; la passe translucide viendra avec
- * les matériaux (C-26), à {@code AFTER_TRANSLUCENT_BLOCKS}.
+ * instancing (C-65) puissent s'y loger. Chaque passe a son stage (R-1570) : OPAQUE et CUTOUT à
+ * {@code AFTER_ENTITIES}, DEBUG à {@code AFTER_PARTICLES} ; la passe translucide viendra à
+ * {@code AFTER_TRANSLUCENT_BLOCKS}, et l'émissive à {@code AFTER_ENTITIES} (ADR-122, T-b3).
  *
  * <p>Le backend est choisi au chargement de chaque monde client (R-1490), d'après
  * {@code render.backend} relu à ce moment-là. Tout se passe sur le render thread, sauf le
- * chargement des maillages (ADR-119) : le {@link MeshCache} le confie à un thread de fond, et
- * le backend dessine une boîte de repli tant qu'il n'a pas abouti. Chaque choix de backend
- * journalise, en une entrée, ce qu'il sait faire et ce qu'il ne sait pas faire (R-1493).
+ * chargement des assets (ADR-119, ADR-122) : le {@link MeshCache} confie à un thread de fond le
+ * maillage, l'apparence des meshes et la préparation des textures, puis téléverse celles-ci sur
+ * le render thread ; le backend dessine une boîte de repli tant que rien n'a abouti. Chaque choix
+ * de backend journalise, en une entrée, ce qu'il sait faire et ce qu'il ne sait pas faire
+ * (R-1493).
  *
  * <p>Les overlays de debug (C-67, ADR-121) forment la passe DEBUG ; leur géométrie est
  * demandée au natif une fois par tick client, et seulement s'ils sont allumés (R-2280). Une
@@ -114,8 +115,8 @@ public final class AxionRenderPass {
     }
 
     /**
-     * Dessine chaque passe à son stage (R-1570) : OPAQUE à {@code AFTER_ENTITIES}, DEBUG à
-     * {@code AFTER_PARTICLES}.
+     * Dessine chaque passe à son stage (R-1570) : OPAQUE et CUTOUT à {@code AFTER_ENTITIES},
+     * DEBUG à {@code AFTER_PARTICLES}.
      *
      * @param event étape du rendu du niveau
      */
@@ -133,7 +134,7 @@ public final class AxionRenderPass {
         }
     }
 
-    /** Passe OPAQUE (§19.10, passe 1). */
+    /** Passes OPAQUE et CUTOUT (§19.10, passes 1 et 2). */
     private static void renderOpaque(RenderLevelStageEvent event) {
         Minecraft minecraft = Minecraft.getInstance();
         List<RenderBackend.Assembly> assemblies = assemblies(minecraft.level, true);
@@ -166,21 +167,21 @@ public final class AxionRenderPass {
     }
 
     /**
-     * {@return les assemblies à dessiner, avec leur géométrie si la passe en a besoin}
+     * {@return les assemblies à dessiner, avec leur asset si la passe en a besoin}
      *
      * <p>Une assembly inerte n'a pas de definition, donc rien à dessiner. La passe DEBUG ne
-     * dessine que des lignes : elle ne demande pas les maillages.
+     * dessine que des lignes : elle ne demande pas les assets.
      */
-    private static List<RenderBackend.Assembly> assemblies(ClientLevel level, boolean withMeshes) {
+    private static List<RenderBackend.Assembly> assemblies(ClientLevel level, boolean withAssets) {
         List<RenderBackend.Assembly> assemblies = new ArrayList<>();
         if (level == null) {
             return assemblies;
         }
-        AxionRuntime runtime = withMeshes ? RuntimeAccess.get() : null;
+        AxionRuntime runtime = withAssets ? RuntimeAccess.get() : null;
         for (Entity entity : level.entitiesForRendering()) {
             if (entity instanceof AxionEntity assembly && !assembly.isInert()) {
-                GeometryTransfer mesh = withMeshes ? meshOf(runtime, assembly) : null;
-                assemblies.add(new RenderBackend.Assembly(assembly, mesh));
+                RenderAsset asset = withAssets ? assetOf(runtime, assembly) : null;
+                assemblies.add(new RenderBackend.Assembly(assembly, asset));
             }
         }
         return assemblies;
@@ -242,14 +243,14 @@ public final class AxionRenderPass {
     }
 
     /**
-     * {@return la géométrie prête d'une assembly, ou {@code null}}
+     * {@return l'asset prêt d'une assembly, ou {@code null}}
      *
-     * <p>Definition → asset → contenu publié → maillage. Chaque maillon peut manquer : runtime
-     * natif absent, monde distant (definitions et assets ne vivent qu'avec le serveur intégré —
-     * le maillage en multijoueur est hors portée d'ADR-119), asset en compilation ou refusé,
-     * maillage en chargement. Le backend dessine alors la boîte de repli.
+     * <p>Definition → asset → contenu publié → maillage, apparence et textures. Chaque maillon
+     * peut manquer : runtime natif absent, monde distant (definitions et assets ne vivent qu'avec
+     * le serveur intégré — le maillage en multijoueur est hors portée d'ADR-119), asset en
+     * compilation ou refusé, chargement en cours. Le backend dessine alors la boîte de repli.
      */
-    private static GeometryTransfer meshOf(AxionRuntime runtime, AxionEntity assembly) {
+    private static RenderAsset assetOf(AxionRuntime runtime, AxionEntity assembly) {
         if (runtime == null) {
             return null;
         }
@@ -263,8 +264,7 @@ public final class AxionRenderPass {
             return null;
         }
         MeshCache cache = meshCache(runtime);
-        RenderAsset asset = cache == null ? null : cache.get(definition.asset(), source);
-        return asset == null ? null : asset.mesh();
+        return cache == null ? null : cache.get(definition.asset(), source);
     }
 
     /**

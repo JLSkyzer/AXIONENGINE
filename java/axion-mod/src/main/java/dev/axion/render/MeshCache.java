@@ -30,8 +30,9 @@ import java.util.function.Consumer;
  *       table concurrente lui répond, et un asset absent est demandé puis remplacé, le temps du
  *       chargement, par la boîte de repli (décision 2 d'ADR-119). C'est lui aussi qui téléverse
  *       et libère les textures : il est seul à toucher au contexte graphique (R-751) ;
- *   <li><b>le thread de fond</b> exécute les chargements et prépare les textures — lecture,
- *       contrôles, découpe, mipmaps. Un gros modèle s'y décode sans à-coup à l'écran ;
+ *   <li><b>le thread de fond</b> exécute les chargements, établit l'apparence des meshes —
+ *       matériau, couleurs de sommets — et prépare les textures — lecture, contrôles, découpe,
+ *       mipmaps. Un gros modèle s'y décode sans à-coup à l'écran ;
  *   <li><b>le thread qui arrête</b> — rendu à la sortie d'un monde, serveur intégré à l'arrêt
  *       du jeu — rend tous les handles par {@link #releaseAll} ou {@link #close}, avant la
  *       fermeture du natif (R-321, R-322).
@@ -176,8 +177,9 @@ public final class MeshCache {
     }
 
     /**
-     * Fil de rendu : pose un chargement à la place de {@code previous} et le confie au thread de
-     * fond. Un asset remplacé libère ses textures ici, et son handle là-bas.
+     * Fil de rendu, pendant la collecte d'une frame : pose un chargement à la place de
+     * {@code previous} et le confie au thread de fond. Un asset remplacé rend son handle là-bas,
+     * et ses textures au passage suivant du fil de rendu.
      */
     private void schedule(String path, Published source, State previous) {
         Loading loading = new Loading(source, epoch, loads.incrementAndGet());
@@ -189,7 +191,13 @@ public final class MeshCache {
             return;
         }
         if (previous instanceof Ready ready) {
-            ready.registered.forEach(textures::release);
+            // Une autre assembly de cette frame a pu recevoir l'ancien asset juste avant que son
+            // contenu change : ses textures se libèrent la frame finie. Refusé, ce passage n'aura
+            // pas lieu — on est déjà sur le fil de rendu, la libération se fait ici.
+            Runnable release = () -> ready.registered.forEach(textures::release);
+            if (!submit(renderThread, release)) {
+                release.run();
+            }
             // Refusé, le retrait n'est pas perdu : le handle reste dans `live`, rendu à la
             // prochaine libération.
             submit(executor, () -> retire(ready.handle));
@@ -217,6 +225,10 @@ public final class MeshCache {
         if (decoded == null) {
             return;
         }
+        List<MeshLook> looks = looks(path, loading, decoded);
+        if (looks == null) {
+            return;
+        }
         Set<Integer> reported = new HashSet<>(decoded.refused);
         List<Staged> staged = new ArrayList<>();
         for (TexturePipeline.Request request : decoded.requests) {
@@ -233,11 +245,33 @@ public final class MeshCache {
                 refuse(path, rank, "préparation impossible : " + failure, reported);
             }
         }
-        if (!submit(renderThread, () -> install(path, loading, decoded, staged))) {
+        if (!submit(renderThread, () -> install(path, loading, decoded, looks, staged))) {
             staged.forEach(stage -> textures.discard(stage.prepared));
             retire(decoded.handle);
             settleFailed(path, loading, "téléversement impossible, fil de rendu arrêté");
         }
+    }
+
+    /**
+     * Thread de fond, hors du verrou : l'apparence de chaque mesh. Un mesh sans matériau dans la
+     * table est rapporté une fois — sauf si la table elle-même l'a été, illisible.
+     *
+     * @return les apparences, ou {@code null} si le chargement s'arrête là
+     */
+    private List<MeshLook> looks(String path, Loading loading, Decoded decoded) {
+        MeshLooks.Result result;
+        try {
+            result = MeshLooks.of(decoded.mesh, decoded.materials);
+        } catch (RuntimeException malformed) {
+            // Un mesh qui désigne hors de ses sommets : un défaut de la frontière, qui doit se voir.
+            retire(decoded.handle);
+            settleFailed(path, loading, "apparence impossible : " + malformed);
+            return null;
+        }
+        if (result.note() != null && decoded.materialsRead) {
+            diagnostics.accept(path + " — " + result.note());
+        }
+        return result.looks();
     }
 
     /**
@@ -274,16 +308,19 @@ public final class MeshCache {
                 settleFailed(path, loading, "géométrie illisible : " + malformed.getMessage());
                 return null;
             }
-            MaterialTransfer materials = readMaterials(path, handle);
+            MaterialTransfer read = readMaterials(path, handle);
+            MaterialTransfer materials = read == null ? MaterialTransfer.empty() : read;
             Set<Integer> refused = new HashSet<>();
             List<TexturePipeline.Request> requests = requests(path, loading, handle, materials, refused);
-            return new Decoded(mesh, materials, handle, requests, refused);
+            return new Decoded(mesh, materials, read != null, handle, requests, refused);
         }
     }
 
     /**
      * Sous {@link #nativeLock} : la table des matériaux. Illisible, elle n'empêche pas l'asset de
      * s'afficher — avec le matériau par défaut, et un diagnostic.
+     *
+     * @return la table, ou {@code null} si elle est illisible, ce qui a été rapporté
      */
     private MaterialTransfer readMaterials(String path, Handle handle) {
         AssetLoader.FetchedMaterials fetched;
@@ -291,11 +328,11 @@ public final class MeshCache {
             fetched = loader.materials(handle.index(), handle.generation());
         } catch (RuntimeException | UnsatisfiedLinkError failure) {
             diagnostics.accept(path + " — matériaux illisibles : " + failure + " ; matériau par défaut");
-            return MaterialTransfer.empty();
+            return null;
         }
         if (!fetched.ok()) {
             diagnostics.accept(path + " — matériaux refusés, code " + fetched.code() + " ; matériau par défaut");
-            return MaterialTransfer.empty();
+            return null;
         }
         return fetched.transfer();
     }
@@ -358,25 +395,27 @@ public final class MeshCache {
      * Fil de rendu : téléverse les textures et installe l'asset, s'il est encore attendu. Supplanté
      * ou libéré entre-temps, il abandonne ses textures et rend son handle.
      */
-    private void install(String path, Loading loading, Decoded decoded, List<Staged> staged) {
+    private void install(String path, Loading loading, Decoded decoded, List<MeshLook> looks, List<Staged> staged) {
         if (closed || loading.epoch != epoch || states.get(path) != loading) {
             staged.forEach(stage -> textures.discard(stage.prepared));
             submit(executor, () -> retire(decoded.handle));
             return;
         }
-        Map<TextureKey, String> uploaded = new HashMap<>();
+        Map<TextureKey, TextureBinding> uploaded = new HashMap<>();
+        List<String> registered = new ArrayList<>();
         for (Staged stage : staged) {
             try {
                 textures.upload(stage.prepared);
-                uploaded.put(stage.key, stage.prepared.location());
+                uploaded.put(stage.key, stage.prepared.binding());
+                registered.add(stage.prepared.binding().location());
             } catch (RuntimeException failure) {
                 textures.discard(stage.prepared);
                 diagnostics.accept(path + " — texture " + stage.key.rank()
                         + " : téléversement impossible : " + failure + " ; texture neutre");
             }
         }
-        RenderAsset asset = new RenderAsset(decoded.mesh, decoded.materials, uploaded);
-        Ready ready = new Ready(loading.source, asset, decoded.handle, List.copyOf(uploaded.values()));
+        RenderAsset asset = new RenderAsset(decoded.mesh, decoded.materials, looks, uploaded);
+        Ready ready = new Ready(loading.source, asset, decoded.handle, List.copyOf(registered));
         if (!states.replace(path, loading, ready)) {
             // Fermé depuis un autre thread entre le contrôle et l'installation.
             ready.registered.forEach(textures::release);
@@ -434,11 +473,14 @@ public final class MeshCache {
     /**
      * Ce que le thread de fond a lu sous le verrou.
      *
+     * @param materials table des matériaux ; vide si elle est illisible
+     * @param materialsRead faux si la table était illisible, ce qui a déjà été rapporté
      * @param refused rangs déjà rapportés comme refusés, à ne pas rapporter une seconde fois
      */
     private record Decoded(
             GeometryTransfer mesh,
             MaterialTransfer materials,
+            boolean materialsRead,
             Handle handle,
             List<TexturePipeline.Request> requests,
             Set<Integer> refused) {}

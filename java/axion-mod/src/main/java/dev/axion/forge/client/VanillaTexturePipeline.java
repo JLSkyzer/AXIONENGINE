@@ -1,6 +1,7 @@
 package dev.axion.forge.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import dev.axion.render.TextureBinding;
 import dev.axion.render.TexturePipeline;
 import dev.axion.render.TextureRefusal;
 import dev.axion.render.TextureRules;
@@ -59,7 +60,9 @@ final class VanillaTexturePipeline implements TexturePipeline {
                             + " les deux à la fois"
                     : null;
             return new PreparedTexture(
-                    request.location(), new AxionTexture(mips, sampling.blur(), sampling.clamp()), note);
+                    new TextureBinding(request.location(), sampling.blur(), levels > 0),
+                    new AxionTexture(mips, sampling.blur(), sampling.clamp()),
+                    note);
         } catch (TextureRefusal | RuntimeException failure) {
             image.close();
             throw failure;
@@ -69,7 +72,7 @@ final class VanillaTexturePipeline implements TexturePipeline {
     @Override
     public void upload(Prepared prepared) {
         PreparedTexture texture = (PreparedTexture) prepared;
-        ResourceLocation id = location(texture.location());
+        ResourceLocation id = location(texture.binding().location());
         TextureManager manager = Minecraft.getInstance().getTextureManager();
         // Sa méthode load ne fait rien : l'enregistrement ne relit aucun fichier.
         manager.register(id, texture.texture);
@@ -83,6 +86,8 @@ final class VanillaTexturePipeline implements TexturePipeline {
 
     @Override
     public void release(String location) {
+        // Ses types de rendu partent avec elle : aucun ne la lierait plus.
+        AxionRenderTypes.forget(location);
         Minecraft.getInstance().getTextureManager().release(location(location));
     }
 
@@ -129,7 +134,7 @@ final class VanillaTexturePipeline implements TexturePipeline {
     }
 
     /** Une {@code ResourceLocation} que le cache a déjà validée. */
-    private static ResourceLocation location(String location) {
+    static ResourceLocation location(String location) {
         ResourceLocation id = ResourceLocation.tryParse(location);
         if (id == null) {
             throw new IllegalArgumentException("ResourceLocation invalide : " + location);
@@ -149,9 +154,9 @@ final class VanillaTexturePipeline implements TexturePipeline {
     /**
      * Une texture prête à téléverser.
      *
-     * @param location nom sous lequel l'enregistrer
+     * @param binding nom sous lequel l'enregistrer, et filtrage du téléversement
      * @param texture la texture et ses niveaux de mipmaps
      * @param note ce qu'il faut signaler une fois, ou {@code null}
      */
-    private record PreparedTexture(String location, AxionTexture texture, String note) implements Prepared {}
+    private record PreparedTexture(TextureBinding binding, AxionTexture texture, String note) implements Prepared {}
 }

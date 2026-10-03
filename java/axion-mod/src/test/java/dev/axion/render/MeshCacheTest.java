@@ -1,6 +1,10 @@
 package dev.axion.render;
 
+import static dev.axion.render.TestMaterials.EMBEDDED;
+import static dev.axion.render.TestMaterials.material;
+import static dev.axion.render.TestMaterials.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -39,9 +43,6 @@ import org.junit.jupiter.api.Test;
 class MeshCacheTest {
 
     private static final String PATH = "axion:axion/models/test/cube.gltf";
-
-    /** Une texture embarquée, dans la table d'essai ; tout autre texte est un chemin de ressource. */
-    private static final String EMBEDDED = "<embarquée>";
 
     /** Exécuteur manuel. */
     private static final class Manual implements Executor {
@@ -110,6 +111,9 @@ class MeshCacheTest {
         private final List<String> released = new ArrayList<>();
         private final List<String> discarded = new ArrayList<>();
         private final Set<Integer> refused = new HashSet<>();
+        private boolean blur;
+        private boolean mipmap;
+        private boolean failUploads;
 
         @Override
         public Prepared prepare(Request request) throws TextureRefusal {
@@ -117,12 +121,15 @@ class MeshCacheTest {
             if (refused.contains(request.key().rank())) {
                 throw new TextureRefusal("E-3004 : pas un PNG (R-532)");
             }
-            return new Staged(request.location());
+            return new Staged(new TextureBinding(request.location(), blur, mipmap));
         }
 
         @Override
         public void upload(Prepared prepared) {
-            uploaded.add(prepared.location());
+            if (failUploads) {
+                throw new IllegalStateException("contexte graphique perdu");
+            }
+            uploaded.add(prepared.binding().location());
         }
 
         @Override
@@ -132,10 +139,10 @@ class MeshCacheTest {
 
         @Override
         public void discard(Prepared prepared) {
-            discarded.add(prepared.location());
+            discarded.add(prepared.binding().location());
         }
 
-        private record Staged(String location) implements Prepared {
+        private record Staged(TextureBinding binding) implements Prepared {
             @Override
             public String note() {
                 return null;
@@ -163,52 +170,9 @@ class MeshCacheTest {
         }
     }
 
-    /**
-     * Une table d'ADR-122 §6 : un matériau par paire (mode de mélange, slot d'albedo), puis les
-     * textures — {@link #EMBEDDED}, ou le chemin d'une ressource.
-     */
-    private static MaterialTransfer table(int[][] materials, String... textures) {
-        StringBuilder paths = new StringBuilder();
-        for (String texture : textures) {
-            if (!texture.equals(EMBEDDED)) {
-                paths.append(texture);
-            }
-        }
-        byte[] pathBytes = paths.toString().getBytes(StandardCharsets.UTF_8);
-        ByteBuffer out = ByteBuffer.allocate(16 + materials.length * 96 + textures.length * 16 + pathBytes.length)
-                .order(ByteOrder.LITTLE_ENDIAN);
-        out.putInt(materials.length).putInt(textures.length).putInt(pathBytes.length).putInt(0);
-        for (int[] material : materials) {
-            out.putLong(0L);
-            out.putShort((short) material[1]);
-            for (int slot = 0; slot < 5; slot++) {
-                out.putShort((short) MaterialTransfer.NO_TEXTURE);
-            }
-            for (float value : new float[] {1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0.5f, 0, 0, 0, 0, 0}) {
-                out.putFloat(value);
-            }
-            out.put((byte) material[0]).put((byte) 0).put((byte) 0).put((byte) 0);
-            out.putShort((short) 0).putShort((short) 0xFFFF);
-        }
-        int offset = 0;
-        for (String texture : textures) {
-            if (texture.equals(EMBEDDED)) {
-                out.put((byte) MaterialTransfer.SOURCE_EMBEDDED).put((byte) 1).put((byte) 0).put((byte) 0);
-                out.putShort((short) 2).putShort((short) 2).putInt(0).putInt(33);
-            } else {
-                int size = texture.getBytes(StandardCharsets.UTF_8).length;
-                out.put((byte) MaterialTransfer.SOURCE_RESOURCE).put((byte) 1).put((byte) 0).put((byte) 0);
-                out.putShort((short) 0).putShort((short) 0).putInt(offset).putInt(size);
-                offset += size;
-            }
-        }
-        out.put(pathBytes);
-        return MaterialTransfer.parse(out.array());
-    }
-
     /** Un matériau opaque texturé d'un PNG embarqué. */
     private void oneEmbeddedTexture() {
-        loader.materials = table(new int[][] {{MaterialTransfer.BLEND_OPAQUE, 0}}, EMBEDDED);
+        loader.materials = table(List.of(material().albedo(0)), EMBEDDED);
         loader.pngs.put(0, new byte[] {1, 2, 3});
     }
 
@@ -380,7 +344,7 @@ class MeshCacheTest {
         assertNotNull(asset);
         String location = textures.requests.get(0).location();
         assertEquals(List.of(location), textures.uploaded);
-        assertEquals(location, asset.texture(TextureKey.plain(0)));
+        assertEquals(location, asset.texture(TextureKey.plain(0)).location());
         assertEquals(1, cache.liveTextures());
         assertTrue(diagnostics.isEmpty(), () -> diagnostics.toString());
     }
@@ -413,7 +377,7 @@ class MeshCacheTest {
     }
 
     @Test
-    @DisplayName("Un nouveau contenu libère aussitôt les textures de l'ancien")
+    @DisplayName("Un nouveau contenu libère les textures de l'ancien, la frame en cours finie")
     void unNouveauContenuLibereLesTexturesDeLAncien() {
         oneEmbeddedTexture();
         cache.get(PATH, published("v1"));
@@ -421,10 +385,26 @@ class MeshCacheTest {
         String ancienne = textures.uploaded.get(0);
 
         cache.get(PATH, published("v2"));
+        // La frame qui découvre le nouveau contenu peut encore dessiner l'ancien asset.
+        assertTrue(textures.released.isEmpty(), "libérée pendant la frame qui peut encore la lier");
+        render.runAll();
         assertEquals(List.of(ancienne), textures.released);
         settle();
         assertEquals(2, textures.uploaded.size());
         assertTrue(!textures.uploaded.get(1).equals(ancienne), "deux chargements, un même nom");
+    }
+
+    @Test
+    @DisplayName("Un fil de rendu qui refuse : les textures de l'ancien contenu se libèrent sur place")
+    void unFilDeRenduQuiRefuseLibereSurPlace() {
+        oneEmbeddedTexture();
+        cache.get(PATH, published("v1"));
+        settle();
+        String ancienne = textures.uploaded.get(0);
+
+        render.refuse = true;
+        cache.get(PATH, published("v2"));
+        assertEquals(List.of(ancienne), textures.released);
     }
 
     @Test
@@ -477,9 +457,7 @@ class MeshCacheTest {
     @Test
     @DisplayName("Une ressource se résout contre le répertoire du modèle ; un chemin refusé est rapporté")
     void uneRessourceSeResoutEtUnCheminRefuseEstRapporte() {
-        loader.materials = table(
-                new int[][] {{MaterialTransfer.BLEND_OPAQUE, 0}, {MaterialTransfer.BLEND_OPAQUE, 1}},
-                "tex/a.png", "../b.png");
+        loader.materials = table(List.of(material().albedo(0), material().albedo(1)), "tex/a.png", "../b.png");
         cache.get(PATH, published("cube"));
         settle();
 
@@ -494,9 +472,7 @@ class MeshCacheTest {
     @Test
     @DisplayName("Deux variantes d'une même image : ses octets sont lus une fois, chacune au seuil voulu")
     void deuxVariantesDUneMemeImage() {
-        loader.materials = table(
-                new int[][] {{MaterialTransfer.BLEND_OPAQUE, 0}, {MaterialTransfer.BLEND_CUTOUT, 0}},
-                EMBEDDED);
+        loader.materials = table(List.of(material().albedo(0), material().albedo(0).cutout(0.5f)), EMBEDDED);
         loader.pngs.put(0, new byte[] {1});
         cache.get(PATH, published("grille"));
         settle();
@@ -520,5 +496,99 @@ class MeshCacheTest {
         assertTrue(asset.materials().materials().isEmpty());
         assertEquals(1, diagnostics.size(), () -> diagnostics.toString());
         assertTrue(diagnostics.get(0).contains("matériau par défaut"));
+    }
+
+    @Test
+    @DisplayName("Chaque mesh prend son matériau, et sa texture liée au filtrage du téléversement")
+    void chaqueMeshPrendSonMateriauEtSaTextureLiee() {
+        loader.transfer = TestGeometry.bytes(TestGeometry.white(0, 0), TestGeometry.white(1, 0));
+        loader.materials = table(List.of(material().albedo(0), material().doubleSided()), EMBEDDED);
+        loader.pngs.put(0, new byte[] {1});
+        textures.blur = true;
+        textures.mipmap = true;
+        Published source = published("deux meshes");
+        cache.get(PATH, source);
+        settle();
+
+        RenderAsset asset = cache.get(PATH, source);
+        assertNotNull(asset);
+        assertSame(loader.materials.materials().get(0), asset.look(0).material());
+        assertSame(loader.materials.materials().get(1), asset.look(1).material());
+        TextureBinding albedo = asset.albedo(0);
+        assertEquals(textures.uploaded.get(0), albedo.location());
+        assertTrue(albedo.blur() && albedo.mipmap(), "filtrage du téléversement perdu");
+        assertFalse(asset.look(0).doubleSided());
+        assertNull(asset.albedo(1), "un slot vide prend la texture neutre");
+        assertTrue(asset.look(1).doubleSided());
+        assertTrue(diagnostics.isEmpty(), () -> diagnostics.toString());
+    }
+
+    @Test
+    @DisplayName("Des meshes sans matériau dans la table : matériau par défaut, signalé une fois")
+    void desMeshesSansMateriauSontSignalesUneFois() {
+        loader.transfer = TestGeometry.bytes(TestGeometry.white(4, 0), TestGeometry.white(5, 0));
+        loader.materials = table(List.of(material()));
+        Published source = published("deux meshes");
+        cache.get(PATH, source);
+        settle();
+
+        RenderAsset asset = cache.get(PATH, source);
+        assertNotNull(asset, "un matériau absent a bloqué l'asset");
+        assertEquals(SurfacePass.OPAQUE, asset.look(0).pass());
+        assertEquals(1, diagnostics.size(), () -> diagnostics.toString());
+        assertTrue(diagnostics.get(0).startsWith(PATH) && diagnostics.get(0).contains("matériau par défaut"));
+    }
+
+    @Test
+    @DisplayName("Une table illisible est signalée une fois, pas une seconde par ses meshes")
+    void uneTableIllisibleNEstSignaleeQuUneFois() {
+        loader.transfer = TestGeometry.bytes(TestGeometry.white(0, 0), TestGeometry.white(1, 0));
+        loader.materialsCode = -2002;
+        Published source = published("deux meshes");
+        cache.get(PATH, source);
+        settle();
+
+        RenderAsset asset = cache.get(PATH, source);
+        assertNotNull(asset);
+        assertEquals(SurfacePass.OPAQUE, asset.look(1).pass());
+        assertEquals(1, diagnostics.size(), () -> diagnostics.toString());
+        assertTrue(diagnostics.get(0).contains("-2002"));
+    }
+
+    @Test
+    @DisplayName("Une texture perdue au téléversement laisse la texture neutre à son mesh")
+    void uneTexturePerdueAuTeleversementLaisseLaNeutre() {
+        loader.transfer = TestGeometry.bytes(TestGeometry.white(0, 0));
+        oneEmbeddedTexture();
+        textures.failUploads = true;
+        Published source = published("cube texturé");
+        cache.get(PATH, source);
+        settle();
+
+        RenderAsset asset = cache.get(PATH, source);
+        assertNotNull(asset);
+        assertNull(asset.albedo(0));
+        assertEquals(1, textures.discarded.size());
+        assertEquals(0, cache.liveTextures());
+        assertEquals(1, diagnostics.size(), () -> diagnostics.toString());
+        assertTrue(diagnostics.get(0).contains("téléversement impossible"));
+    }
+
+    @Test
+    @DisplayName("Un mesh qui désigne hors de ses sommets rend son handle et laisse la boîte de repli")
+    void uneApparenceImpossibleRendLeHandle() {
+        byte[] transfer = TestGeometry.bytes(TestGeometry.white(0, 0));
+        // vertexCount du premier MeshDesc, juste après vertexOffset : 99 sommets, pour 3.
+        ByteBuffer.wrap(transfer).order(ByteOrder.LITTLE_ENDIAN).putInt(16 + 4, 99);
+        loader.transfer = transfer;
+        Published source = published("cube");
+        cache.get(PATH, source);
+        settle();
+
+        assertNull(cache.get(PATH, source));
+        assertEquals(List.of(1), loader.unloads);
+        assertEquals(0, cache.liveHandles());
+        assertEquals(1, diagnostics.size(), () -> diagnostics.toString());
+        assertTrue(diagnostics.get(0).contains("apparence impossible"));
     }
 }

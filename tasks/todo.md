@@ -1875,12 +1875,18 @@ substituable sans changer rapier »).
                         qu'une fois les textures téléversées ; « Précisions de T-b1 ». Java 323
                         verts (25 nouveaux, cinq mutations du cache attrapées) ; le collage
                         Minecraft n'est exercé qu'en jeu, avec T-b2.
-                  - [ ] **T-b2 — `RenderType` et couleurs** : `RenderType` propres, mémorisés
+                  - [x] **T-b2 — `RenderType` et couleurs** : `RenderType` propres, mémorisés
                         par (texture, mode, faces, filtrage) ; OPAQUE et CUTOUT texturés à
                         `AFTER_ENTITIES` ; couleur = facteur × couleur de sommet, ramenée en
                         gamma, une fois par (mesh, matériau) ; `UNLIT` et `FULLBRIGHT` en pleine
                         lumière ; matériau absent de la table → matériau par défaut, signalé
                         une fois.
+                        Fait : `AxionRenderTypes` (composition vanilla, filtrage du
+                        téléversement, sans contour), passes 1 puis 2 en lots par type,
+                        apparences sur le thread de fond, frontière qui refuse les énumérations
+                        inconnues, libération différée au remplacement ; « Précisions de T-b2 ».
+                        Java 350 verts (27 nouveaux, dix-sept mutations attrapées) ; le collage
+                        Minecraft n'est exercé qu'en jeu, avec T-b4.
                   - [ ] **T-b3 — translucide et émissive** : passe 4 à
                         `AFTER_TRANSLUCENT_BLOCKS`, triée par quad et vidée dans le
                         gestionnaire ; passe 5 (`eyes`, additive) ; matrice de capacités —

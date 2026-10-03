@@ -67,8 +67,11 @@ public interface TexturePipeline {
     /** Une texture prête à téléverser. */
     interface Prepared {
 
-        /** {@return le nom sous lequel l'enregistrer} */
-        String location();
+        /**
+         * {@return le nom sous lequel l'enregistrer, et le filtrage que le téléversement lui
+         * donnera : celui que ses types de rendu devront reprendre}
+         */
+        TextureBinding binding();
 
         /** {@return ce qu'il faut signaler une fois à son sujet, ou {@code null}} */
         String note();

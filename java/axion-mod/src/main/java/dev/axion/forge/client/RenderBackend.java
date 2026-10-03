@@ -1,9 +1,9 @@
 package dev.axion.forge.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.axion.asset.GeometryTransfer;
 import dev.axion.forge.AxionEntity;
 import dev.axion.render.BackendSelection;
+import dev.axion.render.RenderAsset;
 import java.util.List;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.phys.Vec3;
@@ -24,7 +24,8 @@ interface RenderBackend {
     BackendSelection.Kind kind();
 
     /**
-     * Dessine les assemblies opaques (passe 1, stage {@code AFTER_ENTITIES}, R-1570).
+     * Dessine les surfaces opaques puis découpées des assemblies (passes 1 et 2, stage
+     * {@code AFTER_ENTITIES}, R-1570).
      *
      * @param frame contexte de la frame
      */
@@ -47,12 +48,12 @@ interface RenderBackend {
             List<Assembly> assemblies) {}
 
     /**
-     * Une assembly et sa géométrie.
+     * Une assembly et ce qu'il faut pour la dessiner.
      *
      * @param entity entité de l'assembly
-     * @param mesh géométrie et pose de repos décodées par le natif (ADR-119), ou {@code null}
-     *     tant qu'aucune n'est prête — chargement en cours, échec, ou multijoueur : le backend
-     *     dessine alors sa boîte de repli
+     * @param asset géométrie, pose de repos, apparence des meshes et textures (ADR-119, ADR-122),
+     *     ou {@code null} tant que rien n'est prêt — chargement en cours, échec, ou multijoueur :
+     *     le backend dessine alors sa boîte de repli
      */
-    record Assembly(AxionEntity entity, GeometryTransfer mesh) {}
+    record Assembly(AxionEntity entity, RenderAsset asset) {}
 }

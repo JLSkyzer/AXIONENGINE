@@ -6,6 +6,15 @@ import dev.axion.AxionMod;
 import dev.axion.asset.GeometryTransfer;
 import dev.axion.forge.AxionEntity;
 import dev.axion.render.BackendSelection;
+import dev.axion.render.EntityShader;
+import dev.axion.render.MeshLook;
+import dev.axion.render.RenderAsset;
+import dev.axion.render.SurfacePass;
+import dev.axion.render.TextureBinding;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
@@ -18,18 +27,21 @@ import org.joml.Vector3f;
  * Backend VANILLA_CONSUMER (C-61, ADR-118) : rend à travers les {@code RenderType} et
  * {@code VertexConsumer} de Minecraft, sans aucun appel OpenGL direct (R-741).
  *
- * <p>Chaque assembly est dessinée avec la géométrie que le natif a décodée (ADR-119) : un
- * dessin par node visible, à sa transformation de repos, sous la position interpolée de
- * l'entité. Les sommets passent par les types de rendu d'entité de Minecraft, ce qui leur
- * donne la lumière du monde (lightmap) et l'ombrage directionnel des entités vanilla.
+ * <p>Chaque assembly est dessinée avec la géométrie que le natif a décodée (ADR-119) : un dessin
+ * par mesh de node visible, à sa transformation de repos, sous la position interpolée de
+ * l'entité. Chaque mesh y prend l'apparence de son matériau (ADR-122 §7) : sa texture d'albedo,
+ * filtrée comme à son téléversement, ou la texture neutre ; la couleur de ses sommets, établie au
+ * chargement ; la pleine lumière s'il est sans éclairage. Les sommets passent par les shaders
+ * d'entité de Minecraft, ce qui leur donne la lumière du monde (lightmap) et l'ombrage
+ * directionnel des entités vanilla.
  *
- * <p>Tant que la géométrie n'est pas prête — chargement en arrière-plan, échec, multijoueur
- * —, l'assembly est dessinée comme la <b>boîte</b> de T1, aux dimensions de son entité :
- * rien ne disparaît, et la boîte dit qu'il manque quelque chose.
+ * <p>Passe 1, les surfaces opaques, puis passe 2, les surfaces découpées (§19.10) : dans chaque
+ * passe, un lot par type de rendu. Les surfaces translucides attendent la passe 4, et l'émissive
+ * la passe 5 (ADR-122, T-b3).
  *
- * <p>Pas de matériaux encore (section MATL hors périmètre d'ADR-119) : une texture blanche,
- * modulée par la couleur des sommets. Les meshes transparents attendent la passe translucide
- * (T3).
+ * <p>Tant que rien n'est prêt — chargement en arrière-plan, échec, multijoueur —, l'assembly est
+ * dessinée comme la <b>boîte</b> de T1, aux dimensions de son entité : rien ne disparaît, et la
+ * boîte dit qu'il manque quelque chose.
  *
  * <p>Le maillage tourne avec le corps, autour de son origine — celle de l'asset, au bas-centre
  * —, à l'orientation interpolée entre deux ticks, posé par {@link AssemblyPlacement}. La
@@ -39,7 +51,7 @@ import org.joml.Vector3f;
 final class VanillaConsumerBackend implements RenderBackend {
 
     /**
-     * Texture neutre : la couleur vient des sommets.
+     * Texture neutre (ADR-122 §7) : blanche, la couleur vient du matériau et des sommets.
      *
      * <p>Le constructeur est marqué déprécié, mais il vient de Minecraft 1.20.1 et existe dans
      * toute la branche Forge 47 ; {@code fromNamespaceAndPath}, rétroporté de 1.21, n'est
@@ -50,11 +62,8 @@ final class VanillaConsumerBackend implements RenderBackend {
     private static final ResourceLocation WHITE =
             new ResourceLocation(AxionMod.MODID, "textures/misc/white.png");
 
-    /** Meshes opaques, faces arrière éliminées. */
-    private static final RenderType SOLID = RenderType.entitySolid(WHITE);
-
-    /** Meshes {@code DOUBLE_SIDED} : les deux faces sont dessinées. */
-    private static final RenderType DOUBLE_SIDED = RenderType.entityCutoutNoCull(WHITE);
+    /** La texture neutre, liée comme une ressource vanilla : au plus proche, sans mipmap. */
+    private static final TextureBinding NEUTRAL = new TextureBinding(WHITE.toString(), false, false);
 
     /** Couleur de la boîte de repli (RGB). */
     private static final float RED = 0.35f;
@@ -80,52 +89,51 @@ final class VanillaConsumerBackend implements RenderBackend {
 
     @Override
     public void renderOpaque(Frame frame) {
-        boolean anyMesh = false;
+        List<Placed> placed = new ArrayList<>();
         boolean anyBox = false;
         for (Assembly assembly : frame.assemblies()) {
-            if (assembly.mesh() != null) {
-                anyMesh = true;
+            if (assembly.asset() != null) {
+                placed.add(new Placed(assembly.asset(), AssemblyPlacement.of(frame.partialTick(), assembly.entity())));
             } else {
                 anyBox = true;
             }
         }
-        // Un lot par type de rendu : alterner les types d'une assembly à l'autre viderait le
-        // tampon partagé à chaque changement.
-        if (anyMesh) {
-            drawMeshes(frame, SOLID, false);
-            drawMeshes(frame, DOUBLE_SIDED, true);
+        if (!placed.isEmpty()) {
+            drawPass(frame, placed, SurfacePass.OPAQUE);
+            drawPass(frame, placed, SurfacePass.CUTOUT);
         }
         if (anyBox) {
             drawBoxes(frame);
         }
     }
 
-    /** Dessine les meshes opaques d'un côté (simple ou double face), en un lot. */
-    private static void drawMeshes(Frame frame, RenderType type, boolean doubleSided) {
-        VertexConsumer out = null;
-        for (Assembly assembly : frame.assemblies()) {
-            GeometryTransfer mesh = assembly.mesh();
-            if (mesh == null) {
-                continue;
-            }
-            AssemblyPlacement at = null;
-            for (GeometryTransfer.Draw draw : mesh.draws()) {
-                GeometryTransfer.Mesh part = mesh.meshes().get(draw.mesh());
-                if (part.has(GeometryTransfer.MESH_TRANSPARENT)
-                        || part.has(GeometryTransfer.MESH_DOUBLE_SIDED) != doubleSided) {
+    /**
+     * Dessine les surfaces d'une passe, un lot par type de rendu : alterner les types d'un mesh à
+     * l'autre viderait le tampon partagé à chaque changement.
+     */
+    private static void drawPass(Frame frame, List<Placed> placed, SurfacePass pass) {
+        Map<RenderType, List<Part>> batches = new LinkedHashMap<>();
+        for (Placed assembly : placed) {
+            RenderAsset asset = assembly.asset();
+            for (GeometryTransfer.Draw draw : asset.mesh().draws()) {
+                MeshLook look = asset.look(draw.mesh());
+                if (look.pass() != pass || !look.visible()) {
                     continue;
                 }
-                if (out == null) {
-                    out = frame.buffers().getBuffer(type);
-                }
-                if (at == null) {
-                    at = AssemblyPlacement.of(frame.partialTick(), assembly.entity());
-                }
-                drawPart(frame, at, mesh, part, draw, out);
+                TextureBinding albedo = asset.albedo(draw.mesh());
+                RenderType type = AxionRenderTypes.entity(
+                        albedo == null ? NEUTRAL : albedo,
+                        EntityShader.of(pass, look.doubleSided()),
+                        look.doubleSided());
+                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(new Part(assembly, draw, look));
             }
         }
-        if (out != null) {
-            frame.buffers().endBatch(type);
+        for (Map.Entry<RenderType, List<Part>> batch : batches.entrySet()) {
+            VertexConsumer out = frame.buffers().getBuffer(batch.getKey());
+            for (Part part : batch.getValue()) {
+                drawPart(frame, part, out);
+            }
+            frame.buffers().endBatch(batch.getKey());
         }
     }
 
@@ -135,20 +143,20 @@ final class VanillaConsumerBackend implements RenderBackend {
      * <p>Les types de rendu d'entité sont en quads : chaque triangle y entre comme un quad
      * dégénéré {@code (a, b, c, c)}, dont le second triangle n'a pas d'aire.
      */
-    private static void drawPart(
-            Frame frame,
-            AssemblyPlacement at,
-            GeometryTransfer mesh,
-            GeometryTransfer.Mesh part,
-            GeometryTransfer.Draw draw,
-            VertexConsumer out) {
+    private static void drawPart(Frame frame, Part part, VertexConsumer out) {
+        GeometryTransfer mesh = part.assembly().asset().mesh();
+        GeometryTransfer.Mesh desc = mesh.meshes().get(part.draw().mesh());
+        AssemblyPlacement at = part.assembly().at();
+        MeshLook look = part.look();
+        int light = look.fullbright() ? LightTexture.FULL_BRIGHT : at.light();
+
         PoseStack pose = frame.pose();
         pose.pushPose();
         at.apply(pose, frame.camera());
 
         // mat4x3 colonne-major (ADR-119) : trois axes puis la translation. Le constructeur
         // de JOML prend lui aussi les colonnes dans l'ordre.
-        float[] m = draw.model();
+        float[] m = part.draw().model();
         Matrix4f model = new Matrix4f(
                 m[0], m[1], m[2], 0.0f,
                 m[3], m[4], m[5], 0.0f,
@@ -165,37 +173,45 @@ final class VanillaConsumerBackend implements RenderBackend {
         Matrix3f normal = last.normal();
         Vector3f scratch = new Vector3f();
         int[] indices = mesh.indices();
-        int base = part.vertexOffset();
-        int end = part.indexOffset() + part.indexCount();
-        for (int i = part.indexOffset(); i < end; i += 3) {
-            int a = base + indices[i];
-            int b = base + indices[i + 1];
-            int c = base + indices[i + 2];
+        int base = desc.vertexOffset();
+        int end = desc.indexOffset() + desc.indexCount();
+        for (int i = desc.indexOffset(); i < end; i += 3) {
+            int a = indices[i];
+            int b = indices[i + 1];
+            int c = indices[i + 2];
             if (mirrored) {
                 int swap = b;
                 b = c;
                 c = swap;
             }
-            vertex(out, position, normal, scratch, mesh, a, at.light());
-            vertex(out, position, normal, scratch, mesh, b, at.light());
-            vertex(out, position, normal, scratch, mesh, c, at.light());
-            vertex(out, position, normal, scratch, mesh, c, at.light());
+            vertex(out, position, normal, scratch, mesh, base, a, look, light);
+            vertex(out, position, normal, scratch, mesh, base, b, look, light);
+            vertex(out, position, normal, scratch, mesh, base, c, look, light);
+            vertex(out, position, normal, scratch, mesh, base, c, look, light);
         }
         pose.popPose();
     }
 
+    /**
+     * Émet un sommet.
+     *
+     * @param base premier sommet du mesh, dans le tableau des sommets
+     * @param local rang du sommet dans le mesh, tel que l'écrivent ses indices
+     */
     private static void vertex(
             VertexConsumer out,
             Matrix4f position,
             Matrix3f normal,
             Vector3f scratch,
             GeometryTransfer mesh,
-            int vertex,
+            int base,
+            int local,
+            MeshLook look,
             int light) {
+        int vertex = base + local;
         float[] positions = mesh.positions();
         float[] normals = mesh.normals();
         float[] uvs = mesh.uvs();
-        byte[] colors = mesh.colors();
 
         // Le format d'entité stocke la normale sur trois octets, sans la renormaliser : elle
         // doit sortir unitaire de la transformation.
@@ -205,12 +221,9 @@ final class VanillaConsumerBackend implements RenderBackend {
         }
         scratch.normalize();
 
+        int color = look.colorOf(local);
         out.vertex(position, positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2])
-                .color(
-                        Byte.toUnsignedInt(colors[vertex * 4]),
-                        Byte.toUnsignedInt(colors[vertex * 4 + 1]),
-                        Byte.toUnsignedInt(colors[vertex * 4 + 2]),
-                        Byte.toUnsignedInt(colors[vertex * 4 + 3]))
+                .color((color >>> 16) & 0xFF, (color >>> 8) & 0xFF, color & 0xFF, color >>> 24)
                 .uv(uvs[vertex * 2], uvs[vertex * 2 + 1])
                 .overlayCoords(OverlayTexture.NO_OVERLAY)
                 .uv2(light)
@@ -223,7 +236,7 @@ final class VanillaConsumerBackend implements RenderBackend {
         RenderType type = RenderType.debugQuads();
         VertexConsumer out = frame.buffers().getBuffer(type);
         for (Assembly assembly : frame.assemblies()) {
-            if (assembly.mesh() == null) {
+            if (assembly.asset() == null) {
                 drawBox(frame, assembly.entity(), out);
             }
         }
@@ -276,4 +289,10 @@ final class VanillaConsumerBackend implements RenderBackend {
         out.vertex(m, cx, cy, cz).color(r, g, b, 1.0f).endVertex();
         out.vertex(m, dx, dy, dz).color(r, g, b, 1.0f).endVertex();
     }
+
+    /** Une assembly prête, posée une fois pour la frame. */
+    private record Placed(RenderAsset asset, AssemblyPlacement at) {}
+
+    /** Un mesh à dessiner : son assembly, son dessin au repos, son apparence. */
+    private record Part(Placed assembly, GeometryTransfer.Draw draw, MeshLook look) {}
 }

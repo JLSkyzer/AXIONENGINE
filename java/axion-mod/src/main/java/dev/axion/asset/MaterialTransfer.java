@@ -22,8 +22,9 @@ import java.util.List;
  * <p>Le natif a tout contrôlé avant de déposer : comptes sous les plafonds de C-22,
  * énumérations connues, facteurs finis, seuil de découpe dans {@code [0, 1]}. Ce lecteur
  * vérifie ce dont dépend sa propre lecture — longueur annoncée, mot réservé, provenance des
- * textures, plages de chemins, slots dans la table — : un écart y serait un défaut de la
- * frontière, qui doit se voir plutôt que d'indexer à côté.
+ * textures, plages de chemins, slots dans la table — et les énumérations que le rendu
+ * interprète : un écart y serait un défaut de la frontière, qui doit se voir plutôt que
+ * d'indexer à côté ou de dessiner au hasard.
  *
  * <p>Les octets d'une texture embarquée ne voyagent pas ici : {@code axion_asset_texture} les
  * remet un par un, par rang. Un chemin de ressource est rendu tel qu'écrit, sans décodage ni
@@ -68,8 +69,14 @@ public final class MaterialTransfer {
     /** Faces : toutes dessinées. */
     public static final int CULL_NONE = 1;
 
+    /** Modèle d'éclairage : PBR, la valeur de glTF. */
+    public static final int SHADING_PBR = 0;
+
     /** Modèle d'éclairage : sans éclairage, en pleine lumière. */
     public static final int SHADING_UNLIT = 3;
+
+    /** Modèle d'éclairage : compatible vanilla, le dernier de l'énumération. */
+    public static final int SHADING_VANILLA_COMPAT = 4;
 
     /** Drapeau de matériau : la couleur de sommet module l'albedo. */
     public static final int FLAG_VERTEX_COLOR = 1;
@@ -204,8 +211,8 @@ public final class MaterialTransfer {
      * @return les matériaux et les textures
      * @throws IllegalArgumentException si la longueur ne correspond pas aux dénombrements, si
      *     la réserve n'est pas nulle, si une texture est de provenance inconnue ou désigne hors
-     *     de ses chemins, si un chemin n'est pas de l'UTF-8, ou si un slot désigne hors de la
-     *     table
+     *     de ses chemins, si un chemin n'est pas de l'UTF-8, si un slot désigne hors de la
+     *     table, ou si un mode de mélange, de faces ou d'éclairage est inconnu
      */
     public static MaterialTransfer parse(byte[] bytes) {
         if (bytes.length < HEADER_BYTES) {
@@ -241,10 +248,20 @@ public final class MaterialTransfer {
                             + " hors d'une table de " + textureCount + " textures");
                 }
             }
+            checkEnum(rank, "mode de mélange", material.blendMode(), BLEND_TRANSLUCENT);
+            checkEnum(rank, "mode de faces", material.cullMode(), CULL_NONE);
+            checkEnum(rank, "modèle d'éclairage", material.shadingModel(), SHADING_VANILLA_COMPAT);
             materials.add(material);
         }
 
         return new MaterialTransfer(List.copyOf(materials), List.copyOf(textures));
+    }
+
+    /** Refuse une énumération au-delà de sa dernière valeur ; toutes partent de zéro. */
+    private static void checkEnum(int rank, String name, int value, int last) {
+        if (value > last) {
+            throw new IllegalArgumentException("matériau " + rank + " : " + name + " inconnu " + value);
+        }
     }
 
     private static Material material(ByteBuffer in, int at) {

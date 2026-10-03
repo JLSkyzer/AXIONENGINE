@@ -142,6 +142,24 @@ class MaterialTransferTest {
         assertRefuse("provenance inconnue", in -> in.put(TEXTURES_AT, (byte) 7));
         assertRefuse("chemin hors de sa zone", in -> in.putInt(TEXTURES_AT + 16 + 8, 1));
         assertRefuse("chemin non UTF-8", in -> in.put(PATHS_AT, (byte) 0xFF));
+        // Énumérations du premier matériau, aux octets 88 à 90 de son MaterialDesc : la
+        // dernière valeur connue passe, la suivante est refusée.
+        assertRefuse("mode de mélange inconnu", in -> in.put(16 + 88, (byte) 3));
+        assertRefuse("mode de faces inconnu", in -> in.put(16 + 89, (byte) 2));
+        assertRefuse("modèle d'éclairage inconnu", in -> in.put(16 + 90, (byte) 5));
+    }
+
+    @Test
+    void lesDernieresValeursDesEnumerationsSontAdmises() {
+        byte[] bytes = table();
+        ByteBuffer in = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+        in.put(16 + 88, (byte) MaterialTransfer.BLEND_TRANSLUCENT);
+        in.put(16 + 89, (byte) MaterialTransfer.CULL_NONE);
+        in.put(16 + 90, (byte) MaterialTransfer.SHADING_VANILLA_COMPAT);
+        MaterialTransfer.Material peint = MaterialTransfer.parse(bytes).materials().get(0);
+        assertEquals(2, peint.blendMode());
+        assertEquals(1, peint.cullMode());
+        assertEquals(4, peint.shadingModel());
     }
 
     private static void assertRefuse(String defaut, Consumer<ByteBuffer> alteration) {
