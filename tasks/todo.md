@@ -1959,6 +1959,7 @@ substituable sans changer rapier »).
                   (28 nouveaux, douze mutations attrapées). Vérifié en jeu le 2026-10-03 par Killian,
                   contenu `axion:test/materiaux/atlas` (source `atlas_t-c.blend`) : pages de 256×96 et
                   256×160, texture répétée restée seule, panneau en page de 1024×288 ; bords intacts.
+                  CI verte : run 37147205392 du commit 48c5f13, neuf jobs, quatre plateformes.
             - Hors portée, nommé : usage natif (C-60/C-63), multijoueur, `.mtl` et buffers
               externes en jeu (C-20/C-21), décalques (C-69), `TINTABLE`, usure (C-47),
               `max_texture_size`, `uv1`.
