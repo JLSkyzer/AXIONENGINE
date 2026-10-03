@@ -1861,7 +1861,7 @@ substituable sans changer rapier »).
                         cinq mutations attrapées), Java 298 verts, vraie JNI comprise.
                         Pour T-b : un mesh dont le matériau manque à la table (MATL ignoré)
                         prend le matériau par défaut, signalé une fois.
-            - [ ] **T-b** — client, selon le §7 d'ADR-122, en quatre sous-tranches :
+            - [x] **T-b** — client, selon le §7 d'ADR-122, en quatre sous-tranches :
                   - [x] **T-b1 — textures** : octets (FFI pour EMBEDDED ; `ResourceManager`
                         client pour RESOURCE, chemin résolu contre le répertoire du modèle et
                         revalidé, R-531), signature PNG (E-3004), `NativeImage.read`, côtés
@@ -1875,7 +1875,7 @@ substituable sans changer rapier »).
                         qu'une fois les textures téléversées ; « Précisions de T-b1 ». Java 323
                         verts (25 nouveaux, cinq mutations du cache attrapées) ; le collage
                         Minecraft n'est exercé qu'en jeu, avec T-b2.
-                  - [ ] **T-b2 — `RenderType` et couleurs** : `RenderType` propres, mémorisés
+                  - [x] **T-b2 — `RenderType` et couleurs** : `RenderType` propres, mémorisés
                         par (texture, mode, faces, filtrage) ; OPAQUE et CUTOUT texturés à
                         `AFTER_ENTITIES` ; couleur = facteur × couleur de sommet, ramenée en
                         gamma, une fois par (mesh, matériau) ; `UNLIT` et `FULLBRIGHT` en pleine
@@ -1887,10 +1887,10 @@ substituable sans changer rapier »).
                         inconnues, libération différée au remplacement ; « Précisions de T-b2 ».
                         Java 350 verts (27 nouveaux, dix-sept mutations attrapées) ; le collage
                         Minecraft n'est exercé qu'en jeu, avec T-b4.
-                        **CI en attente** : le run 37137888765 du commit 5a71118 n'a pas
-                        démarré, GitHub refusant les jobs pour facturation (2026-10-03). Une
-                        fois le compte réglé : `gh run rerun 37137888765`, puis cocher.
-                  - [ ] **T-b3 — translucide et émissive** : passe 4 à
+                        CI non exécutée (run 37137888765, jobs refusés par GitHub pour
+                        facturation) ; cochée le 2026-10-03 sur décision de Killian, la suite locale
+                        et l'essai en jeu de T-b4 faisant foi.
+                  - [x] **T-b3 — translucide et émissive** : passe 4 à
                         `AFTER_TRANSLUCENT_BLOCKS`, triée par quad et vidée dans le
                         gestionnaire ; passe 5 (`eyes`, additive) ; matrice de capacités —
                         normal, ORM, height et damage sans effet en vanilla (R-1513, R-1493).
@@ -1914,8 +1914,9 @@ substituable sans changer rapier »).
                         pile de LWJGL, 64 Kio, qu'une texture plus grosse faisait déborder, écart
                         de T-b1 —, émissive masquée, passe 5 `eyes`, passe 4 triée et vidée dans
                         le gestionnaire, matrice ; « Précisions de T-b3 ». Java 365 verts (15
-                        nouveaux, onze mutations attrapées). CI en attente, comme T-b2.
-                  - [ ] **T-b4 — contenu de test, vérifié en jeu** : modèles faits dans
+                        nouveaux, onze mutations attrapées). CI non exécutée (run 37140318974),
+                        cochée comme T-b2.
+                  - [x] **T-b4 — contenu de test, vérifié en jeu** : modèles faits dans
                         Blender (cube texturé embarqué, texture RESOURCE, vitre, grille
                         découpée, panneau émissif, mesh multi-matériau, sol répété, texture
                         PNG de plus de 64 Kio), gardés
@@ -1929,9 +1930,8 @@ substituable sans changer rapier »).
                         journal) : les sept modèles conformes de jour ; de nuit, bandes et grille
                         lumineuses sans lueur dans les trous ; vitre transparente sous « Fabuleux » ;
                         F3 + T sans perte. Le collage Minecraft de T-b1 à T-b3 est ainsi exercé.
-                        **CI en attente**, comme T-b2 et T-b3 : run 37142928846 du commit 72d56cf
-                        refusé pour facturation ; une fois le compte réglé, relancer les trois runs,
-                        puis cocher T-b2, T-b3, T-b4 et T-b.
+                        CI non exécutée (run 37142928846), cochée comme T-b2 et T-b3. Les trois runs
+                        sont à relancer quand le compte GitHub sera réglé.
             - [ ] **T-c** — atlas AXION des textures ≤ 256² (meshes dans `[0,1]`).
             - Hors portée, nommé : usage natif (C-60/C-63), multijoueur, `.mtl` et buffers
               externes en jeu (C-20/C-21), décalques (C-69), `TINTABLE`, usure (C-47),
