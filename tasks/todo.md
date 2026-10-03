@@ -1811,6 +1811,7 @@ substituable sans changer rapier »).
             attrapées ; Java 400 verts. Le cas lui-même (un tick de fenêtre) ne se provoque pas à la
             main. En jeu (Killian) : spawn et chute, aller-retour au-delà de la distance de rendu,
             rapportés conformes ; le journal ne montre pas de rechargement du monde.
+            CI verte : run 37153898062 du commit 886e012, neuf jobs, quatre plateformes.
       - [ ] **`/axion remove` a rendu « 0 assembly(s) retirée(s) »** (essai du 2026-10-03,
             23:02:37, 25 s après un spawn) : cible ne désignant pas le cube, ou cube disparu ?
             Non élucidé ; Killian : « on verra ça plus tard ». Rejouer avec
