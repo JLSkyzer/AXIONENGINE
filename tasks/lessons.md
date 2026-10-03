@@ -954,3 +954,19 @@ case était seulement restée ouverte.
 **Règle.** Avant de créer un fichier, en vérifier l'absence par son chemin exact (`Glob`, `ls`),
 jamais par une recherche passée à `head`. Lire « updated » sur une création comme un écrasement,
 et relire `git diff --stat` avant de se fier à un fichier « nouveau ».
+
+## 2026-10-03 | M1 dit « prêt à prononcer » sans son contrôle mécanique ni un fuzzing à jour
+
+**Ce qui a mal tourné.** `tasks/todo.md` tenait les preuves de M1 pour réunies depuis le 12/09 ;
+il ne restait, croyait-on, qu'un passage complet de la CI. À la clôture, deux choses ont manqué :
+`MilestoneTestsCoveredTest` (R-2392), jamais exécuté avec M1, ne reconnaissait pas la convention
+`fn tNNN_` des tests Rust — quinze identifiants semblaient absents ; et la cible `gltf`, fuzzée
+une heure sans incident trois semaines plus tôt, a paniqué en 110 000 exécutions sur l'import
+élargi depuis par C-26 (indices `VEC4`).
+
+**Cause.** Des preuves tenues pour acquises une fois pour toutes, alors qu'elles portaient sur un
+code qui avait changé, et un contrôle mécanique qu'on n'avait jamais fait tourner sur le jalon.
+
+**Règle.** Avant de prononcer un jalon : l'ajouter à `COMPLETED_MILESTONES` et faire passer
+R-2392 ; rejouer le fuzzing sur le code courant si les cibles ont changé depuis la dernière
+campagne. Une preuve se date avec le commit qu'elle couvre.

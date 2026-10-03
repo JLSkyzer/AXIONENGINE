@@ -1,5 +1,12 @@
 //! T-230..T-233 — la liste de contrôle de C-22, groupe par groupe.
 //!
+//! La fiche ne nomme que la plage ; les groupes sont répartis ainsi, d'après
+//! les préfixes des tests : T-230, l'asset de référence sans violation
+//! (R-540) ; T-231, STRUCTURE et LIMITES, et les erreurs nommées et situées
+//! (R-541) ; T-232, GÉOMÉTRIE, UV, NORMALES et SKIN, et leurs réparations
+//! (R-542) ; T-233, PHYSIQUE et NOMS. DÉFORMATION est T-800, le graphe de
+//! parts T-850.
+//!
 //! Chaque test part d'un asset **valide** et n'y introduit qu'un seul défaut.
 //! C'est ce qui permet d'affirmer que la violation constatée vient bien de là :
 //! un asset fautif de partout ferait passer n'importe quelle règle pour celle
@@ -194,6 +201,7 @@ struct Scene {
     bone_count: usize,
     materials: Option<Vec<MaterialDesc>>,
     texture_count: usize,
+    animation_count: usize,
     dynamic_body: bool,
     missing_normals: Vec<bool>,
 }
@@ -222,6 +230,7 @@ impl Scene {
             bone_count: 0,
             materials: Some(vec![materiau()]),
             texture_count: 1,
+            animation_count: 0,
             dynamic_body: true,
             missing_normals: Vec::new(),
         }
@@ -241,7 +250,7 @@ impl Scene {
             bone_count: self.bone_count,
             materials: self.materials.as_deref(),
             texture_count: self.texture_count,
-            animation_count: 0,
+            animation_count: self.animation_count,
             names: &self.names,
             dynamic_body: self.dynamic_body,
             missing_normals: &self.missing_normals,
@@ -1017,4 +1026,105 @@ fn t893_sans_table_de_materiaux_les_index_ne_sont_pas_controles() {
             material_count: 0,
         },
     );
+}
+
+/// Vérifie qu'un rapport signale ce dépassement de plafond — parmi d'autres
+/// violations, peut-être : un tableau gonflé au-delà de sa limite en entraîne
+/// souvent d'autres, que leurs propres tests couvrent.
+fn depasse(report: &ValidationReport, what: &'static str, count: usize, limit: usize) {
+    let attendue = Violation::LimitExceeded { what, count, limit };
+    assert!(
+        report
+            .errors
+            .iter()
+            .any(|erreur| erreur.violation == attendue),
+        "{what} : dépassement {count} > {limit} non signalé, obtenu : {:?}",
+        report.errors
+    );
+}
+
+#[test]
+fn t231_les_compteurs_sont_admis_au_plafond_et_refuses_au_dela() {
+    use ax_model::dm::limits::{MAX_ANIMATIONS, MAX_BONES, MAX_TEXTURES};
+
+    type Reglage = fn(&mut Scene, usize);
+    let cas: [(&str, usize, Reglage); 3] = [
+        ("os", MAX_BONES, |scene, n| scene.bone_count = n),
+        ("textures", MAX_TEXTURES, |scene, n| scene.texture_count = n),
+        ("animations", MAX_ANIMATIONS, |scene, n| {
+            scene.animation_count = n
+        }),
+    ];
+    for (what, limit, regle) in cas {
+        let mut scene = Scene::valide();
+        regle(&mut scene, limit);
+        let report = scene.valider();
+        assert!(
+            report.is_valid(),
+            "{what} au plafond refusés : {:?}",
+            report.errors
+        );
+
+        regle(&mut scene, limit + 1);
+        seule(
+            &scene.valider(),
+            &Violation::LimitExceeded {
+                what,
+                count: limit + 1,
+                limit,
+            },
+        );
+    }
+}
+
+#[test]
+fn t231_les_tableaux_au_dela_de_leur_plafond_sont_refuses() {
+    use ax_model::dm::limits::{
+        MAX_COLLIDERS, MAX_NODES, MAX_PARTS, MAX_REGIONS, MAX_STRUCTURAL_LINKS,
+    };
+
+    let mut scene = Scene::valide();
+    scene.nodes = vec![node(NO_PARENT); MAX_NODES + 1];
+    depasse(&scene.valider(), "nodes", MAX_NODES + 1, MAX_NODES);
+
+    let mut scene = Scene::valide();
+    scene.parts = vec![part(NONE_U16); MAX_PARTS + 1];
+    depasse(&scene.valider(), "parts", MAX_PARTS + 1, MAX_PARTS);
+
+    let mut scene = Scene::valide();
+    scene.colliders = vec![collider(); MAX_COLLIDERS + 1];
+    depasse(
+        &scene.valider(),
+        "colliders",
+        MAX_COLLIDERS + 1,
+        MAX_COLLIDERS,
+    );
+
+    let mut scene = Scene::valide();
+    scene.regions = vec![region(); MAX_REGIONS + 1];
+    depasse(&scene.valider(), "régions", MAX_REGIONS + 1, MAX_REGIONS);
+
+    let mut scene = Scene::valide();
+    scene.links = vec![link(); MAX_STRUCTURAL_LINKS + 1];
+    depasse(
+        &scene.valider(),
+        "liaisons structurelles",
+        MAX_STRUCTURAL_LINKS + 1,
+        MAX_STRUCTURAL_LINKS,
+    );
+}
+
+#[test]
+fn t231_la_geometrie_au_dela_de_son_plafond_est_refusee() {
+    use ax_model::dm::limits::{MAX_INDICES, MAX_VERTICES};
+
+    // Deux millions de sommets, six millions d'indices : la limite se juge sur
+    // des tableaux réels, comme dans un asset importé.
+    let mut scene = Scene::valide();
+    scene.vertices = vec![vertex([0.0, 0.0, 0.0]); MAX_VERTICES + 1];
+    depasse(&scene.valider(), "sommets", MAX_VERTICES + 1, MAX_VERTICES);
+
+    let mut scene = Scene::valide();
+    scene.indices = vec![0; MAX_INDICES + 1];
+    depasse(&scene.valider(), "indices", MAX_INDICES + 1, MAX_INDICES);
 }
