@@ -151,11 +151,14 @@ impl BufferKind {
     /// - `SIM_OUT` = 1 (ADR-120) : `BodyState[state_count]` puis
     ///   `BodyBounds[state_count]`, dans le même ordre ;
     /// - `DEBUG` = 1 (ADR-121) : en-tête, `DebugBody[]` puis `DebugSegment[]` ;
+    /// - `ASSET_OUT` = 1 (ADR-122 §6) : selon la fonction qui l'a déposée, le
+    ///   conteneur A3D compilé ou la géométrie d'ADR-119, inchangés, la table
+    ///   des matériaux et des textures, ou les octets PNG d'une texture ;
     /// - tous les autres kinds : 0, leur charge n'est pas encore versionnée.
     #[must_use]
     pub const fn schema_version(self) -> u32 {
         match self {
-            BufferKind::SimOut | BufferKind::Debug => 1,
+            BufferKind::SimOut | BufferKind::Debug | BufferKind::AssetOut => 1,
             _ => 0,
         }
     }
@@ -502,9 +505,13 @@ mod tests {
     #[test]
     fn versions_de_schema_des_kinds() {
         // ADR-120 : SIM_OUT au schéma 1 (états puis emprises) ; ADR-121 : DEBUG au
-        // schéma 1 (géométrie de debug). Les autres kinds ne sont pas versionnés.
+        // schéma 1 (géométrie de debug) ; ADR-122 : ASSET_OUT au schéma 1
+        // (matériaux et textures). Les autres kinds ne sont pas versionnés.
         for kind in BufferKind::ALL {
-            let attendue = if matches!(kind, BufferKind::SimOut | BufferKind::Debug) {
+            let attendue = if matches!(
+                kind,
+                BufferKind::SimOut | BufferKind::Debug | BufferKind::AssetOut
+            ) {
                 1
             } else {
                 0

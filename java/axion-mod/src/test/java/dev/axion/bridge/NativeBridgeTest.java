@@ -13,6 +13,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
@@ -72,6 +73,78 @@ class NativeBridgeTest {
         java.nio.ByteBuffer buffer = NativeBridge.acquire(ctx, kind, 0);
         assertNotNull(buffer, "tampon absent");
         return buffer.getInt(8);
+    }
+
+    /**
+     * En-tête PNG d'une image de 2×2 — signature et {@code IHDR} : ce que le natif contrôle,
+     * sans rien décoder (R-532).
+     */
+    private static byte[] png2x2() {
+        ByteBuffer png = ByteBuffer.allocate(33).order(ByteOrder.BIG_ENDIAN);
+        png.put(new byte[] {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A});
+        png.putInt(13).put("IHDR".getBytes(StandardCharsets.US_ASCII)).putInt(2).putInt(2);
+        // Profondeur, couleur, compression, filtre, entrelacement, puis un CRC que personne
+        // ne vérifie ici.
+        png.put(new byte[] {8, 6, 0, 0, 0}).putInt(0);
+        return png.array();
+    }
+
+    /**
+     * glTF d'un triangle à UV et à matériau texturé (ADR-122) : albedo du PNG que porte la
+     * {@code bufferView} 3, filtré au plus proche ; émissive d'une ressource.
+     */
+    private static byte[] gltfTexture(byte[] png) {
+        ByteBuffer bin = ByteBuffer.allocate(68 + png.length).order(ByteOrder.LITTLE_ENDIAN);
+        // Positions, puis UV.
+        for (float value : new float[] {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1}) {
+            bin.putFloat(value);
+        }
+        bin.putShort((short) 0).putShort((short) 1).putShort((short) 2);
+        bin.position(68);
+        bin.put(png);
+        String json = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
+                + "\"nodes\":[{\"name\":\"panneau\",\"mesh\":0}],"
+                + "\"meshes\":[{\"name\":\"panneau\",\"primitives\":[{\"attributes\":"
+                + "{\"POSITION\":0,\"TEXCOORD_0\":1},\"indices\":2,\"material\":0}]}],"
+                + "\"materials\":[{\"name\":\"peint\",\"pbrMetallicRoughness\":"
+                + "{\"baseColorTexture\":{\"index\":0}},\"emissiveFactor\":[1.0,1.0,1.0],"
+                + "\"emissiveTexture\":{\"index\":1}}],"
+                + "\"textures\":[{\"source\":0,\"sampler\":0},{\"source\":1}],"
+                + "\"samplers\":[{\"magFilter\":9728}],"
+                + "\"images\":[{\"bufferView\":3,\"mimeType\":\"image/png\"},"
+                + "{\"uri\":\"tex/lueur.png\"}],"
+                + "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
+                + "\"type\":\"VEC3\",\"min\":[0.0,0.0,0.0],\"max\":[1.0,1.0,0.0]},"
+                + "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+                + "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+                + "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+                + "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
+                + "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":6},"
+                + "{\"buffer\":0,\"byteOffset\":68,\"byteLength\":" + png.length + "}],"
+                + "\"buffers\":[{\"byteLength\":" + bin.capacity()
+                + ",\"uri\":\"data:application/octet-stream;base64,"
+                + Base64.getEncoder().encodeToString(bin.array()) + "\"}]}";
+        return json.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** Compile une source par la vraie bibliothèque, attend le résultat et relâche les tampons. */
+    private static byte[] compiler(long ctx, long assetId, int format, byte[] source) {
+        dev.axion.asset.NativeAssetCompiler compilateur = new dev.axion.asset.NativeAssetCompiler(ctx);
+        int job = compilateur.submit(assetId, format, source);
+        assertTrue(job > 0, () -> "compilation refusée, code " + job);
+        dev.axion.asset.AssetCompiler.CompileStatus etat = compilateur.poll(job);
+        for (int essai = 0; essai < 100_000 && etat.state() == dev.axion.asset.AssetState.COMPILING; essai++) {
+            Thread.onSpinWait();
+            etat = compilateur.poll(job);
+        }
+        assertEquals(dev.axion.asset.AssetState.COMPILED, etat.state(), "compilation échouée");
+        assertEquals(
+                NativeBridge.OK,
+                NativeBridge.release(ctx, BufferKinds.ASSET_IN, lireGeneration(ctx, BufferKinds.ASSET_IN)));
+        assertEquals(
+                NativeBridge.OK,
+                NativeBridge.release(ctx, BufferKinds.ASSET_OUT, lireGeneration(ctx, BufferKinds.ASSET_OUT)));
+        return etat.payload();
     }
 
     @Test
@@ -247,6 +320,18 @@ class NativeBridgeTest {
         assertEquals(0, dessine.lod(), "niveau de détail 0");
         assertTrue(geometrie.vertexCount() >= 3);
 
+        // ADR-122 §6 : la table des matériaux revient par ASSET_OUT, au schéma 1. Le triangle
+        // OBJ, sans .mtl, porte le matériau par défaut des options de compilation, sans texture.
+        dev.axion.asset.NativeAssetLoader.FetchedMaterials materiaux =
+                chargeur.materials(charge.index(), charge.generation());
+        assertTrue(materiaux.ok(), () -> "table des matériaux refusée, code " + materiaux.code());
+        assertEquals(1, materiaux.transfer().materials().size(), "le matériau par défaut");
+        assertTrue(materiaux.transfer().textures().isEmpty(), "aucune texture");
+        assertEquals(
+                NativeBridge.E_INVALID_BUFFER,
+                chargeur.texture(charge.index(), charge.generation(), 0).code(),
+                "aucune texture à remettre");
+
         // Les octets d'un autre asset que celui annoncé sont refusés (E-2002) ; rien
         // n'est rangé, et les tampons sont relâchés quand même.
         assertEquals(NativeBridge.E_INVALID_BUFFER, chargeur.load(0x9999L, triangle).code());
@@ -256,6 +341,55 @@ class NativeBridgeTest {
         assertEquals(
                 NativeBridge.E_INVALID_HANDLE,
                 chargeur.unload(charge.index(), charge.generation()));
+
+        // ADR-122 : un glTF au matériau texturé, compilé puis chargé par la vraie JNI — ce qui
+        // prouve l'enregistrement d'assetMaterials et d'assetTexture. La table nomme ses deux
+        // textures ; le PNG embarqué revient seul, octet pour octet ; la ressource n'a que
+        // son chemin, que Java résoudra contre le répertoire du modèle.
+        byte[] png = png2x2();
+        byte[] panneau = compiler(
+                reprise, 0x4444L, dev.axion.asset.SourceFormats.GLTF, gltfTexture(png));
+        dev.axion.asset.AssetLoader.Loaded chargePanneau = chargeur.load(0x4444L, panneau);
+        assertTrue(chargePanneau.ok(), () -> "chargement refusé, code " + chargePanneau.code());
+        dev.axion.asset.NativeAssetLoader.FetchedMaterials table =
+                chargeur.materials(chargePanneau.index(), chargePanneau.generation());
+        assertTrue(table.ok(), () -> "table des matériaux refusée, code " + table.code());
+        assertEquals(1, table.transfer().materials().size());
+        assertEquals(2, table.transfer().textures().size());
+        dev.axion.asset.MaterialTransfer.Material peint = table.transfer().materials().get(0);
+        dev.axion.asset.MaterialTransfer.Texture albedo =
+                table.transfer().textures().get(peint.albedoTexture());
+        assertTrue(albedo.embedded());
+        assertEquals(2, albedo.width());
+        assertEquals(2, albedo.height());
+        assertEquals(png.length, albedo.size());
+        assertEquals(1, albedo.sampler() & 3, "filtrage au plus proche");
+        dev.axion.asset.MaterialTransfer.Texture lueur =
+                table.transfer().textures().get(peint.emissiveTexture());
+        assertEquals("tex/lueur.png", lueur.path());
+
+        dev.axion.asset.NativeAssetLoader.FetchedTexture octets =
+                chargeur.texture(chargePanneau.index(), chargePanneau.generation(), peint.albedoTexture());
+        assertTrue(octets.ok(), () -> "texture refusée, code " + octets.code());
+        assertArrayEquals(png, octets.png());
+        assertEquals(
+                NativeBridge.E_INVALID_BUFFER,
+                chargeur.texture(chargePanneau.index(), chargePanneau.generation(), peint.emissiveTexture()).code(),
+                "une ressource ne voyage pas par le natif");
+        assertEquals(
+                NativeBridge.E_INVALID_BUFFER,
+                chargeur.texture(chargePanneau.index(), chargePanneau.generation(), -1).code(),
+                "un rang négatif ne désigne aucune texture");
+
+        assertEquals(NativeBridge.OK, chargeur.unload(chargePanneau.index(), chargePanneau.generation()));
+        assertEquals(
+                NativeBridge.E_INVALID_HANDLE,
+                chargeur.materials(chargePanneau.index(), chargePanneau.generation()).code(),
+                "handle périmé");
+        assertEquals(
+                NativeBridge.E_INVALID_HANDLE,
+                chargeur.texture(chargePanneau.index(), chargePanneau.generation(), peint.albedoTexture()).code(),
+                "handle périmé");
 
         // R-502 : l'export des métriques traverse la frontière et porte les
         // métriques de budget qu'INV-19 exige.

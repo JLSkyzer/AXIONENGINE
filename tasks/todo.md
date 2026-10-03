@@ -1813,7 +1813,7 @@ substituable sans changer rapier »).
             RESOURCE en chemin relatif), UV par mesh (`MeshDesc._pad` → `uv0_range`, R-142),
             primitives multiples (`NodeDesc._pad` → `mesh_count`), filtrage par défaut au plus
             proche ; `RenderType` propres (mipmaps R-570), passes translucide et émissive.
-            - [ ] **T-a** `[EFFORT MAX]` — format et frontière, en quatre sous-tranches :
+            - [x] **T-a** `[EFFORT MAX]` — format et frontière, en quatre sous-tranches :
                   - [x] **T-a1 — format** : `MaterialDesc` (DM-05, 96 o) et `TextureDesc`
                         (16 o) dans `ax-model`, contrôles et tests de disposition ; sections
                         `MATL`/`TEXR` (`ax-asset`, encodage et décodage, disposition inconnue
@@ -1850,9 +1850,17 @@ substituable sans changer rapier »).
                         meshes, `uv0_range`, sommets partagés sous une seule plage ; Java
                         `GeometryTransfer` décode chaque sommet dans sa plage ; `COMPILER_VERSION`
                         8 des deux côtés ; fixture R-893 du compilateur 7 (graine de fuzzing).
-                  - [ ] **T-a4 — frontière** : `axion_asset_load` (MATL | TEXR),
-                        `axion_asset_materials`, `axion_asset_texture`, `ASSET_OUT` schéma 1,
-                        pont JNI ; lecture Java contre la vraie JNI.
+                  - [x] **T-a4 — frontière** : `axion_asset_load` (MATL | TEXR, demandées
+                        ensemble), `axion_asset_materials`, `axion_asset_texture`, `ASSET_OUT`
+                        schéma 1, pont JNI ; lecture Java contre la vraie JNI ; selon le §6 et
+                        les « Précisions de T-a4 ». Disposition inconnue : `MATL` → table
+                        vide, `TEXR` → slots vidés ; `TEXR` absente sous des slots → E-3007 ;
+                        matériaux et table de `TEXR` imputés à PERSISTENT. Java :
+                        `MaterialTransfer`, `NativeAssetLoader.materials`/`texture`,
+                        `RENDER_SECTIONS` avec `MATL | TEXR`. cargo 821 verts (11 nouveaux,
+                        cinq mutations attrapées), Java 298 verts, vraie JNI comprise.
+                        Pour T-b : un mesh dont le matériau manque à la table (MATL ignoré)
+                        prend le matériau par défaut, signalé une fois.
             - [ ] **T-b** — client : textures (arrière-plan, PNG seul, ≤ 4096, mipmaps,
                   variante CUTOUT, libérations R-752), `RenderType` propres, passes
                   translucide (`AFTER_TRANSLUCENT_BLOCKS`) et émissive, matrice de capacités ;

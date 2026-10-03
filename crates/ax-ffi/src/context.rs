@@ -334,6 +334,47 @@ impl Session {
             .ok_or(crate::abi::AXION_E_INVALID_BUFFER)
     }
 
+    /// Dépose dans `ASSET_OUT` la table des matériaux et des textures d'un asset
+    /// chargé (ADR-122 §6) et rend la taille de la charge utile.
+    ///
+    /// # Errors
+    ///
+    /// `E-2001` si le handle est périmé ; `E-2002` si l'asset n'a pas été chargé
+    /// avec `MATL | TEXR`, ou si le tampon ne peut être écrit.
+    pub fn write_material_transfer(&mut self, handle: Handle) -> Result<u64, i32> {
+        let asset = self
+            .assets
+            .get(handle)
+            .ok_or(crate::abi::AXION_E_INVALID_HANDLE)?;
+        let transfer = asset
+            .material_transfer()
+            .ok_or(crate::abi::AXION_E_INVALID_BUFFER)?;
+        self.buffers
+            .write_payload(BufferKind::AssetOut, transfer)
+            .ok_or(crate::abi::AXION_E_INVALID_BUFFER)
+    }
+
+    /// Dépose dans `ASSET_OUT` les octets PNG de la texture embarquée de rang
+    /// `texture` d'un asset chargé (ADR-122 §6) et rend leur nombre.
+    ///
+    /// # Errors
+    ///
+    /// `E-2001` si le handle est périmé ; `E-2002` si la texture est hors de la
+    /// table — `TEXR` non chargée comprise —, si elle n'est pas embarquée, ou si
+    /// le tampon ne peut être écrit.
+    pub fn write_embedded_texture(&mut self, handle: Handle, texture: u32) -> Result<u64, i32> {
+        let asset = self
+            .assets
+            .get(handle)
+            .ok_or(crate::abi::AXION_E_INVALID_HANDLE)?;
+        let png = asset
+            .embedded_texture(texture)
+            .ok_or(crate::abi::AXION_E_INVALID_BUFFER)?;
+        self.buffers
+            .write_payload(BufferKind::AssetOut, png)
+            .ok_or(crate::abi::AXION_E_INVALID_BUFFER)
+    }
+
     /// Rend un asset chargé et libère ses octets ; faux si le handle est périmé,
     /// sans effet de bord (R-110).
     pub fn remove_asset(&mut self, handle: Handle) -> bool {

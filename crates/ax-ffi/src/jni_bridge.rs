@@ -38,10 +38,10 @@ use jni::{JNIEnv, JavaVM, NativeMethod};
 
 use crate::abi::{
     axion_abi_version, axion_asset_compile, axion_asset_geometry, axion_asset_load,
-    axion_asset_poll, axion_asset_unload, axion_buffer_acquire, axion_buffer_release,
-    axion_debug_fill, axion_init, axion_last_error, axion_metrics_export, axion_shutdown,
-    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
-    AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_asset_materials, axion_asset_poll, axion_asset_texture, axion_asset_unload,
+    axion_buffer_acquire, axion_buffer_release, axion_debug_fill, axion_init, axion_last_error,
+    axion_metrics_export, axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit,
+    AxionBufferInfo, AxionCollectResult, AXION_E_INVALID_BUFFER, AXION_OK,
 };
 use ax_model::dm::handle::Handle;
 
@@ -148,6 +148,16 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "assetGeometry".into(),
             sig: "(JII[J)I".into(),
             fn_ptr: jni_asset_geometry as *mut c_void,
+        },
+        NativeMethod {
+            name: "assetMaterials".into(),
+            sig: "(JII[J)I".into(),
+            fn_ptr: jni_asset_materials as *mut c_void,
+        },
+        NativeMethod {
+            name: "assetTexture".into(),
+            sig: "(JIII[J)I".into(),
+            fn_ptr: jni_asset_texture as *mut c_void,
         },
         NativeMethod {
             name: "assetUnload".into(),
@@ -548,6 +558,33 @@ extern "system" fn jni_asset_load(
     }
 }
 
+/// Forme commune des dépôts dans un tampon : vérifie que `out` compte au moins
+/// un élément, appelle `deposit` avec l'adresse d'une taille locale, puis, en
+/// cas de succès, écrit cette taille dans `out[0]`. Rend le code de l'appel.
+fn deposit_with_size(
+    env: &JNIEnv,
+    out: &JLongArray,
+    deposit: impl FnOnce(*mut u64) -> jint,
+) -> jint {
+    if out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(out) {
+        Ok(length) if length >= 1 => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+
+    let mut size: u64 = 0;
+    let code = deposit(&raw mut size);
+    if code != AXION_OK {
+        return code;
+    }
+    match env.set_long_array_region(out, 0, &[size as jlong]) {
+        Ok(()) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
+}
+
 /// `NativeBridge.assetGeometry(long, int, int, long[])` (ADR-119).
 ///
 /// Dépose la géométrie de l'asset dans `ASSET_OUT` et écrit sa taille dans
@@ -560,25 +597,54 @@ extern "system" fn jni_asset_geometry(
     generation: jint,
     out: JLongArray,
 ) -> jint {
-    if out.is_null() {
-        return AXION_E_INVALID_BUFFER;
-    }
-    match env.get_array_length(&out) {
-        Ok(length) if length >= 1 => {}
-        _ => return AXION_E_INVALID_BUFFER,
-    }
+    deposit_with_size(&env, &out, |size| {
+        // SAFETY: `size` désigne une variable locale de `deposit_with_size`,
+        // accessible en écriture pendant l'appel.
+        unsafe { axion_asset_geometry(ctx as u64, asset_handle(index, generation), size) }
+    })
+}
 
-    let mut size: u64 = 0;
-    // SAFETY: `size` est une variable locale accessible en écriture.
-    let code =
-        unsafe { axion_asset_geometry(ctx as u64, asset_handle(index, generation), &raw mut size) };
-    if code != AXION_OK {
-        return code;
-    }
-    match env.set_long_array_region(&out, 0, &[size as jlong]) {
-        Ok(()) => AXION_OK,
-        Err(_) => AXION_E_INVALID_BUFFER,
-    }
+/// `NativeBridge.assetMaterials(long, int, int, long[])` (ADR-122 §6).
+///
+/// Dépose la table des matériaux et des textures de l'asset dans `ASSET_OUT` et
+/// écrit sa taille dans `out[0]`.
+extern "system" fn jni_asset_materials(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    index: jint,
+    generation: jint,
+    out: JLongArray,
+) -> jint {
+    deposit_with_size(&env, &out, |size| {
+        // SAFETY: `size` désigne une variable locale de `deposit_with_size`,
+        // accessible en écriture pendant l'appel.
+        unsafe { axion_asset_materials(ctx as u64, asset_handle(index, generation), size) }
+    })
+}
+
+/// `NativeBridge.assetTexture(long, int, int, int, long[])` (ADR-122 §6).
+///
+/// Dépose les octets PNG de la texture embarquée de rang `texture` dans
+/// `ASSET_OUT` et écrit leur nombre dans `out[0]`. Un rang négatif ne désigne
+/// aucune texture : il est refusé.
+extern "system" fn jni_asset_texture(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    index: jint,
+    generation: jint,
+    texture: jint,
+    out: JLongArray,
+) -> jint {
+    let Ok(texture) = u32::try_from(texture) else {
+        return AXION_E_INVALID_BUFFER;
+    };
+    deposit_with_size(&env, &out, |size| {
+        // SAFETY: `size` désigne une variable locale de `deposit_with_size`,
+        // accessible en écriture pendant l'appel.
+        unsafe { axion_asset_texture(ctx as u64, asset_handle(index, generation), texture, size) }
+    })
 }
 
 /// `NativeBridge.assetUnload(long, int, int)` (IF-06).
@@ -611,38 +677,25 @@ extern "system" fn jni_debug_fill(
     max_segments: jint,
     out: JLongArray,
 ) -> jint {
-    if out.is_null() {
-        return AXION_E_INVALID_BUFFER;
-    }
-    match env.get_array_length(&out) {
-        Ok(length) if length >= 1 => {}
-        _ => return AXION_E_INVALID_BUFFER,
-    }
     let Ok(max_segments) = u32::try_from(max_segments) else {
         return AXION_E_INVALID_BUFFER;
     };
-
-    let mut size: u64 = 0;
-    // SAFETY: `size` est une variable locale accessible en écriture.
-    let code = unsafe {
-        axion_debug_fill(
-            ctx as u64,
-            overlay_mask as u64,
-            dimension as u64,
-            camera_x,
-            camera_y,
-            camera_z,
-            max_segments,
-            &raw mut size,
-        )
-    };
-    if code != AXION_OK {
-        return code;
-    }
-    match env.set_long_array_region(&out, 0, &[size as jlong]) {
-        Ok(()) => AXION_OK,
-        Err(_) => AXION_E_INVALID_BUFFER,
-    }
+    deposit_with_size(&env, &out, |size| {
+        // SAFETY: `size` désigne une variable locale de `deposit_with_size`,
+        // accessible en écriture pendant l'appel.
+        unsafe {
+            axion_debug_fill(
+                ctx as u64,
+                overlay_mask as u64,
+                dimension as u64,
+                camera_x,
+                camera_y,
+                camera_z,
+                max_segments,
+                size,
+            )
+        }
+    })
 }
 
 #[cfg(test)]
@@ -667,6 +720,8 @@ mod tests {
             ("simCancel", "(J)I"),
             ("assetLoad", "(JJI[J)I"),
             ("assetGeometry", "(JII[J)I"),
+            ("assetMaterials", "(JII[J)I"),
+            ("assetTexture", "(JIII[J)I"),
             ("assetUnload", "(JII)I"),
             ("debugFill", "(JJJDDDI[J)I"),
         ];

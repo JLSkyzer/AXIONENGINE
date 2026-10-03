@@ -112,6 +112,10 @@ public final class NativeBridge {
 
     static native int assetGeometry(long ctx, int index, int generation, long[] out);
 
+    static native int assetMaterials(long ctx, int index, int generation, long[] out);
+
+    static native int assetTexture(long ctx, int index, int generation, int texture, long[] out);
+
     static native int assetUnload(long ctx, int index, int generation);
 
     static native int debugFill(
@@ -403,7 +407,7 @@ public final class NativeBridge {
         return simCancel(ctx);
     }
 
-    // --- Assets chargés (IF-06, ADR-119) -----------------------------------
+    // --- Assets chargés (IF-06, ADR-119, ADR-122) --------------------------
 
     /**
      * Bit de la section {@code NODE} dans un masque de sections : le rang du tag
@@ -413,6 +417,12 @@ public final class NativeBridge {
 
     /** Bit de la section {@code GEOM} dans un masque de sections (ADR-119). */
     public static final int SECTION_GEOM = 1 << 1;
+
+    /** Bit de la section {@code MATL} dans un masque de sections (ADR-122). */
+    public static final int SECTION_MATL = 1 << 2;
+
+    /** Bit de la section {@code TEXR} dans un masque de sections (ADR-122). */
+    public static final int SECTION_TEXR = 1 << 3;
 
     /** Nombre de valeurs que {@link #loadAsset} écrit : index et génération du handle. */
     public static final int ASSET_LOAD_SLOTS = 2;
@@ -428,8 +438,9 @@ public final class NativeBridge {
      *
      * @param ctx jeton de contexte
      * @param assetId identifiant de l'asset, celui que porte son en-tête
-     * @param sectionsMask sections à charger, {@link #SECTION_NODE} et
-     *     {@link #SECTION_GEOM} seulement
+     * @param sectionsMask sections à charger parmi {@link #SECTION_NODE},
+     *     {@link #SECTION_GEOM}, {@link #SECTION_MATL} et {@link #SECTION_TEXR} — ces deux
+     *     dernières ensemble, ou aucune
      * @param out tableau d'au moins {@link #ASSET_LOAD_SLOTS} éléments
      * @return {@link #OK}, ou un code d'erreur négatif
      */
@@ -459,6 +470,46 @@ public final class NativeBridge {
             throw new IllegalArgumentException("le tableau de géométrie compte au moins un élément");
         }
         return assetGeometry(ctx, index, generation, out);
+    }
+
+    /**
+     * Dépose dans {@code AXION_BUF_ASSET_OUT} la table des matériaux et des textures d'un
+     * asset chargé (ADR-122 §6) ; {@code out[0]} reçoit la taille de la charge utile.
+     *
+     * @param ctx jeton de contexte
+     * @param index index du handle
+     * @param generation génération du handle
+     * @param out tableau d'au moins un élément
+     * @return {@link #OK}, {@link #E_INVALID_HANDLE} si le handle est périmé,
+     *     {@link #E_INVALID_BUFFER} si l'asset n'a pas été chargé avec
+     *     {@code MATL | TEXR}
+     */
+    public static int materialsOf(long ctx, int index, int generation, long[] out) {
+        if (out == null || out.length < 1) {
+            throw new IllegalArgumentException("le tableau des matériaux compte au moins un élément");
+        }
+        return assetMaterials(ctx, index, generation, out);
+    }
+
+    /**
+     * Dépose dans {@code AXION_BUF_ASSET_OUT} les octets PNG de la texture embarquée de
+     * rang {@code texture} d'un asset chargé (ADR-122 §6), une texture par appel ;
+     * {@code out[0]} reçoit leur nombre.
+     *
+     * @param ctx jeton de contexte
+     * @param index index du handle
+     * @param generation génération du handle
+     * @param texture rang de la texture dans la table des matériaux
+     * @param out tableau d'au moins un élément
+     * @return {@link #OK}, {@link #E_INVALID_HANDLE} si le handle est périmé,
+     *     {@link #E_INVALID_BUFFER} si la texture est hors de la table ou n'est pas
+     *     embarquée
+     */
+    public static int textureOf(long ctx, int index, int generation, int texture, long[] out) {
+        if (out == null || out.length < 1) {
+            throw new IllegalArgumentException("le tableau de texture compte au moins un élément");
+        }
+        return assetTexture(ctx, index, generation, texture, out);
     }
 
     /**

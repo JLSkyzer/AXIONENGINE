@@ -25,11 +25,10 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::config::{self, ConfigScope, ParsedValue};
 
-use crate::asset_store::{decode_render_asset, supported_sections};
+use crate::asset_store::{decode_render_asset, requested_sections};
 use crate::context;
 use ax_asset::a3d::{
-    announced_total_size, decode_colliders, A3dLimits, SectionMask,
-    HEADER_BYTES as A3D_HEADER_BYTES,
+    announced_total_size, decode_colliders, A3dLimits, HEADER_BYTES as A3D_HEADER_BYTES,
 };
 use ax_asset::collider::ColliderMode;
 use ax_asset::compile::CompileOptions;
@@ -538,7 +537,13 @@ pub const AXION_SECTION_NODE: u32 = 1 << 0;
 /// Bit de la section `GEOM` dans un masque de sections (IF-06, ADR-119).
 pub const AXION_SECTION_GEOM: u32 = 1 << 1;
 
-/// Charge un asset compilé et rend son handle (IF-06, ADR-119).
+/// Bit de la section `MATL` dans un masque de sections (IF-06, ADR-122).
+pub const AXION_SECTION_MATL: u32 = 1 << 2;
+
+/// Bit de la section `TEXR` dans un masque de sections (IF-06, ADR-122).
+pub const AXION_SECTION_TEXR: u32 = 1 << 3;
+
+/// Charge un asset compilé et rend son handle (IF-06, ADR-119, ADR-122).
 ///
 /// Le conteneur A3D a été écrit par Java dans la charge utile du tampon
 /// `ASSET_IN` ; il se délimite lui-même par le `total_size` de son en-tête (§7.2)
@@ -549,9 +554,12 @@ pub const AXION_SECTION_GEOM: u32 = 1 << 1;
 /// `PERSISTENT` (R-480).
 ///
 /// `sections_mask` porte le bit *i* pour le *i*-ème tag de la table de la PARTIE
-/// 7 ; seuls [`AXION_SECTION_NODE`] et [`AXION_SECTION_GEOM`] sont pris en
-/// charge. Un masque vide ou portant un autre bit est refusé (`E-2002`) : un
-/// chargement qui « réussirait » sans rien charger ferait croire le contraire.
+/// 7 ; sont pris en charge [`AXION_SECTION_NODE`], [`AXION_SECTION_GEOM`],
+/// [`AXION_SECTION_MATL`] et [`AXION_SECTION_TEXR`], ces deux derniers
+/// ensemble. Un masque vide, portant un autre bit, ou l'un de `MATL` et `TEXR`
+/// sans l'autre est refusé (`E-2002`) : un chargement qui « réussirait » sans
+/// rien charger ferait croire le contraire, et les slots des matériaux
+/// désignent la table des textures.
 ///
 /// Chaque appel crée un handle indépendant, que Java possède et doit rendre par
 /// [`axion_asset_unload`] (R-321) ; un handle non rendu est signalé à l'arrêt
@@ -571,11 +579,9 @@ pub unsafe extern "C" fn axion_asset_load(
         if out.is_null() {
             return AXION_E_INVALID_BUFFER;
         }
-        let supported = supported_sections().bits();
-        if sections_mask == 0 || sections_mask & !supported != 0 {
+        let Some(sections) = requested_sections(sections_mask) else {
             return AXION_E_INVALID_BUFFER;
-        }
-        let sections = SectionMask::from_bits(sections_mask);
+        };
 
         // Copie sous verrou, bornée par ce qu'annonce le conteneur et par le
         // plafond de la configuration (R-901) : après elle, le tampon peut être
@@ -652,6 +658,85 @@ pub unsafe extern "C" fn axion_asset_geometry(ctx: u64, handle: Handle, out_size
         }
         match context::with(ctx, false, |session| {
             session.write_geometry_transfer(handle)
+        }) {
+            Ok(Ok(size)) => {
+                // SAFETY: nullité écartée ci-dessus.
+                unsafe { out_size.write(size) };
+                AXION_OK
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Dépose dans `ASSET_OUT` la table des matériaux et des textures d'un asset
+/// chargé avec `MATL | TEXR` (ajout à IF-06, ADR-122 §6) ; `out_size` reçoit la
+/// taille de la charge utile.
+///
+/// La charge porte un en-tête `{material_count, texture_count, path_bytes, 0}`,
+/// les `MaterialDesc` (DM-05), les `TextureDesc`, puis les chemins des textures
+/// de ressource — disposition décrite par
+/// [`encode_material_transfer`](ax_model::dm::render::encode_material_transfer).
+/// Tout y a été contrôlé au chargement : comptes sous les plafonds de C-22,
+/// slots dans la table ou vides, énumérations connues, facteurs finis,
+/// `alpha_cutoff` dans `[0, 1]`, chemins dans `paths`.
+///
+/// Rend `E-2001` si le handle est périmé, `E-2002` si l'asset n'a pas été chargé
+/// avec `MATL | TEXR`.
+///
+/// # Safety
+///
+/// `out_size` doit pointer sur un `u64` accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_asset_materials(
+    ctx: u64,
+    handle: Handle,
+    out_size: *mut u64,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if out_size.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        match context::with(ctx, false, |session| {
+            session.write_material_transfer(handle)
+        }) {
+            Ok(Ok(size)) => {
+                // SAFETY: nullité écartée ci-dessus.
+                unsafe { out_size.write(size) };
+                AXION_OK
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Dépose dans `ASSET_OUT` les octets PNG de la texture embarquée de rang
+/// `texture` d'un asset chargé (ajout à IF-06, ADR-122 §6) ; `out_size` reçoit
+/// leur nombre.
+///
+/// Une texture par appel : une table de 128 textures de 4096² ne transite pas
+/// d'un bloc. Les octets sont ceux du fichier, non décodés (R-532) — le natif
+/// n'en a lu que la signature et l'`IHDR`.
+///
+/// Rend `E-2001` si le handle est périmé, `E-2002` si la texture est hors de la
+/// table — l'asset chargé sans `TEXR` n'en a pas — ou n'est pas embarquée.
+///
+/// # Safety
+///
+/// `out_size` doit pointer sur un `u64` accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_asset_texture(
+    ctx: u64,
+    handle: Handle,
+    texture: u32,
+    out_size: *mut u64,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if out_size.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        match context::with(ctx, false, |session| {
+            session.write_embedded_texture(handle, texture)
         }) {
             Ok(Ok(size)) => {
                 // SAFETY: nullité écartée ci-dessus.
@@ -1345,18 +1430,19 @@ mod tests {
     /// Java envoie ces valeurs ; les dériver ailleurs les ferait diverger.
     #[test]
     fn les_bits_de_section_sont_ceux_de_la_partie_7() {
-        use ax_asset::a3d::SectionTag;
-        assert_eq!(
-            SectionMask::of(&[SectionTag::NODE]).bits(),
-            AXION_SECTION_NODE
-        );
-        assert_eq!(
-            SectionMask::of(&[SectionTag::GEOM]).bits(),
-            AXION_SECTION_GEOM
-        );
+        use crate::asset_store::supported_sections;
+        use ax_asset::a3d::{SectionMask, SectionTag};
+        for (tag, bit) in [
+            (SectionTag::NODE, AXION_SECTION_NODE),
+            (SectionTag::GEOM, AXION_SECTION_GEOM),
+            (SectionTag::MATL, AXION_SECTION_MATL),
+            (SectionTag::TEXR, AXION_SECTION_TEXR),
+        ] {
+            assert_eq!(SectionMask::of(&[tag]).bits(), bit, "{tag}");
+        }
         assert_eq!(
             supported_sections().bits(),
-            AXION_SECTION_NODE | AXION_SECTION_GEOM
+            AXION_SECTION_NODE | AXION_SECTION_GEOM | AXION_SECTION_MATL | AXION_SECTION_TEXR
         );
     }
 
