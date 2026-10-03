@@ -940,3 +940,17 @@ les a démenties — avant tout commit.
 
 **Règle.** Lire une méthode entière, sans filtre, avant d'en déduire un défaut ; un `grep` sur un
 désassemblage sert à trouver, pas à conclure.
+
+## 2026-10-03 | Deux tests existants écrasés, sur la foi d'une recherche tronquée
+
+**Ce qui a mal tourné.** Pour la case 4d-iii de C-31, un `grep -rln … | head` sur les sources a
+listé dix fichiers, coupés par `head` ; `BodyStateTest` et `PhysicsEventTest` étaient au-delà.
+J'en ai conclu qu'ils manquaient et les ai réécrits : `Write` les a remplacés sans erreur (« updated »,
+non « created »). Vu au `git diff --stat`, avant tout commit ; versions d'origine restaurées. La
+case était seulement restée ouverte.
+
+**Cause.** Une absence conclue d'une liste tronquée, et un signal d'écrasement non lu.
+
+**Règle.** Avant de créer un fichier, en vérifier l'absence par son chemin exact (`Glob`, `ls`),
+jamais par une recherche passée à `head`. Lire « updated » sur une création comme un écrasement,
+et relire `git diff --stat` avant de se fier à un fichier « nouveau ».

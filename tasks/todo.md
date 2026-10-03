@@ -1402,7 +1402,7 @@ substituable sans changer rapier »).
                   3 tests (composition monde, filtrage statiques/anonymes,
                   IN_FLUID). `BodyDesc` (entrée) viendra avec le traitement des
                   commandes en 4b, avec son consommateur.
-            - [ ] **4b — orchestration dans le `Session`** — **session neuve,
+            - [x] **4b — orchestration dans le `Session`** — **session neuve,
                   effort maximal**. Contrat d'entrée `SimIn` **ratifié dans
                   ADR-114** (flux de commandes opcode+longueur, extensible) :
                   s'écrire contre lui. Loger un
@@ -1460,11 +1460,14 @@ substituable sans changer rapier »).
                         (slots=7, drapeaux INCOMPLETE/DEGRADED), offsets d'en-tête
                         locaux (BufferKinds est généré) ; NativeApi inchangé —
                         la physique appelle NativeBridge directement, comme les assets.
-                  - [ ] **4d-iii — types + codecs Java** : `BodyState` (80 o) et
+                  - [x] **4d-iii — types + codecs Java** : `BodyState` (80 o) et
                         `PhysicsEvent` (76 o) décodés LE aux offsets figés ; writer
                         `SimIn` (patron `NativeAssetCompiler.submit`) ; lecteurs
                         `SimOut`/`Events` (acquérir cap 0, compte via
                         `AxionCollectResult`, release — R-322). Tests JUnit décodage.
+                        Fait avec 4d-iv : décodeurs, writer, lecteurs, et `BodyStateTest` /
+                        `PhysicsEventTest` (offsets figés) ; la case était restée ouverte
+                        (constaté le 2026-10-03).
                   - [x] **4d-iv — intégration `onTick`** (thread autoritatif) :
                         `AxionRuntime.onTick` déroule submit→collect→lecture→release
                         après le pump d'assets ; n° de tick via `currentTick()`.
