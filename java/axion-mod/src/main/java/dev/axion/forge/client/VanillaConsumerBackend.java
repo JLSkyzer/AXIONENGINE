@@ -6,6 +6,7 @@ import dev.axion.AxionMod;
 import dev.axion.asset.GeometryTransfer;
 import dev.axion.forge.AxionEntity;
 import dev.axion.render.BackendSelection;
+import dev.axion.render.DepthOrder;
 import dev.axion.render.EntityShader;
 import dev.axion.render.MeshLook;
 import dev.axion.render.RenderAsset;
@@ -19,6 +20,7 @@ import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -35,9 +37,11 @@ import org.joml.Vector3f;
  * d'entité de Minecraft, ce qui leur donne la lumière du monde (lightmap) et l'ombrage
  * directionnel des entités vanilla.
  *
- * <p>Passe 1, les surfaces opaques, puis passe 2, les surfaces découpées (§19.10) : dans chaque
- * passe, un lot par type de rendu. Les surfaces translucides attendent la passe 4, et l'émissive
- * la passe 5 (ADR-122, T-b3).
+ * <p>Passe 1, les surfaces opaques, passe 2, les surfaces découpées, puis passe 5, l'émission
+ * (§19.10) : dans chaque passe, un lot par type de rendu. L'émission s'additionne par-dessus la
+ * surface, sans lumière du monde ; celle d'une surface translucide, dessinée avant elle (R-1570),
+ * en est atténuée — approximation déclarée. Passe 4, plus tard dans la frame : les surfaces
+ * translucides, du plus loin au plus près, en lots consécutifs dont Minecraft trie les quads.
  *
  * <p>Tant que rien n'est prêt — chargement en arrière-plan, échec, multijoueur —, l'assembly est
  * dessinée comme la <b>boîte</b> de T1, aux dimensions de son entité : rien ne disparaît, et la
@@ -99,19 +103,90 @@ final class VanillaConsumerBackend implements RenderBackend {
             }
         }
         if (!placed.isEmpty()) {
-            drawPass(frame, placed, SurfacePass.OPAQUE);
-            drawPass(frame, placed, SurfacePass.CUTOUT);
+            drawSurfaces(frame, placed, SurfacePass.OPAQUE);
+            drawSurfaces(frame, placed, SurfacePass.CUTOUT);
+            drawEmission(frame, placed);
         }
         if (anyBox) {
             drawBoxes(frame);
         }
     }
 
+    @Override
+    public void renderTranslucent(Frame frame) {
+        List<Part> parts = new ArrayList<>();
+        for (Assembly assembly : frame.assemblies()) {
+            RenderAsset asset = assembly.asset();
+            if (asset == null) {
+                continue;
+            }
+            Placed placed = null;
+            for (GeometryTransfer.Draw draw : asset.mesh().draws()) {
+                MeshLook look = asset.look(draw.mesh());
+                if (look.pass() != SurfacePass.TRANSLUCENT || !look.visible()) {
+                    continue;
+                }
+                if (placed == null) {
+                    placed = new Placed(asset, AssemblyPlacement.of(frame.partialTick(), assembly.entity()));
+                }
+                parts.add(new Part(placed, draw, look));
+            }
+        }
+        if (parts.isEmpty()) {
+            return;
+        }
+        double[] distances = new double[parts.size()];
+        for (int rank = 0; rank < distances.length; rank++) {
+            distances[rank] = squaredDistance(parts.get(rank), frame.camera());
+        }
+        // Dans l'ordre de profondeur, un lot par suite de surfaces de même type : changer de type
+        // vide le lot, et le tri des quads ne vaut qu'au sein d'un lot.
+        RenderType current = null;
+        VertexConsumer out = null;
+        for (int rank : DepthOrder.farToNear(distances)) {
+            Part part = parts.get(rank);
+            TextureBinding albedo = part.assembly().asset().albedo(part.draw().mesh());
+            boolean doubleSided = part.look().doubleSided();
+            RenderType type = AxionRenderTypes.entity(
+                    albedo == null ? NEUTRAL : albedo,
+                    EntityShader.of(SurfacePass.TRANSLUCENT, doubleSided),
+                    doubleSided);
+            if (type != current) {
+                if (current != null) {
+                    frame.buffers().endBatch(current);
+                }
+                current = type;
+                out = frame.buffers().getBuffer(type);
+            }
+            drawPart(frame, part, out, false);
+        }
+        frame.buffers().endBatch(current);
+    }
+
     /**
-     * Dessine les surfaces d'une passe, un lot par type de rendu : alterner les types d'un mesh à
-     * l'autre viderait le tampon partagé à chaque changement.
+     * {@return la distance au carré, de la caméra au centre d'un mesh posé}
+     *
+     * <p>Même chaîne que le dessin : transformation de repos du node, orientation du corps, position
+     * du corps relative à la caméra.
      */
-    private static void drawPass(Frame frame, List<Placed> placed, SurfacePass pass) {
+    private static double squaredDistance(Part part, Vec3 camera) {
+        float[] m = part.draw().model();
+        float[] c = part.look().center();
+        // mat4x3 colonne-major (ADR-119) : trois axes puis la translation.
+        Vector3f center = new Vector3f(
+                m[0] * c[0] + m[3] * c[1] + m[6] * c[2] + m[9],
+                m[1] * c[0] + m[4] * c[1] + m[7] * c[2] + m[10],
+                m[2] * c[0] + m[5] * c[1] + m[8] * c[2] + m[11]);
+        AssemblyPlacement at = part.assembly().at();
+        at.rotation().transform(center);
+        double x = at.x() - camera.x + center.x();
+        double y = at.y() - camera.y + center.y();
+        double z = at.z() - camera.z + center.z();
+        return x * x + y * y + z * z;
+    }
+
+    /** Les surfaces d'une passe, passe 1 ou 2. */
+    private static void drawSurfaces(Frame frame, List<Placed> placed, SurfacePass pass) {
         Map<RenderType, List<Part>> batches = new LinkedHashMap<>();
         for (Placed assembly : placed) {
             RenderAsset asset = assembly.asset();
@@ -128,10 +203,42 @@ final class VanillaConsumerBackend implements RenderBackend {
                 batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(new Part(assembly, draw, look));
             }
         }
+        drawBatches(frame, batches, false);
+    }
+
+    /**
+     * Passe 5 : l'émission des surfaces qui émettent — leur texture d'émission, ou du blanc —,
+     * additive, par-dessus.
+     */
+    private static void drawEmission(Frame frame, List<Placed> placed) {
+        Map<RenderType, List<Part>> batches = new LinkedHashMap<>();
+        for (Placed assembly : placed) {
+            RenderAsset asset = assembly.asset();
+            for (GeometryTransfer.Draw draw : asset.mesh().draws()) {
+                MeshLook look = asset.look(draw.mesh());
+                if (!look.visible() || !asset.emits(draw.mesh())) {
+                    continue;
+                }
+                TextureBinding emission = asset.emission(draw.mesh());
+                RenderType type = AxionRenderTypes.entity(
+                        emission == null ? NEUTRAL : emission, EntityShader.EYES, look.doubleSided());
+                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(new Part(assembly, draw, look));
+            }
+        }
+        drawBatches(frame, batches, true);
+    }
+
+    /**
+     * Dessine des lots, un par type de rendu : alterner les types d'un mesh à l'autre viderait le
+     * tampon partagé à chaque changement.
+     *
+     * @param emission vrai pour l'émission : couleur émissive, pleine lumière
+     */
+    private static void drawBatches(Frame frame, Map<RenderType, List<Part>> batches, boolean emission) {
         for (Map.Entry<RenderType, List<Part>> batch : batches.entrySet()) {
             VertexConsumer out = frame.buffers().getBuffer(batch.getKey());
             for (Part part : batch.getValue()) {
-                drawPart(frame, part, out);
+                drawPart(frame, part, out, emission);
             }
             frame.buffers().endBatch(batch.getKey());
         }
@@ -142,13 +249,15 @@ final class VanillaConsumerBackend implements RenderBackend {
      *
      * <p>Les types de rendu d'entité sont en quads : chaque triangle y entre comme un quad
      * dégénéré {@code (a, b, c, c)}, dont le second triangle n'a pas d'aire.
+     *
+     * @param emission vrai pour son émission : couleur émissive, pleine lumière
      */
-    private static void drawPart(Frame frame, Part part, VertexConsumer out) {
+    private static void drawPart(Frame frame, Part part, VertexConsumer out, boolean emission) {
         GeometryTransfer mesh = part.assembly().asset().mesh();
         GeometryTransfer.Mesh desc = mesh.meshes().get(part.draw().mesh());
         AssemblyPlacement at = part.assembly().at();
         MeshLook look = part.look();
-        int light = look.fullbright() ? LightTexture.FULL_BRIGHT : at.light();
+        int light = emission || look.fullbright() ? LightTexture.FULL_BRIGHT : at.light();
 
         PoseStack pose = frame.pose();
         pose.pushPose();
@@ -184,10 +293,13 @@ final class VanillaConsumerBackend implements RenderBackend {
                 b = c;
                 c = swap;
             }
-            vertex(out, position, normal, scratch, mesh, base, a, look, light);
-            vertex(out, position, normal, scratch, mesh, base, b, look, light);
-            vertex(out, position, normal, scratch, mesh, base, c, look, light);
-            vertex(out, position, normal, scratch, mesh, base, c, look, light);
+            int colorA = emission ? look.emissiveColor() : look.colorOf(a);
+            int colorB = emission ? look.emissiveColor() : look.colorOf(b);
+            int colorC = emission ? look.emissiveColor() : look.colorOf(c);
+            vertex(out, position, normal, scratch, mesh, base + a, colorA, light);
+            vertex(out, position, normal, scratch, mesh, base + b, colorB, light);
+            vertex(out, position, normal, scratch, mesh, base + c, colorC, light);
+            vertex(out, position, normal, scratch, mesh, base + c, colorC, light);
         }
         pose.popPose();
     }
@@ -195,8 +307,8 @@ final class VanillaConsumerBackend implements RenderBackend {
     /**
      * Émet un sommet.
      *
-     * @param base premier sommet du mesh, dans le tableau des sommets
-     * @param local rang du sommet dans le mesh, tel que l'écrivent ses indices
+     * @param vertex rang du sommet dans le tableau des sommets
+     * @param color couleur ARGB du sommet
      */
     private static void vertex(
             VertexConsumer out,
@@ -204,11 +316,9 @@ final class VanillaConsumerBackend implements RenderBackend {
             Matrix3f normal,
             Vector3f scratch,
             GeometryTransfer mesh,
-            int base,
-            int local,
-            MeshLook look,
+            int vertex,
+            int color,
             int light) {
-        int vertex = base + local;
         float[] positions = mesh.positions();
         float[] normals = mesh.normals();
         float[] uvs = mesh.uvs();
@@ -221,7 +331,6 @@ final class VanillaConsumerBackend implements RenderBackend {
         }
         scratch.normalize();
 
-        int color = look.colorOf(local);
         out.vertex(position, positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2])
                 .color((color >>> 16) & 0xFF, (color >>> 8) & 0xFF, color & 0xFF, color >>> 24)
                 .uv(uvs[vertex * 2], uvs[vertex * 2 + 1])

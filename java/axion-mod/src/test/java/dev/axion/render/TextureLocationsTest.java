@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.axion.asset.MaterialTransfer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -46,6 +47,11 @@ class TextureLocationsTest {
                 TextureLocations.registered(ASSET, 7, TextureKey.plain(2)));
         assertEquals("axion:texture/axion/axion/models/test/cube.gltf/7/2/cutout/3f000000",
                 TextureLocations.registered(ASSET, 7, TextureKey.cutout(2, 0.5f)));
+        assertEquals("axion:texture/axion/axion/models/test/cube.gltf/7/1/masque/0/3f000000",
+                TextureLocations.registered(ASSET, 7, TextureKey.masked(1, 0, 0.5f)));
+        assertEquals("axion:texture/axion/axion/models/test/cube.gltf/7/blanc/masque/0/3f000000",
+                TextureLocations.registered(ASSET, 7, TextureKey.masked(MaterialTransfer.NO_TEXTURE, 0, 0.5f)),
+                "du blanc masqué n'a pas de rang");
         // Deux chargements du même asset ne partagent jamais un nom.
         assertTrue(!TextureLocations.registered(ASSET, 7, TextureKey.plain(0))
                 .equals(TextureLocations.registered(ASSET, 8, TextureKey.plain(0))));

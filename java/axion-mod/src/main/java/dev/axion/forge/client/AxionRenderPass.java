@@ -41,9 +41,9 @@ import org.slf4j.LoggerFactory;
  * <p>AXION dessine ses objets <b>en plus</b> du monde vanilla, dans le même framebuffer, sans
  * altérer aucune passe vanilla (§19.1). Une seule passe collecte les assemblies visibles et
  * les confie au backend actif — pas un rendu par entité — pour que culling (C-64) et
- * instancing (C-65) puissent s'y loger. Chaque passe a son stage (R-1570) : OPAQUE et CUTOUT à
- * {@code AFTER_ENTITIES}, DEBUG à {@code AFTER_PARTICLES} ; la passe translucide viendra à
- * {@code AFTER_TRANSLUCENT_BLOCKS}, et l'émissive à {@code AFTER_ENTITIES} (ADR-122, T-b3).
+ * instancing (C-65) puissent s'y loger. Chaque passe a son stage (R-1570) : OPAQUE, CUTOUT et
+ * EMISSIVE à {@code AFTER_ENTITIES}, TRANSLUCENT à {@code AFTER_TRANSLUCENT_BLOCKS}, DEBUG à
+ * {@code AFTER_PARTICLES}.
  *
  * <p>Le backend est choisi au chargement de chaque monde client (R-1490), d'après
  * {@code render.backend} relu à ce moment-là. Tout se passe sur le render thread, sauf le
@@ -115,8 +115,9 @@ public final class AxionRenderPass {
     }
 
     /**
-     * Dessine chaque passe à son stage (R-1570) : OPAQUE et CUTOUT à {@code AFTER_ENTITIES},
-     * DEBUG à {@code AFTER_PARTICLES}.
+     * Dessine chaque passe à son stage (R-1570) : OPAQUE, CUTOUT et EMISSIVE à
+     * {@code AFTER_ENTITIES}, TRANSLUCENT à {@code AFTER_TRANSLUCENT_BLOCKS}, DEBUG à
+     * {@code AFTER_PARTICLES}.
      *
      * @param event étape du rendu du niveau
      */
@@ -127,15 +128,21 @@ public final class AxionRenderPass {
         }
         RenderLevelStageEvent.Stage stage = event.getStage();
         if (stage == RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
-            renderOpaque(event);
+            renderSurfaces(event, false);
+        } else if (stage == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
+            renderSurfaces(event, true);
         } else if (stage == RenderLevelStageEvent.Stage.AFTER_PARTICLES && OVERLAYS.mask() != 0L) {
             // Éteints, les overlays ne coûtent que ce test (R-2280).
             renderDebug(event);
         }
     }
 
-    /** Passes OPAQUE et CUTOUT (§19.10, passes 1 et 2). */
-    private static void renderOpaque(RenderLevelStageEvent event) {
+    /**
+     * Passes OPAQUE, CUTOUT et EMISSIVE (§19.10, passes 1, 2 et 5), ou passe TRANSLUCENT (passe 4).
+     *
+     * @param translucent vrai pour la passe 4
+     */
+    private static void renderSurfaces(RenderLevelStageEvent event, boolean translucent) {
         Minecraft minecraft = Minecraft.getInstance();
         List<RenderBackend.Assembly> assemblies = assemblies(minecraft.level, true);
         if (assemblies.isEmpty()) {
@@ -145,7 +152,12 @@ public final class AxionRenderPass {
             if (backend == null) {
                 backend = select();
             }
-            backend.renderOpaque(frame(event, minecraft, assemblies));
+            RenderBackend.Frame frame = frame(event, minecraft, assemblies);
+            if (translucent) {
+                backend.renderTranslucent(frame);
+            } else {
+                backend.renderOpaque(frame);
+            }
         } catch (RuntimeException failure) {
             failed = true;
             LOGGER.error("AXION : passe de rendu désactivée après une erreur", failure);

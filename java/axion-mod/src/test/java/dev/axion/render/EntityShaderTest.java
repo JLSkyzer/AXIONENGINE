@@ -39,9 +39,17 @@ class EntityShaderTest {
     }
 
     @Test
-    @DisplayName("Une surface translucide n'a pas de shader des passes 1 et 2")
-    void uneSurfaceTranslucideEstRefusee() {
-        assertThrows(IllegalArgumentException.class, () -> EntityShader.of(SurfacePass.TRANSLUCENT, false));
-        assertThrows(IllegalArgumentException.class, () -> EntityShader.of(SurfacePass.TRANSLUCENT, true));
+    @DisplayName("L'émission passe par eyes")
+    void lEmissionPasseParEyes() {
+        assertEquals("eyes", EntityShader.EYES.vanillaName());
+    }
+
+    @Test
+    @DisplayName("Translucide : entity_translucent_cull, ou entity_translucent pour deux faces")
+    void translucideEntityTranslucent() {
+        assertEquals(EntityShader.TRANSLUCENT_CULL, EntityShader.of(SurfacePass.TRANSLUCENT, false));
+        assertEquals(EntityShader.TRANSLUCENT, EntityShader.of(SurfacePass.TRANSLUCENT, true));
+        assertEquals("entity_translucent_cull", EntityShader.TRANSLUCENT_CULL.vanillaName());
+        assertEquals("entity_translucent", EntityShader.TRANSLUCENT.vanillaName());
     }
 }

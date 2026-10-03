@@ -4,8 +4,10 @@ import static dev.axion.render.TestMaterials.EMBEDDED;
 import static dev.axion.render.TestMaterials.material;
 import static dev.axion.render.TestMaterials.table;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.axion.asset.GeometryTransfer;
 import dev.axion.asset.MaterialTransfer;
@@ -48,6 +50,48 @@ class RenderAssetTest {
 
         assertEquals(PLAIN, asset.albedo(0));
         assertNull(asset.albedo(1));
+    }
+
+    @Test
+    @DisplayName("Un mesh émet son facteur sur du blanc sans texture d'émissive ; texture perdue, il n'émet pas")
+    void lEmissionSuitSaTexture() {
+        GeometryTransfer geometry = TestGeometry.of(
+                TestGeometry.white(0, 0), TestGeometry.white(1, 0), TestGeometry.white(2, 0), TestGeometry.white(3, 0));
+        MaterialTransfer materials = table(
+                List.of(
+                        material().emissive(MaterialTransfer.NO_TEXTURE, 1, 1, 1),
+                        material().emissive(0, 1, 1, 1),
+                        material().emissive(1, 1, 1, 1),
+                        material()),
+                EMBEDDED, EMBEDDED);
+        TextureBinding glow = new TextureBinding("axion:texture/a/1/0", false, true);
+        RenderAsset asset = new RenderAsset(
+                geometry, materials, MeshLooks.of(geometry, materials).looks(), Map.of(TextureKey.plain(0), glow));
+
+        assertTrue(asset.emits(0), "facteur seul");
+        assertNull(asset.emission(0), "sur du blanc");
+        assertTrue(asset.emits(1));
+        assertEquals(glow, asset.emission(1));
+        assertFalse(asset.emits(2), "texture d'émissive perdue : la neutre est noire (C-26)");
+        assertFalse(asset.emits(3), "n'émet pas");
+    }
+
+    @Test
+    @DisplayName("L'émission d'un matériau découpé passe par sa variante masquée, ou n'a pas lieu")
+    void lEmissionDUnMateriauDecoupeEstMasquee() {
+        GeometryTransfer geometry = TestGeometry.of(TestGeometry.white(0, 0));
+        MaterialTransfer materials = table(
+                List.of(material().albedo(0).cutout(0.5f).emissive(MaterialTransfer.NO_TEXTURE, 1, 1, 1)), EMBEDDED);
+        List<MeshLook> looks = MeshLooks.of(geometry, materials).looks();
+        TextureBinding mask = new TextureBinding("axion:texture/a/1/blanc/masque/0/3f000000", false, true);
+
+        RenderAsset masked = new RenderAsset(
+                geometry, materials, looks, Map.of(TextureKey.masked(MaterialTransfer.NO_TEXTURE, 0, 0.5f), mask));
+        assertTrue(masked.emits(0));
+        assertEquals(mask, masked.emission(0));
+
+        RenderAsset lost = new RenderAsset(geometry, materials, looks, Map.of());
+        assertFalse(lost.emits(0), "jamais de blanc sans masque : il brillerait dans les trous");
     }
 
     @Test

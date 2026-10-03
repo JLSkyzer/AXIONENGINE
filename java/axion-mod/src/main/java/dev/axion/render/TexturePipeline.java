@@ -52,17 +52,20 @@ public interface TexturePipeline {
      *
      * @param location nom sous lequel l'enregistrer
      * @param key texture et variante
+     * @param image l'image de la texture ; {@code null} pour le blanc d'une émissive masquée
+     * @param mask l'albedo qui masque une émissive ; {@code null} hors masque
+     */
+    record Request(String location, TextureKey key, Source image, Source mask) {}
+
+    /**
+     * D'où lire une image.
+     *
      * @param texture entrée de la table : provenance, échantillonneur, dimensions
      * @param embedded octets PNG d'une texture embarquée ; {@code null} pour une ressource
      * @param resource {@code ResourceLocation} d'une ressource ; {@code null} pour une texture
      *     embarquée
      */
-    record Request(
-            String location,
-            TextureKey key,
-            MaterialTransfer.Texture texture,
-            byte[] embedded,
-            String resource) {}
+    record Source(MaterialTransfer.Texture texture, byte[] embedded, String resource) {}
 
     /** Une texture prête à téléverser. */
     interface Prepared {

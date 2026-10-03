@@ -232,7 +232,7 @@ public final class MeshCache {
         Set<Integer> reported = new HashSet<>(decoded.refused);
         List<Staged> staged = new ArrayList<>();
         for (TexturePipeline.Request request : decoded.requests) {
-            int rank = request.key().rank();
+            int rank = request.key().origin();
             try {
                 TexturePipeline.Prepared prepared = textures.prepare(request);
                 staged.add(new Staged(request.key(), prepared));
@@ -339,35 +339,60 @@ public final class MeshCache {
 
     /**
      * Sous {@link #nativeLock} : une demande par texture à préparer. Les octets des textures
-     * embarquées se lisent ici, tant que le handle vit ; le chemin d'une ressource se résout et se
-     * contrôle (R-531).
+     * embarquées se lisent ici, tant que le handle vit, une fois par image, quel que soit le nombre
+     * de ses variantes ; le chemin d'une ressource se résout et se contrôle (R-531). Une variante
+     * dont une image manque est abandonnée : son refus est rapporté sous le rang de l'image.
      */
     private List<TexturePipeline.Request> requests(
             String path, Loading loading, Handle handle, MaterialTransfer materials, Set<Integer> refused) {
         List<TexturePipeline.Request> requests = new ArrayList<>();
         Map<Integer, byte[]> embedded = new HashMap<>();
         for (TextureKey key : TexturePlan.keys(materials)) {
-            int rank = key.rank();
-            MaterialTransfer.Texture texture = materials.textures().get(rank);
-            String location = TextureLocations.registered(path, loading.serial, key);
-            if (texture.embedded()) {
-                if (!embedded.containsKey(rank)) {
-                    embedded.put(rank, readEmbedded(path, handle, rank, refused));
-                }
-                byte[] png = embedded.get(rank);
-                if (png != null) {
-                    requests.add(new TexturePipeline.Request(location, key, texture, png, null));
-                }
-            } else {
-                try {
-                    String resource = TextureLocations.resolveResource(path, texture.path());
-                    requests.add(new TexturePipeline.Request(location, key, texture, null, resource));
-                } catch (IllegalArgumentException invalid) {
-                    refuse(path, rank, invalid.getMessage(), refused);
+            TexturePipeline.Source image = null;
+            if (!key.white()) {
+                image = source(path, handle, materials, key.rank(), embedded, refused);
+                if (image == null) {
+                    continue;
                 }
             }
+            TexturePipeline.Source mask = null;
+            if (key.masked()) {
+                mask = source(path, handle, materials, key.mask(), embedded, refused);
+                if (mask == null) {
+                    continue;
+                }
+            }
+            requests.add(new TexturePipeline.Request(
+                    TextureLocations.registered(path, loading.serial, key), key, image, mask));
         }
         return requests;
+    }
+
+    /**
+     * Sous {@link #nativeLock} : d'où lire l'image d'un rang, ou {@code null} si elle est refusée,
+     * ce qui a été rapporté.
+     */
+    private TexturePipeline.Source source(
+            String path,
+            Handle handle,
+            MaterialTransfer materials,
+            int rank,
+            Map<Integer, byte[]> embedded,
+            Set<Integer> refused) {
+        MaterialTransfer.Texture texture = materials.textures().get(rank);
+        if (texture.embedded()) {
+            if (!embedded.containsKey(rank)) {
+                embedded.put(rank, readEmbedded(path, handle, rank, refused));
+            }
+            byte[] png = embedded.get(rank);
+            return png == null ? null : new TexturePipeline.Source(texture, png, null);
+        }
+        try {
+            return new TexturePipeline.Source(texture, null, TextureLocations.resolveResource(path, texture.path()));
+        } catch (IllegalArgumentException invalid) {
+            refuse(path, rank, invalid.getMessage(), refused);
+            return null;
+        }
     }
 
     /** Sous {@link #nativeLock} : les octets d'une texture embarquée, ou {@code null}. */
@@ -410,7 +435,7 @@ public final class MeshCache {
                 registered.add(stage.prepared.binding().location());
             } catch (RuntimeException failure) {
                 textures.discard(stage.prepared);
-                diagnostics.accept(path + " — texture " + stage.key.rank()
+                diagnostics.accept(path + " — texture " + stage.key.origin()
                         + " : téléversement impossible : " + failure + " ; texture neutre");
             }
         }

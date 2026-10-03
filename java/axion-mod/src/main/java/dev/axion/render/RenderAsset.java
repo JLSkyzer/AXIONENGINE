@@ -12,6 +12,10 @@ import java.util.Map;
  * <p>Construit sur le fil de rendu, une fois les textures téléversées : chaque mesh y reçoit la
  * texture d'albedo qu'il désigne, ou la texture neutre si elle manque — refusée, ou perdue au
  * téléversement. Lu ensuite à chaque frame, sans calcul.
+ *
+ * <p>L'émission suit la fiche C-26 : sans texture d'émissive, le facteur seul, sur du blanc
+ * (sémantique glTF) ; texture d'émissive manquante, la neutre est noire — le mesh n'émet pas,
+ * plutôt que de rayonner partout, ou dans les trous de sa découpe.
  */
 public final class RenderAsset {
 
@@ -22,6 +26,12 @@ public final class RenderAsset {
 
     /** Texture d'albedo liée de chaque mesh ; {@code null} pour la texture neutre. */
     private final TextureBinding[] albedos;
+
+    /** Texture d'émission liée de chaque mesh ; {@code null} pour du blanc. */
+    private final TextureBinding[] emissions;
+
+    /** Vrai pour un mesh qui émet, et dont l'émission est là. */
+    private final boolean[] emitting;
 
     /**
      * Assemble un asset prêt à dessiner.
@@ -47,8 +57,14 @@ public final class RenderAsset {
         this.looks = List.copyOf(looks);
         this.textures = Map.copyOf(textures);
         this.albedos = new TextureBinding[this.looks.size()];
+        this.emissions = new TextureBinding[this.looks.size()];
+        this.emitting = new boolean[this.looks.size()];
         for (int rank = 0; rank < albedos.length; rank++) {
-            albedos[rank] = texture(this.looks.get(rank).albedo());
+            MeshLook look = this.looks.get(rank);
+            albedos[rank] = texture(look.albedo());
+            TextureKey emission = look.emission();
+            emissions[rank] = texture(emission);
+            emitting[rank] = look.emits() && (emission == null || emissions[rank] != null);
         }
     }
 
@@ -78,6 +94,24 @@ public final class RenderAsset {
      */
     public TextureBinding albedo(int rank) {
         return albedos[rank];
+    }
+
+    /**
+     * {@return vrai si un mesh émet, et que son émission est là}
+     *
+     * @param rank rang du mesh
+     */
+    public boolean emits(int rank) {
+        return emitting[rank];
+    }
+
+    /**
+     * {@return la texture d'émission liée d'un mesh qui émet, ou {@code null} : du blanc}
+     *
+     * @param rank rang du mesh
+     */
+    public TextureBinding emission(int rank) {
+        return emissions[rank];
     }
 
     /**

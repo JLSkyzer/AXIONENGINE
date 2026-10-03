@@ -58,18 +58,22 @@ public final class TextureLocations {
      * {@return le nom sous lequel enregistrer une texture préparée}
      *
      * <p>{@code axion:texture/<asset>/<chargement>/<rang>}, suivi de {@code /cutout/<seuil>} pour
-     * une variante binarisée. Le numéro de chargement le rend unique : la texture d'un
-     * chargement précédent, pas encore libérée, ne peut pas être remplacée par erreur, puis
-     * libérée à la place de la nouvelle.
+     * une variante binarisée, ou de {@code /masque/<rang de l'albedo>/<seuil>} pour une émissive
+     * masquée — dont le rang est {@code blanc} sans texture d'émissive. Le numéro de chargement le
+     * rend unique : la texture d'un chargement précédent, pas encore libérée, ne peut pas être
+     * remplacée par erreur, puis libérée à la place de la nouvelle.
      *
      * @param asset clé de l'asset, {@code <ns>:<chemin>}
      * @param load numéro du chargement
      * @param key texture et variante
      */
     public static String registered(String asset, long load, TextureKey key) {
-        String base = NAMESPACE + ":texture/" + asset.replace(':', '/') + "/" + load + "/" + key.rank();
-        return key.cutout()
-                ? base + "/cutout/" + Integer.toHexString(Float.floatToIntBits(key.threshold()))
-                : base;
+        String base = NAMESPACE + ":texture/" + asset.replace(':', '/') + "/" + load + "/"
+                + (key.white() ? "blanc" : Integer.toString(key.rank()));
+        String threshold = Integer.toHexString(Float.floatToIntBits(key.threshold()));
+        if (key.masked()) {
+            return base + "/masque/" + key.mask() + "/" + threshold;
+        }
+        return key.cutout() ? base + "/cutout/" + threshold : base;
     }
 }

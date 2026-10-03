@@ -35,12 +35,16 @@ class RenderCapabilitiesTest {
     @DisplayName("R-1493 : en vanilla, ce que le backend ne fait pas par conception est indisponible, avec son repli")
     void vanillaIndisponiblesParConception() {
         RenderCapabilities vanilla = RenderCapabilities.of(VANILLA);
-        for (Capability capacite :
-                List.of(Capability.ADVANCED_MATERIALS, Capability.SSR, Capability.INSTANCING)) {
+        for (Capability capacite : List.of(
+                Capability.ADVANCED_MATERIALS, Capability.MATERIAL_MAPS, Capability.SSR, Capability.INSTANCING)) {
             assertEquals(Availability.UNAVAILABLE, vanilla.availability(capacite), capacite.name());
         }
         Entry instancing = vanilla.entries().get(Capability.INSTANCING.ordinal());
         assertTrue(instancing.detail().contains("draw calls individuels"), instancing.detail());
+        // ADR-122 §7 : les cartes sans effet en vanilla y sont déclarées, avec ce qui reste.
+        Entry cartes = vanilla.entries().get(Capability.MATERIAL_MAPS.ordinal());
+        assertTrue(cartes.detail().contains("R-1513") && cartes.detail().contains("albedo et émissive"),
+                cartes.detail());
     }
 
     @Test

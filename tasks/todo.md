@@ -1894,9 +1894,31 @@ substituable sans changer rapier »).
                         `AFTER_TRANSLUCENT_BLOCKS`, triée par quad et vidée dans le
                         gestionnaire ; passe 5 (`eyes`, additive) ; matrice de capacités —
                         normal, ORM, height et damage sans effet en vanilla (R-1513, R-1493).
+                        Plan, d'après le bytecode et les shaders lus le 2026-10-03 :
+                        1. émissive d'un matériau CUTOUT : `eyes` ne rejette aucun texel et
+                           brillerait dans les trous ; variante « masquée » — RVB de
+                           l'émissive, ou blanc, × masque de l'albedo binarisé au seuil —,
+                           préparée d'une requête à deux images ;
+                        2. passe 5 à `AFTER_ENTITIES`, après les passes 1 et 2 : `eyes`,
+                           additive, profondeur non écrite, couleur = facteur émissif en gamma
+                           borné à 1 ; sur une surface translucide, dessinée avant elle
+                           (R-1570), l'émission est atténuée par sa transparence — déclaré ;
+                        3. passe 4 : `entity_translucent_cull` / `entity_translucent`, tri des
+                           quads au téléversement ; meshes du plus loin au plus près (distance
+                           au carré de leur centre, R-1580), lots consécutifs vidés dans le
+                           gestionnaire ; `MAIN_TARGET` ne lie rien : sous « Fabulous », la
+                           cible translucide reçoit le dessin ;
+                        4. matrice : cartes normal, ORM, hauteur et dommage indisponibles en
+                           vanilla, déclarées.
+                        Fait : lecture des PNG par un flux — `read(byte[])` les copiait sur la
+                        pile de LWJGL, 64 Kio, qu'une texture plus grosse faisait déborder, écart
+                        de T-b1 —, émissive masquée, passe 5 `eyes`, passe 4 triée et vidée dans
+                        le gestionnaire, matrice ; « Précisions de T-b3 ». Java 365 verts (15
+                        nouveaux, onze mutations attrapées). CI en attente, comme T-b2.
                   - [ ] **T-b4 — contenu de test, vérifié en jeu** : modèles faits dans
                         Blender (cube texturé embarqué, texture RESOURCE, vitre, grille
-                        découpée, panneau émissif, mesh multi-matériau, sol répété), gardés
+                        découpée, panneau émissif, mesh multi-matériau, sol répété, texture
+                        PNG de plus de 64 Kio), gardés
                         dans le dépôt et rejoués à chaque étape.
             - [ ] **T-c** — atlas AXION des textures ≤ 256² (meshes dans `[0,1]`).
             - Hors portée, nommé : usage natif (C-60/C-63), multijoueur, `.mtl` et buffers

@@ -99,8 +99,11 @@ public final class MeshLooks {
     private static MeshLook look(GeometryTransfer geometry, GeometryTransfer.Mesh mesh, MaterialTransfer.Material material) {
         float[] factor = material.albedoFactor();
         int color = argb(factor[0], factor[1], factor[2], factor[3]);
+        float[] emissive = material.emissiveFactor();
+        int emissiveColor = argb(emissive[0], emissive[1], emissive[2], 1.0f);
+        float[] center = center(geometry, mesh);
         if ((material.flags() & MaterialTransfer.FLAG_VERTEX_COLOR) == 0) {
-            return new MeshLook(material, color, null);
+            return new MeshLook(material, color, null, emissiveColor, center);
         }
         byte[] colors = geometry.colors();
         int[] vertexColors = new int[mesh.vertexCount()];
@@ -112,7 +115,25 @@ public final class MeshLooks {
                     factor[2] * unorm(colors[at + 2]),
                     factor[3] * unorm(colors[at + 3]));
         }
-        return new MeshLook(material, color, vertexColors);
+        return new MeshLook(material, color, vertexColors, emissiveColor, center);
+    }
+
+    /** {@return le centre de la boîte qui enclôt les sommets d'un mesh ; l'origine s'il n'en a pas} */
+    static float[] center(GeometryTransfer geometry, GeometryTransfer.Mesh mesh) {
+        if (mesh.vertexCount() == 0) {
+            return new float[3];
+        }
+        float[] positions = geometry.positions();
+        float[] min = {Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY};
+        float[] max = {Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY};
+        for (int vertex = mesh.vertexOffset(); vertex < mesh.vertexOffset() + mesh.vertexCount(); vertex++) {
+            for (int axis = 0; axis < 3; axis++) {
+                float value = positions[vertex * 3 + axis];
+                min[axis] = Math.min(min[axis], value);
+                max[axis] = Math.max(max[axis], value);
+            }
+        }
+        return new float[] {(min[0] + max[0]) / 2.0f, (min[1] + max[1]) / 2.0f, (min[2] + max[2]) / 2.0f};
     }
 
     /**

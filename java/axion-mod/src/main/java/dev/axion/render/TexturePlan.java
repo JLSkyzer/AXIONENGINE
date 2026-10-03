@@ -10,8 +10,9 @@ import java.util.Set;
  * Les textures qu'un asset doit charger pour le backend vanilla (ADR-122 §7).
  *
  * <p>Deux slots seulement y servent : l'albedo, sous la variante qu'exige le mode de mélange, et
- * l'émissive, quand le matériau émet. Normal, ORM, height et damage sont sans effet dans ce
- * backend (R-1513) : les charger coûterait de la mémoire pour rien.
+ * l'émissive, quand le matériau émet — masquée par l'albedo d'un matériau découpé. Normal, ORM,
+ * height et damage sont sans effet dans ce backend (R-1513) : les charger coûterait de la mémoire
+ * pour rien.
  */
 public final class TexturePlan {
 
@@ -35,13 +36,24 @@ public final class TexturePlan {
     }
 
     /**
-     * {@return la texture émissive d'un matériau, ou {@code null} s'il n'émet pas ou n'en a pas}
+     * {@return la texture émissive d'un matériau, ou {@code null} : il n'émet pas, ou il émet son
+     * facteur seul, sur du blanc (sémantique glTF)}
+     *
+     * <p>Un matériau CUTOUT texturé veut la variante masquée par son albedo (voir
+     * {@link TextureKey}) — même sans texture d'émissive : c'est alors du blanc qui est masqué.
      *
      * @param material matériau
      */
     public static TextureKey emissive(MaterialTransfer.Material material) {
+        if (!emits(material)) {
+            return null;
+        }
         int slot = material.emissiveTexture();
-        return slot == MaterialTransfer.NO_TEXTURE || !emits(material) ? null : TextureKey.plain(slot);
+        int albedo = material.albedoTexture();
+        if (material.blendMode() == MaterialTransfer.BLEND_CUTOUT && albedo != MaterialTransfer.NO_TEXTURE) {
+            return TextureKey.masked(slot, albedo, cutoutThreshold(material));
+        }
+        return slot == MaterialTransfer.NO_TEXTURE ? null : TextureKey.plain(slot);
     }
 
     /**

@@ -2,6 +2,7 @@ package dev.axion.render;
 
 import static dev.axion.render.TestMaterials.material;
 import static dev.axion.render.TestMaterials.table;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -198,6 +199,35 @@ class MeshLooksTest {
         assertTrue(only(table(List.of(material().factor(1, 1, 1, 0).cutout(0.0f))), mesh).visible());
         // Hors découpe, l'alpha ne cache rien.
         assertTrue(only(table(List.of(material().factor(1, 1, 1, 0))), mesh).visible());
+    }
+
+    @Test
+    @DisplayName("L'émission est le facteur émissif seul, en gamma, borné à 1, sans la couleur des sommets")
+    void lEmissionEstLeFacteurEmissifSeul() {
+        MeshLook look = only(
+                table(List.of(material()
+                        .emissive(MaterialTransfer.NO_TEXTURE, 1.0f, 0.5f, 2.0f)
+                        .flags(MaterialTransfer.FLAG_VERTEX_COLOR))),
+                new TestGeometry.Mesh(0, 0, COLORS));
+
+        assertTrue(look.emits());
+        // 0,5 → 186 en gamma ; 2 se borne à 1 ; les sommets colorés n'y changent rien.
+        assertEquals(argb(255, 255, 186, 255), look.emissiveColor());
+        assertNull(look.emission(), "sans texture d'émissive : le facteur seul, sur du blanc");
+
+        MeshLook eteint = only(table(List.of(material())), TestGeometry.white(0, 0));
+        assertFalse(eteint.emits());
+        assertEquals(argb(255, 0, 0, 0), eteint.emissiveColor());
+    }
+
+    @Test
+    @DisplayName("Le centre d'un mesh est celui de la boîte qui enclôt ses propres sommets")
+    void leCentreDUnMeshEstCeluiDeSaBoite() {
+        // Sommets du mesh de rang r : (r, 0, 0), (r, 1, 0), (r, 2, 0).
+        GeometryTransfer geometry = TestGeometry.of(TestGeometry.white(0, 0), TestGeometry.white(0, 0));
+        MeshLooks.Result result = MeshLooks.of(geometry, table(List.of(material())));
+        assertArrayEquals(new float[] {0, 1, 0}, result.looks().get(0).center());
+        assertArrayEquals(new float[] {1, 1, 0}, result.looks().get(1).center(), "les sommets d'un autre mesh n'y entrent pas");
     }
 
     @Test

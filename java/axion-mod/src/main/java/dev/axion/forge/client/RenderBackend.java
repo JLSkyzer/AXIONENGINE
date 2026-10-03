@@ -24,12 +24,22 @@ interface RenderBackend {
     BackendSelection.Kind kind();
 
     /**
-     * Dessine les surfaces opaques puis découpées des assemblies (passes 1 et 2, stage
-     * {@code AFTER_ENTITIES}, R-1570).
+     * Dessine les surfaces opaques puis découpées des assemblies, puis leur émission (passes 1, 2
+     * et 5, stage {@code AFTER_ENTITIES}, R-1570).
      *
      * @param frame contexte de la frame
      */
     void renderOpaque(Frame frame);
+
+    /**
+     * Dessine les surfaces translucides des assemblies, de la plus lointaine à la plus proche
+     * (passe 4, stage {@code AFTER_TRANSLUCENT_BLOCKS}, R-1570, R-1580). Tout ce qui est dessiné
+     * y est vidé avant de rendre la main : sous « Fabulous », la cible translucide n'est liée que
+     * pendant ce stage.
+     *
+     * @param frame contexte de la frame
+     */
+    void renderTranslucent(Frame frame);
 
     /**
      * Contexte d'une frame de rendu.

@@ -9,14 +9,14 @@ import java.util.Map;
 import net.minecraft.client.renderer.RenderType;
 
 /**
- * Types de rendu des surfaces d'assets, passes 1 et 2 (ADR-122 §7, R-570, R-741).
+ * Types de rendu des surfaces d'assets, passes 1, 2, 4 et 5 (ADR-122 §7, R-570, R-741).
  *
  * <p>Les types d'entité vanilla imposent à chaque dessin le filtrage au plus proche, sans mipmap :
  * leur texture est liée par {@code TextureStateShard(rl, false, false)}, qui l'applique. Ceux-ci
- * reprennent leur composition — shader d'entité vanilla, sans mélange, lightmap, overlay, état des
- * faces —, mais lient la texture avec le filtrage de son téléversement : linéaire si la source le
- * déclare, mipmaps quand il y en a. Aucun appel OpenGL direct, aucun shader propre : un shaderpack
- * reconnaît les shaders vanilla et les remplace.
+ * reprennent leur composition — shader vanilla, mélange, lightmap, overlay, état des faces,
+ * écriture de la profondeur —, mais lient la texture avec le filtrage de son téléversement :
+ * linéaire si la source le déclare, mipmaps quand il y en a. Aucun appel OpenGL direct, aucun
+ * shader propre : des shaders vanilla seulement, ceux qu'un shaderpack remplace (ADR-122).
  *
  * <p><b>Sans contour.</b> Un type à contour crée, pour sa texture, un type de contour que
  * Minecraft mémorise dans une table qui ne se vide jamais ({@code RenderType.OUTLINE}, relevé
@@ -38,10 +38,10 @@ abstract class AxionRenderTypes extends RenderType {
     }
 
     /**
-     * {@return le type de rendu d'une surface des passes 1 et 2}
+     * {@return le type de rendu d'une surface, ou de son émission}
      *
      * @param texture texture liée, nom enregistré et filtrage
-     * @param shader shader d'entité vanilla
+     * @param shader shader vanilla
      * @param doubleSided vrai si les deux faces se dessinent
      */
     static RenderType entity(TextureBinding texture, EntityShader shader, boolean doubleSided) {
@@ -57,27 +57,60 @@ abstract class AxionRenderTypes extends RenderType {
         TYPES.keySet().removeIf(key -> key.texture().location().equals(location));
     }
 
-    /** Compose le type, comme le type d'entité vanilla du même shader, filtrage mis à part. */
+    /** Compose le type, comme le type vanilla du même shader, filtrage et contour mis à part. */
     private static RenderType build(Key key) {
-        ShaderStateShard shader = switch (key.shader()) {
-            case SOLID -> RENDERTYPE_ENTITY_SOLID_SHADER;
-            case CUTOUT -> RENDERTYPE_ENTITY_CUTOUT_SHADER;
-            case CUTOUT_NO_CULL -> RENDERTYPE_ENTITY_CUTOUT_NO_CULL_SHADER;
+        TextureBinding binding = key.texture();
+        TextureStateShard texture = new TextureStateShard(
+                VanillaTexturePipeline.location(binding.location()), binding.blur(), binding.mipmap());
+        CullStateShard faces = key.doubleSided() ? NO_CULL : CULL;
+        String name = "axion_" + key.shader().vanillaName();
+        return switch (key.shader()) {
+            // Passes 1 et 2 : pas de tri, elles écrivent la profondeur.
+            case SOLID -> create(name, DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS, 256, true, false,
+                    lit(RENDERTYPE_ENTITY_SOLID_SHADER, texture, faces));
+            case CUTOUT -> create(name, DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS, 256, true, false,
+                    lit(RENDERTYPE_ENTITY_CUTOUT_SHADER, texture, faces));
+            case CUTOUT_NO_CULL -> create(name, DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS, 256, true,
+                    false, lit(RENDERTYPE_ENTITY_CUTOUT_NO_CULL_SHADER, texture, faces));
+            // Passe 4, comme entity_translucent(_cull) : mélange alpha, profondeur écrite, quads
+            // triés au téléversement, du plus loin au plus près.
+            case TRANSLUCENT_CULL -> create(name, DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS, 256, true,
+                    true, blended(RENDERTYPE_ENTITY_TRANSLUCENT_CULL_SHADER, texture, faces));
+            case TRANSLUCENT -> create(name, DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS, 256, true,
+                    true, blended(RENDERTYPE_ENTITY_TRANSLUCENT_SHADER, texture, faces));
+            // Passe 5, comme eyes : additive, profondeur testée mais non écrite, sans lightmap ni
+            // overlay ; quads triés au téléversement, comme lui.
+            case EYES -> create(name, DefaultVertexFormat.NEW_ENTITY, VertexFormat.Mode.QUADS, 256, false, true,
+                    CompositeState.builder()
+                            .setShaderState(RENDERTYPE_EYES_SHADER)
+                            .setTextureState(texture)
+                            .setTransparencyState(ADDITIVE_TRANSPARENCY)
+                            .setCullState(faces)
+                            .setWriteMaskState(COLOR_WRITE)
+                            .createCompositeState(false));
         };
-        TextureBinding texture = key.texture();
-        CompositeState state = CompositeState.builder()
+    }
+
+    /** L'état des passes 1 et 2 : celui des types d'entité vanilla, sans mélange, éclairé. */
+    private static CompositeState lit(ShaderStateShard shader, TextureStateShard texture, CullStateShard faces) {
+        return entity(shader, texture, faces, NO_TRANSPARENCY);
+    }
+
+    /** L'état de la passe 4 : celui des types d'entité translucides vanilla, mélange alpha, éclairé. */
+    private static CompositeState blended(ShaderStateShard shader, TextureStateShard texture, CullStateShard faces) {
+        return entity(shader, texture, faces, TRANSLUCENT_TRANSPARENCY);
+    }
+
+    private static CompositeState entity(
+            ShaderStateShard shader, TextureStateShard texture, CullStateShard faces, TransparencyStateShard blend) {
+        return CompositeState.builder()
                 .setShaderState(shader)
-                .setTextureState(new TextureStateShard(
-                        VanillaTexturePipeline.location(texture.location()), texture.blur(), texture.mipmap()))
-                .setTransparencyState(NO_TRANSPARENCY)
-                .setCullState(key.doubleSided() ? NO_CULL : CULL)
+                .setTextureState(texture)
+                .setTransparencyState(blend)
+                .setCullState(faces)
                 .setLightmapState(LIGHTMAP)
                 .setOverlayState(OVERLAY)
                 .createCompositeState(false);
-        // Mêmes format, mode et tampon initial que les types d'entité vanilla ; pas de tri, ces
-        // passes écrivent la profondeur.
-        return create("axion_" + key.shader().vanillaName(), DefaultVertexFormat.NEW_ENTITY,
-                VertexFormat.Mode.QUADS, 256, true, false, state);
     }
 
     /** Une combinaison : texture liée, shader, faces. */

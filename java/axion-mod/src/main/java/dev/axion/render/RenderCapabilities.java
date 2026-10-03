@@ -19,7 +19,10 @@ import java.util.List;
  */
 public final class RenderCapabilities {
 
-    /** Capacités de la matrice du §19.2bis, dans son ordre. */
+    /**
+     * Capacités de la matrice du §19.2bis, dans son ordre, et les cartes de matériau qu'ADR-122 §7
+     * y déclare.
+     */
     public enum Capability {
         /** Modèle d'éclairage. */
         LIGHTING("éclairage"),
@@ -29,6 +32,8 @@ public final class RenderCapabilities {
         DECALS("décalques"),
         /** Parallax, clearcoat, sheen, anisotropie. */
         ADVANCED_MATERIALS("parallax, clearcoat, sheen, anisotropie"),
+        /** Cartes normal, ORM, hauteur et dommage d'un matériau (ADR-122 §7). */
+        MATERIAL_MAPS("cartes normal, ORM, hauteur et dommage"),
         /** Réflexions en espace écran (R-1560). */
         SSR("SSR"),
         /** Instancing et multi-draw indirect (C-65). */
@@ -95,13 +100,16 @@ public final class RenderCapabilities {
     private static List<Entry> vanilla() {
         return List.of(
                 new Entry(Capability.LIGHTING, Availability.AVAILABLE,
-                        "vanilla (lightmap et ombrage des entités), ou celui du shaderpack"),
+                        "VANILLA_COMPAT (lightmap et ombrage des entités, pleine lumière sans éclairage,"
+                                + " émissive additive), ou celui du shaderpack"),
                 new Entry(Capability.SHADOWS, Availability.NOT_DELIVERED,
                         "ombre de contact, ou celles du shaderpack : C-80"),
                 new Entry(Capability.DECALS, Availability.NOT_DELIVERED,
                         "quads translucides plafonnés (R-743) : C-69"),
                 new Entry(Capability.ADVANCED_MATERIALS, Availability.UNAVAILABLE,
                         "ignorés, matériau rendu sans eux"),
+                new Entry(Capability.MATERIAL_MAPS, Availability.UNAVAILABLE,
+                        "sans effet, ni chargées : albedo et émissive seuls (R-1513)"),
                 new Entry(Capability.SSR, Availability.UNAVAILABLE,
                         "jamais dans ce backend (R-1560)"),
                 new Entry(Capability.INSTANCING, Availability.UNAVAILABLE,

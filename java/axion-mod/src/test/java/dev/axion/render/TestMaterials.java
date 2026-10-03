@@ -20,7 +20,9 @@ final class TestMaterials {
     /** Un matériau d'essai, aux valeurs par défaut de glTF ; chaque champ se change. */
     static final class Material {
         private int albedo = MaterialTransfer.NO_TEXTURE;
+        private int emissive = MaterialTransfer.NO_TEXTURE;
         private float[] albedoFactor = {1.0f, 1.0f, 1.0f, 1.0f};
+        private float[] emissiveFactor = {0.0f, 0.0f, 0.0f};
         private float cutoff = 0.5f;
         private int blend = MaterialTransfer.BLEND_OPAQUE;
         private int cull = MaterialTransfer.CULL_BACK;
@@ -29,6 +31,12 @@ final class TestMaterials {
 
         Material albedo(int slot) {
             albedo = slot;
+            return this;
+        }
+
+        Material emissive(int slot, float red, float green, float blue) {
+            emissive = slot;
+            emissiveFactor = new float[] {red, green, blue};
             return this;
         }
 
@@ -87,16 +95,21 @@ final class TestMaterials {
         for (Material material : materials) {
             // Empreinte, six slots, dix-sept flottants, énumérations, réserve, drapeaux, usure.
             out.putLong(0L);
+            // Slots : albedo, normal, ORM, émissive, hauteur, dommage.
             out.putShort((short) material.albedo);
-            for (int slot = 0; slot < 5; slot++) {
-                out.putShort((short) MaterialTransfer.NO_TEXTURE);
-            }
+            out.putShort((short) MaterialTransfer.NO_TEXTURE);
+            out.putShort((short) MaterialTransfer.NO_TEXTURE);
+            out.putShort((short) material.emissive);
+            out.putShort((short) MaterialTransfer.NO_TEXTURE);
+            out.putShort((short) MaterialTransfer.NO_TEXTURE);
             for (float value : material.albedoFactor) {
                 out.putFloat(value);
             }
-            // Émissive nulle ; métal, rugosité, occlusion, échelle des normales, découpe, puis
-            // cinq nuls.
-            for (float value : new float[] {0, 0, 0, 1, 1, 1, 1, material.cutoff, 0, 0, 0, 0, 0}) {
+            for (float value : material.emissiveFactor) {
+                out.putFloat(value);
+            }
+            // Métal, rugosité, occlusion, échelle des normales, découpe, puis cinq nuls.
+            for (float value : new float[] {1, 1, 1, 1, material.cutoff, 0, 0, 0, 0, 0}) {
                 out.putFloat(value);
             }
             out.put((byte) material.blend).put((byte) material.cull).put((byte) material.shading).put((byte) 0);

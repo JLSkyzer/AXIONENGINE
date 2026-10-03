@@ -51,4 +51,32 @@ class TextureRulesTest {
         assertEquals(255, TextureRules.cutoutAlpha(0, 0.0f), "un seuil nul garde tout");
         assertEquals(0, TextureRules.cutoutAlpha(255, Float.POSITIVE_INFINITY), "un seuil infini coupe tout");
     }
+
+    @Test
+    @DisplayName("Une émissive masquée garde sa couleur où l'albedo est gardé, du noir ailleurs, toujours opaque")
+    void uneEmissiveMasqueeGardeSaCouleurOuLAlbedoEstGarde() {
+        // Texels comme getPixelRGBA les rend : alpha dans l'octet haut, puis bleu, vert, rouge.
+        int orange = 0x40_10_80_FF;
+        assertEquals(0xFF_10_80_FF, TextureRules.maskedEmission(orange, 128, 0.5f), "l'alpha de l'émissive ne compte pas");
+        assertEquals(0xFF_00_00_00, TextureRules.maskedEmission(orange, 127, 0.5f));
+        assertEquals(0xFF_FF_FF_FF, TextureRules.maskedEmission(0xFF_FF_FF_FF, 255, 1.0f), "du blanc, gardé");
+        assertEquals(0xFF_00_00_00, TextureRules.maskedEmission(0xFF_FF_FF_FF, 255, Float.POSITIVE_INFINITY));
+    }
+
+    @Test
+    @DisplayName("Le masque se lit au plus proche, sous le centre du texel de l'émissive")
+    void leMasqueSeLitAuPlusProche() {
+        for (int x = 0; x < 8; x++) {
+            assertEquals(x, TextureRules.maskCoordinate(x, 8, 8), "mêmes dimensions, même texel");
+        }
+        // Émissive deux fois plus grande que le masque : deux de ses texels par texel du masque.
+        assertEquals(0, TextureRules.maskCoordinate(1, 8, 4));
+        assertEquals(1, TextureRules.maskCoordinate(2, 8, 4));
+        assertEquals(3, TextureRules.maskCoordinate(7, 8, 4));
+        // Émissive plus petite : le texel du masque sous son centre.
+        assertEquals(1, TextureRules.maskCoordinate(0, 2, 4));
+        assertEquals(3, TextureRules.maskCoordinate(1, 2, 4));
+        // Jamais hors du masque.
+        assertEquals(2, TextureRules.maskCoordinate(4, 5, 3));
+    }
 }

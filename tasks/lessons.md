@@ -913,3 +913,30 @@ plus servi —, pas de celui de la frame — plus personne ne le dessine.
 **Règle.** Une ressource du fil de rendu ne se libère pas pendant la frame qui peut encore
 s'en servir : la libération se confie au passage suivant du fil de rendu. Relire chaque chemin
 de libération en se demandant qui tient encore la ressource à cet instant.
+
+## 2026-10-03 | Un PNG de plus de 64 Kio aurait arrêté le chargement des textures
+
+**Ce qui a mal tourné.** T-b1 décodait les textures par `NativeImage.read(byte[])`, qui copie
+le PNG sur la pile de LWJGL (`MemoryStack`, 64 Kio par défaut, que rien ne règle ici). Une
+texture plus grosse — la plupart — l'aurait fait déborder : `OutOfMemoryError`, une `Error`
+qu'aucun `catch` du cache ne rattrapait ; la tâche de fond s'arrêtait, l'asset restait en
+chargement. Relevé dans le bytecode pendant T-b3 ; les tests, sans Minecraft, ne décodent
+aucune image, et rien n'a encore tourné en jeu.
+
+**Cause.** Une API adossée à du natif employée sans lire où elle alloue.
+
+**Règle.** Avant d'employer un décodeur adossé à du natif, lire où il alloue et ce qu'il lève.
+Le contenu d'essai de T-b4 compte une texture de plus de 64 Kio.
+
+## 2026-10-03 | Un désassemblage filtré a fait croire à un défaut qui n'existait pas
+
+**Ce qui a mal tourné.** Pendant T-b3, un `javap` filtré par `grep` a montré `read(byte[])`
+appeler `read(ByteBuffer)`, et j'en ai conclu qu'un format nul gardait celui du PNG : un PNG RGB
+serait sorti en RGB. Le filtre avait retiré l'instruction décisive, `getstatic Format.RGBA`.
+La « correction » et sa justification étaient écrites quand la lecture de la méthode entière
+les a démenties — avant tout commit.
+
+**Cause.** Une conclusion tirée de ce que le filtre laissait voir, pas de la méthode.
+
+**Règle.** Lire une méthode entière, sans filtre, avant d'en déduire un défaut ; un `grep` sur un
+désassemblage sert à trouver, pas à conclure.

@@ -11,6 +11,10 @@ import dev.axion.asset.MaterialTransfer;
  * gamma où dessine Minecraft — puissance 1/2,2 sur RVB, alpha linéaire —, puis empaquetée en ARGB,
  * huit bits par canal. Le shader la multiplie au texel, déjà en espace gamma.
  *
+ * <p>L'émission, elle, est le facteur émissif seul, ramené en gamma comme l'albedo et borné à 1 :
+ * une intensité supérieure ({@code KHR_materials_emissive_strength}) est plafonnée (déclaré). La
+ * couleur des sommets ne la module pas (sémantique glTF).
+ *
  * <p>Les tableaux sont ceux de l'instance, sans copie : le rendu les lit à chaque frame. Ils ne
  * doivent pas être modifiés.
  *
@@ -18,8 +22,12 @@ import dev.axion.asset.MaterialTransfer;
  * @param color couleur du facteur seul, ARGB : celle de tous les sommets sans {@code VERTEX_COLOR}
  * @param vertexColors couleur de chaque sommet, ARGB, au rang que lui donnent les indices locaux du
  *     mesh ; {@code null} sans {@code VERTEX_COLOR}
+ * @param emissiveColor couleur de l'émission, ARGB opaque ; noire si le matériau n'émet pas
+ * @param center centre de la boîte qui enclôt les sommets du mesh, en repère du node : la passe 4
+ *     trie les surfaces translucides par sa distance (R-1580)
  */
-public record MeshLook(MaterialTransfer.Material material, int color, int[] vertexColors) {
+public record MeshLook(
+        MaterialTransfer.Material material, int color, int[] vertexColors, int emissiveColor, float[] center) {
 
     /** {@return la passe qui dessine le mesh} */
     public SurfacePass pass() {
@@ -56,6 +64,19 @@ public record MeshLook(MaterialTransfer.Material material, int color, int[] vert
     /** {@return la texture d'albedo et sa variante, ou {@code null} : la texture neutre} */
     public TextureKey albedo() {
         return TexturePlan.albedo(material);
+    }
+
+    /** {@return vrai si le matériau émet : un dessin de plus, en passe 5} */
+    public boolean emits() {
+        return TexturePlan.emits(material);
+    }
+
+    /**
+     * {@return la texture de l'émission et sa variante, ou {@code null} : le facteur seul, sur du
+     * blanc}
+     */
+    public TextureKey emission() {
+        return TexturePlan.emissive(material);
     }
 
     /**

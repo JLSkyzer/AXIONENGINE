@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import dev.axion.asset.MaterialTransfer;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -48,6 +49,30 @@ class TexturePlanTest {
     void lEmissiveNeSeChargeQueSiLeMateriauEmet() {
         assertNull(TexturePlan.emissive(material(NO_TEXTURE, 1, BLEND_OPAQUE, 0.5f, 1, 0)), "facteur nul");
         assertEquals(TextureKey.plain(1), TexturePlan.emissive(material(NO_TEXTURE, 1, BLEND_OPAQUE, 0.5f, 1, 2)));
+    }
+
+    @Test
+    @DisplayName("L'émissive d'un matériau découpé texturé est masquée par son albedo, même sans texture d'émissive")
+    void lEmissiveDUnMateriauDecoupeEstMasquee() {
+        assertEquals(TextureKey.masked(1, 0, 0.5f), TexturePlan.emissive(material(0, 1, BLEND_CUTOUT, 0.5f, 1, 2)));
+        assertEquals(TextureKey.masked(NO_TEXTURE, 0, 0.5f),
+                TexturePlan.emissive(material(0, NO_TEXTURE, BLEND_CUTOUT, 0.5f, 1, 2)), "du blanc, masqué");
+        assertEquals(TextureKey.plain(1), TexturePlan.emissive(material(NO_TEXTURE, 1, BLEND_CUTOUT, 0.5f, 1, 2)),
+                "sans albedo texturé, rien à masquer");
+        assertEquals(TextureKey.plain(1), TexturePlan.emissive(material(0, 1, BLEND_OPAQUE, 0.5f, 1, 2)));
+        assertNull(TexturePlan.emissive(material(0, 1, BLEND_CUTOUT, 0.5f, 1, 0)), "aucune émission");
+        assertNull(TexturePlan.emissive(material(0, NO_TEXTURE, BLEND_OPAQUE, 0.5f, 1, 2)), "facteur seul, sur du blanc");
+    }
+
+    @Test
+    @DisplayName("Les textures à charger comprennent la variante découpée et l'émissive masquée, chacune une fois")
+    void lesClesComprennentLEmissiveMasquee() {
+        MaterialTransfer table = TestMaterials.table(
+                List.of(
+                        TestMaterials.material().albedo(0).cutout(0.5f).emissive(1, 1, 0.5f, 0),
+                        TestMaterials.material().albedo(0).cutout(0.5f).emissive(1, 1, 0.5f, 0)),
+                TestMaterials.EMBEDDED, TestMaterials.EMBEDDED);
+        assertEquals(List.of(TextureKey.cutout(0, 0.5f), TextureKey.masked(1, 0, 0.5f)), TexturePlan.keys(table));
     }
 
     @Test

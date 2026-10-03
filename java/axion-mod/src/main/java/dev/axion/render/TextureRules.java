@@ -78,4 +78,33 @@ public final class TextureRules {
     public static int cutoutAlpha(int alpha, float threshold) {
         return alpha / 255.0 >= threshold ? 255 : 0;
     }
+
+    /**
+     * {@return un texel d'émissive masqué : sa couleur là où l'albedo est gardé, du noir ailleurs ;
+     * opaque dans les deux cas}
+     *
+     * <p>Les texels sont empaquetés comme les rend {@code NativeImage.getPixelRGBA} : l'alpha dans
+     * l'octet haut, les trois couleurs dans les trois autres. L'alpha de l'émissive ne compte pas
+     * (sémantique glTF) ; le mélange additif ignore celui du résultat.
+     *
+     * @param emission texel de l'émissive, ou {@code 0xFFFFFFFF} pour du blanc
+     * @param albedoAlpha alpha du texel de l'albedo qui le couvre, de 0 à 255
+     * @param threshold seuil de la découpe du matériau
+     */
+    public static int maskedEmission(int emission, int albedoAlpha, float threshold) {
+        return cutoutAlpha(albedoAlpha, threshold) == 255 ? emission | 0xFF000000 : 0xFF000000;
+    }
+
+    /**
+     * {@return la coordonnée, dans le masque, du texel qui couvre le centre d'un texel de
+     * l'émissive} — au plus proche, l'albedo et l'émissive partageant leurs coordonnées de texture
+     * mais pas forcément leurs dimensions.
+     *
+     * @param coordinate coordonnée du texel dans l'émissive
+     * @param size dimension de l'émissive sur cet axe
+     * @param maskSize dimension du masque sur cet axe
+     */
+    public static int maskCoordinate(int coordinate, int size, int maskSize) {
+        return Math.min(maskSize - 1, (int) ((coordinate + 0.5) * maskSize / size));
+    }
 }

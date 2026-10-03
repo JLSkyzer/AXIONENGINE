@@ -3,6 +3,7 @@ package dev.axion.render;
 import static dev.axion.render.TestMaterials.EMBEDDED;
 import static dev.axion.render.TestMaterials.material;
 import static dev.axion.render.TestMaterials.table;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -118,7 +119,7 @@ class MeshCacheTest {
         @Override
         public Prepared prepare(Request request) throws TextureRefusal {
             requests.add(request);
-            if (refused.contains(request.key().rank())) {
+            if (refused.contains(request.key().origin())) {
                 throw new TextureRefusal("E-3004 : pas un PNG (R-532)");
             }
             return new Staged(new TextureBinding(request.location(), blur, mipmap));
@@ -463,8 +464,9 @@ class MeshCacheTest {
 
         assertEquals(1, textures.requests.size(), () -> textures.requests.toString());
         TexturePipeline.Request request = textures.requests.get(0);
-        assertEquals("axion:axion/models/test/tex/a.png", request.resource());
-        assertNull(request.embedded());
+        assertEquals("axion:axion/models/test/tex/a.png", request.image().resource());
+        assertNull(request.image().embedded());
+        assertNull(request.mask());
         assertEquals(1, diagnostics.size(), () -> diagnostics.toString());
         assertTrue(diagnostics.get(0).contains("E-3002"));
     }
@@ -481,6 +483,55 @@ class MeshCacheTest {
         assertEquals(List.of(TextureKey.plain(0), TextureKey.cutout(0, 0.5f)),
                 textures.requests.stream().map(TexturePipeline.Request::key).toList());
         assertEquals(2, cache.liveTextures());
+    }
+
+    @Test
+    @DisplayName("L'émissive d'un matériau découpé se prépare masquée, chaque image lue une fois")
+    void lEmissiveMasqueeSePrepareDesDeuxImages() {
+        loader.materials = table(
+                List.of(material().albedo(0).cutout(0.5f).emissive(1, 1, 0.5f, 0)), EMBEDDED, EMBEDDED);
+        loader.pngs.put(0, new byte[] {1});
+        loader.pngs.put(1, new byte[] {2});
+        cache.get(PATH, published("grille lumineuse"));
+        settle();
+
+        assertEquals(List.of(0, 1), loader.textureReads, "une image lue deux fois");
+        assertEquals(List.of(TextureKey.cutout(0, 0.5f), TextureKey.masked(1, 0, 0.5f)),
+                textures.requests.stream().map(TexturePipeline.Request::key).toList());
+        TexturePipeline.Request masked = textures.requests.get(1);
+        assertArrayEquals(new byte[] {2}, masked.image().embedded(), "l'émissive");
+        assertArrayEquals(new byte[] {1}, masked.mask().embedded(), "l'albedo qui la masque");
+        assertEquals(2, cache.liveTextures());
+    }
+
+    @Test
+    @DisplayName("Sans texture d'émissive, c'est du blanc qui est masqué")
+    void sansTextureDEmissiveCEstDuBlancQuiEstMasque() {
+        loader.materials = table(
+                List.of(material().albedo(0).cutout(0.5f).emissive(MaterialTransfer.NO_TEXTURE, 1, 1, 1)), EMBEDDED);
+        loader.pngs.put(0, new byte[] {1});
+        cache.get(PATH, published("grille blanche"));
+        settle();
+
+        TexturePipeline.Request white = textures.requests.get(1);
+        assertEquals(TextureKey.masked(MaterialTransfer.NO_TEXTURE, 0, 0.5f), white.key());
+        assertNull(white.image(), "pas d'image : du blanc");
+        assertArrayEquals(new byte[] {1}, white.mask().embedded());
+        assertTrue(white.location().contains("/blanc/masque/0/"), white.location());
+    }
+
+    @Test
+    @DisplayName("Un albedo refusé emporte l'émissive qu'il masque, rapporté une fois")
+    void unAlbedoRefuseEmporteLEmissiveQuIlMasque() {
+        loader.materials = table(
+                List.of(material().albedo(0).cutout(0.5f).emissive(1, 1, 0.5f, 0)), EMBEDDED, EMBEDDED);
+        loader.pngs.put(1, new byte[] {2});
+        cache.get(PATH, published("grille lumineuse"));
+        settle();
+
+        assertTrue(textures.requests.isEmpty(), () -> textures.requests.toString());
+        assertEquals(1, diagnostics.size(), () -> diagnostics.toString());
+        assertTrue(diagnostics.get(0).contains("texture 0"), diagnostics.get(0));
     }
 
     @Test
