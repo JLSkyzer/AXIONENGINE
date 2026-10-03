@@ -2,8 +2,10 @@ package dev.axion.forge.client;
 
 import dev.axion.AxionMod;
 import dev.axion.forge.AxionEntities;
+import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.EntityRenderersEvent;
+import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -27,5 +29,18 @@ public final class AxionClientSetup {
     @SubscribeEvent
     public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(AxionEntities.ASSEMBLY.get(), AxionEntityRenderer::new);
+    }
+
+    /**
+     * Rechargement des ressources du client (R-752) : AXION y rend ses maillages et libère ses
+     * textures, reconstruits à la demande — une texture de ressource a pu changer avec le resource
+     * pack, et le réglage des mipmaps avec les options.
+     *
+     * @param event enregistrement des écouteurs de rechargement
+     */
+    @SubscribeEvent
+    public static void registerReloadListeners(RegisterClientReloadListenersEvent event) {
+        event.registerReloadListener(
+                (ResourceManagerReloadListener) manager -> AxionRenderPass.onResourcesReloaded());
     }
 }

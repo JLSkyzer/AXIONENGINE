@@ -3,6 +3,9 @@ package dev.axion.render;
 import dev.axion.asset.AssetLoader;
 import dev.axion.asset.AssetRegistry.Published;
 import dev.axion.asset.GeometryTransfer;
+import dev.axion.asset.MaterialTransfer;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -10,41 +13,48 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
- * Maillages des assets, chargés dans le natif pour le rendu client (ADR-119, C-61 T2).
+ * Maillages, matériaux et textures des assets, chargés pour le rendu client (ADR-119, ADR-122,
+ * C-61 T2, C-26).
  *
  * <p>Chaque asset publié ({@link Published}) est chargé une fois par le natif, qui en décode la
- * géométrie et la pose de repos ; le cache garde le résultat et le <b>handle</b> qui va avec.
- * Trois threads s'y croisent, et la classe est construite autour d'eux :
+ * géométrie, la pose de repos et la table des matériaux ; ses textures sont préparées à la suite,
+ * puis téléversées. Le cache garde le résultat, le <b>handle</b> natif qui va avec et les
+ * textures enregistrées. Trois threads s'y croisent, et la classe est construite autour d'eux :
  *
  * <ul>
- *   <li><b>le thread de rendu</b> appelle {@link #get} à chaque frame. Il ne bloque jamais :
- *       une table concurrente lui répond, et un maillage absent est demandé puis remplacé, le
- *       temps du chargement, par la boîte de repli (décision 2 d'ADR-119) ;
- *   <li><b>le thread de fond</b> exécute les chargements. Un gros modèle s'y décode sans
- *       à-coup à l'écran ;
+ *   <li><b>le thread de rendu</b> appelle {@link #get} à chaque frame. Il ne bloque jamais : une
+ *       table concurrente lui répond, et un asset absent est demandé puis remplacé, le temps du
+ *       chargement, par la boîte de repli (décision 2 d'ADR-119). C'est lui aussi qui téléverse
+ *       et libère les textures : il est seul à toucher au contexte graphique (R-751) ;
+ *   <li><b>le thread de fond</b> exécute les chargements et prépare les textures — lecture,
+ *       contrôles, découpe, mipmaps. Un gros modèle s'y décode sans à-coup à l'écran ;
  *   <li><b>le thread qui arrête</b> — rendu à la sortie d'un monde, serveur intégré à l'arrêt
  *       du jeu — rend tous les handles par {@link #releaseAll} ou {@link #close}, avant la
  *       fermeture du natif (R-321, R-322).
  * </ul>
  *
- * <p>Tout ce qui touche un handle natif passe sous un même verrou : le chargement, le retrait
- * d'un maillage remplacé, la libération. Une libération attend donc le chargement en vol, puis
- * rend aussi son handle. Une <b>époque</b>, incrémentée à chaque libération, fait abandonner
- * les chargements demandés avant elle ; un chargement supplanté pendant qu'il tournait rend
- * son handle aussitôt. Aucun chemin ne laisse un handle vivant hors de {@link #live}, et rien
- * de ce qui y est n'échappe à la libération.
+ * <p>Tout ce qui touche un handle natif passe sous un même verrou : le chargement, la lecture des
+ * matériaux et des textures embarquées, le retrait d'un asset remplacé, la libération. Une
+ * libération attend donc le chargement en vol, puis rend aussi son handle. Une <b>époque</b>,
+ * incrémentée à chaque libération, fait abandonner les chargements demandés avant elle ; un
+ * chargement supplanté rend son handle et abandonne ses textures. Aucun chemin ne laisse un
+ * handle vivant hors de {@link #live}, ni une texture enregistrée hors d'un asset prêt.
  *
- * <p>Deux publications de même clé désignent le même conteneur compilé (C-25) : le maillage
- * déjà chargé est gardé, sans rechargement. Un échec est rapporté une fois, et n'est pas
- * retenté pour le même contenu — le décodage est déterministe.
+ * <p>Deux publications de même clé désignent le même conteneur compilé (C-25) : l'asset déjà
+ * chargé est gardé, sans rechargement. Un échec est rapporté une fois, et n'est pas retenté pour
+ * le même contenu — le décodage est déterministe. Une texture refusée ne bloque pas l'asset : la
+ * texture neutre la remplace, et le refus est rapporté une fois.
  */
 public final class MeshCache {
 
     private final AssetLoader loader;
+    private final TexturePipeline textures;
     private final Executor executor;
+    private final Executor renderThread;
     private final Consumer<String> diagnostics;
 
     /** État de chaque chemin d'asset. Lu sans verrou par le thread de rendu. */
@@ -56,6 +66,9 @@ public final class MeshCache {
     /** Handles natifs vivants, rendus par la libération. Sous {@link #nativeLock}. */
     private final Set<Handle> live = new HashSet<>();
 
+    /** Numéro du dernier chargement demandé : il rend uniques les noms de ses textures. */
+    private final AtomicLong loads = new AtomicLong();
+
     /** Incrémentée à chaque libération ; écrite sous {@link #nativeLock}. */
     private volatile long epoch;
 
@@ -66,55 +79,73 @@ public final class MeshCache {
      * Crée un cache vide.
      *
      * @param loader chargeur natif
+     * @param textures préparation, téléversement et libération des textures
      * @param executor exécute les chargements, hors du thread de rendu
+     * @param renderThread exécute les téléversements et les libérations de textures sur le fil de
+     *     rendu
      * @param diagnostics reçoit les échecs, chacun une fois
      */
-    public MeshCache(AssetLoader loader, Executor executor, Consumer<String> diagnostics) {
+    public MeshCache(
+            AssetLoader loader,
+            TexturePipeline textures,
+            Executor executor,
+            Executor renderThread,
+            Consumer<String> diagnostics) {
         this.loader = loader;
+        this.textures = textures;
         this.executor = executor;
+        this.renderThread = renderThread;
         this.diagnostics = diagnostics;
     }
 
     /**
-     * {@return le maillage d'un asset publié, ou {@code null} s'il n'est pas prêt}
+     * {@return l'asset prêt, ou {@code null} s'il ne l'est pas}
      *
-     * <p>Appelé par le thread de rendu ; ne bloque jamais. Un maillage absent, ou chargé
-     * depuis un autre contenu, est demandé au thread de fond.
+     * <p>Appelé par le thread de rendu ; ne bloque jamais. Un asset absent, ou chargé depuis un
+     * autre contenu, est demandé au thread de fond.
      *
      * @param path chemin de l'asset
      * @param source contenu publié de l'asset
      */
-    public GeometryTransfer get(String path, Published source) {
+    public RenderAsset get(String path, Published source) {
         if (closed) {
             return null;
         }
         State current = states.get(path);
         if (current != null && sameContent(current.source, source)) {
-            return current instanceof Ready ready ? ready.mesh : null;
+            return current instanceof Ready ready ? ready.asset : null;
         }
         schedule(path, source, current);
         return null;
     }
 
     /**
-     * Rend tous les handles (sortie d'un monde). Le cache reste utilisable : le prochain
+     * Rend tous les handles et libère toutes les textures — sortie d'un monde, rechargement des
+     * ressources (R-752). Appelé sur le fil de rendu. Le cache reste utilisable : le prochain
      * {@link #get} recharge ce qu'il demande.
      */
     public void releaseAll() {
+        List<String> registered;
         synchronized (nativeLock) {
             epoch++;
-            releaseLocked();
+            registered = releaseLocked();
         }
+        registered.forEach(textures::release);
     }
 
     /**
-     * Rend tous les handles et refuse tout chargement ultérieur (arrêt du natif).
+     * Rend tous les handles et refuse tout chargement ultérieur (arrêt du natif). Appelé depuis
+     * n'importe quel thread : les textures sont libérées sur le fil de rendu, s'il tourne encore.
      */
     public void close() {
+        List<String> registered;
         synchronized (nativeLock) {
             closed = true;
             epoch++;
-            releaseLocked();
+            registered = releaseLocked();
+        }
+        if (!registered.isEmpty()) {
+            submit(renderThread, () -> registered.forEach(textures::release));
         }
     }
 
@@ -125,6 +156,17 @@ public final class MeshCache {
         }
     }
 
+    /** {@return le nombre de textures enregistrées par les assets prêts} */
+    public int liveTextures() {
+        int count = 0;
+        for (State state : states.values()) {
+            if (state instanceof Ready ready) {
+                count += ready.registered.size();
+            }
+        }
+        return count;
+    }
+
     /** Même conteneur compilé : même publication, ou même clé (C-25). */
     private static boolean sameContent(Published held, Published wanted) {
         return held == wanted
@@ -133,9 +175,12 @@ public final class MeshCache {
                         && held.assetId() == wanted.assetId());
     }
 
-    /** Pose un chargement à la place de {@code previous} et le confie au thread de fond. */
+    /**
+     * Fil de rendu : pose un chargement à la place de {@code previous} et le confie au thread de
+     * fond. Un asset remplacé libère ses textures ici, et son handle là-bas.
+     */
     private void schedule(String path, Published source, State previous) {
-        Loading loading = new Loading(source, epoch);
+        Loading loading = new Loading(source, epoch, loads.incrementAndGet());
         boolean installed = previous == null
                 ? states.putIfAbsent(path, loading) == null
                 : states.replace(path, previous, loading);
@@ -144,42 +189,80 @@ public final class MeshCache {
             return;
         }
         if (previous instanceof Ready ready) {
+            ready.registered.forEach(textures::release);
             // Refusé, le retrait n'est pas perdu : le handle reste dans `live`, rendu à la
             // prochaine libération.
-            submit(() -> retire(ready.handle));
+            submit(executor, () -> retire(ready.handle));
         }
-        if (!submit(() -> load(path, loading))) {
+        if (!submit(executor, () -> load(path, loading))) {
             settleFailed(path, loading, "chargement impossible, exécuteur arrêté");
         }
     }
 
-    private boolean submit(Runnable task) {
+    private static boolean submit(Executor target, Runnable task) {
         try {
-            executor.execute(task);
+            target.execute(task);
             return true;
         } catch (RejectedExecutionException refused) {
             return false;
         }
     }
 
-    /** Thread de fond : charge, décode, et installe le maillage s'il est encore attendu. */
+    /**
+     * Thread de fond : charge dans le natif, prépare les textures hors du verrou, puis confie le
+     * téléversement au fil de rendu.
+     */
     private void load(String path, Loading loading) {
+        Decoded decoded = loadNative(path, loading);
+        if (decoded == null) {
+            return;
+        }
+        Set<Integer> reported = new HashSet<>(decoded.refused);
+        List<Staged> staged = new ArrayList<>();
+        for (TexturePipeline.Request request : decoded.requests) {
+            int rank = request.key().rank();
+            try {
+                TexturePipeline.Prepared prepared = textures.prepare(request);
+                staged.add(new Staged(request.key(), prepared));
+                if (prepared.note() != null && reported.add(rank)) {
+                    diagnostics.accept(path + " — texture " + rank + " : " + prepared.note());
+                }
+            } catch (TextureRefusal refusal) {
+                refuse(path, rank, refusal.getMessage(), reported);
+            } catch (RuntimeException failure) {
+                refuse(path, rank, "préparation impossible : " + failure, reported);
+            }
+        }
+        if (!submit(renderThread, () -> install(path, loading, decoded, staged))) {
+            staged.forEach(stage -> textures.discard(stage.prepared));
+            retire(decoded.handle);
+            settleFailed(path, loading, "téléversement impossible, fil de rendu arrêté");
+        }
+    }
+
+    /**
+     * Thread de fond, sous {@link #nativeLock} : chargement natif, géométrie, table des
+     * matériaux, octets des textures embarquées — tout ce qui exige un handle vivant.
+     *
+     * @return ce qui a été lu, ou {@code null} si le chargement s'arrête là
+     */
+    private Decoded loadNative(String path, Loading loading) {
         synchronized (nativeLock) {
             if (closed || loading.epoch != epoch) {
                 // Demandé avant une libération : rien n'est chargé, la demande s'efface.
                 states.remove(path, loading);
-                return;
+                return null;
             }
             AssetLoader.Loaded loaded;
             try {
                 loaded = loader.load(loading.source.assetId(), loading.source.a3d());
             } catch (RuntimeException | UnsatisfiedLinkError failure) {
                 settleFailed(path, loading, "chargement natif impossible : " + failure);
-                return;
+                return null;
             }
             if (!loaded.ok()) {
                 settleFailed(path, loading, "chargement natif refusé, code " + loaded.code());
-                return;
+                return null;
             }
             Handle handle = new Handle(loaded.index(), loaded.generation());
             live.add(handle);
@@ -189,12 +272,115 @@ public final class MeshCache {
             } catch (IllegalArgumentException malformed) {
                 unloadLocked(handle);
                 settleFailed(path, loading, "géométrie illisible : " + malformed.getMessage());
-                return;
+                return null;
             }
-            if (!states.replace(path, loading, new Ready(loading.source, mesh, handle))) {
-                // Supplanté pendant le chargement : un autre contenu est attendu.
-                unloadLocked(handle);
+            MaterialTransfer materials = readMaterials(path, handle);
+            Set<Integer> refused = new HashSet<>();
+            List<TexturePipeline.Request> requests = requests(path, loading, handle, materials, refused);
+            return new Decoded(mesh, materials, handle, requests, refused);
+        }
+    }
+
+    /**
+     * Sous {@link #nativeLock} : la table des matériaux. Illisible, elle n'empêche pas l'asset de
+     * s'afficher — avec le matériau par défaut, et un diagnostic.
+     */
+    private MaterialTransfer readMaterials(String path, Handle handle) {
+        AssetLoader.FetchedMaterials fetched;
+        try {
+            fetched = loader.materials(handle.index(), handle.generation());
+        } catch (RuntimeException | UnsatisfiedLinkError failure) {
+            diagnostics.accept(path + " — matériaux illisibles : " + failure + " ; matériau par défaut");
+            return MaterialTransfer.empty();
+        }
+        if (!fetched.ok()) {
+            diagnostics.accept(path + " — matériaux refusés, code " + fetched.code() + " ; matériau par défaut");
+            return MaterialTransfer.empty();
+        }
+        return fetched.transfer();
+    }
+
+    /**
+     * Sous {@link #nativeLock} : une demande par texture à préparer. Les octets des textures
+     * embarquées se lisent ici, tant que le handle vit ; le chemin d'une ressource se résout et se
+     * contrôle (R-531).
+     */
+    private List<TexturePipeline.Request> requests(
+            String path, Loading loading, Handle handle, MaterialTransfer materials, Set<Integer> refused) {
+        List<TexturePipeline.Request> requests = new ArrayList<>();
+        Map<Integer, byte[]> embedded = new HashMap<>();
+        for (TextureKey key : TexturePlan.keys(materials)) {
+            int rank = key.rank();
+            MaterialTransfer.Texture texture = materials.textures().get(rank);
+            String location = TextureLocations.registered(path, loading.serial, key);
+            if (texture.embedded()) {
+                if (!embedded.containsKey(rank)) {
+                    embedded.put(rank, readEmbedded(path, handle, rank, refused));
+                }
+                byte[] png = embedded.get(rank);
+                if (png != null) {
+                    requests.add(new TexturePipeline.Request(location, key, texture, png, null));
+                }
+            } else {
+                try {
+                    String resource = TextureLocations.resolveResource(path, texture.path());
+                    requests.add(new TexturePipeline.Request(location, key, texture, null, resource));
+                } catch (IllegalArgumentException invalid) {
+                    refuse(path, rank, invalid.getMessage(), refused);
+                }
             }
+        }
+        return requests;
+    }
+
+    /** Sous {@link #nativeLock} : les octets d'une texture embarquée, ou {@code null}. */
+    private byte[] readEmbedded(String path, Handle handle, int rank, Set<Integer> refused) {
+        try {
+            AssetLoader.FetchedTexture fetched = loader.texture(handle.index(), handle.generation(), rank);
+            if (fetched.ok()) {
+                return fetched.png();
+            }
+            refuse(path, rank, "octets refusés par le natif, code " + fetched.code(), refused);
+        } catch (RuntimeException | UnsatisfiedLinkError failure) {
+            refuse(path, rank, "octets illisibles : " + failure, refused);
+        }
+        return null;
+    }
+
+    /** Rapporte une texture refusée, une fois par rang. */
+    private void refuse(String path, int rank, String reason, Set<Integer> reported) {
+        if (reported.add(rank)) {
+            diagnostics.accept(path + " — texture " + rank + " : " + reason + " ; texture neutre");
+        }
+    }
+
+    /**
+     * Fil de rendu : téléverse les textures et installe l'asset, s'il est encore attendu. Supplanté
+     * ou libéré entre-temps, il abandonne ses textures et rend son handle.
+     */
+    private void install(String path, Loading loading, Decoded decoded, List<Staged> staged) {
+        if (closed || loading.epoch != epoch || states.get(path) != loading) {
+            staged.forEach(stage -> textures.discard(stage.prepared));
+            submit(executor, () -> retire(decoded.handle));
+            return;
+        }
+        Map<TextureKey, String> uploaded = new HashMap<>();
+        for (Staged stage : staged) {
+            try {
+                textures.upload(stage.prepared);
+                uploaded.put(stage.key, stage.prepared.location());
+            } catch (RuntimeException failure) {
+                textures.discard(stage.prepared);
+                diagnostics.accept(path + " — texture " + stage.key.rank()
+                        + " : téléversement impossible : " + failure + " ; texture neutre");
+            }
+        }
+        RenderAsset asset = new RenderAsset(decoded.mesh, decoded.materials, uploaded);
+        Ready ready = new Ready(loading.source, asset, decoded.handle, List.copyOf(uploaded.values()));
+        if (!states.replace(path, loading, ready)) {
+            // Fermé depuis un autre thread entre le contrôle et l'installation.
+            ready.registered.forEach(textures::release);
+            submit(executor, () -> retire(decoded.handle));
         }
     }
 
@@ -205,7 +391,7 @@ public final class MeshCache {
         }
     }
 
-    /** Thread de fond : rend le handle d'un maillage remplacé. */
+    /** Rend le handle d'un asset remplacé ou abandonné. */
     private void retire(Handle handle) {
         synchronized (nativeLock) {
             unloadLocked(handle);
@@ -223,16 +409,42 @@ public final class MeshCache {
         }
     }
 
-    /** Rend tout et oublie tout. Sous {@link #nativeLock}. */
-    private void releaseLocked() {
+    /**
+     * Rend tous les handles et oublie tout. Sous {@link #nativeLock}.
+     *
+     * @return les textures enregistrées des assets prêts, à libérer sur le fil de rendu
+     */
+    private List<String> releaseLocked() {
         for (Handle handle : List.copyOf(live)) {
             unloadLocked(handle);
         }
+        List<String> registered = new ArrayList<>();
+        for (State state : states.values()) {
+            if (state instanceof Ready ready) {
+                registered.addAll(ready.registered);
+            }
+        }
         states.clear();
+        return registered;
     }
 
     /** Un handle d'asset natif (DM-01). */
     private record Handle(int index, int generation) {}
+
+    /**
+     * Ce que le thread de fond a lu sous le verrou.
+     *
+     * @param refused rangs déjà rapportés comme refusés, à ne pas rapporter une seconde fois
+     */
+    private record Decoded(
+            GeometryTransfer mesh,
+            MaterialTransfer materials,
+            Handle handle,
+            List<TexturePipeline.Request> requests,
+            Set<Integer> refused) {}
+
+    /** Une texture préparée, et la clé sous laquelle l'asset la retrouvera. */
+    private record Staged(TextureKey key, TexturePipeline.Prepared prepared) {}
 
     /**
      * État d'un chemin. Comparé par <b>identité</b> : les remplacements conditionnels de la
@@ -246,25 +458,29 @@ public final class MeshCache {
         }
     }
 
-    /** Chargement demandé, à l'époque où il l'a été. */
+    /** Chargement demandé, à l'époque où il l'a été, sous son numéro. */
     private static final class Loading extends State {
         final long epoch;
+        final long serial;
 
-        Loading(Published source, long epoch) {
+        Loading(Published source, long epoch, long serial) {
             super(source);
             this.epoch = epoch;
+            this.serial = serial;
         }
     }
 
-    /** Maillage prêt, et le handle qui le retient dans le natif. */
+    /** Asset prêt, le handle qui le retient dans le natif, et ses textures enregistrées. */
     private static final class Ready extends State {
-        final GeometryTransfer mesh;
+        final RenderAsset asset;
         final Handle handle;
+        final List<String> registered;
 
-        Ready(Published source, GeometryTransfer mesh, Handle handle) {
+        Ready(Published source, RenderAsset asset, Handle handle, List<String> registered) {
             super(source);
-            this.mesh = mesh;
+            this.asset = asset;
             this.handle = handle;
+            this.registered = registered;
         }
     }
 

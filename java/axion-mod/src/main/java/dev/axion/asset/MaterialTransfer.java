@@ -53,6 +53,48 @@ public final class MaterialTransfer {
     /** Provenance d'une texture : chemin relatif au modèle, chargé des resource packs. */
     public static final int SOURCE_RESOURCE = 2;
 
+    /** Mode de mélange : opaque. */
+    public static final int BLEND_OPAQUE = 0;
+
+    /** Mode de mélange : découpe au seuil {@code alphaCutoff}. */
+    public static final int BLEND_CUTOUT = 1;
+
+    /** Mode de mélange : translucide, trié. */
+    public static final int BLEND_TRANSLUCENT = 2;
+
+    /** Faces : arrière cachées. */
+    public static final int CULL_BACK = 0;
+
+    /** Faces : toutes dessinées. */
+    public static final int CULL_NONE = 1;
+
+    /** Modèle d'éclairage : sans éclairage, en pleine lumière. */
+    public static final int SHADING_UNLIT = 3;
+
+    /** Drapeau de matériau : la couleur de sommet module l'albedo. */
+    public static final int FLAG_VERTEX_COLOR = 1;
+
+    /** Drapeau de matériau : pleine lumière, quelle que soit celle du monde. */
+    public static final int FLAG_FULLBRIGHT = 1 << 2;
+
+    /** Bits du filtrage, dans l'échantillonneur d'une texture. */
+    public static final int SAMPLER_FILTER_MASK = 0b11;
+
+    /** Filtrage non déclaré par la source : le défaut ratifié s'applique (au plus proche). */
+    public static final int SAMPLER_FILTER_UNDECLARED = 0;
+
+    /** Filtrage au plus proche. */
+    public static final int SAMPLER_FILTER_NEAREST = 1;
+
+    /** Filtrage linéaire. */
+    public static final int SAMPLER_FILTER_LINEAR = 2;
+
+    /** Coordonnée U écrêtée au bord plutôt que répétée. */
+    public static final int SAMPLER_CLAMP_U = 1 << 2;
+
+    /** Coordonnée V écrêtée au bord plutôt que répétée. */
+    public static final int SAMPLER_CLAMP_V = 1 << 3;
+
     /**
      * Un matériau (DM-05), facteurs en espace linéaire. Un slot de texture vaut le rang d'une
      * entrée de {@link #textures()}, ou {@link #NO_TEXTURE}.

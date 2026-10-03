@@ -46,42 +46,6 @@ public final class NativeAssetLoader implements AssetLoader {
     private final long[] sizeOut = new long[1];
 
     /**
-     * Ce qu'une lecture de la table des matériaux a produit.
-     *
-     * @param code {@link NativeBridge#OK}, ou le code d'erreur de l'ANNEXE A.1
-     * @param transfer matériaux et textures, vides en cas d'échec
-     */
-    public record FetchedMaterials(int code, MaterialTransfer transfer) {
-
-        /** {@return vrai si la table a été lue} */
-        public boolean ok() {
-            return code == NativeBridge.OK;
-        }
-
-        static FetchedMaterials failed(int code) {
-            return new FetchedMaterials(code, MaterialTransfer.empty());
-        }
-    }
-
-    /**
-     * Ce qu'une lecture de texture embarquée a produit.
-     *
-     * @param code {@link NativeBridge#OK}, ou le code d'erreur de l'ANNEXE A.1
-     * @param png octets du fichier PNG, non décodés (R-532) ; vides en cas d'échec
-     */
-    public record FetchedTexture(int code, byte[] png) {
-
-        /** {@return vrai si les octets ont été lus} */
-        public boolean ok() {
-            return code == NativeBridge.OK;
-        }
-
-        static FetchedTexture failed(int code) {
-            return new FetchedTexture(code, new byte[0]);
-        }
-    }
-
-    /**
      * Crée un chargeur adossé à un contexte natif.
      *
      * @param context jeton de contexte
@@ -161,6 +125,7 @@ public final class NativeAssetLoader implements AssetLoader {
      *     handle périmé, {@link NativeBridge#E_INVALID_BUFFER} pour un asset chargé sans
      *     {@code MATL | TEXR} ou une charge illisible
      */
+    @Override
     public FetchedMaterials materials(int index, int generation) {
         synchronized (AssetBuffers.LOCK) {
             int code = NativeBridge.materialsOf(context, index, generation, sizeOut);
@@ -190,6 +155,7 @@ public final class NativeAssetLoader implements AssetLoader {
      *     un handle périmé, {@link NativeBridge#E_INVALID_BUFFER} pour un rang hors de la
      *     table ou une texture de ressource
      */
+    @Override
     public FetchedTexture texture(int index, int generation, int texture) {
         synchronized (AssetBuffers.LOCK) {
             int code = NativeBridge.textureOf(context, index, generation, texture, sizeOut);

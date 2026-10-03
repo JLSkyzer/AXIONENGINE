@@ -1861,10 +1861,34 @@ substituable sans changer rapier »).
                         cinq mutations attrapées), Java 298 verts, vraie JNI comprise.
                         Pour T-b : un mesh dont le matériau manque à la table (MATL ignoré)
                         prend le matériau par défaut, signalé une fois.
-            - [ ] **T-b** — client : textures (arrière-plan, PNG seul, ≤ 4096, mipmaps,
-                  variante CUTOUT, libérations R-752), `RenderType` propres, passes
-                  translucide (`AFTER_TRANSLUCENT_BLOCKS`) et émissive, matrice de capacités ;
-                  contenu de test ; vérifié en jeu.
+            - [ ] **T-b** — client, selon le §7 d'ADR-122, en quatre sous-tranches :
+                  - [x] **T-b1 — textures** : octets (FFI pour EMBEDDED ; `ResourceManager`
+                        client pour RESOURCE, chemin résolu contre le répertoire du modèle et
+                        revalidé, R-531), signature PNG (E-3004), `NativeImage.read`, côtés
+                        ≤ 4096 (E-3006), variante CUTOUT (alpha binarisé au seuil
+                        `alpha_cutoff / albedo.a`), mipmaps (`MipmapGenerator`) — hors du fil de
+                        rendu ; téléversement sur le fil de rendu dans une `AbstractTexture`
+                        dont `load` ne fait rien ; texture neutre et diagnostic unique en cas
+                        d'échec ; libérations à la sortie du monde, au rechargement (R-752) et
+                        à l'arrêt du natif, toujours sur le fil de rendu (R-751).
+                        Fait : le cache charge l'asset et ses textures ensemble, et ne le sert
+                        qu'une fois les textures téléversées ; « Précisions de T-b1 ». Java 323
+                        verts (25 nouveaux, cinq mutations du cache attrapées) ; le collage
+                        Minecraft n'est exercé qu'en jeu, avec T-b2.
+                  - [ ] **T-b2 — `RenderType` et couleurs** : `RenderType` propres, mémorisés
+                        par (texture, mode, faces, filtrage) ; OPAQUE et CUTOUT texturés à
+                        `AFTER_ENTITIES` ; couleur = facteur × couleur de sommet, ramenée en
+                        gamma, une fois par (mesh, matériau) ; `UNLIT` et `FULLBRIGHT` en pleine
+                        lumière ; matériau absent de la table → matériau par défaut, signalé
+                        une fois.
+                  - [ ] **T-b3 — translucide et émissive** : passe 4 à
+                        `AFTER_TRANSLUCENT_BLOCKS`, triée par quad et vidée dans le
+                        gestionnaire ; passe 5 (`eyes`, additive) ; matrice de capacités —
+                        normal, ORM, height et damage sans effet en vanilla (R-1513, R-1493).
+                  - [ ] **T-b4 — contenu de test, vérifié en jeu** : modèles faits dans
+                        Blender (cube texturé embarqué, texture RESOURCE, vitre, grille
+                        découpée, panneau émissif, mesh multi-matériau, sol répété), gardés
+                        dans le dépôt et rejoués à chaque étape.
             - [ ] **T-c** — atlas AXION des textures ≤ 256² (meshes dans `[0,1]`).
             - Hors portée, nommé : usage natif (C-60/C-63), multijoueur, `.mtl` et buffers
               externes en jeu (C-20/C-21), décalques (C-69), `TINTABLE`, usure (C-47),

@@ -884,3 +884,17 @@ Rust qui transite par l'un d'eux perd ses continuations de littéral.
 **Règle.** Écrire du code source par un script : chaîne brute `r"""…"""` en Python, heredoc
 cité `<<'EOF'` en bash — ou l'outil d'édition. Pour retrouver les dégâts :
 `grep -rnP '"[^"\n]*[^\s"] {12,}[^\s"][^"\n]*"' --include=*.rs crates`.
+
+## 2026-10-03 | Cinq mutations « survivantes » qui étaient toutes attrapées
+
+**Ce qui a mal tourné.** Le script de mutation de T-b1 a déclaré survivantes les cinq
+mutations de `MeshCache`. Rejouée à la main, la première était attrapée par le test prévu.
+
+**Cause.** Deux défauts cumulés. `subprocess.run(["cmd", "/c", "gradlew.bat", …])`
+échouait : l'environnement pose `NoDefaultCurrentDirectoryInExePath=1`, et `cmd` ne cherche
+alors plus dans le répertoire courant. Et le script lisait ensuite le rapport JUnit du build
+précédent, resté sur le disque, sans aucun échec.
+
+**Règle.** Appeler `gradlew.bat` par son chemin absolu. Avant chaque passage d'une
+mutation, effacer le rapport qu'on va lire, et traiter son absence comme une erreur — jamais
+comme un résultat. Une mutation déclarée survivante se rejoue à la main avant d'y croire.

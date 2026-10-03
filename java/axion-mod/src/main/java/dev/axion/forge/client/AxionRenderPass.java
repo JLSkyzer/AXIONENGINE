@@ -15,6 +15,7 @@ import dev.axion.forge.RuntimeAccess;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.render.BackendSelection;
 import dev.axion.render.MeshCache;
+import dev.axion.render.RenderAsset;
 import dev.axion.render.RenderCapabilities;
 import java.util.ArrayList;
 import java.util.List;
@@ -262,7 +263,18 @@ public final class AxionRenderPass {
             return null;
         }
         MeshCache cache = meshCache(runtime);
-        return cache == null ? null : cache.get(definition.asset(), source);
+        RenderAsset asset = cache == null ? null : cache.get(definition.asset(), source);
+        return asset == null ? null : asset.mesh();
+    }
+
+    /**
+     * Rechargement des ressources du client (R-752) : maillages et textures sont rendus, puis
+     * reconstruits à la demande. Appelé sur le fil de rendu.
+     */
+    static void onResourcesReloaded() {
+        if (meshes != null) {
+            meshes.releaseAll();
+        }
     }
 
     /**
@@ -277,9 +289,12 @@ public final class AxionRenderPass {
             if (outcome == null || !outcome.isReady()) {
                 return null;
             }
+            // Le client est l'exécuteur de son propre fil de rendu : les textures s'y téléversent.
             MeshCache cache = new MeshCache(
                     new NativeAssetLoader(outcome.context()),
+                    new VanillaTexturePipeline(),
                     LOADER,
+                    Minecraft.getInstance(),
                     line -> LOGGER.warn("AXION : maillage {}", line));
             runtime.addNativeReleaser(cache::close);
             meshes = cache;

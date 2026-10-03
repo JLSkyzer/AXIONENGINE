@@ -322,7 +322,7 @@ class NativeBridgeTest {
 
         // ADR-122 §6 : la table des matériaux revient par ASSET_OUT, au schéma 1. Le triangle
         // OBJ, sans .mtl, porte le matériau par défaut des options de compilation, sans texture.
-        dev.axion.asset.NativeAssetLoader.FetchedMaterials materiaux =
+        dev.axion.asset.AssetLoader.FetchedMaterials materiaux =
                 chargeur.materials(charge.index(), charge.generation());
         assertTrue(materiaux.ok(), () -> "table des matériaux refusée, code " + materiaux.code());
         assertEquals(1, materiaux.transfer().materials().size(), "le matériau par défaut");
@@ -351,7 +351,7 @@ class NativeBridgeTest {
                 reprise, 0x4444L, dev.axion.asset.SourceFormats.GLTF, gltfTexture(png));
         dev.axion.asset.AssetLoader.Loaded chargePanneau = chargeur.load(0x4444L, panneau);
         assertTrue(chargePanneau.ok(), () -> "chargement refusé, code " + chargePanneau.code());
-        dev.axion.asset.NativeAssetLoader.FetchedMaterials table =
+        dev.axion.asset.AssetLoader.FetchedMaterials table =
                 chargeur.materials(chargePanneau.index(), chargePanneau.generation());
         assertTrue(table.ok(), () -> "table des matériaux refusée, code " + table.code());
         assertEquals(1, table.transfer().materials().size());
@@ -368,7 +368,7 @@ class NativeBridgeTest {
                 table.transfer().textures().get(peint.emissiveTexture());
         assertEquals("tex/lueur.png", lueur.path());
 
-        dev.axion.asset.NativeAssetLoader.FetchedTexture octets =
+        dev.axion.asset.AssetLoader.FetchedTexture octets =
                 chargeur.texture(chargePanneau.index(), chargePanneau.generation(), peint.albedoTexture());
         assertTrue(octets.ok(), () -> "texture refusée, code " + octets.code());
         assertArrayEquals(png, octets.png());
