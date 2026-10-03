@@ -24,11 +24,9 @@ sont faits, et la Definition of Done tient à un seul point.**
 **Les deux preuves de la Definition of Done de M1 sont donc réunies.** Reste à
 la prononcer, une fois la CI de nouveau disponible pour un passage complet.
 
-⚠ **Les minutes GitHub Actions sont épuisées.** Les jobs ne démarrent plus —
-« The job was not started because recent account payments have failed or your
-spending limit needs to be increased ». Le fuzzing a été mené en local pour
-cette raison ; les tests, clippy et les lints tournent aussi en local. À régler
-avant de reprendre un travail qui dépende de la CI.
+**CI disponible de nouveau depuis le 2026-10-03** : le dépôt est public, les jobs GitHub
+Actions sont gratuits sur les quatre plateformes de la matrice (run 37147205392, vert). En
+secours, `python tools/ci/local_ci.py` rejoue les jobs sur la machine hôte.
 
 Ce qui est en place :
 
@@ -1808,7 +1806,7 @@ substituable sans changer rapier »).
             derniers runs avaient échoué en 4 s. `fuzz/Cargo.lock` était périmé (sans
             `parry3d`) : rafraîchi avec T-a1 de C-26. À décider : déclenchement sur push, ou
             campagne manuelle régulière.
-      - [ ] **C-26 — textures et matériaux (client)** (ADR-122, ratifié le 2026-10-02) : MATL
+      - [x] **C-26 — textures et matériaux (client)** (ADR-122, ratifié le 2026-10-02) : MATL
             = DM-05 tel quel, TEXR (image + échantillonneur, EMBEDDED en PNG non décodé ou
             RESOURCE en chemin relatif), UV par mesh (`MeshDesc._pad` → `uv0_range`, R-142),
             primitives multiples (`NodeDesc._pad` → `mesh_count`), filtrage par défaut au plus
