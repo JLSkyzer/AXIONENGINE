@@ -11,6 +11,7 @@ use ax_model::dm::geometry::{MeshDesc, Vertex, NO_REGION_U8};
 use ax_model::dm::integrity::{
     link_flags, region_flags, DeformRegionDesc, LinkKind, StructuralLinkDesc,
 };
+use ax_model::dm::material::{blend_mode, cull_mode, shading_model, MaterialDesc, NO_TEXTURE};
 use ax_model::dm::physics::{ColliderDesc, ColliderShape};
 use ax_model::dm::scene::{node_flags, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 
@@ -63,6 +64,37 @@ fn mesh() -> MeshDesc {
         aabb_max: [1.0, 1.0, 0.0],
         region: NONE_U16,
         _pad: 0,
+    }
+}
+
+/// Matériau valide, opaque, une face, dont l'albedo désigne la texture 0.
+fn materiau() -> MaterialDesc {
+    MaterialDesc {
+        name_hash: 1,
+        albedo_tex: 0,
+        normal_tex: NO_TEXTURE,
+        orm_tex: NO_TEXTURE,
+        emissive_tex: NO_TEXTURE,
+        height_tex: NO_TEXTURE,
+        damage_tex: NO_TEXTURE,
+        albedo_factor: [1.0; 4],
+        emissive_factor: [0.0; 3],
+        metallic: 0.0,
+        roughness: 0.6,
+        occlusion_strength: 1.0,
+        normal_scale: 1.0,
+        alpha_cutoff: 0.5,
+        parallax_scale: 0.0,
+        clearcoat: 0.0,
+        clearcoat_roughness: 0.0,
+        sheen: 0.0,
+        anisotropy: 0.0,
+        blend_mode: blend_mode::OPAQUE,
+        cull_mode: cull_mode::BACK,
+        shading_model: shading_model::PBR,
+        _pad: 0,
+        flags: 0,
+        wear_profile: u16::MAX,
     }
 }
 
@@ -160,6 +192,8 @@ struct Scene {
     anchors: Vec<u8>,
     names: Vec<NamedEntry<'static>>,
     bone_count: usize,
+    materials: Option<Vec<MaterialDesc>>,
+    texture_count: usize,
     dynamic_body: bool,
     missing_normals: Vec<bool>,
 }
@@ -186,6 +220,8 @@ impl Scene {
                 NamedEntry::new("part", "capot"),
             ],
             bone_count: 0,
+            materials: Some(vec![materiau()]),
+            texture_count: 1,
             dynamic_body: true,
             missing_normals: Vec::new(),
         }
@@ -203,8 +239,8 @@ impl Scene {
             links: &self.links,
             anchor_masks: &self.anchors,
             bone_count: self.bone_count,
-            material_count: 1,
-            texture_count: 1,
+            materials: self.materials.as_deref(),
+            texture_count: self.texture_count,
             animation_count: 0,
             names: &self.names,
             dynamic_body: self.dynamic_body,
@@ -783,4 +819,120 @@ fn t231_un_asset_vide_est_valide() {
     // métadonnées.
     let asset = AssetView::default();
     assert!(validate(&asset, &[]).is_valid());
+}
+
+#[test]
+fn t270_un_materiau_que_dm05_refuse_est_nomme() {
+    let mut scene = Scene::valide();
+    if let Some(materials) = scene.materials.as_mut() {
+        materials[0].roughness = f32::NAN;
+    }
+
+    let report = scene.valider();
+    seule(
+        &report,
+        &Violation::InvalidMaterial {
+            reason: "facteur de matériau non fini",
+        },
+    );
+    assert_eq!(report.errors[0].at, Located::Material(0));
+    assert_eq!(report.code(), -3050);
+}
+
+#[test]
+fn t270_un_slot_hors_de_texr_est_refuse() {
+    let mut scene = Scene::valide();
+    scene.texture_count = 0;
+
+    let report = scene.valider();
+    seule(
+        &report,
+        &Violation::TextureOutOfRange {
+            slot: "albedo",
+            texture: 0,
+            texture_count: 0,
+        },
+    );
+    assert_eq!(report.errors[0].at, Located::Material(0));
+}
+
+#[test]
+fn t270_un_mesh_vers_un_materiau_absent_est_refuse() {
+    let mut scene = Scene::valide();
+    scene.meshes[0].material = 1;
+
+    let report = scene.valider();
+    seule(
+        &report,
+        &Violation::MaterialOutOfRange {
+            material: 1,
+            material_count: 1,
+        },
+    );
+    assert_eq!(report.errors[0].at, Located::Mesh(0));
+}
+
+#[test]
+fn t270_les_drapeaux_d_un_mesh_suivent_son_materiau() {
+    use ax_model::dm::geometry::mesh_flags;
+
+    // Une vitre double face : le mesh doit porter les deux drapeaux.
+    let mut scene = Scene::valide();
+    if let Some(materials) = scene.materials.as_mut() {
+        materials[0].blend_mode = blend_mode::TRANSLUCENT;
+        materials[0].cull_mode = cull_mode::NONE;
+    }
+    let report = scene.valider();
+    seule(
+        &report,
+        &Violation::MeshFlagsDisagreeWithMaterial {
+            mesh_flags: 0,
+            material_flags: mesh_flags::TRANSPARENT | mesh_flags::DOUBLE_SIDED,
+        },
+    );
+    assert_eq!(report.errors[0].at, Located::Mesh(0));
+
+    scene.meshes[0].flags = mesh_flags::TRANSPARENT | mesh_flags::DOUBLE_SIDED;
+    assert!(scene.valider().is_valid());
+
+    // Les autres drapeaux ne regardent pas le matériau.
+    scene.meshes[0].flags |= mesh_flags::DEFORMABLE;
+    assert!(scene.valider().is_valid());
+}
+
+#[test]
+fn t270_plus_de_256_materiaux_sont_refuses() {
+    let mut scene = Scene::valide();
+    scene.materials = Some(vec![materiau(); 257]);
+
+    let report = scene.valider();
+    seule(
+        &report,
+        &Violation::LimitExceeded {
+            what: "matériaux",
+            count: 257,
+            limit: 256,
+        },
+    );
+}
+
+#[test]
+fn t893_sans_table_de_materiaux_les_index_ne_sont_pas_controles() {
+    // Un asset antérieur à ADR-122, ou chargé sans `MATL` : le matériau par
+    // défaut s'applique, et ses index ne désignent rien.
+    let mut scene = Scene::valide();
+    scene.materials = None;
+    scene.meshes[0].material = 7;
+    scene.meshes[0].flags = ax_model::dm::geometry::mesh_flags::TRANSPARENT;
+    assert!(scene.valider().is_valid());
+
+    // Une table vide, elle, fait tout contrôler.
+    scene.materials = Some(Vec::new());
+    seule(
+        &scene.valider(),
+        &Violation::MaterialOutOfRange {
+            material: 7,
+            material_count: 0,
+        },
+    );
 }

@@ -7,6 +7,7 @@
 use ax_asset::a3d::{A3dFile, A3dLimits, A3dWriter, SectionTag};
 use ax_asset::import::{import_obj, import_stl, ImportLimits, ImportedAsset};
 use ax_asset::validate::{validate, AssetView, NamedEntry};
+use ax_model::dm::material::MaterialDesc;
 
 const SOURCE_LIMITS: ImportLimits = ImportLimits::new(1 << 20);
 const A3D_LIMITS: A3dLimits = A3dLimits::new(1 << 20);
@@ -26,16 +27,29 @@ f 1/1/1 2/2/1 3/3/1
 f 1/1/1 3/3/1 4/4/1
 ";
 
+/// Les matériaux de l'asset, tels que la section `MATL` les portera.
+fn table(asset: &ImportedAsset) -> Vec<MaterialDesc> {
+    asset
+        .materials
+        .iter()
+        .map(|material| material.desc)
+        .collect()
+}
+
 /// Compose la vue que le validateur examine.
-fn view<'a>(asset: &'a ImportedAsset, names: &'a [NamedEntry<'a>]) -> AssetView<'a> {
+fn view<'a>(
+    asset: &'a ImportedAsset,
+    names: &'a [NamedEntry<'a>],
+    materials: &'a [MaterialDesc],
+) -> AssetView<'a> {
     AssetView {
         nodes: &asset.nodes,
         meshes: &asset.meshes,
         vertices: &asset.vertices,
         indices: &asset.indices,
         names,
-        material_count: asset.materials.len(),
-        texture_count: 0,
+        materials: Some(materials),
+        texture_count: asset.textures.entries.len(),
         animation_count: 0,
         bone_count: 0,
         dynamic_body: true,
@@ -49,7 +63,8 @@ fn t226_un_obj_importe_est_accepte_par_le_validateur() {
     let asset = import_obj(CUBE_OBJ, &SOURCE_LIMITS, |_| None).expect("import refusé");
 
     let names = [NamedEntry::new("node", "cube")];
-    let report = validate(&view(&asset, &names), &asset.raw_uvs);
+    let materials = table(&asset);
+    let report = validate(&view(&asset, &names, &materials), &asset.raw_uvs);
 
     assert!(
         report.is_valid(),
@@ -75,7 +90,8 @@ fn t226_un_stl_importe_est_accepte_par_le_validateur() {
 
     let asset = import_stl(&bytes, &SOURCE_LIMITS).expect("import refusé");
     let names = [NamedEntry::new("node", "stl_root")];
-    let report = validate(&view(&asset, &names), &asset.raw_uvs);
+    let materials = table(&asset);
+    let report = validate(&view(&asset, &names, &materials), &asset.raw_uvs);
 
     assert!(report.is_valid(), "{:?}", report.errors);
 }
@@ -126,7 +142,8 @@ fn t226_un_obj_aux_coordonnees_hors_bornes_est_refuse_par_le_validateur() {
     let asset = import_obj(&source, &SOURCE_LIMITS, |_| None).expect("import refusé");
 
     let names = [NamedEntry::new("node", "cube")];
-    let report = validate(&view(&asset, &names), &asset.raw_uvs);
+    let materials = table(&asset);
+    let report = validate(&view(&asset, &names, &materials), &asset.raw_uvs);
 
     assert!(!report.is_valid(), "coordonnée hors bornes acceptée");
     assert_eq!(report.code(), -3030);

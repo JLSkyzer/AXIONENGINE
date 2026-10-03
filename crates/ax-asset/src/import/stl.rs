@@ -4,7 +4,8 @@
 //! cahier des charges le retient pour les colliders et les formes simples, et
 //! c'est exactement ce qu'on en tire.
 
-use super::{ImportError, ImportLimits, ImportedAsset, SourceFormat};
+use super::material::plain_default_material;
+use super::{ImportError, ImportLimits, ImportedAsset, ImportedMaterial, SourceFormat};
 use ax_model::dm::geometry::{encode_normal, MeshDesc, Transform, Vertex, NO_REGION_U8};
 use ax_model::dm::scene::{
     name_hash, node_flags, NodeDesc, ALL_LODS, NONE_U16, NONE_U32, NO_PARENT,
@@ -90,6 +91,12 @@ pub fn import_stl(bytes: &[u8], limits: &ImportLimits) -> Result<ImportedAsset, 
     asset.nodes.push(root_node());
     asset.names.push(("node", ROOT_NAME.to_owned()));
     asset.node_names.push(ROOT_NAME.to_owned());
+    // Le STL ne porte aucun matériau : son mesh reçoit celui du §6.4, et
+    // `MeshDesc.material` désigne toujours un index valide (ADR-122 §3).
+    asset.materials.push(ImportedMaterial {
+        name: String::new(),
+        desc: plain_default_material(),
+    });
 
     Ok(asset)
 }
@@ -240,6 +247,11 @@ mod tests {
         assert_eq!(asset.nodes.len(), 1);
         assert_eq!(asset.meshes[0].aabb_min, [0.0, 0.0, 0.0]);
         assert_eq!(asset.meshes[0].aabb_max, [1.0, 1.0, 0.0]);
+        // Le matériau par défaut du §6.4, que son mesh désigne.
+        assert_eq!(asset.materials.len(), 1);
+        assert_eq!(asset.materials[0].desc, plain_default_material());
+        assert_eq!(asset.meshes[0].material, 0);
+        assert!(asset.textures.entries.is_empty());
     }
 
     #[test]

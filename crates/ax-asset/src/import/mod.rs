@@ -25,8 +25,11 @@
 
 mod gltf;
 mod gltf_extras;
+mod gltf_material;
 mod gltf_refs;
+mod material;
 mod obj;
+mod obj_material;
 mod stl;
 
 pub use gltf::{import_gltf, GltfReport, ImageRef, SUPPORTED_EXTENSIONS};
@@ -34,8 +37,14 @@ pub use gltf_extras::{NodeAnnotations, NodeRole};
 pub use obj::import_obj;
 pub use stl::import_stl;
 
+/// Le matériau par défaut, pour les tests des étapes qui suivent l'import.
+#[cfg(test)]
+pub(crate) use material::plain_default_material;
+
+use crate::a3d::TextureTable;
 use crate::collider::ColliderRequest;
 use ax_model::dm::geometry::{MeshDesc, Vertex};
+use ax_model::dm::material::{MaterialDesc, NO_TEXTURE};
 use ax_model::dm::physics::ColliderDesc;
 use ax_model::dm::scene::NodeDesc;
 use core::fmt;
@@ -148,13 +157,6 @@ pub enum ImportError {
     ExternalPath(String),
     /// Extension glTF requise et non supportée (R-530, `E-3003`).
     UnsupportedExtension(String),
-    /// Image dans un format autre que PNG (R-532, `E-3004`).
-    UnsupportedImage {
-        /// Image concernée : son URI, ou « embarquée ».
-        designation: String,
-        /// Type MIME déclaré.
-        mime_type: String,
-    },
     /// Source illisible ou mal formée.
     Malformed {
         /// Format concerné.
@@ -210,8 +212,6 @@ impl ImportError {
             ImportError::ExternalPath(_) => -3002,
             // `E-3003` : extension glTF requise non supportée.
             ImportError::UnsupportedExtension(_) => -3003,
-            // `E-3004` : format d'image non supporté.
-            ImportError::UnsupportedImage { .. } => -3004,
             // `E-3005` : source trop volumineuse.
             ImportError::SourceTooLarge { .. } => -3005,
             // Le reste refuse une source qu'on ne sait pas lire, panique
@@ -243,13 +243,6 @@ impl fmt::Display for ImportError {
                 formatter,
                 "extension glTF « {extension} » requise et non supportée"
             ),
-            ImportError::UnsupportedImage {
-                designation,
-                mime_type,
-            } => write!(
-                formatter,
-                "image « {designation} » de type {mime_type} : seul le PNG est lu"
-            ),
             ImportError::Malformed { format, detail } => {
                 write!(formatter, "source {} mal formée : {detail}", format.name())
             }
@@ -274,6 +267,69 @@ impl fmt::Display for ImportError {
 }
 
 impl std::error::Error for ImportError {}
+
+/// Ce qui fait refuser une texture — la texture seule, pas l'asset (C-26,
+/// ADR-122 §2).
+///
+/// L'ANNEXE A.1 donne pour conséquence de ces deux codes « texture refusée » :
+/// les slots qui la désignaient restent vides, la texture neutre s'applique, et
+/// la compilation le dit une fois. Refuser tout l'asset pour une image ferait
+/// disparaître un modèle entier là où une surface blanche suffit à signaler le
+/// problème.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TextureRefusal {
+    /// Image dans un format autre que PNG (R-532, `E-3004`).
+    NotPng {
+        /// Image concernée : son nom, son chemin, ou son rang.
+        designation: String,
+        /// Ce qui l'a trahie : un type déclaré, ou des octets qui ne sont pas un
+        /// PNG.
+        detail: String,
+    },
+    /// Image de plus de 4096 pixels de côté (R-570, `E-3006`).
+    TooLarge {
+        /// Image concernée.
+        designation: String,
+        /// Largeur lue dans son `IHDR`.
+        width: u32,
+        /// Hauteur lue dans son `IHDR`.
+        height: u32,
+    },
+}
+
+impl TextureRefusal {
+    /// Code de l'ANNEXE A.1 correspondant.
+    #[must_use]
+    pub const fn code(&self) -> i32 {
+        match self {
+            TextureRefusal::NotPng { .. } => -3004,
+            TextureRefusal::TooLarge { .. } => -3006,
+        }
+    }
+}
+
+impl fmt::Display for TextureRefusal {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TextureRefusal::NotPng {
+                designation,
+                detail,
+            } => write!(
+                formatter,
+                "texture « {designation} » refusée (E-3004) : {detail}, seul le PNG est lu"
+            ),
+            TextureRefusal::TooLarge {
+                designation,
+                width,
+                height,
+            } => write!(
+                formatter,
+                "texture « {designation} » refusée (E-3006) : {width}×{height}, plus de \
+                 4096 pixels de côté"
+            ),
+        }
+    }
+}
 
 /// Exécute une analyse tierce en retenant une éventuelle panique.
 ///
@@ -361,24 +417,28 @@ pub fn check_relative_path(path: &str) -> Result<(), ImportError> {
     Ok(())
 }
 
-/// Matériau tel que la source le décrit.
+/// Matériau tel que la source le décrit, traduit en DM-05 (ADR-122 §3).
 ///
-/// Les images sont **désignées**, jamais décodées (R-532) : le chemin est
-/// conservé, le `ResourceManager` de Minecraft s'en occupe.
+/// Les images sont **désignées**, jamais décodées (R-532) : un slot de `desc`
+/// est l'index d'une entrée de [`ImportedAsset::textures`], où l'image est
+/// embarquée telle quelle ou référencée par son chemin.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImportedMaterial {
-    /// Nom donné par l'auteur.
+    /// Nom donné par l'auteur ; vide s'il n'en a pas.
     pub name: String,
-    /// Couleur de base, RGBA linéaire.
-    pub base_color: [f32; 4],
-    /// Chemin relatif de la texture de couleur de base, s'il y en a une.
-    pub base_color_texture: Option<String>,
-    /// Le matériau porte une normal map.
+    /// Le matériau, tel que la section `MATL` le portera.
+    pub desc: MaterialDesc,
+}
+
+impl ImportedMaterial {
+    /// Le matériau porte une normal map utilisable.
     ///
-    /// Un booléen et non un chemin : une texture embarquée dans un GLB n'en a
-    /// pas, et c'est la présence de la carte qui décide si C-23 génère des
-    /// tangentes (étape 3), pas l'endroit où elle se trouve.
-    pub has_normal_map: bool,
+    /// C'est elle qui décide si C-23 génère des tangentes (étape 3). Une carte
+    /// refusée n'est pas utilisable : elle n'en demande pas.
+    #[must_use]
+    pub const fn has_normal_map(&self) -> bool {
+        self.desc.normal_tex != NO_TEXTURE
+    }
 }
 
 /// Ce qu'une source produit, avant optimisation.
@@ -417,8 +477,20 @@ pub struct ImportedAsset {
     /// tangente écrite l'a été pour la normal map qui l'accompagne, et la
     /// recalculer pourrait la contredire.
     pub authored_tangents: Vec<bool>,
-    /// Matériaux.
+    /// Matériaux. Chaque mesh en désigne un par son index : un mesh sans
+    /// matériau dans la source reçoit le matériau par défaut, ajouté ici.
     pub materials: Vec<ImportedMaterial>,
+    /// Textures désignées par les matériaux : une entrée par couple (image,
+    /// échantillonneur), écrite telle quelle dans la section `TEXR`.
+    pub textures: TextureTable,
+    /// Textures refusées, dans l'ordre où elles ont été rencontrées ; leurs
+    /// slots sont restés vides.
+    pub texture_refusals: Vec<TextureRefusal>,
+    /// Ce que DM-05 ne peut pas porter, et que l'import a donc laissé de côté :
+    /// extension sans champ, projection de texture différente de celle de
+    /// l'albedo, répétition en miroir, bibliothèque de matériaux illisible…
+    /// À journaliser une fois (ADR-122 §3) : rien n'est perdu en silence.
+    pub material_warnings: Vec<String>,
     /// Colliders (DM-06), produits par C-32 après l'optimisation.
     ///
     /// Vide à la sortie d'import : les colliders sont générés une fois les

@@ -250,11 +250,12 @@ mod tests {
     #[test]
     fn t243_les_tangentes_et_le_cache_sont_deterministes() {
         let mut source = cube();
+        let mut desc = crate::import::plain_default_material();
+        // Le slot désigne une entrée de `TEXR` : une normal map utilisable.
+        desc.normal_tex = 0;
         source.materials.push(ImportedMaterial {
             name: "carrosserie".to_owned(),
-            base_color: [1.0; 4],
-            base_color_texture: None,
-            has_normal_map: true,
+            desc,
         });
 
         let mut une = source.clone();

@@ -5,8 +5,15 @@
 //! détails du document qui font l'objet de chaque test.
 
 use ax_asset::collider::ColliderMode;
-use ax_asset::import::{import_gltf, ImportError, ImportLimits, SUPPORTED_EXTENSIONS};
+use ax_asset::import::{
+    import_gltf, ImportError, ImportLimits, ImportedAsset, TextureRefusal, SUPPORTED_EXTENSIONS,
+};
 use ax_asset::validate::{validate, AssetView, NamedEntry};
+use ax_model::dm::geometry::mesh_flags;
+use ax_model::dm::material::{
+    blend_mode, cull_mode, material_flags, shading_model, texture_sampler, texture_source,
+    MaterialDesc, NO_TEXTURE,
+};
 use ax_model::dm::scene::{node_flags, ALL_LODS};
 
 const LIMITS: ImportLimits = ImportLimits::new(1 << 20);
@@ -167,12 +174,12 @@ fn triangle_eclaire(normales: bool, tangentes: bool) -> String {
 fn t220_une_normal_map_est_reperee_sur_le_materiau() {
     let (asset, _) = import_gltf(triangle_eclaire(true, false).as_bytes(), &LIMITS, |_| None)
         .expect("import refusé");
-    assert!(asset.materials[0].has_normal_map);
+    assert!(asset.materials[0].has_normal_map());
 
     // Le triangle de base n'a qu'une couleur.
     let (asset, _) =
         import_gltf(triangle("", "").as_bytes(), &LIMITS, |_| None).expect("import refusé");
-    assert!(!asset.materials[0].has_normal_map);
+    assert!(!asset.materials[0].has_normal_map());
 }
 
 #[test]
@@ -468,6 +475,7 @@ fn t220_un_gltf_importe_est_accepte_par_le_validateur() {
     let (asset, _) = import_gltf(source.as_bytes(), &LIMITS, |_| None).expect("import refusé");
 
     let names = [NamedEntry::new("node", "triangle")];
+    let materials = table_des_materiaux(&asset);
     let report = validate(
         &AssetView {
             nodes: &asset.nodes,
@@ -475,7 +483,8 @@ fn t220_un_gltf_importe_est_accepte_par_le_validateur() {
             vertices: &asset.vertices,
             indices: &asset.indices,
             names: &names,
-            material_count: asset.materials.len(),
+            materials: Some(&materials),
+            texture_count: asset.textures.entries.len(),
             dynamic_body: true,
             // Le triangle ne porte pas de normale : absente, pas nulle, et
             // C-23 la générera.
@@ -552,17 +561,51 @@ fn t228_un_tampon_externe_passe_par_le_resolveur() {
 }
 
 #[test]
-fn t228_une_image_non_png_est_refusee() {
-    // R-532 : seul le PNG est lu, et le type est vérifié avant que quoi que ce
-    // soit ne touche l'image.
+fn t272_une_image_non_png_est_refusee_seule() {
+    // R-532 : seul le PNG est lu, et le type déclaré suffit à refuser sans rien
+    // lire. Le refus vaut pour la texture, pas pour l'asset (ADR-122 §2) : le
+    // slot reste vide, la texture neutre s'appliquera, et le modèle ne
+    // disparaît pas pour une image.
+    let source = triangle("", "")
+        .replace(
+            "\"baseColorFactor\": [0.8, 0.1, 0.1, 1.0] }",
+            "\"baseColorFactor\": [0.8, 0.1, 0.1, 1.0], \
+             \"baseColorTexture\": { \"index\": 0 } }",
+        )
+        .replace(
+            "\"materials\":",
+            "\"textures\": [{ \"source\": 0 }],
+  \"images\": [{ \"uri\": \"carrosserie.jpg\", \"mimeType\": \"image/jpeg\" }],
+  \"materials\":",
+        );
+
+    let (asset, _) = import_gltf(source.as_bytes(), &LIMITS, |_| None)
+        .expect("une texture refusée ne refuse pas l'asset");
+    assert_eq!(asset.materials[0].desc.albedo_tex, NO_TEXTURE);
+    assert!(asset.textures.entries.is_empty());
+    assert_eq!(
+        asset.texture_refusals,
+        [TextureRefusal::NotPng {
+            designation: "carrosserie.jpg".to_owned(),
+            detail: "type déclaré image/jpeg".to_owned(),
+        }]
+    );
+    assert_eq!(asset.texture_refusals[0].code(), -3004);
+}
+
+#[test]
+fn t228_une_image_que_rien_ne_designe_n_est_pas_jugee() {
+    // Une image qu'aucun slot ne désigne n'est pas une texture de l'asset :
+    // son type n'a pas à être jugé. Son chemin, lui, l'est toujours (R-531).
     let source = triangle("", "").replace(
         "\"materials\":",
         "\"images\": [{ \"uri\": \"carrosserie.jpg\", \"mimeType\": \"image/jpeg\" }],
   \"materials\":",
     );
 
-    let refus = import_gltf(source.as_bytes(), &LIMITS, |_| None).unwrap_err();
-    assert_eq!(refus.code(), -3004);
+    let (asset, report) = import_gltf(source.as_bytes(), &LIMITS, |_| None).expect("import refusé");
+    assert!(asset.texture_refusals.is_empty());
+    assert_eq!(report.images.len(), 1);
 }
 
 #[test]
@@ -678,6 +721,7 @@ fn t220_deux_nodes_sans_nom_ne_sont_pas_des_doublons() {
         .iter()
         .map(|(category, name)| NamedEntry::new(category, name.as_str()))
         .collect();
+    let materials = table_des_materiaux(&asset);
     let report = validate(
         &AssetView {
             nodes: &asset.nodes,
@@ -685,7 +729,8 @@ fn t220_deux_nodes_sans_nom_ne_sont_pas_des_doublons() {
             vertices: &asset.vertices,
             indices: &asset.indices,
             names: &names,
-            material_count: asset.materials.len(),
+            materials: Some(&materials),
+            texture_count: asset.textures.entries.len(),
             dynamic_body: true,
             missing_normals: &asset.missing_normals,
             ..AssetView::default()
@@ -735,4 +780,430 @@ fn charge_utile(source: &str) -> String {
     let debut = source.find(DATA_PREFIX).expect("uri de données") + DATA_PREFIX.len();
     let fin = debut + source[debut..].find('"').expect("fin de l'uri");
     source[debut..fin].to_owned()
+}
+
+/// Les matériaux de l'asset, tels que la section `MATL` les portera.
+fn table_des_materiaux(asset: &ImportedAsset) -> Vec<MaterialDesc> {
+    asset
+        .materials
+        .iter()
+        .map(|material| material.desc)
+        .collect()
+}
+
+/// En-tête d'un PNG — signature et `IHDR` —, tout ce que l'import lit d'une
+/// image (R-532).
+fn png_entete(largeur: u32, hauteur: u32) -> Vec<u8> {
+    let mut png = ax_asset::png::SIGNATURE.to_vec();
+    png.extend_from_slice(&13u32.to_be_bytes());
+    png.extend_from_slice(b"IHDR");
+    png.extend_from_slice(&largeur.to_be_bytes());
+    png.extend_from_slice(&hauteur.to_be_bytes());
+    // Profondeur, couleur, compression, filtre, entrelacement, puis un CRC
+    // que personne ne vérifie ici.
+    png.extend_from_slice(&[8, 6, 0, 0, 0, 0, 0, 0, 0]);
+    png
+}
+
+/// Un triangle à deux jeux d'UV et à couleurs de sommet, son matériau et ses
+/// textures donnés en JSON ; `png` est porté par la `bufferView` 5.
+///
+/// `TEXCOORD_0` vaut (0, 0), (1, 0), (0, 1) ; `TEXCOORD_1`, (0,5 ; 0,5)
+/// partout ; `COLOR_0` est rouge, vert, puis bleu à demi opaque, en `u16`
+/// normalisés — ce qu'écrit Blender. `textures` porte les tableaux `textures`,
+/// `samplers` et `images`, virgule finale comprise ; `png` vide, pas de
+/// `bufferView` 5.
+fn triangle_materiel(materiau: &str, textures: &str, png: &[u8]) -> String {
+    let flottants = |valeurs: &[f32]| -> Vec<u8> {
+        valeurs
+            .iter()
+            .flat_map(|valeur| valeur.to_le_bytes())
+            .collect()
+    };
+    let entiers = |valeurs: &[u16]| -> Vec<u8> {
+        valeurs
+            .iter()
+            .flat_map(|valeur| valeur.to_le_bytes())
+            .collect()
+    };
+    let morceaux = [
+        flottants(&[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]),
+        flottants(&[0.0, 0.0, 1.0, 0.0, 0.0, 1.0]),
+        flottants(&[0.5; 6]),
+        entiers(&[65535, 0, 0, 65535, 0, 65535, 0, 65535, 0, 0, 65535, 32768]),
+        entiers(&[0, 1, 2]),
+        png.to_vec(),
+    ];
+    let mut buffer = Vec::new();
+    let mut vues = Vec::new();
+    // glTF veut une `bufferView` d'au moins un octet : sans image, la
+    // cinquième n'existe pas. Les cinq premières ne sont jamais vides.
+    for morceau in morceaux.iter().filter(|morceau| !morceau.is_empty()) {
+        vues.push(format!(
+            "{{ \"buffer\": 0, \"byteOffset\": {}, \"byteLength\": {} }}",
+            buffer.len(),
+            morceau.len()
+        ));
+        buffer.extend_from_slice(morceau);
+    }
+
+    format!(
+        "{{
+  \"asset\": {{ \"version\": \"2.0\" }},
+  \"scene\": 0,
+  \"scenes\": [{{ \"nodes\": [0] }}],
+  \"nodes\": [{{ \"name\": \"triangle\", \"mesh\": 0 }}],
+  \"meshes\": [{{ \"primitives\": [{{
+    \"attributes\": {{ \"POSITION\": 0, \"TEXCOORD_0\": 1, \"TEXCOORD_1\": 2, \"COLOR_0\": 3 }},
+    \"indices\": 4,
+    \"material\": 0
+  }}] }}],
+  \"materials\": [{materiau}],
+  {textures}
+  \"accessors\": [
+    {{ \"bufferView\": 0, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC3\",
+      \"min\": [0.0, 0.0, 0.0], \"max\": [1.0, 1.0, 0.0] }},
+    {{ \"bufferView\": 1, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC2\" }},
+    {{ \"bufferView\": 2, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC2\" }},
+    {{ \"bufferView\": 3, \"componentType\": 5123, \"normalized\": true, \"count\": 3, \"type\": \"VEC4\" }},
+    {{ \"bufferView\": 4, \"componentType\": 5123, \"count\": 3, \"type\": \"SCALAR\" }}
+  ],
+  \"bufferViews\": [{}],
+  \"buffers\": [{{ \"byteLength\": {}, \"uri\": \"{DATA_PREFIX}{}\" }}]
+}}",
+        vues.join(", "),
+        buffer.len(),
+        encode(&buffer)
+    )
+}
+
+/// Importe un triangle matériel, sans résolveur.
+fn importe(materiau: &str, textures: &str, png: &[u8]) -> ImportedAsset {
+    import_gltf(
+        triangle_materiel(materiau, textures, png).as_bytes(),
+        &LIMITS,
+        |_| None,
+    )
+    .expect("import refusé")
+    .0
+}
+
+#[test]
+fn t271_un_materiau_gltf_complet_se_traduit_en_dm05() {
+    let png = png_entete(2, 2);
+    let materiau = r#"{
+      "name": "carrosserie",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.5, 0.25, 1.0, 0.75],
+        "baseColorTexture": { "index": 0, "extensions": {
+          "KHR_texture_transform": { "offset": [0.5, 0.0], "scale": [2.0, 2.0] } } },
+        "metallicFactor": 0.25,
+        "roughnessFactor": 0.75,
+        "metallicRoughnessTexture": { "index": 1 }
+      },
+      "occlusionTexture": { "index": 1, "strength": 0.5 },
+      "normalTexture": { "index": 0, "scale": 0.5 },
+      "emissiveFactor": [1.0, 0.5, 0.0],
+      "emissiveTexture": { "index": 0, "texCoord": 1 },
+      "alphaMode": "MASK",
+      "alphaCutoff": 0.25,
+      "doubleSided": true,
+      "extensions": {
+        "KHR_materials_emissive_strength": { "emissiveStrength": 2.0 },
+        "KHR_materials_clearcoat": { "clearcoatFactor": 0.75, "clearcoatRoughnessFactor": 0.25,
+                                     "clearcoatTexture": { "index": 0 } },
+        "KHR_materials_ior": { "ior": 1.5 }
+      }
+    }"#;
+    let textures = r#""textures": [{ "source": 0, "sampler": 0 }, { "source": 1 }],
+  "samplers": [{ "magFilter": 9728, "wrapS": 33648 }],
+  "images": [{ "bufferView": 5, "mimeType": "image/png", "name": "caisse" }, { "uri": "orm.png" }],"#;
+    let asset = importe(materiau, textures, &png);
+
+    assert_eq!(asset.materials.len(), 1, "aucune primitive sans matériau");
+    let desc = asset.materials[0].desc;
+    assert_eq!(desc.albedo_factor, [0.5, 0.25, 1.0, 0.75]);
+    assert_eq!((desc.metallic, desc.roughness), (0.25, 0.75));
+    // L'ORM empaqueté de glTF : métal, rugosité et occlusion dans une image.
+    assert_eq!(desc.orm_tex, 1);
+    assert_eq!(desc.occlusion_strength, 0.5);
+    // Albedo, normale et émissive lisent la même image par le même
+    // échantillonneur : une seule entrée.
+    assert_eq!(
+        (desc.albedo_tex, desc.normal_tex, desc.emissive_tex),
+        (0, 0, 0)
+    );
+    assert_eq!(desc.normal_scale, 0.5);
+    // `KHR_materials_emissive_strength` multiplie le facteur.
+    assert_eq!(desc.emissive_factor, [2.0, 1.0, 0.0]);
+    assert_eq!(
+        (desc.blend_mode, desc.alpha_cutoff),
+        (blend_mode::CUTOUT, 0.25)
+    );
+    assert_eq!(desc.cull_mode, cull_mode::NONE);
+    assert_eq!((desc.clearcoat, desc.clearcoat_roughness), (0.75, 0.25));
+    assert_eq!(desc.shading_model, shading_model::PBR_CLEARCOAT);
+    assert_eq!(desc.flags, material_flags::VERTEX_COLOR, "COLOR_0 présent");
+    assert_eq!(desc.check(), Ok(()));
+
+    // Le mesh recopie la double face ; la découpe n'est pas de la
+    // transparence.
+    assert_eq!(asset.meshes[0].flags, mesh_flags::DOUBLE_SIDED);
+
+    // TEXR : l'image embarquée telle quelle, au plus proche — la répétition en
+    // miroir rendue simple —, puis la ressource, échantillonneur non déclaré.
+    assert_eq!(asset.textures.entries.len(), 2);
+    let embarquee = asset.textures.entries[0];
+    assert_eq!(embarquee.source, texture_source::EMBEDDED);
+    assert_eq!((embarquee.width, embarquee.height), (2, 2));
+    assert_eq!(embarquee.sampler, texture_sampler::FILTER_NEAREST);
+    assert_eq!(asset.textures.data(0), Some(png.as_slice()));
+    assert_eq!(asset.textures.entries[1].source, texture_source::RESOURCE);
+    assert_eq!(
+        asset.textures.entries[1].sampler,
+        texture_sampler::FILTER_UNDECLARED
+    );
+    assert_eq!(asset.textures.resource_path(1), Some("orm.png"));
+    assert!(asset.texture_refusals.is_empty());
+
+    // La projection de l'albedo, cuite dans uv0 : u' = 2u + 0,5, v' = 2v.
+    assert_eq!(asset.raw_uvs, [[0.5, 0.0], [2.5, 0.0], [0.5, 2.0]]);
+    // COLOR_0, linéaire, en UNORM8.
+    let couleurs: Vec<[u8; 4]> = asset.vertices.iter().map(|vertex| vertex.color).collect();
+    assert_eq!(
+        couleurs,
+        [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 128]]
+    );
+
+    // Ce que DM-05 ne peut pas porter est dit, une fois chacun.
+    let dits = asset.material_warnings.join("\n");
+    for attendu in [
+        "wrapS MIRRORED_REPEAT",
+        "metallicRoughnessTexture projetée autrement",
+        "occlusionTexture projetée autrement",
+        "normalTexture projetée autrement",
+        "emissiveTexture projetée autrement",
+        "clearcoatTexture sans équivalent",
+        "KHR_materials_ior sans champ",
+    ] {
+        assert_eq!(
+            dits.matches(attendu).count(),
+            1,
+            "« {attendu} » dans :\n{dits}"
+        );
+    }
+}
+
+#[test]
+fn t271_le_texcoord_de_la_transformation_prime_sur_celui_de_la_texture() {
+    let materiau = r#"{ "pbrMetallicRoughness": { "baseColorTexture": { "index": 0, "texCoord": 0,
+      "extensions": { "KHR_texture_transform": { "texCoord": 1 } } } } }"#;
+    let textures = r#""textures": [{ "source": 0 }], "images": [{ "uri": "bois.png" }],"#;
+    let asset = importe(materiau, textures, &png_entete(2, 2));
+
+    // TEXCOORD_1 vaut (0,5 ; 0,5) partout.
+    assert_eq!(asset.raw_uvs, [[0.5, 0.5]; 3]);
+    assert!(
+        asset.material_warnings.is_empty(),
+        "{:?}",
+        asset.material_warnings
+    );
+    // Un matériau sans nom n'entre pas dans la règle d'unicité.
+    assert!(asset
+        .names
+        .iter()
+        .all(|(category, _)| *category != "matériau"));
+}
+
+#[test]
+fn t271_un_materiau_translucide_rend_son_mesh_transparent() {
+    let asset = importe(r#"{ "alphaMode": "BLEND" }"#, "", &[]);
+    let desc = asset.materials[0].desc;
+    assert_eq!(desc.blend_mode, blend_mode::TRANSLUCENT);
+    assert_eq!(desc.cull_mode, cull_mode::BACK);
+    assert_eq!(asset.meshes[0].flags, mesh_flags::TRANSPARENT);
+}
+
+#[test]
+fn t271_un_seuil_de_decoupe_au_dela_de_un_est_ramene_et_dit() {
+    let asset = importe(r#"{ "alphaMode": "MASK", "alphaCutoff": 1.5 }"#, "", &[]);
+    assert_eq!(asset.materials[0].desc.alpha_cutoff, 1.0);
+    assert!(
+        asset.material_warnings[0].contains("alphaCutoff 1.5"),
+        "{:?}",
+        asset.material_warnings
+    );
+}
+
+#[test]
+fn t271_lustre_et_eclairage_absent_choisissent_leur_modele() {
+    // DM-05 ne porte qu'une intensité de lustre : la plus forte composante.
+    let lustre = importe(
+        r#"{ "extensions": { "KHR_materials_sheen": {
+          "sheenColorFactor": [0.25, 0.5, 0.125], "sheenRoughnessFactor": 0.5 } } }"#,
+        "",
+        &[],
+    );
+    let desc = lustre.materials[0].desc;
+    assert_eq!(desc.sheen, 0.5);
+    assert_eq!(desc.shading_model, shading_model::PBR_SHEEN);
+    assert!(
+        lustre.material_warnings[0].contains("sheenRoughnessFactor"),
+        "{:?}",
+        lustre.material_warnings
+    );
+
+    let sans_eclairage = importe(
+        r#"{ "extensions": { "KHR_materials_unlit": {},
+          "KHR_materials_sheen": { "sheenColorFactor": [1.0, 1.0, 1.0] } } }"#,
+        "",
+        &[],
+    );
+    assert_eq!(
+        sans_eclairage.materials[0].desc.shading_model,
+        shading_model::UNLIT,
+        "UNLIT ignore tout le reste"
+    );
+}
+
+#[test]
+fn t271_une_primitive_sans_materiau_recoit_celui_de_gltf() {
+    let source = triangle("", "").replace(",\n      \"material\": 0", "");
+    assert!(
+        !source.contains("\"material\": 0"),
+        "le document de test a changé"
+    );
+    let (asset, _) = import_gltf(source.as_bytes(), &LIMITS, |_| None).expect("import refusé");
+
+    assert_eq!(
+        asset.materials.len(),
+        2,
+        "peinture, puis le matériau par défaut"
+    );
+    assert_eq!(asset.meshes[0].material, 1);
+    let defaut = &asset.materials[1];
+    assert!(defaut.name.is_empty());
+    // Celui de la spécification glTF 2.0 : blanc, métal et rugosité à 1.
+    assert_eq!(defaut.desc.albedo_factor, [1.0; 4]);
+    assert_eq!((defaut.desc.metallic, defaut.desc.roughness), (1.0, 1.0));
+    assert_eq!(defaut.desc.blend_mode, blend_mode::OPAQUE);
+}
+
+#[test]
+fn t271_deux_materiaux_sans_nom_ne_sont_pas_des_doublons() {
+    // La première version les nommait « material » l'un et l'autre, et C-22
+    // refusait pour doublon un glTF valide.
+    let source = triangle("", "")
+        .replace("\"name\": \"peinture\",", "")
+        .replace("\"materials\": [{", "\"materials\": [{ }, {");
+    let (asset, _) = import_gltf(source.as_bytes(), &LIMITS, |_| None).expect("import refusé");
+
+    assert_eq!(asset.materials.len(), 2);
+    let names: Vec<NamedEntry<'_>> = asset
+        .names
+        .iter()
+        .map(|(category, name)| NamedEntry::new(category, name.as_str()))
+        .collect();
+    let materials = table_des_materiaux(&asset);
+    let report = validate(
+        &AssetView {
+            nodes: &asset.nodes,
+            meshes: &asset.meshes,
+            vertices: &asset.vertices,
+            indices: &asset.indices,
+            names: &names,
+            materials: Some(&materials),
+            texture_count: asset.textures.entries.len(),
+            dynamic_body: true,
+            missing_normals: &asset.missing_normals,
+            ..AssetView::default()
+        },
+        &asset.raw_uvs,
+    );
+    assert!(report.is_valid(), "{:?}", report.errors);
+}
+
+#[test]
+fn t271_une_image_en_uri_data_est_embarquee_telle_quelle() {
+    let png = png_entete(4, 2);
+    let textures = format!(
+        r#""textures": [{{ "source": 0 }}], "images": [{{ "uri": "data:image/png;base64,{}" }}],"#,
+        encode(&png)
+    );
+    let asset = importe(
+        r#"{ "pbrMetallicRoughness": { "baseColorTexture": { "index": 0 } } }"#,
+        &textures,
+        &[],
+    );
+    let entree = asset.textures.entries[0];
+    assert_eq!(entree.source, texture_source::EMBEDDED);
+    assert_eq!((entree.width, entree.height), (4, 2));
+    assert_eq!(asset.textures.data(0), Some(png.as_slice()));
+}
+
+#[test]
+fn t271_une_primitive_texturee_sans_coordonnees_est_dite() {
+    let source = triangle("", "")
+        .replace(
+            "\"baseColorFactor\": [0.8, 0.1, 0.1, 1.0] }",
+            "\"baseColorFactor\": [0.8, 0.1, 0.1, 1.0], \
+             \"baseColorTexture\": { \"index\": 0 } }",
+        )
+        .replace(
+            "\"materials\":",
+            "\"textures\": [{ \"source\": 0 }],
+  \"images\": [{ \"uri\": \"bois.png\" }],
+  \"materials\":",
+        );
+    let (asset, _) = import_gltf(source.as_bytes(), &LIMITS, |_| None).expect("import refusé");
+    assert_eq!(asset.materials[0].desc.albedo_tex, 0);
+    assert!(
+        asset
+            .material_warnings
+            .iter()
+            .any(|warning| warning.contains("TEXCOORD_0 absent")),
+        "{:?}",
+        asset.material_warnings
+    );
+}
+
+#[test]
+fn t272_une_image_embarquee_trop_grande_est_refusee_seule() {
+    let asset = importe(
+        r#"{ "pbrMetallicRoughness": { "baseColorTexture": { "index": 0 } } }"#,
+        r#""textures": [{ "source": 0 }], "images": [{ "bufferView": 5, "mimeType": "image/png" }],"#,
+        &png_entete(8192, 16),
+    );
+    assert_eq!(asset.materials[0].desc.albedo_tex, NO_TEXTURE);
+    assert!(asset.textures.entries.is_empty());
+    assert_eq!(
+        asset.texture_refusals,
+        [TextureRefusal::TooLarge {
+            designation: "image n°0".to_owned(),
+            width: 8192,
+            height: 16,
+        }]
+    );
+    assert_eq!(asset.texture_refusals[0].code(), -3006);
+}
+
+#[test]
+fn t680_une_couleur_de_sommet_mal_formee_est_refusee_et_ne_panique_pas() {
+    // `read_colors` du crate `gltf` aiguille sur la paire (type, composant) et
+    // atteint un `unreachable!()` sur toute autre : un `COLOR_0` scalaire
+    // faisait paniquer l'import, que le filet rendait en `ParserPanicked`.
+    let source = triangle_materiel("{ }", "", &[]).replace(
+        "\"normalized\": true, \"count\": 3, \"type\": \"VEC4\"",
+        "\"normalized\": true, \"count\": 3, \"type\": \"SCALAR\"",
+    );
+    assert_eq!(
+        source.matches("\"type\": \"SCALAR\"").count(),
+        2,
+        "le document de test a changé"
+    );
+    let refus = import_gltf(source.as_bytes(), &LIMITS, |_| None).unwrap_err();
+    assert!(
+        matches!(refus, ImportError::Malformed { .. }),
+        "refus attendu, obtenu {refus:?}"
+    );
 }

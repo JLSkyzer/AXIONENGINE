@@ -30,7 +30,7 @@
 //! Les tangentes s'accordent ainsi aux valeurs rendues, pas à des flottants de
 //! source que le rendu ne connaît plus.
 
-use crate::import::ImportedAsset;
+use crate::import::{ImportedAsset, ImportedMaterial};
 use ax_model::dm::geometry::{encode_tangent, Vertex};
 
 /// Génère les tangentes des meshes qui en demandent ; rend le nombre de meshes
@@ -47,7 +47,7 @@ pub(super) fn generate(asset: &mut ImportedAsset, warnings: &mut Vec<String>) ->
             let normal_map = asset
                 .materials
                 .get(usize::from(mesh.material))
-                .is_some_and(|material| material.has_normal_map);
+                .is_some_and(ImportedMaterial::has_normal_map);
             normal_map
                 && mesh.vertex_count > 0
                 && (0..mesh.vertex_count as usize)
@@ -195,7 +195,6 @@ mod tests {
     use super::super::merge::merge_vertices;
     use super::super::tests::{asset, sommet};
     use super::*;
-    use crate::import::ImportedMaterial;
 
     /// Un sommet tourné vers +Z, avec ses UV en unités de texture.
     fn coin(position: [f32; 3], uv: [f32; 2]) -> Vertex {
@@ -206,11 +205,16 @@ mod tests {
     }
 
     fn materiau(has_normal_map: bool) -> ImportedMaterial {
+        let mut desc = crate::import::plain_default_material();
+        // Le slot désigne une entrée de `TEXR` : une normal map utilisable.
+        desc.normal_tex = if has_normal_map {
+            0
+        } else {
+            ax_model::dm::material::NO_TEXTURE
+        };
         ImportedMaterial {
             name: "carrosserie".to_owned(),
-            base_color: [1.0; 4],
-            base_color_texture: None,
-            has_normal_map,
+            desc,
         }
     }
 

@@ -1822,10 +1822,23 @@ substituable sans changer rapier »).
                         décodeurs ajoutés au fuzzing et au rejeu du corpus. Le compilateur
                         écrit encore l'ancien `MATL` : `COMPILER_VERSION` inchangé (6).
                         cargo 744 verts (22 nouveaux), Java 292 verts.
-                  - [ ] **T-a2 — import** : glTF/OBJ/STL → DM-05 et TEXR (images embarquées et
-                        chemins, échantillonneurs, `COLOR_0`, `KHR_texture_transform`,
-                        extensions), matériau par défaut, drapeaux de mesh recopiés ; le
-                        compilateur écrit `MATL` et `TEXR` ; validation ; `COMPILER_VERSION` 7.
+                  - [x] **T-a2 — import** : glTF/OBJ/STL → DM-05 et TEXR, selon le §3 et ses
+                        « Précisions de T-a2 » : images embarquées (`bufferView`, `data:`) et
+                        chemins, PNG seul et ≤ 4096 (texture refusée seule, E-3004/E-3006),
+                        échantillonneurs, `KHR_texture_transform` de l'albedo cuite dans `uv0`,
+                        `COLOR_0` et `VERTEX_COLOR`, clearcoat/sheen/anisotropy lus en JSON brut,
+                        ORM empaqueté, matériau par défaut, `TRANSPARENT`/`DOUBLE_SIDED`
+                        recopiés ; MTL : options de texture lues (`-bm`, `-s`, `-o`, `-clamp`),
+                        `Ke`, `Pr`/`Pm`, `map_Ke`, rugosité `(2/(Ns+2))^¼` (correction du §3),
+                        `v` retourné ; pertes dites dans `material_warnings` ; C-22 contrôle
+                        DM-05, slots, index de matériau et drapeaux ; `MATL`/`TEXR` écrites ;
+                        `COMPILER_VERSION` 7 des deux côtés ; `gltf_refs` contrôle `COLOR_n`
+                        (`unreachable!()` de `read_colors`). cargo 781 verts (37 nouveaux, trois
+                        mutations attrapées), Java 292 verts.
+                        Constat pour T-a3 (exécuté) : un objet OBJ à plusieurs `usemtl` donne
+                        plusieurs nodes de même nom, que C-22 refuse pour doublon — un node,
+                        plusieurs meshes (`mesh_count`). Pour T-b : chemin `RESOURCE` pris tel
+                        quel par Java, sans décodage `%`, revalidé (R-531).
                   - [ ] **T-a3 — UV et primitives** : `uv0_range` par mesh (R-142),
                         `mesh_count` (DM-03) ; liste de dessin, bornes, LOD, validation ;
                         `COMPILER_VERSION` 8.

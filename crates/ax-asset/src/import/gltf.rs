@@ -8,15 +8,16 @@
 //! l'envers sans que personne ne sache où.
 
 use super::gltf_extras::{NodeAnnotations, NodeRole};
+use super::gltf_material::{self, GltfMaterials};
 use super::gltf_refs;
-use super::{
-    check_relative_path, ImportError, ImportLimits, ImportedAsset, ImportedMaterial, SourceFormat,
-};
+use super::material::UvMapping;
+use super::{check_relative_path, ImportError, ImportLimits, ImportedAsset, SourceFormat};
 use crate::collider::{ColliderMode, ColliderRequest};
 use ax_model::dm::geometry::{
-    encode_normal, encode_tangent, MeshDesc, Transform, Vertex, NO_REGION_U8,
+    encode_normal, encode_tangent, mesh_flags, MeshDesc, Transform, Vertex, NO_REGION_U8,
 };
 use ax_model::dm::limits;
+use ax_model::dm::material::{material_flags, NO_TEXTURE};
 use ax_model::dm::scene::{
     name_hash, node_flags, NodeDesc, ALL_LODS, NONE_U16, NONE_U32, NO_PARENT,
 };
@@ -74,8 +75,10 @@ pub struct ImageRef {
 /// [`ImportError::SourceTooLarge`] au-delà du plafond (R-533),
 /// [`ImportError::ExternalPath`] sur un URI absolu ou remontant (R-531),
 /// [`ImportError::UnsupportedExtension`] sur une extension requise et non
-/// supportée (R-530), [`ImportError::UnsupportedImage`] sur une image qui n'est
-/// pas du PNG (R-532), [`ImportError::Malformed`] si le contenu est illisible.
+/// supportée (R-530), [`ImportError::Malformed`] si le contenu est illisible.
+/// Une image qui n'est pas du PNG (R-532) ou dépasse 4096 pixels de côté
+/// (R-570) n'est pas une erreur : elle est refusée seule, dans
+/// [`ImportedAsset::texture_refusals`], et ses slots restent vides.
 pub fn import_gltf(
     bytes: &[u8],
     limits: &ImportLimits,
@@ -137,8 +140,11 @@ fn import_gltf_inner(
     let mut annotations = Vec::new();
 
     let placement = import_hierarchy(&document, &mut asset, &mut annotations, &mut report);
-    import_meshes(&document, &buffers, &mut asset, format)?;
-    import_materials(&document, &mut asset)?;
+    // Les matériaux avant les meshes : chaque primitive y lit la projection de
+    // ses coordonnées de texture et les drapeaux qu'elle recopie, et y trouve
+    // le matériau par défaut si elle n'en désigne aucun (ADR-122 §3).
+    let materials = gltf_material::import_materials(&document, &buffers, format, &mut asset)?;
+    import_meshes(&document, &buffers, &materials, &mut asset, format)?;
     check_skins(&document, format)?;
 
     // Les nodes ont été créés avant que les meshes n'existent : leur index de
@@ -308,6 +314,12 @@ fn load_buffers(
 }
 
 /// R-532 — les images sont désignées, jamais décodées.
+///
+/// Toutes les images du document, y compris celles qu'aucun matériau ne
+/// désigne : un URI sortant n'est pas une erreur de l'auteur mais une
+/// tentative (R-531), et il se refuse qu'on le suive ou non. Le type d'une
+/// image n'est pas jugé ici : une image qui n'est pas du PNG est refusée seule,
+/// au moment où un slot la désigne (`gltf_material`).
 fn collect_images(document: &gltf::Gltf, report: &mut GltfReport) -> Result<(), ImportError> {
     for image in document.images() {
         match image.source() {
@@ -315,14 +327,12 @@ fn collect_images(document: &gltf::Gltf, report: &mut GltfReport) -> Result<(), 
                 if decode_data_uri(uri).is_none() {
                     check_relative_path(uri)?;
                 }
-                check_image_type(mime_type, uri)?;
                 report.images.push(ImageRef {
                     uri: Some(uri.to_owned()),
                     mime_type: mime_type.map(ToOwned::to_owned),
                 });
             }
             gltf::image::Source::View { mime_type, .. } => {
-                check_image_type(Some(mime_type), "<embarquée>")?;
                 report.images.push(ImageRef {
                     uri: None,
                     mime_type: Some(mime_type.to_owned()),
@@ -333,27 +343,13 @@ fn collect_images(document: &gltf::Gltf, report: &mut GltfReport) -> Result<(), 
     Ok(())
 }
 
-/// Refuse une image qui n'est pas du PNG (R-532, `E-3004`).
-///
-/// Le type est vérifié **avant** que quoi que ce soit ne touche l'image : c'est
-/// tout l'intérêt de ne pas décoder ici.
-fn check_image_type(mime_type: Option<&str>, designation: &str) -> Result<(), ImportError> {
-    match mime_type {
-        Some("image/png") | None => Ok(()),
-        Some(other) => Err(ImportError::UnsupportedImage {
-            designation: designation.to_owned(),
-            mime_type: other.to_owned(),
-        }),
-    }
-}
-
 /// Décode un URI `data:` en base64.
 ///
 /// Rend `None` si l'URI n'en est pas un. Le décodage est écrit ici plutôt
 /// qu'importé : trente lignes ne justifient pas une dépendance de plus
 /// (R-2300), et celle-ci se placerait sur un chemin qui lit des données
 /// hostiles.
-fn decode_data_uri(uri: &str) -> Option<Result<Vec<u8>, ImportError>> {
+pub(super) fn decode_data_uri(uri: &str) -> Option<Result<Vec<u8>, ImportError>> {
     let rest = uri.strip_prefix("data:")?;
     let payload = rest.split_once(";base64,").map(|(_, payload)| payload)?;
     Some(
@@ -534,14 +530,39 @@ fn bind_meshes(document: &gltf::Gltf, placement: &[Option<u32>], asset: &mut Imp
 }
 
 /// Construit les meshes : une primitive glTF donne un mesh AXION.
+///
+/// Chaque primitive lit ses coordonnées de texture dans le jeu que l'albedo de
+/// son matériau désigne, transformation cuite, et recopie de ce matériau les
+/// drapeaux `TRANSPARENT` et `DOUBLE_SIDED` (ADR-122 §3). Ses couleurs de
+/// sommet `COLOR_0`, linéaires comme glTF les définit, posent le drapeau
+/// `VERTEX_COLOR` de son matériau ; les primitives sans couleur gardent le
+/// blanc, neutre pour le produit que le rendu en fait.
 fn import_meshes(
     document: &gltf::Gltf,
     buffers: &[Vec<u8>],
+    materials: &GltfMaterials,
     asset: &mut ImportedAsset,
     format: SourceFormat,
 ) -> Result<(), ImportError> {
     for mesh in document.meshes() {
         for primitive in mesh.primitives() {
+            let (material, mapping) = match primitive.material().index() {
+                Some(index) => (
+                    u16::try_from(index).unwrap_or(u16::MAX),
+                    materials
+                        .mappings
+                        .get(index)
+                        .copied()
+                        .unwrap_or(UvMapping::IDENTITY),
+                ),
+                // Ajouté par `import_materials`, qui a vu cette primitive.
+                None => (materials.default.unwrap_or(u16::MAX), UvMapping::IDENTITY),
+            };
+            let desc = asset
+                .materials
+                .get(usize::from(material))
+                .map(|entry| entry.desc);
+
             if primitive.mode() != gltf::mesh::Mode::Triangles {
                 // Le moteur ne connaît que des triangles. Convertir un
                 // `TriangleStrip` serait possible, mais silencieux : mieux vaut
@@ -611,10 +632,31 @@ fn import_meshes(
                     .map(Iterator::collect)
                     .unwrap_or_default()
             };
+            // La projection de l'albedo, cuite : DM-05 n'a que `uv0`.
             let uvs: Vec<[f32; 2]> = reader
-                .read_tex_coords(0)
-                .map(|coords| coords.into_f32().collect())
+                .read_tex_coords(mapping.set)
+                .map(|coords| coords.into_f32().map(|uv| mapping.apply(uv)).collect())
                 .unwrap_or_default();
+            let textured = desc
+                .is_some_and(|desc| desc.texture_slots().iter().any(|slot| *slot != NO_TEXTURE));
+            if uvs.is_empty() && textured {
+                asset.material_warnings.push(format!(
+                    "meshes[{}].primitives[{}] : TEXCOORD_{} absent alors que son \
+                     matériau est texturé — coordonnées nulles",
+                    mesh.index(),
+                    primitive.index(),
+                    mapping.set
+                ));
+            }
+            let colors: Vec<[u8; 4]> = reader
+                .read_colors(0)
+                .map(|colors| colors.into_rgba_f32().map(quantize_color).collect())
+                .unwrap_or_default();
+            if !colors.is_empty() {
+                if let Some(entry) = asset.materials.get_mut(usize::from(material)) {
+                    entry.desc.flags |= material_flags::VERTEX_COLOR;
+                }
+            }
             let joints: Vec<[u16; 4]> = reader
                 .read_joints(0)
                 .map(|joints| joints.into_u16().collect())
@@ -645,7 +687,7 @@ fn import_meshes(
                     tangent,
                     uv0: quantize_uv(uv),
                     uv1: [0; 2],
-                    color: [255; 4],
+                    color: colors.get(index).copied().unwrap_or([255; 4]),
                     bones: joints.get(index).map_or([0; 4], |joint| {
                         [
                             u8::try_from(joint[0]).unwrap_or(0),
@@ -688,54 +730,20 @@ fn import_meshes(
                 vertex_count,
                 index_offset,
                 index_count,
-                material: primitive
-                    .material()
-                    .index()
-                    .and_then(|index| u16::try_from(index).ok())
-                    .unwrap_or(0),
+                material,
                 lod: 0,
-                flags: if joints.is_empty() {
-                    0
-                } else {
-                    ax_model::dm::geometry::mesh_flags::SKINNED
-                },
+                flags: desc.map_or(0, |desc| desc.mesh_flags())
+                    | if joints.is_empty() {
+                        0
+                    } else {
+                        mesh_flags::SKINNED
+                    },
                 aabb_min,
                 aabb_max,
                 region: NONE_U16,
                 _pad: 0,
             });
         }
-    }
-    Ok(())
-}
-
-fn import_materials(document: &gltf::Gltf, asset: &mut ImportedAsset) -> Result<(), ImportError> {
-    for material in document.materials() {
-        let pbr = material.pbr_metallic_roughness();
-        let texture = match pbr.base_color_texture() {
-            Some(info) => match info.texture().source().source() {
-                gltf::image::Source::Uri { uri, .. } => {
-                    if decode_data_uri(uri).is_none() {
-                        check_relative_path(uri)?;
-                    }
-                    Some(uri.to_owned())
-                }
-                // Une image embarquée n'a pas de chemin : elle voyagera dans la
-                // section `TEXR` avec l'asset.
-                gltf::image::Source::View { .. } => None,
-            },
-            None => None,
-        };
-
-        asset.materials.push(ImportedMaterial {
-            name: material.name().unwrap_or("material").to_owned(),
-            base_color: pbr.base_color_factor(),
-            base_color_texture: texture,
-            has_normal_map: material.normal_texture().is_some(),
-        });
-        asset
-            .names
-            .push(("matériau", material.name().unwrap_or("material").to_owned()));
     }
     Ok(())
 }
@@ -778,6 +786,20 @@ fn quantize_uv(uv: [f32; 2]) -> [u16; 2] {
         }
     };
     [encode(uv[0]), encode(uv[1])]
+}
+
+/// Quantifie une couleur de sommet `COLOR_0` en `UNORM8`, sans changer
+/// d'espace : glTF la définit linéaire, et c'est le rendu qui la convertit
+/// (ADR-122 §7). Une composante non finie vaut zéro, comme une coordonnée de
+/// texture.
+fn quantize_color(rgba: [f32; 4]) -> [u8; 4] {
+    rgba.map(|value| {
+        if value.is_finite() {
+            (value.clamp(0.0, 1.0) * 255.0).round() as u8
+        } else {
+            0
+        }
+    })
 }
 
 /// Quantifie les poids d'os, somme exactement 255 (DM-04).
@@ -874,12 +896,13 @@ mod tests {
     }
 
     #[test]
-    fn t228_seul_le_png_est_accepte() {
-        assert!(check_image_type(Some("image/png"), "t.png").is_ok());
-        // Sans type déclaré, c'est l'extension qui tranchera côté Java.
-        assert!(check_image_type(None, "t.png").is_ok());
-
-        let refus = check_image_type(Some("image/jpeg"), "t.jpg").unwrap_err();
-        assert_eq!(refus.code(), -3004);
+    fn t271_une_couleur_de_sommet_est_quantifiee_sans_changer_d_espace() {
+        assert_eq!(quantize_color([0.0, 0.5, 1.0, 1.0]), [0, 128, 255, 255]);
+        // Hors de [0, 1] : saturée, jamais repliée.
+        assert_eq!(quantize_color([-1.0, 2.0, 0.25, 0.0]), [0, 255, 64, 0]);
+        assert_eq!(
+            quantize_color([f32::NAN, f32::INFINITY, 1.0, 1.0]),
+            [0, 0, 255, 255]
+        );
     }
 }

@@ -11,6 +11,7 @@
 //! Les **facteurs** sont en espace linéaire, comme en glTF : c'est au backend
 //! qui dessine de les ramener à son espace de rendu (ADR-122 §7).
 
+use crate::dm::geometry::mesh_flags;
 use crate::dm::limits;
 
 /// Slot de texture vide : la texture neutre du slot s'applique (C-26).
@@ -146,6 +147,24 @@ pub struct MaterialDesc {
 impl MaterialDesc {
     /// Taille du descripteur, en octets.
     pub const BYTES: usize = 96;
+
+    /// Drapeaux de mesh que ce matériau impose (ADR-122 §3) : `TRANSPARENT`
+    /// s'il est translucide, `DOUBLE_SIDED` s'il ne cache aucune face.
+    ///
+    /// Les meshes les recopient : le culling et le tri natifs (C-64), qui ne
+    /// chargent pas `MATL`, les lisent dans `MeshDesc`, et le validateur
+    /// vérifie que la copie concorde.
+    #[must_use]
+    pub const fn mesh_flags(&self) -> u8 {
+        let mut flags = 0;
+        if self.blend_mode == blend_mode::TRANSLUCENT {
+            flags |= mesh_flags::TRANSPARENT;
+        }
+        if self.cull_mode == cull_mode::NONE {
+            flags |= mesh_flags::DOUBLE_SIDED;
+        }
+        flags
+    }
 
     /// Les six slots de texture, dans l'ordre de la disposition.
     #[must_use]
@@ -599,6 +618,33 @@ mod tests {
     #[test]
     fn dm05_un_materiau_valide_passe_le_controle() {
         assert_eq!(materiau().check(), Ok(()));
+    }
+
+    #[test]
+    fn dm05_les_drapeaux_de_mesh_suivent_le_melange_et_les_faces() {
+        let avec = |blend_mode, cull_mode| {
+            MaterialDesc {
+                blend_mode,
+                cull_mode,
+                ..materiau()
+            }
+            .mesh_flags()
+        };
+        assert_eq!(avec(blend_mode::OPAQUE, cull_mode::BACK), 0);
+        // La découpe n'est pas de la transparence : ni tri, ni passe à part.
+        assert_eq!(avec(blend_mode::CUTOUT, cull_mode::BACK), 0);
+        assert_eq!(
+            avec(blend_mode::TRANSLUCENT, cull_mode::BACK),
+            mesh_flags::TRANSPARENT
+        );
+        assert_eq!(
+            avec(blend_mode::OPAQUE, cull_mode::NONE),
+            mesh_flags::DOUBLE_SIDED
+        );
+        assert_eq!(
+            avec(blend_mode::TRANSLUCENT, cull_mode::NONE),
+            mesh_flags::TRANSPARENT | mesh_flags::DOUBLE_SIDED
+        );
     }
 
     #[test]

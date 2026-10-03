@@ -869,3 +869,18 @@ du commit n'était jamais consulté. Et les contrôles de `tools/ci/` ne tournai
 (`gh run list --limit 1`, puis `gh run view <id>`). Avant de pousser, lancer aussi les
 contrôles de `tools/ci/` et `tools/deps/gen_notice.py` : ils sont rapides et voient ce qu'un
 build Windows ne voit pas. Un test qui manipule des chemins se lit en pensant à Linux.
+
+## 2026-10-03 | Des continuations `\` de chaînes Rust ont disparu en laissant leurs espaces
+
+**Ce qui a mal tourné.** Quatre messages d'erreur portaient une longue suite d'espaces au
+milieu d'une phrase : trois dans `gltf_refs.rs` (depuis `f6dab7e`), un dans `import/mod.rs`
+écrit pendant T-a2. Le `\` de fin de ligne et le saut de ligne avaient disparu, l'indentation
+de la ligne suivante était restée. Le code compilait ; seul un `cat -A` l'a montré.
+
+**Cause.** Constatée le 2026-10-03 (Python 3.14, bash 5.3) : une chaîne Python non brute
+(`"""…"""`) et un heredoc bash non cité (`<<EOF`) suppriment tous deux `\` + saut de ligne. Du
+Rust qui transite par l'un d'eux perd ses continuations de littéral.
+
+**Règle.** Écrire du code source par un script : chaîne brute `r"""…"""` en Python, heredoc
+cité `<<'EOF'` en bash — ou l'outil d'édition. Pour retrouver les dégâts :
+`grep -rnP '"[^"\n]*[^\s"] {12,}[^\s"][^"\n]*"' --include=*.rs crates`.

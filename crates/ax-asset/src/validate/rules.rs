@@ -3,8 +3,9 @@
 use super::error::{Located, Violation};
 use super::model::AssetView;
 use super::ValidationReport;
-use ax_model::dm::geometry::MeshDesc;
+use ax_model::dm::geometry::{mesh_flags, MeshDesc};
 use ax_model::dm::limits;
+use ax_model::dm::material::NO_TEXTURE;
 use ax_model::dm::physics::{ColliderShape, CONVEX_MAX_POINTS, CONVEX_MIN_POINTS};
 use ax_model::dm::scene::{node_flags, NONE_U16, NONE_U32};
 
@@ -21,6 +22,7 @@ pub fn validate(asset: &AssetView<'_>, raw_uvs: &[[f32; 2]]) -> ValidationReport
     check_limits(asset, &mut report);
     check_hierarchy(asset, &mut report);
     check_geometry(asset, &mut report);
+    check_materials(asset, &mut report);
     check_raw_uvs(raw_uvs, &mut report);
     check_vertices(asset, &mut report);
     check_physics(asset, &mut report);
@@ -38,7 +40,11 @@ fn check_limits(asset: &AssetView<'_>, report: &mut ValidationReport) {
         ("sommets", asset.vertices.len(), limits::MAX_VERTICES),
         ("indices", asset.indices.len(), limits::MAX_INDICES),
         ("os", asset.bone_count, limits::MAX_BONES),
-        ("matériaux", asset.material_count, limits::MAX_MATERIALS),
+        (
+            "matériaux",
+            asset.materials.map_or(0, <[_]>::len),
+            limits::MAX_MATERIALS,
+        ),
         ("textures", asset.texture_count, limits::MAX_TEXTURES),
         ("animations", asset.animation_count, limits::MAX_ANIMATIONS),
         ("parts", asset.parts.len(), limits::MAX_PARTS),
@@ -244,6 +250,71 @@ pub(crate) fn triangle_area(positions: &[[f32; 3]; 3]) -> f32 {
         u[0] * v[1] - u[1] * v[0],
     ];
     0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt()
+}
+
+/// Drapeaux de mesh qu'un matériau impose (ADR-122 §3).
+const MATERIAL_MESH_FLAGS: u8 = mesh_flags::TRANSPARENT | mesh_flags::DOUBLE_SIDED;
+
+/// Noms des six slots, dans l'ordre de `MaterialDesc::texture_slots`.
+const SLOT_NAMES: [&str; 6] = ["albedo", "normal", "orm", "emissive", "height", "damage"];
+
+/// MATÉRIAUX — DM-05, slots de texture, index de matériau des meshes,
+/// drapeaux recopiés (ADR-122 §8).
+///
+/// Sans table de matériaux — asset antérieur à ADR-122, ou chargé sans
+/// `MATL` —, le matériau par défaut s'applique à chaque mesh et ses index ne
+/// désignent rien : il n'y a rien à contrôler.
+fn check_materials(asset: &AssetView<'_>, report: &mut ValidationReport) {
+    let Some(materials) = asset.materials else {
+        return;
+    };
+
+    for (index, material) in materials.iter().enumerate() {
+        let at = Located::Material(index);
+        if let Err(reason) = material.check() {
+            report.push(Violation::InvalidMaterial { reason }, at);
+        }
+        for (slot, texture) in SLOT_NAMES.into_iter().zip(material.texture_slots()) {
+            if texture != NO_TEXTURE && usize::from(texture) >= asset.texture_count {
+                report.push(
+                    Violation::TextureOutOfRange {
+                        slot,
+                        texture,
+                        texture_count: asset.texture_count,
+                    },
+                    at,
+                );
+            }
+        }
+    }
+
+    for (index, mesh) in asset.meshes.iter().enumerate() {
+        let at = Located::Mesh(index);
+        let Some(material) = materials.get(usize::from(mesh.material)) else {
+            report.push(
+                Violation::MaterialOutOfRange {
+                    material: mesh.material,
+                    material_count: materials.len(),
+                },
+                at,
+            );
+            continue;
+        };
+        // Le culling et le tri natifs lisent ces drapeaux dans le mesh, sans
+        // charger `MATL` : une copie fausse ferait trier un mesh opaque, ou
+        // cacher la face arrière d'une vitre.
+        let imposed = material.mesh_flags();
+        let carried = mesh.flags & MATERIAL_MESH_FLAGS;
+        if carried != imposed {
+            report.push(
+                Violation::MeshFlagsDisagreeWithMaterial {
+                    mesh_flags: carried,
+                    material_flags: imposed,
+                },
+                at,
+            );
+        }
+    }
 }
 
 /// UV — bornes avant normalisation (R-142).

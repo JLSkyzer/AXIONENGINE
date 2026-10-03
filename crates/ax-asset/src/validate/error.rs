@@ -34,6 +34,8 @@ pub enum Located {
     Region(usize),
     /// Une liaison structurelle, par son index.
     Link(usize),
+    /// Un matériau, par son index.
+    Material(usize),
 }
 
 impl fmt::Display for Located {
@@ -51,6 +53,7 @@ impl fmt::Display for Located {
             Located::Part(index) => write!(formatter, "part {index}"),
             Located::Region(index) => write!(formatter, "région {index}"),
             Located::Link(index) => write!(formatter, "liaison {index}"),
+            Located::Material(index) => write!(formatter, "matériau {index}"),
         }
     }
 }
@@ -230,6 +233,36 @@ pub enum Violation {
         /// Catégorie concernée.
         category: &'static str,
     },
+    /// Matériau que DM-05 refuse : énumération ou drapeau inconnu, facteur
+    /// non fini, seuil de découpe hors de `[0, 1]`.
+    InvalidMaterial {
+        /// Ce qui cloche, tel que `MaterialDesc::check` le dit.
+        reason: &'static str,
+    },
+    /// Slot de texture désignant une entrée absente de `TEXR`.
+    TextureOutOfRange {
+        /// Slot fautif : `albedo`, `normal`, `orm`…
+        slot: &'static str,
+        /// Index désigné.
+        texture: u16,
+        /// Nombre d'entrées de `TEXR`.
+        texture_count: usize,
+    },
+    /// Mesh désignant un matériau absent de la table.
+    MaterialOutOfRange {
+        /// Index désigné.
+        material: u16,
+        /// Nombre de matériaux.
+        material_count: usize,
+    },
+    /// Drapeaux `TRANSPARENT` et `DOUBLE_SIDED` d'un mesh en désaccord avec
+    /// son matériau (ADR-122 §3).
+    MeshFlagsDisagreeWithMaterial {
+        /// Ce que le mesh porte, réduit à ces deux drapeaux.
+        mesh_flags: u8,
+        /// Ce que le matériau impose.
+        material_flags: u8,
+    },
 }
 
 impl Violation {
@@ -379,7 +412,46 @@ impl fmt::Display for Violation {
             Violation::DuplicateName { category } => {
                 write!(formatter, "deux {category} portent le même nom")
             }
+            Violation::InvalidMaterial { reason } => {
+                write!(formatter, "matériau invalide : {reason}")
+            }
+            Violation::TextureOutOfRange {
+                slot,
+                texture,
+                texture_count,
+            } => write!(
+                formatter,
+                "slot {slot} vers la texture {texture}, hors des {texture_count} de TEXR"
+            ),
+            Violation::MaterialOutOfRange {
+                material,
+                material_count,
+            } => write!(
+                formatter,
+                "matériau {material} hors des {material_count} de la table"
+            ),
+            Violation::MeshFlagsDisagreeWithMaterial {
+                mesh_flags,
+                material_flags,
+            } => write!(
+                formatter,
+                "le mesh porte {}, son matériau impose {}",
+                material_mesh_flags(*mesh_flags),
+                material_mesh_flags(*material_flags)
+            ),
         }
+    }
+}
+
+/// Nomme les drapeaux de mesh qu'un matériau impose : un auteur de pack lit
+/// « TRANSPARENT », pas `0b100`.
+fn material_mesh_flags(flags: u8) -> &'static str {
+    use ax_model::dm::geometry::mesh_flags::{DOUBLE_SIDED, TRANSPARENT};
+    match (flags & TRANSPARENT != 0, flags & DOUBLE_SIDED != 0) {
+        (false, false) => "ni TRANSPARENT ni DOUBLE_SIDED",
+        (true, false) => "TRANSPARENT",
+        (false, true) => "DOUBLE_SIDED",
+        (true, true) => "TRANSPARENT et DOUBLE_SIDED",
     }
 }
 
@@ -441,6 +513,22 @@ mod tests {
             Violation::PartCycle,
             Violation::DegenerateObb,
             Violation::InvalidName { reason: "vide" },
+            Violation::InvalidMaterial {
+                reason: "mode de mélange inconnu",
+            },
+            Violation::TextureOutOfRange {
+                slot: "albedo",
+                texture: 3,
+                texture_count: 1,
+            },
+            Violation::MaterialOutOfRange {
+                material: 2,
+                material_count: 1,
+            },
+            Violation::MeshFlagsDisagreeWithMaterial {
+                mesh_flags: 0,
+                material_flags: 4,
+            },
         ];
         for violation in cas {
             let code = violation.code();
@@ -479,6 +567,7 @@ mod tests {
             Located::Part(8),
             Located::Region(9),
             Located::Link(10),
+            Located::Material(11),
         ];
         for at in localisations {
             let rendu = at.to_string();

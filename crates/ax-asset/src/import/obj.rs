@@ -4,6 +4,8 @@
 //! Ni hiérarchie animée, ni skin : le cahier des charges le donne pour
 //! « supporté, statique », et c'est ce qu'on en tire.
 
+use super::material::{plain_default_material, UvMapping};
+use super::obj_material;
 use super::{
     check_relative_path, ImportError, ImportLimits, ImportedAsset, ImportedMaterial, SourceFormat,
 };
@@ -37,6 +39,10 @@ pub fn import_obj(
     // lui, a toutes les raisons de tenir un état — un cache, un compteur de
     // lectures. La cellule fait le pont sans imposer l'un ou l'autre.
     let resolve_mtl = std::cell::RefCell::new(resolve_mtl);
+    // Bibliothèques lues mais illisibles. `tobj` n'en dit rien dès qu'une autre
+    // a fourni des matériaux : sans ce relevé, les leurs disparaîtraient en
+    // silence derrière le matériau par défaut.
+    let unreadable = std::cell::RefCell::new(Vec::new());
     let mut cursor = std::io::BufReader::new(source.as_bytes());
     let (models, materials) = super::catch_parser_panic(SourceFormat::Obj, || {
         tobj::load_obj_buf(
@@ -60,10 +66,15 @@ pub fn import_obj(
                         // collecter, et un `Ka 0.0 0.0` — deux valeurs là où le
                         // format en veut trois — le fait paniquer. Trouvé par
                         // fuzzing (R-903).
-                        if check_mtl_triplets(&content).is_err() {
-                            return Err(tobj::LoadError::MaterialParseError);
+                        let loaded = if check_mtl_triplets(&content).is_err() {
+                            Err(tobj::LoadError::MaterialParseError)
+                        } else {
+                            tobj::load_mtl_buf(&mut std::io::BufReader::new(content.as_bytes()))
+                        };
+                        if let Err(error) = &loaded {
+                            unreadable.borrow_mut().push(format!("{name} ({error})"));
                         }
-                        tobj::load_mtl_buf(&mut std::io::BufReader::new(content.as_bytes()))
+                        loaded
                     }
                     // Une bibliothèque absente n'est pas une erreur : l'OBJ garde
                     // ses matériaux par défaut.
@@ -78,27 +89,57 @@ pub fn import_obj(
     })?;
 
     let mut asset = ImportedAsset::default();
+    for library in unreadable.into_inner() {
+        asset.material_warnings.push(format!(
+            "bibliothèque de matériaux « {library} » illisible : ses matériaux sont \
+             remplacés par le matériau par défaut"
+        ));
+    }
+
+    // `tobj` ne rend une erreur que si aucune bibliothèque n'a fourni de
+    // matériau, et elle vient d'être dite.
+    let library = materials.unwrap_or_default();
+    let mappings = obj_material::convert_library(&library, &mut asset)?;
+
+    // Le matériau par défaut, en fin de table, pour tout objet sans matériau
+    // connu : `usemtl` absent, ou désignant une bibliothèque absente ou
+    // illisible. `MeshDesc.material` est alors toujours un index valide.
+    let default = u16::try_from(library.len()).unwrap_or(u16::MAX);
+    let known = |model: &tobj::Model| model.mesh.material_id.is_some_and(|id| id < library.len());
+    if !models.iter().all(known) {
+        asset.materials.push(ImportedMaterial {
+            name: String::new(),
+            desc: plain_default_material(),
+        });
+    }
 
     for (index, model) in models.iter().enumerate() {
+        let (material, mapping) = match model.mesh.material_id {
+            Some(id) if id < library.len() => (u16::try_from(id).unwrap_or(u16::MAX), mappings[id]),
+            _ => (default, UvMapping::IDENTITY),
+        };
+        // `TRANSPARENT` et `DOUBLE_SIDED` recopiés du matériau (ADR-122 §3).
+        let flags = asset
+            .materials
+            .get(usize::from(material))
+            .map_or(0, |entry| entry.desc.mesh_flags());
+
         let vertex_offset = asset.vertices.len() as u32;
         let index_offset = asset.indices.len() as u32;
-        append_model(&mut asset, model);
+        append_model(&mut asset, model, mapping);
 
-        asset
-            .meshes
-            .push(mesh_desc(&asset, model, vertex_offset, index_offset));
+        asset.meshes.push(mesh_desc(
+            &asset,
+            vertex_offset,
+            index_offset,
+            material,
+            flags,
+        ));
         asset.nodes.push(node_for(index, &model.name));
         if !model.name.is_empty() {
             asset.names.push(("node", model.name.clone()));
         }
         asset.node_names.push(model.name.clone());
-    }
-
-    if let Ok(materials) = materials {
-        for material in &materials {
-            asset.materials.push(convert_material(material)?);
-            asset.names.push(("matériau", material.name.clone()));
-        }
     }
 
     Ok(asset)
@@ -249,7 +290,14 @@ fn check_index(champ: &str, total: i64, deja_vus: i64, nom: &str) -> Result<(), 
     Ok(())
 }
 
-fn append_model(asset: &mut ImportedAsset, model: &tobj::Model) {
+/// Ajoute les sommets et les indices d'un objet.
+///
+/// Ses coordonnées de texture reçoivent la projection de `map_Kd` dans l'espace
+/// du MTL, puis passent à l'origine **en haut à gauche** de l'image, celle de
+/// glTF, de Minecraft et d'AXION : l'OBJ compte `v` depuis le bas, en
+/// convention OpenGL — celle des exports de Blender. Sans ce passage, toute
+/// texture d'un OBJ apparaîtrait retournée.
+fn append_model(asset: &mut ImportedAsset, model: &tobj::Model, mapping: UvMapping) {
     let mesh = &model.mesh;
     let count = mesh.positions.len() / 3;
 
@@ -275,7 +323,9 @@ fn append_model(asset: &mut ImportedAsset, model: &tobj::Model) {
         };
 
         let uv = if mesh.texcoords.len() >= (vertex + 1) * 2 {
-            [mesh.texcoords[vertex * 2], mesh.texcoords[vertex * 2 + 1]]
+            let [u, v] =
+                mapping.apply([mesh.texcoords[vertex * 2], mesh.texcoords[vertex * 2 + 1]]);
+            [u, 1.0 - v]
         } else {
             [0.0, 0.0]
         };
@@ -325,9 +375,10 @@ fn quantize_uv(uv: [f32; 2]) -> [u16; 2] {
 
 fn mesh_desc(
     asset: &ImportedAsset,
-    model: &tobj::Model,
     vertex_offset: u32,
     index_offset: u32,
+    material: u16,
+    flags: u8,
 ) -> MeshDesc {
     let vertex_count = (asset.vertices.len() as u32) - vertex_offset;
     let index_count = (asset.indices.len() as u32) - index_offset;
@@ -350,9 +401,9 @@ fn mesh_desc(
         vertex_count,
         index_offset,
         index_count,
-        material: u16::try_from(model.mesh.material_id.unwrap_or(0)).unwrap_or(0),
+        material,
         lod: 0,
-        flags: 0,
+        flags,
         aabb_min: min,
         aabb_max: max,
         region: NONE_U16,
@@ -378,41 +429,11 @@ fn node_for(index: usize, name: &str) -> NodeDesc {
     }
 }
 
-/// Convertit un matériau OBJ.
-///
-/// La texture est **désignée**, jamais décodée (R-532) : son chemin est validé
-/// puis conservé, et le `ResourceManager` de Minecraft s'en occupera.
-fn convert_material(material: &tobj::Material) -> Result<ImportedMaterial, ImportError> {
-    let base_color_texture = match &material.diffuse_texture {
-        Some(path) => {
-            check_relative_path(path)?;
-            Some(path.clone())
-        }
-        None => None,
-    };
-
-    let diffuse = material.diffuse.unwrap_or([1.0, 1.0, 1.0]);
-    Ok(ImportedMaterial {
-        name: material.name.clone(),
-        base_color: [
-            diffuse[0],
-            diffuse[1],
-            diffuse[2],
-            material.dissolve.unwrap_or(1.0),
-        ],
-        base_color_texture,
-        // `map_Bump` et `bump` sont rangés par `tobj` en `normal_texture` ;
-        // `norm`, l'extension PBR du MTL, lui est inconnue et reste dans les
-        // paramètres bruts. Les deux désignent une carte de relief, et l'une
-        // comme l'autre demande des tangentes.
-        has_normal_map: material.normal_texture.is_some()
-            || material.unknown_param.contains_key("norm"),
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ax_model::dm::geometry::mesh_flags;
+    use ax_model::dm::material::{blend_mode, texture_sampler, NO_TEXTURE};
 
     const TRIANGLE: &str = "\
 v 0.0 0.0 0.0
@@ -439,14 +460,19 @@ f 1/1/1 2/2/1 3/3/1
                 Some(format!("newmtl relief\n{ligne}\n"))
             })
             .expect("import refusé");
-            assert!(asset.materials[0].has_normal_map, "{ligne}");
+            assert!(asset.materials[0].has_normal_map(), "{ligne}");
+            assert_eq!(
+                asset.textures.resource_path(0),
+                Some("relief.png"),
+                "{ligne}"
+            );
         }
 
         let asset = import_obj(source, &limits(), |_| {
             Some("newmtl relief\nKd 1 1 1\n".to_owned())
         })
         .expect("import refusé");
-        assert!(!asset.materials[0].has_normal_map);
+        assert!(!asset.materials[0].has_normal_map());
     }
 
     fn sans_mtl(_: &str) -> Option<String> {
@@ -544,10 +570,13 @@ map_Kd textures/carrosserie.png
         assert_eq!(asset.materials.len(), 1);
         let material = &asset.materials[0];
         assert_eq!(material.name, "carrosserie");
-        assert!((material.base_color[0] - 0.8).abs() < 1e-6);
+        assert!((material.desc.albedo_factor[0] - 0.8).abs() < 1e-6);
+        assert_eq!(asset.meshes[0].material, 0);
         // R-532 : le chemin est conservé, l'image n'est pas touchée.
         assert_eq!(
-            material.base_color_texture.as_deref(),
+            asset
+                .textures
+                .resource_path(usize::from(material.desc.albedo_tex)),
             Some("textures/carrosserie.png")
         );
     }
@@ -564,10 +593,137 @@ map_Kd textures/carrosserie.png
     #[test]
     fn t226_une_bibliotheque_absente_n_est_pas_une_erreur() {
         let source = format!("mtllib absente.mtl\n{TRIANGLE}");
-        // Un OBJ sans `.mtl` reste un OBJ valide.
+        // Un OBJ sans `.mtl` reste un OBJ valide, au matériau par défaut.
         let asset = import_obj(&source, &limits(), sans_mtl).expect("import refusé");
-        assert!(asset.materials.is_empty());
         assert_eq!(asset.indices.len(), 3);
+        assert_eq!(asset.materials.len(), 1);
+        assert_eq!(asset.materials[0].desc, plain_default_material());
+        assert_eq!(asset.meshes[0].material, 0);
+        assert!(
+            asset.material_warnings.is_empty(),
+            "absente n'est pas illisible"
+        );
+    }
+
+    #[test]
+    fn t271_un_materiau_mtl_complet_se_traduit_en_dm05() {
+        let source = format!("mtllib vitre.mtl\nusemtl vitre\n{TRIANGLE}");
+        let mtl = "\
+newmtl vitre
+Kd 0.2 0.4 0.6
+d 0.5
+Ke 1.0 0.5 0.0
+Ns 1000
+Pm 0.25
+map_Kd -s 2 2 -o 0.5 0 -clamp on vitre.png
+map_Bump -bm 0.5 relief.png
+map_Ke lueur.png
+map_Ks reflet.png
+";
+        let asset =
+            import_obj(&source, &limits(), |_| Some(mtl.to_owned())).expect("import refusé");
+
+        let desc = asset.materials[0].desc;
+        assert_eq!(desc.albedo_factor, [0.2, 0.4, 0.6, 0.5]);
+        assert_eq!(desc.blend_mode, blend_mode::TRANSLUCENT, "d < 1");
+        assert_eq!(desc.emissive_factor, [1.0, 0.5, 0.0]);
+        assert_eq!(desc.metallic, 0.25);
+        assert!((desc.roughness - (2.0f32 / 1002.0).sqrt().sqrt()).abs() < 1e-6);
+        assert_eq!(desc.normal_scale, 0.5, "-bm");
+        assert_eq!(desc.check(), Ok(()));
+        // Le mesh recopie la translucidité de son matériau.
+        assert_eq!(asset.meshes[0].flags, mesh_flags::TRANSPARENT);
+
+        let chemin = |slot: u16| asset.textures.resource_path(usize::from(slot));
+        assert_eq!(chemin(desc.albedo_tex), Some("vitre.png"));
+        assert_eq!(chemin(desc.normal_tex), Some("relief.png"));
+        assert_eq!(chemin(desc.emissive_tex), Some("lueur.png"));
+        assert_eq!(
+            asset.textures.entries[usize::from(desc.albedo_tex)].sampler,
+            texture_sampler::CLAMP_U | texture_sampler::CLAMP_V
+        );
+        assert_eq!(desc.orm_tex, NO_TEXTURE);
+
+        // `map_Ks` n'a pas de slot ; relief et lueur ne sont pas projetés
+        // comme l'albedo : tout est dit.
+        let dits = asset.material_warnings.join("\n");
+        assert!(dits.contains("map_Ks"), "{dits}");
+        assert!(dits.contains("map_Bump projetée autrement"), "{dits}");
+        assert!(dits.contains("map_Ke projetée autrement"), "{dits}");
+    }
+
+    #[test]
+    fn t271_la_projection_de_map_kd_est_cuite_puis_v_retourne() {
+        // `vt 0.25 0.75` : u' = 2·0,25 + 0,5 = 1, v' = 2·0,75 = 1,5, puis
+        // l'origine passe en haut de l'image : v = 1 − 1,5 = −0,5.
+        let source = "\
+mtllib bois.mtl
+usemtl bois
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 0.0 1.0 0.0
+vt 0.25 0.75
+vt 0.0 0.0
+vt 0.0 1.0
+f 1/1 2/2 3/3
+";
+        let mtl = "newmtl bois\nmap_Kd -s 2 2 -o 0.5 0 bois.png\n";
+        let asset = import_obj(source, &limits(), |_| Some(mtl.to_owned())).expect("import refusé");
+        assert_eq!(asset.raw_uvs, [[1.0, -0.5], [0.5, 1.0], [0.5, -1.0]]);
+    }
+
+    #[test]
+    fn t271_sans_projection_v_est_seulement_retourne() {
+        let source = TRIANGLE.replace("vt 0.0 1.0", "vt 0.25 0.75");
+        let asset = import_obj(&source, &limits(), sans_mtl).expect("import refusé");
+        // L'OBJ compte v depuis le bas de l'image ; AXION, comme glTF et
+        // Minecraft, depuis le haut.
+        assert_eq!(asset.raw_uvs, [[0.0, 1.0], [1.0, 1.0], [0.25, 0.25]]);
+    }
+
+    #[test]
+    fn t271_un_objet_sans_materiau_connu_recoit_le_materiau_par_defaut() {
+        let source = "\
+mtllib lib.mtl
+o connu
+usemtl peinture
+v 0 0 0
+v 1 0 0
+v 0 1 0
+f 1 2 3
+o inconnu
+usemtl absent
+v 5 0 0
+v 6 0 0
+v 5 1 0
+f 4 5 6
+";
+        let asset = import_obj(source, &limits(), |_| {
+            Some("newmtl peinture\nKd 1 0 0\n".to_owned())
+        })
+        .expect("import refusé");
+        assert_eq!(asset.materials.len(), 2, "peinture, puis le défaut");
+        assert_eq!(asset.meshes[0].material, 0);
+        assert_eq!(asset.meshes[1].material, 1);
+        assert_eq!(asset.materials[1].desc, plain_default_material());
+    }
+
+    #[test]
+    fn t271_une_bibliotheque_illisible_est_dite() {
+        let source = format!("mtllib cassee.mtl\nusemtl rouge\n{TRIANGLE}");
+        // Deux valeurs là où `Kd` en veut trois : refusée avant `tobj`.
+        let asset = import_obj(&source, &limits(), |_| {
+            Some("newmtl rouge\nKd 1 0\n".to_owned())
+        })
+        .expect("import refusé");
+        assert_eq!(asset.materials.len(), 1, "le matériau par défaut seul");
+        assert_eq!(
+            asset.material_warnings.len(),
+            1,
+            "{:?}",
+            asset.material_warnings
+        );
+        assert!(asset.material_warnings[0].contains("cassee.mtl"));
     }
 
     #[test]

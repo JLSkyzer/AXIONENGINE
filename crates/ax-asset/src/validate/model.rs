@@ -2,6 +2,7 @@
 
 use ax_model::dm::geometry::{MeshDesc, Vertex};
 use ax_model::dm::integrity::{DeformRegionDesc, StructuralLinkDesc};
+use ax_model::dm::material::MaterialDesc;
 use ax_model::dm::physics::ColliderDesc;
 use ax_model::dm::scene::{NodeDesc, PartDesc};
 
@@ -33,9 +34,14 @@ pub struct AssetView<'a> {
     pub anchor_masks: &'a [u8],
     /// Nombre d'os du squelette.
     pub bone_count: usize,
-    /// Nombre de matériaux.
-    pub material_count: usize,
-    /// Nombre de textures.
+    /// Matériaux (DM-05) ; `None` si l'asset n'en porte pas de table.
+    ///
+    /// L'absence n'est pas une table vide : c'est un asset antérieur à
+    /// ADR-122, ou chargé sans `MATL`, dont chaque mesh reçoit le matériau par
+    /// défaut. Ses index de matériau ne désignent alors rien, et ne sont pas
+    /// contrôlés. Une table, même vide, les fait contrôler tous.
+    pub materials: Option<&'a [MaterialDesc]>,
+    /// Nombre de textures, entrées de `TEXR`.
     pub texture_count: usize,
     /// Nombre d'animations.
     pub animation_count: usize,

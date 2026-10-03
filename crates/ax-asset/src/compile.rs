@@ -15,7 +15,9 @@
 //! ici, on compile ce qu'on nous donne. Les mélanger rendrait la compilation
 //! intestable sans un gestionnaire de ressources autour.
 
-use crate::a3d::{encode_colliders, encode_nodes, A3dWriter, SectionTag};
+use crate::a3d::{
+    encode_colliders, encode_materials, encode_nodes, encode_textures, A3dWriter, SectionTag,
+};
 use crate::collider::{build_colliders, ColliderMode};
 use crate::import::{
     import_gltf, import_obj, import_stl, ImportError, ImportLimits, ImportedAsset, SourceFormat,
@@ -23,6 +25,7 @@ use crate::import::{
 use crate::optimize::{optimize, Aabb, LodOptions, LodTable};
 use crate::validate::{validate, AssetView, NamedEntry, ValidationReport};
 use ax_model::dm::geometry::{MeshDesc, Vertex};
+use ax_model::dm::material::MaterialDesc;
 use core::fmt;
 
 /// Version du compilateur (R-562).
@@ -38,8 +41,11 @@ use core::fmt;
 /// 4 — C-23 tranche C (LOD et section `LODM`), nodes sans annotation visibles
 /// à tous les niveaux ; 5 — section `NODE` avec sa table des noms et ses nodes
 /// sur 80 octets (ADR-110), empreintes de nom des nodes OBJ et STL ; 6 — section
-/// `PHYS` (colliders C-32, ADR-115).
-pub const COMPILER_VERSION: u32 = 6;
+/// `PHYS` (colliders C-32, ADR-115) ; 7 — sections `MATL` (DM-05) et `TEXR`
+/// (ADR-122) : matériaux et textures importés, matériau par défaut, drapeaux de
+/// mesh recopiés, couleurs de sommet `COLOR_0`, projection de l'albedo cuite
+/// dans `uv0`, `v` des OBJ compté depuis le haut de l'image.
+pub const COMPILER_VERSION: u32 = 7;
 
 /// Ce qui empêche de compiler un asset.
 #[derive(Debug, Clone, PartialEq)]
@@ -193,6 +199,7 @@ fn check(
         .iter()
         .map(|(category, name)| NamedEntry::new(category, name.as_str()))
         .collect();
+    let materials = material_table(asset);
 
     let report = validate(
         &AssetView {
@@ -202,7 +209,10 @@ fn check(
             indices: &asset.indices,
             colliders: &asset.colliders,
             names: &names,
-            material_count: asset.materials.len(),
+            // Toujours une table à la compilation, même vide : les importeurs
+            // donnent à chaque mesh un matériau, et c'est vérifié.
+            materials: Some(&materials),
+            texture_count: asset.textures.entries.len(),
             dynamic_body: options.dynamic_body,
             missing_normals,
             ..AssetView::default()
@@ -218,7 +228,32 @@ fn check(
     Ok(())
 }
 
+/// Les matériaux de l'asset, tels que `MATL` les porte.
+fn material_table(asset: &ImportedAsset) -> Vec<MaterialDesc> {
+    asset
+        .materials
+        .iter()
+        .map(|material| material.desc)
+        .collect()
+}
+
+/// Importe la source, et rassemble ce que l'import a laissé de côté.
+///
+/// Une texture refusée ou une propriété sans champ DM-05 n'empêchent pas la
+/// compilation : elles sont dites une fois, ici, avec le reste (ADR-122 §3).
 fn import(
+    source: &[u8],
+    format: SourceFormat,
+    options: &CompileOptions,
+    resolve: impl FnMut(&str) -> Option<Vec<u8>>,
+) -> Result<(ImportedAsset, Vec<String>), CompileError> {
+    let (asset, mut warnings) = import_source(source, format, options, resolve)?;
+    warnings.extend(asset.texture_refusals.iter().map(ToString::to_string));
+    warnings.extend(asset.material_warnings.iter().cloned());
+    Ok((asset, warnings))
+}
+
+fn import_source(
     source: &[u8],
     format: SourceFormat,
     options: &CompileOptions,
@@ -283,8 +318,18 @@ fn write_container(
             .map_err(CompileError::Container)?;
     }
     if !asset.materials.is_empty() {
+        // Sections du client seul (R-041) : un serveur les ignore.
+        let matl = encode_materials(&material_table(asset)).map_err(CompileError::Container)?;
         writer
-            .section(SectionTag::MATL, &materials_bytes(asset))
+            .section(SectionTag::MATL, &matl)
+            .map_err(CompileError::Container)?;
+    }
+    if !asset.textures.entries.is_empty() {
+        // Non compressée : ses octets sont des PNG, déjà compressés, et des
+        // chemins de quelques dizaines d'octets.
+        let texr = encode_textures(&asset.textures).map_err(CompileError::Container)?;
+        writer
+            .section(SectionTag::TEXR, &texr)
             .map_err(CompileError::Container)?;
     }
     if let Some(lods) = lods {
@@ -335,21 +380,6 @@ fn geometry_bytes(asset: &ImportedAsset) -> Vec<u8> {
 
     for index in &asset.indices {
         out.extend_from_slice(&index.to_le_bytes());
-    }
-    out
-}
-
-/// Sérialise les matériaux : couleur, puis le chemin de texture en UTF-8.
-fn materials_bytes(asset: &ImportedAsset) -> Vec<u8> {
-    let mut out = Vec::new();
-    out.extend_from_slice(&(asset.materials.len() as u32).to_le_bytes());
-    for material in &asset.materials {
-        for value in material.base_color {
-            out.extend_from_slice(&value.to_le_bytes());
-        }
-        let texture = material.base_color_texture.as_deref().unwrap_or("");
-        out.extend_from_slice(&(texture.len() as u32).to_le_bytes());
-        out.extend_from_slice(texture.as_bytes());
     }
     out
 }
@@ -768,10 +798,155 @@ f 2 7 3
             .expect("compilation refusée");
         let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
 
-        // Le STL ne porte aucun matériau. Une section vide affirmerait qu'il
-        // n'y en a pas ; son absence ne dit rien, et c'est bien ce qu'on veut
-        // dire d'un composant qui n'existe pas encore.
-        assert!(!file.has(SectionTag::MATL));
+        // Le STL ne porte aucune texture : pas de `TEXR`. Une section vide
+        // affirmerait qu'il n'y en a pas ; son absence ne dit rien de plus que
+        // la vérité.
+        assert!(!file.has(SectionTag::TEXR));
+        // Son mesh désigne le matériau par défaut, qui voyage dans `MATL`.
+        let matl = file
+            .section(SectionTag::MATL)
+            .expect("MATL")
+            .expect("section absente");
+        assert_eq!(
+            crate::a3d::decode_materials(&matl),
+            Ok(crate::a3d::DecodedMaterials::Materials(vec![
+                crate::import::plain_default_material()
+            ]))
+        );
+    }
+
+    /// Un PNG de 2×2 pixels — signature et `IHDR`, le compilateur n'en lit pas
+    /// davantage (R-532).
+    fn png_2x2() -> Vec<u8> {
+        crate::png::header_for_tests(2, 2)
+    }
+
+    /// glTF d'un triangle texturé par une image embarquée en `data:`, plus une
+    /// image JPEG qu'un second matériau désigne.
+    fn gltf_texture(png: &[u8]) -> String {
+        let image = encode_base64(png);
+        format!(
+            concat!(
+                r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],"#,
+                r#""nodes":[{{"name":"caisse","mesh":0}}],"#,
+                r#""meshes":[{{"primitives":[{{"attributes":{{"POSITION":0,"TEXCOORD_0":1}},"#,
+                r#""indices":2,"material":0}}]}}],"#,
+                r#""materials":[{{"name":"bois","pbrMetallicRoughness":{{"baseColorTexture":{{"index":0}}}}}},"#,
+                r#"{{"name":"photo","pbrMetallicRoughness":{{"baseColorTexture":{{"index":1}}}}}}],"#,
+                r#""textures":[{{"source":0,"sampler":0}},{{"source":1}}],"#,
+                r#""samplers":[{{"magFilter":9729,"wrapS":33071}}],"#,
+                r#""images":[{{"uri":"data:image/png;base64,{image}"}},"#,
+                r#"{{"uri":"photo.jpg","mimeType":"image/jpeg"}}],"#,
+                r#""accessors":[{{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","#,
+                r#""min":[0.0,0.0,0.0],"max":[1.0,1.0,0.0]}},"#,
+                r#"{{"bufferView":1,"componentType":5126,"count":3,"type":"VEC2"}},"#,
+                r#"{{"bufferView":2,"componentType":5123,"count":3,"type":"SCALAR"}}],"#,
+                r#""bufferViews":[{{"buffer":0,"byteOffset":0,"byteLength":36}},"#,
+                r#"{{"buffer":0,"byteOffset":36,"byteLength":24}},"#,
+                r#"{{"buffer":0,"byteOffset":60,"byteLength":6}}],"#,
+                r#""buffers":[{{"byteLength":66,"uri":"data:application/octet-stream;base64,{buffer}"}}]}}"#,
+            ),
+            image = image,
+            buffer = encode_base64(&triangle_buffer()),
+        )
+    }
+
+    /// Positions d'un triangle, ses UV, puis ses indices `u16`.
+    fn triangle_buffer() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for value in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in [0.0f32, 0.0, 1.0, 0.0, 0.0, 1.0] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        for index in [0u16, 1, 2] {
+            bytes.extend_from_slice(&index.to_le_bytes());
+        }
+        bytes
+    }
+
+    /// Base64 standard, avec remplissage — l'inverse de celui de l'import.
+    fn encode_base64(bytes: &[u8]) -> String {
+        const ALPHABET: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        for chunk in bytes.chunks(3) {
+            let word = chunk.iter().enumerate().fold(0u32, |word, (rank, byte)| {
+                word | (u32::from(*byte) << (16 - 8 * rank))
+            });
+            for rank in 0..4 {
+                if rank <= chunk.len() {
+                    let sextet = (word >> (18 - 6 * rank)) & 63;
+                    out.push(char::from(ALPHABET[sextet as usize]));
+                } else {
+                    out.push('=');
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn t270_les_materiaux_et_les_textures_voyagent_dans_matl_et_texr() {
+        let png = png_2x2();
+        let compiled = compile(
+            gltf_texture(&png).as_bytes(),
+            SourceFormat::Gltf,
+            &OPTIONS,
+            |_| None,
+        )
+        .expect("compilation refusée");
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+
+        let matl = file
+            .section(SectionTag::MATL)
+            .expect("MATL")
+            .expect("section absente");
+        let Ok(crate::a3d::DecodedMaterials::Materials(materials)) =
+            crate::a3d::decode_materials(&matl)
+        else {
+            panic!("MATL illisible");
+        };
+        assert_eq!(materials.len(), 2);
+        assert_eq!(
+            materials[0].name_hash,
+            ax_model::dm::scene::name_hash("bois")
+        );
+        assert_eq!(materials[0].albedo_tex, 0);
+        // L'image JPEG est refusée seule : le slot reste vide, l'asset compile.
+        assert_eq!(materials[1].albedo_tex, ax_model::dm::material::NO_TEXTURE);
+
+        let texr = file
+            .section(SectionTag::TEXR)
+            .expect("TEXR")
+            .expect("section absente");
+        let Ok(crate::a3d::DecodedTextures::Textures(table)) = crate::a3d::decode_textures(&texr)
+        else {
+            panic!("TEXR illisible");
+        };
+        assert_eq!(table.entries.len(), 1);
+        // Les octets du PNG, tels quels (R-532), et son échantillonneur.
+        assert_eq!(table.data(0), Some(png.as_slice()));
+        assert_eq!(
+            table.entries[0].sampler,
+            ax_model::dm::material::texture_sampler::FILTER_LINEAR
+                | ax_model::dm::material::texture_sampler::CLAMP_U
+        );
+        assert_eq!(
+            crate::a3d::check_texture_slots(&materials, table.entries.len()),
+            Ok(())
+        );
+
+        // Le refus est dit, avec son code.
+        assert!(
+            compiled
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("photo.jpg") && warning.contains("E-3004")),
+            "{:?}",
+            compiled.warnings
+        );
     }
 
     #[test]

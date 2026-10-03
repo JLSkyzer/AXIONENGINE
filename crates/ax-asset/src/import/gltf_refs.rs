@@ -157,20 +157,29 @@ impl Verificateur<'_> {
                     // Les semantiques que le format ne fixe pas — attributs
                     // personnalises prefixes d'un tiret bas — n'ont pas de forme
                     // imposee, et l'import ne les lit pas.
-                    let attendu: (Type, &[ComponentType]) = match semantique {
+                    //
+                    // `COLOR_n` admet deux types : `read_colors` du crate `gltf`
+                    // aiguille sur la paire (type, composant) et atteint un
+                    // `unreachable!()` sur toute autre — l'import le lit depuis
+                    // C-26 (ADR-122 §3).
+                    let attendu: (&[Type], &[ComponentType]) = match semantique {
                         Semantic::Positions | Semantic::Normals => {
-                            (Type::Vec3, &[ComponentType::F32])
+                            (&[Type::Vec3], &[ComponentType::F32])
                         }
-                        Semantic::Tangents => (Type::Vec4, &[ComponentType::F32]),
+                        Semantic::Tangents => (&[Type::Vec4], &[ComponentType::F32]),
+                        Semantic::Colors(_) => (
+                            &[Type::Vec3, Type::Vec4],
+                            &[ComponentType::F32, ComponentType::U8, ComponentType::U16],
+                        ),
                         Semantic::TexCoords(_) => (
-                            Type::Vec2,
+                            &[Type::Vec2],
                             &[ComponentType::F32, ComponentType::U8, ComponentType::U16],
                         ),
                         Semantic::Joints(_) => {
-                            (Type::Vec4, &[ComponentType::U8, ComponentType::U16])
+                            (&[Type::Vec4], &[ComponentType::U8, ComponentType::U16])
                         }
                         Semantic::Weights(_) => (
-                            Type::Vec4,
+                            &[Type::Vec4],
                             &[ComponentType::F32, ComponentType::U8, ComponentType::U16],
                         ),
                         _ => continue,
@@ -182,7 +191,8 @@ impl Verificateur<'_> {
                     };
                     let ou = format!("meshes[{mesh}].primitives[{prim}].attributes.{semantique:?}");
 
-                    if !matches!(accesseur.type_, Checked::Valid(reel) if reel == attendu.0) {
+                    if !matches!(accesseur.type_, Checked::Valid(reel) if attendu.0.contains(&reel))
+                    {
                         return Err(ImportError::Malformed {
                             format: self.format,
                             detail: format!(
@@ -251,7 +261,8 @@ impl Verificateur<'_> {
                     return Err(ImportError::Malformed {
                         format: self.format,
                         detail: format!(
-                            "bufferViews[{rang}].byteStride vaut {pas} : glTF le veut                              entre 4 et 252, et multiple de quatre"
+                            "bufferViews[{rang}].byteStride vaut {pas} : glTF le veut \
+                             entre 4 et 252, et multiple de quatre"
                         ),
                     });
                 }
@@ -349,14 +360,16 @@ impl Verificateur<'_> {
                     )?;
                     if image.mime_type.is_none() {
                         return Err(malformed(format!(
-                            "images[{rang}] passe par une bufferView sans declarer                              de mimeType : rien ne dit ce que les octets contiennent"
+                            "images[{rang}] passe par une bufferView sans declarer \
+                             de mimeType : rien ne dit ce que les octets contiennent"
                         )));
                     }
                 }
                 (None, Some(_)) => {}
                 (None, None) => {
                     return Err(malformed(format!(
-                        "images[{rang}] ne porte ni uri ni bufferView : elle ne                          designe aucune donnee"
+                        "images[{rang}] ne porte ni uri ni bufferView : elle ne \
+                         designe aucune donnee"
                     )));
                 }
             }
