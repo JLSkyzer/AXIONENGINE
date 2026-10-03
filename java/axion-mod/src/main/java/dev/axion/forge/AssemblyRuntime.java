@@ -8,6 +8,7 @@ import dev.axion.definition.AssemblyKind;
 import dev.axion.definition.Definition;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.physics.BodyBounds;
+import dev.axion.physics.BodyLedger;
 import dev.axion.physics.BodyState;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
@@ -16,7 +17,6 @@ import dev.axion.world.DimensionId;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +43,9 @@ import org.slf4j.Logger;
  *       par handle, et leurs {@code BodyBounds} calent leur hitbox (R-702, ADR-120)
  *       ({@link SimStateSink}).
  *   <li>À la disparition d'une entité : {@code REMOVE_ASSEMBLY}.
+ *   <li>Chaque tick, avant les commandes : une assembly sortie sans être retirée — son tronçon
+ *       caché —, puis suivie de nouveau sans signal d'entrée, reçoit un nouveau corps
+ *       ({@link BodyLedger}) ; sans quoi elle resterait figée.
  * </ul>
  *
  * <p>Seul {@code dev.axion.forge} touche Minecraft (R-401). Le corps est créé avec
@@ -61,12 +64,13 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     private final AssetRegistry assets;
 
     /**
-     * Index de handle → entité : route l'application des états, évite une double création
-     * et route le retrait. L'index est l'identifiant réseau de l'entité (ADR-121) : unique
-     * dans une session de serveur, jamais réemployé, et connu du client — qui retrouve ainsi
-     * le corps natif de chaque entité qu'il dessine sans donnée de plus.
+     * Index de handle → entité dotée d'un corps : route l'application des états, évite une
+     * double création, route le retrait, et garde de côté les assemblies cachées qui peuvent
+     * revenir. L'index est l'identifiant réseau de l'entité (ADR-121) : unique dans une
+     * session de serveur, jamais réemployé, et connu du client — qui retrouve ainsi le corps
+     * natif de chaque entité qu'il dessine sans donnée de plus.
      */
-    private final Map<Integer, AxionEntity> entityByHandle = new HashMap<>();
+    private final BodyLedger<AxionEntity> ledger = new BodyLedger<>();
     /** Commandes de création/retrait en attente d'émission au prochain tick. */
     private final Deque<Pending> pending = new ArrayDeque<>();
     /** Entités dont une emprise aberrante a déjà été signalée : une fois chacune. */
@@ -97,39 +101,55 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         if (event.getLevel().isClientSide() || !(event.getEntity() instanceof AxionEntity assembly)) {
             return;
         }
-        int index = handleIndexOf(assembly);
-        if (assembly.isInert() || entityByHandle.containsKey(index)) {
-            return;
+        if (!ledger.hasBody(handleIndexOf(assembly))) {
+            createBody(assembly, (Level) event.getLevel());
+        }
+    }
+
+    /**
+     * Met en file la création du corps d'une assembly liée, à sa position et à son orientation
+     * — sauvegardée ({@code axion:rot}, §22.2) pour une entité qui entre, simulée pour une
+     * entité qui revient : un corps tombé sur le flanc le reste.
+     *
+     * @return vrai si un corps est demandé ; faux pour une assembly inerte, sans definition, ou
+     *     dont l'asset n'est pas prêt ou n'a pas de collider — elle reste inerte au physique
+     */
+    private boolean createBody(AxionEntity assembly, Level level) {
+        if (assembly.isInert()) {
+            return false;
         }
         Definition definition = definitions.get(assembly.definitionId()).orElse(null);
         if (definition == null) {
-            return;
+            return false;
         }
         byte[] phys = physOf(definition);
         if (phys == null) {
-            // Asset non prêt ou sans collider : pas de corps (l'entité reste inerte au physique).
-            return;
+            return false;
         }
-        long dimension =
-                DimensionId.of(((Level) event.getLevel()).dimension().location().toString());
+        int index = handleIndexOf(assembly);
+        long dimension = DimensionId.of(level.dimension().location().toString());
         double[] position = {assembly.getX(), assembly.getY(), assembly.getZ()};
-        // Orientation sauvegardée (§22.2, axion:rot), identité pour une entité neuve : un
-        // corps tombé sur le flanc le reste après rechargement.
         Quaternionf saved = assembly.bodyRotation();
         float[] rotation = {saved.x(), saved.y(), saved.z(), saved.w()};
         pending.add(
                 new Pending(true, index, dimension, position, rotation, bodyKind(definition.kind()), phys));
-        entityByHandle.put(index, assembly);
+        ledger.attach(index, assembly);
+        return true;
     }
 
-    /** Disparition d'une entité (serveur) : retire son corps natif. */
+    /**
+     * Fin de suivi d'une entité (serveur) : retire son corps natif. Retirée du monde, elle est
+     * oubliée ; seulement cachée — {@code setRemoved} pose la raison du retrait avant de
+     * prévenir le gestionnaire d'entités, qui seul émet cette sortie (bytecode lu) —, elle est
+     * mise de côté, et retrouve un corps si on la suit de nouveau.
+     */
     @SubscribeEvent
     public void onLeave(EntityLeaveLevelEvent event) {
         if (event.getLevel().isClientSide() || !(event.getEntity() instanceof AxionEntity assembly)) {
             return;
         }
         int index = handleIndexOf(assembly);
-        if (entityByHandle.remove(index) == null) {
+        if (!ledger.detach(index, assembly, assembly.getRemovalReason() != null)) {
             return;
         }
         implausibleBounds.remove(index);
@@ -151,6 +171,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
 
     @Override
     public SimCommandStream commandsForTick(long tick) {
+        reconcile();
         SimCommandStream stream = new SimCommandStream();
         Pending cmd;
         while ((cmd = pending.poll()) != null) {
@@ -170,6 +191,32 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         return stream;
     }
 
+    /**
+     * Rend un corps aux assemblies cachées que le monde suit de nouveau, sans qu'aucune entrée
+     * ne l'ait signalé. Le monde suit une entité tant que {@code getEntity} la trouve : ce
+     * dernier ne lit que les entités suivies, que le suivi ajoute et que sa fin retire (bytecode
+     * lu). Les commandes de retrait, mises en file à la sortie, partent avant ces créations.
+     */
+    private void reconcile() {
+        List<Map.Entry<Integer, AxionEntity>> returning = ledger.reconcile(new BodyLedger.Probe<>() {
+            @Override
+            public boolean removed(AxionEntity entity) {
+                return entity.isRemoved();
+            }
+
+            @Override
+            public boolean tracked(int index, AxionEntity entity) {
+                return entity.level().getEntity(index) == entity;
+            }
+        });
+        for (Map.Entry<Integer, AxionEntity> entry : returning) {
+            AxionEntity assembly = entry.getValue();
+            if (createBody(assembly, assembly.level())) {
+                LOGGER.debug("AXION : assembly {} suivie de nouveau sans entrée, corps recréé", assembly.getUUID());
+            }
+        }
+    }
+
     @Override
     public void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds) {
         // ADR-120 : l'emprise de rang i est celle de l'état de rang i. Sans emprises (natif
@@ -180,7 +227,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             if (state.handleGeneration() != GENERATION) {
                 continue;
             }
-            AxionEntity entity = entityByHandle.get(state.handleIndex());
+            AxionEntity entity = ledger.entity(state.handleIndex());
             if (entity == null) {
                 continue;
             }
@@ -232,8 +279,9 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 : SimCommandStream.BODY_DYNAMIC;
     }
 
-    /** Se désabonne du bus d'événements (arrêt du serveur). */
+    /** Se désabonne du bus d'événements et oublie les assemblies (arrêt du serveur). */
     public void close() {
         MinecraftForge.EVENT_BUS.unregister(this);
+        ledger.clear();
     }
 }

@@ -1794,7 +1794,7 @@ substituable sans changer rapier »).
             plus rien ; `/summon axion:assembly` signale une fois ; à la réouverture du
             monde (session suivante), l'assembly invoquée le redit une fois et les cubes
             liés ne disent rien.
-      - [ ] **C-40/C-50 — risque : corps perdu quand un tronçon redevient visible avant son
+      - [x] **C-40/C-50 — risque : corps perdu quand un tronçon redevient visible avant son
             déchargement** (lu dans le bytecode de Forge 47.4.23, non observé en jeu) :
             `EntityLeaveLevelEvent` part à chaque fin de suivi (tronçon passé `HIDDEN`), mais
             `EntityJoinLevelEvent` seulement à l'ajout. Si le tronçon redevient visible avant
@@ -1803,6 +1803,18 @@ substituable sans changer rapier »).
             pour une assembly suivie) plutôt que se fier à la paire Join/Leave. Voir la note
             BDC « Sur Forge 47 une entité entre au monde à son ajout mais en sort à la fin de
             son suivi ».
+            Fait (2026-10-03) : `BodyLedger` (pur, `dev.axion.physics`) — une sortie sans retrait
+            (`getRemovalReason() == null`, posée par `setRemoved` avant le gestionnaire : bytecode
+            lu) met l'assembly de côté ; chaque tick, avant les commandes, celles que le monde suit
+            de nouveau (`level.getEntity(id)`, qui ne lit que `visibleEntityStorage` : bytecode lu)
+            reçoivent un corps, celles retirées depuis sont oubliées. 7 tests, trois mutations
+            attrapées ; Java 400 verts. Le cas lui-même (un tick de fenêtre) ne se provoque pas à la
+            main. En jeu (Killian) : spawn et chute, aller-retour au-delà de la distance de rendu,
+            rapportés conformes ; le journal ne montre pas de rechargement du monde.
+      - [ ] **`/axion remove` a rendu « 0 assembly(s) retirée(s) »** (essai du 2026-10-03,
+            23:02:37, 25 s après un spawn) : cible ne désignant pas le cube, ou cube disparu ?
+            Non élucidé ; Killian : « on verra ça plus tard ». Rejouer avec
+            `/axion remove @e[type=axion:assembly]` en regardant si le cube est encore là.
       - [ ] **R-903 — le fuzzing ne tourne jamais** (constaté le 2026-10-02) : `fuzz.yml` ne se
             déclenche que sur pull request touchant `crates/ax-asset/**`, ou à la main ; tout
             est poussé sur `master`, donc aucune campagne depuis le 12/09, dont les trois
