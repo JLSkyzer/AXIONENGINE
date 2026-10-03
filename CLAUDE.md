@@ -109,8 +109,9 @@ python tools/ci/local_ci.py
 ```
 
 rejoue les jobs de `ci.yml` sur la machine (configuration de l'hôte seulement,
-pas la matrice de plateformes). Tant que GitHub refuse les jobs pour facturation,
-c'est elle qui ferme une tranche : la noter « CI locale verte », jamais « CI verte ».
+pas la matrice de plateformes) : vérification rapide avant de pousser, et secours
+si GitHub Actions est indisponible — la tranche se note alors « CI locale verte »,
+jamais « CI verte ».
 
 ## Commits
 

@@ -1887,9 +1887,10 @@ substituable sans changer rapier »).
                         inconnues, libération différée au remplacement ; « Précisions de T-b2 ».
                         Java 350 verts (27 nouveaux, dix-sept mutations attrapées) ; le collage
                         Minecraft n'est exercé qu'en jeu, avec T-b4.
-                        CI non exécutée (run 37137888765, jobs refusés par GitHub pour
-                        facturation) ; cochée le 2026-10-03 sur décision de Killian, la suite locale
-                        et l'essai en jeu de T-b4 faisant foi.
+                        CI verte : run 37144482783 du commit 8909683, qui porte T-b2 à T-b4 —
+                        neuf jobs, les quatre plateformes de la matrice comprises (2026-10-03, après
+                        le passage du dépôt en public ; les runs précédents avaient été refusés pour
+                        facturation).
                   - [x] **T-b3 — translucide et émissive** : passe 4 à
                         `AFTER_TRANSLUCENT_BLOCKS`, triée par quad et vidée dans le
                         gestionnaire ; passe 5 (`eyes`, additive) ; matrice de capacités —
@@ -1914,8 +1915,7 @@ substituable sans changer rapier »).
                         pile de LWJGL, 64 Kio, qu'une texture plus grosse faisait déborder, écart
                         de T-b1 —, émissive masquée, passe 5 `eyes`, passe 4 triée et vidée dans
                         le gestionnaire, matrice ; « Précisions de T-b3 ». Java 365 verts (15
-                        nouveaux, onze mutations attrapées). CI non exécutée (run 37140318974),
-                        cochée comme T-b2.
+                        nouveaux, onze mutations attrapées). CI verte, même run que T-b2.
                   - [x] **T-b4 — contenu de test, vérifié en jeu** : modèles faits dans
                         Blender (cube texturé embarqué, texture RESOURCE, vitre, grille
                         découpée, panneau émissif, mesh multi-matériau, sol répété, texture
@@ -1930,8 +1930,7 @@ substituable sans changer rapier »).
                         journal) : les sept modèles conformes de jour ; de nuit, bandes et grille
                         lumineuses sans lueur dans les trous ; vitre transparente sous « Fabuleux » ;
                         F3 + T sans perte. Le collage Minecraft de T-b1 à T-b3 est ainsi exercé.
-                        CI non exécutée (run 37142928846), cochée comme T-b2 et T-b3. Les trois runs
-                        sont à relancer quand le compte GitHub sera réglé.
+                        CI verte, même run que T-b2.
             - [ ] **T-c** — atlas AXION des textures ≤ 256² (meshes dans `[0,1]`).
             - Hors portée, nommé : usage natif (C-60/C-63), multijoueur, `.mtl` et buffers
               externes en jeu (C-20/C-21), décalques (C-69), `TINTABLE`, usure (C-47),
