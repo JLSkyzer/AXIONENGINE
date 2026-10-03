@@ -1923,8 +1923,15 @@ substituable sans changer rapier »).
                         Contenu fait le 2026-10-03 par le MCP de Blender, dans `src/devcontent`,
                         branché sur les seuls lancements de développement (R-1790) : sept modèles
                         compilés par `axion-cli`, definitions `axion:test/materiaux/*`, source
-                        `src/devcontent/blender/materiaux_t-b4.blend`. Reste la vérification en
-                        jeu par Killian.
+                        `src/devcontent/blender/materiaux_t-b4.blend`.
+                        Vérifié en jeu le 2026-10-03 par Killian (client de développement, backend
+                        VANILLA, 9 assets prêts sur 9, aucun diagnostic de texture ni de matériau au
+                        journal) : les sept modèles conformes de jour ; de nuit, bandes et grille
+                        lumineuses sans lueur dans les trous ; vitre transparente sous « Fabuleux » ;
+                        F3 + T sans perte. Le collage Minecraft de T-b1 à T-b3 est ainsi exercé.
+                        **CI en attente**, comme T-b2 et T-b3 : run 37142928846 du commit 72d56cf
+                        refusé pour facturation ; une fois le compte réglé, relancer les trois runs,
+                        puis cocher T-b2, T-b3, T-b4 et T-b.
             - [ ] **T-c** — atlas AXION des textures ≤ 256² (meshes dans `[0,1]`).
             - Hors portée, nommé : usage natif (C-60/C-63), multijoueur, `.mtl` et buffers
               externes en jeu (C-20/C-21), décalques (C-69), `TINTABLE`, usure (C-47),
