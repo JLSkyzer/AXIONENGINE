@@ -129,26 +129,69 @@ impl Verificateur<'_> {
         Ok(())
     }
 
-    /// Refuse un attribut dont l'accesseur n'a pas la forme que glTF impose.
+    /// Refuse un accesseur qui n'a pas la forme que glTF impose à son usage.
     ///
     /// Troisieme famille de mines, et la plus sournoise. glTF 2.0 fixe le type
-    /// et le composant de chaque semantique : `POSITION` est un `VEC3` de
-    /// `FLOAT`, `JOINTS_n` un `VEC4` d'entiers non signes. Un fichier qui
-    /// declare autre chose fait lire au lecteur du crate `gltf` un element
-    /// d'une taille qui n'est pas celle qu'il attend.
+    /// et le composant de chaque usage d'un accesseur : `POSITION` est un `VEC3`
+    /// de `FLOAT`, des indices un `SCALAR` d'entiers non signes, une matrice de
+    /// skin un `MAT4` de `FLOAT`. Un fichier qui declare autre chose fait lire au
+    /// lecteur du crate `gltf` un element d'une taille qui n'est pas celle qu'il
+    /// attend.
     ///
     /// En version de debogage, il s'en apercoit par un `debug_assert_eq!` et
     /// **panique** — c'est ainsi que le fuzzer l'a trouve, `cargo-fuzz` activant
     /// les assertions. Dans le binaire livre, l'assertion n'existe pas : le
     /// lecteur poursuit et rend une geometrie fausse, **en silence**. Le second
     /// cas est le pire des deux, et c'est celui que cette verification arrete.
+    ///
+    /// Les attributs d'abord, trouves par le fuzzer ; puis, le 2026-10-03, des
+    /// indices declares `VEC4` d'`UNSIGNED_SHORT` (`left: 2, right: 8`) : le
+    /// composant etait controle, pas le type. Le controle couvre depuis tous les
+    /// usages types du document — indices, cibles de morphing, matrices de skin,
+    /// echantillonneurs d'animation —, lus ou non par l'import aujourd'hui.
     fn semantiques(&self) -> Result<(), ImportError> {
         use gltf::json::accessor::{ComponentType, Type};
+        use gltf::json::animation::Property;
         use gltf::json::mesh::Semantic;
         use gltf::json::validation::Checked;
 
+        const FLOTTANTS: &[ComponentType] = &[ComponentType::F32];
+        // Flottants, ou entiers normalises : rotations et poids d'animation.
+        const NORMALISABLES: &[ComponentType] = &[
+            ComponentType::F32,
+            ComponentType::I8,
+            ComponentType::U8,
+            ComponentType::I16,
+            ComponentType::U16,
+        ];
+
         for (mesh, maillage) in self.root.meshes.iter().enumerate() {
             for (prim, primitive) in maillage.primitives.iter().enumerate() {
+                let ou = format!("meshes[{mesh}].primitives[{prim}]");
+                if let Some(indices) = primitive.indices {
+                    self.forme(
+                        &format!("{ou}.indices"),
+                        indices.value(),
+                        &[Type::Scalar],
+                        &[ComponentType::U8, ComponentType::U16, ComponentType::U32],
+                    )?;
+                }
+                for (cible, morph) in primitive.targets.iter().flatten().enumerate() {
+                    for (nom, indice) in [
+                        ("POSITION", morph.positions),
+                        ("NORMAL", morph.normals),
+                        ("TANGENT", morph.tangents),
+                    ] {
+                        if let Some(indice) = indice {
+                            self.forme(
+                                &format!("{ou}.targets[{cible}].{nom}"),
+                                indice.value(),
+                                &[Type::Vec3],
+                                FLOTTANTS,
+                            )?;
+                        }
+                    }
+                }
                 for (semantique, indice) in &primitive.attributes {
                     let Checked::Valid(semantique) = semantique else {
                         // Deja refuse par `meshes()` ; la boucle ne suppose rien.
@@ -185,36 +228,97 @@ impl Verificateur<'_> {
                         _ => continue,
                     };
 
-                    let Some(accesseur) = self.root.accessors.get(indice.value()) else {
-                        // `meshes()` a deja refuse un indice hors bornes.
-                        continue;
-                    };
-                    let ou = format!("meshes[{mesh}].primitives[{prim}].attributes.{semantique:?}");
-
-                    if !matches!(accesseur.type_, Checked::Valid(reel) if attendu.0.contains(&reel))
-                    {
-                        return Err(ImportError::Malformed {
-                            format: self.format,
-                            detail: format!(
-                                "{ou} : glTF impose un accesseur de type {:?}",
-                                attendu.0
-                            ),
-                        });
-                    }
-                    let composant_admis = matches!(
-                        accesseur.component_type,
-                        Checked::Valid(reel) if attendu.1.contains(&reel.0)
-                    );
-                    if !composant_admis {
-                        return Err(ImportError::Malformed {
-                            format: self.format,
-                            detail: format!(
-                                "{ou} : composant non admis par glTF pour cette semantique"
-                            ),
-                        });
-                    }
+                    self.forme(
+                        &format!("{ou}.attributes.{semantique:?}"),
+                        indice.value(),
+                        attendu.0,
+                        attendu.1,
+                    )?;
                 }
             }
+        }
+
+        for (rang, skin) in self.root.skins.iter().enumerate() {
+            if let Some(matrices) = skin.inverse_bind_matrices {
+                self.forme(
+                    &format!("skins[{rang}].inverseBindMatrices"),
+                    matrices.value(),
+                    &[Type::Mat4],
+                    FLOTTANTS,
+                )?;
+            }
+        }
+
+        for (rang, animation) in self.root.animations.iter().enumerate() {
+            for (echantillonneur, sampler) in animation.samplers.iter().enumerate() {
+                self.forme(
+                    &format!("animations[{rang}].samplers[{echantillonneur}].input"),
+                    sampler.input.value(),
+                    &[Type::Scalar],
+                    FLOTTANTS,
+                )?;
+            }
+            // La forme de la sortie depend de ce qu'anime le canal qui lit
+            // l'echantillonneur.
+            for (canal, channel) in animation.channels.iter().enumerate() {
+                let Checked::Valid(chemin) = channel.target.path else {
+                    // Deja refuse par `animations()`.
+                    continue;
+                };
+                let Some(sampler) = animation.samplers.get(channel.sampler.value()) else {
+                    // Deja refuse par `animations()`.
+                    continue;
+                };
+                let (types, composants): (&[Type], &[ComponentType]) = match chemin {
+                    Property::Translation | Property::Scale => (&[Type::Vec3], FLOTTANTS),
+                    Property::Rotation => (&[Type::Vec4], NORMALISABLES),
+                    Property::MorphTargetWeights => (&[Type::Scalar], NORMALISABLES),
+                };
+                self.forme(
+                    &format!(
+                        "animations[{rang}].channels[{canal}] (sortie de son echantillonneur)"
+                    ),
+                    sampler.output.value(),
+                    types,
+                    composants,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Refuse un accesseur dont le type ou le composant n'est pas parmi ceux que
+    /// glTF admet pour cet usage, en nommant l'usage.
+    ///
+    /// Un indice hors bornes, ou une enumeration invalide, a deja ete refuse par
+    /// les familles precedentes : l'accesseur absent ou invalide ne se juge pas
+    /// ici une seconde fois.
+    fn forme(
+        &self,
+        ou: &str,
+        indice: usize,
+        types: &[gltf::json::accessor::Type],
+        composants: &[gltf::json::accessor::ComponentType],
+    ) -> Result<(), ImportError> {
+        use gltf::json::validation::Checked;
+
+        let Some(accesseur) = self.root.accessors.get(indice) else {
+            return Ok(());
+        };
+        if !matches!(accesseur.type_, Checked::Valid(reel) if types.contains(&reel)) {
+            return Err(ImportError::Malformed {
+                format: self.format,
+                detail: format!("{ou} : glTF impose un accesseur de type {types:?}"),
+            });
+        }
+        if !matches!(accesseur.component_type, Checked::Valid(reel) if composants.contains(&reel.0))
+        {
+            return Err(ImportError::Malformed {
+                format: self.format,
+                detail: format!(
+                    "{ou} : composant non admis par glTF pour cet usage, {composants:?} attendus"
+                ),
+            });
         }
         Ok(())
     }
@@ -638,5 +742,111 @@ impl Verificateur<'_> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! La forme des accesseurs selon leur usage (R-903). Les documents n'ont pas
+    //! de tampon : la vérification ne lit aucune donnée, seulement le graphe.
+
+    use super::check_references;
+    use crate::import::{ImportError, SourceFormat};
+
+    /// Un triangle : positions (accesseur 0, `VEC3` de `FLOAT`), indices
+    /// (accesseur 1), un accesseur `SCALAR` de `FLOAT` (2) et un `VEC4` d'`U8`
+    /// (3) pour les animations ; `extra` s'insère à la racine.
+    fn document(indices: &str, extra: &str) -> String {
+        format!(
+            r#"{{
+  "asset": {{ "version": "2.0" }},
+  "nodes": [{{ "mesh": 0 }}],
+  "meshes": [{{ "primitives": [{{ "attributes": {{ "POSITION": 0 }}, "indices": 1 }}] }}],
+  "accessors": [
+    {{ "componentType": 5126, "count": 3, "type": "VEC3" }},
+    {{ "componentType": 5123, "count": 3, "type": "{indices}" }},
+    {{ "componentType": 5126, "count": 3, "type": "SCALAR" }},
+    {{ "componentType": 5121, "normalized": true, "count": 3, "type": "VEC4" }}
+  ]{extra}
+}}"#
+        )
+    }
+
+    fn verifie(json: &str) -> Result<(), ImportError> {
+        let gltf = gltf::Gltf::from_slice_without_validation(json.as_bytes())
+            .expect("JSON d'essai lisible");
+        check_references(gltf.document.as_json(), SourceFormat::Gltf)
+    }
+
+    /// Le refus nomme l'usage fautif.
+    fn refuse(json: &str, usage: &str) {
+        match verifie(json) {
+            Err(ImportError::Malformed { detail, .. }) => {
+                assert!(
+                    detail.contains(usage),
+                    "le refus doit nommer {usage} : {detail}"
+                );
+            }
+            autre => panic!("{usage} : refus attendu, obtenu {autre:?}"),
+        }
+    }
+
+    #[test]
+    fn t680_des_indices_vec4_sont_refuses_sans_lecture() {
+        // Trouvé par fuzzing le 2026-10-03 (`left: 2, right: 8`) : le composant
+        // des indices était contrôlé, pas leur type.
+        refuse(&document("VEC4", ""), "meshes[0].primitives[0].indices");
+        assert!(verifie(&document("SCALAR", "")).is_ok());
+    }
+
+    #[test]
+    fn t680_une_cible_de_morphing_hors_forme_est_refusee() {
+        let morph = |cible: &str| {
+            document("SCALAR", "").replace(
+                r#""indices": 1 }"#,
+                &format!(r#""indices": 1, "targets": [{{ "NORMAL": {cible} }}] }}"#),
+            )
+        };
+        refuse(&morph("3"), "targets[0].NORMAL");
+        assert!(
+            verifie(&morph("0")).is_ok(),
+            "VEC3 de FLOAT : la forme de glTF"
+        );
+    }
+
+    #[test]
+    fn t680_une_matrice_de_skin_hors_forme_est_refusee() {
+        refuse(
+            &document(
+                "SCALAR",
+                r#", "skins": [{ "inverseBindMatrices": 0, "joints": [0] }]"#,
+            ),
+            "skins[0].inverseBindMatrices",
+        );
+    }
+
+    #[test]
+    fn t680_une_animation_hors_forme_est_refusee() {
+        let animation = |entree: usize, sortie: usize, chemin: &str| {
+            document(
+                "SCALAR",
+                &format!(
+                    r#", "animations": [{{
+    "samplers": [{{ "input": {entree}, "output": {sortie} }}],
+    "channels": [{{ "sampler": 0, "target": {{ "node": 0, "path": "{chemin}" }} }}]
+  }}]"#
+                ),
+            )
+        };
+        // L'entrée est un SCALAR de FLOAT ; l'accesseur 1 est d'UNSIGNED_SHORT.
+        refuse(&animation(1, 0, "translation"), "samplers[0].input");
+        // Une translation sort en VEC3 de FLOAT.
+        refuse(&animation(2, 3, "translation"), "channels[0]");
+        assert!(verifie(&animation(2, 0, "translation")).is_ok());
+        // Une rotation admet des entiers normalisés.
+        assert!(verifie(&animation(2, 3, "rotation")).is_ok());
+        // Des poids de morphing sortent en SCALAR.
+        assert!(verifie(&animation(2, 2, "weights")).is_ok());
+        refuse(&animation(2, 0, "weights"), "channels[0]");
     }
 }
