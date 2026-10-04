@@ -280,6 +280,40 @@ impl BodyReports {
     }
 }
 
+/// Compteurs cumulés d'un monde : ce qu'il n'a pas pu faire ou a dû corriger, sans jamais
+/// le taire. Le pilote les additionne sur toutes les dimensions, détruites comprises
+/// (R-610) : un tel compteur ne décroît jamais.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WorldCounters {
+    /// Événements perdus faute de place dans un lot (R-1011).
+    pub dropped_events: u64,
+    /// Clamps de vitesse journalisés, au débit d'un par corps et par minute (R-180).
+    pub clamp_journal: u64,
+    /// États non finis ou hors du monde restaurés (R-181, `E-2030`).
+    pub invalid_states: u64,
+    /// Emprises incalculables, rapportées comme la boîte nulle (ADR-120).
+    pub bounds_unavailable: u64,
+}
+
+impl core::ops::Add for WorldCounters {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            dropped_events: self.dropped_events + other.dropped_events,
+            clamp_journal: self.clamp_journal + other.clamp_journal,
+            invalid_states: self.invalid_states + other.invalid_states,
+            bounds_unavailable: self.bounds_unavailable + other.bounds_unavailable,
+        }
+    }
+}
+
+impl core::ops::AddAssign for WorldCounters {
+    fn add_assign(&mut self, other: Self) {
+        *self = *self + other;
+    }
+}
+
 impl PhysicsWorld {
     /// Crée un monde vide à partir d'une configuration.
     #[must_use]
@@ -1212,6 +1246,17 @@ impl PhysicsWorld {
     #[must_use]
     pub fn bounds_unavailable_count(&self) -> u64 {
         self.bounds_unavailable.load(Ordering::Relaxed)
+    }
+
+    /// Tous les compteurs cumulés du monde, d'un coup.
+    #[must_use]
+    pub fn counters(&self) -> WorldCounters {
+        WorldCounters {
+            dropped_events: self.dropped_events,
+            clamp_journal: self.clamp_journal_count,
+            invalid_states: self.invalid_state_count,
+            bounds_unavailable: self.bounds_unavailable_count(),
+        }
     }
 
     /// Produit l'état des corps mobiles identifiés (DM-08) — vue des seuls

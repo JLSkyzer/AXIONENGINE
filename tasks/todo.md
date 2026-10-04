@@ -1541,7 +1541,14 @@ substituable sans changer rapier »).
                         dans ADR-123 §3. **Branché en jeu en T5c seulement**, avec l'envoi des
                         observateurs par Java : sans eux, tout corps dormirait. T-302, T-303 ;
                         12 mutations ciblées, toutes tuées par le test attendu.
-                  - [ ] Destruction R-610 sans assembly, tuile, fluide ni observateur (T-300).
+                  - [x] Destruction R-610 en fin de `collect` : un monde sans corps, fluide ni
+                        observateur du tick est détruit, son environnement gardé ; les
+                        compteurs des mondes détruits restent dans les totaux (`WorldCounters`).
+                        Jauge `axion.sim.worlds` ; au passage, `axion.sim.unbalanced` (R-282),
+                        exigé par le CDC et jamais publié, l'est désormais. Branché dans le
+                        cycle IF-03 dès maintenant : sans observateurs, il ne détruit que des
+                        mondes vides. `begin_tick` sera branché au `submit` en T5b, avec
+                        `SET_OBSERVERS` et son test. T-300 ; 7 mutations tuées.
                   - [ ] Événements `RECOVERED` (2030) et `CLAMPED` 1 (T-306).
                   - [ ] Gouverneur FM-21, drapeau `AXION_SIM_DEGRADED`, jauges (T-307).
                   - [ ] Détecteur FM-22, amortissement puis sommeil (T-307).

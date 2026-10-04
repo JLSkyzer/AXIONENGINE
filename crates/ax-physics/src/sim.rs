@@ -16,7 +16,7 @@ use crate::config::PhysicsConfig;
 use crate::debug::{select_outlines, DebugColliders};
 use crate::forces::FluidEnvironment;
 use crate::forces::FluidVolume;
-use crate::world::{BodyReports, PhysicsWorld};
+use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
@@ -99,6 +99,9 @@ pub struct SimDriver {
     /// Observateurs du tick : positions monde finies des joueurs de chaque dimension
     /// (ADR-123 §2). État par tick, remis à zéro par [`begin_tick`](Self::begin_tick).
     observers: BTreeMap<u64, Vec<DVec3>>,
+    /// Compteurs cumulés des mondes détruits (R-610), gardés dans les totaux : ils ne se
+    /// perdent pas avec leur monde.
+    retired: WorldCounters,
 }
 
 impl std::fmt::Debug for SimDriver {
@@ -199,16 +202,57 @@ impl SimDriver {
         }
     }
 
-    /// Détruit la simulation d'une dimension (R-610) ; rend vrai si elle
-    /// existait.
+    /// Détruit la simulation d'une dimension (R-610) ; rend vrai si elle existait. Ses
+    /// compteurs restent dans les totaux de [`counters`](Self::counters), son
+    /// environnement dans le pilote.
     pub fn remove_dimension(&mut self, dimension: u64) -> bool {
-        self.dimensions.remove(&dimension).is_some()
+        match self.dimensions.remove(&dimension) {
+            Some(sim) => {
+                self.retired += sim.world.counters();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Détruit les mondes devenus sans objet (R-610, ADR-123 §4) : ceux qui ne portent
+    /// aucun corps — assembly ni tuile de collision —, aucun volume de fluide, et dont la
+    /// dimension n'a aucun observateur ce tick. À appeler en fin de tick, après la récolte.
+    ///
+    /// L'environnement de la dimension est gardé (ADR-123 §1) : son monde renaîtra au
+    /// premier besoin tel qu'il était réglé. Le planificateur Java libère de lui-même les
+    /// tuiles d'une dimension sans assembly ; le natif ne détruit donc jamais ce que Java
+    /// croit encore posé. Rend le nombre de mondes détruits.
+    pub fn release_idle_dimensions(&mut self) -> usize {
+        let idle: Vec<u64> = self
+            .dimensions
+            .iter()
+            .filter(|(dimension, sim)| {
+                !self.observers.contains_key(dimension)
+                    && sim.world.body_count() == 0
+                    && sim.world.fluid_volume_count() == 0
+            })
+            .map(|(&dimension, _)| dimension)
+            .collect();
+        for &dimension in &idle {
+            self.remove_dimension(dimension);
+        }
+        idle.len()
     }
 
     /// Nombre de dimensions actives.
     #[must_use]
     pub fn dimension_count(&self) -> usize {
         self.dimensions.len()
+    }
+
+    /// Compteurs cumulés de toutes les dimensions, détruites comprises : aucun ne décroît
+    /// quand un monde disparaît (R-610).
+    #[must_use]
+    pub fn counters(&self) -> WorldCounters {
+        self.dimensions
+            .values()
+            .fold(self.retired, |total, sim| total + sim.world.counters())
     }
 
     /// Pose (ou remplace) la tuile de collision du monde d'une section 16³ (C-38).
@@ -703,7 +747,7 @@ mod tests {
     }
 
     #[test]
-    fn les_dimensions_se_creent_au_premier_besoin() {
+    fn t300_les_dimensions_se_creent_au_premier_besoin() {
         let mut driver = SimDriver::new();
         assert_eq!(driver.dimension_count(), 0);
         driver.world_or_create(0, config(), FloatingOrigin::new(DVec3::ZERO));
@@ -713,6 +757,86 @@ mod tests {
         assert!(driver.world_mut(7).is_none());
         assert!(driver.remove_dimension(0));
         assert!(!driver.remove_dimension(0));
+    }
+
+    #[test]
+    fn t300_un_monde_sans_corps_fluide_ni_joueur_est_detruit_en_fin_de_tick() {
+        // R-610 : `SET_DIMENSION_ENV` ouvre le monde ; sans rien à simuler ni joueur, la
+        // fin du tick le détruit. L'environnement reste, et revient avec le monde.
+        let mut driver = SimDriver::new();
+        driver.apply_dimension_env(3, Vec3::new(0.0, -2.0, 0.0), Vec3::ZERO, None);
+        assert_eq!(driver.dimension_count(), 1);
+
+        assert_eq!(driver.release_idle_dimensions(), 1);
+        assert_eq!(driver.dimension_count(), 0);
+        assert_eq!(driver.release_idle_dimensions(), 0);
+
+        bille(&mut driver, 3);
+        let vy = vitesse_apres_une_seconde(&mut driver);
+        assert!(
+            (vy + 2.0).abs() < 0.1,
+            "le monde recréé retrouve sa gravité : {vy}"
+        );
+    }
+
+    #[test]
+    fn t300_un_monde_vit_tant_qu_il_porte_une_assembly_une_tuile_un_fluide_ou_un_joueur() {
+        let mut driver = SimDriver::new();
+        bille(&mut driver, 1);
+        assert!(driver.set_world_tile(
+            2,
+            [0, 0, 0],
+            &[[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]],
+            ContactMaterial::default()
+        ));
+        assert!(driver.set_world_fluid_tile(
+            3,
+            [0, 0, 0],
+            &[[0.0, 0.0, 0.0, 4.0, 4.0, 4.0]],
+            1000.0
+        ));
+        driver.apply_dimension_env(4, Vec3::new(0.0, -9.81, 0.0), Vec3::ZERO, None);
+        driver.begin_tick();
+        driver.set_observers(4, &[DVec3::ZERO]);
+
+        assert_eq!(driver.release_idle_dimensions(), 0);
+        assert_eq!(driver.dimension_count(), 4);
+
+        // Chaque raison retirée, son monde part — et lui seul.
+        assert!(driver.apply_remove_assembly(Handle::new(1, 1)));
+        assert_eq!(driver.release_idle_dimensions(), 1);
+        assert!(driver.world_mut(1).is_none());
+        assert!(driver.remove_world_tile(2, [0, 0, 0]));
+        assert!(driver.remove_world_fluid_tile(3, [0, 0, 0]));
+        assert_eq!(driver.release_idle_dimensions(), 2);
+        assert!(driver.world_mut(4).is_some(), "son joueur le garde ce tick");
+        // Un nouveau tick sans déclaration : la dimension n'a plus de joueur.
+        driver.begin_tick();
+        assert_eq!(driver.release_idle_dimensions(), 1);
+        assert_eq!(driver.dimension_count(), 0);
+    }
+
+    #[test]
+    fn t300_les_compteurs_d_un_monde_detruit_restent_dans_les_totaux() {
+        // Un compteur de perte ne décroît jamais (R-1011) : détruire un monde n'efface pas
+        // ce qu'il a compté.
+        let mut driver = SimDriver::with_settings(SimSettings {
+            max_events_per_tick: 1,
+            ..SimSettings::default()
+        });
+        bille(&mut driver, 0);
+        let (_, body) = driver.routes[&handle_key(Handle::new(1, 1))];
+        let world = driver.world_mut(0).unwrap();
+        // Deux événements pour une seule place : le second est perdu, et compté.
+        world.force_sleep(body, true);
+        world.end_forced_sleep(body);
+        world.force_sleep(body, true);
+        assert_eq!(driver.counters().dropped_events, 1);
+
+        assert!(driver.apply_remove_assembly(Handle::new(1, 1)));
+        assert_eq!(driver.release_idle_dimensions(), 1);
+
+        assert_eq!(driver.counters().dropped_events, 1);
     }
 
     /// Une bille dynamique créée en (0, 100, 0) de la dimension 0, au handle (1, 1).

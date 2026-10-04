@@ -1152,7 +1152,8 @@ fn read_le_f64(bytes: &[u8], at: usize) -> f64 {
 
 /// Récolte le résultat d'un tick (IF-03) : avance la simulation, dépose les
 /// `BodyState` puis leurs `BodyBounds` dans `SimOut` (schéma 1, ADR-120) et les
-/// `PhysicsEvent` dans `Events`, et remplit `out`.
+/// `PhysicsEvent` dans `Events`, détruit les mondes devenus sans objet (R-610) et
+/// remplit `out`.
 ///
 /// États et emprises forment **un seul lot** (R-250) : `BodyBounds[i]`, à
 /// l'offset `80 × state_count + 24 × i` de la charge, est l'emprise du corps de
@@ -1178,6 +1179,8 @@ pub unsafe extern "C" fn axion_sim_collect(
             // lit les emprises au rang des états.
             debug_assert_eq!(states.len(), reports.bounds.len());
             let events = session.physics().drain_events();
+            // R-610 : la récolte faite, les mondes devenus sans objet sont détruits.
+            session.physics().release_idle_dimensions();
 
             let mut sim_out_bytes =
                 Vec::with_capacity(states.len() * (BodyState::BYTES + BodyBounds::BYTES));

@@ -68,6 +68,8 @@ struct SessionMetrics {
     budgets: BudgetMetrics,
     panics: MetricId,
     workers: MetricId,
+    sim_unbalanced: MetricId,
+    sim_worlds: MetricId,
 }
 
 /// État interne d'une session native.
@@ -228,6 +230,12 @@ impl Session {
     fn publish_metrics(&self) {
         let metrics = &self.metrics;
         metrics.registry.set(metrics.panics, self.panics);
+        metrics
+            .registry
+            .set(metrics.sim_unbalanced, self.sim_unbalanced);
+        metrics
+            .registry
+            .set(metrics.sim_worlds, self.physics.dimension_count() as u64);
 
         let Some(jobs) = self.jobs.as_ref() else {
             return;
@@ -492,12 +500,23 @@ fn build_metrics() -> SessionMetrics {
     let workers = builder
         .gauge("axion.jobs.workers", "count")
         .expect("métrique de workers");
+    // R-282 : un `submit` sans `collect` clôt le cycle et se compte ici.
+    let sim_unbalanced = builder
+        .counter("axion.sim.unbalanced", "count")
+        .expect("métrique de cycles déséquilibrés");
+    // R-610 : les mondes physiques naissent au besoin et meurent sans objet ; leur
+    // nombre se voit.
+    let sim_worlds = builder
+        .gauge("axion.sim.worlds", "count")
+        .expect("métrique de mondes physiques");
 
     SessionMetrics {
         registry: builder.build(),
         budgets,
         panics,
         workers,
+        sim_unbalanced,
+        sim_worlds,
     }
 }
 
