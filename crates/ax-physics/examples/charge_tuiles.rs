@@ -1,10 +1,14 @@
 //! Mesure du pas de simulation sous la charge de tuiles du monde d'un essai en jeu (C-38).
 //!
 //! La scène reprend celle de l'essai du 2026-10-04, où le gouverneur FM-21 a relevé un p95 de
-//! 62,9 ms : trois cubes posés au sol, et les sections 16³ de leur voisinage (rayon 3)
-//! telles que le pont Forge les envoie — une boîte par bloc solide. Sol à y = 67 : les
-//! sections y = 1 à 3 sont pleines, la section y = 4 a trois couches pleines, au-dessus
-//! l'air. Le chronomètre entoure `advance_all`, exactement comme `axion_sim_collect`.
+//! 62,9 ms : trois cubes posés au sol, et les sections 16³ de leur voisinage (rayon 3). Sol à
+//! y = 67 : les sections y = 1 à 3 sont pleines, la section y = 4 a trois couches pleines,
+//! au-dessus l'air. Le chronomètre entoure `advance_all`, exactement comme
+//! `axion_sim_collect`.
+//!
+//! La scène est jouée deux fois : avec **une boîte par bloc**, ce que le pont Forge envoyait
+//! avant C-38 T4b et le pire cas d'une section irrégulière, puis avec les **blocs pleins
+//! fusionnés** en boîtes maximales, la « liste compacte » que le pont envoie désormais.
 //!
 //! ```bash
 //! cargo run --release -p ax-physics --example charge_tuiles
@@ -24,7 +28,7 @@ const TICK_DT: f32 = 1.0 / 20.0;
 const TILES_PER_TICK: usize = 8;
 
 /// Boîtes d'une section dont les `layers` couches du bas sont pleines : une par bloc.
-fn boxes(layers: u32) -> Vec<[f32; 6]> {
+fn per_block(layers: u32) -> Vec<[f32; 6]> {
     let mut boxes = Vec::new();
     for x in 0..16u32 {
         for y in 0..layers {
@@ -35,6 +39,11 @@ fn boxes(layers: u32) -> Vec<[f32; 6]> {
         }
     }
     boxes
+}
+
+/// La même section, blocs pleins fusionnés : une seule dalle.
+fn merged(layers: u32) -> Vec<[f32; 6]> {
+    vec![[0.0, 0.0, 0.0, 16.0, layers as f32, 16.0]]
 }
 
 /// Les sections du voisinage des trois cubes, et leur nombre de couches pleines.
@@ -98,14 +107,15 @@ fn report(phase: &str, mut durations: Vec<f64>) {
     );
 }
 
-fn main() {
+/// Joue toute la scène avec les boîtes que `boxes` donne pour une section.
+fn scenario(title: &str, boxes: fn(u32) -> Vec<[f32; 6]>) {
     let sections = sections();
     let total: usize = sections
         .iter()
-        .map(|(_, layers)| 256 * *layers as usize)
+        .map(|(_, layers)| boxes(*layers).len())
         .sum();
     println!(
-        "{} sections, {total} boîtes statiques au total (une par bloc)\n",
+        "\n{title} : {} sections, {total} boîtes statiques",
         sections.len()
     );
 
@@ -141,6 +151,7 @@ fn main() {
         apply.push(started.elapsed().as_secs_f64() * 1000.0);
         streaming.push(tick(&mut driver, Vec::new()));
     }
+    println!("colliders : {}", driver.collider_count());
     report("pose des tuiles (hors advance_all)", apply);
     report("advance_all pendant la diffusion", streaming);
 
@@ -191,4 +202,9 @@ fn main() {
     // 6. La même entité, présente à chaque tick.
     let present: Vec<f64> = (0..100).map(|_| tick(&mut driver, vec![proxy])).collect();
     report("advance_all, un proxy présent à chaque tick", present);
+}
+
+fn main() {
+    scenario("Une boîte par bloc", per_block);
+    scenario("Blocs pleins fusionnés", merged);
 }

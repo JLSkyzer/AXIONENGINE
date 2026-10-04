@@ -11,6 +11,7 @@ import java.util.function.LongFunction;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -20,8 +21,9 @@ import net.minecraftforge.registries.ForgeRegistries;
  * Implémentation Forge de {@link WorldCollisionSource} (C-38, fiche 5.30) : lit la
  * géométrie de collision d'une section 16³ via l'API {@code Level} de Minecraft.
  *
- * <p>Seul paquet autorisé à importer {@code net.minecraft.*} (R-401). La quantification et
- * la résolution du matériau sont déléguées à {@link WorldTileGeometry} et
+ * <p>Seul paquet autorisé à importer {@code net.minecraft.*} (R-401). La quantification, la
+ * fusion des blocs pleins en boîtes maximales (la « liste compacte » de l'étape 2) et la
+ * résolution du matériau sont déléguées à {@link WorldTileGeometry} et
  * {@link BlockMaterials} (logique pure, testée).
  *
  * <p>R-640 : une section dont le chunk n'est pas chargé (ou dont le niveau est inconnu) est
@@ -62,7 +64,10 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
         int ox = sectionX * SIZE;
         int oy = sectionY * SIZE;
         int oz = sectionZ * SIZE;
+        // Fiche 5.30, étape 2 : une liste compacte de boîtes. Les blocs pleins vont dans une
+        // grille, fusionnée en boîtes maximales ; les formes partielles gardent leurs boîtes.
         List<float[]> boxes = new ArrayList<>();
+        boolean[] full = new boolean[SIZE * SIZE * SIZE];
         List<float[]> fluids = new ArrayList<>();
         Map<String, Integer> blockCounts = new HashMap<>();
         Map<String, BlockState> representative = new HashMap<>();
@@ -77,16 +82,22 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
 
                     VoxelShape shape = state.getCollisionShape(level, pos);
                     if (!shape.isEmpty()) {
-                        for (AABB aabb : shape.toAabbs()) {
-                            boxes.add(
-                                    new float[] {
-                                        WorldTileGeometry.quantize(lx + aabb.minX),
-                                        WorldTileGeometry.quantize(ly + aabb.minY),
-                                        WorldTileGeometry.quantize(lz + aabb.minZ),
-                                        WorldTileGeometry.quantize(lx + aabb.maxX),
-                                        WorldTileGeometry.quantize(ly + aabb.maxY),
-                                        WorldTileGeometry.quantize(lz + aabb.maxZ),
-                                    });
+                        // La forme lue elle-même, et non le drapeau mis en cache par l'état :
+                        // celui-ci est calculé hors contexte, la forme d'ici peut en dépendre.
+                        if (Block.isShapeFullBlock(shape)) {
+                            full[WorldTileGeometry.cellIndex(lx, ly, lz)] = true;
+                        } else {
+                            for (AABB aabb : shape.toAabbs()) {
+                                boxes.add(
+                                        new float[] {
+                                            WorldTileGeometry.quantize(lx + aabb.minX),
+                                            WorldTileGeometry.quantize(ly + aabb.minY),
+                                            WorldTileGeometry.quantize(lz + aabb.minZ),
+                                            WorldTileGeometry.quantize(lx + aabb.maxX),
+                                            WorldTileGeometry.quantize(ly + aabb.maxY),
+                                            WorldTileGeometry.quantize(lz + aabb.maxZ),
+                                        });
+                            }
                         }
                         ResourceLocation id = ForgeRegistries.BLOCKS.getKey(state.getBlock());
                         if (id != null) {
@@ -94,6 +105,8 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                             blockCounts.merge(key, 1, Integer::sum);
                             representative.putIfAbsent(key, state);
                         }
+                        // Les formes partielles seules dépassent déjà le plafond : inutile de
+                        // fusionner, la section bascule en champ de hauteurs.
                         if (boxes.size() > WorldTileGeometry.MAX_TILE_BOXES) {
                             overBudget = true;
                             break;
@@ -106,6 +119,11 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                     }
                 }
             }
+        }
+        if (!overBudget) {
+            boxes.addAll(WorldTileGeometry.mergeFullBlocks(full));
+            // R-641 : le seuil porte sur la liste compacte, celle qui traverse la frontière.
+            overBudget = WorldTileGeometry.needsHeightfield(boxes.size());
         }
 
         BlockMaterials.Material material = dominantMaterial(blockCounts, representative, fallback);

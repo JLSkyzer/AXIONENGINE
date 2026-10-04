@@ -1,12 +1,16 @@
 package dev.axion.world;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Géométrie des tuiles de collision du monde (C-38, fiche 5.30, étape 2).
  *
  * <p>Opérations <b>pures</b> — sans Minecraft ni Forge — qui transforment la géométrie de
  * collision brute d'une section 16³ en la forme attendue par la frontière (ADR-117) :
  * adressage de section, quantification en 1/16 de bloc, mise en repère relatif à la
- * section, et décision du repli en champ de hauteurs (R-641).
+ * section, fusion des blocs pleins en une liste compacte de boîtes, et décision du repli en
+ * champ de hauteurs (R-641).
  *
  * <p>La lecture réelle des {@code VoxelShape} via {@code Level.getBlockCollisions} vit dans
  * {@code dev.axion.forge} (R-401) et alimente ces helpers ; les isoler ici les rend
@@ -97,5 +101,92 @@ public final class WorldTileGeometry {
      */
     public static boolean needsHeightfield(int boxCount) {
         return boxCount > MAX_TILE_BOXES;
+    }
+
+    /**
+     * {@return le rang du bloc {@code (x, y, z)} d'une section dans une grille d'occupation
+     * de {@code 16³} cases, celle que lit {@link #mergeFullBlocks}}
+     *
+     * @param x coordonnée relative à la section, de 0 à 15
+     * @param y coordonnée relative à la section, de 0 à 15
+     * @param z coordonnée relative à la section, de 0 à 15
+     */
+    public static int cellIndex(int x, int y, int z) {
+        return (x * SECTION_SIZE + y) * SECTION_SIZE + z;
+    }
+
+    /**
+     * Fusionne les blocs pleins d'une section en boîtes maximales : la « liste compacte de
+     * boîtes » de la fiche 5.30 (étape 2). Une section de pierre pleine devient une boîte, un
+     * sol plat une dalle, là où un bloc par boîte en donnait 4 096.
+     *
+     * <p>Glouton et déterministe : balayage en y, puis z, puis x ; chaque bloc plein non encore
+     * couvert ouvre une boîte, étendue d'abord le long de x, puis de z, puis de y, tant que
+     * tous les blocs qu'elle gagnerait sont pleins et libres. Les boîtes couvrent exactement
+     * les blocs pleins, sans se chevaucher : la collision est la même, en moins de pièces.
+     *
+     * @param full occupation de la section, de longueur {@code 16³}, au rang
+     *     {@link #cellIndex(int, int, int)} ; n'est pas modifiée
+     * @return boîtes relatives à la section, {@code [minx, miny, minz, maxx, maxy, maxz]} en
+     *     blocs, dans l'ordre du balayage
+     * @throws IllegalArgumentException si la grille n'a pas {@code 16³} cases
+     */
+    public static List<float[]> mergeFullBlocks(boolean[] full) {
+        int cells = SECTION_SIZE * SECTION_SIZE * SECTION_SIZE;
+        if (full.length != cells) {
+            throw new IllegalArgumentException(
+                    "une grille d'occupation a " + cells + " cases, pas " + full.length);
+        }
+        boolean[] free = full.clone();
+        List<float[]> boxes = new ArrayList<>();
+        for (int y = 0; y < SECTION_SIZE; y++) {
+            for (int z = 0; z < SECTION_SIZE; z++) {
+                for (int x = 0; x < SECTION_SIZE; x++) {
+                    if (!free[cellIndex(x, y, z)]) {
+                        continue;
+                    }
+                    int x1 = x + 1;
+                    while (x1 < SECTION_SIZE && free[cellIndex(x1, y, z)]) {
+                        x1++;
+                    }
+                    int z1 = z + 1;
+                    while (z1 < SECTION_SIZE && allFree(free, x, x1, y, y + 1, z1, z1 + 1)) {
+                        z1++;
+                    }
+                    int y1 = y + 1;
+                    while (y1 < SECTION_SIZE && allFree(free, x, x1, y1, y1 + 1, z, z1)) {
+                        y1++;
+                    }
+                    take(free, x, x1, y, y1, z, z1);
+                    boxes.add(new float[] {x, y, z, x1, y1, z1});
+                }
+            }
+        }
+        return boxes;
+    }
+
+    /** {@return vrai si tous les blocs de la boîte {@code [x0, x1) × [y0, y1) × [z0, z1)} sont libres} */
+    private static boolean allFree(boolean[] free, int x0, int x1, int y0, int y1, int z0, int z1) {
+        for (int x = x0; x < x1; x++) {
+            for (int y = y0; y < y1; y++) {
+                for (int z = z0; z < z1; z++) {
+                    if (!free[cellIndex(x, y, z)]) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    /** Marque couverts les blocs de la boîte {@code [x0, x1) × [y0, y1) × [z0, z1)}. */
+    private static void take(boolean[] free, int x0, int x1, int y0, int y1, int z0, int z1) {
+        for (int x = x0; x < x1; x++) {
+            for (int y = y0; y < y1; y++) {
+                for (int z = z0; z < z1; z++) {
+                    free[cellIndex(x, y, z)] = false;
+                }
+            }
+        }
     }
 }

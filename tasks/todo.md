@@ -1792,9 +1792,15 @@ substituable sans changer rapier »).
                     65,6 → 3,14 ms. Tests : 64 paquets pour une section pleine, cubes de
                     4³ blocs, un cube repose sur une tuile en compounds, déterminisme,
                     jauge lue à travers l'ABI.
-                  - [ ] **T4b — Java** : fusion des blocs pleins en boîtes maximales
+                  - [x] **T4b — Java** : fusion des blocs pleins en boîtes maximales
                     (« liste compacte », étape 2), logique pure testée dans
                     `WorldTileGeometry` ; le seuil de R-641 porte sur le compte fusionné.
+                    Blocs pleins jugés sur la forme lue (`Block.isShapeFullBlock`). Tests :
+                    section pleine → 1 boîte, sol → 1 dalle, gradins → 4 boîtes, damier
+                    → 2 048, couverture exacte sans chevauchement sur 200 grilles au
+                    hasard. Mesuré (`charge_tuiles`, sol plat) : 731 136 boîtes → 224,
+                    colliders 11 427 → 227, pose de huit sections 12,3 → 0,01 ms, tous les
+                    pas sous 0,07 ms de p95.
       - [x] **C-39 — Spatial Queries** (fiche 5.31, R-650..652) — **implémenté**. Module
             `ax_physics::query` : `raycast`, `sweep`, `overlap` + versions par lot, filtres
             par groupe/masque, exclusion d'assembly, capteurs (`SpatialFilter`/`SensorMode`).
