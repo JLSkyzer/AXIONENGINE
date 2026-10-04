@@ -1625,7 +1625,10 @@ substituable sans changer rapier »).
                         d'événements générés pour Java (`PhysicsEventCodes`, parité). Vérifié :
                         JUnit, vérification croisée sur la vraie bibliothèque (contact natif →
                         poussée vers le bas, approche = vitesse de chute), 16 mutations tuées.
-                  - [ ] T5c-5 — essai en jeu, Killian lançant le jeu.
+                  - [ ] T5c-5 — essai en jeu, Killian lançant le jeu. Joué le 2026-10-04 :
+                        effets confirmés par Killian, aucune erreur au journal ; le
+                        gouverneur est passé en DEGRADED_1 (p95 62,9 ms), expliqué par
+                        C-38 T4. À rejouer une fois C-38 T4 faite.
             - Hors portée, nommé : palier `SAFE` de SM-02 (sièges M5, C-77), `DegradationEvent`
               et `ContactEvent` (API d'événements de C-70), filtre intra-assembly multi-corps
               (joints, M4).
@@ -1697,7 +1700,7 @@ substituable sans changer rapier »).
               **déclarée** (`BodyDesc`/definitions) et `REFITTABLE` par défaut
               (déformation M6) ; la résolution VHACD à mesurer en M3 (ADR-108).
 
-      - [x] **C-38 — World Collision Provider** (fiche 5.30, R-640..643) — **implémenté**,
+      - [ ] **C-38 — World Collision Provider** (fiche 5.30, R-640..643) — **implémenté**,
             toutes tranches faites et vérifiées (unitaire natif + frontière + compilation
             Forge). Restent pour l'**acceptance M3** les GameTests en jeu **T-370..T-375**
             (runGameTestServer) — non écrits, portés par la porte d'acceptance du jalon.
@@ -1760,6 +1763,19 @@ substituable sans changer rapier »).
                     bloc/chunk, chargement `block_materials`), câblage démarrage/arrêt
                     serveur. Compilé contre Forge, tests du mod verts ; comportement
                     visible en attente de corps dynamiques (C-40).
+            - [ ] **T4 — tuiles en compounds compacts** — rouvre C-38 le 2026-10-04. Écart
+                  à la fiche 5.30, étapes 2 (« liste compacte de boîtes ») et 3 (« compounds
+                  statiques ») : une tuile porte **un collider par bloc**, soit 731 136
+                  colliders pour trois cubes au sol, et rapier 0.35 refait tout l'arbre de
+                  sa phase large à chaque retrait de collider. Mesuré par
+                  `cargo run --release -p ax-physics --example charge_tuiles` (Ryzen 7
+                  5800X, médianes d'`advance_all`) : régime établi 0,16 ms ; un proxy qui
+                  apparaît 0,40 ms, retiré 19,9 ms ; une section neuve 4,5 ms, reconstruite
+                  26 ms ; diffusion à 8 sections par tick p95 65,6 ms. D'où le p95 de
+                  62,9 ms relevé en jeu par FM-21. À faire selon la fiche : un compound
+                  statique par tuile (le plafond de 64 de §10.3 vaut pour les assemblies)
+                  et des boîtes compactées (fusion des blocs pleins) ; mesurer avant et
+                  après avec l'exemple.
       - [x] **C-39 — Spatial Queries** (fiche 5.31, R-650..652) — **implémenté**. Module
             `ax_physics::query` : `raycast`, `sweep`, `overlap` + versions par lot, filtres
             par groupe/masque, exclusion d'assembly, capteurs (`SpatialFilter`/`SensorMode`).
