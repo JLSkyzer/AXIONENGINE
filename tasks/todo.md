@@ -1707,7 +1707,7 @@ substituable sans changer rapier »).
               **déclarée** (`BodyDesc`/definitions) et `REFITTABLE` par défaut
               (déformation M6) ; la résolution VHACD à mesurer en M3 (ADR-108).
 
-      - [ ] **C-38 — World Collision Provider** (fiche 5.30, R-640..643) — **implémenté**,
+      - [x] **C-38 — World Collision Provider** (fiche 5.30, R-640..643) — **implémenté**,
             toutes tranches faites et vérifiées (unitaire natif + frontière + compilation
             Forge). Restent pour l'**acceptance M3** les GameTests en jeu **T-370..T-375**
             (runGameTestServer) — non écrits, portés par la porte d'acceptance du jalon.
@@ -1770,7 +1770,7 @@ substituable sans changer rapier »).
                     bloc/chunk, chargement `block_materials`), câblage démarrage/arrêt
                     serveur. Compilé contre Forge, tests du mod verts ; comportement
                     visible en attente de corps dynamiques (C-40).
-            - [ ] **T4 — tuiles en compounds compacts** — rouvre C-38 le 2026-10-04. Écart
+            - [x] **T4 — tuiles en compounds compacts** — rouvre C-38 le 2026-10-04. Écart
                   à la fiche 5.30, étapes 2 (« liste compacte de boîtes ») et 3 (« compounds
                   statiques ») : une tuile porte **un collider par bloc**, soit 731 136
                   colliders pour trois cubes au sol, et rapier 0.35 refait tout l'arbre de
