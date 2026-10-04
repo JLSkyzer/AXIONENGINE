@@ -60,7 +60,7 @@ L'arborescence est figée par la PARTIE 33 du cahier des charges.
 
 ## Documentation
 
-Le cahier des charges fait 8270 lignes et n'est pas destiné à être lu d'un bloc.
+Le cahier des charges fait 8281 lignes et n'est pas destiné à être lu d'un bloc.
 `docs/spec/INDEX.md` donne la plage de lignes de chacune de ses 452 sections, et
 `docs/spec/ID-MAP.tsv` localise chacun de ses 1331 identifiants normatifs.
 

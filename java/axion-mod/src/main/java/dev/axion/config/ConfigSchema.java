@@ -218,6 +218,22 @@ public final class ConfigSchema {
                     false,
                     "Plafond d'événements physiques traités par tick."),
             new Option(
+                    "physics.entity_push",
+                    Kind.BOOLEAN,
+                    true,
+                    new Domain(DomainKind.BOOLEAN, 0.0, 0.0, List.of()),
+                    false,
+                    true,
+                    "Les assemblies poussent les entités vanilla qu'elles heurtent, joueurs exceptés."),
+            new Option(
+                    "physics.entity_damage",
+                    Kind.BOOLEAN,
+                    true,
+                    new Domain(DomainKind.BOOLEAN, 0.0, 0.0, List.of()),
+                    false,
+                    true,
+                    "Un choc contre une assembly blesse les entités vivantes, comme une chute de même vitesse."),
+            new Option(
                     "damage.enabled",
                     Kind.BOOLEAN,
                     true,

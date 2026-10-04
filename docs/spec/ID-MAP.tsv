@@ -42,6 +42,7 @@ ADR-023	ADR	6986	6986	1	ADR-023 — Niveaux de qualité et gouverneur
 ADR-024	ADR	6991	6991	1	ADR-024 — Décalques en espace objet, suivant la déformation
 ADR-025	ADR	6995	6995	2	ADR-025 — Système d'attache entre assemblies
 ADR-026	ADR	6999	6633	4	ADR-026 — Chemins accélérés GL 4.x optionnels sur une base GL 3.3
+ADR-123	ADR		7766	1	38.9 Registre des amendements postérieurs au gel
 B-01	B	6428	5796	9	30.2 Ce qui est mesuré
 B-02	B	6429	6429	3	30.2 Ce qui est mesuré
 B-03	B	6430	6430	1	30.2 Ce qui est mesuré
@@ -169,7 +170,7 @@ E-2000	E		1431	2	4.9 IF-07 : erreurs et panics
 E-2001	E		704	2	3.1 DM-01 : identifiants
 E-2002	E		1334	3	4.4 IF-02 : mémoire partagée et anneaux de transfert
 E-2003	E		1447	2	4.10 Propriété et durée de vie
-E-2004	E		7779	1	ANNEXE A.1 — Codes d'erreur
+E-2004	E		7788	1	ANNEXE A.1 — Codes d'erreur
 E-2010	E		716	2	3.2 DM-02 : Transform
 E-2020	E		849	2	3.6 DM-06 : Collider
 E-2030	E		920	3	3.8 DM-08 : BodyDesc et BodyState
@@ -193,11 +194,11 @@ E-3040	E		850	1	3.6 DM-06 : Collider
 E-3050	E		940	1	3.9 DM-09 : Assembly
 E-3060	E		954	2	3.10 DM-10 : Skeleton et Animation
 E-4001	E		2370	2	5.50 C-63 : Matériaux & Shaders
-E-4002	E		7795	1	ANNEXE A.1 — Codes d'erreur
+E-4002	E		7804	1	ANNEXE A.1 — Codes d'erreur
 E-5001	E		5049	2	21.4 Paquets
-E-5002	E		7797	1	ANNEXE A.1 — Codes d'erreur
-E-6001	E		7798	1	ANNEXE A.1 — Codes d'erreur
-E-6002	E		7799	1	ANNEXE A.1 — Codes d'erreur
+E-5002	E		7806	1	ANNEXE A.1 — Codes d'erreur
+E-6001	E		7807	1	ANNEXE A.1 — Codes d'erreur
+E-6002	E		7808	1	ANNEXE A.1 — Codes d'erreur
 E-7001	E		1885	2	5.20 C-27 : Definitions data-driven
 E-7002	E		2942	2	9.2 États de node (SM-03)
 E-7003	E		5581	2	23.4 Schéma de Definition (normatif)
@@ -247,25 +248,25 @@ IF-05	IF	1388	1388	1	4.7 IF-05 : cycle de rendu
 IF-06	IF	1410	1410	1	4.8 IF-06 : assets, particules, structure
 IF-07	IF	1429	1429	2	4.9 IF-07 : erreurs et panics
 IF-10	IF		1470	1	5.1 C-01 : Forge Integration
-INV-01	INV	7812	315	7	ANNEXE A.2 — Index des invariants
-INV-02	INV	7813	317	8	ANNEXE A.2 — Index des invariants
-INV-03	INV	7814	318	6	ANNEXE A.2 — Index des invariants
-INV-04	INV	7815	319	7	ANNEXE A.2 — Index des invariants
-INV-05	INV	7816	323	4	ANNEXE A.2 — Index des invariants
-INV-06	INV	7817	325	6	ANNEXE A.2 — Index des invariants
-INV-07	INV	7818	547	6	ANNEXE A.2 — Index des invariants
-INV-08	INV	7819	1229	4	ANNEXE A.2 — Index des invariants
-INV-09	INV	7820	1230	3	ANNEXE A.2 — Index des invariants
-INV-10	INV	7821	1231	9	ANNEXE A.2 — Index des invariants
-INV-11	INV	7822	1232	3	ANNEXE A.2 — Index des invariants
-INV-12	INV	7823	538	6	ANNEXE A.2 — Index des invariants
-INV-13	INV	7824	328	10	ANNEXE A.2 — Index des invariants
+INV-01	INV	7821	315	7	ANNEXE A.2 — Index des invariants
+INV-02	INV	7822	317	8	ANNEXE A.2 — Index des invariants
+INV-03	INV	7823	318	6	ANNEXE A.2 — Index des invariants
+INV-04	INV	7824	319	7	ANNEXE A.2 — Index des invariants
+INV-05	INV	7825	323	4	ANNEXE A.2 — Index des invariants
+INV-06	INV	7826	325	6	ANNEXE A.2 — Index des invariants
+INV-07	INV	7827	547	6	ANNEXE A.2 — Index des invariants
+INV-08	INV	7828	1229	4	ANNEXE A.2 — Index des invariants
+INV-09	INV	7829	1230	3	ANNEXE A.2 — Index des invariants
+INV-10	INV	7830	1231	9	ANNEXE A.2 — Index des invariants
+INV-11	INV	7831	1232	3	ANNEXE A.2 — Index des invariants
+INV-12	INV	7832	538	6	ANNEXE A.2 — Index des invariants
+INV-13	INV	7833	328	10	ANNEXE A.2 — Index des invariants
 INV-14	INV	7709	1235	11	Invariants modifiés
-INV-15	INV	7827	329	8	ANNEXE A.2 — Index des invariants
+INV-15	INV	7836	329	8	ANNEXE A.2 — Index des invariants
 INV-16	INV	7710	1237	8	Invariants modifiés
-INV-17	INV	7830	1238	7	ANNEXE A.2 — Index des invariants
-INV-18	INV	7831	1239	5	ANNEXE A.2 — Index des invariants
-INV-19	INV	7832	1240	9	ANNEXE A.2 — Index des invariants
+INV-17	INV	7839	1238	7	ANNEXE A.2 — Index des invariants
+INV-18	INV	7840	1239	5	ANNEXE A.2 — Index des invariants
+INV-19	INV	7841	1240	9	ANNEXE A.2 — Index des invariants
 P-01	P	315	315	5	1.4 Principes directeurs
 P-02	P	316	316	4	1.4 Principes directeurs
 P-03	P	317	317	1	1.4 Principes directeurs
@@ -453,7 +454,7 @@ R-610	R	2005	2005	1	5.23 C-31 : Physics World
 R-611	R	2006	2006	1	5.23 C-31 : Physics World
 R-612	R	2007	2007	1	5.23 C-31 : Physics World
 R-613	R	2008	2008	1	5.23 C-31 : Physics World
-R-614	R	2009	2009	1	5.23 C-31 : Physics World
+R-614	R	2009	2009	2	5.23 C-31 : Physics World
 R-615	R	2010	2010	1	5.23 C-31 : Physics World
 R-620	R	2020	2020	1	5.24 C-32 : Collider Builder
 R-621	R	2021	2021	1	5.24 C-32 : Collider Builder
@@ -918,8 +919,8 @@ R-2390	R	7173	7173	1	37.1 Règles
 R-2391	R	7174	7174	1	37.1 Règles
 R-2392	R	7175	7175	1	37.1 Règles
 R-2393	R	7176	7176	1	37.1 Règles
-R-2400	R	8044	8044	1	ANNEXE A.3 — Configuration complète (référence normative)
-R-2410	R	8070	8070	1	ANNEXE A.4 — Sources procédurales (liste fermée V1.0)
+R-2400	R	8055	8055	1	ANNEXE A.3 — Configuration complète (référence normative)
+R-2410	R	8081	8081	1	ANNEXE A.4 — Sources procédurales (liste fermée V1.0)
 S-01	S	6382	6382	1	29.7 Tests de stress et d'endurance
 S-02	S	6383	6383	1	29.7 Tests de stress et d'endurance
 S-03	S	6384	6384	1	29.7 Tests de stress et d'endurance

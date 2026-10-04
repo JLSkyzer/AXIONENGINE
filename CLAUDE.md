@@ -12,7 +12,7 @@ Minecraft 1.20.1 + Forge 47.x. Architecture Java + Rust. Licence Apache-2.0.
 
 ## La source de vérité
 
-`cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`, 8270 lignes, **FINAL / FROZEN**.
+`cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`, 8281 lignes, **FINAL / FROZEN**.
 Tout en découle : composants, exigences, tests, budgets, critères d'acceptation.
 
 **Ne jamais le lire en entier.** Il ne tient pas dans un contexte, et le lire en
@@ -49,7 +49,7 @@ testés. Un travail n'est terminé que quand sa Definition of Done est cochée.
   (R-401, T-020).
 
 La liste complète des 25 interdictions et des 14 obligations est dans le CDC :
-`sed -n '8160,8217p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`.
+`sed -n '8171,8228p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`.
 
 ## Choix du modèle
 

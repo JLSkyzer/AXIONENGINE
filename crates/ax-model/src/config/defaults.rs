@@ -153,6 +153,10 @@ pub const COMMON: &[ConfigOption] = &[
     f("physics.broadphase_cell_size", 2.0, 0.5, 16.0, "Taille de cellule de la broad phase, en blocs."),
     f("physics.contact_event_threshold", 0.5, 0.0, 100.0, "Impulsion minimale, en N·s, pour qu'un contact produise un événement."),
     i("physics.max_events_per_tick", 4096, 256, 65536, "Plafond d'événements physiques traités par tick."),
+    // R-614 : l'effet d'une collision sur une entité vanilla est configurable — amendement A1
+    // de l'ANNEXE A.3 (38.9), ADR-123.
+    srv(b("physics.entity_push", true, "Les assemblies poussent les entités vanilla qu'elles heurtent, joueurs exceptés.")),
+    srv(b("physics.entity_damage", true, "Un choc contre une assembly blesse les entités vivantes, comme une chute de même vitesse.")),
 
     // [damage]
     b("damage.enabled", true, "Active la chaîne de dommage : impacts, déformation, rupture, usure."),

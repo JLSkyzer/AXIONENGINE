@@ -1596,6 +1596,21 @@ substituable sans changer rapier »).
                   entity_push`, `entity_damage`) avec registre, fichiers générés, conformité et
                   index du CDC régénéré ; journal `E-2030` et des transitions de dégradation ;
                   T-304 ; essai en jeu (demander à Killian de lancer le jeu).
+                  - [x] T5c-1 — amendement de l'annexe A.3 : `[physics] entity_push`,
+                        `entity_damage` (défauts vrais, ratifiés), registre `ax-model`, fichiers
+                        générés (TOML, `CONFIGURATION.md`, `ConfigSchema`), conformité R-2400,
+                        registre d'amendement 38.9 du CDC, index régénéré (8281 lignes ; plages
+                        citées par `CLAUDE.md` et `docs/AGENT.md` recalées et vérifiées).
+                  - [ ] T5c-2 — fournisseur Forge des joueurs (`SET_OBSERVERS`) et des proxies
+                        (`SET_ENTITY_PROXIES`, rayon d'influence déduit des vitesses), par
+                        dimension et par tick.
+                  - [ ] T5c-3 — natif : `manage_activity` branché dans `axion_sim_collect` (après
+                        T5c-2, jamais avant : sans joueurs envoyés, tout dormirait) ; compteurs
+                        d'activité et `WorldCounters` publiés en métriques.
+                  - [ ] T5c-4 — consommateur d'événements (R-1010) : poussée des non-joueurs,
+                        dégâts `axion:collision` (type de dégâts en données), journal `E-2030`
+                        et des transitions de dégradation (R-1880).
+                  - [ ] T5c-5 — essai en jeu, Killian lançant le jeu.
             - Hors portée, nommé : palier `SAFE` de SM-02 (sièges M5, C-77), `DegradationEvent`
               et `ContactEvent` (API d'événements de C-70), filtre intra-assembly multi-corps
               (joints, M4).

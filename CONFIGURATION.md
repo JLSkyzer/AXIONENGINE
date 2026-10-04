@@ -38,6 +38,8 @@ alors ignorée (R-1830).
 | `broadphase_cell_size` | flottant | `2.0` | `0.5..16.0` | non | non | Taille de cellule de la broad phase, en blocs. |
 | `contact_event_threshold` | flottant | `0.5` | `0.0..100.0` | non | non | Impulsion minimale, en N·s, pour qu'un contact produise un événement. |
 | `max_events_per_tick` | entier | `4096` | `256..65536` | non | non | Plafond d'événements physiques traités par tick. |
+| `entity_push` | booléen | `true` | `true \| false` | non | oui | Les assemblies poussent les entités vanilla qu'elles heurtent, joueurs exceptés. |
+| `entity_damage` | booléen | `true` | `true \| false` | non | oui | Un choc contre une assembly blesse les entités vivantes, comme une chute de même vitesse. |
 
 ### `[damage]`
 

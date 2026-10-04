@@ -7756,6 +7756,15 @@ Aucun ADR annulé, aucune décision d'architecture renversée.
 [x] INV-10 inchangé : le journal est hors du monde
 ```
 
+## 38.9 Registre des amendements postérieurs au gel
+
+Le document reste gelé : un amendement ne s'y inscrit que ratifié, avec la décision qui le
+porte. Il ajoute ce qui manquait à une exigence existante ; il ne retire ni ne reporte rien.
+
+| # | Date | Décision | Amendement |
+|---|---|---|---|
+| A1 | 2026-10-04 | ADR-123, ratifié par le mainteneur | ANNEXE A.3, `[physics]` : `entity_push` et `entity_damage`, booléens, vrais par défaut — le réglage que R-614 exige (« l'effet d'une collision sur une entité vanilla … est configurable ») et que l'annexe ne portait pas |
+
 ---
 
 ---
@@ -7854,6 +7863,8 @@ position_iterations = 1           # 0..8
 broadphase_cell_size = 2.0        # 0.5..16
 contact_event_threshold = 0.5     # 0..100
 max_events_per_tick = 4096        # 256..65536
+entity_push = true
+entity_damage = true
 
 [damage]
 enabled = true

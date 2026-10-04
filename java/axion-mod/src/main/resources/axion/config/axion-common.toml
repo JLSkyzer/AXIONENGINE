@@ -16,6 +16,8 @@ position_iterations = 1           # 0..8
 broadphase_cell_size = 2.0        # 0.5..16.0
 contact_event_threshold = 0.5     # 0.0..100.0
 max_events_per_tick = 4096        # 256..65536
+entity_push = true
+entity_damage = true
 
 [damage]
 enabled = true

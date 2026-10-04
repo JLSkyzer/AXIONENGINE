@@ -9,7 +9,7 @@ pointeurs, les commandes et les règles de conduite.
 
 ## 1. La source de vérité
 
-`cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md` — 8270 lignes, révision 2.1,
+`cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md` — 8281 lignes, révision 2.1,
 **FINAL / FROZEN**.
 
 Il est trop gros pour tenir dans un contexte : ne jamais l'ouvrir en entier.
@@ -52,7 +52,7 @@ Les familles d'identifiants sont définies en PARTIE 0.4 : `R` exigence,
 
 ## 2. La boucle de travail
 
-Imposée par le CDC (`sed -n '8144,8158p' ...`) :
+Imposée par le CDC (`sed -n '8155,8169p' ...`) :
 
 ```
 READ SPEC -> INSPECT REPOSITORY -> PLAN -> IMPLEMENT -> BUILD -> TEST -> FIX
@@ -115,7 +115,7 @@ Régénèrent ce qui dérive de la source unique de configuration :
 
 ## 4. Ce qui est interdit
 
-La liste normative complète est en `sed -n '8160,8198p' ...`. Les interdictions
+La liste normative complète est en `sed -n '8171,8209p' ...`. Les interdictions
 qui se violent le plus facilement sans y penser :
 
 - **Aucun `TODO`, `FIXME`, `todo!()`, `unimplemented!()`, stub ni implémentation
@@ -140,7 +140,7 @@ qui se violent le plus facilement sans y penser :
 
 ## 5. Ce qui est obligatoire
 
-Liste complète en `sed -n '8199,8217p' ...`. En particulier :
+Liste complète en `sed -n '8210,8228p' ...`. En particulier :
 
 - Tout commit cite ses identifiants : `feat(C-42): ... [R-1220, T-810]`.
 - Tout composant expose ses métriques, son budget et son niveau de maturité.
