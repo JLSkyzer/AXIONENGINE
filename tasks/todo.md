@@ -12,17 +12,9 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 ## État courant
 
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
-**Jalon en cours : M1 — Assets, noyau déterministe, jobs. Les huit composants
-sont faits, et la Definition of Done tient à un seul point.**
-
-- Vecteurs d'or : **acquis**. Rejoués sur quatre configurations de la matrice,
-  résultat archivé (R-516).
-- Fuzzing : **acquis sur les quatre cibles**. `a3d_reader`, `obj` et `stl` en
-  CI le 2026-09-12 ; `gltf` en local le même jour, après durcissement —
-  9 483 383 exécutions en une heure, sans incident.
-
-**Les deux preuves de la Definition of Done de M1 sont donc réunies.** Reste à
-la prononcer, une fois la CI de nouveau disponible pour un passage complet.
+**Jalon M1 : terminé, Definition of Done prononcée le 2026-10-04** — voir
+« Definition of Done de M1 », avant la section M3.
+**Jalon en cours : M3 — physique et premier rendu.**
 
 **CI disponible de nouveau depuis le 2026-10-03** : le dépôt est public, les jobs GitHub
 Actions sont gratuits sur les quatre plateformes de la matrice (run 37147205392, vert). En
@@ -1244,6 +1236,50 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         pas. L'adresse fausse voyageait dans les métadonnées de chaque crate.
 
 
+### Definition of Done de M1
+
+Prononcée le 2026-10-04, sur décision de Killian. Acceptance du CDC (PARTIE 37.2) :
+`sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+
+- [x] **Fixtures compilées, golden files stables.** T-590 relit le fichier de
+      référence v1.1 et ceux des compilateurs 6 et 7 ; T-591 le reproduit à l'octet ;
+      T-226 tient la chaîne bout à bout.
+- [x] **Asset corrompu refusé.** T-253, vingt-deux tests : en-tête et magic, CRC vu
+      avant toute décompression (R-882), fichier tronqué et section hors bornes
+      (R-900), tailles annoncées bornées (R-901), décompression bornée (R-902),
+      versions (R-890, R-891).
+- [x] **Fuzzing 1 h sans incident.** `a3d_reader`, `obj`, `stl` : run 34648731184
+      (2026-09-12). `gltf` : l'heure locale du 2026-09-12 ne couvrait plus l'import
+      élargi par C-26 ; un contrôle de dix minutes (run 37154496478) y a trouvé une
+      panique — indices déclarés `VEC4` —, corrigée par `b46900e` ; puis une heure
+      sans incident sur le code corrigé, 89 511 527 exécutions (run 37155887128,
+      2026-10-03). Campagne nocturne d'une heure par cible depuis le 2026-10-03.
+- [x] **Vecteurs d'or verts sur les plateformes de CI.** `det-vectors` sur
+      Windows x86_64, Linux x86_64, macOS ARM et macOS Intel, à chaque push depuis le
+      passage du dépôt en public (run 37156055227 du commit `8c1aa2b`).
+- [x] **Tests du jalon présents.** Vérifié **mécaniquement** : `MilestoneTestsCoveredTest`
+      compte M1 (R-2392). Il ignorait la convention `fn tNNN_` des tests Rust — quinze
+      identifiants paraissaient manquer, tous avaient leurs tests — ; il la lit
+      désormais, et deux tests mal étiquetés ont été renommés (`b21f517`).
+- [x] **Suites vertes.** CI GitHub verte sur la matrice ; CI locale verte.
+
+Réserves, portées en dette et non masquées :
+
+- **`aarch64-unknown-linux-gnu` jamais rejouée** (34.2, « best effort, non
+  bloquant »). GitHub propose des runners ARM Linux aux dépôts publics : à vérifier,
+  puis à ajouter à la matrice.
+- **C-12** : la granularité adaptative (R-473) est testée sur des durées simulées,
+  mais `Granularity` n'est pas branchée dans `JobSystem` ; le plafond de workers selon
+  le côté (R-471) attend IF-01 pour être câblé à l'initialisation ;
+  `t171_un_budget_nul_vaut_absence_de_deadline` contredit « tout travail a une
+  deadline » — à examiner.
+- **C-21** : R-530 et R-532 sont testés sous T-228 et T-272, numéros hors de la
+  fiche ; « refusée sans lecture complète » (R-533) n'est prouvé que par le contrôle
+  préalable de `mod.rs`.
+- **C-24** : aucune migration réelle (format v1.1 unique) ; R-892 (invalidation du
+  cache) et R-883 sans test ; la recompilation de R-882 et R-890 n'est pas testée au
+  niveau du conteneur.
+
 ---
 
 ## M3 — Physique et premier rendu (en cours)
@@ -1984,7 +2020,7 @@ substituable sans changer rapier »).
 
 Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
-- [ ] **M1** Assets, noyau déterministe, jobs — C-12, C-15, C-16, C-20, C-21, C-22, C-24, C-71
+- [x] **M1** Assets, noyau déterministe, jobs — C-12, C-15, C-16, C-20, C-21, C-22, C-24, C-71
       · les huit composants sont faits ; l'acceptance attend le fuzzing et la CI
 - [ ] **M2** Scene graph, cache, optimizer, entité, API — C-23, C-25, C-27, C-30, C-50, C-70, C-72, C-74
 - [ ] **M3** Physique et premier rendu — C-31, C-32, C-38, C-39, C-40, C-60..C-63, C-67, C-26
@@ -2104,7 +2140,7 @@ ses critères vérifiés **mécaniquement**.
       serait couverte par les vecteurs d'or, mais c'est une déviation du CDC
       gelé : elle demande un ADR et la décision de l'utilisateur, pas une
       initiative.
-- [ ] **Acceptance de M1 : fuzzing une heure.** La fiche M1 demande « fuzzing
+- [x] **Acceptance de M1 : fuzzing une heure.** La fiche M1 demande « fuzzing
       1 h sans incident » sur la chaîne d'assets. Rien ne le lance aujourd'hui :
       ni cible `cargo-fuzz`, ni corpus. À monter avant de prononcer la
       Definition of Done de M1.

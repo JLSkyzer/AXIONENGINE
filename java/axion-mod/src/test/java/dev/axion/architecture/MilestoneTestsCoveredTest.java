@@ -44,7 +44,7 @@ class MilestoneTestsCoveredTest {
      * test deviendrait rouge pour des tests qui restent à écrire, et un test
      * rouge en permanence ne dit plus rien.
      */
-    private static final List<String> COMPLETED_MILESTONES = List.of("M0");
+    private static final List<String> COMPLETED_MILESTONES = List.of("M0", "M1");
 
     /**
      * {@return vrai si une source de test porte cet identifiant : écrit tel quel, ou en
