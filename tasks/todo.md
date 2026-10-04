@@ -1516,12 +1516,35 @@ substituable sans changer rapier »).
                         SET_DIMENSION_ENV, tampons équilibrés). Le GameTest physique
                         observable (spawn → tick → l'entité a bougé) est **différé à
                         C-32** : à 0 corps la physique n'a aucun effet en jeu.
-      - [ ] **Tranche 5 — intégration Java et proxies vanilla.** Monde par
-            dimension créé/détruit à la demande (R-610), proxies cinématiques
-            des entités vanilla reconstruits chaque tick (R-614), effets
-            appliqués côté Java sur le thread autoritatif. Défaillances FM-20
-            (NaN → E-2030), FM-21 (budget → sous-pas puis sommeil), FM-22
-            (empilement → amortissement puis sommeil). Tests T-300..T-307.
+      - [ ] **Tranche 5 — intégration Java et proxies vanilla** `[EFFORT MAX]`
+            ([ADR-123](../docs/decisions/ADR-123.md), ratifié le 2026-10-04 : protocole tel
+            quel, réglage par amendement de l'annexe A.3, poussée et dégâts actifs). L'état des
+            lieux du 2026-10-04 a trouvé R-612/R-613 jamais appliqués en jeu (un seul centre,
+            aucun réveil), la configuration IF-01 ignorée par les mondes, la gravité jamais
+            envoyée, la destruction de R-610 absente, FM-20 silencieux, les événements consommés
+            par personne côté Java.
+            - [ ] **T5a — natif, sans contrat** : réglages IF-01 retenus (`sim.*`, `physics.*`,
+                  `budgets.max_active_bodies`) et appliqués à tout monde ; environnement de
+                  dimension persistant (gravité R-611) ; R-612/R-613 autour de plusieurs
+                  observateurs, réveil au retour ; destruction R-610 sans assembly, tuile, fluide
+                  ni observateur ; gouverneur FM-21 (§25.5, paliers physiques D1-D3 de SM-02,
+                  drapeau `AXION_SIM_DEGRADED`, jauges) ; détecteur FM-22 (amortissement puis
+                  sommeil) ; événements `RECOVERED` (2030) et `CLAMPED` (1/2/3). Tests t300..t303,
+                  t305..t307 (existants étiquetés quand ils couvrent déjà l'exigence).
+            - [ ] **T5b — contrat** : opcodes 11 `SET_OBSERVERS` et 12 `SET_ENTITY_PROXIES`
+                  (structs DM, tests de disposition, décodage borné, application) ; proxies
+                  `KINEMATIC` à vitesse, groupe `entity_proxy` ; événements de contact avec une
+                  entité (§6) ; écriture Java (`SimCommandStream`).
+            - [ ] **T5c — Java et Forge** : observateurs (joueurs non spectateurs) et proxies
+                  (rayon d'influence déduit des vitesses) par tick ; consommateur d'événements
+                  (R-1010) ; effets vanilla (poussée des non-joueurs, dégâts `axion:collision`
+                  selon la courbe de chute) ; amendement de l'annexe A.3 (`[physics]
+                  entity_push`, `entity_damage`) avec registre, fichiers générés, conformité et
+                  index du CDC régénéré ; journal `E-2030` et des transitions de dégradation ;
+                  T-304 ; essai en jeu (demander à Killian de lancer le jeu).
+            - Hors portée, nommé : palier `SAFE` de SM-02 (sièges M5, C-77), `DegradationEvent`
+              et `ContactEvent` (API d'événements de C-70), filtre intra-assembly multi-corps
+              (joints, M4).
 
       - [ ] **C-32 — Collider Builder** (fiche 5.24, R-620..623, T-310..312).
             Produit les colliders (`ColliderDesc`, DM-06) à la compilation et les
