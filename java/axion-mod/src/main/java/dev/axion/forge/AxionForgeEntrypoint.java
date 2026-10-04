@@ -185,6 +185,9 @@ public final class AxionForgeEntrypoint {
             assemblyRuntime = new AssemblyRuntime(runtime.definitions(), runtime.assets());
             runtime.addCommandProvider(assemblyRuntime);
             runtime.setStateSink(assemblyRuntime);
+            // ADR-123 : chaque tick, les joueurs (rayon de simulation, plafond, R-610) et les
+            // entités vanilla qu'une assembly peut heurter (R-614).
+            runtime.addCommandProvider(new EntityPresenceBridge(event.getServer(), assemblyRuntime));
         }
 
         // R-521 : barrière de démarrage. Sans elle, le monde se chargerait

@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * Quelles assemblies ont un corps natif, et lesquelles l'attendent de nouveau (C-40 ↔ C-50).
@@ -120,6 +121,16 @@ public final class BodyLedger<E> {
         }
         returning.sort(Map.Entry.comparingByKey());
         return returning;
+    }
+
+    /**
+     * Visite les assemblies dotées d'un corps, par index de handle croissant : un ordre
+     * déterministe, qui ne dépend pas de l'histoire du tableau.
+     *
+     * @param visitor reçoit l'index du handle et l'entité
+     */
+    public void forEachBody(BiConsumer<Integer, E> visitor) {
+        bodies.keySet().stream().sorted().forEach(index -> visitor.accept(index, bodies.get(index)));
     }
 
     /** {@return le nombre d'assemblies mises de côté, en attente d'un retour ou d'un retrait} */

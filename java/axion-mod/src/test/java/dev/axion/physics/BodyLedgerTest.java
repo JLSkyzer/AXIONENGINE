@@ -127,6 +127,22 @@ class BodyLedgerTest {
     }
 
     @Test
+    @DisplayName("Les corps se visitent par index croissant, sans les assemblies sorties")
+    void lesCorpsSeVisitentParIndexCroissant() {
+        Entity b = new Entity("b");
+        Entity c = new Entity("c");
+        ledger.attach(30, cube);
+        ledger.attach(10, b);
+        ledger.attach(20, c);
+        ledger.detach(20, c, false);
+
+        List<Map.Entry<Integer, Entity>> visites = new java.util.ArrayList<>();
+        ledger.forEachBody((index, entity) -> visites.add(Map.entry(index, entity)));
+
+        assertEquals(List.of(Map.entry(10, b), Map.entry(30, cube)), visites);
+    }
+
+    @Test
     @DisplayName("L'arrêt oublie tout")
     void lArretOublieTout() {
         Entity other = new Entity("autre");

@@ -1601,9 +1601,11 @@ substituable sans changer rapier »).
                         générés (TOML, `CONFIGURATION.md`, `ConfigSchema`), conformité R-2400,
                         registre d'amendement 38.9 du CDC, index régénéré (8281 lignes ; plages
                         citées par `CLAUDE.md` et `docs/AGENT.md` recalées et vérifiées).
-                  - [ ] T5c-2 — fournisseur Forge des joueurs (`SET_OBSERVERS`) et des proxies
+                  - [x] T5c-2 — fournisseur Forge des joueurs (`SET_OBSERVERS`) et des proxies
                         (`SET_ENTITY_PROXIES`, rayon d'influence déduit des vitesses), par
-                        dimension et par tick.
+                        dimension et par tick : `EntityPresenceBridge` (Forge) et
+                        `EntityProxySelector` (règle pure, testée) ; vitesse des corps retenue par
+                        `AssemblyRuntime`, vitesse des entités lue dans leur déplacement.
                   - [ ] T5c-3 — natif : `manage_activity` branché dans `axion_sim_collect` (après
                         T5c-2, jamais avant : sans joueurs envoyés, tout dormirait) ; compteurs
                         d'activité et `WorldCounters` publiés en métriques.

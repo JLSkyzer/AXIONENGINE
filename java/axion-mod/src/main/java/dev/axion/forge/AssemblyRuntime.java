@@ -17,10 +17,12 @@ import dev.axion.world.DimensionId;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
@@ -75,6 +77,11 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     private final Deque<Pending> pending = new ArrayDeque<>();
     /** Entités dont une emprise aberrante a déjà été signalée : une fois chacune. */
     private final Set<Integer> implausibleBounds = new HashSet<>();
+    /**
+     * Norme de la vitesse du dernier état de chaque corps, en m/s : elle élargit le rayon
+     * d'influence où les entités vanilla deviennent des proxies (R-614, ADR-123 §7).
+     */
+    private final Map<Integer, Double> speeds = new HashMap<>();
 
     private record Pending(
             boolean create,
@@ -153,7 +160,18 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             return;
         }
         implausibleBounds.remove(index);
+        speeds.remove(index);
         pending.add(new Pending(false, index, 0L, null, null, 0, null));
+    }
+
+    /**
+     * Visite les assemblies dotées d'un corps, par index de handle croissant, avec la norme de
+     * la vitesse de leur dernier état (nulle avant le premier).
+     *
+     * @param visitor reçoit l'entité et sa vitesse, en m/s
+     */
+    public void forEachBody(BiConsumer<AxionEntity, Double> visitor) {
+        ledger.forEachBody((index, entity) -> visitor.accept(entity, speeds.getOrDefault(index, 0.0)));
     }
 
     /**
@@ -237,6 +255,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             entity.setPos(p[0], p[1], p[2]);
             float[] q = state.rotation();
             entity.setBodyRotation(q[0], q[1], q[2], q[3]);
+            float[] v = state.linearVelocity();
+            speeds.put(state.handleIndex(), Math.sqrt((double) v[0] * v[0] + (double) v[1] * v[1] + (double) v[2] * v[2]));
             if (withBounds) {
                 applyBounds(entity, bounds.get(i));
             }
@@ -283,5 +303,6 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     public void close() {
         MinecraftForge.EVENT_BUS.unregister(this);
         ledger.clear();
+        speeds.clear();
     }
 }
