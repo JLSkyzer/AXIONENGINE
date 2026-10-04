@@ -17,6 +17,7 @@ use crate::debug::{select_outlines, DebugColliders};
 use crate::forces::FluidEnvironment;
 use crate::forces::FluidVolume;
 use crate::governor::{DegradationLevel, DegradationTransition, Governor};
+use crate::proxies::EntityProxy;
 use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::geometry::WorldTransform;
@@ -99,6 +100,9 @@ pub struct SimDriver {
     /// Observateurs du tick : positions monde finies des joueurs de chaque dimension
     /// (ADR-123 §2). État par tick, remis à zéro par [`begin_tick`](Self::begin_tick).
     observers: BTreeMap<u64, Vec<DVec3>>,
+    /// Proxies d'entités vanilla déclarés pour le tick, par dimension (ADR-123 §5). État par
+    /// tick, appliqué aux mondes par [`sync_entity_proxies`](Self::sync_entity_proxies).
+    proxy_declarations: BTreeMap<u64, Vec<EntityProxy>>,
     /// Compteurs cumulés des mondes détruits (R-610), gardés dans les totaux : ils ne se
     /// perdent pas avec leur monde.
     retired: WorldCounters,
@@ -142,6 +146,7 @@ impl SimDriver {
             settings,
             envs: BTreeMap::new(),
             observers: BTreeMap::new(),
+            proxy_declarations: BTreeMap::new(),
             retired: WorldCounters::default(),
             governor: Governor::new(settings.sim_budget_ns),
         }
@@ -498,9 +503,41 @@ impl SimDriver {
     }
 
     /// Ouvre un tick : remet à zéro l'état qui ne vaut que pour un tick. Une dimension
-    /// sans `SET_OBSERVERS` dans le flux du tick n'a aucun observateur (ADR-123 §2).
+    /// sans `SET_OBSERVERS` dans le flux du tick n'a aucun observateur (ADR-123 §2), sans
+    /// `SET_ENTITY_PROXIES` aucun proxy (§5).
     pub fn begin_tick(&mut self) {
         self.observers.clear();
+        self.proxy_declarations.clear();
+    }
+
+    /// Déclare les proxies des entités vanilla d'une dimension pour le tick (R-614,
+    /// ADR-123 §5). Remplace une déclaration antérieure du même tick ; les mondes les
+    /// reçoivent à [`sync_entity_proxies`](Self::sync_entity_proxies).
+    pub fn set_entity_proxies(&mut self, dimension: u64, proxies: Vec<EntityProxy>) {
+        self.proxy_declarations.insert(dimension, proxies);
+    }
+
+    /// Proxies déclarés pour une dimension ce tick ; vide sans déclaration.
+    #[must_use]
+    pub fn entity_proxies(&self, dimension: u64) -> &[EntityProxy] {
+        self.proxy_declarations
+            .get(&dimension)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// Applique à chaque monde les proxies déclarés ce tick (R-614, ADR-123 §5), à appeler
+    /// après les commandes du tick et avant le pas : une entité déclarée a son corps
+    /// cinématique, posé et lancé à sa vitesse ; une entité qui ne l'est plus perd le sien ;
+    /// une dimension sans déclaration n'en garde aucun. N'ouvre aucun monde : sans
+    /// assembly, une entité n'a rien à heurter.
+    pub fn sync_entity_proxies(&mut self) {
+        for (dimension, sim) in &mut self.dimensions {
+            let declared = self
+                .proxy_declarations
+                .get(dimension)
+                .map_or(&[][..], Vec::as_slice);
+            sim.world.sync_entity_proxies(declared, &sim.origin);
+        }
     }
 
     /// Déclare les observateurs d'une dimension pour le tick : les positions monde de ses

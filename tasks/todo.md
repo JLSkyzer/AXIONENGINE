@@ -1579,9 +1579,12 @@ substituable sans changer rapier »).
                         `SET_OBSERVERS` (1024 au plus, longueur exacte) ; `begin_tick` au début
                         de `axion_sim_submit`, ticks sans commande compris. Test d'ABI : un joueur
                         garde le monde de sa dimension le temps de son tick. 5 mutations tuées.
-                  - [ ] `SET_ENTITY_PROXIES` : décodage borné, proxies cinématiques à vitesse
-                        remplacés chaque tick, groupe `entity_proxy`, identité de l'entité dans
-                        les contacts (§6).
+                  - [x] `SET_ENTITY_PROXIES` : décodage borné (4096, longueur exacte, forme connue),
+                        proxies cinématiques à vitesse (`proxies.rs`) remplacés à chaque tick au
+                        début d'`axion_sim_collect`, groupe `entity_proxy` filtrant `assembly`,
+                        forme changée en place ; identité de l'entité dans les contacts (§6), fin
+                        de contact d'une entité partie comprise. Précisions dans ADR-123 §6.
+                        T-304 (part native) ; 15 mutations tuées.
                   - [ ] Écriture Java des deux opcodes (`SimCommandStream`) et vérification
                         croisée avec le natif (`NativeBridgeTest`).
             - [ ] **T5c — Java et Forge** : observateurs (joueurs non spectateurs) et proxies

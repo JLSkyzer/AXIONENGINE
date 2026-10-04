@@ -7,12 +7,14 @@
 
 use crate::body::ContactMaterial;
 use crate::forces::FluidEnvironment;
+use crate::proxies::{EntityProxy, ProxyShape};
 use crate::sim::SimDriver;
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::commands::{
-    dimension_env_flags, opcode, ApplyForce, CommandStreamHeader, RemoveAssembly, RemoveWorldTile,
-    SetDimensionEnv, SetKinematic, SetObservers, SetWorldCollision, SetWorldFluid,
-    SetWorldHeightfield, SimCommandHeader,
+    dimension_env_flags, entity_proxy_shape, opcode, ApplyForce, CommandStreamHeader,
+    EntityProxyDesc, RemoveAssembly, RemoveWorldTile, SetDimensionEnv, SetEntityProxies,
+    SetKinematic, SetObservers, SetWorldCollision, SetWorldFluid, SetWorldHeightfield,
+    SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
 
@@ -26,6 +28,9 @@ const MAX_WORLD_HEIGHTFIELD_DIM: u32 = 64;
 /// Plafond d'observateurs d'une dimension pour un tick (ADR-123 §2) : une limite de
 /// validation, donnée hostile bornée avant allocation (R-901), pas une disposition.
 const MAX_OBSERVERS: u32 = 1024;
+/// Plafond de proxies d'entités d'une dimension pour un tick (ADR-123 §5) : limite de
+/// validation, donnée hostile bornée avant allocation (R-901).
+const MAX_ENTITY_PROXIES: u32 = 4096;
 
 /// Bilan de l'application d'un flux de commandes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -48,6 +53,8 @@ pub enum CommandError {
     UnsupportedSchema,
     /// `payload_len` ne correspond pas à la taille attendue de l'opcode connu.
     BadPayloadLength,
+    /// Un champ porte une valeur hors de son domaine — une forme de proxy inconnue.
+    InvalidField,
 }
 
 /// Lit `command_count` commandes du flux `bytes` et les applique au pilote.
@@ -206,6 +213,10 @@ fn apply_one(
             apply_set_observers(driver, payload)?;
             outcome.applied += 1;
         }
+        opcode::SET_ENTITY_PROXIES => {
+            apply_set_entity_proxies(driver, payload)?;
+            outcome.applied += 1;
+        }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
         // par la frontière (ax-ffi, `create_assembly_payloads`), qui seule décode
         // les colliders ; APPLY_FORCE continu attend la boucle de forces. Les deux
@@ -320,6 +331,51 @@ fn apply_set_observers(driver: &mut SimDriver, payload: &[u8]) -> Result<(), Com
         })
         .collect();
     driver.set_observers(dimension, &positions);
+    Ok(())
+}
+
+/// Décode `SET_ENTITY_PROXIES` (ADR-123 §5) : les proxies des entités vanilla d'une
+/// dimension pour ce tick. Borne le compte avant allocation (R-901), exige la longueur
+/// exacte et une forme connue ; un proxy aux valeurs inutilisables passe ici et sera
+/// ignoré par le monde.
+fn apply_set_entity_proxies(driver: &mut SimDriver, payload: &[u8]) -> Result<(), CommandError> {
+    if payload.len() < SetEntityProxies::BYTES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let dimension = read_u64(payload, 0);
+    let count = read_u32(payload, 8);
+    if count > MAX_ENTITY_PROXIES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let count = count as usize;
+    if payload.len() != SetEntityProxies::BYTES + count * EntityProxyDesc::BYTES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let mut proxies = Vec::with_capacity(count);
+    for i in 0..count {
+        let at = SetEntityProxies::BYTES + i * EntityProxyDesc::BYTES;
+        let shape = match payload[at + 52] {
+            entity_proxy_shape::BOX => ProxyShape::Box,
+            entity_proxy_shape::CAPSULE => ProxyShape::Capsule,
+            _ => return Err(CommandError::InvalidField),
+        };
+        proxies.push(EntityProxy {
+            entity: read_u32(payload, at + 48),
+            center: DVec3::new(
+                read_f64(payload, at),
+                read_f64(payload, at + 8),
+                read_f64(payload, at + 16),
+            ),
+            half_extents: [
+                read_f32(payload, at + 24),
+                read_f32(payload, at + 28),
+                read_f32(payload, at + 32),
+            ],
+            velocity: read_vec3(payload, at + 36),
+            shape,
+        });
+    }
+    driver.set_entity_proxies(dimension, proxies);
     Ok(())
 }
 
@@ -804,5 +860,149 @@ mod tests {
             );
         }
         assert!(driver.observers(0).is_empty());
+    }
+
+    /// Un `EntityProxyDesc` sur la frontière (56 octets).
+    fn proxy_desc(
+        entity: u32,
+        center: [f64; 3],
+        half: [f32; 3],
+        speed: [f32; 3],
+        shape: u8,
+    ) -> Vec<u8> {
+        let mut bytes: Vec<u8> = center.iter().flat_map(|v| v.to_le_bytes()).collect();
+        bytes.extend(f32s(&half));
+        bytes.extend(f32s(&speed));
+        bytes.extend_from_slice(&entity.to_le_bytes());
+        bytes.push(shape);
+        bytes.extend_from_slice(&[0u8; 3]);
+        assert_eq!(bytes.len(), EntityProxyDesc::BYTES);
+        bytes
+    }
+
+    /// Payload `SET_ENTITY_PROXIES` : en-tête puis descripteurs.
+    fn proxies_payload(dimension: u64, count: u32, descs: &[Vec<u8>]) -> Vec<u8> {
+        let mut payload = dimension.to_le_bytes().to_vec();
+        payload.extend_from_slice(&count.to_le_bytes());
+        payload.extend_from_slice(&0u32.to_le_bytes());
+        for desc in descs {
+            payload.extend_from_slice(desc);
+        }
+        payload
+    }
+
+    fn un_proxy(entity: u32) -> Vec<u8> {
+        proxy_desc(
+            entity,
+            [0.0; 3],
+            [0.5; 3],
+            [0.0; 3],
+            entity_proxy_shape::BOX,
+        )
+    }
+
+    #[test]
+    fn set_entity_proxies_declare_les_entites_de_la_dimension() {
+        // ADR-123 §5 : chaque champ du descripteur, à sa place.
+        let mut driver = SimDriver::new();
+        let mut bytes = stream();
+        let descs = [
+            proxy_desc(
+                42,
+                [10.5, 64.9, -3.5],
+                [0.3, 0.9, 0.3],
+                [1.0, -2.0, 0.5],
+                entity_proxy_shape::CAPSULE,
+            ),
+            proxy_desc(
+                7,
+                [1.0e6, 70.0, 2.0e5],
+                [0.45, 0.25, 0.7],
+                [0.0; 3],
+                entity_proxy_shape::BOX,
+            ),
+        ];
+        push(
+            &mut bytes,
+            opcode::SET_ENTITY_PROXIES,
+            &proxies_payload(3, 2, &descs),
+        );
+
+        assert_eq!(
+            apply_command_stream(&mut driver, &bytes, 1)
+                .unwrap()
+                .applied,
+            1
+        );
+        assert_eq!(
+            driver.entity_proxies(3),
+            [
+                EntityProxy {
+                    entity: 42,
+                    center: DVec3::new(10.5, 64.9, -3.5),
+                    half_extents: [0.3, 0.9, 0.3],
+                    velocity: Vec3::new(1.0, -2.0, 0.5),
+                    shape: ProxyShape::Capsule,
+                },
+                EntityProxy {
+                    entity: 7,
+                    center: DVec3::new(1.0e6, 70.0, 2.0e5),
+                    half_extents: [0.45, 0.25, 0.7],
+                    velocity: Vec3::ZERO,
+                    shape: ProxyShape::Box,
+                },
+            ]
+        );
+        assert!(driver.entity_proxies(0).is_empty());
+    }
+
+    #[test]
+    fn set_entity_proxies_borne_le_compte_la_longueur_et_la_forme() {
+        let mut driver = SimDriver::new();
+        // Au plafond, accepté ; un de plus, refusé — même de longueur exacte.
+        let descs: Vec<Vec<u8>> = (0..=MAX_ENTITY_PROXIES).map(un_proxy).collect();
+        let mut plein = stream();
+        push(
+            &mut plein,
+            opcode::SET_ENTITY_PROXIES,
+            &proxies_payload(0, MAX_ENTITY_PROXIES, &descs[1..]),
+        );
+        assert!(apply_command_stream(&mut driver, &plein, 1).is_ok());
+        assert_eq!(driver.entity_proxies(0).len(), MAX_ENTITY_PROXIES as usize);
+        let mut trop = stream();
+        push(
+            &mut trop,
+            opcode::SET_ENTITY_PROXIES,
+            &proxies_payload(0, MAX_ENTITY_PROXIES + 1, &descs),
+        );
+        assert_eq!(
+            apply_command_stream(&mut driver, &trop, 1),
+            Err(CommandError::BadPayloadLength)
+        );
+        // Un compte qui ne dit pas la longueur réelle, en moins comme en trop.
+        for (count, given) in [(2u32, 1usize), (1, 2)] {
+            let mut menteur = stream();
+            push(
+                &mut menteur,
+                opcode::SET_ENTITY_PROXIES,
+                &proxies_payload(0, count, &descs[..given]),
+            );
+            assert_eq!(
+                apply_command_stream(&mut driver, &menteur, 1),
+                Err(CommandError::BadPayloadLength),
+                "compte {count}, {given} descripteur(s)"
+            );
+        }
+        // Une forme inconnue.
+        let mut informe = stream();
+        push(
+            &mut informe,
+            opcode::SET_ENTITY_PROXIES,
+            &proxies_payload(0, 1, &[proxy_desc(1, [0.0; 3], [0.5; 3], [0.0; 3], 2)]),
+        );
+        assert_eq!(
+            apply_command_stream(&mut driver, &informe, 1),
+            Err(CommandError::InvalidField)
+        );
     }
 }

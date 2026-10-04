@@ -11,6 +11,7 @@ use rapier3d::prelude::{
 };
 
 use crate::activity::{Candidate, Observers};
+use crate::proxies::{EntityProxy, ProxyShape};
 use crate::query::{RayHit, SensorMode, SpatialFilter, SweepHit};
 use crate::scheduler::{SimMode, Stage, StageDurations};
 use std::time::Instant;
@@ -22,13 +23,13 @@ use crate::body::{
 use crate::config::PhysicsConfig;
 use crate::debug::{append_outline, ColliderOutline};
 use crate::forces::{FluidEnvironment, FluidVolume, LiftSurface};
-use crate::groups::CollisionGroups;
+use crate::groups::{CollisionGroups, ReservedGroup};
 use ax_model::dm::debug::debug_body_flags;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{
     body_state_flags, event_data, event_kind, BodyBounds, BodyState, PhysicsEvent,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Plafond par défaut d'événements par tick (§10.7, `physics.max_events_per_tick`).
@@ -292,6 +293,25 @@ pub struct PhysicsWorld {
     /// [`STACK_DAMPING`] par FM-22, rendus quand l'empilement se calme ou s'endort.
     /// Consultée par clé (R-1020).
     damping_backup: HashMap<BodyId, (f32, f32)>,
+    /// Proxies des entités vanilla du tick (R-614) : entité → corps cinématique. Ordonnée :
+    /// parcours déterministe (R-1020).
+    proxies: BTreeMap<u32, ProxyBody>,
+    /// Entité de chaque collider de proxy, pour l'identité des événements (ADR-123 §6).
+    /// Consultée par clé, jamais itérée (R-1020).
+    proxy_colliders: HashMap<ColliderHandle, u32>,
+    /// Colliders des proxies retirés à la dernière synchronisation, gardés jusqu'à la
+    /// suivante : la fin de leurs contacts, émise au pas qui suit, porte encore leur entité.
+    /// Consultée par clé (R-1020).
+    departed_proxy_colliders: HashMap<ColliderHandle, u32>,
+}
+
+/// Le corps cinématique d'un proxy d'entité et la forme qu'il porte.
+#[derive(Debug, Clone, Copy)]
+struct ProxyBody {
+    body: BodyId,
+    collider: ColliderHandle,
+    shape: ProxyShape,
+    half_extents: [f32; 3],
 }
 
 /// Départ et chemin d'un corps sur la fenêtre FM-22 en cours.
@@ -421,6 +441,9 @@ impl PhysicsWorld {
             stack_window_substeps: 0,
             stack_damped: HashSet::new(),
             damping_backup: HashMap::new(),
+            proxies: BTreeMap::new(),
+            proxy_colliders: HashMap::new(),
+            departed_proxy_colliders: HashMap::new(),
         }
     }
 
@@ -844,7 +867,7 @@ impl PhysicsWorld {
         // Vitesse relative projetée sur la normale : la vitesse de rapprochement.
         let relative_velocity = (velocity_a - velocity_b).dot(normal);
 
-        Some(PhysicsEvent {
+        let mut event = PhysicsEvent {
             kind,
             assembly_a: identity_a.assembly,
             assembly_b: identity_b.assembly,
@@ -859,7 +882,9 @@ impl PhysicsWorld {
             material_a: identity_a.material,
             material_b: identity_b.material,
             data: 0,
-        })
+        };
+        self.attribute_entity(&mut event, a, b);
+        Some(event)
     }
 
     /// Émet un CONTACT_IMPULSE (§10.7) par paire de contact active dont
@@ -897,7 +922,7 @@ impl PhysicsWorld {
     ) -> PhysicsEvent {
         let (identity_a, _) = self.contact_body(a);
         let (identity_b, _) = self.contact_body(b);
-        PhysicsEvent {
+        let mut event = PhysicsEvent {
             kind,
             assembly_a: identity_a.assembly,
             assembly_b: identity_b.assembly,
@@ -912,7 +937,136 @@ impl PhysicsWorld {
             material_a: identity_a.material,
             material_b: identity_b.material,
             data: 0,
+        };
+        self.attribute_entity(&mut event, a, b);
+        event
+    }
+
+    /// Identité d'une entité vanilla dans un événement (ADR-123 §6). Si l'un des corps est
+    /// le proxy d'une entité, l'autre — l'assembly — passe en `a`, la normale suivant ; en
+    /// `b`, `{ index: entité, generation: 0 }`, node et matériau nuls ; et `data` porte le
+    /// bit `CONTACT_OTHER_ENTITY`. La génération 0 dit « pas une assembly » (R-111) : un
+    /// lecteur qui ne teste que `is_absent()` n'y voit toujours pas d'assembly.
+    fn attribute_entity(&self, event: &mut PhysicsEvent, a: ColliderHandle, b: ColliderHandle) {
+        let entity = match (self.proxy_entity(a), self.proxy_entity(b)) {
+            (None, Some(entity)) => entity,
+            (Some(entity), None) => {
+                core::mem::swap(&mut event.assembly_a, &mut event.assembly_b);
+                core::mem::swap(&mut event.node_a, &mut event.node_b);
+                core::mem::swap(&mut event.material_a, &mut event.material_b);
+                if event.normal != [0.0; 3] {
+                    event.normal = event.normal.map(|component| -component);
+                }
+                entity
+            }
+            _ => return,
+        };
+        event.assembly_b = Handle::new(entity, 0);
+        event.node_b = 0;
+        event.material_b = 0;
+        event.data |= event_data::CONTACT_OTHER_ENTITY;
+    }
+
+    /// Entité dont `collider` est le proxy, présent ou retiré à la dernière synchronisation.
+    fn proxy_entity(&self, collider: ColliderHandle) -> Option<u32> {
+        self.proxy_colliders
+            .get(&collider)
+            .or_else(|| self.departed_proxy_colliders.get(&collider))
+            .copied()
+    }
+
+    /// Remplace les proxies d'entités du monde par ceux du tick (R-614, ADR-123 §5) : une
+    /// entité déclarée a son corps cinématique, posé en son centre et lancé à sa vitesse ;
+    /// une entité qui ne l'est plus perd le sien. Un proxy inutilisable est ignoré ; une
+    /// entité déclarée deux fois ne garde que sa première déclaration. Un proxy qui change
+    /// de forme la change en place : ses contacts en cours ne s'interrompent pas.
+    pub(crate) fn sync_entity_proxies(&mut self, proxies: &[EntityProxy], origin: &FloatingOrigin) {
+        self.departed_proxy_colliders.clear();
+        let mut declared = BTreeSet::new();
+        for proxy in proxies {
+            let center = origin.to_local(proxy.center);
+            if !proxy.is_valid() || !center.is_finite() || !declared.insert(proxy.entity) {
+                continue;
+            }
+            match self.proxies.get(&proxy.entity).copied() {
+                Some(existing) => self.update_proxy(existing, proxy, center),
+                None => self.create_proxy(proxy, center),
+            }
         }
+        let stale: Vec<u32> = self
+            .proxies
+            .keys()
+            .copied()
+            .filter(|entity| !declared.contains(entity))
+            .collect();
+        for entity in stale {
+            if let Some(proxy) = self.proxies.remove(&entity) {
+                self.proxy_colliders.remove(&proxy.collider);
+                self.departed_proxy_colliders.insert(proxy.collider, entity);
+                self.inner.remove_body(proxy.body.handle());
+            }
+        }
+    }
+
+    /// Crée le corps cinématique d'un proxy : à vitesse imposée, membre du groupe
+    /// `entity_proxy`, ne heurtant que le groupe `assembly`.
+    fn create_proxy(&mut self, proxy: &EntityProxy, center: Vec3) {
+        let Ok(shape) = shared_shape_of(&proxy.collision_shape()) else {
+            return;
+        };
+        let body = RigidBodyBuilder::kinematic_velocity_based()
+            .translation(center)
+            .linvel(proxy.velocity)
+            .build();
+        let handle = self.inner.bodies.insert(body);
+        let groups = CollisionGroups::from_indices(
+            &[ReservedGroup::EntityProxy.bit()],
+            &[ReservedGroup::Assembly.bit()],
+        );
+        let collider = ColliderBuilder::new(shape)
+            .collision_groups(groups.to_rapier())
+            .active_events(ActiveEvents::COLLISION_EVENTS)
+            .build();
+        let collider =
+            self.inner
+                .colliders
+                .insert_with_parent(collider, handle, &mut self.inner.bodies);
+        self.proxy_colliders.insert(collider, proxy.entity);
+        self.proxies.insert(
+            proxy.entity,
+            ProxyBody {
+                body: BodyId::from_handle(handle),
+                collider,
+                shape: proxy.shape,
+                half_extents: proxy.half_extents,
+            },
+        );
+    }
+
+    /// Repose un proxy existant pour le tick : centre, vitesse, et forme si elle a changé.
+    fn update_proxy(&mut self, existing: ProxyBody, proxy: &EntityProxy, center: Vec3) {
+        if existing.shape != proxy.shape || existing.half_extents != proxy.half_extents {
+            let Ok(shape) = shared_shape_of(&proxy.collision_shape()) else {
+                return;
+            };
+            if let Some(collider) = self.inner.colliders.get_mut(existing.collider) {
+                collider.set_shape(shape);
+            }
+            if let Some(entry) = self.proxies.get_mut(&proxy.entity) {
+                entry.shape = proxy.shape;
+                entry.half_extents = proxy.half_extents;
+            }
+        }
+        if let Some(body) = self.inner.bodies.get_mut(existing.body.handle()) {
+            body.set_position(RapierPose::from_translation(center), true);
+            body.set_linvel(proxy.velocity, true);
+        }
+    }
+
+    /// Nombre de proxies d'entités du monde (R-614).
+    #[must_use]
+    pub fn entity_proxy_count(&self) -> usize {
+        self.proxies.len()
     }
 
     /// Relève le mouvement des corps éveillés et non fixes avant le sous-pas (R-615). Un

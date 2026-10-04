@@ -1,6 +1,7 @@
-//! `SET_OBSERVERS` à travers l'ABI (ADR-123 §2) : un joueur garde le monde de sa
-//! dimension, et la déclaration ne vaut que pour son tick — R-610 détruit le monde dès le
-//! premier tick qui ne la répète pas.
+//! L'état par tick du cycle IF-03, à travers l'ABI (ADR-123 §2 et §5) : les joueurs
+//! (`SET_OBSERVERS`) et les proxies d'entités (`SET_ENTITY_PROXIES`) ne valent que pour le
+//! tick qui les déclare. Un joueur garde le monde de sa dimension, un proxy aussi tant
+//! qu'il existe ; R-610 détruit le monde dès le premier tick qui ne les répète pas.
 //!
 //! Un seul test : la session native est globale au processus.
 
@@ -8,11 +9,13 @@
 #![allow(unsafe_code)]
 
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{opcode, CommandStreamHeader, SetDimensionEnv, SetObservers};
+use ax_model::dm::commands::{
+    entity_proxy_shape, opcode, CommandStreamHeader, EntityProxyDesc, SetDimensionEnv, SetObservers,
+};
 use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_metrics_export, axion_shutdown,
-    axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_OK,
-    AXION_SIDE_SERVER,
+    axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
+    AXION_E_INVALID_BUFFER, AXION_OK, AXION_SIDE_SERVER,
 };
 
 fn empty_info() -> AxionBufferInfo {
@@ -64,8 +67,35 @@ fn set_observers(dimension: u64, positions: &[[f64; 3]]) -> Vec<u8> {
     payload
 }
 
+/// Payload `SET_ENTITY_PROXIES` d'un proxy : une entité-boîte de 1 × 2 × 1 blocs, de la
+/// forme donnée.
+fn set_entity_proxies(dimension: u64, entity: u32, shape: u8) -> Vec<u8> {
+    let mut payload = dimension.to_le_bytes().to_vec();
+    payload.extend_from_slice(&1u32.to_le_bytes());
+    payload.extend_from_slice(&0u32.to_le_bytes());
+    payload.extend([0.5f64, 70.0, 0.5].iter().flat_map(|v| v.to_le_bytes()));
+    payload.extend([0.5f32, 1.0, 0.5].iter().flat_map(|v| v.to_le_bytes()));
+    payload.extend([0.0f32; 3].iter().flat_map(|v| v.to_le_bytes()));
+    payload.extend_from_slice(&entity.to_le_bytes());
+    payload.push(shape);
+    payload.extend_from_slice(&[0u8; 3]);
+    assert_eq!(payload.len(), 16 + EntityProxyDesc::BYTES);
+    payload
+}
+
 /// Soumet un tick portant `commands` (opcode, payload), puis le collecte.
 fn tick(ctx: u64, tick: u64, commands: &[(u32, Vec<u8>)]) {
+    assert_eq!(submit(ctx, tick, commands), AXION_OK, "submit");
+    let mut result = AxionCollectResult::default();
+    assert_eq!(
+        unsafe { axion_sim_collect(ctx, u64::MAX, &raw mut result) },
+        AXION_OK,
+        "collect"
+    );
+}
+
+/// Écrit `commands` dans `SimIn` et soumet le tick ; rend le code de l'ABI.
+fn submit(ctx: u64, tick: u64, commands: &[(u32, Vec<u8>)]) -> i32 {
     if !commands.is_empty() {
         let mut stream = CommandStreamHeader::CURRENT_SCHEMA.to_le_bytes().to_vec();
         stream.extend_from_slice(&0u32.to_le_bytes());
@@ -97,17 +127,7 @@ fn tick(ctx: u64, tick: u64, commands: &[(u32, Vec<u8>)]) {
         view[HEADER_BYTES..HEADER_BYTES + stream.len()].copy_from_slice(&stream);
     }
     let count = u32::try_from(commands.len()).unwrap();
-    assert_eq!(
-        unsafe { axion_sim_submit(ctx, tick, count, 0) },
-        AXION_OK,
-        "submit"
-    );
-    let mut result = AxionCollectResult::default();
-    assert_eq!(
-        unsafe { axion_sim_collect(ctx, u64::MAX, &raw mut result) },
-        AXION_OK,
-        "collect"
-    );
+    unsafe { axion_sim_submit(ctx, tick, count, 0) }
 }
 
 /// Valeur d'une métrique, lue dans l'export JSON de la session (R-502).
@@ -138,7 +158,7 @@ fn metrique(ctx: u64, nom: &str) -> u64 {
 }
 
 #[test]
-fn un_joueur_garde_le_monde_de_sa_dimension_le_temps_de_son_tick() {
+fn l_etat_d_un_tick_ne_garde_le_monde_que_le_temps_de_son_tick() {
     let mut ctx = 0u64;
     let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) };
     assert_eq!(code, AXION_OK, "init");
@@ -182,6 +202,38 @@ fn un_joueur_garde_le_monde_de_sa_dimension_le_temps_de_son_tick() {
     assert_eq!(metrique(ctx, "axion.sim.worlds"), 1);
     tick(ctx, 5, &[]);
     assert_eq!(metrique(ctx, "axion.sim.worlds"), 0);
+
+    // Le proxy d'une entité prend corps au tick qui le déclare et garde le monde vivant ;
+    // non redéclaré, il disparaît, et le monde avec lui.
+    tick(
+        ctx,
+        6,
+        &[
+            (opcode::SET_DIMENSION_ENV, set_dimension_env(0)),
+            (
+                opcode::SET_ENTITY_PROXIES,
+                set_entity_proxies(0, 42, entity_proxy_shape::CAPSULE),
+            ),
+        ],
+    );
+    assert_eq!(metrique(ctx, "axion.sim.worlds"), 1);
+    tick(ctx, 7, &[]);
+    assert_eq!(metrique(ctx, "axion.sim.worlds"), 0);
+
+    // Une forme inconnue est une donnée fautive : le flux est refusé.
+    assert_eq!(
+        submit(
+            ctx,
+            8,
+            &[(opcode::SET_ENTITY_PROXIES, set_entity_proxies(0, 42, 2))]
+        ),
+        AXION_E_INVALID_BUFFER
+    );
+    let mut result = AxionCollectResult::default();
+    assert_eq!(
+        unsafe { axion_sim_collect(ctx, u64::MAX, &raw mut result) },
+        AXION_OK
+    );
 
     release_buffer(ctx, BufferKind::SimIn);
     release_buffer(ctx, BufferKind::SimOut);

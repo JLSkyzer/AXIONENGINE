@@ -1177,6 +1177,8 @@ pub unsafe extern "C" fn axion_sim_collect(
             return AXION_E_INVALID_BUFFER;
         }
         let result = match context::with(ctx, false, |session| {
+            // Les proxies d'entités déclarés ce tick prennent corps avant le pas (ADR-123 §5).
+            session.physics().sync_entity_proxies();
             let started = Instant::now();
             session.physics().advance_all(SERVER_TICK_DT);
             let elapsed = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);

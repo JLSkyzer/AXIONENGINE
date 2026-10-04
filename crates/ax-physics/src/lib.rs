@@ -41,6 +41,7 @@ mod debug;
 mod forces;
 mod governor;
 mod groups;
+mod proxies;
 mod query;
 mod scheduler;
 mod sim;
@@ -57,6 +58,7 @@ pub use debug::{select_outlines, ColliderOutline, DebugColliders, ROUND_SUBDIVIS
 pub use forces::{FluidEnvironment, FluidVolume, LiftSurface};
 pub use governor::{DegradationLevel, DegradationTransition, Governor, WINDOW_TICKS};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
+pub use proxies::{EntityProxy, ProxyShape};
 pub use query::{RayHit, SensorMode, SpatialFilter, SweepHit};
 pub use scheduler::{SimMode, Stage, StageDurations};
 pub use sim::{SimDriver, SimSettings};
