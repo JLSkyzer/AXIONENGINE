@@ -1363,6 +1363,135 @@ fn t306_les_garde_fous_sont_deterministes() {
     assert_eq!(run(), run());
 }
 
+// --- FM-22 : empilement instable (ADR-123 §10) ------------------------------
+
+/// Un sol statique, face supérieure en y = 0.
+fn sol_statique(world: &mut PhysicsWorld) {
+    world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, -0.5, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [10.0, 0.5, 10.0],
+            },
+        )
+        .expect("un sol est valide");
+}
+
+/// Un bloc d'une tonne, cube de 1 m centré à la hauteur `y`.
+fn bloc(world: &mut PhysicsWorld, y: f32) -> BodyId {
+    world
+        .add_assembly(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, y, 0.0),
+            Quat::IDENTITY,
+            &[BodyCollider {
+                shape: Shape::Cuboid {
+                    half_extents: [0.5; 3],
+                },
+                density: 1000.0,
+                material: ContactMaterial::default(),
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
+        )
+        .expect("un bloc est valide")
+}
+
+/// Un sous-pas pendant lequel `corps` est secoué sur place : sa vitesse horizontale est
+/// portée à ±1 m/s, en alternance d'un sous-pas à l'autre.
+fn secoue(world: &mut PhysicsWorld, corps: BodyId, pas: u32) {
+    let cible = if pas.is_multiple_of(2) { 1.0 } else { -1.0 };
+    let masse = world.body_mass(corps).unwrap();
+    let vx = world.velocity(corps).unwrap().x;
+    world.apply_impulse(
+        corps,
+        Vec3::new((cible - vx) * masse, 0.0, 0.0),
+        Vec3::ZERO,
+        false,
+    );
+    world.advance(1.0 / 60.0);
+}
+
+#[test]
+fn t307_un_bloc_qui_s_agite_sur_un_empilement_est_amorti_puis_endormi() {
+    // FM-22 : en une seconde, le bloc du dessus parcourt près d'un mètre sans aller nulle
+    // part, en appui sur un autre corps dynamique.
+    let mut world = PhysicsWorld::new(config());
+    sol_statique(&mut world);
+    let dessous = bloc(&mut world, 0.5);
+    let dessus = bloc(&mut world, 1.5);
+    world.set_body_identity(dessus, Handle::new(4, 1), 0, 0);
+    let mut signaux = Vec::new();
+
+    // Une seconde d'agitation : palier 1, le bloc et son voisin amortis.
+    for pas in 0..60 {
+        secoue(&mut world, dessus, pas);
+        signaux.extend(events_of(&mut world, event_kind::CLAMPED));
+    }
+    assert_eq!(signaux.len(), 1, "{signaux:?}");
+    assert_eq!(
+        (signaux[0].assembly_a, signaux[0].data),
+        (Handle::new(4, 1), event_data::CLAMPED_STACKING)
+    );
+    assert_eq!(world.damping(dessus), Some((5.0, 5.0)));
+    assert_eq!(world.damping(dessous), Some((5.0, 5.0)));
+
+    // Une seconde de plus, toujours agité malgré l'amortissement : palier 2, le groupe dort.
+    for pas in 60..120 {
+        secoue(&mut world, dessus, pas);
+        signaux.extend(events_of(&mut world, event_kind::CLAMPED));
+    }
+    assert_eq!(signaux.len(), 2, "{signaux:?}");
+    assert_eq!(world.is_sleeping(dessus), Some(true));
+    assert_eq!(world.is_sleeping(dessous), Some(true));
+    assert_eq!(
+        world.damping(dessus),
+        Some((0.0, 0.0)),
+        "amortissement d'origine rendu"
+    );
+    assert_eq!(world.damping(dessous), Some((0.0, 0.0)));
+}
+
+#[test]
+fn t307_un_empilement_calme_retrouve_ses_amortissements() {
+    let mut world = PhysicsWorld::new(config());
+    sol_statique(&mut world);
+    let dessous = bloc(&mut world, 0.5);
+    let dessus = bloc(&mut world, 1.5);
+    for pas in 0..60 {
+        secoue(&mut world, dessus, pas);
+    }
+    assert_eq!(world.damping(dessus), Some((5.0, 5.0)));
+
+    // Plus rien ne le secoue : à la fin de la fenêtre amortie, l'empilement est calme.
+    for _ in 0..60 {
+        world.advance(1.0 / 60.0);
+    }
+
+    assert_eq!(world.damping(dessus), Some((0.0, 0.0)));
+    assert_eq!(world.damping(dessous), Some((0.0, 0.0)));
+    assert_eq!(
+        events_of(&mut world, event_kind::CLAMPED).len(),
+        1,
+        "seul le palier 1 s'est signalé"
+    );
+}
+
+#[test]
+fn t307_un_bloc_seul_sur_le_sol_n_est_pas_un_empilement() {
+    // FM-22 vise les empilements : sans voisin dynamique, l'agitation ne déclenche rien.
+    let mut world = PhysicsWorld::new(config());
+    sol_statique(&mut world);
+    let seul = bloc(&mut world, 0.5);
+    for pas in 0..120 {
+        secoue(&mut world, seul, pas);
+    }
+    assert!(events_of(&mut world, event_kind::CLAMPED).is_empty());
+    assert_eq!(world.damping(seul), Some((0.0, 0.0)));
+}
+
 #[test]
 fn la_masse_vient_de_la_densite_du_collider() {
     // R-622 : la masse est calculée depuis la densité du collider. Un cube de

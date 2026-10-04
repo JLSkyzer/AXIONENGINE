@@ -28,7 +28,7 @@ use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{
     body_state_flags, event_data, event_kind, BodyBounds, BodyState, PhysicsEvent,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Plafond par défaut d'événements par tick (§10.7, `physics.max_events_per_tick`).
@@ -280,7 +280,38 @@ pub struct PhysicsWorld {
     /// Palier 1 de la dégradation appliqué (§25.6, FM-21) : une itération de solveur et un
     /// sous-pas de moins que la configuration.
     solver_degraded: bool,
+    /// Surveillance des empilements (FM-22) : départ et chemin de chaque corps éveillé sur
+    /// la fenêtre d'une seconde simulée en cours. Consultée par clé, jamais itérée (R-1020).
+    stack_watch: HashMap<BodyId, StackWatch>,
+    /// Sous-pas écoulés dans la fenêtre FM-22 en cours.
+    stack_window_substeps: u32,
+    /// Corps amortis au palier 1 à la fin de la fenêtre précédente : encore instables, ils
+    /// passent au palier 2. Consultée par clé (R-1020).
+    stack_damped: HashSet<BodyId>,
+    /// Amortissements linéaire et angulaire d'origine des corps portés à
+    /// [`STACK_DAMPING`] par FM-22, rendus quand l'empilement se calme ou s'endort.
+    /// Consultée par clé (R-1020).
+    damping_backup: HashMap<BodyId, (f32, f32)>,
 }
+
+/// Départ et chemin d'un corps sur la fenêtre FM-22 en cours.
+#[derive(Debug, Clone, Copy)]
+struct StackWatch {
+    start: Vec3,
+    last: Vec3,
+    path: f32,
+}
+
+/// Amortissement linéaire et angulaire du palier 1 de FM-22 : à 1/60 s par sous-pas, la
+/// vitesse se divise par deux en environ 0,15 s (ADR-123 §10).
+const STACK_DAMPING: f32 = 5.0;
+
+/// Durée d'une fenêtre de surveillance FM-22, en secondes simulées (ADR-123 §10).
+const STACK_WINDOW_SECONDS: f32 = 1.0;
+
+/// Un corps instable parcourt plus de ce multiple du seuil de sommeil sur une fenêtre,
+/// sans s'éloigner de plus du seuil lui-même : il s'agite sur place (ADR-123 §10).
+const STACK_PATH_FACTOR: f32 = 10.0;
 
 /// États et emprises des corps rapportés par un tick (DM-08, ADR-120).
 ///
@@ -386,6 +417,10 @@ impl PhysicsWorld {
             next_birth: 0,
             pre_step: HashMap::new(),
             solver_degraded: false,
+            stack_watch: HashMap::new(),
+            stack_window_substeps: 0,
+            stack_damped: HashSet::new(),
+            damping_backup: HashMap::new(),
         }
     }
 
@@ -579,6 +614,7 @@ impl PhysicsWorld {
             self.collect_contact_events(&collector);
             self.collect_contact_impulses();
             self.collect_sleep_events();
+            self.watch_stacking();
             self.stage_durations
                 .add(Stage::Contacts, elapsed_nanos(contacts_start));
 
@@ -992,6 +1028,144 @@ impl PhysicsWorld {
         }
     }
 
+    /// Surveille les empilements après un sous-pas (FM-22, ADR-123 §10) : cumule le chemin
+    /// de chaque corps dynamique éveillé et décide à la fin de chaque fenêtre d'une seconde
+    /// simulée. Ne lit que l'état simulé et compte les sous-pas : même scène, mêmes
+    /// décisions (R-1020).
+    fn watch_stacking(&mut self) {
+        for (handle, body) in self.inner.bodies.iter() {
+            if !body.is_dynamic() || body.is_sleeping() {
+                continue;
+            }
+            let position = body.translation();
+            let watch = self
+                .stack_watch
+                .entry(BodyId::from_handle(handle))
+                .or_insert(StackWatch {
+                    start: position,
+                    last: position,
+                    path: 0.0,
+                });
+            watch.path += (position - watch.last).length();
+            watch.last = position;
+        }
+        self.stack_window_substeps += 1;
+        let window = (STACK_WINDOW_SECONDS / self.config.fixed_dt()).round() as u32;
+        if self.stack_window_substeps >= window.max(1) {
+            self.stack_window_substeps = 0;
+            self.settle_stacking();
+        }
+    }
+
+    /// Fin d'une fenêtre FM-22. Un corps éveillé en contact avec un autre corps dynamique,
+    /// qui a parcouru plus de dix fois le seuil de sommeil sans s'éloigner de plus du seuil
+    /// lui-même, s'agite sur place :
+    ///
+    /// - **palier 1** : lui et ses voisins dynamiques sont amortis pour la fenêtre suivante ;
+    /// - **palier 2** : encore instable après une fenêtre amortie, lui et ses voisins sont
+    ///   endormis, leurs amortissements d'origine rendus ;
+    /// - un corps amorti dont l'empilement s'est calmé retrouve son amortissement.
+    ///
+    /// Chaque palier émet un `CLAMPED` de code 3 pour le corps instable (ADR-123 §11).
+    fn settle_stacking(&mut self) {
+        let threshold = self.config.sleep_linear_threshold * STACK_WINDOW_SECONDS;
+        let neighbors = self.dynamic_neighbors();
+        let watches = std::mem::take(&mut self.stack_watch);
+        let previously_damped = std::mem::take(&mut self.stack_damped);
+
+        let mut unstable = Vec::new();
+        let mut to_damp = Vec::new();
+        let mut to_sleep = Vec::new();
+        for (handle, body) in self.inner.bodies.iter() {
+            if !body.is_dynamic() || body.is_sleeping() {
+                continue;
+            }
+            let id = BodyId::from_handle(handle);
+            let (Some(watch), Some(around)) = (watches.get(&id), neighbors.get(&id)) else {
+                continue;
+            };
+            let wandered = (watch.last - watch.start).length();
+            if wandered >= threshold || watch.path <= STACK_PATH_FACTOR * threshold {
+                continue;
+            }
+            unstable.push(id);
+            let group = std::iter::once(id).chain(around.iter().copied());
+            if previously_damped.contains(&id) {
+                to_sleep.extend(group);
+            } else {
+                self.stack_damped.insert(id);
+                to_damp.extend(group);
+            }
+        }
+
+        // Palier 2 d'abord : un corps qui s'endort ne reste ni amorti ni surveillé.
+        let sleeping: HashSet<BodyId> = to_sleep.iter().copied().collect();
+        for &id in &to_sleep {
+            self.stack_damped.remove(&id);
+            if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
+                if let Some((linear, angular)) = self.damping_backup.remove(&id) {
+                    body.set_linear_damping(linear);
+                    body.set_angular_damping(angular);
+                }
+                body.sleep();
+            }
+        }
+        let damped: HashSet<BodyId> = to_damp
+            .into_iter()
+            .filter(|id| !sleeping.contains(id))
+            .collect();
+        // Un parcours dans l'ordre de `rapier` amortit le groupe et rend son amortissement
+        // à qui n'en fait plus partie.
+        for (handle, body) in self.inner.bodies.iter_mut() {
+            let id = BodyId::from_handle(handle);
+            if damped.contains(&id) {
+                self.damping_backup
+                    .entry(id)
+                    .or_insert((body.linear_damping(), body.angular_damping()));
+                body.set_linear_damping(STACK_DAMPING);
+                body.set_angular_damping(STACK_DAMPING);
+            } else if let Some((linear, angular)) = self.damping_backup.remove(&id) {
+                body.set_linear_damping(linear);
+                body.set_angular_damping(angular);
+            }
+        }
+        for id in unstable {
+            self.push_single_body_event(id, event_kind::CLAMPED, event_data::CLAMPED_STACKING);
+        }
+    }
+
+    /// Voisins dynamiques de chaque corps dynamique, d'après les paires en contact actif,
+    /// dans l'ordre déterministe des paires de `rapier` (R-1020).
+    fn dynamic_neighbors(&self) -> HashMap<BodyId, Vec<BodyId>> {
+        let parent = |collider: ColliderHandle| {
+            self.inner
+                .colliders
+                .get(collider)
+                .and_then(Collider::parent)
+        };
+        let dynamic = |handle: RigidBodyHandle| {
+            self.inner
+                .bodies
+                .get(handle)
+                .is_some_and(RigidBody::is_dynamic)
+        };
+        let mut neighbors: HashMap<BodyId, Vec<BodyId>> = HashMap::new();
+        for pair in self.inner.contact_pairs() {
+            if !pair.has_any_active_contact() {
+                continue;
+            }
+            let (Some(a), Some(b)) = (parent(pair.collider1), parent(pair.collider2)) else {
+                continue;
+            };
+            if a != b && dynamic(a) && dynamic(b) {
+                let (a, b) = (BodyId::from_handle(a), BodyId::from_handle(b));
+                neighbors.entry(a).or_default().push(b);
+                neighbors.entry(b).or_default().push(a);
+            }
+        }
+        neighbors
+    }
+
     /// Applique les forces environnementales de chaque corps avant un sous-pas
     /// (§10.6). En tranche 2d : la traînée, relative au vent.
     ///
@@ -1184,6 +1358,15 @@ impl PhysicsWorld {
         if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
             body.enable_ccd(enabled);
         }
+    }
+
+    /// Amortissements linéaire et angulaire d'un corps, ou `None` s'il n'existe pas.
+    #[must_use]
+    pub fn damping(&self, id: BodyId) -> Option<(f32, f32)> {
+        self.inner
+            .bodies
+            .get(id.handle())
+            .map(|body| (body.linear_damping(), body.angular_damping()))
     }
 
     /// Indique si un corps dort, ou `None` s'il n'existe pas.
@@ -1671,6 +1854,9 @@ impl PhysicsWorld {
         self.clamp_journal_at.remove(&id);
         self.forced_sleep.remove(&id);
         self.births.remove(&id);
+        self.stack_watch.remove(&id);
+        self.stack_damped.remove(&id);
+        self.damping_backup.remove(&id);
         self.inner.remove_body(id.handle()).is_some()
     }
 

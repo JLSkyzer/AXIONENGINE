@@ -1523,7 +1523,7 @@ substituable sans changer rapier »).
             aucun réveil), la configuration IF-01 ignorée par les mondes, la gravité jamais
             envoyée, la destruction de R-610 absente, FM-20 silencieux, les événements consommés
             par personne côté Java.
-            - [ ] **T5a — natif, sans contrat** : réglages IF-01 retenus (`sim.*`, `physics.*`,
+            - [x] **T5a — natif, sans contrat** : réglages IF-01 retenus (`sim.*`, `physics.*`,
                   `budgets.max_active_bodies`) et appliqués à tout monde ; environnement de
                   dimension persistant (gravité R-611) ; R-612/R-613 autour de plusieurs
                   observateurs, réveil au retour ; destruction R-610 sans assembly, tuile, fluide
@@ -1564,7 +1564,11 @@ substituable sans changer rapier »).
                         `AXION_SIM_DEGRADED`, jauges `axion.sim.degradation_level` et
                         `axion.sim.p95_ns`. Journal des transitions par Java en T5c (R-1880).
                         T-307 ; 12 mutations tuées.
-                  - [ ] Détecteur FM-22, amortissement puis sommeil (T-307).
+                  - [x] Détecteur FM-22 : fenêtre d'une seconde simulée, chemin et déplacement
+                        net par corps éveillé en appui sur un autre corps dynamique ; palier 1
+                        amortissement 5 du corps et de ses voisins, palier 2 sommeil du groupe et
+                        amortissements rendus, calme rendu de même ; `CLAMPED` 3 à chaque palier.
+                        T-307 ; 6 mutations tuées.
                   - [x] Étiquettes t300/t305/t306 sur les tests existants qui couvrent déjà.
             - [ ] **T5b — contrat** : opcodes 11 `SET_OBSERVERS` et 12 `SET_ENTITY_PROXIES`
                   (structs DM, tests de disposition, décodage borné, application) ; proxies
