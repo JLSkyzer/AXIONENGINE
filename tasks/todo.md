@@ -1574,6 +1574,16 @@ substituable sans changer rapier »).
                   (structs DM, tests de disposition, décodage borné, application) ; proxies
                   `KINEMATIC` à vitesse, groupe `entity_proxy` ; événements de contact avec une
                   entité (§6) ; écriture Java (`SimCommandStream`).
+                  - [x] Dispositions DM des opcodes 11 et 12 (`SetObservers`, `SetEntityProxies`,
+                        `EntityProxyDesc`, tests de disposition) ; décodage borné de
+                        `SET_OBSERVERS` (1024 au plus, longueur exacte) ; `begin_tick` au début
+                        de `axion_sim_submit`, ticks sans commande compris. Test d'ABI : un joueur
+                        garde le monde de sa dimension le temps de son tick. 5 mutations tuées.
+                  - [ ] `SET_ENTITY_PROXIES` : décodage borné, proxies cinématiques à vitesse
+                        remplacés chaque tick, groupe `entity_proxy`, identité de l'entité dans
+                        les contacts (§6).
+                  - [ ] Écriture Java des deux opcodes (`SimCommandStream`) et vérification
+                        croisée avec le natif (`NativeBridgeTest`).
             - [ ] **T5c — Java et Forge** : observateurs (joueurs non spectateurs) et proxies
                   (rayon d'influence déduit des vitesses) par tick ; consommateur d'événements
                   (R-1010) ; effets vanilla (poussée des non-joueurs, dégâts `axion:collision`

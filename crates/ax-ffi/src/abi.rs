@@ -1020,6 +1020,9 @@ pub unsafe extern "C" fn axion_sim_submit(
     shielded(Some(ctx), || {
         match context::with(ctx, false, |session| {
             session.open_sim_cycle();
+            // L'état par tick du pilote (observateurs, ADR-123 §2) repart de zéro : seules
+            // les commandes de ce tick le rempliront — un tick sans commande n'en a aucun.
+            session.physics().begin_tick();
             if command_count == 0 {
                 return AXION_OK;
             }

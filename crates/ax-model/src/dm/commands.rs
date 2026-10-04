@@ -41,6 +41,20 @@ pub mod opcode {
     /// Retirer les volumes de fluide d'une section (payload [`super::RemoveWorldTile`]).
     /// ADR-117.
     pub const REMOVE_WORLD_FLUID: u32 = 10;
+    /// Déclarer les observateurs d'une dimension pour le tick — les positions de ses
+    /// joueurs (en-tête [`super::SetObservers`] + `count × [f64; 3]`). ADR-123 §2.
+    pub const SET_OBSERVERS: u32 = 11;
+    /// Déclarer les proxies des entités vanilla d'une dimension pour le tick (en-tête
+    /// [`super::SetEntityProxies`] + `count ×` [`super::EntityProxyDesc`]). ADR-123 §5.
+    pub const SET_ENTITY_PROXIES: u32 = 12;
+}
+
+/// Forme d'un proxy d'entité vanilla, champ `shape` de [`EntityProxyDesc`] (R-614).
+pub mod entity_proxy_shape {
+    /// Boîte : l'AABB de l'entité.
+    pub const BOX: u8 = 0;
+    /// Capsule verticale inscrite dans l'AABB : un être vivant.
+    pub const CAPSULE: u8 = 1;
 }
 
 /// Drapeaux de [`SetDimensionEnv`], champ `flags`.
@@ -277,6 +291,74 @@ impl RemoveWorldTile {
     pub const BYTES: usize = 24;
 }
 
+/// En-tête de `SET_OBSERVERS` (ADR-123 §2).
+///
+/// Suivi **dans le même payload** de `count` positions monde `[f64; 3]`, en blocs : les
+/// joueurs de la dimension, spectateurs exclus. État **par tick** : une dimension sans
+/// `SET_OBSERVERS` dans le flux d'un tick n'a aucun observateur pour ce tick.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetObservers {
+    /// Dimension visée (R-610).
+    pub dimension: u64,
+    /// Nombre de positions qui suivent.
+    pub count: u32,
+    /// Réservé, à zéro.
+    pub _pad: u32,
+}
+
+impl SetObservers {
+    /// Taille de l'en-tête sur la frontière, en octets (hors positions).
+    pub const BYTES: usize = 16;
+    /// Taille d'une position qui suit l'en-tête, en octets.
+    pub const POSITION_BYTES: usize = 24;
+}
+
+/// En-tête de `SET_ENTITY_PROXIES` (ADR-123 §5).
+///
+/// Suivi **dans le même payload** de `count` [`EntityProxyDesc`]. L'ensemble des proxies
+/// d'une dimension est **remplacé à chaque tick** : une entité absente du flux perd son
+/// proxy, une dimension sans `SET_ENTITY_PROXIES` n'en a plus aucun.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetEntityProxies {
+    /// Dimension visée (R-610).
+    pub dimension: u64,
+    /// Nombre de proxies qui suivent.
+    pub count: u32,
+    /// Réservé, à zéro.
+    pub _pad: u32,
+}
+
+impl SetEntityProxies {
+    /// Taille de l'en-tête sur la frontière, en octets (hors proxies).
+    pub const BYTES: usize = 16;
+}
+
+/// Une entité vanilla vue par la physique pour un tick (R-614, ADR-123 §5) : le natif en
+/// fait un corps cinématique temporaire, à la vitesse de l'entité.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EntityProxyDesc {
+    /// Centre de l'AABB de l'entité, monde, en blocs.
+    pub center: [f64; 3],
+    /// Demi-dimensions de l'AABB, en blocs.
+    pub half_extents: [f32; 3],
+    /// Vitesse de l'entité, en m/s.
+    pub velocity: [f32; 3],
+    /// Identifiant réseau de l'entité.
+    pub entity: u32,
+    /// Forme, voir [`entity_proxy_shape`].
+    pub shape: u8,
+    /// Réservé, à zéro.
+    pub _pad: [u8; 3],
+}
+
+impl EntityProxyDesc {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 56;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -355,5 +437,32 @@ mod tests {
         assert_eq!(align_of::<RemoveWorldTile>(), 8);
         assert_eq!(offset_of!(RemoveWorldTile, dimension), 0);
         assert_eq!(offset_of!(RemoveWorldTile, section), 8);
+    }
+
+    #[test]
+    fn dm_observateurs_et_proxies_disposition_figee() {
+        // ADR-123 §2 et §5 : dispositions ratifiées des opcodes 11 et 12.
+        assert_eq!(opcode::SET_OBSERVERS, 11);
+        assert_eq!(opcode::SET_ENTITY_PROXIES, 12);
+
+        assert_eq!(size_of::<SetObservers>(), SetObservers::BYTES);
+        assert_eq!(align_of::<SetObservers>(), 8);
+        assert_eq!(offset_of!(SetObservers, dimension), 0);
+        assert_eq!(offset_of!(SetObservers, count), 8);
+        assert_eq!(size_of::<[f64; 3]>(), SetObservers::POSITION_BYTES);
+
+        assert_eq!(size_of::<SetEntityProxies>(), SetEntityProxies::BYTES);
+        assert_eq!(align_of::<SetEntityProxies>(), 8);
+        assert_eq!(offset_of!(SetEntityProxies, dimension), 0);
+        assert_eq!(offset_of!(SetEntityProxies, count), 8);
+
+        assert_eq!(size_of::<EntityProxyDesc>(), EntityProxyDesc::BYTES);
+        assert_eq!(align_of::<EntityProxyDesc>(), 8);
+        assert_eq!(offset_of!(EntityProxyDesc, center), 0);
+        assert_eq!(offset_of!(EntityProxyDesc, half_extents), 24);
+        assert_eq!(offset_of!(EntityProxyDesc, velocity), 36);
+        assert_eq!(offset_of!(EntityProxyDesc, entity), 48);
+        assert_eq!(offset_of!(EntityProxyDesc, shape), 52);
+        assert_eq!(offset_of!(EntityProxyDesc, _pad), 53);
     }
 }

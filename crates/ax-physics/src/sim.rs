@@ -521,6 +521,13 @@ impl SimDriver {
         }
     }
 
+    /// Observateurs déclarés pour une dimension ce tick, en positions monde ; vide sans
+    /// déclaration.
+    #[must_use]
+    pub fn observers(&self, dimension: u64) -> &[DVec3] {
+        self.observers.get(&dimension).map_or(&[], Vec::as_slice)
+    }
+
     /// Applique R-612 et R-613 autour des observateurs du tick (ADR-123 §3), à appeler
     /// après les commandes du tick et avant [`advance_all`](Self::advance_all) : un corps
     /// hors du rayon de tout joueur ne bouge pas ce tick.

@@ -11,8 +11,8 @@ use crate::sim::SimDriver;
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::commands::{
     dimension_env_flags, opcode, ApplyForce, CommandStreamHeader, RemoveAssembly, RemoveWorldTile,
-    SetDimensionEnv, SetKinematic, SetWorldCollision, SetWorldFluid, SetWorldHeightfield,
-    SimCommandHeader,
+    SetDimensionEnv, SetKinematic, SetObservers, SetWorldCollision, SetWorldFluid,
+    SetWorldHeightfield, SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
 
@@ -23,6 +23,9 @@ const MAX_WORLD_TILE_BOXES: u32 = 4096;
 /// Plafond des dimensions d'un champ de hauteurs de tuile (R-901, ADR-117) : au plus
 /// `MAX_WORLD_HEIGHTFIELD_DIM²` hauteurs, borne large pour une section 16³.
 const MAX_WORLD_HEIGHTFIELD_DIM: u32 = 64;
+/// Plafond d'observateurs d'une dimension pour un tick (ADR-123 §2) : une limite de
+/// validation, donnée hostile bornée avant allocation (R-901), pas une disposition.
+const MAX_OBSERVERS: u32 = 1024;
 
 /// Bilan de l'application d'un flux de commandes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -199,6 +202,10 @@ fn apply_one(
             driver.remove_world_fluid_tile(dimension, section);
             outcome.applied += 1;
         }
+        opcode::SET_OBSERVERS => {
+            apply_set_observers(driver, payload)?;
+            outcome.applied += 1;
+        }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
         // par la frontière (ax-ffi, `create_assembly_payloads`), qui seule décode
         // les colliders ; APPLY_FORCE continu attend la boucle de forces. Les deux
@@ -284,6 +291,35 @@ fn apply_set_world_fluid(driver: &mut SimDriver, payload: &[u8]) -> Result<(), C
     let density = read_f32(payload, 24);
     let boxes = read_boxes(payload, SetWorldFluid::BYTES, box_count)?;
     driver.set_world_fluid_tile(dimension, section, &boxes, density);
+    Ok(())
+}
+
+/// Décode `SET_OBSERVERS` (ADR-123 §2) : les positions monde des joueurs d'une dimension
+/// pour ce tick. Borne le compte avant allocation (R-901) et exige la longueur exacte.
+fn apply_set_observers(driver: &mut SimDriver, payload: &[u8]) -> Result<(), CommandError> {
+    if payload.len() < SetObservers::BYTES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let dimension = read_u64(payload, 0);
+    let count = read_u32(payload, 8);
+    if count > MAX_OBSERVERS {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let count = count as usize;
+    if payload.len() != SetObservers::BYTES + count * SetObservers::POSITION_BYTES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let positions: Vec<DVec3> = (0..count)
+        .map(|i| {
+            let at = SetObservers::BYTES + i * SetObservers::POSITION_BYTES;
+            DVec3::new(
+                read_f64(payload, at),
+                read_f64(payload, at + 8),
+                read_f64(payload, at + 16),
+            )
+        })
+        .collect();
+    driver.set_observers(dimension, &positions);
     Ok(())
 }
 
@@ -680,5 +716,93 @@ mod tests {
             Err(CommandError::BadPayloadLength)
         );
         assert_eq!(driver.world_tile_count(), 0);
+    }
+
+    fn positions_vec(count: usize) -> Vec<[f64; 3]> {
+        vec![[0.0; 3]; count]
+    }
+
+    /// Payload `SET_OBSERVERS` : en-tête puis positions.
+    fn observers_payload(dimension: u64, count: u32, positions: &[[f64; 3]]) -> Vec<u8> {
+        let mut payload = dimension.to_le_bytes().to_vec();
+        payload.extend_from_slice(&count.to_le_bytes());
+        payload.extend_from_slice(&0u32.to_le_bytes());
+        for position in positions {
+            payload.extend(position.iter().flat_map(|v| v.to_le_bytes()));
+        }
+        payload
+    }
+
+    #[test]
+    fn set_observers_declare_les_joueurs_de_la_dimension() {
+        // ADR-123 §2 : les positions monde, dans l'ordre, pour la dimension visée seule.
+        let mut driver = SimDriver::new();
+        let mut bytes = stream();
+        let positions = [[1.5, 64.0, -3.25], [1.0e6, 70.0, 2.0e5]];
+        push(
+            &mut bytes,
+            opcode::SET_OBSERVERS,
+            &observers_payload(7, 2, &positions),
+        );
+
+        assert_eq!(
+            apply_command_stream(&mut driver, &bytes, 1)
+                .unwrap()
+                .applied,
+            1
+        );
+        let declared: Vec<[f64; 3]> = driver
+            .observers(7)
+            .iter()
+            .map(|position| position.to_array())
+            .collect();
+        assert_eq!(declared, positions);
+        assert!(driver.observers(0).is_empty());
+        assert_eq!(
+            driver.dimension_count(),
+            0,
+            "un joueur seul n'ouvre pas de monde"
+        );
+    }
+
+    #[test]
+    fn set_observers_borne_le_compte_et_exige_la_longueur_exacte() {
+        let mut driver = SimDriver::new();
+        // Au plafond, accepté ; une position de plus, refusé — même de longueur exacte.
+        let positions = vec![[0.0; 3]; MAX_OBSERVERS as usize + 1];
+        let mut plein = stream();
+        push(
+            &mut plein,
+            opcode::SET_OBSERVERS,
+            &observers_payload(0, MAX_OBSERVERS, &positions[1..]),
+        );
+        assert!(apply_command_stream(&mut driver, &plein, 1).is_ok());
+        assert_eq!(driver.observers(0).len(), MAX_OBSERVERS as usize);
+        driver.begin_tick();
+        let mut trop = stream();
+        push(
+            &mut trop,
+            opcode::SET_OBSERVERS,
+            &observers_payload(0, MAX_OBSERVERS + 1, &positions),
+        );
+        assert_eq!(
+            apply_command_stream(&mut driver, &trop, 1),
+            Err(CommandError::BadPayloadLength)
+        );
+        // Un compte qui ne dit pas la longueur réelle, en moins comme en trop : refusé.
+        for (count, positions) in [(2, 1), (1, 2)] {
+            let mut menteur = stream();
+            push(
+                &mut menteur,
+                opcode::SET_OBSERVERS,
+                &observers_payload(0, count, &positions_vec(positions)),
+            );
+            assert_eq!(
+                apply_command_stream(&mut driver, &menteur, 1),
+                Err(CommandError::BadPayloadLength),
+                "compte {count}, {positions} position(s)"
+            );
+        }
+        assert!(driver.observers(0).is_empty());
     }
 }
