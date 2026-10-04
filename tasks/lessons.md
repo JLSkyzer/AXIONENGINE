@@ -970,3 +970,18 @@ code qui avait changé, et un contrôle mécanique qu'on n'avait jamais fait tou
 **Règle.** Avant de prononcer un jalon : l'ajouter à `COMPLETED_MILESTONES` et faire passer
 R-2392 ; rejouer le fuzzing sur le code courant si les cibles ont changé depuis la dernière
 campagne. Une preuve se date avec le commit qu'elle couvre.
+
+## 2026-10-04 | Deux champs de `PhysicsEvent` faux depuis leur création, faute d'un test qui les lise
+
+**Ce qui a mal tourné.** En étiquetant les tests de R-615 (T-305), `tangent_impulse` s'est révélé
+toujours nul — le frottement « simplifié », défaut de rapier 0.35, n'écrit aucune impulsion
+tangentielle par contact — et `relative_velocity` nul au moment même d'un choc, calculé avec les
+vitesses d'après la résolution. Les deux champs étaient publiés depuis la tranche 3c ; les tests
+lisaient la normale, le point, l'impulsion normale et la masse effective, jamais ces deux-là. Les
+dégâts aux entités prévus en T5c (h = v²/2g) n'auraient jamais rien infligé.
+
+**Cause.** Un champ publié tenu pour juste parce que ses voisins étaient testés.
+
+**Règle.** Chaque champ d'une structure publiée (DM, événement, rapport) a au moins une assertion
+qui en lit une valeur non triviale, dans une scène où la physique lui donne une valeur connue. Un
+champ que rien ne lit est présumé faux.
