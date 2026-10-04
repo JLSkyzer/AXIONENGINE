@@ -315,4 +315,76 @@ class SimCommandStreamTest {
         int second = 8 + (8 + 8);
         assertEquals(SimCommandStream.OP_SET_DIMENSION_ENV, wrap(bytes).getInt(second), "seconde commande");
     }
+
+    @Test
+    void encodeUneCommandeSetObservers() {
+        // ADR-123 §2 : en-tête (16 o) puis count × [f64;3].
+        byte[] bytes = new SimCommandStream()
+                .setObservers(3L, new double[][] {{1.5, 64.0, -3.25}, {1.0e6, 70.0, 2.0e5}})
+                .toBytes();
+        assertEquals(8 + 8 + 16 + 2 * 24, bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(11, b.getInt(8), "opcode");
+        assertEquals(16 + 48, b.getInt(12), "payload_len");
+        assertEquals(3L, b.getLong(16), "dimension");
+        assertEquals(2, b.getInt(24), "count");
+        assertEquals(0, b.getInt(28), "_pad");
+        assertEquals(1.5, b.getDouble(32), "positions[0].x");
+        assertEquals(64.0, b.getDouble(40), "positions[0].y");
+        assertEquals(-3.25, b.getDouble(48), "positions[0].z");
+        assertEquals(1.0e6, b.getDouble(56), "positions[1].x");
+        assertEquals(2.0e5, b.getDouble(72), "positions[1].z");
+    }
+
+    @Test
+    void encodeUneCommandeSetEntityProxies() {
+        // ADR-123 §5 : en-tête (16 o) puis count × EntityProxyDesc (56 o, alignement 8).
+        SimCommandStream.EntityProxy vache = new SimCommandStream.EntityProxy(
+                42,
+                new double[] {10.5, 64.9, -3.5},
+                new float[] {0.45f, 0.7f, 0.45f},
+                new float[] {1.0f, -2.0f, 0.5f},
+                SimCommandStream.PROXY_CAPSULE);
+        byte[] bytes = new SimCommandStream().setEntityProxies(7L, java.util.List.of(vache)).toBytes();
+        assertEquals(8 + 8 + 16 + 56, bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(12, b.getInt(8), "opcode");
+        assertEquals(16 + 56, b.getInt(12), "payload_len");
+        assertEquals(7L, b.getLong(16), "dimension");
+        assertEquals(1, b.getInt(24), "count");
+        assertEquals(0, b.getInt(28), "_pad");
+        int desc = 32;
+        assertEquals(10.5, b.getDouble(desc), "center.x @0");
+        assertEquals(64.9, b.getDouble(desc + 8), "center.y @8");
+        assertEquals(-3.5, b.getDouble(desc + 16), "center.z @16");
+        assertEquals(0.45f, b.getFloat(desc + 24), "half_extents.x @24");
+        assertEquals(0.7f, b.getFloat(desc + 28), "half_extents.y @28");
+        assertEquals(1.0f, b.getFloat(desc + 36), "velocity.x @36");
+        assertEquals(0.5f, b.getFloat(desc + 44), "velocity.z @44");
+        assertEquals(42, b.getInt(desc + 48), "entity @48");
+        assertEquals(SimCommandStream.PROXY_CAPSULE, b.get(desc + 52), "shape @52");
+        assertEquals(0, b.get(desc + 53), "_pad @53");
+        assertEquals(0, b.get(desc + 55), "_pad @55");
+    }
+
+    @Test
+    void lesPlafondsEtLesFormesSontRefusesAvantLeNatif() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimCommandStream().setObservers(0L, new double[SimCommandStream.MAX_OBSERVERS + 1][3]));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimCommandStream().setObservers(0L, new double[][] {{0.0, 0.0}}));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimCommandStream.EntityProxy(1, new double[3], new float[3], new float[3], 2));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SimCommandStream.EntityProxy(1, new double[2], new float[3], new float[3], 0));
+        SimCommandStream.EntityProxy une =
+                new SimCommandStream.EntityProxy(1, new double[3], new float[] {1, 1, 1}, new float[3], 0);
+        java.util.List<SimCommandStream.EntityProxy> trop =
+                java.util.Collections.nCopies(SimCommandStream.MAX_ENTITY_PROXIES + 1, une);
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().setEntityProxies(0L, trop));
+    }
 }

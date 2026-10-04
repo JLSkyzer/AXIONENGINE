@@ -1570,7 +1570,7 @@ substituable sans changer rapier »).
                         amortissements rendus, calme rendu de même ; `CLAMPED` 3 à chaque palier.
                         T-307 ; 6 mutations tuées.
                   - [x] Étiquettes t300/t305/t306 sur les tests existants qui couvrent déjà.
-            - [ ] **T5b — contrat** : opcodes 11 `SET_OBSERVERS` et 12 `SET_ENTITY_PROXIES`
+            - [x] **T5b — contrat** : opcodes 11 `SET_OBSERVERS` et 12 `SET_ENTITY_PROXIES`
                   (structs DM, tests de disposition, décodage borné, application) ; proxies
                   `KINEMATIC` à vitesse, groupe `entity_proxy` ; événements de contact avec une
                   entité (§6) ; écriture Java (`SimCommandStream`).
@@ -1585,8 +1585,10 @@ substituable sans changer rapier »).
                         forme changée en place ; identité de l'entité dans les contacts (§6), fin
                         de contact d'une entité partie comprise. Précisions dans ADR-123 §6.
                         T-304 (part native) ; 15 mutations tuées.
-                  - [ ] Écriture Java des deux opcodes (`SimCommandStream`) et vérification
-                        croisée avec le natif (`NativeBridgeTest`).
+                  - [x] Écriture Java des deux opcodes (`SimCommandStream.setObservers`,
+                        `setEntityProxies`, record `EntityProxy`), dispositions épinglées par
+                        `SimCommandStreamTest` ; vérification croisée sur la vraie bibliothèque
+                        (`NativeBridgeTest`) : flux accepté, contact nommant l'entité.
             - [ ] **T5c — Java et Forge** : observateurs (joueurs non spectateurs) et proxies
                   (rayon d'influence déduit des vitesses) par tick ; consommateur d'événements
                   (R-1010) ; effets vanilla (poussée des non-joueurs, dégâts `axion:collision`

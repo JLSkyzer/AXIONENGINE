@@ -103,6 +103,60 @@ public final class SimCommandStream {
     /** Plafond des dimensions d'un champ de hauteurs de tuile (ADR-117). */
     public static final int MAX_WORLD_HEIGHTFIELD_DIM = 64;
 
+    /** Opcode {@code SET_OBSERVERS} (ADR-123 §2). */
+    public static final int OP_SET_OBSERVERS = 11;
+
+    /** Opcode {@code SET_ENTITY_PROXIES} (ADR-123 §5). */
+    public static final int OP_SET_ENTITY_PROXIES = 12;
+
+    /** Taille de l'en-tête {@code SetObservers}, en octets (hors positions). */
+    public static final int SET_OBSERVERS_HEADER_BYTES = 16;
+
+    /** Octets d'une position d'observateur {@code [f64;3]} sur la frontière. */
+    public static final int OBSERVER_BYTES = 24;
+
+    /** Taille de l'en-tête {@code SetEntityProxies}, en octets (hors proxies). */
+    public static final int SET_ENTITY_PROXIES_HEADER_BYTES = 16;
+
+    /** Taille d'un {@code EntityProxyDesc} sur la frontière, en octets. */
+    public static final int ENTITY_PROXY_BYTES = 56;
+
+    /** Plafond d'observateurs d'une dimension pour un tick (le natif refuse au-delà, ADR-123 §2). */
+    public static final int MAX_OBSERVERS = 1024;
+
+    /** Plafond de proxies d'une dimension pour un tick (le natif refuse au-delà, ADR-123 §5). */
+    public static final int MAX_ENTITY_PROXIES = 4096;
+
+    /** Forme de proxy : l'AABB de l'entité ({@code entity_proxy_shape::BOX}). */
+    public static final int PROXY_BOX = 0;
+
+    /** Forme de proxy : capsule verticale, un être vivant ({@code entity_proxy_shape::CAPSULE}). */
+    public static final int PROXY_CAPSULE = 1;
+
+    /**
+     * Une entité vanilla vue par la physique pour un tick (R-614, ADR-123 §5) : le natif en fait
+     * un corps cinématique temporaire, à sa vitesse, que les assemblies heurtent.
+     *
+     * @param entity identifiant réseau de l'entité, qui la nomme aussi dans les événements de
+     *     contact
+     * @param center centre de l'AABB, monde, en blocs {@code [x, y, z]}
+     * @param halfExtents demi-dimensions de l'AABB {@code [x, y, z]}
+     * @param velocity vitesse de l'entité {@code [x, y, z]}, en m/s
+     * @param shape {@link #PROXY_BOX} ou {@link #PROXY_CAPSULE}
+     */
+    public record EntityProxy(int entity, double[] center, float[] halfExtents, float[] velocity, int shape) {
+
+        /** Valide la forme du descripteur ; les valeurs inutilisables, le natif les ignore. */
+        public EntityProxy {
+            if (center.length != 3 || halfExtents.length != 3 || velocity.length != 3) {
+                throw new IllegalArgumentException("centre, demi-dimensions et vitesse ont 3 composantes");
+            }
+            if (shape != PROXY_BOX && shape != PROXY_CAPSULE) {
+                throw new IllegalArgumentException("forme de proxy inconnue : " + shape);
+            }
+        }
+    }
+
     private final List<byte[]> commands = new ArrayList<>();
 
     /**
@@ -353,6 +407,79 @@ public final class SimCommandStream {
      */
     public SimCommandStream removeWorldFluid(long dimension, int[] section) {
         return removeWorldTile(OP_REMOVE_WORLD_FLUID, dimension, section);
+    }
+
+    /**
+     * Ajoute une commande {@code SET_OBSERVERS} (ADR-123 §2) : les positions monde des joueurs
+     * d'une dimension, spectateurs exclus. La déclaration ne vaut que pour ce tick : une
+     * dimension qui ne la répète pas au tick suivant n'a plus d'observateur.
+     *
+     * @param dimension dimension visée (R-610)
+     * @param positions positions monde {@code [x, y, z]}, en blocs ; au plus
+     *     {@link #MAX_OBSERVERS}
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setObservers(long dimension, double[][] positions) {
+        if (positions.length > MAX_OBSERVERS) {
+            throw new IllegalArgumentException(
+                    "au plus " + MAX_OBSERVERS + " observateurs par dimension (ADR-123)");
+        }
+        for (double[] position : positions) {
+            if (position.length != 3) {
+                throw new IllegalArgumentException("une position est un vecteur à 3 composantes");
+            }
+        }
+        int payloadLen = SET_OBSERVERS_HEADER_BYTES + positions.length * OBSERVER_BYTES;
+        ByteBuffer command = beginCommand(OP_SET_OBSERVERS, payloadLen);
+        command.putLong(dimension);
+        command.putInt(positions.length);
+        command.putInt(0); // _pad
+        for (double[] position : positions) {
+            command.putDouble(position[0]);
+            command.putDouble(position[1]);
+            command.putDouble(position[2]);
+        }
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_ENTITY_PROXIES} (R-614, ADR-123 §5) : les entités d'une
+     * dimension que la physique doit voir ce tick. L'ensemble est remplacé à chaque tick : une
+     * entité absente du flux perd son proxy.
+     *
+     * @param dimension dimension visée (R-610)
+     * @param proxies entités, au plus {@link #MAX_ENTITY_PROXIES}
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setEntityProxies(long dimension, List<EntityProxy> proxies) {
+        if (proxies.size() > MAX_ENTITY_PROXIES) {
+            throw new IllegalArgumentException(
+                    "au plus " + MAX_ENTITY_PROXIES + " proxies par dimension (ADR-123)");
+        }
+        int payloadLen = SET_ENTITY_PROXIES_HEADER_BYTES + proxies.size() * ENTITY_PROXY_BYTES;
+        ByteBuffer command = beginCommand(OP_SET_ENTITY_PROXIES, payloadLen);
+        command.putLong(dimension);
+        command.putInt(proxies.size());
+        command.putInt(0); // _pad
+        for (EntityProxy proxy : proxies) {
+            command.putDouble(proxy.center()[0]);
+            command.putDouble(proxy.center()[1]);
+            command.putDouble(proxy.center()[2]);
+            command.putFloat(proxy.halfExtents()[0]);
+            command.putFloat(proxy.halfExtents()[1]);
+            command.putFloat(proxy.halfExtents()[2]);
+            command.putFloat(proxy.velocity()[0]);
+            command.putFloat(proxy.velocity()[1]);
+            command.putFloat(proxy.velocity()[2]);
+            command.putInt(proxy.entity());
+            command.put((byte) proxy.shape());
+            command.put((byte) 0); // _pad[3]
+            command.put((byte) 0);
+            command.put((byte) 0);
+        }
+        commands.add(command.array());
+        return this;
     }
 
     private SimCommandStream removeWorldTile(int opcode, long dimension, int[] section) {

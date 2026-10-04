@@ -536,6 +536,36 @@ class NativeBridgeTest {
                 simulation.tick(40L, new dev.axion.physics.SimCommandStream(), 0L);
         assertArrayEquals(new float[] {1.0f, 1.0f, 1.0f}, apresChute.bounds().get(0).max(), 1.0e-5f);
 
+        // ADR-123 §2 et §5 : les joueurs et les entités écrits par Java sont lus par le natif —
+        // un flux mal formé serait refusé en entier. Une entité-boîte posée sous le corps qui
+        // tombe l'arrête, et le contact la nomme : l'assembly en a, l'entité en b, génération
+        // 0, bit CONTACT_OTHER_ENTITY.
+        double ySousLeCorps = apresChute.bodies().get(0).position()[1] - 2.0;
+        dev.axion.physics.SimCommandStream.EntityProxy dalle = new dev.axion.physics.SimCommandStream.EntityProxy(
+                77,
+                new double[] {0.5, ySousLeCorps, 0.5},
+                new float[] {2.0f, 0.5f, 2.0f},
+                new float[] {0.0f, 0.0f, 0.0f},
+                dev.axion.physics.SimCommandStream.PROXY_BOX);
+        dev.axion.physics.PhysicsEvent contact = null;
+        for (int t = 0; t < 40 && contact == null; t++) {
+            dev.axion.physics.SimCommandStream entites = new dev.axion.physics.SimCommandStream()
+                    .setObservers(0L, new double[][] {{0.0, ySousLeCorps, 0.0}})
+                    .setEntityProxies(0L, java.util.List.of(dalle));
+            dev.axion.physics.CollectResult pas = simulation.tick(41L + t, entites, 0L);
+            assertTrue(pas.ok(), () -> "collect avec joueurs et entités refusé, code " + pas.code());
+            for (dev.axion.physics.PhysicsEvent evenement : pas.events()) {
+                // CONTACT_START (event_kind 0) portant CONTACT_OTHER_ENTITY (data, bit 0).
+                if (evenement.kind() == 0 && (evenement.data() & 1) != 0) {
+                    contact = evenement;
+                }
+            }
+        }
+        assertNotNull(contact, "le corps qui tombe heurte l'entité");
+        assertEquals(1, contact.assemblyAIndex(), "l'assembly en a");
+        assertEquals(77, contact.assemblyBIndex(), "l'entité en b");
+        assertEquals(0, contact.assemblyBGeneration(), "génération 0 : pas une assembly");
+
         // Annuler après un cycle clos est inoffensif.
         assertEquals(NativeBridge.OK, simulation.cancel());
 
