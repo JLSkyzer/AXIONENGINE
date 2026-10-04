@@ -10,6 +10,7 @@ use rapier3d::prelude::{
     RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, SharedShape, Vector,
 };
 
+use crate::activity::{Candidate, Observers};
 use crate::query::{RayHit, SensorMode, SpatialFilter, SweepHit};
 use crate::scheduler::{SimMode, Stage, StageDurations};
 use std::time::Instant;
@@ -24,7 +25,9 @@ use crate::forces::{FluidEnvironment, FluidVolume, LiftSurface};
 use crate::groups::CollisionGroups;
 use ax_model::dm::debug::debug_body_flags;
 use ax_model::dm::handle::Handle;
-use ax_model::dm::physics::{body_state_flags, event_kind, BodyBounds, BodyState, PhysicsEvent};
+use ax_model::dm::physics::{
+    body_state_flags, event_data, event_kind, BodyBounds, BodyState, PhysicsEvent,
+};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -92,6 +95,14 @@ struct BodyIdentity {
 struct ValidPose {
     translation: Vec3,
     rotation: Quat,
+}
+
+/// Vitesse d'un corps au moment où la gestion d'activité l'a endormi (R-612, R-613) ;
+/// `rapier` l'annule en l'endormant, son réveil la lui rend.
+#[derive(Debug, Clone, Copy)]
+struct ForcedSleep {
+    linvel: Vec3,
+    angvel: Vec3,
 }
 
 /// Collecteur d'événements de collision d'un sous-pas.
@@ -234,6 +245,17 @@ pub struct PhysicsWorld {
     /// rapport se produit en lecture (`&self`) ; aucun accès concurrent n'existe
     /// aujourd'hui, l'ordre relâché suffit.
     bounds_unavailable: AtomicU64,
+    /// Corps endormis par la gestion d'activité (R-612, R-613), avec la vitesse qu'ils
+    /// avaient. L'entrée disparaît dès que le corps se réveille — de notre fait, ou de
+    /// celui du solveur (un contact qui commence) : il repart alors de son état courant.
+    /// Consultée par clé, jamais itérée (R-1020).
+    forced_sleep: HashMap<BodyId, ForcedSleep>,
+    /// Rang de création de chaque corps, l'ancienneté de R-613 : l'ordre d'itération de
+    /// `rapier` réutilise les emplacements libérés et n'en donne qu'une approximation.
+    /// Consultée par clé, jamais itérée (R-1020).
+    births: HashMap<BodyId, u64>,
+    /// Rang du prochain corps créé.
+    next_birth: u64,
 }
 
 /// États et emprises des corps rapportés par un tick (DM-08, ADR-120).
@@ -297,6 +319,9 @@ impl PhysicsWorld {
             clamp_journal_count: 0,
             invalid_state_count: 0,
             bounds_unavailable: AtomicU64::new(0),
+            forced_sleep: HashMap::new(),
+            births: HashMap::new(),
+            next_birth: 0,
         }
     }
 
@@ -408,6 +433,8 @@ impl PhysicsWorld {
         }
 
         let id = BodyId::from_handle(handle);
+        self.births.insert(id, self.next_birth);
+        self.next_birth += 1;
         // Pose de départ comme premier état valide, si elle l'est : une
         // restauration R-181 dès le premier sous-pas a alors un repli fini vers
         // lequel revenir. Un corps placé hors du monde n'est pas semé — on ne
@@ -809,16 +836,21 @@ impl PhysicsWorld {
                     let kind = if sleeping {
                         event_kind::SLEEP
                     } else {
+                        // Réveillé par le solveur, un corps endormi par la gestion
+                        // d'activité repart de son état courant : la vitesse retenue
+                        // ne vaut plus.
+                        self.forced_sleep.remove(&id);
                         event_kind::WAKE
                     };
-                    self.push_single_body_event(id, kind);
+                    self.push_single_body_event(id, kind, 0);
                 }
             }
         }
     }
 
-    /// Construit et met en file un événement portant sur un seul corps (§10.7).
-    fn push_single_body_event(&mut self, id: BodyId, kind: u32) {
+    /// Construit et met en file un événement portant sur un seul corps (§10.7) ; `data`
+    /// suit le genre (ADR-123 §11).
+    fn push_single_body_event(&mut self, id: BodyId, kind: u32, data: u32) {
         let identity = self.identity.get(&id).copied().unwrap_or_default();
         let event = PhysicsEvent {
             kind,
@@ -834,7 +866,7 @@ impl PhysicsWorld {
             effective_mass: 0.0,
             material_a: identity.material,
             material_b: 0,
-            data: 0,
+            data,
         };
         self.push_event(event);
     }
@@ -1378,61 +1410,82 @@ impl PhysicsWorld {
         self.aero.entry(id).or_default().lift_surfaces = surfaces;
     }
 
-    /// Endort les corps dynamiques éveillés au-delà de `radius` autour de
-    /// `center` (R-612). Renvoie le nombre endormi.
+    /// Relève les corps sujets à la gestion d'activité (R-612, R-613, ADR-123 §3) : les
+    /// corps dynamiques éveillés, et ceux qu'elle a endormis — chacun avec sa distance au
+    /// plus proche des `observers` et son rang de création. Un corps endormi
+    /// naturellement n'y figure pas : il ne compte pas parmi les actifs, et rien ne le
+    /// réveille.
     ///
-    /// **Endort, jamais ne supprime** (R-612) : un corps hors du rayon de
-    /// simulation garde son état et se réveille s'il y rentre. L'itération suit
-    /// l'ordre déterministe de `rapier` (R-1020).
-    pub fn enforce_simulation_radius(&mut self, center: Vec3, radius: f32) -> usize {
-        let radius_squared = radius * radius;
-        let beyond: Vec<RigidBodyHandle> = self
-            .inner
-            .bodies
-            .iter()
-            .filter(|(_, body)| body.is_dynamic() && !body.is_sleeping())
-            .filter(|(_, body)| (body.translation() - center).length_squared() > radius_squared)
-            .map(|(handle, _)| handle)
-            .collect();
-        for handle in &beyond {
-            if let Some(body) = self.inner.bodies.get_mut(*handle) {
-                body.sleep();
-            }
+    /// Le relevé suit l'ordre d'itération de `rapier` (R-1020). Un client ne relève rien :
+    /// la gestion d'activité est autoritaire (R-662).
+    pub(crate) fn survey_activity(
+        &mut self,
+        dimension: u64,
+        observers: &Observers,
+        out: &mut Vec<Candidate>,
+    ) {
+        if self.mode == SimMode::Client {
+            return;
         }
-        beyond.len()
+        for (handle, body) in self.inner.bodies.iter() {
+            if !body.is_dynamic() {
+                continue;
+            }
+            let id = BodyId::from_handle(handle);
+            let awake = !body.is_sleeping();
+            if awake {
+                // Réveillé hors d'un pas (une impulsion venue de Java) : la vitesse
+                // retenue ne vaut plus.
+                self.forced_sleep.remove(&id);
+            } else if !self.forced_sleep.contains_key(&id) {
+                continue;
+            }
+            out.push(Candidate {
+                dimension,
+                body: id,
+                distance: observers.nearest(body.translation()),
+                birth: self.births.get(&id).copied().unwrap_or_default(),
+                awake,
+            });
+        }
     }
 
-    /// Fait respecter le plafond de corps actifs (R-613) autour de `center`.
+    /// Endort un corps au nom de la gestion d'activité (R-612, R-613) et retient sa
+    /// vitesse. **Endort, jamais ne supprime.** `budget` dit que seule la dégradation
+    /// l'endort (FM-21) : un `CLAMPED` de code 2 le signale (ADR-123 §11).
     ///
-    /// Si plus de `cap` corps dynamiques sont éveillés, endort le surplus en
-    /// commençant par **les plus éloignés** ; à distance égale, par **les plus
-    /// anciens** — un tri stable sur l'ordre d'itération déterministe de `rapier`
-    /// suffit à départager (R-1020). Renvoie la liste endormie, dans l'ordre où
-    /// elle a été endormie, pour que l'appelant la journalise (R-613).
-    pub fn enforce_active_body_cap(&mut self, center: Vec3, cap: usize) -> Vec<BodyId> {
-        let mut awake: Vec<(RigidBodyHandle, f32)> = self
-            .inner
-            .bodies
-            .iter()
-            .filter(|(_, body)| body.is_dynamic() && !body.is_sleeping())
-            .map(|(handle, body)| (handle, (body.translation() - center).length_squared()))
-            .collect();
-        if awake.len() <= cap {
-            return Vec::new();
+    /// Sans effet sur un corps absent, non dynamique ou déjà endormi.
+    pub(crate) fn force_sleep(&mut self, id: BodyId, budget: bool) {
+        let Some(body) = self.inner.bodies.get_mut(id.handle()) else {
+            return;
+        };
+        if !body.is_dynamic() || body.is_sleeping() {
+            return;
         }
-        // Tri **stable** par distance décroissante : à distance égale, l'ordre
-        // d'itération (déterministe, ~ ancienneté) reste, donc les plus anciens
-        // partent en premier.
-        awake.sort_by(|left, right| right.1.total_cmp(&left.1));
-        let excess = awake.len() - cap;
-        let mut slept = Vec::with_capacity(excess);
-        for (handle, _) in awake.into_iter().take(excess) {
-            if let Some(body) = self.inner.bodies.get_mut(handle) {
-                body.sleep();
-            }
-            slept.push(BodyId::from_handle(handle));
+        let frozen = ForcedSleep {
+            linvel: body.linvel(),
+            angvel: body.angvel(),
+        };
+        body.sleep();
+        self.forced_sleep.insert(id, frozen);
+        if budget {
+            self.push_single_body_event(id, event_kind::CLAMPED, event_data::CLAMPED_BUDGET);
         }
-        slept
+    }
+
+    /// Réveille un corps endormi par la gestion d'activité et lui rend la vitesse qu'il
+    /// avait : sa simulation reprend où elle s'était suspendue (R-1890).
+    ///
+    /// Sans effet sur un corps que la gestion n'a pas endormi.
+    pub(crate) fn end_forced_sleep(&mut self, id: BodyId) {
+        let Some(frozen) = self.forced_sleep.remove(&id) else {
+            return;
+        };
+        if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
+            body.wake_up(true);
+            body.set_linvel(frozen.linvel, false);
+            body.set_angvel(frozen.angvel, false);
+        }
     }
 
     /// Fait d'un corps un capteur, ou l'en retire (§10.4).
@@ -1461,6 +1514,8 @@ impl PhysicsWorld {
         self.last_valid.remove(&id);
         self.guard_flags.remove(&id);
         self.clamp_journal_at.remove(&id);
+        self.forced_sleep.remove(&id);
+        self.births.remove(&id);
         self.inner.remove_body(id.handle()).is_some()
     }
 

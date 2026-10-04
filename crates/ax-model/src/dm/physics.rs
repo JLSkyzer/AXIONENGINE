@@ -247,6 +247,29 @@ pub mod event_kind {
     pub const DETACH_ATTACHMENT: u32 = 12;
 }
 
+/// Sens du champ `data` d'un [`PhysicsEvent`] selon son genre (ADR-123).
+///
+/// La disposition de l'événement ne change pas : seul le sens d'un champ que le §10.7
+/// laisse « propre au genre » est fixé ici, ratifié avec ADR-123.
+pub mod event_data {
+    /// Contact (`CONTACT_*`) : bit 0 à 1 quand l'autre corps est le proxy d'une entité
+    /// vanilla — `assembly_b` vaut alors `{ index: identifiant réseau de l'entité,
+    /// generation: 0 }`, `node_b` et `material_b` valent 0.
+    pub const CONTACT_OTHER_ENTITY: u32 = 1 << 0;
+    /// `RECOVERED` : code de l'erreur dont le corps a été restauré — `E-2030`, état non fini
+    /// ou hors du monde (FM-20).
+    pub const RECOVERED_INVALID_STATE: u32 = 2030;
+    /// `CLAMPED` : une vitesse a été bornée (R-180), au débit du journal — une fois par corps
+    /// et par minute.
+    pub const CLAMPED_VELOCITY: u32 = 1;
+    /// `CLAMPED` : le corps a été endormi par la dégradation de budget (FM-21) — il ne
+    /// l'aurait pas été aux rayon et plafond nominaux.
+    pub const CLAMPED_BUDGET: u32 = 2;
+    /// `CLAMPED` : le corps s'agitait sur place dans un empilement (FM-22) — amorti, puis
+    /// endormi s'il ne se calme pas.
+    pub const CLAMPED_STACKING: u32 = 3;
+}
+
 /// Événement physique produit en natif (§10.7, DM).
 ///
 /// Transmis par lot et appliqué côté Java sur le thread autoritatif (R-1010).

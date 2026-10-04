@@ -1531,6 +1531,21 @@ substituable sans changer rapier »).
                   drapeau `AXION_SIM_DEGRADED`, jauges) ; détecteur FM-22 (amortissement puis
                   sommeil) ; événements `RECOVERED` (2030) et `CLAMPED` (1/2/3). Tests t300..t303,
                   t305..t307 (existants étiquetés quand ils couvrent déjà l'exigence).
+                  - [x] Réglages IF-01 retenus et appliqués, environnement de dimension
+                        persistant (78dbe20, T-301).
+                  - [x] R-612/R-613 autour des observateurs (`activity.rs`) : rayon mesuré dans
+                        chaque dimension, plafond serveur compté sur toutes, ancienneté au rang
+                        de création, réveil à portée dans la limite du plafond (marge d'une
+                        section pour prendre la place d'un corps éveillé), vitesse suspendue puis
+                        rendue ; `CLAMPED` 2 pour un sommeil de budget. Précisions consignées
+                        dans ADR-123 §3. **Branché en jeu en T5c seulement**, avec l'envoi des
+                        observateurs par Java : sans eux, tout corps dormirait. T-302, T-303 ;
+                        12 mutations ciblées, toutes tuées par le test attendu.
+                  - [ ] Destruction R-610 sans assembly, tuile, fluide ni observateur (T-300).
+                  - [ ] Événements `RECOVERED` (2030) et `CLAMPED` 1 (T-306).
+                  - [ ] Gouverneur FM-21, drapeau `AXION_SIM_DEGRADED`, jauges (T-307).
+                  - [ ] Détecteur FM-22, amortissement puis sommeil (T-307).
+                  - [ ] Étiquettes t300/t305/t306 sur les tests existants qui couvrent déjà.
             - [ ] **T5b — contrat** : opcodes 11 `SET_OBSERVERS` et 12 `SET_ENTITY_PROXIES`
                   (structs DM, tests de disposition, décodage borné, application) ; proxies
                   `KINEMATIC` à vitesse, groupe `entity_proxy` ; événements de contact avec une

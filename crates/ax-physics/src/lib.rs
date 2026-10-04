@@ -19,9 +19,10 @@
 //! (§10.3) : primitives, `ConvexHull` (4..256 points) et `Compound` (≤64), avec
 //! validation à l'ajout. Les formes concaves du monde (`TriMesh`, `Heightfield`)
 //! arrivent avec C-38 (INV-13). Groupes de collision data-driven par nom (§10.4,
-//! R-980) avec les huit groupes réservés. Gestion d'activité : CCD déclarée,
-//! sommeil forcé hors du rayon de simulation (R-612), plafond de corps actifs
-//! déterministe (R-613). Forces environnementales complètes (§10.6) : gravité
+//! R-980) avec les huit groupes réservés. Gestion d'activité autour des joueurs
+//! (ADR-123 §3) : CCD déclarée, sommeil forcé hors du rayon de tout observateur
+//! (R-612) et réveil à son retour, plafond de corps actifs serveur, déterministe
+//! (R-613). Forces environnementales complètes (§10.6) : gravité
 //! par corps, vent de dimension, traînée relative au vent, portance sur surfaces
 //! déclarées (R-1000) et flottabilité (volume immergé par les 8 coins de l'AABB
 //! contre un fluide de dimension), appliquées par sous-pas. Événements (§10.7,
@@ -32,6 +33,7 @@
 //! Exigences : R-460, R-462, R-610, R-611, R-990, R-1020, R-1753 ; PARTIE 10.
 //! Correspondance avec `rapier` 0.35 : `docs/decisions/ADR-112.md`.
 
+mod activity;
 mod body;
 mod commands;
 mod config;
@@ -43,6 +45,7 @@ mod scheduler;
 mod sim;
 mod world;
 
+pub use activity::ActivityReport;
 pub use body::{
     BodyCollider, BodyError, BodyId, BodyKind, CompoundPart, ContactMaterial, Shape,
     ShapeConversionError,
@@ -61,5 +64,5 @@ pub use world::{BodyReports, PhysicsWorld, Pose};
 // réexporte pour que l'API du monde physique soit autonome.
 pub use ax_model::dm::handle::Handle;
 pub use ax_model::dm::physics::{
-    body_state_flags, event_kind, BodyBounds, BodyState, PhysicsEvent,
+    body_state_flags, event_data, event_kind, BodyBounds, BodyState, PhysicsEvent,
 };

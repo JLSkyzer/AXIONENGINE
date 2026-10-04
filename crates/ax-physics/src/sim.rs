@@ -10,6 +10,7 @@
 //! parcours est déterministe, donc l'ordre de `BodyState[]` et du lot
 //! d'événements l'est aussi (R-1020).
 
+use crate::activity::{self, ActivityLimits, ActivityReport, Decision, Observers, SleepCause};
 use crate::body::{BodyCollider, BodyId, BodyKind, ContactMaterial, Shape};
 use crate::config::PhysicsConfig;
 use crate::debug::{select_outlines, DebugColliders};
@@ -95,6 +96,9 @@ pub struct SimDriver {
     /// Environnement de chaque dimension réglée par `SET_DIMENSION_ENV`, gardé hors
     /// du monde pour survivre à sa destruction (R-610).
     envs: BTreeMap<u64, DimensionEnv>,
+    /// Observateurs du tick : positions monde finies des joueurs de chaque dimension
+    /// (ADR-123 §2). État par tick, remis à zéro par [`begin_tick`](Self::begin_tick).
+    observers: BTreeMap<u64, Vec<DVec3>>,
 }
 
 impl std::fmt::Debug for SimDriver {
@@ -433,6 +437,91 @@ impl SimDriver {
             .sum()
     }
 
+    /// Ouvre un tick : remet à zéro l'état qui ne vaut que pour un tick. Une dimension
+    /// sans `SET_OBSERVERS` dans le flux du tick n'a aucun observateur (ADR-123 §2).
+    pub fn begin_tick(&mut self) {
+        self.observers.clear();
+    }
+
+    /// Déclare les observateurs d'une dimension pour le tick : les positions monde de ses
+    /// joueurs (ADR-123 §2). Remplace une déclaration antérieure du même tick ; les
+    /// positions non finies sont écartées (donnée venue du jeu, jamais crue sur parole).
+    ///
+    /// N'ouvre aucun monde : un joueur seul n'a rien à simuler (R-610).
+    pub fn set_observers(&mut self, dimension: u64, positions: &[DVec3]) {
+        let finite: Vec<DVec3> = positions
+            .iter()
+            .copied()
+            .filter(|position| position.is_finite())
+            .collect();
+        if finite.is_empty() {
+            self.observers.remove(&dimension);
+        } else {
+            self.observers.insert(dimension, finite);
+        }
+    }
+
+    /// Applique R-612 et R-613 autour des observateurs du tick (ADR-123 §3), à appeler
+    /// après les commandes du tick et avant [`advance_all`](Self::advance_all) : un corps
+    /// hors du rayon de tout joueur ne bouge pas ce tick.
+    ///
+    /// Le rayon se mesure dans chaque dimension depuis ses joueurs ; le plafond de corps
+    /// actifs est un budget serveur, compté sur toutes les dimensions. Un corps endormi
+    /// par cette gestion se réveille à portée, s'il a sa place sous le plafond, avec la
+    /// vitesse qu'il avait ; un corps endormi naturellement n'est jamais réveillé.
+    /// Endort, jamais ne supprime. Rend les comptes du tick, que la frontière journalise.
+    pub fn manage_activity(&mut self) -> ActivityReport {
+        let limits = self.activity_limits();
+        let mut candidates = Vec::new();
+        for (&dimension, sim) in &mut self.dimensions {
+            let positions = self
+                .observers
+                .get(&dimension)
+                .map_or(&[][..], Vec::as_slice);
+            let origin = &sim.origin;
+            let observers = Observers::new(
+                positions.iter().map(|position| origin.to_local(*position)),
+                limits.nominal_radius,
+            );
+            sim.world
+                .survey_activity(dimension, &observers, &mut candidates);
+        }
+
+        let mut report = ActivityReport::default();
+        for (index, decision) in activity::plan(&candidates, limits) {
+            let candidate = &candidates[index];
+            let Some(sim) = self.dimensions.get_mut(&candidate.dimension) else {
+                continue;
+            };
+            match decision {
+                Decision::Sleep { cause, budget } => {
+                    sim.world.force_sleep(candidate.body, budget);
+                    match cause {
+                        SleepCause::Radius => report.slept_by_radius += 1,
+                        SleepCause::Cap => report.slept_by_cap += 1,
+                    }
+                    report.slept_by_budget += usize::from(budget);
+                }
+                Decision::Wake => {
+                    sim.world.end_forced_sleep(candidate.body);
+                    report.woken += 1;
+                }
+            }
+        }
+        report
+    }
+
+    /// Rayon et plafond du tick : ceux des réglages, que nulle dégradation ne réduit
+    /// encore.
+    fn activity_limits(&self) -> ActivityLimits {
+        ActivityLimits {
+            radius: self.settings.simulation_radius,
+            nominal_radius: self.settings.simulation_radius,
+            cap: self.settings.max_active_bodies,
+            nominal_cap: self.settings.max_active_bodies,
+        }
+    }
+
     /// Avance toutes les dimensions du temps réel écoulé.
     pub fn advance_all(&mut self, frame_dt: f32) {
         for sim in self.dimensions.values_mut() {
@@ -704,6 +793,29 @@ mod tests {
             (vy + 9.81).abs() < 0.2,
             "une dimension sans environnement : {vy}"
         );
+    }
+
+    #[test]
+    fn t307_un_sommeil_de_budget_se_signale_par_un_clamped_de_code_2() {
+        // ADR-123 §11 : un corps que seule la dégradation endort (FM-21) émet un CLAMPED
+        // portant son assembly et `data` = 2 ; un sommeil nominal n'émet rien de tel.
+        use ax_model::dm::physics::{event_data, event_kind};
+        let mut driver = SimDriver::new();
+        bille(&mut driver, 0);
+        let (_, body) = driver.routes[&handle_key(Handle::new(1, 1))];
+        let world = driver.world_mut(0).unwrap();
+        world.force_sleep(body, false);
+        assert!(world.drain_events().is_empty());
+        world.end_forced_sleep(body);
+
+        world.force_sleep(body, true);
+
+        let events = world.drain_events();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, event_kind::CLAMPED);
+        assert_eq!(events[0].data, event_data::CLAMPED_BUDGET);
+        assert_eq!(events[0].assembly_a, Handle::new(1, 1));
+        assert!(events[0].assembly_b.is_absent());
     }
 
     #[test]
