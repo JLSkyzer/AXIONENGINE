@@ -43,8 +43,10 @@ use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyBounds, BodyState, ColliderDesc};
 use ax_physics::{
-    BodyCollider, BodyKind, ContactMaterial, PhysicsConfig, Shape, SimDriver, SimSettings,
+    BodyCollider, BodyKind, ContactMaterial, DegradationLevel, PhysicsConfig, Shape, SimDriver,
+    SimSettings,
 };
+use std::time::Instant;
 
 /// Version de l'ABI.
 ///
@@ -1172,7 +1174,12 @@ pub unsafe extern "C" fn axion_sim_collect(
             return AXION_E_INVALID_BUFFER;
         }
         let result = match context::with(ctx, false, |session| {
+            let started = Instant::now();
             session.physics().advance_all(SERVER_TICK_DT);
+            let elapsed = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
+            // FM-21 : le gouverneur décide sur la durée mesurée de la simulation (§25.5) ;
+            // Java lit le palier au drapeau et aux jauges, et journalise ses transitions.
+            session.physics().record_tick_duration(elapsed);
             let reports = session.physics().collect_reports();
             let states = &reports.states;
             // Appariement garanti par construction (un même parcours) ; Java
@@ -1202,9 +1209,11 @@ pub unsafe extern "C" fn axion_sim_collect(
                 .write_payload(BufferKind::Events, &events_bytes);
             session.close_sim_cycle();
 
+            let degraded = session.physics().degradation_level() != DegradationLevel::Normal;
             AxionCollectResult {
                 state_count: u32::try_from(states.len()).unwrap_or(u32::MAX),
                 event_count: u32::try_from(events.len()).unwrap_or(u32::MAX),
+                flags: if degraded { AXION_SIM_DEGRADED } else { 0 },
                 ..AxionCollectResult::default()
             }
         }) {

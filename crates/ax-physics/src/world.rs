@@ -277,6 +277,9 @@ pub struct PhysicsWorld {
     /// elle vaudrait zéro au moment même d'un choc (R-615). Relevé à chaque sous-pas ;
     /// consulté par clé, jamais itéré (R-1020).
     pre_step: HashMap<RigidBodyHandle, PreStepMotion>,
+    /// Palier 1 de la dégradation appliqué (§25.6, FM-21) : une itération de solveur et un
+    /// sous-pas de moins que la configuration.
+    solver_degraded: bool,
 }
 
 /// États et emprises des corps rapportés par un tick (DM-08, ADR-120).
@@ -382,6 +385,7 @@ impl PhysicsWorld {
             births: HashMap::new(),
             next_birth: 0,
             pre_step: HashMap::new(),
+            solver_degraded: false,
         }
     }
 
@@ -549,7 +553,7 @@ impl PhysicsWorld {
             return 0;
         }
         let dt = self.config.fixed_dt();
-        let ceiling = dt * self.config.max_substeps() as f32;
+        let ceiling = dt * self.max_substeps() as f32;
         self.accumulator = (self.accumulator + frame_dt.max(0.0)).min(ceiling);
         // Les drapeaux de garde-fou ne valent que pour le tick courant : un corps
         // clampé à un tick antérieur ne l'est plus tant qu'il ne dépasse pas de
@@ -1091,6 +1095,39 @@ impl PhysicsWorld {
     pub fn set_kinematic_pose(&mut self, id: BodyId, position: Vec3, rotation: Quat) {
         if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
             body.set_next_kinematic_position(RapierPose::from_parts(position, rotation));
+        }
+    }
+
+    /// Applique ou lève le palier 1 de la dégradation (§25.6, FM-21) : une itération de
+    /// solveur et un sous-pas de moins que la configuration. Le reste de la configuration
+    /// du monde est inchangé ; lever le palier rend exactement les valeurs configurées.
+    pub fn set_degraded_solver(&mut self, degraded: bool) {
+        self.solver_degraded = degraded;
+        self.inner.integration_parameters.num_solver_iterations = self.solver_iterations() as usize;
+    }
+
+    /// Itérations du solveur appliquées : `physics.velocity_iterations` (au moins 1), une
+    /// de moins au palier 1 de la dégradation sans descendre sous 2 (§25.6).
+    #[must_use]
+    pub fn solver_iterations(&self) -> u32 {
+        let configured = self.config.velocity_iterations.max(1);
+        if self.solver_degraded {
+            configured.saturating_sub(1).max(configured.min(2))
+        } else {
+            configured
+        }
+    }
+
+    /// Sous-pas maximaux par tick appliqués : `sim.max_substeps`, un de moins au palier 1
+    /// de la dégradation sans descendre sous 1 (§25.6). Le temps que l'accumulateur ne peut
+    /// plus rattraper est abandonné, jamais rejoué (R-990).
+    #[must_use]
+    pub fn max_substeps(&self) -> u32 {
+        let configured = self.config.max_substeps();
+        if self.solver_degraded {
+            configured.saturating_sub(1).max(1)
+        } else {
+            configured
         }
     }
 

@@ -1556,7 +1556,14 @@ substituable sans changer rapier »).
                         « simplifié » de rapier, passé en `Coulomb`) et `relative_velocity` 0 au
                         choc (vitesses d'après la résolution, désormais relevées avant le pas).
                         Coût mesuré sans écart discernable (amendement d'ADR-112).
-                  - [ ] Gouverneur FM-21, drapeau `AXION_SIM_DEGRADED`, jauges (T-307).
+                  - [x] Gouverneur FM-21 (`governor.rs`) : p95 de fenêtres de 100 ticks, descente
+                        après trois fenêtres au-dessus de `budgets.sim_ns_per_tick`, remontée après
+                        30 s sous 60 % puis un palier par 10 s ; D1 solveur et sous-pas (chaque
+                        monde, y compris ceux qui naissent), D2 rayon ×0,75, D3 plafond ÷2 avec
+                        `CLAMPED` 2. Mesure d'`advance_all` dans `axion_sim_collect`, drapeau
+                        `AXION_SIM_DEGRADED`, jauges `axion.sim.degradation_level` et
+                        `axion.sim.p95_ns`. Journal des transitions par Java en T5c (R-1880).
+                        T-307 ; 12 mutations tuées.
                   - [ ] Détecteur FM-22, amortissement puis sommeil (T-307).
                   - [x] Étiquettes t300/t305/t306 sur les tests existants qui couvrent déjà.
             - [ ] **T5b — contrat** : opcodes 11 `SET_OBSERVERS` et 12 `SET_ENTITY_PROXIES`

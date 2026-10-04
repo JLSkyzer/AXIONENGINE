@@ -70,6 +70,8 @@ struct SessionMetrics {
     workers: MetricId,
     sim_unbalanced: MetricId,
     sim_worlds: MetricId,
+    sim_degradation_level: MetricId,
+    sim_p95: MetricId,
 }
 
 /// État interne d'une session native.
@@ -236,6 +238,14 @@ impl Session {
         metrics
             .registry
             .set(metrics.sim_worlds, self.physics.dimension_count() as u64);
+        metrics.registry.set(
+            metrics.sim_degradation_level,
+            u64::from(self.physics.degradation_level().rank()),
+        );
+        metrics.registry.set(
+            metrics.sim_p95,
+            self.physics.last_p95_ns().unwrap_or_default(),
+        );
 
         let Some(jobs) = self.jobs.as_ref() else {
             return;
@@ -509,6 +519,14 @@ fn build_metrics() -> SessionMetrics {
     let sim_worlds = builder
         .gauge("axion.sim.worlds", "count")
         .expect("métrique de mondes physiques");
+    // FM-21 (ADR-123 §9) : le palier de dégradation de la simulation, de 0 à 3, et le p95
+    // de la dernière fenêtre qui l'a décidé.
+    let sim_degradation_level = builder
+        .gauge("axion.sim.degradation_level", "level")
+        .expect("métrique de palier de dégradation");
+    let sim_p95 = builder
+        .gauge("axion.sim.p95_ns", "ns")
+        .expect("métrique de p95 de la simulation");
 
     SessionMetrics {
         registry: builder.build(),
@@ -517,6 +535,8 @@ fn build_metrics() -> SessionMetrics {
         workers,
         sim_unbalanced,
         sim_worlds,
+        sim_degradation_level,
+        sim_p95,
     }
 }
 

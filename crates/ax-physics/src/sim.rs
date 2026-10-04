@@ -16,6 +16,7 @@ use crate::config::PhysicsConfig;
 use crate::debug::{select_outlines, DebugColliders};
 use crate::forces::FluidEnvironment;
 use crate::forces::FluidVolume;
+use crate::governor::{DegradationLevel, DegradationTransition, Governor};
 use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::geometry::WorldTransform;
@@ -83,7 +84,6 @@ pub(crate) fn handle_key(handle: Handle) -> u64 {
 ///
 /// Tient aussi le routage d'un handle d'assembly vers son corps et sa dimension,
 /// pour appliquer les commandes de `SimIn` (ADR-114) qui ciblent un handle.
-#[derive(Default)]
 pub struct SimDriver {
     dimensions: BTreeMap<u64, DimensionSim>,
     /// handle → (dimension, corps). Consultée par clé, jamais itérée (R-1020).
@@ -102,6 +102,15 @@ pub struct SimDriver {
     /// Compteurs cumulés des mondes détruits (R-610), gardés dans les totaux : ils ne se
     /// perdent pas avec leur monde.
     retired: WorldCounters,
+    /// Gouverneur FM-21 : la dégradation de la simulation sous surcharge (§25.5, §25.6).
+    governor: Governor,
+}
+
+impl Default for SimDriver {
+    /// Un pilote aux réglages par défaut de l'annexe A.3.
+    fn default() -> Self {
+        Self::with_settings(SimSettings::default())
+    }
 }
 
 impl std::fmt::Debug for SimDriver {
@@ -127,8 +136,14 @@ impl SimDriver {
     #[must_use]
     pub fn with_settings(settings: SimSettings) -> Self {
         Self {
+            dimensions: BTreeMap::new(),
+            routes: BTreeMap::new(),
+            tiles: BTreeMap::new(),
             settings,
-            ..Self::default()
+            envs: BTreeMap::new(),
+            observers: BTreeMap::new(),
+            retired: WorldCounters::default(),
+            governor: Governor::new(settings.sim_budget_ns),
         }
     }
 
@@ -144,6 +159,7 @@ impl SimDriver {
         let mut world = PhysicsWorld::new(self.settings.physics);
         world.set_contact_event_threshold(self.settings.contact_event_threshold);
         world.set_max_events_per_tick(self.settings.max_events_per_tick);
+        world.set_degraded_solver(self.governor.level() >= DegradationLevel::Degraded1);
         if let Some(env) = self.envs.get(&dimension) {
             world.set_gravity(env.gravity);
             world.set_wind(env.wind);
@@ -558,12 +574,53 @@ impl SimDriver {
     /// Rayon et plafond du tick : ceux des réglages, que nulle dégradation ne réduit
     /// encore.
     fn activity_limits(&self) -> ActivityLimits {
+        let level = self.governor.level();
+        let radius = self.settings.simulation_radius;
+        let cap = self.settings.max_active_bodies;
         ActivityLimits {
-            radius: self.settings.simulation_radius,
-            nominal_radius: self.settings.simulation_radius,
-            cap: self.settings.max_active_bodies,
-            nominal_cap: self.settings.max_active_bodies,
+            // Palier 2 : rayon de simulation −25 %, les corps lointains s'endorment.
+            radius: if level >= DegradationLevel::Degraded2 {
+                radius * 0.75
+            } else {
+                radius
+            },
+            nominal_radius: radius,
+            // Palier 3 : plafond de corps actifs −50 %, arrondi au supérieur — jamais nul
+            // s'il ne l'était pas.
+            cap: if level >= DegradationLevel::Degraded3 {
+                cap.div_ceil(2)
+            } else {
+                cap
+            },
+            nominal_cap: cap,
         }
+    }
+
+    /// Nourrit le gouverneur FM-21 de la durée mesurée d'un tick de simulation (§25.5) et
+    /// applique son palier s'il change (§25.6) : le solveur de chaque monde au palier 1,
+    /// le rayon et le plafond de la gestion d'activité aux paliers 2 et 3, dès le
+    /// prochain `manage_activity`. Rend la transition et sa cause, que la frontière
+    /// journalise (R-1880).
+    pub fn record_tick_duration(&mut self, nanos: u64) -> Option<DegradationTransition> {
+        let transition = self.governor.observe(nanos)?;
+        let degraded_solver = transition.to >= DegradationLevel::Degraded1;
+        for sim in self.dimensions.values_mut() {
+            sim.world.set_degraded_solver(degraded_solver);
+        }
+        Some(transition)
+    }
+
+    /// Palier de dégradation courant (SM-02, FM-21).
+    #[must_use]
+    pub fn degradation_level(&self) -> DegradationLevel {
+        self.governor.level()
+    }
+
+    /// p95 de la dernière fenêtre de mesure du gouverneur, en nanosecondes ; `None` avant
+    /// la première fenêtre complète.
+    #[must_use]
+    pub fn last_p95_ns(&self) -> Option<u64> {
+        self.governor.last_p95_ns()
     }
 
     /// Avance toutes les dimensions du temps réel écoulé.
@@ -917,6 +974,151 @@ mod tests {
             (vy + 9.81).abs() < 0.2,
             "une dimension sans environnement : {vy}"
         );
+    }
+
+    /// Une bille dynamique de la dimension, au handle et à la position monde donnés.
+    fn bille_en(
+        driver: &mut SimDriver,
+        dimension: u64,
+        handle: Handle,
+        position: [f64; 3],
+    ) -> BodyId {
+        driver
+            .create_assembly(
+                dimension,
+                handle,
+                WorldTransform {
+                    position,
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                },
+                BodyKind::Dynamic,
+                &[BodyCollider {
+                    shape: Shape::Ball { radius: 0.5 },
+                    density: 1000.0,
+                    material: ContactMaterial::default(),
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                }],
+            )
+            .expect("une bille est valide")
+    }
+
+    /// Un pilote sans gravité, au pas de 1/120 s, de budget 1 µs : 2 µs le dépassent,
+    /// 0,1 µs est le calme.
+    fn pilote_degradable(radius: f32, cap: usize) -> SimDriver {
+        let mut physics = PhysicsConfig::new(1.0 / 120.0, 4).unwrap();
+        physics.gravity = Vec3::ZERO;
+        SimDriver::with_settings(SimSettings {
+            physics,
+            simulation_radius: radius,
+            max_active_bodies: cap,
+            sim_budget_ns: 1_000,
+            ..SimSettings::default()
+        })
+    }
+
+    /// Nourrit le gouverneur de `count` fenêtres complètes de ticks à `nanos`.
+    fn fenetres(driver: &mut SimDriver, count: usize, nanos: u64) {
+        for _ in 0..count * crate::governor::WINDOW_TICKS {
+            driver.record_tick_duration(nanos);
+        }
+    }
+
+    /// Un tick dont le seul joueur de la dimension 0 se tient à l'origine.
+    fn gestion_autour_de_l_origine(driver: &mut SimDriver) -> ActivityReport {
+        driver.begin_tick();
+        driver.set_observers(0, &[DVec3::ZERO]);
+        driver.manage_activity()
+    }
+
+    #[test]
+    fn t307_le_palier_1_retire_une_iteration_et_un_sous_pas_a_chaque_monde() {
+        let mut driver = pilote_degradable(128.0, 2048);
+        bille(&mut driver, 0);
+        let world = driver.world_mut(0).unwrap();
+        assert_eq!((world.solver_iterations(), world.max_substeps()), (4, 4));
+        assert_eq!(
+            world.advance(1.0 / 20.0),
+            4,
+            "six sous-pas demandés, quatre permis"
+        );
+
+        fenetres(&mut driver, 3, 2_000);
+
+        assert_eq!(driver.degradation_level(), DegradationLevel::Degraded1);
+        let world = driver.world_mut(0).unwrap();
+        assert_eq!((world.solver_iterations(), world.max_substeps()), (3, 3));
+        assert_eq!(world.advance(1.0 / 20.0), 3);
+        // Un monde né pendant la dégradation la porte aussi.
+        driver.apply_dimension_env(7, Vec3::ZERO, Vec3::ZERO, None);
+        assert_eq!(driver.world_mut(7).unwrap().max_substeps(), 3);
+
+        // Trente secondes de calme : le palier se lève et rend la configuration.
+        fenetres(&mut driver, 6, 100);
+        assert_eq!(driver.degradation_level(), DegradationLevel::Normal);
+        assert_eq!(driver.world_mut(0).unwrap().max_substeps(), 4);
+        assert_eq!(driver.world_mut(7).unwrap().solver_iterations(), 4);
+    }
+
+    #[test]
+    fn t307_au_palier_2_les_corps_lointains_s_endorment_et_se_signalent() {
+        use ax_model::dm::physics::{event_data, event_kind};
+        let mut driver = pilote_degradable(100.0, 2048);
+        // À 50 et 90 blocs du joueur : le rayon réduit à 75 n'en garde qu'une.
+        let proche = bille_en(&mut driver, 0, Handle::new(1, 1), [50.0, 0.0, 0.0]);
+        let lointaine = bille_en(&mut driver, 0, Handle::new(2, 1), [90.0, 0.0, 0.0]);
+        fenetres(&mut driver, 6, 2_000);
+        assert_eq!(driver.degradation_level(), DegradationLevel::Degraded2);
+
+        let report = gestion_autour_de_l_origine(&mut driver);
+
+        assert_eq!((report.slept_by_radius, report.slept_by_budget), (1, 1));
+        let world = driver.world_mut(0).unwrap();
+        assert_eq!(world.is_sleeping(proche), Some(false));
+        assert_eq!(world.is_sleeping(lointaine), Some(true));
+        let clamped: Vec<PhysicsEvent> = world
+            .drain_events()
+            .into_iter()
+            .filter(|event| event.kind == event_kind::CLAMPED)
+            .collect();
+        assert_eq!(clamped.len(), 1);
+        assert_eq!(
+            (clamped[0].assembly_a, clamped[0].data),
+            (Handle::new(2, 1), event_data::CLAMPED_BUDGET)
+        );
+
+        // Le palier levé (30 s, puis 10 s par palier), elle revient à portée et repart.
+        fenetres(&mut driver, 8, 100);
+        assert_eq!(driver.degradation_level(), DegradationLevel::Normal);
+        assert_eq!(gestion_autour_de_l_origine(&mut driver).woken, 1);
+    }
+
+    #[test]
+    fn t307_au_palier_3_le_plafond_de_corps_actifs_est_divise_par_deux() {
+        let mut driver = pilote_degradable(128.0, 4);
+        let corps: Vec<BodyId> = (1..=4)
+            .map(|i| {
+                bille_en(
+                    &mut driver,
+                    0,
+                    Handle::new(i, 1),
+                    [f64::from(i) * 3.0, 0.0, 0.0],
+                )
+            })
+            .collect();
+        fenetres(&mut driver, 9, 2_000);
+        assert_eq!(driver.degradation_level(), DegradationLevel::Degraded3);
+
+        let report = gestion_autour_de_l_origine(&mut driver);
+
+        // Plafond 4 → 2 : les deux plus éloignés dorment, et seule la dégradation l'impose.
+        assert_eq!((report.slept_by_cap, report.slept_by_budget), (2, 2));
+        let world = driver.world_mut(0).unwrap();
+        let dorment: Vec<bool> = corps
+            .iter()
+            .map(|body| world.is_sleeping(*body).unwrap())
+            .collect();
+        assert_eq!(dorment, [false, false, true, true]);
     }
 
     #[test]
