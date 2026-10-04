@@ -94,6 +94,8 @@ class StatusReportTest {
         assertTrue(report.contains("inactif"), report);
         assertTrue(report.contains("UNLOADED"), report);
         assertTrue(report.contains("pas encore"), report);
+        // Sans simulation, pas de palier à afficher : le taire vaut mieux que l'inventer.
+        assertTrue(!report.contains("simulation : palier"), report);
     }
 
     @Test
@@ -114,6 +116,8 @@ class StatusReportTest {
         // lots, et la voir permet de constater une machine anormalement lente.
         assertTrue(report.contains("137 ns"), report);
         assertTrue(report.contains("tous actifs"), report);
+        // R-1880 : le palier de dégradation de la simulation, NORMAL tant que rien ne pèse.
+        assertTrue(report.contains("  simulation : palier NORMAL"), report);
     }
 
     @Test

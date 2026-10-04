@@ -400,6 +400,11 @@ class NativeBridgeTest {
         assertTrue(metriques.startsWith("{"), metriques);
         assertTrue(metriques.contains("axion.budget.sim_ns_per_tick.consumed"), metriques);
         assertTrue(metriques.contains("axion.jobs.workers"), metriques);
+        // ADR-123 §9 : les jauges de dégradation que Java relève sont dans l'export réel, au
+        // palier NORMAL tant qu'aucune fenêtre n'a pesé.
+        dev.axion.physics.DegradationGauges jauges = dev.axion.physics.DegradationGauges.parse(metriques);
+        assertNotNull(jauges, metriques);
+        assertEquals(0, jauges.level(), "palier NORMAL");
 
         // T-190 (suite) : le cycle de simulation IF-03 traverse la frontière via
         // NativeSimulation, sur la vraie bibliothèque. C'est le chemin qu'empruntera
@@ -553,24 +558,62 @@ class NativeBridgeTest {
                 new float[] {2.0f, 0.5f, 2.0f},
                 new float[] {0.0f, 0.0f, 0.0f},
                 dev.axion.physics.SimCommandStream.PROXY_BOX);
+        // Le choc lui-même remonte en CONTACT_IMPULSE : au sous-pas du début du contact, ou au
+        // suivant si ce début n'est encore qu'un contact prédit. On garde les événements de son
+        // tick et la vitesse de chute du tick d'avant.
         dev.axion.physics.PhysicsEvent contact = null;
-        for (int t = 0; t < 40 && contact == null; t++) {
+        java.util.List<dev.axion.physics.PhysicsEvent> evenementsDuChoc = null;
+        double vitesseAvantChoc = 0.0;
+        for (int t = 0; t < 40 && evenementsDuChoc == null; t++) {
             dev.axion.physics.SimCommandStream entites = new dev.axion.physics.SimCommandStream()
                     .setObservers(0L, new double[][] {{0.0, ySousLeCorps, 0.0}})
                     .setEntityProxies(0L, java.util.List.of(dalle));
             dev.axion.physics.CollectResult pas = simulation.tick(41L + t, entites, 0L);
             assertTrue(pas.ok(), () -> "collect avec joueurs et entités refusé, code " + pas.code());
             for (dev.axion.physics.PhysicsEvent evenement : pas.events()) {
-                // CONTACT_START (event_kind 0) portant CONTACT_OTHER_ENTITY (data, bit 0).
-                if (evenement.kind() == 0 && (evenement.data() & 1) != 0) {
+                if (contact == null
+                        && evenement.kind() == dev.axion.physics.PhysicsEventCodes.Kind.CONTACT_START
+                        && (evenement.data() & dev.axion.physics.PhysicsEventCodes.Data.CONTACT_OTHER_ENTITY) != 0) {
                     contact = evenement;
                 }
+            }
+            if (pas.events().stream().anyMatch(dev.axion.physics.EntityImpacts::concernsEntity)) {
+                evenementsDuChoc = pas.events();
+            } else {
+                vitesseAvantChoc = -pas.bodies().stream()
+                        .filter(corpsChute -> corpsChute.handleIndex() == 1)
+                        .findFirst()
+                        .orElseThrow()
+                        .linearVelocity()[1];
             }
         }
         assertNotNull(contact, "le corps qui tombe heurte l'entité");
         assertEquals(1, contact.assemblyAIndex(), "l'assembly en a");
         assertEquals(77, contact.assemblyBIndex(), "l'entité en b");
         assertEquals(0, contact.assemblyBGeneration(), "génération 0 : pas une assembly");
+
+        // R-1010 et ADR-123 §7 sur les vrais événements du natif : le choc pousse l'entité de
+        // l'assembly vers elle — vers le bas —, et sa vitesse d'approche est celle de la chute.
+        assertNotNull(evenementsDuChoc, "le choc remonte en CONTACT_IMPULSE");
+        java.util.List<dev.axion.physics.EntityImpacts.Impact> impacts =
+                dev.axion.physics.EntityImpacts.gather(evenementsDuChoc);
+        assertEquals(1, impacts.size(), "une entité touchée");
+        dev.axion.physics.EntityImpacts.Impact impact = impacts.get(0);
+        assertEquals(77, impact.entity());
+        assertEquals(1, impact.assemblyIndex());
+        assertEquals(1, impact.assemblyGeneration());
+        double[] poussee = impact.velocityChange(dev.axion.physics.EntityImpacts.massOf(4.0 * 1.0 * 4.0));
+        assertTrue(poussee[1] < 0.0, () -> "poussée vers le bas attendue : " + java.util.Arrays.toString(poussee));
+        assertTrue(Math.abs(poussee[0]) <= 1.0e-3 * -poussee[1] && Math.abs(poussee[2]) <= 1.0e-3 * -poussee[1],
+                () -> "face contre face, la poussée est verticale : " + java.util.Arrays.toString(poussee));
+        double approche = impact.approachSpeed();
+        double avant = vitesseAvantChoc;
+        // Mesurée avant la résolution du sous-pas du choc : la chute du tick d'avant, plus au plus
+        // un tick de gravité (0,49 m/s).
+        assertTrue(avant > 5.0, () -> "le corps tombe vite au contact : " + avant + " m/s");
+        assertTrue(approche > avant - 0.05 && approche < avant + 0.6,
+                () -> "vitesse d'approche " + approche + " m/s, chute " + avant + " m/s");
+        assertTrue(dev.axion.physics.EntityImpacts.fallDamage(approche) > 0.0, "un tel choc blesse");
 
         // Annuler après un cycle clos est inoffensif.
         assertEquals(NativeBridge.OK, simulation.cancel());

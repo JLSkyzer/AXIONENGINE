@@ -20,6 +20,7 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
@@ -172,6 +173,38 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      */
     public void forEachBody(BiConsumer<AxionEntity, Double> visitor) {
         ledger.forEachBody((index, entity) -> visitor.accept(entity, speeds.getOrDefault(index, 0.0)));
+    }
+
+    /**
+     * {@return l'assembly dotée du corps de ce handle, ou {@code null}}
+     *
+     * @param index index du handle
+     * @param generation génération du handle : {@link #GENERATION} pour une assembly de la session
+     */
+    public AxionEntity assembly(int index, int generation) {
+        return generation == GENERATION ? ledger.entity(index) : null;
+    }
+
+    /**
+     * {@return ce qui nomme une assembly dans le journal des faits de simulation : sa
+     * definition, sa position et sa dimension, ou son seul index si elle n'a plus de corps}
+     *
+     * @param index index du handle
+     */
+    public String describe(int index) {
+        AxionEntity entity = ledger.entity(index);
+        if (entity == null) {
+            return "l'assembly #" + index;
+        }
+        return String.format(
+                Locale.ROOT,
+                "l'assembly #%d (%s) en %.1f %.1f %.1f, %s",
+                index,
+                entity.definitionId(),
+                entity.getX(),
+                entity.getY(),
+                entity.getZ(),
+                entity.level().dimension().location());
     }
 
     /**

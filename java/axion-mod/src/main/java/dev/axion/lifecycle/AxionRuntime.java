@@ -11,10 +11,13 @@ import dev.axion.config.ConfigSchema.Scope;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
 import dev.axion.physics.CollectResult;
+import dev.axion.physics.DegradationGauges;
 import dev.axion.physics.NativeSimulation;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
+import dev.axion.physics.SimEventSink;
 import dev.axion.physics.SimStateSink;
+import dev.axion.physics.SimulationJournal;
 import dev.axion.platform.PlatformAdapter;
 import dev.axion.render.RenderCapabilities;
 import java.util.ArrayList;
@@ -24,6 +27,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiFunction;
+import java.util.function.IntFunction;
 
 /**
  * Cycle de vie d'AXION, indépendant de la plateforme (C-01).
@@ -84,6 +88,20 @@ public final class AxionRuntime {
      * états ne sont pas réappliqués (aucune entité à piloter).
      */
     private SimStateSink stateSink;
+    /**
+     * Puits des événements collectés (R-1010), posé par la couche Forge : effets sur les entités
+     * vanilla (R-614, ADR-123 §7). Absent → les événements ne touchent aucune entité.
+     */
+    private SimEventSink eventSink;
+    /**
+     * Faits de simulation du tick (FM-20, R-180, FM-21, FM-22, R-1880, R-281), que la couche
+     * Forge journalise après chaque tick ({@link #drainSimulationJournal()}). Il survit aux
+     * serveurs successifs d'un client, comme le contexte natif dont il suit le palier, et
+     * repart à neuf avec un nouveau contexte.
+     */
+    private SimulationJournal simulationJournal = new SimulationJournal();
+    /** L'export des métriques s'est-il montré illisible pendant un relevé de palier ? Dit une fois. */
+    private boolean gaugesUnreadableNoted;
 
     /**
      * Le cycle de simulation était-il sain au tick précédent ? Sert à ne
@@ -315,6 +333,12 @@ public final class AxionRuntime {
      * <p>Un {@code collect} refusé n'est jamais un abandon silencieux (R-281) ; il
      * est journalisé, mais seulement à la transition sain → refusé, pour ne pas
      * inonder les diagnostics à chaque tick.
+     *
+     * <p>Les événements du tick vont, après les états, au journal des faits de simulation
+     * (ADR-123 §8, §11) puis au puits Forge (R-1010). Le drapeau {@code AXION_SIM_DEGRADED} dit
+     * seulement « pas {@code NORMAL} » : tant qu'il est levé, et au tick qui le baisse, le palier
+     * et sa cause se relèvent dans les jauges natives (R-1880). Aux ticks nominaux, rien de tout
+     * cela ne coûte.
      */
     private void driveSimulation() {
         if (simulation == null) {
@@ -334,12 +358,54 @@ public final class AxionRuntime {
         if (stateSink != null) {
             stateSink.applyStates(tick, result.bodies(), result.bounds());
         }
+        // R-1010 : les événements, sur ce thread, après les états — une entité liée est déjà à sa
+        // place quand un effet la touche. Les faits qu'ils portent vont au journal d'abord : un
+        // puits qui lèverait ne les ferait pas taire.
+        if (!result.events().isEmpty()) {
+            simulationJournal.recordEvents(tick, result.events());
+            if (eventSink != null) {
+                eventSink.applyEvents(tick, result.events());
+            }
+        }
+        if (result.ok() && (result.degraded() || simulationJournal.degradationLevel() != 0)) {
+            readDegradation(tick);
+        }
         if (result.ok() != simulationHealthy) {
             simulationHealthy = result.ok();
-            transitions.add(result.ok()
+            simulationJournal.note(!result.ok(), result.ok()
                     ? "cycle de simulation rétabli au tick " + tick
                     : "collect refusé au tick " + tick + " (code " + result.code() + ")");
         }
+    }
+
+    /**
+     * Relève le palier de dégradation et le p95 dans les jauges natives (SM-02, R-1880) ; le
+     * journal dit chaque changement de palier avec sa cause.
+     *
+     * @param tick numéro du tick
+     */
+    private void readDegradation(long tick) {
+        String json;
+        try {
+            json = nativeApi.metricsJson(outcome.context());
+        } catch (RuntimeException | UnsatisfiedLinkError failure) {
+            json = null;
+        }
+        DegradationGauges gauges = DegradationGauges.parse(json);
+        if (gauges == null) {
+            if (!gaugesUnreadableNoted) {
+                gaugesUnreadableNoted = true;
+                simulationJournal.note(true, "palier de dégradation illisible dans l'export des"
+                        + " métriques au tick " + tick + " : ses transitions ne peuvent être"
+                        + " journalisées tant qu'il le reste (R-1880)");
+            }
+            return;
+        }
+        simulationJournal.recordDegradation(
+                tick,
+                gauges.level(),
+                gauges.p95Ns(),
+                outcome.config().getInt("budgets.sim_ns_per_tick"));
     }
 
     /**
@@ -380,6 +446,46 @@ public final class AxionRuntime {
      */
     public void setStateSink(SimStateSink sink) {
         this.stateSink = sink;
+    }
+
+    /**
+     * Pose (ou retire, avec {@code null}) le puits des événements collectés (R-1010).
+     *
+     * @param sink puits d'événements, ou {@code null} pour le retirer
+     */
+    public void setEventSink(SimEventSink sink) {
+        this.eventSink = sink;
+    }
+
+    /**
+     * Pose (ou retire, avec {@code null}) ce qui nomme une assembly dans le journal des faits de
+     * simulation : un groupe nominal, « l'assembly … », que la couche Forge tire de l'entité
+     * (definition, position). Sans lui, l'index du handle seul.
+     *
+     * @param describer index de handle → description, ou {@code null}
+     */
+    public void setAssemblyDescriber(IntFunction<String> describer) {
+        simulationJournal.setDescriber(describer);
+    }
+
+    /**
+     * {@return les faits de simulation consignés depuis l'appel précédent, puis les oublie}
+     *
+     * <p>Appelé par la couche Forge après chaque tick, qui les journalise : le runtime ne
+     * journalise pas lui-même. Liste vide, sans allocation, quand rien n'est arrivé.
+     */
+    public List<SimulationJournal.Entry> drainSimulationJournal() {
+        return simulationJournal.drain();
+    }
+
+    /** {@return le rang du palier de dégradation de la simulation, 0 pour {@code NORMAL}} */
+    public int degradationLevel() {
+        return simulationJournal.degradationLevel();
+    }
+
+    /** {@return le p95 du tick de simulation au dernier relevé, en ns, ou -1 sans relevé} */
+    public long degradationP95Ns() {
+        return simulationJournal.lastP95Ns();
     }
 
     /**
@@ -549,6 +655,10 @@ public final class AxionRuntime {
         // un redémarrage en recréera un sur le nouveau contexte.
         simulation = null;
         simulationHealthy = true;
+        // Un nouveau contexte a un gouverneur neuf, au palier NORMAL : le journal qui suivait
+        // l'ancien n'a plus rien à comparer.
+        simulationJournal = new SimulationJournal();
+        gaugesUnreadableNoted = false;
         transitionTo(LifecyclePhase.UNLOADED);
     }
 

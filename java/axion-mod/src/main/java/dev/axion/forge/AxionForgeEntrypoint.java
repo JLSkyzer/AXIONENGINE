@@ -5,6 +5,7 @@ import dev.axion.AxionMod;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
+import dev.axion.physics.SimulationJournal;
 import dev.axion.world.BlockMaterials;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -188,6 +189,14 @@ public final class AxionForgeEntrypoint {
             // ADR-123 : chaque tick, les joueurs (rayon de simulation, plafond, R-610) et les
             // entités vanilla qu'une assembly peut heurter (R-614).
             runtime.addCommandProvider(new EntityPresenceBridge(event.getServer(), assemblyRuntime));
+            // R-1010, R-614 : les contacts avec ces entités les poussent et les blessent, selon
+            // les réglages de l'annexe A.3 (amendement A1) ; le journal des faits de simulation
+            // nomme une assembly par sa definition et sa position.
+            runtime.setEventSink(new EntityImpactEffects(
+                    assemblyRuntime,
+                    runtime.outcome().config().getBoolean("physics.entity_push"),
+                    runtime.outcome().config().getBoolean("physics.entity_damage")));
+            runtime.setAssemblyDescriber(assemblyRuntime::describe);
         }
 
         // R-521 : barrière de démarrage. Sans elle, le monde se chargerait
@@ -214,6 +223,8 @@ public final class AxionForgeEntrypoint {
         // C-38/C-40 : débrancher les fournisseurs et le puits avant de couper le serveur.
         runtime.clearCommandProviders();
         runtime.setStateSink(null);
+        runtime.setEventSink(null);
+        runtime.setAssemblyDescriber(null);
         if (worldTileBridge != null) {
             worldTileBridge.close();
             worldTileBridge = null;
@@ -278,6 +289,15 @@ public final class AxionForgeEntrypoint {
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             runtime.onTick();
+            // Les faits de simulation du tick — E-2030, bornes, paliers de dégradation, collect
+            // refusé : le runtime les consigne, ce point d'ancrage les journalise.
+            for (SimulationJournal.Entry entry : runtime.drainSimulationJournal()) {
+                if (entry.warning()) {
+                    LOGGER.warn("AXION : {}", entry.text());
+                } else {
+                    LOGGER.info("AXION : {}", entry.text());
+                }
+            }
         }
     }
 

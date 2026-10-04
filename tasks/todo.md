@@ -1612,9 +1612,19 @@ substituable sans changer rapier »).
                         `invalid_states`, `bounds_unavailable`) publiés. Test d'ABI : un corps sans
                         joueur s'endort et se réveille à son retour ; clamp et restauration
                         comptés. `NativeBridgeTest` déclare le joueur à chaque tick, comme le jeu.
-                  - [ ] T5c-4 — consommateur d'événements (R-1010) : poussée des non-joueurs,
-                        dégâts `axion:collision` (type de dégâts en données), journal `E-2030`
-                        et des transitions de dégradation (R-1880).
+                  - [x] T5c-4 — consommateur d'événements (R-1010) : couture `SimEventSink`,
+                        après les états. Poussée des non-joueurs `Δv = Σ J·n / (m + m_eff)` —
+                        précision d'ADR-123 §7 : `J / m` surestimait la vitesse rendue d'un
+                        facteur `(m + m_eff) / m`, J venant d'un proxy de masse infinie —,
+                        dégâts `axion:collision` (type et messages de mort en données), effet
+                        d'une entité isolé (un gestionnaire tiers qui lève ne désactive pas le
+                        tick). Journal des faits de simulation : `E-2030`, `CLAMPED`, paliers de
+                        dégradation avec métrique, valeur et budget (R-1880), collect refusé
+                        (R-281, jamais imprimé jusqu'ici) — une ligne par assembly, fait et
+                        minute, huit par tick au plus ; palier dans `/axion status` ; codes
+                        d'événements générés pour Java (`PhysicsEventCodes`, parité). Vérifié :
+                        JUnit, vérification croisée sur la vraie bibliothèque (contact natif →
+                        poussée vers le bas, approche = vitesse de chute), 16 mutations tuées.
                   - [ ] T5c-5 — essai en jeu, Killian lançant le jeu.
             - Hors portée, nommé : palier `SAFE` de SM-02 (sièges M5, C-77), `DegradationEvent`
               et `ContactEvent` (API d'événements de C-70), filtre intra-assembly multi-corps

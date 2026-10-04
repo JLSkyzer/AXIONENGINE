@@ -97,3 +97,59 @@ fn toute_option_du_registre_figure_dans_la_classe() {
         }
     }
 }
+
+#[test]
+fn les_codes_d_evenement_sont_a_jour() {
+    // Les genres d'événement et le sens de `data` traversent la frontière (§10.7, ADR-123) :
+    // un consommateur Java qui lirait un code périmé confondrait deux faits sans qu'aucune
+    // erreur ne le signale.
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(axion_codegen::JAVA_EVENT_CODES_PATH);
+
+    let sur_disque = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "{} illisible ({err}) — le générer avec : cargo run -p axion-codegen --bin gen_java_config",
+            path.display()
+        )
+    });
+
+    let attendu = axion_codegen::render_java_event_codes().replace("\r\n", "\n");
+    assert_eq!(
+        sur_disque.replace("\r\n", "\n"),
+        attendu,
+        "les codes d'événement ont divergé — les régénérer avec : cargo run -p axion-codegen --bin gen_java_config"
+    );
+}
+
+#[test]
+fn chaque_code_d_evenement_figure_dans_la_classe_java() {
+    use ax_model::dm::physics::{event_data, event_kind};
+
+    let java = axion_codegen::render_java_event_codes();
+    for (name, value, _) in axion_codegen::EVENT_KINDS
+        .iter()
+        .chain(axion_codegen::EVENT_DATA.iter())
+    {
+        assert!(
+            java.contains(&format!("int {name} = {value};")),
+            "{name} absent des codes Java, ou mal numéroté"
+        );
+    }
+    // Les tables prennent leurs valeurs dans le DM ; on épingle celles que Java consomme
+    // déjà, pour qu'une table qui confondrait deux noms se voie.
+    assert!(java.contains(&format!(
+        "int CONTACT_IMPULSE = {};",
+        event_kind::CONTACT_IMPULSE
+    )));
+    assert!(java.contains(&format!("int CLAMPED = {};", event_kind::CLAMPED)));
+    assert!(java.contains(&format!("int RECOVERED = {};", event_kind::RECOVERED)));
+    assert!(java.contains(&format!(
+        "int CONTACT_OTHER_ENTITY = {};",
+        event_data::CONTACT_OTHER_ENTITY
+    )));
+    assert!(java.contains(&format!(
+        "int RECOVERED_INVALID_STATE = {};",
+        event_data::RECOVERED_INVALID_STATE
+    )));
+}

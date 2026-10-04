@@ -9,6 +9,7 @@
 
 use ax_model::buffer::{BufferKind, HEADER_BYTES, MAGIC};
 use ax_model::config::{ConfigDomain, ConfigOption, ConfigScope, ConfigValue};
+use ax_model::dm::physics::{event_data, event_kind};
 
 /// Chemin du fichier Java généré, relatif à la racine du dépôt.
 pub const JAVA_SCHEMA_PATH: &str =
@@ -128,6 +129,170 @@ fn describe_kind(kind: BufferKind) -> &'static str {
         BufferKind::Persist => "Blobs de persistance sérialisés",
         BufferKind::Debug => "Géométrie de debug",
     }
+}
+
+/// Chemin du fichier Java des codes d'événements physiques, relatif à la racine.
+pub const JAVA_EVENT_CODES_PATH: &str =
+    "java/axion-mod/src/main/java/dev/axion/physics/PhysicsEventCodes.java";
+
+/// Genres d'un `PhysicsEvent` (§10.7, ADR-113) : nom, valeur gelée, description.
+///
+/// La valeur vient de `ax-model` : elle ne peut pas diverger. Un genre ajouté au DM sans
+/// figurer ici manque seulement à Java, qui ignore un genre inconnu (ADR-113).
+pub const EVENT_KINDS: [(&str, u32, &str); 13] = [
+    (
+        "CONTACT_START",
+        event_kind::CONTACT_START,
+        "Début d'un contact.",
+    ),
+    ("CONTACT_END", event_kind::CONTACT_END, "Fin d'un contact."),
+    (
+        "CONTACT_IMPULSE",
+        event_kind::CONTACT_IMPULSE,
+        "Impulsion d'un contact persistant.",
+    ),
+    (
+        "SENSOR_ENTER",
+        event_kind::SENSOR_ENTER,
+        "Entrée dans un capteur.",
+    ),
+    (
+        "SENSOR_EXIT",
+        event_kind::SENSOR_EXIT,
+        "Sortie d'un capteur.",
+    ),
+    (
+        "JOINT_BROKEN",
+        event_kind::JOINT_BROKEN,
+        "Rupture d'une liaison.",
+    ),
+    (
+        "JOINT_JAMMED",
+        event_kind::JOINT_JAMMED,
+        "Blocage d'une liaison.",
+    ),
+    ("SLEEP", event_kind::SLEEP, "Endormissement d'un corps."),
+    ("WAKE", event_kind::WAKE, "Réveil d'un corps."),
+    (
+        "CLAMPED",
+        event_kind::CLAMPED,
+        "Grandeur clampée (budget dépassé).",
+    ),
+    (
+        "RECOVERED",
+        event_kind::RECOVERED,
+        "Retour à un état valide.",
+    ),
+    ("ATTACH", event_kind::ATTACH, "Attache d'un élément."),
+    (
+        "DETACH_ATTACHMENT",
+        event_kind::DETACH_ATTACHMENT,
+        "Détachement d'un attachement.",
+    ),
+];
+
+/// Sens du champ `data` d'un `PhysicsEvent` selon son genre (ADR-123) : nom, valeur,
+/// description.
+pub const EVENT_DATA: [(&str, u32, &str); 5] = [
+    (
+        "CONTACT_OTHER_ENTITY",
+        event_data::CONTACT_OTHER_ENTITY,
+        "Contact : l'autre corps est le proxy d'une entité vanilla (ADR-123 §6).",
+    ),
+    (
+        "RECOVERED_INVALID_STATE",
+        event_data::RECOVERED_INVALID_STATE,
+        "{@code RECOVERED} : restauré d'un état non fini ou hors du monde (E-2030).",
+    ),
+    (
+        "CLAMPED_VELOCITY",
+        event_data::CLAMPED_VELOCITY,
+        "{@code CLAMPED} : vitesse bornée (R-180), au plus une fois par minute.",
+    ),
+    (
+        "CLAMPED_BUDGET",
+        event_data::CLAMPED_BUDGET,
+        "{@code CLAMPED} : corps endormi par la dégradation de budget (FM-21).",
+    ),
+    (
+        "CLAMPED_STACKING",
+        event_data::CLAMPED_STACKING,
+        "{@code CLAMPED} : empilement agité sur place, amorti puis endormi (FM-22).",
+    ),
+];
+
+/// Rend la classe Java des codes d'événements physiques (§10.7, ADR-113, ADR-123).
+///
+/// Les deux modules du DM, `event_kind` et `event_data`, deviennent deux classes imbriquées
+/// aux mêmes noms de constantes : `Kind` et `Data`.
+#[must_use]
+pub fn render_java_event_codes() -> String {
+    let mut lines: Vec<String> = vec![
+        "package dev.axion.physics;".to_owned(),
+        String::new(),
+        "/**".to_owned(),
+        " * Codes des événements physiques (§10.7) : genres et sens du champ {@code data}."
+            .to_owned(),
+        " *".to_owned(),
+        " * <p><strong>Fichier généré — ne pas modifier à la main.</strong> La source est"
+            .to_owned(),
+        " * {@code crates/ax-model/src/dm/physics.rs} ({@code event_kind}, {@code event_data}). \
+         Régénérer"
+            .to_owned(),
+        " * avec :".to_owned(),
+        " *".to_owned(),
+        " * <pre>cargo run -p axion-codegen --bin gen_java_config</pre>".to_owned(),
+        " *".to_owned(),
+        " * <p>Les valeurs sont gelées avec la structure de l'événement (ADR-113) et le sens de"
+            .to_owned(),
+        " * {@code data} ratifié avec ADR-123. Un lecteur ignore un genre ou un code inconnu."
+            .to_owned(),
+        " */".to_owned(),
+        "public final class PhysicsEventCodes {".to_owned(),
+        String::new(),
+        "    private PhysicsEventCodes() {".to_owned(),
+        "        throw new AssertionError(\"classe de constantes, non instanciable\");".to_owned(),
+        "    }".to_owned(),
+    ];
+    render_java_constants(
+        &mut lines,
+        "Kind",
+        "Genres d'événement ({@code PhysicsEvent.kind}).",
+        &EVENT_KINDS,
+    );
+    render_java_constants(
+        &mut lines,
+        "Data",
+        "Sens du champ {@code PhysicsEvent.data}, selon le genre.",
+        &EVENT_DATA,
+    );
+    lines.push("}".to_owned());
+    lines.join("\n") + "\n"
+}
+
+/// Ajoute une classe imbriquée de constantes `int` au rendu.
+fn render_java_constants(
+    lines: &mut Vec<String>,
+    class: &str,
+    summary: &str,
+    constants: &[(&str, u32, &str)],
+) {
+    lines.push(String::new());
+    lines.push(format!("    /** {summary} */"));
+    lines.push(format!("    public static final class {class} {{"));
+    lines.push(String::new());
+    lines.push(format!("        private {class}() {{"));
+    lines.push(
+        "            throw new AssertionError(\"classe de constantes, non instanciable\");"
+            .to_owned(),
+    );
+    lines.push("        }".to_owned());
+    for (name, value, description) in constants {
+        lines.push(String::new());
+        lines.push(format!("        /** {description} */"));
+        lines.push(format!("        public static final int {name} = {value};"));
+    }
+    lines.push("    }".to_owned());
 }
 
 /// Rend la classe Java du schéma de configuration.

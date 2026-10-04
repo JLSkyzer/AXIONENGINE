@@ -985,3 +985,45 @@ dégâts aux entités prévus en T5c (h = v²/2g) n'auraient jamais rien inflig�
 **Règle.** Chaque champ d'une structure publiée (DM, événement, rapport) a au moins une assertion
 qui en lit une valeur non triviale, dans une scène où la physique lui donne une valeur connue. Un
 champ que rien ne lit est présumé faux.
+
+## 2026-10-04 | Une formule de poussée ratifiée, fausse d'un facteur (m + m_eff) / m
+
+**Ce qui a mal tourné.** ADR-123 §7, que j'avais rédigé et que Killian a ratifié, posait la poussée
+d'une entité vanilla à `Δv = J·n / m`. Mais `J` vient d'un contact contre un proxy cinématique, de
+masse infinie (§10.2) : c'est l'impulsion qui arrête l'assembly comme contre un mur. Une poule de
+112 kg heurtée à 10 m/s par une voiture d'une tonne serait repartie à 89 m/s. Vu en chiffrant un
+exemple au moment d'écrire `EntityImpacts`, avant tout code de la poussée ; corrigé en
+`J / (m + m_eff)`, précisé dans l'ADR et signalé.
+
+**Cause.** Une formule physique écrite sans être confrontée à un cas chiffré aux masses très
+inégales.
+
+**Règle.** Toute formule physique d'un ADR se chiffre sur deux cas limites — l'un des corps bien
+plus lourd que l'autre, dans les deux sens — avant d'être soumise à ratification. Une correction
+trouvée à la mise en œuvre se consigne en précision de l'ADR et se signale au mainteneur.
+
+## 2026-10-04 | « Collect refusé » consigné pendant les ticks, jamais imprimé
+
+**Ce qui a mal tourné.** `AxionRuntime.driveSimulation` ajoutait « collect refusé » à son journal
+des transitions. Or la couche Forge n'imprime ce journal qu'autour des transitions qu'elle
+enveloppe (`logTransitions`), et `onTick` ne l'était pas : la ligne restait en mémoire, et R-281
+(« jamais un abandon silencieux ») n'était pas tenu en jeu. Vu en branchant le journal des faits de
+simulation de T5c-4.
+
+**Cause.** Une ligne écrite dans un journal sans vérifier ce qui l'imprime — la règle sur les
+champs publiés que rien ne lit (ci-dessus), appliquée aux journaux.
+
+**Règle.** Avant d'écrire dans un journal, suivre la ligne jusqu'au log. Ce qui naît pendant un
+tick passe par un canal vidé après chaque tick (`drainSimulationJournal`).
+
+## 2026-10-04 | Une campagne de mutations perdue sur `cmd /c gradlew.bat`
+
+**Ce qui a mal tourné.** Le premier passage du script de mutations Java a rendu seize « échecs sans
+test identifié » : `cmd` répondait que `gradlew.bat` « n'est pas reconnu ». L'environnement des
+agents porte `NoDefaultCurrentDirectoryInExePath=1`, déjà consigné dans la BDC, que je n'avais pas
+relue. Restaurations vérifiées, aucun dégât ; relancé avec le chemin absolu.
+
+**Cause.** Un script d'outillage écrit sans consulter l'index de la BDC, qui avait la réponse.
+
+**Règle.** Avant d'écrire un script qui lance des outils, lire la section Développement de
+`D:\BDC\Index.md`. Appeler `gradlew.bat` par son chemin absolu.

@@ -42,6 +42,18 @@ fn main() -> ExitCode {
     }
     println!("{} genere depuis ax-model", axion_codegen::JAVA_BUFFER_PATH);
 
+    let events = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(axion_codegen::JAVA_EVENT_CODES_PATH);
+    if let Err(err) = std::fs::write(&events, axion_codegen::render_java_event_codes()) {
+        eprintln!("ecriture de {} impossible : {err}", events.display());
+        return ExitCode::FAILURE;
+    }
+    println!(
+        "{} genere depuis ax-model",
+        axion_codegen::JAVA_EVENT_CODES_PATH
+    );
+
     // Les fichiers de reference embarques dans le JAR : Java les recopie dans
     // le repertoire de configuration au premier demarrage, plutot que de
     // redupliquer la logique de rendu.

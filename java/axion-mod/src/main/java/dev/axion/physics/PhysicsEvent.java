@@ -11,12 +11,12 @@ import java.nio.ByteBuffer;
  * handle absent pour un événement mono-corps comme SLEEP/WAKE), un point et une
  * normale de contact monde, et les données de contact de R-615.
  *
- * <p>Les matériaux sont des {@code u16} lus non signés. Le champ {@code kind}
- * est exposé brut : sa sémantique vit dans le DM natif ({@code event_kind}) et
- * sera générée pour Java quand un consommateur la réclamera. Le test Java
- * {@code PhysicsEventTest} épingle la lecture.
+ * <p>Les matériaux sont des {@code u16} lus non signés. Les champs {@code kind}
+ * et {@code data} sont exposés bruts : leurs valeurs sont générées depuis le DM
+ * natif ({@code event_kind}, {@code event_data}) dans {@link PhysicsEventCodes}.
+ * Le test Java {@code PhysicsEventTest} épingle la lecture.
  *
- * @param kind code d'événement (voir {@code event_kind} natif)
+ * @param kind code d'événement ({@link PhysicsEventCodes.Kind})
  * @param assemblyAIndex index du handle de l'assembly A
  * @param assemblyAGeneration génération du handle de l'assembly A
  * @param assemblyBIndex index du handle de l'assembly B (0 si absent)
@@ -31,7 +31,7 @@ import java.nio.ByteBuffer;
  * @param effectiveMass masse effective au contact le long de la normale, en kg
  * @param materialA matériau de A (non signé)
  * @param materialB matériau de B (non signé)
- * @param data charge utile propre à l'événement
+ * @param data charge utile propre à l'événement ({@link PhysicsEventCodes.Data})
  */
 public record PhysicsEvent(
         int kind,

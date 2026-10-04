@@ -3,6 +3,7 @@ package dev.axion.diag;
 import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
+import dev.axion.physics.SimulationJournal;
 import dev.axion.render.RenderCapabilities;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,6 +52,15 @@ public final class StatusReport {
         } else {
             lines.add("  runtime natif : inactif — " + outcome.reason());
             lines.add("  cause : " + outcome.detail());
+        }
+
+        if (runtime.isOperational()) {
+            // R-1880 : le palier de dégradation de la simulation (SM-02) et, hors du nominal, le
+            // p95 qui l'explique.
+            lines.add("  simulation : palier " + SimulationJournal.describe(
+                    runtime.degradationLevel(),
+                    runtime.degradationP95Ns(),
+                    outcome.config().getInt("budgets.sim_ns_per_tick")));
         }
 
         if (outcome != null && !outcome.diagnostics().isEmpty()) {

@@ -1,0 +1,4 @@
+{
+  "death.attack.axion.collision": "%1$s was hit by a moving object",
+  "death.attack.axion.collision.player": "%1$s was hit by a moving object whilst trying to escape %2$s"
+}
