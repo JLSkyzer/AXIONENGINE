@@ -1027,3 +1027,20 @@ relue. Restaurations vérifiées, aucun dégât ; relancé avec le chemin absolu
 
 **Règle.** Avant d'écrire un script qui lance des outils, lire la section Développement de
 `D:\BDC\Index.md`. Appeler `gradlew.bat` par son chemin absolu.
+
+## 2026-10-04 | Une représentation du terrain choisie sans la mesurer à l'échelle d'un vrai monde
+
+**Ce qui a mal tourné.** C-38 T1 a posé une tuile comme un corps portant un collider par boîte,
+en écartant le compound au vu du plafond de 64 formes filles du §10.3. Testé sur des tuiles
+d'une ou deux boîtes, le choix tenait. Dans un vrai monde, trois cubes ont fait naître
+731 136 colliders, et rapier refait tout l'arbre de sa phase large à chaque retrait de
+collider : 20 ms pour un proxy retiré, un p95 de 62,9 ms relevé en jeu par FM-21.
+
+**Cause.** Une représentation de donnée de masse validée sur un cas jouet, et une règle du CDC
+lue isolément (§10.3) quand une lecture conjointe avec la fiche 5.30 — des compounds de
+64 boîtes — satisfaisait les deux.
+
+**Règle.** Une représentation de donnée de masse (terrain, particules, débris) se mesure à
+l'échelle du jeu réel avant d'être figée, par un banc qui en reproduit l'ordre de grandeur
+(`charge_tuiles`). Quand deux exigences semblent s'exclure, chercher la lecture qui les
+satisfait ensemble avant d'en sacrifier une.

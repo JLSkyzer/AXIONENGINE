@@ -223,6 +223,8 @@ fn un_corps_sans_joueur_a_portee_s_endort_et_se_reveille_a_son_retour() {
         "éveillé près d'un joueur"
     );
     assert_eq!(metrique(ctx, "axion.sim.slept_radius"), 0);
+    // C-38 T4 : les feuilles de la phase large se voient ; ici, le seul collider du cube.
+    assert_eq!(metrique(ctx, "axion.sim.colliders"), 1);
 
     // Plus aucun joueur déclaré : le corps s'endort avant le pas (R-612), compté.
     let flags = tick(ctx, 2, &[]);

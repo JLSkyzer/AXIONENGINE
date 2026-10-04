@@ -70,6 +70,7 @@ struct SessionMetrics {
     workers: MetricId,
     sim_unbalanced: MetricId,
     sim_worlds: MetricId,
+    sim_colliders: MetricId,
     sim_degradation_level: MetricId,
     sim_p95: MetricId,
     sim_slept_radius: MetricId,
@@ -256,6 +257,9 @@ impl Session {
         metrics
             .registry
             .set(metrics.sim_worlds, self.physics.dimension_count() as u64);
+        metrics
+            .registry
+            .set(metrics.sim_colliders, self.physics.collider_count() as u64);
         metrics.registry.set(
             metrics.sim_degradation_level,
             u64::from(self.physics.degradation_level().rank()),
@@ -550,6 +554,11 @@ fn build_metrics() -> SessionMetrics {
     let sim_worlds = builder
         .gauge("axion.sim.worlds", "count")
         .expect("métrique de mondes physiques");
+    // C-38 T4 : les colliders de tous les mondes, feuilles de la phase large de rapier, qui
+    // refait tout son arbre à chaque retrait — un compte qui dérive coûte à chaque tick.
+    let sim_colliders = builder
+        .gauge("axion.sim.colliders", "count")
+        .expect("métrique de colliders");
     // FM-21 (ADR-123 §9) : le palier de dégradation de la simulation, de 0 à 3, et le p95
     // de la dernière fenêtre qui l'a décidé.
     let sim_degradation_level = builder
@@ -578,6 +587,7 @@ fn build_metrics() -> SessionMetrics {
         workers,
         sim_unbalanced,
         sim_worlds,
+        sim_colliders,
         sim_degradation_level,
         sim_p95,
         sim_slept_radius,

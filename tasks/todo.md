@@ -1155,6 +1155,13 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         Mais reproduire chez nous tous les invariants internes de deux
         analyseurs reviendrait à les réécrire, et cette réécriture dériverait à
         la première mise à jour.
+- [ ] **Troisième panique de `gltf` 1.4.1**, trouvée par la campagne planifiée du
+      2026-10-04 après 110 538 027 exécutions : `binary.rs:252`,
+      `header.length as usize - Header::size_of()` déborde quand l'en-tête GLB déclare
+      une longueur inférieure à 12 octets (entrée de 23 octets,
+      `Z2xURkZ7FwAAAAAAAAAAAEpTT05leHQ=`). Retenue en production par
+      `catch_parser_panic` ; la cible échoue dessus, comme prévu. À faire : vérification
+      préalable de l'en-tête GLB dans `import_gltf`, graine de régression et test nommé.
 - [ ] **Deux bugs à rapporter en amont.** Les quatre paniques sont des défauts
       de bibliothèque, pas de leur usage :
       - `gltf-json` 1.4.1 indexe `root.accessors[…]` avec un indice venu du
@@ -1776,6 +1783,18 @@ substituable sans changer rapier »).
                   statique par tuile (le plafond de 64 de §10.3 vaut pour les assemblies)
                   et des boîtes compactées (fusion des blocs pleins) ; mesurer avant et
                   après avec l'exemple.
+                  - [x] **T4a — natif** : la tuile devient un corps statique portant des
+                    compounds d'au plus 64 boîtes (§10.3 et étape 3 de la fiche, lus
+                    ensemble), regroupées par voisinage le long d'une courbe de Morton ;
+                    compteur de colliders (jauge `axion.sim.colliders`) ; précision
+                    d'ADR-117. Mesuré, même entrée d'une boîte par bloc : proxy retiré
+                    19,9 → 0,12 ms, section reconstruite 26 → 0,44 ms, diffusion p95
+                    65,6 → 3,14 ms. Tests : 64 paquets pour une section pleine, cubes de
+                    4³ blocs, un cube repose sur une tuile en compounds, déterminisme,
+                    jauge lue à travers l'ABI.
+                  - [ ] **T4b — Java** : fusion des blocs pleins en boîtes maximales
+                    (« liste compacte », étape 2), logique pure testée dans
+                    `WorldTileGeometry` ; le seuil de R-641 porte sur le compte fusionné.
       - [x] **C-39 — Spatial Queries** (fiche 5.31, R-650..652) — **implémenté**. Module
             `ax_physics::query` : `raycast`, `sweep`, `overlap` + versions par lot, filtres
             par groupe/masque, exclusion d'assembly, capteurs (`SpatialFilter`/`SensorMode`).

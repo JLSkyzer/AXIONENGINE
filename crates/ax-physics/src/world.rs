@@ -2020,6 +2020,25 @@ impl PhysicsWorld {
         self.inner.bodies.len()
     }
 
+    /// Nombre de colliders dans le monde : les feuilles de l'arbre de la phase large.
+    #[must_use]
+    pub fn collider_count(&self) -> usize {
+        self.inner.colliders.len()
+    }
+
+    /// Emprises monde de tous les colliders, dans l'ordre de rapier.
+    #[cfg(test)]
+    pub(crate) fn collider_aabbs(&self) -> Vec<(Vec3, Vec3)> {
+        self.inner
+            .colliders
+            .iter()
+            .map(|(_, collider)| {
+                let aabb = collider.compute_aabb();
+                (aabb.mins, aabb.maxs)
+            })
+            .collect()
+    }
+
     /// Fixe le rôle de la simulation (C-40, R-662). En [`SimMode::Client`], `advance`
     /// n'exécute pas l'intégration autoritaire.
     pub fn set_mode(&mut self, mode: SimMode) {

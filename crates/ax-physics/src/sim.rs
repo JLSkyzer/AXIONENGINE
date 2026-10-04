@@ -11,7 +11,9 @@
 //! d'événements l'est aussi (R-1020).
 
 use crate::activity::{self, ActivityLimits, ActivityReport, Decision, Observers, SleepCause};
-use crate::body::{BodyCollider, BodyId, BodyKind, ContactMaterial, Shape};
+use crate::body::{
+    BodyCollider, BodyId, BodyKind, CompoundPart, ContactMaterial, Shape, MAX_COMPOUND_PARTS,
+};
 use crate::config::PhysicsConfig;
 use crate::debug::{select_outlines, DebugColliders};
 use crate::forces::FluidEnvironment;
@@ -278,11 +280,15 @@ impl SimDriver {
 
     /// Pose (ou remplace) la tuile de collision du monde d'une section 16³ (C-38).
     ///
-    /// Une tuile est un corps **statique** portant une boîte `Cuboid` par entrée de
-    /// `boxes` — un corps statique n'a pas de plafond de formes filles, contrairement
-    /// au `Compound` d'une assembly (§10.3). Les boîtes sont en blocs, **relatives à
-    /// l'origine de la section** (`section × 16`) ; leur pose monde en découle, ramenée
-    /// au repère local par l'origine flottante de la dimension (créée au besoin, R-610).
+    /// Une tuile est un corps **statique** portant ses boîtes en **compounds statiques**
+    /// (fiche 5.30, étape 3) d'au plus 64 boîtes chacun (§10.3), regroupées par voisinage
+    /// le long d'une courbe de Morton : une boîte seule reste une boîte. La phase large ne
+    /// voit qu'une feuille par paquet — une section pleine en fait 64, et non 4 096. Or
+    /// rapier refait tout l'arbre de sa phase large à chaque retrait de collider, en temps
+    /// proportionnel à son nombre de feuilles : avec une feuille par bloc, le moindre proxy
+    /// retiré coûtait 20 ms (exemple `charge_tuiles`). Les boîtes sont en blocs, **relatives
+    /// à l'origine de la section** (`section × 16`) ; leur pose monde en découle, ramenée au
+    /// repère local par l'origine flottante de la dimension (créée au besoin, R-610).
     ///
     /// Toutes les boîtes portent le **matériau physique dominant** de la section
     /// (`material`, R-643) : sa friction et sa restitution alimentent la friction des
@@ -301,7 +307,7 @@ impl SimDriver {
         // Une tuile est remplacée en bloc : l'ancienne part d'abord.
         self.remove_world_tile(dimension, section);
 
-        let mut colliders = Vec::with_capacity(boxes.len());
+        let mut parts = Vec::with_capacity(boxes.len());
         for b in boxes {
             let half = [
                 (b[3] - b[0]) * 0.5,
@@ -318,17 +324,26 @@ impl SimDriver {
                 (b[1] + b[4]) * 0.5,
                 (b[2] + b[5]) * 0.5,
             );
-            colliders.push(BodyCollider {
-                shape: Shape::Cuboid { half_extents: half },
-                // Sans effet : un corps statique a une masse infinie.
-                density: 1.0,
-                material,
-                translation: center,
-                rotation: Quat::IDENTITY,
-            });
+            parts.push((
+                morton_in_section(center),
+                CompoundPart {
+                    translation: center,
+                    rotation: Quat::IDENTITY,
+                    shape: Shape::Cuboid { half_extents: half },
+                },
+            ));
         }
-        if colliders.is_empty() {
+        if parts.is_empty() {
             return false;
+        }
+        // Tri stable : à code égal, l'ordre d'arrivée — le résultat ne dépend que de
+        // l'entrée (R-1020).
+        parts.sort_by_key(|(code, _)| *code);
+        let mut parts = parts.into_iter().map(|(_, part)| part).peekable();
+        let mut colliders = Vec::new();
+        while parts.peek().is_some() {
+            let group: Vec<CompoundPart> = parts.by_ref().take(MAX_COMPOUND_PARTS).collect();
+            colliders.push(tile_collider(group, material));
         }
 
         let sim = self.dimension_mut(dimension);
@@ -430,6 +445,16 @@ impl SimDriver {
     #[must_use]
     pub fn world_tile_count(&self) -> usize {
         self.tiles.len()
+    }
+
+    /// Nombre de colliders de toutes les dimensions : les feuilles des arbres de la phase
+    /// large, que rapier refait en entier à chaque retrait de collider.
+    #[must_use]
+    pub fn collider_count(&self) -> usize {
+        self.dimensions
+            .values()
+            .map(|sim| sim.world.collider_count())
+            .sum()
     }
 
     /// Pose (ou remplace) les **volumes de fluide** d'une section 16³ (C-38, R-642) :
@@ -834,6 +859,45 @@ impl SimDriver {
         sim.world.set_wind(wind);
         sim.world.set_fluid(fluid);
     }
+}
+
+/// Le collider d'un paquet de boîtes d'une tuile : la boîte elle-même quand elle est
+/// seule, un compound statique sinon. Densité sans effet : un corps statique a une masse
+/// infinie.
+fn tile_collider(mut group: Vec<CompoundPart>, material: ContactMaterial) -> BodyCollider {
+    let (shape, translation) = if group.len() == 1 {
+        let CompoundPart {
+            translation, shape, ..
+        } = group.swap_remove(0);
+        (shape, translation)
+    } else {
+        (Shape::Compound { parts: group }, Vec3::ZERO)
+    };
+    BodyCollider {
+        shape,
+        density: 1.0,
+        material,
+        translation,
+        rotation: Quat::IDENTITY,
+    }
+}
+
+/// Code de Morton (courbe en z) d'un point d'une section 16³, quantifié au 1/16 de bloc —
+/// la grille des formes de Minecraft. Des codes voisins désignent des points voisins :
+/// trier les boîtes par ce code puis les grouper par 64 donne des paquets compacts (un
+/// cube de 4³ blocs dans une section pleine), dont l'emprise ne recouvre que leurs voisins.
+fn morton_in_section(point: Vec3) -> u32 {
+    /// Écarte les 10 bits bas de `value` de deux zéros chacun.
+    fn spread(value: u32) -> u32 {
+        let mut v = value & 0x3ff;
+        v = (v | (v << 16)) & 0x0300_00ff;
+        v = (v | (v << 8)) & 0x0300_f00f;
+        v = (v | (v << 4)) & 0x030c_30c3;
+        (v | (v << 2)) & 0x0924_9249
+    }
+    // 0..=256 : neuf bits, dans les dix que `spread` écarte.
+    let quantize = |coordinate: f32| (coordinate.clamp(0.0, 16.0) * 16.0) as u32;
+    spread(quantize(point.x)) | (spread(quantize(point.y)) << 1) | (spread(quantize(point.z)) << 2)
 }
 
 #[cfg(test)]
@@ -1741,5 +1805,137 @@ mod tests {
         assert_eq!(driver.world_tile_count(), 0);
         // Retirer une tuile absente est faux, sans paniquer.
         assert!(!driver.remove_world_tile(0, [9, 9, 9]));
+    }
+
+    /// Les boîtes d'une section dont les `couches` couches du bas sont pleines : une par
+    /// bloc, dans l'ordre où le pont Forge les lit (x, puis y, puis z).
+    fn blocs_pleins(couches: u32) -> Vec<[f32; 6]> {
+        let mut boites = Vec::new();
+        for x in 0..16u8 {
+            for y in 0..couches {
+                for z in 0..16u8 {
+                    let (x, y, z) = (f32::from(x), y as f32, f32::from(z));
+                    boites.push([x, y, z, x + 1.0, y + 1.0, z + 1.0]);
+                }
+            }
+        }
+        boites
+    }
+
+    #[test]
+    fn une_tuile_porte_ses_boites_en_compounds_d_au_plus_64() {
+        // Fiche 5.30, étape 3, et §10.3 : des compounds statiques d'au plus 64 boîtes, et
+        // non un collider par boîte — rapier refait tout l'arbre de sa phase large à chaque
+        // retrait de collider, en temps proportionnel à son nombre de feuilles.
+        let mut driver = SimDriver::new();
+        let pleine = blocs_pleins(16);
+        assert!(driver.set_world_tile(0, [0, 0, 0], &pleine, ContactMaterial::default()));
+        assert_eq!(driver.collider_count(), 4096 / MAX_COMPOUND_PARTS);
+
+        // Une boîte de plus fait un paquet de plus ; une boîte seule reste une boîte.
+        for (boites, colliders) in [(1, 1), (64, 1), (65, 2), (128, 2), (129, 3)] {
+            let mut driver = SimDriver::new();
+            assert!(driver.set_world_tile(
+                0,
+                [0, 0, 0],
+                &pleine[..boites],
+                ContactMaterial::default()
+            ));
+            assert_eq!(driver.collider_count(), colliders, "{boites} boîtes");
+        }
+    }
+
+    #[test]
+    fn les_paquets_d_une_tuile_pleine_sont_des_cubes_de_4_blocs() {
+        // Regroupées par voisinage (courbe de Morton), 64 boîtes d'une section pleine
+        // forment un cube de 4³ blocs : l'emprise d'un paquet ne recouvre que ses voisins.
+        let mut driver = SimDriver::new();
+        assert!(driver.set_world_tile(0, [0, 0, 0], &blocs_pleins(16), ContactMaterial::default()));
+        let emprises = driver.dimensions[&0].world.collider_aabbs();
+        assert_eq!(emprises.len(), 64);
+        let mut coins = std::collections::BTreeSet::new();
+        for (min, max) in emprises {
+            assert!(
+                (max - min - Vec3::splat(4.0)).abs().max_element() < 1.0e-4,
+                "paquet de {min} à {max}, pas un cube de 4 blocs"
+            );
+            // Aligné sur la grille de 4 : chaque cube de la section est couvert une fois.
+            coins.insert([min.x as i32, min.y as i32, min.z as i32]);
+        }
+        assert_eq!(
+            coins.len(),
+            64,
+            "les 64 cubes de 4³ couvrent la section sans doublon"
+        );
+    }
+
+    #[test]
+    fn un_corps_repose_sur_une_tuile_en_compounds() {
+        // Une section dont les trois couches du bas sont pleines : 768 boîtes, douze
+        // compounds. Un cube lâché au-dessus s'y pose sans la traverser.
+        let mut driver = SimDriver::new();
+        assert!(driver.set_world_tile(0, [0, 0, 0], &blocs_pleins(3), ContactMaterial::default()));
+        assert_eq!(driver.collider_count(), 768 / MAX_COMPOUND_PARTS);
+        driver.create_assembly(
+            0,
+            Handle::new(1, 1),
+            WorldTransform {
+                position: [7.3, 8.0, 8.6],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+            },
+            BodyKind::Dynamic,
+            &[BodyCollider {
+                shape: Shape::Cuboid {
+                    half_extents: [0.5, 0.5, 0.5],
+                },
+                density: 1000.0,
+                material: ContactMaterial::default(),
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
+        );
+        for _ in 0..180 {
+            driver.advance_all(1.0 / 60.0);
+        }
+        let y = driver.collect_states()[0].position[1];
+        // Sommet du sol à y = 3, plus la demi-hauteur du cube : repos vers 3,5.
+        assert!(
+            (y - 3.5).abs() < 0.05,
+            "le cube ne repose pas sur le sol (y={y})"
+        );
+    }
+
+    #[test]
+    fn une_tuile_en_compounds_donne_le_meme_resultat_d_une_execution_a_l_autre() {
+        // R-1020 : le regroupement ne dépend que de l'entrée.
+        let run = || {
+            let mut driver = SimDriver::new();
+            driver.set_world_tile(0, [0, 0, 0], &blocs_pleins(3), ContactMaterial::default());
+            driver.create_assembly(
+                0,
+                Handle::new(1, 1),
+                WorldTransform {
+                    position: [7.3, 8.0, 8.6],
+                    // 0,2 rad autour de x : le cube touche le sol par une arête, sur
+                    // plusieurs paquets à la fois.
+                    rotation: [0.099_833_42, 0.0, 0.0, 0.995_004_2],
+                },
+                BodyKind::Dynamic,
+                &[BodyCollider {
+                    shape: Shape::Cuboid {
+                        half_extents: [0.5, 0.5, 0.5],
+                    },
+                    density: 1000.0,
+                    material: ContactMaterial::default(),
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                }],
+            );
+            for _ in 0..120 {
+                driver.advance_all(1.0 / 60.0);
+            }
+            driver.collect_states()
+        };
+        assert_eq!(run(), run());
     }
 }
