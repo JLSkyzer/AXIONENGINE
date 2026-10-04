@@ -147,6 +147,9 @@ class NativeBridgeTest {
         return etat.payload();
     }
 
+    /** Un joueur près du corps de l'essai de simulation : sans lui, R-612 l'endormirait. */
+    private static final double[][] JOUEUR_PRES_DU_CORPS = {{0.0, 100.0, 0.0}};
+
     @Test
     @DisplayName("T-190 : cycle complet, du chargeur natif a la frontiere JNI")
     void cycleCompletAtraversLaFrontiere() {
@@ -474,7 +477,9 @@ class NativeBridgeTest {
                         new double[] {0.0, 100.0, 0.0},
                         new float[] {0.0f, 0.0f, 0.0f, 1.0f},
                         dev.axion.physics.SimCommandStream.BODY_DYNAMIC,
-                        phys);
+                        phys)
+                // ADR-123 : comme en jeu, un joueur près du corps le garde éveillé (R-612).
+                .setObservers(0L, JOUEUR_PRES_DU_CORPS);
         dev.axion.physics.CollectResult cree = simulation.tick(3L, spawn, 0L);
         assertTrue(cree.ok(), () -> "collect après CREATE_ASSEMBLY refusé, code " + cree.code());
         assertEquals(1, cree.stateCount(), "un corps créé depuis la section PHYS");
@@ -518,11 +523,12 @@ class NativeBridgeTest {
                 NativeBridge.E_INVALID_BUFFER,
                 debug.fetch(1L << 1, 0L, 0.0, 100.0, 0.0, 1024).code());
 
-        // Ticks à vide : le corps tombe sous la gravité par défaut (−9,81 m/s²).
+        // Ticks sans autre commande que le joueur, déclaré chaque tick comme en jeu : le corps
+        // tombe sous la gravité par défaut (−9,81 m/s²). Sans joueur, il dormirait (R-612).
         double yCourant = yDepart;
         for (int t = 0; t < 30; t++) {
-            dev.axion.physics.CollectResult pas =
-                    simulation.tick(4L + t, new dev.axion.physics.SimCommandStream(), 0L);
+            dev.axion.physics.CollectResult pas = simulation.tick(
+                    4L + t, new dev.axion.physics.SimCommandStream().setObservers(0L, JOUEUR_PRES_DU_CORPS), 0L);
             assertTrue(pas.ok(), () -> "collect refusé pendant la chute, code " + pas.code());
             assertEquals(1, pas.stateCount(), "le corps persiste d'un tick à l'autre");
             yCourant = pas.bodies().get(0).position()[1];
@@ -532,8 +538,8 @@ class NativeBridgeTest {
                 yFinal < yDepart - 0.1,
                 () -> "le corps dynamique doit tomber : y " + yDepart + " -> " + yFinal);
         // Chute libre sans couple : l'emprise, relative à la position, n'a pas bougé.
-        dev.axion.physics.CollectResult apresChute =
-                simulation.tick(40L, new dev.axion.physics.SimCommandStream(), 0L);
+        dev.axion.physics.CollectResult apresChute = simulation.tick(
+                40L, new dev.axion.physics.SimCommandStream().setObservers(0L, JOUEUR_PRES_DU_CORPS), 0L);
         assertArrayEquals(new float[] {1.0f, 1.0f, 1.0f}, apresChute.bounds().get(0).max(), 1.0e-5f);
 
         // ADR-123 §2 et §5 : les joueurs et les entités écrits par Java sont lus par le natif —

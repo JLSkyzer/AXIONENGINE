@@ -1179,6 +1179,10 @@ pub unsafe extern "C" fn axion_sim_collect(
         let result = match context::with(ctx, false, |session| {
             // Les proxies d'entités déclarés ce tick prennent corps avant le pas (ADR-123 §5).
             session.physics().sync_entity_proxies();
+            // R-612/R-613 autour des joueurs du tick, avant le pas : un corps hors du rayon de
+            // tout joueur ne bouge pas ce tick (ADR-123 §3). Les comptes vont aux métriques.
+            let activity = session.physics().manage_activity();
+            session.record_activity(activity);
             let started = Instant::now();
             session.physics().advance_all(SERVER_TICK_DT);
             let elapsed = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);

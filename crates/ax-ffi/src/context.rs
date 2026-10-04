@@ -20,7 +20,7 @@ use ax_mem::{ArenaClass, ArenaCounter, MemoryError};
 use ax_model::budgets::Budget;
 use ax_model::buffer::BufferKind;
 use ax_model::dm::handle::Handle;
-use ax_physics::{SimDriver, SimSettings};
+use ax_physics::{ActivityReport, SimDriver, SimSettings};
 use ax_telemetry::{BudgetMetrics, MetricId, Telemetry};
 use std::collections::HashMap;
 
@@ -72,6 +72,14 @@ struct SessionMetrics {
     sim_worlds: MetricId,
     sim_degradation_level: MetricId,
     sim_p95: MetricId,
+    sim_slept_radius: MetricId,
+    sim_slept_cap: MetricId,
+    sim_slept_budget: MetricId,
+    sim_woken: MetricId,
+    sim_events_dropped: MetricId,
+    sim_velocity_clamps: MetricId,
+    sim_invalid_states: MetricId,
+    sim_bounds_unavailable: MetricId,
 }
 
 /// État interne d'une session native.
@@ -207,6 +215,16 @@ impl Session {
         self.sim_unbalanced
     }
 
+    /// Ajoute aux métriques ce que la gestion d'activité a fait ce tick (R-613, ADR-123 §3).
+    pub fn record_activity(&self, report: ActivityReport) {
+        let metrics = &self.metrics;
+        let add = |id, count: usize| metrics.registry.add(id, count as u64);
+        add(metrics.sim_slept_radius, report.slept_by_radius);
+        add(metrics.sim_slept_cap, report.slept_by_cap);
+        add(metrics.sim_slept_budget, report.slept_by_budget);
+        add(metrics.sim_woken, report.woken);
+    }
+
     /// Pool de jobs de la session, s'il a pu être créé.
     ///
     /// Son absence n'est pas une panne : R-2062 veut qu'un parallélisme
@@ -246,6 +264,19 @@ impl Session {
             metrics.sim_p95,
             self.physics.last_p95_ns().unwrap_or_default(),
         );
+        let counters = self.physics.counters();
+        metrics
+            .registry
+            .set(metrics.sim_events_dropped, counters.dropped_events);
+        metrics
+            .registry
+            .set(metrics.sim_velocity_clamps, counters.clamp_journal);
+        metrics
+            .registry
+            .set(metrics.sim_invalid_states, counters.invalid_states);
+        metrics
+            .registry
+            .set(metrics.sim_bounds_unavailable, counters.bounds_unavailable);
 
         let Some(jobs) = self.jobs.as_ref() else {
             return;
@@ -527,6 +558,18 @@ fn build_metrics() -> SessionMetrics {
     let sim_p95 = builder
         .gauge("axion.sim.p95_ns", "ns")
         .expect("métrique de p95 de la simulation");
+    // R-613 « journalisé » (ADR-123 §3) : ce que la gestion d'activité endort et réveille.
+    let mut counter = |name: &str| builder.counter(name, "count").expect("métrique d'activité");
+    let sim_slept_radius = counter("axion.sim.slept_radius");
+    let sim_slept_cap = counter("axion.sim.slept_cap");
+    let sim_slept_budget = counter("axion.sim.slept_budget");
+    let sim_woken = counter("axion.sim.woken");
+    // Ce que la simulation n'a pas pu faire ou a dû corriger, jamais tu (R-1011, R-180,
+    // R-181, ADR-120) : les totaux du pilote, mondes détruits compris.
+    let sim_events_dropped = counter("axion.sim.events_dropped");
+    let sim_velocity_clamps = counter("axion.sim.velocity_clamps");
+    let sim_invalid_states = counter("axion.sim.invalid_states");
+    let sim_bounds_unavailable = counter("axion.sim.bounds_unavailable");
 
     SessionMetrics {
         registry: builder.build(),
@@ -537,6 +580,14 @@ fn build_metrics() -> SessionMetrics {
         sim_worlds,
         sim_degradation_level,
         sim_p95,
+        sim_slept_radius,
+        sim_slept_cap,
+        sim_slept_budget,
+        sim_woken,
+        sim_events_dropped,
+        sim_velocity_clamps,
+        sim_invalid_states,
+        sim_bounds_unavailable,
     }
 }
 

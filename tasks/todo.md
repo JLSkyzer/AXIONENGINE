@@ -1606,9 +1606,12 @@ substituable sans changer rapier »).
                         dimension et par tick : `EntityPresenceBridge` (Forge) et
                         `EntityProxySelector` (règle pure, testée) ; vitesse des corps retenue par
                         `AssemblyRuntime`, vitesse des entités lue dans leur déplacement.
-                  - [ ] T5c-3 — natif : `manage_activity` branché dans `axion_sim_collect` (après
-                        T5c-2, jamais avant : sans joueurs envoyés, tout dormirait) ; compteurs
-                        d'activité et `WorldCounters` publiés en métriques.
+                  - [x] T5c-3 — natif : `manage_activity` branché dans `axion_sim_collect`, après
+                        la synchronisation des proxies et avant le pas ; compteurs `axion.sim.slept_*`,
+                        `woken` et ceux des `WorldCounters` (`events_dropped`, `velocity_clamps`,
+                        `invalid_states`, `bounds_unavailable`) publiés. Test d'ABI : un corps sans
+                        joueur s'endort et se réveille à son retour ; clamp et restauration
+                        comptés. `NativeBridgeTest` déclare le joueur à chaque tick, comme le jeu.
                   - [ ] T5c-4 — consommateur d'événements (R-1010) : poussée des non-joueurs,
                         dégâts `axion:collision` (type de dégâts en données), journal `E-2030`
                         et des transitions de dégradation (R-1880).
