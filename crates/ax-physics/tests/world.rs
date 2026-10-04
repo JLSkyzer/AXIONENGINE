@@ -2,9 +2,9 @@
 
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_physics::{
-    body_state_flags, event_kind, BodyBounds, BodyCollider, BodyError, BodyId, BodyKind,
-    CollisionGroups, CompoundPart, ConfigError, ContactMaterial, FluidEnvironment, Handle,
-    LiftSurface, PhysicsConfig, PhysicsWorld, Shape, SimMode, SpatialFilter, Stage,
+    body_state_flags, event_data, event_kind, BodyBounds, BodyCollider, BodyError, BodyId,
+    BodyKind, CollisionGroups, CompoundPart, ConfigError, ContactMaterial, FluidEnvironment,
+    Handle, LiftSurface, PhysicsConfig, PhysicsWorld, Shape, SimMode, SpatialFilter, Stage,
 };
 
 fn config() -> PhysicsConfig {
@@ -708,7 +708,7 @@ fn monde_impact() -> (PhysicsWorld, BodyId, BodyId) {
 }
 
 #[test]
-fn un_contact_emet_contact_start_complet() {
+fn t305_un_contact_emet_contact_start_complet() {
     // §10.7, R-615 : l'impact produit un CONTACT_START peuplé.
     let (mut world, _ball, _ground) = monde_impact();
     let mut start = None;
@@ -740,6 +740,14 @@ fn un_contact_emet_contact_start_complet() {
         event.impulse > 0.0,
         "impulsion positive attendue : {}",
         event.impulse
+    );
+    // Vitesse relative au point : celle de l'approche, que le choc va absorber — une
+    // chute de 1,5 m arrive à √(2·9,81·1,5) ≈ 5,4 m/s. Lue après la résolution, elle
+    // serait déjà presque nulle, et la vitesse d'un impact ne se verrait jamais.
+    assert!(
+        (4.5..6.0).contains(&event.relative_velocity),
+        "vitesse d'approche à l'impact : {}",
+        event.relative_velocity
     );
 
     // Masse effective : au contact bas d'une sphère, r×n = 0, donc la masse
@@ -789,7 +797,7 @@ fn la_fin_d_un_contact_emet_contact_end() {
 }
 
 #[test]
-fn un_impact_emet_contact_impulse() {
+fn t305_un_impact_emet_contact_impulse() {
     // §10.7 : un contact persistant assez fort produit un CONTACT_IMPULSE
     // au-dessus du seuil (R-1012).
     let (mut world, _ball, _ground) = monde_impact();
@@ -812,6 +820,60 @@ fn un_impact_emet_contact_impulse() {
         event.impulse
     );
     assert!(event.effective_mass > 0.0, "masse effective peuplée");
+}
+
+#[test]
+fn t305_un_glissement_publie_l_impulsion_tangentielle() {
+    // R-615 : un bloc qui glisse sur le sol frotte ; l'impulsion tangentielle publiée suit
+    // la loi de Coulomb et vaut μ fois l'impulsion normale tant qu'il glisse — μ = 0,5,
+    // moyenne des matériaux par défaut.
+    let mut world = PhysicsWorld::new(config());
+    world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, -0.5, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [50.0, 0.5, 50.0],
+            },
+        )
+        .expect("un sol est valide");
+    let bloc = world
+        .add_assembly(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 0.5, 0.0),
+            Quat::IDENTITY,
+            &[BodyCollider {
+                shape: Shape::Cuboid {
+                    half_extents: [0.5; 3],
+                },
+                density: 1000.0,
+                material: ContactMaterial::default(),
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
+        )
+        .expect("un bloc est valide");
+    // Posé sur le sol, il s'y assied ; puis une tonne lancée à 5 m/s.
+    for _ in 0..10 {
+        world.advance(1.0 / 60.0);
+    }
+    let _ = world.drain_events();
+    world.apply_impulse(bloc, Vec3::new(5000.0, 0.0, 0.0), Vec3::ZERO, false);
+
+    world.advance(1.0 / 60.0);
+
+    let impulsions = events_of(&mut world, event_kind::CONTACT_IMPULSE);
+    let event = impulsions
+        .first()
+        .expect("le bloc pèse sur le sol : un CONTACT_IMPULSE");
+    let ratio = event.tangent_impulse / event.impulse;
+    assert!(
+        (ratio - 0.5).abs() < 0.01,
+        "Coulomb en glissement, t/n = μ : {ratio} (n = {}, t = {})",
+        event.impulse,
+        event.tangent_impulse
+    );
 }
 
 #[test]
@@ -1023,7 +1085,7 @@ fn evenements_deterministes() {
 // --- Garde-fous R-180 / R-181 (tranche 4c) ---------------------------------
 
 #[test]
-fn le_clamp_borne_la_vitesse_lineaire() {
+fn t306_le_clamp_borne_la_vitesse_lineaire() {
     // R-180 : au-delà de la borne, la vitesse est ramenée à celle-ci, le drapeau
     // CLAMPED est posé et le fait est journalisé.
     let mut world = PhysicsWorld::new(config());
@@ -1055,10 +1117,24 @@ fn le_clamp_borne_la_vitesse_lineaire() {
     );
     assert_eq!(world.clamp_journal_count(), 1, "un clamp journalisé");
     assert_eq!(world.invalid_state_count(), 0, "aucun état invalide");
+    // ADR-123 §11 : le clamp journalisé part vers Java, CLAMPED de code 1.
+    let clamped = events_of(&mut world, event_kind::CLAMPED);
+    assert_eq!(clamped.len(), 1);
+    assert_eq!(clamped[0].data, event_data::CLAMPED_VELOCITY);
+    assert_eq!(clamped[0].assembly_a, Handle::new(1, 1));
+}
+
+/// Vide le lot d'événements du monde et en garde ceux du genre `kind`.
+fn events_of(world: &mut PhysicsWorld, kind: u32) -> Vec<ax_physics::PhysicsEvent> {
+    world
+        .drain_events()
+        .into_iter()
+        .filter(|event| event.kind == kind)
+        .collect()
 }
 
 #[test]
-fn le_clamp_borne_la_vitesse_angulaire() {
+fn t306_le_clamp_borne_la_vitesse_angulaire() {
     // R-180 : la borne angulaire agit indépendamment de la linéaire.
     let mut world = PhysicsWorld::new(config());
     let ball = world
@@ -1089,7 +1165,7 @@ fn le_clamp_borne_la_vitesse_angulaire() {
 }
 
 #[test]
-fn sans_depassement_aucun_clamp() {
+fn t306_sans_depassement_aucun_clamp() {
     // Sous les bornes par défaut (300 m/s), une impulsion modérée ne clampe rien.
     let mut world = PhysicsWorld::new(config());
     let ball = world
@@ -1111,10 +1187,11 @@ fn sans_depassement_aucun_clamp() {
         "pas de clamp"
     );
     assert_eq!(world.clamp_journal_count(), 0);
+    assert!(events_of(&mut world, event_kind::CLAMPED).is_empty());
 }
 
 #[test]
-fn un_etat_non_fini_est_restaure_et_endormi() {
+fn t306_un_etat_non_fini_est_restaure_et_endormi() {
     // R-181 / FM-20 / E-2030 : une impulsion NaN rend l'état non fini ; le corps
     // revient au dernier état valide (sa pose de départ) et est endormi.
     let mut world = PhysicsWorld::new(config());
@@ -1149,10 +1226,15 @@ fn un_etat_non_fini_est_restaure_et_endormi() {
         states[0].flags & body_state_flags::SLEEPING != 0,
         "endormi de force"
     );
+    // ADR-123 §8 : la restauration se voit — RECOVERED, corps et code 2030.
+    let recovered = events_of(&mut world, event_kind::RECOVERED);
+    assert_eq!(recovered.len(), 1);
+    assert_eq!(recovered[0].assembly_a, Handle::new(3, 1));
+    assert_eq!(recovered[0].data, event_data::RECOVERED_INVALID_STATE);
 }
 
 #[test]
-fn une_position_hors_du_monde_est_restauree() {
+fn t306_une_position_hors_du_monde_est_restauree() {
     // R-181 : une position finie mais hors des limites du monde déclenche une
     // restauration. Un corps dynamique ne peut y parvenir par la dynamique (sa
     // vitesse est bornée) ; on l'y place donc directement, cas qu'un appelant
@@ -1191,10 +1273,14 @@ fn une_position_hors_du_monde_est_restauree() {
         states[0].flags & body_state_flags::SLEEPING != 0,
         "endormi de force"
     );
+    let recovered = events_of(&mut world, event_kind::RECOVERED);
+    assert_eq!(recovered.len(), 1);
+    assert_eq!(recovered[0].assembly_a, Handle::new(5, 1));
+    assert_eq!(recovered[0].data, event_data::RECOVERED_INVALID_STATE);
 }
 
 #[test]
-fn la_journalisation_du_clamp_est_debitee_par_minute() {
+fn t306_la_journalisation_du_clamp_est_debitee_par_minute() {
     // R-180 : un clamp est journalisé au plus une fois par corps et par minute.
     // On maintient la bille au-dessus de sa borne à chaque tick ; le compteur ne
     // bouge qu'une fois avant la minute, une seconde fois après l'avoir franchie.
@@ -1210,30 +1296,35 @@ fn la_journalisation_du_clamp_est_debitee_par_minute() {
     world.set_velocity_limits(ball, 1.0, 100.0);
 
     // Dix ticks (bien en deçà d'une minute) : un seul clamp journalisé.
+    let mut clamped = 0;
     for _ in 0..10 {
         world.apply_impulse(ball, Vec3::new(100.0, 0.0, 0.0), Vec3::ZERO, false);
         world.advance(1.0 / 60.0);
+        clamped += events_of(&mut world, event_kind::CLAMPED).len();
     }
     assert_eq!(
         world.clamp_journal_count(),
         1,
         "un seul clamp dans la première minute"
     );
+    assert_eq!(clamped, 1, "un seul CLAMPED, au débit du journal");
 
     // Assez de ticks pour franchir 60 s simulées (3600 sous-pas) : un second.
     for _ in 0..3600 {
         world.apply_impulse(ball, Vec3::new(100.0, 0.0, 0.0), Vec3::ZERO, false);
         world.advance(1.0 / 60.0);
+        clamped += events_of(&mut world, event_kind::CLAMPED).len();
     }
     assert_eq!(
         world.clamp_journal_count(),
         2,
         "un second clamp après la minute"
     );
+    assert_eq!(clamped, 2);
 }
 
 #[test]
-fn les_garde_fous_sont_deterministes() {
+fn t306_les_garde_fous_sont_deterministes() {
     // R-1020 : clamp et restauration produisent le même état d'une exécution à
     // l'autre.
     let run = || {
@@ -1266,6 +1357,7 @@ fn les_garde_fous_sont_deterministes() {
             world.body_states(&FloatingOrigin::new(DVec3::ZERO)),
             world.clamp_journal_count(),
             world.invalid_state_count(),
+            world.drain_events(),
         )
     };
     assert_eq!(run(), run());

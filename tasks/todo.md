@@ -1549,10 +1549,16 @@ substituable sans changer rapier »).
                         cycle IF-03 dès maintenant : sans observateurs, il ne détruit que des
                         mondes vides. `begin_tick` sera branché au `submit` en T5b, avec
                         `SET_OBSERVERS` et son test. T-300 ; 7 mutations tuées.
-                  - [ ] Événements `RECOVERED` (2030) et `CLAMPED` 1 (T-306).
+                  - [x] Événements `RECOVERED` (2030) à chaque restauration et `CLAMPED` 1 au
+                        débit du journal (T-306, tests FM-20/R-180 existants étiquetés et
+                        complétés ; 4 mutations tuées).
+                  - [x] R-615 corrigé (T-305) : `tangent_impulse` valait toujours 0 (frottement
+                        « simplifié » de rapier, passé en `Coulomb`) et `relative_velocity` 0 au
+                        choc (vitesses d'après la résolution, désormais relevées avant le pas).
+                        Coût mesuré sans écart discernable (amendement d'ADR-112).
                   - [ ] Gouverneur FM-21, drapeau `AXION_SIM_DEGRADED`, jauges (T-307).
                   - [ ] Détecteur FM-22, amortissement puis sommeil (T-307).
-                  - [ ] Étiquettes t300/t305/t306 sur les tests existants qui couvrent déjà.
+                  - [x] Étiquettes t300/t305/t306 sur les tests existants qui couvrent déjà.
             - [ ] **T5b — contrat** : opcodes 11 `SET_OBSERVERS` et 12 `SET_ENTITY_PROXIES`
                   (structs DM, tests de disposition, décodage borné, application) ; proxies
                   `KINEMATIC` à vitesse, groupe `entity_proxy` ; événements de contact avec une

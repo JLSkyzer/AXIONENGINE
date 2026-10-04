@@ -105,6 +105,22 @@ struct ForcedSleep {
     angvel: Vec3,
 }
 
+/// Mouvement d'un corps juste avant un sous-pas : de quoi connaître la vitesse d'un de ses
+/// points à l'approche d'un contact, avant que la résolution ne l'absorbe (R-615).
+#[derive(Debug, Clone, Copy)]
+struct PreStepMotion {
+    linvel: Vec3,
+    angvel: Vec3,
+    center_of_mass: Vec3,
+}
+
+impl PreStepMotion {
+    /// Vitesse du point `point` (repère monde local) du corps : `v + ω × (p − c)`.
+    fn velocity_at(&self, point: Vec3) -> Vec3 {
+        self.linvel + self.angvel.cross(point - self.center_of_mass)
+    }
+}
+
 /// Collecteur d'événements de collision d'un sous-pas.
 ///
 /// `rapier` appelle son gestionnaire pendant `step_with_events` ; on n'y retient
@@ -256,6 +272,11 @@ pub struct PhysicsWorld {
     births: HashMap<BodyId, u64>,
     /// Rang du prochain corps créé.
     next_birth: u64,
+    /// Mouvement des corps éveillés et non fixes juste avant le sous-pas en cours : la
+    /// vitesse relative d'un contact se lit là, à l'approche — lue après la résolution,
+    /// elle vaudrait zéro au moment même d'un choc (R-615). Relevé à chaque sous-pas ;
+    /// consulté par clé, jamais itéré (R-1020).
+    pre_step: HashMap<RigidBodyHandle, PreStepMotion>,
 }
 
 /// États et emprises des corps rapportés par un tick (DM-08, ADR-120).
@@ -329,6 +350,10 @@ impl PhysicsWorld {
         // ADR-112. Au moins une itération, sans quoi rapier ne progresse pas.
         params.num_solver_iterations = config.velocity_iterations.max(1) as usize;
         params.num_internal_pgs_iterations = config.position_iterations.max(1) as usize;
+        // Frottement de Coulomb, une contrainte par point de contact : le modèle
+        // « simplifié », défaut de rapier, n'en résout qu'une par groupe de quatre et
+        // ne rend aucune impulsion tangentielle, que R-615 exige (ADR-112).
+        params.friction_model = rapier3d::prelude::FrictionModel::Coulomb;
         Self {
             inner,
             config,
@@ -356,6 +381,7 @@ impl PhysicsWorld {
             forced_sleep: HashMap::new(),
             births: HashMap::new(),
             next_birth: 0,
+            pre_step: HashMap::new(),
         }
     }
 
@@ -537,6 +563,7 @@ impl PhysicsWorld {
             // puis garde-fous R-180/R-181 avant la récolte, pour lire un état sain.
             let integration_start = Instant::now();
             self.apply_aero_forces();
+            self.record_pre_step_motion();
             let collector = ContactCollector::default();
             self.inner.step_with_events(&(), &collector);
             self.enforce_body_guardrails();
@@ -596,7 +623,7 @@ impl PhysicsWorld {
                 body.set_enabled(true);
                 body.sleep();
             }
-            self.invalid_state_count += 1;
+            self.signal_recovered(BodyId::from_handle(handle));
         }
 
         // (2) Bornes de vitesse (R-180) et hors-monde fini (R-181).
@@ -655,7 +682,19 @@ impl PhysicsWorld {
             // course ce tick.
             body.sleep();
         }
+        self.signal_recovered(id);
+    }
+
+    /// Compte une restauration (R-181, `E-2030`) et la rend visible : un `RECOVERED`
+    /// portant le corps et le code 2030 (ADR-123 §8), que Java journalise pour
+    /// « signaler le scénario ».
+    fn signal_recovered(&mut self, id: BodyId) {
         self.invalid_state_count += 1;
+        self.push_single_body_event(
+            id,
+            event_kind::RECOVERED,
+            event_data::RECOVERED_INVALID_STATE,
+        );
     }
 
     /// Clampe les vitesses d'un corps à leurs bornes (R-180) ; pose le drapeau
@@ -693,8 +732,8 @@ impl PhysicsWorld {
 
     /// Journalise un clamp au plus une fois par corps et par minute simulée
     /// (R-180). Sans framework de log dans ce crate pur, la journalisation prend
-    /// la forme d'un compteur, à l'image de `dropped_events` : la frontière (C-15)
-    /// l'exposera en métrique. Le débit reste testable.
+    /// la forme d'un compteur, à l'image de `dropped_events`, et d'un événement
+    /// `CLAMPED` que Java consigne. Le débit reste testable.
     fn journalise_clamp(&mut self, id: BodyId) {
         let now = self.sim_clock;
         let due = match self.clamp_journal_at.get(&id) {
@@ -704,6 +743,9 @@ impl PhysicsWorld {
         if due {
             self.clamp_journal_at.insert(id, now);
             self.clamp_journal_count += 1;
+            // Au débit du journal, un `CLAMPED` de code 1 porte le fait jusqu'à Java
+            // (ADR-123 §11) ; le drapeau `CLAMPED` de l'état, lui, vaut à chaque tick.
+            self.push_single_body_event(id, event_kind::CLAMPED, event_data::CLAMPED_VELOCITY);
         }
     }
 
@@ -756,8 +798,9 @@ impl PhysicsWorld {
         let (identity_a, body_a) = self.contact_body(a);
         let (identity_b, body_b) = self.contact_body(b);
 
-        let velocity_a = body_a.map_or(Vec3::ZERO, |body| body.velocity_at_point(world_point));
-        let velocity_b = body_b.map_or(Vec3::ZERO, |body| body.velocity_at_point(world_point));
+        // Vitesses d'avant la résolution du sous-pas : celles de l'approche (R-615).
+        let velocity_a = self.pre_step_velocity(a, world_point);
+        let velocity_b = self.pre_step_velocity(b, world_point);
         // Vitesse relative projetée sur la normale : la vitesse de rapprochement.
         let relative_velocity = (velocity_a - velocity_b).dot(normal);
 
@@ -830,6 +873,36 @@ impl PhysicsWorld {
             material_b: identity_b.material,
             data: 0,
         }
+    }
+
+    /// Relève le mouvement des corps éveillés et non fixes avant le sous-pas (R-615). Un
+    /// corps fixe ou endormi n'y figure pas : sa vitesse d'approche est nulle.
+    fn record_pre_step_motion(&mut self) {
+        self.pre_step.clear();
+        for (handle, body) in self.inner.bodies.iter() {
+            if body.is_fixed() || body.is_sleeping() {
+                continue;
+            }
+            self.pre_step.insert(
+                handle,
+                PreStepMotion {
+                    linvel: body.linvel(),
+                    angvel: body.angvel(),
+                    center_of_mass: body.mass_properties().world_com,
+                },
+            );
+        }
+    }
+
+    /// Vitesse, avant le sous-pas, du point `point` du corps qui porte `collider` ; nulle
+    /// pour un corps fixe, endormi, ou un collider sans corps.
+    fn pre_step_velocity(&self, collider: ColliderHandle, point: Vec3) -> Vec3 {
+        self.inner
+            .colliders
+            .get(collider)
+            .and_then(Collider::parent)
+            .and_then(|parent| self.pre_step.get(&parent))
+            .map_or(Vec3::ZERO, |motion| motion.velocity_at(point))
     }
 
     /// Rend l'identité et le corps parent d'un collider.
