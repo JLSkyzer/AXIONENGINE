@@ -42,7 +42,9 @@ use ax_model::dm::debug::{debug_flags, encode_debug_payload, overlay};
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyBounds, BodyState, ColliderDesc};
-use ax_physics::{BodyCollider, BodyKind, ContactMaterial, Shape, SimDriver};
+use ax_physics::{
+    BodyCollider, BodyKind, ContactMaterial, PhysicsConfig, Shape, SimDriver, SimSettings,
+};
 
 /// Version de l'ABI.
 ///
@@ -216,7 +218,13 @@ pub unsafe extern "C" fn axion_init(
             container: A3dLimits::new(applied.max_compiled_bytes),
             persistent_bytes: usize::try_from(applied.native_mem_bytes).unwrap_or(usize::MAX),
         };
-        let token = match context::open(side, workers, applied.budgets, assets) {
+        let token = match context::open(
+            side,
+            workers,
+            applied.budgets,
+            assets,
+            applied.sim_settings(),
+        ) {
             Ok(token) => token,
             Err(code) => return code,
         };
@@ -1293,7 +1301,37 @@ struct AppliedConfig {
     max_compiled_bytes: u64,
     /// `budgets.native_mem_bytes` : plafond de l'arène `PERSISTENT` (R-480).
     native_mem_bytes: u64,
+    /// Options du monde physique (ADR-123 §1), réunies en [`SimSettings`] à l'ouverture.
+    physics: PhysicsOptions,
 }
+
+/// Options du monde physique telles que reçues, avant leur réunion en [`SimSettings`] : le
+/// pas fixe et les sous-pas ne se valident qu'ensemble (R-990).
+#[derive(Debug, Clone, Copy)]
+struct PhysicsOptions {
+    fixed_dt: f64,
+    max_substeps: u32,
+    simulation_radius: f32,
+    gravity: f32,
+    velocity_iterations: u32,
+    position_iterations: u32,
+    contact_event_threshold: f32,
+    max_events_per_tick: u32,
+    max_active_bodies: u32,
+}
+
+/// Chemins des options du monde physique retenues par la frontière (ADR-123 §1).
+const PHYSICS_PATHS: [&str; 9] = [
+    "sim.fixed_dt",
+    "sim.max_substeps",
+    "sim.simulation_radius",
+    "physics.gravity",
+    "physics.velocity_iterations",
+    "physics.position_iterations",
+    "physics.contact_event_threshold",
+    "physics.max_events_per_tick",
+    "budgets.max_active_bodies",
+];
 
 /// Chemin de l'option qui plafonne un conteneur A3D chargé (ADR-119).
 const MAX_COMPILED_BYTES_PATH: &str = "assets.max_compiled_bytes";
@@ -1315,6 +1353,18 @@ impl AppliedConfig {
             budgets: JobBudgets::new(),
             max_compiled_bytes: 0,
             native_mem_bytes: 0,
+            // Écrasés ci-dessous par les défauts du registre, source unique (R-430).
+            physics: PhysicsOptions {
+                fixed_dt: 0.0,
+                max_substeps: 0,
+                simulation_radius: 0.0,
+                gravity: 0.0,
+                velocity_iterations: 0,
+                position_iterations: 0,
+                contact_event_threshold: 0.0,
+                max_events_per_tick: 0,
+                max_active_bodies: 0,
+            },
         };
         for path in Self::interesting_paths() {
             if let Some(option) = ConfigScope::ALL
@@ -1335,6 +1385,7 @@ impl AppliedConfig {
             MAX_COMPILED_BYTES_PATH,
             NATIVE_MEM_BYTES_PATH,
         ];
+        paths.extend(PHYSICS_PATHS);
         paths.extend(
             Budget::ALL
                 .iter()
@@ -1344,8 +1395,65 @@ impl AppliedConfig {
         paths
     }
 
+    /// Réunit les options du monde physique en réglages du pilote (ADR-123 §1).
+    ///
+    /// Un pas fixe que la validation a laissé passer mais qui ne désigne aucun pas de R-990
+    /// ne peut venir que d'une divergence du registre : les défauts de la fiche prennent
+    /// alors le relais plutôt que d'ouvrir une session sans monde.
+    fn sim_settings(&self) -> SimSettings {
+        let options = self.physics;
+        let mut physics = PhysicsConfig::from_configured(options.fixed_dt, options.max_substeps)
+            .unwrap_or_default();
+        physics.gravity = Vec3::new(0.0, options.gravity, 0.0);
+        physics.velocity_iterations = options.velocity_iterations;
+        physics.position_iterations = options.position_iterations;
+        SimSettings {
+            physics,
+            contact_event_threshold: options.contact_event_threshold,
+            max_events_per_tick: options.max_events_per_tick as usize,
+            simulation_radius: options.simulation_radius,
+            max_active_bodies: options.max_active_bodies as usize,
+            sim_budget_ns: self.budgets.get(Budget::SimNsPerTick),
+        }
+    }
+
+    /// Retient une option du monde physique ; rend vrai si `path` en est une.
+    fn accept_physics(&mut self, path: &str, parsed: &ParsedValue) -> bool {
+        let options = &mut self.physics;
+        match (path, parsed) {
+            ("sim.fixed_dt", ParsedValue::Float(value)) => options.fixed_dt = *value,
+            ("sim.simulation_radius", ParsedValue::Float(value)) => {
+                options.simulation_radius = *value as f32;
+            }
+            ("physics.gravity", ParsedValue::Float(value)) => options.gravity = *value as f32,
+            ("physics.contact_event_threshold", ParsedValue::Float(value)) => {
+                options.contact_event_threshold = *value as f32;
+            }
+            ("sim.max_substeps", ParsedValue::Int(value)) => {
+                options.max_substeps = u32::try_from(*value).unwrap_or(0);
+            }
+            ("physics.velocity_iterations", ParsedValue::Int(value)) => {
+                options.velocity_iterations = u32::try_from(*value).unwrap_or(0);
+            }
+            ("physics.position_iterations", ParsedValue::Int(value)) => {
+                options.position_iterations = u32::try_from(*value).unwrap_or(0);
+            }
+            ("physics.max_events_per_tick", ParsedValue::Int(value)) => {
+                options.max_events_per_tick = u32::try_from(*value).unwrap_or(0);
+            }
+            ("budgets.max_active_bodies", ParsedValue::Int(value)) => {
+                options.max_active_bodies = u32::try_from(*value).unwrap_or(0);
+            }
+            _ => return PHYSICS_PATHS.contains(&path),
+        }
+        true
+    }
+
     /// Retient une valeur, si elle en fait partie.
     fn accept(&mut self, path: &str, parsed: &ParsedValue) {
+        if self.accept_physics(path, parsed) {
+            return;
+        }
         if path == MAX_COMPILED_BYTES_PATH || path == NATIVE_MEM_BYTES_PATH {
             if let ParsedValue::Int(value) = parsed {
                 let value = u64::try_from(*value).unwrap_or(0);
@@ -1522,6 +1630,64 @@ mod tests {
         ]);
 
         assert_eq!(apply_config(&cbor).unwrap().accepted, 5);
+    }
+
+    /// ADR-123 §1 : les options du monde physique reçues par IF-01 deviennent les réglages
+    /// du pilote — et une configuration muette rend exactement les défauts de l'annexe.
+    #[test]
+    fn t301_les_options_physiques_deviennent_les_reglages_du_pilote() {
+        let cbor = encode(&[
+            ("sim.fixed_dt", ciborium::Value::Float(0.0333333)),
+            ("sim.max_substeps", ciborium::Value::Integer(6.into())),
+            ("sim.simulation_radius", ciborium::Value::Float(64.0)),
+            ("physics.gravity", ciborium::Value::Float(-12.0)),
+            (
+                "physics.velocity_iterations",
+                ciborium::Value::Integer(8.into()),
+            ),
+            (
+                "physics.position_iterations",
+                ciborium::Value::Integer(2.into()),
+            ),
+            (
+                "physics.contact_event_threshold",
+                ciborium::Value::Float(2.5),
+            ),
+            (
+                "physics.max_events_per_tick",
+                ciborium::Value::Integer(1024.into()),
+            ),
+            (
+                "budgets.max_active_bodies",
+                ciborium::Value::Integer(512.into()),
+            ),
+            (
+                "budgets.sim_ns_per_tick",
+                ciborium::Value::Integer(5_000_000.into()),
+            ),
+        ]);
+        let settings = apply_config(&cbor).unwrap().sim_settings();
+
+        assert_eq!(
+            settings.physics.fixed_dt(),
+            1.0 / 30.0,
+            "0.0333333 désigne 1/30"
+        );
+        assert_eq!(settings.physics.max_substeps(), 6);
+        assert_eq!(settings.physics.gravity, Vec3::new(0.0, -12.0, 0.0));
+        assert_eq!(settings.physics.velocity_iterations, 8);
+        assert_eq!(settings.physics.position_iterations, 2);
+        assert_eq!(settings.contact_event_threshold, 2.5);
+        assert_eq!(settings.max_events_per_tick, 1024);
+        assert_eq!(settings.simulation_radius, 64.0);
+        assert_eq!(settings.max_active_bodies, 512);
+        assert_eq!(settings.sim_budget_ns, 5_000_000);
+
+        // Muette : les défauts du registre, qui sont ceux de l'annexe.
+        assert_eq!(
+            apply_config(&[]).unwrap().sim_settings(),
+            SimSettings::default()
+        );
     }
 
     /// Rien de ce qui vient de Java n'est cru sur parole : chemin inconnu,

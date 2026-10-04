@@ -54,7 +54,7 @@ pub use forces::{FluidEnvironment, FluidVolume, LiftSurface};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
 pub use query::{RayHit, SensorMode, SpatialFilter, SweepHit};
 pub use scheduler::{SimMode, Stage, StageDurations};
-pub use sim::SimDriver;
+pub use sim::{SimDriver, SimSettings};
 pub use world::{BodyReports, PhysicsWorld, Pose};
 
 // §10.7 : les événements sont une structure DM figée dans `ax-model` ; on les

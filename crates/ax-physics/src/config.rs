@@ -15,6 +15,10 @@ use core::fmt;
 /// de cet ensemble déstabiliserait le solveur ou dériverait de l'horloge du jeu.
 const ALLOWED_FIXED_DT: [f32; 3] = [1.0 / 30.0, 1.0 / 60.0, 1.0 / 120.0];
 
+/// Écart admis entre un pas configuré, écrit en décimal, et le pas autorisé qu'il désigne,
+/// en secondes : l'annexe arrondit au dix-millionième, l'écart réel est de l'ordre de 3·10⁻⁸.
+const CONFIGURED_DT_TOLERANCE: f64 = 1.0e-6;
+
 /// Ce qui rend une configuration invalide.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigError {
@@ -86,6 +90,24 @@ impl PhysicsConfig {
         })
     }
 
+    /// Construit une configuration depuis les valeurs **configurées** (IF-01, ADR-123 §1).
+    ///
+    /// L'annexe A.3 écrit le pas en décimal (`0.0166667`), et `f32` ne le confond pas avec
+    /// `1/60` : la valeur est rapportée au pas autorisé le plus proche, s'il en est à moins
+    /// d'un millionième de seconde. Le registre de configuration a déjà restreint `sim.fixed_dt`
+    /// à ces trois écritures ; une autre valeur reste refusée.
+    ///
+    /// # Errors
+    /// Celles de [`new`](Self::new) : aucun pas autorisé assez proche, ou `max_substeps` nul.
+    pub fn from_configured(fixed_dt: f64, max_substeps: u32) -> Result<Self, ConfigError> {
+        let nearest = ALLOWED_FIXED_DT
+            .iter()
+            .copied()
+            .find(|allowed| (f64::from(*allowed) - fixed_dt).abs() < CONFIGURED_DT_TOLERANCE)
+            .ok_or(ConfigError::FixedDtNotAllowed)?;
+        Self::new(nearest, max_substeps)
+    }
+
     /// Valeurs par défaut de la fiche 5.23, toutes valides.
     fn defaults() -> Self {
         Self {
@@ -116,5 +138,36 @@ impl PhysicsConfig {
 impl Default for PhysicsConfig {
     fn default() -> Self {
         Self::defaults()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn un_pas_configure_se_rapporte_au_pas_exact_de_r990() {
+        // L'annexe A.3 écrit les pas au dix-millionième ; `f32` ne les confond pas avec
+        // les pas exacts, que `new` exige à l'identique.
+        for (configure, exact) in [
+            (0.0333333, 1.0 / 30.0),
+            (0.0166667, 1.0 / 60.0),
+            (0.0083333, 1.0 / 120.0),
+        ] {
+            let config = PhysicsConfig::from_configured(configure, 4).expect("pas de l'annexe");
+            assert_eq!(config.fixed_dt(), exact, "{configure} désigne {exact}");
+        }
+    }
+
+    #[test]
+    fn un_pas_configure_hors_de_r990_reste_refuse() {
+        assert_eq!(
+            PhysicsConfig::from_configured(0.02, 4),
+            Err(ConfigError::FixedDtNotAllowed)
+        );
+        assert_eq!(
+            PhysicsConfig::from_configured(0.0166667, 0),
+            Err(ConfigError::ZeroMaxSubsteps)
+        );
     }
 }

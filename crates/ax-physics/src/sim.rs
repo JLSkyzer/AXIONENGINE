@@ -28,6 +28,51 @@ struct DimensionSim {
     origin: FloatingOrigin,
 }
 
+/// Réglages du pilote, lus de la configuration reçue par IF-01 (ADR-123 §1).
+///
+/// Tout monde naît de ces réglages — et non des défauts de la fiche — si bien qu'un
+/// administrateur qui change `sim.fixed_dt` ou `physics.gravity` les voit appliqués.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SimSettings {
+    /// Pas fixe, sous-pas, gravité par défaut (R-611), solveur, sommeil.
+    pub physics: PhysicsConfig,
+    /// `physics.contact_event_threshold`, en N·s (R-1012).
+    pub contact_event_threshold: f32,
+    /// `physics.max_events_per_tick` (R-1011).
+    pub max_events_per_tick: usize,
+    /// `sim.simulation_radius`, en blocs (R-612).
+    pub simulation_radius: f32,
+    /// `budgets.max_active_bodies` (R-613).
+    pub max_active_bodies: usize,
+    /// `budgets.sim_ns_per_tick`, en nanosecondes : le budget de FM-21.
+    pub sim_budget_ns: u64,
+}
+
+impl Default for SimSettings {
+    /// Les défauts de l'ANNEXE A.3.
+    fn default() -> Self {
+        Self {
+            physics: PhysicsConfig::default(),
+            contact_event_threshold: 0.5,
+            max_events_per_tick: 4096,
+            simulation_radius: 128.0,
+            max_active_bodies: 2048,
+            sim_budget_ns: 3_000_000,
+        }
+    }
+}
+
+/// Environnement d'une dimension (§10.6, R-611) : gravité, vent, fluide plat.
+///
+/// Gardé par le pilote, hors du monde : il survit à la destruction d'un monde vide
+/// (R-610) et s'applique à sa recréation (ADR-123 §1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct DimensionEnv {
+    gravity: Vec3,
+    wind: Vec3,
+    fluid: Option<FluidEnvironment>,
+}
+
 /// Clé de routage d'un handle : génération en poids fort, index en poids faible.
 pub(crate) fn handle_key(handle: Handle) -> u64 {
     (u64::from(handle.generation) << 32) | u64::from(handle.index)
@@ -45,6 +90,11 @@ pub struct SimDriver {
     /// (dimension, section 16³) → corps statique de la tuile de collision monde
     /// (C-38). Ordonnée : parcours déterministe (R-1020).
     tiles: BTreeMap<(u64, [i32; 3]), BodyId>,
+    /// Réglages dont naît tout monde (IF-01, ADR-123 §1).
+    settings: SimSettings,
+    /// Environnement de chaque dimension réglée par `SET_DIMENSION_ENV`, gardé hors
+    /// du monde pour survivre à sa destruction (R-610).
+    envs: BTreeMap<u64, DimensionEnv>,
 }
 
 impl std::fmt::Debug for SimDriver {
@@ -59,10 +109,55 @@ impl std::fmt::Debug for SimDriver {
 }
 
 impl SimDriver {
-    /// Crée un pilote sans aucune dimension.
+    /// Crée un pilote sans aucune dimension, aux réglages par défaut de l'annexe A.3.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Crée un pilote sans aucune dimension, dont tout monde naîtra de `settings`
+    /// (configuration reçue par IF-01, ADR-123 §1).
+    #[must_use]
+    pub fn with_settings(settings: SimSettings) -> Self {
+        Self {
+            settings,
+            ..Self::default()
+        }
+    }
+
+    /// Réglages dont naît tout monde.
+    #[must_use]
+    pub fn settings(&self) -> &SimSettings {
+        &self.settings
+    }
+
+    /// Construit le monde d'une dimension : réglages du pilote, puis environnement de
+    /// la dimension s'il a été réglé — gravité de `physics.gravity` sinon (R-611).
+    fn build_world(&self, dimension: u64) -> PhysicsWorld {
+        let mut world = PhysicsWorld::new(self.settings.physics);
+        world.set_contact_event_threshold(self.settings.contact_event_threshold);
+        world.set_max_events_per_tick(self.settings.max_events_per_tick);
+        if let Some(env) = self.envs.get(&dimension) {
+            world.set_gravity(env.gravity);
+            world.set_wind(env.wind);
+            world.set_fluid(env.fluid);
+        }
+        world
+    }
+
+    /// Rend la simulation d'une dimension, en la créant au premier besoin (R-610) depuis
+    /// les réglages du pilote, origine flottante à zéro.
+    fn dimension_mut(&mut self, dimension: u64) -> &mut DimensionSim {
+        if !self.dimensions.contains_key(&dimension) {
+            let sim = DimensionSim {
+                world: self.build_world(dimension),
+                origin: FloatingOrigin::new(DVec3::ZERO),
+            };
+            self.dimensions.insert(dimension, sim);
+        }
+        self.dimensions
+            .get_mut(&dimension)
+            .expect("la dimension vient d'être insérée")
     }
 
     /// Rend le monde d'une dimension, en le créant au premier besoin (R-610).
@@ -167,13 +262,7 @@ impl SimDriver {
             return false;
         }
 
-        let sim = self
-            .dimensions
-            .entry(dimension)
-            .or_insert_with(|| DimensionSim {
-                world: PhysicsWorld::new(PhysicsConfig::default()),
-                origin: FloatingOrigin::new(DVec3::ZERO),
-            });
+        let sim = self.dimension_mut(dimension);
         let world_origin = DVec3::new(
             f64::from(section[0]) * 16.0,
             f64::from(section[1]) * 16.0,
@@ -238,13 +327,7 @@ impl SimDriver {
             rotation: Quat::IDENTITY,
         };
 
-        let sim = self
-            .dimensions
-            .entry(dimension)
-            .or_insert_with(|| DimensionSim {
-                world: PhysicsWorld::new(PhysicsConfig::default()),
-                origin: FloatingOrigin::new(DVec3::ZERO),
-            });
+        let sim = self.dimension_mut(dimension);
         let world_origin = DVec3::new(
             f64::from(section[0]) * 16.0,
             f64::from(section[1]) * 16.0,
@@ -298,13 +381,7 @@ impl SimDriver {
         boxes: &[[f32; 6]],
         density: f32,
     ) -> bool {
-        let sim = self
-            .dimensions
-            .entry(dimension)
-            .or_insert_with(|| DimensionSim {
-                world: PhysicsWorld::new(PhysicsConfig::default()),
-                origin: FloatingOrigin::new(DVec3::ZERO),
-            });
+        let sim = self.dimension_mut(dimension);
         // Une densité non finie ou non positive n'est pas un fluide : on retire.
         if !density.is_finite() || density <= 0.0 {
             sim.world.remove_fluid_volumes(section);
@@ -455,13 +532,7 @@ impl SimDriver {
         kind: BodyKind,
         colliders: &[BodyCollider],
     ) -> Option<BodyId> {
-        let sim = self
-            .dimensions
-            .entry(dimension)
-            .or_insert_with(|| DimensionSim {
-                world: PhysicsWorld::new(PhysicsConfig::default()),
-                origin: FloatingOrigin::new(DVec3::ZERO),
-            });
+        let sim = self.dimension_mut(dimension);
         let local = sim.origin.to_local(DVec3::from_array(spawn.position));
         let rotation = Quat::from_array(spawn.rotation);
         let body = sim
@@ -506,6 +577,9 @@ impl SimDriver {
 
     /// Applique `SET_DIMENSION_ENV` : gravité, vent et fluide d'une dimension,
     /// créée au besoin (§10.6).
+    ///
+    /// L'environnement est aussi **gardé par le pilote** : un monde détruit faute
+    /// d'assembly et de joueur (R-610) le retrouve à sa recréation (ADR-123 §1).
     pub fn apply_dimension_env(
         &mut self,
         dimension: u64,
@@ -513,13 +587,15 @@ impl SimDriver {
         wind: Vec3,
         fluid: Option<FluidEnvironment>,
     ) {
-        let sim = self
-            .dimensions
-            .entry(dimension)
-            .or_insert_with(|| DimensionSim {
-                world: PhysicsWorld::new(PhysicsConfig::default()),
-                origin: FloatingOrigin::new(DVec3::ZERO),
-            });
+        self.envs.insert(
+            dimension,
+            DimensionEnv {
+                gravity,
+                wind,
+                fluid,
+            },
+        );
+        let sim = self.dimension_mut(dimension);
         sim.world.set_gravity(gravity);
         sim.world.set_wind(wind);
         sim.world.set_fluid(fluid);
@@ -548,6 +624,86 @@ mod tests {
         assert!(driver.world_mut(7).is_none());
         assert!(driver.remove_dimension(0));
         assert!(!driver.remove_dimension(0));
+    }
+
+    /// Une bille dynamique créée en (0, 100, 0) de la dimension 0, au handle (1, 1).
+    fn bille(driver: &mut SimDriver, dimension: u64) {
+        driver.create_assembly(
+            dimension,
+            Handle::new(1, 1),
+            WorldTransform {
+                position: [0.0, 100.0, 0.0],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+            },
+            BodyKind::Dynamic,
+            &[BodyCollider {
+                shape: Shape::Ball { radius: 0.5 },
+                density: 1000.0,
+                material: ContactMaterial::default(),
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
+        );
+    }
+
+    /// Vitesse verticale de la bille après une seconde simulée, en sous-pas de 1/60.
+    fn vitesse_apres_une_seconde(driver: &mut SimDriver) -> f32 {
+        for _ in 0..60 {
+            driver.advance_all(1.0 / 60.0);
+        }
+        driver.collect_states()[0].lin_vel[1]
+    }
+
+    #[test]
+    fn t301_la_gravite_d_un_monde_vient_des_reglages() {
+        // R-611 / ADR-123 §1 : un monde naît des réglages du pilote — `physics.gravity`
+        // configuré —, et non des défauts de la fiche.
+        let mut physics = PhysicsConfig::default();
+        physics.gravity = Vec3::new(0.0, -3.0, 0.0);
+        let mut driver = SimDriver::with_settings(SimSettings {
+            physics,
+            ..SimSettings::default()
+        });
+        bille(&mut driver, 0);
+        let vy = vitesse_apres_une_seconde(&mut driver);
+        assert!(
+            (vy + 3.0).abs() < 0.1,
+            "vitesse après 1 s sous −3 m/s² : {vy}"
+        );
+
+        // Les défauts de l'annexe, eux, gardent −9,81.
+        let mut defaut = SimDriver::new();
+        bille(&mut defaut, 0);
+        let vy = vitesse_apres_une_seconde(&mut defaut);
+        assert!(
+            (vy + 9.81).abs() < 0.2,
+            "vitesse après 1 s sous −9,81 m/s² : {vy}"
+        );
+    }
+
+    #[test]
+    fn t301_l_environnement_d_une_dimension_survit_a_son_monde() {
+        // ADR-123 §1 : `SET_DIMENSION_ENV` est gardé par le pilote ; un monde détruit
+        // (R-610) le retrouve à sa recréation.
+        let mut driver = SimDriver::new();
+        driver.apply_dimension_env(4, Vec3::new(0.0, -2.0, 0.0), Vec3::ZERO, None);
+        assert!(driver.remove_dimension(4));
+        bille(&mut driver, 4);
+        let vy = vitesse_apres_une_seconde(&mut driver);
+        assert!(
+            (vy + 2.0).abs() < 0.1,
+            "la gravité réglée revient avec le monde : {vy}"
+        );
+
+        // Une autre dimension n'en hérite pas.
+        let mut autre = SimDriver::new();
+        autre.apply_dimension_env(4, Vec3::new(0.0, -2.0, 0.0), Vec3::ZERO, None);
+        bille(&mut autre, 5);
+        let vy = vitesse_apres_une_seconde(&mut autre);
+        assert!(
+            (vy + 9.81).abs() < 0.2,
+            "une dimension sans environnement : {vy}"
+        );
     }
 
     #[test]

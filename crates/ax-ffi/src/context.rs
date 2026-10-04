@@ -20,7 +20,7 @@ use ax_mem::{ArenaClass, ArenaCounter, MemoryError};
 use ax_model::budgets::Budget;
 use ax_model::buffer::BufferKind;
 use ax_model::dm::handle::Handle;
-use ax_physics::SimDriver;
+use ax_physics::{SimDriver, SimSettings};
 use ax_telemetry::{BudgetMetrics, MetricId, Telemetry};
 use std::collections::HashMap;
 
@@ -429,6 +429,7 @@ pub fn open(
     workers: WorkerPolicy,
     budgets: JobBudgets,
     assets: AssetLimits,
+    physics: SimSettings,
 ) -> Result<u64, i32> {
     let mut slot = sessions();
     if slot.is_some() {
@@ -460,7 +461,7 @@ pub fn open(
         metrics,
         asset_jobs: HashMap::new(),
         next_asset_job: 1,
-        physics: SimDriver::new(),
+        physics: SimDriver::with_settings(physics),
         sim_pending: false,
         sim_unbalanced: 0,
         assets: AssetStore::new(),
@@ -615,7 +616,13 @@ mod tests {
             container: A3dLimits::new(1 << 24),
             persistent_bytes: 1 << 26,
         };
-        open(Side::Server, policy, JobBudgets::new(), assets)
+        open(
+            Side::Server,
+            policy,
+            JobBudgets::new(),
+            assets,
+            SimSettings::default(),
+        )
     }
 
     use super::*;
