@@ -1207,3 +1207,93 @@ fn t680_une_couleur_de_sommet_mal_formee_est_refusee_et_ne_panique_pas() {
         "refus attendu, obtenu {refus:?}"
     );
 }
+
+/// Enveloppe un document glTF dans un conteneur GLB : l'en-tête (`glTF`, la version, la
+/// longueur totale — celle du fichier, sauf si `longueur` en impose une autre), puis le
+/// morceau JSON, complété d'espaces jusqu'à un multiple de quatre octets.
+fn glb(json: &str, version: u32, longueur: Option<u32>) -> Vec<u8> {
+    let mut texte = json.as_bytes().to_vec();
+    while !texte.len().is_multiple_of(4) {
+        texte.push(b' ');
+    }
+    let total = u32::try_from(12 + 8 + texte.len()).expect("GLB de test sous 4 Gio");
+    let mut out = Vec::new();
+    out.extend_from_slice(b"glTF");
+    out.extend_from_slice(&version.to_le_bytes());
+    out.extend_from_slice(&longueur.unwrap_or(total).to_le_bytes());
+    out.extend_from_slice(
+        &u32::try_from(texte.len())
+            .expect("morceau JSON de test sous 4 Gio")
+            .to_le_bytes(),
+    );
+    out.extend_from_slice(b"JSON");
+    out.extend_from_slice(&texte);
+    out
+}
+
+#[test]
+fn t680_un_glb_conforme_donne_son_triangle() {
+    // La réciproque des refus qui suivent : un GLB conforme passe, et donne ce que donne le
+    // même document en `.gltf`.
+    let source = glb(&triangle("", ""), 2, None);
+    let (asset, _) = import_gltf(&source, &LIMITS, |_| None).expect("import refusé");
+    assert_eq!(asset.vertices.len(), 3);
+    assert_eq!(asset.indices, vec![0, 1, 2]);
+}
+
+#[test]
+fn t680_l_entree_trouvee_par_le_fuzzing_est_refusee_sans_paniquer() {
+    // Trouvée par la campagne planifiée du 2026-10-04, après 110 538 027 exécutions : un
+    // en-tête GLB qui annonce une longueur totale de 0. `gltf` 1.4.1 calcule `0 - 12` sans
+    // garde (`binary.rs:252`) et panique. Le filet `catch_parser_panic` l'aurait retenue en
+    // `ParserPanicked` ; c'est un refus pour cause de forme qui est attendu.
+    let entree = decode("Z2xURkZ7FwAAAAAAAAAAAEpTT05leHQ=");
+    let refus = import_gltf(&entree, &LIMITS, |_| None).unwrap_err();
+    assert!(
+        matches!(refus, ImportError::Malformed { .. }),
+        "refus de forme attendu, obtenu {refus:?}"
+    );
+}
+
+#[test]
+fn t680_un_glb_qui_annonce_une_longueur_plus_courte_que_ses_en_tetes_est_refuse() {
+    // L'en-tête et celui du premier morceau font vingt octets : rien de plus court n'est un
+    // GLB. Sans la vérification préalable, `0` et `11` font paniquer `gltf` 1.4.1.
+    for longueur in [0, 11, 12, 19] {
+        let refus = import_gltf(&glb(&triangle("", ""), 2, Some(longueur)), &LIMITS, |_| {
+            None
+        })
+        .unwrap_err();
+        let message = format!("{refus:?}");
+        assert!(
+            matches!(refus, ImportError::Malformed { .. }) && message.contains("longueur"),
+            "longueur {longueur} : {message}"
+        );
+    }
+}
+
+#[test]
+fn t680_un_glb_qui_annonce_plus_que_sa_taille_est_refuse() {
+    let taille = u32::try_from(glb(&triangle("", ""), 2, None).len()).expect("taille");
+    let refus = import_gltf(
+        &glb(&triangle("", ""), 2, Some(taille + 1)),
+        &LIMITS,
+        |_| None,
+    )
+    .unwrap_err();
+    assert!(format!("{refus:?}").contains("longueur"), "{refus:?}");
+}
+
+#[test]
+fn t680_un_conteneur_glb_d_une_autre_version_est_refuse() {
+    // glTF 2.0 ne définit que la version 2 du conteneur ; l'entrée du fuzzing annonçait
+    // 1 538 886.
+    for version in [0, 1, 3, 0x0017_7B46] {
+        let refus =
+            import_gltf(&glb(&triangle("", ""), version, None), &LIMITS, |_| None).unwrap_err();
+        assert!(
+            format!("{refus:?}").contains("version"),
+            "version {version} : {refus:?}"
+        );
+    }
+}

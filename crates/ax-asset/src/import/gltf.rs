@@ -212,10 +212,33 @@ fn json_text(bytes: &[u8], format: SourceFormat) -> Result<&str, ImportError> {
         const GLB_HEADER: usize = 12;
         const CHUNK_HEADER: usize = 8;
         const JSON_CHUNK: u32 = 0x4E4F_534A;
+        /// Seule version du conteneur GLB que définit glTF 2.0.
+        const GLB_VERSION: u32 = 2;
 
         if bytes.len() < GLB_HEADER + CHUNK_HEADER {
             return Err(malformed("GLB tronqué"));
         }
+        // L'en-tête : `glTF`, la version, puis la longueur **totale** du fichier. Le crate
+        // `gltf` ne vérifie que le nombre magique et laisse version et longueur à l'appelant —
+        // puis calcule `longueur - 12` sans garde, ce qui déborde sur une longueur annoncée
+        // plus courte que son propre en-tête. Trouvé par fuzzing (R-903), le 2026-10-04.
+        let version = u32::from_le_bytes(bytes[4..8].try_into().expect("quatre octets"));
+        if version != GLB_VERSION {
+            return Err(malformed(&format!(
+                "version de conteneur GLB {version}, seule la {GLB_VERSION} existe"
+            )));
+        }
+        let total =
+            u32::from_le_bytes(bytes[8..GLB_HEADER].try_into().expect("quatre octets")) as usize;
+        if total < GLB_HEADER + CHUNK_HEADER || total > bytes.len() {
+            return Err(malformed(&format!(
+                "longueur GLB annoncée de {total} octets, hors de [{}, {}]",
+                GLB_HEADER + CHUNK_HEADER,
+                bytes.len()
+            )));
+        }
+        // Le reste du fichier, au-delà de la longueur annoncée, n'appartient pas au GLB.
+        let bytes = &bytes[..total];
         let length = u32::from_le_bytes(
             bytes[GLB_HEADER..GLB_HEADER + 4]
                 .try_into()

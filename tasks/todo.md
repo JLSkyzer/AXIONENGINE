@@ -1155,20 +1155,27 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         Mais reproduire chez nous tous les invariants internes de deux
         analyseurs reviendrait à les réécrire, et cette réécriture dériverait à
         la première mise à jour.
-- [ ] **Troisième panique de `gltf` 1.4.1**, trouvée par la campagne planifiée du
+- [x] **Troisième panique de `gltf` 1.4.1**, trouvée par la campagne planifiée du
       2026-10-04 après 110 538 027 exécutions : `binary.rs:252`,
       `header.length as usize - Header::size_of()` déborde quand l'en-tête GLB déclare
       une longueur inférieure à 12 octets (entrée de 23 octets,
       `Z2xURkZ7FwAAAAAAAAAAAEpTT05leHQ=`). Retenue en production par
-      `catch_parser_panic` ; la cible échoue dessus, comme prévu. À faire : vérification
-      préalable de l'en-tête GLB dans `import_gltf`, graine de régression et test nommé.
-- [ ] **Deux bugs à rapporter en amont.** Les quatre paniques sont des défauts
+      `catch_parser_panic` ; la cible échoue dessus, comme prévu. **Corrigée à la racine** :
+      `json_text` vérifie la version (2) et la longueur totale de l'en-tête GLB — entre
+      les vingt octets des deux en-têtes et la taille du fichier — avant que `gltf` ne
+      la lise. Graine `regression-glb-longueur-courte.glb` ; cinq tests nommés, dont
+      l'entrée exacte et un GLB conforme toujours accepté ; vérifié par mutation : sans
+      les gardes, trois tests échouent. Les sept GLB réels du contenu de développement
+      annoncent tous la version 2 et leur taille exacte.
+- [ ] **Trois bugs à rapporter en amont.** Les cinq paniques sont des défauts
       de bibliothèque, pas de leur usage :
       - `gltf-json` 1.4.1 indexe `root.accessors[…]` avec un indice venu du
         document, **sans vérifier la borne** — dans son propre code de
         validation. Seul cas des quatre qui n'a **pas** de correctif racine chez
         nous : le détecter exigerait de réanalyser le JSON avant la
         bibliothèque. Il est retenu par le filet et gardé par un test nommé ;
+      - `gltf` 1.4.1, `binary.rs:252` : `Header::from_reader` ne valide que le nombre
+        magique, puis `from_slice` soustrait 12 à la longueur annoncée sans garde ;
       - `tobj` 4.0.5, deux fois : `vn * 3 + 2 >= normal.len()` calcule le produit
         avant de comparer, et `parse_float3` fait `.try_into().unwrap()` sur un
         `Vec` qu'il vient de collecter — `Ka 0.0 0.0` suffit.
