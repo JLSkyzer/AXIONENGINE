@@ -18,9 +18,14 @@ import dev.axion.physics.SimCommandStream;
 import dev.axion.physics.SimEventSink;
 import dev.axion.physics.SimStateSink;
 import dev.axion.physics.SimulationJournal;
+import dev.axion.physics.SimulationTrace;
 import dev.axion.physics.StepBreakdown;
 import dev.axion.platform.PlatformAdapter;
 import dev.axion.render.RenderCapabilities;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -83,6 +88,10 @@ public final class AxionRuntime {
      * le natif le lit à l'ouverture du contexte, dont il ne change plus.
      */
     private long simBudgetNs;
+    /** Trace de la simulation en cours d'écriture ({@code /axion debug trace}), ou {@code null}. */
+    private SimulationTrace trace;
+    /** Fichier de la trace en cours, ou {@code null}. */
+    private Path tracePath;
     /**
      * Sources des commandes de tick (tuiles du monde C-38, assemblies C-40), posées par la
      * couche Forge quand un serveur démarre. Vide → cycle à vide (aucune commande). Les flux
@@ -383,6 +392,15 @@ public final class AxionRuntime {
             simulationJournal.recordCycle(
                     tick, cycleNs, simBudgetNs, () -> StepBreakdown.parse(nativeMetrics()));
         }
+        if (trace != null && result.ok()) {
+            try {
+                trace.record(tick, result.bodies(), result.events());
+            } catch (IOException failure) {
+                simulationJournal.note(true, "trace de la simulation interrompue au tick " + tick
+                        + " : " + failure.getMessage());
+                stopTrace();
+            }
+        }
         if (result.ok() && (result.degraded() || simulationJournal.degradationLevel() != 0)) {
             readDegradation(tick);
         }
@@ -500,6 +518,44 @@ public final class AxionRuntime {
      */
     public void flushSimulationJournal() {
         simulationJournal.flushPendingSlowTicks();
+    }
+
+    /**
+     * Commence à tracer la simulation dans {@code file} (C-71, {@code /axion debug trace on}) :
+     * une ligne par corps et par tick, une par événement ({@link SimulationTrace}). Remplace une
+     * trace en cours, qui est fermée d'abord.
+     *
+     * @param file fichier CSV à créer ; ses répertoires le sont au besoin
+     * @throws IOException si le fichier ne peut être créé
+     */
+    public void startTrace(Path file) throws IOException {
+        stopTrace();
+        Files.createDirectories(file.getParent());
+        trace = new SimulationTrace(Files.newBufferedWriter(file, StandardCharsets.UTF_8));
+        tracePath = file;
+        simulationJournal.note(false, "trace de la simulation ouverte : " + file);
+    }
+
+    /**
+     * Arrête la trace en cours et ferme son fichier ; le journal dit où elle est.
+     *
+     * @return le nombre de lignes écrites, ou -1 s'il n'y avait pas de trace
+     */
+    public long stopTrace() {
+        if (trace == null) {
+            return -1L;
+        }
+        long lines = trace.lines();
+        try {
+            trace.close();
+        } catch (IOException failure) {
+            simulationJournal.note(true, "trace de la simulation mal fermée : " + failure.getMessage());
+        }
+        simulationJournal.note(false, "trace de la simulation fermée : " + lines + " ligne(s) dans "
+                + tracePath);
+        trace = null;
+        tracePath = null;
+        return lines;
     }
 
     /** {@return le rang du palier de dégradation de la simulation, 0 pour {@code NORMAL}} */
@@ -645,6 +701,12 @@ public final class AxionRuntime {
         // qu'un cache qui se remplit de nouveau.
         if (assets != null && assets.cache() != null) {
             assets.cache().writeIndex();
+        }
+        // Une trace encore ouverte se ferme, complète : le journal de simulation va être
+        // remplacé, c'est le journal des transitions qui le dit.
+        long traced = stopTrace();
+        if (traced >= 0) {
+            transitions.add("trace de la simulation fermée à l'arrêt : " + traced + " ligne(s)");
         }
         if (!transitionTo(LifecyclePhase.STOPPING)) {
             return;

@@ -126,6 +126,12 @@ final class AxionCommands {
                                         .executes(context -> remove(
                                                 context.getSource(),
                                                 EntityArgument.getEntities(context, "cibles")))))
+                        .then(Commands.literal("debug")
+                                .then(Commands.literal("trace")
+                                        .then(Commands.literal("on")
+                                                .executes(context -> traceOn(context.getSource(), runtime)))
+                                        .then(Commands.literal("off")
+                                                .executes(context -> traceOff(context.getSource(), runtime)))))
                         .then(Commands.literal("config")
                                 .then(Commands.literal("get")
                                         .then(Commands.argument("clé", StringArgumentType.greedyString())
@@ -363,6 +369,45 @@ final class AxionCommands {
 
         source.sendSuccess(
                 () -> Component.literal("AXION : métriques exportées dans " + target), true);
+        return 1;
+    }
+
+    /**
+     * Ouvre une trace de la simulation (C-71, {@code /axion debug trace on}) : chaque corps et
+     * chaque événement, à chaque tick, dans un CSV horodaté sous {@code <gameDir>/axion/traces/}.
+     * La commande est journalisée avec son auteur (R-810).
+     */
+    private static int traceOn(CommandSourceStack source, AxionRuntime runtime) {
+        Path gameDir = runtime.gameDir();
+        if (gameDir == null) {
+            source.sendFailure(Component.literal("AXION : répertoire de jeu inconnu"));
+            return 0;
+        }
+        String stamp = LocalDateTime.now().format(FILE_STAMP);
+        Path target = gameDir.resolve("axion").resolve("traces").resolve("trace-" + stamp + ".csv");
+        try {
+            runtime.startTrace(target);
+        } catch (IOException failure) {
+            source.sendFailure(Component.literal(
+                    "AXION : trace impossible — " + failure.getMessage()));
+            return 0;
+        }
+        LOGGER.info("AXION : /axion debug trace on demandé par {} — {}", source.getTextName(), target);
+        source.sendSuccess(() -> Component.literal("AXION : trace de la simulation dans " + target
+                + " — /axion debug trace off pour l'arrêter"), true);
+        return 1;
+    }
+
+    /** Ferme la trace de la simulation en cours (C-71, {@code /axion debug trace off}). */
+    private static int traceOff(CommandSourceStack source, AxionRuntime runtime) {
+        long lines = runtime.stopTrace();
+        if (lines < 0) {
+            source.sendFailure(Component.literal("AXION : aucune trace en cours"));
+            return 0;
+        }
+        LOGGER.info("AXION : /axion debug trace off demandé par {}", source.getTextName());
+        source.sendSuccess(
+                () -> Component.literal("AXION : trace arrêtée, " + lines + " ligne(s) écrites"), true);
         return 1;
     }
 

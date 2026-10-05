@@ -234,7 +234,9 @@ public final class AxionForgeEntrypoint {
             assemblyRuntime = null;
         }
         // C-15 : les ticks lents encore comptés sont dits avant l'arrêt — il peut fermer le
-        // contexte et repartir d'un journal neuf, qui les aurait tus.
+        // contexte et repartir d'un journal neuf, qui les aurait tus. Une trace ouverte se ferme
+        // aussi, pour que sa ligne parte avec eux.
+        runtime.stopTrace();
         runtime.flushSimulationJournal();
         logSimulationJournal();
         logTransitions(runtime::onServerStopping);
