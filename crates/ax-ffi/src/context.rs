@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use crate::asset_store::{AssetStore, LoadedAsset};
+use crate::cpu_clock;
 use ax_asset::a3d::A3dLimits;
 use ax_asset::compile::{CompileError, CompiledAsset};
 use ax_core::{BufferPool, ContextGuard, RuntimeState};
@@ -20,9 +21,10 @@ use ax_mem::{ArenaClass, ArenaCounter, MemoryError};
 use ax_model::budgets::Budget;
 use ax_model::buffer::BufferKind;
 use ax_model::dm::handle::Handle;
-use ax_physics::{ActivityReport, SimDriver, SimSettings};
+use ax_physics::{ActivityReport, SimDriver, SimSettings, Stage, WINDOW_TICKS};
 use ax_telemetry::{BudgetMetrics, MetricId, Telemetry};
 use std::collections::HashMap;
+use std::time::Instant;
 
 /// Motif porté par les bits de poids fort d'un jeton de contexte.
 ///
@@ -73,6 +75,11 @@ struct SessionMetrics {
     sim_colliders: MetricId,
     sim_degradation_level: MetricId,
     sim_p95: MetricId,
+    sim_step: MetricId,
+    sim_step_cpu: MetricId,
+    sim_last_step_cpu: MetricId,
+    sim_last_step_integration: MetricId,
+    sim_last_step_contacts: MetricId,
     sim_slept_radius: MetricId,
     sim_slept_cap: MetricId,
     sim_slept_budget: MetricId,
@@ -112,6 +119,10 @@ pub struct Session {
     sim_pending: bool,
     /// Cycles `submit` clos implicitement faute de `collect` (R-282).
     sim_unbalanced: u64,
+    /// Pas restant à mesurer en temps CPU : un pas au-delà du budget de simulation ouvre, ou
+    /// prolonge, une fenêtre de surveillance du gouverneur (voir
+    /// [`step_simulation`](Self::step_simulation)).
+    cpu_watch: usize,
     /// Assets chargés (IF-06, ADR-119) : Rust les possède, Java n'en tient que
     /// des handles (§4.10).
     assets: AssetStore,
@@ -226,6 +237,70 @@ impl Session {
         add(metrics.sim_woken, report.woken);
     }
 
+    /// Avance la simulation d'un tick et mesure le pas (R-500, R-661, INV-19) ; le gouverneur
+    /// FM-21 décide sur sa durée (§25.5).
+    ///
+    /// Le temps mural est celui du budget `budgets.sim_ns_per_tick` et du gouverneur. Le temps
+    /// CPU du thread dit si un pas trop long a calculé ou attendu — préempté par le reste du
+    /// jeu. Deux appels système par pas coûteraient toutefois 1 à 2 % d'un pas léger, plus que
+    /// R-501 n'en accorde à la télémétrie : il ne se mesure qu'après un pas au-delà du budget,
+    /// pendant une fenêtre du gouverneur que chaque nouveau dépassement prolonge. Des
+    /// dépassements assez fréquents pour faire descendre le palier — au moins six par
+    /// fenêtre — sont ainsi tous mesurés, hormis le premier.
+    pub fn step_simulation(&mut self, frame_dt: f32) {
+        let cpu_start = if self.cpu_watch > 0 {
+            cpu_clock::thread_cpu_ns()
+        } else {
+            None
+        };
+        let started = Instant::now();
+        self.physics.advance_all(frame_dt);
+        let wall = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
+        let cpu =
+            cpu_start.and_then(|start| Some(cpu_clock::thread_cpu_ns()?.saturating_sub(start)));
+        // Java lit le palier au drapeau du collect et aux jauges, et journalise ses transitions.
+        self.physics.record_tick_duration(wall);
+        self.record_step(wall, cpu);
+    }
+
+    /// Publie la mesure d'un pas, et ouvre ou referme la surveillance du temps CPU.
+    fn record_step(&mut self, wall: u64, cpu: Option<u64>) {
+        let metrics = &self.metrics;
+        let registry = &metrics.registry;
+        // INV-19 : la consommation du budget de simulation est le temps mural du dernier pas,
+        // et son dépassement se compte comme le gouverneur le voit — un pas plus long que le
+        // budget, budget nul compris —, pour que les métriques ne contredisent pas FM-21.
+        let over = wall > self.physics.settings().sim_budget_ns;
+        metrics
+            .budgets
+            .report_consumed(registry, Budget::SimNsPerTick, wall);
+        if over {
+            metrics
+                .budgets
+                .report_overrun(registry, Budget::SimNsPerTick);
+        }
+        registry.record(metrics.sim_step, wall);
+        if let Some(cpu) = cpu {
+            registry.record(metrics.sim_step_cpu, cpu);
+        }
+        // Le dernier pas décomposé, ce que Java lit pour expliquer un tick lent. Zéro pour le
+        // temps CPU d'un pas qui n'a pas été mesuré.
+        registry.set(metrics.sim_last_step_cpu, cpu.unwrap_or(0));
+        registry.set(
+            metrics.sim_last_step_integration,
+            self.physics.stage_duration(Stage::Integration),
+        );
+        registry.set(
+            metrics.sim_last_step_contacts,
+            self.physics.stage_duration(Stage::Contacts),
+        );
+        self.cpu_watch = if over {
+            WINDOW_TICKS
+        } else {
+            self.cpu_watch.saturating_sub(1)
+        };
+    }
+
     /// Pool de jobs de la session, s'il a pu être créé.
     ///
     /// Son absence n'est pas une panne : R-2062 veut qu'un parallélisme
@@ -289,9 +364,10 @@ impl Session {
 
         // La consommation d'un budget est la somme de ce qu'y ont passé les
         // types de travaux qui s'y imputent ; ses dépassements, la somme des
-        // leurs.
+        // leurs. Sauf la simulation : son pas tourne sur le thread appelant,
+        // hors du pool, et se mesure lui-même (`record_step`).
         for budget in Budget::ALL {
-            if !budget.is_duration() {
+            if !budget.is_duration() || budget == Budget::SimNsPerTick {
                 continue;
             }
             let elapsed = jobs.metrics().budget_elapsed_nanos(budget);
@@ -493,6 +569,9 @@ pub fn open(
     let guard = ContextGuard::acquire().map_err(|error| error.code())?;
 
     let metrics = build_metrics();
+    // L'horloge CPU de thread se calibre à son premier appel (Windows, quelques millisecondes
+    // d'attente active) : ici, plutôt qu'au premier pas surveillé, dont elle allongerait le tick.
+    let _ = cpu_clock::thread_cpu_ns();
 
     // Un pool qui refuse de naître ne fait pas échouer l'ouverture : R-2062
     // veut que le calcul soit plus long, pas absent. La cause est consignée.
@@ -517,6 +596,7 @@ pub fn open(
         physics: SimDriver::with_settings(physics),
         sim_pending: false,
         sim_unbalanced: 0,
+        cpu_watch: 0,
         assets: AssetStore::new(),
         persistent: ArenaCounter::new(ArenaClass::Persistent, assets.persistent_bytes),
         a3d_limits: assets.container,
@@ -567,6 +647,19 @@ fn build_metrics() -> SessionMetrics {
     let sim_p95 = builder
         .gauge("axion.sim.p95_ns", "ns")
         .expect("métrique de p95 de la simulation");
+    // R-500, R-661 : la durée du pas — temps mural, celui du budget et de FM-21 — et son temps
+    // CPU, mesuré sous surveillance seulement (`Session::step_simulation`).
+    let sim_step = builder
+        .duration("axion.sim.step_ns")
+        .expect("métrique du pas de simulation");
+    let sim_step_cpu = builder
+        .duration("axion.sim.step_cpu_ns")
+        .expect("métrique du temps CPU du pas");
+    // Le dernier pas décomposé ; son temps mural est `axion.budget.sim_ns_per_tick.consumed`.
+    let mut last_step = |name: &str| builder.gauge(name, "ns").expect("métrique du dernier pas");
+    let sim_last_step_cpu = last_step("axion.sim.last_step_cpu_ns");
+    let sim_last_step_integration = last_step("axion.sim.last_step_integration_ns");
+    let sim_last_step_contacts = last_step("axion.sim.last_step_contacts_ns");
     // R-613 « journalisé » (ADR-123 §3) : ce que la gestion d'activité endort et réveille.
     let mut counter = |name: &str| builder.counter(name, "count").expect("métrique d'activité");
     let sim_slept_radius = counter("axion.sim.slept_radius");
@@ -590,6 +683,11 @@ fn build_metrics() -> SessionMetrics {
         sim_colliders,
         sim_degradation_level,
         sim_p95,
+        sim_step,
+        sim_step_cpu,
+        sim_last_step_cpu,
+        sim_last_step_integration,
+        sim_last_step_contacts,
         sim_slept_radius,
         sim_slept_cap,
         sim_slept_budget,

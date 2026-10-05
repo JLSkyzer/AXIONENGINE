@@ -1,8 +1,7 @@
-//! FM-21 à travers l'ABI (ADR-123 §9) : un budget de simulation intenable fait descendre
-//! le gouverneur d'un palier après trois fenêtres de 100 ticks, et `axion_sim_collect` le
-//! dit — drapeau `AXION_SIM_DEGRADED`, jauges `axion.sim.degradation_level` et
-//! `axion.sim.p95_ns`. Chaque pas est mesuré et ses dépassements comptés (INV-19, R-661),
-//! et le temps CPU se mesure sous la surveillance qu'ouvre un dépassement.
+//! La mesure du pas de simulation à travers l'ABI, quand le budget tient (R-500, R-501,
+//! R-661) : chaque pas est compté et décomposé, aucun dépassement n'est compté, et le temps
+//! CPU du thread n'est pas mesuré — deux appels système par pas coûteraient plus que la
+//! télémétrie n'en a le droit, et seul un dépassement ouvre sa surveillance.
 //!
 //! Un seul test : la session native est globale au processus.
 
@@ -14,14 +13,17 @@ use ax_model::dm::commands::{opcode, CommandStreamHeader, SetDimensionEnv};
 use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_metrics_export, axion_shutdown,
     axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_OK,
-    AXION_SIDE_SERVER, AXION_SIM_DEGRADED,
+    AXION_SIDE_SERVER,
 };
 
-/// Configuration IF-01 : un budget de simulation nul, que tout tick dépasse.
+/// Ticks joués : moins d'une fenêtre du gouverneur suffit à ce qui est vérifié.
+const TICKS: u64 = 50;
+
+/// Configuration IF-01 : un budget de simulation de dix secondes, qu'aucun pas ne dépasse.
 fn config_cbor() -> Vec<u8> {
     let map = ciborium::Value::Map(vec![(
         ciborium::Value::Text("budgets.sim_ns_per_tick".to_owned()),
-        ciborium::Value::Integer(0.into()),
+        ciborium::Value::Integer(10_000_000_000u64.into()),
     )]);
     let mut out = Vec::new();
     ciborium::into_writer(&map, &mut out).unwrap();
@@ -83,12 +85,8 @@ fn write_command(ctx: u64) {
     view[HEADER_BYTES..HEADER_BYTES + stream.len()].copy_from_slice(&stream);
 }
 
-/// Valeur d'une métrique, lue dans l'export JSON de la session (R-502).
-fn metrique(ctx: u64, nom: &str) -> u64 {
-    champ(ctx, nom, "value")
-}
-
-/// Un champ entier d'une métrique — `value`, ou `count` et `max` d'une durée.
+/// Un champ entier d'une métrique, lu dans l'export JSON de la session (R-502) : `value`,
+/// ou `count` et `max` d'une durée.
 fn champ(ctx: u64, nom: &str, champ: &str) -> u64 {
     let mut needed = 0usize;
     let code = unsafe { axion_metrics_export(ctx, std::ptr::null_mut(), 0, &raw mut needed) };
@@ -115,8 +113,12 @@ fn champ(ctx: u64, nom: &str, champ: &str) -> u64 {
         .expect("valeur entière")
 }
 
+fn metrique(ctx: u64, nom: &str) -> u64 {
+    champ(ctx, nom, "value")
+}
+
 #[test]
-fn un_budget_intenable_degrade_la_simulation_apres_trois_fenetres() {
+fn un_pas_dans_son_budget_est_mesure_sans_son_temps_cpu() {
     let config = config_cbor();
     let mut ctx = 0u64;
     let code = unsafe {
@@ -128,43 +130,29 @@ fn un_budget_intenable_degrade_la_simulation_apres_trois_fenetres() {
         )
     };
     assert_eq!(code, AXION_OK, "init");
-    assert_eq!(metrique(ctx, "axion.sim.degradation_level"), 0);
 
-    // 299 ticks : trois fenêtres ne sont pas encore closes, la qualité reste nominale.
     let mut result = AxionCollectResult::default();
-    for tick in 1..=300u64 {
+    for tick in 1..=TICKS {
         write_command(ctx);
         assert_eq!(unsafe { axion_sim_submit(ctx, tick, 1, 0) }, AXION_OK);
         assert_eq!(
             unsafe { axion_sim_collect(ctx, u64::MAX, &raw mut result) },
             AXION_OK
         );
-        if tick < 300 {
-            assert_eq!(result.flags & AXION_SIM_DEGRADED, 0, "tick {tick}");
-        }
     }
 
-    // La troisième fenêtre close en dépassement : un palier de moins, et c'est visible.
-    assert_ne!(result.flags & AXION_SIM_DEGRADED, 0, "drapeau DEGRADED");
-    assert_eq!(metrique(ctx, "axion.sim.degradation_level"), 1);
-    assert!(metrique(ctx, "axion.sim.p95_ns") > 0, "p95 mesuré");
-
-    // INV-19 : le budget de simulation a sa consommation — le dernier pas — et ses
-    // dépassements, comptés comme le gouverneur les voit : ici, tous les pas.
+    // Chaque pas est mesuré et décomposé…
+    assert_eq!(champ(ctx, "axion.sim.step_ns", "count"), TICKS);
     assert!(metrique(ctx, "axion.budget.sim_ns_per_tick.consumed") > 0);
-    assert_eq!(metrique(ctx, "axion.budget.sim_ns_per_tick.overruns"), 300);
-    assert_eq!(champ(ctx, "axion.sim.step_ns", "count"), 300);
-    // Le premier dépassement ouvre la surveillance du temps CPU, que chacun des suivants
-    // prolonge : tous les pas sont mesurés, sauf le premier.
-    assert_eq!(champ(ctx, "axion.sim.step_cpu_ns", "count"), 299);
-    // Le dernier pas, décomposé. Son temps CPU n'est pas exigé non nul : macOS l'arrondit
-    // à la microseconde, et le pas d'un monde vide n'en dure que quelques-unes.
-    metrique(ctx, "axion.sim.last_step_cpu_ns");
     assert!(
         metrique(ctx, "axion.sim.last_step_integration_ns") > 0,
         "étape 4 mesurée"
     );
     metrique(ctx, "axion.sim.last_step_contacts_ns");
+    // … aucun ne dépasse, et aucun n'est mesuré en temps CPU.
+    assert_eq!(metrique(ctx, "axion.budget.sim_ns_per_tick.overruns"), 0);
+    assert_eq!(champ(ctx, "axion.sim.step_cpu_ns", "count"), 0);
+    assert_eq!(metrique(ctx, "axion.sim.last_step_cpu_ns"), 0);
 
     release_buffer(ctx, BufferKind::SimIn);
     release_buffer(ctx, BufferKind::SimOut);

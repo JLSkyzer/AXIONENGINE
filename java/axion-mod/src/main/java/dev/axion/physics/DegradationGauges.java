@@ -1,8 +1,7 @@
 package dev.axion.physics;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Jauges de la dégradation de la simulation (SM-02, ADR-123 §9), lues dans l'export des
@@ -29,39 +28,15 @@ public record DegradationGauges(int level, long p95Ns) {
      * @return les jauges, ou {@code null} si l'export est illisible ou ne les porte pas
      */
     public static DegradationGauges parse(String json) {
-        if (json == null) {
+        Map<String, Long> values = MetricExport.values(json, Set.of(LEVEL, P95));
+        if (values == null) {
             return null;
         }
-        try {
-            JsonElement root = JsonParser.parseString(json);
-            if (!root.isJsonObject() || !root.getAsJsonObject().has("metrics")
-                    || !root.getAsJsonObject().get("metrics").isJsonArray()) {
-                return null;
-            }
-            Long level = null;
-            Long p95 = null;
-            for (JsonElement element : root.getAsJsonObject().getAsJsonArray("metrics")) {
-                if (!element.isJsonObject()) {
-                    continue;
-                }
-                JsonObject metric = element.getAsJsonObject();
-                if (!metric.has("name") || !metric.has("value")) {
-                    continue;
-                }
-                String name = metric.get("name").getAsString();
-                if (LEVEL.equals(name)) {
-                    level = metric.get("value").getAsLong();
-                } else if (P95.equals(name)) {
-                    p95 = metric.get("value").getAsLong();
-                }
-            }
-            if (level == null || p95 == null || level < 0 || level > Integer.MAX_VALUE) {
-                return null;
-            }
-            return new DegradationGauges(level.intValue(), p95);
-        } catch (RuntimeException unreadable) {
-            // Syntaxe fautive, valeur non numérique : un export illisible ne dit rien du palier.
+        Long level = values.get(LEVEL);
+        Long p95 = values.get(P95);
+        if (level == null || p95 == null || level < 0 || level > Integer.MAX_VALUE) {
             return null;
         }
+        return new DegradationGauges(level.intValue(), p95);
     }
 }

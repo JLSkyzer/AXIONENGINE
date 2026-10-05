@@ -26,11 +26,14 @@
 //!
 //! - [`abi`] : les points d'entrée exportés, leur validation d'arguments et le
 //!   bouclier `catch_unwind` qui empêche toute panic de traverser ;
-//! - [`context`] : la session native, son jeton opaque et son état.
+//! - [`context`] : la session native, son jeton opaque et son état ;
+//! - `cpu_clock` : le temps CPU du thread qui fait le pas de simulation, un appel système
+//!   par plateforme — ici parce que R-2120 confine `unsafe` à la frontière native.
 
 pub mod abi;
 pub mod asset_store;
 pub mod context;
+mod cpu_clock;
 pub mod jni_bridge;
 
 pub use abi::{

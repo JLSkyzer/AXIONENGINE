@@ -1642,7 +1642,13 @@ substituable sans changer rapier »).
                   - [ ] T5c-5 — essai en jeu, Killian lançant le jeu. Joué le 2026-10-04 :
                         effets confirmés par Killian, aucune erreur au journal ; le
                         gouverneur est passé en DEGRADED_1 (p95 62,9 ms), expliqué par
-                        C-38 T4. À rejouer une fois C-38 T4 faite.
+                        C-38 T4. Rejoué à 23:00 après C-38 T4 : 285 colliders, p95 de
+                        0,076 ms, mais encore un DEGRADED_1 au tick 800 (p95 4,13 ms), que
+                        la durée murale seule n'explique pas. **Pas instrumenté le
+                        2026-10-05** (ADR-123 §9, précisions) : pas mesuré et décomposé,
+                        dépassements comptés (INV-19), temps CPU du thread sous
+                        surveillance, journal des ticks lents. À rejouer : le journal dira
+                        si le pas calcule ou attend.
             - Hors portée, nommé : palier `SAFE` de SM-02 (sièges M5, C-77), `DegradationEvent`
               et `ContactEvent` (API d'événements de C-70), filtre intra-assembly multi-corps
               (joints, M4).
@@ -1713,6 +1719,19 @@ substituable sans changer rapier »).
               (R-622/R-623). Restent, différés avec leur dépendance : la masse/COM
               **déclarée** (`BodyDesc`/definitions) et `REFITTABLE` par défaut
               (déformation M6) ; la résolution VHACD à mesurer en M3 (ADR-108).
+            - **Ballon de test** (demandé par Killian le 2026-10-05, reporté par lui à
+              l'étape qui le porte). Aujourd'hui, seules sa taille et sa masse sont
+              possibles (`auto_sphere`, `density` des extras) : il ne rebondirait pas —
+              le matériau de contact de toute assembly est neutre, l'index DM-07 de
+              `ColliderDesc` n'étant pas résolu (`body_colliders`, `abi.rs`) — et
+              roulerait sans fin, les amortissements et la CCD du bloc `physics` des
+              definitions étant validés mais jamais transmis. À faire avec le câblage
+              des definitions physiques : table DM-07, règle de combinaison des
+              coefficients, amortissements ; puis la definition `axion:test/ballon` en
+              devcontent. À vérifier au passage, signalé par une exploration et pas
+              encore relu : `auto_sphere` prend la demi-diagonale de l'AABB du maillage
+              (rayon × √3 pour une sphère), et le repli capsule → sphère qu'annonce
+              `collider.rs` est refusé par la validation.
 
       - [x] **C-38 — World Collision Provider** (fiche 5.30, R-640..643) — **implémenté**,
             toutes tranches faites et vérifiées (unitaire natif + frontière + compilation
@@ -2346,3 +2365,19 @@ ses critères vérifiés **mécaniquement**.
       reste à `false`, donc elle bascule en `SNAPSHOT`. À rejouer le jour où un
       runner ARM est disponible — machine personnelle, runner auto-hébergé, ou
       changement de plan.
+- [ ] **`unsafe` hors de `ax-ffi` et `ax-mem` (R-2120).** `ax-core/src/buffers.rs`
+      lève `unsafe_code` sur deux blocs (`as_mut_slice`, `as_slice`), alors que R-2120
+      réserve `unsafe` à la frontière JNI et aux arènes. Vu le 2026-10-05 en logeant
+      l'horloge CPU de thread dans `ax-ffi` ; aucun ADR ne le justifie. À trancher :
+      déplacer ces vues dans `ax-ffi` ou `ax-mem`, ou consigner la dérogation.
+- [ ] **Miri absent de la CI (R-2122).** Les crates qui contiennent du `unsafe`
+      (`ax-ffi`, `ax-mem`, et `ax-core` ci-dessus) doivent passer leurs tests
+      unitaires sous Miri ; aucun job ne le fait. Les tests qui appellent une
+      fonction étrangère, comme l'horloge CPU de thread, seront à exclure sous Miri.
+- [ ] **Métriques de budget : deux lectures d'une même valeur.** `BudgetMetrics`
+      documente la consommation comme une jauge du dernier tick, mais
+      `publish_metrics` y écrit le temps **cumulé** du pool de jobs pour les budgets
+      de durée — sauf la simulation, mesurée pas à pas depuis le 2026-10-05. Et un
+      budget nul vaut « sans plafond » pour `BudgetMetrics::report`, « intenable »
+      pour le gouverneur FM-21 ; la configuration accepte 0 pour tous les budgets.
+      À trancher avec le gouverneur multi-budgets (C-77).

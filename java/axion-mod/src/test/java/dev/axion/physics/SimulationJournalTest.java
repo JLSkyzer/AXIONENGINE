@@ -206,6 +206,131 @@ class SimulationJournalTest {
         assertEquals("palier -1", SimulationJournal.levelName(-1));
     }
 
+    /** Budget de la simulation des tests de ticks lents : celui par défaut, 3 ms. */
+    private static final long BUDGET = 3_000_000L;
+
+    /** Un pas décomposé, d'un temps mural et d'un temps CPU donnés. */
+    private static StepBreakdown pas(long stepNs, long cpuNs) {
+        return new StepBreakdown(stepNs, cpuNs, 3_900_000L, 120_000L, 285L);
+    }
+
+    @Test
+    void unCycleDansSonBudgetNeDitRienEtNeLitPasLExport() {
+        SimulationJournal journal = new SimulationJournal();
+        int[] lectures = {0};
+
+        journal.recordCycle(10L, 2_000_000L, BUDGET, () -> {
+            lectures[0]++;
+            return pas(1_900_000L, 0L);
+        });
+
+        assertTrue(journal.drain().isEmpty());
+        assertEquals(0, lectures[0], "l'export ne se lit que pour un tick à détailler");
+    }
+
+    @Test
+    void lePremierTickLentEstDitAussitotAvecLePasQuiLExplique() {
+        SimulationJournal journal = new SimulationJournal();
+
+        journal.recordCycle(557L, 8_210_000L, BUDGET, () -> pas(8_050_000L, 310_000L));
+
+        List<SimulationJournal.Entry> lignes = journal.drain();
+        assertEquals(1, lignes.size());
+        assertFalse(lignes.get(0).warning(), "un tick lent est un fait, pas une faute");
+        assertEquals(
+                "simulation : tick lent au tick 557 — cycle de simulation 8.21 ms pour un budget de"
+                        + " 3.00 ms ; pas physique 8.05 ms dont 0.31 ms de calcul : le thread a"
+                        + " surtout attendu (intégration 3.90 ms, contacts 0.12 ms, 285 colliders)",
+                lignes.get(0).text());
+    }
+
+    @Test
+    void lesTicksLentsSuivantsSontComptesEtLePireDetailleUneMinutePlusTard() {
+        SimulationJournal journal = new SimulationJournal();
+        journal.recordCycle(100L, 4_000_000L, BUDGET, () -> pas(3_900_000L, 0L));
+        journal.drain();
+        int[] lectures = {0};
+
+        journal.recordCycle(150L, 5_000_000L, BUDGET, () -> {
+            lectures[0]++;
+            return pas(4_900_000L, 4_800_000L);
+        });
+        journal.recordCycle(160L, 9_000_000L, BUDGET, () -> {
+            lectures[0]++;
+            return pas(8_900_000L, 8_800_000L);
+        });
+        journal.recordCycle(170L, 6_000_000L, BUDGET, () -> {
+            lectures[0]++;
+            return pas(5_900_000L, 5_800_000L);
+        });
+        journal.recordCycle(171L, 1_000_000L, BUDGET, () -> {
+            lectures[0]++;
+            return null;
+        });
+        assertTrue(journal.drain().isEmpty(), "rien avant la minute");
+        assertEquals(2, lectures[0], "lus : le premier compté, puis le nouveau pire");
+
+        journal.recordCycle(100L + SimulationJournal.PERIOD_TICKS - 1, 1_000_000L, BUDGET, () -> null);
+        assertTrue(journal.drain().isEmpty(), "toujours dans la minute");
+        journal.recordCycle(100L + SimulationJournal.PERIOD_TICKS, 1_000_000L, BUDGET, () -> null);
+        List<String> textes = textes(journal.drain());
+        assertEquals(1, textes.size());
+        String synthese = textes.get(0);
+        assertTrue(synthese.startsWith("simulation : 3 autre(s) tick(s) lent(s) depuis le tick 150 ;"
+                + " le pire, au tick 160 — cycle de simulation 9.00 ms"), synthese);
+        assertTrue(synthese.contains("le pas a surtout calculé"), synthese);
+    }
+
+    @Test
+    void unChangementDePalierSuitLesTicksLentsQuiLExpliquent() {
+        SimulationJournal journal = new SimulationJournal();
+        journal.recordCycle(10L, 4_000_000L, BUDGET, () -> pas(3_900_000L, 0L));
+        journal.drain();
+        journal.recordCycle(20L, 5_000_000L, BUDGET, () -> pas(4_900_000L, 200_000L));
+
+        journal.recordDegradation(300L, 1, 3_420_000L, BUDGET);
+
+        List<String> textes = textes(journal.drain());
+        assertEquals(2, textes.size());
+        assertTrue(textes.get(0).startsWith("simulation : 1 autre(s) tick(s) lent(s) depuis le tick 20"),
+                textes.get(0));
+        assertTrue(textes.get(1).contains("NORMAL → DEGRADED_1"), textes.get(1));
+    }
+
+    @Test
+    void ceQuiExpliqueUnTickLentSelonSonPas() {
+        assertTrue(premiereLigne(pas(2_500_000L, 2_400_000L))
+                .contains("pas physique 2.50 ms, dans son budget : le temps est passé ailleurs"
+                        + " dans le cycle"));
+        assertTrue(premiereLigne(pas(3_900_000L, 0L))
+                .contains("temps CPU non mesuré : sa surveillance s'ouvre à ce dépassement"));
+        assertTrue(premiereLigne(pas(4_000_000L, 2_000_000L))
+                .contains("dont 2.00 ms de calcul : le pas a surtout calculé"));
+        assertTrue(premiereLigne(null)
+                .endsWith("pas physique illisible dans l'export des métriques"));
+    }
+
+    /** La ligne d'un premier tick lent de 5 ms, dont le pas est {@code step}. */
+    private static String premiereLigne(StepBreakdown step) {
+        SimulationJournal journal = new SimulationJournal();
+        journal.recordCycle(10L, 5_000_000L, BUDGET, () -> step);
+        return journal.drain().get(0).text();
+    }
+
+    @Test
+    void unNouveauServeurRepartDeZeroPourLesTicksLents() {
+        SimulationJournal journal = new SimulationJournal();
+        journal.recordCycle(5_000L, 4_000_000L, BUDGET, () -> pas(3_900_000L, 0L));
+        journal.recordCycle(5_010L, 4_000_000L, BUDGET, () -> pas(3_900_000L, 0L));
+        journal.drain();
+
+        // Les ticks d'un nouveau serveur repartent de zéro : son premier tick lent est dit.
+        journal.recordCycle(3L, 4_000_000L, BUDGET, () -> pas(3_900_000L, 0L));
+        List<String> textes = textes(journal.drain());
+        assertEquals(1, textes.size());
+        assertTrue(textes.get(0).startsWith("simulation : tick lent au tick 3 —"), textes.get(0));
+    }
+
     @Test
     void lesNotesEtLaVidange() {
         SimulationJournal journal = new SimulationJournal();

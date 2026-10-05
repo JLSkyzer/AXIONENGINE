@@ -437,6 +437,12 @@ class NativeBridgeTest {
         dev.axion.physics.CollectResult apresCommande = simulation.tick(2L, commandes, 0L);
         assertTrue(apresCommande.ok(), () -> "collect après commande refusé, code " + apresCommande.code());
         assertEquals(0, apresCommande.stateCount(), "aucun corps créé par SET_DIMENSION_ENV");
+        // C-15 : le pas de ce monde est décomposé dans l'export réel, sous les noms que lit le
+        // journal des ticks lents.
+        dev.axion.physics.StepBreakdown pasDecompose =
+                dev.axion.physics.StepBreakdown.parse(NativeBridge.metricsJson(reprise));
+        assertNotNull(pasDecompose, "le pas décomposé est dans l'export");
+        assertTrue(pasDecompose.stepNs() > 0, "temps mural du pas mesuré");
 
         // T-310/T-311 : CREATE_ASSEMBLY de bout en bout (C-32, Option A, ADR-115).
         // Un glTF à node collider est compilé, Java localise sa section PHYS et

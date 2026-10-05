@@ -61,6 +61,22 @@ serde_json = { version = "1", default-features = false, features = ["std"] }
 # C-14 : points d'entree JNI. Egalement retenu par 32.2.
 jni = { version = "0.21", default-features = false }
 
+# C-15 (R-500) : temps CPU du thread qui fait le pas de simulation, pour le distinguer du
+# temps mural, qui compte aussi les attentes du thread. Un appel systeme par plateforme :
+# `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` sous Unix, `QueryThreadCycleTime` sous Windows.
+# Les deux crates etaient deja dans le graphe (outillage de build et de terminal) : aucune
+# source tierce nouvelle, des licences deja admises (MIT OR Apache-2.0), et les liaisons
+# systeme de reference, tenues par l'equipe Rust et par Microsoft. Alternatives evaluees :
+# le crate `cpu-time`, qui enveloppe les memes appels pour une dependance de plus ;
+# `GetThreadTimes`, qui n'avance que de 15,6 ms en 15,6 ms, muet sur un budget de 3 ms ;
+# le temps mural seul, qui ne distingue pas un pas qui calcule d'un pas qui attend.
+libc = { version = "0.2", default-features = false }
+windows-sys = { version = "0.61", default-features = false, features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_WindowsProgramming",
+] }
+
 # C-12 : impose par la fiche du composant, « pool dedie au-dessus de rayon,
 # jamais le pool global » (R-470). Retenu par 32.2, licence MIT OR Apache-2.0.
 # AXION n'utilise que `ThreadPoolBuilder` et `ThreadPool::spawn` : ni pool

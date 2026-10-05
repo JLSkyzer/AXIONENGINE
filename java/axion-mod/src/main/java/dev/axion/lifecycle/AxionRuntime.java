@@ -18,6 +18,7 @@ import dev.axion.physics.SimCommandStream;
 import dev.axion.physics.SimEventSink;
 import dev.axion.physics.SimStateSink;
 import dev.axion.physics.SimulationJournal;
+import dev.axion.physics.StepBreakdown;
 import dev.axion.platform.PlatformAdapter;
 import dev.axion.render.RenderCapabilities;
 import java.util.ArrayList;
@@ -77,6 +78,11 @@ public final class AxionRuntime {
 
     /** Pilote du cycle de simulation (IF-03), créé au premier tick opérationnel. */
     private NativeSimulation simulation;
+    /**
+     * Budget de la simulation ({@code budgets.sim_ns_per_tick}), en ns : lu avec le pilote, comme
+     * le natif le lit à l'ouverture du contexte, dont il ne change plus.
+     */
+    private long simBudgetNs;
     /**
      * Sources des commandes de tick (tuiles du monde C-38, assemblies C-40), posées par la
      * couche Forge quand un serveur démarre. Vide → cycle à vide (aucune commande). Les flux
@@ -339,10 +345,15 @@ public final class AxionRuntime {
      * seulement « pas {@code NORMAL} » : tant qu'il est levé, et au tick qui le baisse, le palier
      * et sa cause se relèvent dans les jauges natives (R-1880). Aux ticks nominaux, rien de tout
      * cela ne coûte.
+     *
+     * <p>Le cycle natif est chronométré : au-delà du budget de la simulation, le journal dit le
+     * tick lent avec le pas qui l'explique (C-15), lu dans l'export pour les seuls ticks qu'il
+     * détaille.
      */
     private void driveSimulation() {
         if (simulation == null) {
             simulation = new NativeSimulation(outcome.context());
+            simBudgetNs = outcome.config().getInt("budgets.sim_ns_per_tick");
         }
         long tick = platform.currentTick();
         // Étape 1 (C-40) : les commandes de tick viennent des fournisseurs Forge branchés
@@ -352,7 +363,9 @@ public final class AxionRuntime {
         for (SimCommandProvider provider : commandProviders) {
             commands.merge(provider.commandsForTick(tick));
         }
+        long started = System.nanoTime();
         CollectResult result = simulation.tick(tick, commands, 0L);
+        long cycleNs = System.nanoTime() - started;
         // Étape 15 (C-40) : les états collectés sont réappliqués aux entités liées via le
         // puits Forge (boucle C-40 ↔ C-50). Absent → rien à piloter.
         if (stateSink != null) {
@@ -366,6 +379,10 @@ public final class AxionRuntime {
             if (eventSink != null) {
                 eventSink.applyEvents(tick, result.events());
             }
+        }
+        if (result.ok()) {
+            simulationJournal.recordCycle(
+                    tick, cycleNs, simBudgetNs, () -> StepBreakdown.parse(nativeMetrics()));
         }
         if (result.ok() && (result.degraded() || simulationJournal.degradationLevel() != 0)) {
             readDegradation(tick);
@@ -385,13 +402,7 @@ public final class AxionRuntime {
      * @param tick numéro du tick
      */
     private void readDegradation(long tick) {
-        String json;
-        try {
-            json = nativeApi.metricsJson(outcome.context());
-        } catch (RuntimeException | UnsatisfiedLinkError failure) {
-            json = null;
-        }
-        DegradationGauges gauges = DegradationGauges.parse(json);
+        DegradationGauges gauges = DegradationGauges.parse(nativeMetrics());
         if (gauges == null) {
             if (!gaugesUnreadableNoted) {
                 gaugesUnreadableNoted = true;
@@ -401,11 +412,16 @@ public final class AxionRuntime {
             }
             return;
         }
-        simulationJournal.recordDegradation(
-                tick,
-                gauges.level(),
-                gauges.p95Ns(),
-                outcome.config().getInt("budgets.sim_ns_per_tick"));
+        simulationJournal.recordDegradation(tick, gauges.level(), gauges.p95Ns(), simBudgetNs);
+    }
+
+    /** {@return l'export des métriques natives, ou {@code null} s'il n'a pu être lu} */
+    private String nativeMetrics() {
+        try {
+            return nativeApi.metricsJson(outcome.context());
+        } catch (RuntimeException | UnsatisfiedLinkError failure) {
+            return null;
+        }
     }
 
     /**

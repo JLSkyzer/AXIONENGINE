@@ -114,6 +114,8 @@ dependencies = [
  "ax-telemetry",
  "ciborium",
  "jni",
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

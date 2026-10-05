@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
 /**
  * Journal des faits de simulation (FM-20, R-180, FM-21, FM-22, R-1880, R-281) : ce que le natif
@@ -21,6 +22,9 @@ import java.util.function.IntFunction;
  *       le journal au pire moment.
  *   <li><b>Paliers de dégradation</b> (SM-02, R-1880) : chaque changement de palier, avec sa
  *       cause — métrique, valeur, budget.
+ *   <li><b>Ticks lents</b> (C-15) : un cycle de simulation au-delà du budget, avec le pas qui
+ *       l'explique. Le premier est dit aussitôt ; les suivants sont comptés et le pire détaillé,
+ *       une minute de jeu plus tard ou juste avant le changement de palier qu'ils expliquent.
  *   <li><b>Notes</b> du cycle : collect refusé, cycle rétabli (R-281).
  * </ul>
  *
@@ -51,6 +55,9 @@ public final class SimulationJournal {
     /** Un fait d'une assembly, tel que le débit le compte. */
     private record Fact(int index, int generation, int kind, int data) {}
 
+    /** Un tick lent tel que le journal le détaille : son numéro, son cycle, son pas. */
+    private record SlowTick(long tick, long cycleNs, StepBreakdown step) {}
+
     private final List<Entry> pending = new ArrayList<>();
     /** Tick de la dernière ligne de chaque fait, tant qu'elle compte pour le débit. */
     private final Map<Fact, Long> reported = new HashMap<>();
@@ -58,6 +65,12 @@ public final class SimulationJournal {
     private long lastPurge;
     private int level;
     private long lastP95Ns = -1L;
+    /** Tick de la dernière ligne de ticks lents, -1 avant la première. */
+    private long lastSlowLine = -1L;
+    /** Ticks lents pas encore dits, le premier d'entre eux, et le pire. */
+    private int slowPending;
+    private long slowSince;
+    private SlowTick slowWorst;
 
     /**
      * Pose ce qui nomme une assembly dans le journal — sa definition, sa position —, fourni par
@@ -120,6 +133,10 @@ public final class SimulationJournal {
         if (newLevel == level) {
             return;
         }
+        if (slowPending > 0) {
+            // Les ticks lents qui expliquent ce changement, juste avant lui.
+            flushSlowTicks(tick, budgetNs);
+        }
         boolean descent = newLevel > level;
         String cause = descent
                 ? "p95 du tick " + millis(p95Ns) + " au-dessus du budget de " + millis(budgetNs)
@@ -130,6 +147,95 @@ public final class SimulationJournal {
                 + levelName(newLevel) + " au tick " + tick + " (" + (descent ? "descente" : "remontée")
                 + ", FM-21) — " + cause + " (axion.sim.p95_ns, budgets.sim_ns_per_tick)"));
         level = newLevel;
+    }
+
+    /**
+     * Relève la durée du cycle natif d'un tick — {@code submit} puis {@code collect} — et dit les
+     * ticks lents, au-delà du budget de la simulation, avec ce qui les explique : le pas physique
+     * décomposé et, s'il a été mesuré, son temps CPU (C-15).
+     *
+     * <p>Le premier tick lent est dit aussitôt. Les suivants sont comptés, et le pire d'entre eux
+     * détaillé, une minute de jeu après la ligne précédente, ou juste avant le changement de
+     * palier qu'ils expliquent ({@link #recordDegradation}). Le pas n'est lu que pour les ticks à
+     * détailler : le premier, puis chaque nouveau pire.
+     *
+     * @param tick numéro du tick
+     * @param cycleNs durée du cycle natif, en ns
+     * @param budgetNs budget de la simulation ({@code budgets.sim_ns_per_tick}), en ns
+     * @param step lit le pas décomposé dans l'export des métriques ; rend {@code null} s'il est
+     *     illisible
+     */
+    public void recordCycle(long tick, long cycleNs, long budgetNs, Supplier<StepBreakdown> step) {
+        if (tick < lastSlowLine) {
+            // Un nouveau serveur, dont les ticks repartent de zéro : rien de l'ancien ne compte.
+            lastSlowLine = -1L;
+            slowPending = 0;
+            slowWorst = null;
+        }
+        if (cycleNs > budgetNs) {
+            if (slowPending == 0 && (lastSlowLine < 0 || tick - lastSlowLine >= PERIOD_TICKS)) {
+                pending.add(new Entry(false, "simulation : tick lent au tick " + tick + " — "
+                        + describeSlow(new SlowTick(tick, cycleNs, step.get()), budgetNs)));
+                lastSlowLine = tick;
+            } else {
+                if (slowPending == 0) {
+                    slowSince = tick;
+                }
+                slowPending++;
+                if (slowWorst == null || cycleNs > slowWorst.cycleNs()) {
+                    slowWorst = new SlowTick(tick, cycleNs, step.get());
+                }
+            }
+        }
+        if (slowPending > 0 && tick - lastSlowLine >= PERIOD_TICKS) {
+            flushSlowTicks(tick, budgetNs);
+        }
+    }
+
+    /** Dit les ticks lents comptés depuis la ligne précédente, en détaillant le pire. */
+    private void flushSlowTicks(long tick, long budgetNs) {
+        pending.add(new Entry(false, "simulation : " + slowPending + " autre(s) tick(s) lent(s)"
+                + " depuis le tick " + slowSince + " ; le pire, au tick " + slowWorst.tick() + " — "
+                + describeSlow(slowWorst, budgetNs)));
+        lastSlowLine = tick;
+        slowPending = 0;
+        slowWorst = null;
+    }
+
+    /**
+     * Ce qui explique un tick lent : le cycle, le pas physique, et ce que le pas a fait de son
+     * temps — calculé, ou attendu sans calculer, préempté par le reste du jeu.
+     */
+    private static String describeSlow(SlowTick slow, long budgetNs) {
+        StringBuilder text = new StringBuilder("cycle de simulation ")
+                .append(millis(slow.cycleNs()))
+                .append(" pour un budget de ")
+                .append(millis(budgetNs));
+        StepBreakdown step = slow.step();
+        if (step == null) {
+            return text.append(" ; pas physique illisible dans l'export des métriques").toString();
+        }
+        text.append(" ; pas physique ").append(millis(step.stepNs()));
+        if (step.stepNs() <= budgetNs) {
+            text.append(", dans son budget : le temps est passé ailleurs dans le cycle");
+        } else if (!step.cpuMeasured()) {
+            text.append(", temps CPU non mesuré : sa surveillance s'ouvre à ce dépassement");
+        } else {
+            text.append(" dont ")
+                    .append(millis(step.cpuNs()))
+                    .append(" de calcul : ")
+                    .append(step.cpuNs() * 2 < step.stepNs()
+                            ? "le thread a surtout attendu"
+                            : "le pas a surtout calculé");
+        }
+        return text.append(" (intégration ")
+                .append(millis(step.integrationNs()))
+                .append(", contacts ")
+                .append(millis(step.contactsNs()))
+                .append(", ")
+                .append(step.colliders())
+                .append(" colliders)")
+                .toString();
     }
 
     /**

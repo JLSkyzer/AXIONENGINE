@@ -46,7 +46,6 @@ use ax_physics::{
     BodyCollider, BodyKind, ContactMaterial, DegradationLevel, PhysicsConfig, Shape, SimDriver,
     SimSettings,
 };
-use std::time::Instant;
 
 /// Version de l'ABI.
 ///
@@ -1183,12 +1182,8 @@ pub unsafe extern "C" fn axion_sim_collect(
             // tout joueur ne bouge pas ce tick (ADR-123 §3). Les comptes vont aux métriques.
             let activity = session.physics().manage_activity();
             session.record_activity(activity);
-            let started = Instant::now();
-            session.physics().advance_all(SERVER_TICK_DT);
-            let elapsed = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
-            // FM-21 : le gouverneur décide sur la durée mesurée de la simulation (§25.5) ;
-            // Java lit le palier au drapeau et aux jauges, et journalise ses transitions.
-            session.physics().record_tick_duration(elapsed);
+            // Le pas, mesuré ; FM-21 décide sur sa durée (§25.5).
+            session.step_simulation(SERVER_TICK_DT);
             let reports = session.physics().collect_reports();
             let states = &reports.states;
             // Appariement garanti par construction (un même parcours) ; Java

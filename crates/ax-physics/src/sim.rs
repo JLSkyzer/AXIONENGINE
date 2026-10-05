@@ -20,6 +20,7 @@ use crate::forces::FluidEnvironment;
 use crate::forces::FluidVolume;
 use crate::governor::{DegradationLevel, DegradationTransition, Governor};
 use crate::proxies::EntityProxy;
+use crate::scheduler::Stage;
 use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::geometry::WorldTransform;
@@ -699,6 +700,17 @@ impl SimDriver {
         }
     }
 
+    /// Durée d'une étape du pas au dernier [`advance_all`](Self::advance_all), toutes
+    /// dimensions confondues, en nanosecondes (R-661) : les mondes s'avancent l'un après
+    /// l'autre, leurs durées s'additionnent.
+    #[must_use]
+    pub fn stage_duration(&self, stage: Stage) -> u64 {
+        self.dimensions
+            .values()
+            .map(|sim| sim.world.stage_duration(stage))
+            .sum()
+    }
+
     /// Récolte l'état des corps mobiles de toutes les dimensions (DM-08) — vue
     /// des seuls états de [`collect_reports`](Self::collect_reports).
     #[must_use]
@@ -1344,6 +1356,40 @@ mod tests {
         assert!((states[0].position[0] - 1000.0).abs() < 1e-3);
         assert_eq!(states[1].handle, Handle::new(20, 1));
         assert!(states[1].position[0].abs() < 1e-3);
+    }
+
+    #[test]
+    fn la_duree_d_une_etape_additionne_celles_des_dimensions() {
+        // R-661 : chaque monde mesure ses étapes ; le pilote en rend la somme, que la
+        // télémétrie publie pour le pas entier.
+        let mut driver = SimDriver::new();
+        assert_eq!(driver.stage_duration(Stage::Integration), 0, "aucun monde");
+        for dimension in [0, 1] {
+            driver
+                .world_or_create(dimension, config(), FloatingOrigin::new(DVec3::ZERO))
+                .add_body(
+                    BodyKind::Dynamic,
+                    Vec3::new(0.0, 5.0, 0.0),
+                    Quat::IDENTITY,
+                    Shape::Ball { radius: 0.5 },
+                )
+                .unwrap();
+        }
+
+        driver.advance_all(1.0 / 60.0);
+        for stage in [Stage::Integration, Stage::Contacts] {
+            let par_monde: u64 = [0, 1]
+                .iter()
+                .map(|&dimension| driver.world_mut(dimension).unwrap().stage_duration(stage))
+                .sum();
+            assert_eq!(driver.stage_duration(stage), par_monde, "{stage:?}");
+        }
+        // Les contacts d'une bille en chute libre peuvent tenir sous la résolution de
+        // l'horloge ; le pas de rapier, non.
+        assert!(
+            driver.stage_duration(Stage::Integration) > 0,
+            "intégration mesurée"
+        );
     }
 
     #[test]

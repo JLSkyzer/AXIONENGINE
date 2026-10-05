@@ -1044,3 +1044,16 @@ lue isolément (§10.3) quand une lecture conjointe avec la fiche 5.30 — des c
 l'échelle du jeu réel avant d'être figée, par un banc qui en reproduit l'ordre de grandeur
 (`charge_tuiles`). Quand deux exigences semblent s'exclure, chercher la lecture qui les
 satisfait ensemble avant d'en sacrifier une.
+
+## 2026-10-05 | Une variable ajoutée à `NativeBridgeTest` heurte une homonyme plus bas
+
+**Ce qui a mal tourné.** En ajoutant au test de la vraie bibliothèque le contrat des métriques
+du pas, la variable `pas` a fait échouer la compilation : la même méthode en déclare une autre
+plus bas. C'était déjà arrivé le 2026-10-04 avec `etat`.
+
+**Cause.** `cycleCompletAtraversLaFrontiere` est une seule méthode de plusieurs centaines de
+lignes, où chaque composant de la frontière ajoute ses étapes ; un nom choisi en lisant
+l'endroit de l'insertion ne voit pas les déclarations qui suivent.
+
+**Règle.** Avant d'ajouter une variable locale à cette méthode, chercher son nom dans tout le
+fichier ; préférer un nom propre à l'étape (`pasDecompose`, `corpsChute`).

@@ -49,6 +49,14 @@ ax-mem.workspace = true
 ciborium.workspace = true
 jni.workspace = true
 
+# C-15 (R-500) : temps CPU du thread du pas de simulation, distingué du temps mural ; le
+# module `cpu_clock` les emploie, ici parce que R-2120 confine `unsafe` à la frontière native.
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
 [dev-dependencies]
 # Le test d'integration exerce l'ABI comme Java le fera : il doit pouvoir
 # encoder une configuration et relire un en-tete de tampon.
