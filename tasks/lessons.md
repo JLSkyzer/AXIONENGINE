@@ -1072,3 +1072,20 @@ de la machine et de sa charge, et sur ce runner elle valait moins de 50 ms.
 large (30 s ici), jamais un nombre fixe de fois. Un échec de CI isolé se relance sur le même
 commit avant de conclure — un délai allongé masquerait sinon un vrai ralentissement —, puis
 se corrige à la cause.
+
+## 2026-10-06 | Des ticks lents comptés pour une synthèse future, tus par l'arrêt du serveur
+
+**Ce qui a mal tourné.** Le journal des ticks lents disait le premier aussitôt et comptait les
+suivants pour une ligne de synthèse, une minute plus tard. Le premier essai en jeu a duré 36 s :
+seul le tick 1 a été imprimé, et ce qui a pu suivre s'est perdu à l'arrêt — la couche Forge
+ne vidait ce journal qu'à la fin de chaque tick, et l'arrêt du processus le remplace par un
+neuf.
+
+**Cause.** La règle « suivre la ligne jusqu'au log » appliquée aux lignes écrites pendant un
+tick, mais pas à un état qui diffère une ligne : un compte en attente n'est pas encore une
+ligne.
+
+**Règle.** Tout état qui diffère une ligne de journal — compte, synthèse, débit — se vide à
+l'arrêt du serveur, avant que le journal ne soit remplacé, et un test le vérifie. Un essai en
+jeu se rejoue assez longtemps pour que les fenêtres qu'on observe se ferment (ici, plus de
+trois fenêtres de 100 ticks).

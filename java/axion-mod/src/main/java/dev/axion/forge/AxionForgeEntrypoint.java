@@ -233,6 +233,10 @@ public final class AxionForgeEntrypoint {
             assemblyRuntime.close();
             assemblyRuntime = null;
         }
+        // C-15 : les ticks lents encore comptés sont dits avant l'arrêt — il peut fermer le
+        // contexte et repartir d'un journal neuf, qui les aurait tus.
+        runtime.flushSimulationJournal();
+        logSimulationJournal();
         logTransitions(runtime::onServerStopping);
         platform.setServer(null);
         reportDisabledHooks();
@@ -289,14 +293,21 @@ public final class AxionForgeEntrypoint {
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             runtime.onTick();
-            // Les faits de simulation du tick — E-2030, bornes, paliers de dégradation, collect
-            // refusé : le runtime les consigne, ce point d'ancrage les journalise.
-            for (SimulationJournal.Entry entry : runtime.drainSimulationJournal()) {
-                if (entry.warning()) {
-                    LOGGER.warn("AXION : {}", entry.text());
-                } else {
-                    LOGGER.info("AXION : {}", entry.text());
-                }
+            logSimulationJournal();
+        }
+    }
+
+    /**
+     * Journalise les faits de simulation consignés depuis le dernier passage — E-2030, bornes,
+     * paliers de dégradation, ticks lents, collect refusé : le runtime les consigne, ce point
+     * d'ancrage les journalise.
+     */
+    private void logSimulationJournal() {
+        for (SimulationJournal.Entry entry : runtime.drainSimulationJournal()) {
+            if (entry.warning()) {
+                LOGGER.warn("AXION : {}", entry.text());
+            } else {
+                LOGGER.info("AXION : {}", entry.text());
             }
         }
     }

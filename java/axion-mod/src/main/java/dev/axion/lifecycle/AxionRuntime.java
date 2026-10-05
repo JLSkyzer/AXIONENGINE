@@ -347,8 +347,7 @@ public final class AxionRuntime {
      * cela ne coûte.
      *
      * <p>Le cycle natif est chronométré : au-delà du budget de la simulation, le journal dit le
-     * tick lent avec le pas qui l'explique (C-15), lu dans l'export pour les seuls ticks qu'il
-     * détaille.
+     * tick lent avec le pas qui l'explique (C-15), lu dans l'export pour les seuls ticks lents.
      */
     private void driveSimulation() {
         if (simulation == null) {
@@ -492,6 +491,15 @@ public final class AxionRuntime {
      */
     public List<SimulationJournal.Entry> drainSimulationJournal() {
         return simulationJournal.drain();
+    }
+
+    /**
+     * Fait dire au journal de simulation les ticks lents qu'il compte encore (C-15). Appelé par
+     * la couche Forge à l'arrêt d'un serveur, avant de vider le journal : la ligne qui les
+     * rapporte attendait la minute suivante, et l'arrêt les aurait tus.
+     */
+    public void flushSimulationJournal() {
+        simulationJournal.flushPendingSlowTicks();
     }
 
     /** {@return le rang du palier de dégradation de la simulation, 0 pour {@code NORMAL}} */

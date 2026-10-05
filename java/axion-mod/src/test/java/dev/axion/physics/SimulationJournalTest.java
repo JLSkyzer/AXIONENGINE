@@ -268,7 +268,7 @@ class SimulationJournalTest {
             return null;
         });
         assertTrue(journal.drain().isEmpty(), "rien avant la minute");
-        assertEquals(2, lectures[0], "lus : le premier compté, puis le nouveau pire");
+        assertEquals(3, lectures[0], "le pas de chaque tick lent est lu, celui d'un tick nominal non");
 
         journal.recordCycle(100L + SimulationJournal.PERIOD_TICKS - 1, 1_000_000L, BUDGET, () -> null);
         assertTrue(journal.drain().isEmpty(), "toujours dans la minute");
@@ -276,9 +276,68 @@ class SimulationJournalTest {
         List<String> textes = textes(journal.drain());
         assertEquals(1, textes.size());
         String synthese = textes.get(0);
-        assertTrue(synthese.startsWith("simulation : 3 autre(s) tick(s) lent(s) depuis le tick 150 ;"
-                + " le pire, au tick 160 — cycle de simulation 9.00 ms"), synthese);
+        assertTrue(synthese.startsWith("simulation : 3 autre(s) tick(s) lent(s) depuis le tick 150 —"
+                + " pas physique au-delà du budget pour 3 (3 surtout en calcul) ; le pire, au tick"
+                + " 160 — cycle de simulation 9.00 ms"), synthese);
         assertTrue(synthese.contains("le pas a surtout calculé"), synthese);
+    }
+
+    @Test
+    void laSyntheseCompteLesTicksLentsSelonCeQuAFaitLeurPas() {
+        SimulationJournal journal = new SimulationJournal();
+        journal.recordCycle(10L, 4_000_000L, BUDGET, () -> pas(3_900_000L, 0L));
+        journal.drain();
+
+        journal.recordCycle(11L, 9_000_000L, BUDGET, () -> pas(8_900_000L, 300_000L));
+        journal.recordCycle(12L, 5_000_000L, BUDGET, () -> pas(4_900_000L, 4_800_000L));
+        journal.recordCycle(13L, 4_000_000L, BUDGET, () -> pas(3_900_000L, 0L));
+        journal.recordCycle(14L, 3_500_000L, BUDGET, () -> pas(400_000L, 300_000L));
+        journal.recordCycle(15L, 3_500_000L, BUDGET, () -> null);
+        journal.flushPendingSlowTicks();
+
+        String synthese = textes(journal.drain()).get(0);
+        assertTrue(synthese.startsWith("simulation : 5 autre(s) tick(s) lent(s) depuis le tick 11 —"
+                + " pas physique au-delà du budget pour 3 (1 surtout en attente, 1 surtout en calcul,"
+                + " 1 sans temps CPU mesuré) ; pas physique dans son budget pour 1 ; pas illisible"
+                + " pour 1 ; le pire, au tick 11 —"), synthese);
+    }
+
+    @Test
+    void lePireDetailleEstLePasLePlusLongAuDelaDuBudget() {
+        // Le gouverneur juge le pas, pas le cycle : un cycle long dont le pas tient son budget
+        // n'explique pas une dégradation, et ne doit pas cacher le pas qui l'explique.
+        SimulationJournal journal = new SimulationJournal();
+        journal.recordCycle(10L, 4_000_000L, BUDGET, () -> pas(3_900_000L, 0L));
+        journal.drain();
+
+        journal.recordCycle(20L, 12_000_000L, BUDGET, () -> pas(500_000L, 400_000L));
+        journal.recordCycle(21L, 5_000_000L, BUDGET, () -> pas(4_200_000L, 300_000L));
+        journal.recordCycle(22L, 4_500_000L, BUDGET, () -> pas(4_100_000L, 300_000L));
+        journal.flushPendingSlowTicks();
+
+        String synthese = textes(journal.drain()).get(0);
+        assertTrue(synthese.contains("le pire, au tick 21 — cycle de simulation 5.00 ms"), synthese);
+    }
+
+    @Test
+    void lesTicksLentsEncoreComptesSontDitsALArret() {
+        SimulationJournal journal = new SimulationJournal();
+        journal.flushPendingSlowTicks();
+        assertTrue(journal.drain().isEmpty(), "rien de compté, rien à dire");
+
+        journal.recordCycle(10L, 4_000_000L, BUDGET, () -> pas(3_900_000L, 0L));
+        journal.recordCycle(30L, 5_000_000L, BUDGET, () -> pas(4_900_000L, 200_000L));
+        journal.drain();
+
+        // L'arrêt survient avant la minute qui les aurait dits : ils le sont quand même.
+        journal.flushPendingSlowTicks();
+        List<String> textes = textes(journal.drain());
+        assertEquals(1, textes.size());
+        assertTrue(textes.get(0).startsWith("simulation : 1 autre(s) tick(s) lent(s) depuis le tick 30"),
+                textes.get(0));
+
+        journal.flushPendingSlowTicks();
+        assertTrue(journal.drain().isEmpty(), "une fois dits, ils ne reviennent pas");
     }
 
     @Test
