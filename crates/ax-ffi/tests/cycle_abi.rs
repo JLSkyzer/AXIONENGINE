@@ -350,11 +350,15 @@ f 1 2 3
     assert_eq!(code, AXION_OK, "compilation refusée");
     assert_ne!(job, 0);
 
-    // Sondage, comme Java le fera à chaque tick (R-521).
+    // Sondage, comme Java le fera à chaque tick (R-521), jusqu'à une échéance large : la
+    // compilation tourne sur le pool, et un nombre fixe de sondages ne borne pas un temps — cent
+    // mille `yield_now` ont tenu moins de 50 ms sur un runner macOS de la CI, moins que cette
+    // compilation n'y a pris.
+    let echeance = std::time::Instant::now() + std::time::Duration::from_secs(30);
     let mut status = AXION_ASSET_PENDING;
     let mut size: u64 = 0;
     let mut error: i32 = 0;
-    for _ in 0..100_000 {
+    while std::time::Instant::now() < echeance {
         // SAFETY: les trois pointeurs de sortie sont des variables locales.
         let code =
             unsafe { axion_asset_poll(ctx, job, &raw mut status, &raw mut size, &raw mut error) };

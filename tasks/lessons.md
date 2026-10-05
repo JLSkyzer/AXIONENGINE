@@ -1057,3 +1057,18 @@ l'endroit de l'insertion ne voit pas les déclarations qui suivent.
 
 **Règle.** Avant d'ajouter une variable locale à cette méthode, chercher son nom dans tout le
 fichier ; préférer un nom propre à l'étape (`pasDecompose`, `corpsChute`).
+
+## 2026-10-05 | Une attente de test bornée en sondages a lâché sur un runner macOS lent
+
+**Ce qui a mal tourné.** La CI de 36239fe a échoué sur `t210` (macOS aarch64) : la compilation
+d'asset, sondée cent mille fois avec `yield_now`, était encore en cours. Le binaire de test a
+tout fini en 0,05 s, quand il finit d'ordinaire en 0,01 s ; la relance du même commit est
+passée.
+
+**Cause.** Une attente bornée par un nombre d'itérations, et non par un temps : sa durée dépend
+de la machine et de sa charge, et sur ce runner elle valait moins de 50 ms.
+
+**Règle.** Un test qui attend un travail asynchrone le sonde jusqu'à une échéance de temps
+large (30 s ici), jamais un nombre fixe de fois. Un échec de CI isolé se relance sur le même
+commit avant de conclure — un délai allongé masquerait sinon un vrai ralentissement —, puis
+se corrige à la cause.

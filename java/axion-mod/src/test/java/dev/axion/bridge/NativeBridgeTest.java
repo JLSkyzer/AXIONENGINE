@@ -132,11 +132,7 @@ class NativeBridgeTest {
         dev.axion.asset.NativeAssetCompiler compilateur = new dev.axion.asset.NativeAssetCompiler(ctx);
         int job = compilateur.submit(assetId, format, source);
         assertTrue(job > 0, () -> "compilation refusée, code " + job);
-        dev.axion.asset.AssetCompiler.CompileStatus etat = compilateur.poll(job);
-        for (int essai = 0; essai < 100_000 && etat.state() == dev.axion.asset.AssetState.COMPILING; essai++) {
-            Thread.onSpinWait();
-            etat = compilateur.poll(job);
-        }
+        dev.axion.asset.AssetCompiler.CompileStatus etat = attendre(compilateur, job);
         assertEquals(dev.axion.asset.AssetState.COMPILED, etat.state(), "compilation échouée");
         assertEquals(
                 NativeBridge.OK,
@@ -145,6 +141,23 @@ class NativeBridgeTest {
                 NativeBridge.OK,
                 NativeBridge.release(ctx, BufferKinds.ASSET_OUT, lireGeneration(ctx, BufferKinds.ASSET_OUT)));
         return etat.payload();
+    }
+
+    /**
+     * Sonde une compilation jusqu'à ce qu'elle quitte {@code COMPILING}, ou jusqu'à une échéance
+     * large : elle tourne sur le pool natif, et un nombre fixe de sondages ne borne pas un temps —
+     * le test natif {@code t210} l'a montré sur un runner macOS de la CI, où cent mille sondages
+     * ont tenu moins de 50 ms.
+     */
+    private static dev.axion.asset.AssetCompiler.CompileStatus attendre(
+            dev.axion.asset.NativeAssetCompiler compilateur, int job) {
+        long echeance = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+        dev.axion.asset.AssetCompiler.CompileStatus etat = compilateur.poll(job);
+        while (etat.state() == dev.axion.asset.AssetState.COMPILING && System.nanoTime() - echeance < 0) {
+            Thread.onSpinWait();
+            etat = compilateur.poll(job);
+        }
+        return etat;
     }
 
     /** Un joueur près du corps de l'essai de simulation : sans lui, R-612 l'endormirait. */
@@ -275,14 +288,7 @@ class NativeBridgeTest {
         int job = compilateur.submit(0x4242L, dev.axion.asset.SourceFormats.OBJ, source);
         assertTrue(job > 0, () -> "compilation refusée, code " + job);
 
-        dev.axion.asset.AssetCompiler.CompileStatus etat = null;
-        for (int essai = 0; essai < 100_000; essai++) {
-            etat = compilateur.poll(job);
-            if (etat.state() != dev.axion.asset.AssetState.COMPILING) {
-                break;
-            }
-            Thread.onSpinWait();
-        }
+        dev.axion.asset.AssetCompiler.CompileStatus etat = attendre(compilateur, job);
         assertEquals(
                 dev.axion.asset.AssetState.COMPILED,
                 etat.state(),
@@ -453,14 +459,7 @@ class NativeBridgeTest {
         int jobCollider = compilateur.submit(0x4343L, dev.axion.asset.SourceFormats.GLTF, gltf);
         assertTrue(jobCollider > 0, () -> "compilation du glTF collider refusée, code " + jobCollider);
 
-        dev.axion.asset.AssetCompiler.CompileStatus etatCollider = null;
-        for (int essai = 0; essai < 100_000; essai++) {
-            etatCollider = compilateur.poll(jobCollider);
-            if (etatCollider.state() != dev.axion.asset.AssetState.COMPILING) {
-                break;
-            }
-            Thread.onSpinWait();
-        }
+        dev.axion.asset.AssetCompiler.CompileStatus etatCollider = attendre(compilateur, jobCollider);
         assertEquals(
                 dev.axion.asset.AssetState.COMPILED,
                 etatCollider.state(),
