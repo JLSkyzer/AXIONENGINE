@@ -1089,3 +1089,33 @@ ligne.
 l'arrêt du serveur, avant que le journal ne soit remplacé, et un test le vérifie. Un essai en
 jeu se rejoue assez longtemps pour que les fenêtres qu'on observe se ferment (ici, plus de
 trois fenêtres de 100 ticks).
+
+## 2026-10-06 | Une poussée d'Archimède vérifiée sur des cubes droits seulement
+
+**Ce qui a mal tourné.** La flottabilité multipliait la fraction immergée par le volume de
+l'AABB du corps. Les tests posaient des cubes droits, dont l'AABB est le cube : tout passait.
+En jeu, un cube de la densité de l'eau, tournant en tombant, en a jailli plus haut que d'où il
+était tombé, puis a rebondi sans fin — l'AABB d'un cube tourné le dépasse jusqu'à √3³ ≈ 5,2
+fois.
+
+**Cause.** « V approché par 8 points de l'AABB » (§10.6) lu comme « V = volume de l'AABB »,
+alors que les points n'approchent que la part immergée d'un volume, celui du corps.
+
+**Règle.** Un modèle physique dont l'approximation dépend de l'orientation se teste aussi sur
+un corps tourné et sur un corps qui tourne ; un corps de la densité du fluide doit rester
+immobile, et un corps lâché ne doit jamais remonter plus haut que son point de départ.
+
+## 2026-10-06 | Les tuiles d'eau gardaient le défaut que T4 avait retiré aux tuiles solides
+
+**Ce qui a mal tourné.** C-38 T4 a fusionné les blocs pleins en boîtes maximales après avoir
+mesuré qu'une boîte par bloc écrasait le pas. La même lecture de section produisait aussi les
+volumes d'eau, toujours une boîte par bloc, cherchés par un parcours linéaire de toutes les
+boîtes du monde : 388 864 boîtes pour un lac, 28,6 ms par pas, et la simulation descendue
+jusqu'à DEGRADED_3 au premier essai près de l'eau.
+
+**Cause.** La correction a visé la représentation mesurée, sans examiner sa sœur produite par
+le même code — la règle « couvrir une famille de défauts ne dit rien des autres »
+(2026-09-12), oubliée.
+
+**Règle.** Quand une représentation de masse se corrige, chercher toutes celles que produit la
+même source et les mesurer au même banc avant de clore (`charge_tuiles`, `charge_eau`).

@@ -165,6 +165,78 @@ public final class WorldTileGeometry {
         return boxes;
     }
 
+    /**
+     * Fusionne l'eau d'une section en boîtes maximales, comme {@link #mergeFullBlocks} les blocs
+     * pleins (C-38, R-642). Une boîte par bloc d'eau en donnait jusqu'à 4 096 par section :
+     * autant de volumes que le natif gardait, et qu'il parcourait pour situer chaque coin de
+     * chaque corps.
+     *
+     * <p>L'eau pleine (hauteur 1) se fusionne en volume, comme des blocs pleins. L'eau partielle
+     * — la surface, à 8/9 de bloc, l'eau qui s'écoule — ne s'empile pas : sa boîte s'arrête à sa
+     * hauteur, et ne se fusionne donc que dans sa couche, avec l'eau de même hauteur, le long de
+     * x puis de z. Les boîtes couvrent exactement l'eau, sans se chevaucher : la flottabilité est
+     * la même, en moins de pièces. Une hauteur non finie ou non positive n'est pas de l'eau.
+     *
+     * @param heights hauteur de l'eau de chaque bloc de la section, en blocs, de longueur
+     *     {@code 16³}, au rang {@link #cellIndex(int, int, int)} ; n'est pas modifiée
+     * @return boîtes relatives à la section, {@code [minx, miny, minz, maxx, maxy, maxz]} en
+     *     blocs : l'eau pleine d'abord, puis l'eau partielle, couche par couche
+     * @throws IllegalArgumentException si la grille n'a pas {@code 16³} cases
+     */
+    public static List<float[]> mergeFluids(float[] heights) {
+        int cells = SECTION_SIZE * SECTION_SIZE * SECTION_SIZE;
+        if (heights.length != cells) {
+            throw new IllegalArgumentException(
+                    "une grille de hauteurs d'eau a " + cells + " cases, pas " + heights.length);
+        }
+        boolean[] full = new boolean[cells];
+        boolean[] partial = new boolean[cells];
+        for (int i = 0; i < cells; i++) {
+            // Comparaisons fausses pour NaN : une hauteur non finie n'est ni pleine ni partielle.
+            full[i] = heights[i] >= 1f;
+            partial[i] = heights[i] > 0f && heights[i] < 1f;
+        }
+        List<float[]> boxes = mergeFullBlocks(full);
+        for (int y = 0; y < SECTION_SIZE; y++) {
+            for (int z = 0; z < SECTION_SIZE; z++) {
+                for (int x = 0; x < SECTION_SIZE; x++) {
+                    if (!partial[cellIndex(x, y, z)]) {
+                        continue;
+                    }
+                    float height = heights[cellIndex(x, y, z)];
+                    int x1 = x + 1;
+                    while (x1 < SECTION_SIZE && sameWater(partial, heights, height, x1, x1 + 1, y, z, z + 1)) {
+                        x1++;
+                    }
+                    int z1 = z + 1;
+                    while (z1 < SECTION_SIZE && sameWater(partial, heights, height, x, x1, y, z1, z1 + 1)) {
+                        z1++;
+                    }
+                    take(partial, x, x1, y, y + 1, z, z1);
+                    boxes.add(new float[] {x, y, z, x1, y + height, z1});
+                }
+            }
+        }
+        return boxes;
+    }
+
+    /**
+     * {@return vrai si toute l'eau de {@code [x0, x1) × {y} × [z0, z1)} est partielle, pas encore
+     * couverte, et de hauteur {@code height}}
+     */
+    private static boolean sameWater(
+            boolean[] free, float[] heights, float height, int x0, int x1, int y, int z0, int z1) {
+        for (int x = x0; x < x1; x++) {
+            for (int z = z0; z < z1; z++) {
+                int cell = cellIndex(x, y, z);
+                if (!free[cell] || heights[cell] != height) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     /** {@return vrai si tous les blocs de la boîte {@code [x0, x1) × [y0, y1) × [z0, z1)} sont libres} */
     private static boolean allFree(boolean[] free, int x0, int x1, int y0, int y1, int z0, int z1) {
         for (int x = x0; x < x1; x++) {

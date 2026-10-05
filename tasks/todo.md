@@ -1647,8 +1647,14 @@ substituable sans changer rapier »).
                         la durée murale seule n'explique pas. **Pas instrumenté le
                         2026-10-05** (ADR-123 §9, précisions) : pas mesuré et décomposé,
                         dépassements comptés (INV-19), temps CPU du thread sous
-                        surveillance, journal des ticks lents. À rejouer : le journal dira
-                        si le pas calcule ou attend.
+                        surveillance, journal des ticks lents. Rejoué le 2026-10-06 (5 min,
+                        cubes dans un lac) : le pas **calcule** — 130 dépassements sur 131
+                        « surtout en calcul », dans l'intégration —, cascade jusqu'à
+                        DEGRADED_3, et un cube de la densité de l'eau qui en jaillit puis
+                        rebondit sans fin. Causes : eau en une boîte par bloc, recherche
+                        linéaire de toutes les boîtes, poussée sur le volume de l'AABB —
+                        corrigées (ADR-117, précision « eau » ; banc `charge_eau` : pas
+                        28,6 → 0,04 ms). À rejouer pour confirmer en jeu.
             - Hors portée, nommé : palier `SAFE` de SM-02 (sièges M5, C-77), `DegradationEvent`
               et `ContactEvent` (API d'événements de C-70), filtre intra-assembly multi-corps
               (joints, M4).

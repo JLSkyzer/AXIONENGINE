@@ -180,4 +180,121 @@ class WorldTileGeometryTest {
                 IllegalArgumentException.class,
                 () -> WorldTileGeometry.mergeFullBlocks(new boolean[4095]));
     }
+
+    /** Hauteur de l'eau d'un bloc de surface sous l'air, celle que Minecraft donne à une source. */
+    private static final float SURFACE = 8f / 9f;
+
+    /** Une grille de hauteurs d'eau : {@code hauteur} donne celle de chaque bloc, 0 sans eau. */
+    private static float[] eau(java.util.function.Function<int[], Float> hauteur) {
+        float[] hauteurs = new float[4096];
+        for (int x = 0; x < 16; x++) {
+            for (int y = 0; y < 16; y++) {
+                for (int z = 0; z < 16; z++) {
+                    hauteurs[WorldTileGeometry.cellIndex(x, y, z)] = hauteur.apply(new int[] {x, y, z});
+                }
+            }
+        }
+        return hauteurs;
+    }
+
+    /**
+     * Vérifie que les boîtes couvrent exactement l'eau : chaque bloc d'eau une seule fois, sur
+     * toute sa hauteur et pas au-delà ; aucun bloc sans eau.
+     */
+    private static void couvreExactementLEau(float[] hauteurs, List<float[]> boites) {
+        int[] couverture = new int[4096];
+        for (float[] b : boites) {
+            assertEquals(6, b.length);
+            assertTrue(b[0] < b[3] && b[1] < b[4] && b[2] < b[5], "boîte non vide");
+            for (int x = (int) b[0]; x < b[3]; x++) {
+                for (int z = (int) b[2]; z < b[5]; z++) {
+                    for (int y = (int) b[1]; y < Math.ceil(b[4]); y++) {
+                        int bloc = WorldTileGeometry.cellIndex(x, y, z);
+                        couverture[bloc]++;
+                        float haut = Math.min(b[4] - y, 1f);
+                        assertEquals(Math.min(hauteurs[bloc], 1f), haut, 1e-6f, "hauteur du bloc " + bloc);
+                    }
+                }
+            }
+        }
+        for (int i = 0; i < 4096; i++) {
+            assertEquals(hauteurs[i] > 0f ? 1 : 0, couverture[i], "bloc " + i);
+        }
+    }
+
+    @Test
+    void uneSectionPleineDEauDevientUneSeuleBoite() {
+        List<float[]> boites = WorldTileGeometry.mergeFluids(eau(c -> 1f));
+        assertEquals(1, boites.size());
+        assertArrayEquals(new float[] {0f, 0f, 0f, 16f, 16f, 16f}, boites.get(0), 0f);
+    }
+
+    @Test
+    void unLacTientEnDeuxBoites() {
+        // Quatorze couches pleines, puis la surface à 8/9 de bloc : 3 840 boîtes d'un bloc
+        // jusqu'ici, deux désormais.
+        float[] hauteurs = eau(c -> c[1] < 14 ? 1f : c[1] == 14 ? SURFACE : 0f);
+        List<float[]> boites = WorldTileGeometry.mergeFluids(hauteurs);
+        couvreExactementLEau(hauteurs, boites);
+        assertEquals(2, boites.size());
+        assertArrayEquals(new float[] {0f, 0f, 0f, 16f, 14f, 16f}, boites.get(0), 0f);
+        assertArrayEquals(new float[] {0f, 14f, 0f, 16f, 14f + SURFACE, 16f}, boites.get(1), 1e-6f);
+    }
+
+    @Test
+    void uneEauPartielleNeSEmpilePas() {
+        // Deux couches d'eau à mi-hauteur : une boîte qui les réunirait couvrirait l'air entre
+        // elles.
+        float[] hauteurs = eau(c -> c[1] == 3 || c[1] == 4 ? 0.5f : 0f);
+        List<float[]> boites = WorldTileGeometry.mergeFluids(hauteurs);
+        couvreExactementLEau(hauteurs, boites);
+        assertEquals(2, boites.size());
+    }
+
+    @Test
+    void desHauteursDifferentesNeSeFusionnentPas() {
+        // Une eau qui s'écoule : deux hauteurs dans la même couche, deux boîtes.
+        float[] hauteurs = eau(c -> c[1] != 0 ? 0f : c[0] < 8 ? 0.5f : 0.75f);
+        List<float[]> boites = WorldTileGeometry.mergeFluids(hauteurs);
+        couvreExactementLEau(hauteurs, boites);
+        assertEquals(2, boites.size());
+    }
+
+    @Test
+    void uneHauteurAberranteNEstPasDeLEau() {
+        float[] hauteurs = eau(c -> c[0] == 0 ? Float.NaN : c[0] == 1 ? -1f : 0f);
+        assertTrue(WorldTileGeometry.mergeFluids(hauteurs).isEmpty());
+    }
+
+    @Test
+    void laFusionDeLEauCouvreExactementDesGrillesQuelconques() {
+        java.util.Random hasard = new java.util.Random(0xEA0L);
+        float[] valeurs = {0f, 1f, SURFACE, 0.5f, 0.25f};
+        for (int essai = 0; essai < 200; essai++) {
+            double eauPresente = hasard.nextDouble();
+            float[] hauteurs = new float[4096];
+            for (int i = 0; i < hauteurs.length; i++) {
+                hauteurs[i] = hasard.nextDouble() < eauPresente
+                        ? valeurs[1 + hasard.nextInt(valeurs.length - 1)]
+                        : 0f;
+            }
+            float[] copie = hauteurs.clone();
+            List<float[]> boites = WorldTileGeometry.mergeFluids(hauteurs);
+            couvreExactementLEau(hauteurs, boites);
+            assertArrayEquals(copie, hauteurs, 0f, "la grille d'entrée n'est pas modifiée");
+            // Même entrée, même sortie (R-1020).
+            List<float[]> encore = WorldTileGeometry.mergeFluids(hauteurs);
+            assertEquals(boites.size(), encore.size());
+            for (int i = 0; i < boites.size(); i++) {
+                assertArrayEquals(boites.get(i), encore.get(i), 0f);
+            }
+        }
+    }
+
+    @Test
+    void uneGrilleDEauDeMauvaiseTailleEstRefusee() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> WorldTileGeometry.mergeFluids(new float[4095]));
+    }
 }

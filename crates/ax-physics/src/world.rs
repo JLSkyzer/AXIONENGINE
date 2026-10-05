@@ -213,8 +213,9 @@ pub struct PhysicsWorld {
     /// dans `fluid_volumes`.
     fluid: Option<FluidEnvironment>,
     /// Volumes de fluide localisés du fournisseur de collision du monde (C-38, R-642),
-    /// en coordonnées locales, par section 16³. Chaque section porte ses boîtes d'eau.
-    fluid_volumes: HashMap<[i32; 3], Vec<FluidVolume>>,
+    /// en coordonnées locales, par section 16³, dans l'ordre des sections (R-1020). Chaque
+    /// section porte ses boîtes d'eau et la boîte qui les englobe.
+    fluid_volumes: BTreeMap<[i32; 3], FluidSection>,
     /// Rôle de la simulation (C-40, R-662) : serveur autoritaire par défaut.
     mode: SimMode,
     /// Durées par étape du dernier tick (C-40, R-661), observationnelles.
@@ -414,7 +415,7 @@ impl PhysicsWorld {
             accumulator: 0.0,
             wind: Vec3::ZERO,
             fluid: None,
-            fluid_volumes: HashMap::new(),
+            fluid_volumes: BTreeMap::new(),
             mode: SimMode::default(),
             stage_durations: StageDurations::default(),
             aero: HashMap::new(),
@@ -1595,7 +1596,8 @@ impl PhysicsWorld {
         if volumes.is_empty() {
             self.fluid_volumes.remove(&section);
         } else {
-            self.fluid_volumes.insert(section, volumes);
+            self.fluid_volumes
+                .insert(section, FluidSection::new(volumes));
         }
     }
 
@@ -2408,22 +2410,52 @@ fn lift_force(
     Some((direction * magnitude, world_point))
 }
 
+/// Les volumes de fluide d'une section 16³ (C-38, R-642), avec la boîte qui les englobe.
+///
+/// Une section d'eau en compte jusqu'à 4 096, un par bloc, et un point s'y cherche pour
+/// chacun des huit coins de chaque corps, à chaque sous-pas : un point hors de la boîte
+/// englobante n'est dans aucun d'eux, et la recherche passe à la section suivante sans les
+/// parcourir.
+#[derive(Debug, Clone)]
+struct FluidSection {
+    min: Vec3,
+    max: Vec3,
+    volumes: Vec<FluidVolume>,
+}
+
+impl FluidSection {
+    fn new(volumes: Vec<FluidVolume>) -> Self {
+        let (min, max) = volumes.iter().fold(
+            (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+            |(min, max), volume| (min.min(volume.min), max.max(volume.max)),
+        );
+        Self { min, max, volumes }
+    }
+
+    /// Densité du premier volume de la section qui contient `p` (bornes incluses).
+    fn density_at(&self, p: Vec3) -> Option<f32> {
+        if p.cmplt(self.min).any() || p.cmpgt(self.max).any() {
+            return None;
+        }
+        self.volumes
+            .iter()
+            .find(|volume| volume.density > 0.0 && volume.contains(p))
+            .map(|volume| volume.density)
+    }
+}
+
 /// Densité du fluide au point `p` (coords locales), ou `None` s'il est dans l'air.
 ///
 /// Les volumes localisés du monde (C-38, R-642) priment sur la surface plate de la
 /// dimension : un point dans une boîte d'eau prend sa densité ; sinon, s'il est sous la
 /// surface plate, celle du fluide de dimension. Densités nulles ou négatives ignorées.
 fn fluid_density_at(
-    volumes: &HashMap<[i32; 3], Vec<FluidVolume>>,
+    sections: &BTreeMap<[i32; 3], FluidSection>,
     flat: &Option<FluidEnvironment>,
     p: Vec3,
 ) -> Option<f32> {
-    for section in volumes.values() {
-        for volume in section {
-            if volume.density > 0.0 && volume.contains(p) {
-                return Some(volume.density);
-            }
-        }
+    if let Some(density) = sections.values().find_map(|section| section.density_at(p)) {
+        return Some(density);
     }
     if let Some(fluid) = flat {
         if fluid.density > 0.0 && p.y < fluid.surface_y {
@@ -2442,7 +2474,7 @@ struct Immersion {
     density: f32,
     /// Centre de poussée : centroïde des coins immergés (coords locales).
     centroid: Vec3,
-    /// Volume de l'AABB du corps, en m³.
+    /// Volume du corps, somme de ceux de ses colliders, en m³.
     volume: f32,
 }
 
@@ -2459,9 +2491,21 @@ fn sample_immersion(
     colliders: &ColliderSet,
     density_at: impl Fn(Vec3) -> Option<f32>,
 ) -> Option<Immersion> {
-    let handle = *body.colliders().first()?;
-    let aabb = colliders.get(handle)?.compute_aabb();
-    let (lo, hi) = (aabb.mins, aabb.maxs);
+    // Les huit coins de l'AABB qui englobe tous les colliders du corps.
+    let mut lo = Vec3::splat(f32::INFINITY);
+    let mut hi = Vec3::splat(f32::NEG_INFINITY);
+    for collider in body
+        .colliders()
+        .iter()
+        .filter_map(|handle| colliders.get(*handle))
+    {
+        let aabb = collider.compute_aabb();
+        lo = lo.min(Vec3::new(aabb.mins.x, aabb.mins.y, aabb.mins.z));
+        hi = hi.max(Vec3::new(aabb.maxs.x, aabb.maxs.y, aabb.maxs.z));
+    }
+    if !lo.cmple(hi).all() {
+        return None;
+    }
     let corners = [
         Vec3::new(lo.x, lo.y, lo.z),
         Vec3::new(hi.x, lo.y, lo.z),
@@ -2485,9 +2529,17 @@ fn sample_immersion(
     if submerged == 0 {
         return None;
     }
-    let extents = hi - lo;
-    let volume = extents.x * extents.y * extents.z;
-    if volume <= 0.0 {
+    // V_immergé est une part du volume du corps, celui de ses colliders — non de son AABB,
+    // qui le dépasse dès qu'il tourne (jusqu'à √3³ ≈ 5,2 fois pour un cube) : la prendre
+    // pour lui fait jaillir un corps de la densité du fluide. Calculé une fois un coin
+    // immergé, pour qu'un corps hors de l'eau n'en paie rien.
+    let volume: f32 = body
+        .colliders()
+        .iter()
+        .filter_map(|handle| colliders.get(*handle))
+        .map(Collider::volume)
+        .sum();
+    if !(volume > 0.0 && volume.is_finite()) {
         return None;
     }
     Some(Immersion {

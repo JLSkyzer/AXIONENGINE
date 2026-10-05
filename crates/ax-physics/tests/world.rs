@@ -552,6 +552,121 @@ fn corps_plus_dense_que_le_fluide_coule() {
     assert!(y < -3.5, "la caisse trop dense aurait dû couler (y={y})");
 }
 
+/// Altitude, après une demi-seconde sous un fluide de densité 1000, d'un corps posé à
+/// y = −10 avec la même densité : à l'équilibre, il ne doit pas bouger.
+fn altitude_apres_une_demi_seconde(world: &mut PhysicsWorld, corps: BodyId) -> f32 {
+    for _ in 0..30 {
+        world.advance(1.0 / 60.0);
+    }
+    world.pose(corps).unwrap().translation.y
+}
+
+fn cube_de_densite_1000(x: f32) -> BodyCollider {
+    BodyCollider {
+        shape: Shape::Cuboid {
+            half_extents: [0.5; 3],
+        },
+        density: 1000.0,
+        material: ContactMaterial::default(),
+        translation: Vec3::new(x, 0.0, 0.0),
+        rotation: Quat::IDENTITY,
+    }
+}
+
+#[test]
+fn un_cube_tourne_de_la_densite_du_fluide_reste_en_place() {
+    // R-642, §10.6 : F = ρ·V_immergé·g, les huit coins de l'AABB n'approchant que la part
+    // immergée. Tourné de 45°, un cube a une AABB deux fois plus grosse que lui : la prendre
+    // pour son volume le ferait jaillir — c'est ce qui l'a fait rebondir sans fin en jeu.
+    let mut world = PhysicsWorld::new(config());
+    world.set_fluid(Some(FluidEnvironment {
+        surface_y: 0.0,
+        density: 1000.0,
+    }));
+    let cube = world
+        .add_assembly(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, -10.0, 0.0),
+            Quat::from_rotation_y(std::f32::consts::FRAC_PI_4),
+            &[cube_de_densite_1000(0.0)],
+        )
+        .expect("un cube est valide");
+
+    let y = altitude_apres_une_demi_seconde(&mut world, cube);
+    assert!(
+        (y + 10.0).abs() < 0.05,
+        "le cube aurait dû rester à y = −10 (y={y})"
+    );
+}
+
+#[test]
+fn la_poussee_d_un_corps_compte_tous_ses_colliders() {
+    // Deux cubes en un corps, à la densité du fluide : la poussée porte sur les deux
+    // volumes, sous les huit coins de l'AABB qui les englobe tous deux.
+    let mut world = PhysicsWorld::new(config());
+    world.set_fluid(Some(FluidEnvironment {
+        surface_y: 0.0,
+        density: 1000.0,
+    }));
+    let paire = world
+        .add_assembly(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, -10.0, 0.0),
+            Quat::IDENTITY,
+            &[cube_de_densite_1000(-0.5), cube_de_densite_1000(0.5)],
+        )
+        .expect("deux cubes forment un corps valide");
+
+    let y = altitude_apres_une_demi_seconde(&mut world, paire);
+    assert!(
+        (y + 10.0).abs() < 0.05,
+        "la paire aurait dû rester à y = −10 (y={y})"
+    );
+}
+
+#[test]
+fn un_cube_lache_dans_l_eau_en_tournant_ne_rejaillit_pas() {
+    // Le cas vu en jeu le 2026-10-06 : un cube de la densité de l'eau, lâché de haut, qui
+    // tourne en tombant. Rien ne lui rend d'énergie : une fois entré dans l'eau, il ne doit
+    // pas en ressortir — il en jaillissait, puis rebondissait sans fin.
+    let mut world = PhysicsWorld::new(config());
+    world.set_fluid(Some(FluidEnvironment {
+        surface_y: 0.0,
+        density: 1000.0,
+    }));
+    let cube = world
+        .add_assembly(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            &[cube_de_densite_1000(0.0)],
+        )
+        .expect("un cube est valide");
+    // Une impulsion hors du centre de masse : il tombe en tournant.
+    world.apply_impulse(
+        cube,
+        Vec3::new(0.0, 0.0, 400.0),
+        Vec3::new(0.0, 0.5, 0.0),
+        true,
+    );
+
+    let mut entre = false;
+    let mut plus_haut_ensuite = f32::NEG_INFINITY;
+    for _ in 0..600 {
+        world.advance(1.0 / 60.0);
+        let y = world.pose(cube).unwrap().translation.y;
+        entre |= y < 0.0;
+        if entre {
+            plus_haut_ensuite = plus_haut_ensuite.max(y);
+        }
+    }
+    assert!(entre, "le cube aurait dû entrer dans l'eau");
+    assert!(
+        plus_haut_ensuite < 0.5,
+        "le cube est ressorti de l'eau jusqu'à y = {plus_haut_ensuite}"
+    );
+}
+
 #[test]
 fn gravity_scale_zero_fait_flotter() {
     // §10.6 : gravity_scale nul annule la chute.

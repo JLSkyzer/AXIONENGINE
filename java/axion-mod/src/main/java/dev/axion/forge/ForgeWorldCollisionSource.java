@@ -68,20 +68,22 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
         // grille, fusionnée en boîtes maximales ; les formes partielles gardent leurs boîtes.
         List<float[]> boxes = new ArrayList<>();
         boolean[] full = new boolean[SIZE * SIZE * SIZE];
-        List<float[]> fluids = new ArrayList<>();
+        float[] fluidHeights = new float[SIZE * SIZE * SIZE];
         Map<String, Integer> blockCounts = new HashMap<>();
         Map<String, BlockState> representative = new HashMap<>();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         boolean overBudget = false;
 
-        for (int lx = 0; lx < SIZE && !overBudget; lx++) {
-            for (int ly = 0; ly < SIZE && !overBudget; ly++) {
+        // Toute la section est lue, même une fois la collision passée en champ de hauteurs :
+        // l'eau, elle, se lit jusqu'au bout.
+        for (int lx = 0; lx < SIZE; lx++) {
+            for (int ly = 0; ly < SIZE; ly++) {
                 for (int lz = 0; lz < SIZE; lz++) {
                     pos.set(ox + lx, oy + ly, oz + lz);
                     BlockState state = level.getBlockState(pos);
 
-                    VoxelShape shape = state.getCollisionShape(level, pos);
-                    if (!shape.isEmpty()) {
+                    VoxelShape shape = overBudget ? null : state.getCollisionShape(level, pos);
+                    if (shape != null && !shape.isEmpty()) {
                         // La forme lue elle-même, et non le drapeau mis en cache par l'état :
                         // celui-ci est calculé hors contexte, la forme d'ici peut en dépendre.
                         if (Block.isShapeFullBlock(shape)) {
@@ -109,13 +111,12 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                         // fusionner, la section bascule en champ de hauteurs.
                         if (boxes.size() > WorldTileGeometry.MAX_TILE_BOXES) {
                             overBudget = true;
-                            break;
                         }
                     }
 
                     if (!state.getFluidState().isEmpty()) {
-                        float height = state.getFluidState().getHeight(level, pos);
-                        fluids.add(new float[] {lx, ly, lz, lx + 1f, ly + height, lz + 1f});
+                        fluidHeights[WorldTileGeometry.cellIndex(lx, ly, lz)] =
+                                state.getFluidState().getHeight(level, pos);
                     }
                 }
             }
@@ -127,8 +128,10 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
         }
 
         BlockMaterials.Material material = dominantMaterial(blockCounts, representative, fallback);
-        float[][] fluidBoxes = fluids.toArray(new float[0][]);
-        float fluidDensity = fluids.isEmpty() ? 0f : WATER_DENSITY;
+        // Fiche 5.30, étape 2, appliquée à l'eau (R-642) : une liste compacte, et non une boîte
+        // par bloc d'eau — 3 840 pour une section de lac, que le natif garderait et parcourrait.
+        float[][] fluidBoxes = WorldTileGeometry.mergeFluids(fluidHeights).toArray(new float[0][]);
+        float fluidDensity = fluidBoxes.length == 0 ? 0f : WATER_DENSITY;
 
         CollisionShape collision =
                 overBudget
