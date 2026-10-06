@@ -1134,3 +1134,18 @@ sont vérifiées : rejouer le vrai code sur les vraies données (le planificateu
 positions de la trace, `mergeFluids` sur la grille de la sauvegarde). Dans une trace, une force
 qui saute entre deux ticks alors que le corps bouge vite signale une donnée arrivée, pas une
 frontière dans l'espace.
+
+## 2026-10-06 | Le bus d'événements de Forge mêle client et serveur — un gestionnaire qui touche l'état du serveur doit écarter le client
+
+**Ce qui a mal tourné.** La trace des tuiles a montré cinq sections reconstruites à chaque tick,
+sans fin et sans jamais sortir de la file : des entrées que le parcours du `LinkedHashSet`
+trouvait, mais que `remove` et `contains` ne trouvaient plus. `WorldTileBridge.onChunkLoad`
+acceptait tout `Level` ; or un client intégré publie aussi `ChunkEvent.Load` pour ses chunks
+(`ClientChunkCache.replaceWithPacketData`, vu au `javap`), sur son thread de rendu. Le client
+modifiait la file du serveur pendant que le serveur la parcourait.
+
+**Règle.** Sur le bus commun, un gestionnaire qui touche l'état du serveur filtre
+`ServerLevel` (ou `isClientSide()`, comme `AssemblyRuntime`), et l'état du serveur ne se
+modifie que sur son thread : un événement y entre par une file partagée, vidée au tick. Des
+entrées qu'un parcours trouve mais que la recherche ne trouve plus signalent une structure de
+hachage corrompue — chercher l'accès concurrent avant tout autre chose.

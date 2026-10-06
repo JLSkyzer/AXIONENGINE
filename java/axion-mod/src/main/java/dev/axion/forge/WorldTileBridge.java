@@ -18,11 +18,12 @@ import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.level.BlockEvent;
@@ -42,6 +43,11 @@ import org.slf4j.LoggerFactory;
  * commandes {@code SIM_IN} correspondant ; les tuiles du tick vont à la trace de la simulation
  * (C-71). Il écoute aussi les changements de bloc et les chargements de chunk pour invalider les
  * sections concernées.
+ *
+ * <p>Le bus d'événements de Forge est commun au client et au serveur : un client intégré publie
+ * aussi {@code ChunkEvent.Load} pour ses propres chunks, sur son thread de rendu. Seuls les
+ * événements d'un {@link ServerLevel} comptent, et ils n'atteignent la file des tuiles — qui
+ * n'appartient qu'au thread du serveur — qu'au tick suivant, par une file d'entrée partagée.
  *
  * <p>Seul {@code dev.axion.forge} touche Forge (R-401) ; la décision et l'encodage vivent
  * dans {@code dev.axion.world} (logique pure, testée).
@@ -67,6 +73,13 @@ public final class WorldTileBridge implements SimCommandProvider {
     private final AssemblyRuntime assemblies;
     private final TileTrace trace;
     private final WorldTileService service;
+
+    /**
+     * Sections invalidées par les événements, en attente du tick. Un événement peut venir d'un
+     * autre thread que celui du serveur ; la file des tuiles, non partagée, n'en reçoit le contenu
+     * que dans {@link #commandsForTick}.
+     */
+    private final Queue<SectionKey> invalidated = new ConcurrentLinkedQueue<>();
 
     /**
      * @param server serveur courant, source des niveaux et des entités
@@ -109,6 +122,9 @@ public final class WorldTileBridge implements SimCommandProvider {
 
     @Override
     public SimCommandStream commandsForTick(long tick) {
+        for (SectionKey key = invalidated.poll(); key != null; key = invalidated.poll()) {
+            service.invalidate(key);
+        }
         Map<AxionEntity, Double> speeds = new IdentityHashMap<>();
         assemblies.forEachBody(speeds::put);
         List<Footprint> bodies = new ArrayList<>();
@@ -149,9 +165,9 @@ public final class WorldTileBridge implements SimCommandProvider {
     }
 
     /** Un bloc changé invalide la section qui le contient. */
-    private void invalidateBlock(Level level, BlockPos pos) {
+    private void invalidateBlock(ServerLevel level, BlockPos pos) {
         long dim = DimensionId.of(level.dimension().location().toString());
-        service.invalidate(
+        invalidated.add(
                 new SectionKey(
                         dim,
                         WorldTileGeometry.sectionOfBlock(pos.getX()),
@@ -159,36 +175,39 @@ public final class WorldTileBridge implements SimCommandProvider {
                         WorldTileGeometry.sectionOfBlock(pos.getZ())));
     }
 
-    /** Casse d'un bloc : invalidation de sa section. */
+    /** Casse d'un bloc du serveur : invalidation de sa section. */
     @SubscribeEvent
     public void onBlockBreak(BlockEvent.BreakEvent event) {
-        if (event.getLevel() instanceof Level level) {
+        if (event.getLevel() instanceof ServerLevel level) {
             invalidateBlock(level, event.getPos());
         }
     }
 
-    /** Pose d'un bloc : invalidation de sa section. */
+    /** Pose d'un bloc du serveur : invalidation de sa section. */
     @SubscribeEvent
     public void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
-        if (event.getLevel() instanceof Level level) {
+        if (event.getLevel() instanceof ServerLevel level) {
             invalidateBlock(level, event.getPos());
         }
     }
 
     /**
-     * Chargement d'un chunk : invalidation de sa colonne de sections. Une section rendue
-     * « pleine et solide » faute de chunk (R-640) doit se reconstruire une fois le chunk là.
+     * Chargement d'un chunk du serveur : invalidation de sa colonne de sections. Une section
+     * rendue « pleine et solide » faute de chunk (R-640) doit se reconstruire une fois le chunk
+     * là. Ceux que charge un client intégré ne disent rien du monde du serveur : reçus sur son
+     * thread de rendu, ils avaient corrompu la file des tuiles, dont cinq sections étaient
+     * reconstruites à chaque tick sans jamais en sortir (essai du 2026-10-06).
      */
     @SubscribeEvent
     public void onChunkLoad(ChunkEvent.Load event) {
-        if (!(event.getLevel() instanceof Level level)) {
+        if (!(event.getLevel() instanceof ServerLevel level)) {
             return;
         }
         long dim = DimensionId.of(level.dimension().location().toString());
         int cx = event.getChunk().getPos().x;
         int cz = event.getChunk().getPos().z;
         for (int cy = level.getMinSection(); cy < level.getMaxSection(); cy++) {
-            service.invalidate(new SectionKey(dim, cx, cy, cz));
+            invalidated.add(new SectionKey(dim, cx, cy, cz));
         }
     }
 
