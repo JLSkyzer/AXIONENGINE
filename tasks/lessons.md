@@ -1196,3 +1196,14 @@ des nouveaux gabarits, et un test échouait selon ce qu'avait laissé le précé
 
 **Règle.** Des tests en jeu partent d'un monde neuf, dans un dossier à eux, effacé avant chaque
 passage (R-2190) ; ils ne touchent jamais le monde de développement.
+
+## 2026-10-06 | « État restauré » de l'acceptance de M3 n'était pas une sauvegarde
+
+**Ce qui a mal tourné.** Le plan de l'acceptance de M3 avait rangé « état restauré » dans les
+scénarios de gameplay, comme une sauvegarde suivie d'un rechargement. Le critère côtoie « aucune
+erreur GL » et « bascule sous shaderpack », et la liste des tests du jalon le réalise par T-472 :
+l'état GL et le FBO restaurés après chaque passe (§19.13). La persistance est en M4. Un scénario
+inutile aurait été écrit, et le vrai critère laissé sans test.
+
+**Règle.** Avant de planifier un critère d'acceptance, trouver le test qui le porte dans la liste
+des tests du jalon et le lire dans son voisinage : un critère de deux mots ne se traduit pas seul.

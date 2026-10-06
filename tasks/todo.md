@@ -1918,23 +1918,25 @@ substituable sans changer rapier »).
                   `PhysicsWorld::advance` perdait un sous-pas au premier tick, puis gardait ce
                   retard (chute 1,45 % trop courte à 2 s) — corrigé, tolérance d'un millième de
                   sous-pas (R-990).
-            - [ ] **B — scénarios déclaratifs** (§29.5) : JSON `structure`/`setup`/`asserts`/
+            - [x] **B — scénarios déclaratifs** (§29.5) : JSON `structure`/`setup`/`asserts`/
                   `tolerance` joués en GameTest ; empilement stable 60 s, aucune traversée du sol
-                  sur 10 min, état restauré. **Fait le 2026-10-06** (ADR-124, proposé) :
+                  sur 10 min. **Fait le 2026-10-06** (ADR-124, proposé) :
                   `ScenarioGameTests` change chaque `data/axion/gametest/scenarios/<domaine>/
                   <nom>.json` en GameTest, validation stricte ; `physique/empilement_60s` et
                   `physique/aucune_traversee_10min` verts. Ils ont trouvé deux défauts, corrigés :
                   des tuiles périmées après un changement de bloc sans casse ni pose par une
                   entité (C-38 : mises à jour de voisins et game events de bloc, ADR-117) et le
                   monde de développement repris par le serveur de GameTests (`run-gametest/`,
-                  effacé à chaque passage). **Reste** : « état restauré » (sauvegarde puis
-                  rechargement). **Point ouvert** : `empilement_60s` a échoué 2 fois sur 27 passages
-                  consignés — pile restée debout, glissée de 33 puis 19 cm au tick 1200 —, aucune
-                  sur les dix passages d'une chasse dédiée. Écartés : la pile native (stable), une
-                  tuile reposée sous elle (2,9 cm au plus), le gouverneur FM-21 (aucun changement de
-                  palier dans le passage fautif, pas physique dans son budget), la compilation
-                  fraîche des assets (deux passages neufs verts). Le message d'échec porte désormais
-                  les trajectoires : la prochaine occurrence dira quand la pile part.
+                  effacé à chaque passage). « État restauré » n'est pas une sauvegarde suivie
+                  d'un rechargement, comme lu d'abord : c'est T-472, l'état GL et le FBO
+                  restaurés après chaque passe (§19.13), en tranche D. **Point ouvert** :
+                  `empilement_60s` a échoué 2 fois sur 27 passages consignés — pile restée
+                  debout, glissée de 33 puis 19 cm au tick 1200 —, aucune sur les dix passages
+                  d'une chasse dédiée. Écartés : la pile native (stable), une tuile reposée sous
+                  elle (2,9 cm au plus), le gouverneur FM-21 (aucun changement de palier dans le
+                  passage fautif, pas physique dans son budget), la compilation fraîche des
+                  assets (deux passages neufs verts). Le message d'échec porte désormais les
+                  trajectoires : la prochaine occurrence dira quand la pile part.
             - [x] **C — T-370..T-375 et T-380..T-384** : attribution par exigence (comme ADR-123
                   §12 pour T-300..T-307), tests existants étiquetés, manquants écrits. **Fait le
                   2026-10-06** (ADR-125, proposé) : tests natifs préfixés `t37x_`/`t38x_`, classes
@@ -1946,7 +1948,9 @@ substituable sans changer rapier »).
                   22 des 44 tests de M3 existent ; restent T-312 (C-32), le rendu (tranche D) et
                   T-308/T-309, sans fiche. Sans test : la moitié Java de R-651, faute d'API de requête.
             - [ ] **D — rendu** : T-470..T-474, T-479, T-480, T-490..T-493, T-500..T-503,
-                  T-510..T-512, T-551, avec C-60, C-62 et C-63.
+                  T-510..T-512, T-551, avec C-60, C-62 et C-63. Critères de PARTIE 37.2 :
+                  aucune erreur GL (T-471), état GL et FBO restaurés (T-472), bascule sous
+                  shaderpack (T-480).
       - [ ] **C-61 — Backend VANILLA_CONSUMER** (fiche 5.48, PARTIE 19) — ouvre la chaîne de
             rendu, **vanilla d'abord** puis C-60 natif (ADR-118, ratifié 2026-10-01).
             - [x] **T1 — couture + preuve de passe** : `RenderBackend`, sélection pure
