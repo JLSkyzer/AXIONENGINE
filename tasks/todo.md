@@ -1530,7 +1530,7 @@ substituable sans changer rapier »).
                         SET_DIMENSION_ENV, tampons équilibrés). Le GameTest physique
                         observable (spawn → tick → l'entité a bougé) est **différé à
                         C-32** : à 0 corps la physique n'a aucun effet en jeu.
-      - [ ] **Tranche 5 — intégration Java et proxies vanilla** `[EFFORT MAX]`
+      - [x] **Tranche 5 — intégration Java et proxies vanilla** `[EFFORT MAX]`
             ([ADR-123](../docs/decisions/ADR-123.md), ratifié le 2026-10-04 : protocole tel
             quel, réglage par amendement de l'annexe A.3, poussée et dégâts actifs). L'état des
             lieux du 2026-10-04 a trouvé R-612/R-613 jamais appliqués en jeu (un seul centre,
@@ -1603,7 +1603,7 @@ substituable sans changer rapier »).
                         `setEntityProxies`, record `EntityProxy`), dispositions épinglées par
                         `SimCommandStreamTest` ; vérification croisée sur la vraie bibliothèque
                         (`NativeBridgeTest`) : flux accepté, contact nommant l'entité.
-            - [ ] **T5c — Java et Forge** : observateurs (joueurs non spectateurs) et proxies
+            - [x] **T5c — Java et Forge** : observateurs (joueurs non spectateurs) et proxies
                   (rayon d'influence déduit des vitesses) par tick ; consommateur d'événements
                   (R-1010) ; effets vanilla (poussée des non-joueurs, dégâts `axion:collision`
                   selon la courbe de chute) ; amendement de l'annexe A.3 (`[physics]
@@ -1639,7 +1639,7 @@ substituable sans changer rapier »).
                         d'événements générés pour Java (`PhysicsEventCodes`, parité). Vérifié :
                         JUnit, vérification croisée sur la vraie bibliothèque (contact natif →
                         poussée vers le bas, approche = vitesse de chute), 16 mutations tuées.
-                  - [ ] T5c-5 — essai en jeu, Killian lançant le jeu. Joué le 2026-10-04 :
+                  - [x] T5c-5 — essai en jeu, Killian lançant le jeu. Joué le 2026-10-04 :
                         effets confirmés par Killian, aucune erreur au journal ; le
                         gouverneur est passé en DEGRADED_1 (p95 62,9 ms), expliqué par
                         C-38 T4. Rejoué à 23:00 après C-38 T4 : 285 colliders, p95 de
@@ -1655,19 +1655,25 @@ substituable sans changer rapier »).
                         linéaire de toutes les boîtes, poussée sur le volume de l'AABB —
                         corrigées (ADR-117, précision « eau » ; banc `charge_eau` : pas
                         28,6 → 0,04 ms). À rejouer pour confirmer en jeu.
-                       Rejoué le 2026-10-06 avec la trace (`/axion debug trace`, C-71) :
-                       un cube lâché de 25 m dans l'océan tourne à 47 rad/s dès l'entrée
-                       dans l'eau. Cause : la tuile de la section voisine, où il débordait,
-                       arrivée 7 ticks trop tard — seule la section abri passait en tête de
-                       file. Corrigé : ce que l'emprise d'un corps touche d'ici deux ticks
-                       passe en tête, et la trace écrit chaque tuile (ADR-117, précision
-                       « ordre des tuiles »). À rejouer, trace active.
-                       Rejoué à 19:08 : entrée dans l'eau propre (0 rad/s), mais deux
-                       défauts nouveaux, corrigés : un cube posé sur une marche du fond
-                       prenait 186 kJ (coins d'AABB dans la roche comptés secs), et la file
-                       des tuiles, corrompue par les ChunkEvent.Load du client, rebâtissait
-                       cinq sections à chaque tick. À rejouer au coin (−16,0 ; 128,0), dont
-                       le voisinage n'a jamais été bâti.
+                        Rejoué le 2026-10-06 avec la trace (`/axion debug trace`, C-71) :
+                        un cube lâché de 25 m dans l'océan tourne à 47 rad/s dès l'entrée
+                        dans l'eau. Cause : la tuile de la section voisine, où il débordait,
+                        arrivée 7 ticks trop tard — seule la section abri passait en tête de
+                        file. Corrigé : ce que l'emprise d'un corps touche d'ici deux ticks
+                        passe en tête, et la trace écrit chaque tuile (ADR-117, précision
+                        « ordre des tuiles »). À rejouer, trace active.
+                        Rejoué à 19:08 : entrée dans l'eau propre (0 rad/s), mais deux
+                        défauts nouveaux, corrigés : un cube posé sur une marche du fond
+                        prenait 186 kJ (coins d'AABB dans la roche comptés secs), et la file
+                        des tuiles, corrompue par les ChunkEvent.Load du client, rebâtissait
+                        cinq sections à chaque tick. À rejouer au coin (−16,0 ; 128,0), dont
+                        le voisinage n'a jamais été bâti.
+                        Rejoué à 19:41 (Killian : « ça m'a l'air patché ») : quatre tuiles
+                        posées en urgence au coin (−16 ; 128) dès le lâcher, aucune section
+                        rebâtie plus de deux fois, file revenue à 0, entrée dans l'eau à
+                        0 rad/s, énergie au fond 1,5 kJ au plus (186 avant), aucun changement
+                        de palier. Reste attendu, hors T5 : ni traînée ni amortissement dans
+                        l'eau (definitions physiques, étape du ballon).
             - Hors portée, nommé : palier `SAFE` de SM-02 (sièges M5, C-77), `DegradationEvent`
               et `ContactEvent` (API d'événements de C-70), filtre intra-assembly multi-corps
               (joints, M4).
