@@ -103,6 +103,18 @@ fn accumulateur_clampe_pas_de_spirale() {
 }
 
 #[test]
+fn un_tick_d_un_vingtieme_de_seconde_fait_trois_sous_pas_des_le_premier() {
+    // En f32, 1/20 s ne se divise pas exactement en trois sous-pas de 1/60 s : après deux
+    // soustractions, l'accumulateur gardait un reliquat de 0,9999998 sous-pas. Le premier tick
+    // n'en faisait que deux, et la simulation restait ensuite d'un sous-pas en retard sur le
+    // serveur — une chute libre mesurée depuis son départ s'écartait de 1,45 % de ½·g·t² à 2 s.
+    let mut world = PhysicsWorld::new(PhysicsConfig::new(1.0 / 60.0, 4).expect("réglage valide"));
+    for tick in 1..=100 {
+        assert_eq!(world.advance(1.0 / 20.0), 3, "tick {tick}");
+    }
+}
+
+#[test]
 fn un_corps_retire_n_a_plus_de_pose() {
     let mut world = PhysicsWorld::new(config());
     let ball = world

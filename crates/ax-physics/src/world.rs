@@ -46,6 +46,11 @@ const AIR_DENSITY: f32 = 1.225;
 /// Borne linéaire par défaut, en m/s (R-180). Au-delà, la vitesse est clampée.
 const DEFAULT_MAX_LINEAR_VEL: f32 = 300.0;
 
+/// Part d'un sous-pas en deçà de laquelle un reliquat d'accumulateur compte pour un sous-pas
+/// entier (R-990) : de quoi absorber l'arrondi f32 d'un tick divisé en sous-pas, jamais un
+/// sous-pas réellement manquant.
+const SUBSTEP_TOLERANCE: f32 = 1e-3;
+
 /// Borne angulaire par défaut, en rad/s (R-180). Au-delà, la vitesse est clampée.
 const DEFAULT_MAX_ANGULAR_VEL: f32 = 100.0;
 
@@ -614,12 +619,16 @@ impl PhysicsWorld {
         let dt = self.config.fixed_dt();
         let ceiling = dt * self.max_substeps() as f32;
         self.accumulator = (self.accumulator + frame_dt.max(0.0)).min(ceiling);
+        // Un reliquat à un millième de sous-pas près vaut un sous-pas entier : en f32, un tick de
+        // 1/20 s ne se divise pas exactement en trois sous-pas de 1/60 s, et le troisième se
+        // perdait au premier tick — la simulation restait ensuite d'un sous-pas en retard.
+        let full_step = dt * (1.0 - SUBSTEP_TOLERANCE);
         // Les drapeaux de garde-fou ne valent que pour le tick courant : un corps
         // clampé à un tick antérieur ne l'est plus tant qu'il ne dépasse pas de
         // nouveau. On repart donc de zéro à chaque `advance`, même à 0 sous-pas.
         self.guard_flags.clear();
         let mut substeps = 0;
-        while self.accumulator >= dt {
+        while self.accumulator >= full_step {
             self.sim_clock += f64::from(dt);
 
             // Étape 4 (C-40, R-660) : intégration physique — forces, intégration Rapier,
@@ -642,7 +651,7 @@ impl PhysicsWorld {
             self.stage_durations
                 .add(Stage::Contacts, elapsed_nanos(contacts_start));
 
-            self.accumulator -= dt;
+            self.accumulator = (self.accumulator - dt).max(0.0);
             substeps += 1;
         }
 
