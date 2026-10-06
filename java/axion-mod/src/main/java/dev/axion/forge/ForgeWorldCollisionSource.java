@@ -3,10 +3,13 @@ package dev.axion.forge;
 import dev.axion.world.BlockMaterials;
 import dev.axion.world.WorldCollisionSource;
 import dev.axion.world.WorldTileGeometry;
+import dev.axion.world.WorldTilePlanner.SectionKey;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.LongFunction;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -16,6 +19,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraftforge.registries.ForgeRegistries;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Implémentation Forge de {@link WorldCollisionSource} (C-38, fiche 5.30) : lit la
@@ -29,9 +34,11 @@ import net.minecraftforge.registries.ForgeRegistries;
  * <p>R-640 : une section dont le chunk n'est pas chargé (ou dont le niveau est inconnu) est
  * rendue <b>pleine et solide</b> — jamais de chargement de chunk. R-641 : au-delà de
  * {@link WorldTileGeometry#MAX_TILE_BOXES} boîtes, la section bascule en champ de hauteurs
- * conservateur (hauteur maximale de collision par colonne).
+ * conservateur (hauteur maximale de collision par colonne), avec un avertissement par section.
  */
 public final class ForgeWorldCollisionSource implements WorldCollisionSource {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("axion");
 
     private static final int SIZE = WorldTileGeometry.SECTION_SIZE;
 
@@ -40,6 +47,9 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
 
     private final LongFunction<ServerLevel> levelById;
     private final BlockMaterials materials;
+
+    /** Sections déjà signalées en champ de hauteurs : un avertissement par section (R-641). */
+    private final Set<SectionKey> heightfieldsWarned = new HashSet<>();
 
     /**
      * @param levelById résout la clé de dimension ({@link dev.axion.world.DimensionId}) en
@@ -127,6 +137,11 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
             overBudget = WorldTileGeometry.needsHeightfield(boxes.size());
         }
 
+        if (overBudget && heightfieldsWarned.add(new SectionKey(dimension, sectionX, sectionY, sectionZ))) {
+            LOGGER.warn("AXION : section ({}, {}, {}) de la dimension {} trop découpée pour sa liste de"
+                    + " boîtes (plus de {}) : collision en champ de hauteurs conservateur (R-641)",
+                    sectionX, sectionY, sectionZ, dimension, WorldTileGeometry.MAX_TILE_BOXES);
+        }
         BlockMaterials.Material material = dominantMaterial(blockCounts, representative, fallback);
         // Fiche 5.30, étape 2, appliquée à l'eau (R-642) : une liste compacte, et non une boîte
         // par bloc d'eau — 3 840 pour une section de lac, que le natif garderait et parcourrait.
