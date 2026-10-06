@@ -3,8 +3,10 @@ package dev.axion.world;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import dev.axion.physics.SimCommandStream;
+import dev.axion.physics.SimulationTrace.Tile;
 import dev.axion.world.WorldCollisionSource.CollisionShape;
 import dev.axion.world.WorldCollisionSource.SectionTile;
+import dev.axion.world.WorldTilePlanner.Footprint;
 import dev.axion.world.WorldTilePlanner.SectionKey;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -35,7 +37,7 @@ class WorldTileServiceTest {
         WorldTileService service =
                 new WorldTileService(new WorldTilePlanner(0, 8), constant(tile));
 
-        SimCommandStream stream = service.tick(List.of(new SectionKey(0L, 0, 0, 0)));
+        SimCommandStream stream = service.tick(abri(0, 0, 0));
         assertEquals(2, stream.count(), "une collision et un fluide (vide = retrait)");
         assertEquals(
                 SimCommandStream.OP_SET_WORLD_COLLISION, opcodeAt(stream.toBytes(), 8), "collision d'abord");
@@ -51,7 +53,7 @@ class WorldTileServiceTest {
         WorldTileService service =
                 new WorldTileService(new WorldTilePlanner(0, 8), constant(tile));
 
-        byte[] bytes = service.tick(List.of(new SectionKey(0L, 0, 0, 0))).toBytes();
+        byte[] bytes = service.tick(abri(0, 0, 0)).toBytes();
         // Collision vide (SET_WORLD_COLLISION, retrait) puis fluide (SET_WORLD_FLUID).
         assertEquals(SimCommandStream.OP_SET_WORLD_COLLISION, opcodeAt(bytes, 8));
         int second = 8 + (8 + 32); // en-tête flux + première commande (en-tête 8 + payload 32)
@@ -69,8 +71,9 @@ class WorldTileServiceTest {
         WorldTileService service =
                 new WorldTileService(new WorldTilePlanner(0, 8), constant(tile));
 
-        byte[] bytes = service.tick(List.of(new SectionKey(0L, 0, 0, 0))).toBytes();
+        byte[] bytes = service.tick(abri(0, 0, 0)).toBytes();
         assertEquals(SimCommandStream.OP_SET_WORLD_HEIGHTFIELD, opcodeAt(bytes, 8));
+        assertEquals(Tile.HEIGHTFIELD, service.lastTiles().get(0).boxes(), "tracé comme un champ");
     }
 
     @Test
@@ -80,8 +83,8 @@ class WorldTileServiceTest {
         WorldTileService service =
                 new WorldTileService(new WorldTilePlanner(0, 64), constant(empty));
 
-        service.tick(List.of(new SectionKey(0L, 0, 0, 0))); // charge l'origine
-        SimCommandStream moved = service.tick(List.of(new SectionKey(0L, 50, 0, 0)));
+        service.tick(abri(0, 0, 0)); // charge l'origine
+        SimCommandStream moved = service.tick(abri(50, 0, 0));
         // origine libérée : REMOVE_WORLD_COLLISION + REMOVE_WORLD_FLUID ; nouvelle section :
         // SET_WORLD_COLLISION + SET_WORLD_FLUID.
         assertEquals(4, moved.count());
@@ -89,5 +92,35 @@ class WorldTileServiceTest {
                 SimCommandStream.OP_REMOVE_WORLD_COLLISION,
                 opcodeAt(moved.toBytes(), 8),
                 "les retraits sont émis d'abord");
+    }
+
+    @Test
+    void lesTuilesDuTickSontRapporteesPourLaTrace() {
+        // C-71 : la trace dit quand chaque section arrive dans la simulation, avec quoi, et si un
+        // corps l'occupait déjà.
+        SectionTile tile =
+                new SectionTile(
+                        new CollisionShape.Boxes(
+                                new float[][] {{0f, 0f, 0f, 16f, 1f, 16f}, {0f, 1f, 0f, 1f, 2f, 1f}}, 0.6f, 0f),
+                        new float[][] {{0f, 1f, 0f, 16f, 9f, 16f}},
+                        1000f);
+        WorldTileService service =
+                new WorldTileService(new WorldTilePlanner(0, 64), constant(tile));
+
+        service.tick(abri(0, 0, 0));
+        assertEquals(List.of(Tile.built(0, 0, 0, 2, 1, true)), service.lastTiles(), "l'abri, en urgence");
+
+        service.tick(abri(50, 0, 0));
+        assertEquals(
+                List.of(Tile.released(0, 0, 0), Tile.built(50, 0, 0, 2, 1, true)), service.lastTiles());
+        assertEquals(0, service.pendingCount());
+
+        service.tick(abri(50, 0, 0));
+        assertEquals(List.of(), service.lastTiles(), "rien de neuf, rien à tracer");
+    }
+
+    /** {@return un corps réduit à la section {@code (x, y, z)}} */
+    private static List<Footprint> abri(int x, int y, int z) {
+        return List.of(Footprint.at(new SectionKey(0L, x, y, z)));
     }
 }

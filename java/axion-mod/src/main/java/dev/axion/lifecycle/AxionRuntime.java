@@ -558,6 +558,27 @@ public final class AxionRuntime {
         return lines;
     }
 
+    /**
+     * Écrit dans la trace en cours, s'il y en a une, les sections de collision du monde posées et
+     * retirées à ce tick (C-38) : elles précèdent les états du tick qu'elles servent.
+     *
+     * @param tick numéro du tick
+     * @param tiles sections posées et retirées, dans l'ordre de leurs commandes
+     * @param pending sections encore en file après ce tick
+     */
+    public void traceTiles(long tick, List<SimulationTrace.Tile> tiles, int pending) {
+        if (trace == null) {
+            return;
+        }
+        try {
+            trace.recordTiles(tick, tiles, pending);
+        } catch (IOException failure) {
+            simulationJournal.note(true, "trace de la simulation interrompue au tick " + tick
+                    + " : " + failure.getMessage());
+            stopTrace();
+        }
+    }
+
     /** {@return le rang du palier de dégradation de la simulation, 0 pour {@code NORMAL}} */
     public int degradationLevel() {
         return simulationJournal.degradationLevel();

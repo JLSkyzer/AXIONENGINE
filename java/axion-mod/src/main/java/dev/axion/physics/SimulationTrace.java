@@ -14,7 +14,11 @@ import java.util.Locale;
  * vitesses linéaire et angulaire monde, et drapeaux bruts de DM-08 ({@code body_state_flags} du
  * natif : 1 dort, 2 touche le sol, 4 dans un fluide, 8 vitesse bornée). Une ligne
  * {@code evenement} par événement du tick : son genre, les deux assemblies, le point et la
- * normale, l'impulsion et la vitesse d'approche. Séparateur {@code ;}, nombres au point décimal.
+ * normale, l'impulsion et la vitesse d'approche. Une ligne {@code tuile} par section de collision
+ * du monde posée ou retirée (C-38), avant les états du tick qu'elle sert : sa section, posée
+ * ({@code genre} 0) ou retirée (1), ses boîtes de collision ({@code champ} pour un champ de
+ * hauteurs, R-641) et d'eau, les sections encore en file, et si un corps l'occupait déjà
+ * ({@code urgence}). Séparateur {@code ;}, nombres au point décimal.
  *
  * <p>Écrite et vidée à chaque tick, pour rester lisible pendant la partie et survivre à un arrêt
  * brutal. Utilisée sur le thread du serveur seulement.
@@ -23,7 +27,49 @@ public final class SimulationTrace implements AutoCloseable {
 
     /** Colonnes de la trace, dans l'ordre. */
     public static final String HEADER = "tick;type;assembly;x;y;z;qx;qy;qz;qw;vx;vy;vz;wx;wy;wz;"
-            + "flags;genre;autre;nx;ny;nz;impulsion;approche;data";
+            + "flags;genre;autre;nx;ny;nz;impulsion;approche;data;section;boites;eau;file;urgence";
+
+    /**
+     * Une section de collision du monde posée ou retirée à un tick (C-38).
+     *
+     * @param x index de section sur x
+     * @param y index de section sur y
+     * @param z index de section sur z
+     * @param released vrai si la section est retirée, faux si elle est posée
+     * @param boxes boîtes de collision posées, ou {@link #HEIGHTFIELD}
+     * @param water boîtes d'eau posées
+     * @param urgent vrai si un corps occupait la section, ou allait y entrer
+     */
+    public record Tile(int x, int y, int z, boolean released, int boxes, int water, boolean urgent) {
+
+        /** Valeur de {@code boxes} d'une section posée en champ de hauteurs (R-641). */
+        public static final int HEIGHTFIELD = -1;
+
+        /**
+         * {@return une section posée}
+         *
+         * @param x index de section sur x
+         * @param y index de section sur y
+         * @param z index de section sur z
+         * @param boxes boîtes de collision, ou {@link #HEIGHTFIELD}
+         * @param water boîtes d'eau
+         * @param urgent vrai si un corps l'occupait
+         */
+        public static Tile built(int x, int y, int z, int boxes, int water, boolean urgent) {
+            return new Tile(x, y, z, false, boxes, water, urgent);
+        }
+
+        /**
+         * {@return une section retirée}
+         *
+         * @param x index de section sur x
+         * @param y index de section sur y
+         * @param z index de section sur z
+         */
+        public static Tile released(int x, int y, int z) {
+            return new Tile(x, y, z, true, 0, 0, false);
+        }
+    }
 
     private static final int COLUMNS = HEADER.split(";").length;
 
@@ -55,7 +101,8 @@ public final class SimulationTrace implements AutoCloseable {
             throws IOException {
         StringBuilder text = new StringBuilder();
         for (BodyState body : bodies) {
-            String[] fields = emptyLine(tick, "etat", body.handleIndex());
+            String[] fields = emptyLine(tick, "etat");
+            fields[2] = Integer.toString(body.handleIndex());
             double[] position = body.position();
             float[] rotation = body.rotation();
             float[] velocity = body.linearVelocity();
@@ -72,7 +119,8 @@ public final class SimulationTrace implements AutoCloseable {
             text.append(String.join(";", fields)).append('\n');
         }
         for (PhysicsEvent event : events) {
-            String[] fields = emptyLine(tick, "evenement", event.assemblyAIndex());
+            String[] fields = emptyLine(tick, "evenement");
+            fields[2] = Integer.toString(event.assemblyAIndex());
             float[] point = event.point();
             float[] normal = event.normal();
             for (int i = 0; i < 3; i++) {
@@ -91,6 +139,37 @@ public final class SimulationTrace implements AutoCloseable {
         lines += bodies.size() + events.size();
     }
 
+    /**
+     * Écrit les sections posées et retirées d'un tick, puis vide la destination. Sans section,
+     * rien n'est écrit.
+     *
+     * @param tick numéro du tick
+     * @param tiles sections posées et retirées, dans l'ordre de leurs commandes
+     * @param pending sections encore en file après ce tick
+     * @throws IOException si l'écriture échoue
+     */
+    public void recordTiles(long tick, List<Tile> tiles, int pending) throws IOException {
+        if (tiles.isEmpty()) {
+            return;
+        }
+        StringBuilder text = new StringBuilder();
+        for (Tile tile : tiles) {
+            String[] fields = emptyLine(tick, "tuile");
+            fields[17] = tile.released() ? "1" : "0";
+            fields[25] = tile.x() + "," + tile.y() + "," + tile.z();
+            if (!tile.released()) {
+                fields[26] = tile.boxes() == Tile.HEIGHTFIELD ? "champ" : Integer.toString(tile.boxes());
+                fields[27] = Integer.toString(tile.water());
+                fields[29] = tile.urgent() ? "1" : "0";
+            }
+            fields[28] = Integer.toString(pending);
+            text.append(String.join(";", fields)).append('\n');
+        }
+        out.write(text.toString());
+        out.flush();
+        lines += tiles.size();
+    }
+
     /** {@return le nombre de lignes écrites, en-tête non compris} */
     public long lines() {
         return lines;
@@ -101,12 +180,11 @@ public final class SimulationTrace implements AutoCloseable {
         out.close();
     }
 
-    private static String[] emptyLine(long tick, String type, int assembly) {
+    private static String[] emptyLine(long tick, String type) {
         String[] fields = new String[COLUMNS];
         Arrays.fill(fields, "");
         fields[0] = Long.toString(tick);
         fields[1] = type;
-        fields[2] = Integer.toString(assembly);
         return fields;
     }
 

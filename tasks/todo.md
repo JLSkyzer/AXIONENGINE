@@ -1655,6 +1655,13 @@ substituable sans changer rapier »).
                         linéaire de toutes les boîtes, poussée sur le volume de l'AABB —
                         corrigées (ADR-117, précision « eau » ; banc `charge_eau` : pas
                         28,6 → 0,04 ms). À rejouer pour confirmer en jeu.
+                       Rejoué le 2026-10-06 avec la trace (`/axion debug trace`, C-71) :
+                       un cube lâché de 25 m dans l'océan tourne à 47 rad/s dès l'entrée
+                       dans l'eau. Cause : la tuile de la section voisine, où il débordait,
+                       arrivée 7 ticks trop tard — seule la section abri passait en tête de
+                       file. Corrigé : ce que l'emprise d'un corps touche d'ici deux ticks
+                       passe en tête, et la trace écrit chaque tuile (ADR-117, précision
+                       « ordre des tuiles »). À rejouer, trace active.
             - Hors portée, nommé : palier `SAFE` de SM-02 (sièges M5, C-77), `DegradationEvent`
               et `ContactEvent` (API d'événements de C-70), filtre intra-assembly multi-corps
               (joints, M4).
@@ -1738,6 +1745,9 @@ substituable sans changer rapier »).
               encore relu : `auto_sphere` prend la demi-diagonale de l'AABB du maillage
               (rayon × √3 pour une sphère), et le repli capsule → sphère qu'annonce
               `collider.rs` est refusé par la validation.
+              Le même câblage freinera un corps dans l'eau : sans amortissement ni
+              `Cd`·`A` déclarés (§10.6), un cube y garde vitesse et rotation — il
+              touche le fond à 22 m/s et en repart (essai du 2026-10-06, ADR-117).
 
       - [x] **C-38 — World Collision Provider** (fiche 5.30, R-640..643) — **implémenté**,
             toutes tranches faites et vérifiées (unitaire natif + frontière + compilation

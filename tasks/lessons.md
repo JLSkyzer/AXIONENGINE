@@ -1119,3 +1119,18 @@ le même code — la règle « couvrir une famille de défauts ne dit rien des a
 
 **Règle.** Quand une représentation de masse se corrige, chercher toutes celles que produit la
 même source et les mesurer au même banc avant de clore (`charge_tuiles`, `charge_eau`).
+
+## 2026-10-06 | La priorité donnée à la section d'un corps ne couvre pas celles où il déborde
+
+**Ce qui a mal tourné.** La règle du 2026-10-01 faisait passer en tête la section qui *abrite*
+un corps — celle de sa position, un point. Un cube lâché dans l'océan au démarrage du serveur
+débordait sur la section voisine, dont la tuile d'eau est arrivée sept ticks après lui :
+poussée sur une moitié du cube, 47 rad/s. J'avais d'abord écarté ce retard en calculant de
+tête l'ordre du planificateur, sur une file supposée vide.
+
+**Règle.** Ce dont un consommateur a besoin se déduit de son étendue et de sa course, jamais
+d'un point qui le représente. Une hypothèse écartée par un calcul ne l'est que si ses prémisses
+sont vérifiées : rejouer le vrai code sur les vraies données (le planificateur sur les
+positions de la trace, `mergeFluids` sur la grille de la sauvegarde). Dans une trace, une force
+qui saute entre deux ticks alors que le corps bouge vite signale une donnée arrivée, pas une
+frontière dans l'espace.

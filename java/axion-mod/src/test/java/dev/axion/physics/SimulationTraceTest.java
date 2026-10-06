@@ -38,7 +38,7 @@ class SimulationTraceTest {
         assertEquals(SimulationTrace.HEADER, lignes[0]);
 
         String[] etat = lignes[1].split(";", -1);
-        assertEquals(25, etat.length, lignes[1]);
+        assertEquals(30, etat.length, lignes[1]);
         assertEquals(List.of("42", "etat", "7", "130.5000", "62.2500", "-40.0000"), List.of(etat).subList(0, 6));
         assertEquals("0.3827", etat[7], "rotation y");
         assertEquals("0.9239", etat[9], "rotation w");
@@ -49,7 +49,7 @@ class SimulationTraceTest {
         assertEquals("", etat[17], "pas de genre d'événement sur un état");
 
         String[] evenement = lignes[2].split(";", -1);
-        assertEquals(25, evenement.length, lignes[2]);
+        assertEquals(30, evenement.length, lignes[2]);
         assertEquals(List.of("42", "evenement", "7", "130.5000", "61.7500", "-40.0000"),
                 List.of(evenement).subList(0, 6));
         assertEquals("", evenement[6], "pas de rotation sur un événement");
@@ -62,6 +62,33 @@ class SimulationTraceTest {
         assertEquals("0", evenement[24], "data");
 
         assertEquals(2, trace.lines());
+    }
+
+    @Test
+    void chaqueTuilePoseeOuRetireeDonneUneLigne() throws IOException {
+        StringWriter fichier = new StringWriter();
+        SimulationTrace trace = new SimulationTrace(new BufferedWriter(fichier));
+
+        trace.recordTiles(417L, List.of(
+                SimulationTrace.Tile.built(-7, 3, -1, 12, 47, true),
+                SimulationTrace.Tile.built(-6, 3, -1, SimulationTrace.Tile.HEIGHTFIELD, 0, false),
+                SimulationTrace.Tile.released(2, 3, 4)), 205);
+        trace.recordTiles(418L, List.of(), 0);
+
+        // C-38 : quand chaque section arrive, avec quoi, et derrière combien d'autres.
+        String[] lignes = fichier.toString().split("\n");
+        assertEquals(4, lignes.length, "l'en-tête et trois tuiles ; un tick sans tuile n'écrit rien");
+        String[] posee = lignes[1].split(";", -1);
+        assertEquals(30, posee.length, lignes[1]);
+        assertEquals(List.of("417", "tuile", ""), List.of(posee).subList(0, 3));
+        assertEquals("0", posee[17], "genre : posée");
+        assertEquals(List.of("-7,3,-1", "12", "47", "205", "1"), List.of(posee).subList(25, 30));
+        assertEquals(List.of("-6,3,-1", "champ", "0", "205", "0"),
+                List.of(lignes[2].split(";", -1)).subList(25, 30), "un champ de hauteurs, sans urgence");
+        String[] retiree = lignes[3].split(";", -1);
+        assertEquals("1", retiree[17], "genre : retirée");
+        assertEquals(List.of("2,3,4", "", "", "205", ""), List.of(retiree).subList(25, 30));
+        assertEquals(3, trace.lines());
     }
 
     @Test

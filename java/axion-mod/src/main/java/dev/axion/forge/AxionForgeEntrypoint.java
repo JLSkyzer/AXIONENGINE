@@ -178,12 +178,18 @@ public final class AxionForgeEntrypoint {
         if (runtime.outcome() != null) {
             int radius = (int) runtime.outcome().config().getInt("world.tile_radius");
             int perTick = (int) runtime.outcome().config().getInt("world.tiles_per_tick");
+            // C-40 ↔ C-50 : les entités liées deviennent des corps natifs et reçoivent leur état ;
+            // les tuiles passent d'abord, ce que ces corps occupent en tête.
+            assemblyRuntime = new AssemblyRuntime(runtime.definitions(), runtime.assets());
             worldTileBridge =
                     new WorldTileBridge(
-                            event.getServer(), WorldTileBridge.loadMaterials(), radius, perTick);
+                            event.getServer(),
+                            WorldTileBridge.loadMaterials(),
+                            radius,
+                            perTick,
+                            assemblyRuntime,
+                            runtime::traceTiles);
             runtime.addCommandProvider(worldTileBridge);
-            // C-40 ↔ C-50 : les entités liées deviennent des corps natifs et reçoivent leur état.
-            assemblyRuntime = new AssemblyRuntime(runtime.definitions(), runtime.assets());
             runtime.addCommandProvider(assemblyRuntime);
             runtime.setStateSink(assemblyRuntime);
             // ADR-123 : chaque tick, les joueurs (rayon de simulation, plafond, R-610) et les
