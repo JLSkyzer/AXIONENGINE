@@ -19,13 +19,18 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.VanillaGameEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -77,9 +82,26 @@ public final class WorldTileBridge implements SimCommandProvider {
     /**
      * Sections invalidées par les événements, en attente du tick. Un événement peut venir d'un
      * autre thread que celui du serveur ; la file des tuiles, non partagée, n'en reçoit le contenu
-     * que dans {@link #commandsForTick}.
+     * que dans {@link #commandsForTick}. Une section déjà en attente n'y entre pas deux fois : les
+     * mises à jour de voisins se comptent par milliers sur un serveur chargé.
      */
     private final Queue<SectionKey> invalidated = new ConcurrentLinkedQueue<>();
+
+    private final Set<SectionKey> awaiting = ConcurrentHashMap.newKeySet();
+
+    /** Game events d'un bloc qui change sans avertir ses voisins : une porte, une trappe, un levier. */
+    private static final Set<GameEvent> BLOCK_GAME_EVENTS = Set.of(
+            GameEvent.BLOCK_ACTIVATE,
+            GameEvent.BLOCK_ATTACH,
+            GameEvent.BLOCK_CHANGE,
+            GameEvent.BLOCK_CLOSE,
+            GameEvent.BLOCK_DEACTIVATE,
+            GameEvent.BLOCK_DESTROY,
+            GameEvent.BLOCK_DETACH,
+            GameEvent.BLOCK_OPEN,
+            GameEvent.BLOCK_PLACE,
+            GameEvent.FLUID_PICKUP,
+            GameEvent.FLUID_PLACE);
 
     /**
      * @param server serveur courant, source des niveaux et des entités
@@ -123,6 +145,7 @@ public final class WorldTileBridge implements SimCommandProvider {
     @Override
     public SimCommandStream commandsForTick(long tick) {
         for (SectionKey key = invalidated.poll(); key != null; key = invalidated.poll()) {
+            awaiting.remove(key);
             service.invalidate(key);
         }
         Map<AxionEntity, Double> speeds = new IdentityHashMap<>();
@@ -167,12 +190,31 @@ public final class WorldTileBridge implements SimCommandProvider {
     /** Un bloc changé invalide la section qui le contient. */
     private void invalidateBlock(ServerLevel level, BlockPos pos) {
         long dim = DimensionId.of(level.dimension().location().toString());
-        invalidated.add(
+        SectionKey key =
                 new SectionKey(
                         dim,
                         WorldTileGeometry.sectionOfBlock(pos.getX()),
                         WorldTileGeometry.sectionOfBlock(pos.getY()),
-                        WorldTileGeometry.sectionOfBlock(pos.getZ())));
+                        WorldTileGeometry.sectionOfBlock(pos.getZ()));
+        enqueue(key);
+    }
+
+    /** Met une section en attente du tick, une seule fois tant qu'elle y est. */
+    private void enqueue(SectionKey key) {
+        if (awaiting.add(key)) {
+            invalidated.add(key);
+        }
+    }
+
+    /**
+     * Un bloc changé invalide sa section et celles de ses six voisins : la forme d'un voisin — une
+     * barrière qui se raccorde, l'autre moitié d'une porte — change avec lui, sans événement à elle.
+     */
+    private void invalidateAround(ServerLevel level, BlockPos pos) {
+        invalidateBlock(level, pos);
+        for (Direction direction : Direction.values()) {
+            invalidateBlock(level, pos.relative(direction));
+        }
     }
 
     /** Casse d'un bloc du serveur : invalidation de sa section. */
@@ -192,6 +234,30 @@ public final class WorldTileBridge implements SimCommandProvider {
     }
 
     /**
+     * Un bloc du serveur qui avertit ses voisins (fiche 5.30, étape 4) : le chemin de presque tout
+     * changement du monde — commandes, redstone, pistons, fluides, pose d'un gabarit de structure.
+     * Casse et pose par une entité ne couvrent pas ces cas ; sans lui, la simulation gardait
+     * l'ancien monde — un cube restait sur un pilier retiré par {@code /setblock}.
+     */
+    @SubscribeEvent
+    public void onNeighborNotify(BlockEvent.NeighborNotifyEvent event) {
+        if (event.getLevel() instanceof ServerLevel level) {
+            invalidateAround(level, event.getPos());
+        }
+    }
+
+    /**
+     * Ce qui change sans avertir ses voisins — une porte ouverte par un joueur, une trappe, un
+     * levier — émet un game event de bloc : il invalide sa section, comme une mise à jour de voisin.
+     */
+    @SubscribeEvent
+    public void onGameEvent(VanillaGameEvent event) {
+        if (event.getLevel() instanceof ServerLevel level && BLOCK_GAME_EVENTS.contains(event.getVanillaEvent())) {
+            invalidateAround(level, BlockPos.containing(event.getEventPosition()));
+        }
+    }
+
+    /**
      * Chargement d'un chunk du serveur : invalidation de sa colonne de sections. Une section
      * rendue « pleine et solide » faute de chunk (R-640) doit se reconstruire une fois le chunk
      * là. Ceux que charge un client intégré ne disent rien du monde du serveur : reçus sur son
@@ -207,7 +273,7 @@ public final class WorldTileBridge implements SimCommandProvider {
         int cx = event.getChunk().getPos().x;
         int cz = event.getChunk().getPos().z;
         for (int cy = level.getMinSection(); cy < level.getMaxSection(); cy++) {
-            invalidated.add(new SectionKey(dim, cx, cy, cz));
+            enqueue(new SectionKey(dim, cx, cy, cz));
         }
     }
 
