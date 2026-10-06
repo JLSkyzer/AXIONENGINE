@@ -1928,12 +1928,23 @@ substituable sans changer rapier »).
                   entité (C-38 : mises à jour de voisins et game events de bloc, ADR-117) et le
                   monde de développement repris par le serveur de GameTests (`run-gametest/`,
                   effacé à chaque passage). **Reste** : « état restauré » (sauvegarde puis
-                  rechargement). **Point ouvert** : un échec de `empilement_60s` sur huit passages
-                  — cube du bas glissé de 33 cm au tick 1200, premier passage dans un dossier neuf —,
-                  non reproduit depuis ; ni la pile native, ni une tuile reposée sous elle
-                  n'expliquent un tel glissement.
-            - [ ] **C — T-370..T-375 et T-380..T-384** : attribution par exigence (comme ADR-123
-                  §12 pour T-300..T-307), tests existants étiquetés, manquants écrits.
+                  rechargement). **Point ouvert** : `empilement_60s` a échoué 2 fois sur 27 passages
+                  consignés — pile restée debout, glissée de 33 puis 19 cm au tick 1200 —, aucune
+                  sur les dix passages d'une chasse dédiée. Écartés : la pile native (stable), une
+                  tuile reposée sous elle (2,9 cm au plus), le gouverneur FM-21 (aucun changement de
+                  palier dans le passage fautif, pas physique dans son budget), la compilation
+                  fraîche des assets (deux passages neufs verts). Le message d'échec porte désormais
+                  les trajectoires : la prochaine occurrence dira quand la pile part.
+            - [x] **C — T-370..T-375 et T-380..T-384** : attribution par exigence (comme ADR-123
+                  §12 pour T-300..T-307), tests existants étiquetés, manquants écrits. **Fait le
+                  2026-10-06** (ADR-125, proposé) : tests natifs préfixés `t37x_`/`t38x_`, classes
+                  de test Java étiquetées en Javadoc ; écrits : T-381..T-384 (balayage et
+                  recouvrement par lot, groupes, capteurs, monde du dernier pas) et, pour T-374, les
+                  GameTests `CollisionDuMondeGameTests` — section non chargée rendue pleine sans
+                  charger son chunk (garde retirée, le test échoue : vérifié), champ de hauteurs sur
+                  de vrais escaliers. Trou comblé : l'avertissement de R-641 manquait. Inventaire :
+                  22 des 44 tests de M3 existent ; restent T-312 (C-32), le rendu (tranche D) et
+                  T-308/T-309, sans fiche. Sans test : la moitié Java de R-651, faute d'API de requête.
             - [ ] **D — rendu** : T-470..T-474, T-479, T-480, T-490..T-493, T-500..T-503,
                   T-510..T-512, T-551, avec C-60, C-62 et C-63.
       - [ ] **C-61 — Backend VANILLA_CONSUMER** (fiche 5.48, PARTIE 19) — ouvre la chaîne de

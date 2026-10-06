@@ -9,7 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** Épingle la géométrie pure des tuiles du monde (C-38, fiche 5.30 ; ADR-117). */
+/**
+ * Épingle la géométrie pure des tuiles du monde (C-38, fiche 5.30 ; ADR-117).
+ *
+ * <p>Tests d'acceptance (ADR-125) : T-370 — adressage, quantification et fusion des blocs pleins ;
+ * T-374 — seuil du champ de hauteurs (R-641) ; T-375 — fusion de l'eau (R-642).
+ */
 class WorldTileGeometryTest {
 
     @Test

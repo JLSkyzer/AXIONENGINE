@@ -80,7 +80,7 @@ public final class PhysiqueGameTests {
     /**
      * Fiche 5.30, étape 4 : un bloc qui change invalide sa tuile. Un cube repose sur un pilier ; le
      * pilier retiré comme le fait {@code /setblock}, le cube tombe sur la dalle — la simulation ne
-     * garde pas l'ancien monde.
+     * garde pas l'ancien monde. Test d'acceptance T-372 (ADR-125).
      */
     @GameTest(template = "test/plancher", timeoutTicks = 200)
     public static void unBlocRetireSousUnCubeLeLaisseTomber(GameTestHelper helper) {

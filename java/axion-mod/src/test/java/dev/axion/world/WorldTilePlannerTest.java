@@ -11,7 +11,12 @@ import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
-/** Épingle l'ordonnancement des tuiles du monde (C-38, fiche 5.30, étapes 4-5). */
+/**
+ * Épingle l'ordonnancement des tuiles du monde (C-38, fiche 5.30, étapes 4-5).
+ *
+ * <p>Tests d'acceptance (ADR-125) : T-372 — reconstruction amortie, invalidation, ce qu'un corps
+ * occupe en tête ; T-373 — libération des tuiles lointaines.
+ */
 class WorldTilePlannerTest {
 
     private static final List<Footprint> AT_ORIGIN = abris(new SectionKey(0L, 0, 0, 0));

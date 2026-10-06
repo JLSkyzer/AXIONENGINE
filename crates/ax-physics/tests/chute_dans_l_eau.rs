@@ -90,13 +90,13 @@ fn chute(x: f64, z: f64) -> (f32, u32) {
 }
 
 #[test]
-fn un_cube_qui_tombe_dans_l_eau_au_milieu_d_une_section_ne_se_met_pas_a_tourner() {
+fn t375_un_cube_qui_tombe_dans_l_eau_au_milieu_d_une_section_ne_se_met_pas_a_tourner() {
     let (rotation, tick) = chute(-119.5, -5.177);
     assert!(rotation < 1.0, "{rotation} rad/s au tick {tick}");
 }
 
 #[test]
-fn un_cube_qui_tombe_dans_l_eau_a_cheval_sur_deux_sections_ne_se_met_pas_a_tourner() {
+fn t375_un_cube_qui_tombe_dans_l_eau_a_cheval_sur_deux_sections_ne_se_met_pas_a_tourner() {
     // Le point exact de l'essai : le cube couvre x ∈ [−113,5 ; −112,5], de part et d'autre de la
     // frontière x = −112 entre les sections −8 et −7.
     let (rotation, tick) = chute(-112.986, -5.177);
@@ -145,7 +145,7 @@ fn marches(driver: &mut SimDriver) {
 }
 
 #[test]
-fn un_cube_pose_sur_une_marche_du_fond_ne_s_emballe_pas() {
+fn t375_un_cube_pose_sur_une_marche_du_fond_ne_s_emballe_pas() {
     // L'essai du 2026-10-06 à 19:08 : le cube, posé à cheval sur la marche entre x = −113 et
     // x = −112, a pris 3 rad/s de plus à chaque tick jusqu'au plafond de 47 rad/s. Les coins de son
     // AABB qui débordaient dans la roche comptaient comme hors de l'eau : la poussée, décentrée

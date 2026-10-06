@@ -4,7 +4,8 @@ use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_physics::{
     body_state_flags, event_data, event_kind, BodyBounds, BodyCollider, BodyError, BodyId,
     BodyKind, CollisionGroups, CompoundPart, ConfigError, ContactMaterial, FluidEnvironment,
-    Handle, LiftSurface, PhysicsConfig, PhysicsWorld, Shape, SimMode, SpatialFilter, Stage,
+    Handle, LiftSurface, PhysicsConfig, PhysicsWorld, SensorMode, Shape, SimMode, SpatialFilter,
+    Stage,
 };
 
 fn config() -> PhysicsConfig {
@@ -586,7 +587,7 @@ fn cube_de_densite_1000(x: f32) -> BodyCollider {
 }
 
 #[test]
-fn un_cube_tourne_de_la_densite_du_fluide_reste_en_place() {
+fn t375_un_cube_tourne_de_la_densite_du_fluide_reste_en_place() {
     // R-642, §10.6 : F = ρ·V_immergé·g, les huit coins de l'AABB n'approchant que la part
     // immergée. Tourné de 45°, un cube a une AABB deux fois plus grosse que lui : la prendre
     // pour son volume le ferait jaillir — c'est ce qui l'a fait rebondir sans fin en jeu.
@@ -612,7 +613,7 @@ fn un_cube_tourne_de_la_densite_du_fluide_reste_en_place() {
 }
 
 #[test]
-fn la_poussee_d_un_corps_compte_tous_ses_colliders() {
+fn t375_la_poussee_d_un_corps_compte_tous_ses_colliders() {
     // Deux cubes en un corps, à la densité du fluide : la poussée porte sur les deux
     // volumes, sous les huit coins de l'AABB qui les englobe tous deux.
     let mut world = PhysicsWorld::new(config());
@@ -637,7 +638,7 @@ fn la_poussee_d_un_corps_compte_tous_ses_colliders() {
 }
 
 #[test]
-fn un_cube_lache_dans_l_eau_en_tournant_ne_rejaillit_pas() {
+fn t375_un_cube_lache_dans_l_eau_en_tournant_ne_rejaillit_pas() {
     // Le cas vu en jeu le 2026-10-06 : un cube de la densité de l'eau, lâché de haut, qui
     // tourne en tombant. Rien ne lui rend d'énergie : une fois entré dans l'eau, il ne doit
     // pas en ressortir — il en jaillissait, puis rebondissait sans fin.
@@ -1872,7 +1873,7 @@ fn world_with_ground() -> (PhysicsWorld, BodyId) {
 }
 
 #[test]
-fn un_rayon_touche_le_sol() {
+fn t380_un_rayon_touche_le_sol() {
     let (world, ground) = world_with_ground();
     let hit = world
         .raycast(
@@ -1902,7 +1903,7 @@ fn un_rayon_touche_le_sol() {
 }
 
 #[test]
-fn un_rayon_dans_le_vide_ne_touche_rien() {
+fn t380_un_rayon_dans_le_vide_ne_touche_rien() {
     let (world, _) = world_with_ground();
     assert!(
         world
@@ -1918,7 +1919,7 @@ fn un_rayon_dans_le_vide_ne_touche_rien() {
 }
 
 #[test]
-fn le_filtre_exclut_un_corps() {
+fn t383_le_filtre_exclut_un_corps() {
     let (world, ground) = world_with_ground();
     let hit = world.raycast(
         Vec3::new(0.0, 10.0, 0.0),
@@ -1930,7 +1931,7 @@ fn le_filtre_exclut_un_corps() {
 }
 
 #[test]
-fn overlap_trouve_le_sol() {
+fn t382_overlap_trouve_le_sol() {
     let (world, ground) = world_with_ground();
     // Une petite boîte à l'origine recouvre le sol.
     let bodies = world.overlap(
@@ -1956,7 +1957,7 @@ fn overlap_trouve_le_sol() {
 }
 
 #[test]
-fn un_sweep_touche_le_sol_devant() {
+fn t381_un_sweep_touche_le_sol_devant() {
     let (world, ground) = world_with_ground();
     // Une bille lâchée de haut, balayée vers le bas, touche le sol.
     let hit = world
@@ -1979,7 +1980,7 @@ fn un_sweep_touche_le_sol_devant() {
 }
 
 #[test]
-fn une_requete_ne_mute_pas_le_monde() {
+fn t384_une_requete_ne_mute_pas_le_monde() {
     // R-650 : les requêtes sont en lecture seule.
     let (world, _) = world_with_ground();
     let before = world.body_count();
@@ -1999,7 +2000,7 @@ fn une_requete_ne_mute_pas_le_monde() {
 }
 
 #[test]
-fn le_raycast_par_lot_rend_un_resultat_par_rayon() {
+fn t384_le_raycast_par_lot_rend_un_resultat_par_rayon() {
     let (world, ground) = world_with_ground();
     let rays = [
         (Vec3::new(0.0, 10.0, 0.0), Vec3::NEG_Y, 50.0), // touche
@@ -2009,6 +2010,139 @@ fn le_raycast_par_lot_rend_un_resultat_par_rayon() {
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].expect("touche").body, ground);
     assert!(results[1].is_none(), "le second rayon manque");
+}
+
+/// Une plaque statique de 4 × 0,2 × 4 à la hauteur `y`.
+fn plaque(world: &mut PhysicsWorld, y: f32) -> BodyId {
+    world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, y, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [2.0, 0.1, 2.0],
+            },
+        )
+        .expect("une plaque est valide")
+}
+
+#[test]
+fn t383_un_filtre_de_groupes_ne_voit_que_les_groupes_vises() {
+    // Deux plaques sur le trajet d'un rayon, l'une dans le groupe 5, l'autre dans le groupe 6 :
+    // un rayon qui ne vise que le groupe 6 traverse la première.
+    let (mut world, _) = world_with_ground();
+    let haute = plaque(&mut world, 6.0);
+    let basse = plaque(&mut world, 4.0);
+    let tous: Vec<u32> = (0..32).collect();
+    world.set_collision_groups(haute, CollisionGroups::from_indices(&[5], &tous));
+    world.set_collision_groups(basse, CollisionGroups::from_indices(&[6], &tous));
+    world.advance(1.0 / 60.0);
+    let vers_le_bas = |filtre| {
+        world
+            .raycast(Vec3::new(0.0, 10.0, 0.0), Vec3::NEG_Y, 50.0, filtre)
+            .map(|hit| hit.body)
+    };
+    assert_eq!(vers_le_bas(SpatialFilter::new()), Some(haute));
+    assert_eq!(
+        vers_le_bas(SpatialFilter::new().with_groups(CollisionGroups::from_indices(&tous, &[6]))),
+        Some(basse)
+    );
+}
+
+#[test]
+fn t383_le_mode_capteurs_choisit_les_solides_ou_les_capteurs() {
+    let (mut world, ground) = world_with_ground();
+    let capteur = plaque(&mut world, 6.0);
+    world.set_sensor(capteur, true);
+    world.advance(1.0 / 60.0);
+    let vers_le_bas = |mode| {
+        world
+            .raycast(
+                Vec3::new(0.0, 10.0, 0.0),
+                Vec3::NEG_Y,
+                50.0,
+                SpatialFilter::new().with_sensors(mode),
+            )
+            .map(|hit| hit.body)
+    };
+    assert_eq!(vers_le_bas(SensorMode::SolidsOnly), Some(ground));
+    assert_eq!(vers_le_bas(SensorMode::SensorsOnly), Some(capteur));
+    assert_eq!(
+        vers_le_bas(SensorMode::Both),
+        Some(capteur),
+        "le capteur est le plus proche"
+    );
+}
+
+#[test]
+fn t381_le_balayage_par_lot_rend_le_balayage_de_chaque_pose() {
+    let (world, ground) = world_with_ground();
+    let bille = Shape::Ball { radius: 0.5 };
+    let poses = [
+        (Vec3::new(0.0, 10.0, 0.0), Quat::IDENTITY, Vec3::NEG_Y, 50.0),
+        (Vec3::new(0.0, 10.0, 0.0), Quat::IDENTITY, Vec3::Y, 50.0),
+    ];
+    let lot = world.sweep_batch(&bille, &poses, SpatialFilter::new());
+    assert_eq!(lot.len(), poses.len());
+    for (&(position, rotation, direction, portee), resultat) in poses.iter().zip(&lot) {
+        let seul = world.sweep(
+            &bille,
+            position,
+            rotation,
+            direction,
+            portee,
+            SpatialFilter::new(),
+        );
+        assert_eq!(
+            resultat.map(|hit| (hit.body, hit.time_of_impact)),
+            seul.map(|hit| (hit.body, hit.time_of_impact))
+        );
+    }
+    assert_eq!(lot[0].map(|hit| hit.body), Some(ground));
+    assert!(lot[1].is_none(), "vers le haut, rien");
+}
+
+#[test]
+fn t382_le_recouvrement_par_lot_rend_celui_de_chaque_pose() {
+    let (world, ground) = world_with_ground();
+    let boite = Shape::Cuboid {
+        half_extents: [0.5, 0.5, 0.5],
+    };
+    let poses = [
+        (Vec3::new(0.0, 0.5, 0.0), Quat::IDENTITY),
+        (Vec3::new(0.0, 50.0, 0.0), Quat::IDENTITY),
+    ];
+    let lot = world.overlap_batch(&boite, &poses, SpatialFilter::new());
+    assert_eq!(lot.len(), poses.len());
+    for (&(position, rotation), resultat) in poses.iter().zip(&lot) {
+        assert_eq!(
+            resultat,
+            &world.overlap(&boite, position, rotation, SpatialFilter::new())
+        );
+    }
+    assert_eq!(lot[0], vec![ground]);
+    assert!(lot[1].is_empty());
+}
+
+#[test]
+fn t384_une_requete_lit_le_monde_du_dernier_pas() {
+    // R-651 : une requête rend l'état du début du tick, celui que le dernier pas a laissé. Une
+    // plaque ajoutée depuis n'y est pas encore ; elle y entre au pas suivant.
+    let (mut world, ground) = world_with_ground();
+    let nouvelle = plaque(&mut world, 6.0);
+    let vers_le_bas = |world: &PhysicsWorld| {
+        world
+            .raycast(
+                Vec3::new(0.0, 10.0, 0.0),
+                Vec3::NEG_Y,
+                50.0,
+                SpatialFilter::new(),
+            )
+            .map(|hit| hit.body)
+    };
+    assert_eq!(vers_le_bas(&world), Some(ground), "le monde du dernier pas");
+    world.advance(1.0 / 60.0);
+    assert_eq!(vers_le_bas(&world), Some(nouvelle), "après le pas suivant");
 }
 
 // --- C-40 : ordonnanceur de simulation (fiche 5.32) ------------------------------------

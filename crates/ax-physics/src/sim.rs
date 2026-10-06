@@ -1466,7 +1466,7 @@ mod tests {
     }
 
     #[test]
-    fn un_corps_repose_sur_une_tuile_de_collision_monde() {
+    fn t371_un_corps_repose_sur_une_tuile_de_collision_monde() {
         let mut driver = SimDriver::new();
         // Une tuile-sol : une dalle 16×1×16 au bas de la section (0, 0, 0).
         let posee = driver.set_world_tile(
@@ -1515,7 +1515,7 @@ mod tests {
     }
 
     #[test]
-    fn un_corps_repose_sur_une_tuile_champ_de_hauteurs() {
+    fn t374_un_corps_repose_sur_une_tuile_champ_de_hauteurs() {
         let mut driver = SimDriver::new();
         // Une tuile-sol en champ de hauteurs : grille 2×2 plate à hauteur 1,
         // étendue 16×16, sur la section (0, 0, 0). Surface à y = 0 + 1×1 = 1.
@@ -1567,7 +1567,7 @@ mod tests {
     }
 
     #[test]
-    fn une_tuile_champ_de_hauteurs_invalide_ne_se_pose_pas() {
+    fn t374_une_tuile_champ_de_hauteurs_invalide_ne_se_pose_pas() {
         let mut driver = SimDriver::new();
         // Nombre de hauteurs incohérent avec rows×cols : refus propre, sans panique.
         assert!(!driver.set_world_tile_heightfield(
@@ -1604,7 +1604,7 @@ mod tests {
     }
 
     #[test]
-    fn le_materiau_de_tuile_change_la_friction() {
+    fn t375_le_materiau_de_tuile_change_la_friction() {
         // R-643 : la friction de la tuile freine un corps qui glisse dessus. Même
         // impulsion horizontale, deux frottements : le corps glisse plus loin sur la
         // tuile la moins rugueuse — c'est la friction des roues contre le monde.
@@ -1666,7 +1666,7 @@ mod tests {
     }
 
     #[test]
-    fn le_materiau_de_tuile_change_le_rebond() {
+    fn t375_le_materiau_de_tuile_change_le_rebond() {
         // R-643 : la restitution de la tuile renvoie un corps qui la percute — c'est
         // l'énergie des impacts contre le monde. Un sol rebondissant relance la bille
         // plus haut qu'un sol amortissant.
@@ -1806,7 +1806,7 @@ mod tests {
     }
 
     #[test]
-    fn une_tuile_de_fluide_se_remplace_et_se_retire() {
+    fn t375_une_tuile_de_fluide_se_remplace_et_se_retire() {
         let mut driver = SimDriver::new();
         assert!(driver.set_world_fluid_tile(
             0,
@@ -1830,7 +1830,7 @@ mod tests {
     }
 
     #[test]
-    fn une_tuile_se_remplace_et_se_retire() {
+    fn t371_une_tuile_se_remplace_et_se_retire() {
         let mut driver = SimDriver::new();
         assert!(driver.set_world_tile(
             0,
@@ -1869,7 +1869,7 @@ mod tests {
     }
 
     #[test]
-    fn une_tuile_porte_ses_boites_en_compounds_d_au_plus_64() {
+    fn t371_une_tuile_porte_ses_boites_en_compounds_d_au_plus_64() {
         // Fiche 5.30, étape 3, et §10.3 : des compounds statiques d'au plus 64 boîtes, et
         // non un collider par boîte — rapier refait tout l'arbre de sa phase large à chaque
         // retrait de collider, en temps proportionnel à son nombre de feuilles.
@@ -1892,7 +1892,7 @@ mod tests {
     }
 
     #[test]
-    fn les_paquets_d_une_tuile_pleine_sont_des_cubes_de_4_blocs() {
+    fn t371_les_paquets_d_une_tuile_pleine_sont_des_cubes_de_4_blocs() {
         // Regroupées par voisinage (courbe de Morton), 64 boîtes d'une section pleine
         // forment un cube de 4³ blocs : l'emprise d'un paquet ne recouvre que ses voisins.
         let mut driver = SimDriver::new();
@@ -1916,7 +1916,7 @@ mod tests {
     }
 
     #[test]
-    fn un_corps_repose_sur_une_tuile_en_compounds() {
+    fn t371_un_corps_repose_sur_une_tuile_en_compounds() {
         // Une section dont les trois couches du bas sont pleines : 768 boîtes, douze
         // compounds. Un cube lâché au-dessus s'y pose sans la traverser.
         let mut driver = SimDriver::new();
@@ -1952,7 +1952,7 @@ mod tests {
     }
 
     #[test]
-    fn une_tuile_en_compounds_donne_le_meme_resultat_d_une_execution_a_l_autre() {
+    fn t371_une_tuile_en_compounds_donne_le_meme_resultat_d_une_execution_a_l_autre() {
         // R-1020 : le regroupement ne dépend que de l'entrée.
         let run = || {
             let mut driver = SimDriver::new();

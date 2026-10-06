@@ -13,7 +13,12 @@ import java.nio.ByteOrder;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** Épingle la traduction du plan de tuiles en commandes de frontière (C-38, ADR-117). */
+/**
+ * Épingle la traduction du plan de tuiles en commandes de frontière (C-38, ADR-117).
+ *
+ * <p>Tests d'acceptance (ADR-125) : T-371 — tuiles émises par lot, collision puis fluide ;
+ * T-373 — une section libérée retire ses deux tuiles.
+ */
 class WorldTileServiceTest {
 
     /** Source factice : rend la même tuile pour toute section. */

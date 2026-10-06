@@ -12,7 +12,11 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** Épingle la résolution data-driven des matériaux de bloc (C-38, R-643). */
+/**
+ * Épingle la résolution data-driven des matériaux de bloc (C-38, R-643).
+ *
+ * <p>Test d'acceptance (ADR-125) : T-375 — matériau dominant résolu par données.
+ */
 class BlockMaterialsTest {
 
     @Test
