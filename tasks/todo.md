@@ -1662,6 +1662,12 @@ substituable sans changer rapier »).
                        file. Corrigé : ce que l'emprise d'un corps touche d'ici deux ticks
                        passe en tête, et la trace écrit chaque tuile (ADR-117, précision
                        « ordre des tuiles »). À rejouer, trace active.
+                       Rejoué à 19:08 : entrée dans l'eau propre (0 rad/s), mais deux
+                       défauts nouveaux, corrigés : un cube posé sur une marche du fond
+                       prenait 186 kJ (coins d'AABB dans la roche comptés secs), et la file
+                       des tuiles, corrompue par les ChunkEvent.Load du client, rebâtissait
+                       cinq sections à chaque tick. À rejouer au coin (−16,0 ; 128,0), dont
+                       le voisinage n'a jamais été bâti.
             - Hors portée, nommé : palier `SAFE` de SM-02 (sièges M5, C-77), `DegradationEvent`
               et `ContactEvent` (API d'événements de C-70), filtre intra-assembly multi-corps
               (joints, M4).

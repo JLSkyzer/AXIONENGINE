@@ -1341,6 +1341,8 @@ impl PhysicsWorld {
         let colliders = &self.inner.colliders;
         let aero = &self.aero;
         let fluid_volumes = &self.fluid_volumes;
+        // Les solides fixes — les tuiles du monde —, pour les coins d'AABB qui y débordent.
+        let solids = self.query_pipeline(RapierQueryFilter::only_fixed().exclude_sensors());
         // Passe 1, en lecture : calcule le plan de chaque corps dans l'ordre
         // déterministe de `rapier`, en consultant son profil par clé. Avec un
         // fluide, **tout** corps dynamique est planifié — même hors de l'eau —
@@ -1368,9 +1370,12 @@ impl PhysicsWorld {
                     );
                 }
                 if has_fluid {
-                    if let Some(im) = sample_immersion(body, colliders, |p| {
-                        fluid_density_at(fluid_volumes, &flat_fluid, p)
-                    }) {
+                    if let Some(im) = sample_immersion(
+                        body,
+                        colliders,
+                        |p| fluid_density_at(fluid_volumes, &flat_fluid, p),
+                        |p| solids.intersect_point(p).next().is_some(),
+                    ) {
                         // Poussée d'Archimède `−g·ρ·V_immergé` au centre de poussée.
                         let buoyancy = -gravity * (im.density * im.fraction * im.volume);
                         at_points.push((buoyancy, im.centroid));
@@ -1860,12 +1865,16 @@ impl PhysicsWorld {
     }
 
     /// Indique si un coin de l'AABB du corps est immergé — dans un volume localisé ou
-    /// sous la surface plate de la dimension (§10.6, R-642).
+    /// sous la surface plate de la dimension (§10.6, R-642). Un coin pris dans un solide
+    /// n'y change rien : il ne compte que si un autre l'est déjà.
     fn body_in_fluid(&self, handle: RigidBodyHandle) -> bool {
         self.inner.bodies.get(handle).is_some_and(|body| {
-            sample_immersion(body, &self.inner.colliders, |p| {
-                fluid_density_at(&self.fluid_volumes, &self.fluid, p)
-            })
+            sample_immersion(
+                body,
+                &self.inner.colliders,
+                |p| fluid_density_at(&self.fluid_volumes, &self.fluid, p),
+                |_| false,
+            )
             .is_some()
         })
     }
@@ -2482,6 +2491,14 @@ struct Immersion {
 /// fluide selon `density_at` (§10.6). `None` si aucun coin n'est immergé ou si l'AABB
 /// est dégénérée.
 ///
+/// Un coin qui déborde dans un solide (`in_solid`) n'est ni dans l'eau ni dans l'air : le
+/// corps n'y est pas, seule son AABB. Il compte comme immergé si un coin l'est à sa hauteur
+/// ou plus haut — la surface est horizontale —, comme sec sinon. Le compter sec décentrait la
+/// poussée d'un corps posé sur un fond inégal : un couple constant, qui l'a fait tourner
+/// jusqu'au plafond de `rapier` (essai du 2026-10-06). Un corps plaqué sous un plafond immergé
+/// garde cette limite : ses coins pris dans le plafond, au-dessus de tout coin immergé,
+/// restent secs.
+///
 /// Le centroïde des coins immergés sert de centre de poussée : sous le COM quand le
 /// corps émerge à moitié, il produit le moment de redressement d'un bateau. La densité
 /// retenue est la moyenne sur les coins immergés — un corps à cheval sur deux fluides
@@ -2490,6 +2507,7 @@ fn sample_immersion(
     body: &RigidBody,
     colliders: &ColliderSet,
     density_at: impl Fn(Vec3) -> Option<f32>,
+    in_solid: impl Fn(Vec3) -> bool,
 ) -> Option<Immersion> {
     // Les huit coins de l'AABB qui englobe tous les colliders du corps.
     let mut lo = Vec3::splat(f32::INFINITY);
@@ -2516,18 +2534,31 @@ fn sample_immersion(
         Vec3::new(lo.x, hi.y, hi.z),
         Vec3::new(hi.x, hi.y, hi.z),
     ];
+    let densities = corners.map(&density_at);
     let mut submerged = 0u32;
     let mut sum = Vec3::ZERO;
     let mut density_sum = 0.0;
-    for corner in corners {
-        if let Some(density) = density_at(corner) {
+    // La plus haute hauteur à laquelle un coin est dans le fluide.
+    let mut waterline = f32::NEG_INFINITY;
+    for (corner, density) in corners.iter().zip(densities.iter()) {
+        if let Some(density) = density {
             submerged += 1;
-            sum += corner;
+            sum += *corner;
             density_sum += density;
+            waterline = waterline.max(corner.y);
         }
     }
     if submerged == 0 {
         return None;
+    }
+    // Les coins pris dans un solide sous cette hauteur baignent dans le fluide des autres.
+    let fluid_density = density_sum / submerged as f32;
+    for (corner, density) in corners.iter().zip(densities.iter()) {
+        if density.is_none() && corner.y <= waterline && in_solid(*corner) {
+            submerged += 1;
+            sum += *corner;
+            density_sum += fluid_density;
+        }
     }
     // V_immergé est une part du volume du corps, celui de ses colliders — non de son AABB,
     // qui le dépasse dès qu'il tourne (jusqu'à √3³ ≈ 5,2 fois pour un cube) : la prendre

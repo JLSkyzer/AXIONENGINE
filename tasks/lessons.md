@@ -1149,3 +1149,14 @@ modifiait la file du serveur pendant que le serveur la parcourait.
 modifie que sur son thread : un événement y entre par une file partagée, vidée au tick. Des
 entrées qu'un parcours trouve mais que la recherche ne trouve plus signalent une structure de
 hachage corrompue — chercher l'accès concurrent avant tout autre chose.
+
+## 2026-10-06 | Un corps libre qui gagne de l'énergie trahit une force non conservative — la mesurer sur un fond inégal
+
+**Ce qui a mal tourné.** La poussée avait été vérifiée sur un cube qui tombe dans l'eau et sur un
+cube posé à plat. Posé à cheval sur une marche du fond, le cube a pris 186 kJ en vingt ticks :
+les coins de son AABB qui débordaient dans la roche comptaient comme secs, et la poussée décentrée
+faisait un couple constant.
+
+**Règle.** Un modèle de force approché par échantillonnage dit ce que vaut un point qui n'est ni
+dedans ni dehors — ici, pris dans un solide. Et on le teste en mesurant l'énergie d'un corps libre
+sur des centaines de ticks, posé sur un relief inégal : sans moteur, elle ne doit jamais croître.
