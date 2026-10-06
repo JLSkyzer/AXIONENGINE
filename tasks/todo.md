@@ -1902,6 +1902,29 @@ substituable sans changer rapier »).
                     avant que sa section soit reconstruite. `WorldTilePlanner` bâtit désormais en
                     priorité la section abritant une assembly (+ test). Commit a13e3e4.
                     **Rechargement observé en jeu (2026-10-01) : le cube reste posé.**
+      - [ ] **Acceptance M3 — GameTests et scénarios** (§29.5, PARTIE 37.2). La porte du jalon :
+            « un objet tombe, repose sur le sol, est rendu dans les deux backends », vérifiée
+            mécaniquement (R-2392). Inventaire du 2026-10-06 : des 44 tests cités par M3, 11
+            existent (T-300..T-307, T-310, T-311, T-550) ; T-308 et T-309 ne sont attribués par
+            aucune fiche (C-31 s'arrête à T-307, C-32 commence à T-310).
+            - [x] **A — socle** : Java du source set `devcontent` (jamais empaqueté, R-1790)
+                  compilé contre le mod ; structure de test générée par un script ; premier
+                  `@GameTest` : chute libre à 1 % près, puis repos sur le sol ;
+                  `runGameTestServer` vert. **Fait le 2026-10-06** : `devcontentImplementation`,
+                  gabarit `plancher` (`tools/gametest/structures.py`), `PhysiqueGameTests`,
+                  `ObservateursDeTest` — sans joueur, R-612 endort tout corps, et le joueur
+                  factice de Minecraft n'entre pas dans un monde Forge (canal réseau nul) ; job
+                  `test-gametest` en CI. Le test a trouvé un défaut : l'accumulateur `f32` de
+                  `PhysicsWorld::advance` perdait un sous-pas au premier tick, puis gardait ce
+                  retard (chute 1,45 % trop courte à 2 s) — corrigé, tolérance d'un millième de
+                  sous-pas (R-990).
+            - [ ] **B — scénarios déclaratifs** (§29.5) : JSON `structure`/`setup`/`asserts`/
+                  `tolerance` joués en GameTest ; empilement stable 60 s, aucune traversée du sol
+                  sur 10 min, état restauré.
+            - [ ] **C — T-370..T-375 et T-380..T-384** : attribution par exigence (comme ADR-123
+                  §12 pour T-300..T-307), tests existants étiquetés, manquants écrits.
+            - [ ] **D — rendu** : T-470..T-474, T-479, T-480, T-490..T-493, T-500..T-503,
+                  T-510..T-512, T-551, avec C-60, C-62 et C-63.
       - [ ] **C-61 — Backend VANILLA_CONSUMER** (fiche 5.48, PARTIE 19) — ouvre la chaîne de
             rendu, **vanilla d'abord** puis C-60 natif (ADR-118, ratifié 2026-10-01).
             - [x] **T1 — couture + preuve de passe** : `RenderBackend`, sélection pure

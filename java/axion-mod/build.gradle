@@ -22,6 +22,15 @@ sourceSets {
     devcontent
 }
 
+// Ses GameTests (§29.5) compilent contre le mod et Minecraft, et ne vivent qu'en développement,
+// comme ses definitions.
+configurations {
+    devcontentImplementation.extendsFrom implementation
+}
+dependencies {
+    devcontentImplementation sourceSets.main.output
+}
+
 minecraft {
     mappings channel: mapping_channel, version: mapping_version
 

@@ -1160,3 +1160,16 @@ faisait un couple constant.
 **Règle.** Un modèle de force approché par échantillonnage dit ce que vaut un point qui n'est ni
 dedans ni dehors — ici, pris dans un solide. Et on le teste en mesurant l'énergie d'un corps libre
 sur des centaines de ticks, posé sur un relief inégal : sans moteur, elle ne doit jamais croître.
+
+## 2026-10-06 | Un accumulateur à pas fixe en f32 perdait un sous-pas — vu par une chute libre mesurée en jeu
+
+**Ce qui a mal tourné.** `PhysicsWorld::advance` accumule le temps du tick en `f32` et retire des
+sous-pas de 1/60 s tant qu'il en reste un entier. 1/20 s n'en contient pas exactement trois en
+`f32` : après deux soustractions, le reliquat valait 0,9999998 sous-pas. Le premier tick d'un
+monde n'en faisait que deux, puis la simulation restait d'un sous-pas en retard sur le serveur.
+Aucun test ne le voyait : ils comptaient les sous-pas avec d'autres pas, ou jugeaient des états
+d'équilibre. Le premier GameTest, qui compare une chute à ½·g·t², l'a trouvé : −1,45 % à 2 s.
+
+**Règle.** Une boucle à pas fixe compare son accumulateur avec une tolérance relative au pas, et
+ne le laisse pas passer sous zéro. Et une intégration se juge aussi contre sa loi analytique,
+mesurée depuis le départ réel : un décalage de temps s'y voit, là où un état final le cache.

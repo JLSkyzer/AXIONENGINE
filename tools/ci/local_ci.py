@@ -74,6 +74,9 @@ JOBS: list[tuple[str, list[tuple[str, list[str]]]]] = [
         ("codegen-parity, JUnit et validate-jar",
          [GRADLEW, ":axion-mod:test", "--rerun", "build", "--no-daemon", "--stacktrace"]),
     ]),
+    ("test-gametest", [
+        ("GameTests (serveur dedie)", [GRADLEW, "runGameTestServer", "--no-daemon", "--stacktrace"]),
+    ]),
     ("platform-hote", [
         ("configuration deterministe", ["cargo", "run", "--quiet", "-p", "ax-det",
                                         "--example", "profil"]),
