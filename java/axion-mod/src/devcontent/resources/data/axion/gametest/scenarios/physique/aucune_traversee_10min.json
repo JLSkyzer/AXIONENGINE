@@ -1,0 +1,18 @@
+{
+  "description": "Des cubes posés ou lâchés de 5 à 19 m, dont un tourné, ne passent jamais sous la dalle en dix minutes : « aucune traversée du sol sur 10 min », acceptance de M3 (PARTIE 37.2).",
+  "structure": "axion:test/plancher_16",
+  "setup": [
+    { "spawn": "axion:test_cube", "at": [5.5, 1.0, 5.5] },
+    { "spawn": "axion:test_cube", "at": [10.5, 6.0, 5.5] },
+    { "spawn": "axion:test_cube", "at": [5.5, 20.0, 10.5] },
+    { "spawn": "axion:test_cube", "at": [10.5, 12.0, 10.5], "rot": [0.0, 0.0, 0.3826834, 0.9238795] }
+  ],
+  "inputs": [],
+  "asserts": [
+    { "ticks": [1, 12000], "assembly": 0, "y_min": 1.0 },
+    { "ticks": [1, 12000], "assembly": 1, "y_min": 1.0 },
+    { "ticks": [1, 12000], "assembly": 2, "y_min": 1.0 },
+    { "ticks": [1, 12000], "assembly": 3, "y_min": 1.0 }
+  ],
+  "tolerance": { "position": 0.5 }
+}

@@ -1920,7 +1920,18 @@ substituable sans changer rapier »).
                   sous-pas (R-990).
             - [ ] **B — scénarios déclaratifs** (§29.5) : JSON `structure`/`setup`/`asserts`/
                   `tolerance` joués en GameTest ; empilement stable 60 s, aucune traversée du sol
-                  sur 10 min, état restauré.
+                  sur 10 min, état restauré. **Fait le 2026-10-06** (ADR-124, proposé) :
+                  `ScenarioGameTests` change chaque `data/axion/gametest/scenarios/<domaine>/
+                  <nom>.json` en GameTest, validation stricte ; `physique/empilement_60s` et
+                  `physique/aucune_traversee_10min` verts. Ils ont trouvé deux défauts, corrigés :
+                  des tuiles périmées après un changement de bloc sans casse ni pose par une
+                  entité (C-38 : mises à jour de voisins et game events de bloc, ADR-117) et le
+                  monde de développement repris par le serveur de GameTests (`run-gametest/`,
+                  effacé à chaque passage). **Reste** : « état restauré » (sauvegarde puis
+                  rechargement). **Point ouvert** : un échec de `empilement_60s` sur huit passages
+                  — cube du bas glissé de 33 cm au tick 1200, premier passage dans un dossier neuf —,
+                  non reproduit depuis ; ni la pile native, ni une tuile reposée sous elle
+                  n'expliquent un tel glissement.
             - [ ] **C — T-370..T-375 et T-380..T-384** : attribution par exigence (comme ADR-123
                   §12 pour T-300..T-307), tests existants étiquetés, manquants écrits.
             - [ ] **D — rendu** : T-470..T-474, T-479, T-480, T-490..T-493, T-500..T-503,

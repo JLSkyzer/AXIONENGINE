@@ -1173,3 +1173,26 @@ d'équilibre. Le premier GameTest, qui compare une chute à ½·g·t², l'a trou
 **Règle.** Une boucle à pas fixe compare son accumulateur avec une tolérance relative au pas, et
 ne le laisse pas passer sous zéro. Et une intégration se juge aussi contre sa loi analytique,
 mesurée depuis le départ réel : un décalage de temps s'y voit, là où un état final le cache.
+
+## 2026-10-06 | « Un BlockEvent invalide la tuile » ne valait que pour deux d'entre eux
+
+**Ce qui a mal tourné.** La fiche 5.30 veut qu'un changement de bloc invalide sa tuile. Le pont
+n'écoutait que la casse et la pose par une entité, et le chargement d'un chunk ; une commande, la
+redstone, un piston, un fluide, une porte ou un gabarit de structure laissaient la simulation sur
+l'ancien monde. Les GameTests l'ont montré : des cubes traversaient une dalle tout juste posée, un
+autre restait sur un pilier retiré par `setBlock`.
+
+**Règle.** Quand une exigence nomme une famille d'événements, recenser toutes les façons dont
+l'état change (commande, joueur, redstone, structure, mod) et vérifier au `javap` lequel les
+publie ; puis tester un changement de chaque sorte. Un événement qui ne couvre que l'action d'un
+joueur ne dit rien du reste du monde.
+
+## 2026-10-06 | Le serveur de GameTests reprenait le monde de développement
+
+**Ce qui a mal tourné.** Lancé dans `run/`, le serveur de GameTests ouvrait le monde que nomme
+`server.properties` — celui du serveur de développement — et le sauvegardait à l'arrêt. Les cubes
+et gabarits d'un passage restaient pour le suivant : leurs tuiles se construisaient avant la pose
+des nouveaux gabarits, et un test échouait selon ce qu'avait laissé le précédent.
+
+**Règle.** Des tests en jeu partent d'un monde neuf, dans un dossier à eux, effacé avant chaque
+passage (R-2190) ; ils ne touchent jamais le monde de développement.

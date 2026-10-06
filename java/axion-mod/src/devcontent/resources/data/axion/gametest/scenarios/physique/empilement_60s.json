@@ -1,0 +1,20 @@
+{
+  "description": "Trois cubes empilés sur la dalle restent en place une minute : « empilement stable 60 s », acceptance de M3 (PARTIE 37.2).",
+  "structure": "axion:test/plancher",
+  "setup": [
+    { "spawn": "axion:test_cube", "at": [4.5, 1.0, 4.5] },
+    { "spawn": "axion:test_cube", "at": [4.5, 2.0, 4.5] },
+    { "spawn": "axion:test_cube", "at": [4.5, 3.0, 4.5] }
+  ],
+  "inputs": [],
+  "asserts": [
+    { "ticks": [1, 1200], "assembly": 0, "y_min": 1.0 },
+    { "ticks": [1, 1200], "assembly": 1, "y_min": 2.0 },
+    { "ticks": [1, 1200], "assembly": 2, "y_min": 3.0 },
+    { "tick": 1200, "assembly": 0, "position": [4.5, 1.0, 4.5] },
+    { "tick": 1200, "assembly": 1, "position": [4.5, 2.0, 4.5] },
+    { "tick": 1200, "assembly": 2, "position": [4.5, 3.0, 4.5] },
+    { "tick": 1200, "assembly": 2, "speed_max": 0.01 }
+  ],
+  "tolerance": { "position": 0.05 }
+}

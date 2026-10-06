@@ -1,7 +1,7 @@
 """Gabarits des GameTests d'AXION (§29.5) : fichiers de structure de Minecraft 1.20.1.
 
-Un gabarit est un NBT compressé (`data/axion/structures/<nom>.nbt`) : sa taille, sa palette et
-ses blocs. Ceux d'ici se décrivent en quelques lignes ; les générer plutôt que les dessiner en
+Un gabarit est un NBT compressé (`data/axion/structures/test/<nom>.nbt`, identifiant
+`axion:test/<nom>`) : sa taille, sa palette et ses blocs. Ceux d'ici se décrivent en quelques lignes ; les générer plutôt que les dessiner en
 jeu les garde lisibles et reproductibles.
 
 Usage : python tools/gametest/structures.py
@@ -14,7 +14,7 @@ from pathlib import Path
 # Version de données de Minecraft 1.20.1, celle qu'écrit le jeu dans ses structures.
 DATA_VERSION = 3465
 
-SORTIE = Path(__file__).resolve().parents[2] / "java/axion-mod/src/devcontent/resources/data/axion/structures"
+SORTIE = Path(__file__).resolve().parents[2] / "java/axion-mod/src/devcontent/resources/data/axion/structures/test"
 
 
 def _chaine(texte):
@@ -58,13 +58,15 @@ def ecrire(nom, taille, palette, blocs):
     # mtime fixé : un même gabarit donne les mêmes octets, d'une génération à l'autre.
     with open(chemin, "wb") as f, gzip.GzipFile(fileobj=f, mode="wb", mtime=0) as z:
         z.write(bytes([t]) + _chaine("") + charge)
-    print(f"{chemin.relative_to(SORTIE.parents[5])} : {taille[0]}×{taille[1]}×{taille[2]}, {len(blocs)} bloc(s)")
+    print(f"axion:test/{nom} : {taille[0]}×{taille[1]}×{taille[2]}, {len(blocs)} bloc(s)")
 
 
-def plancher():
-    """Un sol de pierre de 8 × 8 et 25 blocs d'air au-dessus : de quoi tomber plus de 20 m."""
-    ecrire("plancher", (8, 26, 8), ["minecraft:stone"], [((x, 0, z), 0) for x in range(8) for z in range(8)])
+def plancher(nom, cote):
+    """Une dalle de pierre de `cote` × `cote` et 25 blocs d'air au-dessus : de quoi tomber 20 m."""
+    ecrire(nom, (cote, 26, cote), ["minecraft:stone"], [((x, 0, z), 0) for x in range(cote) for z in range(cote)])
 
 
 if __name__ == "__main__":
-    plancher()
+    plancher("plancher", 8)
+    # Assez large pour qu'un cube qui roule après sa chute ne tombe pas du bord.
+    plancher("plancher_16", 16)

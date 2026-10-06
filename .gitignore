@@ -24,6 +24,7 @@ java/axion-mod/logs/
 # Repertoires de travail des lancements de developpement
 run/
 run-data/
+run-gametest/
 
 # Ressources produites par les generateurs de donnees Minecraft
 src/generated/

@@ -3,6 +3,9 @@ package dev.axion.forge;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.world.DimensionId;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,10 +48,28 @@ final class ObservateursDeTest implements SimCommandProvider {
         if (actuel == null || actuel.serveur != level.getServer()) {
             actuel = new ObservateursDeTest(level.getServer());
             RuntimeAccess.get().addCommandProvider(actuel);
+            tracerSiDemande();
         }
         Vec3 point = helper.absoluteVec(relative);
         actuel.positions.computeIfAbsent(level, cle -> new ArrayList<>())
                 .add(new double[] {point.x, point.y, point.z});
+    }
+
+    /**
+     * Ouvre la trace de la simulation (C-71) dans le fichier que nomme la variable d'environnement
+     * {@code AXION_GAMETEST_TRACE}, s'il y en a un : tous les tests d'un passage y écrivent, chaque
+     * tuile comprise ; elle se ferme à l'arrêt du serveur.
+     */
+    private static void tracerSiDemande() {
+        String chemin = System.getenv("AXION_GAMETEST_TRACE");
+        if (chemin == null || chemin.isBlank()) {
+            return;
+        }
+        try {
+            RuntimeAccess.get().startTrace(Path.of(chemin));
+        } catch (IOException echec) {
+            throw new UncheckedIOException("trace des GameTests impossible : " + chemin, echec);
+        }
     }
 
     @Override
