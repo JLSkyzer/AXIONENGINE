@@ -212,6 +212,10 @@ fn check_mtl_triplets(mtl: &str) -> Result<(), ()> {
 /// et la multiplication déborde. La panique était contenue par le pool de jobs
 /// et par la frontière FFI, mais un OBJ malformé se refuse ; il ne panique pas.
 ///
+/// Trouvé une seconde fois (campagne du 2026-10-09) : `tobj` lit les éléments de
+/// ligne `l` comme des faces — mêmes références, mêmes indices relatifs — et en
+/// ajoute les sommets au maillage. Ils passent donc par le même contrôle.
+///
 /// Le contrôle est **conservateur** : il ne refuse que ce qui est hors bornes
 /// sous toute lecture du format. Un indice positif est comparé au total du
 /// fichier, un indice négatif au nombre d'éléments déjà déclarés — la règle que
@@ -226,11 +230,11 @@ fn check_face_indices(source: &str) -> Result<(), ImportError> {
             Some("v") => vus.positions += 1,
             Some("vt") => vus.texcoords += 1,
             Some("vn") => vus.normals += 1,
-            Some("f") => {
+            Some("f" | "l") => {
                 for reference in mots {
-                    // Trois champs au plus — `sommet/texture/normale`. Ce qui
-                    // suit n'appartient pas au format ; l'analyseur l'ignore, et
-                    // le vérifier reviendrait à inventer une règle.
+                    // Trois champs au plus — `sommet/texture/normale`. Un
+                    // quatrième non vide, l'analyseur le refuse lui-même
+                    // (`FaceParseError`) : rien à en vérifier ici.
                     for (rang, champ) in reference.split('/').take(3).enumerate() {
                         if champ.is_empty() {
                             continue;
@@ -292,7 +296,8 @@ fn check_index(champ: &str, total: i64, deja_vus: i64, nom: &str) -> Result<(), 
     } else if indice > 0 {
         indice > total
     } else {
-        -indice > deja_vus
+        // Sans calculer l'opposé, qui déborde pour `i64::MIN`.
+        indice < -deja_vus
     };
 
     if hors_bornes {
@@ -789,6 +794,71 @@ f -3//-1 -2//-1 -1//-1
 ";
         let asset = import_obj(source, &limits(), sans_mtl).expect("indices négatifs valides");
         assert_eq!(asset.vertices.len(), 3);
+    }
+
+    #[test]
+    fn t680_un_element_de_ligne_hors_bornes_est_refuse_et_ne_panique_pas() {
+        // Trouvé par fuzzing (R-903), campagne du 2026-10-09. `tobj` lit `l`
+        // comme `f` — mêmes références `sommet/texture/normale`, mêmes indices
+        // relatifs —, et la passe ne vérifiait que `f`. `-5` pour une seule
+        // coordonnée de texture devient un `usize` immense, puis `vt * 2`
+        // déborde dans `add_vertex`.
+        let source = "\
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+vt 0.0 0.0
+l 1/-5 2/1
+";
+        let refus = import_obj(source, &limits(), sans_mtl).unwrap_err();
+        assert!(
+            matches!(refus, ImportError::Malformed { .. }),
+            "refus attendu, obtenu {refus:?}"
+        );
+    }
+
+    #[test]
+    fn t680_les_elements_de_ligne_sont_verifies_comme_les_faces() {
+        let base = "v 0.0 0.0 0.0\nvt 0.0 0.0\nvn 0.0 0.0 1.0\n";
+        for ligne in [
+            "l 9/1/1 1/1/1",  // sommet
+            "l 1/9/1 1/1/1",  // coordonnée de texture
+            "l 1/1/9 1/1/1",  // normale
+            "l 1/-2/1 1/1/1", // relatif, au-delà de ce qui est déclaré
+            "l 1/1/-2 1/1/1",
+        ] {
+            let source = format!("{base}{ligne}\n");
+            let resultat = import_obj(&source, &limits(), sans_mtl);
+            assert!(
+                matches!(resultat, Err(ImportError::Malformed { .. })),
+                "« {ligne} » : refus attendu, obtenu {resultat:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn t680_un_element_de_ligne_valide_reste_accepte() {
+        let source = "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\nl 1 -1\n";
+        import_obj(source, &limits(), sans_mtl).expect("un élément de ligne valide");
+    }
+
+    #[test]
+    fn t680_un_indice_negatif_extreme_est_refuse_sans_deborder() {
+        // `i64::MIN` n'a pas d'opposé : la passe ne doit pas le calculer.
+        let base = "v 0.0 0.0 0.0\nvt 0.0 0.0\nvn 0.0 0.0 1.0\n";
+        for element in ["f", "l"] {
+            for reference in [
+                "-9223372036854775808/1/1",
+                "1/-9223372036854775808/1",
+                "1/1/-9223372036854775808",
+            ] {
+                let source = format!("{base}{element} {reference} 1/1/1 1/1/1\n");
+                let resultat = import_obj(&source, &limits(), sans_mtl);
+                assert!(
+                    matches!(resultat, Err(ImportError::Malformed { .. })),
+                    "« {element} {reference} » : refus attendu, obtenu {resultat:?}"
+                );
+            }
+        }
     }
 
     #[test]

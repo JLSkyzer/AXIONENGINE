@@ -1207,3 +1207,15 @@ inutile aurait été écrit, et le vrai critère laissé sans test.
 
 **Règle.** Avant de planifier un critère d'acceptance, trouver le test qui le porte dans la liste
 des tests du jalon et le lire dans son voisinage : un critère de deux mots ne se traduit pas seul.
+
+## 2026-10-10 | La garde de `tobj` ne vérifiait que `f`, alors que `tobj` lit `l` de la même façon
+
+**Ce qui a mal tourné.** Après un premier crash de fuzzing (indice de normale négatif), une passe
+bornait les indices des lignes `f` avant de confier l'OBJ à `tobj`. La campagne du 2026-10-09 a
+fait paniquer `tobj` par une ligne `l` : son analyseur aiguille `f` et `l` vers le même code, et
+la passe ne le savait pas. Elle-même calculait `-indice`, qui déborde pour `i64::MIN`.
+
+**Règle.** Une garde placée devant un analyseur tiers recopie la grammaire **de son code**, pas
+celle du format : lire son aiguillage (`Some("f") | Some("l")`) et couvrir chaque branche qui
+mène au chemin protégé. Et une garde contre le débordement ne calcule jamais ce qui déborde :
+comparer `indice < -deja_vus`, pas `-indice > deja_vus`.

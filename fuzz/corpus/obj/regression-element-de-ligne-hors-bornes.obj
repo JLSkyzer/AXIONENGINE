@@ -1,0 +1,6 @@
+# regression R-903 (campagne du 2026-10-09) : tobj lit l comme f, et -5 pour
+# une seule coordonnee de texture faisait deborder vt * 2 dans add_vertex
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+vt 0.0 0.0
+l 1/-5 2/1
