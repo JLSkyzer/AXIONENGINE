@@ -23,13 +23,14 @@
 #   lint-no-global-pool-> job build-and-test, crates/ax-jobs/tests/pas_de_pool_global.rs
 #   test-unit          -> job build-and-test (cargo + JUnit) et job platform
 #   test-gametest      -> job test-gametest (serveur de GameTests, acceptance de M3)
+#   test-render        -> job test-render (client automatise sous Xvfb, ADR-126)
 #   validate-jar       -> job build-and-test, etape finale de `gradlew build`
 #   det-vectors        -> job platform, etape nommee (T-820, R-513)
 #   build-natives      -> job platform, etape nommee (34.2)
 #
 # Ce qui manque, et pourquoi : lint-java attend spotless, lint-units attend les
 # annotations dimensionnelles de 11.5, fuzz-short attend les cibles de fuzzing,
-# et test-integration, test-render, test-e2e, test-compat, test-rustforgex et
+# et test-integration, test-e2e, test-compat, test-rustforgex et
 # bench-quick attendent les composants qu'ils exercent. Les ecrire maintenant
 # produirait des jobs verts qui ne verifient rien.
 #
@@ -235,6 +236,57 @@ jobs:
 
       - name: GameTests (serveur dedie)
         run: ./gradlew runGameTestServer --no-daemon --stacktrace
+
+  test-render:
+    name: test-render
+    # 34.3 : « client automatise, comparaison d'images ». Le banc de rendu (ADR-126)
+    # cree un monde plat, joue son scenario, ecrit son rapport et s'arrete ; la tache
+    # Gradle echoue si le rapport manque ou n'est pas vert. Aucun GPU : Xvfb et le
+    # rendu logiciel de Mesa (llvmpipe).
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-test-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-test-${{ runner.os }}-
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Affichage virtuel et rendu logiciel
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0
+
+      - name: Banc de rendu (client automatise)
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runRenderTest --no-daemon --stacktrace
+
+      - name: Rapport et captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: banc-de-rendu
+          path: run-rendertest/axion-rendertest/
+          if-no-files-found: warn
 
   platform:
     name: platform (${{ matrix.cible }})

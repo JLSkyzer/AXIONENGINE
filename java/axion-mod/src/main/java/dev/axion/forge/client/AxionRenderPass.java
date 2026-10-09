@@ -1,5 +1,6 @@
 package dev.axion.forge.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import dev.axion.AxionMod;
 import dev.axion.asset.AssetRegistry;
 import dev.axion.asset.NativeAssetLoader;
@@ -94,7 +95,49 @@ public final class AxionRenderPass {
     /** Géométrie et dessin des overlays de debug. Thread client seul. */
     private static final DebugOverlayRenderer DEBUG = new DebugOverlayRenderer(OVERLAYS);
 
+    /** Faux : les passes d'AXION ne dessinent rien. Seul le banc de rendu le coupe (ADR-126). */
+    private static boolean passesEnabled = true;
+
+    /** Relevé de la dernière passe opaque. Render thread seul. */
+    private static FrameStats lastFrame = new FrameStats(0, 0);
+
     private AxionRenderPass() {}
+
+    /**
+     * Relevé d'une passe opaque, pour le banc de rendu (ADR-126).
+     *
+     * @param assemblies assemblies à dessiner
+     * @param withAsset celles dont l'asset était prêt ; les autres ont reçu la boîte de repli
+     */
+    public record FrameStats(int assemblies, int withAsset) {
+
+        static FrameStats of(List<RenderBackend.Assembly> assemblies) {
+            int ready = 0;
+            for (RenderBackend.Assembly assembly : assemblies) {
+                if (assembly.asset() != null) {
+                    ready++;
+                }
+            }
+            return new FrameStats(assemblies.size(), ready);
+        }
+    }
+
+    /**
+     * Coupe ou rétablit toutes les passes d'AXION. Le banc de rendu compare ainsi une même scène
+     * avec et sans elles (T-470, ADR-126) ; rien d'autre ne l'appelle.
+     *
+     * @param enabled faux pour qu'AXION ne dessine plus rien
+     */
+    public static void setPassesEnabled(boolean enabled) {
+        RenderSystem.assertOnRenderThread();
+        passesEnabled = enabled;
+    }
+
+    /** {@return le relevé de la dernière passe opaque} */
+    public static FrameStats lastFrame() {
+        RenderSystem.assertOnRenderThread();
+        return lastFrame;
+    }
 
     /** {@return les overlays de debug, que la commande client allume et éteint} */
     static DebugOverlays overlays() {
@@ -123,7 +166,7 @@ public final class AxionRenderPass {
      */
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (failed) {
+        if (failed || !passesEnabled) {
             return;
         }
         RenderLevelStageEvent.Stage stage = event.getStage();
@@ -145,9 +188,14 @@ public final class AxionRenderPass {
     private static void renderSurfaces(RenderLevelStageEvent event, boolean translucent) {
         Minecraft minecraft = Minecraft.getInstance();
         List<RenderBackend.Assembly> assemblies = assemblies(minecraft.level, true);
+        if (!translucent) {
+            lastFrame = FrameStats.of(assemblies);
+        }
         if (assemblies.isEmpty()) {
             return;
         }
+        // R-1503 : en développement, l'état GL est relevé autour de la passe.
+        GlStateCheck.Snapshot before = GlStateCheck.ENABLED ? GlStateCheck.before() : null;
         try {
             if (backend == null) {
                 backend = select();
@@ -161,6 +209,10 @@ public final class AxionRenderPass {
         } catch (RuntimeException failure) {
             failed = true;
             LOGGER.error("AXION : passe de rendu désactivée après une erreur", failure);
+        } finally {
+            if (before != null) {
+                GlStateCheck.after(translucent ? "TRANSLUCENT" : "OPAQUE", before);
+            }
         }
     }
 
@@ -171,10 +223,15 @@ public final class AxionRenderPass {
         if (assemblies.isEmpty()) {
             return;
         }
+        GlStateCheck.Snapshot before = GlStateCheck.ENABLED ? GlStateCheck.before() : null;
         try {
             DEBUG.draw(frame(event, minecraft, assemblies));
         } catch (RuntimeException failure) {
             disableOverlays(failure);
+        } finally {
+            if (before != null) {
+                GlStateCheck.after("DEBUG", before);
+            }
         }
     }
 

@@ -77,6 +77,17 @@ minecraft {
             property 'forge.enabledGameTestNamespaces', mod_id
         }
 
+        renderTest {
+            // Banc de rendu client (ADR-126) : un client qui joue son scénario, écrit son rapport
+            // et s'arrête seul. Un dossier à part, dont le monde est effacé avant chaque passage ;
+            // le contrôle de l'état GL (R-1503) y est actif.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('run-rendertest')
+            property 'axion.rendertest', 'm3'
+            property 'axion.debug.gl', 'true'
+            args '--width', '854', '--height', '480'
+        }
+
         data {
             workingDirectory rootProject.file('run-data')
             args '--mod', mod_id, '--all',
@@ -122,6 +133,27 @@ dependencies {
 tasks.matching { it.name == 'runGameTestServer' }.configureEach {
     doFirst {
         delete rootProject.file('run-gametest/world')
+    }
+}
+
+// Banc de rendu (ADR-126) : un monde et un rapport neufs à chaque passage ; la tâche échoue si le
+// rapport manque ou n'est pas vert.
+tasks.matching { it.name == 'runRenderTest' }.configureEach {
+    doFirst {
+        delete rootProject.file('run-rendertest/saves/axion-rendertest')
+        delete rootProject.file('run-rendertest/axion-rendertest')
+    }
+    doLast {
+        def rapport = rootProject.file('run-rendertest/axion-rendertest/rapport.json')
+        if (!rapport.exists()) {
+            throw new GradleException("banc de rendu : aucun rapport (${rapport}) — le client s'est arrêté avant d'écrire")
+        }
+        def contenu = new groovy.json.JsonSlurper().parse(rapport, 'UTF-8')
+        if (contenu.verdict != 'vert') {
+            def rouges = contenu.tests.findAll { it.verdict != 'vert' }.collect { "${it.id} : ${it.detail}" }
+            throw new GradleException("banc de rendu rouge :\n  " + rouges.join('\n  '))
+        }
+        logger.lifecycle("banc de rendu vert : ${contenu.tests.collect { it.id }.join(', ')}")
     }
 }
 

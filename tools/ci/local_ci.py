@@ -77,6 +77,9 @@ JOBS: list[tuple[str, list[tuple[str, list[str]]]]] = [
     ("test-gametest", [
         ("GameTests (serveur dedie)", [GRADLEW, "runGameTestServer", "--no-daemon", "--stacktrace"]),
     ]),
+    ("test-render", [
+        ("banc de rendu (client automatise)", [GRADLEW, "runRenderTest", "--no-daemon", "--stacktrace"]),
+    ]),
     ("platform-hote", [
         ("configuration deterministe", ["cargo", "run", "--quiet", "-p", "ax-det",
                                         "--example", "profil"]),
@@ -86,6 +89,11 @@ JOBS: list[tuple[str, list[tuple[str, list[str]]]]] = [
 ]
 
 TAIL = 40
+
+# Jobs qui ouvrent une fenêtre de jeu sur la machine : ils ne partent que nommés
+# (ADR-126 — on ne lance pas le jeu chez quelqu'un sans le lui demander). Sans eux,
+# le résumé les dit non lancés, et la CI locale n'est verte que « hors » eux.
+ON_REQUEST = {"test-render"}
 
 
 def slug(text: str) -> str:
@@ -143,8 +151,12 @@ def main() -> int:
     warn_if_dirty()
 
     results: list[tuple[str, str, bool | None, float]] = []
+    not_launched: list[str] = []
     for name, steps in JOBS:
         if args.jobs and name not in args.jobs:
+            continue
+        if not args.jobs and name in ON_REQUEST:
+            not_launched.append(name)
             continue
         failed = False
         for step, command in steps:
@@ -163,8 +175,11 @@ def main() -> int:
     for name, step, ok, seconds in results:
         verdict = "sautée" if ok is None else ("ok" if ok else "ÉCHEC")
         print(f"  {verdict:7} {name} / {step}" + ("" if ok is None else f" ({seconds:.0f} s)"))
+    for name in not_launched:
+        print(f"  non lancé {name} — ouvre une fenêtre de jeu : python tools/ci/local_ci.py {name}")
     passed = all(ok is True for _, _, ok, _ in results)
-    print("\nCI locale : " + ("verte" if passed else "ROUGE")
+    outside = f" hors {', '.join(not_launched)}" if not_launched else ""
+    print("\nCI locale : " + ("verte" + outside if passed else "ROUGE")
           + " — matrice de plateformes non couverte hors de l'hôte.")
     return 0 if passed else 1
 
