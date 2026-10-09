@@ -121,6 +121,15 @@ public final class BancDeRendu {
     private static long debut;
     private static boolean fini;
 
+    /**
+     * Vrai pendant qu'une étape se joue. Minecraft rend lui-même des frames depuis certaines
+     * actions — créer un monde boucle sur l'écran de chargement jusqu'à ce que le serveur soit
+     * prêt —, et chacune de ces frames rappelle {@link #onRenderTick} : sans ce garde, l'étape se
+     * rejouerait depuis elle-même. Constaté au premier passage en CI : un second
+     * {@code createFreshLevel}, et le verrou du monde déjà pris par le premier.
+     */
+    private static boolean dansUneEtape;
+
     private static int surface;
     private static boolean cameraFixee;
     private static float lacet;
@@ -164,6 +173,18 @@ public final class BancDeRendu {
             fixerLaCamera(minecraft);
             return;
         }
+        if (dansUneEtape) {
+            return;
+        }
+        dansUneEtape = true;
+        try {
+            jouerLaFrame(minecraft);
+        } finally {
+            dansUneEtape = false;
+        }
+    }
+
+    private static void jouerLaFrame(Minecraft minecraft) {
         if (SCENARIO.isEmpty()) {
             debut = System.currentTimeMillis();
             debutEtape = System.nanoTime();
