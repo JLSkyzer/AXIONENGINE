@@ -373,7 +373,10 @@ public final class BancDeRendu {
         ServerLevel monde = serveur.overworld();
         surface = monde.getHeight(Heightmap.Types.MOTION_BLOCKING, 0, 0);
         commandes(serveur, "time set 6000", "weather clear", "tp @a 0.5 " + surface + " 0.5 180 15");
-        // Le décor vanilla de T-470, au nord : opaque, découpé, translucide, émissif — rien d'animé.
+        // Le décor vanilla de T-470, au nord : opaque, découpé, translucide. Rien d'animé, et aucune
+        // source de lumière de bloc : Minecraft fait vaciller au hasard, à chaque tick, l'éclairage
+        // qu'elles donnent (LightTexture.tick, Math.random) — au quatrième passage en CI, le
+        // glowstone du décor changeait l'image d'une capture à l'autre.
         String[] blocs = {
             "stone", "glass", "oak_leaves[persistent=true]", "white_stained_glass", "red_concrete", "iron_bars", "cobweb"
         };
@@ -382,7 +385,7 @@ public final class BancDeRendu {
         }
         commandes(serveur,
                 "setblock -1 " + (surface + 1) + " -5 minecraft:tinted_glass",
-                "setblock 1 " + (surface + 1) + " -5 minecraft:glowstone");
+                "setblock 1 " + (surface + 1) + " -5 minecraft:blue_stained_glass");
         // Derrière la caméra, au sud : hors de vue au nord comme à l'ouest.
         for (int i = 0; i < DERRIERE.size(); i++) {
             AssembliesDeTest.poser(monde, DERRIERE.get(i), new Vec3(1.5 + 2 * i, surface, 6.5), IDENTITE);
@@ -394,7 +397,7 @@ public final class BancDeRendu {
         return minecraft.levelRenderer.hasRenderedAllChunks()
                 && minecraft.player.position().distanceToSqr(0.5, surface, 0.5) < 1e-4
                 && minecraft.level.getBlockState(new BlockPos(-3, surface, -5)).is(Blocks.STONE)
-                && minecraft.level.getBlockState(new BlockPos(1, surface + 1, -5)).is(Blocks.GLOWSTONE)
+                && minecraft.level.getBlockState(new BlockPos(1, surface + 1, -5)).is(Blocks.BLUE_STAINED_GLASS)
                 && frame.assemblies() == DERRIERE.size()
                 && frame.withAsset() == DERRIERE.size();
     }
