@@ -83,14 +83,18 @@ public final class BancDeRendu {
     private static final int ECART_BOITE = 2;
 
     /**
-     * Une scène est stable quand {@value} relevés de suite, espacés de {@link #FRAMES_ENTRE_RELEVES}
-     * frames, sont identiques à leur précédent. Un délai fixe ne suffit pas : des sections se
+     * Une scène est stable quand {@value} relevés de suite, espacés de {@link #TICKS_ENTRE_RELEVES}
+     * ticks de jeu, sont identiques à leur précédent. Un délai fixe ne suffit pas : des sections se
      * recompilent après coup — la lumière d'un bloc posé, une vue nouvelle quand la caméra tourne —,
-     * et le troisième passage en CI a capturé une scène qui changeait encore.
+     * et le troisième passage en CI a capturé une scène qui changeait encore. Et l'espacement se
+     * compte en ticks, non en frames : Minecraft ne change d'état qu'au tick — lightmap comprise —,
+     * et sur une machine rapide, des relevés espacés de quelques frames tenaient dans un seul tick
+     * (premier passage local : une nuit capturée encore éclairée, une section lointaine mise à jour
+     * juste après les relevés).
      */
-    private static final int RELEVES_EGAUX = 3;
+    private static final int RELEVES_EGAUX = 5;
 
-    private static final int FRAMES_ENTRE_RELEVES = 5;
+    private static final int TICKS_ENTRE_RELEVES = 2;
 
     /** Au-delà, une scène qui ne se stabilise pas fait échouer le banc. */
     private static final int STABILITE_MAX_S = 180;
@@ -142,6 +146,9 @@ public final class BancDeRendu {
      * {@code createFreshLevel}, et le verrou du monde déjà pris par le premier.
      */
     private static boolean dansUneEtape;
+
+    /** Ticks du client depuis le lancement : l'horloge où Minecraft change d'état. */
+    private static long ticks;
 
     private static int surface;
     private static boolean cameraFixee;
@@ -226,6 +233,18 @@ public final class BancDeRendu {
         } catch (RuntimeException echec) {
             LOGGER.error("AXION banc de rendu : échec à l'étape « {} »", etape.nom(), echec);
             terminer(minecraft, "étape « " + etape.nom() + " » : " + echec);
+        }
+    }
+
+    /**
+     * Compte les ticks du client : la stabilité d'une scène se mesure à cette horloge.
+     *
+     * @param event tick du client
+     */
+    @SubscribeEvent
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (ACTIF && event.phase == TickEvent.Phase.END) {
+            ticks++;
         }
     }
 
@@ -656,10 +675,12 @@ public final class BancDeRendu {
         CapturesDuBanc.Capture[] precedent = new CapturesDuBanc.Capture[1];
         int[] egaux = new int[1];
         int[] differents = new int[1];
+        long[] dernierReleve = {Long.MIN_VALUE};
         etape("stabiliser " + quoi, mc -> {
-            if (framesDansLEtape % FRAMES_ENTRE_RELEVES != 0) {
+            if (dernierReleve[0] != Long.MIN_VALUE && ticks - dernierReleve[0] < TICKS_ENTRE_RELEVES) {
                 return false;
             }
+            dernierReleve[0] = ticks;
             CapturesDuBanc.Capture releve = CapturesDuBanc.capturer(mc, null);
             int ecarts = precedent[0] == null ? -1 : CapturesDuBanc.masque(precedent[0], releve).nombre();
             precedent[0] = releve;
