@@ -1966,12 +1966,12 @@ substituable sans changer rapier »).
                   - [ ] **D2 — C-62, ressources GPU** (fiche 5.49) : arènes de 16 Mio (VBO/EBO
                         partagés), allocations comptées et budget (R-750), libération différée de
                         3 frames, sur le render thread (R-751), reconstruction au changement de
-                        resource pack (R-752) ; T-500..T-503 attribués par ADR, comme ADR-125.
+                        resource pack (R-752) ; T-500..T-503 attribués par ADR-127 §8.
                   - [ ] **D3 — C-63, shaders** (fiche 5.50) : sources du JAR, variantes par
                         `#define` bornées (R-762), compilées sans à-coup et sans appel GL hors du
                         render thread (INV-12), cache binaire (R-760), échec → vanilla (R-761,
-                        T-479) ; T-510..T-512 attribués par ADR.
-                  - [ ] **D4 — C-60, backend natif** (PARTIE 19) : son ADR (ADR-118 l'annonce). En
+                        T-479) ; T-510..T-512 attribués par ADR-127 §8.
+                  - [ ] **D4 — C-60, backend natif** (PARTIE 19) : ADR-127 (proposé, C-60/C-62/C-63). En
                         M3 les assemblies sont rigides : le natif peut dessiner la liste de repos déjà
                         transférée (`RestDraw`, ADR-119), transformée en Java, sans nouvelle surface FFI ;
                         IF-05 (`axion_render_prepare`, §4.7) viendrait en M4 avec C-64/C-65/C-66, qui en
