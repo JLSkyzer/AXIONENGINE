@@ -13,7 +13,8 @@ import org.apache.logging.log4j.core.config.Property;
 /**
  * Le journal vu par le banc de rendu (ADR-126) : les erreurs d'AXION, et tout message qui signale
  * un appel GL hors du render thread (T-473) — celui de {@code RenderSystem}, ceux de LWJGL —, d'où
- * qu'il vienne.
+ * qu'il vienne. Une erreur qu'une étape provoque exprès, annoncée par {@link #attendre}, est comptée
+ * à part.
  *
  * <p>Contenu de développement, jamais empaqueté (R-1790). Appelé depuis n'importe quel thread.
  */
@@ -25,6 +26,10 @@ final class JournalDuBanc extends AbstractAppender {
 
     private final List<String> erreursAxion = new ArrayList<>();
     private final List<String> horsDuFil = new ArrayList<>();
+
+    /** Erreur qu'une étape provoque exprès (T-479) : comptée à part, pas parmi celles d'AXION. */
+    private Pattern attendue;
+    private final List<String> erreursAttendues = new ArrayList<>();
 
     private JournalDuBanc() {
         super("AxionBancDeRendu", null, null, true, Property.EMPTY_ARRAY);
@@ -53,9 +58,27 @@ final class JournalDuBanc extends AbstractAppender {
             }
             boolean axion = "axion".equals(nom) || nom.startsWith("dev.axion");
             if (axion && event.getLevel().isMoreSpecificThan(Level.ERROR)) {
-                erreursAxion.add(texte);
+                if (attendue != null && attendue.matcher(texte).find()) {
+                    erreursAttendues.add(texte);
+                } else {
+                    erreursAxion.add(texte);
+                }
             }
         }
+    }
+
+    /**
+     * Annonce l'erreur qu'une étape va provoquer, ou plus aucune.
+     *
+     * @param motif ce qui la reconnaît dans son message, ou {@code null}
+     */
+    synchronized void attendre(Pattern motif) {
+        attendue = motif;
+    }
+
+    /** {@return les erreurs provoquées exprès, reconnues depuis l'installation} */
+    synchronized List<String> erreursAttendues() {
+        return List.copyOf(erreursAttendues);
     }
 
     /** {@return les erreurs journalisées par AXION depuis l'installation} */

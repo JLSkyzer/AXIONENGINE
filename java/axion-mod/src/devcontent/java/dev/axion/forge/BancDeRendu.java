@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import net.minecraft.client.CloudStatus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
@@ -48,9 +49,12 @@ import org.slf4j.LoggerFactory;
 /**
  * Banc de rendu client (ADR-126) : vérifie mécaniquement les tests de rendu de M3 — T-470 rendu
  * vanilla inchangé, T-471 aucune erreur GL sur 10 000 frames, T-472 état GL restauré après chaque
- * passe, T-473 aucun appel GL hors du render thread, T-474 assembly visible, orientée, éclairée.
+ * passe, T-473 aucun appel GL hors du render thread, T-474 assembly visible, orientée, éclairée ;
+ * sur le backend natif, T-479 aussi : des shaders refusés au rechargement des ressources font
+ * basculer sur vanilla, sans crash.
  *
- * <p>Inerte sans {@code -Daxion.rendertest} ; le lancement Gradle {@code runRenderTest} le pose.
+ * <p>Inerte sans {@code -Daxion.rendertest} ; les lancements Gradle {@code runRenderTest} et
+ * {@code runRenderTestNative} le posent, chacun avec son backend.
  * Il crée un monde plat neuf, fige la scène, joue son scénario frame après frame, écrit
  * {@code axion-rendertest/rapport.json} et ses captures, puis arrête le client ; la tâche Gradle
  * échoue si le rapport manque ou n'est pas vert.
@@ -128,15 +132,22 @@ public final class BancDeRendu {
     /** Matrices et caméra d'une frame, relevées au stage {@code AFTER_ENTITIES}. */
     private record Vue(Matrix4f projection, Matrix4f pose, Vec3 camera) {}
 
-    private static final List<Etape> SCENARIO = new ArrayList<>();
-    private static final RapportDuBanc RAPPORT = new RapportDuBanc(
-            List.of("backend", "T-470", "T-474", "T-471", "T-472", "T-473", "erreurs AXION"));
-
     /**
      * Le backend que le lancement impose ({@code -Daxion.render.backend}) : c'est lui qui doit
      * dessiner, sans quoi un repli silencieux ferait passer un backend pour l'autre (ADR-127 §7).
      */
     private static final String BACKEND_DEMANDE = System.getProperty("axion.render.backend");
+
+    /** Vrai sur le backend natif : T-479, sa bascule sur vanilla, ne se joue que là. */
+    private static final boolean NATIF = "native".equals(BACKEND_DEMANDE);
+
+    /** L'erreur que T-479 provoque : la compilation des shaders refusée (R-761). */
+    private static final Pattern E_4001 = Pattern.compile("\\(E-4001\\)");
+
+    private static final List<Etape> SCENARIO = new ArrayList<>();
+    private static final RapportDuBanc RAPPORT = new RapportDuBanc(NATIF
+            ? List.of("backend", "T-470", "T-474", "T-471", "T-479", "T-472", "T-473", "erreurs AXION")
+            : List.of("backend", "T-470", "T-474", "T-471", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -174,6 +185,8 @@ public final class BancDeRendu {
     private static CapturesDuBanc.Capture tourne;
     private static Vue vueTourne;
     private static CapturesDuBanc.Capture minuit;
+
+    private static CompletableFuture<Void> rechargement;
 
     private static boolean compter;
     private static long erreursFrames;
@@ -347,6 +360,26 @@ public final class BancDeRendu {
             compter = false;
             jugerT471();
         });
+
+        if (NATIF) {
+            // T-479 : des shaders qui ne compilent pas font basculer sur vanilla, sans crash (R-761).
+            // L'échec survient au rechargement des ressources, où le backend est choisi de nouveau
+            // (R-1490) ; la scène doit être redessinée, assets compris, par le backend vanilla.
+            une("provoquer l'échec des shaders", mc -> {
+                journal.attendre(E_4001);
+                AxionRenderPass.forceShaderFailure(true);
+                rechargement = mc.reloadResourcePacks();
+            });
+            jusqua("les ressources rechargées", 300, mc -> rechargement.isDone() && mc.getOverlay() == null);
+            jusqua("la scène redessinée", 120, mc -> AxionRenderPass.activeBackend() != null
+                    && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 1);
+            une("juger T-479", mc -> {
+                journal.attendre(null);
+                AxionRenderPass.forceShaderFailure(false);
+                jugerT479();
+            });
+        }
+
         une("juger T-472, T-473 et le journal", mc -> {
             jugerT472();
             jugerT473();
@@ -518,6 +551,21 @@ public final class BancDeRendu {
                 "%d frame(s) avec AXION, %d erreur(s) GL (%d dans ses passes) ; %d frame(s) sans AXION avant,"
                         + " %d erreur(s)",
                 framesComptees, total, pendantLesPasses, FRAMES_SANS_AXION, erreursSansAxion));
+    }
+
+    private static void jugerT479() {
+        BackendSelection.Kind actif = AxionRenderPass.activeBackend();
+        List<String> provoquees = journal.erreursAttendues();
+        AxionRenderPass.FrameStats passe = AxionRenderPass.lastFrame();
+        boolean vert = actif == BackendSelection.Kind.VANILLA
+                && provoquees.size() == 1
+                && passe.assemblies() == DERRIERE.size() + 1
+                && passe.withAsset() == passe.assemblies();
+        RAPPORT.noter("T-479", vert, String.format(Locale.ROOT,
+                "backend %s après le rechargement aux shaders refusés ; %d E-4001 au journal%s ; %d assembly(s)"
+                        + " dessinée(s), %d avec leur asset",
+                actif, provoquees.size(), provoquees.isEmpty() ? "" : " (« " + provoquees.get(0) + " »)",
+                passe.assemblies(), passe.withAsset()));
     }
 
     private static void jugerT472() {

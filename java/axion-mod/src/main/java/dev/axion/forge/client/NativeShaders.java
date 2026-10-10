@@ -22,15 +22,19 @@ import org.lwjgl.opengl.GL20;
  *
  * <p>Un échec — sources absentes, compilation, liaison — lève {@link ShaderFailure} avec le journal
  * du pilote : le backend le rapporte en {@code E-4001}, et la sélection retombe sur vanilla (R-761).
- * {@code -Daxion.debug.shader_fail=true} provoque cet échec, pour le vérifier (T-479).
+ * {@code -Daxion.debug.shader_fail=true}, ou le banc de rendu, provoque cet échec, pour le vérifier
+ * (T-479).
  *
  * <p>Les attributs ont leur emplacement dans les sources ({@code layout(location = …)}) : ni
  * {@code glBindAttribLocation}, ni dépendance à l'ordre de liaison.
  */
 final class NativeShaders implements AutoCloseable {
 
-    /** {@code -Daxion.debug.shader_fail=true} : la compilation échoue exprès (T-479). */
-    static final boolean FORCE_FAILURE = Boolean.getBoolean("axion.debug.shader_fail");
+    /**
+     * Vrai : la compilation échoue exprès (T-479) — {@code -Daxion.debug.shader_fail=true}, ou le banc
+     * de rendu par {@link #forceFailure}. Render thread seul.
+     */
+    private static boolean forcedFailure = Boolean.getBoolean("axion.debug.shader_fail");
 
     /** Unités de texture des échantillonneurs : albedo ou émission sur la 0, lightmap sur la 2. */
     static final int ALBEDO_UNIT = 0;
@@ -84,8 +88,8 @@ final class NativeShaders implements AutoCloseable {
      */
     static NativeShaders compile(ResourceManager resources) throws ShaderFailure {
         RenderSystem.assertOnRenderThread();
-        if (FORCE_FAILURE) {
-            throw new ShaderFailure("échec provoqué par -Daxion.debug.shader_fail=true");
+        if (forcedFailure) {
+            throw new ShaderFailure("échec provoqué (axion.debug.shader_fail, ou banc de rendu)");
         }
         String vertex = read(resources, SURFACE_VERTEX);
         String fragment = read(resources, SURFACE_FRAGMENT);
@@ -108,6 +112,16 @@ final class NativeShaders implements AutoCloseable {
             throw failure;
         }
         return new NativeShaders(surface, cutout, emission);
+    }
+
+    /**
+     * Fait échouer, ou non, les compilations suivantes (T-479).
+     *
+     * @param failing vrai pour qu'elles échouent
+     */
+    static void forceFailure(boolean failing) {
+        RenderSystem.assertOnRenderThread();
+        forcedFailure = failing;
     }
 
     /** {@return le programme des surfaces opaques et translucides} */

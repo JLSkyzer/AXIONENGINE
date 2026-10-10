@@ -131,6 +131,17 @@ public final class AxionRenderPass {
         passesEnabled = enabled;
     }
 
+    /**
+     * Fait échouer, ou non, la compilation des shaders du backend natif aux choix de backend
+     * suivants. Le banc de rendu vérifie ainsi la bascule de R-761 (T-479) ; rien d'autre ne
+     * l'appelle.
+     *
+     * @param failing vrai pour que la compilation échoue
+     */
+    public static void forceShaderFailure(boolean failing) {
+        NativeShaders.forceFailure(failing);
+    }
+
     /** {@return le relevé de la dernière passe opaque} */
     public static FrameStats lastFrame() {
         RenderSystem.assertOnRenderThread();
