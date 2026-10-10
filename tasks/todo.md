@@ -1988,6 +1988,9 @@ substituable sans changer rapier »).
                         garde étendu à VAO/tampons/programme, `BufferUploader.invalidate`), sélection quand GL 3.3
                         et la variante de base compilent, matrice de capacités, puis un second lancement du banc
                         (`-Daxion.render.backend=native`) — T-470..T-474 dans les deux backends.
+                        Le 2026-10-10 aussi : `ShaderVariant` (définitions de R-762 insérées après `#version`, 5
+                        tests). **Banc local autorisé par Killian** (`./gradlew runRenderTest`, ~1 min sur sa RTX
+                        4060, vert depuis 256999d : stabilité mesurée en ticks) — itérer localement, puis CI.
                   - [ ] **D5 — C-61 T4+ et bascules** : bascule à chaud (R-744, T-492),
                         invariants entre backends (T-491, T-491b..d), shaderpack (T-480, T-490) — ce
                         dernier suppose un mod de shaders en développement, à télécharger avec
