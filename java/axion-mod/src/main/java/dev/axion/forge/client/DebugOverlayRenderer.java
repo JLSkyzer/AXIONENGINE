@@ -173,6 +173,19 @@ final class DebugOverlayRenderer {
         }
     }
 
+    /** {@return la géométrie du dernier tick, en repère des corps} */
+    DebugGeometry geometry() {
+        return geometry;
+    }
+
+    /**
+     * {@return vrai si le lecteur natif a été créé : il ne l'est qu'au premier tick d'un overlay
+     * allumé — éteints, les overlays ne demandent rien au natif (R-2280, T-551)}
+     */
+    boolean hasNativeLoader() {
+        return loader != null;
+    }
+
     /** Oublie la géométrie et les écarts déjà dits : overlays éteints, ou sortie du monde. */
     void reset() {
         geometry = DebugGeometry.empty();

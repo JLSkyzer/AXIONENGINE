@@ -2026,7 +2026,12 @@ substituable sans changer rapier »).
                         T-491d — log et `/axion status` existent, l'indicateur de l'overlay vient avec C-73 ;
                         T-480 et T-490 (mod de shaders, accord de Killian) ; **T-493** (skinning et déformation
                         CPU plafonnés) : cité par M3 mais porté par C-66 (M4) et la M6 — à trancher par ADR.
-                  - [ ] **D6 — T-551** : coût d'un overlay éteint, mesuré avec les métriques de C-72.
+                  - [x] **D6 — T-551** : coût d'un overlay éteint, mesuré avec les métriques de C-72.
+                        **Fait le 2026-10-10** : `DebugOverlayRendererTest` vérifie qu'éteints, les overlays ne créent
+                        ni ne consultent le lecteur natif et ne gardent aucune géométrie (R-800, R-2280) ; le benchmark
+                        JMH `T551OverlaysEteints` mesure le test du masque par frame et le pas par tick
+                        (`./gradlew :axion-mod:jmh -Pjmh.args="T551"`). Il tourne ; aucun résultat archivé ni publié
+                        tant qu'il n'a pas été joué sur le matériel de référence (R-2230, R-2252).
       - [ ] **C-61 — Backend VANILLA_CONSUMER** (fiche 5.48, PARTIE 19) — ouvre la chaîne de
             rendu, **vanilla d'abord** puis C-60 natif (ADR-118, ratifié 2026-10-01).
             - [x] **T1 — couture + preuve de passe** : `RenderBackend`, sélection pure

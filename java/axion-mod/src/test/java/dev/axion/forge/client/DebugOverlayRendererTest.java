@@ -2,9 +2,11 @@ package dev.axion.forge.client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.axion.debug.DebugGeometry;
+import dev.axion.debug.DebugOverlays;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -15,7 +17,10 @@ import org.joml.Vector3f;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** ADR-121 — dessin de l'overlay {@code colliders} : sommets de lignes, directions, couleurs. */
+/**
+ * ADR-121 — dessin de l'overlay {@code colliders} : sommets de lignes, directions, couleurs ; T-551 —
+ * éteints, les overlays ne coûtent qu'un test de drapeau (R-800, R-2280).
+ */
 class DebugOverlayRendererTest {
 
     private static final double EPS = 1e-5;
@@ -199,6 +204,18 @@ class DebugOverlayRendererTest {
                 DebugOverlayRenderer.STATIC,
                 DebugOverlayRenderer.KINEMATIC));
         assertEquals(4, distinctes.size(), "quatre genres, quatre couleurs");
+    }
+
+    @Test
+    @DisplayName("T-551 : éteints, les overlays ne demandent rien au natif et ne gardent aucune géométrie")
+    void eteintsSansNatif() {
+        DebugOverlays overlays = new DebugOverlays();
+        DebugOverlayRenderer renderer = new DebugOverlayRenderer(overlays);
+        assertEquals(0L, overlays.mask());
+        // Sans runtime ni client : un pas qui toucherait l'un ou l'autre échouerait ici.
+        renderer.tick(null, null);
+        assertFalse(renderer.hasNativeLoader(), "un lecteur natif a été créé, overlays éteints");
+        assertTrue(renderer.geometry().bodies().isEmpty(), "une géométrie est restée, overlays éteints");
     }
 
     private static int couleur(int flags) {
