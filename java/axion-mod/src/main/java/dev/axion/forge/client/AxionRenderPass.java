@@ -17,6 +17,8 @@ import dev.axion.render.BackendSelection;
 import dev.axion.render.MeshCache;
 import dev.axion.render.RenderAsset;
 import dev.axion.render.RenderCapabilities;
+import dev.axion.render.ShaderVariants;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -72,6 +74,12 @@ public final class AxionRenderPass {
 
     /** Choix de backend depuis le lancement. Render thread seul. */
     private static int backendStarts;
+
+    /**
+     * Vrai après qu'un shader compilé à la demande a été refusé (R-761) : le natif n'est plus retenté
+     * avant le prochain rechargement des ressources ou le prochain monde. Render thread seul.
+     */
+    private static boolean nativeRefused;
 
     /** Vrai après une erreur de rendu : la passe se tait plutôt que d'échouer à chaque frame. */
     private static boolean failed;
@@ -145,6 +153,42 @@ public final class AxionRenderPass {
         NativeShaders.forceFailure(failing);
     }
 
+    /**
+     * Fait échouer, ou non, les variantes de shader compilées à la demande qui suivent. Le banc de
+     * rendu vérifie ainsi qu'un tel échec fait basculer sur vanilla (R-761) ; rien d'autre ne
+     * l'appelle.
+     *
+     * @param failing vrai pour qu'elles échouent
+     */
+    public static void forceShaderVariantFailure(boolean failing) {
+        NativeShaders.forceVariantFailure(failing);
+    }
+
+    /**
+     * Les programmes du backend natif, tels que le banc de rendu les relève (T-512, T-905).
+     *
+     * @param cacheHits programmes relus du cache binaire
+     * @param cacheMisses programmes cherchés au cache, absents, illisibles ou refusés
+     * @param compiled programmes compilés depuis leurs sources
+     * @param onDemand variantes mises en service à la demande
+     * @param pending variantes en attente de compilation
+     * @param refused variantes au-delà de la borne
+     * @param cutoutReady vrai si la variante des surfaces découpées est prête
+     */
+    public record ShaderStats(
+            int cacheHits, int cacheMisses, int compiled, int onDemand, int pending, int refused, boolean cutoutReady) {}
+
+    /** {@return les programmes du backend natif actif, ou {@code null} s'il ne l'est pas} */
+    public static ShaderStats nativeShaderStats() {
+        RenderSystem.assertOnRenderThread();
+        if (!(backend instanceof NativeGlBackend natif)) {
+            return null;
+        }
+        NativeShaders.Stats stats = natif.shaderStats();
+        return new ShaderStats(stats.cacheHits(), stats.cacheMisses(), stats.compiled(), stats.onDemand(),
+                stats.pending(), stats.refused(), natif.cutoutState() == ShaderVariants.State.READY);
+    }
+
     /** {@return le relevé de la dernière passe opaque} */
     public static FrameStats lastFrame() {
         RenderSystem.assertOnRenderThread();
@@ -195,6 +239,7 @@ public final class AxionRenderPass {
     public static void onLevelLoad(LevelEvent.Load event) {
         if (event.getLevel().isClientSide()) {
             closeBackend();
+            nativeRefused = false;
             backend = select();
             failed = false;
         }
@@ -259,6 +304,15 @@ public final class AxionRenderPass {
             if (before != null) {
                 GlStateCheck.after(translucent ? "TRANSLUCENT" : "OPAQUE", before);
             }
+        }
+        // R-761 : un shader compilé à la demande et refusé par le pilote fait basculer sur vanilla,
+        // jusqu'au prochain rechargement des ressources ou au prochain monde.
+        String refused = backend == null ? null : backend.failure();
+        if (refused != null) {
+            LOGGER.error("AXION : shaders du backend natif refusés, bascule sur vanilla (E-4001) — {}", refused);
+            closeBackend();
+            nativeRefused = true;
+            backend = select();
         }
     }
 
@@ -392,6 +446,7 @@ public final class AxionRenderPass {
      */
     static void onResourcesReloaded() {
         closeBackend();
+        nativeRefused = false;
         if (meshes != null) {
             meshes.releaseAll();
         }
@@ -444,7 +499,7 @@ public final class AxionRenderPass {
             shaderMod |= ModList.get().isLoaded(id);
         }
         String requested = config.getString("render.backend");
-        NativeGlBackend candidate = shaderMod || "vanilla".equals(requested) ? null : startNative();
+        NativeGlBackend candidate = shaderMod || nativeRefused || "vanilla".equals(requested) ? null : startNative();
         BackendSelection.Selection selection = BackendSelection.select(requested, candidate != null, shaderMod);
         RenderCapabilities capabilities = RenderCapabilities.of(selection);
         // R-1493 : une entrée unique au démarrage du backend, ce qu'il ne sait pas faire compris.
@@ -475,8 +530,13 @@ public final class AxionRenderPass {
         }
         long budget = ConfigLoader.load(Scope.COMMON, FMLPaths.CONFIGDIR.get(), System.getProperties())
                 .getInt("budgets.gpu_mem_bytes");
+        int variants = (int) Math.min(Integer.MAX_VALUE,
+                ConfigLoader.load(Scope.CLIENT, FMLPaths.CONFIGDIR.get(), System.getProperties())
+                        .getInt("render.max_shader_variants"));
+        // R-760 : le cache binaire des programmes, sous <gameDir>/axion/cache/shaders/.
+        Path cache = FMLPaths.GAMEDIR.get().resolve("axion").resolve("cache").resolve("shaders");
         try {
-            return NativeGlBackend.create(Minecraft.getInstance().getResourceManager(), budget);
+            return NativeGlBackend.create(Minecraft.getInstance().getResourceManager(), budget, cache, variants);
         } catch (NativeShaders.ShaderFailure failure) {
             LOGGER.error("AXION : shaders du backend natif refusés, bascule sur vanilla (E-4001) — {}",
                     failure.getMessage());

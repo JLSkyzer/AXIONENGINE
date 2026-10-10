@@ -48,6 +48,15 @@ interface RenderBackend {
     default void close() {}
 
     /**
+     * {@return pourquoi le backend ne peut plus dessiner — un shader compilé à la demande refusé par
+     * le pilote —, ou {@code null} : il le peut} La passe centrale le remplace alors par le backend
+     * vanilla (R-761). Render thread.
+     */
+    default String failure() {
+        return null;
+    }
+
+    /**
      * Contexte d'une frame de rendu.
      *
      * @param pose pile de transformations de la vue (rotation caméra appliquée, translation non)

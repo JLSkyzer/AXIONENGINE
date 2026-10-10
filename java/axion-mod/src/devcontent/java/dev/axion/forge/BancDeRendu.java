@@ -4,12 +4,14 @@ import dev.axion.AxionMod;
 import dev.axion.forge.client.AxionRenderPass;
 import dev.axion.forge.client.GlStateCheck;
 import dev.axion.render.BackendSelection;
+import dev.axion.render.ShaderBinaryFile;
 import dev.axion.config.ConfigLoader;
 import dev.axion.config.ConfigSchema.Scope;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -160,8 +162,8 @@ public final class BancDeRendu {
 
     private static final List<Etape> SCENARIO = new ArrayList<>();
     private static final RapportDuBanc RAPPORT = new RapportDuBanc(NATIF
-            ? List.of("backend", "T-470", "T-474", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
-                    "T-491c", "T-492", "T-472", "T-473", "erreurs AXION")
+            ? List.of("backend", "T-512", "T-470", "T-474", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+                    "T-491c", "T-905", "T-492", "T-472", "T-473", "erreurs AXION")
             : List.of("backend", "T-470", "T-474", "T-471", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
@@ -214,6 +216,11 @@ public final class BancDeRendu {
     private static byte[] etatAvant;
     private static byte[] etatApres;
     private static volatile int assembliesComparees;
+    private static AxionRenderPass.ShaderStats statsDemarrage;
+    private static AxionRenderPass.ShaderStats statsRelecture;
+    private static AxionRenderPass.ShaderStats statsRecompile;
+    private static int fichiersCorrompus;
+    private static int provoqueesAvant;
 
     private static boolean compter;
     private static long erreursFrames;
@@ -320,6 +327,15 @@ public final class BancDeRendu {
         une("regarder au nord", mc -> viser(180f, 15f));
         jusqua("la scène prête", 600, BancDeRendu::scenePrete);
         une("juger le backend", mc -> jugerBackend());
+        if (NATIF) {
+            // T-512 : la variante CUTOUT, que les surfaces découpées du décor demandent, se compile à la
+            // demande ; la base dessine en attendant. Le cache est neuf : rien n'en est relu.
+            jusqua("la variante CUTOUT prête", 120, mc -> {
+                AxionRenderPass.ShaderStats stats = AxionRenderPass.nativeShaderStats();
+                return stats != null && stats.cutoutReady();
+            });
+            une("juger T-512", mc -> jugerT512(AxionRenderPass.nativeShaderStats()));
+        }
         stabiliser("la scène vanilla");
 
         // T-470 : la même scène, avec puis sans les passes d'AXION, puis de nouveau avec.
@@ -422,10 +438,34 @@ public final class BancDeRendu {
             });
 
             // T-492 : retour au natif, de nouveau vanilla, puis natif encore — sans rien laisser derrière.
+            une("corrompre le cache des shaders", mc -> fichiersCorrompus = corrompreLeCache(mc));
             revenirAuNatif("retour au natif");
+            jusqua("la variante CUTOUT de nouveau prête", 120, mc -> {
+                AxionRenderPass.ShaderStats stats = AxionRenderPass.nativeShaderStats();
+                return stats != null && stats.cutoutReady();
+            });
+            une("relever le cache recompilé", mc -> statsRecompile = AxionRenderPass.nativeShaderStats());
+            jusqua("le cache réécrit", 60, mc -> cacheRelisible(mc) == fichiersCorrompus);
+            une("juger T-905", mc -> jugerT905(mc));
             basculerSurVanilla("seconde bascule sur vanilla");
             revenirAuNatif("second retour au natif");
             une("juger T-492", mc -> jugerT492());
+
+            // R-761 : une variante refusée à la demande, sur un natif qui avait démarré, fait aussi
+            // basculer sur vanilla — jusqu'au rechargement suivant.
+            une("refuser les variantes", mc -> {
+                journal.attendre(E_4001);
+                provoqueesAvant = journal.erreursAttendues().size();
+                AxionRenderPass.forceShaderVariantFailure(true);
+            });
+            recharger("les ressources aux variantes refusées");
+            jusqua("la scène redessinée en vanilla — variante refusée", 120,
+                    mc -> redessinee(BackendSelection.Kind.VANILLA));
+            une("juger la variante refusée", mc -> {
+                journal.attendre(null);
+                AxionRenderPass.forceShaderVariantFailure(false);
+                jugerVarianteRefusee();
+            });
         }
 
         une("juger T-472, T-473 et le journal", mc -> {
@@ -615,6 +655,7 @@ public final class BancDeRendu {
                                 + " %d objet(s) avant, %d reconstruit(s) ; %d assembly(s) sur %d redessinée(s) avec leur"
                                 + " asset",
                         fermees, laisses, avant, apres, passe.withAsset(), passe.assemblies()));
+        statsRelecture = AxionRenderPass.nativeShaderStats();
         BackendSelection.Kind actif = AxionRenderPass.activeBackend();
         RAPPORT.noter("T-510", nouveaux == 1 && actif == BackendSelection.Kind.NATIVE, String.format(Locale.ROOT,
                 "%d démarrage(s) du backend au rechargement, shaders relus du JAR et recompilés ; backend %s",
@@ -683,6 +724,91 @@ public final class BancDeRendu {
     private static double toleranceSilhouette() {
         return ConfigLoader.load(Scope.CLIENT, FMLPaths.CONFIGDIR.get(), System.getProperties())
                 .getFloat("render.backend_silhouette_tolerance");
+    }
+
+    /**
+     * T-512 : au premier démarrage, cache neuf, la base et l'émission compilées au démarrage, la
+     * variante CUTOUT compilée à la demande ; rien de refusé, rien en attente.
+     */
+    private static void jugerT512(AxionRenderPass.ShaderStats stats) {
+        statsDemarrage = stats;
+        boolean vert = stats != null
+                && stats.cutoutReady()
+                && stats.onDemand() == 1
+                && stats.compiled() == 3
+                && stats.cacheHits() == 0
+                && stats.pending() == 0
+                && stats.refused() == 0;
+        RAPPORT.noter("T-512", vert, String.format(Locale.ROOT,
+                "premier démarrage, cache neuf : %s", stats));
+    }
+
+    /**
+     * T-905 : relu au rechargement — base, émission et CUTOUT, sans compilation ; puis, le cache
+     * corrompu, tout recompilé et les fichiers remplacés, relisibles de nouveau.
+     */
+    private static void jugerT905(Minecraft minecraft) {
+        boolean relu = statsRelecture != null
+                && statsRelecture.cacheHits() == 3
+                && statsRelecture.compiled() == 0
+                && statsRelecture.cutoutReady();
+        boolean recompile = statsRecompile != null
+                && fichiersCorrompus == 3
+                && statsRecompile.cacheHits() == 0
+                && statsRecompile.cacheMisses() == 3
+                && statsRecompile.compiled() == 3;
+        int relisibles = cacheRelisible(minecraft);
+        RAPPORT.noter("T-905", relu && recompile && relisibles == fichiersCorrompus, String.format(Locale.ROOT,
+                "au rechargement %s ; %d fichier(s) corrompu(s), puis %s, %d fichier(s) relisible(s) de nouveau",
+                statsRelecture, fichiersCorrompus, statsRecompile, relisibles));
+    }
+
+    /** R-761 : la variante refusée à la demande a fait basculer sur vanilla, une E-4001 de plus. */
+    private static void jugerVarianteRefusee() {
+        int provoquees = journal.erreursAttendues().size() - provoqueesAvant;
+        BackendSelection.Kind actif = AxionRenderPass.activeBackend();
+        AxionRenderPass.FrameStats passe = AxionRenderPass.lastFrame();
+        boolean vert = actif == BackendSelection.Kind.VANILLA && provoquees == 1
+                && passe.withAsset() == passe.assemblies();
+        RAPPORT.noter("T-511", vert, String.format(Locale.ROOT,
+                "R-761, variante refusée à la demande : backend %s, %d E-4001, %d assembly(s) sur %d dessinée(s)",
+                actif, provoquees, passe.withAsset(), passe.assemblies()));
+    }
+
+    /** {@return le dossier du cache binaire des shaders du client} */
+    private static Path dossierDuCache(Minecraft minecraft) {
+        return minecraft.gameDirectory.toPath().resolve("axion").resolve("cache").resolve("shaders");
+    }
+
+    /** {@return les fichiers du cache des shaders, chacun un octet changé au milieu} */
+    private static int corrompreLeCache(Minecraft minecraft) {
+        int corrompus = 0;
+        try (var fichiers = Files.list(dossierDuCache(minecraft))) {
+            for (Path fichier : fichiers.filter(f -> f.toString().endsWith(".bin")).toList()) {
+                byte[] octets = Files.readAllBytes(fichier);
+                octets[octets.length / 2] ^= (byte) 0x5A;
+                Files.write(fichier, octets);
+                corrompus++;
+            }
+        } catch (IOException echec) {
+            throw new UncheckedIOException("cache des shaders inaccessible", echec);
+        }
+        return corrompus;
+    }
+
+    /** {@return les fichiers du cache des shaders qui se relisent : magic, schéma, CRC justes} */
+    private static int cacheRelisible(Minecraft minecraft) {
+        int relisibles = 0;
+        try (var fichiers = Files.list(dossierDuCache(minecraft))) {
+            for (Path fichier : fichiers.filter(f -> f.toString().endsWith(".bin")).toList()) {
+                if (ShaderBinaryFile.decode(Files.readAllBytes(fichier)).isPresent()) {
+                    relisibles++;
+                }
+            }
+        } catch (IOException echec) {
+            return -1;
+        }
+        return relisibles;
     }
 
     private static void jugerT472() {

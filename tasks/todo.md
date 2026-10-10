@@ -1976,10 +1976,14 @@ substituable sans changer rapier »).
                         render thread (INV-12), cache binaire (R-760), échec → vanilla (R-761,
                         T-479) ; T-510..T-512 attribués par ADR-127 §8.
                         **Vérifié au banc natif le 2026-10-10** : T-510 (sources du JAR relues et recompilées au
-                        rechargement), T-511 (= T-479, R-761). Reste : variantes compilées **à la demande**, sans
-                        à-coup, avec la variante de base en secours, bornées par `render.max_shader_variants`
-                        (R-762, T-512, T-904), et le cache binaire `GL_ARB_get_program_binary` (R-760, T-905). En
-                        M3, la seule variante, `CUTOUT`, est compilée au démarrage avec la base.
+                        rechargement), T-511 (= T-479, R-761). **Fait le 2026-10-10** : variantes à la demande
+                        (`ShaderVariants`, borne `render.max_shader_variants` base comprise, la base dessine en attendant)
+                        et cache binaire (`ShaderBinaryCache`, `<gameDir>/axion/cache/shaders/`, fichier `AXSB` avec CRC,
+                        clé `ShaderCacheKey` : sources, définitions, chaîne du pilote) ; 11 tests purs. Au banc natif :
+                        T-512 (cache neuf : base et émission au démarrage, `CUTOUT` à la demande), T-905 (au
+                        rechargement les 3 programmes relus du cache, rien compilé ; cache corrompu : les 3 recompilés et
+                        réécrits), T-511 pour une variante refusée à la demande (bascule sur vanilla). Reste : **T-904**
+                        — le temps de frame autour d'une variante compilée n'est pas encore mesuré (ADR-127 §4).
                   - [ ] **D4 — C-60, backend natif** (PARTIE 19) : ADR-127 (proposé, C-60/C-62/C-63). En
                         M3 les assemblies sont rigides : le natif peut dessiner la liste de repos déjà
                         transférée (`RestDraw`, ADR-119), transformée en Java, sans nouvelle surface FFI ;

@@ -10,6 +10,8 @@ import dev.axion.render.DepthOrder;
 import dev.axion.render.InstanceLayout;
 import dev.axion.render.MeshLook;
 import dev.axion.render.RenderAsset;
+import dev.axion.render.ShaderVariant;
+import dev.axion.render.ShaderVariants;
 import dev.axion.render.SurfacePass;
 import dev.axion.render.TextureBinding;
 import dev.axion.render.TextureRegion;
@@ -17,6 +19,7 @@ import dev.axion.render.WorldLight;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -67,6 +70,9 @@ final class NativeGlBackend implements RenderBackend {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("axion");
 
+    /** La variante des surfaces découpées (R-762). */
+    private static final ShaderVariant CUTOUT = ShaderVariant.of(ShaderVariant.Define.CUTOUT);
+
     /** Teinte d'une instance : aucune, en M3. */
     private static final float[] NO_TINT = {1.0f, 1.0f, 1.0f, 1.0f};
 
@@ -111,12 +117,15 @@ final class NativeGlBackend implements RenderBackend {
      *
      * @param resources ressources du client, où sont ses shaders (R-760)
      * @param budgetBytes {@code budgets.gpu_mem_bytes} (R-750)
+     * @param shaderCache {@code <gameDir>/axion/cache/shaders/}, le cache binaire des programmes (R-760)
+     * @param maxVariants {@code render.max_shader_variants} (R-762)
      * @return le backend
      * @throws NativeShaders.ShaderFailure si un programme ne se compile ou ne se lie pas ({@code E-4001})
      */
-    static NativeGlBackend create(ResourceManager resources, long budgetBytes) throws NativeShaders.ShaderFailure {
+    static NativeGlBackend create(ResourceManager resources, long budgetBytes, Path shaderCache, int maxVariants)
+            throws NativeShaders.ShaderFailure {
         RenderSystem.assertOnRenderThread();
-        NativeShaders shaders = NativeShaders.compile(resources);
+        NativeShaders shaders = NativeShaders.compile(resources, shaderCache, maxVariants);
         try {
             return new NativeGlBackend(shaders, new NativeMeshes(budgetBytes));
         } catch (RuntimeException failure) {
@@ -133,6 +142,7 @@ final class NativeGlBackend implements RenderBackend {
     @Override
     public void renderOpaque(Frame frame) {
         meshes.nextFrame();
+        shaders.poll();
         List<Part> parts = gather(frame, false);
         if (!parts.isEmpty()) {
             Environment environment = Environment.of(frame);
@@ -144,8 +154,8 @@ final class NativeGlBackend implements RenderBackend {
                 RenderSystem.enableDepthTest();
                 RenderSystem.depthFunc(GL11.GL_LEQUAL);
                 RenderSystem.depthMask(true);
-                drawSurfaces(parts, SurfacePass.OPAQUE, shaders.surface(), environment);
-                drawSurfaces(parts, SurfacePass.CUTOUT, shaders.cutout(), environment);
+                drawSurfaces(parts, SurfacePass.OPAQUE, ShaderVariant.BASE, environment);
+                drawSurfaces(parts, SurfacePass.CUTOUT, CUTOUT, environment);
 
                 // Passe 5 : l'émission s'ajoute à la surface, sans écrire la profondeur.
                 RenderSystem.enableBlend();
@@ -192,10 +202,27 @@ final class NativeGlBackend implements RenderBackend {
             RenderSystem.enableDepthTest();
             RenderSystem.depthFunc(GL11.GL_LEQUAL);
             RenderSystem.depthMask(false);
-            drawSurfaces(sorted, SurfacePass.TRANSLUCENT, shaders.surface(), environment);
+            drawSurfaces(sorted, SurfacePass.TRANSLUCENT, ShaderVariant.BASE, environment);
         } finally {
             finish(activeTexture);
         }
+    }
+
+    /** {@return l'échec d'une variante compilée à la demande, ou {@code null} : aucun (R-761)} */
+    @Override
+    public String failure() {
+        NativeShaders.ShaderFailure failure = shaders.failure();
+        return failure == null ? null : failure.getMessage();
+    }
+
+    /** {@return ce que le banc de rendu relève des programmes (T-512, T-905)} */
+    NativeShaders.Stats shaderStats() {
+        return shaders.stats();
+    }
+
+    /** {@return où en est la variante des surfaces découpées ; {@code null} : jamais demandée} */
+    ShaderVariants.State cutoutState() {
+        return shaders.state(CUTOUT);
     }
 
     /** Rend tous ses objets GL ; un objet resté vivant est une fuite, journalisée (R-744). */
@@ -277,18 +304,22 @@ final class NativeGlBackend implements RenderBackend {
         frontFace = GL11.GL_CCW;
     }
 
-    /** Les surfaces d'une passe, 1, 2 ou 4, par un programme de surface. */
-    private void drawSurfaces(List<Part> parts, SurfacePass pass, NativeShaders.Program program, Environment environment) {
-        boolean used = false;
+    /**
+     * Les surfaces d'une passe, 1, 2 ou 4, par un programme de surface. La variante n'est demandée
+     * qu'avec la première surface de la passe : une variante que rien ne dessine ne se compile pas
+     * (R-762) ; tant qu'elle n'est pas prête, la base dessine à sa place.
+     */
+    private void drawSurfaces(List<Part> parts, SurfacePass pass, ShaderVariant variant, Environment environment) {
+        NativeShaders.Program program = null;
         for (int instance = 0; instance < parts.size(); instance++) {
             Part part = parts.get(instance);
             if (part.look().pass() != pass) {
                 continue;
             }
-            if (!used) {
+            if (program == null) {
+                program = shaders.surface(variant);
                 GlStateManager._glUseProgram(program.id);
                 environment.upload(program, true);
-                used = true;
             }
             MaterialTransfer.Material material = part.look().material();
             TextureRegion region = part.asset().albedo(part.rank());

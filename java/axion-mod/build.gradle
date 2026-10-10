@@ -156,6 +156,8 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
         doFirst {
             delete rootProject.file("${dossier}/saves/axion-rendertest")
             delete rootProject.file("${dossier}/axion-rendertest")
+            // Un cache de shaders neuf : le premier démarrage compile, les suivants relisent (T-905).
+            delete rootProject.file("${dossier}/axion/cache")
         }
         doLast {
             def rapport = rootProject.file("${dossier}/axion-rendertest/rapport.json")
