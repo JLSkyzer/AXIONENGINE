@@ -64,11 +64,17 @@ class RenderCapabilitiesTest {
     }
 
     @Test
-    @DisplayName("R-1493 : le backend natif, pas encore livré, ne déclare aucune capacité")
-    void natifNonLivre() {
-        for (Entry entry : RenderCapabilities.of(NATIVE).entries()) {
-            assertEquals(Availability.NOT_DELIVERED, entry.availability(), entry.capability().name());
-            assertTrue(entry.detail().contains("C-60"), entry.detail());
+    @DisplayName("R-1493 : le natif déclare l'éclairage du §19.5, et chaque capacité qui manque nomme son composant")
+    void natifLivreEnM3() {
+        RenderCapabilities natif = RenderCapabilities.of(NATIVE);
+        assertEquals(Availability.AVAILABLE, natif.availability(Capability.LIGHTING));
+        Entry eclairage = natif.entries().get(Capability.LIGHTING.ordinal());
+        assertTrue(eclairage.detail().contains("§19.5") && eclairage.detail().contains("C-81"), eclairage.detail());
+        for (Entry entry : natif.entries()) {
+            if (entry.capability() != Capability.LIGHTING) {
+                assertEquals(Availability.NOT_DELIVERED, entry.availability(), entry.capability().name());
+                assertTrue(entry.detail().matches(".*\\bC-\\d+.*"), entry.detail());
+            }
         }
     }
 
@@ -84,9 +90,10 @@ class RenderCapabilitiesTest {
         assertTrue(lignes.get(2).contains("SSR"), lignes.get(2));
         assertTrue(lignes.get(3).startsWith("pas encore livrées : ombres AXION"), lignes.get(3));
 
-        // Un état sans capacité n'a pas de ligne : rien d'indisponible ni de disponible en natif.
+        // Un état sans capacité n'a pas de ligne : rien d'indisponible par conception en natif.
         List<String> natif = RenderCapabilities.of(NATIVE).describe();
-        assertEquals(2, natif.size(), String.join("\n", natif));
-        assertTrue(natif.get(1).startsWith("pas encore livrées : "), natif.get(1));
+        assertEquals(3, natif.size(), String.join("\n", natif));
+        assertTrue(natif.get(1).startsWith("disponibles : éclairage"), natif.get(1));
+        assertTrue(natif.get(2).startsWith("pas encore livrées : ombres AXION"), natif.get(2));
     }
 }

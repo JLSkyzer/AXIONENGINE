@@ -80,11 +80,24 @@ minecraft {
         renderTest {
             // Banc de rendu client (ADR-126) : un client qui joue son scénario, écrit son rapport
             // et s'arrête seul. Un dossier à part, dont le monde est effacé avant chaque passage ;
-            // le contrôle de l'état GL (R-1503) y est actif.
+            // le contrôle de l'état GL (R-1503) y est actif. Le backend est imposé : laissé à
+            // `auto`, ce serait le natif, et plus rien ne vérifierait le vanilla (R-1491).
             parent minecraft.runs.client
             workingDirectory rootProject.file('run-rendertest')
             property 'axion.rendertest', 'm3'
             property 'axion.debug.gl', 'true'
+            property 'axion.render.backend', 'vanilla'
+            args '--width', '854', '--height', '480'
+        }
+
+        renderTestNative {
+            // Le même banc sur le backend natif (ADR-127 §7), dans son propre dossier : le banc
+            // échoue si ce n'est pas lui qui dessine.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('run-rendertest-native')
+            property 'axion.rendertest', 'm3'
+            property 'axion.debug.gl', 'true'
+            property 'axion.render.backend', 'native'
             args '--width', '854', '--height', '480'
         }
 
@@ -136,24 +149,26 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
     }
 }
 
-// Banc de rendu (ADR-126) : un monde et un rapport neufs à chaque passage ; la tâche échoue si le
-// rapport manque ou n'est pas vert.
-tasks.matching { it.name == 'runRenderTest' }.configureEach {
-    doFirst {
-        delete rootProject.file('run-rendertest/saves/axion-rendertest')
-        delete rootProject.file('run-rendertest/axion-rendertest')
-    }
-    doLast {
-        def rapport = rootProject.file('run-rendertest/axion-rendertest/rapport.json')
-        if (!rapport.exists()) {
-            throw new GradleException("banc de rendu : aucun rapport (${rapport}) — le client s'est arrêté avant d'écrire")
+// Banc de rendu (ADR-126), sur chaque backend : un monde et un rapport neufs à chaque passage ; la
+// tâche échoue si le rapport manque ou n'est pas vert.
+['runRenderTest': 'run-rendertest', 'runRenderTestNative': 'run-rendertest-native'].each { tache, dossier ->
+    tasks.matching { it.name == tache }.configureEach {
+        doFirst {
+            delete rootProject.file("${dossier}/saves/axion-rendertest")
+            delete rootProject.file("${dossier}/axion-rendertest")
         }
-        def contenu = new groovy.json.JsonSlurper().parse(rapport, 'UTF-8')
-        if (contenu.verdict != 'vert') {
-            def rouges = contenu.tests.findAll { it.verdict != 'vert' }.collect { "${it.id} : ${it.detail}" }
-            throw new GradleException("banc de rendu rouge :\n  " + rouges.join('\n  '))
+        doLast {
+            def rapport = rootProject.file("${dossier}/axion-rendertest/rapport.json")
+            if (!rapport.exists()) {
+                throw new GradleException("banc de rendu : aucun rapport (${rapport}) — le client s'est arrêté avant d'écrire")
+            }
+            def contenu = new groovy.json.JsonSlurper().parse(rapport, 'UTF-8')
+            if (contenu.verdict != 'vert') {
+                def rouges = contenu.tests.findAll { it.verdict != 'vert' }.collect { "${it.id} : ${it.detail}" }
+                throw new GradleException("banc de rendu rouge :\n  " + rouges.join('\n  '))
+            }
+            logger.lifecycle("banc de rendu vert : ${contenu.tests.collect { it.id }.join(', ')}")
         }
-        logger.lifecycle("banc de rendu vert : ${contenu.tests.collect { it.id }.join(', ')}")
     }
 }
 

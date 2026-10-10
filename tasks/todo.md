@@ -1982,15 +1982,26 @@ substituable sans changer rapier »).
                         Killian.** Puis upload au format du §19.4, `GlStateGuard` (R-1500..R-1505), passes
                         du §19.10, éclairage en attendant la sonde C-81 de M9 ; T-470..T-474 rejoués.
                         **Commencé le 2026-10-10** (6a19708) : `InstanceLayout` (bloc de 88 octets, translation
-                        relative à la caméra composée en double) et sommets bruts de `GeometryTransfer`. Reste,
-                        dans l'ordre : shaders GLSL 330 de surface et d'émission (`assets/axion/shaders/`), leur
-                        compilation (C-63, `E-4001` → vanilla), collage GL de C-62, `NativeGlBackend` (passes,
-                        garde étendu à VAO/tampons/programme, `BufferUploader.invalidate`), sélection quand GL 3.3
-                        et la variante de base compilent, matrice de capacités, puis un second lancement du banc
-                        (`-Daxion.render.backend=native`) — T-470..T-474 dans les deux backends.
-                        Le 2026-10-10 aussi : `ShaderVariant` (définitions de R-762 insérées après `#version`, 5
-                        tests). **Banc local autorisé par Killian** (`./gradlew runRenderTest`, ~1 min sur sa RTX
-                        4060, vert depuis 256999d : stabilité mesurée en ticks) — itérer localement, puis CI.
+                        relative à la caméra composée en double), sommets bruts de `GeometryTransfer`, `ShaderVariant`
+                        (46fa290). **Tranche verticale le 2026-10-10** : shaders GLSL 330 (surface, variante `CUTOUT`,
+                        émission ; `invariant gl_Position`), `NativeShaders` (`E-4001` → vanilla, `-Daxion.debug.shader_fail`),
+                        `NativeMeshes` (arènes, VAO, tampon d'instances, libération différée, budget), `NativeGlBackend`
+                        (passes 1, 2, 4 et 5, boîtes de repli du vanilla), `WorldLight` (soleil ou lune, ambiante ciel-sol,
+                        6 tests) ; garde étendu à VAO, tampon et programme pour les deux backends, contrôle de
+                        `GL_FRONT_FACE`, VAO, tampon et programme ; sélection (`OpenGL33`, shaders compilés) ; colonne NATIVE
+                        de la matrice ; `GpuBudget` admet un budget nul (domaine de `budgets.gpu_mem_bytes`). **Banc vert
+                        dans les deux backends, en local** (RTX 4060) : `runRenderTest` (vanilla imposé) et
+                        `runRenderTestNative` — backend, T-470..T-474, erreurs AXION. **Écart au §19.4, à ratifier**
+                        (ADR-127 §9) : 18 emplacements d'attribut demandés, 16 garantis par GL 3.3 et offerts par NVIDIA ;
+                        les 4 `uint` finaux du bloc d'instance sont lus en un `uvec4` (emplacement 14).
+                        Reste : `test-render` en CI sur llvmpipe pour le natif (à vérifier) ; T-479 au banc
+                        (`axion.debug.shader_fail`, `E-4001` attendue au journal) ; cartes normal et ORM chargées pour le
+                        natif (ADR-127 §5) ; **éclairage à revoir** : la nuit, l'ambiante est assombrie deux fois (couleur
+                        du ciel de Minecraft, déjà assombrie, × lightmap, qui l'est aussi). Le cube de test, sans matériau,
+                        est le métal rugueux par défaut de glTF : dessus 160, côtés 94, minuit 6 en natif, contre 251,
+                        178 et 143, 57 en vanilla — à reprendre avec C-81 ou la calibration (C-83, T-927).
+                        **Banc local autorisé par Killian** (`./gradlew runRenderTest`, `runRenderTestNative`, ~1 min
+                        chacun sur sa RTX 4060) — itérer localement, puis CI.
                   - [ ] **D5 — C-61 T4+ et bascules** : bascule à chaud (R-744, T-492),
                         invariants entre backends (T-491, T-491b..d), shaderpack (T-480, T-490) — ce
                         dernier suppose un mod de shaders en développement, à télécharger avec

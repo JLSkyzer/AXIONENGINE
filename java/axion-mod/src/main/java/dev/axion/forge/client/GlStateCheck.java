@@ -7,6 +7,7 @@ import java.util.List;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL14;
+import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.system.MemoryStack;
@@ -23,9 +24,9 @@ import org.slf4j.LoggerFactory;
  * <p>Sont comparés les états que Minecraft garde en cache et qu'une passe doit lui rendre tels
  * qu'elle les a trouvés (R-1500) : mélange et ses fonctions, profondeur, faces cachées, masque de
  * couleur, décalage de polygones, scissor, viewport, FBO de lecture et d'écriture, unité de texture
- * active. VAO, tampons et programme n'y sont pas : le backend vanilla n'en change que par les
- * traqueurs de Minecraft, qui les relient à chaque dessin (R-741) ; le backend natif, qui les
- * touchera lui-même, les restaurera sous son propre garde (R-1501, R-1502).
+ * active ; puis ce que le backend natif touche lui-même et que le garde rend (R-1501, R-1502) : sens
+ * des faces avant, VAO, tampon de sommets lié, programme. Les textures liées n'y sont pas : elles
+ * ne changent que par les traqueurs de Minecraft, qui les relient à chaque dessin.
  *
  * <p>Les erreurs déjà en attente à l'entrée d'une passe ne sont pas les siennes : elles sont vidées
  * et comptées à part.
@@ -58,6 +59,8 @@ public final class GlStateCheck {
         "GL_DRAW_FRAMEBUFFER_BINDING", "GL_READ_FRAMEBUFFER_BINDING",
         "GL_ACTIVE_TEXTURE",
         "GL_COLOR_LOGIC_OP", "GL_STENCIL_TEST",
+        "GL_FRONT_FACE",
+        "GL_VERTEX_ARRAY_BINDING", "GL_ARRAY_BUFFER_BINDING", "GL_CURRENT_PROGRAM",
     };
 
     private static long checks;
@@ -193,6 +196,10 @@ public final class GlStateCheck {
             values[i++] = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
             values[i++] = enabled(GL11.GL_COLOR_LOGIC_OP);
             values[i++] = enabled(GL11.GL_STENCIL_TEST);
+            values[i++] = GL11.glGetInteger(GL11.GL_FRONT_FACE);
+            values[i++] = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
+            values[i++] = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
+            values[i++] = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
         }
         return values;
     }

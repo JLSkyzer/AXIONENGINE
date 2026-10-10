@@ -3,6 +3,7 @@ package dev.axion.forge;
 import dev.axion.AxionMod;
 import dev.axion.forge.client.AxionRenderPass;
 import dev.axion.forge.client.GlStateCheck;
+import dev.axion.render.BackendSelection;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -129,7 +130,13 @@ public final class BancDeRendu {
 
     private static final List<Etape> SCENARIO = new ArrayList<>();
     private static final RapportDuBanc RAPPORT = new RapportDuBanc(
-            List.of("T-470", "T-474", "T-471", "T-472", "T-473", "erreurs AXION"));
+            List.of("backend", "T-470", "T-474", "T-471", "T-472", "T-473", "erreurs AXION"));
+
+    /**
+     * Le backend que le lancement impose ({@code -Daxion.render.backend}) : c'est lui qui doit
+     * dessiner, sans quoi un repli silencieux ferait passer un backend pour l'autre (ADR-127 §7).
+     */
+    private static final String BACKEND_DEMANDE = System.getProperty("axion.render.backend");
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -272,6 +279,7 @@ public final class BancDeRendu {
         serveur("mettre en place la scène", BancDeRendu::mettreEnPlace);
         une("regarder au nord", mc -> viser(180f, 15f));
         jusqua("la scène prête", 600, BancDeRendu::scenePrete);
+        une("juger le backend", mc -> jugerBackend());
         stabiliser("la scène vanilla");
 
         // T-470 : la même scène, avec puis sans les passes d'AXION, puis de nouveau avec.
@@ -451,6 +459,17 @@ public final class BancDeRendu {
     }
 
     // --- Jugements -------------------------------------------------------------------------------
+
+    private static void jugerBackend() {
+        BackendSelection.Kind actif = AxionRenderPass.activeBackend();
+        BackendSelection.Kind attendu = switch (BACKEND_DEMANDE == null ? "auto" : BACKEND_DEMANDE) {
+            case "native" -> BackendSelection.Kind.NATIVE;
+            case "vanilla" -> BackendSelection.Kind.VANILLA;
+            default -> null;
+        };
+        RAPPORT.noter("backend", actif != null && (attendu == null || actif == attendu), String.format(Locale.ROOT,
+                "backend %s actif, %s demandé", actif, BACKEND_DEMANDE == null ? "auto" : BACKEND_DEMANDE));
+    }
 
     private static void jugerT470(CapturesDuBanc.Capture encore) {
         int instables = CapturesDuBanc.masque(avec, encore).nombre();

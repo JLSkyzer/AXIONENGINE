@@ -1244,3 +1244,15 @@ tick, l'éclairage de ce qui l'entourait.
 — des relevés identiques —, se protège des rappels faits depuis ses propres actions, et bannit de
 sa scène ce qui varie seul (textures animées, lumière de bloc). Une comparaison instable est un
 échec du banc, jamais un verdict sur le code.
+
+## 2026-10-10 | Le §19.4 numérote 18 attributs de sommet ; OpenGL 3.3 n'en garantit que 16
+
+**Ce qui a mal tourné.** Le premier passage du banc en natif levait `GL_INVALID_VALUE` à chaque
+passe (20 002 erreurs sur 10 001 frames) : le bloc d'instance occupait les emplacements 9 à 17,
+comme le §19.4 les numérote, et le pilote NVIDIA, qui offre exactement le minimum de seize, refusait
+16 et 17. Le contrôle de R-1503 ne disait que « 0x501 » ; c'est le journal de débogage GL de
+Minecraft qui a nommé la cause (« `<index>` exceeds the maximum number of vertex attributes »).
+
+**Règle.** Un format d'attributs se compte contre `GL_MAX_VERTEX_ATTRIBS` au minimum garanti par la
+version visée (16 en 3.3), pas contre la machine de développement. Devant un `glGetError` muet,
+lire d'abord les messages `GlDebug` du journal du client : le pilote y dit quel argument il refuse.

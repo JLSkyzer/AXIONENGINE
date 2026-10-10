@@ -26,11 +26,12 @@ public final class GpuBudget<K> {
     private final Map<K, long[]> entries = new LinkedHashMap<>();
 
     /**
-     * @param budgetBytes mémoire GPU permise, {@code budgets.gpu_mem_bytes}
-     * @throws IllegalArgumentException si elle n'est pas positive
+     * @param budgetBytes mémoire GPU permise, {@code budgets.gpu_mem_bytes} ; nulle, comme son domaine
+     *     le permet, elle fait décharger tout asset dès qu'il n'est plus visible
+     * @throws IllegalArgumentException si elle est négative
      */
     public GpuBudget(long budgetBytes) {
-        if (budgetBytes <= 0) {
+        if (budgetBytes < 0) {
             throw new IllegalArgumentException("budget GPU de " + budgetBytes + " octets");
         }
         this.budgetBytes = budgetBytes;

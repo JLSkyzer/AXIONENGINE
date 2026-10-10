@@ -46,8 +46,9 @@ import org.slf4j.LoggerFactory;
  * EMISSIVE à {@code AFTER_ENTITIES}, TRANSLUCENT à {@code AFTER_TRANSLUCENT_BLOCKS}, DEBUG à
  * {@code AFTER_PARTICLES}.
  *
- * <p>Le backend est choisi au chargement de chaque monde client (R-1490), d'après
- * {@code render.backend} relu à ce moment-là. Tout se passe sur le render thread, sauf le
+ * <p>Le backend est choisi au chargement de chaque monde client et après chaque rechargement des
+ * ressources (R-1490), d'après {@code render.backend} relu à ce moment-là ; celui qu'il remplace
+ * rend d'abord ce qu'il tient sur le GPU. Tout se passe sur le render thread, sauf le
  * chargement des assets (ADR-119, ADR-122) : le {@link MeshCache} confie à un thread de fond le
  * maillage, l'apparence des meshes et la préparation des textures, puis téléverse celles-ci sur
  * le render thread ; le backend dessine une boîte de repli tant que rien n'a abouti. Chaque choix
@@ -62,9 +63,6 @@ import org.slf4j.LoggerFactory;
 public final class AxionRenderPass {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("axion");
-
-    /** Le backend natif (C-60) n'est pas encore livré : la sélection retombe sur vanilla. */
-    private static final boolean NATIVE_GL_AVAILABLE = false;
 
     /** Identifiants des mods de shaders sous Forge : leur présence impose vanilla (fiche 5.48). */
     private static final String[] SHADER_MODS = {"oculus", "iris"};
@@ -139,6 +137,12 @@ public final class AxionRenderPass {
         return lastFrame;
     }
 
+    /** {@return le backend actif, ou {@code null} tant qu'aucun n'a été choisi} */
+    public static BackendSelection.Kind activeBackend() {
+        RenderSystem.assertOnRenderThread();
+        return backend == null ? null : backend.kind();
+    }
+
     /** {@return les overlays de debug, que la commande client allume et éteint} */
     static DebugOverlays overlays() {
         return OVERLAYS;
@@ -152,6 +156,7 @@ public final class AxionRenderPass {
     @SubscribeEvent
     public static void onLevelLoad(LevelEvent.Load event) {
         if (event.getLevel().isClientSide()) {
+            closeBackend();
             backend = select();
             failed = false;
         }
@@ -308,6 +313,7 @@ public final class AxionRenderPass {
      */
     @SubscribeEvent
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        closeBackend();
         if (meshes != null) {
             meshes.releaseAll();
         }
@@ -342,12 +348,23 @@ public final class AxionRenderPass {
     }
 
     /**
-     * Rechargement des ressources du client (R-752) : maillages et textures sont rendus, puis
-     * reconstruits à la demande. Appelé sur le fil de rendu.
+     * Rechargement des ressources du client (R-752) : maillages, textures et ressources GPU du backend
+     * sont rendus, puis reconstruits à la demande ; le backend est choisi de nouveau à la passe
+     * suivante (R-1490), ses shaders relus (R-760). Appelé sur le fil de rendu.
      */
     static void onResourcesReloaded() {
+        closeBackend();
         if (meshes != null) {
             meshes.releaseAll();
+        }
+    }
+
+    /** Le backend actif rend ce qu'il tient sur le GPU ; le suivant sera choisi au besoin. */
+    private static void closeBackend() {
+        if (backend != null) {
+            RenderBackend closing = backend;
+            backend = null;
+            closing.close();
         }
     }
 
@@ -376,7 +393,10 @@ public final class AxionRenderPass {
         return meshes;
     }
 
-    /** Choisit le backend d'après la configuration client et l'environnement. */
+    /**
+     * Choisit le backend d'après la configuration client et l'environnement (R-1490, ADR-127 §6) :
+     * le natif quand il est demandé ou laissé au choix, hors shaderpack, et qu'il démarre.
+     */
     private static RenderBackend select() {
         AxionConfig config =
                 ConfigLoader.load(Scope.CLIENT, FMLPaths.CONFIGDIR.get(), System.getProperties());
@@ -384,8 +404,9 @@ public final class AxionRenderPass {
         for (String id : SHADER_MODS) {
             shaderMod |= ModList.get().isLoaded(id);
         }
-        BackendSelection.Selection selection = BackendSelection.select(
-                config.getString("render.backend"), NATIVE_GL_AVAILABLE, shaderMod);
+        String requested = config.getString("render.backend");
+        NativeGlBackend candidate = shaderMod || "vanilla".equals(requested) ? null : startNative();
+        BackendSelection.Selection selection = BackendSelection.select(requested, candidate != null, shaderMod);
         RenderCapabilities capabilities = RenderCapabilities.of(selection);
         // R-1493 : une entrée unique au démarrage du backend, ce qu'il ne sait pas faire compris.
         LOGGER.info("AXION : rendu — {}", String.join("\n  ", capabilities.describe()));
@@ -393,10 +414,34 @@ public final class AxionRenderPass {
         if (runtime != null) {
             runtime.setRenderCapabilities(capabilities);
         }
-        return switch (selection.kind()) {
-            case VANILLA -> new VanillaConsumerBackend();
-            case NATIVE -> throw new IllegalStateException(
-                    "backend natif retenu alors qu'il n'est pas disponible");
-        };
+        if (selection.kind() == BackendSelection.Kind.NATIVE) {
+            return candidate;
+        }
+        if (candidate != null) {
+            candidate.close();
+        }
+        return new VanillaConsumerBackend();
+    }
+
+    /**
+     * {@return le backend natif démarré, ou {@code null} s'il ne peut pas l'être : contexte sans
+     * OpenGL 3.3, ou shaders refusés — {@code E-4001}, journalisé avec le log du pilote, jamais un
+     * crash (R-761)}
+     */
+    private static NativeGlBackend startNative() {
+        String missing = NativeGlBackend.missingCapability();
+        if (missing != null) {
+            LOGGER.warn("AXION : backend natif indisponible — {}", missing);
+            return null;
+        }
+        long budget = ConfigLoader.load(Scope.COMMON, FMLPaths.CONFIGDIR.get(), System.getProperties())
+                .getInt("budgets.gpu_mem_bytes");
+        try {
+            return NativeGlBackend.create(Minecraft.getInstance().getResourceManager(), budget);
+        } catch (NativeShaders.ShaderFailure failure) {
+            LOGGER.error("AXION : shaders du backend natif refusés, bascule sur vanilla (E-4001) — {}",
+                    failure.getMessage());
+            return null;
+        }
     }
 }

@@ -78,7 +78,10 @@ JOBS: list[tuple[str, list[tuple[str, list[str]]]]] = [
         ("GameTests (serveur dedie)", [GRADLEW, "runGameTestServer", "--no-daemon", "--stacktrace"]),
     ]),
     ("test-render", [
-        ("banc de rendu (client automatise)", [GRADLEW, "runRenderTest", "--no-daemon", "--stacktrace"]),
+        ("banc de rendu, backend vanilla (client automatise)",
+         [GRADLEW, "runRenderTest", "--no-daemon", "--stacktrace"]),
+        ("banc de rendu, backend natif (client automatise)",
+         [GRADLEW, "runRenderTestNative", "--no-daemon", "--stacktrace"]),
     ]),
     ("platform-hote", [
         ("configuration deterministe", ["cargo", "run", "--quiet", "-p", "ax-det",

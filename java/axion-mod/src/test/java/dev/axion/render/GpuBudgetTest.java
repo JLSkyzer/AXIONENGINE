@@ -85,8 +85,11 @@ class GpuBudgetTest {
     }
 
     @Test
-    @DisplayName("Un budget nul ou négatif est refusé")
-    void unBudgetNulEstRefuse() {
-        assertThrows(IllegalArgumentException.class, () -> new GpuBudget<String>(0));
+    @DisplayName("Un budget négatif est refusé ; un budget nul, que permet budgets.gpu_mem_bytes, est dépassé dès un octet")
+    void unBudgetNegatifEstRefuse() {
+        assertThrows(IllegalArgumentException.class, () -> new GpuBudget<String>(-1));
+        GpuBudget<String> nul = new GpuBudget<>(0);
+        assertFalse(nul.exceededBy(0));
+        assertTrue(nul.exceededBy(1));
     }
 }

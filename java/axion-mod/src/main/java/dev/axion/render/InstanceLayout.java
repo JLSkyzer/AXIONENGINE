@@ -7,17 +7,23 @@ import java.nio.ByteOrder;
  * Le bloc d'instance du §19.4 — 88 octets, diviseur 1 — et la transformation qu'il porte (ADR-127
  * §2). Logique pure.
  *
- * <p>Disposition, petit-boutiste, attributs 9 à 17 :
+ * <p>Disposition, petit-boutiste, attributs 9 à 14 :
  *
  * <pre>
  *  0  vec4 × 3  model               lignes d'une matrice affine 3 × 4 (attributs 9, 10, 11)
  * 48  vec4      tint                couleur RGBA, flottants                (12)
  * 64  ivec2     lightmap            lumière de bloc, puis de ciel          (13)
- * 72  uint      palette_offset                                             (14)
- * 76  uint      deform_offset                                              (15)
- * 80  uint      decal_offset_count                                         (16)
- * 84  uint      flags                                                      (17)
+ * 72  uint      palette_offset      ┐
+ * 76  uint      deform_offset       │ lus d'un bloc, en un uvec4          (14)
+ * 80  uint      decal_offset_count  │
+ * 84  uint      flags               ┘
  * </pre>
+ *
+ * <p>Le §19.4 donne à chacun des quatre {@code uint} finaux son emplacement, de 14 à 17 : dix-huit
+ * emplacements en tout, sommet compris, quand OpenGL 3.3 n'en garantit que seize
+ * ({@code GL_MAX_VERTEX_ATTRIBS}) — et le pilote NVIDIA refuse 16 et 17. Les lire en un
+ * {@code uvec4} ramène le compte à quinze ; la disposition en mémoire reste celle du §19.4, octet
+ * pour octet (ADR-127 §9).
  *
  * <p>Le §19.4 nomme la matrice {@code mat4x3} et lui donne trois emplacements : ce sont les trois
  * lignes de la matrice affine, quatre flottants chacune — les douze valeurs de la {@code mat4x3}
@@ -43,14 +49,18 @@ public final class InstanceLayout {
     public static final int DECAL_OFFSET = 80;
     public static final int FLAGS_OFFSET = 84;
 
-    /** Emplacements des attributs : la première des trois lignes de la matrice, puis les autres champs. */
+    /**
+     * Emplacements des attributs : la première des trois lignes de la matrice, la teinte, la
+     * lightmap, puis le {@code uvec4} des quatre {@code uint} finaux, à partir de
+     * {@link #PALETTE_OFFSET}.
+     */
     public static final int MODEL_LOCATION = 9;
     public static final int TINT_LOCATION = 12;
     public static final int LIGHTMAP_LOCATION = 13;
-    public static final int PALETTE_LOCATION = 14;
-    public static final int DEFORM_LOCATION = 15;
-    public static final int DECAL_LOCATION = 16;
-    public static final int FLAGS_LOCATION = 17;
+    public static final int OFFSETS_LOCATION = 14;
+
+    /** Dernier emplacement d'attribut, sommet et instance : quinze en tout, sous les seize garantis. */
+    public static final int LAST_LOCATION = OFFSETS_LOCATION;
 
     private InstanceLayout() {}
 

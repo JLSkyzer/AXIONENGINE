@@ -42,6 +42,12 @@ interface RenderBackend {
     void renderTranslucent(Frame frame);
 
     /**
+     * Le backend est remplacé — chargement d'un monde, rechargement des ressources (R-752) — ou le
+     * monde est quitté : il rend tout ce qu'il tient sur le GPU. Render thread.
+     */
+    default void close() {}
+
+    /**
      * Contexte d'une frame de rendu.
      *
      * @param pose pile de transformations de la vue (rotation caméra appliquée, translation non)

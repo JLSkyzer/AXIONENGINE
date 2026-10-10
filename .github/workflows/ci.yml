@@ -275,17 +275,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0
 
-      - name: Banc de rendu (client automatise)
+      - name: Banc de rendu, backend vanilla (client automatise)
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runRenderTest --no-daemon --stacktrace
 
-      - name: Rapport et captures
+      # R-1491 : les deux backends sont testes ; le natif l'est meme si le vanilla a echoue.
+      - name: Banc de rendu, backend natif (client automatise)
+        if: success() || failure()
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runRenderTestNative --no-daemon --stacktrace
+
+      - name: Rapports et captures
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: banc-de-rendu
-          path: run-rendertest/axion-rendertest/
+          path: |
+            run-rendertest/axion-rendertest/
+            run-rendertest-native/axion-rendertest/
           if-no-files-found: warn
 
   platform:

@@ -120,13 +120,27 @@ public final class RenderCapabilities {
                         "indépendant du backend : C-82"));
     }
 
-    /** Colonne NATIVE_GL : le backend natif n'est pas livré, rien n'y est déclaré disponible. */
+    /** Colonne NATIVE_GL du §19.2bis, ramenée à ce qui est livré (ADR-127). */
     private static List<Entry> nativeGl() {
-        List<Entry> entries = new ArrayList<>();
-        for (Capability capability : Capability.values()) {
-            entries.add(new Entry(capability, Availability.NOT_DELIVERED, "backend natif : C-60"));
-        }
-        return List.copyOf(entries);
+        return List.of(
+                new Entry(Capability.LIGHTING, Availability.AVAILABLE,
+                        "PBR du §19.5 (GGX, Smith, Schlick) sous le soleil ou la lune, ambiante ciel-sol"
+                                + " synthétisée, lightmap (R-1511), spéculaire analytique (Q-1), brouillard ;"
+                                + " sonde d'environnement : C-81"),
+                new Entry(Capability.SHADOWS, Availability.NOT_DELIVERED, "passe SHADOW : C-80"),
+                new Entry(Capability.DECALS, Availability.NOT_DELIVERED, "passe DECALS : C-69"),
+                new Entry(Capability.ADVANCED_MATERIALS, Availability.NOT_DELIVERED,
+                        "variantes PARALLAX, CLEARCOAT, SHEEN et ANISO de R-762 : C-63"),
+                new Entry(Capability.MATERIAL_MAPS, Availability.NOT_DELIVERED,
+                        "albedo et émissive seuls ; normal et ORM : C-63 (ADR-127 §5), hauteur : C-63,"
+                                + " dommage : C-69"),
+                new Entry(Capability.SSR, Availability.NOT_DELIVERED, "expérimental, Q-4 (R-1560) : C-83"),
+                new Entry(Capability.INSTANCING, Availability.NOT_DELIVERED,
+                        "un dessin instancié par mesh posé ; regroupement et multi-draw indirect : C-65"),
+                new Entry(Capability.SKINNING_DEFORMATION, Availability.NOT_DELIVERED,
+                        "sur GPU : C-66, puis M6 (C-68)"),
+                new Entry(Capability.OCCLUSION_CULLING, Availability.NOT_DELIVERED,
+                        "indépendant du backend : C-82"));
     }
 
     /** {@return le backend retenu et la raison de ce choix} */

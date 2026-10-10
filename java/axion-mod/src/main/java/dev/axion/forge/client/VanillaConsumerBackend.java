@@ -68,8 +68,11 @@ final class VanillaConsumerBackend implements RenderBackend {
     private static final ResourceLocation WHITE =
             new ResourceLocation(AxionMod.MODID, "textures/misc/white.png");
 
-    /** La texture neutre, liée comme une ressource vanilla : au plus proche, sans mipmap. */
-    private static final TextureBinding NEUTRAL = new TextureBinding(WHITE.toString(), false, false);
+    /**
+     * La texture neutre, liée comme une ressource vanilla : au plus proche, sans mipmap. Le backend
+     * natif lie la même.
+     */
+    static final TextureBinding NEUTRAL = new TextureBinding(WHITE.toString(), false, false);
 
     /** Couleur de la boîte de repli (RGB). */
     private static final float RED = 0.35f;
