@@ -194,8 +194,10 @@ public final class AxionRenderPass {
         if (assemblies.isEmpty()) {
             return;
         }
-        // R-1503 : en développement, l'état GL est relevé autour de la passe.
+        // R-1503 : en développement, l'état GL est relevé autour de la passe — après que son garde
+        // (R-1502) a rendu celui qu'elle a trouvé.
         GlStateCheck.Snapshot before = GlStateCheck.ENABLED ? GlStateCheck.before() : null;
+        GlStateGuard guard = GlStateGuard.open(event.getStage());
         try {
             if (backend == null) {
                 backend = select();
@@ -210,6 +212,7 @@ public final class AxionRenderPass {
             failed = true;
             LOGGER.error("AXION : passe de rendu désactivée après une erreur", failure);
         } finally {
+            guard.restore();
             if (before != null) {
                 GlStateCheck.after(translucent ? "TRANSLUCENT" : "OPAQUE", before);
             }
@@ -224,11 +227,13 @@ public final class AxionRenderPass {
             return;
         }
         GlStateCheck.Snapshot before = GlStateCheck.ENABLED ? GlStateCheck.before() : null;
+        GlStateGuard guard = GlStateGuard.open(event.getStage());
         try {
             DEBUG.draw(frame(event, minecraft, assemblies));
         } catch (RuntimeException failure) {
             disableOverlays(failure);
         } finally {
+            guard.restore();
             if (before != null) {
                 GlStateCheck.after("DEBUG", before);
             }
