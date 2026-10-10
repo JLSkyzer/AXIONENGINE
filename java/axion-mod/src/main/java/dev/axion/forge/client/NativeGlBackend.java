@@ -420,8 +420,8 @@ final class NativeGlBackend implements RenderBackend {
      * @param projection projection de la frame
      * @param view vue : celle de Minecraft, puis la rotation de la caméra
      * @param light soleil ou lune
-     * @param sky ciel de l'hémisphère ambiant, linéaire
-     * @param ground sol de l'hémisphère ambiant, linéaire
+     * @param sky ciel de l'hémisphère ambiant, en part de la lumière que porte la lightmap
+     * @param ground sol de l'hémisphère ambiant, idem
      * @param fogColor couleur du brouillard, gamma, et son opacité
      * @param fogStart début du brouillard
      * @param fogEnd fin du brouillard
@@ -453,12 +453,13 @@ final class NativeGlBackend implements RenderBackend {
                     level.dimensionType().hasSkyLight());
             Vec3 sky = level.getSkyColor(frame.camera(), partialTick);
             float[] fog = RenderSystem.getShaderFogColor().clone();
+            WorldLight.Hemisphere ambient = WorldLight.hemisphere(sky.x, sky.y, sky.z, fog);
             return new Environment(
                     new Matrix4f(RenderSystem.getProjectionMatrix()),
                     view,
                     light,
-                    WorldLight.sky(sky.x, sky.y, sky.z),
-                    WorldLight.ground(fog),
+                    new float[] {ambient.sky(), ambient.sky(), ambient.sky()},
+                    new float[] {ambient.ground(), ambient.ground(), ambient.ground()},
                     fog,
                     RenderSystem.getShaderFogStart(),
                     RenderSystem.getShaderFogEnd(),

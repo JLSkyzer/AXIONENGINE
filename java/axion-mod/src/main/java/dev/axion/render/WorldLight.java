@@ -10,9 +10,13 @@ package dev.axion.render;
  * ({@code ClientLevel.getSkyDarken}), pluie et orage compris. La lune prend le relais sous
  * l'horizon, là où l'assombrissement éteint le soleil, et monte depuis zéro : aucun saut de lumière.
  *
- * <p><b>Ambiante</b> : un hémisphère — le ciel en haut, le sol en bas — en place de l'harmonique de
- * la sonde de C-81, qui le remplacera. Le ciel est la couleur du ciel de Minecraft ; le sol, celle du
- * brouillard renvoyée par un sol d'albédo moyen.
+ * <p><b>Ambiante</b> : la lightmap de Minecraft en porte l'intensité et la teinte — l'heure, le ciel
+ * visible, la lumière des blocs (R-1511) ; un hémisphère — le ciel en haut, le sol en bas — n'en donne
+ * que la répartition selon la normale, en place de l'harmonique de la sonde de C-81, qui le
+ * remplacera. Le ciel pèse la luminance de la couleur du ciel de Minecraft ; le sol, celle du
+ * brouillard renvoyée par un sol d'albédo moyen ; l'ensemble est ramené à une moyenne fixe. Prendre
+ * ces couleurs pour une lumière assombrissait la nuit deux fois — elles le sont déjà, comme la
+ * lightmap — et teintait de bleu un métal blanc (banc de rendu du 2026-10-10, ADR-127 §5).
  *
  * <p>Les couleurs de Minecraft sont en gamma ; elles passent ici en linéaire, l'espace du calcul.
  * Les intensités sont synthétisées : choisies par le calcul, non vérifiées à l'écran, pour qu'un
@@ -23,7 +27,16 @@ package dev.axion.render;
 public final class WorldLight {
 
     /** Le soleil de plein jour, linéaire : légèrement chaud. */
-    static final float[] SUN = {1.75f, 1.70f, 1.61f};
+    static final float[] SUN = {2.0f, 1.94f, 1.84f};
+
+    /**
+     * Part de la lumière de Minecraft qui arrive en ambiante, en moyenne sur l'hémisphère : le reste
+     * d'une face au soleil de midi vient du soleil.
+     */
+    static final float AMBIENT = 0.35f;
+
+    /** En deçà, ciel et brouillard sont noirs : l'hémisphère n'a plus de direction. */
+    static final float MIN_LUMINANCE = 1e-4f;
 
     /** La pleine lune, linéaire : froide, et faible. */
     static final float[] MOON = {0.14f, 0.155f, 0.20f};
@@ -85,33 +98,41 @@ public final class WorldLight {
     }
 
     /**
-     * {@return le ciel de l'hémisphère ambiant : la couleur du ciel de Minecraft, en linéaire}
+     * L'hémisphère ambiant : ce que le ciel et le sol apportent, en part de la lumière de Minecraft
+     * que la lightmap porte — gris, sans teinte ; leur moyenne vaut {@value #AMBIENT}.
      *
-     * @param red couleur du ciel, {@code ClientLevel.getSkyColor}, en gamma
-     * @param green idem
-     * @param blue idem
+     * @param sky ce qu'apporte une surface tournée vers le ciel
+     * @param ground ce qu'apporte une surface tournée vers le sol
      */
-    public static float[] sky(double red, double green, double blue) {
-        return new float[] {toLinear((float) red), toLinear((float) green), toLinear((float) blue)};
-    }
+    public record Hemisphere(float sky, float ground) {}
 
     /**
-     * {@return le sol de l'hémisphère ambiant : le brouillard, en linéaire, renvoyé par un sol
-     * d'albédo {@value #GROUND_ALBEDO}}
+     * {@return l'hémisphère ambiant du moment}
      *
+     * @param skyRed couleur du ciel, {@code ClientLevel.getSkyColor}, en gamma
+     * @param skyGreen idem
+     * @param skyBlue idem
      * @param fogColor couleur du brouillard, {@code RenderSystem.getShaderFogColor}, en gamma : au moins
      *     trois composantes
      */
-    public static float[] ground(float[] fogColor) {
-        return new float[] {
-            toLinear(fogColor[0]) * GROUND_ALBEDO, toLinear(fogColor[1]) * GROUND_ALBEDO,
-            toLinear(fogColor[2]) * GROUND_ALBEDO
-        };
+    public static Hemisphere hemisphere(double skyRed, double skyGreen, double skyBlue, float[] fogColor) {
+        float sky = luminance(toLinear((float) skyRed), toLinear((float) skyGreen), toLinear((float) skyBlue));
+        float ground = luminance(toLinear(fogColor[0]), toLinear(fogColor[1]), toLinear(fogColor[2])) * GROUND_ALBEDO;
+        float mean = (sky + ground) / 2.0f;
+        if (!(mean > MIN_LUMINANCE)) {
+            return new Hemisphere(AMBIENT, AMBIENT);
+        }
+        return new Hemisphere(AMBIENT * sky / mean, AMBIENT * ground / mean);
     }
 
     /** {@return une composante de couleur passée du gamma au linéaire, comme le font les shaders} */
     static float toLinear(float gamma) {
         return (float) Math.pow(Math.max(gamma, 0.0f), GAMMA);
+    }
+
+    /** {@return la luminance d'une couleur linéaire, coefficients de la Rec. 709} */
+    static float luminance(float red, float green, float blue) {
+        return 0.2126f * red + 0.7152f * green + 0.0722f * blue;
     }
 
     private static float[] scale(float[] color, float factor) {

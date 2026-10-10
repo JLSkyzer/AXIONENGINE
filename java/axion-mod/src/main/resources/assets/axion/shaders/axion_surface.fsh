@@ -1,9 +1,10 @@
 #version 330 core
 // Surfaces d'AXION (C-63, ADR-127 §5) : la BRDF du §19.5 — GGX, Smith à hauteurs corrélées,
-// Fresnel de Schlick — sous le soleil ou la lune ; une ambiante hémisphérique ciel-sol, en attendant
-// la sonde de C-81 ; la lightmap de Minecraft module l'une et l'autre (R-1511). Spéculaire
-// analytique seulement, comme au niveau Q-1 de R-1512. Calcul linéaire, sortie sRGB, brouillard de
-// Minecraft. La variante CUTOUT rejette les texels sous le seuil du matériau (R-762).
+// Fresnel de Schlick — sous le soleil ou la lune ; une ambiante dont la lightmap de Minecraft porte
+// l'intensité et la teinte (R-1511), et un hémisphère ciel-sol la répartition, en attendant la sonde
+// de C-81. Spéculaire analytique seulement, comme au niveau Q-1 de R-1512. Calcul linéaire, sortie
+// sRGB, brouillard de Minecraft. La variante CUTOUT rejette les texels sous le seuil du matériau
+// (R-762).
 
 in vec3 v_position;
 in vec3 v_normal;

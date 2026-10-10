@@ -1994,12 +1994,13 @@ substituable sans changer rapier »).
                         `runRenderTestNative` — backend, T-470..T-474, erreurs AXION. **Écart au §19.4, à ratifier**
                         (ADR-127 §9) : 18 emplacements d'attribut demandés, 16 garantis par GL 3.3 et offerts par NVIDIA ;
                         les 4 `uint` finaux du bloc d'instance sont lus en un `uvec4` (emplacement 14).
-                        Reste : `test-render` en CI sur llvmpipe pour le natif (à vérifier) ; T-479 au banc
-                        (`axion.debug.shader_fail`, `E-4001` attendue au journal) ; cartes normal et ORM chargées pour le
-                        natif (ADR-127 §5) ; **éclairage à revoir** : la nuit, l'ambiante est assombrie deux fois (couleur
-                        du ciel de Minecraft, déjà assombrie, × lightmap, qui l'est aussi). Le cube de test, sans matériau,
-                        est le métal rugueux par défaut de glTF : dessus 160, côtés 94, minuit 6 en natif, contre 251,
-                        178 et 143, 57 en vanilla — à reprendre avec C-81 ou la calibration (C-83, T-927).
+                        **CI verte** (run 38014466157, 3e7bb41) : les deux bancs passent aussi sous Mesa llvmpipe, aux
+                        mêmes mesures qu'en local. **T-479 au banc natif** (396abc0) : shaders refusés au rechargement des
+                        ressources → `E-4001` une fois, backend vanilla, 10 assemblies sur 10 redessinées avec leur asset.
+                        **Éclairage corrigé** : la lightmap porte l'intensité et la teinte de l'ambiante, l'hémisphère
+                        ciel-sol sa seule répartition (ADR-127 §5) — le cube de test, métal rugueux par défaut de glTF,
+                        n'est plus bleu à midi et se voit à minuit : dessus 170, côtés 99, minuit 39 en natif, contre 251,
+                        178 et 143, 57 en vanilla. Reste : cartes normal et ORM chargées pour le natif (ADR-127 §5).
                         **Banc local autorisé par Killian** (`./gradlew runRenderTest`, `runRenderTestNative`, ~1 min
                         chacun sur sa RTX 4060) — itérer localement, puis CI.
                   - [ ] **D5 — C-61 T4+ et bascules** : bascule à chaud (R-744, T-492),

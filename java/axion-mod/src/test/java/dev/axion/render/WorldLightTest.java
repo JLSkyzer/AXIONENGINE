@@ -79,11 +79,37 @@ class WorldLightTest {
     }
 
     @Test
-    @DisplayName("§19.5 : le ciel et le sol de l'ambiante passent du gamma au linéaire")
-    void ambiante() {
-        float demi = (float) Math.pow(0.5, 2.2);
-        assertArrayEquals(new float[] {demi, demi, demi}, WorldLight.sky(0.5, 0.5, 0.5), EPS);
+    @DisplayName("R-1511 : l'hémisphère ambiant répartit la lumière du ciel au sol, sa moyenne fixe")
+    void hemisphere() {
+        float[] brouillard = {1.0f, 1.0f, 1.0f, 1.0f};
+        WorldLight.Hemisphere midi = WorldLight.hemisphere(0.5, 0.5, 0.5, brouillard);
+        float ciel = (float) Math.pow(0.5, 2.2);
         float sol = WorldLight.GROUND_ALBEDO;
-        assertArrayEquals(new float[] {sol, sol, sol}, WorldLight.ground(new float[] {1.0f, 1.0f, 1.0f, 1.0f}), EPS);
+        float moyenne = (ciel + sol) / 2.0f;
+        assertEquals(WorldLight.AMBIENT * ciel / moyenne, midi.sky(), EPS);
+        assertEquals(WorldLight.AMBIENT * sol / moyenne, midi.ground(), EPS);
+        assertEquals(WorldLight.AMBIENT, (midi.sky() + midi.ground()) / 2.0f, EPS);
+    }
+
+    @Test
+    @DisplayName("R-1511 : la nuit n'assombrit pas l'hémisphère — c'est la lightmap qui le fait, une fois")
+    void hemisphereSansIntensite() {
+        float[] brouillard = {0.8f, 0.85f, 1.0f, 1.0f};
+        WorldLight.Hemisphere jour = WorldLight.hemisphere(0.47, 0.65, 1.0, brouillard);
+        // Le même ciel et le même brouillard, assombris d'un même facteur, comme la nuit les rend.
+        float f = 0.1f;
+        WorldLight.Hemisphere nuit = WorldLight.hemisphere(
+                0.47 * f, 0.65 * f, 1.0 * f, new float[] {0.8f * f, 0.85f * f, 1.0f * f, 1.0f});
+        assertEquals(jour.sky(), nuit.sky(), EPS);
+        assertEquals(jour.ground(), nuit.ground(), EPS);
+        assertTrue(jour.sky() > jour.ground(), jour.sky() + " > " + jour.ground());
+    }
+
+    @Test
+    @DisplayName("R-1511 : un ciel et un brouillard noirs donnent un hémisphère sans direction")
+    void hemisphereNoir() {
+        WorldLight.Hemisphere noir = WorldLight.hemisphere(0.0, 0.0, 0.0, new float[] {0.0f, 0.0f, 0.0f, 1.0f});
+        assertEquals(WorldLight.AMBIENT, noir.sky(), 0.0f);
+        assertEquals(WorldLight.AMBIENT, noir.ground(), 0.0f);
     }
 }
