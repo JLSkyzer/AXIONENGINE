@@ -82,6 +82,19 @@ public final class BancDeRendu {
     /** Écart toléré entre la boîte d'une silhouette et celle de sa projection, en pixels. */
     private static final int ECART_BOITE = 2;
 
+    /**
+     * Une scène est stable quand {@value} relevés de suite, espacés de {@link #FRAMES_ENTRE_RELEVES}
+     * frames, sont identiques à leur précédent. Un délai fixe ne suffit pas : des sections se
+     * recompilent après coup — la lumière d'un bloc posé, une vue nouvelle quand la caméra tourne —,
+     * et le troisième passage en CI a capturé une scène qui changeait encore.
+     */
+    private static final int RELEVES_EGAUX = 3;
+
+    private static final int FRAMES_ENTRE_RELEVES = 5;
+
+    /** Au-delà, une scène qui ne se stabilise pas fait échouer le banc. */
+    private static final int STABILITE_MAX_S = 180;
+
     /** Assemblies posées derrière la caméra : toutes les passes, opaque, découpe, translucide, émission. */
     private static final List<String> DERRIERE = List.of(
             "axion:test_cube",
@@ -240,7 +253,7 @@ public final class BancDeRendu {
         serveur("mettre en place la scène", BancDeRendu::mettreEnPlace);
         une("regarder au nord", mc -> viser(180f, 15f));
         jusqua("la scène prête", 600, BancDeRendu::scenePrete);
-        frames(40);
+        stabiliser("la scène vanilla");
 
         // T-470 : la même scène, avec puis sans les passes d'AXION, puis de nouveau avec.
         une("capturer avec AXION", mc -> {
@@ -256,11 +269,11 @@ public final class BancDeRendu {
 
         // T-474 : un cube devant la caméra, droit puis tourné, de jour puis de nuit.
         une("regarder à l'ouest", mc -> viser(90f, 20f));
-        frames(20);
+        stabiliser("la vue à l'ouest");
         une("capturer le fond", mc -> fond = capturer(mc, "t474_fond.png"));
         serveur("poser le cube droit", s -> cube = AssembliesDeTest.poser(s.overworld(), CUBE, positionCube(), IDENTITE));
         jusqua("le cube droit rendu", 120, mc -> rendu(mc, DERRIERE.size() + 1, cube.getId()));
-        frames(10);
+        stabiliser("le cube droit");
         une("capturer le cube droit", mc -> {
             droit = capturer(mc, "t474_droit.png");
             vueDroit = derniereVue;
@@ -272,14 +285,14 @@ public final class BancDeRendu {
         });
         jusqua("le cube tourné rendu", 120, mc -> mc.level.getEntity(cubePrecedent) == null
                 && rendu(mc, DERRIERE.size() + 1, cube.getId()));
-        frames(10);
+        stabiliser("le cube tourné");
         une("capturer le cube tourné", mc -> {
             tourne = capturer(mc, "t474_tourne.png");
             vueTourne = derniereVue;
         });
         serveur("passer à minuit", s -> commandes(s, "time set 18000"));
         jusqua("la nuit tombée", 60, mc -> mc.level.getDayTime() % 24_000L == 18_000L);
-        frames(30);
+        stabiliser("la nuit");
         une("capturer de nuit", mc -> minuit = capturer(mc, "t474_minuit.png"));
         serveur("revenir à midi", s -> commandes(s, "time set 6000"));
         jusqua("le jour revenu", 60, mc -> mc.level.getDayTime() % 24_000L == 6_000L);
@@ -633,6 +646,35 @@ public final class BancDeRendu {
 
     private static void frames(int nombre) {
         etape(nombre + " frame(s)", mc -> framesDansLEtape >= nombre);
+    }
+
+    /** Attend que l'image ne change plus : voir {@link #RELEVES_EGAUX}. */
+    private static void stabiliser(String quoi) {
+        CapturesDuBanc.Capture[] precedent = new CapturesDuBanc.Capture[1];
+        int[] egaux = new int[1];
+        int[] differents = new int[1];
+        etape("stabiliser " + quoi, mc -> {
+            if (framesDansLEtape % FRAMES_ENTRE_RELEVES != 0) {
+                return false;
+            }
+            CapturesDuBanc.Capture releve = CapturesDuBanc.capturer(mc, null);
+            int ecarts = precedent[0] == null ? -1 : CapturesDuBanc.masque(precedent[0], releve).nombre();
+            precedent[0] = releve;
+            if (ecarts == 0) {
+                egaux[0]++;
+            } else {
+                egaux[0] = 0;
+                differents[0] = ecarts;
+            }
+            if (egaux[0] >= RELEVES_EGAUX) {
+                return true;
+            }
+            if (System.nanoTime() - debutEtape > STABILITE_MAX_S * 1_000_000_000L) {
+                throw new IllegalStateException("l'image change encore au bout de " + STABILITE_MAX_S
+                        + " s (" + differents[0] + " pixel(s) au dernier écart)");
+            }
+            return false;
+        });
     }
 
     private static void jusqua(String nom, int secondes, Predicate<Minecraft> condition) {
