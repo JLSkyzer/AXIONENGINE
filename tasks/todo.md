@@ -1967,6 +1967,9 @@ substituable sans changer rapier »).
                         partagés), allocations comptées et budget (R-750), libération différée de
                         3 frames, sur le render thread (R-751), reconstruction au changement de
                         resource pack (R-752) ; T-500..T-503 attribués par ADR-127 §8.
+                        **Cœur pur fait le 2026-10-10** (a3f9e8a) : `ArenaAllocator` (T-500), `DeferredRelease`
+                        (T-502), `GpuBudget` (T-501), 23 tests. Reste : le collage GL — tampons, VAO par arène,
+                        téléversement —, avec D4, son seul consommateur ; T-503 au rechargement de ressources.
                   - [ ] **D3 — C-63, shaders** (fiche 5.50) : sources du JAR, variantes par
                         `#define` bornées (R-762), compilées sans à-coup et sans appel GL hors du
                         render thread (INV-12), cache binaire (R-760), échec → vanilla (R-761,
@@ -1978,6 +1981,13 @@ substituable sans changer rapier »).
                         ont besoin. **Si l'ADR retient une ABI dès M3 : `[EFFORT MAX]` et ratification de
                         Killian.** Puis upload au format du §19.4, `GlStateGuard` (R-1500..R-1505), passes
                         du §19.10, éclairage en attendant la sonde C-81 de M9 ; T-470..T-474 rejoués.
+                        **Commencé le 2026-10-10** (6a19708) : `InstanceLayout` (bloc de 88 octets, translation
+                        relative à la caméra composée en double) et sommets bruts de `GeometryTransfer`. Reste,
+                        dans l'ordre : shaders GLSL 330 de surface et d'émission (`assets/axion/shaders/`), leur
+                        compilation (C-63, `E-4001` → vanilla), collage GL de C-62, `NativeGlBackend` (passes,
+                        garde étendu à VAO/tampons/programme, `BufferUploader.invalidate`), sélection quand GL 3.3
+                        et la variante de base compilent, matrice de capacités, puis un second lancement du banc
+                        (`-Daxion.render.backend=native`) — T-470..T-474 dans les deux backends.
                   - [ ] **D5 — C-61 T4+ et bascules** : bascule à chaud (R-744, T-492),
                         invariants entre backends (T-491, T-491b..d), shaderpack (T-480, T-490) — ce
                         dernier suppose un mod de shaders en développement, à télécharger avec
