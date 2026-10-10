@@ -1951,6 +1951,38 @@ substituable sans changer rapier »).
                   T-510..T-512, T-551, avec C-60, C-62 et C-63. Critères de PARTIE 37.2 :
                   aucune erreur GL (T-471), état GL et FBO restaurés (T-472), bascule sous
                   shaderpack (T-480).
+                  - [x] **D1 — banc de rendu client** (ADR-126, proposé) : client automatisé
+                        (`runRenderTest`, contenu de développement), contrôle de l'état GL de R-1503
+                        (`GlStateCheck`), job `test-render` (34.3) sous Xvfb et Mesa llvmpipe ;
+                        T-470..T-474 sur le backend vanilla. **Vert en CI le 2026-10-10** (run
+                        38008458150, 5 min) : T-470 0 pixel d'écart avec et sans AXION ; T-471 10 001
+                        frames sans erreur GL ; T-472 0 état non restauré sur 20 652 passes ; T-474 cube
+                        droit et tourné à 1 pixel de leur projection, faces ombrées, minuit plus sombre.
+                        Il a trouvé un vrai défaut — la passe TRANSLUCENT laissait mélange et profondeur
+                        coupés (Forge publie le stage avant que la couche ne se referme) : garde de
+                        R-1502 dès le backend vanilla (ADR-126 §5) —, et trois hypothèses fausses sur sa
+                        propre scène : réentrance de `createFreshLevel`, stabilité supposée d'après un
+                        délai, lumière de bloc qui vacille au hasard. Lancé chez Killian : à sa demande.
+                  - [ ] **D2 — C-62, ressources GPU** (fiche 5.49) : arènes de 16 Mio (VBO/EBO
+                        partagés), allocations comptées et budget (R-750), libération différée de
+                        3 frames, sur le render thread (R-751), reconstruction au changement de
+                        resource pack (R-752) ; T-500..T-503 attribués par ADR, comme ADR-125.
+                  - [ ] **D3 — C-63, shaders** (fiche 5.50) : sources du JAR, variantes par
+                        `#define` bornées (R-762), compilées sans à-coup et sans appel GL hors du
+                        render thread (INV-12), cache binaire (R-760), échec → vanilla (R-761,
+                        T-479) ; T-510..T-512 attribués par ADR.
+                  - [ ] **D4 — C-60, backend natif** (PARTIE 19) : son ADR (ADR-118 l'annonce). En
+                        M3 les assemblies sont rigides : le natif peut dessiner la liste de repos déjà
+                        transférée (`RestDraw`, ADR-119), transformée en Java, sans nouvelle surface FFI ;
+                        IF-05 (`axion_render_prepare`, §4.7) viendrait en M4 avec C-64/C-65/C-66, qui en
+                        ont besoin. **Si l'ADR retient une ABI dès M3 : `[EFFORT MAX]` et ratification de
+                        Killian.** Puis upload au format du §19.4, `GlStateGuard` (R-1500..R-1505), passes
+                        du §19.10, éclairage en attendant la sonde C-81 de M9 ; T-470..T-474 rejoués.
+                  - [ ] **D5 — C-61 T4+ et bascules** : bascule à chaud (R-744, T-492),
+                        invariants entre backends (T-491, T-491b..d), shaderpack (T-480, T-490) — ce
+                        dernier suppose un mod de shaders en développement, à télécharger avec
+                        l'accord de Killian.
+                  - [ ] **D6 — T-551** : coût d'un overlay éteint, mesuré avec les métriques de C-72.
       - [ ] **C-61 — Backend VANILLA_CONSUMER** (fiche 5.48, PARTIE 19) — ouvre la chaîne de
             rendu, **vanilla d'abord** puis C-60 natif (ADR-118, ratifié 2026-10-01).
             - [x] **T1 — couture + preuve de passe** : `RenderBackend`, sélection pure

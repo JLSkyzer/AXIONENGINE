@@ -1219,3 +1219,28 @@ la passe ne le savait pas. Elle-même calculait `-indice`, qui déborde pour `i6
 celle du format : lire son aiguillage (`Some("f") | Some("l")`) et couvrir chaque branche qui
 mène au chemin protégé. Et une garde contre le débordement ne calcule jamais ce qui déborde :
 comparer `indice < -deja_vus`, pas `-indice > deja_vus`.
+
+## 2026-10-10 | « Le backend vanilla ne touche pas l'état GL » : faux au stage d'une couche de blocs
+
+**Ce qui a mal tourné.** ADR-118 réservait la discipline d'état GL au backend natif : le backend
+vanilla passe par des `RenderType`, censés gérer l'état. Le banc de rendu a montré l'inverse dès
+qu'il a pu mesurer : au stage `AFTER_TRANSLUCENT_BLOCKS`, Forge publie l'événement pendant que la
+couche translucide est encore en place, et les `RenderType` d'AXION, en se refermant, coupaient
+mélange et test de profondeur — 30 654 états non restaurés en un passage.
+
+**Règle.** Une passe se juge à l'état qu'elle laisse, mesuré contre celui qu'elle trouve, pas à
+ce que ses outils sont censés faire. Avant d'affirmer qu'un mécanisme « gère » l'état, lire à quel
+moment l'hôte appelle le gestionnaire (ici `dispatchRenderStage` avant `clearRenderState`).
+
+## 2026-10-10 | Un banc qui compare des images doit mesurer ses propres hypothèses
+
+**Ce qui a mal tourné.** Trois des premiers passages du banc de rendu ont échoué sur le banc
+lui-même : `createFreshLevel` rend des frames avant de rendre la main, et l'étape en cours s'est
+rejouée depuis elle-même ; un délai fixe de 20 à 40 frames supposait la scène stable, alors que
+des sections se recompilaient encore ; le glowstone du décor faisait vaciller au hasard, à chaque
+tick, l'éclairage de ce qui l'entourait.
+
+**Règle.** Un banc qui juge au pixel n'affirme rien qu'il ne mesure : il attend une image stable
+— des relevés identiques —, se protège des rappels faits depuis ses propres actions, et bannit de
+sa scène ce qui varie seul (textures animées, lumière de bloc). Une comparaison instable est un
+échec du banc, jamais un verdict sur le code.
