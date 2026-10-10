@@ -3,6 +3,7 @@ package dev.axion.forge;
 import com.mojang.blaze3d.platform.NativeImage;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -71,6 +72,7 @@ final class CapturesDuBanc {
                 }
             }
             if (fichier != null) {
+                Files.createDirectories(fichier.getParent());
                 image.writeToFile(fichier);
             }
             return new Capture(largeur, hauteur, pixels);
