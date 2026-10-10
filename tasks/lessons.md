@@ -1256,3 +1256,14 @@ Minecraft qui a nommé la cause (« `<index>` exceeds the maximum number of vert
 **Règle.** Un format d'attributs se compte contre `GL_MAX_VERTEX_ATTRIBS` au minimum garanti par la
 version visée (16 en 3.3), pas contre la machine de développement. Devant un `glGetError` muet,
 lire d'abord les messages `GlDebug` du journal du client : le pilote y dit quel argument il refuse.
+
+## 2026-10-10 | Une boucle qui recompile l'arbre de travail a recompilé mon code en cours
+
+**Ce qui a mal tourné.** Pour reproduire `empilement_60s` (environ un échec sur dix en CI), une boucle
+relançait `runGameTestServer` en arrière-plan pendant que j'écrivais D3 dans le même arbre. Au huitième
+passage, Gradle a recompilé une réécriture à moitié faite : échec de compilation, chasse avortée, et
+sept passages verts qui n'ont rien appris — le défaut, rare en local, ne s'y est pas montré.
+
+**Règle.** Une boucle longue qui construit le dépôt tourne sur un arbre figé — un `git worktree` du
+commit voulu —, jamais sur l'arbre où l'on écrit. Et un défaut intermittent qui se montre en CI se
+chasse d'abord là : la CI garde la trace des GameTests en artefact quand ils échouent.

@@ -234,8 +234,22 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
+      # La trace de la simulation (TraceDesGameTests) est ouverte des le demarrage : un test
+      # intermittent qui echoue laisse de quoi dire pourquoi (empilement_60s, ~1 echec sur 10).
       - name: GameTests (serveur dedie)
+        env:
+          JAVA_TOOL_OPTIONS: -Daxion.gametest.trace=${{ github.workspace }}/run-gametest/trace-simulation.csv
         run: ./gradlew runGameTestServer --no-daemon --stacktrace
+
+      - name: Trace et journal des GameTests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gametests-trace
+          path: |
+            run-gametest/trace-simulation.csv
+            run-gametest/logs/latest.log
+          if-no-files-found: warn
 
   test-render:
     name: test-render
