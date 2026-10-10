@@ -34,6 +34,10 @@ public final class RenderAsset {
     /** Vrai pour un mesh qui émet, et dont l'émission est là. */
     private final boolean[] emitting;
 
+    /** Carte de normales et carte ORM de chaque mesh ; {@code null} : absente, ou pas chargée. */
+    private final TextureRegion[] normalMaps;
+    private final TextureRegion[] orms;
+
     /**
      * Assemble un asset prêt à dessiner.
      *
@@ -60,13 +64,36 @@ public final class RenderAsset {
         this.albedos = new TextureRegion[this.looks.size()];
         this.emissions = new TextureRegion[this.looks.size()];
         this.emitting = new boolean[this.looks.size()];
+        this.normalMaps = new TextureRegion[this.looks.size()];
+        this.orms = new TextureRegion[this.looks.size()];
         for (int rank = 0; rank < albedos.length; rank++) {
             MeshLook look = this.looks.get(rank);
             albedos[rank] = texture(look.albedo());
             TextureKey emission = look.emission();
             emissions[rank] = texture(emission);
             emitting[rank] = look.emits() && (emission == null || emissions[rank] != null);
+            normalMaps[rank] = texture(look.normalMap());
+            orms[rank] = texture(look.orm());
         }
+    }
+
+    /**
+     * {@return la carte de normales d'un mesh, ou {@code null} : absente, ou pas chargée — le backend
+     * vanilla ne la charge pas (R-1513)}
+     *
+     * @param rank rang du mesh
+     */
+    public TextureRegion normalMap(int rank) {
+        return normalMaps[rank];
+    }
+
+    /**
+     * {@return la carte ORM d'un mesh, ou {@code null} : absente, ou pas chargée}
+     *
+     * @param rank rang du mesh
+     */
+    public TextureRegion orm(int rank) {
+        return orms[rank];
     }
 
     /** {@return la géométrie et la pose de repos} */

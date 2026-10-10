@@ -12,7 +12,7 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Les textures qu'un asset charge pour le backend vanilla (ADR-122 §7, R-1513). */
+/** Les textures qu'un asset charge : pour le backend vanilla (ADR-122 §7, R-1513), puis pour le natif (ADR-127 §5). */
 class TexturePlanTest {
 
     /** Un matériau : slots d'albedo et d'émissive, mode de mélange, seuil, alphas et émission. */
@@ -73,6 +73,23 @@ class TexturePlanTest {
                         TestMaterials.material().albedo(0).cutout(0.5f).emissive(1, 1, 0.5f, 0)),
                 TestMaterials.EMBEDDED, TestMaterials.EMBEDDED);
         assertEquals(List.of(TextureKey.cutout(0, 0.5f), TextureKey.masked(1, 0, 0.5f)), TexturePlan.keys(table));
+    }
+
+    @Test
+    @DisplayName("ADR-127 §5 : le backend natif charge en plus la normale et l'ORM ; le vanilla, jamais (R-1513)")
+    void lesCartesDuNatif() {
+        MaterialTransfer table = TestMaterials.table(
+                List.of(TestMaterials.material().albedo(0).normal(1).orm(2)),
+                TestMaterials.EMBEDDED, TestMaterials.EMBEDDED, TestMaterials.EMBEDDED);
+        assertEquals(List.of(TextureKey.plain(0)), TexturePlan.keys(table));
+        assertEquals(List.of(TextureKey.plain(0)), TexturePlan.keys(table, false));
+        assertEquals(List.of(TextureKey.plain(0), TextureKey.plain(1), TextureKey.plain(2)), TexturePlan.keys(table, true));
+        MaterialTransfer.Material sansCartes = material(0, NO_TEXTURE, BLEND_OPAQUE, 0.5f, 1, 0);
+        assertEquals(TextureKey.plain(7), TexturePlan.normal(sansCartes));
+        assertEquals(TextureKey.plain(7), TexturePlan.orm(sansCartes));
+        MaterialTransfer.Material vide = TestMaterials.table(List.of(TestMaterials.material())).materials().get(0);
+        assertNull(TexturePlan.normal(vide));
+        assertNull(TexturePlan.orm(vide));
     }
 
     @Test

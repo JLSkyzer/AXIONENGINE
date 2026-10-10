@@ -78,6 +78,12 @@ public final class MeshCache {
     private volatile boolean closed;
 
     /**
+     * Vrai : les cartes de normales et ORM sont chargées aussi — le backend natif est actif
+     * (ADR-127 §5) ; le vanilla ne s'en sert pas (R-1513).
+     */
+    private volatile boolean materialMaps;
+
+    /**
      * Crée un cache vide.
      *
      * @param loader chargeur natif
@@ -119,6 +125,20 @@ public final class MeshCache {
         }
         schedule(path, source, current);
         return null;
+    }
+
+    /**
+     * Charge, ou non, les cartes de normales et ORM : le backend natif s'en sert, le vanilla non
+     * (R-1513). Un changement rend tout, comme {@link #releaseAll} : chaque asset se recharge avec les
+     * textures que le nouveau backend demande. Appelé sur le fil de rendu.
+     *
+     * @param on vrai pour les charger
+     */
+    public void setMaterialMaps(boolean on) {
+        if (materialMaps != on) {
+            materialMaps = on;
+            releaseAll();
+        }
     }
 
     /**
@@ -445,7 +465,7 @@ public final class MeshCache {
             String path, Loading loading, Handle handle, MaterialTransfer materials, Set<Integer> refused) {
         List<TexturePipeline.Request> requests = new ArrayList<>();
         Map<Integer, byte[]> embedded = new HashMap<>();
-        for (TextureKey key : TexturePlan.keys(materials)) {
+        for (TextureKey key : TexturePlan.keys(materials, materialMaps)) {
             TexturePipeline.Source image = null;
             if (!key.white()) {
                 image = source(path, handle, materials, key.rank(), embedded, refused);

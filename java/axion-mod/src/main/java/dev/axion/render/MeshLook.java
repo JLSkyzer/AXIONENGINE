@@ -79,6 +79,16 @@ public record MeshLook(
         return TexturePlan.emissive(material);
     }
 
+    /** {@return la carte de normales, ou {@code null} : la normale des sommets seule} */
+    public TextureKey normalMap() {
+        return TexturePlan.normal(material);
+    }
+
+    /** {@return la carte ORM, ou {@code null} : les facteurs du matériau seuls} */
+    public TextureKey orm() {
+        return TexturePlan.orm(material);
+    }
+
     /**
      * {@return la couleur d'un sommet, ARGB}
      *

@@ -7,12 +7,13 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Les textures qu'un asset doit charger pour le backend vanilla (ADR-122 §7).
+ * Les textures qu'un asset doit charger (ADR-122 §7, ADR-127 §5).
  *
- * <p>Deux slots seulement y servent : l'albedo, sous la variante qu'exige le mode de mélange, et
- * l'émissive, quand le matériau émet — masquée par l'albedo d'un matériau découpé. Normal, ORM,
- * height et damage sont sans effet dans ce backend (R-1513) : les charger coûterait de la mémoire
- * pour rien.
+ * <p>Pour le backend vanilla, deux slots seulement servent : l'albedo, sous la variante qu'exige le
+ * mode de mélange, et l'émissive, quand le matériau émet — masquée par l'albedo d'un matériau
+ * découpé. Normal, ORM, height et damage y sont sans effet (R-1513) : les charger coûterait de la
+ * mémoire pour rien. Le backend natif charge en plus les cartes de normales et ORM, telles quelles ;
+ * hauteur et dommage attendent leurs composants (C-63, C-69).
  */
 public final class TexturePlan {
 
@@ -71,11 +72,44 @@ public final class TexturePlan {
     }
 
     /**
-     * {@return les textures distinctes à charger, dans l'ordre des matériaux}
+     * {@return la carte de normales d'un matériau, ou {@code null} s'il n'en a pas} Le backend natif
+     * seul la charge (R-1513).
+     *
+     * @param material matériau
+     */
+    public static TextureKey normal(MaterialTransfer.Material material) {
+        int slot = material.normalTexture();
+        return slot == MaterialTransfer.NO_TEXTURE ? null : TextureKey.plain(slot);
+    }
+
+    /**
+     * {@return la carte ORM d'un matériau — occlusion, rugosité, métal —, ou {@code null} s'il n'en a
+     * pas} Le backend natif seul la charge (R-1513).
+     *
+     * @param material matériau
+     */
+    public static TextureKey orm(MaterialTransfer.Material material) {
+        int slot = material.ormTexture();
+        return slot == MaterialTransfer.NO_TEXTURE ? null : TextureKey.plain(slot);
+    }
+
+    /**
+     * {@return les textures distinctes que le backend vanilla charge, dans l'ordre des matériaux}
      *
      * @param materials table des matériaux et des textures
      */
     public static List<TextureKey> keys(MaterialTransfer materials) {
+        return keys(materials, false);
+    }
+
+    /**
+     * {@return les textures distinctes à charger, dans l'ordre des matériaux}
+     *
+     * @param materials table des matériaux et des textures
+     * @param materialMaps vrai pour le backend natif : les cartes de normales et ORM en plus
+     *     (ADR-127 §5)
+     */
+    public static List<TextureKey> keys(MaterialTransfer materials, boolean materialMaps) {
         Set<TextureKey> keys = new LinkedHashSet<>();
         for (MaterialTransfer.Material material : materials.materials()) {
             TextureKey albedo = albedo(material);
@@ -85,6 +119,16 @@ public final class TexturePlan {
             TextureKey emissive = emissive(material);
             if (emissive != null) {
                 keys.add(emissive);
+            }
+            if (materialMaps) {
+                TextureKey normal = normal(material);
+                if (normal != null) {
+                    keys.add(normal);
+                }
+                TextureKey orm = orm(material);
+                if (orm != null) {
+                    keys.add(orm);
+                }
             }
         }
         return new ArrayList<>(keys);

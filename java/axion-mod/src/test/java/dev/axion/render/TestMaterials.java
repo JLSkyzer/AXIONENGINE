@@ -21,6 +21,8 @@ final class TestMaterials {
     static final class Material {
         private int albedo = MaterialTransfer.NO_TEXTURE;
         private int emissive = MaterialTransfer.NO_TEXTURE;
+        private int normal = MaterialTransfer.NO_TEXTURE;
+        private int orm = MaterialTransfer.NO_TEXTURE;
         private float[] albedoFactor = {1.0f, 1.0f, 1.0f, 1.0f};
         private float[] emissiveFactor = {0.0f, 0.0f, 0.0f};
         private float cutoff = 0.5f;
@@ -31,6 +33,16 @@ final class TestMaterials {
 
         Material albedo(int slot) {
             albedo = slot;
+            return this;
+        }
+
+        Material normal(int slot) {
+            normal = slot;
+            return this;
+        }
+
+        Material orm(int slot) {
+            orm = slot;
             return this;
         }
 
@@ -97,8 +109,8 @@ final class TestMaterials {
             out.putLong(0L);
             // Slots : albedo, normal, ORM, émissive, hauteur, dommage.
             out.putShort((short) material.albedo);
-            out.putShort((short) MaterialTransfer.NO_TEXTURE);
-            out.putShort((short) MaterialTransfer.NO_TEXTURE);
+            out.putShort((short) material.normal);
+            out.putShort((short) material.orm);
             out.putShort((short) material.emissive);
             out.putShort((short) MaterialTransfer.NO_TEXTURE);
             out.putShort((short) MaterialTransfer.NO_TEXTURE);
