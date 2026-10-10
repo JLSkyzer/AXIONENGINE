@@ -64,10 +64,17 @@ final class NativeShaders implements AutoCloseable {
     /** Vrai : les variantes compilées à la demande échouent exprès (R-761). Render thread seul. */
     private static boolean forcedVariantFailure;
 
-    /** Unités de texture des échantillonneurs : albedo ou émission sur la 0, lightmap sur la 2. */
+    /**
+     * Unités de texture des échantillonneurs : albedo ou émission sur la 0, carte de normales sur la
+     * 1, lightmap sur la 2 — celle de Minecraft —, carte ORM sur la 3.
+     */
     static final int ALBEDO_UNIT = 0;
 
+    static final int NORMAL_UNIT = 1;
+
     static final int LIGHTMAP_UNIT = 2;
+
+    static final int ORM_UNIT = 3;
 
     private static final String SURFACE = "surface";
     private static final String EMISSION = "émission";
@@ -376,6 +383,8 @@ final class NativeShaders implements AutoCloseable {
         setSampler(program, "u_albedo", ALBEDO_UNIT);
         setSampler(program, "u_emission", ALBEDO_UNIT);
         setSampler(program, "u_lightmap", LIGHTMAP_UNIT);
+        setSampler(program, "u_normal_map", NORMAL_UNIT);
+        setSampler(program, "u_orm", ORM_UNIT);
         ProgramManager.glUseProgram(0);
         return program;
     }

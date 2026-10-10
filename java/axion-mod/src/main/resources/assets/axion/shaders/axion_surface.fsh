@@ -8,13 +8,24 @@
 
 in vec3 v_position;
 in vec3 v_normal;
+in vec4 v_tangent;
 in vec2 v_uv;
+in vec2 v_uv_raw;
 in vec4 v_color;
 in vec2 v_lightmap;
 in float v_sky;
 
 uniform sampler2D u_albedo;
 uniform sampler2D u_lightmap;
+// Cartes de normales et ORM du natif (ADR-127 §5) : chacune sa tuile, et un drapeau qui dit qu'elle est là.
+uniform sampler2D u_normal_map;
+uniform sampler2D u_orm;
+uniform int u_normal_mapped;
+uniform float u_normal_scale;
+uniform vec4 u_normal_region;
+uniform int u_orm_mapped;
+uniform float u_occlusion_strength;
+uniform vec4 u_orm_region;
 uniform vec4 u_albedo_factor;
 uniform float u_metallic;
 uniform float u_roughness;
@@ -101,6 +112,26 @@ void main() {
         if (!gl_FrontFacing) {
             n = -n;
         }
+        // Normal map en espace tangent (glTF : bitangente = normale × tangente, signée par w). Une
+        // tangente nulle — un mesh sans normal map dans la source — garde la normale des sommets.
+        if (u_normal_mapped == 1 && dot(v_tangent.xyz, v_tangent.xyz) > 1e-8) {
+            vec3 t = normalize(v_tangent.xyz - n * dot(n, v_tangent.xyz));
+            vec3 b = cross(n, t) * (v_tangent.w < 0.0 ? -1.0 : 1.0);
+            vec3 m = texture(u_normal_map, u_normal_region.xy + v_uv_raw * u_normal_region.zw).xyz * 2.0 - 1.0;
+            m.xy *= u_normal_scale;
+            n = normalize(mat3(t, b, n) * m);
+        }
+        // ORM : occlusion (R), rugosité (G), métal (B), qui multiplient les facteurs du matériau ;
+        // l'occlusion n'assombrit que l'ambiante.
+        float metallic = u_metallic;
+        float roughnessFactor = u_roughness;
+        float occlusion = 1.0;
+        if (u_orm_mapped == 1) {
+            vec3 orm = texture(u_orm, u_orm_region.xy + v_uv_raw * u_orm_region.zw).rgb;
+            occlusion = 1.0 + u_occlusion_strength * (orm.r - 1.0);
+            roughnessFactor *= orm.g;
+            metallic *= orm.b;
+        }
         vec3 v = normalize(-v_position);
         vec3 l = normalize(u_light_direction);
         vec3 h = normalize(v + l);
@@ -108,17 +139,17 @@ void main() {
         float nDotV = max(dot(n, v), 1e-4);
         float nDotH = max(dot(n, h), 0.0);
         float vDotH = max(dot(v, h), 0.0);
-        float roughness = clamp(u_roughness, 0.045, 1.0);
+        float roughness = clamp(roughnessFactor, 0.045, 1.0);
         float alphaR = roughness * roughness;
-        vec3 f0 = mix(vec3(0.04), albedo, u_metallic);
+        vec3 f0 = mix(vec3(0.04), albedo, metallic);
         vec3 fresnel = fresnelSchlick(vDotH, f0);
         vec3 specular = distributionGgx(nDotH, alphaR) * visibilitySmith(nDotV, nDotL, alphaR) * fresnel;
-        vec3 diffuse = (1.0 - fresnel) * (1.0 - u_metallic) * albedo / PI;
+        vec3 diffuse = (1.0 - fresnel) * (1.0 - metallic) * albedo / PI;
         // Le soleil n'atteint que ce que le ciel voit ; la lightmap module tout (R-1511).
         vec3 lightmap = toLinear(texture(u_lightmap, v_lightmap).rgb);
         vec3 direct = (diffuse + specular) * u_light_color * nDotL * v_sky;
-        vec3 ambient = (1.0 - u_metallic) * albedo * hemisphere(n) * lightmap
-                + environmentBrdf(f0, roughness, nDotV) * hemisphere(reflect(-v, n)) * lightmap;
+        vec3 ambient = ((1.0 - metallic) * albedo * hemisphere(n)
+                + environmentBrdf(f0, roughness, nDotV) * hemisphere(reflect(-v, n))) * lightmap * occlusion;
         color = direct + ambient;
     }
     vec3 encoded = toGamma(color);

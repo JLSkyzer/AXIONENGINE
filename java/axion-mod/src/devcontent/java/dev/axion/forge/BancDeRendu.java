@@ -133,6 +133,17 @@ public final class BancDeRendu {
             "axion:test/materiaux/vitre");
 
     private static final String CUBE = "axion:test_cube";
+
+    /** Les panneaux des cartes de matériau (ADR-127 §5) : le même, avec et sans normal map ni ORM. */
+    private static final String RELIEF = "axion:test/materiaux/relief";
+    private static final String PLAT = "axion:test/materiaux/plat";
+
+    /** Un quart de tour autour de la verticale : la face avant des panneaux, +Z, regarde l'est, la caméra. */
+    private static final float[] VERS_L_EST = {0f, 0.70710678f, 0f, 0.70710678f};
+
+    /** Décalage des panneaux le long de z, de part et d'autre du cube : relief au nord, plat au sud. */
+    private static final double Z_RELIEF = -1.5;
+    private static final double Z_PLAT = 1.5;
     private static final float[] IDENTITE = {0f, 0f, 0f, 1f};
     /** Un huitième de tour autour de y : {@code [0, sin 22,5°, 0, cos 22,5°]}. */
     private static final float[] HUITIEME_DE_TOUR = {0f, 0.38268343f, 0f, 0.9238795f};
@@ -162,9 +173,9 @@ public final class BancDeRendu {
 
     private static final List<Etape> SCENARIO = new ArrayList<>();
     private static final RapportDuBanc RAPPORT = new RapportDuBanc(NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-492", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "T-471", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-471", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -204,6 +215,8 @@ public final class BancDeRendu {
     private static CapturesDuBanc.Capture minuit;
 
     private static CompletableFuture<Void> rechargement;
+    private static AxionEntity panneauRelief;
+    private static AxionEntity panneauPlat;
     private static int demarragesAvantRechargement;
     private static int demarrages;
     private static int fermetures;
@@ -381,6 +394,24 @@ public final class BancDeRendu {
         jusqua("le jour revenu", 60, mc -> mc.level.getDayTime() % 24_000L == 6_000L);
         une("juger T-474", mc -> jugerT474());
 
+        // Cartes de matériau (ADR-127 §5) : deux panneaux identiques face à la caméra, l'un avec
+        // normal map et ORM, l'autre sans. En natif, sous le soleil de midi, le relief fait varier la
+        // luminance de l'un bien plus que de l'autre ; en vanilla, qui ignore ces cartes (R-1513),
+        // les deux se confondent. Ils sont retirés ensuite.
+        serveur("poser les panneaux", s -> {
+            panneauRelief = AssembliesDeTest.poser(s.overworld(), RELIEF, positionPanneau(Z_RELIEF), VERS_L_EST);
+            panneauPlat = AssembliesDeTest.poser(s.overworld(), PLAT, positionPanneau(Z_PLAT), VERS_L_EST);
+        });
+        jusqua("les panneaux rendus", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 3
+                && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 3);
+        stabiliser("les panneaux");
+        une("juger les cartes de matériau", mc -> jugerCartes(capturer(mc, "cartes.png"), derniereVue));
+        serveur("retirer les panneaux", s -> {
+            panneauRelief.discard();
+            panneauPlat.discard();
+        });
+        jusqua("les panneaux retirés", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+
         // T-471 : des frames sans AXION d'abord, pour savoir ce qui n'est pas de lui.
         une("compter sans AXION", mc -> {
             AxionRenderPass.setPassesEnabled(false);
@@ -556,6 +587,11 @@ public final class BancDeRendu {
         return minecraft.level.getEntity(id) != null
                 && frame.assemblies() == attendues
                 && frame.withAsset() == attendues;
+    }
+
+    /** {@return le pied d'un panneau, à côté du cube, décalé le long de z} */
+    private static Vec3 positionPanneau(double dz) {
+        return positionCube().add(0.0, 0.0, dz);
     }
 
     private static Vec3 positionCube() {
@@ -809,6 +845,47 @@ public final class BancDeRendu {
             return -1;
         }
         return relisibles;
+    }
+
+    /**
+     * Les cartes de matériau : en natif, l'écart-type de luminance du panneau à relief domine
+     * nettement celui du plat ; en vanilla, ils se confondent (R-1513).
+     */
+    private static void jugerCartes(CapturesDuBanc.Capture capture, Vue vue) {
+        double relief = ecartDansLePanneau(capture, vue, Z_RELIEF);
+        double plat = ecartDansLePanneau(capture, vue, Z_PLAT);
+        boolean vert = NATIF ? relief >= 3.0 * plat + 4.0 : Math.abs(relief - plat) <= 2.0;
+        RAPPORT.noter("cartes de matériau", vert, String.format(Locale.ROOT,
+                "%s : écart-type de luminance %.1f sur le panneau à relief, %.1f sur le plat (%s)",
+                NATIF ? "natif" : "vanilla", relief, plat,
+                NATIF ? "le relief doit dominer : au moins 3 × le plat + 4" : "R-1513, sans effet : écart de 2 au plus"));
+    }
+
+    /**
+     * {@return l'écart-type de luminance au cœur de la face avant d'un panneau, telle qu'elle se
+     * projette à l'écran — la moitié centrale de sa boîte, loin des bords}
+     */
+    private static double ecartDansLePanneau(CapturesDuBanc.Capture capture, Vue vue, double dz) {
+        Vec3 pied = positionPanneau(dz);
+        float minX = Float.POSITIVE_INFINITY;
+        float minY = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY;
+        float maxY = Float.NEGATIVE_INFINITY;
+        // La face avant, tournée vers l'est : x = +0,05, y de 0 à 1, z de -0,5 à +0,5 autour du pied.
+        for (double y : new double[] {0.0, 1.0}) {
+            for (double z : new double[] {-0.5, 0.5}) {
+                float[] ecran = projeter(vue, pied.add(0.05, y, z), capture.largeur(), capture.hauteur());
+                minX = Math.min(minX, ecran[0]);
+                minY = Math.min(minY, ecran[1]);
+                maxX = Math.max(maxX, ecran[0]);
+                maxY = Math.max(maxY, ecran[1]);
+            }
+        }
+        float marqueX = (maxX - minX) / 4f;
+        float marqueY = (maxY - minY) / 4f;
+        return CapturesDuBanc.ecartTypeDeLuminance(capture,
+                Math.round(minX + marqueX), Math.round(minY + marqueY),
+                Math.round(maxX - marqueX), Math.round(maxY - marqueY));
     }
 
     private static void jugerT472() {

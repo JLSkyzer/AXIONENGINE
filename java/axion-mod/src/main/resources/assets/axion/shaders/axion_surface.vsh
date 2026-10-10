@@ -4,6 +4,7 @@
 
 layout(location = 0) in vec3 a_position;
 layout(location = 1) in vec4 a_normal;
+layout(location = 2) in vec4 a_tangent;
 layout(location = 3) in vec2 a_uv0;
 layout(location = 5) in vec4 a_color;
 
@@ -28,7 +29,11 @@ invariant gl_Position;
 
 out vec3 v_position;
 out vec3 v_normal;
+// Tangente du repère des cartes de normales, et son sens (w), en axes du monde.
+out vec4 v_tangent;
 out vec2 v_uv;
+// Coordonnées dans la plage du mesh, avant toute tuile : chaque carte y applique la sienne.
+out vec2 v_uv_raw;
 out vec4 v_color;
 out vec2 v_lightmap;
 out float v_sky;
@@ -40,8 +45,10 @@ void main() {
     gl_Position = u_projection * u_view * relative;
     // Inverse-transposée : une normale juste sous une échelle non uniforme.
     v_normal = transpose(inverse(mat3(model))) * a_normal.xyz;
+    v_tangent = vec4(mat3(model) * a_tangent.xyz, a_tangent.w);
     vec2 uv = u_uv_range.x + a_uv0 * u_uv_range.y;
     v_uv = u_uv_region.xy + uv * u_uv_region.zw;
+    v_uv_raw = uv;
     v_color = (u_vertex_color == 1 ? a_color : vec4(1.0)) * i_tint;
     // Comme Minecraft : niveaux × 16, lus au centre des texels de la lightmap.
     v_lightmap = clamp(vec2(i_lightmap) / 256.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0));

@@ -147,6 +147,29 @@ final class CapturesDuBanc {
         return nombre == 0 ? 0 : somme / nombre;
     }
 
+    /**
+     * {@return l'écart-type de la luminance des pixels d'un rectangle, bornes comprises, ramené à la
+     * capture ; 0 pour un rectangle vide}
+     */
+    static double ecartTypeDeLuminance(Capture capture, int x0, int y0, int x1, int y1) {
+        double somme = 0;
+        double carres = 0;
+        int nombre = 0;
+        for (int py = Math.max(0, y0); py <= Math.min(capture.hauteur() - 1, y1); py++) {
+            for (int px = Math.max(0, x0); px <= Math.min(capture.largeur() - 1, x1); px++) {
+                double l = luminance(capture.pixel(px, py));
+                somme += l;
+                carres += l * l;
+                nombre++;
+            }
+        }
+        if (nombre == 0) {
+            return 0;
+        }
+        double moyenne = somme / nombre;
+        return Math.sqrt(Math.max(0, carres / nombre - moyenne * moyenne));
+    }
+
     /** Luminance relative d'un pixel {@code ABGR}, coefficients de Rec. 709. */
     private static double luminance(int abgr) {
         int rouge = abgr & 0xFF;

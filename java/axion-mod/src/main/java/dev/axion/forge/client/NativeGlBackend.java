@@ -21,6 +21,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -88,8 +89,8 @@ final class NativeGlBackend implements RenderBackend {
     /** Le VAO lié pendant une passe, pour ne le relier qu'au changement d'arène. */
     private int boundVao;
 
-    /** La texture liée à l'unité de l'albedo pendant une passe ; {@code null} : aucune encore. */
-    private TextureBinding boundTexture;
+    /** La texture liée à chaque unité pendant une passe ; {@code null} : aucune encore. */
+    private final TextureBinding[] boundTextures = new TextureBinding[4];
 
     /** Le sens des faces avant pendant une passe. */
     private int frontFace = GL11.GL_CCW;
@@ -300,7 +301,7 @@ final class NativeGlBackend implements RenderBackend {
         RenderSystem.bindTexture(environment.lightmap());
         RenderSystem.activeTexture(GL13.GL_TEXTURE0 + NativeShaders.ALBEDO_UNIT);
         boundVao = 0;
-        boundTexture = null;
+        Arrays.fill(boundTextures, null);
         frontFace = GL11.GL_CCW;
     }
 
@@ -332,6 +333,21 @@ final class NativeGlBackend implements RenderBackend {
             GL20.glUniform1i(program.uniform("u_vertex_color"),
                     (material.flags() & MaterialTransfer.FLAG_VERTEX_COLOR) != 0 ? 1 : 0);
             GL20.glUniform1i(program.uniform("u_fullbright"), part.look().fullbright() ? 1 : 0);
+            // ADR-127 §5 : cartes de normales et ORM, chacune sur son unité, sous sa tuile.
+            TextureRegion normal = part.asset().normalMap(part.rank());
+            GL20.glUniform1i(program.uniform("u_normal_mapped"), normal == null ? 0 : 1);
+            if (normal != null) {
+                bindTexture(NativeShaders.NORMAL_UNIT, normal.binding());
+                regionUniform(program, "u_normal_region", normal);
+                GL20.glUniform1f(program.uniform("u_normal_scale"), material.normalScale());
+            }
+            TextureRegion orm = part.asset().orm(part.rank());
+            GL20.glUniform1i(program.uniform("u_orm_mapped"), orm == null ? 0 : 1);
+            if (orm != null) {
+                bindTexture(NativeShaders.ORM_UNIT, orm.binding());
+                regionUniform(program, "u_orm_region", orm);
+                GL20.glUniform1f(program.uniform("u_occlusion_strength"), material.occlusionStrength());
+            }
             draw(part, instance, region);
         }
     }
@@ -378,7 +394,7 @@ final class NativeGlBackend implements RenderBackend {
             boundVao = part.gpu().vao();
         }
         meshes.pointInstance(instance);
-        bindTexture(region == null ? VanillaConsumerBackend.NEUTRAL : region.binding());
+        bindTexture(NativeShaders.ALBEDO_UNIT, region == null ? VanillaConsumerBackend.NEUTRAL : region.binding());
         if (part.look().doubleSided()) {
             RenderSystem.disableCull();
         } else {
@@ -400,19 +416,25 @@ final class NativeGlBackend implements RenderBackend {
     }
 
     /**
-     * Lie une texture à l'unité de l'albedo, filtrée comme à son téléversement : Minecraft
-     * réapplique le filtrage à chaque liaison, comme le fait un type de rendu.
+     * Lie une texture à une unité, filtrée comme à son téléversement : Minecraft réapplique le
+     * filtrage à chaque liaison, comme le fait un type de rendu.
      */
-    private void bindTexture(TextureBinding binding) {
-        if (binding.equals(boundTexture)) {
+    private void bindTexture(int unit, TextureBinding binding) {
+        if (binding.equals(boundTextures[unit])) {
             return;
         }
         AbstractTexture texture =
                 Minecraft.getInstance().getTextureManager().getTexture(VanillaTexturePipeline.location(binding.location()));
-        // setFilter lie la texture à l'unité active, celle de l'albedo.
+        // setFilter lie la texture à l'unité active : celle qu'on vise, d'abord.
+        RenderSystem.activeTexture(GL13.GL_TEXTURE0 + unit);
         texture.setFilter(binding.blur(), binding.mipmap());
         RenderSystem.bindTexture(texture.getId());
-        boundTexture = binding;
+        boundTextures[unit] = binding;
+    }
+
+    /** Pose la tuile d'une texture : décalage, puis échelle, en u et en v. */
+    private static void regionUniform(NativeShaders.Program program, String name, TextureRegion region) {
+        GL20.glUniform4f(program.uniform(name), region.uOffset(), region.vOffset(), region.uScale(), region.vScale());
     }
 
     /** Referme une passe sur l'état que laissent les {@code RenderType} de Minecraft. */
@@ -425,12 +447,14 @@ final class NativeGlBackend implements RenderBackend {
         boundVao = 0;
         BufferUploader.invalidate();
         GlStateManager._glUseProgram(0);
-        RenderSystem.activeTexture(GL13.GL_TEXTURE0 + NativeShaders.LIGHTMAP_UNIT);
-        RenderSystem.bindTexture(0);
-        RenderSystem.activeTexture(GL13.GL_TEXTURE0 + NativeShaders.ALBEDO_UNIT);
-        RenderSystem.bindTexture(0);
+        for (int unit : new int[] {
+            NativeShaders.ORM_UNIT, NativeShaders.LIGHTMAP_UNIT, NativeShaders.NORMAL_UNIT, NativeShaders.ALBEDO_UNIT
+        }) {
+            RenderSystem.activeTexture(GL13.GL_TEXTURE0 + unit);
+            RenderSystem.bindTexture(0);
+        }
         RenderSystem.activeTexture(activeTexture);
-        boundTexture = null;
+        Arrays.fill(boundTextures, null);
         RenderSystem.disableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.depthMask(true);

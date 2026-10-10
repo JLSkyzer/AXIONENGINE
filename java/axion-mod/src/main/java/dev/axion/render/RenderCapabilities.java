@@ -132,7 +132,7 @@ public final class RenderCapabilities {
                 new Entry(Capability.ADVANCED_MATERIALS, Availability.NOT_DELIVERED,
                         "variantes PARALLAX, CLEARCOAT, SHEEN et ANISO de R-762 : C-63"),
                 new Entry(Capability.MATERIAL_MAPS, Availability.NOT_DELIVERED,
-                        "albedo et émissive seuls ; normal et ORM : C-63 (ADR-127 §5), hauteur : C-63,"
+                        "normal et ORM appliquées (ADR-127 §5) ; hauteur, avec la variante PARALLAX : C-63 ;"
                                 + " dommage : C-69"),
                 new Entry(Capability.SSR, Availability.NOT_DELIVERED, "expérimental, Q-4 (R-1560) : C-83"),
                 new Entry(Capability.INSTANCING, Availability.NOT_DELIVERED,

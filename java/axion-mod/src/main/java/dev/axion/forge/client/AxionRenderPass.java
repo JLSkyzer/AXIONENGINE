@@ -481,6 +481,7 @@ public final class AxionRenderPass {
                     Minecraft.getInstance(),
                     line -> LOGGER.warn("AXION : maillage {}", line));
             runtime.addNativeReleaser(cache::close);
+            cache.setMaterialMaps(backend != null && backend.kind() == BackendSelection.Kind.NATIVE);
             meshes = cache;
         }
         return meshes;
@@ -508,7 +509,12 @@ public final class AxionRenderPass {
         if (runtime != null) {
             runtime.setRenderCapabilities(capabilities);
         }
-        if (selection.kind() == BackendSelection.Kind.NATIVE) {
+        // ADR-127 §5 : le natif se sert des cartes de normales et ORM, le vanilla non (R-1513).
+        boolean natif = selection.kind() == BackendSelection.Kind.NATIVE;
+        if (meshes != null) {
+            meshes.setMaterialMaps(natif);
+        }
+        if (natif) {
             return candidate;
         }
         if (candidate != null) {

@@ -2010,13 +2010,12 @@ substituable sans changer rapier »).
                         **Éclairage corrigé** : la lightmap porte l'intensité et la teinte de l'ambiante, l'hémisphère
                         ciel-sol sa seule répartition (ADR-127 §5) — le cube de test, métal rugueux par défaut de glTF,
                         n'est plus bleu à midi et se voit à minuit : dessus 170, côtés 99, minuit 39 en natif, contre 251,
-                        178 et 143, 57 en vanilla. Reste : cartes normal et ORM chargées pour le natif (ADR-127 §5). **Plan du
-                        2026-10-11**, dans l'ordre : (1) deux panneaux d'essai générés par script (`tools/assets/`), l'un
-                        avec normal map et ORM, l'autre plat ; (2) `TexturePlan`, `MeshLook`, `RenderAsset` : les cartes,
-                        demandées au `MeshCache` seulement quand le natif est actif (R-1513 : le vanilla ne les charge pas),
-                        tests purs ; (3) shaders : tangente (attribut 2), normal map, ORM (occlusion sur l'ambiante,
-                        rugosité, métal), une tuile par texture ; unités 1 et 3 ; (4) banc natif : les deux panneaux face à
-                        la caméra, le relief doit faire varier la luminance bien plus que le plat ; (5) matrice, ADR-127 §5.
+                        178 et 143, 57 en vanilla. **Cartes normal et ORM faites le 2026-10-11** (ADR-127 §5) : panneaux
+                        d'essai générés (`tools/assets/panneaux_relief.py` : `relief`, `plat`), cartes demandées au
+                        `MeshCache` seulement le natif actif (R-1513), normal map dans l'espace tangent de glTF, ORM sur
+                        rugosité, métal et occlusion de l'ambiante, une tuile par carte, unités 1 et 3. Au banc : natif,
+                        écart-type de luminance 25,9 sur le relief contre 0,0 sur le plat ; vanilla, 0,0 et 0,0 — les
+                        deux bancs verts. Reste de D4 : rien, hors T-904 (C-63, non mesuré).
                         **Banc local autorisé par Killian** (`./gradlew runRenderTest`, `runRenderTestNative`, ~1 min
                         chacun sur sa RTX 4060) — itérer localement, puis CI.
                   - [ ] **D5 — C-61 T4+ et bascules** : bascule à chaud (R-744, T-492),
