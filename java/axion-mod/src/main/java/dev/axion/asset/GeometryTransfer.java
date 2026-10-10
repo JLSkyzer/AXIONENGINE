@@ -120,6 +120,11 @@ public final class GeometryTransfer {
     private final int[] indices;
     private final List<Draw> draws;
 
+    /** Le transfert reçu, gardé tel quel : le backend natif en téléverse sommets et indices. */
+    private final byte[] raw;
+    private final int verticesAt;
+    private final int indicesAt;
+
     private GeometryTransfer(
             List<Mesh> meshes,
             float[] positions,
@@ -127,7 +132,10 @@ public final class GeometryTransfer {
             float[] uvs,
             byte[] colors,
             int[] indices,
-            List<Draw> draws) {
+            List<Draw> draws,
+            byte[] raw,
+            int verticesAt,
+            int indicesAt) {
         this.meshes = meshes;
         this.positions = positions;
         this.normals = normals;
@@ -135,6 +143,9 @@ public final class GeometryTransfer {
         this.colors = colors;
         this.indices = indices;
         this.draws = draws;
+        this.raw = raw;
+        this.verticesAt = verticesAt;
+        this.indicesAt = indicesAt;
     }
 
     /**
@@ -233,7 +244,8 @@ public final class GeometryTransfer {
         }
 
         return new GeometryTransfer(
-                List.copyOf(meshes), positions, normals, uvs, colors, indices, List.copyOf(draws));
+                List.copyOf(meshes), positions, normals, uvs, colors, indices, List.copyOf(draws),
+                bytes, verticesAt, indicesAt);
     }
 
     /** {@return les meshes, dans l'ordre du transfert} */
@@ -282,5 +294,28 @@ public final class GeometryTransfer {
     /** {@return les indices, locaux à leur mesh} */
     public int[] indices() {
         return indices;
+    }
+
+    /**
+     * {@return les sommets tels que le natif les a déposés — le format GPU du §19.4, 48 octets
+     * chacun —, en lecture seule et petit-boutiste} Le backend natif les téléverse sans les réécrire
+     * (ADR-127 §2) : une normale ou une coordonnée de texture re-quantifiée depuis les tableaux
+     * décodés ne serait plus exactement celle de l'asset.
+     */
+    public ByteBuffer vertexData() {
+        return ByteBuffer.wrap(raw, verticesAt, vertexCount() * VERTEX_BYTES)
+                .slice()
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .asReadOnlyBuffer()
+                .order(ByteOrder.LITTLE_ENDIAN);
+    }
+
+    /** {@return les indices tels que le natif les a déposés, {@code u32} petit-boutistes, en lecture seule} */
+    public ByteBuffer indexData() {
+        return ByteBuffer.wrap(raw, indicesAt, indexCount() * Integer.BYTES)
+                .slice()
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .asReadOnlyBuffer()
+                .order(ByteOrder.LITTLE_ENDIAN);
     }
 }

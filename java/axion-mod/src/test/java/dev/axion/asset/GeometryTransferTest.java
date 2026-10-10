@@ -153,5 +153,28 @@ class GeometryTransferTest {
         GeometryTransfer vide = GeometryTransfer.parse(new byte[16]);
         assertEquals(0, vide.vertexCount());
         assertTrue(vide.meshes().isEmpty() && vide.draws().isEmpty());
+        assertEquals(0, vide.vertexData().remaining());
+        assertEquals(0, vide.indexData().remaining());
+    }
+
+    @Test
+    void lesSommetsEtLesIndicesBrutsSontCeuxDuTransfert() {
+        // ADR-127 §2 : le backend natif téléverse le bloc des sommets tel quel, au format GPU du
+        // §19.4, et les indices de même — sans re-quantifier ce que les tableaux ont décodé.
+        byte[] octets = transfert(0x03FE);
+        GeometryTransfer geometrie = GeometryTransfer.parse(octets);
+
+        ByteBuffer sommets = geometrie.vertexData();
+        assertTrue(sommets.isReadOnly());
+        assertEquals(ByteOrder.LITTLE_ENDIAN, sommets.order());
+        byte[] lus = new byte[sommets.remaining()];
+        sommets.duplicate().get(lus);
+        assertArrayEquals(Arrays.copyOfRange(octets, 16 + 48, 16 + 48 + 3 * 48), lus);
+
+        ByteBuffer indices = geometrie.indexData();
+        assertEquals(3 * 4, indices.remaining());
+        assertEquals(2, indices.getInt(0));
+        assertEquals(1, indices.getInt(4));
+        assertEquals(0, indices.getInt(8));
     }
 }
