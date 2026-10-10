@@ -70,6 +70,9 @@ public final class AxionRenderPass {
     /** Backend actif ; {@code null} tant qu'aucun monde n'a été chargé. Render thread seul. */
     private static RenderBackend backend;
 
+    /** Choix de backend depuis le lancement. Render thread seul. */
+    private static int backendStarts;
+
     /** Vrai après une erreur de rendu : la passe se tait plutôt que d'échouer à chaque frame. */
     private static boolean failed;
 
@@ -152,6 +155,30 @@ public final class AxionRenderPass {
     public static BackendSelection.Kind activeBackend() {
         RenderSystem.assertOnRenderThread();
         return backend == null ? null : backend.kind();
+    }
+
+    /** {@return le nombre de choix de backend depuis le lancement : chacun en démarre un neuf} */
+    public static int backendStarts() {
+        RenderSystem.assertOnRenderThread();
+        return backendStarts;
+    }
+
+    /**
+     * {@return les objets GL que le backend natif tient en vie — zéro quand il n'est pas actif}
+     * Le banc de rendu vérifie ainsi qu'une bascule ne laisse rien derrière elle (T-492).
+     */
+    public static int nativeGlObjects() {
+        return NativeGlObjects.live();
+    }
+
+    /** {@return les fermetures du backend natif depuis le lancement} */
+    public static int nativeCloses() {
+        return NativeGlObjects.closes();
+    }
+
+    /** {@return les objets GL que la dernière fermeture du backend natif a laissés en vie : 0 attendu} */
+    public static int nativeGlObjectsLeftAtLastClose() {
+        return NativeGlObjects.leftAtLastClose();
     }
 
     /** {@return les overlays de debug, que la commande client allume et éteint} */
@@ -409,6 +436,7 @@ public final class AxionRenderPass {
      * le natif quand il est demandé ou laissé au choix, hors shaderpack, et qu'il démarre.
      */
     private static RenderBackend select() {
+        backendStarts++;
         AxionConfig config =
                 ConfigLoader.load(Scope.CLIENT, FMLPaths.CONFIGDIR.get(), System.getProperties());
         boolean shaderMod = false;

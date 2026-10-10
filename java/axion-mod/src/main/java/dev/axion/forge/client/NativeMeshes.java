@@ -83,6 +83,7 @@ final class NativeMeshes implements AutoCloseable {
         RenderSystem.assertOnRenderThread();
         this.budget = new GpuBudget<>(budgetBytes);
         this.instanceBuffer = GL15.glGenBuffers();
+        NativeGlObjects.created();
     }
 
     /**
@@ -205,6 +206,7 @@ final class NativeMeshes implements AutoCloseable {
     public void close() {
         releaseAll();
         GL15.glDeleteBuffers(instanceBuffer);
+        NativeGlObjects.deleted();
     }
 
     private GpuAsset upload(RenderAsset asset) {
@@ -250,15 +252,18 @@ final class NativeMeshes implements AutoCloseable {
 
     private ArenaGl create(ArenaAllocator.Arena arena) {
         int vertexBuffer = GL15.glGenBuffers();
+        NativeGlObjects.created();
         GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, vertexBuffer);
         GL15.glBufferData(GL31.GL_COPY_WRITE_BUFFER, arena.vertexCapacity(), GL15.GL_STATIC_DRAW);
         int indexBuffer = GL15.glGenBuffers();
+        NativeGlObjects.created();
         GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, indexBuffer);
         GL15.glBufferData(GL31.GL_COPY_WRITE_BUFFER, Math.max(arena.indexCapacity(), ArenaAllocator.INDEX_BYTES),
                 GL15.GL_STATIC_DRAW);
         GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, 0);
 
         int vao = GL30.glGenVertexArrays();
+        NativeGlObjects.created();
         GL30.glBindVertexArray(vao);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vertexBuffer);
         int stride = ArenaAllocator.VERTEX_BYTES;
@@ -316,5 +321,8 @@ final class NativeMeshes implements AutoCloseable {
         GL30.glDeleteVertexArrays(arena.vao());
         GL15.glDeleteBuffers(arena.vertexBuffer());
         GL15.glDeleteBuffers(arena.indexBuffer());
+        NativeGlObjects.deleted();
+        NativeGlObjects.deleted();
+        NativeGlObjects.deleted();
     }
 }

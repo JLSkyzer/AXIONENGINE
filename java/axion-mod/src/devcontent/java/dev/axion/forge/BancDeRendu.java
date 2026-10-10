@@ -4,9 +4,16 @@ import dev.axion.AxionMod;
 import dev.axion.forge.client.AxionRenderPass;
 import dev.axion.forge.client.GlStateCheck;
 import dev.axion.render.BackendSelection;
+import dev.axion.config.ConfigLoader;
+import dev.axion.config.ConfigSchema.Scope;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
@@ -21,9 +28,12 @@ import net.minecraft.client.tutorial.TutorialSteps;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtIo;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Difficulty;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
@@ -38,6 +48,7 @@ import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.loading.FMLPaths;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -86,6 +97,9 @@ public final class BancDeRendu {
 
     /** Écart toléré entre la boîte d'une silhouette et celle de sa projection, en pixels. */
     private static final int ECART_BOITE = 2;
+
+    /** T-491 : écart toléré entre les boîtes du cube dans les deux backends, même scène, même vue. */
+    private static final int ECART_BACKENDS = 1;
 
     /**
      * Une scène est stable quand {@value} relevés de suite, espacés de {@link #TICKS_ENTRE_RELEVES}
@@ -146,7 +160,8 @@ public final class BancDeRendu {
 
     private static final List<Etape> SCENARIO = new ArrayList<>();
     private static final RapportDuBanc RAPPORT = new RapportDuBanc(NATIF
-            ? List.of("backend", "T-470", "T-474", "T-471", "T-479", "T-472", "T-473", "erreurs AXION")
+            ? List.of("backend", "T-470", "T-474", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+                    "T-491c", "T-492", "T-472", "T-473", "erreurs AXION")
             : List.of("backend", "T-470", "T-474", "T-471", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
@@ -187,6 +202,18 @@ public final class BancDeRendu {
     private static CapturesDuBanc.Capture minuit;
 
     private static CompletableFuture<Void> rechargement;
+    private static int demarragesAvantRechargement;
+    private static int demarrages;
+    private static int fermetures;
+    /** Objets GL du natif à chaque retour sur lui, puis à chaque passage en vanilla. */
+    private static final List<Integer> objetsNatif = new ArrayList<>();
+    private static final List<Integer> objetsVanilla = new ArrayList<>();
+    private static CapturesDuBanc.Capture silhouetteNatif;
+    private static CapturesDuBanc.Capture silhouetteVanilla;
+    private static AxionRenderPass.FrameStats passesNatif;
+    private static byte[] etatAvant;
+    private static byte[] etatApres;
+    private static volatile int assembliesComparees;
 
     private static boolean compter;
     private static long erreursFrames;
@@ -362,22 +389,43 @@ public final class BancDeRendu {
         });
 
         if (NATIF) {
+            // T-503, T-510 : un rechargement des ressources rend tout ce que le natif tient, puis le
+            // reconstruit — shaders relus et recompilés, assets retéléversés (R-752, R-760).
+            une("relever le natif", mc -> {
+                demarrages = AxionRenderPass.backendStarts();
+                fermetures = AxionRenderPass.nativeCloses();
+                objetsNatif.add(AxionRenderPass.nativeGlObjects());
+            });
+            recharger("les ressources");
+            jusqua("la scène redessinée en natif", 120, mc -> redessinee(BackendSelection.Kind.NATIVE));
+            une("juger T-503 et T-510", mc -> jugerT503EtT510());
+
+            // T-491 : la même scène, dans les deux backends, dans ce même passage — capturée en natif,
+            // puis en vanilla après la bascule de T-479 ; et l'état du serveur de part et d'autre.
+            stabiliser("le cube en natif");
+            une("capturer le cube en natif", mc -> {
+                silhouetteNatif = capturer(mc, "t491_natif.png");
+                passesNatif = AxionRenderPass.lastFrame();
+            });
+            serveur("relever l'état du serveur", s -> etatAvant = etatDuServeur(s));
+
             // T-479 : des shaders qui ne compilent pas font basculer sur vanilla, sans crash (R-761).
             // L'échec survient au rechargement des ressources, où le backend est choisi de nouveau
             // (R-1490) ; la scène doit être redessinée, assets compris, par le backend vanilla.
-            une("provoquer l'échec des shaders", mc -> {
-                journal.attendre(E_4001);
-                AxionRenderPass.forceShaderFailure(true);
-                rechargement = mc.reloadResourcePacks();
+            basculerSurVanilla("les ressources aux shaders refusés");
+            une("juger T-479", mc -> jugerT479());
+            serveur("relever l'état du serveur après la bascule", s -> etatApres = etatDuServeur(s));
+            stabiliser("le cube en vanilla");
+            une("capturer le cube en vanilla, juger T-491", mc -> {
+                silhouetteVanilla = capturer(mc, "t491_vanilla.png");
+                jugerT491(AxionRenderPass.lastFrame());
             });
-            jusqua("les ressources rechargées", 300, mc -> rechargement.isDone() && mc.getOverlay() == null);
-            jusqua("la scène redessinée", 120, mc -> AxionRenderPass.activeBackend() != null
-                    && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 1);
-            une("juger T-479", mc -> {
-                journal.attendre(null);
-                AxionRenderPass.forceShaderFailure(false);
-                jugerT479();
-            });
+
+            // T-492 : retour au natif, de nouveau vanilla, puis natif encore — sans rien laisser derrière.
+            revenirAuNatif("retour au natif");
+            basculerSurVanilla("seconde bascule sur vanilla");
+            revenirAuNatif("second retour au natif");
+            une("juger T-492", mc -> jugerT492());
         }
 
         une("juger T-472, T-473 et le journal", mc -> {
@@ -553,6 +601,26 @@ public final class BancDeRendu {
                 framesComptees, total, pendantLesPasses, FRAMES_SANS_AXION, erreursSansAxion));
     }
 
+    private static void jugerT503EtT510() {
+        int fermees = AxionRenderPass.nativeCloses() - fermetures;
+        int laisses = AxionRenderPass.nativeGlObjectsLeftAtLastClose();
+        int nouveaux = AxionRenderPass.backendStarts() - demarrages;
+        int avant = objetsNatif.get(0);
+        int apres = AxionRenderPass.nativeGlObjects();
+        objetsNatif.add(apres);
+        AxionRenderPass.FrameStats passe = AxionRenderPass.lastFrame();
+        RAPPORT.noter("T-503", fermees == 1 && laisses == 0 && apres == avant && passe.withAsset() == passe.assemblies(),
+                String.format(Locale.ROOT,
+                        "rechargement des ressources : %d fermeture(s) du natif, %d objet(s) GL laissé(s) en vie ;"
+                                + " %d objet(s) avant, %d reconstruit(s) ; %d assembly(s) sur %d redessinée(s) avec leur"
+                                + " asset",
+                        fermees, laisses, avant, apres, passe.withAsset(), passe.assemblies()));
+        BackendSelection.Kind actif = AxionRenderPass.activeBackend();
+        RAPPORT.noter("T-510", nouveaux == 1 && actif == BackendSelection.Kind.NATIVE, String.format(Locale.ROOT,
+                "%d démarrage(s) du backend au rechargement, shaders relus du JAR et recompilés ; backend %s",
+                nouveaux, actif));
+    }
+
     private static void jugerT479() {
         BackendSelection.Kind actif = AxionRenderPass.activeBackend();
         List<String> provoquees = journal.erreursAttendues();
@@ -566,6 +634,55 @@ public final class BancDeRendu {
                         + " dessinée(s), %d avec leur asset",
                 actif, provoquees.size(), provoquees.isEmpty() ? "" : " (« " + provoquees.get(0) + " »)",
                 passe.assemblies(), passe.withAsset()));
+        // ADR-127 §8 attribue T-511 à R-761, que T-479 mesure ici même.
+        RAPPORT.noter("T-511", vert, "R-761, mesuré par T-479 : " + (vert ? "bascule sur vanilla sans crash" : "ÉCHEC"));
+    }
+
+    /**
+     * T-491, T-491b, T-491c : la même scène dans les deux backends (§19.2bis) — mêmes instances, mêmes
+     * boîtes à l'écran, couverture en pixels sous {@code render.backend_silhouette_tolerance} — et un
+     * serveur que la bascule n'a pas touché (R-1494).
+     */
+    private static void jugerT491(AxionRenderPass.FrameStats passesVanilla) {
+        CapturesDuBanc.Masque natif = CapturesDuBanc.masque(fond, silhouetteNatif);
+        CapturesDuBanc.Masque vanilla = CapturesDuBanc.masque(fond, silhouetteVanilla);
+        boolean memesInstances = passesNatif.assemblies() == passesVanilla.assemblies()
+                && passesNatif.withAsset() == passesVanilla.withAsset();
+        int ecartBoites = vanilla.nombre() == 0 ? Integer.MAX_VALUE : ecart(natif, vanilla.boite());
+        RAPPORT.noter("T-491", memesInstances && ecartBoites <= ECART_BACKENDS, String.format(Locale.ROOT,
+                "natif : %d assembly(s), %d avec leur asset, boîte %s ; vanilla : %d, %d, boîte %s (écart %d px)",
+                passesNatif.assemblies(), passesNatif.withAsset(), Arrays.toString(natif.boite()),
+                passesVanilla.assemblies(), passesVanilla.withAsset(), Arrays.toString(vanilla.boite()), ecartBoites));
+
+        double tolerance = toleranceSilhouette();
+        int pixelsNatif = natif.nombre();
+        int pixelsVanilla = vanilla.nombre();
+        double ecartRelatif = Math.abs(pixelsNatif - pixelsVanilla)
+                / (double) Math.max(1, Math.max(pixelsNatif, pixelsVanilla));
+        RAPPORT.noter("T-491c", pixelsNatif > 0 && ecartRelatif <= tolerance, String.format(Locale.ROOT,
+                "couverture du cube : %d px en natif, %d px en vanilla, écart %.2f %% pour %.2f %% tolérés",
+                pixelsNatif, pixelsVanilla, ecartRelatif * 100.0, tolerance * 100.0));
+
+        boolean memeEtat = etatAvant != null && etatAvant.length > 4 && Arrays.equals(etatAvant, etatApres);
+        RAPPORT.noter("T-491b", memeEtat, String.format(Locale.ROOT,
+                "%d assembly(s) du serveur, NBT de %d octets avant la bascule, %d après : %s",
+                assembliesComparees, etatAvant == null ? 0 : etatAvant.length, etatApres == null ? 0 : etatApres.length,
+                memeEtat ? "identiques octet pour octet" : "DIFFÉRENTS"));
+    }
+
+    private static void jugerT492() {
+        boolean natifConstant = objetsNatif.size() >= 3 && objetsNatif.get(0) > 0
+                && objetsNatif.stream().allMatch(objets -> objets.equals(objetsNatif.get(0)));
+        boolean vanillaVide = objetsVanilla.size() == 2 && objetsVanilla.stream().allMatch(objets -> objets == 0);
+        RAPPORT.noter("T-492", natifConstant && vanillaVide, String.format(Locale.ROOT,
+                "objets GL du natif à chaque passage sur lui %s, en vanilla %s ; %d fermeture(s) du natif",
+                objetsNatif, objetsVanilla, AxionRenderPass.nativeCloses() - fermetures));
+    }
+
+    /** {@return {@code render.backend_silhouette_tolerance}, telle que le client la lit (§19.2bis)} */
+    private static double toleranceSilhouette() {
+        return ConfigLoader.load(Scope.CLIENT, FMLPaths.CONFIGDIR.get(), System.getProperties())
+                .getFloat("render.backend_silhouette_tolerance");
     }
 
     private static void jugerT472() {
@@ -766,6 +883,72 @@ public final class BancDeRendu {
             }
             return false;
         });
+    }
+
+    /** Recharge les ressources du client, et attend la fin du rechargement. */
+    private static void recharger(String quoi) {
+        une("recharger " + quoi, mc -> {
+            demarragesAvantRechargement = AxionRenderPass.backendStarts();
+            rechargement = mc.reloadResourcePacks();
+        });
+        jusqua("le rechargement fini — " + quoi, 300, mc -> rechargement.isDone() && mc.getOverlay() == null);
+    }
+
+    /** Bascule sur vanilla par des shaders refusés au rechargement (T-479), puis relève le natif. */
+    private static void basculerSurVanilla(String quoi) {
+        une("refuser les shaders — " + quoi, mc -> {
+            journal.attendre(E_4001);
+            AxionRenderPass.forceShaderFailure(true);
+        });
+        recharger(quoi);
+        jusqua("la scène redessinée en vanilla — " + quoi, 120, mc -> redessinee(BackendSelection.Kind.VANILLA));
+        une("relever la bascule — " + quoi, mc -> {
+            journal.attendre(null);
+            AxionRenderPass.forceShaderFailure(false);
+            objetsVanilla.add(AxionRenderPass.nativeGlObjects());
+        });
+    }
+
+    /** Revient au natif par un rechargement, puis relève ses objets GL (T-492). */
+    private static void revenirAuNatif(String quoi) {
+        recharger(quoi);
+        jusqua("la scène redessinée en natif — " + quoi, 120, mc -> redessinee(BackendSelection.Kind.NATIVE));
+        une("relever le natif — " + quoi, mc -> objetsNatif.add(AxionRenderPass.nativeGlObjects()));
+    }
+
+    /** {@return vrai quand un backend neuf, du type attendu, a redessiné toute la scène, assets compris} */
+    private static boolean redessinee(BackendSelection.Kind attendu) {
+        AxionRenderPass.FrameStats frame = AxionRenderPass.lastFrame();
+        return AxionRenderPass.backendStarts() > demarragesAvantRechargement
+                && AxionRenderPass.activeBackend() == attendu
+                && frame.assemblies() == DERRIERE.size() + 1
+                && frame.withAsset() == frame.assemblies();
+    }
+
+    /**
+     * {@return les assemblies du monde, dans l'ordre de leurs identifiants, telles qu'elles seraient
+     * persistées : leur NBT, écrit octet par octet (T-491b)} Sur le thread du serveur.
+     */
+    private static byte[] etatDuServeur(MinecraftServer serveur) {
+        List<AxionEntity> assemblies = new ArrayList<>();
+        for (Entity entite : serveur.overworld().getAllEntities()) {
+            if (entite instanceof AxionEntity assembly) {
+                assemblies.add(assembly);
+            }
+        }
+        assemblies.sort(Comparator.comparingInt(Entity::getId));
+        assembliesComparees = assemblies.size();
+        ByteArrayOutputStream octets = new ByteArrayOutputStream();
+        try (DataOutputStream sortie = new DataOutputStream(octets)) {
+            sortie.writeInt(assemblies.size());
+            for (AxionEntity assembly : assemblies) {
+                sortie.writeInt(assembly.getId());
+                NbtIo.write(assembly.saveWithoutId(new CompoundTag()), sortie);
+            }
+        } catch (IOException echec) {
+            throw new UncheckedIOException("état du serveur illisible", echec);
+        }
+        return octets.toByteArray();
     }
 
     private static void jusqua(String nom, int secondes, Predicate<Minecraft> condition) {

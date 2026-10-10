@@ -33,6 +33,8 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL32;
 import org.lwjgl.system.MemoryStack;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Backend NATIVE_GL (C-60, ADR-127) : les assemblies par les tampons et les shaders d'AXION.
@@ -62,6 +64,8 @@ import org.lwjgl.system.MemoryStack;
  * <p>Render thread seul (R-1504, INV-12).
  */
 final class NativeGlBackend implements RenderBackend {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("axion");
 
     /** Teinte d'une instance : aucune, en M3. */
     private static final float[] NO_TINT = {1.0f, 1.0f, 1.0f, 1.0f};
@@ -113,7 +117,12 @@ final class NativeGlBackend implements RenderBackend {
     static NativeGlBackend create(ResourceManager resources, long budgetBytes) throws NativeShaders.ShaderFailure {
         RenderSystem.assertOnRenderThread();
         NativeShaders shaders = NativeShaders.compile(resources);
-        return new NativeGlBackend(shaders, new NativeMeshes(budgetBytes));
+        try {
+            return new NativeGlBackend(shaders, new NativeMeshes(budgetBytes));
+        } catch (RuntimeException failure) {
+            shaders.close();
+            throw failure;
+        }
     }
 
     @Override
@@ -189,10 +198,15 @@ final class NativeGlBackend implements RenderBackend {
         }
     }
 
+    /** Rend tous ses objets GL ; un objet resté vivant est une fuite, journalisée (R-744). */
     @Override
     public void close() {
         meshes.close();
         shaders.close();
+        int left = NativeGlObjects.closed();
+        if (left != 0) {
+            LOGGER.error("AXION : le backend natif laisse {} objet(s) GL en vie à sa fermeture (R-744)", left);
+        }
     }
 
     /**

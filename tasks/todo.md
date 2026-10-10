@@ -1963,17 +1963,23 @@ substituable sans changer rapier »).
                         R-1502 dès le backend vanilla (ADR-126 §5) —, et trois hypothèses fausses sur sa
                         propre scène : réentrance de `createFreshLevel`, stabilité supposée d'après un
                         délai, lumière de bloc qui vacille au hasard. Lancé chez Killian : à sa demande.
-                  - [ ] **D2 — C-62, ressources GPU** (fiche 5.49) : arènes de 16 Mio (VBO/EBO
+                  - [x] **D2 — C-62, ressources GPU** (fiche 5.49) : arènes de 16 Mio (VBO/EBO
                         partagés), allocations comptées et budget (R-750), libération différée de
                         3 frames, sur le render thread (R-751), reconstruction au changement de
                         resource pack (R-752) ; T-500..T-503 attribués par ADR-127 §8.
                         **Cœur pur fait le 2026-10-10** (a3f9e8a) : `ArenaAllocator` (T-500), `DeferredRelease`
-                        (T-502), `GpuBudget` (T-501), 23 tests. Reste : le collage GL — tampons, VAO par arène,
-                        téléversement —, avec D4, son seul consommateur ; T-503 au rechargement de ressources.
+                        (T-502), `GpuBudget` (T-501), 23 tests ; collage GL avec D4 (3e7bb41). **Fait le 2026-10-10** :
+                        T-503 au banc natif — rechargement des ressources, 1 fermeture, 0 objet GL laissé en vie,
+                        7 objets reconstruits, 10 assemblies sur 10 redessinées.
                   - [ ] **D3 — C-63, shaders** (fiche 5.50) : sources du JAR, variantes par
                         `#define` bornées (R-762), compilées sans à-coup et sans appel GL hors du
                         render thread (INV-12), cache binaire (R-760), échec → vanilla (R-761,
                         T-479) ; T-510..T-512 attribués par ADR-127 §8.
+                        **Vérifié au banc natif le 2026-10-10** : T-510 (sources du JAR relues et recompilées au
+                        rechargement), T-511 (= T-479, R-761). Reste : variantes compilées **à la demande**, sans
+                        à-coup, avec la variante de base en secours, bornées par `render.max_shader_variants`
+                        (R-762, T-512, T-904), et le cache binaire `GL_ARB_get_program_binary` (R-760, T-905). En
+                        M3, la seule variante, `CUTOUT`, est compilée au démarrage avec la base.
                   - [ ] **D4 — C-60, backend natif** (PARTIE 19) : ADR-127 (proposé, C-60/C-62/C-63). En
                         M3 les assemblies sont rigides : le natif peut dessiner la liste de repos déjà
                         transférée (`RestDraw`, ADR-119), transformée en Java, sans nouvelle surface FFI ;
@@ -2006,7 +2012,16 @@ substituable sans changer rapier »).
                   - [ ] **D5 — C-61 T4+ et bascules** : bascule à chaud (R-744, T-492),
                         invariants entre backends (T-491, T-491b..d), shaderpack (T-480, T-490) — ce
                         dernier suppose un mod de shaders en développement, à télécharger avec
-                        l'accord de Killian.
+                        l'accord de Killian. **Fait le 2026-10-10, au banc natif** (rechargements de
+                        ressources, le déclencheur de R-1490 que M3 sait provoquer) : T-492 — natif, vanilla,
+                        natif, vanilla, natif ; objets GL du natif comptés à leur création et à leur destruction
+                        (`NativeGlObjects`) : 7 à chaque passage natif, 0 en vanilla ; une fermeture qui en laisse
+                        en vie est journalisée (R-744) ; T-491 (mêmes instances, mêmes boîtes au pixel près),
+                        T-491c (couverture 11 156 px dans les deux backends, 0,00 % d'écart pour 1 % tolérés),
+                        T-491b (NBT des 10 assemblies du serveur identique octet pour octet, R-1494). Reste :
+                        T-491d — log et `/axion status` existent, l'indicateur de l'overlay vient avec C-73 ;
+                        T-480 et T-490 (mod de shaders, accord de Killian) ; **T-493** (skinning et déformation
+                        CPU plafonnés) : cité par M3 mais porté par C-66 (M4) et la M6 — à trancher par ADR.
                   - [ ] **D6 — T-551** : coût d'un overlay éteint, mesuré avec les métriques de C-72.
       - [ ] **C-61 — Backend VANILLA_CONSUMER** (fiche 5.48, PARTIE 19) — ouvre la chaîne de
             rendu, **vanilla d'abord** puis C-60 natif (ADR-118, ratifié 2026-10-01).

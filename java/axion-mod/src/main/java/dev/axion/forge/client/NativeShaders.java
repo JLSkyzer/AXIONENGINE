@@ -100,15 +100,15 @@ final class NativeShaders implements AutoCloseable {
             ShaderVariant variant = ShaderVariant.of(ShaderVariant.Define.CUTOUT);
             cutout = link("surface " + variant.key(), vertex, variant.apply(fragment));
         } catch (ShaderFailure failure) {
-            GL20.glDeleteProgram(surface.id);
+            delete(surface);
             throw failure;
         }
         Program emission;
         try {
             emission = link("émission", vertex, emissive);
         } catch (ShaderFailure failure) {
-            GL20.glDeleteProgram(surface.id);
-            GL20.glDeleteProgram(cutout.id);
+            delete(surface);
+            delete(cutout);
             throw failure;
         }
         return new NativeShaders(surface, cutout, emission);
@@ -142,9 +142,15 @@ final class NativeShaders implements AutoCloseable {
     @Override
     public void close() {
         RenderSystem.assertOnRenderThread();
-        GL20.glDeleteProgram(surface.id);
-        GL20.glDeleteProgram(cutout.id);
-        GL20.glDeleteProgram(emission.id);
+        delete(surface);
+        delete(cutout);
+        delete(emission);
+    }
+
+    /** Détruit un programme lié, compté parmi les objets du backend natif. */
+    private static void delete(Program program) {
+        GL20.glDeleteProgram(program.id);
+        NativeGlObjects.deleted();
     }
 
     /**
@@ -188,6 +194,7 @@ final class NativeShaders implements AutoCloseable {
             throw new ShaderFailure("liaison du programme « " + name + " » : " + log.strip());
         }
         Program linked = new Program(program);
+        NativeGlObjects.created();
         // Les échantillonneurs ne changent jamais d'unité : posés une fois, à la liaison.
         ProgramManager.glUseProgram(program);
         setSampler(linked, "u_albedo", ALBEDO_UNIT);
