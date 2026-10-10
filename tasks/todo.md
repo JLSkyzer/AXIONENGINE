@@ -2025,7 +2025,8 @@ substituable sans changer rapier »).
                         T-491b (NBT des 10 assemblies du serveur identique octet pour octet, R-1494). Reste :
                         T-491d — log et `/axion status` existent, l'indicateur de l'overlay vient avec C-73 ;
                         T-480 et T-490 (mod de shaders, accord de Killian) ; **T-493** (skinning et déformation
-                        CPU plafonnés) : cité par M3 mais porté par C-66 (M4) et la M6 — à trancher par ADR.
+                        CPU plafonnés) : cité par M3 mais porté par C-66 (M4) et la M6 — ADR-128 (proposé) le reporte avec
+                        eux, comme l'indicateur d'overlay de T-491d (C-73), et constate que T-308 et T-309 n'existent pas.
                   - [x] **D6 — T-551** : coût d'un overlay éteint, mesuré avec les métriques de C-72.
                         **Fait le 2026-10-10** : `DebugOverlayRendererTest` vérifie qu'éteints, les overlays ne créent
                         ni ne consultent le lecteur natif et ne gardent aucune géométrie (R-800, R-2280) ; le benchmark
