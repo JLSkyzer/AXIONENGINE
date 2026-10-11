@@ -1920,7 +1920,7 @@ substituable sans changer rapier »).
                   sous-pas (R-990).
             - [x] **B — scénarios déclaratifs** (§29.5) : JSON `structure`/`setup`/`asserts`/
                   `tolerance` joués en GameTest ; empilement stable 60 s, aucune traversée du sol
-                  sur 10 min. **Fait le 2026-10-06** (ADR-124, proposé) :
+                  sur 10 min. **Fait le 2026-10-06** (ADR-124, ratifié le 2026-10-11) :
                   `ScenarioGameTests` change chaque `data/axion/gametest/scenarios/<domaine>/
                   <nom>.json` en GameTest, validation stricte ; `physique/empilement_60s` et
                   `physique/aucune_traversee_10min` verts. Ils ont trouvé deux défauts, corrigés :
@@ -1939,7 +1939,7 @@ substituable sans changer rapier »).
                   trajectoires : la prochaine occurrence dira quand la pile part.
             - [x] **C — T-370..T-375 et T-380..T-384** : attribution par exigence (comme ADR-123
                   §12 pour T-300..T-307), tests existants étiquetés, manquants écrits. **Fait le
-                  2026-10-06** (ADR-125, proposé) : tests natifs préfixés `t37x_`/`t38x_`, classes
+                  2026-10-06** (ADR-125, ratifié le 2026-10-11) : tests natifs préfixés `t37x_`/`t38x_`, classes
                   de test Java étiquetées en Javadoc ; écrits : T-381..T-384 (balayage et
                   recouvrement par lot, groupes, capteurs, monde du dernier pas) et, pour T-374, les
                   GameTests `CollisionDuMondeGameTests` — section non chargée rendue pleine sans
@@ -1951,7 +1951,7 @@ substituable sans changer rapier »).
                   T-510..T-512, T-551, avec C-60, C-62 et C-63. Critères de PARTIE 37.2 :
                   aucune erreur GL (T-471), état GL et FBO restaurés (T-472), bascule sous
                   shaderpack (T-480).
-                  - [x] **D1 — banc de rendu client** (ADR-126, proposé) : client automatisé
+                  - [x] **D1 — banc de rendu client** (ADR-126, ratifié le 2026-10-11) : client automatisé
                         (`runRenderTest`, contenu de développement), contrôle de l'état GL de R-1503
                         (`GlStateCheck`), job `test-render` (34.3) sous Xvfb et Mesa llvmpipe ;
                         T-470..T-474 sur le backend vanilla. **Vert en CI le 2026-10-10** (run
@@ -1984,7 +1984,7 @@ substituable sans changer rapier »).
                         rechargement les 3 programmes relus du cache, rien compilé ; cache corrompu : les 3 recompilés et
                         réécrits), T-511 pour une variante refusée à la demande (bascule sur vanilla). Reste : **T-904**
                         — le temps de frame autour d'une variante compilée n'est pas encore mesuré (ADR-127 §4).
-                  - [ ] **D4 — C-60, backend natif** (PARTIE 19) : ADR-127 (proposé, C-60/C-62/C-63). En
+                  - [ ] **D4 — C-60, backend natif** (PARTIE 19) : ADR-127 (ratifié le 2026-10-11, C-60/C-62/C-63). En
                         M3 les assemblies sont rigides : le natif peut dessiner la liste de repos déjà
                         transférée (`RestDraw`, ADR-119), transformée en Java, sans nouvelle surface FFI ;
                         IF-05 (`axion_render_prepare`, §4.7) viendrait en M4 avec C-64/C-65/C-66, qui en
@@ -2001,7 +2001,7 @@ substituable sans changer rapier »).
                         `GL_FRONT_FACE`, VAO, tampon et programme ; sélection (`OpenGL33`, shaders compilés) ; colonne NATIVE
                         de la matrice ; `GpuBudget` admet un budget nul (domaine de `budgets.gpu_mem_bytes`). **Banc vert
                         dans les deux backends, en local** (RTX 4060) : `runRenderTest` (vanilla imposé) et
-                        `runRenderTestNative` — backend, T-470..T-474, erreurs AXION. **Écart au §19.4, à ratifier**
+                        `runRenderTestNative` — backend, T-470..T-474, erreurs AXION. **Écart au §19.4, ratifié le 2026-10-11**
                         (ADR-127 §9) : 18 emplacements d'attribut demandés, 16 garantis par GL 3.3 et offerts par NVIDIA ;
                         les 4 `uint` finaux du bloc d'instance sont lus en un `uvec4` (emplacement 14).
                         **CI verte** (run 38014466157, 3e7bb41) : les deux bancs passent aussi sous Mesa llvmpipe, aux
@@ -2033,7 +2033,7 @@ substituable sans changer rapier »).
                         de `/axion status` signale les 8 capacités non disponibles avec leur repli), l'indicateur de
                         l'overlay vient avec C-73 ;
                         T-480 et T-490 (mod de shaders, accord de Killian) ; **T-493** (skinning et déformation
-                        CPU plafonnés) : cité par M3 mais porté par C-66 (M4) et la M6 — ADR-128 (proposé) le reporte avec
+                        CPU plafonnés) : cité par M3 mais porté par C-66 (M4) et la M6 — ADR-128 (ratifié le 2026-10-11) le reporte avec
                         eux, comme l'indicateur d'overlay de T-491d (C-73), et constate que T-308 et T-309 n'existent pas.
                   - [x] **D6 — T-551** : coût d'un overlay éteint, mesuré avec les métriques de C-72.
                         **Fait le 2026-10-10** : `DebugOverlayRendererTest` vérifie qu'éteints, les overlays ne créent
