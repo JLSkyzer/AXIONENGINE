@@ -14,7 +14,7 @@ import org.apache.logging.log4j.core.config.Property;
  * Le journal vu par le banc de rendu (ADR-126) : les erreurs d'AXION, et tout message qui signale
  * un appel GL hors du render thread (T-473) — celui de {@code RenderSystem}, ceux de LWJGL —, d'où
  * qu'il vienne. Une erreur qu'une étape provoque exprès, annoncée par {@link #attendre}, est comptée
- * à part.
+ * à part. Il garde aussi l'entrée que chaque démarrage de backend écrit (R-1493, T-491d).
  *
  * <p>Contenu de développement, jamais empaqueté (R-1790). Appelé depuis n'importe quel thread.
  */
@@ -26,10 +26,14 @@ final class JournalDuBanc extends AbstractAppender {
 
     private final List<String> erreursAxion = new ArrayList<>();
     private final List<String> horsDuFil = new ArrayList<>();
+    private final List<String> rendu = new ArrayList<>();
 
     /** Erreur qu'une étape provoque exprès (T-479) : comptée à part, pas parmi celles d'AXION. */
     private Pattern attendue;
     private final List<String> erreursAttendues = new ArrayList<>();
+
+    /** Début de l'entrée unique qu'écrit chaque démarrage d'un backend de rendu (R-1493). */
+    static final String ENTREE_RENDU = "AXION : rendu — ";
 
     private JournalDuBanc() {
         super("AxionBancDeRendu", null, null, true, Property.EMPTY_ARRAY);
@@ -57,6 +61,9 @@ final class JournalDuBanc extends AbstractAppender {
                 horsDuFil.add(nom + " : " + texte);
             }
             boolean axion = "axion".equals(nom) || nom.startsWith("dev.axion");
+            if (axion && texte.startsWith(ENTREE_RENDU)) {
+                rendu.add(texte);
+            }
             if (axion && event.getLevel().isMoreSpecificThan(Level.ERROR)) {
                 if (attendue != null && attendue.matcher(texte).find()) {
                     erreursAttendues.add(texte);
@@ -84,6 +91,11 @@ final class JournalDuBanc extends AbstractAppender {
     /** {@return les erreurs journalisées par AXION depuis l'installation} */
     synchronized List<String> erreursAxion() {
         return List.copyOf(erreursAxion);
+    }
+
+    /** {@return les entrées de démarrage d'un backend de rendu, dans leur ordre, depuis l'installation} */
+    synchronized List<String> entreesDuRendu() {
+        return List.copyOf(rendu);
     }
 
     /** {@return les messages qui signalent un appel GL hors du render thread} */

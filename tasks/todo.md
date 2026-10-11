@@ -2028,7 +2028,10 @@ substituable sans changer rapier »).
                         en vie est journalisée (R-744) ; T-491 (mêmes instances, mêmes boîtes au pixel près),
                         T-491c (couverture 11 156 px dans les deux backends, 0,00 % d'écart pour 1 % tolérés),
                         T-491b (NBT des 10 assemblies du serveur identique octet pour octet, R-1494). Reste :
-                        T-491d — log et `/axion status` existent, l'indicateur de l'overlay vient avec C-73 ;
+                        T-491d — journal et `/axion status` **vérifiés au banc le 2026-10-11** dans les deux backends
+                        (une entrée par démarrage de backend, la dernière conforme à la matrice active ; la sortie réelle
+                        de `/axion status` signale les 8 capacités non disponibles avec leur repli), l'indicateur de
+                        l'overlay vient avec C-73 ;
                         T-480 et T-490 (mod de shaders, accord de Killian) ; **T-493** (skinning et déformation
                         CPU plafonnés) : cité par M3 mais porté par C-66 (M4) et la M6 — ADR-128 (proposé) le reporte avec
                         eux, comme l'indicateur d'overlay de T-491d (C-73), et constate que T-308 et T-309 n'existent pas.

@@ -3,7 +3,10 @@ package dev.axion.forge;
 import dev.axion.AxionMod;
 import dev.axion.forge.client.AxionRenderPass;
 import dev.axion.forge.client.GlStateCheck;
+import dev.axion.diag.StatusReport;
+import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.render.BackendSelection;
+import dev.axion.render.RenderCapabilities;
 import dev.axion.render.ShaderBinaryFile;
 import dev.axion.config.ConfigLoader;
 import dev.axion.config.ConfigSchema.Scope;
@@ -27,9 +30,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.ParticleStatus;
 import net.minecraft.client.tutorial.TutorialSteps;
+import net.minecraft.commands.CommandSource;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.server.MinecraftServer;
@@ -174,8 +179,8 @@ public final class BancDeRendu {
     private static final List<Etape> SCENARIO = new ArrayList<>();
     private static final RapportDuBanc RAPPORT = new RapportDuBanc(NATIF
             ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
-                    "T-491c", "T-905", "T-492", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-471", "T-472", "T-473", "erreurs AXION"));
+                    "T-491c", "T-905", "T-492", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
+            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -218,6 +223,9 @@ public final class BancDeRendu {
     private static AxionEntity panneauRelief;
     private static AxionEntity panneauPlat;
     private static int demarragesAvantRechargement;
+    /** Démarrages de backend à l'installation du journal : ceux qui suivent y laissent leur entrée. */
+    private static int demarragesALInstallation;
+    private static List<String> sortieDuStatut;
     private static int demarrages;
     private static int fermetures;
     /** Objets GL du natif à chaque retour sur lui, puis à chaque passage en vanilla. */
@@ -276,6 +284,7 @@ public final class BancDeRendu {
             debut = System.currentTimeMillis();
             debutEtape = System.nanoTime();
             journal = JournalDuBanc.installer();
+            demarragesALInstallation = AxionRenderPass.backendStarts();
             scenario();
         }
         if (compter) {
@@ -498,6 +507,16 @@ public final class BancDeRendu {
                 jugerVarianteRefusee();
             });
         }
+
+        // T-491d, pour sa part jouable en M3 (ADR-128) : un dernier démarrage du backend, dans les
+        // deux passages, puis son entrée au journal et la sortie de /axion status, réellement
+        // exécutée, confrontées à la matrice active. « Sans artefact » est jugé par T-470 et par
+        // les cartes de matériau, ignorées en vanilla (R-1513) ; l'overlay viendra avec C-73.
+        recharger("pour T-491d");
+        jusqua("le backend redémarré — T-491d", 120, mc -> AxionRenderPass.backendStarts() > demarragesAvantRechargement
+                && AxionRenderPass.activeBackend() != null);
+        serveur("exécuter /axion status", s -> sortieDuStatut = sortieDe(s, "axion status"));
+        une("juger T-491d", mc -> jugerT491d());
 
         une("juger T-472, T-473 et le journal", mc -> {
             jugerT472();
@@ -888,6 +907,48 @@ public final class BancDeRendu {
                 Math.round(maxX - marqueX), Math.round(maxY - marqueY));
     }
 
+    /**
+     * T-491d (R-1493) : chaque démarrage de backend depuis l'installation du journal y a laissé une
+     * entrée, la dernière décrit le backend actif, et /axion status signale chacune des capacités
+     * que ce backend n'a pas — indisponible ou pas encore livrée —, avec son repli.
+     */
+    private static void jugerT491d() {
+        List<String> entrees = journal.entreesDuRendu();
+        int demarres = AxionRenderPass.backendStarts() - demarragesALInstallation;
+        AxionRuntime runtime = RuntimeAccess.get();
+        RenderCapabilities matrice = runtime == null ? null : runtime.renderCapabilities();
+        if (matrice == null) {
+            RAPPORT.noter("T-491d, journal et statut", false, "aucune matrice de capacités au runtime");
+            return;
+        }
+        List<String> description = matrice.describe();
+        boolean actif = matrice.selection().kind() == AxionRenderPass.activeBackend();
+        boolean journalComplet = demarres >= 1 && entrees.size() == demarres;
+        boolean derniere = !entrees.isEmpty()
+                && entrees.get(entrees.size() - 1).equals(JournalDuBanc.ENTREE_RENDU + String.join("\n  ", description));
+        String statut = String.join("\n", sortieDuStatut);
+        int absentes = 0;
+        int signalees = 0;
+        for (RenderCapabilities.Entry ligne : matrice.entries()) {
+            if (ligne.availability() == RenderCapabilities.Availability.AVAILABLE) {
+                continue;
+            }
+            signalees++;
+            if (!statut.contains(ligne.capability().label() + " — " + ligne.detail())) {
+                absentes++;
+            }
+        }
+        boolean rapporte = statut.contains("  rendu : " + description.get(0))
+                && description.subList(1, description.size()).stream().allMatch(l -> statut.contains("    " + l));
+        RAPPORT.noter("T-491d, journal et statut", actif && journalComplet && derniere && rapporte && signalees > 0 && absentes == 0,
+                String.format(Locale.ROOT,
+                        "overlay : C-73 (ADR-128) ; backend %s ; journal : %d entrée(s) pour %d démarrage(s), la dernière %s ; /axion status :"
+                                + " %d ligne(s), matrice %s, %d capacité(s) sans repli dit sur %d non disponible(s)",
+                        matrice.selection().kind(), entrees.size(), demarres,
+                        derniere ? "conforme à la matrice active" : "DIFFÉRENTE de la matrice active",
+                        sortieDuStatut.size(), rapporte ? "reproduite" : "INCOMPLÈTE", absentes, signalees));
+    }
+
     private static void jugerT472() {
         boolean actif = GlStateCheck.ENABLED && GlStateCheck.checks() > 0;
         RAPPORT.noter("T-472", actif && GlStateCheck.differences() == 0 && GlStateCheck.errors() == 0,
@@ -1024,6 +1085,34 @@ public final class BancDeRendu {
         for (String ligne : lignes) {
             serveur.getCommands().performPrefixedCommand(source, ligne);
         }
+    }
+
+    /** {@return ce qu'une commande, exécutée avec les droits du serveur, répond ligne à ligne} Sur le thread du serveur. */
+    private static List<String> sortieDe(MinecraftServer serveur, String ligne) {
+        List<String> sortie = new ArrayList<>();
+        CommandSource recueil = new CommandSource() {
+            @Override
+            public void sendSystemMessage(Component message) {
+                sortie.add(message.getString());
+            }
+
+            @Override
+            public boolean acceptsSuccess() {
+                return true;
+            }
+
+            @Override
+            public boolean acceptsFailure() {
+                return true;
+            }
+
+            @Override
+            public boolean shouldInformAdmins() {
+                return false;
+            }
+        };
+        serveur.getCommands().performPrefixedCommand(serveur.createCommandSourceStack().withSource(recueil), ligne);
+        return List.copyOf(sortie);
     }
 
     private static void terminer(Minecraft minecraft, String echec) {

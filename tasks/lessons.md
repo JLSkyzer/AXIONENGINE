@@ -1267,3 +1267,16 @@ sept passages verts qui n'ont rien appris — le défaut, rare en local, ne s'y 
 **Règle.** Une boucle longue qui construit le dépôt tourne sur un arbre figé — un `git worktree` du
 commit voulu —, jamais sur l'arbre où l'on écrit. Et un défaut intermittent qui se montre en CI se
 chasse d'abord là : la CI garde la trace des GameTests en artefact quand ils échouent.
+
+## 2026-10-11 | Banc de rendu relancé pour un simple renommage
+
+**Ce qui a mal tourné.** Après deux passages verts du banc (vanilla et natif) pour T-491d, j'ai renommé
+l'identifiant de la vérification dans le rapport, puis relancé les deux bancs. Deux lancements du jeu
+inutiles ; Killian a demandé pourquoi le jeu se relançait sans cesse.
+
+**Cause.** Prudence mal placée : rejouer un test qui lance le jeu pour un changement qui ne touche
+aucune logique — chaîne d'affichage, commentaire.
+
+**Règle.** Un banc qui lance le jeu se rejoue quand la logique jugée ou le code rendu a changé, pas
+pour un libellé : la compilation suffit alors, et la CI rejouera le banc au push. Annoncer à Killian
+chaque lancement et ce qu'il doit prouver.
