@@ -225,6 +225,12 @@ fn un_corps_sans_joueur_a_portee_s_endort_et_se_reveille_a_son_retour() {
         "éveillé près d'un joueur"
     );
     assert_eq!(metrique(ctx, "axion.sim.slept_radius"), 0);
+    // INV-19 : les budgets que le natif mesure sont alimentés — un corps actif sous le
+    // plafond, un submit chronométré, la mémoire des tampons de transfert comptée.
+    assert_eq!(metrique(ctx, "axion.budget.max_active_bodies.consumed"), 1);
+    assert_eq!(metrique(ctx, "axion.budget.max_active_bodies.overruns"), 0);
+    assert!(metrique(ctx, "axion.budget.submit_ns.consumed") > 0);
+    assert!(metrique(ctx, "axion.budget.native_mem_bytes.consumed") > 0);
     // C-38 T4 : les feuilles de la phase large se voient ; ici, le seul collider du cube.
     assert_eq!(metrique(ctx, "axion.sim.colliders"), 1);
 
@@ -233,6 +239,8 @@ fn un_corps_sans_joueur_a_portee_s_endort_et_se_reveille_a_son_retour() {
     assert_ne!(flags & body_state_flags::SLEEPING, 0, "endormi sans joueur");
     assert_eq!(metrique(ctx, "axion.sim.slept_radius"), 1);
     assert_eq!(metrique(ctx, "axion.sim.woken"), 0);
+    // La jauge est celle du dernier tick : plus aucun corps actif.
+    assert_eq!(metrique(ctx, "axion.budget.max_active_bodies.consumed"), 0);
 
     // Le joueur revient : le corps se réveille.
     let flags = tick(ctx, 3, &[(opcode::SET_OBSERVERS, joueur_proche())]);

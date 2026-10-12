@@ -15,7 +15,7 @@ use crate::cpu_clock;
 use ax_asset::a3d::A3dLimits;
 use ax_asset::compile::{CompileError, CompiledAsset};
 use ax_core::{BufferPool, ContextGuard, RuntimeState};
-use ax_jobs::{JobBudgets, JobSystem, Side, WorkerPolicy};
+use ax_jobs::{JobBudgets, JobKind, JobSystem, Side, WorkerPolicy};
 use ax_jobs::{JobHandle, JobOutcome};
 use ax_mem::{ArenaClass, ArenaCounter, MemoryError};
 use ax_model::budgets::Budget;
@@ -132,6 +132,11 @@ pub struct Session {
     /// Plafonds de lecture des conteneurs A3D (`assets.max_compiled_bytes`,
     /// R-901).
     a3d_limits: A3dLimits,
+    /// Budgets de durée en vigueur, pour juger chaque tick (R-500).
+    budgets: JobBudgets,
+    /// Temps cumulé des travaux de chaque budget au dernier tick : la consommation du
+    /// tick est l'écart, pas le cumul (INV-19).
+    job_elapsed_seen: [u64; Budget::ALL.len()],
     /// Détenu pour la durée de la session : c'est lui qui garantit l'unicité du
     /// contexte dans le processus (R-450).
     _guard: ContextGuard,
@@ -227,7 +232,9 @@ impl Session {
         self.sim_unbalanced
     }
 
-    /// Ajoute aux métriques ce que la gestion d'activité a fait ce tick (R-613, ADR-123 §3).
+    /// Ajoute aux métriques ce que la gestion d'activité a fait ce tick (R-613, ADR-123 §3),
+    /// et le budget `budgets.max_active_bodies` : les corps laissés actifs, et un dépassement
+    /// quand plus de corps sont à portée que le plafond nominal n'en admet (INV-19).
     pub fn record_activity(&self, report: ActivityReport) {
         let metrics = &self.metrics;
         let add = |id, count: usize| metrics.registry.add(id, count as u64);
@@ -235,6 +242,25 @@ impl Session {
         add(metrics.sim_slept_cap, report.slept_by_cap);
         add(metrics.sim_slept_budget, report.slept_by_budget);
         add(metrics.sim_woken, report.woken);
+        metrics.budgets.report_consumed(
+            &metrics.registry,
+            Budget::MaxActiveBodies,
+            report.active as u64,
+        );
+        if report.over_cap {
+            metrics
+                .budgets
+                .report_overrun(&metrics.registry, Budget::MaxActiveBodies);
+        }
+    }
+
+    /// Mesure un `axion_sim_submit` contre `budgets.submit_ns` (R-280, INV-19).
+    pub fn record_submit(&self, nanos: u64) {
+        let metrics = &self.metrics;
+        let limit = self.budgets.get(Budget::SubmitNs);
+        metrics
+            .budgets
+            .report(&metrics.registry, Budget::SubmitNs, nanos, limit);
     }
 
     /// Avance la simulation d'un tick et mesure le pas (R-500, R-661, INV-19) ; le gouverneur
@@ -261,6 +287,7 @@ impl Session {
         // Java lit le palier au drapeau du collect et aux jauges, et journalise ses transitions.
         self.physics.record_tick_duration(wall);
         self.record_step(wall, cpu);
+        self.record_job_budgets();
     }
 
     /// Publie la mesure d'un pas, et ouvre ou referme la surveillance du temps CPU.
@@ -357,27 +384,44 @@ impl Session {
             .registry
             .set(metrics.sim_bounds_unavailable, counters.bounds_unavailable);
 
+        // La mémoire native que la session compte : l'arène persistante (assets chargés) et
+        // les tampons de transfert. Celle des mondes physiques ne l'est pas encore (INV-08).
+        let native = self.persistent.used_bytes() + self.buffers.total_bytes();
+        metrics
+            .budgets
+            .report_consumed(&metrics.registry, Budget::NativeMemBytes, native as u64);
+
         let Some(jobs) = self.jobs.as_ref() else {
             return;
         };
         metrics.registry.set(metrics.workers, jobs.workers() as u64);
+        // Les budgets de durée se jugent à chaque tick (`record_job_budgets`) : leur jauge est
+        // celle du dernier tick, leur compteur celui des ticks qui les ont dépassés.
+    }
 
-        // La consommation d'un budget est la somme de ce qu'y ont passé les
-        // types de travaux qui s'y imputent ; ses dépassements, la somme des
-        // leurs. Sauf la simulation : son pas tourne sur le thread appelant,
-        // hors du pool, et se mesure lui-même (`record_step`).
+    /// Juge les budgets de durée que paient les travaux du pool, sur ce qu'ils y ont passé
+    /// depuis le tick précédent (INV-19). La simulation, mesurée sur le thread appelant,
+    /// l'est par `record_step`.
+    fn record_job_budgets(&mut self) {
+        let Some(jobs) = self.jobs.as_ref() else {
+            return;
+        };
         for budget in Budget::ALL {
-            if !budget.is_duration() || budget == Budget::SimNsPerTick {
+            if budget == Budget::SimNsPerTick
+                || !JobKind::ALL.iter().any(|kind| kind.budget() == budget)
+            {
                 continue;
             }
-            let elapsed = jobs.metrics().budget_elapsed_nanos(budget);
-            let overruns = jobs.metrics().budget_overruns(budget);
-            metrics
-                .registry
-                .set(metrics.budgets.consumed_id(budget), elapsed);
-            metrics
-                .registry
-                .set(metrics.budgets.overruns_id(budget), overruns);
+            let total = jobs.metrics().budget_elapsed_nanos(budget);
+            let seen = &mut self.job_elapsed_seen[budget.index()];
+            let tick = total.saturating_sub(*seen);
+            *seen = total;
+            self.metrics.budgets.report(
+                &self.metrics.registry,
+                budget,
+                tick,
+                self.budgets.get(budget),
+            );
         }
     }
 
@@ -439,7 +483,13 @@ impl Session {
     /// [`MemoryError::BudgetExceeded`] (`E-2004`) si l'arène est pleine ; rien
     /// n'est alors rangé, ni compté.
     pub fn insert_asset(&mut self, asset: LoadedAsset) -> Result<Handle, MemoryError> {
-        self.persistent.acquire(asset.resident_bytes())?;
+        if let Err(full) = self.persistent.acquire(asset.resident_bytes()) {
+            // INV-19 : un refus de l'arène est un dépassement de `budgets.native_mem_bytes`.
+            self.metrics
+                .budgets
+                .report_overrun(&self.metrics.registry, Budget::NativeMemBytes);
+            return Err(full);
+        }
         Ok(self.assets.insert(asset))
     }
 
@@ -575,6 +625,7 @@ pub fn open(
 
     // Un pool qui refuse de naître ne fait pas échouer l'ouverture : R-2062
     // veut que le calcul soit plus long, pas absent. La cause est consignée.
+    let job_budgets = budgets;
     let (jobs, jobs_error) = match JobSystem::new(&workers, budgets) {
         Ok(system) => (Some(system), None),
         Err(error) => (None, Some(error.to_string())),
@@ -600,6 +651,8 @@ pub fn open(
         assets: AssetStore::new(),
         persistent: ArenaCounter::new(ArenaClass::Persistent, assets.persistent_bytes),
         a3d_limits: assets.container,
+        budgets: job_budgets,
+        job_elapsed_seen: [0; Budget::ALL.len()],
         _guard: guard,
     });
     Ok(token)

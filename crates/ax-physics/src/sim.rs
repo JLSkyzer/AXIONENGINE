@@ -622,7 +622,15 @@ impl SimDriver {
                 .survey_activity(dimension, &observers, &mut candidates);
         }
 
-        let mut report = ActivityReport::default();
+        let in_reach = candidates
+            .iter()
+            .filter(|candidate| candidate.distance.is_some_and(|d| d <= limits.radius))
+            .count();
+        let mut report = ActivityReport {
+            active: in_reach.min(limits.cap),
+            over_cap: in_reach > limits.nominal_cap,
+            ..ActivityReport::default()
+        };
         for (index, decision) in activity::plan(&candidates, limits) {
             let candidate = &candidates[index];
             let Some(sim) = self.dimensions.get_mut(&candidate.dimension) else {

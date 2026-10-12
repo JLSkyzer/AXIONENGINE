@@ -268,6 +268,8 @@ fn t303_au_dela_du_plafond_les_plus_eloignes_s_endorment() {
     let report = tick(&mut driver, 0, &[[0.0; 3]]);
 
     assert_eq!(report.slept_by_cap, 3);
+    // INV-19 : deux corps restent actifs, et cinq à portée dépassent le budget de deux.
+    assert_eq!((report.active, report.over_cap), (2, true));
     let dorment: Vec<bool> = corps.iter().map(|c| dort(&mut driver, 0, *c)).collect();
     assert_eq!(dorment, [false, false, true, true, true]);
 }
@@ -278,7 +280,14 @@ fn t303_sous_le_plafond_personne_ne_s_endort() {
     for i in 1..=3 {
         bille(&mut driver, 0, i, [f64::from(i) * 3.0, 0.0, 0.0]);
     }
-    assert_eq!(tick(&mut driver, 0, &[[0.0; 3]]), ActivityReport::default());
+    // Trois corps actifs, sous le plafond : le budget n'est pas dépassé.
+    assert_eq!(
+        tick(&mut driver, 0, &[[0.0; 3]]),
+        ActivityReport {
+            active: 3,
+            ..ActivityReport::default()
+        }
+    );
 }
 
 #[test]
@@ -369,9 +378,14 @@ fn t303_un_corps_fige_nettement_plus_proche_prend_la_place() {
     assert!(dort(&mut driver, 0, b));
 
     // Le joueur s'approche de b, plus proche que a de dix blocs seulement : rien ne change.
+    // Un seul actif, mais deux à portée : le budget d'un corps reste dépassé.
     assert_eq!(
         tick(&mut driver, 0, &[[30.0, 0.0, 0.0]]),
-        ActivityReport::default()
+        ActivityReport {
+            active: 1,
+            over_cap: true,
+            ..ActivityReport::default()
+        }
     );
     // Tout contre b, plus proche de trente blocs : b prend la place de a.
     let report = tick(&mut driver, 0, &[[40.0, 0.0, 0.0]]);

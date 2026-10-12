@@ -1019,51 +1019,60 @@ pub unsafe extern "C" fn axion_sim_submit(
 ) -> i32 {
     shielded(Some(ctx), || {
         match context::with(ctx, false, |session| {
-            session.open_sim_cycle();
-            // L'état par tick du pilote (observateurs, ADR-123 §2) repart de zéro : seules
-            // les commandes de ce tick le rempliront — un tick sans commande n'en a aucun.
-            session.physics().begin_tick();
-            if command_count == 0 {
-                return AXION_OK;
-            }
-            // La tranche de commandes est copiée hors du tampon partagé, qui peut
-            // être réalloué (R-270) ; le parseur travaille sur cette copie.
-            //
-            // R-491 : l'en-tête est validé (magic, kind) avant toute lecture d'un
-            // tampon fourni par Java. La longueur, elle, voyage par paramètre
-            // (`command_count`) et non dans `payload_len` — convention IF-02, où
-            // le natif pré-remplit l'en-tête à l'acquisition et Java n'écrit que la
-            // charge : on lit donc le tail, borné ensuite par le parseur.
-            let bytes = match session.buffers().get_mut(BufferKind::SimIn) {
-                Some(buffer) => {
-                    let raw = buffer.as_slice();
-                    match BufferHeader::read(raw) {
-                        Ok(header) if header.kind == BufferKind::SimIn => {
-                            raw.get(HEADER_BYTES..).unwrap_or(&[]).to_vec()
-                        }
-                        _ => return AXION_E_INVALID_BUFFER,
-                    }
-                }
-                None => return AXION_E_INVALID_BUFFER,
-            };
-            // CREATE_ASSEMBLY dépend d'ax-asset (décodage de la section PHYS) : la
-            // frontière — seule à lier ax-asset et ax-physics — l'extrait et
-            // l'applique ici, avant le reste du flux (qu'ax-physics reporte).
-            let assemblies = match ax_physics::create_assembly_payloads(&bytes, command_count) {
-                Ok(payloads) => payloads,
-                Err(_) => return AXION_E_INVALID_BUFFER,
-            };
-            for payload in &assemblies {
-                apply_create_assembly(session.physics(), payload);
-            }
-            match ax_physics::apply_command_stream(session.physics(), &bytes, command_count) {
-                Ok(_) => AXION_OK,
-                Err(_) => AXION_E_INVALID_BUFFER,
-            }
+            // R-280 : le submit se mesure contre `budgets.submit_ns` (INV-19).
+            let started = std::time::Instant::now();
+            let code = submit_commands(session, command_count);
+            session.record_submit(u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
+            code
         }) {
             Ok(code) | Err(code) => code,
         }
     })
+}
+
+/// Le travail d'`axion_sim_submit` : ouvre le cycle et applique les commandes du tick.
+fn submit_commands(session: &mut context::Session, command_count: u32) -> i32 {
+    session.open_sim_cycle();
+    // L'état par tick du pilote (observateurs, ADR-123 §2) repart de zéro : seules
+    // les commandes de ce tick le rempliront — un tick sans commande n'en a aucun.
+    session.physics().begin_tick();
+    if command_count == 0 {
+        return AXION_OK;
+    }
+    // La tranche de commandes est copiée hors du tampon partagé, qui peut
+    // être réalloué (R-270) ; le parseur travaille sur cette copie.
+    //
+    // R-491 : l'en-tête est validé (magic, kind) avant toute lecture d'un
+    // tampon fourni par Java. La longueur, elle, voyage par paramètre
+    // (`command_count`) et non dans `payload_len` — convention IF-02, où
+    // le natif pré-remplit l'en-tête à l'acquisition et Java n'écrit que la
+    // charge : on lit donc le tail, borné ensuite par le parseur.
+    let bytes = match session.buffers().get_mut(BufferKind::SimIn) {
+        Some(buffer) => {
+            let raw = buffer.as_slice();
+            match BufferHeader::read(raw) {
+                Ok(header) if header.kind == BufferKind::SimIn => {
+                    raw.get(HEADER_BYTES..).unwrap_or(&[]).to_vec()
+                }
+                _ => return AXION_E_INVALID_BUFFER,
+            }
+        }
+        None => return AXION_E_INVALID_BUFFER,
+    };
+    // CREATE_ASSEMBLY dépend d'ax-asset (décodage de la section PHYS) : la
+    // frontière — seule à lier ax-asset et ax-physics — l'extrait et
+    // l'applique ici, avant le reste du flux (qu'ax-physics reporte).
+    let assemblies = match ax_physics::create_assembly_payloads(&bytes, command_count) {
+        Ok(payloads) => payloads,
+        Err(_) => return AXION_E_INVALID_BUFFER,
+    };
+    for payload in &assemblies {
+        apply_create_assembly(session.physics(), payload);
+    }
+    match ax_physics::apply_command_stream(session.physics(), &bytes, command_count) {
+        Ok(_) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
 }
 
 /// Applique une commande `CREATE_ASSEMBLY` (Option A, ADR-115 ; ADR-130) : lit

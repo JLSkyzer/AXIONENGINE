@@ -50,6 +50,12 @@ pub struct ActivityReport {
     pub slept_by_budget: usize,
     /// Corps endormis par la gestion et réveillés : revenus à portée, avec une place.
     pub woken: usize,
+    /// Corps que la gestion laisse actifs ce tick : ceux à portée, sous le plafond en
+    /// vigueur — la consommation du budget `budgets.max_active_bodies`.
+    pub active: usize,
+    /// Plus de corps à portée que le plafond nominal n'en admet : le budget
+    /// `budgets.max_active_bodies` est dépassé ce tick (R-613).
+    pub over_cap: bool,
 }
 
 /// Observateurs d'une dimension en coordonnées locales, triés sur x : la recherche du plus
