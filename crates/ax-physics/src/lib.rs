@@ -7,28 +7,32 @@
 //! # Déterminisme
 //!
 //! La physique n'est pas bit-exacte entre machines (ADR-005) : elle est
-//! **reproductible sur une même machine et un même binaire** (R-1020). Le monde
-//! est mono-thread en tranche 1, ce qui garantit cette reproductibilité sans
-//! précaution supplémentaire.
+//! **reproductible sur une même machine et un même binaire** (R-1020). Chaque
+//! monde est mono-thread, parcouru dans l'ordre de `rapier` ; ses tables de
+//! hachage ne sont consultées que par clé, et celles qu'il parcourt sont ordonnées.
 //!
-//! # Périmètre actuel
+//! # Contenu
 //!
-//! Fondation du monde : configuration validée (R-990), corps `STATIC` /
-//! `KINEMATIC` / `DYNAMIC` (§10.2), pas fixe à accumulateur clampé, gravité par
-//! dimension (R-611). Catalogue des formes portables par un corps dynamique
-//! (§10.3) : primitives, `ConvexHull` (4..256 points) et `Compound` (≤64), avec
-//! validation à l'ajout. Les formes concaves du monde (`TriMesh`, `Heightfield`)
-//! arrivent avec C-38 (INV-13). Groupes de collision data-driven par nom (§10.4,
-//! R-980) avec les huit groupes réservés. Gestion d'activité autour des joueurs
-//! (ADR-123 §3) : CCD déclarée, sommeil forcé hors du rayon de tout observateur
-//! (R-612) et réveil à son retour, plafond de corps actifs serveur, déterministe
-//! (R-613). Forces environnementales complètes (§10.6) : gravité
-//! par corps, vent de dimension, traînée relative au vent, portance sur surfaces
-//! déclarées (R-1000) et flottabilité (volume immergé par les 8 coins de l'AABB
-//! contre un fluide de dimension), appliquées par sous-pas. Événements (§10.7,
-//! DM → C-41) : la structure `PhysicsEvent` figée, l'identité de corps, le lot
-//! borné (R-1011) et les transitions SLEEP/WAKE ; les événements de contact
-//! (données R-615) et de capteur suivent. La frontière FFI arrive ensuite.
+//! - [`PhysicsWorld`] (`world`) — un monde : corps `STATIC` / `KINEMATIC` /
+//!   `DYNAMIC` (§10.2), pas fixe à accumulateur clampé (R-990), formes des corps
+//!   dynamiques (§10.3, INV-13), groupes de collision (§10.4, R-980), activité
+//!   autour des observateurs (ADR-123 §3, R-612, R-613), CCD déclarée ou
+//!   automatique au-delà de `|v|·dt > 0.5·min_dim` (fiche 5.23), forces
+//!   environnementales (§10.6, R-1000), événements de sommeil, de contact,
+//!   d'impulsion et de capteur (§10.7, R-615, R-1011), garde-fous R-180/R-181,
+//!   description DM-08 d'un corps (ADR-130).
+//! - [`SimDriver`] (`sim`) — un monde par dimension (R-610), origine flottante
+//!   (R-462), routage des handles d'assembly, tuiles de collision du monde (C-38,
+//!   R-640, R-641, groupe `world`), volumes de fluide et proxies d'entités
+//!   vanilla (R-614, `proxies`).
+//! - `commands` — lecture du flux de commandes IF-03 ; `scheduler` — étapes du
+//!   tick (C-40, R-660) ; `governor` — paliers de dégradation (R-1880) ; `query`
+//!   — requêtes spatiales (C-39) ; `debug` — géométrie de l'overlay `colliders`
+//!   (C-67, ADR-121).
+//!
+//! Hors de ce crate pour l'instant : liaisons et leurs défaillances (C-34),
+//! matériaux de contact des assemblies (DM-07 ; contact neutre en attendant),
+//! chaîne de dommage (C-41..C-45, M6).
 //!
 //! Exigences : R-460, R-462, R-610, R-611, R-990, R-1020, R-1753 ; PARTIE 10.
 //! Correspondance avec `rapier` 0.35 : `docs/decisions/ADR-112.md`.
