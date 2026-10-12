@@ -3,6 +3,7 @@ package dev.axion.bridge;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Unique déclaration des méthodes natives d'AXION (C-14, R-492).
@@ -78,6 +79,17 @@ public final class NativeBridge {
         throw new AssertionError("classe utilitaire, non instanciable");
     }
 
+    /**
+     * Traversées de la frontière depuis le chargement de la classe : une par appel natif. INV-04
+     * en borne le nombre par tick en régime établi ; T-012 le mesure sur la vraie bibliothèque.
+     */
+    private static final LongAdder CROSSINGS = new LongAdder();
+
+    /** {@return le nombre d'appels natifs faits depuis le chargement de la classe, tous threads} */
+    public static long crossings() {
+        return CROSSINGS.sum();
+    }
+
     // --- Méthodes natives -------------------------------------------------
     //
     // Enregistrées par JNI_OnLoad. Elles restent en visibilité de paquet :
@@ -136,6 +148,7 @@ public final class NativeBridge {
      * <p>À appeler avant toute autre chose (R-260). Ne dépend d'aucun contexte.
      */
     public static int nativeAbiVersion() {
+        CROSSINGS.increment();
         return abiVersion();
     }
 
@@ -167,6 +180,7 @@ public final class NativeBridge {
      *     négatif de l'ANNEXE A.1
      */
     public static long initialize(byte[] configCbor, int side) {
+        CROSSINGS.increment();
         return init(configCbor, side);
     }
 
@@ -183,6 +197,7 @@ public final class NativeBridge {
     public static String metricsJson(long ctx) {
         byte[] buffer = new byte[EXPORT_INITIAL_BYTES];
         for (int attempt = 0; attempt < EXPORT_MAX_ATTEMPTS; attempt++) {
+            CROSSINGS.increment();
             int needed = metricsExport(ctx, buffer);
             if (needed < 0) {
                 throw new IllegalStateException("export des métriques refusé, code " + needed);
@@ -207,6 +222,7 @@ public final class NativeBridge {
      * @return {@link #OK}, ou un code d'erreur négatif
      */
     public static int close(long ctx) {
+        CROSSINGS.increment();
         return shutdown(ctx);
     }
 
@@ -221,6 +237,7 @@ public final class NativeBridge {
      */
     public static String lastErrorMessage(long ctx) {
         byte[] scratch = ERROR_SCRATCH.get();
+        CROSSINGS.increment();
         int written = lastError(ctx, scratch);
         if (written <= 0) {
             return "";
@@ -259,6 +276,7 @@ public final class NativeBridge {
      * @return l'identifiant du travail, strictement positif, ou un code d'erreur
      */
     public static int compileAsset(long ctx, long assetId, int format, long sourceLen) {
+        CROSSINGS.increment();
         return assetCompile(ctx, assetId, format, sourceLen);
     }
 
@@ -282,6 +300,7 @@ public final class NativeBridge {
             throw new IllegalArgumentException(
                     "le tableau de sondage compte au moins " + ASSET_POLL_SLOTS + " éléments");
         }
+        CROSSINGS.increment();
         return assetPoll(ctx, jobId, out);
     }
 
@@ -303,6 +322,7 @@ public final class NativeBridge {
      * @return la vue, ou {@code null} si l'acquisition a échoué
      */
     public static ByteBuffer acquire(long ctx, int kind, long minCapacity) {
+        CROSSINGS.increment();
         ByteBuffer buffer = bufferAcquire(ctx, kind, minCapacity);
         return buffer == null ? null : buffer.order(ByteOrder.LITTLE_ENDIAN);
     }
@@ -316,6 +336,7 @@ public final class NativeBridge {
      * @return {@link #OK}, ou un code d'erreur négatif
      */
     public static int release(long ctx, int kind, int generation) {
+        CROSSINGS.increment();
         return bufferRelease(ctx, kind, generation);
     }
 
@@ -368,6 +389,7 @@ public final class NativeBridge {
      * @return {@link #OK}, ou un code d'erreur négatif
      */
     public static int submit(long ctx, long tick, int commandCount, int impactCount) {
+        CROSSINGS.increment();
         return simSubmit(ctx, tick, commandCount, impactCount);
     }
 
@@ -391,6 +413,7 @@ public final class NativeBridge {
             throw new IllegalArgumentException(
                     "le tableau de collecte compte au moins " + SIM_COLLECT_SLOTS + " éléments");
         }
+        CROSSINGS.increment();
         return simCollect(ctx, deadlineNs, out);
     }
 
@@ -404,6 +427,7 @@ public final class NativeBridge {
      * @return {@link #OK}, ou un code d'erreur négatif
      */
     public static int cancel(long ctx) {
+        CROSSINGS.increment();
         return simCancel(ctx);
     }
 
@@ -449,6 +473,7 @@ public final class NativeBridge {
             throw new IllegalArgumentException(
                     "le tableau de chargement compte au moins " + ASSET_LOAD_SLOTS + " éléments");
         }
+        CROSSINGS.increment();
         return assetLoad(ctx, assetId, sectionsMask, out);
     }
 
@@ -469,6 +494,7 @@ public final class NativeBridge {
         if (out == null || out.length < 1) {
             throw new IllegalArgumentException("le tableau de géométrie compte au moins un élément");
         }
+        CROSSINGS.increment();
         return assetGeometry(ctx, index, generation, out);
     }
 
@@ -488,6 +514,7 @@ public final class NativeBridge {
         if (out == null || out.length < 1) {
             throw new IllegalArgumentException("le tableau des matériaux compte au moins un élément");
         }
+        CROSSINGS.increment();
         return assetMaterials(ctx, index, generation, out);
     }
 
@@ -509,6 +536,7 @@ public final class NativeBridge {
         if (out == null || out.length < 1) {
             throw new IllegalArgumentException("le tableau de texture compte au moins un élément");
         }
+        CROSSINGS.increment();
         return assetTexture(ctx, index, generation, texture, out);
     }
 
@@ -522,6 +550,7 @@ public final class NativeBridge {
      *     périmé
      */
     public static int unloadAsset(long ctx, int index, int generation) {
+        CROSSINGS.increment();
         return assetUnload(ctx, index, generation);
     }
 
@@ -564,6 +593,7 @@ public final class NativeBridge {
         if (out == null || out.length < 1) {
             throw new IllegalArgumentException("le tableau de debug compte au moins un élément");
         }
+        CROSSINGS.increment();
         return debugFill(ctx, overlayMask, dimension, cameraX, cameraY, cameraZ, maxSegments, out);
     }
 }

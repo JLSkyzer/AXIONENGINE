@@ -536,10 +536,17 @@ class NativeBridgeTest {
 
         // Ticks sans autre commande que le joueur, déclaré chaque tick comme en jeu : le corps
         // tombe sous la gravité par défaut (−9,81 m/s²). Sans joueur, il dormirait (R-612).
+        // T-012 (INV-04) : ces ticks sont le régime établi d'un serveur — un corps, le joueur déclaré
+        // à chaque tick —, et le cycle de simulation y est tout le trafic natif du tick : assets
+        // compilés, overlays éteints, métriques lues aux seuls ticks lents. Chacun traverse la
+        // frontière moins de 32 fois.
+        long piresTraversees = 0;
         double yCourant = yDepart;
         for (int t = 0; t < 30; t++) {
+            long traverseesAvant = NativeBridge.crossings();
             dev.axion.physics.CollectResult pas = simulation.tick(
                     4L + t, new dev.axion.physics.SimCommandStream().setObservers(0L, JOUEUR_PRES_DU_CORPS), 0L);
+            piresTraversees = Math.max(piresTraversees, NativeBridge.crossings() - traverseesAvant);
             assertTrue(pas.ok(), () -> "collect refusé pendant la chute, code " + pas.code());
             assertEquals(1, pas.stateCount(), "le corps persiste d'un tick à l'autre");
             yCourant = pas.bodies().get(0).position()[1];
@@ -574,7 +581,9 @@ class NativeBridgeTest {
             dev.axion.physics.SimCommandStream entites = new dev.axion.physics.SimCommandStream()
                     .setObservers(0L, new double[][] {{0.0, ySousLeCorps, 0.0}})
                     .setEntityProxies(0L, java.util.List.of(dalle));
+            long traverseesAvant = NativeBridge.crossings();
             dev.axion.physics.CollectResult pas = simulation.tick(41L + t, entites, 0L);
+            piresTraversees = Math.max(piresTraversees, NativeBridge.crossings() - traverseesAvant);
             assertTrue(pas.ok(), () -> "collect avec joueurs et entités refusé, code " + pas.code());
             for (dev.axion.physics.PhysicsEvent evenement : pas.events()) {
                 if (contact == null
@@ -620,6 +629,11 @@ class NativeBridgeTest {
         assertTrue(approche > avant - 0.05 && approche < avant + 0.6,
                 () -> "vitesse d'approche " + approche + " m/s, chute " + avant + " m/s");
         assertTrue(dev.axion.physics.EntityImpacts.fallDamage(approche) > 0.0, "un tel choc blesse");
+
+        // T-012 : le pire tick établi, chute comme choc (états et événements), sous la borne d'INV-04.
+        long pire = piresTraversees;
+        assertTrue(pire > 0, "le compteur de traversées avance");
+        assertTrue(pire < 32, () -> "INV-04 : " + pire + " traversées FFI sur un tick établi, 32 au plus");
 
         // Annuler après un cycle clos est inoffensif.
         assertEquals(NativeBridge.OK, simulation.cancel());
