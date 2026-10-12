@@ -1334,3 +1334,15 @@ graine, l'eau d'un aquifère gagnait une arène et y lançait un cube, qui en pe
 **Règle.** Un environnement de test se fige entièrement — type de monde, graine, créatures, météo — avant de chasser
 un intermittent. Et un échec en CI se lit dans sa trace avant d'accuser le dernier changement : ici, le drapeau
 `IN_FLUID` d'un cube au repos l'a dit en une ligne.
+
+## 2026-10-12 | Un couple jamais remis à zéro, pris d'abord pour un défaut du modèle d'eau
+
+**Ce qui a mal tourné.** Un cube que l'eau gagnait s'emballait à 47 rad/s. J'ai d'abord accusé l'échantillonnage
+aux coins de l'AABB du monde et corrigé de ce côté : le balayage s'est aggravé (39 cas sur 400 au lieu de 13).
+
+**Cause.** `apply_aero_forces` remettait les forces à zéro à chaque sous-pas, pas les couples ; or
+`add_force_at_point` ajoute aussi au couple. Le couple s'accumulait sans fin, et persistait hors de l'eau.
+
+**Règle.** Avant de corriger un modèle physique, tracer la dynamique tick par tick : une vitesse angulaire qui
+croît linéairement en vol libre, sans aucune force, dit « état non remis à zéro », pas « modèle faux ». Et
+retirer une hypothèse démentie avant d'en essayer une autre.

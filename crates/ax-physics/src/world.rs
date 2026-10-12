@@ -1407,10 +1407,16 @@ impl PhysicsWorld {
             })
             .collect();
         // Passe 2, en écriture : remise à zéro une seule fois par corps, puis
-        // repose de toutes ses forces (les forces `rapier` s'accumulent).
+        // repose de toutes ses forces (les forces `rapier` s'accumulent). Les couples
+        // aussi : `add_force_at_point` ajoute au couple du corps, que `reset_forces` ne
+        // touche pas. Sans `reset_torques`, le couple d'une poussée décentrée ou d'une
+        // portance s'ajoutait à lui-même à chaque sous-pas, sans fin, et persistait hors
+        // de l'eau : un cube au repos que l'eau gagnait tournait jusqu'au plafond de
+        // `rapier` (47 rad/s) et traversait le terrain (CI de 6cdc2ec, 2026-10-12).
         for plan in plans {
             if let Some(body) = self.inner.bodies.get_mut(plan.handle) {
                 body.reset_forces(false);
+                body.reset_torques(false);
                 body.add_force(plan.central, false);
                 for (force, point) in plan.at_points {
                     body.add_force_at_point(force, point, false);
