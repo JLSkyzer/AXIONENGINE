@@ -12,6 +12,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import org.lwjgl.opengl.GL;
@@ -34,9 +35,13 @@ import org.slf4j.LoggerFactory;
  * {@code GL_ARB_get_program_binary}, et au moins un format. Un fichier illisible, ou un binaire que
  * le pilote refuse, est oublié : le programme est recompilé, et son fichier remplacé. Les fichiers
  * s'écrivent sur un thread à eux — rien d'OpenGL n'y passe (INV-12) —, par un fichier temporaire
- * renommé : un fichier à moitié écrit n'est jamais lu.
+ * renommé : un fichier à moitié écrit n'est jamais lu. Une variante à la demande s'y lit aussi
+ * ({@link #read}) : lire un fichier tout juste écrit a pris jusqu'à 7,6 ms au render thread sur la
+ * machine de Killian (banc du 2026-10-12, T-904), là où le binaire passé au pilote en prend moins
+ * d'une. Lectures et écritures partagent ce thread, dans l'ordre : une lecture suit l'écriture du
+ * même fichier.
  *
- * <p>Render thread seul, hors l'écriture des fichiers.
+ * <p>Render thread seul, hors la lecture et l'écriture des fichiers.
  */
 final class ShaderBinaryCache {
 
@@ -44,7 +49,7 @@ final class ShaderBinaryCache {
 
     private static final String SUFFIX = ".bin";
 
-    /** Écriture des fichiers : dédiée, et démon, pour ne retenir ni le rendu ni la fermeture. */
+    /** Lecture et écriture des fichiers : dédiées, et démon, pour ne retenir ni le rendu ni la fermeture. */
     private static final Executor WRITER = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "AXION shader cache");
         thread.setDaemon(true);
@@ -111,18 +116,44 @@ final class ShaderBinaryCache {
         if (!enabled()) {
             return 0;
         }
+        return link(readFile(key));
+    }
+
+    /**
+     * {@return le binaire d'un programme, lu et décodé hors du render thread ; vide : absent ou
+     * illisible} À passer au pilote par {@link #link}, sur le render thread.
+     *
+     * @param key sa clé
+     */
+    CompletableFuture<Optional<ShaderBinaryFile.Binary>> read(String key) {
+        if (!enabled()) {
+            return CompletableFuture.completedFuture(Optional.empty());
+        }
+        return CompletableFuture.supplyAsync(() -> readFile(key), WRITER);
+    }
+
+    /** {@return le binaire d'un programme, lu et décodé ; vide : absent ou illisible} Sur tout thread. */
+    private Optional<ShaderBinaryFile.Binary> readFile(String key) {
         byte[] bytes;
         try {
             bytes = Files.readAllBytes(directory.resolve(key + SUFFIX));
         } catch (NoSuchFileException absent) {
-            misses++;
-            return 0;
+            return Optional.empty();
         } catch (IOException unreadable) {
             LOGGER.warn("AXION : cache des shaders illisible ({}) : {}", key, unreadable.getMessage());
-            misses++;
-            return 0;
+            return Optional.empty();
         }
-        Optional<ShaderBinaryFile.Binary> binary = ShaderBinaryFile.decode(bytes);
+        return ShaderBinaryFile.decode(bytes);
+    }
+
+    /**
+     * {@return le programme lié par le pilote depuis son binaire, ou 0 : binaire absent, illisible ou
+     * refusé} Le compte des relectures et des absences se tient ici.
+     *
+     * @param binary le binaire lu, ou vide
+     */
+    int link(Optional<ShaderBinaryFile.Binary> binary) {
+        RenderSystem.assertOnRenderThread();
         if (binary.isEmpty()) {
             misses++;
             return 0;

@@ -108,6 +108,10 @@ public final class BancDeRendu {
     /** Écart toléré entre la boîte d'une silhouette et celle de sa projection, en pixels. */
     private static final int ECART_BOITE = 2;
 
+    /** T-904 : frames témoins, avant toute remise en service, puis frames relevées après chacune. */
+    private static final int FRAMES_TEMOINS_T904 = 600;
+    private static final int FRAMES_APRES_T904 = 120;
+
     /** T-491 : écart toléré entre les boîtes du cube dans les deux backends, même scène, même vue. */
     private static final int ECART_BACKENDS = 1;
 
@@ -198,7 +202,7 @@ public final class BancDeRendu {
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
             ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
-                    "T-491c", "T-905", "T-492", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
+                    "T-491c", "T-905", "T-904", "T-492", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
@@ -245,6 +249,23 @@ public final class BancDeRendu {
     /** Démarrages de backend à l'installation du journal : ceux qui suivent y laissent leur entrée. */
     private static int demarragesALInstallation;
     private static List<String> sortieDuStatut;
+
+    /**
+     * T-904 : une série de frames — l'intervalle entre deux débuts de frame, et le temps que les
+     * variantes à la demande du natif ont pris au render thread pendant la frame.
+     */
+    private static final class SerieT904 {
+        final List<Long> intervalles = new ArrayList<>();
+        final List<Long> variantes = new ArrayList<>();
+    }
+
+    /** La série relevée, ou {@code null} : aucune. */
+    private static SerieT904 serieT904;
+    private static long debutDeFramePrecedent;
+    private static SerieT904 temoinT904;
+    private static SerieT904 compileeT904;
+    private static SerieT904 relueT904;
+    private static SerieT904 serielleT904;
 
     /** Pack coupé (ADR-129) : le cube en natif, avec et sans les passes d'AXION, et ce que le choix a dit. */
     private static CapturesDuBanc.Capture packCoupeAvec;
@@ -293,6 +314,14 @@ public final class BancDeRendu {
         }
         Minecraft minecraft = Minecraft.getInstance();
         if (event.phase == TickEvent.Phase.START) {
+            // T-904 : l'intervalle couvre la frame qui vient de finir, et le temps des variantes est
+            // celui qu'elle a pris.
+            long maintenant = System.nanoTime();
+            if (serieT904 != null && debutDeFramePrecedent != 0) {
+                serieT904.intervalles.add(maintenant - debutDeFramePrecedent);
+                serieT904.variantes.add(AxionRenderPass.nativeShaderPollNanos());
+            }
+            debutDeFramePrecedent = maintenant;
             fixerLaCamera(minecraft);
             return;
         }
@@ -556,6 +585,21 @@ public final class BancDeRendu {
             une("relever le cache recompilé", mc -> statsRecompile = AxionRenderPass.nativeShaderStats());
             jusqua("le cache réécrit", 60, mc -> cacheRelisible(mc) == fichiersCorrompus);
             une("juger T-905", mc -> jugerT905(mc));
+
+            // T-904 : la variante CUTOUT, que le décor demande à chaque frame, oubliée puis remise
+            // en service sur une scène établie — compilée, relue du cache binaire, puis compilée
+            // comme sans compilation parallèle —, comparée à des frames témoins de la même scène.
+            stabiliser("la scène, avant T-904");
+            une("ouvrir les frames témoins", mc -> {
+                temoinT904 = new SerieT904();
+                serieT904 = temoinT904;
+            });
+            frames(FRAMES_TEMOINS_T904);
+            une("fermer les frames témoins", mc -> serieT904 = null);
+            remettreEnService("compilée", false, false, serie -> compileeT904 = serie);
+            remettreEnService("relue du cache", true, false, serie -> relueT904 = serie);
+            remettreEnService("compilée sans parallèle", false, true, serie -> serielleT904 = serie);
+            une("juger T-904", mc -> jugerT904());
             basculerSurVanilla("seconde bascule sur vanilla");
             revenirAuNatif("second retour au natif");
             une("juger T-492", mc -> jugerT492());
@@ -1132,6 +1176,69 @@ public final class BancDeRendu {
                         sortieDuStatut.size(), rapporte ? "reproduite" : "INCOMPLÈTE", absentes, signalees));
     }
 
+    /**
+     * T-904 (R-762) : une variante remise en service à la demande ne fait pas d'à-coup mesurable.
+     * Deux critères, pour la remise en service compilée comme pour celle relue du cache :
+     * <ul>
+     *   <li>ce qu'AXION y ajoute lui-même — le temps que les variantes prennent au render thread —
+     *       ne dépasse, à aucune frame, {@code budgets.render_prep_ns}, tout le budget de préparation
+     *       du rendu d'une frame : mesuré directement, il ne dépend pas du bruit de la scène ;
+     *   <li>aucune frame ne dure plus que la plus lente des frames témoins augmentée de ce budget.
+     * </ul>
+     * Le second seul ne suffit pas : au premier relevé, une relecture du cache prenait 3,6 ms au
+     * render thread et passait sous des frames témoins bruitées (banc du 2026-10-12). La remise en
+     * service compilée sans parallèle est relevée et jugée par les mêmes critères, sans entrer dans
+     * le verdict : c'est le chemin d'un pilote sans compilation parallèle (ADR-127 §4).
+     */
+    private static void jugerT904() {
+        long budget = ConfigLoader.load(Scope.COMMON, FMLPaths.CONFIGDIR.get(), System.getProperties())
+                .getInt("budgets.render_prep_ns");
+        long temoinMax = maximum(temoinT904.intervalles);
+        long plafond = temoinMax + budget;
+        boolean compileeSansACoup = sansACoup(compileeT904, budget, plafond);
+        boolean relueSansACoup = sansACoup(relueT904, budget, plafond);
+        RAPPORT.noter("T-904", compileeSansACoup && relueSansACoup, String.format(Locale.ROOT,
+                "frames témoins : %d, médiane %.2f ms, la plus lente %.2f ms ; budget des variantes %.2f ms par frame"
+                        + " (budgets.render_prep_ns), plafond des frames %.2f ms ; %s ; %s ; %s (hors verdict)",
+                temoinT904.intervalles.size(), millis(mediane(temoinT904.intervalles)), millis(temoinMax), millis(budget),
+                millis(plafond), decrire("compilée", compileeT904, budget, plafond),
+                decrire("relue du cache", relueT904, budget, plafond),
+                decrire("compilée sans parallèle", serielleT904, budget, plafond)));
+    }
+
+    /** {@return vrai si une série de T-904 tient ses deux critères} */
+    private static boolean sansACoup(SerieT904 serie, long budget, long plafond) {
+        return !serie.intervalles.isEmpty() && maximum(serie.variantes) <= budget && maximum(serie.intervalles) <= plafond;
+    }
+
+    /** {@return une série de T-904, dite en millisecondes, avec son jugement} */
+    private static String decrire(String quoi, SerieT904 serie, long budget, long plafond) {
+        return String.format(Locale.ROOT, "%s : %d frame(s), variantes au render thread %.3f ms au plus, frame la plus"
+                        + " lente %.2f ms — %s", quoi, serie.intervalles.size(), millis(maximum(serie.variantes)),
+                millis(maximum(serie.intervalles)), sansACoup(serie, budget, plafond) ? "sans à-coup" : "À-COUP");
+    }
+
+    private static long maximum(List<Long> valeurs) {
+        long maximum = 0;
+        for (long valeur : valeurs) {
+            maximum = Math.max(maximum, valeur);
+        }
+        return maximum;
+    }
+
+    private static long mediane(List<Long> valeurs) {
+        if (valeurs.isEmpty()) {
+            return 0;
+        }
+        List<Long> triees = new ArrayList<>(valeurs);
+        triees.sort(null);
+        return triees.get(triees.size() / 2);
+    }
+
+    private static double millis(long nanos) {
+        return nanos / 1_000_000.0;
+    }
+
     private static void jugerT472() {
         boolean actif = GlStateCheck.ENABLED && GlStateCheck.checks() > 0;
         RAPPORT.noter("T-472", actif && GlStateCheck.differences() == 0 && GlStateCheck.errors() == 0,
@@ -1357,6 +1464,30 @@ public final class BancDeRendu {
                         + " s (" + differents[0] + " pixel(s) au dernier écart)");
             }
             return false;
+        });
+    }
+
+    /**
+     * T-904 : oublie la variante CUTOUT et relève les frames jusqu'à sa remise en service, puis
+     * {@value #FRAMES_APRES_T904} de plus.
+     */
+    private static void remettreEnService(String quoi, boolean duCache, boolean serielle, Consumer<SerieT904> garder) {
+        une("oublier CUTOUT — " + quoi, mc -> {
+            AxionRenderPass.forceSerialShaderCompile(serielle);
+            if (!AxionRenderPass.forgetCutoutShaderVariant(duCache)) {
+                throw new IllegalStateException("la variante CUTOUT n'est pas prête : rien à remettre en service");
+            }
+            serieT904 = new SerieT904();
+            garder.accept(serieT904);
+        });
+        jusqua("CUTOUT de nouveau prête — " + quoi, 60, mc -> {
+            AxionRenderPass.ShaderStats stats = AxionRenderPass.nativeShaderStats();
+            return stats != null && stats.cutoutReady();
+        });
+        frames(FRAMES_APRES_T904);
+        une("fermer la série — " + quoi, mc -> {
+            serieT904 = null;
+            AxionRenderPass.forceSerialShaderCompile(false);
         });
     }
 

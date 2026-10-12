@@ -226,6 +226,22 @@ final class NativeGlBackend implements RenderBackend {
         return shaders.state(CUTOUT);
     }
 
+    /**
+     * Oublie la variante des surfaces découpées, pour que le banc de rendu mesure sa remise en service
+     * (T-904).
+     *
+     * @param fromCache vrai pour qu'elle soit relue du cache binaire, faux pour qu'elle se compile
+     * @return vrai si elle était prête
+     */
+    boolean forgetCutout(boolean fromCache) {
+        return shaders.forget(CUTOUT, fromCache);
+    }
+
+    /** {@return le temps, en nanosecondes, que les variantes à la demande ont pris au render thread à la dernière frame} */
+    long lastShaderPollNanos() {
+        return shaders.lastPollNanos();
+    }
+
     /** Rend tous ses objets GL ; un objet resté vivant est une fuite, journalisée (R-744). */
     @Override
     public void close() {

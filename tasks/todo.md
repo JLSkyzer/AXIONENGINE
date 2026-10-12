@@ -1982,8 +1982,11 @@ substituable sans changer rapier »).
                         clé `ShaderCacheKey` : sources, définitions, chaîne du pilote) ; 11 tests purs. Au banc natif :
                         T-512 (cache neuf : base et émission au démarrage, `CUTOUT` à la demande), T-905 (au
                         rechargement les 3 programmes relus du cache, rien compilé ; cache corrompu : les 3 recompilés et
-                        réécrits), T-511 pour une variante refusée à la demande (bascule sur vanilla). Reste : **T-904**
-                        — le temps de frame autour d'une variante compilée n'est pas encore mesuré (ADR-127 §4).
+                        réécrits), T-511 pour une variante refusée à la demande (bascule sur vanilla). **T-904 fait le 2026-10-12**
+                        (ADR-127 §4, complément ; critère proposé, à ratifier) : premier relevé rouge — relire le cache
+                        prenait jusqu'à 4,6 ms au render thread (lecture du fichier sur ce fil), lancer une compilation
+                        1,1 à 1,6 ms ; corrigé par la lecture sur le thread du cache et une étape OpenGL par frame : 0,55 ms
+                        compilée, 0,42 ms relue, 0,49 ms sans parallèle, au banc natif chez Killian ; CI à confirmer.
                   - [ ] **D4 — C-60, backend natif** (PARTIE 19) : ADR-127 (ratifié le 2026-10-11, C-60/C-62/C-63). En
                         M3 les assemblies sont rigides : le natif peut dessiner la liste de repos déjà
                         transférée (`RestDraw`, ADR-119), transformée en Java, sans nouvelle surface FFI ;
@@ -2015,7 +2018,7 @@ substituable sans changer rapier »).
                         `MeshCache` seulement le natif actif (R-1513), normal map dans l'espace tangent de glTF, ORM sur
                         rugosité, métal et occlusion de l'ambiante, une tuile par carte, unités 1 et 3. Au banc : natif,
                         écart-type de luminance 25,9 sur le relief contre 0,0 sur le plat ; vanilla, 0,0 et 0,0 — les
-                        deux bancs verts. Reste de D4 : rien, hors T-904 (C-63, non mesuré).
+                        deux bancs verts. Reste de D4 : rien (T-904 fait le 2026-10-12).
                         **Banc local autorisé par Killian** (`./gradlew runRenderTest`, `runRenderTestNative`, ~1 min
                         chacun sur sa RTX 4060) — itérer localement, puis CI.
                   - [ ] **D5 — C-61 T4+ et bascules** : bascule à chaud (R-744, T-492),

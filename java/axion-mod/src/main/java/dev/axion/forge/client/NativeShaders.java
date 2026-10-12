@@ -3,6 +3,7 @@ package dev.axion.forge.client;
 import com.mojang.blaze3d.shaders.ProgramManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import dev.axion.AxionMod;
+import dev.axion.render.ShaderBinaryFile;
 import dev.axion.render.ShaderVariant;
 import dev.axion.render.ShaderVariants;
 import java.io.IOException;
@@ -15,7 +16,9 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -33,11 +36,18 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>Au démarrage du backend</b>, la variante de base de la surface — la variante de secours — et
  * le programme de la passe d'émission, d'un bloc. <b>À la demande</b>, les variantes de R-762
- * ({@link ShaderVariants}) : une variante demandée entre en compilation sans que la frame l'attende
- * — toutes à la fois quand le pilote compile en parallèle ({@code GL_KHR_parallel_shader_compile}, état
- * relu à chaque frame), une par frame sinon — et la base dessine à sa place jusqu'à ce qu'elle soit
- * prête ; au-delà de {@code render.max_shader_variants}, la base la remplace pour de bon, et c'est dit
- * une fois.
+ * ({@link ShaderVariants}) : une variante demandée se met en service sans que la frame l'attende, et
+ * la base dessine à sa place jusqu'à ce qu'elle soit prête ; au-delà de
+ * {@code render.max_shader_variants}, la base la remplace pour de bon, et c'est dit une fois.
+ *
+ * <p><b>Sans à-coup (T-904)</b> : son binaire se lit au cache hors du render thread ; puis, une
+ * étape OpenGL par frame au plus, toutes variantes confondues — le binaire passé au pilote, ou les
+ * sommets compilés, les fragments, la liaison lancée —, et la liaison est reprise quand le pilote l'a
+ * finie, état relu à chaque frame quand il compile en parallèle
+ * ({@code GL_KHR_parallel_shader_compile}), à la frame suivante sinon. Au banc du 2026-10-12, sur la
+ * machine de Killian, lancer d'un bloc les deux compilations et la liaison prenait 1,1 à 1,6 ms au
+ * render thread, et lire le fichier du cache jusqu'à 7,6 ms. Le render thread reste le seul à
+ * appeler OpenGL (INV-12).
  *
  * <p><b>Cache binaire</b> ({@link ShaderBinaryCache}, R-760) : un programme dont le binaire est au
  * cache, sous ce pilote, en est relu sans compilation ; un programme compilé y est gardé.
@@ -63,6 +73,12 @@ final class NativeShaders implements AutoCloseable {
 
     /** Vrai : les variantes compilées à la demande échouent exprès (R-761). Render thread seul. */
     private static boolean forcedVariantFailure;
+
+    /**
+     * Vrai : les variantes à la demande se compilent comme sans compilation parallèle, une par frame,
+     * même si le pilote l'offre. Le banc de rendu mesure ainsi ce chemin (T-904). Render thread seul.
+     */
+    private static boolean forcedSerial;
 
     /**
      * Unités de texture des échantillonneurs : albedo ou émission sur la 0, carte de normales sur la
@@ -119,8 +135,37 @@ final class NativeShaders implements AutoCloseable {
      */
     record Stats(int cacheHits, int cacheMisses, int compiled, int onDemand, int pending, int refused) {}
 
-    /** Une variante en cours de compilation : ses objets, dont l'état n'a pas encore été lu. */
-    private record Compilation(ShaderVariant variant, String key, int vertex, int fragment, int program) {}
+    /** Où en est une variante en route vers son service. */
+    private enum Step {
+        /** Son binaire se lit au cache, hors du render thread. */
+        READ,
+        /** Ses sommets sont à compiler. */
+        VERTEX,
+        /** Ses fragments sont à compiler. */
+        FRAGMENT,
+        /** Sa liaison est à lancer. */
+        LINK,
+        /** Sa liaison est lancée : le pilote la finit. */
+        LINKING
+    }
+
+    /** Une variante en route vers son service : son binaire en lecture, puis ses objets, une étape par frame. */
+    private static final class Route {
+        final ShaderVariant variant;
+        final String key;
+        final CompletableFuture<Optional<ShaderBinaryFile.Binary>> reading;
+        Step step;
+        int vertex;
+        int fragment;
+        int program;
+
+        Route(ShaderVariant variant, String key, CompletableFuture<Optional<ShaderBinaryFile.Binary>> reading) {
+            this.variant = variant;
+            this.key = key;
+            this.reading = reading;
+            this.step = reading == null ? Step.VERTEX : Step.READ;
+        }
+    }
 
     private final String vertexSource;
     private final String surfaceSource;
@@ -128,11 +173,16 @@ final class NativeShaders implements AutoCloseable {
     private final boolean parallel;
     private final ShaderVariants<Program> surfaces;
     private final Program emission;
-    private final List<Compilation> compiling = new ArrayList<>();
+    private final List<Route> routes = new ArrayList<>();
     private final Set<ShaderVariant> refusedReported = new HashSet<>();
+    /** Variantes oubliées dont la prochaine mise en service se compile, sans relire le cache (T-904). */
+    private final Set<ShaderVariant> bypassCache = new HashSet<>();
     private ShaderFailure failure;
     private int compiled;
     private int onDemand;
+
+    /** Temps passé dans le dernier {@link #poll()}, sur le render thread. */
+    private long lastPollNanos;
 
     private NativeShaders(
             String vertexSource,
@@ -207,6 +257,44 @@ final class NativeShaders implements AutoCloseable {
     }
 
     /**
+     * Compile, ou non, les variantes à la demande qui suivent comme sans compilation parallèle (T-904).
+     *
+     * @param serial vrai pour une variante par frame, dont l'état se lit à la frame suivante
+     */
+    static void forceSerial(boolean serial) {
+        RenderSystem.assertOnRenderThread();
+        forcedSerial = serial;
+    }
+
+    /**
+     * Oublie une variante prête et détruit son programme : sa prochaine demande la remet en service.
+     * Le banc de rendu mesure ainsi une mise en service à la demande sur une scène établie (T-904).
+     *
+     * @param variant la variante
+     * @param fromCache vrai pour qu'elle soit relue du cache binaire, faux pour qu'elle se compile
+     * @return vrai si elle était prête
+     */
+    boolean forget(ShaderVariant variant, boolean fromCache) {
+        RenderSystem.assertOnRenderThread();
+        Program program = surfaces.forget(variant);
+        if (program == null) {
+            return false;
+        }
+        delete(program);
+        if (fromCache) {
+            bypassCache.remove(variant);
+        } else {
+            bypassCache.add(variant);
+        }
+        return true;
+    }
+
+    /** {@return le temps passé dans le dernier {@link #poll()}, en nanosecondes, sur le render thread} */
+    long lastPollNanos() {
+        return lastPollNanos;
+    }
+
+    /**
      * {@return le programme de surface qui dessine une variante à cette frame : le sien s'il est prêt,
      * la base sinon} Une variante demandée pour la première fois est mise en compilation.
      *
@@ -227,29 +315,43 @@ final class NativeShaders implements AutoCloseable {
     }
 
     /**
-     * Avance les variantes à la demande, une fois par frame, avant tout dessin : celles dont la
-     * compilation est finie sont reprises, puis celles qui attendent sont lancées.
+     * Avance les variantes à la demande, une fois par frame, avant tout dessin : les liaisons finies
+     * sont reprises, les variantes demandées entrent en route — la lecture de leur binaire lancée,
+     * sans appel OpenGL —, puis une étape OpenGL au plus est faite, pour la première variante qui en
+     * attend une.
      */
     void poll() {
         RenderSystem.assertOnRenderThread();
-        Iterator<Compilation> running = compiling.iterator();
-        while (running.hasNext()) {
-            Compilation compilation = running.next();
-            if (finished(compilation)) {
-                running.remove();
-                adopt(compilation);
+        long start = System.nanoTime();
+        boolean parallel = parallel();
+        Iterator<Route> linked = routes.iterator();
+        while (linked.hasNext()) {
+            Route route = linked.next();
+            if (route.step == Step.LINKING && finished(route, parallel)) {
+                linked.remove();
+                adopt(route);
             }
         }
-        while (parallel || compiling.isEmpty()) {
-            ShaderVariant next = surfaces.nextToCompile();
-            if (next == null) {
-                break;
+        for (ShaderVariant next = surfaces.nextToCompile(); next != null; next = surfaces.nextToCompile()) {
+            enter(next);
+        }
+        Iterator<Route> waiting = routes.iterator();
+        while (waiting.hasNext()) {
+            Route route = waiting.next();
+            boolean stepped = advance(route);
+            if (route.step == null) {
+                waiting.remove();
             }
-            start(next);
-            if (!parallel) {
+            if (stepped) {
                 break;
             }
         }
+        lastPollNanos = System.nanoTime() - start;
+    }
+
+    /** {@return vrai si les variantes se compilent en parallèle : le pilote l'offre, et le banc ne l'a pas coupé} */
+    private boolean parallel() {
+        return parallel && !forcedSerial;
     }
 
     /** {@return l'échec d'une variante compilée à la demande, ou {@code null} : aucun (R-761)} */
@@ -272,38 +374,76 @@ final class NativeShaders implements AutoCloseable {
     @Override
     public void close() {
         RenderSystem.assertOnRenderThread();
-        for (Compilation compilation : compiling) {
-            discard(compilation);
+        for (Route route : routes) {
+            discard(route);
         }
-        compiling.clear();
+        routes.clear();
         for (Program program : surfaces.programs()) {
             delete(program);
         }
         delete(emission);
     }
 
-    /** Met une variante en service : relue du cache sans attendre, sinon mise en compilation. */
-    private void start(ShaderVariant variant) {
+    /** Met une variante en route : la lecture de son binaire lancée, ou sa compilation à faire. Aucun appel OpenGL. */
+    private void enter(ShaderVariant variant) {
         if (forcedVariantFailure) {
             fail(variant, "échec provoqué (banc de rendu)");
             return;
         }
         String key = cache.key(SURFACE, variant, vertexSource, surfaceSource);
-        int cached = cache.load(key);
-        if (cached != 0) {
-            surfaces.ready(variant, adopted(cached));
-            onDemand++;
-            return;
+        routes.add(new Route(variant, key, bypassCache.remove(variant) ? null : cache.read(key)));
+    }
+
+    /**
+     * Avance une variante d'une étape ; une variante prête sort de route ({@code step} nul).
+     *
+     * @return vrai si l'étape a appelé OpenGL : la frame n'en fait pas d'autre
+     */
+    private boolean advance(Route route) {
+        switch (route.step) {
+            case READ -> {
+                if (!route.reading.isDone()) {
+                    return false;
+                }
+                Optional<ShaderBinaryFile.Binary> binary;
+                try {
+                    binary = route.reading.join();
+                } catch (RuntimeException unreadable) {
+                    binary = Optional.empty();
+                }
+                int cached = cache.link(binary);
+                if (cached != 0) {
+                    surfaces.ready(route.variant, adopted(cached));
+                    onDemand++;
+                    route.step = null;
+                    return true;
+                }
+                route.step = Step.VERTEX;
+                return binary.isPresent();
+            }
+            case VERTEX -> {
+                route.vertex = shader(GL20.GL_VERTEX_SHADER, vertexSource);
+                route.step = Step.FRAGMENT;
+                return true;
+            }
+            case FRAGMENT -> {
+                route.fragment = shader(GL20.GL_FRAGMENT_SHADER, route.variant.apply(surfaceSource));
+                route.step = Step.LINK;
+                return true;
+            }
+            case LINK -> {
+                route.program = GL20.glCreateProgram();
+                GL20.glAttachShader(route.program, route.vertex);
+                GL20.glAttachShader(route.program, route.fragment);
+                cache.prepare(route.program);
+                GL20.glLinkProgram(route.program);
+                route.step = Step.LINKING;
+                return true;
+            }
+            default -> {
+                return false;
+            }
         }
-        String fragment = variant.apply(surfaceSource);
-        int vertex = shader(GL20.GL_VERTEX_SHADER, vertexSource);
-        int fragmentShader = shader(GL20.GL_FRAGMENT_SHADER, fragment);
-        int program = GL20.glCreateProgram();
-        GL20.glAttachShader(program, vertex);
-        GL20.glAttachShader(program, fragmentShader);
-        cache.prepare(program);
-        GL20.glLinkProgram(program);
-        compiling.add(new Compilation(variant, key, vertex, fragmentShader, program));
     }
 
     /**
@@ -311,35 +451,34 @@ final class NativeShaders implements AutoCloseable {
      * à la frame qui suit son lancement : lire son état peut attendre le pilote, une variante par
      * frame au plus.
      */
-    private boolean finished(Compilation compilation) {
+    private static boolean finished(Route route, boolean parallel) {
         return !parallel
-                || GL20.glGetProgrami(compilation.program(), KHRParallelShaderCompile.GL_COMPLETION_STATUS_KHR)
+                || GL20.glGetProgrami(route.program, KHRParallelShaderCompile.GL_COMPLETION_STATUS_KHR)
                         == GL11.GL_TRUE;
     }
 
     /** Reprend une variante compilée : en service si elle se lie, perdue sinon (R-761). */
-    private void adopt(Compilation compilation) {
-        String name = SURFACE + " " + compilation.variant().key();
+    private void adopt(Route route) {
+        String name = SURFACE + " " + route.variant.key();
         String error = null;
-        if (GL20.glGetShaderi(compilation.vertex(), GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE) {
-            error = "compilation de « " + name + ", sommets » : " + GL20.glGetShaderInfoLog(compilation.vertex()).strip();
-        } else if (GL20.glGetShaderi(compilation.fragment(), GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE) {
-            error = "compilation de « " + name + ", fragments » : "
-                    + GL20.glGetShaderInfoLog(compilation.fragment()).strip();
-        } else if (GL20.glGetProgrami(compilation.program(), GL20.GL_LINK_STATUS) == GL11.GL_FALSE) {
-            error = "liaison du programme « " + name + " » : " + GL20.glGetProgramInfoLog(compilation.program()).strip();
+        if (GL20.glGetShaderi(route.vertex, GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE) {
+            error = "compilation de « " + name + ", sommets » : " + GL20.glGetShaderInfoLog(route.vertex).strip();
+        } else if (GL20.glGetShaderi(route.fragment, GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE) {
+            error = "compilation de « " + name + ", fragments » : " + GL20.glGetShaderInfoLog(route.fragment).strip();
+        } else if (GL20.glGetProgrami(route.program, GL20.GL_LINK_STATUS) == GL11.GL_FALSE) {
+            error = "liaison du programme « " + name + " » : " + GL20.glGetProgramInfoLog(route.program).strip();
         }
         if (error != null) {
-            discard(compilation);
-            fail(compilation.variant(), error);
+            discard(route);
+            fail(route.variant, error);
             return;
         }
-        GL20.glDetachShader(compilation.program(), compilation.vertex());
-        GL20.glDetachShader(compilation.program(), compilation.fragment());
-        GL20.glDeleteShader(compilation.vertex());
-        GL20.glDeleteShader(compilation.fragment());
-        cache.store(compilation.key(), compilation.program());
-        surfaces.ready(compilation.variant(), adopted(compilation.program()));
+        GL20.glDetachShader(route.program, route.vertex);
+        GL20.glDetachShader(route.program, route.fragment);
+        GL20.glDeleteShader(route.vertex);
+        GL20.glDeleteShader(route.fragment);
+        cache.store(route.key, route.program);
+        surfaces.ready(route.variant, adopted(route.program));
         compiled++;
         onDemand++;
     }
@@ -352,11 +491,17 @@ final class NativeShaders implements AutoCloseable {
         }
     }
 
-    /** Détruit les objets d'une compilation abandonnée ou ratée. */
-    private static void discard(Compilation compilation) {
-        GL20.glDeleteProgram(compilation.program());
-        GL20.glDeleteShader(compilation.vertex());
-        GL20.glDeleteShader(compilation.fragment());
+    /** Détruit les objets déjà créés d'une variante abandonnée ou ratée. */
+    private static void discard(Route route) {
+        if (route.program != 0) {
+            GL20.glDeleteProgram(route.program);
+        }
+        if (route.vertex != 0) {
+            GL20.glDeleteShader(route.vertex);
+        }
+        if (route.fragment != 0) {
+            GL20.glDeleteShader(route.fragment);
+        }
     }
 
     /** {@return un programme relu du cache, ou compilé et lié d'un bloc, puis gardé au cache} */

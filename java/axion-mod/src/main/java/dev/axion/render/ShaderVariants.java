@@ -104,6 +104,26 @@ public final class ShaderVariants<P> {
         states.put(variant, State.FAILED);
     }
 
+    /**
+     * Oublie une variante prête : sa prochaine demande la remet en compilation. Le banc de rendu
+     * mesure ainsi une compilation à la demande sur une scène établie (T-904) ; rien d'autre ne
+     * l'appelle.
+     *
+     * @param variant la variante, jamais la base
+     * @return son programme, à détruire, ou {@code null} si elle n'était pas prête
+     * @throws IllegalArgumentException pour la base, qui dessine toujours
+     */
+    public P forget(ShaderVariant variant) {
+        if (variant.equals(ShaderVariant.BASE)) {
+            throw new IllegalArgumentException("la variante de base ne s'oublie pas");
+        }
+        if (states.get(variant) != State.READY) {
+            return null;
+        }
+        states.remove(variant);
+        return programs.remove(variant);
+    }
+
     /** {@return où en est une variante ; {@code null} pour une variante jamais demandée} */
     public State state(ShaderVariant variant) {
         return states.get(variant);

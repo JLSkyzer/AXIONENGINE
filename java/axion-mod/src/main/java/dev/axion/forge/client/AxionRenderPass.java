@@ -178,6 +178,38 @@ public final class AxionRenderPass {
     }
 
     /**
+     * Oublie la variante des surfaces découpées du backend natif : sa prochaine demande la remet en
+     * service, relue du cache ou compilée. Le banc de rendu mesure ainsi une mise en service à la
+     * demande sur une scène établie (T-904) ; rien d'autre ne l'appelle.
+     *
+     * @param fromCache vrai pour qu'elle soit relue du cache binaire, faux pour qu'elle se compile
+     * @return vrai si le natif est actif et qu'elle était prête
+     */
+    public static boolean forgetCutoutShaderVariant(boolean fromCache) {
+        RenderSystem.assertOnRenderThread();
+        return backend instanceof NativeGlBackend natif && natif.forgetCutout(fromCache);
+    }
+
+    /**
+     * Compile, ou non, les variantes à la demande qui suivent comme sans compilation parallèle. Le
+     * banc de rendu mesure ainsi ce chemin (T-904) ; rien d'autre ne l'appelle.
+     *
+     * @param serial vrai pour une variante par frame, dont l'état se lit à la frame suivante
+     */
+    public static void forceSerialShaderCompile(boolean serial) {
+        NativeShaders.forceSerial(serial);
+    }
+
+    /**
+     * {@return le temps, en nanosecondes, que les variantes à la demande du natif ont pris au render
+     * thread à sa dernière frame ; 0 sans natif} Relevé par le banc de rendu (T-904).
+     */
+    public static long nativeShaderPollNanos() {
+        RenderSystem.assertOnRenderThread();
+        return backend instanceof NativeGlBackend natif ? natif.lastShaderPollNanos() : 0L;
+    }
+
+    /**
      * Les programmes du backend natif, tels que le banc de rendu les relève (T-512, T-905).
      *
      * @param cacheHits programmes relus du cache binaire

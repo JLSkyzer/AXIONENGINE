@@ -66,6 +66,27 @@ class ShaderVariantsTest {
     }
 
     @Test
+    @DisplayName("T-904 : une variante oubliée rend son programme, et sa prochaine demande la recompile")
+    void oubli() {
+        ShaderVariants<String> variantes = new ShaderVariants<>("base", 2);
+        variantes.program(CUTOUT);
+        variantes.nextToCompile();
+        variantes.ready(CUTOUT, "cutout");
+
+        assertEquals("cutout", variantes.forget(CUTOUT));
+        assertNull(variantes.state(CUTOUT));
+        assertEquals(List.of("base"), variantes.programs());
+        // Oubliée, elle ne compte plus dans la borne : redemandée, elle repart en compilation.
+        assertSame("base", variantes.program(CUTOUT));
+        assertEquals(ShaderVariants.State.PENDING, variantes.state(CUTOUT));
+        assertEquals(CUTOUT, variantes.nextToCompile());
+
+        // Seule une variante prête s'oublie, et jamais la base.
+        assertNull(variantes.forget(CUTOUT));
+        assertThrows(IllegalArgumentException.class, () -> variantes.forget(ShaderVariant.BASE));
+    }
+
+    @Test
     @DisplayName("R-761 : une variante qui ne compile pas est perdue, la base la remplace")
     void echec() {
         ShaderVariants<String> variantes = new ShaderVariants<>("base", 64);

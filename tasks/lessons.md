@@ -1295,3 +1295,17 @@ pipeline de frame n'est pas préparé.
 passer avant lui. Un état publié par un autre mod se lit là où il est garanti valide — ici, dans la frame,
 au stage `AFTER_ENTITIES` —, pas au premier événement venu. Le banc sous mods tiers est celui qui trouve ces
 suppositions.
+
+## 2026-10-12 | Un critère d'à-coup jugé contre des frames témoins bruitées a laissé passer un à-coup réel
+
+**Ce qui a mal tourné.** Le premier critère de T-904 comparait la frame la plus lente de la remise en service à la
+plus lente de 600 frames témoins, plus 2 ms. Il a passé vert alors qu'AXION ajoutait 3,6 ms au render thread en une
+frame : une frame témoin isolée de 5,5 ms couvrait l'à-coup.
+
+**Cause.** Le maximum d'une série bruitée n'est pas une référence ; et le temps de frame mêle le travail d'AXION à
+tout le reste.
+
+**Règle.** Un critère de performance porte d'abord sur le travail attribuable, mesuré directement (ici, le temps des
+variantes au render thread, contre `budgets.render_prep_ns`) ; le temps de frame ne vient qu'en second. Et une
+mesure qui demande plusieurs lancements du jeu (mesurer, instrumenter, vérifier) s'annonce à Killian d'un bloc,
+avant la série, avec le nombre de lancements prévu.
