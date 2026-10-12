@@ -13,6 +13,7 @@ import dev.axion.definition.Definition;
 import dev.axion.forge.AxionEntity;
 import dev.axion.forge.RuntimeAccess;
 import dev.axion.lifecycle.AxionRuntime;
+import dev.axion.diag.JavaMetrics;
 import dev.axion.render.BackendSelection;
 import dev.axion.render.MeshCache;
 import dev.axion.render.RenderAsset;
@@ -128,6 +129,35 @@ public final class AxionRenderPass {
 
     /** Un budget GPU dépassé par des assets tous visibles n'est dit qu'une fois. */
     private static boolean gpuBudgetShortReported;
+
+    // INV-19, ADR-133 D1 : les budgets du rendu se mesurent ici, et entrent dans l'export.
+    private static final JavaMetrics METRICS = JavaMetrics.GLOBAL;
+    private static final JavaMetrics.Budget RENDER_PREP = METRICS.budget("budgets.render_prep_ns", "ns");
+    private static final JavaMetrics.Budget GPU_MEM = METRICS.budget("budgets.gpu_mem_bytes", "bytes");
+    private static final JavaMetrics.Budget VISIBLE = METRICS.budget("budgets.max_visible_instances", "count");
+    private static final JavaMetrics.Budget TRIANGLES = METRICS.budget("budgets.max_triangles_frame", "count");
+    private static final JavaMetrics.Metric BACKEND = METRICS.gauge("axion.render.backend", "id");
+    private static final JavaMetrics.Metric TEXTURE_BYTES = METRICS.gauge("axion.render.gpu_texture_bytes", "bytes");
+    private static final JavaMetrics.Metric MESH_BYTES = METRICS.gauge("axion.render.gpu_mesh_bytes", "bytes");
+    private static final JavaMetrics.Metric EVICTIONS = METRICS.counter("axion.render.gpu_evictions", "count");
+    private static final JavaMetrics.Metric GL_OBJECTS = METRICS.gauge("axion.render.gl_objects", "count");
+    private static final JavaMetrics.Metric SHADER_COMPILED = METRICS.gauge("axion.render.shader.compiled", "count");
+    private static final JavaMetrics.Metric SHADER_PENDING = METRICS.gauge("axion.render.shader.pending", "count");
+    private static final JavaMetrics.Metric SHADER_REFUSED = METRICS.gauge("axion.render.shader.refused", "count");
+    private static final JavaMetrics.Metric SHADER_CACHE_HITS = METRICS.gauge("axion.render.shader.cache_hits", "count");
+    private static final JavaMetrics.Metric SHADER_CACHE_MISSES =
+            METRICS.gauge("axion.render.shader.cache_misses", "count");
+
+    /** Plafonds des budgets du rendu, lus à la création du cache d'assets ; zéro : aucun. */
+    private static long renderPrepLimit;
+    private static long visibleLimit;
+    private static long trianglesLimit;
+
+    /** Temps CPU des passes d'AXION à la frame courante, en nanosecondes. */
+    private static long framePrepNanos;
+
+    /** Vrai dès qu'une frame a été mesurée : la première n'a pas de précédente à publier. */
+    private static boolean frameMeasured;
 
     private AxionRenderPass() {}
 
@@ -311,13 +341,25 @@ public final class AxionRenderPass {
         RenderSystem.assertOnRenderThread();
         RenderLevelStageEvent.Stage stage = event.getStage();
         if (stage == RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+            // Premier stage de la frame : le temps de la précédente se publie (INV-19).
+            if (frameMeasured) {
+                RENDER_PREP.report(framePrepNanos, renderPrepLimit);
+            }
+            framePrepNanos = 0;
+            frameMeasured = true;
+            long started = System.nanoTime();
             selectIfNeeded(event);
             renderSurfaces(event, false);
+            framePrepNanos += System.nanoTime() - started;
         } else if (stage == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
+            long started = System.nanoTime();
             renderSurfaces(event, true);
+            framePrepNanos += System.nanoTime() - started;
         } else if (stage == RenderLevelStageEvent.Stage.AFTER_PARTICLES && OVERLAYS.mask() != 0L) {
             // Éteints, les overlays ne coûtent que ce test (R-2280).
+            long started = System.nanoTime();
             renderDebug(event);
+            framePrepNanos += System.nanoTime() - started;
         }
     }
 
@@ -331,6 +373,7 @@ public final class AxionRenderPass {
         List<RenderBackend.Assembly> assemblies = assemblies(minecraft.level, true);
         if (!translucent) {
             lastFrame = FrameStats.of(assemblies);
+            reportFrame(assemblies);
         }
         if (assemblies.isEmpty()) {
             return;
@@ -380,11 +423,45 @@ public final class AxionRenderPass {
         }
         RenderBackend current = backend;
         lastResidency = meshes.enforceBudget(current::gpuBytes, current::evict);
+        // INV-19 : la mémoire tenue, et un dépassement par frame qui a dû décharger, ou n'a pas pu.
+        GPU_MEM.consumed().set(lastResidency.bytes());
+        if (lastResidency.exceeded()) {
+            GPU_MEM.overruns().increment();
+        }
+        EVICTIONS.add(lastResidency.evicted());
+        TEXTURE_BYTES.set(meshes.textureBytes());
+        MESH_BYTES.set(current.gpuBytes());
         if (lastResidency.exceeded() && lastResidency.evicted() == 0 && !gpuBudgetShortReported) {
             gpuBudgetShortReported = true;
             LOGGER.warn("AXION : budget GPU dépassé ({} octets) par des assets tous visibles : les leviers"
                     + " suivants de R-750 — LOD forcé, qualité de déformation — arrivent avec C-64 et la M6",
                     lastResidency.bytes());
+        }
+    }
+
+    /**
+     * Publie ce que la frame dessine (INV-19, ADR-133 D1) : ses instances, les triangles des
+     * maillages de leurs assets — la boîte de repli d'un asset absent n'y compte pas —, le backend,
+     * les objets GL vivants et l'état des shaders du natif.
+     */
+    private static void reportFrame(List<RenderBackend.Assembly> assemblies) {
+        long triangles = 0;
+        for (RenderBackend.Assembly assembly : assemblies) {
+            if (assembly.asset() != null) {
+                triangles += assembly.asset().mesh().indexCount() / 3;
+            }
+        }
+        VISIBLE.report(assemblies.size(), visibleLimit);
+        TRIANGLES.report(triangles, trianglesLimit);
+        BACKEND.set(backend == null ? 0 : backend.kind() == BackendSelection.Kind.NATIVE ? 2 : 1);
+        GL_OBJECTS.set(NativeGlObjects.live());
+        if (backend instanceof NativeGlBackend natif) {
+            NativeShaders.Stats stats = natif.shaderStats();
+            SHADER_COMPILED.set(stats.compiled());
+            SHADER_PENDING.set(stats.pending());
+            SHADER_REFUSED.set(stats.refused());
+            SHADER_CACHE_HITS.set(stats.cacheHits());
+            SHADER_CACHE_MISSES.set(stats.cacheMisses());
         }
     }
 
@@ -598,6 +675,9 @@ public final class AxionRenderPass {
                     Minecraft.getInstance(),
                     line -> LOGGER.warn("AXION : maillage {}", line),
                     outcome.config().getInt("budgets.gpu_mem_bytes"));
+            renderPrepLimit = outcome.config().getInt("budgets.render_prep_ns");
+            visibleLimit = outcome.config().getInt("budgets.max_visible_instances");
+            trianglesLimit = outcome.config().getInt("budgets.max_triangles_frame");
             runtime.addNativeReleaser(cache::close);
             cache.setMaterialMaps(backend != null && backend.kind() == BackendSelection.Kind.NATIVE);
             meshes = cache;

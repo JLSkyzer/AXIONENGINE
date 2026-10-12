@@ -20,6 +20,7 @@ import dev.axion.physics.SimStateSink;
 import dev.axion.physics.SimulationJournal;
 import dev.axion.physics.SimulationTrace;
 import dev.axion.physics.StepBreakdown;
+import dev.axion.diag.JavaMetrics;
 import dev.axion.platform.PlatformAdapter;
 import dev.axion.render.RenderCapabilities;
 import java.io.IOException;
@@ -88,6 +89,16 @@ public final class AxionRuntime {
      * le natif le lit à l'ouverture du contexte, dont il ne change plus.
      */
     private long simBudgetNs;
+
+    /** {@code budgets.idle_hook_ns} : ce que coûte le hook de tick quand rien n'est simulé. */
+    private long idleHookBudgetNs;
+
+    /** Le dernier tick n'a simulé ni corps ni événement. */
+    private boolean lastTickIdle;
+
+    /** INV-19 : le hook de tick à vide, mesuré côté Java (ADR-133 D1). */
+    private static final JavaMetrics.Budget IDLE_HOOK =
+            JavaMetrics.GLOBAL.budget("budgets.idle_hook_ns", "ns");
     /** Trace de la simulation en cours d'écriture ({@code /axion debug trace}), ou {@code null}. */
     private SimulationTrace trace;
     /** Fichier de la trace en cours, ou {@code null}. */
@@ -328,10 +339,16 @@ public final class AxionRuntime {
             if (!isOperational()) {
                 return;
             }
+            long started = System.nanoTime();
             if (assets != null && !assets.isSettled()) {
                 assets.pump(outcome.config().getInt("budgets.asset_ns_per_tick"));
             }
             driveSimulation();
+            // INV-19 : un tick sans corps ni événement ne coûte que ce passage, que
+            // `budgets.idle_hook_ns` plafonne.
+            if (lastTickIdle) {
+                IDLE_HOOK.report(System.nanoTime() - started, idleHookBudgetNs);
+            }
         });
     }
 
@@ -362,6 +379,7 @@ public final class AxionRuntime {
         if (simulation == null) {
             simulation = new NativeSimulation(outcome.context());
             simBudgetNs = outcome.config().getInt("budgets.sim_ns_per_tick");
+            idleHookBudgetNs = outcome.config().getInt("budgets.idle_hook_ns");
         }
         long tick = platform.currentTick();
         // Étape 1 (C-40) : les commandes de tick viennent des fournisseurs Forge branchés
@@ -374,6 +392,7 @@ public final class AxionRuntime {
         long started = System.nanoTime();
         CollectResult result = simulation.tick(tick, commands, 0L);
         long cycleNs = System.nanoTime() - started;
+        lastTickIdle = result.bodies().isEmpty() && result.events().isEmpty();
         // Étape 15 (C-40) : les états collectés sont réappliqués aux entités liées via le
         // puits Forge (boucle C-40 ↔ C-50). Absent → rien à piloter.
         if (stateSink != null) {
@@ -770,8 +789,8 @@ public final class AxionRuntime {
     }
 
     /**
-     * {@return l'export JSON des métriques natives, ou {@code null} si le
-     * runtime n'est pas opérationnel}
+     * {@return l'export JSON des métriques natives et de celles que Java mesure (ADR-133 D1),
+     * ou {@code null} si le runtime n'est pas opérationnel}
      *
      * <p>R-502. Un runtime inactif n'a pas de métriques à donner : rendre un
      * document vide laisserait croire qu'il n'a rien mesuré, alors qu'il n'a
@@ -782,7 +801,8 @@ public final class AxionRuntime {
             return null;
         }
         try {
-            return nativeApi.metricsJson(outcome.context());
+            // ADR-133 D1 : les métriques que Java mesure entrent dans le même export.
+            return JavaMetrics.GLOBAL.merge(nativeApi.metricsJson(outcome.context()));
         } catch (RuntimeException | UnsatisfiedLinkError failure) {
             // Un export qui échoue ne doit pas remonter jusqu'à la commande :
             // R-400 veut qu'aucun hook ne lève, et une commande de diagnostic
