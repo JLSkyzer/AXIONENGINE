@@ -27,6 +27,8 @@
 #   validate-jar       -> job build-and-test, etape finale de `gradlew build`
 #   det-vectors        -> job platform, etape nommee (T-820, R-513)
 #   build-natives      -> job platform, etape nommee (34.2)
+#   JAR complet        -> job jar-complet : natifs de la matrice reunis, mode
+#                         release qui refuse un JAR partial (R-2341, 37.3)
 #
 # Ce qui manque, et pourquoi : lint-java attend spotless, lint-units attend les
 # annotations dimensionnelles de 11.5, fuzz-short attend les cibles de fuzzing,
@@ -414,5 +416,60 @@ jobs:
             target/release/libaxion_native.so
             target/release/libaxion_native.dylib
             target/release/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  # Definition of Done de chaque jalon (37.3) : « JAR installable et jouable
+  # produit par la CI ». Aucune machine ne compile les quatre plateformes : ce job
+  # reunit les natifs que la matrice vient de produire et de televerser, construit
+  # le JAR en mode release — qui refuse un JAR partial (R-2341) et verifie
+  # l'empreinte de chaque bibliotheque reprise —, puis le televerse. Il ne tourne
+  # que si toute la matrice a reussi, et ne se rejoue pas en CI locale.
+  jar-complet:
+    name: jar-complet
+    needs: platform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-test-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-test-${{ runner.os }}-
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: natif-*
+          path: natifs
+
+      - name: Natifs reunis
+        run: find natifs -type f | sort
+
+      - name: JAR complet, valide (R-2341)
+        run: >-
+          ./gradlew :axion-mod:validateJar -Paxion.release
+          -Paxion.prebuilt="$PWD/natifs" --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: axion-jar-complet
+          path: java/axion-mod/build/libs/*.jar
           if-no-files-found: error
           retention-days: 14

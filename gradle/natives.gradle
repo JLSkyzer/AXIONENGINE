@@ -1,6 +1,7 @@
 // Chaine de production de la bibliotheque native (PARTIE 34.1).
 //
-//   buildNatives    cargo build --release -p ax-ffi, par cible
+//   buildNatives    cargo build --release -p ax-ffi, par cible, ou bibliotheque
+//                   deja construite (-Paxion.prebuilt, JAR complet de la CI)
 //   packageNatives  copie dans natives/<os>-<arch>/ avec son empreinte SHA-256
 //   validateJar     controles d'artefact avant publication
 //
@@ -92,6 +93,32 @@ def axionRustTriple = { String target ->
     }
 }
 
+/**
+ * Bibliotheque deja construite pour une cible, ou `null` : -Paxion.prebuilt=<dir>,
+ * ou <dir> porte un sous-repertoire par cible, `<cible>/` ou `natif-<cible>/` —
+ * la forme des artefacts du job `platform` de la CI. C'est ainsi que la CI reunit
+ * les quatre plateformes dans un JAR complet (R-2341) : aucune machine ne sait
+ * les compiler toutes.
+ */
+def axionPrebuilt = { String target ->
+    if (!project.hasProperty('axion.prebuilt')) {
+        return null
+    }
+    File root = file(project.property('axion.prebuilt').toString())
+    for (String dirName : [target, 'natif-' + target]) {
+        File lib = new File(new File(root, dirName), axionLibraryFileName(target))
+        if (lib.isFile()) {
+            return lib
+        }
+    }
+    return null
+}
+
+/** Empreinte SHA-256 en hexadecimal. */
+def axionSha256 = { byte[] bytes ->
+    MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString()
+}
+
 /** Repertoire ou les natifs sont rassembles avant d'entrer dans le JAR.
  *
  * Surtout pas `build/natives` : ForgeGradle y extrait deja les natifs de LWJGL
@@ -165,33 +192,49 @@ tasks.register('buildNatives') {
                 continue
             }
 
-            // La compilation croisee demande une chaine complete pour la cible
-            // (editeur de liens, bibliotheques systeme). On ne tente que la
-            // cible hote ; la CI produit les autres sur leurs machines.
-            if (target != host) {
-                logger.warn("AXION : ${target} n'est pas la cible hote (${host}), ignoree")
-                missing << target
-                continue
-            }
+            File produced = axionPrebuilt(target)
+            if (produced != null) {
+                // Une bibliotheque venue d'ailleurs ne se croit pas sur parole :
+                // l'empreinte qui l'accompagne doit etre la sienne.
+                File sum = new File(produced.parentFile, produced.name + '.sha256')
+                if (sum.isFile()) {
+                    String expected = sum.text.trim().split(/\s+/)[0].toLowerCase(Locale.ROOT)
+                    String actual = axionSha256(produced.bytes)
+                    if (expected != actual) {
+                        throw new GradleException("AXION : empreinte de ${produced} : "
+                                + "${actual}, ${expected} attendue")
+                    }
+                }
+                logger.lifecycle("AXION : ${target} deja construit, repris de ${produced.parentFile}")
+            } else {
+                // La compilation croisee demande une chaine complete pour la cible
+                // (editeur de liens, bibliotheques systeme). On ne tente que la
+                // cible hote ; la CI produit les autres sur leurs machines.
+                if (target != host) {
+                    logger.warn("AXION : ${target} n'est pas la cible hote (${host}), ignoree")
+                    missing << target
+                    continue
+                }
 
-            def result = exec {
-                commandLine 'cargo', 'build', '--release', '-p', 'ax-ffi'
-                workingDir rootProject.projectDir
-                ignoreExitValue = true
-                // Une chaine Rust absente ne doit pas faire echouer le build.
-                standardOutput = new ByteArrayOutputStream()
-                errorOutput = new ByteArrayOutputStream()
-            }
+                def result = exec {
+                    commandLine 'cargo', 'build', '--release', '-p', 'ax-ffi'
+                    workingDir rootProject.projectDir
+                    ignoreExitValue = true
+                    // Une chaine Rust absente ne doit pas faire echouer le build.
+                    standardOutput = new ByteArrayOutputStream()
+                    errorOutput = new ByteArrayOutputStream()
+                }
 
-            File produced = new File(
-                    rootProject.projectDir,
-                    "target/release/${axionLibraryFileName(target)}")
+                produced = new File(
+                        rootProject.projectDir,
+                        "target/release/${axionLibraryFileName(target)}")
 
-            if (result.exitValue != 0 || !produced.exists()) {
-                logger.warn("AXION : construction de ${target} impossible "
-                        + "(cargo absent ou en echec) — JAR marque partial")
-                missing << target
-                continue
+                if (result.exitValue != 0 || !produced.exists()) {
+                    logger.warn("AXION : construction de ${target} impossible "
+                            + "(cargo absent ou en echec) — JAR marque partial")
+                    missing << target
+                    continue
+                }
             }
 
             File targetDir = new File(outDir, target)
@@ -201,10 +244,7 @@ tasks.register('buildNatives') {
 
             // R-420 : l'empreinte accompagne la bibliotheque, et le chargeur la
             // verifie avant tout chargement.
-            String digest = MessageDigest.getInstance('SHA-256')
-                    .digest(copied.bytes)
-                    .encodeHex()
-                    .toString()
+            String digest = axionSha256(copied.bytes)
             new File(targetDir, "${produced.name}.sha256").text = "${digest}  ${produced.name}\n"
 
             logger.lifecycle("AXION : ${target} produit (${copied.length()} octets, ${digest.take(16)}…)")
@@ -223,7 +263,10 @@ tasks.register('buildNatives') {
 /** Ressources generees : le repertoire passe par processResources. */
 def axionGeneratedResources = layout.buildDirectory.dir('generated/resources')
 
-tasks.register('packageNatives', Copy) {
+// Sync et non Copy : un natif d'un build precedent — autre cible, bibliotheque
+// reprise d'ailleurs — ne doit pas survivre dans les ressources et entrer dans
+// le JAR suivant.
+tasks.register('packageNatives', Sync) {
     group = 'axion'
     description = 'Place les natifs produits dans les ressources du mod'
     dependsOn 'buildNatives'
