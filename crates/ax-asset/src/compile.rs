@@ -421,7 +421,7 @@ mod tests {
     }
 
     #[test]
-    fn t550_les_lod_voyagent_dans_la_section_lodm() {
+    fn lod_les_lod_voyagent_dans_la_section_lodm() {
         let compiled = compile(
             grille_obj(16).as_bytes(),
             SourceFormat::Obj,
@@ -466,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn t550_sans_lod_genere_la_section_lodm_n_est_pas_ecrite() {
+    fn lod_sans_lod_genere_la_section_lodm_n_est_pas_ecrite() {
         // Un triangle ne se simplifie pas : aucune table à écrire.
         let compiled = compile(TRIANGLE_OBJ.as_bytes(), SourceFormat::Obj, &OPTIONS, |_| {
             None

@@ -711,7 +711,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_reconnait_les_formes_prises_en_charge() {
+    fn t310_parse_reconnait_les_formes_prises_en_charge() {
         assert_eq!(ColliderMode::parse("auto_box"), Some(ColliderMode::AutoBox));
         assert_eq!(
             ColliderMode::parse("auto_sphere"),
@@ -734,17 +734,17 @@ mod tests {
     }
 
     #[test]
-    fn le_mode_none_ne_genere_aucun_collider() {
+    fn t310_le_mode_none_ne_genere_aucun_collider() {
         assert!(from_definition(ColliderMode::None, Some(bounds([0.0; 3], [1.0; 3]))).is_empty());
     }
 
     #[test]
-    fn sans_bornes_aucun_collider() {
+    fn t310_sans_bornes_aucun_collider() {
         assert!(from_definition(ColliderMode::AutoBox, None).is_empty());
     }
 
     #[test]
-    fn auto_box_couvre_les_bornes_et_se_centre() {
+    fn t310_auto_box_couvre_les_bornes_et_se_centre() {
         // Bornes asymétriques : la boîte doit être centrée sur leur milieu.
         let colliders = from_definition(
             ColliderMode::AutoBox,
@@ -767,7 +767,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_sphere_contient_les_coins() {
+    fn t310_auto_sphere_contient_les_coins() {
         // Cube [0,2]³ : la sphère est centrée en (1,1,1) et de rayon égal à la
         // demi-diagonale (√3), donc passe exactement par les huit coins.
         let colliders = from_definition(ColliderMode::AutoSphere, Some(bounds([0.0; 3], [2.0; 3])));
@@ -790,7 +790,7 @@ mod tests {
     }
 
     #[test]
-    fn un_node_collider_recoit_une_boite_depuis_son_mesh() {
+    fn t310_un_node_collider_recoit_une_boite_depuis_son_mesh() {
         // La requête (extras de node) prime sur le mode de definition.
         let mut nodes = vec![node(0, 5)];
         let meshes = vec![mesh([0.0, 0.0, 0.0], [2.0, 4.0, 6.0])];
@@ -827,7 +827,7 @@ mod tests {
     }
 
     #[test]
-    fn un_node_collider_sans_mesh_est_averti_et_ignore() {
+    fn t310_un_node_collider_sans_mesh_est_averti_et_ignore() {
         let mut nodes = vec![node(NONE_U32, NONE_U16)];
         let requests = vec![ColliderRequest {
             node: 0,
@@ -852,7 +852,7 @@ mod tests {
     }
 
     #[test]
-    fn un_node_collider_couvre_tous_ses_meshes() {
+    fn t310_un_node_collider_couvre_tous_ses_meshes() {
         // Un collider glTF à deux primitives : la boîte couvre les deux, là où
         // elle ne couvrait que la première (ADR-122 §5).
         let rempli = |aabb_min: [f32; 3], aabb_max: [f32; 3]| MeshDesc {
@@ -894,7 +894,7 @@ mod tests {
     }
 
     #[test]
-    fn l_union_des_boites_ecarte_les_meshes_vides() {
+    fn t310_l_union_des_boites_ecarte_les_meshes_vides() {
         let rempli = MeshDesc {
             vertex_count: 3,
             ..mesh([2.0; 3], [3.0; 3])
@@ -921,7 +921,7 @@ mod tests {
     }
 
     #[test]
-    fn les_requetes_l_emportent_sur_le_mode_definition() {
+    fn t310_les_requetes_l_emportent_sur_le_mode_definition() {
         // Un node collider présent : le mode de definition n'est pas consulté.
         let mut nodes = vec![node(0, NONE_U16)];
         let meshes = vec![mesh([0.0; 3], [1.0; 3])];
@@ -967,7 +967,7 @@ mod tests {
     }
 
     #[test]
-    fn un_node_convex_produit_une_enveloppe_de_ses_sommets() {
+    fn t310_un_node_convex_produit_une_enveloppe_de_ses_sommets() {
         // Un node `shape: convex` : les sommets de son mesh deviennent les points
         // d'enveloppe (R-161), ajoutés au pool ; le collider les référence par
         // offset/count.
@@ -1023,7 +1023,7 @@ mod tests {
     }
 
     #[test]
-    fn un_node_convex_sans_assez_de_sommets_est_averti() {
+    fn t310_un_node_convex_sans_assez_de_sommets_est_averti() {
         // Trois sommets ne forment pas un volume (R-161 : au moins quatre).
         let mut nodes = vec![node(0, NONE_U16)];
         let meshes = vec![MeshDesc {
@@ -1059,7 +1059,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_compound_regroupe_les_boites_des_enfants() {
+    fn t310_auto_compound_regroupe_les_boites_des_enfants() {
         // Node porteur (index 0, sans mesh) et deux enfants avec mesh, en ±x.
         let parent = node(NONE_U32, NONE_U16);
         let mut enfant_gauche = node(0, NONE_U16);
@@ -1116,7 +1116,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_compound_sans_enfant_avec_mesh_est_averti() {
+    fn t310_auto_compound_sans_enfant_avec_mesh_est_averti() {
         // Un node porteur sans enfant : rien à regrouper.
         let mut nodes = vec![node(NONE_U32, NONE_U16)];
         let requests = vec![ColliderRequest {
@@ -1142,7 +1142,7 @@ mod tests {
     }
 
     #[test]
-    fn un_node_auto_capsule_recoit_une_capsule_depuis_son_mesh() {
+    fn t310_un_node_auto_capsule_recoit_une_capsule_depuis_son_mesh() {
         // Un mesh haut (Y) et étroit (X, Z) : demi-dimensions [0.5, 2.0, 0.5].
         let mut nodes = vec![node(0, NONE_U16)];
         let meshes = vec![mesh([-0.5, -2.0, -0.5], [0.5, 2.0, 0.5])];
@@ -1180,7 +1180,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_capsule_trapue_degenere_en_sphere() {
+    fn t310_auto_capsule_trapue_degenere_en_sphere() {
         // Un mesh large et plat : demi-dimensions [2.0, 0.5, 2.0]. Le rayon couvre
         // X/Z et déjà Y, donc le segment est nul (capsule = sphère englobante).
         let mut nodes = vec![node(0, NONE_U16)];
@@ -1214,7 +1214,7 @@ mod tests {
     }
 
     #[test]
-    fn les_extras_density_et_no_refit_surchargent_le_collider() {
+    fn t312_les_extras_density_et_no_refit_surchargent_le_collider() {
         // Densité déclarée (acier) et no_refit posés par les extras du node.
         let mut nodes = vec![node(0, NONE_U16)];
         let meshes = vec![mesh([0.0; 3], [1.0; 3])];
@@ -1248,7 +1248,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_convex_produit_un_collider_deterministe() {
+    fn t310_auto_convex_produit_un_collider_deterministe() {
         // Un tétraèdre (convexe) : VHACD en tire une enveloppe. Le mesh porte ses
         // 4 sommets et 4 faces (indices locaux).
         let meshes = vec![MeshDesc {

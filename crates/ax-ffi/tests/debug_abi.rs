@@ -168,7 +168,7 @@ fn fill(ctx: u64, mask: u64, dimension: u64, max_segments: u32) -> Result<Depot,
 }
 
 #[test]
-fn debug_porte_les_aretes_des_colliders_en_repere_du_corps() {
+fn t550_debug_porte_les_aretes_des_colliders_en_repere_du_corps() {
     let mut ctx = 0u64;
     assert_eq!(
         unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) },

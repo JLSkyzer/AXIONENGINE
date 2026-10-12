@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn t550_les_niveaux_decroissent_sans_jamais_etre_vides() {
+    fn lod_les_niveaux_decroissent_sans_jamais_etre_vides() {
         let mut asset = grille();
         generate(&mut asset, &LodOptions::DEFAULT, &mut Vec::new()).expect("des LOD");
 
@@ -375,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn t550_la_topologie_de_bord_est_preservee() {
+    fn lod_la_topologie_de_bord_est_preservee() {
         let mut asset = grille();
         generate(&mut asset, &LodOptions::DEFAULT, &mut Vec::new()).expect("des LOD");
         let bord = |position: [f32; 3]| {
@@ -425,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn t550_tous_les_meshes_d_un_node_recoivent_leurs_lod() {
+    fn lod_tous_les_meshes_d_un_node_recoivent_leurs_lod() {
         // Un mesh glTF à deux primitives : le node les porte toutes deux, et la
         // seconde n'était ni comptée visible, ni simplifiée.
         let mut asset = grille();
@@ -453,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn t550_un_node_limite_au_lod_0_ne_recoit_aucun_lod() {
+    fn lod_un_node_limite_au_lod_0_ne_recoit_aucun_lod() {
         // L'intérieur d'un véhicule, `lod=[0]` (R-950).
         let mut asset = grille();
         asset.nodes[0].lod_mask = 1;
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn t550_un_lod_d_auteur_sert_de_source_aux_niveaux_suivants() {
+    fn lod_un_lod_d_auteur_sert_de_source_aux_niveaux_suivants() {
         // Un node `lod=[1, 2, 3]` : son mesh est le LOD 1 de l'auteur.
         let mut asset = grille();
         asset.nodes[0].lod_mask = 0b1110;
@@ -484,7 +484,7 @@ mod tests {
     }
 
     #[test]
-    fn t550_une_generation_desactivee_ne_touche_a_rien() {
+    fn lod_une_generation_desactivee_ne_touche_a_rien() {
         let mut asset = grille();
         let avant = asset.clone();
         let options = LodOptions {
@@ -496,7 +496,7 @@ mod tests {
     }
 
     #[test]
-    fn t550_des_options_incoherentes_avertissent_sans_rien_generer() {
+    fn lod_des_options_incoherentes_avertissent_sans_rien_generer() {
         let mut asset = grille();
         let avant = asset.clone();
         let mut warnings = Vec::new();
@@ -511,7 +511,7 @@ mod tests {
     }
 
     #[test]
-    fn t550_la_table_suit_sa_disposition() {
+    fn lod_la_table_suit_sa_disposition() {
         let table = LodTable {
             levels: 2,
             rows: vec![[0, 3, 0, 0, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0, 0]],

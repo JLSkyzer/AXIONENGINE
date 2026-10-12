@@ -1,5 +1,6 @@
-//! Overlay `colliders` (C-67, ADR-121) : tracé des colliders en repère du corps,
-//! sélection par distance et budget, lecture seule.
+//! T-550 — overlay `colliders` (C-67, ADR-121) : tracé des colliders en repère du corps,
+//! sélection par distance et budget, lecture seule. Allumé, l'overlay produit la bonne
+//! géométrie ; éteint, il ne coûte qu'un test de drapeau (T-551, côté Java).
 
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::debug::{debug_body_flags, DebugSegment};
@@ -44,7 +45,7 @@ fn seul_trace(world: &PhysicsWorld) -> Vec<DebugSegment> {
 }
 
 #[test]
-fn une_boite_est_tracee_par_ses_douze_aretes_en_repere_du_corps() {
+fn t550_une_boite_est_tracee_par_ses_douze_aretes_en_repere_du_corps() {
     // Boîte (1, 0.25, 0.5) posée sur l'origine du corps : centre local (0, 0.25, 0).
     // Le corps est tourné et déplacé : le tracé, en repère du corps, n'en dépend pas.
     let mut world = PhysicsWorld::new(config());
@@ -77,7 +78,7 @@ fn une_boite_est_tracee_par_ses_douze_aretes_en_repere_du_corps() {
 }
 
 #[test]
-fn un_convexe_est_trace_par_ses_vraies_aretes_sans_diagonales() {
+fn t550_un_convexe_est_trace_par_ses_vraies_aretes_sans_diagonales() {
     // Enveloppe d'un cube d'arête 1 : 12 arêtes de longueur 1. Les faces carrées
     // sont triangulées par l'enveloppe ; leurs diagonales (√2) ne sont pas des arêtes.
     let mut points = Vec::new();
@@ -110,7 +111,7 @@ fn un_convexe_est_trace_par_ses_vraies_aretes_sans_diagonales() {
 }
 
 #[test]
-fn une_sphere_est_tracee_par_trois_cercles_a_son_rayon() {
+fn t550_une_sphere_est_tracee_par_trois_cercles_a_son_rayon() {
     let mut world = PhysicsWorld::new(config());
     let corps = world
         .add_assembly(
@@ -140,7 +141,7 @@ fn une_sphere_est_tracee_par_trois_cercles_a_son_rayon() {
 }
 
 #[test]
-fn une_forme_composee_trace_chaque_enfant_a_sa_pose() {
+fn t550_une_forme_composee_trace_chaque_enfant_a_sa_pose() {
     let mut world = PhysicsWorld::new(config());
     let corps = world
         .add_body(
@@ -171,7 +172,7 @@ fn une_forme_composee_trace_chaque_enfant_a_sa_pose() {
 }
 
 #[test]
-fn un_champ_de_hauteurs_est_trace_par_les_aretes_de_ses_triangles() {
+fn t550_un_champ_de_hauteurs_est_trace_par_les_aretes_de_ses_triangles() {
     // Grille de 3 × 3 hauteurs : 4 cellules, 8 triangles, 16 arêtes distinctes
     // (12 côtés de cellule et 4 diagonales).
     let mut world = PhysicsWorld::new(config());
@@ -195,7 +196,7 @@ fn un_champ_de_hauteurs_est_trace_par_les_aretes_de_ses_triangles() {
 }
 
 #[test]
-fn les_corps_d_assembly_sont_traces_statiques_compris_avec_leur_genre() {
+fn t550_les_corps_d_assembly_sont_traces_statiques_compris_avec_leur_genre() {
     let mut world = PhysicsWorld::new(config());
     for (index, kind, x) in [
         (1u32, BodyKind::Dynamic, 0.0f32),
@@ -245,7 +246,7 @@ fn les_corps_d_assembly_sont_traces_statiques_compris_avec_leur_genre() {
 }
 
 #[test]
-fn un_corps_endormi_est_marque() {
+fn t550_un_corps_endormi_est_marque() {
     let mut world = PhysicsWorld::new(config());
     world
         .add_body(
@@ -298,7 +299,7 @@ fn trois_boites() -> SimDriver {
 }
 
 #[test]
-fn le_budget_va_aux_corps_les_plus_proches_de_la_camera() {
+fn t550_le_budget_va_aux_corps_les_plus_proches_de_la_camera() {
     let driver = trois_boites();
     // Caméra près de x = 20 : ordre 3, 2, 1. Budget de deux boîtes (24 segments).
     let debug = driver.debug_colliders(0, DVec3::new(19.0, 0.0, 0.0), 24);
@@ -315,7 +316,7 @@ fn le_budget_va_aux_corps_les_plus_proches_de_la_camera() {
 }
 
 #[test]
-fn un_corps_n_est_jamais_coupe() {
+fn t550_un_corps_n_est_jamais_coupe() {
     let driver = trois_boites();
     // 11 segments ne suffisent à aucune boîte : rien n'est tracé, tout est compté.
     let debug = driver.debug_colliders(0, DVec3::ZERO, 11);
@@ -324,7 +325,7 @@ fn un_corps_n_est_jamais_coupe() {
 }
 
 #[test]
-fn a_distance_egale_l_ordre_suit_la_cle_du_handle() {
+fn t550_a_distance_egale_l_ordre_suit_la_cle_du_handle() {
     let driver = trois_boites();
     // Caméra à x = 5 : les corps 1 et 2 sont à égale distance.
     let debug = driver.debug_colliders(0, DVec3::new(5.0, 0.0, 0.0), u32::MAX);
@@ -333,7 +334,7 @@ fn a_distance_egale_l_ordre_suit_la_cle_du_handle() {
 }
 
 #[test]
-fn une_dimension_inconnue_ne_trace_rien() {
+fn t550_une_dimension_inconnue_ne_trace_rien() {
     let driver = trois_boites();
     let debug = driver.debug_colliders(42, DVec3::ZERO, u32::MAX);
     assert!(debug.bodies.is_empty() && debug.segments.is_empty());
@@ -341,7 +342,7 @@ fn une_dimension_inconnue_ne_trace_rien() {
 }
 
 #[test]
-fn le_trace_ne_modifie_pas_la_simulation() {
+fn t550_le_trace_ne_modifie_pas_la_simulation() {
     // Deux pilotes identiques : un cube qui bascule sur un sol. L'un est tracé à
     // chaque tick, l'autre jamais ; leurs états restent identiques au bit près.
     fn pilote() -> SimDriver {

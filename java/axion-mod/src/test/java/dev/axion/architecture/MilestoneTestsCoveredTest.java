@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -45,6 +46,18 @@ class MilestoneTestsCoveredTest {
      * rouge en permanence ne dit plus rien.
      */
     private static final List<String> COMPLETED_MILESTONES = List.of("M0", "M1");
+
+    /**
+     * Tests qu'un jalon déclare mais qu'une décision exclut, chacun avec la décision qui le dit.
+     *
+     * <p>Une exclusion se justifie par un ADR ratifié, jamais par commodité : elle dit pourquoi
+     * l'identifiant ne peut pas être porté par ce jalon.
+     */
+    private static final Map<String, Map<String, String>> EXCLUDED = Map.of(
+            "M3", Map.of(
+                    "T-308", "ADR-128 : aucune fiche ne le définit",
+                    "T-309", "ADR-128 : aucune fiche ne le définit",
+                    "T-493", "ADR-128 : joué avec C-66 (M4) et la M6"));
 
     /**
      * {@return vrai si une source de test porte cet identifiant : écrit tel quel, ou en
@@ -108,12 +121,16 @@ class MilestoneTestsCoveredTest {
      * Rend le contenu des fichiers qui portent réellement des tests.
      *
      * <p>Un identifiant cité dans un commentaire de code de production ne
-     * prouve rien : seul compte celui que porte un fichier de test.
+     * prouve rien : seul compte celui que porte un fichier de test. Le contenu de
+     * développement ({@code src/devcontent}, jamais empaqueté) en porte aussi : les
+     * GameTests ({@code @GameTest}) et le banc de rendu, qui juge chaque vérification
+     * par son rapport ({@code RAPPORT.noter}) — l'acceptance de M3 y vit.
      */
     private static List<String> testSources() throws IOException {
         List<Path> roots = List.of(
                 Path.of(System.getProperty("axion.test.dir")),
-                Path.of(System.getProperty("axion.crates.dir")));
+                Path.of(System.getProperty("axion.crates.dir")),
+                Path.of(System.getProperty("axion.devcontent.dir")));
         List<String> contents = new ArrayList<>();
         for (Path root : roots) {
             try (Stream<Path> files = Files.walk(root)) {
@@ -122,8 +139,14 @@ class MilestoneTestsCoveredTest {
                     if (!name.endsWith(".java") && !name.endsWith(".rs")) {
                         continue;
                     }
+                    // Ce contrôle cite des identifiants (exemples, exclusions) sans les tester :
+                    // les compter ferait passer pour couvert un test qui n'existe pas.
+                    if (name.equals("MilestoneTestsCoveredTest.java")) {
+                        continue;
+                    }
                     String content = Files.readString(file, StandardCharsets.UTF_8);
-                    if (content.contains("@Test") || content.contains("#[test]")) {
+                    if (content.contains("@Test") || content.contains("#[test]")
+                            || content.contains("@GameTest") || content.contains("RAPPORT.noter(")) {
                         contents.add(content);
                     }
                 }
@@ -141,7 +164,11 @@ class MilestoneTestsCoveredTest {
 
         List<String> missing = new ArrayList<>();
         for (String milestone : COMPLETED_MILESTONES) {
+            Map<String, String> excluded = EXCLUDED.getOrDefault(milestone, Map.of());
             for (String identifier : declaredTests(spec, milestone)) {
+                if (excluded.containsKey(identifier)) {
+                    continue;
+                }
                 if (sources.stream().noneMatch(content -> carries(content, identifier))) {
                     missing.add(milestone + " : " + identifier);
                 }
@@ -152,6 +179,22 @@ class MilestoneTestsCoveredTest {
                 missing.isEmpty(),
                 () -> "R-2391 violé — des tests d'un jalon clos ont disparu :\n  "
                         + String.join("\n  ", missing));
+    }
+
+    @Test
+    @DisplayName("Une exclusion désigne un test que son jalon déclare, et dit sa décision")
+    void lesExclusionsDesignentDesTestsDeclares() throws IOException {
+        String spec = Files.readString(
+                Path.of(System.getProperty("axion.spec.file")), StandardCharsets.UTF_8);
+        for (Map.Entry<String, Map<String, String>> milestone : EXCLUDED.entrySet()) {
+            Set<String> declared = declaredTests(spec, milestone.getKey());
+            for (Map.Entry<String, String> exclusion : milestone.getValue().entrySet()) {
+                assertTrue(declared.contains(exclusion.getKey()),
+                        () -> milestone.getKey() + " ne déclare pas " + exclusion.getKey());
+                assertTrue(exclusion.getValue().startsWith("ADR-"),
+                        () -> exclusion.getKey() + " : une exclusion cite son ADR");
+            }
+        }
     }
 
     @Test
