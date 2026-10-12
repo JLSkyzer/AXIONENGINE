@@ -19,7 +19,7 @@
 #   docs               -> job deps, etape « NOTICE a jour »
 #   codegen-parity     -> job build-and-test, etape codegen (T-005)
 #   lint-budgets       -> job build-and-test, T-007 dans la suite JUnit
-#   lint-no-mod-names  -> job build-and-test, T-014 dans la suite JUnit
+#   lint-no-mod-names  -> job build-and-test, T-006 (INV-01) et T-014 (INV-06) dans la suite JUnit
 #   lint-no-global-pool-> job build-and-test, crates/ax-jobs/tests/pas_de_pool_global.rs
 #   test-unit          -> job build-and-test (cargo + JUnit) et job platform
 #   test-gametest      -> job test-gametest (serveur de GameTests, acceptance de M3)
