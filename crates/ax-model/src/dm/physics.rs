@@ -418,6 +418,203 @@ impl BodyState {
     }
 }
 
+/// Description d'un corps (DM-08, §3.8), portée par `CREATE_ASSEMBLY` (ADR-130).
+///
+/// Masse, centre de masse et inertie **déclarés** priment sur ceux que les
+/// densités des colliders donnent (R-622) ; non déclarés, ils en viennent :
+/// `mass = 0` pour une masse calculée, inertie `[0; 3]` pour une inertie
+/// calculée, centre de masse aux trois composantes NaN pour un centre calculé.
+///
+/// **Disposition figée en V1.0** : 52 octets, alignement 4, telle que le §3.8
+/// la donne ; sur la frontière, suivie de 4 octets réservés, à zéro
+/// ([`BodyDesc::WIRE_BYTES`]), pour que les octets `PHYS` qui la suivent restent
+/// alignés sur 8. Le test de disposition la verrouille.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BodyDesc {
+    /// Type de corps : `0` statique, `1` cinématique, `2` dynamique (comme
+    /// `CreateAssembly::body_kind`, qu'il doit égaler).
+    pub body_type: u8,
+    /// `1` : détection continue (CCD) ; `0` sinon.
+    pub ccd: u8,
+    /// `1` : le corps peut s'endormir ; `0` : jamais de lui-même.
+    pub can_sleep: u8,
+    /// Réservé, à zéro.
+    pub _pad: u8,
+    /// Masse déclarée, en kg ; `0` : calculée depuis les densités.
+    pub mass: f32,
+    /// Centre de masse déclaré, repère local ; NaN aux trois composantes : calculé.
+    pub center_of_mass: [f32; 3],
+    /// Inertie principale déclarée, repère local, en kg·m² ; `[0; 3]` : calculée.
+    pub inertia: [f32; 3],
+    /// Amortissement linéaire, en 1/s, positif ou nul.
+    pub linear_damping: f32,
+    /// Amortissement angulaire, en 1/s, positif ou nul.
+    pub angular_damping: f32,
+    /// Échelle de la gravité de la dimension.
+    pub gravity_scale: f32,
+    /// Vitesse linéaire maximale, en m/s (R-180, défaut 300).
+    pub max_linear_vel: f32,
+    /// Vitesse angulaire maximale, en rad/s (R-180, défaut 100).
+    pub max_angular_vel: f32,
+}
+
+impl BodyDesc {
+    /// Taille de la structure, en octets.
+    pub const BYTES: usize = 52;
+
+    /// Taille sur la frontière, 4 octets réservés compris.
+    pub const WIRE_BYTES: usize = 56;
+
+    /// Vitesse linéaire maximale par défaut (R-180), en m/s.
+    pub const DEFAULT_MAX_LINEAR_VEL: f32 = 300.0;
+
+    /// Vitesse angulaire maximale par défaut (R-180), en rad/s.
+    pub const DEFAULT_MAX_ANGULAR_VEL: f32 = 100.0;
+
+    /// Rien de déclaré : tout vient des densités et des défauts — sans CCD,
+    /// endormissable, gravité entière, sans amortissement, plafonds de R-180.
+    pub fn undeclared(body_type: u8) -> Self {
+        Self {
+            body_type,
+            ccd: 0,
+            can_sleep: 1,
+            _pad: 0,
+            mass: 0.0,
+            center_of_mass: [f32::NAN; 3],
+            inertia: [0.0; 3],
+            linear_damping: 0.0,
+            angular_damping: 0.0,
+            gravity_scale: 1.0,
+            max_linear_vel: Self::DEFAULT_MAX_LINEAR_VEL,
+            max_angular_vel: Self::DEFAULT_MAX_ANGULAR_VEL,
+        }
+    }
+
+    /// La masse déclarée, ou `None` : calculée.
+    pub fn declared_mass(&self) -> Option<f32> {
+        (self.mass > 0.0).then_some(self.mass)
+    }
+
+    /// Le centre de masse déclaré, ou `None` : calculé.
+    pub fn declared_center_of_mass(&self) -> Option<[f32; 3]> {
+        self.center_of_mass
+            .iter()
+            .all(|c| c.is_finite())
+            .then_some(self.center_of_mass)
+    }
+
+    /// L'inertie principale déclarée, ou `None` : calculée.
+    pub fn declared_inertia(&self) -> Option<[f32; 3]> {
+        (self.inertia != [0.0; 3]).then_some(self.inertia)
+    }
+
+    /// Vérifie la description ; l'erreur nomme le champ fautif.
+    ///
+    /// # Errors
+    ///
+    /// Un champ hors de son domaine : type de corps inconnu, drapeau autre que
+    /// 0 ou 1, réservé non nul, masse, inertie ou amortissement négatifs ou non
+    /// finis, inertie déclarée sur une partie des axes seulement, centre de
+    /// masse ni fini ni entièrement NaN, échelle de gravité non finie, plafond
+    /// de vitesse non strictement positif.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.body_type > 2 {
+            return Err("body_type");
+        }
+        if self.ccd > 1 {
+            return Err("ccd");
+        }
+        if self.can_sleep > 1 {
+            return Err("can_sleep");
+        }
+        if self._pad != 0 {
+            return Err("_pad");
+        }
+        if !(self.mass.is_finite() && self.mass >= 0.0) {
+            return Err("mass");
+        }
+        let com_finite = self.center_of_mass.iter().all(|c| c.is_finite());
+        let com_nan = self.center_of_mass.iter().all(|c| c.is_nan());
+        if !(com_finite || com_nan) {
+            return Err("center_of_mass");
+        }
+        if !self.inertia.iter().all(|i| i.is_finite() && *i >= 0.0) {
+            return Err("inertia");
+        }
+        let declared = self.inertia.iter().filter(|i| **i > 0.0).count();
+        if declared != 0 && declared != 3 {
+            // Une inertie principale déclarée à moitié bloquerait des axes.
+            return Err("inertia");
+        }
+        if !(self.linear_damping.is_finite() && self.linear_damping >= 0.0) {
+            return Err("linear_damping");
+        }
+        if !(self.angular_damping.is_finite() && self.angular_damping >= 0.0) {
+            return Err("angular_damping");
+        }
+        if !self.gravity_scale.is_finite() {
+            return Err("gravity_scale");
+        }
+        if !(self.max_linear_vel.is_finite() && self.max_linear_vel > 0.0) {
+            return Err("max_linear_vel");
+        }
+        if !(self.max_angular_vel.is_finite() && self.max_angular_vel > 0.0) {
+            return Err("max_angular_vel");
+        }
+        Ok(())
+    }
+
+    /// Sérialise la description en little-endian, dans la disposition figée,
+    /// suivie de ses 4 octets réservés ([`Self::WIRE_BYTES`]), à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&[self.body_type, self.ccd, self.can_sleep, self._pad]);
+        out.extend_from_slice(&self.mass.to_le_bytes());
+        for value in self.center_of_mass.iter().chain(&self.inertia) {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in [
+            self.linear_damping,
+            self.angular_damping,
+            self.gravity_scale,
+            self.max_linear_vel,
+            self.max_angular_vel,
+        ] {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        out.extend_from_slice(&[0u8; 4]); // réservé
+    }
+
+    /// Relit une description écrite par [`Self::write_le`], ou `None` si `bytes`
+    /// est trop court. Les octets réservés ne sont pas lus ; la description
+    /// n'est pas vérifiée ([`Self::validate`]).
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..Self::WIRE_BYTES)?;
+        let f = |offset: usize| {
+            f32::from_le_bytes([
+                bytes[offset],
+                bytes[offset + 1],
+                bytes[offset + 2],
+                bytes[offset + 3],
+            ])
+        };
+        Some(Self {
+            body_type: bytes[0],
+            ccd: bytes[1],
+            can_sleep: bytes[2],
+            _pad: bytes[3],
+            mass: f(4),
+            center_of_mass: [f(8), f(12), f(16)],
+            inertia: [f(20), f(24), f(28)],
+            linear_damping: f(32),
+            angular_damping: f(36),
+            gravity_scale: f(40),
+            max_linear_vel: f(44),
+            max_angular_vel: f(48),
+        })
+    }
+}
+
 /// Emprise d'un corps rapporté (ajout à DM-08, ADR-120) : sa boîte englobante
 /// alignée sur les axes du monde, **relative à la position** de son
 /// [`BodyState`], en blocs.
@@ -718,5 +915,135 @@ mod tests {
         assert_eq!(CONVEX_MIN_POINTS, 4);
         assert_eq!(CONVEX_MAX_POINTS, 256);
         assert_eq!(HULL_POINTS_MAX, 256);
+    }
+
+    #[test]
+    fn dm08_body_desc_disposition_figee() {
+        use core::mem::{align_of, offset_of, size_of};
+        // §3.8, champ pour champ ; sur la frontière, 4 octets réservés de plus (ADR-130).
+        assert_eq!(size_of::<BodyDesc>(), BodyDesc::BYTES);
+        assert_eq!(size_of::<BodyDesc>(), 52);
+        assert_eq!(align_of::<BodyDesc>(), 4);
+        assert_eq!(offset_of!(BodyDesc, body_type), 0);
+        assert_eq!(offset_of!(BodyDesc, ccd), 1);
+        assert_eq!(offset_of!(BodyDesc, can_sleep), 2);
+        assert_eq!(offset_of!(BodyDesc, _pad), 3);
+        assert_eq!(offset_of!(BodyDesc, mass), 4);
+        assert_eq!(offset_of!(BodyDesc, center_of_mass), 8);
+        assert_eq!(offset_of!(BodyDesc, inertia), 20);
+        assert_eq!(offset_of!(BodyDesc, linear_damping), 32);
+        assert_eq!(offset_of!(BodyDesc, angular_damping), 36);
+        assert_eq!(offset_of!(BodyDesc, gravity_scale), 40);
+        assert_eq!(offset_of!(BodyDesc, max_linear_vel), 44);
+        assert_eq!(offset_of!(BodyDesc, max_angular_vel), 48);
+        assert_eq!(BodyDesc::WIRE_BYTES, 56);
+        assert_eq!(BodyDesc::WIRE_BYTES % 8, 0);
+    }
+
+    #[test]
+    fn dm08_body_desc_fait_l_aller_retour_sur_la_frontiere() {
+        let desc = BodyDesc {
+            body_type: 2,
+            ccd: 1,
+            can_sleep: 0,
+            _pad: 0,
+            mass: 1650.0,
+            center_of_mass: [0.0, -0.25, 0.5],
+            inertia: [10.0, 20.0, 30.0],
+            linear_damping: 0.1,
+            angular_damping: 0.2,
+            gravity_scale: 0.5,
+            max_linear_vel: 120.0,
+            max_angular_vel: 40.0,
+        };
+        let mut out = Vec::new();
+        desc.write_le(&mut out);
+        assert_eq!(out.len(), BodyDesc::WIRE_BYTES);
+        assert_eq!(&out[52..], &[0u8; 4]);
+        assert_eq!(&out[4..8], &1650.0f32.to_le_bytes());
+        assert_eq!(BodyDesc::read_le(&out), Some(desc));
+        assert_eq!(BodyDesc::read_le(&out[..55]), None);
+    }
+
+    #[test]
+    fn dm08_rien_de_declare_tout_vient_des_densites_et_des_defauts() {
+        let desc = BodyDesc::undeclared(2);
+        assert_eq!(desc.validate(), Ok(()));
+        assert_eq!(desc.declared_mass(), None);
+        assert_eq!(desc.declared_center_of_mass(), None);
+        assert_eq!(desc.declared_inertia(), None);
+        assert_eq!(desc.can_sleep, 1);
+        assert_eq!(desc.gravity_scale, 1.0);
+        // R-180.
+        assert_eq!(desc.max_linear_vel, 300.0);
+        assert_eq!(desc.max_angular_vel, 100.0);
+        // Le NaN du centre « calculé » survit à l'aller-retour.
+        let mut out = Vec::new();
+        desc.write_le(&mut out);
+        let relu = BodyDesc::read_le(&out).expect("relue");
+        assert_eq!(relu.declared_center_of_mass(), None);
+        assert_eq!(relu.validate(), Ok(()));
+    }
+
+    #[test]
+    fn dm08_un_champ_hors_domaine_est_nomme() {
+        let base = BodyDesc::undeclared(2);
+        let cas: [(BodyDesc, &str); 10] = [
+            (
+                BodyDesc {
+                    body_type: 3,
+                    ..base
+                },
+                "body_type",
+            ),
+            (BodyDesc { ccd: 2, ..base }, "ccd"),
+            (
+                BodyDesc {
+                    can_sleep: 2,
+                    ..base
+                },
+                "can_sleep",
+            ),
+            (BodyDesc { _pad: 1, ..base }, "_pad"),
+            (BodyDesc { mass: -1.0, ..base }, "mass"),
+            (
+                BodyDesc {
+                    center_of_mass: [0.0, f32::NAN, 0.0],
+                    ..base
+                },
+                "center_of_mass",
+            ),
+            (
+                BodyDesc {
+                    inertia: [1.0, 0.0, 1.0],
+                    ..base
+                },
+                "inertia",
+            ),
+            (
+                BodyDesc {
+                    linear_damping: f32::INFINITY,
+                    ..base
+                },
+                "linear_damping",
+            ),
+            (
+                BodyDesc {
+                    gravity_scale: f32::NAN,
+                    ..base
+                },
+                "gravity_scale",
+            ),
+            (
+                BodyDesc {
+                    max_angular_vel: 0.0,
+                    ..base
+                },
+                "max_angular_vel",
+            ),
+        ];
+        for (desc, champ) in cas {
+            assert_eq!(desc.validate(), Err(champ), "{champ}");
+        }
     }
 }

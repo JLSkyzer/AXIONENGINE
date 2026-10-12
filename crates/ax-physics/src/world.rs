@@ -1,6 +1,7 @@
 //! Le monde physique d'une dimension (C-31, fiche 5.23).
 
-use ax_math::{FloatingOrigin, Quat, Vec3};
+use ax_math::{FloatingOrigin, Mat3, Quat, Vec3};
+use rapier3d::parry::mass_properties::MassProperties;
 use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::parry::utils::Array2;
 use rapier3d::prelude::{
@@ -27,7 +28,7 @@ use crate::groups::{CollisionGroups, ReservedGroup};
 use ax_model::dm::debug::debug_body_flags;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{
-    body_state_flags, event_data, event_kind, BodyBounds, BodyState, PhysicsEvent,
+    body_state_flags, event_data, event_kind, BodyBounds, BodyDesc, BodyState, PhysicsEvent,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -582,9 +583,10 @@ impl PhysicsWorld {
 
     /// {@return la masse du corps, en kg, ou `None` s'il n'existe pas}
     ///
-    /// Somme des masses de ses colliders (densité × volume, R-622). Un corps
-    /// statique ou cinématique a une masse effective nulle du point de vue du
-    /// solveur (masse « infinie ») : rapier rapporte alors `0.0`.
+    /// Somme des masses de ses colliders (densité × volume, R-622), ou masse
+    /// déclarée ([`Self::apply_body_desc`]). Un corps statique ou cinématique est
+    /// de masse infinie pour le solveur, mais rapier rapporte encore celle de ses
+    /// colliders (vérifié par `t312_un_corps_statique_ignore_sa_description`).
     #[must_use]
     pub fn body_mass(&self, id: BodyId) -> Option<f32> {
         self.inner.bodies.get(id.handle()).map(RigidBody::mass)
@@ -1896,6 +1898,81 @@ impl PhysicsWorld {
         if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
             body.set_gravity_scale(scale, true);
         }
+    }
+
+    /// Applique sa description DM-08 à un corps dynamique tout juste créé
+    /// (ADR-130) : masse, centre de masse et inertie déclarés, amortissements,
+    /// CCD, sommeil, échelle de gravité, plafonds de vitesse (R-180).
+    ///
+    /// **R-622** : déclarés, masse, centre et inertie remplacent ceux que les
+    /// densités des colliders donnent — les colliders cessent alors de compter
+    /// (densité nulle), et le corps porte les propriétés déclarées. Ce qui n'est
+    /// pas déclaré vient des densités : une masse seule met à l'échelle
+    /// l'inertie calculée, sans changer sa répartition ; un centre seul la
+    /// déplace par le théorème de Huygens.
+    ///
+    /// Sans effet si le corps n'existe pas ou n'est pas dynamique : un corps
+    /// statique ou cinématique n'a ni masse ni vitesse propres pour le solveur.
+    /// La description doit être valide ([`BodyDesc::validate`]).
+    pub fn apply_body_desc(&mut self, id: BodyId, desc: &BodyDesc) {
+        let handle = id.handle();
+        let colliders = match self.inner.bodies.get(handle) {
+            Some(body) if body.is_dynamic() => body.colliders().to_vec(),
+            _ => return,
+        };
+        let declared = desc.declared_mass().is_some()
+            || desc.declared_center_of_mass().is_some()
+            || desc.declared_inertia().is_some();
+        if declared {
+            let computed = self.inner.bodies[handle].mass_properties().local_mprops;
+            let computed_mass = computed.mass();
+            let mass = desc.declared_mass().unwrap_or(computed_mass);
+            let center = desc
+                .declared_center_of_mass()
+                .map_or(computed.local_com, Vec3::from_array);
+            let properties = match desc.declared_inertia() {
+                Some(inertia) => MassProperties::new(center, mass, Vec3::from_array(inertia)),
+                None => {
+                    // Même répartition, à la masse retenue, autour du centre retenu.
+                    let scale = if computed_mass > 0.0 {
+                        mass / computed_mass
+                    } else {
+                        0.0
+                    };
+                    let offset = center - computed.local_com;
+                    let shifted = computed.reconstruct_inertia_matrix() * scale
+                        + (Mat3::IDENTITY * offset.length_squared()
+                            - Mat3::from_cols(
+                                offset * offset.x,
+                                offset * offset.y,
+                                offset * offset.z,
+                            ))
+                            * mass;
+                    MassProperties::with_inertia_matrix(center, mass, shifted)
+                }
+            };
+            for collider in &colliders {
+                if let Some(collider) = self.inner.colliders.get_mut(*collider) {
+                    collider.set_density(0.0);
+                }
+            }
+            let body = &mut self.inner.bodies[handle];
+            body.set_additional_mass_properties(properties, true);
+            body.recompute_mass_properties_from_colliders(&self.inner.colliders);
+        }
+        let body = &mut self.inner.bodies[handle];
+        body.set_linear_damping(desc.linear_damping);
+        body.set_angular_damping(desc.angular_damping);
+        body.enable_ccd(desc.ccd == 1);
+        body.set_gravity_scale(desc.gravity_scale, true);
+        if desc.can_sleep == 0 {
+            // Comme `RigidBodyBuilder::can_sleep(false)` de rapier : jamais endormi de
+            // lui-même ; le sommeil forcé de R-612 reste celui du monde.
+            let activation = body.activation_mut();
+            activation.normalized_linear_threshold = -1.0;
+            activation.angular_threshold = -1.0;
+        }
+        self.set_velocity_limits(id, desc.max_linear_vel, desc.max_angular_vel);
     }
 
     /// Déclare la traînée d'un corps (§10.6) par son coefficient et son aire de

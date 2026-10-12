@@ -68,5 +68,5 @@ pub use world::{BodyReports, PhysicsWorld, Pose, WorldCounters};
 // réexporte pour que l'API du monde physique soit autonome.
 pub use ax_model::dm::handle::Handle;
 pub use ax_model::dm::physics::{
-    body_state_flags, event_data, event_kind, BodyBounds, BodyState, PhysicsEvent,
+    body_state_flags, event_data, event_kind, BodyBounds, BodyDesc, BodyState, PhysicsEvent,
 };
