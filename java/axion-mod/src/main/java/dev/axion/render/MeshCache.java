@@ -15,6 +15,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 /**
  * Maillages, matériaux et textures des assets, chargés pour le rendu client (ADR-119, ADR-122,
@@ -71,6 +72,16 @@ public final class MeshCache {
     /** Numéro du dernier chargement demandé : il rend uniques les noms de ses textures. */
     private final AtomicLong loads = new AtomicLong();
 
+    /**
+     * Budget de mémoire GPU des assets prêts, par chemin (R-750, ADR-133 D3) : chacun y compte ses
+     * textures, et sa dernière frame vue. Il se lit et s'écrit sous son propre verrou ; l'arrêt du
+     * natif le vide depuis un autre thread.
+     */
+    private final GpuBudget<String> residency;
+
+    /** Frame courante du budget, avancée par {@link #enforceBudget}. Fil de rendu seul. */
+    private long frame;
+
     /** Incrémentée à chaque libération ; écrite sous {@link #nativeLock}. */
     private volatile long epoch;
 
@@ -92,18 +103,21 @@ public final class MeshCache {
      * @param renderThread exécute les téléversements et les libérations de textures sur le fil de
      *     rendu
      * @param diagnostics reçoit les échecs, chacun une fois
+     * @param gpuBudgetBytes {@code budgets.gpu_mem_bytes} : textures et maillages des deux backends
      */
     public MeshCache(
             AssetLoader loader,
             TexturePipeline textures,
             Executor executor,
             Executor renderThread,
-            Consumer<String> diagnostics) {
+            Consumer<String> diagnostics,
+            long gpuBudgetBytes) {
         this.loader = loader;
         this.textures = textures;
         this.executor = executor;
         this.renderThread = renderThread;
         this.diagnostics = diagnostics;
+        this.residency = new GpuBudget<>(gpuBudgetBytes);
     }
 
     /**
@@ -121,7 +135,13 @@ public final class MeshCache {
         }
         State current = states.get(path);
         if (current != null && sameContent(current.source, source)) {
-            return current instanceof Ready ready ? ready.asset : null;
+            if (current instanceof Ready ready) {
+                synchronized (residency) {
+                    residency.seen(path, frame);
+                }
+                return ready.asset;
+            }
+            return null;
         }
         schedule(path, source, current);
         return null;
@@ -178,6 +198,63 @@ public final class MeshCache {
         }
     }
 
+    /** {@return les octets GPU des textures des assets prêts (R-750)} */
+    public long textureBytes() {
+        synchronized (residency) {
+            return residency.chargedBytes();
+        }
+    }
+
+    /**
+     * Ce que la tenue du budget GPU a fait à une frame.
+     *
+     * @param bytes octets GPU tenus après elle : textures, et maillages du backend
+     * @param evicted assets déchargés pour tenir le budget
+     * @param exceeded le budget était dépassé — tenu par des déchargements, ou pas même par eux,
+     *     tous les assets étant visibles
+     */
+    public record Residency(long bytes, int evicted, boolean exceeded) {}
+
+    /**
+     * Tient {@code budgets.gpu_mem_bytes} (R-750, ADR-133 D3), une fois par frame et avant tout
+     * dessin, sur le fil de rendu : tant que textures et maillages le dépassent, l'asset le moins
+     * récemment vu parmi ceux qu'aucun {@link #get} de la frame n'a servis est déchargé en entier —
+     * maillage du backend, textures, handle natif. Il se recharge au prochain {@link #get} qui le
+     * demande. Un asset vu à la frame courante ne l'est jamais. Puis la frame avance.
+     *
+     * @param meshBytes octets GPU des maillages du backend, relus après chaque déchargement
+     * @param evict décharge le maillage d'un asset du backend
+     * @return ce qui a été fait
+     */
+    public Residency enforceBudget(LongSupplier meshBytes, Consumer<RenderAsset> evict) {
+        int evicted = 0;
+        boolean exceeded = false;
+        while (true) {
+            String candidate;
+            synchronized (residency) {
+                if (!residency.exceededBy(residency.chargedBytes() + meshBytes.getAsLong())) {
+                    break;
+                }
+                exceeded = true;
+                candidate = residency.evictionCandidate(frame);
+                if (candidate == null) {
+                    break;
+                }
+                residency.discharge(candidate);
+            }
+            if (states.get(candidate) instanceof Ready ready && states.remove(candidate, ready)) {
+                evict.accept(ready.asset);
+                ready.registered.forEach(textures::release);
+                // Le handle se rend sous le verrou natif, que tient un chargement en vol : hors du
+                // fil de rendu, pour ne pas l'attendre.
+                submit(executor, () -> retire(ready.handle));
+            }
+            evicted++;
+        }
+        frame++;
+        return new Residency(textureBytes() + meshBytes.getAsLong(), evicted, exceeded);
+    }
+
     /** {@return le nombre de textures enregistrées par les assets prêts} */
     public int liveTextures() {
         int count = 0;
@@ -212,6 +289,9 @@ public final class MeshCache {
             return;
         }
         if (previous instanceof Ready ready) {
+            synchronized (residency) {
+                residency.discharge(path);
+            }
             // Une autre assembly de cette frame a pu recevoir l'ancien asset juste avant que son
             // contenu change : ses textures se libèrent la frame finie. Refusé, ce passage n'aura
             // pas lieu — on est déjà sur le fil de rendu, la libération se fait ici.
@@ -546,8 +626,10 @@ public final class MeshCache {
         }
         Map<TextureKey, TextureRegion> uploaded = new HashMap<>();
         List<String> registered = new ArrayList<>();
+        long gpuBytes = 0;
         for (Staged stage : staged) {
             TextureBinding binding = stage.prepared.binding();
+            long bytes = stage.prepared.gpuBytes();
             try {
                 textures.upload(stage.prepared);
             } catch (RuntimeException failure) {
@@ -556,6 +638,7 @@ public final class MeshCache {
                         + " : téléversement impossible : " + failure + " ; texture neutre");
                 continue;
             }
+            gpuBytes += bytes;
             registered.add(binding.location());
             for (int index = 0; index < stage.keys.size(); index++) {
                 uploaded.put(stage.keys.get(index), stage.page == null
@@ -569,6 +652,12 @@ public final class MeshCache {
             // Fermé depuis un autre thread entre le contrôle et l'installation.
             ready.registered.forEach(textures::release);
             submit(executor, () -> retire(decoded.handle));
+            return;
+        }
+        // Un asset sans texture y compte aussi, pour zéro octet : ses maillages restent à décharger.
+        synchronized (residency) {
+            residency.discharge(path);
+            residency.charge(path, gpuBytes);
         }
     }
 
@@ -613,6 +702,9 @@ public final class MeshCache {
             }
         }
         states.clear();
+        synchronized (residency) {
+            residency.clear();
+        }
         return registered;
     }
 

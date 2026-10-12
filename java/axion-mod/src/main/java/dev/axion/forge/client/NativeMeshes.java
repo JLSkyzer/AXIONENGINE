@@ -4,7 +4,6 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import dev.axion.asset.GeometryTransfer;
 import dev.axion.render.ArenaAllocator;
 import dev.axion.render.DeferredRelease;
-import dev.axion.render.GpuBudget;
 import dev.axion.render.InstanceLayout;
 import dev.axion.render.RenderAsset;
 import java.nio.ByteBuffer;
@@ -22,27 +21,24 @@ import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL31;
 import org.lwjgl.opengl.GL33;
 import org.lwjgl.system.MemoryUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Ressources GPU du backend natif (C-62, ADR-127 §3) : les meshes dans des arènes partagées, un VAO
- * par arène au format du §19.4, un tampon d'instances, la libération différée et le budget.
+ * par arène au format du §19.4, un tampon d'instances et la libération différée.
  *
  * <p>Un asset est téléversé à son premier dessin, d'un bloc — ses sommets tels que le natif les a
  * déposés, ses indices — dans une place de l'{@link ArenaAllocator}. Un asset que rien n'a dessiné
  * pendant {@value DeferredRelease#FRAMES_WITHOUT_USE} frames rend sa place : en M3, sans culling, ne
  * plus être dessiné, c'est ne plus être tenu par aucune assembly. Une arène vidée n'est détruite
- * qu'après {@value DeferredRelease#FRAMES_WITHOUT_USE} frames. Au-delà de {@code budgets.gpu_mem_bytes},
- * l'asset le moins récemment vu parmi les non visibles est déchargé d'abord (R-750) ; un asset
- * visible ne l'est jamais.
+ * qu'après {@value DeferredRelease#FRAMES_WITHOUT_USE} frames. Le budget GPU, textures comprises, se
+ * tient dans {@code MeshCache}, qui fait {@link #evict} les maillages des assets qu'il décharge (R-750,
+ * ADR-133 D3).
  *
  * <p>Les téléversements passent par {@code GL_COPY_WRITE_BUFFER}, jamais par le tampon d'indices,
  * qui appartient au VAO lié. Render thread seul (R-751, INV-12).
  */
 final class NativeMeshes implements AutoCloseable {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger("axion");
 
     /** Une arène côté GL : ses deux tampons et son VAO. */
     private record ArenaGl(int vertexBuffer, int indexBuffer, int vao) {}
@@ -72,16 +68,12 @@ final class NativeMeshes implements AutoCloseable {
     private final Set<RenderAsset> drawnThisFrame = Collections.newSetFromMap(new IdentityHashMap<>());
     private final DeferredRelease<RenderAsset> unused = new DeferredRelease<>();
     private final DeferredRelease<ArenaGl> emptied = new DeferredRelease<>();
-    private final GpuBudget<RenderAsset> budget;
     private final int instanceBuffer;
     private long instanceCapacity;
     private long frame;
-    private boolean budgetShortReported;
 
-    /** @param budgetBytes {@code budgets.gpu_mem_bytes} */
-    NativeMeshes(long budgetBytes) {
+    NativeMeshes() {
         RenderSystem.assertOnRenderThread();
-        this.budget = new GpuBudget<>(budgetBytes);
         this.instanceBuffer = GL15.glGenBuffers();
         NativeGlObjects.created();
     }
@@ -101,7 +93,6 @@ final class NativeMeshes implements AutoCloseable {
         }
         drawnThisFrame.add(asset);
         unused.use(asset);
-        budget.seen(asset, frame);
         return gpu;
     }
 
@@ -137,7 +128,7 @@ final class NativeMeshes implements AutoCloseable {
 
     /**
      * Passe à la frame suivante, avant tout dessin : ce que la frame qui s'achève n'a pas dessiné
-     * entre en attente de libération, le budget est tenu (R-750), et ce qui attend depuis assez
+     * entre en attente de libération, et ce qui attend depuis assez
      * longtemps est détruit (R-751). Une frame sans assembly n'appelle pas : elle ne fait que
      * retarder ces libérations, jamais les avancer.
      */
@@ -150,20 +141,6 @@ final class NativeMeshes implements AutoCloseable {
         }
         for (RenderAsset asset : unused.due(frame)) {
             forget(asset);
-        }
-        while (budget.exceededBy(gpuBytes())) {
-            RenderAsset candidate = budget.evictionCandidate(frame);
-            if (candidate == null) {
-                if (!budgetShortReported) {
-                    budgetShortReported = true;
-                    LOGGER.warn("AXION : budget GPU dépassé ({} octets pour {}) par des assets tous visibles :"
-                                    + " les leviers suivants de R-750 — LOD forcé, qualité de déformation —"
-                                    + " arrivent avec C-64 et la M6",
-                            gpuBytes(), budget.budgetBytes());
-                }
-                break;
-            }
-            forget(candidate);
         }
         for (ArenaGl arena : emptied.due(frame)) {
             destroy(arena);
@@ -184,9 +161,6 @@ final class NativeMeshes implements AutoCloseable {
     /** Tout est rendu sans délai — rechargement de ressources (R-752), sortie du monde. */
     void releaseAll() {
         RenderSystem.assertOnRenderThread();
-        for (RenderAsset asset : assets.keySet()) {
-            budget.discharge(asset);
-        }
         assets.clear();
         drawnThisFrame.clear();
         unused.drainAll();
@@ -224,13 +198,17 @@ final class NativeMeshes implements AutoCloseable {
         if (indexBytes > 0) {
             write(arena.indexBuffer(), place.indexOffset(), mesh.indexData());
         }
-        budget.charge(asset, vertexBytes + indexBytes);
         return new GpuAsset(place, arena.vao());
+    }
+
+    /** Le maillage d'un asset que le budget GPU décharge rend sa place (R-750). */
+    void evict(RenderAsset asset) {
+        RenderSystem.assertOnRenderThread();
+        forget(asset);
     }
 
     private void forget(RenderAsset asset) {
         GpuAsset gpu = assets.remove(asset);
-        budget.discharge(asset);
         unused.use(asset);
         if (gpu != null) {
             allocator.free(gpu.allocation()).ifPresent(arena -> {

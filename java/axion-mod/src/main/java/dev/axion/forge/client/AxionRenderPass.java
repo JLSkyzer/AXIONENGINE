@@ -123,6 +123,12 @@ public final class AxionRenderPass {
     /** Relevé de la dernière passe opaque. Render thread seul. */
     private static FrameStats lastFrame = new FrameStats(0, 0);
 
+    /** Ce que la tenue du budget GPU a fait à la dernière frame (R-750, ADR-133). Render thread. */
+    private static MeshCache.Residency lastResidency = new MeshCache.Residency(0, 0, false);
+
+    /** Un budget GPU dépassé par des assets tous visibles n'est dit qu'une fois. */
+    private static boolean gpuBudgetShortReported;
+
     private AxionRenderPass() {}
 
     /**
@@ -341,6 +347,7 @@ public final class AxionRenderPass {
             if (translucent) {
                 backend.renderTranslucent(frame);
             } else {
+                enforceGpuBudget();
                 backend.renderOpaque(frame);
             }
         } catch (RuntimeException failure) {
@@ -361,6 +368,29 @@ public final class AxionRenderPass {
             nativeRefused = true;
             backend = select();
         }
+    }
+
+    /**
+     * Tient {@code budgets.gpu_mem_bytes} avant la passe opaque, après que la frame a demandé ses
+     * assets : textures des deux backends et maillages du natif (R-750, ADR-133 D3).
+     */
+    private static void enforceGpuBudget() {
+        if (meshes == null) {
+            return;
+        }
+        RenderBackend current = backend;
+        lastResidency = meshes.enforceBudget(current::gpuBytes, current::evict);
+        if (lastResidency.exceeded() && lastResidency.evicted() == 0 && !gpuBudgetShortReported) {
+            gpuBudgetShortReported = true;
+            LOGGER.warn("AXION : budget GPU dépassé ({} octets) par des assets tous visibles : les leviers"
+                    + " suivants de R-750 — LOD forcé, qualité de déformation — arrivent avec C-64 et la M6",
+                    lastResidency.bytes());
+        }
+    }
+
+    /** {@return ce que la tenue du budget GPU a fait à la dernière frame} */
+    public static MeshCache.Residency lastResidency() {
+        return lastResidency;
     }
 
     /** Passe DEBUG (§19.10, passe 6) : les overlays allumés, après le reste du niveau. */
@@ -566,7 +596,8 @@ public final class AxionRenderPass {
                     new VanillaTexturePipeline(),
                     LOADER,
                     Minecraft.getInstance(),
-                    line -> LOGGER.warn("AXION : maillage {}", line));
+                    line -> LOGGER.warn("AXION : maillage {}", line),
+                    outcome.config().getInt("budgets.gpu_mem_bytes"));
             runtime.addNativeReleaser(cache::close);
             cache.setMaterialMaps(backend != null && backend.kind() == BackendSelection.Kind.NATIVE);
             meshes = cache;
@@ -626,15 +657,13 @@ public final class AxionRenderPass {
             LOGGER.warn("AXION : backend natif indisponible — {}", missing);
             return null;
         }
-        long budget = ConfigLoader.load(Scope.COMMON, FMLPaths.CONFIGDIR.get(), System.getProperties())
-                .getInt("budgets.gpu_mem_bytes");
         int variants = (int) Math.min(Integer.MAX_VALUE,
                 ConfigLoader.load(Scope.CLIENT, FMLPaths.CONFIGDIR.get(), System.getProperties())
                         .getInt("render.max_shader_variants"));
         // R-760 : le cache binaire des programmes, sous <gameDir>/axion/cache/shaders/.
         Path cache = FMLPaths.GAMEDIR.get().resolve("axion").resolve("cache").resolve("shaders");
         try {
-            return NativeGlBackend.create(Minecraft.getInstance().getResourceManager(), budget, cache, variants);
+            return NativeGlBackend.create(Minecraft.getInstance().getResourceManager(), cache, variants);
         } catch (NativeShaders.ShaderFailure failure) {
             LOGGER.error("AXION : shaders du backend natif refusés, bascule sur vanilla (E-4001) — {}",
                     failure.getMessage());

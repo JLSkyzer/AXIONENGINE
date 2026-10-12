@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -181,7 +182,7 @@ class MeshCacheTest {
         @Override
         public Prepared prepare(Request request, Image image) {
             ((FakeImage) image).returns++;
-            return new Staged(new TextureBinding(request.location(), blur, mipmap));
+            return new Staged(new TextureBinding(request.location(), blur, mipmap), 4L * image.width() * image.height());
         }
 
         @Override
@@ -190,7 +191,7 @@ class MeshCacheTest {
                 throw new IllegalStateException("mémoire native épuisée");
             }
             atlases.add(new AtlasCall(location, blur, page, List.copyOf(images)));
-            return new Staged(new TextureBinding(location, blur, page.levels() > 0));
+            return new Staged(new TextureBinding(location, blur, page.levels() > 0), 4L * page.width() * page.height());
         }
 
         @Override
@@ -228,7 +229,7 @@ class MeshCacheTest {
             }
         }
 
-        private record Staged(TextureBinding binding) implements Prepared {}
+        private record Staged(TextureBinding binding, long gpuBytes) implements Prepared {}
     }
 
     private final Manual executor = new Manual();
@@ -236,7 +237,15 @@ class MeshCacheTest {
     private final FakeLoader loader = new FakeLoader();
     private final FakePipeline textures = new FakePipeline();
     private final List<String> diagnostics = new ArrayList<>();
-    private final MeshCache cache = new MeshCache(loader, textures, executor, render, diagnostics::add);
+    private final MeshCache cache = new MeshCache(loader, textures, executor, render, diagnostics::add, Long.MAX_VALUE);
+
+    /** Octets GPU de la texture embarquée de {@link #oneEmbeddedTexture} : 512 × 512 en RGBA8. */
+    private static final long TEXTURE_BYTES = 4L * 512 * 512;
+
+    /** Un cache dont le budget GPU est {@code budget} octets. */
+    private MeshCache budgeted(long budget) {
+        return new MeshCache(loader, textures, executor, render, diagnostics::add, budget);
+    }
 
     private static Published published(String content) {
         byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
@@ -255,6 +264,91 @@ class MeshCacheTest {
     private void oneEmbeddedTexture() {
         loader.materials = table(List.of(material().albedo(0)), EMBEDDED);
         loader.pngs.put(0, new byte[] {1, 2, 3});
+    }
+
+    @Test
+    @DisplayName("R-750 : les textures téléversées comptent dans le budget GPU, et en sortent à la libération")
+    void lesTexturesComptentDansLeBudget() {
+        oneEmbeddedTexture();
+        Published source = published("cube");
+        cache.get(PATH, source);
+        settle();
+        assertNotNull(cache.get(PATH, source));
+        assertEquals(TEXTURE_BYTES, cache.textureBytes());
+
+        cache.releaseAll();
+        assertEquals(0, cache.textureBytes());
+    }
+
+    @Test
+    @DisplayName("R-750 : au-delà du budget, l'asset non vu est déchargé en entier, puis rechargé à la demande")
+    void auDelaDuBudgetLAssetNonVuEstDecharge() {
+        MeshCache cache = budgeted(TEXTURE_BYTES);
+        oneEmbeddedTexture();
+        Published vu = published("vu");
+        Published horsChamp = published("hors champ");
+        cache.get("vu.glb", vu);
+        cache.get("hors-champ.glb", horsChamp);
+        settle();
+        RenderAsset visible = cache.get("vu.glb", vu);
+        assertEquals(2 * TEXTURE_BYTES, cache.textureBytes());
+
+        List<RenderAsset> evicted = new ArrayList<>();
+        MeshCache.Residency residency = cache.enforceBudget(() -> 0, evicted::add);
+        settle();
+
+        assertTrue(residency.exceeded());
+        assertEquals(1, residency.evicted());
+        assertEquals(TEXTURE_BYTES, residency.bytes());
+        assertEquals(1, evicted.size());
+        assertNotSame(visible, evicted.get(0), "l'asset vu à la frame a été déchargé");
+        assertEquals(1, textures.released.size(), "les textures de l'asset déchargé sont rendues");
+        assertEquals(1, cache.liveHandles(), "le handle de l'asset déchargé est rendu");
+        assertSame(visible, cache.get("vu.glb", vu));
+
+        // Revenu dans le champ, il se recharge.
+        assertNull(cache.get("hors-champ.glb", horsChamp));
+        settle();
+        assertNotNull(cache.get("hors-champ.glb", horsChamp));
+    }
+
+    @Test
+    @DisplayName("R-750 : un asset vu à la frame n'est jamais déchargé, même au-delà du budget")
+    void unAssetVuNEstJamaisDecharge() {
+        MeshCache cache = budgeted(0);
+        oneEmbeddedTexture();
+        Published source = published("cube");
+        cache.get(PATH, source);
+        settle();
+        assertNotNull(cache.get(PATH, source));
+
+        MeshCache.Residency vu = cache.enforceBudget(() -> 0, asset -> {
+            throw new AssertionError("asset vu déchargé");
+        });
+        assertTrue(vu.exceeded());
+        assertEquals(0, vu.evicted());
+
+        // À la frame suivante, plus personne ne le demande : il part.
+        List<RenderAsset> evicted = new ArrayList<>();
+        assertEquals(1, cache.enforceBudget(() -> 0, evicted::add).evicted());
+        assertEquals(1, evicted.size());
+    }
+
+    @Test
+    @DisplayName("R-750 : un asset sans texture est déchargé pour ses maillages")
+    void unAssetSansTextureEstDechargePourSesMaillages() {
+        MeshCache cache = budgeted(100);
+        Published source = published("cube nu");
+        cache.get(PATH, source);
+        settle();
+        assertNotNull(cache.get(PATH, source));
+        assertEquals(0, cache.textureBytes());
+        cache.enforceBudget(() -> 0, asset -> {});
+
+        java.util.concurrent.atomic.AtomicLong meshBytes = new java.util.concurrent.atomic.AtomicLong(200);
+        MeshCache.Residency residency = cache.enforceBudget(meshBytes::get, asset -> meshBytes.set(0));
+        assertEquals(1, residency.evicted());
+        assertEquals(0, residency.bytes());
     }
 
     @Test

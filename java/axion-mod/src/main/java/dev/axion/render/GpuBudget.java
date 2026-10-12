@@ -57,6 +57,11 @@ public final class GpuBudget<K> {
         entries.remove(asset);
     }
 
+    /** Retire tous les assets. */
+    public void clear() {
+        entries.clear();
+    }
+
     /**
      * Un asset est dessiné à cette frame. Ignoré pour un asset qui ne compte rien.
      *

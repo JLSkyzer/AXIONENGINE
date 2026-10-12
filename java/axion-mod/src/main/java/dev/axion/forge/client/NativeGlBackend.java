@@ -117,18 +117,17 @@ final class NativeGlBackend implements RenderBackend {
      * dessin de chaque asset.
      *
      * @param resources ressources du client, où sont ses shaders (R-760)
-     * @param budgetBytes {@code budgets.gpu_mem_bytes} (R-750)
      * @param shaderCache {@code <gameDir>/axion/cache/shaders/}, le cache binaire des programmes (R-760)
      * @param maxVariants {@code render.max_shader_variants} (R-762)
      * @return le backend
      * @throws NativeShaders.ShaderFailure si un programme ne se compile ou ne se lie pas ({@code E-4001})
      */
-    static NativeGlBackend create(ResourceManager resources, long budgetBytes, Path shaderCache, int maxVariants)
+    static NativeGlBackend create(ResourceManager resources, Path shaderCache, int maxVariants)
             throws NativeShaders.ShaderFailure {
         RenderSystem.assertOnRenderThread();
         NativeShaders shaders = NativeShaders.compile(resources, shaderCache, maxVariants);
         try {
-            return new NativeGlBackend(shaders, new NativeMeshes(budgetBytes));
+            return new NativeGlBackend(shaders, new NativeMeshes());
         } catch (RuntimeException failure) {
             shaders.close();
             throw failure;
@@ -138,6 +137,17 @@ final class NativeGlBackend implements RenderBackend {
     @Override
     public BackendSelection.Kind kind() {
         return BackendSelection.Kind.NATIVE;
+    }
+
+    @Override
+    public long gpuBytes() {
+        return meshes.gpuBytes();
+    }
+
+    @Override
+    public void evict(RenderAsset asset) {
+        RenderSystem.assertOnRenderThread();
+        meshes.evict(asset);
     }
 
     @Override

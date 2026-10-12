@@ -25,6 +25,9 @@ final class AxionTexture extends AbstractTexture {
     /** Niveaux de mipmaps, base comprise, jusqu'au téléversement ; {@code null} ensuite. */
     private NativeImage[] levels;
 
+    /** Octets de tous les niveaux, en RGBA8 : ce que la texture occupe sur le GPU (R-750). */
+    private final long gpuBytes;
+
     /**
      * Crée une texture prête à téléverser.
      *
@@ -34,8 +37,18 @@ final class AxionTexture extends AbstractTexture {
      */
     AxionTexture(NativeImage[] levels, boolean smooth, boolean clamp) {
         this.levels = levels;
+        long bytes = 0;
+        for (NativeImage level : levels) {
+            bytes += 4L * level.getWidth() * level.getHeight();
+        }
+        this.gpuBytes = bytes;
         this.smooth = smooth;
         this.clamp = clamp;
+    }
+
+    /** {@return les octets que la texture occupe sur le GPU, niveaux de mipmaps compris} */
+    long gpuBytes() {
+        return gpuBytes;
     }
 
     @Override

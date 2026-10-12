@@ -47,6 +47,18 @@ interface RenderBackend {
      */
     default void close() {}
 
+    /** {@return les octets GPU des maillages que le backend tient ; zéro s'il n'en tient pas (R-750)} */
+    default long gpuBytes() {
+        return 0;
+    }
+
+    /**
+     * Décharge le maillage d'un asset, que le budget GPU évince ; rien s'il n'en tient pas.
+     *
+     * @param asset l'asset évincé
+     */
+    default void evict(RenderAsset asset) {}
+
     /**
      * {@return pourquoi le backend ne peut plus dessiner — un shader compilé à la demande refusé par
      * le pilote —, ou {@code null} : il le peut} La passe centrale le remplace alors par le backend

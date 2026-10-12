@@ -125,5 +125,11 @@ public interface TexturePipeline {
          * donnera : celui que ses types de rendu devront reprendre}
          */
         TextureBinding binding();
+
+        /**
+         * {@return les octets qu'elle occupera sur le GPU, niveaux de mipmaps compris} Ce que
+         * {@code budgets.gpu_mem_bytes} lui impute (R-750, ADR-133 D3).
+         */
+        long gpuBytes();
     }
 }

@@ -356,5 +356,10 @@ final class VanillaTexturePipeline implements TexturePipeline {
      * @param binding nom sous lequel l'enregistrer, et filtrage du téléversement
      * @param texture la texture et ses niveaux de mipmaps
      */
-    private record PreparedTexture(TextureBinding binding, AxionTexture texture) implements Prepared {}
+    private record PreparedTexture(TextureBinding binding, AxionTexture texture) implements Prepared {
+        @Override
+        public long gpuBytes() {
+            return texture.gpuBytes();
+        }
+    }
 }
