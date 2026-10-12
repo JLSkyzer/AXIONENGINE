@@ -78,6 +78,19 @@ struct AeroProfile {
     lift_surfaces: Vec<LiftSurface>,
 }
 
+/// Moitié de la plus petite étendue d'une forme, dans son repère (fiche 5.23) ; pour
+/// un composé, celle de sa pièce la plus fine — c'est elle qui traverserait.
+fn half_thinnest_extent(shape: &dyn rapier3d::parry::shape::Shape) -> f32 {
+    match shape.as_compound() {
+        Some(compound) => compound
+            .shapes()
+            .iter()
+            .map(|(_, part)| half_thinnest_extent(&**part))
+            .fold(f32::INFINITY, f32::min),
+        None => shape.compute_local_aabb().half_extents().min_element(),
+    }
+}
+
 /// Le plan de forces d'un corps pour un sous-pas : une force centrale (traînée)
 /// et des forces appliquées à des points (portances, qui créent un moment).
 struct BodyForcePlan {
@@ -278,6 +291,12 @@ pub struct PhysicsWorld {
     /// `rapier` réutilise les emplacements libérés et n'en donne qu'une approximation.
     /// Consultée par clé, jamais itérée (R-1020).
     births: HashMap<BodyId, u64>,
+    /// Moitié de la plus petite dimension de chaque corps dynamique (fiche 5.23) : quand le
+    /// corps parcourt plus que cela en un sous-pas, sa CCD complète s'active d'elle-même.
+    /// Consultée par clé, jamais itérée (R-1020).
+    ccd_threshold: HashMap<BodyId, f32>,
+    /// Corps dont la CCD est déclarée (definition, API) : toujours active, jamais basculée.
+    ccd_declared: HashSet<BodyId>,
     /// Rang du prochain corps créé.
     next_birth: u64,
     /// Mouvement des corps éveillés et non fixes juste avant le sous-pas en cours : la
@@ -441,6 +460,8 @@ impl PhysicsWorld {
             bounds_unavailable: AtomicU64::new(0),
             forced_sleep: HashMap::new(),
             births: HashMap::new(),
+            ccd_threshold: HashMap::new(),
+            ccd_declared: HashSet::new(),
             next_birth: 0,
             pre_step: HashMap::new(),
             solver_degraded: false,
@@ -521,6 +542,10 @@ impl PhysicsWorld {
         for collider in colliders {
             shapes.push(shared_shape_of(&collider.shape)?);
         }
+        let ccd_threshold = shapes
+            .iter()
+            .map(|shape| half_thinnest_extent(&**shape))
+            .fold(f32::INFINITY, f32::min);
 
         let body_type = match kind {
             BodyKind::Static => RigidBodyType::Fixed,
@@ -564,6 +589,9 @@ impl PhysicsWorld {
         let id = BodyId::from_handle(handle);
         self.births.insert(id, self.next_birth);
         self.next_birth += 1;
+        if matches!(kind, BodyKind::Dynamic) && ccd_threshold.is_finite() {
+            self.ccd_threshold.insert(id, ccd_threshold);
+        }
         // Pose de départ comme premier état valide, si elle l'est : une
         // restauration R-181 dès le premier sous-pas a alors un repli fini vers
         // lequel revenir. Un corps placé hors du monde n'est pas semé — on ne
@@ -637,6 +665,7 @@ impl PhysicsWorld {
             // puis garde-fous R-180/R-181 avant la récolte, pour lire un état sain.
             let integration_start = Instant::now();
             self.apply_aero_forces();
+            self.update_automatic_ccd(dt);
             self.record_pre_step_motion();
             let collector = ContactCollector::default();
             self.inner.step_with_events(&(), &collector);
@@ -663,6 +692,30 @@ impl PhysicsWorld {
         // mais son créneau est ici, à sa place normative.
 
         substeps
+    }
+
+    /// CCD automatique (fiche 5.23) : avant le sous-pas, la CCD complète d'un corps
+    /// dynamique éveillé, non déclarée, s'active si `|v|·dt` dépasse la moitié de sa
+    /// plus petite dimension, et se coupe sinon — elle ne coûte qu'aux corps qui
+    /// pourraient traverser une forme en un pas. Les corps sont parcourus dans l'ordre
+    /// de `rapier` ; chaque bascule ne touche que son corps (R-1020).
+    fn update_automatic_ccd(&mut self, dt: f32) {
+        for (handle, body) in self.inner.bodies.iter_mut() {
+            if !body.is_dynamic() || body.is_sleeping() {
+                continue;
+            }
+            let id = BodyId::from_handle(handle);
+            if self.ccd_declared.contains(&id) {
+                continue;
+            }
+            let Some(&threshold) = self.ccd_threshold.get(&id) else {
+                continue;
+            };
+            let fast = body.linvel().length() * dt > threshold;
+            if body.is_ccd_enabled() != fast {
+                body.enable_ccd(fast);
+            }
+        }
     }
 
     /// Fait respecter les garde-fous par corps après un sous-pas (R-180, R-181).
@@ -1525,15 +1578,22 @@ impl PhysicsWorld {
         }
     }
 
-    /// Active ou désactive la détection continue de collision (CCD) d'un corps.
+    /// Déclare la détection continue de collision (CCD) complète d'un corps, ou rend
+    /// le corps à la CCD automatique.
     ///
-    /// Sans effet si le corps n'existe pas. Une fois activée, `rapier` déclenche
-    /// de lui-même les sous-pas CCD quand le corps se déplace assez vite pour
-    /// traverser une forme fine en un pas — l'« automatique » de la fiche (le
-    /// seuil interne de `rapier` joue le rôle de `|v|·dt > 0.5·min_dim`).
+    /// Sans effet si le corps n'existe pas. Déclarée, la CCD complète — balayage des
+    /// corps fixes, cinématiques et dynamiques — reste active. Sinon, elle s'active
+    /// d'elle-même au sous-pas où `|v|·dt > 0.5·min_dim` (fiche 5.23), et se coupe
+    /// en deçà ; contre les seuls colliders fixes, `rapier` balaie de toute façon un
+    /// corps rapide.
     pub fn set_ccd_enabled(&mut self, id: BodyId, enabled: bool) {
         if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
             body.enable_ccd(enabled);
+            if enabled {
+                self.ccd_declared.insert(id);
+            } else {
+                self.ccd_declared.remove(&id);
+            }
         }
     }
 
@@ -1926,6 +1986,11 @@ impl PhysicsWorld {
             Some(body) if body.is_dynamic() => body.colliders().to_vec(),
             _ => return,
         };
+        if desc.ccd == 1 {
+            self.ccd_declared.insert(id);
+        } else {
+            self.ccd_declared.remove(&id);
+        }
         let declared = desc.declared_mass().is_some()
             || desc.declared_center_of_mass().is_some()
             || desc.declared_inertia().is_some();
@@ -2111,6 +2176,8 @@ impl PhysicsWorld {
         self.clamp_journal_at.remove(&id);
         self.forced_sleep.remove(&id);
         self.births.remove(&id);
+        self.ccd_threshold.remove(&id);
+        self.ccd_declared.remove(&id);
         self.stack_watch.remove(&id);
         self.stack_damped.remove(&id);
         self.damping_backup.remove(&id);
