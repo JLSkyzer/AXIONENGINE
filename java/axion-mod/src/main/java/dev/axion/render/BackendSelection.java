@@ -6,7 +6,8 @@ package dev.axion.render;
  * <p>Deux backends (§19.2) : {@link Kind#NATIVE} (pipeline OpenGL dédié, C-60) et
  * {@link Kind#VANILLA} (rendu à travers Minecraft, C-61). Le backend vanilla est le repli
  * universel (R-1491) et il est <b>obligatoire</b> sous shaderpack (fiche 5.48) : un
- * shaderpack écrit son propre G-buffer, que le backend natif ne peut pas alimenter (§19.1).
+ * shaderpack écrit son propre G-buffer, que le backend natif ne peut pas alimenter (§19.1). Un
+ * mod de shaders installé, pack coupé, ne l'impose pas (ADR-129) : {@link ShaderpackProbe} le dit.
  */
 public final class BackendSelection {
 
@@ -35,12 +36,12 @@ public final class BackendSelection {
      * @param requested valeur de {@code render.backend} : {@code auto}, {@code native} ou
      *     {@code vanilla} ; toute autre valeur est traitée comme {@code auto}
      * @param nativeAvailable vrai si le backend natif est livré et initialisable
-     * @param shaderpackActive vrai si un mod de shaders est actif
+     * @param shaderpackActive vrai si un shaderpack est en usage ({@link ShaderpackProbe#inUse()})
      * @return le backend retenu et sa raison
      */
     public static Selection select(String requested, boolean nativeAvailable, boolean shaderpackActive) {
         if (shaderpackActive) {
-            return new Selection(Kind.VANILLA, "mod de shaders actif : backend vanilla obligatoire");
+            return new Selection(Kind.VANILLA, "shaderpack en usage : backend vanilla obligatoire");
         }
         if ("vanilla".equals(requested)) {
             return new Selection(Kind.VANILLA, "render.backend = vanilla");

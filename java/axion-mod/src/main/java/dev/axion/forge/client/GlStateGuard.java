@@ -6,6 +6,7 @@ import com.mojang.blaze3d.vertex.BufferUploader;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
@@ -20,11 +21,16 @@ import org.lwjgl.opengl.GL30;
  * {@code RenderType.clearRenderState}). Les {@code RenderType} d'AXION, en se refermant, ramènent
  * l'état aux valeurs par défaut — mélange et test de profondeur coupés —, et un autre mod abonné au
  * même stage le trouverait cassé. Le garde rejoue donc la mise en place de la couche, que Minecraft
- * referme ensuite comme il l'aurait fait sans AXION. Les autres stages sont publiés hors de toute
- * couche, à l'état par défaut, que les {@code RenderType} d'AXION rendent tel quel : rien à
- * rétablir.
+ * referme ensuite comme il l'aurait fait sans AXION. La couche en place se déduit du stage.
  *
- * <p>La couche en place se déduit du stage, sans lecture de l'état GL. Le backend natif (C-60)
+ * <p>Les autres stages sont publiés hors de toute couche, et pas forcément à l'état par défaut :
+ * sous Embeddium et Oculus, shaderpack coupé, {@code AFTER_ENTITIES} arrive test de profondeur
+ * allumé (banc sous shaders du 2026-10-12, R-1503), là où Minecraft seul le laisse éteint — et les
+ * passes d'AXION finissent à l'état par défaut. Le garde y lit donc, à l'ouverture, ce que les
+ * passes changent et que Minecraft suit — mélange et sa fonction, test, écriture et fonction de
+ * profondeur, faces cachées —, et le rend par {@code RenderSystem} à la fermeture.
+ *
+ * <p>Le backend natif (C-60)
  * touche en outre lui-même ce que Minecraft ne suit pas — VAO, tampon de sommets — et le programme
  * (R-1501) : le garde lit ces trois liaisons à l'ouverture et les rend à la fermeture, pour tout
  * backend ; le traqueur de {@code BufferUploader}, qui croit savoir quel VAO est lié, est invalidé,
@@ -43,11 +49,15 @@ final class GlStateGuard {
     private final int arrayBuffer;
     private final int program;
 
-    private GlStateGuard(RenderType layer, int vertexArray, int arrayBuffer, int program) {
+    /** Hors couche : l'état trouvé, que les passes changent et que Minecraft suit ; {@code null} dans une couche. */
+    private final int[] fixedFunction;
+
+    private GlStateGuard(RenderType layer, int vertexArray, int arrayBuffer, int program, int[] fixedFunction) {
         this.layer = layer;
         this.vertexArray = vertexArray;
         this.arrayBuffer = arrayBuffer;
         this.program = program;
+        this.fixedFunction = fixedFunction;
     }
 
     /**
@@ -58,11 +68,28 @@ final class GlStateGuard {
      */
     static GlStateGuard open(RenderLevelStageEvent.Stage stage) {
         RenderSystem.assertOnRenderThread();
+        RenderType layer = layerOf(stage);
         return new GlStateGuard(
-                layerOf(stage),
+                layer,
                 GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING),
                 GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING),
-                GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM));
+                GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM),
+                layer == null ? readFixedFunction() : null);
+    }
+
+    /** {@return mélange, ses facteurs, profondeur et faces cachées, dans l'ordre de {@link #restore()}} */
+    private static int[] readFixedFunction() {
+        return new int[] {
+            GL11.glIsEnabled(GL11.GL_BLEND) ? 1 : 0,
+            GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB),
+            GL11.glGetInteger(GL14.GL_BLEND_DST_RGB),
+            GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA),
+            GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA),
+            GL11.glIsEnabled(GL11.GL_DEPTH_TEST) ? 1 : 0,
+            GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK) ? 1 : 0,
+            GL11.glGetInteger(GL11.GL_DEPTH_FUNC),
+            GL11.glIsEnabled(GL11.GL_CULL_FACE) ? 1 : 0,
+        };
     }
 
     /** Rétablit l'état trouvé à l'entrée de la passe. */
@@ -73,6 +100,26 @@ final class GlStateGuard {
         BufferUploader.invalidate();
         if (layer != null) {
             layer.setupRenderState();
+            return;
+        }
+        int[] found = fixedFunction;
+        if (found[0] != 0) {
+            RenderSystem.enableBlend();
+        } else {
+            RenderSystem.disableBlend();
+        }
+        RenderSystem.blendFuncSeparate(found[1], found[2], found[3], found[4]);
+        if (found[5] != 0) {
+            RenderSystem.enableDepthTest();
+        } else {
+            RenderSystem.disableDepthTest();
+        }
+        RenderSystem.depthMask(found[6] != 0);
+        RenderSystem.depthFunc(found[7]);
+        if (found[8] != 0) {
+            RenderSystem.enableCull();
+        } else {
+            RenderSystem.disableCull();
         }
     }
 

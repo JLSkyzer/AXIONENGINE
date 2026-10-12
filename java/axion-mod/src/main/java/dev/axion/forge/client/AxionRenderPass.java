@@ -18,6 +18,7 @@ import dev.axion.render.MeshCache;
 import dev.axion.render.RenderAsset;
 import dev.axion.render.RenderCapabilities;
 import dev.axion.render.ShaderVariants;
+import dev.axion.render.ShaderpackProbe;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -66,8 +67,20 @@ public final class AxionRenderPass {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("axion");
 
-    /** Identifiants des mods de shaders sous Forge : leur présence impose vanilla (fiche 5.48). */
+    /**
+     * Identifiants des mods de shaders sous Forge : leur présence fait interroger l'état de leur
+     * shaderpack, qui seul impose vanilla (fiche 5.48, ADR-129).
+     */
     private static final String[] SHADER_MODS = {"oculus", "iris"};
+
+    /** Sonde de l'état du shaderpack ; créée au premier choix de backend. Render thread seul. */
+    private static ShaderpackProbe shaderpack;
+
+    /** Shaderpack en usage au dernier choix de backend : un changement le fait refaire (R-1490). */
+    private static boolean shaderpackAtSelection;
+
+    /** Vrai une fois dit qu'un mod de shaders est là sans que l'état de son pack se lise. */
+    private static boolean shaderpackUnreadableLogged;
 
     /** Backend actif ; {@code null} tant qu'aucun monde n'a été chargé. Render thread seul. */
     private static RenderBackend backend;
@@ -231,7 +244,8 @@ public final class AxionRenderPass {
     }
 
     /**
-     * Chargement d'un monde client : (re)choix du backend (R-1490).
+     * Chargement d'un monde client : le backend sera choisi de nouveau à sa première frame
+     * (R-1490), quand un mod de shaders sait dire si son pack est en usage.
      *
      * @param event chargement d'un niveau
      */
@@ -240,7 +254,6 @@ public final class AxionRenderPass {
         if (event.getLevel().isClientSide()) {
             closeBackend();
             nativeRefused = false;
-            backend = select();
             failed = false;
         }
     }
@@ -259,6 +272,7 @@ public final class AxionRenderPass {
         }
         RenderLevelStageEvent.Stage stage = event.getStage();
         if (stage == RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+            selectIfNeeded(event);
             renderSurfaces(event, false);
         } else if (stage == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
             renderSurfaces(event, true);
@@ -366,6 +380,46 @@ public final class AxionRenderPass {
                 event.getPartialTick(),
                 minecraft.renderBuffers().bufferSource(),
                 assemblies);
+    }
+
+    /**
+     * Choisit le backend à la première frame d'un monde ou après un rechargement, et le choisit de
+     * nouveau quand un shaderpack a été activé ou coupé depuis (R-1490), l'ancien rendant ses
+     * ressources (R-744). Au stage {@code AFTER_ENTITIES} : le mod de shaders a préparé le pipeline
+     * de la frame, et seul celui-ci dit si un pack est en usage — avant la première frame d'un
+     * monde ou juste après un rechargement du pack, Oculus 1.8.0 répond « aucun » (bytecode de
+     * {@code IrisApiV0Impl.isShaderPackInUse} : faux tant que son pipeline est nul). Aucun mod de
+     * shaders n'annonce le changement : l'état se relit à chaque frame — sans mod de shaders, un
+     * test de drapeau.
+     */
+    private static void selectIfNeeded(RenderLevelStageEvent event) {
+        if (backend != null && shaderpack().inUse() == shaderpackAtSelection) {
+            return;
+        }
+        // Le natif crée et rend des objets GL : sous garde, comme une passe (R-1502, R-1503).
+        GlStateCheck.Snapshot before = GlStateCheck.ENABLED ? GlStateCheck.before() : null;
+        GlStateGuard guard = GlStateGuard.open(event.getStage());
+        try {
+            closeBackend();
+            backend = select();
+        } finally {
+            guard.restore();
+            if (before != null) {
+                GlStateCheck.after("CHOIX DU BACKEND", before);
+            }
+        }
+    }
+
+    /** {@return la sonde de l'état du shaderpack, créée au premier besoin} */
+    private static ShaderpackProbe shaderpack() {
+        if (shaderpack == null) {
+            boolean modPresent = false;
+            for (String id : SHADER_MODS) {
+                modPresent |= ModList.get().isLoaded(id);
+            }
+            shaderpack = ShaderpackProbe.of(modPresent, ShaderpackProbe.IRIS_API);
+        }
+        return shaderpack;
     }
 
     /**
@@ -495,13 +549,18 @@ public final class AxionRenderPass {
         backendStarts++;
         AxionConfig config =
                 ConfigLoader.load(Scope.CLIENT, FMLPaths.CONFIGDIR.get(), System.getProperties());
-        boolean shaderMod = false;
-        for (String id : SHADER_MODS) {
-            shaderMod |= ModList.get().isLoaded(id);
+        boolean shaderpackInUse = shaderpack().inUse();
+        shaderpackAtSelection = shaderpackInUse;
+        if (shaderpack.failure() != null && !shaderpackUnreadableLogged) {
+            shaderpackUnreadableLogged = true;
+            LOGGER.warn("AXION : mod de shaders présent, état de son shaderpack illisible — tenu pour en usage ({})",
+                    shaderpack.failure());
         }
         String requested = config.getString("render.backend");
-        NativeGlBackend candidate = shaderMod || nativeRefused || "vanilla".equals(requested) ? null : startNative();
-        BackendSelection.Selection selection = BackendSelection.select(requested, candidate != null, shaderMod);
+        NativeGlBackend candidate =
+                shaderpackInUse || nativeRefused || "vanilla".equals(requested) ? null : startNative();
+        BackendSelection.Selection selection =
+                BackendSelection.select(requested, candidate != null, shaderpackInUse);
         RenderCapabilities capabilities = RenderCapabilities.of(selection);
         // R-1493 : une entrée unique au démarrage du backend, ce qu'il ne sait pas faire compris.
         LOGGER.info("AXION : rendu — {}", String.join("\n  ", capabilities.describe()));

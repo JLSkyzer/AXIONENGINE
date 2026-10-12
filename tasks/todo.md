@@ -2035,7 +2035,11 @@ substituable sans changer rapier »).
                         T-480 et T-490 **faits le 2026-10-12, au banc `runRenderTestShaders`** (Oculus 1.8.0 et Embeddium
                         0.3.31 depuis le Maven de Modrinth, accord de Killian ; shaderpack de test `axion_banc` écrit pour le
                         banc, au bleu nul) : auto → VANILLA « mod de shaders actif », natif jamais démarré ; cube visible et
-                        orienté (écart 1 px), bleu 0 (sorti du pack), midi 232,9 / minuit 74,2 ; CI à confirmer ;
+                        orienté (écart 1 px), bleu 0 (sorti du pack), midi 232,9 / minuit 74,2. **ADR-129** (décidé par
+                        Killian le 2026-10-12) : le vanilla n'est imposé que par un pack **en usage** (API v0 d'Iris,
+                        `ShaderpackProbe`), choix fait et refait à `AFTER_ENTITIES` ; au banc, pack coupé → natif (7 objets
+                        GL, cube hors du pack), rétabli → vanilla (0 objet). Le garde GL rend désormais l'état trouvé hors
+                        couche (profondeur allumée sous Embeddium/Oculus, R-1503) ; trois bancs verts ; CI à confirmer ;
                         **T-493** (skinning et déformation
                         CPU plafonnés) : cité par M3 mais porté par C-66 (M4) et la M6 — ADR-128 (ratifié le 2026-10-11) le reporte avec
                         eux, comme l'indicateur d'overlay de T-491d (C-73), et constate que T-308 et T-309 n'existent pas.

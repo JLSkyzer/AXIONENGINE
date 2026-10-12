@@ -1280,3 +1280,18 @@ aucune logique — chaîne d'affichage, commentaire.
 **Règle.** Un banc qui lance le jeu se rejoue quand la logique jugée ou le code rendu a changé, pas
 pour un libellé : la compilation suffit alors, et la CI rejouera le banc au push. Annoncer à Killian
 chaque lancement et ce qu'il doit prouver.
+
+## 2026-10-12 | Le garde GL supposait l'état par défaut hors couche ; Embeddium et Oculus l'ont démenti
+
+**Ce qui a mal tourné.** Sous Oculus et Embeddium, shaderpack coupé, 584 passes OPAQUE du natif ont laissé
+`GL_DEPTH_TEST` éteint après l'avoir trouvé allumé (R-1503). Et le premier choix du backend, fait au chargement
+du monde, retenait le natif alors qu'un pack était chargé.
+
+**Cause.** Deux suppositions vraies sous Minecraft seul : que `AFTER_ENTITIES` arrive à l'état par défaut (les
+passes y finissent) ; que l'API d'Oculus dise l'état du pack à tout moment — elle répond « aucun » tant que son
+pipeline de frame n'est pas préparé.
+
+**Règle.** Un garde rend l'état qu'il a **lu**, jamais celui qu'il croit trouver, dès qu'un autre mod peut
+passer avant lui. Un état publié par un autre mod se lit là où il est garanti valide — ici, dans la frame,
+au stage `AFTER_ENTITIES` —, pas au premier événement venu. Le banc sous mods tiers est celui qui trouve ces
+suppositions.

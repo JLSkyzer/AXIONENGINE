@@ -194,8 +194,8 @@ public final class BancDeRendu {
 
     private static final List<Etape> SCENARIO = new ArrayList<>();
     private static final RapportDuBanc RAPPORT = new RapportDuBanc(SHADERS
-            ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "T-491d, journal et statut", "T-472",
-                    "T-473", "erreurs AXION")
+            ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
+                    "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
             ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-492", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
@@ -245,6 +245,15 @@ public final class BancDeRendu {
     /** Démarrages de backend à l'installation du journal : ceux qui suivent y laissent leur entrée. */
     private static int demarragesALInstallation;
     private static List<String> sortieDuStatut;
+
+    /** Pack coupé (ADR-129) : le cube en natif, avec et sans les passes d'AXION, et ce que le choix a dit. */
+    private static CapturesDuBanc.Capture packCoupeAvec;
+    private static CapturesDuBanc.Capture packCoupeSans;
+    private static Vue vuePackCoupe;
+    private static BackendSelection.Kind backendPackCoupe;
+    private static String raisonPackCoupe;
+    private static int objetsPackCoupe;
+    private static boolean packCoupeEnUsage;
     private static int demarrages;
     private static int fermetures;
     /** Objets GL du natif à chaque retour sur lui, puis à chaque passage en vanilla. */
@@ -448,6 +457,35 @@ public final class BancDeRendu {
             panneauPlat.discard();
         });
         jusqua("les panneaux retirés", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+
+        if (SHADERS) {
+            // R-1490, ADR-129 : le pack coupé, le natif reprend la main et dessine hors du pack ;
+            // rétabli, le vanilla revient, et le natif rend tout ce qu'il tenait (R-744).
+            une("couper le shaderpack", mc -> {
+                demarragesAvantRechargement = AxionRenderPass.backendStarts();
+                activerLeShaderpack(false);
+            });
+            jusqua("la scène redessinée en natif, pack coupé", 120, mc -> redessinee(BackendSelection.Kind.NATIVE));
+            stabiliser("la scène, pack coupé");
+            une("capturer le cube en natif", mc -> {
+                packCoupeAvec = capturer(mc, "pack_coupe_avec.png");
+                vuePackCoupe = derniereVue;
+                backendPackCoupe = AxionRenderPass.activeBackend();
+                raisonPackCoupe = raisonDuChoix();
+                objetsPackCoupe = AxionRenderPass.nativeGlObjects();
+                packCoupeEnUsage = shaderpackEnUsage();
+            });
+            une("couper AXION, pack coupé", mc -> AxionRenderPass.setPassesEnabled(false));
+            frames(3);
+            une("capturer sans AXION, pack coupé", mc -> packCoupeSans = capturer(mc, "pack_coupe_sans.png"));
+            une("rétablir AXION, pack coupé", mc -> AxionRenderPass.setPassesEnabled(true));
+            une("rétablir le shaderpack", mc -> {
+                demarragesAvantRechargement = AxionRenderPass.backendStarts();
+                activerLeShaderpack(true);
+            });
+            jusqua("la scène redessinée en vanilla, pack rétabli", 120, mc -> redessinee(BackendSelection.Kind.VANILLA));
+            une("juger le changement de shaderpack", mc -> jugerChangementDePack());
+        }
 
         // T-471 : des frames sans AXION d'abord, pour savoir ce qui n'est pas de lui. Pas sous
         // Oculus : ses propres erreurs GL y seraient comptées, et ne diraient rien d'AXION.
@@ -683,9 +721,7 @@ public final class BancDeRendu {
      * n'est imposé — a retenu le vanilla, pour cette raison, et le natif n'a jamais démarré.
      */
     private static void jugerT490() {
-        AxionRuntime runtime = RuntimeAccess.get();
-        RenderCapabilities matrice = runtime == null ? null : runtime.renderCapabilities();
-        String raison = matrice == null ? "aucune" : matrice.selection().reason();
+        String raison = raisonDuChoix();
         String attendue = BackendSelection.select("auto", true, true).reason();
         boolean oculus = ModList.get().isLoaded("oculus");
         boolean pack = shaderpackEnUsage();
@@ -711,6 +747,58 @@ public final class BancDeRendu {
         } catch (ReflectiveOperationException absente) {
             return false;
         }
+    }
+
+    /**
+     * Active ou coupe le shaderpack par l'API v0 d'Iris, comme le ferait le joueur (ADR-129). Par
+     * réflexion : le banc n'est pas compilé contre Oculus.
+     */
+    private static void activerLeShaderpack(boolean actif) {
+        try {
+            Class<?> api = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+            Object instance = api.getMethod("getInstance").invoke(null);
+            Object config = api.getMethod("getConfig").invoke(instance);
+            Class.forName("net.irisshaders.iris.api.v0.IrisApiConfig")
+                    .getMethod("setShadersEnabledAndApply", boolean.class)
+                    .invoke(config, actif);
+        } catch (ReflectiveOperationException injoignable) {
+            throw new IllegalStateException("API d'Iris injoignable", injoignable);
+        }
+    }
+
+    /** {@return la raison du dernier choix de backend, telle que le runtime la tient} */
+    private static String raisonDuChoix() {
+        AxionRuntime runtime = RuntimeAccess.get();
+        RenderCapabilities matrice = runtime == null ? null : runtime.renderCapabilities();
+        return matrice == null ? "aucune" : matrice.selection().reason();
+    }
+
+    /**
+     * R-1490, ADR-129 : pack coupé, le choix refait retient le natif pour la raison d'un
+     * {@code auto} ordinaire, le natif tient ses objets GL et dessine le cube — à sa place, hors du
+     * pack, donc avec son bleu ; pack rétabli, le vanilla revient pour la raison du shaderpack, et
+     * le natif n'a plus aucun objet GL (R-744).
+     */
+    private static void jugerChangementDePack() {
+        CapturesDuBanc.Masque masque = CapturesDuBanc.masque(packCoupeSans, packCoupeAvec);
+        int[] attendu = boiteAttendue(vuePackCoupe, HUITIEME_DE_TOUR, packCoupeAvec.largeur(), packCoupeAvec.hauteur());
+        int ecart = ecart(masque, attendu);
+        int bleu = CapturesDuBanc.bleuMaximal(packCoupeAvec, masque);
+        boolean natif = !packCoupeEnUsage && backendPackCoupe == BackendSelection.Kind.NATIVE
+                && BackendSelection.select("auto", true, false).reason().equals(raisonPackCoupe) && objetsPackCoupe > 0;
+        boolean dessine = masque.nombre() >= aire(attendu) / 2 && ecart <= ECART_BOITE && bleu > BLEU_DU_PACK;
+        String raisonRetablie = raisonDuChoix();
+        boolean retabli = shaderpackEnUsage() && AxionRenderPass.activeBackend() == BackendSelection.Kind.VANILLA
+                && BackendSelection.select("auto", true, true).reason().equals(raisonRetablie)
+                && AxionRenderPass.nativeGlObjects() == 0;
+        RAPPORT.noter("R-1490, changement de shaderpack", natif && dessine && retabli, String.format(Locale.ROOT,
+                "pack coupé (%s) : %s retenu (« %s »), %d objet(s) GL du natif ; cube : %d px, boîte %s pour %s"
+                        + " attendue (écart %d), bleu le plus fort %d (hors du pack : plus de %d) ; pack rétabli (%s) :"
+                        + " %s retenu (« %s »), %d objet(s) GL du natif",
+                packCoupeEnUsage ? "ENCORE EN USAGE" : "plus en usage", backendPackCoupe, raisonPackCoupe,
+                objetsPackCoupe, masque.nombre(), Arrays.toString(masque.boite()), Arrays.toString(attendu), ecart,
+                bleu, BLEU_DU_PACK, shaderpackEnUsage() ? "en usage" : "INACTIF", AxionRenderPass.activeBackend(),
+                raisonRetablie, AxionRenderPass.nativeGlObjects()));
     }
 
     /**
