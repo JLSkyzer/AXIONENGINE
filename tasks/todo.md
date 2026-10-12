@@ -2400,6 +2400,71 @@ substituable sans changer rapier »).
               externes en jeu (C-20/C-21), décalques (C-69), `TINTABLE`, usure (C-47),
               `max_texture_size`, `uv1`.
 
+### Definition of Done de M3 — vérification du 2026-10-12 (non prononcée)
+
+Grille du CDC §37.3 (`sed -n '7318,7364p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`), vérifiée sur le
+commit c6e1369 (CI verte). Deux audits des composants, physique et rendu, en lecture seule ; leurs
+constats repris ici ont été recoupés sur les points décisifs. **Verdict : M3 ne peut pas être prononcé
+en l'état.**
+
+**Jalon terminé**
+
+- [x] Critères d'acceptance (PARTIE 37.2) tenus en CI : chute libre à 1 % (tranche A), empilement 60 s
+      et aucune traversée en 10 min (tranche B, monde des GameTests figé en 636eb56), aucune erreur GL
+      (T-471), état restauré (T-472), bascule sous shaderpack (T-480, T-490). **Vérification mécanique
+      incomplète** : `MilestoneTestsCoveredTest` ne compte que M0 et M1, et ne lit pas `src/devcontent`
+      (GameTests, banc de rendu). Rejouée à la main pour M3 : 41 des 44 tests présents ; T-308, T-309 et
+      T-493 exclus par ADR-128. Mais **T-550 est compté à tort** : ses dix fonctions `t550_` (ax-asset)
+      vérifient les LOD, alors que T-550 est un test de C-67 (CDC:2431) ; aucun test du Debug Renderer
+      ne le porte.
+- [ ] **JAR installable et jouable produit par la CI** : la CI construit et valide un JAR partiel
+      (natifs de l'hôte) ; les natifs des quatre plateformes sont téléversés à part, jamais réunis dans
+      un JAR complet.
+- [x] Aucune régression : CI verte sur la matrice (c6e1369), suites Rust (933) et Java vertes.
+- [ ] **Benchmarks du périmètre exécutés et archivés** : B-01, B-03, B-11, B-12, B-14, B-16, B-17 n'ont
+      ni harnais ni `benchmarks/results/` (R-2230, R-2231) ; le suivi plaçait les benchmarks en M12, ce
+      que contredit la DoD de chaque jalon.
+- [ ] **CHANGELOG** arrêté à M0.10 : ni M1 ni M3.
+
+**Composant terminé** — aucun des douze ne coche toute la grille. Écarts, par nature :
+
+- Tests absents ou mal étiquetés : T-550 (ci-dessus) ; C-40 : T-390..T-392 et T-827 ni attribués ni
+  nommés ; C-60 : T-475..T-478, T-481..T-485 non attribués ; invariants T-006 (INV-01), T-011
+  (INV-03), T-012 (INV-04), T-019 (INV-12) absents ; tests de colliders de `collider.rs` sans préfixe
+  `t310_` ; T-870 attribué à C-26 et à C-47, non tranché.
+- Métriques et budgets : aucune métrique de rendu exportée (§31.1) ; métriques du budget
+  `max_active_bodies` déclarées, jamais alimentées ; mémoire des mondes physiques non comptée (INV-08) ;
+  textures hors budget GPU (R-750) ; pas de budget par étape (R-661, étapes 1 et 15 non mesurées) ;
+  surcharge GPU (T-484, éviction réelle) non testée ; temps de construction des tuiles et requêtes non
+  mesurés.
+- Fonctionnalités partielles : aucun niveau Q-0..Q-4 (natif figé à Q-1) ; variantes PARALLAX,
+  CLEARCOAT, SHEEN, ANISO et carte de hauteur renvoyées « à C-63 » sans jalon ; `AxionApi.render()
+  .capabilities()` (R-1495) non fait ; `collision_group` et `collides_with` validés puis ignorés ; CCD
+  automatique non testée en anti-traversée ; impulsion maximale agrégée par sous-pas et non par tick ;
+  « parallélisable » (R-650) non prouvé ; `SimMode::Client` jamais appelé.
+- Documentation : PHYSICS.md et une doc du rendu absents ; README et CHANGELOG à M0 ; rustdoc de
+  `ax-physics/src/lib.rs` périmée.
+- Suivi : cases C-31, C-32 et C-61 encore ouvertes.
+
+Déjà reportés par décision (non comptés comme écarts) : ADR-121, ADR-122, ADR-123 §9, ADR-125,
+ADR-127 §1-4 et §8-9, ADR-128, ADR-130, et les décisions de Killian consignées (ballon, DM-07,
+amortissement dans l'eau, `/axion remove`).
+
+**Plan de clôture proposé (tranche E)**
+
+- [ ] **E1 — sans décision** : vrai test T-550 et LOD réétiquetés ; préfixes `t310_` ;
+      `MilestoneTestsCoveredTest` étendu à `devcontent` et aux exclusions d'ADR-128 (M3 ajouté à la
+      clôture) ; CHANGELOG M1 et M3 ; rustdoc d'`ax-physics` ; PHYSICS.md et doc du rendu ; métriques de
+      rendu et de budgets exportées ; tests d'invariants T-006, T-011, T-012, T-019 ; CCD testée en
+      anti-traversée ; groupes de collision transmis (R-980) ou refusés.
+- [ ] **E2 — JAR complet en CI** : un job qui réunit les natifs de la matrice, construit le JAR complet,
+      le valide (R-2341) et le téléverse.
+- [ ] **E3 — décisions de Killian** : attribution par ADR de T-390..T-392, T-827, T-475..T-485 et T-870 ;
+      benchmarks du périmètre en M3 ou en M12 ; niveaux Q-0..Q-4 en M3 ou plus tard ; jalon des variantes
+      PARALLAX et suivantes ; R-1495 ; budget par étape (R-661).
+
+---
+
 ## Jalons suivants
 
 Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
