@@ -301,6 +301,14 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runRenderTestNative --no-daemon --stacktrace
 
+      # T-480, T-490 : sous Oculus (et Embeddium, sa dependance), depuis le Maven de Modrinth, avec
+      # le shaderpack de test du depot ; le backend n'est pas impose.
+      - name: Banc de rendu, sous Oculus et shaderpack (client automatise)
+        if: success() || failure()
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runRenderTestShaders --no-daemon --stacktrace
+
       - name: Rapports et captures
         if: always()
         uses: actions/upload-artifact@v4
@@ -309,6 +317,7 @@ jobs:
           path: |
             run-rendertest/axion-rendertest/
             run-rendertest-native/axion-rendertest/
+            run-rendertest-shaders/axion-rendertest/
           if-no-files-found: warn
 
   platform:

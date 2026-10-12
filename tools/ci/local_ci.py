@@ -82,6 +82,8 @@ JOBS: list[tuple[str, list[tuple[str, list[str]]]]] = [
          [GRADLEW, "runRenderTest", "--no-daemon", "--stacktrace"]),
         ("banc de rendu, backend natif (client automatise)",
          [GRADLEW, "runRenderTestNative", "--no-daemon", "--stacktrace"]),
+        ("banc de rendu, sous Oculus et shaderpack (client automatise)",
+         [GRADLEW, "runRenderTestShaders", "--no-daemon", "--stacktrace"]),
     ]),
     ("platform-hote", [
         ("configuration deterministe", ["cargo", "run", "--quiet", "-p", "ax-det",

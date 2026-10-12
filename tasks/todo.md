@@ -2032,7 +2032,11 @@ substituable sans changer rapier »).
                         (une entrée par démarrage de backend, la dernière conforme à la matrice active ; la sortie réelle
                         de `/axion status` signale les 8 capacités non disponibles avec leur repli), l'indicateur de
                         l'overlay vient avec C-73 ;
-                        T-480 et T-490 (mod de shaders, accord de Killian) ; **T-493** (skinning et déformation
+                        T-480 et T-490 **faits le 2026-10-12, au banc `runRenderTestShaders`** (Oculus 1.8.0 et Embeddium
+                        0.3.31 depuis le Maven de Modrinth, accord de Killian ; shaderpack de test `axion_banc` écrit pour le
+                        banc, au bleu nul) : auto → VANILLA « mod de shaders actif », natif jamais démarré ; cube visible et
+                        orienté (écart 1 px), bleu 0 (sorti du pack), midi 232,9 / minuit 74,2 ; CI à confirmer ;
+                        **T-493** (skinning et déformation
                         CPU plafonnés) : cité par M3 mais porté par C-66 (M4) et la M6 — ADR-128 (ratifié le 2026-10-11) le reporte avec
                         eux, comme l'indicateur d'overlay de T-491d (C-73), et constate que T-308 et T-309 n'existent pas.
                   - [x] **D6 — T-551** : coût d'un overlay éteint, mesuré avec les métriques de C-72.

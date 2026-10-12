@@ -54,6 +54,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLPaths;
 import org.joml.Matrix4f;
@@ -69,10 +70,12 @@ import org.slf4j.LoggerFactory;
  * vanilla inchangé, T-471 aucune erreur GL sur 10 000 frames, T-472 état GL restauré après chaque
  * passe, T-473 aucun appel GL hors du render thread, T-474 assembly visible, orientée, éclairée ;
  * sur le backend natif, T-479 aussi : des shaders refusés au rechargement des ressources font
- * basculer sur vanilla, sans crash.
+ * basculer sur vanilla, sans crash ; sous Oculus et un shaderpack, T-480 et T-490 : le backend
+ * vanilla retenu de lui-même, et des objets que le shaderpack éclaire.
  *
- * <p>Inerte sans {@code -Daxion.rendertest} ; les lancements Gradle {@code runRenderTest} et
- * {@code runRenderTestNative} le posent, chacun avec son backend.
+ * <p>Inerte sans {@code -Daxion.rendertest} ; les lancements Gradle {@code runRenderTest},
+ * {@code runRenderTestNative} et {@code runRenderTestShaders} le posent, chacun avec son backend
+ * — le dernier sans en imposer.
  * Il crée un monde plat neuf, fige la scène, joue son scénario frame après frame, écrit
  * {@code axion-rendertest/rapport.json} et ses captures, puis arrête le client ; la tâche Gradle
  * échoue si le rapport manque ou n'est pas vert.
@@ -173,11 +176,27 @@ public final class BancDeRendu {
     /** Vrai sur le backend natif : T-479, sa bascule sur vanilla, ne se joue que là. */
     private static final boolean NATIF = "native".equals(BACKEND_DEMANDE);
 
+    /**
+     * Vrai sous Oculus et le shaderpack de test ({@code -Daxion.rendertest.shaders}) : T-480 et
+     * T-490 s'y jouent, à la place de T-474 — l'éclairage y est celui du shaderpack (R-1513).
+     */
+    private static final boolean SHADERS = Boolean.getBoolean("axion.rendertest.shaders");
+
+    /**
+     * Le shaderpack de test ({@code src/devcontent/shaderpacks/axion_banc}) écrit un bleu nul :
+     * un pixel qui garde du bleu n'est pas passé par ses programmes. Le cube de test, gris, en a
+     * autant que de rouge et de vert hors shaderpack.
+     */
+    private static final int BLEU_DU_PACK = 2;
+
     /** L'erreur que T-479 provoque : la compilation des shaders refusée (R-761). */
     private static final Pattern E_4001 = Pattern.compile("\\(E-4001\\)");
 
     private static final List<Etape> SCENARIO = new ArrayList<>();
-    private static final RapportDuBanc RAPPORT = new RapportDuBanc(NATIF
+    private static final RapportDuBanc RAPPORT = new RapportDuBanc(SHADERS
+            ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "T-491d, journal et statut", "T-472",
+                    "T-473", "erreurs AXION")
+            : NATIF
             ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-492", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
@@ -349,6 +368,9 @@ public final class BancDeRendu {
         une("regarder au nord", mc -> viser(180f, 15f));
         jusqua("la scène prête", 600, BancDeRendu::scenePrete);
         une("juger le backend", mc -> jugerBackend());
+        if (SHADERS) {
+            une("juger T-490", mc -> jugerT490());
+        }
         if (NATIF) {
             // T-512 : la variante CUTOUT, que les surfaces découpées du décor demandent, se compile à la
             // demande ; la base dessine en attendant. Le cache est neuf : rien n'en est relu.
@@ -401,7 +423,13 @@ public final class BancDeRendu {
         une("capturer de nuit", mc -> minuit = capturer(mc, "t474_minuit.png"));
         serveur("revenir à midi", s -> commandes(s, "time set 6000"));
         jusqua("le jour revenu", 60, mc -> mc.level.getDayTime() % 24_000L == 6_000L);
-        une("juger T-474", mc -> jugerT474());
+        une(SHADERS ? "juger T-480" : "juger T-474", mc -> {
+            if (SHADERS) {
+                jugerT480();
+            } else {
+                jugerT474();
+            }
+        });
 
         // Cartes de matériau (ADR-127 §5) : deux panneaux identiques face à la caméra, l'un avec
         // normal map et ORM, l'autre sans. En natif, sous le soleil de midi, le relief fait varier la
@@ -421,28 +449,31 @@ public final class BancDeRendu {
         });
         jusqua("les panneaux retirés", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
 
-        // T-471 : des frames sans AXION d'abord, pour savoir ce qui n'est pas de lui.
-        une("compter sans AXION", mc -> {
-            AxionRenderPass.setPassesEnabled(false);
-            viderErreursGl();
-            erreursFrames = 0;
-            framesComptees = 0;
-            compter = true;
-        });
-        frames(FRAMES_SANS_AXION);
-        une("compter avec AXION", mc -> {
-            erreursSansAxion = erreursFrames;
-            erreursFrames = 0;
-            framesComptees = 0;
-            erreursPassesAvant = GlStateCheck.errors();
-            erreursAvantPassesAvant = GlStateCheck.errorsBeforePasses();
-            AxionRenderPass.setPassesEnabled(true);
-        });
-        frames(FRAMES_T471);
-        une("juger T-471", mc -> {
-            compter = false;
-            jugerT471();
-        });
+        // T-471 : des frames sans AXION d'abord, pour savoir ce qui n'est pas de lui. Pas sous
+        // Oculus : ses propres erreurs GL y seraient comptées, et ne diraient rien d'AXION.
+        if (!SHADERS) {
+            une("compter sans AXION", mc -> {
+                AxionRenderPass.setPassesEnabled(false);
+                viderErreursGl();
+                erreursFrames = 0;
+                framesComptees = 0;
+                compter = true;
+            });
+            frames(FRAMES_SANS_AXION);
+            une("compter avec AXION", mc -> {
+                erreursSansAxion = erreursFrames;
+                erreursFrames = 0;
+                framesComptees = 0;
+                erreursPassesAvant = GlStateCheck.errors();
+                erreursAvantPassesAvant = GlStateCheck.errorsBeforePasses();
+                AxionRenderPass.setPassesEnabled(true);
+            });
+            frames(FRAMES_T471);
+            une("juger T-471", mc -> {
+                compter = false;
+                jugerT471();
+            });
+        }
 
         if (NATIF) {
             // T-503, T-510 : un rechargement des ressources rend tout ce que le natif tient, puis le
@@ -645,6 +676,70 @@ public final class BancDeRendu {
         };
         RAPPORT.noter("backend", actif != null && (attendu == null || actif == attendu), String.format(Locale.ROOT,
                 "backend %s actif, %s demandé", actif, BACKEND_DEMANDE == null ? "auto" : BACKEND_DEMANDE));
+    }
+
+    /**
+     * T-490 : Oculus est chargé et son shaderpack en usage ; la sélection automatique — aucun backend
+     * n'est imposé — a retenu le vanilla, pour cette raison, et le natif n'a jamais démarré.
+     */
+    private static void jugerT490() {
+        AxionRuntime runtime = RuntimeAccess.get();
+        RenderCapabilities matrice = runtime == null ? null : runtime.renderCapabilities();
+        String raison = matrice == null ? "aucune" : matrice.selection().reason();
+        String attendue = BackendSelection.select("auto", true, true).reason();
+        boolean oculus = ModList.get().isLoaded("oculus");
+        boolean pack = shaderpackEnUsage();
+        boolean vert = oculus && pack && BACKEND_DEMANDE == null
+                && AxionRenderPass.activeBackend() == BackendSelection.Kind.VANILLA
+                && attendue.equals(raison) && AxionRenderPass.nativeGlObjects() == 0;
+        RAPPORT.noter("T-490", vert, String.format(Locale.ROOT,
+                "Oculus %s, shaderpack %s ; backend %s demandé, %s retenu (« %s ») ; %d objet(s) GL du natif",
+                oculus ? "chargé" : "ABSENT", pack ? "en usage" : "INACTIF",
+                BACKEND_DEMANDE == null ? "auto" : BACKEND_DEMANDE, AxionRenderPass.activeBackend(), raison,
+                AxionRenderPass.nativeGlObjects()));
+    }
+
+    /**
+     * {@return vrai si Oculus dit un shaderpack en usage} Lu par réflexion sur l'API v0 d'Iris,
+     * qu'Oculus embarque : le banc n'est pas compilé contre lui, et AXION n'en dépend pas.
+     */
+    private static boolean shaderpackEnUsage() {
+        try {
+            Class<?> api = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+            Object instance = api.getMethod("getInstance").invoke(null);
+            return (Boolean) api.getMethod("isShaderPackInUse").invoke(instance);
+        } catch (ReflectiveOperationException absente) {
+            return false;
+        }
+    }
+
+    /**
+     * T-480 : sous le shaderpack, le cube est visible et orienté — sa silhouette tombe dans la boîte
+     * de sa projection, droit puis tourné —, et c'est le shaderpack qui l'éclaire : ses pixels sortent
+     * de ses programmes, au bleu nul, et la nuit l'assombrit par sa lightmap.
+     */
+    private static void jugerT480() {
+        CapturesDuBanc.Masque masqueDroit = CapturesDuBanc.masque(fond, droit);
+        CapturesDuBanc.Masque masqueTourne = CapturesDuBanc.masque(fond, tourne);
+        int[] attenduDroit = boiteAttendue(vueDroit, IDENTITE, droit.largeur(), droit.hauteur());
+        int[] attenduTourne = boiteAttendue(vueTourne, HUITIEME_DE_TOUR, tourne.largeur(), tourne.hauteur());
+        int ecartDroit = ecart(masqueDroit, attenduDroit);
+        int ecartTourne = ecart(masqueTourne, attenduTourne);
+        boolean visible = masqueDroit.nombre() >= aire(attenduDroit) / 2 && ecartDroit <= ECART_BOITE;
+        boolean orientee = masqueTourne.nombre() >= aire(attenduTourne) / 2 && ecartTourne <= ECART_BOITE;
+        int bleuDroit = CapturesDuBanc.bleuMaximal(droit, masqueDroit);
+        int bleuTourne = CapturesDuBanc.bleuMaximal(tourne, masqueTourne);
+        boolean parLePack = bleuDroit >= 0 && bleuDroit <= BLEU_DU_PACK && bleuTourne >= 0 && bleuTourne <= BLEU_DU_PACK;
+        double jour = CapturesDuBanc.luminance(tourne, masqueTourne);
+        double nuit = CapturesDuBanc.luminance(minuit, masqueTourne);
+        boolean eclairee = jour >= 20.0 && nuit < 0.8 * jour;
+        RAPPORT.noter("T-480", visible && orientee && parLePack && eclairee, String.format(Locale.ROOT,
+                "droit : %d px, boîte %s pour %s attendue (écart %d) ; tourné : %d px, boîte %s pour %s attendue"
+                        + " (écart %d) ; bleu le plus fort du cube %d puis %d (%d au plus : sorti du shaderpack) ;"
+                        + " midi %.1f, minuit %.1f",
+                masqueDroit.nombre(), Arrays.toString(masqueDroit.boite()), Arrays.toString(attenduDroit), ecartDroit,
+                masqueTourne.nombre(), Arrays.toString(masqueTourne.boite()), Arrays.toString(attenduTourne),
+                ecartTourne, bleuDroit, bleuTourne, BLEU_DU_PACK, jour, nuit));
     }
 
     private static void jugerT470(CapturesDuBanc.Capture encore) {

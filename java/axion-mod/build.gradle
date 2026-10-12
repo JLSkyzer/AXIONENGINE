@@ -101,6 +101,22 @@ minecraft {
             args '--width', '854', '--height', '480'
         }
 
+        renderTestShaders {
+            // Le banc sous Oculus et son shaderpack de test (T-480, T-490), dans son propre dossier.
+            // Le backend n'est pas imposé : c'est la sélection automatique (R-1490) qui doit
+            // retenir le vanilla parce qu'un mod de shaders est là.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('run-rendertest-shaders')
+            property 'axion.rendertest', 'm3'
+            property 'axion.rendertest.shaders', 'true'
+            property 'axion.debug.gl', 'true'
+            // Les mixins d'Oculus et d'Embeddium, remappés par fg.deobf, retrouvent leurs cibles
+            // sous les noms de développement.
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
+            args '--width', '854', '--height', '480'
+        }
+
         data {
             workingDirectory rootProject.file('run-data')
             args '--mod', mod_id, '--all',
@@ -140,6 +156,28 @@ dependencies {
     testAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
 }
 
+// Le mod de shaders du banc runRenderTestShaders (T-480, T-490) : Oculus, et Embeddium dont il
+// dépend, depuis le dépôt Maven de Modrinth, en versions figées (accord de Killian, 2026-10-12).
+// Ils ne rejoignent le classpath que lorsque ce banc est demandé : ni runClient, ni les autres
+// bancs, ni le JAR livré ne les voient — AXION n'en dépend pas, il les détecte (H-09). Pour un
+// essai à la main sous Oculus : `./gradlew runClient -Paxion.shaderMods`.
+repositories {
+    // Pas d'exclusiveContent : les versions remappées par fg.deobf, du même groupe, viennent du
+    // dépôt local de ForgeGradle.
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content { includeGroup 'maven.modrinth' }
+    }
+}
+if (project.hasProperty('axion.shaderMods')
+        || gradle.startParameter.taskNames.any { it.endsWith('runRenderTestShaders') }) {
+    dependencies {
+        runtimeOnly fg.deobf('maven.modrinth:oculus:1.20.1-1.8.0')
+        runtimeOnly fg.deobf('maven.modrinth:embeddium:0.3.31+mc1.20.1')
+    }
+}
+
 // ForgeGradle cree ses taches run apres l'evaluation du script : `tasks.named`
 // echouerait ici, `tasks.matching {}.configureEach` configure la tache des
 // qu'elle apparait.
@@ -151,7 +189,8 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
 
 // Banc de rendu (ADR-126), sur chaque backend : un monde et un rapport neufs à chaque passage ; la
 // tâche échoue si le rapport manque ou n'est pas vert.
-['runRenderTest': 'run-rendertest', 'runRenderTestNative': 'run-rendertest-native'].each { tache, dossier ->
+['runRenderTest': 'run-rendertest', 'runRenderTestNative': 'run-rendertest-native',
+        'runRenderTestShaders': 'run-rendertest-shaders'].each { tache, dossier ->
     tasks.matching { it.name == tache }.configureEach {
         doFirst {
             delete rootProject.file("${dossier}/saves/axion-rendertest")
@@ -171,6 +210,22 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
             }
             logger.lifecycle("banc de rendu vert : ${contenu.tests.collect { it.id }.join(', ')}")
         }
+    }
+}
+
+// Sous Oculus (T-480, T-490) : le shaderpack de test, écrit pour le banc, et la configuration
+// d'Oculus qui l'active, posés neufs avant chaque passage.
+tasks.matching { it.name == 'runRenderTestShaders' }.configureEach {
+    doFirst {
+        def jeu = rootProject.file('run-rendertest-shaders')
+        delete new File(jeu, 'shaderpacks/axion_banc')
+        copy {
+            from file('src/devcontent/shaderpacks/axion_banc')
+            into new File(jeu, 'shaderpacks/axion_banc')
+        }
+        def config = new File(jeu, 'config/oculus.properties')
+        config.parentFile.mkdirs()
+        config.setText('shaderPack=axion_banc\nenableShaders=true\n', 'UTF-8')
     }
 }
 

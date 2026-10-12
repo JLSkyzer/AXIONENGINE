@@ -27,6 +27,7 @@ run-data/
 run-gametest/
 run-rendertest/
 run-rendertest-native/
+run-rendertest-shaders/
 
 # Ressources produites par les generateurs de donnees Minecraft
 src/generated/

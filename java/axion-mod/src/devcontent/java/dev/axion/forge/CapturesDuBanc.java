@@ -132,6 +132,23 @@ final class CapturesDuBanc {
     }
 
     /**
+     * {@return la plus forte composante bleue, de 0 à 255, parmi les pixels du masque dans la
+     * capture ; -1 pour un masque vide}
+     *
+     * @param capture capture lue
+     * @param masque pixels retenus
+     */
+    static int bleuMaximal(Capture capture, Masque masque) {
+        int maximum = -1;
+        for (int i = 0; i < masque.change().length; i++) {
+            if (masque.change()[i]) {
+                maximum = Math.max(maximum, (capture.pixels()[i] >>> 16) & 0xFF);
+            }
+        }
+        return maximum;
+    }
+
+    /**
      * {@return la luminance moyenne du carré de côté {@code 2 rayon + 1} centré en {@code (x, y)},
      * bornée à l'image}
      */
