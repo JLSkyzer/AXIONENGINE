@@ -10,6 +10,7 @@ import dev.axion.definition.SchemaNode.Num;
 import dev.axion.definition.SchemaNode.Obj;
 import dev.axion.definition.SchemaNode.Text;
 import dev.axion.definition.SchemaNode.TextRule;
+import dev.axion.physics.CollisionFilter;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -122,9 +123,11 @@ final class SchemaOne {
                 .opt("linear_damping", new Num(0, Double.POSITIVE_INFINITY, false, false))
                 .opt("angular_damping", new Num(0, Double.POSITIVE_INFINITY, false, false))
                 .opt("ccd", bool())
-                // R-980 : groupes data-driven, liste extensible.
-                .opt("collision_group", text())
-                .opt("collides_with", list(text()))
+                // R-980 : groupes désignés par nom. Les huit réservés seulement, tant que le registre
+                // des groupes tiers (axion:collision_group) n'existe pas : un autre nom se refuse ici,
+                // avec son chemin, plutôt que d'être ignoré.
+                .opt("collision_group", collisionGroup())
+                .opt("collides_with", list(collisionGroup()))
                 .build();
     }
 
@@ -509,6 +512,10 @@ final class SchemaOne {
 
     private static SchemaNode id() {
         return new Text(new TextRule.Id());
+    }
+
+    private static SchemaNode collisionGroup() {
+        return oneOf(CollisionFilter.RESERVED.toArray(String[]::new));
     }
 
     private static SchemaNode oneOf(String... values) {

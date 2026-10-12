@@ -226,6 +226,22 @@ class DefinitionSchemaTest {
     }
 
     @Test
+    @DisplayName("R-980 : les groupes de collision se nomment parmi les réservés, sinon refusés")
+    void groupesDeCollision() {
+        accepte(root -> at(root, "physics").addProperty("collision_group", "debris"));
+        accepte(root -> at(root, "physics").add("collides_with", new com.google.gson.JsonArray()));
+        // Aucun registre de groupes tiers encore : un autre nom serait ignoré, il est refusé.
+        assertEquals("$.physics.collision_group", refus(root ->
+                at(root, "physics").addProperty("collision_group", "lourd")).path());
+        assertEquals("$.physics.collides_with[1]", refus(root -> {
+            com.google.gson.JsonArray groupes = new com.google.gson.JsonArray();
+            groupes.add("world");
+            groupes.add("Assembly");
+            at(root, "physics").add("collides_with", groupes);
+        }).path());
+    }
+
+    @Test
     @DisplayName("T-282 : plages écrites — fractions, masse de part, capacités, couches")
     void plages() {
         assertEquals("$.parts[1].detach_threshold", refus(root ->

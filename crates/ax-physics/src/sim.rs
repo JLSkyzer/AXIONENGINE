@@ -19,6 +19,7 @@ use crate::debug::{select_outlines, DebugColliders};
 use crate::forces::FluidEnvironment;
 use crate::forces::FluidVolume;
 use crate::governor::{DegradationLevel, DegradationTransition, Governor};
+use crate::groups::CollisionGroups;
 use crate::proxies::EntityProxy;
 use crate::scheduler::Stage;
 use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
@@ -360,6 +361,8 @@ impl SimDriver {
         else {
             return false;
         };
+        sim.world
+            .set_collision_groups(body, CollisionGroups::WORLD_TILE);
         self.tiles.insert((dimension, section), body);
         true
     }
@@ -427,6 +430,8 @@ impl SimDriver {
         else {
             return false;
         };
+        sim.world
+            .set_collision_groups(body, CollisionGroups::WORLD_TILE);
         self.tiles.insert((dimension, section), body);
         true
     }
@@ -794,8 +799,8 @@ impl SimDriver {
     /// Rend le corps créé, ou `None` si une forme est refusée par le monde. Les
     /// colliders sont déjà convertis depuis la section `PHYS` compilée par la
     /// frontière (ax-ffi), qui seule dépend d'`ax-asset` ; chacun porte sa densité,
-    /// d'où la masse et le centre de masse du corps (R-622). Rien n'est déclaré :
-    /// voir [`Self::create_assembly_with_desc`].
+    /// d'où la masse et le centre de masse du corps (R-622). Rien n'est déclaré, et le
+    /// corps est membre de tous les groupes : voir [`Self::create_assembly_with_desc`].
     pub fn create_assembly(
         &mut self,
         dimension: u64,
@@ -816,12 +821,17 @@ impl SimDriver {
             kind,
             colliders,
             &BodyDesc::undeclared(code),
+            CollisionGroups::ALL,
         )
     }
 
     /// Comme [`Self::create_assembly`], puis applique au corps sa description
     /// DM-08 (ADR-130) : masse, centre et inertie déclarés, réglages — voir
-    /// [`PhysicsWorld::apply_body_desc`]. La description doit être valide.
+    /// [`PhysicsWorld::apply_body_desc`]. La description doit être valide. Les
+    /// groupes de collision de la definition (R-980) s'appliquent à tous ses colliders.
+    // Huit paramètres distincts, chacun lu d'un champ de `CREATE_ASSEMBLY` : les grouper en une
+    // struct ne servirait qu'à cet appel.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_assembly_with_desc(
         &mut self,
         dimension: u64,
@@ -830,6 +840,7 @@ impl SimDriver {
         kind: BodyKind,
         colliders: &[BodyCollider],
         desc: &BodyDesc,
+        groups: CollisionGroups,
     ) -> Option<BodyId> {
         let sim = self.dimension_mut(dimension);
         let local = sim.origin.to_local(DVec3::from_array(spawn.position));
@@ -839,6 +850,7 @@ impl SimDriver {
             .add_assembly(kind, local, rotation, colliders)
             .ok()?;
         sim.world.apply_body_desc(body, desc);
+        sim.world.set_collision_groups(body, groups);
         // L'emprunt de `sim` s'achève ici ; le routage réutilise `register_body`.
         self.register_body(dimension, handle, body, 0, 0);
         Some(body)

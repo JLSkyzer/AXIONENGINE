@@ -12,6 +12,7 @@ import dev.axion.physics.BodyBounds;
 import dev.axion.physics.BodyDescription;
 import dev.axion.physics.BodyLedger;
 import dev.axion.physics.BodyState;
+import dev.axion.physics.CollisionFilter;
 import dev.axion.physics.RefitMarking;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
@@ -150,6 +151,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         if (kind == SimCommandStream.BODY_DYNAMIC) {
             phys = RefitMarking.mark(phys, sectionOf(definition, "NODE"), RefitMarking.rootsOf(root));
         }
+        // R-980 : les groupes que la definition nomme, sur chaque collider du corps.
+        phys = CollisionFilter.apply(phys, CollisionFilter.membership(root), CollisionFilter.filter(root));
         pending.add(new Pending(true, index, dimension, position, rotation, body, phys));
         ledger.attach(index, assembly);
         return true;

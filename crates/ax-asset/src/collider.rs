@@ -56,8 +56,9 @@ const DECOMP_MAX_HULLS: u32 = 32;
 const DECOMP_MAX_HULL_VERTICES: usize = 64;
 
 /// Groupe et masque par défaut : membre de tous les groupes, entre en collision
-/// avec tous (comme `CollisionGroups::ALL` au runtime). Le filtrage fin
-/// (`collision_group` / `collides_with` de la definition) arrive plus tard.
+/// avec tous (comme `CollisionGroups::ALL` au runtime). Au `CREATE_ASSEMBLY`, Java
+/// les remplace par ceux de la definition (`collision_group` / `collides_with`,
+/// R-980, ADR-132) : l'asset compilé ne dépend pas de la definition qui l'emploie.
 const ALL_GROUPS: u32 = u32::MAX;
 
 /// Référence absente (matériau, part, région, zone de dommage) : convention DM

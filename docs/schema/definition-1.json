@@ -55,12 +55,32 @@
           "type": "boolean"
         },
         "collision_group": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "world",
+            "assembly",
+            "part",
+            "debris",
+            "entity_proxy",
+            "sensor",
+            "particle",
+            "debug"
+          ]
         },
         "collides_with": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "world",
+              "assembly",
+              "part",
+              "debris",
+              "entity_proxy",
+              "sensor",
+              "particle",
+              "debug"
+            ]
           }
         }
       },

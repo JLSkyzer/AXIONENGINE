@@ -183,6 +183,23 @@ impl CollisionGroups {
         filter: u32::MAX,
     };
 
+    /// Construit des groupes depuis leurs masques, tels que les porte un
+    /// `ColliderDesc` (DM-06, `group` et `mask`).
+    #[must_use]
+    pub const fn from_masks(memberships: u32, filter: u32) -> Self {
+        Self {
+            memberships,
+            filter,
+        }
+    }
+
+    /// Les tuiles de collision du monde (§10.4) : membres du seul groupe `world`,
+    /// elles ne filtrent rien — c'est au corps qui les touche de les filtrer.
+    pub const WORLD_TILE: Self = Self {
+        memberships: 1 << ReservedGroup::World.bit(),
+        filter: u32::MAX,
+    };
+
     /// Construit des groupes depuis des indices de bits (ceux du registre).
     ///
     /// Un indice hors de `0..32` est ignoré : le registre n'en produit jamais.

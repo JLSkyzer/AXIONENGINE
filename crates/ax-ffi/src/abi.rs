@@ -44,8 +44,8 @@ use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::BodyDesc;
 use ax_model::dm::physics::{BodyBounds, BodyState, ColliderDesc};
 use ax_physics::{
-    BodyCollider, BodyKind, ContactMaterial, DegradationLevel, PhysicsConfig, Shape, SimDriver,
-    SimSettings,
+    BodyCollider, BodyKind, CollisionGroups, ContactMaterial, DegradationLevel, PhysicsConfig,
+    Shape, SimDriver, SimSettings,
 };
 
 /// Version de l'ABI.
@@ -1071,9 +1071,13 @@ pub unsafe extern "C" fn axion_sim_submit(
 /// `PHYS` jointe, les convertit en forme runtime, crée le corps dans le pilote et
 /// lui applique sa description.
 ///
+/// Les groupes de collision (R-980) sont ceux des colliders : la definition les
+/// déclare pour tout le corps, et Java les écrit sur chacun ; des colliders qui ne
+/// s'accordent pas sont refusés plutôt que réconciliés au hasard.
+///
 /// Un payload trop court, une description invalide ou d'un autre type de corps
-/// que l'en-tête, une section `PHYS` illisible ou une forme non convertible fait
-/// **abandonner cette assembly** sans créer de corps — jamais de panique ni de
+/// que l'en-tête, une section `PHYS` illisible, une forme non convertible ou des
+/// groupes discordants font **abandonner cette assembly** sans créer de corps — jamais de panique ni de
 /// corps à moitié formé. La commande a déjà été lue par
 /// `create_assembly_payloads`, qui a validé les bornes du flux.
 fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
@@ -1116,7 +1120,29 @@ fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
     let Some(runtime_colliders) = body_colliders(&colliders, &points, &children) else {
         return;
     };
-    physics.create_assembly_with_desc(dimension, handle, spawn, kind, &runtime_colliders, &desc);
+    let Some(groups) = body_groups(&colliders) else {
+        return;
+    };
+    physics.create_assembly_with_desc(
+        dimension,
+        handle,
+        spawn,
+        kind,
+        &runtime_colliders,
+        &desc,
+        groups,
+    );
+}
+
+/// Les groupes de collision d'un corps (R-980) : appartenance et filtre communs à
+/// tous ses colliders, `None` s'ils diffèrent d'un collider à l'autre ou s'il n'y
+/// en a aucun.
+fn body_groups(colliders: &[ColliderDesc]) -> Option<CollisionGroups> {
+    let first = colliders.first()?;
+    colliders
+        .iter()
+        .all(|c| c.group == first.group && c.mask == first.mask)
+        .then(|| CollisionGroups::from_masks(first.group, first.mask))
 }
 
 /// Convertit les colliders compilés (DM-06) en colliders runtime, chacun avec sa
