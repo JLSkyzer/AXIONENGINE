@@ -10,6 +10,41 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M3 (en cours, Definition of Done non prononcee) — physique et premier rendu :
+  - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
+    collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),
+    sommeil, rayon de simulation et plafond de corps actifs, CCD declaree ou
+    automatique au-dela de |v|.dt > 0,5 x plus petite dimension, forces
+    environnementales (trainee, portance, flottabilite, R-1000), evenements de
+    sommeil, de contact, d'impulsion et de capteur, garde-fous R-180/R-181 et
+    gouverneur de degradation (R-1880) ;
+  - cycle de simulation IF-03 par la frontiere (submit, collect, SIM_OUT,
+    EVENTS), ABI 3 avec la description DM-08 du corps jointe a
+    CREATE_ASSEMBLY (ADR-130) ;
+  - collision du monde (C-38), requetes spatiales (C-39), ordonnanceur du tick
+    (C-40), entite d'assembly et commandes /axion spawn et remove (C-50),
+    proxies des entites vanilla et effets de collision sur elles (ADR-123) ;
+  - rendu : backend natif OpenGL 3.3 (C-60) avec variantes de shaders a la
+    demande et cache binaire (T-904, T-905), backend vanilla (C-61) impose
+    sous un shaderpack en usage (ADR-129), arenes GPU et budget LRU (C-62),
+    textures et materiaux (C-26, ADR-122), overlay `colliders` (C-67, ADR-121) ;
+  - acceptance : GameTests de chute libre, d'empilement et d'absence de
+    traversee sur un monde fige (ADR-124), banc de rendu automatise sous
+    vanilla, natif et shaderpack (ADR-126) ;
+  - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
+    T-012 (INV-04), T-019 (INV-12).
+- M1 (Definition of Done prononcee le 2026-10-04) — assets, noyau
+  deterministe, jobs :
+  - `ax-jobs` (C-12) : pool dedie, jobs types annulables a echeance ;
+    `ax-telemetry` (C-15) : metriques, budgets et export JSON ;
+  - `ax-det` (C-16) : noyau deterministe, 10 000 vecteurs d'or rejoues sur les
+    quatre plateformes de la CI (R-516) ;
+  - chaine d'assets : orchestrateur (C-20), importeurs glTF, GLB, OBJ et STL
+    (C-21), validateur (C-22), conteneur A3D (C-24), cache (C-25) ;
+  - graphe de scene `ax-scene` (C-30), harnais de benchmarks `ax-bench` (C-72),
+    commandes disponibles (C-71) ;
+  - fuzzing de la chaine d'assets sur quatre cibles (R-903), campagne nocturne
+    d'une heure par cible ; integration continue sur la matrice de plateformes.
 - M0.10 — acceptance sur serveur dedie : chargement, bibliotheque native
   verifiee et chargee, /axion status, arret propre a bilan nul, et mode
   DISABLED laissant le serveur jouable. Zero erreur au journal.
