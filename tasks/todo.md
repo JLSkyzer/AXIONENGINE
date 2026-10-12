@@ -2470,9 +2470,12 @@ amortissement dans l'eau, `/axion remove`).
             tick, non plus le cumul).
       - [x] CHANGELOG M1 et M3 (21f8e87), rustdoc d'`ax-physics` (5dad2f7), PHYSICS.md (0b17a97),
             RENDERING.md (127e886, R-1514).
-      - [ ] **Attend Killian — ADR-133** : métriques Java (rendu, `idle_hook_ns`) dans l'export
-            (D1), comptage de toute la mémoire native, mondes `rapier` compris (D2, INV-08), textures
-            dans `budgets.gpu_mem_bytes` (D3, R-750).
+      - [ ] **ADR-133 accepté le 2026-10-13 (option A pour D1, D2, D3).** D3 fait (1ebdb8a) : textures
+            comptées dans `budgets.gpu_mem_bytes`, éviction LRU des assets entiers par `MeshCache`, pour
+            les deux backends. D1 fait (430bf64) : `JavaMetrics` fusionné à l'export, budgets du rendu et
+            `idle_hook_ns` alimentés ; reste la commande cliente d'un client relié à un serveur distant
+            (à vérifier en jeu). **D2 (allocateur compteur, INV-08) : effort maximal recommandé, en
+            attente de Killian avant tout code.**
       - [ ] **Cases C-31, C-32, C-61 : non cochées, à raison.** C-31 : tranche 3c-ii gelée (joints
             M4, attaches M5), mémoire non comptée (ADR-133 D2). C-32 : résolution VHACD à mesurer
             (ADR-108), matériaux de contact DM-07 reportés par Killian au câblage des definitions
