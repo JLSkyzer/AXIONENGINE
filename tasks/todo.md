@@ -1945,9 +1945,9 @@ substituable sans changer rapier »).
                   GameTests `CollisionDuMondeGameTests` — section non chargée rendue pleine sans
                   charger son chunk (garde retirée, le test échoue : vérifié), champ de hauteurs sur
                   de vrais escaliers. Trou comblé : l'avertissement de R-641 manquait. Inventaire :
-                  22 des 44 tests de M3 existent ; restent T-312 (C-32), le rendu (tranche D) et
+                  22 des 44 tests de M3 existent ; restent T-312 (C-32 : ADR-130 proposé le 2026-10-12, DM-08 sur la frontière), le rendu (tranche D, faite depuis) et
                   T-308/T-309, sans fiche. Sans test : la moitié Java de R-651, faute d'API de requête.
-            - [ ] **D — rendu** : T-470..T-474, T-479, T-480, T-490..T-493, T-500..T-503,
+            - [x] **D — rendu** : T-470..T-474, T-479, T-480, T-490..T-493, T-500..T-503,
                   T-510..T-512, T-551, avec C-60, C-62 et C-63. Critères de PARTIE 37.2 :
                   aucune erreur GL (T-471), état GL et FBO restaurés (T-472), bascule sous
                   shaderpack (T-480).
@@ -1971,7 +1971,7 @@ substituable sans changer rapier »).
                         (T-502), `GpuBudget` (T-501), 23 tests ; collage GL avec D4 (3e7bb41). **Fait le 2026-10-10** :
                         T-503 au banc natif — rechargement des ressources, 1 fermeture, 0 objet GL laissé en vie,
                         7 objets reconstruits, 10 assemblies sur 10 redessinées.
-                  - [ ] **D3 — C-63, shaders** (fiche 5.50) : sources du JAR, variantes par
+                  - [x] **D3 — C-63, shaders** (fiche 5.50) : sources du JAR, variantes par
                         `#define` bornées (R-762), compilées sans à-coup et sans appel GL hors du
                         render thread (INV-12), cache binaire (R-760), échec → vanilla (R-761,
                         T-479) ; T-510..T-512 attribués par ADR-127 §8.
@@ -1987,7 +1987,7 @@ substituable sans changer rapier »).
                         prenait jusqu'à 4,6 ms au render thread (lecture du fichier sur ce fil), lancer une compilation
                         1,1 à 1,6 ms ; corrigé par la lecture sur le thread du cache et une étape OpenGL par frame : 0,55 ms
                         compilée, 0,42 ms relue, 0,49 ms sans parallèle, au banc natif chez Killian ; CI à confirmer.
-                  - [ ] **D4 — C-60, backend natif** (PARTIE 19) : ADR-127 (ratifié le 2026-10-11, C-60/C-62/C-63). En
+                  - [x] **D4 — C-60, backend natif** (PARTIE 19) : ADR-127 (ratifié le 2026-10-11, C-60/C-62/C-63). En
                         M3 les assemblies sont rigides : le natif peut dessiner la liste de repos déjà
                         transférée (`RestDraw`, ADR-119), transformée en Java, sans nouvelle surface FFI ;
                         IF-05 (`axion_render_prepare`, §4.7) viendrait en M4 avec C-64/C-65/C-66, qui en
@@ -2021,7 +2021,7 @@ substituable sans changer rapier »).
                         deux bancs verts. Reste de D4 : rien (T-904 fait le 2026-10-12).
                         **Banc local autorisé par Killian** (`./gradlew runRenderTest`, `runRenderTestNative`, ~1 min
                         chacun sur sa RTX 4060) — itérer localement, puis CI.
-                  - [ ] **D5 — C-61 T4+ et bascules** : bascule à chaud (R-744, T-492),
+                  - [x] **D5 — C-61 T4+ et bascules** : bascule à chaud (R-744, T-492),
                         invariants entre backends (T-491, T-491b..d), shaderpack (T-480, T-490) — ce
                         dernier suppose un mod de shaders en développement, à télécharger avec
                         l'accord de Killian. **Fait le 2026-10-10, au banc natif** (rechargements de
