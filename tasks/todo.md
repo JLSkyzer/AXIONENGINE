@@ -1959,6 +1959,15 @@ substituable sans changer rapier »).
                   passage fautif, pas physique dans son budget), la compilation fraîche des
                   assets (deux passages neufs verts). Le message d'échec porte désormais les
                   trajectoires : la prochaine occurrence dira quand la pile part.
+                  **Cause trouvée le 2026-10-12** (trace de la CI de 6cdc2ec) : le monde des GameTests était
+                  normal et de graine aléatoire ; l'eau d'un aquifère a gagné l'arène de la traversée, le cube y
+                  a tourné à 47 rad/s, traversé le terrain et percuté la pile 14 m plus loin. Monde désormais
+                  plat, de graine fixe, paisible (ADR-124 §5, complément) ; à confirmer sur plusieurs passages.
+                  - [ ] **Défaut de physique ouvert** : un cube **au repos**, gagné par de l'eau qui s'écoule
+                        (boîtes d'eau de hauteurs inégales, comptes changeant à chaque tick), monte à 47,12 rad/s
+                        (15π, sans doute une borne du solveur) et s'échappe à travers le terrain. Le correctif
+                        9491128 visait l'entrée dans l'eau, pas l'eau qui arrive. À reproduire par un test natif
+                        (cube posé, volume de fluide qui monte en biais), puis à corriger (forces de fluide, C-31).
             - [x] **C — T-370..T-375 et T-380..T-384** : attribution par exigence (comme ADR-123
                   §12 pour T-300..T-307), tests existants étiquetés, manquants écrits. **Fait le
                   2026-10-06** (ADR-125, ratifié le 2026-10-11) : tests natifs préfixés `t37x_`/`t38x_`, classes

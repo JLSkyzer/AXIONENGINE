@@ -184,6 +184,27 @@ if (project.hasProperty('axion.shaderMods')
 tasks.matching { it.name == 'runGameTestServer' }.configureEach {
     doFirst {
         delete rootProject.file('run-gametest/world')
+        // Un monde reproductible (R-2190, ADR-124 §5) : plat, de graine fixe, sans structure ni
+        // créature. Sans server.properties, le serveur de GameTests générait un monde normal de
+        // graine aléatoire : selon la graine, l'eau d'un aquifère gagnait une arène et y emportait
+        // un cube (CI de 6cdc2ec, 2026-10-12), et des créatures auraient pu pousser les corps par
+        // leurs proxies (R-614). Les autres réglages du fichier sont gardés.
+        def proprietes = rootProject.file('run-gametest/server.properties')
+        def reglages = new Properties()
+        if (proprietes.exists()) {
+            proprietes.withInputStream { reglages.load(it) }
+        }
+        reglages.putAll([
+                'level-type'         : 'minecraft:flat',
+                'level-seed'         : '20261012',
+                'generate-structures': 'false',
+                'difficulty'         : 'peaceful',
+                'spawn-monsters'     : 'false',
+                'spawn-animals'      : 'false',
+                'spawn-npcs'         : 'false',
+        ])
+        proprietes.parentFile.mkdirs()
+        proprietes.withOutputStream { reglages.store(it, 'AXION : monde des GameTests reproductible (ADR-124 5)') }
     }
 }
 
@@ -205,10 +226,15 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
             }
             def contenu = new groovy.json.JsonSlurper().parse(rapport, 'UTF-8')
             if (contenu.verdict != 'vert') {
-                def rouges = contenu.tests.findAll { it.verdict != 'vert' }.collect { "${it.id} : ${it.detail}" }
+                def rouges = contenu.tests.findAll { it.verdict == 'rouge' }.collect { "${it.id} : ${it.detail}" }
                 throw new GradleException("banc de rendu rouge :\n  " + rouges.join('\n  '))
             }
             logger.lifecycle("banc de rendu vert : ${contenu.tests.collect { it.id }.join(', ')}")
+            // Une vérification mesurée sans être jugée (rendu logiciel, ADR-127 §4) se dit, même au vert.
+            def nonJuges = contenu.tests.findAll { it.verdict == 'non jugé' }.collect { it.id }
+            if (nonJuges) {
+                logger.warn("banc de rendu : non jugé(s) — ${nonJuges.join(', ')} (voir rapport.json)")
+            }
         }
     }
 }

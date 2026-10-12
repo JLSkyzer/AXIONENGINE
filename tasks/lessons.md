@@ -1322,3 +1322,15 @@ qu'un champ accepté ait un lecteur.
 **Règle.** Un champ de definition validé a un lecteur et un test qui en montre l'effet, ou il est refusé avec un
 message qui dit pourquoi ; son domaine dans le schéma est celui que le natif accepte. En cherchant un test
 manquant, chercher aussi les champs acceptés et ignorés.
+
+## 2026-10-12 | Un défaut intermittent venait du monde des tests, pas du moteur
+
+**Ce qui a mal tourné.** `empilement_60s` échouait 2 fois sur 27 ; une chasse de dix passages n'a rien trouvé. Le
+jour où deux scénarios ont échoué ensemble, j'ai d'abord soupçonné mon changement d'ABI.
+
+**Cause.** Le serveur de GameTests, sans `server.properties`, générait un monde normal à graine aléatoire : selon la
+graine, l'eau d'un aquifère gagnait une arène et y lançait un cube, qui en percutait un autre.
+
+**Règle.** Un environnement de test se fige entièrement — type de monde, graine, créatures, météo — avant de chasser
+un intermittent. Et un échec en CI se lit dans sa trace avant d'accuser le dernier changement : ici, le drapeau
+`IN_FLUID` d'un cube au repos l'a dit en une ligne.
