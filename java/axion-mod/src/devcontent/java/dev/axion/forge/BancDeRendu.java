@@ -1189,6 +1189,11 @@ public final class BancDeRendu {
      * render thread et passait sous des frames témoins bruitées (banc du 2026-10-12). La remise en
      * service compilée sans parallèle est relevée et jugée par les mêmes critères, sans entrer dans
      * le verdict : c'est le chemin d'un pilote sans compilation parallèle (ADR-127 §4).
+     *
+     * <p>Jugé sur un GPU matériel seulement (décision de Killian, 2026-10-12, ADR-127 §4) : sous un
+     * rendu logiciel, la compilation se fait sur le CPU dans l'appel même, et une seule liaison y
+     * dépasse le budget (llvmpipe en CI : 2,4 à 3,4 ms) — un chiffre de performance ne vaut que sur
+     * du matériel (R-2230). Là, T-904 est mesuré et rapporté, non jugé.
      */
     private static void jugerT904() {
         long budget = ConfigLoader.load(Scope.COMMON, FMLPaths.CONFIGDIR.get(), System.getProperties())
@@ -1197,13 +1202,25 @@ public final class BancDeRendu {
         long plafond = temoinMax + budget;
         boolean compileeSansACoup = sansACoup(compileeT904, budget, plafond);
         boolean relueSansACoup = sansACoup(relueT904, budget, plafond);
-        RAPPORT.noter("T-904", compileeSansACoup && relueSansACoup, String.format(Locale.ROOT,
-                "frames témoins : %d, médiane %.2f ms, la plus lente %.2f ms ; budget des variantes %.2f ms par frame"
-                        + " (budgets.render_prep_ns), plafond des frames %.2f ms ; %s ; %s ; %s (hors verdict)",
-                temoinT904.intervalles.size(), millis(mediane(temoinT904.intervalles)), millis(temoinMax), millis(budget),
-                millis(plafond), decrire("compilée", compileeT904, budget, plafond),
+        String renderer = GL11.glGetString(GL11.GL_RENDERER);
+        String detail = String.format(Locale.ROOT,
+                "%s ; frames témoins : %d, médiane %.2f ms, la plus lente %.2f ms ; budget des variantes %.2f ms par"
+                        + " frame (budgets.render_prep_ns), plafond des frames %.2f ms ; %s ; %s ; %s (hors verdict)",
+                renderer, temoinT904.intervalles.size(), millis(mediane(temoinT904.intervalles)), millis(temoinMax),
+                millis(budget), millis(plafond), decrire("compilée", compileeT904, budget, plafond),
                 decrire("relue du cache", relueT904, budget, plafond),
-                decrire("compilée sans parallèle", serielleT904, budget, plafond)));
+                decrire("compilée sans parallèle", serielleT904, budget, plafond));
+        if (logiciel(renderer)) {
+            RAPPORT.nonJuge("T-904", "rendu logiciel, mesuré sans être jugé (ADR-127 §4) — " + detail);
+        } else {
+            RAPPORT.noter("T-904", compileeSansACoup && relueSansACoup, detail);
+        }
+    }
+
+    /** {@return vrai si le renderer OpenGL est un rendu logiciel : llvmpipe, softpipe, SwiftShader} */
+    private static boolean logiciel(String renderer) {
+        String nom = renderer == null ? "" : renderer.toLowerCase(Locale.ROOT);
+        return nom.contains("llvmpipe") || nom.contains("softpipe") || nom.contains("swiftshader");
     }
 
     /** {@return vrai si une série de T-904 tient ses deux critères} */
