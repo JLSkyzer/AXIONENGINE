@@ -2452,15 +2452,41 @@ amortissement dans l'eau, `/axion remove`).
 
 **Plan de clôture proposé (tranche E)**
 
-- [ ] **E1 — sans décision** : vrai test T-550 et LOD réétiquetés ; préfixes `t310_` ;
-      `MilestoneTestsCoveredTest` étendu à `devcontent` et aux exclusions d'ADR-128 (M3 ajouté à la
-      clôture) ; CHANGELOG M1 et M3 ; rustdoc d'`ax-physics` ; PHYSICS.md et doc du rendu ; métriques de
-      rendu et de budgets exportées ; tests d'invariants T-006, T-011, T-012, T-019 ; CCD testée en
-      anti-traversée ; groupes de collision transmis (R-980) ou refusés.
-- [ ] **E2 — JAR complet en CI** : un job qui réunit les natifs de la matrice, construit le JAR complet,
-      le valide (R-2341) et le téléverse.
+- [ ] **E1 — sans décision** — fait le 2026-10-12 et le 2026-10-13, sauf ce qui attend une décision :
+      - [x] T-550 porté par le Debug Renderer, LOD réétiquetés, préfixes `t310_`,
+            `MilestoneTestsCoveredTest` étendu à `devcontent` et aux exclusions d'ADR-128 (a1e73d3).
+      - [x] Invariants : T-006 (INV-01, 6fff088), T-019 (INV-12, e8bd320), T-011 (INV-03, 3d6c888),
+            T-012 (INV-04, ac714fb, 8 traversées au pire tick établi). T-019 et T-011 ont trouvé des
+            chemins non affirmés, gardés depuis (`AuthoritativeThread.require`, affirmations du render
+            thread) ; le `lint-no-mod-names` de `ci.yml` renvoyait à T-014, il renvoie à T-006.
+      - [x] Groupes de collision transmis (R-980, ADR-132, bb29c8b) : tuiles du monde dans `world`,
+            groupes de la definition écrits dans PHYS, noms réservés seuls tant que le registre des
+            groupes tiers n'existe pas.
+      - [x] CCD automatique au-delà de `|v|·dt > 0,5 × min_dim` (fiche 5.23), testée en
+            anti-traversée contre une plaque cinématique et une plaque fixe (9df33d4). Elle
+            n'existait pas : `rapier` 0.35 ne balaie de lui-même que les colliders fixes.
+      - [x] Budgets mesurés par le natif alimentés à chaque tick (cfb33e0) : `max_active_bodies`,
+            `submit_ns`, `native_mem_bytes` (partiel), budgets de durée des jobs (jauge du dernier
+            tick, non plus le cumul).
+      - [x] CHANGELOG M1 et M3 (21f8e87), rustdoc d'`ax-physics` (5dad2f7), PHYSICS.md (0b17a97),
+            RENDERING.md (127e886, R-1514).
+      - [ ] **Attend Killian — ADR-133** : métriques Java (rendu, `idle_hook_ns`) dans l'export
+            (D1), comptage de toute la mémoire native, mondes `rapier` compris (D2, INV-08), textures
+            dans `budgets.gpu_mem_bytes` (D3, R-750).
+      - [ ] **Cases C-31, C-32, C-61 : non cochées, à raison.** C-31 : tranche 3c-ii gelée (joints
+            M4, attaches M5), mémoire non comptée (ADR-133 D2). C-32 : résolution VHACD à mesurer
+            (ADR-108), matériaux de contact DM-07 reportés par Killian au câblage des definitions
+            physiques. C-61 : plafonds CPU de R-742/R-743 (M6) et métriques de rendu (ADR-133 D1).
+- [x] **E2 — JAR complet en CI** (8300c78) : `buildNatives` reprend les natifs déjà construits
+      (`-Paxion.prebuilt`, empreinte vérifiée), `packageNatives` devient un `Sync`, et le job
+      `jar-complet` réunit les quatre natifs de la matrice, construit en mode release — qui refuse
+      un JAR partial — et téléverse `axion-jar-complet`. Vérifié en CI (run 38319930803) : quatre
+      cibles reprises, `validateJar` vert, artefact de 16,9 Mo. Dette relevée au passage : la
+      bibliothèque Linux pèse 43 Mo contre 4 Mo ailleurs, sans doute ses informations de débogage
+      embarquées ; à vérifier, puis à séparer du binaire publié.
 - [ ] **E3 — décisions de Killian** : attribution par ADR de T-390..T-392, T-827, T-475..T-485 et T-870 ;
-      benchmarks du périmètre en M3 ou en M12 ; niveaux Q-0..Q-4 en M3 ou plus tard ; jalon des variantes
+      benchmarks du périmètre en M12 (décidé le 2026-10-12, ADR-131) ; ADR-133 (D1 à D3) ; format
+      du registre des groupes de collision tiers (ADR-132) ; niveaux Q-0..Q-4 en M3 ou plus tard ; jalon des variantes
       PARALLAX et suivantes ; R-1495 ; budget par étape (R-661).
 
 ---

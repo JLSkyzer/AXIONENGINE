@@ -1346,3 +1346,29 @@ aux coins de l'AABB du monde et corrigé de ce côté : le balayage s'est aggrav
 **Règle.** Avant de corriger un modèle physique, tracer la dynamique tick par tick : une vitesse angulaire qui
 croît linéairement en vol libre, sans aucune force, dit « état non remis à zéro », pas « modèle faux ». Et
 retirer une hypothèse démentie avant d'en essayer une autre.
+
+## 2026-10-13 | Un commentaire faisait d'un seuil de bibliothèque la règle du cahier des charges
+
+**Ce qui a mal tourné.** `set_ccd_enabled` affirmait que le seuil interne de `rapier` « joue le rôle de
+`|v|·dt > 0.5·min_dim` » : la CCD automatique de la fiche 5.23 passait pour faite. Elle ne l'était pas. Un
+corps non déclaré n'avait jamais la CCD complète, et traversait une plaque cinématique à 200 m/s.
+
+**Cause.** Le commentaire décrivait ce que la bibliothèque était supposée faire, sans que sa source ait été
+lue : `rapier` 0.35 ne balaie d'office que le décor fixe, à un autre seuil.
+
+**Règle.** Un commentaire qui fait correspondre une exigence du cahier des charges à un comportement de
+bibliothèque se vérifie dans la source de la bibliothèque, puis par un test qui échoue sans le mécanisme
+(ici : la plaque cinématique, traversée sans la bascule).
+
+## 2026-10-13 | Une section du suivi insérée en LF dans un fichier en CRLF
+
+**Ce qui a mal tourné.** La section « Definition of Done de M3 » de `tasks/todo.md`, écrite le 2026-10-12
+par un script Python, l'avait été avec des fins de ligne LF : 65 lignes LF dans un fichier en CRLF, et une
+recherche suivante, écrite en CRLF, ne la trouvait plus.
+
+**Cause.** Le script insérait un texte entre triples guillemets sans convertir ses fins de ligne.
+
+**Règle.** Un script qui écrit `tasks/todo.md` normalise tout le texte (CRLF vers LF), travaille en LF, et
+réécrit tout le fichier en CRLF ; puis il vérifie qu'il ne reste aucun LF isolé, et que le BOM et les deux
+octets NUL sont toujours là.
+
