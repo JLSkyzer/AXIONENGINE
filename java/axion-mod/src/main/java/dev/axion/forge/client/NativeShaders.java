@@ -117,9 +117,18 @@ final class NativeShaders implements AutoCloseable {
             this.id = id;
         }
 
-        /** {@return l'emplacement d'un uniforme, ou -1 s'il n'existe pas — ou que le pilote l'a ôté} */
+        /**
+         * {@return l'emplacement d'un uniforme, ou -1 s'il n'existe pas — ou que le pilote l'a ôté}
+         *
+         * <p>Sans lambda : l'appel GL reste dans une méthode dont les appelants sont connus (T-019).
+         */
         int uniform(String name) {
-            return uniforms.computeIfAbsent(name, key -> GL20.glGetUniformLocation(id, key));
+            Integer location = uniforms.get(name);
+            if (location == null) {
+                location = GL20.glGetUniformLocation(id, name);
+                uniforms.put(name, location);
+            }
+            return location;
         }
     }
 

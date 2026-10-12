@@ -214,7 +214,12 @@ final class NativeMeshes implements AutoCloseable {
         long vertexBytes = (long) mesh.vertexCount() * ArenaAllocator.VERTEX_BYTES;
         long indexBytes = (long) mesh.indexCount() * ArenaAllocator.INDEX_BYTES;
         ArenaAllocator.Allocation place = allocator.allocate(vertexBytes, indexBytes);
-        ArenaGl arena = arenas.computeIfAbsent(place.arena(), id -> create(allocator.arena(id)));
+        // Sans lambda : la création GL reste dans une méthode dont les appelants sont connus (T-019).
+        ArenaGl arena = arenas.get(place.arena());
+        if (arena == null) {
+            arena = create(allocator.arena(place.arena()));
+            arenas.put(place.arena(), arena);
+        }
         write(arena.vertexBuffer(), place.vertexOffset(), mesh.vertexData());
         if (indexBytes > 0) {
             write(arena.indexBuffer(), place.indexOffset(), mesh.indexData());

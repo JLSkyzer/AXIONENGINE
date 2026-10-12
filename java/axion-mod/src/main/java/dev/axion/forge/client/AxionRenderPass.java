@@ -302,6 +302,7 @@ public final class AxionRenderPass {
         if (failed || !passesEnabled) {
             return;
         }
+        RenderSystem.assertOnRenderThread();
         RenderLevelStageEvent.Stage stage = event.getStage();
         if (stage == RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
             selectIfNeeded(event);

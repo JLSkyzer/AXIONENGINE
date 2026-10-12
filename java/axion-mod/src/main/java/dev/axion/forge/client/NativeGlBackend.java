@@ -245,6 +245,7 @@ final class NativeGlBackend implements RenderBackend {
     /** Rend tous ses objets GL ; un objet resté vivant est une fuite, journalisée (R-744). */
     @Override
     public void close() {
+        RenderSystem.assertOnRenderThread();
         meshes.close();
         shaders.close();
         int left = NativeGlObjects.closed();

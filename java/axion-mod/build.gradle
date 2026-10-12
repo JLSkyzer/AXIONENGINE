@@ -278,6 +278,8 @@ tasks.named('test', Test).configure {
     systemProperty 'axion.test.dir', file('src/test/java').absolutePath
     // Les GameTests et le banc de rendu portent aussi des tests de jalon (M3).
     systemProperty 'axion.devcontent.dir', file('src/devcontent/java').absolutePath
+    // T-019 (INV-12) lit le bytecode du moteur : aucun appel GL hors du render thread.
+    systemProperty 'axion.classes.dir', sourceSets.main.java.classesDirectory.get().asFile.absolutePath
     // T-022 et T-023 verifient sur les deux cotes : aucune connexion sortante,
     // et tout code d'erreur documente en ANNEXE A.1.
     systemProperty 'axion.crates.dir', rootProject.file('crates').absolutePath
