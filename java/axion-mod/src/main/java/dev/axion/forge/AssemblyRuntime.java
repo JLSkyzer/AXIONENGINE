@@ -1,5 +1,6 @@
 package dev.axion.forge;
 
+import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
 import dev.axion.asset.A3dSections;
 import dev.axion.asset.AssetEntry;
@@ -8,8 +9,10 @@ import dev.axion.definition.AssemblyKind;
 import dev.axion.definition.Definition;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.physics.BodyBounds;
+import dev.axion.physics.BodyDescription;
 import dev.axion.physics.BodyLedger;
 import dev.axion.physics.BodyState;
+import dev.axion.physics.RefitMarking;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.physics.SimStateSink;
@@ -90,7 +93,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             long dimension,
             double[] position,
             float[] rotation,
-            int bodyKind,
+            BodyDescription body,
             byte[] phys) {}
 
     /**
@@ -130,7 +133,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         if (definition == null) {
             return false;
         }
-        byte[] phys = physOf(definition);
+        byte[] phys = sectionOf(definition, "PHYS");
         if (phys == null) {
             return false;
         }
@@ -139,8 +142,15 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         double[] position = {assembly.getX(), assembly.getY(), assembly.getZ()};
         Quaternionf saved = assembly.bodyRotation();
         float[] rotation = {saved.x(), saved.y(), saved.z(), saved.w()};
-        pending.add(
-                new Pending(true, index, dimension, position, rotation, bodyKind(definition.kind()), phys));
+        // ADR-130 : la description DM-08 que la definition déclare ; REFITTABLE posé par Java sur les
+        // colliders des parts déformables d'un corps dynamique (R-623).
+        JsonObject root = definition.root();
+        int kind = bodyKind(definition.kind());
+        BodyDescription body = BodyDescription.of(root, kind);
+        if (kind == SimCommandStream.BODY_DYNAMIC) {
+            phys = RefitMarking.mark(phys, sectionOf(definition, "NODE"), RefitMarking.rootsOf(root));
+        }
+        pending.add(new Pending(true, index, dimension, position, rotation, body, phys));
         ledger.attach(index, assembly);
         return true;
     }
@@ -162,7 +172,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         }
         implausibleBounds.remove(index);
         speeds.remove(index);
-        pending.add(new Pending(false, index, 0L, null, null, 0, null));
+        pending.add(new Pending(false, index, 0L, null, null, null, null));
     }
 
     /**
@@ -233,7 +243,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                         cmd.dimension(),
                         cmd.position(),
                         cmd.rotation(),
-                        cmd.bodyKind(),
+                        cmd.body(),
                         cmd.phys());
             } else {
                 stream.removeAssembly(cmd.index(), GENERATION);
@@ -315,14 +325,14 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         }
     }
 
-    /** {@return les octets de la section PHYS de l'asset de la definition, ou {@code null}} */
-    private byte[] physOf(Definition definition) {
+    /** {@return les octets d'une section de l'asset de la definition, ou {@code null}} */
+    private byte[] sectionOf(Definition definition, String tag) {
         AssetEntry entry = assets.entry(definition.asset());
         if (entry == null) {
             return null;
         }
         byte[] a3d = entry.compiled();
-        return a3d == null ? null : A3dSections.section(a3d, "PHYS");
+        return a3d == null ? null : A3dSections.section(a3d, tag);
     }
 
     /** Mappe le genre d'assembly (DM-09) vers un type de corps (§10.3). */

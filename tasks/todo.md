@@ -1744,7 +1744,7 @@ substituable sans changer rapier »).
               (R-622/R-623). Restent, différés avec leur dépendance : la masse/COM
               **déclarée** (`BodyDesc`/definitions) et `REFITTABLE` par défaut
               (déformation M6) ; la résolution VHACD à mesurer en M3 (ADR-108).
-            - [ ] **T-312 — DM-08 sur la frontière et REFITTABLE** (ADR-130, ratifié le 2026-10-12 ;
+            - [x] **T-312 — DM-08 sur la frontière et REFITTABLE** (ADR-130, ratifié le 2026-10-12 ;
                   REFITTABLE posé par Java). Étapes, chacune buildée et testée :
                   1. [x] `ax-model` : `BodyDesc` (§3.8, 52 o, `repr(C)`) + 4 o réservés sur la frontière
                      (PHYS reste aligné sur 8) ; test de disposition. « Non déclaré » : `mass = 0`,
@@ -1754,15 +1754,18 @@ substituable sans changer rapier »).
                      seule la masse est déclarée, déplacée par Huygens si seul le centre l'est),
                      amortissements, `ccd`, `can_sleep`, `gravity_scale`, plafonds R-180. Tests T-312 par
                      leur effet (Δv = J/m, densité × volume, couple hors du centre, freinage).
-                  3. [ ] `ax-ffi` : `CREATE_ASSEMBLY` = en-tête 64 o + `BodyDesc` 56 o + PHYS ;
+                  3. [x] `ax-ffi` : `CREATE_ASSEMBLY` = en-tête 64 o + `BodyDesc` 56 o + PHYS ;
                      `body_type` égal à `body_kind`, sinon refusé ; `AXION_ABI_VERSION` 2 → 3 ; tests ABI
                      mis à jour (create_assembly, sim_activity, debug, sim_bounds, cycle).
-                  4. [ ] Java : `BodyDesc` depuis le bloc `physics` de la definition, écrit par
+                  4. [x] Java : `BodyDesc` depuis le bloc `physics` de la definition, écrit par
                      `SimCommandStream.createAssembly` ; `EXPECTED_ABI_VERSION` 3 ; REFITTABLE posé sur
                      les colliders de PHYS dont le node descend du `root_node` d'une part à
                      `deform_regions` non vide — corps dynamique seulement, jamais sur `NO_REFIT`
                      (section NODE : `ColliderDesc.part` vaut toujours 0xFFFF aujourd'hui).
-                  5. [ ] build, `cargo test --workspace`, CI locale ; GameTests et bancs par la CI.
+                  5. [x] build, `cargo test --workspace`, CI locale ; GameTests et bancs par la CI.
+                  **Fait le 2026-10-12** (ADR-130, « Mise en œuvre ») : 932 tests Rust et la suite Java
+                  verts, `fmt` et `clippy` propres ; schéma publié régénéré (`physics.mass` borné) ;
+                  GameTests et bancs : CI à confirmer.
             - **Ballon de test** (demandé par Killian le 2026-10-05, reporté par lui à
               l'étape qui le porte). Aujourd'hui, seules sa taille et sa masse sont
               possibles (`auto_sphere`, `density` des extras) : il ne rebondirait pas —
@@ -1964,7 +1967,7 @@ substituable sans changer rapier »).
                   GameTests `CollisionDuMondeGameTests` — section non chargée rendue pleine sans
                   charger son chunk (garde retirée, le test échoue : vérifié), champ de hauteurs sur
                   de vrais escaliers. Trou comblé : l'avertissement de R-641 manquait. Inventaire :
-                  22 des 44 tests de M3 existent ; restent T-312 (C-32 : ADR-130 proposé le 2026-10-12, DM-08 sur la frontière), le rendu (tranche D, faite depuis) et
+                  22 des 44 tests de M3 existent ; T-312 (C-32) fait le 2026-10-12 (ADR-130 : DM-08 sur la frontière), le rendu (tranche D, faite depuis) et
                   T-308/T-309, sans fiche. Sans test : la moitié Java de R-651, faute d'API de requête.
             - [x] **D — rendu** : T-470..T-474, T-479, T-480, T-490..T-493, T-500..T-503,
                   T-510..T-512, T-551, avec C-60, C-62 et C-63. Critères de PARTIE 37.2 :

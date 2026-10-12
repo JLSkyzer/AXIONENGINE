@@ -13,7 +13,7 @@ use ax_model::dm::commands::{
     opcode, ApplyForce, CommandStreamHeader, CreateAssembly, SetDimensionEnv,
 };
 use ax_model::dm::geometry::Transform;
-use ax_model::dm::physics::{body_state_flags, BodyState, ColliderDesc, ColliderShape};
+use ax_model::dm::physics::{body_state_flags, BodyDesc, BodyState, ColliderDesc, ColliderShape};
 use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_metrics_export, axion_shutdown,
     axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_OK,
@@ -89,6 +89,8 @@ fn cube() -> Vec<u8> {
     }
     payload.push(2); // dynamique
     payload.resize(CreateAssembly::BYTES, 0);
+    // ADR-130 : la description DM-08 du corps suit l'en-tête ; rien n'est déclaré.
+    BodyDesc::undeclared(2).write_le(&mut payload);
     payload.extend_from_slice(&phys);
     payload
 }

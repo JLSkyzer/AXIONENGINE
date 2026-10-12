@@ -11,6 +11,7 @@
 
 use super::geometry::WorldTransform;
 use super::handle::Handle;
+use super::physics::BodyDesc;
 
 /// Valeurs d'opcode (ADR-114), champ `opcode` de [`SimCommandHeader`].
 pub mod opcode {
@@ -165,12 +166,15 @@ impl SetDimensionEnv {
     pub const BYTES: usize = 48;
 }
 
-/// En-tête de `CREATE_ASSEMBLY` (IF-03, ADR-114 ; colliders en ligne, ADR-115).
+/// En-tête de `CREATE_ASSEMBLY` (IF-03, ADR-114 ; colliders en ligne, ADR-115 ;
+/// description du corps, ADR-130).
 ///
-/// Suivi **dans le même payload de commande** des octets de la section `PHYS` de
-/// l'asset : Java les extrait de l'A3D et les envoie, le natif les décode
-/// (Option A). Les octets PHYS occupent `payload_len - CreateAssembly::BYTES`
-/// octets après l'en-tête. Les champs runtime de `AssemblyDesc` (DM-09) — asset,
+/// Suivi **dans le même payload de commande** de la description DM-08 du corps
+/// ([`BodyDesc`], [`BodyDesc::WIRE_BYTES`] octets, à
+/// [`CreateAssembly::BODY_DESC_OFFSET`]), puis des octets de la section `PHYS` de
+/// l'asset (à [`CreateAssembly::PHYS_OFFSET`]) : Java les extrait de l'A3D et les
+/// envoie, le natif les décode (Option A). `BodyDesc::body_type` égale
+/// `body_kind`. Les champs runtime de `AssemblyDesc` (DM-09) — asset,
 /// definition, propriétaire, qualité — s'ajouteront avec leur consommateur (cache
 /// d'assets natif, suivi de propriété), pas avant.
 #[repr(C)]
@@ -190,8 +194,14 @@ pub struct CreateAssembly {
 }
 
 impl CreateAssembly {
-    /// Taille de l'en-tête sur la frontière, en octets (hors octets `PHYS`).
+    /// Taille de l'en-tête sur la frontière, en octets (hors description et octets `PHYS`).
     pub const BYTES: usize = 64;
+
+    /// Décalage de la description DM-08 du corps dans le payload (ADR-130).
+    pub const BODY_DESC_OFFSET: usize = Self::BYTES;
+
+    /// Décalage des octets `PHYS` dans le payload, aligné sur 8.
+    pub const PHYS_OFFSET: usize = Self::BODY_DESC_OFFSET + BodyDesc::WIRE_BYTES;
 }
 
 /// En-tête de `SET_WORLD_COLLISION` (C-38, R-640 ; ADR-117).
@@ -403,6 +413,10 @@ mod tests {
         assert_eq!(offset_of!(CreateAssembly, dimension), 8);
         assert_eq!(offset_of!(CreateAssembly, spawn), 16);
         assert_eq!(offset_of!(CreateAssembly, body_kind), 56);
+        // ADR-130 : la description du corps suit l'en-tête, puis PHYS, aligné sur 8.
+        assert_eq!(CreateAssembly::BODY_DESC_OFFSET, 64);
+        assert_eq!(CreateAssembly::PHYS_OFFSET, 120);
+        assert_eq!(CreateAssembly::PHYS_OFFSET % 8, 0);
     }
 
     #[test]

@@ -25,7 +25,7 @@ use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
-use ax_model::dm::physics::{BodyState, PhysicsEvent};
+use ax_model::dm::physics::{BodyDesc, BodyState, PhysicsEvent};
 use std::collections::BTreeMap;
 
 /// La simulation d'une dimension : son monde et son origine flottante.
@@ -794,7 +794,8 @@ impl SimDriver {
     /// Rend le corps créé, ou `None` si une forme est refusée par le monde. Les
     /// colliders sont déjà convertis depuis la section `PHYS` compilée par la
     /// frontière (ax-ffi), qui seule dépend d'`ax-asset` ; chacun porte sa densité,
-    /// d'où la masse et le centre de masse du corps (R-622).
+    /// d'où la masse et le centre de masse du corps (R-622). Rien n'est déclaré :
+    /// voir [`Self::create_assembly_with_desc`].
     pub fn create_assembly(
         &mut self,
         dimension: u64,
@@ -803,6 +804,33 @@ impl SimDriver {
         kind: BodyKind,
         colliders: &[BodyCollider],
     ) -> Option<BodyId> {
+        let code = match kind {
+            BodyKind::Static => 0,
+            BodyKind::Kinematic => 1,
+            BodyKind::Dynamic => 2,
+        };
+        self.create_assembly_with_desc(
+            dimension,
+            handle,
+            spawn,
+            kind,
+            colliders,
+            &BodyDesc::undeclared(code),
+        )
+    }
+
+    /// Comme [`Self::create_assembly`], puis applique au corps sa description
+    /// DM-08 (ADR-130) : masse, centre et inertie déclarés, réglages — voir
+    /// [`PhysicsWorld::apply_body_desc`]. La description doit être valide.
+    pub fn create_assembly_with_desc(
+        &mut self,
+        dimension: u64,
+        handle: Handle,
+        spawn: WorldTransform,
+        kind: BodyKind,
+        colliders: &[BodyCollider],
+        desc: &BodyDesc,
+    ) -> Option<BodyId> {
         let sim = self.dimension_mut(dimension);
         let local = sim.origin.to_local(DVec3::from_array(spawn.position));
         let rotation = Quat::from_array(spawn.rotation);
@@ -810,6 +838,7 @@ impl SimDriver {
             .world
             .add_assembly(kind, local, rotation, colliders)
             .ok()?;
+        sim.world.apply_body_desc(body, desc);
         // L'emprunt de `sim` s'achève ici ; le routage réutilise `register_body`.
         self.register_body(dimension, handle, body, 0, 0);
         Some(body)

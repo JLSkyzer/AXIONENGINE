@@ -11,7 +11,7 @@ use ax_asset::a3d::encode_colliders;
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::dm::commands::{opcode, CommandStreamHeader, CreateAssembly};
 use ax_model::dm::geometry::Transform;
-use ax_model::dm::physics::{BodyBounds, BodyState, ColliderDesc, ColliderShape};
+use ax_model::dm::physics::{BodyBounds, BodyDesc, BodyState, ColliderDesc, ColliderShape};
 use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_shutdown, axion_sim_collect,
     axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_OK, AXION_SIDE_SERVER,
@@ -88,6 +88,8 @@ fn command_stream() -> Vec<u8> {
     }
     header.push(2); // body_kind : dynamique
     header.resize(CreateAssembly::BYTES, 0);
+    // ADR-130 : la description DM-08 du corps suit l'en-tête ; rien n'est déclaré.
+    BodyDesc::undeclared(2).write_le(&mut header);
 
     let mut payload = header;
     payload.extend_from_slice(&phys);

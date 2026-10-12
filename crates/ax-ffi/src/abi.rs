@@ -41,6 +41,7 @@ use ax_model::dm::commands::CreateAssembly;
 use ax_model::dm::debug::{debug_flags, encode_debug_payload, overlay};
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
+use ax_model::dm::physics::BodyDesc;
 use ax_model::dm::physics::{BodyBounds, BodyState, ColliderDesc};
 use ax_physics::{
     BodyCollider, BodyKind, ContactMaterial, DegradationLevel, PhysicsConfig, Shape, SimDriver,
@@ -52,7 +53,7 @@ use ax_physics::{
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
 /// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`).
-pub const AXION_ABI_VERSION: u32 = 2;
+pub const AXION_ABI_VERSION: u32 = 3;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -1065,16 +1066,24 @@ pub unsafe extern "C" fn axion_sim_submit(
     })
 }
 
-/// Applique une commande `CREATE_ASSEMBLY` (Option A, ADR-115) : lit l'en-tête,
-/// décode les colliders de la section `PHYS` jointe, les convertit en forme
-/// runtime et crée le corps dans le pilote.
+/// Applique une commande `CREATE_ASSEMBLY` (Option A, ADR-115 ; ADR-130) : lit
+/// l'en-tête et la description DM-08 du corps, décode les colliders de la section
+/// `PHYS` jointe, les convertit en forme runtime, crée le corps dans le pilote et
+/// lui applique sa description.
 ///
-/// Un payload trop court, une section `PHYS` illisible ou une forme non
-/// convertible fait **abandonner cette assembly** sans créer de corps — jamais
-/// de panique ni de corps à moitié formé. La commande a déjà été lue par
+/// Un payload trop court, une description invalide ou d'un autre type de corps
+/// que l'en-tête, une section `PHYS` illisible ou une forme non convertible fait
+/// **abandonner cette assembly** sans créer de corps — jamais de panique ni de
+/// corps à moitié formé. La commande a déjà été lue par
 /// `create_assembly_payloads`, qui a validé les bornes du flux.
 fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
-    if payload.len() < CreateAssembly::BYTES {
+    if payload.len() < CreateAssembly::PHYS_OFFSET {
+        return;
+    }
+    let Some(desc) = BodyDesc::read_le(&payload[CreateAssembly::BODY_DESC_OFFSET..]) else {
+        return;
+    };
+    if desc.validate().is_err() || desc.body_type != payload[56] {
         return;
     }
     let handle = Handle::new(read_le_u32(payload, 0), read_le_u32(payload, 4));
@@ -1092,21 +1101,22 @@ fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
             read_le_f32(payload, 52),
         ],
     };
-    let kind = match payload[56] {
+    // Validée, la description ne connaît que 0, 1 et 2.
+    let kind = match desc.body_type {
         0 => BodyKind::Static,
         1 => BodyKind::Kinematic,
-        // Tout autre code (dont 2) : dynamique, le défaut d'un corps mobile.
         _ => BodyKind::Dynamic,
     };
 
-    let (colliders, points, children) = match decode_colliders(&payload[CreateAssembly::BYTES..]) {
-        Ok(decoded) => decoded,
-        Err(_) => return,
-    };
+    let (colliders, points, children) =
+        match decode_colliders(&payload[CreateAssembly::PHYS_OFFSET..]) {
+            Ok(decoded) => decoded,
+            Err(_) => return,
+        };
     let Some(runtime_colliders) = body_colliders(&colliders, &points, &children) else {
         return;
     };
-    physics.create_assembly(dimension, handle, spawn, kind, &runtime_colliders);
+    physics.create_assembly_with_desc(dimension, handle, spawn, kind, &runtime_colliders, &desc);
 }
 
 /// Convertit les colliders compilés (DM-06) en colliders runtime, chacun avec sa

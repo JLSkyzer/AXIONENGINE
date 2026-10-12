@@ -486,7 +486,8 @@ class NativeBridgeTest {
                         0L,
                         new double[] {0.0, 100.0, 0.0},
                         new float[] {0.0f, 0.0f, 0.0f, 1.0f},
-                        dev.axion.physics.SimCommandStream.BODY_DYNAMIC,
+                        dev.axion.physics.BodyDescription.undeclared(
+                                dev.axion.physics.SimCommandStream.BODY_DYNAMIC),
                         phys)
                 // ADR-123 : comme en jeu, un joueur près du corps le garde éveillé (R-612).
                 .setObservers(0L, JOUEUR_PRES_DU_CORPS);

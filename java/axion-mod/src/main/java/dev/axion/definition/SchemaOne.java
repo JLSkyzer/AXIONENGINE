@@ -114,10 +114,13 @@ final class SchemaOne {
     /** DM-08. */
     private static SchemaNode physics() {
         return obj()
-                .opt("mass", number())
+                // DM-08 (ADR-130) : masse déclarée dans [0.001, 1e6] kg comme celle d'une part,
+                // amortissements positifs ou nuls ; une valeur hors domaine se refuse ici, avec son
+                // chemin, plutôt qu'à la frontière.
+                .opt("mass", new Num(0.001, 1e6, false, false))
                 .opt("center_of_mass", vec3())
-                .opt("linear_damping", number())
-                .opt("angular_damping", number())
+                .opt("linear_damping", new Num(0, Double.POSITIVE_INFINITY, false, false))
+                .opt("angular_damping", new Num(0, Double.POSITIVE_INFINITY, false, false))
                 .opt("ccd", bool())
                 // R-980 : groupes data-driven, liste extensible.
                 .opt("collision_group", text())

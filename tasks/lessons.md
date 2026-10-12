@@ -1309,3 +1309,16 @@ tout le reste.
 variantes au render thread, contre `budgets.render_prep_ns`) ; le temps de frame ne vient qu'en second. Et une
 mesure qui demande plusieurs lancements du jeu (mesurer, instrumenter, vérifier) s'annonce à Killian d'un bloc,
 avant la série, avec le nombre de lancements prévu.
+
+## 2026-10-12 | Un champ de definition validé n'était lu par personne
+
+**Ce qui a mal tourné.** `physics.mass`, `center_of_mass`, les amortissements et `ccd` étaient validés par le
+schéma depuis des semaines, sans que rien ne les transmette au natif : déclarer une masse ne changeait rien. Et le
+schéma acceptait une masse négative, que le natif aurait refusée en silence.
+
+**Cause.** Le schéma a été écrit d'après le CDC, champ par champ, avant ses consommateurs ; rien ne vérifiait
+qu'un champ accepté ait un lecteur.
+
+**Règle.** Un champ de definition validé a un lecteur et un test qui en montre l'effet, ou il est refusé avec un
+message qui dit pourquoi ; son domaine dans le schéma est celui que le natif accepte. En cherchant un test
+manquant, chercher aussi les champs acceptés et ignorés.

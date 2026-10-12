@@ -31,7 +31,9 @@
       "type": "object",
       "properties": {
         "mass": {
-          "type": "number"
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 1000000
         },
         "center_of_mass": {
           "type": "array",
@@ -42,10 +44,12 @@
           "maxItems": 3
         },
         "linear_damping": {
-          "type": "number"
+          "type": "number",
+          "minimum": 0
         },
         "angular_damping": {
-          "type": "number"
+          "type": "number",
+          "minimum": 0
         },
         "ccd": {
           "type": "boolean"

@@ -55,6 +55,12 @@ public final class SimCommandStream {
      */
     public static final int CREATE_ASSEMBLY_HEADER_BYTES = 64;
 
+    /**
+     * Décalage des octets {@code PHYS} dans le payload {@code CREATE_ASSEMBLY} : en-tête, puis
+     * description du corps (ADR-130). Figé côté natif : {@code CreateAssembly::PHYS_OFFSET}.
+     */
+    public static final int CREATE_ASSEMBLY_PHYS_OFFSET = CREATE_ASSEMBLY_HEADER_BYTES + BodyDescription.WIRE_BYTES;
+
     /** {@code body_kind} : corps statique (miroir de {@code BodyKind::Static}). */
     public static final int BODY_STATIC = 0;
 
@@ -203,20 +209,21 @@ public final class SimCommandStream {
      * Ajoute une commande {@code CREATE_ASSEMBLY} (§4.5, ADR-114 ; Option A
      * d'ADR-115).
      *
-     * <p>Le payload est l'en-tête {@code CreateAssembly} (64 o) suivi des octets de
-     * la section {@code PHYS} de l'asset — que l'appelant extrait de l'A3D
+     * <p>Le payload est l'en-tête {@code CreateAssembly} (64 o), la description DM-08
+     * du corps ({@link BodyDescription}, 56 o, ADR-130), puis les octets de la
+     * section {@code PHYS} de l'asset — que l'appelant extrait de l'A3D
      * ({@link dev.axion.asset.A3dSections}). Le natif décode ces colliders, en
-     * construit une forme (unique ou composée) et crée le corps à sa pose de spawn.
-     * La masse et le centre de masse sont calculés par le moteur depuis les
-     * densités des colliders (R-622).
+     * construit une forme (unique ou composée), crée le corps à sa pose de spawn et
+     * lui applique sa description : masse, centre et inertie déclarés priment sur
+     * ceux des densités des colliders (R-622). Le type de corps de l'en-tête est
+     * celui de la description.
      *
      * @param handleIndex rang du handle d'assembly (routage du corps)
      * @param handleGeneration génération du handle ({@code 0} est invalide)
      * @param dimension dimension d'accueil (R-610)
      * @param position position monde de spawn {@code [x, y, z]}, en blocs
      * @param rotation quaternion de spawn {@code [x, y, z, w]}
-     * @param bodyKind {@link #BODY_STATIC}, {@link #BODY_KINEMATIC} ou
-     *     {@link #BODY_DYNAMIC}
+     * @param body description du corps, son type compris
      * @param phys octets de la section {@code PHYS} (colliders compilés)
      * @return {@code this}, pour chaîner
      */
@@ -226,7 +233,7 @@ public final class SimCommandStream {
             long dimension,
             double[] position,
             float[] rotation,
-            int bodyKind,
+            BodyDescription body,
             byte[] phys) {
         if (position.length != 3) {
             throw new IllegalArgumentException("la position est un vecteur à 3 composantes");
@@ -234,17 +241,18 @@ public final class SimCommandStream {
         if (rotation.length != 4) {
             throw new IllegalArgumentException("la rotation est un quaternion à 4 composantes");
         }
-        if (bodyKind < BODY_STATIC || bodyKind > BODY_DYNAMIC) {
-            throw new IllegalArgumentException("body_kind inconnu : " + bodyKind);
+        if (body == null) {
+            throw new IllegalArgumentException("la description du corps est requise");
         }
         if (phys == null) {
             throw new IllegalArgumentException("les octets PHYS sont requis");
         }
+        int bodyKind = body.bodyType();
 
-        // Le payload (en-tête + PHYS) est aligné sur 8 octets : le lecteur natif
-        // avance d'un multiple de 8 après chaque commande, pour lire la suivante
-        // en place (R-271, R-881).
-        int payloadLen = CREATE_ASSEMBLY_HEADER_BYTES + phys.length;
+        // Le payload (en-tête + description + PHYS) est aligné sur 8 octets : le
+        // lecteur natif avance d'un multiple de 8 après chaque commande, pour lire
+        // la suivante en place (R-271, R-881).
+        int payloadLen = CREATE_ASSEMBLY_PHYS_OFFSET + phys.length;
         int padded = alignUp8(payloadLen);
         ByteBuffer command = ByteBuffer.allocate(COMMAND_HEADER_BYTES + padded)
                 .order(ByteOrder.LITTLE_ENDIAN);
@@ -265,6 +273,7 @@ public final class SimCommandStream {
         command.put((byte) bodyKind);
         // Les 7 octets de _pad et le remplissage d'alignement restent à zéro.
         command.position(COMMAND_HEADER_BYTES + CREATE_ASSEMBLY_HEADER_BYTES);
+        body.writeTo(command);
         command.put(phys);
         commands.add(command.array());
         return this;

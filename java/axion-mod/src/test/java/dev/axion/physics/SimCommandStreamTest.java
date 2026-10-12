@@ -3,6 +3,7 @@ package dev.axion.physics;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -95,19 +96,19 @@ class SimCommandStreamTest {
                         3L,
                         new double[] {5.0, 10.0, -2.0},
                         new float[] {0.0f, 0.0f, 0.0f, 1.0f},
-                        SimCommandStream.BODY_DYNAMIC,
+                        BodyDescription.undeclared(SimCommandStream.BODY_DYNAMIC),
                         phys);
 
         assertEquals(1, stream.count());
         byte[] bytes = stream.toBytes();
         // en-tête de flux (8) + en-tête de commande (8) + payload aligné sur 8 :
-        // align8(64 + 5) = 72.
-        assertEquals(8 + 8 + 72, bytes.length);
+        // align8(64 + 56 + 5) = 128 (ADR-130 : la description du corps suit l'en-tête).
+        assertEquals(8 + 8 + 128, bytes.length);
 
         ByteBuffer b = wrap(bytes);
         assertEquals(SimCommandStream.OP_CREATE_ASSEMBLY, b.getInt(8), "opcode");
-        // payload_len annoncé = en-tête (64) + PHYS (5), sans le remplissage.
-        assertEquals(64 + 5, b.getInt(12), "payload_len");
+        // payload_len annoncé = en-tête (64) + description (56) + PHYS (5), sans le remplissage.
+        assertEquals(64 + 56 + 5, b.getInt(12), "payload_len");
         // En-tête CreateAssembly, payload à l'offset 16.
         assertEquals(7, b.getInt(16), "handle.index");
         assertEquals(1, b.getInt(20), "handle.generation");
@@ -120,8 +121,17 @@ class SimCommandStreamTest {
         assertEquals(0.0f, b.getFloat(64), "spawn.rotation.z");
         assertEquals(1.0f, b.getFloat(68), "spawn.rotation.w");
         assertEquals(SimCommandStream.BODY_DYNAMIC, b.get(72), "body_kind");
-        // Les octets PHYS suivent l'en-tête (offset 16 + 64 = 80).
-        assertArrayEquals(phys, Arrays.copyOfRange(bytes, 80, 85), "octets PHYS");
+        // La description DM-08 suit l'en-tête (offset 16 + 64 = 80) : type de corps, puis rien de
+        // déclaré — masse 0, centre NaN, gravité entière, plafonds de R-180, réservé nul.
+        assertEquals(SimCommandStream.BODY_DYNAMIC, b.get(80), "body_type");
+        assertEquals(0.0f, b.getFloat(84), "mass");
+        assertTrue(Float.isNaN(b.getFloat(88)), "center_of_mass.x");
+        assertEquals(1.0f, b.getFloat(120), "gravity_scale");
+        assertEquals(300.0f, b.getFloat(124), "max_linear_vel");
+        assertEquals(100.0f, b.getFloat(128), "max_angular_vel");
+        assertEquals(0, b.getInt(132), "réservé");
+        // Les octets PHYS suivent la description (offset 16 + 120 = 136).
+        assertArrayEquals(phys, Arrays.copyOfRange(bytes, 136, 141), "octets PHYS");
     }
 
     @Test
@@ -135,12 +145,12 @@ class SimCommandStreamTest {
                         0L,
                         new double[] {0, 0, 0},
                         new float[] {0, 0, 0, 1},
-                        SimCommandStream.BODY_STATIC,
-                        new byte[] {1, 2, 3}) // 64 + 3 -> align8 = 72
+                        BodyDescription.undeclared(SimCommandStream.BODY_STATIC),
+                        new byte[] {1, 2, 3}) // 64 + 56 + 3 -> align8 = 128
                 .setDimensionEnv(0L, new float[] {0, -9.81f, 0}, new float[] {0, 0, 0}, 0, 0, false);
 
         byte[] bytes = stream.toBytes();
-        int second = 8 + 8 + 72; // en-tête flux + en-tête cmd + payload aligné
+        int second = 8 + 8 + 128; // en-tête flux + en-tête cmd + payload aligné
         assertEquals(0, second % 8, "la seconde commande est alignée sur 8");
         assertEquals(
                 SimCommandStream.OP_SET_DIMENSION_ENV,
@@ -159,7 +169,7 @@ class SimCommandStreamTest {
                                 0L,
                                 new double[] {0, 0, 0},
                                 new float[] {0, 0, 1}, // quaternion incomplet
-                                SimCommandStream.BODY_DYNAMIC,
+                                BodyDescription.undeclared(SimCommandStream.BODY_DYNAMIC),
                                 new byte[] {1}));
     }
 
@@ -174,7 +184,8 @@ class SimCommandStreamTest {
                                 0L,
                                 new double[] {0, 0, 0},
                                 new float[] {0, 0, 0, 1},
-                                7, // hors de {0, 1, 2}
+                                // Type de corps hors de {0, 1, 2} : la description le refuse.
+                                BodyDescription.undeclared(7),
                                 new byte[] {1}));
     }
 
