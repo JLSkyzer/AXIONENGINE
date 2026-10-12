@@ -78,6 +78,7 @@ public final class EntityImpactEffects implements SimEventSink {
         if (!push && !damage) {
             return;
         }
+        AuthoritativeThread.require();
         for (EntityImpacts.Impact impact : EntityImpacts.gather(events)) {
             AxionEntity assembly =
                     assemblies.assembly(impact.assemblyIndex(), impact.assemblyGeneration());

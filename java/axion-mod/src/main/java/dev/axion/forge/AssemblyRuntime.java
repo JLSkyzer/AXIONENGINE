@@ -280,6 +280,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
 
     @Override
     public void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds) {
+        AuthoritativeThread.require();
         // ADR-120 : l'emprise de rang i est celle de l'état de rang i. Sans emprises (natif
         // antérieur au schéma 1 de SIM_OUT), les hitbox restent provisoires.
         boolean withBounds = bounds.size() == states.size();

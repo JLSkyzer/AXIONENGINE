@@ -237,6 +237,7 @@ final class AxionCommands {
             ResourceLocation definition,
             Vec3 position,
             CompoundTag nbt) {
+        AuthoritativeThread.require();
         var outcome = runtime.outcome();
         if (outcome == null) {
             source.sendFailure(Component.literal("AXION : configuration non chargée"));
@@ -256,6 +257,8 @@ final class AxionCommands {
         CompoundTag tag = nbt == null ? new CompoundTag() : nbt.copy();
         tag.putString("id", AxionEntities.ASSEMBLY.getId().toString());
         Entity entity = EntityType.loadEntityRecursive(tag, level, created -> {
+            // Rappel synchrone, mais le bytecode ne le dit pas : il vérifie lui aussi (T-011).
+            AuthoritativeThread.require();
             created.moveTo(position.x, position.y, position.z, created.getYRot(), created.getXRot());
             return created;
         });
@@ -283,6 +286,7 @@ final class AxionCommands {
      * large ne supprime rien d'autre. Journalisée avec son auteur (R-810).
      */
     private static int remove(CommandSourceStack source, Collection<? extends Entity> targets) {
+        AuthoritativeThread.require();
         int removed = 0;
         for (Entity target : targets) {
             if (target instanceof AxionEntity) {
