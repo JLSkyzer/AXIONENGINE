@@ -1983,7 +1983,7 @@ substituable sans changer rapier »).
                         T-512 (cache neuf : base et émission au démarrage, `CUTOUT` à la demande), T-905 (au
                         rechargement les 3 programmes relus du cache, rien compilé ; cache corrompu : les 3 recompilés et
                         réécrits), T-511 pour une variante refusée à la demande (bascule sur vanilla). **T-904 fait le 2026-10-12**
-                        (ADR-127 §4, complément ; critère proposé, à ratifier) : premier relevé rouge — relire le cache
+                        (ADR-127 §4, complément ; critère ratifié par Killian le 2026-10-12) : premier relevé rouge — relire le cache
                         prenait jusqu'à 4,6 ms au render thread (lecture du fichier sur ce fil), lancer une compilation
                         1,1 à 1,6 ms ; corrigé par la lecture sur le thread du cache et une étape OpenGL par frame : 0,55 ms
                         compilée, 0,42 ms relue, 0,49 ms sans parallèle, au banc natif chez Killian ; CI à confirmer.
