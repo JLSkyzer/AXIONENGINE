@@ -24,7 +24,7 @@ use crate::import::{
     ImportedAsset, ImportedMaterial, SourceFormat,
 };
 use crate::optimize::{optimize, Aabb, LodTable};
-use crate::options::{AssetOptions, MaterialDefaults, NormalsMode, UpAxis};
+use crate::options::{AssetOptions, MaterialDefaults, NormalsMode, OptionsOrigin, UpAxis};
 use crate::validate::{validate, AssetView, NamedEntry, ValidationReport};
 use ax_model::dm::geometry::{MeshDesc, Vertex};
 use ax_model::dm::material::{texture_source, MaterialDesc};
@@ -63,6 +63,8 @@ pub enum CompileError {
     Invalid(ValidationReport),
     /// Le conteneur n'a pas pu être écrit (C-24).
     Container(crate::a3d::A3dError),
+    /// Les options de l'auteur sont refusées (PARTIE 6.4, ADR-135).
+    Options(crate::options::OptionsError),
 }
 
 impl CompileError {
@@ -73,6 +75,7 @@ impl CompileError {
             CompileError::Import(error) => error.code(),
             CompileError::Invalid(report) => report.code(),
             CompileError::Container(error) => error.code(),
+            CompileError::Options(error) => error.code(),
         }
     }
 }
@@ -81,6 +84,7 @@ impl fmt::Display for CompileError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CompileError::Import(error) => write!(formatter, "import : {error}"),
+            CompileError::Options(error) => write!(formatter, "options : {error}"),
             CompileError::Invalid(report) => {
                 write!(formatter, "{} violation(s) de validation", report.len())?;
                 // La première suffit à situer le problème ; la liste complète
@@ -153,7 +157,8 @@ pub fn compile(
     options: &CompileOptions,
     resolve: impl FnMut(&str) -> Option<Vec<u8>>,
 ) -> Result<CompiledAsset, CompileError> {
-    let (mut asset, mut warnings) = import(source, format, options, resolve)?;
+    let (mut asset, mut warnings, root_extras) = import(source, format, options, resolve)?;
+    let options = &effective_options(options, root_extras.as_deref(), &mut warnings)?;
     let authored = &options.authored;
     // Sans option, l'asset n'est pas touché : la sortie reste celle d'avant, au bit
     // près (R-870).
@@ -272,11 +277,11 @@ fn import(
     format: SourceFormat,
     options: &CompileOptions,
     resolve: impl FnMut(&str) -> Option<Vec<u8>>,
-) -> Result<(ImportedAsset, Vec<String>), CompileError> {
-    let (asset, mut warnings) = import_source(source, format, options, resolve)?;
+) -> Result<(ImportedAsset, Vec<String>, Option<String>), CompileError> {
+    let (asset, mut warnings, root_extras) = import_source(source, format, options, resolve)?;
     warnings.extend(asset.texture_refusals.iter().map(ToString::to_string));
     warnings.extend(asset.material_warnings.iter().cloned());
-    Ok((asset, warnings))
+    Ok((asset, warnings, root_extras))
 }
 
 fn import_source(
@@ -284,7 +289,7 @@ fn import_source(
     format: SourceFormat,
     options: &CompileOptions,
     resolve: impl FnMut(&str) -> Option<Vec<u8>>,
-) -> Result<(ImportedAsset, Vec<String>), CompileError> {
+) -> Result<(ImportedAsset, Vec<String>, Option<String>), CompileError> {
     match format {
         SourceFormat::Glb | SourceFormat::Gltf => {
             let (asset, report) =
@@ -296,7 +301,7 @@ fn import_source(
                     .into_iter()
                     .map(|extension| format!("extension ignorée : {extension}")),
             );
-            Ok((asset, warnings))
+            Ok((asset, warnings, report.root_extras))
         }
         SourceFormat::Obj => {
             let text = core::str::from_utf8(source).map_err(|_| {
@@ -311,14 +316,45 @@ fn import_source(
             })
             .map_err(CompileError::Import)?;
             apply_material_defaults(&mut asset, &options.authored.materials);
-            Ok((asset, Vec::new()))
+            Ok((asset, Vec::new(), None))
         }
         SourceFormat::Stl => {
             let mut asset = import_stl(source, &options.limits).map_err(CompileError::Import)?;
             apply_material_defaults(&mut asset, &options.authored.materials);
-            Ok((asset, Vec::new()))
+            Ok((asset, Vec::new(), None))
         }
     }
+}
+
+/// Les options qui s'appliquent (ADR-135, point 5) : celles d'un `.axion.json` s'il
+/// y en a un — un bloc `axion` des extras racine d'un glTF est alors ignoré, et
+/// signalé —, sinon ce bloc, lu par le même lecteur, sinon les défauts.
+fn effective_options(
+    options: &CompileOptions,
+    root_extras: Option<&str>,
+    warnings: &mut Vec<String>,
+) -> Result<CompileOptions, CompileError> {
+    let Some(extras) = root_extras else {
+        return Ok(*options);
+    };
+    let Some(block) = crate::options::gltf_root_block(extras).map_err(CompileError::Options)?
+    else {
+        return Ok(*options);
+    };
+    if options.authored.origin == OptionsOrigin::File {
+        warnings.push(
+            "bloc « axion » des extras racine ignoré : le fichier .axion.json l'emporte en \
+             entier (ADR-135)"
+                .to_owned(),
+        );
+        return Ok(*options);
+    }
+    let parsed = crate::options::parse_gltf_block(&block).map_err(CompileError::Options)?;
+    warnings.extend(parsed.warnings);
+    Ok(CompileOptions {
+        authored: parsed.options,
+        ..*options
+    })
 }
 
 /// `scale` et `up_axis` (R-871) : l'asset entier passe dans le repère du moteur,
@@ -1129,7 +1165,7 @@ f 2 7 3
     fn options_reframe_conjugue_les_nodes_et_garde_chaque_sommet_a_sa_place() {
         // Le node d'un OBJ, translaté, tourné de 90° autour de Z et étiré, sous Z en
         // haut : la translation tourne, l'axe de rotation tourne, l'échelle se permute.
-        let (mut asset, _) = import(
+        let (mut asset, _, _) = import(
             b"o t\nv 0 0 4\nv 1 0 4\nv 0 1 4\nf 1 2 3\n",
             SourceFormat::Obj,
             &OPTIONS,
@@ -1151,6 +1187,73 @@ f 2 7 3
         assert_eq!(local.rotation, [0.0, demi, 0.0, demi]);
         assert_eq!(local.scale, [2.0, 1.0, 3.0]);
         assert_eq!(asset.vertices[0].position, [0.0, 8.0, 0.0]);
+    }
+
+    /// glTF d'un triangle, ses `extras` racine donnés.
+    fn gltf_triangle(extras: &str) -> String {
+        format!(
+            concat!(
+                r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],"#,
+                r#""nodes":[{{"name":"t","mesh":0}}],"#,
+                r#""meshes":[{{"primitives":[{{"attributes":{{"POSITION":0}},"indices":2}}]}}],"#,
+                r#""accessors":[{{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","#,
+                r#""min":[0.0,0.0,0.0],"max":[1.0,1.0,0.0]}},"#,
+                r#"{{"bufferView":1,"componentType":5126,"count":3,"type":"VEC2"}},"#,
+                r#"{{"bufferView":2,"componentType":5123,"count":3,"type":"SCALAR"}}],"#,
+                r#""bufferViews":[{{"buffer":0,"byteOffset":0,"byteLength":36}},"#,
+                r#"{{"buffer":0,"byteOffset":36,"byteLength":24}},"#,
+                r#"{{"buffer":0,"byteOffset":60,"byteLength":6}}],"#,
+                r#""buffers":[{{"byteLength":66,"uri":"data:application/octet-stream;base64,{buffer}"}}],"#,
+                r#""extras":{extras}}}"#,
+            ),
+            buffer = encode_base64(&triangle_buffer()),
+            extras = extras,
+        )
+    }
+
+    #[test]
+    fn options_le_bloc_des_extras_gltf_s_applique_sans_fichier() {
+        let source = gltf_triangle(r#"{"axion":{"schema":1,"scale":2}}"#);
+        let compiled = compile(source.as_bytes(), SourceFormat::Gltf, &OPTIONS, |_| None)
+            .expect("compilation refusée");
+        let bornes = compiled.bounds.expect("bornes");
+        assert!((bornes.max[0] - 2.0).abs() < 1e-3, "{bornes:?}");
+    }
+
+    #[test]
+    fn options_un_fichier_l_emporte_sur_le_bloc_des_extras_et_le_dit() {
+        let source = gltf_triangle(r#"{"axion":{"schema":1,"scale":2}}"#);
+        let du_fichier = avec(AssetOptions {
+            origin: OptionsOrigin::File,
+            ..AssetOptions::DEFAULT
+        });
+        let compiled = compile(source.as_bytes(), SourceFormat::Gltf, &du_fichier, |_| None)
+            .expect("compilation refusée");
+        let bornes = compiled.bounds.expect("bornes");
+        assert!(
+            (bornes.max[0] - 1.0).abs() < 1e-3,
+            "le bloc est ignoré : {bornes:?}"
+        );
+        assert!(
+            compiled
+                .warnings
+                .iter()
+                .any(|avertissement| avertissement.contains("bloc « axion »")),
+            "{:?}",
+            compiled.warnings
+        );
+    }
+
+    #[test]
+    fn options_un_bloc_des_extras_fautif_refuse_la_compilation_a_son_chemin() {
+        let source = gltf_triangle(r#"{"axion":{"schema":1,"scal":2}}"#);
+        let refus = compile(source.as_bytes(), SourceFormat::Gltf, &OPTIONS, |_| None)
+            .expect_err("bloc fautif accepté");
+        let CompileError::Options(erreur) = &refus else {
+            panic!("refus inattendu : {refus}");
+        };
+        assert_eq!(erreur.faults[0].path, "$.extras.axion.scal");
+        assert_eq!(refus.code(), crate::options::E_INVALID_OPTION);
     }
 
     #[test]

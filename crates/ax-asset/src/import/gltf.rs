@@ -50,6 +50,9 @@ pub struct GltfReport {
     pub warnings: Vec<String>,
     /// Images désignées, jamais décodées (R-532).
     pub images: Vec<ImageRef>,
+    /// Le texte des `extras` racine du document, s'il en porte : le bloc `axion`
+    /// des options s'y lit (PARTIE 6.4, ADR-135).
+    pub root_extras: Option<String>,
 }
 
 /// Une image que l'asset désigne.
@@ -132,6 +135,12 @@ fn import_gltf_inner(
         }
     })?;
     gltf_refs::check_references(document.document.as_json(), format)?;
+    report.root_extras = document
+        .document
+        .as_json()
+        .extras
+        .as_ref()
+        .map(|raw| raw.get().to_owned());
 
     let buffers = load_buffers(&document, format, resolve)?;
     collect_images(&document, &mut report)?;

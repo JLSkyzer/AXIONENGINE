@@ -92,6 +92,18 @@ pub struct MaterialDefaults {
     pub metallic: f32,
 }
 
+/// D'où viennent les options d'un asset (ADR-135, point 5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OptionsOrigin {
+    /// Aucune source : les défauts de R-870.
+    #[default]
+    Defaults,
+    /// Le `<modèle>.axion.json` voisin de la source, ou celui que la CLI désigne.
+    File,
+    /// Le bloc `axion` des `extras` racine d'un glTF.
+    GltfExtras,
+}
+
 /// Les options de compilation d'un asset (PARTIE 6.4) : celles que la
 /// compilation applique. `deformation` et `structure` sont validées par le
 /// lecteur, puis écartées : sans effet avant C-28 et C-43, qui ajouteront ici
@@ -116,6 +128,8 @@ pub struct AssetOptions {
     pub compress: bool,
     /// Taille de texture au-delà de laquelle une texture embarquée est signalée.
     pub max_texture_size: u32,
+    /// D'où elles viennent : un fichier l'emporte sur le bloc des extras d'un glTF.
+    pub origin: OptionsOrigin,
 }
 
 impl Default for AssetOptions {
@@ -139,6 +153,7 @@ impl AssetOptions {
         },
         compress: true,
         max_texture_size: 2048,
+        origin: OptionsOrigin::Defaults,
     };
 
     /// Les défauts, avec un mode de génération automatique de colliders.
@@ -235,27 +250,137 @@ pub fn parse_bytes(bytes: &[u8]) -> Result<ParsedOptions, OptionsError> {
 /// [`OptionsError`] si le texte n'est pas du JSON strict, ou si une option est
 /// inconnue ou invalide.
 pub fn parse(text: &str) -> Result<ParsedOptions, OptionsError> {
+    parse_from(text, OptionsOrigin::File, "$")
+}
+
+/// Lit le bloc `axion` des `extras` racine d'un glTF, tel que [`gltf_root_block`]
+/// l'a extrait : les mêmes règles qu'un fichier, ses fautes situées sous
+/// `$.extras.axion`.
+///
+/// # Errors
+///
+/// [`OptionsError`] comme [`parse`].
+pub fn parse_gltf_block(text: &str) -> Result<ParsedOptions, OptionsError> {
+    parse_from(text, OptionsOrigin::GltfExtras, "$.extras.axion")
+}
+
+fn parse_from(
+    text: &str,
+    origin: OptionsOrigin,
+    root: &str,
+) -> Result<ParsedOptions, OptionsError> {
     if text.starts_with('\u{feff}') {
         return Err(OptionsError::single(
             E_INVALID_OPTION,
-            "$",
+            root,
             "marque d'ordre des octets (BOM) en tête : JSON strict attendu",
         ));
     }
-    let root: Json = serde_json::from_str(text).map_err(|error| {
-        OptionsError::single(E_INVALID_OPTION, "$", format!("JSON invalide : {error}"))
+    let value: Json = serde_json::from_str(text).map_err(|error| {
+        OptionsError::single(E_INVALID_OPTION, root, format!("JSON invalide : {error}"))
     })?;
     let mut reader = Reader::default();
-    let options = reader.root(&root);
+    let mut options = reader.root(&value);
+    options.origin = origin;
     if reader.faults.is_empty() {
         Ok(ParsedOptions {
             options,
             warnings: reader.warnings,
         })
     } else {
-        Err(OptionsError {
-            faults: reader.faults,
+        let mut faults = reader.faults;
+        if root != "$" {
+            for fault in &mut faults {
+                fault.path = fault.path.replacen('$', root, 1);
+            }
+        }
+        Err(OptionsError { faults })
+    }
+}
+
+/// Le texte du bloc `axion` des `extras` racine d'un glTF, s'il y en a un
+/// (PARTIE 6.4).
+///
+/// Les `extras` servent aussi à d'autres outils : seul le membre `axion` est lu,
+/// le reste n'est pas jugé (R-911). Des extras qui ne sont pas un objet n'en
+/// portent pas ; un membre `axion` en double est refusé.
+///
+/// # Errors
+///
+/// [`OptionsError`] si les extras ne sont pas du JSON, ou portent deux membres
+/// `axion`.
+pub fn gltf_root_block(extras: &str) -> Result<Option<String>, OptionsError> {
+    serde_json::from_str::<RootExtras>(extras)
+        .map(|extras| extras.0)
+        .map_err(|error| {
+            OptionsError::single(
+                E_INVALID_OPTION,
+                "$.extras",
+                format!("extras illisibles : {error}"),
+            )
         })
+}
+
+/// Le membre `axion` d'extras glTF, brut.
+struct RootExtras(Option<String>);
+
+impl<'de> Deserialize<'de> for RootExtras {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(RootExtrasVisitor)
+    }
+}
+
+struct RootExtrasVisitor;
+
+impl<'de> Visitor<'de> for RootExtrasVisitor {
+    type Value = RootExtras;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("les extras d'un glTF")
+    }
+
+    fn visit_unit<E>(self) -> Result<RootExtras, E> {
+        Ok(RootExtras(None))
+    }
+
+    fn visit_bool<E>(self, _: bool) -> Result<RootExtras, E> {
+        Ok(RootExtras(None))
+    }
+
+    fn visit_i64<E>(self, _: i64) -> Result<RootExtras, E> {
+        Ok(RootExtras(None))
+    }
+
+    fn visit_u64<E>(self, _: u64) -> Result<RootExtras, E> {
+        Ok(RootExtras(None))
+    }
+
+    fn visit_f64<E>(self, _: f64) -> Result<RootExtras, E> {
+        Ok(RootExtras(None))
+    }
+
+    fn visit_str<E>(self, _: &str) -> Result<RootExtras, E> {
+        Ok(RootExtras(None))
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<RootExtras, A::Error> {
+        while seq.next_element::<de::IgnoredAny>()?.is_some() {}
+        Ok(RootExtras(None))
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<RootExtras, A::Error> {
+        let mut block = None;
+        while let Some(key) = map.next_key::<String>()? {
+            if key == "axion" {
+                let raw = map.next_value::<Box<serde_json::value::RawValue>>()?;
+                if block.replace(raw.get().to_owned()).is_some() {
+                    return Err(de::Error::custom("membre « axion » en double"));
+                }
+            } else {
+                map.next_value::<de::IgnoredAny>()?;
+            }
+        }
+        Ok(RootExtras(block))
     }
 }
 
@@ -877,7 +1002,13 @@ mod tests {
         assert!(options.compress && options.generate_tangents);
         // Un fichier qui ne dit que sa version rend exactement les défauts.
         let lu = parse(r#"{ "schema": 1 }"#).unwrap();
-        assert_eq!(lu.options, options);
+        assert_eq!(
+            lu.options,
+            AssetOptions {
+                origin: OptionsOrigin::File,
+                ..options
+            }
+        );
         assert!(lu.warnings.is_empty());
     }
 
@@ -1004,6 +1135,29 @@ mod tests {
                 (E_INVALID_OPTION, "$.structure.default_link".to_owned()),
             ]
         );
+    }
+
+    #[test]
+    fn options_le_bloc_axion_des_extras_gltf_se_lit_comme_un_fichier() {
+        let bloc = gltf_root_block(
+            r#"{ "blender": { "version": 4 }, "axion": { "schema": 1, "scale": 2 } }"#,
+        )
+        .unwrap()
+        .expect("bloc présent");
+        let lu = parse_gltf_block(&bloc).unwrap();
+        assert_eq!(lu.options.scale, 2.0);
+        assert_eq!(lu.options.origin, OptionsOrigin::GltfExtras);
+        // Ses fautes se situent dans les extras.
+        let refus = parse_gltf_block(r#"{ "schema": 1, "scal": 2 }"#).unwrap_err();
+        assert_eq!(refus.faults[0].path, "$.extras.axion.scal");
+    }
+
+    #[test]
+    fn options_des_extras_sans_bloc_axion_n_en_donnent_pas() {
+        for extras in [r#"{ "blender": 1 }"#, "[1, 2]", r#""texte""#, "3", "null"] {
+            assert_eq!(gltf_root_block(extras).unwrap(), None, "{extras}");
+        }
+        assert!(gltf_root_block(r#"{ "axion": {}, "axion": {} }"#).is_err());
     }
 
     #[test]

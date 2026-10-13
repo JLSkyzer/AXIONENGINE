@@ -35,7 +35,8 @@ parry3d.workspace = true
 # Écart à la table 32.2, qui écarte `serde_json` du runtime : borné à ce seul
 # lecteur par l'ADR-136. Tout autre JSON du jeu reste lu côté Java.
 serde.workspace = true
-serde_json.workspace = true
+# `raw_value` : le bloc `axion` des extras d'un glTF se relit tel qu'écrit.
+serde_json = { workspace = true, features = ["raw_value"] }
 stl_io.workspace = true
 tobj.workspace = true
 zstd.workspace = true
