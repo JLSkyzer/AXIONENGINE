@@ -7,6 +7,7 @@ use core::fmt;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Condvar, Mutex};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 /// Échec de création du système de jobs.
@@ -221,11 +222,42 @@ impl<T> JobHandle<T> {
 /// processus, donc par les autres mods qui utilisent `rayon` ; AXION ne
 /// s'autorise pas à le configurer pour eux, et ne veut pas voir ses propres
 /// travaux mis en file derrière les leurs.
+///
+/// Sa destruction **attend ses workers** : ils finissent les travaux déjà soumis
+/// et s'arrêtent avant qu'elle rende la main. Aucun thread du pool ne survit au
+/// système, ni ne rend sa mémoire après lui — sans quoi le bilan d'un arrêt
+/// (R-482) dépendrait de l'ordonnanceur du système d'exploitation.
 #[derive(Debug)]
 pub struct JobSystem {
+    // L'ordre des champs est celui de leur destruction : le pool s'arrête, puis
+    // ses workers sont attendus.
     pool: rayon::ThreadPool,
+    _workers: Workers,
     budgets: JobBudgets,
     metrics: Arc<JobMetrics>,
+}
+
+/// Les threads du pool, attendus à leur destruction.
+///
+/// `rayon` ne les attend pas : détruire un `ThreadPool` ne fait que lui demander
+/// de s'arrêter. Ils sont donc créés ici (`spawn_handler`), pour en garder les
+/// poignées.
+#[derive(Debug)]
+struct Workers(Vec<JoinHandle<()>>);
+
+impl Drop for Workers {
+    fn drop(&mut self) {
+        let current = std::thread::current().id();
+        for handle in self.0.drain(..) {
+            // Un worker ne s'attend pas lui-même : ce serait un interblocage, si le
+            // système était détruit par l'un de ses propres travaux.
+            if handle.thread().id() != current {
+                // Une panique d'un worker a déjà été absorbée par le pool
+                // (`panic_handler`) : l'erreur de `join` n'apprendrait rien.
+                let _ = handle.join();
+            }
+        }
+    }
 }
 
 impl JobSystem {
@@ -238,17 +270,35 @@ impl JobSystem {
     /// retirer une fonctionnalité faute de parallélisme.
     pub fn new(policy: &WorkerPolicy, budgets: JobBudgets) -> Result<Self, JobError> {
         let metrics = Arc::new(JobMetrics::new());
-        let pool = rayon::ThreadPoolBuilder::new()
+        let mut threads = Vec::new();
+        let built = rayon::ThreadPoolBuilder::new()
             .num_threads(policy.workers())
             .thread_name(|index| format!("axion-job-{index}"))
             // Une panic ne doit pas traverser le pool : chaque travail est déjà
             // enveloppé, ce gestionnaire n'est que le dernier filet.
             .panic_handler(|_| ())
-            .build()
-            .map_err(|error| JobError::PoolUnavailable(error.to_string()))?;
+            // Les threads sont créés ici, et non par `rayon`, pour en garder les
+            // poignées (voir `Workers`).
+            .spawn_handler(|thread| {
+                let mut builder = std::thread::Builder::new();
+                if let Some(name) = thread.name() {
+                    builder = builder.name(name.to_owned());
+                }
+                if let Some(size) = thread.stack_size() {
+                    builder = builder.stack_size(size);
+                }
+                threads.push(builder.spawn(move || thread.run())?);
+                Ok(())
+            })
+            .build();
+        // Si la création échoue en cours de route, `rayon` arrête les threads déjà
+        // créés : `workers` les attend en sortant.
+        let workers = Workers(threads);
+        let pool = built.map_err(|error| JobError::PoolUnavailable(error.to_string()))?;
 
         Ok(Self {
             pool,
+            _workers: workers,
             budgets,
             metrics,
         })
@@ -382,6 +432,8 @@ mod tests {
     use super::*;
     use crate::workers::{CpuShare, Side};
     use ax_model::budgets::Budget;
+    use core::cell::RefCell;
+    use core::sync::atomic::AtomicUsize;
 
     const SECONDE: Duration = Duration::from_secs(5);
 
@@ -554,6 +606,56 @@ mod tests {
         assert_eq!(
             suivant.wait(SECONDE).expect("résultat non rendu").outcome,
             JobOutcome::Done(1)
+        );
+    }
+
+    #[test]
+    fn t170_la_destruction_du_systeme_attend_la_fin_de_ses_workers() {
+        // Chaque worker qui prend un travail arme un objet local à son thread ; son
+        // destructeur ne tourne qu'à la sortie du thread, lentement. La destruction du
+        // système rendue, tous les threads armés doivent en être sortis : aucun ne
+        // survit au système, ni ne rend sa mémoire après lui (R-482).
+        struct Sortie(Arc<AtomicUsize>);
+        impl Drop for Sortie {
+            fn drop(&mut self) {
+                std::thread::sleep(Duration::from_millis(50));
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        thread_local! {
+            static SORTIE: RefCell<Option<Sortie>> = const { RefCell::new(None) };
+        }
+
+        let armes = Arc::new(AtomicUsize::new(0));
+        let sortis = Arc::new(AtomicUsize::new(0));
+        let jobs = system(4, 0);
+        let handles: Vec<_> = (0..64)
+            .map(|_| {
+                let armes = Arc::clone(&armes);
+                let sortis = Arc::clone(&sortis);
+                jobs.submit(JobKind::Physics, move |_| {
+                    SORTIE.with(|cell| {
+                        let mut cell = cell.borrow_mut();
+                        if cell.is_none() {
+                            *cell = Some(Sortie(sortis));
+                            armes.fetch_add(1, Ordering::SeqCst);
+                        }
+                    });
+                    std::thread::sleep(Duration::from_millis(1));
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.wait(SECONDE).expect("travail rendu");
+        }
+        let armes = armes.load(Ordering::SeqCst);
+        assert!(armes >= 1, "au moins un worker a travaillé");
+
+        drop(jobs);
+        assert_eq!(
+            sortis.load(Ordering::SeqCst),
+            armes,
+            "chaque worker est sorti avant que la destruction rende la main"
         );
     }
 

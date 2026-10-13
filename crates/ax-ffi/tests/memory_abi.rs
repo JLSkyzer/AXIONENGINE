@@ -188,12 +188,12 @@ fn session() -> (u64, u64) {
     (avant, pendant)
 }
 
-/// Le bilan de la mémoire comptée une fois la session close tout à fait : les threads
-/// du pool de jobs rendent leurs dernières allocations en s'arrêtant, et `rayon` libère
-/// ses files par époques (`crossbeam-epoch`), plus tard. On fait avancer l'époque jusqu'à
-/// deux lectures identiques. Sans cela, un reliquat différé de 35 Ko apparaissait au
-/// second cycle, puis restait stable — mesuré le 2026-10-13 : vidée, l'époque ramène le
-/// total exactement au même octet après chaque cycle.
+/// Le bilan de la mémoire comptée une fois la session close tout à fait. L'arrêt attend
+/// déjà les threads du pool de jobs (`ax-jobs`) : aucun ne rend sa mémoire après lui.
+/// Reste `rayon`, qui libère ses files par époques (`crossbeam-epoch`), plus tard. On
+/// fait avancer l'époque jusqu'à deux lectures identiques. Sans cela, un reliquat différé
+/// de 35 Ko apparaissait au second cycle, puis restait stable — mesuré le 2026-10-13 :
+/// vidée, l'époque ramène le total exactement au même octet après chaque cycle.
 fn bilan() -> usize {
     let echeance = Instant::now() + Duration::from_secs(5);
     let mut precedent = usize::MAX;
