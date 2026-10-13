@@ -1445,3 +1445,17 @@ ne l'était pas.
 Tout nouveau cas limite de la chaîne d'assets se passe aussi par ce chemin, et une sortie du compilateur qui
 change fait monter `COMPILER_VERSION` des deux côtés (R-892).
 
+## 2026-10-14 | `serde_json` ajouté au runtime sans relire la table 32.2, qui l'écarte
+
+**Ce qui a mal tourné.** Le lecteur des options `.axion.json` (3464a16) a fait de `serde_json` une dépendance
+directe d'`ax-asset`, lié à la bibliothèque native. La table 32.2 écarte pourtant « `serde_json` en runtime jeu ».
+L'option de transport recommandée à Killian pour l'ADR-135 allait déjà contre cette règle. L'écart a été vu en
+relisant un commentaire de `gltf_extras.rs`, après le push ; Killian l'a accepté et borné par l'ADR-136.
+
+**Cause.** La table 32.2 a été consultée pour ce qu'elle retient (`serde`, `ciborium`), pas pour ce qu'elle
+écarte. `cargo deny` ne voit rien : il juge les licences et les sources, pas les choix d'architecture.
+
+**Règle.** Avant d'ajouter une dépendance à un crate du runtime — ou de recommander une option qui en suppose
+une —, relire la table 32.2 en entier, la liste « Écarté » comprise, et chercher dans le code les commentaires
+qui la citent.
+

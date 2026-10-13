@@ -32,6 +32,8 @@ parry3d.workspace = true
 # PARTIE 6.4 (ADR-135) : le lecteur strict des options `.axion.json`. Le
 # tokeniseur de `serde_json` — déjà dans l'arbre par `gltf-json` — et un visiteur
 # propre, qui refuse une clé en double que `serde_json::Value` garderait.
+# Écart à la table 32.2, qui écarte `serde_json` du runtime : borné à ce seul
+# lecteur par l'ADR-136. Tout autre JSON du jeu reste lu côté Java.
 serde.workspace = true
 serde_json.workspace = true
 stl_io.workspace = true

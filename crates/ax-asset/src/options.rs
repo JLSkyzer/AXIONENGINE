@@ -2,7 +2,9 @@
 //!
 //! **Un seul lecteur**, celui-ci, pour le jeu et pour `axion-cli` : le jeu en
 //! reçoit le texte par `options_cbor` (IF-06), la CLI le lit sur le disque, et
-//! tous deux l'interprètent ici (R-830, R-860).
+//! tous deux l'interprètent ici (R-830, R-860). Le tokeniseur est celui de
+//! `serde_json`, que la table 32.2 écarte du runtime : écart borné à ce seul
+//! lecteur par l'ADR-136 ; tout autre JSON du jeu reste lu côté Java.
 //!
 //! Le fichier est du JSON strict — clé en double, contenu après la racine, BOM
 //! ou UTF-8 invalide refusés —, et chaque clé est connue : une clé inconnue est
