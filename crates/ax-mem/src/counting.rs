@@ -16,6 +16,16 @@
 //! `realloc` garde l'arène d'origine. Ce qu'un job alloue est ainsi compté en
 //! [`ArenaClass::Scratch`] — son résultat compris, tant qu'il vit.
 //!
+//! # Provenance
+//!
+//! Le pointeur qu'un appelant rend à `dealloc` ou à `realloc` peut n'avoir de
+//! droits que sur la zone qu'il a reçue : un `Box`, un `Vec` ou une référence
+//! le restreignent à leur contenu (c'est le modèle d'aliasing que Miri vérifie,
+//! R-2122). L'en-tête n'est donc jamais atteint à travers lui : la provenance
+//! du bloc entier est **exposée** à l'allocation, puis reprise par
+//! `with_exposed_provenance_mut` pour relire l'en-tête et rendre le bloc au
+//! système. L'exposition ne coûte rien à l'exécution.
+//!
 //! # Coût
 //!
 //! Par allocation et par libération : une lecture de deux cellules locales au
@@ -204,11 +214,22 @@ fn outer(layout: Layout) -> Option<Layout> {
     Layout::from_size_align(size, layout.align()).ok()
 }
 
+/// Début du bloc d'un pointeur rendu par cet allocateur, muni de la provenance
+/// du bloc entier que [`finish`] a exposée — jamais de celle de `ptr`, qui peut
+/// ne couvrir que la zone utilisateur (voir « Provenance »).
+fn block_of(ptr: *mut u8, offset: usize) -> *mut u8 {
+    // `ptr` est à `offset` octets du début de son bloc : la soustraction ne
+    // revient pas en arrière de zéro ; `wrapping_sub` garde l'allocateur sans
+    // panique même en débogage.
+    core::ptr::with_exposed_provenance_mut(ptr.addr().wrapping_sub(offset))
+}
+
 // SAFETY: chaque méthode délègue à `System` avec une disposition valide — celle
 // que `outer` a construite et vérifiée à l'allocation, reconstruite à
 // l'identique à la libération —, et rend un pointeur décalé de l'en-tête à
 // l'intérieur du bloc obtenu, aligné comme demandé (l'en-tête est un multiple de
-// l'alignement). Aucune méthode ne panique.
+// l'alignement). Le bloc est retrouvé à la libération par sa provenance exposée,
+// pas par celle du pointeur rendu. Aucune méthode ne panique.
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let Some(outer) = outer(layout) else {
@@ -233,10 +254,12 @@ unsafe impl GlobalAlloc for CountingAllocator {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         let offset = header(layout.align());
+        let base = block_of(ptr, offset);
         // SAFETY: le contrat de `dealloc` garantit que `ptr` a été rendu par cet
-        // allocateur pour `layout` : il est à `offset` octets du début de son bloc,
-        // et l'octet qui le précède, dans l'en-tête, porte son arène.
-        let (base, arena) = unsafe { (ptr.sub(offset), ptr.sub(1).read()) };
+        // allocateur pour `layout` : `base` est le début de son bloc, dont `finish`
+        // a exposé la provenance, et l'octet `offset - 1`, le dernier de l'en-tête,
+        // porte son arène.
+        let arena = unsafe { base.add(offset - 1).read() };
         self.discharge(arena, layout.size());
         // SAFETY: la disposition extérieure a été validée à l'allocation pour les
         // mêmes taille et alignement : la reconstruire ne peut pas échouer.
@@ -254,8 +277,9 @@ unsafe impl GlobalAlloc for CountingAllocator {
         if Layout::from_size_align(new_outer_size, layout.align()).is_err() {
             return core::ptr::null_mut();
         }
+        let base = block_of(ptr, offset);
         // SAFETY: comme dans `dealloc`, `ptr` vient de cet allocateur pour `layout`.
-        let (base, arena) = unsafe { (ptr.sub(offset), ptr.sub(1).read()) };
+        let arena = unsafe { base.add(offset - 1).read() };
         // SAFETY: validée à l'allocation, comme dans `dealloc`.
         let outer =
             unsafe { Layout::from_size_align_unchecked(layout.size() + offset, layout.align()) };
@@ -267,6 +291,9 @@ unsafe impl GlobalAlloc for CountingAllocator {
             // Échec : l'ancien bloc reste valide, et compté.
             return core::ptr::null_mut();
         }
+        // Le bloc a pu changer d'adresse : sa provenance est exposée à nouveau,
+        // pour la libération suivante.
+        let _ = moved.expose_provenance();
         if new_size >= layout.size() {
             self.charge(arena, new_size - layout.size());
         } else {
@@ -289,13 +316,16 @@ unsafe fn finish(counter: &CountingAllocator, base: *mut u8, layout: Layout) -> 
     }
     let offset = header(layout.align());
     let arena = current_arena();
-    // SAFETY: le bloc couvre `offset + layout.size()` octets ; `ptr` est à `offset`
-    // de son début.
-    let ptr = unsafe { base.add(offset) };
-    // SAFETY: l'octet qui précède `ptr` appartient à l'en-tête, que ce bloc possède.
-    unsafe { ptr.sub(1).write(arena) };
+    // La provenance du bloc entier, en-tête compris, est exposée : `dealloc` et
+    // `realloc` la reprennent (voir « Provenance »).
+    let _ = base.expose_provenance();
+    // SAFETY: le bloc couvre `offset + layout.size()` octets ; l'octet `offset - 1`
+    // est le dernier de l'en-tête, que ce bloc possède.
+    unsafe { base.add(offset - 1).write(arena) };
     counter.charge(arena, layout.size());
-    ptr
+    // SAFETY: la zone utilisateur commence à `offset` octets du début du bloc,
+    // dans ses bornes.
+    unsafe { base.add(offset) }
 }
 
 #[cfg(test)]
@@ -373,6 +403,36 @@ mod tests {
         assert_eq!(allocator.live_bytes_in(ArenaClass::Scratch), 8);
         // SAFETY: `shrunk` est un bloc de 8 octets, alignement 8.
         unsafe { allocator.dealloc(shrunk, layout(8, 8)) };
+        assert_eq!(allocator.live_bytes(), 0);
+    }
+
+    #[test]
+    fn t016_un_pointeur_restreint_a_son_contenu_rend_tout_son_bloc() {
+        // Un `Vec` ou un `Box` rend à l'allocateur un pointeur tiré d'une
+        // référence à son seul contenu : l'en-tête, hors de cette zone, n'est pas
+        // atteignable à travers lui. Sous Miri, l'y relire est un comportement
+        // indéfini (Stacked Borrows) ; ce test le reproduit, en `realloc` comme
+        // en `dealloc`.
+        let allocator = CountingAllocator::new();
+        let l = layout(56, 8);
+        // SAFETY: disposition non nulle.
+        let raw = unsafe { allocator.alloc_zeroed(l) };
+        assert!(!raw.is_null());
+        // SAFETY: 56 octets initialisés, alignés, que rien d'autre n'emprunte.
+        let content = unsafe { core::slice::from_raw_parts_mut(raw, 56) };
+        content.fill(7);
+        let narrowed = content.as_mut_ptr();
+        // SAFETY: `narrowed` est l'adresse rendue par `alloc_zeroed(l)`.
+        let grown = unsafe { allocator.realloc(narrowed, l, 112) };
+        assert!(!grown.is_null());
+        // SAFETY: le bloc couvre 112 octets ; la fin, non recopiée, est initialisée ici.
+        unsafe { grown.add(56).write_bytes(0, 56) };
+        // SAFETY: 112 octets initialisés, alignés, que rien d'autre n'emprunte.
+        let content = unsafe { core::slice::from_raw_parts_mut(grown, 112) };
+        assert!(content[..56].iter().all(|&b| b == 7), "contenu recopié");
+        let narrowed = content.as_mut_ptr();
+        // SAFETY: `narrowed` est l'adresse rendue par `realloc`, pour 112 octets.
+        unsafe { allocator.dealloc(narrowed, layout(112, 8)) };
         assert_eq!(allocator.live_bytes(), 0);
     }
 
