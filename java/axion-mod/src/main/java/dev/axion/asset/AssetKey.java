@@ -1,6 +1,5 @@
 package dev.axion.asset;
 
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -47,17 +46,18 @@ public final class AssetKey {
      * Calcule la clé d'une source.
      *
      * @param content contenu du fichier source
-     * @param options options de compilation, telles qu'elles seront transmises
+     * @param options octets du fichier d'options, tels qu'ils seront transmis ;
+     *     vide sans fichier (ADR-135)
      * @param compilerVersion version du compilateur natif
      * @param abiVersion version de l'ABI attendue
      * @return la clé, en hexadécimal minuscule
      */
     public static AssetKey of(
-            byte[] content, String options, int compilerVersion, int abiVersion) {
+            byte[] content, byte[] options, int compilerVersion, int abiVersion) {
         MessageDigest digest = digest();
         digest.update(content);
         digest.update(SEPARATOR);
-        digest.update(options.getBytes(StandardCharsets.UTF_8));
+        digest.update(options);
         digest.update(SEPARATOR);
         digest.update(intBytes(compilerVersion));
         digest.update(SEPARATOR);

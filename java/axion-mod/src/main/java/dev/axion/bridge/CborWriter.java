@@ -5,7 +5,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
- * Encodeur CBOR minimal, suffisant pour la configuration (C-04, IF-01).
+ * Encodeur CBOR minimal, suffisant pour la configuration (C-04, IF-01) et le
+ * texte des options de compilation d'un asset (IF-06, ADR-135).
  *
  * <p>La configuration traverse la frontière encodée en CBOR, que le natif
  * décode avec {@code ciborium}. Côté Java, aucune bibliothèque CBOR n'est
@@ -65,6 +66,25 @@ public final class CborWriter {
             writeText(out, entry.getKey());
             writeValue(out, entry.getKey(), entry.getValue());
         }
+        return out.toByteArray();
+    }
+
+    /**
+     * Encode une chaîne de texte CBOR dont les octets sont donnés tels quels.
+     *
+     * <p>C'est la forme du texte d'un {@code .axion.json} à la frontière (IF-06,
+     * ADR-135). Les octets ne sont <strong>pas</strong> validés en UTF-8, et ne
+     * passent pas par une {@link String} : un décodage remplacerait sans bruit un
+     * octet invalide, et le natif accepterait un fichier que la CLI refuse. C'est
+     * le lecteur natif, celui de la CLI, qui juge le texte.
+     *
+     * @param utf8 octets du texte
+     * @return la représentation CBOR
+     */
+    public static byte[] encodeText(byte[] utf8) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(9 + utf8.length);
+        writeHead(out, MAJOR_TEXT, utf8.length);
+        out.write(utf8, 0, utf8.length);
         return out.toByteArray();
     }
 

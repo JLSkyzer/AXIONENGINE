@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
@@ -37,8 +38,8 @@ public final class AssetRegistry {
     /** Identifiant de l'asset de secours, toujours disponible (R-522). */
     public static final String FALLBACK_ID = "axion:builtin/missing";
 
-    /** Options de compilation, telles qu'elles entrent dans la clé. */
-    private static final String OPTIONS = "";
+    /** Sans fichier d'options : aucun octet, ni dans la clé ni à la frontière. */
+    private static final byte[] NO_OPTIONS = new byte[0];
 
     /** `E-3001` : asset requis indisponible au démarrage. */
     private static final int STARTUP_TIMEOUT_CODE = -3001;
@@ -113,6 +114,7 @@ public final class AssetRegistry {
      */
     public int discover() {
         List<String> paths = source.list();
+        Set<String> listed = Set.copyOf(paths);
         int changed = 0;
 
         for (String path : paths) {
@@ -120,7 +122,8 @@ public final class AssetRegistry {
             if (format == SourceFormats.UNKNOWN) {
                 // Un `.a3d` est déjà le résultat d'une compilation, et le reste
                 // n'est pas une source de modèle. Les compter comme des échecs
-                // remplirait le journal de faux problèmes.
+                // remplirait le journal de faux problèmes. Un `.axion.json` est
+                // lu avec sa source, ci-dessous.
                 continue;
             }
 
@@ -132,14 +135,30 @@ public final class AssetRegistry {
                 continue;
             }
 
-            AssetKey key = AssetKey.of(content, OPTIONS, compilerVersion, abiVersion);
+            // ADR-135 : le `<modèle>.axion.json` voisin, s'il existe. Ses octets
+            // entrent dans la clé : modifier les options recompile l'asset, comme
+            // modifier la source (R-520, R-892).
+            byte[] options = NO_OPTIONS;
+            String optionsPath = AssetOptionsFiles.siblingOf(path);
+            if (listed.contains(optionsPath)) {
+                try {
+                    options = source.read(optionsPath);
+                } catch (IOException failure) {
+                    // Compiler avec les défauts produirait un autre asset que
+                    // celui que l'auteur a décrit, sans que rien ne le dise.
+                    fail(path, format, 0, "options illisibles : " + failure);
+                    continue;
+                }
+            }
+
+            AssetKey key = AssetKey.of(content, options, compilerVersion, abiVersion);
             AssetEntry existing = entries.get(path);
             if (existing != null && key.equals(existing.key())) {
                 // R-520 : rien n'a changé, rien n'est refait.
                 continue;
             }
 
-            AssetEntry entry = new AssetEntry(path, format, key, content);
+            AssetEntry entry = new AssetEntry(path, format, key, content, options);
             entries.put(path, entry);
             // L'ancien contenu n'est plus celui de la source : il cesse d'être servi.
             published.remove(path);
@@ -158,8 +177,8 @@ public final class AssetRegistry {
 
         // Une source disparue laisse son entrée derrière elle : la retirer est
         // ce qui distingue un pack rechargé d'un pack qui grossit sans fin.
-        entries.keySet().removeIf(path -> !paths.contains(path));
-        published.keySet().removeIf(path -> !paths.contains(path));
+        entries.keySet().removeIf(path -> !listed.contains(path));
+        published.keySet().removeIf(path -> !listed.contains(path));
         return changed;
     }
 
@@ -241,7 +260,8 @@ public final class AssetRegistry {
 
     private boolean submit(AssetEntry entry) {
         entry.transitionTo(AssetState.QUEUED);
-        int job = compiler.submit(entry.assetId(), entry.format(), entry.content());
+        int job = compiler.submit(
+                entry.assetId(), entry.format(), entry.content(), entry.options());
         if (job <= 0) {
             fail(entry, job, "compilation refusée");
             return false;
@@ -291,7 +311,7 @@ public final class AssetRegistry {
 
     private void fail(String path, int format, int code, String reason) {
         AssetEntry entry = entries.computeIfAbsent(
-                path, key -> new AssetEntry(path, format, null, new byte[0]));
+                path, key -> new AssetEntry(path, format, null, new byte[0], NO_OPTIONS));
         fail(entry, code, reason);
     }
 

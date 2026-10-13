@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
@@ -133,5 +135,28 @@ class CborWriterTest {
     void typesEtroitsAcceptes() {
         assertArrayEquals(encodeValue(42L), encodeValue(42));
         assertArrayEquals(encodeValue(1.5), encodeValue(1.5f));
+    }
+
+    @Test
+    @DisplayName("ADR-135 : une chaîne de texte encodée de ses octets, tels quels")
+    void texteDesOptions() {
+        assertArrayEquals(bytes(0x60), CborWriter.encodeText(new byte[0]));
+        assertArrayEquals(
+                bytes(0x64, 0x49, 0x45, 0x54, 0x46),
+                CborWriter.encodeText("IETF".getBytes(StandardCharsets.UTF_8)));
+        // Bascule de l'en-tête : 23 octets tiennent dans l'octet de tête, pas 24
+        // (RFC 8949 §3) ; au-delà de 255, la longueur prend deux octets.
+        assertEquals(0x77, CborWriter.encodeText(new byte[23])[0] & 0xFF);
+        byte[] vingtQuatre = CborWriter.encodeText(new byte[24]);
+        assertArrayEquals(bytes(0x78, 24), Arrays.copyOf(vingtQuatre, 2));
+        assertEquals(26, vingtQuatre.length);
+        byte[] deuxCentCinquanteSix = CborWriter.encodeText(new byte[256]);
+        assertArrayEquals(bytes(0x79, 0x01, 0x00), Arrays.copyOf(deuxCentCinquanteSix, 3));
+        assertEquals(259, deuxCentCinquanteSix.length);
+        // Un texte valide s'encode comme une valeur de map.
+        assertArrayEquals(encodeValue("é"), CborWriter.encodeText("é".getBytes(StandardCharsets.UTF_8)));
+        // Les octets ne passent pas par une String : un octet invalide en UTF-8 reste
+        // lui-même, et le lecteur natif le refuse comme la CLI (E-7001).
+        assertArrayEquals(bytes(0x62, 0xFF, 0xFE), CborWriter.encodeText(bytes(0xFF, 0xFE)));
     }
 }

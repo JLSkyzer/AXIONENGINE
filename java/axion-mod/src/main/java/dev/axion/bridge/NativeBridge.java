@@ -110,7 +110,8 @@ public final class NativeBridge {
 
     static native int metricsExport(long ctx, byte[] out);
 
-    static native int assetCompile(long ctx, long assetId, int format, long sourceLen);
+    static native int assetCompile(
+            long ctx, long assetId, int format, long sourceLen, byte[] optionsCbor);
 
     static native int assetPoll(long ctx, int jobId, long[] out);
 
@@ -273,11 +274,15 @@ public final class NativeBridge {
      * @param assetId identifiant de l'asset produit
      * @param format code de format, voir {@code SourceFormats}
      * @param sourceLen longueur de la source écrite dans le tampon d'entrée
+     * @param optionsCbor texte du {@code <modèle>.axion.json} voisin en chaîne
+     *     CBOR, ou {@code null} sans fichier (ADR-135) ; une option refusée fait
+     *     échouer le travail, et son code se lit au sondage
      * @return l'identifiant du travail, strictement positif, ou un code d'erreur
      */
-    public static int compileAsset(long ctx, long assetId, int format, long sourceLen) {
+    public static int compileAsset(
+            long ctx, long assetId, int format, long sourceLen, byte[] optionsCbor) {
         CROSSINGS.increment();
-        return assetCompile(ctx, assetId, format, sourceLen);
+        return assetCompile(ctx, assetId, format, sourceLen, optionsCbor);
     }
 
     /**

@@ -1,6 +1,7 @@
 package dev.axion.asset;
 
 import dev.axion.bridge.BufferKinds;
+import dev.axion.bridge.CborWriter;
 import dev.axion.bridge.NativeBridge;
 import java.nio.ByteBuffer;
 
@@ -34,15 +35,15 @@ public final class NativeAssetCompiler implements AssetCompiler {
     }
 
     @Override
-    public int submit(long assetId, int format, byte[] source) {
+    public int submit(long assetId, int format, byte[] source, byte[] options) {
         // Le tampon est partagé avec le chargement des maillages côté client
         // (ADR-119) : toute la séquence se fait sous le verrou des tampons d'asset.
         synchronized (AssetBuffers.LOCK) {
-            return submitLocked(assetId, format, source);
+            return submitLocked(assetId, format, source, options);
         }
     }
 
-    private int submitLocked(long assetId, int format, byte[] source) {
+    private int submitLocked(long assetId, int format, byte[] source, byte[] options) {
         ByteBuffer buffer = NativeBridge.acquire(context, BufferKinds.ASSET_IN, source.length);
         if (buffer == null) {
             return NativeBridge.E_INVALID_BUFFER;
@@ -57,7 +58,10 @@ public final class NativeAssetCompiler implements AssetCompiler {
         int generation = buffer.getInt(GENERATION_OFFSET);
         buffer.put(source);
 
-        int job = NativeBridge.compileAsset(context, assetId, format, source.length);
+        // Le texte des options traverse en chaîne CBOR, hors tampon partagé :
+        // quelques centaines d'octets, que le natif copie avant de rendre la main.
+        byte[] optionsCbor = options.length == 0 ? null : CborWriter.encodeText(options);
+        int job = NativeBridge.compileAsset(context, assetId, format, source.length, optionsCbor);
 
         // Le tampon est rendu aussitôt : le natif a copié la source, et le
         // garder fausserait le bilan d'allocations de l'arrêt (R-322). C'est ce

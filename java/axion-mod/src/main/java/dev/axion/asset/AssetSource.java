@@ -18,7 +18,8 @@ import java.util.List;
 public interface AssetSource {
 
     /**
-     * {@return les chemins de toutes les sources disponibles}
+     * {@return les chemins de toutes les ressources disponibles : les sources,
+     * et les fichiers d'options qui les accompagnent (ADR-135)}
      *
      * <p>L'ordre importe : il decide de l'ordre de compilation, donc de ce qui
      * est pret en premier. Une enumeration stable rend le demarrage

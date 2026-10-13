@@ -2,6 +2,7 @@ package dev.axion.bridge;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -129,8 +130,13 @@ class NativeBridgeTest {
 
     /** Compile une source par la vraie bibliothèque, attend le résultat et relâche les tampons. */
     private static byte[] compiler(long ctx, long assetId, int format, byte[] source) {
+        return compiler(ctx, assetId, format, source, new byte[0]);
+    }
+
+    /** Idem, avec le texte d'un {@code .axion.json} voisin (ADR-135). */
+    private static byte[] compiler(long ctx, long assetId, int format, byte[] source, byte[] options) {
         dev.axion.asset.NativeAssetCompiler compilateur = new dev.axion.asset.NativeAssetCompiler(ctx);
-        int job = compilateur.submit(assetId, format, source);
+        int job = compilateur.submit(assetId, format, source, options);
         assertTrue(job > 0, () -> "compilation refusée, code " + job);
         dev.axion.asset.AssetCompiler.CompileStatus etat = attendre(compilateur, job);
         assertEquals(dev.axion.asset.AssetState.COMPILED, etat.state(), "compilation échouée");
@@ -285,7 +291,7 @@ class NativeBridgeTest {
         byte[] source = String.join(
                         "\n", "v 0 0 0", "v 1 0 0", "v 0 1 0", "f 1 2 3", "")
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        int job = compilateur.submit(0x4242L, dev.axion.asset.SourceFormats.OBJ, source);
+        int job = compilateur.submit(0x4242L, dev.axion.asset.SourceFormats.OBJ, source, new byte[0]);
         assertTrue(job > 0, () -> "compilation refusée, code " + job);
 
         dev.axion.asset.AssetCompiler.CompileStatus etat = attendre(compilateur, job);
@@ -308,6 +314,27 @@ class NativeBridgeTest {
         assertEquals(
                 NativeBridge.OK,
                 NativeBridge.release(reprise, BufferKinds.ASSET_OUT, lireGeneration(reprise, BufferKinds.ASSET_OUT)));
+
+        // ADR-135 : le texte du `.axion.json` voisin traverse la vraie JNI en chaîne
+        // CBOR et la compilation l'applique ; une option refusée se lit au sondage,
+        // avec le code que la CLI donne au même fichier.
+        byte[] defauts = compiler(reprise, 0x4235L, dev.axion.asset.SourceFormats.OBJ, source);
+        byte[] agrandi = compiler(
+                reprise,
+                0x4235L,
+                dev.axion.asset.SourceFormats.OBJ,
+                source,
+                "{ \"schema\": 1, \"scale\": 2.0 }".getBytes(StandardCharsets.UTF_8));
+        assertFalse(java.util.Arrays.equals(defauts, agrandi), "options sans effet sur l'asset");
+        int jobRefuse = compilateur.submit(
+                0x4235L,
+                dev.axion.asset.SourceFormats.OBJ,
+                source,
+                "{ \"schema\": 1, \"scal\": 2.0 }".getBytes(StandardCharsets.UTF_8));
+        assertTrue(jobRefuse > 0, () -> "soumission refusée, code " + jobRefuse);
+        dev.axion.asset.AssetCompiler.CompileStatus refusee = attendre(compilateur, jobRefuse);
+        assertEquals(dev.axion.asset.AssetState.FAILED, refusee.state(), "option inconnue acceptée");
+        assertEquals(-7001, refusee.error(), "E-7001 : option inconnue");
 
         // ADR-119 : l'asset compilé se charge dans le natif, sa géométrie revient par
         // ASSET_OUT, puis son handle se rend — à travers la vraie JNI, ce qui prouve
@@ -456,7 +483,7 @@ class NativeBridgeTest {
         // dynamique qui, ticks suivants, tombe sous la gravité. C'est le chemin
         // complet colliders compilés → corps qui bouge en jeu.
         byte[] gltf = GLTF_COLLIDER.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        int jobCollider = compilateur.submit(0x4343L, dev.axion.asset.SourceFormats.GLTF, gltf);
+        int jobCollider = compilateur.submit(0x4343L, dev.axion.asset.SourceFormats.GLTF, gltf, new byte[0]);
         assertTrue(jobCollider > 0, () -> "compilation du glTF collider refusée, code " + jobCollider);
 
         dev.axion.asset.AssetCompiler.CompileStatus etatCollider = attendre(compilateur, jobCollider);

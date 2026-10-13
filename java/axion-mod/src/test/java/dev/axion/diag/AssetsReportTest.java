@@ -44,7 +44,7 @@ class AssetsReportTest {
         private boolean fail;
 
         @Override
-        public int submit(long assetId, int format, byte[] source) {
+        public int submit(long assetId, int format, byte[] source, byte[] options) {
             jobs.add(jobs.size() + 1);
             return jobs.size();
         }

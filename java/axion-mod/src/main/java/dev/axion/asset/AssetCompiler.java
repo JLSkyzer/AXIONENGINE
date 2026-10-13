@@ -16,10 +16,12 @@ public interface AssetCompiler {
      * @param assetId identifiant de l'asset
      * @param format code de format, voir {@link SourceFormats}
      * @param source contenu de la source
+     * @param options texte du {@code <modèle>.axion.json} voisin, tel quel, ou un
+     *     tableau vide sans fichier (ADR-135)
      * @return l'identifiant du travail, strictement positif, ou un code
      *     d'erreur negatif
      */
-    int submit(long assetId, int format, byte[] source);
+    int submit(long assetId, int format, byte[] source, byte[] options);
 
     /**
      * Sonde une compilation lancee.

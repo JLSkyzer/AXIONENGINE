@@ -736,8 +736,8 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
               de 6 000 000 indices serait dépassé.
             - **Reste dû** : le chargeur serveur (C-40) devra ignorer les
               meshes de LOD de `GEOM` ; le lecteur de `LODM` (C-64, M4) devra
-              la valider au chargement (R-540) ; les options `lod` de
-              `.axion.json` ne sont pas lues (valeurs de la PARTIE 6.4).
+              la valider au chargement (R-540). Les options `lod` de
+              `.axion.json` sont lues depuis l'ADR-135 (2026-10-14).
       - [ ] **Tranche D — reportée en M3, avec C-32** (décision de Killian,
             2026-09-13). Décomposition convexe bornée et points d'enveloppe
             (étapes 8 et 9, R-551).
@@ -795,10 +795,9 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
       - logique dans la bibliothèque `ax_cli`, testée sans disque ; le binaire
             n'ajoute que les I/O. 20 tests (T-580), essai de bout en bout
             `compile`→`inspect` concluant. `cargo test --workspace` vert.
-      - **Reste dû** (jalons suivants, avec leurs composants) : `deform` et
-        `replay` (C-28, C-41, C-42, M6), `diff`, `lod` sur un `.a3d`,
-        `validate`, `bench-asset`, et l'option `--options <json>` (lecture des
-        options de `.axion.json`, qui exige un analyseur JSON).
+      - **Reste dû** : `deform` et `replay` (C-28, C-41, C-42, M6). `diff`,
+        `lod`, `validate`, `bench-asset` et `--options` sont faits : voir
+        « Clôture de M2 ».
 - [ ] **C-70 — API publique `axion-api`** (M2). Module Gradle `axion-api`,
       publié seul, sans dépendance à l'implémentation ni au natif (R-1750) ;
       dépend des types Minecraft/JOML qu'il expose. `gradlew :axion-api:build`
@@ -1321,11 +1320,17 @@ est tenue par ce qui existe.
       - [x] `bench-asset <src>` (85068b7) : harnais C-72, mesure locale non publiable.
       - [x] en chemin : export des métriques en deux temps (086e89e), arrêt du pool de jobs
             (2bb21a3), `GEOM` d'un mesh sans triangle (72a8e6d, `COMPILER_VERSION` 9).
-      - [ ] options de compilation (PARTIE 6.4, [ADR-135](../docs/decisions/ADR-135.md), accepté
-            le 2026-10-13) : un seul lecteur dans `ax-asset`, défauts R-870,
-            R-871, R-872 ; CLI `compile --options`, et **le jeu aussi** (R-830, R-860) : Java lit le
-            `<modèle>.axion.json` voisin, l'encode en CBOR, `axion_asset_compile` le reçoit
-            (`options_cbor`, IF-06, ignoré jusqu'ici) par le pont JNI.
+      - [x] options de compilation (PARTIE 6.4, [ADR-135](../docs/decisions/ADR-135.md), accepté
+            le 2026-10-13), en sept tranches (table de l'ADR) : un seul lecteur dans `ax-asset`
+            (3464a16, écart à la table 32.2 borné par l'ADR-136), appliqué par le pipeline (38da850,
+            3f0baa4), bloc des `extras` glTF (75353ae), CLI (a236ce6), et le jeu (tranche 7) : Java
+            lit le `<modèle>.axion.json` voisin, en fait entrer les octets dans la clé du cache et le
+            passe en chaîne CBOR à `axion_asset_compile` (`(JJIJ[B)I`) ; une option refusée échoue
+            au sondage avec le code de la CLI. Une ressource illisible reste énumérée et sa lecture
+            rend l'échec, au lieu d'une compilation avec les défauts.
+            - **Reste dû** : les avertissements de compilation ne remontent pas à Java ; pour
+              l'asset entier, `auto_capsule`, `auto_convex`, `auto_compound` signalés, pas produits,
+              et le mode de collider d'une definition ne voyage pas jusqu'à la compilation (C-32).
 - [ ] **C-50 en jeu** : persistance (apparition, sauvegarde, rechargement du monde), jamais
       observée ; et le « 0 assembly(s) retirée(s) » de `/axion remove` du 2026-10-03.
 - [ ] **Definition of Done de M2** vérifiée, puis `M2` dans `COMPLETED_MILESTONES` sur décision

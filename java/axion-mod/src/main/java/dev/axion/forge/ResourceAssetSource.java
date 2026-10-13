@@ -1,10 +1,12 @@
 package dev.axion.forge;
 
+import dev.axion.asset.AssetOptionsFiles;
 import dev.axion.asset.AssetSource;
 import dev.axion.asset.SourceFormats;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,17 +37,20 @@ public final class ResourceAssetSource implements AssetSource {
     /** Préfixe des definitions (C-27), relatif à la racine du gestionnaire. */
     public static final String DEFINITIONS = "axion/definitions";
 
+    /** Contenu par chemin, dans l'ordre d'énumération ; {@code null} si illisible. */
     private final Map<String, byte[]> files = new LinkedHashMap<>();
+    private final Map<String, IOException> unreadable = new HashMap<>();
     private final List<String> failures = new ArrayList<>();
 
     /**
-     * Énumère et lit les sources de modèles sous un préfixe.
+     * Énumère et lit les sources de modèles sous un préfixe, avec leurs fichiers
+     * d'options (ADR-135).
      *
      * @param manager gestionnaire de ressources du rechargement en cours
      * @param prefix préfixe à explorer, par exemple {@link #MODELS}
      */
     public ResourceAssetSource(ResourceManager manager, String prefix) {
-        this(manager, prefix, ResourceAssetSource::isSource);
+        this(manager, prefix, ResourceAssetSource::isSourceOrOptions);
     }
 
     /**
@@ -73,15 +78,27 @@ public final class ResourceAssetSource implements AssetSource {
             } catch (IOException failure) {
                 // Une ressource illisible ne fait pas échouer l'énumération :
                 // les autres assets n'y sont pour rien, et R-522 veut que le
-                // monde se charge quand même.
+                // monde se charge quand même. Elle reste pourtant énumérée, et
+                // sa lecture rend l'échec : à celui qui la lit de le consigner
+                // — un asset de secours, une definition refusée, une source
+                // dont les options manquent — plutôt que de la voir disparaître.
+                // Une source dont le `.axion.json` aurait disparu serait
+                // compilée avec les défauts, sans que rien ne le dise (ADR-135).
+                files.put(location.toString(), null);
+                unreadable.put(location.toString(), failure);
                 failures.add(location + " — " + failure);
             }
         }
     }
 
-    /** Indique si un chemin désigne une source d'asset compilable. */
-    private static boolean isSource(String path) {
-        return SourceFormats.fromPath(path) != SourceFormats.UNKNOWN;
+    /**
+     * Indique si un chemin désigne une source d'asset compilable, ou le fichier
+     * d'options qui l'accompagne : lu ici avec elle, puisque le gestionnaire
+     * n'est pas gardé pour plus tard.
+     */
+    private static boolean isSourceOrOptions(String path) {
+        return SourceFormats.fromPath(path) != SourceFormats.UNKNOWN
+                || AssetOptionsFiles.isOptionsFile(path);
     }
 
     @Override
@@ -91,6 +108,10 @@ public final class ResourceAssetSource implements AssetSource {
 
     @Override
     public byte[] read(String path) throws IOException {
+        IOException failure = unreadable.get(path);
+        if (failure != null) {
+            throw new IOException("illisible à l'énumération : " + failure.getMessage(), failure);
+        }
         byte[] content = files.get(path);
         if (content == null) {
             throw new IOException("ressource absente de l'énumération : " + path);
@@ -103,7 +124,7 @@ public final class ResourceAssetSource implements AssetSource {
         return List.copyOf(failures);
     }
 
-    /** {@return le nombre de sources énumérées} */
+    /** {@return le nombre de fichiers énumérés, sources et options} */
     public int size() {
         return files.size();
     }

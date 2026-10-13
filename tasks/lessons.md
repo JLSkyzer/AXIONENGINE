@@ -1459,3 +1459,20 @@ relisant un commentaire de `gltf_extras.rs`, après le push ; Killian l'a accept
 une —, relire la table 32.2 en entier, la liste « Écarté » comprise, et chercher dans le code les commentaires
 qui la citent.
 
+## 2026-10-14 | Une branche d'erreur testée par doublure, que l'implémentation réelle n'atteignait jamais
+
+**Ce qui a mal tourné.** `AssetRegistry` et `DefinitionRegistry` traitent l'`IOException` de
+`AssetSource.read()` — asset de secours, definition refusée —, et leurs tests le vérifient par une
+`FakeSource` qui lève à la lecture. En jeu, `ResourceAssetSource` écartait pourtant une ressource illisible
+dès l'énumération : ces branches étaient mortes, et un `.axion.json` illisible aurait laissé compiler sa
+source avec les défauts, sans autre trace qu'un avertissement du journal. Vu en relisant la tranche 7 de
+l'ADR-135 avant son commit ; un test sur la vraie classe l'a confirmé (la source partait en compilation).
+
+**Cause.** La doublure promettait un comportement — « lisible à l'énumération, illisible à la lecture » — que
+l'implémentation réelle ne produisait pas, et rien ne testait l'implémentation réelle : elle dépend d'un
+`ResourceManager`, réputé impossible à fabriquer hors du jeu.
+
+**Règle.** Quand une branche d'erreur n'est exercée que par une doublure, vérifier que l'implémentation réelle
+peut la déclencher, et la tester si ses dépendances se simulent. Un `ResourceManager` se fabrique en test
+(`ResourceAssetSourceTest`) : `ResourceAssetSource` n'a plus d'excuse.
+

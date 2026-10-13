@@ -56,6 +56,7 @@ class AssetRegistryTest {
      */
     private static final class FakeCompiler implements AssetCompiler {
         private final List<Long> submitted = new ArrayList<>();
+        private final Map<Long, byte[]> optionsRecues = new LinkedHashMap<>();
         private final Map<Integer, Integer> restants = new LinkedHashMap<>();
         private int nextJob = 1;
         private int delay;
@@ -63,11 +64,12 @@ class AssetRegistryTest {
         private boolean failCompile;
 
         @Override
-        public int submit(long assetId, int format, byte[] source) {
+        public int submit(long assetId, int format, byte[] source, byte[] options) {
             if (refuseSubmit != 0) {
                 return refuseSubmit;
             }
             submitted.add(assetId);
+            optionsRecues.put(assetId, options);
             int job = nextJob++;
             restants.put(job, delay);
             return job;
@@ -344,15 +346,15 @@ class AssetRegistryTest {
     @DisplayName("La clé dépend du contenu, des options et de la version du compilateur")
     void laCleDependDeSesTroisTermes() {
         byte[] contenu = "v 0 0 0".getBytes(StandardCharsets.UTF_8);
-        AssetKey reference = AssetKey.of(contenu, "", 1, 1);
+        AssetKey reference = AssetKey.of(contenu, new byte[0], 1, 1);
 
-        assertEquals(reference, AssetKey.of(contenu, "", 1, 1));
+        assertEquals(reference, AssetKey.of(contenu, new byte[0], 1, 1));
         assertNotEquals(
-                reference, AssetKey.of("v 1 1 1".getBytes(StandardCharsets.UTF_8), "", 1, 1));
-        assertNotEquals(reference, AssetKey.of(contenu, "lod=2", 1, 1));
+                reference, AssetKey.of("v 1 1 1".getBytes(StandardCharsets.UTF_8), new byte[0], 1, 1));
+        assertNotEquals(reference, AssetKey.of(contenu, "lod=2".getBytes(StandardCharsets.UTF_8), 1, 1));
         // Sans ce terme, une correction du compilateur n'atteindrait jamais les
         // assets déjà compilés (R-562).
-        assertNotEquals(reference, AssetKey.of(contenu, "", 2, 1));
+        assertNotEquals(reference, AssetKey.of(contenu, new byte[0], 2, 1));
 
         assertEquals(64, reference.hex().length());
         assertEquals(reference.hex().substring(0, 2), reference.shard());
@@ -473,5 +475,79 @@ class AssetRegistryTest {
         assertNotNull(published);
         assertEquals(premier.published("m.obj").key(), published.key());
         assertArrayEquals(premier.published("m.obj").a3d(), published.a3d());
+    }
+
+    @Test
+    @DisplayName("ADR-135 : le .axion.json voisin part avec sa source, sans être un asset")
+    void lesOptionsVoisinesPartentAvecLaSource() {
+        byte[] options = "{ \"schema\": 1, \"scale\": 2.0 }".getBytes(StandardCharsets.UTF_8);
+        FakeSource source = new FakeSource()
+                .put("ns:axion/models/voiture.glb", "glTF...")
+                .put("ns:axion/models/roue.obj", "v 0 0 0");
+        source.files.put("ns:axion/models/voiture.axion.json", options);
+        FakeCompiler compiler = new FakeCompiler();
+
+        AssetRegistry registry = registry(source, compiler);
+        assertEquals(2, registry.discover());
+        // Le fichier d'options n'est pas une source : il n'a pas d'entrée à lui.
+        assertEquals(2, registry.entries().size());
+        AssetEntry voiture = registry.entry("ns:axion/models/voiture.glb");
+        AssetEntry roue = registry.entry("ns:axion/models/roue.obj");
+        assertArrayEquals(options, voiture.options());
+        assertEquals(0, roue.options().length, "une source sans fichier n'a pas d'options");
+
+        // Le texte part tel quel au compilateur, dont le lecteur est celui de la CLI.
+        assertEquals(2, registry.pump(0).submitted());
+        assertArrayEquals(options, compiler.optionsRecues.get(voiture.assetId()));
+        assertEquals(0, compiler.optionsRecues.get(roue.assetId()).length);
+    }
+
+    @Test
+    @DisplayName("ADR-135 : les octets des options entrent dans la clé, et les changer recompile")
+    void lesOptionsEntrentDansLaCle() {
+        byte[] contenu = "v 0 0 0".getBytes(StandardCharsets.UTF_8);
+        byte[] options = "{ \"schema\": 1 }".getBytes(StandardCharsets.UTF_8);
+        FakeSource source = new FakeSource().put("m.obj", "v 0 0 0");
+        source.files.put("m.axion.json", options);
+        AssetRegistry registry = registry(source, new FakeCompiler());
+
+        assertEquals(1, registry.discover());
+        AssetKey avant = registry.entry("m.obj").key();
+        assertEquals(AssetKey.of(contenu, options, COMPILER_VERSION, 0), avant);
+        registry.pump(0);
+        registry.pump(0);
+        assertEquals(0, registry.discover(), "rien n'a changé, rien n'est refait");
+
+        // Seules les options changent : la source se recompile (R-520, R-892).
+        source.put("m.axion.json", "{ \"schema\": 1, \"compress\": false }");
+        assertEquals(1, registry.discover());
+        assertNotEquals(avant, registry.entry("m.obj").key());
+
+        // Le fichier disparaît : retour aux défauts, et à la clé d'une source seule.
+        source.files.remove("m.axion.json");
+        assertEquals(1, registry.discover());
+        assertEquals(
+                AssetKey.of(contenu, new byte[0], COMPILER_VERSION, 0),
+                registry.entry("m.obj").key());
+    }
+
+    @Test
+    @DisplayName("ADR-135 : des options illisibles font échouer leur source, sans repli sur les défauts")
+    void desOptionsIllisiblesFontEchouerLeurSource() {
+        FakeSource source = new FakeSource()
+                .put("m.obj", "v 0 0 0")
+                .put("m.axion.json", "{ \"schema\": 1 }");
+        source.illisibles.add("m.axion.json");
+        FakeCompiler compiler = new FakeCompiler();
+        AssetRegistry registry = registry(source, compiler);
+
+        assertEquals(0, registry.discover());
+        assertEquals(AssetState.FAILED, registry.entry("m.obj").state());
+        registry.pump(0);
+        assertTrue(compiler.submitted.isEmpty(), "compilée avec les défauts");
+        assertEquals(1, registry.diagnostics().size());
+        assertTrue(
+                registry.diagnostics().get(0).contains("options illisibles"),
+                registry.diagnostics().get(0));
     }
 }

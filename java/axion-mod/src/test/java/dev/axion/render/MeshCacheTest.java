@@ -249,7 +249,7 @@ class MeshCacheTest {
 
     private static Published published(String content) {
         byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-        return new Published(7L, AssetKey.of(bytes, "", 1, 2), bytes);
+        return new Published(7L, AssetKey.of(bytes, new byte[0], 1, 2), bytes);
     }
 
     /** Fait tourner le thread de fond et le fil de rendu jusqu'à ce que plus rien n'attende. */

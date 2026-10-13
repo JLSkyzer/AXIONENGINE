@@ -397,6 +397,47 @@ pub unsafe extern "C" fn axion_metrics_export(
     })
 }
 
+/// Plus grand texte d'options qu'`axion_asset_compile` accepte, en octets de son
+/// CBOR. Un fichier d'options tient en quelques centaines d'octets ; la borne
+/// n'est là que pour qu'aucune entrée ne fasse allouer sans limite (R-901).
+pub const MAX_OPTIONS_BYTES: usize = 64 * 1024;
+
+/// Les octets d'un paramètre d'options : une chaîne de texte CBOR (type majeur
+/// 3, longueur définie), et rien après elle.
+///
+/// Leur UTF-8 n'est **pas** vérifié ici, et c'est voulu : le lecteur d'options
+/// le juge, et refuse un texte invalide par `E-7001`, au chemin `$` — ce que
+/// `axion-cli` dit du même fichier (ADR-135 points 1 et 2, R-830). Pour RFC 8949,
+/// une telle chaîne est bien formée mais invalide (§3.1), et c'est au protocole
+/// de dire ce qu'en font ses décodeurs (§5.3) : celui-ci la remet au lecteur.
+fn options_text_of(cbor: &[u8]) -> Option<&[u8]> {
+    const MAJOR_TEXT: u8 = 3;
+    let (&head, rest) = cbor.split_first()?;
+    if head >> 5 != MAJOR_TEXT {
+        return None;
+    }
+    let (len, body) = match head & 0x1f {
+        short @ 0..=23 => (u64::from(short), rest),
+        24 => (u64::from(*rest.first()?), rest.get(1..)?),
+        25 => (
+            u64::from(u16::from_be_bytes(rest.get(..2)?.try_into().ok()?)),
+            rest.get(2..)?,
+        ),
+        26 => (
+            u64::from(u32::from_be_bytes(rest.get(..4)?.try_into().ok()?)),
+            rest.get(4..)?,
+        ),
+        27 => (
+            u64::from_be_bytes(rest.get(..8)?.try_into().ok()?),
+            rest.get(8..)?,
+        ),
+        // 28..=30 sont réservés ; 31 est une longueur indéfinie, que le texte
+        // d'un fichier n'a aucune raison d'employer.
+        _ => return None,
+    };
+    (usize::try_from(len).ok()? == body.len()).then_some(body)
+}
+
 /// Lance la compilation d'un asset (IF-06).
 ///
 /// La source est lue dans le tampon `ASSET_IN`, où Java l'a écrite : R-313
@@ -406,6 +447,14 @@ pub unsafe extern "C" fn axion_metrics_export(
 /// La compilation est **asynchrone** (R-521) : elle part sur le pool de jobs,
 /// et l'appelant sonde `axion_asset_poll`. Aucun rappel de Rust vers Java
 /// (INV-07).
+///
+/// `options_cbor` porte le texte du `<modèle>.axion.json` voisin de la source,
+/// tel quel, comme **chaîne CBOR** ; `options_len` nul s'il n'y en a pas
+/// (ADR-135). Le texte est lu par le lecteur d'options d'`ax-asset`, celui que
+/// `axion-cli` emploie aussi (R-830), dans le travail même : une option refusée
+/// fait échouer la compilation, et son code (`E-7001`, `E-7003`) se lit au
+/// sondage. Un paramètre qui n'est pas une chaîne, ou plus long que
+/// [`MAX_OPTIONS_BYTES`], est refusé tout de suite (`AXION_E_CONFIG`).
 ///
 /// # Safety
 ///
@@ -428,6 +477,24 @@ pub unsafe extern "C" fn axion_asset_compile(
         let Some(format) = decode_source_format(source_format) else {
             return AXION_E_CONFIG;
         };
+        let options_text = if options_len == 0 {
+            None
+        } else {
+            // Borné avant tout décodage (R-901).
+            if options_len > MAX_OPTIONS_BYTES {
+                return AXION_E_CONFIG;
+            }
+            // SAFETY: `options_cbor` est non nul dès que `options_len` l'est
+            // (vérifié ci-dessus), et le contrat garantit `options_len` octets
+            // lisibles.
+            let cbor = unsafe { std::slice::from_raw_parts(options_cbor, options_len) };
+            // Copié : le worker lit après le retour de l'appel, quand le tableau
+            // de l'appelant n'est plus garanti.
+            match options_text_of(cbor) {
+                Some(text) => Some(text.to_vec()),
+                None => return AXION_E_CONFIG,
+            }
+        };
 
         let submitted = context::with(ctx, false, |session| {
             // La source est copiée hors du tampon partagé : celui-ci peut être
@@ -443,9 +510,9 @@ pub unsafe extern "C" fn axion_asset_compile(
                 source_hash: 0,
                 limits: ImportLimits::new(source_len.max(1)),
                 dynamic_body: true,
-                // Les options de `<modele>.axion.json` (PARTIE 6.4) ne sont pas
-                // encore lues : les valeurs par défaut du cahier des charges. Le
-                // mode de collider de la definition (C-32) n'y voyage pas encore.
+                // Les défauts, sauf si le `.axion.json` en donne d'autres : lus
+                // dans le travail, ci-dessous. Le mode de collider de la
+                // definition (C-32) n'y voyage pas encore.
                 authored: AssetOptions::DEFAULT,
             };
 
@@ -455,7 +522,17 @@ pub unsafe extern "C" fn axion_asset_compile(
                 return Err(AXION_E_INVALID_HANDLE);
             };
             let handle = jobs.submit(JobKind::Asset, move |_| {
-                ax_asset::compile::compile(&source, format, &options, |_| None)
+                let mut options = options;
+                let mut notes = Vec::new();
+                if let Some(text) = &options_text {
+                    let parsed = ax_asset::options::parse_bytes(text)
+                        .map_err(ax_asset::compile::CompileError::Options)?;
+                    options.authored = parsed.options;
+                    notes = parsed.warnings;
+                }
+                let mut compiled = ax_asset::compile::compile(&source, format, &options, |_| None)?;
+                compiled.warnings.splice(0..0, notes);
+                Ok(compiled)
             });
             Ok(handle)
         });
@@ -1844,5 +1921,46 @@ mod tests {
                 AXION_E_INVALID_BUFFER
             );
         }
+    }
+
+    /// ADR-135 : l'en-tête d'une chaîne de texte se lit sous toutes ses
+    /// longueurs, telles qu'un encodeur conforme les écrit — ici `ciborium`,
+    /// témoin indépendant du décodeur.
+    #[test]
+    fn les_options_se_lisent_sous_toutes_les_longueurs_d_en_tete() {
+        for len in [0usize, 1, 23, 24, 255, 256, 65_535, 65_536] {
+            let text = "x".repeat(len);
+            let mut cbor = Vec::new();
+            ciborium::into_writer(&ciborium::Value::Text(text.clone()), &mut cbor).unwrap();
+            assert_eq!(
+                options_text_of(&cbor),
+                Some(text.as_bytes()),
+                "longueur {len}"
+            );
+        }
+    }
+
+    /// Ce qui n'est pas exactement une chaîne de texte est refusé ; un texte
+    /// qui n'est pas de l'UTF-8 passe, pour être refusé par le lecteur d'options
+    /// comme la CLI le refuse (`E-7001`).
+    #[test]
+    fn un_parametre_d_options_qui_n_est_pas_une_chaine_est_refuse() {
+        for (cbor, cas) in [
+            (&[][..], "vide"),
+            (&[0x01][..], "entier"),
+            (&[0x42, b'{', b'}'][..], "chaîne d'octets"),
+            (&[0x62, b'{', b'}', 0x00][..], "octet après la chaîne"),
+            (&[0x63, b'{', b'}'][..], "chaîne tronquée"),
+            (&[0x78][..], "longueur absente"),
+            (&[0x79, 0x00][..], "longueur tronquée"),
+            (&[0x7c, 0x00][..], "longueur réservée"),
+            (&[0x7f, 0x62, b'{', b'}', 0xff][..], "longueur indéfinie"),
+        ] {
+            assert_eq!(options_text_of(cbor), None, "{cas}");
+        }
+        assert_eq!(
+            options_text_of(&[0x62, 0xff, 0xfe]),
+            Some(&[0xff, 0xfe][..])
+        );
     }
 }

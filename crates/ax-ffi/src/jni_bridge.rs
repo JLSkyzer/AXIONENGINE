@@ -116,7 +116,7 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
         },
         NativeMethod {
             name: "assetCompile".into(),
-            sig: "(JJIJ)I".into(),
+            sig: "(JJIJ[B)I".into(),
             fn_ptr: jni_asset_compile as *mut c_void,
         },
         NativeMethod {
@@ -296,29 +296,41 @@ extern "system" fn jni_metrics_export(
     jint::try_from(needed).unwrap_or(jint::MAX)
 }
 
-/// `NativeBridge.assetCompile(long, long, int, long)`.
+/// `NativeBridge.assetCompile(long, long, int, long, byte[])`.
 ///
 /// Rend l'identifiant du travail, strictement positif, ou un code d'erreur
-/// négatif. La source a été écrite par Java dans le tampon `ASSET_IN`.
+/// négatif. La source a été écrite par Java dans le tampon `ASSET_IN` ;
+/// `options` porte le texte du `.axion.json` voisin en chaîne CBOR, ou est nul
+/// (ADR-135).
 extern "system" fn jni_asset_compile(
-    _env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
     ctx: jlong,
     asset_id: jlong,
     format: jint,
     source_len: jlong,
+    options: JByteArray,
 ) -> jint {
+    let options = if options.is_null() {
+        Vec::new()
+    } else {
+        match env.convert_byte_array(&options) {
+            Ok(bytes) => bytes,
+            Err(_) => return AXION_E_INVALID_BUFFER,
+        }
+    };
     let mut job: u32 = 0;
-    // SAFETY: `options_cbor` peut être nul quand sa longueur l'est, et `job`
-    // est une variable locale accessible en écriture.
+    // SAFETY: `options` reste vivant pendant l'appel et couvre `options.len()`
+    // octets (un pointeur quelconque quand il est vide, sa longueur nulle) ;
+    // `job` est une variable locale accessible en écriture.
     let code = unsafe {
         axion_asset_compile(
             ctx as u64,
             asset_id as u64,
             u32::try_from(format).unwrap_or(u32::MAX),
             source_len.max(0) as u64,
-            std::ptr::null(),
-            0,
+            options.as_ptr(),
+            options.len(),
             &raw mut job,
         )
     };

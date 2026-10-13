@@ -24,7 +24,7 @@ class AssetCacheTest {
     private static final long UNLIMITED = 1L << 40;
 
     private static AssetKey key(String source) {
-        return AssetKey.of(source.getBytes(StandardCharsets.UTF_8), "", 1, 2);
+        return AssetKey.of(source.getBytes(StandardCharsets.UTF_8), new byte[0], 1, 2);
     }
 
     private static byte[] payload(int size, byte fill) {
@@ -225,8 +225,8 @@ class AssetCacheTest {
     @DisplayName("La clé dépend aussi de l'ABI")
     void laCleDependAussiDeLAbi() {
         byte[] contenu = "v 0 0 0".getBytes(StandardCharsets.UTF_8);
-        AssetKey abiUn = AssetKey.of(contenu, "", 1, 1);
-        AssetKey abiDeux = AssetKey.of(contenu, "", 1, 2);
+        AssetKey abiUn = AssetKey.of(contenu, new byte[0], 1, 1);
+        AssetKey abiDeux = AssetKey.of(contenu, new byte[0], 1, 2);
 
         // Sans ce terme, un asset resterait en cache après une mise à jour de
         // la frontière qui en change la lecture.

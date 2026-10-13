@@ -14,6 +14,7 @@ public final class AssetEntry {
     private final int format;
     private final AssetKey key;
     private final byte[] content;
+    private final byte[] options;
     private final long assetId;
 
     private AssetState state = AssetState.DISCOVERED;
@@ -21,11 +22,12 @@ public final class AssetEntry {
     private byte[] compiled;
     private boolean logged;
 
-    AssetEntry(String path, int format, AssetKey key, byte[] content) {
+    AssetEntry(String path, int format, AssetKey key, byte[] content, byte[] options) {
         this.path = path;
         this.format = format;
         this.key = key;
         this.content = content;
+        this.options = options;
         this.assetId = fnv1a64(path);
     }
 
@@ -63,6 +65,14 @@ public final class AssetEntry {
     /** {@return le contenu de la source} */
     public byte[] content() {
         return content;
+    }
+
+    /**
+     * {@return le texte du {@code <modèle>.axion.json} voisin, tel quel ; vide sans
+     * fichier (ADR-135)}
+     */
+    public byte[] options() {
+        return options;
     }
 
     /** {@return l'identifiant natif de l'asset} */
