@@ -14,14 +14,14 @@
 //!
 //! # Sous-commandes
 //!
-//! `compile` et `inspect` sont celles que la chaîne d'assets d'aujourd'hui
-//! (C-21..C-24) permet. `deform`, `replay`, `diff`, `lod`, `validate` et
-//! `bench-asset` dépendent de composants des jalons suivants (C-28, C-41,
-//! C-42) et viendront avec eux ; elles ne sont pas encore déclarées, plutôt que
-//! reconnues et refusées.
+//! `compile`, `inspect` et `diff` sont celles que la chaîne d'assets
+//! d'aujourd'hui (C-21..C-24) permet. `deform` et `replay` dépendent de
+//! composants de la M6 (C-28, C-41, C-42) et viendront avec eux ; elles ne sont
+//! pas encore déclarées, plutôt que reconnues et refusées.
 
 mod args;
 mod compile_cmd;
+mod diff_cmd;
 mod inspect_cmd;
 mod paths;
 
@@ -29,6 +29,7 @@ pub use args::{parse, Command};
 pub use compile_cmd::{
     asset_id_of, compile_source, max_source_bytes, options, source_hash, summary, CompiledOutput,
 };
+pub use diff_cmd::diff;
 pub use inspect_cmd::{inspect, max_compiled_bytes};
 pub use paths::sibling_path;
 
@@ -46,16 +47,18 @@ axion-cli — outil de la chaîne d'assets AXION (C-74)
 USAGE :
     axion-cli compile <source> -o <sortie.a3d> [--static-body]
     axion-cli inspect <fichier.a3d>
+    axion-cli diff <a.a3d> <b.a3d>
     axion-cli help
 
 COMMANDES :
     compile   Compile une source (.glb .gltf .obj .stl) en conteneur A3D,
               par le même pipeline que le jeu (R-830).
     inspect   Décrit un conteneur A3D : en-tête, sections, table des nodes.
+    diff      Compare deux conteneurs A3D : en-tête, puis chaque section,
+              décompressée et décodée.
     help      Affiche cette aide.
 
-Les commandes deform, replay, diff, lod, validate et bench-asset arrivent
-avec les composants dont elles dépendent (jalons M3 et suivants).";
+Les commandes deform et replay arrivent avec la déformation (M6).";
 
 /// Ce qui empêche une commande d'aboutir.
 #[derive(Debug, Clone, PartialEq)]

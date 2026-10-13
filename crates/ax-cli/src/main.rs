@@ -7,8 +7,8 @@
 use ax_asset::a3d::A3dLimits;
 use ax_asset::import::SourceFormat;
 use ax_cli::{
-    compile_source, inspect, max_compiled_bytes, options, parse, sibling_path, summary, CliError,
-    Command, PROGRAM, USAGE,
+    compile_source, diff, inspect, max_compiled_bytes, options, parse, sibling_path, summary,
+    CliError, Command, PROGRAM, USAGE,
 };
 use std::path::Path;
 use std::process::ExitCode;
@@ -43,6 +43,9 @@ fn run(args: &[String]) -> Result<Vec<String>, CliError> {
         Command::Inspect { file } => {
             let bytes = read(&file)?;
             inspect(&bytes, A3dLimits::new(max_compiled_bytes()))
+        }
+        Command::Diff { a, b } => {
+            diff(&read(&a)?, &read(&b)?, A3dLimits::new(max_compiled_bytes()))
         }
     }
 }

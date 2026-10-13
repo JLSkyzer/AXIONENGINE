@@ -23,6 +23,13 @@ pub enum Command {
         /// Chemin du conteneur.
         file: String,
     },
+    /// Comparer deux conteneurs A3D.
+    Diff {
+        /// Premier conteneur, « A ».
+        a: String,
+        /// Second conteneur, « B ».
+        b: String,
+    },
     /// Afficher l'aide.
     Help,
 }
@@ -42,6 +49,7 @@ pub fn parse(args: &[String]) -> Result<Command, CliError> {
         "help" | "--help" | "-h" => Ok(Command::Help),
         "compile" => parse_compile(rest),
         "inspect" => parse_inspect(rest),
+        "diff" => parse_diff(rest),
         other => Err(CliError::Usage(format!(
             "commande inconnue : « {other} ». Voir « {} help ».",
             crate::PROGRAM
@@ -102,6 +110,18 @@ fn parse_inspect(args: &[String]) -> Result<Command, CliError> {
         [] => Err(CliError::Usage("inspect attend un fichier A3D".to_owned())),
         _ => Err(CliError::Usage(
             "inspect attend un seul fichier A3D".to_owned(),
+        )),
+    }
+}
+
+fn parse_diff(args: &[String]) -> Result<Command, CliError> {
+    match args {
+        [a, b] if !a.starts_with('-') && !b.starts_with('-') => Ok(Command::Diff {
+            a: a.clone(),
+            b: b.clone(),
+        }),
+        _ => Err(CliError::Usage(
+            "diff attend deux fichiers A3D : diff <a.a3d> <b.a3d>".to_owned(),
         )),
     }
 }
@@ -179,6 +199,30 @@ mod tests {
         assert!(matches!(parse_of(&["inspect"]), Err(CliError::Usage(_))));
         assert!(matches!(
             parse_of(&["inspect", "a.a3d", "b.a3d"]),
+            Err(CliError::Usage(_))
+        ));
+    }
+
+    #[test]
+    fn t580_diff_prend_deux_fichiers() {
+        assert_eq!(
+            parse_of(&["diff", "a.a3d", "b.a3d"]).unwrap(),
+            Command::Diff {
+                a: "a.a3d".to_owned(),
+                b: "b.a3d".to_owned(),
+            }
+        );
+        assert!(matches!(parse_of(&["diff"]), Err(CliError::Usage(_))));
+        assert!(matches!(
+            parse_of(&["diff", "a.a3d"]),
+            Err(CliError::Usage(_))
+        ));
+        assert!(matches!(
+            parse_of(&["diff", "a.a3d", "b.a3d", "c.a3d"]),
+            Err(CliError::Usage(_))
+        ));
+        assert!(matches!(
+            parse_of(&["diff", "a.a3d", "--court"]),
             Err(CliError::Usage(_))
         ));
     }
