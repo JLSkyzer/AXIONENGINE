@@ -111,8 +111,10 @@ reproductibilité cède : c'est la définition même d'une dégradation (R-1890)
 `/axion metrics export` écrit les métriques de la session, dont la consommation et les
 dépassements de chaque budget (`axion.budget.<budget>.consumed` et `.overruns`). Côté physique,
 sont alimentés : la durée du pas (`sim_ns_per_tick`), celle du submit (`submit_ns`), les corps
-actifs (`max_active_bodies`) et la mémoire native comptée (`native_mem_bytes`) — dont la mémoire
-des mondes `rapier` ne fait pas encore partie (ADR-133).
+actifs (`max_active_bodies`) et la mémoire native (`native_mem_bytes`). Celle-ci est **toute**
+comptée — mondes `rapier` compris — par l'allocateur global de la bibliothèque native, par arène
+(`axion.mem.<arène>.bytes`) : `PERSISTENT` par défaut, `SCRATCH` pour ce qu'un job alloue
+(INV-08, ADR-133).
 
 ## Ce qui n'existe pas encore
 

@@ -1372,3 +1372,34 @@ recherche suivante, écrite en CRLF, ne la trouvait plus.
 réécrit tout le fichier en CRLF ; puis il vérifie qu'il ne reste aucun LF isolé, et que le BOM et les deux
 octets NUL sont toujours là.
 
+## 2026-10-13 | Une garantie de l'export reposait sur une stabilité que rien ne vérifiait
+
+**Ce qui a mal tourné.** Dès que l'export des métriques a porté la mémoire native vivante (allocateur
+compteur, ADR-133 D2), `cycle_abi` a échoué : le document écrit au second appel n'avait plus la longueur
+annoncée au premier. `NativeBridge.metricsJson` affirmait qu'« une seconde tentative suffit toujours » et
+qu'« aucun chemin » ne fait grossir l'export entre deux appels.
+
+**Cause.** Le protocole en deux temps (longueur, puis écriture) supposait un document stable ; une jauge
+vivante le rend instable — le tampon que l'appelant alloue entre les deux appels est lui-même compté.
+
+**Règle.** Une garantie de protocole s'obtient par construction, pas par l'absence constatée de
+contre-exemple : le natif garde le document qui n'a pas tenu et l'écrit au rappel. Avant d'ajouter une
+valeur volatile à un document échangé en plusieurs appels, relire ce que ses appelants supposent. Et un test
+qui lit un compteur global au processus isole ce qu'il mesure (arène à lui, binaire à lui), sans quoi des
+tests parallèles se voient l'un l'autre.
+
+## 2026-10-13 | L'allocateur compteur relisait son en-tête par le pointeur de l'appelant : Miri l'a refusé en CI
+
+**Ce qui a mal tourné.** `CountingAllocator` (ADR-133 D2) a été commité vert en local (tests, clippy, bilan
+exact) ; le job `miri (ax-mem)` de la CI l'a refusé : « attempting a read access … but that tag does not exist
+in the borrow stack », dans `dealloc`, à la libération d'un `Vec` du harnais de test.
+
+**Cause.** `dealloc` relisait l'arène dans l'en-tête placé devant le bloc par `ptr.sub(1)`. Le pointeur qu'un
+`Vec` ou un `Box` rend à l'allocateur ne porte, sous Stacked Borrows, de droits que sur son contenu : l'en-tête
+lui est hors d'atteinte. Aucun test natif ne peut le voir ; seul Miri le voit.
+
+**Règle.** Un allocateur à en-tête n'atteint jamais son en-tête par le pointeur de l'appelant : il expose la
+provenance du bloc entier à l'allocation (`expose_provenance`) et la reprend à la libération
+(`with_exposed_provenance_mut`). Le test qui le garde libère par un pointeur tiré d'une tranche du contenu.
+Miri n'est pas installé sur le poste : un changement `unsafe` d'ax-mem n'est fini qu'au job Miri vert.
+

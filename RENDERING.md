@@ -61,9 +61,11 @@ Le backend vanilla n'a pas de PBR : les `RenderType` de Minecraft n'en exposent 
 
 - **Maillages** sous-alloués dans des arènes de 16 Mio partagées (VBO, EBO), tampon d'instances
   commun, libération différée de 3 frames sans usage (C-62).
-- **Budget** : `budgets.gpu_mem_bytes` borne les maillages ; au-delà, les assets les moins
-  récemment vus et non visibles sont déchargés (R-750). Les textures n'y sont pas encore
-  comptées (ADR-133).
+- **Budget** : `budgets.gpu_mem_bytes` borne les maillages du backend natif **et** les textures
+  qu'AXION téléverse, mipmaps compris, dans les deux backends ; au-delà, l'asset le moins
+  récemment vu parmi les non visibles est déchargé en entier — maillage, textures, handle natif —,
+  et se recharge quand il revient (R-750, ADR-133). Les textures de Minecraft qu'AXION ne fait que
+  référencer n'y comptent pas.
 - **Textures** : décodées et mipmappées hors du render thread, téléversées par Minecraft
   (C-26, ADR-122).
 - **Shaders** : ressources du JAR (`assets/axion/shaders/`), rechargés avec les packs de
@@ -82,6 +84,15 @@ Le backend vanilla n'a pas de PBR : les `RenderType` de Minecraft n'en exposent 
 tracé aujourd'hui (C-67, ADR-121). Éteint, un overlay ne coûte qu'un test de drapeau par frame
 (R-2280).
 
+## Mesures
+
+`/axion metrics export` porte, avec les métriques natives, celles que le rendu mesure (ADR-133) :
+le temps CPU des passes d'AXION par frame (`budgets.render_prep_ns`), la mémoire GPU tenue et ses
+dépassements (`budgets.gpu_mem_bytes`), les instances et les triangles dessinés
+(`budgets.max_visible_instances`, `budgets.max_triangles_frame`), et les jauges `axion.render.*` :
+backend actif, octets de textures et de maillages, évictions, objets GL vivants, état des shaders
+du natif. Il n'y a pas encore de temps GPU par passe (requêtes de minuterie OpenGL).
+
 ## Vérification
 
 Le **banc de rendu** (ADR-126) lance le client automatiquement sous vanilla, sous le backend
@@ -93,5 +104,5 @@ intact (T-472), bascule et retour sous shaderpack (T-480, T-490), compilation à
 
 Niveaux de qualité Q-0 à Q-4, sonde d'environnement (C-81) et tone mapping (C-83), effet des
 définitions autres que `CUTOUT` (skinning, déformation, parallax, clearcoat, sheen, anisotropie,
-décalques, ombres reçues, SSR), culling et LOD de rendu (C-64), métriques de rendu dans l'export
-(ADR-133).
+décalques, ombres reçues, SSR), culling et LOD de rendu (C-64), export des métriques de rendu
+d'un client relié à un serveur distant (ADR-133 ; en solo, `/axion metrics export` les porte).
