@@ -40,6 +40,9 @@ pub use stl::import_stl;
 /// Le matériau par défaut, pour les tests des étapes qui suivent l'import.
 #[cfg(test)]
 pub(crate) use material::plain_default_material;
+/// Rugosité et métal du matériau par défaut : les défauts du bloc `materials`
+/// des options (PARTIE 6.4).
+pub(crate) use material::{DEFAULT_METALLIC, DEFAULT_ROUGHNESS};
 
 use crate::a3d::TextureTable;
 use crate::collider::ColliderRequest;

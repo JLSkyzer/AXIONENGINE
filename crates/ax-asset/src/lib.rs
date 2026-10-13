@@ -39,5 +39,6 @@ pub mod compile;
 pub mod import;
 pub mod load;
 pub mod optimize;
+pub mod options;
 pub mod png;
 pub mod validate;

@@ -60,6 +60,8 @@ dependencies = [
  "meshopt",
  "mikktspace",
  "parry3d",
+ "serde",
+ "serde_json",
  "stl_io",
  "tobj",
  "zstd",
