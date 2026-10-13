@@ -24,7 +24,7 @@ use crate::import::{
     ImportedAsset, ImportedMaterial, SourceFormat,
 };
 use crate::optimize::{optimize, Aabb, LodTable};
-use crate::options::{AssetOptions, MaterialDefaults, NormalsMode};
+use crate::options::{AssetOptions, MaterialDefaults, NormalsMode, UpAxis};
 use crate::validate::{validate, AssetView, NamedEntry, ValidationReport};
 use ax_model::dm::geometry::{MeshDesc, Vertex};
 use ax_model::dm::material::{texture_source, MaterialDesc};
@@ -155,6 +155,11 @@ pub fn compile(
 ) -> Result<CompiledAsset, CompileError> {
     let (mut asset, mut warnings) = import(source, format, options, resolve)?;
     let authored = &options.authored;
+    // Sans option, l'asset n'est pas touché : la sortie reste celle d'avant, au bit
+    // près (R-870).
+    if authored.scale != 1.0 || authored.up_axis != UpAxis::Y {
+        reframe(&mut asset, authored.scale, authored.up_axis);
+    }
     warnings.extend(oversized_textures(&asset, authored.max_texture_size));
     if authored.generate_normals == NormalsMode::Always {
         // Toutes les normales sont recalculées (ADR-135) : celles de l'auteur ne
@@ -312,6 +317,60 @@ fn import_source(
             let mut asset = import_stl(source, &options.limits).map_err(CompileError::Import)?;
             apply_material_defaults(&mut asset, &options.authored.materials);
             Ok((asset, Vec::new()))
+        }
+    }
+}
+
+/// `scale` et `up_axis` (R-871) : l'asset entier passe dans le repère du moteur,
+/// avant que C-22 ne le juge.
+///
+/// La transformation `G` — rotation de −90° autour de X pour une source Z en haut,
+/// puis échelle uniforme — est **cuite** dans l'asset : chaque sommet reçoit `G`, et
+/// chaque node son conjugué `G·L·G⁻¹` (translation tournée et mise à l'échelle, axe
+/// de rotation tourné, échelle propre permutée). Un sommet arrive ainsi, dans le
+/// monde, en `G·W·v`, là où l'auteur l'a placé, tourné et mis à l'échelle. Les
+/// colliders, tirés ensuite des meshes dans leur propre espace, suivent d'eux-mêmes.
+///
+/// La rotation `(x, y, z) → (x, z, −y)` est une permutation : exacte, normales
+/// quantifiées comprises.
+fn reframe(asset: &mut ImportedAsset, scale: f32, up_axis: UpAxis) {
+    let z_up = up_axis == UpAxis::Z;
+    let turn = |v: [f32; 3]| if z_up { [v[0], v[2], -v[1]] } else { v };
+    let turn_i8 = |v: [i8; 4]| {
+        if z_up {
+            [v[0], v[2], v[1].saturating_neg(), v[3]]
+        } else {
+            v
+        }
+    };
+    let scaled = |v: [f32; 3]| [v[0] * scale, v[1] * scale, v[2] * scale];
+
+    for vertex in &mut asset.vertices {
+        vertex.position = scaled(turn(vertex.position));
+        vertex.normal = turn_i8(vertex.normal);
+        vertex.tangent = turn_i8(vertex.tangent);
+    }
+    for mesh in &mut asset.meshes {
+        // Sous (x, z, −y), le minimum en Z vient du maximum en Y.
+        let (low, high) = if z_up {
+            (
+                [mesh.aabb_min[0], mesh.aabb_min[2], -mesh.aabb_max[1]],
+                [mesh.aabb_max[0], mesh.aabb_max[2], -mesh.aabb_min[1]],
+            )
+        } else {
+            (mesh.aabb_min, mesh.aabb_max)
+        };
+        mesh.aabb_min = scaled(low);
+        mesh.aabb_max = scaled(high);
+    }
+    for node in &mut asset.nodes {
+        node.local.translation = scaled(turn(node.local.translation));
+        let rotation = node.local.rotation;
+        let axis = turn([rotation[0], rotation[1], rotation[2]]);
+        node.local.rotation = [axis[0], axis[1], axis[2], rotation[3]];
+        if z_up {
+            let own = node.local.scale;
+            node.local.scale = [own[0], own[2], own[1]];
         }
     }
 }
@@ -1032,6 +1091,66 @@ f 2 7 3
             ..AssetOptions::DEFAULT
         }));
         assert!(signalee(&petites), "{petites:?}");
+    }
+
+    #[test]
+    fn options_up_axis_z_et_scale_placent_l_asset_dans_le_repere_du_moteur() {
+        // Un triangle dressé selon Z, l'axe vertical d'un export Blender.
+        const DEBOUT: &str = "o t\nv 0 0 0\nv 1 0 0\nv 0 0 2\nvn 0 -1 0\nf 1//1 2//1 3//1\n";
+        let compiler = |options: &CompileOptions| {
+            compile(DEBOUT.as_bytes(), SourceFormat::Obj, options, |_| None)
+                .expect("compilation refusée")
+        };
+        let proche = |a: [f32; 3], b: [f32; 3]| a.iter().zip(&b).all(|(x, y)| (x - y).abs() < 1e-3);
+        let defaut = compiler(&OPTIONS).bounds.expect("bornes");
+        assert!(proche(defaut.max, [1.0, 0.0, 2.0]), "{defaut:?}");
+
+        let redresse = compiler(&avec(AssetOptions {
+            up_axis: UpAxis::Z,
+            scale: 0.5,
+            ..AssetOptions::DEFAULT
+        }));
+        let bornes = redresse.bounds.expect("bornes");
+        // (x, y, z) → (x, z, −y), puis × 0,5 : le sommet haut de 2 en Z l'est de 1 en Y.
+        assert!(proche(bornes.min, [0.0, 0.0, 0.0]), "{bornes:?}");
+        assert!(proche(bornes.max, [0.5, 1.0, 0.0]), "{bornes:?}");
+        let file = A3dFile::open(&redresse.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+        let bytes = file.section(SectionTag::GEOM).expect("GEOM").expect("GEOM");
+        let geometry = crate::a3d::decode_geometry(&bytes).expect("GEOM décodé");
+        // La normale −Y de la source devient +Z : tournée, pas recalculée.
+        assert!(
+            geometry.vertices[0].normal[2] > 0,
+            "{:?}",
+            geometry.vertices[0].normal
+        );
+    }
+
+    #[test]
+    fn options_reframe_conjugue_les_nodes_et_garde_chaque_sommet_a_sa_place() {
+        // Le node d'un OBJ, translaté, tourné de 90° autour de Z et étiré, sous Z en
+        // haut : la translation tourne, l'axe de rotation tourne, l'échelle se permute.
+        let (mut asset, _) = import(
+            b"o t\nv 0 0 4\nv 1 0 4\nv 0 1 4\nf 1 2 3\n",
+            SourceFormat::Obj,
+            &OPTIONS,
+            |_| None,
+        )
+        .expect("import");
+        let demi = core::f32::consts::FRAC_1_SQRT_2;
+        asset.nodes[0].local = ax_model::dm::geometry::Transform {
+            translation: [1.0, 2.0, 3.0],
+            rotation: [0.0, 0.0, demi, demi],
+            scale: [2.0, 3.0, 1.0],
+        };
+        let premier = asset.vertices[0].position;
+        assert_eq!(premier, [0.0, 0.0, 4.0]);
+
+        reframe(&mut asset, 2.0, UpAxis::Z);
+        let local = asset.nodes[0].local;
+        assert_eq!(local.translation, [2.0, 6.0, -4.0]);
+        assert_eq!(local.rotation, [0.0, demi, 0.0, demi]);
+        assert_eq!(local.scale, [2.0, 1.0, 3.0]);
+        assert_eq!(asset.vertices[0].position, [0.0, 8.0, 0.0]);
     }
 
     #[test]
