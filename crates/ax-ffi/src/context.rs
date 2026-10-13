@@ -1016,7 +1016,10 @@ mod tests {
             let MetricsExport::TooSmall(frais) = session.metrics_export(0) else {
                 panic!("une capacité nulle n'écrit rien");
             };
-            assert!(frais > annonce, "une demande de longueur rend un document frais");
+            assert!(
+                frais > annonce,
+                "une demande de longueur rend un document frais"
+            );
             session.panics = 0;
         })
         .unwrap();
