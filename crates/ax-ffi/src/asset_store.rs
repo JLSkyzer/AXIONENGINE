@@ -12,28 +12,18 @@
 use core::fmt;
 use core::mem::size_of;
 
-use ax_asset::a3d::{
-    check_texture_slots, decode_geometry, decode_materials, decode_nodes, decode_textures,
-    A3dError, A3dFile, A3dLimits, DecodedGeometry, DecodedMaterials, DecodedTextures, SectionMask,
-    SectionTag, TextureTable,
-};
+use ax_asset::a3d::{A3dError, A3dFile, A3dLimits, SectionMask, SectionTag, TextureTable};
+use ax_asset::load::decode_sections;
 use ax_model::dm::handle::Handle;
-use ax_model::dm::material::{texture_source, MaterialDesc, TextureDesc, NO_TEXTURE};
+use ax_model::dm::material::{texture_source, TextureDesc};
 use ax_model::dm::render::{encode_geometry_transfer, encode_material_transfer};
 use ax_model::dm::scene::NodeDesc;
 use ax_scene::{rest_draws, SceneError};
 
-/// Sections que `axion_asset_load` sait charger : `NODE` et `GEOM` (ADR-119),
-/// `MATL` et `TEXR` (ADR-122).
-#[must_use]
-pub fn supported_sections() -> SectionMask {
-    SectionMask::of(&[
-        SectionTag::NODE,
-        SectionTag::GEOM,
-        SectionTag::MATL,
-        SectionTag::TEXR,
-    ])
-}
+/// Sections que `axion_asset_load` sait charger : celles du rendu, `NODE` et
+/// `GEOM` (ADR-119), `MATL` et `TEXR` (ADR-122). Le décodage est celui
+/// d'`ax_asset::load`, que `axion-cli validate` emploie aussi (R-830).
+pub use ax_asset::load::render_sections as supported_sections;
 
 /// Masque de sections qu'accepte `axion_asset_load`, ou `None`.
 ///
@@ -223,22 +213,9 @@ pub fn decode_render_asset(
         });
     }
 
-    let nodes = if sections.contains(SectionTag::NODE) {
-        match file.section(SectionTag::NODE)? {
-            Some(bytes) => decode_nodes(&bytes)?.nodes,
-            None => Vec::new(),
-        }
-    } else {
-        Vec::new()
-    };
-    let geometry = if sections.contains(SectionTag::GEOM) {
-        match file.section(SectionTag::GEOM)? {
-            Some(bytes) => decode_geometry(&bytes)?,
-            None => empty_geometry(),
-        }
-    } else {
-        empty_geometry()
-    };
+    let decoded = decode_sections(&file, sections)?;
+    let nodes = decoded.nodes;
+    let geometry = decoded.geometry;
 
     // La pose n'existe qu'avec les deux : des nodes sans géométrie ne désignent
     // rien à dessiner, une géométrie sans nodes rien qui la place.
@@ -258,10 +235,13 @@ pub fn decode_render_asset(
 
     let (materials, textures) =
         if sections.contains(SectionTag::MATL) && sections.contains(SectionTag::TEXR) {
-            let (materials, textures) = decode_material_tables(&file)?;
-            let transfer = encode_material_transfer(&materials, &textures.entries, &textures.blob)
-                .ok_or(LoadError::TooLarge)?;
-            (transfer, textures)
+            let transfer = encode_material_transfer(
+                &decoded.materials,
+                &decoded.textures.entries,
+                &decoded.textures.blob,
+            )
+            .ok_or(LoadError::TooLarge)?;
+            (transfer, decoded.textures)
         } else {
             (Vec::new(), TextureTable::default())
         };
@@ -274,74 +254,6 @@ pub fn decode_render_asset(
         materials,
         textures,
     })
-}
-
-fn empty_geometry() -> DecodedGeometry {
-    DecodedGeometry {
-        meshes: Vec::new(),
-        vertices: Vec::new(),
-        indices: Vec::new(),
-    }
-}
-
-/// Décode `MATL` et `TEXR`, puis vérifie que chaque slot des matériaux désigne
-/// une entrée de la table des textures (ADR-122 §6).
-///
-/// Une section d'une disposition inconnue — l'ancien `MATL` provisoire, ou une
-/// disposition à venir — est ignorée, sans refuser l'asset (ADR-122 §1, R-880) :
-///
-/// - sans matériaux lisibles, aucun matériau : le client applique le matériau
-///   par défaut ;
-/// - sans textures lisibles, aucune texture, et les slots des matériaux sont
-///   vidés : chacun prend la texture neutre.
-///
-/// Une texture ne sert que par un slot : sans matériau, la table des textures
-/// n'est pas gardée — elle occuperait l'arène `PERSISTENT` pour rien.
-fn decode_material_tables(
-    file: &A3dFile<'_>,
-) -> Result<(Vec<MaterialDesc>, TextureTable), A3dError> {
-    let materials = match file.section(SectionTag::MATL)? {
-        Some(bytes) => match decode_materials(&bytes)? {
-            DecodedMaterials::Materials(materials) => materials,
-            DecodedMaterials::UnknownLayout(_) => Vec::new(),
-        },
-        None => Vec::new(),
-    };
-    let textures = match file.section(SectionTag::TEXR)? {
-        Some(bytes) => match decode_textures(&bytes)? {
-            DecodedTextures::Textures(table) => Some(table),
-            DecodedTextures::UnknownLayout(_) => None,
-        },
-        None => Some(TextureTable::default()),
-    };
-
-    if materials.is_empty() {
-        return Ok((materials, TextureTable::default()));
-    }
-    let (materials, textures) = match textures {
-        Some(textures) => (materials, textures),
-        None => (
-            materials.into_iter().map(without_textures).collect(),
-            TextureTable::default(),
-        ),
-    };
-    // Une section `TEXR` absente alors que des slots la désignent est une faute
-    // du fichier, pas une disposition inconnue : refusée (`E-3007`).
-    check_texture_slots(&materials, textures.entries.len())?;
-    Ok((materials, textures))
-}
-
-/// Le matériau, ses six slots vidés : chacun prend la texture neutre.
-fn without_textures(material: MaterialDesc) -> MaterialDesc {
-    MaterialDesc {
-        albedo_tex: NO_TEXTURE,
-        normal_tex: NO_TEXTURE,
-        orm_tex: NO_TEXTURE,
-        emissive_tex: NO_TEXTURE,
-        height_tex: NO_TEXTURE,
-        damage_tex: NO_TEXTURE,
-        ..material
-    }
 }
 
 /// Un slot du magasin : sa génération, et l'asset qu'il porte s'il est occupé.
@@ -421,11 +333,13 @@ impl AssetStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ax_asset::a3d::{A3dWriter, MATL_LAYOUT, TEXR_LAYOUT};
+    use ax_asset::a3d::{decode_materials, A3dWriter, DecodedMaterials, MATL_LAYOUT, TEXR_LAYOUT};
     use ax_asset::collider::ColliderMode;
     use ax_asset::compile::{compile, CompileOptions};
     use ax_asset::import::{ImportLimits, SourceFormat};
+    use ax_asset::load::without_textures;
     use ax_asset::optimize::LodOptions;
+    use ax_model::dm::material::{MaterialDesc, NO_TEXTURE};
     use ax_model::dm::render::{
         geometry_transfer_len, material_transfer_len, RestDraw, MATERIAL_TRANSFER_HEADER_BYTES,
         TRANSFER_HEADER_BYTES,

@@ -37,6 +37,7 @@ pub mod a3d;
 pub mod collider;
 pub mod compile;
 pub mod import;
+pub mod load;
 pub mod optimize;
 pub mod png;
 pub mod validate;
