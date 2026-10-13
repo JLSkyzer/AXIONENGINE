@@ -34,3 +34,7 @@ ax-asset.workspace = true
 # DM-* et le registre de configuration, source unique des plafonds (R-533,
 # assets.max_compiled_bytes).
 ax-model.workspace = true
+# C-30 : `validate` pose la hiérarchie au repos par la fonction même du
+# chargement (`rest_draws`), sans quoi un asset déclaré valide pourrait être
+# refusé par le jeu.
+ax-scene.workspace = true

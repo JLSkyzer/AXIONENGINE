@@ -30,6 +30,14 @@ pub enum Command {
         /// Second conteneur, « B ».
         b: String,
     },
+    /// Valider un conteneur ou une source, sans rien écrire.
+    Validate {
+        /// Chemin du fichier.
+        file: String,
+        /// Pour une source : ses colliders ne seront pas portés par un body
+        /// dynamique (R-160), comme `compile --static-body`.
+        static_body: bool,
+    },
     /// Afficher l'aide.
     Help,
 }
@@ -50,6 +58,7 @@ pub fn parse(args: &[String]) -> Result<Command, CliError> {
         "compile" => parse_compile(rest),
         "inspect" => parse_inspect(rest),
         "diff" => parse_diff(rest),
+        "validate" => parse_validate(rest),
         other => Err(CliError::Usage(format!(
             "commande inconnue : « {other} ». Voir « {} help ».",
             crate::PROGRAM
@@ -124,6 +133,30 @@ fn parse_diff(args: &[String]) -> Result<Command, CliError> {
             "diff attend deux fichiers A3D : diff <a.a3d> <b.a3d>".to_owned(),
         )),
     }
+}
+
+fn parse_validate(args: &[String]) -> Result<Command, CliError> {
+    let mut file: Option<String> = None;
+    let mut static_body = false;
+    for arg in args {
+        match arg.as_str() {
+            "--static-body" => static_body = true,
+            other if other.starts_with('-') => {
+                return Err(CliError::Usage(format!(
+                    "option inconnue de validate : « {other} »"
+                )));
+            }
+            other => {
+                if file.replace(other.to_owned()).is_some() {
+                    return Err(CliError::Usage(
+                        "validate juge un seul fichier à la fois".to_owned(),
+                    ));
+                }
+            }
+        }
+    }
+    let file = file.ok_or_else(|| CliError::Usage("validate attend un fichier".to_owned()))?;
+    Ok(Command::Validate { file, static_body })
 }
 
 #[cfg(test)]
@@ -223,6 +256,33 @@ mod tests {
         ));
         assert!(matches!(
             parse_of(&["diff", "a.a3d", "--court"]),
+            Err(CliError::Usage(_))
+        ));
+    }
+
+    #[test]
+    fn t580_validate_prend_un_fichier_et_le_drapeau_des_corps_statiques() {
+        assert_eq!(
+            parse_of(&["validate", "voiture.a3d"]).unwrap(),
+            Command::Validate {
+                file: "voiture.a3d".to_owned(),
+                static_body: false,
+            }
+        );
+        assert_eq!(
+            parse_of(&["validate", "--static-body", "monde.obj"]).unwrap(),
+            Command::Validate {
+                file: "monde.obj".to_owned(),
+                static_body: true,
+            }
+        );
+        assert!(matches!(parse_of(&["validate"]), Err(CliError::Usage(_))));
+        assert!(matches!(
+            parse_of(&["validate", "a.a3d", "b.a3d"]),
+            Err(CliError::Usage(_))
+        ));
+        assert!(matches!(
+            parse_of(&["validate", "a.a3d", "--strict"]),
             Err(CliError::Usage(_))
         ));
     }

@@ -99,8 +99,16 @@ pub fn compile_source(
 /// Décrit une compilation réussie, une ligne par fait.
 #[must_use]
 pub fn summary(compiled: &CompiledOutput, source_len: usize, output: &str) -> Vec<String> {
+    let mut lines = vec![format!("compilé : {output}")];
+    lines.extend(compile_details(compiled, source_len));
+    lines
+}
+
+/// Ce qu'une compilation a produit : tailles, dénombrements, boîte englobante et
+/// avertissements, une ligne par fait.
+#[must_use]
+pub fn compile_details(compiled: &CompiledOutput, source_len: usize) -> Vec<String> {
     let mut lines = vec![
-        format!("compilé : {output}"),
         format!(
             "  {} octet(s) source → {} octet(s) A3D",
             source_len,

@@ -86,6 +86,7 @@ version = "1.0.0"
 dependencies = [
  "ax-asset",
  "ax-model",
+ "ax-scene",
 ]
 
 [[package]]

@@ -14,8 +14,8 @@
 //!
 //! # Sous-commandes
 //!
-//! `compile`, `inspect` et `diff` sont celles que la chaîne d'assets
-//! d'aujourd'hui (C-21..C-24) permet. `deform` et `replay` dépendent de
+//! `compile`, `inspect`, `diff` et `validate` sont celles que la chaîne
+//! d'assets d'aujourd'hui (C-21..C-24) permet. `deform` et `replay` dépendent de
 //! composants de la M6 (C-28, C-41, C-42) et viendront avec eux ; elles ne sont
 //! pas encore déclarées, plutôt que reconnues et refusées.
 
@@ -24,6 +24,7 @@ mod compile_cmd;
 mod diff_cmd;
 mod inspect_cmd;
 mod paths;
+mod validate_cmd;
 
 pub use args::{parse, Command};
 pub use compile_cmd::{
@@ -32,9 +33,11 @@ pub use compile_cmd::{
 pub use diff_cmd::diff;
 pub use inspect_cmd::{inspect, max_compiled_bytes};
 pub use paths::sibling_path;
+pub use validate_cmd::{validate_container, validate_source};
 
 use ax_asset::a3d::A3dError;
 use ax_asset::compile::CompileError;
+use ax_scene::SceneError;
 use core::fmt;
 
 /// Nom du programme, tel qu'il apparaît dans l'aide.
@@ -48,6 +51,7 @@ USAGE :
     axion-cli compile <source> -o <sortie.a3d> [--static-body]
     axion-cli inspect <fichier.a3d>
     axion-cli diff <a.a3d> <b.a3d>
+    axion-cli validate <fichier.a3d | source> [--static-body]
     axion-cli help
 
 COMMANDES :
@@ -56,6 +60,9 @@ COMMANDES :
     inspect   Décrit un conteneur A3D : en-tête, sections, table des nodes.
     diff      Compare deux conteneurs A3D : en-tête, puis chaque section,
               décompressée et décodée.
+    validate  Juge un fichier comme le jeu : un .a3d par son chargement, une
+              source par sa compilation puis le chargement du résultat.
+              Rien n'est écrit.
     help      Affiche cette aide.
 
 Les commandes deform et replay arrivent avec la déformation (M6).";
@@ -71,6 +78,8 @@ pub enum CliError {
     Compile(CompileError),
     /// La lecture d'un conteneur a échoué (C-24).
     Container(A3dError),
+    /// La hiérarchie d'un conteneur ne se pose pas au repos (C-30).
+    Scene(SceneError),
     /// Une entrée-sortie a échoué, avec le chemin en cause.
     Io {
         /// Fichier concerné.
@@ -106,6 +115,7 @@ impl fmt::Display for CliError {
             ),
             CliError::Compile(error) => write!(formatter, "compilation : {error}"),
             CliError::Container(error) => write!(formatter, "conteneur : {error}"),
+            CliError::Scene(error) => write!(formatter, "hiérarchie : {error}"),
             CliError::Io { path, detail } => write!(formatter, "{path} : {detail}"),
         }
     }
