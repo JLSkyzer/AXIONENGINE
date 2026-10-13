@@ -85,6 +85,7 @@ name = "ax-cli"
 version = "1.0.0"
 dependencies = [
  "ax-asset",
+ "ax-bench",
  "ax-model",
  "ax-scene",
 ]

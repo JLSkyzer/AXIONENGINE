@@ -37,6 +37,13 @@ pub enum Command {
         /// Part de triangles gardée à chaque niveau, LOD 0 compris.
         ratios: Vec<f32>,
     },
+    /// Mesurer la compilation d'une source (B-09).
+    BenchAsset {
+        /// Chemin de la source.
+        source: String,
+        /// Ses colliders ne seront pas portés par un body dynamique (R-160).
+        static_body: bool,
+    },
     /// Valider un conteneur ou une source, sans rien écrire.
     Validate {
         /// Chemin du fichier.
@@ -67,6 +74,7 @@ pub fn parse(args: &[String]) -> Result<Command, CliError> {
         "diff" => parse_diff(rest),
         "validate" => parse_validate(rest),
         "lod" => parse_lod(rest),
+        "bench-asset" => parse_bench_asset(rest),
         other => Err(CliError::Usage(format!(
             "commande inconnue : « {other} ». Voir « {} help ».",
             crate::PROGRAM
@@ -213,6 +221,34 @@ fn parse_ratios(text: &str) -> Result<Vec<f32>, CliError> {
         ));
     }
     Ok(ratios)
+}
+
+fn parse_bench_asset(args: &[String]) -> Result<Command, CliError> {
+    let mut source: Option<String> = None;
+    let mut static_body = false;
+    for arg in args {
+        match arg.as_str() {
+            "--static-body" => static_body = true,
+            other if other.starts_with('-') => {
+                return Err(CliError::Usage(format!(
+                    "option inconnue de bench-asset : « {other} »"
+                )));
+            }
+            other => {
+                if source.replace(other.to_owned()).is_some() {
+                    return Err(CliError::Usage(
+                        "bench-asset mesure une seule source à la fois".to_owned(),
+                    ));
+                }
+            }
+        }
+    }
+    let source =
+        source.ok_or_else(|| CliError::Usage("bench-asset attend une source".to_owned()))?;
+    Ok(Command::BenchAsset {
+        source,
+        static_body,
+    })
 }
 
 fn parse_validate(args: &[String]) -> Result<Command, CliError> {
@@ -393,6 +429,29 @@ mod tests {
                 "{refus:?} accepté"
             );
         }
+    }
+
+    #[test]
+    fn t580_bench_asset_prend_une_source() {
+        assert_eq!(
+            parse_of(&["bench-asset", "voiture.glb"]).unwrap(),
+            Command::BenchAsset {
+                source: "voiture.glb".to_owned(),
+                static_body: false,
+            }
+        );
+        assert!(matches!(
+            parse_of(&["bench-asset"]),
+            Err(CliError::Usage(_))
+        ));
+        assert!(matches!(
+            parse_of(&["bench-asset", "a.glb", "b.glb"]),
+            Err(CliError::Usage(_))
+        ));
+        assert!(matches!(
+            parse_of(&["bench-asset", "a.glb", "--longtemps"]),
+            Err(CliError::Usage(_))
+        ));
     }
 
     #[test]

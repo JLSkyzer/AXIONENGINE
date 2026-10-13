@@ -7,9 +7,10 @@
 use ax_asset::a3d::A3dLimits;
 use ax_asset::compile::CompileOptions;
 use ax_asset::import::SourceFormat;
+use ax_bench::MeasureConfig;
 use ax_cli::{
-    compile_source, diff, inspect, lod, max_compiled_bytes, options, parse, sibling_path, summary,
-    validate_container, validate_source, CliError, Command, PROGRAM, USAGE,
+    bench_asset, compile_source, diff, inspect, lod, max_compiled_bytes, options, parse,
+    sibling_path, summary, validate_container, validate_source, CliError, Command, PROGRAM, USAGE,
 };
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -51,6 +52,19 @@ fn run(args: &[String]) -> Result<Vec<String>, CliError> {
         Command::Validate { file, static_body } => validate(&file, static_body),
         Command::Lod { file, ratios } => {
             lod(&read(&file)?, A3dLimits::new(max_compiled_bytes()), &ratios)
+        }
+        Command::BenchAsset {
+            source,
+            static_body,
+        } => {
+            let source = Source::open(&source, static_body)?;
+            bench_asset(
+                &source.bytes,
+                source.format,
+                source.resolver(),
+                &source.options,
+                &MeasureConfig::QUICK,
+            )
         }
     }
 }

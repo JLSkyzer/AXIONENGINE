@@ -14,12 +14,13 @@
 //!
 //! # Sous-commandes
 //!
-//! `compile`, `inspect`, `diff`, `validate` et `lod` sont celles que la chaîne
-//! d'assets d'aujourd'hui (C-21..C-24) permet. `deform` et `replay` dépendent de
+//! `compile`, `inspect`, `diff`, `validate`, `lod` et `bench-asset` sont celles
+//! que la chaîne d'assets d'aujourd'hui (C-21..C-24) permet. `deform` et `replay` dépendent de
 //! composants de la M6 (C-28, C-41, C-42) et viendront avec eux ; elles ne sont
 //! pas encore déclarées, plutôt que reconnues et refusées.
 
 mod args;
+mod bench_cmd;
 mod compile_cmd;
 mod diff_cmd;
 mod inspect_cmd;
@@ -28,6 +29,7 @@ mod paths;
 mod validate_cmd;
 
 pub use args::{parse, Command};
+pub use bench_cmd::bench_asset;
 pub use compile_cmd::{
     asset_id_of, compile_source, max_source_bytes, options, source_hash, summary, CompiledOutput,
 };
@@ -55,6 +57,7 @@ USAGE :
     axion-cli diff <a.a3d> <b.a3d>
     axion-cli validate <fichier.a3d | source> [--static-body]
     axion-cli lod <fichier.a3d> --ratios 1,0.5,0.25
+    axion-cli bench-asset <source> [--static-body]
     axion-cli help
 
 COMMANDES :
@@ -68,6 +71,9 @@ COMMANDES :
               Rien n'est écrit.
     lod       Montre les LOD que porte un conteneur, puis ceux que la
               compilation produirait aux ratios donnés (LOD 0 compris).
+    bench-asset
+              Mesure la compilation d'une source par le harnais (B-09) :
+              centiles sur plusieurs exécutions. Mesure locale, non publiable.
     help      Affiche cette aide.
 
 Les commandes deform et replay arrivent avec la déformation (M6).";

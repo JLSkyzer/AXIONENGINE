@@ -184,6 +184,7 @@ ax-det = { path = "crates/ax-det" }
 ax-model = { path = "crates/ax-model" }
 ax-scene = { path = "crates/ax-scene" }
 ax-physics = { path = "crates/ax-physics" }
+ax-bench = { path = "crates/ax-bench" }
 
 # Les profils s'appliquent a tout le workspace.
 [profile.release]

@@ -38,3 +38,6 @@ ax-model.workspace = true
 # chargement (`rest_draws`), sans quoi un asset déclaré valide pourrait être
 # refusé par le jeu.
 ax-scene.workspace = true
+# C-72 : `bench-asset` mesure par le harnais (échauffement, exécutions, centiles
+# de la PARTIE 30.3), sans second calcul des statistiques.
+ax-bench.workspace = true
