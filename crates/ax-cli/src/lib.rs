@@ -14,7 +14,7 @@
 //!
 //! # Sous-commandes
 //!
-//! `compile`, `inspect`, `diff` et `validate` sont celles que la chaîne
+//! `compile`, `inspect`, `diff`, `validate` et `lod` sont celles que la chaîne
 //! d'assets d'aujourd'hui (C-21..C-24) permet. `deform` et `replay` dépendent de
 //! composants de la M6 (C-28, C-41, C-42) et viendront avec eux ; elles ne sont
 //! pas encore déclarées, plutôt que reconnues et refusées.
@@ -23,6 +23,7 @@ mod args;
 mod compile_cmd;
 mod diff_cmd;
 mod inspect_cmd;
+mod lod_cmd;
 mod paths;
 mod validate_cmd;
 
@@ -32,6 +33,7 @@ pub use compile_cmd::{
 };
 pub use diff_cmd::diff;
 pub use inspect_cmd::{inspect, max_compiled_bytes};
+pub use lod_cmd::lod;
 pub use paths::sibling_path;
 pub use validate_cmd::{validate_container, validate_source};
 
@@ -52,6 +54,7 @@ USAGE :
     axion-cli inspect <fichier.a3d>
     axion-cli diff <a.a3d> <b.a3d>
     axion-cli validate <fichier.a3d | source> [--static-body]
+    axion-cli lod <fichier.a3d> --ratios 1,0.5,0.25
     axion-cli help
 
 COMMANDES :
@@ -63,6 +66,8 @@ COMMANDES :
     validate  Juge un fichier comme le jeu : un .a3d par son chargement, une
               source par sa compilation puis le chargement du résultat.
               Rien n'est écrit.
+    lod       Montre les LOD que porte un conteneur, puis ceux que la
+              compilation produirait aux ratios donnés (LOD 0 compris).
     help      Affiche cette aide.
 
 Les commandes deform et replay arrivent avec la déformation (M6).";

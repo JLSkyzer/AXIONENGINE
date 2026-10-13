@@ -36,6 +36,7 @@
 //! qui remplace le LOD généré (R-550) et sert de source aux niveaux suivants,
 //! avec des ratios pris relativement au sien.
 
+use crate::a3d::{A3dError, SectionTag};
 use crate::import::ImportedAsset;
 use crate::validate::triangle_area;
 use ax_model::dm::geometry::MeshDesc;
@@ -106,6 +107,64 @@ pub struct LodTable {
 }
 
 impl LodTable {
+    /// Relit une section `LODM` venue d'un fichier qu'on ne croit pas sur parole
+    /// (R-540), pour une géométrie de `mesh_count` meshes. Les colonnes au-delà
+    /// de `levels` désignent le mesh source de leur ligne, comme celles que
+    /// l'étape 6 n'a pas remplies.
+    ///
+    /// # Errors
+    ///
+    /// [`A3dError::MalformedSection`] si l'en-tête est tronqué, si `levels` sort
+    /// de `1..=MAX_LOD_LEVELS`, si la section décrit plus de lignes que la
+    /// géométrie n'a de meshes, si sa taille n'est pas celle de ses
+    /// dénombrements — vérifié **avant** toute allocation (R-901) —, ou si une
+    /// entrée désigne un mesh absent.
+    pub fn from_bytes(bytes: &[u8], mesh_count: usize) -> Result<Self, A3dError> {
+        let word = |at: usize| -> Option<u32> {
+            let chunk = bytes.get(at..at + 4)?;
+            Some(u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        };
+        let (Some(levels), Some(row_count)) = (word(0), word(4)) else {
+            return Err(malformed_lodm("en-tête tronqué"));
+        };
+        let levels = levels as usize;
+        if !(1..=MAX_LOD_LEVELS).contains(&levels) {
+            return Err(malformed_lodm("nombre de niveaux hors de 1..=8"));
+        }
+        let row_count = row_count as usize;
+        if row_count > mesh_count {
+            return Err(malformed_lodm(
+                "plus de lignes que la géométrie n'a de meshes",
+            ));
+        }
+        let expected = row_count
+            .checked_mul(levels)
+            .and_then(|entries| entries.checked_mul(4))
+            .and_then(|size| size.checked_add(8));
+        if expected != Some(bytes.len()) {
+            return Err(malformed_lodm("taille incohérente avec les dénombrements"));
+        }
+
+        let mut rows = Vec::with_capacity(row_count);
+        for rank in 0..row_count {
+            let mut row = [rank as u32; MAX_LOD_LEVELS];
+            for (level, slot) in row.iter_mut().enumerate().take(levels) {
+                // La taille vient d'être vérifiée : chaque entrée se lit. Une
+                // entrée illisible serait refusée comme hors des meshes.
+                let mesh = word(8 + (rank * levels + level) * 4).unwrap_or(u32::MAX);
+                if mesh as usize >= mesh_count {
+                    return Err(malformed_lodm("entrée désignant un mesh absent"));
+                }
+                *slot = mesh;
+            }
+            rows.push(row);
+        }
+        Ok(Self {
+            levels: levels as u8,
+            rows,
+        })
+    }
+
     /// Disposition de la section `LODM`, en petit-boutiste :
     ///
     /// ```text
@@ -263,6 +322,13 @@ pub(super) fn generate(
 /// La contraction peut aplatir un triangle qui ne l'était pas. Le garder ferait
 /// refuser l'asset entier par la validation de sortie ; le retirer est la
 /// réparation que R-542 admet, appliquée à une géométrie que C-23 a produite.
+fn malformed_lodm(detail: &'static str) -> A3dError {
+    A3dError::MalformedSection {
+        tag: SectionTag::LODM,
+        detail,
+    }
+}
+
 fn drop_degenerate(indices: &mut Vec<u32>, positions: &[[f32; 3]]) {
     let kept: Vec<u32> = indices
         .chunks_exact(3)
@@ -522,5 +588,41 @@ mod tests {
             .map(|mot| u32::from_le_bytes(mot.try_into().unwrap()))
             .collect();
         assert_eq!(mots, [2, 2, 0, 3, 1, 1]);
+    }
+
+    #[test]
+    fn lod_la_table_se_relit_telle_qu_ecrite() {
+        let mut asset = grille();
+        let table = generate(&mut asset, &LodOptions::DEFAULT, &mut Vec::new()).expect("LOD");
+        let relue = LodTable::from_bytes(&table.to_bytes(), asset.meshes.len()).expect("relue");
+        assert_eq!(relue, table);
+    }
+
+    #[test]
+    fn lod_une_table_hostile_est_refusee() {
+        let mots =
+            |mots: &[u32]| -> Vec<u8> { mots.iter().flat_map(|mot| mot.to_le_bytes()).collect() };
+        // Deux meshes ; une ligne de deux niveaux, valide.
+        assert!(LodTable::from_bytes(&mots(&[2, 1, 0, 1]), 2).is_ok());
+        for (octets, cas) in [
+            (mots(&[2])[..4].to_vec(), "en-tête tronqué"),
+            (mots(&[0, 1]), "aucun niveau"),
+            (mots(&[9, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]), "neuf niveaux"),
+            (mots(&[1, 3, 0, 1, 1]), "plus de lignes que de meshes"),
+            (mots(&[2, 1, 0]), "taille trop courte"),
+            ([mots(&[2, 1, 0, 1]), vec![0]].concat(), "octet en trop"),
+            (mots(&[2, 1, 0, 2]), "mesh absent"),
+        ] {
+            assert!(
+                matches!(
+                    LodTable::from_bytes(&octets, 2),
+                    Err(A3dError::MalformedSection {
+                        tag: SectionTag::LODM,
+                        ..
+                    })
+                ),
+                "{cas} accepté"
+            );
+        }
     }
 }

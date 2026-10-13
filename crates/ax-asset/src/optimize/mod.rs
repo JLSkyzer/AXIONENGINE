@@ -56,6 +56,49 @@ pub use bounds::Aabb;
 pub use lod::{LodOptions, LodTable, MAX_LOD_LEVELS};
 
 use crate::import::ImportedAsset;
+use ax_model::dm::geometry::{MeshDesc, Vertex};
+use ax_model::dm::scene::NodeDesc;
+
+/// Ce que l'étape 6 tirerait d'une géométrie déjà compilée.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LodPreview {
+    /// Les meshes sources, puis les LOD générés à leur suite.
+    pub meshes: Vec<MeshDesc>,
+    /// Table niveau → mesh, ou `None` si aucun LOD n'a été généré.
+    pub table: Option<LodTable>,
+    /// Avertissements de la génération.
+    pub warnings: Vec<String>,
+}
+
+/// Rejoue l'étape 6 — le code même de la compilation (R-830) — sur les nodes et
+/// les meshes **sources** d'un asset déjà compilé, pour `axion-cli lod`. Les
+/// sommets ne changent pas : un LOD partage ceux de sa source.
+///
+/// Les tableaux doivent venir des décodeurs du conteneur (`decode_nodes`,
+/// `decode_geometry`), qui vérifient les bornes que l'étape 6 suppose.
+#[must_use]
+pub fn preview_lods(
+    nodes: &[NodeDesc],
+    meshes: &[MeshDesc],
+    vertices: &[Vertex],
+    indices: &[u32],
+    options: &LodOptions,
+) -> LodPreview {
+    let mut asset = ImportedAsset {
+        nodes: nodes.to_vec(),
+        meshes: meshes.to_vec(),
+        vertices: vertices.to_vec(),
+        indices: indices.to_vec(),
+        ..ImportedAsset::default()
+    };
+    let mut warnings = Vec::new();
+    let table = lod::generate(&mut asset, options, &mut warnings);
+    LodPreview {
+        meshes: asset.meshes,
+        table,
+        warnings,
+    }
+}
 
 /// Ce que l'optimizer a fait d'un asset.
 #[derive(Debug, Default, Clone, PartialEq)]

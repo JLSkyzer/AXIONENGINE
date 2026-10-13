@@ -7,7 +7,7 @@
 use crate::CliError;
 
 /// Une commande reconnue, avec ses arguments.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     /// Compiler une source en conteneur A3D.
     Compile {
@@ -29,6 +29,13 @@ pub enum Command {
         a: String,
         /// Second conteneur, « B ».
         b: String,
+    },
+    /// Montrer les LOD qu'un conteneur recevrait à d'autres ratios.
+    Lod {
+        /// Chemin du conteneur.
+        file: String,
+        /// Part de triangles gardée à chaque niveau, LOD 0 compris.
+        ratios: Vec<f32>,
     },
     /// Valider un conteneur ou une source, sans rien écrire.
     Validate {
@@ -59,6 +66,7 @@ pub fn parse(args: &[String]) -> Result<Command, CliError> {
         "inspect" => parse_inspect(rest),
         "diff" => parse_diff(rest),
         "validate" => parse_validate(rest),
+        "lod" => parse_lod(rest),
         other => Err(CliError::Usage(format!(
             "commande inconnue : « {other} ». Voir « {} help ».",
             crate::PROGRAM
@@ -133,6 +141,78 @@ fn parse_diff(args: &[String]) -> Result<Command, CliError> {
             "diff attend deux fichiers A3D : diff <a.a3d> <b.a3d>".to_owned(),
         )),
     }
+}
+
+fn parse_lod(args: &[String]) -> Result<Command, CliError> {
+    let mut file: Option<String> = None;
+    let mut ratios: Option<Vec<f32>> = None;
+    let mut index = 0;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        match arg {
+            "--ratios" => {
+                index += 1;
+                let value = args.get(index).ok_or_else(|| {
+                    CliError::Usage("« --ratios » attend une liste : 1,0.5,0.25".to_owned())
+                })?;
+                if ratios.replace(parse_ratios(value)?).is_some() {
+                    return Err(CliError::Usage("« --ratios » donné deux fois".to_owned()));
+                }
+            }
+            other if other.starts_with('-') => {
+                return Err(CliError::Usage(format!(
+                    "option inconnue de lod : « {other} »"
+                )));
+            }
+            other => {
+                if file.replace(other.to_owned()).is_some() {
+                    return Err(CliError::Usage(
+                        "lod lit un seul conteneur à la fois".to_owned(),
+                    ));
+                }
+            }
+        }
+        index += 1;
+    }
+    let file = file.ok_or_else(|| CliError::Usage("lod attend un fichier A3D".to_owned()))?;
+    let ratios = ratios
+        .ok_or_else(|| CliError::Usage("lod attend des ratios : --ratios 1,0.5,0.25".to_owned()))?;
+    Ok(Command::Lod { file, ratios })
+}
+
+/// Lit une liste de ratios : de 1 à 8 valeurs dans `]0, 1]`, non croissantes,
+/// la première à 1 — le LOD 0 est la source (PARTIE 6.4).
+fn parse_ratios(text: &str) -> Result<Vec<f32>, CliError> {
+    let mut ratios = Vec::new();
+    for part in text.split(',') {
+        let ratio: f32 = part
+            .trim()
+            .parse()
+            .map_err(|_| CliError::Usage(format!("ratio illisible : « {part} »")))?;
+        if !(ratio.is_finite() && ratio > 0.0 && ratio <= 1.0) {
+            return Err(CliError::Usage(format!(
+                "ratio hors de ]0, 1] : « {part} »"
+            )));
+        }
+        ratios.push(ratio);
+    }
+    if ratios.len() > ax_asset::optimize::MAX_LOD_LEVELS {
+        return Err(CliError::Usage(format!(
+            "au plus {} niveaux, LOD 0 compris",
+            ax_asset::optimize::MAX_LOD_LEVELS
+        )));
+    }
+    if ratios.first() != Some(&1.0) {
+        return Err(CliError::Usage(
+            "le premier ratio est celui du LOD 0 : 1".to_owned(),
+        ));
+    }
+    if ratios.windows(2).any(|pair| pair[1] > pair[0]) {
+        return Err(CliError::Usage(
+            "les ratios ne croissent pas d'un niveau au suivant".to_owned(),
+        ));
+    }
+    Ok(ratios)
 }
 
 fn parse_validate(args: &[String]) -> Result<Command, CliError> {
@@ -285,6 +365,34 @@ mod tests {
             parse_of(&["validate", "a.a3d", "--strict"]),
             Err(CliError::Usage(_))
         ));
+    }
+
+    #[test]
+    fn t580_lod_prend_un_fichier_et_des_ratios_controles() {
+        assert_eq!(
+            parse_of(&["lod", "voiture.a3d", "--ratios", "1,0.5,0.25"]).unwrap(),
+            Command::Lod {
+                file: "voiture.a3d".to_owned(),
+                ratios: vec![1.0, 0.5, 0.25],
+            }
+        );
+        for refus in [
+            &["lod", "voiture.a3d"][..],
+            &["lod", "--ratios", "1,0.5"],
+            &["lod", "v.a3d", "--ratios"],
+            &["lod", "v.a3d", "--ratios", "0.5,0.25"],
+            &["lod", "v.a3d", "--ratios", "1,0.5,0.75"],
+            &["lod", "v.a3d", "--ratios", "1,0"],
+            &["lod", "v.a3d", "--ratios", "1,1.5"],
+            &["lod", "v.a3d", "--ratios", "1,moitié"],
+            &["lod", "v.a3d", "--ratios", "1,1,1,1,1,1,1,1,1"],
+            &["lod", "v.a3d", "--ratios", "1", "--ratios", "1"],
+        ] {
+            assert!(
+                matches!(parse_of(refus), Err(CliError::Usage(_))),
+                "{refus:?} accepté"
+            );
+        }
     }
 
     #[test]

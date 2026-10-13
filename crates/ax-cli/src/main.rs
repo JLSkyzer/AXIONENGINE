@@ -8,7 +8,7 @@ use ax_asset::a3d::A3dLimits;
 use ax_asset::compile::CompileOptions;
 use ax_asset::import::SourceFormat;
 use ax_cli::{
-    compile_source, diff, inspect, max_compiled_bytes, options, parse, sibling_path, summary,
+    compile_source, diff, inspect, lod, max_compiled_bytes, options, parse, sibling_path, summary,
     validate_container, validate_source, CliError, Command, PROGRAM, USAGE,
 };
 use std::path::{Path, PathBuf};
@@ -49,6 +49,9 @@ fn run(args: &[String]) -> Result<Vec<String>, CliError> {
             diff(&read(&a)?, &read(&b)?, A3dLimits::new(max_compiled_bytes()))
         }
         Command::Validate { file, static_body } => validate(&file, static_body),
+        Command::Lod { file, ratios } => {
+            lod(&read(&file)?, A3dLimits::new(max_compiled_bytes()), &ratios)
+        }
     }
 }
 
