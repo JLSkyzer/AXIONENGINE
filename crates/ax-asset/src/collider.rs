@@ -208,7 +208,7 @@ pub fn build_colliders(
             warnings.push(format!(
                 "collider « {} » demandé pour l'asset entier : non produit à ce niveau \
                  (seuls auto_box et auto_sphere le sont) ; aucun collider généré",
-                mode_name(mode)
+                mode.name()
             ));
             Vec::new()
         }
@@ -221,16 +221,19 @@ pub fn build_colliders(
     }
 }
 
-/// Le nom d'auteur d'un mode, tel que les extras et les options l'écrivent.
-const fn mode_name(mode: ColliderMode) -> &'static str {
-    match mode {
-        ColliderMode::None => "none",
-        ColliderMode::AutoBox => "auto_box",
-        ColliderMode::AutoSphere => "auto_sphere",
-        ColliderMode::AutoCapsule => "auto_capsule",
-        ColliderMode::Convex => "convex",
-        ColliderMode::Compound => "auto_compound",
-        ColliderMode::AutoConvex => "auto_convex",
+impl ColliderMode {
+    /// Le nom d'auteur d'un mode, tel que les extras et les options l'écrivent.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            ColliderMode::None => "none",
+            ColliderMode::AutoBox => "auto_box",
+            ColliderMode::AutoSphere => "auto_sphere",
+            ColliderMode::AutoCapsule => "auto_capsule",
+            ColliderMode::Convex => "convex",
+            ColliderMode::Compound => "auto_compound",
+            ColliderMode::AutoConvex => "auto_convex",
+        }
     }
 }
 

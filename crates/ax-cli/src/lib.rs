@@ -25,10 +25,11 @@ mod compile_cmd;
 mod diff_cmd;
 mod inspect_cmd;
 mod lod_cmd;
+mod options_cmd;
 mod paths;
 mod validate_cmd;
 
-pub use args::{parse, Command};
+pub use args::{parse, Command, SourceArgs};
 pub use bench_cmd::bench_asset;
 pub use compile_cmd::{
     asset_id_of, compile_source, max_source_bytes, options, source_hash, summary, CompiledOutput,
@@ -36,11 +37,16 @@ pub use compile_cmd::{
 pub use diff_cmd::diff;
 pub use inspect_cmd::{inspect, max_compiled_bytes};
 pub use lod_cmd::lod;
+pub use options_cmd::{
+    describe_options, is_options_file, read_options, sibling_options_path, validate_options,
+    OPTIONS_SUFFIX,
+};
 pub use paths::sibling_path;
 pub use validate_cmd::{validate_container, validate_source};
 
 use ax_asset::a3d::A3dError;
 use ax_asset::compile::CompileError;
+use ax_asset::options::OptionsError;
 use ax_scene::SceneError;
 use core::fmt;
 
@@ -52,12 +58,13 @@ pub const USAGE: &str = "\
 axion-cli — outil de la chaîne d'assets AXION (C-74)
 
 USAGE :
-    axion-cli compile <source> -o <sortie.a3d> [--static-body]
+    axion-cli compile <source> -o <sortie.a3d> [--static-body] [--options <fichier>]
     axion-cli inspect <fichier.a3d>
     axion-cli diff <a.a3d> <b.a3d>
-    axion-cli validate <fichier.a3d | source> [--static-body]
+    axion-cli validate <fichier.a3d | source | fichier.axion.json>
+                       [--static-body] [--options <fichier>]
     axion-cli lod <fichier.a3d> --ratios 1,0.5,0.25
-    axion-cli bench-asset <source> [--static-body]
+    axion-cli bench-asset <source> [--static-body] [--options <fichier>]
     axion-cli help
 
 COMMANDES :
@@ -67,14 +74,18 @@ COMMANDES :
     diff      Compare deux conteneurs A3D : en-tête, puis chaque section,
               décompressée et décodée.
     validate  Juge un fichier comme le jeu : un .a3d par son chargement, une
-              source par sa compilation puis le chargement du résultat.
-              Rien n'est écrit.
+              source par sa compilation puis le chargement du résultat, un
+              .axion.json par le lecteur d'options. Rien n'est écrit.
     lod       Montre les LOD que porte un conteneur, puis ceux que la
               compilation produirait aux ratios donnés (LOD 0 compris).
     bench-asset
               Mesure la compilation d'une source par le harnais (B-09) :
               centiles sur plusieurs exécutions. Mesure locale, non publiable.
     help      Affiche cette aide.
+
+OPTIONS DE COMPILATION (PARTIE 6.4) :
+    Comme le jeu, compile, validate et bench-asset lisent le <source>.axion.json
+    voisin de la source s'il existe ; --options en désigne un autre.
 
 Les commandes deform et replay arrivent avec la déformation (M6).";
 
@@ -91,6 +102,8 @@ pub enum CliError {
     Container(A3dError),
     /// La hiérarchie d'un conteneur ne se pose pas au repos (C-30).
     Scene(SceneError),
+    /// Un fichier d'options est refusé (PARTIE 6.4, ADR-135).
+    Options(OptionsError),
     /// Une entrée-sortie a échoué, avec le chemin en cause.
     Io {
         /// Fichier concerné.
@@ -127,6 +140,7 @@ impl fmt::Display for CliError {
             CliError::Compile(error) => write!(formatter, "compilation : {error}"),
             CliError::Container(error) => write!(formatter, "conteneur : {error}"),
             CliError::Scene(error) => write!(formatter, "hiérarchie : {error}"),
+            CliError::Options(error) => write!(formatter, "options : {error}"),
             CliError::Io { path, detail } => write!(formatter, "{path} : {detail}"),
         }
     }

@@ -6,17 +6,28 @@
 
 use crate::CliError;
 
+/// Une source à compiler, telle que `compile`, `validate` et `bench-asset` la
+/// désignent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceArgs {
+    /// Chemin du fichier.
+    pub path: String,
+    /// Les colliders ne seront pas portés par un body dynamique (R-160).
+    pub static_body: bool,
+    /// Fichier d'options désigné par `--options` ; sans lui, le
+    /// `<source>.axion.json` voisin, comme le jeu (ADR-135).
+    pub options: Option<String>,
+}
+
 /// Une commande reconnue, avec ses arguments.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     /// Compiler une source en conteneur A3D.
     Compile {
-        /// Chemin de la source.
-        source: String,
+        /// La source.
+        source: SourceArgs,
         /// Chemin du conteneur produit.
         output: String,
-        /// Les colliders ne seront pas portés par un body dynamique (R-160).
-        static_body: bool,
     },
     /// Décrire un conteneur A3D.
     Inspect {
@@ -39,18 +50,15 @@ pub enum Command {
     },
     /// Mesurer la compilation d'une source (B-09).
     BenchAsset {
-        /// Chemin de la source.
-        source: String,
-        /// Ses colliders ne seront pas portés par un body dynamique (R-160).
-        static_body: bool,
+        /// La source.
+        source: SourceArgs,
     },
-    /// Valider un conteneur ou une source, sans rien écrire.
+    /// Valider un conteneur, une source ou un fichier d'options, sans rien
+    /// écrire. Pour un conteneur ou un fichier d'options, `static_body` et
+    /// `options` ne servent pas.
     Validate {
-        /// Chemin du fichier.
-        file: String,
-        /// Pour une source : ses colliders ne seront pas portés par un body
-        /// dynamique (R-160), comme `compile --static-body`.
-        static_body: bool,
+        /// Le fichier.
+        file: SourceArgs,
     },
     /// Afficher l'aide.
     Help,
@@ -69,12 +77,24 @@ pub fn parse(args: &[String]) -> Result<Command, CliError> {
 
     match command.as_str() {
         "help" | "--help" | "-h" => Ok(Command::Help),
-        "compile" => parse_compile(rest),
+        "compile" => {
+            let (source, output) = parse_source("compile", rest, true)?;
+            let output = output.ok_or_else(|| {
+                CliError::Usage("compile attend une sortie : -o <sortie.a3d>".to_owned())
+            })?;
+            Ok(Command::Compile { source, output })
+        }
         "inspect" => parse_inspect(rest),
         "diff" => parse_diff(rest),
-        "validate" => parse_validate(rest),
+        "validate" => {
+            let (file, _) = parse_source("validate", rest, false)?;
+            Ok(Command::Validate { file })
+        }
         "lod" => parse_lod(rest),
-        "bench-asset" => parse_bench_asset(rest),
+        "bench-asset" => {
+            let (source, _) = parse_source("bench-asset", rest, false)?;
+            Ok(Command::BenchAsset { source })
+        }
         other => Err(CliError::Usage(format!(
             "commande inconnue : « {other} ». Voir « {} help ».",
             crate::PROGRAM
@@ -82,51 +102,70 @@ pub fn parse(args: &[String]) -> Result<Command, CliError> {
     }
 }
 
-fn parse_compile(args: &[String]) -> Result<Command, CliError> {
-    let mut source: Option<String> = None;
+/// Les arguments d'une commande qui lit une source : le chemin, `--static-body`,
+/// `--options <fichier>`, et `-o <sortie>` si `with_output`.
+fn parse_source(
+    command: &str,
+    args: &[String],
+    with_output: bool,
+) -> Result<(SourceArgs, Option<String>), CliError> {
+    let mut path: Option<String> = None;
     let mut output: Option<String> = None;
+    let mut options: Option<String> = None;
     let mut static_body = false;
 
     let mut index = 0;
     while index < args.len() {
         let arg = args[index].as_str();
         match arg {
-            "-o" | "--out" => {
-                // La valeur suit l'option ; son absence est un mésusage, pas
-                // un chemin vide silencieux.
+            "-o" | "--out" if with_output => {
                 index += 1;
-                let value = args.get(index).ok_or_else(|| {
-                    CliError::Usage(format!("« {arg} » attend un chemin de sortie"))
-                })?;
-                if output.replace(value.clone()).is_some() {
+                let value = value_of(args, index, arg, "un chemin de sortie")?;
+                if output.replace(value).is_some() {
                     return Err(CliError::Usage("« -o » donné deux fois".to_owned()));
+                }
+            }
+            "--options" => {
+                index += 1;
+                let value = value_of(args, index, arg, "un fichier d'options")?;
+                if options.replace(value).is_some() {
+                    return Err(CliError::Usage("« --options » donné deux fois".to_owned()));
                 }
             }
             "--static-body" => static_body = true,
             _ if arg.starts_with('-') => {
                 return Err(CliError::Usage(format!(
-                    "option inconnue de compile : « {arg} »"
+                    "option inconnue de {command} : « {arg} »"
                 )));
             }
             _ => {
-                if source.replace(arg.to_owned()).is_some() {
-                    return Err(CliError::Usage(
-                        "une seule source à la fois est compilée".to_owned(),
-                    ));
+                if path.replace(arg.to_owned()).is_some() {
+                    return Err(CliError::Usage(format!(
+                        "{command} lit un seul fichier à la fois"
+                    )));
                 }
             }
         }
         index += 1;
     }
 
-    let source = source.ok_or_else(|| CliError::Usage("compile attend une source".to_owned()))?;
-    let output = output
-        .ok_or_else(|| CliError::Usage("compile attend une sortie : -o <sortie.a3d>".to_owned()))?;
-    Ok(Command::Compile {
-        source,
+    let path = path.ok_or_else(|| CliError::Usage(format!("{command} attend un fichier")))?;
+    Ok((
+        SourceArgs {
+            path,
+            static_body,
+            options,
+        },
         output,
-        static_body,
-    })
+    ))
+}
+
+/// La valeur qui suit une option ; son absence est un mésusage, pas un chemin
+/// vide silencieux.
+fn value_of(args: &[String], index: usize, option: &str, what: &str) -> Result<String, CliError> {
+    args.get(index)
+        .cloned()
+        .ok_or_else(|| CliError::Usage(format!("« {option} » attend {what}")))
 }
 
 fn parse_inspect(args: &[String]) -> Result<Command, CliError> {
@@ -160,10 +199,8 @@ fn parse_lod(args: &[String]) -> Result<Command, CliError> {
         match arg {
             "--ratios" => {
                 index += 1;
-                let value = args.get(index).ok_or_else(|| {
-                    CliError::Usage("« --ratios » attend une liste : 1,0.5,0.25".to_owned())
-                })?;
-                if ratios.replace(parse_ratios(value)?).is_some() {
+                let value = value_of(args, index, arg, "une liste : 1,0.5,0.25")?;
+                if ratios.replace(parse_ratios(&value)?).is_some() {
                     return Err(CliError::Usage("« --ratios » donné deux fois".to_owned()));
                 }
             }
@@ -223,58 +260,6 @@ fn parse_ratios(text: &str) -> Result<Vec<f32>, CliError> {
     Ok(ratios)
 }
 
-fn parse_bench_asset(args: &[String]) -> Result<Command, CliError> {
-    let mut source: Option<String> = None;
-    let mut static_body = false;
-    for arg in args {
-        match arg.as_str() {
-            "--static-body" => static_body = true,
-            other if other.starts_with('-') => {
-                return Err(CliError::Usage(format!(
-                    "option inconnue de bench-asset : « {other} »"
-                )));
-            }
-            other => {
-                if source.replace(other.to_owned()).is_some() {
-                    return Err(CliError::Usage(
-                        "bench-asset mesure une seule source à la fois".to_owned(),
-                    ));
-                }
-            }
-        }
-    }
-    let source =
-        source.ok_or_else(|| CliError::Usage("bench-asset attend une source".to_owned()))?;
-    Ok(Command::BenchAsset {
-        source,
-        static_body,
-    })
-}
-
-fn parse_validate(args: &[String]) -> Result<Command, CliError> {
-    let mut file: Option<String> = None;
-    let mut static_body = false;
-    for arg in args {
-        match arg.as_str() {
-            "--static-body" => static_body = true,
-            other if other.starts_with('-') => {
-                return Err(CliError::Usage(format!(
-                    "option inconnue de validate : « {other} »"
-                )));
-            }
-            other => {
-                if file.replace(other.to_owned()).is_some() {
-                    return Err(CliError::Usage(
-                        "validate juge un seul fichier à la fois".to_owned(),
-                    ));
-                }
-            }
-        }
-    }
-    let file = file.ok_or_else(|| CliError::Usage("validate attend un fichier".to_owned()))?;
-    Ok(Command::Validate { file, static_body })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,6 +267,18 @@ mod tests {
     fn parse_of(args: &[&str]) -> Result<Command, CliError> {
         let owned: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
         parse(&owned)
+    }
+
+    fn source(path: &str, static_body: bool, options: Option<&str>) -> SourceArgs {
+        SourceArgs {
+            path: path.to_owned(),
+            static_body,
+            options: options.map(str::to_owned),
+        }
+    }
+
+    fn mesusage(args: &[&str]) -> bool {
+        matches!(parse_of(args), Err(CliError::Usage(_)))
     }
 
     #[test]
@@ -296,45 +293,70 @@ mod tests {
         assert_eq!(
             parse_of(&["compile", "voiture.glb", "-o", "voiture.a3d"]).unwrap(),
             Command::Compile {
-                source: "voiture.glb".to_owned(),
+                source: source("voiture.glb", false, None),
                 output: "voiture.a3d".to_owned(),
-                static_body: false,
             }
         );
         // L'ordre des arguments et des options est libre.
         assert_eq!(
             parse_of(&["compile", "--static-body", "-o", "s.a3d", "monde.obj"]).unwrap(),
             Command::Compile {
-                source: "monde.obj".to_owned(),
+                source: source("monde.obj", true, None),
                 output: "s.a3d".to_owned(),
-                static_body: true,
             }
         );
     }
 
     #[test]
     fn t580_compile_exige_source_et_sortie() {
-        assert!(matches!(parse_of(&["compile"]), Err(CliError::Usage(_))));
-        assert!(matches!(
-            parse_of(&["compile", "x.glb"]),
-            Err(CliError::Usage(_))
-        ));
-        assert!(matches!(
-            parse_of(&["compile", "-o"]),
-            Err(CliError::Usage(_))
-        ));
-        assert!(matches!(
-            parse_of(&["compile", "a.glb", "b.glb", "-o", "o.a3d"]),
-            Err(CliError::Usage(_))
-        ));
-        assert!(matches!(
-            parse_of(&["compile", "x.glb", "-o", "a", "-o", "b"]),
-            Err(CliError::Usage(_))
-        ));
-        assert!(matches!(
-            parse_of(&["compile", "x.glb", "-o", "o.a3d", "--rapide"]),
-            Err(CliError::Usage(_))
-        ));
+        assert!(mesusage(&["compile"]));
+        assert!(mesusage(&["compile", "x.glb"]));
+        assert!(mesusage(&["compile", "-o"]));
+        assert!(mesusage(&["compile", "a.glb", "b.glb", "-o", "o.a3d"]));
+        assert!(mesusage(&["compile", "x.glb", "-o", "a", "-o", "b"]));
+        assert!(mesusage(&["compile", "x.glb", "-o", "o.a3d", "--rapide"]));
+    }
+
+    #[test]
+    fn t580_options_designe_un_fichier_d_options() {
+        assert_eq!(
+            parse_of(&[
+                "compile",
+                "voiture.glb",
+                "--options",
+                "autres.axion.json",
+                "-o",
+                "v.a3d"
+            ])
+            .unwrap(),
+            Command::Compile {
+                source: source("voiture.glb", false, Some("autres.axion.json")),
+                output: "v.a3d".to_owned(),
+            }
+        );
+        assert_eq!(
+            parse_of(&["validate", "voiture.glb", "--options", "o.axion.json"]).unwrap(),
+            Command::Validate {
+                file: source("voiture.glb", false, Some("o.axion.json")),
+            }
+        );
+        assert_eq!(
+            parse_of(&["bench-asset", "--options", "o.axion.json", "voiture.glb"]).unwrap(),
+            Command::BenchAsset {
+                source: source("voiture.glb", false, Some("o.axion.json")),
+            }
+        );
+        assert!(mesusage(&["compile", "x.glb", "-o", "o.a3d", "--options"]));
+        assert!(mesusage(&[
+            "validate",
+            "x.glb",
+            "--options",
+            "a",
+            "--options",
+            "b"
+        ]));
+        // `-o` n'appartient qu'à compile.
+        assert!(mesusage(&["validate", "x.glb", "-o", "o.a3d"]));
     }
 
     #[test]
@@ -345,11 +367,8 @@ mod tests {
                 file: "voiture.a3d".to_owned(),
             }
         );
-        assert!(matches!(parse_of(&["inspect"]), Err(CliError::Usage(_))));
-        assert!(matches!(
-            parse_of(&["inspect", "a.a3d", "b.a3d"]),
-            Err(CliError::Usage(_))
-        ));
+        assert!(mesusage(&["inspect"]));
+        assert!(mesusage(&["inspect", "a.a3d", "b.a3d"]));
     }
 
     #[test]
@@ -361,19 +380,10 @@ mod tests {
                 b: "b.a3d".to_owned(),
             }
         );
-        assert!(matches!(parse_of(&["diff"]), Err(CliError::Usage(_))));
-        assert!(matches!(
-            parse_of(&["diff", "a.a3d"]),
-            Err(CliError::Usage(_))
-        ));
-        assert!(matches!(
-            parse_of(&["diff", "a.a3d", "b.a3d", "c.a3d"]),
-            Err(CliError::Usage(_))
-        ));
-        assert!(matches!(
-            parse_of(&["diff", "a.a3d", "--court"]),
-            Err(CliError::Usage(_))
-        ));
+        assert!(mesusage(&["diff"]));
+        assert!(mesusage(&["diff", "a.a3d"]));
+        assert!(mesusage(&["diff", "a.a3d", "b.a3d", "c.a3d"]));
+        assert!(mesusage(&["diff", "a.a3d", "--court"]));
     }
 
     #[test]
@@ -381,26 +391,18 @@ mod tests {
         assert_eq!(
             parse_of(&["validate", "voiture.a3d"]).unwrap(),
             Command::Validate {
-                file: "voiture.a3d".to_owned(),
-                static_body: false,
+                file: source("voiture.a3d", false, None),
             }
         );
         assert_eq!(
             parse_of(&["validate", "--static-body", "monde.obj"]).unwrap(),
             Command::Validate {
-                file: "monde.obj".to_owned(),
-                static_body: true,
+                file: source("monde.obj", true, None),
             }
         );
-        assert!(matches!(parse_of(&["validate"]), Err(CliError::Usage(_))));
-        assert!(matches!(
-            parse_of(&["validate", "a.a3d", "b.a3d"]),
-            Err(CliError::Usage(_))
-        ));
-        assert!(matches!(
-            parse_of(&["validate", "a.a3d", "--strict"]),
-            Err(CliError::Usage(_))
-        ));
+        assert!(mesusage(&["validate"]));
+        assert!(mesusage(&["validate", "a.a3d", "b.a3d"]));
+        assert!(mesusage(&["validate", "a.a3d", "--strict"]));
     }
 
     #[test]
@@ -424,10 +426,7 @@ mod tests {
             &["lod", "v.a3d", "--ratios", "1,1,1,1,1,1,1,1,1"],
             &["lod", "v.a3d", "--ratios", "1", "--ratios", "1"],
         ] {
-            assert!(
-                matches!(parse_of(refus), Err(CliError::Usage(_))),
-                "{refus:?} accepté"
-            );
+            assert!(mesusage(refus), "{refus:?} accepté");
         }
     }
 
@@ -436,22 +435,12 @@ mod tests {
         assert_eq!(
             parse_of(&["bench-asset", "voiture.glb"]).unwrap(),
             Command::BenchAsset {
-                source: "voiture.glb".to_owned(),
-                static_body: false,
+                source: source("voiture.glb", false, None),
             }
         );
-        assert!(matches!(
-            parse_of(&["bench-asset"]),
-            Err(CliError::Usage(_))
-        ));
-        assert!(matches!(
-            parse_of(&["bench-asset", "a.glb", "b.glb"]),
-            Err(CliError::Usage(_))
-        ));
-        assert!(matches!(
-            parse_of(&["bench-asset", "a.glb", "--longtemps"]),
-            Err(CliError::Usage(_))
-        ));
+        assert!(mesusage(&["bench-asset"]));
+        assert!(mesusage(&["bench-asset", "a.glb", "b.glb"]));
+        assert!(mesusage(&["bench-asset", "a.glb", "--longtemps"]));
     }
 
     #[test]
