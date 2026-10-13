@@ -1312,14 +1312,17 @@ est tenue par ce qui existe.
       - [ ] cinq definitions, puis T-630..T-634.
 - [ ] **C-74 — commandes faisables dès M2** (Killian, 2026-10-13). `deform` et `replay` restent
       à C-28/C-41/C-42 (M6). R-830 : chaque commande appelle le code du jeu, sans chemin parallèle.
-      - [ ] `diff <a.a3d> <b.a3d>`.
-      - [ ] `validate <fichier>` : un `.a3d` par le décodage que le jeu applique au chargement
+      - [x] `diff <a.a3d> <b.a3d>` (6edc8f3).
+      - [x] `validate <fichier>` (49f0798) : un `.a3d` par le décodage que le jeu applique au chargement
             (`decode_render_asset`, à remonter d'`ax-ffi` dans `ax-asset`), une source par import et
             validation sans écriture, un `.axion.json` par le lecteur d'options (choix de Killian :
             le JSON validé est celui des options, pas une definition).
-      - [ ] `lod <file.a3d> --ratios …`.
-      - [ ] `bench-asset <src>`.
-      - [ ] options de compilation (PARTIE 6.4) : un seul lecteur dans `ax-asset`, défauts R-870,
+      - [x] `lod <file.a3d> --ratios …` (ad0e746) : aperçu, sans fichier produit ; lecteur de `LODM`.
+      - [x] `bench-asset <src>` (85068b7) : harnais C-72, mesure locale non publiable.
+      - [x] en chemin : export des métriques en deux temps (086e89e), arrêt du pool de jobs
+            (2bb21a3), `GEOM` d'un mesh sans triangle (72a8e6d, `COMPILER_VERSION` 9).
+      - [ ] options de compilation (PARTIE 6.4, [ADR-135](../docs/decisions/ADR-135.md), accepté
+            le 2026-10-13) : un seul lecteur dans `ax-asset`, défauts R-870,
             R-871, R-872 ; CLI `compile --options`, et **le jeu aussi** (R-830, R-860) : Java lit le
             `<modèle>.axion.json` voisin, l'encode en CBOR, `axion_asset_compile` le reçoit
             (`options_cbor`, IF-06, ignoré jusqu'ici) par le pont JNI.
