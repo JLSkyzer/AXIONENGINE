@@ -177,10 +177,9 @@ fn chunk<const N: usize>(bytes: &[u8], at: usize) -> &[u8; N] {
 mod tests {
     use super::*;
     use crate::a3d::{A3dFile, A3dLimits};
-    use crate::collider::ColliderMode;
     use crate::compile::{compile, CompileOptions};
     use crate::import::{ImportLimits, SourceFormat};
-    use crate::optimize::LodOptions;
+    use crate::options::AssetOptions;
     use ax_model::dm::geometry::{mesh_flags, NO_REGION_U16, NO_REGION_U8};
 
     fn sommet(position: [f32; 3]) -> Vertex {
@@ -344,8 +343,7 @@ f 2 7 3
             source_hash: 0,
             limits: ImportLimits::new(1 << 20),
             dynamic_body: true,
-            lod: LodOptions::DEFAULT,
-            collider_mode: ColliderMode::None,
+            authored: AssetOptions::DEFAULT,
         };
         let compiled = compile(CUBE_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| None)
             .expect("compilation refusée");

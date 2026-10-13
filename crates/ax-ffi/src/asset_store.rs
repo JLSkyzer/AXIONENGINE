@@ -334,11 +334,10 @@ impl AssetStore {
 mod tests {
     use super::*;
     use ax_asset::a3d::{decode_materials, A3dWriter, DecodedMaterials, MATL_LAYOUT, TEXR_LAYOUT};
-    use ax_asset::collider::ColliderMode;
     use ax_asset::compile::{compile, CompileOptions};
     use ax_asset::import::{ImportLimits, SourceFormat};
     use ax_asset::load::without_textures;
-    use ax_asset::optimize::LodOptions;
+    use ax_asset::options::AssetOptions;
     use ax_model::dm::material::{MaterialDesc, NO_TEXTURE};
     use ax_model::dm::render::{
         geometry_transfer_len, material_transfer_len, RestDraw, MATERIAL_TRANSFER_HEADER_BYTES,
@@ -458,8 +457,7 @@ f 2 7 3
             source_hash: 0,
             limits: ImportLimits::new(1 << 20),
             dynamic_body: true,
-            lod: LodOptions::DEFAULT,
-            collider_mode: ColliderMode::None,
+            authored: AssetOptions::DEFAULT,
         };
         compile(CUBE_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| None)
             .expect("compilation refusée")
@@ -492,8 +490,7 @@ f 2 4 3
             source_hash: 0,
             limits: ImportLimits::new(1 << 20),
             dynamic_body: true,
-            lod: LodOptions::DEFAULT,
-            collider_mode: ColliderMode::None,
+            authored: AssetOptions::DEFAULT,
         };
         let bytes = compile(CAISSE_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| {
             Some(b"newmtl bois\nKd 1 0 0\nnewmtl metal\nKd 0 0 1\n".to_vec())
@@ -796,8 +793,7 @@ f 1/1 2/2 3/3
             source_hash: 0,
             limits: ImportLimits::new(1 << 20),
             dynamic_body: true,
-            lod: LodOptions::DEFAULT,
-            collider_mode: ColliderMode::None,
+            authored: AssetOptions::DEFAULT,
         };
         let bytes = compile(PANNEAU_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| {
             Some(b"newmtl peint\nKd 1 1 1\nmap_Kd tex/panneau.png\n".to_vec())

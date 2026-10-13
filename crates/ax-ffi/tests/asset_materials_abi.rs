@@ -11,10 +11,9 @@
 #![allow(unsafe_code)]
 
 use ax_asset::a3d::{A3dFile, A3dLimits};
-use ax_asset::collider::ColliderMode;
 use ax_asset::compile::{compile, CompileOptions};
 use ax_asset::import::{ImportLimits, SourceFormat};
-use ax_asset::optimize::LodOptions;
+use ax_asset::options::AssetOptions;
 use ax_asset::png;
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::dm::handle::Handle;
@@ -132,8 +131,7 @@ fn panneau(png: &[u8]) -> Vec<u8> {
         source_hash: 0,
         limits: ImportLimits::new(1 << 20),
         dynamic_body: true,
-        lod: LodOptions::DEFAULT,
-        collider_mode: ColliderMode::None,
+        authored: AssetOptions::DEFAULT,
     };
     compile(&panneau_glb(png), SourceFormat::Glb, &options, |_| None)
         .expect("compilation refusée")

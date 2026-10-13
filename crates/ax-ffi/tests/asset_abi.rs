@@ -8,10 +8,9 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::collider::ColliderMode;
 use ax_asset::compile::{compile, CompileOptions};
 use ax_asset::import::{ImportLimits, SourceFormat};
-use ax_asset::optimize::LodOptions;
+use ax_asset::options::AssetOptions;
 use ax_model::buffer::{BufferKind, HEADER_BYTES};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::render::{geometry_transfer_len, RestDraw};
@@ -59,8 +58,7 @@ f 2 7 3
         source_hash: 0,
         limits: ImportLimits::new(1 << 20),
         dynamic_body: true,
-        lod: LodOptions::DEFAULT,
-        collider_mode: ColliderMode::None,
+        authored: AssetOptions::DEFAULT,
     };
     compile(CUBE_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| None)
         .expect("compilation refusée")

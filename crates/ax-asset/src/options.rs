@@ -78,36 +78,11 @@ pub struct MaterialDefaults {
     pub metallic: f32,
 }
 
-/// Bloc `deformation` (C-28) : validé aujourd'hui, appliqué en M6.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DeformationOptions {
-    /// L'asset est déformable ; `false` : aucune section `DEFM` (R-872).
-    pub enabled: bool,
-    /// Régions de déformation détectées d'office.
-    pub auto_regions: bool,
-    /// Taille de cellule visée, en blocs.
-    pub target_cell_size: f32,
-    /// Résolution maximale du champ, par axe.
-    pub max_resolution: [u32; 3],
-    /// Matériau de déformation par défaut, `espace:chemin`.
-    pub default_material: String,
-    /// Marge rigide, en blocs.
-    pub rigid_margin: f32,
-    /// Bords ancrés d'office.
-    pub anchor_borders: bool,
-}
-
-/// Bloc `structure` (C-43) : validé aujourd'hui, appliqué en M7.
-#[derive(Debug, Clone, PartialEq)]
-pub struct StructureOptions {
-    /// Liaisons structurelles générées d'office.
-    pub auto_links: bool,
-    /// Type de liaison par défaut.
-    pub default_link: String,
-}
-
-/// Les options de compilation d'un asset (PARTIE 6.4).
-#[derive(Debug, Clone, PartialEq)]
+/// Les options de compilation d'un asset (PARTIE 6.4) : celles que la
+/// compilation applique. `deformation` et `structure` sont validées par le
+/// lecteur, puis écartées : sans effet avant C-28 et C-43, qui ajouteront ici
+/// leurs champs.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AssetOptions {
     /// Échelle uniforme de l'asset entier.
     pub scale: f32,
@@ -127,54 +102,39 @@ pub struct AssetOptions {
     pub compress: bool,
     /// Taille de texture au-delà de laquelle une texture embarquée est signalée.
     pub max_texture_size: u32,
-    /// Déformation (M6).
-    pub deformation: DeformationOptions,
-    /// Structure (M7).
-    pub structure: StructureOptions,
 }
 
 impl Default for AssetOptions {
-    /// Les défauts de R-870 : ceux de la compilation d'aujourd'hui.
     fn default() -> Self {
-        Self {
-            scale: 1.0,
-            up_axis: UpAxis::Y,
-            generate_tangents: true,
-            generate_normals: NormalsMode::IfMissing,
-            lod: LodOptions::DEFAULT,
-            collision: CollisionOptions {
-                mode: ColliderMode::None,
-                max_hulls: MAX_HULLS,
-                resolution: None,
-            },
-            materials: MaterialDefaults {
-                roughness: crate::import::DEFAULT_ROUGHNESS,
-                metallic: crate::import::DEFAULT_METALLIC,
-            },
-            compress: true,
-            max_texture_size: 2048,
-            deformation: DeformationOptions {
-                enabled: true,
-                auto_regions: true,
-                target_cell_size: 0.12,
-                max_resolution: [12, 8, 12],
-                default_material: "axion:steel".to_owned(),
-                rigid_margin: 0.05,
-                anchor_borders: true,
-            },
-            structure: StructureOptions {
-                auto_links: true,
-                default_link: "weld".to_owned(),
-            },
-        }
+        Self::DEFAULT
     }
 }
 
 impl AssetOptions {
+    /// Les défauts de R-870 : ceux de la compilation d'aujourd'hui.
+    pub const DEFAULT: Self = Self {
+        scale: 1.0,
+        up_axis: UpAxis::Y,
+        generate_tangents: true,
+        generate_normals: NormalsMode::IfMissing,
+        lod: LodOptions::DEFAULT,
+        collision: CollisionOptions {
+            mode: ColliderMode::None,
+            max_hulls: MAX_HULLS,
+            resolution: None,
+        },
+        materials: MaterialDefaults {
+            roughness: crate::import::DEFAULT_ROUGHNESS,
+            metallic: crate::import::DEFAULT_METALLIC,
+        },
+        compress: true,
+        max_texture_size: 2048,
+    };
+
     /// Les défauts, avec un mode de génération automatique de colliders.
     #[must_use]
-    pub fn with_collider_mode(mode: ColliderMode) -> Self {
-        let mut options = Self::default();
+    pub const fn with_collider_mode(mode: ColliderMode) -> Self {
+        let mut options = Self::DEFAULT;
         options.collision.mode = mode;
         options
     }
@@ -552,7 +512,7 @@ impl Reader {
                 "lod" => self.lod(value, &path, &mut options.lod),
                 "collision" => self.collision(value, &path, &mut options.collision),
                 "deformation" => {
-                    self.deformation(value, &path, &mut options.deformation);
+                    self.deformation(value, &path);
                     self.warnings.push(
                         "options « deformation » validées, sans effet avant la déformation \
                          (C-28, M6)"
@@ -560,7 +520,7 @@ impl Reader {
                     );
                 }
                 "structure" => {
-                    self.structure(value, &path, &mut options.structure);
+                    self.structure(value, &path);
                     self.warnings.push(
                         "options « structure » validées, sans effet avant la structure \
                          (C-43, M7)"
@@ -729,7 +689,7 @@ impl Reader {
         }
     }
 
-    fn deformation(&mut self, value: &Json, path: &str, deformation: &mut DeformationOptions) {
+    fn deformation(&mut self, value: &Json, path: &str) {
         const KEYS: [&str; 7] = [
             "enabled",
             "auto_regions",
@@ -745,37 +705,19 @@ impl Reader {
         for (key, value) in entries {
             let path = format!("{path}.{key}");
             match key.as_str() {
-                "enabled" => {
-                    if let Some(flag) = self.boolean(value, &path) {
-                        deformation.enabled = flag;
-                    }
-                }
-                "auto_regions" => {
-                    if let Some(flag) = self.boolean(value, &path) {
-                        deformation.auto_regions = flag;
-                    }
-                }
-                "anchor_borders" => {
-                    if let Some(flag) = self.boolean(value, &path) {
-                        deformation.anchor_borders = flag;
-                    }
+                "enabled" | "auto_regions" | "anchor_borders" => {
+                    self.boolean(value, &path);
                 }
                 "target_cell_size" => {
-                    if let Some(size) = self.positive(value, &path) {
-                        deformation.target_cell_size = size;
-                    }
+                    self.positive(value, &path);
                 }
                 "rigid_margin" => {
-                    if let Some(margin) = self.number(value, &path, 0.0, f64::from(f32::MAX)) {
-                        deformation.rigid_margin = margin;
-                    }
+                    self.number(value, &path, 0.0, f64::from(f32::MAX));
                 }
-                "max_resolution" => self.max_resolution(value, &path, deformation),
+                "max_resolution" => self.max_resolution(value, &path),
                 "default_material" => {
                     if let Some(material) = self.text(value, &path) {
-                        if is_resource_id(material) {
-                            deformation.default_material = material.to_owned();
-                        } else {
+                        if !is_resource_id(material) {
                             self.fault(
                                 &path,
                                 format!("« {material} » : identifiant espace:chemin attendu"),
@@ -788,7 +730,7 @@ impl Reader {
         }
     }
 
-    fn max_resolution(&mut self, value: &Json, path: &str, deformation: &mut DeformationOptions) {
+    fn max_resolution(&mut self, value: &Json, path: &str) {
         let Json::Array(items) = value else {
             self.fault(
                 path,
@@ -806,19 +748,12 @@ impl Reader {
             );
             return;
         }
-        let faults = self.faults.len();
-        let mut resolution = [0u32; 3];
         for (index, item) in items.iter().enumerate() {
-            if let Some(cells) = self.integer(item, &format!("{path}[{index}]"), 1, u32::MAX) {
-                resolution[index] = cells;
-            }
-        }
-        if self.faults.len() == faults {
-            deformation.max_resolution = resolution;
+            self.integer(item, &format!("{path}[{index}]"), 1, u32::MAX);
         }
     }
 
-    fn structure(&mut self, value: &Json, path: &str, structure: &mut StructureOptions) {
+    fn structure(&mut self, value: &Json, path: &str) {
         const KEYS: [&str; 2] = ["auto_links", "default_link"];
         let Some(entries) = self.object(value, path) else {
             return;
@@ -827,15 +762,11 @@ impl Reader {
             let path = format!("{path}.{key}");
             match key.as_str() {
                 "auto_links" => {
-                    if let Some(flag) = self.boolean(value, &path) {
-                        structure.auto_links = flag;
-                    }
+                    self.boolean(value, &path);
                 }
                 "default_link" => {
                     if let Some(link) = self.text(value, &path) {
-                        if is_snake_case(link) {
-                            structure.default_link = link.to_owned();
-                        } else {
+                        if !is_snake_case(link) {
                             self.fault(&path, format!("« {link} » : nom en snake_case attendu"));
                         }
                     }
@@ -947,7 +878,6 @@ mod tests {
         assert_eq!(lu.options.collision.max_hulls, 24);
         assert_eq!(lu.options.collision.resolution, Some(100_000));
         assert_eq!(lu.options.lod, LodOptions::DEFAULT);
-        assert_eq!(lu.options.deformation.max_resolution, [12, 8, 12]);
         // Trois options sans effet aujourd'hui, chacune signalée.
         assert_eq!(lu.warnings.len(), 3, "{:?}", lu.warnings);
     }

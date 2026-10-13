@@ -30,10 +30,9 @@ use crate::context;
 use ax_asset::a3d::{
     announced_total_size, decode_colliders, A3dLimits, HEADER_BYTES as A3D_HEADER_BYTES,
 };
-use ax_asset::collider::ColliderMode;
 use ax_asset::compile::CompileOptions;
 use ax_asset::import::{ImportLimits, SourceFormat};
-use ax_asset::optimize::LodOptions;
+use ax_asset::options::AssetOptions;
 use ax_jobs::{CpuShare, JobBudgets, JobKind, Side, WorkerPolicy};
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::budgets::Budget;
@@ -447,8 +446,7 @@ pub unsafe extern "C" fn axion_asset_compile(
                 // Les options de `<modele>.axion.json` (PARTIE 6.4) ne sont pas
                 // encore lues : les valeurs par défaut du cahier des charges. Le
                 // mode de collider de la definition (C-32) n'y voyage pas encore.
-                lod: LodOptions::DEFAULT,
-                collider_mode: ColliderMode::None,
+                authored: AssetOptions::DEFAULT,
             };
 
             let Some(jobs) = session.jobs() else {

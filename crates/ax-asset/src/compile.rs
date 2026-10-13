@@ -18,11 +18,12 @@
 use crate::a3d::{
     encode_colliders, encode_materials, encode_nodes, encode_textures, A3dWriter, SectionTag,
 };
-use crate::collider::{build_colliders, ColliderMode};
+use crate::collider::build_colliders;
 use crate::import::{
     import_gltf, import_obj, import_stl, ImportError, ImportLimits, ImportedAsset, SourceFormat,
 };
-use crate::optimize::{optimize, Aabb, LodOptions, LodTable};
+use crate::optimize::{optimize, Aabb, LodTable};
+use crate::options::AssetOptions;
 use crate::validate::{validate, AssetView, NamedEntry, ValidationReport};
 use ax_model::dm::geometry::{MeshDesc, Vertex};
 use ax_model::dm::material::MaterialDesc;
@@ -109,12 +110,12 @@ pub struct CompileOptions {
     /// R-160 n'interdit `TriMesh` et `Heightfield` que là : sur la géométrie du
     /// monde, ce sont les formes normales.
     pub dynamic_body: bool,
-    /// Niveaux de détail (C-23, étape 6 ; bloc `lod` de la PARTIE 6.4).
-    pub lod: LodOptions,
-    /// Mode de génération automatique de collider réclamé par la definition
-    /// (C-32, R-620). [`ColliderMode::None`] par défaut : rien n'est généré sans
-    /// demande explicite.
-    pub collider_mode: ColliderMode,
+    /// Ce que l'auteur a demandé : les options de la PARTIE 6.4 (ADR-135), lues
+    /// du `.axion.json` par [`crate::options::parse`], ou leurs défauts. Le mode
+    /// de génération automatique de colliders en fait partie (C-32, R-620) :
+    /// [`ColliderMode::None`](crate::collider::ColliderMode::None) par défaut,
+    /// rien n'est généré sans demande.
+    pub authored: AssetOptions,
 }
 
 /// Ce qu'une compilation réussie produit.
@@ -156,7 +157,7 @@ pub fn compile(
     // Les normales absentes de la source sont exemptées : C-23 les génère.
     check(&asset, options, &asset.missing_normals)?;
 
-    let optimized = optimize(&mut asset, &options.lod);
+    let optimized = optimize(&mut asset, &options.authored.lod);
     warnings.extend(optimized.warnings);
 
     // C-32 : les colliders se génèrent une fois les bornes connues (l'optimizer
@@ -169,7 +170,7 @@ pub fn compile(
         &asset.vertices,
         &asset.indices,
         &asset.collider_requests,
-        options.collider_mode,
+        options.authored.collision.mode,
         optimized.bounds,
     );
     warnings.extend(built.warnings);
@@ -396,6 +397,7 @@ fn geometry_bytes(asset: &ImportedAsset) -> Vec<u8> {
 mod tests {
     use super::*;
     use crate::a3d::{A3dFile, A3dLimits};
+    use crate::collider::ColliderMode;
     use ax_model::dm::geometry::UvRange;
 
     const OPTIONS: CompileOptions = CompileOptions {
@@ -403,8 +405,7 @@ mod tests {
         source_hash: 0x5678,
         limits: ImportLimits::new(1 << 20),
         dynamic_body: true,
-        lod: LodOptions::DEFAULT,
-        collider_mode: ColliderMode::None,
+        authored: AssetOptions::DEFAULT,
     };
 
     /// Une grille plane de `cote × cote` carrés, en OBJ.
@@ -520,7 +521,7 @@ f 2 7 3
         // englobante, qui repasse la validation (densité positive, dimensions
         // valides) puisque la compilation aboutit.
         let options = CompileOptions {
-            collider_mode: ColliderMode::AutoBox,
+            authored: AssetOptions::with_collider_mode(ColliderMode::AutoBox),
             ..OPTIONS
         };
         let compiled = compile(CUBE_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| None)
@@ -532,7 +533,7 @@ f 2 7 3
     fn t310_le_mode_autosphere_produit_un_collider() {
         // Une sphère englobante passe elle aussi la validation de bout en bout.
         let options = CompileOptions {
-            collider_mode: ColliderMode::AutoSphere,
+            authored: AssetOptions::with_collider_mode(ColliderMode::AutoSphere),
             ..OPTIONS
         };
         let compiled = compile(CUBE_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| None)
@@ -557,7 +558,7 @@ f 2 7 3
         // Le collider auto-généré traverse le conteneur : la section PHYS se
         // relit et redonne une boîte (ADR-115).
         let options = CompileOptions {
-            collider_mode: ColliderMode::AutoBox,
+            authored: AssetOptions::with_collider_mode(ColliderMode::AutoBox),
             ..OPTIONS
         };
         let compiled = compile(CUBE_OBJ.as_bytes(), SourceFormat::Obj, &options, |_| None)
