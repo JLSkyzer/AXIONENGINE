@@ -18,13 +18,22 @@
 //!
 //! # Provenance
 //!
-//! Le pointeur qu'un appelant rend à `dealloc` ou à `realloc` peut n'avoir de
-//! droits que sur la zone qu'il a reçue : un `Box`, un `Vec` ou une référence
-//! le restreignent à leur contenu (c'est le modèle d'aliasing que Miri vérifie,
-//! R-2122). L'en-tête n'est donc jamais atteint à travers lui : la provenance
-//! du bloc entier est **exposée** à l'allocation, puis reprise par
-//! `with_exposed_provenance_mut` pour relire l'en-tête et rendre le bloc au
-//! système. L'exposition ne coûte rien à l'exécution.
+//! Le modèle d'aliasing que Miri vérifie (Stacked Borrows, R-2122) pose deux
+//! contraintes à un allocateur qui place un en-tête devant le bloc rendu :
+//!
+//! - le pointeur qu'un appelant rend à `dealloc` ou à `realloc` n'a de droits
+//!   que sur sa zone — un `Box`, un `Vec` ou une référence le restreignent à
+//!   leur contenu : l'en-tête n'est pas atteignable à travers lui ;
+//! - ses droits doivent survivre à la libération : un `Box` reçu par valeur
+//!   reste protégé jusqu'à la fin de la fonction qui le libère — `drop`
+//!   compris. Rendre le bloc au système par la provenance du bloc entier les
+//!   retirerait.
+//!
+//! Aucune provenance seule ne convient donc. L'allocateur **expose** les deux —
+//! celle du bloc entier à l'allocation, celle du pointeur de l'appelant à la
+//! libération — et rend le bloc par un pointeur à provenance exposée
+//! (`with_exposed_provenance_mut`), qui porte les droits du bloc sur l'en-tête
+//! et ceux de l'appelant sur sa zone. L'exposition ne coûte rien à l'exécution.
 //!
 //! # Coût
 //!
@@ -214,10 +223,11 @@ fn outer(layout: Layout) -> Option<Layout> {
     Layout::from_size_align(size, layout.align()).ok()
 }
 
-/// Début du bloc d'un pointeur rendu par cet allocateur, muni de la provenance
-/// du bloc entier que [`finish`] a exposée — jamais de celle de `ptr`, qui peut
-/// ne couvrir que la zone utilisateur (voir « Provenance »).
+/// Début du bloc d'un pointeur rendu par cet allocateur, à provenance exposée :
+/// celle du bloc entier, que [`finish`] a exposée, pour l'en-tête, et celle de
+/// `ptr`, exposée ici, pour la zone de l'appelant (voir « Provenance »).
 fn block_of(ptr: *mut u8, offset: usize) -> *mut u8 {
+    let _ = ptr.expose_provenance();
     // `ptr` est à `offset` octets du début de son bloc : la soustraction ne
     // revient pas en arrière de zéro ; `wrapping_sub` garde l'allocateur sans
     // panique même en débogage.
@@ -228,8 +238,8 @@ fn block_of(ptr: *mut u8, offset: usize) -> *mut u8 {
 // que `outer` a construite et vérifiée à l'allocation, reconstruite à
 // l'identique à la libération —, et rend un pointeur décalé de l'en-tête à
 // l'intérieur du bloc obtenu, aligné comme demandé (l'en-tête est un multiple de
-// l'alignement). Le bloc est retrouvé à la libération par sa provenance exposée,
-// pas par celle du pointeur rendu. Aucune méthode ne panique.
+// l'alignement). Le bloc est retrouvé à la libération par un pointeur à
+// provenance exposée (voir « Provenance »). Aucune méthode ne panique.
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let Some(outer) = outer(layout) else {

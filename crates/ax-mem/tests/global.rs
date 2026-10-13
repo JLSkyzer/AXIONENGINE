@@ -3,8 +3,8 @@
 //! `Box`, `String`, table de hachage, threads — est compté, puis décompté.
 //!
 //! Le harnais de test alloue aussi, sur ses propres threads, et les tests tournent
-//! en parallèle : chacun mesure dans une arène à lui — `FRAME`, `DEFORM` —, que rien
-//! d'autre n'emploie dans ce binaire.
+//! en parallèle : chacun mesure dans une arène à lui — `FRAME`, `DEFORM`, `SCRATCH` —,
+//! que rien d'autre n'emploie dans ce binaire.
 
 use ax_mem::{scope, ArenaClass, CountingAllocator};
 use std::collections::HashMap;
@@ -18,6 +18,34 @@ fn frame() -> usize {
 
 fn deform() -> usize {
     ALLOCATOR.live_bytes_in(ArenaClass::Deform)
+}
+
+fn scratch() -> usize {
+    ALLOCATOR.live_bytes_in(ArenaClass::Scratch)
+}
+
+/// Libère un `Box` reçu par valeur, avant de rendre la main.
+fn consume(boxed: Box<[u8; 256]>) -> u8 {
+    let last = boxed[255];
+    drop(boxed);
+    last
+}
+
+#[test]
+fn t016_un_box_libere_par_la_fonction_qui_le_recoit_est_decompte() {
+    // Un `Box` reçu par valeur reste protégé jusqu'à la fin de la fonction qui le
+    // libère : sous Miri (Stacked Borrows), la libération ne doit pas lui retirer
+    // ses droits. Deux formes : une fonction qui le consomme, et un
+    // `Box<dyn FnOnce>` qui se libère dans son propre appel.
+    let before = scratch();
+    {
+        let _scratch = scope(ArenaClass::Scratch);
+        assert_eq!(consume(Box::new([9u8; 256])), 9);
+        let captured = "x".repeat(64);
+        let task: Box<dyn FnOnce() -> usize> = Box::new(move || captured.len());
+        assert_eq!(task(), 64);
+    }
+    assert_eq!(scratch(), before, "les deux Box sont rendus");
 }
 
 #[test]
