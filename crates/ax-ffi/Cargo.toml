@@ -58,6 +58,9 @@ libc.workspace = true
 windows-sys.workspace = true
 
 [dev-dependencies]
+# R-482 (memory_abi) : rayon libère ses files par époques ; le test fait avancer
+# l'époque pour lire le bilan exact d'une session. Déjà là, sous rayon-core.
+crossbeam-epoch = "0.9"
 # Le test d'integration exerce l'ABI comme Java le fera : il doit pouvoir
 # encoder une configuration et relire un en-tete de tampon.
 ax-model.workspace = true

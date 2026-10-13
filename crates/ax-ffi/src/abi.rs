@@ -349,7 +349,10 @@ pub unsafe extern "C" fn axion_last_error(
 ///
 /// `out_len` reçoit **toujours** la longueur complète du document, que la
 /// capacité ait suffi ou non. Un appelant qui la trouve supérieure à `cap`
-/// rappelle avec un tampon plus grand.
+/// rappelle avec un tampon de cette taille, et reçoit ce document-là : la session
+/// le garde, si bien qu'une seconde tentative suffit toujours, alors même que
+/// l'export décrit la mémoire vivante (ADR-133 D2). Une capacité nulle demande la
+/// longueur d'un document frais.
 ///
 /// Contrairement à [`axion_last_error`], rien n'est écrit quand la capacité ne
 /// suffit pas : un message de diagnostic tronqué reste lisible, un document
@@ -372,19 +375,24 @@ pub unsafe extern "C" fn axion_metrics_export(
             return AXION_E_INVALID_BUFFER;
         }
 
-        let json = match context::with(ctx, false, |session| session.metrics_json()) {
-            Ok(json) => json,
+        let export = match context::with(ctx, false, |session| session.metrics_export(cap)) {
+            Ok(export) => export,
             Err(code) => return code,
         };
 
-        let bytes = json.as_bytes();
-        // SAFETY: nullité écartée ci-dessus.
-        unsafe { out_len.write(bytes.len()) };
-
-        if bytes.len() <= cap && !bytes.is_empty() {
-            // SAFETY: `out_utf8` est non nul dès que `cap` l'est, et la
-            // longueur vient d'être comparée à la capacité.
-            unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_utf8, bytes.len()) };
+        match export {
+            context::MetricsExport::Write(json) => {
+                let bytes = json.as_bytes();
+                // SAFETY: nullité écartée ci-dessus.
+                unsafe { out_len.write(bytes.len()) };
+                // SAFETY: `out_utf8` est non nul dès que `cap` l'est, et la session
+                // n'écrit qu'un document qui tient dans `cap`.
+                unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_utf8, bytes.len()) };
+            }
+            context::MetricsExport::TooSmall(len) => {
+                // SAFETY: nullité écartée ci-dessus.
+                unsafe { out_len.write(len) };
+            }
         }
         AXION_OK
     })

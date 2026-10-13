@@ -238,3 +238,117 @@ mod tests {
         assert!(case.runs.iter().all(|r| !r.samples_ns.is_empty()));
     }
 }
+
+/// B-08 — surcoût de l'instrumentation : l'allocateur compteur (R-501, ADR-133 D2).
+///
+/// Les mêmes charges tournent sous l'allocateur du système et sous
+/// [`ax_mem::CountingAllocator`] installé comme allocateur global — deux binaires,
+/// `bench-alloc-system` et `bench-alloc-counted` —, et R-501 juge l'écart sur la
+/// charge représentative : un monde physique.
+pub mod memory {
+    use super::{BTreeMap, CiCase, Value};
+    use crate::measure::{measure, MeasureConfig};
+    use ax_math::{Quat, Vec3};
+    use ax_model::dm::geometry::WorldTransform;
+    use ax_physics::{BodyCollider, BodyKind, ContactMaterial, Handle, Shape, SimDriver};
+    use std::hint::black_box;
+
+    /// Petites allocations par échantillon : le coût par opération, au pire.
+    pub const SMALL_ALLOCATIONS: usize = 10_000;
+
+    /// Threads de la charge concurrente.
+    pub const THREADS: usize = 4;
+    /// Allocations par thread de la charge concurrente.
+    pub const PER_THREAD: usize = 5_000;
+
+    /// Corps de la charge physique.
+    pub const BODIES: u32 = 200;
+    /// Ticks de la charge physique, à 20 Hz.
+    pub const TICKS: u32 = 20;
+
+    /// Dix mille blocs de 64 octets, alloués puis rendus.
+    pub fn small_allocations() {
+        for _ in 0..SMALL_ALLOCATIONS {
+            black_box(Box::new([0u8; 64]));
+        }
+    }
+
+    /// Quatre threads qui allouent et rendent en même temps : la contention des compteurs.
+    pub fn threaded_allocations() {
+        std::thread::scope(|threads| {
+            for _ in 0..THREADS {
+                threads.spawn(|| {
+                    for i in 0..PER_THREAD {
+                        black_box(vec![0u8; 256 + i % 64]);
+                    }
+                });
+            }
+        });
+    }
+
+    /// Un monde physique : un plancher, deux cents boîtes qui tombent et s'entassent,
+    /// vingt ticks — construction du monde comprise.
+    pub fn physics_ticks() {
+        let mut driver = SimDriver::new();
+        driver.set_world_tile(
+            0,
+            [0, 0, 0],
+            &[[0.0, 0.0, 0.0, 16.0, 1.0, 16.0]],
+            ContactMaterial::default(),
+        );
+        for index in 0..BODIES {
+            let x = 1.0 + f64::from(index % 10) * 1.5;
+            let z = 1.0 + f64::from((index / 10) % 10) * 1.5;
+            let y = 2.0 + f64::from(index / 100) * 1.5;
+            driver.create_assembly(
+                0,
+                Handle::new(index + 1, 1),
+                WorldTransform {
+                    position: [x, y, z],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                },
+                BodyKind::Dynamic,
+                &[BodyCollider {
+                    shape: Shape::Cuboid {
+                        half_extents: [0.5, 0.5, 0.5],
+                    },
+                    density: 1000.0,
+                    material: ContactMaterial::default(),
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                }],
+            );
+        }
+        for _ in 0..TICKS {
+            driver.advance_all(1.0 / 20.0);
+        }
+        black_box(driver.collect_states());
+    }
+
+    /// Les trois cas de B-08 sous l'allocateur `allocator` (`system` ou `counted`).
+    #[must_use]
+    pub fn ci_cases(config: &MeasureConfig, allocator: &str) -> Vec<CiCase> {
+        let workloads: [(&str, fn()); 3] = [
+            ("small_allocations", small_allocations),
+            ("threaded_allocations", threaded_allocations),
+            ("physics_ticks", physics_ticks),
+        ];
+        workloads
+            .iter()
+            .map(|(name, routine)| {
+                let mut parameters = BTreeMap::new();
+                parameters.insert("workload".to_string(), Value::from(*name));
+                parameters.insert("allocator".to_string(), Value::from(allocator));
+                parameters.insert(
+                    "variant".to_string(),
+                    Value::from(format!("{name}-{allocator}")),
+                );
+                CiCase {
+                    benchmark: "B-08",
+                    parameters,
+                    runs: measure(config, routine),
+                }
+            })
+            .collect()
+    }
+}

@@ -32,6 +32,13 @@
 
 pub mod abi;
 pub mod asset_store;
+
+/// INV-08, R-480 (ADR-133 D2) : toute allocation de la bibliothèque native passe par
+/// l'allocateur compteur d'`ax-mem`, qui l'impute à son arène — celles de `rapier`, du
+/// pool de jobs et des tampons comprises. La session en publie les octets vivants, et
+/// juge `budgets.native_mem_bytes` sur leur total.
+#[global_allocator]
+pub static ALLOCATOR: ax_mem::CountingAllocator = ax_mem::CountingAllocator::new();
 pub mod context;
 mod cpu_clock;
 pub mod jni_bridge;

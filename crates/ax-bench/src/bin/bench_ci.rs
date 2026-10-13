@@ -14,7 +14,6 @@
 //! le coureur mesure et compare tout de meme, mais n'ecrit rien.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::process::ExitCode;
 
 use ax_bench::cases;
@@ -22,16 +21,8 @@ use ax_bench::{
     archive, compare_p95, latest_baseline, BenchmarkResult, MeasureConfig, Platform, Regression,
 };
 
-struct Args {
-    out: PathBuf,
-    commit: Option<String>,
-    date: Option<String>,
-    cpu: Option<String>,
-    normative: bool,
-}
-
 fn main() -> ExitCode {
-    let args = match parse_args() {
+    let args = match ax_bench::cli::parse(&help()) {
         Ok(args) => args,
         Err(message) => {
             eprintln!("bench-ci : {message}");
@@ -131,55 +122,10 @@ fn report(benchmark: &str, result: &BenchmarkResult, verdict: Regression) {
     }
 }
 
-fn parse_args() -> Result<Args, String> {
-    let mut out = PathBuf::from("benchmarks/results");
-    let mut commit = None;
-    let mut date = None;
-    let mut cpu = None;
-    let mut normative = false;
-
-    let mut args = std::env::args().skip(1);
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--out" => out = PathBuf::from(value(&mut args, "--out")?),
-            "--commit" => commit = Some(value(&mut args, "--commit")?),
-            "--date" => date = Some(value(&mut args, "--date")?),
-            "--cpu" => cpu = Some(value(&mut args, "--cpu")?),
-            "--normative" => normative = true,
-            "-h" | "--help" => {
-                print_help();
-                std::process::exit(0);
-            }
-            other => return Err(format!("argument inconnu : {other}")),
-        }
-    }
-    Ok(Args {
-        out,
-        commit,
-        date,
-        cpu,
-        normative,
-    })
-}
-
-/// Lit la valeur d'un drapeau, ou explique laquelle manque.
-fn value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<String, String> {
-    args.next()
-        .ok_or_else(|| format!("{flag} attend une valeur"))
-}
-
-fn print_help() {
-    println!(
+fn help() -> String {
+    format!(
         "bench-ci — coureur de non-regression (R-2250, R-2251)\n\n\
-         Usage : bench-ci [OPTIONS]\n\n\
-         Options :\n\
-         \x20 --out <dir>       dossier des resultats archives (defaut : benchmarks/results)\n\
-         \x20 --commit <sha>    empreinte du commit mesure (provenance)\n\
-         \x20 --date <iso>      date ISO 8601 de la mesure (provenance)\n\
-         \x20 --cpu <modele>    modele de processeur (provenance)\n\
-         \x20 --normative       configuration normative (30 s + 5 x 60 s) au lieu de la rapide\n\
-         \x20 -h, --help        affiche cette aide\n\n\
-         Sans --commit, --date et --cpu, la mesure et la comparaison ont lieu mais\n\
-         rien n'est archive (R-2231)."
-    );
+         Usage : bench-ci [OPTIONS]\n\n{}",
+        ax_bench::cli::OPTIONS_HELP
+    )
 }

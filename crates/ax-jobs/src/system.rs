@@ -331,7 +331,13 @@ impl JobSystem {
                 }
             } else {
                 let started = Instant::now();
-                let produced = catch_unwind(AssertUnwindSafe(|| work(&context)));
+                // R-480 : ce que le travail alloue — son résultat compris, tant qu'il vit —
+                // est compté dans l'arène SCRATCH ; l'arène précédente revient ensuite,
+                // panique comprise, `catch_unwind` l'ayant arrêtée.
+                let produced = {
+                    let _scratch = ax_mem::scope(ax_mem::ArenaClass::Scratch);
+                    catch_unwind(AssertUnwindSafe(|| work(&context)))
+                };
                 let elapsed_nanos = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
                 let overran = budget_nanos > 0 && elapsed_nanos > budget_nanos;
 

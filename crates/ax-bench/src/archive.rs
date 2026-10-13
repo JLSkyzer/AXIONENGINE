@@ -110,10 +110,20 @@ pub fn archive(result: &BenchmarkResult, root: &Path) -> Result<PathBuf, Archive
         .join(platform_slug(&result.platform));
     std::fs::create_dir_all(&dir).map_err(|e| ArchiveError::Io(e.to_string()))?;
 
+    // Deux variantes d'un même benchmark, au même commit et à la même date — B-08 mesure
+    // la même charge sous deux allocateurs —, ne s'écrasent pas : le paramètre `variant`
+    // entre dans le nom.
+    let variant = result
+        .parameters
+        .get("variant")
+        .and_then(serde_json::Value::as_str)
+        .map(|variant| format!("_{}", slugify(variant)))
+        .unwrap_or_default();
     let name = format!(
-        "{}_{}.json",
+        "{}_{}{}.json",
         slugify(&result.date),
-        truncate(&slugify(&result.commit), 12)
+        truncate(&slugify(&result.commit), 12),
+        variant
     );
     let file = dir.join(name);
 
@@ -262,6 +272,37 @@ mod tests {
         assert_eq!(back, r);
         assert!(text.ends_with('\n'));
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn t_archive_names_a_variant_apart() {
+        // B-08 : deux variantes au même commit et à la même date ont chacune leur fichier ;
+        // sans variante, le nom reste `<date>_<commit>.json`.
+        let root = std::env::temp_dir().join(format!("ax-bench-variant-{}", std::process::id()));
+        let plain = archive(&good_result(), &root).unwrap();
+        let mut counted = good_result();
+        counted.parameters.insert(
+            "variant".to_string(),
+            serde_json::Value::from("physics_ticks-counted"),
+        );
+        let mut system = counted.clone();
+        system.parameters.insert(
+            "variant".to_string(),
+            serde_json::Value::from("physics_ticks-system"),
+        );
+        let counted_path = archive(&counted, &root).unwrap();
+        let system_path = archive(&system, &root).unwrap();
+
+        let name = |path: &Path| path.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(!name(&plain).contains("physics"), "{}", name(&plain));
+        assert!(
+            name(&counted_path).ends_with("_physics-ticks-counted.json"),
+            "{}",
+            name(&counted_path)
+        );
+        assert_ne!(counted_path, system_path);
+        assert!(counted_path.exists() && system_path.exists() && plain.exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -29,6 +29,8 @@
 #   build-natives      -> job platform, etape nommee (34.2)
 #   JAR complet        -> job jar-complet : natifs de la matrice reunis, mode
 #                         release qui refuse un JAR partial (R-2341, 37.3)
+#   R-2122 (Miri)      -> job miri : les tests d'ax-mem, qui porte l'allocateur
+#                         compteur (ADR-133 D2), sous l'interprete Miri
 #
 # Ce qui manque, et pourquoi : lint-java attend spotless, lint-units attend les
 # annotations dimensionnelles de 11.5, fuzz-short attend les cibles de fuzzing,
@@ -112,6 +114,22 @@ jobs:
       - uses: actions/checkout@v4
       - name: R-001 — aucune fiction dans un module livre
         run: python3 tools/ci/lint_no_fiction.py
+
+  # R-2122 : un crate qui contient du `unsafe` est couvert par Miri sur ses tests.
+  # ax-mem porte l'allocateur global compteur de la bibliotheque native (ADR-133 D2) :
+  # pointeurs bruts, en-tete devant chaque bloc, realloc. Miri y verifie l'absence de
+  # comportement indefini, y compris sous l'allocateur installe (tests/global.rs).
+  miri:
+    name: miri (ax-mem)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chaine nightly et Miri
+        run: |
+          rustup toolchain install nightly --profile minimal --component miri
+          cargo +nightly miri setup
+      - name: R-2122 — tests d'ax-mem sous Miri
+        run: cargo +nightly miri test -p ax-mem
 
   compiler-version:
     name: compiler-version

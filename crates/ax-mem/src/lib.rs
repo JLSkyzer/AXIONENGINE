@@ -21,8 +21,18 @@
 //! l'allocation avec [`MemoryError::BudgetExceeded`] ; C-42 branchera ses
 //! stratégies de récupération avant ce refus.
 //!
+//! [`CountingAllocator`] est l'allocateur compteur que la bibliothèque native
+//! installe comme `#[global_allocator]` : **toute** allocation native y est
+//! comptée, par arène (INV-08, ADR-133 D2). Les compteurs à la main
+//! ([`ArenaCounter`]) restent ceux des budgets qu'on refuse de dépasser : un
+//! allocateur global ne peut pas refuser sans faire avorter le processus.
+//!
 //! Exigences : R-480, R-481, R-482. Invariants : INV-08, INV-09.
 //! Tests : T-016, T-180, T-181.
+
+mod counting;
+
+pub use counting::{scope, ArenaScope, CountingAllocator};
 
 use core::fmt;
 

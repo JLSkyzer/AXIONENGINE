@@ -27,6 +27,11 @@ serde_json.workspace = true
 ax-scene.workspace = true
 ax-model.workspace = true
 ax-asset.workspace = true
+# B-08 (ADR-133 D2) : la charge physique de référence, et l'allocateur compteur que
+# la variante mesurée installe.
+ax-physics.workspace = true
+ax-math.workspace = true
+ax-mem.workspace = true
 
 [dev-dependencies]
 # R-2240 : criterion pour les micro-benchmarks Rust. `default-features = false`
@@ -42,6 +47,17 @@ criterion = { version = "0.5", default-features = false, features = [
 [[bin]]
 name = "bench-ci"
 path = "src/bin/bench_ci.rs"
+
+# B-08 (R-501, ADR-133 D2) : surcoût de l'allocateur compteur. Deux binaires aux
+# charges identiques, l'un sur l'allocateur du système, l'autre sur le compteur :
+# un allocateur global ne se change pas en cours d'exécution.
+[[bin]]
+name = "bench-alloc-system"
+path = "src/bin/bench_alloc_system.rs"
+
+[[bin]]
+name = "bench-alloc-counted"
+path = "src/bin/bench_alloc_counted.rs"
 
 # B-02 : propagation du graphe de scene vs nombre de nodes (PARTIE 30.2).
 [[bench]]

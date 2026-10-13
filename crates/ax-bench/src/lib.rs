@@ -13,7 +13,9 @@
 
 pub mod archive;
 pub mod cases;
+pub mod cli;
 pub mod measure;
+pub mod memory_runner;
 pub mod regress;
 pub mod result;
 pub mod stats;

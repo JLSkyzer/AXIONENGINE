@@ -70,7 +70,10 @@ name = "ax-bench"
 version = "1.0.0"
 dependencies = [
  "ax-asset",
+ "ax-math",
+ "ax-mem",
  "ax-model",
+ "ax-physics",
  "ax-scene",
  "criterion",
  "serde",
@@ -113,6 +116,7 @@ dependencies = [
  "ax-scene",
  "ax-telemetry",
  "ciborium",
+ "crossbeam-epoch",
  "jni",
  "libc",
  "windows-sys 0.61.2",
@@ -122,6 +126,7 @@ dependencies = [
 name = "ax-jobs"
 version = "1.0.0"
 dependencies = [
+ "ax-mem",
  "ax-model",
  "rayon",
 ]

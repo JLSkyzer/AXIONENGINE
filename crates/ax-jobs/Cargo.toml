@@ -21,4 +21,6 @@ missing_docs = "warn"
 # Le registre des budgets (PARTIE 25.2) y vit : ax-jobs le lit, il ne le
 # redeclare pas.
 ax-model.workspace = true
+# C-13 : ce qu'un job alloue est imputé à l'arène SCRATCH (INV-08, ADR-133 D2).
+ax-mem.workspace = true
 rayon.workspace = true

@@ -207,9 +207,9 @@ public final class NativeBridge {
             }
             buffer = new byte[needed];
         }
-        // Le natif rend la taille exacte : une seconde tentative suffit
-        // toujours. Y arriver signalerait un export qui grossit entre deux
-        // appels, ce qu'aucun chemin ne produit.
+        // Le natif rend la taille exacte du document qu'il garde pour l'appel
+        // suivant : une seconde tentative suffit toujours, même si la mémoire
+        // vivante que l'export décrit a changé entre-temps (ADR-133 D2).
         throw new IllegalStateException("export des métriques instable");
     }
 

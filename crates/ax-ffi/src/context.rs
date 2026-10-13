@@ -88,6 +88,8 @@ struct SessionMetrics {
     sim_velocity_clamps: MetricId,
     sim_invalid_states: MetricId,
     sim_bounds_unavailable: MetricId,
+    /// Octets vivants de chaque arène, dans l'ordre d'[`ArenaClass::ALL`] (§31.1, INV-08).
+    memory: [MetricId; ArenaClass::ALL.len()],
 }
 
 /// État interne d'une session native.
@@ -134,6 +136,12 @@ pub struct Session {
     a3d_limits: A3dLimits,
     /// Budgets de durée en vigueur, pour juger chaque tick (R-500).
     budgets: JobBudgets,
+    /// `budgets.native_mem_bytes` : plafond de la mémoire native, jugé sur ce que
+    /// l'allocateur compte (INV-08).
+    native_budget_bytes: usize,
+    /// Le dernier export dont la capacité n'a pas suffi : l'appel suivant, avec la
+    /// capacité annoncée, écrit ce document-là (voir [`Session::metrics_export`]).
+    pending_export: Option<String>,
     /// Temps cumulé des travaux de chaque budget au dernier tick : la consommation du
     /// tick est l'écart, pas le cumul (INV-19).
     job_elapsed_seen: [u64; Budget::ALL.len()],
@@ -254,6 +262,31 @@ impl Session {
         }
     }
 
+    /// Publie la mémoire native que l'allocateur compte (INV-08, ADR-133 D2) : chaque arène, et
+    /// leur total comme consommation de `budgets.native_mem_bytes`. Au tick (`judge`), un total
+    /// au-delà du plafond compte un dépassement ; à l'export, la mesure seule.
+    fn record_memory(&self, judge: bool) {
+        let metrics = &self.metrics;
+        for (id, class) in metrics.memory.iter().zip(ArenaClass::ALL) {
+            metrics
+                .registry
+                .set(*id, crate::ALLOCATOR.live_bytes_in(class) as u64);
+        }
+        let total = crate::ALLOCATOR.live_bytes() as u64;
+        if judge {
+            metrics.budgets.report(
+                &metrics.registry,
+                Budget::NativeMemBytes,
+                total,
+                self.native_budget_bytes as u64,
+            );
+        } else {
+            metrics
+                .budgets
+                .report_consumed(&metrics.registry, Budget::NativeMemBytes, total);
+        }
+    }
+
     /// Mesure un `axion_sim_submit` contre `budgets.submit_ns` (R-280, INV-19).
     pub fn record_submit(&self, nanos: u64) {
         let metrics = &self.metrics;
@@ -288,6 +321,7 @@ impl Session {
         self.physics.record_tick_duration(wall);
         self.record_step(wall, cpu);
         self.record_job_budgets();
+        self.record_memory(true);
     }
 
     /// Publie la mesure d'un pas, et ouvre ou referme la surveillance du temps CPU.
@@ -349,6 +383,33 @@ impl Session {
         ax_telemetry::to_json(&self.metrics.registry)
     }
 
+    /// Le document qu'un export de capacité `cap` doit écrire (R-502), ou sa seule
+    /// longueur s'il ne tient pas.
+    ///
+    /// L'export se fait en deux temps : l'appelant apprend la longueur, puis rappelle avec
+    /// un tampon à sa mesure. Or le document décrit la mémoire vivante (INV-08) : le
+    /// rendre de nouveau au second appel en changerait les chiffres, et peut-être la
+    /// longueur. Celui qui n'a pas tenu est donc gardé, et le second appel écrit
+    /// **celui-là** — une seconde tentative suffit toujours. Une demande de longueur
+    /// pure (`cap == 0`) rend toujours un document frais.
+    pub fn metrics_export(&mut self, cap: usize) -> MetricsExport {
+        if cap > 0 {
+            if let Some(pending) = self.pending_export.take() {
+                if pending.len() <= cap {
+                    return MetricsExport::Write(pending);
+                }
+            }
+        }
+        let json = self.metrics_json();
+        if !json.is_empty() && json.len() <= cap {
+            MetricsExport::Write(json)
+        } else {
+            let len = json.len();
+            self.pending_export = Some(json);
+            MetricsExport::TooSmall(len)
+        }
+    }
+
     /// Reporte dans le registre ce que les autres composants ont mesuré.
     fn publish_metrics(&self) {
         let metrics = &self.metrics;
@@ -384,12 +445,7 @@ impl Session {
             .registry
             .set(metrics.sim_bounds_unavailable, counters.bounds_unavailable);
 
-        // La mémoire native que la session compte : l'arène persistante (assets chargés) et
-        // les tampons de transfert. Celle des mondes physiques ne l'est pas encore (INV-08).
-        let native = self.persistent.used_bytes() + self.buffers.total_bytes();
-        metrics
-            .budgets
-            .report_consumed(&metrics.registry, Budget::NativeMemBytes, native as u64);
+        self.record_memory(false);
 
         let Some(jobs) = self.jobs.as_ref() else {
             return;
@@ -652,6 +708,8 @@ pub fn open(
         persistent: ArenaCounter::new(ArenaClass::Persistent, assets.persistent_bytes),
         a3d_limits: assets.container,
         budgets: job_budgets,
+        native_budget_bytes: assets.persistent_bytes,
+        pending_export: None,
         job_elapsed_seen: [0; Budget::ALL.len()],
         _guard: guard,
     });
@@ -725,6 +783,15 @@ fn build_metrics() -> SessionMetrics {
     let sim_velocity_clamps = counter("axion.sim.velocity_clamps");
     let sim_invalid_states = counter("axion.sim.invalid_states");
     let sim_bounds_unavailable = counter("axion.sim.bounds_unavailable");
+    // §31.1, INV-08 (ADR-133 D2) : la mémoire native par arène, comptée par l'allocateur.
+    let memory = ArenaClass::ALL.map(|class| {
+        builder
+            .gauge(
+                &format!("axion.mem.{}.bytes", class.name().to_lowercase()),
+                "bytes",
+            )
+            .expect("métrique de mémoire native")
+    });
 
     SessionMetrics {
         registry: builder.build(),
@@ -749,7 +816,17 @@ fn build_metrics() -> SessionMetrics {
         sim_velocity_clamps,
         sim_invalid_states,
         sim_bounds_unavailable,
+        memory,
     }
+}
+
+/// Ce qu'un export de métriques écrit (voir [`Session::metrics_export`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MetricsExport {
+    /// Le document, qui tient dans la capacité.
+    Write(String),
+    /// La capacité ne suffit pas : la longueur du document gardé pour l'appel suivant.
+    TooSmall(usize),
 }
 
 /// Bilan des allocations au moment de l'arrêt (R-322).
