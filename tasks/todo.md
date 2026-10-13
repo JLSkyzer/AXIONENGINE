@@ -14,7 +14,8 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
 **Jalon M1 : terminé, Definition of Done prononcée le 2026-10-04** — voir
 « Definition of Done de M1 », avant la section M3.
-**Jalon en cours : M3 — physique et premier rendu.**
+**Jalon en cours : M3 — physique et premier rendu.** M2 en clôture depuis le 2026-10-13
+(ADR-134) : voir « Clôture de M2 », avant la section M3.
 
 **CI disponible de nouveau depuis le 2026-10-03** : le dépôt est public, les jobs GitHub
 Actions sont gratuits sur les quatre plateformes de la matrice (run 37147205392, vert). En
@@ -413,9 +414,9 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
         export` écrit le document dans `<gameDir>/axion/metrics-<horodatage>.json`.
 
       **Deux points ouverts :**
-      - le coût de la télémétrie sous 1 % du composant mesuré (R-501) n'est
-        **pas mesuré** : c'est le benchmark B-08, avec les autres en M12. La
-        conception y tend, ce qui n'est pas la même chose ;
+      - le coût de la télémétrie sous 1 % du composant mesuré (R-501) : B-08 joué le
+        2026-10-13 sur l'allocateur compteur (ADR-133 D2), surcoût par allocation mesuré,
+        **R-501 non tranché** sur le pas physique — voir ADR-133, « Mise en œuvre » ;
       - `axion.ffi.roundtrip_ns` (R-330) est mesuré au démarrage et affiché par
         `/axion status`, mais n'est pas encore une métrique du registre natif :
         il faudrait que Java pousse la valeur mesurée.
@@ -1293,6 +1294,39 @@ Réserves, portées en dette et non masquées :
 - **C-24** : aucune migration réelle (format v1.1 unique) ; R-892 (invalidation du
   cache) et R-883 sans test ; la recompilation de R-882 et R-890 n'est pas testée au
   niveau du conteneur.
+
+---
+
+## Clôture de M2 (décidée le 2026-10-13)
+
+La Definition of Done de M2 n'avait jamais été vérifiée : M3 a démarré le 2026-09-19, avant
+même la clôture de M1. Premier état, le 2026-10-13 : tous les tests de M2 sont portés sauf
+T-630..T-634 ; l'acceptance (LOD, optimizer déterministe, cache, CLI identique au jeu, API)
+est tenue par ce qui existe.
+
+- [ ] **T-630..T-634 — option A d'[ADR-134](../docs/decisions/ADR-134.md)** (Killian, 2026-10-13) :
+      les cinq definitions de R-1790 embarquées sous `data/axion/axion/definitions/example/`,
+      chargées si `content.examples` (défaut `false`), validées sans faute ; un test par exemple.
+      - [ ] `content.examples` au registre de configuration (R-430, `CONFIGURATION.md` régénéré).
+      - [ ] cinq modèles 3D réels, faits dans Blender **avec Killian** : s'arrêter et demander.
+      - [ ] cinq definitions, puis T-630..T-634.
+- [ ] **C-74 — commandes faisables dès M2** (Killian, 2026-10-13). `deform` et `replay` restent
+      à C-28/C-41/C-42 (M6). R-830 : chaque commande appelle le code du jeu, sans chemin parallèle.
+      - [ ] `diff <a.a3d> <b.a3d>`.
+      - [ ] `validate <fichier>` : un `.a3d` par le décodage que le jeu applique au chargement
+            (`decode_render_asset`, à remonter d'`ax-ffi` dans `ax-asset`), une source par import et
+            validation sans écriture, un `.axion.json` par le lecteur d'options (choix de Killian :
+            le JSON validé est celui des options, pas une definition).
+      - [ ] `lod <file.a3d> --ratios …`.
+      - [ ] `bench-asset <src>`.
+      - [ ] options de compilation (PARTIE 6.4) : un seul lecteur dans `ax-asset`, défauts R-870,
+            R-871, R-872 ; CLI `compile --options`, et **le jeu aussi** (R-830, R-860) : Java lit le
+            `<modèle>.axion.json` voisin, l'encode en CBOR, `axion_asset_compile` le reçoit
+            (`options_cbor`, IF-06, ignoré jusqu'ici) par le pont JNI.
+- [ ] **C-50 en jeu** : persistance (apparition, sauvegarde, rechargement du monde), jamais
+      observée ; et le « 0 assembly(s) retirée(s) » de `/axion remove` du 2026-10-03.
+- [ ] **Definition of Done de M2** vérifiée, puis `M2` dans `COMPLETED_MILESTONES` sur décision
+      de Killian.
 
 ---
 
@@ -2474,10 +2508,15 @@ amortissement dans l'eau, `/axion remove`).
             comptées dans `budgets.gpu_mem_bytes`, éviction LRU des assets entiers par `MeshCache`, pour
             les deux backends. D1 fait (430bf64) : `JavaMetrics` fusionné à l'export, budgets du rendu et
             `idle_hook_ns` alimentés ; reste la commande cliente d'un client relié à un serveur distant
-            (à vérifier en jeu). **D2 (allocateur compteur, INV-08) : effort maximal recommandé, en
-            attente de Killian avant tout code.**
+            (à vérifier en jeu). D2 fait, sous effort maximal : allocateur compteur global (794b1c9),
+            deux comportements indéfinis trouvés par Miri et corrigés (8296228, 38e63ff : Miri vert),
+            arrêt du pool de jobs qui attend ses workers (2bb21a3 : le bilan exact ne dépend plus de
+            l'ordonnanceur). B-08 joué (38e63ff, poste de développement : chiffres non publiés,
+            R-2252) : sur le pas physique, la dérive de la machine entre les deux passes dépasse
+            l'effet : **R-501 non tranché**, protocole à revoir (alterner les variantes, ou
+            allocations par tick × surcoût).
       - [ ] **Cases C-31, C-32, C-61 : non cochées, à raison.** C-31 : tranche 3c-ii gelée (joints
-            M4, attaches M5), mémoire non comptée (ADR-133 D2). C-32 : résolution VHACD à mesurer
+            M4, attaches M5). C-32 : résolution VHACD à mesurer
             (ADR-108), matériaux de contact DM-07 reportés par Killian au câblage des definitions
             physiques. C-61 : plafonds CPU de R-742/R-743 (M6) et métriques de rendu (ADR-133 D1).
 - [x] **E2 — JAR complet en CI** (8300c78) : `buildNatives` reprend les natifs déjà construits
