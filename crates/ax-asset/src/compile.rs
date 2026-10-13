@@ -20,13 +20,14 @@ use crate::a3d::{
 };
 use crate::collider::build_colliders;
 use crate::import::{
-    import_gltf, import_obj, import_stl, ImportError, ImportLimits, ImportedAsset, SourceFormat,
+    import_gltf, import_obj, import_stl, plain_default_material, ImportError, ImportLimits,
+    ImportedAsset, ImportedMaterial, SourceFormat,
 };
 use crate::optimize::{optimize, Aabb, LodTable};
-use crate::options::AssetOptions;
+use crate::options::{AssetOptions, MaterialDefaults, NormalsMode};
 use crate::validate::{validate, AssetView, NamedEntry, ValidationReport};
 use ax_model::dm::geometry::{MeshDesc, Vertex};
-use ax_model::dm::material::MaterialDesc;
+use ax_model::dm::material::{texture_source, MaterialDesc};
 use core::fmt;
 
 /// Version du compilateur (R-562).
@@ -153,12 +154,26 @@ pub fn compile(
     resolve: impl FnMut(&str) -> Option<Vec<u8>>,
 ) -> Result<CompiledAsset, CompileError> {
     let (mut asset, mut warnings) = import(source, format, options, resolve)?;
+    let authored = &options.authored;
+    warnings.extend(oversized_textures(&asset, authored.max_texture_size));
+    if authored.generate_normals == NormalsMode::Always {
+        // Toutes les normales sont recalculées (ADR-135) : celles de l'auteur ne
+        // sont pas jugées, C-23 les remplace.
+        asset.missing_normals = vec![true; asset.vertices.len()];
+    }
 
     // Les normales absentes de la source sont exemptées : C-23 les génère.
     check(&asset, options, &asset.missing_normals)?;
 
-    let optimized = optimize(&mut asset, &options.authored.lod);
+    let optimized = optimize(&mut asset, &authored.lod, authored.generate_tangents);
     warnings.extend(optimized.warnings);
+    if !authored.generate_tangents && asset.materials.iter().any(ImportedMaterial::has_normal_map) {
+        warnings.push(
+            "generate_tangents est faux : un mesh à carte de normales sans tangentes \
+             d'auteur n'en reçoit pas"
+                .to_owned(),
+        );
+    }
 
     // C-32 : les colliders se génèrent une fois les bornes connues (l'optimizer
     // calcule les boîtes à l'étape 7). Ils repassent donc la liste de contrôle
@@ -170,7 +185,7 @@ pub fn compile(
         &asset.vertices,
         &asset.indices,
         &asset.collider_requests,
-        options.authored.collision.mode,
+        &authored.collision,
         optimized.bounds,
     );
     warnings.extend(built.warnings);
@@ -286,17 +301,55 @@ fn import_source(
                 })
             })?;
             let mut resolve = resolve;
-            let asset = import_obj(text, &options.limits, |path| {
+            let mut asset = import_obj(text, &options.limits, |path| {
                 resolve(path).and_then(|bytes| String::from_utf8(bytes).ok())
             })
             .map_err(CompileError::Import)?;
+            apply_material_defaults(&mut asset, &options.authored.materials);
             Ok((asset, Vec::new()))
         }
         SourceFormat::Stl => {
-            let asset = import_stl(source, &options.limits).map_err(CompileError::Import)?;
+            let mut asset = import_stl(source, &options.limits).map_err(CompileError::Import)?;
+            apply_material_defaults(&mut asset, &options.authored.materials);
             Ok((asset, Vec::new()))
         }
     }
+}
+
+/// Le matériau par défaut d'une source qui n'en porte aucun — un STL, un OBJ sans
+/// `.mtl` — prend la rugosité et le métal du bloc `materials` (ADR-135). Il se
+/// reconnaît à son nom vide et à ses valeurs ; un matériau de `.mtl` porte le nom
+/// de son `newmtl`, et ceux d'un glTF les défauts de leur propre spécification.
+fn apply_material_defaults(asset: &mut ImportedAsset, defaults: &MaterialDefaults) {
+    let plain = plain_default_material();
+    for material in &mut asset.materials {
+        if material.name.is_empty() && material.desc == plain {
+            material.desc.roughness = defaults.roughness;
+            material.desc.metallic = defaults.metallic;
+        }
+    }
+}
+
+/// Les textures embarquées au-delà de `max_texture_size` : signalées, non réduites
+/// — le natif ne décode pas les images (R-532), C-26 les réduira (ADR-135).
+fn oversized_textures(asset: &ImportedAsset, max_size: u32) -> Vec<String> {
+    asset
+        .textures
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| {
+            entry.source == texture_source::EMBEDDED
+                && (u32::from(entry.width) > max_size || u32::from(entry.height) > max_size)
+        })
+        .map(|(index, entry)| {
+            format!(
+                "texture {index} ({}×{}) au-delà de max_texture_size {max_size} : signalée, \
+                 non réduite avant C-26",
+                entry.width, entry.height
+            )
+        })
+        .collect()
 }
 
 /// Écrit les sections que l'asset porte aujourd'hui.
@@ -322,9 +375,14 @@ fn write_container(
     // `GEOM` pour lui laisserait un node pointer vers un mesh absent, ce que le
     // chargement refuse (`rest_draws`).
     if !asset.meshes.is_empty() || !asset.vertices.is_empty() || !asset.indices.is_empty() {
-        writer
-            .compressed_section(SectionTag::GEOM, &geometry_bytes(asset))
-            .map_err(CompileError::Container)?;
+        // `compress: false` (PARTIE 6.4) écrit la géométrie telle quelle.
+        let geometry = geometry_bytes(asset);
+        if options.authored.compress {
+            writer.compressed_section(SectionTag::GEOM, &geometry)
+        } else {
+            writer.section(SectionTag::GEOM, &geometry)
+        }
+        .map_err(CompileError::Container)?;
     }
     if !asset.materials.is_empty() {
         // Sections du client seul (R-041) : un serveur les ignore.
@@ -832,6 +890,148 @@ f 2 7 3
                 );
             }
         }
+    }
+
+    /// Les options de l'auteur, sur les identifiants et plafonds des tests.
+    fn avec(authored: AssetOptions) -> CompileOptions {
+        CompileOptions {
+            authored,
+            ..OPTIONS
+        }
+    }
+
+    #[test]
+    fn options_compress_faux_ecrit_la_geometrie_sans_compression() {
+        let source = grille_obj(8);
+        let geom = |options: &CompileOptions| {
+            let compiled = compile(source.as_bytes(), SourceFormat::Obj, options, |_| None)
+                .expect("compilation refusée");
+            let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+            let entry = *file
+                .entries()
+                .iter()
+                .find(|entry| entry.tag == SectionTag::GEOM)
+                .expect("GEOM");
+            let payload = file
+                .section(SectionTag::GEOM)
+                .expect("GEOM lisible")
+                .expect("GEOM");
+            (entry.is_compressed(), payload)
+        };
+        let (compressee, contenu) = geom(&OPTIONS);
+        let (brute, meme_contenu) = geom(&avec(AssetOptions {
+            compress: false,
+            ..AssetOptions::DEFAULT
+        }));
+        assert!(compressee, "par défaut, la géométrie est compressée");
+        assert!(!brute, "compress: false l'écrit telle quelle");
+        assert_eq!(contenu, meme_contenu, "le contenu ne change pas");
+    }
+
+    #[test]
+    fn options_le_materiau_par_defaut_prend_le_bloc_materials() {
+        let matl = |options: &CompileOptions| {
+            let compiled = compile(&stl_triangle(), SourceFormat::Stl, options, |_| None)
+                .expect("compilation refusée");
+            let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+            let bytes = file.section(SectionTag::MATL).expect("MATL").expect("MATL");
+            match crate::a3d::decode_materials(&bytes).expect("MATL décodé") {
+                crate::a3d::DecodedMaterials::Materials(materials) => materials[0],
+                other => panic!("disposition inattendue : {other:?}"),
+            }
+        };
+        let defaut = matl(&OPTIONS);
+        assert_eq!((defaut.roughness, defaut.metallic), (0.6, 0.0), "§6.4");
+        let choisi = matl(&avec(AssetOptions {
+            materials: crate::options::MaterialDefaults {
+                roughness: 0.2,
+                metallic: 1.0,
+            },
+            ..AssetOptions::DEFAULT
+        }));
+        assert_eq!((choisi.roughness, choisi.metallic), (0.2, 1.0));
+    }
+
+    #[test]
+    fn options_generate_normals_always_recalcule_celles_de_l_auteur() {
+        // Un triangle du plan XY, tourné vers +Z, dont l'auteur a écrit la normale -Z.
+        const RETOURNE: &str = "o t\nv 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 -1\nf 1//1 2//1 3//1\n";
+        let normale_z = |options: &CompileOptions| {
+            let compiled = compile(RETOURNE.as_bytes(), SourceFormat::Obj, options, |_| None)
+                .expect("compilation refusée");
+            let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+            let bytes = file.section(SectionTag::GEOM).expect("GEOM").expect("GEOM");
+            let geometry = crate::a3d::decode_geometry(&bytes).expect("GEOM décodé");
+            geometry.vertices[0].normal[2]
+        };
+        assert!(
+            normale_z(&OPTIONS) < 0,
+            "if_missing garde la normale de l'auteur"
+        );
+        assert!(
+            normale_z(&avec(AssetOptions {
+                generate_normals: NormalsMode::Always,
+                ..AssetOptions::DEFAULT
+            })) > 0,
+            "always la recalcule depuis la géométrie"
+        );
+    }
+
+    #[test]
+    fn options_generate_tangents_faux_n_en_genere_aucune_et_le_dit() {
+        // Un carré dont le matériau porte une carte de normales : C-23 lui génère
+        // des tangentes, sauf si l'auteur l'interdit.
+        const CARRE: &str = "mtllib carre.mtl\no carre\nv 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\n\
+                             vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nvn 0 0 1\nusemtl relief\n\
+                             f 1/1/1 2/2/1 3/3/1\nf 1/1/1 3/3/1 4/4/1\n";
+        const MTL: &str = "newmtl relief\nKd 1 1 1\nmap_Bump relief.png\n";
+        let compiler = |options: &CompileOptions| {
+            let compiled = compile(CARRE.as_bytes(), SourceFormat::Obj, options, |path| {
+                (path == "carre.mtl").then(|| MTL.as_bytes().to_vec())
+            })
+            .expect("compilation refusée");
+            let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+            let bytes = file.section(SectionTag::GEOM).expect("GEOM").expect("GEOM");
+            let geometry = crate::a3d::decode_geometry(&bytes).expect("GEOM décodé");
+            (geometry.vertices[0].tangent, compiled.warnings)
+        };
+        let (avec_tangentes, _) = compiler(&OPTIONS);
+        assert_ne!(
+            avec_tangentes, [0; 4],
+            "par défaut, une tangente est générée"
+        );
+        let (sans, avertissements) = compiler(&avec(AssetOptions {
+            generate_tangents: false,
+            ..AssetOptions::DEFAULT
+        }));
+        assert_eq!(sans, [0; 4], "generate_tangents: false n'en génère aucune");
+        assert!(
+            avertissements
+                .iter()
+                .any(|avertissement| avertissement.contains("generate_tangents est faux")),
+            "{avertissements:?}"
+        );
+    }
+
+    #[test]
+    fn options_une_texture_embarquee_trop_grande_est_signalee() {
+        let source = gltf_texture(&png_2x2());
+        let avertissements = |options: &CompileOptions| {
+            compile(source.as_bytes(), SourceFormat::Gltf, options, |_| None)
+                .expect("compilation refusée")
+                .warnings
+        };
+        let signalee = |avertissements: &[String]| {
+            avertissements
+                .iter()
+                .any(|avertissement| avertissement.contains("max_texture_size"))
+        };
+        assert!(!signalee(&avertissements(&OPTIONS)), "2×2 tient dans 2048");
+        let petites = avertissements(&avec(AssetOptions {
+            max_texture_size: 1,
+            ..AssetOptions::DEFAULT
+        }));
+        assert!(signalee(&petites), "{petites:?}");
     }
 
     #[test]

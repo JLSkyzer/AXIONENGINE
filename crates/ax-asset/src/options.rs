@@ -31,7 +31,7 @@ pub const E_INVALID_OPTION: i32 = -7001;
 pub const E_UNKNOWN_SCHEMA: i32 = -7003;
 
 /// Plus grand nombre d'enveloppes d'une décomposition convexe (R-551).
-pub const MAX_HULLS: u32 = 32;
+pub const MAX_HULLS: u32 = crate::collider::DECOMP_MAX_HULLS;
 
 /// Plus grande taille de texture admise (R-570).
 pub const MAX_TEXTURE_SIZE: u32 = 4096;
@@ -67,6 +67,18 @@ pub struct CollisionOptions {
     /// Résolution de la décomposition, si l'auteur l'a donnée. Sans effet tant
     /// qu'ADR-108 ne l'a pas mesurée.
     pub resolution: Option<u32>,
+}
+
+impl CollisionOptions {
+    /// Un mode de génération automatique, aux bornes par défaut.
+    #[must_use]
+    pub const fn with_mode(mode: ColliderMode) -> Self {
+        Self {
+            mode,
+            max_hulls: MAX_HULLS,
+            resolution: None,
+        }
+    }
 }
 
 /// Bloc `materials` : le matériau d'une source qui n'en porte aucun.
@@ -118,11 +130,7 @@ impl AssetOptions {
         generate_tangents: true,
         generate_normals: NormalsMode::IfMissing,
         lod: LodOptions::DEFAULT,
-        collision: CollisionOptions {
-            mode: ColliderMode::None,
-            max_hulls: MAX_HULLS,
-            resolution: None,
-        },
+        collision: CollisionOptions::with_mode(ColliderMode::None),
         materials: MaterialDefaults {
             roughness: crate::import::DEFAULT_ROUGHNESS,
             metallic: crate::import::DEFAULT_METALLIC,

@@ -124,7 +124,11 @@ pub struct OptimizeReport {
 ///
 /// L'asset doit avoir passé [`crate::validate::validate`] : l'optimizer indexe
 /// ses tableaux sans revérifier les bornes que le validateur garantit.
-pub(crate) fn optimize(asset: &mut ImportedAsset, lod_options: &LodOptions) -> OptimizeReport {
+pub(crate) fn optimize(
+    asset: &mut ImportedAsset,
+    lod_options: &LodOptions,
+    generate_tangents: bool,
+) -> OptimizeReport {
     let before = asset.vertices.len();
     let mut warnings = Vec::new();
 
@@ -137,7 +141,13 @@ pub(crate) fn optimize(asset: &mut ImportedAsset, lod_options: &LodOptions) -> O
     // Les tangentes suivent les normales, qu'elles doivent connaître. Le mesh
     // traité est déplié en coins : la fusion rejouée refond ce qui est redevenu
     // identique et ne laisse dédoublées que les coutures.
-    let tangent_meshes = tangents::generate(asset, &mut warnings);
+    // `generate_tangents: false` (PARTIE 6.4) : aucune n'est générée, celles de
+    // l'auteur restent.
+    let tangent_meshes = if generate_tangents {
+        tangents::generate(asset, &mut warnings)
+    } else {
+        0
+    };
     if tangent_meshes > 0 {
         merge::merge_vertices(asset);
     }
@@ -281,8 +291,8 @@ mod tests {
 
         let mut une = source.clone();
         let mut deux = source.clone();
-        let rapport_une = optimize(&mut une, &LodOptions::DEFAULT);
-        let rapport_deux = optimize(&mut deux, &LodOptions::DEFAULT);
+        let rapport_une = optimize(&mut une, &LodOptions::DEFAULT, true);
+        let rapport_deux = optimize(&mut deux, &LodOptions::DEFAULT, true);
 
         assert_eq!(rapport_une, rapport_deux);
         assert_eq!(une, deux);
@@ -307,8 +317,8 @@ mod tests {
 
         let mut une = source.clone();
         let mut deux = source.clone();
-        let rapport_une = optimize(&mut une, &LodOptions::DEFAULT);
-        let rapport_deux = optimize(&mut deux, &LodOptions::DEFAULT);
+        let rapport_une = optimize(&mut une, &LodOptions::DEFAULT, true);
+        let rapport_deux = optimize(&mut deux, &LodOptions::DEFAULT, true);
 
         assert_eq!(rapport_une, rapport_deux);
         assert_eq!(une, deux);

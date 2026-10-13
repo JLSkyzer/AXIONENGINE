@@ -37,8 +37,9 @@ pub use gltf_extras::{NodeAnnotations, NodeRole};
 pub use obj::import_obj;
 pub use stl::import_stl;
 
-/// Le matériau par défaut, pour les tests des étapes qui suivent l'import.
-#[cfg(test)]
+/// Le matériau par défaut d'une source qui n'en porte aucun : la compilation y
+/// applique le bloc `materials` des options, les tests des étapes suivantes s'en
+/// servent.
 pub(crate) use material::plain_default_material;
 /// Rugosité et métal du matériau par défaut : les défauts du bloc `materials`
 /// des options (PARTIE 6.4).

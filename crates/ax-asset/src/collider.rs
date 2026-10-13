@@ -27,6 +27,7 @@
 //! masse/COM déclarée (R-622) suivent avec leurs consommateurs.
 
 use crate::optimize::Aabb;
+use crate::options::CollisionOptions;
 use ax_model::dm::geometry::{MeshDesc, Transform, Vertex};
 use ax_model::dm::physics::{
     collider_flags, ColliderDesc, ColliderShape, CONVEX_MAX_POINTS, CONVEX_MIN_POINTS,
@@ -49,7 +50,7 @@ const MAX_COMPOUND_PARTS: usize = 64;
 
 /// Nombre maximal d'enveloppes d'une décomposition convexe (R-551, ADR-108).
 /// Au-delà, repli sur l'enveloppe globale.
-const DECOMP_MAX_HULLS: u32 = 32;
+pub(crate) const DECOMP_MAX_HULLS: u32 = 32;
 
 /// Nombre maximal de points par enveloppe d'une décomposition (R-551). Une
 /// enveloppe plus dense fait replier sur l'enveloppe globale (ADR-108).
@@ -170,6 +171,9 @@ pub struct ColliderBuild {
 /// sont tirés — un par node, depuis la boîte de son mesh. Sinon, `definition_mode`
 /// tire un englobant des `bounds` de l'asset (l'optimizer les calcule, C-23 étape
 /// 7). `nodes` est muté pour lier chaque node à son collider (`node.collider`).
+/// `collision` est le bloc de l'auteur (PARTIE 6.4) : son `mode` est celui de la
+/// definition, son `max_hulls` borne chaque décomposition convexe (R-551). Un mode
+/// que l'asset entier ne sait pas encore produire est signalé.
 #[must_use]
 pub fn build_colliders(
     nodes: &mut [NodeDesc],
@@ -177,24 +181,56 @@ pub fn build_colliders(
     vertices: &[Vertex],
     indices: &[u32],
     requests: &[ColliderRequest],
-    definition_mode: ColliderMode,
+    collision: &CollisionOptions,
     bounds: Option<Aabb>,
 ) -> ColliderBuild {
     if !requests.is_empty() {
-        return per_node_colliders(nodes, meshes, vertices, indices, requests);
+        return per_node_colliders(
+            nodes,
+            meshes,
+            vertices,
+            indices,
+            requests,
+            collision.max_hulls,
+        );
     }
+    let definition_mode = collision.mode;
     // Par definition : englobant de l'asset. `Convex` n'a pas de source à ce
     // niveau (il tire ses points d'un mesh de node), aussi n'y est-il pas produit.
+    let mut warnings = Vec::new();
     let colliders = match (definition_mode, bounds) {
         (ColliderMode::AutoBox, Some(bounds)) => vec![auto_box(bounds)],
         (ColliderMode::AutoSphere, Some(bounds)) => vec![auto_sphere(bounds)],
-        _ => Vec::new(),
+        (ColliderMode::None, _) | (_, None) => Vec::new(),
+        (mode, Some(_)) => {
+            // Pour l'asset entier, seuls les englobants existent aujourd'hui : un
+            // autre mode ne produit rien, et le dit plutôt que de se taire.
+            warnings.push(format!(
+                "collider « {} » demandé pour l'asset entier : non produit à ce niveau \
+                 (seuls auto_box et auto_sphere le sont) ; aucun collider généré",
+                mode_name(mode)
+            ));
+            Vec::new()
+        }
     };
     ColliderBuild {
         colliders,
         hull_points: Vec::new(),
         compound_children: Vec::new(),
-        warnings: Vec::new(),
+        warnings,
+    }
+}
+
+/// Le nom d'auteur d'un mode, tel que les extras et les options l'écrivent.
+const fn mode_name(mode: ColliderMode) -> &'static str {
+    match mode {
+        ColliderMode::None => "none",
+        ColliderMode::AutoBox => "auto_box",
+        ColliderMode::AutoSphere => "auto_sphere",
+        ColliderMode::AutoCapsule => "auto_capsule",
+        ColliderMode::Convex => "convex",
+        ColliderMode::Compound => "auto_compound",
+        ColliderMode::AutoConvex => "auto_convex",
     }
 }
 
@@ -206,6 +242,7 @@ fn per_node_colliders(
     vertices: &[Vertex],
     indices: &[u32],
     requests: &[ColliderRequest],
+    max_hulls: u32,
 ) -> ColliderBuild {
     let mut build = ColliderBuild::default();
     for request in requests {
@@ -271,6 +308,7 @@ fn per_node_colliders(
                         indices,
                         &mut build.hull_points,
                         &mut build.compound_children,
+                        max_hulls,
                     ) {
                         Ok((collider, fallback)) => {
                             if let Some(reason) = fallback {
@@ -371,6 +409,7 @@ fn convex_decomposition(
     indices: &[u32],
     points: &mut Vec<[f32; 3]>,
     children: &mut Vec<ColliderDesc>,
+    max_hulls: u32,
 ) -> Result<(ColliderDesc, Option<String>), String> {
     let mut cloud: Vec<Vector> = Vec::new();
     let mut tris: Vec<[u32; 3]> = Vec::new();
@@ -405,7 +444,7 @@ fn convex_decomposition(
     // Bornes fixes d'ADR-108 (R-551) ; la résolution reste le défaut de parry (64),
     // à ajuster en M3 sur mesures — jamais un chiffre inventé ici.
     let params = VHACDParameters {
-        max_convex_hulls: DECOMP_MAX_HULLS,
+        max_convex_hulls: max_hulls,
         ..VHACDParameters::default()
     };
     let decomposition = VHACD::decompose(&params, &cloud, &tris, false);
@@ -426,7 +465,7 @@ fn convex_decomposition(
 
     // Repli (R-551, ADR-108) : rien d'exploitable ou trop d'enveloppes → l'enveloppe
     // convexe globale du mesh.
-    if valid.is_empty() || valid.len() > DECOMP_MAX_HULLS as usize {
+    if valid.is_empty() || valid.len() > max_hulls as usize {
         let collider = convex_from_meshes(meshes, vertices, points)?;
         return Ok((
             collider,
@@ -673,7 +712,16 @@ mod tests {
 
     /// Colliders produits par la source **definition** (aucune requête de node).
     fn from_definition(mode: ColliderMode, bounds: Option<Aabb>) -> Vec<ColliderDesc> {
-        build_colliders(&mut [], &[], &[], &[], &[], mode, bounds).colliders
+        build_colliders(
+            &mut [],
+            &[],
+            &[],
+            &[],
+            &[],
+            &CollisionOptions::with_mode(mode),
+            bounds,
+        )
+        .colliders
     }
 
     /// Un node de test référençant un mesh et une part.
@@ -808,7 +856,7 @@ mod tests {
             &[],
             &[],
             &requests,
-            ColliderMode::None,
+            &CollisionOptions::with_mode(ColliderMode::None),
             None,
         );
 
@@ -843,7 +891,7 @@ mod tests {
             &[],
             &[],
             &requests,
-            ColliderMode::None,
+            &CollisionOptions::with_mode(ColliderMode::None),
             None,
         );
 
@@ -881,7 +929,7 @@ mod tests {
             &[],
             &[],
             &requests,
-            ColliderMode::None,
+            &CollisionOptions::with_mode(ColliderMode::None),
             None,
         );
 
@@ -939,7 +987,7 @@ mod tests {
             &[],
             &[],
             &requests,
-            ColliderMode::AutoBox,
+            &CollisionOptions::with_mode(ColliderMode::AutoBox),
             Some(bounds([0.0; 3], [10.0; 3])),
         );
 
@@ -998,7 +1046,7 @@ mod tests {
             &vertices,
             &[],
             &requests,
-            ColliderMode::None,
+            &CollisionOptions::with_mode(ColliderMode::None),
             None,
         );
 
@@ -1050,7 +1098,7 @@ mod tests {
             &vertices,
             &[],
             &requests,
-            ColliderMode::None,
+            &CollisionOptions::with_mode(ColliderMode::None),
             None,
         );
 
@@ -1086,7 +1134,7 @@ mod tests {
             &[],
             &[],
             &requests,
-            ColliderMode::None,
+            &CollisionOptions::with_mode(ColliderMode::None),
             None,
         );
 
@@ -1133,7 +1181,7 @@ mod tests {
             &[],
             &[],
             &requests,
-            ColliderMode::None,
+            &CollisionOptions::with_mode(ColliderMode::None),
             None,
         );
 
@@ -1160,7 +1208,7 @@ mod tests {
             &[],
             &[],
             &requests,
-            ColliderMode::None,
+            &CollisionOptions::with_mode(ColliderMode::None),
             None,
         );
 
@@ -1199,7 +1247,7 @@ mod tests {
             &[],
             &[],
             &requests,
-            ColliderMode::None,
+            &CollisionOptions::with_mode(ColliderMode::None),
             None,
         );
 
@@ -1232,7 +1280,7 @@ mod tests {
             &[],
             &[],
             &requests,
-            ColliderMode::None,
+            &CollisionOptions::with_mode(ColliderMode::None),
             None,
         );
 
@@ -1245,6 +1293,104 @@ mod tests {
             build.colliders[0].flags & collider_flags::NO_REFIT,
             0,
             "NO_REFIT posé (R-623)"
+        );
+    }
+
+    #[test]
+    fn options_un_mode_que_l_asset_entier_ne_produit_pas_est_signale() {
+        // Pour l'asset entier, seuls les englobants existent : `auto_convex` ne
+        // produit rien, et le dit au lieu de se taire.
+        let build = build_colliders(
+            &mut [],
+            &[],
+            &[],
+            &[],
+            &[],
+            &CollisionOptions::with_mode(ColliderMode::AutoConvex),
+            Some(bounds([0.0; 3], [1.0; 3])),
+        );
+        assert!(build.colliders.is_empty());
+        assert!(
+            build
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("auto_convex")),
+            "{:?}",
+            build.warnings
+        );
+    }
+
+    #[test]
+    fn options_max_hulls_borne_la_decomposition() {
+        // Deux cubes disjoints : un nuage concave, que la décomposition sépare en
+        // plusieurs enveloppes ; bornée à une seule, elle n'en rend qu'une.
+        let mut vertices = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
+        for origin in [0.0f32, 4.0] {
+            let base = vertices.len() as u32;
+            for corner in 0..8u32 {
+                vertices.push(sommet([
+                    origin + (corner & 1) as f32,
+                    ((corner >> 1) & 1) as f32,
+                    ((corner >> 2) & 1) as f32,
+                ]));
+            }
+            for face in [
+                [0, 2, 1],
+                [1, 2, 3],
+                [4, 5, 6],
+                [5, 7, 6],
+                [0, 1, 4],
+                [1, 5, 4],
+                [2, 6, 3],
+                [3, 6, 7],
+                [0, 4, 2],
+                [2, 4, 6],
+                [1, 3, 5],
+                [3, 7, 5],
+            ] {
+                indices.extend(face.iter().map(|corner| base + corner));
+            }
+        }
+        let meshes = vec![MeshDesc {
+            vertex_offset: 0,
+            vertex_count: vertices.len() as u32,
+            index_offset: 0,
+            index_count: indices.len() as u32,
+            ..mesh([0.0; 3], [5.0, 1.0, 1.0])
+        }];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::AutoConvex,
+            density: None,
+            no_refit: false,
+        }];
+        let forme = |max_hulls: u32| {
+            let mut nodes = vec![node(0, NONE_U16)];
+            build_colliders(
+                &mut nodes,
+                &meshes,
+                &vertices,
+                &indices,
+                &requests,
+                &CollisionOptions {
+                    max_hulls,
+                    ..CollisionOptions::with_mode(ColliderMode::None)
+                },
+                None,
+            )
+            .colliders[0]
+                .shape
+        };
+        assert!(
+            matches!(forme(DECOMP_MAX_HULLS), ColliderShape::Compound { .. }),
+            "deux cubes disjoints : un composé, obtenu {:?}",
+            forme(DECOMP_MAX_HULLS)
+        );
+        assert!(
+            matches!(forme(1), ColliderShape::ConvexHull { .. }),
+            "bornée à une enveloppe : une seule, obtenu {:?}",
+            forme(1)
         );
     }
 
@@ -1280,7 +1426,7 @@ mod tests {
                 &vertices,
                 &indices,
                 &requests,
-                ColliderMode::None,
+                &CollisionOptions::with_mode(ColliderMode::None),
                 None,
             )
         };
