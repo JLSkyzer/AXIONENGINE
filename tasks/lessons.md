@@ -1388,18 +1388,22 @@ valeur volatile à un document échangé en plusieurs appels, relire ce que ses 
 qui lit un compteur global au processus isole ce qu'il mesure (arène à lui, binaire à lui), sans quoi des
 tests parallèles se voient l'un l'autre.
 
-## 2026-10-13 | L'allocateur compteur relisait son en-tête par le pointeur de l'appelant : Miri l'a refusé en CI
+## 2026-10-13 | L'allocateur compteur a commis deux comportements indéfinis que seul Miri voyait
 
 **Ce qui a mal tourné.** `CountingAllocator` (ADR-133 D2) a été commité vert en local (tests, clippy, bilan
-exact) ; le job `miri (ax-mem)` de la CI l'a refusé : « attempting a read access … but that tag does not exist
-in the borrow stack », dans `dealloc`, à la libération d'un `Vec` du harnais de test.
+exact) ; le job `miri (ax-mem)` de la CI l'a refusé deux fois. D'abord (794b1c9) : « attempting a read access …
+but that tag does not exist in the borrow stack », dans `dealloc`. Puis, une fois ce point corrigé (8296228) :
+« deallocating while item [Unique] is weakly protected », sur un `drop(boxed)`. Vert en 38e63ff.
 
-**Cause.** `dealloc` relisait l'arène dans l'en-tête placé devant le bloc par `ptr.sub(1)`. Le pointeur qu'un
-`Vec` ou un `Box` rend à l'allocateur ne porte, sous Stacked Borrows, de droits que sur son contenu : l'en-tête
-lui est hors d'atteinte. Aucun test natif ne peut le voir ; seul Miri le voit.
+**Cause.** Sous Stacked Borrows, le pointeur qu'un `Vec` ou un `Box` rend à l'allocateur n'a de droits que sur
+son contenu. (1) `dealloc` relisait l'arène dans l'en-tête par `ptr.sub(1)` : hors de ces droits. (2) Le premier
+correctif rendait le bloc au système par la seule provenance du bloc entier, exposée à l'allocation : cette
+écriture retirait ses droits au `Box`, encore protégé tant que la fonction qui l'a reçu par valeur n'a pas rendu
+la main. Aucun test natif ne voit l'un ni l'autre.
 
-**Règle.** Un allocateur à en-tête n'atteint jamais son en-tête par le pointeur de l'appelant : il expose la
-provenance du bloc entier à l'allocation (`expose_provenance`) et la reprend à la libération
-(`with_exposed_provenance_mut`). Le test qui le garde libère par un pointeur tiré d'une tranche du contenu.
-Miri n'est pas installé sur le poste : un changement `unsafe` d'ax-mem n'est fini qu'au job Miri vert.
-
+**Règle.** Un allocateur à en-tête expose **deux** provenances : celle du bloc entier à l'allocation, celle du
+pointeur de l'appelant à la libération ; il relit l'en-tête et rend le bloc par
+`with_exposed_provenance_mut`. Les tests qui le gardent : libérer par un pointeur tiré d'une tranche du contenu
+(unitaire), et un `Box` libéré par la fonction qui le reçoit (allocateur installé). Miri n'est pas installé sur
+le poste : un changement `unsafe` d'ax-mem n'est fini qu'au job Miri vert — et un correctif qui fait passer
+un premier test Miri peut en révéler un second, plus loin dans le même binaire.
