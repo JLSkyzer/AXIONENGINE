@@ -390,7 +390,9 @@ impl Session {
     /// un tampon à sa mesure. Or le document décrit la mémoire vivante (INV-08) : le
     /// rendre de nouveau au second appel en changerait les chiffres, et peut-être la
     /// longueur. Celui qui n'a pas tenu est donc gardé, et le second appel écrit
-    /// **celui-là** — une seconde tentative suffit toujours. Une demande de longueur
+    /// **celui-là** — une seconde tentative suffit toujours. Tant qu'il ne tient pas,
+    /// il reste gardé et c'est sa longueur qui est annoncée : en calculer un autre
+    /// annoncerait une longueur que le document gardé n'a pas. Une demande de longueur
     /// pure (`cap == 0`) rend toujours un document frais.
     pub fn metrics_export(&mut self, cap: usize) -> MetricsExport {
         if cap > 0 {
@@ -398,6 +400,9 @@ impl Session {
                 if pending.len() <= cap {
                     return MetricsExport::Write(pending);
                 }
+                let len = pending.len();
+                self.pending_export = Some(pending);
+                return MetricsExport::TooSmall(len);
             }
         }
         let json = self.metrics_json();
@@ -988,6 +993,31 @@ mod tests {
         .unwrap();
         with(token, false, |session| {
             assert_eq!(session.last_error(), Some("essai"));
+        })
+        .unwrap();
+
+        // R-502 : l'export en deux temps écrit le document dont il a annoncé la
+        // longueur, même si les métriques changent entre les appels — ici un
+        // compteur qui gagne neuf chiffres.
+        with(token, false, |session| {
+            let MetricsExport::TooSmall(annonce) = session.metrics_export(0) else {
+                panic!("une capacité nulle n'écrit rien");
+            };
+            session.panics = 1_000_000_000;
+            assert_eq!(
+                session.metrics_export(annonce - 1),
+                MetricsExport::TooSmall(annonce),
+                "trop petit : la longueur annoncée reste celle du document gardé"
+            );
+            let MetricsExport::Write(document) = session.metrics_export(annonce) else {
+                panic!("la capacité annoncée suffit");
+            };
+            assert_eq!(document.len(), annonce, "le document gardé est écrit");
+            let MetricsExport::TooSmall(frais) = session.metrics_export(0) else {
+                panic!("une capacité nulle n'écrit rien");
+            };
+            assert!(frais > annonce, "une demande de longueur rend un document frais");
+            session.panics = 0;
         })
         .unwrap();
 
