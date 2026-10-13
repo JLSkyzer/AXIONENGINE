@@ -1407,3 +1407,41 @@ pointeur de l'appelant à la libération ; il relit l'en-tête et rend le bloc p
 (unitaire), et un `Box` libéré par la fonction qui le reçoit (allocateur installé). Miri n'est pas installé sur
 le poste : un changement `unsafe` d'ax-mem n'est fini qu'au job Miri vert — et un correctif qui fait passer
 un premier test Miri peut en révéler un second, plus loin dans le même binaire.
+
+## 2026-10-13 | La garantie « par construction » de l'export en deux temps avait un trou
+
+**Ce qui a mal tourné.** Le correctif de D2 gardait le document qui n'avait pas tenu ; `cycle_abi` est pourtant
+devenu rouge une fois sur deux (6391 octets annoncés pour 6389) dès que la mémoire vivante a frôlé une
+puissance de dix.
+
+**Cause.** Un document gardé qui ne tenait toujours pas était jeté et remplacé par un document frais, dont la
+longueur était annoncée. La « construction » ne couvrait que le chemin heureux ; le test ne la mettait à
+l'épreuve que par le hasard du nombre de chiffres d'une jauge.
+
+**Règle.** Une garantie de protocole se teste en provoquant ce qu'elle prétend neutraliser, de façon
+déterministe : changer le document entre les appels (un compteur qui gagne neuf chiffres), puis vérifier chaque
+branche — trop petit, juste assez, nouvelle demande de longueur.
+
+## 2026-10-13 | `cargo fmt --check` chaîné par `;` : un fichier mal formaté commité
+
+**Ce qui a mal tourné.** 086e89e a été commité et poussé alors que `cargo fmt --all -- --check` venait
+d'échouer ; il a fallu un commit de style derrière.
+
+**Cause.** La commande enchaînait la vérification et le commit par `;` : l'échec de la première n'arrêtait pas
+le second.
+
+**Règle.** Toute vérification qui précède un commit s'enchaîne par `&&`, jamais par `;` — fmt, clippy, tests.
+
+## 2026-10-13 | La compilation produisait un asset que le chargement refusait ; seul un outil qui enchaîne les deux l'a vu
+
+**Ce qui a mal tourné.** Un objet OBJ sans face compilait, mais le conteneur portait un node vers un mesh absent
+(`GEOM` non écrite faute de sommets) : `axion_asset_load` l'aurait refusé. Aucun test ne le voyait — ceux de la
+compilation relisaient le conteneur section par section, ceux du chargement partaient de conteneurs sains.
+
+**Cause.** Chaque étape était testée seule ; leur composition — compiler, puis charger le résultat comme le jeu —
+ne l'était pas.
+
+**Règle.** `axion-cli validate <source>` compile puis charge par le code du jeu : c'est le test de composition.
+Tout nouveau cas limite de la chaîne d'assets se passe aussi par ce chemin, et une sortie du compilateur qui
+change fait monter `COMPILER_VERSION` des deux côtés (R-892).
+
