@@ -47,8 +47,10 @@ use core::fmt;
 /// dans `uv0`, `v` des OBJ compté depuis le haut de l'image ; 8 — UV ramenés
 /// dans `[0, 1]` sous une plage par mesh (`uv0_range`, R-142), un node porte
 /// tous ses meshes (`mesh_count`) : primitives glTF, morceaux d'un objet OBJ
-/// (ADR-122 §4 et §5).
-pub const COMPILER_VERSION: u32 = 8;
+/// (ADR-122 §4 et §5) ; 9 — la section `GEOM` est écrite dès qu'un mesh existe,
+/// même sans triangle : un objet sans face ne laisse plus un node désigner un
+/// mesh absent, que le chargement refusait.
+pub const COMPILER_VERSION: u32 = 9;
 
 /// Ce qui empêche de compiler un asset.
 #[derive(Debug, Clone, PartialEq)]
@@ -315,7 +317,10 @@ fn write_container(
             .section(SectionTag::NODE, &nodes)
             .map_err(CompileError::Container)?;
     }
-    if !asset.vertices.is_empty() || !asset.indices.is_empty() {
+    // Un mesh sans triangle reste un mesh : ses nodes le désignent. Ne pas écrire
+    // `GEOM` pour lui laisserait un node pointer vers un mesh absent, ce que le
+    // chargement refuse (`rest_draws`).
+    if !asset.meshes.is_empty() || !asset.vertices.is_empty() || !asset.indices.is_empty() {
         writer
             .compressed_section(SectionTag::GEOM, &geometry_bytes(asset))
             .map_err(CompileError::Container)?;
@@ -794,6 +799,38 @@ f 2 7 3
             .is_ok()
         );
         assert!(compile(&stl_triangle(), SourceFormat::Stl, &OPTIONS, |_| None).is_ok());
+    }
+
+    #[test]
+    fn t211_un_objet_sans_face_garde_son_mesh_dans_geom() {
+        // Un objet OBJ sans face donne un mesh sans triangle, que son node désigne :
+        // `GEOM` doit le porter, sans quoi le node désignerait un mesh absent.
+        let compiled = compile(b"o vide\n", SourceFormat::Obj, &OPTIONS, |_| None)
+            .expect("compilation refusée");
+        let file = A3dFile::open(&compiled.bytes, A3dLimits::new(1 << 20)).expect("relecture");
+        let geom = file
+            .section(SectionTag::GEOM)
+            .expect("GEOM lisible")
+            .expect("GEOM écrite pour un mesh sans triangle");
+        let geometry = crate::a3d::decode_geometry(&geom).expect("GEOM décodée");
+        assert_eq!(geometry.meshes.len(), 1);
+        assert!(geometry.vertices.is_empty() && geometry.indices.is_empty());
+        let nodes = crate::a3d::decode_nodes(
+            &file
+                .section(SectionTag::NODE)
+                .expect("NODE")
+                .expect("NODE écrite"),
+        )
+        .expect("NODE décodée")
+        .nodes;
+        for node in &nodes {
+            for mesh in node.meshes() {
+                assert!(
+                    (mesh as usize) < geometry.meshes.len(),
+                    "le node désigne le mesh {mesh}, absent"
+                );
+            }
+        }
     }
 
     #[test]
