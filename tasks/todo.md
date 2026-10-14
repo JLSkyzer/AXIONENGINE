@@ -904,7 +904,9 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             axion-mod intacts. Constat du test en jeu : `/axion status`
             affichait 100 ns par cet artefact de timer.
       - [x] **Tranche 9** : sortie schéma 2 du harnais en jeu — `/axion bench
-            ffi --json <fichier>` écrit un résultat schéma 2 (`SchemaTwoWriter`,
+            ffi --json <nom>` écrit un résultat schéma 2 sous `<gameDir>/axion/bench/`
+            (un nom simple, depuis le 2026-10-15 : un chemin libre, au niveau de
+            permission 2, laissait écraser n'importe quel fichier) (`SchemaTwoWriter`,
             Gson, provenance en jeu : os, cpu via `PROCESSOR_IDENTIFIER`,
             cœurs, JVM ; stats au rang le plus proche) lisible par
             `tools/bench`. Le harnais est marqué `config.harness =

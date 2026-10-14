@@ -11,6 +11,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.regex.Pattern;
 
 /**
  * Écrit un résultat de benchmark en jeu au format schéma 2 (PARTIE 30.4).
@@ -34,8 +35,36 @@ public final class SchemaTwoWriter {
     /** Nom du harnais, pour ne comparer qu'entre mesures du même harnais. */
     private static final String HARNESS = "axion-ingame";
 
+    /** Nom de fichier qu'accepte {@code --json} : un nom simple, sans chemin. */
+    private static final Pattern FILE_NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
+
     private SchemaTwoWriter() {
         throw new AssertionError("classe utilitaire, non instanciable");
+    }
+
+    /**
+     * Le fichier où {@code /axion bench <scénario> --json <f>} écrit :
+     * {@code <gameDir>/axion/bench/<f>}.
+     *
+     * <p>La commande est ouverte au niveau de permission 2. Écrire au chemin reçu
+     * laisserait écraser tout fichier que le processus atteint — un JAR de mod,
+     * une configuration. Le résultat reste donc sous le répertoire de jeu, comme
+     * l'export des métriques, et {@code <f>} n'est qu'un nom : lettres, chiffres,
+     * {@code .}, {@code _} et {@code -}, sans séparateur ni lecteur, et sans point
+     * initial.
+     *
+     * @param gameDir répertoire de jeu
+     * @param fileName nom donné à la commande
+     * @return le chemin de destination
+     * @throws IllegalArgumentException si {@code fileName} n'est pas un nom simple
+     */
+    public static Path targetIn(Path gameDir, String fileName) {
+        if (!FILE_NAME.matcher(fileName).matches()) {
+            throw new IllegalArgumentException("nom de fichier refusé — « " + fileName
+                    + " » : un nom simple (lettres, chiffres, « . », « _ », « - »), écrit sous "
+                    + "<répertoire de jeu>/axion/bench/");
+        }
+        return gameDir.resolve("axion").resolve("bench").resolve(fileName);
     }
 
     /**

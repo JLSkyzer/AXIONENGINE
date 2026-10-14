@@ -1476,3 +1476,17 @@ l'implémentation réelle ne produisait pas, et rien ne testait l'implémentatio
 peut la déclencher, et la tester si ses dépendances se simulent. Un `ResourceManager` se fabrique en test
 (`ResourceAssetSourceTest`) : `ResourceAssetSource` n'a plus d'excuse.
 
+## 2026-10-15 | `/axion bench --json` écrivait au chemin reçu, au niveau de permission 2
+
+**Ce qui a mal tourné.** La tranche 9 de C-72 passait l'argument de `--json` tel quel à `Path.of` : un
+opérateur de niveau 2 pouvait écrire ou écraser n'importe quel fichier que le processus du serveur atteint
+(un JAR de mod, une configuration). `/axion metrics export`, lui, écrivait déjà sous `<gameDir>/axion/`.
+Relevé par l'audit de la Definition of Done de M2, corrigé le jour même.
+
+**Cause.** Le réflexe d'une CLI — un chemin libre, puisqu'elle tourne avec les droits de celui qui la lance —
+appliqué à une commande de serveur, qui agit avec les droits du serveur pour le compte d'un opérateur.
+
+**Règle.** Une commande en jeu qui écrit un fichier n'accepte qu'un nom simple et écrit sous
+`<gameDir>/axion/<sous-dossier>/` (`SchemaTwoWriter.targetIn`, `export`, `trace`) ; elle journalise le
+chemin et l'auteur (R-810).
+

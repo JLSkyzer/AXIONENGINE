@@ -191,13 +191,23 @@ final class AxionCommands {
         lines.add("  " + result.calls() + " appels mesurés");
 
         if (jsonPath != null) {
+            Path gameDir = runtime.gameDir();
+            if (gameDir == null) {
+                source.sendFailure(Component.literal("AXION : répertoire de jeu inconnu"));
+                return send(source, lines);
+            }
             try {
-                Path out = Path.of(jsonPath);
+                // Sous le répertoire de jeu, jamais au chemin reçu : la commande
+                // est au niveau 2, et un chemin libre écraserait n'importe quoi.
+                Path out = SchemaTwoWriter.targetIn(gameDir, jsonPath);
                 SchemaTwoWriter.write("B-07", scenario, "ingame-dev", result, out);
-                lines.add("  résultat schéma 2 écrit dans " + out.toAbsolutePath());
+                // R-810 : une écriture sur le disque se journalise avec son auteur.
+                LOGGER.info("AXION : /axion bench {} — résultat schéma 2 écrit dans {} pour {}",
+                        scenario, out, source.getTextName());
+                lines.add("  résultat schéma 2 écrit dans " + out);
             } catch (IOException | RuntimeException error) {
                 source.sendFailure(Component.literal(
-                        "AXION : écriture du JSON échouée — " + error.getMessage()));
+                        "AXION : écriture du JSON refusée ou échouée — " + error.getMessage()));
             }
         }
         return send(source, lines);

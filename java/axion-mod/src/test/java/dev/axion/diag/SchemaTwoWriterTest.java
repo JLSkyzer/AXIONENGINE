@@ -2,11 +2,16 @@ package dev.axion.diag;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** La sortie schéma 2 du harnais en jeu (C-72), vérifiée sans écrire de fichier. */
 class SchemaTwoWriterTest {
@@ -40,4 +45,21 @@ class SchemaTwoWriterTest {
             assertTrue(stats.has(field), field + " absent");
         }
     }
+
+    @Test
+    @DisplayName("--json n'écrit que sous <gameDir>/axion/bench/, et ne prend qu'un nom simple")
+    void laSortieResteSousLeRepertoireDeJeu(@TempDir Path jeu) throws IOException {
+        Path cible = SchemaTwoWriter.targetIn(jeu, "b07-ffi.json");
+        assertEquals(jeu.resolve("axion").resolve("bench").resolve("b07-ffi.json"), cible);
+        SchemaTwoWriter.write("B-07", "ffi", "abc123", BenchRunner.measure(() -> 2, 100, 8, 1000), cible);
+        assertTrue(Files.isRegularFile(cible), "résultat non écrit");
+
+        for (String refuse : new String[] {
+            "../mods/axion.jar", "..", ".", ".cache", "", "sous/dossier.json", "sous\\dossier.json",
+            "/etc/passwd", "C:\\Windows\\x.json", "x:y.json", "a b.json"
+        }) {
+            assertThrows(IllegalArgumentException.class, () -> SchemaTwoWriter.targetIn(jeu, refuse), refuse);
+        }
+    }
 }
+
