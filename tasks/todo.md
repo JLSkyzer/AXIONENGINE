@@ -1341,6 +1341,47 @@ est tenue par ce qui existe.
       observée ; et le « 0 assembly(s) retirée(s) » de `/axion remove` du 2026-10-03.
 - [ ] **Definition of Done de M2** vérifiée, puis `M2` dans `COMPLETED_MILESTONES` sur décision
       de Killian.
+      - **Audit du 2026-10-15** (trois sous-agents en lecture seule, 37.3 critère par critère). Verdict :
+        aucun des huit composants ne tient sa DoD ; trois critères de jalon sur cinq non tenus. Marqué
+        ✔ ce que Claude a revérifié lui-même, le reste est rapporté par l'audit, non revérifié.
+      - **Corrigé** : [x] `/axion bench --json` écrivait au chemin reçu, au niveau 2 (74260a0) ✔.
+      - **Corrections à faire, sans décision** :
+        - [ ] R-561 ✔ : le cache ne tient pas son plafond — un `AssetCache` neuf à chaque rechargement relit
+              l'index d'avant (écrit à l'arrêt seulement), `get` réinscrit sans compter, les entrées
+              intermédiaires deviennent orphelines, jamais évincées (`AssetCache.java:103`, `AxionRuntime:269`).
+        - [ ] `test_cube.json` et `models/test/cube.gltf` sont dans `src/main`, donc dans le JAR livré ✔ (R-1790 :
+              exactement cinq definitions de démonstration ; `build.gradle` dit le contenu d'essai jamais
+              empaqueté) — les ranger dans `devcontent`.
+        - [ ] Documentation contredite par le code : rustdoc d'`auto_convex` « pas encore générée »
+              (`collider.rs`), `optimize/mod.rs` (étapes 8-9), `axion-api/package-info.java` (événements),
+              `ax-bench/src/lib.rs:3`, Javadoc d'`AxionRuntime` (« conserve son état ») et d'`isPickable`,
+              C-72 coché alors que R-2250 et la tranche 10+ sont ouverts.
+        - [ ] Tests de `tools/bench` (32) hors CI et hors `local_ci.py`.
+        - [ ] Un GameTest du livrable : `/axion spawn` (la commande, pas sa copie `AssembliesDeTest`), sauvegarde
+              puis rechargement de l'entité, `/axion remove` (aucun n'existe).
+      - **Effort maximal à annoncer** : [ ] INV-08 ✔ — les allocations C++ de meshoptimizer (`operator new`)
+        échappent au compteur ; `meshopt_setAllocator` existe dans la bibliothèque vendue mais pas dans
+        le crate 0.6.2.
+      - **Décisions de Killian** :
+        - [ ] R-552 ✔ : zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
+              (`COMPILER_VERSION` des deux côtés) ou consigner l'écart.
+        - [ ] R-830 : trois divergences jeu/CLI — fichiers voisins (`.mtl`, buffers externes) lus par la CLI,
+              pas par le jeu (ADR-122 les dit hors portée sans les confronter à R-830) ; `max_source_bytes`
+              non appliqué en jeu (R-533) ; en-tête `asset_id`/`source_hash` différent.
+        - [ ] C-70 ✔ : aucune implémentation dans `axion-mod` (`AxionApi.get()` lève toujours) ; R-1755,
+              R-1760..R-1762 seulement documentés, 15 interfaces `@Stable` vides (décision du 2026-09-13
+              sans ADR), R-1751 (version propre de l'artefact).
+        - [ ] Benchmarks du périmètre de M2 (B-02, B-09) jamais archivés ; ADR-131 ne couvre que M3 ; R-2250
+              sans job CI.
+        - [ ] CHANGELOG : aucune entrée M2 ; C-25, C-30 et C-72 rangés sous M1.
+        - [ ] Portée de la DoD « en M2 » pour des composants STABLE dont une part est renvoyée à M3..M7
+              (C-23 tranche D, C-27 étapes 4-5 et cinq familles, C-50 R-700/R-703/R-705, C-74
+              `deform`/`replay`) : un ADR qui la borne, comme ADR-134.
+        - [ ] Attribution de T-240..T-244, T-280..T-284 et T-400..T-404, que le CDC ne décrit pas un par un.
+        - [ ] Métriques et budgets propres de C-23, C-25, C-27, C-50 (R-1850, INV-19, 31.1) ;
+              `assets.max_compile_ms` jamais lu (R-2131) ; R-562 vérifié par parité seulement.
+        - [ ] ADR-106 et ADR-107, « décidés par Claude », jamais ratifiés ; R-1710 (schéma antérieur rendu
+              inerte, non migré).
 
 ---
 
