@@ -1369,6 +1369,12 @@ est tenue par ce qui existe.
         échappent au compteur ; `meshopt_setAllocator` existe dans la bibliothèque vendue mais pas dans
         le crate 0.6.2.
       - **Décisions de Killian** :
+        - **Tranchées le 2026-10-15** : (1) un ADR borne la DoD de M2 — composant par composant, ce que
+          M2 tient et ce qui part à quel jalon, avec le test qui le prouvera ; (2) R-552 : zstd au
+          niveau 9, `COMPILER_VERSION` 10 ; (3) R-830 : le jeu rattrape la CLI — fichiers voisins
+          (changement d'IF-06 : effort maximal, ADR à ratifier), `max_source_bytes`, `source_hash` ;
+          (4) C-70 : fournisseur minimal — fournisseur, EventBus (R-1760, R-1761), builder borné
+          (R-1762), contrôle de thread (R-1755), avec leurs tests.
         - [ ] R-552 ✔ : zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
               (`COMPILER_VERSION` des deux côtés) ou consigner l'écart.
         - [ ] R-830 : trois divergences jeu/CLI — fichiers voisins (`.mtl`, buffers externes) lus par la CLI,
