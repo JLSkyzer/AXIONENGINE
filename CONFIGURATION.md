@@ -220,6 +220,12 @@ alors ignorée (R-1830).
 | `attachments` | booléen | `true` | `true \| false` | non | non | Active le module attaches entre assemblies. |
 | `blocks` | booléen | `true` | `true \| false` | non | non | Active le module blocs et items 3D. |
 
+### `[content]`
+
+| Option | Type | Défaut | Domaine | Chaud | Serveur | Description |
+|---|---|---|---|---|---|---|
+| `examples` | booléen | `false` | `true \| false` | non | oui | Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `data/axion/axion/definitions/example/`. |
+
 ### `[integration.rustforgex]`
 
 | Option | Type | Défaut | Domaine | Chaud | Serveur | Description |

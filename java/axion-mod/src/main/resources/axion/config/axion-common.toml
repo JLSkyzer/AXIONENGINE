@@ -153,6 +153,9 @@ animation = true
 attachments = true
 blocks = true
 
+[content]
+examples = false
+
 [integration.rustforgex]
 mode = "auto"                     # auto | off
 cpu_share = "auto"                # auto | half | full | <entier>

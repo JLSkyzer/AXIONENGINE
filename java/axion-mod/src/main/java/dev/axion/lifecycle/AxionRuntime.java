@@ -644,7 +644,8 @@ public final class AxionRuntime {
             AssetRegistry known = assets;
             DefinitionRules rules = new DefinitionRules(
                     outcome.config().getBoolean("modules.vehicles"),
-                    path -> known != null && known.entry(path) != null);
+                    path -> known != null && known.entry(path) != null,
+                    outcome.config().getBoolean("content.examples"));
             DefinitionRegistry loaded = DefinitionRegistry.load(source, rules);
             definitions = loaded;
             transitions.add(loaded.size() + " definition(s) chargée(s), "

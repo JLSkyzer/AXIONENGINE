@@ -41,6 +41,14 @@ public final class DefinitionRegistry {
     /** Extension des definitions. */
     public static final String EXTENSION = ".json";
 
+    /**
+     * Emplacement des definitions de démonstration que le mod embarque (R-1790) :
+     * chargées seulement si {@code content.examples} est vrai (ADR-134,
+     * amendement A2). Seul l'espace de noms d'AXION en a : un pack tiers qui range
+     * ses definitions dans un dossier {@code example/} n'est pas concerné.
+     */
+    public static final String EXAMPLES = "axion:" + PREFIX + "example/";
+
     /** Seule version de schéma lue (R-1780). */
     public static final int SCHEMA = 1;
 
@@ -98,6 +106,11 @@ public final class DefinitionRegistry {
         List<String> refusals = new ArrayList<>();
 
         for (String location : source.list()) {
+            if (!rules.examplesEnabled() && location.startsWith(EXAMPLES)) {
+                // Désactivée, une definition de démonstration est absente, pas
+                // fautive : aucun refus, comme si aucun pack ne la portait.
+                continue;
+            }
             try {
                 Definition definition = read(location, source.read(location), rules);
                 accepted.put(definition.id(), definition);

@@ -1306,7 +1306,11 @@ est tenue par ce qui existe.
 - [ ] **T-630..T-634 — option A d'[ADR-134](../docs/decisions/ADR-134.md)** (Killian, 2026-10-13) :
       les cinq definitions de R-1790 embarquées sous `data/axion/axion/definitions/example/`,
       chargées si `content.examples` (défaut `false`), validées sans faute ; un test par exemple.
-      - [ ] `content.examples` au registre de configuration (R-430, `CONFIGURATION.md` régénéré).
+      - [x] `content.examples` au registre de configuration (R-430, `CONFIGURATION.md` régénéré) :
+            amendement A2 de l'ANNEXE A.3 (Killian, 2026-10-14), `axion-common.toml` `[content]`
+            `examples = false`, imposée par le serveur (R-1830) ; une definition sous
+            `axion:axion/definitions/example/` n'est chargée que si elle vaut vrai, ignorée sans refus
+            sinon (`DefinitionRegistry.EXAMPLES`, test rouge sans le filtre).
       - [ ] cinq modèles 3D réels, faits dans Blender **avec Killian** : s'arrêter et demander.
       - [ ] cinq definitions, puis T-630..T-634.
 - [ ] **C-74 — commandes faisables dès M2** (Killian, 2026-10-13). `deform` et `replay` restent

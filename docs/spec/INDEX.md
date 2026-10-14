@@ -1,6 +1,6 @@
 # Index du cahier des charges AXION ENGINE
 
-Genere par `tools/spec/spec_index.py`. Source : `cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md` (8281 lignes).
+Genere par `tools/spec/spec_index.py`. Source : `cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md` (8285 lignes).
 
 Le CDC est **gele (FROZEN)** et constitue la source de verite unique.
 Il ne doit jamais etre lu en entier : lire la plage de lignes de la
@@ -438,7 +438,7 @@ grep -P '^C-42	' docs/spec/ID-MAP.tsv
 | `7310,7317p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M12 — Release 1.0.0 |
 | `7318,7364p` | 47 | &nbsp;&nbsp;&nbsp;&nbsp;37.3 Definition of Done |
 | `7365,7374p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;37.4 Sévérités |
-| `7375,7771p` | 397 | PARTIE 38 : CRITÈRES D'ACCEPTATION ET AUDIT FINAL |
+| `7375,7772p` | 398 | PARTIE 38 : CRITÈRES D'ACCEPTATION ET AUDIT FINAL |
 | `7377,7467p` | 91 | &nbsp;&nbsp;&nbsp;&nbsp;38.1 Checklist principale de la V1.0 |
 | `7468,7491p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;38.2 Critères de correction (bloquants) — identifiants `AC-xx` |
 | `7492,7508p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;38.3 Critères de performance — identifiants `PF-xx` |
@@ -455,19 +455,19 @@ grep -P '^C-42	' docs/spec/ID-MAP.tsv
 | `7714,7732p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Tests ajoutés |
 | `7733,7740p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ADR modifiés |
 | `7741,7758p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Vérification de non-régression |
-| `7759,7771p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;38.9 Registre des amendements postérieurs au gel |
-| `7772,8129p` | 358 | ANNEXES |
-| `7774,7817p` | 44 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.1 — Codes d'erreur |
-| `7818,7845p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.2 — Index des invariants |
-| `7846,8056p` | 211 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.3 — Configuration complète (référence normative) |
-| `8057,8082p` | 26 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.4 — Sources procédurales (liste fermée V1.0) |
-| `8083,8105p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.5 — Limitations connues de la V1.0 |
-| `8106,8129p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.6 — Glossaire complémentaire |
-| `8130,8281p` | 152 | FINAL V1.0 IMPLEMENTATION CONTRACT |
-| `8132,8154p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;1. Confirmations formelles |
-| `8155,8170p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;2. Boucle de travail obligatoire |
-| `8171,8209p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;3. Interdictions absolues |
-| `8210,8228p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;4. Obligations |
-| `8229,8234p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;5. Autonomie de décision |
-| `8235,8248p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;6. Gestion de l'incertitude |
-| `8249,8281p` | 33 | &nbsp;&nbsp;&nbsp;&nbsp;7. Critère final |
+| `7759,7772p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;38.9 Registre des amendements postérieurs au gel |
+| `7773,8133p` | 361 | ANNEXES |
+| `7775,7818p` | 44 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.1 — Codes d'erreur |
+| `7819,7846p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.2 — Index des invariants |
+| `7847,8060p` | 214 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.3 — Configuration complète (référence normative) |
+| `8061,8086p` | 26 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.4 — Sources procédurales (liste fermée V1.0) |
+| `8087,8109p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.5 — Limitations connues de la V1.0 |
+| `8110,8133p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.6 — Glossaire complémentaire |
+| `8134,8285p` | 152 | FINAL V1.0 IMPLEMENTATION CONTRACT |
+| `8136,8158p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;1. Confirmations formelles |
+| `8159,8174p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;2. Boucle de travail obligatoire |
+| `8175,8213p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;3. Interdictions absolues |
+| `8214,8232p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;4. Obligations |
+| `8233,8238p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;5. Autonomie de décision |
+| `8239,8252p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;6. Gestion de l'incertitude |
+| `8253,8285p` | 33 | &nbsp;&nbsp;&nbsp;&nbsp;7. Critère final |

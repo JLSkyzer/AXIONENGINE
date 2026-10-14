@@ -292,6 +292,9 @@ pub const COMMON: &[ConfigOption] = &[
     b("modules.attachments", true, "Active le module attaches entre assemblies."),
     b("modules.blocks", true, "Active le module blocs et items 3D."),
 
+    // [content]
+    srv(b("content.examples", false, "Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `data/axion/axion/definitions/example/`.")),
+
     // [integration.rustforgex]
     e("integration.rustforgex.mode", "auto", &["auto", "off"], "Détection d'un mod d'optimisation tiers. AXION n'en dépend jamais et fonctionne identiquement en son absence."),
     opt("integration.rustforgex.cpu_share", ConfigValue::Str("auto"), ConfigDomain::KeywordOrCount(&["auto", "half", "full"]), "Part de parallélisme qu'AXION s'autorise en présence d'un autre consommateur de CPU. Un entier fixe le nombre de threads."),

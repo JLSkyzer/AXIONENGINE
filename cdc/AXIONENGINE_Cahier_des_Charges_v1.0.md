@@ -7764,6 +7764,7 @@ porte. Il ajoute ce qui manquait à une exigence existante ; il ne retire ni ne 
 | # | Date | Décision | Amendement |
 |---|---|---|---|
 | A1 | 2026-10-04 | ADR-123, ratifié par le mainteneur | ANNEXE A.3, `[physics]` : `entity_push` et `entity_damage`, booléens, vrais par défaut — le réglage que R-614 exige (« l'effet d'une collision sur une entité vanilla … est configurable ») et que l'annexe ne portait pas |
+| A2 | 2026-10-14 | ADR-134, tranché par le mainteneur | ANNEXE A.3, `axion-common.toml`, nouvelle section `[content]` : `examples`, booléen, faux par défaut — l'option que R-1790 nomme (« désactivables (`content.examples`, défaut `false` en release) ») et que l'annexe ne portait pas |
 
 ---
 
@@ -7991,6 +7992,9 @@ job_timeout_ms = 5000
 vehicles = true ; joints = true ; damage = true ; deformation = true
 structure = true ; repair = true ; wear = true ; particles = true
 animation = true ; attachments = true ; blocks = true
+
+[content]
+examples = false
 
 [integration.rustforgex]
 mode = "auto"                     # auto | off

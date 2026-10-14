@@ -1066,6 +1066,14 @@ public final class ConfigSchema {
                     false,
                     "Active le module blocs et items 3D."),
             new Option(
+                    "content.examples",
+                    Kind.BOOLEAN,
+                    false,
+                    new Domain(DomainKind.BOOLEAN, 0.0, 0.0, List.of()),
+                    false,
+                    true,
+                    "Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `data/axion/axion/definitions/example/`."),
+            new Option(
                     "integration.rustforgex.mode",
                     Kind.STRING,
                     "auto",

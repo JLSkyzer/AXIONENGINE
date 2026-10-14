@@ -171,4 +171,29 @@ class DefinitionRegistryTest {
         definition.root().addProperty("kind", "vehicle");
         assertEquals("visual", definition.root().get("kind").getAsString());
     }
+
+    @Test
+    @DisplayName("ADR-134 : une definition de démonstration ne se charge que si content.examples est vrai")
+    void lesExemplesSuiventContentExamples() {
+        String caisse = "axion:axion/models/example/crate.glb";
+        java.util.function.Predicate<String> modeles = Set.of(PICKUP, caisse)::contains;
+        FakeSource source = new FakeSource()
+                .put("mymod:axion/definitions/pickup.json",
+                        "{\"schema\": 1, \"asset\": \"mymod:models/pickup.glb\", \"kind\": \"vehicle\"}")
+                .put("axion:axion/definitions/example/crate.json",
+                        "{\"schema\": 1, \"asset\": \"axion:models/example/crate.glb\", \"kind\": \"vehicle\"}")
+                // Un pack tiers peut ranger les siennes dans un dossier example/ : elles
+                // ne sont pas celles du mod, l'option ne les touche pas.
+                .put("mymod:axion/definitions/example/pickup.json",
+                        "{\"schema\": 1, \"asset\": \"mymod:models/pickup.glb\", \"kind\": \"vehicle\"}");
+
+        DefinitionRegistry sans = DefinitionRegistry.load(source, new DefinitionRules(true, modeles));
+        assertEquals(2, sans.size(), "défaut de la release : sans les exemples");
+        assertTrue(sans.refusals().isEmpty(), "désactivée, une definition n'est pas fautive");
+
+        DefinitionRegistry avec =
+                DefinitionRegistry.load(source, new DefinitionRules(true, modeles, true));
+        assertEquals(3, avec.size());
+        assertTrue(avec.refusals().isEmpty(), avec.refusals().toString());
+    }
 }
