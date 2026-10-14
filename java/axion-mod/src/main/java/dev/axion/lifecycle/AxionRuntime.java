@@ -242,10 +242,11 @@ public final class AxionRuntime {
     /**
      * Signale un rechargement de ressources (C-20 étape 1).
      *
-     * <p>Le registre est reconstruit sur la nouvelle source, mais **conserve
-     * son état** : R-520 veut que seuls les assets dont la clé a changé soient
-     * recompilés, et repartir de zéro à chaque rechargement rendrait la
-     * commande inutilisable sur un pack un peu fourni.
+     * <p>Le registre et le cache sont <strong>recréés</strong> sur la nouvelle
+     * source. R-520 — seuls les assets dont la clé a changé sont recompilés —
+     * tient par le cache sur disque : à l'ouverture, il s'accorde aux fichiers
+     * rangés par les rechargements précédents (R-561), et chaque asset inchangé
+     * y est repris sans passer par le compilateur.
      *
      * @param source sources énumérées par le gestionnaire de ressources
      * @return le nombre d'assets à recompiler

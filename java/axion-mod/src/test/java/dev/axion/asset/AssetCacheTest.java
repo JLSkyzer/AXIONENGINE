@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -190,8 +191,11 @@ class AssetCacheTest {
         Files.write(index, brut);
 
         AssetCache second = new AssetCache(root, UNLIMITED);
-        assertEquals(0, second.size(), "l'index corrompu a été cru");
         assertFalse(second.diagnostics().isEmpty());
+        // L'index corrompu n'est pas cru : l'entrée est connue par son fichier,
+        // avec la taille du fichier (R-561).
+        assertEquals(1, second.size());
+        assertEquals(premier.totalBytes(), second.totalBytes());
         // L'index n'est pas la vérité : les fichiers le sont, et l'entrée se
         // relit malgré tout.
         assertNotNull(second.get(key("a")));
@@ -232,4 +236,103 @@ class AssetCacheTest {
         // la frontière qui en change la lecture.
         assertFalse(abiUn.equals(abiDeux));
     }
+
+    /** Le fichier d'une entrée, tel que la convention de C-25 le range. */
+    private Path fichier(AssetKey clef) {
+        return root.resolve(clef.shard()).resolve(clef.hex() + ".a3d");
+    }
+
+    /** Date un fichier d'entrée, pour fixer l'ordre de leur adoption. */
+    private void dater(AssetKey clef, long millis) throws IOException {
+        Files.setLastModifiedTime(fichier(clef), FileTime.fromMillis(millis));
+    }
+
+    private long fichiersSurLeDisque() throws IOException {
+        try (var flux = Files.walk(root)) {
+            return flux.filter(path -> path.toString().endsWith(".a3d")).count();
+        }
+    }
+
+    @Test
+    @DisplayName("T-262 : R-561, une entrée rangée depuis le dernier index est comptée, puis évincée")
+    void uneEntreeHorsIndexEstCompteeEtEvincee() throws IOException {
+        // Aucun writeIndex : c'est un rechargement de ressources dans la même
+        // session, ou un arrêt brutal. Les fichiers sont là, l'index ne les cite pas.
+        AssetCache premier = new AssetCache(root, UNLIMITED);
+        premier.put(key("a"), payload(128, (byte) 1));
+        premier.put(key("b"), payload(128, (byte) 2));
+        dater(key("a"), 1_000_000L);
+        dater(key("b"), 2_000_000L);
+
+        long plafond = 2 * (128 + AssetCache.ENTRY_HEADER_BYTES);
+        AssetCache second = new AssetCache(root, plafond);
+        assertEquals(2, second.size());
+        assertEquals(premier.totalBytes(), second.totalBytes());
+
+        second.put(key("c"), payload(128, (byte) 3));
+        assertEquals(2, second.size());
+        assertTrue(second.totalBytes() <= plafond, () -> second.totalBytes() + " > " + plafond);
+        // La plus ancienne quitte aussi le disque : c'est le disque que R-561 borne.
+        assertFalse(Files.exists(fichier(key("a"))), "la plus ancienne devait partir");
+        assertEquals(2, fichiersSurLeDisque());
+    }
+
+    @Test
+    @DisplayName("T-262 : R-561, le plafond tient dès l'ouverture")
+    void lePlafondTientDesLOuverture() throws IOException {
+        AssetCache premier = new AssetCache(root, UNLIMITED);
+        for (int index = 0; index < 6; index++) {
+            premier.put(key("asset" + index), payload(64, (byte) index));
+            dater(key("asset" + index), 1_000_000L * (index + 1));
+        }
+
+        long plafond = 3 * (64 + AssetCache.ENTRY_HEADER_BYTES);
+        AssetCache second = new AssetCache(root, plafond);
+        assertEquals(3, second.size());
+        assertTrue(second.totalBytes() <= plafond, () -> second.totalBytes() + " > " + plafond);
+        assertEquals(3, fichiersSurLeDisque());
+        // Les plus récentes restent.
+        assertNotNull(second.get(key("asset5")));
+        assertNull(second.get(key("asset0")));
+    }
+
+    @Test
+    @DisplayName("T-263 : une entrée de l'index dont le fichier a disparu n'est plus comptée")
+    void unFichierDisparuSortDeLIndex() throws IOException {
+        AssetCache premier = new AssetCache(root, UNLIMITED);
+        premier.put(key("a"), payload(100, (byte) 1));
+        premier.put(key("b"), payload(200, (byte) 2));
+        assertTrue(premier.writeIndex());
+        Files.delete(fichier(key("a")));
+
+        AssetCache second = new AssetCache(root, UNLIMITED);
+        assertEquals(1, second.size());
+        assertEquals(200 + AssetCache.ENTRY_HEADER_BYTES, second.totalBytes());
+    }
+
+    @Test
+    @DisplayName("T-263 : un fichier temporaire laissé par un arrêt brutal est nettoyé")
+    void unTemporaireOrphelinEstNettoye() throws IOException {
+        AssetKey clef = key("a");
+        Path temporaire = root.resolve(clef.shard()).resolve(clef.hex() + ".a3d.tmp");
+        Files.createDirectories(temporaire.getParent());
+        Files.write(temporaire, payload(32, (byte) 9));
+
+        AssetCache cache = new AssetCache(root, UNLIMITED);
+        assertFalse(Files.exists(temporaire), "temporaire laissé sur le disque");
+        assertEquals(0, cache.size());
+    }
+
+    @Test
+    @DisplayName("T-262 : une entrée apparue après l'ouverture est comptée quand elle est lue")
+    void uneEntreeLueHorsIndexEstComptee() {
+        AssetCache lecteur = new AssetCache(root, UNLIMITED);
+        AssetCache ecrivain = new AssetCache(root, UNLIMITED);
+        ecrivain.put(key("a"), payload(128, (byte) 1));
+
+        assertNotNull(lecteur.get(key("a")));
+        assertEquals(1, lecteur.size());
+        assertEquals(ecrivain.totalBytes(), lecteur.totalBytes());
+    }
 }
+

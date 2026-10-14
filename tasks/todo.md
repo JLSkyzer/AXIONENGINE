@@ -1346,7 +1346,9 @@ est tenue par ce qui existe.
         ✔ ce que Claude a revérifié lui-même, le reste est rapporté par l'audit, non revérifié.
       - **Corrigé** : [x] `/axion bench --json` écrivait au chemin reçu, au niveau 2 (74260a0) ✔.
       - **Corrections à faire, sans décision** :
-        - [ ] R-561 ✔ : le cache ne tient pas son plafond — un `AssetCache` neuf à chaque rechargement relit
+        - [x] R-561 ✔ (corrigé le 2026-10-15 : rapprochement index/fichiers à l'ouverture, plafond dès
+              l'ouverture, `get` qui compte, temporaires nettoyés ; 6 tests rouges puis verts) : le cache
+              ne tenait pas son plafond — un `AssetCache` neuf à chaque rechargement relit
               l'index d'avant (écrit à l'arrêt seulement), `get` réinscrit sans compter, les entrées
               intermédiaires deviennent orphelines, jamais évincées (`AssetCache.java:103`, `AxionRuntime:269`).
         - [ ] `test_cube.json` et `models/test/cube.gltf` sont dans `src/main`, donc dans le JAR livré ✔ (R-1790 :

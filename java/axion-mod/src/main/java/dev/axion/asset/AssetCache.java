@@ -3,12 +3,17 @@ package dev.axion.asset;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.zip.CRC32C;
 
 /**
@@ -52,6 +57,15 @@ public final class AssetCache {
     /** Nom du fichier d'index. */
     private static final String INDEX_NAME = "index.bin";
 
+    /** Sous-répertoire d'une entrée : les deux premiers chiffres de sa clé. */
+    private static final Pattern SHARD = Pattern.compile("[0-9a-f]{2}");
+
+    /** Fichier d'une entrée : sa clé SHA-256 en hexadécimal. */
+    private static final Pattern ENTRY_FILE = Pattern.compile("[0-9a-f]{64}\\.a3d");
+
+    /** Fichier temporaire d'une écriture interrompue. */
+    private static final Pattern TEMPORARY = Pattern.compile("[0-9a-f]{64}\\.a3d\\.tmp");
+
     private final Path root;
     private final long maxBytes;
 
@@ -62,7 +76,8 @@ public final class AssetCache {
     private long totalBytes;
 
     /**
-     * Ouvre le cache, en lisant son index s'il existe.
+     * Ouvre le cache : lit son index s'il existe, l'accorde aux fichiers, puis
+     * applique le plafond.
      *
      * @param root répertoire du cache, sous {@code <gameDir>/axion/}
      * @param maxBytes plafond de taille, {@code assets.cache_max_bytes}
@@ -71,6 +86,79 @@ public final class AssetCache {
         this.root = root;
         this.maxBytes = maxBytes;
         readIndex();
+        reconcile();
+        evict();
+    }
+
+    /**
+     * Accorde l'index aux fichiers (R-561).
+     *
+     * <p>L'index n'est écrit qu'à l'arrêt, et un cache neuf s'ouvre à chaque
+     * rechargement de ressources : une entrée rangée depuis le dernier index — par
+     * un rechargement précédent de la même session, ou avant un arrêt brutal — est
+     * sur le disque sans y figurer. Sans ce rapprochement, elle ne serait jamais
+     * comptée ni évincée, et le cache dépasserait son plafond sans le savoir.
+     *
+     * <p>Les fichiers sont la vérité : une entrée de l'index dont le fichier a
+     * disparu sort du compte ; un fichier que l'index ne cite pas entre, comme plus
+     * récent que tout ce que l'index connaît, dans l'ordre de sa date. L'index ne
+     * garde que ce qu'il sait mieux que le disque : l'ordre d'emploi. Un fichier
+     * temporaire laissé par un arrêt en pleine écriture est supprimé.
+     */
+    private void reconcile() {
+        if (!Files.isDirectory(root)) {
+            sizes.clear();
+            totalBytes = 0;
+            return;
+        }
+
+        Map<String, BasicFileAttributes> onDisk = new HashMap<>();
+        try (DirectoryStream<Path> shards = Files.newDirectoryStream(root, Files::isDirectory)) {
+            for (Path shard : shards) {
+                String prefix = shard.getFileName().toString();
+                if (!SHARD.matcher(prefix).matches()) {
+                    continue;
+                }
+                try (DirectoryStream<Path> files = Files.newDirectoryStream(shard)) {
+                    for (Path file : files) {
+                        String name = file.getFileName().toString();
+                        if (TEMPORARY.matcher(name).matches()) {
+                            Files.deleteIfExists(file);
+                        } else if (ENTRY_FILE.matcher(name).matches() && name.startsWith(prefix)) {
+                            onDisk.put(name.substring(0, 64),
+                                    Files.readAttributes(file, BasicFileAttributes.class));
+                        }
+                    }
+                }
+            }
+        } catch (IOException failure) {
+            // L'index reste tel qu'il a été lu : moins juste, mais pas faux au point
+            // de supprimer quoi que ce soit sur sa seule foi.
+            diagnostics.add("cache : arborescence illisible, index gardé tel quel — " + failure);
+            return;
+        }
+
+        Map<String, Long> reconciled = new LinkedHashMap<>();
+        for (String hex : sizes.keySet()) {
+            BasicFileAttributes file = onDisk.remove(hex);
+            if (file != null) {
+                reconciled.put(hex, file.size());
+            }
+        }
+        List<Map.Entry<String, BasicFileAttributes>> unknown = new ArrayList<>(onDisk.entrySet());
+        unknown.sort(Comparator
+                .comparing((Map.Entry<String, BasicFileAttributes> entry) -> entry.getValue().lastModifiedTime())
+                .thenComparing(Map.Entry::getKey));
+        for (Map.Entry<String, BasicFileAttributes> entry : unknown) {
+            reconciled.put(entry.getKey(), entry.getValue().size());
+        }
+
+        sizes.clear();
+        sizes.putAll(reconciled);
+        totalBytes = 0;
+        for (long size : sizes.values()) {
+            totalBytes += size;
+        }
     }
 
     /**
@@ -100,9 +188,13 @@ public final class AssetCache {
             return null;
         }
 
-        // Employée : elle repasse en queue de la file d'éviction.
-        sizes.remove(key.hex());
+        // Employée : elle repasse en queue de la file d'éviction. Une entrée que
+        // l'index ne connaissait pas — rangée par un autre cache sur la même
+        // racine depuis l'ouverture — entre dans le compte (R-561).
+        Long previous = sizes.remove(key.hex());
+        totalBytes += raw.length - (previous == null ? 0 : previous);
         sizes.put(key.hex(), (long) raw.length);
+        evict();
         return payload;
     }
 
@@ -230,9 +322,9 @@ public final class AssetCache {
     /**
      * Écrit l'index sur le disque.
      *
-     * <p>L'index n'est pas la vérité : les fichiers le sont. Il évite de
-     * parcourir l'arborescence au démarrage, et un index perdu ne coûte qu'un
-     * cache qui se remplit de nouveau.
+     * <p>L'index n'est pas la vérité : les fichiers le sont, et l'ouverture l'y
+     * accorde. Il garde l'ordre d'emploi des entrées, que le disque ne sait pas ;
+     * un index perdu ne coûte qu'un ordre d'éviction approché par les dates.
      *
      * @return vrai si l'index a été écrit
      */
