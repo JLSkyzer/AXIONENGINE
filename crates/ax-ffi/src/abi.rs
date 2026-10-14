@@ -217,6 +217,7 @@ pub unsafe extern "C" fn axion_init(
 
         let assets = context::AssetLimits {
             container: A3dLimits::new(applied.max_compiled_bytes),
+            source: ImportLimits::new(applied.max_source_bytes),
             persistent_bytes: usize::try_from(applied.native_mem_bytes).unwrap_or(usize::MAX),
         };
         let token = match context::open(
@@ -505,10 +506,13 @@ pub unsafe extern "C" fn axion_asset_compile(
             };
             let source = source.to_vec();
 
+            // Le plafond et l'empreinte de la CLI, par le même code : la même
+            // source compile à l'identique des deux côtés (R-830), et R-533 tient
+            // en jeu comme hors jeu.
             let options = CompileOptions {
                 asset_id,
-                source_hash: 0,
-                limits: ImportLimits::new(source_len.max(1)),
+                source_hash: ax_asset::compile::source_hash(&source),
+                limits: session.import_limits(),
                 dynamic_body: true,
                 // Les défauts, sauf si le `.axion.json` en donne d'autres : lus
                 // dans le travail, ci-dessous. Le mode de collider de la
@@ -1443,6 +1447,8 @@ struct AppliedConfig {
     budgets: JobBudgets,
     /// `assets.max_compiled_bytes` : plafond d'un conteneur A3D chargé (R-901).
     max_compiled_bytes: u64,
+    /// `assets.max_source_bytes` : plafond d'une source à compiler (R-533).
+    max_source_bytes: u64,
     /// `budgets.native_mem_bytes` : plafond de l'arène `PERSISTENT` (R-480).
     native_mem_bytes: u64,
     /// Options du monde physique (ADR-123 §1), réunies en [`SimSettings`] à l'ouverture.
@@ -1480,6 +1486,9 @@ const PHYSICS_PATHS: [&str; 9] = [
 /// Chemin de l'option qui plafonne un conteneur A3D chargé (ADR-119).
 const MAX_COMPILED_BYTES_PATH: &str = "assets.max_compiled_bytes";
 
+/// Chemin de l'option qui plafonne une source à compiler (R-533, R-830).
+const MAX_SOURCE_BYTES_PATH: &str = "assets.max_source_bytes";
+
 /// Chemin de l'option qui plafonne la mémoire native (ADR-119).
 const NATIVE_MEM_BYTES_PATH: &str = "budgets.native_mem_bytes";
 
@@ -1496,6 +1505,7 @@ impl AppliedConfig {
             cpu_share: CpuShare::Auto,
             budgets: JobBudgets::new(),
             max_compiled_bytes: 0,
+            max_source_bytes: 0,
             native_mem_bytes: 0,
             // Écrasés ci-dessous par les défauts du registre, source unique (R-430).
             physics: PhysicsOptions {
@@ -1527,6 +1537,7 @@ impl AppliedConfig {
             config::MAX_WORKERS_PATH,
             config::CPU_SHARE_PATH,
             MAX_COMPILED_BYTES_PATH,
+            MAX_SOURCE_BYTES_PATH,
             NATIVE_MEM_BYTES_PATH,
         ];
         paths.extend(PHYSICS_PATHS);
@@ -1598,13 +1609,16 @@ impl AppliedConfig {
         if self.accept_physics(path, parsed) {
             return;
         }
-        if path == MAX_COMPILED_BYTES_PATH || path == NATIVE_MEM_BYTES_PATH {
+        if path == MAX_COMPILED_BYTES_PATH
+            || path == MAX_SOURCE_BYTES_PATH
+            || path == NATIVE_MEM_BYTES_PATH
+        {
             if let ParsedValue::Int(value) = parsed {
                 let value = u64::try_from(*value).unwrap_or(0);
-                if path == MAX_COMPILED_BYTES_PATH {
-                    self.max_compiled_bytes = value;
-                } else {
-                    self.native_mem_bytes = value;
+                match path {
+                    MAX_COMPILED_BYTES_PATH => self.max_compiled_bytes = value,
+                    MAX_SOURCE_BYTES_PATH => self.max_source_bytes = value,
+                    _ => self.native_mem_bytes = value,
                 }
             }
             return;

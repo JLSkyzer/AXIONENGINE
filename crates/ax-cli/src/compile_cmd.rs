@@ -13,26 +13,8 @@ use ax_model::config::{find, ConfigScope, ConfigValue};
 
 pub use ax_asset::compile::CompiledAsset as CompiledOutput;
 
-/// Base de l'empreinte FNV-1a 64 bits.
-const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-
-/// Facteur premier de FNV-1a 64 bits.
-const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-
-/// Empreinte FNV-1a 64 bits d'une suite d'octets.
-///
-/// La même que celle des noms (DM-01) ; elle sert ici à donner à l'en-tête un
-/// `source_hash` déterministe. Une source binaire — un `.glb`, un `.stl` — n'est
-/// pas de l'UTF-8, d'où le hachage sur les octets bruts.
-#[must_use]
-pub fn source_hash(bytes: &[u8]) -> u64 {
-    let mut hash = FNV_OFFSET;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
-}
+/// Empreinte de source de l'en-tête : celle du jeu, par le même code (R-830).
+pub use ax_asset::compile::source_hash;
 
 /// Identifiant d'asset dérivé d'un nom de source.
 ///

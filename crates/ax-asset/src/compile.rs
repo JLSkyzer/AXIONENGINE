@@ -52,8 +52,27 @@ use core::fmt;
 /// (ADR-122 §4 et §5) ; 9 — la section `GEOM` est écrite dès qu'un mesh existe,
 /// même sans triangle : un objet sans face ne laisse plus un node désigner un
 /// mesh absent, que le chargement refusait ; 10 — sections compressées par zstd
-/// au niveau 9 que fixe R-552, au lieu de 3.
+/// au niveau 9 que fixe R-552, au lieu de 3 ; en jeu, l'en-tête porte l'empreinte
+/// de la source, comme en CLI (R-830).
 pub const COMPILER_VERSION: u32 = 10;
+
+/// Empreinte FNV-1a 64 bits d'une source, champ `source_hash` de l'en-tête A3D.
+///
+/// La même que celle des noms (DM-01), sur les octets bruts : une source binaire
+/// — un `.glb`, un `.stl` — n'est pas de l'UTF-8. `axion-cli` et le jeu la
+/// calculent par cette seule fonction, si bien que la même source donne le même
+/// en-tête des deux côtés (R-830).
+#[must_use]
+pub fn source_hash(bytes: &[u8]) -> u64 {
+    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut hash = FNV_OFFSET;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
 
 /// Ce qui empêche de compiler un asset.
 #[derive(Debug, Clone, PartialEq)]

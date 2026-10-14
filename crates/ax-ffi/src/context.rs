@@ -14,6 +14,7 @@ use crate::asset_store::{AssetStore, LoadedAsset};
 use crate::cpu_clock;
 use ax_asset::a3d::A3dLimits;
 use ax_asset::compile::{CompileError, CompiledAsset};
+use ax_asset::import::ImportLimits;
 use ax_core::{BufferPool, ContextGuard, RuntimeState};
 use ax_jobs::{JobBudgets, JobKind, JobSystem, Side, WorkerPolicy};
 use ax_jobs::{JobHandle, JobOutcome};
@@ -134,6 +135,8 @@ pub struct Session {
     /// Plafonds de lecture des conteneurs A3D (`assets.max_compiled_bytes`,
     /// R-901).
     a3d_limits: A3dLimits,
+    /// Plafond d'une source à compiler (`assets.max_source_bytes`, R-533).
+    import_limits: ImportLimits,
     /// Budgets de durée en vigueur, pour juger chaque tick (R-500).
     budgets: JobBudgets,
     /// `budgets.native_mem_bytes` : plafond de la mémoire native, jugé sur ce que
@@ -155,6 +158,8 @@ pub struct Session {
 pub struct AssetLimits {
     /// Plafond d'un conteneur A3D comme d'une section (`assets.max_compiled_bytes`).
     pub container: A3dLimits,
+    /// Plafond d'une source à compiler (`assets.max_source_bytes`, R-533).
+    pub source: ImportLimits,
     /// Plafond de l'arène `PERSISTENT`, en octets (`budgets.native_mem_bytes`).
     pub persistent_bytes: usize,
 }
@@ -536,6 +541,13 @@ impl Session {
         self.a3d_limits
     }
 
+    /// Plafond d'une source à compiler (R-533) : celui que la CLI applique aussi
+    /// (R-830).
+    #[must_use]
+    pub fn import_limits(&self) -> ImportLimits {
+        self.import_limits
+    }
+
     /// Range un asset chargé et rend son handle, en imputant ses octets à
     /// l'arène `PERSISTENT` (R-480).
     ///
@@ -712,6 +724,7 @@ pub fn open(
         assets: AssetStore::new(),
         persistent: ArenaCounter::new(ArenaClass::Persistent, assets.persistent_bytes),
         a3d_limits: assets.container,
+        import_limits: assets.source,
         budgets: job_budgets,
         native_budget_bytes: assets.persistent_bytes,
         pending_export: None,
@@ -947,6 +960,7 @@ mod tests {
         };
         let assets = AssetLimits {
             container: A3dLimits::new(1 << 24),
+            source: ImportLimits::new(1 << 24),
             persistent_bytes: 1 << 26,
         };
         open(

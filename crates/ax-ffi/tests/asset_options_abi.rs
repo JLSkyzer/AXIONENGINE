@@ -9,10 +9,11 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::compile::{compile, CompileOptions};
+use ax_asset::compile::{compile, source_hash, CompileOptions};
 use ax_asset::import::{ImportLimits, SourceFormat};
 use ax_asset::options::{parse, parse_bytes, AssetOptions, E_INVALID_OPTION, E_UNKNOWN_SCHEMA};
 use ax_model::buffer::{BufferKind, HEADER_BYTES};
+use ax_model::config::{find, ConfigScope, ConfigValue};
 use axion_native::abi::{
     axion_asset_compile, axion_asset_poll, axion_buffer_acquire, axion_buffer_release, axion_init,
     axion_shutdown, AxionBufferInfo, AXION_ASSET_COMPILED, AXION_ASSET_FAILED, AXION_ASSET_PENDING,
@@ -127,13 +128,23 @@ fn settle(ctx: u64, job: u32) -> Result<Vec<u8>, i32> {
     }
 }
 
-/// Ce que `ax-asset` compile de la même source, avec ces options : la référence
-/// de la CLI. Les autres champs sont ceux qu'`axion_asset_compile` emploie.
+/// `assets.max_source_bytes` tel que le registre le déclare : le plafond que la
+/// CLI applique, et le jeu sous une configuration muette.
+fn default_max_source_bytes() -> u64 {
+    match find(ConfigScope::Common, "assets.max_source_bytes").map(|option| option.default) {
+        Some(ConfigValue::Int(value)) => u64::try_from(value).unwrap(),
+        other => panic!("assets.max_source_bytes : {other:?}"),
+    }
+}
+
+/// Ce que `ax-asset` compile de la même source avec ces options, comme la CLI le
+/// fait : son empreinte de source et son plafond (R-830). Seul `asset_id` vient
+/// de l'appelant, qui le tient de l'orchestrateur.
 fn reference(authored: AssetOptions) -> Vec<u8> {
     let options = CompileOptions {
         asset_id: ASSET_ID,
-        source_hash: 0,
-        limits: ImportLimits::new(SOURCE.len() as u64),
+        source_hash: source_hash(SOURCE),
+        limits: ImportLimits::new(default_max_source_bytes()),
         dynamic_body: true,
         authored,
     };
@@ -235,6 +246,70 @@ fn adr135_les_options_traversent_la_frontiere_et_s_appliquent_comme_dans_la_cli(
         code, AXION_E_INVALID_BUFFER,
         "pointeur nul, longueur non nulle"
     );
+
+    // SAFETY: aucun pointeur déréférencé.
+    unsafe {
+        assert_eq!(
+            axion_buffer_release(ctx, BufferKind::AssetIn.as_u32(), asset_in.generation),
+            AXION_OK
+        );
+        assert_eq!(axion_shutdown(ctx), AXION_OK, "bilan d'arrêt");
+    }
+
+    // R-533 en jeu comme en CLI : une source au-delà de `assets.max_source_bytes`
+    // est refusée par le même code, avec le même code d'erreur.
+    let mut config = Vec::new();
+    ciborium::into_writer(
+        &ciborium::Value::Map(vec![(
+            ciborium::Value::Text("assets.max_source_bytes".to_owned()),
+            ciborium::Value::Integer(16.into()),
+        )]),
+        &mut config,
+    )
+    .unwrap();
+    // SAFETY: `config` couvre `config.len()` octets ; `ctx` est une variable locale.
+    let code = unsafe {
+        axion_init(
+            config.as_ptr(),
+            config.len(),
+            AXION_SIDE_SERVER,
+            &raw mut ctx,
+        )
+    };
+    assert_eq!(code, AXION_OK, "réinitialisation refusée");
+    let mut asset_in = empty_info();
+    // SAFETY: `asset_in` est accessible en écriture.
+    let code = unsafe {
+        axion_buffer_acquire(
+            ctx,
+            BufferKind::AssetIn.as_u32(),
+            SOURCE.len() as u64,
+            &raw mut asset_in,
+        )
+    };
+    assert_eq!(code, AXION_OK);
+    // SAFETY: le tampon appartient au contexte vivant et fait au moins
+    // `asset_in.capacity` octets.
+    let view = unsafe {
+        std::slice::from_raw_parts_mut(asset_in.ptr, usize::try_from(asset_in.capacity).unwrap())
+    };
+    view[HEADER_BYTES..HEADER_BYTES + SOURCE.len()].copy_from_slice(SOURCE);
+
+    let cli = compile(
+        SOURCE,
+        SourceFormat::Obj,
+        &CompileOptions {
+            asset_id: ASSET_ID,
+            source_hash: source_hash(SOURCE),
+            limits: ImportLimits::new(16),
+            dynamic_body: true,
+            authored: AssetOptions::DEFAULT,
+        },
+        |_| None,
+    )
+    .expect_err("la CLI devait refuser une source de plus de 16 octets");
+    assert_eq!(settle(ctx, submit(ctx, &[]).unwrap()), Err(cli.code()));
+    assert_eq!(cli.code(), -3005, "E-3005 : source trop grande");
 
     // SAFETY: aucun pointeur déréférencé.
     unsafe {

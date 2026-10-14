@@ -1378,7 +1378,9 @@ est tenue par ce qui existe.
         - [x] R-552 ✔ (niveau 9, `COMPILER_VERSION` 10, le 2026-10-15 ; test qui distingue les niveaux) :
               zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
               (`COMPILER_VERSION` des deux côtés) ou consigner l'écart.
-        - [ ] R-830 : trois divergences jeu/CLI — fichiers voisins (`.mtl`, buffers externes) lus par la CLI,
+        - [ ] R-830 (en partie, 2026-10-15 : `max_source_bytes` appliqué en jeu, `source_hash` par le même
+              code ; reste les fichiers voisins, changement d'IF-06 à effort maximal, et `asset_id`, que la
+              CLI dérive du nom de fichier faute d'espace de noms) : trois divergences jeu/CLI — fichiers voisins (`.mtl`, buffers externes) lus par la CLI,
               pas par le jeu (ADR-122 les dit hors portée sans les confronter à R-830) ; `max_source_bytes`
               non appliqué en jeu (R-533) ; en-tête `asset_id`/`source_hash` différent.
         - [ ] C-70 ✔ : aucune implémentation dans `axion-mod` (`AxionApi.get()` lève toujours) ; R-1755,
