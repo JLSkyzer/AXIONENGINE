@@ -1397,7 +1397,8 @@ est tenue par ce qui existe.
         - [ ] C-70 ✔ : aucune implémentation dans `axion-mod` (`AxionApi.get()` lève toujours) ; R-1755,
               R-1760..R-1762 seulement documentés, 15 interfaces `@Stable` vides (décision du 2026-09-13
               sans ADR), R-1751 (version propre de l'artefact).
-        - [ ] Benchmarks du périmètre de M2 (B-02, B-09) jamais archivés ; ADR-131 ne couvre que M3 ; R-2250
+        - [x] (ADR-131 étendu à M2 le 2026-10-15) Benchmarks du périmètre de M2 (B-02, B-09) jamais
+              archivés ; ADR-131 ne couvrait que M3 — reste [ ] R-2250
               sans job CI.
         - [ ] CHANGELOG : aucune entrée M2 ; C-25, C-30 et C-72 rangés sous M1.
         - [ ] Portée de la DoD « en M2 » pour des composants STABLE dont une part est renvoyée à M3..M7
