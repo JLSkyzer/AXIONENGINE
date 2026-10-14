@@ -1351,7 +1351,8 @@ est tenue par ce qui existe.
               ne tenait pas son plafond — un `AssetCache` neuf à chaque rechargement relit
               l'index d'avant (écrit à l'arrêt seulement), `get` réinscrit sans compter, les entrées
               intermédiaires deviennent orphelines, jamais évincées (`AssetCache.java:103`, `AxionRuntime:269`).
-        - [ ] `test_cube.json` et `models/test/cube.gltf` sont dans `src/main`, donc dans le JAR livré ✔ (R-1790 :
+        - [x] (2026-10-15, rangés dans `devcontent`, JAR de 412 à 408 entrées) `test_cube.json` et
+              `models/test/cube.gltf` étaient dans `src/main`, donc dans le JAR livré ✔ (R-1790 :
               exactement cinq definitions de démonstration ; `build.gradle` dit le contenu d'essai jamais
               empaqueté) — les ranger dans `devcontent`.
         - [ ] Documentation contredite par le code : rustdoc d'`auto_convex` « pas encore générée »
