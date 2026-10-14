@@ -831,7 +831,8 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
             compatibles en 1.x (R-1751).
       - **Note** : la CLI/Gradle passent par un JDK ; seul un JDK 21 est
         provisionné (`~/.gradle/jdks`), employé comme lanceur.
-- [x] **C-72 — Harnais de benchmarks** (M2). Crate `ax-bench`. La
+- [ ] **C-72 — Harnais de benchmarks** (M2 ; rouvert le 2026-10-15 par l'audit de la DoD :
+      R-2250 sans job CI, tranche 10+ ouverte). Crate `ax-bench`. La
       plupart des B-xx (physique, rendu, véhicules, animation, particules,
       déformation) visent des sous-systèmes de M3/M6 ; le harnais ne mesure
       pas ce qui n'existe pas et n'inscrit aucun benchmark vide (R-001).
@@ -1355,10 +1356,11 @@ est tenue par ce qui existe.
               `models/test/cube.gltf` étaient dans `src/main`, donc dans le JAR livré ✔ (R-1790 :
               exactement cinq definitions de démonstration ; `build.gradle` dit le contenu d'essai jamais
               empaqueté) — les ranger dans `devcontent`.
-        - [ ] Documentation contredite par le code : rustdoc d'`auto_convex` « pas encore générée »
-              (`collider.rs`), `optimize/mod.rs` (étapes 8-9), `axion-api/package-info.java` (événements),
-              `ax-bench/src/lib.rs:3`, Javadoc d'`AxionRuntime` (« conserve son état ») et d'`isPickable`,
-              C-72 coché alors que R-2250 et la tranche 10+ sont ouverts.
+        - [x] Documentation contredite par le code (2026-10-15) : rustdoc d'`auto_convex` (`collider.rs`),
+              `optimize/mod.rs` (étapes 8-9), doc de `drop_degenerate` collée sur `malformed_lodm`,
+              `axion-api/package-info.java`, `ax-bench/src/lib.rs`, Javadoc d'`AxionRuntime`, C-72 décoché,
+              Miri précisé. Reste [ ] la Javadoc d'`isPickable` (« les sélecteurs en dépendent ») : l'audit la
+              dit inexacte, non vérifié dans le code de Minecraft.
         - [ ] Tests de `tools/bench` (32) hors CI et hors `local_ci.py`.
         - [ ] Un GameTest du livrable : `/axion spawn` (la commande, pas sa copie `AssembliesDeTest`), sauvegarde
               puis rechargement de l'entité, `/axion remove` (aucun n'existe).
@@ -2771,9 +2773,9 @@ ses critères vérifiés **mécaniquement**.
       réserve `unsafe` à la frontière JNI et aux arènes. Vu le 2026-10-05 en logeant
       l'horloge CPU de thread dans `ax-ffi` ; aucun ADR ne le justifie. À trancher :
       déplacer ces vues dans `ax-ffi` ou `ax-mem`, ou consigner la dérogation.
-- [ ] **Miri absent de la CI (R-2122).** Les crates qui contiennent du `unsafe`
-      (`ax-ffi`, `ax-mem`, et `ax-core` ci-dessus) doivent passer leurs tests
-      unitaires sous Miri ; aucun job ne le fait. Les tests qui appellent une
+- [ ] **Miri en CI pour `ax-mem` seulement (R-2122).** Les crates qui contiennent du
+      `unsafe` (`ax-ffi`, `ax-mem`, et `ax-core` ci-dessus) doivent passer leurs tests
+      unitaires sous Miri ; le job `miri` ne couvre qu'`ax-mem` (ADR-133 D2). Les tests qui appellent une
       fonction étrangère, comme l'horloge CPU de thread, seront à exclure sous Miri.
 - [ ] **Métriques de budget : deux lectures d'une même valeur.** `BudgetMetrics`
       documente la consommation comme une jauge du dernier tick, mais

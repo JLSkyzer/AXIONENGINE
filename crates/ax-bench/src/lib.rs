@@ -1,11 +1,11 @@
 //! C-72 : harnais de benchmarks d'AXION ENGINE.
 //!
-//! Ce crate ne mesure pas encore : il fournit la **fondation** commune que toute
-//! mesure partage — le format de resultat schema 2 (PARTIE 30.4), la capture de
-//! la plateforme, le calcul des statistiques normatives (PARTIE 30.3) et
-//! l'archivage sous `benchmarks/results/`. Les micro-benchmarks Rust
-//! (`criterion`, R-2240) et le harnais en jeu s'appuient dessus pour produire
-//! des fichiers conformes a R-2230 et R-2231.
+//! Ce crate fournit la **fondation** commune que toute mesure partage — le format
+//! de resultat schema 2 (PARTIE 30.4), la capture de la plateforme, la mesure
+//! selon la methode de la PARTIE 30.3 (`measure`), les statistiques normatives et
+//! l'archivage sous `benchmarks/results/` — et `bench-ci`, qui les enchaine. Les
+//! micro-benchmarks Rust (`criterion`, R-2240) et le harnais en jeu s'appuient
+//! dessus pour produire des fichiers conformes a R-2230 et R-2231.
 //!
 //! Position de principe (R-2230) : aucun chiffre de performance ne se publie
 //! sans un fichier genere par ce harnais. Ce crate rend ce fichier possible et

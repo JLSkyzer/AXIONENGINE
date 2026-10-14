@@ -317,11 +317,7 @@ pub(super) fn generate(
     })
 }
 
-/// Retire les triangles dont l'aire tomberait sous le seuil de C-22.
-///
-/// La contraction peut aplatir un triangle qui ne l'était pas. Le garder ferait
-/// refuser l'asset entier par la validation de sortie ; le retirer est la
-/// réparation que R-542 admet, appliquée à une géométrie que C-23 a produite.
+/// Une section `LODM` mal formée, nommée par ce qui ne va pas.
 fn malformed_lodm(detail: &'static str) -> A3dError {
     A3dError::MalformedSection {
         tag: SectionTag::LODM,
@@ -329,6 +325,11 @@ fn malformed_lodm(detail: &'static str) -> A3dError {
     }
 }
 
+/// Retire les triangles dont l'aire tomberait sous le seuil de C-22.
+///
+/// La contraction peut aplatir un triangle qui ne l'était pas. Le garder ferait
+/// refuser l'asset entier par la validation de sortie ; le retirer est la
+/// réparation que R-542 admet, appliquée à une géométrie que C-23 a produite.
 fn drop_degenerate(indices: &mut Vec<u32>, positions: &[[f32; 3]]) {
     let kept: Vec<u32> = indices
         .chunks_exact(3)

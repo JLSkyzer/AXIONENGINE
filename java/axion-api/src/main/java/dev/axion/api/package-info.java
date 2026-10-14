@@ -23,11 +23,13 @@
  * chaque méthode documente son effet, le thread autorisé, son coût et ses
  * conditions d'échec (R-1754).
  *
- * <p><strong>État de C-70.</strong> Cette première tranche porte la façade
- * {@link dev.axion.api.AxionApi} et tout ce que sa surface d'assembly et de
- * dommage référence, transcrit du §23.2 du cahier des charges. Les services
+ * <p><strong>État de C-70.</strong> Les deux premières tranches portent la façade
+ * {@link dev.axion.api.AxionApi}, tout ce que sa surface d'assembly et de dommage
+ * référence, et les dix-huit événements du §23.2 avec leur
+ * {@link dev.axion.api.EventBus}, transcrits du cahier des charges. Les services
  * seulement nommés y sont déclarés comme interfaces vides, complétées par leur
- * composant à son jalon. Les événements (§23.2, fin) viennent dans une tranche
- * suivante.
+ * composant à son jalon. Le mod n'enregistre encore aucun fournisseur : tant
+ * qu'il n'en a pas, {@link dev.axion.api.AxionApi#get()} lève et
+ * {@link dev.axion.api.AxionApi#getIfReady()} rend vide.
  */
 package dev.axion.api;

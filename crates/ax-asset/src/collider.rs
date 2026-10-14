@@ -19,11 +19,12 @@
 //! Le défaut est [`ColliderMode::None`] et aucune requête : rien n'est généré
 //! sans demande explicite.
 //!
-//! Formes prises en charge : `auto_box`, `auto_sphere`, `auto_capsule`, `convex`
-//! (enveloppe des sommets du mesh) et `auto_compound` (R-621). Seule `auto_convex`
-//! (décomposition concave V-HACD, étape C-23) n'est **pas encore générée** : une
-//! requête qui la vise est **avertie et ignorée** (R-912), jamais remplacée par une
-//! forme que l'auteur n'a pas décrite. Le marquage REFITTABLE (R-623) et la
+//! Formes prises en charge par node : `auto_box`, `auto_sphere`, `auto_capsule`,
+//! `convex` (enveloppe des sommets du mesh), `auto_compound` (R-621) et
+//! `auto_convex` (décomposition V-HACD, étape 8 de C-23, ADR-108). Pour l'asset
+//! entier (`collision.mode` des options, ADR-135), seules la boîte et la sphère sont
+//! produites : un autre mode est **averti**, jamais remplacé par une forme que
+//! l'auteur n'a pas décrite (R-912). Le marquage REFITTABLE (R-623) et la
 //! masse/COM déclarée (R-622) suivent avec leurs consommateurs.
 
 use crate::optimize::Aabb;
@@ -92,7 +93,7 @@ pub enum ColliderMode {
     /// L'auteur déclare que le mesh du node est (ou peut être traité comme) convexe :
     /// ses sommets deviennent les points d'enveloppe (R-161, 4..256). Distinct
     /// d'`auto_convex`, qui **décompose** une forme concave en plusieurs convexes
-    /// (V-HACD, R-162) et reste différé.
+    /// (V-HACD, R-162, ADR-108).
     Convex,
     /// Un composé regroupant les boîtes des nodes enfants (`auto_compound`, R-621).
     ///
@@ -113,8 +114,7 @@ impl ColliderMode {
     /// Traduit la valeur textuelle d'un extra `shape` (C-32).
     ///
     /// Rend `Some` pour une forme **prise en charge** (`auto_box`, `auto_sphere`,
-    /// `auto_capsule`, `convex`, `auto_compound`), `None` sinon. `auto_convex`
-    /// (V-HACD), reconnue du CDC mais pas encore générée, rend aussi `None` :
+    /// `auto_capsule`, `convex`, `auto_compound`, `auto_convex`), `None` sinon :
     /// l'appelant avertit et n'attache pas de collider, plutôt que d'en fabriquer un
     /// que l'auteur n'a pas décrit.
     #[must_use]
