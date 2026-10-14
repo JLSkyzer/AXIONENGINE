@@ -206,6 +206,9 @@ public final class AxionRuntime {
                 return;
             }
             outcome = bootstrap.apply(platform, systemProperties);
+            // R-1762, R-673 : les impacts que décrivent les mods tiers se bornent au
+            // plafond de cette configuration, pas à celui du registre.
+            dev.axion.damage.BoundedImpactSpecs.bind(outcome.config());
             transitions.add(outcome.summary());
         });
     }

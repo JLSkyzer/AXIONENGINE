@@ -1394,7 +1394,9 @@ est tenue par ce qui existe.
               CLI dérive du nom de fichier faute d'espace de noms) : trois divergences jeu/CLI — fichiers voisins (`.mtl`, buffers externes) lus par la CLI,
               pas par le jeu (ADR-122 les dit hors portée sans les confronter à R-830) ; `max_source_bytes`
               non appliqué en jeu (R-533) ; en-tête `asset_id`/`source_hash` différent.
-        - [ ] C-70 ✔ : aucune implémentation dans `axion-mod` (`AxionApi.get()` lève toujours) ; R-1755,
+        - [ ] C-70 ✔ (en partie, 2026-10-15 : fabrique d'`ImpactSpec` bornée, `BoundedImpactSpecs`, par
+              `ServiceLoader` — vérifiée en JUnit, pas encore sous le chargeur de Forge ; reste l'EventBus,
+              dont les événements n'ont pas d'accesseurs dans le CDC) : aucune implémentation dans `axion-mod` (`AxionApi.get()` lève toujours) ; R-1755,
               R-1760..R-1762 seulement documentés, 15 interfaces `@Stable` vides (décision du 2026-09-13
               sans ADR), R-1751 (version propre de l'artefact).
         - [x] (ADR-131 étendu à M2 le 2026-10-15) Benchmarks du périmètre de M2 (B-02, B-09) jamais
