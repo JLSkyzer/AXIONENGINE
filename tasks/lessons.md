@@ -1490,3 +1490,17 @@ appliqué à une commande de serveur, qui agit avec les droits du serveur pour l
 `<gameDir>/axion/<sous-dossier>/` (`SchemaTwoWriter.targetIn`, `export`, `trace`) ; elle journalise le
 chemin et l'auteur (R-810).
 
+## 2026-10-15 | Une option recommandée sans avoir lu la surface qu'elle implémente
+
+**Ce qui a mal tourné.** Pour C-70, j'ai recommandé à Killian un « fournisseur minimal » d'`AxionApi`, et il
+l'a retenu. En lisant ensuite la surface, il est apparu irréalisable sans bouchons : chaque accesseur doit
+rendre un service réel, et `Assembly` porte vingt-quatre méthodes dont la moitié appartient à M5-M7. Il a
+fallu lui reposer la question.
+
+**Cause.** L'option a été formulée d'après le rapport d'audit — qui énumérait ce qui manquait — et non
+d'après le code de l'interface à implémenter.
+
+**Règle.** Avant de recommander une option d'implémentation, lire la surface qu'elle devra remplir en entier
+(signatures, types rendus, leurs propres méthodes) et vérifier qu'aucune partie ne relève d'un jalon à
+venir. Un rapport dit ce qui manque, pas ce que coûte de le combler.
+

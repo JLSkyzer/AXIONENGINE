@@ -1373,8 +1373,14 @@ est tenue par ce qui existe.
           M2 tient et ce qui part à quel jalon, avec le test qui le prouvera ; (2) R-552 : zstd au
           niveau 9, `COMPILER_VERSION` 10 ; (3) R-830 : le jeu rattrape la CLI — fichiers voisins
           (changement d'IF-06 : effort maximal, ADR à ratifier), `max_source_bytes`, `source_hash` ;
-          (4) C-70 : fournisseur minimal — fournisseur, EventBus (R-1760, R-1761), builder borné
-          (R-1762), contrôle de thread (R-1755), avec leurs tests.
+          (4) C-70 — **corrigé le même jour** : un fournisseur d'`AxionApi` exige des services réels
+          pour tous ses accesseurs, et `Assembly` porte deformation, structure, surface, vehicle,
+          animation, attachments (M5-M7) ; les écrire ferait des bouchons (R-001). Décision : les
+          **briques réelles d'abord** — fabrique d'`ImpactSpec` bornée (R-1762), enregistrée à part ;
+          EventBus (R-1760, R-1761) dans le mod, alimenté par spawn/remove de C-50 ; contrôle de
+          thread (R-1755) — avec leurs tests. `AxionApi` s'enregistre quand tous ses accesseurs sont
+          réels ; l'ADR de portée de M2 le consigne. À trancher en concevant la fabrique : `build()`
+          refuse (Javadoc de l'API) ou plafonne (R-673) une énergie au-delà de `damage.max_impact_energy`.
         - [x] R-552 ✔ (niveau 9, `COMPILER_VERSION` 10, le 2026-10-15 ; test qui distingue les niveaux) :
               zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
               (`COMPILER_VERSION` des deux côtés) ou consigner l'écart.
