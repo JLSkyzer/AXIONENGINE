@@ -21,7 +21,7 @@
 #   lint-budgets       -> job build-and-test, T-007 dans la suite JUnit
 #   lint-no-mod-names  -> job build-and-test, T-006 (INV-01) et T-014 (INV-06) dans la suite JUnit
 #   lint-no-global-pool-> job build-and-test, crates/ax-jobs/tests/pas_de_pool_global.rs
-#   test-unit          -> job build-and-test (cargo + JUnit) et job platform
+#   test-unit          -> job build-and-test (cargo, outils, JUnit) et job platform
 #   test-gametest      -> job test-gametest (serveur de GameTests, acceptance de M3)
 #   test-render        -> job test-render (client automatise sous Xvfb, ADR-126)
 #   validate-jar       -> job build-and-test, etape finale de `gradlew build`
@@ -208,6 +208,12 @@ jobs:
 
       - name: test-unit (cote natif)
         run: cargo test --workspace --all-features
+
+      # Les outils du depot ont leurs propres tests (tools/bench : lecture et
+      # verification du schema 2, comparaison, archivage). Sans cette etape, ils
+      # ne tournaient nulle part.
+      - name: test-unit (outils)
+        run: python3 -B tools/bench/test_bench.py
 
       # `gradlew build` enchaine codegen (T-005, codegen-parity), la compilation
       # Java, la suite JUnit — dont T-007, T-014, T-020..T-023 et R-2392 —,

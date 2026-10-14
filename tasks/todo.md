@@ -1361,7 +1361,8 @@ est tenue par ce qui existe.
               `axion-api/package-info.java`, `ax-bench/src/lib.rs`, Javadoc d'`AxionRuntime`, C-72 décoché,
               Miri précisé. Reste [ ] la Javadoc d'`isPickable` (« les sélecteurs en dépendent ») : l'audit la
               dit inexacte, non vérifié dans le code de Minecraft.
-        - [ ] Tests de `tools/bench` (32) hors CI et hors `local_ci.py`.
+        - [x] Tests de `tools/bench` (32) hors CI et hors `local_ci.py` : étape `test-unit (outils)` de
+              `build-and-test` (2026-10-15).
         - [ ] Un GameTest du livrable : `/axion spawn` (la commande, pas sa copie `AssembliesDeTest`), sauvegarde
               puis rechargement de l'entité, `/axion remove` (aucun n'existe).
       - **Effort maximal à annoncer** : [ ] INV-08 ✔ — les allocations C++ de meshoptimizer (`operator new`)
