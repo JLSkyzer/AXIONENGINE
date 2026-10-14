@@ -33,6 +33,22 @@ Definition of Done (PARTIE 37.3).
     vanilla, natif et shaderpack (ADR-126) ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
     T-012 (INV-04), T-019 (INV-12).
+- M2 (en cours, Definition of Done non prononcee) — graphe de scene, cache,
+  optimizer, entite, API :
+  - optimizer d'assets (C-23) : fusion des sommets, normales et tangentes
+    MikkTSpace, cache de sommets, LOD en section `LODM`, boites englobantes,
+    decomposition convexe par node (ADR-108) ; sections compressees par zstd
+    au niveau 9 (R-552) ;
+  - cache des assets compiles (C-25), cle a quatre termes, plafond tenu sur
+    disque (R-561) ; graphe de scene `ax-scene` (C-30) ;
+  - definitions data-driven (C-27) : JSON strict, schema 1 publie, refus
+    individuel nomme ; definitions de demonstration derriere `content.examples`
+    (amendement A2 de l'annexe A.3) ;
+  - API publique `axion-api` (C-70) : surface du paragraphe 23.2 et ses 18
+    evenements, sans fournisseur enregistre a ce stade ;
+  - harnais de benchmarks `ax-bench` (C-72) ; CLI `axion-cli` (C-74) :
+    compile, inspect, diff, validate, lod et bench-asset, et options de
+    compilation `.axion.json` lues par le meme code que le jeu (ADR-135).
 - M1 (Definition of Done prononcee le 2026-10-04) — assets, noyau
   deterministe, jobs :
   - `ax-jobs` (C-12) : pool dedie, jobs types annulables a echeance ;
@@ -40,9 +56,8 @@ Definition of Done (PARTIE 37.3).
   - `ax-det` (C-16) : noyau deterministe, 10 000 vecteurs d'or rejoues sur les
     quatre plateformes de la CI (R-516) ;
   - chaine d'assets : orchestrateur (C-20), importeurs glTF, GLB, OBJ et STL
-    (C-21), validateur (C-22), conteneur A3D (C-24), cache (C-25) ;
-  - graphe de scene `ax-scene` (C-30), harnais de benchmarks `ax-bench` (C-72),
-    commandes disponibles (C-71) ;
+    (C-21), validateur (C-22), conteneur A3D (C-24) ;
+  - commandes disponibles (C-71) ;
   - fuzzing de la chaine d'assets sur quatre cibles (R-903), campagne nocturne
     d'une heure par cible ; integration continue sur la matrice de plateformes.
 - M0.10 — acceptance sur serveur dedie : chargement, bibliotheque native

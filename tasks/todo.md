@@ -1400,7 +1400,8 @@ est tenue par ce qui existe.
         - [x] (ADR-131 étendu à M2 le 2026-10-15) Benchmarks du périmètre de M2 (B-02, B-09) jamais
               archivés ; ADR-131 ne couvrait que M3 — reste [ ] R-2250
               sans job CI.
-        - [ ] CHANGELOG : aucune entrée M2 ; C-25, C-30 et C-72 rangés sous M1.
+        - [x] (2026-10-15) CHANGELOG : aucune entrée M2 ; C-25, C-30 et C-72 rangés sous M1 — entrée
+              M2 « en cours » créée, les trois réattribués ; à compléter au prononcé de la DoD.
         - [ ] Portée de la DoD « en M2 » pour des composants STABLE dont une part est renvoyée à M3..M7
               (C-23 tranche D, C-27 étapes 4-5 et cinq familles, C-50 R-700/R-703/R-705, C-74
               `deform`/`replay`) : un ADR qui la borne, comme ADR-134.
