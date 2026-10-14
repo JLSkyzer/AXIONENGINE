@@ -1494,7 +1494,7 @@ chemin et l'auteur (R-810).
 
 **Ce qui a mal tourné.** Pour C-70, j'ai recommandé à Killian un « fournisseur minimal » d'`AxionApi`, et il
 l'a retenu. En lisant ensuite la surface, il est apparu irréalisable sans bouchons : chaque accesseur doit
-rendre un service réel, et `Assembly` porte vingt-quatre méthodes dont la moitié appartient à M5-M7. Il a
+rendre un service réel, et `Assembly` porte vingt-quatre méthodes dont la moitié relève de M4 à M9. Il a
 fallu lui reposer la question.
 
 **Cause.** L'option a été formulée d'après le rapport d'audit — qui énumérait ce qui manquait — et non

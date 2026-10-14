@@ -1345,6 +1345,9 @@ est tenue par ce qui existe.
       Reste un essai à la main sur serveur dédié avec un client distant.
 - [ ] **Definition of Done de M2** vérifiée, puis `M2` dans `COMPLETED_MILESTONES` sur décision
       de Killian.
+      - **[ADR-137](../docs/decisions/ADR-137.md)** (proposé le 2026-10-15, à ratifier) borne la DoD de
+        M2 composant par composant : ce que M2 tient, ce qui part à quel jalon, ce qui reste. Relève en
+        passant que la PARTIE 37 ne rattache ni C-35 ni T-836 à un jalon.
       - **Audit du 2026-10-15** (trois sous-agents en lecture seule, 37.3 critère par critère). Verdict :
         aucun des huit composants ne tient sa DoD ; trois critères de jalon sur cinq non tenus. Marqué
         ✔ ce que Claude a revérifié lui-même, le reste est rapporté par l'audit, non revérifié.
@@ -1379,7 +1382,7 @@ est tenue par ce qui existe.
           (changement d'IF-06 : effort maximal, ADR à ratifier), `max_source_bytes`, `source_hash` ;
           (4) C-70 — **corrigé le même jour** : un fournisseur d'`AxionApi` exige des services réels
           pour tous ses accesseurs, et `Assembly` porte deformation, structure, surface, vehicle,
-          animation, attachments (M5-M7) ; les écrire ferait des bouchons (R-001). Décision : les
+          animation, attachments — de M4 à M9 ; les écrire ferait des bouchons (R-001). Décision : les
           **briques réelles d'abord** — fabrique d'`ImpactSpec` bornée (R-1762), enregistrée à part ;
           EventBus (R-1760, R-1761) dans le mod, alimenté par spawn/remove de C-50 ; contrôle de
           thread (R-1755) — avec leurs tests. `AxionApi` s'enregistre quand tous ses accesseurs sont
