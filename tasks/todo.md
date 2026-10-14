@@ -1340,6 +1340,9 @@ est tenue par ce qui existe.
               et le mode de collider d'une definition ne voyage pas jusqu'à la compilation (C-32).
 - [ ] **C-50 en jeu** : persistance (apparition, sauvegarde, rechargement du monde), jamais
       observée ; et le « 0 assembly(s) retirée(s) » de `/axion remove` du 2026-10-03.
+      Le 2026-10-15, `LivrableM2GameTests` joue la commande, la sauvegarde, `remove` (« 1 assembly(s)
+      retirée(s) ») et le rechargement d'une entité neuve, liée, qui retombe : couvert par GameTest.
+      Reste un essai à la main sur serveur dédié avec un client distant.
 - [ ] **Definition of Done de M2** vérifiée, puis `M2` dans `COMPLETED_MILESTONES` sur décision
       de Killian.
       - **Audit du 2026-10-15** (trois sous-agents en lecture seule, 37.3 critère par critère). Verdict :
@@ -1363,7 +1366,8 @@ est tenue par ce qui existe.
               dit inexacte, non vérifié dans le code de Minecraft.
         - [x] Tests de `tools/bench` (32) hors CI et hors `local_ci.py` : étape `test-unit (outils)` de
               `build-and-test` (2026-10-15).
-        - [ ] Un GameTest du livrable : `/axion spawn` (la commande, pas sa copie `AssembliesDeTest`), sauvegarde
+        - [x] (2026-10-15, `LivrableM2GameTests`, 8 GameTests verts en local) Un GameTest du livrable :
+              `/axion spawn` (la commande, pas sa copie `AssembliesDeTest`), sauvegarde
               puis rechargement de l'entité, `/axion remove` (aucun n'existe).
       - **Effort maximal à annoncer** : [ ] INV-08 ✔ — les allocations C++ de meshoptimizer (`operator new`)
         échappent au compteur ; `meshopt_setAllocator` existe dans la bibliothèque vendue mais pas dans
@@ -1395,7 +1399,7 @@ est tenue par ce qui existe.
               pas par le jeu (ADR-122 les dit hors portée sans les confronter à R-830) ; `max_source_bytes`
               non appliqué en jeu (R-533) ; en-tête `asset_id`/`source_hash` différent.
         - [ ] C-70 ✔ (en partie, 2026-10-15 : fabrique d'`ImpactSpec` bornée, `BoundedImpactSpecs`, par
-              `ServiceLoader` — vérifiée en JUnit, pas encore sous le chargeur de Forge ; reste l'EventBus,
+              `ServiceLoader` — vérifiée en JUnit et sous le chargeur de Forge (GameTest) ; reste l'EventBus,
               dont les événements n'ont pas d'accesseurs dans le CDC) : aucune implémentation dans `axion-mod` (`AxionApi.get()` lève toujours) ; R-1755,
               R-1760..R-1762 seulement documentés, 15 interfaces `@Stable` vides (décision du 2026-09-13
               sans ADR), R-1751 (version propre de l'artefact).
