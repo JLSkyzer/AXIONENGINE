@@ -1375,7 +1375,8 @@ est tenue par ce qui existe.
           (changement d'IF-06 : effort maximal, ADR à ratifier), `max_source_bytes`, `source_hash` ;
           (4) C-70 : fournisseur minimal — fournisseur, EventBus (R-1760, R-1761), builder borné
           (R-1762), contrôle de thread (R-1755), avec leurs tests.
-        - [ ] R-552 ✔ : zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
+        - [x] R-552 ✔ (niveau 9, `COMPILER_VERSION` 10, le 2026-10-15 ; test qui distingue les niveaux) :
+              zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
               (`COMPILER_VERSION` des deux côtés) ou consigner l'écart.
         - [ ] R-830 : trois divergences jeu/CLI — fichiers voisins (`.mtl`, buffers externes) lus par la CLI,
               pas par le jeu (ADR-122 les dit hors portée sans les confronter à R-830) ; `max_source_bytes`

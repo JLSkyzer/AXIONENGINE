@@ -7,11 +7,13 @@ use super::{
 
 /// Niveau de compression zstd des sections compressées.
 ///
-/// Trois : le niveau par défaut de zstd. Le fichier est produit une fois et lu
-/// souvent, mais il l'est pendant une compilation d'asset que R-521 interdit de
-/// laisser bloquer le jeu — un niveau plus agressif y prendrait un temps que
-/// personne n'a demandé.
-const COMPRESSION_LEVEL: i32 = 3;
+/// Neuf : le niveau que R-552 fixe. Le fichier est produit une fois et lu souvent,
+/// et sa compilation tourne sur le pool de jobs, jamais sur le thread du tick
+/// (R-521) : un niveau plus lent y coûte du travail de fond, pas une frame. Le
+/// niveau 3, retenu jusqu'au 2026-10-15 pour sa vitesse, était un écart non
+/// consigné ; Killian a tranché pour la spécification. La durée de compilation
+/// au niveau 9 n'a pas été mesurée (R-2252).
+const COMPRESSION_LEVEL: i32 = 9;
 
 /// Section en attente d'écriture.
 struct Pending {
@@ -253,6 +255,32 @@ mod tests {
             file.section(SectionTag::GEOM).expect("lecture"),
             Some(payload)
         );
+    }
+
+    #[test]
+    fn r552_les_sections_sont_compressees_au_niveau_9() {
+        // Un contenu à structure de mesh texte, sur lequel les niveaux 3 et 9 de
+        // zstd ne rendent pas les mêmes octets : la comparaison dit lequel a servi.
+        let payload: Vec<u8> = (0..4000u32)
+            .flat_map(|i| format!("v {} {} {}\n", i % 97, i % 89, i * 7 % 83).into_bytes())
+            .collect();
+        let niveau_9 = zstd::bulk::compress(&payload, 9).expect("zstd 9");
+        let niveau_3 = zstd::bulk::compress(&payload, 3).expect("zstd 3");
+        assert_ne!(
+            niveau_9, niveau_3,
+            "le contenu ne distingue pas les niveaux"
+        );
+
+        let mut writer = A3dWriter::new(1, 2, 3);
+        writer
+            .compressed_section(SectionTag::GEOM, &payload)
+            .expect("GEOM");
+        let bytes = writer.finish().expect("écriture");
+        let file = A3dFile::open(&bytes, LIMITS).expect("lecture");
+        let entry = file.entries()[0];
+        let start = usize::try_from(entry.offset).unwrap();
+        let end = start + usize::try_from(entry.size_compressed).unwrap();
+        assert_eq!(&bytes[start..end], niveau_9.as_slice());
     }
 
     #[test]

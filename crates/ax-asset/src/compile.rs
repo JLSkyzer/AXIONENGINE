@@ -51,8 +51,9 @@ use core::fmt;
 /// tous ses meshes (`mesh_count`) : primitives glTF, morceaux d'un objet OBJ
 /// (ADR-122 §4 et §5) ; 9 — la section `GEOM` est écrite dès qu'un mesh existe,
 /// même sans triangle : un objet sans face ne laisse plus un node désigner un
-/// mesh absent, que le chargement refusait.
-pub const COMPILER_VERSION: u32 = 9;
+/// mesh absent, que le chargement refusait ; 10 — sections compressées par zstd
+/// au niveau 9 que fixe R-552, au lieu de 3.
+pub const COMPILER_VERSION: u32 = 10;
 
 /// Ce qui empêche de compiler un asset.
 #[derive(Debug, Clone, PartialEq)]
