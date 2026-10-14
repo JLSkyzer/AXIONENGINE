@@ -1380,7 +1380,12 @@ est tenue par ce qui existe.
           EventBus (R-1760, R-1761) dans le mod, alimenté par spawn/remove de C-50 ; contrôle de
           thread (R-1755) — avec leurs tests. `AxionApi` s'enregistre quand tous ses accesseurs sont
           réels ; l'ADR de portée de M2 le consigne. À trancher en concevant la fabrique : `build()`
-          refuse (Javadoc de l'API) ou plafonne (R-673) une énergie au-delà de `damage.max_impact_energy`.
+          refuse (Javadoc de l'API) ou plafonne (R-673) une énergie au-delà de `damage.max_impact_energy` —
+          tranché ensuite : refuser l'invalide (absent, NaN, infini, négatif, normale nulle ; aire et masse
+          finies et > 0) et **plafonner** l'énergie à `damage.max_impact_energy` (R-673).
+        - **Tranchées le 2026-10-15, second tour** : (5) ADR-131 étendu à M2 — B-02 et B-09 n'ont pas
+          d'exécution normative avant M12 ; (6) CHANGELOG : entrée M2, C-25/C-30/C-72 réattribués depuis
+          M1 ; (7) `runGameTestServer` autorisé en local pour écrire un GameTest (mémoire mise à jour).
         - [x] R-552 ✔ (niveau 9, `COMPILER_VERSION` 10, le 2026-10-15 ; test qui distingue les niveaux) :
               zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
               (`COMPILER_VERSION` des deux côtés) ou consigner l'écart.
