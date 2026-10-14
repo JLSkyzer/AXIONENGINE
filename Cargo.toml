@@ -93,6 +93,11 @@ crc32c = { version = "0.6", default-features = false }
 # avec `lz4_flex` comme alternative evaluee. La decompression est toujours
 # bornee par une taille de sortie connue a l'avance (R-902).
 zstd = { version = "0.13", default-features = false }
+# INV-08 : les liaisons de l'API « experimentale » de libzstd, celle de `ZSTD_customMem`,
+# par laquelle les allocations de zstd passent par l'allocateur compteur. Meme crate et
+# meme bibliotheque C que ceux de `zstd` ci-dessus : la fonctionnalite ne change que les
+# liaisons Rust, pas la compilation de libzstd.
+zstd-sys = { version = "2.1", default-features = false, features = ["std", "experimental"] }
 
 # C-21 : import glTF 2.0 et GLB. Retenu par 32.2, licence MIT OR Apache-2.0.
 # `default-features = false` ecarte la fonctionnalite `import`, qui lit des

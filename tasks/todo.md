@@ -1372,7 +1372,9 @@ est tenue par ce qui existe.
         - [x] (2026-10-15, `LivrableM2GameTests`, 8 GameTests verts en local) Un GameTest du livrable :
               `/axion spawn` (la commande, pas sa copie `AssembliesDeTest`), sauvegarde
               puis rechargement de l'entité, `/axion remove` (aucun n'existe).
-      - **Effort maximal à annoncer** : [ ] INV-08 ✔ — les allocations C++ de meshoptimizer (`operator new`)
+      - **Effort maximal** : [x] INV-08 ✔ (2026-10-16, [ADR-138](../docs/decisions/ADR-138.md) : meshoptimizer
+        **et zstd**, que l'audit n'avait pas vu, allouent par `ax_mem::foreign_alloc` via `foreign_heap` ;
+        octets A3D inchangés, vérifié) — les allocations C++ de meshoptimizer (`operator new`)
         échappent au compteur ; `meshopt_setAllocator` existe dans la bibliothèque vendue mais pas dans
         le crate 0.6.2.
       - **Décisions de Killian** :
@@ -1393,6 +1395,11 @@ est tenue par ce qui existe.
         - **Tranchées le 2026-10-15, second tour** : (5) ADR-131 étendu à M2 — B-02 et B-09 n'ont pas
           d'exécution normative avant M12 ; (6) CHANGELOG : entrée M2, C-25/C-30/C-72 réattribués depuis
           M1 ; (7) `runGameTestServer` autorisé en local pour écrire un GameTest (mémoire mise à jour).
+        - **Tranchées le 2026-10-16 (effort maximal)** : (8) R-830, protocole « demande puis renvoi » —
+          un premier passage liste les références par le code de l'importeur et rend `NEEDS_FILES` ;
+          Java renvoie la source avec les fichiers demandés (table dans `ASSET_IN`), les absents
+          marqués ; ABI 4. (9) Java garde au rechargement tout fichier sous `axion/models/` qui n'est
+          ni une source, ni un `.axion.json`, ni une image, borné par `max_source_bytes`.
         - [x] R-552 ✔ (niveau 9, `COMPILER_VERSION` 10, le 2026-10-15 ; test qui distingue les niveaux) :
               zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
               (`COMPILER_VERSION` des deux côtés) ou consigner l'écart.

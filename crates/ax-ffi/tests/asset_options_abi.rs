@@ -180,7 +180,15 @@ fn adr135_les_options_traversent_la_frontiere_et_s_appliquent_comme_dans_la_cli(
     view[HEADER_BYTES..HEADER_BYTES + SOURCE.len()].copy_from_slice(SOURCE);
 
     // Sans fichier d'options : les défauts, la sortie d'avant ADR-135.
+    // INV-08 : meshoptimizer et zstd, que la compilation emploie sur un worker du pool,
+    // allouent par l'allocateur compteur, et rendent tout ce qu'ils ont pris.
+    let foreign = ax_mem::foreign_allocations();
     let defaults = settle(ctx, submit(ctx, &[]).unwrap()).unwrap();
+    assert!(
+        ax_mem::foreign_allocations() > foreign,
+        "la compilation n'a pas employé l'allocateur étranger"
+    );
+    assert_eq!(ax_mem::foreign_live_bytes(), 0, "bloc étranger non rendu");
     assert_eq!(defaults, reference(AssetOptions::DEFAULT));
 
     // Avec : appliquées au bit près comme la CLI les applique.

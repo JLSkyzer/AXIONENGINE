@@ -269,13 +269,11 @@ pub(super) fn generate(
                 let target =
                     ((base_indices.len() as f32 * ratio / 3.0).round() as usize).max(1) * 3;
                 if target < current_count {
-                    let mut simplified = meshopt::simplify_decoder(
+                    let mut simplified = crate::foreign_heap::simplify(
                         &base_indices,
                         &positions,
                         target,
                         options.error_target,
-                        meshopt::SimplifyOptions::None,
-                        None,
                     );
                     drop_degenerate(&mut simplified, &positions);
 
@@ -290,8 +288,10 @@ pub(super) fn generate(
                             ));
                             budget_reached = true;
                         } else {
-                            let ordered =
-                                meshopt::optimize_vertex_cache(&simplified, positions.len());
+                            let ordered = crate::foreign_heap::optimize_vertex_cache(
+                                &simplified,
+                                positions.len(),
+                            );
                             current = asset.meshes.len() as u32;
                             current_count = ordered.len();
                             asset.meshes.push(MeshDesc {

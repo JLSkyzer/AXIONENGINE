@@ -24,7 +24,7 @@ pub(super) fn optimize_vertex_cache(asset: &mut ImportedAsset) {
         }
         let start = mesh.index_offset as usize;
         let range = start..start + mesh.index_count as usize;
-        let optimized = meshopt::optimize_vertex_cache(
+        let optimized = crate::foreign_heap::optimize_vertex_cache(
             &asset.indices[range.clone()],
             mesh.vertex_count as usize,
         );
@@ -74,7 +74,7 @@ mod tests {
     }
 
     fn acmr(asset: &ImportedAsset) -> f32 {
-        meshopt::analyze_vertex_cache(&asset.indices, asset.vertices.len(), 16, 0, 0).acmr
+        crate::foreign_heap::vertex_cache_acmr(&asset.indices, asset.vertices.len())
     }
 
     #[test]

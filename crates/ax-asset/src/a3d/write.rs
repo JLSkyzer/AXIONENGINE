@@ -88,8 +88,8 @@ impl A3dWriter {
     ) -> Result<&mut Self, A3dError> {
         let size = u32::try_from(payload.len()).map_err(|_| A3dError::SectionUnwritable(tag))?;
 
-        let compressed = zstd::bulk::compress(payload, COMPRESSION_LEVEL)
-            .map_err(|_| A3dError::SectionUnwritable(tag))?;
+        let compressed = crate::foreign_heap::compress(payload, COMPRESSION_LEVEL)
+            .ok_or(A3dError::SectionUnwritable(tag))?;
 
         if compressed.len() >= payload.len() {
             return self.section(tag, payload);
@@ -264,8 +264,8 @@ mod tests {
         let payload: Vec<u8> = (0..4000u32)
             .flat_map(|i| format!("v {} {} {}\n", i % 97, i % 89, i * 7 % 83).into_bytes())
             .collect();
-        let niveau_9 = zstd::bulk::compress(&payload, 9).expect("zstd 9");
-        let niveau_3 = zstd::bulk::compress(&payload, 3).expect("zstd 3");
+        let niveau_9 = crate::foreign_heap::compress(&payload, 9).expect("zstd 9");
+        let niveau_3 = crate::foreign_heap::compress(&payload, 3).expect("zstd 3");
         assert_ne!(
             niveau_9, niveau_3,
             "le contenu ne distingue pas les niveaux"

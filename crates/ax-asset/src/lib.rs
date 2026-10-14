@@ -36,6 +36,7 @@
 pub mod a3d;
 pub mod collider;
 pub mod compile;
+mod foreign_heap;
 pub mod import;
 pub mod load;
 pub mod optimize;

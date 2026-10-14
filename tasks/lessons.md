@@ -1504,3 +1504,17 @@ d'après le code de l'interface à implémenter.
 (signatures, types rendus, leurs propres méthodes) et vérifier qu'aucune partie ne relève d'un jalon à
 venir. Un rapport dit ce qui manque, pas ce que coûte de le combler.
 
+## 2026-10-16 | INV-08 : l'audit avait vu meshoptimizer, pas zstd
+
+**Ce qui a mal tourné.** L'audit de M2 signalait que meshoptimizer allouait hors du compteur. En le
+corrigeant, une recherche systématique des bibliothèques C liées a trouvé zstd dans le même cas — et
+zstd tourne aussi en jeu, à chaque chargement d'asset. Corriger la seule ligne de l'audit aurait laissé
+l'invariant faux.
+
+**Cause.** Un invariant d'allocation a été jugé sur le code Rust et sur la dépendance qu'on venait de lire,
+pas sur l'arbre des dépendances compilées.
+
+**Règle.** INV-08 se vérifie en recensant les crates qui compilent du C ou du C++ (`cc`, `*-sys`, dans
+`Cargo.lock` et `cargo tree -p ax-ffi`) ; chacune passe par `ax_asset::foreign_heap` ou un équivalent
+avant d'entrer (ADR-138).
+

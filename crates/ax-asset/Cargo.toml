@@ -10,14 +10,15 @@ authors.workspace = true
 publish.workspace = true
 
 [lints.rust]
-# `deny` et non `forbid` : la bibliothèque ne contient aucun bloc `unsafe`, mais
-# `forbid` ne peut pas être levé localement et interdirait à un test d'installer
-# un allocateur global compteur — `GlobalAlloc` est un trait `unsafe` — pour
-# prouver qu'un chemin de code n'alloue pas (INV-08, T-016).
+# `deny` et non `forbid` : `unsafe` n'est admis que dans `foreign_heap`, seule porte
+# d'entrée vers meshoptimizer et zstd, qui y reçoivent l'allocateur compteur (INV-08).
+# `forbid` ne pourrait pas y être levé.
 unsafe_code = "deny"
 missing_docs = "warn"
 
 [dependencies]
+# INV-08 : l'allocateur que reçoivent meshoptimizer et zstd (`foreign_heap`).
+ax-mem.workspace = true
 # Le modele de donnees (DM-*) : le validateur examine ses structures, il ne
 # les redeclare pas.
 ax-model.workspace = true
@@ -39,4 +40,9 @@ serde.workspace = true
 serde_json = { workspace = true, features = ["raw_value"] }
 stl_io.workspace = true
 tobj.workspace = true
+# C-24 : libzstd par ses liaisons, pour lui donner l'allocateur compteur (INV-08).
+zstd-sys.workspace = true
+
+[dev-dependencies]
+# Témoin : `foreign_heap` rend les octets de `zstd::bulk`, au bit près.
 zstd.workspace = true

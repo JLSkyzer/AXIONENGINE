@@ -286,8 +286,8 @@ impl<'a> A3dFile<'a> {
         // R-902 : la taille de sortie est connue à l'avance et plafonnée ; la
         // décompression n'est jamais un flux non borné.
         let expected = entry.size_uncompressed as usize;
-        let decoded = zstd::bulk::decompress(stored, expected)
-            .map_err(|_| A3dError::DecompressionFailed(entry.tag))?;
+        let decoded = crate::foreign_heap::decompress(stored, expected)
+            .ok_or(A3dError::DecompressionFailed(entry.tag))?;
         if decoded.len() != expected {
             return Err(A3dError::DecompressionFailed(entry.tag));
         }

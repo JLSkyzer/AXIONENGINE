@@ -27,12 +27,21 @@
 //! ([`ArenaCounter`]) restent ceux des budgets qu'on refuse de dépasser : un
 //! allocateur global ne peut pas refuser sans faire avorter le processus.
 //!
+//! [`foreign_alloc`] et [`foreign_free`] sont l'allocateur que reçoivent les bibliothèques
+//! C et C++ liées à la bibliothèque native — meshoptimizer, zstd — à la place de
+//! `operator new` et de `malloc` : leurs tampons passent ainsi par l'allocateur global, et
+//! sont comptés comme le reste (INV-08).
+//!
 //! Exigences : R-480, R-481, R-482. Invariants : INV-08, INV-09.
 //! Tests : T-016, T-180, T-181.
 
 mod counting;
+mod foreign;
 
 pub use counting::{scope, ArenaScope, CountingAllocator};
+pub use foreign::{
+    foreign_alloc, foreign_allocations, foreign_free, foreign_live_bytes, FOREIGN_ALIGN,
+};
 
 use core::fmt;
 
