@@ -1406,6 +1406,23 @@ est tenue par ce qui existe.
           Java renvoie la source avec les fichiers demandés (table dans `ASSET_IN`), les absents
           marqués ; ABI 4. (9) Java garde au rechargement tout fichier sous `axion/models/` qui n'est
           ni une source, ni un `.axion.json`, ni une image, borné par `max_source_bytes`.
+        - **Tranchées le 2026-10-15, troisième tour** (fiches de décision vérifiées dans le CDC) :
+          (10) renvois — R-1710 et T-433/T-434 en M4 avec C-52 (aucune v1 n'a existé, `NBT_SCHEMA` = 2
+          depuis 864aa57), `assets.max_compile_ms` et T-688 en M11 (R-2131), l'EventBus avec le
+          fournisseur d'`AxionApi` ; (11) C-25, les trois en M2 : métriques du cache, désactivation en
+          mode développeur (§31.3), empreintes de référence de la sortie du compilateur (R-562) ;
+          (12) `bench-quick` en CI, non bloquant puis bloquant, et correctifs de R-2231 ; (13) ADR-106
+          et ADR-107 ratifiés, table d'attribution de T-240..T-404 à consigner par ADR, avec les tests
+          de R-581 et R-701. Consigné dans ADR-137.
+        - **À faire, issu du troisième tour** :
+          - [ ] ADR-141 : attribution de T-240..T-244, T-280..T-284, T-400..T-404 ; tests de R-581, R-701.
+          - [ ] C-25 : compteurs et jauges du cache (R-500) ; cache désactivable en mode développeur.
+          - [ ] R-562 : empreintes de référence de la sortie du compilateur, par plateforme.
+          - [ ] C-72 : `bench-quick` sur B-02/B-09, non bloquant (ADR, écart temporaire à R-2251) ;
+                R-2231 (configuration de mesure complète, vrai commit au build).
+        - **Restent à trancher** : métriques et budgets de C-23, C-27, C-50 (R-500, R-1850) et ce que
+          mesure `asset_ns_per_tick` ; R-1751 (version propre d'`axion-api`) ; lecture de R-001 pour
+          les 15 interfaces `@Stable` vides.
         - [x] R-552 ✔ (niveau 9, `COMPILER_VERSION` 10, le 2026-10-15 ; test qui distingue les niveaux) :
               zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
               (`COMPILER_VERSION` des deux côtés) ou consigner l'écart.
@@ -1438,11 +1455,12 @@ est tenue par ce qui existe.
         - [ ] Portée de la DoD « en M2 » pour des composants STABLE dont une part est renvoyée à M3..M7
               (C-23 tranche D, C-27 étapes 4-5 et cinq familles, C-50 R-700/R-703/R-705, C-74
               `deform`/`replay`) : un ADR qui la borne, comme ADR-134.
-        - [ ] Attribution de T-240..T-244, T-280..T-284 et T-400..T-404, que le CDC ne décrit pas un par un.
+        - [ ] Attribution de T-240..T-244, T-280..T-284 et T-400..T-404, que le CDC ne décrit pas un par un —
+              tranché le 2026-10-15 : ADR-141, ci-dessus.
         - [ ] Métriques et budgets propres de C-23, C-25, C-27, C-50 (R-1850, INV-19, 31.1) ;
               `assets.max_compile_ms` jamais lu (R-2131) ; R-562 vérifié par parité seulement.
-        - [ ] ADR-106 et ADR-107, « décidés par Claude », jamais ratifiés ; R-1710 (schéma antérieur rendu
-              inerte, non migré).
+        - [x] ADR-106 et ADR-107, « décidés par Claude », jamais ratifiés — ratifiés par Killian le 2026-10-15 ;
+              R-1710 (schéma antérieur rendu inerte, non migré) — renvoyé en M4 avec C-52.
 
 ---
 
