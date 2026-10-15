@@ -136,8 +136,8 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 // R-2231 : un resultat de benchmark porte le commit qu'il mesure. Le build l'ecrit dans une
 // ressource que /axion bench relit (BuildInfo) ; un arbre suivi modifie le dit (`-dirty`), sans
-// quoi la mesure d'un code non commite passerait pour celle du commit. Le fichier n'est reecrit
-// que si son contenu change : sans cela, chaque build referait le JAR.
+// quoi la mesure d'un code non commite passerait pour celle du commit. La tache tourne a chaque
+// build ; tant que le commit ne change pas, le contenu non plus, et processResources reste a jour.
 def buildInfoDir = layout.buildDirectory.dir('generated/buildinfo')
 def generateBuildInfo = tasks.register('generateBuildInfo') {
     group = 'axion'
