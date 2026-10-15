@@ -11,8 +11,8 @@
 //!   d'abord, et [`Once`] fait attendre un appel concurrent que l'installation soit faite.
 //!   Le changer pendant qu'un autre thread est dans meshoptimizer lui ferait rendre à un
 //!   allocateur un bloc pris à un autre. Aucun autre crate du dépôt n'emploie meshoptimizer.
-//!   Le crate `meshopt` 0.6.2 n'expose pas cette fonction, que la bibliothèque qu'il compile
-//!   contient (`allocator.cpp`) : elle est déclarée ici ;
+//!   La liaison est celle que le crate `meshopt` génère de `meshoptimizer.h`
+//!   (`meshopt::ffi`), pas une déclaration écrite à la main qui pourrait s'en écarter ;
 //! - **zstd** reçoit son allocateur par contexte (`ZSTD_customMem`, API dite expérimentale de
 //!   libzstd 1.5.7, liaisons de `zstd-sys`). La compression et la décompression refont
 //!   exactement ce que font `zstd::bulk::compress` et `zstd::bulk::decompress` — mêmes appels,
@@ -29,17 +29,12 @@ use core::ffi::c_void;
 use std::sync::Once;
 use zstd_sys as zs;
 
-extern "C" {
-    /// `meshoptimizer.h` : remplace `operator new` et `operator delete` pour toute la suite du
-    /// processus. `MESHOPTIMIZER_ALLOC_CALLCONV` vaut `__cdecl` sous MSVC, la convention C des
-    /// plateformes supportées.
-    fn meshopt_setAllocator(
-        allocate: extern "C" fn(usize) -> *mut c_void,
-        deallocate: unsafe extern "C" fn(*mut c_void),
-    );
-}
-
 static MESHOPT_HEAP: Once = Once::new();
+
+/// Ce que `meshopt_setAllocator` attend : `MESHOPTIMIZER_ALLOC_CALLCONV` vaut `__cdecl` sous
+/// MSVC, la convention C des plateformes supportées.
+type MeshoptAllocate = unsafe extern "C" fn(usize) -> *mut c_void;
+type MeshoptDeallocate = unsafe extern "C" fn(*mut c_void);
 
 /// Installe l'allocateur compteur dans meshoptimizer, au premier appel du processus.
 fn meshopt_heap() {
@@ -49,7 +44,12 @@ fn meshopt_heap() {
         // jusqu'à la fin de l'installation. Les deux fonctions tiennent le contrat d'un
         // allocateur C : un bloc d'au moins la taille demandée, aligné sur 16 octets comme par
         // `operator new`, rendu par la seconde.
-        unsafe { meshopt_setAllocator(ax_mem::foreign_alloc, ax_mem::foreign_free) };
+        unsafe {
+            meshopt::ffi::meshopt_setAllocator(
+                Some(ax_mem::foreign_alloc as MeshoptAllocate),
+                Some(ax_mem::foreign_free as MeshoptDeallocate),
+            )
+        };
     });
 }
 

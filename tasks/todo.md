@@ -1375,8 +1375,9 @@ est tenue par ce qui existe.
       - **Effort maximal** : [x] INV-08 ✔ (2026-10-15, [ADR-138](../docs/decisions/ADR-138.md) : meshoptimizer
         **et zstd**, que l'audit n'avait pas vu, allouent par `ax_mem::foreign_alloc` via `foreign_heap` ;
         octets A3D inchangés, vérifié) — les allocations C++ de meshoptimizer (`operator new`)
-        échappent au compteur ; `meshopt_setAllocator` existe dans la bibliothèque vendue mais pas dans
-        le crate 0.6.2.
+        échappent au compteur ; `meshopt_setAllocator` s'installe par la liaison du crate 0.6.2
+        (`meshopt::ffi`) — une première version la croyait absente et la redéclarait, corrigé le
+        2026-10-15.
       - **Décisions de Killian** :
         - **Tranchées le 2026-10-15** : (1) un ADR borne la DoD de M2 — composant par composant, ce que
           M2 tient et ce qui part à quel jalon, avec le test qui le prouvera ; (2) R-552 : zstd au

@@ -1552,3 +1552,18 @@ on le lance.
 
 **Règle.** Pendant une CI locale, ne modifier que des fichiers qu'aucun job ne lit (todo, leçons,
 ADR) ; un échec obtenu sur un arbre modifié en cours de route ne vaut ni rouge ni vert : relancer.
+
+## 2026-10-15 | `meshopt_setAllocator` déclaré à la main alors que le crate le lie déjà
+
+**Ce qui a mal tourné.** ADR-138 affirmait que le crate `meshopt` 0.6.2 n'expose pas
+`meshopt_setAllocator`, et `foreign_heap` le redéclarait dans un bloc `extern "C"` écrit à la main.
+En rédigeant la note de la base de connaissances, une recherche dans la source du crate l'a trouvé :
+`src/ffi.rs` inclut `gen/bindings.rs`, générés par bindgen, et `meshopt::ffi::meshopt_setAllocator`
+est public. Corrigé : la liaison du crate remplace la déclaration manuelle.
+
+**Cause.** L'absence a été conclue de l'API de haut niveau du crate (`lib.rs`), sans chercher dans ses
+liaisons brutes.
+
+**Règle.** Avant de déclarer une fonction étrangère soi-même, chercher son nom dans la source du crate
+`-sys` ou du module `ffi` (`~/.cargo/registry/src/*/<crate>-<version>/`). Une signature recopiée à la
+main peut diverger de l'en-tête sans qu'aucun compilateur ne le dise.
