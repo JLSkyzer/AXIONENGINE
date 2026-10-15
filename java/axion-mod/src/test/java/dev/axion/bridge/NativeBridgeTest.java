@@ -135,8 +135,19 @@ class NativeBridgeTest {
 
     /** Idem, avec le texte d'un {@code .axion.json} voisin (ADR-135). */
     private static byte[] compiler(long ctx, long assetId, int format, byte[] source, byte[] options) {
+        return compiler(ctx, assetId, format, source, options, dev.axion.asset.SiblingFiles.NONE);
+    }
+
+    /** Idem, avec les fichiers voisins que la source peut demander (ADR-139). */
+    private static byte[] compiler(
+            long ctx,
+            long assetId,
+            int format,
+            byte[] source,
+            byte[] options,
+            dev.axion.asset.SiblingFiles siblings) {
         dev.axion.asset.NativeAssetCompiler compilateur = new dev.axion.asset.NativeAssetCompiler(ctx);
-        int job = compilateur.submit(assetId, format, source, options);
+        int job = compilateur.submit(assetId, format, source, options, siblings);
         assertTrue(job > 0, () -> "compilation refusée, code " + job);
         dev.axion.asset.AssetCompiler.CompileStatus etat = attendre(compilateur, job);
         assertEquals(dev.axion.asset.AssetState.COMPILED, etat.state(), "compilation échouée");
@@ -291,7 +302,9 @@ class NativeBridgeTest {
         byte[] source = String.join(
                         "\n", "v 0 0 0", "v 1 0 0", "v 0 1 0", "f 1 2 3", "")
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        int job = compilateur.submit(0x4242L, dev.axion.asset.SourceFormats.OBJ, source, new byte[0]);
+        int job = compilateur.submit(
+                0x4242L, dev.axion.asset.SourceFormats.OBJ, source, new byte[0],
+                dev.axion.asset.SiblingFiles.NONE);
         assertTrue(job > 0, () -> "compilation refusée, code " + job);
 
         dev.axion.asset.AssetCompiler.CompileStatus etat = attendre(compilateur, job);
@@ -330,11 +343,33 @@ class NativeBridgeTest {
                 0x4235L,
                 dev.axion.asset.SourceFormats.OBJ,
                 source,
-                "{ \"schema\": 1, \"scal\": 2.0 }".getBytes(StandardCharsets.UTF_8));
+                "{ \"schema\": 1, \"scal\": 2.0 }".getBytes(StandardCharsets.UTF_8),
+                dev.axion.asset.SiblingFiles.NONE);
         assertTrue(jobRefuse > 0, () -> "soumission refusée, code " + jobRefuse);
         dev.axion.asset.AssetCompiler.CompileStatus refusee = attendre(compilateur, jobRefuse);
         assertEquals(dev.axion.asset.AssetState.FAILED, refusee.state(), "option inconnue acceptée");
         assertEquals(-7001, refusee.error(), "E-7001 : option inconnue");
+
+        // ADR-139, R-830 : un OBJ qui référence son `.mtl`, à travers la vraie JNI. Le premier
+        // passage demande le fichier, NativeAssetCompiler le cherche dans les voisins et relance
+        // la source avec lui ; le registre ne voit qu'un travail qui continue. Sans le fichier,
+        // la compilation fait ce que fait la CLI qui ne le trouve pas : un autre asset.
+        byte[] avecMtl = String.join(
+                        "\n", "mtllib ./sub//cube.mtl", "usemtl rouge", "v 0 0 0", "v 1 0 0", "v 0 1 0",
+                        "f 1 2 3", "")
+                .getBytes(StandardCharsets.UTF_8);
+        byte[] mtl = String.join("\n", "newmtl rouge", "Kd 0.9 0.1 0.1", "")
+                .getBytes(StandardCharsets.UTF_8);
+        java.util.List<String> demandes = new java.util.ArrayList<>();
+        byte[] fourni = compiler(reprise, 0x4236L, dev.axion.asset.SourceFormats.OBJ, avecMtl, new byte[0],
+                name -> {
+                    demandes.add(name);
+                    return name.equals("sub/cube.mtl") ? mtl : null;
+                });
+        assertEquals(java.util.List.of("sub/cube.mtl"), demandes, "un nom, sous sa forme normale");
+        byte[] sansMtl = compiler(reprise, 0x4236L, dev.axion.asset.SourceFormats.OBJ, avecMtl, new byte[0],
+                dev.axion.asset.SiblingFiles.NONE);
+        assertFalse(java.util.Arrays.equals(fourni, sansMtl), "le .mtl fourni sans effet sur l'asset");
 
         // ADR-119 : l'asset compilé se charge dans le natif, sa géométrie revient par
         // ASSET_OUT, puis son handle se rend — à travers la vraie JNI, ce qui prouve
@@ -483,7 +518,9 @@ class NativeBridgeTest {
         // dynamique qui, ticks suivants, tombe sous la gravité. C'est le chemin
         // complet colliders compilés → corps qui bouge en jeu.
         byte[] gltf = GLTF_COLLIDER.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        int jobCollider = compilateur.submit(0x4343L, dev.axion.asset.SourceFormats.GLTF, gltf, new byte[0]);
+        int jobCollider = compilateur.submit(
+                0x4343L, dev.axion.asset.SourceFormats.GLTF, gltf, new byte[0],
+                dev.axion.asset.SiblingFiles.NONE);
         assertTrue(jobCollider > 0, () -> "compilation du glTF collider refusée, code " + jobCollider);
 
         dev.axion.asset.AssetCompiler.CompileStatus etatCollider = attendre(compilateur, jobCollider);

@@ -1504,7 +1504,7 @@ d'après le code de l'interface à implémenter.
 (signatures, types rendus, leurs propres méthodes) et vérifier qu'aucune partie ne relève d'un jalon à
 venir. Un rapport dit ce qui manque, pas ce que coûte de le combler.
 
-## 2026-10-16 | INV-08 : l'audit avait vu meshoptimizer, pas zstd
+## 2026-10-15 | INV-08 : l'audit avait vu meshoptimizer, pas zstd
 
 **Ce qui a mal tourné.** L'audit de M2 signalait que meshoptimizer allouait hors du compteur. En le
 corrigeant, une recherche systématique des bibliothèques C liées a trouvé zstd dans le même cas — et
@@ -1518,3 +1518,37 @@ pas sur l'arbre des dépendances compilées.
 `Cargo.lock` et `cargo tree -p ax-ffi`) ; chacune passe par `ax_asset::foreign_heap` ou un équivalent
 avant d'entrer (ADR-138).
 
+
+## 2026-10-15 | ADR-139 avait perdu une clause de l'option tranchée par Killian
+
+**Ce qui a mal tourné.** Killian a retenu l'option « tout fichier sous `axion/models/` qui n'est ni une
+source, ni un `.axion.json`, ni une image, **borné par `max_source_bytes`** ». ADR-139 et la première
+implémentation reprenaient tout sauf la borne. Relu dans la transcription avant le commit, rétabli : un
+voisin plus grand reste énuméré mais n'est pas lu.
+
+**Cause.** L'ADR a été rédigé d'après le libellé court de l'option, pas d'après sa description complète.
+
+**Règle.** Avant d'implémenter une décision prise par `AskUserQuestion`, relire la description de l'option
+retenue clause par clause et cocher chacune dans l'ADR et dans le code. Une clause absente de l'ADR est
+une décision non appliquée.
+
+## 2026-10-15 | Deux ADR datés du lendemain
+
+**Ce qui a mal tourné.** ADR-138 et ADR-139 portaient la date du 2026-10-16, ainsi que la todo et une
+leçon, alors que la session se déroulait le 2026-10-15 — ADR-138 a été poussé ainsi. Corrigé au commit
+suivant.
+
+**Cause.** La date a été déduite du fil (une session qui passe minuit), pas lue.
+
+**Règle.** Une date écrite dans un ADR, la todo ou une leçon se lit avec `date` au moment de l'écrire.
+
+## 2026-10-15 | La CI locale lancée pendant qu'on édite encore les sources
+
+**Ce qui a mal tourné.** `local_ci.py` tournait en arrière-plan pendant que je modifiais des fichiers
+Java : le job GameTests a compilé un état intermédiaire et a échoué sur des symboles absents.
+
+**Cause.** Un job lancé en arrière-plan lit l'arbre de travail au moment où il compile, pas au moment où
+on le lance.
+
+**Règle.** Pendant une CI locale, ne modifier que des fichiers qu'aucun job ne lit (todo, leçons,
+ADR) ; un échec obtenu sur un arbre modifié en cours de route ne vaut ni rouge ni vert : relancer.

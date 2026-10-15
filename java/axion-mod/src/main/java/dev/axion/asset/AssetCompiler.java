@@ -18,10 +18,24 @@ public interface AssetCompiler {
      * @param source contenu de la source
      * @param options texte du {@code <modèle>.axion.json} voisin, tel quel, ou un
      *     tableau vide sans fichier (ADR-135)
+     * @param siblings fichiers voisins que la source peut référencer — {@code .mtl},
+     *     buffers externes —, lus à la demande du compilateur (ADR-139)
      * @return l'identifiant du travail, strictement positif, ou un code
      *     d'erreur negatif
      */
-    int submit(long assetId, int format, byte[] source, byte[] options);
+    int submit(long assetId, int format, byte[] source, byte[] options, SiblingFiles siblings);
+
+    /**
+     * Oublie une compilation que personne ne sondera plus.
+     *
+     * <p>Le registre l'appelle quand il cesse d'attendre un travail en vol : une source
+     * modifiée ou retirée, une recompilation forcée, le délai de démarrage écoulé. Ce que
+     * le compilateur gardait pour poursuivre le travail — la source et ses voisins, pour
+     * un nouveau passage — serait sinon retenu jusqu'à l'arrêt.
+     *
+     * @param jobId identifiant rendu par {@link #submit}
+     */
+    default void abandon(int jobId) {}
 
     /**
      * Sonde une compilation lancee.

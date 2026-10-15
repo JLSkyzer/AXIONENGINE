@@ -116,7 +116,7 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
         },
         NativeMethod {
             name: "assetCompile".into(),
-            sig: "(JJIJ[B)I".into(),
+            sig: "(JJIJJ[B)I".into(),
             fn_ptr: jni_asset_compile as *mut c_void,
         },
         NativeMethod {
@@ -296,12 +296,12 @@ extern "system" fn jni_metrics_export(
     jint::try_from(needed).unwrap_or(jint::MAX)
 }
 
-/// `NativeBridge.assetCompile(long, long, int, long, byte[])`.
+/// `NativeBridge.assetCompile(long, long, int, long, long, byte[])`.
 ///
 /// Rend l'identifiant du travail, strictement positif, ou un code d'erreur
-/// négatif. La source a été écrite par Java dans le tampon `ASSET_IN` ;
-/// `options` porte le texte du `.axion.json` voisin en chaîne CBOR, ou est nul
-/// (ADR-135).
+/// négatif. La source a été écrite par Java dans le tampon `ASSET_IN`, suivie de
+/// `files_len` octets de table de fichiers voisins (ADR-139) ; `options` porte le
+/// texte du `.axion.json` voisin en chaîne CBOR, ou est nul (ADR-135).
 extern "system" fn jni_asset_compile(
     env: JNIEnv,
     _class: JClass,
@@ -309,6 +309,7 @@ extern "system" fn jni_asset_compile(
     asset_id: jlong,
     format: jint,
     source_len: jlong,
+    files_len: jlong,
     options: JByteArray,
 ) -> jint {
     let options = if options.is_null() {
@@ -329,6 +330,7 @@ extern "system" fn jni_asset_compile(
             asset_id as u64,
             u32::try_from(format).unwrap_or(u32::MAX),
             source_len.max(0) as u64,
+            files_len.max(0) as u64,
             options.as_ptr(),
             options.len(),
             &raw mut job,

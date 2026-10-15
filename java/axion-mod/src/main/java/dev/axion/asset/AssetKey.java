@@ -1,8 +1,12 @@
 package dev.axion.asset;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Collections;
 import java.util.HexFormat;
+import java.util.Map;
+import java.util.SortedMap;
 
 /**
  * Clé de cache d'un asset (C-20 étape 2, C-25).
@@ -10,6 +14,9 @@ import java.util.HexFormat;
  * <pre>
  * clé = sha256(contenu || options || COMPILER_VERSION || ABI)
  * </pre>
+ *
+ * <p>Le contenu est celui de la source et de ses fichiers voisins possibles — {@code .mtl},
+ * buffers externes — que le compilateur peut lire avec elle (ADR-139 §4).
  *
  * <p>Elle répond à une seule question : <em>ce fichier, compilé par ce
  * compilateur avec ces options, pour cette version d'ABI, a-t-il déjà été
@@ -54,8 +61,47 @@ public final class AssetKey {
      */
     public static AssetKey of(
             byte[] content, byte[] options, int compilerVersion, int abiVersion) {
+        return of(content, Collections.emptySortedMap(), options, compilerVersion, abiVersion);
+    }
+
+    /**
+     * Calcule la clé d'une source et de ses fichiers voisins possibles (ADR-139 §4).
+     *
+     * <p>Le terme « contenu » est la source <strong>et</strong> ses voisins : un {@code .mtl}
+     * ou un buffer modifié recompile les sources de son répertoire, comme le ferait la
+     * source elle-même. Chaque voisin entre par son nom, sa longueur et ses octets, dans
+     * l'ordre des noms ; un voisin illisible entre par son nom et une longueur de -1, pour
+     * qu'il recompile la source le jour où il redevient lisible. Sans voisin, la clé est
+     * celle de {@link #of(byte[], byte[], int, int)}.
+     *
+     * @param content contenu du fichier source
+     * @param siblings voisins par nom relatif au répertoire de la source, triés ; une
+     *     valeur nulle : illisible
+     * @param options octets du fichier d'options, tels qu'ils seront transmis ;
+     *     vide sans fichier (ADR-135)
+     * @param compilerVersion version du compilateur natif
+     * @param abiVersion version de l'ABI attendue
+     * @return la clé, en hexadécimal minuscule
+     */
+    public static AssetKey of(
+            byte[] content,
+            SortedMap<String, byte[]> siblings,
+            byte[] options,
+            int compilerVersion,
+            int abiVersion) {
         MessageDigest digest = digest();
         digest.update(content);
+        for (Map.Entry<String, byte[]> sibling : siblings.entrySet()) {
+            byte[] name = sibling.getKey().getBytes(StandardCharsets.UTF_8);
+            byte[] data = sibling.getValue();
+            digest.update(SEPARATOR);
+            digest.update(intBytes(name.length));
+            digest.update(name);
+            digest.update(intBytes(data == null ? -1 : data.length));
+            if (data != null) {
+                digest.update(data);
+            }
+        }
         digest.update(SEPARATOR);
         digest.update(options);
         digest.update(SEPARATOR);

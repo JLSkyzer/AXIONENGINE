@@ -57,6 +57,8 @@ class AssetRegistryTest {
     private static final class FakeCompiler implements AssetCompiler {
         private final List<Long> submitted = new ArrayList<>();
         private final Map<Long, byte[]> optionsRecues = new LinkedHashMap<>();
+        private final Map<Long, SiblingFiles> voisinsRecus = new LinkedHashMap<>();
+        private final List<Integer> abandonnes = new ArrayList<>();
         private final Map<Integer, Integer> restants = new LinkedHashMap<>();
         private int nextJob = 1;
         private int delay;
@@ -64,12 +66,14 @@ class AssetRegistryTest {
         private boolean failCompile;
 
         @Override
-        public int submit(long assetId, int format, byte[] source, byte[] options) {
+        public int submit(
+                long assetId, int format, byte[] source, byte[] options, SiblingFiles siblings) {
             if (refuseSubmit != 0) {
                 return refuseSubmit;
             }
             submitted.add(assetId);
             optionsRecues.put(assetId, options);
+            voisinsRecus.put(assetId, siblings);
             int job = nextJob++;
             restants.put(job, delay);
             return job;
@@ -84,6 +88,12 @@ class AssetRegistryTest {
             }
             restants.remove(jobId);
             return failCompile ? CompileStatus.failed(-3050) : CompileStatus.compiled(new byte[1024]);
+        }
+
+        @Override
+        public void abandon(int jobId) {
+            abandonnes.add(jobId);
+            restants.remove(jobId);
         }
     }
 
@@ -549,5 +559,140 @@ class AssetRegistryTest {
         assertTrue(
                 registry.diagnostics().get(0).contains("options illisibles"),
                 registry.diagnostics().get(0));
+    }
+
+    @Test
+    @DisplayName("ADR-139 : les voisins du répertoire de la source partent avec elle, par nom relatif")
+    void lesVoisinsPartentAvecLaSourceParNomRelatif() {
+        byte[] mtl = "newmtl rouge".getBytes(StandardCharsets.UTF_8);
+        byte[] roue = {1, 2, 3};
+        FakeSource source = new FakeSource()
+                .put("ns:axion/models/voiture/voiture.obj", "mtllib voiture.mtl")
+                .put("ns:axion/models/voiture/voiture.axion.json", "{ \"schema\": 1 }")
+                .put("ns:axion/models/voiture/textures/carrosserie.png", "PNG")
+                .put("ns:axion/models/voiture/autre.glb", "glTF...")
+                .put("ns:axion/models/commun.mtl", "newmtl commun")
+                .put("ns:axion/models/voiturette/voiturette.mtl", "newmtl voisin");
+        source.files.put("ns:axion/models/voiture/voiture.mtl", mtl);
+        source.files.put("ns:axion/models/voiture/sub/roue.bin", roue);
+        FakeCompiler compiler = new FakeCompiler();
+        AssetRegistry registry = registry(source, compiler);
+
+        registry.discover();
+        AssetEntry voiture = registry.entry("ns:axion/models/voiture/voiture.obj");
+        // Ni source, ni options, ni image ; rien au-dessus du répertoire, ni à côté de lui :
+        // une référence ne remonte jamais (R-531), et `voiturette/` n'est pas `voiture/`.
+        assertEquals(List.of("sub/roue.bin", "voiture.mtl"), List.copyOf(voiture.siblings().keySet()));
+
+        registry.pump(0);
+        SiblingFiles recus = compiler.voisinsRecus.get(voiture.assetId());
+        assertArrayEquals(mtl, recus.read("voiture.mtl"));
+        assertArrayEquals(roue, recus.read("sub/roue.bin"));
+        assertNull(recus.read("commun.mtl"), "un fichier du répertoire parent");
+        assertNull(recus.read("textures/carrosserie.png"), "une image n'est jamais lue");
+        assertNull(recus.read("absent.mtl"));
+    }
+
+    @Test
+    @DisplayName("ADR-139 : un voisin modifié, ajouté ou retiré recompile ; ailleurs, rien")
+    void lesVoisinsEntrentDansLaCle() {
+        FakeSource source = new FakeSource()
+                .put("ns:axion/models/a/a.obj", "mtllib a.mtl")
+                .put("ns:axion/models/a/a.mtl", "newmtl rouge")
+                .put("ns:axion/models/b/b.obj", "v 0 0 0");
+        AssetRegistry registry = registry(source, new FakeCompiler());
+
+        assertEquals(2, registry.discover());
+        AssetKey avant = registry.entry("ns:axion/models/a/a.obj").key();
+        assertNotEquals(
+                AssetKey.of("mtllib a.mtl".getBytes(StandardCharsets.UTF_8), new byte[0], COMPILER_VERSION, 0),
+                avant,
+                "le .mtl hors de la clé");
+        registry.pump(0);
+        registry.pump(0);
+        assertEquals(0, registry.discover(), "rien n'a changé, rien n'est refait");
+
+        source.put("ns:axion/models/a/a.mtl", "newmtl vert");
+        assertEquals(1, registry.discover(), "le .mtl modifié recompile sa source seule");
+        AssetKey modifie = registry.entry("ns:axion/models/a/a.obj").key();
+        assertNotEquals(avant, modifie);
+
+        source.put("ns:axion/models/a/sub/roue.bin", "octets");
+        assertEquals(1, registry.discover(), "un voisin ajouté recompile");
+        source.files.remove("ns:axion/models/a/sub/roue.bin");
+        assertEquals(1, registry.discover(), "un voisin retiré recompile");
+        assertEquals(modifie, registry.entry("ns:axion/models/a/a.obj").key());
+
+        // Une image, ou un fichier d'un autre répertoire : aucune clé ne bouge.
+        source.put("ns:axion/models/a/texture.png", "PNG");
+        source.put("ns:axion/models/b/b.mtl", "newmtl bleu");
+        assertEquals(1, registry.discover(), "seule b.obj voit b.mtl");
+        assertEquals(modifie, registry.entry("ns:axion/models/a/a.obj").key());
+    }
+
+    @Test
+    @DisplayName("ADR-139 : un voisin illisible part absent, comme dans la CLI, et sa lecture recompile")
+    void unVoisinIllisiblePartAbsent() {
+        FakeSource source = new FakeSource()
+                .put("ns:axion/models/a.obj", "mtllib a.mtl")
+                .put("ns:axion/models/a.mtl", "newmtl rouge");
+        source.illisibles.add("ns:axion/models/a.mtl");
+        FakeCompiler compiler = new FakeCompiler();
+        AssetRegistry registry = registry(source, compiler);
+
+        assertEquals(1, registry.discover());
+        AssetEntry entree = registry.entry("ns:axion/models/a.obj");
+        registry.pump(0);
+        assertNull(compiler.voisinsRecus.get(entree.assetId()).read("a.mtl"));
+        registry.pump(0);
+        assertEquals(AssetState.COMPILED, entree.state(), "la compilation fait ce que fait la CLI");
+        AssetKey illisible = entree.key();
+
+        source.illisibles.clear();
+        assertEquals(1, registry.discover(), "redevenu lisible, il recompile");
+        assertNotEquals(illisible, registry.entry("ns:axion/models/a.obj").key());
+    }
+
+    @Test
+    @DisplayName("ADR-139 : un travail que le registre cesse d'attendre est abandonné au compilateur")
+    void unTravailQuOnNAttendPlusEstAbandonne() {
+        FakeSource source = new FakeSource()
+                .put("ns:axion/models/a.obj", "v 0 0 0")
+                .put("ns:axion/models/b.obj", "v 0 0 0")
+                .put("ns:axion/models/c.obj", "v 0 0 0");
+        FakeCompiler compiler = new FakeCompiler();
+        compiler.delay = 1_000;
+        FakeClock horloge = new FakeClock();
+        horloge.step = 1;
+        AssetRegistry registry =
+                new AssetRegistry(source, compiler, COMPILER_VERSION, 0, horloge::tick, null);
+
+        registry.discover();
+        registry.pump(0);
+        int a = registry.entry("ns:axion/models/a.obj").jobId();
+        int b = registry.entry("ns:axion/models/b.obj").jobId();
+        int c = registry.entry("ns:axion/models/c.obj").jobId();
+        assertTrue(compiler.abandonnes.isEmpty());
+
+        // Source modifiée : son ancien travail ne sera plus sondé.
+        source.put("ns:axion/models/a.obj", "v 1 1 1");
+        registry.discover();
+        assertEquals(List.of(a), compiler.abandonnes);
+
+        // Source retirée.
+        source.files.remove("ns:axion/models/b.obj");
+        registry.discover();
+        assertEquals(List.of(a, b), compiler.abandonnes);
+
+        // Recompilation forcée : `c` était en vol, `a` n'a pas été resoumis.
+        registry.forceRecompile();
+        assertEquals(List.of(a, b, c), compiler.abandonnes);
+
+        // Délai de démarrage écoulé : ce qui était en vol est abandonné aussi.
+        registry.pump(0);
+        int a2 = registry.entry("ns:axion/models/a.obj").jobId();
+        int c2 = registry.entry("ns:axion/models/c.obj").jobId();
+        assertFalse(registry.awaitSettled(10));
+        assertEquals(List.of(a, b, c, a2, c2), compiler.abandonnes);
     }
 }

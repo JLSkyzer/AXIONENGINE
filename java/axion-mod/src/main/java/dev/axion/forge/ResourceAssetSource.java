@@ -1,8 +1,7 @@
 package dev.axion.forge;
 
-import dev.axion.asset.AssetOptionsFiles;
+import dev.axion.asset.AssetSiblings;
 import dev.axion.asset.AssetSource;
-import dev.axion.asset.SourceFormats;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -44,13 +43,22 @@ public final class ResourceAssetSource implements AssetSource {
 
     /**
      * Énumère et lit les sources de modèles sous un préfixe, avec leurs fichiers
-     * d'options (ADR-135).
+     * d'options (ADR-135) et leurs fichiers voisins possibles (ADR-139).
+     *
+     * <p>Un voisin possible est n'importe quel fichier qui n'est pas une image :
+     * rien ne dit d'avance lequel une source référencera. Il n'est gardé que
+     * jusqu'à {@code maxSiblingBytes} — {@code assets.max_source_bytes} —, pour
+     * qu'un fichier volumineux posé parmi les modèles ne soit pas retenu en
+     * mémoire à chaque rechargement. Au-delà, il reste énuméré mais sa lecture
+     * échoue, comme celle d'une ressource illisible : une source qui le demande
+     * se compile sans lui.
      *
      * @param manager gestionnaire de ressources du rechargement en cours
      * @param prefix préfixe à explorer, par exemple {@link #MODELS}
+     * @param maxSiblingBytes taille au-delà de laquelle un voisin n'est pas lu
      */
-    public ResourceAssetSource(ResourceManager manager, String prefix) {
-        this(manager, prefix, ResourceAssetSource::isSourceOrOptions);
+    public ResourceAssetSource(ResourceManager manager, String prefix, long maxSiblingBytes) {
+        this(manager, prefix, ResourceAssetSource::isModelFile, maxSiblingBytes);
     }
 
     /**
@@ -62,6 +70,14 @@ public final class ResourceAssetSource implements AssetSource {
      */
     public ResourceAssetSource(
             ResourceManager manager, String prefix, Predicate<String> accepted) {
+        this(manager, prefix, accepted, Long.MAX_VALUE);
+    }
+
+    private ResourceAssetSource(
+            ResourceManager manager,
+            String prefix,
+            Predicate<String> accepted,
+            long maxSiblingBytes) {
         Map<ResourceLocation, Resource> found =
                 manager.listResources(prefix, location -> accepted.test(location.getPath()));
 
@@ -73,8 +89,11 @@ public final class ResourceAssetSource implements AssetSource {
         ordered.sort(ResourceLocation::compareTo);
 
         for (ResourceLocation location : ordered) {
+            long limit = AssetSiblings.isCandidate(location.getPath())
+                    ? maxSiblingBytes
+                    : Long.MAX_VALUE;
             try (InputStream stream = found.get(location).open()) {
-                files.put(location.toString(), stream.readAllBytes());
+                files.put(location.toString(), readBounded(stream, limit));
             } catch (IOException failure) {
                 // Une ressource illisible ne fait pas échouer l'énumération :
                 // les autres assets n'y sont pour rien, et R-522 veut que le
@@ -92,13 +111,32 @@ public final class ResourceAssetSource implements AssetSource {
     }
 
     /**
-     * Indique si un chemin désigne une source d'asset compilable, ou le fichier
-     * d'options qui l'accompagne : lu ici avec elle, puisque le gestionnaire
-     * n'est pas gardé pour plus tard.
+     * Indique si un chemin est à lire avec les modèles : une source, le fichier
+     * d'options qui l'accompagne, ou un fichier qu'elle peut référencer — tout ce
+     * qui n'est pas une image (ADR-139 §1). Un {@code .mtl} ou un buffer glTF
+     * porte le nom que l'auteur lui donne, et le gestionnaire n'est pas gardé
+     * pour le lire plus tard : ce que le compilateur demandera doit déjà être là.
+     * Une image ne l'est jamais : le compilateur n'en lit aucune (R-532).
      */
-    private static boolean isSourceOrOptions(String path) {
-        return SourceFormats.fromPath(path) != SourceFormats.UNKNOWN
-                || AssetOptionsFiles.isOptionsFile(path);
+    private static boolean isModelFile(String path) {
+        return !AssetSiblings.isImage(path);
+    }
+
+    /**
+     * Lit une ressource sans retenir plus de {@code limit} octets.
+     *
+     * @throws IOException si la ressource est illisible, ou plus grande que la borne
+     */
+    private static byte[] readBounded(InputStream stream, long limit) throws IOException {
+        if (limit >= Integer.MAX_VALUE - 8) {
+            return stream.readAllBytes();
+        }
+        byte[] bytes = stream.readNBytes((int) limit + 1);
+        if (bytes.length > limit) {
+            throw new IOException("non lue : plus de " + limit
+                    + " octets (assets.max_source_bytes, ADR-139)");
+        }
+        return bytes;
     }
 
     @Override
@@ -124,7 +162,7 @@ public final class ResourceAssetSource implements AssetSource {
         return List.copyOf(failures);
     }
 
-    /** {@return le nombre de fichiers énumérés, sources et options} */
+    /** {@return le nombre de fichiers énumérés : sources, options et voisins} */
     public int size() {
         return files.size();
     }

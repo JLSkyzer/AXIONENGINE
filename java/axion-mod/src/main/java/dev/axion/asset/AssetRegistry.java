@@ -7,6 +7,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
@@ -122,8 +124,9 @@ public final class AssetRegistry {
             if (format == SourceFormats.UNKNOWN) {
                 // Un `.a3d` est déjà le résultat d'une compilation, et le reste
                 // n'est pas une source de modèle. Les compter comme des échecs
-                // remplirait le journal de faux problèmes. Un `.axion.json` est
-                // lu avec sa source, ci-dessous.
+                // remplirait le journal de faux problèmes. Un `.axion.json` et
+                // les fichiers voisins (ADR-139) sont lus avec leur source,
+                // ci-dessous.
                 continue;
             }
 
@@ -151,14 +154,18 @@ public final class AssetRegistry {
                 }
             }
 
-            AssetKey key = AssetKey.of(content, options, compilerVersion, abiVersion);
+            SortedMap<String, byte[]> siblings = siblingsOf(path, paths);
+            AssetKey key = AssetKey.of(content, siblings, options, compilerVersion, abiVersion);
             AssetEntry existing = entries.get(path);
             if (existing != null && key.equals(existing.key())) {
                 // R-520 : rien n'a changé, rien n'est refait.
                 continue;
             }
+            if (existing != null) {
+                abandon(existing);
+            }
 
-            AssetEntry entry = new AssetEntry(path, format, key, content, options);
+            AssetEntry entry = new AssetEntry(path, format, key, content, options, siblings);
             entries.put(path, entry);
             // L'ancien contenu n'est plus celui de la source : il cesse d'être servi.
             published.remove(path);
@@ -177,9 +184,51 @@ public final class AssetRegistry {
 
         // Une source disparue laisse son entrée derrière elle : la retirer est
         // ce qui distingue un pack rechargé d'un pack qui grossit sans fin.
-        entries.keySet().removeIf(path -> !listed.contains(path));
+        entries.values().removeIf(entry -> {
+            if (listed.contains(entry.path())) {
+                return false;
+            }
+            abandon(entry);
+            return true;
+        });
         published.keySet().removeIf(path -> !listed.contains(path));
         return changed;
+    }
+
+    /**
+     * Lit les fichiers voisins possibles d'une source (ADR-139).
+     *
+     * <p>Un voisin illisible part absent, comme dans {@code axion-cli} dont la lecture échoue
+     * (R-830) : la compilation fait ce qu'elle ferait sans lui, et la ressource est déjà
+     * signalée par la source qui l'a énumérée. Il entre quand même dans la clé, pour que la
+     * source se recompile quand il redevient lisible.
+     *
+     * @param path chemin de la source
+     * @param paths ressources énumérées
+     * @return les voisins par nom relatif au répertoire de la source
+     */
+    private SortedMap<String, byte[]> siblingsOf(String path, List<String> paths) {
+        SortedMap<String, byte[]> siblings = new TreeMap<>();
+        for (String sibling : AssetSiblings.candidatesOf(path, paths)) {
+            byte[] bytes;
+            try {
+                bytes = source.read(sibling);
+            } catch (IOException unreadable) {
+                bytes = null;
+            }
+            siblings.put(AssetSiblings.relative(path, sibling), bytes);
+        }
+        return siblings;
+    }
+
+    /**
+     * Cesse d'attendre le travail en vol d'une entrée : le compilateur oublie ce qu'il
+     * gardait pour le poursuivre.
+     */
+    private void abandon(AssetEntry entry) {
+        if (entry.state() == AssetState.COMPILING) {
+            compiler.abandon(entry.jobId());
+        }
     }
 
     /**
@@ -245,6 +294,7 @@ public final class AssetRegistry {
             if (clock.getAsLong() - start >= timeoutNanos) {
                 for (AssetEntry entry : entries.values()) {
                     if (entry.state().isPending()) {
+                        abandon(entry);
                         entry.forceFailed();
                         fail(entry, STARTUP_TIMEOUT_CODE, "non compilé dans le délai de démarrage");
                     }
@@ -261,7 +311,11 @@ public final class AssetRegistry {
     private boolean submit(AssetEntry entry) {
         entry.transitionTo(AssetState.QUEUED);
         int job = compiler.submit(
-                entry.assetId(), entry.format(), entry.content(), entry.options());
+                entry.assetId(),
+                entry.format(),
+                entry.content(),
+                entry.options(),
+                entry.siblings()::get);
         if (job <= 0) {
             fail(entry, job, "compilation refusée");
             return false;
@@ -311,7 +365,8 @@ public final class AssetRegistry {
 
     private void fail(String path, int format, int code, String reason) {
         AssetEntry entry = entries.computeIfAbsent(
-                path, key -> new AssetEntry(path, format, null, new byte[0], NO_OPTIONS));
+                path,
+                key -> new AssetEntry(path, format, null, new byte[0], NO_OPTIONS, new TreeMap<>()));
         fail(entry, code, reason);
     }
 
@@ -369,6 +424,7 @@ public final class AssetRegistry {
     public int forceRecompile() {
         int count = 0;
         for (AssetEntry entry : entries.values()) {
+            abandon(entry);
             entry.reset();
             count++;
         }

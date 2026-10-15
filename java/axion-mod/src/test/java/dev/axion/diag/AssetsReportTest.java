@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.axion.asset.AssetCompiler;
 import dev.axion.asset.AssetRegistry;
 import dev.axion.asset.AssetSource;
+import dev.axion.asset.SiblingFiles;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -44,7 +45,8 @@ class AssetsReportTest {
         private boolean fail;
 
         @Override
-        public int submit(long assetId, int format, byte[] source, byte[] options) {
+        public int submit(
+                long assetId, int format, byte[] source, byte[] options, SiblingFiles siblings) {
             jobs.add(jobs.size() + 1);
             return jobs.size();
         }

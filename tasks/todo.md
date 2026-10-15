@@ -1372,7 +1372,7 @@ est tenue par ce qui existe.
         - [x] (2026-10-15, `LivrableM2GameTests`, 8 GameTests verts en local) Un GameTest du livrable :
               `/axion spawn` (la commande, pas sa copie `AssembliesDeTest`), sauvegarde
               puis rechargement de l'entité, `/axion remove` (aucun n'existe).
-      - **Effort maximal** : [x] INV-08 ✔ (2026-10-16, [ADR-138](../docs/decisions/ADR-138.md) : meshoptimizer
+      - **Effort maximal** : [x] INV-08 ✔ (2026-10-15, [ADR-138](../docs/decisions/ADR-138.md) : meshoptimizer
         **et zstd**, que l'audit n'avait pas vu, allouent par `ax_mem::foreign_alloc` via `foreign_heap` ;
         octets A3D inchangés, vérifié) — les allocations C++ de meshoptimizer (`operator new`)
         échappent au compteur ; `meshopt_setAllocator` existe dans la bibliothèque vendue mais pas dans
@@ -1395,7 +1395,7 @@ est tenue par ce qui existe.
         - **Tranchées le 2026-10-15, second tour** : (5) ADR-131 étendu à M2 — B-02 et B-09 n'ont pas
           d'exécution normative avant M12 ; (6) CHANGELOG : entrée M2, C-25/C-30/C-72 réattribués depuis
           M1 ; (7) `runGameTestServer` autorisé en local pour écrire un GameTest (mémoire mise à jour).
-        - **Tranchées le 2026-10-16 (effort maximal)** : (8) R-830, protocole « demande puis renvoi » —
+        - **Tranchées le 2026-10-15 (effort maximal)** : (8) R-830, protocole « demande puis renvoi » —
           un premier passage liste les références par le code de l'importeur et rend `NEEDS_FILES` ;
           Java renvoie la source avec les fichiers demandés (table dans `ASSET_IN`), les absents
           marqués ; ABI 4. (9) Java garde au rechargement tout fichier sous `axion/models/` qui n'est
@@ -1403,9 +1403,13 @@ est tenue par ce qui existe.
         - [x] R-552 ✔ (niveau 9, `COMPILER_VERSION` 10, le 2026-10-15 ; test qui distingue les niveaux) :
               zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
               (`COMPILER_VERSION` des deux côtés) ou consigner l'écart.
-        - [ ] R-830 (en partie, 2026-10-15 : `max_source_bytes` appliqué en jeu, `source_hash` par le même
-              code ; reste les fichiers voisins, changement d'IF-06 à effort maximal, et `asset_id`, que la
-              CLI dérive du nom de fichier faute d'espace de noms) : trois divergences jeu/CLI — fichiers voisins (`.mtl`, buffers externes) lus par la CLI,
+        - [x] R-830 ✔ (2026-10-15 : `max_source_bytes` appliqué en jeu, `source_hash` par le même code ;
+              fichiers voisins par [ADR-139](../docs/decisions/ADR-139.md), ABI 4 — « demande puis renvoi »,
+              voisins gardés jusqu'à `assets.max_source_bytes`, clé du cache qui les voit ; vérifié au bit
+              près contre la CLI (`asset_siblings_abi`), à travers la vraie JNI (`NativeBridgeTest`, OBJ et
+              son `.mtl`) et sous Forge (GameTest `VoisinsGameTests` : glTF à deux buffers externes, l'un
+              désigné par `./`, 9 GameTests verts en local)). Reste [ ] `asset_id`, que la CLI dérive du nom de
+              fichier faute d'espace de noms : avec R-861 (C-20). Constat d'origine — trois divergences jeu/CLI — fichiers voisins (`.mtl`, buffers externes) lus par la CLI,
               pas par le jeu (ADR-122 les dit hors portée sans les confronter à R-830) ; `max_source_bytes`
               non appliqué en jeu (R-533) ; en-tête `asset_id`/`source_hash` différent.
         - [ ] C-70 ✔ (en partie, 2026-10-15 : fabrique d'`ImpactSpec` bornée, `BoundedImpactSpecs`, par
@@ -1413,6 +1417,11 @@ est tenue par ce qui existe.
               dont les événements n'ont pas d'accesseurs dans le CDC) : aucune implémentation dans `axion-mod` (`AxionApi.get()` lève toujours) ; R-1755,
               R-1760..R-1762 seulement documentés, 15 interfaces `@Stable` vides (décision du 2026-09-13
               sans ADR), R-1751 (version propre de l'artefact).
+        - [ ] Défaut antérieur, relevé en écrivant ADR-139 (2026-10-15) : un travail de compilation que
+              Java cesse de sonder — source modifiée ou retirée, `/axion assets reload`, délai de démarrage
+              écoulé — garde son résultat dans `asset_jobs` (`ax-ffi/src/context.rs`) jusqu'à la fermeture
+              du contexte. `AssetCompiler.abandon` ne libère que le côté Java. Corriger demande une entrée
+              d'IF-06 (abandon d'un travail) : changement d'ABI, à faire trancher.
         - [x] (ADR-131 étendu à M2 le 2026-10-15) Benchmarks du périmètre de M2 (B-02, B-09) jamais
               archivés ; ADR-131 ne couvrait que M3 — reste [ ] R-2250
               sans job CI.

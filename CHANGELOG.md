@@ -49,6 +49,12 @@ Definition of Done (PARTIE 37.3).
   - harnais de benchmarks `ax-bench` (C-72) ; CLI `axion-cli` (C-74) :
     compile, inspect, diff, validate, lod et bench-asset, et options de
     compilation `.axion.json` lues par le meme code que le jeu (ADR-135).
+  - compilation en jeu identique a celle de la CLI (R-830) : plafond
+    `assets.max_source_bytes` applique, `source_hash` commun, fichiers voisins
+    (`.mtl`, buffers glTF externes) demandes puis fournis par la frontiere,
+    ABI 4 (ADR-139) ;
+  - allocations de meshoptimizer et de zstd comptees par l'allocateur du
+    moteur (INV-08, ADR-138).
 - M1 (Definition of Done prononcee le 2026-10-04) — assets, noyau
   deterministe, jobs :
   - `ax-jobs` (C-12) : pool dedie, jobs types annulables a echeance ;

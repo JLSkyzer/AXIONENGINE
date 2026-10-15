@@ -164,13 +164,25 @@ pub struct AssetLimits {
     pub persistent_bytes: usize,
 }
 
+/// Ce que rend le travail d'une compilation (ADR-139).
+#[derive(Debug)]
+pub enum CompileOutcome {
+    /// L'asset est compilé.
+    Compiled(CompiledAsset),
+    /// La source référence des fichiers voisins que la table ne portait pas : leurs noms
+    /// normalisés, triés, sans doublon. Le résultat du passage est jeté.
+    NeedsFiles(Vec<String>),
+}
+
 /// Une compilation d'asset, en vol ou terminée.
 #[derive(Debug)]
 pub enum AssetJob {
     /// Le travail est soumis ; son résultat n'a pas encore été repris.
-    Running(JobHandle<Result<CompiledAsset, CompileError>>),
+    Running(JobHandle<Result<CompileOutcome, CompileError>>),
     /// Le travail a abouti ; l'asset attend d'être lu.
     Done(CompiledAsset),
+    /// Le travail demande des fichiers voisins ; leurs noms attendent d'être lus.
+    NeedsFiles(Vec<String>),
     /// Le travail a échoué ; le code attend d'être lu.
     Failed(i32),
 }
@@ -498,7 +510,7 @@ impl Session {
     /// compilation d'un autre asset.
     pub fn register_asset_job(
         &mut self,
-        handle: JobHandle<Result<CompiledAsset, CompileError>>,
+        handle: JobHandle<Result<CompileOutcome, CompileError>>,
     ) -> u32 {
         let id = self.next_asset_job;
         self.next_asset_job = self.next_asset_job.wrapping_add(1).max(1);
@@ -516,7 +528,10 @@ impl Session {
         if let AssetJob::Running(handle) = entry {
             if let Some(result) = handle.poll() {
                 *entry = match result.outcome {
-                    JobOutcome::Done(Ok(asset)) => AssetJob::Done(asset),
+                    JobOutcome::Done(Ok(CompileOutcome::Compiled(asset))) => AssetJob::Done(asset),
+                    JobOutcome::Done(Ok(CompileOutcome::NeedsFiles(names))) => {
+                        AssetJob::NeedsFiles(names)
+                    }
                     JobOutcome::Done(Err(error)) => AssetJob::Failed(error.code()),
                     // Un travail annulé ou paniqué ne rend pas d'asset : il est
                     // rapporté comme un échec, ce qu'il est du point de vue de

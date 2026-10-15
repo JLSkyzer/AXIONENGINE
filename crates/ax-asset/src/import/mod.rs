@@ -421,6 +421,23 @@ pub fn check_relative_path(path: &str) -> Result<(), ImportError> {
     Ok(())
 }
 
+/// Forme normale d'une référence à un fichier voisin : ses segments séparés par `/`, sans `.`
+/// ni segment vide — `./tex//cube.mtl` → `tex/cube.mtl` (R-830, ADR-139 §3).
+///
+/// C'est **la** règle de nom des voisins : `axion-cli` la joint au répertoire de la source, le
+/// jeu la cherche dans la table de fichiers que Java lui passe. Le même nom désigne ainsi le même
+/// fichier des deux côtés. `None` pour ce que [`check_relative_path`] refuse (R-531), ou pour une
+/// référence qui ne désigne aucun fichier (`.`).
+#[must_use]
+pub fn normalize_reference(path: &str) -> Option<String> {
+    check_relative_path(path).ok()?;
+    let segments: Vec<&str> = path
+        .split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect();
+    (!segments.is_empty()).then(|| segments.join("/"))
+}
+
 /// Matériau tel que la source le décrit, traduit en DM-05 (ADR-122 §3).
 ///
 /// Les images sont **désignées**, jamais décodées (R-532) : un slot de `desc`
@@ -617,6 +634,35 @@ mod tests {
             "./textures/carrosserie.png",
         ] {
             assert!(check_relative_path(chemin).is_ok(), "{chemin} refusé");
+        }
+    }
+
+    #[test]
+    fn r830_une_reference_voisine_a_une_seule_forme_normale() {
+        for (reference, normale) in [
+            ("cube.mtl", "cube.mtl"),
+            ("./cube.mtl", "cube.mtl"),
+            ("tex//cube.bin", "tex/cube.bin"),
+            ("./tex/./cube.bin", "tex/cube.bin"),
+            ("tex/", "tex"),
+        ] {
+            assert_eq!(
+                normalize_reference(reference).as_deref(),
+                Some(normale),
+                "{reference}"
+            );
+        }
+        // Ce que R-531 refuse, et une référence qui ne désigne aucun fichier.
+        for refusee in [
+            "../secret.bin",
+            "/etc/passwd",
+            "C:/x.bin",
+            "a\\b.bin",
+            "",
+            ".",
+            "./",
+        ] {
+            assert_eq!(normalize_reference(refusee), None, "{refusee}");
         }
     }
 

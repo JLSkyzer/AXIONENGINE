@@ -1,5 +1,8 @@
 package dev.axion.asset;
 
+import java.util.Collections;
+import java.util.SortedMap;
+
 /**
  * Un asset et son état, dans le registre (C-20).
  *
@@ -15,6 +18,7 @@ public final class AssetEntry {
     private final AssetKey key;
     private final byte[] content;
     private final byte[] options;
+    private final SortedMap<String, byte[]> siblings;
     private final long assetId;
 
     private AssetState state = AssetState.DISCOVERED;
@@ -22,12 +26,19 @@ public final class AssetEntry {
     private byte[] compiled;
     private boolean logged;
 
-    AssetEntry(String path, int format, AssetKey key, byte[] content, byte[] options) {
+    AssetEntry(
+            String path,
+            int format,
+            AssetKey key,
+            byte[] content,
+            byte[] options,
+            SortedMap<String, byte[]> siblings) {
         this.path = path;
         this.format = format;
         this.key = key;
         this.content = content;
         this.options = options;
+        this.siblings = Collections.unmodifiableSortedMap(siblings);
         this.assetId = fnv1a64(path);
     }
 
@@ -73,6 +84,14 @@ public final class AssetEntry {
      */
     public byte[] options() {
         return options;
+    }
+
+    /**
+     * {@return les fichiers voisins possibles de la source, par nom relatif à son répertoire ;
+     * une valeur nulle : illisible (ADR-139)}
+     */
+    public SortedMap<String, byte[]> siblings() {
+        return siblings;
     }
 
     /** {@return l'identifiant natif de l'asset} */

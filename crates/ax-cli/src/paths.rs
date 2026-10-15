@@ -5,7 +5,8 @@
 //! et les remontées (R-531) ; ce filet est une défense en profondeur, du côté
 //! qui touche réellement le disque.
 
-use std::path::{Component, Path, PathBuf};
+use ax_asset::import::normalize_reference;
+use std::path::{Path, PathBuf};
 
 /// Résout un chemin relatif contre le répertoire de la source.
 ///
@@ -13,29 +14,17 @@ use std::path::{Component, Path, PathBuf};
 /// traite alors la référence comme absente, ce qui est un refus propre plutôt
 /// qu'une lecture hors du répertoire de l'asset.
 ///
-/// Le refus ne dépend pas de la plateforme, comme celui de l'importeur
-/// (`check_relative_path`) : un antislash ou une lettre de lecteur est refusé
-/// partout, sans quoi un même asset se résoudrait sous Linux et non sous Windows.
+/// La règle est celle du jeu, [`normalize_reference`] (R-830, ADR-139 §3) : le refus ne
+/// dépend pas de la plateforme — un antislash ou une lettre de lecteur est refusé partout —,
+/// et le nom normalisé est celui que le jeu cherche parmi les fichiers que Java lui passe.
 #[must_use]
 pub fn sibling_path(source_dir: &Path, relative: &str) -> Option<PathBuf> {
-    // Séparateur sur l'une des plateformes supportées, simple caractère ailleurs.
-    if relative.contains('\\') {
-        return None;
-    }
-    // Une lettre de lecteur — « C: » — est une racine sans être un `/`.
-    if relative.len() >= 2 && relative.as_bytes()[1] == b':' {
-        return None;
-    }
-    let candidate = Path::new(relative);
-    for component in candidate.components() {
-        match component {
-            // Seuls un segment de nom et le « . » courant sont admis.
-            Component::Normal(_) | Component::CurDir => {}
-            // Racine, préfixe de disque (Windows) ou « .. » : refusés.
-            Component::RootDir | Component::Prefix(_) | Component::ParentDir => return None,
-        }
-    }
-    Some(source_dir.join(candidate))
+    let normalized = normalize_reference(relative)?;
+    Some(
+        normalized
+            .split('/')
+            .fold(source_dir.to_path_buf(), |path, segment| path.join(segment)),
+    )
 }
 
 #[cfg(test)]
@@ -53,9 +42,10 @@ mod tests {
             sibling_path(dir, "textures/carrosserie.png"),
             Some(Path::new("assets/voiture/textures/carrosserie.png").to_path_buf())
         );
+        // La forme normale, celle que le jeu cherche : le même fichier.
         assert_eq!(
             sibling_path(dir, "./voiture.mtl"),
-            Some(Path::new("assets/voiture/./voiture.mtl").to_path_buf())
+            Some(Path::new("assets/voiture/voiture.mtl").to_path_buf())
         );
     }
 

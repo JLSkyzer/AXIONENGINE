@@ -33,7 +33,7 @@ public final class NativeBridge {
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
      * {@code E-1002}.
      */
-    public static final int EXPECTED_ABI_VERSION = 3;
+    public static final int EXPECTED_ABI_VERSION = 4;
 
     /** Succès. */
     public static final int OK = 0;
@@ -111,7 +111,7 @@ public final class NativeBridge {
     static native int metricsExport(long ctx, byte[] out);
 
     static native int assetCompile(
-            long ctx, long assetId, int format, long sourceLen, byte[] optionsCbor);
+            long ctx, long assetId, int format, long sourceLen, long filesLen, byte[] optionsCbor);
 
     static native int assetPoll(long ctx, int jobId, long[] out);
 
@@ -255,6 +255,13 @@ public final class NativeBridge {
     /** Compilation échouée. */
     public static final int ASSET_FAILED = 2;
 
+    /**
+     * La source référence des fichiers voisins que le natif n'a pas reçus (ADR-139) : leurs noms
+     * attendent dans le tampon de sortie, et la compilation est à relancer avec eux. Le travail
+     * est terminé ; sonder de nouveau rend {@link #E_INVALID_HANDLE}.
+     */
+    public static final int ASSET_NEEDS_FILES = 3;
+
     /** Nombre de valeurs que {@link #pollAsset} écrit. */
     public static final int ASSET_POLL_SLOTS = 3;
 
@@ -270,19 +277,25 @@ public final class NativeBridge {
      * jamais le thread appelant ; c'est {@link #pollAsset} qui rapporte son
      * avancement, aucun rappel ne venant du natif (INV-07).
      *
+     * <p>Les fichiers voisins (ADR-139) suivent la source dans le même tampon, en table : la
+     * première soumission n'en porte aucune, et le sondage rend {@link #ASSET_NEEDS_FILES} si la
+     * source en référence.
+     *
      * @param ctx jeton de contexte
      * @param assetId identifiant de l'asset produit
      * @param format code de format, voir {@code SourceFormats}
      * @param sourceLen longueur de la source écrite dans le tampon d'entrée
+     * @param filesLen longueur de la table des fichiers voisins qui suit la source, zéro sans
+     *     table
      * @param optionsCbor texte du {@code <modèle>.axion.json} voisin en chaîne
      *     CBOR, ou {@code null} sans fichier (ADR-135) ; une option refusée fait
      *     échouer le travail, et son code se lit au sondage
      * @return l'identifiant du travail, strictement positif, ou un code d'erreur
      */
     public static int compileAsset(
-            long ctx, long assetId, int format, long sourceLen, byte[] optionsCbor) {
+            long ctx, long assetId, int format, long sourceLen, long filesLen, byte[] optionsCbor) {
         CROSSINGS.increment();
-        return assetCompile(ctx, assetId, format, sourceLen, optionsCbor);
+        return assetCompile(ctx, assetId, format, sourceLen, filesLen, optionsCbor);
     }
 
     /**
@@ -290,7 +303,8 @@ public final class NativeBridge {
      *
      * <p>Le tableau reçoit {@code [état, taille, code d'erreur]}. Une
      * compilation aboutie dépose son A3D dans le tampon
-     * {@code AXION_BUF_ASSET_OUT}, et son résultat n'est rendu
+     * {@code AXION_BUF_ASSET_OUT}, une compilation qui demande des fichiers
+     * voisins y dépose leurs noms ({@link #ASSET_NEEDS_FILES}), et ce résultat n'est rendu
      * <strong>qu'une fois</strong> : sonder de nouveau rend
      * {@link #E_INVALID_HANDLE}, ce qui vaut mieux qu'une seconde lecture d'un
      * tampon qui a pu changer.

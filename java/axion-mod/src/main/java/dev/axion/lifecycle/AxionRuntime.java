@@ -7,6 +7,7 @@ import dev.axion.asset.NativeAssetCompiler;
 import dev.axion.bootstrap.AxionBootstrap;
 import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.bootstrap.NativeApi;
+import dev.axion.config.ConfigSchema;
 import dev.axion.config.ConfigSchema.Scope;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
@@ -49,6 +50,9 @@ import java.util.function.IntFunction;
  * d'interrompre le travail des autres mods (R-400).
  */
 public final class AxionRuntime {
+
+    /** Taille maximale d'une source, qui borne aussi les fichiers voisins gardés (ADR-139). */
+    private static final String MAX_SOURCE_BYTES = "assets.max_source_bytes";
 
     private final Map<String, HookGuard> guards = new LinkedHashMap<>();
     private final BiFunction<PlatformAdapter, Properties, BootstrapOutcome> bootstrap;
@@ -625,6 +629,24 @@ public final class AxionRuntime {
         }
         long seconds = outcome.config().getInt("assets.startup_timeout_s");
         return seconds * 1_000_000_000L;
+    }
+
+    /**
+     * {@return la taille au-delà de laquelle un fichier voisin n'est pas gardé au
+     * rechargement, en octets : {@code assets.max_source_bytes} (ADR-139)}
+     *
+     * <p>Sans runtime natif, rien ne sera compilé ; la valeur par défaut du registre
+     * borne quand même ce que le rechargement retient.
+     */
+    public long maxSiblingBytes() {
+        if (hasNativeRuntime()) {
+            return outcome.config().getInt(MAX_SOURCE_BYTES);
+        }
+        return ConfigSchema.COMMON_OPTIONS.stream()
+                .filter(option -> option.path().equals(MAX_SOURCE_BYTES))
+                .map(option -> (Long) option.defaultValue())
+                .findFirst()
+                .orElseThrow();
     }
 
     /**

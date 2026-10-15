@@ -129,7 +129,8 @@ public final class AxionForgeEntrypoint {
         event.addListener(new SimplePreparableReloadListener<ResourceAssetSource>() {
             @Override
             protected ResourceAssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {
-                return new ResourceAssetSource(manager, ResourceAssetSource.MODELS);
+                return new ResourceAssetSource(
+                        manager, ResourceAssetSource.MODELS, runtime.maxSiblingBytes());
             }
 
             @Override

@@ -342,6 +342,7 @@ f 1 2 3
             0x4242,
             2,
             SOURCE.len() as u64,
+            0,
             std::ptr::null(),
             0,
             &raw mut job,

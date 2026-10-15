@@ -52,7 +52,7 @@ use ax_physics::{
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
 /// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`).
-pub const AXION_ABI_VERSION: u32 = 3;
+pub const AXION_ABI_VERSION: u32 = 4;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -96,6 +96,23 @@ pub const AXION_ASSET_COMPILED: u32 = 1;
 
 /// Compilation échouée (SM-01, `FAILED`).
 pub const AXION_ASSET_FAILED: u32 = 2;
+
+/// Compilation qui demande des fichiers voisins (ADR-139) : `ASSET_OUT` porte leurs noms, et
+/// l'appelant renvoie la source avec eux. Pour SM-01, le travail continue (`COMPILING`).
+pub const AXION_ASSET_NEEDS_FILES: u32 = 3;
+
+/// Entrée de la table de fichiers voisins : le fichier est fourni (ADR-139).
+pub const AXION_FILE_PRESENT: u32 = 0;
+
+/// Entrée de la table de fichiers voisins : l'appelant ne l'a pas — la compilation fait comme
+/// la CLI dont la lecture échoue (ADR-139).
+pub const AXION_FILE_ABSENT: u32 = 1;
+
+/// Plus grand nombre d'entrées d'une table de fichiers voisins.
+pub const MAX_SIBLING_FILES: u32 = 256;
+
+/// Plus long nom d'une entrée de la table, en octets.
+pub const MAX_SIBLING_NAME_BYTES: u32 = 1024;
 
 /// Exécute `action` en interceptant toute panic (R-310, INV-05).
 ///
@@ -439,6 +456,78 @@ fn options_text_of(cbor: &[u8]) -> Option<&[u8]> {
     (usize::try_from(len).ok()? == body.len()).then_some(body)
 }
 
+/// Les fichiers voisins d'une soumission, par nom normalisé : `Some` présent, `None` absent.
+type SiblingFiles = std::collections::BTreeMap<String, Option<Vec<u8>>>;
+
+/// Lit la table des fichiers voisins qui suit la source dans `ASSET_IN` (ADR-139).
+///
+/// `None` si elle est mal formée : bornes dépassées, nom vide, trop long, non UTF-8 ou pas sous
+/// sa forme normale, doublon, drapeau inconnu, octets d'une entrée absente, ou reste après la
+/// dernière entrée. Une table vide (`files_len` nul) ne porte aucun fichier.
+fn parse_sibling_table(table: &[u8]) -> Option<SiblingFiles> {
+    let mut files = SiblingFiles::new();
+    if table.is_empty() {
+        return Some(files);
+    }
+    let mut rest = table;
+    let count = take_u32(&mut rest)?;
+    if count > MAX_SIBLING_FILES {
+        return None;
+    }
+    for _ in 0..count {
+        let name_len = take_u32(&mut rest)?;
+        let flags = take_u32(&mut rest)?;
+        let data_len = usize::try_from(take_u64(&mut rest)?).ok()?;
+        if name_len == 0 || name_len > MAX_SIBLING_NAME_BYTES {
+            return None;
+        }
+        let name = core::str::from_utf8(take(&mut rest, name_len as usize)?).ok()?;
+        if ax_asset::import::normalize_reference(name).as_deref() != Some(name) {
+            return None;
+        }
+        let data = take(&mut rest, data_len)?;
+        let value = match flags {
+            AXION_FILE_PRESENT => Some(data.to_vec()),
+            AXION_FILE_ABSENT if data.is_empty() => None,
+            _ => return None,
+        };
+        if files.insert(name.to_owned(), value).is_some() {
+            return None;
+        }
+    }
+    rest.is_empty().then_some(files)
+}
+
+/// Prend `len` octets en tête de `rest`.
+fn take<'a>(rest: &mut &'a [u8], len: usize) -> Option<&'a [u8]> {
+    if rest.len() < len {
+        return None;
+    }
+    let (head, tail) = rest.split_at(len);
+    *rest = tail;
+    Some(head)
+}
+
+fn take_u32(rest: &mut &[u8]) -> Option<u32> {
+    Some(u32::from_le_bytes(take(rest, 4)?.try_into().ok()?))
+}
+
+fn take_u64(rest: &mut &[u8]) -> Option<u64> {
+    Some(u64::from_le_bytes(take(rest, 8)?.try_into().ok()?))
+}
+
+/// La liste de `NEEDS_FILES` : `u32` du nombre, puis par nom `u32` de sa longueur et ses octets
+/// UTF-8, petit-boutiste (ADR-139).
+fn encode_names(names: &[String]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(4 + names.iter().map(|name| 4 + name.len()).sum::<usize>());
+    out.extend_from_slice(&u32::try_from(names.len()).unwrap_or(u32::MAX).to_le_bytes());
+    for name in names {
+        out.extend_from_slice(&u32::try_from(name.len()).unwrap_or(u32::MAX).to_le_bytes());
+        out.extend_from_slice(name.as_bytes());
+    }
+    out
+}
+
 /// Lance la compilation d'un asset (IF-06).
 ///
 /// La source est lue dans le tampon `ASSET_IN`, où Java l'a écrite : R-313
@@ -448,6 +537,14 @@ fn options_text_of(cbor: &[u8]) -> Option<&[u8]> {
 /// La compilation est **asynchrone** (R-521) : elle part sur le pool de jobs,
 /// et l'appelant sonde `axion_asset_poll`. Aucun rappel de Rust vers Java
 /// (INV-07).
+///
+/// `files_len` octets suivent la source dans `ASSET_IN` : la **table des fichiers voisins**
+/// que la source référence (ADR-139) — vide à la première soumission. Le travail cherche
+/// chaque référence dans la table, sous sa forme normale
+/// ([`ax_asset::import::normalize_reference`], la règle de `axion-cli`) ; s'il en manque, il
+/// les nomme toutes et le sondage rend [`AXION_ASSET_NEEDS_FILES`] : l'appelant renvoie alors
+/// la source avec elles, présentes ou marquées absentes. Une table mal formée est refusée
+/// tout de suite (`AXION_E_INVALID_BUFFER`).
 ///
 /// `options_cbor` porte le texte du `<modèle>.axion.json` voisin de la source,
 /// tel quel, comme **chaîne CBOR** ; `options_len` nul s'il n'y en a pas
@@ -467,6 +564,7 @@ pub unsafe extern "C" fn axion_asset_compile(
     asset_id: u64,
     source_format: u32,
     source_len: u64,
+    files_len: u64,
     options_cbor: *const u8,
     options_len: usize,
     out_job_id: *mut u32,
@@ -501,7 +599,17 @@ pub unsafe extern "C" fn axion_asset_compile(
             // La source est copiée hors du tampon partagé : celui-ci peut être
             // réalloué au tick suivant (R-270), et le worker travaillerait
             // alors sur de la mémoire qui ne lui appartient plus.
-            let Some(source) = session.buffers().payload(BufferKind::AssetIn, source_len) else {
+            let Some(total) = source_len.checked_add(files_len) else {
+                return Err(AXION_E_INVALID_BUFFER);
+            };
+            let Some(payload) = session.buffers().payload(BufferKind::AssetIn, total) else {
+                return Err(AXION_E_INVALID_BUFFER);
+            };
+            let Ok(split) = usize::try_from(source_len) else {
+                return Err(AXION_E_INVALID_BUFFER);
+            };
+            let (source, table) = payload.split_at(split);
+            let Some(siblings) = parse_sibling_table(table) else {
                 return Err(AXION_E_INVALID_BUFFER);
             };
             let source = source.to_vec();
@@ -534,9 +642,30 @@ pub unsafe extern "C" fn axion_asset_compile(
                     options.authored = parsed.options;
                     notes = parsed.warnings;
                 }
-                let mut compiled = ax_asset::compile::compile(&source, format, &options, |_| None)?;
+                // ADR-139 : une référence se cherche sous sa forme normale, celle que la
+                // CLI joint au répertoire de la source. Présente, ses octets ; absente, rien,
+                // comme une lecture qui échoue ; inconnue, elle est notée et reçoit un contenu
+                // vide provisoire, pour que l'importeur demande tout le reste dans ce passage.
+                let mut requested = std::collections::BTreeSet::new();
+                let compiled = ax_asset::compile::compile(&source, format, &options, |reference| {
+                    let name = ax_asset::import::normalize_reference(reference)?;
+                    match siblings.get(&name) {
+                        Some(Some(bytes)) => Some(bytes.clone()),
+                        Some(None) => None,
+                        None => {
+                            requested.insert(name);
+                            Some(Vec::new())
+                        }
+                    }
+                });
+                if !requested.is_empty() {
+                    return Ok(context::CompileOutcome::NeedsFiles(
+                        requested.into_iter().collect(),
+                    ));
+                }
+                let mut compiled = compiled?;
                 compiled.warnings.splice(0..0, notes);
-                Ok(compiled)
+                Ok(context::CompileOutcome::Compiled(compiled))
             });
             Ok(handle)
         });
@@ -597,6 +726,15 @@ pub unsafe extern "C" fn axion_asset_poll(
                     let code = *code;
                     session.forget_asset_job(job_id);
                     Ok((AXION_ASSET_FAILED, 0, code))
+                }
+                context::AssetJob::NeedsFiles(names) => {
+                    let list = encode_names(names);
+                    let written = session.buffers().write_payload(BufferKind::AssetOut, &list);
+                    session.forget_asset_job(job_id);
+                    match written {
+                        Some(size) => Ok((AXION_ASSET_NEEDS_FILES, size, AXION_OK)),
+                        None => Ok((AXION_ASSET_FAILED, 0, AXION_E_INVALID_BUFFER)),
+                    }
                 }
                 context::AssetJob::Done(asset) => {
                     let bytes = asset.bytes.clone();
