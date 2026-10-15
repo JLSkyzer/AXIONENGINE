@@ -23,6 +23,7 @@ import dev.axion.physics.SimulationTrace;
 import dev.axion.physics.StepBreakdown;
 import dev.axion.debug.DevMode;
 import dev.axion.diag.AssetCacheMetrics;
+import dev.axion.diag.DefinitionMetrics;
 import dev.axion.diag.JavaMetrics;
 import dev.axion.platform.PlatformAdapter;
 import dev.axion.render.RenderCapabilities;
@@ -107,6 +108,8 @@ public final class AxionRuntime {
             JavaMetrics.GLOBAL.budget("budgets.idle_hook_ns", "ns");
     /** R-500 : l'activité du cache d'assets (C-25), à travers les rechargements. */
     private static final AssetCacheMetrics ASSET_CACHE_METRICS = new AssetCacheMetrics(JavaMetrics.GLOBAL);
+    /** R-500 : les rechargements des definitions (C-27). */
+    private static final DefinitionMetrics DEFINITION_METRICS = new DefinitionMetrics(JavaMetrics.GLOBAL);
     /** Trace de la simulation en cours d'écriture ({@code /axion debug trace}), ou {@code null}. */
     private SimulationTrace trace;
     /** Fichier de la trace en cours, ou {@code null}. */
@@ -688,13 +691,33 @@ public final class AxionRuntime {
                     outcome.config().getBoolean("modules.vehicles"),
                     path -> known != null && known.entry(path) != null,
                     outcome.config().getBoolean("content.examples"));
+            long start = System.nanoTime();
             DefinitionRegistry loaded = DefinitionRegistry.load(source, rules);
+            long nanos = System.nanoTime() - start;
             definitions = loaded;
+            DEFINITION_METRICS.reloaded(
+                    loaded.size(), loaded.refusals().size(), nanos, sourceBytes(source));
             transitions.add(loaded.size() + " definition(s) chargée(s), "
                     + loaded.refusals().size() + " refusée(s)");
             loaded.refusals().forEach(transitions::add);
         });
         return definitions.size();
+    }
+
+    /**
+     * {@return les octets des sources que le rechargement retient en mémoire} Une ressource
+     * illisible ne compte pas : elle n'est pas retenue.
+     */
+    private static long sourceBytes(AssetSource source) {
+        long total = 0;
+        for (String path : source.list()) {
+            try {
+                total += source.read(path).length;
+            } catch (IOException unreadable) {
+                // Déjà signalée par le rechargement ; rien n'est retenu pour elle.
+            }
+        }
+        return total;
     }
 
     /** {@return la registry des definitions, vide avant tout rechargement} */

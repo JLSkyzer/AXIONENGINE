@@ -91,6 +91,24 @@ struct SessionMetrics {
     sim_bounds_unavailable: MetricId,
     /// Octets vivants de chaque arène, dans l'ordre d'[`ArenaClass::ALL`] (§31.1, INV-08).
     memory: [MetricId; ArenaClass::ALL.len()],
+    /// La chaîne d'assets, par étape (§31.1, R-500).
+    assets: AssetMetrics,
+}
+
+/// Métriques de la chaîne d'assets : ses compilations, ce qu'elles produisent, et la durée de
+/// chaque étape — import (C-21), validation (C-22), optimisation (C-23), colliders (C-32),
+/// écriture (C-24). La mémoire de travail des compilations est celle de l'arène `SCRATCH`.
+#[derive(Debug, Clone, Copy)]
+struct AssetMetrics {
+    compiled: MetricId,
+    failed: MetricId,
+    vertices: MetricId,
+    output_bytes: MetricId,
+    import: MetricId,
+    validate: MetricId,
+    optimize: MetricId,
+    colliders: MetricId,
+    write: MetricId,
 }
 
 /// État interne d'une session native.
@@ -524,9 +542,11 @@ impl Session {
     /// garder ici jusqu'à ce que Java vienne le chercher respecte INV-07, qui
     /// interdit à Rust de rappeler Java.
     pub fn poll_asset_job(&mut self, id: u32) -> Option<&AssetJob> {
+        let metrics = &self.metrics;
         let entry = self.asset_jobs.get_mut(&id)?;
         if let AssetJob::Running(handle) = entry {
             if let Some(result) = handle.poll() {
+                record_asset_outcome(metrics, &result.outcome);
                 *entry = match result.outcome {
                     JobOutcome::Done(Ok(CompileOutcome::Compiled(asset))) => AssetJob::Done(asset),
                     JobOutcome::Done(Ok(CompileOutcome::NeedsFiles(names))) => {
@@ -849,6 +869,33 @@ fn build_metrics() -> SessionMetrics {
             .expect("métrique de mémoire native")
     });
 
+    // §31.1, R-500 : la chaîne d'assets, par étape, et ce qu'elle produit.
+    let mut asset_counter = |name: &str, unit| {
+        builder
+            .counter(name, unit)
+            .expect("métrique de la chaîne d'assets")
+    };
+    let compiled = asset_counter("axion.asset.compiled", "count");
+    let failed = asset_counter("axion.asset.failed", "count");
+    let vertices = asset_counter("axion.asset.vertices", "count");
+    let output_bytes = asset_counter("axion.asset.output_bytes", "bytes");
+    let mut stage = |name: &str| {
+        builder
+            .duration(name)
+            .expect("métrique d'étape de la chaîne d'assets")
+    };
+    let assets = AssetMetrics {
+        compiled,
+        failed,
+        vertices,
+        output_bytes,
+        import: stage("axion.asset.import_ns"),
+        validate: stage("axion.asset.validate_ns"),
+        optimize: stage("axion.asset.optimize_ns"),
+        colliders: stage("axion.asset.colliders_ns"),
+        write: stage("axion.asset.write_ns"),
+    };
+
     SessionMetrics {
         registry: builder.build(),
         budgets,
@@ -873,6 +920,34 @@ fn build_metrics() -> SessionMetrics {
         sim_invalid_states,
         sim_bounds_unavailable,
         memory,
+        assets,
+    }
+}
+
+/// Compte une compilation terminée (§31.1, R-500). Une demande de fichiers voisins n'est pas une
+/// fin : le passage suivant comptera. Un travail abandonné n'est jamais repris, donc jamais compté.
+fn record_asset_outcome(
+    metrics: &SessionMetrics,
+    outcome: &JobOutcome<Result<CompileOutcome, CompileError>>,
+) {
+    let registry = &metrics.registry;
+    let assets = &metrics.assets;
+    match outcome {
+        JobOutcome::Done(Ok(CompileOutcome::Compiled(asset))) => {
+            registry.increment(assets.compiled);
+            registry.add(assets.vertices, asset.vertex_count as u64);
+            registry.add(assets.output_bytes, asset.bytes.len() as u64);
+            let timings = asset.timings;
+            registry.record(assets.import, timings.import_ns);
+            registry.record(assets.validate, timings.validate_ns);
+            registry.record(assets.optimize, timings.optimize_ns);
+            registry.record(assets.colliders, timings.colliders_ns);
+            registry.record(assets.write, timings.write_ns);
+        }
+        JobOutcome::Done(Ok(CompileOutcome::NeedsFiles(_))) => {}
+        JobOutcome::Done(Err(_)) | JobOutcome::Cancelled | JobOutcome::Panicked => {
+            registry.increment(assets.failed);
+        }
     }
 }
 

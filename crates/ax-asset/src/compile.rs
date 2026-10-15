@@ -162,6 +162,24 @@ pub struct CompiledAsset {
     pub collider_count: usize,
     /// Avertissements rencontrés, à journaliser une fois (R-912, R-530).
     pub warnings: Vec<String>,
+    /// Durée de chaque étape de la chaîne (§31.1, R-500) ; sans effet sur les octets produits.
+    pub timings: StageTimings,
+}
+
+/// Durée de chaque étape d'une compilation, en nanosecondes (§31.1 : les assets se mesurent
+/// « par étape du pipeline » ; R-500).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StageTimings {
+    /// Import de la source et options de l'auteur (C-21).
+    pub import_ns: u64,
+    /// Les deux passages de la liste de contrôle (C-22).
+    pub validate_ns: u64,
+    /// Optimisation : fusion, normales, tangentes, cache de sommets, LOD, bornes (C-23).
+    pub optimize_ns: u64,
+    /// Génération des colliders (C-32).
+    pub colliders_ns: u64,
+    /// Écriture du conteneur A3D et compression (C-24).
+    pub write_ns: u64,
 }
 
 /// Compile une source en conteneur A3D.
@@ -177,6 +195,10 @@ pub fn compile(
     options: &CompileOptions,
     resolve: impl FnMut(&str) -> Option<Vec<u8>>,
 ) -> Result<CompiledAsset, CompileError> {
+    let started = std::time::Instant::now();
+    let elapsed =
+        |from: std::time::Instant| u64::try_from(from.elapsed().as_nanos()).unwrap_or(u64::MAX);
+    let mut timings = StageTimings::default();
     let (mut asset, mut warnings, root_extras) = import(source, format, options, resolve)?;
     let options = &effective_options(options, root_extras.as_deref(), &mut warnings)?;
     let authored = &options.authored;
@@ -192,10 +214,16 @@ pub fn compile(
         asset.missing_normals = vec![true; asset.vertices.len()];
     }
 
-    // Les normales absentes de la source sont exemptées : C-23 les génère.
-    check(&asset, options, &asset.missing_normals)?;
+    timings.import_ns = elapsed(started);
 
+    // Les normales absentes de la source sont exemptées : C-23 les génère.
+    let stage = std::time::Instant::now();
+    check(&asset, options, &asset.missing_normals)?;
+    timings.validate_ns = elapsed(stage);
+
+    let stage = std::time::Instant::now();
     let optimized = optimize(&mut asset, &authored.lod, authored.generate_tangents);
+    timings.optimize_ns = elapsed(stage);
     warnings.extend(optimized.warnings);
     if !authored.generate_tangents && asset.materials.iter().any(ImportedMaterial::has_normal_map) {
         warnings.push(
@@ -209,6 +237,7 @@ pub fn compile(
     // calcule les boîtes à l'étape 7). Ils repassent donc la liste de contrôle
     // ci-dessous, au même titre que la géométrie optimisée. Les requêtes issues
     // des extras de node priment sur le mode de definition (R-620).
+    let stage = std::time::Instant::now();
     let built = build_colliders(
         &mut asset.nodes,
         &asset.meshes,
@@ -222,13 +251,18 @@ pub fn compile(
     asset.colliders = built.colliders;
     asset.hull_points = built.hull_points;
     asset.compound_children = built.compound_children;
+    timings.colliders_ns = elapsed(stage);
 
     // La sortie de C-23, sans exemption : c'est ce que le chargement vérifiera
     // (R-540). Le vérifier dès ici fait d'un défaut de l'optimizer un refus à
     // la compilation, plutôt qu'une entrée de cache refusée à chaque chargement.
+    let stage = std::time::Instant::now();
     check(&asset, options, &[])?;
+    timings.validate_ns += elapsed(stage);
 
+    let stage = std::time::Instant::now();
     let bytes = write_container(&asset, optimized.lods.as_ref(), options)?;
+    timings.write_ns = elapsed(stage);
     Ok(CompiledAsset {
         bytes,
         vertex_count: asset.vertices.len(),
@@ -236,6 +270,7 @@ pub fn compile(
         bounds: optimized.bounds,
         collider_count: asset.colliders.len(),
         warnings,
+        timings,
     })
 }
 

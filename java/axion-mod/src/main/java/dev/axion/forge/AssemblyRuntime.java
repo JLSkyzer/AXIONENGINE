@@ -8,6 +8,7 @@ import dev.axion.asset.AssetRegistry;
 import dev.axion.definition.AssemblyKind;
 import dev.axion.definition.Definition;
 import dev.axion.definition.DefinitionRegistry;
+import dev.axion.diag.EntityMetrics;
 import dev.axion.physics.BodyBounds;
 import dev.axion.physics.BodyDescription;
 import dev.axion.physics.BodyLedger;
@@ -113,9 +114,12 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         if (event.getLevel().isClientSide() || !(event.getEntity() instanceof AxionEntity assembly)) {
             return;
         }
+        // R-500 : une entrée, et une erreur si elle entre inerte (R-704).
+        EntityMetrics.GLOBAL.joined(assembly.isInert());
         if (!ledger.hasBody(handleIndexOf(assembly))) {
             createBody(assembly, (Level) event.getLevel());
         }
+        EntityMetrics.GLOBAL.bodies(ledger.bodies());
     }
 
     /**
@@ -169,8 +173,11 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         if (event.getLevel().isClientSide() || !(event.getEntity() instanceof AxionEntity assembly)) {
             return;
         }
+        EntityMetrics.GLOBAL.left();
         int index = handleIndexOf(assembly);
-        if (!ledger.detach(index, assembly, assembly.getRemovalReason() != null)) {
+        boolean detached = ledger.detach(index, assembly, assembly.getRemovalReason() != null);
+        EntityMetrics.GLOBAL.bodies(ledger.bodies());
+        if (!detached) {
             return;
         }
         implausibleBounds.remove(index);
@@ -284,6 +291,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     @Override
     public void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds) {
         AuthoritativeThread.require();
+        long start = System.nanoTime();
         // ADR-120 : l'emprise de rang i est celle de l'état de rang i. Sans emprises (natif
         // antérieur au schéma 1 de SIM_OUT), les hitbox restent provisoires.
         boolean withBounds = bounds.size() == states.size();
@@ -308,6 +316,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 applyBounds(entity, bounds.get(i));
             }
         }
+        // R-500 : la durée de l'application des états, côté entité.
+        EntityMetrics.GLOBAL.applied(System.nanoTime() - start);
     }
 
     /**

@@ -6,6 +6,7 @@ import dev.axion.bridge.NativeBridge;
 import dev.axion.diag.AssetsReport;
 import dev.axion.diag.BenchRunner;
 import dev.axion.diag.BuildInfo;
+import dev.axion.diag.EntityMetrics;
 import dev.axion.diag.MetricsReport;
 import dev.axion.diag.SchemaTwoWriter;
 import dev.axion.diag.StatusReport;
@@ -261,6 +262,7 @@ final class AxionCommands {
                 1,
                 outcome.config().getInt("limits.max_spawn_per_command"));
         if (!decision.accepted()) {
+            EntityMetrics.GLOBAL.spawnRefused();
             source.sendFailure(Component.literal("AXION : " + decision.refusal()));
             return 0;
         }
@@ -275,12 +277,14 @@ final class AxionCommands {
             return created;
         });
         if (!(entity instanceof AxionEntity assembly)) {
+            EntityMetrics.GLOBAL.spawnRefused();
             source.sendFailure(Component.literal("AXION : l'entité n'a pas pu être construite"));
             return 0;
         }
         assembly.bind(decision.definition());
         if (!level.tryAddFreshEntityWithPassengers(assembly)) {
             // Même refus que `/summon` : un UUID déjà présent dans le monde.
+            EntityMetrics.GLOBAL.spawnRefused();
             source.sendFailure(Component.literal("AXION : UUID déjà présent dans le monde"));
             return 0;
         }

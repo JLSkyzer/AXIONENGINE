@@ -1440,7 +1440,11 @@ est tenue par ce qui existe.
           publication, M12), un test confronte les deux ; (16) R-001 : un ADR établit qu'un type exigé
           par une signature du §23.2, sans implémentation ni fournisseur, n'est pas un bouchon.
         - **À faire, issu du quatrième tour** :
-          - [ ] Métriques de R-500 : C-23 (natif), C-27, C-50.
+          - [x] Métriques de R-500 ✔ (2026-10-16) : chaîne d'assets par étape, en natif
+                (`axion.asset.{import,validate,optimize,colliders,write}_ns`, compilées, échouées, sommets,
+                octets ; `StageTimings` de `compile`, `asset_metrics_abi`, mutation vérifiée) ; definitions
+                (`axion.definition.*`) ; entité (`axion.entity.*`, vérifiées sous Forge par
+                `LivrableM2GameTests`). Imputation aux budgets, surcharge et fallback : M5 avec C-77.
           - [x] R-1751 ✔ (2026-10-16) : `axion_api_version` (`gradle.properties`) donne la version de
                 l'artefact (`-SNAPSHOT` hors `-Paxion.release`) ; `ApiArtifactVersionTest` la confronte à
                 `ApiVersion.CURRENT` (mutation vérifiée, après avoir déclaré la valeur en entrée du test).

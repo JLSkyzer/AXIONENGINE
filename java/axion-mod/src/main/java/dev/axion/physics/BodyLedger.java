@@ -138,6 +138,11 @@ public final class BodyLedger<E> {
         return aside.size();
     }
 
+    /** {@return le nombre d'assemblies dotées d'un corps} */
+    public int bodies() {
+        return bodies.size();
+    }
+
     /** Oublie tout (arrêt du serveur). */
     public void clear() {
         bodies.clear();

@@ -43,6 +43,8 @@ Definition of Done (PARTIE 37.3).
     disque (R-561), metriques `axion.asset.cache.*` (R-500), desactivable en
     mode developpeur (`-Daxion.dev.asset_cache=false`, 31.3) ; graphe de scene
     `ax-scene` (C-30) ;
+  - metriques de R-500 : la chaine d'assets par etape (`axion.asset.*`), les
+    definitions (`axion.definition.*`) et l'entite (`axion.entity.*`) ;
   - definitions data-driven (C-27) : JSON strict, schema 1 publie, refus
     individuel nomme ; definitions de demonstration derriere `content.examples`
     (amendement A2 de l'annexe A.3) ;

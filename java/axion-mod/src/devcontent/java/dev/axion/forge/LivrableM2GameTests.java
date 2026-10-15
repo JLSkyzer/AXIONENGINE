@@ -37,6 +37,11 @@ public final class LivrableM2GameTests {
 
     private LivrableM2GameTests() {}
 
+    /** {@return un compteur de l'entité (R-500), dans le registre que l'export publie} */
+    private static long compteur(String nom) {
+        return dev.axion.diag.JavaMetrics.GLOBAL.counter(dev.axion.diag.EntityMetrics.PREFIX + nom, "count").value();
+    }
+
     @GameTest(template = "test/plancher", timeoutTicks = 200)
     public static void uneAssemblyApparaitSeSauvegardeSeRechargeEtSeRetireParSesCommandes(
             GameTestHelper helper) {
@@ -51,9 +56,20 @@ public final class LivrableM2GameTests {
                 .withSuppressedOutput();
         Commands commandes = level.getServer().getCommands();
 
+        // R-500 : l'entrée et la sortie se comptent. D'autres GameTests font apparaître des
+        // assemblies en même temps : le compteur global n'est comparé qu'en « au moins une ».
+        long entrees = compteur("joined");
+        long sorties = compteur("left");
+        long refus = compteur("spawn_refused");
+
         int creees = commandes.performPrefixedCommand(source, String.format(
                 Locale.ROOT, "axion spawn axion:test_cube %.4f %.4f %.4f", depart.x, depart.y, depart.z));
         helper.assertTrue(creees == 1, "/axion spawn a rendu " + creees);
+        helper.assertTrue(compteur("joined") > entrees, "entrée de l'assembly non comptée");
+        // Seul ce test demande une definition inconnue : le refus se compte exactement.
+        int refusee = commandes.performPrefixedCommand(source, "axion spawn axion:definition_inconnue 0 0 0");
+        helper.assertTrue(refusee == 0, "definition inconnue acceptée");
+        helper.assertTrue(compteur("spawn_refused") == refus + 1, "refus d'apparition non compté");
         List<AxionEntity> trouvees =
                 level.getEntitiesOfClass(AxionEntity.class, new AABB(depart, depart).inflate(1.0));
         helper.assertTrue(trouvees.size() == 1, trouvees.size() + " assembly(s) au point d'apparition");
@@ -71,6 +87,7 @@ public final class LivrableM2GameTests {
         int retirees = commandes.performPrefixedCommand(source, "axion remove @e[type=axion:assembly,distance=..2]");
         helper.assertTrue(retirees == 1, "/axion remove a rendu " + retirees);
         helper.assertTrue(cube.isRemoved(), "l'assembly est restée dans le monde");
+        helper.assertTrue(compteur("left") > sorties, "sortie de l'assembly non comptée");
 
         // Le rechargement : une entité neuve, lue depuis la sauvegarde comme au chargement d'un chunk.
         Entity relue = EntityType.loadEntityRecursive(sauvegarde, level, entite -> entite);
