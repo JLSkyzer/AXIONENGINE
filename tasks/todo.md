@@ -1420,7 +1420,12 @@ est tenue par ce qui existe.
           - [x] C-25 ✔ (2026-10-16) : `AssetCache.Observer`, publié par `AssetCacheMetrics` sous
                 `axion.asset.cache.*` (accès, écritures, évictions, invalidations, erreurs, durée disque,
                 occupation, activité) ; `-Daxion.dev.asset_cache=false`, lu en mode développeur seulement.
-          - [ ] R-562 : empreintes de référence de la sortie du compilateur, par plateforme.
+          - [x] R-562 ✔ (2026-10-16) : `ax-asset/tests/compiler_fingerprints.rs` — six sources construites
+                en valeurs exactes, empreinte (octets, FNV-1a 64) de chaque A3D figée par plateforme dans
+                `tests/golden/compiler-v10-{os}-{arch}.txt` ; une sortie changée sans incrément échoue
+                (mutation vérifiée : zstd 9 → 8). Références Linux et macOS récoltées par une sonde en CI.
+                Constat : x86_64 identique sur les trois systèmes, macOS aarch64 différent pour les
+                sources maillées (ADR-106, cause non établie).
           - [ ] C-72 : `bench-quick` sur B-02/B-09, non bloquant (ADR, écart temporaire à R-2251) ;
                 R-2231 (configuration de mesure complète, vrai commit au build).
         - **Restent à trancher** : métriques et budgets de C-23, C-27, C-50 (R-500, R-1850) et ce que
