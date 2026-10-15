@@ -1415,7 +1415,8 @@ est tenue par ce qui existe.
           et ADR-107 ratifiés, table d'attribution de T-240..T-404 à consigner par ADR, avec les tests
           de R-581 et R-701. Consigné dans ADR-137.
         - **À faire, issu du troisième tour** :
-          - [ ] ADR-141 : attribution de T-240..T-244, T-280..T-284, T-400..T-404 ; tests de R-581, R-701.
+          - [x] ADR-141 ✔ (2026-10-15) : attribution de T-240..T-244, T-280..T-284, T-400..T-404 ; tests de
+                R-581 (`DefinitionCodeExecutionTest`) et R-701 (`EntityTickPhysicsTest`), vérifiés par mutation.
           - [ ] C-25 : compteurs et jauges du cache (R-500) ; cache désactivable en mode développeur.
           - [ ] R-562 : empreintes de référence de la sortie du compilateur, par plateforme.
           - [ ] C-72 : `bench-quick` sur B-02/B-09, non bloquant (ADR, écart temporaire à R-2251) ;
@@ -1455,8 +1456,8 @@ est tenue par ce qui existe.
         - [ ] Portée de la DoD « en M2 » pour des composants STABLE dont une part est renvoyée à M3..M7
               (C-23 tranche D, C-27 étapes 4-5 et cinq familles, C-50 R-700/R-703/R-705, C-74
               `deform`/`replay`) : un ADR qui la borne, comme ADR-134.
-        - [ ] Attribution de T-240..T-244, T-280..T-284 et T-400..T-404, que le CDC ne décrit pas un par un —
-              tranché le 2026-10-15 : ADR-141, ci-dessus.
+        - [x] Attribution de T-240..T-244, T-280..T-284 et T-400..T-404, que le CDC ne décrit pas un par un —
+              [ADR-141](../docs/decisions/ADR-141.md), ratifié le 2026-10-15.
         - [ ] Métriques et budgets propres de C-23, C-25, C-27, C-50 (R-1850, INV-19, 31.1) ;
               `assets.max_compile_ms` jamais lu (R-2131) ; R-562 vérifié par parité seulement.
         - [x] ADR-106 et ADR-107, « décidés par Claude », jamais ratifiés — ratifiés par Killian le 2026-10-15 ;
