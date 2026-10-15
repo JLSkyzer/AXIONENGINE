@@ -1433,9 +1433,18 @@ est tenue par ce qui existe.
                 écrit le commit compilé (`axion-build.properties`, `-dirty` si l'arbre suivi bouge).
           - [ ] Bascule de `bench-quick` en bloquant (ADR-142 §3) : vingt runs consécutifs sur master,
                 écart du p95 de chaque série sous 10 % pour le modèle de CPU le plus fréquent.
-        - **Restent à trancher** : métriques et budgets de C-23, C-27, C-50 (R-500, R-1850) et ce que
-          mesure `asset_ns_per_tick` ; R-1751 (version propre d'`axion-api`) ; lecture de R-001 pour
-          les 15 interfaces `@Stable` vides.
+        - **Tranchées le 2026-10-16, quatrième tour** : (14) métriques de R-500 pour C-23, C-27 et C-50
+          en M2 ; leur imputation aux budgets de la table 25.2, l'extension de T-007 à l'inventaire des
+          composants, la surcharge et le fallback (R-1850) en M5 avec C-77 ; (15) R-1751 : la version de
+          l'artefact `axion-api` dérive d'`ApiVersion.CURRENT` (suffixe `-SNAPSHOT` jusqu'à la première
+          publication, M12), un test confronte les deux ; (16) R-001 : un ADR établit qu'un type exigé
+          par une signature du §23.2, sans implémentation ni fournisseur, n'est pas un bouchon.
+        - **À faire, issu du quatrième tour** :
+          - [ ] Métriques de R-500 : C-23 (natif), C-27, C-50.
+          - [ ] R-1751 : version d'`axion-api` dérivée d'`ApiVersion`, test.
+          - [ ] ADR-143 : les 15 interfaces `@Stable` vides, chacune avec son composant et son jalon.
+        - **Reste à étudier, puis à trancher** : ce que mesure `asset_ns_per_tick` — chaque compilation
+          a pour échéance ce budget par tick (`ax-jobs/src/kind.rs`).
         - [x] R-552 ✔ (niveau 9, `COMPILER_VERSION` 10, le 2026-10-15 ; test qui distingue les niveaux) :
               zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
               (`COMPILER_VERSION` des deux côtés) ou consigner l'écart.
