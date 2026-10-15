@@ -1451,8 +1451,9 @@ est tenue par ce qui existe.
           - [x] ADR-143 ✔ (2026-10-16) : 34 interfaces sans membre (15 services et vues, 18 événements et
                 `AxionEvent`), chacune rattachée à son composant et à son jalon ; liste fermée vérifiée par
                 `ApiDeclaredTypesTest`.
-        - **Reste à étudier, puis à trancher** : ce que mesure `asset_ns_per_tick` — chaque compilation
-          a pour échéance ce budget par tick (`ax-jobs/src/kind.rs`).
+        - **Tranchées le 2026-10-16, cinquième tour** : (17) `asset_ns_per_tick` garde sa lecture littérale
+          (R-474, table 25.2), revue en M5 avec C-77 ; (18) **ADR-137 ratifié** ; (19) session Blender pour
+          T-630..T-634 maintenant. Restent pour prononcer M2 : T-630..T-634 et l'essai sur serveur dédié.
         - [x] R-552 ✔ (niveau 9, `COMPILER_VERSION` 10, le 2026-10-15 ; test qui distingue les niveaux) :
               zstd niveau 3 au lieu de 9, sans ADR (`a3d/write.rs:14`) — passer à 9
               (`COMPILER_VERSION` des deux côtés) ou consigner l'écart.
