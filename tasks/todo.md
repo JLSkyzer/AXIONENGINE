@@ -1417,7 +1417,9 @@ est tenue par ce qui existe.
         - **À faire, issu du troisième tour** :
           - [x] ADR-141 ✔ (2026-10-15) : attribution de T-240..T-244, T-280..T-284, T-400..T-404 ; tests de
                 R-581 (`DefinitionCodeExecutionTest`) et R-701 (`EntityTickPhysicsTest`), vérifiés par mutation.
-          - [ ] C-25 : compteurs et jauges du cache (R-500) ; cache désactivable en mode développeur.
+          - [x] C-25 ✔ (2026-10-16) : `AssetCache.Observer`, publié par `AssetCacheMetrics` sous
+                `axion.asset.cache.*` (accès, écritures, évictions, invalidations, erreurs, durée disque,
+                occupation, activité) ; `-Daxion.dev.asset_cache=false`, lu en mode développeur seulement.
           - [ ] R-562 : empreintes de référence de la sortie du compilateur, par plateforme.
           - [ ] C-72 : `bench-quick` sur B-02/B-09, non bloquant (ADR, écart temporaire à R-2251) ;
                 R-2231 (configuration de mesure complète, vrai commit au build).

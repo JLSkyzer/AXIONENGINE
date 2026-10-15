@@ -40,7 +40,9 @@ Definition of Done (PARTIE 37.3).
     decomposition convexe par node (ADR-108) ; sections compressees par zstd
     au niveau 9 (R-552) ;
   - cache des assets compiles (C-25), cle a quatre termes, plafond tenu sur
-    disque (R-561) ; graphe de scene `ax-scene` (C-30) ;
+    disque (R-561), metriques `axion.asset.cache.*` (R-500), desactivable en
+    mode developpeur (`-Daxion.dev.asset_cache=false`, 31.3) ; graphe de scene
+    `ax-scene` (C-30) ;
   - definitions data-driven (C-27) : JSON strict, schema 1 publie, refus
     individuel nomme ; definitions de demonstration derriere `content.examples`
     (amendement A2 de l'annexe A.3) ;

@@ -21,6 +21,8 @@ import dev.axion.physics.SimStateSink;
 import dev.axion.physics.SimulationJournal;
 import dev.axion.physics.SimulationTrace;
 import dev.axion.physics.StepBreakdown;
+import dev.axion.debug.DevMode;
+import dev.axion.diag.AssetCacheMetrics;
 import dev.axion.diag.JavaMetrics;
 import dev.axion.platform.PlatformAdapter;
 import dev.axion.render.RenderCapabilities;
@@ -103,6 +105,8 @@ public final class AxionRuntime {
     /** INV-19 : le hook de tick à vide, mesuré côté Java (ADR-133 D1). */
     private static final JavaMetrics.Budget IDLE_HOOK =
             JavaMetrics.GLOBAL.budget("budgets.idle_hook_ns", "ns");
+    /** R-500 : l'activité du cache d'assets (C-25), à travers les rechargements. */
+    private static final AssetCacheMetrics ASSET_CACHE_METRICS = new AssetCacheMetrics(JavaMetrics.GLOBAL);
     /** Trace de la simulation en cours d'écriture ({@code /axion debug trace}), ou {@code null}. */
     private SimulationTrace trace;
     /** Fichier de la trace en cours, ou {@code null}. */
@@ -274,9 +278,21 @@ public final class AxionRuntime {
             // dans une sauvegarde. Un cache range dans un monde le ferait
             // grossir de donnees reconstructibles et le rendrait non
             // transportable.
-            AssetCache cache = new AssetCache(
-                    platform.gameDir().resolve("axion").resolve("cache"),
-                    outcome.config().getInt("assets.cache_max_bytes"));
+            // §31.3 : en mode développeur seulement, le cache peut être désactivé — chaque asset
+            // se recompile alors, ce qui vérifie le compilateur sans soupçonner le cache.
+            boolean cacheDisabled = DevMode.assetCacheDisabled();
+            AssetCache cache = cacheDisabled
+                    ? null
+                    : new AssetCache(
+                            platform.gameDir().resolve("axion").resolve("cache"),
+                            outcome.config().getInt("assets.cache_max_bytes"),
+                            ASSET_CACHE_METRICS,
+                            System::nanoTime);
+            ASSET_CACHE_METRICS.enabled(!cacheDisabled);
+            if (cacheDisabled) {
+                transitions.add("cache d'assets désactivé (mode développeur, "
+                        + DevMode.ASSET_CACHE_PROPERTY + "=false)");
+            }
 
             AssetRegistry registry = new AssetRegistry(
                     source,

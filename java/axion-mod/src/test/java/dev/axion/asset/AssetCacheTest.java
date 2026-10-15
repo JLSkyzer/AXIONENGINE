@@ -334,5 +334,107 @@ class AssetCacheTest {
         assertEquals(1, lecteur.size());
         assertEquals(ecrivain.totalBytes(), lecteur.totalBytes());
     }
-}
 
+    /** Ce que le cache rapporte, compté (R-500). */
+    private static final class Releve implements AssetCache.Observer {
+        int hits;
+        int misses;
+        int writes;
+        int evictions;
+        int invalidations;
+        int errors;
+        long diskNanos;
+        int entries = -1;
+        long bytes = -1;
+
+        @Override
+        public void hit() {
+            hits++;
+        }
+
+        @Override
+        public void miss() {
+            misses++;
+        }
+
+        @Override
+        public void written() {
+            writes++;
+        }
+
+        @Override
+        public void evicted() {
+            evictions++;
+        }
+
+        @Override
+        public void invalidated() {
+            invalidations++;
+        }
+
+        @Override
+        public void failed() {
+            errors++;
+        }
+
+        @Override
+        public void diskNanos(long nanos) {
+            diskNanos += nanos;
+        }
+
+        @Override
+        public void occupancy(int entryCount, long byteCount) {
+            entries = entryCount;
+            bytes = byteCount;
+        }
+    }
+
+    @Test
+    @DisplayName("R-500 : le cache rapporte ses lectures, écritures, évictions, erreurs, son occupation et sa durée")
+    void leCacheRapporteSonActivite() throws IOException {
+        Releve releve = new Releve();
+        long[] maintenant = {0};
+        // Chaque lecture de l'horloge avance de 7 ns : une opération disque en lit deux.
+        AssetCache cache = new AssetCache(root, 1_000, releve, () -> maintenant[0] += 7);
+        assertEquals(0, releve.entries, "occupation publiée à l'ouverture");
+
+        AssetKey premiere = key("premiere");
+        assertTrue(cache.put(premiere, payload(400, (byte) 1)));
+        assertArrayEquals(payload(400, (byte) 1), cache.get(premiere));
+        assertNull(cache.get(key("absente")));
+        assertEquals(1, releve.writes);
+        assertEquals(1, releve.hits);
+        assertEquals(1, releve.misses);
+        assertEquals(1, releve.entries);
+        assertEquals(cache.totalBytes(), releve.bytes);
+        assertEquals(2 * 7, releve.diskNanos, "une écriture et une lecture, chacune mesurée");
+
+        // Le plafond de 1000 octets tient deux entrées de 400 octets et leur enveloppe, pas trois.
+        cache.put(key("deuxieme"), payload(400, (byte) 2));
+        cache.put(key("troisieme"), payload(400, (byte) 3));
+        assertEquals(1, releve.evictions, "la moins récemment employée part");
+        assertEquals(cache.size(), releve.entries);
+
+        // Corrompue : écartée, comptée comme lecture manquée.
+        AssetKey abimee = key("troisieme");
+        Files.write(root.resolve(abimee.shard()).resolve(abimee.hex() + ".a3d"), new byte[] {1, 2, 3});
+        assertNull(cache.get(abimee));
+        assertEquals(1, releve.invalidations);
+        assertEquals(2, releve.misses);
+        assertEquals(0, releve.errors);
+
+        // Une écriture impossible — le sous-répertoire est occupé par un fichier — est une erreur.
+        AssetKey bloquee = null;
+        for (int i = 0; bloquee == null; i++) {
+            AssetKey candidate = key("bloquee-" + i);
+            if (!Files.exists(root.resolve(candidate.shard()))) {
+                bloquee = candidate;
+            }
+        }
+        Files.write(root.resolve(bloquee.shard()), new byte[0]);
+        assertFalse(cache.put(bloquee, payload(10, (byte) 4)));
+        assertEquals(1, releve.errors);
+        assertEquals(cache.size(), releve.entries);
+        assertEquals(cache.totalBytes(), releve.bytes);
+    }
+}

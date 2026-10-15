@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 import java.util.regex.Pattern;
 import java.util.zip.CRC32C;
 
@@ -68,12 +69,61 @@ public final class AssetCache {
 
     private final Path root;
     private final long maxBytes;
+    private final Observer observer;
+    private final LongSupplier clock;
 
     /** Entrées connues, de la moins récemment employée à la plus récente. */
     private final Map<String, Long> sizes = new LinkedHashMap<>();
 
     private final List<String> diagnostics = new ArrayList<>();
     private long totalBytes;
+
+    /**
+     * Ce que le cache rapporte de son activité (R-500) : opérations, erreurs, mémoire et durée
+     * des accès au disque.
+     *
+     * <p>Le cache n'en connaît pas le destinataire : le runtime les publie dans les métriques
+     * exportées ({@code dev.axion.diag}). Chaque méthode est appelée sur le thread de
+     * l'opération qu'elle rapporte.
+     */
+    public interface Observer {
+
+        /** Aucun destinataire : rien n'est rapporté. */
+        Observer NONE = new Observer() {};
+
+        /** Une entrée valide a été lue. */
+        default void hit() {}
+
+        /** Une lecture n'a rien rendu : entrée absente, illisible ou corrompue. */
+        default void miss() {}
+
+        /** Une entrée a été écrite. */
+        default void written() {}
+
+        /** Une entrée a été évincée par le plafond (R-561). */
+        default void evicted() {}
+
+        /** Une entrée illisible ou corrompue a été écartée (R-560). */
+        default void invalidated() {}
+
+        /** Une opération sur le disque a échoué ; le cache continue sans elle. */
+        default void failed() {}
+
+        /**
+         * Temps passé à lire ou à écrire une entrée.
+         *
+         * @param nanos durée, en nanosecondes
+         */
+        default void diskNanos(long nanos) {}
+
+        /**
+         * Occupation après une opération.
+         *
+         * @param entries nombre d'entrées connues
+         * @param bytes octets qu'elles occupent sur le disque
+         */
+        default void occupancy(int entries, long bytes) {}
+    }
 
     /**
      * Ouvre le cache : lit son index s'il existe, l'accorde aux fichiers, puis
@@ -83,11 +133,30 @@ public final class AssetCache {
      * @param maxBytes plafond de taille, {@code assets.cache_max_bytes}
      */
     public AssetCache(Path root, long maxBytes) {
+        this(root, maxBytes, Observer.NONE, System::nanoTime);
+    }
+
+    /**
+     * Ouvre le cache, en rapportant son activité.
+     *
+     * @param root répertoire du cache, sous {@code <gameDir>/axion/}
+     * @param maxBytes plafond de taille, {@code assets.cache_max_bytes}
+     * @param observer destinataire de l'activité du cache
+     * @param clock horloge en nanosecondes, pour la durée des accès au disque
+     */
+    public AssetCache(Path root, long maxBytes, Observer observer, LongSupplier clock) {
         this.root = root;
         this.maxBytes = maxBytes;
+        this.observer = observer;
+        this.clock = clock;
         readIndex();
         reconcile();
         evict();
+        publishOccupancy();
+    }
+
+    private void publishOccupancy() {
+        observer.occupancy(sizes.size(), totalBytes);
     }
 
     /**
@@ -132,6 +201,7 @@ public final class AssetCache {
                 }
             }
         } catch (IOException failure) {
+            observer.failed();
             // L'index reste tel qu'il a été lu : moins juste, mais pas faux au point
             // de supprimer quoi que ce soit sur sa seule foi.
             diagnostics.add("cache : arborescence illisible, index gardé tel quel — " + failure);
@@ -171,20 +241,29 @@ public final class AssetCache {
     public byte[] get(AssetKey key) {
         Path file = pathOf(key);
         if (!Files.isReadable(file)) {
+            observer.miss();
             return null;
         }
 
         byte[] raw;
+        long start = clock.getAsLong();
         try {
             raw = Files.readAllBytes(file);
         } catch (IOException failure) {
+            observer.diskNanos(clock.getAsLong() - start);
+            observer.failed();
+            observer.miss();
             invalidate(key, "lecture impossible : " + failure);
+            publishOccupancy();
             return null;
         }
+        observer.diskNanos(clock.getAsLong() - start);
 
         byte[] payload = unwrap(raw);
         if (payload == null) {
+            observer.miss();
             invalidate(key, "entrée corrompue");
+            publishOccupancy();
             return null;
         }
 
@@ -194,7 +273,9 @@ public final class AssetCache {
         Long previous = sizes.remove(key.hex());
         totalBytes += raw.length - (previous == null ? 0 : previous);
         sizes.put(key.hex(), (long) raw.length);
+        observer.hit();
         evict();
+        publishOccupancy();
         return payload;
     }
 
@@ -212,6 +293,7 @@ public final class AssetCache {
     public boolean put(AssetKey key, byte[] payload) {
         Path file = pathOf(key);
         byte[] wrapped = wrap(payload);
+        long start = clock.getAsLong();
         try {
             Files.createDirectories(file.getParent());
             // Écriture puis renommage : une entrée n'apparaît que complète, et
@@ -221,9 +303,13 @@ public final class AssetCache {
             Files.write(temporary, wrapped);
             Files.move(temporary, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException failure) {
+            observer.diskNanos(clock.getAsLong() - start);
+            observer.failed();
             diagnostics.add("cache : écriture impossible pour " + key.hex() + " — " + failure);
             return false;
         }
+        observer.diskNanos(clock.getAsLong() - start);
+        observer.written();
 
         Long previous = sizes.remove(key.hex());
         if (previous != null) {
@@ -232,6 +318,7 @@ public final class AssetCache {
         sizes.put(key.hex(), (long) wrapped.length);
         totalBytes += wrapped.length;
         evict();
+        publishOccupancy();
         return true;
     }
 
@@ -246,9 +333,11 @@ public final class AssetCache {
             String oldest = sizes.keySet().iterator().next();
             long size = sizes.remove(oldest);
             totalBytes -= size;
+            observer.evicted();
             try {
                 Files.deleteIfExists(fileOf(oldest));
             } catch (IOException failure) {
+                observer.failed();
                 diagnostics.add("cache : éviction impossible pour " + oldest + " — " + failure);
             }
         }
@@ -258,6 +347,7 @@ public final class AssetCache {
         // R-560 : supprimée et recompilée. La source est là ; deviner ce qui
         // manque coûterait plus cher que de refaire.
         diagnostics.add("cache : entrée " + key.hex() + " écartée — " + reason);
+        observer.invalidated();
         Long size = sizes.remove(key.hex());
         if (size != null) {
             totalBytes -= size;
@@ -265,6 +355,7 @@ public final class AssetCache {
         try {
             Files.deleteIfExists(pathOf(key));
         } catch (IOException failure) {
+            observer.failed();
             diagnostics.add("cache : suppression impossible pour " + key.hex() + " — " + failure);
         }
     }
@@ -349,6 +440,7 @@ public final class AssetCache {
             Files.write(root.resolve(INDEX_NAME), wrap(body));
             return true;
         } catch (IOException failure) {
+            observer.failed();
             diagnostics.add("cache : index non écrit — " + failure);
             return false;
         }
@@ -364,6 +456,7 @@ public final class AssetCache {
         try {
             body = unwrap(Files.readAllBytes(index));
         } catch (IOException failure) {
+            observer.failed();
             diagnostics.add("cache : index illisible — " + failure);
             return;
         }

@@ -32,4 +32,30 @@ class DevModeTest {
             assertFalse(activePour(autre), "« " + autre + " » ne doit pas l'allumer");
         }
     }
+
+    private static boolean cacheDesactivePour(String dev, String cache) {
+        Properties properties = new Properties();
+        if (dev != null) {
+            properties.setProperty(DevMode.PROPERTY, dev);
+        }
+        if (cache != null) {
+            properties.setProperty(DevMode.ASSET_CACHE_PROPERTY, cache);
+        }
+        return DevMode.assetCacheDisabledIn(properties);
+    }
+
+    @Test
+    @DisplayName("§31.3, R-2270 : le cache d'assets ne se désactive qu'en mode développeur, par false")
+    void cacheDesactivableEnModeDeveloppeurSeulement() {
+        assertTrue(cacheDesactivePour("true", "false"));
+        assertTrue(cacheDesactivePour("TRUE", "FALSE"));
+        // Sans le mode développeur, la propriété est ignorée : inerte en production.
+        assertFalse(cacheDesactivePour(null, "false"));
+        assertFalse(cacheDesactivePour("false", "false"));
+        // En mode développeur, seul false le désactive.
+        for (String autre : List.of("", "true", "0", "no", "off", " false")) {
+            assertFalse(cacheDesactivePour("true", autre), "« " + autre + " » ne doit pas le désactiver");
+        }
+        assertFalse(cacheDesactivePour("true", null));
+    }
 }
