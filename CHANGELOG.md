@@ -52,7 +52,8 @@ Definition of Done (PARTIE 37.3).
   - compilation en jeu identique a celle de la CLI (R-830) : plafond
     `assets.max_source_bytes` applique, `source_hash` commun, fichiers voisins
     (`.mtl`, buffers glTF externes) demandes puis fournis par la frontiere,
-    ABI 4 (ADR-139) ;
+    ABI 4 (ADR-139) ; une compilation abandonnee par Java est oubliee par le
+    natif, `axion_asset_cancel` (ADR-140) ;
   - allocations de meshoptimizer et de zstd comptees par l'allocateur du
     moteur (INV-08, ADR-138).
 - M1 (Definition of Done prononcee le 2026-10-04) — assets, noyau

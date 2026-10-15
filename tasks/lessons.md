@@ -1567,3 +1567,20 @@ liaisons brutes.
 **Règle.** Avant de déclarer une fonction étrangère soi-même, chercher son nom dans la source du crate
 `-sys` ou du module `ffi` (`~/.cargo/registry/src/*/<crate>-<version>/`). Une signature recopiée à la
 main peut diverger de l'en-tête sans qu'aucun compilateur ne le dise.
+
+## 2026-10-15 | M3 ouvert sur une recommandation qui taisait que M1 et M2 n'étaient pas clos
+
+**Ce qui a mal tourné.** Le 2026-09-19, une question sur C-70 proposait « Démarrer M3 (recommandé) ».
+Killian l'a retenue. La todo disait alors « Jalon en cours : M1 » ; la Definition of Done de M1 n'était
+pas prononcée, celle de M2 n'avait jamais été vérifiée. Trois semaines de M3 se sont empilées sur deux
+jalons ouverts, ce que l'audit de M2 n'a mis au jour que le 2026-10-13 — et Killian l'a appris en
+demandant, le 2026-10-15, si M2 était fini.
+
+**Cause.** L'option a été présentée comme une direction de travail, sans le fait qui la conditionnait :
+l'état des Definition of Done des jalons précédents. Une recommandation qui omet ce fait fait trancher
+l'utilisateur à l'aveugle.
+
+**Règle.** Aucun travail d'un jalon N+1 tant que la Definition of Done du jalon N n'est pas prononcée par
+Killian. Toute question qui propose d'ouvrir un jalon, ou de travailler hors du jalon courant, énonce
+d'abord en clair, dans la question, ce qui reste ouvert dans les jalons précédents — et ne recommande pas
+de l'ouvrir tant qu'il en reste. Depuis le 2026-10-15 : M2 d'abord ; M3 seulement sur demande explicite.

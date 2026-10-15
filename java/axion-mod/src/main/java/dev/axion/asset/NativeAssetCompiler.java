@@ -101,7 +101,11 @@ public final class NativeAssetCompiler implements AssetCompiler {
     @Override
     public void abandon(int jobId) {
         synchronized (AssetBuffers.LOCK) {
-            pending.remove(jobId);
+            Pending job = pending.remove(jobId);
+            // ADR-140 : le travail natif courant, celui du dernier passage d'un dialogue
+            // NEEDS_FILES ; les précédents ont été repris par leur sondage. Le code rendu n'est
+            // pas remonté : un identifiant que le natif ne connaît plus ne retient rien.
+            NativeBridge.cancelAsset(context, job == null ? jobId : job.nativeJob);
         }
     }
 

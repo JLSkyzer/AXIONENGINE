@@ -371,6 +371,23 @@ class NativeBridgeTest {
                 dev.axion.asset.SiblingFiles.NONE);
         assertFalse(java.util.Arrays.equals(fourni, sansMtl), "le .mtl fourni sans effet sur l'asset");
 
+        // ADR-140 : une compilation abandonnée par la vraie JNI quitte le natif — ce qui prouve
+        // aussi l'enregistrement de `assetCancel (JI)I`. La sonder ensuite rend E_INVALID_HANDLE,
+        // comme un second abandon ou un identifiant jamais émis.
+        int jobAbandonne = compilateur.submit(
+                0x4237L, dev.axion.asset.SourceFormats.OBJ, source, new byte[0],
+                dev.axion.asset.SiblingFiles.NONE);
+        assertTrue(jobAbandonne > 0, () -> "soumission refusée, code " + jobAbandonne);
+        compilateur.abandon(jobAbandonne);
+        assertEquals(
+                NativeBridge.E_INVALID_HANDLE,
+                NativeBridge.cancelAsset(reprise, jobAbandonne),
+                "le natif garde le travail abandonné");
+        dev.axion.asset.AssetCompiler.CompileStatus apresAbandon = compilateur.poll(jobAbandonne);
+        assertEquals(dev.axion.asset.AssetState.FAILED, apresAbandon.state());
+        assertEquals(NativeBridge.E_INVALID_HANDLE, apresAbandon.error(), "sondage après abandon");
+        assertEquals(NativeBridge.E_INVALID_HANDLE, NativeBridge.cancelAsset(reprise, 0));
+
         // ADR-119 : l'asset compilé se charge dans le natif, sa géométrie revient par
         // ASSET_OUT, puis son handle se rend — à travers la vraie JNI, ce qui prouve
         // aussi l'enregistrement des trois méthodes. Le triangle OBJ a un node

@@ -37,11 +37,11 @@ use jni::sys::{jdouble, jint, jlong, JNI_ERR, JNI_VERSION_1_6};
 use jni::{JNIEnv, JavaVM, NativeMethod};
 
 use crate::abi::{
-    axion_abi_version, axion_asset_compile, axion_asset_geometry, axion_asset_load,
-    axion_asset_materials, axion_asset_poll, axion_asset_texture, axion_asset_unload,
-    axion_buffer_acquire, axion_buffer_release, axion_debug_fill, axion_init, axion_last_error,
-    axion_metrics_export, axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit,
-    AxionBufferInfo, AxionCollectResult, AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_abi_version, axion_asset_cancel, axion_asset_compile, axion_asset_geometry,
+    axion_asset_load, axion_asset_materials, axion_asset_poll, axion_asset_texture,
+    axion_asset_unload, axion_buffer_acquire, axion_buffer_release, axion_debug_fill, axion_init,
+    axion_last_error, axion_metrics_export, axion_shutdown, axion_sim_cancel, axion_sim_collect,
+    axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_E_INVALID_BUFFER, AXION_OK,
 };
 use ax_model::dm::handle::Handle;
 
@@ -123,6 +123,11 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "assetPoll".into(),
             sig: "(JI[J)I".into(),
             fn_ptr: jni_asset_poll as *mut c_void,
+        },
+        NativeMethod {
+            name: "assetCancel".into(),
+            sig: "(JI)I".into(),
+            fn_ptr: jni_asset_cancel as *mut c_void,
         },
         NativeMethod {
             name: "simSubmit".into(),
@@ -513,6 +518,17 @@ extern "system" fn jni_sim_collect(
     }
 }
 
+/// `NativeBridge.assetCancel(long, int)` (IF-06, ADR-140).
+extern "system" fn jni_asset_cancel(
+    _env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    job_id: jint,
+) -> jint {
+    // SAFETY: aucun pointeur n'est déréférencé.
+    unsafe { axion_asset_cancel(ctx as u64, u32::try_from(job_id).unwrap_or(u32::MAX)) }
+}
+
 /// `NativeBridge.simCancel(long)` (IF-03).
 extern "system" fn jni_sim_cancel(_env: JNIEnv, _class: JClass, ctx: jlong) -> jint {
     // SAFETY: aucun pointeur n'est déréférencé.
@@ -732,6 +748,7 @@ mod tests {
             ("simSubmit", "(JJII)I"),
             ("simCollect", "(JJ[J)I"),
             ("simCancel", "(J)I"),
+            ("assetCancel", "(JI)I"),
             ("assetLoad", "(JJI[J)I"),
             ("assetGeometry", "(JII[J)I"),
             ("assetMaterials", "(JII[J)I"),

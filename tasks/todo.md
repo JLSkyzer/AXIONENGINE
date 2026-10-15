@@ -1418,7 +1418,9 @@ est tenue par ce qui existe.
               dont les événements n'ont pas d'accesseurs dans le CDC) : aucune implémentation dans `axion-mod` (`AxionApi.get()` lève toujours) ; R-1755,
               R-1760..R-1762 seulement documentés, 15 interfaces `@Stable` vides (décision du 2026-09-13
               sans ADR), R-1751 (version propre de l'artefact).
-        - [ ] Défaut antérieur, relevé en écrivant ADR-139 (2026-10-15) : un travail de compilation que
+        - [x] (2026-10-15, [ADR-140](../docs/decisions/ADR-140.md) : `axion_asset_cancel` ajoutée, ABI 4
+              inchangée ; `asset_cancel_abi`, test unitaire de la session, `NativeBridgeTest`)
+              Défaut antérieur, relevé en écrivant ADR-139 (2026-10-15) : un travail de compilation que
               Java cesse de sonder — source modifiée ou retirée, `/axion assets reload`, délai de démarrage
               écoulé — garde son résultat dans `asset_jobs` (`ax-ffi/src/context.rs`) jusqu'à la fermeture
               du contexte. `AssetCompiler.abandon` ne libère que le côté Java. Corriger demande une entrée
@@ -1440,6 +1442,10 @@ est tenue par ce qui existe.
 ---
 
 ## M3 — Physique et premier rendu (en cours)
+
+**Gelé le 2026-10-15 jusqu'à la Definition of Done de M2.** M3 a été ouvert le 2026-09-19 sur une
+recommandation de Claude qui taisait que M1 et M2 n'étaient pas clos (`tasks/lessons.md`, 2026-10-15).
+Aucun travail de M3 sans demande explicite de Killian.
 
 Démarré le 2026-09-19, **effort maximal** (décision de Killian). M3 a deux
 moitiés : la **physique** (C-31 → C-32 → C-38 → C-39 → C-40) et le **premier

@@ -550,6 +550,29 @@ impl Session {
         self.asset_jobs.remove(&id);
     }
 
+    /// Abandonne une compilation que Java n'attend plus (ADR-140) : elle quitte la table,
+    /// quel que soit son état. En file, son jeton d'annulation lui évite tout calcul ; en
+    /// cours, son résultat est libéré à la fin du calcul, avec l'emplacement que le worker
+    /// tient ; finie, tout de suite.
+    ///
+    /// Rend `false` si l'identifiant ne désigne aucun travail retenu.
+    pub fn cancel_asset_job(&mut self, id: u32) -> bool {
+        match self.asset_jobs.remove(&id) {
+            Some(AssetJob::Running(handle)) => {
+                handle.cancel();
+                true
+            }
+            Some(_) => true,
+            None => false,
+        }
+    }
+
+    /// Nombre de compilations que la session retient : en vol, ou finies sans avoir été lues.
+    #[must_use]
+    pub fn asset_jobs_held(&self) -> usize {
+        self.asset_jobs.len()
+    }
+
     /// Plafonds de lecture des conteneurs A3D (R-901).
     #[must_use]
     pub fn a3d_limits(&self) -> A3dLimits {
@@ -1050,6 +1073,65 @@ mod tests {
                 "une demande de longueur rend un document frais"
             );
             session.panics = 0;
+        })
+        .unwrap();
+
+        // ADR-140 : abandonner une compilation la retire de la table, quel que soit son état.
+        // Le seul worker du pool de test est retenu par un premier travail : le second reste
+        // en file, de façon certaine, et son abandon lui évite de tourner.
+        with(token, false, |session| {
+            let (started_tx, started) = std::sync::mpsc::channel::<()>();
+            let (release, gate) = std::sync::mpsc::channel::<()>();
+            let (ran_tx, ran) = std::sync::mpsc::channel::<()>();
+            let (blocker, queued) = {
+                let jobs = session.jobs().expect("pool de test");
+                let blocker = jobs.submit(JobKind::Asset, move |_| {
+                    let _ = started_tx.send(());
+                    let _ = gate.recv();
+                    Ok::<_, CompileError>(CompileOutcome::NeedsFiles(Vec::new()))
+                });
+                started.recv().expect("le premier travail démarre");
+                let queued = jobs.submit(JobKind::Asset, move |_| {
+                    let _ = ran_tx.send(());
+                    Ok::<_, CompileError>(CompileOutcome::NeedsFiles(Vec::new()))
+                });
+                (blocker, queued)
+            };
+            let running = session.register_asset_job(blocker);
+            let waiting = session.register_asset_job(queued);
+            assert_eq!(session.asset_jobs_held(), 2);
+
+            assert!(session.cancel_asset_job(waiting), "travail en file");
+            assert!(session.cancel_asset_job(running), "travail en cours");
+            assert_eq!(session.asset_jobs_held(), 0);
+            assert!(!session.cancel_asset_job(running), "déjà abandonné");
+            assert!(!session.cancel_asset_job(0), "jamais émis");
+            release.send(()).expect("le premier travail attend");
+            // Le travail en file est pris puis lâché sans tourner : son émetteur tombe sans
+            // avoir rien envoyé.
+            assert!(ran.recv().is_err(), "un travail abandonné en file a tourné");
+            let asset = session
+                .jobs()
+                .expect("pool de test")
+                .metrics()
+                .kind(JobKind::Asset);
+            assert_eq!(asset.cancelled, 1, "l'annulation est comptée");
+
+            // Fini, son résultat attend d'être lu : l'abandon le libère.
+            let done = session
+                .jobs()
+                .expect("pool de test")
+                .submit(JobKind::Asset, |_| {
+                    Ok::<_, CompileError>(CompileOutcome::NeedsFiles(vec![String::from("a.bin")]))
+                });
+            let finished = session.register_asset_job(done);
+            let deadline = Instant::now() + std::time::Duration::from_secs(30);
+            while matches!(session.poll_asset_job(finished), Some(AssetJob::Running(_))) {
+                assert!(Instant::now() < deadline, "le travail ne finit pas");
+                std::thread::yield_now();
+            }
+            assert!(session.cancel_asset_job(finished), "travail fini");
+            assert_eq!(session.asset_jobs_held(), 0);
         })
         .unwrap();
 

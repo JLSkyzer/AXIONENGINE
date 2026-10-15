@@ -691,10 +691,11 @@ pub unsafe extern "C" fn axion_asset_compile(
 
 /// Sonde une compilation lancée (IF-06).
 ///
-/// `out_status` reçoit [`AXION_ASSET_PENDING`], [`AXION_ASSET_COMPILED`] ou
-/// [`AXION_ASSET_FAILED`]. Sur succès, l'asset est déposé dans le tampon
-/// `ASSET_OUT` et `out_size` reçoit sa taille ; sur échec, `out_error` reçoit
-/// le code de l'ANNEXE A.1.
+/// `out_status` reçoit [`AXION_ASSET_PENDING`], [`AXION_ASSET_COMPILED`],
+/// [`AXION_ASSET_FAILED`] ou [`AXION_ASSET_NEEDS_FILES`]. Sur succès, l'asset est
+/// déposé dans le tampon `ASSET_OUT` et `out_size` reçoit sa taille ; une demande
+/// de fichiers voisins y dépose leurs noms (ADR-139) ; sur échec, `out_error`
+/// reçoit le code de l'ANNEXE A.1.
 ///
 /// Un travail dont le résultat a été repris est **oublié** : le redemander rend
 /// `E-2001`, ce qui vaut mieux que de rendre deux fois un asset dont le tampon
@@ -761,6 +762,30 @@ pub unsafe extern "C" fn axion_asset_poll(
                 AXION_OK
             }
             Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Abandonne une compilation que l'appelant n'attend plus (IF-06, ADR-140).
+///
+/// Le travail quitte la table de la session, quel que soit son état : en file,
+/// il ne calcule rien ; en cours, il va au bout et son résultat est libéré à la
+/// fin du calcul ; fini, son résultat est libéré tout de suite. L'appel ne
+/// bloque jamais (R-280).
+///
+/// Rend `E-2001` si `job_id` ne désigne aucun travail retenu — jamais émis, déjà
+/// repris par un sondage ou déjà abandonné —, comme [`axion_asset_poll`].
+///
+/// # Safety
+/// Aucun pointeur n'est déréférencé ; `unsafe` par symétrie avec le reste de
+/// l'ABI.
+#[no_mangle]
+pub unsafe extern "C" fn axion_asset_cancel(ctx: u64, job_id: u32) -> i32 {
+    shielded(Some(ctx), || {
+        match context::with(ctx, false, |session| session.cancel_asset_job(job_id)) {
+            Ok(true) => AXION_OK,
+            Ok(false) => AXION_E_INVALID_HANDLE,
+            Err(code) => code,
         }
     })
 }

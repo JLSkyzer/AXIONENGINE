@@ -31,7 +31,8 @@ public interface AssetCompiler {
      * <p>Le registre l'appelle quand il cesse d'attendre un travail en vol : une source
      * modifiée ou retirée, une recompilation forcée, le délai de démarrage écoulé. Ce que
      * le compilateur gardait pour poursuivre le travail — la source et ses voisins, pour
-     * un nouveau passage — serait sinon retenu jusqu'à l'arrêt.
+     * un nouveau passage ; côté natif, le travail et son résultat (ADR-140) — serait sinon
+     * retenu jusqu'à l'arrêt.
      *
      * @param jobId identifiant rendu par {@link #submit}
      */

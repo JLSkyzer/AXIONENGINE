@@ -115,6 +115,8 @@ public final class NativeBridge {
 
     static native int assetPoll(long ctx, int jobId, long[] out);
 
+    static native int assetCancel(long ctx, int jobId);
+
     static native int simSubmit(long ctx, long tick, int commandCount, int impactCount);
 
     static native int simCollect(long ctx, long deadlineNs, long[] out);
@@ -321,6 +323,24 @@ public final class NativeBridge {
         }
         CROSSINGS.increment();
         return assetPoll(ctx, jobId, out);
+    }
+
+    /**
+     * Abandonne une compilation que l'appelant n'attend plus (IF-06, ADR-140).
+     *
+     * <p>Le travail quitte la table du contexte, quel que soit son état : en file, il ne calcule
+     * rien ; en cours, il va au bout et son résultat est libéré à la fin du calcul ; fini, tout de
+     * suite. L'appel ne bloque jamais (R-280). Sonder ensuite le même identifiant rend
+     * {@link #E_INVALID_HANDLE}.
+     *
+     * @param ctx jeton de contexte
+     * @param jobId identifiant rendu par {@link #compileAsset}
+     * @return {@link #OK}, ou {@link #E_INVALID_HANDLE} si l'identifiant ne désigne aucun travail
+     *     retenu — jamais émis, déjà repris par un sondage ou déjà abandonné
+     */
+    public static int cancelAsset(long ctx, int jobId) {
+        CROSSINGS.increment();
+        return assetCancel(ctx, jobId);
     }
 
     /**
