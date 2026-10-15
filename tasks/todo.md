@@ -1444,7 +1444,9 @@ est tenue par ce qui existe.
           - [x] R-1751 ✔ (2026-10-16) : `axion_api_version` (`gradle.properties`) donne la version de
                 l'artefact (`-SNAPSHOT` hors `-Paxion.release`) ; `ApiArtifactVersionTest` la confronte à
                 `ApiVersion.CURRENT` (mutation vérifiée, après avoir déclaré la valeur en entrée du test).
-          - [ ] ADR-143 : les 15 interfaces `@Stable` vides, chacune avec son composant et son jalon.
+          - [x] ADR-143 ✔ (2026-10-16) : 34 interfaces sans membre (15 services et vues, 18 événements et
+                `AxionEvent`), chacune rattachée à son composant et à son jalon ; liste fermée vérifiée par
+                `ApiDeclaredTypesTest`.
         - **Reste à étudier, puis à trancher** : ce que mesure `asset_ns_per_tick` — chaque compilation
           a pour échéance ce budget par tick (`ax-jobs/src/kind.rs`).
         - [x] R-552 ✔ (niveau 9, `COMPILER_VERSION` 10, le 2026-10-15 ; test qui distingue les niveaux) :
