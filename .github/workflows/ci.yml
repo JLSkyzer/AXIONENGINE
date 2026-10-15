@@ -217,6 +217,7 @@ jobs:
 
       # `gradlew build` enchaine codegen (T-005, codegen-parity), la compilation
       # Java, la suite JUnit — dont T-007, T-014, T-020..T-023 et R-2392 —,
+      # la Javadoc d'axion-api (doclint complet, -Werror : « API documentee », 37.2),
       # buildNatives pour la cible hote, puis validateJar.
       - name: codegen-parity, JUnit et validate-jar
         run: ./gradlew build --no-daemon --stacktrace

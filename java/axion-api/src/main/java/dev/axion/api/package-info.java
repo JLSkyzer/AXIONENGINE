@@ -14,9 +14,9 @@
  * l'est de façon compatible ; rien de publié n'est retiré ni changé de
  * signature en 1.x.
  *
- * <p><strong>Stabilité.</strong> Chaque type porte {@link
- * dev.axion.api.Stable @Stable} ou {@link dev.axion.api.Experimental
- * @Experimental} (R-1752) ; aucun {@code @Internal} ne figure dans ce module.
+ * <p><strong>Stabilité.</strong> Chaque type porte
+ * {@link dev.axion.api.Stable @Stable} ou {@link dev.axion.api.Experimental @Experimental}
+ * (R-1752) ; aucun {@code @Internal} ne figure dans ce module.
  *
  * <p><strong>Threads.</strong> Toute méthode mutante ne s'appelle que sur le
  * thread autoritatif et lève {@link IllegalStateException} ailleurs (R-1755) ;

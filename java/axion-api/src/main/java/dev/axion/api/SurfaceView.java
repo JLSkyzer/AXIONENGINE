@@ -9,16 +9,32 @@ package dev.axion.api;
 @Stable
 public interface SurfaceView {
 
-    /** {@return le niveau de rayure d'une part, dans {@code [0, 1]}}. */
+    /**
+     * {@return le niveau de rayure d'une part, dans {@code [0, 1]}}
+     *
+     * @param part nom de la part lue
+     */
     float scratch(String part);
 
-    /** {@return le niveau de salissure d'une part, dans {@code [0, 1]}}. */
+    /**
+     * {@return le niveau de salissure d'une part, dans {@code [0, 1]}}
+     *
+     * @param part nom de la part lue
+     */
     float soil(String part);
 
-    /** {@return le niveau de brûlure d'une part, dans {@code [0, 1]}}. */
+    /**
+     * {@return le niveau de brûlure d'une part, dans {@code [0, 1]}}
+     *
+     * @param part nom de la part lue
+     */
     float burn(String part);
 
-    /** {@return le niveau de rouille d'une part, dans {@code [0, 1]}}. */
+    /**
+     * {@return le niveau de rouille d'une part, dans {@code [0, 1]}}
+     *
+     * @param part nom de la part lue
+     */
     float rust(String part);
 
     /**

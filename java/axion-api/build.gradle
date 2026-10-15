@@ -17,6 +17,19 @@ minecraft {
 
 java {
     withSourcesJar()
+    // 37.2 : l'API de M2 "compile et documentee" ; 34.4 : axion-api se publie en
+    // jar, sources et javadoc. La Javadoc se genere donc a chaque build.
+    withJavadocJar()
+}
+
+javadoc {
+    options.encoding = 'UTF-8'
+    options.docEncoding = 'UTF-8'
+    options.charSet = 'UTF-8'
+    // Tout doclint, et un avertissement fait echouer : un parametre non decrit ou
+    // un lien casse se voit au build, pas dans la documentation publiee.
+    options.addBooleanOption('Xdoclint:all', true)
+    options.addBooleanOption('Werror', true)
 }
 
 dependencies {

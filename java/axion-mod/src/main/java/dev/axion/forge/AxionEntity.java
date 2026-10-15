@@ -381,7 +381,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     @Override
     public boolean isPickable() {
-        // Sélectionnable, pour que la visée et `/axion remove @e[...]` la trouvent.
+        // Visée du client (`GameRenderer.pick`) : sans cela, le réticule la traverse et elle ne
+        // peut être ni frappée ni utilisée. Les sélecteurs de commande (`@e[...]`, donc
+        // `/axion remove`) n'en dépendent pas : `EntitySelector` ne l'appelle jamais (bytecode
+        // de Minecraft 1.20.1 lu le 2026-10-15).
         return !isRemoved();
     }
 

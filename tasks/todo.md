@@ -1365,8 +1365,13 @@ est tenue par ce qui existe.
         - [x] Documentation contredite par le code (2026-10-15) : rustdoc d'`auto_convex` (`collider.rs`),
               `optimize/mod.rs` (étapes 8-9), doc de `drop_degenerate` collée sur `malformed_lodm`,
               `axion-api/package-info.java`, `ax-bench/src/lib.rs`, Javadoc d'`AxionRuntime`, C-72 décoché,
-              Miri précisé. Reste [ ] la Javadoc d'`isPickable` (« les sélecteurs en dépendent ») : l'audit la
-              dit inexacte, non vérifié dans le code de Minecraft.
+              Miri précisé. La Javadoc d'`isPickable` ✔ (2026-10-15) : inexacte, comme l'audit le disait —
+              bytecode de Minecraft 1.20.1 lu (`javap`) : `GameRenderer.pick` l'appelle, `EntitySelector`
+              jamais ; `/axion remove @e[...]` n'en dépend pas. Commentaire corrigé.
+        - [x] « API compile et documentée » (37.2) ✔ (2026-10-15) : la Javadoc d'`axion-api` **échouait**
+              (`{@link}` coupé en `package-info`, quatre `@param` manquants dans `SurfaceView`). Corrigée, et
+              générée à chaque build : `withJavadocJar()` (34.4), doclint complet, `-Werror` — un `@param`
+              retiré fait échouer le build (vérifié).
         - [x] Tests de `tools/bench` (32) hors CI et hors `local_ci.py` : étape `test-unit (outils)` de
               `build-and-test` (2026-10-15).
         - [x] (2026-10-15, `LivrableM2GameTests`, 8 GameTests verts en local) Un GameTest du livrable :
