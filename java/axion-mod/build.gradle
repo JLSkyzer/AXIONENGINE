@@ -316,6 +316,13 @@ tasks.named('test', Test).configure {
     systemProperty 'axion.devcontent.dir', file('src/devcontent/java').absolutePath
     // T-019 (INV-12) lit le bytecode du moteur : aucun appel GL hors du render thread.
     systemProperty 'axion.classes.dir', sourceSets.main.java.classesDirectory.get().asFile.absolutePath
+    // R-1751 : la version que porte l'artefact axion-api, confrontee a ApiVersion.CURRENT.
+    // Lue au lancement de la JVM de test : a la configuration d'axion-mod, celle d'axion-api
+    // n'a peut-etre pas encore fixe sa version.
+    def apiProject = project(':axion-api')
+    // Declaree en entree : sans cela, un changement de version laisserait les tests a jour.
+    inputs.property('axion.api.artifact.version', provider { apiProject.version.toString() })
+    jvmArgumentProviders.add({ ['-Daxion.api.artifact.version=' + apiProject.version] } as CommandLineArgumentProvider)
     // T-022 et T-023 verifient sur les deux cotes : aucune connexion sortante,
     // et tout code d'erreur documente en ANNEXE A.1.
     systemProperty 'axion.crates.dir', rootProject.file('crates').absolutePath

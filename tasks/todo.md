@@ -1441,7 +1441,9 @@ est tenue par ce qui existe.
           par une signature du §23.2, sans implémentation ni fournisseur, n'est pas un bouchon.
         - **À faire, issu du quatrième tour** :
           - [ ] Métriques de R-500 : C-23 (natif), C-27, C-50.
-          - [ ] R-1751 : version d'`axion-api` dérivée d'`ApiVersion`, test.
+          - [x] R-1751 ✔ (2026-10-16) : `axion_api_version` (`gradle.properties`) donne la version de
+                l'artefact (`-SNAPSHOT` hors `-Paxion.release`) ; `ApiArtifactVersionTest` la confronte à
+                `ApiVersion.CURRENT` (mutation vérifiée, après avoir déclaré la valeur en entrée du test).
           - [ ] ADR-143 : les 15 interfaces `@Stable` vides, chacune avec son composant et son jalon.
         - **Reste à étudier, puis à trancher** : ce que mesure `asset_ns_per_tick` — chaque compilation
           a pour échéance ce budget par tick (`ax-jobs/src/kind.rs`).

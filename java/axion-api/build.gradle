@@ -11,6 +11,11 @@ base {
     archivesName = 'axion-api'
 }
 
+// R-1751 : l'artefact porte la version de l'API, pas celle du mod. Elle vaut
+// ApiVersion.CURRENT (verifie par ApiArtifactVersionTest), suffixee de -SNAPSHOT tant
+// qu'aucune release ne la publie (-Paxion.release, 34.4).
+version = axion_api_version + (project.hasProperty('axion.release') ? '' : '-SNAPSHOT')
+
 minecraft {
     mappings channel: mapping_channel, version: mapping_version
 }
