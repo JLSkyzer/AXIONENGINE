@@ -6,7 +6,6 @@
 //! `bench-alloc-counted` installe l'allocateur compteur. L'écart se lit en comparant
 //! leurs résultats archivés, à commit, date et plateforme égaux.
 
-use std::collections::BTreeMap;
 use std::process::ExitCode;
 
 use crate::{archive, cases, cli, BenchmarkResult, MeasureConfig, Platform};
@@ -58,7 +57,11 @@ pub fn run(allocator: &str) -> ExitCode {
             args.commit.clone().unwrap_or_default(),
             args.date.clone().unwrap_or_default(),
             platform.clone(),
-            BTreeMap::new(),
+            config.describe(if args.normative {
+                "normative"
+            } else {
+                "rapide"
+            }),
             case.parameters,
             case.runs,
         ) else {

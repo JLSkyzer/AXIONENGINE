@@ -134,6 +134,42 @@ mixin {
 // Ressources produites par les generateurs de donnees.
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
+// R-2231 : un resultat de benchmark porte le commit qu'il mesure. Le build l'ecrit dans une
+// ressource que /axion bench relit (BuildInfo) ; un arbre suivi modifie le dit (`-dirty`), sans
+// quoi la mesure d'un code non commite passerait pour celle du commit. Le fichier n'est reecrit
+// que si son contenu change : sans cela, chaque build referait le JAR.
+def buildInfoDir = layout.buildDirectory.dir('generated/buildinfo')
+def generateBuildInfo = tasks.register('generateBuildInfo') {
+    group = 'axion'
+    description = 'Commit du build, pour la provenance des benchmarks (R-2231)'
+    def root = rootDir
+    outputs.dir(buildInfoDir)
+    outputs.upToDateWhen { false }
+    doLast {
+        def git = { List<String> args ->
+            try {
+                def process = (['git'] + args).execute(null, root)
+                String text = process.text.trim()
+                return process.waitFor() == 0 ? text : null
+            } catch (IOException ignored) {
+                return null
+            }
+        }
+        String commit = git(['rev-parse', 'HEAD']) ?: System.getenv('GITHUB_SHA') ?: 'inconnu'
+        String changes = git(['status', '--porcelain', '--untracked-files=no'])
+        if (changes) {
+            commit = commit + '-dirty'
+        }
+        File file = buildInfoDir.get().file('axion-build.properties').asFile
+        String content = 'commit=' + commit + '\n'
+        if (!file.exists() || file.getText('UTF-8') != content) {
+            file.parentFile.mkdirs()
+            file.setText(content, 'UTF-8')
+        }
+    }
+}
+sourceSets.main.resources { srcDir generateBuildInfo }
+
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 

@@ -5,6 +5,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.axion.bridge.NativeBridge;
 import dev.axion.diag.AssetsReport;
 import dev.axion.diag.BenchRunner;
+import dev.axion.diag.BuildInfo;
 import dev.axion.diag.MetricsReport;
 import dev.axion.diag.SchemaTwoWriter;
 import dev.axion.diag.StatusReport;
@@ -200,7 +201,8 @@ final class AxionCommands {
                 // Sous le répertoire de jeu, jamais au chemin reçu : la commande
                 // est au niveau 2, et un chemin libre écraserait n'importe quoi.
                 Path out = SchemaTwoWriter.targetIn(gameDir, jsonPath);
-                SchemaTwoWriter.write("B-07", scenario, "ingame-dev", result, out);
+                // R-2231 : le commit que le build a compilé, pas un marqueur.
+                SchemaTwoWriter.write("B-07", scenario, BuildInfo.commit(), result, out);
                 // R-810 : une écriture sur le disque se journalise avec son auteur.
                 LOGGER.info("AXION : /axion bench {} — résultat schéma 2 écrit dans {} pour {}",
                         scenario, out, source.getTextName());

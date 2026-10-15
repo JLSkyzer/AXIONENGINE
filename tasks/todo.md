@@ -1426,8 +1426,13 @@ est tenue par ce qui existe.
                 (mutation vérifiée : zstd 9 → 8). Références Linux et macOS récoltées par une sonde en CI.
                 Constat : x86_64 identique sur les trois systèmes, macOS aarch64 différent pour les
                 sources maillées (ADR-106, cause non établie).
-          - [ ] C-72 : `bench-quick` sur B-02/B-09, non bloquant (ADR, écart temporaire à R-2251) ;
-                R-2231 (configuration de mesure complète, vrai commit au build).
+          - [x] C-72 ✔ (2026-10-16, [ADR-142](../docs/decisions/ADR-142.md)) : job `bench-quick` sur
+                B-02/B-09, référence par modèle de CPU dans le cache d'Actions, renouvelée après un run
+                sans régression sur master ; non bloquant (écart temporaire à R-2251). R-2231 :
+                `MeasureConfig::describe` archivé par `bench-ci` et le coureur de B-08 ; `/axion bench`
+                écrit le commit compilé (`axion-build.properties`, `-dirty` si l'arbre suivi bouge).
+          - [ ] Bascule de `bench-quick` en bloquant (ADR-142 §3) : vingt runs consécutifs sur master,
+                écart du p95 de chaque série sous 10 % pour le modèle de CPU le plus fréquent.
         - **Restent à trancher** : métriques et budgets de C-23, C-27, C-50 (R-500, R-1850) et ce que
           mesure `asset_ns_per_tick` ; R-1751 (version propre d'`axion-api`) ; lecture de R-001 pour
           les 15 interfaces `@Stable` vides.

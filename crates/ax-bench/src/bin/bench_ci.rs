@@ -13,7 +13,6 @@
 //! `--cpu`) : R-2231 exige qu'un resultat archive soit reproductible. Sans elle,
 //! le coureur mesure et compare tout de meme, mais n'ecrit rien.
 
-use std::collections::BTreeMap;
 use std::process::ExitCode;
 
 use ax_bench::cases;
@@ -68,7 +67,11 @@ fn main() -> ExitCode {
             args.commit.clone().unwrap_or_default(),
             args.date.clone().unwrap_or_default(),
             platform.clone(),
-            BTreeMap::new(),
+            config.describe(if args.normative {
+                "normative"
+            } else {
+                "rapide"
+            }),
             case.parameters,
             case.runs,
         )

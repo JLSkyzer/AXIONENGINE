@@ -8,6 +8,7 @@
 //! La collecte est separee du temps reel : [`measure_with_clock`] prend une
 //! horloge, ce qui la rend testable sans dependre d'une duree de paroi.
 
+use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use crate::result::Run;
@@ -49,6 +50,35 @@ impl MeasureConfig {
         run_duration: Duration::from_millis(200),
         max_samples_per_run: 20_000,
     };
+
+    /// Ce qui a fixé la mesure, tel que R-2231 veut le voir archivé sous `config` : le mode
+    /// nommé, la méthode de la PARTIE 30.3 (échauffement, exécutions, durée, plafond) et le
+    /// profil de compilation du binaire qui a mesuré — un binaire de debug ne mesure pas le
+    /// même code.
+    ///
+    /// Effet : aucun. Thread : quelconque. Coût : négligeable. Échec : aucun.
+    #[must_use]
+    pub fn describe(&self, mode: &str) -> BTreeMap<String, serde_json::Value> {
+        let millis = |duration: Duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
+        let mut config = BTreeMap::new();
+        config.insert("measure".to_string(), mode.into());
+        config.insert("warmup_ms".to_string(), millis(self.warmup).into());
+        config.insert("runs".to_string(), self.runs.into());
+        config.insert("run_ms".to_string(), millis(self.run_duration).into());
+        config.insert(
+            "max_samples_per_run".to_string(),
+            u64::try_from(self.max_samples_per_run)
+                .unwrap_or(u64::MAX)
+                .into(),
+        );
+        let profile = if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        };
+        config.insert("build_profile".to_string(), profile.into());
+        config
+    }
 }
 
 /// Mesure une routine avec une horloge injectee, rendant des nanosecondes
@@ -189,5 +219,24 @@ mod tests {
         });
         assert_eq!(runs.len(), 2);
         assert!(runs.iter().all(|r| !r.samples_ns.is_empty()));
+    }
+
+    #[test]
+    fn r2231_la_configuration_de_mesure_est_archivee() {
+        let config = MeasureConfig::QUICK.describe("rapide");
+        assert_eq!(config["measure"], "rapide");
+        assert_eq!(config["warmup_ms"], 200);
+        assert_eq!(config["runs"], 5);
+        assert_eq!(config["run_ms"], 200);
+        assert_eq!(config["max_samples_per_run"], 20_000);
+        let profile = if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        };
+        assert_eq!(config["build_profile"], profile);
+        let normative = MeasureConfig::NORMATIVE.describe("normative");
+        assert_eq!(normative["warmup_ms"], 30_000);
+        assert_eq!(normative["run_ms"], 60_000);
     }
 }

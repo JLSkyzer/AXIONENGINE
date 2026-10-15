@@ -14,7 +14,9 @@
 #
 #   lint-rust          -> job lint-rust
 #   lint-no-fiction    -> job lint-no-fiction
-#   R-562 (fiche C-25) -> job compiler-version (parite des deux COMPILER_VERSION)
+#   R-562 (fiche C-25) -> job compiler-version (parite des deux COMPILER_VERSION),
+#                         et empreintes de la sortie par plateforme dans test-unit
+#                         (ax-asset/tests/compiler_fingerprints.rs, ADR-106)
 #   deps               -> job deps (cargo-deny, puis fraicheur du NOTICE)
 #   docs               -> job deps, etape « NOTICE a jour »
 #   codegen-parity     -> job build-and-test, etape codegen (T-005)
@@ -31,12 +33,16 @@
 #                         release qui refuse un JAR partial (R-2341, 37.3)
 #   R-2122 (Miri)      -> job miri : les tests d'ax-mem, qui porte l'allocateur
 #                         compteur (ADR-133 D2), sous l'interprete Miri
+#   bench-quick        -> job bench-quick : B-02 et B-09 compares au dernier
+#                         resultat de la meme machine (R-2250), non bloquant
+#                         le temps de mesurer le bruit des runners (ADR-142)
 #
 # Ce qui manque, et pourquoi : lint-java attend spotless, lint-units attend les
 # annotations dimensionnelles de 11.5, fuzz-short attend les cibles de fuzzing,
-# et test-integration, test-e2e, test-compat, test-rustforgex et
-# bench-quick attendent les composants qu'ils exercent. Les ecrire maintenant
-# produirait des jobs verts qui ne verifient rien.
+# et test-integration, test-e2e, test-compat et test-rustforgex attendent les
+# composants qu'ils exercent. Les ecrire maintenant produirait des jobs verts
+# qui ne verifient rien. Pour la meme raison, bench-quick ne mesure que les
+# benchmarks de R-2250 dont le composant existe.
 #
 # Linux aarch64 est « best effort, non bloquant » (34.2) et n'apparait pas :
 # GitHub ne fournit pas de runner ARM sur le plan de ce depot, et un job en
@@ -497,4 +503,81 @@ jobs:
           name: axion-jar-complet
           path: java/axion-mod/build/libs/*.jar
           if-no-files-found: error
+          retention-days: 14
+
+  # R-2250 : le sous-ensemble rapide des benchmarks dont le composant existe — B-02 et
+  # B-09 ; B-01, B-07, B-11, B-18, B-19, B-21 et B-23 entrent avec le leur —, compare au
+  # dernier resultat archive de la meme machine. Un runner partage change de processeur
+  # d'un run a l'autre : la reference est gardee par modele de CPU, dans le cache
+  # d'Actions, et ne se renouvelle qu'apres un run sans regression sur master, pour qu'une
+  # regression ne devienne pas la reference de la suivante.
+  #
+  # Non bloquant (continue-on-error) le temps de mesurer le bruit de ces runners : ecart
+  # temporaire a R-2251, consigne par ADR-142, qui dit quand il devient bloquant.
+  bench-quick:
+    name: bench-quick
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chaine Rust epinglee
+        run: |
+          rustup show active-toolchain
+          rustc --version
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-bench-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-bench-${{ runner.os }}-
+
+      - name: Machine de mesure
+        id: machine
+        run: |
+          model="$(lscpu | sed -n 's/^Model name:[[:space:]]*//p' | head -n 1)"
+          slug="$(printf '%s' "$model" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//; s/-$//')"
+          echo "model=$model" >> "$GITHUB_OUTPUT"
+          echo "slug=${slug:-inconnu}" >> "$GITHUB_OUTPUT"
+          echo "processeur : $model"
+
+      - name: Reference de cette machine
+        uses: actions/cache/restore@v4
+        with:
+          path: target/bench-ci
+          key: bench-ci-${{ steps.machine.outputs.slug }}-${{ github.run_id }}
+          restore-keys: bench-ci-${{ steps.machine.outputs.slug }}-
+
+      - name: bench-ci (R-2250, R-2251)
+        run: >-
+          cargo run --release --locked -p ax-bench --bin bench-ci --
+          --out target/bench-ci
+          --commit "${{ github.sha }}"
+          --date "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          --cpu "${{ steps.machine.outputs.model }}"
+
+      # Les cinq resultats les plus recents de chaque serie restent : la comparaison n'en
+      # lit que le dernier, et le cache ne doit pas grossir sans fin.
+      - name: Elagage de la reference
+        run: |
+          find target/bench-ci -mindepth 2 -maxdepth 2 -type d | while read -r serie; do
+            ls -1 "$serie"/*.json 2>/dev/null | sort | head -n -5 | xargs -r rm --
+          done
+
+      - name: Nouvelle reference (master, sans regression)
+        if: success() && github.ref == 'refs/heads/master' && github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: target/bench-ci
+          key: bench-ci-${{ steps.machine.outputs.slug }}-${{ github.run_id }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-quick
+          path: target/bench-ci
+          if-no-files-found: ignore
           retention-days: 14

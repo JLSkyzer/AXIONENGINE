@@ -48,7 +48,9 @@ Definition of Done (PARTIE 37.3).
     (amendement A2 de l'annexe A.3) ;
   - API publique `axion-api` (C-70) : surface du paragraphe 23.2 et ses 18
     evenements, sans fournisseur enregistre a ce stade ;
-  - harnais de benchmarks `ax-bench` (C-72) ; CLI `axion-cli` (C-74) :
+  - harnais de benchmarks `ax-bench` (C-72), job CI `bench-quick` compare au
+    dernier resultat de la meme machine (R-2250, non bloquant le temps d'en
+    mesurer le bruit, ADR-142) ; CLI `axion-cli` (C-74) :
     compile, inspect, diff, validate, lod et bench-asset, et options de
     compilation `.axion.json` lues par le meme code que le jeu (ADR-135).
   - compilation en jeu identique a celle de la CLI (R-830) : plafond
