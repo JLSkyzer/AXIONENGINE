@@ -2760,7 +2760,13 @@ amortissement dans l'eau, `/axion remove`).
             l'ordonnanceur). B-08 joué (38e63ff, poste de développement : chiffres non publiés,
             R-2252) : sur le pas physique, la dérive de la machine entre les deux passes dépasse
             l'effet : **R-501 non tranché**, protocole à revoir (alterner les variantes, ou
-            allocations par tick × surcoût).
+            allocations par tick × surcoût). **Tranché le 2026-10-16 par le calcul (ADR-133 A1)** :
+            `alloc_events` compte les allocations sous un allocateur qui ne fait que compter (test
+            `r501_allocations` : 10 000 exactement pour `small_allocations`, compte de la charge
+            physique reproductible) ; `r501::judge` et le binaire `bench-r501` (6138ba6). Campagne
+            B-08 normative au commit 6138ba6, puis verdict : **R-501 tenu** ; 4 327 allocations pour
+            `physics_ticks`, dont 3 191 sur ses 20 pas — les durées, du poste de développement, ne
+            se publient pas (R-2252). Mesure publiable en M12 (ADR-131).
       - [ ] **Cases C-31, C-32, C-61 : non cochées, à raison.** C-31 : tranche 3c-ii gelée (joints
             M4, attaches M5). C-32 : résolution VHACD à mesurer
             (ADR-108), matériaux de contact DM-07 reportés par Killian au câblage des definitions
@@ -2813,7 +2819,7 @@ amortissement dans l'eau, `/axion remove`).
       Puis, en effort max : amendement A1 d'ADR-137 (avertissements jusqu'au journal). Tranchés par
       Killian le 2026-10-16 : registre des groupes de collision tiers (ADR-132 A1, fait le jour même),
       R-501 par le calcul en M3 — allocations d'un pas × surcoût d'une allocation de B-08 —, mesure
-      publiable en M12 (ADR-133 A1, à faire).
+      publiable en M12 (ADR-133 A1) : **fait le 2026-10-16**, R-501 tenu (voir la case ADR-133).
 - [ ] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
       variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
       de D1 (§2, acceptée, faite) ; attribution affinée des tests hors liste (§3), métriques des étapes en
