@@ -2751,8 +2751,8 @@ amortissement dans l'eau, `/axion remove`).
 - [ ] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
       variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
       de D1 (§2, acceptée, faite) ; attribution affinée des tests hors liste (§3), métriques des étapes en
-      M3 et budgets par étape avec C-77 (§4), R-1495 avec le fournisseur d'`AxionApi` (§5) : **proposés, à
-      ratifier**. Restent ensuite : registre des groupes de collision tiers (ADR-132), protocole de R-501
+      M3 et budgets par étape avec C-77 (§4), R-1495 avec le fournisseur d'`AxionApi` (§5) : **ratifiés le
+      2026-10-16**. Restent ensuite : registre des groupes de collision tiers (ADR-132), protocole de R-501
       (B-08). Avant ADR-144, la liste : attribution par ADR de T-390..T-392, T-827, T-475..T-485 et T-870 ;
       benchmarks du périmètre en M12 (décidé le 2026-10-12, ADR-131) ; ADR-133 (D1 à D3) ; format
       du registre des groupes de collision tiers (ADR-132) ; niveaux Q-0..Q-4 en M3 ou plus tard ; jalon des variantes
