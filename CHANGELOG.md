@@ -31,6 +31,15 @@ Definition of Done (PARTIE 37.3).
   - acceptance : GameTests de chute libre, d'empilement et d'absence de
     traversee sur un monde fige (ADR-124), banc de rendu automatise sous
     vanilla, natif et shaderpack (ADR-126) ;
+  - ordre du pas de simulation journalise et verifie contre R-660 a chaque tick
+    en debug (T-390), duree des etapes 1 et 15 exposee (T-391, ADR-144) ;
+  - budget GPU tenu par paliers journalises avec leur cause, descente
+    immediate et remontee avec hysteresis (R-750, T-484), jauge
+    `axion.render.gpu_degradation_level` ; `/axion metrics export client` pour
+    un client relie a un serveur distant (ADR-144) ;
+  - banc de rendu : transparence ordonnee (T-476), aucune texture d'AXION
+    laissee sur le GPU par une bascule de backend (T-481), ressources
+    reconstruites par un vrai changement de resource pack (T-483) ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
     T-012 (INV-04), T-019 (INV-12) ;
   - un collider `convex` ne garde que les sommets de son enveloppe : ni

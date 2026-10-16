@@ -66,6 +66,12 @@ Le backend vanilla n'a pas de PBR : les `RenderType` de Minecraft n'en exposent 
   récemment vu parmi les non visibles est déchargé en entier — maillage, textures, handle natif —,
   et se recharge quand il revient (R-750, ADR-133). Les textures de Minecraft qu'AXION ne fait que
   référencer n'y comptent pas.
+- **Dégradation** : la tenue du budget passe par des paliers, chacun journalisé avec sa cause
+  (§19.12) — `NOMINAL`, `UNLOADING` (des assets non visibles sont déchargés), `UNRESOLVED` (les
+  assets en trop sont tous visibles ; le LOD forcé et la qualité de déformation, leviers suivants
+  de R-750, viennent avec C-64 et la M6). La descente est immédiate ; la remontée se fait d'un
+  palier à la fois, après 30 s sous le seuil et 10 s au moins après la précédente (SM-02). Le
+  palier courant est la jauge `axion.render.gpu_degradation_level`.
 - **Textures** : décodées et mipmappées hors du render thread, téléversées par Minecraft
   (C-26, ADR-122).
 - **Shaders** : ressources du JAR (`assets/axion/shaders/`), rechargés avec les packs de
@@ -90,19 +96,22 @@ tracé aujourd'hui (C-67, ADR-121). Éteint, un overlay ne coûte qu'un test de 
 le temps CPU des passes d'AXION par frame (`budgets.render_prep_ns`), la mémoire GPU tenue et ses
 dépassements (`budgets.gpu_mem_bytes`), les instances et les triangles dessinés
 (`budgets.max_visible_instances`, `budgets.max_triangles_frame`), et les jauges `axion.render.*` :
-backend actif, octets de textures et de maillages, évictions, objets GL vivants, état des shaders
-du natif. Il n'y a pas encore de temps GPU par passe (requêtes de minuterie OpenGL).
+backend actif, octets de textures et de maillages, évictions, palier de dégradation, objets GL
+vivants, état des shaders du natif. Sur un client relié à un serveur distant, où la commande
+tourne sur le serveur, `/axion metrics export client` écrit l'export du client (ADR-144 §2). Il
+n'y a pas encore de temps GPU par passe (requêtes de minuterie OpenGL).
 
 ## Vérification
 
 Le **banc de rendu** (ADR-126) lance le client automatiquement sous vanilla, sous le backend
 natif et sous un shaderpack (Oculus et Embeddium) : aucune erreur OpenGL (T-471), état rendu
 intact (T-472), bascule et retour sous shaderpack (T-480, T-490), compilation à la demande sans
-à-coup (T-904, jugée sur GPU matériel seulement, ADR-127). La CI le joue à chaque push.
+à-coup (T-904, jugée sur GPU matériel seulement, ADR-127), transparence ordonnée (T-476), aucune
+texture d'AXION laissée sur le GPU par une bascule de backend (T-481), ressources d'AXION
+reconstruites par un vrai changement de resource pack (T-483). La CI le joue à chaque push.
 
 ## Ce qui n'existe pas encore
 
 Niveaux de qualité Q-0 à Q-4, sonde d'environnement (C-81) et tone mapping (C-83), effet des
 définitions autres que `CUTOUT` (skinning, déformation, parallax, clearcoat, sheen, anisotropie,
-décalques, ombres reçues, SSR), culling et LOD de rendu (C-64), export des métriques de rendu
-d'un client relié à un serveur distant (ADR-133 ; en solo, `/axion metrics export` les porte).
+décalques, ombres reçues, SSR), culling et LOD de rendu (C-64), temps GPU par passe.
