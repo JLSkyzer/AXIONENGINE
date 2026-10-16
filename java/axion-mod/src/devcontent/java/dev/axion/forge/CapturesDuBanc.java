@@ -165,6 +165,28 @@ final class CapturesDuBanc {
     }
 
     /**
+     * {@return la couleur moyenne, rouge, vert et bleu de 0 à 255, du carré de côté
+     * {@code 2 rayon + 1} centré en {@code (x, y)}, bornée à l'image} T-476 y lit quel panneau
+     * translucide l'emporte.
+     */
+    static double[] couleurAutour(Capture capture, int x, int y, int rayon) {
+        double rouge = 0;
+        double vert = 0;
+        double bleu = 0;
+        int nombre = 0;
+        for (int py = Math.max(0, y - rayon); py <= Math.min(capture.hauteur() - 1, y + rayon); py++) {
+            for (int px = Math.max(0, x - rayon); px <= Math.min(capture.largeur() - 1, x + rayon); px++) {
+                int abgr = capture.pixel(px, py);
+                rouge += abgr & 0xFF;
+                vert += (abgr >>> 8) & 0xFF;
+                bleu += (abgr >>> 16) & 0xFF;
+                nombre++;
+            }
+        }
+        return nombre == 0 ? new double[3] : new double[] {rouge / nombre, vert / nombre, bleu / nombre};
+    }
+
+    /**
      * {@return l'écart-type de la luminance des pixels d'un rectangle, bornes comprises, ramené à la
      * capture ; 0 pour un rectangle vide}
      */

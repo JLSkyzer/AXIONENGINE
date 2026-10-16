@@ -150,6 +150,18 @@ public final class BancDeRendu {
     private static final String RELIEF = "axion:test/materiaux/relief";
     private static final String PLAT = "axion:test/materiaux/plat";
 
+    /**
+     * T-476 : deux panneaux translucides, rouge et bleu à demi opaques, l'un derrière l'autre sur
+     * l'axe de la caméra — le bleu à 3 blocs d'elle, le rouge à 2.
+     */
+    private static final String TRANSLUCIDE_ROUGE = "axion:test/materiaux/translucide_rouge";
+    private static final String TRANSLUCIDE_BLEU = "axion:test/materiaux/translucide_bleu";
+    private static final double X_BLEU = 1.0;
+    private static final double X_ROUGE = 2.0;
+
+    /** T-476 : de combien, sur 255, le rouge du panneau de devant doit l'emporter sur le bleu. */
+    private static final int MARGE_T476 = 20;
+
     /** Un quart de tour autour de la verticale : la face avant des panneaux, +Z, regarde l'est, la caméra. */
     private static final float[] VERS_L_EST = {0f, 0.70710678f, 0f, 0.70710678f};
 
@@ -201,9 +213,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-476", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-476", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -245,6 +257,8 @@ public final class BancDeRendu {
     private static CompletableFuture<Void> rechargement;
     private static AxionEntity panneauRelief;
     private static AxionEntity panneauPlat;
+    private static AxionEntity panneauRouge;
+    private static AxionEntity panneauBleu;
     private static int demarragesAvantRechargement;
     /** Démarrages de backend à l'installation du journal : ceux qui suivent y laissent leur entrée. */
     private static int demarragesALInstallation;
@@ -489,6 +503,27 @@ public final class BancDeRendu {
             panneauPlat.discard();
         });
         jusqua("les panneaux retirés", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+
+        // T-476 (§19.13, R-1580) : la transparence ordonnée. Sous un shaderpack, le pack de test
+        // efface le bleu de tout pixel (BLEU_DU_PACK) : le verdict ne s'y joue pas.
+        if (!SHADERS) {
+            serveur("poser les panneaux translucides", s -> {
+                panneauBleu = AssembliesDeTest.poser(s.overworld(), TRANSLUCIDE_BLEU,
+                        positionCube().add(X_BLEU, 0.0, 0.0), VERS_L_EST);
+                panneauRouge = AssembliesDeTest.poser(s.overworld(), TRANSLUCIDE_ROUGE,
+                        positionCube().add(X_ROUGE, 0.0, 0.0), VERS_L_EST);
+            });
+            jusqua("les panneaux translucides rendus", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 3
+                    && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 3);
+            stabiliser("les panneaux translucides");
+            une("juger T-476", mc -> jugerT476(capturer(mc, "t476.png"), derniereVue));
+            serveur("retirer les panneaux translucides", s -> {
+                panneauRouge.discard();
+                panneauBleu.discard();
+            });
+            jusqua("les panneaux translucides retirés", 120,
+                    mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+        }
 
         if (SHADERS) {
             // R-1490, ADR-129 : le pack coupé, le natif reprend la main et dessine hors du pack ;
@@ -1128,6 +1163,23 @@ public final class BancDeRendu {
                 "%s : écart-type de luminance %.1f sur le panneau à relief, %.1f sur le plat (%s)",
                 NATIF ? "natif" : "vanilla", relief, plat,
                 NATIF ? "le relief doit dominer : au moins 3 × le plat + 4" : "R-1513, sans effet : écart de 2 au plus"));
+    }
+
+    /**
+     * T-476 (§19.13, R-1580) : la transparence ordonnée. Rouge devant, bleu derrière, sur l'axe de la
+     * caméra : triés du plus loin au plus près, le bleu se dessine d'abord, le rouge s'y mêle
+     * par-dessus, et au centre du panneau du fond le rouge l'emporte sur le bleu. Dans l'ordre
+     * inverse, le bleu l'emporterait : c'est ce que le verdict distingue, dans chaque backend.
+     */
+    private static void jugerT476(CapturesDuBanc.Capture capture, Vue vue) {
+        float[] centre = projeter(vue, positionCube().add(X_BLEU, 0.5, 0.0), capture.largeur(), capture.hauteur());
+        int x = Math.round(centre[0]);
+        int y = Math.round(centre[1]);
+        double[] couleur = CapturesDuBanc.couleurAutour(capture, x, y, 3);
+        RAPPORT.noter("T-476", couleur[0] >= couleur[2] + MARGE_T476, String.format(Locale.ROOT,
+                "%s : au centre du panneau du fond (%d, %d), rouge %.1f, vert %.1f, bleu %.1f — le rouge du"
+                        + " panneau de devant doit l'emporter d'au moins %d",
+                NATIF ? "natif" : "vanilla", x, y, couleur[0], couleur[1], couleur[2], MARGE_T476));
     }
 
     /**

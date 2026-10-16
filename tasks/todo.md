@@ -2752,8 +2752,14 @@ amortissement dans l'eau, `/axion remove`).
       cibles reprises, `validateJar` vert, artefact de 16,9 Mo. Dette relevée au passage : la
       bibliothèque Linux pèse 43 Mo contre 4 Mo ailleurs, sans doute ses informations de débogage
       embarquées ; à vérifier, puis à séparer du binaire publié.
-- [ ] **Reste de M3 selon ADR-144** (2026-10-16) : T-476 (banc, deux panneaux translucides), T-483
-      (vrai changement de pack).
+- [ ] **Reste de M3 selon ADR-144** (2026-10-16) : T-483 (vrai changement de pack).
+      - [x] **T-476 fait le 2026-10-16** : deux panneaux translucides de test (`translucide_rouge`,
+            `translucide_bleu`, quads double face en BLEND, glTF écrits à la main), rouge à 2 blocs de
+            la caméra, bleu à 3 ; au centre projeté du panneau du fond, le rouge doit l'emporter sur le
+            bleu d'au moins 20 sur 255 (`jugerT476`, hors shaderpack). Vert dans les deux backends :
+            rouge 104,0 / bleu 72,0 en natif, 103,1 / 71,6 en vanilla. Mutations jouées au banc natif :
+            ordre inversé → T-476 rouge (72,0 / 104,0) ; libération de texture sautée → T-481 rouge
+            (textures [38, 56] et [29, 47]) alors que T-492 restait vert.
       - [x] **T-481 fait le 2026-10-16** : `AxionTexture` compte ses textures vivantes (téléversées, pas
             encore fermées) ; le banc les relève à chaque bascule et juge qu'un même backend en tient
             le même nombre à chaque passage, non nul (`jugerT481`, à côté de T-492). Banc natif vert :
