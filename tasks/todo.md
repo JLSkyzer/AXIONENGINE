@@ -2752,6 +2752,19 @@ amortissement dans l'eau, `/axion remove`).
       cibles reprises, `validateJar` vert, artefact de 16,9 Mo. Dette relevée au passage : la
       bibliothèque Linux pèse 43 Mo contre 4 Mo ailleurs, sans doute ses informations de débogage
       embarquées ; à vérifier, puis à séparer du binaire publié.
+- [ ] **Reste de M3 selon ADR-144** (2026-10-16) : T-476 (banc, deux panneaux translucides), T-481
+      (octets de texture dans T-492), T-483 (vrai changement de pack), T-484 (journal du déchargement),
+      T-390 et T-391. **Conception arrêtée pour T-390/T-391, pas encore codée** : un `StageLog` dans
+      `ax-physics/src/scheduler.rs` (chronomètre une étape, retient l'ordre exécuté, fusionne deux
+      passages consécutifs d'une même étape) et une vérification de R-660 — hors du bloc des sous-pas
+      (étapes 3-6, qui se répètent) l'ordre ne recule jamais, rien de 1-6 après la chaîne 7-12 ;
+      `PhysicsWorld::advance` (world.rs:643) l'emploie pour 4 et 6 ; la session FFI journalise l'étape 1
+      (`submit_commands`, puis proxies et activité au début du collect, abi.rs:1468) et l'étape 15
+      (récolte, événements, écriture de SIM_OUT) et publie `axion.sim.last_step_commands_ns` et
+      `axion.sim.last_step_serialization_ns` à côté des métriques existantes (context.rs:384) ; tests :
+      vérification de R-660 (mutations : chaîne dans la boucle, 15 avant 4, 1 après 4) et `sim_step_metrics_abi.rs` étendu (plusieurs corps, pour une durée de sérialisation non nulle).
+      Puis, en effort max : amendement A1 d'ADR-137 (avertissements jusqu'au journal). Restent aussi à
+      trancher : registre des groupes de collision tiers (ADR-132), protocole de R-501 (B-08).
 - [ ] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
       variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
       de D1 (§2, acceptée, faite) ; attribution affinée des tests hors liste (§3), métriques des étapes en
