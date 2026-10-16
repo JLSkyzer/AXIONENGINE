@@ -1945,6 +1945,16 @@ substituable sans changer rapier »).
                   passé par la règle de validation, rouge sous mutation. `COMPILER_VERSION` 12 ;
                   empreintes v12 des quatre plateformes, les trois distantes par la sonde
                   `r562-sonde-v12` (même répartition qu'en v11).
+            - [x] **Tranche D de C-23 avec C-32** (renvoi d'ADR-137 ; ADR-108, « Mise en œuvre »),
+                  **faite le 2026-10-16** : enveloppe de décomposition de plus de 64 sommets réduite
+                  au lieu d'écartée — une sphère en `auto_convex` n'avait aucun collider (sonde :
+                  6 enveloppes de 83 à 237 sommets, toutes écartées, repli global refusé) ; enveloppe
+                  globale de plus de 256 points réduite au lieu de refusée, par échantillonnage du
+                  point le plus éloigné ; `max_decomp_ms` mesuré et averti, sans effet sur le
+                  résultat ; l'asset entier prend `auto_capsule`, `convex` et `auto_convex` dans son
+                  repère (`world_transforms` de l'optimizer). `collision.resolution` reste sans
+                  effet : sa plage est à mesurer. Tests : six nouveaux, six mutations rouges, chacune
+                  par un test. `COMPILER_VERSION` 13.
             Produit les colliders (`ColliderDesc`, DM-06) à la compilation et les
             porte jusqu'à l'A3D (section PHYS). DM-06 figé, validation C-22 prête.
             Périmètre : **complet, PHYS inclus** ; gels COM/PHYS derrière un ADR
@@ -2857,8 +2867,8 @@ amortissement dans l'eau, `/axion remove`).
               natif (index DM-07 des `ColliderDesc`, modes de combinaison), puis le ballon de test.
       - **L'effort max après le reste de M3** : amendement A1 d'ADR-137 et R-1011 (C-31 : au-delà du
         plafond d'événements, agréger par paire au lieu de jeter — aujourd'hui `push_event` jette).
-      - Reste à proposer, par un ADR de portée de la DoD de M3 (modèle d'ADR-137) : tranche D de C-23
-        avec C-32 (renvoi d'ADR-137), métriques des tuiles et des requêtes, R-650 prouvé, T-015,
+      - Reste à proposer, par un ADR de portée de la DoD de M3 (modèle d'ADR-137) : métriques des tuiles
+        et des requêtes, R-650 prouvé, T-015,
         les écarts du rendu (surcharge des budgets de frame, temps GPU par passe, overlays de C-67
         sans jalon, garde GL et R-741) et les cases périmées.
 - [ ] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et

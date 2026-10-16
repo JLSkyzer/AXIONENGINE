@@ -48,6 +48,13 @@ Definition of Done (PARTIE 37.3).
   - `auto_capsule` sur un mesh trapu rend la sphere de son rayon : la capsule de
     segment nul qu'il produisait faisait refuser l'asset par la validation ;
     `COMPILER_VERSION` 12 ;
+  - decomposition convexe aux bornes de R-551 et R-161 (ADR-108, tranche D) :
+    une enveloppe de plus de 64 sommets est reduite au lieu d'etre ecartee - une
+    sphere en auto_convex n'avait aucun collider -, une enveloppe globale de plus
+    de 256 points reduite au lieu d'etre refusee, par un echantillonnage
+    deterministe ; la duree d'une decomposition est mesuree et avertie au-dela
+    de 5 s, sans effet sur le resultat ; l'asset entier prend auto_capsule,
+    convex et auto_convex dans son repere ; `COMPILER_VERSION` 13 ;
   - materiaux physiques data-driven, premier temps de DM-07 (ADR-145) : registre
     `axion:physics_material` (`data/<ns>/axion/physics_materials`), heritage par
     `parent` champ par champ, acier generique du moteur pour ce qu'aucun ancetre

@@ -24,7 +24,9 @@ package dev.axion.asset;
  * {@code GEOM} écrite dès qu'un mesh existe, même sans triangle ; 10 — zstd au niveau 9
  * que fixe R-552, au lieu de 3 ; 11 — un collider {@code convex} (C-32) ne garde que les
  * sommets de son enveloppe (R-161) ; 12 — {@code auto_capsule} sur un mesh trapu rend une
- * sphère au lieu d'une capsule refusée. À incrémenter des deux côtés à toute modification de
+ * sphère au lieu d'une capsule refusée ; 13 — tranche D de C-23 avec C-32 : enveloppes
+ * réduites au lieu de refusées ou écartées, et l'asset entier en {@code auto_capsule},
+ * {@code convex} et {@code auto_convex}. À incrémenter des deux côtés à toute modification de
  * C-21, C-22, C-23, C-24, C-28 ou C-32 qui change la sortie.
  */
 public final class CompilerVersion {
@@ -35,7 +37,7 @@ public final class CompilerVersion {
      * <p>La CI ({@code tools/ci/check_compiler_version.py}) refuse tout écart
      * entre cette valeur et celle du crate {@code ax-asset}.
      */
-    public static final int CURRENT = 12;
+    public static final int CURRENT = 13;
 
     private CompilerVersion() {
         throw new AssertionError("classe utilitaire, non instanciable");

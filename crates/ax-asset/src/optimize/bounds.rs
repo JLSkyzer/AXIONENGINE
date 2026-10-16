@@ -43,9 +43,25 @@ pub(super) fn update_mesh_bounds(asset: &mut ImportedAsset) {
 
 /// Transformation affine en espace asset : `p ↦ linear · p + translation`.
 #[derive(Clone, Copy)]
-struct Affine {
+pub(crate) struct Affine {
     linear: [[f64; 3]; 3],
     translation: [f64; 3],
+}
+
+/// La transformation en espace asset de chaque node, dans l'ordre des nodes.
+///
+/// C-22 garantit l'ordre topologique : un parent précède ses enfants, si bien qu'une
+/// passe suffit. Un node sans parent valide est placé par sa seule transformation locale.
+pub(crate) fn world_transforms(nodes: &[ax_model::dm::scene::NodeDesc]) -> Vec<Affine> {
+    let mut world: Vec<Affine> = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        let local = Affine::from_local(&node.local);
+        let placed = world
+            .get(node.parent as usize)
+            .map_or(local, |parent| parent.then_inner(&local));
+        world.push(placed);
+    }
+    world
 }
 
 impl Affine {
@@ -103,7 +119,8 @@ impl Affine {
         }
     }
 
-    fn apply(&self, point: [f64; 3]) -> [f64; 3] {
+    /// Le point transformé.
+    pub(crate) fn apply(&self, point: [f64; 3]) -> [f64; 3] {
         let mut out = self.translation;
         for (row, value) in out.iter_mut().enumerate() {
             for (column, coordinate) in point.iter().enumerate() {
@@ -121,19 +138,12 @@ impl Affine {
 /// arrondit **vers l'extérieur** : un arrondi au plus proche pourrait laisser
 /// un sommet dépasser d'un ulp.
 pub(super) fn asset_bounds(asset: &ImportedAsset) -> Option<Aabb> {
-    let mut world: Vec<Affine> = Vec::with_capacity(asset.nodes.len());
+    let world = world_transforms(&asset.nodes);
     let mut min = [f64::INFINITY; 3];
     let mut max = [f64::NEG_INFINITY; 3];
     let mut any = false;
 
-    for node in &asset.nodes {
-        let local = Affine::from_local(&node.local);
-        // C-22 garantit l'ordre topologique : un parent précède ses enfants.
-        let placed = world
-            .get(node.parent as usize)
-            .map_or(local, |parent| parent.then_inner(&local));
-        world.push(placed);
-
+    for (node, placed) in asset.nodes.iter().zip(&world) {
         // Tous les meshes du node (ADR-122 §5) : un mesh glTF à plusieurs
         // primitives n'en comptait que la première.
         for rank in node.meshes() {

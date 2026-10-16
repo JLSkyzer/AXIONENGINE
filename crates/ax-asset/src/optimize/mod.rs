@@ -53,6 +53,7 @@ mod normals;
 mod tangents;
 mod uv;
 
+pub(crate) use bounds::world_transforms;
 pub use bounds::Aabb;
 pub use lod::{LodOptions, LodTable, MAX_LOD_LEVELS};
 

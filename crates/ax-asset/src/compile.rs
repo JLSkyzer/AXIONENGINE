@@ -56,8 +56,12 @@ use core::fmt;
 /// de la source, comme en CLI (R-830) ; 11 — un collider `convex` (C-32) ne garde
 /// que les sommets de son enveloppe, ni doublon ni point intérieur (R-161) ; 12 —
 /// `auto_capsule` sur un mesh trapu rend la sphère de son rayon, là où la capsule
-/// de segment nul faisait refuser l'asset par la validation.
-pub const COMPILER_VERSION: u32 = 12;
+/// de segment nul faisait refuser l'asset par la validation ; 13 — tranche D de C-23
+/// avec C-32 (ADR-137, ADR-108) : une enveloppe de plus de 256 points est réduite au lieu
+/// d'être refusée, une enveloppe de décomposition de plus de 64 sommets réduite au lieu
+/// d'être écartée, et l'asset entier prend `auto_capsule`, `convex` et `auto_convex`
+/// dans son repère.
+pub const COMPILER_VERSION: u32 = 13;
 
 /// Empreinte FNV-1a 64 bits d'une source, champ `source_hash` de l'en-tête A3D.
 ///

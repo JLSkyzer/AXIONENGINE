@@ -22,12 +22,16 @@
 //! Formes prises en charge par node : `auto_box`, `auto_sphere`, `auto_capsule`,
 //! `convex` (enveloppe des sommets du mesh), `auto_compound` (R-621) et
 //! `auto_convex` (décomposition V-HACD, étape 8 de C-23, ADR-108). Pour l'asset
-//! entier (`collision.mode` des options, ADR-135), seules la boîte et la sphère sont
-//! produites : un autre mode est **averti**, jamais remplacé par une forme que
-//! l'auteur n'a pas décrite (R-912). Le marquage REFITTABLE (R-623) et la
-//! masse/COM déclarée (R-622) suivent avec leurs consommateurs.
+//! entier (`collision.mode` des options, ADR-135), toutes sauf `auto_compound`, qui
+//! regroupe les enfants d'un node : `convex` et `auto_convex` y prennent la géométrie de
+//! l'asset dans son repère. Un mode qui ne peut rien produire est **averti**, jamais
+//! remplacé par une forme que l'auteur n'a pas décrite (R-912).
+//!
+//! Bornes de R-161 et R-551 : une enveloppe garde au plus 256 points, une enveloppe de
+//! décomposition au plus 64, au-delà réduites de façon déterministe ; la durée d'une
+//! décomposition est mesurée et avertie, sans effet sur le résultat (ADR-108).
 
-use crate::optimize::Aabb;
+use crate::optimize::{world_transforms, Aabb};
 use crate::options::CollisionOptions;
 use ax_model::dm::geometry::{MeshDesc, Transform, Vertex};
 use ax_model::dm::physics::{
@@ -36,6 +40,7 @@ use ax_model::dm::physics::{
 use ax_model::dm::scene::NodeDesc;
 use parry3d::math::Vector;
 use parry3d::transformation::vhacd::{VHACDParameters, VHACD};
+use std::time::{Duration, Instant};
 
 /// Densité par défaut d'un collider auto-généré, en kg/m³.
 ///
@@ -56,6 +61,14 @@ pub(crate) const DECOMP_MAX_HULLS: u32 = 32;
 /// Nombre maximal de points par enveloppe d'une décomposition (R-551). Une
 /// enveloppe plus dense fait replier sur l'enveloppe globale (ADR-108).
 const DECOMP_MAX_HULL_VERTICES: usize = 64;
+
+/// Durée au-delà de laquelle une décomposition convexe est signalée (R-551,
+/// `max_decomp_ms` 5000).
+///
+/// Mesurée et avertie, jamais appliquée au résultat : la décomposition est bornée par son
+/// travail, pas par l'horloge, pour que la même source donne le même collider sur toute
+/// machine (ADR-108 §1 et §2).
+pub(crate) const DECOMP_MAX: Duration = Duration::from_millis(5000);
 
 /// Groupe et masque par défaut : membre de tous les groupes, entre en collision
 /// avec tous (comme `CollisionGroups::ALL` au runtime). Au `CREATE_ASSEMBLY`, Java
@@ -185,40 +198,63 @@ pub fn build_colliders(
     bounds: Option<Aabb>,
 ) -> ColliderBuild {
     if !requests.is_empty() {
-        return per_node_colliders(
-            nodes,
-            meshes,
-            vertices,
-            indices,
-            requests,
-            collision.max_hulls,
-        );
+        return per_node_colliders(nodes, meshes, vertices, indices, requests, collision);
     }
-    let definition_mode = collision.mode;
-    // Par definition : englobant de l'asset. `Convex` n'a pas de source à ce
-    // niveau (il tire ses points d'un mesh de node), aussi n'y est-il pas produit.
-    let mut warnings = Vec::new();
-    let colliders = match (definition_mode, bounds) {
-        (ColliderMode::AutoBox, Some(bounds)) => vec![auto_box(bounds)],
-        (ColliderMode::AutoSphere, Some(bounds)) => vec![auto_sphere(bounds)],
-        (ColliderMode::None, _) | (_, None) => Vec::new(),
-        (mode, Some(_)) => {
-            // Pour l'asset entier, seuls les englobants existent aujourd'hui : un
-            // autre mode ne produit rien, et le dit plutôt que de se taire.
-            warnings.push(format!(
-                "collider « {} » demandé pour l'asset entier : non produit à ce niveau \
-                 (seuls auto_box et auto_sphere le sont) ; aucun collider généré",
-                mode.name()
-            ));
-            Vec::new()
-        }
+    asset_collider(
+        nodes, meshes, vertices, indices, collision, bounds, DECOMP_MAX,
+    )
+}
+
+/// Le collider de l'asset entier, à défaut de tout node collider (R-620) : le mode de la
+/// definition (`collision.mode`), dans le repère de l'asset.
+///
+/// Les englobants (`auto_box`, `auto_sphere`, `auto_capsule`) se tirent de ses bornes ;
+/// `convex` et `auto_convex` de sa géométrie, chaque mesh placé par son node.
+/// `auto_compound` regroupe les colliders des enfants **d'un node** (R-621) : il n'a pas
+/// de sens pour l'asset entier, et le dit plutôt que de se taire (R-912).
+fn asset_collider(
+    nodes: &[NodeDesc],
+    meshes: &[MeshDesc],
+    vertices: &[Vertex],
+    indices: &[u32],
+    collision: &CollisionOptions,
+    bounds: Option<Aabb>,
+    max_decomp: Duration,
+) -> ColliderBuild {
+    let mut build = ColliderBuild::default();
+    let Some(bounds) = bounds else {
+        return build;
     };
-    ColliderBuild {
-        colliders,
-        hull_points: Vec::new(),
-        compound_children: Vec::new(),
-        warnings,
+    let who = "asset entier";
+    let collider = match collision.mode {
+        ColliderMode::None => return build,
+        ColliderMode::AutoBox => Ok(auto_box(bounds)),
+        ColliderMode::AutoSphere => Ok(auto_sphere(bounds)),
+        ColliderMode::AutoCapsule => Ok(auto_capsule(bounds)),
+        ColliderMode::Convex => {
+            model_geometry(nodes, meshes, vertices, indices).and_then(|(cloud, _)| {
+                hull_collider(&cloud, &mut build.hull_points, &mut build.warnings, who)
+            })
+        }
+        ColliderMode::AutoConvex => {
+            model_geometry(nodes, meshes, vertices, indices).and_then(|(cloud, tris)| {
+                decompose(&cloud, &tris, collision, max_decomp, &mut build, who)
+            })
+        }
+        ColliderMode::Compound => Err(
+            "auto_compound regroupe les enfants d'un node (R-621), il ne vaut pas pour l'asset \
+             entier"
+                .to_owned(),
+        ),
+    };
+    match collider {
+        Ok(collider) => build.colliders.push(collider),
+        Err(reason) => build.warnings.push(format!(
+            "collider « {} » demandé pour l'asset entier : {reason} ; aucun collider généré",
+            collision.mode.name()
+        )),
     }
+    build
 }
 
 impl ColliderMode {
@@ -245,7 +281,7 @@ fn per_node_colliders(
     vertices: &[Vertex],
     indices: &[u32],
     requests: &[ColliderRequest],
-    max_hulls: u32,
+    collision: &CollisionOptions,
 ) -> ColliderBuild {
     let mut build = ColliderBuild::default();
     for request in requests {
@@ -294,7 +330,11 @@ fn per_node_colliders(
                 ColliderMode::AutoSphere => auto_sphere(aabb),
                 ColliderMode::AutoCapsule => auto_capsule(aabb),
                 ColliderMode::Convex => {
-                    match convex_from_meshes(own, vertices, &mut build.hull_points) {
+                    let who = format!("node collider {}", request.node);
+                    let sources = mesh_positions(own, vertices);
+                    match sources.and_then(|sources| {
+                        hull_collider(&sources, &mut build.hull_points, &mut build.warnings, &who)
+                    }) {
                         Ok(collider) => collider,
                         Err(reason) => {
                             build
@@ -305,22 +345,15 @@ fn per_node_colliders(
                     }
                 }
                 ColliderMode::AutoConvex => {
-                    match convex_decomposition(
-                        own,
-                        vertices,
-                        indices,
-                        &mut build.hull_points,
-                        &mut build.compound_children,
-                        max_hulls,
-                    ) {
-                        Ok((collider, fallback)) => {
-                            if let Some(reason) = fallback {
-                                build
-                                    .warnings
-                                    .push(format!("node collider {} : {reason}", request.node));
-                            }
-                            collider
-                        }
+                    let who = format!("node collider {}", request.node);
+                    let mut cloud = Vec::new();
+                    let mut tris = Vec::new();
+                    let geometry =
+                        append_geometry(own, vertices, indices, &|p| p, &mut cloud, &mut tris);
+                    match geometry.and_then(|()| {
+                        decompose(&cloud, &tris, collision, DECOMP_MAX, &mut build, &who)
+                    }) {
+                        Ok(collider) => collider,
                         Err(reason) => {
                             build
                                 .warnings
@@ -354,26 +387,39 @@ fn per_node_colliders(
     build
 }
 
-/// Construit un collider `ConvexHull` depuis les sommets des meshes d'un node
-/// `role=collider shape=convex` : les sommets de leur enveloppe convexe deviennent
-/// les points d'enveloppe, ajoutés au `pool`.
+/// Construit un collider `ConvexHull` de l'enveloppe convexe d'un nuage de points,
+/// dans le repère de ce nuage : les sommets de l'enveloppe deviennent les points
+/// d'enveloppe, ajoutés au `pool`.
 ///
 /// R-161 compte les points **après réduction** : les sommets d'un mesh n'en sont
 /// pas. Un export à normales plates duplique chaque coin par face, et un point
-/// intérieur ne porte aucune forme ; les garder faisait juger le plafond sur des
-/// doublons, au risque de refuser à tort une enveloppe qui le tenait. Seuls les
-/// sommets de l'enveloppe sont donc gardés, dans l'ordre déterministe que rend le
-/// calcul.
+/// intérieur ne porte aucune forme ; seuls les sommets de l'enveloppe sont donc
+/// gardés, dans l'ordre déterministe que rend le calcul. Une enveloppe qui en garde
+/// plus que [`CONVEX_MAX_POINTS`] est **réduite** à ce plafond ([`reduce_hull`]),
+/// et `warnings` le dit au nom de `who`.
 ///
-/// Rend `Err(raison)` si les sommets sortent du tampon, si un mesh trop maigre ou
-/// plat ne forme pas de volume, ou si l'enveloppe garde plus de 256 points (R-161)
-/// — une forme aussi fine se décrit par `auto_convex` (V-HACD, R-162).
-fn convex_from_meshes(
-    meshes: &[MeshDesc],
-    vertices: &[Vertex],
+/// Rend `Err(raison)` si le nuage, trop maigre ou plat, ne forme pas de volume.
+fn hull_collider(
+    sources: &[[f32; 3]],
     pool: &mut Vec<[f32; 3]>,
+    warnings: &mut Vec<String>,
+    who: &str,
 ) -> Result<ColliderDesc, String> {
-    let sources = mesh_positions(meshes, vertices)?;
+    let mut positions = hull_of(sources)?;
+    if positions.len() > CONVEX_MAX_POINTS as usize {
+        let reduced = reduce_hull(&positions, CONVEX_MAX_POINTS as usize)?;
+        warnings.push(format!(
+            "{who} : enveloppe convexe de {} points réduite à {} (R-161)",
+            positions.len(),
+            reduced.len()
+        ));
+        positions = reduced;
+    }
+    push_hull(&positions, pool)
+}
+
+/// Les sommets de l'enveloppe convexe d'un nuage, ou pourquoi il n'en a pas.
+fn hull_of(sources: &[[f32; 3]]) -> Result<Vec<[f32; 3]>, String> {
     if sources.len() < CONVEX_MIN_POINTS as usize {
         return Err(format!(
             "enveloppe convexe de {} points, moins que le minimum {CONVEX_MIN_POINTS}",
@@ -387,55 +433,76 @@ fn convex_from_meshes(
     let (hull, _) = parry3d::transformation::try_convex_hull(&cloud)
         .map_err(|error| format!("les sommets ne forment pas une enveloppe : {error:?}"))?;
     let positions: Vec<[f32; 3]> = hull.iter().map(|v| [v.x, v.y, v.z]).collect();
-    let point_count = positions.len();
-    if point_count < CONVEX_MIN_POINTS as usize {
+    if positions.len() < CONVEX_MIN_POINTS as usize {
         return Err(format!(
-            "enveloppe convexe de {point_count} points, moins que le minimum {CONVEX_MIN_POINTS}"
+            "enveloppe convexe de {} points, moins que le minimum {CONVEX_MIN_POINTS}",
+            positions.len()
         ));
     }
-    if point_count > CONVEX_MAX_POINTS as usize {
-        return Err(format!(
-            "enveloppe convexe de {point_count} points, plus que {CONVEX_MAX_POINTS} (R-161) — \
-             une forme aussi fine se décrit par auto_convex"
-        ));
-    }
-    let offset = u32::try_from(pool.len()).map_err(|_| "pool de points saturé".to_owned())?;
-    pool.extend(positions);
-    // Les points sont déjà dans le repère du mesh : le collider n'a pas de
-    // translation de recentrage (contrairement à auto_box/auto_sphere).
-    Ok(primitive_collider(
-        ColliderShape::ConvexHull {
-            points_offset: offset,
-            points_count: point_count as u32,
-        },
-        [0.0; 3],
-    ))
+    Ok(positions)
 }
 
-/// Décompose le mesh d'un node `shape: auto_convex` en enveloppes convexes (VHACD,
-/// `parry3d`, ADR-108), à la compilation. Rend `(collider, repli)` : `collider` est
-/// un `Compound` de `ConvexHull` (plusieurs pièces) ou une `ConvexHull` unique (mesh
-/// déjà quasi convexe) ; `repli`, s'il est `Some`, porte l'avertissement du repli
-/// sur l'enveloppe convexe globale quand la décomposition n'a pas tenu dans ses
-/// bornes (R-551).
+/// Réduit les sommets d'une enveloppe convexe à `max` au plus, de façon déterministe.
 ///
-/// Les indices sont **locaux à leur mesh** (0-based, cf. `import`) : ceux de
-/// chaque mesh du node sont décalés du nombre de sommets qui le précèdent dans le
-/// nuage commun.
+/// Échantillonnage du point le plus éloigné : le premier choisi est le sommet de plus
+/// grand `x` (le plus petit rang à égalité), puis chaque pas ajoute le sommet le plus
+/// éloigné de ceux déjà choisis, au carré de la distance, le plus petit rang à
+/// égalité. Les extrémités de la forme partent ainsi les premières, et les points
+/// suivants se répartissent sur sa surface. L'enveloppe des points choisis est rendue :
+/// tous sont des sommets de l'enveloppe d'origine, elle est donc contenue dans celle-ci
+/// et n'en garde que `max` points au plus. Aucune fonction transcendante, aucune table
+/// de hachage : la même entrée donne la même sortie (R-553).
+fn reduce_hull(points: &[[f32; 3]], max: usize) -> Result<Vec<[f32; 3]>, String> {
+    if points.len() <= max {
+        return Ok(points.to_vec());
+    }
+    let distance2 = |a: [f32; 3], b: [f32; 3]| {
+        let d = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+        d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+    };
+    let mut first = 0;
+    for (rank, point) in points.iter().enumerate() {
+        if point[0] > points[first][0] {
+            first = rank;
+        }
+    }
+    let mut chosen = vec![points[first]];
+    let mut nearest: Vec<f32> = points
+        .iter()
+        .map(|&p| distance2(p, points[first]))
+        .collect();
+    while chosen.len() < max {
+        let mut far = 0;
+        for (rank, &distance) in nearest.iter().enumerate() {
+            if distance > nearest[far] {
+                far = rank;
+            }
+        }
+        if nearest[far] <= 0.0 {
+            break;
+        }
+        chosen.push(points[far]);
+        let picked = points[far];
+        for (rank, point) in points.iter().enumerate() {
+            nearest[rank] = nearest[rank].min(distance2(*point, picked));
+        }
+    }
+    hull_of(&chosen)
+}
+
+/// La géométrie de meshes en un nuage commun et ses triangles, chaque sommet passé
+/// par `place` (l'identité dans le repère du node, la pose du node pour l'asset entier).
 ///
-/// # Errors
-/// Géométrie inexploitable : sommets/indices hors du tampon, mesh trop maigre, ou
-/// enveloppe globale de repli elle-même impossible.
-fn convex_decomposition(
+/// Les indices sont **locaux à leur mesh** (0-based, cf. `import`) : ceux de chaque
+/// mesh sont décalés du nombre de sommets qui le précèdent dans le nuage.
+fn append_geometry(
     meshes: &[MeshDesc],
     vertices: &[Vertex],
     indices: &[u32],
-    points: &mut Vec<[f32; 3]>,
-    children: &mut Vec<ColliderDesc>,
-    max_hulls: u32,
-) -> Result<(ColliderDesc, Option<String>), String> {
-    let mut cloud: Vec<Vector> = Vec::new();
-    let mut tris: Vec<[u32; 3]> = Vec::new();
+    place: &dyn Fn([f32; 3]) -> [f32; 3],
+    cloud: &mut Vec<[f32; 3]>,
+    tris: &mut Vec<[u32; 3]>,
+) -> Result<(), String> {
     for mesh in meshes {
         let vstart = mesh.vertex_offset as usize;
         let Some(verts) = vertices.get(vstart..vstart.saturating_add(mesh.vertex_count as usize))
@@ -454,69 +521,141 @@ fn convex_decomposition(
             }
             tris.push([base + triangle[0], base + triangle[1], base + triangle[2]]);
         }
-        cloud.extend(
-            verts
-                .iter()
-                .map(|v| Vector::new(v.position[0], v.position[1], v.position[2])),
-        );
+        cloud.extend(verts.iter().map(|v| place(v.position)));
     }
+    Ok(())
+}
+
+/// Un nuage de points et ses triangles, indices dans le nuage.
+type Geometry = (Vec<[f32; 3]>, Vec<[u32; 3]>);
+
+/// La géométrie de l'asset entier dans son repère : chaque mesh placé par la chaîne
+/// de transformations de son node, comme ses bornes (C-23 étape 7).
+fn model_geometry(
+    nodes: &[NodeDesc],
+    meshes: &[MeshDesc],
+    vertices: &[Vertex],
+    indices: &[u32],
+) -> Result<Geometry, String> {
+    let world = world_transforms(nodes);
+    let mut cloud = Vec::new();
+    let mut tris = Vec::new();
+    for (node, placed) in nodes.iter().zip(&world) {
+        let carried = node.meshes();
+        let Some(own) = meshes.get(carried.start as usize..carried.end as usize) else {
+            continue;
+        };
+        #[allow(clippy::cast_possible_truncation)] // repère de l'asset, f32 comme ses sommets
+        let place = |p: [f32; 3]| {
+            placed
+                .apply(p.map(f64::from))
+                .map(|coordinate| coordinate as f32)
+        };
+        append_geometry(own, vertices, indices, &place, &mut cloud, &mut tris)?;
+    }
+    Ok((cloud, tris))
+}
+
+/// Décompose une géométrie en enveloppes convexes (V-HACD, `parry3d`, ADR-108), à la
+/// compilation, dans le repère de cette géométrie. Rend un `Compound` de `ConvexHull`
+/// (plusieurs pièces) ou une `ConvexHull` unique (géométrie déjà quasi convexe).
+///
+/// Bornes d'ADR-108 et de R-551 : au plus `collision.max_hulls` enveloppes, chacune
+/// réduite à [`DECOMP_MAX_HULL_VERTICES`] sommets comme V-HACD simplifie les siennes ;
+/// si rien n'est exploitable ou qu'il reste trop d'enveloppes, repli sur l'enveloppe
+/// convexe globale, averti. La durée du calcul est **mesurée** : au-delà de
+/// `max_decomp` ([`DECOMP_MAX`]), un avertissement la dit, et le résultat n'en dépend pas — il ne
+/// dépend que de l'entrée (ADR-108 §2, R-553). La résolution est le défaut de `parry3d`.
+///
+/// # Errors
+/// Géométrie trop maigre, ou enveloppe globale de repli elle-même impossible.
+fn decompose(
+    cloud: &[[f32; 3]],
+    tris: &[[u32; 3]],
+    collision: &CollisionOptions,
+    max_decomp: Duration,
+    build: &mut ColliderBuild,
+    who: &str,
+) -> Result<ColliderDesc, String> {
     if cloud.len() < CONVEX_MIN_POINTS as usize || tris.is_empty() {
         return Err("mesh trop maigre pour une décomposition".to_owned());
     }
-
-    // Bornes fixes d'ADR-108 (R-551) ; la résolution reste le défaut de parry (64),
-    // à ajuster en M3 sur mesures — jamais un chiffre inventé ici.
+    let points: Vec<Vector> = cloud
+        .iter()
+        .map(|p| Vector::new(p[0], p[1], p[2]))
+        .collect();
+    // La résolution reste le défaut de `parry3d` : `collision.resolution` est validée,
+    // sans effet tant qu'ADR-108 ne l'a pas mesurée (sa plage avec elle).
     let params = VHACDParameters {
-        max_convex_hulls: max_hulls,
+        max_convex_hulls: collision.max_hulls,
         ..VHACDParameters::default()
     };
-    let decomposition = VHACD::decompose(&params, &cloud, &tris, false);
+    let start = Instant::now();
+    let decomposition = VHACD::decompose(&params, &points, tris, false);
+    let hulls = decomposition.compute_convex_hulls(params.convex_hull_downsampling);
+    let elapsed = start.elapsed();
+    if elapsed > max_decomp {
+        build.warnings.push(format!(
+            "{who} : décomposition convexe en {} ms, au-delà de max_decomp_ms {} (R-551, \
+             ADR-108) ; le résultat n'en dépend pas",
+            elapsed.as_millis(),
+            max_decomp.as_millis()
+        ));
+    }
 
-    // Enveloppes exploitables : 4..=64 points (R-161 borné par R-551).
-    let valid: Vec<Vec<[f32; 3]>> = decomposition
-        .compute_convex_hulls(params.convex_hull_downsampling)
-        .into_iter()
-        .map(|(hull, _)| {
-            hull.into_iter()
-                .map(|v| [v.x, v.y, v.z])
-                .collect::<Vec<_>>()
-        })
-        .filter(|hull| {
-            hull.len() >= CONVEX_MIN_POINTS as usize && hull.len() <= DECOMP_MAX_HULL_VERTICES
-        })
-        .collect();
+    // Enveloppes exploitables : au moins 4 points (R-161), au plus 64 (R-551), une
+    // enveloppe plus riche étant réduite à ce nombre.
+    let mut valid: Vec<Vec<[f32; 3]>> = Vec::new();
+    let mut reduced = 0usize;
+    for (hull, _) in hulls {
+        let hull: Vec<[f32; 3]> = hull.into_iter().map(|v| [v.x, v.y, v.z]).collect();
+        if hull.len() < CONVEX_MIN_POINTS as usize {
+            continue;
+        }
+        if hull.len() > DECOMP_MAX_HULL_VERTICES {
+            let Ok(smaller) = reduce_hull(&hull, DECOMP_MAX_HULL_VERTICES) else {
+                continue;
+            };
+            reduced += 1;
+            valid.push(smaller);
+        } else {
+            valid.push(hull);
+        }
+    }
+    if reduced > 0 {
+        build.warnings.push(format!(
+            "{who} : {reduced} enveloppe(s) de la décomposition réduite(s) à \
+             {DECOMP_MAX_HULL_VERTICES} sommets (R-551)"
+        ));
+    }
 
     // Repli (R-551, ADR-108) : rien d'exploitable ou trop d'enveloppes → l'enveloppe
-    // convexe globale du mesh.
-    if valid.is_empty() || valid.len() > max_hulls as usize {
-        let collider = convex_from_meshes(meshes, vertices, points)?;
-        return Ok((
-            collider,
-            Some("décomposition hors bornes, repli sur l'enveloppe globale".to_owned()),
+    // convexe globale.
+    if valid.is_empty() || valid.len() > collision.max_hulls as usize {
+        build.warnings.push(format!(
+            "{who} : décomposition hors bornes, repli sur l'enveloppe globale"
         ));
+        return hull_collider(cloud, &mut build.hull_points, &mut build.warnings, who);
     }
 
     // Une seule enveloppe : un `ConvexHull` simple.
     if let [hull] = valid.as_slice() {
-        return Ok((push_hull(hull, points)?, None));
+        return push_hull(hull, &mut build.hull_points);
     }
 
     // Plusieurs enveloppes : un `Compound` dont chaque fille est une `ConvexHull`.
-    let child_offset =
-        u32::try_from(children.len()).map_err(|_| "pool d'enfants saturé".to_owned())?;
+    let child_offset = u32::try_from(build.compound_children.len())
+        .map_err(|_| "pool d'enfants saturé".to_owned())?;
     for hull in &valid {
-        let child = push_hull(hull, points)?;
-        children.push(child);
+        let child = push_hull(hull, &mut build.hull_points)?;
+        build.compound_children.push(child);
     }
-    Ok((
-        primitive_collider(
-            ColliderShape::Compound {
-                children_offset: child_offset,
-                children_count: valid.len() as u32,
-            },
-            [0.0; 3],
-        ),
-        None,
+    Ok(primitive_collider(
+        ColliderShape::Compound {
+            children_offset: child_offset,
+            children_count: valid.len() as u32,
+        },
+        [0.0; 3],
     ))
 }
 
@@ -1421,15 +1560,15 @@ mod tests {
 
     #[test]
     fn options_un_mode_que_l_asset_entier_ne_produit_pas_est_signale() {
-        // Pour l'asset entier, seuls les englobants existent : `auto_convex` ne
-        // produit rien, et le dit au lieu de se taire.
+        // `auto_compound` regroupe les enfants d'un node (R-621) : pour l'asset entier,
+        // il ne produit rien, et le dit au lieu de se taire (R-912).
         let build = build_colliders(
             &mut [],
             &[],
             &[],
             &[],
             &[],
-            &CollisionOptions::with_mode(ColliderMode::AutoConvex),
+            &CollisionOptions::with_mode(ColliderMode::Compound),
             Some(bounds([0.0; 3], [1.0; 3])),
         );
         assert!(build.colliders.is_empty());
@@ -1437,7 +1576,7 @@ mod tests {
             build
                 .warnings
                 .iter()
-                .any(|warning| warning.contains("auto_convex")),
+                .any(|warning| warning.contains("auto_compound")),
             "{:?}",
             build.warnings
         );
@@ -1571,5 +1710,304 @@ mod tests {
         assert_eq!(a.colliders, b.colliders);
         assert_eq!(a.hull_points, b.hull_points);
         assert_eq!(a.compound_children, b.compound_children);
+    }
+
+    /// Un nuage sur la sphère unité : `rings` parallèles de `segments` points, et les deux
+    /// pôles. `sin` et `cos` ne servent qu'à construire l'entrée du test.
+    fn sphere(rings: u32, segments: u32) -> Vec<[f32; 3]> {
+        let mut points = vec![[0.0, 1.0, 0.0], [0.0, -1.0, 0.0]];
+        for ring in 1..=rings {
+            let polar = std::f32::consts::PI * ring as f32 / (rings + 1) as f32;
+            for segment in 0..segments {
+                let azimuth = std::f32::consts::TAU * segment as f32 / segments as f32;
+                points.push([
+                    polar.sin() * azimuth.cos(),
+                    polar.cos(),
+                    polar.sin() * azimuth.sin(),
+                ]);
+            }
+        }
+        points
+    }
+
+    /// L'étendue d'un nuage sur un axe.
+    fn etendue(points: &[[f32; 3]], axis: usize) -> f32 {
+        let (low, high) = points.iter().fold((f32::MAX, f32::MIN), |(low, high), p| {
+            (low.min(p[axis]), high.max(p[axis]))
+        });
+        high - low
+    }
+
+    #[test]
+    fn t310_une_enveloppe_de_plus_de_256_points_est_reduite_pas_refusee() {
+        // Une sphère finement maillée : son enveloppe garde tous ses sommets, bien
+        // au-delà des 256 de R-161. Elle est réduite, pas refusée.
+        let points = sphere(30, 30);
+        let vertices: Vec<Vertex> = points.iter().map(|p| sommet(*p)).collect();
+        let build = enveloppe_d_un_node(&vertices);
+        assert_eq!(build.colliders.len(), 1, "{:?}", build.warnings);
+        let gardes = build.hull_points.len();
+        assert!(
+            (4..=CONVEX_MAX_POINTS as usize).contains(&gardes),
+            "{gardes} points"
+        );
+        assert!(
+            build
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("réduite à") && warning.contains("R-161")),
+            "{:?}",
+            build.warnings
+        );
+        // Chaque point gardé est un sommet d'origine : l'enveloppe réduite tient dans l'autre.
+        assert!(build.hull_points.iter().all(|p| points.contains(p)));
+        for axis in 0..3 {
+            assert!(
+                etendue(&build.hull_points, axis) >= 0.95 * etendue(&points, axis),
+                "axe {axis} : l'étendue de la forme est gardée"
+            );
+        }
+        // Déterministe (R-553).
+        assert_eq!(
+            enveloppe_d_un_node(&vertices).hull_points,
+            build.hull_points
+        );
+    }
+
+    #[test]
+    fn t310_reduire_une_enveloppe_tient_le_plafond_et_garde_ses_extremites() {
+        let enveloppe = hull_of(&sphere(20, 20)).expect("une sphère a une enveloppe");
+        assert!(enveloppe.len() > DECOMP_MAX_HULL_VERTICES);
+        let reduite = reduce_hull(&enveloppe, DECOMP_MAX_HULL_VERTICES).expect("réductible");
+        assert!(
+            (4..=DECOMP_MAX_HULL_VERTICES).contains(&reduite.len()),
+            "{}",
+            reduite.len()
+        );
+        assert!(reduite.iter().all(|p| enveloppe.contains(p)));
+        for axis in 0..3 {
+            assert!(
+                etendue(&reduite, axis) >= 0.9 * etendue(&enveloppe, axis),
+                "axe {axis}"
+            );
+        }
+        assert_eq!(
+            reduce_hull(&enveloppe, DECOMP_MAX_HULL_VERTICES).expect("réductible"),
+            reduite,
+            "déterministe"
+        );
+        assert_eq!(
+            reduce_hull(&enveloppe, enveloppe.len()).expect("déjà sous le plafond"),
+            enveloppe,
+            "sous le plafond, l'enveloppe est rendue telle quelle"
+        );
+    }
+
+    /// Un cube unité de sommets et d'indices locaux, placé en `origin`.
+    fn cube(origin: [f32; 3]) -> (Vec<Vertex>, Vec<u32>) {
+        let vertices = (0..8u32)
+            .map(|corner| {
+                sommet([
+                    origin[0] + (corner & 1) as f32,
+                    origin[1] + ((corner >> 1) & 1) as f32,
+                    origin[2] + ((corner >> 2) & 1) as f32,
+                ])
+            })
+            .collect();
+        let indices = vec![
+            0, 2, 1, 1, 2, 3, 4, 5, 6, 5, 7, 6, 0, 1, 4, 1, 5, 4, 2, 6, 3, 3, 6, 7, 0, 4, 2, 2, 4,
+            6, 1, 3, 5, 3, 7, 5,
+        ];
+        (vertices, indices)
+    }
+
+    /// Deux nodes portant chacun un cube unité à l'origine de son repère, le second
+    /// déplacé de 3 en x : l'asset s'étend de 0 à 4.
+    fn deux_nodes_de_cubes() -> (Vec<NodeDesc>, Vec<MeshDesc>, Vec<Vertex>, Vec<u32>) {
+        let (mut vertices, mut indices) = cube([0.0; 3]);
+        let (second, second_indices) = cube([0.0; 3]);
+        vertices.extend(second);
+        indices.extend(second_indices);
+        let meshes = vec![
+            MeshDesc {
+                vertex_offset: 0,
+                vertex_count: 8,
+                index_offset: 0,
+                index_count: 36,
+                ..mesh([0.0; 3], [1.0; 3])
+            },
+            MeshDesc {
+                vertex_offset: 8,
+                vertex_count: 8,
+                index_offset: 36,
+                index_count: 36,
+                ..mesh([0.0; 3], [1.0; 3])
+            },
+        ];
+        let first = node(0, NONE_U16);
+        let mut deplace = node(1, NONE_U16);
+        deplace.local.translation = [3.0, 0.0, 0.0];
+        (vec![first, deplace], meshes, vertices, indices)
+    }
+
+    fn asset_entier(mode: ColliderMode, max_decomp: Duration) -> ColliderBuild {
+        let (nodes, meshes, vertices, indices) = deux_nodes_de_cubes();
+        asset_collider(
+            &nodes,
+            &meshes,
+            &vertices,
+            &indices,
+            &CollisionOptions::with_mode(mode),
+            Some(bounds([0.0; 3], [4.0, 1.0, 1.0])),
+            max_decomp,
+        )
+    }
+
+    #[test]
+    fn options_l_asset_entier_prend_son_enveloppe_dans_son_repere() {
+        // `convex` pour l'asset entier : l'enveloppe des deux cubes, le second placé par
+        // son node — les huit coins de la boîte [0, 4] × [0, 1] × [0, 1].
+        let build = asset_entier(ColliderMode::Convex, DECOMP_MAX);
+        assert_eq!(build.colliders.len(), 1, "{:?}", build.warnings);
+        assert_eq!(build.hull_points.len(), 8);
+        assert!(
+            build.hull_points.contains(&[4.0, 1.0, 1.0]),
+            "le cube déplacé y est"
+        );
+        assert!(build.hull_points.contains(&[0.0, 0.0, 0.0]));
+        // Les englobants aussi, `auto_capsule` compris.
+        let capsule = asset_entier(ColliderMode::AutoCapsule, DECOMP_MAX);
+        assert_eq!(capsule.colliders.len(), 1, "{:?}", capsule.warnings);
+        assert!(capsule.colliders[0].shape.has_valid_dimensions());
+    }
+
+    #[test]
+    fn options_l_asset_entier_se_decompose_dans_son_repere() {
+        // `auto_convex` pour l'asset entier : deux cubes disjoints une fois placés, que la
+        // décomposition sépare.
+        let build = asset_entier(ColliderMode::AutoConvex, DECOMP_MAX);
+        assert_eq!(build.colliders.len(), 1, "{:?}", build.warnings);
+        assert!(
+            matches!(build.colliders[0].shape, ColliderShape::Compound { .. }),
+            "deux pièces, obtenu {:?}",
+            build.colliders[0].shape
+        );
+        assert!(
+            build.hull_points.iter().any(|p| p[0] > 3.5),
+            "une pièce est au cube déplacé"
+        );
+    }
+
+    #[test]
+    fn t310_la_duree_de_la_decomposition_est_avertie_sans_changer_le_resultat() {
+        // ADR-108 §2 : la durée est mesurée et dite au-delà du plafond ; le résultat ne
+        // dépend que de l'entrée. Un plafond nul est toujours dépassé.
+        let normal = asset_entier(ColliderMode::AutoConvex, DECOMP_MAX);
+        let presse = asset_entier(ColliderMode::AutoConvex, Duration::ZERO);
+        assert!(
+            presse
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("max_decomp_ms 0")),
+            "{:?}",
+            presse.warnings
+        );
+        assert!(!normal
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("max_decomp_ms")));
+        assert_eq!(normal.colliders, presse.colliders);
+        assert_eq!(normal.hull_points, presse.hull_points);
+        assert_eq!(normal.compound_children, presse.compound_children);
+        assert_eq!(
+            DECOMP_MAX,
+            Duration::from_millis(5000),
+            "R-551 : max_decomp_ms 5000"
+        );
+    }
+
+    /// La sphère de [`sphere`] maillée : les deux pôles reliés au premier et au dernier
+    /// parallèle, les parallèles reliés deux à deux par des quadrilatères.
+    fn sphere_maillee(rings: u32, segments: u32) -> (Vec<Vertex>, Vec<u32>) {
+        let vertices = sphere(rings, segments).into_iter().map(sommet).collect();
+        let ring = |r: u32, s: u32| 2 + (r - 1) * segments + (s % segments);
+        let mut indices = Vec::new();
+        for s in 0..segments {
+            indices.extend([0, ring(1, s + 1), ring(1, s)]);
+            indices.extend([1, ring(rings, s), ring(rings, s + 1)]);
+        }
+        for r in 1..rings {
+            for s in 0..segments {
+                let (a, b, c, d) = (
+                    ring(r, s),
+                    ring(r, s + 1),
+                    ring(r + 1, s),
+                    ring(r + 1, s + 1),
+                );
+                indices.extend([a, b, c, b, d, c]);
+            }
+        }
+        (vertices, indices)
+    }
+
+    #[test]
+    fn t310_une_sphere_se_decompose_en_enveloppes_reduites_a_64_sommets() {
+        // V-HACD rend d'une sphère finement maillée des enveloppes de plus de 64 sommets.
+        // Elles étaient écartées, puis le repli global, au-delà de 256 points, refusé : la
+        // sphère n'avait aucun collider. Chacune est désormais réduite (R-551).
+        let (vertices, indices) = sphere_maillee(24, 24);
+        let meshes = vec![MeshDesc {
+            vertex_offset: 0,
+            vertex_count: vertices.len() as u32,
+            index_offset: 0,
+            index_count: indices.len() as u32,
+            ..mesh([-1.0; 3], [1.0; 3])
+        }];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::AutoConvex,
+            density: None,
+            no_refit: false,
+        }];
+        let mut nodes = vec![node(0, NONE_U16)];
+        let build = build_colliders(
+            &mut nodes,
+            &meshes,
+            &vertices,
+            &indices,
+            &requests,
+            &CollisionOptions::with_mode(ColliderMode::None),
+            None,
+        );
+        assert_eq!(build.colliders.len(), 1, "{:?}", build.warnings);
+        let ColliderShape::Compound {
+            children_offset,
+            children_count,
+        } = build.colliders[0].shape
+        else {
+            panic!(
+                "plusieurs pièces attendues, obtenu {:?}",
+                build.colliders[0].shape
+            );
+        };
+        let pieces = &build.compound_children
+            [children_offset as usize..(children_offset + children_count) as usize];
+        for piece in pieces {
+            let ColliderShape::ConvexHull { points_count, .. } = piece.shape else {
+                panic!("une enveloppe attendue, obtenu {:?}", piece.shape);
+            };
+            assert!(
+                (4..=DECOMP_MAX_HULL_VERTICES as u32).contains(&points_count),
+                "{points_count} sommets"
+            );
+        }
+        assert!(
+            build
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("réduite(s) à 64 sommets (R-551)")),
+            "{:?}",
+            build.warnings
+        );
     }
 }
