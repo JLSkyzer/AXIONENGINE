@@ -6,6 +6,7 @@ import dev.axion.asset.A3dSections;
 import dev.axion.asset.AssetEntry;
 import dev.axion.asset.AssetRegistry;
 import dev.axion.definition.AssemblyKind;
+import dev.axion.definition.CollisionGroupRegistry;
 import dev.axion.definition.Definition;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.diag.EntityMetrics;
@@ -155,8 +156,10 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         if (kind == SimCommandStream.BODY_DYNAMIC) {
             phys = RefitMarking.mark(phys, sectionOf(definition, "NODE"), RefitMarking.rootsOf(root));
         }
-        // R-980 : les groupes que la definition nomme, sur chaque collider du corps.
-        phys = CollisionFilter.apply(phys, CollisionFilter.membership(root), CollisionFilter.filter(root));
+        // R-980 : les groupes que la definition nomme, sur chaque collider du corps — résolus en bits
+        // par le registre contre lequel elle a été validée (ADR-132 A1), groupes tiers compris.
+        CollisionGroupRegistry groups = definitions.collisionGroups();
+        phys = CollisionFilter.apply(phys, groups.membership(root), groups.filter(root));
         pending.add(new Pending(true, index, dimension, position, rotation, body, phys));
         ledger.attach(index, assembly);
         return true;

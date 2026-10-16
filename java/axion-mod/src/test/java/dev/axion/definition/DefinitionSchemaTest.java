@@ -226,13 +226,18 @@ class DefinitionSchemaTest {
     }
 
     @Test
-    @DisplayName("R-980 : les groupes de collision se nomment parmi les réservés, sinon refusés")
+    @DisplayName("R-980 : un groupe de collision est réservé ou un identifiant connu du registre, sinon refusé")
     void groupesDeCollision() {
         accepte(root -> at(root, "physics").addProperty("collision_group", "debris"));
         accepte(root -> at(root, "physics").add("collides_with", new com.google.gson.JsonArray()));
-        // Aucun registre de groupes tiers encore : un autre nom serait ignoré, il est refusé.
+        // Ni réservé ni identifiant : la forme se refuse, jamais ignorée.
         assertEquals("$.physics.collision_group", refus(root ->
                 at(root, "physics").addProperty("collision_group", "lourd")).path());
+        // Un identifiant que le registre — vide ici — ne déclare pas : refusé aussi (ADR-132 A1).
+        DefinitionException inconnu = refus(root ->
+                at(root, "physics").addProperty("collision_group", "mymod:lourd"));
+        assertEquals("$.physics.collision_group", inconnu.path());
+        assertTrue(inconnu.getMessage().contains("inconnu"), inconnu.getMessage());
         assertEquals("$.physics.collides_with[1]", refus(root -> {
             com.google.gson.JsonArray groupes = new com.google.gson.JsonArray();
             groupes.add("world");

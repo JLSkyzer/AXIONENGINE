@@ -104,4 +104,47 @@ public final class PhysiqueGameTests {
                     "le cube reste à y = " + cube.getY() + " ; la dalle est à " + surLaDalle);
         });
     }
+
+    /**
+     * R-980, ADR-132 A1 : un groupe de collision tiers, déclaré par un fichier de données, prend un
+     * bit à lui et son masque par défaut. Deux cubes reposent sur la dalle ; au-dessus de l'un tombe
+     * un cube ordinaire, qui s'y pose ; au-dessus de l'autre, un cube du groupe
+     * {@code axion:test/fantome}, que son fichier fait heurter le monde seul : il traverse le cube et
+     * repose sur la dalle. Le chemin entier est en jeu — écouteur de rechargement, definition validée
+     * contre le registre, bits écrits dans PHYS, filtre du natif.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void unGroupeTiersNeHeurteQueCeQueSonFichierNomme(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        float[] identite = {0f, 0f, 0f, 1f};
+        AssembliesDeTest.poser(helper, "axion:test_cube", new Vec3(2.5, DESSUS_DALLE, 4.5), identite);
+        AssembliesDeTest.poser(helper, "axion:test_cube", new Vec3(5.5, DESSUS_DALLE, 4.5), identite);
+        AxionEntity ordinaire = AssembliesDeTest.poser(
+                helper, "axion:test_cube", new Vec3(2.5, DESSUS_DALLE + 3.0, 4.5), identite);
+        AxionEntity fantome = AssembliesDeTest.poser(
+                helper, "axion:test/cube_fantome", new Vec3(5.5, DESSUS_DALLE + 3.0, 4.5), identite);
+        double sol = helper.absoluteVec(new Vec3(0, DESSUS_DALLE, 0)).y;
+        double[] precedents = {ordinaire.getY(), fantome.getY()};
+        int[] immobile = {0};
+
+        helper.onEachTick(() -> {
+            boolean arretes = Math.abs(ordinaire.getY() - precedents[0]) < 1e-4
+                    && Math.abs(fantome.getY() - precedents[1]) < 1e-4;
+            immobile[0] = arretes ? immobile[0] + 1 : 0;
+            precedents[0] = ordinaire.getY();
+            precedents[1] = fantome.getY();
+            helper.assertTrue(fantome.getY() > sol - 0.5,
+                    "le cube fantôme a traversé la dalle : y = " + fantome.getY() + ", dalle à " + sol);
+        });
+        helper.succeedWhen(() -> {
+            helper.assertTrue(immobile[0] >= 20, "les cubes bougent encore");
+            helper.assertTrue(
+                    Math.abs(ordinaire.getY() - (sol + 1.0)) < 0.05,
+                    "le cube ordinaire repose à y = " + ordinaire.getY() + " ; sur l'autre cube, " + (sol + 1.0));
+            helper.assertTrue(
+                    Math.abs(fantome.getY() - sol) < 0.05,
+                    "le cube fantôme repose à y = " + fantome.getY() + " ; il devait traverser le cube et"
+                            + " reposer sur la dalle, à " + sol);
+        });
+    }
 }

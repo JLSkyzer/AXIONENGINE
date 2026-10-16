@@ -206,6 +206,10 @@ final class DefinitionChecker {
             id(value, path);
         } else if (rule instanceof TextRule.Source) {
             source(value, path);
+        } else if (rule instanceof TextRule.CollisionGroup group) {
+            if (!group.reserved().contains(value) && !DefinitionRegistry.isId(value)) {
+                invalid(path, CollisionGroupRegistry.notAGroup(value));
+            }
         }
     }
 
@@ -230,11 +234,7 @@ final class DefinitionChecker {
     }
 
     private void id(String value, String path) {
-        int colon = value.indexOf(':');
-        boolean valid = colon > 0
-                && DefinitionRegistry.NAMESPACE.matcher(value.substring(0, colon)).matches()
-                && DefinitionRegistry.RESOURCE_PATH.matcher(value.substring(colon + 1)).matches();
-        if (!valid) {
+        if (!DefinitionRegistry.isId(value)) {
             invalid(path, "« " + value + " » n'est pas un identifiant <ns>:<chemin>");
         }
     }

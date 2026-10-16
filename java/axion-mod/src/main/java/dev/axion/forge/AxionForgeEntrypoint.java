@@ -2,6 +2,7 @@ package dev.axion.forge;
 
 import com.mojang.logging.LogUtils;
 import dev.axion.AxionMod;
+import dev.axion.definition.CollisionGroupRegistry;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
@@ -144,9 +145,32 @@ public final class AxionForgeEntrypoint {
             }
         });
 
-        // Les definitions après les modèles : Minecraft applique les écouteurs
-        // dans l'ordre d'ajout, et une definition vérifie que le modèle qu'elle
-        // désigne a été découvert (C-27, étape 3).
+        // Les groupes de collision tiers avant les definitions, qui les nomment
+        // (R-980, ADR-132 A1).
+        event.addListener(new SimplePreparableReloadListener<ResourceAssetSource>() {
+            @Override
+            protected ResourceAssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {
+                return new ResourceAssetSource(
+                        manager,
+                        ResourceAssetSource.COLLISION_GROUPS,
+                        path -> path.endsWith(CollisionGroupRegistry.EXTENSION));
+            }
+
+            @Override
+            protected void apply(
+                    ResourceAssetSource source, ResourceManager manager, ProfilerFiller profiler) {
+                logTransitions(() -> {
+                    source.failures().forEach(failure ->
+                            LOGGER.warn("AXION : groupe de collision illisible — {}", failure));
+                    runtime.onCollisionGroupReload(source);
+                });
+            }
+        });
+
+        // Les definitions après les modèles et les groupes : Minecraft applique les
+        // écouteurs dans l'ordre d'ajout, et une definition vérifie que le modèle
+        // qu'elle désigne a été découvert (C-27, étape 3), et que ses groupes de
+        // collision existent.
         event.addListener(new SimplePreparableReloadListener<ResourceAssetSource>() {
             @Override
             protected ResourceAssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {

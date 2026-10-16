@@ -1,7 +1,5 @@
 package dev.axion.physics;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
@@ -12,14 +10,10 @@ import java.util.List;
  *
  * <p>Le bloc {@code physics} d'une definition désigne ses groupes par nom :
  * {@code collision_group}, celui dont le corps est membre, et {@code collides_with}, ceux qu'il
- * heurte. Java les résout en bits et les écrit sur chaque {@code ColliderDesc} de la section
- * {@code PHYS} ({@code group}, {@code mask}), que le natif applique au corps. Deux corps
- * interagissent si chacun est membre d'un groupe que l'autre heurte.
- *
- * <p>Sans déclaration, le corps est membre d'{@code assembly} et heurte tout. Seuls les huit
- * groupes réservés se nomment pour l'instant : les groupes tiers viendront avec leur registre
- * ({@code data/<ns>/axion/collision_groups}, {@code axion:collision_group}), et le schéma refuse
- * d'ici là un autre nom plutôt que de l'ignorer.
+ * heurte. Java les résout en bits — les huit réservés ici, les groupes tiers par leur registre
+ * ({@code dev.axion.definition.CollisionGroupRegistry}, ADR-132 A1) — et les écrit sur chaque
+ * {@code ColliderDesc} de la section {@code PHYS} ({@code group}, {@code mask}), que le natif
+ * applique au corps. Deux corps interagissent si chacun est membre d'un groupe que l'autre heurte.
  *
  * <p>Disposition écrite, figée côté natif (ADR-115) :
  * <pre>
@@ -57,45 +51,12 @@ public final class CollisionFilter {
     }
 
     /**
-     * {@return le groupe dont le corps est membre, en masque} {@code assembly} sans déclaration.
-     *
-     * @param definition racine JSON de la definition, déjà validée par le schéma
-     */
-    public static int membership(JsonObject definition) {
-        JsonElement declared = physics(definition).get("collision_group");
-        return declared == null ? bit("assembly") : bit(declared.getAsString());
-    }
-
-    /**
-     * {@return les groupes que le corps heurte, en masque} Tous sans déclaration ; aucun pour une
-     * liste vide.
-     *
-     * @param definition racine JSON de la definition, déjà validée par le schéma
-     */
-    public static int filter(JsonObject definition) {
-        JsonElement declared = physics(definition).get("collides_with");
-        if (declared == null || !declared.isJsonArray()) {
-            return ALL;
-        }
-        int mask = 0;
-        for (JsonElement group : declared.getAsJsonArray()) {
-            mask |= bit(group.getAsString());
-        }
-        return mask;
-    }
-
-    private static JsonObject physics(JsonObject definition) {
-        JsonElement block = definition.get("physics");
-        return block != null && block.isJsonObject() ? block.getAsJsonObject() : new JsonObject();
-    }
-
-    /**
      * {@return une copie de la section PHYS, chaque collider — enfants de composés compris — sous
      * ces groupes}
      *
      * @param phys section {@code PHYS} de l'asset
-     * @param membership groupes dont le corps est membre ({@link #membership})
-     * @param mask groupes qu'il heurte ({@link #filter})
+     * @param membership groupes dont le corps est membre, en masque
+     * @param mask groupes qu'il heurte
      */
     public static byte[] apply(byte[] phys, int membership, int mask) {
         byte[] filtered = Arrays.copyOf(phys, phys.length);

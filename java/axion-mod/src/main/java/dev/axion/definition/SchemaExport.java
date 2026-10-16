@@ -75,7 +75,8 @@ public final class SchemaExport {
                         + "(x-axion-refers), liaison entre deux parts distinctes, absence de "
                         + "cycle de zones parentes, module vehicles actif pour kind vehicle. Les "
                         + "noms d'asset (node, mesh, région, clip, os, collider) se résolvent "
-                        + "contre l'asset compilé. Un plafond d'assembly dépassé porte E-3050 "
+                        + "contre l'asset compilé, un groupe de collision tiers contre le "
+                        + "registre axion:collision_group (x-axion-registry). Un plafond d'assembly dépassé porte E-3050 "
                         + "(x-axion-code), une version de schéma inconnue E-7003, toute autre "
                         + "faute E-7001.");
 
@@ -183,6 +184,18 @@ public final class SchemaExport {
             out.addProperty("pattern", ID_PATTERN);
         } else if (rule instanceof TextRule.Source) {
             out.addProperty("pattern", sourcePattern());
+        } else if (rule instanceof TextRule.CollisionGroup group) {
+            JsonArray reserved = new JsonArray();
+            group.reserved().forEach(reserved::add);
+            JsonObject names = new JsonObject();
+            names.add("enum", reserved);
+            JsonObject ids = new JsonObject();
+            ids.addProperty("pattern", ID_PATTERN);
+            JsonArray either = new JsonArray();
+            either.add(names);
+            either.add(ids);
+            out.add("anyOf", either);
+            out.addProperty("x-axion-registry", "axion:collision_group");
         }
         return out;
     }

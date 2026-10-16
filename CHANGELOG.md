@@ -35,7 +35,14 @@ Definition of Done (PARTIE 37.3).
     T-012 (INV-04), T-019 (INV-12) ;
   - un collider `convex` ne garde que les sommets de son enveloppe : ni
     doublon d'un export a normales plates, ni point interieur (R-161) ;
-    `COMPILER_VERSION` 11.
+    `COMPILER_VERSION` 11 ;
+  - groupes de collision tiers declares par les packs
+    (`data/<ns>/axion/collision_groups`, registre `axion:collision_group`,
+    ADR-132 A1) : un fichier, un groupe et son masque par defaut, bits 8 a 31
+    dans l'ordre des identifiants, 24 au plus, chaque refus nomme ; le schema 1
+    publie admet un identifiant `<ns>:<chemin>` dans `collision_group` et
+    `collides_with`, et une definition qui nomme un groupe inconnu est refusee
+    avec son chemin.
 - M2 (Definition of Done prononcee le 2026-10-16, ADR-137) — graphe de scene, cache,
   optimizer, entite, API :
   - optimizer d'assets (C-23) : fusion des sommets, normales et tangentes

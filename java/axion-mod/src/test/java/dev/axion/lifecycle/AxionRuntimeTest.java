@@ -4,16 +4,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.axion.asset.AssetSource;
 import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.bootstrap.BootstrapOutcome.Phase;
 import dev.axion.bootstrap.BootstrapOutcome.Reason;
 import dev.axion.config.ConfigLoader;
 import dev.axion.config.ConfigSchema.Scope;
 import dev.axion.platform.PlatformAdapter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
@@ -446,5 +451,49 @@ class AxionRuntimeTest {
         assertTrue(
                 runtime.transitions().stream().anyMatch(line -> line.contains("1.20.1")),
                 () -> "version de Minecraft non consignée : " + runtime.transitions());
+    }
+
+    /** Groupes de collision simulés, {@code <ns>:axion/collision_groups/<nom>.json} → contenu. */
+    private static AssetSource groupes(String... noms) {
+        Map<String, byte[]> fichiers = new LinkedHashMap<>();
+        for (String nom : noms) {
+            fichiers.put("mymod:axion/collision_groups/" + nom + ".json", "{}".getBytes(StandardCharsets.UTF_8));
+        }
+        return new AssetSource() {
+            @Override
+            public List<String> list() {
+                return List.copyOf(fichiers.keySet());
+            }
+
+            @Override
+            public byte[] read(String path) {
+                return fichiers.get(path);
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("ADR-132 A1 : le registre des groupes passe aux definitions, et un registre changé se dit")
+    void registreDesGroupesDeCollision() {
+        AxionRuntime runtime = new AxionRuntime((platform, properties) -> ready(), new RecordingNative());
+        runtime.onConstructed(new FakePlatform(gameDir, false));
+        runtime.onSetup(new Properties());
+
+        assertEquals(1, runtime.onCollisionGroupReload(groupes("a")));
+        assertEquals(List.of("mymod:a"), runtime.collisionGroups().ids());
+        assertTrue(runtime.transitions().contains("1 groupe(s) de collision tiers chargé(s), 0 refusé(s)"),
+                () -> "chargement non consigné : " + runtime.transitions());
+
+        // Les definitions chargées ensuite sont validées contre ce registre, et le gardent.
+        runtime.onDefinitionReload(groupes());
+        assertSame(runtime.collisionGroups(), runtime.definitions().collisionGroups());
+
+        // Un rechargement identique ne dit rien ; un registre qui change, si.
+        runtime.onCollisionGroupReload(groupes("a"));
+        assertTrue(runtime.transitions().stream().noneMatch(line -> line.contains("changé")),
+                () -> "registre inchangé signalé : " + runtime.transitions());
+        runtime.onCollisionGroupReload(groupes("a", "b"));
+        assertTrue(runtime.transitions().stream().anyMatch(line -> line.contains("registre des groupes de collision changé")),
+                () -> "registre changé non consigné : " + runtime.transitions());
     }
 }

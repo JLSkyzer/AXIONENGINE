@@ -123,9 +123,9 @@ final class SchemaOne {
                 .opt("linear_damping", new Num(0, Double.POSITIVE_INFINITY, false, false))
                 .opt("angular_damping", new Num(0, Double.POSITIVE_INFINITY, false, false))
                 .opt("ccd", bool())
-                // R-980 : groupes désignés par nom. Les huit réservés seulement, tant que le registre
-                // des groupes tiers (axion:collision_group) n'existe pas : un autre nom se refuse ici,
-                // avec son chemin, plutôt que d'être ignoré.
+                // R-980 : groupes désignés par nom — un réservé, ou l'identifiant d'un groupe tiers
+                // (axion:collision_group, ADR-132 A1). Le schéma juge la forme, le registre
+                // l'existence ; un nom inconnu se refuse avec son chemin, jamais ignoré.
                 .opt("collision_group", collisionGroup())
                 .opt("collides_with", list(collisionGroup()))
                 .build();
@@ -515,7 +515,7 @@ final class SchemaOne {
     }
 
     private static SchemaNode collisionGroup() {
-        return oneOf(CollisionFilter.RESERVED.toArray(String[]::new));
+        return new Text(new TextRule.CollisionGroup(ordered(CollisionFilter.RESERVED.toArray(String[]::new))));
     }
 
     private static SchemaNode oneOf(String... values) {

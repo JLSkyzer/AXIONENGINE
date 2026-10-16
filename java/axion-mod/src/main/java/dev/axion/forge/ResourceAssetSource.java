@@ -36,6 +36,9 @@ public final class ResourceAssetSource implements AssetSource {
     /** Préfixe des definitions (C-27), relatif à la racine du gestionnaire. */
     public static final String DEFINITIONS = "axion/definitions";
 
+    /** Préfixe des groupes de collision tiers (R-980, ADR-132 A1), relatif à la racine du gestionnaire. */
+    public static final String COLLISION_GROUPS = "axion/collision_groups";
+
     /** Contenu par chemin, dans l'ordre d'énumération ; {@code null} si illisible. */
     private final Map<String, byte[]> files = new LinkedHashMap<>();
     private final Map<String, IOException> unreadable = new HashMap<>();

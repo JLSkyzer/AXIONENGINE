@@ -14,13 +14,31 @@ import java.util.function.Predicate;
  *     {@code <ns>:axion/<chemin>}, a été découvert
  * @param examplesEnabled les definitions de démonstration se chargent
  *     ({@code content.examples}, R-1790, ADR-134)
+ * @param collisionGroups les groupes de collision tiers qu'une definition peut
+ *     nommer (R-980, ADR-132 A1), chargés avant elle
  */
 public record DefinitionRules(
-        boolean vehiclesEnabled, Predicate<String> assetExists, boolean examplesEnabled) {
+        boolean vehiclesEnabled,
+        Predicate<String> assetExists,
+        boolean examplesEnabled,
+        CollisionGroupRegistry collisionGroups) {
 
     /** Refuse une règle absente. */
     public DefinitionRules {
         Objects.requireNonNull(assetExists);
+        Objects.requireNonNull(collisionGroups);
+    }
+
+    /**
+     * Des règles sans groupe de collision tiers : les réservés seuls.
+     *
+     * @param vehiclesEnabled le module {@code vehicles} est actif (§24.1)
+     * @param assetExists indique si un modèle a été découvert
+     * @param examplesEnabled les definitions de démonstration se chargent
+     */
+    public DefinitionRules(
+            boolean vehiclesEnabled, Predicate<String> assetExists, boolean examplesEnabled) {
+        this(vehiclesEnabled, assetExists, examplesEnabled, CollisionGroupRegistry.empty());
     }
 
     /**

@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "asset": "axion:models/test/cube.gltf",
+  "kind": "rigid_object",
+  "physics": { "collision_group": "axion:test/fantome" }
+}

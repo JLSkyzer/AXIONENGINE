@@ -1,5 +1,6 @@
 package dev.axion.definition;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
@@ -62,20 +63,24 @@ public final class DefinitionRegistry {
     private final Map<Long, Definition> byHash;
     private final List<String> refusals;
     private final String fingerprint;
+    private final CollisionGroupRegistry collisionGroups;
 
     private DefinitionRegistry(
             SortedMap<String, Definition> definitions,
             Map<Long, Definition> byHash,
-            List<String> refusals) {
+            List<String> refusals,
+            CollisionGroupRegistry collisionGroups) {
         this.definitions = definitions;
         this.byHash = byHash;
         this.refusals = List.copyOf(refusals);
         this.fingerprint = fingerprintOf(definitions);
+        this.collisionGroups = collisionGroups;
     }
 
     /** {@return une registry vide, avant tout rechargement} */
     public static DefinitionRegistry empty() {
-        return new DefinitionRegistry(new TreeMap<>(), new HashMap<>(), List.of());
+        return new DefinitionRegistry(
+                new TreeMap<>(), new HashMap<>(), List.of(), CollisionGroupRegistry.empty());
     }
 
     /**
@@ -145,7 +150,7 @@ public final class DefinitionRegistry {
         for (Definition definition : accepted.values()) {
             byHash.put(hasher.applyAsLong(definition.id()), definition);
         }
-        return new DefinitionRegistry(accepted, byHash, refusals);
+        return new DefinitionRegistry(accepted, byHash, refusals, rules.collisionGroups());
     }
 
     /**
@@ -175,8 +180,47 @@ public final class DefinitionRegistry {
         if (!issues.isEmpty()) {
             throw DefinitionException.fromIssues(issues);
         }
+        collisionGroupsOf(root, rules.collisionGroups());
 
         return new Definition(id, location, schema, asset, kind, root, sha256(content));
+    }
+
+    /**
+     * R-980, ADR-132 A1 : chaque groupe de collision nommé est réservé ou déclaré par le registre.
+     * Le schéma a déjà vérifié la forme des noms ; il reste à savoir s'ils existent.
+     */
+    private static void collisionGroupsOf(JsonObject root, CollisionGroupRegistry groups)
+            throws DefinitionException {
+        if (!(root.get("physics") instanceof JsonObject physics)) {
+            return;
+        }
+        String at = StrictJson.member("$", "physics");
+        if (physics.get("collision_group") instanceof JsonPrimitive group) {
+            knownGroup(group.getAsString(), StrictJson.member(at, "collision_group"), groups);
+        }
+        if (physics.get("collides_with") instanceof JsonArray list) {
+            String path = StrictJson.member(at, "collides_with");
+            for (int index = 0; index < list.size(); index++) {
+                knownGroup(list.get(index).getAsString(), path + "[" + index + "]", groups);
+            }
+        }
+    }
+
+    private static void knownGroup(String name, String path, CollisionGroupRegistry groups)
+            throws DefinitionException {
+        if (!groups.knows(name)) {
+            throw DefinitionException.invalid(path, "groupe de collision « " + name
+                    + " » inconnu ; aucun data/<ns>/" + CollisionGroupRegistry.PREFIX
+                    + " ne le déclare");
+        }
+    }
+
+    /** {@return vrai si la valeur est un identifiant de ressource {@code <ns>:<chemin>}} */
+    static boolean isId(String value) {
+        int colon = value.indexOf(':');
+        return colon > 0
+                && NAMESPACE.matcher(value.substring(0, colon)).matches()
+                && RESOURCE_PATH.matcher(value.substring(colon + 1)).matches();
     }
 
     /**
@@ -357,5 +401,13 @@ public final class DefinitionRegistry {
     /** {@return l'empreinte de la registry, en hexadécimal} */
     public String fingerprint() {
         return fingerprint;
+    }
+
+    /**
+     * {@return le registre des groupes de collision contre lequel ces definitions ont été
+     * validées} Leurs noms de groupes s'y résolvent tous (ADR-132 A1).
+     */
+    public CollisionGroupRegistry collisionGroups() {
+        return collisionGroups;
     }
 }

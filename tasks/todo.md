@@ -1063,7 +1063,8 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
               Minecraft 1.20.1 ; `size()` à la place.
       - Reste dû hors M2 : `CompiledDefinition` et fonction d'ABI (M3, ADR) ;
         résolution des noms d'asset (M3, natif) ;
-        `physics_materials`, `collision_groups`, `block_materials` (M3),
+        `physics_materials`, `block_materials` (M3 ; `collision_groups` fait le
+        2026-10-16, ADR-132 A1),
         `wear_profiles`, `repair_rules` (M5) ; synchronisation (C-51, M4).
 - [x] **C-71 — Commandes.** Les branches dont les composants existent.
       `/axion status`, `/axion metrics [export]`, `/axion assets list | info
@@ -2718,6 +2719,25 @@ amortissement dans l'eau, `/axion remove`).
       - [x] Groupes de collision transmis (R-980, ADR-132, bb29c8b) : tuiles du monde dans `world`,
             groupes de la definition écrits dans PHYS, noms réservés seuls tant que le registre des
             groupes tiers n'existe pas.
+      - [x] **Registre des groupes de collision tiers fait le 2026-10-16** (ADR-132 A1) :
+            `dev.axion.definition.CollisionGroupRegistry` lit `data/<ns>/axion/collision_groups/**.json`
+            par un écouteur de rechargement placé avant les definitions. JSON strict, au plus
+            `collides_with`, masque par défaut du groupe ; bits 8 à 31 dans l'ordre des identifiants,
+            24 au plus ; refus nommés (E-7001) au point fixe — un masque qui nomme un groupe absent,
+            refusé ou en trop tombe avec lui. Une definition qui nomme un groupe inconnu est refusée
+            avec son chemin ; la registry des definitions garde le registre contre lequel elle a
+            validé, et `AssemblyRuntime` y résout les bits. `CollisionFilter` ne garde que les
+            réservés et l'écriture dans PHYS. Schéma 1 publié élargi (`anyOf` réservé | identifiant,
+            `x-axion-registry`), tout document d'hier encore valide. Tests : `CollisionGroupRegistryTest`
+            (11), huit mutations rouges ; GameTest `unGroupeTiersNeHeurteQueCeQueSonFichierNomme` :
+            vert au `runGameTestServer` du 2026-10-16 (10 tests requis, tous verts ; « 1 groupe(s) de
+            collision tiers chargé(s), 0 refusé(s) », 14 definitions, 0 refusée) — le cube du groupe
+            `axion:test/fantome` traverse un cube ordinaire et repose sur la dalle ; rouge sous mutation
+            (masque ignoré par `AssemblyRuntime` : le cube repose à y = −57,0 sur l'autre, la dalle
+            étant à −58,0). `AxionRuntimeTest` : registre transmis aux definitions, changement
+            journalisé (trois mutations rouges).
+            Relevé au passage, hors de cette case : `AssemblyRuntime` garde les registres du démarrage
+            du serveur, un `/reload` ne lui parvient pas (tâche proposée à Killian).
       - [x] CCD automatique au-delà de `|v|·dt > 0,5 × min_dim` (fiche 5.23), testée en
             anti-traversée contre une plaque cinématique et une plaque fixe (9df33d4). Elle
             n'existait pas : `rapier` 0.35 ne balaie de lui-même que les colliders fixes.
@@ -2790,14 +2810,16 @@ amortissement dans l'eau, `/axion remove`).
             Tests : `t390_*` (scheduler, monde), `t391_*`, `sim_step_metrics_abi` ; mutations
             (commandes après le pas, étape 1 non mesurée) rouges. Les budgets par étape restent à C-77
             (ADR-144 §4).
-      Puis, en effort max : amendement A1 d'ADR-137 (avertissements jusqu'au journal). Restent aussi à
-      trancher : registre des groupes de collision tiers (ADR-132), protocole de R-501 (B-08).
+      Puis, en effort max : amendement A1 d'ADR-137 (avertissements jusqu'au journal). Tranchés par
+      Killian le 2026-10-16 : registre des groupes de collision tiers (ADR-132 A1, fait le jour même),
+      R-501 par le calcul en M3 — allocations d'un pas × surcoût d'une allocation de B-08 —, mesure
+      publiable en M12 (ADR-133 A1, à faire).
 - [ ] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
       variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
       de D1 (§2, acceptée, faite) ; attribution affinée des tests hors liste (§3), métriques des étapes en
       M3 et budgets par étape avec C-77 (§4), R-1495 avec le fournisseur d'`AxionApi` (§5) : **ratifiés le
-      2026-10-16**. Restent ensuite : registre des groupes de collision tiers (ADR-132), protocole de R-501
-      (B-08). Avant ADR-144, la liste : attribution par ADR de T-390..T-392, T-827, T-475..T-485 et T-870 ;
+      2026-10-16**. Tranchés ensuite le même jour : registre des groupes de collision tiers (ADR-132 A1,
+      fait), protocole de R-501 (ADR-133 A1). Avant ADR-144, la liste : attribution par ADR de T-390..T-392, T-827, T-475..T-485 et T-870 ;
       benchmarks du périmètre en M12 (décidé le 2026-10-12, ADR-131) ; ADR-133 (D1 à D3) ; format
       du registre des groupes de collision tiers (ADR-132) ; niveaux Q-0..Q-4 en M3 ou plus tard ; jalon des variantes
       PARALLAX et suivantes ; R-1495 ; budget par étape (R-661).

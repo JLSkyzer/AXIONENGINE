@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "AXION ENGINE — definition, schéma 1",
-  "description": "Forme publiée du schéma de definition 1 (R-1783), rendue depuis le validateur d'AXION et lue selon l'ADR-109. AXION vérifie en plus, au chargement, ce que JSON Schema n'exprime pas : unicité des noms par catégorie (x-axion-declares), résolution des références internes (x-axion-refers), liaison entre deux parts distinctes, absence de cycle de zones parentes, module vehicles actif pour kind vehicle. Les noms d'asset (node, mesh, région, clip, os, collider) se résolvent contre l'asset compilé. Un plafond d'assembly dépassé porte E-3050 (x-axion-code), une version de schéma inconnue E-7003, toute autre faute E-7001.",
+  "description": "Forme publiée du schéma de definition 1 (R-1783), rendue depuis le validateur d'AXION et lue selon l'ADR-109. AXION vérifie en plus, au chargement, ce que JSON Schema n'exprime pas : unicité des noms par catégorie (x-axion-declares), résolution des références internes (x-axion-refers), liaison entre deux parts distinctes, absence de cycle de zones parentes, module vehicles actif pour kind vehicle. Les noms d'asset (node, mesh, région, clip, os, collider) se résolvent contre l'asset compilé, un groupe de collision tiers contre le registre axion:collision_group (x-axion-registry). Un plafond d'assembly dépassé porte E-3050 (x-axion-code), une version de schéma inconnue E-7003, toute autre faute E-7001.",
   "type": "object",
   "properties": {
     "schema": {
@@ -56,31 +56,47 @@
         },
         "collision_group": {
           "type": "string",
-          "enum": [
-            "world",
-            "assembly",
-            "part",
-            "debris",
-            "entity_proxy",
-            "sensor",
-            "particle",
-            "debug"
-          ]
+          "anyOf": [
+            {
+              "enum": [
+                "world",
+                "assembly",
+                "part",
+                "debris",
+                "entity_proxy",
+                "sensor",
+                "particle",
+                "debug"
+              ]
+            },
+            {
+              "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+            }
+          ],
+          "x-axion-registry": "axion:collision_group"
         },
         "collides_with": {
           "type": "array",
           "items": {
             "type": "string",
-            "enum": [
-              "world",
-              "assembly",
-              "part",
-              "debris",
-              "entity_proxy",
-              "sensor",
-              "particle",
-              "debug"
-            ]
+            "anyOf": [
+              {
+                "enum": [
+                  "world",
+                  "assembly",
+                  "part",
+                  "debris",
+                  "entity_proxy",
+                  "sensor",
+                  "particle",
+                  "debug"
+                ]
+              },
+              {
+                "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+              }
+            ],
+            "x-axion-registry": "axion:collision_group"
           }
         }
       },

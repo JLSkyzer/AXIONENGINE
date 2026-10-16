@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dev.axion.asset.AssetSource;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
@@ -14,9 +15,13 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -80,6 +85,14 @@ class PublishedSchemaTest {
                 .getAsJsonObject("properties");
         assertTrue(joint.getAsJsonObject("type").get("enum").toString().contains("revolute"));
         assertEquals("body", joint.getAsJsonObject("a").get("x-axion-refers").getAsString());
+
+        // ADR-132 A1 : un groupe de collision est un nom réservé ou un identifiant, que le registre juge.
+        JsonObject groupe = properties.getAsJsonObject("physics").getAsJsonObject("properties")
+                .getAsJsonObject("collision_group");
+        assertEquals("axion:collision_group", groupe.get("x-axion-registry").getAsString());
+        assertTrue(groupe.get("anyOf").toString().contains("\"enum\":[\"world\""), groupe.toString());
+        assertTrue(groupe.get("anyOf").toString().contains(SchemaExport.ID_PATTERN.replace("\\", "\\\\")),
+                groupe.toString());
     }
 
     @Test
@@ -121,12 +134,18 @@ class PublishedSchemaTest {
                 "{\"schema\": 1, \"asset\": \"demo:models/caisse.obj\", \"kind\": \"rigid_object\"}");
         write(ressources.resolve("data/demo/axion/definitions/cassee.json"),
                 "{\"schema\": 1, \"asset\": \"demo:models/absente.obj\", \"kind\": \"rigid_object\"}");
+        // Un groupe de collision tiers des mêmes ressources se nomme (ADR-132 A1).
+        write(ressources.resolve("data/demo/axion/collision_groups/fantome.json"),
+                "{\"collides_with\": [\"world\"]}");
+        write(ressources.resolve("data/demo/axion/definitions/fantome.json"),
+                "{\"schema\": 1, \"asset\": \"demo:models/caisse.obj\", \"kind\": \"rigid_object\","
+                        + " \"physics\": {\"collision_group\": \"demo:fantome\"}}");
         // Un build n'est pas une source : sa copie des ressources ne compte pas.
         write(depot.resolve("java/demo/build/resources/main/data/demo/axion/definitions/caisse.json"),
                 "{}");
 
         List<Path> trouvees = find(depot);
-        assertEquals(2, trouvees.size(), trouvees::toString);
+        assertEquals(3, trouvees.size(), trouvees::toString);
         List<String> refus = validate(trouvees);
         assertEquals(1, refus.size(), refus::toString);
         assertTrue(refus.get(0).contains("cassee.json"), refus.get(0));
@@ -185,12 +204,22 @@ class PublishedSchemaTest {
 
     private static List<String> validate(List<Path> definitions) throws IOException {
         List<String> refus = new ArrayList<>();
+        Map<Path, CollisionGroupRegistry> groupes = new HashMap<>();
         for (Path file : definitions) {
             Path racine = resourcesRoot(file);
             Path relatif = racine.resolve("data").relativize(file);
             String namespace = relatif.getName(0).toString();
             String chemin = relatif.subpath(1, relatif.getNameCount()).toString().replace('\\', '/');
             String location = namespace + ":" + chemin;
+
+            // Les groupes de collision tiers que déclarent les mêmes ressources (ADR-132 A1), chargés
+            // une fois par racine ; un groupe refusé est une faute du dépôt comme une definition.
+            CollisionGroupRegistry registre = groupes.get(racine);
+            if (registre == null) {
+                registre = groupes(racine);
+                groupes.put(racine, registre);
+                registre.refusals().forEach(groupe -> refus.add(racine + " — " + groupe));
+            }
 
             // Un modèle existe s'il figure dans les ressources, côté client ou serveur.
             DefinitionRules rules = new DefinitionRules(true, asset -> {
@@ -199,7 +228,7 @@ class PublishedSchemaTest {
                 String path = asset.substring(colon + 1);
                 return Files.isRegularFile(racine.resolve("assets").resolve(ns).resolve(path))
                         || Files.isRegularFile(racine.resolve("data").resolve(ns).resolve(path));
-            });
+            }, false, registre);
             try {
                 DefinitionRegistry.read(location, Files.readAllBytes(file), rules);
             } catch (DefinitionException refusal) {
@@ -208,5 +237,38 @@ class PublishedSchemaTest {
             }
         }
         return refus;
+    }
+
+    /** {@return le registre des {@code data/<ns>/axion/collision_groups/**.json} d'une racine de ressources} */
+    private static CollisionGroupRegistry groupes(Path racine) throws IOException {
+        Path data = racine.resolve("data");
+        Map<String, Path> fichiers = new TreeMap<>();
+        if (Files.isDirectory(data)) {
+            try (Stream<Path> espaces = Files.list(data)) {
+                for (Path espace : espaces.toList()) {
+                    Path dossier = espace.resolve(CollisionGroupRegistry.PREFIX);
+                    if (!Files.isDirectory(dossier)) {
+                        continue;
+                    }
+                    try (Stream<Path> parcours = Files.walk(dossier)) {
+                        for (Path fichier : parcours.filter(Files::isRegularFile).toList()) {
+                            String chemin = espace.relativize(fichier).toString().replace('\\', '/');
+                            fichiers.put(espace.getFileName() + ":" + chemin, fichier);
+                        }
+                    }
+                }
+            }
+        }
+        return CollisionGroupRegistry.load(new AssetSource() {
+            @Override
+            public List<String> list() {
+                return List.copyOf(fichiers.keySet());
+            }
+
+            @Override
+            public byte[] read(String path) throws IOException {
+                return Files.readAllBytes(fichiers.get(path));
+            }
+        });
     }
 }

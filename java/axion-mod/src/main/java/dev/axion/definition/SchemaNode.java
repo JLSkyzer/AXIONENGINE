@@ -111,5 +111,13 @@ sealed interface SchemaNode {
 
         /** Source procédurale de l'ANNEXE A.4. */
         record Source() implements TextRule {}
+
+        /**
+         * Nom de groupe de collision : réservé, ou identifiant {@code <ns>:<chemin>} dont le
+         * registre {@code axion:collision_group} juge l'existence (ADR-132 A1).
+         *
+         * @param reserved groupes réservés, dans l'ordre de leurs bits
+         */
+        record CollisionGroup(Set<String> reserved) implements TextRule {}
     }
 }

@@ -9,6 +9,7 @@ import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.bootstrap.NativeApi;
 import dev.axion.config.ConfigSchema;
 import dev.axion.config.ConfigSchema.Scope;
+import dev.axion.definition.CollisionGroupRegistry;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
 import dev.axion.physics.CollectResult;
@@ -73,6 +74,9 @@ public final class AxionRuntime {
      */
     private volatile AssetRegistry assets;
     private volatile DefinitionRegistry definitions = DefinitionRegistry.empty();
+    private volatile CollisionGroupRegistry collisionGroups = CollisionGroupRegistry.empty();
+    /** Un registre des groupes a déjà été chargé : le suivant qui diffère se journalise. */
+    private boolean collisionGroupsLoaded;
 
     /**
      * Capacités du backend de rendu du client (R-1493), posées par la passe de rendu à chaque
@@ -669,6 +673,42 @@ public final class AxionRuntime {
     }
 
     /**
+     * Charge les groupes de collision tiers d'un rechargement de données (R-980, ADR-132 A1).
+     *
+     * <p>Avant les definitions, qui les nomment. Le registre vaut pour les corps créés après lui :
+     * un corps vivant garde le filtre posé à sa création, comme il garde la definition qui l'a
+     * créé. Un rechargement qui change le registre le dit, pour qu'un écart entre deux corps de
+     * même definition se comprenne. Les refus sont journalisés un par un (R-580).
+     *
+     * @param source ressources sous {@code axion/collision_groups}
+     * @return le nombre de groupes tiers acceptés
+     */
+    public int onCollisionGroupReload(AssetSource source) {
+        // Même condition que les definitions : sans runtime natif, aucun corps à filtrer.
+        if (!hasNativeRuntime()) {
+            return 0;
+        }
+        guard("collisionGroupReload").run(() -> {
+            CollisionGroupRegistry loaded = CollisionGroupRegistry.load(source);
+            if (collisionGroupsLoaded && !loaded.fingerprint().equals(collisionGroups.fingerprint())) {
+                transitions.add("registre des groupes de collision changé : les corps vivants gardent"
+                        + " le filtre de leur création, les corps créés ensuite prennent le nouveau");
+            }
+            collisionGroups = loaded;
+            collisionGroupsLoaded = true;
+            transitions.add(loaded.ids().size() + " groupe(s) de collision tiers chargé(s), "
+                    + loaded.refusals().size() + " refusé(s)");
+            loaded.refusals().forEach(transitions::add);
+        });
+        return collisionGroups.ids().size();
+    }
+
+    /** {@return le registre des groupes de collision tiers, les réservés seuls avant tout rechargement} */
+    public CollisionGroupRegistry collisionGroups() {
+        return collisionGroups;
+    }
+
+    /**
      * Charge les definitions d'un rechargement de données (C-27).
      *
      * <p>La registry est reconstruite d'un bloc puis remplacée : une entité en
@@ -690,7 +730,8 @@ public final class AxionRuntime {
             DefinitionRules rules = new DefinitionRules(
                     outcome.config().getBoolean("modules.vehicles"),
                     path -> known != null && known.entry(path) != null,
-                    outcome.config().getBoolean("content.examples"));
+                    outcome.config().getBoolean("content.examples"),
+                    collisionGroups);
             long start = System.nanoTime();
             DefinitionRegistry loaded = DefinitionRegistry.load(source, rules);
             long nanos = System.nanoTime() - start;

@@ -5,8 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -23,12 +21,8 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** R-980 : les groupes de collision qu'une definition nomme, écrits sur ses colliders. */
+/** R-980 : les groupes réservés, et les groupes d'une definition écrits sur ses colliders. */
 class CollisionFilterTest {
-
-    private static JsonObject definition(String physics) {
-        return JsonParser.parseString("{\"physics\": " + physics + "}").getAsJsonObject();
-    }
 
     /** Une section PHYS de {@code colliders} colliders, {@code points} points et {@code children} enfants. */
     private static byte[] phys(int colliders, int points, int children) {
@@ -45,23 +39,13 @@ class CollisionFilterTest {
     }
 
     @Test
-    @DisplayName("R-980 : sans déclaration, membre d'assembly et heurte tout")
-    void defauts() {
-        JsonObject none = JsonParser.parseString("{}").getAsJsonObject();
-        assertEquals(1 << 1, CollisionFilter.membership(none));
-        assertEquals(CollisionFilter.ALL, CollisionFilter.filter(none));
-        assertEquals(1 << 1, CollisionFilter.membership(definition("{\"mass\": 2.0}")));
-    }
-
-    @Test
-    @DisplayName("R-980 : les noms déclarés deviennent des bits ; une liste vide ne heurte rien")
-    void nomsDeclares() {
-        JsonObject debris = definition(
-                "{\"collision_group\": \"debris\", \"collides_with\": [\"world\", \"entity_proxy\"]}");
-        assertEquals(1 << 3, CollisionFilter.membership(debris));
-        assertEquals((1 << 0) | (1 << 4), CollisionFilter.filter(debris));
-        assertEquals(0, CollisionFilter.filter(definition("{\"collides_with\": []}")));
-        assertThrows(IllegalArgumentException.class, () -> CollisionFilter.bit("lourd"));
+    @DisplayName("R-980 : un groupe réservé a le bit de son rang ; un autre nom n'en a pas ici")
+    void bitsReserves() {
+        assertEquals(1, CollisionFilter.bit("world"));
+        assertEquals(1 << 3, CollisionFilter.bit("debris"));
+        assertEquals(1 << 7, CollisionFilter.bit("debug"));
+        // Les groupes tiers se résolvent par leur registre (CollisionGroupRegistryTest).
+        assertThrows(IllegalArgumentException.class, () -> CollisionFilter.bit("mymod:lourd"));
     }
 
     @Test
