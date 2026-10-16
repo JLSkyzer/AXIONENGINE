@@ -1,0 +1,8 @@
+# R-562 : empreintes de la sortie du compilateur d'assets, COMPILER_VERSION 12, plateforme macos-aarch64.
+# Une ligne par source du corpus de `compiler_fingerprints.rs` : nom, octets, FNV-1a 64 du conteneur A3D.
+grille.obj 11280 9edf56d03cef019c
+grille.stl 9440 5cc02a9a401e2520
+grille.gltf 11296 ac4a348a72c4225d
+grille-x2.gltf 11248 70691ca3ccbed4e1
+grille.glb 11296 59754e08235f5fee
+coque.gltf 704 d8c5cfbab826d5c1

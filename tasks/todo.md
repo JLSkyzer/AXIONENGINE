@@ -1936,6 +1936,15 @@ substituable sans changer rapier »).
                   trois distantes récoltées par une sonde en CI (branche jetable `r562-sonde-v11`) :
                   x86_64 identique partout, macOS aarch64 différent sur les sources maillées comme en
                   v10, l'enveloppe convexe identique sur les quatre.
+            - [x] **`auto_capsule` sur un mesh trapu refusait l'asset** (relevé par l'audit de la DoD
+                  de M3, 2026-10-16) : la demi-hauteur tombait à 0, ce que `check_physics` refuse à
+                  une capsule (`InvalidShapeDimension`) ; le test l'affirmait sans passer par la
+                  validation. **Corrigé le 2026-10-16** : la forme rendue est la sphère de ce rayon,
+                  comme la doc l'annonçait ; le commentaire « jamais plus petit que l'objet », faux
+                  pour un mesh carré, est corrigé. Test `t310_auto_capsule_trapue_degenere_en_sphere`
+                  passé par la règle de validation, rouge sous mutation. `COMPILER_VERSION` 12 ;
+                  empreintes v12 des quatre plateformes, les trois distantes par la sonde
+                  `r562-sonde-v12` (même répartition qu'en v11).
             Produit les colliders (`ColliderDesc`, DM-06) à la compilation et les
             porte jusqu'à l'A3D (section PHYS). DM-06 figé, validation C-22 prête.
             Périmètre : **complet, PHYS inclus** ; gels COM/PHYS derrière un ADR
@@ -2820,6 +2829,20 @@ amortissement dans l'eau, `/axion remove`).
       Killian le 2026-10-16 : registre des groupes de collision tiers (ADR-132 A1, fait le jour même),
       R-501 par le calcul en M3 — allocations d'un pas × surcoût d'une allocation de B-08 —, mesure
       publiable en M12 (ADR-133 A1) : **fait le 2026-10-16**, R-501 tenu (voir la case ADR-133).
+- [ ] **Décisions de Killian du 2026-10-16, après l'audit de la DoD de M3** (deux sous-agents en lecture
+      seule, physique et rendu) :
+      - **DM-07 en M3, en deux temps.** D'abord, côté Java sans ABI : registre data-driven
+        `physics_materials` (héritage `parent`, bibliothèque de base en datapack, R-171, R-1030..R-1032)
+        et `block_materials` au format du §11.4 (`by_block` → `by_tag` → `default`, R-1040, R-1041)
+        branchés sur le frottement et la restitution des tuiles (T-840, T-841). Puis, en effort max et
+        par un ADR : le matériau des parts d'assembly jusqu'au natif (ABI), puis le ballon de test.
+        Remplace le report « au câblage des definitions physiques ».
+      - **L'effort max après le reste de M3** : amendement A1 d'ADR-137 et R-1011 (C-31 : au-delà du
+        plafond d'événements, agréger par paire au lieu de jeter — aujourd'hui `push_event` jette).
+      - Reste à proposer, par un ADR de portée de la DoD de M3 (modèle d'ADR-137) : tranche D de C-23
+        avec C-32 (renvoi d'ADR-137), métriques des tuiles et des requêtes, R-650 prouvé, T-015,
+        les écarts du rendu (surcharge des budgets de frame, temps GPU par passe, overlays de C-67
+        sans jalon, garde GL et R-741) et les cases périmées.
 - [ ] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
       variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
       de D1 (§2, acceptée, faite) ; attribution affinée des tests hors liste (§3), métriques des étapes en

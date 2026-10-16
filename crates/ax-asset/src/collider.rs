@@ -675,27 +675,32 @@ fn auto_sphere(bounds: Aabb) -> ColliderDesc {
     primitive_collider(ColliderShape::Sphere { radius }, center(bounds))
 }
 
-/// Génère une capsule englobante d'axe Y depuis les bornes (`auto_capsule`),
-/// centrée sur le milieu des bornes.
+/// Génère une capsule d'axe Y depuis les bornes (`auto_capsule`), centrée sur le
+/// milieu des bornes.
 ///
-/// Le rayon vaut la plus grande demi-dimension en X ou Z — la section circulaire
-/// couvre les deux —, et la demi-hauteur du segment couvre ce qui dépasse en Y.
-/// Quand la demi-hauteur en Y n'excède pas le rayon (mesh trapu), le segment est
-/// nul et la capsule dégénère en sphère de ce rayon : un englobant lâche mais
-/// correct, jamais plus petit que l'objet.
+/// Le rayon vaut la plus grande demi-dimension en X ou Z, et la demi-hauteur du
+/// segment couvre ce qui dépasse en Y : la capsule a la hauteur des bornes, et
+/// épouse un mesh de révolution. Ce n'est pas un englobant de la boîte : les
+/// arêtes verticales d'un mesh carré, à `√(hx² + hz²)` de l'axe, en sortent.
+///
+/// Quand la demi-hauteur en Y n'excède pas le rayon (mesh trapu), le segment
+/// serait nul, ce que la validation refuse à une capsule : la forme rendue est
+/// alors la sphère de ce rayon, qui couvre déjà la hauteur.
 fn auto_capsule(bounds: Aabb) -> ColliderDesc {
     let half_x = (bounds.max[0] - bounds.min[0]) * 0.5;
     let half_y = (bounds.max[1] - bounds.min[1]) * 0.5;
     let half_z = (bounds.max[2] - bounds.min[2]) * 0.5;
     let radius = half_x.max(half_z);
-    let half_height = (half_y - radius).max(0.0);
-    primitive_collider(
+    let half_height = half_y - radius;
+    let shape = if half_height > 0.0 {
         ColliderShape::Capsule {
             half_height,
             radius,
-        },
-        center(bounds),
-    )
+        }
+    } else {
+        ColliderShape::Sphere { radius }
+    };
+    primitive_collider(shape, center(bounds))
 }
 
 /// Construit un `ColliderDesc` pour une forme primitive auto-générée, centrée en
@@ -1334,7 +1339,8 @@ mod tests {
     #[test]
     fn t310_auto_capsule_trapue_degenere_en_sphere() {
         // Un mesh large et plat : demi-dimensions [2.0, 0.5, 2.0]. Le rayon couvre
-        // X/Z et déjà Y, donc le segment est nul (capsule = sphère englobante).
+        // X/Z et déjà Y : le segment serait nul, ce que la validation refuse à une
+        // capsule. La forme rendue est la sphère de ce rayon, et elle est valide.
         let mut nodes = vec![node(0, NONE_U16)];
         let meshes = vec![mesh([-2.0, -0.5, -2.0], [2.0, 0.5, 2.0])];
         let requests = vec![ColliderRequest {
@@ -1354,15 +1360,29 @@ mod tests {
             None,
         );
 
-        let ColliderShape::Capsule {
-            half_height,
-            radius,
-        } = build.colliders[0].shape
-        else {
-            panic!("attendu une capsule");
-        };
-        assert_eq!(radius, 2.0);
-        assert_eq!(half_height, 0.0, "segment nul : la capsule est une sphère");
+        let shape = build.colliders[0].shape;
+        assert_eq!(shape, ColliderShape::Sphere { radius: 2.0 });
+        assert!(
+            shape.has_valid_dimensions(),
+            "la forme passe la règle de check_physics"
+        );
+
+        // À hauteur égale au rayon, toujours pas de segment : la même sphère.
+        let mut nodes = vec![node(0, NONE_U16)];
+        let carre = vec![mesh([-2.0, -2.0, -2.0], [2.0, 2.0, 2.0])];
+        let build = build_colliders(
+            &mut nodes,
+            &carre,
+            &[],
+            &[],
+            &requests,
+            &CollisionOptions::with_mode(ColliderMode::None),
+            None,
+        );
+        assert_eq!(
+            build.colliders[0].shape,
+            ColliderShape::Sphere { radius: 2.0 }
+        );
     }
 
     #[test]

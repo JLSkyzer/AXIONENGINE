@@ -45,6 +45,9 @@ Definition of Done (PARTIE 37.3).
   - un collider `convex` ne garde que les sommets de son enveloppe : ni
     doublon d'un export a normales plates, ni point interieur (R-161) ;
     `COMPILER_VERSION` 11 ;
+  - `auto_capsule` sur un mesh trapu rend la sphere de son rayon : la capsule de
+    segment nul qu'il produisait faisait refuser l'asset par la validation ;
+    `COMPILER_VERSION` 12 ;
   - groupes de collision tiers declares par les packs
     (`data/<ns>/axion/collision_groups`, registre `axion:collision_group`,
     ADR-132 A1) : un fichier, un groupe et son masque par defaut, bits 8 a 31
