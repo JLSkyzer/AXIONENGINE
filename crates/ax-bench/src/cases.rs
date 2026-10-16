@@ -287,6 +287,14 @@ pub mod memory {
     /// Un monde physique : un plancher, deux cents boîtes qui tombent et s'entassent,
     /// vingt ticks — construction du monde comprise.
     pub fn physics_ticks() {
+        let mut driver = physics_world();
+        physics_steps(&mut driver);
+        black_box(driver.collect_states());
+    }
+
+    /// Le monde de [`physics_ticks`] : le plancher et les deux cents boîtes, avant le premier pas.
+    #[must_use]
+    pub fn physics_world() -> SimDriver {
         let mut driver = SimDriver::new();
         driver.set_world_tile(
             0,
@@ -317,10 +325,14 @@ pub mod memory {
                 }],
             );
         }
+        driver
+    }
+
+    /// Les vingt ticks de [`physics_ticks`], à 20 Hz.
+    pub fn physics_steps(driver: &mut SimDriver) {
         for _ in 0..TICKS {
             driver.advance_all(1.0 / 20.0);
         }
-        black_box(driver.collect_states());
     }
 
     /// Les trois cas de B-08 sous l'allocateur `allocator` (`system` ou `counted`).

@@ -59,6 +59,13 @@ path = "src/bin/bench_alloc_system.rs"
 name = "bench-alloc-counted"
 path = "src/bin/bench_alloc_counted.rs"
 
+# R-501 par le calcul (ADR-133 A1) : les allocations des charges de B-08, comptees sous
+# un allocateur qui ne fait que compter, multipliees par le surcout par allocation que la
+# campagne B-08 archivee mesure. Jamais dans les binaires de B-08 : il fausserait la mesure.
+[[bin]]
+name = "bench-r501"
+path = "src/bin/bench_r501.rs"
+
 # B-02 : propagation du graphe de scene vs nombre de nodes (PARTIE 30.2).
 [[bench]]
 name = "scene"

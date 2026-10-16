@@ -11,11 +11,13 @@
 //! sans un fichier genere par ce harnais. Ce crate rend ce fichier possible et
 //! refuse d'en ecrire un incomplet ; il n'en fabrique jamais le contenu.
 
+pub mod alloc_events;
 pub mod archive;
 pub mod cases;
 pub mod cli;
 pub mod measure;
 pub mod memory_runner;
+pub mod r501;
 pub mod regress;
 pub mod result;
 pub mod stats;
