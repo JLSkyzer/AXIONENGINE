@@ -1360,7 +1360,7 @@ est tenue par ce qui existe.
               personne, seule la CLI les affiche ;
               l'asset entier, `auto_capsule`, `auto_convex`, `auto_compound` signalés, pas produits,
               et le mode de collider d'une definition ne voyage pas jusqu'à la compilation (C-32).
-- [ ] **C-50 en jeu** : persistance (apparition, sauvegarde, rechargement du monde), jamais
+- [x] **C-50 en jeu** : persistance (apparition, sauvegarde, rechargement du monde), jamais
       observée ; et le « 0 assembly(s) retirée(s) » de `/axion remove` du 2026-10-03.
       Le 2026-10-15, `LivrableM2GameTests` joue la commande, la sauvegarde, `remove` (« 1 assembly(s)
       retirée(s) ») et le rechargement d'une entité neuve, liée, qui retombe : couvert par GameTest.
@@ -1368,6 +1368,15 @@ est tenue par ce qui existe.
       ne compile aucun modèle, il rend ceux que le runtime de son processus a compilés depuis
       `data/` ; un client distant n'aura donc pas de rendu avant la synchronisation C-51 (M4,
       ADR-137). L'essai juge la persistance, pas le rendu distant.
+      **Fait le 2026-10-16 avec Killian** : serveur dédié (`runServer`) et client par le réseau
+      (`runClient`, `localhost:25599`, connexion `[::1]`). Deux `/axion spawn axion:test_cube` créées,
+      comptées à 2 ; `save-all`, `stop`, redémarrage ; les deux rechargées liées (aucune inerte), puis
+      `/axion remove` : « 2 assembly(s) retirée(s) ». Le cache reprend tout au second démarrage
+      (« 0 asset(s) à compiler, 18 repris du cache »), les cinq modèles d'exemple compilent sur le
+      serveur (18 prêts sur 18) et les exemples sont ignorés sans refus (`content.examples` faux).
+      Relevé en passant, hors M2 : un tick lent à la connexion (pas physique 8,08 ms, 354 colliders,
+      tuiles du monde au chargement des chunks), à voir en M3 ; serveur et client partagent `run/`, ce
+      qui rend `run/logs/latest.log` illisible quand ils tournent ensemble (`debug.log` reste lisible).
 - [ ] **Definition of Done de M2** vérifiée, puis `M2` dans `COMPLETED_MILESTONES` sur décision
       de Killian.
       - **[ADR-137](../docs/decisions/ADR-137.md)** (proposé le 2026-10-15, à ratifier) borne la DoD de
