@@ -22,8 +22,9 @@ package dev.axion.asset;
  * {@code MATL} (DM-05) et {@code TEXR}, matériaux et textures importés (ADR-122) ; 8 —
  * plage d'UV par mesh et meshes multiples par node (ADR-122 §4 et §5) ; 9 — section
  * {@code GEOM} écrite dès qu'un mesh existe, même sans triangle ; 10 — zstd au niveau 9
- * que fixe R-552, au lieu de 3. À incrémenter des deux
- * côtés à toute modification de C-21, C-22, C-23, C-24 ou C-28 qui change la sortie.
+ * que fixe R-552, au lieu de 3 ; 11 — un collider {@code convex} (C-32) ne garde que les
+ * sommets de son enveloppe (R-161). À incrémenter des deux côtés à toute modification de
+ * C-21, C-22, C-23, C-24, C-28 ou C-32 qui change la sortie.
  */
 public final class CompilerVersion {
 
@@ -33,7 +34,7 @@ public final class CompilerVersion {
      * <p>La CI ({@code tools/ci/check_compiler_version.py}) refuse tout écart
      * entre cette valeur et celle du crate {@code ax-asset}.
      */
-    public static final int CURRENT = 10;
+    public static final int CURRENT = 11;
 
     private CompilerVersion() {
         throw new AssertionError("classe utilitaire, non instanciable");

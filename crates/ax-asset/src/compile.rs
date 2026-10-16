@@ -53,8 +53,9 @@ use core::fmt;
 /// même sans triangle : un objet sans face ne laisse plus un node désigner un
 /// mesh absent, que le chargement refusait ; 10 — sections compressées par zstd
 /// au niveau 9 que fixe R-552, au lieu de 3 ; en jeu, l'en-tête porte l'empreinte
-/// de la source, comme en CLI (R-830).
-pub const COMPILER_VERSION: u32 = 10;
+/// de la source, comme en CLI (R-830) ; 11 — un collider `convex` (C-32) ne garde
+/// que les sommets de son enveloppe, ni doublon ni point intérieur (R-161).
+pub const COMPILER_VERSION: u32 = 11;
 
 /// Empreinte FNV-1a 64 bits d'une source, champ `source_hash` de l'en-tête A3D.
 ///

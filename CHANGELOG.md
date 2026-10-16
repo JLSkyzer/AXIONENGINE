@@ -32,7 +32,10 @@ Definition of Done (PARTIE 37.3).
     traversee sur un monde fige (ADR-124), banc de rendu automatise sous
     vanilla, natif et shaderpack (ADR-126) ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
-    T-012 (INV-04), T-019 (INV-12).
+    T-012 (INV-04), T-019 (INV-12) ;
+  - un collider `convex` ne garde que les sommets de son enveloppe : ni
+    doublon d'un export a normales plates, ni point interieur (R-161) ;
+    `COMPILER_VERSION` 11.
 - M2 (Definition of Done prononcee le 2026-10-16, ADR-137) — graphe de scene, cache,
   optimizer, entite, API :
   - optimizer d'assets (C-23) : fusion des sommets, normales et tangentes

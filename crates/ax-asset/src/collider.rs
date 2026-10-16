@@ -355,18 +355,38 @@ fn per_node_colliders(
 }
 
 /// Construit un collider `ConvexHull` depuis les sommets des meshes d'un node
-/// `role=collider shape=convex` : leurs positions deviennent les points d'enveloppe,
-/// ajoutés au `pool`. rapier calcule l'enveloppe elle-même au runtime.
+/// `role=collider shape=convex` : les sommets de leur enveloppe convexe deviennent
+/// les points d'enveloppe, ajoutés au `pool`.
 ///
-/// Rend `Err(raison)` si les sommets sortent du tampon, ou si leur nombre est hors
-/// de `[4, 256]` (R-161) — réduire un nuage plus dense relève d'`auto_convex`
-/// (V-HACD, R-162), pas encore disponible ; un mesh trop maigre n'est pas un volume.
+/// R-161 compte les points **après réduction** : les sommets d'un mesh n'en sont
+/// pas. Un export à normales plates duplique chaque coin par face, et un point
+/// intérieur ne porte aucune forme ; les garder faisait juger le plafond sur des
+/// doublons, au risque de refuser à tort une enveloppe qui le tenait. Seuls les
+/// sommets de l'enveloppe sont donc gardés, dans l'ordre déterministe que rend le
+/// calcul.
+///
+/// Rend `Err(raison)` si les sommets sortent du tampon, si un mesh trop maigre ou
+/// plat ne forme pas de volume, ou si l'enveloppe garde plus de 256 points (R-161)
+/// — une forme aussi fine se décrit par `auto_convex` (V-HACD, R-162).
 fn convex_from_meshes(
     meshes: &[MeshDesc],
     vertices: &[Vertex],
     pool: &mut Vec<[f32; 3]>,
 ) -> Result<ColliderDesc, String> {
-    let positions = mesh_positions(meshes, vertices)?;
+    let sources = mesh_positions(meshes, vertices)?;
+    if sources.len() < CONVEX_MIN_POINTS as usize {
+        return Err(format!(
+            "enveloppe convexe de {} points, moins que le minimum {CONVEX_MIN_POINTS}",
+            sources.len()
+        ));
+    }
+    let cloud: Vec<Vector> = sources
+        .iter()
+        .map(|p| Vector::new(p[0], p[1], p[2]))
+        .collect();
+    let (hull, _) = parry3d::transformation::try_convex_hull(&cloud)
+        .map_err(|error| format!("les sommets ne forment pas une enveloppe : {error:?}"))?;
+    let positions: Vec<[f32; 3]> = hull.iter().map(|v| [v.x, v.y, v.z]).collect();
     let point_count = positions.len();
     if point_count < CONVEX_MIN_POINTS as usize {
         return Err(format!(
@@ -375,8 +395,8 @@ fn convex_from_meshes(
     }
     if point_count > CONVEX_MAX_POINTS as usize {
         return Err(format!(
-            "enveloppe convexe de {point_count} points, plus que {CONVEX_MAX_POINTS} — \
-             la réduction (auto_convex/V-HACD) n'est pas encore disponible"
+            "enveloppe convexe de {point_count} points, plus que {CONVEX_MAX_POINTS} (R-161) — \
+             une forme aussi fine se décrit par auto_convex"
         ));
     }
     let offset = u32::try_from(pool.len()).map_err(|_| "pool de points saturé".to_owned())?;
@@ -1062,16 +1082,96 @@ mod tests {
             }
         );
         assert!(build.warnings.is_empty());
+        // Les quatre sommets sont l'enveloppe ; leur ordre est celui du calcul.
+        let mut points = build.hull_points.clone();
+        points.sort_by(|a, b| a.partial_cmp(b).expect("coordonnées finies"));
         assert_eq!(
-            build.hull_points,
+            points,
             vec![
                 [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
                 [0.0, 0.0, 1.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 0.0, 0.0],
             ]
         );
         assert_eq!(nodes[0].collider, 0, "le node est lié à son collider");
+    }
+
+    /// Un cube unité tel qu'un export à normales plates l'écrit : chaque coin
+    /// répété `copies` fois, et son centre — un point intérieur.
+    fn cube_a_doublons(copies: usize) -> Vec<Vertex> {
+        let mut sommets = Vec::new();
+        for _ in 0..copies {
+            for i in 0..8u8 {
+                sommets.push(sommet([
+                    f32::from(i & 1),
+                    f32::from((i >> 1) & 1),
+                    f32::from((i >> 2) & 1),
+                ]));
+            }
+        }
+        sommets.push(sommet([0.5, 0.5, 0.5]));
+        sommets
+    }
+
+    fn enveloppe_d_un_node(vertices: &[Vertex]) -> ColliderBuild {
+        let mut nodes = vec![node(0, NONE_U16)];
+        let meshes = vec![MeshDesc {
+            vertex_offset: 0,
+            vertex_count: vertices.len() as u32,
+            ..mesh([0.0; 3], [1.0; 3])
+        }];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::Convex,
+            density: None,
+            no_refit: false,
+        }];
+        build_colliders(
+            &mut nodes,
+            &meshes,
+            vertices,
+            &[],
+            &requests,
+            &CollisionOptions::with_mode(ColliderMode::None),
+            None,
+        )
+    }
+
+    #[test]
+    fn t310_un_node_convex_ne_garde_que_les_sommets_de_son_enveloppe() {
+        // R-161 compte les points après réduction : ni doublon ni point intérieur.
+        // Trois copies de chaque coin, comme un export à normales plates, et le centre.
+        let build = enveloppe_d_un_node(&cube_a_doublons(3));
+        assert!(build.warnings.is_empty(), "{:?}", build.warnings);
+        assert_eq!(
+            build.colliders[0].shape,
+            ColliderShape::ConvexHull {
+                points_offset: 0,
+                points_count: 8,
+            },
+            "les huit coins, une fois chacun"
+        );
+        let mut points = build.hull_points.clone();
+        points.sort_by(|a, b| a.partial_cmp(b).expect("coordonnées finies"));
+        points.dedup();
+        assert_eq!(points.len(), 8, "aucun doublon gardé");
+        assert!(
+            !points.contains(&[0.5, 0.5, 0.5]),
+            "le point intérieur ne porte aucune forme"
+        );
+    }
+
+    #[test]
+    fn t310_le_plafond_de_r161_se_juge_sur_l_enveloppe_pas_sur_les_sommets() {
+        // 40 copies des huit coins : 321 sommets, au-delà des 256 de R-161. Leur
+        // enveloppe en garde huit : elle tient le plafond et ne doit pas être refusée.
+        let sommets = cube_a_doublons(40);
+        assert!(sommets.len() > CONVEX_MAX_POINTS as usize);
+        let build = enveloppe_d_un_node(&sommets);
+        assert!(build.warnings.is_empty(), "{:?}", build.warnings);
+        assert_eq!(build.colliders.len(), 1);
+        assert_eq!(build.hull_points.len(), 8);
     }
 
     #[test]

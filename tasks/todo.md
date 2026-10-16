@@ -1923,11 +1923,18 @@ substituable sans changer rapier »).
                   jetés aujourd'hui au sondage d'`axion_asset_poll`. ADR de frontière FFI d'abord,
                   en effort maximal ; preuve : un avertissement connu apparaît une fois par
                   compilation dans le journal du jeu.
-            - [ ] **Défaut relevé le 2026-10-16** (modèle `buggy`) : `shape: convex` prend les
+            - [x] **Défaut relevé le 2026-10-16** (modèle `buggy`) : `shape: convex` prenait les
                   sommets du mesh tels quels, doublons compris. Un export glTF à normales plates
                   duplique chaque sommet par face : 82 points stockés pour une enveloppe de 18. Le
-                  plafond `CONVEX_MAX_POINTS` (256) se juge donc sur les doublons et peut refuser à
-                  tort. Dédoublonner les positions avant le compte et le stockage.
+                  plafond `CONVEX_MAX_POINTS` (256) se jugeait donc sur les doublons et pouvait refuser à
+                  tort. **Corrigé le 2026-10-16** : R-161 compte « après réduction » ; `convex_from_meshes`
+                  garde les seuls sommets de l'enveloppe (`parry3d::transformation::try_convex_hull`),
+                  ce qui vaut aussi pour le repli global d'`auto_convex`. Tests `t310_` (cube à coins
+                  triplés et centre : 8 points ; 321 sommets acceptés), rouges sous mutation.
+                  `COMPILER_VERSION` 11 des deux côtés ; empreintes v11 des quatre plateformes, les
+                  trois distantes récoltées par une sonde en CI (branche jetable `r562-sonde-v11`) :
+                  x86_64 identique partout, macOS aarch64 différent sur les sources maillées comme en
+                  v10, l'enveloppe convexe identique sur les quatre.
             Produit les colliders (`ColliderDesc`, DM-06) à la compilation et les
             porte jusqu'à l'A3D (section PHYS). DM-06 figé, validation C-22 prête.
             Périmètre : **complet, PHYS inclus** ; gels COM/PHYS derrière un ADR
