@@ -1354,9 +1354,10 @@ est tenue par ce qui existe.
             passe en chaîne CBOR à `axion_asset_compile` (`(JJIJ[B)I`) ; une option refusée échoue
             au sondage avec le code de la CLI. Une ressource illisible reste énumérée et sa lecture
             rend l'échec, au lieu d'une compilation avec les défauts.
-            - **Reste dû** : les avertissements de compilation ne remontent pas à Java — **non
-              attribué par ADR-137, à trancher par Killian** (2026-10-16) : au sondage, le natif les
-              jette ; en jeu, R-530 et R-912 n'avertissent donc personne, seule la CLI les affiche ;
+            - **Reste dû** : les avertissements de compilation ne remontent pas à Java — **renvoyés
+              en M3 avec C-32** ([ADR-137](../docs/decisions/ADR-137.md), amendement A1, Killian le
+              2026-10-16) : au sondage, le natif les jette ; en jeu, R-530 et R-912 n'avertissent
+              personne, seule la CLI les affiche ;
               l'asset entier, `auto_capsule`, `auto_convex`, `auto_compound` signalés, pas produits,
               et le mode de collider d'une definition ne voyage pas jusqu'à la compilation (C-32).
 - [ ] **C-50 en jeu** : persistance (apparition, sauvegarde, rechargement du monde), jamais
@@ -1906,6 +1907,10 @@ substituable sans changer rapier »).
               (joints, M4).
 
       - [ ] **C-32 — Collider Builder** (fiche 5.24, R-620..623, T-310..312).
+            - [ ] **Avertissements de compilation jusqu'au journal du jeu** (ADR-137, amendement A1) :
+                  jetés aujourd'hui au sondage d'`axion_asset_poll`. ADR de frontière FFI d'abord,
+                  en effort maximal ; preuve : un avertissement connu apparaît une fois par
+                  compilation dans le journal du jeu.
             - [ ] **Défaut relevé le 2026-10-16** (modèle `buggy`) : `shape: convex` prend les
                   sommets du mesh tels quels, doublons compris. Un export glTF à normales plates
                   duplique chaque sommet par face : 82 points stockés pour une enveloppe de 18. Le
