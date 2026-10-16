@@ -22,7 +22,7 @@ use ax_mem::{ArenaClass, ArenaCounter, MemoryError};
 use ax_model::budgets::Budget;
 use ax_model::buffer::BufferKind;
 use ax_model::dm::handle::Handle;
-use ax_physics::{ActivityReport, SimDriver, SimSettings, Stage, WINDOW_TICKS};
+use ax_physics::{ActivityReport, SimDriver, SimSettings, Stage, StageLog, WINDOW_TICKS};
 use ax_telemetry::{BudgetMetrics, MetricId, Telemetry};
 use std::collections::HashMap;
 use std::time::Instant;
@@ -81,6 +81,8 @@ struct SessionMetrics {
     sim_last_step_cpu: MetricId,
     sim_last_step_integration: MetricId,
     sim_last_step_contacts: MetricId,
+    sim_last_step_commands: MetricId,
+    sim_last_step_serialization: MetricId,
     sim_slept_radius: MetricId,
     sim_slept_cap: MetricId,
     sim_slept_budget: MetricId,
@@ -138,6 +140,9 @@ pub struct Session {
     physics: SimDriver,
     /// Un `axion_sim_submit` est en cours, en attente de son `collect` (R-282).
     sim_pending: bool,
+    /// Étapes du cycle en cours, dans leur ordre (C-40, T-390, T-391) : les commandes (1), au
+    /// `submit` puis au début du `collect` ; celles des mondes ; la sérialisation (15).
+    cycle_stages: StageLog,
     /// Cycles `submit` clos implicitement faute de `collect` (R-282).
     sim_unbalanced: u64,
     /// Pas restant à mesurer en temps CPU : un pas au-delà du budget de simulation ouvre, ou
@@ -262,6 +267,7 @@ impl Session {
             self.sim_unbalanced += 1;
         }
         self.sim_pending = true;
+        self.cycle_stages.reset();
     }
 
     /// Ferme le cycle de simulation courant.
@@ -322,13 +328,51 @@ impl Session {
         }
     }
 
-    /// Mesure un `axion_sim_submit` contre `budgets.submit_ns` (R-280, INV-19).
-    pub fn record_submit(&self, nanos: u64) {
+    /// Mesure un `axion_sim_submit` contre `budgets.submit_ns` (R-280, INV-19). Le `submit`
+    /// applique les commandes du tick : il est la première part de l'étape 1 (C-40, R-661).
+    pub fn record_submit(&mut self, nanos: u64) {
         let metrics = &self.metrics;
         let limit = self.budgets.get(Budget::SubmitNs);
         metrics
             .budgets
             .report(&metrics.registry, Budget::SubmitNs, nanos, limit);
+        self.cycle_stages.record(Stage::Commands, nanos);
+    }
+
+    /// Inscrit une étape du cycle exécutée hors du pas des mondes (C-40, R-661) : la part de
+    /// l'étape 1 qui précède le pas, au début du `collect`.
+    pub fn record_stage(&mut self, stage: Stage, nanos: u64) {
+        self.cycle_stages.record(stage, nanos);
+    }
+
+    /// Clôt le journal du cycle sur la sérialisation (étape 15) et publie les durées des
+    /// étapes que la session mesure — commandes et sérialisation ; intégration et contacts
+    /// viennent des mondes (`record_step`). Vérifie en debug que l'ordre suivi est celui de
+    /// R-660 : un pas qui le quitterait échoue dans tous les tests, plutôt que de passer.
+    pub fn finish_sim_stages(&mut self, serialization_nanos: u64) {
+        self.cycle_stages
+            .record(Stage::Serialization, serialization_nanos);
+        debug_assert_eq!(
+            ax_physics::check_order(self.cycle_stages.executed()),
+            Ok(()),
+            "ordre du pas (R-660)"
+        );
+        let metrics = &self.metrics;
+        metrics.registry.set(
+            metrics.sim_last_step_commands,
+            self.cycle_stages.duration(Stage::Commands),
+        );
+        metrics.registry.set(
+            metrics.sim_last_step_serialization,
+            self.cycle_stages.duration(Stage::Serialization),
+        );
+        self.cycle_stages.reset();
+    }
+
+    /// Étapes du cycle inscrites jusqu'ici, dans leur ordre (T-390).
+    #[must_use]
+    pub fn cycle_stages(&self) -> &[Stage] {
+        self.cycle_stages.executed()
     }
 
     /// Avance la simulation d'un tick et mesure le pas (R-500, R-661, INV-19) ; le gouverneur
@@ -350,6 +394,10 @@ impl Session {
         let started = Instant::now();
         self.physics.advance_all(frame_dt);
         let wall = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
+        // L'ordre des étapes des mondes ; leurs durées restent celles des mondes.
+        for stage in self.physics.executed_stages() {
+            self.cycle_stages.record(stage, 0);
+        }
         let cpu =
             cpu_start.and_then(|start| Some(cpu_clock::thread_cpu_ns()?.saturating_sub(start)));
         // Java lit le palier au drapeau du collect et aux jauges, et journalise ses transitions.
@@ -777,6 +825,7 @@ pub fn open(
         next_asset_job: 1,
         physics: SimDriver::with_settings(physics),
         sim_pending: false,
+        cycle_stages: StageLog::default(),
         sim_unbalanced: 0,
         cpu_watch: 0,
         assets: AssetStore::new(),
@@ -847,6 +896,9 @@ fn build_metrics() -> SessionMetrics {
     let sim_last_step_cpu = last_step("axion.sim.last_step_cpu_ns");
     let sim_last_step_integration = last_step("axion.sim.last_step_integration_ns");
     let sim_last_step_contacts = last_step("axion.sim.last_step_contacts_ns");
+    // C-40, R-661 : les étapes 1 et 15, que la session mesure autour du pas.
+    let sim_last_step_commands = last_step("axion.sim.last_step_commands_ns");
+    let sim_last_step_serialization = last_step("axion.sim.last_step_serialization_ns");
     // R-613 « journalisé » (ADR-123 §3) : ce que la gestion d'activité endort et réveille.
     let mut counter = |name: &str| builder.counter(name, "count").expect("métrique d'activité");
     let sim_slept_radius = counter("axion.sim.slept_radius");
@@ -911,6 +963,8 @@ fn build_metrics() -> SessionMetrics {
         sim_last_step_cpu,
         sim_last_step_integration,
         sim_last_step_contacts,
+        sim_last_step_commands,
+        sim_last_step_serialization,
         sim_slept_radius,
         sim_slept_cap,
         sim_slept_budget,

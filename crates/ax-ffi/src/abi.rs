@@ -44,7 +44,7 @@ use ax_model::dm::physics::BodyDesc;
 use ax_model::dm::physics::{BodyBounds, BodyState, ColliderDesc};
 use ax_physics::{
     BodyCollider, BodyKind, CollisionGroups, ContactMaterial, DegradationLevel, PhysicsConfig,
-    Shape, SimDriver, SimSettings,
+    Shape, SimDriver, SimSettings, Stage,
 };
 
 /// Version de l'ABI.
@@ -1272,7 +1272,7 @@ pub unsafe extern "C" fn axion_sim_submit(
             // R-280 : le submit se mesure contre `budgets.submit_ns` (INV-19).
             let started = std::time::Instant::now();
             let code = submit_commands(session, command_count);
-            session.record_submit(u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
+            session.record_submit(elapsed_ns(started));
             code
         }) {
             Ok(code) | Err(code) => code,
@@ -1433,6 +1433,11 @@ fn body_colliders(
     Some(runtime)
 }
 
+/// Durée écoulée depuis `start`, en nanosecondes, saturée.
+fn elapsed_ns(start: std::time::Instant) -> u64 {
+    u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX)
+}
+
 fn read_le_u32(bytes: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne vérifiée"))
 }
@@ -1471,23 +1476,31 @@ pub unsafe extern "C" fn axion_sim_collect(
             return AXION_E_INVALID_BUFFER;
         }
         let result = match context::with(ctx, false, |session| {
+            // Fin de l'étape 1 (C-40) : ce qui prépare le pas avec les entrées du tick.
+            let commands = std::time::Instant::now();
             // Les proxies d'entités déclarés ce tick prennent corps avant le pas (ADR-123 §5).
             session.physics().sync_entity_proxies();
             // R-612/R-613 autour des joueurs du tick, avant le pas : un corps hors du rayon de
             // tout joueur ne bouge pas ce tick (ADR-123 §3). Les comptes vont aux métriques.
             let activity = session.physics().manage_activity();
             session.record_activity(activity);
+            session.record_stage(Stage::Commands, elapsed_ns(commands));
             // Le pas, mesuré ; FM-21 décide sur sa durée (§25.5).
             session.step_simulation(SERVER_TICK_DT);
+            // Étape 15 (C-40) : la récolte des états et des événements, écrits pour Java.
+            let serialization = std::time::Instant::now();
             let reports = session.physics().collect_reports();
             let states = &reports.states;
             // Appariement garanti par construction (un même parcours) ; Java
             // lit les emprises au rang des états.
             debug_assert_eq!(states.len(), reports.bounds.len());
             let events = session.physics().drain_events();
-            // R-610 : la récolte faite, les mondes devenus sans objet sont détruits.
+            let mut serialization_ns = elapsed_ns(serialization);
+            // R-610 : la récolte faite, les mondes devenus sans objet sont détruits — hors de
+            // l'étape 15, qui reprend ensuite pour l'écriture.
             session.physics().release_idle_dimensions();
 
+            let writing = std::time::Instant::now();
             let mut sim_out_bytes =
                 Vec::with_capacity(states.len() * (BodyState::BYTES + BodyBounds::BYTES));
             for state in states {
@@ -1506,6 +1519,8 @@ pub unsafe extern "C" fn axion_sim_collect(
             session
                 .buffers()
                 .write_payload(BufferKind::Events, &events_bytes);
+            serialization_ns = serialization_ns.saturating_add(elapsed_ns(writing));
+            session.finish_sim_stages(serialization_ns);
             session.close_sim_cycle();
 
             let degraded = session.physics().degradation_level() != DegradationLevel::Normal;

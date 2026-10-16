@@ -64,7 +64,7 @@ pub use governor::{DegradationLevel, DegradationTransition, Governor, WINDOW_TIC
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
 pub use proxies::{EntityProxy, ProxyShape};
 pub use query::{RayHit, SensorMode, SpatialFilter, SweepHit};
-pub use scheduler::{SimMode, Stage, StageDurations};
+pub use scheduler::{check_order, SimMode, Stage, StageDurations, StageLog};
 pub use sim::{SimDriver, SimSettings};
 pub use world::{BodyReports, PhysicsWorld, Pose, WorldCounters};
 

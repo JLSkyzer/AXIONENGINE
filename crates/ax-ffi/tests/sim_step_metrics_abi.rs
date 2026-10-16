@@ -1,4 +1,4 @@
-//! La mesure du pas de simulation à travers l'ABI, quand le budget tient (R-500, R-501,
+//! T-391 — la mesure du pas de simulation à travers l'ABI, quand le budget tient (R-500, R-501,
 //! R-661) : chaque pas est compté et décomposé, aucun dépassement n'est compté, et le temps
 //! CPU du thread n'est pas mesuré — deux appels système par pas coûteraient plus que la
 //! télémétrie n'en a le droit, et seul un dépassement ouvre sa surveillance.
@@ -149,6 +149,13 @@ fn un_pas_dans_son_budget_est_mesure_sans_son_temps_cpu() {
         "étape 4 mesurée"
     );
     metrique(ctx, "axion.sim.last_step_contacts_ns");
+    // T-391 (R-661) : chaque étape qui existe a sa métrique — les commandes (1), au submit et
+    // au début du collect, et la sérialisation (15), que la session mesure autour du pas.
+    assert!(
+        metrique(ctx, "axion.sim.last_step_commands_ns") > 0,
+        "étape 1 mesurée"
+    );
+    metrique(ctx, "axion.sim.last_step_serialization_ns");
     // … aucun ne dépasse, et aucun n'est mesuré en temps CPU.
     assert_eq!(metrique(ctx, "axion.budget.sim_ns_per_tick.overruns"), 0);
     assert_eq!(champ(ctx, "axion.sim.step_cpu_ns", "count"), 0);

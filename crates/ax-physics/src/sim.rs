@@ -724,6 +724,16 @@ impl SimDriver {
             .sum()
     }
 
+    /// Étapes exécutées au dernier [`advance_all`](Self::advance_all), monde après monde dans
+    /// l'ordre des dimensions (C-40, T-390). Chaque monde déroule ses sous-pas ; la suite
+    /// entière reste conforme à R-660, le passage d'un monde au suivant ouvrant un sous-pas.
+    /// Un itérateur, pour que la lecture à chaque tick n'alloue rien.
+    pub fn executed_stages(&self) -> impl Iterator<Item = Stage> + '_ {
+        self.dimensions
+            .values()
+            .flat_map(|sim| sim.world.executed_stages().iter().copied())
+    }
+
     /// Récolte l'état des corps mobiles de toutes les dimensions (DM-08) — vue
     /// des seuls états de [`collect_reports`](Self::collect_reports).
     #[must_use]

@@ -94,6 +94,13 @@ impl Stage {
         )
     }
 
+    /// Vrai si l'étape appartient au **bloc des sous-pas** (étapes 3 à 6 : véhicules,
+    /// intégration, joints, contacts), le seul qui se répète au sein d'un tick (R-990, R-660).
+    #[must_use]
+    pub fn is_substep(self) -> bool {
+        (3..=6).contains(&self.index())
+    }
+
     /// Vrai si l'étape s'exécute **côté client** (R-662) : animation, déformation
     /// (élastique + rejeu plastique), particules, scene graph — plus l'interpolation, qui
     /// n'est pas une étape du pas. Les étapes 3 à 12 ne tournent côté client que pour le
@@ -146,6 +153,76 @@ impl StageDurations {
     pub fn get(&self, stage: Stage) -> u64 {
         self.nanos[(stage.index() - 1) as usize]
     }
+}
+
+/// Les étapes **réellement exécutées** sur un tick, dans leur ordre, avec leur durée
+/// (T-390, T-391).
+///
+/// [`Stage::ORDER`] dit l'ordre prévu ; ce journal dit l'ordre suivi, que [`check_order`]
+/// confronte à R-660. Deux passages consécutifs d'une même étape — l'étape 1 se fait en
+/// deux temps, au `submit` puis au début du `collect` — ne s'inscrivent qu'une fois, leurs
+/// durées s'additionnant. Le journal garde sa capacité d'un tick à l'autre : en régime, il
+/// n'alloue plus.
+///
+/// Purement **observationnel**, comme [`StageDurations`] : jamais lu par la simulation.
+#[derive(Debug, Clone, Default)]
+pub struct StageLog {
+    executed: Vec<Stage>,
+    durations: StageDurations,
+}
+
+impl StageLog {
+    /// Vide le journal (début d'un tick).
+    pub fn reset(&mut self) {
+        self.executed.clear();
+        self.durations.reset();
+    }
+
+    /// Inscrit l'exécution d'une étape et sa durée.
+    pub fn record(&mut self, stage: Stage, nanos: u64) {
+        if self.executed.last() != Some(&stage) {
+            self.executed.push(stage);
+        }
+        self.durations.add(stage, nanos);
+    }
+
+    /// Étapes exécutées depuis le dernier [`reset`](Self::reset), dans leur ordre.
+    #[must_use]
+    pub fn executed(&self) -> &[Stage] {
+        &self.executed
+    }
+
+    /// Durée cumulée d'une étape sur le tick, en nanosecondes.
+    #[must_use]
+    pub fn duration(&self, stage: Stage) -> u64 {
+        self.durations.get(stage)
+    }
+}
+
+/// Vérifie qu'une suite d'étapes exécutées respecte l'ordre normatif de R-660.
+///
+/// L'ordre ne recule jamais, sauf **au sein du bloc des sous-pas** (étapes 3 à 6), où un
+/// recul marque le début d'un nouveau sous-pas. Il s'ensuit que la chaîne de dommage
+/// (7 à 12) passe après le dernier sous-pas et une seule fois, que les commandes (1)
+/// précèdent tout le reste et que la sérialisation (15) clôt le tick.
+///
+/// # Errors
+///
+/// Le premier écart, nommé : l'étape fautive et celle qu'elle suit.
+pub fn check_order(executed: &[Stage]) -> Result<(), String> {
+    for pair in executed.windows(2) {
+        let (previous, stage) = (pair[0], pair[1]);
+        let recul = stage.index() <= previous.index();
+        if recul && !(previous.is_substep() && stage.is_substep()) {
+            return Err(format!(
+                "{stage:?} (étape {}) après {previous:?} (étape {}) : R-660 ne le permet qu'au \
+                 sein du bloc des sous-pas (3 à 6)",
+                stage.index(),
+                previous.index()
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -220,5 +297,101 @@ mod tests {
         assert_eq!(d.get(Stage::Contacts), 0);
         d.reset();
         assert_eq!(d.get(Stage::Integration), 0);
+    }
+
+    #[test]
+    fn le_bloc_des_sous_pas_est_3_a_6() {
+        let bloc: Vec<u32> = Stage::ORDER
+            .iter()
+            .filter(|s| s.is_substep())
+            .map(|s| s.index())
+            .collect();
+        assert_eq!(bloc, vec![3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn t391_le_journal_fusionne_deux_passages_consecutifs_et_cumule_leurs_durees() {
+        let mut log = StageLog::default();
+        log.record(Stage::Commands, 10);
+        log.record(Stage::Commands, 5);
+        log.record(Stage::Integration, 100);
+        log.record(Stage::Contacts, 20);
+        log.record(Stage::Integration, 90);
+        assert_eq!(
+            log.executed(),
+            [
+                Stage::Commands,
+                Stage::Integration,
+                Stage::Contacts,
+                Stage::Integration
+            ]
+        );
+        assert_eq!(log.duration(Stage::Commands), 15);
+        assert_eq!(log.duration(Stage::Integration), 190);
+        assert_eq!(log.duration(Stage::Serialization), 0);
+        log.reset();
+        assert!(log.executed().is_empty());
+        assert_eq!(log.duration(Stage::Integration), 0);
+    }
+
+    #[test]
+    fn t390_un_tick_conforme_a_r660_passe() {
+        use Stage::*;
+        // Trois sous-pas, puis la sérialisation ; la chaîne de dommage une fois, après eux.
+        assert_eq!(check_order(&[]), Ok(()));
+        assert_eq!(
+            check_order(&[
+                Commands,
+                Integration,
+                Contacts,
+                Integration,
+                Contacts,
+                Integration,
+                Contacts,
+                Serialization
+            ]),
+            Ok(())
+        );
+        assert_eq!(
+            check_order(&[
+                Commands,
+                Animation,
+                Vehicles,
+                Integration,
+                Joints,
+                Contacts,
+                Vehicles,
+                Integration,
+                Contacts,
+                Impacts,
+                Damage,
+                Deformation,
+                Integrity,
+                Fracture,
+                ColliderRefit,
+                Particles,
+                SceneGraph,
+                Serialization
+            ]),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn t390_un_tick_hors_de_r660_est_refuse() {
+        use Stage::*;
+        // La chaîne de dommage dans la boucle des sous-pas.
+        assert!(check_order(&[Integration, Contacts, Impacts, Integration, Contacts]).is_err());
+        // La sérialisation avant l'intégration.
+        assert!(check_order(&[Commands, Serialization, Integration]).is_err());
+        // Des commandes après l'intégration.
+        assert!(check_order(&[Integration, Commands]).is_err());
+        // Deux fois la chaîne de dommage.
+        assert!(check_order(&[Contacts, Damage, Impacts]).is_err());
+        let refus = check_order(&[Commands, Serialization, Integration]).unwrap_err();
+        assert!(
+            refus.contains("Integration") && refus.contains("Serialization"),
+            "{refus}"
+        );
     }
 }

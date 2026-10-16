@@ -2,10 +2,10 @@
 
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_physics::{
-    body_state_flags, event_data, event_kind, BodyBounds, BodyCollider, BodyError, BodyId,
-    BodyKind, CollisionGroups, CompoundPart, ConfigError, ContactMaterial, FluidEnvironment,
-    Handle, LiftSurface, PhysicsConfig, PhysicsWorld, SensorMode, Shape, SimMode, SpatialFilter,
-    Stage,
+    body_state_flags, check_order, event_data, event_kind, BodyBounds, BodyCollider, BodyError,
+    BodyId, BodyKind, CollisionGroups, CompoundPart, ConfigError, ContactMaterial,
+    FluidEnvironment, Handle, LiftSurface, PhysicsConfig, PhysicsWorld, SensorMode, Shape, SimMode,
+    SpatialFilter, Stage,
 };
 
 fn config() -> PhysicsConfig {
@@ -2198,6 +2198,39 @@ fn le_client_n_integre_pas_l_autoritaire() {
         "la bille ne bouge pas sans intégration autoritaire"
     );
     assert_eq!(world.stage_duration(Stage::Integration), 0);
+    assert!(
+        world.executed_stages().is_empty(),
+        "aucune étape autoritaire côté client"
+    );
+}
+
+#[test]
+fn t390_le_pas_d_un_monde_suit_l_ordre_de_r660() {
+    // Un tick de 1/20 s se joue en plusieurs sous-pas : chacun intègre puis récolte les
+    // contacts, et la suite entière respecte l'ordre normatif.
+    let mut world = PhysicsWorld::new(config());
+    world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 10.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.5 },
+        )
+        .unwrap();
+    let substeps = world.advance(1.0 / 20.0);
+    assert!(
+        substeps >= 2,
+        "plusieurs sous-pas dans un tick : {substeps}"
+    );
+    let attendu: Vec<Stage> = (0..substeps)
+        .flat_map(|_| [Stage::Integration, Stage::Contacts])
+        .collect();
+    assert_eq!(world.executed_stages(), attendu.as_slice());
+    assert_eq!(check_order(world.executed_stages()), Ok(()));
+
+    // Le tick suivant repart d'un journal vide.
+    let substeps = world.advance(1.0 / 60.0);
+    assert_eq!(world.executed_stages().len(), 2 * substeps as usize);
 }
 // --- ADR-120 : emprise physique courante des corps rapportés ------------------
 

@@ -14,7 +14,7 @@ use rapier3d::prelude::{
 use crate::activity::{Candidate, Observers};
 use crate::proxies::{EntityProxy, ProxyShape};
 use crate::query::{RayHit, SensorMode, SpatialFilter, SweepHit};
-use crate::scheduler::{SimMode, Stage, StageDurations};
+use crate::scheduler::{SimMode, Stage, StageLog};
 use std::time::Instant;
 
 use crate::body::{
@@ -237,8 +237,9 @@ pub struct PhysicsWorld {
     fluid_volumes: BTreeMap<[i32; 3], FluidSection>,
     /// Rôle de la simulation (C-40, R-662) : serveur autoritaire par défaut.
     mode: SimMode,
-    /// Durées par étape du dernier tick (C-40, R-661), observationnelles.
-    stage_durations: StageDurations,
+    /// Étapes exécutées au dernier tick, dans leur ordre, et leurs durées (C-40, R-660,
+    /// R-661), observationnelles.
+    stage_log: StageLog,
     /// Profils de force par corps. **Consultée par clé** pendant l'itération
     /// déterministe des corps `rapier`, jamais itérée elle-même : son ordre de
     /// parcours n'entre donc dans aucun résultat de simulation (R-1020).
@@ -442,7 +443,7 @@ impl PhysicsWorld {
             fluid: None,
             fluid_volumes: BTreeMap::new(),
             mode: SimMode::default(),
-            stage_durations: StageDurations::default(),
+            stage_log: StageLog::default(),
             aero: HashMap::new(),
             identity: HashMap::new(),
             sleep_state: HashMap::new(),
@@ -640,7 +641,7 @@ impl PhysicsWorld {
     /// évite la spirale où chaque tick prend plus de retard qu'il n'en comble
     /// (R-990).
     pub fn advance(&mut self, frame_dt: f32) -> u32 {
-        self.stage_durations.reset();
+        self.stage_log.reset();
         // R-662 (INV-17) : le client n'exécute pas l'intégration physique autoritaire — il
         // reçoit les états du serveur et interpole. Aucun sous-pas de ce côté.
         if self.mode == SimMode::Client {
@@ -670,8 +671,8 @@ impl PhysicsWorld {
             let collector = ContactCollector::default();
             self.inner.step_with_events(&(), &collector);
             self.enforce_body_guardrails();
-            self.stage_durations
-                .add(Stage::Integration, elapsed_nanos(integration_start));
+            self.stage_log
+                .record(Stage::Integration, elapsed_nanos(integration_start));
 
             // Étape 6 (C-40, R-660) : collecte des contacts et des événements.
             let contacts_start = Instant::now();
@@ -679,8 +680,8 @@ impl PhysicsWorld {
             self.collect_contact_impulses();
             self.collect_sleep_events();
             self.watch_stacking();
-            self.stage_durations
-                .add(Stage::Contacts, elapsed_nanos(contacts_start));
+            self.stage_log
+                .record(Stage::Contacts, elapsed_nanos(contacts_start));
 
             self.accumulator = (self.accumulator - dt).max(0.0);
             substeps += 1;
@@ -2225,7 +2226,14 @@ impl PhysicsWorld {
     /// observationnel).
     #[must_use]
     pub fn stage_duration(&self, stage: Stage) -> u64 {
-        self.stage_durations.get(stage)
+        self.stage_log.duration(stage)
+    }
+
+    /// Étapes exécutées au dernier tick, dans leur ordre (C-40, T-390) : à chaque sous-pas,
+    /// l'intégration puis les contacts ; rien en mode client (R-662).
+    #[must_use]
+    pub fn executed_stages(&self) -> &[Stage] {
+        self.stage_log.executed()
     }
 
     // --- C-39 : requêtes spatiales (fiche 5.31) -----------------------------------------
