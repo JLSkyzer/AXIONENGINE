@@ -2730,7 +2730,11 @@ amortissement dans l'eau, `/axion remove`).
             comptées dans `budgets.gpu_mem_bytes`, éviction LRU des assets entiers par `MeshCache`, pour
             les deux backends. D1 fait (430bf64) : `JavaMetrics` fusionné à l'export, budgets du rendu et
             `idle_hook_ns` alimentés ; commande cliente d'un client relié à un serveur distant faite le
-            2026-10-16 (10fb013, `/axion metrics export client`, ADR-144 §2) — reste sa vérification en jeu. D2 fait, sous effort maximal : allocateur compteur global (794b1c9),
+            2026-10-16 (10fb013, `/axion metrics export client`, ADR-144 §2), **vérifiée en jeu le jour même**
+            sur un client relié au serveur dédié : son export porte les métriques de rendu vivantes (préparation
+            du rendu, instances visibles, backend, objets GL), celui du serveur les a à zéro ; triangles et
+            mémoire de maillage nuls côté client, aucun modèle n'y étant compilé avant C-51 (M4). D1 fait ; 
+            reste à cette case R-501 (protocole de B-08, D2). D2 fait, sous effort maximal : allocateur compteur global (794b1c9),
             deux comportements indéfinis trouvés par Miri et corrigés (8296228, 38e63ff : Miri vert),
             arrêt du pool de jobs qui attend ses workers (2bb21a3 : le bilan exact ne dépend plus de
             l'ordonnanceur). B-08 joué (38e63ff, poste de développement : chiffres non publiés,
