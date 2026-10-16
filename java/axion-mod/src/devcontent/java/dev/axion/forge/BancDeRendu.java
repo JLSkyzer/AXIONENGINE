@@ -39,6 +39,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.packs.repository.PackRepository;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.GameRules;
@@ -162,6 +163,19 @@ public final class BancDeRendu {
     /** T-476 : de combien, sur 255, le rouge du panneau de devant doit l'emporter sur le bleu. */
     private static final int MARGE_T476 = 20;
 
+    /**
+     * T-483 : le pack de test que le build pose dans {@code resourcepacks/} — il remplace la texture
+     * de bois que le modèle {@link #RESSOURCE} lit dans les ressources du client, par du magenta.
+     */
+    private static final String PACK_DE_TEST = "file/axion_banc_pack";
+    private static final String RESSOURCE = "axion:test/materiaux/ressource";
+
+    /** T-483 : de combien, sur 255, le bleu de la face doit monter avec le pack (le bois n'en a guère). */
+    private static final int MONTEE_T483 = 40;
+
+    /** T-483 : écart toléré par canal entre le bois d'avant le pack et celui d'après. */
+    private static final int RETOUR_T483 = 4;
+
     /** Un quart de tour autour de la verticale : la face avant des panneaux, +Z, regarde l'est, la caméra. */
     private static final float[] VERS_L_EST = {0f, 0.70710678f, 0f, 0.70710678f};
 
@@ -213,9 +227,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-476", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-476", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -259,6 +273,10 @@ public final class BancDeRendu {
     private static AxionEntity panneauPlat;
     private static AxionEntity panneauRouge;
     private static AxionEntity panneauBleu;
+    private static AxionEntity modeleRessource;
+    private static double[] boisAvant;
+    private static double[] boisAvecPack;
+    private static boolean packDisponible;
     private static int demarragesAvantRechargement;
     /** Démarrages de backend à l'installation du journal : ceux qui suivent y laissent leur entrée. */
     private static int demarragesALInstallation;
@@ -522,6 +540,25 @@ public final class BancDeRendu {
                 panneauBleu.discard();
             });
             jusqua("les panneaux translucides retirés", 120,
+                    mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+
+            // T-483 (§19.13, R-752) : un vrai changement de resource pack. Le pack de test remplace
+            // la texture de bois que le modèle ressource lit dans les ressources du client : activé,
+            // la face tournée vers la caméra vire au magenta ; retiré, elle revient au bois.
+            serveur("poser le modèle à texture de ressource", s -> modeleRessource = AssembliesDeTest.poser(
+                    s.overworld(), RESSOURCE, positionPanneau(Z_RELIEF), IDENTITE));
+            jusqua("le modèle à texture de ressource rendu", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 2
+                    && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 2);
+            stabiliser("le bois");
+            une("relever le bois", mc -> boisAvant = couleurDeRessource(capturer(mc, "t483_avant.png"), derniereVue));
+            changerDePack(true, "activer le pack de test");
+            stabiliser("le pack de test");
+            une("relever le pack", mc -> boisAvecPack = couleurDeRessource(capturer(mc, "t483_pack.png"), derniereVue));
+            changerDePack(false, "retirer le pack de test");
+            stabiliser("le pack retiré");
+            une("juger T-483", mc -> jugerT483(couleurDeRessource(capturer(mc, "t483_apres.png"), derniereVue)));
+            serveur("retirer le modèle à texture de ressource", s -> modeleRessource.discard());
+            jusqua("le modèle à texture de ressource retiré", 120,
                     mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
         }
 
@@ -1163,6 +1200,59 @@ public final class BancDeRendu {
                 "%s : écart-type de luminance %.1f sur le panneau à relief, %.1f sur le plat (%s)",
                 NATIF ? "natif" : "vanilla", relief, plat,
                 NATIF ? "le relief doit dominer : au moins 3 × le plat + 4" : "R-1513, sans effet : écart de 2 au plus"));
+    }
+
+    /**
+     * Active ou retire le pack de test, recharge les ressources, et attend que la scène soit
+     * redessinée par un backend neuf, le modèle ressource compris (T-483).
+     */
+    private static void changerDePack(boolean actif, String quoi) {
+        une(quoi, mc -> {
+            PackRepository depot = mc.getResourcePackRepository();
+            depot.reload();
+            packDisponible = depot.getAvailableIds().contains(PACK_DE_TEST);
+            List<String> choisis = new ArrayList<>(depot.getSelectedIds());
+            choisis.remove(PACK_DE_TEST);
+            if (actif) {
+                choisis.add(PACK_DE_TEST);
+            }
+            depot.setSelected(choisis);
+            demarragesAvantRechargement = AxionRenderPass.backendStarts();
+            rechargement = mc.reloadResourcePacks();
+        });
+        jusqua("le rechargement fini — " + quoi, 300, mc -> rechargement.isDone() && mc.getOverlay() == null);
+        jusqua("la scène redessinée — " + quoi, 120, mc -> AxionRenderPass.backendStarts() > demarragesAvantRechargement
+                && AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 2
+                && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 2);
+    }
+
+    /** {@return la couleur moyenne au centre de la face est du modèle ressource, tournée vers la caméra} */
+    private static double[] couleurDeRessource(CapturesDuBanc.Capture capture, Vue vue) {
+        float[] centre = projeter(vue, positionPanneau(Z_RELIEF).add(0.5, 0.5, 0.0), capture.largeur(), capture.hauteur());
+        return CapturesDuBanc.couleurAutour(capture, Math.round(centre[0]), Math.round(centre[1]), 3);
+    }
+
+    /**
+     * T-483 (§19.13, R-752) : un changement de resource pack reconstruit les ressources d'AXION.
+     * Avec le pack de test, la texture de bois devient magenta : le bleu de la face monte ; le pack
+     * retiré, la face revient au bois d'avant.
+     */
+    private static void jugerT483(double[] boisApres) {
+        boolean change = boisAvecPack[2] >= boisAvant[2] + MONTEE_T483;
+        boolean revenu = true;
+        for (int canal = 0; canal < 3; canal++) {
+            revenu &= Math.abs(boisApres[canal] - boisAvant[canal]) <= RETOUR_T483;
+        }
+        RAPPORT.noter("T-483", packDisponible && change && revenu, String.format(Locale.ROOT,
+                "%s : %s ; face du modèle ressource avant le pack %s, avec %s, après %s — le bleu doit monter"
+                        + " d'au moins %d avec le pack, et chaque canal revenir à %d près",
+                NATIF ? "natif" : "vanilla",
+                packDisponible ? "pack de test disponible" : "PACK DE TEST INTROUVABLE (" + PACK_DE_TEST + ")",
+                rgb(boisAvant), rgb(boisAvecPack), rgb(boisApres), MONTEE_T483, RETOUR_T483));
+    }
+
+    private static String rgb(double[] couleur) {
+        return String.format(Locale.ROOT, "(%.1f, %.1f, %.1f)", couleur[0], couleur[1], couleur[2]);
     }
 
     /**

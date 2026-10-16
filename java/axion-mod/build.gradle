@@ -254,6 +254,13 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
             delete rootProject.file("${dossier}/axion-rendertest")
             // Un cache de shaders neuf : le premier démarrage compile, les suivants relisent (T-905).
             delete rootProject.file("${dossier}/axion/cache")
+            // T-483 : le pack de test que le banc active puis retire, posé neuf.
+            def pack = rootProject.file("${dossier}/resourcepacks/axion_banc_pack")
+            delete pack
+            copy {
+                from file('src/devcontent/resourcepacks/axion_banc_pack')
+                into pack
+            }
         }
         doLast {
             def rapport = rootProject.file("${dossier}/axion-rendertest/rapport.json")

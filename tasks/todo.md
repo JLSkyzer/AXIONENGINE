@@ -2752,7 +2752,13 @@ amortissement dans l'eau, `/axion remove`).
       cibles reprises, `validateJar` vert, artefact de 16,9 Mo. Dette relevée au passage : la
       bibliothèque Linux pèse 43 Mo contre 4 Mo ailleurs, sans doute ses informations de débogage
       embarquées ; à vérifier, puis à séparer du binaire publié.
-- [ ] **Reste de M3 selon ADR-144** (2026-10-16) : T-483 (vrai changement de pack).
+- [x] **Reste de M3 selon ADR-144** (2026-10-16) — tout fait le jour même :
+      - [x] **T-483 fait le 2026-10-16** : un pack de test (`src/devcontent/resourcepacks/axion_banc_pack`,
+            posé neuf par chaque tâche de banc) remplace la texture de bois du modèle `ressource` par du
+            magenta ; le banc l'active puis le retire par le `PackRepository` et recharge. Vert dans les
+            deux backends : en natif, bois (86,8 ; 63,4 ; 42,9), magenta (149,0 ; 30,0 ; 149,0), bois
+            revenu à l'identique ; en vanilla, (70,2 ; 48,9 ; 27,9), (125,0 ; 0,0 ; 125,0), revenu.
+            Mutation (textures non rebâties au rechargement) : T-483 rouge, T-503 resté vert.
       - [x] **T-476 fait le 2026-10-16** : deux panneaux translucides de test (`translucide_rouge`,
             `translucide_bleu`, quads double face en BLEND, glTF écrits à la main), rouge à 2 blocs de
             la caméra, bleu à 3 ; au centre projeté du panneau du fond, le rouge doit l'emporter sur le
