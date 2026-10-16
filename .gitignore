@@ -36,3 +36,7 @@ java/axion-mod/src/generated/
 # Cache de bytecode Python (outillage sous tools/)
 __pycache__/
 *.pyc
+
+# Sauvegardes que Blender ecrit a chaque enregistrement (.blend1, .blend2...) :
+# la source du modele est le .blend, versionne ; ses copies precedentes sont dans git.
+*.blend[0-9]*

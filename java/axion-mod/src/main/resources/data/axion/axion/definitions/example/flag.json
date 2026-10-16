@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "asset": "axion:models/example/flag.glb",
+  "kind": "static",
+
+  "parts": [
+    { "name": "socle_beton", "root_node": "socle_beton", "material": "axion:concrete",
+      "health": 500.0, "flags": ["structural"] },
+    { "name": "mat", "root_node": "mat", "material": "axion:aluminium",
+      "health": 200.0 }
+  ],
+
+  "particles": [
+    { "name": "drapeau", "kind": "cloth", "authority": "visual",
+      "mesh": "drapeau", "anchors": ["ancrage_haut", "ancrage_bas"],
+      "stiffness": 0.8, "bending": 0.2, "damping": 0.04,
+      "mass_per_particle": 0.00022, "wind_influence": 1.0,
+      "collision_proxies": [ { "type": "capsule", "node": "mat",
+                               "radius": 0.03, "height": 2.9 } ],
+      "max_distance_from_anchor": 1.5,
+      "material": "axion:fabric" }
+  ],
+
+  "render": { "shadow": "map" }
+}

@@ -48,6 +48,11 @@ Definition of Done (PARTIE 37.3).
   - definitions data-driven (C-27) : JSON strict, schema 1 publie, refus
     individuel nomme ; definitions de demonstration derriere `content.examples`
     (amendement A2 de l'annexe A.3) ;
+  - les cinq exemples de R-1790 (`crate`, `buggy`, `flag`, `barrier`,
+    `winch_rope`) : modeles faits dans Blender, decoupes et annotes pour les
+    systemes a venir (parts, colliders, roues, siege, sockets, ancrages de
+    tissu), et leurs definitions au schema 1 ; T-630..T-634 (ADR-134),
+    `validateJar` exige les cinq, seules ;
   - API publique `axion-api` (C-70) : surface du paragraphe 23.2 et ses 18
     evenements, sans fournisseur enregistre a ce stade ;
   - harnais de benchmarks `ax-bench` (C-72), job CI `bench-quick` compare au

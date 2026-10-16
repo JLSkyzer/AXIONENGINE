@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "asset": "axion:models/example/buggy.glb",
+  "kind": "vehicle",
+
+  "physics": { "mass": 340.0, "center_of_mass": [0.0, 0.45, 0.0],
+               "linear_damping": 0.05, "angular_damping": 0.3, "ccd": true,
+               "collision_group": "assembly",
+               "collides_with": ["world", "assembly", "entity_proxy", "debris"] },
+
+  "bodies": [ { "name": "caisse", "root_node": "chassis" } ],
+
+  "joints": [
+    { "name": "charniere_capot", "type": "revolute", "a": "caisse", "b_node": "capot",
+      "axis": [1, 0, 0], "limits": [0.0, 1.2], "break_force": 6000.0 }
+  ],
+
+  "wheels": [
+    { "node": "roue_avant_gauche", "steering": true, "powered": false,
+      "radius": 0.30, "width": 0.22, "mass": 12.0,
+      "suspension": { "rest_length": 0.25, "max_travel": 0.18, "stiffness": 25.0,
+                      "damping_compression": 2.0, "damping_rebound": 2.5,
+                      "max_force": 20000.0 } },
+    { "node": "roue_avant_droite", "steering": true, "powered": false,
+      "radius": 0.30, "width": 0.22, "mass": 12.0,
+      "suspension": { "rest_length": 0.25, "max_travel": 0.18, "stiffness": 25.0,
+                      "damping_compression": 2.0, "damping_rebound": 2.5,
+                      "max_force": 20000.0 } },
+    { "node": "roue_arriere_gauche", "steering": false, "powered": true,
+      "radius": 0.30, "width": 0.22, "mass": 12.0,
+      "suspension": { "rest_length": 0.25, "max_travel": 0.18, "stiffness": 25.0,
+                      "damping_compression": 2.0, "damping_rebound": 2.5,
+                      "max_force": 20000.0 } },
+    { "node": "roue_arriere_droite", "steering": false, "powered": true,
+      "radius": 0.30, "width": 0.22, "mass": 12.0,
+      "suspension": { "rest_length": 0.25, "max_travel": 0.18, "stiffness": 25.0,
+                      "damping_compression": 2.0, "damping_rebound": 2.5,
+                      "max_force": 20000.0 } }
+  ],
+
+  "powertrain": {
+    "engine": { "torque_curve": [[0, 0], [1500, 90], [3500, 120], [5500, 105], [6500, 80]],
+                "idle_rpm": 900, "max_rpm": 6500, "inertia": 0.15, "braking_torque": 15.0 },
+    "transmission": { "type": "manual", "gears": [-3.0, 0.0, 3.2, 2.0, 1.4, 1.0],
+                      "final_drive": 4.1, "shift_time": 0.3,
+                      "auto_shift_up_rpm": 5800, "auto_shift_down_rpm": 2200,
+                      "efficiency": 0.9 },
+    "differential": { "type": "open" },
+    "drive_wheels": ["roue_arriere_gauche", "roue_arriere_droite"]
+  },
+
+  "steering": { "max_angle": 0.6, "speed": 3.0, "return_speed": 4.0,
+                "speed_sensitivity": 0.5, "ackermann": 1.0,
+                "steered_wheels": ["roue_avant_gauche", "roue_avant_droite"] },
+
+  "brakes": { "max_torque_front": 1200.0, "max_torque_rear": 800.0,
+              "handbrake_torque": 1500.0,
+              "handbrake_wheels": ["roue_arriere_gauche", "roue_arriere_droite"] },
+
+  "parts": [
+    { "name": "chassis", "root_node": "chassis", "material": "axion:steel",
+      "health": 600.0, "structural_capacity": 60000.0, "mass": 220.0,
+      "flags": ["structural", "critical"] },
+    { "name": "carrosserie", "root_node": "carrosserie", "material": "axion:steel",
+      "health": 250.0, "structural_capacity": 15000.0, "propagation": 0.3, "mass": 60.0,
+      "flags": ["repairable"] },
+    { "name": "capot", "root_node": "capot", "material": "axion:steel",
+      "health": 80.0, "structural_capacity": 5000.0, "detach_threshold": 0.0,
+      "propagation": 0.25, "mass": 12.0,
+      "flags": ["detachable", "repairable"] }
+  ],
+
+  "structural_links": [
+    { "name": "carrosserie_sur_chassis", "a": "chassis", "b": "carrosserie", "kind": "weld",
+      "capacity": 20000.0, "tensile": 40000.0, "shear": 30000.0,
+      "propagation": 0.3, "flags": ["load_bearing"] },
+    { "name": "capot_sur_carrosserie", "a": "carrosserie", "b": "capot", "kind": "hinge",
+      "capacity": 4000.0, "tensile": 9000.0, "shear": 6000.0, "torque": 400.0,
+      "joint": "charniere_capot", "propagation": 0.35, "flags": ["severable"] }
+  ],
+
+  "deformation": { "enabled": true, "min_quality": "low" },
+
+  "seats": [
+    { "name": "conducteur", "node": "siege_conducteur", "role": "driver",
+      "exit_offsets": [[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]],
+      "controls": ["throttle", "brake", "steer", "gear", "handbrake"] }
+  ],
+
+  "sockets": ["attelage"],
+
+  "procedural": [
+    { "node": "volant", "channel": "rotation", "axis": "y",
+      "source": "vehicle.steer", "scale": 3.0 },
+    { "node": "roue_avant_gauche", "channel": "rotation", "axis": "x",
+      "source": "wheel.roue_avant_gauche.spin_angle" },
+    { "node": "roue_avant_droite", "channel": "rotation", "axis": "x",
+      "source": "wheel.roue_avant_droite.spin_angle" },
+    { "node": "roue_arriere_gauche", "channel": "rotation", "axis": "x",
+      "source": "wheel.roue_arriere_gauche.spin_angle" },
+    { "node": "roue_arriere_droite", "channel": "rotation", "axis": "x",
+      "source": "wheel.roue_arriere_droite.spin_angle" }
+  ],
+
+  "interaction": [
+    { "node": "siege_conducteur", "action": "sit", "seat": "conducteur" }
+  ],
+
+  "render": { "shadow": "map" }
+}

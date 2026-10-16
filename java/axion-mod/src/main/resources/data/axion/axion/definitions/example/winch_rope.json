@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "asset": "axion:models/example/winch_rope.glb",
+  "kind": "machine",
+
+  "physics": { "mass": 56.0, "collision_group": "assembly",
+               "collides_with": ["world", "assembly", "entity_proxy", "debris"] },
+
+  "parts": [
+    { "name": "socle", "root_node": "socle", "material": "axion:steel",
+      "health": 300.0, "structural_capacity": 20000.0, "mass": 35.0,
+      "flags": ["structural"] },
+    { "name": "tambour", "root_node": "tambour", "material": "axion:steel",
+      "health": 200.0, "structural_capacity": 15000.0, "mass": 18.0,
+      "flags": ["critical", "no_deform"] },
+    { "name": "manivelle", "root_node": "manivelle", "material": "axion:steel",
+      "health": 60.0, "detach_threshold": 0.0, "mass": 2.0,
+      "flags": ["detachable", "repairable"] },
+    { "name": "crochet", "root_node": "crochet", "material": "axion:steel",
+      "health": 150.0, "mass": 1.0,
+      "flags": ["no_deform"] }
+  ],
+
+  "sockets": ["sortie_cable"],
+
+  "particles": [
+    { "name": "cable", "kind": "rope", "authority": "server_simple",
+      "from": { "assembly": "self", "socket": "sortie_cable" },
+      "to": { "attachment": "current" },
+      "segments": 24, "server_segments": 12,
+      "max_length": 12.0, "stiffness": 0.9, "break_force": 15000.0,
+      "radius": 0.011, "material": "axion:rope" }
+  ],
+
+  "procedural": [
+    { "node": "tambour", "channel": "rotation", "axis": "x",
+      "source": "attach.cable.length", "scale": -12.5 }
+  ],
+
+  "interaction": [
+    { "node": "crochet", "action": "attach" },
+    { "node": "crochet", "action": "detach" }
+  ],
+
+  "deformation": { "enabled": true, "min_quality": "low" }
+}

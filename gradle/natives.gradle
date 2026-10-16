@@ -367,6 +367,25 @@ tasks.register('validateJar') {
             }
         }
 
+        // R-1790 (ADR-134) : le mod embarque exactement cinq definitions de
+        // demonstration, chacune avec le modele qu'elle designe. Une sixieme, ou
+        // un modele oublie, ne se verrait qu'en jeu, et seulement avec
+        // content.examples.
+        List<String> examples = ['barrier', 'buggy', 'crate', 'flag', 'winch_rope']
+        String exampleDefinitions = 'data/axion/axion/definitions/example/'
+        List<String> shipped = entries.findAll {
+            it.startsWith(exampleDefinitions) && it.endsWith('.json')
+        }.collect { it.substring(exampleDefinitions.length(), it.length() - '.json'.length()) }.sort()
+        if (shipped != examples) {
+            problems << "definitions de demonstration : ${shipped}, attendu ${examples} (R-1790)"
+        }
+        examples.each { example ->
+            String model = 'data/axion/axion/models/example/' + example + '.glb'
+            if (!entries.contains(model)) {
+                problems << "modele de demonstration absent : ${model}"
+            }
+        }
+
         boolean partial = axionPartialMarker.get().asFile.exists()
         if (partial) {
             String missing = axionPartialMarker.get().asFile.text.trim()

@@ -1584,3 +1584,19 @@ l'utilisateur à l'aveugle.
 Killian. Toute question qui propose d'ouvrir un jalon, ou de travailler hors du jalon courant, énonce
 d'abord en clair, dans la question, ce qui reste ouvert dans les jalons précédents — et ne recommande pas
 de l'ouvrir tant qu'il en reste. Depuis le 2026-10-15 : M2 d'abord ; M3 seulement sur demande explicite.
+
+## 2026-10-16 | Blender planté par le script d'export de la caisse
+
+**Ce qui a mal tourné.** Pour écarter du GLB une propriété de l'addon MCP (`blendermcp_server_running`),
+le script mettait de côté les propriétés système de la scène, les supprimait, exportait, puis les
+réaffectait. Blender s'est fermé sur `EXCEPTION_ACCESS_VIOLATION` à la réaffectation. Rien n'a été
+perdu : le `.blend` était sauvegardé et le GLB écrit avant la ligne fautive.
+
+**Cause.** Une valeur composée lue dans un groupe d'IDProperty est une référence vers la mémoire de
+Blender, pas une copie. Supprimée, la propriété libère cette mémoire ; la réaffecter fait lire de la
+mémoire libérée.
+
+**Règle.** Ne jamais modifier les propriétés de la scène de Killian pour un export. Exporter chaque
+modèle depuis une scène temporaire qui ne porte que sa hiérarchie (`bpy.data.scenes.new`, export
+`use_active_scene`, scène supprimée ensuite), puis relire le bloc JSON du GLB produit : aucun extra de
+scène, `doubleSided` seulement sur le tissu. Sauvegarder le `.blend` après chaque modèle.

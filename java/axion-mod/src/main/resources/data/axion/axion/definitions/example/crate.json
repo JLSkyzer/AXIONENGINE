@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "asset": "axion:models/example/crate.glb",
+  "kind": "rigid_object",
+
+  "physics": { "mass": 30.0, "linear_damping": 0.05, "angular_damping": 0.1,
+               "collision_group": "assembly",
+               "collides_with": ["world", "assembly", "entity_proxy", "debris"] },
+
+  "parts": [
+    { "name": "caisse", "root_node": "caisse", "material": "axion:wood",
+      "health": 100.0, "structural_capacity": 2500.0, "propagation": 0.3, "mass": 24.0,
+      "flags": ["repairable"] },
+    { "name": "couvercle", "root_node": "couvercle", "material": "axion:wood",
+      "health": 60.0, "structural_capacity": 1200.0, "detach_threshold": 0.0,
+      "propagation": 0.2, "mass": 6.0,
+      "flags": ["detachable", "repairable"] }
+  ],
+
+  "structural_links": [
+    { "name": "couvercle_cloue", "a": "caisse", "b": "couvercle", "kind": "bolt",
+      "capacity": 1500.0, "tensile": 2500.0, "shear": 1800.0,
+      "propagation": 0.3, "flags": ["severable"] }
+  ],
+
+  "deformation": { "enabled": true, "min_quality": "low" },
+
+  "render": { "shadow": "map" }
+}

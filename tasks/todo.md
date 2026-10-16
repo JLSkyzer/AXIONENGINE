@@ -14,8 +14,9 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
 **Jalon M1 : terminé, Definition of Done prononcée le 2026-10-04** — voir
 « Definition of Done de M1 », avant la section M3.
-**Jalon en cours : M3 — physique et premier rendu.** M2 en clôture depuis le 2026-10-13
-(ADR-134) : voir « Clôture de M2 », avant la section M3.
+**Jalon en cours : clôture de M2** (ADR-134, ADR-137) : voir « Clôture de M2 », avant la
+section M3. **M3 est gelé depuis le 2026-10-15** jusqu'à la Definition of Done de M2,
+prononcée par Killian : rien ne s'y fait d'ici là.
 
 **CI disponible de nouveau depuis le 2026-10-03** : le dépôt est public, les jobs GitHub
 Actions sont gratuits sur les quatre plateformes de la matrice (run 37147205392, vert). En
@@ -1306,7 +1307,7 @@ même la clôture de M1. Premier état, le 2026-10-13 : tous les tests de M2 son
 T-630..T-634 ; l'acceptance (LOD, optimizer déterministe, cache, CLI identique au jeu, API)
 est tenue par ce qui existe.
 
-- [ ] **T-630..T-634 — option A d'[ADR-134](../docs/decisions/ADR-134.md)** (Killian, 2026-10-13) :
+- [x] **T-630..T-634 — option A d'[ADR-134](../docs/decisions/ADR-134.md)** (Killian, 2026-10-13) :
       les cinq definitions de R-1790 embarquées sous `data/axion/axion/definitions/example/`,
       chargées si `content.examples` (défaut `false`), validées sans faute ; un test par exemple.
       - [x] `content.examples` au registre de configuration (R-430, `CONFIGURATION.md` régénéré) :
@@ -1314,8 +1315,26 @@ est tenue par ce qui existe.
             `examples = false`, imposée par le serveur (R-1830) ; une definition sous
             `axion:axion/definitions/example/` n'est chargée que si elle vaut vrai, ignorée sans refus
             sinon (`DefinitionRegistry.EXAMPLES`, test rouge sans le filtre).
-      - [ ] cinq modèles 3D réels, faits dans Blender **avec Killian** : s'arrêter et demander.
-      - [ ] cinq definitions, puis T-630..T-634.
+      - [x] cinq modèles 3D réels, faits dans Blender avec Killian le 2026-10-16, source
+            `src/devcontent/blender/exemples_r-1790.blend`, GLB sous
+            `data/axion/axion/models/example/` : `crate` (caisse, couvercle), `barrier` (glissière
+            en W, deux poteaux, un collider par part), `winch_rope` (socle, tambour et câble
+            centrés sur l'axe, manivelle, socket `sortie_cable`, crochet), `flag` (tissu 24 × 18 de
+            rôle `particle_set`, deux `cloth_anchor`, mât en capsule), `buggy` (châssis et arceau,
+            carrosserie, capot sur sa charnière, siège, volant, socket `attelage`, quatre roues ;
+            avant en +Z glTF, gauche en +X). Exportés depuis une scène temporaire : Blender 5.2
+            exporte aussi les propriétés système de la scène (celle de l'addon MCP). Aucune région
+            de déformation déclarée : C-28 les génère (R-913), leurs réglages sont de la M6.
+      - [x] cinq definitions (schéma 1, sections des systèmes à venir comprises : parts, liaisons,
+            roues, groupe motopropulseur, corde `server_simple`, tissu `visual`), puis T-630..T-634
+            en deux moitiés qui tournent partout : `ExampleDefinitionsTest` (embarquée, ignorée sans
+            `content.examples`, validateur du schéma 1 sans faute, noms désignés présents dans le
+            GLB) et `ax-cli/tests/example_models.rs` (compilation du jeu sans avertissement,
+            rechargement, rôles et colliders). La tâche `test` ne dépend pas de `buildNatives` : un
+            JUnit natif aurait été sauté en CI. `validateJar` exige les cinq, seules, avec leur
+            modèle (R-1790). Mutations : champ inconnu, ancrage renommé, modèle échangé, sixième
+            definition — toutes rouges. Avec M2 ajouté à `COMPLETED_MILESTONES` le temps d'un
+            essai, `MilestoneTestsCoveredTest` passe : tous les tests de M2 sont portés.
 - [ ] **C-74 — commandes faisables dès M2** (Killian, 2026-10-13). `deform` et `replay` restent
       à C-28/C-41/C-42 (M6). R-830 : chaque commande appelle le code du jeu, sans chemin parallèle.
       - [x] `diff <a.a3d> <b.a3d>` (6edc8f3).
@@ -1335,14 +1354,19 @@ est tenue par ce qui existe.
             passe en chaîne CBOR à `axion_asset_compile` (`(JJIJ[B)I`) ; une option refusée échoue
             au sondage avec le code de la CLI. Une ressource illisible reste énumérée et sa lecture
             rend l'échec, au lieu d'une compilation avec les défauts.
-            - **Reste dû** : les avertissements de compilation ne remontent pas à Java ; pour
+            - **Reste dû** : les avertissements de compilation ne remontent pas à Java — **non
+              attribué par ADR-137, à trancher par Killian** (2026-10-16) : au sondage, le natif les
+              jette ; en jeu, R-530 et R-912 n'avertissent donc personne, seule la CLI les affiche ;
               l'asset entier, `auto_capsule`, `auto_convex`, `auto_compound` signalés, pas produits,
               et le mode de collider d'une definition ne voyage pas jusqu'à la compilation (C-32).
 - [ ] **C-50 en jeu** : persistance (apparition, sauvegarde, rechargement du monde), jamais
       observée ; et le « 0 assembly(s) retirée(s) » de `/axion remove` du 2026-10-03.
       Le 2026-10-15, `LivrableM2GameTests` joue la commande, la sauvegarde, `remove` (« 1 assembly(s)
       retirée(s) ») et le rechargement d'une entité neuve, liée, qui retombe : couvert par GameTest.
-      Reste un essai à la main sur serveur dédié avec un client distant.
+      Reste un essai à la main sur serveur dédié avec un client distant. À savoir avant : le client
+      ne compile aucun modèle, il rend ceux que le runtime de son processus a compilés depuis
+      `data/` ; un client distant n'aura donc pas de rendu avant la synchronisation C-51 (M4,
+      ADR-137). L'essai juge la persistance, pas le rendu distant.
 - [ ] **Definition of Done de M2** vérifiée, puis `M2` dans `COMPLETED_MILESTONES` sur décision
       de Killian.
       - **[ADR-137](../docs/decisions/ADR-137.md)** (proposé le 2026-10-15, à ratifier) borne la DoD de
@@ -1882,6 +1906,11 @@ substituable sans changer rapier »).
               (joints, M4).
 
       - [ ] **C-32 — Collider Builder** (fiche 5.24, R-620..623, T-310..312).
+            - [ ] **Défaut relevé le 2026-10-16** (modèle `buggy`) : `shape: convex` prend les
+                  sommets du mesh tels quels, doublons compris. Un export glTF à normales plates
+                  duplique chaque sommet par face : 82 points stockés pour une enveloppe de 18. Le
+                  plafond `CONVEX_MAX_POINTS` (256) se juge donc sur les doublons et peut refuser à
+                  tort. Dédoublonner les positions avant le compte et le stockage.
             Produit les colliders (`ColliderDesc`, DM-06) à la compilation et les
             porte jusqu'à l'A3D (section PHYS). DM-06 figé, validation C-22 prête.
             Périmètre : **complet, PHYS inclus** ; gels COM/PHYS derrière un ADR

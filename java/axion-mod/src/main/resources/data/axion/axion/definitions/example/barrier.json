@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "asset": "axion:models/example/barrier.glb",
+  "kind": "structure",
+
+  "physics": { "mass": 38.0, "collision_group": "assembly",
+               "collides_with": ["world", "assembly", "entity_proxy", "debris"] },
+
+  "parts": [
+    { "name": "glissiere", "root_node": "glissiere", "material": "axion:steel",
+      "health": 400.0, "structural_capacity": 30000.0, "propagation": 0.4, "mass": 22.0,
+      "flags": ["structural", "repairable"] },
+    { "name": "poteau_gauche", "root_node": "poteau_gauche", "material": "axion:steel",
+      "health": 250.0, "structural_capacity": 20000.0, "detach_threshold": 0.0,
+      "propagation": 0.3, "mass": 8.0,
+      "flags": ["detachable", "spawns_debris"] },
+    { "name": "poteau_droit", "root_node": "poteau_droit", "material": "axion:steel",
+      "health": 250.0, "structural_capacity": 20000.0, "detach_threshold": 0.0,
+      "propagation": 0.3, "mass": 8.0,
+      "flags": ["detachable", "spawns_debris"] }
+  ],
+
+  "structural_links": [
+    { "name": "boulon_gauche", "a": "glissiere", "b": "poteau_gauche", "kind": "bolt",
+      "capacity": 12000.0, "tensile": 25000.0, "shear": 18000.0, "torque": 1500.0,
+      "propagation": 0.3, "flags": ["load_bearing", "severable"] },
+    { "name": "boulon_droit", "a": "glissiere", "b": "poteau_droit", "kind": "bolt",
+      "capacity": 12000.0, "tensile": 25000.0, "shear": 18000.0, "torque": 1500.0,
+      "propagation": 0.3, "flags": ["load_bearing", "severable"] }
+  ],
+
+  "damage_zones": [
+    { "name": "lisse", "part": "glissiere", "multiplier": 1.0, "deform_multiplier": 1.3 }
+  ],
+
+  "deformation": { "enabled": true, "min_quality": "low" },
+
+  "render": { "shadow": "map" }
+}
