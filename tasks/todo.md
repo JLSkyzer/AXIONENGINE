@@ -2753,7 +2753,16 @@ amortissement dans l'eau, `/axion remove`).
       bibliothèque Linux pèse 43 Mo contre 4 Mo ailleurs, sans doute ses informations de débogage
       embarquées ; à vérifier, puis à séparer du binaire publié.
 - [ ] **Reste de M3 selon ADR-144** (2026-10-16) : T-476 (banc, deux panneaux translucides), T-481
-      (octets de texture dans T-492), T-483 (vrai changement de pack), T-484 (journal du déchargement).
+      (octets de texture dans T-492), T-483 (vrai changement de pack).
+      - [x] **T-484 fait le 2026-10-16** (premier palier de R-750) : `GpuDegradation`
+            (`dev.axion.render`) tient les paliers NOMINAL → UNLOADING (déchargement des assets non
+            visibles) → UNRESOLVED (tous visibles, leviers suivants avec C-64 et la M6) ; descente
+            immédiate, remontée d'un palier à la fois après 30 s sous le seuil et 10 s au moins entre
+            deux (SM-02, §25.6) ; chaque transition journalisée avec sa cause — octets, budget,
+            déchargements (§19.12, R-1880) —, palier en jauge `axion.render.gpu_degradation_level`.
+            Remplace l'avertissement unique d'`AxionRenderPass`. `GpuDegradationTest` (5 tests),
+            rouge sous mutation (écart de 10 s retiré). `DegradationEvent` et overlay : avec l'EventBus
+            (ADR-137) et C-73 (M5).
       - [x] **T-390 et T-391 faits le 2026-10-16** : `StageLog` et `check_order` dans
             `ax-physics/src/scheduler.rs` — l'ordre suivi, confronté à R-660 (hors du bloc des sous-pas
             3-6, il ne recule jamais) ; les mondes journalisent 4 et 6 à chaque sous-pas

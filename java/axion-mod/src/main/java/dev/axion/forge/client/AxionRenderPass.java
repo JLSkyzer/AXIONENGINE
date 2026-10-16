@@ -15,6 +15,7 @@ import dev.axion.forge.RuntimeAccess;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.diag.JavaMetrics;
 import dev.axion.render.BackendSelection;
+import dev.axion.render.GpuDegradation;
 import dev.axion.render.MeshCache;
 import dev.axion.render.RenderAsset;
 import dev.axion.render.RenderCapabilities;
@@ -127,8 +128,11 @@ public final class AxionRenderPass {
     /** Ce que la tenue du budget GPU a fait à la dernière frame (R-750, ADR-133). Render thread. */
     private static MeshCache.Residency lastResidency = new MeshCache.Residency(0, 0, false);
 
-    /** Un budget GPU dépassé par des assets tous visibles n'est dit qu'une fois. */
-    private static boolean gpuBudgetShortReported;
+    /**
+     * Paliers de la tenue du budget GPU (R-750, T-484), créés avec le cache ; chaque transition
+     * est journalisée avec sa cause (§19.12, R-1880). Render thread.
+     */
+    private static GpuDegradation gpuDegradation;
 
     // INV-19, ADR-133 D1 : les budgets du rendu se mesurent ici, et entrent dans l'export.
     private static final JavaMetrics METRICS = JavaMetrics.GLOBAL;
@@ -140,6 +144,7 @@ public final class AxionRenderPass {
     private static final JavaMetrics.Metric TEXTURE_BYTES = METRICS.gauge("axion.render.gpu_texture_bytes", "bytes");
     private static final JavaMetrics.Metric MESH_BYTES = METRICS.gauge("axion.render.gpu_mesh_bytes", "bytes");
     private static final JavaMetrics.Metric EVICTIONS = METRICS.counter("axion.render.gpu_evictions", "count");
+    private static final JavaMetrics.Metric GPU_LEVEL = METRICS.gauge("axion.render.gpu_degradation_level", "level");
     private static final JavaMetrics.Metric GL_OBJECTS = METRICS.gauge("axion.render.gl_objects", "count");
     private static final JavaMetrics.Metric SHADER_COMPILED = METRICS.gauge("axion.render.shader.compiled", "count");
     private static final JavaMetrics.Metric SHADER_PENDING = METRICS.gauge("axion.render.shader.pending", "count");
@@ -431,12 +436,15 @@ public final class AxionRenderPass {
         EVICTIONS.add(lastResidency.evicted());
         TEXTURE_BYTES.set(meshes.textureBytes());
         MESH_BYTES.set(current.gpuBytes());
-        if (lastResidency.exceeded() && lastResidency.evicted() == 0 && !gpuBudgetShortReported) {
-            gpuBudgetShortReported = true;
-            LOGGER.warn("AXION : budget GPU dépassé ({} octets) par des assets tous visibles : les leviers"
-                    + " suivants de R-750 — LOD forcé, qualité de déformation — arrivent avec C-64 et la M6",
-                    lastResidency.bytes());
+        GpuDegradation.Transition transition = gpuDegradation.observe(lastResidency, System.nanoTime());
+        if (transition != null) {
+            if (transition.degrades()) {
+                LOGGER.warn("AXION : {}", transition.describe());
+            } else {
+                LOGGER.info("AXION : {}", transition.describe());
+            }
         }
+        GPU_LEVEL.set(gpuDegradation.level().ordinal());
     }
 
     /**
@@ -668,13 +676,15 @@ public final class AxionRenderPass {
                 return null;
             }
             // Le client est l'exécuteur de son propre fil de rendu : les textures s'y téléversent.
+            long gpuBudget = outcome.config().getInt("budgets.gpu_mem_bytes");
             MeshCache cache = new MeshCache(
                     new NativeAssetLoader(outcome.context()),
                     new VanillaTexturePipeline(),
                     LOADER,
                     Minecraft.getInstance(),
                     line -> LOGGER.warn("AXION : maillage {}", line),
-                    outcome.config().getInt("budgets.gpu_mem_bytes"));
+                    gpuBudget);
+            gpuDegradation = new GpuDegradation(gpuBudget);
             renderPrepLimit = outcome.config().getInt("budgets.render_prep_ns");
             visibleLimit = outcome.config().getInt("budgets.max_visible_instances");
             trianglesLimit = outcome.config().getInt("budgets.max_triangles_frame");
