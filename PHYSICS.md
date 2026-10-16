@@ -57,14 +57,22 @@ et blesse une entité vivante comme une chute de même vitesse (`physics.entity_
 | `linear_damping`, `angular_damping` | ceux de `rapier` | amortissements, positifs ou nuls |
 | `ccd` | automatique (voir plus bas) | détection continue toujours active |
 | `collision_group` | `assembly` | groupe dont le corps est membre |
-| `collides_with` | tous | groupes que le corps heurte ; `[]` n'en heurte aucun |
+| `collides_with` | le masque par défaut du groupe, sinon tous | groupes que le corps heurte ; `[]` n'en heurte aucun |
 
-La description du corps traverse la frontière avec sa création (DM-08, ADR-130). Les groupes
-se nomment parmi les huit réservés — `world`, `assembly`, `part`, `debris`, `entity_proxy`,
-`sensor`, `particle`, `debug` — et deux corps n'interagissent que si chacun est membre d'un
-groupe que l'autre heurte. Les tuiles du monde sont membres de `world` et ne filtrent rien ; les
-proxies d'entités sont membres d'`entity_proxy` et ne heurtent qu'`assembly`. Un autre nom est
-refusé à la validation : le registre des groupes tiers reste à concevoir (ADR-132).
+La description du corps traverse la frontière avec sa création (DM-08, ADR-130). Deux corps
+n'interagissent que si chacun est membre d'un groupe que l'autre heurte. Les huit groupes
+réservés — `world`, `assembly`, `part`, `debris`, `entity_proxy`, `sensor`, `particle`, `debug`
+— ont les bits 0 à 7 ; les tuiles du monde sont membres de `world` et ne filtrent rien, les
+proxies d'entités membres d'`entity_proxy` et ne heurtent qu'`assembly`.
+
+Un pack déclare ses propres groupes, un par fichier (registre `axion:collision_group`, ADR-132
+A1) : `data/<ns>/axion/collision_groups/<chemin>.json` déclare `<ns>:<chemin>`, et son seul
+champ, `collides_with`, facultatif, est le masque par défaut du groupe — celui que prend une
+definition qui le nomme sans `collides_with`. Les groupes tiers, triés par identifiant, ont les
+bits 8 à 31, 24 au plus ; au-delà, ou s'il nomme un groupe inconnu, un groupe est refusé et
+nommé au journal. Les groupes se chargent avant les definitions : une definition qui nomme un
+groupe inconnu est refusée, avec son chemin. Un corps garde le filtre posé à sa création ; un
+rechargement qui change le registre le dit au journal.
 
 Les formes des colliders d'un corps dynamique sont des primitives, des enveloppes convexes de 4
 à 256 points ou des composés d'au plus 64 formes ; jamais un maillage concave (INV-13).
@@ -115,6 +123,21 @@ actifs (`max_active_bodies`) et la mémoire native (`native_mem_bytes`). Celle-c
 comptée — mondes `rapier` compris — par l'allocateur global de la bibliothèque native, par arène
 (`axion.mem.<arène>.bytes`) : `PERSISTENT` par défaut, `SCRATCH` pour ce qu'un job alloue
 (INV-08, ADR-133).
+
+Le pas suit l'ordre des étapes de R-660 : commandes, puis les étapes du monde — intégration et
+contacts répétés à chaque sous-pas, seul bloc où l'ordre revient en arrière —, puis la récolte et
+l'écriture des états. Chaque étape exécutée est journalisée, et en build de debug l'ordre est
+vérifié à chaque tick (T-390). La durée de chaque étape existante est exposée :
+`axion.sim.last_step_commands_ns`, `_integration_ns`, `_contacts_ns`, `_serialization_ns` (T-391) ;
+les budgets par étape viennent avec le gouverneur (C-77, ADR-144).
+
+## Requêtes spatiales
+
+Le monde physique répond aux lancers de rayon, balayages de forme et recouvrements, seuls ou par
+lots (C-39, T-380..T-384). Un filtre choisit les groupes de collision, exclut un corps — celui qui
+interroge — et dit que faire des capteurs. Une requête ne modifie jamais le monde, et lit la
+géométrie laissée par le dernier pas, l'état du début du tick (R-651). Elles ne sont appelées
+aujourd'hui que côté natif : aucune API Java ni fonction de la frontière ne les expose encore.
 
 ## Ce qui n'existe pas encore
 
