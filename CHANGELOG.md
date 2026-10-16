@@ -33,7 +33,7 @@ Definition of Done (PARTIE 37.3).
     vanilla, natif et shaderpack (ADR-126) ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
     T-012 (INV-04), T-019 (INV-12).
-- M2 (en cours, Definition of Done non prononcee) — graphe de scene, cache,
+- M2 (Definition of Done prononcee le 2026-10-16, ADR-137) — graphe de scene, cache,
   optimizer, entite, API :
   - optimizer d'assets (C-23) : fusion des sommets, normales et tangentes
     MikkTSpace, cache de sommets, LOD en section `LODM`, boites englobantes,

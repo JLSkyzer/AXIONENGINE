@@ -45,7 +45,7 @@ class MilestoneTestsCoveredTest {
      * test deviendrait rouge pour des tests qui restent à écrire, et un test
      * rouge en permanence ne dit plus rien.
      */
-    private static final List<String> COMPLETED_MILESTONES = List.of("M0", "M1");
+    private static final List<String> COMPLETED_MILESTONES = List.of("M0", "M1", "M2");
 
     /**
      * Tests qu'un jalon déclare mais qu'une décision exclut, chacun avec la décision qui le dit.

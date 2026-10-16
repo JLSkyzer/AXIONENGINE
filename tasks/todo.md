@@ -14,9 +14,10 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 **Jalon M0 : terminé, Definition of Done prononcée le 2026-09-10.**
 **Jalon M1 : terminé, Definition of Done prononcée le 2026-10-04** — voir
 « Definition of Done de M1 », avant la section M3.
-**Jalon en cours : clôture de M2** (ADR-134, ADR-137) : voir « Clôture de M2 », avant la
-section M3. **M3 est gelé depuis le 2026-10-15** jusqu'à la Definition of Done de M2,
-prononcée par Killian : rien ne s'y fait d'ici là.
+**Jalon M2 : terminé, Definition of Done prononcée par Killian le 2026-10-16** (ADR-137) —
+voir « Clôture de M2 », avant la section M3. Ce qui en part est nommé, avec son jalon, dans la
+colonne 3 d'ADR-137 et son amendement A1.
+**Jalon en cours : M3 — physique et premier rendu**, dégelé le 2026-10-16.
 
 **CI disponible de nouveau depuis le 2026-10-03** : le dépôt est public, les jobs GitHub
 Actions sont gratuits sur les quatre plateformes de la matrice (run 37147205392, vert). En
@@ -1335,7 +1336,7 @@ est tenue par ce qui existe.
             modèle (R-1790). Mutations : champ inconnu, ancrage renommé, modèle échangé, sixième
             definition — toutes rouges. Avec M2 ajouté à `COMPLETED_MILESTONES` le temps d'un
             essai, `MilestoneTestsCoveredTest` passe : tous les tests de M2 sont portés.
-- [ ] **C-74 — commandes faisables dès M2** (Killian, 2026-10-13). `deform` et `replay` restent
+- [x] **C-74 — commandes faisables dès M2** (Killian, 2026-10-13). `deform` et `replay` restent
       à C-28/C-41/C-42 (M6). R-830 : chaque commande appelle le code du jeu, sans chemin parallèle.
       - [x] `diff <a.a3d> <b.a3d>` (6edc8f3).
       - [x] `validate <fichier>` (49f0798) : un `.a3d` par le décodage que le jeu applique au chargement
@@ -1377,8 +1378,8 @@ est tenue par ce qui existe.
       Relevé en passant, hors M2 : un tick lent à la connexion (pas physique 8,08 ms, 354 colliders,
       tuiles du monde au chargement des chunks), à voir en M3 ; serveur et client partagent `run/`, ce
       qui rend `run/logs/latest.log` illisible quand ils tournent ensemble (`debug.log` reste lisible).
-- [ ] **Definition of Done de M2** vérifiée, puis `M2` dans `COMPLETED_MILESTONES` sur décision
-      de Killian.
+- [x] **Definition of Done de M2** vérifiée, puis `M2` dans `COMPLETED_MILESTONES` sur décision
+      de Killian — **prononcée le 2026-10-16**, la colonne 4 d'ADR-137 vide.
       - **[ADR-137](../docs/decisions/ADR-137.md)** (proposé le 2026-10-15, à ratifier) borne la DoD de
         M2 composant par composant : ce que M2 tient, ce qui part à quel jalon, ce qui reste. Relève en
         passant que la PARTIE 37 ne rattache ni C-35 ni T-836 à un jalon.
@@ -1465,7 +1466,7 @@ est tenue par ce qui existe.
                 sans régression sur master ; non bloquant (écart temporaire à R-2251). R-2231 :
                 `MeasureConfig::describe` archivé par `bench-ci` et le coureur de B-08 ; `/axion bench`
                 écrit le commit compilé (`axion-build.properties`, `-dirty` si l'arbre suivi bouge).
-          - [ ] Bascule de `bench-quick` en bloquant (ADR-142 §3) : vingt runs consécutifs sur master,
+          - [ ] Bascule de `bench-quick` en bloquant (ADR-142 §3 ; hors DoD de M2, ADR-137) : vingt runs consécutifs sur master,
                 écart du p95 de chaque série sous 10 % pour le modèle de CPU le plus fréquent.
         - **Tranchées le 2026-10-16, quatrième tour** : (14) métriques de R-500 pour C-23, C-27 et C-50
           en M2 ; leur imputation aux budgets de la table 25.2, l'extension de T-007 à l'inventaire des
@@ -1500,7 +1501,7 @@ est tenue par ce qui existe.
               fichier faute d'espace de noms : avec R-861 (C-20). Constat d'origine — trois divergences jeu/CLI — fichiers voisins (`.mtl`, buffers externes) lus par la CLI,
               pas par le jeu (ADR-122 les dit hors portée sans les confronter à R-830) ; `max_source_bytes`
               non appliqué en jeu (R-533) ; en-tête `asset_id`/`source_hash` différent.
-        - [ ] C-70 ✔ (en partie, 2026-10-15 : fabrique d'`ImpactSpec` bornée, `BoundedImpactSpecs`, par
+        - [x] (tranché par ADR-137 le 2026-10-16 : R-1751 fait, ADR-143, le reste renvoyé en colonne 3) C-70 ✔ (en partie, 2026-10-15 : fabrique d'`ImpactSpec` bornée, `BoundedImpactSpecs`, par
               `ServiceLoader` — vérifiée en JUnit et sous le chargeur de Forge (GameTest) ; reste l'EventBus,
               dont les événements n'ont pas d'accesseurs dans le CDC) : aucune implémentation dans `axion-mod` (`AxionApi.get()` lève toujours) ; R-1755,
               R-1760..R-1762 seulement documentés, 15 interfaces `@Stable` vides (décision du 2026-09-13
@@ -1517,12 +1518,13 @@ est tenue par ce qui existe.
               sans job CI.
         - [x] (2026-10-15) CHANGELOG : aucune entrée M2 ; C-25, C-30 et C-72 rangés sous M1 — entrée
               M2 « en cours » créée, les trois réattribués ; à compléter au prononcé de la DoD.
-        - [ ] Portée de la DoD « en M2 » pour des composants STABLE dont une part est renvoyée à M3..M7
+        - [x] (ADR-137, ratifié le 2026-10-16) Portée de la DoD « en M2 » pour des composants STABLE dont une part est renvoyée à M3..M7
               (C-23 tranche D, C-27 étapes 4-5 et cinq familles, C-50 R-700/R-703/R-705, C-74
               `deform`/`replay`) : un ADR qui la borne, comme ADR-134.
         - [x] Attribution de T-240..T-244, T-280..T-284 et T-400..T-404, que le CDC ne décrit pas un par un —
               [ADR-141](../docs/decisions/ADR-141.md), ratifié le 2026-10-15.
-        - [ ] Métriques et budgets propres de C-23, C-25, C-27, C-50 (R-1850, INV-19, 31.1) ;
+        - [x] (R-500 fait le 2026-10-16 ; R-1850 en M5, `max_compile_ms` en M11, R-562 par empreintes le
+              2026-10-15 — ADR-137) Métriques et budgets propres de C-23, C-25, C-27, C-50 (R-1850, INV-19, 31.1) ;
               `assets.max_compile_ms` jamais lu (R-2131) ; R-562 vérifié par parité seulement.
         - [x] ADR-106 et ADR-107, « décidés par Claude », jamais ratifiés — ratifiés par Killian le 2026-10-15 ;
               R-1710 (schéma antérieur rendu inerte, non migré) — renvoyé en M4 avec C-52.
@@ -1531,9 +1533,10 @@ est tenue par ce qui existe.
 
 ## M3 — Physique et premier rendu (en cours)
 
-**Gelé le 2026-10-15 jusqu'à la Definition of Done de M2.** M3 a été ouvert le 2026-09-19 sur une
-recommandation de Claude qui taisait que M1 et M2 n'étaient pas clos (`tasks/lessons.md`, 2026-10-15).
-Aucun travail de M3 sans demande explicite de Killian.
+**Gelé du 2026-10-15 au 2026-10-16**, jusqu'à la Definition of Done de M2, prononcée le 2026-10-16. M3
+avait été ouvert le 2026-09-19 sur une recommandation de Claude qui taisait que M1 et M2 n'étaient pas
+clos (`tasks/lessons.md`, 2026-10-15). Il reprend avec les renvois d'ADR-137 qui le nomment : les
+avertissements de compilation (amendement A1) et le défaut de l'enveloppe convexe, sous C-32.
 
 Démarré le 2026-09-19, **effort maximal** (décision de Killian). M3 a deux
 moitiés : la **physique** (C-31 → C-32 → C-38 → C-39 → C-40) et le **premier
