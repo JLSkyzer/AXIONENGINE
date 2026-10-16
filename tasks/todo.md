@@ -2837,6 +2837,24 @@ amortissement dans l'eau, `/axion remove`).
         branchés sur le frottement et la restitution des tuiles (T-840, T-841). Puis, en effort max et
         par un ADR : le matériau des parts d'assembly jusqu'au natif (ABI), puis le ballon de test.
         Remplace le report « au câblage des definitions physiques ».
+        - [x] **Premier temps fait le 2026-10-16** ([ADR-145](../docs/decisions/ADR-145.md), ratifié le jour
+              même : noms de DM-07 tout facultatif, valeurs sourcées et de conception, fusion par
+              identifiant, matériaux de référence ajoutés). `PhysicsMaterials` (héritage au point fixe,
+              acier générique `GenericSteel` pour ce qu'aucun ancêtre ne déclare, unités et plages de
+              DM-07, Tabor de R-1038 journalisé une fois par matériau) ; `BlockMaterialMappings` (§11.4,
+              fusion par identifiant, entrées refusées nommées) ; `BlockMaterials` ne garde que le
+              contact et prend l'ordre de déclaration des étiquettes ; écouteurs dans l'ordre matériaux,
+              groupes, mappages, definitions ; les tuiles lisent le mappage courant du runtime ; la
+              ressource fixe `axion/world/block_materials.json` est retirée. Bibliothèque de dix-huit
+              matériaux (les onze de R-1030, glace, glace bleue, sable, terre, slime, miel, corde),
+              grandeurs sourcées par une recherche documentaire (27 références, `MATERIALS.md`), lacunes
+              nommées. Une definition qui nomme un matériau non déclaré avertit (R-1032) ; les cinq
+              exemples n'en nomment aucun. Précision d'ADR-145 : frottement et restitution sont des
+              coefficients de couple, de conception, et ceux des tuiles sont conservés. Tests :
+              `PhysicsMaterialsTest` (T-840, T-840b, R-1038), `BlockMaterialMappingsTest` (T-841),
+              `BlockMaterialsTest` (T-375), `DefinitionRegistryTest`, `AxionRuntimeTest`.
+        - [ ] Second temps, en effort max et par un ADR : le matériau des parts d'assembly jusqu'au
+              natif (index DM-07 des `ColliderDesc`, modes de combinaison), puis le ballon de test.
       - **L'effort max après le reste de M3** : amendement A1 d'ADR-137 et R-1011 (C-31 : au-delà du
         plafond d'événements, agréger par paire au lieu de jeter — aujourd'hui `push_event` jette).
       - Reste à proposer, par un ADR de portée de la DoD de M3 (modèle d'ADR-137) : tranche D de C-23

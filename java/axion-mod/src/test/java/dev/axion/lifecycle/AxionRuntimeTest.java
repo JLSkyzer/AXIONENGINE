@@ -496,4 +496,41 @@ class AxionRuntimeTest {
         assertTrue(runtime.transitions().stream().anyMatch(line -> line.contains("registre des groupes de collision changé")),
                 () -> "registre changé non consigné : " + runtime.transitions());
     }
+
+    /** Fichiers simulés, chemin de ressource → contenu. */
+    private static AssetSource fichiers(Map<String, String> contenus) {
+        return new AssetSource() {
+            @Override
+            public List<String> list() {
+                return List.copyOf(contenus.keySet());
+            }
+
+            @Override
+            public byte[] read(String path) {
+                return contenus.get(path).getBytes(StandardCharsets.UTF_8);
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("ADR-145 : matériaux, puis mappage bloc → matériau, puis definitions qui les gardent")
+    void materiauxPhysiques() {
+        AxionRuntime runtime = new AxionRuntime((platform, properties) -> ready(), new RecordingNative());
+        runtime.onConstructed(new FakePlatform(gameDir, false));
+        runtime.onSetup(new Properties());
+
+        assertEquals(1, runtime.onPhysicsMaterialReload(fichiers(Map.of(
+                "mymod:axion/physics_materials/glace.json", "{\"friction\": 0.05}"))));
+        assertTrue(runtime.physicsMaterials().knows("mymod:glace"));
+        assertTrue(runtime.transitions().contains("1 matériau(x) physique(s) chargé(s), 0 refusé(s)"),
+                () -> "chargement non consigné : " + runtime.transitions());
+
+        runtime.onBlockMaterialReload(fichiers(Map.of("mymod:axion/block_materials/base.json",
+                "{\"schema\": 1, \"by_block\": {\"minecraft:ice\": \"mymod:glace\"}}")));
+        assertEquals(0.05f, runtime.blockMaterials().resolve("minecraft:ice", List.of()).friction());
+
+        // Les definitions chargées ensuite sont validées contre ces matériaux, et les gardent.
+        runtime.onDefinitionReload(fichiers(Map.of()));
+        assertSame(runtime.physicsMaterials(), runtime.definitions().physicsMaterials());
+    }
 }

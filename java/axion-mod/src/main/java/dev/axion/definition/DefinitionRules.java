@@ -16,17 +16,37 @@ import java.util.function.Predicate;
  *     ({@code content.examples}, R-1790, ADR-134)
  * @param collisionGroups les groupes de collision tiers qu'une definition peut
  *     nommer (R-980, ADR-132 A1), chargés avant elle
+ * @param physicsMaterials les matériaux physiques qu'une definition peut nommer
+ *     (R-171, ADR-145), chargés avant elle ; un nom inconnu avertit (R-1032)
  */
 public record DefinitionRules(
         boolean vehiclesEnabled,
         Predicate<String> assetExists,
         boolean examplesEnabled,
-        CollisionGroupRegistry collisionGroups) {
+        CollisionGroupRegistry collisionGroups,
+        PhysicsMaterials physicsMaterials) {
 
     /** Refuse une règle absente. */
     public DefinitionRules {
         Objects.requireNonNull(assetExists);
         Objects.requireNonNull(collisionGroups);
+        Objects.requireNonNull(physicsMaterials);
+    }
+
+    /**
+     * Des règles sans matériau physique déclaré : tout nom de matériau avertit.
+     *
+     * @param vehiclesEnabled le module {@code vehicles} est actif (§24.1)
+     * @param assetExists indique si un modèle a été découvert
+     * @param examplesEnabled les definitions de démonstration se chargent
+     * @param collisionGroups les groupes de collision tiers
+     */
+    public DefinitionRules(
+            boolean vehiclesEnabled,
+            Predicate<String> assetExists,
+            boolean examplesEnabled,
+            CollisionGroupRegistry collisionGroups) {
+        this(vehiclesEnabled, assetExists, examplesEnabled, collisionGroups, PhysicsMaterials.empty());
     }
 
     /**

@@ -2,12 +2,10 @@ package dev.axion.forge;
 
 import com.mojang.logging.LogUtils;
 import dev.axion.AxionMod;
-import dev.axion.definition.CollisionGroupRegistry;
-import dev.axion.definition.DefinitionRegistry;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
 import dev.axion.physics.SimulationJournal;
-import dev.axion.world.BlockMaterials;
+import java.util.function.Consumer;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
@@ -145,15 +143,35 @@ public final class AxionForgeEntrypoint {
             }
         });
 
-        // Les groupes de collision tiers avant les definitions, qui les nomment
-        // (R-980, ADR-132 A1).
-        event.addListener(new SimplePreparableReloadListener<ResourceAssetSource>() {
+        // Les données JSON après les modèles, dans l'ordre où elles se nomment : Minecraft
+        // applique les écouteurs dans l'ordre d'ajout. Les matériaux physiques d'abord (DM-07,
+        // ADR-145) ; les groupes de collision tiers (R-980, ADR-132 A1) ; les mappages bloc →
+        // matériau, qui nomment des matériaux ; les definitions enfin, qui vérifient leur modèle
+        // (C-27, étape 3), leurs groupes de collision et leurs matériaux.
+        event.addListener(dataListener(ResourceAssetSource.PHYSICS_MATERIALS, "matériau physique",
+                runtime::onPhysicsMaterialReload));
+        event.addListener(dataListener(ResourceAssetSource.COLLISION_GROUPS, "groupe de collision",
+                runtime::onCollisionGroupReload));
+        event.addListener(dataListener(ResourceAssetSource.BLOCK_MATERIALS, "mappage bloc → matériau",
+                runtime::onBlockMaterialReload));
+        event.addListener(dataListener(ResourceAssetSource.DEFINITIONS, "definition",
+                runtime::onDefinitionReload));
+    }
+
+    /**
+     * {@return un écouteur qui énumère et lit les fichiers JSON d'une famille de données, puis les
+     * remet au runtime}
+     *
+     * @param prefix famille, relative à la racine du gestionnaire de données
+     * @param what ce qu'est un fichier de la famille, pour le journal
+     * @param reload chargement par le runtime
+     */
+    private SimplePreparableReloadListener<ResourceAssetSource> dataListener(
+            String prefix, String what, Consumer<ResourceAssetSource> reload) {
+        return new SimplePreparableReloadListener<>() {
             @Override
             protected ResourceAssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {
-                return new ResourceAssetSource(
-                        manager,
-                        ResourceAssetSource.COLLISION_GROUPS,
-                        path -> path.endsWith(CollisionGroupRegistry.EXTENSION));
+                return new ResourceAssetSource(manager, prefix, path -> path.endsWith(".json"));
             }
 
             @Override
@@ -161,35 +179,11 @@ public final class AxionForgeEntrypoint {
                     ResourceAssetSource source, ResourceManager manager, ProfilerFiller profiler) {
                 logTransitions(() -> {
                     source.failures().forEach(failure ->
-                            LOGGER.warn("AXION : groupe de collision illisible — {}", failure));
-                    runtime.onCollisionGroupReload(source);
+                            LOGGER.warn("AXION : {} illisible — {}", what, failure));
+                    reload.accept(source);
                 });
             }
-        });
-
-        // Les definitions après les modèles et les groupes : Minecraft applique les
-        // écouteurs dans l'ordre d'ajout, et une definition vérifie que le modèle
-        // qu'elle désigne a été découvert (C-27, étape 3), et que ses groupes de
-        // collision existent.
-        event.addListener(new SimplePreparableReloadListener<ResourceAssetSource>() {
-            @Override
-            protected ResourceAssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {
-                return new ResourceAssetSource(
-                        manager,
-                        ResourceAssetSource.DEFINITIONS,
-                        path -> path.endsWith(DefinitionRegistry.EXTENSION));
-            }
-
-            @Override
-            protected void apply(
-                    ResourceAssetSource source, ResourceManager manager, ProfilerFiller profiler) {
-                logTransitions(() -> {
-                    source.failures().forEach(failure ->
-                            LOGGER.warn("AXION : definition illisible — {}", failure));
-                    runtime.onDefinitionReload(source);
-                });
-            }
-        });
+        };
     }
 
     /** Prend note du serveur qui démarre. */
@@ -209,7 +203,7 @@ public final class AxionForgeEntrypoint {
             worldTileBridge =
                     new WorldTileBridge(
                             event.getServer(),
-                            WorldTileBridge.loadMaterials(),
+                            runtime::blockMaterials,
                             radius,
                             perTick,
                             assemblyRuntime,

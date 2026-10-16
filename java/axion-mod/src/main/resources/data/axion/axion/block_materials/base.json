@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "default": "axion:stone",
+  "by_tag": {
+    "minecraft:logs": "axion:wood",
+    "minecraft:planks": "axion:wood",
+    "minecraft:wool": "axion:fabric",
+    "minecraft:sand": "axion:sand",
+    "minecraft:dirt": "axion:dirt",
+    "minecraft:base_stone_overworld": "axion:stone"
+  },
+  "by_block": {
+    "minecraft:ice": "axion:ice",
+    "minecraft:packed_ice": "axion:ice",
+    "minecraft:blue_ice": "axion:blue_ice",
+    "minecraft:slime_block": "axion:slime",
+    "minecraft:honey_block": "axion:honey"
+  }
+}

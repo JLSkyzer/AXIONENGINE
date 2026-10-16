@@ -1613,3 +1613,20 @@ rapprochée fait de même.
 **Règle.** Un run `cancelled` ne vaut ni vert ni rouge. Vérifier le run du dernier commit qui porte le
 code — il couvre les précédents — ou relancer les jobs annulés (`gh run rerun <id> --failed`). Ne
 jamais annoncer une CI verte sur un run dont un job est annulé.
+
+## 2026-10-16 | Une mutation a suspendu la suite une heure et demie, et `@Timeout` n'y pouvait rien
+
+**Ce qui a mal tourné.** Une mutation de `PhysicsMaterials` retirait la détection des cycles
+d'héritage. Le test du cycle n'a pas échoué : la marche d'héritage de `resolve` a bouclé sans fin, et
+la campagne de mutations est restée suspendue jusqu'à l'arrêt à la main de l'exécuteur de tests. Un
+`@Timeout(10 s)` ajouté ensuite n'a rien changé : le run a encore tenu 618 s, jusqu'à un nouvel arrêt.
+
+**Cause.** La marche reposait sur un invariant établi ailleurs (le point fixe de `load`) ; et
+`@Timeout` de JUnit, dans son mode par défaut, interrompt le thread du test, ce qu'une boucle de calcul
+qui ne consulte jamais l'interruption ignore.
+
+**Règle.** Toute boucle qui suit des liens venus de données (parents, références) est bornée par le
+nombre de nœuds, dans le code même : un cycle qui échapperait à sa détection donne alors un résultat
+faux, que les tests voient, et jamais une suspension. Ne pas compter sur `@Timeout` contre une boucle de
+calcul. Lancer les campagnes de mutations avec un délai par exécution et surveiller l'heure de départ
+de l'exécuteur de tests.

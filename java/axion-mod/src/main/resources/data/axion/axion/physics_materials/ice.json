@@ -1,0 +1,11 @@
+{
+  "density": 916.7,
+  "stiffness": 9.5e9,
+  "yield_strength": 2e6,
+  "fracture_strength": 2e6,
+  "max_strain": 2.1e-4,
+  "fracture_energy": 4.2,
+  "friction": 0.05,
+  "plasticity": 0.0,
+  "flags": ["brittle"]
+}

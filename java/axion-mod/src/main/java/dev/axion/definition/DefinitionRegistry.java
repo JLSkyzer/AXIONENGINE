@@ -64,23 +64,30 @@ public final class DefinitionRegistry {
     private final List<String> refusals;
     private final String fingerprint;
     private final CollisionGroupRegistry collisionGroups;
+    private final PhysicsMaterials physicsMaterials;
+    private final List<String> warnings;
 
     private DefinitionRegistry(
             SortedMap<String, Definition> definitions,
             Map<Long, Definition> byHash,
             List<String> refusals,
-            CollisionGroupRegistry collisionGroups) {
+            CollisionGroupRegistry collisionGroups,
+            PhysicsMaterials physicsMaterials,
+            List<String> warnings) {
         this.definitions = definitions;
         this.byHash = byHash;
         this.refusals = List.copyOf(refusals);
         this.fingerprint = fingerprintOf(definitions);
         this.collisionGroups = collisionGroups;
+        this.physicsMaterials = physicsMaterials;
+        this.warnings = List.copyOf(warnings);
     }
 
     /** {@return une registry vide, avant tout rechargement} */
     public static DefinitionRegistry empty() {
         return new DefinitionRegistry(
-                new TreeMap<>(), new HashMap<>(), List.of(), CollisionGroupRegistry.empty());
+                new TreeMap<>(), new HashMap<>(), List.of(), CollisionGroupRegistry.empty(),
+                PhysicsMaterials.empty(), List.of());
     }
 
     /**
@@ -150,7 +157,35 @@ public final class DefinitionRegistry {
         for (Definition definition : accepted.values()) {
             byHash.put(hasher.applyAsLong(definition.id()), definition);
         }
-        return new DefinitionRegistry(accepted, byHash, refusals, rules.collisionGroups());
+        List<String> warnings = new ArrayList<>();
+        for (Definition definition : accepted.values()) {
+            materialWarnings(definition, rules.physicsMaterials(), warnings);
+        }
+        return new DefinitionRegistry(accepted, byHash, refusals, rules.collisionGroups(),
+                rules.physicsMaterials(), warnings);
+    }
+
+    /**
+     * R-1032 : un matériau que le registre ne déclare pas prend l'acier générique, avec un
+     * avertissement — la definition n'est pas refusée. Les deux champs du schéma 1 qui nomment un
+     * matériau : {@code parts[].material} et {@code particles[].material}.
+     */
+    private static void materialWarnings(
+            Definition definition, PhysicsMaterials materials, List<String> warnings) {
+        for (String list : List.of("parts", "particles")) {
+            if (!(definition.root().get(list) instanceof JsonArray entries)) {
+                continue;
+            }
+            for (int index = 0; index < entries.size(); index++) {
+                if (entries.get(index) instanceof JsonObject entry
+                        && entry.get("material") instanceof JsonPrimitive named
+                        && !materials.knows(named.getAsString())) {
+                    warnings.add(definition.location() + " — $." + list + "[" + index
+                            + "].material : matériau « " + named.getAsString() + " » non déclaré ;"
+                            + " l'acier générique en tient lieu (R-1032)");
+                }
+            }
+        }
     }
 
     /**
@@ -398,6 +433,11 @@ public final class DefinitionRegistry {
         return refusals;
     }
 
+    /** {@return les avertissements du chargement, un par matériau non déclaré (R-1032)} */
+    public List<String> warnings() {
+        return warnings;
+    }
+
     /** {@return l'empreinte de la registry, en hexadécimal} */
     public String fingerprint() {
         return fingerprint;
@@ -409,5 +449,13 @@ public final class DefinitionRegistry {
      */
     public CollisionGroupRegistry collisionGroups() {
         return collisionGroups;
+    }
+
+    /**
+     * {@return les matériaux physiques contre lesquels ces definitions ont été validées} Leurs noms
+     * de matériaux s'y résolvent, en acier générique pour un nom non déclaré (R-1032).
+     */
+    public PhysicsMaterials physicsMaterials() {
+        return physicsMaterials;
     }
 }

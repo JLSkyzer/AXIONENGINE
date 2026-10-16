@@ -196,4 +196,27 @@ class DefinitionRegistryTest {
         assertEquals(3, avec.size());
         assertTrue(avec.refusals().isEmpty(), avec.refusals().toString());
     }
+
+    @Test
+    @DisplayName("R-1032 : un matériau non déclaré avertit, avec son chemin ; la definition reste acceptée")
+    void unMateriauNonDeclareAvertit() {
+        PhysicsMaterials materiaux = PhysicsMaterials.load(new FakeSource()
+                .put("mymod:axion/physics_materials/steel.json", "{\"density\": 7850}"));
+        DefinitionRules regles = new DefinitionRules(true, Set.of(PICKUP)::contains, false,
+                CollisionGroupRegistry.empty(), materiaux);
+        FakeSource source = new FakeSource().put("mymod:axion/definitions/pickup.json",
+                "{\"schema\": 1, \"asset\": \"mymod:models/pickup.glb\", \"kind\": \"rigid_object\","
+                        + " \"parts\": [{\"name\": \"a\", \"root_node\": \"a\", \"material\": \"mymod:steel\"},"
+                        + " {\"name\": \"b\", \"root_node\": \"b\", \"material\": \"mymod:titane\"}]}");
+
+        DefinitionRegistry registry = DefinitionRegistry.load(source, regles);
+        assertEquals(1, registry.size(), registry.refusals().toString());
+        assertEquals(List.of("mymod:axion/definitions/pickup.json — $.parts[1].material : matériau"
+                + " « mymod:titane » non déclaré ; l'acier générique en tient lieu (R-1032)"),
+                registry.warnings());
+        assertTrue(DefinitionRegistry.load(source, new DefinitionRules(true, Set.of(PICKUP)::contains, false,
+                CollisionGroupRegistry.empty(), PhysicsMaterials.load(new FakeSource()
+                        .put("mymod:axion/physics_materials/steel.json", "{}")
+                        .put("mymod:axion/physics_materials/titane.json", "{}")))).warnings().isEmpty());
+    }
 }

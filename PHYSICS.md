@@ -25,8 +25,10 @@ voir [CONFIGURATION.md](CONFIGURATION.md), sections `[sim]`, `[physics]`, `[worl
 Les blocs autour de chaque assembly deviennent des **tuiles de collision** par section de 16³
 (C-38) : des boîtes regroupées, ou un champ de hauteur pour un terrain régulier, au plus
 `world.tiles_per_tick` tuiles extraites par tick dans un rayon de `world.tile_radius` tuiles.
-Frottement et rebond viennent du matériau dominant de la section
-(`axion/world/block_materials.json`). Les blocs de fluide deviennent des volumes de fluide, à la
+Frottement et rebond viennent du matériau physique dominant de la section, que résolvent les
+mappages `data/<ns>/axion/block_materials/` — par bloc, puis par étiquette, puis le défaut
+(§11.4, ADR-145) ; les matériaux et leur format sont décrits dans [MATERIALS.md](MATERIALS.md).
+Les blocs de fluide deviennent des volumes de fluide, à la
 densité de l'eau quel que soit le fluide pour l'instant : un corps qui y entre subit poussée
 d'Archimède et traînée.
 
@@ -141,6 +143,6 @@ aujourd'hui que côté natif : aucune API Java ni fonction de la frontière ne l
 
 ## Ce qui n'existe pas encore
 
-Liaisons entre corps et leurs ruptures (C-34), matériaux de contact déclarés par les assemblies
-(DM-07 ; contact neutre en attendant), densité propre à chaque fluide, chaîne de dommage et
+Liaisons entre corps et leurs ruptures (C-34), matériau des parts d'assembly jusqu'au natif
+(DM-07, second temps d'ADR-145 ; contact neutre en attendant), densité propre à chaque fluide, chaîne de dommage et
 déformation (C-41..C-45, M6), pilotage des véhicules (M5).

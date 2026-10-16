@@ -1,0 +1,7 @@
+{
+  "density": 1050,
+  "stiffness": 7000.0,
+  "elasticity": 0.5,
+  "plasticity": 0.2,
+  "flags": ["soft"]
+}

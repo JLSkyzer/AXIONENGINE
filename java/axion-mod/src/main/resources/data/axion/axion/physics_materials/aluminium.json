@@ -1,0 +1,11 @@
+{
+  "density": 2700,
+  "stiffness": 6.89e10,
+  "yield_strength": 2.76e8,
+  "fracture_strength": 3.1e8,
+  "max_strain": 0.12,
+  "fracture_energy": 12200.0,
+  "elasticity": 0.2,
+  "plasticity": 0.8,
+  "flags": ["ductile"]
+}

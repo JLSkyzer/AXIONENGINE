@@ -9,9 +9,11 @@ import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.bootstrap.NativeApi;
 import dev.axion.config.ConfigSchema;
 import dev.axion.config.ConfigSchema.Scope;
+import dev.axion.definition.BlockMaterialMappings;
 import dev.axion.definition.CollisionGroupRegistry;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
+import dev.axion.definition.PhysicsMaterials;
 import dev.axion.physics.CollectResult;
 import dev.axion.physics.DegradationGauges;
 import dev.axion.physics.NativeSimulation;
@@ -28,6 +30,7 @@ import dev.axion.diag.DefinitionMetrics;
 import dev.axion.diag.JavaMetrics;
 import dev.axion.platform.PlatformAdapter;
 import dev.axion.render.RenderCapabilities;
+import dev.axion.world.BlockMaterials;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -74,6 +77,8 @@ public final class AxionRuntime {
      */
     private volatile AssetRegistry assets;
     private volatile DefinitionRegistry definitions = DefinitionRegistry.empty();
+    private volatile PhysicsMaterials physicsMaterials = PhysicsMaterials.empty();
+    private volatile BlockMaterials blockMaterials = BlockMaterials.empty();
     private volatile CollisionGroupRegistry collisionGroups = CollisionGroupRegistry.empty();
     /** Un registre des groupes a déjà été chargé : le suivant qui diffère se journalise. */
     private boolean collisionGroupsLoaded;
@@ -673,6 +678,63 @@ public final class AxionRuntime {
     }
 
     /**
+     * Charge les matériaux physiques d'un rechargement de données (DM-07, R-171, ADR-145).
+     *
+     * <p>Avant les mappages bloc → matériau et les definitions, qui les nomment. Les refus sont
+     * journalisés un par un (R-580), et ce que la résolution a supposé une fois par matériau
+     * (R-1038).
+     *
+     * @param source ressources sous {@code axion/physics_materials}
+     * @return le nombre de matériaux acceptés
+     */
+    public int onPhysicsMaterialReload(AssetSource source) {
+        // Même condition que les definitions : sans runtime natif, rien ne les consomme.
+        if (!hasNativeRuntime()) {
+            return 0;
+        }
+        guard("physicsMaterialReload").run(() -> {
+            PhysicsMaterials loaded = PhysicsMaterials.load(source);
+            physicsMaterials = loaded;
+            transitions.add(loaded.ids().size() + " matériau(x) physique(s) chargé(s), "
+                    + loaded.refusals().size() + " refusé(s)");
+            loaded.refusals().forEach(transitions::add);
+            loaded.notes().forEach(transitions::add);
+        });
+        return physicsMaterials.ids().size();
+    }
+
+    /** {@return le registre des matériaux physiques, vide avant tout rechargement} */
+    public PhysicsMaterials physicsMaterials() {
+        return physicsMaterials;
+    }
+
+    /**
+     * Charge les mappages bloc → matériau d'un rechargement de données (§11.4, R-643, ADR-145),
+     * contre les matériaux physiques chargés juste avant. Les tuiles construites ensuite en
+     * prennent le contact ; une tuile déjà construite garde le sien jusqu'à sa reconstruction.
+     *
+     * @param source ressources sous {@code axion/block_materials}
+     */
+    public void onBlockMaterialReload(AssetSource source) {
+        if (!hasNativeRuntime()) {
+            return;
+        }
+        guard("blockMaterialReload").run(() -> {
+            BlockMaterialMappings.Result loaded = BlockMaterialMappings.load(source, physicsMaterials);
+            blockMaterials = loaded.mapping();
+            transitions.add("mappage bloc → matériau chargé, " + loaded.refusals().size()
+                    + " entrée(s) refusée(s), " + loaded.notes().size() + " remplacée(s)");
+            loaded.refusals().forEach(transitions::add);
+            loaded.notes().forEach(transitions::add);
+        });
+    }
+
+    /** {@return le mappage bloc → matériau, celui du solveur avant tout rechargement} */
+    public BlockMaterials blockMaterials() {
+        return blockMaterials;
+    }
+
+    /**
      * Charge les groupes de collision tiers d'un rechargement de données (R-980, ADR-132 A1).
      *
      * <p>Avant les definitions, qui les nomment. Le registre vaut pour les corps créés après lui :
@@ -731,7 +793,8 @@ public final class AxionRuntime {
                     outcome.config().getBoolean("modules.vehicles"),
                     path -> known != null && known.entry(path) != null,
                     outcome.config().getBoolean("content.examples"),
-                    collisionGroups);
+                    collisionGroups,
+                    physicsMaterials);
             long start = System.nanoTime();
             DefinitionRegistry loaded = DefinitionRegistry.load(source, rules);
             long nanos = System.nanoTime() - start;
@@ -741,6 +804,7 @@ public final class AxionRuntime {
             transitions.add(loaded.size() + " definition(s) chargée(s), "
                     + loaded.refusals().size() + " refusée(s)");
             loaded.refusals().forEach(transitions::add);
+            loaded.warnings().forEach(transitions::add);
         });
         return definitions.size();
     }

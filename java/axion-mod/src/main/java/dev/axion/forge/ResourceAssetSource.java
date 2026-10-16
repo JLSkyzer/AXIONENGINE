@@ -39,6 +39,12 @@ public final class ResourceAssetSource implements AssetSource {
     /** Préfixe des groupes de collision tiers (R-980, ADR-132 A1), relatif à la racine du gestionnaire. */
     public static final String COLLISION_GROUPS = "axion/collision_groups";
 
+    /** Préfixe des matériaux physiques (DM-07, R-171, ADR-145), relatif à la racine du gestionnaire. */
+    public static final String PHYSICS_MATERIALS = "axion/physics_materials";
+
+    /** Préfixe des mappages bloc → matériau (§11.4, ADR-145), relatif à la racine du gestionnaire. */
+    public static final String BLOCK_MATERIALS = "axion/block_materials";
+
     /** Contenu par chemin, dans l'ordre d'énumération ; {@code null} si illisible. */
     private final Map<String, byte[]> files = new LinkedHashMap<>();
     private final Map<String, IOException> unreadable = new HashMap<>();

@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.LongFunction;
+import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -46,7 +47,7 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
     private static final float WATER_DENSITY = 1000f;
 
     private final LongFunction<ServerLevel> levelById;
-    private final BlockMaterials materials;
+    private final Supplier<BlockMaterials> materials;
 
     /** Sections déjà signalées en champ de hauteurs : un avertissement par section (R-641). */
     private final Set<SectionKey> heightfieldsWarned = new HashSet<>();
@@ -54,10 +55,11 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
     /**
      * @param levelById résout la clé de dimension ({@link dev.axion.world.DimensionId}) en
      *     son {@code ServerLevel}, ou {@code null} si absent
-     * @param materials mappage data-driven des matériaux (R-643)
+     * @param materials mappage data-driven des matériaux (R-643, ADR-145), lu à chaque tuile : une
+     *     tuile construite après un rechargement prend le mappage nouveau
      */
     public ForgeWorldCollisionSource(
-            LongFunction<ServerLevel> levelById, BlockMaterials materials) {
+            LongFunction<ServerLevel> levelById, Supplier<BlockMaterials> materials) {
         this.levelById = levelById;
         this.materials = materials;
     }
@@ -65,7 +67,8 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
     @Override
     public SectionTile tileOf(long dimension, int sectionX, int sectionY, int sectionZ) {
         ServerLevel level = levelById.apply(dimension);
-        BlockMaterials.Material fallback = materials.fallback();
+        BlockMaterials mapping = materials.get();
+        BlockMaterials.Material fallback = mapping.fallback();
         // R-640 : niveau inconnu ou chunk non chargé → plein et solide, sans charger le chunk.
         if (level == null || !level.hasChunk(sectionX, sectionZ)) {
             return solidSection(fallback);
@@ -142,7 +145,7 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                     + " boîtes (plus de {}) : collision en champ de hauteurs conservateur (R-641)",
                     sectionX, sectionY, sectionZ, dimension, WorldTileGeometry.MAX_TILE_BOXES);
         }
-        BlockMaterials.Material material = dominantMaterial(blockCounts, representative, fallback);
+        BlockMaterials.Material material = dominantMaterial(mapping, blockCounts, representative, fallback);
         // Fiche 5.30, étape 2, appliquée à l'eau (R-642) : une liste compacte, et non une boîte
         // par bloc d'eau — 3 840 pour une section de lac, que le natif garderait et parcourrait.
         float[][] fluidBoxes = WorldTileGeometry.mergeFluids(fluidHeights).toArray(new float[0][]);
@@ -165,7 +168,8 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                 0f);
     }
 
-    private BlockMaterials.Material dominantMaterial(
+    private static BlockMaterials.Material dominantMaterial(
+            BlockMaterials mapping,
             Map<String, Integer> counts,
             Map<String, BlockState> representative,
             BlockMaterials.Material fallback) {
@@ -182,7 +186,7 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
         }
         List<String> tags = new ArrayList<>();
         representative.get(dominant).getTags().forEach(tag -> tags.add(tag.location().toString()));
-        return materials.resolve(dominant, tags);
+        return mapping.resolve(dominant, tags);
     }
 
     /**

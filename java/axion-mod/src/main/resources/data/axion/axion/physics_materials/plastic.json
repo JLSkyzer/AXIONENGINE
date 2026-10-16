@@ -1,0 +1,11 @@
+{
+  "density": 910,
+  "stiffness": 8.83e8,
+  "yield_strength": 2e7,
+  "fracture_strength": 4.5e7,
+  "max_strain": 1.0,
+  "fracture_energy": 10000.0,
+  "elasticity": 0.8,
+  "plasticity": 0.2,
+  "flags": ["soft"]
+}

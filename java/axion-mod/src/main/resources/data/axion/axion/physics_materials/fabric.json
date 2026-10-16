@@ -1,0 +1,9 @@
+{
+  "density": 1540,
+  "stiffness": 9e9,
+  "yield_strength": 4.4e8,
+  "fracture_strength": 4.4e8,
+  "max_strain": 0.075,
+  "friction": 0.9,
+  "flags": ["soft"]
+}

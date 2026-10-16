@@ -48,6 +48,16 @@ Definition of Done (PARTIE 37.3).
   - `auto_capsule` sur un mesh trapu rend la sphere de son rayon : la capsule de
     segment nul qu'il produisait faisait refuser l'asset par la validation ;
     `COMPILER_VERSION` 12 ;
+  - materiaux physiques data-driven, premier temps de DM-07 (ADR-145) : registre
+    `axion:physics_material` (`data/<ns>/axion/physics_materials`), heritage par
+    `parent` champ par champ, acier generique du moteur pour ce qu'aucun ancetre
+    ne declare (R-1032), unites et plages de DM-07 jugees (T-840b), relation de
+    Tabor (R-1038) ; bibliotheque de dix-huit materiaux, grandeurs physiques
+    sourcees (MATERIALS.md) ; mappage bloc -> materiau au format du
+    paragraphe 11.4 (`data/<ns>/axion/block_materials`), fusion par identifiant,
+    priorite des etiquettes par ordre de declaration (T-841), qui remplace la
+    ressource fixe des tuiles ; une definition qui nomme un materiau non declare
+    avertit (R-1032) ;
   - groupes de collision tiers declares par les packs
     (`data/<ns>/axion/collision_groups`, registre `axion:collision_group`,
     ADR-132 A1) : un fichier, un groupe et son masque par defaut, bits 8 a 31

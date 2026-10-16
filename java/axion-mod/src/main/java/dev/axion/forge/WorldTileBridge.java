@@ -1,6 +1,5 @@
 package dev.axion.forge;
 
-import com.google.gson.JsonParser;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.physics.SimulationTrace;
@@ -12,8 +11,6 @@ import dev.axion.world.WorldTilePlanner;
 import dev.axion.world.WorldTilePlanner.Footprint;
 import dev.axion.world.WorldTilePlanner.SectionKey;
 import dev.axion.world.WorldTileService;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -22,6 +19,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -34,8 +32,6 @@ import net.minecraftforge.event.VanillaGameEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Pont Forge du fournisseur de collision du monde (C-38 T3e) : relie le cycle de simulation
@@ -58,9 +54,6 @@ import org.slf4j.LoggerFactory;
  * dans {@code dev.axion.world} (logique pure, testée).
  */
 public final class WorldTileBridge implements SimCommandProvider {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger("axion");
-    private static final String MATERIALS_RESOURCE = "/axion/world/block_materials.json";
 
     /** Destination des tuiles posées et retirées à chaque tick : la trace de la simulation. */
     @FunctionalInterface
@@ -105,7 +98,7 @@ public final class WorldTileBridge implements SimCommandProvider {
 
     /**
      * @param server serveur courant, source des niveaux et des entités
-     * @param materials mappage des matériaux (R-643)
+     * @param materials mappage bloc → matériau courant (R-643, ADR-145), lu à chaque tuile
      * @param tileRadius {@code world.tile_radius}
      * @param tilesPerTick {@code world.tiles_per_tick}
      * @param assemblies assemblies dotées d'un corps, et leur vitesse
@@ -113,7 +106,7 @@ public final class WorldTileBridge implements SimCommandProvider {
      */
     public WorldTileBridge(
             MinecraftServer server,
-            BlockMaterials materials,
+            Supplier<BlockMaterials> materials,
             int tileRadius,
             int tilesPerTick,
             AssemblyRuntime assemblies,
@@ -125,21 +118,6 @@ public final class WorldTileBridge implements SimCommandProvider {
         WorldCollisionSource source = new ForgeWorldCollisionSource(this::levelForId, materials);
         this.service = new WorldTileService(planner, source);
         MinecraftForge.EVENT_BUS.register(this);
-    }
-
-    /** Charge la ressource des matériaux ; rend un mappage vide (défaut générique) si absente. */
-    public static BlockMaterials loadMaterials() {
-        try (InputStream in = WorldTileBridge.class.getResourceAsStream(MATERIALS_RESOURCE)) {
-            if (in == null) {
-                LOGGER.warn("AXION : ressource {} absente ; matériaux par défaut", MATERIALS_RESOURCE);
-                return BlockMaterials.empty();
-            }
-            String json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            return BlockMaterials.fromJson(JsonParser.parseString(json));
-        } catch (Exception e) {
-            LOGGER.warn("AXION : block_materials illisible ({}) ; matériaux par défaut", e.toString());
-            return BlockMaterials.empty();
-        }
     }
 
     @Override
