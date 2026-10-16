@@ -1600,3 +1600,16 @@ mémoire libérée.
 modèle depuis une scène temporaire qui ne porte que sa hiérarchie (`bpy.data.scenes.new`, export
 `use_active_scene`, scène supprimée ensuite), puis relire le bloc JSON du GLB produit : aucun extra de
 scène, `doubleSided` seulement sur le tissu. Sauvegarder le `.blend` après chaque modèle.
+
+## 2026-10-16 | Un job de CI annulé, pris un instant pour un échec à comprendre
+
+**Ce qui a mal tourné.** Le run de `10fb013` est revenu `cancelled`, `test-render` annulé et non vert.
+La cause n'était pas le code : `ci.yml` règle `concurrency: cancel-in-progress: true` sur `master`, et
+le run planifié du fuzzing, parti entre-temps sur le même ref, a annulé le run en cours. Une poussée
+rapprochée fait de même.
+
+**Cause.** Un run annulé a été lu comme un run du commit, alors qu'il n'a rien jugé.
+
+**Règle.** Un run `cancelled` ne vaut ni vert ni rouge. Vérifier le run du dernier commit qui porte le
+code — il couvre les précédents — ou relancer les jobs annulés (`gh run rerun <id> --failed`). Ne
+jamais annoncer une CI verte sur un run dont un job est annulé.
