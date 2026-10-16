@@ -2729,8 +2729,8 @@ amortissement dans l'eau, `/axion remove`).
       - [ ] **ADR-133 accepté le 2026-10-13 (option A pour D1, D2, D3).** D3 fait (1ebdb8a) : textures
             comptées dans `budgets.gpu_mem_bytes`, éviction LRU des assets entiers par `MeshCache`, pour
             les deux backends. D1 fait (430bf64) : `JavaMetrics` fusionné à l'export, budgets du rendu et
-            `idle_hook_ns` alimentés ; reste la commande cliente d'un client relié à un serveur distant
-            (à vérifier en jeu). D2 fait, sous effort maximal : allocateur compteur global (794b1c9),
+            `idle_hook_ns` alimentés ; commande cliente d'un client relié à un serveur distant faite le
+            2026-10-16 (10fb013, `/axion metrics export client`, ADR-144 §2) — reste sa vérification en jeu. D2 fait, sous effort maximal : allocateur compteur global (794b1c9),
             deux comportements indéfinis trouvés par Miri et corrigés (8296228, 38e63ff : Miri vert),
             arrêt du pool de jobs qui attend ses workers (2bb21a3 : le bilan exact ne dépend plus de
             l'ordonnanceur). B-08 joué (38e63ff, poste de développement : chiffres non publiés,
@@ -2748,7 +2748,12 @@ amortissement dans l'eau, `/axion remove`).
       cibles reprises, `validateJar` vert, artefact de 16,9 Mo. Dette relevée au passage : la
       bibliothèque Linux pèse 43 Mo contre 4 Mo ailleurs, sans doute ses informations de débogage
       embarquées ; à vérifier, puis à séparer du binaire publié.
-- [ ] **E3 — décisions de Killian** : attribution par ADR de T-390..T-392, T-827, T-475..T-485 et T-870 ;
+- [ ] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
+      variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
+      de D1 (§2, acceptée, faite) ; attribution affinée des tests hors liste (§3), métriques des étapes en
+      M3 et budgets par étape avec C-77 (§4), R-1495 avec le fournisseur d'`AxionApi` (§5) : **proposés, à
+      ratifier**. Restent ensuite : registre des groupes de collision tiers (ADR-132), protocole de R-501
+      (B-08). Avant ADR-144, la liste : attribution par ADR de T-390..T-392, T-827, T-475..T-485 et T-870 ;
       benchmarks du périmètre en M12 (décidé le 2026-10-12, ADR-131) ; ADR-133 (D1 à D3) ; format
       du registre des groupes de collision tiers (ADR-132) ; niveaux Q-0..Q-4 en M3 ou plus tard ; jalon des variantes
       PARALLAX et suivantes ; R-1495 ; budget par étape (R-661).
