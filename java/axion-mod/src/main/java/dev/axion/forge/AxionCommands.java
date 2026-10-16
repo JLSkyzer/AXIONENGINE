@@ -7,6 +7,7 @@ import dev.axion.diag.AssetsReport;
 import dev.axion.diag.BenchRunner;
 import dev.axion.diag.BuildInfo;
 import dev.axion.diag.EntityMetrics;
+import dev.axion.diag.MetricsExport;
 import dev.axion.diag.MetricsReport;
 import dev.axion.diag.SchemaTwoWriter;
 import dev.axion.diag.StatusReport;
@@ -352,13 +353,8 @@ final class AxionCommands {
     }
 
     /**
-     * Écrit l'export complet dans un fichier et en donne le chemin (R-502).
-     *
-     * <p>Le document part dans un fichier plutôt que dans le chat : il compte
-     * plusieurs dizaines de lignes, et R-442 le destine aussi au dump de
-     * diagnostic. Le nom porte l'horodatage, si bien que deux exports
-     * successifs ne s'écrasent pas — comparer deux instants est précisément ce
-     * qu'on veut faire de métriques.
+     * Écrit l'export complet dans un fichier et en donne le chemin (R-502), par
+     * {@link MetricsExport}, le chemin que partage l'export du client.
      */
     private static int export(CommandSourceStack source, AxionRuntime runtime) {
         String json = runtime.metricsJson();
@@ -374,11 +370,10 @@ final class AxionCommands {
             return 0;
         }
 
-        String stamp = LocalDateTime.now().format(FILE_STAMP);
-        Path target = gameDir.resolve("axion").resolve("metrics-" + stamp + ".json");
+        Path target;
         try {
-            Files.createDirectories(target.getParent());
-            Files.writeString(target, json, StandardCharsets.UTF_8);
+            target = MetricsExport.write(
+                    json, gameDir, MetricsExport.SERVER_PREFIX, LocalDateTime.now());
         } catch (IOException failure) {
             // Un export qui n'aboutit pas se dit : le taire laisserait croire
             // qu'un fichier existe quelque part.

@@ -67,6 +67,29 @@ class AxionClientCommandsTest {
     }
 
     @Test
+    @DisplayName("ADR-144 : /axion metrics export client est une commande complète du client")
+    void exportDuClient() {
+        ParseResults<CommandSourceStack> parse = arbre().parse("axion metrics export client", null);
+        assertTrue(parse.getExceptions().isEmpty());
+        assertFalse(parse.getReader().canRead());
+        assertNotNull(parse.getContext().getCommand());
+    }
+
+    @Test
+    @DisplayName("ADR-144 : /axion metrics et /axion metrics export restent incomplets côté client, donc partent au serveur")
+    void exportDuServeurTransmis() {
+        CommandDispatcher<CommandSourceStack> dispatcher = arbre();
+        for (String commande : new String[] {"axion metrics", "axion metrics export"}) {
+            CommandSyntaxException echec = assertThrows(
+                    CommandSyntaxException.class, () -> dispatcher.execute(commande, null), commande);
+            assertEquals(
+                    CommandSyntaxException.BUILT_IN_EXCEPTIONS.dispatcherUnknownCommand(),
+                    echec.getType(),
+                    commande);
+        }
+    }
+
+    @Test
     @DisplayName("ADR-121 : une autre racine que axion reste inconnue du client")
     void autreRacine() {
         CommandDispatcher<CommandSourceStack> dispatcher = arbre();
