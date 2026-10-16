@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.platform.TextureUtil;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.renderer.texture.AbstractTexture;
+import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.server.packs.resources.ResourceManager;
 
 /**
@@ -19,6 +20,13 @@ import net.minecraft.server.packs.resources.ResourceManager;
  */
 final class AxionTexture extends AbstractTexture {
 
+    /**
+     * Textures téléversées et pas encore fermées : les objets de texture GL qu'AXION tient (T-481).
+     * Une bascule de backend qui en laisserait derrière elle le ferait croître d'un passage à
+     * l'autre.
+     */
+    private static final AtomicInteger LIVE = new AtomicInteger();
+
     private final boolean smooth;
     private final boolean clamp;
 
@@ -27,6 +35,9 @@ final class AxionTexture extends AbstractTexture {
 
     /** Octets de tous les niveaux, en RGBA8 : ce que la texture occupe sur le GPU (R-750). */
     private final long gpuBytes;
+
+    /** Vrai entre le téléversement et la fermeture : la texture compte dans {@link #LIVE}. */
+    private boolean uploaded;
 
     /**
      * Crée une texture prête à téléverser.
@@ -51,6 +62,11 @@ final class AxionTexture extends AbstractTexture {
         return gpuBytes;
     }
 
+    /** {@return les textures d'AXION téléversées et pas encore fermées (T-481)} */
+    static int live() {
+        return LIVE.get();
+    }
+
     @Override
     public void load(ResourceManager manager) {
         // Rien : la texture se téléverse par upload, depuis les octets qu'AXION a préparés.
@@ -67,6 +83,10 @@ final class AxionTexture extends AbstractTexture {
         int next = 0;
         try {
             TextureUtil.prepareImage(getId(), maxLevel, images[0].getWidth(), images[0].getHeight());
+            if (!uploaded) {
+                uploaded = true;
+                LIVE.incrementAndGet();
+            }
             for (; next <= maxLevel; next++) {
                 NativeImage image = images[next];
                 // Fermée par le téléversement lui-même (dernier argument).
@@ -92,6 +112,10 @@ final class AxionTexture extends AbstractTexture {
 
     @Override
     public void close() {
+        if (uploaded) {
+            uploaded = false;
+            LIVE.decrementAndGet();
+        }
         discard();
         super.close();
     }

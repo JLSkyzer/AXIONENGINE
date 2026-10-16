@@ -473,6 +473,14 @@ public final class AxionRenderPass {
         }
     }
 
+    /**
+     * {@return les textures d'AXION vivantes sur le GPU : téléversées, pas encore fermées} Le banc
+     * de rendu les compte à chaque bascule de backend (T-481).
+     */
+    public static int liveTextures() {
+        return AxionTexture.live();
+    }
+
     /** {@return ce que la tenue du budget GPU a fait à la dernière frame} */
     public static MeshCache.Residency lastResidency() {
         return lastResidency;

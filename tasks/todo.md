@@ -2752,8 +2752,13 @@ amortissement dans l'eau, `/axion remove`).
       cibles reprises, `validateJar` vert, artefact de 16,9 Mo. Dette relevée au passage : la
       bibliothèque Linux pèse 43 Mo contre 4 Mo ailleurs, sans doute ses informations de débogage
       embarquées ; à vérifier, puis à séparer du binaire publié.
-- [ ] **Reste de M3 selon ADR-144** (2026-10-16) : T-476 (banc, deux panneaux translucides), T-481
-      (octets de texture dans T-492), T-483 (vrai changement de pack).
+- [ ] **Reste de M3 selon ADR-144** (2026-10-16) : T-476 (banc, deux panneaux translucides), T-483
+      (vrai changement de pack).
+      - [x] **T-481 fait le 2026-10-16** : `AxionTexture` compte ses textures vivantes (téléversées, pas
+            encore fermées) ; le banc les relève à chaque bascule et juge qu'un même backend en tient
+            le même nombre à chaque passage, non nul (`jugerT481`, à côté de T-492). Banc natif vert :
+            [9, 9] sur le natif, [9, 9] sur vanilla, tous les autres verdicts verts. Mutation à jouer
+            avec T-476 (une seule passe du banc).
       - [x] **T-484 fait le 2026-10-16** (premier palier de R-750) : `GpuDegradation`
             (`dev.axion.render`) tient les paliers NOMINAL → UNLOADING (déchargement des assets non
             visibles) → UNRESOLVED (tous visibles, leviers suivants avec C-64 et la M6) ; descente

@@ -202,7 +202,7 @@ public final class BancDeRendu {
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
             ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
-                    "T-491c", "T-905", "T-904", "T-492", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
+                    "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
@@ -280,6 +280,9 @@ public final class BancDeRendu {
     /** Objets GL du natif à chaque retour sur lui, puis à chaque passage en vanilla. */
     private static final List<Integer> objetsNatif = new ArrayList<>();
     private static final List<Integer> objetsVanilla = new ArrayList<>();
+    /** Textures d'AXION vivantes, relevées à chaque passage sur le natif puis sur vanilla (T-481). */
+    private static final List<Integer> texturesNatif = new ArrayList<>();
+    private static final List<Integer> texturesVanilla = new ArrayList<>();
     private static CapturesDuBanc.Capture silhouetteNatif;
     private static CapturesDuBanc.Capture silhouetteVanilla;
     private static AxionRenderPass.FrameStats passesNatif;
@@ -603,6 +606,7 @@ public final class BancDeRendu {
             basculerSurVanilla("seconde bascule sur vanilla");
             revenirAuNatif("second retour au natif");
             une("juger T-492", mc -> jugerT492());
+            une("juger T-481", mc -> jugerT481());
 
             // R-761 : une variante refusée à la demande, sur un natif qui avait démarré, fait aussi
             // basculer sur vanilla — jusqu'au rechargement suivant.
@@ -1000,6 +1004,25 @@ public final class BancDeRendu {
         RAPPORT.noter("T-492", natifConstant && vanillaVide, String.format(Locale.ROOT,
                 "objets GL du natif à chaque passage sur lui %s, en vanilla %s ; %d fermeture(s) du natif",
                 objetsNatif, objetsVanilla, AxionRenderPass.nativeCloses() - fermetures));
+    }
+
+    /**
+     * T-481 : une bascule de backend à chaud ne laisse rien sur le GPU. T-492 compte les objets GL
+     * du natif ; T-481 y ajoute les textures d'AXION, que les deux backends tiennent : à chaque
+     * passage sur un même backend, une même scène en tient le même nombre, non nul — une fuite le
+     * ferait croître d'un aller-retour à l'autre. Le natif en tient plus que vanilla : ses cartes
+     * de normales et ORM (ADR-127 §5).
+     */
+    private static void jugerT481() {
+        boolean natifConstant = texturesNatif.size() >= 2 && texturesNatif.get(0) > 0
+                && texturesNatif.stream().allMatch(n -> n.equals(texturesNatif.get(0)));
+        boolean vanillaConstant = texturesVanilla.size() >= 2 && texturesVanilla.get(0) > 0
+                && texturesVanilla.stream().allMatch(n -> n.equals(texturesVanilla.get(0)));
+        RAPPORT.noter("T-481", natifConstant && vanillaConstant && objetsVanilla.stream().allMatch(n -> n == 0),
+                String.format(Locale.ROOT,
+                        "textures d'AXION vivantes à chaque passage sur le natif %s, sur vanilla %s ;"
+                                + " objets GL du natif en vanilla %s",
+                        texturesNatif, texturesVanilla, objetsVanilla));
     }
 
     /** {@return {@code render.backend_silhouette_tolerance}, telle que le client la lit (§19.2bis)} */
@@ -1529,6 +1552,7 @@ public final class BancDeRendu {
             journal.attendre(null);
             AxionRenderPass.forceShaderFailure(false);
             objetsVanilla.add(AxionRenderPass.nativeGlObjects());
+            texturesVanilla.add(AxionRenderPass.liveTextures());
         });
     }
 
@@ -1536,7 +1560,10 @@ public final class BancDeRendu {
     private static void revenirAuNatif(String quoi) {
         recharger(quoi);
         jusqua("la scène redessinée en natif — " + quoi, 120, mc -> redessinee(BackendSelection.Kind.NATIVE));
-        une("relever le natif — " + quoi, mc -> objetsNatif.add(AxionRenderPass.nativeGlObjects()));
+        une("relever le natif — " + quoi, mc -> {
+            objetsNatif.add(AxionRenderPass.nativeGlObjects());
+            texturesNatif.add(AxionRenderPass.liveTextures());
+        });
     }
 
     /** {@return vrai quand un backend neuf, du type attendu, a redessiné toute la scène, assets compris} */
