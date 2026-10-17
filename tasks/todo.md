@@ -2919,6 +2919,10 @@ amortissement dans l'eau, `/axion remove`).
                   l'autre comptés (`axion.sim.events_aggregated`, `axion.sim.events_dropped`) ; mise
                   en œuvre dans ADR-113 ; 14 mutations rouges ; effort « extra », au choix de
                   Killian ;
+            - [x] [ADR-148](../docs/decisions/ADR-148.md) accepté le 2026-10-17 : l'amendement A1
+                  d'ADR-137 passe par une fonction ajoutée à IF-06 (`axion_asset_diagnostics`, ABI 4),
+                  un journal Java vidé à chaque tick (refus d'un rechargement compris) et le message
+                  d'un échec par le même chemin ; Killian retient les trois points ;
             - [ ] en effort maximal : second temps de DM-07, amendement A1 d'ADR-137.
 - [x] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
       variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
