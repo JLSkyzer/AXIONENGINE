@@ -10,7 +10,7 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
-- M3 (en cours, Definition of Done non prononcee) — physique et premier rendu :
+- M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),
     sommeil, rayon de simulation et plafond de corps actifs, CCD declaree ou

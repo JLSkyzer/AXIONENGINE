@@ -17,7 +17,10 @@ Leçons apprises : [tasks/lessons.md](lessons.md) — à relire à chaque sessio
 **Jalon M2 : terminé, Definition of Done prononcée par Killian le 2026-10-16** (ADR-137) —
 voir « Clôture de M2 », avant la section M3. Ce qui en part est nommé, avec son jalon, dans la
 colonne 3 d'ADR-137 et son amendement A1.
-**Jalon en cours : M3 — physique et premier rendu**, dégelé le 2026-10-16.
+**Jalon M3 : terminé, Definition of Done prononcée par Killian le 2026-10-17** (ADR-146) —
+voir la section M3. Ce qui en part est nommé, avec son jalon, dans la colonne 3 d'ADR-146 et ses
+§1 à §7 ; ce qui nomme M4 est repris dans la section M4.
+**Jalon en cours : M4 — réseau, animation, culling/LOD, joints, persistance**, ouvert le 2026-10-17.
 
 **CI disponible de nouveau depuis le 2026-10-03** : le dépôt est public, les jobs GitHub
 Actions sont gratuits sur les quatre plateformes de la matrice (run 37147205392, vert). En
@@ -1531,7 +1534,7 @@ est tenue par ce qui existe.
 
 ---
 
-## M3 — Physique et premier rendu (en cours)
+## M3 — Physique et premier rendu (terminé, Definition of Done prononcée le 2026-10-17)
 
 **Gelé du 2026-10-15 au 2026-10-16**, jusqu'à la Definition of Done de M2, prononcée le 2026-10-16. M3
 avait été ouvert le 2026-09-19 sur une recommandation de Claude qui taisait que M1 et M2 n'étaient pas
@@ -2690,7 +2693,7 @@ substituable sans changer rapier »).
               externes en jeu (C-20/C-21), décalques (C-69), `TINTABLE`, usure (C-47),
               `max_texture_size`, `uv1`.
 
-### Definition of Done de M3 — vérification du 2026-10-12 (non prononcée)
+### Definition of Done de M3 — vérification du 2026-10-12, prononcée par Killian le 2026-10-17
 
 Grille du CDC §37.3 (`sed -n '7318,7364p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`), vérifiée sur le
 commit c6e1369 (CI verte). Deux audits des composants, physique et rendu, en lecture seule ; leurs
@@ -2899,8 +2902,9 @@ amortissement dans l'eau, `/axion remove`).
             requêtes et moitié Java de R-651 avec les roues de C-33 (M5) ; `CompiledDefinition` avec
             C-51 (M4) ; surcharge des budgets de frame avec C-77 (M5), R-300 avec IF-05 (M4) ; étape 14
             avec C-37 (M4). Cases périmées mises à jour le même jour.
-      - [x] **Reste avant de prononcer M3** (colonne 4 d'ADR-146) — **vide le 2026-10-17** : M3 attend le
-            prononcé de Killian (`COMPLETED_MILESTONES`, `MilestoneTestsCoveredTest` étendu à M3) :
+      - [x] **Reste avant de prononcer M3** (colonne 4 d'ADR-146) — **vide le 2026-10-17** ; M3
+            **prononcé par Killian le 2026-10-17** (`COMPLETED_MILESTONES`, `MilestoneTestsCoveredTest`
+            étendu à M3, trouvé vert par un essai à blanc avant le prononcé) :
             - [x] overlays `aabb`, `bodies`, `contacts`, `normals`, `world_tiles`, `center_of_mass`
                   (§1), faits le 2026-10-17 — amendement A1 d'ADR-121 : `DEBUG` au schéma 2, plages
                   par overlay et repère (corps, ou monde relatif à la caméra de l'appel). Tranche
@@ -2952,14 +2956,50 @@ amortissement dans l'eau, `/axion remove`).
 
 ---
 
+## M4 — Réseau, animation, culling/LOD, joints, persistance (ouvert le 2026-10-17)
+
+Ouvert le 2026-10-17, au prononcé de M3. Fiche du jalon (PARTIE 37.2) :
+`grep -n '^### M4 ' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md` — C-34, C-37, C-51, C-52, C-64, C-65,
+C-66. Livrable : multijoueur fonctionnel, objets animés, LODés, persistés. Acceptance : bande passante
+sous plafond ; interpolation fluide à 200 ms et 20 % de perte ; joints conformes ; animation conforme
+glTF ; sauvegarde exacte. Tests : T-330..T-334, T-360..T-368, T-410..T-425, T-430..T-437,
+T-520..T-524, T-530..T-533, T-540..T-542.
+
+- [ ] **Séquencement de M4**, avant tout code : lire les sept fiches de la PARTIE 5 (C-34 5.26, C-37
+      5.29, C-51 5.42, C-52 5.43, C-64 5.51, C-65 5.52, C-66 5.53), puis proposer à Killian l'ordre des
+      composants et les décisions qui ne reviennent pas à l'agent (contrats IF, DM, ABI, INV).
+
+**Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
+à §7 d'ADR-146) :
+
+- [ ] C-31 avec C-34 : joints, événements `JOINT_BROKEN` et `JAMMED` (tranche 3c-ii) — ADR-146.
+- [ ] C-27, étapes 4 et 5 avec C-51 : `CompiledDefinition`, noms de nodes, de sockets et de parts
+      résolus côté natif, synchronisation serveur → client — ADR-137, ADR-146 §5.
+- [ ] C-30 avec C-37 : le graphe de scène vivant au runtime, étape 14 du pas et
+      `axion.scene.propagate_ns` — ADR-137, ADR-146 §7.
+- [ ] C-40 : T-392 — ADR-144 §3, ADR-146.
+- [ ] C-60 avec IF-05 : R-300, résultat partiel `AXION_RENDER_DEGRADED` (ADR-127) — ADR-146.
+- [ ] C-61 avec C-66 : R-742, skinning CPU — ADR-146.
+- [ ] C-62 avec C-64 : paliers suivants de R-750 — ADR-144 §3, ADR-146.
+- [ ] C-67, overlays dont M4 produit les données : `joints`, `limits` (C-34) ; `bones`, `nodes`,
+      `pivots` (C-37) ; `lod`, `culling`, `occluders` (C-64) ; `network` (C-51) — ADR-146 §1.
+- [ ] C-50 avec C-52 : `persistence.max_load_ns_per_tick` (R-1730) ; R-1710 et ses tests T-433 et
+      T-434 — fixer ce que migre T-434, aucune v1 n'ayant existé (`NBT_SCHEMA` vaut 2) — ADR-137.
+- [ ] C-70 : l'accesseur `animation` d'`Assembly` devient réel avec C-37 ; le fournisseur d'`AxionApi`
+      attend que tous ses accesseurs le soient (M9) — ADR-137.
+- [ ] Handshake de la PARTIE 21.3 : `RECONSTRUCT` entre deux plateformes d'empreintes distinctes,
+      à trancher (« Dette et points ouverts », `det_profile`).
+
+---
+
 ## Jalons suivants
 
 Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 - [x] **M1** Assets, noyau déterministe, jobs — C-12, C-15, C-16, C-20, C-21, C-22, C-24, C-71
       · les huit composants sont faits ; l'acceptance attend le fuzzing et la CI
-- [ ] **M2** Scene graph, cache, optimizer, entité, API — C-23, C-25, C-27, C-30, C-50, C-70, C-72, C-74
-- [ ] **M3** Physique et premier rendu — C-31, C-32, C-38, C-39, C-40, C-60..C-63, C-67, C-26
+- [x] **M2** Scene graph, cache, optimizer, entité, API — C-23, C-25, C-27, C-30, C-50, C-70, C-72, C-74
+- [x] **M3** Physique et premier rendu — C-31, C-32, C-38, C-39, C-40, C-60..C-63, C-67, C-26
 - [ ] **M4** Réseau, animation, culling/LOD, joints, persistance — C-34, C-37, C-51, C-52, C-64, C-65, C-66
 - [ ] **M5** Véhicules, sièges, attaches, gouverneur, overlay — C-33, C-48, C-53, C-73, C-77
 - [ ] **M6** Impacts et déformation continue *(jalon central)* — C-28, C-41, C-42, C-45, C-68
