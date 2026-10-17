@@ -32,6 +32,8 @@ ax-asset.workspace = true
 ax-physics.workspace = true
 ax-math.workspace = true
 ax-mem.workspace = true
+# ADR-146 §4 : bench-decomp appelle la décomposition (VHACD) comme ax-asset, au même parry3d.
+parry3d.workspace = true
 
 [dev-dependencies]
 # R-2240 : criterion pour les micro-benchmarks Rust. `default-features = false`
@@ -65,6 +67,13 @@ path = "src/bin/bench_alloc_counted.rs"
 [[bin]]
 name = "bench-r501"
 path = "src/bin/bench_r501.rs"
+
+# ADR-146 §4 : la decomposition convexe par resolution (memoire, duree, enveloppes), pour
+# fixer la plage et le defaut de collision.resolution (ADR-108). Poste de developpement :
+# chiffres non publies (R-2252).
+[[bin]]
+name = "bench-decomp"
+path = "src/bin/bench_decomp.rs"
 
 # B-02 : propagation du graphe de scene vs nombre de nodes (PARTIE 30.2).
 [[bench]]

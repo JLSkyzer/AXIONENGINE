@@ -1,8 +1,0 @@
-# R-562 : empreintes de la sortie du compilateur d'assets, COMPILER_VERSION 13, plateforme windows-x86_64.
-# Une ligne par source du corpus de `compiler_fingerprints.rs` : nom, octets, FNV-1a 64 du conteneur A3D.
-grille.obj 11296 d5cd90367dfa97de
-grille.stl 9456 5f2426b4fa46fc4f
-grille.gltf 11312 7f7818ba7ecf5bd9
-grille-x2.gltf 11264 7b5b9fb690202c5a
-grille.glb 11312 7894791a2fdbd0c6
-coque.gltf 704 2cefa6830b32aca2

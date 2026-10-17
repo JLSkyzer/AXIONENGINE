@@ -244,6 +244,64 @@ fn base64(bytes: &[u8]) -> String {
     out
 }
 
+/// Un prisme fermé à encoche en V, que l'asset entier décompose (`auto_convex`) : son profil
+/// (0,0) (4,0) (4,3) (2,1) (0,3), creusé en (2,1), extrudé de z = 0 à z = 2, en entiers exacts.
+/// Ses pans inclinés se voxelisent selon la résolution, si bien que ses enveloppes en
+/// dépendent — une surface ouverte, comme la grille, se replie sur l'enveloppe globale, qui
+/// n'en dépend pas.
+fn encoche() -> Vec<u8> {
+    const PROFIL: [[f32; 2]; 5] = [[0.0, 0.0], [4.0, 0.0], [4.0, 3.0], [2.0, 1.0], [0.0, 3.0]];
+    let mut bytes = Vec::new();
+    for z in [0.0f32, 2.0] {
+        for [x, y] in PROFIL {
+            for value in [x, y, z] {
+                bytes.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+    }
+    let positions = bytes.len();
+    // Faces z = 2 (sommets 5 à 9) et z = 0 (0 à 4) en éventail depuis le creux, puis les pans,
+    // toutes tournées vers l'extérieur.
+    let mut triangles: Vec<[u16; 3]> = vec![
+        [8, 9, 5],
+        [8, 5, 6],
+        [8, 6, 7],
+        [3, 0, 4],
+        [3, 1, 0],
+        [3, 2, 1],
+    ];
+    for i in 0..5u16 {
+        let j = (i + 1) % 5;
+        triangles.extend([[i, j, j + 5], [i, j + 5, i + 5]]);
+    }
+    for t in &triangles {
+        for index in t {
+            bytes.extend_from_slice(&index.to_le_bytes());
+        }
+    }
+    let indices = bytes.len() - positions;
+    format!(
+        concat!(
+            r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],"#,
+            r#""nodes":[{{"name":"encoche","mesh":0}}],"#,
+            r#""meshes":[{{"primitives":[{{"attributes":{{"POSITION":0}},"indices":1}}]}}],"#,
+            r#""accessors":[{{"bufferView":0,"componentType":5126,"count":10,"type":"VEC3","#,
+            r#""min":[0.0,0.0,0.0],"max":[4.0,3.0,2.0]}},"#,
+            r#"{{"bufferView":1,"componentType":5123,"count":{index_count},"type":"SCALAR"}}],"#,
+            r#""bufferViews":[{{"buffer":0,"byteOffset":0,"byteLength":{positions}}},"#,
+            r#"{{"buffer":0,"byteOffset":{positions},"byteLength":{indices}}}],"#,
+            r#""buffers":[{{"byteLength":{length},"uri":"data:application/octet-stream;base64,{data}"}}],"#,
+            r#""extras":{{"axion":{{"schema":1,"collision":{{"mode":"auto_convex"}}}}}}}}"#,
+        ),
+        index_count = triangles.len() * 3,
+        positions = positions,
+        indices = indices,
+        length = bytes.len(),
+        data = base64(&bytes),
+    )
+    .into_bytes()
+}
+
 /// Le corpus : nom, format, octets de la source.
 fn corpus() -> Vec<(&'static str, SourceFormat, Vec<u8>)> {
     vec![
@@ -256,6 +314,9 @@ fn corpus() -> Vec<(&'static str, SourceFormat, Vec<u8>)> {
             gltf(r#"{"axion":{"schema":1,"scale":2}}"#),
         ),
         ("grille.glb", SourceFormat::Glb, glb()),
+        // Un solide décomposé en enveloppes (C-32, ADR-108, ADR-147). Sans lui, une décomposition
+        // changée ne changeait aucune empreinte.
+        ("encoche.gltf", SourceFormat::Gltf, encoche()),
         (
             "coque.gltf",
             SourceFormat::Gltf,

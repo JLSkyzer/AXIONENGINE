@@ -15,8 +15,7 @@
 //! Toute option a un défaut (R-870) : sans fichier, la compilation est celle
 //! d'aujourd'hui, au bit près. `collision.mode` vaut `none` par défaut (ADR-135
 //! point 4). Les options des systèmes à venir — `deformation` (C-28), `structure`
-//! (C-43), `collision.resolution` (ADR-108) — sont validées, et signalées sans
-//! effet.
+//! (C-43) — sont validées, et signalées sans effet.
 
 use crate::collider::ColliderMode;
 use crate::optimize::{LodOptions, MAX_LOD_LEVELS};
@@ -34,6 +33,18 @@ pub const E_UNKNOWN_SCHEMA: i32 = -7003;
 
 /// Plus grand nombre d'enveloppes d'une décomposition convexe (R-551).
 pub const MAX_HULLS: u32 = crate::collider::DECOMP_MAX_HULLS;
+
+/// Plus petite `collision.resolution`, en voxels de la grille de la décomposition
+/// (ADR-147) : le minimum de V-HACD.
+pub const MIN_RESOLUTION: u32 = 10_000;
+
+/// Plus grande `collision.resolution`, en voxels (ADR-147) : au-delà, la mémoire et la
+/// durée de la décomposition croissent sans gain de fidélité qui le justifie.
+pub const MAX_RESOLUTION: u32 = 1_000_000;
+
+/// `collision.resolution` par défaut, en voxels (ADR-147) : celle de V-HACD et de
+/// l'exemple du cahier des charges.
+pub const DEFAULT_RESOLUTION: u32 = 100_000;
 
 /// Plus grande taille de texture admise (R-570).
 pub const MAX_TEXTURE_SIZE: u32 = 4096;
@@ -66,9 +77,9 @@ pub struct CollisionOptions {
     pub mode: ColliderMode,
     /// Enveloppes au plus d'une décomposition convexe (R-551).
     pub max_hulls: u32,
-    /// Résolution de la décomposition, si l'auteur l'a donnée. Sans effet tant
-    /// qu'ADR-108 ne l'a pas mesurée.
-    pub resolution: Option<u32>,
+    /// Voxels de la grille d'une décomposition convexe, de [`MIN_RESOLUTION`] à
+    /// [`MAX_RESOLUTION`] (ADR-147).
+    pub resolution: u32,
 }
 
 impl CollisionOptions {
@@ -78,7 +89,7 @@ impl CollisionOptions {
         Self {
             mode,
             max_hulls: MAX_HULLS,
-            resolution: None,
+            resolution: DEFAULT_RESOLUTION,
         }
     }
 }
@@ -787,13 +798,10 @@ impl Reader {
                     }
                 }
                 "resolution" => {
-                    if let Some(resolution) = self.integer(value, &path, 1, u32::MAX) {
-                        collision.resolution = Some(resolution);
-                        self.warnings.push(
-                            "option « collision.resolution » validée, sans effet tant que la \
-                             résolution de la décomposition reste à mesurer (ADR-108)"
-                                .to_owned(),
-                        );
+                    if let Some(resolution) =
+                        self.integer(value, &path, MIN_RESOLUTION, MAX_RESOLUTION)
+                    {
+                        collision.resolution = resolution;
                     }
                 }
                 _ => self.unknown(&path, &KEYS),
@@ -1017,10 +1025,32 @@ mod tests {
         let lu = parse(EXEMPLE_6_4).expect("l'exemple du cahier des charges est valide");
         assert_eq!(lu.options.collision.mode, ColliderMode::AutoConvex);
         assert_eq!(lu.options.collision.max_hulls, 24);
-        assert_eq!(lu.options.collision.resolution, Some(100_000));
+        assert_eq!(lu.options.collision.resolution, 100_000);
         assert_eq!(lu.options.lod, LodOptions::DEFAULT);
-        // Trois options sans effet aujourd'hui, chacune signalée.
-        assert_eq!(lu.warnings.len(), 3, "{:?}", lu.warnings);
+        // Deux options sans effet aujourd'hui, chacune signalée : déformation et structure.
+        assert_eq!(lu.warnings.len(), 2, "{:?}", lu.warnings);
+    }
+
+    #[test]
+    fn options_la_resolution_se_tient_dans_sa_plage() {
+        // ADR-147 : un nombre de voxels, de 10 000 à 1 000 000 ; hors de la plage, une faute.
+        let lue = |voxels: u64| {
+            parse(&format!(
+                r#"{{ "schema": 1, "collision": {{ "mode": "auto_convex", "resolution": {voxels} }} }}"#
+            ))
+        };
+        for voxels in [MIN_RESOLUTION, DEFAULT_RESOLUTION, MAX_RESOLUTION] {
+            let lu = lue(u64::from(voxels)).expect("dans la plage");
+            assert_eq!(lu.options.collision.resolution, voxels);
+            assert!(lu.warnings.is_empty(), "{:?}", lu.warnings);
+        }
+        for voxels in [u64::from(MIN_RESOLUTION) - 1, u64::from(MAX_RESOLUTION) + 1] {
+            let refus = lue(voxels).expect_err("hors de la plage");
+            assert_eq!(refus.code(), E_INVALID_OPTION);
+            assert_eq!(refus.faults[0].path, "$.collision.resolution", "{refus}");
+        }
+        let defaut = parse(r#"{ "schema": 1, "collision": { "mode": "auto_convex" } }"#).unwrap();
+        assert_eq!(defaut.options.collision.resolution, DEFAULT_RESOLUTION);
     }
 
     #[test]

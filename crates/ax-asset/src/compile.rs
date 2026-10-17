@@ -60,8 +60,10 @@ use core::fmt;
 /// avec C-32 (ADR-137, ADR-108) : une enveloppe de plus de 256 points est réduite au lieu
 /// d'être refusée, une enveloppe de décomposition de plus de 64 sommets réduite au lieu
 /// d'être écartée, et l'asset entier prend `auto_capsule`, `convex` et `auto_convex`
-/// dans son repère.
-pub const COMPILER_VERSION: u32 = 13;
+/// dans son repère ; 14 — `collision.resolution` prend effet (ADR-147) : la grille de
+/// la décomposition compte au plus 100 000 voxels par défaut, au lieu de la résolution
+/// par axe de `parry3d`.
+pub const COMPILER_VERSION: u32 = 14;
 
 /// Empreinte FNV-1a 64 bits d'une source, champ `source_hash` de l'en-tête A3D.
 ///

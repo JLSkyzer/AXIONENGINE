@@ -80,6 +80,7 @@ dependencies = [
  "ax-physics",
  "ax-scene",
  "criterion",
+ "parry3d",
  "serde",
  "serde_json",
 ]

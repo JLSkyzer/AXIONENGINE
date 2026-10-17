@@ -17,6 +17,7 @@ pub mod cases;
 pub mod cli;
 pub mod measure;
 pub mod memory_runner;
+pub mod peak_bytes;
 pub mod r501;
 pub mod regress;
 pub mod result;

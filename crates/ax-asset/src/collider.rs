@@ -527,11 +527,16 @@ fn append_geometry(
 }
 
 /// Un nuage de points et ses triangles, indices dans le nuage.
-type Geometry = (Vec<[f32; 3]>, Vec<[u32; 3]>);
+pub type Geometry = (Vec<[f32; 3]>, Vec<[u32; 3]>);
 
 /// La géométrie de l'asset entier dans son repère : chaque mesh placé par la chaîne
-/// de transformations de son node, comme ses bornes (C-23 étape 7).
-fn model_geometry(
+/// de transformations de son node, comme ses bornes (C-23 étape 7). C'est elle que
+/// décomposent `auto_convex` et `convex` de niveau asset ; le banc de la décomposition
+/// (`bench-decomp`, ADR-146 §4) la mesure telle quelle.
+///
+/// # Errors
+/// Sommets ou indices d'un mesh hors des tampons, ou indice de triangle hors de son mesh.
+pub fn model_geometry(
     nodes: &[NodeDesc],
     meshes: &[MeshDesc],
     vertices: &[Vertex],
@@ -556,6 +561,54 @@ fn model_geometry(
     Ok((cloud, tris))
 }
 
+/// Résolution de `parry3d` — voxels le long de l'axe le plus long — pour une grille d'au
+/// plus `voxels` voxels (ADR-147).
+///
+/// C'est la plus grande `r` telle que `r × ⌈r·b/a⌉ × ⌈r·c/a⌉ ≤ voxels`, où `a ≥ b ≥ c`
+/// sont les côtés de la boîte de la géométrie, chaque facteur valant au moins 1. Le compte
+/// croît avec `r` : une dichotomie sur des entiers la trouve. Seules les opérations de base
+/// de l'IEEE 754 y entrent, sans racine cubique, si bien que la même géométrie donne la même
+/// résolution sur toute plateforme (R-553). Au moins 1, y compris pour une géométrie réduite
+/// à un point.
+fn grid_resolution(cloud: &[[f32; 3]], voxels: u32) -> u32 {
+    let mut min = [f64::INFINITY; 3];
+    let mut max = [f64::NEG_INFINITY; 3];
+    for point in cloud {
+        for axis in 0..3 {
+            min[axis] = min[axis].min(f64::from(point[axis]));
+            max[axis] = max[axis].max(f64::from(point[axis]));
+        }
+    }
+    let mut sides = [0.0f64; 3];
+    for axis in 0..3 {
+        sides[axis] = (max[axis] - min[axis]).max(0.0);
+    }
+    sides.sort_by(|a, b| b.total_cmp(a));
+    let [longest, middle, shortest] = sides;
+    // Ni NaN ni négatif : `f64::max` écarte les NaN, et chaque côté est borné à 0.
+    if longest <= 0.0 {
+        return 1;
+    }
+    let budget = u64::from(voxels.max(1));
+    // Une grille de `r` voxels sur l'axe le plus long : `r` au plus vaut `voxels`, et chaque
+    // facteur au plus `r`, d'où un produit qui tient sur `u64`.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let cells = |r: u32| {
+        let along = |side: f64| ((f64::from(r) * side / longest).ceil() as u64).max(1);
+        u64::from(r) * along(middle) * along(shortest)
+    };
+    let (mut low, mut high) = (1u32, voxels.max(1));
+    while low < high {
+        let mid = low + (high - low).div_ceil(2);
+        if cells(mid) <= budget {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    low
+}
+
 /// Décompose une géométrie en enveloppes convexes (V-HACD, `parry3d`, ADR-108), à la
 /// compilation, dans le repère de cette géométrie. Rend un `Compound` de `ConvexHull`
 /// (plusieurs pièces) ou une `ConvexHull` unique (géométrie déjà quasi convexe).
@@ -565,7 +618,8 @@ fn model_geometry(
 /// si rien n'est exploitable ou qu'il reste trop d'enveloppes, repli sur l'enveloppe
 /// convexe globale, averti. La durée du calcul est **mesurée** : au-delà de
 /// `max_decomp` ([`DECOMP_MAX`]), un avertissement la dit, et le résultat n'en dépend pas — il ne
-/// dépend que de l'entrée (ADR-108 §2, R-553). La résolution est le défaut de `parry3d`.
+/// dépend que de l'entrée (ADR-108 §2, R-553). La grille compte au plus
+/// `collision.resolution` voxels ([`grid_resolution`], ADR-147).
 ///
 /// # Errors
 /// Géométrie trop maigre, ou enveloppe globale de repli elle-même impossible.
@@ -584,10 +638,11 @@ fn decompose(
         .iter()
         .map(|p| Vector::new(p[0], p[1], p[2]))
         .collect();
-    // La résolution reste le défaut de `parry3d` : `collision.resolution` est validée,
-    // sans effet tant qu'ADR-108 ne l'a pas mesurée (sa plage avec elle).
+    // ADR-147 : `collision.resolution` compte les voxels de toute la grille, `parry3d` ceux
+    // de son axe le plus long.
     let params = VHACDParameters {
         max_convex_hulls: collision.max_hulls,
+        resolution: grid_resolution(cloud, collision.resolution),
         ..VHACDParameters::default()
     };
     let start = Instant::now();
@@ -1948,6 +2003,82 @@ mod tests {
             }
         }
         (vertices, indices)
+    }
+
+    #[test]
+    fn t310_la_resolution_se_compte_en_voxels_de_toute_la_grille() {
+        // ADR-147 : la plus grande résolution par axe dont la grille tient dans le compte.
+        let boite = |x: f32, y: f32, z: f32| vec![[0.0; 3], [x, y, z]];
+        // Cube : 46³ = 97 336 ≤ 100 000 < 47³.
+        assert_eq!(grid_resolution(&boite(2.0, 2.0, 2.0), 100_000), 46);
+        // Boîte 4 × 1 × 1 : 116 × 29² = 97 556 ≤ 100 000 < 117 × 30².
+        assert_eq!(grid_resolution(&boite(4.0, 1.0, 1.0), 100_000), 116);
+        // La même, couchée autrement : l'axe le plus long est celui de la géométrie.
+        assert_eq!(grid_resolution(&boite(1.0, 4.0, 1.0), 100_000), 116);
+        // Plaque : un seul voxel d'épaisseur, 316² = 99 856 ≤ 100 000 < 317².
+        assert_eq!(grid_resolution(&boite(1.0, 0.0, 1.0), 100_000), 316);
+        // Un point : au moins 1.
+        assert_eq!(grid_resolution(&[[1.0; 3]], 100_000), 1);
+        // Plus de voxels, jamais une résolution plus basse.
+        let nuage = sphere(12, 12);
+        let mut avant = 0;
+        for voxels in [
+            crate::options::MIN_RESOLUTION,
+            50_000,
+            crate::options::DEFAULT_RESOLUTION,
+            500_000,
+            crate::options::MAX_RESOLUTION,
+        ] {
+            let r = grid_resolution(&nuage, voxels);
+            assert!(
+                r >= avant,
+                "{voxels} voxels : {r}, contre {avant} pour moins"
+            );
+            avant = r;
+        }
+    }
+
+    #[test]
+    fn t310_la_resolution_change_la_decomposition() {
+        // ADR-147 : l'option prend effet — la même sphère, décomposée à deux résolutions de la
+        // plage, ne rend pas les mêmes enveloppes.
+        let (vertices, indices) = sphere_maillee(24, 24);
+        let meshes = vec![MeshDesc {
+            vertex_offset: 0,
+            vertex_count: vertices.len() as u32,
+            index_offset: 0,
+            index_count: indices.len() as u32,
+            ..mesh([-1.0; 3], [1.0; 3])
+        }];
+        let requests = vec![ColliderRequest {
+            node: 0,
+            mode: ColliderMode::AutoConvex,
+            density: None,
+            no_refit: false,
+        }];
+        let decomposee = |voxels: u32| {
+            let mut nodes = vec![node(0, NONE_U16)];
+            let build = build_colliders(
+                &mut nodes,
+                &meshes,
+                &vertices,
+                &indices,
+                &requests,
+                &CollisionOptions {
+                    resolution: voxels,
+                    ..CollisionOptions::with_mode(ColliderMode::None)
+                },
+                None,
+            );
+            format!(
+                "{:?}",
+                (build.colliders, build.compound_children, build.hull_points)
+            )
+        };
+        assert_ne!(
+            decomposee(crate::options::MIN_RESOLUTION),
+            decomposee(crate::options::DEFAULT_RESOLUTION)
+        );
     }
 
     #[test]

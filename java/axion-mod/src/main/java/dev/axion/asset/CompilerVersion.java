@@ -37,7 +37,7 @@ public final class CompilerVersion {
      * <p>La CI ({@code tools/ci/check_compiler_version.py}) refuse tout écart
      * entre cette valeur et celle du crate {@code ax-asset}.
      */
-    public static final int CURRENT = 13;
+    public static final int CURRENT = 14;
 
     private CompilerVersion() {
         throw new AssertionError("classe utilitaire, non instanciable");

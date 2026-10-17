@@ -51,6 +51,9 @@ Definition of Done (PARTIE 37.3).
   - temps GPU des passes opaque et translucide du backend natif, par
     horodatages GPU lus sans attendre le GPU (`axion.render.gpu_opaque_ns`,
     `axion.render.gpu_translucent_ns`, ADR-146 §2) ;
+  - `collision.resolution` prend effet (ADR-147) : le nombre de voxels de la
+    grille de la decomposition convexe, 100 000 par defaut, de 10 000 a
+    1 000 000, choisis sur mesure ; `COMPILER_VERSION` 14 ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
     T-012 (INV-04), T-015 (INV-07), T-019 (INV-12) ;
   - un collider `convex` ne garde que les sommets de son enveloppe : ni

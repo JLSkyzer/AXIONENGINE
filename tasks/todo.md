@@ -1953,8 +1953,8 @@ substituable sans changer rapier »).
                   globale de plus de 256 points réduite au lieu de refusée, par échantillonnage du
                   point le plus éloigné ; `max_decomp_ms` mesuré et averti, sans effet sur le
                   résultat ; l'asset entier prend `auto_capsule`, `convex` et `auto_convex` dans son
-                  repère (`world_transforms` de l'optimizer). `collision.resolution` reste sans
-                  effet : sa plage est à mesurer. Tests : six nouveaux, six mutations rouges, chacune
+                  repère (`world_transforms` de l'optimizer). `collision.resolution` a pris effet
+                  depuis (ADR-147, 2026-10-17). Tests : six nouveaux, six mutations rouges, chacune
                   par un test. `COMPILER_VERSION` 13.
             Produit les colliders (`ColliderDesc`, DM-06) à la compilation et les
             porte jusqu'à l'A3D (section PHYS). DM-06 figé, validation C-22 prête.
@@ -2020,7 +2020,7 @@ substituable sans changer rapier »).
               32/64, repli enveloppe globale) ; + `density`/`no_refit` des extras
               (R-622/R-623). Restent, différés avec leur dépendance : la masse/COM
               **déclarée** (`BodyDesc`/definitions) et `REFITTABLE` par défaut
-              (déformation M6) ; la résolution VHACD à mesurer en M3 (ADR-108).
+              (déformation M6) ; la résolution VHACD, mesurée et fixée le 2026-10-17 (ADR-147).
             - [x] **T-312 — DM-08 sur la frontière et REFITTABLE** (ADR-130, ratifié le 2026-10-12 ;
                   REFITTABLE posé par Java). Étapes, chacune buildée et testée :
                   1. [x] `ax-model` : `BodyDesc` (§3.8, 52 o, `repr(C)`) + 4 o réservés sur la frontière
@@ -2807,8 +2807,8 @@ amortissement dans l'eau, `/axion remove`).
             se publient pas (R-2252). Mesure publiable en M12 (ADR-131).
       - [ ] **Cases C-31, C-32, C-61 : non cochées, à raison** (motifs mis à jour le 2026-10-17, ADR-146).
             C-31 : R-1011 et second temps de DM-07, en effort maximal ; joints (M4) et attaches (M5)
-            renvoyés. C-32 : amendement A1 d'ADR-137, en effort maximal ; `collision.resolution` à
-            mesurer (ADR-146 §4). C-61 : la tranche T4+ suit ses composants — R-742 (M4, M6), R-743
+            renvoyés. C-32 : amendement A1 d'ADR-137, en effort maximal ; `collision.resolution` faite
+            (ADR-147). C-61 : la tranche T4+ suit ses composants — R-742 (M4, M6), R-743
             (C-69, M9), indicateur de capacités (C-73, M5) ; les métriques de rendu sont faites.
 - [x] **E2 — JAR complet en CI** (8300c78) : `buildNatives` reprend les natifs déjà construits
       (`-Paxion.prebuilt`, empreinte vérifiée), `packageNatives` devient un `Sync`, et le job
@@ -2903,7 +2903,12 @@ amortissement dans l'eau, `/axion remove`).
                   lus sans attendre ; jauges `axion.render.gpu_*_ns` ; `GpuPassTimingsTest`, huit
                   mutations rouges ; banc natif vert (temps GPU par passe, T-471, T-492, T-503) ;
             - [x] garde GL et R-741 : R-741 porte sur le dessin du backend ; ADR-126 précisé (§3) ;
-            - [ ] `collision.resolution` : plage et défaut mesurés, puis option effective (§4) ;
+            - [x] `collision.resolution` (§4), fait le 2026-10-17 : [ADR-147](../docs/decisions/ADR-147.md),
+                  un nombre de voxels, 100 000 par défaut, de 10 000 à 1 000 000, choisis sur la
+                  campagne `bench-decomp` ; conversion déterministe en résolution par axe de
+                  `parry3d` ; corpus de R-562 complété d'un solide décomposé (encoche) ;
+                  `COMPILER_VERSION` 14 ; quatre mutations rouges (défaut changé, résolution figée, axe oublié,
+                  arrondi inférieur) ;
             - [ ] en effort maximal : R-1011, second temps de DM-07, amendement A1 d'ADR-137.
 - [x] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
       variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
