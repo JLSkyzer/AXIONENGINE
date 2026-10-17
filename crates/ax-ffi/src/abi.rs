@@ -516,8 +516,9 @@ fn take_u64(rest: &mut &[u8]) -> Option<u64> {
     Some(u64::from_le_bytes(take(rest, 8)?.try_into().ok()?))
 }
 
-/// La liste de `NEEDS_FILES` : `u32` du nombre, puis par nom `u32` de sa longueur et ses octets
-/// UTF-8, petit-boutiste (ADR-139).
+/// Une liste de chaînes : `u32` du nombre, puis par chaîne `u32` de sa longueur et ses octets
+/// UTF-8, petit-boutiste — les noms de `NEEDS_FILES` (ADR-139), les lignes d'une compilation
+/// (ADR-148).
 fn encode_names(names: &[String]) -> Vec<u8> {
     let mut out = Vec::with_capacity(4 + names.iter().map(|name| 4 + name.len()).sum::<usize>());
     out.extend_from_slice(&u32::try_from(names.len()).unwrap_or(u32::MAX).to_le_bytes());
@@ -697,9 +698,11 @@ pub unsafe extern "C" fn axion_asset_compile(
 /// de fichiers voisins y dépose leurs noms (ADR-139) ; sur échec, `out_error`
 /// reçoit le code de l'ANNEXE A.1.
 ///
-/// Un travail dont le résultat a été repris est **oublié** : le redemander rend
+/// Un travail dont le résultat a été repris n'est plus sondable : le redemander rend
 /// `E-2001`, ce qui vaut mieux que de rendre deux fois un asset dont le tampon
-/// a pu changer entre-temps.
+/// a pu changer entre-temps. Compilé ou échoué, il ne garde que ses lignes — ses
+/// avertissements, ou le message de son échec —, que [`axion_asset_diagnostics`]
+/// rend (ADR-148).
 ///
 /// # Safety
 ///
@@ -723,9 +726,12 @@ pub unsafe extern "C" fn axion_asset_poll(
             };
             match job {
                 context::AssetJob::Running(_) => Ok((AXION_ASSET_PENDING, 0u64, AXION_OK)),
-                context::AssetJob::Failed(code) => {
+                // Repris par un sondage précédent : seules ses lignes attendent (ADR-148).
+                context::AssetJob::Diagnostics(_) => Err(AXION_E_INVALID_HANDLE),
+                context::AssetJob::Failed { code, message } => {
                     let code = *code;
-                    session.forget_asset_job(job_id);
+                    let message = message.clone();
+                    session.keep_asset_diagnostics(job_id, vec![message]);
                     Ok((AXION_ASSET_FAILED, 0, code))
                 }
                 context::AssetJob::NeedsFiles(names) => {
@@ -739,13 +745,23 @@ pub unsafe extern "C" fn axion_asset_poll(
                 }
                 context::AssetJob::Done(asset) => {
                     let bytes = asset.bytes.clone();
+                    let warnings = asset.warnings.clone();
                     let written = session
                         .buffers()
                         .write_payload(BufferKind::AssetOut, &bytes);
-                    session.forget_asset_job(job_id);
                     match written {
-                        Some(size) => Ok((AXION_ASSET_COMPILED, size, AXION_OK)),
-                        None => Ok((AXION_ASSET_FAILED, 0, AXION_E_INVALID_BUFFER)),
+                        Some(size) => {
+                            session.keep_asset_diagnostics(job_id, warnings);
+                            Ok((AXION_ASSET_COMPILED, size, AXION_OK))
+                        }
+                        None => {
+                            let message = format!(
+                                "l'asset compilé ({} octets) ne tient pas dans ASSET_OUT",
+                                bytes.len()
+                            );
+                            session.keep_asset_diagnostics(job_id, vec![message]);
+                            Ok((AXION_ASSET_FAILED, 0, AXION_E_INVALID_BUFFER))
+                        }
                     }
                 }
             }
@@ -766,15 +782,64 @@ pub unsafe extern "C" fn axion_asset_poll(
     })
 }
 
+/// Rend les lignes d'une compilation que le sondage a terminée (IF-06, ADR-148) : ses
+/// avertissements si elle a abouti, le message de son échec sinon.
+///
+/// Les lignes sont déposées dans le tampon `ASSET_OUT` au format de la liste
+/// `NEEDS_FILES` (ADR-139) — `u32` du nombre, puis par ligne `u32` de sa longueur et ses
+/// octets UTF-8 (R-263), petit-boutiste —, `out_size` reçoit leur taille, et la session
+/// les oublie. Sans ligne, `out_size` reçoit 0 et `ASSET_OUT` n'est pas touché : il garde
+/// l'asset que le sondage y a déposé.
+///
+/// Rend `E-2001` si `job_id` ne retient pas de lignes — travail jamais sondé, en cours,
+/// déjà lu ou abandonné — et `E-2002` si `ASSET_OUT` ne peut pas les contenir, les lignes
+/// étant alors oubliées. L'appel ne bloque jamais (R-280).
+///
+/// # Safety
+///
+/// `out_size` doit être accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_asset_diagnostics(ctx: u64, job_id: u32, out_size: *mut u64) -> i32 {
+    shielded(Some(ctx), || {
+        if out_size.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+
+        let outcome = context::with(ctx, false, |session| {
+            let Some(lines) = session.take_asset_diagnostics(job_id) else {
+                return Err(AXION_E_INVALID_HANDLE);
+            };
+            if lines.is_empty() {
+                return Ok(0);
+            }
+            session
+                .buffers()
+                .write_payload(BufferKind::AssetOut, &encode_names(&lines))
+                .ok_or(AXION_E_INVALID_BUFFER)
+        });
+
+        match outcome {
+            Ok(Ok(size)) => {
+                // SAFETY: nullité écartée ci-dessus.
+                unsafe { out_size.write(size) };
+                AXION_OK
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
 /// Abandonne une compilation que l'appelant n'attend plus (IF-06, ADR-140).
 ///
 /// Le travail quitte la table de la session, quel que soit son état : en file,
 /// il ne calcule rien ; en cours, il va au bout et son résultat est libéré à la
-/// fin du calcul ; fini, son résultat est libéré tout de suite. L'appel ne
-/// bloque jamais (R-280).
+/// fin du calcul ; fini, son résultat est libéré tout de suite — et, repris par un
+/// sondage, les lignes qu'il garde pour [`axion_asset_diagnostics`] (ADR-148). L'appel
+/// ne bloque jamais (R-280).
 ///
-/// Rend `E-2001` si `job_id` ne désigne aucun travail retenu — jamais émis, déjà
-/// repris par un sondage ou déjà abandonné —, comme [`axion_asset_poll`].
+/// Rend `E-2001` si `job_id` ne désigne aucun travail retenu — jamais émis, repris par
+/// un sondage dont les lignes ont été lues, ou déjà abandonné —, comme
+/// [`axion_asset_poll`].
 ///
 /// # Safety
 /// Aucun pointeur n'est déréférencé ; `unsafe` par symétrie avec le reste de

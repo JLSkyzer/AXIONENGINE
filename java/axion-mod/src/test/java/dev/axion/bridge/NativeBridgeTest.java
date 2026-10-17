@@ -128,6 +128,26 @@ class NativeBridgeTest {
         return json.getBytes(StandardCharsets.UTF_8);
     }
 
+    /** Un triangle glTF qui cite dans {@code extensionsUsed} une extension non prise en charge (R-530). */
+    private static byte[] gltfAvecExtension() {
+        ByteBuffer bin = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN);
+        for (float valeur : new float[] {0, 0, 0, 1, 0, 0, 0, 1, 0}) {
+            bin.putFloat(valeur);
+        }
+        bin.putShort((short) 0).putShort((short) 1).putShort((short) 2).putShort((short) 0);
+        String json = "{\"asset\":{\"version\":\"2.0\"},\"extensionsUsed\":[\"KHR_materials_variants\"],"
+                + "\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0}],"
+                + "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}],"
+                + "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\","
+                + "\"min\":[0,0,0],\"max\":[1,1,0]},"
+                + "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+                + "\"bufferViews\":[{\"buffer\":0,\"byteLength\":36},"
+                + "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}],"
+                + "\"buffers\":[{\"byteLength\":44,\"uri\":\"data:application/octet-stream;base64,"
+                + Base64.getEncoder().encodeToString(bin.array()) + "\"}]}";
+        return json.getBytes(StandardCharsets.UTF_8);
+    }
+
     /** Compile une source par la vraie bibliothèque, attend le résultat et relâche les tampons. */
     private static byte[] compiler(long ctx, long assetId, int format, byte[] source) {
         return compiler(ctx, assetId, format, source, new byte[0]);
@@ -313,6 +333,8 @@ class NativeBridgeTest {
                 etat.state(),
                 () -> "compilation échouée");
         assertTrue(etat.size() > 0, "asset compilé vide");
+        // ADR-148 : un triangle sans rien à redire n'a aucune ligne.
+        assertEquals(java.util.List.of(), etat.lines(), "lignes d'une compilation sans avertissement");
 
         // Le résultat n'est rendu qu'une fois : le redemander vaut mieux qu'une
         // seconde lecture d'un tampon qui a pu changer.
@@ -349,6 +371,23 @@ class NativeBridgeTest {
         dev.axion.asset.AssetCompiler.CompileStatus refusee = attendre(compilateur, jobRefuse);
         assertEquals(dev.axion.asset.AssetState.FAILED, refusee.state(), "option inconnue acceptée");
         assertEquals(-7001, refusee.error(), "E-7001 : option inconnue");
+        // ADR-148 D3 : le refus porte son motif, pas seulement son code.
+        assertEquals(1, refusee.lines().size(), refusee.lines()::toString);
+        assertTrue(refusee.lines().get(0).startsWith("options : "), refusee.lines()::toString);
+
+        // ADR-148 : les avertissements d'une compilation traversent la vraie JNI, après l'A3D.
+        int jobAverti = compilateur.submit(
+                0x4248L,
+                dev.axion.asset.SourceFormats.GLTF,
+                gltfAvecExtension(),
+                new byte[0],
+                dev.axion.asset.SiblingFiles.NONE);
+        assertTrue(jobAverti > 0, () -> "soumission refusée, code " + jobAverti);
+        dev.axion.asset.AssetCompiler.CompileStatus averti = attendre(compilateur, jobAverti);
+        assertEquals(dev.axion.asset.AssetState.COMPILED, averti.state(), "compilation échouée");
+        assertTrue(averti.size() > 0, "l'A3D se lit avant les lignes");
+        assertEquals(
+                java.util.List.of("extension ignorée : KHR_materials_variants"), averti.lines());
 
         // ADR-139, R-830 : un OBJ qui référence son `.mtl`, à travers la vraie JNI. Le premier
         // passage demande le fichier, NativeAssetCompiler le cherche dans les voisins et relance

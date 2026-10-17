@@ -105,6 +105,8 @@ struct SessionMetrics {
 struct AssetMetrics {
     compiled: MetricId,
     failed: MetricId,
+    /// Avertissements des compilations finies (ADR-148).
+    warnings: MetricId,
     vertices: MetricId,
     output_bytes: MetricId,
     import: MetricId,
@@ -207,8 +209,16 @@ pub enum AssetJob {
     Done(CompiledAsset),
     /// Le travail demande des fichiers voisins ; leurs noms attendent d'être lus.
     NeedsFiles(Vec<String>),
-    /// Le travail a échoué ; le code attend d'être lu.
-    Failed(i32),
+    /// Le travail a échoué ; son code et son message attendent d'être lus.
+    Failed {
+        /// Code de l'ANNEXE A.1.
+        code: i32,
+        /// Ce qui a empêché la compilation, en une ligne (ADR-148 D3).
+        message: String,
+    },
+    /// Le sondage a repris le résultat ; les lignes du travail — ses avertissements, ou le
+    /// message de son échec — attendent `axion_asset_diagnostics` (ADR-148).
+    Diagnostics(Vec<String>),
 }
 
 impl Session {
@@ -604,13 +614,21 @@ impl Session {
                     JobOutcome::Done(Ok(CompileOutcome::NeedsFiles(names))) => {
                         AssetJob::NeedsFiles(names)
                     }
-                    JobOutcome::Done(Err(error)) => AssetJob::Failed(error.code()),
+                    JobOutcome::Done(Err(error)) => AssetJob::Failed {
+                        code: error.code(),
+                        message: error.to_string(),
+                    },
                     // Un travail annulé ou paniqué ne rend pas d'asset : il est
                     // rapporté comme un échec, ce qu'il est du point de vue de
                     // l'appelant.
-                    JobOutcome::Cancelled | JobOutcome::Panicked => {
-                        AssetJob::Failed(crate::abi::AXION_E_PANIC)
-                    }
+                    JobOutcome::Cancelled => AssetJob::Failed {
+                        code: crate::abi::AXION_E_PANIC,
+                        message: String::from("compilation annulée avant son terme"),
+                    },
+                    JobOutcome::Panicked => AssetJob::Failed {
+                        code: crate::abi::AXION_E_PANIC,
+                        message: String::from("la compilation a paniqué"),
+                    },
                 };
             }
         }
@@ -620,6 +638,24 @@ impl Session {
     /// Oublie une compilation dont le résultat a été lu.
     pub fn forget_asset_job(&mut self, id: u32) {
         self.asset_jobs.remove(&id);
+    }
+
+    /// Garde les lignes d'une compilation dont le sondage vient de reprendre le résultat,
+    /// jusqu'à leur lecture (ADR-148) : le travail n'est plus sondable, ses lignes attendent.
+    pub fn keep_asset_diagnostics(&mut self, id: u32, lines: Vec<String>) {
+        self.asset_jobs.insert(id, AssetJob::Diagnostics(lines));
+    }
+
+    /// Rend, et oublie, les lignes d'une compilation que le sondage a terminée (ADR-148) ;
+    /// `None` si l'identifiant n'en retient pas — jamais sondé, en cours, déjà lu ou abandonné.
+    pub fn take_asset_diagnostics(&mut self, id: u32) -> Option<Vec<String>> {
+        if !matches!(self.asset_jobs.get(&id), Some(AssetJob::Diagnostics(_))) {
+            return None;
+        }
+        match self.asset_jobs.remove(&id) {
+            Some(AssetJob::Diagnostics(lines)) => Some(lines),
+            _ => None,
+        }
     }
 
     /// Abandonne une compilation que Java n'attend plus (ADR-140) : elle quitte la table,
@@ -934,6 +970,7 @@ fn build_metrics() -> SessionMetrics {
     };
     let compiled = asset_counter("axion.asset.compiled", "count");
     let failed = asset_counter("axion.asset.failed", "count");
+    let warnings = asset_counter("axion.asset.warnings", "count");
     let vertices = asset_counter("axion.asset.vertices", "count");
     let output_bytes = asset_counter("axion.asset.output_bytes", "bytes");
     let mut stage = |name: &str| {
@@ -944,6 +981,7 @@ fn build_metrics() -> SessionMetrics {
     let assets = AssetMetrics {
         compiled,
         failed,
+        warnings,
         vertices,
         output_bytes,
         import: stage("axion.asset.import_ns"),
@@ -995,6 +1033,7 @@ fn record_asset_outcome(
     match outcome {
         JobOutcome::Done(Ok(CompileOutcome::Compiled(asset))) => {
             registry.increment(assets.compiled);
+            registry.add(assets.warnings, asset.warnings.len() as u64);
             registry.add(assets.vertices, asset.vertex_count as u64);
             registry.add(assets.output_bytes, asset.bytes.len() as u64);
             let timings = asset.timings;

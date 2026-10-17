@@ -220,6 +220,9 @@ if (project.hasProperty('axion.shaderMods')
 tasks.matching { it.name == 'runGameTestServer' }.configureEach {
     doFirst {
         delete rootProject.file('run-gametest/world')
+        // Un cache d'assets neuf : chaque passage compile ses sources, et ce qu'une compilation
+        // journalise (ADR-148) s'y constate — un asset repris du cache ne dit rien.
+        delete rootProject.file('run-gametest/axion/cache')
         // Un monde reproductible (R-2190, ADR-124 §5) : plat, de graine fixe, sans structure ni
         // créature. Sans server.properties, le serveur de GameTests générait un monde normal de
         // graine aléatoire : selon la graine, l'eau d'un aquifère gagnait une arène et y emportait

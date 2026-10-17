@@ -37,11 +37,12 @@ use jni::sys::{jdouble, jint, jlong, JNI_ERR, JNI_VERSION_1_6};
 use jni::{JNIEnv, JavaVM, NativeMethod};
 
 use crate::abi::{
-    axion_abi_version, axion_asset_cancel, axion_asset_compile, axion_asset_geometry,
-    axion_asset_load, axion_asset_materials, axion_asset_poll, axion_asset_texture,
-    axion_asset_unload, axion_buffer_acquire, axion_buffer_release, axion_debug_fill, axion_init,
-    axion_last_error, axion_metrics_export, axion_shutdown, axion_sim_cancel, axion_sim_collect,
-    axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_abi_version, axion_asset_cancel, axion_asset_compile, axion_asset_diagnostics,
+    axion_asset_geometry, axion_asset_load, axion_asset_materials, axion_asset_poll,
+    axion_asset_texture, axion_asset_unload, axion_buffer_acquire, axion_buffer_release,
+    axion_debug_fill, axion_init, axion_last_error, axion_metrics_export, axion_shutdown,
+    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
+    AXION_E_INVALID_BUFFER, AXION_OK,
 };
 use ax_model::dm::handle::Handle;
 
@@ -128,6 +129,11 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "assetCancel".into(),
             sig: "(JI)I".into(),
             fn_ptr: jni_asset_cancel as *mut c_void,
+        },
+        NativeMethod {
+            name: "assetDiagnostics".into(),
+            sig: "(JI[J)I".into(),
+            fn_ptr: jni_asset_diagnostics as *mut c_void,
         },
         NativeMethod {
             name: "simSubmit".into(),
@@ -527,6 +533,42 @@ extern "system" fn jni_asset_cancel(
 ) -> jint {
     // SAFETY: aucun pointeur n'est déréférencé.
     unsafe { axion_asset_cancel(ctx as u64, u32::try_from(job_id).unwrap_or(u32::MAX)) }
+}
+
+/// `NativeBridge.assetDiagnostics(long, int, long[])` (IF-06, ADR-148) : la taille des lignes
+/// déposées dans `ASSET_OUT`, dans le premier élément du tableau.
+extern "system" fn jni_asset_diagnostics(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    job_id: jint,
+    out: JLongArray,
+) -> jint {
+    if out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(&out) {
+        Ok(length) if length >= 1 => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+
+    let mut size: u64 = 0;
+    // SAFETY: le pointeur désigne une variable locale.
+    let code = unsafe {
+        axion_asset_diagnostics(
+            ctx as u64,
+            u32::try_from(job_id).unwrap_or(u32::MAX),
+            &raw mut size,
+        )
+    };
+    if code != AXION_OK {
+        return code;
+    }
+
+    match env.set_long_array_region(&out, 0, &[size as jlong]) {
+        Ok(()) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
 }
 
 /// `NativeBridge.simCancel(long)` (IF-03).

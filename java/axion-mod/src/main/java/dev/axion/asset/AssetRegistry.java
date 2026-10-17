@@ -55,6 +55,12 @@ public final class AssetRegistry {
 
     private final Map<String, AssetEntry> entries = new LinkedHashMap<>();
     private final List<String> diagnostics = new ArrayList<>();
+    /**
+     * Diagnostics déjà rendus au journal (ADR-148) : ceux du registre, puis ceux du cache. Les
+     * listes gardent l'historique pour {@code /axion status} ; ces rangs disent où reprendre.
+     */
+    private int journaled;
+    private int journaledCache;
 
     /**
      * Assets utilisables, publiés pour les autres threads (ADR-119 §8).
@@ -330,6 +336,11 @@ public final class AssetRegistry {
             case COMPILED -> {
                 entry.transitionTo(AssetState.COMPILED);
                 entry.setCompiled(status.payload());
+                // ADR-148 : chaque avertissement une fois par compilation — ce sondage n'a lieu
+                // qu'une fois.
+                for (String warning : status.lines()) {
+                    diagnostics.add(entry.path() + " — avertissement : " + warning);
+                }
                 if (cache != null && entry.key() != null) {
                     cache.put(entry.key(), status.payload());
                 }
@@ -337,7 +348,11 @@ public final class AssetRegistry {
                 return true;
             }
             case FAILED -> {
-                fail(entry, status.error(), "compilation échouée");
+                // ADR-148 D3 : le motif de l'échec, pas seulement son code.
+                String reason = status.lines().isEmpty()
+                        ? "compilation échouée"
+                        : "compilation échouée (" + String.join(" ; ", status.lines()) + ")";
+                fail(entry, status.error(), reason);
                 return true;
             }
             default -> {
@@ -409,6 +424,24 @@ public final class AssetRegistry {
             all.addAll(cache.diagnostics());
         }
         return List.copyOf(all);
+    }
+
+    /**
+     * {@return les diagnostics consignés depuis l'appel précédent, puis les tient pour rendus}
+     *
+     * <p>ADR-148 : la couche Forge les journalise à la fin de chaque tick serveur et après la
+     * barrière de démarrage — les refus et avertissements d'un rechargement compris, que la
+     * barrière seule ne voyait pas. {@link #diagnostics()} garde l'historique.
+     */
+    public List<String> drainJournal() {
+        List<String> fresh = new ArrayList<>(diagnostics.subList(journaled, diagnostics.size()));
+        journaled = diagnostics.size();
+        if (cache != null) {
+            List<String> cached = cache.diagnostics();
+            fresh.addAll(cached.subList(journaledCache, cached.size()));
+            journaledCache = cached.size();
+        }
+        return fresh;
     }
 
     /**

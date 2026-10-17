@@ -234,6 +234,7 @@ public final class AxionForgeEntrypoint {
                         + "(E-3001) ; les definitions concernées sont désactivées");
             }
         });
+        logAssetJournal();
     }
 
     /**
@@ -321,6 +322,18 @@ public final class AxionForgeEntrypoint {
         if (event.phase == TickEvent.Phase.END) {
             runtime.onTick();
             logSimulationJournal();
+            logAssetJournal();
+        }
+    }
+
+    /**
+     * Journalise les diagnostics d'assets consignés depuis le dernier passage (ADR-148) : refus
+     * (C-20, étape 5), avertissements de compilation, soucis du cache — chacun une fois, ceux d'un
+     * rechargement compris.
+     */
+    private void logAssetJournal() {
+        for (String line : runtime.drainAssetJournal()) {
+            LOGGER.warn("AXION : {}", line);
         }
     }
 

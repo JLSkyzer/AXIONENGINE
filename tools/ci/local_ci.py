@@ -77,6 +77,8 @@ JOBS: list[tuple[str, list[tuple[str, list[str]]]]] = [
     ]),
     ("test-gametest", [
         ("GameTests (serveur dedie)", [GRADLEW, "runGameTestServer", "--no-daemon", "--stacktrace"]),
+        ("Avertissement de compilation au journal (ADR-148)",
+         [PYTHON, "-B", "tools/ci/gametest_journal.py", "run-gametest/logs/latest.log"]),
     ]),
     ("test-render", [
         ("banc de rendu, backend vanilla (client automatise)",

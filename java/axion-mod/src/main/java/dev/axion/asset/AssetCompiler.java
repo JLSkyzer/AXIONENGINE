@@ -1,5 +1,7 @@
 package dev.axion.asset;
 
+import java.util.List;
+
 /**
  * Ce que l'orchestrateur attend du compilateur natif (IF-06).
  *
@@ -56,30 +58,57 @@ public interface AssetCompiler {
      * @param state etat courant
      * @param payload conteneur A3D compile, ou {@code null}
      * @param error code d'erreur de l'ANNEXE A.1, ou zero
+     * @param lines lignes du travail fini (ADR-148) : ses avertissements s'il a abouti, le
+     *     message de son echec sinon ; vide tant qu'il continue
      */
-    record CompileStatus(AssetState state, byte[] payload, int error) {
+    record CompileStatus(AssetState state, byte[] payload, int error, List<String> lines) {
+
+        /** Copie les lignes : l'avancement ne change plus une fois rendu. */
+        public CompileStatus {
+            lines = List.copyOf(lines);
+        }
 
         /** {@return un avancement disant que le travail continue} */
         public static CompileStatus pending() {
-            return new CompileStatus(AssetState.COMPILING, null, 0);
+            return new CompileStatus(AssetState.COMPILING, null, 0, List.of());
+        }
+
+        /**
+         * {@return un avancement disant que le travail a abouti, sans avertissement}
+         *
+         * @param payload conteneur A3D compile
+         */
+        public static CompileStatus compiled(byte[] payload) {
+            return compiled(payload, List.of());
         }
 
         /**
          * {@return un avancement disant que le travail a abouti}
          *
          * @param payload conteneur A3D compile
+         * @param warnings avertissements de la compilation (ADR-148)
          */
-        public static CompileStatus compiled(byte[] payload) {
-            return new CompileStatus(AssetState.COMPILED, payload, 0);
+        public static CompileStatus compiled(byte[] payload, List<String> warnings) {
+            return new CompileStatus(AssetState.COMPILED, payload, 0, warnings);
+        }
+
+        /**
+         * {@return un avancement disant que le travail a echoue, sans message}
+         *
+         * @param error code d'erreur
+         */
+        public static CompileStatus failed(int error) {
+            return failed(error, List.of());
         }
 
         /**
          * {@return un avancement disant que le travail a echoue}
          *
          * @param error code d'erreur
+         * @param message ce qui a empeche la compilation, en lignes (ADR-148)
          */
-        public static CompileStatus failed(int error) {
-            return new CompileStatus(AssetState.FAILED, null, error);
+        public static CompileStatus failed(int error, List<String> message) {
+            return new CompileStatus(AssetState.FAILED, null, error, message);
         }
 
         /** {@return la taille de l'asset compile, en octets} */

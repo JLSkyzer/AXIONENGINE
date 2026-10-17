@@ -9,9 +9,9 @@
 
 use ax_model::buffer::{BufferKind, HEADER_BYTES};
 use axion_native::abi::{
-    axion_asset_cancel, axion_asset_compile, axion_asset_poll, axion_buffer_acquire,
-    axion_buffer_release, axion_init, axion_shutdown, AxionBufferInfo, AXION_ASSET_COMPILED,
-    AXION_ASSET_PENDING, AXION_E_INVALID_HANDLE, AXION_OK, AXION_SIDE_SERVER,
+    axion_asset_cancel, axion_asset_compile, axion_asset_diagnostics, axion_asset_poll,
+    axion_buffer_acquire, axion_buffer_release, axion_init, axion_shutdown, AxionBufferInfo,
+    AXION_ASSET_COMPILED, AXION_ASSET_PENDING, AXION_E_INVALID_HANDLE, AXION_OK, AXION_SIDE_SERVER,
 };
 use axion_native::context::{self, AssetJob};
 
@@ -146,7 +146,8 @@ fn adr140_un_travail_abandonne_ne_retient_plus_rien() {
     }
     assert_eq!(held(ctx), 0);
 
-    // Un travail sondé jusqu'au bout est oublié par le sondage : rien ne reste à abandonner.
+    // Un travail sondé jusqu'au bout ne garde que ses lignes (ADR-148) ; lues, plus rien ne
+    // reste à abandonner.
     let lu = submit(ctx, TRIANGLE);
     let echeance = std::time::Instant::now() + std::time::Duration::from_secs(30);
     let mut etat = AXION_ASSET_PENDING;
@@ -173,10 +174,18 @@ fn adr140_un_travail_abandonne_ne_retient_plus_rien() {
             AXION_OK
         );
     }
+    let mut lignes = u64::MAX;
+    // SAFETY: `lignes` est une variable locale.
+    let code = unsafe { axion_asset_diagnostics(ctx, lu, &raw mut lignes) };
+    assert_eq!(
+        (code, lignes),
+        (AXION_OK, 0),
+        "un triangle sans avertissement"
+    );
     assert_eq!(
         cancel(ctx, lu),
         AXION_E_INVALID_HANDLE,
-        "travail déjà repris"
+        "travail déjà repris et lu"
     );
 
     // R-322 : des travaux abandonnés qui tournent peut-être encore ne faussent pas le bilan

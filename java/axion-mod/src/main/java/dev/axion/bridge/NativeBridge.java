@@ -117,6 +117,8 @@ public final class NativeBridge {
 
     static native int assetCancel(long ctx, int jobId);
 
+    static native int assetDiagnostics(long ctx, int jobId, long[] out);
+
     static native int simSubmit(long ctx, long tick, int commandCount, int impactCount);
 
     static native int simCollect(long ctx, long deadlineNs, long[] out);
@@ -309,7 +311,8 @@ public final class NativeBridge {
      * voisins y dépose leurs noms ({@link #ASSET_NEEDS_FILES}), et ce résultat n'est rendu
      * <strong>qu'une fois</strong> : sonder de nouveau rend
      * {@link #E_INVALID_HANDLE}, ce qui vaut mieux qu'une seconde lecture d'un
-     * tampon qui a pu changer.
+     * tampon qui a pu changer. Compilé ou échoué, le travail garde ses lignes pour
+     * {@link #readAssetDiagnostics} (ADR-148).
      *
      * @param ctx jeton de contexte
      * @param jobId identifiant rendu par {@link #compileAsset}
@@ -336,11 +339,36 @@ public final class NativeBridge {
      * @param ctx jeton de contexte
      * @param jobId identifiant rendu par {@link #compileAsset}
      * @return {@link #OK}, ou {@link #E_INVALID_HANDLE} si l'identifiant ne désigne aucun travail
-     *     retenu — jamais émis, déjà repris par un sondage ou déjà abandonné
+     *     retenu — jamais émis, repris par un sondage dont les lignes ont été lues (ADR-148), ou
+     *     déjà abandonné
      */
     public static int cancelAsset(long ctx, int jobId) {
         CROSSINGS.increment();
         return assetCancel(ctx, jobId);
+    }
+
+    /**
+     * Rend les lignes d'une compilation que le sondage a terminée (IF-06, ADR-148) : ses
+     * avertissements si elle a abouti, le message de son échec sinon.
+     *
+     * <p>Les lignes sont déposées dans le tampon {@code AXION_BUF_ASSET_OUT}, au format de la
+     * liste de {@link #ASSET_NEEDS_FILES}, et le premier élément du tableau reçoit leur taille ;
+     * elles ne se lisent qu'une fois. Sans ligne, la taille vaut zéro et le tampon n'est pas
+     * touché : l'A3D du sondage se lit donc <strong>avant</strong> cet appel.
+     *
+     * @param ctx jeton de contexte
+     * @param jobId identifiant natif du travail sondé
+     * @param out tableau d'au moins un élément
+     * @return {@link #OK} ; {@link #E_INVALID_HANDLE} si le travail ne retient pas de lignes —
+     *     jamais sondé, en cours, déjà lu ou abandonné ; {@link #E_INVALID_BUFFER} si le tampon
+     *     ne peut pas les contenir
+     */
+    public static int readAssetDiagnostics(long ctx, int jobId, long[] out) {
+        if (out == null || out.length < 1) {
+            throw new IllegalArgumentException("le tableau des lignes compte au moins un élément");
+        }
+        CROSSINGS.increment();
+        return assetDiagnostics(ctx, jobId, out);
     }
 
     /**

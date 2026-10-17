@@ -357,7 +357,8 @@ public final class AxionRuntime {
             // précisément ce qui a caché une découverte muette au premier
             // démarrage réel.
             transitions.add(prets + " asset(s) prêt(s) sur " + assets.entries().size());
-            assets.diagnostics().forEach(transitions::add);
+            // Les refus et avertissements suivent par le journal des assets (ADR-148), que la
+            // couche Forge vide après la barrière comme après chaque tick.
         });
         return settled[0];
     }
@@ -564,6 +565,18 @@ public final class AxionRuntime {
      */
     public List<SimulationJournal.Entry> drainSimulationJournal() {
         return simulationJournal.drain();
+    }
+
+    /**
+     * {@return les diagnostics d'assets consignés depuis l'appel précédent, puis les oublie}
+     *
+     * <p>ADR-148 : refus, avertissements de compilation et soucis du cache, chacun une fois. La
+     * couche Forge les journalise après la barrière de démarrage et après chaque tick serveur —
+     * ceux d'un rechargement compris. Liste vide sans registre d'assets.
+     */
+    public List<String> drainAssetJournal() {
+        AssetRegistry registry = assets;
+        return registry == null ? List.of() : registry.drainJournal();
     }
 
     /**

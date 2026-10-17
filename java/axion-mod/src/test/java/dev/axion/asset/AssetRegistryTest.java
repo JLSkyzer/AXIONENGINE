@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.axion.asset.AssetCompiler.CompileStatus;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -64,6 +65,8 @@ class AssetRegistryTest {
         private int delay;
         private int refuseSubmit;
         private boolean failCompile;
+        /** Lignes que rend un travail fini (ADR-148). */
+        private List<String> lignes = List.of();
 
         @Override
         public int submit(
@@ -87,7 +90,9 @@ class AssetRegistryTest {
                 return CompileStatus.pending();
             }
             restants.remove(jobId);
-            return failCompile ? CompileStatus.failed(-3050) : CompileStatus.compiled(new byte[1024]);
+            return failCompile
+                    ? CompileStatus.failed(-3050, lignes)
+                    : CompileStatus.compiled(new byte[1024], lignes);
         }
 
         @Override
@@ -111,6 +116,73 @@ class AssetRegistryTest {
 
     private static AssetRegistry registry(FakeSource source, FakeCompiler compiler) {
         return new AssetRegistry(source, compiler, COMPILER_VERSION, () -> 0L);
+    }
+
+    /** Pompe jusqu'à ce qu'aucun asset n'attende plus rien. */
+    private static void settle(AssetRegistry registry) {
+        for (int passage = 0; passage < 16 && !registry.isSettled(); passage++) {
+            registry.pump(0);
+        }
+        assertTrue(registry.isSettled(), "compilations toujours en cours");
+    }
+
+    @Test
+    @DisplayName("ADR-148 : un avertissement de compilation se journalise une fois par compilation")
+    void unAvertissementSeJournaliseUneFoisParCompilation() {
+        FakeSource source = new FakeSource().put("m.gltf", "{}");
+        FakeCompiler compiler = new FakeCompiler();
+        compiler.lignes = List.of("extension ignorée : KHR_materials_variants");
+        AssetRegistry registry = registry(source, compiler);
+        registry.discover();
+        settle(registry);
+        assertEquals(AssetState.COMPILED, registry.entry("m.gltf").state());
+
+        String ligne = "m.gltf — avertissement : extension ignorée : KHR_materials_variants";
+        assertEquals(List.of(ligne), registry.drainJournal());
+        assertEquals(List.of(), registry.drainJournal(), "ligne rendue deux fois");
+        assertEquals(List.of(ligne), registry.diagnostics(), "historique de /axion status");
+
+        // Recompiler, c'est compiler de nouveau : la ligne revient, une fois.
+        registry.forceRecompile();
+        settle(registry);
+        assertEquals(List.of(ligne), registry.drainJournal());
+        assertEquals(List.of(), registry.drainJournal());
+    }
+
+    @Test
+    @DisplayName("ADR-148 D3 : un refus se journalise avec son motif, après un rechargement aussi")
+    void unRefusSeJournaliseAvecSonMotif() {
+        FakeSource source = new FakeSource().put("m.gltf", "pas du json");
+        FakeCompiler compiler = new FakeCompiler();
+        compiler.failCompile = true;
+        compiler.lignes = List.of("import : JSON invalide");
+        AssetRegistry registry = registry(source, compiler);
+        registry.discover();
+        settle(registry);
+
+        List<String> journal = registry.drainJournal();
+        assertEquals(
+                List.of("m.gltf — compilation échouée (import : JSON invalide), code -3050 ; "
+                        + "remplacé par " + AssetRegistry.FALLBACK_ID),
+                journal);
+        // La barrière de démarrage ne voyait que le premier ; le journal voit aussi celui-ci.
+        registry.forceRecompile();
+        settle(registry);
+        assertEquals(journal, registry.drainJournal());
+    }
+
+    @Test
+    @DisplayName("ADR-148 : les soucis du cache passent au journal, une fois")
+    void lesSoucisDuCachePassentAuJournal(@TempDir Path racine) throws IOException {
+        Files.write(racine.resolve("index.bin"), new byte[] {1, 2, 3});
+        AssetCache cache = new AssetCache(racine, Long.MAX_VALUE);
+        AssetRegistry registry = new AssetRegistry(
+                new FakeSource(), new FakeCompiler(), COMPILER_VERSION, 0, () -> 0L, cache);
+
+        List<String> journal = registry.drainJournal();
+        assertEquals(cache.diagnostics(), journal);
+        assertFalse(journal.isEmpty(), "un index tronqué se signale");
+        assertEquals(List.of(), registry.drainJournal());
     }
 
     @Test

@@ -45,6 +45,8 @@ public final class NativeAssetCompiler implements AssetCompiler {
 
     private final long context;
     private final long[] scratch = new long[NativeBridge.ASSET_POLL_SLOTS];
+    /** Taille des lignes d'un travail fini (ADR-148). */
+    private final long[] linesSize = new long[1];
 
     /** Compilations en cours, par l'identifiant rendu au registre. */
     private final Map<Integer, Pending> pending = new HashMap<>();
@@ -163,15 +165,42 @@ public final class NativeAssetCompiler implements AssetCompiler {
         int state = (int) scratch[0];
         return switch (state) {
             case NativeBridge.ASSET_COMPILED -> {
+                // L'A3D d'abord : les lignes passent par le même tampon (ADR-148).
                 byte[] payload = readOutput(scratch[1]);
+                List<String> warnings = lines(nativeJob);
                 yield payload == null
-                        ? CompileStatus.failed(NativeBridge.E_INVALID_BUFFER)
-                        : CompileStatus.compiled(payload);
+                        ? CompileStatus.failed(NativeBridge.E_INVALID_BUFFER, warnings)
+                        : CompileStatus.compiled(payload, warnings);
             }
-            case NativeBridge.ASSET_FAILED -> CompileStatus.failed((int) scratch[2]);
+            case NativeBridge.ASSET_FAILED -> {
+                int error = (int) scratch[2];
+                yield CompileStatus.failed(error, lines(nativeJob));
+            }
             case NativeBridge.ASSET_NEEDS_FILES -> supply(job, scratch[1]);
             default -> CompileStatus.pending();
         };
+    }
+
+    /**
+     * Les lignes d'un travail que le sondage vient de terminer (ADR-148) : ses avertissements
+     * s'il a abouti, le message de son échec sinon.
+     *
+     * <p>Rien ne s'en perd sans le dire : des lignes que le natif ne rend pas, ou mal formées,
+     * laissent une ligne qui le signale.
+     *
+     * @param nativeJob identifiant natif du travail sondé
+     */
+    private List<String> lines(int nativeJob) {
+        int code = NativeBridge.readAssetDiagnostics(context, nativeJob, linesSize);
+        if (code != NativeBridge.OK) {
+            return List.of("lignes de la compilation non rendues, code " + code);
+        }
+        if (linesSize[0] == 0) {
+            return List.of();
+        }
+        byte[] list = readOutput(linesSize[0]);
+        List<String> lines = list == null ? null : decodeNames(list);
+        return lines == null ? List.of("lignes de la compilation illisibles") : lines;
     }
 
     /**
@@ -243,8 +272,9 @@ public final class NativeAssetCompiler implements AssetCompiler {
     }
 
     /**
-     * La liste de {@code NEEDS_FILES} : nombre, puis par nom sa longueur et ses octets UTF-8,
-     * petit-boutiste (ADR-139).
+     * Une liste de chaînes : nombre, puis par chaîne sa longueur et ses octets UTF-8,
+     * petit-boutiste — les noms de {@code NEEDS_FILES} (ADR-139), les lignes d'une compilation
+     * (ADR-148).
      *
      * @return les noms, ou {@code null} si la liste est mal formée
      */
