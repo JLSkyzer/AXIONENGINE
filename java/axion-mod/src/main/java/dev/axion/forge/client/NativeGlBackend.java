@@ -7,6 +7,7 @@ import dev.axion.asset.GeometryTransfer;
 import dev.axion.asset.MaterialTransfer;
 import dev.axion.render.BackendSelection;
 import dev.axion.render.DepthOrder;
+import dev.axion.render.GpuPassTimings;
 import dev.axion.render.InstanceLayout;
 import dev.axion.render.MeshLook;
 import dev.axion.render.RenderAsset;
@@ -33,9 +34,11 @@ import org.joml.Quaternionf;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL33;
 import org.lwjgl.system.MemoryStack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,6 +85,9 @@ final class NativeGlBackend implements RenderBackend {
 
     /** Les boîtes de repli : celles du backend vanilla. */
     private final VanillaConsumerBackend boxes = new VanillaConsumerBackend();
+
+    /** Le temps GPU de ses passes (§31.1, ADR-146 §2), par horodatages GPU. */
+    private final GpuPassTimings timings = new GpuPassTimings(new GlTimestamps());
 
     /** Blocs d'instance d'une passe, avant téléversement ; agrandi par doublement. */
     private ByteBuffer instances = ByteBuffer.allocateDirect(InstanceLayout.BYTES * 64).order(ByteOrder.LITTLE_ENDIAN);
@@ -152,6 +158,31 @@ final class NativeGlBackend implements RenderBackend {
 
     @Override
     public void renderOpaque(Frame frame) {
+        timings.begin(GpuPassTimings.Pass.OPAQUE);
+        try {
+            drawOpaque(frame);
+        } finally {
+            timings.end(GpuPassTimings.Pass.OPAQUE);
+        }
+    }
+
+    @Override
+    public void renderTranslucent(Frame frame) {
+        timings.begin(GpuPassTimings.Pass.TRANSLUCENT);
+        try {
+            drawTranslucent(frame);
+        } finally {
+            timings.end(GpuPassTimings.Pass.TRANSLUCENT);
+        }
+    }
+
+    /** {@return le temps GPU de ses passes, tel qu'il est connu à cette frame} */
+    GpuPassTimings gpuTimings() {
+        return timings;
+    }
+
+    /** Passes 1, 2 et 5 du §19.10, et les boîtes de repli des assemblies pas encore prêtes. */
+    private void drawOpaque(Frame frame) {
         meshes.nextFrame();
         shaders.poll();
         List<Part> parts = gather(frame, false);
@@ -188,8 +219,8 @@ final class NativeGlBackend implements RenderBackend {
         }
     }
 
-    @Override
-    public void renderTranslucent(Frame frame) {
+    /** Passe 4 du §19.10 : les translucides, du plus loin au plus près. */
+    private void drawTranslucent(Frame frame) {
         List<Part> parts = gather(frame, true);
         if (parts.isEmpty()) {
             return;
@@ -258,6 +289,7 @@ final class NativeGlBackend implements RenderBackend {
         RenderSystem.assertOnRenderThread();
         meshes.close();
         shaders.close();
+        timings.close();
         int left = NativeGlObjects.closed();
         if (left != 0) {
             LOGGER.error("AXION : le backend natif laisse {} objet(s) GL en vie à sa fermeture (R-744)", left);
@@ -598,6 +630,42 @@ final class NativeGlBackend implements RenderBackend {
                 GL20.glUniform3f(program.uniform("u_ground_color"), ground[0], ground[1], ground[2]);
                 GL20.glUniform4f(program.uniform("u_fog_color"), fogColor[0], fogColor[1], fogColor[2], fogColor[3]);
             }
+        }
+    }
+
+    /**
+     * Les horodatages GPU d'OpenGL 3.3 ({@code glQueryCounter} sur {@code GL_TIMESTAMP}), que le
+     * backend demande déjà (§19.2). Ce sont des objets GL : comptés, ils doivent tous être rendus à la
+     * fermeture (R-744).
+     */
+    private static final class GlTimestamps implements GpuPassTimings.Queries {
+
+        @Override
+        public int create() {
+            int query = GL15.glGenQueries();
+            NativeGlObjects.created();
+            return query;
+        }
+
+        @Override
+        public void stamp(int query) {
+            GL33.glQueryCounter(query, GL33.GL_TIMESTAMP);
+        }
+
+        @Override
+        public boolean ready(int query) {
+            return GL15.glGetQueryObjecti(query, GL15.GL_QUERY_RESULT_AVAILABLE) != GL11.GL_FALSE;
+        }
+
+        @Override
+        public long nanos(int query) {
+            return GL33.glGetQueryObjecti64(query, GL15.GL_QUERY_RESULT);
+        }
+
+        @Override
+        public void delete(int query) {
+            GL15.glDeleteQueries(query);
+            NativeGlObjects.deleted();
         }
     }
 }

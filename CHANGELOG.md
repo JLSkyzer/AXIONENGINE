@@ -48,6 +48,9 @@ Definition of Done (PARTIE 37.3).
   - un `/reload` ou un `/axion assets reload` atteint les assemblies qui
     apparaissent ensuite : la boucle de l'entite lisait les registres du
     demarrage du serveur ;
+  - temps GPU des passes opaque et translucide du backend natif, par
+    horodatages GPU lus sans attendre le GPU (`axion.render.gpu_opaque_ns`,
+    `axion.render.gpu_translucent_ns`, ADR-146 §2) ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
     T-012 (INV-04), T-015 (INV-07), T-019 (INV-12) ;
   - un collider `convex` ne garde que les sommets de son enveloppe : ni

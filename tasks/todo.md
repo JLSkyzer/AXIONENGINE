@@ -2896,7 +2896,10 @@ amortissement dans l'eau, `/axion remove`).
       - [ ] **Reste avant de prononcer M3** (colonne 4 d'ADR-146) :
             - [ ] overlays `aabb`, `bodies`, `contacts`, `normals`, `world_tiles`, `center_of_mass`
                   (§1) — charge utile par un amendement d'ADR-121, T-550 étendu à chacun ;
-            - [ ] temps GPU par passe du backend natif, `GL_TIME_ELAPSED` lu sans bloquer (§2) ;
+            - [x] temps GPU par passe du backend natif (§2), fait le 2026-10-17 : horodatages GPU
+                  (`GL_TIMESTAMP`, car Minecraft tient un `GL_TIME_ELAPSED` sur la frame sous F3),
+                  lus sans attendre ; jauges `axion.render.gpu_*_ns` ; `GpuPassTimingsTest`, huit
+                  mutations rouges ; banc natif vert (temps GPU par passe, T-471, T-492, T-503) ;
             - [x] garde GL et R-741 : R-741 porte sur le dessin du backend ; ADR-126 précisé (§3) ;
             - [ ] `collision.resolution` : plage et défaut mesurés, puis option effective (§4) ;
             - [ ] en effort maximal : R-1011, second temps de DM-07, amendement A1 d'ADR-137.

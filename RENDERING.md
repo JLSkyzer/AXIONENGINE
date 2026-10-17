@@ -98,8 +98,11 @@ dépassements (`budgets.gpu_mem_bytes`), les instances et les triangles dessiné
 (`budgets.max_visible_instances`, `budgets.max_triangles_frame`), et les jauges `axion.render.*` :
 backend actif, octets de textures et de maillages, évictions, palier de dégradation, objets GL
 vivants, état des shaders du natif. Sur un client relié à un serveur distant, où la commande
-tourne sur le serveur, `/axion metrics export client` écrit l'export du client (ADR-144 §2). Il
-n'y a pas encore de temps GPU par passe (requêtes de minuterie OpenGL).
+tourne sur le serveur, `/axion metrics export client` écrit l'export du client (ADR-144 §2). Sous
+le backend natif, le temps GPU de ses passes opaque et translucide est relevé par horodatages GPU,
+lus quelques frames plus tard sans jamais attendre le GPU (`axion.render.gpu_opaque_ns`,
+`axion.render.gpu_translucent_ns`, relevés perdus `axion.render.gpu_timings_dropped`, ADR-146
+§2) ; le backend vanilla n'en a pas, R-741 lui interdisant tout appel OpenGL.
 
 ## Vérification
 
@@ -108,10 +111,12 @@ natif et sous un shaderpack (Oculus et Embeddium) : aucune erreur OpenGL (T-471)
 intact (T-472), bascule et retour sous shaderpack (T-480, T-490), compilation à la demande sans
 à-coup (T-904, jugée sur GPU matériel seulement, ADR-127), transparence ordonnée (T-476), aucune
 texture d'AXION laissée sur le GPU par une bascule de backend (T-481), ressources d'AXION
-reconstruites par un vrai changement de resource pack (T-483). La CI le joue à chaque push.
+reconstruites par un vrai changement de resource pack (T-483), temps GPU des passes du natif
+connu (ADR-146 §2). La CI le joue à chaque push.
 
 ## Ce qui n'existe pas encore
 
 Niveaux de qualité Q-0 à Q-4, sonde d'environnement (C-81) et tone mapping (C-83), effet des
 définitions autres que `CUTOUT` (skinning, déformation, parallax, clearcoat, sheen, anisotropie,
-décalques, ombres reçues, SSR), culling et LOD de rendu (C-64), temps GPU par passe.
+décalques, ombres reçues, SSR), culling et LOD de rendu (C-64), temps GPU par matériau, d'ombre
+et de décalques (M9, avec ces passes).

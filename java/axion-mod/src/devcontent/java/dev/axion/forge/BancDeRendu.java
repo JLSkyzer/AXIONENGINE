@@ -6,6 +6,7 @@ import dev.axion.forge.client.GlStateCheck;
 import dev.axion.diag.StatusReport;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.render.BackendSelection;
+import dev.axion.render.GpuPassTimings;
 import dev.axion.render.RenderCapabilities;
 import dev.axion.render.ShaderBinaryFile;
 import dev.axion.config.ConfigLoader;
@@ -535,6 +536,11 @@ public final class BancDeRendu {
                     && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 3);
             stabiliser("les panneaux translucides");
             une("juger T-476", mc -> jugerT476(capturer(mc, "t476.png"), derniereVue));
+            if (NATIF) {
+                // ADR-146 §2 : les panneaux font travailler la passe translucide du natif ; le temps GPU
+                // des deux passes se lit, la scène stabilisée, sans jamais attendre le GPU.
+                une("juger le temps GPU par passe", mc -> jugerTempsGpu());
+            }
             serveur("retirer les panneaux translucides", s -> {
                 panneauRouge.discard();
                 panneauBleu.discard();
@@ -1018,6 +1024,24 @@ public final class BancDeRendu {
         RAPPORT.noter("T-510", nouveaux == 1 && actif == BackendSelection.Kind.NATIVE, String.format(Locale.ROOT,
                 "%d démarrage(s) du backend au rechargement, shaders relus du JAR et recompilés ; backend %s",
                 nouveaux, actif));
+    }
+
+    /**
+     * ADR-146 §2 (§31.1) : sous le natif, le temps GPU des deux passes qui dessinent en GL est connu,
+     * lu quelques frames après elles sans attendre le GPU. Les durées sont celles du poste ou du
+     * rendu logiciel de la CI : elles ne se publient pas (R-2252), seul leur caractère connu est jugé.
+     */
+    private static void jugerTempsGpu() {
+        long opaque = AxionRenderPass.gpuPassNanos(GpuPassTimings.Pass.OPAQUE);
+        long translucide = AxionRenderPass.gpuPassNanos(GpuPassTimings.Pass.TRANSLUCENT);
+        RAPPORT.noter("temps GPU par passe", opaque > 0 && translucide > 0, String.format(Locale.ROOT,
+                "backend %s ; passe opaque : %s ; passe translucide : %s",
+                AxionRenderPass.activeBackend(), connu(opaque), connu(translucide)));
+    }
+
+    /** {@return ce qu'on sait d'un temps GPU de passe, sans le chiffre} */
+    private static String connu(long nanos) {
+        return nanos < 0 ? "hors du natif" : nanos == 0 ? "inconnu" : "connu";
     }
 
     private static void jugerT479() {

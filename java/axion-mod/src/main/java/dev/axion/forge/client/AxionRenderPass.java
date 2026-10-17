@@ -16,6 +16,7 @@ import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.diag.JavaMetrics;
 import dev.axion.render.BackendSelection;
 import dev.axion.render.GpuDegradation;
+import dev.axion.render.GpuPassTimings;
 import dev.axion.render.MeshCache;
 import dev.axion.render.RenderAsset;
 import dev.axion.render.RenderCapabilities;
@@ -152,6 +153,12 @@ public final class AxionRenderPass {
     private static final JavaMetrics.Metric SHADER_CACHE_HITS = METRICS.gauge("axion.render.shader.cache_hits", "count");
     private static final JavaMetrics.Metric SHADER_CACHE_MISSES =
             METRICS.gauge("axion.render.shader.cache_misses", "count");
+    // §31.1, ADR-146 §2 : le temps GPU des passes du backend natif ; nul hors de lui (R-741).
+    private static final JavaMetrics.Metric GPU_OPAQUE_NS = METRICS.gauge("axion.render.gpu_opaque_ns", "ns");
+    private static final JavaMetrics.Metric GPU_TRANSLUCENT_NS =
+            METRICS.gauge("axion.render.gpu_translucent_ns", "ns");
+    private static final JavaMetrics.Metric GPU_TIMINGS_DROPPED =
+            METRICS.gauge("axion.render.gpu_timings_dropped", "count");
 
     /** Plafonds des budgets du rendu, lus à la création du cache d'assets ; zéro : aucun. */
     private static long renderPrepLimit;
@@ -471,6 +478,18 @@ public final class AxionRenderPass {
             SHADER_CACHE_HITS.set(stats.cacheHits());
             SHADER_CACHE_MISSES.set(stats.cacheMisses());
         }
+        GpuPassTimings timings = backend instanceof NativeGlBackend natif ? natif.gpuTimings() : null;
+        GPU_OPAQUE_NS.set(timings == null ? 0 : timings.lastNanos(GpuPassTimings.Pass.OPAQUE));
+        GPU_TRANSLUCENT_NS.set(timings == null ? 0 : timings.lastNanos(GpuPassTimings.Pass.TRANSLUCENT));
+        GPU_TIMINGS_DROPPED.set(timings == null ? 0 : timings.dropped());
+    }
+
+    /**
+     * {@return le dernier temps GPU connu d'une passe du backend natif, en nanosecondes ; -1 hors de
+     * lui} Le banc de rendu le juge (ADR-146 §2).
+     */
+    public static long gpuPassNanos(GpuPassTimings.Pass pass) {
+        return backend instanceof NativeGlBackend natif ? natif.gpuTimings().lastNanos(pass) : -1;
     }
 
     /**
