@@ -2046,7 +2046,8 @@ substituable sans changer rapier »).
                   **Fait le 2026-10-12** (ADR-130, « Mise en œuvre ») : 932 tests Rust et la suite Java
                   verts, `fmt` et `clippy` propres ; schéma publié régénéré (`physics.mass` borné) ;
                   GameTests et bancs : CI à confirmer.
-            - **Ballon de test** (demandé par Killian le 2026-10-05, reporté par lui à
+            - **Ballon de test** — **fait le 2026-10-17** (ADR-149, `BallonGameTests`) : il rebondit,
+              l'acier non, puis il se pose. Note d'origine (demandé par Killian le 2026-10-05, reporté par lui à
               l'étape qui le porte). Aujourd'hui, seules sa taille et sa masse sont
               possibles (`auto_sphere`, `density` des extras) : il ne rebondirait pas —
               le matériau de contact de toute assembly est neutre, l'index DM-07 de
@@ -2809,8 +2810,8 @@ amortissement dans l'eau, `/axion remove`).
             `physics_ticks`, dont 3 191 sur ses 20 pas — les durées, du poste de développement, ne
             se publient pas (R-2252). Mesure publiable en M12 (ADR-131).
       - [ ] **Cases C-31, C-61 : non cochées, à raison** (motifs mis à jour le 2026-10-17, ADR-146).
-            C-31 : second temps de DM-07, en effort maximal (R-1011 fait le 2026-10-17) ; joints (M4) et attaches (M5)
-            renvoyés. C-32 cochée le 2026-10-17 : amendement A1 d'ADR-137 (ADR-148) et `collision.resolution`
+            C-31 : joints (M4) et attaches (M5) renvoyés ; sa colonne 4 d'ADR-146 est vide depuis le
+            2026-10-17 (R-1011, second temps de DM-07). C-32 cochée le 2026-10-17 : amendement A1 d'ADR-137 (ADR-148) et `collision.resolution`
             (ADR-147) faits. C-61 : la tranche T4+ suit ses composants — R-742 (M4, M6), R-743
             (C-69, M9), indicateur de capacités (C-73, M5) ; les métriques de rendu sont faites.
 - [x] **E2 — JAR complet en CI** (8300c78) : `buildNatives` reprend les natifs déjà construits
@@ -2887,17 +2888,19 @@ amortissement dans l'eau, `/axion remove`).
               coefficients de couple, de conception, et ceux des tuiles sont conservés. Tests :
               `PhysicsMaterialsTest` (T-840, T-840b, R-1038), `BlockMaterialMappingsTest` (T-841),
               `BlockMaterialsTest` (T-375), `DefinitionRegistryTest`, `AxionRuntimeTest`.
-        - [ ] Second temps, en effort max et par un ADR : le matériau des parts d'assembly jusqu'au
-              natif (index DM-07 des `ColliderDesc`, modes de combinaison), puis le ballon de test.
-      - **L'effort max après le reste de M3** : R-1011 et amendement A1 d'ADR-137 faits le 2026-10-17 ;
-        reste le second temps de DM-07.
+        - [x] Second temps, fait le 2026-10-17 par [ADR-149](../docs/decisions/ADR-149.md) : le matériau des
+              parts d'assembly jusqu'au natif (index DM-07 des `ColliderDesc`, modes de combinaison), puis le
+              ballon de test.
+      - **L'effort max après le reste de M3** : R-1011, amendement A1 d'ADR-137 et second temps de DM-07
+        faits le 2026-10-17, en effort « extra ».
       - [x] **[ADR-146](../docs/decisions/ADR-146.md) accepté le 2026-10-17** — portée de la DoD de M3,
             composant par composant (modèle d'ADR-137) ; Killian retient les sept propositions. Partent,
             avec jalon et preuve : 28 overlays de C-67 avec leurs systèmes (M4 à M9) ; métriques des
             requêtes et moitié Java de R-651 avec les roues de C-33 (M5) ; `CompiledDefinition` avec
             C-51 (M4) ; surcharge des budgets de frame avec C-77 (M5), R-300 avec IF-05 (M4) ; étape 14
             avec C-37 (M4). Cases périmées mises à jour le même jour.
-      - [ ] **Reste avant de prononcer M3** (colonne 4 d'ADR-146) :
+      - [x] **Reste avant de prononcer M3** (colonne 4 d'ADR-146) — **vide le 2026-10-17** : M3 attend le
+            prononcé de Killian (`COMPLETED_MILESTONES`, `MilestoneTestsCoveredTest` étendu à M3) :
             - [x] overlays `aabb`, `bodies`, `contacts`, `normals`, `world_tiles`, `center_of_mass`
                   (§1), faits le 2026-10-17 — amendement A1 d'ADR-121 : `DEBUG` au schéma 2, plages
                   par overlay et repère (corps, ou monde relatif à la caméra de l'appel). Tranche
@@ -2930,7 +2933,8 @@ amortissement dans l'eau, `/axion remove`).
             - [x] amendement A1 d'ADR-137 (C-32), fait le 2026-10-17 par ADR-148 : les avertissements
                   d'une compilation, et le motif d'un refus, une fois par compilation au journal du
                   jeu, rechargements compris ; 13 mutations rouges ; effort « extra » ;
-            - [ ] second temps de DM-07, par [ADR-149](../docs/decisions/ADR-149.md), accepté le
+            - [x] second temps de DM-07, fait le 2026-10-17 — mise en œuvre dans ADR-149, vingt et une
+                  mutations rouges, 13 GameTests verts ; par [ADR-149](../docs/decisions/ADR-149.md), accepté le
                   2026-10-17 (six points et le ballon, chacun selon la proposition) : table DM-07 par
                   l'opcode `SET_PHYSICS_MATERIALS`, index stables et rechargement appliqué ; index par
                   collider (sa part) et par tuile (ABI 5) ; modes de rapier, le plus fort l'emporte ;

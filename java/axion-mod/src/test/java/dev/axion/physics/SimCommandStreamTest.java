@@ -191,14 +191,13 @@ class SimCommandStreamTest {
 
     @Test
     void encodeUneCommandeSetWorldCollision() {
-        // Une dalle 16×1×16 sur la section (0, 0, 0), matériau (0.6, 0.1).
+        // Une dalle 16×1×16 sur la section (0, 0, 0), matériau d'index 5 (ADR-149).
         SimCommandStream stream = new SimCommandStream()
                 .setWorldCollision(
                         4L,
                         new int[] {1, 0, -2},
                         new float[][] {{0f, 0f, 0f, 16f, 1f, 16f}},
-                        0.6f,
-                        0.1f);
+                        5);
         byte[] bytes = stream.toBytes();
         // en-tête flux (8) + en-tête cmd (8) + en-tête payload (32) + 1 boîte (24)
         assertEquals(8 + 8 + 32 + 24, bytes.length);
@@ -211,8 +210,9 @@ class SimCommandStreamTest {
         assertEquals(0, b.getInt(28), "section.y");
         assertEquals(-2, b.getInt(32), "section.z");
         assertEquals(1, b.getInt(36), "box_count");
-        assertEquals(0.6f, b.getFloat(40), "friction");
-        assertEquals(0.1f, b.getFloat(44), "restitution");
+        assertEquals(5, b.getShort(40), "material");
+        assertEquals(0, b.getShort(42), "_pad");
+        assertEquals(0, b.getInt(44), "_reserved");
         // Boîte à l'offset 48 (16 + en-tête 32).
         assertEquals(0f, b.getFloat(48), "box.minx");
         assertEquals(16f, b.getFloat(60), "box.maxx");
@@ -241,7 +241,7 @@ class SimCommandStreamTest {
         float[] heights = {0f, 0f, 0f, 1f, 1f, 1f, 2f, 2f, 2f};
         SimCommandStream stream = new SimCommandStream()
                 .setWorldHeightfield(
-                        0L, new int[] {0, 0, 0}, 3, 3, heights, new float[] {16f, 1f, 16f}, 0.5f, 0f);
+                        0L, new int[] {0, 0, 0}, 3, 3, heights, new float[] {16f, 1f, 16f}, 7);
         byte[] bytes = stream.toBytes();
         // en-tête flux (8) + en-tête cmd (8) + payload aligné (88)
         assertEquals(8 + 8 + 88, bytes.length);
@@ -250,8 +250,9 @@ class SimCommandStreamTest {
         assertEquals(48 + 36, b.getInt(12), "payload_len (utile, sans remplissage)");
         assertEquals(3, b.getInt(36), "rows");
         assertEquals(3, b.getInt(40), "cols");
-        assertEquals(0.5f, b.getFloat(44), "friction");
-        assertEquals(0f, b.getFloat(48), "restitution");
+        assertEquals(7, b.getShort(44), "material");
+        assertEquals(0, b.getShort(46), "_pad");
+        assertEquals(0, b.getInt(48), "_reserved");
         assertEquals(16f, b.getFloat(52), "scale.x");
         assertEquals(1f, b.getFloat(56), "scale.y");
         assertEquals(16f, b.getFloat(60), "scale.z");
@@ -278,7 +279,7 @@ class SimCommandStreamTest {
     void uneTuileVideEncodeUnRetraitImplicite() {
         // box_count 0 : le natif y retire la tuile (alias défini, ADR-117).
         byte[] bytes = new SimCommandStream()
-                .setWorldCollision(0L, new int[] {0, 0, 0}, new float[0][], 0.5f, 0f)
+                .setWorldCollision(0L, new int[] {0, 0, 0}, new float[0][], SimCommandStream.NO_MATERIAL)
                 .toBytes();
         assertEquals(8 + 8 + 32, bytes.length);
         assertEquals(0, wrap(bytes).getInt(36), "box_count nul");
@@ -289,7 +290,7 @@ class SimCommandStreamTest {
         float[][] boxes = new float[SimCommandStream.MAX_WORLD_TILE_BOXES + 1][6];
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new SimCommandStream().setWorldCollision(0L, new int[] {0, 0, 0}, boxes, 0.5f, 0f));
+                () -> new SimCommandStream().setWorldCollision(0L, new int[] {0, 0, 0}, boxes, SimCommandStream.NO_MATERIAL));
     }
 
     @Test
@@ -298,7 +299,7 @@ class SimCommandStreamTest {
                 IllegalArgumentException.class,
                 () -> new SimCommandStream()
                         .setWorldHeightfield(
-                                0L, new int[] {0, 0, 0}, 2, 2, new float[3], new float[] {1, 1, 1}, 0.5f, 0f));
+                                0L, new int[] {0, 0, 0}, 2, 2, new float[3], new float[] {1, 1, 1}, SimCommandStream.NO_MATERIAL));
     }
 
     @Test
@@ -397,5 +398,29 @@ class SimCommandStreamTest {
         java.util.List<SimCommandStream.EntityProxy> trop =
                 java.util.Collections.nCopies(SimCommandStream.MAX_ENTITY_PROXIES + 1, une);
         assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().setEntityProxies(0L, trop));
+    }
+
+    @Test
+    void encodeUneCommandeSetPhysicsMaterials() {
+        // ADR-149 : l'en-tête (nombre, réservé), puis les entrées DM-07 telles quelles ; schéma 2.
+        byte[] entries = new byte[2 * SimCommandStream.PHYSICS_MATERIAL_BYTES];
+        entries[8] = 0x11;
+        entries[SimCommandStream.PHYSICS_MATERIAL_BYTES + 8] = 0x22;
+        byte[] bytes = new SimCommandStream().setPhysicsMaterials(entries, 2).toBytes();
+        assertEquals(8 + 8 + 8 + entries.length, bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(2, b.getInt(0), "schéma 2");
+        assertEquals(SimCommandStream.OP_SET_PHYSICS_MATERIALS, b.getInt(8), "opcode");
+        assertEquals(13, SimCommandStream.OP_SET_PHYSICS_MATERIALS);
+        assertEquals(8 + entries.length, b.getInt(12), "payload_len");
+        assertEquals(2, b.getInt(16), "count");
+        assertEquals(0, b.getInt(20), "réservé");
+        assertEquals(0x11, b.get(24 + 8));
+        assertEquals(0x22, b.get(24 + SimCommandStream.PHYSICS_MATERIAL_BYTES + 8));
+
+        // Une table incohérente, un index hors d'un u16 : refusés avant la frontière.
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().setPhysicsMaterials(new byte[119], 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> new SimCommandStream().setWorldCollision(0L, new int[] {0, 0, 0}, new float[0][], 0x10000));
     }
 }

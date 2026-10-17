@@ -188,7 +188,8 @@ public final class BlockMaterialMappings {
     }
 
     private static BlockMaterials.Material contact(PhysicsMaterials.Material material) {
-        return new BlockMaterials.Material((float) material.friction(), (float) material.restitution());
+        return new BlockMaterials.Material(
+                material.id(), (float) material.friction(), (float) material.restitution());
     }
 
     /** {@return la racine d'un mappage, forme et version jugées} */

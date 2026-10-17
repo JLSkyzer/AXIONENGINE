@@ -21,6 +21,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Supplier;
+import java.util.function.ToIntFunction;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -108,6 +109,7 @@ public final class WorldTileBridge implements SimCommandProvider {
     public WorldTileBridge(
             MinecraftServer server,
             Supplier<BlockMaterials> materials,
+            ToIntFunction<String> materialIndex,
             int tileRadius,
             int tilesPerTick,
             AssemblyRuntime assemblies,
@@ -116,7 +118,7 @@ public final class WorldTileBridge implements SimCommandProvider {
         this.assemblies = assemblies;
         this.trace = trace;
         WorldTilePlanner planner = new WorldTilePlanner(tileRadius, tilesPerTick);
-        WorldCollisionSource source = new ForgeWorldCollisionSource(this::levelForId, materials);
+        WorldCollisionSource source = new ForgeWorldCollisionSource(this::levelForId, materials, materialIndex);
         this.service = new WorldTileService(planner, source);
         MinecraftForge.EVENT_BUS.register(this);
     }

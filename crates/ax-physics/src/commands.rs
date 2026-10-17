@@ -5,7 +5,6 @@
 //! little-endian, jamais par transtypage en place. C'est la couche FFI qui, elle,
 //! lit les structures DM en place ; ici on décode, on valide, on applique.
 
-use crate::body::ContactMaterial;
 use crate::forces::FluidEnvironment;
 use crate::proxies::{EntityProxy, ProxyShape};
 use crate::sim::SimDriver;
@@ -13,10 +12,11 @@ use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::commands::{
     dimension_env_flags, entity_proxy_shape, opcode, ApplyForce, CommandStreamHeader,
     EntityProxyDesc, RemoveAssembly, RemoveWorldTile, SetDimensionEnv, SetEntityProxies,
-    SetKinematic, SetObservers, SetWorldCollision, SetWorldFluid, SetWorldHeightfield,
-    SimCommandHeader,
+    SetKinematic, SetObservers, SetPhysicsMaterials, SetWorldCollision, SetWorldFluid,
+    SetWorldHeightfield, SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
+use ax_model::dm::physics::PhysicsMaterial;
 
 /// Plafond de boîtes d'une tuile (collision ou fluide), donnée hostile bornée avant
 /// allocation (R-901, ADR-117). C'est le seuil de R-641 : au-delà, la collision passe en
@@ -217,6 +217,11 @@ fn apply_one(
             apply_set_entity_proxies(driver, payload)?;
             outcome.applied += 1;
         }
+        opcode::SET_PHYSICS_MATERIALS => {
+            let materials = read_physics_materials(payload)?;
+            driver.set_physics_materials(&materials);
+            outcome.applied += 1;
+        }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
         // par la frontière (ax-ffi, `create_assembly_payloads`), qui seule décode
         // les colliders ; APPLY_FORCE continu attend la boucle de forces. Les deux
@@ -236,15 +241,10 @@ fn apply_set_world_collision(driver: &mut SimDriver, payload: &[u8]) -> Result<(
     let dimension = read_u64(payload, 0);
     let section = read_section(payload, 8);
     let box_count = read_u32(payload, 20);
-    let friction = read_f32(payload, 24);
-    let restitution = read_f32(payload, 28);
+    let material = read_u16(payload, 24);
     let boxes = read_boxes(payload, SetWorldCollision::BYTES, box_count)?;
-    driver.set_world_tile(
-        dimension,
-        section,
-        &boxes,
-        ContactMaterial::sanitized(friction, restitution),
-    );
+    let contact = driver.material(material);
+    driver.set_world_tile(dimension, section, &boxes, contact);
     Ok(())
 }
 
@@ -257,8 +257,7 @@ fn apply_set_world_heightfield(driver: &mut SimDriver, payload: &[u8]) -> Result
     let section = read_section(payload, 8);
     let rows = read_u32(payload, 20);
     let cols = read_u32(payload, 24);
-    let friction = read_f32(payload, 28);
-    let restitution = read_f32(payload, 32);
+    let material = read_u16(payload, 28);
     let scale = [
         read_f32(payload, 36),
         read_f32(payload, 40),
@@ -286,9 +285,27 @@ fn apply_set_world_heightfield(driver: &mut SimDriver, payload: &[u8]) -> Result
         cols,
         heights,
         scale,
-        ContactMaterial::sanitized(friction, restitution),
+        driver.material(material),
     );
     Ok(())
+}
+
+/// Décode `SET_PHYSICS_MATERIALS` (ADR-149) : l'en-tête, puis exactement `count` matériaux
+/// DM-07. Le nombre est borné avant allocation (R-901).
+fn read_physics_materials(payload: &[u8]) -> Result<Vec<PhysicsMaterial>, CommandError> {
+    if payload.len() < SetPhysicsMaterials::BYTES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let count = read_u32(payload, 0);
+    if count > SetPhysicsMaterials::MAX_COUNT
+        || payload.len() != SetPhysicsMaterials::BYTES + count as usize * PhysicsMaterial::BYTES
+    {
+        return Err(CommandError::BadPayloadLength);
+    }
+    Ok(payload[SetPhysicsMaterials::BYTES..]
+        .chunks_exact(PhysicsMaterial::BYTES)
+        .filter_map(PhysicsMaterial::read_le)
+        .collect())
 }
 
 /// Décode `SET_WORLD_FLUID` (ADR-117) et pose les volumes de fluide.
@@ -427,6 +444,14 @@ fn align_up(value: usize, alignment: usize) -> usize {
     (value + alignment - 1) & !(alignment - 1)
 }
 
+fn read_u16(bytes: &[u8], offset: usize) -> u16 {
+    u16::from_le_bytes(
+        bytes[offset..offset + 2]
+            .try_into()
+            .expect("borne vérifiée"),
+    )
+}
+
 fn read_u32(bytes: &[u8], offset: usize) -> u32 {
     u32::from_le_bytes(
         bytes[offset..offset + 4]
@@ -483,10 +508,12 @@ fn read_section(bytes: &[u8], offset: usize) -> [i32; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::body::ContactMaterial;
     use crate::body::{BodyId, BodyKind, Shape};
     use crate::config::PhysicsConfig;
     use crate::sim::SimDriver;
     use ax_math::{FloatingOrigin, Vec3};
+    use ax_model::dm::physics::{combine, NO_MATERIAL};
 
     fn config() -> PhysicsConfig {
         PhysicsConfig::new(1.0 / 60.0, 4).unwrap()
@@ -524,7 +551,7 @@ mod tests {
                 Shape::Ball { radius: 0.5 },
             )
             .unwrap();
-        driver.register_body(dimension, handle, body, 0, 0);
+        driver.register_body(dimension, handle, body, 0);
         body
     }
 
@@ -646,14 +673,134 @@ mod tests {
         section.iter().flat_map(|v| v.to_le_bytes()).collect()
     }
 
+    /// Les 8 octets de matériau d'un en-tête de tuile (ADR-149) : index, puis réservés.
+    fn material_fields(index: u16) -> Vec<u8> {
+        let mut out = index.to_le_bytes().to_vec();
+        out.extend([0u8; 6]);
+        out
+    }
+
+    /// Un matériau DM-07 dont tout est à zéro, sauf le frottement.
+    fn materiau(friction: f32) -> PhysicsMaterial {
+        PhysicsMaterial {
+            friction,
+            ..PhysicsMaterial::read_le(&[0; PhysicsMaterial::BYTES]).expect("120 octets")
+        }
+    }
+
+    /// Le payload de `SET_PHYSICS_MATERIALS` (ADR-149) : en-tête, puis les matériaux.
+    fn materials_payload(materials: &[PhysicsMaterial]) -> Vec<u8> {
+        let mut payload = (materials.len() as u32).to_le_bytes().to_vec();
+        payload.extend(0u32.to_le_bytes());
+        for material in materials {
+            material.write_le(&mut payload);
+        }
+        payload
+    }
+
+    fn appliquer(
+        driver: &mut SimDriver,
+        op: u32,
+        payload: &[u8],
+    ) -> Result<CommandOutcome, CommandError> {
+        let mut bytes = stream();
+        push(&mut bytes, op, payload);
+        apply_command_stream(driver, &bytes, 1)
+    }
+
     #[test]
-    fn set_world_collision_pose_et_retire() {
+    fn adr149_set_physics_materials_remplace_la_table() {
         let mut driver = SimDriver::new();
-        // En-tête (32) : dim 0, section [0,0,0], box_count 1, friction 0.5, restitution 0.
+        let premier = materiau(0.3);
+        let second = PhysicsMaterial {
+            friction_combine: combine::MAX,
+            ..materiau(1.2)
+        };
+        let payload = materials_payload(&[premier, second]);
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_PHYSICS_MATERIALS, &payload)
+                .unwrap()
+                .applied,
+            1
+        );
+        assert_eq!(driver.material(0), ContactMaterial::from_table(&premier, 0));
+        assert_eq!(driver.material(1), ContactMaterial::from_table(&second, 1));
+        assert_eq!(
+            driver.material(2),
+            ContactMaterial::unresolved(2),
+            "hors table"
+        );
+
+        // Un octet de moins : refusé, et la table reste celle d'avant.
+        let mut court = payload.clone();
+        court.truncate(court.len() - 1);
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_PHYSICS_MATERIALS, &court),
+            Err(CommandError::BadPayloadLength)
+        );
+        assert_eq!(driver.material(1), ContactMaterial::from_table(&second, 1));
+    }
+
+    #[test]
+    fn adr149_une_table_au_dela_de_u16_est_refusee() {
+        // 0xFFFF dit « aucun matériau » : 65 535 entrées au plus, d'index 0 à 0xFFFE.
+        let materials = vec![materiau(0.5); 0x1_0000];
+        assert_eq!(
+            appliquer(
+                &mut SimDriver::new(),
+                opcode::SET_PHYSICS_MATERIALS,
+                &materials_payload(&materials)
+            ),
+            Err(CommandError::BadPayloadLength)
+        );
+        let mut driver = SimDriver::new();
+        let payload = materials_payload(&materials[..0xFFFF]);
+        assert!(appliquer(&mut driver, opcode::SET_PHYSICS_MATERIALS, &payload).is_ok());
+        assert_eq!(driver.material(0xFFFE).index, 0xFFFE);
+        assert_eq!(driver.material(0xFFFE).friction, 0.5);
+    }
+
+    #[test]
+    fn adr149_une_tuile_prend_le_materiau_de_son_index() {
+        let mut driver = SimDriver::new();
+        let sol = materiau(0.9);
+        driver.set_physics_materials(&[materiau(0.1), sol]);
+
         let mut payload = 0u64.to_le_bytes().to_vec();
         payload.extend(section_bytes([0, 0, 0]));
         payload.extend(1u32.to_le_bytes());
-        payload.extend(f32s(&[0.5, 0.0]));
+        payload.extend(material_fields(1));
+        payload.extend(f32s(&[0.0, 0.0, 0.0, 16.0, 1.0, 16.0]));
+        appliquer(&mut driver, opcode::SET_WORLD_COLLISION, &payload).unwrap();
+        let tuile = driver.world_tile_body(0, [0, 0, 0]).expect("tuile");
+        assert_eq!(
+            driver.world_mut(0).unwrap().body_materials(tuile),
+            vec![ContactMaterial::from_table(&sol, 1)]
+        );
+
+        let mut champ = 0u64.to_le_bytes().to_vec();
+        champ.extend(section_bytes([1, 0, 0]));
+        champ.extend(2u32.to_le_bytes());
+        champ.extend(2u32.to_le_bytes());
+        champ.extend(material_fields(1));
+        champ.extend(f32s(&[16.0, 1.0, 16.0]));
+        champ.extend(f32s(&[1.0, 1.0, 1.0, 1.0]));
+        appliquer(&mut driver, opcode::SET_WORLD_HEIGHTFIELD, &champ).unwrap();
+        let tuile = driver.world_tile_body(0, [1, 0, 0]).expect("champ");
+        assert_eq!(
+            driver.world_mut(0).unwrap().body_materials(tuile),
+            vec![ContactMaterial::from_table(&sol, 1)]
+        );
+    }
+
+    #[test]
+    fn set_world_collision_pose_et_retire() {
+        let mut driver = SimDriver::new();
+        // En-tête (32) : dim 0, section [0,0,0], box_count 1, sans matériau (ADR-149).
+        let mut payload = 0u64.to_le_bytes().to_vec();
+        payload.extend(section_bytes([0, 0, 0]));
+        payload.extend(1u32.to_le_bytes());
+        payload.extend(material_fields(NO_MATERIAL));
         // Corps : une dalle 16×1×16.
         payload.extend(f32s(&[0.0, 0.0, 0.0, 16.0, 1.0, 16.0]));
         assert_eq!(payload.len(), SetWorldCollision::BYTES + 24);
@@ -690,7 +837,7 @@ mod tests {
         payload.extend(section_bytes([0, 0, 0]));
         payload.extend(2u32.to_le_bytes()); // rows
         payload.extend(2u32.to_le_bytes()); // cols
-        payload.extend(f32s(&[0.5, 0.0])); // friction, restitution
+        payload.extend(material_fields(NO_MATERIAL));
         payload.extend(f32s(&[16.0, 1.0, 16.0])); // scale
         assert_eq!(payload.len(), SetWorldHeightfield::BYTES);
         payload.extend(f32s(&[1.0, 1.0, 1.0, 1.0])); // 2×2 hauteurs

@@ -1,4 +1,4 @@
-//! DM-06 — colliders. §10.7 — événements physiques.
+//! DM-06 — colliders. DM-07 — matériaux physiques. §10.7 — événements physiques.
 
 use super::geometry::Transform;
 use super::handle::Handle;
@@ -177,7 +177,8 @@ pub struct ColliderDesc {
     pub shape: ColliderShape,
     /// Transformation locale.
     pub local: Transform,
-    /// Matériau physique.
+    /// Index du matériau physique dans la table DM-07 de la session (ADR-149), ou
+    /// [`NO_MATERIAL`] : écrit par Java d'après la part du collider.
     pub material: u16,
     /// Réservé, à zéro.
     pub _pad: u16,
@@ -208,6 +209,221 @@ impl ColliderDesc {
     #[must_use]
     pub const fn has(&self, flag: u32) -> bool {
         self.flags & flag != 0
+    }
+}
+
+/// Index de matériau absent (ADR-149) : `ColliderDesc::material`, matériau d'une tuile ou d'un
+/// événement. Un collider sans matériau garde le contact neutre du solveur.
+pub const NO_MATERIAL: u16 = 0xFFFF;
+
+/// Modes de combinaison d'un coefficient de contact entre deux matériaux (DM-07, ADR-149 D3),
+/// valeurs des champs `friction_combine` et `restitution_combine`.
+///
+/// Ce sont les valeurs du solveur. À modes différents, le plus fort l'emporte :
+/// [`MAX`](combine::MAX) > [`MULTIPLY`](combine::MULTIPLY) > [`MIN`](combine::MIN) >
+/// [`AVERAGE`](combine::AVERAGE) — l'ordre des valeurs.
+pub mod combine {
+    /// Moyenne des deux coefficients.
+    pub const AVERAGE: u8 = 0;
+    /// Le plus petit des deux.
+    pub const MIN: u8 = 1;
+    /// Leur produit.
+    pub const MULTIPLY: u8 = 2;
+    /// Le plus grand des deux.
+    pub const MAX: u8 = 3;
+}
+
+/// Drapeaux d'un [`PhysicsMaterial`] (DM-07, R-170), champ `flags`, dans l'ordre du §3.7.
+pub mod material_flags {
+    /// Fragile : pas de plasticité, tout dépassement rompt.
+    pub const BRITTLE: u32 = 1 << 0;
+    /// Ductile : la plasticité prime.
+    pub const DUCTILE: u32 = 1 << 1;
+    /// Souple : grandes déformations élastiques.
+    pub const SOFT: u32 = 1 << 2;
+    /// Rigide.
+    pub const RIGID: u32 = 1 << 3;
+    /// Inflammable.
+    pub const FLAMMABLE: u32 = 1 << 4;
+    /// Exclu du système de déformation.
+    pub const NON_DEFORMABLE: u32 = 1 << 5;
+}
+
+/// Matériau physique (DM-07, §3.7) : une entrée de la table que Java pousse au natif par
+/// `SET_PHYSICS_MATERIALS` (ADR-149). Son index dans la table est celui que portent les
+/// colliders, les tuiles et les événements.
+///
+/// `name_hash` est l'empreinte FNV-1a 64 de l'identifiant du matériau ; `sound_group` et
+/// `particle_group`, les 32 bits de poids faible de celle de leur groupe, `0` sans groupe.
+///
+/// **Disposition figée** : 116 octets de champs, 120 avec l'alignement sur 8 de `name_hash` ;
+/// sur la frontière, les 4 derniers octets sont à zéro. Le test de disposition la verrouille.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PhysicsMaterial {
+    /// Empreinte FNV-1a 64 de l'identifiant.
+    pub name_hash: u64,
+    /// Coefficient de frottement, `[0, 2]`.
+    pub friction: f32,
+    /// Coefficient de restitution, `[0, 1]`.
+    pub restitution: f32,
+    /// Coefficient de frottement de roulement, positif, sans dimension (ADR-149 D6).
+    pub rolling_friction: f32,
+    /// Mode de combinaison du frottement, voir [`combine`].
+    pub friction_combine: u8,
+    /// Mode de combinaison de la restitution, voir [`combine`].
+    pub restitution_combine: u8,
+    /// Réservé, à zéro.
+    pub _pad0: [u8; 2],
+    /// Masse volumique, kg/m³.
+    pub density: f32,
+    /// Résistance à la rayure, `[0, 1]`.
+    pub hardness: f32,
+    /// Module apparent, Pa.
+    pub stiffness: f32,
+    /// Part du déplacement qui revient, `[0, 1]`.
+    pub elasticity: f32,
+    /// Part du dépassement qui devient permanente, `[0, 1]`.
+    pub plasticity: f32,
+    /// Limite d'élasticité, Pa.
+    pub yield_strength: f32,
+    /// Seuil de rupture locale, Pa.
+    pub fracture_strength: f32,
+    /// Multiplicateur global de résistance, `[0,01, 100]`.
+    pub deformation_resistance: f32,
+    /// Déformation relative maximale avant rupture, `[0, 1]`.
+    pub max_strain: f32,
+    /// Amortissement du retour élastique.
+    pub damping: f32,
+    /// Énergie spécifique de rupture, J/m².
+    pub fracture_energy: f32,
+    /// Dureté dynamique d'indentation, Pa.
+    pub hardness_pressure: f32,
+    /// Rayon d'indenteur de référence, m.
+    pub indenter_radius_ref: f32,
+    /// Facteur d'étalement, `[0,5, 8]`.
+    pub spread_factor: f32,
+    /// Étalement selon l'épaisseur, `[0, 20]`.
+    pub thickness_spread: f32,
+    /// Multiplicateur du dommage reçu.
+    pub damage_multiplier: f32,
+    /// Part de l'énergie convertie en dommage, `[0, 1]`.
+    pub energy_absorption: f32,
+    /// Résistance à l'éraflure, `[0, 1]`.
+    pub scratch_resistance: f32,
+    /// Énergie thermique avant marquage, J.
+    pub burn_threshold: f32,
+    /// Vitesse d'encrassement.
+    pub soil_rate: f32,
+    /// Groupe de sons.
+    pub sound_group: u32,
+    /// Groupe de particules.
+    pub particle_group: u32,
+    /// Drapeaux, voir [`material_flags`].
+    pub flags: u32,
+}
+
+impl PhysicsMaterial {
+    /// Taille sur la frontière, en octets : celle de la structure, alignement compris.
+    pub const BYTES: usize = 120;
+
+    /// Les 20 grandeurs `f32` qui suivent les modes, dans l'ordre de la disposition.
+    fn quantities(&self) -> [f32; 20] {
+        [
+            self.density,
+            self.hardness,
+            self.stiffness,
+            self.elasticity,
+            self.plasticity,
+            self.yield_strength,
+            self.fracture_strength,
+            self.deformation_resistance,
+            self.max_strain,
+            self.damping,
+            self.fracture_energy,
+            self.hardness_pressure,
+            self.indenter_radius_ref,
+            self.spread_factor,
+            self.thickness_spread,
+            self.damage_multiplier,
+            self.energy_absorption,
+            self.scratch_resistance,
+            self.burn_threshold,
+            self.soil_rate,
+        ]
+    }
+
+    /// Sérialise le matériau en little-endian, dans la disposition figée ([`Self::BYTES`]
+    /// octets, les 4 derniers à zéro), à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.name_hash.to_le_bytes());
+        for value in [self.friction, self.restitution, self.rolling_friction] {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        out.extend_from_slice(&[
+            self.friction_combine,
+            self.restitution_combine,
+            self._pad0[0],
+            self._pad0[1],
+        ]);
+        for value in self.quantities() {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in [self.sound_group, self.particle_group, self.flags] {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        out.extend_from_slice(&[0u8; 4]); // alignement
+    }
+
+    /// Relit un matériau écrit par [`Self::write_le`], ou `None` si `bytes` est trop court.
+    /// Les valeurs ne sont pas vérifiées : c'est au consommateur de les borner.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..Self::BYTES)?;
+        let word = |offset: usize| {
+            [
+                bytes[offset],
+                bytes[offset + 1],
+                bytes[offset + 2],
+                bytes[offset + 3],
+            ]
+        };
+        let f = |offset: usize| f32::from_le_bytes(word(offset));
+        let u = |offset: usize| u32::from_le_bytes(word(offset));
+        let mut hash = [0u8; 8];
+        hash.copy_from_slice(&bytes[..8]);
+        Some(Self {
+            name_hash: u64::from_le_bytes(hash),
+            friction: f(8),
+            restitution: f(12),
+            rolling_friction: f(16),
+            friction_combine: bytes[20],
+            restitution_combine: bytes[21],
+            _pad0: [bytes[22], bytes[23]],
+            density: f(24),
+            hardness: f(28),
+            stiffness: f(32),
+            elasticity: f(36),
+            plasticity: f(40),
+            yield_strength: f(44),
+            fracture_strength: f(48),
+            deformation_resistance: f(52),
+            max_strain: f(56),
+            damping: f(60),
+            fracture_energy: f(64),
+            hardness_pressure: f(68),
+            indenter_radius_ref: f(72),
+            spread_factor: f(76),
+            thickness_spread: f(80),
+            damage_multiplier: f(84),
+            energy_absorption: f(88),
+            scratch_resistance: f(92),
+            burn_threshold: f(96),
+            soil_rate: f(100),
+            sound_group: u(104),
+            particle_group: u(108),
+            flags: u(112),
+        })
     }
 }
 
@@ -307,9 +523,10 @@ pub struct PhysicsEvent {
     pub relative_velocity: f32,
     /// Masse effective au contact, en kg.
     pub effective_mass: f32,
-    /// Matériau du premier corps.
+    /// Index du matériau du collider du premier corps qui touche (ADR-149 D5), ou
+    /// [`NO_MATERIAL`] — sans contact, ou sans matériau.
     pub material_a: u16,
-    /// Matériau du second corps.
+    /// Index du matériau du collider du second côté — tuile comprise —, ou [`NO_MATERIAL`].
     pub material_b: u16,
     /// Charge utile propre au genre.
     pub data: u32,
@@ -678,6 +895,124 @@ impl BodyBounds {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dm_physics_material_disposition_figee() {
+        use core::mem::{align_of, offset_of, size_of};
+        // DM-07, §3.7 (ADR-149) : 116 octets de champs, 120 avec l'alignement de `name_hash`.
+        assert_eq!(size_of::<PhysicsMaterial>(), PhysicsMaterial::BYTES);
+        assert_eq!(align_of::<PhysicsMaterial>(), 8);
+        assert_eq!(offset_of!(PhysicsMaterial, name_hash), 0);
+        assert_eq!(offset_of!(PhysicsMaterial, friction), 8);
+        assert_eq!(offset_of!(PhysicsMaterial, restitution), 12);
+        assert_eq!(offset_of!(PhysicsMaterial, rolling_friction), 16);
+        assert_eq!(offset_of!(PhysicsMaterial, friction_combine), 20);
+        assert_eq!(offset_of!(PhysicsMaterial, restitution_combine), 21);
+        assert_eq!(offset_of!(PhysicsMaterial, _pad0), 22);
+        assert_eq!(offset_of!(PhysicsMaterial, density), 24);
+        assert_eq!(offset_of!(PhysicsMaterial, hardness), 28);
+        assert_eq!(offset_of!(PhysicsMaterial, stiffness), 32);
+        assert_eq!(offset_of!(PhysicsMaterial, elasticity), 36);
+        assert_eq!(offset_of!(PhysicsMaterial, plasticity), 40);
+        assert_eq!(offset_of!(PhysicsMaterial, yield_strength), 44);
+        assert_eq!(offset_of!(PhysicsMaterial, fracture_strength), 48);
+        assert_eq!(offset_of!(PhysicsMaterial, deformation_resistance), 52);
+        assert_eq!(offset_of!(PhysicsMaterial, max_strain), 56);
+        assert_eq!(offset_of!(PhysicsMaterial, damping), 60);
+        assert_eq!(offset_of!(PhysicsMaterial, fracture_energy), 64);
+        assert_eq!(offset_of!(PhysicsMaterial, hardness_pressure), 68);
+        assert_eq!(offset_of!(PhysicsMaterial, indenter_radius_ref), 72);
+        assert_eq!(offset_of!(PhysicsMaterial, spread_factor), 76);
+        assert_eq!(offset_of!(PhysicsMaterial, thickness_spread), 80);
+        assert_eq!(offset_of!(PhysicsMaterial, damage_multiplier), 84);
+        assert_eq!(offset_of!(PhysicsMaterial, energy_absorption), 88);
+        assert_eq!(offset_of!(PhysicsMaterial, scratch_resistance), 92);
+        assert_eq!(offset_of!(PhysicsMaterial, burn_threshold), 96);
+        assert_eq!(offset_of!(PhysicsMaterial, soil_rate), 100);
+        assert_eq!(offset_of!(PhysicsMaterial, sound_group), 104);
+        assert_eq!(offset_of!(PhysicsMaterial, particle_group), 108);
+        assert_eq!(offset_of!(PhysicsMaterial, flags), 112);
+    }
+
+    /// Un matériau dont chaque champ a une valeur distincte.
+    fn materiau_distinct() -> PhysicsMaterial {
+        let mut next = 0.0f32;
+        let mut v = || {
+            next += 1.5;
+            next
+        };
+        PhysicsMaterial {
+            name_hash: 0x0102_0304_0506_0708,
+            friction: v(),
+            restitution: v(),
+            rolling_friction: v(),
+            friction_combine: combine::MULTIPLY,
+            restitution_combine: combine::MAX,
+            _pad0: [0, 0],
+            density: v(),
+            hardness: v(),
+            stiffness: v(),
+            elasticity: v(),
+            plasticity: v(),
+            yield_strength: v(),
+            fracture_strength: v(),
+            deformation_resistance: v(),
+            max_strain: v(),
+            damping: v(),
+            fracture_energy: v(),
+            hardness_pressure: v(),
+            indenter_radius_ref: v(),
+            spread_factor: v(),
+            thickness_spread: v(),
+            damage_multiplier: v(),
+            energy_absorption: v(),
+            scratch_resistance: v(),
+            burn_threshold: v(),
+            soil_rate: v(),
+            sound_group: 0xA1A2_A3A4,
+            particle_group: 0xB1B2_B3B4,
+            flags: material_flags::BRITTLE | material_flags::NON_DEFORMABLE,
+        }
+    }
+
+    #[test]
+    fn physics_material_write_le_respecte_la_disposition() {
+        let materiau = materiau_distinct();
+        let mut out = Vec::new();
+        materiau.write_le(&mut out);
+        assert_eq!(out.len(), PhysicsMaterial::BYTES);
+        // Chaque champ à son décalage, comme la mémoire `repr(C)` le place.
+        let f = |offset: usize| f32::from_le_bytes(out[offset..offset + 4].try_into().unwrap());
+        let u = |offset: usize| u32::from_le_bytes(out[offset..offset + 4].try_into().unwrap());
+        assert_eq!(
+            u64::from_le_bytes(out[..8].try_into().unwrap()),
+            materiau.name_hash
+        );
+        assert_eq!(f(8), materiau.friction);
+        assert_eq!(f(16), materiau.rolling_friction);
+        assert_eq!((out[20], out[21]), (combine::MULTIPLY, combine::MAX));
+        assert_eq!(f(24), materiau.density);
+        assert_eq!(f(100), materiau.soil_rate);
+        assert_eq!(u(104), materiau.sound_group);
+        assert_eq!(u(112), materiau.flags);
+        assert_eq!(out[116..], [0; 4], "alignement à zéro");
+        assert_eq!(PhysicsMaterial::read_le(&out), Some(materiau));
+        assert_eq!(PhysicsMaterial::read_le(&out[..119]), None, "trop court");
+    }
+
+    #[test]
+    fn les_modes_de_combinaison_sont_ceux_du_solveur() {
+        // ADR-149 D3 : valeurs de rapier, ordonnées du plus faible au plus fort.
+        assert_eq!(
+            [
+                combine::AVERAGE,
+                combine::MIN,
+                combine::MULTIPLY,
+                combine::MAX
+            ],
+            [0, 1, 2, 3]
+        );
+    }
 
     #[test]
     fn dm_physics_event_disposition_figee() {

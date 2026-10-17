@@ -23,14 +23,21 @@ import java.util.Map;
  */
 public final class BlockMaterials {
 
-    /** Contact d'un matériau : frottement et restitution (groupe CONTACT de DM-07). */
-    public record Material(float friction, float restitution) {}
+    /**
+     * Contact d'un matériau : son identifiant, que la table de la session traduit en index pour
+     * les tuiles (ADR-149 D4), et son frottement et sa restitution (groupe CONTACT de DM-07).
+     *
+     * @param id identifiant du matériau physique, ou {@code null} pour le contact du solveur
+     * @param friction coefficient de frottement
+     * @param restitution coefficient de restitution
+     */
+    public record Material(String id, float friction, float restitution) {}
 
     /**
      * Contact du solveur sans matériau déclaré — son frottement et sa restitution par défaut —,
      * celui d'un mappage vide, avant tout chargement de données.
      */
-    public static final Material SOLVER_DEFAULT = new Material(0.5f, 0.0f);
+    public static final Material SOLVER_DEFAULT = new Material(null, 0.5f, 0.0f);
 
     private final Map<String, Material> byBlock;
     private final Map<String, Material> byTag;

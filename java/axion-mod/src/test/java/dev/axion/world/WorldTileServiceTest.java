@@ -36,7 +36,7 @@ class WorldTileServiceTest {
         SectionTile tile =
                 new SectionTile(
                         new CollisionShape.Boxes(
-                                new float[][] {{0f, 0f, 0f, 16f, 1f, 16f}}, 0.6f, 0.0f),
+                                new float[][] {{0f, 0f, 0f, 16f, 1f, 16f}}, 3),
                         new float[0][],
                         0.0f);
         WorldTileService service =
@@ -52,7 +52,7 @@ class WorldTileServiceTest {
     void unFluideEstEmis() {
         SectionTile tile =
                 new SectionTile(
-                        new CollisionShape.Boxes(new float[0][], 0.6f, 0.0f),
+                        new CollisionShape.Boxes(new float[0][], 3),
                         new float[][] {{0f, 1f, 0f, 16f, 9f, 16f}},
                         1000.0f);
         WorldTileService service =
@@ -70,7 +70,7 @@ class WorldTileServiceTest {
         SectionTile tile =
                 new SectionTile(
                         new CollisionShape.Heightfield(
-                                2, 2, new float[] {1f, 1f, 1f, 1f}, new float[] {16f, 1f, 16f}, 0.6f, 0f),
+                                2, 2, new float[] {1f, 1f, 1f, 1f}, new float[] {16f, 1f, 16f}, 3),
                         new float[0][],
                         0.0f);
         WorldTileService service =
@@ -84,7 +84,7 @@ class WorldTileServiceTest {
     @Test
     void uneSectionLibereeEmetLesDeuxRetraits() {
         SectionTile empty =
-                new SectionTile(new CollisionShape.Boxes(new float[0][], 0.6f, 0f), new float[0][], 0f);
+                new SectionTile(new CollisionShape.Boxes(new float[0][], 3), new float[0][], 0f);
         WorldTileService service =
                 new WorldTileService(new WorldTilePlanner(0, 64), constant(empty));
 
@@ -106,7 +106,7 @@ class WorldTileServiceTest {
         SectionTile tile =
                 new SectionTile(
                         new CollisionShape.Boxes(
-                                new float[][] {{0f, 0f, 0f, 16f, 1f, 16f}, {0f, 1f, 0f, 1f, 2f, 1f}}, 0.6f, 0f),
+                                new float[][] {{0f, 0f, 0f, 16f, 1f, 16f}, {0f, 1f, 0f, 1f, 2f, 1f}}, 3),
                         new float[][] {{0f, 1f, 0f, 16f, 9f, 16f}},
                         1000f);
         WorldTileService service =

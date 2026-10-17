@@ -111,8 +111,7 @@ public final class WorldTileService {
     private static void emitCollision(
             SimCommandStream stream, long dimension, int[] section, CollisionShape shape) {
         if (shape instanceof CollisionShape.Boxes boxes) {
-            stream.setWorldCollision(
-                    dimension, section, boxes.boxes(), boxes.friction(), boxes.restitution());
+            stream.setWorldCollision(dimension, section, boxes.boxes(), boxes.material());
         } else if (shape instanceof CollisionShape.Heightfield hf) {
             stream.setWorldHeightfield(
                     dimension,
@@ -121,8 +120,7 @@ public final class WorldTileService {
                     hf.cols(),
                     hf.heights(),
                     hf.scale(),
-                    hf.friction(),
-                    hf.restitution());
+                    hf.material());
         }
     }
 }

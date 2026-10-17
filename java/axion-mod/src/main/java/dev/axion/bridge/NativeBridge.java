@@ -33,7 +33,7 @@ public final class NativeBridge {
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
      * {@code E-1002}.
      */
-    public static final int EXPECTED_ABI_VERSION = 4;
+    public static final int EXPECTED_ABI_VERSION = 5;
 
     /** Succès. */
     public static final int OK = 0;

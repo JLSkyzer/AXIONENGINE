@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "asset": "axion:models/test/ballon.glb",
+  "kind": "rigid_object",
+  "parts": [
+    { "name": "ballon", "root_node": "ballon", "material": "axion:test/balle" }
+  ]
+}

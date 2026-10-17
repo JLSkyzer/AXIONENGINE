@@ -41,7 +41,8 @@ public final class CollisionDuMondeGameTests {
         ServerLevel level = helper.getLevel();
         long dimension = DimensionId.of(level.dimension().location().toString());
         ForgeWorldCollisionSource source =
-                new ForgeWorldCollisionSource(id -> id == dimension ? level : null, BlockMaterials::empty);
+                new ForgeWorldCollisionSource(
+                        id -> id == dimension ? level : null, BlockMaterials::empty, material -> 0);
         // À cent mille blocs de l'aire de test, aucun joueur ni aucun test n'a chargé ce chunk.
         ChunkPos loin = new ChunkPos(helper.absolutePos(BlockPos.ZERO).offset(100_000, 0, 0));
         helper.assertFalse(
@@ -66,7 +67,8 @@ public final class CollisionDuMondeGameTests {
         ServerLevel level = helper.getLevel();
         long dimension = DimensionId.of(level.dimension().location().toString());
         ForgeWorldCollisionSource source =
-                new ForgeWorldCollisionSource(id -> id == dimension ? level : null, BlockMaterials::empty);
+                new ForgeWorldCollisionSource(
+                        id -> id == dimension ? level : null, BlockMaterials::empty, material -> 0);
         // Loin de l'aire de test, et au-dessus de tout relief : la section ne contient que ce que
         // le test y pose.
         ChunkPos chunk = new ChunkPos(helper.absolutePos(BlockPos.ZERO).offset(-100_000, 0, 0));

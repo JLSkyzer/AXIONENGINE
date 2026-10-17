@@ -60,8 +60,8 @@ class BlockMaterialMappingsTest {
             .material("mymod:stone", "{\"friction\": 0.6, \"restitution\": 0.1}")
             .material("mymod:bouncy", "{\"friction\": 0.8, \"restitution\": 0.8}"));
 
-    private static Material contact(double friction, double restitution) {
-        return new Material((float) friction, (float) restitution);
+    private static Material contact(String id, double friction, double restitution) {
+        return new Material(id, (float) friction, (float) restitution);
     }
 
     @Test
@@ -74,12 +74,12 @@ class BlockMaterialMappingsTest {
         assertTrue(result.refusals().isEmpty(), result.refusals()::toString);
         BlockMaterials mapping = result.mapping();
 
-        assertEquals(contact(0.8, 0.8), mapping.resolve("minecraft:slime_block", List.of("minecraft:logs")),
+        assertEquals(contact("mymod:bouncy", 0.8, 0.8), mapping.resolve("minecraft:slime_block", List.of("minecraft:logs")),
                 "le bloc exact prime sur ses étiquettes");
-        assertEquals(contact(0.7, 0), mapping.resolve("minecraft:oak_log", List.of("minecraft:logs")));
+        assertEquals(contact("mymod:wood", 0.7, 0), mapping.resolve("minecraft:oak_log", List.of("minecraft:logs")));
         // Le bloc porte les deux étiquettes, dans l'ordre inverse : celle déclarée d'abord l'emporte.
-        assertEquals(contact(0.05, 0), mapping.resolve("x:y", List.of("minecraft:logs", "mymod:glissant")));
-        assertEquals(contact(0.6, 0.1), mapping.resolve("minecraft:dirt", List.of("x:inconnue")));
+        assertEquals(contact("mymod:ice", 0.05, 0), mapping.resolve("x:y", List.of("minecraft:logs", "mymod:glissant")));
+        assertEquals(contact("mymod:stone", 0.6, 0.1), mapping.resolve("minecraft:dirt", List.of("x:inconnue")));
     }
 
     @Test
@@ -96,12 +96,12 @@ class BlockMaterialMappingsTest {
         assertTrue(result.refusals().isEmpty(), result.refusals()::toString);
         BlockMaterials mapping = result.mapping();
 
-        assertEquals(contact(0.7, 0), mapping.fallback(), "default de zpack, plus tardif");
-        assertEquals(contact(0.6, 0.1), mapping.resolve("minecraft:ice", List.of()));
-        assertEquals(contact(0.05, 0), mapping.resolve("minecraft:oak_log", List.of("minecraft:logs")));
+        assertEquals(contact("mymod:wood", 0.7, 0), mapping.fallback(), "default de zpack, plus tardif");
+        assertEquals(contact("mymod:stone", 0.6, 0.1), mapping.resolve("minecraft:ice", List.of()));
+        assertEquals(contact("mymod:ice", 0.05, 0), mapping.resolve("minecraft:oak_log", List.of("minecraft:logs")));
         // L'étiquette reprise garde sa place : avant planks, elle-même avant la nouvelle de zpack.
-        assertEquals(contact(0.05, 0), mapping.resolve("b:c", List.of("zpack:neuf", "minecraft:logs")));
-        assertEquals(contact(0.7, 0), mapping.resolve("b:c", List.of("zpack:neuf", "minecraft:planks")));
+        assertEquals(contact("mymod:ice", 0.05, 0), mapping.resolve("b:c", List.of("zpack:neuf", "minecraft:logs")));
+        assertEquals(contact("mymod:wood", 0.7, 0), mapping.resolve("b:c", List.of("zpack:neuf", "minecraft:planks")));
 
         assertEquals(3, result.notes().size(), result.notes()::toString);
         assertTrue(result.notes().stream().allMatch(note -> note.startsWith("zpack:axion/block_materials/surcharge.json")
@@ -123,10 +123,10 @@ class BlockMaterialMappingsTest {
         assertTrue(refus.stream().anyMatch(r -> r.contains("$.by_tag[\"minecraft:logs\"] : attendu l'identifiant")),
                 refus::toString);
         assertTrue(refus.stream().anyMatch(r -> r.contains("« mymod:sable » inconnu")), refus::toString);
-        assertEquals(contact(0.05, 0), result.mapping().resolve("minecraft:ice", List.of()), "l'entrée valide reste");
+        assertEquals(contact("mymod:ice", 0.05, 0), result.mapping().resolve("minecraft:ice", List.of()), "l'entrée valide reste");
         // Sans default valide, l'acier générique (R-1032).
         PhysicsMaterials.Material generique = PhysicsMaterials.genericSteel();
-        assertEquals(contact(generique.friction(), generique.restitution()), result.mapping().fallback());
+        assertEquals(contact(null, generique.friction(), generique.restitution()), result.mapping().fallback());
     }
 
     @Test
@@ -164,13 +164,13 @@ class BlockMaterialMappingsTest {
         assertTrue(result.refusals().isEmpty(), result.refusals()::toString);
         BlockMaterials mapping = result.mapping();
         // Le comportement des tuiles d'avant ADR-145 : glace glissante, slime qui rebondit.
-        assertEquals(contact(0.05, 0), mapping.resolve("minecraft:ice", List.of()));
-        assertEquals(contact(0.02, 0), mapping.resolve("minecraft:blue_ice", List.of()));
-        assertEquals(contact(0.8, 0.8), mapping.resolve("minecraft:slime_block", List.of()));
-        assertEquals(contact(1.4, 0), mapping.resolve("minecraft:honey_block", List.of()));
-        assertEquals(contact(0.7, 0), mapping.resolve("minecraft:oak_log", List.of("minecraft:logs")));
-        assertEquals(contact(0.9, 0), mapping.resolve("minecraft:white_wool", List.of("minecraft:wool")));
-        assertEquals(contact(0.6, 0), mapping.fallback());
+        assertEquals(contact("axion:ice", 0.05, 0), mapping.resolve("minecraft:ice", List.of()));
+        assertEquals(contact("axion:blue_ice", 0.02, 0), mapping.resolve("minecraft:blue_ice", List.of()));
+        assertEquals(contact("axion:slime", 0.8, 0.8), mapping.resolve("minecraft:slime_block", List.of()));
+        assertEquals(contact("axion:honey", 1.4, 0), mapping.resolve("minecraft:honey_block", List.of()));
+        assertEquals(contact("axion:wood", 0.7, 0), mapping.resolve("minecraft:oak_log", List.of("minecraft:logs")));
+        assertEquals(contact("axion:fabric", 0.9, 0), mapping.resolve("minecraft:white_wool", List.of("minecraft:wool")));
+        assertEquals(contact("axion:stone", 0.6, 0), mapping.fallback());
     }
 
     /** {@return les fichiers {@code data/<ns>/<prefix>**.json} d'une racine, comme le jeu les énumère} */

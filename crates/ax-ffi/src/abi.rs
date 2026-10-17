@@ -51,8 +51,9 @@ use ax_physics::{
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`).
-pub const AXION_ABI_VERSION: u32 = 4;
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 5 depuis l'index de
+/// matériau des en-têtes de tuiles (ADR-149 D4).
+pub const AXION_ABI_VERSION: u32 = 5;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -1508,9 +1509,9 @@ fn body_colliders(
         runtime.push(BodyCollider {
             shape,
             density: collider.density,
-            // L'index `collider.material` (DM-06) se résoudra en friction/restitution
-            // via la table DM-07 quand elle sera décodée ; d'ici là, contact neutre.
-            material: ContactMaterial::default(),
+            // L'index `collider.material` (DM-06), que le pilote résout par la table DM-07 de
+            // la session (ADR-149) — à la création, puis à chaque table reçue.
+            material: ContactMaterial::unresolved(collider.material),
             translation: Vec3::from_array(collider.local.translation),
             rotation: Quat::from_array(collider.local.rotation),
         });

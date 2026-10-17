@@ -45,6 +45,7 @@ mod debug;
 mod forces;
 mod governor;
 mod groups;
+mod materials;
 mod proxies;
 mod query;
 mod scheduler;
@@ -53,7 +54,7 @@ mod world;
 
 pub use activity::ActivityReport;
 pub use body::{
-    BodyCollider, BodyError, BodyId, BodyKind, CompoundPart, ContactMaterial, Shape,
+    BodyCollider, BodyError, BodyId, BodyKind, CombineRule, CompoundPart, ContactMaterial, Shape,
     ShapeConversionError,
 };
 pub use commands::{apply_command_stream, create_assembly_payloads, CommandError, CommandOutcome};
@@ -65,6 +66,7 @@ pub use debug::{
 pub use forces::{FluidEnvironment, FluidVolume, LiftSurface};
 pub use governor::{DegradationLevel, DegradationTransition, Governor, WINDOW_TICKS};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
+pub use materials::MaterialTable;
 pub use proxies::{EntityProxy, ProxyShape};
 pub use query::{RayHit, SensorMode, SpatialFilter, SweepHit};
 pub use scheduler::{check_order, SimMode, Stage, StageDurations, StageLog};
@@ -75,5 +77,6 @@ pub use world::{BodyReports, PhysicsWorld, Pose, WorldCounters};
 // réexporte pour que l'API du monde physique soit autonome.
 pub use ax_model::dm::handle::Handle;
 pub use ax_model::dm::physics::{
-    body_state_flags, event_data, event_kind, BodyBounds, BodyDesc, BodyState, PhysicsEvent,
+    body_state_flags, combine, event_data, event_kind, BodyBounds, BodyDesc, BodyState,
+    PhysicsEvent, PhysicsMaterial, NO_MATERIAL,
 };

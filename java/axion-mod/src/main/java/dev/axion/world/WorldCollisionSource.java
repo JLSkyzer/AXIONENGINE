@@ -39,24 +39,23 @@ public interface WorldCollisionSource {
     /** Forme de collision d'une section : soit des boîtes, soit un champ de hauteurs (R-641). */
     sealed interface CollisionShape permits CollisionShape.Boxes, CollisionShape.Heightfield {
 
-        /** Frottement du matériau dominant (R-643). */
-        float friction();
-
-        /** Restitution du matériau dominant (R-643). */
-        float restitution();
+        /**
+         * Index du matériau dominant (R-643) dans la table de la session (ADR-149 D4), ou
+         * {@code 0xFFFF} sans matériau : le contact du solveur.
+         */
+        int material();
 
         /**
          * Collision par boîtes (cas courant) : {@code boxes} boîtes section-relatives
          * quantifiées. Une liste vide dénote une section sans collision (la tuile est retirée).
          */
-        record Boxes(float[][] boxes, float friction, float restitution) implements CollisionShape {}
+        record Boxes(float[][] boxes, int material) implements CollisionShape {}
 
         /**
          * Collision par champ de hauteurs (repli R-641) : {@code rows × cols} hauteurs
          * ligne-major, échelle {@code [x, y, z]}.
          */
-        record Heightfield(
-                int rows, int cols, float[] heights, float[] scale, float friction, float restitution)
+        record Heightfield(int rows, int cols, float[] heights, float[] scale, int material)
                 implements CollisionShape {}
     }
 }

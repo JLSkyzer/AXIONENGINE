@@ -5,7 +5,7 @@ use ax_physics::{
     body_state_flags, check_order, event_data, event_kind, BodyBounds, BodyCollider, BodyError,
     BodyId, BodyKind, CollisionGroups, CompoundPart, ConfigError, ContactMaterial,
     FluidEnvironment, Handle, LiftSurface, PhysicsConfig, PhysicsWorld, SensorMode, Shape, SimMode,
-    SpatialFilter, Stage,
+    SpatialFilter, Stage, NO_MATERIAL,
 };
 
 fn config() -> PhysicsConfig {
@@ -731,7 +731,7 @@ fn un_corps_qui_s_endort_emet_sleep() {
     // identité (assembly, node, matériau).
     let mut world = PhysicsWorld::new(config());
     let ball = bille_au_repos(&mut world);
-    world.set_body_identity(ball, Handle::new(7, 1), 3, 42);
+    world.set_body_identity(ball, Handle::new(7, 1), 3);
     for _ in 0..180 {
         world.advance(1.0 / 60.0);
     }
@@ -747,7 +747,8 @@ fn un_corps_qui_s_endort_emet_sleep() {
         .expect("un événement SLEEP");
     assert_eq!(sleep.assembly_a, Handle::new(7, 1));
     assert_eq!(sleep.node_a, 3);
-    assert_eq!(sleep.material_a, 42);
+    // Un événement à un seul corps n'a pas de contact, donc pas de matériau (ADR-149 D5).
+    assert_eq!(sleep.material_a, NO_MATERIAL);
     assert_eq!(sleep.assembly_b, Handle::ABSENT);
     // Vidé : un second drain ne rend rien.
     assert!(world.drain_events().is_empty());
@@ -810,28 +811,40 @@ fn le_plafond_compte_les_pertes() {
 
 /// Un sol statique (sommet en y = 0) et une bille lâchée de y = 2, avec leurs
 /// identités. Renvoie (monde, bille, sol) après câblage, avant simulation.
+/// Un sol et une bille de densité 1, au contact neutre, dont les colliders portent les index de
+/// matériau 3 et 9 (ADR-149) : sans table, l'index est porté tel quel jusqu'aux événements.
 fn monde_impact() -> (PhysicsWorld, BodyId, BodyId) {
     let mut world = PhysicsWorld::new(config());
+    let collider = |shape: Shape, material: u16| BodyCollider {
+        shape,
+        density: 1.0,
+        material: ContactMaterial::unresolved(material),
+        translation: Vec3::ZERO,
+        rotation: Quat::IDENTITY,
+    };
     let ground = world
-        .add_body(
+        .add_assembly(
             BodyKind::Static,
             Vec3::new(0.0, -0.5, 0.0),
             Quat::IDENTITY,
-            Shape::Cuboid {
-                half_extents: [5.0, 0.5, 5.0],
-            },
+            &[collider(
+                Shape::Cuboid {
+                    half_extents: [5.0, 0.5, 5.0],
+                },
+                3,
+            )],
         )
         .expect("un sol est valide");
-    world.set_body_identity(ground, Handle::new(1, 1), 0, 3);
+    world.set_body_identity(ground, Handle::new(1, 1), 0);
     let ball = world
-        .add_body(
+        .add_assembly(
             BodyKind::Dynamic,
             Vec3::new(0.0, 2.0, 0.0),
             Quat::IDENTITY,
-            Shape::Ball { radius: 0.5 },
+            &[collider(Shape::Ball { radius: 0.5 }, 9)],
         )
         .expect("une bille est valide");
-    world.set_body_identity(ball, Handle::new(5, 1), 2, 9);
+    world.set_body_identity(ball, Handle::new(5, 1), 2);
     (world, ball, ground)
 }
 
@@ -887,7 +900,8 @@ fn t305_un_contact_emet_contact_start_complet() {
         event.effective_mass
     );
 
-    // La paire porte les deux identités, dans un ordre quelconque.
+    // La paire porte les deux identités et les matériaux de leurs colliders (ADR-149 D5), dans
+    // un ordre quelconque.
     let paire = [
         (event.assembly_a, event.material_a),
         (event.assembly_b, event.material_b),
@@ -1086,7 +1100,7 @@ fn un_capteur_emet_enter_puis_exit() {
         )
         .expect("un capteur est valide");
     world.set_sensor(sensor, true);
-    world.set_body_identity(sensor, Handle::new(9, 1), 0, 0);
+    world.set_body_identity(sensor, Handle::new(9, 1), 0);
     let ball = world
         .add_body(
             BodyKind::Dynamic,
@@ -1095,7 +1109,7 @@ fn un_capteur_emet_enter_puis_exit() {
             Shape::Ball { radius: 0.3 },
         )
         .expect("une bille est valide");
-    world.set_body_identity(ball, Handle::new(4, 1), 0, 0);
+    world.set_body_identity(ball, Handle::new(4, 1), 0);
 
     let mut enter = None;
     let mut exit = false;
@@ -1140,7 +1154,7 @@ fn body_states_compose_la_position_monde() {
             Shape::Ball { radius: 0.5 },
         )
         .unwrap();
-    world.set_body_identity(ball, Handle::new(3, 1), 7, 2);
+    world.set_body_identity(ball, Handle::new(3, 1), 7);
     let origin = FloatingOrigin::new(DVec3::new(1000.0, 0.0, 0.0));
     let states = world.body_states(&origin);
     assert_eq!(states.len(), 1);
@@ -1172,7 +1186,7 @@ fn body_states_filtre_statiques_et_anonymes() {
             },
         )
         .unwrap();
-    world.set_body_identity(sol, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(sol, Handle::new(1, 1), 0);
     // Dynamique sans identité : exclu.
     world
         .add_body(
@@ -1191,7 +1205,7 @@ fn body_states_filtre_statiques_et_anonymes() {
             Shape::Ball { radius: 0.5 },
         )
         .unwrap();
-    world.set_body_identity(ball, Handle::new(9, 1), 0, 0);
+    world.set_body_identity(ball, Handle::new(9, 1), 0);
     for _ in 0..180 {
         world.advance(1.0 / 60.0);
     }
@@ -1220,7 +1234,7 @@ fn body_states_marque_in_fluid() {
             Shape::Ball { radius: 0.5 },
         )
         .unwrap();
-    world.set_body_identity(ball, Handle::new(4, 1), 0, 0);
+    world.set_body_identity(ball, Handle::new(4, 1), 0);
     let states = world.body_states(&FloatingOrigin::new(DVec3::ZERO));
     assert_eq!(states.len(), 1);
     assert!(
@@ -1250,7 +1264,7 @@ fn evenements_deterministes() {
     let run = || {
         let mut world = PhysicsWorld::new(config());
         let ball = bille_au_repos(&mut world);
-        world.set_body_identity(ball, Handle::new(1, 1), 0, 0);
+        world.set_body_identity(ball, Handle::new(1, 1), 0);
         for _ in 0..180 {
             world.advance(1.0 / 60.0);
         }
@@ -1274,7 +1288,7 @@ fn t306_le_clamp_borne_la_vitesse_lineaire() {
             Shape::Ball { radius: 0.5 },
         )
         .unwrap();
-    world.set_body_identity(ball, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(ball, Handle::new(1, 1), 0);
     world.set_velocity_limits(ball, 5.0, 100.0);
     // Une forte impulsion propulse la bille bien au-delà de 5 m/s.
     world.apply_impulse(ball, Vec3::new(1000.0, 0.0, 0.0), Vec3::ZERO, false);
@@ -1353,7 +1367,7 @@ fn t306_sans_depassement_aucun_clamp() {
             Shape::Ball { radius: 0.5 },
         )
         .unwrap();
-    world.set_body_identity(ball, Handle::new(2, 1), 0, 0);
+    world.set_body_identity(ball, Handle::new(2, 1), 0);
     world.apply_impulse(ball, Vec3::new(1.0, 0.0, 0.0), Vec3::ZERO, false);
 
     world.advance(1.0 / 60.0);
@@ -1381,7 +1395,7 @@ fn t306_un_etat_non_fini_est_restaure_et_endormi() {
             Shape::Ball { radius: 0.5 },
         )
         .unwrap();
-    world.set_body_identity(ball, Handle::new(3, 1), 0, 0);
+    world.set_body_identity(ball, Handle::new(3, 1), 0);
     world.apply_impulse(ball, Vec3::NAN, Vec3::ZERO, false);
 
     world.advance(1.0 / 60.0);
@@ -1426,7 +1440,7 @@ fn t306_une_position_hors_du_monde_est_restauree() {
             Shape::Ball { radius: 0.5 },
         )
         .unwrap();
-    world.set_body_identity(ball, Handle::new(5, 1), 0, 0);
+    world.set_body_identity(ball, Handle::new(5, 1), 0);
 
     world.advance(1.0 / 60.0);
 
@@ -1514,7 +1528,7 @@ fn t306_les_garde_fous_sont_deterministes() {
                 Shape::Ball { radius: 0.5 },
             )
             .unwrap();
-        world.set_body_identity(a, Handle::new(7, 1), 0, 0);
+        world.set_body_identity(a, Handle::new(7, 1), 0);
         world.set_velocity_limits(a, 5.0, 100.0);
         let b = world
             .add_body(
@@ -1524,7 +1538,7 @@ fn t306_les_garde_fous_sont_deterministes() {
                 Shape::Ball { radius: 0.5 },
             )
             .unwrap();
-        world.set_body_identity(b, Handle::new(8, 1), 0, 0);
+        world.set_body_identity(b, Handle::new(8, 1), 0);
         world.apply_impulse(a, Vec3::new(1000.0, 0.0, 0.0), Vec3::ZERO, false);
         world.apply_impulse(b, Vec3::NAN, Vec3::ZERO, false);
         for _ in 0..30 {
@@ -1599,7 +1613,7 @@ fn t307_un_bloc_qui_s_agite_sur_un_empilement_est_amorti_puis_endormi() {
     sol_statique(&mut world);
     let dessous = bloc(&mut world, 0.5);
     let dessus = bloc(&mut world, 1.5);
-    world.set_body_identity(dessus, Handle::new(4, 1), 0, 0);
+    world.set_body_identity(dessus, Handle::new(4, 1), 0);
     let mut signaux = Vec::new();
 
     // Une seconde d'agitation : palier 1, le bloc et son voisin amortis.
@@ -2372,7 +2386,7 @@ fn adr120_etats_et_emprises_sont_apparies() {
             },
         )
         .unwrap();
-    world.set_body_identity(sol, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(sol, Handle::new(1, 1), 0);
     world
         .add_body(
             BodyKind::Dynamic,
@@ -2389,7 +2403,7 @@ fn adr120_etats_et_emprises_sont_apparies() {
             Shape::Ball { radius: 0.5 },
         )
         .unwrap();
-    world.set_body_identity(bille, Handle::new(2, 1), 0, 0);
+    world.set_body_identity(bille, Handle::new(2, 1), 0);
     let caisse = world
         .add_body(
             BodyKind::Kinematic,
@@ -2400,7 +2414,7 @@ fn adr120_etats_et_emprises_sont_apparies() {
             },
         )
         .unwrap();
-    world.set_body_identity(caisse, Handle::new(3, 1), 0, 0);
+    world.set_body_identity(caisse, Handle::new(3, 1), 0);
 
     let reports = world.body_reports(&FloatingOrigin::new(DVec3::ZERO));
     assert_eq!(reports.states.len(), 2);
@@ -2448,7 +2462,7 @@ fn adr120_l_emprise_suit_l_orientation_du_corps() {
                 &[cube_bas_centre()],
             )
             .unwrap();
-        world.set_body_identity(cube, Handle::new(1, 1), 0, 0);
+        world.set_body_identity(cube, Handle::new(1, 1), 0);
         let reports = world.body_reports(&FloatingOrigin::new(DVec3::ZERO));
         assert_emprise(&reports.bounds[0], min, max);
     }
@@ -2488,7 +2502,7 @@ fn adr120_l_emprise_est_l_union_des_colliders() {
             &[cube_bas_centre(), bille_deportee, compose],
         )
         .unwrap();
-    world.set_body_identity(corps, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(corps, Handle::new(1, 1), 0);
     let reports = world.body_reports(&FloatingOrigin::new(DVec3::ZERO));
     assert_emprise(&reports.bounds[0], [-0.5, -0.5, -3.5], [2.25, 1.0, 0.5]);
 }
@@ -2508,7 +2522,7 @@ fn adr120_l_emprise_suit_la_pose_restauree() {
             Shape::Ball { radius: 0.5 },
         )
         .unwrap();
-    world.set_body_identity(bille, Handle::new(5, 1), 0, 0);
+    world.set_body_identity(bille, Handle::new(5, 1), 0);
 
     world.advance(1.0 / 60.0);
 
@@ -2540,7 +2554,7 @@ fn adr120_l_emprise_ne_perd_rien_loin_de_l_origine() {
             },
         )
         .unwrap();
-    world.set_body_identity(caisse, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(caisse, Handle::new(1, 1), 0);
     let reports = world.body_reports(&FloatingOrigin::new(DVec3::ZERO));
     // Demi-étendue d'une boîte tournée de 30° autour de z : 0.5·(cos 30° + sin 30°).
     let demi = 0.5 * (angle.cos() + angle.sin());
@@ -2560,7 +2574,7 @@ fn adr120_une_emprise_incalculable_est_nulle_et_comptee() {
             &[],
         )
         .unwrap();
-    world.set_body_identity(vide, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(vide, Handle::new(1, 1), 0);
     let reports = world.body_reports(&FloatingOrigin::new(DVec3::ZERO));
     assert_eq!(reports.bounds, vec![BodyBounds::EMPTY]);
     assert_eq!(world.bounds_unavailable_count(), 1);

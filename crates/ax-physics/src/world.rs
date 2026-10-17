@@ -5,8 +5,8 @@ use rapier3d::parry::mass_properties::MassProperties;
 use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::parry::utils::Array2;
 use rapier3d::prelude::{
-    ActiveEvents, Collider, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent,
-    CollisionEventFlags, ContactPair, EventHandler, PhysicsWorld as RapierWorld,
+    ActiveEvents, CoefficientCombineRule, Collider, ColliderBuilder, ColliderHandle, ColliderSet,
+    CollisionEvent, CollisionEventFlags, ContactPair, EventHandler, PhysicsWorld as RapierWorld,
     Pose as RapierPose, QueryFilter as RapierQueryFilter, QueryFilterFlags, Ray, Real, RigidBody,
     RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, SharedShape, Vector,
 };
@@ -18,7 +18,7 @@ use crate::scheduler::{SimMode, Stage, StageLog};
 use std::time::Instant;
 
 use crate::body::{
-    BodyCollider, BodyError, BodyId, BodyKind, CompoundPart, ContactMaterial, Shape,
+    BodyCollider, BodyError, BodyId, BodyKind, CombineRule, CompoundPart, ContactMaterial, Shape,
     MAX_COMPOUND_PARTS, MAX_CONVEX_HULL_POINTS, MIN_CONVEX_HULL_POINTS,
 };
 use crate::config::PhysicsConfig;
@@ -28,11 +28,13 @@ use crate::debug::{
 };
 use crate::forces::{FluidEnvironment, FluidVolume, LiftSurface};
 use crate::groups::{CollisionGroups, ReservedGroup};
+use crate::materials::MaterialTable;
 use crate::sim::handle_key;
 use ax_model::dm::debug::{debug_body_flags, debug_frame, overlay, DebugSegment};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{
     body_state_flags, event_data, event_kind, BodyBounds, BodyDesc, BodyState, PhysicsEvent,
+    NO_MATERIAL,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -103,14 +105,13 @@ struct BodyForcePlan {
     at_points: Vec<(Vec3, Vec3)>,
 }
 
-/// Identité d'un corps pour les événements (§10.7) : à quelle assembly, quel
-/// node et quel matériau il correspond. Un corps sans identité déclarée émet des
-/// événements à [`Handle::ABSENT`].
+/// Identité d'un corps pour les événements (§10.7) : à quelle assembly et quel
+/// node il correspond. Un corps sans identité déclarée émet des événements à
+/// [`Handle::ABSENT`]. Le matériau, lui, est celui du collider qui touche (ADR-149 D5).
 #[derive(Debug, Clone, Copy, Default)]
 struct BodyIdentity {
     assembly: Handle,
     node: u32,
-    material: u16,
 }
 
 /// Dernière pose finie et dans le monde d'un corps, mémorisée pour la
@@ -250,6 +251,11 @@ pub struct PhysicsWorld {
     aero: HashMap<BodyId, AeroProfile>,
     /// Identités des corps, pour peupler les événements (§10.7).
     identity: HashMap<BodyId, BodyIdentity>,
+    /// Matériau de contact de chaque collider d'assembly ou de tuile (DM-07, ADR-149) : son
+    /// index, que portent les événements et par lequel une table nouvelle se propage, et son
+    /// roulement (D6). Consultée par clé, jamais itérée (R-1020) : la propagation suit l'ordre
+    /// des colliders de `rapier`.
+    collider_materials: HashMap<ColliderHandle, ContactMaterial>,
     /// Dernier état de sommeil connu de chaque corps dynamique, pour détecter les
     /// transitions SLEEP/WAKE. Consultée par clé, jamais itérée (R-1020).
     sleep_state: HashMap<BodyId, bool>,
@@ -464,6 +470,7 @@ impl PhysicsWorld {
             stage_log: StageLog::default(),
             aero: HashMap::new(),
             identity: HashMap::new(),
+            collider_materials: HashMap::new(),
             sleep_state: HashMap::new(),
             events: Vec::new(),
             max_events_per_tick: DEFAULT_MAX_EVENTS_PER_TICK,
@@ -588,19 +595,23 @@ impl PhysicsWorld {
         for (shape, collider) in shapes.into_iter().zip(colliders) {
             let built = ColliderBuilder::new(shape)
                 .density(collider.density)
-                // Friction et restitution du matériau de contact (R-643) : ce que
-                // rapier combine au contact — friction des roues, énergie des impacts.
+                // Friction et restitution du matériau de contact (R-643) et leurs modes
+                // (ADR-149 D3) : ce que rapier combine au contact.
                 .friction(collider.material.friction)
                 .restitution(collider.material.restitution)
+                .friction_combine_rule(solver_rule(collider.material.friction_combine))
+                .restitution_combine_rule(solver_rule(collider.material.restitution_combine))
                 .position(RapierPose::from_parts(
                     collider.translation,
                     collider.rotation,
                 ))
                 .active_events(ActiveEvents::COLLISION_EVENTS)
                 .build();
-            self.inner
-                .colliders
-                .insert_with_parent(built, handle, &mut self.inner.bodies);
+            let inserted =
+                self.inner
+                    .colliders
+                    .insert_with_parent(built, handle, &mut self.inner.bodies);
+            self.collider_materials.insert(inserted, collider.material);
         }
         // Masse à jour dès la création : recalcul depuis les colliders, sans
         // attendre un pas de simulation (utile aux lectures immédiates de masse).
@@ -692,6 +703,7 @@ impl PhysicsWorld {
             let collector = ContactCollector::default();
             self.inner.step_with_events(&(), &collector);
             self.enforce_body_guardrails();
+            self.apply_rolling_friction();
             self.stage_log
                 .record(Stage::Integration, elapsed_nanos(integration_start));
 
@@ -928,6 +940,108 @@ impl PhysicsWorld {
         }
     }
 
+    /// Index du matériau d'un collider (ADR-149 D5), ou [`NO_MATERIAL`].
+    fn material_of(&self, collider: ColliderHandle) -> u16 {
+        self.collider_materials
+            .get(&collider)
+            .map_or(NO_MATERIAL, |material| material.index)
+    }
+
+    /// Freine le roulement de chaque contact actif (ADR-149 D6) : une impulsion angulaire
+    /// opposée à la rotation relative des deux corps — sa part tangente au plan de contact, la
+    /// rotation autour de la normale n'étant pas du roulement —, de module
+    /// `μr × impulsion normale × bras de levier`, `μr` combiné comme le frottement de la paire.
+    ///
+    /// Chaque impulsion est bornée par ce qui annulerait la rotation relative, partagé entre
+    /// les deux corps selon leur inertie : la rotation est freinée, jamais inversée. Un corps
+    /// endormi ou non dynamique n'est pas touché. Les vitesses sont lues avant toute
+    /// application, dans l'ordre des paires de `rapier` (R-1020).
+    fn apply_rolling_friction(&mut self) {
+        let mut impulses: Vec<(RigidBodyHandle, Vec3)> = Vec::new();
+        for pair in self.inner.contact_pairs() {
+            if !pair.has_any_active_contact() {
+                continue;
+            }
+            let side = |collider: ColliderHandle| {
+                self.collider_materials
+                    .get(&collider)
+                    .copied()
+                    .unwrap_or_default()
+            };
+            let (first, second) = (side(pair.collider1), side(pair.collider2));
+            let rolling = CombineRule::combine(
+                (first.rolling_friction, first.friction_combine),
+                (second.rolling_friction, second.friction_combine),
+            );
+            if rolling <= 0.0 {
+                continue;
+            }
+            let normal_impulse: f32 = pair
+                .manifolds
+                .iter()
+                .flat_map(|manifold| manifold.points.iter())
+                .map(|contact| contact.data.impulse)
+                .sum();
+            if normal_impulse <= 0.0 {
+                continue;
+            }
+            let Some((manifold, contact)) = pair.find_deepest_contact() else {
+                continue;
+            };
+            let normal = manifold.data.normal;
+            let Some(collider) = self.inner.colliders.get(pair.collider1) else {
+                continue;
+            };
+            let point = collider.position().transform_point(contact.local_p1);
+            let parent = |collider: ColliderHandle| {
+                self.inner
+                    .colliders
+                    .get(collider)
+                    .and_then(Collider::parent)
+            };
+            let bodies = [parent(pair.collider1), parent(pair.collider2)];
+            let spin = |body: Option<RigidBodyHandle>| {
+                body.and_then(|handle| self.inner.bodies.get(handle))
+                    .map_or(Vec3::ZERO, |body| body.angvel())
+            };
+            let relative = spin(bodies[0]) - spin(bodies[1]);
+            let rolling_part = relative - normal * relative.dot(normal);
+            let speed = rolling_part.length();
+            if speed <= ROLLING_EPSILON {
+                continue;
+            }
+            let axis = rolling_part / speed;
+            // Inertie inverse de chaque corps libre autour de l'axe, et son bras de levier.
+            let free = |body: Option<RigidBodyHandle>| {
+                let handle = body?;
+                let body = self.inner.bodies.get(handle)?;
+                if !body.is_dynamic() || body.is_sleeping() {
+                    return None;
+                }
+                let props = body.mass_properties();
+                let inverse = axis.dot(props.effective_world_inv_inertia.mul_vec(axis));
+                (inverse > 0.0).then(|| (handle, inverse, (point - props.world_com).length()))
+            };
+            let sides = [free(bodies[0]), free(bodies[1])];
+            let total: f32 = sides.iter().flatten().map(|(_, inverse, _)| inverse).sum();
+            if total <= 0.0 {
+                continue;
+            }
+            let stop = speed / total;
+            for (side, sign) in sides.into_iter().zip([-1.0f32, 1.0]) {
+                if let Some((handle, _, lever)) = side {
+                    let magnitude = (rolling * normal_impulse * lever).min(stop);
+                    impulses.push((handle, axis * (sign * magnitude)));
+                }
+            }
+        }
+        for (handle, impulse) in impulses {
+            if let Some(body) = self.inner.bodies.get_mut(handle) {
+                body.apply_torque_impulse(impulse, false);
+            }
+        }
+    }
+
     /// Construit un événement de contact peuplé des données R-615 de la paire,
     /// ou `None` si la paire n'a plus de contact profond exploitable. Sert pour
     /// CONTACT_START comme pour CONTACT_IMPULSE.
@@ -968,8 +1082,8 @@ impl PhysicsWorld {
             tangent_impulse: contact.data.tangent_impulse.norm(),
             relative_velocity,
             effective_mass: effective_mass_at(world_point, normal, body_a, body_b),
-            material_a: identity_a.material,
-            material_b: identity_b.material,
+            material_a: self.material_of(a),
+            material_b: self.material_of(b),
             data: 0,
         };
         self.attribute_entity(&mut event, a, b);
@@ -1031,8 +1145,8 @@ impl PhysicsWorld {
             tangent_impulse: 0.0,
             relative_velocity: 0.0,
             effective_mass: 0.0,
-            material_a: identity_a.material,
-            material_b: identity_b.material,
+            material_a: self.material_of(a),
+            material_b: self.material_of(b),
             data: 0,
         };
         self.attribute_entity(&mut event, a, b);
@@ -1060,7 +1174,7 @@ impl PhysicsWorld {
         };
         event.assembly_b = Handle::new(entity, 0);
         event.node_b = 0;
-        event.material_b = 0;
+        event.material_b = NO_MATERIAL;
         event.data |= event_data::CONTACT_OTHER_ENTITY;
     }
 
@@ -1262,8 +1376,9 @@ impl PhysicsWorld {
             tangent_impulse: 0.0,
             relative_velocity: 0.0,
             effective_mass: 0.0,
-            material_a: identity.material,
-            material_b: 0,
+            // Un événement à un seul corps n'a pas de contact, donc pas de matériau (D5).
+            material_a: NO_MATERIAL,
+            material_b: NO_MATERIAL,
             data,
         };
         self.push_event(event);
@@ -1738,24 +1853,52 @@ impl PhysicsWorld {
         self.fluid_volumes.len()
     }
 
-    /// Déclare l'identité d'un corps pour ses événements (§10.7) : l'assembly, le
-    /// node et le matériau qu'il représente. Sans effet si le corps n'existe pas.
+    /// Déclare l'identité d'un corps pour ses événements (§10.7) : l'assembly et le
+    /// node qu'il représente. Sans effet si le corps n'existe pas. Le matériau d'un
+    /// contact est celui du collider qui touche (ADR-149 D5).
     ///
     /// À défaut, un corps émet ses événements à [`Handle::ABSENT`]. Le monde ne
     /// fait que transporter cette identité : il n'en interprète rien (moteur
     /// générique, pas de branche sur un contenu).
-    pub fn set_body_identity(&mut self, id: BodyId, assembly: Handle, node: u32, material: u16) {
+    pub fn set_body_identity(&mut self, id: BodyId, assembly: Handle, node: u32) {
         if self.inner.bodies.get(id.handle()).is_none() {
             return;
         }
-        self.identity.insert(
-            id,
-            BodyIdentity {
-                assembly,
-                node,
-                material,
-            },
-        );
+        self.identity.insert(id, BodyIdentity { assembly, node });
+    }
+
+    /// Résout de nouveau le matériau de chaque collider d'après la table de la session
+    /// (ADR-149 D1) : un rechargement qui change un matériau atteint les corps et tuiles déjà
+    /// créés. Les colliders sont parcourus dans l'ordre de `rapier` (R-1020) ; un collider sans
+    /// matériau garde le contact neutre. Rend le nombre de colliders mis à jour.
+    pub fn refresh_materials(&mut self, table: &MaterialTable) -> usize {
+        let mut refreshed = 0;
+        for (handle, collider) in self.inner.colliders.iter_mut() {
+            let Some(material) = self.collider_materials.get_mut(&handle) else {
+                continue;
+            };
+            if material.index == NO_MATERIAL {
+                continue;
+            }
+            *material = table.resolve(material.index);
+            apply_contact(collider, material);
+            refreshed += 1;
+        }
+        refreshed
+    }
+
+    /// Les matériaux de contact des colliders d'un corps, dans l'ordre de ses colliders.
+    #[must_use]
+    pub fn body_materials(&self, id: BodyId) -> Vec<ContactMaterial> {
+        self.inner
+            .bodies
+            .get(id.handle())
+            .map_or_else(Vec::new, |body| {
+                body.colliders()
+                    .iter()
+                    .filter_map(|collider| self.collider_materials.get(collider).copied())
+                    .collect()
+            })
     }
 
     /// Fixe le plafond d'événements par tick (R-1011). Au moins 1.
@@ -2406,6 +2549,11 @@ impl PhysicsWorld {
         self.stack_watch.remove(&id);
         self.stack_damped.remove(&id);
         self.damping_backup.remove(&id);
+        if let Some(body) = self.inner.bodies.get(id.handle()) {
+            for collider in body.colliders() {
+                self.collider_materials.remove(collider);
+            }
+        }
         self.inner.remove_body(id.handle()).is_some()
     }
 
@@ -2667,6 +2815,28 @@ fn keep_strongest(
             }
         }
     }
+}
+
+/// Vitesse de roulement en deçà de laquelle le frottement de roulement ne s'applique plus,
+/// en rad/s : en dessous, la direction de la rotation n'est plus définie.
+const ROLLING_EPSILON: f32 = 1.0e-6;
+
+/// Le mode du solveur d'un mode DM-07 (ADR-149 D3) : les mêmes, dans le même ordre.
+fn solver_rule(rule: CombineRule) -> CoefficientCombineRule {
+    match rule {
+        CombineRule::Average => CoefficientCombineRule::Average,
+        CombineRule::Min => CoefficientCombineRule::Min,
+        CombineRule::Multiply => CoefficientCombineRule::Multiply,
+        CombineRule::Max => CoefficientCombineRule::Max,
+    }
+}
+
+/// Pose sur un collider rapier le contact d'un matériau : coefficients et modes.
+fn apply_contact(collider: &mut Collider, material: &ContactMaterial) {
+    collider.set_friction(material.friction);
+    collider.set_restitution(material.restitution);
+    collider.set_friction_combine_rule(solver_rule(material.friction_combine));
+    collider.set_restitution_combine_rule(solver_rule(material.restitution_combine));
 }
 
 /// Genre et état d'un corps pour ses plages de debug (`debug_body_flags`) : aucun
@@ -3177,6 +3347,25 @@ mod tests {
                 evenement(impulse, 2, 1.0, 0.0)
             ]
         );
+    }
+
+    #[test]
+    fn adr149_retirer_un_corps_oublie_les_materiaux_de_ses_colliders() {
+        // La table des matériaux par collider suit les corps : un corps retiré n'y laisse rien.
+        let mut world = monde();
+        let collider = BodyCollider {
+            shape: Shape::Ball { radius: 0.5 },
+            density: 1.0,
+            material: ContactMaterial::unresolved(3),
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+        };
+        let body = world
+            .add_assembly(BodyKind::Dynamic, Vec3::ZERO, Quat::IDENTITY, &[collider])
+            .expect("bille");
+        assert_eq!(world.collider_materials.len(), 1);
+        assert!(world.remove_body(body));
+        assert!(world.collider_materials.is_empty());
     }
 
     #[test]

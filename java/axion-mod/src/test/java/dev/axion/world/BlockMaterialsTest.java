@@ -20,22 +20,22 @@ class BlockMaterialsTest {
     @Test
     void resolutionParPrioriteBlocPuisTagPuisDefaut() {
         Map<String, Material> byTag = new LinkedHashMap<>();
-        byTag.put("minecraft:slime", new Material(0.8f, 0.9f));
-        byTag.put("minecraft:logs", new Material(0.7f, 0.0f));
+        byTag.put("minecraft:slime", new Material(null, 0.8f, 0.9f));
+        byTag.put("minecraft:logs", new Material(null, 0.7f, 0.0f));
         BlockMaterials mats = new BlockMaterials(
-                Map.of("minecraft:ice", new Material(0.05f, 0.0f)), byTag, new Material(0.6f, 0.0f));
+                Map.of("minecraft:ice", new Material(null, 0.05f, 0.0f)), byTag, new Material(null, 0.6f, 0.0f));
 
         // Entrée directe par bloc, avant ses étiquettes.
-        assertEquals(new Material(0.05f, 0.0f), mats.resolve("minecraft:ice", List.of("minecraft:logs")));
+        assertEquals(new Material(null, 0.05f, 0.0f), mats.resolve("minecraft:ice", List.of("minecraft:logs")));
         // Héritage par étiquette quand le bloc n'a pas d'entrée directe.
-        assertEquals(new Material(0.7f, 0.0f), mats.resolve("minecraft:oak_log", List.of("minecraft:logs")));
+        assertEquals(new Material(null, 0.7f, 0.0f), mats.resolve("minecraft:oak_log", List.of("minecraft:logs")));
         // L'ordre du mappage décide, pas celui des étiquettes du bloc.
-        assertEquals(new Material(0.8f, 0.9f),
+        assertEquals(new Material(null, 0.8f, 0.9f),
                 mats.resolve("x:y", List.of("minecraft:logs", "minecraft:slime")));
-        assertEquals(new Material(0.8f, 0.9f),
+        assertEquals(new Material(null, 0.8f, 0.9f),
                 mats.resolve("x:y", Set.of("minecraft:logs", "minecraft:slime")));
         // Défaut sinon.
-        assertEquals(new Material(0.6f, 0.0f), mats.resolve("minecraft:stone", List.of("x:unknown")));
+        assertEquals(new Material(null, 0.6f, 0.0f), mats.resolve("minecraft:stone", List.of("x:unknown")));
     }
 
     @Test
@@ -49,10 +49,10 @@ class BlockMaterialsTest {
     void lOrdreDesEtiquettesSurvitALaCopie() {
         // Le constructeur copie : modifier la table d'origine ne change ni l'ordre ni le contenu.
         Map<String, Material> byTag = new LinkedHashMap<>();
-        byTag.put("a:premier", new Material(0.1f, 0f));
-        byTag.put("a:second", new Material(0.2f, 0f));
+        byTag.put("a:premier", new Material(null, 0.1f, 0f));
+        byTag.put("a:second", new Material(null, 0.2f, 0f));
         BlockMaterials mats = new BlockMaterials(Map.of(), byTag, BlockMaterials.SOLVER_DEFAULT);
         byTag.remove("a:premier");
-        assertEquals(new Material(0.1f, 0f), mats.resolve("b:c", List.of("a:second", "a:premier")));
+        assertEquals(new Material(null, 0.1f, 0f), mats.resolve("b:c", List.of("a:second", "a:premier")));
     }
 }

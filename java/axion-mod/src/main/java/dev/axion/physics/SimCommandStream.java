@@ -22,8 +22,11 @@ import java.util.List;
  */
 public final class SimCommandStream {
 
-    /** Version courante du protocole ({@code CommandStreamHeader::CURRENT_SCHEMA}). */
-    public static final int CURRENT_SCHEMA = 1;
+    /**
+     * Version courante du protocole ({@code CommandStreamHeader::CURRENT_SCHEMA}) : 2 depuis l'index
+     * de matériau des tuiles (ADR-149).
+     */
+    public static final int CURRENT_SCHEMA = 2;
 
     /** Taille du {@code CommandStreamHeader}, en octets. */
     public static final int STREAM_HEADER_BYTES = 8;
@@ -114,6 +117,18 @@ public final class SimCommandStream {
 
     /** Opcode {@code SET_ENTITY_PROXIES} (ADR-123 §5). */
     public static final int OP_SET_ENTITY_PROXIES = 12;
+
+    /** Opcode {@code SET_PHYSICS_MATERIALS} (ADR-149). */
+    public static final int OP_SET_PHYSICS_MATERIALS = 13;
+
+    /** Taille de l'en-tête {@code SetPhysicsMaterials}, en octets (hors matériaux). */
+    public static final int SET_PHYSICS_MATERIALS_HEADER_BYTES = 8;
+
+    /** Taille d'une entrée DM-07, alignement compris. */
+    public static final int PHYSICS_MATERIAL_BYTES = 120;
+
+    /** Index « aucun matériau » d'une tuile ({@code NO_MATERIAL}, ADR-149). */
+    public static final int NO_MATERIAL = 0xFFFF;
 
     /** Taille de l'en-tête {@code SetObservers}, en octets (hors positions). */
     public static final int SET_OBSERVERS_HEADER_BYTES = 16;
@@ -290,12 +305,12 @@ public final class SimCommandStream {
      * @param dimension dimension visée (R-610)
      * @param section index de section 16³ {@code [x, y, z]} ({@code coord_bloc >> 4})
      * @param boxes boîtes de collision, section-relatives ; chacune de longueur 6
-     * @param friction frottement du matériau dominant
-     * @param restitution restitution du matériau dominant
+     * @param material index du matériau dominant dans la table de la session (ADR-149), ou
+     *     {@link #NO_MATERIAL}
      * @return {@code this}, pour chaîner
      */
     public SimCommandStream setWorldCollision(
-            long dimension, int[] section, float[][] boxes, float friction, float restitution) {
+            long dimension, int[] section, float[][] boxes, int material) {
         checkSection(section);
         checkBoxes(boxes);
         int payloadLen = SET_WORLD_COLLISION_HEADER_BYTES + boxes.length * BOX_BYTES;
@@ -303,8 +318,7 @@ public final class SimCommandStream {
         command.putLong(dimension);
         putSection(command, section);
         command.putInt(boxes.length);
-        command.putFloat(friction);
-        command.putFloat(restitution);
+        putMaterial(command, material);
         putBoxes(command, boxes);
         commands.add(command.array());
         return this;
@@ -324,8 +338,7 @@ public final class SimCommandStream {
      * @param cols nombre de colonnes (axe x), même plage
      * @param heights hauteurs ligne-major, de longueur {@code rows × cols}
      * @param scale échelle {@code [x, y, z]}
-     * @param friction frottement du matériau dominant
-     * @param restitution restitution du matériau dominant
+     * @param material index du matériau dominant (ADR-149), ou {@link #NO_MATERIAL}
      * @return {@code this}, pour chaîner
      */
     public SimCommandStream setWorldHeightfield(
@@ -335,8 +348,7 @@ public final class SimCommandStream {
             int cols,
             float[] heights,
             float[] scale,
-            float friction,
-            float restitution) {
+            int material) {
         checkSection(section);
         if (scale.length != 3) {
             throw new IllegalArgumentException("l'échelle est un vecteur à 3 composantes");
@@ -353,8 +365,7 @@ public final class SimCommandStream {
         putSection(command, section);
         command.putInt(rows);
         command.putInt(cols);
-        command.putFloat(friction);
-        command.putFloat(restitution);
+        putMaterial(command, material);
         command.putFloat(scale[0]);
         command.putFloat(scale[1]);
         command.putFloat(scale[2]);
@@ -363,6 +374,38 @@ public final class SimCommandStream {
         }
         commands.add(command.array());
         return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_PHYSICS_MATERIALS} (ADR-149) : la table des matériaux de la
+     * session, {@code count} entrées DM-07 déjà encodées. Le natif résout de nouveau les colliders et
+     * les tuiles déjà posés à chaque table reçue.
+     *
+     * @param entries {@code count × }{@link #PHYSICS_MATERIAL_BYTES} octets
+     * @param count nombre d'entrées, au plus {@code 0xFFFF}
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setPhysicsMaterials(byte[] entries, int count) {
+        if (count < 0 || count > NO_MATERIAL || entries.length != count * PHYSICS_MATERIAL_BYTES) {
+            throw new IllegalArgumentException("table de matériaux incohérente : " + count + " entrée(s), "
+                    + entries.length + " octet(s)");
+        }
+        ByteBuffer command = beginCommand(OP_SET_PHYSICS_MATERIALS, SET_PHYSICS_MATERIALS_HEADER_BYTES + entries.length);
+        command.putInt(count);
+        command.putInt(0); // réservé
+        command.put(entries);
+        commands.add(command.array());
+        return this;
+    }
+
+    /** Index de matériau d'un en-tête de tuile : {@code u16}, puis 6 octets réservés (ADR-149). */
+    private static void putMaterial(ByteBuffer command, int material) {
+        if (material < 0 || material > NO_MATERIAL) {
+            throw new IllegalArgumentException("index de matériau hors d'un u16 : " + material);
+        }
+        command.putShort((short) material);
+        command.putShort((short) 0);
+        command.putInt(0);
     }
 
     /**

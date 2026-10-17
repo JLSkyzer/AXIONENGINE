@@ -7,7 +7,7 @@ use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::geometry::WorldTransform;
 use ax_physics::{
     event_data, event_kind, BodyCollider, BodyId, BodyKind, CollisionGroups, ContactMaterial,
-    EntityProxy, Handle, PhysicsEvent, ProxyShape, ReservedGroup, Shape, SimDriver,
+    EntityProxy, Handle, PhysicsEvent, ProxyShape, ReservedGroup, Shape, SimDriver, NO_MATERIAL,
 };
 
 /// La bille d'essai : handle (7, 1).
@@ -112,7 +112,8 @@ fn t304_une_assembly_heurte_une_entite_qui_s_identifie_dans_le_contact() {
         choc.assembly_b.is_absent(),
         "génération 0 : pas une assembly"
     );
-    assert_eq!((choc.node_b, choc.material_b), (0, 0));
+    // L'entité n'a ni node ni matériau (ADR-149 D5).
+    assert_eq!((choc.node_b, choc.material_b), (0, NO_MATERIAL));
     assert_ne!(choc.data & event_data::CONTACT_OTHER_ENTITY, 0);
     assert!(
         choc.normal[0] > 0.9,

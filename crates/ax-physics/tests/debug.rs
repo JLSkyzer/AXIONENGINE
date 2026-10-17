@@ -73,7 +73,7 @@ fn t550_une_boite_est_tracee_par_ses_douze_aretes_en_repere_du_corps() {
             )],
         )
         .unwrap();
-    world.set_body_identity(corps, Handle::new(4, 1), 0, 0);
+    world.set_body_identity(corps, Handle::new(4, 1), 0);
 
     let segments = seul_trace(&world);
     assert_eq!(segments.len(), 12);
@@ -109,7 +109,7 @@ fn t550_un_convexe_est_trace_par_ses_vraies_aretes_sans_diagonales() {
             Shape::ConvexHull { points },
         )
         .unwrap();
-    world.set_body_identity(corps, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(corps, Handle::new(1, 1), 0);
 
     let segments = seul_trace(&world);
     assert_eq!(segments.len(), 12, "les 12 arêtes du cube, et elles seules");
@@ -135,7 +135,7 @@ fn t550_une_sphere_est_tracee_par_trois_cercles_a_son_rayon() {
             )],
         )
         .unwrap();
-    world.set_body_identity(corps, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(corps, Handle::new(1, 1), 0);
 
     let segments = seul_trace(&world);
     assert_eq!(segments.len(), 3 * ROUND_SUBDIVISIONS as usize);
@@ -170,7 +170,7 @@ fn t550_une_forme_composee_trace_chaque_enfant_a_sa_pose() {
             },
         )
         .unwrap();
-    world.set_body_identity(corps, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(corps, Handle::new(1, 1), 0);
 
     let segments = seul_trace(&world);
     assert_eq!(segments.len(), 12);
@@ -200,7 +200,7 @@ fn t550_un_champ_de_hauteurs_est_trace_par_les_aretes_de_ses_triangles() {
             },
         )
         .unwrap();
-    world.set_body_identity(sol, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(sol, Handle::new(1, 1), 0);
 
     let segments = seul_trace(&world);
     assert_eq!(segments.len(), 16);
@@ -224,7 +224,7 @@ fn t550_les_corps_d_assembly_sont_traces_statiques_compris_avec_leur_genre() {
                 },
             )
             .unwrap();
-        world.set_body_identity(id, Handle::new(index, 1), 0, 0);
+        world.set_body_identity(id, Handle::new(index, 1), 0);
     }
     // Sans identité (une tuile du monde, par exemple) : jamais tracé.
     world
@@ -277,7 +277,7 @@ fn t550_un_corps_endormi_est_marque() {
             Shape::Ball { radius: 0.5 },
         )
         .unwrap();
-    world.set_body_identity(bille, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(bille, Handle::new(1, 1), 0);
     for _ in 0..180 {
         world.advance(1.0 / 60.0);
     }
@@ -304,7 +304,7 @@ fn trois_boites() -> SimDriver {
                 },
             )
             .unwrap();
-        world.set_body_identity(id, Handle::new(index, 1), 0, 0);
+        world.set_body_identity(id, Handle::new(index, 1), 0);
     }
     driver
 }
@@ -382,7 +382,7 @@ fn t550_le_trace_ne_modifie_pas_la_simulation() {
                 )],
             )
             .unwrap();
-        world.set_body_identity(cube, Handle::new(1, 1), 0, 0);
+        world.set_body_identity(cube, Handle::new(1, 1), 0);
         driver
     }
     let mut trace = pilote();
@@ -469,7 +469,7 @@ fn t550_aabb_trace_la_boite_monde_de_chaque_collider_relative_a_la_camera() {
             },
         )
         .unwrap();
-    world.set_body_identity(boite, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(boite, Handle::new(1, 1), 0);
 
     let debug = driver.debug_overlays(0, DVec3::new(98.0, 5.0, -50.0), overlay::AABB, u32::MAX);
     assert_eq!(debug.ranges.len(), 1);
@@ -531,7 +531,7 @@ fn t550_center_of_mass_trace_une_croix_au_centre_de_masse_local() {
             ],
         )
         .unwrap();
-    world.set_body_identity(corps, Handle::new(1, 1), 0, 0);
+    world.set_body_identity(corps, Handle::new(1, 1), 0);
     let plages = world.debug_drafts(
         &FloatingOrigin::new(DVec3::ZERO),
         DVec3::ZERO,
@@ -575,7 +575,7 @@ fn t550_contacts_et_normales_du_dernier_pas_vont_a_l_assembly() {
             },
         )
         .unwrap();
-    world.set_body_identity(cube, Handle::new(4, 1), 0, 0);
+    world.set_body_identity(cube, Handle::new(4, 1), 0);
     for _ in 0..20 {
         world.advance(1.0 / 60.0);
     }

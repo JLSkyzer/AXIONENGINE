@@ -102,8 +102,9 @@ fn plancher() -> Vec<u8> {
         payload.extend_from_slice(&value.to_le_bytes());
     }
     payload.extend_from_slice(&1u32.to_le_bytes());
-    payload.extend_from_slice(&0.6f32.to_le_bytes());
-    payload.extend_from_slice(&0.0f32.to_le_bytes());
+    // Sans matériau (ADR-149) : index, puis 6 octets réservés.
+    payload.extend_from_slice(&0xFFFFu16.to_le_bytes());
+    payload.extend_from_slice(&[0u8; 6]);
     assert_eq!(payload.len(), SetWorldCollision::BYTES);
     for value in [0.0f32, 0.0, 0.0, 16.0, 1.0, 16.0] {
         payload.extend_from_slice(&value.to_le_bytes());

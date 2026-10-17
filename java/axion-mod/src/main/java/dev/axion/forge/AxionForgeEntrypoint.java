@@ -199,11 +199,13 @@ public final class AxionForgeEntrypoint {
             int perTick = (int) runtime.outcome().config().getInt("world.tiles_per_tick");
             // C-40 ↔ C-50 : les entités liées deviennent des corps natifs et reçoivent leur état ;
             // les tuiles passent d'abord, ce que ces corps occupent en tête.
-            assemblyRuntime = new AssemblyRuntime(runtime::definitions, runtime::assets);
+            assemblyRuntime =
+                    new AssemblyRuntime(runtime::definitions, runtime::assets, runtime::physicsMaterialIndex);
             worldTileBridge =
                     new WorldTileBridge(
                             event.getServer(),
                             runtime::blockMaterials,
+                            runtime::physicsMaterialIndex,
                             radius,
                             perTick,
                             assemblyRuntime,

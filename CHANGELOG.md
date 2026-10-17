@@ -70,6 +70,14 @@ Definition of Done (PARTIE 37.3).
     d'un rechargement aussi, que seul `/axion status` montrait (ADR-148,
     `axion_asset_diagnostics` ajoutee a IF-06, ABI 4) ; metrique
     `axion.asset.warnings` ;
+  - materiau physique des parts d'assembly jusqu'au natif, second temps de
+    DM-07 (ADR-149) : table des materiaux de la session (SET_PHYSICS_MATERIALS,
+    index stables, un rechargement atteint les corps et tuiles poses), index
+    de la part sur chaque collider, index du materiau dominant sur chaque tuile
+    (ABI 5, schema des commandes 2) ; modes de combinaison du solveur, le plus
+    fort l'emporte ; materiau du collider dans les evenements ; frottement de
+    roulement qui freine sans jamais inverser ; ballon de test modele dans
+    Blender, qui rebondit la ou l'acier generique ne rebondit pas ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
     T-012 (INV-04), T-015 (INV-07), T-019 (INV-12) ;
   - un collider `convex` ne garde que les sommets de son enveloppe : ni

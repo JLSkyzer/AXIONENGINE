@@ -1,7 +1,7 @@
 //! Corps rigides et formes de collision (§10.2, §10.3).
 
 use ax_math::{Quat, Vec3};
-use ax_model::dm::physics::{ColliderDesc, ColliderShape};
+use ax_model::dm::physics::{combine, ColliderDesc, ColliderShape, PhysicsMaterial, NO_MATERIAL};
 use core::fmt;
 use rapier3d::prelude::RigidBodyHandle;
 
@@ -116,20 +116,71 @@ pub struct CompoundPart {
     pub shape: Shape,
 }
 
-/// Propriétés de **contact** d'un collider — le sous-ensemble runtime de DM-07 que
-/// rapier combine à chaque contact pour la friction et le rebond.
+/// Mode de combinaison d'un coefficient de contact entre deux colliders (DM-07, ADR-149 D3) :
+/// ceux du solveur. À modes différents, **le plus fort l'emporte**, dans l'ordre des variantes :
+/// `Max` > `Multiply` > `Min` > `Average`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum CombineRule {
+    /// Moyenne des deux coefficients.
+    #[default]
+    Average,
+    /// Le plus petit des deux.
+    Min,
+    /// Leur produit.
+    Multiply,
+    /// Le plus grand des deux.
+    Max,
+}
+
+impl CombineRule {
+    /// Le mode d'une valeur DM-07 ([`combine`]) ; une valeur inconnue, venue de données, vaut
+    /// la moyenne — jamais crue sur parole.
+    #[must_use]
+    pub fn from_dm(value: u8) -> Self {
+        match value {
+            combine::MIN => Self::Min,
+            combine::MULTIPLY => Self::Multiply,
+            combine::MAX => Self::Max,
+            _ => Self::Average,
+        }
+    }
+
+    /// Le coefficient d'une paire : chaque côté donne sa valeur et son mode, et le plus fort
+    /// des deux modes s'applique (ADR-149 D3), comme le fait le solveur pour le frottement
+    /// et la restitution.
+    #[must_use]
+    pub fn combine(a: (f32, Self), b: (f32, Self)) -> f32 {
+        match a.1.max(b.1) {
+            Self::Average => (a.0 + b.0) * 0.5,
+            Self::Min => a.0.min(b.0),
+            Self::Multiply => a.0 * b.0,
+            Self::Max => a.0.max(b.0),
+        }
+    }
+}
+
+/// Propriétés de **contact** d'un collider : le groupe CONTACT de DM-07 (§11.2), ce que le
+/// solveur combine à chaque contact pour le frottement et le rebond, et le frottement de
+/// roulement qu'AXION applique lui-même (ADR-149 D6).
 ///
-/// La table de matériaux complète de DM-07 (rayure, déformation, rupture, densité…)
-/// est câblée ailleurs ; ici ne vivent que les deux coefficients de contact que R-643
-/// fait porter à une tuile du monde — ce qui « alimente la friction des roues et
-/// l'énergie des impacts contre le monde ». Le mode de combinaison reste le défaut de
-/// rapier (moyenne), le plus courant.
+/// `index` est le rang du matériau dans la table de la session (ADR-149) : c'est lui que
+/// portent les événements, et par lui qu'une table nouvelle se propage aux colliders déjà
+/// créés. Le reste de DM-07 (rayure, déformation, rupture…) traverse la frontière dans la
+/// table sans consommateur natif avant la déformation (M6).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ContactMaterial {
     /// Coefficient de frottement, plage DM-07 `[0, 2]`.
     pub friction: f32,
     /// Coefficient de restitution (rebond), plage DM-07 `[0, 1]`.
     pub restitution: f32,
+    /// Coefficient de frottement de roulement, positif ou nul, sans dimension (ADR-149 D6).
+    pub rolling_friction: f32,
+    /// Mode de combinaison du frottement (et du roulement).
+    pub friction_combine: CombineRule,
+    /// Mode de combinaison de la restitution.
+    pub restitution_combine: CombineRule,
+    /// Index du matériau dans la table de la session, ou [`NO_MATERIAL`].
+    pub index: u16,
 }
 
 impl ContactMaterial {
@@ -142,7 +193,7 @@ impl ContactMaterial {
     /// crues sur parole). Une composante non finie retombe sur son défaut, puis
     /// friction et restitution sont bornées aux plages DM-07 (`[0, 2]`, `[0, 1]`).
     /// Une valeur hors plage est ramenée, pas rejetée : un sol n'a pas de collision
-    /// « invalide », seulement un matériau borné.
+    /// « invalide », seulement un matériau borné. Sans index, sans roulement, en moyenne.
     #[must_use]
     pub fn sanitized(friction: f32, restitution: f32) -> Self {
         let friction = if friction.is_finite() {
@@ -158,6 +209,37 @@ impl ContactMaterial {
         Self {
             friction: friction.clamp(0.0, 2.0),
             restitution: restitution.clamp(0.0, 1.0),
+            ..Self::default()
+        }
+    }
+
+    /// Le contact neutre d'un collider qui porte l'index `index`, en attendant que la table
+    /// le résolve (ADR-149) : un collider créé avant la table qui le décrit prend ses valeurs
+    /// à l'arrivée de celle-ci.
+    #[must_use]
+    pub fn unresolved(index: u16) -> Self {
+        Self {
+            index,
+            ..Self::default()
+        }
+    }
+
+    /// Le contact d'une entrée de la table (DM-07, ADR-149), assaini comme une donnée
+    /// externe : plages de [`Self::sanitized`], roulement non fini ou négatif ramené à 0,
+    /// mode inconnu ramené à la moyenne.
+    #[must_use]
+    pub fn from_table(material: &PhysicsMaterial, index: u16) -> Self {
+        let rolling = material.rolling_friction;
+        Self {
+            rolling_friction: if rolling.is_finite() {
+                rolling.max(0.0)
+            } else {
+                0.0
+            },
+            friction_combine: CombineRule::from_dm(material.friction_combine),
+            restitution_combine: CombineRule::from_dm(material.restitution_combine),
+            index,
+            ..Self::sanitized(material.friction, material.restitution)
         }
     }
 }
@@ -167,6 +249,10 @@ impl Default for ContactMaterial {
         Self {
             friction: Self::DEFAULT_FRICTION,
             restitution: Self::DEFAULT_RESTITUTION,
+            rolling_friction: 0.0,
+            friction_combine: CombineRule::Average,
+            restitution_combine: CombineRule::Average,
+            index: NO_MATERIAL,
         }
     }
 }
@@ -633,5 +719,93 @@ mod tests {
         let ok = ContactMaterial::sanitized(1.2, 0.3);
         assert_eq!(ok.friction, 1.2);
         assert_eq!(ok.restitution, 0.3);
+    }
+
+    #[test]
+    fn adr149_le_materiau_d_une_table_est_assaini() {
+        let mut entree = PhysicsMaterial {
+            name_hash: 1,
+            friction: 9.0,
+            restitution: -1.0,
+            rolling_friction: f32::NAN,
+            friction_combine: combine::MIN,
+            restitution_combine: 77,
+            _pad0: [0; 2],
+            density: 1.0,
+            hardness: 0.0,
+            stiffness: 1.0,
+            elasticity: 0.0,
+            plasticity: 0.0,
+            yield_strength: 1.0,
+            fracture_strength: 1.0,
+            deformation_resistance: 1.0,
+            max_strain: 0.0,
+            damping: 0.0,
+            fracture_energy: 1.0,
+            hardness_pressure: 1.0e5,
+            indenter_radius_ref: 1.0,
+            spread_factor: 1.0,
+            thickness_spread: 0.0,
+            damage_multiplier: 1.0,
+            energy_absorption: 0.0,
+            scratch_resistance: 0.0,
+            burn_threshold: 0.0,
+            soil_rate: 0.0,
+            sound_group: 0,
+            particle_group: 0,
+            flags: 0,
+        };
+        let m = ContactMaterial::from_table(&entree, 4);
+        assert_eq!(
+            (m.friction, m.restitution, m.rolling_friction),
+            (2.0, 0.0, 0.0)
+        );
+        assert_eq!(m.friction_combine, CombineRule::Min);
+        assert_eq!(m.restitution_combine, CombineRule::Average, "mode inconnu");
+        assert_eq!(m.index, 4);
+
+        entree.rolling_friction = -3.0;
+        assert_eq!(
+            ContactMaterial::from_table(&entree, 4).rolling_friction,
+            0.0
+        );
+        entree.rolling_friction = 0.25;
+        entree.restitution_combine = combine::MULTIPLY;
+        let m = ContactMaterial::from_table(&entree, 4);
+        assert_eq!(m.rolling_friction, 0.25);
+        assert_eq!(m.restitution_combine, CombineRule::Multiply);
+    }
+
+    #[test]
+    fn adr149_a_modes_differents_le_plus_fort_l_emporte() {
+        use CombineRule::{Average, Max, Min, Multiply};
+        assert_eq!(CombineRule::combine((0.2, Average), (0.8, Average)), 0.5);
+        assert_eq!(CombineRule::combine((0.2, Min), (0.8, Average)), 0.2);
+        assert_eq!(CombineRule::combine((0.2, Min), (0.8, Multiply)), 0.2 * 0.8);
+        assert_eq!(CombineRule::combine((0.2, Multiply), (0.8, Max)), 0.8);
+        // Symétrique : l'ordre de la paire ne compte pas.
+        assert_eq!(
+            CombineRule::combine((0.8, Max), (0.2, Min)),
+            CombineRule::combine((0.2, Min), (0.8, Max))
+        );
+        assert_eq!(
+            [Average, Min, Multiply, Max].map(|rule| CombineRule::from_dm(rule as u8)),
+            [Average, Min, Multiply, Max],
+            "valeurs DM-07 de combine"
+        );
+    }
+
+    #[test]
+    fn adr149_un_collider_en_attente_de_sa_table_est_neutre() {
+        let m = ContactMaterial::unresolved(7);
+        assert_eq!(m.index, 7);
+        assert_eq!(
+            ContactMaterial {
+                index: NO_MATERIAL,
+                ..m
+            },
+            ContactMaterial::default()
+        );
+        assert_eq!(ContactMaterial::default().index, NO_MATERIAL);
     }
 }

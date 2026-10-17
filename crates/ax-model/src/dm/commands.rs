@@ -48,6 +48,10 @@ pub mod opcode {
     /// Déclarer les proxies des entités vanilla d'une dimension pour le tick (en-tête
     /// [`super::SetEntityProxies`] + `count ×` [`super::EntityProxyDesc`]). ADR-123 §5.
     pub const SET_ENTITY_PROXIES: u32 = 12;
+    /// Remplacer la table des matériaux physiques de la session (en-tête
+    /// [`super::SetPhysicsMaterials`] + `count ×` [`super::super::physics::PhysicsMaterial`]).
+    /// ADR-149.
+    pub const SET_PHYSICS_MATERIALS: u32 = 13;
 }
 
 /// Forme d'un proxy d'entité vanilla, champ `shape` de [`EntityProxyDesc`] (R-614).
@@ -77,8 +81,8 @@ pub struct CommandStreamHeader {
 impl CommandStreamHeader {
     /// Taille sur la frontière, en octets.
     pub const BYTES: usize = 8;
-    /// Version courante du protocole.
-    pub const CURRENT_SCHEMA: u32 = 1;
+    /// Version courante du protocole : 2 depuis l'index de matériau des tuiles (ADR-149).
+    pub const CURRENT_SCHEMA: u32 = 2;
 }
 
 /// En-tête d'une commande : opcode et longueur de son payload (ADR-114).
@@ -219,10 +223,13 @@ pub struct SetWorldCollision {
     pub section: [i32; 3],
     /// Nombre de boîtes qui suivent.
     pub box_count: u32,
-    /// Frottement du matériau dominant (R-643).
-    pub friction: f32,
-    /// Restitution du matériau dominant (R-643).
-    pub restitution: f32,
+    /// Index du matériau dominant (R-643) dans la table de la session (ADR-149), ou
+    /// [`super::physics::NO_MATERIAL`].
+    pub material: u16,
+    /// Réservé, à zéro.
+    pub _pad: u16,
+    /// Réservé, à zéro.
+    pub _reserved: u32,
 }
 
 impl SetWorldCollision {
@@ -246,10 +253,13 @@ pub struct SetWorldHeightfield {
     pub rows: u32,
     /// Nombre de colonnes (axe x), ≥ 2.
     pub cols: u32,
-    /// Frottement du matériau dominant (R-643).
-    pub friction: f32,
-    /// Restitution du matériau dominant (R-643).
-    pub restitution: f32,
+    /// Index du matériau dominant (R-643) dans la table de la session (ADR-149), ou
+    /// [`super::physics::NO_MATERIAL`].
+    pub material: u16,
+    /// Réservé, à zéro.
+    pub _pad: u16,
+    /// Réservé, à zéro.
+    pub _reserved: u32,
     /// Échelle `[x, y, z]` : étendue en blocs sur x et z, facteur de hauteur sur y.
     pub scale: [f32; 3],
 }
@@ -345,6 +355,28 @@ impl SetEntityProxies {
     pub const BYTES: usize = 16;
 }
 
+/// En-tête de `SET_PHYSICS_MATERIALS` (ADR-149) : la table des matériaux de la session.
+///
+/// Suivi **dans le même payload** de `count` [`super::physics::PhysicsMaterial`] de
+/// [`PhysicsMaterial::BYTES`](super::physics::PhysicsMaterial::BYTES) octets. L'index d'un
+/// matériau est son rang ; Java le garde stable pour la session, et le natif résout de
+/// nouveau les colliders et tuiles existants à chaque table reçue.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetPhysicsMaterials {
+    /// Nombre de matériaux qui suivent, au plus [`SetPhysicsMaterials::MAX_COUNT`].
+    pub count: u32,
+    /// Réservé, à zéro.
+    pub _reserved: u32,
+}
+
+impl SetPhysicsMaterials {
+    /// Taille de l'en-tête sur la frontière, en octets (hors matériaux).
+    pub const BYTES: usize = 8;
+    /// Matériaux au plus : un index tient dans un `u16`, et `0xFFFF` dit « aucun ».
+    pub const MAX_COUNT: u32 = 0xFFFF;
+}
+
 /// Une entité vanilla vue par la physique pour un tick (R-614, ADR-123 §5) : le natif en
 /// fait un corps cinématique temporaire, à la vitesse de l'entité.
 #[repr(C)]
@@ -427,8 +459,9 @@ mod tests {
         assert_eq!(offset_of!(SetWorldCollision, dimension), 0);
         assert_eq!(offset_of!(SetWorldCollision, section), 8);
         assert_eq!(offset_of!(SetWorldCollision, box_count), 20);
-        assert_eq!(offset_of!(SetWorldCollision, friction), 24);
-        assert_eq!(offset_of!(SetWorldCollision, restitution), 28);
+        assert_eq!(offset_of!(SetWorldCollision, material), 24);
+        assert_eq!(offset_of!(SetWorldCollision, _pad), 26);
+        assert_eq!(offset_of!(SetWorldCollision, _reserved), 28);
 
         assert_eq!(size_of::<SetWorldHeightfield>(), SetWorldHeightfield::BYTES);
         assert_eq!(align_of::<SetWorldHeightfield>(), 8);
@@ -436,8 +469,9 @@ mod tests {
         assert_eq!(offset_of!(SetWorldHeightfield, section), 8);
         assert_eq!(offset_of!(SetWorldHeightfield, rows), 20);
         assert_eq!(offset_of!(SetWorldHeightfield, cols), 24);
-        assert_eq!(offset_of!(SetWorldHeightfield, friction), 28);
-        assert_eq!(offset_of!(SetWorldHeightfield, restitution), 32);
+        assert_eq!(offset_of!(SetWorldHeightfield, material), 28);
+        assert_eq!(offset_of!(SetWorldHeightfield, _pad), 30);
+        assert_eq!(offset_of!(SetWorldHeightfield, _reserved), 32);
         assert_eq!(offset_of!(SetWorldHeightfield, scale), 36);
 
         assert_eq!(size_of::<SetWorldFluid>(), SetWorldFluid::BYTES);
@@ -451,6 +485,18 @@ mod tests {
         assert_eq!(align_of::<RemoveWorldTile>(), 8);
         assert_eq!(offset_of!(RemoveWorldTile, dimension), 0);
         assert_eq!(offset_of!(RemoveWorldTile, section), 8);
+    }
+
+    #[test]
+    fn dm_table_des_materiaux_disposition_figee() {
+        // ADR-149 : opcode 13, en-tête de 8 octets, schéma 2 du flux.
+        assert_eq!(opcode::SET_PHYSICS_MATERIALS, 13);
+        assert_eq!(CommandStreamHeader::CURRENT_SCHEMA, 2);
+        assert_eq!(size_of::<SetPhysicsMaterials>(), SetPhysicsMaterials::BYTES);
+        assert_eq!(align_of::<SetPhysicsMaterials>(), 4);
+        assert_eq!(offset_of!(SetPhysicsMaterials, count), 0);
+        assert_eq!(offset_of!(SetPhysicsMaterials, _reserved), 4);
+        assert_eq!(SetPhysicsMaterials::MAX_COUNT, u32::from(u16::MAX));
     }
 
     #[test]

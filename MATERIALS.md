@@ -60,9 +60,21 @@ dans l'ordre où le fichier les déclare : de la plus précise à la plus géné
 fichier plus tardif remplace la précédente, et le journal le dit. Chaque tuile de collision du
 monde prend le contact de son matériau dominant (R-643).
 
-En M3, seul le **contact** est consommé, par les tuiles du monde. Le matériau des parts d'assembly
-rejoint le natif au second temps de DM-07 (ADR-145) ; les autres groupes servent à la déformation,
-à la rupture et à l'usure, avec leurs composants (M6 et suivants).
+## Au contact
+
+Chaque collider d'une assembly prend le matériau de sa **part** — celle dont le `root_node` le porte ;
+sans part, ou d'une part qui n'en nomme pas, l'acier générique (ADR-149). Chaque tuile du monde prend
+celui de son bloc dominant. Quand deux colliders se touchent :
+
+- le **frottement** et la **restitution** de la paire se combinent par le mode de chacun ; si les deux
+  modes diffèrent, **le plus fort l'emporte** : `max` > `multiply` > `min` > `average`. Une glace en
+  `min` reste glissante sous tout ce qui n'exige pas `max` ; une balle en `max` sur la restitution
+  rebondit sur n'importe quel sol ;
+- le **frottement de roulement** freine la rotation d'un corps qui roule, sans jamais l'inverser ; il
+  se combine comme le frottement. Tourner sur place autour de la normale du contact n'est pas rouler.
+
+Un rechargement qui change un matériau atteint les corps et les tuiles déjà posés. Les autres groupes
+servent à la déformation, à la rupture et à l'usure, avec leurs composants (M6 et suivants).
 
 ## La bibliothèque d'AXION
 

@@ -15,6 +15,7 @@ import dev.axion.physics.BodyDescription;
 import dev.axion.physics.BodyLedger;
 import dev.axion.physics.BodyState;
 import dev.axion.physics.CollisionFilter;
+import dev.axion.physics.MaterialMarking;
 import dev.axion.physics.RefitMarking;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
@@ -31,6 +32,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
+import java.util.function.ToIntFunction;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
@@ -72,6 +74,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
 
     private final Supplier<DefinitionRegistry> definitions;
     private final Supplier<AssetRegistry> assets;
+    /** Index d'un matériau dans la table de la session (ADR-149 D2). */
+    private final ToIntFunction<String> materialIndex;
 
     /**
      * Index de handle → entité dotée d'un corps : route l'application des états, évite une
@@ -107,10 +111,15 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      * @param definitions definitions courantes (résolution par identifiant)
      * @param assets assets compilés courants (octets A3D → section {@code PHYS}), ou {@code null}
      *     avant tout chargement
+     * @param materialIndex index d'un matériau physique dans la table de la session (ADR-149)
      */
-    public AssemblyRuntime(Supplier<DefinitionRegistry> definitions, Supplier<AssetRegistry> assets) {
+    public AssemblyRuntime(
+            Supplier<DefinitionRegistry> definitions,
+            Supplier<AssetRegistry> assets,
+            ToIntFunction<String> materialIndex) {
         this.definitions = definitions;
         this.assets = assets;
+        this.materialIndex = materialIndex;
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -159,9 +168,12 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         JsonObject root = definition.root();
         int kind = bodyKind(definition.kind());
         BodyDescription body = BodyDescription.of(root, kind);
+        byte[] nodes = sectionOf(definition, "NODE");
         if (kind == SimCommandStream.BODY_DYNAMIC) {
-            phys = RefitMarking.mark(phys, sectionOf(definition, "NODE"), RefitMarking.rootsOf(root));
+            phys = RefitMarking.mark(phys, nodes, RefitMarking.rootsOf(root));
         }
+        // ADR-149 D2 : chaque collider porte l'index du matériau de sa part, l'acier générique sans.
+        phys = MaterialMarking.mark(phys, nodes, MaterialMarking.rootsOf(root), materialIndex);
         // R-980 : les groupes que la definition nomme, sur chaque collider du corps — résolus en bits
         // par le registre contre lequel elle a été validée (ADR-132 A1), groupes tiers compris.
         CollisionGroupRegistry groups = registry.collisionGroups();

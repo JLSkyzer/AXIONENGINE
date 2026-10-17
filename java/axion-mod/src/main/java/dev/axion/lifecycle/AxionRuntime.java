@@ -13,6 +13,7 @@ import dev.axion.definition.BlockMaterialMappings;
 import dev.axion.definition.CollisionGroupRegistry;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
+import dev.axion.definition.PhysicsMaterialTable;
 import dev.axion.definition.PhysicsMaterials;
 import dev.axion.physics.CollectResult;
 import dev.axion.physics.DegradationGauges;
@@ -78,6 +79,8 @@ public final class AxionRuntime {
     private volatile AssetRegistry assets;
     private volatile DefinitionRegistry definitions = DefinitionRegistry.empty();
     private volatile PhysicsMaterials physicsMaterials = PhysicsMaterials.empty();
+    /** Table des matériaux de la session (ADR-149) : index stables, renvoyée au natif quand elle change. */
+    private final PhysicsMaterialTable materialTable = new PhysicsMaterialTable();
     private volatile BlockMaterials blockMaterials = BlockMaterials.empty();
     private volatile CollisionGroupRegistry collisionGroups = CollisionGroupRegistry.empty();
     /** Un registre des groupes a déjà été chargé : le suivant qui diffère se journalise. */
@@ -415,6 +418,8 @@ public final class AxionRuntime {
     private void driveSimulation() {
         if (simulation == null) {
             simulation = new NativeSimulation(outcome.context());
+            // Une session native neuve n'a pas reçu la table des matériaux (ADR-149).
+            materialTable.markChanged();
             simBudgetNs = outcome.config().getInt("budgets.sim_ns_per_tick");
             idleHookBudgetNs = outcome.config().getInt("budgets.idle_hook_ns");
         }
@@ -423,6 +428,12 @@ public final class AxionRuntime {
         // (tuiles du monde C-38, assemblies C-40), fusionnés dans l'ordre. Sans fournisseur,
         // le cycle avance à vide. Le délai reste nul.
         SimCommandStream commands = new SimCommandStream();
+        // ADR-149 D1 : la table des matériaux quand elle a changé — démarrage, rechargement. Le natif
+        // résout de nouveau ce qui est posé, et ce que les fournisseurs créent dans le même flux.
+        PhysicsMaterialTable.Encoded table = materialTable.takeIfChanged();
+        if (table != null) {
+            commands.setPhysicsMaterials(table.entries(), table.count());
+        }
         for (SimCommandProvider provider : commandProviders) {
             commands.merge(provider.commandsForTick(tick));
         }
@@ -708,6 +719,8 @@ public final class AxionRuntime {
         guard("physicsMaterialReload").run(() -> {
             PhysicsMaterials loaded = PhysicsMaterials.load(source);
             physicsMaterials = loaded;
+            // ADR-149 D1 : la table suit le registre, et le tick suivant la renvoie au natif.
+            materialTable.update(loaded);
             transitions.add(loaded.ids().size() + " matériau(x) physique(s) chargé(s), "
                     + loaded.refusals().size() + " refusé(s)");
             loaded.refusals().forEach(transitions::add);
@@ -719,6 +732,16 @@ public final class AxionRuntime {
     /** {@return le registre des matériaux physiques, vide avant tout rechargement} */
     public PhysicsMaterials physicsMaterials() {
         return physicsMaterials;
+    }
+
+    /**
+     * {@return l'index d'un matériau physique dans la table de la session (ADR-149)} Un matériau non
+     * déclaré vaut l'acier générique (R-1032).
+     *
+     * @param id identifiant {@code <ns>:<chemin>}
+     */
+    public int physicsMaterialIndex(String id) {
+        return materialTable.indexOf(id);
     }
 
     /**

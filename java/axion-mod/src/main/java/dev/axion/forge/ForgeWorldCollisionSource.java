@@ -1,6 +1,7 @@
 package dev.axion.forge;
 
 import dev.axion.diag.WorldTileMetrics;
+import dev.axion.physics.SimCommandStream;
 import dev.axion.world.BlockMaterials;
 import dev.axion.world.WorldCollisionSource;
 import dev.axion.world.WorldTileGeometry;
@@ -13,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.LongFunction;
 import java.util.function.Supplier;
+import java.util.function.ToIntFunction;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -49,6 +51,8 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
 
     private final LongFunction<ServerLevel> levelById;
     private final Supplier<BlockMaterials> materials;
+    /** Index d'un matériau dans la table de la session (ADR-149 D4). */
+    private final ToIntFunction<String> materialIndex;
 
     /** Sections déjà signalées en champ de hauteurs : un avertissement par section (R-641). */
     private final Set<SectionKey> heightfieldsWarned = new HashSet<>();
@@ -60,7 +64,10 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
      *     tuile construite après un rechargement prend le mappage nouveau
      */
     public ForgeWorldCollisionSource(
-            LongFunction<ServerLevel> levelById, Supplier<BlockMaterials> materials) {
+            LongFunction<ServerLevel> levelById,
+            Supplier<BlockMaterials> materials,
+            ToIntFunction<String> materialIndex) {
+        this.materialIndex = materialIndex;
         this.levelById = levelById;
         this.materials = materials;
     }
@@ -156,16 +163,23 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
         CollisionShape collision =
                 overBudget
                         ? heightfield(level, ox, oy, oz, material) // R-641
-                        : new CollisionShape.Boxes(
-                                boxes.toArray(new float[0][]), material.friction(), material.restitution());
+                        : new CollisionShape.Boxes(boxes.toArray(new float[0][]), indexOf(material));
         return new SectionTile(collision, fluidBoxes, fluidDensity);
     }
 
+    /**
+     * L'index d'un contact de bloc dans la table de la session (ADR-149 D4) ; le contact du
+     * solveur, sans matériau, n'en a pas.
+     */
+    private int indexOf(BlockMaterials.Material material) {
+        return material.id() == null ? SimCommandStream.NO_MATERIAL : materialIndex.applyAsInt(material.id());
+    }
+
     /** Une section pleine : une boîte 16³, matériau générique (R-640). */
-    private static SectionTile solidSection(BlockMaterials.Material fallback) {
+    private SectionTile solidSection(BlockMaterials.Material fallback) {
         float[][] full = {{0f, 0f, 0f, SIZE, SIZE, SIZE}};
         return new SectionTile(
-                new CollisionShape.Boxes(full, fallback.friction(), fallback.restitution()),
+                new CollisionShape.Boxes(full, indexOf(fallback)),
                 new float[0][],
                 0f);
     }
@@ -217,6 +231,6 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
             }
         }
         return new CollisionShape.Heightfield(
-                verts, verts, heights, new float[] {SIZE, 1f, SIZE}, material.friction(), material.restitution());
+                verts, verts, heights, new float[] {SIZE, 1f, SIZE}, indexOf(material));
     }
 }

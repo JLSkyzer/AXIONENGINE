@@ -20,6 +20,7 @@ use crate::forces::FluidEnvironment;
 use crate::forces::FluidVolume;
 use crate::governor::{DegradationLevel, DegradationTransition, Governor};
 use crate::groups::CollisionGroups;
+use crate::materials::MaterialTable;
 use crate::proxies::EntityProxy;
 use crate::scheduler::Stage;
 use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
@@ -27,7 +28,7 @@ use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::debug::overlay;
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
-use ax_model::dm::physics::{BodyDesc, BodyState, PhysicsEvent};
+use ax_model::dm::physics::{BodyDesc, BodyState, PhysicsEvent, PhysicsMaterial, NO_MATERIAL};
 use std::collections::BTreeMap;
 
 /// La simulation d'une dimension : son monde et son origine flottante.
@@ -97,6 +98,8 @@ pub struct SimDriver {
     /// (dimension, section 16³) → corps statique de la tuile de collision monde
     /// (C-38). Ordonnée : parcours déterministe (R-1020).
     tiles: BTreeMap<(u64, [i32; 3]), BodyId>,
+    /// Table des matériaux de la session (DM-07, ADR-149), reçue par `SET_PHYSICS_MATERIALS`.
+    materials: MaterialTable,
     /// Réglages dont naît tout monde (IF-01, ADR-123 §1).
     settings: SimSettings,
     /// Environnement de chaque dimension réglée par `SET_DIMENSION_ENV`, gardé hors
@@ -148,6 +151,7 @@ impl SimDriver {
             dimensions: BTreeMap::new(),
             routes: BTreeMap::new(),
             tiles: BTreeMap::new(),
+            materials: MaterialTable::default(),
             settings,
             envs: BTreeMap::new(),
             observers: BTreeMap::new(),
@@ -452,6 +456,18 @@ impl SimDriver {
     #[must_use]
     pub fn world_tile_count(&self) -> usize {
         self.tiles.len()
+    }
+
+    /// Le corps de la tuile de collision d'une section, s'il y en a une.
+    #[must_use]
+    pub fn world_tile_body(&self, dimension: u64, section: [i32; 3]) -> Option<BodyId> {
+        self.tiles.get(&(dimension, section)).copied()
+    }
+
+    /// La dimension et le corps d'une assembly, si elle existe.
+    #[must_use]
+    pub fn assembly_body(&self, handle: Handle) -> Option<(u64, BodyId)> {
+        self.routes.get(&handle_key(handle)).copied()
     }
 
     /// Nombre de colliders de toutes les dimensions : les feuilles des arbres de la phase
@@ -798,16 +814,9 @@ impl SimDriver {
     ///
     /// C'est ce que fera `CREATE_ASSEMBLY` une fois C-32 disponible ; les tests
     /// s'en servent pour poser des corps routables.
-    pub fn register_body(
-        &mut self,
-        dimension: u64,
-        handle: Handle,
-        body: BodyId,
-        node: u32,
-        material: u16,
-    ) {
+    pub fn register_body(&mut self, dimension: u64, handle: Handle, body: BodyId, node: u32) {
         let exists = if let Some(sim) = self.dimensions.get_mut(&dimension) {
-            sim.world.set_body_identity(body, handle, node, material);
+            sim.world.set_body_identity(body, handle, node);
             true
         } else {
             false
@@ -867,18 +876,57 @@ impl SimDriver {
         desc: &BodyDesc,
         groups: CollisionGroups,
     ) -> Option<BodyId> {
+        // ADR-149 : chaque collider prend le contact de son index dans la table de la session ;
+        // un collider sans index garde le contact qu'il porte.
+        let colliders: Vec<BodyCollider> = colliders
+            .iter()
+            .map(|collider| BodyCollider {
+                material: self.resolve_material(collider.material),
+                ..collider.clone()
+            })
+            .collect();
         let sim = self.dimension_mut(dimension);
         let local = sim.origin.to_local(DVec3::from_array(spawn.position));
         let rotation = Quat::from_array(spawn.rotation);
         let body = sim
             .world
-            .add_assembly(kind, local, rotation, colliders)
+            .add_assembly(kind, local, rotation, &colliders)
             .ok()?;
         sim.world.apply_body_desc(body, desc);
         sim.world.set_collision_groups(body, groups);
         // L'emprunt de `sim` s'achève ici ; le routage réutilise `register_body`.
-        self.register_body(dimension, handle, body, 0, 0);
+        self.register_body(dimension, handle, body, 0);
         Some(body)
+    }
+
+    /// Remplace la table des matériaux de la session (`SET_PHYSICS_MATERIALS`, ADR-149) et la
+    /// propage : chaque collider et chaque tuile déjà posés prennent le contact de leur index,
+    /// dimension après dimension, dans l'ordre des clés (R-1020). Rend le nombre de colliders
+    /// mis à jour.
+    pub fn set_physics_materials(&mut self, materials: &[PhysicsMaterial]) -> usize {
+        self.materials = MaterialTable::from_dm(materials);
+        let table = &self.materials;
+        self.dimensions
+            .values_mut()
+            .map(|sim| sim.world.refresh_materials(table))
+            .sum()
+    }
+
+    /// Le contact de l'index `index` dans la table de la session (ADR-149) : un index absent
+    /// ou hors de la table rend le contact neutre, qui garde l'index pour la table suivante.
+    #[must_use]
+    pub fn material(&self, index: u16) -> ContactMaterial {
+        self.materials.resolve(index)
+    }
+
+    /// Le contact d'un collider d'assembly : celui de son index s'il en porte un, sinon le
+    /// sien.
+    fn resolve_material(&self, material: ContactMaterial) -> ContactMaterial {
+        if material.index == NO_MATERIAL {
+            material
+        } else {
+            self.materials.resolve(material.index)
+        }
     }
 
     /// Applique `REMOVE_ASSEMBLY` : retire le corps et son routage. Rend vrai s'il
@@ -1411,7 +1459,7 @@ mod tests {
         driver
             .world_mut(0)
             .unwrap()
-            .set_body_identity(ball0, Handle::new(10, 1), 0, 0);
+            .set_body_identity(ball0, Handle::new(10, 1), 0);
         // Dimension 1 : origine à zéro, une bille identifiée.
         let ball1 = driver
             .world_or_create(1, config(), FloatingOrigin::new(DVec3::ZERO))
@@ -1425,7 +1473,7 @@ mod tests {
         driver
             .world_mut(1)
             .unwrap()
-            .set_body_identity(ball1, Handle::new(20, 1), 0, 0);
+            .set_body_identity(ball1, Handle::new(20, 1), 0);
 
         driver.advance_all(1.0 / 60.0);
         let states = driver.collect_states();
@@ -1488,7 +1536,7 @@ mod tests {
         driver
             .world_mut(0)
             .unwrap()
-            .set_body_identity(petite, Handle::new(10, 1), 0, 0);
+            .set_body_identity(petite, Handle::new(10, 1), 0);
         let grande = driver
             .world_or_create(
                 1,
@@ -1507,7 +1555,7 @@ mod tests {
         driver
             .world_mut(1)
             .unwrap()
-            .set_body_identity(grande, Handle::new(20, 1), 0, 0);
+            .set_body_identity(grande, Handle::new(20, 1), 0);
 
         let reports = driver.collect_reports();
         assert_eq!(reports.states.len(), 2);
@@ -1535,7 +1583,7 @@ mod tests {
             driver
                 .world_mut(3)
                 .unwrap()
-                .set_body_identity(ball, Handle::new(1, 1), 0, 0);
+                .set_body_identity(ball, Handle::new(1, 1), 0);
             for _ in 0..120 {
                 driver.advance_all(1.0 / 60.0);
             }
