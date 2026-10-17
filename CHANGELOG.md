@@ -42,6 +42,9 @@ Definition of Done (PARTIE 37.3).
     reconstruites par un vrai changement de resource pack (T-483) ;
   - requetes spatiales lancees de plusieurs threads a la fois : le monde se
     partage (`Sync`) et rend ce qu'il rend en serie (R-650, T-384) ;
+  - metriques de R-500 des tuiles du monde (C-38, `axion.world.*`) : tuiles
+    construites et liberees, replis en champ de hauteurs (R-641) et sections
+    non chargees (R-640), file, tuiles tenues, duree de construction par tick ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
     T-012 (INV-04), T-015 (INV-07), T-019 (INV-12) ;
   - un collider `convex` ne garde que les sommets de son enveloppe : ni

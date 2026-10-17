@@ -2153,6 +2153,13 @@ substituable sans changer rapier »).
                     hasard. Mesuré (`charge_tuiles`, sol plat) : 731 136 boîtes → 224,
                     colliders 11 427 → 227, pose de huit sections 12,3 → 0,01 ms, tous les
                     pas sous 0,07 ms de p95.
+            - [x] **Métriques de R-500** (2026-10-17) : `dev.axion.diag.WorldTileMetrics`,
+                  `axion.world.*` — tuiles construites et libérées, replis en champ de hauteurs
+                  (R-641) et sections non chargées (R-640), tuiles construites au dernier tick,
+                  sections en file et ticks qui en laissent, tuiles tenues, durée de construction
+                  du tick. `world.tiles_per_tick` n'est pas un budget de la table 25.2 : son
+                  imputation et sa surcharge par le gouverneur viennent avec C-77 (R-1850, M5).
+                  Tests : `ComponentMetricsTest`, `WorldTileServiceTest` ; huit mutations rouges.
       - [x] **C-39 — Spatial Queries** (fiche 5.31, R-650..652) — **implémenté**. Module
             `ax_physics::query` : `raycast`, `sweep`, `overlap` + versions par lot, filtres
             par groupe/masque, exclusion d'assembly, capteurs (`SpatialFilter`/`SensorMode`).
@@ -2874,8 +2881,7 @@ amortissement dans l'eau, `/axion remove`).
               natif (index DM-07 des `ColliderDesc`, modes de combinaison), puis le ballon de test.
       - **L'effort max après le reste de M3** : amendement A1 d'ADR-137 et R-1011 (C-31 : au-delà du
         plafond d'événements, agréger par paire au lieu de jeter — aujourd'hui `push_event` jette).
-      - Reste à proposer, par un ADR de portée de la DoD de M3 (modèle d'ADR-137) : métriques des tuiles
-        et des requêtes,
+      - Reste à proposer, par un ADR de portée de la DoD de M3 (modèle d'ADR-137) : métriques des requêtes,
         les écarts du rendu (surcharge des budgets de frame, temps GPU par passe, overlays de C-67
         sans jalon, garde GL et R-741) et les cases périmées.
 - [ ] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et

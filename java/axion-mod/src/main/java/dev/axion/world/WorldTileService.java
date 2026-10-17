@@ -103,6 +103,11 @@ public final class WorldTileService {
         return planner.pendingCount();
     }
 
+    /** {@return le nombre de tuiles tenues après le dernier tick, celles que le natif garde} */
+    public int loadedCount() {
+        return planner.loadedCount();
+    }
+
     private static void emitCollision(
             SimCommandStream stream, long dimension, int[] section, CollisionShape shape) {
         if (shape instanceof CollisionShape.Boxes boxes) {

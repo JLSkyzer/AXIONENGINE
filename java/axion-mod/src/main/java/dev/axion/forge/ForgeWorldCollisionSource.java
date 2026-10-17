@@ -1,5 +1,6 @@
 package dev.axion.forge;
 
+import dev.axion.diag.WorldTileMetrics;
 import dev.axion.world.BlockMaterials;
 import dev.axion.world.WorldCollisionSource;
 import dev.axion.world.WorldTileGeometry;
@@ -71,6 +72,7 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
         BlockMaterials.Material fallback = mapping.fallback();
         // R-640 : niveau inconnu ou chunk non chargé → plein et solide, sans charger le chunk.
         if (level == null || !level.hasChunk(sectionX, sectionZ)) {
+            WorldTileMetrics.GLOBAL.unloadedSection();
             return solidSection(fallback);
         }
 

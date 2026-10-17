@@ -119,6 +119,7 @@ class WorldTileServiceTest {
         assertEquals(
                 List.of(Tile.released(0, 0, 0), Tile.built(50, 0, 0, 2, 1, true)), service.lastTiles());
         assertEquals(0, service.pendingCount());
+        assertEquals(1, service.loadedCount(), "l'origine libérée, seul l'abri est tenu");
 
         service.tick(abri(50, 0, 0));
         assertEquals(List.of(), service.lastTiles(), "rien de neuf, rien à tracer");

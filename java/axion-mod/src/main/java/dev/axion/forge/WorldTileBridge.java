@@ -1,5 +1,6 @@
 package dev.axion.forge;
 
+import dev.axion.diag.WorldTileMetrics;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.physics.SimulationTrace;
@@ -150,7 +151,12 @@ public final class WorldTileBridge implements SimCommandProvider {
                 }
             }
         }
+        long start = System.nanoTime();
         SimCommandStream stream = service.tick(bodies);
+        long nanos = System.nanoTime() - start;
+        // R-500 : opérations, replis, mémoire et durée de C-38, à chaque tick.
+        WorldTileMetrics.GLOBAL.tick(
+                service.lastTiles(), service.pendingCount(), service.loadedCount(), nanos);
         trace.tiles(tick, service.lastTiles(), service.pendingCount());
         return stream;
     }
