@@ -454,6 +454,14 @@ public final class BancDeRendu {
             });
             une("juger T-512", mc -> jugerT512(AxionRenderPass.nativeShaderStats()));
         }
+
+        // T-550, amendement A1 d'ADR-121 : les sept overlays allumés sur la scène posée — un cube
+        // au sol, ses tuiles —, la géométrie de chacun reçue du natif et dessinée. Une erreur au
+        // dessin éteint les overlays et se journalise : le verdict « erreurs AXION » la voit.
+        une("allumer les overlays de debug", mc -> AxionRenderPass.setAllOverlays(true));
+        stabiliser("les overlays de debug");
+        une("juger les overlays de debug", mc -> jugerOverlays());
+        une("éteindre les overlays de debug", mc -> AxionRenderPass.setAllOverlays(false));
         stabiliser("la scène vanilla");
 
         // T-470 : la même scène, avec puis sans les passes d'AXION, puis de nouveau avec.
@@ -1037,6 +1045,23 @@ public final class BancDeRendu {
         RAPPORT.noter("temps GPU par passe", opaque > 0 && translucide > 0, String.format(Locale.ROOT,
                 "backend %s ; passe opaque : %s ; passe translucide : %s",
                 AxionRenderPass.activeBackend(), connu(opaque), connu(translucide)));
+    }
+
+    /**
+     * T-550 (amendement A1 d'ADR-121) : chacun des sept overlays a rendu au moins une plage au
+     * dernier tick — colliders, AABB, axes et centre de masse du cube, ses contacts au sol et
+     * leurs normales, les tuiles du monde autour de lui.
+     */
+    private static void jugerOverlays() {
+        java.util.Map<Integer, Integer> plages = AxionRenderPass.debugRangesByOverlay();
+        StringBuilder detail = new StringBuilder();
+        boolean vert = true;
+        for (dev.axion.debug.DebugOverlays.Overlay overlay : dev.axion.debug.DebugOverlays.Overlay.values()) {
+            int n = plages.getOrDefault(overlay.rank(), 0);
+            vert &= n > 0;
+            detail.append(detail.length() == 0 ? "" : ", ").append(overlay.commandName()).append(' ').append(n);
+        }
+        RAPPORT.noter("overlays de debug", vert, "plages reçues : " + detail);
     }
 
     /** {@return ce qu'on sait d'un temps GPU de passe, sans le chiffre} */

@@ -58,8 +58,19 @@ class DebugOverlaysTest {
     }
 
     @Test
-    @DisplayName("ADR-121 : colliders porte le bit que le natif attend")
+    @DisplayName("A1 d'ADR-121 : chaque overlay porte le bit que le natif attend, et son rang le retrouve")
     void collidersCommeLeNatif() {
         assertEquals(NativeBridge.OVERLAY_COLLIDERS, Overlay.COLLIDERS.bit());
+        assertEquals(NativeBridge.OVERLAY_AABB, Overlay.AABB.bit());
+        assertEquals(NativeBridge.OVERLAY_BODIES, Overlay.BODIES.bit());
+        assertEquals(NativeBridge.OVERLAY_CONTACTS, Overlay.CONTACTS.bit());
+        assertEquals(NativeBridge.OVERLAY_NORMALS, Overlay.NORMALS.bit());
+        assertEquals(NativeBridge.OVERLAY_WORLD_TILES, Overlay.WORLD_TILES.bit());
+        assertEquals(NativeBridge.OVERLAY_CENTER_OF_MASS, Overlay.CENTER_OF_MASS.bit());
+        assertEquals(7, Overlay.values().length, "les six overlays de M3 et colliders (ADR-146 §1)");
+        for (Overlay overlay : Overlay.values()) {
+            assertEquals(overlay, Overlay.ofRank(overlay.rank()), overlay.commandName());
+        }
+        assertEquals(null, Overlay.ofRank(5), "joints n'est pas implémenté");
     }
 }

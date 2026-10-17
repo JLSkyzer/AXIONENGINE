@@ -27,8 +27,8 @@
 //!   vanilla (R-614, `proxies`).
 //! - `commands` — lecture du flux de commandes IF-03 ; `scheduler` — étapes du
 //!   tick (C-40, R-660) ; `governor` — paliers de dégradation (R-1880) ; `query`
-//!   — requêtes spatiales (C-39) ; `debug` — géométrie de l'overlay `colliders`
-//!   (C-67, ADR-121).
+//!   — requêtes spatiales (C-39) ; `debug` — géométrie des overlays du debug
+//!   renderer (C-67, ADR-121 et son amendement A1).
 //!
 //! Hors de ce crate pour l'instant : liaisons et leurs défaillances (C-34),
 //! matériaux de contact des assemblies (DM-07 ; contact neutre en attendant),
@@ -58,7 +58,10 @@ pub use body::{
 };
 pub use commands::{apply_command_stream, create_assembly_payloads, CommandError, CommandOutcome};
 pub use config::{ConfigError, PhysicsConfig};
-pub use debug::{select_outlines, ColliderOutline, DebugColliders, ROUND_SUBDIVISIONS};
+pub use debug::{
+    select_drafts, DebugDraft, DebugSelection, AXIS_LENGTH, CONTACT_CROSS, MASS_CROSS,
+    NORMAL_LENGTH, ROUND_SUBDIVISIONS,
+};
 pub use forces::{FluidEnvironment, FluidVolume, LiftSurface};
 pub use governor::{DegradationLevel, DegradationTransition, Governor, WINDOW_TICKS};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};

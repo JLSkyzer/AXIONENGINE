@@ -1,6 +1,6 @@
 //! Le monde physique d'une dimension (C-31, fiche 5.23).
 
-use ax_math::{FloatingOrigin, Mat3, Quat, Vec3};
+use ax_math::{DVec3, FloatingOrigin, Mat3, Quat, Vec3};
 use rapier3d::parry::mass_properties::MassProperties;
 use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::parry::utils::Array2;
@@ -22,10 +22,14 @@ use crate::body::{
     MAX_COMPOUND_PARTS, MAX_CONVEX_HULL_POINTS, MIN_CONVEX_HULL_POINTS,
 };
 use crate::config::PhysicsConfig;
-use crate::debug::{append_outline, ColliderOutline};
+use crate::debug::{
+    append_outline, box_edges, cross, DebugDraft, AXIS_LENGTH, CONTACT_CROSS, MASS_CROSS,
+    NORMAL_LENGTH,
+};
 use crate::forces::{FluidEnvironment, FluidVolume, LiftSurface};
 use crate::groups::{CollisionGroups, ReservedGroup};
-use ax_model::dm::debug::debug_body_flags;
+use crate::sim::handle_key;
+use ax_model::dm::debug::{debug_body_flags, debug_frame, overlay, DebugSegment};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{
     body_state_flags, event_data, event_kind, BodyBounds, BodyDesc, BodyState, PhysicsEvent,
@@ -1895,51 +1899,223 @@ impl PhysicsWorld {
         })
     }
 
-    /// Arêtes des colliders de chaque corps d'assembly, en repère du corps, pour
-    /// l'overlay `colliders` (C-67, ADR-121).
+    /// Arêtes des colliders de chaque corps d'assembly, en repère du corps : les
+    /// plages de l'overlay `colliders` (C-67, ADR-121), une par corps.
+    #[must_use]
+    pub fn collider_outlines(&self, origin: &FloatingOrigin) -> Vec<DebugDraft> {
+        // Le repère du corps ne dépend pas de la caméra.
+        self.debug_drafts(origin, DVec3::ZERO, overlay::COLLIDERS)
+    }
+
+    /// Plages des overlays de `mask` pour les corps d'assembly de ce monde (C-67,
+    /// amendement A1 d'ADR-121) : `colliders`, `aabb`, `bodies` et `center_of_mass`
+    /// par corps, `contacts` et `normals` par assembly. Les tuiles du monde viennent
+    /// de [`Self::tile_draft`], que le pilote appelle pour chacune.
     ///
     /// Lecture seule. Corps retenus : ceux qui portent une identité d'assembly,
-    /// **statiques compris** — les tuiles de collision du monde n'en ont pas et
-    /// relèvent d'un autre overlay. Forme courante de chaque collider, à sa pose
-    /// relative au corps ; position monde (`f64`) recomposée par l'origine
-    /// flottante, pour le tri par distance. Ordre de `rapier` (R-1020).
+    /// **statiques compris** — les tuiles n'en ont pas. Ordre de `rapier` (R-1020).
+    /// En repère du corps, la forme courante de chaque collider à sa pose relative,
+    /// ses axes, son centre de masse. En repère d'origine, la position monde (`f64`,
+    /// par l'origine flottante) moins `camera`. L'ancre est la position monde du
+    /// corps.
     #[must_use]
-    pub fn collider_outlines(&self, origin: &FloatingOrigin) -> Vec<ColliderOutline> {
-        let mut outlines = Vec::new();
+    pub fn debug_drafts(
+        &self,
+        origin: &FloatingOrigin,
+        camera: DVec3,
+        mask: u64,
+    ) -> Vec<DebugDraft> {
+        let relative = |local: Vec3| (origin.to_world(local) - camera).as_vec3().to_array();
+        let mut drafts = Vec::new();
         for (handle, body) in self.inner.bodies.iter() {
-            let identity = match self.identity.get(&BodyId::from_handle(handle)) {
-                Some(identity) if !identity.assembly.is_absent() => identity,
-                _ => continue,
+            let Some(assembly) = self.assembly_of(handle) else {
+                continue;
             };
-            let mut flags = 0;
-            if body.is_fixed() {
-                flags |= debug_body_flags::STATIC;
-            } else if body.is_kinematic() {
-                flags |= debug_body_flags::KINEMATIC;
-            }
-            if body.is_sleeping() {
-                flags |= debug_body_flags::SLEEPING;
-            }
-            let mut segments = Vec::new();
-            for collider_handle in body.colliders() {
-                let Some(collider) = self.inner.colliders.get(*collider_handle) else {
-                    continue;
-                };
-                // Un collider rattaché à un corps a toujours sa pose relative ;
-                // sans elle, il n'est pas de ce corps.
-                let Some(local) = collider.position_wrt_parent() else {
-                    continue;
-                };
-                append_outline(collider.shape(), local, &mut segments);
-            }
-            outlines.push(ColliderOutline {
-                handle: identity.assembly,
+            let flags = body_debug_flags(body);
+            let anchor = origin.to_world(body.position().translation);
+            let draft = |bit: u64, frame: u32, segments: Vec<DebugSegment>| DebugDraft {
+                handle: assembly,
+                overlay: overlay::rank(bit),
+                frame,
                 flags,
-                position: origin.to_world(body.position().translation),
+                anchor,
                 segments,
+            };
+            if mask & overlay::COLLIDERS != 0 {
+                let mut segments = Vec::new();
+                for collider_handle in body.colliders() {
+                    let Some(collider) = self.inner.colliders.get(*collider_handle) else {
+                        continue;
+                    };
+                    // Un collider rattaché à un corps a toujours sa pose relative ;
+                    // sans elle, il n'est pas de ce corps.
+                    let Some(local) = collider.position_wrt_parent() else {
+                        continue;
+                    };
+                    append_outline(collider.shape(), local, &mut segments);
+                }
+                drafts.push(draft(overlay::COLLIDERS, debug_frame::BODY, segments));
+            }
+            if mask & overlay::AABB != 0 {
+                let mut segments = Vec::new();
+                for collider_handle in body.colliders() {
+                    if let Some(collider) = self.inner.colliders.get(*collider_handle) {
+                        let aabb = collider.compute_aabb();
+                        box_edges(aabb.mins, aabb.maxs, relative, &mut segments);
+                    }
+                }
+                drafts.push(draft(overlay::AABB, debug_frame::ORIGIN, segments));
+            }
+            if mask & overlay::BODIES != 0 {
+                let segments = [Vec3::X, Vec3::Y, Vec3::Z]
+                    .map(|axis| DebugSegment {
+                        a: [0.0; 3],
+                        b: (axis * AXIS_LENGTH).to_array(),
+                    })
+                    .to_vec();
+                drafts.push(draft(overlay::BODIES, debug_frame::BODY, segments));
+            }
+            if mask & overlay::CENTER_OF_MASS != 0 {
+                let mut segments = Vec::new();
+                let center = body.mass_properties().local_mprops.local_com;
+                cross(center, MASS_CROSS, |p: Vec3| p.to_array(), &mut segments);
+                drafts.push(draft(overlay::CENTER_OF_MASS, debug_frame::BODY, segments));
+            }
+        }
+        if mask & (overlay::CONTACTS | overlay::NORMALS) != 0 {
+            drafts.extend(self.contact_drafts(origin, camera, mask));
+        }
+        drafts
+    }
+
+    /// Plages `contacts` et `normals` (amendement A1 d'ADR-121) : les points de contact
+    /// actifs du dernier pas — pénétrants, ou ayant porté une impulsion —, lus dans la
+    /// phase étroite où ils persistent, en repère d'origine. Chaque paire va à
+    /// l'assembly de son premier collider qui en porte une ; une paire sans assembly,
+    /// entre deux tuiles, n'est pas tracée. Une croix par point ; une normale par
+    /// point, celle de sa variété, du premier collider vers le second. Une plage par
+    /// assembly et par overlay, dans l'ordre des clés de handle.
+    fn contact_drafts(&self, origin: &FloatingOrigin, camera: DVec3, mask: u64) -> Vec<DebugDraft> {
+        let relative = |local: Vec3| (origin.to_world(local) - camera).as_vec3().to_array();
+        // Clé du handle → (assembly, ancre, drapeaux, croix, normales) ; ordonnée (R-1020).
+        type Owner = (Handle, DVec3, u32, Vec<DebugSegment>, Vec<DebugSegment>);
+        let mut owners: BTreeMap<u64, Owner> = BTreeMap::new();
+        for pair in self.inner.contact_pairs() {
+            if !pair.has_any_active_contact() {
+                continue;
+            }
+            let owner = [pair.collider1, pair.collider2].into_iter().find_map(|c| {
+                let parent = self.inner.colliders.get(c)?.parent()?;
+                Some((self.assembly_of(parent)?, parent))
+            });
+            let Some((assembly, parent)) = owner else {
+                continue;
+            };
+            let (Some(first), Some(body)) = (
+                self.inner.colliders.get(pair.collider1),
+                self.inner.bodies.get(parent),
+            ) else {
+                continue;
+            };
+            let entry = owners.entry(handle_key(assembly)).or_insert_with(|| {
+                (
+                    assembly,
+                    origin.to_world(body.position().translation),
+                    body_debug_flags(body),
+                    Vec::new(),
+                    Vec::new(),
+                )
+            });
+            for manifold in &pair.manifolds {
+                let normal = manifold.data.normal;
+                for contact in &manifold.points {
+                    if contact.dist > 0.0 && contact.data.impulse <= 0.0 {
+                        continue;
+                    }
+                    let point = first.position().transform_point(contact.local_p1);
+                    cross(point, CONTACT_CROSS, relative, &mut entry.3);
+                    entry.4.push(DebugSegment {
+                        a: relative(point),
+                        b: relative(point + normal * NORMAL_LENGTH),
+                    });
+                }
+            }
+        }
+        let mut drafts = Vec::new();
+        for (assembly, anchor, flags, crosses, normals) in owners.into_values() {
+            for (bit, segments) in [(overlay::CONTACTS, crosses), (overlay::NORMALS, normals)] {
+                if mask & bit != 0 {
+                    drafts.push(DebugDraft {
+                        handle: assembly,
+                        overlay: overlay::rank(bit),
+                        frame: debug_frame::ORIGIN,
+                        flags,
+                        anchor,
+                        segments,
+                    });
+                }
+            }
+        }
+        drafts
+    }
+
+    /// Plage `world_tiles` d'une tuile du monde (C-38, amendement A1 d'ADR-121) : les
+    /// arêtes de ses colliders, en repère d'origine, ancrée au centre de leur boîte
+    /// englobante. `None` si le corps n'existe pas ou n'a rien à tracer. Lecture seule.
+    #[must_use]
+    pub fn tile_draft(
+        &self,
+        id: BodyId,
+        origin: &FloatingOrigin,
+        camera: DVec3,
+    ) -> Option<DebugDraft> {
+        let body = self.inner.bodies.get(id.handle())?;
+        let mut local = Vec::new();
+        let mut bounds: Option<(Vec3, Vec3)> = None;
+        for collider_handle in body.colliders() {
+            let Some(collider) = self.inner.colliders.get(*collider_handle) else {
+                continue;
+            };
+            // La pose du collider dans le monde flottant : la tuile est un corps fixe.
+            append_outline(collider.shape(), collider.position(), &mut local);
+            let aabb = collider.compute_aabb();
+            bounds = Some(match bounds {
+                None => (aabb.mins, aabb.maxs),
+                Some((min, max)) => (min.min(aabb.mins), max.max(aabb.maxs)),
             });
         }
-        outlines
+        let (min, max) = bounds?;
+        if local.is_empty() {
+            return None;
+        }
+        let relative = |p: [f32; 3]| {
+            (origin.to_world(Vec3::from_array(p)) - camera)
+                .as_vec3()
+                .to_array()
+        };
+        let segments = local
+            .into_iter()
+            .map(|segment| DebugSegment {
+                a: relative(segment.a),
+                b: relative(segment.b),
+            })
+            .collect();
+        Some(DebugDraft {
+            handle: Handle::ABSENT,
+            overlay: overlay::rank(overlay::WORLD_TILES),
+            frame: debug_frame::ORIGIN,
+            flags: 0,
+            anchor: origin.to_world((min + max) * 0.5),
+            segments,
+        })
+    }
+
+    /// L'assembly que porte un corps, ou `None` s'il n'en porte pas (tuile, proxy).
+    fn assembly_of(&self, handle: RigidBodyHandle) -> Option<Handle> {
+        self.identity
+            .get(&BodyId::from_handle(handle))
+            .map(|identity| identity.assembly)
+            .filter(|assembly| !assembly.is_absent())
     }
 
     /// Indique si un coin de l'AABB du corps est immergé — dans un volume localisé ou
@@ -2397,6 +2573,21 @@ impl PhysicsWorld {
             .and_then(Collider::parent)
             .map(BodyId::from_handle)
     }
+}
+
+/// Genre et état d'un corps pour ses plages de debug (`debug_body_flags`) : aucun
+/// drapeau de genre pour un corps dynamique.
+fn body_debug_flags(body: &RigidBody) -> u32 {
+    let mut flags = 0;
+    if body.is_fixed() {
+        flags |= debug_body_flags::STATIC;
+    } else if body.is_kinematic() {
+        flags |= debug_body_flags::KINEMATIC;
+    }
+    if body.is_sleeping() {
+        flags |= debug_body_flags::SLEEPING;
+    }
+    flags
 }
 
 /// Nanosecondes écoulées depuis `start` (métrique d'étape C-40, R-661).

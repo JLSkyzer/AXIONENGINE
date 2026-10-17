@@ -15,7 +15,7 @@ use crate::body::{
     BodyCollider, BodyId, BodyKind, CompoundPart, ContactMaterial, Shape, MAX_COMPOUND_PARTS,
 };
 use crate::config::PhysicsConfig;
-use crate::debug::{select_outlines, DebugColliders};
+use crate::debug::{select_drafts, DebugSelection};
 use crate::forces::FluidEnvironment;
 use crate::forces::FluidVolume;
 use crate::governor::{DegradationLevel, DegradationTransition, Governor};
@@ -24,6 +24,7 @@ use crate::proxies::EntityProxy;
 use crate::scheduler::Stage;
 use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
+use ax_model::dm::debug::overlay;
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, BodyState, PhysicsEvent};
@@ -741,25 +742,31 @@ impl SimDriver {
         self.collect_reports().states
     }
 
-    /// Géométrie de l'overlay `colliders` d'une dimension (C-67, ADR-121) : les
-    /// corps d'assembly les plus proches de `camera` (position monde) d'abord, au
-    /// plus `max_segments` segments en repère du corps ; un corps qui ne tient
-    /// pas est omis et compté. Dimension inconnue : rien. Lecture seule.
+    /// Géométrie des overlays de `mask` dans une dimension (C-67, ADR-121 et son
+    /// amendement A1) : les plages des corps d'assembly et, si `world_tiles` est
+    /// demandé, celles des tuiles du monde, dans l'ordre de leurs sections. Les plus
+    /// proches de `camera` (position monde) d'abord, au plus `max_segments` segments ;
+    /// une plage qui ne tient pas est omise et comptée. Dimension inconnue : rien.
+    /// Lecture seule.
     #[must_use]
-    pub fn debug_colliders(
+    pub fn debug_overlays(
         &self,
         dimension: u64,
         camera: DVec3,
+        mask: u64,
         max_segments: u32,
-    ) -> DebugColliders {
-        match self.dimensions.get(&dimension) {
-            Some(sim) => select_outlines(
-                sim.world.collider_outlines(&sim.origin),
-                camera,
-                max_segments,
-            ),
-            None => DebugColliders::default(),
+    ) -> DebugSelection {
+        let Some(sim) = self.dimensions.get(&dimension) else {
+            return DebugSelection::default();
+        };
+        let mut drafts = sim.world.debug_drafts(&sim.origin, camera, mask);
+        if mask & overlay::WORLD_TILES != 0 {
+            let sections = (dimension, [i32::MIN; 3])..=(dimension, [i32::MAX; 3]);
+            for id in self.tiles.range(sections).map(|(_, id)| *id) {
+                drafts.extend(sim.world.tile_draft(id, &sim.origin, camera));
+            }
         }
+        select_drafts(drafts, camera, max_segments)
     }
 
     /// Récolte l'état et l'emprise des corps mobiles de toutes les dimensions

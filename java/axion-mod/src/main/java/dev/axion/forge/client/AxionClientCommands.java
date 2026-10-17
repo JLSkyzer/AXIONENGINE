@@ -139,8 +139,6 @@ public final class AxionClientCommands {
 
     /** {@return la légende des couleurs d'un overlay} */
     private static String legendOf(DebugOverlays.Overlay overlay) {
-        return switch (overlay) {
-            case COLLIDERS -> DebugOverlayRenderer.COLLIDERS_LEGEND;
-        };
+        return DebugOverlayRenderer.legendOf(overlay);
     }
 }

@@ -17,7 +17,19 @@ public final class DebugOverlays {
      */
     public enum Overlay {
         /** Les colliders des corps, tournés avec eux (ADR-121). Rang 0. */
-        COLLIDERS("colliders", NativeBridge.OVERLAY_COLLIDERS);
+        COLLIDERS("colliders", NativeBridge.OVERLAY_COLLIDERS),
+        /** L'AABB monde de chaque collider (amendement A1 d'ADR-121). Rang 1. */
+        AABB("aabb", NativeBridge.OVERLAY_AABB),
+        /** Les axes de chaque corps, à son origine (A1). Rang 2. */
+        BODIES("bodies", NativeBridge.OVERLAY_BODIES),
+        /** Les points de contact du dernier pas (A1). Rang 3. */
+        CONTACTS("contacts", NativeBridge.OVERLAY_CONTACTS),
+        /** La normale de chaque point de contact (A1). Rang 4. */
+        NORMALS("normals", NativeBridge.OVERLAY_NORMALS),
+        /** Les tuiles de collision du monde (C-38, A1). Rang 30. */
+        WORLD_TILES("world_tiles", NativeBridge.OVERLAY_WORLD_TILES),
+        /** Le centre de masse de chaque corps (A1). Rang 31. */
+        CENTER_OF_MASS("center_of_mass", NativeBridge.OVERLAY_CENTER_OF_MASS);
 
         private final String commandName;
         private final long bit;
@@ -35,6 +47,25 @@ public final class DebugOverlays {
         /** {@return le bit de l'overlay dans le masque passé au natif} */
         public long bit() {
             return bit;
+        }
+
+        /** {@return le rang de l'overlay au §31.4, celui qu'une plage de géométrie porte} */
+        public int rank() {
+            return Long.numberOfTrailingZeros(bit);
+        }
+
+        /**
+         * {@return l'overlay d'un rang du §31.4, ou {@code null} s'il n'est pas implémenté}
+         *
+         * @param rank rang porté par une plage de géométrie
+         */
+        public static Overlay ofRank(int rank) {
+            for (Overlay overlay : values()) {
+                if (overlay.rank() == rank) {
+                    return overlay;
+                }
+            }
+            return null;
         }
     }
 

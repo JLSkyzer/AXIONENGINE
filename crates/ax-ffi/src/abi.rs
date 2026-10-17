@@ -1030,14 +1030,33 @@ pub unsafe extern "C" fn axion_asset_unload(ctx: u64, handle: Handle) -> i32 {
 /// Overlay `colliders` (C-67, ADR-121) : bit 0 du masque, rang de l'overlay dans
 /// la liste du §31.4.
 pub const AXION_OVERLAY_COLLIDERS: u64 = overlay::COLLIDERS;
+/// Overlay `aabb` (amendement A1 d'ADR-121) : bit 1.
+pub const AXION_OVERLAY_AABB: u64 = overlay::AABB;
+/// Overlay `bodies` (A1) : bit 2.
+pub const AXION_OVERLAY_BODIES: u64 = overlay::BODIES;
+/// Overlay `contacts` (A1) : bit 3.
+pub const AXION_OVERLAY_CONTACTS: u64 = overlay::CONTACTS;
+/// Overlay `normals` (A1) : bit 4.
+pub const AXION_OVERLAY_NORMALS: u64 = overlay::NORMALS;
+/// Overlay `world_tiles` (A1) : bit 30.
+pub const AXION_OVERLAY_WORLD_TILES: u64 = overlay::WORLD_TILES;
+/// Overlay `center_of_mass` (A1) : bit 31.
+pub const AXION_OVERLAY_CENTER_OF_MASS: u64 = overlay::CENTER_OF_MASS;
 
 /// Overlays dont cette version sait produire la géométrie.
-const SUPPORTED_OVERLAYS: u64 = AXION_OVERLAY_COLLIDERS;
+const SUPPORTED_OVERLAYS: u64 = AXION_OVERLAY_COLLIDERS
+    | AXION_OVERLAY_AABB
+    | AXION_OVERLAY_BODIES
+    | AXION_OVERLAY_CONTACTS
+    | AXION_OVERLAY_NORMALS
+    | AXION_OVERLAY_WORLD_TILES
+    | AXION_OVERLAY_CENTER_OF_MASS;
 
-/// Dépose dans `DEBUG` la géométrie des overlays demandés (C-67, ADR-121) :
-/// pour les corps d'assembly de `dimension`, les plus proches de la caméra
-/// d'abord, au plus `max_segments` segments en repère du corps. `out_size`
-/// reçoit la taille de la charge utile (schéma 1 de `DEBUG`).
+/// Dépose dans `DEBUG` la géométrie des overlays demandés (C-67, ADR-121 et son
+/// amendement A1) : pour les corps d'assembly et les tuiles de `dimension`, les
+/// plus proches de la caméra d'abord, au plus `max_segments` segments, chaque plage
+/// dans son repère. `out_size` reçoit la taille de la charge utile (schéma 2 de
+/// `DEBUG`).
 ///
 /// Lecture seule : le monde physique n'est pas modifié. Appelée seulement quand
 /// un overlay est allumé (R-800) ; un masque vide ou portant un overlay que cette
@@ -1071,16 +1090,17 @@ pub unsafe extern "C" fn axion_debug_fill(
             return AXION_E_INVALID_BUFFER;
         }
         let written = context::with(ctx, false, |session| {
-            let debug = session
-                .physics()
-                .debug_colliders(dimension, camera, max_segments);
-            let flags = if debug.omitted_bodies > 0 {
+            let debug =
+                session
+                    .physics()
+                    .debug_overlays(dimension, camera, overlay_mask, max_segments);
+            let flags = if debug.omitted_ranges > 0 {
                 debug_flags::TRUNCATED
             } else {
                 0
             };
             let payload =
-                encode_debug_payload(&debug.bodies, &debug.segments, flags, debug.omitted_bodies)?;
+                encode_debug_payload(&debug.ranges, &debug.segments, flags, debug.omitted_ranges)?;
             session.buffers().write_payload(BufferKind::Debug, &payload)
         });
         match written {

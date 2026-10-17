@@ -2894,10 +2894,14 @@ amortissement dans l'eau, `/axion remove`).
             C-51 (M4) ; surcharge des budgets de frame avec C-77 (M5), R-300 avec IF-05 (M4) ; étape 14
             avec C-37 (M4). Cases périmées mises à jour le même jour.
       - [ ] **Reste avant de prononcer M3** (colonne 4 d'ADR-146) :
-            - [ ] overlays `aabb`, `bodies`, `contacts`, `normals`, `world_tiles`, `center_of_mass`
-                  (§1) — format ratifié le 2026-10-17 (amendement A1 d'ADR-121 : `DEBUG` au schéma 2,
-                  plages par overlay et repère) ; tranche native et frontière en **effort maximal**,
-                  Killian bascule avant de l'entamer ; puis la tranche Java ; T-550 étendu à chacun ;
+            - [x] overlays `aabb`, `bodies`, `contacts`, `normals`, `world_tiles`, `center_of_mass`
+                  (§1), faits le 2026-10-17 — amendement A1 d'ADR-121 : `DEBUG` au schéma 2, plages
+                  par overlay et repère (corps, ou monde relatif à la caméra de l'appel). Tranche
+                  native et Java dans le même envoi ; Killian a choisi l'effort « extra » au lieu du
+                  maximal prévu (« je me met en extra pas max go »). T-550 étendu à chacun (tests
+                  natifs, ABI, lecture Java, verdict « overlays de debug » du banc de rendu) ;
+                  huit mutations rouges ; le lecteur Java refuse désormais tout schéma autre que 2
+                  (il acceptait tout schéma ≥ 1) ;
             - [x] temps GPU par passe du backend natif (§2), fait le 2026-10-17 : horodatages GPU
                   (`GL_TIMESTAMP`, car Minecraft tient un `GL_TIME_ELAPSED` sur la frame sous F3),
                   lus sans attendre ; jauges `axion.render.gpu_*_ns` ; `GpuPassTimingsTest`, huit

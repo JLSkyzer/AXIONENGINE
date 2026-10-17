@@ -75,5 +75,5 @@ public final class BufferKinds {
     public static final int ASSET_OUT_SCHEMA = 1;
 
     /** Version du schéma de la charge de {@code DEBUG}, lue à l'octet 12 de l'en-tête. */
-    public static final int DEBUG_SCHEMA = 1;
+    public static final int DEBUG_SCHEMA = 2;
 }

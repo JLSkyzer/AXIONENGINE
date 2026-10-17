@@ -601,16 +601,34 @@ public final class NativeBridge {
      */
     public static final long OVERLAY_COLLIDERS = 1L;
 
+    /** Overlay {@code aabb} : bit 1 (amendement A1 d'ADR-121). */
+    public static final long OVERLAY_AABB = 1L << 1;
+
+    /** Overlay {@code bodies} : bit 2 (A1). */
+    public static final long OVERLAY_BODIES = 1L << 2;
+
+    /** Overlay {@code contacts} : bit 3 (A1). */
+    public static final long OVERLAY_CONTACTS = 1L << 3;
+
+    /** Overlay {@code normals} : bit 4 (A1). */
+    public static final long OVERLAY_NORMALS = 1L << 4;
+
+    /** Overlay {@code world_tiles} : bit 30 (A1). */
+    public static final long OVERLAY_WORLD_TILES = 1L << 30;
+
+    /** Overlay {@code center_of_mass} : bit 31 (A1). */
+    public static final long OVERLAY_CENTER_OF_MASS = 1L << 31;
+
     /**
-     * Dépose dans {@code AXION_BUF_DEBUG} la géométrie des overlays demandés (ADR-121) :
-     * corps d'assembly de la dimension, les plus proches de la caméra d'abord, au plus
-     * {@code maxSegments} segments en repère du corps ; {@code out[0]} reçoit la taille de
-     * la charge utile.
+     * Dépose dans {@code AXION_BUF_DEBUG} la géométrie des overlays demandés (ADR-121 et son
+     * amendement A1) : corps d'assembly et tuiles de la dimension, les plus proches de la caméra
+     * d'abord, au plus {@code maxSegments} segments, chaque plage dans son repère (schéma 2) ;
+     * {@code out[0]} reçoit la taille de la charge utile.
      *
      * <p>À n'appeler que lorsqu'un overlay est allumé (R-800). Lecture seule côté natif.
      *
      * @param ctx jeton de contexte
-     * @param overlayMask overlays demandés, {@link #OVERLAY_COLLIDERS} seulement
+     * @param overlayMask overlays demandés, parmi les sept {@code OVERLAY_*}
      * @param dimension identifiant de dimension, celui des commandes de simulation
      * @param cameraX position monde de la caméra
      * @param cameraY position monde de la caméra

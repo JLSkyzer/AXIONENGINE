@@ -8,6 +8,7 @@ import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.config.AxionConfig;
 import dev.axion.config.ConfigLoader;
 import dev.axion.config.ConfigSchema.Scope;
+import dev.axion.debug.DebugGeometry;
 import dev.axion.debug.DebugOverlays;
 import dev.axion.definition.Definition;
 import dev.axion.forge.AxionEntity;
@@ -25,6 +26,8 @@ import dev.axion.render.ShaderpackProbe;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import net.minecraft.client.Minecraft;
@@ -321,6 +324,30 @@ public final class AxionRenderPass {
     /** {@return les overlays de debug, que la commande client allume et éteint} */
     static DebugOverlays overlays() {
         return OVERLAYS;
+    }
+
+    /**
+     * Allume ou éteint tous les overlays de debug implémentés : le banc de rendu, qui n'a pas de
+     * commande à taper (amendement A1 d'ADR-121). Render thread.
+     *
+     * @param on vrai pour les allumer
+     */
+    public static void setAllOverlays(boolean on) {
+        for (DebugOverlays.Overlay overlay : DebugOverlays.Overlay.values()) {
+            OVERLAYS.set(overlay, on);
+        }
+        if (!on) {
+            DEBUG.reset();
+        }
+    }
+
+    /** {@return les plages reçues au dernier tick, comptées par rang d'overlay au §31.4} */
+    public static Map<Integer, Integer> debugRangesByOverlay() {
+        Map<Integer, Integer> counts = new TreeMap<>();
+        for (DebugGeometry.Range range : DEBUG.geometry().ranges()) {
+            counts.merge(range.overlay(), 1, Integer::sum);
+        }
+        return counts;
     }
 
     /**

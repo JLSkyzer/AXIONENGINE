@@ -601,19 +601,27 @@ class NativeBridgeTest {
         dev.axion.debug.NativeDebugLoader.Fetched trace =
                 debug.fetch(NativeBridge.OVERLAY_COLLIDERS, 0L, 0.0, 100.0, 0.0, 1024);
         assertTrue(trace.ok(), () -> "géométrie de debug refusée, code " + trace.code());
-        assertEquals(1, trace.geometry().bodies().size(), "un corps d'assembly tracé");
-        dev.axion.debug.DebugGeometry.Body trace1 = trace.geometry().bodyOf(1, 1);
-        assertNotNull(trace1, "tracé sous le handle du corps");
+        assertEquals(1, trace.geometry().ranges().size(), "un corps d'assembly tracé");
+        java.util.List<dev.axion.debug.DebugGeometry.Range> duCorps = trace.geometry().bodyRangesOf(1, 1);
+        assertEquals(1, duCorps.size(), "tracé sous le handle du corps");
+        dev.axion.debug.DebugGeometry.Range trace1 = duCorps.get(0);
+        assertEquals(dev.axion.debug.DebugGeometry.FRAME_BODY, trace1.frame());
         assertEquals(12, trace1.segmentCount());
         for (float coordonnee : trace1.segments()) {
             assertTrue(
                     Math.abs(coordonnee) < 1.0e-5f || Math.abs(coordonnee - 1.0f) < 1.0e-5f,
                     () -> "coordonnée hors des coins du cube unité : " + coordonnee);
         }
-        // Un overlay que cette version ne trace pas (aabb, rang 1) est refusé net.
+        // A1 d'ADR-121 : l'AABB du même corps, en repère d'origine, à part des plages du corps.
+        dev.axion.debug.NativeDebugLoader.Fetched boite =
+                debug.fetch(NativeBridge.OVERLAY_AABB, 0L, 0.0, 100.0, 0.0, 1024);
+        assertTrue(boite.ok(), () -> "AABB refusée, code " + boite.code());
+        assertEquals(1, boite.geometry().originRanges().size());
+        assertTrue(boite.geometry().bodyRangesOf(1, 1).isEmpty());
+        // Un overlay que cette version ne trace pas (joints, rang 5) est refusé net.
         assertEquals(
                 NativeBridge.E_INVALID_BUFFER,
-                debug.fetch(1L << 1, 0L, 0.0, 100.0, 0.0, 1024).code());
+                debug.fetch(1L << 5, 0L, 0.0, 100.0, 0.0, 1024).code());
 
         // Ticks sans autre commande que le joueur, déclaré chaque tick comme en jeu : le corps
         // tombe sous la gravité par défaut (−9,81 m/s²). Sans joueur, il dormirait (R-612).

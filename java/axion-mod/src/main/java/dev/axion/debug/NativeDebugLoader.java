@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 
 /**
  * Demande au natif la géométrie des overlays allumés et la lit dans {@code DEBUG} (C-67,
- * ADR-121).
+ * ADR-121 et son amendement A1).
  *
  * <p>Protocole d'IF-02 : appeler {@code axion_debug_fill}, acquérir {@code DEBUG}, vérifier
  * le schéma et la taille, lire, relâcher. Le tampon est ré-acquis à chaque appel et
@@ -18,8 +18,12 @@ import java.nio.ByteBuffer;
  */
 public final class NativeDebugLoader {
 
-    /** Premier schéma de {@code DEBUG} portant cette disposition (ADR-121). */
-    private static final int GEOMETRY_SINCE_SCHEMA = 1;
+    /**
+     * Schéma de {@code DEBUG} que ce lecteur comprend (amendement A1 d'ADR-121) : des plages par
+     * overlay et repère. Toute autre version est refusée — le schéma 1, à {@code DebugBody[]}, se
+     * lirait de travers.
+     */
+    private static final int GEOMETRY_SCHEMA = 2;
 
     /** Position de la génération dans l'en-tête d'un tampon (IF-02). */
     private static final int GENERATION_OFFSET = 8;
@@ -87,7 +91,7 @@ public final class NativeDebugLoader {
         int generation = out.getInt(GENERATION_OFFSET);
         try {
             long size = sizeOut[0];
-            if (out.getInt(SCHEMA_OFFSET) < GEOMETRY_SINCE_SCHEMA
+            if (out.getInt(SCHEMA_OFFSET) != GEOMETRY_SCHEMA
                     || size < 0
                     || size > out.capacity() - BufferKinds.HEADER_BYTES) {
                 return Fetched.failed(NativeBridge.E_INVALID_BUFFER);
@@ -95,7 +99,7 @@ public final class NativeDebugLoader {
             byte[] bytes = new byte[(int) size];
             out.position(BufferKinds.HEADER_BYTES);
             out.get(bytes);
-            return new Fetched(NativeBridge.OK, DebugGeometry.parse(bytes));
+            return new Fetched(NativeBridge.OK, DebugGeometry.parse(bytes, cameraX, cameraY, cameraZ));
         } catch (IllegalArgumentException malformed) {
             return Fetched.failed(NativeBridge.E_INVALID_BUFFER);
         } finally {

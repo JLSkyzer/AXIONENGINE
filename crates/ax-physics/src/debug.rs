@@ -1,14 +1,15 @@
-//! Tracé des colliders pour l'overlay `colliders` du debug renderer (C-67,
-//! ADR-121).
+//! Tracé des overlays du debug renderer (C-67, ADR-121 et son amendement A1).
 //!
 //! Lecture seule : rien ici ne modifie le monde physique, et le déterminisme
-//! (R-1020) n'en dépend donc pas. Les segments sont produits en **repère du
-//! corps** — l'espace de l'asset — pour que Java les place à la pose interpolée
-//! qu'il donne déjà au maillage.
+//! (R-1020) n'en dépend donc pas. Chaque overlay produit des plages de segments,
+//! chacune dans son repère : **repère du corps** — l'espace de l'asset — pour ce
+//! que Java place à la pose interpolée du maillage (colliders, axes, centre de
+//! masse) ; **repère d'origine** — le monde, relatif à la caméra de l'appel —
+//! pour ce qui ne tourne pas avec le corps (AABB, contacts, normales, tuiles).
 
 use crate::sim::handle_key;
-use ax_math::DVec3;
-use ax_model::dm::debug::{DebugBody, DebugSegment};
+use ax_math::{DVec3, Vec3};
+use ax_model::dm::debug::{DebugRange, DebugSegment};
 use ax_model::dm::handle::Handle;
 use rapier3d::parry::shape::{ConvexPolyhedron, HeightField, Shape as ParryShape};
 use rapier3d::prelude::{Pose as RapierPose, Vector};
@@ -18,28 +19,89 @@ use std::collections::BTreeSet;
 /// une constante de tracé, sans effet sur la simulation.
 pub const ROUND_SUBDIVISIONS: u32 = 16;
 
-/// Arêtes des colliders d'un corps d'assembly, avant sélection.
+/// Longueur des axes de l'overlay `bodies`, en mètres (A1 d'ADR-121).
+pub const AXIS_LENGTH: f32 = 0.5;
+
+/// Côté de la croix d'un point de contact, en mètres (A1 d'ADR-121).
+pub const CONTACT_CROSS: f32 = 0.1;
+
+/// Longueur d'une normale de contact, en mètres (A1 d'ADR-121).
+pub const NORMAL_LENGTH: f32 = 0.25;
+
+/// Côté de la croix du centre de masse, en mètres (A1 d'ADR-121).
+pub const MASS_CROSS: f32 = 0.2;
+
+/// Une plage d'un overlay, avant sélection : ses segments et ce qui la classe.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ColliderOutline {
-    /// Assembly du corps.
+pub struct DebugDraft {
+    /// Assembly du corps ; [`Handle::ABSENT`] pour une tuile du monde.
     pub handle: Handle,
+    /// Rang de l'overlay au §31.4 (`ax_model::dm::debug::overlay::rank`).
+    pub overlay: u32,
+    /// Repère des segments (`ax_model::dm::debug::debug_frame`).
+    pub frame: u32,
     /// Drapeaux, voir `ax_model::dm::debug::debug_body_flags`.
     pub flags: u32,
-    /// Position monde du corps (`f64`), pour le tri par distance à la caméra.
-    pub position: DVec3,
-    /// Arêtes, en repère du corps.
+    /// Ancre monde (`f64`) — position du corps, centre de la tuile —, pour le tri
+    /// par distance à la caméra.
+    pub anchor: DVec3,
+    /// Segments, dans le repère de la plage.
     pub segments: Vec<DebugSegment>,
 }
 
-/// Géométrie retenue pour un appel : corps triés, segments à plat.
+/// Géométrie retenue pour un appel : plages triées, segments à plat.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct DebugColliders {
-    /// Corps tracés, du plus proche au plus lointain.
-    pub bodies: Vec<DebugBody>,
-    /// Segments de tous les corps, chacun dans la plage de son corps.
+pub struct DebugSelection {
+    /// Plages tracées, de la plus proche à la plus lointaine.
+    pub ranges: Vec<DebugRange>,
+    /// Segments de toutes les plages, chacun dans la plage qui le désigne.
     pub segments: Vec<DebugSegment>,
-    /// Corps omis faute de budget.
-    pub omitted_bodies: u32,
+    /// Plages omises faute de budget.
+    pub omitted_ranges: u32,
+}
+
+/// Les douze arêtes de la boîte `[min, max]`, chaque coin passé par `place`.
+pub(crate) fn box_edges(
+    min: Vec3,
+    max: Vec3,
+    place: impl Fn(Vec3) -> [f32; 3],
+    out: &mut Vec<DebugSegment>,
+) {
+    let corner = |i: usize| {
+        Vec3::new(
+            if i & 1 == 0 { min.x } else { max.x },
+            if i & 2 == 0 { min.y } else { max.y },
+            if i & 4 == 0 { min.z } else { max.z },
+        )
+    };
+    // Deux coins se rejoignent par une arête s'ils ne diffèrent que d'un bit.
+    for i in 0..8usize {
+        for bit in [1usize, 2, 4] {
+            if i & bit == 0 {
+                out.push(DebugSegment {
+                    a: place(corner(i)),
+                    b: place(corner(i | bit)),
+                });
+            }
+        }
+    }
+}
+
+/// Une croix de trois segments de côté `side`, centrée en `center`, alignée sur
+/// les axes, chaque extrémité passée par `place`.
+pub(crate) fn cross(
+    center: Vec3,
+    side: f32,
+    place: impl Fn(Vec3) -> [f32; 3],
+    out: &mut Vec<DebugSegment>,
+) {
+    let half = side * 0.5;
+    for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
+        out.push(DebugSegment {
+            a: place(center - axis * half),
+            b: place(center + axis * half),
+        });
+    }
 }
 
 /// Ajoute à `out` les arêtes d'une forme placée par `pose` dans le repère du
@@ -144,44 +206,48 @@ fn heightfield_outline(heightfield: &HeightField) -> (Vec<Vector>, Vec<[u32; 2]>
     (points, edges.into_iter().collect())
 }
 
-/// Retient les corps à tracer : les plus proches de la caméra d'abord (égalité
-/// départagée par la clé du handle), au plus `max_segments` segments. Un corps
-/// qui ne tient pas est omis et compté, jamais coupé, et le parcours continue ;
-/// un corps sans arête n'a rien à tracer et n'est pas compté.
+/// Retient les plages à tracer : les plus proches de la caméra d'abord, puis par
+/// rang d'overlay, puis par clé du handle — un tri stable, qui laisse en dernier
+/// ressort l'ordre déterministe de production. Au plus `max_segments` segments. Une
+/// plage qui ne tient pas est omise et comptée, jamais coupée, et le parcours
+/// continue ; une plage sans segment n'a rien à tracer et n'est pas comptée.
 #[must_use]
-pub fn select_outlines(
-    mut outlines: Vec<ColliderOutline>,
+pub fn select_drafts(
+    mut drafts: Vec<DebugDraft>,
     camera: DVec3,
     max_segments: u32,
-) -> DebugColliders {
-    outlines.retain(|outline| !outline.segments.is_empty());
-    outlines.sort_by(|a, b| {
-        a.position
+) -> DebugSelection {
+    drafts.retain(|draft| !draft.segments.is_empty());
+    drafts.sort_by(|a, b| {
+        a.anchor
             .distance_squared(camera)
-            .total_cmp(&b.position.distance_squared(camera))
+            .total_cmp(&b.anchor.distance_squared(camera))
+            .then_with(|| a.overlay.cmp(&b.overlay))
             .then_with(|| handle_key(a.handle).cmp(&handle_key(b.handle)))
     });
 
-    let mut selection = DebugColliders::default();
+    let mut selection = DebugSelection::default();
     let mut remaining = max_segments as usize;
-    for outline in outlines {
-        let count = outline.segments.len();
+    for draft in drafts {
+        let count = draft.segments.len();
         if count > remaining {
-            selection.omitted_bodies = selection.omitted_bodies.saturating_add(1);
+            selection.omitted_ranges = selection.omitted_ranges.saturating_add(1);
             continue;
         }
         remaining -= count;
         // Les deux tiennent sur `u32` : leur total est borné par `max_segments`.
         let first_segment = u32::try_from(selection.segments.len()).unwrap_or(u32::MAX);
         let segment_count = u32::try_from(count).unwrap_or(u32::MAX);
-        selection.bodies.push(DebugBody {
-            handle: outline.handle,
+        selection.ranges.push(DebugRange {
+            handle: draft.handle,
+            overlay: draft.overlay,
+            frame: draft.frame,
             first_segment,
             segment_count,
-            flags: outline.flags,
+            flags: draft.flags,
             _pad: 0,
         });
-        selection.segments.extend(outline.segments);
+        selection.segments.extend(draft.segments);
     }
     selection
 }

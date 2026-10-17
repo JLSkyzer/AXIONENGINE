@@ -215,10 +215,61 @@ class DebugOverlayRendererTest {
         // Sans runtime ni client : un pas qui toucherait l'un ou l'autre échouerait ici.
         renderer.tick(null, null);
         assertFalse(renderer.hasNativeLoader(), "un lecteur natif a été créé, overlays éteints");
-        assertTrue(renderer.geometry().bodies().isEmpty(), "une géométrie est restée, overlays éteints");
+        assertTrue(renderer.geometry().ranges().isEmpty(), "une géométrie est restée, overlays éteints");
+    }
+
+    @Test
+    @DisplayName("A1 d'ADR-121 : chaque overlay a sa légende et sa couleur ; colliders garde celle du corps")
+    void chaqueOverlayASaCouleurEtSaLegende() {
+        Set<Integer> couleurs = new HashSet<>();
+        for (DebugOverlays.Overlay overlay : DebugOverlays.Overlay.values()) {
+            assertFalse(DebugOverlayRenderer.legendOf(overlay).isBlank(), overlay.commandName());
+            if (overlay != DebugOverlays.Overlay.COLLIDERS && overlay != DebugOverlays.Overlay.BODIES) {
+                couleurs.add(DebugOverlayRenderer.colorOf(overlay, 0));
+            }
+        }
+        assertEquals(5, couleurs.size(), "cinq overlays à couleur fixe, cinq couleurs");
+        assertEquals(
+                DebugOverlayRenderer.STATIC,
+                DebugOverlayRenderer.colorOf(DebugOverlays.Overlay.COLLIDERS, DebugGeometry.BODY_STATIC));
+    }
+
+    @Test
+    @DisplayName("A1 d'ADR-121 : les trois axes de bodies, rouge x, vert y, bleu z")
+    void lesAxesDeBodiesOntChacunLeurCouleur() {
+        Sommets out = new Sommets();
+        float[] axes = {0, 0, 0, 0.5f, 0, 0, 0, 0, 0, 0, 0.5f, 0, 0, 0, 0, 0, 0, 0.5f};
+        int emis = DebugOverlayRenderer.emitRange(
+                out,
+                new Matrix4f(),
+                new Matrix3f(),
+                new Vector3f(),
+                new DebugGeometry.Range(1, 1, DebugOverlays.Overlay.BODIES.rank(), DebugGeometry.FRAME_BODY, 0, axes));
+        assertEquals(3, emis);
+        for (int axe = 0; axe < 3; axe++) {
+            int rgb = DebugOverlayRenderer.AXIS_COLORS[axe];
+            int[] couleur = out.couleurs.get(2 * axe);
+            assertEquals((rgb >> 16) & 0xFF, couleur[0], 1, "axe " + axe);
+            assertEquals((rgb >> 8) & 0xFF, couleur[1], 1, "axe " + axe);
+            assertEquals(rgb & 0xFF, couleur[2], 1, "axe " + axe);
+        }
+    }
+
+    @Test
+    @DisplayName("A1 d'ADR-121 : une plage d'un overlay que ce client ne connaît pas est sautée")
+    void unRangInconnuEstSaute() {
+        Sommets out = new Sommets();
+        int emis = DebugOverlayRenderer.emitRange(
+                out,
+                new Matrix4f(),
+                new Matrix3f(),
+                new Vector3f(),
+                new DebugGeometry.Range(1, 1, 5, DebugGeometry.FRAME_BODY, 0, new float[] {0, 0, 0, 1, 0, 0}));
+        assertEquals(0, emis);
+        assertEquals(0, out.termines);
     }
 
     private static int couleur(int flags) {
-        return DebugOverlayRenderer.colorOf(new DebugGeometry.Body(1, 1, flags, new float[0]));
+        return DebugOverlayRenderer.colorOf(flags);
     }
 }
