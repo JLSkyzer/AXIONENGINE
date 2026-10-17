@@ -2930,7 +2930,12 @@ amortissement dans l'eau, `/axion remove`).
             - [x] amendement A1 d'ADR-137 (C-32), fait le 2026-10-17 par ADR-148 : les avertissements
                   d'une compilation, et le motif d'un refus, une fois par compilation au journal du
                   jeu, rechargements compris ; 13 mutations rouges ; effort « extra » ;
-            - [ ] en effort maximal : second temps de DM-07.
+            - [ ] second temps de DM-07, par [ADR-149](../docs/decisions/ADR-149.md), accepté le
+                  2026-10-17 (six points et le ballon, chacun selon la proposition) : table DM-07 par
+                  l'opcode `SET_PHYSICS_MATERIALS`, index stables et rechargement appliqué ; index par
+                  collider (sa part) et par tuile (ABI 5) ; modes de rapier, le plus fort l'emporte ;
+                  matériaux des colliders dans les événements ; roulement en M3 ; ballon modélisé dans
+                  Blender ; effort « extra ».
 - [x] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
       variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
       de D1 (§2, acceptée, faite) ; attribution affinée des tests hors liste (§3), métriques des étapes en
