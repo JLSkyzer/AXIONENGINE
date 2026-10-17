@@ -88,6 +88,7 @@ struct SessionMetrics {
     sim_slept_budget: MetricId,
     sim_woken: MetricId,
     sim_events_dropped: MetricId,
+    sim_events_aggregated: MetricId,
     sim_velocity_clamps: MetricId,
     sim_invalid_states: MetricId,
     sim_bounds_unavailable: MetricId,
@@ -525,6 +526,9 @@ impl Session {
             .set(metrics.sim_events_dropped, counters.dropped_events);
         metrics
             .registry
+            .set(metrics.sim_events_aggregated, counters.aggregated_events);
+        metrics
+            .registry
             .set(metrics.sim_velocity_clamps, counters.clamp_journal);
         metrics
             .registry
@@ -908,6 +912,7 @@ fn build_metrics() -> SessionMetrics {
     // Ce que la simulation n'a pas pu faire ou a dû corriger, jamais tu (R-1011, R-180,
     // R-181, ADR-120) : les totaux du pilote, mondes détruits compris.
     let sim_events_dropped = counter("axion.sim.events_dropped");
+    let sim_events_aggregated = counter("axion.sim.events_aggregated");
     let sim_velocity_clamps = counter("axion.sim.velocity_clamps");
     let sim_invalid_states = counter("axion.sim.invalid_states");
     let sim_bounds_unavailable = counter("axion.sim.bounds_unavailable");
@@ -970,6 +975,7 @@ fn build_metrics() -> SessionMetrics {
         sim_slept_budget,
         sim_woken,
         sim_events_dropped,
+        sim_events_aggregated,
         sim_velocity_clamps,
         sim_invalid_states,
         sim_bounds_unavailable,
@@ -1202,6 +1208,59 @@ mod tests {
                 "une demande de longueur rend un document frais"
             );
             session.panics = 0;
+        })
+        .unwrap();
+
+        // R-1011 : ce que la simulation fond au-delà du plafond se lit dans les métriques, à
+        // côté de ce qu'elle perd. Le monde avance sans que son lot soit vidé : l'impulsion de
+        // la paire bille-sol revient à chaque tick et se fond dans la première au lot.
+        with(token, false, |session| {
+            use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
+            use ax_physics::{BodyKind, PhysicsConfig, Shape};
+            let world = session.physics.world_or_create(
+                9,
+                PhysicsConfig::new(1.0 / 60.0, 4).expect("configuration valide"),
+                FloatingOrigin::new(DVec3::ZERO),
+            );
+            world.set_max_events_per_tick(2);
+            world.set_contact_event_threshold(0.01);
+            world
+                .add_body(
+                    BodyKind::Static,
+                    Vec3::new(0.0, -0.5, 0.0),
+                    Quat::IDENTITY,
+                    Shape::Cuboid {
+                        half_extents: [5.0, 0.5, 5.0],
+                    },
+                )
+                .expect("un sol est valide");
+            world
+                .add_body(
+                    BodyKind::Dynamic,
+                    Vec3::new(0.0, 0.5, 0.0),
+                    Quat::IDENTITY,
+                    Shape::Ball { radius: 0.5 },
+                )
+                .expect("une bille est valide");
+            for _ in 0..10 {
+                world.advance(1.0 / 60.0);
+            }
+            let counters = world.counters();
+            assert!(counters.aggregated_events > 0, "{counters:?}");
+            assert_ne!(counters.aggregated_events, counters.dropped_events);
+
+            session.publish_metrics();
+            let registry = &session.metrics.registry;
+            let value = |name: &str| {
+                registry
+                    .snapshot(registry.id(name).expect("métrique enregistrée"))
+                    .value
+            };
+            assert_eq!(
+                value("axion.sim.events_aggregated"),
+                counters.aggregated_events
+            );
+            assert_eq!(value("axion.sim.events_dropped"), counters.dropped_events);
         })
         .unwrap();
 

@@ -1655,7 +1655,8 @@ substituable sans changer rapier »).
             écarte aussi le bruit des contacts au repos (`mg·dt` < seuil).
             `set_contact_event_threshold`. 2 tests (impact au-dessus du seuil,
             seuil élevé qui filtre tout). La voie « sous seuil → C-41 » (usure)
-            attend C-41.
+            attend C-41. Depuis le 2026-10-17 (R-1011, ADR-146) : un par paire et par
+            tick, le plus fort des sous-pas.
       - [x] **Tranche 3c-i — capteurs (SENSOR_ENTER/EXIT).** Drapeau capteur
             par corps (`set_sensor`) ; une paire capteur émet SENSOR_ENTER à
             l'entrée, SENSOR_EXIT à la sortie, aux identités seules (un capteur
@@ -1663,7 +1664,7 @@ substituable sans changer rapier »).
       - [ ] **Tranche 3c-ii — liaisons et défaillances (gelé).** JOINT_BROKEN/
             JAMMED avec les joints (M4) ; ATTACH/DETACH avec les attaches (M5) ;
             CLAMPED/RECOVERED avec les modes de défaillance (FM-20/21/22) — faits depuis
-            (`CLAMPED` 1 à 3, `RECOVERED` 2030) ; reste R-1011, en effort maximal (ADR-146).
+            (`CLAMPED` 1 à 3, `RECOVERED` 2030) ; R-1011 fait le 2026-10-17 (ADR-113, ADR-146).
       - [x] **Tranche 4 — IF-03, cycle de simulation (FFI/ABI, `[EFFORT MAX]`).**
             **À faire en session neuve, effort maximal.** C'est un contrat
             **IF-xx** (que l'agent ne fige pas seul) : à mener avec soin et,
@@ -2806,7 +2807,7 @@ amortissement dans l'eau, `/axion remove`).
             `physics_ticks`, dont 3 191 sur ses 20 pas — les durées, du poste de développement, ne
             se publient pas (R-2252). Mesure publiable en M12 (ADR-131).
       - [ ] **Cases C-31, C-32, C-61 : non cochées, à raison** (motifs mis à jour le 2026-10-17, ADR-146).
-            C-31 : R-1011 et second temps de DM-07, en effort maximal ; joints (M4) et attaches (M5)
+            C-31 : second temps de DM-07, en effort maximal (R-1011 fait le 2026-10-17) ; joints (M4) et attaches (M5)
             renvoyés. C-32 : amendement A1 d'ADR-137, en effort maximal ; `collision.resolution` faite
             (ADR-147). C-61 : la tranche T4+ suit ses composants — R-742 (M4, M6), R-743
             (C-69, M9), indicateur de capacités (C-73, M5) ; les métriques de rendu sont faites.
@@ -2885,8 +2886,7 @@ amortissement dans l'eau, `/axion remove`).
               `BlockMaterialsTest` (T-375), `DefinitionRegistryTest`, `AxionRuntimeTest`.
         - [ ] Second temps, en effort max et par un ADR : le matériau des parts d'assembly jusqu'au
               natif (index DM-07 des `ColliderDesc`, modes de combinaison), puis le ballon de test.
-      - **L'effort max après le reste de M3** : amendement A1 d'ADR-137 et R-1011 (C-31 : au-delà du
-        plafond d'événements, agréger par paire au lieu de jeter — aujourd'hui `push_event` jette).
+      - **L'effort max après le reste de M3** : amendement A1 d'ADR-137 ; R-1011 fait le 2026-10-17.
       - [x] **[ADR-146](../docs/decisions/ADR-146.md) accepté le 2026-10-17** — portée de la DoD de M3,
             composant par composant (modèle d'ADR-137) ; Killian retient les sept propositions. Partent,
             avec jalon et preuve : 28 overlays de C-67 avec leurs systèmes (M4 à M9) ; métriques des
@@ -2913,7 +2913,13 @@ amortissement dans l'eau, `/axion remove`).
                   `parry3d` ; corpus de R-562 complété d'un solide décomposé (encoche) ;
                   `COMPILER_VERSION` 14 ; quatre mutations rouges (défaut changé, résolution figée, axe oublié,
                   arrondi inférieur) ;
-            - [ ] en effort maximal : R-1011, second temps de DM-07, amendement A1 d'ADR-137.
+            - [x] R-1011 (C-31), fait le 2026-10-17 : une impulsion de contact par paire et par tick,
+                  la plus forte des sous-pas ; au-delà du plafond, un événement se fond dans le premier
+                  de même identité au lot (genre, assemblies, nodes), sinon il est perdu — l'un et
+                  l'autre comptés (`axion.sim.events_aggregated`, `axion.sim.events_dropped`) ; mise
+                  en œuvre dans ADR-113 ; 14 mutations rouges ; effort « extra », au choix de
+                  Killian ;
+            - [ ] en effort maximal : second temps de DM-07, amendement A1 d'ADR-137.
 - [x] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
       variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
       de D1 (§2, acceptée, faite) ; attribution affinée des tests hors liste (§3), métriques des étapes en

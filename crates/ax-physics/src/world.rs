@@ -262,6 +262,17 @@ pub struct PhysicsWorld {
     /// Compteur cumulé d'événements perdus faute de place (R-1011, aucune perte
     /// silencieuse).
     dropped_events: u64,
+    /// Compteur cumulé d'événements fondus, au-delà du plafond, dans celui de leur paire
+    /// déjà au lot (R-1011) : leur détail n'est pas transmis, ce qui se compte aussi.
+    aggregated_events: u64,
+    /// Place au lot du premier événement de chaque identité (genre, assemblies, nodes),
+    /// pour l'agrégation au-delà du plafond (R-1011). Consultée par clé, jamais itérée
+    /// (R-1020) ; vidée avec le lot.
+    event_slots: HashMap<EventKey, usize>,
+    /// L'impulsion la plus forte de chaque paire de colliders depuis le début du tick
+    /// (R-1011, ADR-146) : versée au lot une fois, après le dernier sous-pas, dans l'ordre
+    /// des clés (R-1020).
+    tick_impulses: BTreeMap<(u64, u64), PhysicsEvent>,
     /// Bornes de vitesse propres à un corps (R-180). À défaut, les valeurs par
     /// défaut de la fiche (300 m/s, 100 rad/s) s'appliquent. Consultée par clé,
     /// jamais itérée (R-1020).
@@ -393,6 +404,8 @@ impl BodyReports {
 pub struct WorldCounters {
     /// Événements perdus faute de place dans un lot (R-1011).
     pub dropped_events: u64,
+    /// Événements fondus, au-delà du plafond, dans celui de leur paire (R-1011).
+    pub aggregated_events: u64,
     /// Clamps de vitesse journalisés, au débit d'un par corps et par minute (R-180).
     pub clamp_journal: u64,
     /// États non finis ou hors du monde restaurés (R-181, `E-2030`).
@@ -407,6 +420,7 @@ impl core::ops::Add for WorldCounters {
     fn add(self, other: Self) -> Self {
         Self {
             dropped_events: self.dropped_events + other.dropped_events,
+            aggregated_events: self.aggregated_events + other.aggregated_events,
             clamp_journal: self.clamp_journal + other.clamp_journal,
             invalid_states: self.invalid_states + other.invalid_states,
             bounds_unavailable: self.bounds_unavailable + other.bounds_unavailable,
@@ -455,6 +469,9 @@ impl PhysicsWorld {
             max_events_per_tick: DEFAULT_MAX_EVENTS_PER_TICK,
             contact_event_threshold: DEFAULT_CONTACT_EVENT_THRESHOLD,
             dropped_events: 0,
+            aggregated_events: 0,
+            event_slots: HashMap::new(),
+            tick_impulses: BTreeMap::new(),
             velocity_limits: HashMap::new(),
             last_valid: HashMap::new(),
             guard_flags: HashMap::new(),
@@ -690,6 +707,8 @@ impl PhysicsWorld {
             self.accumulator = (self.accumulator - dt).max(0.0);
             substeps += 1;
         }
+        // R-1011 (ADR-146) : une impulsion par paire et par tick, la plus forte des sous-pas.
+        self.flush_contact_impulses();
 
         // Étapes 7 à 12 (C-40, R-660) : la **chaîne de dommage** s'exécute une seule fois
         // par tick, après le dernier sous-pas, pour rendre son coût indépendant du nombre
@@ -957,13 +976,14 @@ impl PhysicsWorld {
         Some(event)
     }
 
-    /// Émet un CONTACT_IMPULSE (§10.7) par paire de contact active dont
-    /// l'impulsion dépasse le seuil (R-1012), une fois par sous-pas.
+    /// Retient, à chaque sous-pas, le CONTACT_IMPULSE (§10.7) de chaque paire de contact
+    /// active dont l'impulsion dépasse le seuil (R-1012).
     ///
-    /// Un seul événement par paire (le contact le plus profond) : c'est
-    /// l'agrégation par paire de R-1011, impulsion maximale conservée. Le seuil
-    /// écarte les contacts légers de la remontée vers Java — et, au passage, le
-    /// bruit des contacts au repos, dont l'impulsion par pas (`mg·dt`) reste
+    /// Un seul événement par paire et par tick : le contact le plus profond du sous-pas,
+    /// et des sous-pas, le plus fort — l'agrégation par paire de R-1011, impulsion maximale
+    /// conservée (ADR-146), que [`Self::flush_contact_impulses`] verse au lot après le
+    /// dernier sous-pas. Le seuil écarte les contacts légers de la remontée vers Java — et, au
+    /// passage, le bruit des contacts au repos, dont l'impulsion par pas (`mg·dt`) reste
     /// faible. La voie « sous seuil mais vers C-41 » (usure) attend C-41.
     fn collect_contact_impulses(&mut self) {
         let pairs: Vec<(ColliderHandle, ColliderHandle)> = self
@@ -975,9 +995,16 @@ impl PhysicsWorld {
         for (a, b) in pairs {
             if let Some(event) = self.build_contact_event(a, b, event_kind::CONTACT_IMPULSE) {
                 if event.impulse >= threshold {
-                    self.push_event(event);
+                    keep_strongest(&mut self.tick_impulses, pair_key(a, b), event);
                 }
             }
+        }
+    }
+
+    /// Verse au lot les impulsions retenues du tick, dans l'ordre des paires (R-1020).
+    fn flush_contact_impulses(&mut self) {
+        for event in core::mem::take(&mut self.tick_impulses).into_values() {
+            self.push_event(event);
         }
     }
 
@@ -1242,13 +1269,25 @@ impl PhysicsWorld {
         self.push_event(event);
     }
 
-    /// Met un événement en file, ou compte une perte si le lot est plein
-    /// (R-1011, aucune perte silencieuse).
+    /// Ajoute un événement au lot (§10.7). Au-delà du plafond (R-1011), il se fond dans le
+    /// premier de même identité — genre, assemblies, nodes — déjà au lot, qui garde
+    /// l'impulsion la plus forte ; sans un tel événement, il est perdu. L'un et l'autre se
+    /// comptent : aucune perte silencieuse.
     fn push_event(&mut self, event: PhysicsEvent) {
-        if self.events.len() >= self.max_events_per_tick {
-            self.dropped_events += 1;
-        } else {
+        let key = event_key(&event);
+        if self.events.len() < self.max_events_per_tick {
+            self.event_slots.entry(key).or_insert(self.events.len());
             self.events.push(event);
+            return;
+        }
+        match self.event_slots.get(&key) {
+            Some(&slot) => {
+                if event.impulse > self.events[slot].impulse {
+                    self.events[slot] = event;
+                }
+                self.aggregated_events += 1;
+            }
+            None => self.dropped_events += 1,
         }
     }
 
@@ -1737,16 +1776,24 @@ impl PhysicsWorld {
     /// À appeler une fois par tick, côté autoritatif. Le lot est vidé ; les
     /// événements du tick suivant repartent de zéro.
     pub fn drain_events(&mut self) -> Vec<PhysicsEvent> {
+        self.event_slots.clear();
         core::mem::take(&mut self.events)
     }
 
     /// Nombre cumulé d'événements perdus faute de place dans un lot (R-1011).
     ///
     /// Jamais de perte silencieuse : ce compteur croît dès qu'un événement est
-    /// écarté pour cause de plafond atteint.
+    /// écarté pour cause de plafond atteint, sans événement de sa paire où se fondre.
     #[must_use]
     pub fn dropped_event_count(&self) -> u64 {
         self.dropped_events
+    }
+
+    /// Nombre cumulé d'événements fondus, au-delà du plafond, dans celui de leur paire
+    /// (R-1011) : leur impulsion est gardée si elle est la plus forte, leur détail perdu.
+    #[must_use]
+    pub fn aggregated_event_count(&self) -> u64 {
+        self.aggregated_events
     }
 
     /// Fixe les bornes de vitesse d'un corps (R-180), en m/s et rad/s.
@@ -1789,6 +1836,7 @@ impl PhysicsWorld {
     pub fn counters(&self) -> WorldCounters {
         WorldCounters {
             dropped_events: self.dropped_events,
+            aggregated_events: self.aggregated_events,
             clamp_journal: self.clamp_journal_count,
             invalid_states: self.invalid_state_count,
             bounds_unavailable: self.bounds_unavailable_count(),
@@ -2575,6 +2623,52 @@ impl PhysicsWorld {
     }
 }
 
+/// Identité d'un événement pour l'agrégation de R-1011 : son genre, puis les assemblies et
+/// nodes de ses deux côtés.
+type EventKey = (u32, u64, u32, u64, u32);
+
+/// L'identité d'un événement (R-1011).
+fn event_key(event: &PhysicsEvent) -> EventKey {
+    (
+        event.kind,
+        handle_key(event.assembly_a),
+        event.node_a,
+        handle_key(event.assembly_b),
+        event.node_b,
+    )
+}
+
+/// Clé d'une paire de colliders, la même quel que soit l'ordre où `rapier` la donne d'un
+/// sous-pas à l'autre ; chaque collider à la manière de [`handle_key`], génération en poids
+/// fort (R-1020).
+fn pair_key(a: ColliderHandle, b: ColliderHandle) -> (u64, u64) {
+    let key = |handle: ColliderHandle| {
+        let (index, generation) = handle.into_raw_parts();
+        (u64::from(generation) << 32) | u64::from(index)
+    };
+    let (a, b) = (key(a), key(b));
+    (a.min(b), a.max(b))
+}
+
+/// Garde, pour une paire, l'événement à la plus forte impulsion (R-1011) ; à égalité, le
+/// premier.
+fn keep_strongest(
+    kept: &mut BTreeMap<(u64, u64), PhysicsEvent>,
+    pair: (u64, u64),
+    event: PhysicsEvent,
+) {
+    match kept.entry(pair) {
+        std::collections::btree_map::Entry::Vacant(slot) => {
+            slot.insert(event);
+        }
+        std::collections::btree_map::Entry::Occupied(mut slot) => {
+            if event.impulse > slot.get().impulse {
+                slot.insert(event);
+            }
+        }
+    }
+}
+
 /// Genre et état d'un corps pour ses plages de debug (`debug_body_flags`) : aucun
 /// drapeau de genre pour un corps dynamique.
 fn body_debug_flags(body: &RigidBody) -> u32 {
@@ -2977,4 +3071,142 @@ fn inverse_effective_mass_term(body: Option<&RigidBody>, point: Vec3, normal: Ve
         .mul_vec(lever_cross_normal)
         .length_squared();
     linear + angular
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn monde() -> PhysicsWorld {
+        PhysicsWorld::new(PhysicsConfig::new(1.0 / 60.0, 4).expect("configuration valide"))
+    }
+
+    /// Un événement d'un genre et d'une assembly donnés, d'impulsion et de point donnés.
+    fn evenement(kind: u32, assembly: u32, impulse: f32, x: f32) -> PhysicsEvent {
+        PhysicsEvent {
+            kind,
+            assembly_a: Handle::new(assembly, 1),
+            assembly_b: Handle::new(99, 1),
+            node_a: 0,
+            node_b: 0,
+            point: [x, 0.0, 0.0],
+            normal: [0.0, 1.0, 0.0],
+            impulse,
+            tangent_impulse: 0.0,
+            relative_velocity: 0.0,
+            effective_mass: 0.0,
+            material_a: 0,
+            material_b: 0,
+            data: 0,
+        }
+    }
+
+    #[test]
+    fn r1011_au_dela_du_plafond_un_evenement_se_fond_dans_celui_de_sa_paire() {
+        // R-1011 : au-delà du plafond, agrégation par paire, impulsion maximale conservée,
+        // et ce qui ne trouve pas sa paire au lot se perd — compté, jamais tu.
+        let mut world = monde();
+        world.set_max_events_per_tick(2);
+        let impulse = event_kind::CONTACT_IMPULSE;
+        world.push_event(evenement(impulse, 1, 1.0, 0.0));
+        world.push_event(evenement(impulse, 2, 1.0, 0.0));
+        // Plus forte : elle remplace, détail compris.
+        world.push_event(evenement(impulse, 1, 5.0, 7.0));
+        // Plus faible : la plus forte reste.
+        world.push_event(evenement(impulse, 1, 3.0, 9.0));
+        // Même assembly, autre genre : une autre identité, sans place au lot.
+        world.push_event(evenement(event_kind::CONTACT_START, 1, 8.0, 0.0));
+        // Autre paire, sans place au lot.
+        world.push_event(evenement(impulse, 3, 8.0, 0.0));
+
+        assert_eq!(world.aggregated_event_count(), 2);
+        assert_eq!(world.dropped_event_count(), 2);
+        assert_eq!(world.counters().aggregated_events, 2);
+        let lot = world.drain_events();
+        assert_eq!(
+            lot,
+            vec![
+                evenement(impulse, 1, 5.0, 7.0),
+                evenement(impulse, 2, 1.0, 0.0)
+            ]
+        );
+    }
+
+    #[test]
+    fn r1011_un_lot_vide_oublie_les_places_de_ses_evenements() {
+        // Les places au lot ne valent que pour le lot : après `drain_events`, une paire qui
+        // occupait la place 1 peut tenir la place 0, et l'agrégation doit l'y trouver.
+        let mut world = monde();
+        world.set_max_events_per_tick(2);
+        let impulse = event_kind::CONTACT_IMPULSE;
+        world.push_event(evenement(impulse, 1, 1.0, 0.0));
+        world.push_event(evenement(impulse, 2, 1.0, 0.0));
+        let _ = world.drain_events();
+
+        world.push_event(evenement(impulse, 2, 1.0, 0.0));
+        world.push_event(evenement(impulse, 3, 1.0, 0.0));
+        world.push_event(evenement(impulse, 2, 9.0, 0.0));
+
+        assert_eq!(
+            world.drain_events(),
+            vec![
+                evenement(impulse, 2, 9.0, 0.0),
+                evenement(impulse, 3, 1.0, 0.0)
+            ]
+        );
+        assert_eq!(world.aggregated_event_count(), 1);
+        assert_eq!(world.dropped_event_count(), 0);
+    }
+
+    #[test]
+    fn r1011_un_evenement_se_fond_dans_le_premier_de_son_identite() {
+        // Deux événements d'une même identité au lot — un lot que nul n'a vidé entre deux
+        // ticks : celui qui déborde se fond dans le premier, le second reste tel quel.
+        let mut world = monde();
+        world.set_max_events_per_tick(3);
+        let impulse = event_kind::CONTACT_IMPULSE;
+        world.push_event(evenement(impulse, 1, 1.0, 0.0));
+        world.push_event(evenement(impulse, 1, 2.0, 1.0));
+        world.push_event(evenement(impulse, 2, 1.0, 0.0));
+        world.push_event(evenement(impulse, 1, 5.0, 2.0));
+        assert_eq!(
+            world.drain_events(),
+            vec![
+                evenement(impulse, 1, 5.0, 2.0),
+                evenement(impulse, 1, 2.0, 1.0),
+                evenement(impulse, 2, 1.0, 0.0)
+            ]
+        );
+    }
+
+    #[test]
+    fn r1011_une_paire_garde_l_impulsion_la_plus_forte_de_ses_sous_pas() {
+        // ADR-146 : la plus forte des sous-pas, quel que soit son rang ; à égalité, la
+        // première, pour un résultat qui ne dépend que de l'ordre des sous-pas (R-1020).
+        let impulse = event_kind::CONTACT_IMPULSE;
+        let mut kept = BTreeMap::new();
+        for (strength, x) in [(3.0, 1.0), (7.0, 2.0), (5.0, 3.0), (7.0, 4.0)] {
+            keep_strongest(&mut kept, (1, 2), evenement(impulse, 1, strength, x));
+        }
+        keep_strongest(&mut kept, (1, 3), evenement(impulse, 2, 1.0, 0.0));
+        assert_eq!(
+            kept.into_values().collect::<Vec<_>>(),
+            vec![
+                evenement(impulse, 1, 7.0, 2.0),
+                evenement(impulse, 2, 1.0, 0.0)
+            ]
+        );
+    }
+
+    #[test]
+    fn r1011_une_paire_de_colliders_a_une_seule_cle() {
+        // rapier peut donner une paire dans un ordre ou dans l'autre : la clé n'en dépend pas,
+        // et deux paires distinctes ne se confondent pas, génération comprise.
+        let a = ColliderHandle::from_raw_parts(3, 1);
+        let b = ColliderHandle::from_raw_parts(1, 2);
+        let c = ColliderHandle::from_raw_parts(3, 2);
+        assert_eq!(pair_key(a, b), pair_key(b, a));
+        assert_ne!(pair_key(a, b), pair_key(c, b));
+        assert_eq!(pair_key(a, b), ((1 << 32) | 3, (2 << 32) | 1));
+    }
 }

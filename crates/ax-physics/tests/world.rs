@@ -1022,6 +1022,55 @@ fn un_seuil_haut_filtre_les_impulsions() {
 }
 
 #[test]
+fn t305_une_paire_emet_une_impulsion_par_tick_la_plus_forte_de_ses_sous_pas() {
+    // R-1011 (ADR-146) : à quatre sous-pas par tick, une paire n'émet qu'un CONTACT_IMPULSE
+    // par tick, celui de son impulsion la plus forte. Le témoin avance d'un sous-pas par
+    // tick : mêmes sous-pas, donc une impulsion par sous-pas, à comparer. Le seuil descend
+    // sous l'impulsion de la bille au repos (0,52 kg, `mg·dt` ≈ 0,085 N·s) : chaque sous-pas
+    // au contact émet, et pas seulement celui de l'impact.
+    let (mut temoin, _, _) = monde_impact();
+    let (mut world, _, _) = monde_impact();
+    temoin.set_contact_event_threshold(0.01);
+    world.set_contact_event_threshold(0.01);
+    let mut ticks_a_impulsions_distinctes = 0;
+    for tick in 0..30 {
+        let mut par_sous_pas = Vec::new();
+        for _ in 0..4 {
+            assert_eq!(temoin.advance(1.0 / 60.0), 1);
+            par_sous_pas.extend(events_of(&mut temoin, event_kind::CONTACT_IMPULSE));
+        }
+        assert_eq!(world.advance(4.0 / 60.0), 4);
+        let impulsions = events_of(&mut world, event_kind::CONTACT_IMPULSE);
+
+        let plus_forte = par_sous_pas.iter().copied().reduce(|kept, next| {
+            if next.impulse > kept.impulse {
+                next
+            } else {
+                kept
+            }
+        });
+        assert_eq!(
+            impulsions,
+            plus_forte.into_iter().collect::<Vec<_>>(),
+            "tick {tick} : la plus forte des sous-pas {:?}",
+            par_sous_pas.iter().map(|e| e.impulse).collect::<Vec<_>>()
+        );
+        if par_sous_pas
+            .windows(2)
+            .any(|pair| pair[0].impulse != pair[1].impulse)
+        {
+            ticks_a_impulsions_distinctes += 1;
+        }
+    }
+    // Sans impulsions distinctes d'un sous-pas à l'autre, « la plus forte » ne se
+    // distinguerait ni de la première ni de la dernière.
+    assert!(
+        ticks_a_impulsions_distinctes > 0,
+        "le scénario doit produire des impulsions distinctes au sein d'un tick"
+    );
+}
+
+#[test]
 fn un_capteur_emet_enter_puis_exit() {
     // §10.7 : un corps traversant un capteur produit SENSOR_ENTER puis
     // SENSOR_EXIT ; le capteur ne l'arrête pas.

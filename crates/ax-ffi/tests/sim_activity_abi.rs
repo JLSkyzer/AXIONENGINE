@@ -254,6 +254,7 @@ fn un_corps_sans_joueur_a_portee_s_endort_et_se_reveille_a_son_retour() {
     assert_eq!(metrique(ctx, "axion.sim.velocity_clamps"), 0);
     assert_eq!(metrique(ctx, "axion.sim.invalid_states"), 0);
     assert_eq!(metrique(ctx, "axion.sim.events_dropped"), 0);
+    assert_eq!(metrique(ctx, "axion.sim.events_aggregated"), 0);
     // … puis une impulsion démesurée, bornée à 300 m/s (R-180) …
     tick(
         ctx,

@@ -58,6 +58,12 @@ Definition of Done (PARTIE 37.3).
     `bodies`, `contacts`, `normals`, `world_tiles`, `center_of_mass`, par
     `/axion debug <overlay> on|off` ; charge `DEBUG` au schema 2, une plage par
     overlay et repere ;
+  - evenements physiques au-dela du plafond `physics.max_events_per_tick`
+    (R-1011) : un evenement se fond dans le premier de meme identite deja au
+    lot, qui garde l'impulsion la plus forte, au lieu d'etre jete ; celui qui
+    n'y trouve pas son identite est perdu ; l'un et l'autre sont comptes
+    (`axion.sim.events_aggregated`, `axion.sim.events_dropped`) ; une impulsion
+    de contact par paire et par tick, la plus forte des sous-pas (ADR-146) ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
     T-012 (INV-04), T-015 (INV-07), T-019 (INV-12) ;
   - un collider `convex` ne garde que les sommets de son enveloppe : ni

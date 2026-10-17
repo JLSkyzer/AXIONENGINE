@@ -1068,25 +1068,38 @@ mod tests {
             ..SimSettings::default()
         });
         bille(&mut driver, 0);
-        let (_, body) = driver.routes[&handle_key(Handle::new(1, 1))];
+        bille_au_handle(&mut driver, 0, Handle::new(2, 1));
+        let (_, premiere) = driver.routes[&handle_key(Handle::new(1, 1))];
+        let (_, seconde) = driver.routes[&handle_key(Handle::new(2, 1))];
         let world = driver.world_mut(0).unwrap();
-        // Deux événements pour une seule place : le second est perdu, et compté.
-        world.force_sleep(body, true);
-        world.end_forced_sleep(body);
-        world.force_sleep(body, true);
+        // Trois CLAMPED de budget pour une seule place : celui de la seconde bille, sans
+        // événement de son identité au lot, est perdu ; le second de la première se fond dans
+        // le premier (R-1011). L'un et l'autre sont comptés.
+        world.force_sleep(premiere, true);
+        world.force_sleep(seconde, true);
+        world.end_forced_sleep(premiere);
+        world.force_sleep(premiere, true);
         assert_eq!(driver.counters().dropped_events, 1);
+        assert_eq!(driver.counters().aggregated_events, 1);
 
         assert!(driver.apply_remove_assembly(Handle::new(1, 1)));
+        assert!(driver.apply_remove_assembly(Handle::new(2, 1)));
         assert_eq!(driver.release_idle_dimensions(), 1);
 
         assert_eq!(driver.counters().dropped_events, 1);
+        assert_eq!(driver.counters().aggregated_events, 1);
     }
 
     /// Une bille dynamique créée en (0, 100, 0) de la dimension 0, au handle (1, 1).
     fn bille(driver: &mut SimDriver, dimension: u64) {
+        bille_au_handle(driver, dimension, Handle::new(1, 1));
+    }
+
+    /// Une bille dynamique créée en (0, 100, 0) d'une dimension, au handle donné.
+    fn bille_au_handle(driver: &mut SimDriver, dimension: u64, handle: Handle) {
         driver.create_assembly(
             dimension,
-            Handle::new(1, 1),
+            handle,
             WorldTransform {
                 position: [0.0, 100.0, 0.0],
                 rotation: [0.0, 0.0, 0.0, 1.0],
