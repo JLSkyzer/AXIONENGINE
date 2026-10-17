@@ -39,16 +39,23 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 name = "ax-asset"
 version = "1.0.0"
 dependencies = [
+ "ax-mem",
  "ax-model",
  "crc32c",
  "gltf",
  "meshopt",
  "mikktspace",
  "parry3d",
+ "serde",
+ "serde_json",
  "stl_io",
  "tobj",
- "zstd",
+ "zstd-sys",
 ]
+
+[[package]]
+name = "ax-mem"
+version = "1.0.0"
 
 [[package]]
 name = "ax-model"
@@ -506,6 +513,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
+ "serde_derive",
 ]
 
 [[package]]
@@ -674,24 +682,6 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
-
-[[package]]
-name = "zstd"
-version = "0.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
-dependencies = [
- "zstd-safe",
-]
-
-[[package]]
-name = "zstd-safe"
-version = "7.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882"
-dependencies = [
- "zstd-sys",
-]
 
 [[package]]
 name = "zstd-sys"
