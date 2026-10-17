@@ -93,7 +93,7 @@ jobs:
             ~/.cargo/git/db
             ~/.cargo/bin
             fuzz/target
-          key: fuzz-${{ matrix.cible }}-${{ hashFiles('Cargo.lock', 'fuzz/Cargo.toml') }}
+          key: fuzz-${{ matrix.cible }}-${{ hashFiles('Cargo.lock', 'fuzz/Cargo.toml', 'fuzz/Cargo.lock') }}
           restore-keys: fuzz-${{ matrix.cible }}-
 
       - name: Installer cargo-fuzz

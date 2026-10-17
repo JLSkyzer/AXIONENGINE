@@ -62,6 +62,8 @@ JOBS: list[tuple[str, list[tuple[str, list[str]]]]] = [
     ]),
     ("deps", [
         ("cargo deny check", ["cargo", "deny", "check"]),
+        ("Verrou de fuzzing a jour", ["cargo", "metadata", "--locked", "--manifest-path",
+                                      "fuzz/Cargo.toml", "--format-version", "1"]),
         ("NOTICE regenere", [PYTHON, "tools/deps/gen_notice.py"]),
         ("NOTICE a jour", ["git", "diff", "--exit-code", "--", "NOTICE"]),
     ]),

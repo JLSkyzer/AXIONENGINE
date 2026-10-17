@@ -17,7 +17,8 @@
 #   R-562 (fiche C-25) -> job compiler-version (parite des deux COMPILER_VERSION),
 #                         et empreintes de la sortie par plateforme dans test-unit
 #                         (ax-asset/tests/compiler_fingerprints.rs, ADR-106)
-#   deps               -> job deps (cargo-deny, puis fraicheur du NOTICE)
+#   deps               -> job deps (cargo-deny, verrou de fuzzing, puis fraicheur
+#                         du NOTICE)
 #   docs               -> job deps, etape « NOTICE a jour »
 #   codegen-parity     -> job build-and-test, etape codegen (T-005)
 #   lint-budgets       -> job build-and-test, T-007 dans la suite JUnit
@@ -172,6 +173,15 @@ jobs:
       # source hors crates.io bloquent.
       - name: cargo deny check
         run: cargo deny check
+
+      # R-903 : le workspace de fuzzing a son propre verrou, qu'aucun autre job ne
+      # lit — les campagnes n'y tournent que sur les PR, la nuit ou a la main, et
+      # cargo-fuzz le reecrit sans rien dire. Il a ainsi derive du manifeste
+      # d'ax-asset sans que rien ne le voie (constate le 2026-10-17). `--locked`
+      # refuse un verrou qu'il faudrait reecrire ; la chaine epinglee suffit, rien
+      # n'est construit.
+      - name: Verrou de fuzzing a jour
+        run: cargo metadata --locked --manifest-path fuzz/Cargo.toml --format-version 1 > /dev/null
 
       # Le NOTICE est engendre depuis l'arbre de dependances reel (R-2290). S'il
       # differe apres regeneration, c'est qu'une dependance a bouge sans que les
