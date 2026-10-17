@@ -43,7 +43,7 @@ Definition of Done (PARTIE 37.3).
   - requetes spatiales lancees de plusieurs threads a la fois : le monde se
     partage (`Sync`) et rend ce qu'il rend en serie (R-650, T-384) ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
-    T-012 (INV-04), T-019 (INV-12) ;
+    T-012 (INV-04), T-015 (INV-07), T-019 (INV-12) ;
   - un collider `convex` ne garde que les sommets de son enveloppe : ni
     doublon d'un export a normales plates, ni point interieur (R-161) ;
     `COMPILER_VERSION` 11 ;

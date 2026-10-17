@@ -2737,6 +2737,11 @@ amortissement dans l'eau, `/axion remove`).
             T-012 (INV-04, ac714fb, 8 traversées au pire tick établi). T-019 et T-011 ont trouvé des
             chemins non affirmés, gardés depuis (`AuthoritativeThread.require`, affirmations du render
             thread) ; le `lint-no-mod-names` de `ci.yml` renvoyait à T-014, il renvoie à T-006.
+      - [x] **T-015 (INV-07, R-032) fait le 2026-10-17** : `crates/ax-ffi/tests/jvm_isolation.rs`.
+            `JNIEnv` n'est pas `Send` (vérifié à la compilation) : une tâche du pool ne peut pas
+            l'emporter ; aucune source livrée n'attache un thread ni ne retrouve la JVM ; `JavaVM`
+            n'est qu'un paramètre du pont de C-14, jamais gardé ; `jni` n'est dépendance que
+            d'`ax-ffi`, sans `invocation`. Six mutations rouges, une par règle.
       - [x] Groupes de collision transmis (R-980, ADR-132, bb29c8b) : tuiles du monde dans `world`,
             groupes de la definition écrits dans PHYS, noms réservés seuls tant que le registre des
             groupes tiers n'existe pas.
@@ -2870,7 +2875,7 @@ amortissement dans l'eau, `/axion remove`).
       - **L'effort max après le reste de M3** : amendement A1 d'ADR-137 et R-1011 (C-31 : au-delà du
         plafond d'événements, agréger par paire au lieu de jeter — aujourd'hui `push_event` jette).
       - Reste à proposer, par un ADR de portée de la DoD de M3 (modèle d'ADR-137) : métriques des tuiles
-        et des requêtes, T-015,
+        et des requêtes,
         les écarts du rendu (surcharge des budgets de frame, temps GPU par passe, overlays de C-67
         sans jalon, garde GL et R-741) et les cases périmées.
 - [ ] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
