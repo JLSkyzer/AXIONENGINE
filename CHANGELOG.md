@@ -64,6 +64,12 @@ Definition of Done (PARTIE 37.3).
     n'y trouve pas son identite est perdu ; l'un et l'autre sont comptes
     (`axion.sim.events_aggregated`, `axion.sim.events_dropped`) ; une impulsion
     de contact par paire et par tick, la plus forte des sous-pas (ADR-146) ;
+  - les avertissements d'une compilation d'asset (R-530, R-912, colliders de
+    C-32...) atteignent le journal du jeu, une fois par compilation, et un
+    refus y dit son motif, pas seulement son code ; les refus et avertissements
+    d'un rechargement aussi, que seul `/axion status` montrait (ADR-148,
+    `axion_asset_diagnostics` ajoutee a IF-06, ABI 4) ; metrique
+    `axion.asset.warnings` ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
     T-012 (INV-04), T-015 (INV-07), T-019 (INV-12) ;
   - un collider `convex` ne garde que les sommets de son enveloppe : ni

@@ -236,6 +236,8 @@ fn adr148_les_lignes_d_une_compilation_se_lisent_une_fois_apres_son_sondage() {
     let (status, _, _) = settle(ctx, job);
     assert_eq!(status, AXION_ASSET_COMPILED);
     assert_eq!(held(ctx), 1, "les lignes attendent dans la table");
+    // Repris, il n'est plus sondable, même avant la lecture de ses lignes.
+    assert_eq!(poll(ctx, job).0, AXION_E_INVALID_HANDLE, "sondé deux fois");
     assert_eq!(lignes(ctx, job), vec![AVERTISSEMENT]);
     // Une fois : ni relire, ni sonder de nouveau.
     assert_eq!(diagnostics(ctx, job).0, AXION_E_INVALID_HANDLE, "relecture");

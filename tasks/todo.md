@@ -1356,10 +1356,9 @@ est tenue par ce qui existe.
             passe en chaîne CBOR à `axion_asset_compile` (`(JJIJ[B)I`) ; une option refusée échoue
             au sondage avec le code de la CLI. Une ressource illisible reste énumérée et sa lecture
             rend l'échec, au lieu d'une compilation avec les défauts.
-            - **Reste dû** : les avertissements de compilation ne remontent pas à Java — **renvoyés
-              en M3 avec C-32** ([ADR-137](../docs/decisions/ADR-137.md), amendement A1, Killian le
-              2026-10-16) : au sondage, le natif les jette ; en jeu, R-530 et R-912 n'avertissent
-              personne, seule la CLI les affiche ;
+            - **Fait le 2026-10-17** ([ADR-148](../docs/decisions/ADR-148.md)) : les avertissements de
+              compilation, renvoyés en M3 avec C-32 par l'amendement A1 d'ADR-137, remontent au
+              journal du jeu, une fois par compilation, avec le motif d'un refus ;
               l'asset entier, `auto_capsule`, `auto_convex`, `auto_compound` signalés, pas produits,
               et le mode de collider d'une definition ne voyage pas jusqu'à la compilation (C-32).
 - [x] **C-50 en jeu** : persistance (apparition, sauvegarde, rechargement du monde), jamais
@@ -1921,11 +1920,14 @@ substituable sans changer rapier »).
               et `ContactEvent` (API d'événements de C-70), filtre intra-assembly multi-corps
               (joints, M4).
 
-      - [ ] **C-32 — Collider Builder** (fiche 5.24, R-620..623, T-310..312).
-            - [ ] **Avertissements de compilation jusqu'au journal du jeu** (ADR-137, amendement A1) :
-                  jetés aujourd'hui au sondage d'`axion_asset_poll`. ADR de frontière FFI d'abord,
-                  en effort maximal ; preuve : un avertissement connu apparaît une fois par
-                  compilation dans le journal du jeu.
+      - [x] **C-32 — Collider Builder** (fiche 5.24, R-620..623, T-310..312). Cochée le 2026-10-17 :
+            colonne 4 d'ADR-146 vide — amendement A1 d'ADR-137 (ADR-148) et `collision.resolution`
+            (ADR-147) faits ; CI verte (c333fcc).
+            - [x] **Avertissements de compilation jusqu'au journal du jeu** (ADR-137, amendement A1),
+                  fait le 2026-10-17 par [ADR-148](../docs/decisions/ADR-148.md) :
+                  `axion_asset_diagnostics` ajoutée à IF-06 (ABI 4), journal Java vidé à chaque tick,
+                  motif d'un refus ; R-530 de `test/avertissement/triangle.gltf` une fois dans
+                  `latest.log`, compté par la CI ; 13 mutations rouges.
             - [x] **Défaut relevé le 2026-10-16** (modèle `buggy`) : `shape: convex` prenait les
                   sommets du mesh tels quels, doublons compris. Un export glTF à normales plates
                   duplique chaque sommet par face : 82 points stockés pour une enveloppe de 18. Le
@@ -2806,10 +2808,10 @@ amortissement dans l'eau, `/axion remove`).
             B-08 normative au commit 6138ba6, puis verdict : **R-501 tenu** ; 4 327 allocations pour
             `physics_ticks`, dont 3 191 sur ses 20 pas — les durées, du poste de développement, ne
             se publient pas (R-2252). Mesure publiable en M12 (ADR-131).
-      - [ ] **Cases C-31, C-32, C-61 : non cochées, à raison** (motifs mis à jour le 2026-10-17, ADR-146).
+      - [ ] **Cases C-31, C-61 : non cochées, à raison** (motifs mis à jour le 2026-10-17, ADR-146).
             C-31 : second temps de DM-07, en effort maximal (R-1011 fait le 2026-10-17) ; joints (M4) et attaches (M5)
-            renvoyés. C-32 : amendement A1 d'ADR-137, en effort maximal ; `collision.resolution` faite
-            (ADR-147). C-61 : la tranche T4+ suit ses composants — R-742 (M4, M6), R-743
+            renvoyés. C-32 cochée le 2026-10-17 : amendement A1 d'ADR-137 (ADR-148) et `collision.resolution`
+            (ADR-147) faits. C-61 : la tranche T4+ suit ses composants — R-742 (M4, M6), R-743
             (C-69, M9), indicateur de capacités (C-73, M5) ; les métriques de rendu sont faites.
 - [x] **E2 — JAR complet en CI** (8300c78) : `buildNatives` reprend les natifs déjà construits
       (`-Paxion.prebuilt`, empreinte vérifiée), `packageNatives` devient un `Sync`, et le job
@@ -2856,7 +2858,8 @@ amortissement dans l'eau, `/axion remove`).
             Tests : `t390_*` (scheduler, monde), `t391_*`, `sim_step_metrics_abi` ; mutations
             (commandes après le pas, étape 1 non mesurée) rouges. Les budgets par étape restent à C-77
             (ADR-144 §4).
-      Puis, en effort max : amendement A1 d'ADR-137 (avertissements jusqu'au journal). Tranchés par
+      Puis, en effort max : amendement A1 d'ADR-137 (avertissements jusqu'au journal ; fait le
+      2026-10-17, ADR-148). Tranchés par
       Killian le 2026-10-16 : registre des groupes de collision tiers (ADR-132 A1, fait le jour même),
       R-501 par le calcul en M3 — allocations d'un pas × surcoût d'une allocation de B-08 —, mesure
       publiable en M12 (ADR-133 A1) : **fait le 2026-10-16**, R-501 tenu (voir la case ADR-133).
@@ -2886,7 +2889,8 @@ amortissement dans l'eau, `/axion remove`).
               `BlockMaterialsTest` (T-375), `DefinitionRegistryTest`, `AxionRuntimeTest`.
         - [ ] Second temps, en effort max et par un ADR : le matériau des parts d'assembly jusqu'au
               natif (index DM-07 des `ColliderDesc`, modes de combinaison), puis le ballon de test.
-      - **L'effort max après le reste de M3** : amendement A1 d'ADR-137 ; R-1011 fait le 2026-10-17.
+      - **L'effort max après le reste de M3** : R-1011 et amendement A1 d'ADR-137 faits le 2026-10-17 ;
+        reste le second temps de DM-07.
       - [x] **[ADR-146](../docs/decisions/ADR-146.md) accepté le 2026-10-17** — portée de la DoD de M3,
             composant par composant (modèle d'ADR-137) ; Killian retient les sept propositions. Partent,
             avec jalon et preuve : 28 overlays de C-67 avec leurs systèmes (M4 à M9) ; métriques des
@@ -2923,7 +2927,10 @@ amortissement dans l'eau, `/axion remove`).
                   d'ADR-137 passe par une fonction ajoutée à IF-06 (`axion_asset_diagnostics`, ABI 4),
                   un journal Java vidé à chaque tick (refus d'un rechargement compris) et le message
                   d'un échec par le même chemin ; Killian retient les trois points ;
-            - [ ] en effort maximal : second temps de DM-07, amendement A1 d'ADR-137.
+            - [x] amendement A1 d'ADR-137 (C-32), fait le 2026-10-17 par ADR-148 : les avertissements
+                  d'une compilation, et le motif d'un refus, une fois par compilation au journal du
+                  jeu, rechargements compris ; 13 mutations rouges ; effort « extra » ;
+            - [ ] en effort maximal : second temps de DM-07.
 - [x] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
       variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
       de D1 (§2, acceptée, faite) ; attribution affinée des tests hors liste (§3), métriques des étapes en
