@@ -1630,3 +1630,17 @@ nombre de nœuds, dans le code même : un cycle qui échapperait à sa détectio
 faux, que les tests voient, et jamais une suspension. Ne pas compter sur `@Timeout` contre une boucle de
 calcul. Lancer les campagnes de mutations avec un délai par exécution et surveiller l'heure de départ
 de l'exécuteur de tests.
+
+## 2026-10-17 | Un lecteur de tampon qui accepte « toute version depuis N » lit de travers la suivante
+
+**Ce qui a mal tourné.** `NativeDebugLoader` acceptait tout schéma de `DEBUG` supérieur ou égal à 1, sur
+la foi d'un commentaire de `BufferKind::schema_version` : une charge n'évoluerait que par ajout en fin.
+L'amendement A1 d'ADR-121 a remplacé `DebugBody` (24 o) par `DebugRange` (32 o) au schéma 2 : l'ancien
+lecteur l'aurait accepté et lu de travers, sans erreur.
+
+**Cause.** La règle d'évolution « par ajout en fin » n'était qu'un commentaire, ni dans le CDC (R-262 dit
+seulement « schéma versionné ») ni dans un ADR. Le lecteur s'appuyait sur une promesse que rien ne tenait.
+
+**Règle.** Un lecteur de tampon compare la version de schéma à **la** version qu'il sait lire, à
+l'égalité ; « depuis N » seulement si un ADR garantit l'évolution par ajout en fin pour ce kind. Le
+commentaire de `schema_version` dit désormais la vraie règle.
