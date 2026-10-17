@@ -30,6 +30,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
@@ -69,8 +70,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     /** Génération de handle fixe pour la session (l'index suffit à distinguer). */
     public static final int GENERATION = 1;
 
-    private final DefinitionRegistry definitions;
-    private final AssetRegistry assets;
+    private final Supplier<DefinitionRegistry> definitions;
+    private final Supplier<AssetRegistry> assets;
 
     /**
      * Index de handle → entité dotée d'un corps : route l'application des états, évite une
@@ -100,10 +101,14 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             byte[] phys) {}
 
     /**
-     * @param definitions definitions chargées (résolution par identifiant)
-     * @param assets assets compilés (octets A3D → section {@code PHYS})
+     * Les deux registres sont lus à chaque création de corps : un {@code /reload} ou un
+     * {@code /axion assets reload} en installe de nouveaux, que la création suivante prend.
+     *
+     * @param definitions definitions courantes (résolution par identifiant)
+     * @param assets assets compilés courants (octets A3D → section {@code PHYS}), ou {@code null}
+     *     avant tout chargement
      */
-    public AssemblyRuntime(DefinitionRegistry definitions, AssetRegistry assets) {
+    public AssemblyRuntime(Supplier<DefinitionRegistry> definitions, Supplier<AssetRegistry> assets) {
         this.definitions = definitions;
         this.assets = assets;
         MinecraftForge.EVENT_BUS.register(this);
@@ -135,7 +140,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         if (assembly.isInert()) {
             return false;
         }
-        Definition definition = definitions.get(assembly.definitionId()).orElse(null);
+        DefinitionRegistry registry = definitions.get();
+        Definition definition = registry.get(assembly.definitionId()).orElse(null);
         if (definition == null) {
             return false;
         }
@@ -158,7 +164,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         }
         // R-980 : les groupes que la definition nomme, sur chaque collider du corps — résolus en bits
         // par le registre contre lequel elle a été validée (ADR-132 A1), groupes tiers compris.
-        CollisionGroupRegistry groups = definitions.collisionGroups();
+        CollisionGroupRegistry groups = registry.collisionGroups();
         phys = CollisionFilter.apply(phys, groups.membership(root), groups.filter(root));
         pending.add(new Pending(true, index, dimension, position, rotation, body, phys));
         ledger.attach(index, assembly);
@@ -344,7 +350,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
 
     /** {@return les octets d'une section de l'asset de la definition, ou {@code null}} */
     private byte[] sectionOf(Definition definition, String tag) {
-        AssetEntry entry = assets.entry(definition.asset());
+        AssetRegistry registry = assets.get();
+        AssetEntry entry = registry == null ? null : registry.entry(definition.asset());
         if (entry == null) {
             return null;
         }

@@ -45,6 +45,9 @@ Definition of Done (PARTIE 37.3).
   - metriques de R-500 des tuiles du monde (C-38, `axion.world.*`) : tuiles
     construites et liberees, replis en champ de hauteurs (R-641) et sections
     non chargees (R-640), file, tuiles tenues, duree de construction par tick ;
+  - un `/reload` ou un `/axion assets reload` atteint les assemblies qui
+    apparaissent ensuite : la boucle de l'entite lisait les registres du
+    demarrage du serveur ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
     T-012 (INV-04), T-015 (INV-07), T-019 (INV-12) ;
   - un collider `convex` ne garde que les sommets de son enveloppe : ni

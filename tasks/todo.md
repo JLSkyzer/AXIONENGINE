@@ -2770,7 +2770,10 @@ amortissement dans l'eau, `/axion remove`).
             étant à −58,0). `AxionRuntimeTest` : registre transmis aux definitions, changement
             journalisé (trois mutations rouges).
             Relevé au passage, hors de cette case : `AssemblyRuntime` garde les registres du démarrage
-            du serveur, un `/reload` ne lui parvient pas (tâche proposée à Killian).
+            du serveur, un `/reload` ne lui parvenait pas — **corrigé le 2026-10-17** : il lit les
+            registres courants du runtime, definitions et assets. GameTest
+            `uneDefinitionAjouteeParUnRechargementPrendCorps` : rouge avant le correctif (assembly
+            sans corps, immobile à y = −55,0, la dalle à −58,0), vert après (11 tests requis).
       - [x] CCD automatique au-delà de `|v|·dt > 0,5 × min_dim` (fiche 5.23), testée en
             anti-traversée contre une plaque cinématique et une plaque fixe (9df33d4). Elle
             n'existait pas : `rapier` 0.35 ne balaie de lui-même que les colliders fixes.
