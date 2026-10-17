@@ -1662,7 +1662,8 @@ substituable sans changer rapier »).
             ne résout aucun contact). 1 test : une bille traverse un capteur.
       - [ ] **Tranche 3c-ii — liaisons et défaillances (gelé).** JOINT_BROKEN/
             JAMMED avec les joints (M4) ; ATTACH/DETACH avec les attaches (M5) ;
-            CLAMPED/RECOVERED avec les modes de défaillance (FM-20/21/22).
+            CLAMPED/RECOVERED avec les modes de défaillance (FM-20/21/22) — faits depuis
+            (`CLAMPED` 1 à 3, `RECOVERED` 2030) ; reste R-1011, en effort maximal (ADR-146).
       - [x] **Tranche 4 — IF-03, cycle de simulation (FFI/ABI, `[EFFORT MAX]`).**
             **À faire en session neuve, effort maximal.** C'est un contrat
             **IF-xx** (que l'agent ne fige pas seul) : à mener avec soin et,
@@ -2209,7 +2210,7 @@ substituable sans changer rapier »).
                     avant que sa section soit reconstruite. `WorldTilePlanner` bâtit désormais en
                     priorité la section abritant une assembly (+ test). Commit a13e3e4.
                     **Rechargement observé en jeu (2026-10-01) : le cube reste posé.**
-      - [ ] **Acceptance M3 — GameTests et scénarios** (§29.5, PARTIE 37.2). La porte du jalon :
+      - [x] **Acceptance M3 — GameTests et scénarios** (§29.5, PARTIE 37.2). La porte du jalon :
             « un objet tombe, repose sur le sol, est rendu dans les deux backends », vérifiée
             mécaniquement (R-2392). Inventaire du 2026-10-06 : des 44 tests cités par M3, 11
             existent (T-300..T-307, T-310, T-311, T-550) ; T-308 et T-309 ne sont attribués par
@@ -2702,14 +2703,15 @@ en l'état.**
       T-493 exclus par ADR-128. Mais **T-550 est compté à tort** : ses dix fonctions `t550_` (ax-asset)
       vérifient les LOD, alors que T-550 est un test de C-67 (CDC:2431) ; aucun test du Debug Renderer
       ne le porte.
-- [ ] **JAR installable et jouable produit par la CI** : la CI construit et valide un JAR partiel
+- [x] **JAR installable et jouable produit par la CI** — fait par E2 (8300c78, job `jar-complet`).
+      Constat du 2026-10-12 : la CI construit et valide un JAR partiel
       (natifs de l'hôte) ; les natifs des quatre plateformes sont téléversés à part, jamais réunis dans
       un JAR complet.
 - [x] Aucune régression : CI verte sur la matrice (c6e1369), suites Rust (933) et Java vertes.
 - [ ] **Benchmarks du périmètre exécutés et archivés** : B-01, B-03, B-11, B-12, B-14, B-16, B-17 n'ont
       ni harnais ni `benchmarks/results/` (R-2230, R-2231) ; le suivi plaçait les benchmarks en M12, ce
-      que contredit la DoD de chaque jalon.
-- [ ] **CHANGELOG** arrêté à M0.10 : ni M1 ni M3.
+      que contredit la DoD de chaque jalon. Tranché : en M12 (ADR-131, repris par ADR-146).
+- [x] **CHANGELOG** — M1 et M3 écrits (21f8e87), tenu depuis. Constat du 2026-10-12 : arrêté à M0.10.
 
 **Composant terminé** — aucun des douze ne coche toute la grille. Écarts, par nature :
 
@@ -2782,7 +2784,7 @@ amortissement dans l'eau, `/axion remove`).
             tick, non plus le cumul).
       - [x] CHANGELOG M1 et M3 (21f8e87), rustdoc d'`ax-physics` (5dad2f7), PHYSICS.md (0b17a97),
             RENDERING.md (127e886, R-1514).
-      - [ ] **ADR-133 accepté le 2026-10-13 (option A pour D1, D2, D3).** D3 fait (1ebdb8a) : textures
+      - [x] **ADR-133 accepté le 2026-10-13 (option A pour D1, D2, D3).** D3 fait (1ebdb8a) : textures
             comptées dans `budgets.gpu_mem_bytes`, éviction LRU des assets entiers par `MeshCache`, pour
             les deux backends. D1 fait (430bf64) : `JavaMetrics` fusionné à l'export, budgets du rendu et
             `idle_hook_ns` alimentés ; commande cliente d'un client relié à un serveur distant faite le
@@ -2803,10 +2805,11 @@ amortissement dans l'eau, `/axion remove`).
             B-08 normative au commit 6138ba6, puis verdict : **R-501 tenu** ; 4 327 allocations pour
             `physics_ticks`, dont 3 191 sur ses 20 pas — les durées, du poste de développement, ne
             se publient pas (R-2252). Mesure publiable en M12 (ADR-131).
-      - [ ] **Cases C-31, C-32, C-61 : non cochées, à raison.** C-31 : tranche 3c-ii gelée (joints
-            M4, attaches M5). C-32 : résolution VHACD à mesurer
-            (ADR-108), matériaux de contact DM-07 reportés par Killian au câblage des definitions
-            physiques. C-61 : plafonds CPU de R-742/R-743 (M6) et métriques de rendu (ADR-133 D1).
+      - [ ] **Cases C-31, C-32, C-61 : non cochées, à raison** (motifs mis à jour le 2026-10-17, ADR-146).
+            C-31 : R-1011 et second temps de DM-07, en effort maximal ; joints (M4) et attaches (M5)
+            renvoyés. C-32 : amendement A1 d'ADR-137, en effort maximal ; `collision.resolution` à
+            mesurer (ADR-146 §4). C-61 : la tranche T4+ suit ses composants — R-742 (M4, M6), R-743
+            (C-69, M9), indicateur de capacités (C-73, M5) ; les métriques de rendu sont faites.
 - [x] **E2 — JAR complet en CI** (8300c78) : `buildNatives` reprend les natifs déjà construits
       (`-Paxion.prebuilt`, empreinte vérifiée), `packageNatives` devient un `Sync`, et le job
       `jar-complet` réunit les quatre natifs de la matrice, construit en mode release — qui refuse
@@ -2884,10 +2887,20 @@ amortissement dans l'eau, `/axion remove`).
               natif (index DM-07 des `ColliderDesc`, modes de combinaison), puis le ballon de test.
       - **L'effort max après le reste de M3** : amendement A1 d'ADR-137 et R-1011 (C-31 : au-delà du
         plafond d'événements, agréger par paire au lieu de jeter — aujourd'hui `push_event` jette).
-      - Reste à proposer, par un ADR de portée de la DoD de M3 (modèle d'ADR-137) : métriques des requêtes,
-        les écarts du rendu (surcharge des budgets de frame, temps GPU par passe, overlays de C-67
-        sans jalon, garde GL et R-741) et les cases périmées.
-- [ ] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
+      - [x] **[ADR-146](../docs/decisions/ADR-146.md) accepté le 2026-10-17** — portée de la DoD de M3,
+            composant par composant (modèle d'ADR-137) ; Killian retient les sept propositions. Partent,
+            avec jalon et preuve : 28 overlays de C-67 avec leurs systèmes (M4 à M9) ; métriques des
+            requêtes et moitié Java de R-651 avec les roues de C-33 (M5) ; `CompiledDefinition` avec
+            C-51 (M4) ; surcharge des budgets de frame avec C-77 (M5), R-300 avec IF-05 (M4) ; étape 14
+            avec C-37 (M4). Cases périmées mises à jour le même jour.
+      - [ ] **Reste avant de prononcer M3** (colonne 4 d'ADR-146) :
+            - [ ] overlays `aabb`, `bodies`, `contacts`, `normals`, `world_tiles`, `center_of_mass`
+                  (§1) — charge utile par un amendement d'ADR-121, T-550 étendu à chacun ;
+            - [ ] temps GPU par passe du backend natif, `GL_TIME_ELAPSED` lu sans bloquer (§2) ;
+            - [x] garde GL et R-741 : R-741 porte sur le dessin du backend ; ADR-126 précisé (§3) ;
+            - [ ] `collision.resolution` : plage et défaut mesurés, puis option effective (§4) ;
+            - [ ] en effort maximal : R-1011, second temps de DM-07, amendement A1 d'ADR-137.
+- [x] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et
       variantes `PARALLAX` et suivantes renvoyés avec leurs sous-systèmes (§1, accepté) ; commande cliente
       de D1 (§2, acceptée, faite) ; attribution affinée des tests hors liste (§3), métriques des étapes en
       M3 et budgets par étape avec C-77 (§4), R-1495 avec le fournisseur d'`AxionApi` (§5) : **ratifiés le
