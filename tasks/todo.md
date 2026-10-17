@@ -2895,7 +2895,9 @@ amortissement dans l'eau, `/axion remove`).
             avec C-37 (M4). Cases périmées mises à jour le même jour.
       - [ ] **Reste avant de prononcer M3** (colonne 4 d'ADR-146) :
             - [ ] overlays `aabb`, `bodies`, `contacts`, `normals`, `world_tiles`, `center_of_mass`
-                  (§1) — charge utile par un amendement d'ADR-121, T-550 étendu à chacun ;
+                  (§1) — format ratifié le 2026-10-17 (amendement A1 d'ADR-121 : `DEBUG` au schéma 2,
+                  plages par overlay et repère) ; tranche native et frontière en **effort maximal**,
+                  Killian bascule avant de l'entamer ; puis la tranche Java ; T-550 étendu à chacun ;
             - [x] temps GPU par passe du backend natif (§2), fait le 2026-10-17 : horodatages GPU
                   (`GL_TIMESTAMP`, car Minecraft tient un `GL_TIME_ELAPSED` sur la frame sous F3),
                   lus sans attendre ; jauges `axion.render.gpu_*_ns` ; `GpuPassTimingsTest`, huit
