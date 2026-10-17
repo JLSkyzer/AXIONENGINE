@@ -1297,3 +1297,128 @@ fn t680_un_conteneur_glb_d_une_autre_version_est_refuse() {
         );
     }
 }
+
+/// Le triangle, ses scènes remplacées par `scenes` et sa scène par défaut par `scene`.
+fn triangle_aux_scenes(scene: u32, scenes: &str) -> String {
+    let source = triangle("", "");
+    let unique = "\"scene\": 0,\n  \"scenes\": [{ \"nodes\": [0] }],";
+    assert_eq!(
+        source.matches(unique).count(),
+        1,
+        "le document de test a changé"
+    );
+    source.replace(
+        unique,
+        &format!("\"scene\": {scene},\n  \"scenes\": {scenes},"),
+    )
+}
+
+/// Enveloppe un document glTF et son tampon dans un GLB, comme l'écrit l'exportateur de
+/// Blender : l'en-tête, le morceau JSON complété d'espaces, puis le morceau `BIN` complété de
+/// zéros.
+fn glb_binaire(json: &str, bin: &[u8]) -> Vec<u8> {
+    let mut texte = json.as_bytes().to_vec();
+    while !texte.len().is_multiple_of(4) {
+        texte.push(b' ');
+    }
+    let mut binaire = bin.to_vec();
+    while !binaire.len().is_multiple_of(4) {
+        binaire.push(0);
+    }
+    let longueur = |octets: usize| {
+        u32::try_from(octets)
+            .expect("GLB de test sous 4 Gio")
+            .to_le_bytes()
+    };
+    let mut out = Vec::new();
+    out.extend_from_slice(b"glTF");
+    out.extend_from_slice(&2u32.to_le_bytes());
+    out.extend_from_slice(&longueur(12 + 8 + texte.len() + 8 + binaire.len()));
+    out.extend_from_slice(&longueur(texte.len()));
+    out.extend_from_slice(b"JSON");
+    out.extend_from_slice(&texte);
+    out.extend_from_slice(&longueur(binaire.len()));
+    out.extend_from_slice(b"BIN\0");
+    out.extend_from_slice(&binaire);
+    out
+}
+
+/// Le document privé de l'URI de son tampon, et le contenu de ce tampon : ce que porte le
+/// morceau `BIN` d'un GLB.
+fn tampon_detache(source: &str) -> (String, Vec<u8>) {
+    let ouvrant = format!(", \"uri\": \"{DATA_PREFIX}");
+    let debut = source.find(&ouvrant).expect("le document de test a changé");
+    let charge = debut + ouvrant.len();
+    let fin = charge + source[charge..].find('"').expect("URI fermé");
+    (
+        format!("{}{}", &source[..debut], &source[fin + 1..]),
+        decode(&source[charge..fin]),
+    )
+}
+
+#[test]
+fn t220_une_scene_sans_nodes_est_acceptee_et_la_scene_par_defaut_garde_les_siens() {
+    // glTF 2.0 n'exige aucun membre d'une scène, et l'exportateur de Blender 5.2 écrit sans
+    // `nodes` chaque scène du fichier où rien n'est exporté. `gltf-json` 1.4.1 refusait le
+    // document entier : « missing field `nodes` ».
+    let (reference, rapport_reference) =
+        import_gltf(triangle("", "").as_bytes(), &LIMITS, |_| None).expect("import refusé");
+    for (scene, scenes) in [
+        // La forme qu'écrit Blender : la scène vide après, avec ses extras.
+        (
+            0,
+            r#"[{ "name": "ballon_test", "nodes": [0] }, { "extras": { "cycles": {} }, "name": "Scene" }]"#,
+        ),
+        // Une scène vide avant, une autre après : la scène par défaut est au milieu.
+        (1, r#"[{}, { "nodes": [0] }, { "name": "vide" }]"#),
+    ] {
+        let source = triangle_aux_scenes(scene, scenes);
+        let (asset, rapport) = import_gltf(source.as_bytes(), &LIMITS, |_| None)
+            .unwrap_or_else(|refus| panic!("{scenes} : {refus:?}"));
+        // La scène par défaut, la seule qui ait des nodes, donne son triangle ; les scènes
+        // vides n'ajoutent rien.
+        assert_eq!(asset, reference, "{scenes}");
+        assert_eq!(rapport, rapport_reference, "{scenes}");
+    }
+}
+
+#[test]
+fn t220_un_glb_a_scene_sans_nodes_garde_son_morceau_binaire() {
+    // L'export du ballon d'ADR-149, avant `use_active_scene` : un GLB, son tampon dans le
+    // morceau `BIN`, une seconde scène sans `nodes`. La relecture doit reprendre ce morceau.
+    let (json, bin) = tampon_detache(&triangle("", ""));
+    let (reference, _) =
+        import_gltf(&glb_binaire(&json, &bin), &LIMITS, |_| None).expect("import refusé");
+    assert_eq!(reference.indices, vec![0, 1, 2]);
+
+    let (json, bin) = tampon_detache(&triangle_aux_scenes(
+        0,
+        r#"[{ "nodes": [0] }, { "name": "Scene" }]"#,
+    ));
+    let (asset, _) =
+        import_gltf(&glb_binaire(&json, &bin), &LIMITS, |_| None).expect("import refusé");
+    assert_eq!(asset, reference);
+}
+
+#[test]
+fn t220_un_document_complete_mais_fautif_est_refuse_pour_sa_vraie_faute() {
+    // La première lecture s'arrête à la scène sans `nodes`, qui n'est pas une faute : le refus
+    // doit nommer celle qui reste, plus loin dans le document.
+    let source = triangle_aux_scenes(0, r#"[{ "nodes": [0] }, {}]"#).replace(
+        "\"count\": 3, \"type\": \"SCALAR\"",
+        "\"count\": \"trois\", \"type\": \"SCALAR\"",
+    );
+    assert_eq!(
+        source.matches("\"trois\"").count(),
+        1,
+        "le document de test a changé"
+    );
+    let refus = import_gltf(source.as_bytes(), &LIMITS, |_| None).unwrap_err();
+    let ImportError::Malformed { detail, .. } = &refus else {
+        panic!("refus de forme attendu, obtenu {refus:?}");
+    };
+    assert!(
+        detail.contains("trois") && !detail.contains("nodes"),
+        "{detail}"
+    );
+}

@@ -216,3 +216,10 @@ Definition of Done (PARTIE 37.3).
 
 - Contenu d'exemple du MDK Forge (bloc, objet et onglet creatif de
   demonstration), etranger au moteur et contraire a l'interdiction 3.3.
+
+### Corrige
+
+- Import glTF (C-21) : une scene sans `nodes`, que glTF 2.0 admet, ne fait
+  plus refuser le document. `gltf-json` 1.4.1 exigeait le membre ;
+  l'exportateur de Blender en ecrit une pour chaque scene du fichier ou rien
+  n'est exporte. Un document que la bibliotheque accepte est lu comme avant.

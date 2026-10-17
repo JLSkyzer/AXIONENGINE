@@ -27,6 +27,7 @@ mod gltf;
 mod gltf_extras;
 mod gltf_material;
 mod gltf_refs;
+mod gltf_scenes;
 mod material;
 mod obj;
 mod obj_material;

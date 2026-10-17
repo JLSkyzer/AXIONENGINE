@@ -1660,3 +1660,17 @@ pour `cargo`. La bibliothèque que charge la JVM est celle que Gradle construit 
 **Règle.** Dans un script de mutations, `CARGO_TARGET_DIR` ne va qu'aux commandes `cargo` ; une commande
 Gradle garde l'environnement tel quel. Une mutation du natif jugée par un test Java se vérifie d'abord
 rouge sur un cas connu avant de croire son verdict.
+
+## 2026-10-17 | Un test d'échappement écrit par l'outil Write ne testait pas l'échappement
+
+**Ce qui a mal tourné.** Le test `une_cle_echappee_compte_comme_nodes` (`gltf_scenes.rs`) devait
+porter la clé `no\u0064es` ; l'outil Write a décodé l'échappement, et le fichier portait `nodes`. Le
+test passait sans rien vérifier de ce que son nom annonce ; la mutation « clé échappée ignorée » a
+survécu, et les verdicts croisés des mutations voisines étaient incohérents.
+
+**Cause.** Un échappement Unicode voulu littéral dans le contenu d'un appel d'outil arrive décodé
+(note BDC : « Un échappement Unicode voulu littéral dans un appel d'outil de Claude Code peut arriver décodé dans le fichier »).
+
+**Règle.** Un antislash-u littéral s'écrit par un script qui construit l'antislash (`chr(92)`), et se
+relit par `grep` sur le disque. Une mutation qui survit se lit d'abord dans le fichier de test avant
+qu'on touche au code.

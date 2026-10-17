@@ -10,6 +10,7 @@
 use super::gltf_extras::{NodeAnnotations, NodeRole};
 use super::gltf_material::{self, GltfMaterials};
 use super::gltf_refs;
+use super::gltf_scenes;
 use super::material::UvMapping;
 use super::{check_relative_path, ImportError, ImportLimits, ImportedAsset, SourceFormat};
 use crate::collider::{ColliderMode, ColliderRequest};
@@ -117,7 +118,8 @@ fn import_gltf_inner(
     // ferait dépendre ce qu'AXION accepte de ce que la bibliothèque implémente,
     // et un asset refusé le serait alors pour la mauvaise raison.
     let mut report = GltfReport::default();
-    check_extensions(json_text(bytes, format)?, &mut report)?;
+    let json = json_text(bytes, format)?;
+    check_extensions(json, &mut report)?;
 
     // `from_slice_without_validation` et non `from_slice` : le validateur de
     // `gltf-json` indexe `root.accessors[…]` sans verifier la borne, donc il
@@ -128,12 +130,7 @@ fn import_gltf_inner(
     // `.nth(index).unwrap()`, ce qui deplacerait simplement la panique. C'est
     // pourquoi les references sont verifiees ici, **avant** d'en deréférencer
     // une seule.
-    let document = gltf::Gltf::from_slice_without_validation(bytes).map_err(|error| {
-        ImportError::Malformed {
-            format,
-            detail: error.to_string(),
-        }
-    })?;
+    let document = read_document(bytes, json, format)?;
     gltf_refs::check_references(document.document.as_json(), format)?;
     report.root_extras = document
         .document
@@ -204,6 +201,45 @@ fn build_collider_requests(
             }
         }
     }
+}
+
+/// Lit le document, scènes sans `nodes` comprises (`gltf_scenes`).
+///
+/// La lecture de la bibliothèque passe d'abord, telle quelle : un document
+/// qu'elle accepte est lu comme avant, au bit près (R-562). Seul un document
+/// qu'elle refuse est relu, ses scènes sans `nodes` complétées ; s'il l'est
+/// encore, c'est pour une autre faute, que dit la seconde lecture — la première
+/// pouvait ne parler que de ces scènes. Les positions de cette faute sont celles
+/// du texte complété : sur la ligne d'une scène complétée, une colonne qui suit
+/// est décalée des caractères insérés.
+fn read_document(
+    bytes: &[u8],
+    json: &str,
+    format: SourceFormat,
+) -> Result<gltf::Gltf, ImportError> {
+    let malformed = |detail: String| ImportError::Malformed { format, detail };
+    let refusal = match gltf::Gltf::from_slice_without_validation(bytes) {
+        Ok(document) => return Ok(document),
+        Err(refusal) => refusal,
+    };
+    let Some(filled) = gltf_scenes::fill_missing_nodes(json) else {
+        return Err(malformed(refusal.to_string()));
+    };
+    // Le morceau binaire d'un GLB est repris tel quel ; le conteneur se relit
+    // dans le même ordre que la première fois, avant son JSON.
+    let blob = if format == SourceFormat::Glb {
+        gltf::Glb::from_slice(bytes)
+            .map_err(|error| malformed(error.to_string()))?
+            .bin
+            .map(std::borrow::Cow::into_owned)
+    } else {
+        None
+    };
+    let root = gltf::json::Root::from_str(&filled).map_err(|error| malformed(error.to_string()))?;
+    Ok(gltf::Gltf {
+        document: gltf::Document::from_json_without_validation(root),
+        blob,
+    })
 }
 
 /// Rend le texte JSON du document.
