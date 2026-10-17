@@ -1644,3 +1644,19 @@ seulement « schéma versionné ») ni dans un ADR. Le lecteur s'appuyait sur un
 **Règle.** Un lecteur de tampon compare la version de schéma à **la** version qu'il sait lire, à
 l'égalité ; « depuis N » seulement si un ADR garantit l'évolution par ajout en fin pour ce kind. Le
 commentaire de `schema_version` dit désormais la vraie règle.
+
+## 2026-10-17 | Une mutation du natif « passe » le test JNI parce que Gradle a chargé une autre bibliothèque
+
+**Ce qui a mal tourné.** Dans la campagne d'ADR-148, la mutation du pont JNI (`jni_asset_diagnostics`
+rendant une taille nulle) a survécu à `NativeBridgeTest`, qui l'aurait pourtant vue. Le script imposait
+`CARGO_TARGET_DIR` à toutes ses commandes, Gradle compris : Gradle a construit la bibliothèque mutée
+dans cette cible, et le test a chargé celle de la cible par défaut, non mutée. Une mutation non exercée
+passait pour une mutation survivante — l'inverse, une mutation crue tuée sans l'être, était tout aussi
+possible.
+
+**Cause.** `CARGO_TARGET_DIR` sert ici à contourner le verrou LNK1104 des tests Rust ; il ne vaut que
+pour `cargo`. La bibliothèque que charge la JVM est celle que Gradle construit dans `target/`.
+
+**Règle.** Dans un script de mutations, `CARGO_TARGET_DIR` ne va qu'aux commandes `cargo` ; une commande
+Gradle garde l'environnement tel quel. Une mutation du natif jugée par un test Java se vérifie d'abord
+rouge sur un cas connu avant de croire son verdict.
