@@ -1999,6 +1999,43 @@ fn t384_une_requete_ne_mute_pas_le_monde() {
     assert_eq!(world.body_count(), before, "aucun corps ajouté ni retiré");
 }
 
+/// R-650 : les requêtes sont parallélisables. Le monde se partage entre threads (`Sync`, ce que
+/// la compilation de ce test vérifie), et des requêtes lancées en même temps rendent ce que
+/// rendent les mêmes, l'une après l'autre.
+#[test]
+fn t384_des_requetes_simultanees_rendent_ce_que_rendent_les_memes_en_serie() {
+    fn partageable<T: Sync>(_: &T) {}
+    let (world, _) = world_with_ground();
+    partageable(&world);
+    let rayons: Vec<(Vec3, Vec3)> = (0..64)
+        .map(|i| {
+            let x = (i % 8) as f32 - 3.5;
+            let z = (i / 8) as f32 - 3.5;
+            (Vec3::new(x, 10.0, z), Vec3::new(0.1 * x, -1.0, 0.1 * z))
+        })
+        .collect();
+    let lancer = |&(origine, direction): &(Vec3, Vec3)| {
+        world.raycast(origine, direction, 50.0, SpatialFilter::new())
+    };
+    let en_serie: Vec<_> = rayons.iter().map(lancer).collect();
+    assert!(
+        en_serie.iter().all(Option::is_some),
+        "chaque rayon touche le sol"
+    );
+
+    let en_parallele: Vec<_> = std::thread::scope(|threads| {
+        let parts: Vec<_> = rayons
+            .chunks(8)
+            .map(|part| threads.spawn(move || part.iter().map(lancer).collect::<Vec<_>>()))
+            .collect();
+        parts
+            .into_iter()
+            .flat_map(|part| part.join().expect("aucun thread ne panique"))
+            .collect()
+    });
+    assert_eq!(en_serie, en_parallele);
+}
+
 #[test]
 fn t384_le_raycast_par_lot_rend_un_resultat_par_rayon() {
     let (world, ground) = world_with_ground();

@@ -2159,7 +2159,9 @@ substituable sans changer rapier »).
             Sur la `QueryPipeline` de rapier (broad-phase courant) ; lecture seule (R-650),
             géométrie du dernier pas = début de tick (R-651). Types de résultat AXION
             (glam), aucun type rapier exposé. Tests : rayon touche/manque, filtre
-            d'exclusion, overlap, sweep, non-mutation, lot (couvre T-380..T-384). R-652
+            d'exclusion, overlap, sweep, non-mutation, lot (couvre T-380..T-384). R-650 « parallélisable »
+            prouvé le 2026-10-17 : des requêtes lancées de huit threads à la fois rendent ce que
+            rendent les mêmes en série, et le monde est `Sync` (T-384, mutation rouge). R-652
             (géométrie déformée) et T-856 : avec la déformation, en M6.
       - [x] **C-40 — Simulation Scheduler** (fiche 5.32, R-660..662) — **composant
             implémenté**. Module `ax_physics::scheduler` : ordre normatif du pas **figé**
@@ -2868,7 +2870,7 @@ amortissement dans l'eau, `/axion remove`).
       - **L'effort max après le reste de M3** : amendement A1 d'ADR-137 et R-1011 (C-31 : au-delà du
         plafond d'événements, agréger par paire au lieu de jeter — aujourd'hui `push_event` jette).
       - Reste à proposer, par un ADR de portée de la DoD de M3 (modèle d'ADR-137) : métriques des tuiles
-        et des requêtes, R-650 prouvé, T-015,
+        et des requêtes, T-015,
         les écarts du rendu (surcharge des budgets de frame, temps GPU par passe, overlays de C-67
         sans jalon, garde GL et R-741) et les cases périmées.
 - [ ] **E3 — décisions de Killian** — [ADR-144](../docs/decisions/ADR-144.md), 2026-10-16 : niveaux Q-0..Q-4 et

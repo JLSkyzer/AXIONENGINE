@@ -40,6 +40,8 @@ Definition of Done (PARTIE 37.3).
   - banc de rendu : transparence ordonnee (T-476), aucune texture d'AXION
     laissee sur le GPU par une bascule de backend (T-481), ressources
     reconstruites par un vrai changement de resource pack (T-483) ;
+  - requetes spatiales lancees de plusieurs threads a la fois : le monde se
+    partage (`Sync`) et rend ce qu'il rend en serie (R-650, T-384) ;
   - invariants verifies mecaniquement : T-006 (INV-01), T-011 (INV-03),
     T-012 (INV-04), T-019 (INV-12) ;
   - un collider `convex` ne garde que les sommets de son enveloppe : ni
