@@ -17,4 +17,12 @@ public final class MalformedPacketException extends Exception {
     public MalformedPacketException(String reason) {
         super(reason, null, false, false);
     }
+
+    /**
+     * @param where ce que le récepteur lisait, par exemple « registre en jeu »
+     * @return la ligne de journal du paquet ignoré (R-1650)
+     */
+    public String report(String where) {
+        return "E-5001 paquet ignoré (" + where + ") : " + getMessage();
+    }
 }

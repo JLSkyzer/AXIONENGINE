@@ -1,5 +1,7 @@
 package dev.axion.net;
 
+import dev.axion.config.AxionConfig;
+
 /**
  * {@code S2C_Handshake} (21.3), complété de l'empreinte déterministe du serveur (ADR-150 D4).
  *
@@ -36,6 +38,39 @@ public record ServerHandshake(
         long damageSourcesHash,
         long materialsHash,
         DetProfile det) {
+
+    /**
+     * Politique de quantification de la déformation (R-1641). Une seule existe tant que la déformation
+     * n'est pas répliquée : M6 en définira d'autres.
+     */
+    public static final int DEFORM_QUANT_POLICY = 0;
+
+    /**
+     * Le handshake d'un serveur : sa configuration de simulation, les empreintes du registre qu'il
+     * envoie, et son empreinte déterministe.
+     *
+     * @param config configuration commune du serveur
+     * @param registry registre qu'il envoie
+     * @param det son empreinte déterministe
+     * @return le handshake
+     */
+    public static ServerHandshake of(AxionConfig config, RegistryContent registry, DetProfile det) {
+        return new ServerHandshake(
+                NetProtocol.PROTOCOL_VERSION,
+                (float) config.getFloat("sim.fixed_dt"),
+                (int) config.getInt("sim.max_substeps"),
+                (float) config.getFloat("physics.gravity"),
+                (int) config.getInt("net.snapshot_rate_hz"),
+                (int) config.getInt("net.interpolation_delay_ms"),
+                config.getBoolean("net.prediction"),
+                config.getBoolean("deformation.enabled"),
+                DEFORM_QUANT_POLICY,
+                registry.definitionsHash(),
+                // Les sources de dégâts viennent avec leur système, en M6 (ADR-150 D5).
+                RegistryContent.EMPTY_DIGEST,
+                registry.materialsHash(),
+                det);
+    }
 
     /** {@return le message, genre compris} */
     public byte[] encode() {

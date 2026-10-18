@@ -1,8 +1,10 @@
 package dev.axion.net;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -101,6 +103,68 @@ public final class RegistryContent {
         return sorted;
     }
 
+    /**
+     * Rassemble les fichiers d'un registre en écartant ceux que le client refuserait à la lecture.
+     *
+     * <p>Les bornes sont celles de {@link #decode} : une entrée qui en sort ferait refuser tout le
+     * registre chez le client. Elle ne part pas, et le serveur le dit ; les autres partent.
+     */
+    public static final class Builder {
+
+        private final Map<Family, SortedMap<String, byte[]>> files = new EnumMap<>(Family.class);
+        private final List<String> excluded = new ArrayList<>();
+
+        private Builder() {
+            for (Family family : Family.values()) {
+                files.put(family, new TreeMap<>());
+            }
+        }
+
+        /**
+         * @param family famille du fichier
+         * @param path identifiant de ressource
+         * @param json texte du fichier
+         * @return ce constructeur
+         */
+        public Builder add(Family family, String path, byte[] json) {
+            String refusal = refusal(family, path, json);
+            if (refusal != null) {
+                excluded.add(path + " non transmis aux clients : " + refusal + " (R-1691)");
+            } else {
+                files.get(family).put(path, json.clone());
+            }
+            return this;
+        }
+
+        /** {@return les fichiers écartés, chacun avec sa raison} */
+        public List<String> excluded() {
+            return List.copyOf(excluded);
+        }
+
+        /** {@return le registre des fichiers admis} */
+        public RegistryContent build() {
+            Map<Family, SortedMap<String, byte[]>> copy = new EnumMap<>(Family.class);
+            files.forEach((family, entries) -> copy.put(family, new TreeMap<>(entries)));
+            return new RegistryContent(copy);
+        }
+    }
+
+    /** {@return un constructeur de registre vide} */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /** {@return pourquoi un fichier ne peut pas partir dans le registre, ou {@code null} s'il le peut} */
+    private static String refusal(Family family, String path, byte[] json) {
+        if (!belongs(family, path)) {
+            return "identifiant invalide pour " + family + ", ou de plus de " + MAX_PATH_BYTES + " octets";
+        }
+        if (json.length > MAX_FILE_BYTES) {
+            return json.length + " octets, au-delà de " + MAX_FILE_BYTES;
+        }
+        return null;
+    }
+
     private static boolean belongs(Family family, String path) {
         int colon = path.indexOf(':');
         return PATH.matcher(path).matches()
@@ -158,9 +222,14 @@ public final class RegistryContent {
         return out;
     }
 
+    /** {@return le nombre d'entrées, toutes familles comprises} */
+    public int size() {
+        return files.values().stream().mapToInt(Map::size).sum();
+    }
+
     /** {@return le registre codé, avant compression} */
     byte[] encode() {
-        int count = files.values().stream().mapToInt(Map::size).sum();
+        int count = size();
         WireWriter writer = new WireWriter(1024).varUInt(count);
         for (Family family : Family.values()) {
             for (Map.Entry<String, byte[]> entry : files.get(family).entrySet()) {

@@ -17,6 +17,9 @@ public final class MessageKinds {
     /** {@code S2C_Registry} (21.4, ADR-150 D5). */
     public static final int REGISTRY = 3;
 
+    /** {@code C2S_RegistryAck}, ajouté par la tranche 3 d'ADR-150 : le registre que le client tient. */
+    public static final int REGISTRY_ACK = 4;
+
     private MessageKinds() {
         throw new AssertionError("classe de constantes, non instanciable");
     }

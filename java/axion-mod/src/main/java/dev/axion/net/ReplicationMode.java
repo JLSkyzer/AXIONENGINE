@@ -31,4 +31,24 @@ public enum ReplicationMode {
         boolean same = server.profile() == client.profile();
         return same && server.inMatrix() && client.inMatrix() ? RECONSTRUCT : SNAPSHOT;
     }
+
+    /**
+     * Dit pourquoi {@link #negotiate} choisit son mode : 5.12bis veut le mode journalisé avec sa cause.
+     *
+     * @param server empreinte du serveur
+     * @param client empreinte du client
+     * @return la cause, lisible dans le journal
+     */
+    public static String cause(DetProfile server, DetProfile client) {
+        if (server.profile() != client.profile()) {
+            return "empreintes déterministes différentes";
+        }
+        if (!server.inMatrix()) {
+            return "serveur hors de la matrice validée";
+        }
+        if (!client.inMatrix()) {
+            return "client hors de la matrice validée";
+        }
+        return "empreintes égales, dans la matrice validée";
+    }
 }

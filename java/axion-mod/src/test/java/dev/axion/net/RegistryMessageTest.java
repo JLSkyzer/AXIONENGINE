@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -205,5 +206,29 @@ class RegistryMessageTest {
         byte[] autreGenre = new ClientHandshake(NetProtocol.PROTOCOL_VERSION,
                 new DetProfile(0L, 1, false)).encode();
         assertThrows(MalformedPacketException.class, () -> RegistryMessage.decode(autreGenre, IDENTITE));
+    }
+
+    @Test
+    @DisplayName("R-1691 : un registre que le client refuserait pour sa taille n'est pas encodé")
+    void unRegistreTropGrosNEstPasEncode() {
+        // Décompressé au-delà de la borne du client : un fichier de 1 Mio de plus que ce qu'elle tient.
+        Map<String, byte[]> gros = new LinkedHashMap<>();
+        for (int index = 0; index <= RegistryMessage.MAX_CONTENT_BYTES / RegistryContent.MAX_FILE_BYTES; index++) {
+            gros.put("axion:axion/definitions/g" + index + ".json", new byte[RegistryContent.MAX_FILE_BYTES]);
+        }
+        RegistryContent tropGros = RegistryContent.of(Map.of(), Map.of(), gros);
+        IllegalArgumentException taille = assertThrows(IllegalArgumentException.class,
+                () -> RegistryMessage.encode(tropGros, IDENTITE));
+        assertTrue(taille.getMessage().contains("au-delà de " + RegistryMessage.MAX_CONTENT_BYTES), taille::getMessage);
+
+        // Sous cette borne, mais plus long que ce que la fragmentation porte.
+        Map<String, byte[]> moyen = new LinkedHashMap<>();
+        for (int index = 0; (long) index * RegistryContent.MAX_FILE_BYTES <= Fragments.MAX_MESSAGE_BYTES; index++) {
+            moyen.put("axion:axion/definitions/m" + index + ".json", new byte[RegistryContent.MAX_FILE_BYTES]);
+        }
+        RegistryContent tropLong = RegistryContent.of(Map.of(), Map.of(), moyen);
+        IllegalArgumentException longueur = assertThrows(IllegalArgumentException.class,
+                () -> RegistryMessage.encode(tropLong, IDENTITE));
+        assertTrue(longueur.getMessage().contains("au-delà de " + Fragments.MAX_MESSAGE_BYTES), longueur::getMessage);
     }
 }

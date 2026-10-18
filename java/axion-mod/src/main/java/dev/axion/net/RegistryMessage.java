@@ -20,15 +20,32 @@ public final class RegistryMessage {
      * @param content registre du serveur
      * @param compression compression des charges utiles réseau
      * @return le message, genre compris
+     * @throws IllegalArgumentException si le registre dépasse une borne que le client applique à la
+     *     lecture — nombre d'entrées, taille décompressée, taille du message : le client le refuserait
+     *     en entier, et c'est une faute de l'émetteur
      */
     public static byte[] encode(RegistryContent content, NetCompression compression) {
-        byte[] frame = compression.compress(content.encode());
-        return new WireWriter(frame.length + 32)
+        if (content.size() > RegistryContent.MAX_ENTRIES) {
+            throw new IllegalArgumentException("registre de " + content.size() + " entrées, au-delà de "
+                    + RegistryContent.MAX_ENTRIES);
+        }
+        byte[] plain = content.encode();
+        if (plain.length > MAX_CONTENT_BYTES) {
+            throw new IllegalArgumentException("registre de " + plain.length + " octets, au-delà de "
+                    + MAX_CONTENT_BYTES);
+        }
+        byte[] frame = compression.compress(plain);
+        byte[] message = new WireWriter(frame.length + 32)
                 .u8(MessageKinds.REGISTRY)
                 .i64(content.definitionsHash())
                 .i64(content.materialsHash())
                 .bytes(frame)
                 .toByteArray();
+        if (message.length > Fragments.MAX_MESSAGE_BYTES) {
+            throw new IllegalArgumentException("registre compressé en " + message.length
+                    + " octets, au-delà de " + Fragments.MAX_MESSAGE_BYTES);
+        }
+        return message;
     }
 
     /**
