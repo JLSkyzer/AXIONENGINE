@@ -51,9 +51,9 @@ use ax_physics::{
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 5 depuis l'index de
-/// matériau des en-têtes de tuiles (ADR-149 D4).
-pub const AXION_ABI_VERSION: u32 = 5;
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 6 depuis l'empreinte
+/// déterministe et la compression des charges utiles réseau (ADR-150 D4, D5).
+pub const AXION_ABI_VERSION: u32 = 6;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -160,6 +160,45 @@ pub extern "C" fn axion_abi_version() -> i32 {
     // Le transtypage est sûr : la version reste très en deçà de i32::MAX, et
     // une valeur négative serait indiscernable d'un code d'erreur.
     AXION_ABI_VERSION as i32
+}
+
+/// Empreinte de configuration déterministe de cette bibliothèque (5.12bis), échangée au
+/// handshake (ADR-150 D4).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AxionDetProfile {
+    /// `det_profile` : hash du triplet cible, de `DET_KERNEL_VERSION`, du jeu d'instructions
+    /// compilé et des drapeaux flottants.
+    pub profile: u64,
+    /// `DET_KERNEL_VERSION` du noyau déterministe (C-16).
+    pub kernel_version: u32,
+    /// 1 si la configuration figure, validée, dans la matrice de 5.12bis (R-516) ; 0 sinon.
+    pub in_matrix: u32,
+}
+
+/// Rend l'empreinte de configuration déterministe (5.12bis), pour le handshake (ADR-150 D4).
+///
+/// Ne dépend d'aucun contexte, comme [`axion_abi_version`] : c'est une propriété du binaire,
+/// que le serveur et le client lisent chacun chez eux avant de la comparer.
+///
+/// # Safety
+///
+/// `out` doit être accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_det_profile(out: *mut AxionDetProfile) -> i32 {
+    shielded(None, || {
+        if out.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let profile = AxionDetProfile {
+            profile: ax_det::det_profile(),
+            kernel_version: ax_det::DET_KERNEL_VERSION,
+            in_matrix: u32::from(ax_det::is_in_validation_matrix()),
+        };
+        // SAFETY: nullité écartée ci-dessus.
+        unsafe { out.write(profile) };
+        AXION_OK
+    })
 }
 
 /// Initialise le contexte natif.
@@ -828,6 +867,115 @@ pub unsafe extern "C" fn axion_asset_diagnostics(ctx: u64, job_id: u32, out_size
             Ok(Err(code)) | Err(code) => code,
         }
     })
+}
+
+/// Plus grande charge utile réseau que la compression et la décompression acceptent, en octets.
+///
+/// Au-delà de toute charge de M4 — un registre de definitions et de matériaux compressé tient en
+/// quelques dizaines de Kio. Elle borne ce qu'une borne d'appelant trop large ferait allouer : une
+/// trame qui déclare plus est refusée sans allocation (R-1691).
+pub const AXION_NET_MAX_PAYLOAD: u64 = 64 * 1024 * 1024;
+
+/// Compresse en zstd une charge utile réseau (C-51, ADR-150 D5).
+///
+/// L'entrée est lue dans `NET_OUT`, où Java l'a écrite : `input_len` octets après l'en-tête, R-313
+/// interdisant à une fonction FFI d'allouer côté Java. La trame compressée la remplace dans
+/// `NET_OUT`, sa taille dans `out_size` ; le tampon peut avoir été agrandi, et sa génération
+/// avancée (R-270) : Java réacquiert sa vue avant de lire.
+///
+/// Rend `E-2002` si l'entrée sort du tampon ou dépasse [`AXION_NET_MAX_PAYLOAD`], ou si libzstd
+/// refuse. L'appel ne bloque jamais (R-280).
+///
+/// # Safety
+///
+/// `out_size` doit être accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_net_compress(ctx: u64, input_len: u64, out_size: *mut u64) -> i32 {
+    shielded(Some(ctx), || {
+        if out_size.is_null() || input_len > AXION_NET_MAX_PAYLOAD {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let outcome = context::with(ctx, false, |session| {
+            // L'entrée est copiée avant d'écrire la sortie au même endroit.
+            let input = session
+                .buffers()
+                .payload(BufferKind::NetOut, input_len)
+                .ok_or(AXION_E_INVALID_BUFFER)?
+                .to_vec();
+            let frame =
+                ax_asset::compression::compress(&input, ax_asset::compression::NETWORK_LEVEL)
+                    .ok_or(AXION_E_INVALID_BUFFER)?;
+            session
+                .buffers()
+                .write_payload(BufferKind::NetOut, &frame)
+                .ok_or(AXION_E_INVALID_BUFFER)
+        });
+        // SAFETY: `out_size` non nul, écarté ci-dessus ; accessible en écriture, contrat de l'appel.
+        unsafe { write_net_size(outcome, out_size) }
+    })
+}
+
+/// Décompresse une trame zstd reçue du réseau (C-51, ADR-150 D5), sans dépasser `max_output`.
+///
+/// La trame est lue dans `NET_OUT`, où Java l'a écrite (`input_len` octets) ; le contenu la
+/// remplace, sa taille dans `out_size`. La taille que la trame déclare est comparée à
+/// `max_output` — ramené à [`AXION_NET_MAX_PAYLOAD`] — **avant** toute allocation (R-1691), et une
+/// trame dont le contenu ne fait pas exactement cette taille est refusée.
+///
+/// Rend `E-2002` si la trame sort du tampon, n'est pas une trame zstd, ne déclare pas sa taille,
+/// déclare plus que la borne ou ment sur elle. L'appel ne bloque jamais (R-280).
+///
+/// # Safety
+///
+/// `out_size` doit être accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_net_decompress(
+    ctx: u64,
+    input_len: u64,
+    max_output: u64,
+    out_size: *mut u64,
+) -> i32 {
+    shielded(Some(ctx), || {
+        // La sortie est bornée ; l'entrée l'est par le tampon que Java a acquis, et une trame
+        // plus longue que son contenu borné est refusée par la taille qu'elle déclare.
+        if out_size.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let Ok(bound) = usize::try_from(max_output.min(AXION_NET_MAX_PAYLOAD)) else {
+            return AXION_E_INVALID_BUFFER;
+        };
+        let outcome = context::with(ctx, false, |session| {
+            let frame = session
+                .buffers()
+                .payload(BufferKind::NetOut, input_len)
+                .ok_or(AXION_E_INVALID_BUFFER)?
+                .to_vec();
+            let content = ax_asset::compression::decompress_bounded(&frame, bound)
+                .ok_or(AXION_E_INVALID_BUFFER)?;
+            session
+                .buffers()
+                .write_payload(BufferKind::NetOut, &content)
+                .ok_or(AXION_E_INVALID_BUFFER)
+        });
+        // SAFETY: `out_size` non nul, écarté ci-dessus ; accessible en écriture, contrat de l'appel.
+        unsafe { write_net_size(outcome, out_size) }
+    })
+}
+
+/// Rend le code d'une opération sur `NET_OUT`, et sa taille de sortie en cas de succès.
+///
+/// # Safety
+///
+/// `out_size` doit être non nul et accessible en écriture.
+unsafe fn write_net_size(outcome: Result<Result<u64, i32>, i32>, out_size: *mut u64) -> i32 {
+    match outcome {
+        Ok(Ok(size)) => {
+            // SAFETY: contrat de la fonction.
+            unsafe { out_size.write(size) };
+            AXION_OK
+        }
+        Ok(Err(code)) | Err(code) => code,
+    }
 }
 
 /// Abandonne une compilation que l'appelant n'attend plus (IF-06, ADR-140).

@@ -196,6 +196,18 @@ pub(crate) fn decompress(stored: &[u8], capacity: usize) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// La taille de contenu que déclare une trame zstd — `ZSTD_getFrameContentSize`.
+///
+/// `None` si ce n'est pas une trame zstd, ou si elle ne déclare pas sa taille.
+pub(crate) fn frame_content_size(frame: &[u8]) -> Option<u64> {
+    // `ZSTD_CONTENTSIZE_UNKNOWN` et `ZSTD_CONTENTSIZE_ERROR` de `zstd.h`.
+    const UNKNOWN: u64 = u64::MAX;
+    const ERROR: u64 = u64::MAX - 1;
+    // SAFETY: fonction pure de libzstd, qui ne lit que `frame.len()` octets de `frame`.
+    let declared = unsafe { zs::ZSTD_getFrameContentSize(frame.as_ptr().cast(), frame.len()) };
+    (declared != UNKNOWN && declared != ERROR).then_some(declared)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

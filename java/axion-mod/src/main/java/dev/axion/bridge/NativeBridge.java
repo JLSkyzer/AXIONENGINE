@@ -31,9 +31,10 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}.
+     * {@code E-1002}. 6 depuis l'empreinte déterministe et la compression des charges utiles
+     * réseau (ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 5;
+    public static final int EXPECTED_ABI_VERSION = 6;
 
     /** Succès. */
     public static final int OK = 0;
@@ -118,6 +119,12 @@ public final class NativeBridge {
     static native int assetCancel(long ctx, int jobId);
 
     static native int assetDiagnostics(long ctx, int jobId, long[] out);
+
+    static native int detProfile(long[] out);
+
+    static native int netCompress(long ctx, long inputLength, long[] out);
+
+    static native int netDecompress(long ctx, long inputLength, long maxOutput, long[] out);
 
     static native int simSubmit(long ctx, long tick, int commandCount, int impactCount);
 
@@ -369,6 +376,62 @@ public final class NativeBridge {
         }
         CROSSINGS.increment();
         return assetDiagnostics(ctx, jobId, out);
+    }
+
+    /**
+     * Rend l'empreinte de configuration déterministe de la bibliothèque (5.12bis), échangée au
+     * handshake (ADR-150 D4). Sans contexte, comme {@link #nativeAbiVersion()} : c'est une
+     * propriété du binaire.
+     *
+     * @param out tableau d'au moins trois éléments, qui reçoit l'empreinte, la version du noyau
+     *     déterministe, et 1 si la configuration figure, validée, dans la matrice (R-516)
+     * @return {@link #OK}, ou un code d'erreur
+     */
+    public static int readDetProfile(long[] out) {
+        if (out == null || out.length < 3) {
+            throw new IllegalArgumentException("le tableau de l'empreinte compte au moins trois éléments");
+        }
+        CROSSINGS.increment();
+        return detProfile(out);
+    }
+
+    /**
+     * Compresse en zstd la charge utile réseau que {@code AXION_BUF_NET_OUT} porte après son
+     * en-tête (C-51, ADR-150 D5). La trame la remplace, et le premier élément du tableau reçoit sa
+     * taille ; le tampon a pu être agrandi (R-270) : la vue se réacquiert avant de lire.
+     *
+     * @param ctx jeton de contexte
+     * @param inputLength octets de la charge, après l'en-tête
+     * @param out tableau d'au moins un élément
+     * @return {@link #OK} ; {@link #E_INVALID_BUFFER} si la charge sort du tampon ou dépasse le
+     *     plafond natif
+     */
+    public static int compressNet(long ctx, long inputLength, long[] out) {
+        if (out == null || out.length < 1) {
+            throw new IllegalArgumentException("le tableau de la taille compte au moins un élément");
+        }
+        CROSSINGS.increment();
+        return netCompress(ctx, inputLength, out);
+    }
+
+    /**
+     * Décompresse la trame zstd que {@code AXION_BUF_NET_OUT} porte après son en-tête, sans
+     * dépasser {@code maxOutput} octets (C-51, ADR-150 D5, R-1691). Le contenu la remplace, et le
+     * premier élément du tableau reçoit sa taille ; la vue se réacquiert avant de lire.
+     *
+     * @param ctx jeton de contexte
+     * @param inputLength octets de la trame, après l'en-tête
+     * @param maxOutput taille maximale admise du contenu
+     * @param out tableau d'au moins un élément
+     * @return {@link #OK} ; {@link #E_INVALID_BUFFER} si ce n'est pas une trame zstd, si elle
+     *     déclare plus que la borne ou ment sur sa taille, ou si elle sort du tampon
+     */
+    public static int decompressNet(long ctx, long inputLength, long maxOutput, long[] out) {
+        if (out == null || out.length < 1) {
+            throw new IllegalArgumentException("le tableau de la taille compte au moins un élément");
+        }
+        CROSSINGS.increment();
+        return netDecompress(ctx, inputLength, maxOutput, out);
     }
 
     /**

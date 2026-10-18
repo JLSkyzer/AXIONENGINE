@@ -3020,6 +3020,13 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
       bout en bout rouges (rendu sur le registre du serveur : D3 rouge ; compilation client jamais
       pompée : banc bloqué). Le banc efface désormais le cache du client, qui masquait la seconde.
 - [ ] 3. Handshake et registres (D4, D5), `det_profile` et zstd par la FFI, ABI 6 — T-420, T-820c.
+      - [x] 3a. Frontière, ABI 6 (2026-10-18) : `axion_det_profile`, `axion_net_compress`,
+            `axion_net_decompress` par `NET_OUT` ; `DetProfile`, `NativeNetCompression`. Tests ABI et
+            JUnit contre la vraie bibliothèque ; 10 mutations rouges (deux règles redondantes
+            retirées : la vérification de taille, que libzstd fait lui-même, et le plafond d'entrée de
+            la décompression).
+      - [ ] 3b. Messages du handshake et du registre, en Java pur ; 3c. colle Forge (paquets de
+            connexion, renvoi du registre au rechargement), mode de réplication au statut.
 - [ ] 4. Snapshots (D2, D6), fin du pont provisoire — T-410, T-411, T-418.
 - [ ] 5. Interpolation (D7) — T-412, T-413, T-414.
 - [ ] 6. Harnais de joueurs simulés (D8) — T-423, T-424, T-425 ; overlay `network`.

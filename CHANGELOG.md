@@ -23,6 +23,9 @@ Definition of Done (PARTIE 37.3).
     son propre cache (`<gameDir>/axion/client-cache`) ; le rendu dessine
     ce que le client a compile, et un modele absent donne la boite de
     repli et un avertissement, une fois (R-1640, T-421) ;
+    ABI 6 : l'empreinte deterministe de 5.12bis et une compression zstd des
+    charges utiles reseau par le tampon NET_OUT, a decompression bornee avant
+    toute allocation (R-1691) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

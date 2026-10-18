@@ -40,9 +40,10 @@ use crate::abi::{
     axion_abi_version, axion_asset_cancel, axion_asset_compile, axion_asset_diagnostics,
     axion_asset_geometry, axion_asset_load, axion_asset_materials, axion_asset_poll,
     axion_asset_texture, axion_asset_unload, axion_buffer_acquire, axion_buffer_release,
-    axion_debug_fill, axion_init, axion_last_error, axion_metrics_export, axion_shutdown,
-    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
-    AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_debug_fill, axion_det_profile, axion_init, axion_last_error, axion_metrics_export,
+    axion_net_compress, axion_net_decompress, axion_shutdown, axion_sim_cancel, axion_sim_collect,
+    axion_sim_submit, AxionBufferInfo, AxionCollectResult, AxionDetProfile, AXION_E_INVALID_BUFFER,
+    AXION_OK,
 };
 use ax_model::dm::handle::Handle;
 
@@ -134,6 +135,21 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "assetDiagnostics".into(),
             sig: "(JI[J)I".into(),
             fn_ptr: jni_asset_diagnostics as *mut c_void,
+        },
+        NativeMethod {
+            name: "detProfile".into(),
+            sig: "([J)I".into(),
+            fn_ptr: jni_det_profile as *mut c_void,
+        },
+        NativeMethod {
+            name: "netCompress".into(),
+            sig: "(JJ[J)I".into(),
+            fn_ptr: jni_net_compress as *mut c_void,
+        },
+        NativeMethod {
+            name: "netDecompress".into(),
+            sig: "(JJJ[J)I".into(),
+            fn_ptr: jni_net_decompress as *mut c_void,
         },
         NativeMethod {
             name: "simSubmit".into(),
@@ -566,6 +582,92 @@ extern "system" fn jni_asset_diagnostics(
     }
 
     match env.set_long_array_region(&out, 0, &[size as jlong]) {
+        Ok(()) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
+}
+
+/// `NativeBridge.detProfile(long[])` (5.12bis, ADR-150 D4) : l'empreinte, la version du noyau
+/// déterministe et la présence dans la matrice, dans les trois premiers éléments du tableau.
+extern "system" fn jni_det_profile(env: JNIEnv, _class: JClass, out: JLongArray) -> jint {
+    if out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(&out) {
+        Ok(length) if length >= 3 => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+    let mut profile = AxionDetProfile::default();
+    // SAFETY: le pointeur désigne une variable locale.
+    let code = unsafe { axion_det_profile(&raw mut profile) };
+    if code != AXION_OK {
+        return code;
+    }
+    let values = [
+        profile.profile as jlong,
+        jlong::from(profile.kernel_version),
+        jlong::from(profile.in_matrix),
+    ];
+    match env.set_long_array_region(&out, 0, &values) {
+        Ok(()) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
+}
+
+/// `NativeBridge.netCompress(long, long, long[])` (C-51, ADR-150 D5) : la taille de la trame
+/// déposée dans `NET_OUT`, dans le premier élément du tableau.
+extern "system" fn jni_net_compress(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    input_len: jlong,
+    out: JLongArray,
+) -> jint {
+    let Ok(input_len) = u64::try_from(input_len) else {
+        return AXION_E_INVALID_BUFFER;
+    };
+    net_size(&env, &out, |size| {
+        // SAFETY: le pointeur désigne une variable locale de l'appelant.
+        unsafe { axion_net_compress(ctx as u64, input_len, size) }
+    })
+}
+
+/// `NativeBridge.netDecompress(long, long, long, long[])` (C-51, ADR-150 D5) : la taille du
+/// contenu déposé dans `NET_OUT`, dans le premier élément du tableau.
+extern "system" fn jni_net_decompress(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    input_len: jlong,
+    max_output: jlong,
+    out: JLongArray,
+) -> jint {
+    let (Ok(input_len), Ok(max_output)) = (u64::try_from(input_len), u64::try_from(max_output))
+    else {
+        return AXION_E_INVALID_BUFFER;
+    };
+    net_size(&env, &out, |size| {
+        // SAFETY: le pointeur désigne une variable locale de l'appelant.
+        unsafe { axion_net_decompress(ctx as u64, input_len, max_output, size) }
+    })
+}
+
+/// Appelle une opération sur `NET_OUT` et rend sa taille de sortie dans le premier élément de
+/// `out`.
+fn net_size(env: &JNIEnv, out: &JLongArray, call: impl FnOnce(*mut u64) -> i32) -> jint {
+    if out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(out) {
+        Ok(length) if length >= 1 => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+    let mut size: u64 = 0;
+    let code = call(&raw mut size);
+    if code != AXION_OK {
+        return code;
+    }
+    match env.set_long_array_region(out, 0, &[size as jlong]) {
         Ok(()) => AXION_OK,
         Err(_) => AXION_E_INVALID_BUFFER,
     }

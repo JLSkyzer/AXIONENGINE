@@ -4,12 +4,18 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import dev.axion.bootstrap.NativeLoadResult;
 import dev.axion.bootstrap.NativeLoader;
+import dev.axion.net.DetProfile;
+import dev.axion.net.MalformedPacketException;
+import dev.axion.net.NativeNetCompression;
+import dev.axion.net.NetCompression;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -285,6 +291,32 @@ class NativeBridgeTest {
                     message,
                     new String(message.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8),
                     "message d'erreur non UTF-8");
+
+            // ADR-150 D4 : l'empreinte déterministe, propriété du binaire, stable d'un appel à l'autre.
+            DetProfile profil = DetProfile.ofThisBinary();
+            assertEquals(1, profil.kernelVersion(), "DET_KERNEL_VERSION");
+            assertNotEquals(0L, profil.profile(), "empreinte nulle");
+            assertEquals(profil, DetProfile.ofThisBinary(), "empreinte instable");
+
+            // ADR-150 D5 : un registre compressé par le zstd du natif se relit à l'identique ; une
+            // trame plus grande que la borne, ou qui n'en est pas une, est refusée (R-1691). Chaque
+            // appel relâche NET_OUT : la fermeture ci-dessous le vérifie (E-2003 sinon).
+            NetCompression zstd = new NativeNetCompression(ctx);
+            byte[] registre = "{\"schema\":1,\"asset\":\"axion:models/test/ballon.glb\"}\n"
+                    .repeat(2000).getBytes(StandardCharsets.UTF_8);
+            byte[] trame = zstd.compress(registre);
+            assertTrue(trame.length < registre.length, "la trame ne compresse pas");
+            assertThrows(MalformedPacketException.class, () -> zstd.decompress(trame, registre.length - 1));
+            assertThrows(MalformedPacketException.class,
+                    () -> zstd.decompress("pas une trame".getBytes(StandardCharsets.UTF_8), 1024));
+            // Les succès en dernier : un appel qui ne relâcherait pas NET_OUT ferait échouer la
+            // fermeture du contexte (E-2003), alors qu'un refus relâche le tampon de lui-même.
+            try {
+                assertArrayEquals(new byte[0], zstd.decompress(zstd.compress(new byte[0]), 0));
+                assertArrayEquals(registre, zstd.decompress(trame, registre.length));
+            } catch (MalformedPacketException error) {
+                throw new AssertionError("trame valide refusée", error);
+            }
         } finally {
             assertEquals(NativeBridge.OK, NativeBridge.close(ctx));
         }
