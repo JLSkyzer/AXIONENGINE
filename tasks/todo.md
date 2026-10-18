@@ -3012,7 +3012,13 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
       `WireReader`/`WireWriter`, `Fragments` (trames de 32 000 octets au plus : sous R-1651 et sous
       les 32 767 octets qu'un serveur Minecraft 1.20.1 accepte d'un client) ; 21 tests, 17
       mutations rouges. Le canal n'a pas encore de message : les premiers viennent en tranche 3.
-- [ ] 2. Modèles chez le client (D3) — T-421.
+- [x] 2. Modèles chez le client (D3) — T-421. Fait le 2026-10-18 : `ClientModelReload` (resource packs,
+      puis `data/` des mods relu par les packs de Forge), registre et cache du client (`client-cache`),
+      rendu sur ce registre, modèle absent averti une fois (`MissingClientAssets`). Banc de rendu :
+      verdict « ADR-150 D3 » — un cube du mod rouge que le pack de test remplace en bleu ; le client le
+      dessine bleu avec le pack, le serveur ne le voit jamais. 7 tests, 6 mutations unitaires et 2 de
+      bout en bout rouges (rendu sur le registre du serveur : D3 rouge ; compilation client jamais
+      pompée : banc bloqué). Le banc efface désormais le cache du client, qui masquait la seconde.
 - [ ] 3. Handshake et registres (D4, D5), `det_profile` et zstd par la FFI, ABI 6 — T-420, T-820c.
 - [ ] 4. Snapshots (D2, D6), fin du pont provisoire — T-410, T-411, T-418.
 - [ ] 5. Interpolation (D7) — T-412, T-413, T-414.

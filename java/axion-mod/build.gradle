@@ -257,6 +257,9 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
             delete rootProject.file("${dossier}/axion-rendertest")
             // Un cache de shaders neuf : le premier démarrage compile, les suivants relisent (T-905).
             delete rootProject.file("${dossier}/axion/cache")
+            // Un cache d'assets du client neuf (ADR-150 D3) : chaque passage compile chez le client,
+            // et une compilation qui n'avancerait pas s'y voit — un asset repris du cache ne compile rien.
+            delete rootProject.file("${dossier}/axion/client-cache")
             // T-483 : le pack de test que le banc active puis retire, posé neuf.
             def pack = rootProject.file("${dossier}/resourcepacks/axion_banc_pack")
             delete pack

@@ -177,6 +177,17 @@ public final class BancDeRendu {
     /** T-483 : écart toléré par canal entre le bois d'avant le pack et celui d'après. */
     private static final int RETOUR_T483 = 4;
 
+    /**
+     * ADR-150 D3 : un cube du mod ({@code data/}, rouge) que le pack de test remplace par le même cube
+     * en bleu ({@code assets/}). Le serveur ne lit que {@code data/} ; le client compile ses resource
+     * packs d'abord : avec le pack, il doit dessiner le bleu, et le rouge sans lui. Un rendu qui
+     * lirait le registre du serveur resterait rouge.
+     */
+    private static final String MODELE_DU_PACK = "axion:test/materiaux/modele_du_pack";
+
+    /** ADR-150 D3 : de combien, sur 255, le canal attendu doit l'emporter sur l'autre. */
+    private static final int MARGE_D3 = 40;
+
     /** Un quart de tour autour de la verticale : la face avant des panneaux, +Z, regarde l'est, la caméra. */
     private static final float[] VERS_L_EST = {0f, 0.70710678f, 0f, 0.70710678f};
 
@@ -228,9 +239,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -277,6 +288,9 @@ public final class BancDeRendu {
     private static AxionEntity modeleRessource;
     private static double[] boisAvant;
     private static double[] boisAvecPack;
+    private static AxionEntity modeleDuPack;
+    private static double[] duPackAvant;
+    private static double[] duPackAvecPack;
     private static boolean packDisponible;
     private static int demarragesAvantRechargement;
     /** Démarrages de backend à l'installation du journal : ceux qui suivent y laissent leur entrée. */
@@ -559,19 +573,37 @@ public final class BancDeRendu {
             // T-483 (§19.13, R-752) : un vrai changement de resource pack. Le pack de test remplace
             // la texture de bois que le modèle ressource lit dans les ressources du client : activé,
             // la face tournée vers la caméra vire au magenta ; retiré, elle revient au bois.
-            serveur("poser le modèle à texture de ressource", s -> modeleRessource = AssembliesDeTest.poser(
-                    s.overworld(), RESSOURCE, positionPanneau(Z_RELIEF), IDENTITE));
-            jusqua("le modèle à texture de ressource rendu", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 2
-                    && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 2);
+            // ADR-150 D3, dans le même changement de pack : le modèle du pack, de l'autre côté du cube.
+            serveur("poser le modèle à texture de ressource et le modèle du pack", s -> {
+                modeleRessource = AssembliesDeTest.poser(s.overworld(), RESSOURCE, positionPanneau(Z_RELIEF), IDENTITE);
+                modeleDuPack = AssembliesDeTest.poser(s.overworld(), MODELE_DU_PACK, positionPanneau(Z_PLAT), IDENTITE);
+            });
+            jusqua("le modèle à texture de ressource rendu", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 3
+                    && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 3);
             stabiliser("le bois");
-            une("relever le bois", mc -> boisAvant = couleurDeRessource(capturer(mc, "t483_avant.png"), derniereVue));
+            une("relever le bois", mc -> {
+                CapturesDuBanc.Capture capture = capturer(mc, "t483_avant.png");
+                boisAvant = couleurDeRessource(capture, derniereVue);
+                duPackAvant = couleurDeFace(capture, derniereVue, Z_PLAT);
+            });
             changerDePack(true, "activer le pack de test");
             stabiliser("le pack de test");
-            une("relever le pack", mc -> boisAvecPack = couleurDeRessource(capturer(mc, "t483_pack.png"), derniereVue));
+            une("relever le pack", mc -> {
+                CapturesDuBanc.Capture capture = capturer(mc, "t483_pack.png");
+                boisAvecPack = couleurDeRessource(capture, derniereVue);
+                duPackAvecPack = couleurDeFace(capture, derniereVue, Z_PLAT);
+            });
             changerDePack(false, "retirer le pack de test");
             stabiliser("le pack retiré");
-            une("juger T-483", mc -> jugerT483(couleurDeRessource(capturer(mc, "t483_apres.png"), derniereVue)));
-            serveur("retirer le modèle à texture de ressource", s -> modeleRessource.discard());
+            une("juger T-483 et ADR-150 D3", mc -> {
+                CapturesDuBanc.Capture capture = capturer(mc, "t483_apres.png");
+                jugerT483(couleurDeRessource(capture, derniereVue));
+                jugerModeleDuPack(couleurDeFace(capture, derniereVue, Z_PLAT));
+            });
+            serveur("retirer le modèle à texture de ressource et le modèle du pack", s -> {
+                modeleRessource.discard();
+                modeleDuPack.discard();
+            });
             jusqua("le modèle à texture de ressource retiré", 120,
                     mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
         }
@@ -1271,8 +1303,34 @@ public final class BancDeRendu {
         });
         jusqua("le rechargement fini — " + quoi, 300, mc -> rechargement.isDone() && mc.getOverlay() == null);
         jusqua("la scène redessinée — " + quoi, 120, mc -> AxionRenderPass.backendStarts() > demarragesAvantRechargement
-                && AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 2
-                && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 2);
+                && AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 3
+                && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 3);
+    }
+
+    /**
+     * {@return la couleur moyenne au centre de la face est d'un cube unité posé en {@code positionPanneau(dz)},
+     * tournée vers la caméra}
+     */
+    private static double[] couleurDeFace(CapturesDuBanc.Capture capture, Vue vue, double dz) {
+        float[] centre = projeter(vue, positionPanneau(dz).add(0.5, 0.5, 0.0), capture.largeur(), capture.hauteur());
+        return CapturesDuBanc.couleurAutour(capture, Math.round(centre[0]), Math.round(centre[1]), 3);
+    }
+
+    /**
+     * ADR-150 D3 : chaque client compile ses modèles, ses resource packs d'abord. Le cube du mod est rouge,
+     * celui du pack bleu : avant le pack et après, le rouge l'emporte ; avec, le bleu. Le serveur, qui ne lit
+     * que {@code data/}, garde le rouge : seul le registre du client peut donner le bleu.
+     */
+    private static void jugerModeleDuPack(double[] apres) {
+        boolean rougeAvant = duPackAvant[0] >= duPackAvant[2] + MARGE_D3;
+        boolean bleuAvecPack = duPackAvecPack[2] >= duPackAvecPack[0] + MARGE_D3;
+        boolean rougeApres = apres[0] >= apres[2] + MARGE_D3;
+        RAPPORT.noter("ADR-150 D3", packDisponible && rougeAvant && bleuAvecPack && rougeApres, String.format(Locale.ROOT,
+                "%s : %s ; face du modèle du pack avant %s, avec le pack %s, après %s — rouge, puis bleu"
+                        + " (le modèle du resource pack l'emporte chez le client), puis rouge, à %d près",
+                NATIF ? "natif" : "vanilla",
+                packDisponible ? "pack de test disponible" : "PACK DE TEST INTROUVABLE (" + PACK_DE_TEST + ")",
+                rgb(duPackAvant), rgb(duPackAvecPack), rgb(apres), MARGE_D3));
     }
 
     /** {@return la couleur moyenne au centre de la face est du modèle ressource, tournée vers la caméra} */
