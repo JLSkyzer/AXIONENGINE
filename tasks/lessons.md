@@ -1702,3 +1702,18 @@ qui le remplit ; les tests ne faisaient passer que des valeurs choisies à la ma
 **Règle.** Quand un message porte une option, le domaine du décodeur contient celui de l'option, et
 un test fait passer par le message chaque borne lue dans `ConfigSchema`. Une option sans borne
 haute que le fil doit porter prend la borne du type du fil, dans `ax-model`.
+
+## 2026-10-18 | Une campagne de mutations a compté pour rouges des passages qui n'atteignaient pas les tests
+
+**Ce qui a mal tourné.** Pendant la campagne de l'étape 4b d'ADR-150, j'ai modifié le générateur Rust
+(`tools/codegen`) sans régénérer le Java. La tâche Gradle `test` dépend de `codegen`, qui lance les tests
+de parité Rust : chaque passage suivant a échoué avant les tests, et le script, qui ne regardait que le
+code de retour, l'a compté comme une mutation rouge. La restauration finale, rouge, l'a trahi.
+
+**Cause.** Le verdict « rouge » se tirait du seul code de retour de Gradle, et la base n'était pas
+vérifiée avant les mutations ; la règle du 2026-10-10 (arbre figé pendant une boucle) ne visait que le
+Java, alors que le build Java dépend aussi du Rust.
+
+**Règle.** Un script de mutations vérifie d'abord que la base est verte, ne compte rouge qu'un échec de
+tests (« There were failing tests »), et range tout autre échec — compilation, `codegen` — à part. Rien du
+dépôt ne se modifie pendant une campagne, Rust compris : le build Java en dépend.

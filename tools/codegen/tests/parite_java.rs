@@ -153,3 +153,37 @@ fn chaque_code_d_evenement_figure_dans_la_classe_java() {
         event_data::RECOVERED_INVALID_STATE
     )));
 }
+
+#[test]
+fn les_drapeaux_d_etat_sont_a_jour() {
+    // Le drapeau SLEEPING décide de la fréquence d'un snapshot (R-1662, R-1663) : une valeur
+    // périmée côté Java enverrait un corps endormi à 10 Hz, ou tairait un corps éveillé.
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(axion_codegen::JAVA_BODY_STATE_FLAGS_PATH);
+    let sur_disque = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "{} illisible ({err}) — le générer avec : cargo run -p axion-codegen --bin gen_java_config",
+            path.display()
+        )
+    });
+    assert_eq!(
+        sur_disque.replace("\r\n", "\n"),
+        axion_codegen::render_java_body_state_flags().replace("\r\n", "\n"),
+        "les drapeaux d'état ont divergé — les régénérer avec : cargo run -p axion-codegen --bin gen_java_config"
+    );
+}
+
+#[test]
+fn chaque_drapeau_d_etat_figure_dans_la_classe_java() {
+    use ax_model::dm::physics::body_state_flags;
+
+    let java = axion_codegen::render_java_body_state_flags();
+    for (name, value, _) in &axion_codegen::BODY_STATE_FLAGS {
+        assert!(
+            java.contains(&format!("int {name} = {value};")),
+            "{name} absent des drapeaux Java, ou mal numéroté"
+        );
+    }
+    assert!(java.contains(&format!("int SLEEPING = {};", body_state_flags::SLEEPING)));
+}

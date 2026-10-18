@@ -9,7 +9,7 @@
 
 use ax_model::buffer::{BufferKind, HEADER_BYTES, MAGIC};
 use ax_model::config::{ConfigDomain, ConfigOption, ConfigScope, ConfigValue};
-use ax_model::dm::physics::{event_data, event_kind};
+use ax_model::dm::physics::{body_state_flags, event_data, event_kind};
 
 /// Chemin du fichier Java généré, relatif à la racine du dépôt.
 pub const JAVA_SCHEMA_PATH: &str =
@@ -266,6 +266,71 @@ pub fn render_java_event_codes() -> String {
         "Sens du champ {@code PhysicsEvent.data}, selon le genre.",
         &EVENT_DATA,
     );
+    lines.push("}".to_owned());
+    lines.join("\n") + "\n"
+}
+
+/// Chemin du fichier Java des drapeaux d'un `BodyState`, relatif à la racine.
+pub const JAVA_BODY_STATE_FLAGS_PATH: &str =
+    "java/axion-mod/src/main/java/dev/axion/physics/BodyStateFlags.java";
+
+/// Drapeaux d'un `BodyState` (DM-08) : nom, valeur, description. La valeur vient de `ax-model`.
+pub const BODY_STATE_FLAGS: [(&str, u32, &str); 6] = [
+    ("SLEEPING", body_state_flags::SLEEPING, "Le corps dort."),
+    (
+        "TOUCHING_GROUND",
+        body_state_flags::TOUCHING_GROUND,
+        "Le corps touche le sol (collision avec le groupe {@code world}).",
+    ),
+    (
+        "IN_FLUID",
+        body_state_flags::IN_FLUID,
+        "Le corps est immergé dans un fluide.",
+    ),
+    (
+        "CLAMPED",
+        body_state_flags::CLAMPED,
+        "Une vitesse a été clampée à sa borne (R-180).",
+    ),
+    (
+        "DEFORMED",
+        body_state_flags::DEFORMED,
+        "Le corps est déformé.",
+    ),
+    (
+        "DAMAGED",
+        body_state_flags::DAMAGED,
+        "Le corps est endommagé.",
+    ),
+];
+
+/// Rend la classe Java des drapeaux d'un `BodyState` (DM-08), champ `flags`.
+#[must_use]
+pub fn render_java_body_state_flags() -> String {
+    let mut lines: Vec<String> = vec![
+        "package dev.axion.physics;".to_owned(),
+        String::new(),
+        "/**".to_owned(),
+        " * Drapeaux d'un {@code BodyState} (DM-08), champ {@code flags}.".to_owned(),
+        " *".to_owned(),
+        " * <p><strong>Fichier généré — ne pas modifier à la main.</strong> La source est"
+            .to_owned(),
+        " * {@code crates/ax-model/src/dm/physics.rs} ({@code body_state_flags}). Régénérer avec :"
+            .to_owned(),
+        " *".to_owned(),
+        " * <pre>cargo run -p axion-codegen --bin gen_java_config</pre>".to_owned(),
+        " */".to_owned(),
+        "public final class BodyStateFlags {".to_owned(),
+        String::new(),
+        "    private BodyStateFlags() {".to_owned(),
+        "        throw new AssertionError(\"classe de constantes, non instanciable\");".to_owned(),
+        "    }".to_owned(),
+    ];
+    for (name, value, description) in &BODY_STATE_FLAGS {
+        lines.push(String::new());
+        lines.push(format!("    /** {description} */"));
+        lines.push(format!("    public static final int {name} = {value};"));
+    }
     lines.push("}".to_owned());
     lines.join("\n") + "\n"
 }

@@ -3055,14 +3055,16 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             entrée complète en `3 × i64` ou delta en `3 × i32` (D6), `S2C_Snapshot` (genre 5 : numéro, tick
             serveur, version du descripteur, entrées) et `C2S_Ack` (genre 6 : dernier reçu, entités à
             renvoyer en entier). Chaque delta nomme sa base : une base absente se refuse et se redemande.
-      - [ ] 4b (en cours, 2026-10-18 : `SnapshotMessage.encodedSize`/`headerSize` écrits, non testés ni
-            commités ; `SnapshotSender` conçu — seau à jetons de 32 KiB/s, ordre par ancienneté puis
-            distance, `dueAt += période` pour tenir 15 Hz au tick, base = dernière entrée ≤ acquitté
-            dans la fenêtre). Émetteur par joueur : base = dernière entrée envoyée dans un snapshot acquitté (fenêtre 32,
-            R-1661), fréquences (R-1662 : NORMAL `net.snapshot_rate_hz`, LOW endormie ; HIGH vient avec le
-            pilotage en M5, « lointaine » avec les niveaux du chantier LOD), rien pour une endormie
-            inchangée (R-1663), plafond par joueur avec retard compté, jamais d'omission (R-1664, T-418).
-      - [ ] 4c. Récepteur : états reconstruits à l'identique depuis les entiers, historique de 32, acquittement.
+      - [x] 4b (2026-10-18). Émetteur par joueur (`SnapshotSender`) : base = dernière entrée envoyée dans un
+            snapshot acquitté, fenêtre de 32 snapshots (R-1661) ; NORMAL à `net.snapshot_rate_hz`, LOW endormie,
+            échéances entières (15 Hz tenus au tick près) ; rien pour une endormie inchangée (R-1663) ; seau de
+            `net.max_bytes_per_second_per_player`, rafale d'une seconde, servi par ancienneté puis distance,
+            retards comptés et journalisés (R-1664, T-418 : 4 288 o/s mesurés sous un plafond de 4 096, une seconde
+            de rafale comprise, aucune assembly privée d'envoi). HIGH avec le pilotage (M5), « lointaine » avec
+            les niveaux du chantier LOD.
+      - [x] 4c (2026-10-18). Récepteur (`SnapshotReceiver`) : états reconstitués au bit près, historique de 32
+            par assembly, base absente redemandée en entier par `C2S_Ack`. 22 mutations rouges pour 4b et 4c.
+            `BodyStateFlags` généré depuis `body_state_flags` (ax-model), avec ses tests de parité.
       - [ ] 4d. Colle Forge et fin du pont : `updateInterval` démesuré (suivi de position de Minecraft
             neutralisé), portée de suivi couvrant `net.sync_radius`, apparition portant la transformation
             complète, `StartTracking`/`StopTracking` pour l'ensemble suivi, données synchronisées `ROTATION`,

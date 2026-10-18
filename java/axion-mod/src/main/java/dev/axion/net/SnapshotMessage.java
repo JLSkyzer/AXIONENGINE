@@ -127,6 +127,36 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
         }
     }
 
+    /**
+     * @param entry entrée
+     * @return sa taille sur le fil, en octets : celle qu'{@link #encode} lui donne
+     */
+    static int encodedSize(Entry entry) {
+        return varintSize(entry.handle()) + 1
+                + (entry.full() ? 3 * Long.BYTES : varintSize(entry.base()) + 3 * Integer.BYTES)
+                + Integer.BYTES
+                + (entry.velocity() != null ? 6 * Short.BYTES : 0)
+                + (entry.bounds() != null ? 6 * Short.BYTES : 0);
+    }
+
+    /**
+     * @param sequence séquence du snapshot
+     * @param serverTick tick du serveur
+     * @param count nombre d'entrées
+     * @return la taille de l'en-tête sur le fil, en octets
+     */
+    static int headerSize(int sequence, long serverTick, int count) {
+        return 1 + varintSize(sequence) + varintSize(serverTick) + 1 + varintSize(count);
+    }
+
+    private static int varintSize(long value) {
+        int size = 1;
+        for (long rest = value >>> 7; rest != 0; rest >>>= 7) {
+            size++;
+        }
+        return size;
+    }
+
     /** {@return le message, genre compris} */
     public byte[] encode() {
         WireWriter writer = new WireWriter(32 + 48 * entries.size())
