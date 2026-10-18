@@ -26,6 +26,13 @@ Definition of Done (PARTIE 37.3).
     ABI 6 : l'empreinte deterministe de 5.12bis et une compression zstd des
     charges utiles reseau par le tampon NET_OUT, a decompression bornee avant
     toute allocation (R-1691) ;
+    messages du handshake et du registre : le serveur annonce sa
+    configuration de simulation, ses empreintes et son empreinte
+    deterministe ; le client repond par la sienne, et le mode de
+    replication de la deformation se negocie par connexion (T-820c) ; le
+    registre (materiaux, groupes de collision, definitions) part compresse,
+    et le client refuse celui dont les empreintes ne sont pas celles
+    annoncees (T-420, T-422) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

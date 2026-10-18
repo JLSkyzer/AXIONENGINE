@@ -3025,8 +3025,12 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             JUnit contre la vraie bibliothèque ; 10 mutations rouges (deux règles redondantes
             retirées : la vérification de taille, que libzstd fait lui-même, et le plafond d'entrée de
             la décompression).
-      - [ ] 3b. Messages du handshake et du registre, en Java pur ; 3c. colle Forge (paquets de
-            connexion, renvoi du registre au rechargement), mode de réplication au statut.
+      - [x] 3b. Messages, en Java pur (2026-10-18) : `ServerHandshake`, `ClientHandshake`,
+            `ReplicationMode.negotiate` (T-820c), `RegistryContent` (matériaux, groupes de collision,
+            definitions ; empreinte FNV-1a 64 sur les textes triés, longueurs comprises) et
+            `RegistryMessage` (empreintes vérifiées à la lecture, T-420). 19 mutations rouges.
+      - [ ] 3c. Colle Forge (paquets de connexion, renvoi du registre au rechargement), instantané du
+            registre côté serveur, application côté client, mode de réplication au statut.
 - [ ] 4. Snapshots (D2, D6), fin du pont provisoire — T-410, T-411, T-418.
 - [ ] 5. Interpolation (D7) — T-412, T-413, T-414.
 - [ ] 6. Harnais de joueurs simulés (D8) — T-423, T-424, T-425 ; overlay `network`.
