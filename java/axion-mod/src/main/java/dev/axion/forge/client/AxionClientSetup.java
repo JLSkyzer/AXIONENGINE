@@ -32,14 +32,16 @@ public final class AxionClientSetup {
     }
 
     /**
-     * Rechargement des ressources du client (R-752) : AXION y rend ses maillages et libère ses
-     * textures, reconstruits à la demande — une texture de ressource a pu changer avec le resource
-     * pack, et le réglage des mipmaps avec les options.
+     * Rechargement des ressources du client. Les modèles d'abord : le client les compile chez lui,
+     * depuis ses resource packs puis ses mods (ADR-150 D3). Puis AXION rend ses maillages et libère
+     * ses textures (R-752), reconstruits à la demande depuis le registre neuf — une texture de
+     * ressource a pu changer avec le resource pack, et le réglage des mipmaps avec les options.
      *
      * @param event enregistrement des écouteurs de rechargement
      */
     @SubscribeEvent
     public static void registerReloadListeners(RegisterClientReloadListenersEvent event) {
+        event.registerReloadListener(new ClientModelReload());
         event.registerReloadListener(
                 (ResourceManagerReloadListener) manager -> AxionRenderPass.onResourcesReloaded());
     }

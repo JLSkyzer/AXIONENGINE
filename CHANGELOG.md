@@ -18,6 +18,11 @@ Definition of Done (PARTIE 37.3).
     strict) et fragmentation ordonnee en trames de 32 000 octets au plus,
     toute entree validee et bornee avant d'etre crue (R-1650, R-1651,
     R-1691) ;
+    chaque client compile ses modeles chez lui, depuis ses resource packs
+    (`assets/<ns>/axion/models`) puis depuis le `data/` de ses mods, avec
+    son propre cache (`<gameDir>/axion/client-cache`) ; le rendu dessine
+    ce que le client a compile, et un modele absent donne la boite de
+    repli et un avertissement, une fois (R-1640, T-421) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

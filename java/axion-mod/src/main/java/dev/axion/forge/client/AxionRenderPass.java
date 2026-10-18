@@ -19,6 +19,7 @@ import dev.axion.render.BackendSelection;
 import dev.axion.render.GpuDegradation;
 import dev.axion.render.GpuPassTimings;
 import dev.axion.render.MeshCache;
+import dev.axion.render.MissingClientAssets;
 import dev.axion.render.RenderAsset;
 import dev.axion.render.RenderCapabilities;
 import dev.axion.render.ShaderVariants;
@@ -116,6 +117,9 @@ public final class AxionRenderPass {
 
     /** Maillages chargés ; créé au premier besoin. Render thread seul. */
     private static MeshCache meshes;
+
+    /** Les modèles qu'une definition demande et que ce client n'a pas, avertis une fois (R-1640). */
+    private static final MissingClientAssets MISSING = new MissingClientAssets();
 
     /** Overlays de debug allumés : la commande client les modifie, la passe les lit. */
     private static final DebugOverlays OVERLAYS = new DebugOverlays();
@@ -673,19 +677,25 @@ public final class AxionRenderPass {
     /**
      * {@return l'asset prêt d'une assembly, ou {@code null}}
      *
-     * <p>Definition → asset → contenu publié → maillage, apparence et textures. Chaque maillon
-     * peut manquer : runtime natif absent, monde distant (definitions et assets ne vivent qu'avec
-     * le serveur intégré — le maillage en multijoueur est hors portée d'ADR-119), asset en
-     * compilation ou refusé, chargement en cours. Le backend dessine alors la boîte de repli.
+     * <p>Definition → asset → contenu publié → maillage, apparence et textures. L'asset est celui
+     * que ce client a compilé, depuis ses resource packs puis ses mods (ADR-150 D3), jamais celui du
+     * serveur. Chaque maillon peut manquer : runtime natif absent, definition inconnue (un client
+     * distant les reçoit avec le handshake, tranche 3 d'ADR-150), modèle absent chez ce client —
+     * averti une fois, R-1640 —, asset en compilation ou refusé, chargement en cours. Le backend
+     * dessine alors la boîte de repli.
      */
     private static RenderAsset assetOf(AxionRuntime runtime, AxionEntity assembly) {
         if (runtime == null) {
             return null;
         }
         Definition definition = runtime.definitions().get(assembly.definitionId()).orElse(null);
-        AssetRegistry assets = runtime.assets();
+        AssetRegistry assets = runtime.clientAssets();
         if (definition == null || assets == null) {
             return null;
+        }
+        String missing = MISSING.check(assets, definition.asset());
+        if (missing != null) {
+            LOGGER.warn("AXION : {}", missing);
         }
         AssetRegistry.Published source = assets.published(definition.asset());
         if (source == null) {

@@ -290,15 +290,16 @@ public final class AxionForgeEntrypoint {
     }
 
     /**
-     * Fait entrer AXION en {@code RUNNING_CLIENT} au premier tick du client.
-     *
-     * <p>Seul le premier tick produit quelque chose ; les suivants ne coûtent
-     * qu'une comparaison de phase.
+     * Fait entrer AXION en {@code RUNNING_CLIENT} au premier tick du client, puis fait avancer la
+     * compilation des modèles du client (ADR-150 D3) et journalise ses diagnostics (ADR-148).
      */
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             runtime.onClientTick();
+            for (String line : runtime.drainClientAssetJournal()) {
+                LOGGER.warn("AXION : client : {}", line);
+            }
         }
     }
 

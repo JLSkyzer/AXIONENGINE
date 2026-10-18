@@ -77,6 +77,13 @@ public final class AxionRuntime {
      * une référence périmée ou à moitié construite.
      */
     private volatile AssetRegistry assets;
+    /**
+     * Registre d'assets de ce client (ADR-150 D3) : ses resource packs, puis ses mods, compilés chez
+     * lui, en solo comme en multijoueur. {@code null} sur un serveur dédié, ou avant le premier
+     * rechargement des ressources du client. Son cache est le sien, {@value #CLIENT_CACHE_DIR} : un
+     * cache s'ouvre seul sur son répertoire, et le serveur intégré tient le sien.
+     */
+    private volatile AssetRegistry clientAssets;
     private volatile DefinitionRegistry definitions = DefinitionRegistry.empty();
     private volatile PhysicsMaterials physicsMaterials = PhysicsMaterials.empty();
     /** Table des matériaux de la session (ADR-149) : index stables, renvoyée au natif quand elle change. */
@@ -120,6 +127,10 @@ public final class AxionRuntime {
             JavaMetrics.GLOBAL.budget("budgets.idle_hook_ns", "ns");
     /** R-500 : l'activité du cache d'assets (C-25), à travers les rechargements. */
     private static final AssetCacheMetrics ASSET_CACHE_METRICS = new AssetCacheMetrics(JavaMetrics.GLOBAL);
+    /** Répertoire du cache d'assets du serveur, sous {@code <gameDir>/axion/}. */
+    static final String SERVER_CACHE_DIR = "cache";
+    /** Répertoire du cache d'assets du client, sous {@code <gameDir>/axion/} (ADR-150 D3). */
+    static final String CLIENT_CACHE_DIR = "client-cache";
     /** R-500 : les rechargements des definitions (C-27). */
     private static final DefinitionMetrics DEFINITION_METRICS = new DefinitionMetrics(JavaMetrics.GLOBAL);
     /** Trace de la simulation en cours d'écriture ({@code /axion debug trace}), ou {@code null}. */
@@ -254,13 +265,19 @@ public final class AxionRuntime {
      * Forge ne dit cela plus tôt sans mentir — {@code FMLClientSetupEvent}
      * précède {@code LOAD_COMPLETE} et décrirait un client qui charge encore.
      *
-     * <p>Les ticks suivants ne font rien et ne consignent rien : une transition
-     * refusée par tick remplirait le journal des transitions sans fin.
+     * <p>Les ticks suivants ne changent pas de phase et ne consignent rien : une transition
+     * refusée par tick remplirait le journal des transitions sans fin. Ils font avancer la
+     * compilation des modèles du client (ADR-150 D3), sous le budget
+     * {@code budgets.asset_ns_per_tick}, comme le tick serveur celle du serveur (R-521).
      */
     public void onClientTick() {
         guard("clientTick").run(() -> {
             if (phase == LifecyclePhase.LOAD_COMPLETE) {
                 transitionTo(LifecyclePhase.RUNNING_CLIENT);
+            }
+            AssetRegistry registry = clientAssets;
+            if (registry != null && hasNativeRuntime() && !registry.isSettled()) {
+                registry.pump(outcome.config().getInt("budgets.asset_ns_per_tick"));
             }
         });
     }
@@ -289,43 +306,14 @@ public final class AxionRuntime {
         int changed = 0;
         HookGuard guard = guard("assetReload");
         guard.run(() -> {
-            // R-563, INV-10 : le cache vit sous `<gameDir>/axion/`, jamais
-            // dans une sauvegarde. Un cache range dans un monde le ferait
-            // grossir de donnees reconstructibles et le rendrait non
-            // transportable.
-            // §31.3 : en mode développeur seulement, le cache peut être désactivé — chaque asset
-            // se recompile alors, ce qui vérifie le compilateur sans soupçonner le cache.
-            boolean cacheDisabled = DevMode.assetCacheDisabled();
-            AssetCache cache = cacheDisabled
-                    ? null
-                    : new AssetCache(
-                            platform.gameDir().resolve("axion").resolve("cache"),
-                            outcome.config().getInt("assets.cache_max_bytes"),
-                            ASSET_CACHE_METRICS,
-                            System::nanoTime);
-            ASSET_CACHE_METRICS.enabled(!cacheDisabled);
-            if (cacheDisabled) {
-                transitions.add("cache d'assets désactivé (mode développeur, "
-                        + DevMode.ASSET_CACHE_PROPERTY + "=false)");
-            }
+            AssetRegistry registry = newAssetRegistry(source, SERVER_CACHE_DIR, ASSET_CACHE_METRICS);
+            ASSET_CACHE_METRICS.enabled(registry.cache() != null);
 
-            AssetRegistry registry = new AssetRegistry(
-                    source,
-                    new NativeAssetCompiler(outcome.context()),
-                    dev.axion.asset.CompilerVersion.CURRENT,
-                    dev.axion.bridge.NativeBridge.EXPECTED_ABI_VERSION,
-                    System::nanoTime,
-                    cache);
-
-            // Publié une fois découvert : le rendu client, qui lit depuis son thread, ne voit
-            // jamais un registre vide entre deux rechargements — ce qui ferait clignoter tous
-            // les maillages vers leur boîte de repli.
+            // Publié une fois découvert : un lecteur d'un autre thread ne voit jamais un registre
+            // vide entre deux rechargements.
             int aCompiler = registry.discover();
             assets = registry;
-            long reprises = registry.entries().stream()
-                    .filter(entry -> entry.state() == dev.axion.asset.AssetState.CACHED)
-                    .count();
-            transitions.add(aCompiler + " asset(s) à compiler, " + reprises + " repris du cache");
+            transitions.add(aCompiler + " asset(s) à compiler, " + reused(registry) + " repris du cache");
         });
         if (assets != null) {
             changed = (int) assets.entries().stream()
@@ -333,6 +321,77 @@ public final class AxionRuntime {
                     .count();
         }
         return changed;
+    }
+
+    /**
+     * Signale un rechargement des ressources du client (ADR-150 D3).
+     *
+     * <p>Les assets ne passent jamais par le réseau (R-1640) : le client compile ses modèles chez
+     * lui, depuis ses resource packs puis depuis ses mods, en solo comme en multijoueur. Le registre
+     * est recréé sur la nouvelle source, comme celui du serveur ; sa compilation avance aux ticks du
+     * client ({@link #onClientTick()}).
+     *
+     * @param source modèles énumérés côté client
+     * @return le nombre d'assets à compiler
+     */
+    public int onClientAssetReload(AssetSource source) {
+        if (!hasNativeRuntime()) {
+            return 0;
+        }
+        int[] pending = {0};
+        guard("clientAssetReload").run(() -> {
+            AssetRegistry registry =
+                    newAssetRegistry(source, CLIENT_CACHE_DIR, AssetCache.Observer.NONE);
+            // Publié une fois découvert : le rendu, qui lit depuis son thread, ne voit jamais un
+            // registre vide entre deux rechargements — ce qui ferait clignoter tous les maillages
+            // vers leur boîte de repli.
+            pending[0] = registry.discover();
+            clientAssets = registry;
+            transitions.add("client : " + pending[0] + " asset(s) à compiler, " + reused(registry)
+                    + " repris du cache");
+        });
+        return pending[0];
+    }
+
+    /**
+     * Crée un registre d'assets sur une source, adossé à un cache sous {@code <gameDir>/axion/}.
+     *
+     * @param source sources énumérées
+     * @param cacheDir répertoire du cache, sous {@code <gameDir>/axion/}
+     * @param observer destinataire de l'activité du cache
+     */
+    private AssetRegistry newAssetRegistry(AssetSource source, String cacheDir, AssetCache.Observer observer) {
+        // R-563, INV-10 : le cache vit sous `<gameDir>/axion/`, jamais dans une sauvegarde. Un cache
+        // rangé dans un monde le ferait grossir de données reconstructibles et le rendrait non
+        // transportable.
+        // §31.3 : en mode développeur seulement, le cache peut être désactivé — chaque asset se
+        // recompile alors, ce qui vérifie le compilateur sans soupçonner le cache.
+        boolean cacheDisabled = DevMode.assetCacheDisabled();
+        AssetCache cache = cacheDisabled
+                ? null
+                : new AssetCache(
+                        platform.gameDir().resolve("axion").resolve(cacheDir),
+                        outcome.config().getInt("assets.cache_max_bytes"),
+                        observer,
+                        System::nanoTime);
+        if (cacheDisabled) {
+            transitions.add("cache d'assets désactivé (mode développeur, "
+                    + DevMode.ASSET_CACHE_PROPERTY + "=false)");
+        }
+        return new AssetRegistry(
+                source,
+                new NativeAssetCompiler(outcome.context()),
+                dev.axion.asset.CompilerVersion.CURRENT,
+                dev.axion.bridge.NativeBridge.EXPECTED_ABI_VERSION,
+                System::nanoTime,
+                cache);
+    }
+
+    /** {@return le nombre d'assets d'un registre repris de son cache} */
+    private static long reused(AssetRegistry registry) {
+        return registry.entries().stream()
+                .filter(entry -> entry.state() == dev.axion.asset.AssetState.CACHED)
+                .count();
     }
 
     /**
@@ -587,6 +646,18 @@ public final class AxionRuntime {
      */
     public List<String> drainAssetJournal() {
         AssetRegistry registry = assets;
+        return registry == null ? List.of() : registry.drainJournal();
+    }
+
+    /**
+     * {@return les diagnostics des assets du client consignés depuis l'appel précédent, puis les
+     * oublie}
+     *
+     * <p>Même journal qu'{@link #drainAssetJournal()} (ADR-148), pour le registre du client (ADR-150
+     * D3) ; la couche Forge le vide à chaque tick du client. Liste vide sans registre client.
+     */
+    public List<String> drainClientAssetJournal() {
+        AssetRegistry registry = clientAssets;
         return registry == null ? List.of() : registry.drainJournal();
     }
 
@@ -866,9 +937,20 @@ public final class AxionRuntime {
         return definitions;
     }
 
-    /** {@return le registre d'assets, ou {@code null} avant tout rechargement} */
+    /** {@return le registre d'assets du serveur, ou {@code null} avant tout rechargement} */
     public AssetRegistry assets() {
         return assets;
+    }
+
+    /**
+     * {@return le registre d'assets de ce client (ADR-150 D3), ou {@code null} sur un serveur dédié
+     * et avant le premier rechargement des ressources du client}
+     *
+     * <p>C'est lui que lit le rendu : un client dessine ce qu'il a compilé, jamais ce qu'a compilé
+     * le serveur, en solo comme en multijoueur.
+     */
+    public AssetRegistry clientAssets() {
+        return clientAssets;
     }
 
     /**
@@ -948,6 +1030,9 @@ public final class AxionRuntime {
         // qu'un cache qui se remplit de nouveau.
         if (assets != null && assets.cache() != null) {
             assets.cache().writeIndex();
+        }
+        if (clientAssets != null && clientAssets.cache() != null) {
+            clientAssets.cache().writeIndex();
         }
         // Une trace encore ouverte se ferme, complète : le journal de simulation va être
         // remplacé, c'est le journal des transitions qui le dit.
