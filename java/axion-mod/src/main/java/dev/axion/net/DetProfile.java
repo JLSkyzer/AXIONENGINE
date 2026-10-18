@@ -14,6 +14,12 @@ import dev.axion.bridge.NativeBridge;
 public record DetProfile(long profile, int kernelVersion, boolean inMatrix) {
 
     /**
+     * L'empreinte d'une extrémité dont le runtime natif est inactif : hors de la matrice, ce qui fait
+     * négocier {@link ReplicationMode#SNAPSHOT}, le mode qui ne suppose rien du noyau déterministe.
+     */
+    public static final DetProfile UNKNOWN = new DetProfile(0L, 0, false);
+
+    /**
      * {@return l'empreinte de la bibliothèque native chargée}
      *
      * @throws IllegalStateException si le natif refuse de la rendre

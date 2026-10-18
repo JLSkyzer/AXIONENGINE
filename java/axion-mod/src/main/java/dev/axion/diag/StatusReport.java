@@ -3,6 +3,9 @@ package dev.axion.diag;
 import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
+import dev.axion.net.NetProtocol;
+import dev.axion.net.ServerPeer;
+import dev.axion.net.ServerSnapshot;
 import dev.axion.physics.SimulationJournal;
 import dev.axion.render.RenderCapabilities;
 import java.util.ArrayList;
@@ -80,6 +83,13 @@ public final class StatusReport {
             // Un asset refusé se voit ici et nulle part ailleurs après son
             // unique passage au journal (R-522).
             runtime.assets().diagnostics().forEach(line -> lines.add("    " + line));
+        }
+
+        // ADR-150 D4, 5.12bis : ce que le serveur envoie, et le mode de réplication de chaque connexion.
+        ServerSnapshot snapshot = runtime.netSnapshot();
+        if (snapshot != null) {
+            lines.add("  réseau : protocole " + NetProtocol.VERSION + " ; " + snapshot.describe());
+            lines.add("  réplication : " + ServerPeer.summarize(runtime.peers()));
         }
 
         RenderCapabilities render = runtime.renderCapabilities();

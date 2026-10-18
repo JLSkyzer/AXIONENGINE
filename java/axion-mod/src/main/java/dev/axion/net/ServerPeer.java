@@ -1,9 +1,12 @@
 package dev.axion.net;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
@@ -102,6 +105,24 @@ public final class ServerPeer {
     public String describe() {
         ReplicationMode negotiated = mode;
         return negotiated == null ? "aucune réponse au handshake" : negotiated + " (" + cause + ")";
+    }
+
+    /**
+     * Résume les connexions en cours pour {@code /axion status} : combien par mode et par cause, sans
+     * nommer personne (R-442).
+     *
+     * @param peers connexions en cours
+     * @return le résumé, une ligne
+     */
+    public static String summarize(Collection<ServerPeer> peers) {
+        if (peers.isEmpty()) {
+            return "aucune connexion";
+        }
+        SortedMap<String, Integer> counts = new TreeMap<>();
+        peers.forEach(peer -> counts.merge(peer.describe(), 1, Integer::sum));
+        StringBuilder line = new StringBuilder().append(peers.size()).append(" connexion(s) — ");
+        counts.forEach((mode, count) -> line.append(mode).append(" ×").append(count).append(", "));
+        return line.substring(0, line.length() - 2);
     }
 
     /** {@return les lignes de journal accumulées depuis le dernier appel} */

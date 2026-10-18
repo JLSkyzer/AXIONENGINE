@@ -33,6 +33,14 @@ Definition of Done (PARTIE 37.3).
     registre (materiaux, groupes de collision, definitions) part compresse,
     et le client refuse celui dont les empreintes ne sont pas celles
     annoncees (T-420, T-422) ;
+    chaque connexion recoit le handshake, et une connexion distante le
+    registre du serveur : materiaux et groupes tels que lus, definitions
+    acceptees ; le client le relit par les lecteurs du serveur, l'acquitte,
+    et le serveur le renvoie en jeu s'il ne correspond plus ou apres un
+    /reload qui le change ; le mode de replication se journalise a l'entree
+    du joueur avec sa cause, et /axion status compte les connexions par
+    mode (5.12bis) ; net.interpolation_delay_ms prend la borne de son champ
+    u16 (0..65535) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

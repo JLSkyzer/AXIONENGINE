@@ -29,6 +29,14 @@ import dev.axion.debug.DevMode;
 import dev.axion.diag.AssetCacheMetrics;
 import dev.axion.diag.DefinitionMetrics;
 import dev.axion.diag.JavaMetrics;
+import dev.axion.net.DetProfile;
+import dev.axion.net.NativeNetCompression;
+import dev.axion.net.NetCompression;
+import dev.axion.net.RegistryContent;
+import dev.axion.net.RemoteRegistry;
+import dev.axion.net.ServerPeer;
+import dev.axion.net.ServerRegistry;
+import dev.axion.net.ServerSnapshot;
 import dev.axion.platform.PlatformAdapter;
 import dev.axion.render.RenderCapabilities;
 import dev.axion.world.BlockMaterials;
@@ -41,6 +49,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
@@ -92,6 +103,21 @@ public final class AxionRuntime {
     private volatile CollisionGroupRegistry collisionGroups = CollisionGroupRegistry.empty();
     /** Un registre des groupes a déjà été chargé : le suivant qui diffère se journalise. */
     private boolean collisionGroupsLoaded;
+
+    /** Textes des matériaux physiques du dernier rechargement, pour le registre réseau (ADR-150 D5). */
+    private SortedMap<String, byte[]> materialTexts = new TreeMap<>();
+    /** Textes des groupes de collision du dernier rechargement, pour le registre réseau (ADR-150 D5). */
+    private SortedMap<String, byte[]> groupTexts = new TreeMap<>();
+    /**
+     * Ce que le serveur envoie à chaque connexion (ADR-150 D4, D5), rebâti après chaque rechargement
+     * des definitions ; {@code null} sans runtime natif ou hors d'un serveur. {@code volatile} : Forge
+     * le lit sur un thread de Netty, à l'arrivée d'un client.
+     */
+    private volatile ServerSnapshot netSnapshot;
+    /** Les definitions tenues viennent d'un serveur distant (ADR-150 D5) : la déconnexion les oublie. */
+    private volatile boolean remoteDefinitions;
+    /** Les connexions en cours, vues du serveur, par joueur : leur mode de réplication (5.12bis). */
+    private final Map<String, ServerPeer> peers = new ConcurrentHashMap<>();
 
     /**
      * Capacités du backend de rendu du client (R-1493), posées par la passe de rendu à chaque
@@ -790,6 +816,7 @@ public final class AxionRuntime {
         guard("physicsMaterialReload").run(() -> {
             PhysicsMaterials loaded = PhysicsMaterials.load(source);
             physicsMaterials = loaded;
+            materialTexts = ServerRegistry.read(source);
             // ADR-149 D1 : la table suit le registre, et le tick suivant la renvoie au natif.
             materialTable.update(loaded);
             transitions.add(loaded.ids().size() + " matériau(x) physique(s) chargé(s), "
@@ -865,6 +892,7 @@ public final class AxionRuntime {
             }
             collisionGroups = loaded;
             collisionGroupsLoaded = true;
+            groupTexts = ServerRegistry.read(source);
             transitions.add(loaded.ids().size() + " groupe(s) de collision tiers chargé(s), "
                     + loaded.refusals().size() + " refusé(s)");
             loaded.refusals().forEach(transitions::add);
@@ -912,8 +940,118 @@ public final class AxionRuntime {
                     + loaded.refusals().size() + " refusée(s)");
             loaded.refusals().forEach(transitions::add);
             loaded.warnings().forEach(transitions::add);
+            rebuildNetSnapshot(loaded, ServerRegistry.read(source));
         });
         return definitions.size();
+    }
+
+    /**
+     * Rebâtit ce que le serveur envoie à chaque connexion (ADR-150 D4, D5) : son handshake, et le
+     * registre des données qu'il vient de recharger — dans l'ordre de Minecraft, les definitions
+     * viennent après les matériaux et les groupes.
+     *
+     * <p>Un échec n'interrompt pas le rechargement : les definitions sont chargées, seuls les clients
+     * distants s'en trouvent privés, et le journal le dit.
+     */
+    private void rebuildNetSnapshot(DefinitionRegistry loaded, SortedMap<String, byte[]> definitionTexts) {
+        try {
+            RegistryContent.Builder registry =
+                    ServerRegistry.collect(materialTexts, groupTexts, loaded, definitionTexts);
+            ServerSnapshot snapshot = ServerSnapshot.build(outcome.config(), registry.build(), registry.excluded(),
+                    DetProfile.ofThisBinary(), new NativeNetCompression(outcome.context()));
+            netSnapshot = snapshot;
+            transitions.add(snapshot.describe());
+            snapshot.notes().forEach(transitions::add);
+        } catch (RuntimeException | LinkageError failure) {
+            netSnapshot = null;
+            transitions.add("instantané réseau non bâti : " + failure
+                    + " ; aucun client ne pourra se connecter avec AXION");
+        }
+    }
+
+    /**
+     * {@return ce que le serveur envoie à chaque connexion (ADR-150 D4, D5)} {@code null} sans runtime
+     * natif, avant le premier rechargement des definitions, ou hors d'un serveur.
+     */
+    public ServerSnapshot netSnapshot() {
+        return netSnapshot;
+    }
+
+    /**
+     * Applique chez ce client le registre reçu d'un serveur distant (ADR-150 D5) : ses definitions
+     * deviennent celles que lit le rendu. Seule une connexion distante en reçoit un ; une connexion
+     * locale partage les definitions du serveur intégré (ADR-118).
+     *
+     * <p>Appelé depuis le thread de Netty de la connexion : rien n'est ajouté aux transitions, et la
+     * registry est publiée d'un bloc, par un champ {@code volatile}.
+     *
+     * @param registry registre reçu, empreintes vérifiées
+     * @return les lignes à journaliser
+     */
+    public List<String> applyRemoteRegistry(RegistryContent registry) {
+        RemoteRegistry.Loaded loaded = RemoteRegistry.load(registry);
+        definitions = loaded.definitions();
+        remoteDefinitions = true;
+        return loaded.journal();
+    }
+
+    /**
+     * Oublie, à la déconnexion, les definitions reçues d'un serveur distant : celles d'un serveur ne
+     * valent pas pour le suivant, qui peut ne rien envoyer. Celles d'un monde solo restent, elles sont
+     * au serveur intégré.
+     */
+    public void onRemoteDisconnect() {
+        if (remoteDefinitions) {
+            remoteDefinitions = false;
+            definitions = DefinitionRegistry.empty();
+        }
+    }
+
+    /**
+     * {@return la compression réseau du natif, ou {@code null} si le runtime natif est inactif} Le
+     * registre reçu ne peut alors pas se lire.
+     */
+    public NetCompression netCompression() {
+        return hasNativeRuntime() ? new NativeNetCompression(outcome.context()) : null;
+    }
+
+    /**
+     * {@return l'empreinte déterministe de ce binaire (5.12bis), ou {@link DetProfile#UNKNOWN} si le
+     * runtime natif est inactif ou la refuse}
+     */
+    public DetProfile detProfile() {
+        if (!hasNativeRuntime()) {
+            return DetProfile.UNKNOWN;
+        }
+        try {
+            return DetProfile.ofThisBinary();
+        } catch (RuntimeException | LinkageError failure) {
+            return DetProfile.UNKNOWN;
+        }
+    }
+
+    /**
+     * Retient une connexion entrée en jeu, pour le statut (5.12bis).
+     *
+     * @param player identifiant du joueur, jamais affiché (R-442)
+     * @param peer ce que le serveur sait de sa connexion
+     */
+    public void onPeerJoined(String player, ServerPeer peer) {
+        peers.put(player, peer);
+    }
+
+    /**
+     * Oublie une connexion fermée.
+     *
+     * @param player identifiant du joueur
+     */
+    public void onPeerLeft(String player) {
+        peers.remove(player);
+    }
+
+    /** {@return les connexions en cours, vues du serveur} */
+    public List<ServerPeer> peers() {
+        return List.copyOf(peers.values());
     }
 
     /**
@@ -982,6 +1120,9 @@ public final class AxionRuntime {
      */
     public void onServerStopping() {
         guard("serverStopping").run(() -> {
+            // L'instantané et les connexions étaient ceux de ce serveur ; le suivant rebâtit les siens.
+            netSnapshot = null;
+            peers.clear();
             if (processIsEnding()) {
                 shutdown();
                 return;

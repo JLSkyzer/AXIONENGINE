@@ -2,6 +2,8 @@ package dev.axion.forge.net;
 
 import dev.axion.net.NetProtocol;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.network.HandshakeHandler;
+import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.simple.SimpleChannel;
 
@@ -27,6 +29,38 @@ public final class AxionChannel {
             () -> NetProtocol.VERSION,
             NetProtocol::accepts,
             NetProtocol::accepts);
+
+    /** Discriminant du paquet de connexion, du serveur vers le client. */
+    static final int LOGIN_TO_CLIENT = 0;
+
+    /** Discriminant de la réponse du client à un paquet de connexion. */
+    static final int LOGIN_TO_SERVER = 1;
+
+    /** Discriminant d'un message en jeu, du serveur vers le client. */
+    static final int PLAY_TO_CLIENT = 2;
+
+    // Les messages s'enregistrent avec le canal, avant la première connexion : chacun ne porte
+    // qu'une trame (ADR-150), que les sessions de dev.axion.net valident.
+    static {
+        CHANNEL.messageBuilder(ChannelFrames.LoginToClient.class, LOGIN_TO_CLIENT, NetworkDirection.LOGIN_TO_CLIENT)
+                .loginIndex(ChannelFrames.LoginToClient::getAsInt, ChannelFrames.LoginToClient::setLoginIndex)
+                .encoder(ChannelFrames.LoginToClient::encode)
+                .decoder(ChannelFrames.LoginToClient::decode)
+                .buildLoginPacketList(AxionNetwork::loginPackets)
+                .consumerNetworkThread(AxionNetwork::onLoginToClient)
+                .add();
+        CHANNEL.messageBuilder(ChannelFrames.LoginToServer.class, LOGIN_TO_SERVER, NetworkDirection.LOGIN_TO_SERVER)
+                .loginIndex(ChannelFrames.LoginToServer::getAsInt, ChannelFrames.LoginToServer::setLoginIndex)
+                .encoder(ChannelFrames.LoginToServer::encode)
+                .decoder(ChannelFrames.LoginToServer::decode)
+                .consumerNetworkThread(HandshakeHandler.indexFirst(AxionNetwork::onLoginToServer))
+                .add();
+        CHANNEL.messageBuilder(ChannelFrames.PlayToClient.class, PLAY_TO_CLIENT, NetworkDirection.PLAY_TO_CLIENT)
+                .encoder(ChannelFrames.PlayToClient::encode)
+                .decoder(ChannelFrames.PlayToClient::decode)
+                .consumerNetworkThread(AxionNetwork::onPlayToClient)
+                .add();
+    }
 
     private AxionChannel() {
         throw new AssertionError("non instanciable");

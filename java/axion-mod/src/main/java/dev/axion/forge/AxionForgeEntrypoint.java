@@ -3,10 +3,13 @@ package dev.axion.forge;
 import com.mojang.logging.LogUtils;
 import dev.axion.AxionMod;
 import dev.axion.forge.net.AxionChannel;
+import dev.axion.forge.net.AxionNetwork;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
+import dev.axion.net.ServerSnapshot;
 import dev.axion.physics.SimulationJournal;
 import java.util.function.Consumer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
@@ -15,6 +18,7 @@ import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.GameShuttingDownEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
@@ -158,8 +162,32 @@ public final class AxionForgeEntrypoint {
                 runtime::onCollisionGroupReload));
         event.addListener(dataListener(ResourceAssetSource.BLOCK_MATERIALS, "mappage bloc → matériau",
                 runtime::onBlockMaterialReload));
-        event.addListener(dataListener(ResourceAssetSource.DEFINITIONS, "definition",
-                runtime::onDefinitionReload));
+        // Les definitions rechargées rebâtissent le registre réseau ; s'il a changé, il repart vers les
+        // joueurs distants (ADR-150 D5).
+        event.addListener(dataListener(ResourceAssetSource.DEFINITIONS, "definition", source -> {
+            ServerSnapshot before = runtime.netSnapshot();
+            runtime.onDefinitionReload(source);
+            AxionNetwork.onRegistryReloaded(before, runtime.netSnapshot());
+        }));
+    }
+
+    /**
+     * Un joueur entre en jeu : son mode de réplication se journalise, et le registre lui est renvoyé
+     * s'il ne tient pas le registre courant (ADR-150 D4, 5.12bis).
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            AxionNetwork.onPlayerLoggedIn(player);
+        }
+    }
+
+    /** Un joueur quitte le serveur : sa connexion sort du statut. */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            AxionNetwork.onPlayerLoggedOut(player);
+        }
     }
 
     /**

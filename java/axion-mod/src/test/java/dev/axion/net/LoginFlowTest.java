@@ -323,6 +323,24 @@ class LoginFlowTest {
     }
 
     @Test
+    @DisplayName("5.12bis : le statut compte les connexions par mode et par cause, sans nommer personne (R-442)")
+    void leStatutCompteLesConnexionsParMode() {
+        ServerSnapshot instantane = serveur().instantane(VALIDEE);
+        List<ServerPeer> pairs = new ArrayList<>();
+        for (DetProfile det : new DetProfile[] {VALIDEE, VALIDEE, new DetProfile(1L, 1, true)}) {
+            ServerPeer pair = new ServerPeer(VALIDEE);
+            connecter(instantane.loginFrames(true), new Client(det).session, pair);
+            pairs.add(pair);
+        }
+        pairs.add(new ServerPeer(VALIDEE));
+
+        assertEquals("aucune connexion", ServerPeer.summarize(List.of()));
+        assertEquals("4 connexion(s) — RECONSTRUCT (empreintes égales, dans la matrice validée) ×2,"
+                + " SNAPSHOT (empreintes déterministes différentes) ×1, aucune réponse au handshake ×1",
+                ServerPeer.summarize(pairs));
+    }
+
+    @Test
     @DisplayName("Un rechargement entre la connexion et l'entrée en jeu fait renvoyer le registre courant")
     void unRechargementPendantLaConnexionFaitRenvoyerLeRegistre() {
         ServerSnapshot avant = serveur().instantane(VALIDEE);

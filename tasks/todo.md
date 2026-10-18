@@ -3029,20 +3029,24 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             `ReplicationMode.negotiate` (T-820c), `RegistryContent` (matériaux, groupes de collision,
             definitions ; empreinte FNV-1a 64 sur les textes triés, longueurs comprises) et
             `RegistryMessage` (empreintes vérifiées à la lecture, T-420). 19 mutations rouges.
-      - [ ] 3c. Colle Forge (paquets de connexion, renvoi du registre au rechargement), instantané du
+      - [x] 3c. Colle Forge (paquets de connexion, renvoi du registre au rechargement), instantané du
             registre côté serveur, application côté client, mode de réplication au statut.
             - [x] 3c-1 (2026-10-18, 29 mutations rouges). Java pur : `RegistryAck` (genre 4, ce que le client tient), admission des
                   entrées aux bornes du protocole, `ServerSnapshot` (handshake et trames de connexion,
                   registre seulement hors connexion locale), `ServerPeer`, `ClientSession`,
                   `RemoteRegistry` (même lecteur strict, modèles non exigés). Connexion simulée de
                   bout en bout en JUnit : T-420, T-422, T-820c.
-            - [ ] 3c-2. Runtime : textes gardés par famille, instantané rebâti après les definitions,
+            - [x] 3c-2 (2026-10-18). Runtime : textes gardés par famille, instantané rebâti après les definitions,
                   registre reçu appliqué chez le client et oublié à la déconnexion, modes au statut.
-            - [ ] 3c-3. Colle Forge : trois messages (connexion dans les deux sens, jeu vers le client),
+            - [x] 3c-3 (2026-10-18). Colle Forge : trois messages (connexion dans les deux sens, jeu vers le client),
                   décodeurs qui ne lèvent jamais (R-1650), réponse toujours envoyée, renvoi en jeu si
                   l'acquittement ne correspond pas ou après un rechargement.
-            - [ ] 3c-4. Preuves : GameTest de la moitié serveur, banc de rendu (connexion locale),
-                  mutations ; ADR-150, CHANGELOG.
+            - [x] 3c-4 (2026-10-18). Preuves : GameTest de la moitié serveur, banc de rendu (connexion locale),
+                  mutations ; ADR-150, CHANGELOG. 15 GameTests verts (2 nouveaux, 2 mutations rouges) ;
+                  banc vanilla vert, Forge compte la réponse AXION (« indexed reply 3 ») et le serveur
+                  journalise « réplication avec Dev : RECONSTRUCT (...) » ; 3 mutations du décodeur rouges.
+            - [ ] Essai à deux instances (D8), avec Killian : le chemin distant à travers Forge — registre
+                  en connexion, renvoi en jeu après `/reload` — n'est prouvé qu'en Java pur et en GameTest.
 - [ ] 4. Snapshots (D2, D6), fin du pont provisoire — T-410, T-411, T-418.
 - [ ] 5. Interpolation (D7) — T-412, T-413, T-414.
 - [ ] 6. Harnais de joueurs simulés (D8) — T-423, T-424, T-425 ; overlay `network`.

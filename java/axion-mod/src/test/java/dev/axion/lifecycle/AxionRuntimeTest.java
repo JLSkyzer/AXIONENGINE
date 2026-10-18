@@ -533,4 +533,53 @@ class AxionRuntimeTest {
         runtime.onDefinitionReload(fichiers(Map.of()));
         assertSame(runtime.physicsMaterials(), runtime.definitions().physicsMaterials());
     }
+
+    @Test
+    @DisplayName("ADR-150 D5 : le registre d'un serveur distant devient celui du rendu, et la déconnexion l'oublie")
+    void leRegistreDUnServeurDistantSOublieALaDeconnexion() {
+        AxionRuntime runtime = new AxionRuntime((platform, properties) -> null);
+        dev.axion.net.RegistryContent registre = dev.axion.net.RegistryContent.builder()
+                .add(dev.axion.net.RegistryContent.Family.DEFINITIONS, "mymod:axion/definitions/caisse.json",
+                        "{\"schema\": 1, \"asset\": \"mymod:models/caisse.glb\", \"kind\": \"visual\"}"
+                                .getBytes(StandardCharsets.UTF_8))
+                .build();
+
+        List<String> journal = runtime.applyRemoteRegistry(registre);
+        assertEquals(List.of("mymod:caisse"), runtime.definitions().ids());
+        assertTrue(journal.get(0).startsWith("registre du serveur appliqué : 1 definition(s)"), journal::toString);
+        assertTrue(runtime.transitions().isEmpty(), "appelé depuis Netty : rien dans les transitions");
+
+        runtime.onRemoteDisconnect();
+        assertEquals(0, runtime.definitions().size());
+        runtime.onRemoteDisconnect();
+        assertEquals(0, runtime.definitions().size());
+    }
+
+    @Test
+    @DisplayName("ADR-150 D4 : sans runtime natif, l'empreinte est inconnue et la compression absente")
+    void sansRuntimeNatifLEmpreinteEstInconnue() {
+        AxionRuntime runtime = new AxionRuntime((platform, properties) -> null);
+        assertEquals(dev.axion.net.DetProfile.UNKNOWN, runtime.detProfile());
+        assertNull(runtime.netCompression());
+        assertNull(runtime.netSnapshot());
+    }
+
+    @Test
+    @DisplayName("5.12bis : les connexions d'un serveur se comptent pour le statut, et s'oublient à son arrêt")
+    void lesConnexionsSOublientALArretDuServeur() {
+        AxionRuntime runtime = new AxionRuntime((platform, properties) -> ready(), new RecordingNative());
+        runtime.onConstructed(new FakePlatform(gameDir, true));
+        runtime.onSetup(new Properties());
+        runtime.onLoadComplete();
+        runtime.onServerStarting();
+
+        runtime.onPeerJoined("a", new dev.axion.net.ServerPeer(dev.axion.net.DetProfile.UNKNOWN));
+        runtime.onPeerJoined("b", new dev.axion.net.ServerPeer(dev.axion.net.DetProfile.UNKNOWN));
+        runtime.onPeerLeft("a");
+        assertEquals(1, runtime.peers().size());
+
+        runtime.onServerStopping();
+        assertTrue(runtime.peers().isEmpty());
+        assertNull(runtime.netSnapshot());
+    }
 }
