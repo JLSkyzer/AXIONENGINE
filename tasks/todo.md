@@ -3050,6 +3050,22 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
                   Killian (2026-10-18) : « Après la tranche 5 (Recommandé) » — un seul essai pour le
                   registre, les snapshots et le mouvement interpolé.
 - [ ] 4. Snapshots (D2, D6), fin du pont provisoire — T-410, T-411, T-418.
+      - [x] 4a (2026-10-18, 10 mutations rouges ; « smallest three » : 0,234° au pire mesuré, 0,274° de borne). Codec en Java pur : quantification déclarée par champ (R-1660 : position 1/1024 de bloc,
+            vitesses 300 et 100 sur 32 767, emprise 1/256 de bloc), rotation « smallest three » sur 32 bits,
+            entrée complète en `3 × i64` ou delta en `3 × i32` (D6), `S2C_Snapshot` (genre 5 : numéro, tick
+            serveur, version du descripteur, entrées) et `C2S_Ack` (genre 6 : dernier reçu, entités à
+            renvoyer en entier). Chaque delta nomme sa base : une base absente se refuse et se redemande.
+      - [ ] 4b. Émetteur par joueur : base = dernière entrée envoyée dans un snapshot acquitté (fenêtre 32,
+            R-1661), fréquences (R-1662 : NORMAL `net.snapshot_rate_hz`, LOW endormie ; HIGH vient avec le
+            pilotage en M5, « lointaine » avec les niveaux du chantier LOD), rien pour une endormie
+            inchangée (R-1663), plafond par joueur avec retard compté, jamais d'omission (R-1664, T-418).
+      - [ ] 4c. Récepteur : états reconstruits à l'identique depuis les entiers, historique de 32, acquittement.
+      - [ ] 4d. Colle Forge et fin du pont : `updateInterval` démesuré (suivi de position de Minecraft
+            neutralisé), portée de suivi couvrant `net.sync_radius`, apparition portant la transformation
+            complète, `StartTracking`/`StopTracking` pour l'ensemble suivi, données synchronisées `ROTATION`,
+            `BOUNDS_MIN`, `BOUNDS_MAX` retirées ; message en jeu vers le serveur pour l'acquittement.
+      - [ ] 4e. Preuves : JUnit et mutations, GameTests, banc de rendu (les assemblies bougent et se
+            dessinent à leur place par les snapshots, en connexion locale) ; ADR-150, CHANGELOG.
 - [ ] 5. Interpolation (D7) — T-412, T-413, T-414.
 - [ ] 6. Harnais de joueurs simulés (D8) — T-423, T-424, T-425 ; overlay `network`.
 

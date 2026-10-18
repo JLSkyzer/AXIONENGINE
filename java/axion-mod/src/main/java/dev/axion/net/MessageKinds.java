@@ -20,6 +20,12 @@ public final class MessageKinds {
     /** {@code C2S_RegistryAck}, ajouté par la tranche 3 d'ADR-150 : le registre que le client tient. */
     public static final int REGISTRY_ACK = 4;
 
+    /** {@code S2C_Snapshot} (21.5, ADR-150 D6). */
+    public static final int SNAPSHOT = 5;
+
+    /** {@code C2S_Ack} (21.4) : le dernier snapshot reçu, et les entités à renvoyer en entier. */
+    public static final int ACK = 6;
+
     private MessageKinds() {
         throw new AssertionError("classe de constantes, non instanciable");
     }
