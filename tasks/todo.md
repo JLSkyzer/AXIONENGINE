@@ -2971,7 +2971,8 @@ T-520..T-524, T-530..T-533, T-540..T-542.
       natif partent dans le même JAR, le handshake exige l'égalité ; une hausse recompile le cache
       d'assets, l'ABI entrant dans sa clé). L'ordre des chantiers suivants se propose à la fin du réseau.
       - Constats qui pèsent sur l'ordre :
-        - un client relié à un serveur distant n'a ni modèles ni definitions : ils ne se chargent que par
+        - un client relié à un serveur distant n'a ni modèles ni definitions, et dessine chaque assembly en
+          boîte de repli : modèles et definitions ne se chargent que par
           le rechargement des données du serveur (`AxionForgeEntrypoint.onAddReloadListener`). Rien de ce
           que M4 ajoute ne serait visible en multijoueur avant d'y remédier (R-1640, étapes 4 et 5 de C-27) ;
         - le CDC ne définit aucun des tests T-330..T-334 (C-34), T-520..T-524 (C-64), T-530..T-533 (C-65),
@@ -2998,6 +2999,21 @@ T-520..T-524, T-530..T-533, T-540..T-542.
         - culling, LOD et instancing (C-64, C-65) : `ax-render-prep`, `LODM` chargée, IF-05 et workers,
           regroupement, chemin indirect, paliers de R-750.
 
+**Chantier réseau (C-51)** — [ADR-150](../docs/decisions/ADR-150.md), accepté le 2026-10-18 (sept points,
+chacun selon la proposition) : l'entité de Minecraft porte la visibilité, `axion:main` l'état ; chaque
+client compile ses modèles (resource packs, puis mods ; le serveur garde `data/`) ; handshake à la
+connexion avec `det_profile` et `C2S_Handshake` ; registres en JSON compressés par le zstd du natif
+(ABI 6) ; positions absolues en `i64`, deltas en `i32` ; harnais de joueurs simulés et un essai réel.
+T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 en M6.
+
+- [ ] 1. Canal et codec (`dev.axion.net`, colle dans `dev.axion.forge.net`) : validation,
+      fragmentation, refus d'un client sans AXION — T-419, T-422.
+- [ ] 2. Modèles chez le client (D3) — T-421.
+- [ ] 3. Handshake et registres (D4, D5), `det_profile` et zstd par la FFI, ABI 6 — T-420, T-820c.
+- [ ] 4. Snapshots (D2, D6), fin du pont provisoire — T-410, T-411, T-418.
+- [ ] 5. Interpolation (D7) — T-412, T-413, T-414.
+- [ ] 6. Harnais de joueurs simulés (D8) — T-423, T-424, T-425 ; overlay `network`.
+
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
 
@@ -3016,8 +3032,9 @@ T-520..T-524, T-530..T-533, T-540..T-542.
       T-434 — fixer ce que migre T-434, aucune v1 n'ayant existé (`NBT_SCHEMA` vaut 2) — ADR-137.
 - [ ] C-70 : l'accesseur `animation` d'`Assembly` devient réel avec C-37 ; le fournisseur d'`AxionApi`
       attend que tous ses accesseurs le soient (M9) — ADR-137.
-- [ ] Handshake de la PARTIE 21.3 : `RECONSTRUCT` entre deux plateformes d'empreintes distinctes,
-      à trancher (« Dette et points ouverts », `det_profile`).
+- [x] Handshake de la PARTIE 21.3 : `RECONSTRUCT` entre deux plateformes d'empreintes distinctes —
+      tranché par ADR-150 D4 : la règle actuelle (égalité stricte) est gardée en M4, son relâchement se
+      tranche en M6, quand la déformation rend le mode observable.
 
 ---
 
@@ -3121,7 +3138,7 @@ ses critères vérifiés **mécaniquement**.
       déterministe qui manipule un vecteur le décompose ; `glam` reste employé
       partout ailleurs, R-460 inchangé.
 - [ ] **Le handshake ne reconstruira jamais entre deux plateformes.** À trancher
-      en M4, quand le handshake de la PARTIE 21.3 sera écrit.
+      en M6 (ADR-150 D4, 2026-10-18 : la règle est gardée en M4, où le mode est sans effet visible).
 
       5.12bis définit `det_profile` comme le hash de **(triplet cible,
       `DET_KERNEL_VERSION`, jeu d'instructions compilé, drapeaux flottants)**, et
