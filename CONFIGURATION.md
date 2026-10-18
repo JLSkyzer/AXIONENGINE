@@ -166,7 +166,7 @@ alors ignorée (R-1830).
 |---|---|---|---|---|---|---|
 | `snapshot_rate_hz` | entier | `10` | `2..20` | non | non | Fréquence d'émission des snapshots d'état, en hertz. |
 | `sync_radius` | flottant | `96.0` | `0.0..` | non | non | Rayon de synchronisation autour d'un joueur, en blocs. |
-| `interpolation_delay_ms` | entier | `100` | `0..` | non | non | Retard d'interpolation appliqué côté client, en millisecondes. |
+| `interpolation_delay_ms` | entier | `100` | `0..65535` | non | non | Retard d'interpolation appliqué côté client, en millisecondes. |
 | `extrapolation_max_ms` | entier | `250` | `0..` | non | non | Durée maximale d'extrapolation en l'absence de snapshot, en millisecondes. |
 | `snap_threshold` | flottant | `2.0` | `0.0..` | non | non | Écart, en mètres, au-delà duquel le client repositionne brutalement plutôt qu'interpoler. |
 | `prediction` | booléen | `true` | `true \| false` | non | non | Active la prédiction côté client pour l'assembly pilotée par le joueur. |

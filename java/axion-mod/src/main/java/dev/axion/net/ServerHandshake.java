@@ -5,7 +5,8 @@ package dev.axion.net;
  *
  * <p>Envoyé en phase de connexion, avant l'entrée en jeu (R-1640). Chaque champ est validé à la
  * lecture : un serveur qui annonce un pas de temps nul ou une fréquence hors bornes ne fait pas
- * régler le client sur n'importe quoi (R-1650).
+ * régler le client sur n'importe quoi (R-1650). Les bornes sont celles de la configuration : tout
+ * serveur correctement configuré passe.
  *
  * @param protocolVersion {@code protocol_version} : {@link NetProtocol#PROTOCOL_VERSION}
  * @param fixedDt {@code sim.fixed_dt}, en secondes
@@ -35,9 +36,6 @@ public record ServerHandshake(
         long damageSourcesHash,
         long materialsHash,
         DetProfile det) {
-
-    /** Plus long retard d'interpolation admis, en millisecondes : au-delà, le jeu ne se joue plus. */
-    static final int MAX_INTERPOLATION_DELAY_MS = 5000;
 
     /** {@return le message, genre compris} */
     public byte[] encode() {
@@ -91,11 +89,8 @@ public record ServerHandshake(
         if (rate < 2 || rate > 20) {
             throw new MalformedPacketException("fréquence des snapshots hors de [2, 20] Hz : " + rate);
         }
+        // Tout u16 est un retard admis : l'option a pour domaine celui du champ (21.3).
         int delay = reader.u16();
-        if (delay > MAX_INTERPOLATION_DELAY_MS) {
-            throw new MalformedPacketException("retard d'interpolation au-delà de "
-                    + MAX_INTERPOLATION_DELAY_MS + " ms : " + delay);
-        }
         boolean prediction = reader.bool();
         boolean deformation = reader.bool();
         int quantPolicy = reader.u8();

@@ -1688,3 +1688,17 @@ entre pas de lui-même, et un cache court-circuite exactement le code qu'une tel
 **Règle.** Tout nouveau cache s'ajoute au nettoyage des tâches qui jugent ce qu'il cache (bancs,
 GameTests). Une mutation d'un chemin qu'un cache court-circuite se juge cache neuf ; une mutation qui
 survit se regarde d'abord sous cet angle.
+
+## 2026-10-18 | Un décodeur réseau a borné un champ plus étroitement que l'option qu'il transporte
+
+**Ce qui a mal tourné.** Dans la tranche 3b d'ADR-150, `ServerHandshake.decode` refusait un retard
+d'interpolation au-delà de 5 000 ms, alors que `net.interpolation_delay_ms` admettait tout entier
+positif : un serveur configuré à 6 000 ms aurait vu chaque client ignorer son handshake, et au-delà
+de 65 535 l'encodeur aurait levé. Relevé en préparant la tranche 3c, avant tout usage.
+
+**Cause.** La borne du décodeur a été choisie pour le message, sans regarder le domaine de l'option
+qui le remplit ; les tests ne faisaient passer que des valeurs choisies à la main.
+
+**Règle.** Quand un message porte une option, le domaine du décodeur contient celui de l'option, et
+un test fait passer par le message chaque borne lue dans `ConfigSchema`. Une option sans borne
+haute que le fil doit porter prend la borne du type du fil, dans `ax-model`.

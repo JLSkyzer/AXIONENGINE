@@ -3,7 +3,9 @@ package dev.axion.net;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import dev.axion.config.ConfigSchema;
 import java.util.Arrays;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -32,6 +34,41 @@ class HandshakeMessagesTest {
     }
 
     @Test
+    @DisplayName("Toute valeur que la configuration admet passe le handshake : un serveur bien configuré n'est jamais refusé")
+    void leDomaineDeLaConfigurationPasseLeHandshake() throws MalformedPacketException {
+        List<ConfigSchema.Option> options = Arrays.stream(ConfigSchema.Scope.values())
+                .flatMap(scope -> scope.options().stream())
+                .toList();
+        for (String pas : option(options, "sim.fixed_dt").domain().allowed()) {
+            relu(serveur(Float.parseFloat(pas), 4, -9.81f, 10, 100));
+        }
+        for (double sousPas : bornes(option(options, "sim.max_substeps"))) {
+            relu(serveur(0.05f, (int) sousPas, -9.81f, 10, 100));
+        }
+        for (double gravite : bornes(option(options, "physics.gravity"))) {
+            relu(serveur(0.05f, 4, (float) gravite, 10, 100));
+        }
+        for (double frequence : bornes(option(options, "net.snapshot_rate_hz"))) {
+            relu(serveur(0.05f, 4, -9.81f, (int) frequence, 100));
+        }
+        for (double retard : bornes(option(options, "net.interpolation_delay_ms"))) {
+            relu(serveur(0.05f, 4, -9.81f, 10, (int) retard));
+        }
+    }
+
+    private static ConfigSchema.Option option(List<ConfigSchema.Option> options, String path) {
+        return options.stream().filter(option -> option.path().equals(path)).findFirst().orElseThrow();
+    }
+
+    private static double[] bornes(ConfigSchema.Option option) {
+        return new double[] {option.domain().min(), option.domain().max()};
+    }
+
+    private static void relu(ServerHandshake serveur) throws MalformedPacketException {
+        assertEquals(serveur, ServerHandshake.decode(serveur.encode()));
+    }
+
+    @Test
     @DisplayName("T-422 : une valeur hors de son domaine est refusée, pas appliquée")
     void t422_uneValeurHorsDomaineEstRefusee() {
         for (ServerHandshake fautif : new ServerHandshake[] {
@@ -45,7 +82,6 @@ class HandshakeMessagesTest {
             serveur(0.05f, 4, -51f, 10, 100),
             serveur(0.05f, 4, -9.81f, 1, 100),
             serveur(0.05f, 4, -9.81f, 21, 100),
-            serveur(0.05f, 4, -9.81f, 10, ServerHandshake.MAX_INTERPOLATION_DELAY_MS + 1),
         }) {
             assertThrows(MalformedPacketException.class, () -> ServerHandshake.decode(fautif.encode()),
                     fautif::toString);

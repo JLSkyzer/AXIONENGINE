@@ -250,7 +250,8 @@ pub const COMMON: &[ConfigOption] = &[
     // [net]
     i("net.snapshot_rate_hz", 10, 2, 20, "Fréquence d'émission des snapshots d'état, en hertz."),
     fp("net.sync_radius", 96.0, "Rayon de synchronisation autour d'un joueur, en blocs."),
-    ip("net.interpolation_delay_ms", 100, "Retard d'interpolation appliqué côté client, en millisecondes."),
+    // Borne du champ `u16` de `S2C_Handshake` (21.3), qui la porte au client (ADR-150).
+    i("net.interpolation_delay_ms", 100, 0, 65_535, "Retard d'interpolation appliqué côté client, en millisecondes."),
     ip("net.extrapolation_max_ms", 250, "Durée maximale d'extrapolation en l'absence de snapshot, en millisecondes."),
     fp("net.snap_threshold", 2.0, "Écart, en mètres, au-delà duquel le client repositionne brutalement plutôt qu'interpoler."),
     b("net.prediction", true, "Active la prédiction côté client pour l'assembly pilotée par le joueur."),

@@ -111,7 +111,7 @@ max_chain = 8                     # 0..
 [net]
 snapshot_rate_hz = 10             # 2..20
 sync_radius = 96.0                # 0.0..
-interpolation_delay_ms = 100      # 0..
+interpolation_delay_ms = 100      # 0..65535
 extrapolation_max_ms = 250        # 0..
 snap_threshold = 2.0              # 0.0..
 prediction = true

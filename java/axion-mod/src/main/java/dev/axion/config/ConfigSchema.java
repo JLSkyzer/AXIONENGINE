@@ -805,7 +805,7 @@ public final class ConfigSchema {
                     "net.interpolation_delay_ms",
                     Kind.INTEGER,
                     100L,
-                    new Domain(DomainKind.INT_RANGE, 0.0, Double.MAX_VALUE, List.of()),
+                    new Domain(DomainKind.INT_RANGE, 0.0, 65535.0, List.of()),
                     false,
                     false,
                     "Retard d'interpolation appliqué côté client, en millisecondes."),
