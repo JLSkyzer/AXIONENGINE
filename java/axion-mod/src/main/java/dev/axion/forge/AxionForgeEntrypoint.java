@@ -2,6 +2,7 @@ package dev.axion.forge;
 
 import com.mojang.logging.LogUtils;
 import dev.axion.AxionMod;
+import dev.axion.forge.net.AxionChannel;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
 import dev.axion.physics.SimulationJournal;
@@ -72,6 +73,9 @@ public final class AxionForgeEntrypoint {
         modBus.addListener(EventPriority.LOWEST, this::onLoadComplete);
         AxionEntities.register(modBus, runtime);
         RuntimeAccess.install(runtime);
+        // Le canal doit exister avant la première connexion : AXION est exigé des deux côtés
+        // (R-1630, ADR-150).
+        AxionChannel.register();
 
         MinecraftForge.EVENT_BUS.register(this);
 

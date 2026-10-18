@@ -10,6 +10,14 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- M4 (en cours, Definition of Done non prononcee) — reseau, animation,
+  culling et LOD, joints, persistance :
+  - reseau (C-51, ADR-150) : canal `axion:main` exige des deux cotes, un
+    client sans AXION etant refuse par Forge avec un message (R-1630) ;
+    codec du protocole (entiers big-endian, varints canoniques, UTF-8
+    strict) et fragmentation ordonnee en trames de 32 000 octets au plus,
+    toute entree validee et bornee avant d'etre crue (R-1650, R-1651,
+    R-1691) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

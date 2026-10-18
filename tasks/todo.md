@@ -3006,8 +3006,12 @@ connexion avec `det_profile` et `C2S_Handshake` ; registres en JSON compressés 
 (ABI 6) ; positions absolues en `i64`, deltas en `i32` ; harnais de joueurs simulés et un essai réel.
 T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 en M6.
 
-- [ ] 1. Canal et codec (`dev.axion.net`, colle dans `dev.axion.forge.net`) : validation,
-      fragmentation, refus d'un client sans AXION — T-419, T-422.
+- [x] 1. Canal et codec (`dev.axion.net`, colle dans `dev.axion.forge.net`) : validation,
+      fragmentation, refus d'un client sans AXION — T-419, T-422. Fait le 2026-10-18 : canal
+      strict (`AxionChannel`, prédicats de `NetProtocol.accepts` contre les marqueurs de Forge),
+      `WireReader`/`WireWriter`, `Fragments` (trames de 32 000 octets au plus : sous R-1651 et sous
+      les 32 767 octets qu'un serveur Minecraft 1.20.1 accepte d'un client) ; 21 tests, 17
+      mutations rouges. Le canal n'a pas encore de message : les premiers viennent en tranche 3.
 - [ ] 2. Modèles chez le client (D3) — T-421.
 - [ ] 3. Handshake et registres (D4, D5), `det_profile` et zstd par la FFI, ABI 6 — T-420, T-820c.
 - [ ] 4. Snapshots (D2, D6), fin du pont provisoire — T-410, T-411, T-418.
