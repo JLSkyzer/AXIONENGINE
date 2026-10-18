@@ -3047,6 +3047,8 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
                   journalise « réplication avec Dev : RECONSTRUCT (...) » ; 3 mutations du décodeur rouges.
             - [ ] Essai à deux instances (D8), avec Killian : le chemin distant à travers Forge — registre
                   en connexion, renvoi en jeu après `/reload` — n'est prouvé qu'en Java pur et en GameTest.
+                  Killian (2026-10-18) : « Après la tranche 5 (Recommandé) » — un seul essai pour le
+                  registre, les snapshots et le mouvement interpolé.
 - [ ] 4. Snapshots (D2, D6), fin du pont provisoire — T-410, T-411, T-418.
 - [ ] 5. Interpolation (D7) — T-412, T-413, T-414.
 - [ ] 6. Harnais de joueurs simulés (D8) — T-423, T-424, T-425 ; overlay `network`.
