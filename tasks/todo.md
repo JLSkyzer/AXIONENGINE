@@ -2965,9 +2965,38 @@ sous plafond ; interpolation fluide à 200 ms et 20 % de perte ; joints conforme
 glTF ; sauvegarde exacte. Tests : T-330..T-334, T-360..T-368, T-410..T-425, T-430..T-437,
 T-520..T-524, T-530..T-533, T-540..T-542.
 
-- [ ] **Séquencement de M4**, avant tout code : lire les sept fiches de la PARTIE 5 (C-34 5.26, C-37
-      5.29, C-51 5.42, C-52 5.43, C-64 5.51, C-65 5.52, C-66 5.53), puis proposer à Killian l'ordre des
-      composants et les décisions qui ne reviennent pas à l'agent (contrats IF, DM, ABI, INV).
+- [x] **Séquencement de M4** — lecture faite le 2026-10-17 (fiches de la PARTIE 5, PARTIES 10, 18, 19, 21
+      et 22, état du code), constats décisifs revérifiés le 2026-10-18. **Décidé par Killian le
+      2026-10-18** : le réseau d'abord ; un ADR de frontière par chantier, l'ABI montant à chacun (Java et
+      natif partent dans le même JAR, le handshake exige l'égalité ; une hausse recompile le cache
+      d'assets, l'ABI entrant dans sa clé). L'ordre des chantiers suivants se propose à la fin du réseau.
+      - Constats qui pèsent sur l'ordre :
+        - un client relié à un serveur distant n'a ni modèles ni definitions : ils ne se chargent que par
+          le rechargement des données du serveur (`AxionForgeEntrypoint.onAddReloadListener`). Rien de ce
+          que M4 ajoute ne serait visible en multijoueur avant d'y remédier (R-1640, étapes 4 et 5 de C-27) ;
+        - le CDC ne définit aucun des tests T-330..T-334 (C-34), T-520..T-524 (C-64), T-530..T-533 (C-65),
+          T-540..T-542 (C-66) : `ID-MAP` ne leur connaît que la ligne de plage de leur fiche, et T-541
+          n'y figure pas. D'autres tests de M4 supposent un autre jalon : T-415..T-417 et T-365 (un
+          véhicule, M5), T-431 et la part « déformation » de T-424 (M6, M7). T-713b..f (C-52),
+          T-823..T-829 et T-950..T-959 ne sont déclarés par aucun jalon ;
+        - une assembly ne porte qu'un corps côté natif (`ax-physics/src/sim.rs`) : les joints demandent
+          d'abord le multi-corps ;
+        - le natif n'a qu'un verrou de session (`ax-ffi/src/context.rs:43`) : en solo, une préparation de
+          rendu par frame (IF-05) attendrait le pas physique du serveur intégré, et R-300 ne tiendrait pas ;
+        - restent à fixer par ADR : IF-05 (`AxionCameraDesc` n'est pas défini), le format des sections
+          `SKEL` et `ANIM` (DM-10), les structures des joints, le handshake de 21.3 (sans `det_profile`,
+          que 5.12bis exige) et l'échelle des positions de 21.5 (`i32` à 1/1024 de bloc : ±2 097 152
+          blocs, quand la bordure vanilla est à 30 millions).
+      - Chantiers et tranches proposés, le détail allant à l'ADR de chacun :
+        - réseau (C-51) : canal et codec, handshake et registres, assets côté client, snapshots et deltas,
+          interpolation, harnais de joueurs simulés ;
+        - persistance (C-52) : NBT complet et reprise des vitesses et du sommeil, budget de chargement
+          (R-1730), journal latéral ;
+        - animation (C-37, C-30, C-66) : DM-10 et `COMPILER_VERSION` 15, `ax-anim`, graphe vivant (étapes 2
+          et 14), IF-05 et palettes, skinning GPU puis CPU (R-742) ;
+        - joints (C-34) : multi-corps natif, types et réglages, étape 5 et ruptures, grippage, frontière ;
+        - culling, LOD et instancing (C-64, C-65) : `ax-render-prep`, `LODM` chargée, IF-05 et workers,
+          regroupement, chemin indirect, paliers de R-750.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
