@@ -1674,3 +1674,17 @@ survécu, et les verdicts croisés des mutations voisines étaient incohérents.
 **Règle.** Un antislash-u littéral s'écrit par un script qui construit l'antislash (`chr(92)`), et se
 relit par `grep` sur le disque. Une mutation qui survit se lit d'abord dans le fichier de test avant
 qu'on touche au code.
+
+## 2026-10-18 | Une mutation du chemin de compilation survit au banc parce que le cache du client est chaud
+
+**Ce qui a mal tourné.** Dans la tranche 2 d'ADR-150, la mutation « compilation client jamais pompée »
+a survécu au banc de rendu : le nouveau cache `client-cache` n'était pas effacé par `runRenderTest*`,
+et chaque modèle y était repris à la découverte, sans compilation. Le banc vert ne prouvait rien du
+chemin de compilation du client.
+
+**Cause.** Le nettoyage du banc ne connaissait que `axion/cache` : un répertoire de cache ajouté n'y
+entre pas de lui-même, et un cache court-circuite exactement le code qu'une telle mutation retire.
+
+**Règle.** Tout nouveau cache s'ajoute au nettoyage des tâches qui jugent ce qu'il cache (bancs,
+GameTests). Une mutation d'un chemin qu'un cache court-circuite se juge cache neuf ; une mutation qui
+survit se regarde d'abord sous cet angle.
