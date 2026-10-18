@@ -3055,7 +3055,10 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             entrée complète en `3 × i64` ou delta en `3 × i32` (D6), `S2C_Snapshot` (genre 5 : numéro, tick
             serveur, version du descripteur, entrées) et `C2S_Ack` (genre 6 : dernier reçu, entités à
             renvoyer en entier). Chaque delta nomme sa base : une base absente se refuse et se redemande.
-      - [ ] 4b. Émetteur par joueur : base = dernière entrée envoyée dans un snapshot acquitté (fenêtre 32,
+      - [ ] 4b (en cours, 2026-10-18 : `SnapshotMessage.encodedSize`/`headerSize` écrits, non testés ni
+            commités ; `SnapshotSender` conçu — seau à jetons de 32 KiB/s, ordre par ancienneté puis
+            distance, `dueAt += période` pour tenir 15 Hz au tick, base = dernière entrée ≤ acquitté
+            dans la fenêtre). Émetteur par joueur : base = dernière entrée envoyée dans un snapshot acquitté (fenêtre 32,
             R-1661), fréquences (R-1662 : NORMAL `net.snapshot_rate_hz`, LOW endormie ; HIGH vient avec le
             pilotage en M5, « lointaine » avec les niveaux du chantier LOD), rien pour une endormie
             inchangée (R-1663), plafond par joueur avec retard compté, jamais d'omission (R-1664, T-418).
