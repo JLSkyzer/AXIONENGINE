@@ -4,7 +4,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import dev.axion.forge.AxionEntity;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 
@@ -13,7 +12,7 @@ import org.joml.Quaternionf;
  *
  * <p>Partagée par tout ce qui se dessine en repère du corps — le maillage (C-61) comme les
  * overlays de debug (C-67, ADR-121) — pour qu'ils soient posés <b>exactement</b> au même
- * endroit : même position interpolée, même orientation interpolée.
+ * endroit : la pose de l'interpolation de 21.7, datée de l'image (ADR-150 D7).
  *
  * @param x position interpolée de l'origine du corps (bas-centre de l'entité)
  * @param y position interpolée
@@ -30,13 +29,10 @@ record AssemblyPlacement(double x, double y, double z, Quaternionf rotation, int
      * @param assembly assembly à poser
      */
     static AssemblyPlacement of(float partialTick, AxionEntity assembly) {
-        double x = Mth.lerp(partialTick, assembly.xo, assembly.getX());
-        double y = Mth.lerp(partialTick, assembly.yo, assembly.getY());
-        double z = Mth.lerp(partialTick, assembly.zo, assembly.getZ());
-        Quaternionf rotation = assembly.renderRotation(partialTick, new Quaternionf());
+        AxionEntity.RenderPose pose = assembly.renderPose(partialTick);
         int light = LevelRenderer.getLightColor(
-                assembly.level(), BlockPos.containing(x, y + assembly.getBbHeight() / 2.0, z));
-        return new AssemblyPlacement(x, y, z, rotation, light);
+                assembly.level(), BlockPos.containing(pose.x(), pose.y() + assembly.getBbHeight() / 2.0, pose.z()));
+        return new AssemblyPlacement(pose.x(), pose.y(), pose.z(), pose.rotation(), light);
     }
 
     /** Place la pile à l'origine du corps, dans son orientation. */

@@ -48,6 +48,11 @@ Definition of Done (PARTIE 37.3).
     retarde et compte sans jamais omettre ; le suivi de position de
     Minecraft est tu, et l'apparition porte orientation et emprise : les
     donnees synchronisees du pont provisoire sont retirees (ADR-150 D2, D6) ;
+    interpolation de 21.7 chez le client : Hermite, slerp au plus court,
+    rendu net.interpolation_delay_ms derriere le temps du serveur estime
+    (qui glisse plutot que de sauter), extrapolation bornee puis figement,
+    correction douce ou teleportation ; les pauses d'un monde solo ne
+    comptent pas ; le lissage en trois pas est retire (ADR-150 D7) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

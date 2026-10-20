@@ -4,11 +4,14 @@ import com.mojang.logging.LogUtils;
 import dev.axion.definition.Definition;
 import dev.axion.entity.AssemblyBinding;
 import dev.axion.net.AssemblyState;
+import dev.axion.net.Interpolation;
+import dev.axion.net.RenderClock;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
@@ -26,9 +29,8 @@ import org.slf4j.Logger;
  * santé, montée et dégâts d'une assembly sont ceux de sa definition, pas ceux
  * d'un mob ou d'un bateau. {@code tick()} n'exécute aucune physique (R-701) : la
  * simulation est pilotée par le noyau natif (C-40) et réappliquée en fin de tick
- * serveur ; côté client, {@code tick()} n'avance que l'interpolation visuelle vers la
- * position et l'orientation reçues. L'entité porte sa definition, se sauvegarde, et se voit
- * en debug.
+ * serveur ; côté client, {@code tick()} y pose ce que donne l'interpolation de 21.7
+ * (ADR-150 D7). L'entité porte sa definition, se sauvegarde, et se voit en debug.
  *
  * <p>Minecraft porte sa visibilité — apparition, disparition, quel joueur la voit —, le canal d'AXION
  * son état (ADR-150 D2) : position, orientation, vitesses et emprise arrivent au client par
@@ -38,12 +40,6 @@ import org.slf4j.Logger;
 public final class AxionEntity extends Entity implements IEntityAdditionalSpawnData {
 
     private static final Logger LOGGER = LogUtils.getLogger();
-
-    /**
-     * Pas d'interpolation d'un état reçu par snapshot : position, orientation et emprise y glissent
-     * ensemble, et restent en phase. L'interpolation de 21.7 le remplace (ADR-150 D7).
-     */
-    private static final int LERP_STEPS = 3;
 
     /**
      * Orientation autoritaire du corps, quaternion {@code (x, y, z, w)} (R-461), côté serveur : la
@@ -71,47 +67,29 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     private String inertReason = "créée sans definition";
 
     /**
-     * Cible d'interpolation côté client et nombre de ticks restants pour l'atteindre.
-     * La physique serveur (C-40) repositionne l'entité à chaque tick et l'envoie au
-     * client à 20 Hz ; sans lissage, la hitbox « saute » d'un tick à l'autre. Ces
-     * champs ne servent que côté client (voir {@link #lerpTo} et {@link #tick}).
+     * L'interpolation de 21.7 côté client (ADR-150 D7), et l'horloge de rendu de la connexion qui la
+     * date : posées au premier snapshot reçu ; {@code null} avant, et côté serveur.
      */
-    private double lerpTargetX;
+    private Interpolation interpolation;
 
-    private double lerpTargetY;
-
-    private double lerpTargetZ;
-
-    private int lerpSteps;
+    private RenderClock clock;
 
     /**
-     * Orientation affichée côté client : celle du tick précédent, celle du tick courant, la
-     * dernière reçue, et les pas restants pour l'atteindre. Le rendu interpole entre les deux
-     * premières ({@link #renderRotation}).
+     * Orientation côté client : celle du tick précédent et celle du tick courant. Le rendu interpole
+     * entre les deux tant qu'aucun snapshot n'est arrivé ({@link #renderPose}).
      */
     private final Quaternionf rotationO = new Quaternionf();
 
     private final Quaternionf rotation = new Quaternionf();
 
-    private final Quaternionf rotationTarget = new Quaternionf();
-
-    private int rotationSteps;
-
     /**
-     * Emprise courante, relative à la position — celle qu'applique {@link #makeBoundingBox} —,
-     * la dernière reçue, et les pas restants pour l'atteindre côté client. {@code NaN} :
-     * aucune. Nuls pendant la construction d'{@code Entity}, dont le premier {@code setPos}
-     * appelle déjà {@link #makeBoundingBox}.
+     * Emprise courante, relative à la position — celle qu'applique {@link #makeBoundingBox}. {@code NaN} :
+     * aucune. Nuls pendant la construction d'{@code Entity}, dont le premier {@code setPos} appelle déjà
+     * {@link #makeBoundingBox}.
      */
     private final Vector3f boundsMin = new Vector3f(Float.NaN);
 
     private final Vector3f boundsMax = new Vector3f(Float.NaN);
-
-    private final Vector3f boundsMinTarget = new Vector3f(Float.NaN);
-
-    private final Vector3f boundsMaxTarget = new Vector3f(Float.NaN);
-
-    private int boundsSteps;
 
     /**
      * Construit une entité, comme Minecraft le fait au chargement.
@@ -217,47 +195,63 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return netState;
     }
 
-    /**
-     * Retient l'état reçu par un snapshot (client, thread du client) : position, orientation et emprise
-     * y glissent en {@link #LERP_STEPS} ticks. Rien de Minecraft n'est touché ici : c'est {@link #tick}
-     * qui avance l'entité, comme Minecraft l'appelle (INV-03).
-     *
-     * @param state état reconstitué
-     */
-    public void applySnapshot(AssemblyState state) {
-        double[] position = state.positionBlocks();
-        lerpTargetX = position[0];
-        lerpTargetY = position[1];
-        lerpTargetZ = position[2];
-        lerpSteps = LERP_STEPS;
-        float[] q = state.quaternion();
-        rotationTarget.set(q[0], q[1], q[2], q[3]);
-        rotationSteps = LERP_STEPS;
-        float[] min = state.boundsMin();
-        float[] max = state.boundsMax();
-        if (min == null || max == null) {
-            return;
-        }
-        boundsMinTarget.set(min[0], min[1], min[2]);
-        boundsMaxTarget.set(max[0], max[1], max[2]);
-        if (!hasPhysicalBounds()) {
-            // Première emprise : rien d'où glisser, elle s'applique au prochain tick, d'un pas.
-            boundsMin.set(boundsMinTarget);
-            boundsMax.set(boundsMaxTarget);
-            boundsSteps = 1;
-            return;
-        }
-        boundsSteps = LERP_STEPS;
+    /** {@return vrai si l'interpolation de 21.7 a commencé : un snapshot au moins est arrivé (client)} */
+    public boolean interpolating() {
+        return interpolation != null;
     }
 
     /**
-     * {@return l'orientation à dessiner, interpolée entre deux ticks}
+     * Commence l'interpolation de 21.7, au premier snapshot reçu (client, thread du client).
+     *
+     * @param fresh interpolation, réglée par la configuration du client
+     * @param renderClock horloge de rendu de la connexion
+     */
+    public void startInterpolation(Interpolation fresh, RenderClock renderClock) {
+        interpolation = fresh;
+        clock = renderClock;
+    }
+
+    /**
+     * Reçoit l'état d'un snapshot (client, thread du client, après {@link #startInterpolation}) : il prend
+     * place dans l'interpolation. Rien de Minecraft n'est touché ici : c'est {@link #tick} qui avance
+     * l'entité, comme Minecraft l'appelle (INV-03).
+     *
+     * @param state état reconstitué
+     * @param serverTick tick du serveur dont il est l'état
+     */
+    public void applySnapshot(AssemblyState state, long serverTick) {
+        long now = System.nanoTime();
+        interpolation.push(serverTick, state, clock.renderMillis(now), clock.localMillis(now));
+    }
+
+    /**
+     * Où dessiner une assembly à une image.
+     *
+     * @param x position de l'origine du corps (bas-centre de l'entité)
+     * @param y position
+     * @param z position
+     * @param rotation orientation du corps, autour de son origine
+     * @param mode comment l'interpolation de 21.7 l'a obtenue ; {@code null} avant le premier snapshot
+     */
+    public record RenderPose(double x, double y, double z, Quaternionf rotation, Interpolation.Mode mode) {}
+
+    /**
+     * {@return où dessiner l'assembly à cette image (client)} C'est la pose de l'interpolation de 21.7,
+     * datée de l'image et non de l'appel : toutes les passes d'une image la reçoivent identique. Avant le
+     * premier snapshot, c'est celle de l'apparition, entre deux ticks.
      *
      * @param partialTick fraction du tick écoulée
-     * @param dest reçoit le résultat
      */
-    public Quaternionf renderRotation(float partialTick, Quaternionf dest) {
-        return rotationO.slerp(rotation, partialTick, dest);
+    public RenderPose renderPose(float partialTick) {
+        if (interpolation == null) {
+            return new RenderPose(Mth.lerp(partialTick, xo, getX()), Mth.lerp(partialTick, yo, getY()),
+                    Mth.lerp(partialTick, zo, getZ()), rotationO.slerp(rotation, partialTick, new Quaternionf()),
+                    null);
+        }
+        long frame = clock.frameNanos();
+        Interpolation.Pose pose = interpolation.sample(clock.renderMillis(frame), clock.localMillis(frame));
+        float[] q = pose.rotation();
+        return new RenderPose(pose.x(), pose.y(), pose.z(), new Quaternionf(q[0], q[1], q[2], q[3]), pose.mode());
     }
 
     /**
@@ -274,36 +268,28 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /**
      * N'exécute aucune physique (R-701) : la simulation est pilotée par le noyau natif (C-40)
-     * et réappliquée en fin de tick serveur. Côté client, {@code tick()} avance d'un pas
-     * l'interpolation visuelle vers la dernière position reçue ; le rendu affine encore entre
-     * deux ticks. Sans interpolation en cours (serveur, ou entité au repos), ce n'est que
-     * {@code super.tick()}.
+     * et réappliquée en fin de tick serveur. Côté client, {@code tick()} pose l'entité où
+     * l'interpolation de 21.7 la place à cet instant — position, orientation, et la hitbox à son
+     * emprise ; le rendu, lui, l'échantillonne à chaque image ({@link #renderPose}). Sans
+     * interpolation (serveur, ou avant le premier snapshot), ce n'est que {@code super.tick()}.
      */
     @Override
     public void tick() {
         super.tick();
-        if (lerpSteps > 0) {
-            setPos(
-                    getX() + (lerpTargetX - getX()) / lerpSteps,
-                    getY() + (lerpTargetY - getY()) / lerpSteps,
-                    getZ() + (lerpTargetZ - getZ()) / lerpSteps);
-            lerpSteps--;
-        }
-        // Même schéma pour l'orientation : un pas de slerp vers la dernière reçue.
         rotationO.set(rotation);
-        if (rotationSteps > 0) {
-            rotation.slerp(rotationTarget, 1.0f / rotationSteps);
-            rotationSteps--;
+        if (interpolation == null) {
+            return;
         }
-        // Et pour l'emprise : un pas vers la dernière reçue, puis la hitbox recalculée — la
-        // position a pu ne pas bouger alors que l'emprise, elle, a changé.
-        if (boundsSteps > 0) {
-            float step = 1.0f / boundsSteps;
-            boundsMin.lerp(boundsMinTarget, step);
-            boundsMax.lerp(boundsMaxTarget, step);
-            boundsSteps--;
-            setBoundingBox(makeBoundingBox());
+        long now = System.nanoTime();
+        Interpolation.Pose pose = interpolation.sample(clock.renderMillis(now), clock.localMillis(now));
+        float[] q = pose.rotation();
+        rotation.set(q[0], q[1], q[2], q[3]);
+        if (pose.boundsMin() != null && pose.boundsMax() != null) {
+            boundsMin.set(pose.boundsMin()[0], pose.boundsMin()[1], pose.boundsMin()[2]);
+            boundsMax.set(pose.boundsMax()[0], pose.boundsMax()[1], pose.boundsMax()[2]);
         }
+        // setPos recalcule la hitbox autour de la position, à l'emprise ci-dessus.
+        setPos(pose.x(), pose.y(), pose.z());
     }
 
     @Override
@@ -369,15 +355,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         AssemblyTags.SpawnState state = AssemblyTags.readSpawn(buffer);
         definitionId = state.definitionId();
         inert = state.inert();
-        // Rien d'où glisser : l'assembly apparaît telle qu'elle est.
+        // L'assembly apparaît telle qu'elle est, jusqu'à son premier snapshot.
         rotation.set(state.rotation());
         rotationO.set(state.rotation());
-        rotationTarget.set(state.rotation());
         if (state.boundsMin() != null && state.boundsMax() != null) {
             boundsMin.set(state.boundsMin());
             boundsMax.set(state.boundsMax());
-            boundsMinTarget.set(state.boundsMin());
-            boundsMaxTarget.set(state.boundsMax());
             setBoundingBox(makeBoundingBox());
         }
     }

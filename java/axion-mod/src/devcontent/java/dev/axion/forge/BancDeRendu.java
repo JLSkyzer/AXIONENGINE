@@ -239,9 +239,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -296,6 +296,12 @@ public final class BancDeRendu {
     private static double chuteServeur;
     private static int chuteTickDepart;
     private static int chuteTickFin;
+    /**
+     * ADR-150 D7 : la pose rendue de l'assembly lâchée, à chaque frame de sa chute — début de la frame en
+     * nanosecondes, hauteur, et mode de l'interpolation de 21.7 ({@code -1} : aucun, avant le premier
+     * snapshot).
+     */
+    private static final List<double[]> chuteRendue = new ArrayList<>();
     private static double[] duPackAvant;
     private static double[] duPackAvecPack;
     private static boolean packDisponible;
@@ -775,13 +781,20 @@ public final class BancDeRendu {
             });
             jusqua("l'assembly lâchée apparue chez le client", 60, mc -> mc.level.getEntity(chuteId) != null);
             une("relever l'apparition chez le client", mc -> chuteClientDepart = mc.level.getEntity(chuteId).getY());
-            pendant("la chute", 6 * 20);
+            pendant("la chute", 6 * 20, mc -> {
+                if (mc.level.getEntity(chuteId) instanceof AxionEntity rendue) {
+                    AxionEntity.RenderPose pose = rendue.renderPose(mc.getPartialTick());
+                    chuteRendue.add(new double[] {debutDeFramePrecedent, pose.y(),
+                        pose.mode() == null ? -1 : pose.mode().ordinal()});
+                }
+            });
             serveur("relever l'assembly lâchée chez le serveur", s -> {
                 chuteServeur = chute.getY();
                 chuteTickFin = s.getTickCount();
             });
             pendant("le dernier snapshot", 10);
             une("juger T-410", mc -> jugerT410(mc, mc.level.getEntity(chuteId)));
+            une("juger ADR-150 D7", mc -> jugerD7(mc, mc.level.getEntity(chuteId)));
             serveur("retirer l'assembly lâchée", s -> chute.discard());
             jusqua("l'assembly lâchée retirée", 60, mc -> mc.level.getEntity(chuteId) == null);
         }
@@ -1376,6 +1389,49 @@ public final class BancDeRendu {
                 client == null ? "absente" : String.format(Locale.ROOT, "%.3f", client.getY()), minecraft.isPaused()));
     }
 
+    /**
+     * ADR-150 D7 : ce que le rendu dessine de l'assembly lâchée vient de l'interpolation de 21.7. La pose
+     * rendue y descend de deux blocs au moins ; d'une frame à l'autre, elle ne va jamais plus vite que la
+     * chute ne le permet — {@code √(2 g h)}, à 50 % près pour la mesure des frames : un saut, une
+     * téléportation le dépasseraient ; elle finit où le serveur pose l'assembly.
+     */
+    private static void jugerD7(Minecraft minecraft, net.minecraft.world.entity.Entity client) {
+        double gravite = Math.abs(RuntimeAccess.get().outcome().config().getFloat("physics.gravity"));
+        double vitesseMax = Math.sqrt(2 * gravite * Math.max(0, positionChute().y - chuteServeur));
+        int premiere = -1;
+        int sansInterpolation = 0;
+        double pireVitesse = 0;
+        for (int index = 0; index < chuteRendue.size(); index++) {
+            double[] releve = chuteRendue.get(index);
+            if (releve[2] >= 0 && premiere < 0) {
+                premiere = index;
+            } else if (releve[2] < 0 && premiere >= 0) {
+                sansInterpolation++;
+            }
+            if (index > 0 && premiere >= 0 && premiere < index) {
+                double[] avant = chuteRendue.get(index - 1);
+                double secondes = (releve[0] - avant[0]) / 1e9;
+                if (secondes > 0) {
+                    pireVitesse = Math.max(pireVitesse, Math.abs(releve[1] - avant[1]) / secondes);
+                }
+            }
+        }
+        boolean vivante = premiere >= 0 && sansInterpolation == 0;
+        double descente = vivante ? chuteRendue.get(premiere)[1] - chuteRendue.get(chuteRendue.size() - 1)[1] : 0;
+        AxionEntity.RenderPose fin = client instanceof AxionEntity rendue
+                ? rendue.renderPose(minecraft.getPartialTick()) : null;
+        boolean rejointe = fin != null && fin.mode() != null && Math.abs(fin.y() - chuteServeur) <= 0.01;
+        boolean sansSaut = pireVitesse <= 1.5 * vitesseMax;
+        RAPPORT.noter("ADR-150 D7", vivante && descente >= 2.0 && sansSaut && rejointe, String.format(Locale.ROOT,
+                "%d frame(s) relevée(s), interpolées dès la %d-e, %d sans interpolation ensuite ; descente rendue"
+                        + " %.3f bloc ; vitesse rendue au plus %.2f m/s pour %.2f m/s de chute au plus ; à la fin"
+                        + " %s pour %.3f chez le serveur — elle doit être interpolée, descendre de 2 blocs, ne"
+                        + " jamais dépasser 1,5 fois la vitesse de chute, et finir à 0,01 près",
+                chuteRendue.size(), premiere + 1, sansInterpolation, descente, pireVitesse, vitesseMax,
+                fin == null ? "absente" : String.format(Locale.ROOT, "%.3f (%s)", fin.y(), fin.mode()),
+                chuteServeur));
+    }
+
     private static void jugerModeleDuPack(double[] apres) {
         boolean rougeAvant = duPackAvant[0] >= duPackAvant[2] + MARGE_D3;
         boolean bleuAvecPack = duPackAvecPack[2] >= duPackAvecPack[0] + MARGE_D3;
@@ -1778,11 +1834,17 @@ public final class BancDeRendu {
 
     /** Laisse passer {@code ticksAttendus} ticks du client. */
     private static void pendant(String quoi, int ticksAttendus) {
+        pendant(quoi, ticksAttendus, mc -> {});
+    }
+
+    /** Laisse passer {@code ticksAttendus} ticks du client, en jouant {@code aChaqueFrame} à chacune de leurs frames. */
+    private static void pendant(String quoi, int ticksAttendus, Consumer<Minecraft> aChaqueFrame) {
         long[] depuis = {-1};
         etape("attendre " + quoi, mc -> {
             if (depuis[0] < 0) {
                 depuis[0] = ticks;
             }
+            aChaqueFrame.accept(mc);
             return ticks - depuis[0] >= ticksAttendus;
         });
     }

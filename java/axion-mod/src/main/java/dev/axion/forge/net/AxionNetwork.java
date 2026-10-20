@@ -10,6 +10,7 @@ import dev.axion.net.ClientSession;
 import dev.axion.net.DetProfile;
 import dev.axion.net.PlayerSync;
 import dev.axion.net.RegistryAck;
+import dev.axion.net.ServerHandshake;
 import dev.axion.net.ServerPeer;
 import dev.axion.net.ServerSnapshot;
 import dev.axion.net.SnapshotSender;
@@ -178,6 +179,17 @@ public final class AxionNetwork {
         if (session != null) {
             session.forgetEntity(entityId);
         }
+    }
+
+    /**
+     * Chez le client : le handshake du serveur de cette connexion.
+     *
+     * @param connection connexion du client
+     * @return le handshake, ou {@code null} s'il n'est pas arrivé
+     */
+    public static ServerHandshake clientServer(Connection connection) {
+        ClientSession session = connection.channel().attr(CLIENT_SESSION).get();
+        return session == null ? null : session.server().orElse(null);
     }
 
     /**

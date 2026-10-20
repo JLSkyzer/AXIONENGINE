@@ -1,5 +1,6 @@
 package dev.axion.net;
 
+import dev.axion.config.AxionConfig;
 import java.util.ArrayDeque;
 import java.util.Iterator;
 
@@ -74,6 +75,16 @@ public final class Interpolation {
     public Interpolation(double extrapolationMaxMillis, double snapThreshold) {
         this.extrapolationMaxMillis = extrapolationMaxMillis;
         this.snapThreshold = snapThreshold;
+    }
+
+    /**
+     * {@return une interpolation réglée par la configuration du client : le handshake ne porte ni
+     * l'extrapolation ni le seuil de téléportation}
+     *
+     * @param client configuration du client
+     */
+    public static Interpolation of(AxionConfig client) {
+        return new Interpolation(client.getInt("net.extrapolation_max_ms"), client.getFloat("net.snap_threshold"));
     }
 
     /**

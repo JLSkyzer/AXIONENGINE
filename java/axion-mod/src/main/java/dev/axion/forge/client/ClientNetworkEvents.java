@@ -9,6 +9,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityLeaveLevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -37,12 +38,27 @@ public final class ClientNetworkEvents {
         }
     }
 
-    /** À la déconnexion, les definitions reçues d'un serveur distant s'oublient : le suivant enverra les siennes. */
+    /**
+     * À la déconnexion, les definitions reçues d'un serveur distant s'oublient : le suivant enverra les
+     * siennes. L'horloge de rendu aussi : le suivant annoncera son retard d'interpolation.
+     */
     @SubscribeEvent
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        ClientSnapshots.reset();
         AxionRuntime runtime = RuntimeAccess.get();
         if (runtime != null) {
             runtime.onRemoteDisconnect();
+        }
+    }
+
+    /**
+     * Une image commence, avant le rendu du monde : l'horloge de rendu de 21.7 note son heure, à laquelle
+     * toutes ses passes se datent, et la pause d'un monde solo, qui suspend aussi son serveur.
+     */
+    @SubscribeEvent
+    public static void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (event.phase == TickEvent.Phase.START) {
+            ClientSnapshots.onFrame(System.nanoTime(), Minecraft.getInstance().isPaused());
         }
     }
 }

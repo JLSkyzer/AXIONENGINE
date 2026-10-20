@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayDeque;
+import java.util.Map;
 import java.util.Random;
 import java.util.function.DoubleFunction;
 import org.junit.jupiter.api.DisplayName;
@@ -143,6 +144,21 @@ class InterpolationTest {
                 "aucun saut à l'arrivée");
         assertEquals(Math.PI / 8, angleAutourDeY(interpolation.sample(1400, 1400).rotation()), Math.toRadians(0.5));
         assertEquals(0, angleAutourDeY(interpolation.sample(1500, 1500).rotation()), Math.toRadians(0.5));
+    }
+
+    @Test
+    @DisplayName("L'extrapolation et le seuil de téléportation sont ceux de la configuration du client")
+    void lesReglagesSontCeuxDuClient() {
+        Interpolation interpolation = Interpolation.of(RenderClockTest.config(
+                Map.of("net.extrapolation_max_ms", 400L, "net.snap_threshold", 0.5)));
+        interpolation.push(0, etat(-4, 4), 0, 0);
+        interpolation.push(20, etat(0, 4), 0, 0);
+        Interpolation.Pose pose = interpolation.sample(1400, 1400);
+        assertEquals(Interpolation.Mode.EXTRAPOLATED, pose.mode());
+        assertEquals(1.6, pose.x(), 2e-3, "4 m/s pendant 400 ms");
+        // Arrêtée à 0,9 : 0,7 bloc d'écart, au-delà de 0,5 : téléportation.
+        interpolation.push(28, etat(0.9, 0), 1400, 1400);
+        assertEquals(0.9, interpolation.sample(1400, 1400).x(), 2e-3);
     }
 
     @Test
