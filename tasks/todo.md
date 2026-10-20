@@ -3049,6 +3049,14 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
                   en connexion, renvoi en jeu après `/reload` — n'est prouvé qu'en Java pur et en GameTest.
                   Killian (2026-10-18) : « Après la tranche 5 (Recommandé) » — un seul essai pour le
                   registre, les snapshots et le mouvement interpolé.
+                  Deux passages le 2026-10-20 : serveur dédié dans `run-server` (`runServer`, e2c73d4), client
+                  de développement. Prouvé : handshake en RECONSTRUCT des deux côtés, registre de connexion
+                  appliqué chez le client (16 definitions, 19 matériaux, 1 groupe), apparitions
+                  (`test_cube` ×5, `test/ballon`), chute à 6 blocs vue fluide et bien posée par Killian, F3+B
+                  compris ; `/reload` sans casse ; aucun E-5xxx ni exception AXION, arrêts propres des deux
+                  côtés. Reste : le renvoi du registre en jeu — un `/reload` à registre inchangé ne renvoie
+                  rien, comme voulu ; il faut un datapack posé serveur lancé (prêt : une definition
+                  `essai:cube_essai`), puis `reload` — et la reconnexion, assemblies posées.
 - [x] 4. Snapshots (D2, D6), fin du pont provisoire — T-410 (banc), T-418 (JUnit) ; T-411 et T-418
       sous charge réelle avec le harnais de la tranche 6 (D8).
       - [x] 4a (2026-10-18, 10 mutations rouges ; « smallest three » : 0,234° au pire mesuré, 0,274° de borne). Codec en Java pur : quantification déclarée par champ (R-1660 : position 1/1024 de bloc,
