@@ -3078,6 +3078,14 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             est le premier paquet C→S en jeu ; à faire avec `C2S_Input` (M5) au plus tard, ou avec le
             harnais de la tranche 6.
 - [ ] 5. Interpolation (D7) — T-412, T-413, T-414.
+      - [x] 5a (2026-10-20). Java pur : `ServerClock` (arrivée la moins retardée sur 2 s, estimation qui
+            glisse à 5 % au plus et saute au-delà de 250 ms), `Interpolation` (Hermite, slerp au plus
+            court, emprise, extrapolation bornée puis figement, correction douce de la position et de
+            l'orientation, téléportation). 10 tests, 27 mutations rouges. T-413 (200 ms ± 30 ms) : saccade
+            0,0042 bloc ; T-412 (38 jetés sur 201, jusqu'à 3 de suite) : écart 0,3179 bloc sous la borne
+            de 21.7 au bout du plus long trou (0,3189), aucune téléportation ; T-414.
+      - [ ] 5b. Intégration : l'entité cliente échantillonne à chaque tick (hitbox) et le rendu à chaque
+            image ; le lissage en trois pas disparaît. Banc : T-410 toujours vert.
 - [ ] 6. Harnais de joueurs simulés (D8) — T-423, T-424, T-425 ; overlay `network`.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1

@@ -1732,3 +1732,20 @@ observateur, tout corps y dort. Rien ne bouge jamais dans le banc, ce qu'aucun v
 vérifier avant de le compter comme preuve. Un verdict de mouvement déclare un observateur
 (`ObservateursDeTest.declarer`), et se place en fin de scénario pour qu'aucun autre ne voie la scène
 éveillée.
+
+## 2026-10-20 | T-412 rouge à cause de son seuil, pas du code
+
+**Ce qui a mal tourné.** T-412 (20 % de snapshots perdus) exigeait un écart à la trajectoire de
+0,05 bloc au plus, un chiffre posé sans calcul. Il échouait à 0,318 bloc. Le même jour, T-413 échouait
+sur une saccade de 0,054 bloc.
+
+**Cause.** Pour T-412, le seuil contredisait la spec : trois pertes de suite font 300 ms sans snapshot,
+et 21.7 impose 250 ms d'extrapolation puis le figement — 0,319 bloc sur ce cercle. Pour T-413, c'était
+bien le code : l'horloge du serveur estimée sautait de 10,77 ms quand l'arrivée retenue sortait de sa
+fenêtre, soit exactement 0,054 bloc à 5 m/s. Les deux rouges se ressemblaient ; seule la mesure les a
+séparés.
+
+**Règle.** Un seuil de test se dérive du contrat de la spec et du scénario (ici, la borne
+d'extrapolation au bout du plus long trou), et le calcul figure dans le test. Un rouge s'instrumente
+avant de toucher au code ou au seuil : relâcher un seuil n'est permis que si le calcul montre qu'il
+était faux.
