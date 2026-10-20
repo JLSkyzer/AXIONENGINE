@@ -3,15 +3,12 @@ package dev.axion.forge;
 import com.mojang.logging.LogUtils;
 import dev.axion.definition.Definition;
 import dev.axion.entity.AssemblyBinding;
+import dev.axion.net.AssemblyState;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.network.syncher.EntityDataAccessor;
-import net.minecraft.network.syncher.EntityDataSerializers;
-import net.minecraft.network.syncher.SynchedEntityData;
-import java.util.List;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
@@ -32,40 +29,34 @@ import org.slf4j.Logger;
  * serveur ; côté client, {@code tick()} n'avance que l'interpolation visuelle vers la
  * position et l'orientation reçues. L'entité porte sa definition, se sauvegarde, et se voit
  * en debug.
+ *
+ * <p>Minecraft porte sa visibilité — apparition, disparition, quel joueur la voit —, le canal d'AXION
+ * son état (ADR-150 D2) : position, orientation, vitesses et emprise arrivent au client par
+ * {@code S2C_Snapshot}. Le suivi de position de Minecraft est tu ({@code updateInterval}) et le client
+ * ignore ce qu'il enverrait encore.
  */
 public final class AxionEntity extends Entity implements IEntityAdditionalSpawnData {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
     /**
-     * Orientation autoritaire du corps, quaternion {@code (x, y, z, w)} (R-461).
-     *
-     * <p><b>Pont provisoire</b> (décision de Killian du 2026-10-02) : la donnée synchronisée
-     * de Minecraft porte l'orientation au client à chaque tick où elle change, comme son
-     * suivi d'entité porte la position. Le protocole d'AXION (C-51, {@code S2C_Snapshot},
-     * rotation « smallest three », PARTIE 21.5) la remplacera en M4.
-     */
-    private static final EntityDataAccessor<Quaternionf> ROTATION =
-            SynchedEntityData.defineId(AxionEntity.class, EntityDataSerializers.QUATERNION);
-
-    /**
-     * Emprise physique courante du corps (R-702, ADR-120) : coins de sa boîte englobante,
-     * relatifs à la position, en axes du monde. Même pont provisoire que {@link #ROTATION},
-     * remplacé par C-51 en M4. {@code NaN} : aucune emprise reçue — la hitbox reste la boîte
-     * provisoire des dimensions de l'entité.
-     */
-    private static final EntityDataAccessor<Vector3f> BOUNDS_MIN =
-            SynchedEntityData.defineId(AxionEntity.class, EntityDataSerializers.VECTOR3);
-
-    private static final EntityDataAccessor<Vector3f> BOUNDS_MAX =
-            SynchedEntityData.defineId(AxionEntity.class, EntityDataSerializers.VECTOR3);
-
-    /**
-     * Pas d'interpolation d'un état reçu (orientation, emprise) : autant que de position
-     * ({@code lerpTo} reçoit 3 du suivi d'entité), pour que rotation, hitbox et translation
-     * restent en phase.
+     * Pas d'interpolation d'un état reçu par snapshot : position, orientation et emprise y glissent
+     * ensemble, et restent en phase. L'interpolation de 21.7 le remplace (ADR-150 D7).
      */
     private static final int LERP_STEPS = 3;
+
+    /**
+     * Orientation autoritaire du corps, quaternion {@code (x, y, z, w)} (R-461), côté serveur : la
+     * boucle C-40 la pose à chaque tick, le NBT la garde, et elle part au client par l'apparition puis
+     * les snapshots.
+     */
+    private final Quaternionf bodyRotation = new Quaternionf();
+
+    /**
+     * État de l'assembly tel que les snapshots le portent, côté serveur : posé à chaque tick simulé,
+     * {@code null} avant le premier (ADR-150 D6).
+     */
+    private AssemblyState netState;
 
     /** Clés {@code axion:*} du NBT, gardées pour être réécrites telles quelles. */
     private CompoundTag stored = new CompoundTag();
@@ -141,11 +132,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     @Override
     protected void defineSynchedData() {
-        // La definition ne change pas après l'apparition : elle voyage dans les données
-        // d'apparition. Seuls l'orientation et l'emprise du corps sont synchronisées.
-        entityData.define(ROTATION, new Quaternionf());
-        entityData.define(BOUNDS_MIN, new Vector3f(Float.NaN));
-        entityData.define(BOUNDS_MAX, new Vector3f(Float.NaN));
+        // Rien à synchroniser par Minecraft : la definition voyage dans les données d'apparition,
+        // l'état du corps dans les snapshots d'AXION (ADR-150 D2). Une donnée synchronisée sale
+        // réveillerait aussi le suivi de position de Minecraft.
     }
 
     /**
@@ -158,8 +147,6 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     void setBodyBounds(float[] min, float[] max) {
         boundsMin.set(min[0], min[1], min[2]);
         boundsMax.set(max[0], max[1], max[2]);
-        entityData.set(BOUNDS_MIN, new Vector3f(boundsMin));
-        entityData.set(BOUNDS_MAX, new Vector3f(boundsMax));
         setBoundingBox(makeBoundingBox());
     }
 
@@ -190,17 +177,77 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 x + boundsMax.x, y + boundsMax.y, z + boundsMax.z);
     }
 
-    /**
-     * Pose l'orientation autoritaire du corps (serveur, fin de tick, boucle C-40).
-     * Inchangée, elle n'est pas renvoyée : un corps au repos ne coûte rien au réseau.
-     */
+    /** Pose l'orientation autoritaire du corps (serveur, fin de tick, boucle C-40). */
     void setBodyRotation(float x, float y, float z, float w) {
-        entityData.set(ROTATION, new Quaternionf(x, y, z, w));
+        bodyRotation.set(x, y, z, w);
     }
 
     /** {@return l'orientation autoritaire du corps, copie} */
     Quaternionf bodyRotation() {
-        return new Quaternionf(entityData.get(ROTATION));
+        return new Quaternionf(bodyRotation);
+    }
+
+    /**
+     * Quantifie l'état du corps pour les snapshots (serveur, fin de tick, après la position,
+     * l'orientation et l'emprise). Une position non finie ne se quantifie pas : l'état précédent reste.
+     *
+     * @param linear vitesse linéaire monde, en m/s
+     * @param angular vitesse angulaire monde, en rad/s
+     * @param sleeping le corps dort
+     */
+    void updateNetState(float[] linear, float[] angular, boolean sleeping) {
+        boolean bounded = hasPhysicalBounds();
+        try {
+            netState = AssemblyState.of(
+                    new double[] {getX(), getY(), getZ()},
+                    new float[] {bodyRotation.x, bodyRotation.y, bodyRotation.z, bodyRotation.w},
+                    linear,
+                    angular,
+                    bounded ? new float[] {boundsMin.x, boundsMin.y, boundsMin.z} : null,
+                    bounded ? new float[] {boundsMax.x, boundsMax.y, boundsMax.z} : null,
+                    sleeping);
+        } catch (IllegalArgumentException notFinite) {
+            // Le natif ramène lui-même un corps non fini dans un état valide (E-2030) ; l'état précédent
+            // reste celui des snapshots d'ici là.
+        }
+    }
+
+    /** {@return l'état que les snapshots portent, ou {@code null} avant le premier tick simulé} */
+    public AssemblyState netState() {
+        return netState;
+    }
+
+    /**
+     * Retient l'état reçu par un snapshot (client, thread du client) : position, orientation et emprise
+     * y glissent en {@link #LERP_STEPS} ticks. Rien de Minecraft n'est touché ici : c'est {@link #tick}
+     * qui avance l'entité, comme Minecraft l'appelle (INV-03).
+     *
+     * @param state état reconstitué
+     */
+    public void applySnapshot(AssemblyState state) {
+        double[] position = state.positionBlocks();
+        lerpTargetX = position[0];
+        lerpTargetY = position[1];
+        lerpTargetZ = position[2];
+        lerpSteps = LERP_STEPS;
+        float[] q = state.quaternion();
+        rotationTarget.set(q[0], q[1], q[2], q[3]);
+        rotationSteps = LERP_STEPS;
+        float[] min = state.boundsMin();
+        float[] max = state.boundsMax();
+        if (min == null || max == null) {
+            return;
+        }
+        boundsMinTarget.set(min[0], min[1], min[2]);
+        boundsMaxTarget.set(max[0], max[1], max[2]);
+        if (!hasPhysicalBounds()) {
+            // Première emprise : rien d'où glisser, elle s'applique au prochain tick, d'un pas.
+            boundsMin.set(boundsMinTarget);
+            boundsMax.set(boundsMaxTarget);
+            boundsSteps = 1;
+            return;
+        }
+        boundsSteps = LERP_STEPS;
     }
 
     /**
@@ -213,77 +260,16 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return rotationO.slerp(rotation, partialTick, dest);
     }
 
-    @Override
-    public void onSyncedDataUpdated(EntityDataAccessor<?> accessor) {
-        super.onSyncedDataUpdated(accessor);
-        if (!ROTATION.equals(accessor) || !level().isClientSide()) {
-            return;
-        }
-        rotationTarget.set(entityData.get(ROTATION));
-        if (tickCount == 0) {
-            // L'orientation initiale arrive avec l'apparition, avant tout tick : rien d'où
-            // glisser.
-            rotation.set(rotationTarget);
-            rotationO.set(rotationTarget);
-            rotationSteps = 0;
-            return;
-        }
-        rotationSteps = LERP_STEPS;
-    }
-
     /**
-     * Emprise reçue côté client. Traitée ici, une fois toutes les valeurs du paquet affectées
-     * — les rappels par donnée tombent entre l'affectation d'un coin et celle de l'autre.
-     */
-    @Override
-    public void onSyncedDataUpdated(List<SynchedEntityData.DataValue<?>> values) {
-        super.onSyncedDataUpdated(values);
-        if (!level().isClientSide() || !touchesBounds(values)) {
-            return;
-        }
-        boundsMinTarget.set(entityData.get(BOUNDS_MIN));
-        boundsMaxTarget.set(entityData.get(BOUNDS_MAX));
-        boolean targetKnown = boundsMinTarget.isFinite() && boundsMaxTarget.isFinite();
-        if (tickCount == 0 || !hasPhysicalBounds() || !targetKnown) {
-            // Première emprise, emprise reçue à l'apparition, ou retour à la boîte
-            // provisoire : rien d'où glisser.
-            boundsMin.set(boundsMinTarget);
-            boundsMax.set(boundsMaxTarget);
-            boundsSteps = 0;
-            setBoundingBox(makeBoundingBox());
-            return;
-        }
-        boundsSteps = LERP_STEPS;
-    }
-
-    private static boolean touchesBounds(List<SynchedEntityData.DataValue<?>> values) {
-        for (SynchedEntityData.DataValue<?> value : values) {
-            if (value.id() == BOUNDS_MIN.getId() || value.id() == BOUNDS_MAX.getId()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Interpolation côté client : mémorise la position autoritaire reçue du serveur pour y
-     * glisser en {@code steps} ticks, au lieu de s'y téléporter (comportement par défaut
-     * d'{@code Entity}, cause de la chute « bloc par bloc »). Le lacet et le tangage sont
-     * ignorés — une assembly n'a pas d'orientation vanilla ; son orientation physique arrive
-     * par {@link #ROTATION}. Un vrai saut ({@code teleport}) est appliqué sec.
+     * Ignore la position que le suivi d'entité de Minecraft enverrait encore — à la première mise à
+     * jour, après une impulsion : celle d'AXION arrive par les snapshots, au 1/1024 de bloc, et les deux
+     * se disputeraient l'entité (ADR-150 D2). La position d'apparition, elle, est posée par Minecraft
+     * sans passer ici.
      */
     @Override
     public void lerpTo(
             double x, double y, double z, float yRot, float xRot, int steps, boolean teleport) {
-        if (teleport || steps <= 0) {
-            lerpSteps = 0;
-            setPos(x, y, z);
-            return;
-        }
-        lerpTargetX = x;
-        lerpTargetY = y;
-        lerpTargetZ = z;
-        lerpSteps = steps;
+        // Rien : la position vient des snapshots.
     }
 
     /**
@@ -331,7 +317,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         inertReason = binding.inertReason();
         definitionId = binding.bound().map(Definition::id).orElse(AssemblyTags.describe(stored));
         // §22.2 : le corps sera recréé avec l'orientation sauvegardée (identité si absente).
-        entityData.set(ROTATION, AssemblyTags.rotation(stored));
+        bodyRotation.set(AssemblyTags.rotation(stored));
     }
 
     /**
@@ -355,7 +341,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // Une assembly inerte est réécrite telle qu'elle a été lue (R-1710) : son orientation
         // n'est pas celle d'un corps simulé, elle n'a pas à en recevoir une.
         if (!inert) {
-            AssemblyTags.putRotation(stored, entityData.get(ROTATION));
+            AssemblyTags.putRotation(stored, bodyRotation);
         }
         AssemblyTags.restore(stored, tag);
     }
@@ -367,9 +353,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return NetworkHooks.getEntitySpawningPacket(this);
     }
 
+    /**
+     * {@code S2C_AssemblySpawn} (ADR-150 D2) : la definition, l'état inerte et la transformation
+     * complète — l'orientation et l'emprise ; la position est celle de l'apparition de Minecraft.
+     */
     @Override
     public void writeSpawnData(FriendlyByteBuf buffer) {
-        AssemblyTags.writeSpawn(buffer, new AssemblyTags.SpawnState(definitionId, inert));
+        boolean bounded = hasPhysicalBounds();
+        AssemblyTags.writeSpawn(buffer, new AssemblyTags.SpawnState(definitionId, inert, new Quaternionf(bodyRotation),
+                bounded ? new Vector3f(boundsMin) : null, bounded ? new Vector3f(boundsMax) : null));
     }
 
     @Override
@@ -377,6 +369,17 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         AssemblyTags.SpawnState state = AssemblyTags.readSpawn(buffer);
         definitionId = state.definitionId();
         inert = state.inert();
+        // Rien d'où glisser : l'assembly apparaît telle qu'elle est.
+        rotation.set(state.rotation());
+        rotationO.set(state.rotation());
+        rotationTarget.set(state.rotation());
+        if (state.boundsMin() != null && state.boundsMax() != null) {
+            boundsMin.set(state.boundsMin());
+            boundsMax.set(state.boundsMax());
+            boundsMinTarget.set(state.boundsMin());
+            boundsMaxTarget.set(state.boundsMax());
+            setBoundingBox(makeBoundingBox());
+        }
     }
 
     @Override

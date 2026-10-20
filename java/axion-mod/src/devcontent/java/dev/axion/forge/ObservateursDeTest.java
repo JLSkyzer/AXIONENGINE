@@ -56,6 +56,22 @@ final class ObservateursDeTest implements SimCommandProvider {
     }
 
     /**
+     * Déclare un observateur en un point du monde, hors d'un GameTest — le banc de rendu, dont le joueur
+     * est spectateur, et n'observe donc pas (R-612). Pour la durée du serveur.
+     *
+     * @param level monde
+     * @param absolue position dans le monde, en blocs
+     */
+    static void declarer(ServerLevel level, Vec3 absolue) {
+        if (actuel == null || actuel.serveur != level.getServer()) {
+            actuel = new ObservateursDeTest(level.getServer());
+            RuntimeAccess.get().addCommandProvider(actuel);
+        }
+        actuel.positions.computeIfAbsent(level, cle -> new ArrayList<>())
+                .add(new double[] {absolue.x, absolue.y, absolue.z});
+    }
+
+    /**
      * Ouvre la trace de la simulation (C-71) dans le fichier que nomme la variable d'environnement
      * {@code AXION_GAMETEST_TRACE}, s'il y en a un : tous les tests d'un passage y écrivent, chaque
      * tuile comprise ; elle se ferme à l'arrêt du serveur.

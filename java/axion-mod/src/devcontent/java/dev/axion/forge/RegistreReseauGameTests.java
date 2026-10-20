@@ -53,7 +53,7 @@ public final class RegistreReseauGameTests {
             RemoteRegistry.Loaded relu = RemoteRegistry.load(registre);
             tenues.add(relu.definitions());
             return relu.journal();
-        });
+        }, etats -> {});
         for (byte[] trame : instantane.loginFrames(false)) {
             pair.onLoginReply(client.onLoginFrame(trame));
         }

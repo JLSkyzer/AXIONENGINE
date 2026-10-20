@@ -41,6 +41,13 @@ Definition of Done (PARTIE 37.3).
     du joueur avec sa cause, et /axion status compte les connexions par
     mode (5.12bis) ; net.interpolation_delay_ms prend la borne de son champ
     u16 (0..65535) ;
+    snapshots d'etat sur axion:main (21.5) : position au 1/1024 de bloc,
+    rotation smallest three, vitesses et emprise quantifiees, en delta sur
+    une base acquittee qu'ils nomment ; frequence par assembly (une
+    endormie inchangee n'envoie rien), plafond de debit par joueur qui
+    retarde et compte sans jamais omettre ; le suivi de position de
+    Minecraft est tu, et l'apparition porte orientation et emprise : les
+    donnees synchronisees du pont provisoire sont retirees (ADR-150 D2, D6) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

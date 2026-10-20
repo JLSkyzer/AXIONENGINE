@@ -3049,7 +3049,8 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
                   en connexion, renvoi en jeu après `/reload` — n'est prouvé qu'en Java pur et en GameTest.
                   Killian (2026-10-18) : « Après la tranche 5 (Recommandé) » — un seul essai pour le
                   registre, les snapshots et le mouvement interpolé.
-- [ ] 4. Snapshots (D2, D6), fin du pont provisoire — T-410, T-411, T-418.
+- [x] 4. Snapshots (D2, D6), fin du pont provisoire — T-410 (banc), T-418 (JUnit) ; T-411 et T-418
+      sous charge réelle avec le harnais de la tranche 6 (D8).
       - [x] 4a (2026-10-18, 10 mutations rouges ; « smallest three » : 0,234° au pire mesuré, 0,274° de borne). Codec en Java pur : quantification déclarée par champ (R-1660 : position 1/1024 de bloc,
             vitesses 300 et 100 sur 32 767, emprise 1/256 de bloc), rotation « smallest three » sur 32 bits,
             entrée complète en `3 × i64` ou delta en `3 × i32` (D6), `S2C_Snapshot` (genre 5 : numéro, tick
@@ -3065,12 +3066,17 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
       - [x] 4c (2026-10-18). Récepteur (`SnapshotReceiver`) : états reconstitués au bit près, historique de 32
             par assembly, base absente redemandée en entier par `C2S_Ack`. 22 mutations rouges pour 4b et 4c.
             `BodyStateFlags` généré depuis `body_state_flags` (ax-model), avec ses tests de parité.
-      - [ ] 4d. Colle Forge et fin du pont : `updateInterval` démesuré (suivi de position de Minecraft
+      - [x] 4d (2026-10-20). Colle Forge et fin du pont : `updateInterval` démesuré (suivi de position de Minecraft
             neutralisé), portée de suivi couvrant `net.sync_radius`, apparition portant la transformation
             complète, `StartTracking`/`StopTracking` pour l'ensemble suivi, données synchronisées `ROTATION`,
             `BOUNDS_MIN`, `BOUNDS_MAX` retirées ; message en jeu vers le serveur pour l'acquittement.
-      - [ ] 4e. Preuves : JUnit et mutations, GameTests, banc de rendu (les assemblies bougent et se
-            dessinent à leur place par les snapshots, en connexion locale) ; ADR-150, CHANGELOG.
+      - [x] 4e (2026-10-20). Preuves : 745 tests JUnit, 15 GameTests ; `SnapshotLinkTest` et 6 mutations
+            rouges pour la colle pure ; T-410 au banc vanilla et natif — un cube lâché tombe chez le
+            serveur, et chez le client par les seuls snapshots (rouge quand leur application est
+            coupée). ADR-150, CHANGELOG.
+      - [ ] Point ouvert : R-1690, limitation de débit C→S (`net.max_packets_per_second`) — l'acquittement
+            est le premier paquet C→S en jeu ; à faire avec `C2S_Input` (M5) au plus tard, ou avec le
+            harnais de la tranche 6.
 - [ ] 5. Interpolation (D7) — T-412, T-413, T-414.
 - [ ] 6. Harnais de joueurs simulés (D8) — T-423, T-424, T-425 ; overlay `network`.
 

@@ -102,7 +102,30 @@ final class ChannelFrames {
         }
     }
 
-    /** Un message en jeu, du serveur vers le client : en M4, le registre renvoyé. */
+    /** Un message en jeu, du client vers le serveur : en M4, l'acquittement des snapshots. */
+    static final class PlayToServer {
+
+        private final byte[] frame;
+
+        PlayToServer(byte[] frame) {
+            this.frame = frame;
+        }
+
+        static PlayToServer decode(FriendlyByteBuf buffer) {
+            return new PlayToServer(read(buffer));
+        }
+
+        void encode(FriendlyByteBuf buffer) {
+            buffer.writeBytes(frame);
+        }
+
+        /** {@return la trame, ou {@code null} si le décodeur l'a écartée pour sa taille} */
+        byte[] frame() {
+            return frame;
+        }
+    }
+
+    /** Un message en jeu, du serveur vers le client : les snapshots, et le registre renvoyé. */
     static final class PlayToClient {
 
         private final byte[] frame;

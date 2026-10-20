@@ -3,21 +3,31 @@ package dev.axion.forge.net;
 import com.mojang.logging.LogUtils;
 import dev.axion.forge.RuntimeAccess;
 import dev.axion.lifecycle.AxionRuntime;
+import dev.axion.config.AxionConfig;
+import dev.axion.forge.AxionEntity;
+import dev.axion.net.AssemblyState;
 import dev.axion.net.ClientSession;
 import dev.axion.net.DetProfile;
+import dev.axion.net.PlayerSync;
 import dev.axion.net.RegistryAck;
 import dev.axion.net.ServerPeer;
 import dev.axion.net.ServerSnapshot;
+import dev.axion.net.SnapshotSender;
 import io.netty.util.Attribute;
 import io.netty.util.AttributeKey;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraftforge.network.HandshakeHandler;
+import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkEvent;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.server.ServerLifecycleHooks;
@@ -41,8 +51,19 @@ public final class AxionNetwork {
 
     private static final AttributeKey<ServerPeer> SERVER_PEER = AttributeKey.valueOf("axion_server_peer");
 
-    /** Séquence des registres envoyés en jeu ; la phase de connexion emploie 0 et 1. */
+    /** Séquence des messages fragmentés envoyés en jeu ; la phase de connexion emploie 0 et 1. */
     private static final AtomicInteger SEQUENCE = new AtomicInteger(2);
+
+    /** La synchronisation de chaque joueur, en jeu (ADR-150 D2, D6) : thread du serveur seulement. */
+    private static final Map<UUID, PlayerSync> SYNCS = new ConcurrentHashMap<>();
+
+    /**
+     * Ce que le client fait des états reçus : posé par le code du client à son démarrage. Un serveur
+     * dédié n'a pas de session client, et ce code commun ne nomme aucune classe du client.
+     */
+    private static volatile ClientSession.SnapshotSink clientSnapshots = states -> {
+        throw new IllegalStateException("aucun puits de snapshots installé chez ce client");
+    };
 
     private AxionNetwork() {
         throw new AssertionError("non instanciable");
@@ -103,17 +124,146 @@ public final class AxionNetwork {
         }
     }
 
-    /** Chez le client : un message en jeu, sur le thread de Netty. */
+    /** Chez le client : un message en jeu, sur le thread de Netty ; un snapshot est acquitté aussitôt. */
     static void onPlayToClient(ChannelFrames.PlayToClient message, Supplier<NetworkEvent.Context> supplier) {
         NetworkEvent.Context context = supplier.get();
         context.setPacketHandled(true);
         try {
             ClientSession session = clientSession(context.getNetworkManager());
-            session.onPlayFrame(message.frame());
+            byte[] ack = session.onPlayFrame(message.frame());
             journal("client", session.drainJournal());
+            if (ack != null) {
+                AxionChannel.CHANNEL.sendTo(new ChannelFrames.PlayToServer(ack), context.getNetworkManager(),
+                        NetworkDirection.PLAY_TO_SERVER);
+            }
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.error("AXION : client : message en jeu non traité — {}", failure.toString());
         }
+    }
+
+    /** Chez le serveur : un acquittement, lu sur Netty et repassé au thread du serveur. */
+    static void onPlayToServer(ChannelFrames.PlayToServer message, Supplier<NetworkEvent.Context> supplier) {
+        NetworkEvent.Context context = supplier.get();
+        context.setPacketHandled(true);
+        ServerPlayer player = context.getSender();
+        if (player == null) {
+            return;
+        }
+        context.enqueueWork(() -> {
+            PlayerSync sync = SYNCS.get(player.getUUID());
+            if (sync != null) {
+                sync.onAckFrame(message.frame());
+            }
+        });
+    }
+
+    /**
+     * Pose ce que le client fait des états reçus. Appelé par le code du client, à son démarrage.
+     *
+     * @param sink application des états aux entités du client
+     */
+    public static void installClientSnapshots(ClientSession.SnapshotSink sink) {
+        clientSnapshots = sink;
+    }
+
+    /**
+     * Chez le client : une entité a quitté le monde du client ; si elle revient, le serveur la renverra en
+     * entier.
+     *
+     * @param connection connexion du client
+     * @param entityId identifiant réseau de l'entité
+     */
+    public static void forgetClientEntity(Connection connection, int entityId) {
+        ClientSession session = connection.channel().attr(CLIENT_SESSION).get();
+        if (session != null) {
+            session.forgetEntity(entityId);
+        }
+    }
+
+    /**
+     * Un joueur commence à suivre une entité : son client a reçu l'apparition (Forge publie l'événement
+     * après l'avoir envoyée).
+     *
+     * @param player joueur
+     * @param target entité suivie
+     */
+    public static void onStartTracking(ServerPlayer player, Entity target) {
+        if (target instanceof AxionEntity) {
+            PlayerSync sync = sync(player);
+            if (sync != null) {
+                sync.track(target.getId());
+            }
+        }
+    }
+
+    /**
+     * Un joueur cesse de suivre une entité.
+     *
+     * @param player joueur
+     * @param target entité
+     */
+    public static void onStopTracking(ServerPlayer player, Entity target) {
+        PlayerSync sync = SYNCS.get(player.getUUID());
+        if (sync != null && target instanceof AxionEntity) {
+            sync.untrack(target.getId());
+        }
+    }
+
+    /**
+     * En fin de tick serveur, après l'application des états du natif : le snapshot de chaque joueur
+     * (21.5). Une assembly hors de {@code net.sync_radius} n'est pas envoyée ({@code NONE}, R-1662).
+     *
+     * @param server serveur
+     */
+    public static void sendSnapshots(MinecraftServer server) {
+        AxionRuntime runtime = RuntimeAccess.get();
+        if (runtime == null || runtime.outcome() == null || SYNCS.isEmpty()) {
+            return;
+        }
+        double syncRadius = runtime.outcome().config().getFloat("net.sync_radius");
+        long tick = server.getTickCount();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            PlayerSync sync = SYNCS.get(player.getUUID());
+            if (sync == null || player.connection == null) {
+                continue;
+            }
+            try {
+                List<byte[]> frames = sync.tick(tick, handle -> {
+                    if (!(player.serverLevel().getEntity(handle) instanceof AxionEntity assembly)) {
+                        return null;
+                    }
+                    AssemblyState state = assembly.netState();
+                    double distance = player.distanceTo(assembly);
+                    if (state == null || distance > syncRadius) {
+                        return null;
+                    }
+                    return new SnapshotSender.Candidate(handle, state, SnapshotSender.Frequency.of(state), distance);
+                }, SEQUENCE.getAndIncrement() & Integer.MAX_VALUE);
+                for (byte[] frame : frames) {
+                    AxionChannel.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
+                            new ChannelFrames.PlayToClient(frame));
+                }
+                journal(player.getGameProfile().getName(), sync.drainJournal());
+            } catch (RuntimeException | LinkageError failure) {
+                LOGGER.error("AXION : snapshot de {} non envoyé — {}", player.getGameProfile().getName(),
+                        failure.toString());
+            }
+        }
+    }
+
+    /** {@return la synchronisation d'un joueur, créée à son premier besoin ; {@code null} sans runtime} */
+    private static PlayerSync sync(ServerPlayer player) {
+        AxionRuntime runtime = RuntimeAccess.get();
+        if (runtime == null || runtime.outcome() == null) {
+            return null;
+        }
+        // Le suivi commence pendant l'entrée du joueur, avant PlayerLoggedInEvent : d'où la création au
+        // premier besoin.
+        return SYNCS.computeIfAbsent(player.getUUID(), uuid -> {
+            AxionConfig config = runtime.outcome().config();
+            return new PlayerSync(new SnapshotSender((int) config.getInt("net.snapshot_rate_hz"),
+                    config.getInt("net.max_bytes_per_second_per_player")));
+        });
     }
 
     /**
@@ -156,10 +306,16 @@ public final class AxionNetwork {
      * @param player joueur parti
      */
     public static void onPlayerLoggedOut(ServerPlayer player) {
+        SYNCS.remove(player.getUUID());
         AxionRuntime runtime = RuntimeAccess.get();
         if (runtime != null) {
             runtime.onPeerLeft(player.getStringUUID());
         }
+    }
+
+    /** À l'arrêt du serveur : les synchronisations de ses joueurs s'oublient. */
+    public static void onServerStopping() {
+        SYNCS.clear();
     }
 
     /**
@@ -208,8 +364,8 @@ public final class AxionNetwork {
             return session;
         }
         AxionRuntime runtime = RuntimeAccess.get();
-        ClientSession created = new ClientSession(
-                runtime.netCompression(), runtime.detProfile(), runtime::applyRemoteRegistry);
+        ClientSession created = new ClientSession(runtime.netCompression(), runtime.detProfile(),
+                runtime::applyRemoteRegistry, states -> clientSnapshots.apply(states));
         ClientSession raced = attribute.setIfAbsent(created);
         return raced == null ? created : raced;
     }

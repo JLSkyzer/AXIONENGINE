@@ -1,5 +1,7 @@
 package dev.axion.forge.client;
 
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import dev.axion.forge.net.AxionNetwork;
 import dev.axion.AxionMod;
 import dev.axion.forge.AxionEntities;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
@@ -26,6 +28,17 @@ public final class AxionClientSetup {
      *
      * @param event événement d'enregistrement des rendus
      */
+    /**
+     * Pose ce que le client fait des états reçus par un snapshot (ADR-150 D6) : le code commun du réseau
+     * ne nomme aucune classe du client.
+     *
+     * @param event mise en place du client
+     */
+    @SubscribeEvent
+    public static void onClientSetup(FMLClientSetupEvent event) {
+        AxionNetwork.installClientSnapshots(ClientSnapshots::apply);
+    }
+
     @SubscribeEvent
     public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(AxionEntities.ASSEMBLY.get(), AxionEntityRenderer::new);

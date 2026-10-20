@@ -1,6 +1,7 @@
 package dev.axion.forge;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -12,6 +13,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -69,10 +71,33 @@ class AssemblyTagsTest {
     @DisplayName("T-404 : les données d'apparition font l'aller-retour, bornées")
     void donneesDApparition() {
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
-        AssemblyTags.writeSpawn(buffer, new AssemblyTags.SpawnState("demo:caisse", true));
+        Quaternionf penche = new Quaternionf().rotateXYZ(0.3f, -0.7f, 0.1f);
+        AssemblyTags.writeSpawn(buffer, new AssemblyTags.SpawnState("demo:caisse", true, penche,
+                new Vector3f(-0.5f, -0.25f, -1f), new Vector3f(0.5f, 0.75f, 1f)));
         AssemblyTags.SpawnState lu = AssemblyTags.readSpawn(buffer);
         assertEquals("demo:caisse", lu.definitionId());
         assertTrue(lu.inert());
+        assertTrue(penche.equals(lu.rotation(), 1e-6f), "ADR-150 D2 : la transformation complète à l'apparition");
+        assertEquals(new Vector3f(-0.5f, -0.25f, -1f), lu.boundsMin());
+        assertEquals(new Vector3f(0.5f, 0.75f, 1f), lu.boundsMax());
+        assertEquals(0, buffer.readableBytes());
+
+        // Sans emprise, ou avec une orientation nulle : la boîte provisoire, l'identité.
+        FriendlyByteBuf sansEmprise = new FriendlyByteBuf(Unpooled.buffer());
+        AssemblyTags.writeSpawn(sansEmprise, new AssemblyTags.SpawnState("demo:caisse", false,
+                new Quaternionf(0, 0, 0, 0), null, null));
+        AssemblyTags.SpawnState relu = AssemblyTags.readSpawn(sansEmprise);
+        assertTrue(new Quaternionf().equals(relu.rotation(), 0f));
+        assertNull(relu.boundsMin());
+        // Une emprise retournée ou non finie n'est pas appliquée.
+        FriendlyByteBuf retournee = new FriendlyByteBuf(Unpooled.buffer());
+        AssemblyTags.writeSpawn(retournee, new AssemblyTags.SpawnState("demo:caisse", false, new Quaternionf(),
+                new Vector3f(1, 0, 0), new Vector3f(-1, 1, 1)));
+        assertNull(AssemblyTags.readSpawn(retournee).boundsMax());
+        FriendlyByteBuf infinie = new FriendlyByteBuf(Unpooled.buffer());
+        AssemblyTags.writeSpawn(infinie, new AssemblyTags.SpawnState("demo:caisse", false, new Quaternionf(),
+                new Vector3f(Float.NaN, 0, 0), new Vector3f(1, 1, 1)));
+        assertNull(AssemblyTags.readSpawn(infinie).boundsMin());
 
         // Une chaîne annoncée au-delà de la borne est refusée à la lecture.
         FriendlyByteBuf hostile = new FriendlyByteBuf(Unpooled.buffer());

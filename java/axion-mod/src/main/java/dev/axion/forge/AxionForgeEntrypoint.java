@@ -191,6 +191,25 @@ public final class AxionForgeEntrypoint {
     }
 
     /**
+     * Un joueur commence à suivre une entité : son client a reçu son apparition. Une assembly entre dans
+     * ce que ses snapshots portent (ADR-150 D2).
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onStartTracking(PlayerEvent.StartTracking event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            AxionNetwork.onStartTracking(player, event.getTarget());
+        }
+    }
+
+    /** Un joueur cesse de suivre une entité : elle sort de ses snapshots. */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onStopTracking(PlayerEvent.StopTracking event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            AxionNetwork.onStopTracking(player, event.getTarget());
+        }
+    }
+
+    /**
      * {@return un écouteur qui énumère et lit les fichiers JSON d'une famille de données, puis les
      * remet au runtime}
      *
@@ -282,6 +301,7 @@ public final class AxionForgeEntrypoint {
     public void onServerStopping(ServerStoppingEvent event) {
         // C-38/C-40 : débrancher les fournisseurs et le puits avant de couper le serveur.
         runtime.clearCommandProviders();
+        AxionNetwork.onServerStopping();
         runtime.setStateSink(null);
         runtime.setEventSink(null);
         runtime.setAssemblyDescriber(null);
@@ -356,6 +376,8 @@ public final class AxionForgeEntrypoint {
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             runtime.onTick();
+            // Les états du natif viennent d'être appliqués aux entités : ils partent dans les snapshots.
+            AxionNetwork.sendSnapshots(event.getServer());
             logSimulationJournal();
             logAssetJournal();
         }

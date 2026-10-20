@@ -39,6 +39,9 @@ public final class AxionChannel {
     /** Discriminant d'un message en jeu, du serveur vers le client. */
     static final int PLAY_TO_CLIENT = 2;
 
+    /** Discriminant d'un message en jeu, du client vers le serveur. */
+    static final int PLAY_TO_SERVER = 3;
+
     // Les messages s'enregistrent avec le canal, avant la première connexion : chacun ne porte
     // qu'une trame (ADR-150), que les sessions de dev.axion.net valident.
     static {
@@ -59,6 +62,11 @@ public final class AxionChannel {
                 .encoder(ChannelFrames.PlayToClient::encode)
                 .decoder(ChannelFrames.PlayToClient::decode)
                 .consumerNetworkThread(AxionNetwork::onPlayToClient)
+                .add();
+        CHANNEL.messageBuilder(ChannelFrames.PlayToServer.class, PLAY_TO_SERVER, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(ChannelFrames.PlayToServer::encode)
+                .decoder(ChannelFrames.PlayToServer::decode)
+                .consumerNetworkThread(AxionNetwork::onPlayToServer)
                 .add();
     }
 

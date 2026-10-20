@@ -14,6 +14,7 @@ import dev.axion.physics.BodyBounds;
 import dev.axion.physics.BodyDescription;
 import dev.axion.physics.BodyLedger;
 import dev.axion.physics.BodyState;
+import dev.axion.physics.BodyStateFlags;
 import dev.axion.physics.CollisionFilter;
 import dev.axion.physics.MaterialMarking;
 import dev.axion.physics.RefitMarking;
@@ -336,6 +337,9 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             if (withBounds) {
                 applyBounds(entity, bounds.get(i));
             }
+            // ADR-150 D6 : l'état que les snapshots portent, une fois position, orientation et emprise
+            // posées.
+            entity.updateNetState(v, state.angularVelocity(), (state.flags() & BodyStateFlags.SLEEPING) != 0);
         }
         // R-500 : la durée de l'application des états, côté entité.
         EntityMetrics.GLOBAL.applied(System.nanoTime() - start);

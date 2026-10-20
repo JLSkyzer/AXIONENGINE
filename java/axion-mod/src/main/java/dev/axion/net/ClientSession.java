@@ -26,11 +26,23 @@ public final class ClientSession {
         List<String> apply(RegistryContent registry);
     }
 
+    /** Ce que le client fait des états reçus par un snapshot : il les applique à ses entités. */
+    @FunctionalInterface
+    public interface SnapshotSink {
+
+        /**
+         * @param states états reconstitués, un par assembly
+         */
+        void apply(List<SnapshotReceiver.Applied> states);
+    }
+
     private static final byte[] ACKNOWLEDGED = new byte[0];
 
     private final NetCompression compression;
     private final DetProfile self;
     private final RegistrySink sink;
+    private final SnapshotSink snapshotSink;
+    private final SnapshotReceiver snapshots = new SnapshotReceiver();
     private final Fragments.Reassembler login = new Fragments.Reassembler();
     private final Fragments.Reassembler play = new Fragments.Reassembler();
     private final Queue<String> journal = new ConcurrentLinkedQueue<>();
@@ -42,11 +54,13 @@ public final class ClientSession {
      *     ce client est inactif : le registre ne peut alors pas se lire
      * @param self empreinte déterministe de ce client
      * @param sink application d'un registre reçu
+     * @param snapshotSink application des états reçus par un snapshot
      */
-    public ClientSession(NetCompression compression, DetProfile self, RegistrySink sink) {
+    public ClientSession(NetCompression compression, DetProfile self, RegistrySink sink, SnapshotSink snapshotSink) {
         this.compression = compression;
         this.self = self;
         this.sink = sink;
+        this.snapshotSink = snapshotSink;
     }
 
     /**
@@ -84,28 +98,53 @@ public final class ClientSession {
     }
 
     /**
-     * Traite une trame reçue en jeu : en M4, le registre renvoyé après un rechargement des données du
-     * serveur, ou parce que celui de la connexion ne correspondait plus.
+     * Traite une trame reçue en jeu : un snapshot (21.5), ou le registre renvoyé après un rechargement
+     * des données du serveur, ou parce que celui de la connexion ne correspondait plus.
      *
      * @param frame trame reçue, ou {@code null} si le canal l'a écartée pour sa taille
+     * @return la trame de l'acquittement à renvoyer après un snapshot, {@code null} sinon
      */
-    public synchronized void onPlayFrame(byte[] frame) {
+    public synchronized byte[] onPlayFrame(byte[] frame) {
         byte[] message;
         try {
             message = play.accept(present(frame));
         } catch (MalformedPacketException error) {
             journal.add(error.report("jeu"));
-            return;
+            return null;
         }
         if (message == null) {
-            return;
+            return null;
         }
         int kind = message[0] & 0xFF;
+        if (kind == MessageKinds.SNAPSHOT) {
+            List<SnapshotReceiver.Applied> states = snapshots.onSnapshot(message);
+            journal.addAll(snapshots.drainJournal());
+            if (!states.isEmpty()) {
+                try {
+                    snapshotSink.apply(states);
+                } catch (RuntimeException failure) {
+                    journal.add("états du snapshot non appliqués : " + failure);
+                }
+            }
+            // Acquitté même refusé : le serveur y lit aussi les entrées à renvoyer en entier.
+            return reply(snapshots.ack().encode());
+        }
         if (kind == MessageKinds.REGISTRY) {
             applyRegistry(message, "registre en jeu");
         } else {
             journal.add(new MalformedPacketException("genre " + kind + " inattendu en jeu").report("jeu"));
         }
+        return null;
+    }
+
+    /**
+     * Oublie une assembly dont l'entité a quitté ce client : si elle revient, le serveur la renverra en
+     * entier.
+     *
+     * @param handle identifiant réseau de son entité
+     */
+    public void forgetEntity(int handle) {
+        snapshots.forget(handle);
     }
 
     private static byte[] present(byte[] frame) throws MalformedPacketException {

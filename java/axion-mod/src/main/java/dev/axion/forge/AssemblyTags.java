@@ -1,6 +1,7 @@
 package dev.axion.forge;
 
 import dev.axion.entity.AssemblyBinding;
+import dev.axion.net.SnapshotMessage;
 import java.util.HexFormat;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
@@ -11,6 +12,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
 import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
+import org.joml.Vector3f;
 
 /**
  * NBT et données d'apparition d'une AxionEntity (PARTIE 22.2, R-703).
@@ -42,13 +44,17 @@ final class AssemblyTags {
     static final int MAX_ID_CHARS = 32767;
 
     /**
-     * Ce que le client reçoit à l'apparition.
+     * Ce que le client reçoit à l'apparition : {@code S2C_AssemblySpawn} (ADR-150 D2), la position mise à
+     * part, que Minecraft porte.
      *
      * @param definitionId identifiant de la definition, ou description d'une
      *     definition inconnue
      * @param inert l'entité est inerte
+     * @param rotation orientation du corps
+     * @param boundsMin coin minimal de l'emprise, relatif à la position, ou {@code null} si aucune
+     * @param boundsMax coin maximal de l'emprise, relatif à la position, ou {@code null} si aucune
      */
-    record SpawnState(String definitionId, boolean inert) {}
+    record SpawnState(String definitionId, boolean inert, Quaternionf rotation, Vector3f boundsMin, Vector3f boundsMax) {}
 
     private AssemblyTags() {}
 
@@ -137,14 +143,51 @@ final class AssemblyTags {
                 : "sans definition";
     }
 
-    /** Écrit les données d'apparition. */
+    /**
+     * Écrit les données d'apparition : definition, état inerte, version du descripteur d'états
+     * procéduraux (vide en version 1, ADR-150 D6), orientation, puis l'emprise si elle existe.
+     */
     static void writeSpawn(FriendlyByteBuf buffer, SpawnState state) {
         buffer.writeUtf(state.definitionId(), MAX_ID_CHARS);
         buffer.writeBoolean(state.inert());
+        buffer.writeByte(SnapshotMessage.DESCRIPTOR_VERSION);
+        Quaternionf q = state.rotation();
+        buffer.writeFloat(q.x).writeFloat(q.y).writeFloat(q.z).writeFloat(q.w);
+        boolean bounded = state.boundsMin() != null && state.boundsMax() != null;
+        buffer.writeBoolean(bounded);
+        if (bounded) {
+            for (Vector3f corner : new Vector3f[] {state.boundsMin(), state.boundsMax()}) {
+                buffer.writeFloat(corner.x).writeFloat(corner.y).writeFloat(corner.z);
+            }
+        }
     }
 
-    /** Lit les données d'apparition, bornées comme toute chaîne réseau. */
+    /**
+     * Lit les données d'apparition, bornées comme toute chaîne réseau. Une orientation non finie ou nulle
+     * donne l'identité ; une emprise non finie ou retournée, aucune emprise — la boîte provisoire.
+     */
     static SpawnState readSpawn(FriendlyByteBuf buffer) {
-        return new SpawnState(buffer.readUtf(MAX_ID_CHARS), buffer.readBoolean());
+        String definitionId = buffer.readUtf(MAX_ID_CHARS);
+        boolean inert = buffer.readBoolean();
+        buffer.readUnsignedByte(); // descripteur : vide en version 1, rien à lire
+        Quaternionf rotation = new Quaternionf(buffer.readFloat(), buffer.readFloat(), buffer.readFloat(),
+                buffer.readFloat());
+        float norm = rotation.lengthSquared();
+        if (Float.isFinite(norm) && norm > MIN_QUATERNION_NORM_SQUARED) {
+            rotation.normalize();
+        } else {
+            rotation.identity();
+        }
+        Vector3f min = null;
+        Vector3f max = null;
+        if (buffer.readBoolean()) {
+            min = new Vector3f(buffer.readFloat(), buffer.readFloat(), buffer.readFloat());
+            max = new Vector3f(buffer.readFloat(), buffer.readFloat(), buffer.readFloat());
+            if (!min.isFinite() || !max.isFinite() || min.x > max.x || min.y > max.y || min.z > max.z) {
+                min = null;
+                max = null;
+            }
+        }
+        return new SpawnState(definitionId, inert, rotation, min, max);
     }
 }

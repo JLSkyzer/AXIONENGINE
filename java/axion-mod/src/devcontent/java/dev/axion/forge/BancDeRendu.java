@@ -239,9 +239,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -289,6 +289,13 @@ public final class BancDeRendu {
     private static double[] boisAvant;
     private static double[] boisAvecPack;
     private static AxionEntity modeleDuPack;
+    /** T-410 : l'assembly lâchée en l'air, son identifiant réseau, et ses hauteurs relevées. */
+    private static AxionEntity chute;
+    private static int chuteId;
+    private static double chuteClientDepart;
+    private static double chuteServeur;
+    private static int chuteTickDepart;
+    private static int chuteTickFin;
     private static double[] duPackAvant;
     private static double[] duPackAvecPack;
     private static boolean packDisponible;
@@ -606,6 +613,7 @@ public final class BancDeRendu {
             });
             jusqua("le modèle à texture de ressource retiré", 120,
                     mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+
         }
 
         if (SHADERS) {
@@ -753,6 +761,31 @@ public final class BancDeRendu {
         serveur("exécuter /axion status", s -> sortieDuStatut = sortieDe(s, "axion status"));
         une("juger T-491d", mc -> jugerT491d());
 
+        if (!SHADERS) {
+            // T-410 (21.11) : connexion, apparition, mouvement, sur la vraie connexion du monde solo. Une
+            // assembly lâchée en l'air tombe chez le serveur ; chez le client, seuls les snapshots d'AXION
+            // la déplacent depuis son apparition (ADR-150 D2) : elle doit finir où le serveur la pose. Le
+            // joueur du banc est spectateur, et un spectateur n'observe pas (R-612) : sans observateur
+            // déclaré, tout corps dort. En dernier, pour qu'aucun verdict ne voie la scène éveillée.
+            serveur("lâcher une assembly pour T-410", s -> {
+                ObservateursDeTest.declarer(s.overworld(), positionChute());
+                chute = AssembliesDeTest.poser(s.overworld(), CUBE, positionChute(), IDENTITE);
+                chuteId = chute.getId();
+                chuteTickDepart = s.getTickCount();
+            });
+            jusqua("l'assembly lâchée apparue chez le client", 60, mc -> mc.level.getEntity(chuteId) != null);
+            une("relever l'apparition chez le client", mc -> chuteClientDepart = mc.level.getEntity(chuteId).getY());
+            pendant("la chute", 6 * 20);
+            serveur("relever l'assembly lâchée chez le serveur", s -> {
+                chuteServeur = chute.getY();
+                chuteTickFin = s.getTickCount();
+            });
+            pendant("le dernier snapshot", 10);
+            une("juger T-410", mc -> jugerT410(mc, mc.level.getEntity(chuteId)));
+            serveur("retirer l'assembly lâchée", s -> chute.discard());
+            jusqua("l'assembly lâchée retirée", 60, mc -> mc.level.getEntity(chuteId) == null);
+        }
+
         une("juger T-472, T-473 et le journal", mc -> {
             jugerT472();
             jugerT473();
@@ -846,6 +879,11 @@ public final class BancDeRendu {
     /** {@return le pied d'un panneau, à côté du cube, décalé le long de z} */
     private static Vec3 positionPanneau(double dz) {
         return positionCube().add(0.0, 0.0, dz);
+    }
+
+    /** {@return où lâcher l'assembly de T-410 : six blocs au-dessus du sol, à l'écart de la scène} */
+    private static Vec3 positionChute() {
+        return new Vec3(6.5, surface + 6.0, 6.5);
     }
 
     private static Vec3 positionCube() {
@@ -1321,6 +1359,23 @@ public final class BancDeRendu {
      * celui du pack bleu : avant le pack et après, le rouge l'emporte ; avec, le bleu. Le serveur, qui ne lit
      * que {@code data/}, garde le rouge : seul le registre du client peut donner le bleu.
      */
+    /**
+     * T-410 : l'assembly est tombée chez le serveur, elle a quitté sa hauteur d'apparition chez le client,
+     * et elle y finit où le serveur la pose, au pas de la quantification près (1/1024 de bloc).
+     */
+    private static void jugerT410(Minecraft minecraft, net.minecraft.world.entity.Entity client) {
+        double depart = positionChute().y;
+        boolean tombee = depart - chuteServeur >= 2.0;
+        boolean deplacee = client != null && chuteClientDepart - client.getY() >= 2.0;
+        boolean rejointe = client != null && Math.abs(client.getY() - chuteServeur) <= 0.01;
+        RAPPORT.noter("T-410", tombee && deplacee && rejointe, String.format(Locale.ROOT,
+                "lâchée à y = %.3f ; chez le serveur %.3f après %d tick(s) du serveur ; chez le client %.3f à"
+                        + " l'apparition, %s à la fin ; jeu en pause : %s — elle doit tomber d'au moins 2 blocs, et le"
+                        + " client la suivre à 0,01 près",
+                depart, chuteServeur, chuteTickFin - chuteTickDepart, chuteClientDepart,
+                client == null ? "absente" : String.format(Locale.ROOT, "%.3f", client.getY()), minecraft.isPaused()));
+    }
+
     private static void jugerModeleDuPack(double[] apres) {
         boolean rougeAvant = duPackAvant[0] >= duPackAvant[2] + MARGE_D3;
         boolean bleuAvecPack = duPackAvecPack[2] >= duPackAvecPack[0] + MARGE_D3;
@@ -1718,6 +1773,17 @@ public final class BancDeRendu {
         etape(nom, mc -> {
             action.accept(mc);
             return true;
+        });
+    }
+
+    /** Laisse passer {@code ticksAttendus} ticks du client. */
+    private static void pendant(String quoi, int ticksAttendus) {
+        long[] depuis = {-1};
+        etape("attendre " + quoi, mc -> {
+            if (depuis[0] < 0) {
+                depuis[0] = ticks;
+            }
+            return ticks - depuis[0] >= ticksAttendus;
         });
     }
 

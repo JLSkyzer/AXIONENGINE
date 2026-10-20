@@ -138,6 +138,7 @@ class LoginFlowTest {
     /** Un client, et ce qu'il a appliqué. */
     private static final class Client {
         final List<DefinitionRegistry> appliques = new ArrayList<>();
+        final List<SnapshotReceiver.Applied> etats = new ArrayList<>();
         final ClientSession session;
 
         Client(DetProfile det) {
@@ -145,7 +146,7 @@ class LoginFlowTest {
                 RemoteRegistry.Loaded relu = RemoteRegistry.load(registre);
                 appliques.add(relu.definitions());
                 return relu.journal();
-            });
+            }, etats::addAll);
         }
     }
 
@@ -362,7 +363,7 @@ class LoginFlowTest {
     void unClientQuiNePeutAppliquerDitNeRienTenir() {
         ServerSnapshot instantane = serveur().instantane(VALIDEE);
 
-        ClientSession sansNatif = new ClientSession(null, VALIDEE, registre -> List.of());
+        ClientSession sansNatif = new ClientSession(null, VALIDEE, registre -> List.of(), etats -> {});
         ServerPeer pair = new ServerPeer(VALIDEE);
         connecter(instantane.loginFrames(false), sansNatif, pair);
         assertEquals(RegistryAck.NONE, pair.registry().orElseThrow());
@@ -370,7 +371,7 @@ class LoginFlowTest {
 
         ClientSession enEchec = new ClientSession(IDENTITE, VALIDEE, registre -> {
             throw new IllegalStateException("échec simulé");
-        });
+        }, etats -> {});
         ServerPeer autre = new ServerPeer(VALIDEE);
         connecter(instantane.loginFrames(false), enEchec, autre);
         assertEquals(RegistryAck.NONE, autre.registry().orElseThrow());

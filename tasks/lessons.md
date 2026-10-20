@@ -1717,3 +1717,18 @@ Java, alors que le build Java dépend aussi du Rust.
 **Règle.** Un script de mutations vérifie d'abord que la base est verte, ne compte rouge qu'un échec de
 tests (« There were failing tests »), et range tout autre échec — compilation, `codegen` — à part. Rien du
 dépôt ne se modifie pendant une campagne, Rust compris : le build Java en dépend.
+
+## 2026-10-20 | Le banc de rendu restait vert sans snapshots
+
+**Ce qui a mal tourné.** Après la fin du pont provisoire (tranche 4 d'ADR-150), le banc de rendu est
+resté vert avec l'application des snapshots coupée : ses scènes sont immobiles, et les données
+d'apparition suffisent à les placer. Le premier verdict de mouvement ajouté, T-410, est resté rouge pour
+une autre raison : le cube lâché ne tombait même pas chez le serveur.
+
+**Cause.** Le monde du banc est créé en mode spectateur, et un spectateur n'observe pas (R-612) : sans
+observateur, tout corps y dort. Rien ne bouge jamais dans le banc, ce qu'aucun verdict ne voyait.
+
+**Règle.** Un vert du banc ne prouve un chemin que si la mutation de ce chemin le fait rougir : à
+vérifier avant de le compter comme preuve. Un verdict de mouvement déclare un observateur
+(`ObservateursDeTest.declarer`), et se place en fin de scénario pour qu'aucun autre ne voie la scène
+éveillée.

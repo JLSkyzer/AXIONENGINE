@@ -33,17 +33,25 @@ public final class AxionEntities {
     private static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
             DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, AxionMod.MODID);
 
+    /**
+     * Portée du suivi, en tronçons : celle de {@code net.sync_radius} par défaut (96 blocs). Le type
+     * d'entité s'enregistre avant la lecture de la configuration ; une valeur plus grande que la portée
+     * est bornée par elle, et par la distance de vue du serveur.
+     */
+    static final int SYNC_RADIUS_CHUNKS = 6;
+
     /** L'entité unique d'AXION. */
     public static final RegistryObject<EntityType<AxionEntity>> ASSEMBLY =
             ENTITY_TYPES.register("assembly", () -> EntityType.Builder
                     .<AxionEntity>of(AxionEntity::new, MobCategory.MISC)
                     .sized(PROVISIONAL_SIZE, PROVISIONAL_SIZE)
-                    // Corps repositionné à chaque tick par la physique serveur (C-40) : on
-                    // transmet sa position au client à chaque tick, et non tous les 3 (défaut
-                    // de Minecraft), sans quoi une chute à vitesse réelle s'affiche « bloc par
-                    // bloc ». Le lissage sous-tick (interpolation au rendu) relève de la
-                    // chaîne de rendu (C-60+) et complétera ce câblage réseau.
-                    .updateInterval(1)
+                    // ADR-150 D2 : le suivi de Minecraft porte la visibilité — qui voit l'assembly,
+                    // son apparition, sa disparition —, sur une portée qui couvre net.sync_radius
+                    // (96 blocs par défaut, six tronçons). Son suivi de position est tu : un
+                    // intervalle que le compteur de ServerEntity n'atteint qu'à son premier tick.
+                    // La position part dans les snapshots d'AXION.
+                    .clientTrackingRange(SYNC_RADIUS_CHUNKS)
+                    .updateInterval(Integer.MAX_VALUE)
                     .build(AxionMod.MODID + ":assembly"));
 
     /**
