@@ -66,6 +66,10 @@ minecraft {
         }
 
         server {
+            // Un dossier à part : un client de développement lancé en même temps tourne dans `run`,
+            // et deux instances dans un même dossier y mêleraient journaux et monde (essai de D8,
+            // ADR-150).
+            workingDirectory rootProject.file('run-server')
             property 'forge.enabledGameTestNamespaces', mod_id
             args '--nogui'
         }
