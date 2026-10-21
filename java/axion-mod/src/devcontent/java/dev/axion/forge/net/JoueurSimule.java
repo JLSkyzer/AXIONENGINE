@@ -286,6 +286,23 @@ public final class JoueurSimule {
         return recus;
     }
 
+    /**
+     * {@return les états reçus depuis le dernier appel, retirés de l'historique} Une campagne longue les lit au fil
+     * de l'eau, en mémoire bornée.
+     */
+    public List<Recu> drainRecus() {
+        List<Recu> lus = new ArrayList<>(recus);
+        recus.clear();
+        return lus;
+    }
+
+    /** {@return les lignes du journal du client depuis le dernier appel, retirées} */
+    public List<String> drainJournal() {
+        List<String> lues = new ArrayList<>(journal);
+        journal.clear();
+        return lues;
+    }
+
     /** {@return les registres que le client a appliqués : celui de la connexion, puis ceux renvoyés en jeu} */
     public List<DefinitionRegistry> registres() {
         return registres;

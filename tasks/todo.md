@@ -3129,8 +3129,12 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             déconnecté — un client honnête n'envoie que 20 acquittements par seconde au plus. JUnit et
             GameTest (200 trames par seconde : déconnecté au bout de 5 s, pas avant) ; 24 GameTests,
             762 JUnit ; 8 mutations rouges.
-      - [ ] 6f. T-425 : une heure, 20 joueurs simulés, aucune désynchronisation — campagne hors de la CI
-            ordinaire (D8).
+      - [x] 6f (2026-10-21). T-425 en campagne, hors de la CI ordinaire : `AXION_CAMPAGNE=t425 ./gradlew
+            :axion-mod:runGameTestServer`. Passage du 2026-10-21 : 72 000 ticks du serveur (une heure),
+            20 joueurs simulés, 3 600 apparitions et 3 570 disparitions de cubes, 60 reconnexions, des
+            joueurs hors de portée et de retour toutes les 10 s ; 1 330 442 états reçus, tous identiques
+            à ceux du serveur au tick qu'ils portent (toutes les assemblies du monde comparées) ; 8,2 min
+            de temps mural. La mutation « snapshot daté du mauvais tick » la rougit au premier état.
       - [ ] 6g. Overlay `network` (31.4, ADR-146 §1) : pose interpolée et dernier état reçu, en Java seul —
             hors du masque transmis au natif, qui refuse un bit inconnu (`abi.rs`) ; R-2280, T-551.
       - [ ] 6h. ADR-150, CHANGELOG ; reste de l'essai réel avec Killian (renvoi en jeu, reconnexion).
