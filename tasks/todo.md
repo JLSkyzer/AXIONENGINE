@@ -3082,9 +3082,8 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             rouges pour la colle pure ; T-410 au banc vanilla et natif — un cube lâché tombe chez le
             serveur, et chez le client par les seuls snapshots (rouge quand leur application est
             coupée). ADR-150, CHANGELOG.
-      - [ ] Point ouvert : R-1690, limitation de débit C→S (`net.max_packets_per_second`) — l'acquittement
-            est le premier paquet C→S en jeu ; à faire avec `C2S_Input` (M5) au plus tard, ou avec le
-            harnais de la tranche 6.
+      - [x] Point ouvert : R-1690, limitation de débit C→S (`net.max_packets_per_second`) — fait avec le
+            harnais de la tranche 6 (étape 6e, 2026-10-21).
 - [x] 5. Interpolation (D7) — T-412, T-413, T-414 en JUnit ; T-410 et le verdict D7 au banc.
       - [x] 5a (2026-10-20). Java pur : `ServerClock` (arrivée la moins retardée sur 2 s, estimation qui
             glisse à 5 % au plus et saute au-delà de 250 ms), `Interpolation` (Hermite, slerp au plus
@@ -3124,8 +3123,12 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             en entier, endormie ou non, sans rien redemander (la part « déformation » attend M6). Deux
             intermittences du harnais corrigées (ordre des rappels d'un tick, attente de T-418) ; 23
             GameTests verts trois fois de suite ; 5 mutations rouges.
-      - [ ] 6e. R-1690 : limitation C→S (`net.max_packets_per_second`), abus soutenu → déconnexion, éprouvée
-            par le harnais.
+      - [x] 6e (2026-10-21). R-1690 : les trames du client se comptent par seconde du serveur (20 ticks) ;
+            au-delà de `net.max_packets_per_second`, ignorées et comptées (`axion.net.packets_limited`),
+            une ligne E-5001 « limitation » par seconde ; cinq secondes de suite et le client est
+            déconnecté — un client honnête n'envoie que 20 acquittements par seconde au plus. JUnit et
+            GameTest (200 trames par seconde : déconnecté au bout de 5 s, pas avant) ; 24 GameTests,
+            762 JUnit ; 8 mutations rouges.
       - [ ] 6f. T-425 : une heure, 20 joueurs simulés, aucune désynchronisation — campagne hors de la CI
             ordinaire (D8).
       - [ ] 6g. Overlay `network` (31.4, ADR-146 §1) : pose interpolée et dernier état reçu, en Java seul —

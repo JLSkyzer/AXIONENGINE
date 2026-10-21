@@ -91,6 +91,7 @@ public final class JoueurSimule {
     private long octetsRecus;
     private int tramesRecues;
     private int acquittements;
+    private byte[] dernierAcquittement;
 
     private JoueurSimule(AxionRuntime runtime, MinecraftServer serveur, EmbeddedChannel canal, ServerSnapshot instantane) {
         this.runtime = runtime;
@@ -148,7 +149,8 @@ public final class JoueurSimule {
         UUID uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + nom).getBytes(StandardCharsets.UTF_8));
         if (plafond > 0) {
             int frequence = (int) runtime.outcome().config().getInt("net.snapshot_rate_hz");
-            AxionNetwork.installSync(uuid, new PlayerSync(new SnapshotSender(frequence, plafond)));
+            int limite = (int) runtime.outcome().config().getInt("net.max_packets_per_second");
+            AxionNetwork.installSync(uuid, new PlayerSync(new SnapshotSender(frequence, plafond), limite));
         }
         ServerPlayer joueur = new ServerPlayer(level.getServer(), level, new GameProfile(uuid, nom));
         joueur.moveTo(position.x, position.y, position.z, 0f, 0f);
@@ -197,6 +199,7 @@ public final class JoueurSimule {
                 byte[] acquittement = session.onPlayFrame(trame);
                 journal.addAll(session.drainJournal());
                 if (acquittement != null) {
+                    dernierAcquittement = acquittement;
                     canal.writeInbound(AxionChannel.CHANNEL.toVanillaPacket(
                             new ChannelFrames.PlayToServer(acquittement), NetworkDirection.PLAY_TO_SERVER));
                     acquittements++;
@@ -301,6 +304,11 @@ public final class JoueurSimule {
     /** {@return le nombre de trames AXION reçues} */
     public int tramesRecues() {
         return tramesRecues;
+    }
+
+    /** {@return la trame du dernier acquittement envoyé, ou {@code null} : un client qui la renverrait en boucle} */
+    public byte[] dernierAcquittement() {
+        return dernierAcquittement;
     }
 
     /** {@return le nombre d'acquittements renvoyés au serveur : un par snapshot reçu} */

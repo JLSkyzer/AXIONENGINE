@@ -8,7 +8,8 @@ package dev.axion.diag;
  *
  * <ul>
  *   <li>opérations — snapshots envoyés, octets de snapshot et de registre, acquittements reçus ;
- *   <li>erreurs — paquets refusés, de part et d'autre (E-5001) ;
+ *   <li>erreurs — paquets refusés, de part et d'autre (E-5001), et trames du client ignorées par la
+ *       limitation (R-1690) ;
  *   <li>mémoire — joueurs synchronisés, assemblies suivies pour eux ;
  *   <li>durée — l'envoi des snapshots d'un tick, tous joueurs compris.
  * </ul>
@@ -41,9 +42,10 @@ public final class NetworkMetrics {
      * @param delayed entrées retardées par le plafond
      * @param busiestBytesPerSecond octets envoyés au joueur le plus servi, sur les vingt derniers ticks
      * @param nanos durée de l'envoi, en nanosecondes
+     * @param limited trames des clients ignorées par la limitation depuis le tick précédent (R-1690)
      */
     public record Tick(int players, int tracked, int snapshots, long bytes, long delayed, long busiestBytesPerSecond,
-            long nanos) {}
+            long nanos, long limited) {}
 
     private final JavaMetrics.Metric snapshots;
     private final JavaMetrics.Metric snapshotBytes;
@@ -51,6 +53,7 @@ public final class NetworkMetrics {
     private final JavaMetrics.Metric delayed;
     private final JavaMetrics.Metric acks;
     private final JavaMetrics.Metric rejected;
+    private final JavaMetrics.Metric limited;
     private final JavaMetrics.Metric players;
     private final JavaMetrics.Metric tracked;
     private final JavaMetrics.Metric sendNanos;
@@ -68,6 +71,7 @@ public final class NetworkMetrics {
         delayed = metrics.counter(PREFIX + "entries_delayed", "count");
         acks = metrics.counter(PREFIX + "acks_received", "count");
         rejected = metrics.counter(PREFIX + "packets_rejected", "count");
+        limited = metrics.counter(PREFIX + "packets_limited", "count");
         players = metrics.gauge(PREFIX + "players_synced", "count");
         tracked = metrics.gauge(PREFIX + "assemblies_tracked", "count");
         sendNanos = metrics.gauge(PREFIX + "send_ns", "ns");
@@ -83,6 +87,7 @@ public final class NetworkMetrics {
         snapshots.add(tick.snapshots());
         snapshotBytes.add(tick.bytes());
         delayed.add(tick.delayed());
+        limited.add(tick.limited());
         players.set(tick.players());
         tracked.set(tick.tracked());
         sendNanos.set(Math.max(0, tick.nanos()));

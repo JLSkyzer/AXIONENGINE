@@ -148,6 +148,47 @@ class SnapshotLinkTest {
     }
 
     @Test
+    @DisplayName("R-1690 : au-delà de net.max_packets_per_second, les trames sont ignorées et dites une fois par"
+            + " seconde ; cinq secondes d'abus de suite, et le client est à déconnecter")
+    void unClientQuiInondeEstLimitePuisAbusif() {
+        PlayerSync serveur = new PlayerSync(new SnapshotSender(20, 32_768), 40);
+        byte[] ack = Fragments.split(new AckMessage(0, List.of()).encode(), 0).get(0);
+        // Une seconde à cinquante trames : dix ignorées, une ligne au journal à la fin de la seconde.
+        for (int index = 0; index < 50; index++) {
+            serveur.onAckFrame(ack);
+        }
+        serveur.tick(1, handle -> null, 0);
+        assertEquals(10, serveur.lastTickLimited(), "les trames ignorées depuis le tick précédent");
+        for (int tick = 2; tick <= 20; tick++) {
+            serveur.tick(tick, handle -> null, 0);
+        }
+        List<String> journal = serveur.drainJournal();
+        assertEquals(1, journal.size(), journal::toString);
+        assertTrue(journal.get(0).startsWith("E-5001 paquet ignoré (limitation) : 10 trame(s) au-delà de 40"),
+                journal.get(0));
+        assertFalse(serveur.abusive(), "une seconde d'excès ne fait pas un abus");
+        // Une seconde calme remet le compte à zéro.
+        for (int tick = 21; tick <= 40; tick++) {
+            serveur.tick(tick, handle -> null, 0);
+        }
+        // Quatre secondes d'abus de suite : pas encore ; la cinquième : à déconnecter.
+        long tick = 40;
+        for (int seconde = 1; seconde <= 5; seconde++) {
+            for (int index = 0; index < 41; index++) {
+                serveur.onAckFrame(ack);
+            }
+            for (int pas = 0; pas < 20; pas++) {
+                serveur.tick(++tick, handle -> null, 0);
+            }
+            assertEquals(seconde == PlayerSync.ABUSE_SECONDS, serveur.abusive(), "après " + seconde + " seconde(s) d'abus");
+        }
+        List<String> abus = serveur.drainJournal();
+        assertEquals(5, abus.size(), "une ligne par seconde d'abus, pas une par trame");
+        assertTrue(abus.stream().allMatch(ligne -> ligne.contains(" : 1 trame(s) au-delà de 40")),
+                "chaque seconde repart de zéro : 41 trames n'en ignorent qu'une — " + abus);
+    }
+
+    @Test
     @DisplayName("T-422 : un acquittement fautif est ignoré et dit, sans lever")
     void unAcquittementFautifEstIgnore() {
         Liaison liaison = new Liaison();

@@ -545,6 +545,45 @@ public final class HarnaisReseauGameTests {
     }
 
     /**
+     * R-1690 dans le harnais : un client renvoie en boucle son dernier acquittement, deux cents trames par
+     * seconde pour une limite de quarante. Le serveur ignore et compte ce qui dépasse, et le déconnecte au bout
+     * de cinq secondes d'abus — pas avant.
+     */
+    @GameTest(template = "test/plancher", batch = "harnais_reseau_r1690", timeoutTicks = 260)
+    public static void r1690_unClientQuiInondeLeServeurEstDeconnecte(GameTestHelper helper) {
+        long limiteesAvant = metrique("packets_limited", true, "count");
+        long refusesAvant = metrique("packets_rejected", true, "count");
+        Scene scene = Scene.poser(helper, new Vec3(1.5, DESSUS_DALLE + 4, 1.5), new Vec3(4.5, DESSUS_DALLE, 4.5),
+                "sim-r1690");
+        long[] debut = {-1};
+        helper.onEachTick(() -> {
+            if (scene.joueur == null || !scene.joueur.connecte() || scene.joueur.dernierAcquittement() == null) {
+                return;
+            }
+            if (debut[0] < 0) {
+                debut[0] = helper.getTick();
+            }
+            for (int index = 0; index < 10; index++) {
+                scene.joueur.envoyer(scene.joueur.dernierAcquittement());
+            }
+        });
+        helper.succeedWhen(() -> {
+            helper.assertTrue(debut[0] >= 0, "l'inondation n'a pas commencé");
+            helper.assertTrue(helper.getLevel().getServer().getPlayerList().getPlayer(scene.joueur.joueur().getUUID()) == null,
+                    "le client qui inonde le serveur est encore connecté");
+            long secondes = (helper.getTick() - debut[0]) / TICKS_PAR_SECONDE;
+            helper.assertTrue(secondes >= PlayerSync.ABUSE_SECONDS,
+                    "déconnecté après " + secondes + " s : un abus plus bref que " + PlayerSync.ABUSE_SECONDS
+                            + " s ne déconnecte pas");
+            long limitees = metrique("packets_limited", true, "count") - limiteesAvant;
+            long refus = metrique("packets_rejected", true, "count") - refusesAvant;
+            helper.assertTrue(limitees > 0, "aucune trame comptée comme limitée");
+            helper.assertTrue(refus >= PlayerSync.ABUSE_SECONDS, "une ligne par seconde d'abus au journal, "
+                    + refus + " comptée(s)");
+        });
+    }
+
+    /**
      * Le renvoi du registre en jeu, à travers Forge (ADR-150 D5) : après un rechargement qui change les
      * definitions, le registre repart vers le joueur distant, et son client tient la definition ajoutée ;
      * le retour aux packs repart de même.

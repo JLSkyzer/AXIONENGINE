@@ -77,8 +77,8 @@ class ComponentMetricsTest {
     void leReseauSeMesure() {
         JavaMetrics metrics = new JavaMetrics();
         NetworkMetrics network = new NetworkMetrics(metrics);
-        network.tick(new NetworkMetrics.Tick(3, 12, 2, 900, 0, 4_000, 1_500));
-        network.tick(new NetworkMetrics.Tick(2, 8, 2, 700, 5, 3_000, -4));
+        network.tick(new NetworkMetrics.Tick(3, 12, 2, 900, 0, 4_000, 1_500, 0));
+        network.tick(new NetworkMetrics.Tick(2, 8, 2, 700, 5, 3_000, -4, 7));
         network.registrySent(1_359);
         network.ackReceived();
         network.ackReceived();
@@ -91,6 +91,7 @@ class ComponentMetricsTest {
         assertEquals(5, metrics.counter(p + "entries_delayed", "count").value());
         assertEquals(2, metrics.counter(p + "acks_received", "count").value());
         assertEquals(1, metrics.counter(p + "packets_rejected", "count").value());
+        assertEquals(7, metrics.counter(p + "packets_limited", "count").value(), "R-1690");
         assertEquals(2, metrics.gauge(p + "players_synced", "count").value(), "le dernier tick fait foi");
         assertEquals(8, metrics.gauge(p + "assemblies_tracked", "count").value());
         assertEquals(0, metrics.gauge(p + "send_ns", "ns").value(), "une durée négative ne s'écrit pas");

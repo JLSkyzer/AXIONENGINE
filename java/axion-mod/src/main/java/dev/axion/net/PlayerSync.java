@@ -12,6 +12,12 @@ import java.util.Set;
  * <p>L'ensemble suivi est celui du suivi d'entités de Minecraft (D2) : une assembly y entre quand le
  * client a reçu son apparition, et en sort à sa disparition. Une instance par joueur, utilisée depuis le
  * thread du serveur seulement : les acquittements reçus sur Netty y sont repassés.
+ *
+ * <p>Limitation C→S (R-1690) : les trames du client se comptent par seconde du serveur, vingt ticks.
+ * Au-delà de {@code net.max_packets_per_second}, une trame est ignorée et comptée, et la seconde qui en a
+ * ignoré se dit au journal en une ligne. Après {@link #ABUSE_SECONDS} secondes de suite, le client est
+ * abusif : son serveur le déconnecte. Un client honnête n'envoie qu'un acquittement par snapshot, vingt par
+ * seconde au plus ; une seconde isolée au-delà — un client qui rattrape son retard d'un coup — ne coupe rien.
  */
 public final class PlayerSync {
 
@@ -27,7 +33,20 @@ public final class PlayerSync {
         SnapshotSender.Candidate candidate(int handle);
     }
 
+    /**
+     * Secondes consécutives au-delà de {@code net.max_packets_per_second} au bout desquelles le client est abusif
+     * (R-1690).
+     */
+    public static final int ABUSE_SECONDS = 5;
+
     private final SnapshotSender sender;
+    private final int maxPacketsPerSecond;
+    private int packetsThisSecond;
+    private int limitedThisSecond;
+    private int ticksThisSecond;
+    private int abusiveSeconds;
+    private long limitedSinceTick;
+    private long lastTickLimited;
     private final Set<Integer> tracked = new LinkedHashSet<>();
     private final Fragments.Reassembler acks = new Fragments.Reassembler();
     private final List<String> journal = new ArrayList<>();
@@ -43,10 +62,24 @@ public final class PlayerSync {
     private long lastTickDelayed;
 
     /**
+     * Une synchronisation sans limitation des trames du client.
+     *
      * @param sender émetteur des snapshots de ce joueur
      */
     public PlayerSync(SnapshotSender sender) {
+        this(sender, Integer.MAX_VALUE);
+    }
+
+    /**
+     * @param sender émetteur des snapshots de ce joueur
+     * @param maxPacketsPerSecond {@code net.max_packets_per_second}
+     */
+    public PlayerSync(SnapshotSender sender, int maxPacketsPerSecond) {
+        if (maxPacketsPerSecond < 1) {
+            throw new IllegalArgumentException("limite de " + maxPacketsPerSecond + " paquet(s) par seconde");
+        }
         this.sender = sender;
+        this.maxPacketsPerSecond = maxPacketsPerSecond;
     }
 
     /**
@@ -82,6 +115,11 @@ public final class PlayerSync {
      * @return les trames à envoyer, dans l'ordre ; vide si rien n'est dû
      */
     public List<byte[]> tick(long serverTick, Source source, int sequence) {
+        lastTickLimited = limitedSinceTick;
+        limitedSinceTick = 0;
+        if (++ticksThisSecond >= SnapshotSender.TICKS_PER_SECOND) {
+            closeSecond();
+        }
         List<SnapshotSender.Candidate> candidates = new ArrayList<>(tracked.size());
         for (int handle : tracked) {
             SnapshotSender.Candidate candidate = source.candidate(handle);
@@ -97,6 +135,30 @@ public final class PlayerSync {
         lastSecondBytes += lastTickBytes - lastSecond[slot];
         lastSecond[slot] = lastTickBytes;
         return message == null ? List.of() : Fragments.split(message, sequence);
+    }
+
+    /** Clôt une seconde du serveur : celle qui a ignoré des trames se dit, et compte vers l'abus. */
+    private void closeSecond() {
+        if (limitedThisSecond > 0) {
+            abusiveSeconds++;
+            journal.add(new MalformedPacketException(limitedThisSecond + " trame(s) au-delà de " + maxPacketsPerSecond
+                    + " par seconde (net.max_packets_per_second, R-1690)").report("limitation"));
+        } else {
+            abusiveSeconds = 0;
+        }
+        packetsThisSecond = 0;
+        limitedThisSecond = 0;
+        ticksThisSecond = 0;
+    }
+
+    /** {@return vrai si le client dépasse la limite depuis {@link #ABUSE_SECONDS} secondes : à déconnecter} */
+    public boolean abusive() {
+        return abusiveSeconds >= ABUSE_SECONDS;
+    }
+
+    /** {@return les trames du client ignorées par la limitation entre l'avant-dernier tick et le dernier} */
+    public long lastTickLimited() {
+        return lastTickLimited;
     }
 
     /** {@return les octets du snapshot du dernier tick, en-têtes de fragments exclus} */
@@ -124,6 +186,11 @@ public final class PlayerSync {
      * @param frame trame reçue, ou {@code null} si le canal l'a écartée pour sa taille
      */
     public void onAckFrame(byte[] frame) {
+        if (++packetsThisSecond > maxPacketsPerSecond) {
+            limitedThisSecond++;
+            limitedSinceTick++;
+            return;
+        }
         try {
             if (frame == null) {
                 throw new MalformedPacketException("trame de plus de " + NetProtocol.MAX_FRAME_BYTES + " octets");

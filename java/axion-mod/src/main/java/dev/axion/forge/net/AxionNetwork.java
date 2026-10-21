@@ -25,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import net.minecraft.network.Connection;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -238,7 +239,7 @@ public final class AxionNetwork {
             return;
         }
         if (SYNCS.isEmpty()) {
-            NetworkMetrics.GLOBAL.tick(new NetworkMetrics.Tick(0, 0, 0, 0, 0, 0, 0));
+            NetworkMetrics.GLOBAL.tick(new NetworkMetrics.Tick(0, 0, 0, 0, 0, 0, 0, 0));
             return;
         }
         long start = System.nanoTime();
@@ -248,6 +249,8 @@ public final class AxionNetwork {
         long bytes = 0;
         long delayed = 0;
         long busiest = 0;
+        long limited = 0;
+        List<ServerPlayer> abusive = new ArrayList<>();
         double syncRadius = runtime.outcome().config().getFloat("net.sync_radius");
         long tick = server.getTickCount();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -277,6 +280,10 @@ public final class AxionNetwork {
                 bytes += sync.lastTickBytes();
                 delayed += sync.lastTickDelayed();
                 busiest = Math.max(busiest, sync.bytesLastSecond());
+                limited += sync.lastTickLimited();
+                if (sync.abusive()) {
+                    abusive.add(player);
+                }
                 journal(player.getGameProfile().getName(), sync.drainJournal());
             } catch (RuntimeException | LinkageError failure) {
                 LOGGER.error("AXION : snapshot de {} non envoyé — {}", player.getGameProfile().getName(),
@@ -284,7 +291,14 @@ public final class AxionNetwork {
             }
         }
         NetworkMetrics.GLOBAL.tick(new NetworkMetrics.Tick(
-                players, tracked, snapshots, bytes, delayed, busiest, System.nanoTime() - start));
+                players, tracked, snapshots, bytes, delayed, busiest, System.nanoTime() - start, limited));
+        // Après le parcours : un joueur qui part en retire un de la liste parcourue (R-1690).
+        for (ServerPlayer player : abusive) {
+            LOGGER.warn("AXION : {} déconnecté : plus de {} trame(s) par seconde pendant {} s (R-1690)",
+                    player.getGameProfile().getName(), runtime.outcome().config().getInt("net.max_packets_per_second"),
+                    PlayerSync.ABUSE_SECONDS);
+            player.connection.disconnect(Component.literal("AXION : trop de paquets envoyés au serveur (R-1690)"));
+        }
     }
 
     /**
@@ -319,7 +333,8 @@ public final class AxionNetwork {
         return SYNCS.computeIfAbsent(player.getUUID(), uuid -> {
             AxionConfig config = runtime.outcome().config();
             return new PlayerSync(new SnapshotSender((int) config.getInt("net.snapshot_rate_hz"),
-                    config.getInt("net.max_bytes_per_second_per_player")));
+                    config.getInt("net.max_bytes_per_second_per_player")),
+                    (int) config.getInt("net.max_packets_per_second"));
         });
     }
 
