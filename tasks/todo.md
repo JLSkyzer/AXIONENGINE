@@ -3098,6 +3098,28 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             natif verts, T-410 et le verdict D7 (5,986 blocs rendus, 10,29 m/s au plus pour 10,85) ;
             4 mutations de la colle rouges au banc.
 - [ ] 6. Harnais de joueurs simulés (D8) — T-423, T-424, T-425 ; overlay `network`.
+      - [x] 6a (2026-10-21). Harnais, dans le contenu de développement (`dev.axion.forge.net`) : un joueur simulé est un
+            vrai `ServerPlayer` sur une `Connection` portée par une `EmbeddedChannel` (la recette
+            `makeMockServerPlayerInLevel` de Minecraft laisse le canal nul : Forge y lève une NPE) ; la
+            connexion AXION est rejouée (trames de login, pair serveur) avant `placeNewPlayer` ; le client
+            simulé tient un vrai `ClientSession`, `RemoteRegistry`, `RenderClock` et `Interpolation` ; ses
+            acquittements repassent par le vrai canal (`writeInbound`, thread du serveur). GameTests :
+            T-410 dans le harnais (chaque état reçu est celui du serveur à son tick), renvoi du registre
+            en jeu après un rechargement (resté ouvert à l'essai réel), fin du suivi → oubli.
+            18 GameTests verts (3 nouveaux, chacun dans son lot), 6 mutations du chemin réseau rouges, chacune
+            sur son test. Temps du client simulé : 50 ms par tick (le serveur de GameTests ne tient pas le
+            temps réel) ; scènes posées au deuxième tick (premier rappel par tick non garanti).
+      - [ ] 6b. T-411 et T-418 sous charge : débit mesuré sous `net.max_bytes_per_second_per_player` ; plafond
+            serré : retards comptés et journalisés, aucune entrée omise.
+      - [ ] 6c. T-423 : 100 assemblies et 10 joueurs simulés, bande passante et CPU mesurés, rapportés.
+      - [ ] 6d. T-424 : reconnexion, état complet reçu (la part « déformation » attend M6).
+      - [ ] 6e. R-1690 : limitation C→S (`net.max_packets_per_second`), abus soutenu → déconnexion, éprouvée
+            par le harnais.
+      - [ ] 6f. T-425 : une heure, 20 joueurs simulés, aucune désynchronisation — campagne hors de la CI
+            ordinaire (D8).
+      - [ ] 6g. Overlay `network` (31.4, ADR-146 §1) : pose interpolée et dernier état reçu, en Java seul —
+            hors du masque transmis au natif, qui refuse un bit inconnu (`abi.rs`) ; R-2280, T-551.
+      - [ ] 6h. ADR-150, CHANGELOG ; reste de l'essai réel avec Killian (renvoi en jeu, reconnexion).
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :

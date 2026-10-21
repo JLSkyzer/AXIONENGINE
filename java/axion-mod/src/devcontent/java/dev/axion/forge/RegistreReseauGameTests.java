@@ -29,7 +29,7 @@ import net.minecraftforge.gametest.PrefixGameTestTemplate;
 @PrefixGameTestTemplate(false)
 public final class RegistreReseauGameTests {
 
-    private static final String AJOUTEE = "axion:test/ajoutee_au_registre_reseau";
+    static final String AJOUTEE = "axion:test/ajoutee_au_registre_reseau";
 
     private static final String CHEMIN = "axion:axion/definitions/test/ajoutee_au_registre_reseau.json";
 
@@ -101,14 +101,21 @@ public final class RegistreReseauGameTests {
      * Un rechargement des definitions rebâtit l'instantané : le registre change d'empreinte, et la
      * definition ajoutée part vers les clients distants.
      */
-    @GameTest(template = "test/plancher")
-    public static void unRechargementRebatitLeRegistreReseau(GameTestHelper helper) {
-        AxionRuntime runtime = runtime(helper);
-        ResourceAssetSource courantes = new ResourceAssetSource(
+    /** {@return les definitions des packs du serveur, telles qu'un rechargement les lit} */
+    static ResourceAssetSource definitionsCourantes(GameTestHelper helper) {
+        return new ResourceAssetSource(
                 helper.getLevel().getServer().getResourceManager(),
                 ResourceAssetSource.DEFINITIONS,
                 path -> path.endsWith(".json"));
-        AssetSource avecUneDePlus = new AssetSource() {
+    }
+
+    /**
+     * {@return les mêmes definitions, plus {@link #AJOUTEE}}
+     *
+     * @param courantes definitions des packs
+     */
+    static AssetSource avecUneDefinitionDePlus(ResourceAssetSource courantes) {
+        return new AssetSource() {
             @Override
             public List<String> list() {
                 List<String> paths = new ArrayList<>(courantes.list());
@@ -121,6 +128,13 @@ public final class RegistreReseauGameTests {
                 return CHEMIN.equals(path) ? DEFINITION.clone() : courantes.read(path);
             }
         };
+    }
+
+    @GameTest(template = "test/plancher")
+    public static void unRechargementRebatitLeRegistreReseau(GameTestHelper helper) {
+        AxionRuntime runtime = runtime(helper);
+        ResourceAssetSource courantes = definitionsCourantes(helper);
+        AssetSource avecUneDePlus = avecUneDefinitionDePlus(courantes);
         ServerSnapshot avant = runtime.netSnapshot();
         try {
             runtime.onDefinitionReload(avecUneDePlus);

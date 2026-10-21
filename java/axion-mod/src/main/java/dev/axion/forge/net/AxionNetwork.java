@@ -263,6 +263,16 @@ public final class AxionNetwork {
         }
     }
 
+    /**
+     * {@return la synchronisation d'un joueur, ou {@code null} s'il n'en a pas} Le harnais de joueurs simulés
+     * (ADR-150 D8) y lit ce que l'émetteur a envoyé et ce qui lui a été acquitté.
+     *
+     * @param player identifiant du joueur
+     */
+    static PlayerSync syncOf(UUID player) {
+        return SYNCS.get(player);
+    }
+
     /** {@return la synchronisation d'un joueur, créée à son premier besoin ; {@code null} sans runtime} */
     private static PlayerSync sync(ServerPlayer player) {
         AxionRuntime runtime = RuntimeAccess.get();
@@ -382,7 +392,13 @@ public final class AxionNetwork {
         return raced == null ? created : raced;
     }
 
-    private static ServerPeer serverPeer(Connection connection) {
+    /**
+     * {@return le pair d'une connexion, côté serveur, créé à son premier besoin} Le harnais de joueurs
+     * simulés (ADR-150 D8) y rejoue la connexion AXION avant l'entrée en jeu.
+     *
+     * @param connection connexion d'un client
+     */
+    static ServerPeer serverPeer(Connection connection) {
         Attribute<ServerPeer> attribute = connection.channel().attr(SERVER_PEER);
         ServerPeer peer = attribute.get();
         if (peer != null) {
