@@ -3109,8 +3109,13 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             18 GameTests verts (3 nouveaux, chacun dans son lot), 6 mutations du chemin réseau rouges, chacune
             sur son test. Temps du client simulé : 50 ms par tick (le serveur de GameTests ne tient pas le
             temps réel) ; scènes posées au deuxième tick (premier rappel par tick non garanti).
-      - [ ] 6b. T-411 et T-418 sous charge : débit mesuré sous `net.max_bytes_per_second_per_player` ; plafond
-            serré : retards comptés et journalisés, aucune entrée omise.
+      - [x] 6b (2026-10-21). T-411 et T-418 sous charge, et les métriques de C-51 (`NetworkMetrics`, R-500) avec le
+            budget « débit réseau par joueur » de 25.2 (R-1850 : consommation, dépassement). 49 cubes lâchés,
+            mesuré : T-411 au plafond de 32 768 o/s, 3 345 à 3 981 o/s en moyenne, 16 656 à 16 795 o/s la pire
+            seconde, rien de retardé ; T-418 à 2 048 o/s, 1 934 à 2 647 entrées retardées, pire seconde
+            3 988 à 3 993 o/s — la rafale du seau d'une seconde, plein au départ —, aucune omission. T-422 dans
+            le harnais : trois trames fautives ignorées et comptées, connexion tenue. 21 GameTests, 761 JUnit ;
+            13 mutations rouges (5 JUnit, 8 GameTests).
       - [ ] 6c. T-423 : 100 assemblies et 10 joueurs simulés, bande passante et CPU mesurés, rapportés.
       - [ ] 6d. T-424 : reconnexion, état complet reçu (la part « déformation » attend M6).
       - [ ] 6e. R-1690 : limitation C→S (`net.max_packets_per_second`), abus soutenu → déconnexion, éprouvée

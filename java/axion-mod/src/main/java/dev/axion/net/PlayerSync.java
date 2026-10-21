@@ -33,6 +33,16 @@ public final class PlayerSync {
     private final List<String> journal = new ArrayList<>();
 
     /**
+     * Octets de snapshot envoyés à chacun des vingt derniers ticks, en anneau : la consommation du budget
+     * « débit réseau par joueur » (25.2) est leur somme.
+     */
+    private final long[] lastSecond = new long[SnapshotSender.TICKS_PER_SECOND];
+    private int slot;
+    private long lastSecondBytes;
+    private long lastTickBytes;
+    private long lastTickDelayed;
+
+    /**
      * @param sender émetteur des snapshots de ce joueur
      */
     public PlayerSync(SnapshotSender sender) {
@@ -79,8 +89,32 @@ public final class PlayerSync {
                 candidates.add(candidate);
             }
         }
+        long delayedBefore = sender.delayedEntries();
         byte[] message = sender.tick(serverTick, candidates);
+        lastTickDelayed = sender.delayedEntries() - delayedBefore;
+        lastTickBytes = message == null ? 0 : message.length;
+        slot = (slot + 1) % lastSecond.length;
+        lastSecondBytes += lastTickBytes - lastSecond[slot];
+        lastSecond[slot] = lastTickBytes;
         return message == null ? List.of() : Fragments.split(message, sequence);
+    }
+
+    /** {@return les octets du snapshot du dernier tick, en-têtes de fragments exclus} */
+    public long lastTickBytes() {
+        return lastTickBytes;
+    }
+
+    /**
+     * {@return les octets de snapshot envoyés sur les vingt derniers ticks : la consommation du budget
+     * {@code net.max_bytes_per_second_per_player}}
+     */
+    public long bytesLastSecond() {
+        return lastSecondBytes;
+    }
+
+    /** {@return les entrées que le plafond a retardées au dernier tick} */
+    public long lastTickDelayed() {
+        return lastTickDelayed;
     }
 
     /**

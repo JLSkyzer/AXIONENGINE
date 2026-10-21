@@ -118,6 +118,36 @@ class SnapshotLinkTest {
     }
 
     @Test
+    @DisplayName("25.2 : la consommation du débit d'un joueur est la somme de ses vingt derniers ticks, retards comptés")
+    void leDebitDUnJoueurSeCompteSurUneSeconde() {
+        PlayerSync serveur = new PlayerSync(new SnapshotSender(20, 4_000));
+        serveur.track(3);
+        long[] parTick = new long[30];
+        for (int tick = 1; tick <= 30; tick++) {
+            long x = tick * 1000L;
+            serveur.tick(tick, handle -> new SnapshotSender.Candidate(handle, etat(x, false),
+                    SnapshotSender.Frequency.NORMAL, 1), tick);
+            parTick[tick - 1] = serveur.lastTickBytes();
+            assertTrue(serveur.lastTickBytes() > 0, "tick " + tick + " : une assembly en mouvement part à chaque tick");
+        }
+        long attendu = 0;
+        for (int index = 10; index < 30; index++) {
+            attendu += parTick[index];
+        }
+        assertEquals(attendu, serveur.bytesLastSecond(), "les ticks 11 à 30, ni plus ni moins");
+        assertEquals(0, serveur.lastTickDelayed());
+
+        // Un plafond minuscule et trois assemblies : une seule part par tick, les autres attendent.
+        PlayerSync serre = new PlayerSync(new SnapshotSender(20, 20));
+        serre.track(1);
+        serre.track(2);
+        serre.track(3);
+        serre.tick(1, handle -> new SnapshotSender.Candidate(handle, etat(handle * 10L, false),
+                SnapshotSender.Frequency.NORMAL, handle), 0);
+        assertEquals(2, serre.lastTickDelayed(), "deux entrées retardées à ce tick");
+    }
+
+    @Test
     @DisplayName("T-422 : un acquittement fautif est ignoré et dit, sans lever")
     void unAcquittementFautifEstIgnore() {
         Liaison liaison = new Liaison();

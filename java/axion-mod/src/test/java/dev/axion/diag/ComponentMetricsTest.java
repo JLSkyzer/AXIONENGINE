@@ -71,4 +71,33 @@ class ComponentMetricsTest {
         assertEquals(10, metrics.gauge(p + "tiles_loaded", "count").value());
         assertEquals(0, metrics.gauge(p + "tile_build_ns", "ns").value(), "une durée négative ne s'écrit pas");
     }
+
+    @Test
+    @DisplayName("R-500, R-1850 : le réseau publie envois, octets par type, retards, acquittements, refus, et son budget")
+    void leReseauSeMesure() {
+        JavaMetrics metrics = new JavaMetrics();
+        NetworkMetrics network = new NetworkMetrics(metrics);
+        network.tick(new NetworkMetrics.Tick(3, 12, 2, 900, 0, 4_000, 1_500));
+        network.tick(new NetworkMetrics.Tick(2, 8, 2, 700, 5, 3_000, -4));
+        network.registrySent(1_359);
+        network.ackReceived();
+        network.ackReceived();
+        network.rejected(1);
+
+        String p = NetworkMetrics.PREFIX;
+        assertEquals(4, metrics.counter(p + "snapshots_sent", "count").value());
+        assertEquals(1_600, metrics.counter(p + "snapshot_bytes_sent", "bytes").value());
+        assertEquals(1_359, metrics.counter(p + "registry_bytes_sent", "bytes").value());
+        assertEquals(5, metrics.counter(p + "entries_delayed", "count").value());
+        assertEquals(2, metrics.counter(p + "acks_received", "count").value());
+        assertEquals(1, metrics.counter(p + "packets_rejected", "count").value());
+        assertEquals(2, metrics.gauge(p + "players_synced", "count").value(), "le dernier tick fait foi");
+        assertEquals(8, metrics.gauge(p + "assemblies_tracked", "count").value());
+        assertEquals(0, metrics.gauge(p + "send_ns", "ns").value(), "une durée négative ne s'écrit pas");
+        JavaMetrics.Budget budget = metrics.budget(NetworkMetrics.BANDWIDTH_BUDGET, "bytes_per_second");
+        assertEquals("axion.budget.net.max_bytes_per_second_per_player.consumed", budget.consumed().name(),
+                "le nom que le registre des budgets lui donne (ax-model, budgets.rs)");
+        assertEquals(3_000, budget.consumed().value(), "le joueur le plus servi, au dernier tick");
+        assertEquals(1, budget.overruns().value(), "seul le second tick a retardé des entrées");
+    }
 }

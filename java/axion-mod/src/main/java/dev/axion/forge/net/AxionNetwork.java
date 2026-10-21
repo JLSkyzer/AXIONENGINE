@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import dev.axion.forge.RuntimeAccess;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.config.AxionConfig;
+import dev.axion.diag.NetworkMetrics;
 import dev.axion.forge.AxionEntity;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.ClientSession;
@@ -88,6 +89,9 @@ public final class AxionNetwork {
         List<byte[]> frames = snapshot.loginFrames(local);
         List<Pair<String, ChannelFrames.LoginToClient>> packets = new ArrayList<>(frames.size());
         for (int index = 0; index < frames.size(); index++) {
+            if (index > 0) {
+                NetworkMetrics.GLOBAL.registrySent(frames.get(index).length);
+            }
             String context = index == 0 ? "axion:handshake" : "axion:registry/" + index;
             packets.add(Pair.of(context, new ChannelFrames.LoginToClient(frames.get(index))));
         }
@@ -153,6 +157,7 @@ public final class AxionNetwork {
         context.enqueueWork(() -> {
             PlayerSync sync = SYNCS.get(player.getUUID());
             if (sync != null) {
+                NetworkMetrics.GLOBAL.ackReceived();
                 sync.onAckFrame(message.frame());
             }
         });
@@ -229,9 +234,20 @@ public final class AxionNetwork {
      */
     public static void sendSnapshots(MinecraftServer server) {
         AxionRuntime runtime = RuntimeAccess.get();
-        if (runtime == null || runtime.outcome() == null || SYNCS.isEmpty()) {
+        if (runtime == null || runtime.outcome() == null) {
             return;
         }
+        if (SYNCS.isEmpty()) {
+            NetworkMetrics.GLOBAL.tick(new NetworkMetrics.Tick(0, 0, 0, 0, 0, 0, 0));
+            return;
+        }
+        long start = System.nanoTime();
+        int players = 0;
+        int tracked = 0;
+        int snapshots = 0;
+        long bytes = 0;
+        long delayed = 0;
+        long busiest = 0;
         double syncRadius = runtime.outcome().config().getFloat("net.sync_radius");
         long tick = server.getTickCount();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -239,6 +255,7 @@ public final class AxionNetwork {
             if (sync == null || player.connection == null) {
                 continue;
             }
+            players++;
             try {
                 List<byte[]> frames = sync.tick(tick, handle -> {
                     if (!(player.serverLevel().getEntity(handle) instanceof AxionEntity assembly)) {
@@ -255,12 +272,19 @@ public final class AxionNetwork {
                     AxionChannel.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
                             new ChannelFrames.PlayToClient(frame));
                 }
+                tracked += sync.tracked().size();
+                snapshots += frames.isEmpty() ? 0 : 1;
+                bytes += sync.lastTickBytes();
+                delayed += sync.lastTickDelayed();
+                busiest = Math.max(busiest, sync.bytesLastSecond());
                 journal(player.getGameProfile().getName(), sync.drainJournal());
             } catch (RuntimeException | LinkageError failure) {
                 LOGGER.error("AXION : snapshot de {} non envoyé — {}", player.getGameProfile().getName(),
                         failure.toString());
             }
         }
+        NetworkMetrics.GLOBAL.tick(new NetworkMetrics.Tick(
+                players, tracked, snapshots, bytes, delayed, busiest, System.nanoTime() - start));
     }
 
     /**
@@ -271,6 +295,17 @@ public final class AxionNetwork {
      */
     static PlayerSync syncOf(UUID player) {
         return SYNCS.get(player);
+    }
+
+    /**
+     * Pose la synchronisation d'un joueur avant son entrée en jeu, à la place de celle que la configuration
+     * donnerait : le harnais de joueurs simulés (ADR-150 D8) y serre le plafond de débit d'un seul joueur.
+     *
+     * @param player identifiant du joueur
+     * @param sync sa synchronisation
+     */
+    static void installSync(UUID player, PlayerSync sync) {
+        SYNCS.put(player, sync);
     }
 
     /** {@return la synchronisation d'un joueur, créée à son premier besoin ; {@code null} sans runtime} */
@@ -375,6 +410,7 @@ public final class AxionNetwork {
     private static void sendRegistry(ServerPlayer player, ServerSnapshot snapshot) {
         int sequence = SEQUENCE.getAndIncrement() & Integer.MAX_VALUE;
         for (byte[] frame : snapshot.registryFrames(sequence)) {
+            NetworkMetrics.GLOBAL.registrySent(frame.length);
             AxionChannel.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new ChannelFrames.PlayToClient(frame));
         }
     }
@@ -415,6 +451,7 @@ public final class AxionNetwork {
     private static void journal(String who, List<String> lines) {
         for (String line : lines) {
             if (line.startsWith("E-")) {
+                NetworkMetrics.GLOBAL.rejected(1);
                 LOGGER.warn("AXION : {} : {}", who, line);
             } else {
                 LOGGER.info("AXION : {} : {}", who, line);

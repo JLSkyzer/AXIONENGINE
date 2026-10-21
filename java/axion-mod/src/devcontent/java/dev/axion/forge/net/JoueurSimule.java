@@ -13,6 +13,7 @@ import dev.axion.net.RemoteRegistry;
 import dev.axion.net.RenderClock;
 import dev.axion.net.ServerPeer;
 import dev.axion.net.ServerSnapshot;
+import dev.axion.net.SnapshotSender;
 import dev.axion.net.SnapshotReceiver;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.AttributeKey;
@@ -36,6 +37,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.network.NetworkDirection;
+import org.apache.commons.lang3.tuple.Pair;
 
 /**
  * Un joueur simulé du harnais réseau (ADR-150 D8) : un vrai {@code ServerPlayer} sur une connexion Netty
@@ -113,6 +115,21 @@ public final class JoueurSimule {
      * @throws IllegalStateException si AXION n'est pas chargé, ou n'a pas d'instantané réseau
      */
     public static JoueurSimule rejoindre(ServerLevel level, String nom, Vec3 position) {
+        return rejoindre(level, nom, position, 0);
+    }
+
+    /**
+     * Fait entrer un joueur simulé dont le débit est plafonné à part, sur le thread du serveur : sa
+     * synchronisation est posée avant son entrée, à la place de celle de la configuration (T-418).
+     *
+     * @param level monde d'accueil
+     * @param nom nom du joueur
+     * @param position position dans le monde, en blocs
+     * @param plafond son plafond de débit, en octets par seconde ; {@code 0} : celui de la configuration
+     * @return le joueur, entré en jeu
+     * @throws IllegalStateException si AXION n'est pas chargé, ou n'a pas d'instantané réseau
+     */
+    public static JoueurSimule rejoindre(ServerLevel level, String nom, Vec3 position, long plafond) {
         AxionRuntime runtime = RuntimeAccess.get();
         ServerSnapshot instantane = runtime == null ? null : runtime.netSnapshot();
         if (instantane == null) {
@@ -122,12 +139,17 @@ public final class JoueurSimule {
         EmbeddedChannel canal = new EmbeddedChannel(connexion);
         canal.attr(VERSION_FML).set("FML3");
         JoueurSimule simule = new JoueurSimule(runtime, level.getServer(), canal, instantane);
+        // Les paquets de connexion que Forge enverrait à ce client distant, et ses réponses.
         ServerPeer pair = AxionNetwork.serverPeer(connexion);
-        for (byte[] trame : instantane.loginFrames(false)) {
-            pair.onLoginReply(simule.session.onLoginFrame(trame));
+        for (Pair<String, ChannelFrames.LoginToClient> paquet : AxionNetwork.loginPackets(false)) {
+            pair.onLoginReply(simule.session.onLoginFrame(paquet.getRight().frame()));
         }
         simule.journal.addAll(simule.session.drainJournal());
         UUID uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + nom).getBytes(StandardCharsets.UTF_8));
+        if (plafond > 0) {
+            int frequence = (int) runtime.outcome().config().getInt("net.snapshot_rate_hz");
+            AxionNetwork.installSync(uuid, new PlayerSync(new SnapshotSender(frequence, plafond)));
+        }
         ServerPlayer joueur = new ServerPlayer(level.getServer(), level, new GameProfile(uuid, nom));
         joueur.moveTo(position.x, position.y, position.z, 0f, 0f);
         level.getServer().getPlayerList().placeNewPlayer(connexion, joueur);
@@ -230,6 +252,22 @@ public final class JoueurSimule {
         canal.finishAndReleaseAll();
     }
 
+    /**
+     * Envoie une trame au serveur comme le ferait un client, par le vrai canal : un acquittement, ou n'importe
+     * quels octets — un client fautif ou hostile (R-1650).
+     *
+     * @param trame octets de la trame
+     */
+    public void envoyer(byte[] trame) {
+        canal.writeInbound(AxionChannel.CHANNEL.toVanillaPacket(
+                new ChannelFrames.PlayToServer(trame), NetworkDirection.PLAY_TO_SERVER));
+    }
+
+    /** {@return vrai si la connexion embarquée est encore ouverte} */
+    public boolean connecte() {
+        return canal.isOpen();
+    }
+
     /** {@return le joueur, côté serveur} */
     public ServerPlayer joueur() {
         return joueur;
@@ -265,7 +303,7 @@ public final class JoueurSimule {
         return tramesRecues;
     }
 
-    /** {@return le nombre d'acquittements renvoyés au serveur} */
+    /** {@return le nombre d'acquittements renvoyés au serveur : un par snapshot reçu} */
     public int acquittements() {
         return acquittements;
     }
