@@ -53,6 +53,12 @@ Definition of Done (PARTIE 37.3).
     (qui glisse plutot que de sauter), extrapolation bornee puis figement,
     correction douce ou teleportation ; les pauses d'un monde solo ne
     comptent pas ; le lissage en trois pas est retire (ADR-150 D7) ;
+    harnais de joueurs simules dans le serveur de GameTests (ADR-150 D8) :
+    vrais joueurs sur des connexions Netty embarquees, vrai decodeur et
+    vraie interpolation ; T-410, T-411, T-418, T-422, T-423, T-424 en
+    GameTest, T-425 en campagne (AXION_CAMPAGNE=t425) ; metriques reseau
+    (R-500) et budget de debit par joueur (R-1850) ; limitation des trames
+    du client, abus soutenu deconnecte (R-1690) ; overlay de debug network ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

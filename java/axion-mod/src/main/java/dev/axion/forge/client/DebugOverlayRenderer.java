@@ -9,6 +9,7 @@ import dev.axion.debug.NativeDebugLoader;
 import dev.axion.forge.AssemblyRuntime;
 import dev.axion.forge.AxionEntity;
 import dev.axion.lifecycle.AxionRuntime;
+import dev.axion.net.Interpolation;
 import dev.axion.world.DimensionId;
 import java.util.Arrays;
 import java.util.List;
@@ -84,6 +85,15 @@ final class DebugOverlayRenderer {
     /** Couleur de l'overlay {@code world_tiles} (RGB). */
     static final int TILE_COLOR = 0xB3B3B3;
 
+    /** Couleur de l'emprise à la pose dessinée, dans {@code network} (RGB). */
+    static final int NETWORK_SHOWN = 0x9966FF;
+
+    /** Couleur de l'emprise au dernier état reçu, dans {@code network} (RGB). */
+    static final int NETWORK_RECEIVED = 0xFF8000;
+
+    /** Demi-côté de la boîte d'une assembly sans emprise, dans {@code network}, en blocs. */
+    static final float NETWORK_NO_BOUNDS = 0.25f;
+
     /** Couleur de l'overlay {@code center_of_mass} (RGB). */
     static final int MASS_COLOR = 0xFFFFFF;
 
@@ -100,6 +110,9 @@ final class DebugOverlayRenderer {
 
     /** Omission faute de budget déjà dite depuis l'allumage : une fois. */
     private boolean truncationReported;
+
+    /** Assemblies que {@code network} a dessinées à la dernière image. */
+    private int networkDrawn;
 
     /** Échec natif déjà dit depuis l'allumage : une fois. */
     private boolean failureReported;
@@ -122,7 +135,8 @@ final class DebugOverlayRenderer {
      * @param minecraft client
      */
     void tick(AxionRuntime runtime, Minecraft minecraft) {
-        long mask = overlays.mask();
+        // Le natif ne reçoit que les siens : network se dessine en Java, et un bit inconnu y serait refusé.
+        long mask = overlays.nativeMask();
         if (mask == 0L) {
             reset();
             return;
@@ -168,7 +182,9 @@ final class DebugOverlayRenderer {
      * @param frame contexte de la frame, assemblies comprises
      */
     void draw(RenderBackend.Frame frame) {
-        if (overlays.mask() == 0L || geometry.ranges().isEmpty()) {
+        networkDrawn = 0;
+        boolean network = overlays.isOn(DebugOverlays.Overlay.NETWORK);
+        if (overlays.mask() == 0L || (geometry.ranges().isEmpty() && !network)) {
             return;
         }
         RenderType type = RenderType.lines();
@@ -208,9 +224,83 @@ final class DebugOverlayRenderer {
             }
             pose.popPose();
         }
+        if (network) {
+            out = drawNetwork(frame, out, type, scratch);
+        }
         if (out != null) {
             frame.buffers().endBatch(type);
         }
+    }
+
+    /**
+     * {@code network} (31.4) : pour chaque assembly, son emprise à la pose dessinée et au dernier état reçu, et le
+     * trait de l'une à l'autre — l'écart que l'interpolation tient entre ce qui se voit et ce que le serveur a dit.
+     *
+     * @return le tampon, ouvert s'il a fallu dessiner
+     */
+    private VertexConsumer drawNetwork(RenderBackend.Frame frame, VertexConsumer out, RenderType type, Vector3f scratch) {
+        Vec3 eye = frame.camera();
+        PoseStack.Pose last = frame.pose().last();
+        for (RenderBackend.Assembly assembly : frame.assemblies()) {
+            AxionEntity.NetworkView view = assembly.entity().networkView();
+            if (view == null) {
+                continue;
+            }
+            if (out == null) {
+                out = frame.buffers().getBuffer(type);
+            }
+            float[][] segments = networkSegments(view.shown(), view.received(), eye.x, eye.y, eye.z);
+            emit(out, last.pose(), last.normal(), scratch, segments[0], NETWORK_SHOWN);
+            emit(out, last.pose(), last.normal(), scratch, segments[1], NETWORK_RECEIVED);
+            networkDrawn++;
+        }
+        return out;
+    }
+
+    /**
+     * {@return les segments de {@code network} pour une assembly, relatifs à la caméra : d'abord l'emprise à la pose
+     * dessinée et le trait vers le dernier état reçu, puis l'emprise à ce dernier état}
+     *
+     * @param shown pose dessinée
+     * @param received dernier état reçu
+     * @param cameraX position de la caméra
+     * @param cameraY position de la caméra
+     * @param cameraZ position de la caméra
+     */
+    static float[][] networkSegments(Interpolation.Pose shown, Interpolation.Pose received,
+            double cameraX, double cameraY, double cameraZ) {
+        float[] link = {
+            (float) (shown.x() - cameraX), (float) (shown.y() - cameraY), (float) (shown.z() - cameraZ),
+            (float) (received.x() - cameraX), (float) (received.y() - cameraY), (float) (received.z() - cameraZ),
+        };
+        float[] shownBox = box(shown, cameraX, cameraY, cameraZ);
+        float[] first = Arrays.copyOf(shownBox, shownBox.length + link.length);
+        System.arraycopy(link, 0, first, shownBox.length, link.length);
+        return new float[][] {first, box(received, cameraX, cameraY, cameraZ)};
+    }
+
+    /** {@return les douze arêtes de l'emprise d'une pose, alignée sur le monde, relatives à la caméra} */
+    private static float[] box(Interpolation.Pose pose, double cameraX, double cameraY, double cameraZ) {
+        float[] min = pose.boundsMin() != null
+                ? pose.boundsMin() : new float[] {-NETWORK_NO_BOUNDS, -NETWORK_NO_BOUNDS, -NETWORK_NO_BOUNDS};
+        float[] max = pose.boundsMax() != null
+                ? pose.boundsMax() : new float[] {NETWORK_NO_BOUNDS, NETWORK_NO_BOUNDS, NETWORK_NO_BOUNDS};
+        float x0 = (float) (pose.x() - cameraX) + min[0];
+        float y0 = (float) (pose.y() - cameraY) + min[1];
+        float z0 = (float) (pose.z() - cameraZ) + min[2];
+        float x1 = (float) (pose.x() - cameraX) + max[0];
+        float y1 = (float) (pose.y() - cameraY) + max[1];
+        float z1 = (float) (pose.z() - cameraZ) + max[2];
+        return new float[] {
+            x0, y0, z0, x1, y0, z0, x1, y0, z0, x1, y0, z1, x1, y0, z1, x0, y0, z1, x0, y0, z1, x0, y0, z0,
+            x0, y1, z0, x1, y1, z0, x1, y1, z0, x1, y1, z1, x1, y1, z1, x0, y1, z1, x0, y1, z1, x0, y1, z0,
+            x0, y0, z0, x0, y1, z0, x1, y0, z0, x1, y1, z0, x1, y0, z1, x1, y1, z1, x0, y0, z1, x0, y1, z1,
+        };
+    }
+
+    /** {@return le nombre d'assemblies que {@code network} a dessinées à la dernière image} */
+    int networkDrawn() {
+        return networkDrawn;
     }
 
     /**
@@ -253,6 +343,7 @@ final class DebugOverlayRenderer {
             case NORMALS -> NORMAL_COLOR;
             case WORLD_TILES -> TILE_COLOR;
             case CENTER_OF_MASS -> MASS_COLOR;
+            case NETWORK -> NETWORK_RECEIVED;
         };
     }
 
@@ -270,6 +361,8 @@ final class DebugOverlayRenderer {
             case NORMALS -> "jaune : les normales de contact, du premier collider vers le second";
             case WORLD_TILES -> "gris : les colliders des tuiles du monde";
             case CENTER_OF_MASS -> "blanc : le centre de masse de chaque corps";
+            case NETWORK -> "violet : l'emprise à la pose dessinée, interpolée ; orange : au dernier état reçu du"
+                    + " serveur ; le trait les relie";
         };
     }
 

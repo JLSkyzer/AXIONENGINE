@@ -3057,6 +3057,9 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
                   côtés. Reste : le renvoi du registre en jeu — un `/reload` à registre inchangé ne renvoie
                   rien, comme voulu ; il faut un datapack posé serveur lancé (prêt : une definition
                   `essai:cube_essai`), puis `reload` — et la reconnexion, assemblies posées.
+                  Depuis (2026-10-21), le harnais les prouve à travers le vrai canal Forge : renvoi du
+                  registre en jeu (étape 6a) et reconnexion (T-424). Un dernier passage réel, pour ce qui
+                  se voit, reste à décider avec Killian.
 - [x] 4. Snapshots (D2, D6), fin du pont provisoire — T-410 (banc), T-418 (JUnit) ; T-411 et T-418
       sous charge réelle avec le harnais de la tranche 6 (D8).
       - [x] 4a (2026-10-18, 10 mutations rouges ; « smallest three » : 0,234° au pire mesuré, 0,274° de borne). Codec en Java pur : quantification déclarée par champ (R-1660 : position 1/1024 de bloc,
@@ -3096,7 +3099,8 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             (`renderPose`) ; lissage en trois pas retiré. JUnit vert, 15 GameTests ; bancs vanilla et
             natif verts, T-410 et le verdict D7 (5,986 blocs rendus, 10,29 m/s au plus pour 10,85) ;
             4 mutations de la colle rouges au banc.
-- [ ] 6. Harnais de joueurs simulés (D8) — T-423, T-424, T-425 ; overlay `network`.
+- [x] 6. Harnais de joueurs simulés (D8) — T-411, T-418, T-422, T-423, T-424, R-1690 en GameTest ; T-425
+      en campagne ; overlay `network`.
       - [x] 6a (2026-10-21). Harnais, dans le contenu de développement (`dev.axion.forge.net`) : un joueur simulé est un
             vrai `ServerPlayer` sur une `Connection` portée par une `EmbeddedChannel` (la recette
             `makeMockServerPlayerInLevel` de Minecraft laisse le canal nul : Forge y lève une NPE) ; la
@@ -3135,9 +3139,11 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             joueurs hors de portée et de retour toutes les 10 s ; 1 330 442 états reçus, tous identiques
             à ceux du serveur au tick qu'ils portent (toutes les assemblies du monde comparées) ; 8,2 min
             de temps mural. La mutation « snapshot daté du mauvais tick » la rougit au premier état.
-      - [ ] 6g. Overlay `network` (31.4, ADR-146 §1) : pose interpolée et dernier état reçu, en Java seul —
-            hors du masque transmis au natif, qui refuse un bit inconnu (`abi.rs`) ; R-2280, T-551.
-      - [ ] 6h. ADR-150, CHANGELOG ; reste de l'essai réel avec Killian (renvoi en jeu, reconnexion).
+      - [x] 6g (2026-10-21). Overlay `network` (31.4, ADR-146 §1), rang 32 : l'emprise à la pose dessinée,
+            au dernier état reçu, et le trait qui les relie ; en Java seul, hors du masque du natif
+            (`nativeMask`). Éteint, il ne calcule rien (R-2280). Bancs vanilla et natif verts, le verdict
+            des overlays compte « network 9 » ; 765 JUnit ; 6 mutations rouges (4 JUnit, 2 au banc).
+      - [x] 6h (2026-10-21). ADR-150, CHANGELOG.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :

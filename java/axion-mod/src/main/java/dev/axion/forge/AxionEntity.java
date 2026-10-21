@@ -267,6 +267,27 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * Ce que l'overlay {@code network} montre d'une assembly (31.4).
+     *
+     * @param shown la pose dessinée à cette image : celle de l'interpolation de 21.7
+     * @param received le dernier état reçu du serveur, tel quel
+     */
+    public record NetworkView(Interpolation.Pose shown, Interpolation.Pose received) {}
+
+    /**
+     * {@return ce que l'overlay {@code network} montre de l'assembly à cette image (client), ou {@code null} avant
+     * le premier snapshot} La pose dessinée est celle de {@link #renderPose}, datée de l'image.
+     */
+    public NetworkView networkView() {
+        if (interpolation == null) {
+            return null;
+        }
+        long frame = clock.frameNanos();
+        return new NetworkView(interpolation.sample(clock.renderMillis(frame), clock.localMillis(frame)),
+                interpolation.latest());
+    }
+
+    /**
      * N'exécute aucune physique (R-701) : la simulation est pilotée par le noyau natif (C-40)
      * et réappliquée en fin de tick serveur. Côté client, {@code tick()} pose l'entité où
      * l'interpolation de 21.7 la place à cet instant — position, orientation, et la hitbox à son

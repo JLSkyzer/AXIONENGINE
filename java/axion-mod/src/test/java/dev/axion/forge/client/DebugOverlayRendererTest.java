@@ -1,5 +1,6 @@
 package dev.axion.forge.client;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -7,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.axion.debug.DebugGeometry;
 import dev.axion.debug.DebugOverlays;
+import dev.axion.net.Interpolation;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -219,6 +221,41 @@ class DebugOverlayRendererTest {
     }
 
     @Test
+    @DisplayName("31.4 : network se dessine en Java ; son bit ne part pas au natif, qui refuse un overlay inconnu")
+    void networkNePartPasAuNatif() {
+        DebugOverlays overlays = new DebugOverlays();
+        overlays.set(DebugOverlays.Overlay.NETWORK, true);
+        assertTrue(overlays.mask() != 0L, "allumé, network ouvre la passe DEBUG");
+        assertEquals(0L, overlays.nativeMask(), "le masque du natif ne porte pas network");
+        assertEquals(32, DebugOverlays.Overlay.NETWORK.rank(), "son rang au §31.4");
+        DebugOverlayRenderer renderer = new DebugOverlayRenderer(overlays);
+        renderer.tick(null, null);
+        assertFalse(renderer.hasNativeLoader(), "network seul ne demande rien au natif");
+        overlays.set(DebugOverlays.Overlay.AABB, true);
+        assertEquals(DebugOverlays.Overlay.AABB.bit(), overlays.nativeMask(), "les overlays natifs y restent");
+    }
+
+    @Test
+    @DisplayName("31.4 : network trace l'emprise à la pose dessinée, au dernier état reçu, et le trait qui les relie")
+    void networkTraceLesDeuxEmprisesEtLeTrait() {
+        float[] min = {-0.5f, -0.5f, -0.5f};
+        float[] max = {0.5f, 0.5f, 0.5f};
+        float[] droit = {0f, 0f, 0f, 1f};
+        Interpolation.Pose dessinee = new Interpolation.Pose(10, 64, 10, droit, min, max, Interpolation.Mode.INTERPOLATED);
+        Interpolation.Pose recue = new Interpolation.Pose(12, 64, 10, droit, min, max, Interpolation.Mode.HELD);
+        float[][] segments = DebugOverlayRenderer.networkSegments(dessinee, recue, 0, 60, 0);
+        int un = DebugGeometry.FLOATS_PER_SEGMENT;
+        assertEquals(13 * un, segments[0].length, "douze arêtes et le trait");
+        assertEquals(12 * un, segments[1].length, "douze arêtes");
+        assertArrayEquals(new float[] {10, 4, 10, 12, 4, 10},
+                java.util.Arrays.copyOfRange(segments[0], 12 * un, 13 * un), 1e-5f, "le trait, relatif à la caméra");
+        assertArrayEquals(new float[] {9.5f, 3.5f, 9.5f, 10.5f, 3.5f, 9.5f},
+                java.util.Arrays.copyOfRange(segments[0], 0, un), 1e-5f, "une arête de l'emprise dessinée");
+        assertArrayEquals(new float[] {11.5f, 3.5f, 9.5f, 12.5f, 3.5f, 9.5f},
+                java.util.Arrays.copyOfRange(segments[1], 0, un), 1e-5f, "une arête de l'emprise reçue");
+    }
+
+    @Test
     @DisplayName("A1 d'ADR-121 : chaque overlay a sa légende et sa couleur ; colliders garde celle du corps")
     void chaqueOverlayASaCouleurEtSaLegende() {
         Set<Integer> couleurs = new HashSet<>();
@@ -228,7 +265,7 @@ class DebugOverlayRendererTest {
                 couleurs.add(DebugOverlayRenderer.colorOf(overlay, 0));
             }
         }
-        assertEquals(5, couleurs.size(), "cinq overlays à couleur fixe, cinq couleurs");
+        assertEquals(6, couleurs.size(), "six overlays à couleur fixe, six couleurs");
         assertEquals(
                 DebugOverlayRenderer.STATIC,
                 DebugOverlayRenderer.colorOf(DebugOverlays.Overlay.COLLIDERS, DebugGeometry.BODY_STATIC));

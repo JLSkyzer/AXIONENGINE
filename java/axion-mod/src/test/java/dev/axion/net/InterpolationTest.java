@@ -162,6 +162,19 @@ class InterpolationTest {
     }
 
     @Test
+    @DisplayName("31.4 : le dernier état reçu se lit tel quel, à côté de la pose dessinée")
+    void leDernierEtatRecuSeLitTelQuel() {
+        Interpolation interpolation = new Interpolation(EXTRAPOLATION_MS, SNAP);
+        assertNull(interpolation.latest());
+        interpolation.push(0, etat(-4, 4), 0, 0);
+        interpolation.push(20, etat(0, 4), 0, 0);
+        Interpolation.Pose recu = interpolation.latest();
+        assertEquals(0.0, recu.x(), 2e-3, "le snapshot du tick 20, pas la pose interpolée");
+        assertEquals(Interpolation.Mode.HELD, recu.mode());
+        assertEquals(-2.0, interpolation.sample(500, 500).x(), 2e-3, "la pose dessinée, elle, est à mi-chemin");
+    }
+
+    @Test
     @DisplayName("Avant tout snapshot, rien ; le premier est tenu ; le tampon est borné")
     void avantToutSnapshotRien() {
         Interpolation interpolation = new Interpolation(EXTRAPOLATION_MS, SNAP);

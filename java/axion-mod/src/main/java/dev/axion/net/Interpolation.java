@@ -173,6 +173,16 @@ public final class Interpolation {
                 raw.z() + errorPosition[2] * weight, rotation, raw.boundsMin(), raw.boundsMax(), raw.mode());
     }
 
+    /**
+     * {@return le dernier état reçu, tel quel — l'autorité la plus récente que le client connaisse —, en mode
+     * {@link Mode#HELD} ; {@code null} s'il n'a rien reçu} L'overlay {@code network} le montre à côté de la pose
+     * dessinée.
+     */
+    public Pose latest() {
+        Sample last = samples.peekLast();
+        return last == null ? null : pose(last, last.position(), last.rotation(), Mode.HELD);
+    }
+
     /** {@return le nombre de snapshots gardés, borné par {@link #MAX_SAMPLES}} */
     int buffered() {
         return samples.size();

@@ -345,11 +345,17 @@ public final class AxionRenderPass {
         }
     }
 
-    /** {@return les plages reçues au dernier tick, comptées par rang d'overlay au §31.4} */
+    /**
+     * {@return les plages reçues au dernier tick, comptées par rang d'overlay au §31.4} L'overlay {@code network},
+     * en Java seul, y compte les assemblies qu'il a dessinées à la dernière image.
+     */
     public static Map<Integer, Integer> debugRangesByOverlay() {
         Map<Integer, Integer> counts = new TreeMap<>();
         for (DebugGeometry.Range range : DEBUG.geometry().ranges()) {
             counts.merge(range.overlay(), 1, Integer::sum);
+        }
+        if (DEBUG.networkDrawn() > 0) {
+            counts.merge(DebugOverlays.Overlay.NETWORK.rank(), DEBUG.networkDrawn(), Integer::sum);
         }
         return counts;
     }

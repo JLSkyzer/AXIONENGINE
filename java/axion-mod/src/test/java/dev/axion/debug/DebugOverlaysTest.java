@@ -67,7 +67,10 @@ class DebugOverlaysTest {
         assertEquals(NativeBridge.OVERLAY_NORMALS, Overlay.NORMALS.bit());
         assertEquals(NativeBridge.OVERLAY_WORLD_TILES, Overlay.WORLD_TILES.bit());
         assertEquals(NativeBridge.OVERLAY_CENTER_OF_MASS, Overlay.CENTER_OF_MASS.bit());
-        assertEquals(7, Overlay.values().length, "les six overlays de M3 et colliders (ADR-146 §1)");
+        assertEquals(7, java.util.Arrays.stream(Overlay.values()).filter(Overlay::nativeSide).count(),
+                "les six overlays de M3 et colliders, natifs (ADR-146 §1)");
+        assertEquals(8, Overlay.values().length, "et network, en Java seul, venu en M4 avec C-51 (ADR-146 §1)");
+        assertFalse(Overlay.NETWORK.nativeSide(), "network ne part pas au natif");
         for (Overlay overlay : Overlay.values()) {
             assertEquals(overlay, Overlay.ofRank(overlay.rank()), overlay.commandName());
         }
