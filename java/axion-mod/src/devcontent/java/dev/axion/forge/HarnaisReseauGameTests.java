@@ -36,7 +36,9 @@ import org.slf4j.Logger;
  * tick {@code C}, la connexion d'un joueur simulé tient donc les trames du tick {@code C − 1}, et
  * {@code netState()} l'état qu'elles portent. Rien ne garantit que le rappel de chaque tick passe dès le
  * tick du corps du test : une assembly posée là pourrait envoyer son premier snapshot avant qu'un état soit
- * noté. Les scènes se posent donc au deuxième tick, quand ce rappel tourne déjà.
+ * noté. Les scènes se posent donc au deuxième tick, quand ce rappel tourne déjà. Et les rappels d'un même
+ * tick n'ont pas d'ordre — Minecraft les range dans une table de hachage : le travail d'un tick (noter les
+ * états, puis lire ce que le joueur a reçu) se fait une fois au plus, par qui l'appelle le premier.
  */
 @GameTestHolder("axion")
 @PrefixGameTestTemplate(false)
@@ -104,6 +106,18 @@ public final class HarnaisReseauGameTests {
         AxionEntity cube;
         JoueurSimule joueur;
         EtatsDuServeur serveur;
+        long fait = -1;
+
+        /** Le travail d'un tick : les états du serveur, puis ce que le joueur a reçu ; une fois par tick au plus. */
+        void tick(GameTestHelper helper) {
+            long maintenant = helper.getLevel().getServer().getTickCount();
+            if (joueur == null || maintenant == fait) {
+                return;
+            }
+            fait = maintenant;
+            serveur.noter(helper);
+            joueur.tick();
+        }
 
         /**
          * Le rappel de chaque tick, posé dans le corps du test, et la scène posée au deuxième tick.
@@ -115,12 +129,7 @@ public final class HarnaisReseauGameTests {
          */
         static Scene poser(GameTestHelper helper, Vec3 cube, Vec3 joueur, String nom) {
             Scene scene = new Scene();
-            helper.onEachTick(() -> {
-                if (scene.joueur != null) {
-                    scene.serveur.noter(helper);
-                    scene.joueur.tick();
-                }
-            });
+            helper.onEachTick(() -> scene.tick(helper));
             helper.runAfterDelay(2, () -> {
                 scene.cube = AssembliesDeTest.poser(helper, CUBE, cube, DROIT);
                 scene.serveur = new EtatsDuServeur(scene.cube);
@@ -131,72 +140,115 @@ public final class HarnaisReseauGameTests {
     }
 
     /**
-     * Une scène de charge : une grille de cubes lâchés de hauteurs étagées, un joueur simulé au milieu, et les
-     * octets de message que le serveur lui envoie à chaque tick — ceux que le plafond compte (R-1664).
+     * Une scène de charge : une grille de cubes lâchés de hauteurs étagées, des joueurs simulés autour, et ce que
+     * le serveur envoie à chacun à chaque tick — les octets de message que le plafond compte (R-1664) —, avec la
+     * durée de l'envoi ({@code axion.net.send_ns}) et celle du décodage des clients simulés.
      */
     private static final class Charge {
         final List<AxionEntity> cubes = new ArrayList<>();
         final List<EtatsDuServeur> etats = new ArrayList<>();
-        final List<Long> octetsParTick = new ArrayList<>();
-        JoueurSimule joueur;
+        final List<JoueurSimule> joueurs = new ArrayList<>();
+        final Map<JoueurSimule, List<Long>> octets = new HashMap<>();
+        final List<Long> envoiNanos = new ArrayList<>();
+        final List<Long> decodageNanos = new ArrayList<>();
+        long fait = -1;
+
+        /** Le travail d'un tick : les états, les octets et les durées, puis la lecture ; une fois par tick au plus. */
+        void tick(GameTestHelper helper) {
+            long maintenant = helper.getLevel().getServer().getTickCount();
+            if (joueurs.isEmpty() || maintenant == fait) {
+                return;
+            }
+            fait = maintenant;
+            for (EtatsDuServeur etats : this.etats) {
+                etats.noter(helper);
+            }
+            // L'envoi de la fin du tick précédent, comme les états notés.
+            envoiNanos.add(metrique("send_ns", false, "ns"));
+            long debut = System.nanoTime();
+            for (JoueurSimule joueur : joueurs) {
+                PlayerSync synchronisation = joueur.synchronisation();
+                if (synchronisation != null) {
+                    octets.get(joueur).add(synchronisation.lastTickBytes());
+                }
+                joueur.tick();
+            }
+            decodageNanos.add(System.nanoTime() - debut);
+        }
 
         /**
          * @param helper le test, sur le gabarit {@code plancher_16}
          * @param cote côté de la grille, en cubes
-         * @param nom nom du joueur simulé
-         * @param plafond son plafond de débit, en octets par seconde ; {@code 0} : celui de la configuration
+         * @param pas écart des cubes, en blocs
+         * @param positions positions des joueurs, en coordonnées du test
+         * @param nom préfixe du nom des joueurs simulés
+         * @param plafond leur plafond de débit, en octets par seconde ; {@code 0} : celui de la configuration
          */
-        static Charge poser(GameTestHelper helper, int cote, String nom, long plafond) {
+        static Charge poser(GameTestHelper helper, int cote, double pas, List<Vec3> positions, String nom, long plafond) {
             Charge charge = new Charge();
-            helper.onEachTick(() -> {
-                if (charge.joueur == null) {
-                    return;
-                }
-                for (EtatsDuServeur etats : charge.etats) {
-                    etats.noter(helper);
-                }
-                PlayerSync synchronisation = charge.joueur.synchronisation();
-                if (synchronisation != null) {
-                    // L'envoi de la fin du tick précédent, comme les états notés.
-                    charge.octetsParTick.add(synchronisation.lastTickBytes());
-                }
-                charge.joueur.tick();
-            });
+            helper.onEachTick(() -> charge.tick(helper));
             helper.runAfterDelay(2, () -> {
                 for (int i = 0; i < cote; i++) {
                     for (int k = 0; k < cote; k++) {
-                        Vec3 position = new Vec3(1.5 + 2 * i, DESSUS_DALLE + 4 + (i + k) % 5, 1.5 + 2 * k);
+                        Vec3 position = new Vec3(1.5 + pas * i, DESSUS_DALLE + 4 + (i + k) % 5, 1.5 + pas * k);
                         AxionEntity cube = AssembliesDeTest.poser(helper, CUBE, position, DROIT);
                         charge.cubes.add(cube);
                         charge.etats.add(new EtatsDuServeur(cube));
                     }
                 }
-                charge.joueur = JoueurSimule.rejoindre(helper.getLevel(), nom,
-                        helper.absoluteVec(new Vec3(8, DESSUS_DALLE, 8)), plafond);
+                for (int index = 0; index < positions.size(); index++) {
+                    charge.ajouter(JoueurSimule.rejoindre(helper.getLevel(), nom + "-" + index,
+                            helper.absoluteVec(positions.get(index)), plafond));
+                }
             });
             return charge;
         }
 
-        long total() {
-            return octetsParTick.stream().mapToLong(Long::longValue).sum();
+        void ajouter(JoueurSimule joueur) {
+            joueurs.add(joueur);
+            octets.put(joueur, new ArrayList<>());
         }
 
-        /** {@return le plus d'octets envoyés sur vingt ticks consécutifs} */
-        long pireSeconde() {
+        void retirer(JoueurSimule joueur) {
+            joueur.quitter();
+            joueurs.remove(joueur);
+        }
+
+        JoueurSimule joueur() {
+            return joueurs.get(0);
+        }
+
+        void quitter() {
+            for (JoueurSimule joueur : List.copyOf(joueurs)) {
+                retirer(joueur);
+            }
+        }
+
+        double secondes(JoueurSimule joueur) {
+            return (double) octets.get(joueur).size() / TICKS_PAR_SECONDE;
+        }
+
+        long total(JoueurSimule joueur) {
+            return octets.get(joueur).stream().mapToLong(Long::longValue).sum();
+        }
+
+        /** {@return le plus d'octets envoyés au joueur sur vingt ticks consécutifs} */
+        long pireSeconde(JoueurSimule joueur) {
+            List<Long> parTick = octets.get(joueur);
             long pire = 0;
             long fenetre = 0;
-            for (int index = 0; index < octetsParTick.size(); index++) {
-                fenetre += octetsParTick.get(index);
+            for (int index = 0; index < parTick.size(); index++) {
+                fenetre += parTick.get(index);
                 if (index >= TICKS_PAR_SECONDE) {
-                    fenetre -= octetsParTick.get(index - TICKS_PAR_SECONDE);
+                    fenetre -= parTick.get(index - TICKS_PAR_SECONDE);
                 }
                 pire = Math.max(pire, fenetre);
             }
             return pire;
         }
 
-        long plusGrosMessage() {
-            return octetsParTick.stream().mapToLong(Long::longValue).max().orElse(0);
+        long plusGrosMessage(JoueurSimule joueur) {
+            return maximum(octets.get(joueur));
         }
 
         /**
@@ -204,19 +256,20 @@ public final class HarnaisReseauGameTests {
          * par seconde, plus la seconde du seau ; sur une seconde, au plus le seau et son remplissage ; et la
          * première entrée d'un snapshot peut le creuser d'un message.
          */
-        void sousLePlafond(GameTestHelper helper, long plafond) {
-            double secondes = (double) octetsParTick.size() / TICKS_PAR_SECONDE;
-            long total = total();
-            long pire = pireSeconde();
-            long marge = plusGrosMessage();
+        void sousLePlafond(GameTestHelper helper, JoueurSimule joueur, long plafond) {
+            double secondes = secondes(joueur);
+            long total = total(joueur);
+            long pire = pireSeconde(joueur);
+            long marge = plusGrosMessage(joueur);
             helper.assertTrue(total <= plafond * (secondes + 1) + marge, String.format(Locale.ROOT,
-                    "%d octets en %.1f s pour un plafond de %d o/s", total, secondes, plafond));
-            helper.assertTrue(pire <= 2 * plafond + marge,
-                    "une seconde à " + pire + " octets, au-delà du seau d'un plafond de " + plafond + " o/s");
+                    "%s : %d octets en %.1f s pour un plafond de %d o/s", joueur.joueur().getGameProfile().getName(),
+                    total, secondes, plafond));
+            helper.assertTrue(pire <= 2 * plafond + marge, joueur.joueur().getGameProfile().getName()
+                    + " : une seconde à " + pire + " octets, au-delà du seau d'un plafond de " + plafond + " o/s");
         }
 
         /** Aucune désynchronisation, et aucun snapshot perdu en route. */
-        void fidele(GameTestHelper helper) {
+        void fidele(GameTestHelper helper, JoueurSimule joueur) {
             for (EtatsDuServeur etats : this.etats) {
                 etats.verifier(helper, joueur, 0);
             }
@@ -226,6 +279,14 @@ public final class HarnaisReseauGameTests {
                     joueur.acquittements() + " snapshots reçus sur " + synchronisation.sender().sentSnapshots()
                             + " envoyés");
         }
+    }
+
+    private static long maximum(List<Long> valeurs) {
+        return valeurs.stream().mapToLong(Long::longValue).max().orElse(0);
+    }
+
+    private static double moyenne(List<Long> valeurs) {
+        return valeurs.stream().mapToLong(Long::longValue).average().orElse(0);
     }
 
     private static long plafondDeLaConfiguration() {
@@ -249,26 +310,26 @@ public final class HarnaisReseauGameTests {
     @GameTest(template = "test/plancher_16", batch = "harnais_reseau_t411", timeoutTicks = 300)
     public static void t411_leDebitMesureResteSousLePlafond(GameTestHelper helper) {
         long plafond = plafondDeLaConfiguration();
-        Charge charge = Charge.poser(helper, 7, "sim-t411", 0);
+        Charge charge = Charge.poser(helper, 7, 2, List.of(new Vec3(8, DESSUS_DALLE, 8)), "sim-t411", 0);
         helper.runAfterDelay(200, () -> {
             try {
-                charge.joueur.tick();
-                double secondes = (double) charge.octetsParTick.size() / TICKS_PAR_SECONDE;
+                JoueurSimule joueur = charge.joueur();
+                charge.tick(helper);
+                double secondes = charge.secondes(joueur);
                 LOGGER.info(String.format(Locale.ROOT, "AXION : T-411 : %d assemblies, %d octets de snapshot en %.1f s"
                                 + " — %.0f o/s en moyenne, %d o/s la pire seconde, %d snapshots ; plafond %d o/s",
-                        charge.cubes.size(), charge.total(), secondes, charge.total() / secondes, charge.pireSeconde(),
-                        charge.joueur.synchronisation().sender().sentSnapshots(), plafond));
-                helper.assertTrue(charge.total() > 0, "aucun octet envoyé : la scène ne mesure rien");
+                        charge.cubes.size(), charge.total(joueur), secondes, charge.total(joueur) / secondes,
+                        charge.pireSeconde(joueur), joueur.synchronisation().sender().sentSnapshots(), plafond));
+                helper.assertTrue(charge.total(joueur) > 0, "aucun octet envoyé : la scène ne mesure rien");
                 helper.assertTrue(metrique("players_synced", false, "count") == 1
                                 && metrique("assemblies_tracked", false, "count") >= charge.cubes.size(),
                         "les métriques du tick ne disent pas le joueur et ses " + charge.cubes.size() + " assemblies");
-                charge.sousLePlafond(helper, plafond);
-                helper.assertTrue(charge.joueur.synchronisation().sender().delayedEntries() == 0,
-                        "sous le plafond, des entrées ont attendu : "
-                                + charge.joueur.synchronisation().sender().delayedEntries());
-                charge.fidele(helper);
+                charge.sousLePlafond(helper, joueur, plafond);
+                helper.assertTrue(joueur.synchronisation().sender().delayedEntries() == 0,
+                        "sous le plafond, des entrées ont attendu : " + joueur.synchronisation().sender().delayedEntries());
+                charge.fidele(helper, joueur);
             } finally {
-                charge.joueur.quitter();
+                charge.quitter();
             }
             helper.succeed();
         });
@@ -283,33 +344,115 @@ public final class HarnaisReseauGameTests {
     public static void t418_unPlafondSerreRetardeSansRienOmettre(GameTestHelper helper) {
         long plafond = 2048;
         long depassementsAvant = budgetDuDebit().overruns().value();
-        Charge charge = Charge.poser(helper, 7, "sim-t418", plafond);
-        helper.runAfterDelay(360, () -> {
-            try {
-                charge.joueur.tick();
-                PlayerSync synchronisation = charge.joueur.synchronisation();
-                long retardees = synchronisation.sender().delayedEntries();
-                double secondes = (double) charge.octetsParTick.size() / TICKS_PAR_SECONDE;
-                LOGGER.info(String.format(Locale.ROOT, "AXION : T-418 : %d assemblies, plafond %d o/s : %d entrée(s)"
-                                + " retardée(s), %d octets en %.1f s, %d o/s la pire seconde",
-                        charge.cubes.size(), plafond, retardees, charge.total(), secondes, charge.pireSeconde()));
-                helper.assertTrue(retardees > 0, "le plafond serré n'a rien retardé : la scène ne l'éprouve pas");
-                helper.assertTrue(budgetDuDebit().overruns().value() > depassementsAvant,
-                        "le budget du débit n'a compté aucun dépassement");
-                charge.sousLePlafond(helper, plafond);
-                for (AxionEntity cube : charge.cubes) {
-                    JoueurSimule.Recu dernier = null;
-                    for (JoueurSimule.Recu recu : charge.joueur.recus()) {
-                        if (recu.handle() == cube.getId()) {
-                            dernier = recu;
-                        }
+        Charge charge = Charge.poser(helper, 7, 2, List.of(new Vec3(8, DESSUS_DALLE, 8)), "sim-t418", plafond);
+        // Retardé n'est pas omis : sous un plafond serré, l'état récent d'un cube encore éveillé attend son tour.
+        // Ce qui se prouve, c'est que chacun finit par livrer son dernier état, avant le délai du test.
+        helper.succeedWhen(() -> {
+            helper.assertTrue(helper.getTick() >= 200, "les cubes tombent encore");
+            charge.tick(helper);
+            JoueurSimule joueur = charge.joueur();
+            for (AxionEntity cube : charge.cubes) {
+                JoueurSimule.Recu dernier = null;
+                for (JoueurSimule.Recu recu : joueur.recus()) {
+                    if (recu.handle() == cube.getId()) {
+                        dernier = recu;
                     }
-                    helper.assertTrue(dernier != null && dernier.state().equals(cube.netState()),
-                            "le cube " + cube.getId() + " n'a pas livré son dernier état : omission");
                 }
-                charge.fidele(helper);
+                helper.assertTrue(dernier != null && dernier.state().equals(cube.netState()),
+                        "le cube " + cube.getId() + " n'a pas livré son dernier état : omission");
+            }
+            long retardees = joueur.synchronisation().sender().delayedEntries();
+            helper.assertTrue(retardees > 0, "le plafond serré n'a rien retardé : la scène ne l'éprouve pas");
+            helper.assertTrue(budgetDuDebit().overruns().value() > depassementsAvant,
+                    "le budget du débit n'a compté aucun dépassement");
+            charge.sousLePlafond(helper, joueur, plafond);
+            charge.fidele(helper, joueur);
+            LOGGER.info(String.format(Locale.ROOT, "AXION : T-418 : %d assemblies, plafond %d o/s : %d entrée(s)"
+                            + " retardée(s), %d octets en %.1f s, %d o/s la pire seconde ; tout livré au tick %d",
+                    charge.cubes.size(), plafond, retardees, charge.total(joueur), charge.secondes(joueur),
+                    charge.pireSeconde(joueur), helper.getTick()));
+            charge.quitter();
+        });
+    }
+
+    /**
+     * T-423 : cent cubes lâchés, dix joueurs simulés autour. La bande passante de chacun et de tous, et le temps
+     * de l'envoi des snapshots à chaque tick, sont mesurés et rapportés au journal ; chaque joueur suit les cent
+     * assemblies, sous le plafond, sans désynchronisation ni perte. 21.11 ne fixe pas de seuil de temps : il se
+     * mesure, il ne se décrète pas.
+     */
+    @GameTest(template = "test/plancher_16", batch = "harnais_reseau_t423", timeoutTicks = 300)
+    public static void t423_centAssembliesEtDixJoueursSeMesurent(GameTestHelper helper) {
+        long plafond = plafondDeLaConfiguration();
+        List<Vec3> autour = new ArrayList<>();
+        for (int index = 0; index < 10; index++) {
+            double angle = 2 * Math.PI * index / 10;
+            autour.add(new Vec3(8 + 9 * Math.cos(angle), DESSUS_DALLE, 8 + 9 * Math.sin(angle)));
+        }
+        Charge charge = Charge.poser(helper, 10, 1.5, autour, "sim-t423", 0);
+        helper.runAfterDelay(200, () -> {
+            try {
+                charge.tick(helper);
+                double secondes = charge.secondes(charge.joueur());
+                List<Long> parJoueur = new ArrayList<>();
+                long pire = 0;
+                for (JoueurSimule joueur : charge.joueurs) {
+                    parJoueur.add(charge.total(joueur));
+                    pire = Math.max(pire, charge.pireSeconde(joueur));
+                }
+                long tous = parJoueur.stream().mapToLong(Long::longValue).sum();
+                LOGGER.info(String.format(Locale.ROOT, "AXION : T-423 : %d assemblies, %d joueurs, %.1f s : par joueur"
+                                + " %.0f o/s en moyenne (de %.0f à %.0f), %d o/s la pire seconde ; tous joueurs %.0f o/s ;"
+                                + " envoi des snapshots %.0f µs par tick en moyenne, %.0f µs au pire ; décodage des %d"
+                                + " clients %.0f µs par tick en moyenne ; plafond %d o/s",
+                        charge.cubes.size(), charge.joueurs.size(), secondes, tous / secondes / charge.joueurs.size(),
+                        parJoueur.stream().mapToLong(Long::longValue).min().orElse(0) / secondes,
+                        parJoueur.stream().mapToLong(Long::longValue).max().orElse(0) / secondes, pire, tous / secondes,
+                        moyenne(charge.envoiNanos) / 1000, maximum(charge.envoiNanos) / 1000.0, charge.joueurs.size(),
+                        moyenne(charge.decodageNanos) / 1000, plafond));
+                helper.assertTrue(charge.cubes.size() == 100 && charge.joueurs.size() == 10, "la scène n'est pas posée");
+                helper.assertTrue(maximum(charge.envoiNanos) > 0, "le temps de l'envoi n'est pas mesuré");
+                for (JoueurSimule joueur : charge.joueurs) {
+                    helper.assertTrue(joueur.synchronisation().tracked().size() >= charge.cubes.size(),
+                            joueur.joueur().getGameProfile().getName() + " ne suit que "
+                                    + joueur.synchronisation().tracked().size() + " assemblies");
+                    charge.sousLePlafond(helper, joueur, plafond);
+                    charge.fidele(helper, joueur);
+                }
             } finally {
-                charge.joueur.quitter();
+                charge.quitter();
+            }
+            helper.succeed();
+        });
+    }
+
+    /**
+     * T-424 : un joueur se déconnecte, puis revient sous le même nom — la part « déformation » attend M6. Sa
+     * nouvelle connexion repart de rien : chaque assembly, endormie ou non, lui parvient en entier sans rien
+     * redemander — aucun delta sur une base que seule l'ancienne connexion tenait —, et chaque état reçu est
+     * celui du serveur.
+     */
+    @GameTest(template = "test/plancher_16", batch = "harnais_reseau_t424", timeoutTicks = 300)
+    public static void t424_uneReconnexionRecoitLEtatComplet(GameTestHelper helper) {
+        Vec3 milieu = new Vec3(8, DESSUS_DALLE, 8);
+        Charge charge = Charge.poser(helper, 4, 3, List.of(milieu), "sim-t424", 0);
+        helper.runAfterDelay(80, () -> {
+            helper.assertTrue(!charge.joueur().recus().isEmpty(), "le joueur n'a rien reçu avant de partir");
+            charge.retirer(charge.joueur());
+        });
+        helper.runAfterDelay(100, () -> charge.ajouter(
+                JoueurSimule.rejoindre(helper.getLevel(), "sim-t424-0", helper.absoluteVec(milieu))));
+        helper.runAfterDelay(200, () -> {
+            try {
+                JoueurSimule revenu = charge.joueur();
+                charge.tick(helper);
+                for (AxionEntity cube : charge.cubes) {
+                    boolean recu = revenu.recus().stream().anyMatch(r -> r.handle() == cube.getId());
+                    helper.assertTrue(recu, "le cube " + cube.getId() + " n'est pas parvenu à la nouvelle connexion");
+                }
+                charge.fidele(helper, revenu);
+            } finally {
+                charge.quitter();
             }
             helper.succeed();
         });
@@ -339,7 +482,7 @@ public final class HarnaisReseauGameTests {
             EtatsDuServeur serveur = scene.serveur;
             double depart = helper.absoluteVec(lache).y;
             try {
-                joueur.tick();
+                scene.tick(helper);
                 helper.assertTrue(depart - cube.getY() >= 2.0,
                         "le cube n'est pas tombé chez le serveur : " + depart + " → " + cube.getY());
                 int verifies = serveur.verifier(helper, joueur, 0);
@@ -384,7 +527,7 @@ public final class HarnaisReseauGameTests {
         });
         helper.runAfterDelay(80, () -> {
             try {
-                scene.joueur.tick();
+                scene.tick(helper);
                 helper.assertTrue(scene.joueur.connecte()
                                 && helper.getLevel().getServer().getPlayerList().getPlayer(scene.joueur.joueur().getUUID()) != null,
                         "une trame fautive a coupé la connexion");
@@ -477,7 +620,7 @@ public final class HarnaisReseauGameTests {
             JoueurSimule joueur = scene.joueur;
             AxionEntity cube = scene.cube;
             try {
-                joueur.tick();
+                scene.tick(helper);
                 helper.assertTrue(joueur.pose(cube.getId()) != null, "le joueur revenu n'a rien reçu du cube");
                 int verifies = scene.serveur.verifier(helper, joueur, retour[0]);
                 helper.assertTrue(verifies >= 1, "aucun état reçu depuis le retour");

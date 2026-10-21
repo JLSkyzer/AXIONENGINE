@@ -3116,8 +3116,14 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             3 988 à 3 993 o/s — la rafale du seau d'une seconde, plein au départ —, aucune omission. T-422 dans
             le harnais : trois trames fautives ignorées et comptées, connexion tenue. 21 GameTests, 761 JUnit ;
             13 mutations rouges (5 JUnit, 8 GameTests).
-      - [ ] 6c. T-423 : 100 assemblies et 10 joueurs simulés, bande passante et CPU mesurés, rapportés.
-      - [ ] 6d. T-424 : reconnexion, état complet reçu (la part « déformation » attend M6).
+      - [x] 6c (2026-10-21). T-423 : 100 cubes lâchés, 10 joueurs simulés ; mesuré sur trois passages : 6 727 à
+            7 652 o/s par joueur, pire seconde 36 500 o/s environ (rafale du seau au départ), 67 à 76 Kio/s
+            pour tous ; envoi des snapshots 394 à 676 µs par tick en moyenne, 2,2 à 18,7 ms au pire ;
+            décodage des 10 clients 193 à 311 µs par tick. Aucun seuil de temps n'est fixé par 21.11.
+      - [x] 6d (2026-10-21). T-424 : un joueur part puis revient ; sa nouvelle connexion reçoit chaque assembly
+            en entier, endormie ou non, sans rien redemander (la part « déformation » attend M6). Deux
+            intermittences du harnais corrigées (ordre des rappels d'un tick, attente de T-418) ; 23
+            GameTests verts trois fois de suite ; 5 mutations rouges.
       - [ ] 6e. R-1690 : limitation C→S (`net.max_packets_per_second`), abus soutenu → déconnexion, éprouvée
             par le harnais.
       - [ ] 6f. T-425 : une heure, 20 joueurs simulés, aucune désynchronisation — campagne hors de la CI

@@ -1749,3 +1749,20 @@ séparés.
 d'extrapolation au bout du plus long trou), et le calcul figure dans le test. Un rouge s'instrumente
 avant de toucher au code ou au seuil : relâcher un seuil n'est permis que si le calcul montre qu'il
 était faux.
+
+## 2026-10-21 | Deux intermittences dans les GameTests du harnais réseau
+
+**Ce qui a mal tourné.** Les GameTests du harnais de joueurs simulés échouaient une fois sur deux ou
+trois, sur deux tests différents : T-422 (« état reçu au tick 81, que le serveur n'a pas tenu ») et
+T-418 (« le cube 231 n'a pas livré son dernier état »). Une campagne de mutations l'a révélé par sa
+restauration rouge.
+
+**Cause.** Les rappels planifiés d'un même tick s'exécutent dans l'ordre d'un `Object2LongOpenHashMap`
+(`GameTestInfo`) : le rappel de fin lisait parfois les trames avant que le rappel de chaque tick ait
+noté l'état du serveur. Et T-418 jugeait à un tick fixe un système à file d'attente : sous un plafond
+serré, l'état récent d'un cube encore éveillé attendait son tour — retardé, pas omis.
+
+**Règle.** Le travail d'un tick qui dépend d'un ordre se fait dans une méthode idempotente, gardée par
+le numéro du tick, que tout rappel appelle avant de lire. Une propriété « finit par » se vérifie par une
+attente bornée (`succeedWhen`). Un vert de GameTest ne vaut que répété : trois passages de suite, et
+une restauration rouge de campagne s'instruit comme un échec.
