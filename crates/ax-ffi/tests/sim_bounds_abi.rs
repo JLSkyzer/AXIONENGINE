@@ -9,7 +9,9 @@
 
 use ax_asset::a3d::encode_colliders;
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{opcode, CommandStreamHeader, CreateAssembly};
+use ax_model::dm::commands::{
+    create_assembly_payload, opcode, AssemblyBodyEntry, CommandStreamHeader, CreateAssembly,
+};
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::physics::{BodyBounds, BodyDesc, BodyState, ColliderDesc, ColliderShape};
 use axion_native::abi::{
@@ -87,9 +89,19 @@ fn command_stream() -> Vec<u8> {
         header.extend_from_slice(&value.to_le_bytes()); // spawn.rotation
     }
     header.push(2); // body_kind : dynamique
-    header.resize(CreateAssembly::BYTES, 0);
+    header.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
+    let en_tete = CreateAssembly::read_le(&header).expect("en-tête complet");
     // ADR-130 : la description DM-08 du corps suit l'en-tête ; rien n'est déclaré.
-    BodyDesc::undeclared(2).write_le(&mut header);
+    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
+    let header = create_assembly_payload(
+        &en_tete,
+        &[AssemblyBodyEntry {
+            desc: BodyDesc::undeclared(2),
+            root_node: 0,
+        }],
+        &[],
+        &[],
+    );
 
     let mut payload = header;
     payload.extend_from_slice(&phys);
@@ -135,13 +147,20 @@ fn sim_out_porte_l_emprise_apres_les_etats() {
     let count = result.state_count as usize;
     assert_eq!(count, 1, "un corps rapporté");
 
-    // L'en-tête annonce le schéma 1 de SIM_OUT : les emprises suivent les états.
+    // L'en-tête annonce le schéma 2 de SIM_OUT : les emprises suivent les états (ADR-120), et
+    // chaque état porte le node racine de son corps (ADR-151 D7).
     let out = acquire(ctx, BufferKind::SimOut, 0);
     let out_view =
         unsafe { std::slice::from_raw_parts(out.ptr, usize::try_from(out.capacity).unwrap()) };
     let header = BufferHeader::read(out_view).expect("en-tête SIM_OUT lisible");
     assert_eq!(header.kind, BufferKind::SimOut);
-    assert_eq!(header.schema_version, 1, "schéma de SIM_OUT (ADR-120)");
+    assert_eq!(header.schema_version, 2, "schéma de SIM_OUT (ADR-151)");
+    let node = &out_view[HEADER_BYTES + 76..HEADER_BYTES + 80];
+    assert_eq!(
+        u32::from_le_bytes(node.try_into().unwrap()),
+        0,
+        "le corps racine, au node 0"
+    );
     assert!(
         out_view.len() >= HEADER_BYTES + count * (BodyState::BYTES + BodyBounds::BYTES),
         "la charge couvre états et emprises"

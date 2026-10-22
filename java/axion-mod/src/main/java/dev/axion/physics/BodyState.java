@@ -7,7 +7,8 @@ import java.nio.ByteBuffer;
  *
  * <p>Décodage du contrat figé côté natif ({@code crates/ax-model/src/dm/physics.rs},
  * {@code BodyState::write_le}) : <strong>80 octets</strong>, little-endian
- * (R-271), avec 4 octets de remplissage final. La position est en coordonnées
+ * (R-271), le node racine du corps dans les 4 derniers (ADR-151 D7 : une assembly
+ * porte plusieurs corps, et ses états partagent son handle). La position est en coordonnées
  * <strong>monde</strong> ({@code f64}, R-462), recomposée par le natif depuis la
  * simulation {@code f32} et son origine flottante ; vitesses en repère monde.
  *
@@ -24,6 +25,8 @@ import java.nio.ByteBuffer;
  * @param linearVelocity vitesse linéaire monde {@code [x, y, z]}, en m/s
  * @param angularVelocity vitesse angulaire monde {@code [x, y, z]}, en rad/s
  * @param flags drapeaux d'état, interprétés selon le DM natif
+ * @param node node racine du corps dans l'asset : celui du corps racine, que l'entité suit, ou
+ *     celui d'un autre corps de l'assembly
  */
 public record BodyState(
         int handleIndex,
@@ -32,9 +35,10 @@ public record BodyState(
         float[] rotation,
         float[] linearVelocity,
         float[] angularVelocity,
-        int flags) {
+        int flags,
+        int node) {
 
-    /** Taille de la structure sur la frontière, en octets (remplissage compris). */
+    /** Taille de la structure sur la frontière, en octets. */
     public static final int BYTES = 80;
 
     /**
@@ -73,7 +77,8 @@ public record BodyState(
                     buffer.getFloat(base + 64),
                     buffer.getFloat(base + 68),
                 },
-                buffer.getInt(base + 72));
+                buffer.getInt(base + 72),
+                buffer.getInt(base + 76));
     }
 
     /**

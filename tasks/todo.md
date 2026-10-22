@@ -3166,20 +3166,13 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             (§10.4, `user_data` et hook de rapier, sur les seules assemblies multi-corps), activité,
             sommeil forcé, restauration R-181 et FM-22 par assembly, plafond R-613 compté en corps,
             portée au plus proche de ses corps ; `BodyState.node` à l'offset 76. 9 tests, 12 mutations rouges.
-      - [ ] 1b. Frontière : `CREATE_ASSEMBLY` en `SimIn` 3 (corps, nodes, colliders recomposés dans le
-            repère de leur corps, échelle comprise), validation R-120 sur l'échelle cumulée, `SIM_OUT` 2,
-            ABI 7.
-            **En cours (2026-10-22), non commité, dans l'arbre de travail.** Fait : `ax-model`
-            (`CreateAssembly` de 72 o, `AssemblyBodyEntry` de 64 o, `create_assembly_payload`,
-            `CURRENT_SCHEMA` 3, `SIM_OUT` 2, tests verts), `Shape::scaled`, ABI 7, module
-            `ax-ffi/src/assembly.rs` (décodage, chaîne des nodes composée, colliders rangés par corps,
-            9 tests écrits, pas encore lancés) branché dans `abi.rs`, `BufferKinds.java` régénéré.
-            Reste : passer les 8 tests d'`ax-ffi` qui assemblent le payload à la main
-            (`body_desc_abi`, `create_assembly_abi`, `debug_abi`, `groups_abi`, `materials_abi`,
-            `memory_abi`, `sim_activity_abi`, `sim_bounds_abi`) par `create_assembly_payload` ;
-            `net_abi.rs` à l'ABI 7 ; Java : `EXPECTED_ABI_VERSION` 7, `SimCommandStream.createAssembly`
-            au nouveau payload (section NODE comprise), `BodyState` lit le node ; validation R-120 de
-            l'échelle cumulée dans `ax-asset` ; mutations ; JUnit, GameTests, bancs.
+      - [x] 1b (2026-10-22). Frontière : `CREATE_ASSEMBLY` en `SimIn` 3 — en-tête de 72 o, corps de 64 o
+            (description et node racine), section `NODE` complétée à 8, puis `PHYS` ; module
+            `ax-ffi/src/assembly.rs` : colliders posés par la chaîne de leur node, échelle comprise,
+            rangés par corps ; `SIM_OUT` 2 (`BodyState.node`) ; ABI 7 ; R-120 sur la chaîne des
+            ancêtres (`E-3020`) ; Java : `SimCommandStream.AssemblyBody`, `BodyState.node`, NODE envoyée.
+            Correctif au passage : le natif posait les colliders sans la pose de leur node.
+            88 suites Rust, 767 JUnit, 24 GameTests, banc vanilla vert ; 22 mutations rouges.
       - [ ] 1c. Java : corps déduits de la definition, état de la racine à l'entité, GameTest.
 - [ ] 2. Schéma 2 et compilation (D3) : lecture, `definition-2.json`, `JointDesc` transcrit par Java.
 - [ ] 3. Joints natifs (D4, D5) : sept types, moteur, friction, étape 5, rupture, événements, métriques ;

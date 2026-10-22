@@ -69,7 +69,7 @@ public final class BufferKinds {
     public static final int DEBUG = 13;
 
     /** Version du schéma de la charge de {@code SIM_OUT}, lue à l'octet 12 de l'en-tête. */
-    public static final int SIM_OUT_SCHEMA = 1;
+    public static final int SIM_OUT_SCHEMA = 2;
 
     /** Version du schéma de la charge de {@code ASSET_OUT}, lue à l'octet 12 de l'en-tête. */
     public static final int ASSET_OUT_SCHEMA = 1;

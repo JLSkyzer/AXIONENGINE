@@ -336,6 +336,19 @@ fn t231_une_echelle_non_uniforme_sur_un_node_a_collider_est_refusee() {
 }
 
 #[test]
+fn t231_une_echelle_non_uniforme_d_un_ancetre_d_un_node_a_collider_est_refusee() {
+    // R-120 sur la chaîne (ADR-151 D2) : la pose du collider se compose depuis la racine,
+    // l'échelle étirée du parent avec elle.
+    let mut scene = Scene::valide();
+    scene.nodes[1].collider = 0;
+    scene.nodes[0].local.scale = [1.0, 2.0, 1.0];
+
+    let report = scene.valider();
+    seule(&report, &Violation::NonUniformScaleOnCollider);
+    assert_eq!(report.errors[0].at, Located::Node(1));
+}
+
+#[test]
 fn t231_une_echelle_non_uniforme_sans_collider_est_admise() {
     let mut scene = Scene::valide();
     // R-120 l'autorise sur un node de rendu : c'est un usage courant.

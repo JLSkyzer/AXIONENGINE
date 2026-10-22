@@ -282,6 +282,67 @@ pub struct BodyCollider {
 }
 
 impl Shape {
+    /// La forme à l'échelle uniforme `factor` : celle que son node a dans l'asset (R-120,
+    /// ADR-151 D2). Longueurs, points et positions des formes filles sont multipliés ; à
+    /// `1.0`, la forme est rendue telle quelle.
+    #[must_use]
+    pub fn scaled(&self, factor: f32) -> Self {
+        let length = |value: f32| value * factor;
+        match self {
+            Shape::Cuboid { half_extents } => Shape::Cuboid {
+                half_extents: half_extents.map(length),
+            },
+            Shape::Ball { radius } => Shape::Ball {
+                radius: length(*radius),
+            },
+            Shape::Capsule {
+                half_height,
+                radius,
+            } => Shape::Capsule {
+                half_height: length(*half_height),
+                radius: length(*radius),
+            },
+            Shape::Cylinder {
+                half_height,
+                radius,
+            } => Shape::Cylinder {
+                half_height: length(*half_height),
+                radius: length(*radius),
+            },
+            Shape::Cone {
+                half_height,
+                radius,
+            } => Shape::Cone {
+                half_height: length(*half_height),
+                radius: length(*radius),
+            },
+            Shape::ConvexHull { points } => Shape::ConvexHull {
+                points: points.iter().map(|point| point.map(length)).collect(),
+            },
+            Shape::Compound { parts } => Shape::Compound {
+                parts: parts
+                    .iter()
+                    .map(|part| CompoundPart {
+                        translation: part.translation * factor,
+                        rotation: part.rotation,
+                        shape: part.shape.scaled(factor),
+                    })
+                    .collect(),
+            },
+            Shape::Heightfield {
+                rows,
+                cols,
+                heights,
+                scale,
+            } => Shape::Heightfield {
+                rows: *rows,
+                cols: *cols,
+                heights: heights.clone(),
+                scale: scale.map(length),
+            },
+        }
+    }
+
     /// Convertit une forme de collider compilée ([`ColliderShape`], DM-06) en
     /// forme runtime (C-32, pont d'ADR-115).
     ///

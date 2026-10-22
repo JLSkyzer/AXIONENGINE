@@ -38,7 +38,7 @@ class BodyStateTest {
         buffer.putFloat(-2.0f); // angular.y @64
         buffer.putFloat(-3.0f); // angular.z @68
         buffer.putInt(0b1001); // flags @72 (SLEEPING | CLAMPED, selon le DM)
-        buffer.putInt(0); // remplissage @76
+        buffer.putInt(12); // node racine du corps @76 (ADR-151 D7)
 
         BodyState state = BodyState.decode(buffer, 0);
 
@@ -48,6 +48,7 @@ class BodyStateTest {
         assertArrayEquals(new float[] {0.1f, 0.2f, 0.3f, 0.4f}, state.rotation(), 0.0f);
         assertArrayEquals(new float[] {1.5f, 2.5f, 3.5f}, state.linearVelocity(), 0.0f);
         assertArrayEquals(new float[] {-1.0f, -2.0f, -3.0f}, state.angularVelocity(), 0.0f);
+        assertEquals(12, state.node());
         assertEquals(0b1001, state.flags());
         assertEquals((3L << 32) | 7L, state.handleKey());
     }

@@ -10,7 +10,9 @@
 
 use ax_asset::a3d::encode_colliders;
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{opcode, CommandStreamHeader, CreateAssembly};
+use ax_model::dm::commands::{
+    create_assembly_payload, opcode, AssemblyBodyEntry, CommandStreamHeader, CreateAssembly,
+};
 use ax_model::dm::debug::{
     debug_flags, debug_frame, overlay, DebugRange, DebugSegment, DEBUG_HEADER_BYTES,
 };
@@ -91,9 +93,19 @@ fn command_stream() -> Vec<u8> {
         header.extend_from_slice(&value.to_le_bytes()); // spawn.rotation
     }
     header.push(2); // body_kind : dynamique
-    header.resize(CreateAssembly::BYTES, 0);
+    header.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
+    let en_tete = CreateAssembly::read_le(&header).expect("en-tête complet");
     // ADR-130 : la description DM-08 du corps suit l'en-tête ; rien n'est déclaré.
-    BodyDesc::undeclared(2).write_le(&mut header);
+    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
+    let header = create_assembly_payload(
+        &en_tete,
+        &[AssemblyBodyEntry {
+            desc: BodyDesc::undeclared(2),
+            root_node: 0,
+        }],
+        &[],
+        &[],
+    );
     let mut payload = header;
     payload.extend_from_slice(&phys);
 

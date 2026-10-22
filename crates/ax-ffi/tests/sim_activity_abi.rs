@@ -10,7 +10,8 @@
 use ax_asset::a3d::encode_colliders;
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::dm::commands::{
-    opcode, ApplyForce, CommandStreamHeader, CreateAssembly, SetDimensionEnv,
+    create_assembly_payload, opcode, ApplyForce, AssemblyBodyEntry, CommandStreamHeader,
+    CreateAssembly, SetDimensionEnv,
 };
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::physics::{body_state_flags, BodyDesc, BodyState, ColliderDesc, ColliderShape};
@@ -88,9 +89,19 @@ fn cube() -> Vec<u8> {
         payload.extend_from_slice(&value.to_le_bytes());
     }
     payload.push(2); // dynamique
-    payload.resize(CreateAssembly::BYTES, 0);
+    payload.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
+    let en_tete = CreateAssembly::read_le(&payload).expect("en-tête complet");
     // ADR-130 : la description DM-08 du corps suit l'en-tête ; rien n'est déclaré.
-    BodyDesc::undeclared(2).write_le(&mut payload);
+    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
+    let mut payload = create_assembly_payload(
+        &en_tete,
+        &[AssemblyBodyEntry {
+            desc: BodyDesc::undeclared(2),
+            root_node: 0,
+        }],
+        &[],
+        &[],
+    );
     payload.extend_from_slice(&phys);
     payload
 }

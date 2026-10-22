@@ -80,6 +80,9 @@ fn check_limits(asset: &AssetView<'_>, report: &mut ValidationReport) {
 /// détection de cycle séparée — elle serait du code inatteignable.
 fn check_hierarchy(asset: &AssetView<'_>, report: &mut ValidationReport) {
     let mut depths = vec![0u32; asset.nodes.len()];
+    // Échelle uniforme du node et de tous ses ancêtres : la pose d'un collider se compose
+    // depuis la racine de l'asset (ADR-151 D2).
+    let mut uniform_chain = vec![true; asset.nodes.len()];
 
     for (index, node) in asset.nodes.iter().enumerate() {
         let at = Located::Node(index);
@@ -94,8 +97,16 @@ fn check_hierarchy(asset: &AssetView<'_>, report: &mut ValidationReport) {
         }
 
         // R-120 : une échelle non uniforme déforme un collider convexe en
-        // quelque chose que le solveur ne sait plus décrire.
-        if node.collider != NONE_U32 && !node.local.has_uniform_scale() {
+        // quelque chose que le solveur ne sait plus décrire — la sienne, ou celle
+        // d'un ancêtre, qui s'y compose.
+        let parent_uniform = node.is_root()
+            || uniform_chain
+                .get(node.parent as usize)
+                .filter(|_| (node.parent as usize) < index)
+                .copied()
+                .unwrap_or(true);
+        uniform_chain[index] = parent_uniform && node.local.has_uniform_scale();
+        if node.collider != NONE_U32 && !uniform_chain[index] {
             report.push(Violation::NonUniformScaleOnCollider, at);
         }
 

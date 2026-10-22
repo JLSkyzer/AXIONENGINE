@@ -102,7 +102,10 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             long dimension,
             double[] position,
             float[] rotation,
-            BodyDescription body,
+            List<SimCommandStream.AssemblyBody> bodies,
+            float assemblyMass,
+            boolean selfCollision,
+            byte[] nodes,
             byte[] phys) {}
 
     /**
@@ -179,7 +182,12 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         // par le registre contre lequel elle a été validée (ADR-132 A1), groupes tiers compris.
         CollisionGroupRegistry groups = registry.collisionGroups();
         phys = CollisionFilter.apply(phys, groups.membership(root), groups.filter(root));
-        pending.add(new Pending(true, index, dimension, position, rotation, body, phys));
+        // ADR-151 D7 : la section NODE part avec PHYS — chaque collider est posé par la chaîne de
+        // son node ; un seul corps, à la racine de l'asset, tant que la definition n'en déclare
+        // pas d'autres.
+        List<SimCommandStream.AssemblyBody> bodies = List.of(new SimCommandStream.AssemblyBody(body, 0));
+        byte[] nodeSection = nodes == null ? new byte[0] : nodes;
+        pending.add(new Pending(true, index, dimension, position, rotation, bodies, 0.0f, false, nodeSection, phys));
         ledger.attach(index, assembly);
         return true;
     }
@@ -204,7 +212,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         }
         implausibleBounds.remove(index);
         speeds.remove(index);
-        pending.add(new Pending(false, index, 0L, null, null, null, null));
+        pending.add(new Pending(false, index, 0L, null, null, null, 0.0f, false, null, null));
     }
 
     /**
@@ -275,7 +283,10 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                         cmd.dimension(),
                         cmd.position(),
                         cmd.rotation(),
-                        cmd.body(),
+                        cmd.bodies(),
+                        cmd.assemblyMass(),
+                        cmd.selfCollision(),
+                        cmd.nodes(),
                         cmd.phys());
             } else {
                 stream.removeAssembly(cmd.index(), GENERATION);

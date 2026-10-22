@@ -67,7 +67,7 @@ fn decompress(ctx: u64, input_len: u64, max_output: u64) -> (i32, u64) {
 
 #[test]
 fn adr150_empreinte_et_compression_reseau_traversent_la_frontiere() {
-    assert_eq!(AXION_ABI_VERSION, 6);
+    assert_eq!(AXION_ABI_VERSION, 7);
 
     // D4 : l'empreinte est celle d'ax-det, sans contexte.
     let mut profile = AxionDetProfile::default();

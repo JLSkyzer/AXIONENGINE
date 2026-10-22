@@ -24,7 +24,8 @@ class SimulationTraceTest {
                 new float[] {0f, 0.3826834f, 0f, 0.9238795f},
                 new float[] {0f, -21.5f, 0.5f},
                 new float[] {3f, 0f, -1f},
-                4);
+                4,
+                0);
         PhysicsEvent choc = new PhysicsEvent(
                 PhysicsEventCodes.Kind.CONTACT_IMPULSE, 7, 1, 0, 0, 0, 0,
                 new float[] {130.5f, 61.75f, -40f}, new float[] {0f, 1f, 0f},

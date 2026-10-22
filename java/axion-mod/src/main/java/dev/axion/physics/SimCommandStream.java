@@ -23,10 +23,10 @@ import java.util.List;
 public final class SimCommandStream {
 
     /**
-     * Version courante du protocole ({@code CommandStreamHeader::CURRENT_SCHEMA}) : 2 depuis l'index
-     * de matériau des tuiles (ADR-149).
+     * Version courante du protocole ({@code CommandStreamHeader::CURRENT_SCHEMA}) : 3 depuis les
+     * assemblies à plusieurs corps (ADR-151 D7), après l'index de matériau des tuiles (2, ADR-149).
      */
-    public static final int CURRENT_SCHEMA = 2;
+    public static final int CURRENT_SCHEMA = 3;
 
     /** Taille du {@code CommandStreamHeader}, en octets. */
     public static final int STREAM_HEADER_BYTES = 8;
@@ -53,16 +53,23 @@ public final class SimCommandStream {
     public static final int REMOVE_ASSEMBLY_BYTES = 8;
 
     /**
-     * Taille de l'en-tête {@code CreateAssembly}, en octets (hors octets {@code
-     * PHYS} qui le suivent). Figé côté natif : {@code CreateAssembly::BYTES}.
+     * Taille de l'en-tête {@code CreateAssembly}, en octets (hors corps et sections qui le
+     * suivent). Figé côté natif : {@code CreateAssembly::BYTES}.
      */
-    public static final int CREATE_ASSEMBLY_HEADER_BYTES = 64;
+    public static final int CREATE_ASSEMBLY_HEADER_BYTES = 72;
 
     /**
-     * Décalage des octets {@code PHYS} dans le payload {@code CREATE_ASSEMBLY} : en-tête, puis
-     * description du corps (ADR-130). Figé côté natif : {@code CreateAssembly::PHYS_OFFSET}.
+     * Taille d'un corps de {@code CREATE_ASSEMBLY} : sa description ({@link BodyDescription},
+     * 56 o), son node racine, 4 octets réservés. Figé côté natif :
+     * {@code AssemblyBodyEntry::WIRE_BYTES}.
      */
-    public static final int CREATE_ASSEMBLY_PHYS_OFFSET = CREATE_ASSEMBLY_HEADER_BYTES + BodyDescription.WIRE_BYTES;
+    public static final int ASSEMBLY_BODY_BYTES = BodyDescription.WIRE_BYTES + 8;
+
+    /** Plafond de corps par assembly (R-190) : {@code MAX_ASSEMBLY_BODIES}. */
+    public static final int MAX_ASSEMBLY_BODIES = 64;
+
+    /** Drapeau {@code SELF_COLLISION} de {@code CreateAssembly} : ses corps se touchent (§10.4). */
+    public static final int CREATE_ASSEMBLY_SELF_COLLISION = 1;
 
     /** {@code body_kind} : corps statique (miroir de {@code BodyKind::Static}). */
     public static final int BODY_STATIC = 0;
@@ -221,17 +228,17 @@ public final class SimCommandStream {
     }
 
     /**
-     * Ajoute une commande {@code CREATE_ASSEMBLY} (§4.5, ADR-114 ; Option A
-     * d'ADR-115).
+     * Un corps de {@code CREATE_ASSEMBLY} (ADR-151 D2, D7) : sa description DM-08 et son node
+     * racine dans l'asset.
      *
-     * <p>Le payload est l'en-tête {@code CreateAssembly} (64 o), la description DM-08
-     * du corps ({@link BodyDescription}, 56 o, ADR-130), puis les octets de la
-     * section {@code PHYS} de l'asset — que l'appelant extrait de l'A3D
-     * ({@link dev.axion.asset.A3dSections}). Le natif décode ces colliders, en
-     * construit une forme (unique ou composée), crée le corps à sa pose de spawn et
-     * lui applique sa description : masse, centre et inertie déclarés priment sur
-     * ceux des densités des colliders (R-622). Le type de corps de l'en-tête est
-     * celui de la description.
+     * @param description description du corps, son type compris
+     * @param rootNode index de son node racine dans la section {@code NODE}
+     */
+    public record AssemblyBody(BodyDescription description, int rootNode) {}
+
+    /**
+     * Ajoute une commande {@code CREATE_ASSEMBLY} d'un seul corps, sans section {@code NODE} :
+     * ses colliders sont pris tels quels, dans le repère de l'assembly (ADR-151 D7).
      *
      * @param handleIndex rang du handle d'assembly (routage du corps)
      * @param handleGeneration génération du handle ({@code 0} est invalide)
@@ -250,24 +257,89 @@ public final class SimCommandStream {
             float[] rotation,
             BodyDescription body,
             byte[] phys) {
+        if (body == null) {
+            throw new IllegalArgumentException("la description du corps est requise");
+        }
+        return createAssembly(
+                handleIndex,
+                handleGeneration,
+                dimension,
+                position,
+                rotation,
+                List.of(new AssemblyBody(body, 0)),
+                0.0f,
+                false,
+                new byte[0],
+                phys);
+    }
+
+    /**
+     * Ajoute une commande {@code CREATE_ASSEMBLY} (§4.5, ADR-114 ; Option A d'ADR-115 ;
+     * ADR-151 D7).
+     *
+     * <p>Le payload est l'en-tête {@code CreateAssembly} (72 o), les corps (64 o chacun, le
+     * corps racine d'abord), les octets de la section {@code NODE} de l'asset complétés à 8,
+     * puis ceux de sa section {@code PHYS} — que l'appelant extrait de l'A3D
+     * ({@link dev.axion.asset.A3dSections}). Le natif range chaque collider dans le corps de son
+     * node, posé dans le repère de ce corps, crée tous les corps ou aucun, et applique à chacun
+     * sa description : masse, centre et inertie déclarés priment sur ceux des densités (R-622).
+     * Le type de l'en-tête est celui du corps racine ; les autres corps sont dynamiques.
+     *
+     * @param handleIndex rang du handle d'assembly (routage des corps)
+     * @param handleGeneration génération du handle ({@code 0} est invalide)
+     * @param dimension dimension d'accueil (R-610)
+     * @param position position monde de spawn {@code [x, y, z]}, en blocs
+     * @param rotation quaternion de spawn {@code [x, y, z, w]}
+     * @param bodies les corps, de 1 à {@link #MAX_ASSEMBLY_BODIES}, le corps racine d'abord
+     * @param assemblyMass masse de l'assembly en kg, répartie entre ses corps sans masse
+     *     déclarée ; {@code 0} : aucune
+     * @param selfCollision vrai si ses corps se touchent entre eux (§10.4)
+     * @param nodes octets de la section {@code NODE} ; vide pour un seul corps aux colliders pris
+     *     tels quels
+     * @param phys octets de la section {@code PHYS} (colliders compilés)
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream createAssembly(
+            int handleIndex,
+            int handleGeneration,
+            long dimension,
+            double[] position,
+            float[] rotation,
+            List<AssemblyBody> bodies,
+            float assemblyMass,
+            boolean selfCollision,
+            byte[] nodes,
+            byte[] phys) {
         if (position.length != 3) {
             throw new IllegalArgumentException("la position est un vecteur à 3 composantes");
         }
         if (rotation.length != 4) {
             throw new IllegalArgumentException("la rotation est un quaternion à 4 composantes");
         }
-        if (body == null) {
-            throw new IllegalArgumentException("la description du corps est requise");
+        if (bodies == null || bodies.isEmpty() || bodies.size() > MAX_ASSEMBLY_BODIES) {
+            throw new IllegalArgumentException("une assembly a de 1 à 64 corps (R-190)");
         }
-        if (phys == null) {
-            throw new IllegalArgumentException("les octets PHYS sont requis");
+        for (int i = 1; i < bodies.size(); i++) {
+            if (bodies.get(i).description().bodyType() != BODY_DYNAMIC) {
+                throw new IllegalArgumentException("un corps autre que la racine est dynamique");
+            }
         }
-        int bodyKind = body.bodyType();
+        if (!(Float.isFinite(assemblyMass) && assemblyMass >= 0.0f)) {
+            throw new IllegalArgumentException("la masse de l'assembly est finie et positive ou nulle");
+        }
+        if (nodes == null || phys == null) {
+            throw new IllegalArgumentException("les octets NODE et PHYS sont requis");
+        }
+        if (nodes.length == 0 && bodies.size() > 1) {
+            throw new IllegalArgumentException("plusieurs corps exigent la section NODE");
+        }
+        int bodyKind = bodies.get(0).description().bodyType();
 
-        // Le payload (en-tête + description + PHYS) est aligné sur 8 octets : le
-        // lecteur natif avance d'un multiple de 8 après chaque commande, pour lire
-        // la suivante en place (R-271, R-881).
-        int payloadLen = CREATE_ASSEMBLY_PHYS_OFFSET + phys.length;
+        // Le payload est aligné sur 8 octets : le lecteur natif avance d'un multiple de 8 après
+        // chaque commande, pour lire la suivante en place (R-271, R-881).
+        int physOffset = alignUp8(CREATE_ASSEMBLY_HEADER_BYTES + bodies.size() * ASSEMBLY_BODY_BYTES
+                + nodes.length);
+        int payloadLen = physOffset + phys.length;
         int padded = alignUp8(payloadLen);
         ByteBuffer command = ByteBuffer.allocate(COMMAND_HEADER_BYTES + padded)
                 .order(ByteOrder.LITTLE_ENDIAN);
@@ -286,9 +358,19 @@ public final class SimCommandStream {
         command.putFloat(rotation[2]);
         command.putFloat(rotation[3]);
         command.put((byte) bodyKind);
-        // Les 7 octets de _pad et le remplissage d'alignement restent à zéro.
-        command.position(COMMAND_HEADER_BYTES + CREATE_ASSEMBLY_HEADER_BYTES);
-        body.writeTo(command);
+        command.put((byte) (selfCollision ? CREATE_ASSEMBLY_SELF_COLLISION : 0));
+        command.putShort((short) bodies.size());
+        command.putShort((short) 0); // joint_count : les joints viennent avec C-34
+        command.putShort((short) 0); // _pad
+        command.putFloat(assemblyMass);
+        command.putInt(nodes.length);
+        for (AssemblyBody body : bodies) {
+            body.description().writeTo(command);
+            command.putInt(body.rootNode());
+            command.putInt(0); // réservé
+        }
+        command.put(nodes);
+        command.position(COMMAND_HEADER_BYTES + physOffset);
         command.put(phys);
         commands.add(command.array());
         return this;

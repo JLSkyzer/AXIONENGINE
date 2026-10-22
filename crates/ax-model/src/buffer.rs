@@ -147,8 +147,9 @@ impl BufferKind {
     /// comment lire ce qui suit. Elle change avec la disposition de la charge,
     /// et le lecteur refuse une version qu'il ne connaît pas (R-262, R-491).
     ///
-    /// - `SIM_OUT` = 1 (ADR-120) : `BodyState[state_count]` puis
-    ///   `BodyBounds[state_count]`, dans le même ordre ;
+    /// - `SIM_OUT` = 2 (ADR-151 D7) : `BodyState[state_count]` puis
+    ///   `BodyBounds[state_count]`, dans le même ordre (ADR-120) ; chaque état porte le
+    ///   node racine de son corps, une assembly en ayant plusieurs ;
     /// - `DEBUG` = 2 (amendement A1 d'ADR-121) : en-tête, `DebugRange[]` puis
     ///   `DebugSegment[]` — le schéma 1, à `DebugBody[]`, n'est plus produit ;
     /// - `ASSET_OUT` = 1 (ADR-122 §6) : selon la fonction qui l'a déposée, le
@@ -158,8 +159,8 @@ impl BufferKind {
     #[must_use]
     pub const fn schema_version(self) -> u32 {
         match self {
-            BufferKind::Debug => 2,
-            BufferKind::SimOut | BufferKind::AssetOut => 1,
+            BufferKind::Debug | BufferKind::SimOut => 2,
+            BufferKind::AssetOut => 1,
             _ => 0,
         }
     }
@@ -505,13 +506,13 @@ mod tests {
 
     #[test]
     fn versions_de_schema_des_kinds() {
-        // ADR-120 : SIM_OUT au schéma 1 (états puis emprises) ; A1 d'ADR-121 : DEBUG
+        // ADR-151 : SIM_OUT au schéma 2 (états à node, puis emprises) ; A1 d'ADR-121 : DEBUG
         // au schéma 2 (plages par overlay et repère) ; ADR-122 : ASSET_OUT au
         // schéma 1 (matériaux et textures). Les autres kinds ne sont pas versionnés.
         for kind in BufferKind::ALL {
             let attendue = match kind {
-                BufferKind::Debug => 2,
-                BufferKind::SimOut | BufferKind::AssetOut => 1,
+                BufferKind::Debug | BufferKind::SimOut => 2,
+                BufferKind::AssetOut => 1,
                 _ => 0,
             };
             assert_eq!(kind.schema_version(), attendue, "{kind}");

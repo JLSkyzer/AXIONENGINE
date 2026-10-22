@@ -6,8 +6,9 @@
 //! place ; leur disposition est figée et testée. Un opcode inconnu est ignoré
 //! (le lecteur saute son payload) — compatibilité avant.
 //!
-//! `CREATE_ASSEMBLY` (payload `AssemblyDesc`, DM-09) dépend de C-32 (colliders
-//! depuis l'asset) et n'est pas encore transcrit ; son opcode est réservé.
+//! `CREATE_ASSEMBLY` porte l'en-tête [`CreateAssembly`], ses corps, puis les sections
+//! `NODE` et `PHYS` de l'asset (ADR-115, ADR-130, ADR-151) ; les champs runtime de
+//! `AssemblyDesc` (DM-09) viendront avec leur consommateur.
 
 use super::geometry::WorldTransform;
 use super::handle::Handle;
@@ -81,8 +82,9 @@ pub struct CommandStreamHeader {
 impl CommandStreamHeader {
     /// Taille sur la frontière, en octets.
     pub const BYTES: usize = 8;
-    /// Version courante du protocole : 2 depuis l'index de matériau des tuiles (ADR-149).
-    pub const CURRENT_SCHEMA: u32 = 2;
+    /// Version courante du protocole : 3 depuis les assemblies à plusieurs corps (ADR-151
+    /// D7), après l'index de matériau des tuiles (2, ADR-149).
+    pub const CURRENT_SCHEMA: u32 = 3;
 }
 
 /// En-tête d'une commande : opcode et longueur de son payload (ADR-114).
@@ -171,41 +173,169 @@ impl SetDimensionEnv {
 }
 
 /// En-tête de `CREATE_ASSEMBLY` (IF-03, ADR-114 ; colliders en ligne, ADR-115 ;
-/// description du corps, ADR-130).
+/// description des corps, ADR-130 ; plusieurs corps, ADR-151 D7).
 ///
-/// Suivi **dans le même payload de commande** de la description DM-08 du corps
-/// ([`BodyDesc`], [`BodyDesc::WIRE_BYTES`] octets, à
-/// [`CreateAssembly::BODY_DESC_OFFSET`]), puis des octets de la section `PHYS` de
-/// l'asset (à [`CreateAssembly::PHYS_OFFSET`]) : Java les extrait de l'A3D et les
-/// envoie, le natif les décode (Option A). `BodyDesc::body_type` égale
-/// `body_kind`. Les champs runtime de `AssemblyDesc` (DM-09) — asset,
-/// definition, propriétaire, qualité — s'ajouteront avec leur consommateur (cache
-/// d'assets natif, suivi de propriété), pas avant.
+/// Suivi **dans le même payload** de `body_count` entrées [`AssemblyBodyEntry`], le corps
+/// racine d'abord ; puis des `node_bytes` octets de la section `NODE` de l'asset, complétés
+/// à 8 ; puis des octets de sa section `PHYS` jusqu'à la fin du payload. Java les extrait de
+/// l'A3D et les envoie, le natif les décode (Option A d'ADR-115) : chaque collider va au
+/// corps de son node, posé dans le repère de ce corps (ADR-151 D2). Sans section `NODE`
+/// (`node_bytes` nul), un seul corps est admis, et ses colliders sont pris tels quels.
+/// [`create_assembly_payload`] assemble ce payload. Les champs runtime de `AssemblyDesc`
+/// (DM-09) — asset, definition, propriétaire, qualité — s'ajouteront avec leur consommateur.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CreateAssembly {
-    /// Handle d'assembly attribué par Java, pour le routage du corps.
+    /// Handle d'assembly attribué par Java, pour le routage de ses corps.
     pub handle: Handle,
     /// Dimension d'accueil (R-610).
     pub dimension: u64,
-    /// Pose monde de spawn.
+    /// Pose monde de spawn : celle du repère de l'assembly, que suit le corps racine.
     pub spawn: WorldTransform,
-    /// Type de corps : `0` statique, `1` cinématique, `2` dynamique (miroir de
-    /// `BodyKind`).
+    /// Type du corps racine : `0` statique, `1` cinématique, `2` dynamique (miroir de
+    /// `BodyKind`). Les autres corps sont dynamiques.
     pub body_kind: u8,
+    /// Drapeaux, voir [`create_assembly_flags`].
+    pub flags: u8,
+    /// Nombre de corps, de 1 à [`MAX_ASSEMBLY_BODIES`] (R-190).
+    pub body_count: u16,
+    /// Nombre de joints ; nul tant que C-34 ne les transcrit pas (ADR-151, tranche 3).
+    pub joint_count: u16,
     /// Réservé, à zéro.
-    pub _pad: [u8; 7],
+    pub _pad: u16,
+    /// Masse de l'assembly, en kg, répartie entre ses corps sans masse déclarée ; `0` :
+    /// aucune (ADR-151 D2).
+    pub assembly_mass: f32,
+    /// Taille de la section `NODE` qui suit les corps, en octets, sans son complément.
+    pub node_bytes: u32,
 }
 
+/// Drapeaux de [`CreateAssembly`], champ `flags`.
+pub mod create_assembly_flags {
+    /// Les corps de l'assembly se touchent entre eux (`physics.self_collision`, §10.4).
+    pub const SELF_COLLISION: u8 = 1 << 0;
+}
+
+/// Plafond de corps par assembly (R-190, `E-3050`).
+pub const MAX_ASSEMBLY_BODIES: usize = 64;
+
 impl CreateAssembly {
-    /// Taille de l'en-tête sur la frontière, en octets (hors description et octets `PHYS`).
-    pub const BYTES: usize = 64;
+    /// Taille de l'en-tête sur la frontière, en octets.
+    pub const BYTES: usize = 72;
 
-    /// Décalage de la description DM-08 du corps dans le payload (ADR-130).
-    pub const BODY_DESC_OFFSET: usize = Self::BYTES;
+    /// Décalage de la première entrée de corps dans le payload.
+    pub const BODIES_OFFSET: usize = Self::BYTES;
 
-    /// Décalage des octets `PHYS` dans le payload, aligné sur 8.
-    pub const PHYS_OFFSET: usize = Self::BODY_DESC_OFFSET + BodyDesc::WIRE_BYTES;
+    /// Écrit l'en-tête en little-endian, dans sa disposition figée, à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.handle.index.to_le_bytes());
+        out.extend_from_slice(&self.handle.generation.to_le_bytes());
+        out.extend_from_slice(&self.dimension.to_le_bytes());
+        for value in self.spawn.position {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in self.spawn.rotation {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        out.push(self.body_kind);
+        out.push(self.flags);
+        out.extend_from_slice(&self.body_count.to_le_bytes());
+        out.extend_from_slice(&self.joint_count.to_le_bytes());
+        out.extend_from_slice(&self._pad.to_le_bytes());
+        out.extend_from_slice(&self.assembly_mass.to_le_bytes());
+        out.extend_from_slice(&self.node_bytes.to_le_bytes());
+    }
+
+    /// Lit un en-tête au début de `bytes` ; `None` s'il est tronqué.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..Self::BYTES)?;
+        let u16_at = |at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]);
+        let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
+        let f32_at = |at: usize| f32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
+        let f64_at = |at: usize| f64::from_le_bytes(bytes[at..at + 8].try_into().expect("borne"));
+        Some(Self {
+            handle: Handle::new(u32_at(0), u32_at(4)),
+            dimension: u64::from_le_bytes(bytes[8..16].try_into().expect("borne")),
+            spawn: WorldTransform {
+                position: [f64_at(16), f64_at(24), f64_at(32)],
+                rotation: [f32_at(40), f32_at(44), f32_at(48), f32_at(52)],
+            },
+            body_kind: bytes[56],
+            flags: bytes[57],
+            body_count: u16_at(58),
+            joint_count: u16_at(60),
+            _pad: u16_at(62),
+            assembly_mass: f32_at(64),
+            node_bytes: u32_at(68),
+        })
+    }
+}
+
+/// Un corps de `CREATE_ASSEMBLY` (ADR-151 D2, D7) : sa description DM-08 et son node racine.
+///
+/// Sur la frontière : la description ([`BodyDesc::WIRE_BYTES`] octets), le node racine
+/// (`u32`), puis 4 octets réservés, à zéro — 64 octets, alignés sur 8.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AssemblyBodyEntry {
+    /// Description DM-08 du corps (ADR-130).
+    pub desc: BodyDesc,
+    /// Node racine du corps dans l'asset. Ses descendants lui appartiennent, sauf ceux d'un
+    /// autre corps plus proche ; le corps racine prend aussi les nodes qu'aucun ne réclame.
+    pub root_node: u32,
+}
+
+impl AssemblyBodyEntry {
+    /// Taille d'une entrée sur la frontière, en octets.
+    pub const WIRE_BYTES: usize = 64;
+
+    /// Écrit l'entrée en little-endian, réservé compris, à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        self.desc.write_le(out);
+        out.extend_from_slice(&self.root_node.to_le_bytes());
+        out.extend_from_slice(&[0u8; 4]);
+    }
+
+    /// Lit une entrée au début de `bytes` ; `None` si elle est tronquée ou si sa description
+    /// ne se lit pas.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..Self::WIRE_BYTES)?;
+        let desc = BodyDesc::read_le(bytes)?;
+        let at = BodyDesc::WIRE_BYTES;
+        let root_node = u32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
+        Some(Self { desc, root_node })
+    }
+}
+
+/// Le payload complet de `CREATE_ASSEMBLY` : l'en-tête — son `body_count` et son
+/// `node_bytes` pris de `bodies` et `nodes` —, les corps, la section `NODE` complétée à 8,
+/// puis les octets `PHYS`.
+///
+/// # Panics
+///
+/// Si `bodies` ou `nodes` dépassent ce que leur champ d'en-tête peut dire.
+#[must_use]
+pub fn create_assembly_payload(
+    header: &CreateAssembly,
+    bodies: &[AssemblyBodyEntry],
+    nodes: &[u8],
+    phys: &[u8],
+) -> Vec<u8> {
+    let header = CreateAssembly {
+        body_count: u16::try_from(bodies.len()).expect("au plus 65 535 corps"),
+        node_bytes: u32::try_from(nodes.len()).expect("section NODE sous 4 Gio"),
+        ..*header
+    };
+    let mut out = Vec::new();
+    header.write_le(&mut out);
+    for body in bodies {
+        body.write_le(&mut out);
+    }
+    out.extend_from_slice(nodes);
+    out.resize(out.len().next_multiple_of(8), 0);
+    out.extend_from_slice(phys);
+    out
 }
 
 /// En-tête de `SET_WORLD_COLLISION` (C-38, R-640 ; ADR-117).
@@ -445,10 +575,62 @@ mod tests {
         assert_eq!(offset_of!(CreateAssembly, dimension), 8);
         assert_eq!(offset_of!(CreateAssembly, spawn), 16);
         assert_eq!(offset_of!(CreateAssembly, body_kind), 56);
-        // ADR-130 : la description du corps suit l'en-tête, puis PHYS, aligné sur 8.
-        assert_eq!(CreateAssembly::BODY_DESC_OFFSET, 64);
-        assert_eq!(CreateAssembly::PHYS_OFFSET, 120);
-        assert_eq!(CreateAssembly::PHYS_OFFSET % 8, 0);
+        assert_eq!(offset_of!(CreateAssembly, flags), 57);
+        assert_eq!(offset_of!(CreateAssembly, body_count), 58);
+        assert_eq!(offset_of!(CreateAssembly, joint_count), 60);
+        assert_eq!(offset_of!(CreateAssembly, assembly_mass), 64);
+        assert_eq!(offset_of!(CreateAssembly, node_bytes), 68);
+        // ADR-151 D7 : les corps suivent l'en-tête, chacun sur 64 octets alignés sur 8.
+        assert_eq!(CreateAssembly::BODIES_OFFSET % 8, 0);
+        assert_eq!(AssemblyBodyEntry::WIRE_BYTES, BodyDesc::WIRE_BYTES + 8);
+    }
+
+    #[test]
+    fn create_assembly_payload_aligne_ses_sections() {
+        // ADR-151 D7 : en-tête, corps, NODE complétée à 8, puis PHYS ; l'en-tête relu porte
+        // le nombre de corps et la taille de NODE pris des sections.
+        let header = CreateAssembly {
+            handle: Handle::new(7, 1),
+            dimension: 3,
+            spawn: WorldTransform {
+                position: [1.0, 2.0, 3.0],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+            },
+            body_kind: 2,
+            flags: create_assembly_flags::SELF_COLLISION,
+            body_count: 0,
+            joint_count: 0,
+            _pad: 0,
+            assembly_mass: 120.0,
+            node_bytes: 0,
+        };
+        let bodies = [
+            AssemblyBodyEntry {
+                desc: BodyDesc::undeclared(2),
+                root_node: 0,
+            },
+            AssemblyBodyEntry {
+                desc: BodyDesc::undeclared(2),
+                root_node: 4,
+            },
+        ];
+        let payload = create_assembly_payload(&header, &bodies, &[9; 13], &[5; 3]);
+
+        let read = CreateAssembly::read_le(&payload).unwrap();
+        assert_eq!(read.body_count, 2);
+        assert_eq!(read.node_bytes, 13);
+        assert_eq!(read.assembly_mass, 120.0);
+        assert_eq!(read.flags, create_assembly_flags::SELF_COLLISION);
+        assert_eq!(read.spawn, header.spawn);
+        let second = AssemblyBodyEntry::read_le(&payload[CreateAssembly::BODIES_OFFSET + 64..]);
+        assert_eq!(second.unwrap().root_node, 4);
+        let nodes = CreateAssembly::BODIES_OFFSET + 2 * AssemblyBodyEntry::WIRE_BYTES;
+        assert_eq!(&payload[nodes..nodes + 13], &[9; 13]);
+        assert_eq!(
+            &payload[nodes + 16..],
+            &[5; 3],
+            "PHYS aligné sur 8 après NODE"
+        );
     }
 
     #[test]
@@ -489,9 +671,9 @@ mod tests {
 
     #[test]
     fn dm_table_des_materiaux_disposition_figee() {
-        // ADR-149 : opcode 13, en-tête de 8 octets, schéma 2 du flux.
+        // ADR-149 : opcode 13, en-tête de 8 octets ; le flux est au schéma 3 depuis ADR-151.
         assert_eq!(opcode::SET_PHYSICS_MATERIALS, 13);
-        assert_eq!(CommandStreamHeader::CURRENT_SCHEMA, 2);
+        assert_eq!(CommandStreamHeader::CURRENT_SCHEMA, 3);
         assert_eq!(size_of::<SetPhysicsMaterials>(), SetPhysicsMaterials::BYTES);
         assert_eq!(align_of::<SetPhysicsMaterials>(), 4);
         assert_eq!(offset_of!(SetPhysicsMaterials, count), 0);

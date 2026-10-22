@@ -12,11 +12,16 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::a3d::encode_colliders;
+use ax_asset::a3d::{encode_colliders, encode_nodes};
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{opcode, CommandStreamHeader, CreateAssembly};
-use ax_model::dm::geometry::Transform;
+use ax_model::dm::commands::{
+    create_assembly_flags, create_assembly_payload, opcode, AssemblyBodyEntry, CommandStreamHeader,
+    CreateAssembly,
+};
+use ax_model::dm::geometry::{Transform, WorldTransform};
+use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, ColliderDesc, ColliderShape};
+use ax_model::dm::scene::{name_hash, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_shutdown, axion_sim_cancel,
     axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_OK,
@@ -77,11 +82,18 @@ fn command_stream(desc: BodyDesc) -> Vec<u8> {
         payload.extend_from_slice(&value.to_le_bytes()); // spawn.rotation
     }
     payload.push(2); // body_kind : dynamique
-    payload.resize(CreateAssembly::BYTES, 0); // remplissage
+    payload.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
+    let en_tete = CreateAssembly::read_le(&payload).expect("en-tête complet");
 
     // ADR-130 : la description DM-08 du corps, puis les octets PHYS.
-    desc.write_le(&mut payload);
-    assert_eq!(payload.len(), CreateAssembly::PHYS_OFFSET);
+    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
+    let mut payload = create_assembly_payload(
+        &en_tete,
+        &[AssemblyBodyEntry { desc, root_node: 0 }],
+        &[],
+        &[],
+    );
+    assert_eq!(payload.len() % 8, 0, "PHYS suit les corps, aligné sur 8");
     payload.extend_from_slice(&phys);
 
     let mut stream = CommandStreamHeader::CURRENT_SCHEMA.to_le_bytes().to_vec();
@@ -95,6 +107,17 @@ fn command_stream(desc: BodyDesc) -> Vec<u8> {
 /// Soumet le flux dans une session neuve, collecte un tick, et rend le nombre de
 /// corps collectés et la position monde du premier, s'il y en a un.
 fn soumettre(stream: &[u8]) -> (u32, Option<[f64; 3]>) {
+    let etats = etats(stream);
+    (
+        u32::try_from(etats.len()).unwrap(),
+        etats.first().map(|(_, position)| *position),
+    )
+}
+
+/// Soumet le flux dans une session neuve, collecte un tick, et rend le node et la position
+/// monde de chaque corps collecté (`BodyState` de 80 octets : position `f64` à l'offset 8,
+/// node à l'offset 76).
+fn etats(stream: &[u8]) -> Vec<(u32, [f64; 3])> {
     let _contexte = CONTEXTE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -147,9 +170,7 @@ fn soumettre(stream: &[u8]) -> (u32, Option<[f64; 3]>) {
         "collect"
     );
 
-    // Position monde du premier corps, relue dans SIM_OUT (BodyState de 80
-    // octets, position f64 à l'offset 8).
-    let mut position = None;
+    let mut etats = Vec::new();
     if result.state_count > 0 {
         let mut out = AxionBufferInfo {
             ptr: std::ptr::null_mut(),
@@ -162,14 +183,18 @@ fn soumettre(stream: &[u8]) -> (u32, Option<[f64; 3]>) {
         assert_eq!(code, AXION_OK, "acquire SimOut");
         let out_view =
             unsafe { std::slice::from_raw_parts(out.ptr, usize::try_from(out.capacity).unwrap()) };
-        let f = |offset: usize| {
-            f64::from_le_bytes(
-                out_view[HEADER_BYTES + offset..HEADER_BYTES + offset + 8]
-                    .try_into()
-                    .unwrap(),
-            )
-        };
-        position = Some([f(8), f(16), f(24)]);
+        for rang in 0..result.state_count as usize {
+            let base = HEADER_BYTES + rang * 80;
+            let f = |offset: usize| {
+                f64::from_le_bytes(
+                    out_view[base + offset..base + offset + 8]
+                        .try_into()
+                        .unwrap(),
+                )
+            };
+            let node = u32::from_le_bytes(out_view[base + 76..base + 80].try_into().unwrap());
+            etats.push((node, [f(8), f(16), f(24)]));
+        }
     }
 
     assert_eq!(unsafe { axion_sim_cancel(ctx) }, AXION_OK, "cancel");
@@ -177,7 +202,82 @@ fn soumettre(stream: &[u8]) -> (u32, Option<[f64; 3]>) {
     release_buffer(ctx, BufferKind::SimOut);
     release_buffer(ctx, BufferKind::Events);
     assert_eq!(unsafe { axion_shutdown(ctx) }, AXION_OK, "shutdown");
-    (result.state_count, position)
+    etats
+}
+
+/// Une assembly de deux corps : la racine de l'asset et un node `porte` décalé d'un
+/// demi-bloc en x, chacun portant une boîte d'un bloc — elles se chevauchent.
+fn deux_corps(flags: u8) -> Vec<u8> {
+    let node = |name: &str, parent: u32, x: f32, collider: u32| NodeDesc {
+        name_hash: name_hash(name),
+        parent,
+        local: Transform {
+            translation: [x, 0.0, 0.0],
+            ..Transform::identity()
+        },
+        flags: 0,
+        mesh: NONE_U32,
+        collider,
+        bone: NONE_U32,
+        part: NONE_U16,
+        region: NONE_U16,
+        lod_mask: u8::MAX,
+        state: 0,
+        mesh_count: 0,
+    };
+    let nodes = encode_nodes(
+        &[node("racine", NO_PARENT, 0.0, 0), node("porte", 0, 0.5, 1)],
+        &["racine".to_owned(), "porte".to_owned()],
+    )
+    .expect("encodage NODE");
+    let phys = encode_colliders(&[box_collider(), box_collider()], &[], &[]).expect("PHYS");
+    let header = CreateAssembly {
+        handle: Handle::new(7, 1),
+        dimension: 0,
+        spawn: WorldTransform {
+            position: [5.0, 10.0, -2.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        },
+        body_kind: 2,
+        flags,
+        body_count: 0,
+        joint_count: 0,
+        _pad: 0,
+        assembly_mass: 0.0,
+        node_bytes: 0,
+    };
+    let corps = |root_node| AssemblyBodyEntry {
+        desc: BodyDesc::undeclared(2),
+        root_node,
+    };
+    let payload = create_assembly_payload(&header, &[corps(0), corps(1)], &nodes, &phys);
+    let mut stream = CommandStreamHeader::CURRENT_SCHEMA.to_le_bytes().to_vec();
+    stream.extend_from_slice(&0u32.to_le_bytes());
+    stream.extend_from_slice(&opcode::CREATE_ASSEMBLY.to_le_bytes());
+    stream.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+    stream.extend_from_slice(&payload);
+    stream
+}
+
+/// L'écart en x entre les deux corps de [`deux_corps`] après un tick.
+fn ecart(flags: u8) -> f64 {
+    let etats = etats(&deux_corps(flags));
+    assert_eq!(
+        etats.iter().map(|(node, _)| *node).collect::<Vec<_>>(),
+        vec![0, 1],
+        "deux corps, chacun à son node"
+    );
+    etats[1].1[0] - etats[0].1[0]
+}
+
+#[test]
+fn adr151_une_assembly_de_deux_corps_nait_par_l_abi() {
+    // ADR-151 D7 : le second corps est posé par son node ; ses colliders ne touchent pas ceux de
+    // la racine (§10.4), sauf collisions internes déclarées.
+    let sans = ecart(0);
+    assert!((sans - 0.5).abs() < 1e-6, "aucun contact interne : {sans}");
+    let avec = ecart(create_assembly_flags::SELF_COLLISION);
+    assert!(avec > 0.5 + 1e-3, "collisions internes déclarées : {avec}");
 }
 
 #[test]

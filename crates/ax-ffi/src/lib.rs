@@ -31,6 +31,7 @@
 //!   par plateforme — ici parce que R-2120 confine `unsafe` à la frontière native.
 
 pub mod abi;
+mod assembly;
 pub mod asset_store;
 
 /// INV-08, R-480 (ADR-133 D2) : toute allocation de la bibliothèque native passe par

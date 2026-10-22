@@ -25,35 +25,30 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::config::{self, ConfigScope, ParsedValue};
 
+use crate::assembly;
 use crate::asset_store::{decode_render_asset, requested_sections};
 use crate::context;
-use ax_asset::a3d::{
-    announced_total_size, decode_colliders, A3dLimits, HEADER_BYTES as A3D_HEADER_BYTES,
-};
+use ax_asset::a3d::{announced_total_size, A3dLimits, HEADER_BYTES as A3D_HEADER_BYTES};
 use ax_asset::compile::CompileOptions;
 use ax_asset::import::{ImportLimits, SourceFormat};
 use ax_asset::options::AssetOptions;
 use ax_jobs::{CpuShare, JobBudgets, JobKind, Side, WorkerPolicy};
-use ax_math::{DVec3, Quat, Vec3};
+use ax_math::{DVec3, Vec3};
 use ax_model::budgets::Budget;
-use ax_model::dm::commands::CreateAssembly;
+use ax_model::dm::commands::create_assembly_flags;
 use ax_model::dm::debug::{debug_flags, encode_debug_payload, overlay};
-use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
-use ax_model::dm::physics::BodyDesc;
-use ax_model::dm::physics::{BodyBounds, BodyState, ColliderDesc};
-use ax_physics::{
-    BodyCollider, BodyKind, CollisionGroups, ContactMaterial, DegradationLevel, PhysicsConfig,
-    Shape, SimDriver, SimSettings, Stage,
-};
+use ax_model::dm::physics::{BodyBounds, BodyState};
+use ax_physics::{DegradationLevel, PhysicsConfig, SimDriver, SimSettings, Stage};
 
 /// Version de l'ABI.
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 6 depuis l'empreinte
-/// déterministe et la compression des charges utiles réseau (ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 6;
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 7 depuis les assemblies à
+/// plusieurs corps et leurs joints (ADR-151 D7), après l'empreinte déterministe et la
+/// compression des charges utiles réseau (6, ADR-150 D4, D5).
+pub const AXION_ABI_VERSION: u32 = 7;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -1559,133 +1554,34 @@ fn submit_commands(session: &mut context::Session, command_count: u32) -> i32 {
     }
 }
 
-/// Applique une commande `CREATE_ASSEMBLY` (Option A, ADR-115 ; ADR-130) : lit
-/// l'en-tête et la description DM-08 du corps, décode les colliders de la section
-/// `PHYS` jointe, les convertit en forme runtime, crée le corps dans le pilote et
-/// lui applique sa description.
+/// Applique un `CREATE_ASSEMBLY` (ADR-151 D7) : le module `assembly` décode l'en-tête, les
+/// corps et les sections `NODE` et `PHYS`, range chaque collider dans le corps de son node,
+/// puis le pilote crée tous les corps ou aucun.
 ///
-/// Les groupes de collision (R-980) sont ceux des colliders : la definition les
-/// déclare pour tout le corps, et Java les écrit sur chacun ; des colliders qui ne
-/// s'accordent pas sont refusés plutôt que réconciliés au hasard.
-///
-/// Un payload trop court, une description invalide ou d'un autre type de corps
-/// que l'en-tête, une section `PHYS` illisible, une forme non convertible ou des
-/// groupes discordants font **abandonner cette assembly** sans créer de corps — jamais de panique ni de
-/// corps à moitié formé. La commande a déjà été lue par
+/// Un payload trop court, une description invalide, un corps d'un type inattendu, une
+/// section illisible, une forme non convertible, une échelle non uniforme sur la chaîne
+/// d'un collider ou des groupes discordants font **abandonner cette assembly** sans créer
+/// de corps — jamais de panique ni de corps à moitié formé. La commande a déjà été lue par
 /// `create_assembly_payloads`, qui a validé les bornes du flux.
 fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
-    if payload.len() < CreateAssembly::PHYS_OFFSET {
-        return;
-    }
-    let Some(desc) = BodyDesc::read_le(&payload[CreateAssembly::BODY_DESC_OFFSET..]) else {
+    let Some(request) = assembly::decode(payload) else {
         return;
     };
-    if desc.validate().is_err() || desc.body_type != payload[56] {
-        return;
-    }
-    let handle = Handle::new(read_le_u32(payload, 0), read_le_u32(payload, 4));
-    let dimension = read_le_u64(payload, 8);
-    let spawn = WorldTransform {
-        position: [
-            read_le_f64(payload, 16),
-            read_le_f64(payload, 24),
-            read_le_f64(payload, 32),
-        ],
-        rotation: [
-            read_le_f32(payload, 40),
-            read_le_f32(payload, 44),
-            read_le_f32(payload, 48),
-            read_le_f32(payload, 52),
-        ],
-    };
-    // Validée, la description ne connaît que 0, 1 et 2.
-    let kind = match desc.body_type {
-        0 => BodyKind::Static,
-        1 => BodyKind::Kinematic,
-        _ => BodyKind::Dynamic,
-    };
-
-    let (colliders, points, children) =
-        match decode_colliders(&payload[CreateAssembly::PHYS_OFFSET..]) {
-            Ok(decoded) => decoded,
-            Err(_) => return,
-        };
-    let Some(runtime_colliders) = body_colliders(&colliders, &points, &children) else {
-        return;
-    };
-    let Some(groups) = body_groups(&colliders) else {
-        return;
-    };
-    physics.create_assembly_with_desc(
-        dimension,
-        handle,
-        spawn,
-        kind,
-        &runtime_colliders,
-        &desc,
-        groups,
+    let header = request.header;
+    physics.create_assembly_bodies(
+        header.dimension,
+        header.handle,
+        header.spawn,
+        &request.bodies,
+        request.groups,
+        header.assembly_mass,
+        header.flags & create_assembly_flags::SELF_COLLISION != 0,
     );
-}
-
-/// Les groupes de collision d'un corps (R-980) : appartenance et filtre communs à
-/// tous ses colliders, `None` s'ils diffèrent d'un collider à l'autre ou s'il n'y
-/// en a aucun.
-fn body_groups(colliders: &[ColliderDesc]) -> Option<CollisionGroups> {
-    let first = colliders.first()?;
-    colliders
-        .iter()
-        .all(|c| c.group == first.group && c.mask == first.mask)
-        .then(|| CollisionGroups::from_masks(first.group, first.mask))
-}
-
-/// Convertit les colliders compilés (DM-06) en colliders runtime, chacun avec sa
-/// densité et sa pose locale : rapier en tire masse, centre de masse et inertie
-/// (R-622). `None` si aucun collider, ou si l'un porte une forme non convertible
-/// (indexée/interdite) — l'assembly entière est alors abandonnée, jamais formée à
-/// moitié.
-fn body_colliders(
-    colliders: &[ColliderDesc],
-    points: &[[f32; 3]],
-    children: &[ColliderDesc],
-) -> Option<Vec<BodyCollider>> {
-    if colliders.is_empty() {
-        return None;
-    }
-    let mut runtime = Vec::with_capacity(colliders.len());
-    for collider in colliders {
-        let shape = Shape::from_collider_shape(&collider.shape, points, children).ok()?;
-        runtime.push(BodyCollider {
-            shape,
-            density: collider.density,
-            // L'index `collider.material` (DM-06), que le pilote résout par la table DM-07 de
-            // la session (ADR-149) — à la création, puis à chaque table reçue.
-            material: ContactMaterial::unresolved(collider.material),
-            translation: Vec3::from_array(collider.local.translation),
-            rotation: Quat::from_array(collider.local.rotation),
-        });
-    }
-    Some(runtime)
 }
 
 /// Durée écoulée depuis `start`, en nanosecondes, saturée.
 fn elapsed_ns(start: std::time::Instant) -> u64 {
     u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX)
-}
-
-fn read_le_u32(bytes: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne vérifiée"))
-}
-
-fn read_le_u64(bytes: &[u8], at: usize) -> u64 {
-    u64::from_le_bytes(bytes[at..at + 8].try_into().expect("borne vérifiée"))
-}
-
-fn read_le_f32(bytes: &[u8], at: usize) -> f32 {
-    f32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne vérifiée"))
-}
-
-fn read_le_f64(bytes: &[u8], at: usize) -> f64 {
-    f64::from_le_bytes(bytes[at..at + 8].try_into().expect("borne vérifiée"))
 }
 
 /// Récolte le résultat d'un tick (IF-03) : avance la simulation, dépose les

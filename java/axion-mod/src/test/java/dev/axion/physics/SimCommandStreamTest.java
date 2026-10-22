@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -102,13 +103,13 @@ class SimCommandStreamTest {
         assertEquals(1, stream.count());
         byte[] bytes = stream.toBytes();
         // en-tête de flux (8) + en-tête de commande (8) + payload aligné sur 8 :
-        // align8(64 + 56 + 5) = 128 (ADR-130 : la description du corps suit l'en-tête).
-        assertEquals(8 + 8 + 128, bytes.length);
+        // align8(72 + 64 + 5) = 144 (ADR-151 D7 : un corps de 64 o suit l'en-tête de 72 o).
+        assertEquals(8 + 8 + 144, bytes.length);
 
         ByteBuffer b = wrap(bytes);
         assertEquals(SimCommandStream.OP_CREATE_ASSEMBLY, b.getInt(8), "opcode");
-        // payload_len annoncé = en-tête (64) + description (56) + PHYS (5), sans le remplissage.
-        assertEquals(64 + 56 + 5, b.getInt(12), "payload_len");
+        // payload_len annoncé = en-tête (72) + corps (64) + PHYS (5), sans le remplissage.
+        assertEquals(72 + 64 + 5, b.getInt(12), "payload_len");
         // En-tête CreateAssembly, payload à l'offset 16.
         assertEquals(7, b.getInt(16), "handle.index");
         assertEquals(1, b.getInt(20), "handle.generation");
@@ -121,17 +122,87 @@ class SimCommandStreamTest {
         assertEquals(0.0f, b.getFloat(64), "spawn.rotation.z");
         assertEquals(1.0f, b.getFloat(68), "spawn.rotation.w");
         assertEquals(SimCommandStream.BODY_DYNAMIC, b.get(72), "body_kind");
-        // La description DM-08 suit l'en-tête (offset 16 + 64 = 80) : type de corps, puis rien de
-        // déclaré — masse 0, centre NaN, gravité entière, plafonds de R-180, réservé nul.
-        assertEquals(SimCommandStream.BODY_DYNAMIC, b.get(80), "body_type");
-        assertEquals(0.0f, b.getFloat(84), "mass");
-        assertTrue(Float.isNaN(b.getFloat(88)), "center_of_mass.x");
-        assertEquals(1.0f, b.getFloat(120), "gravity_scale");
-        assertEquals(300.0f, b.getFloat(124), "max_linear_vel");
-        assertEquals(100.0f, b.getFloat(128), "max_angular_vel");
-        assertEquals(0, b.getInt(132), "réservé");
-        // Les octets PHYS suivent la description (offset 16 + 120 = 136).
-        assertArrayEquals(phys, Arrays.copyOfRange(bytes, 136, 141), "octets PHYS");
+        assertEquals(0, b.get(73), "flags");
+        assertEquals(1, b.getShort(74), "body_count");
+        assertEquals(0, b.getShort(76), "joint_count");
+        assertEquals(0.0f, b.getFloat(80), "assembly_mass");
+        assertEquals(0, b.getInt(84), "node_bytes : un seul corps, sans section NODE");
+        // Le corps suit l'en-tête (offset 16 + 72 = 88) : sa description DM-08 — type, puis rien
+        // de déclaré, masse 0, centre NaN, gravité entière, plafonds de R-180 —, son node racine.
+        assertEquals(SimCommandStream.BODY_DYNAMIC, b.get(88), "body_type");
+        assertEquals(0.0f, b.getFloat(92), "mass");
+        assertTrue(Float.isNaN(b.getFloat(96)), "center_of_mass.x");
+        assertEquals(1.0f, b.getFloat(128), "gravity_scale");
+        assertEquals(300.0f, b.getFloat(132), "max_linear_vel");
+        assertEquals(100.0f, b.getFloat(136), "max_angular_vel");
+        assertEquals(0, b.getInt(140), "réservé de la description");
+        assertEquals(0, b.getInt(144), "root_node");
+        assertEquals(0, b.getInt(148), "réservé du corps");
+        // Les octets PHYS suivent le corps (offset 16 + 136 = 152).
+        assertArrayEquals(phys, Arrays.copyOfRange(bytes, 152, 157), "octets PHYS");
+    }
+
+    @Test
+    void encodeUneAssemblyDePlusieursCorps() {
+        // ADR-151 D7 : deux corps, la section NODE complétée à 8, puis PHYS ; drapeau et masse
+        // de l'assembly dans l'en-tête.
+        byte[] nodes = new byte[13];
+        Arrays.fill(nodes, (byte) 9);
+        byte[] phys = {1, 2, 3, 4, 5};
+        SimCommandStream stream = new SimCommandStream()
+                .createAssembly(
+                        7,
+                        1,
+                        0L,
+                        new double[] {0, 64, 0},
+                        new float[] {0, 0, 0, 1},
+                        List.of(
+                                new SimCommandStream.AssemblyBody(
+                                        BodyDescription.undeclared(SimCommandStream.BODY_STATIC), 0),
+                                new SimCommandStream.AssemblyBody(
+                                        BodyDescription.undeclared(SimCommandStream.BODY_DYNAMIC), 4)),
+                        120.0f,
+                        true,
+                        nodes,
+                        phys);
+
+        byte[] bytes = stream.toBytes();
+        ByteBuffer b = wrap(bytes);
+        // payload = 72 + 2 × 64 + align8(13) + 5 = 221, aligné à 224.
+        assertEquals(221, b.getInt(12), "payload_len");
+        assertEquals(8 + 8 + 224, bytes.length);
+        assertEquals(SimCommandStream.BODY_STATIC, b.get(72), "body_kind : celui du corps racine");
+        assertEquals(SimCommandStream.CREATE_ASSEMBLY_SELF_COLLISION, b.get(73), "flags");
+        assertEquals(2, b.getShort(74), "body_count");
+        assertEquals(120.0f, b.getFloat(80), "assembly_mass");
+        assertEquals(13, b.getInt(84), "node_bytes");
+        assertEquals(SimCommandStream.BODY_DYNAMIC, b.get(16 + 72 + 64), "type du second corps");
+        assertEquals(4, b.getInt(16 + 72 + 64 + 56), "root_node du second corps");
+        assertArrayEquals(nodes, Arrays.copyOfRange(bytes, 216, 229), "section NODE");
+        assertArrayEquals(phys, Arrays.copyOfRange(bytes, 232, 237), "PHYS aligné sur 8 après NODE");
+    }
+
+    @Test
+    void createAssemblyRefuseUneAssemblyMalFormee() {
+        BodyDescription dynamique = BodyDescription.undeclared(SimCommandStream.BODY_DYNAMIC);
+        BodyDescription cinematique = BodyDescription.undeclared(SimCommandStream.BODY_KINEMATIC);
+        SimCommandStream.AssemblyBody racine = new SimCommandStream.AssemblyBody(dynamique, 0);
+        double[] position = {0, 0, 0};
+        float[] rotation = {0, 0, 0, 1};
+        byte[] nodes = {1};
+        // Aucun corps ; un second corps non dynamique ; plusieurs corps sans NODE ; masse négative.
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream()
+                .createAssembly(1, 1, 0L, position, rotation, List.of(), 0f, false, nodes, nodes));
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream()
+                .createAssembly(1, 1, 0L, position, rotation,
+                        List.of(racine, new SimCommandStream.AssemblyBody(cinematique, 1)),
+                        0f, false, nodes, nodes));
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream()
+                .createAssembly(1, 1, 0L, position, rotation,
+                        List.of(racine, new SimCommandStream.AssemblyBody(dynamique, 1)),
+                        0f, false, new byte[0], nodes));
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream()
+                .createAssembly(1, 1, 0L, position, rotation, List.of(racine), -1f, false, nodes, nodes));
     }
 
     @Test
@@ -146,11 +217,11 @@ class SimCommandStreamTest {
                         new double[] {0, 0, 0},
                         new float[] {0, 0, 0, 1},
                         BodyDescription.undeclared(SimCommandStream.BODY_STATIC),
-                        new byte[] {1, 2, 3}) // 64 + 56 + 3 -> align8 = 128
+                        new byte[] {1, 2, 3}) // 72 + 64 + 3 -> align8 = 144
                 .setDimensionEnv(0L, new float[] {0, -9.81f, 0}, new float[] {0, 0, 0}, 0, 0, false);
 
         byte[] bytes = stream.toBytes();
-        int second = 8 + 8 + 128; // en-tête flux + en-tête cmd + payload aligné
+        int second = 8 + 8 + 144; // en-tête flux + en-tête cmd + payload aligné
         assertEquals(0, second % 8, "la seconde commande est alignée sur 8");
         assertEquals(
                 SimCommandStream.OP_SET_DIMENSION_ENV,
@@ -402,14 +473,15 @@ class SimCommandStreamTest {
 
     @Test
     void encodeUneCommandeSetPhysicsMaterials() {
-        // ADR-149 : l'en-tête (nombre, réservé), puis les entrées DM-07 telles quelles ; schéma 2.
+        // ADR-149 : l'en-tête (nombre, réservé), puis les entrées DM-07 telles quelles ; le flux est
+        // au schéma courant, 3 depuis ADR-151.
         byte[] entries = new byte[2 * SimCommandStream.PHYSICS_MATERIAL_BYTES];
         entries[8] = 0x11;
         entries[SimCommandStream.PHYSICS_MATERIAL_BYTES + 8] = 0x22;
         byte[] bytes = new SimCommandStream().setPhysicsMaterials(entries, 2).toBytes();
         assertEquals(8 + 8 + 8 + entries.length, bytes.length);
         ByteBuffer b = wrap(bytes);
-        assertEquals(2, b.getInt(0), "schéma 2");
+        assertEquals(SimCommandStream.CURRENT_SCHEMA, b.getInt(0), "schéma du flux");
         assertEquals(SimCommandStream.OP_SET_PHYSICS_MATERIALS, b.getInt(8), "opcode");
         assertEquals(13, SimCommandStream.OP_SET_PHYSICS_MATERIALS);
         assertEquals(8 + entries.length, b.getInt(12), "payload_len");
