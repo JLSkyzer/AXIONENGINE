@@ -19,11 +19,13 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Le schéma de definition 1 (PARTIE 23.4), lu selon l'ADR-109.
+ * Les schémas de definition 1 (PARTIE 23.4, lu selon l'ADR-109) et 2 (ADR-151 D3).
  *
  * <p>Chaque liste fermée, plage et plafond vient d'un passage du cahier des
  * charges, cité à côté. Un champ sans contrainte écrite n'est vérifié que par
- * son type.
+ * son type. Le schéma 2 est le schéma 1 et les réglages des joints de C-34, la masse
+ * d'un corps et les collisions internes d'une assembly ; une definition {@code schema: 1}
+ * reste lue comme avant.
  */
 final class SchemaOne {
 
@@ -68,21 +70,33 @@ final class SchemaOne {
             new SourceFamily("var", true, null, Set.of()));
 
     /** Racine du schéma 1. */
-    static final SchemaNode ROOT = root();
+    static final SchemaNode ROOT = root(1);
+
+    /** Racine du schéma 2 (ADR-151 D3). */
+    static final SchemaNode ROOT_TWO = root(2);
 
     private SchemaOne() {}
 
-    private static SchemaNode root() {
+    /**
+     * {@return la racine du schéma {@code version}}
+     *
+     * @param version 1 ou 2
+     */
+    static SchemaNode rootOf(int version) {
+        return version == 2 ? ROOT_TWO : ROOT;
+    }
+
+    private static SchemaNode root(int version) {
         return obj()
                 // Vérifiés avant le parcours, avec leurs codes propres (R-1780).
                 .req("schema", any())
                 .req("asset", any())
                 .req("kind", any())
-                .opt("physics", physics())
+                .opt("physics", physics(version))
                 // R-190 : 64 bodies, 128 joints, 64 parts, 16 sièges, 8 ensembles
                 // de particules par assembly. C-22 : 256 liaisons, 128 animations.
-                .opt("bodies", cap(body(), 64))
-                .opt("joints", cap(joint(), 128))
+                .opt("bodies", cap(body(version), 64))
+                .opt("joints", cap(version == 2 ? jointTwo() : joint(), 128))
                 // R-1052 : de 1 à 32 roues.
                 .opt("wheels", new Arr(wheel(), 1, 32, false))
                 .opt("powertrain", powertrain())
@@ -113,8 +127,13 @@ final class SchemaOne {
     }
 
     /** DM-08. */
-    private static SchemaNode physics() {
-        return obj()
+    private static SchemaNode physics(int version) {
+        ObjBuilder physics = obj();
+        if (version == 2) {
+            // §10.4, ADR-151 D2 : les corps d'une assembly se touchent entre eux.
+            physics.opt("self_collision", bool());
+        }
+        return physics
                 // DM-08 (ADR-130) : masse déclarée dans [0.001, 1e6] kg comme celle d'une part,
                 // amortissements positifs ou nuls ; une valeur hors domaine se refuse ici, avec son
                 // chemin, plutôt qu'à la frontière.
@@ -131,12 +150,16 @@ final class SchemaOne {
                 .build();
     }
 
-    private static SchemaNode body() {
-        return obj()
+    private static SchemaNode body(int version) {
+        ObjBuilder body = obj()
                 .req("name", declares(NameCategory.BODY))
                 .opt("root_node", refers(NameCategory.NODE))
-                .opt("colliders", text())
-                .build();
+                .opt("colliders", text());
+        if (version == 2) {
+            // ADR-151 D2 : la masse d'un corps, dans le domaine de celle d'une part.
+            body.opt("mass", new Num(0.001, 1e6, false, false));
+        }
+        return body.build();
     }
 
     /** C-34. */
@@ -152,6 +175,51 @@ final class SchemaOne {
                 .opt("motor", obj().opt("speed", number()).opt("max_force", number()).build())
                 .opt("break_force", number())
                 .opt("jam_curve", curve())
+                .build();
+    }
+
+    /**
+     * C-34, schéma 2 (ADR-151 D3) : tous les réglages de la fiche 5.26. Unités de R-102 ;
+     * {@code anchor} et {@code axis} dans le repère du node {@code b_node} ; un réglage absent
+     * n'agit pas. Ce que la forme seule ne dit pas — un réglage propre à un autre type, des
+     * limites croisées — se juge à la compilation du joint.
+     */
+    private static SchemaNode jointTwo() {
+        SchemaNode positive = new Num(0, Double.POSITIVE_INFINITY, false, false);
+        SchemaNode strictlyPositive = new Num(0, Double.POSITIVE_INFINITY, true, false);
+        return obj()
+                .req("name", declares(NameCategory.JOINT))
+                .opt("type", oneOf("fixed", "revolute", "prismatic", "spherical", "generic",
+                        "rope", "spring"))
+                .opt("a", refers(NameCategory.BODY))
+                .opt("b_node", refers(NameCategory.NODE))
+                .opt("anchor", vec3())
+                .opt("axis", vec3())
+                .opt("limits", pair())
+                .opt("motor", obj()
+                        .opt("speed", number())
+                        .opt("target", number())
+                        .opt("stiffness", positive)
+                        .opt("damping", positive)
+                        .opt("max_force", positive)
+                        .build())
+                .opt("friction", positive)
+                .opt("break", obj()
+                        .opt("force", strictlyPositive)
+                        .opt("torque", strictlyPositive)
+                        .opt("energy", strictlyPositive)
+                        .build())
+                .opt("jam", obj().opt("curve", curve()).opt("friction", positive).build())
+                .opt("collide", bool())
+                // generic : six axes, x, y, z linéaires puis x, y, z angulaires.
+                .opt("axes", new Arr(obj()
+                        .req("mode", oneOf("locked", "free", "limited"))
+                        .opt("limits", pair())
+                        .build(), 6, 6, false))
+                .opt("max_length", strictlyPositive)
+                .opt("rest_length", positive)
+                .opt("stiffness", positive)
+                .opt("damping", positive)
                 .build();
     }
 

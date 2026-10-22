@@ -56,6 +56,9 @@ final class DefinitionChecker {
             new EnumMap<>(NameCategory.class);
     private final List<Reference> references = new ArrayList<>();
 
+    /** Version du schéma lu. */
+    private int version = 1;
+
     private DefinitionChecker() {}
 
     /**
@@ -66,7 +69,10 @@ final class DefinitionChecker {
      */
     static List<Issue> check(JsonObject root) {
         DefinitionChecker checker = new DefinitionChecker();
-        checker.walk(SchemaOne.ROOT, root, "$");
+        // Le numéro a déjà été jugé (R-1780) : 2 lit le schéma 2 (ADR-151 D3), tout le reste le 1.
+        checker.version = root.get("schema") instanceof com.google.gson.JsonPrimitive schema
+                && schema.isNumber() && schema.getAsDouble() == 2 ? 2 : 1;
+        checker.walk(SchemaOne.rootOf(checker.version), root, "$");
         checker.resolve();
         checker.checkLinks(root);
         checker.checkZoneParents(root);
@@ -114,7 +120,7 @@ final class DefinitionChecker {
             String child = StrictJson.member(path, member.getKey());
             Field field = object.fields().get(member.getKey());
             if (field == null) {
-                invalid(child, "clé inconnue du schéma 1");
+                invalid(child, "clé inconnue du schéma " + version);
             } else {
                 walk(field.node(), member.getValue(), child);
             }

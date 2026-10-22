@@ -63,6 +63,56 @@ class PublishedSchemaTest {
     }
 
     @Test
+    @DisplayName("T-284 : docs/schema/definition-2.json est le rendu exact du schéma 2 (ADR-151 D3)")
+    void schemaDeuxPublieAJour() throws IOException {
+        Path file = property("axion.schema2.file");
+        String rendu = SchemaExport.render(2);
+
+        if (Boolean.getBoolean("axion.schema.update")) {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, rendu, StandardCharsets.UTF_8);
+        }
+
+        assertTrue(Files.isReadable(file), () -> "schéma publié absent : " + file);
+        String publie = Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        assertEquals(rendu, publie,
+                "le schéma 2 publié a divergé du validateur ; le régénérer avec :\n"
+                        + "  ./gradlew :axion-mod:test --tests dev.axion.definition.PublishedSchemaTest"
+                        + " -Daxion.schema.update=true");
+    }
+
+    @Test
+    @DisplayName("ADR-151 D3 : le schéma 2 porte les réglages de C-34, la masse d'un corps et les collisions internes")
+    void contraintesDuSchemaDeux() {
+        JsonObject document = JsonParser.parseString(SchemaExport.render(2)).getAsJsonObject();
+        JsonObject properties = document.getAsJsonObject("properties");
+        assertEquals(2, properties.getAsJsonObject("schema").get("const").getAsInt());
+        assertTrue(properties.getAsJsonObject("physics").getAsJsonObject("properties").has("self_collision"));
+        assertTrue(properties.getAsJsonObject("bodies").getAsJsonObject("items").getAsJsonObject("properties")
+                .has("mass"));
+
+        JsonObject joint = properties.getAsJsonObject("joints").getAsJsonObject("items")
+                .getAsJsonObject("properties");
+        for (String champ : new String[] {"anchor", "friction", "break", "jam", "collide", "axes",
+                "max_length", "rest_length", "stiffness", "damping"}) {
+            assertTrue(joint.has(champ), champ);
+        }
+        assertFalse(joint.has("break_force"), "le schéma 2 écrit break.force");
+        assertFalse(joint.has("jam_curve"), "le schéma 2 écrit jam.curve");
+        JsonObject motor = joint.getAsJsonObject("motor").getAsJsonObject("properties");
+        assertTrue(motor.has("target") && motor.has("stiffness") && motor.has("damping"));
+        JsonObject axes = joint.getAsJsonObject("axes");
+        assertEquals(6, axes.get("minItems").getAsInt());
+        assertEquals(6, axes.get("maxItems").getAsInt());
+
+        // Le schéma 1 ne change pas.
+        JsonObject un = JsonParser.parseString(SchemaExport.render(1)).getAsJsonObject()
+                .getAsJsonObject("properties");
+        assertFalse(un.getAsJsonObject("joints").getAsJsonObject("items").getAsJsonObject("properties")
+                .has("friction"));
+    }
+
+    @Test
     @DisplayName("T-284 : le schéma publié porte les contraintes du validateur")
     void contraintesPubliees() {
         JsonObject document = JsonParser.parseString(SchemaExport.render()).getAsJsonObject();

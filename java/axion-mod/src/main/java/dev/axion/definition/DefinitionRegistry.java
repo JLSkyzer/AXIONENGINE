@@ -50,8 +50,11 @@ public final class DefinitionRegistry {
      */
     public static final String EXAMPLES = "axion:" + PREFIX + "example/";
 
-    /** Seule version de schéma lue (R-1780). */
+    /** Schéma de definition 1 (R-1780, ADR-109). */
     public static final int SCHEMA = 1;
+
+    /** Schéma de definition 2 (ADR-151 D3) : les réglages des joints de C-34. */
+    public static final int SCHEMA_TWO = 2;
 
     /** Espace de noms d'une {@code ResourceLocation}. */
     static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]+");
@@ -210,7 +213,7 @@ public final class DefinitionRegistry {
         String asset = assetOf(root, rules);
         AssemblyKind kind = kindOf(root, rules);
 
-        // Étapes 2 et 3 : structure du schéma 1 et références internes.
+        // Étapes 2 et 3 : structure du schéma et références internes.
         List<DefinitionChecker.Issue> issues = DefinitionChecker.check(root);
         if (!issues.isEmpty()) {
             throw DefinitionException.fromIssues(issues);
@@ -290,12 +293,13 @@ public final class DefinitionRegistry {
         if (number == null) {
             throw DefinitionException.invalid("$.schema", "attendu un entier");
         }
-        if (number.compareTo(BigDecimal.valueOf(SCHEMA)) != 0) {
+        if (number.compareTo(BigDecimal.valueOf(SCHEMA)) != 0
+                && number.compareTo(BigDecimal.valueOf(SCHEMA_TWO)) != 0) {
             throw DefinitionException.unknownSchema(
-                    "$.schema", "version " + number.toPlainString() + " inconnue, seule "
-                            + SCHEMA + " est lue");
+                    "$.schema", "version " + number.toPlainString() + " inconnue, seules "
+                            + SCHEMA + " et " + SCHEMA_TWO + " sont lues");
         }
-        return SCHEMA;
+        return number.intValueExact();
     }
 
     /**

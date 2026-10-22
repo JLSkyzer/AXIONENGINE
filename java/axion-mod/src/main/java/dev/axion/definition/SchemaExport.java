@@ -55,21 +55,38 @@ public final class SchemaExport {
      * le fichier se termine par un saut de ligne.
      */
     public static String render() {
+        return render(DefinitionRegistry.SCHEMA);
+    }
+
+    /**
+     * {@return le schéma de definition {@code version} publié, en JSON indenté} Le schéma 2
+     * (ADR-151 D3) se publie dans {@code docs/schema/definition-2.json}.
+     *
+     * @param version 1 ou 2
+     */
+    public static String render(int version) {
         return new GsonBuilder()
                 .setPrettyPrinting()
                 .disableHtmlEscaping()
                 .create()
-                .toJson(document()) + "\n";
+                .toJson(document(version)) + "\n";
     }
 
-    /** {@return le schéma publié, sous forme d'arbre} */
+    /** {@return le schéma 1 publié, sous forme d'arbre} */
     static JsonObject document() {
+        return document(DefinitionRegistry.SCHEMA);
+    }
+
+    /** {@return le schéma {@code version} publié, sous forme d'arbre} */
+    static JsonObject document(int version) {
         JsonObject document = new JsonObject();
         document.addProperty("$schema", DIALECT);
-        document.addProperty("title", "AXION ENGINE — definition, schéma 1");
+        document.addProperty("title", "AXION ENGINE — definition, schéma " + version);
         document.addProperty("description",
-                "Forme publiée du schéma de definition 1 (R-1783), rendue depuis le validateur "
-                        + "d'AXION et lue selon l'ADR-109. AXION vérifie en plus, au chargement, "
+                "Forme publiée du schéma de definition " + version + " (R-1783), rendue depuis le "
+                        + "validateur d'AXION et lue selon l'ADR-109"
+                        + (version == 2 ? " et l'ADR-151 D3" : "")
+                        + ". AXION vérifie en plus, au chargement, "
                         + "ce que JSON Schema n'exprime pas : unicité des noms par catégorie "
                         + "(x-axion-declares), résolution des références internes "
                         + "(x-axion-refers), liaison entre deux parts distinctes, absence de "
@@ -80,7 +97,7 @@ public final class SchemaExport {
                         + "(x-axion-code), une version de schéma inconnue E-7003, toute autre "
                         + "faute E-7001.");
 
-        JsonObject root = node(SchemaOne.ROOT);
+        JsonObject root = node(SchemaOne.rootOf(version));
         for (Map.Entry<String, JsonElement> member : root.entrySet()) {
             document.add(member.getKey(), member.getValue());
         }
@@ -89,7 +106,7 @@ public final class SchemaExport {
         // codes propres : l'arbre les porte comme valeurs quelconques, le schéma
         // publié leur rend leur forme.
         JsonObject properties = document.getAsJsonObject("properties");
-        properties.add("schema", schemaField());
+        properties.add("schema", schemaField(version));
         properties.add("asset", assetField());
         properties.add("kind", kindField());
         return document;
@@ -223,10 +240,10 @@ public final class SchemaExport {
         return alternatives.toString();
     }
 
-    private static JsonObject schemaField() {
+    private static JsonObject schemaField(int version) {
         JsonObject out = new JsonObject();
         out.addProperty("type", "integer");
-        out.addProperty("const", DefinitionRegistry.SCHEMA);
+        out.addProperty("const", version);
         out.addProperty("x-axion-code", "E-7003");
         return out;
     }

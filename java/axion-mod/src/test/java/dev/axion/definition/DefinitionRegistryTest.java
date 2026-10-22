@@ -75,7 +75,7 @@ class DefinitionRegistryTest {
         assertEquals(DefinitionException.INVALID, refus("{\"schema\": \"1\"" + suite).code());
         assertEquals(DefinitionException.INVALID, refus("{\"schema\": 1.5" + suite).code());
 
-        DefinitionException inconnu = refus("{\"schema\": 2" + suite);
+        DefinitionException inconnu = refus("{\"schema\": 3" + suite);
         assertEquals(DefinitionException.UNKNOWN_SCHEMA, inconnu.code());
         assertEquals("E-7003", inconnu.codeName());
         assertEquals("$.schema", inconnu.path());

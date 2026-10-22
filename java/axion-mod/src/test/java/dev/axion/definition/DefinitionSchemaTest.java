@@ -385,4 +385,67 @@ class DefinitionSchemaTest {
         assertEquals("$.bodies[0].root_node",
                 refus(root -> at(root, "bodies", "0").addProperty("root_node", "")).path());
     }
+
+    /** Le joint de l'exemple au schéma 2 (ADR-151 D3) : tous les réglages de la fiche 5.26. */
+    private static void enSchemaDeux(JsonObject root) {
+        root.addProperty("schema", 2);
+        at(root, "physics").addProperty("self_collision", true);
+        at(root, "bodies", "0").addProperty("mass", 1500.0);
+        root.add("joints", JsonParser.parseString("""
+                [ { "name": "hood_hinge", "type": "revolute", "a": "chassis", "b_node": "hood",
+                    "anchor": [0.0, 0.0, 0.5], "axis": [1, 0, 0], "limits": [0.0, 1.4],
+                    "motor": { "speed": 2.0, "target": 1.2, "stiffness": 50.0, "damping": 5.0,
+                               "max_force": 200.0 },
+                    "friction": 4.0,
+                    "break": { "force": 8000.0, "torque": 2000.0, "energy": 400.0 },
+                    "jam": { "curve": [[0, 1.0], [0.05, 0.5], [0.12, 0.0]], "friction": 60.0 },
+                    "collide": false },
+                  { "name": "souple", "type": "generic", "a": "chassis", "b_node": "hood",
+                    "axes": [ { "mode": "locked" }, { "mode": "locked" }, { "mode": "free" },
+                              { "mode": "limited", "limits": [-0.1, 0.1] }, { "mode": "locked" },
+                              { "mode": "locked" } ] },
+                  { "name": "corde", "type": "rope", "a": "chassis", "b_node": "hood", "max_length": 3.0 },
+                  { "name": "ressort", "type": "spring", "a": "chassis", "b_node": "hood",
+                    "rest_length": 0.5, "stiffness": 800.0, "damping": 20.0 } ]
+                """));
+    }
+
+    @Test
+    @DisplayName("ADR-151 D3 : le schéma 2 lit les réglages des joints, la masse d'un corps, les collisions internes")
+    void schemaDeux() throws DefinitionException {
+        JsonObject root = complete();
+        enSchemaDeux(root);
+        assertEquals(2, read(root).schema());
+
+        // Les noms du schéma 1 n'y sont plus : break.force et jam.curve les remplacent.
+        assertEquals("$.joints[0].break_force", refus(r -> {
+            enSchemaDeux(r);
+            at(r, "joints", "0").addProperty("break_force", 8000.0);
+        }).path());
+        // Des bornes : seuils de rupture strictement positifs, raideur positive, six axes.
+        assertEquals("$.joints[0].break.force", refus(r -> {
+            enSchemaDeux(r);
+            at(r, "joints", "0", "break").addProperty("force", 0.0);
+        }).path());
+        assertEquals("$.joints[0].motor.stiffness", refus(r -> {
+            enSchemaDeux(r);
+            at(r, "joints", "0", "motor").addProperty("stiffness", -1.0);
+        }).path());
+        assertEquals("$.joints[1].axes", refus(r -> {
+            enSchemaDeux(r);
+            at(r, "joints", "1").getAsJsonArray("axes").remove(5);
+        }).path());
+    }
+
+    @Test
+    @DisplayName("ADR-151 D3 : le schéma 1 reste lu comme avant, sans les champs du schéma 2 ; le 3 est inconnu")
+    void schemaUnInchange() {
+        DefinitionException friction = refus(root -> at(root, "joints", "0").addProperty("friction", 4.0));
+        assertEquals("$.joints[0].friction", friction.path());
+        assertTrue(friction.getMessage().contains("clé inconnue du schéma 1"), friction.getMessage());
+        assertEquals("$.bodies[0].mass",
+                refus(root -> at(root, "bodies", "0").addProperty("mass", 10.0)).path());
+        DefinitionException trois = refus(root -> root.addProperty("schema", 3));
+        assertEquals(DefinitionException.UNKNOWN_SCHEMA, trois.code());
+    }
 }

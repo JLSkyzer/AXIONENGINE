@@ -3183,6 +3183,10 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             transformation) ; jamais vu hors de ce passage. Piste si cela revient : la tuile de collision
             de la dalle n'est pas encore posée quand le ballon l'atteint.
 - [ ] 2. Schéma 2 et compilation (D3) : lecture, `definition-2.json`, `JointDesc` transcrit par Java.
+      - [x] 2a (2026-10-22). Lecture du schéma 2 : `SchemaOne.rootOf(version)`, joints aux réglages de
+            C-34, `bodies[].mass`, `physics.self_collision` ; le registre lit 1 et 2 ; `definition-2.json`
+            publié (`definition-1.json` inchangé). 776 JUnit ; 9 mutations rouges.
+      - [ ] 2b. `JointDesc` (DM, Rust et Java), transcrit depuis la definition, cohérence par type.
 - [ ] 3. Joints natifs (D4, D5) : sept types, moteur, friction, étape 5, rupture, événements, métriques ;
       T-330..T-333 au banc.
 - [ ] 4. Grippage (D6) : `JAM_JOINT`, `BREAK_JOINT`, `JointState` ; T-334.

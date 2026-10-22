@@ -365,6 +365,8 @@ tasks.named('test', Test).configure {
     // toute definition du depot le respecte. `-Daxion.schema.update=true`
     // regenere le fichier au lieu de seulement le comparer.
     systemProperty 'axion.schema.file', rootProject.file('docs/schema/definition-1.json').absolutePath
+    // Le schema 2 (ADR-151 D3), publie de meme.
+    systemProperty 'axion.schema2.file', rootProject.file('docs/schema/definition-2.json').absolutePath
     systemProperty 'axion.repo.dir', rootProject.projectDir.absolutePath
     systemProperty 'axion.schema.update', System.getProperty('axion.schema.update', 'false')
     testLogging {
