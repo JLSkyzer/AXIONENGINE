@@ -2970,6 +2970,9 @@ T-520..T-524, T-530..T-533, T-540..T-542.
       2026-10-18** : le réseau d'abord ; un ADR de frontière par chantier, l'ABI montant à chacun (Java et
       natif partent dans le même JAR, le handshake exige l'égalité ; une hausse recompile le cache
       d'assets, l'ABI entrant dans sa clé). L'ordre des chantiers suivants se propose à la fin du réseau.
+      **Ordre décidé par Killian le 2026-10-22** : joints, persistance, culling et LOD, animation. Le
+      multi-corps d'abord : il fixe la forme de l'état que la persistance (§22.1), les snapshots (§21.5)
+      et le graphe de scène transportent ; IF-05 avant l'animation, qui y ajoute ses palettes.
       - Constats qui pèsent sur l'ordre :
         - un client relié à un serveur distant n'a ni modèles ni definitions, et dessine chaque assembly en
           boîte de repli : modèles et definitions ne se chargent que par
@@ -3005,6 +3008,7 @@ client compile ses modèles (resource packs, puis mods ; le serveur garde `data/
 connexion avec `det_profile` et `C2S_Handshake` ; registres en JSON compressés par le zstd du natif
 (ABI 6) ; positions absolues en `i64`, deltas en `i32` ; harnais de joueurs simulés et un essai réel.
 T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 en M6.
+**Terminé le 2026-10-22** : CI de b05be4a verte ; l'essai réel est clos sur la preuve du harnais.
 
 - [x] 1. Canal et codec (`dev.axion.net`, colle dans `dev.axion.forge.net`) : validation,
       fragmentation, refus d'un client sans AXION — T-419, T-422. Fait le 2026-10-18 : canal
@@ -3019,7 +3023,7 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
       dessine bleu avec le pack, le serveur ne le voit jamais. 7 tests, 6 mutations unitaires et 2 de
       bout en bout rouges (rendu sur le registre du serveur : D3 rouge ; compilation client jamais
       pompée : banc bloqué). Le banc efface désormais le cache du client, qui masquait la seconde.
-- [ ] 3. Handshake et registres (D4, D5), `det_profile` et zstd par la FFI, ABI 6 — T-420, T-820c.
+- [x] 3. Handshake et registres (D4, D5), `det_profile` et zstd par la FFI, ABI 6 — T-420, T-820c.
       - [x] 3a. Frontière, ABI 6 (2026-10-18) : `axion_det_profile`, `axion_net_compress`,
             `axion_net_decompress` par `NET_OUT` ; `DetProfile`, `NativeNetCompression`. Tests ABI et
             JUnit contre la vraie bibliothèque ; 10 mutations rouges (deux règles redondantes
@@ -3045,7 +3049,7 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
                   mutations ; ADR-150, CHANGELOG. 15 GameTests verts (2 nouveaux, 2 mutations rouges) ;
                   banc vanilla vert, Forge compte la réponse AXION (« indexed reply 3 ») et le serveur
                   journalise « réplication avec Dev : RECONSTRUCT (...) » ; 3 mutations du décodeur rouges.
-            - [ ] Essai à deux instances (D8), avec Killian : le chemin distant à travers Forge — registre
+            - [x] Essai à deux instances (D8), avec Killian : le chemin distant à travers Forge — registre
                   en connexion, renvoi en jeu après `/reload` — n'est prouvé qu'en Java pur et en GameTest.
                   Killian (2026-10-18) : « Après la tranche 5 (Recommandé) » — un seul essai pour le
                   registre, les snapshots et le mouvement interpolé.
@@ -3060,6 +3064,7 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
                   Depuis (2026-10-21), le harnais les prouve à travers le vrai canal Forge : renvoi du
                   registre en jeu (étape 6a) et reconnexion (T-424). Un dernier passage réel, pour ce qui
                   se voit, reste à décider avec Killian.
+                  Clos le 2026-10-22 : Killian juge la preuve du harnais suffisante, sans dernier passage.
 - [x] 4. Snapshots (D2, D6), fin du pont provisoire — T-410 (banc), T-418 (JUnit) ; T-411 et T-418
       sous charge réelle avec le harnais de la tranche 6 (D8).
       - [x] 4a (2026-10-18, 10 mutations rouges ; « smallest three » : 0,234° au pire mesuré, 0,274° de borne). Codec en Java pur : quantification déclarée par champ (R-1660 : position 1/1024 de bloc,
@@ -3145,6 +3150,12 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
             des overlays compte « network 9 » ; 765 JUnit ; 6 mutations rouges (4 JUnit, 2 au banc).
       - [x] 6h (2026-10-21). ADR-150, CHANGELOG.
 
+**Chantier joints (C-34, C-31)** — ouvert le 2026-10-22. Un ADR de frontière, accepté par Killian avant
+tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, grippage, événements
+`JOINT_BROKEN` et `JAMMED`, overlays `joints` et `limits`, ce que portent snapshots et frontière.
+
+- [ ] Lecture du CDC et de l'état du natif ; ADR proposé à Killian.
+
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
 
@@ -3158,7 +3169,7 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
 - [ ] C-61 avec C-66 : R-742, skinning CPU — ADR-146.
 - [ ] C-62 avec C-64 : paliers suivants de R-750 — ADR-144 §3, ADR-146.
 - [ ] C-67, overlays dont M4 produit les données : `joints`, `limits` (C-34) ; `bones`, `nodes`,
-      `pivots` (C-37) ; `lod`, `culling`, `occluders` (C-64) ; `network` (C-51) — ADR-146 §1.
+      `pivots` (C-37) ; `lod`, `culling`, `occluders` (C-64) ; `network` (C-51, fait le 2026-10-21) — ADR-146 §1.
 - [ ] C-50 avec C-52 : `persistence.max_load_ns_per_tick` (R-1730) ; R-1710 et ses tests T-433 et
       T-434 — fixer ce que migre T-434, aucune v1 n'ayant existé (`NBT_SCHEMA` vaut 2) — ADR-137.
 - [ ] C-70 : l'accesseur `animation` d'`Assembly` devient réel avec C-37 ; le fournisseur d'`AxionApi`
