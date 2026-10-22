@@ -435,6 +435,16 @@ class DefinitionSchemaTest {
             enSchemaDeux(r);
             at(r, "joints", "1").getAsJsonArray("axes").remove(5);
         }).path());
+        // La cohérence avec le type (C-34) : une longueur de corde sur une charnière, un servo sans
+        // raideur.
+        assertEquals("$.joints[0].max_length", refus(r -> {
+            enSchemaDeux(r);
+            at(r, "joints", "0").addProperty("max_length", 2.0);
+        }).path());
+        assertEquals("$.joints[0].motor.stiffness", refus(r -> {
+            enSchemaDeux(r);
+            at(r, "joints", "0", "motor").remove("stiffness");
+        }).path());
     }
 
     @Test

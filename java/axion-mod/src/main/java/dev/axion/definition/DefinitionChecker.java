@@ -15,6 +15,7 @@ import dev.axion.definition.SchemaNode.Obj;
 import dev.axion.definition.SchemaNode.Text;
 import dev.axion.definition.SchemaNode.TextRule;
 import dev.axion.definition.SchemaOne.SourceFamily;
+import dev.axion.physics.AssemblyJoints;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -76,7 +77,26 @@ final class DefinitionChecker {
         checker.resolve();
         checker.checkLinks(root);
         checker.checkZoneParents(root);
+        if (checker.version == 2 && checker.issues.isEmpty()) {
+            checker.checkJoints(root);
+        }
         return List.copyOf(checker.issues);
+    }
+
+    /**
+     * ADR-151 D3 : au schéma 2, chaque joint est cohérent avec son type (C-34). Sa forme est déjà
+     * juste : la règle ne lit que des champs du bon type.
+     */
+    private void checkJoints(JsonObject root) {
+        if (!(root.get("joints") instanceof JsonArray joints)) {
+            return;
+        }
+        for (int i = 0; i < joints.size(); i++) {
+            AssemblyJoints.Fault fault = AssemblyJoints.check(joints.get(i).getAsJsonObject());
+            if (fault != null) {
+                invalid("$.joints[" + i + "]." + fault.field(), fault.message());
+            }
+        }
     }
 
     private void walk(SchemaNode node, JsonElement value, String path) {

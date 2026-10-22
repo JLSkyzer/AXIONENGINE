@@ -26,6 +26,7 @@ pub mod debug;
 pub mod geometry;
 pub mod handle;
 pub mod integrity;
+pub mod joints;
 pub mod limits;
 pub mod material;
 pub mod physics;

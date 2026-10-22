@@ -1766,3 +1766,25 @@ serré, l'état récent d'un cube encore éveillé attendait son tour — retard
 le numéro du tick, que tout rappel appelle avant de lire. Une propriété « finit par » se vérifie par une
 attente bornée (`succeedWhen`). Un vert de GameTest ne vaut que répété : trois passages de suite, et
 une restauration rouge de campagne s'instruit comme un échec.
+
+## 2026-10-22 | Une surveillance de CI qui conclut sur un run annulé ou encore en file
+
+**Ce qui a mal tourné.** La surveillance du commit 20d329f est restée sans conclusion : la poussée
+suivante (2733949) avait annulé son run, la CI annulant le run en cours d'une branche à chaque
+poussée. Celle de 2733949 a conclu « en attente = 0 » sans lister de job : le run était encore en
+file, sans aucun job, et le compte des jobs non terminés valait donc zéro.
+
+**Cause.** Deux suppositions fausses dans la boucle de surveillance : qu'un run lancé aille jusqu'au
+bout, et qu'un compte de jobs non terminés nul dise qu'ils le sont tous.
+
+**Règle.** Juger la CI d'une tranche sur le run du dernier commit poussé, qui couvre les précédents ;
+un run « cancelled » d'un commit antérieur n'est pas un échec. Attendre le statut `completed` du
+run lui-même, et pas seulement l'absence de job en cours.
+
+## 2026-10-22 | Une mutation classée « COMPILE » par erreur
+
+**Ce qui a mal tourné.** Une mutation de l'étape 1b, rouge en réalité, a été classée « COMPILE » par
+le script de campagne, qui cherchait `error[E` dans toute la sortie de `cargo test`.
+
+**Règle.** Une mutation classée « COMPILE » se relance seule, et son verdict se lit dans la sortie
+du test, avant de conclure qu'elle ne prouve rien.
