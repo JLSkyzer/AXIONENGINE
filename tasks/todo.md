@@ -3154,8 +3154,20 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
 tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, grippage, événements
 `JOINT_BROKEN` et `JAMMED`, overlays `joints` et `limits`, ce que portent snapshots et frontière.
 
-- [ ] Lecture du CDC et de l'état du natif ; ADR proposé à Killian. Lecture faite le 2026-10-22 ;
-      [ADR-151](../docs/decisions/ADR-151.md) proposé (dix points), en attente de Killian.
+- [x] Lecture du CDC et de l'état du natif ; [ADR-151](../docs/decisions/ADR-151.md) **accepté par Killian le
+      2026-10-22**, dix points selon la proposition : un corps par node racine (le `b_node` d'un joint en
+      crée un), joints impulsionnels de Rapier, schéma de definition 2, étape 5 en après-résolution,
+      grippage complet piloté par un désalignement, ABI 7, poses relatives des corps sur le réseau,
+      T-330..T-334 définis. T-950..T-953 renvoyés en M7.
+- [ ] 1. Multi-corps natif (D2) : corps par node racine, colliders par corps, routes multiples, activité
+      par assembly ; `CREATE_ASSEMBLY` étendu, `BodyState.node`, ABI 7.
+- [ ] 2. Schéma 2 et compilation (D3) : lecture, `definition-2.json`, `JointDesc` transcrit par Java.
+- [ ] 3. Joints natifs (D4, D5) : sept types, moteur, friction, étape 5, rupture, événements, métriques ;
+      T-330..T-333 au banc.
+- [ ] 4. Grippage (D6) : `JAM_JOINT`, `BREAK_JOINT`, `JointState` ; T-334.
+- [ ] 5. Réseau et dessin (D8, D9) : descripteur 2, poses relatives, interpolation et dessin par corps.
+- [ ] 6. Overlays `joints` et `limits` (D7).
+- [ ] 7. Preuves de bout en bout : GameTests, S-05, documentation.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
