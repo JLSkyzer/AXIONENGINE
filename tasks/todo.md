@@ -3169,6 +3169,17 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
       - [ ] 1b. Frontière : `CREATE_ASSEMBLY` en `SimIn` 3 (corps, nodes, colliders recomposés dans le
             repère de leur corps, échelle comprise), validation R-120 sur l'échelle cumulée, `SIM_OUT` 2,
             ABI 7.
+            **En cours (2026-10-22), non commité, dans l'arbre de travail.** Fait : `ax-model`
+            (`CreateAssembly` de 72 o, `AssemblyBodyEntry` de 64 o, `create_assembly_payload`,
+            `CURRENT_SCHEMA` 3, `SIM_OUT` 2, tests verts), `Shape::scaled`, ABI 7, module
+            `ax-ffi/src/assembly.rs` (décodage, chaîne des nodes composée, colliders rangés par corps,
+            9 tests écrits, pas encore lancés) branché dans `abi.rs`, `BufferKinds.java` régénéré.
+            Reste : passer les 8 tests d'`ax-ffi` qui assemblent le payload à la main
+            (`body_desc_abi`, `create_assembly_abi`, `debug_abi`, `groups_abi`, `materials_abi`,
+            `memory_abi`, `sim_activity_abi`, `sim_bounds_abi`) par `create_assembly_payload` ;
+            `net_abi.rs` à l'ABI 7 ; Java : `EXPECTED_ABI_VERSION` 7, `SimCommandStream.createAssembly`
+            au nouveau payload (section NODE comprise), `BodyState` lit le node ; validation R-120 de
+            l'échelle cumulée dans `ax-asset` ; mutations ; JUnit, GameTests, bancs.
       - [ ] 1c. Java : corps déduits de la definition, état de la racine à l'entité, GameTest.
 - [ ] 2. Schéma 2 et compilation (D3) : lecture, `definition-2.json`, `JointDesc` transcrit par Java.
 - [ ] 3. Joints natifs (D4, D5) : sept types, moteur, friction, étape 5, rupture, événements, métriques ;
