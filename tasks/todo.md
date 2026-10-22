@@ -3159,7 +3159,7 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
       crée un), joints impulsionnels de Rapier, schéma de definition 2, étape 5 en après-résolution,
       grippage complet piloté par un désalignement, ABI 7, poses relatives des corps sur le réseau,
       T-330..T-334 définis. T-950..T-953 renvoyés en M7.
-- [ ] 1. Multi-corps natif (D2) : corps par node racine, colliders par corps, routes multiples, activité
+- [x] 1. Multi-corps natif (D2) : corps par node racine, colliders par corps, routes multiples, activité
       par assembly ; `CREATE_ASSEMBLY` étendu, `BodyState.node`, ABI 7.
       - [x] 1a (2026-10-22). Cœur natif : `create_assembly_bodies` (tout ou rien, masse de l'assembly
             répartie au prorata des densités), routes racine d'abord, filtre des paires internes
@@ -3173,7 +3173,15 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             ancêtres (`E-3020`) ; Java : `SimCommandStream.AssemblyBody`, `BodyState.node`, NODE envoyée.
             Correctif au passage : le natif posait les colliders sans la pose de leur node.
             88 suites Rust, 767 JUnit, 24 GameTests, banc vanilla vert ; 22 mutations rouges.
-      - [ ] 1c. Java : corps déduits de la definition, état de la racine à l'entité, GameTest.
+      - [x] 1c (2026-10-22). Java : `AssemblyBodies` (corps de `bodies[]`, `root_node` résolu par son nom,
+            introuvable → assembly inerte avertie ; masse de l'assembly répartie par le natif) ; l'état du
+            corps racine pose l'entité, ceux des autres corps sont gardés sur elle, son emprise est
+            l'union des leurs. Contenu `test/deux_corps` (glTF texte) et trois definitions. 772 JUnit,
+            27 GameTests (3 nouveaux) ; 8 mutations rouges (5 au serveur de GameTests, 3 JUnit).
+            Observation, à surveiller : sous la mutation « section NODE non envoyée », le test du ballon
+            a vu le ballon traverser la dalle, alors que son chemin est alors équivalent (nodes sans
+            transformation) ; jamais vu hors de ce passage. Piste si cela revient : la tuile de collision
+            de la dalle n'est pas encore posée quand le ballon l'atteint.
 - [ ] 2. Schéma 2 et compilation (D3) : lecture, `definition-2.json`, `JointDesc` transcrit par Java.
 - [ ] 3. Joints natifs (D4, D5) : sept types, moteur, friction, étape 5, rupture, événements, métriques ;
       T-330..T-333 au banc.

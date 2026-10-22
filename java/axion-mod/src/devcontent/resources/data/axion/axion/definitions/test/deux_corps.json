@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "asset": "axion:models/test/deux_corps.gltf",
+  "kind": "rigid_object",
+  "bodies": [
+    { "name": "a", "root_node": "a" },
+    { "name": "b", "root_node": "b" }
+  ]
+}

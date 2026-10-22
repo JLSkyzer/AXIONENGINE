@@ -6,6 +6,7 @@ import dev.axion.entity.AssemblyBinding;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.Interpolation;
 import dev.axion.net.RenderClock;
+import java.util.List;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -47,6 +48,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * les snapshots.
      */
     private final Quaternionf bodyRotation = new Quaternionf();
+    /** Les corps autres que le corps racine, à leur dernier état (serveur, ADR-151 D2). */
+    private List<BodyPose> secondaryBodies = List.of();
 
     /**
      * État de l'assembly tel que les snapshots le portent, côté serveur : posé à chaque tick simulé,
@@ -153,6 +156,31 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return new AABB(
                 x + boundsMin.x, y + boundsMin.y, z + boundsMin.z,
                 x + boundsMax.x, y + boundsMax.y, z + boundsMax.z);
+    }
+
+    /**
+     * Pose d'un corps de l'assembly autre que le corps racine (ADR-151 D2) : son node racine dans
+     * l'asset, sa position monde et son orientation.
+     *
+     * @param node node racine du corps
+     * @param x position monde, en blocs
+     * @param y idem
+     * @param z idem
+     * @param rotation orientation monde, copie
+     */
+    public record BodyPose(int node, double x, double y, double z, Quaternionf rotation) {}
+
+    /**
+     * Pose les corps de l'assembly autres que le corps racine (serveur, fin de tick), dans l'ordre
+     * de leurs états.
+     */
+    void setSecondaryBodies(List<BodyPose> bodies) {
+        secondaryBodies = List.copyOf(bodies);
+    }
+
+    /** {@return les corps de l'assembly autres que le corps racine, à leur dernier état} */
+    List<BodyPose> secondaryBodies() {
+        return secondaryBodies;
     }
 
     /** Pose l'orientation autoritaire du corps (serveur, fin de tick, boucle C-40). */

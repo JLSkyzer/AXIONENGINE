@@ -10,6 +10,7 @@ import dev.axion.definition.CollisionGroupRegistry;
 import dev.axion.definition.Definition;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.diag.EntityMetrics;
+import dev.axion.physics.AssemblyBodies;
 import dev.axion.physics.BodyBounds;
 import dev.axion.physics.BodyDescription;
 import dev.axion.physics.BodyLedger;
@@ -23,6 +24,7 @@ import dev.axion.physics.SimCommandStream;
 import dev.axion.physics.SimStateSink;
 import dev.axion.world.DimensionId;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.HashMap;
@@ -95,6 +97,11 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      * d'influence où les entités vanilla deviennent des proxies (R-614, ADR-123 §7).
      */
     private final Map<Integer, Double> speeds = new HashMap<>();
+    /**
+     * Node racine du corps racine de chaque assembly (ADR-151 D2) : son état pose l'entité ; les
+     * états des autres corps la complètent.
+     */
+    private final Map<Integer, Integer> rootNodes = new HashMap<>();
 
     private record Pending(
             boolean create,
@@ -182,12 +189,19 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         // par le registre contre lequel elle a été validée (ADR-132 A1), groupes tiers compris.
         CollisionGroupRegistry groups = registry.collisionGroups();
         phys = CollisionFilter.apply(phys, groups.membership(root), groups.filter(root));
-        // ADR-151 D7 : la section NODE part avec PHYS — chaque collider est posé par la chaîne de
-        // son node ; un seul corps, à la racine de l'asset, tant que la definition n'en déclare
-        // pas d'autres.
-        List<SimCommandStream.AssemblyBody> bodies = List.of(new SimCommandStream.AssemblyBody(body, 0));
+        // ADR-151 D2, D7 : les corps que la definition déclare, chacun à son node racine ; la section
+        // NODE part avec PHYS, chaque collider posé par la chaîne de son node.
+        AssemblyBodies.Layout layout = AssemblyBodies.of(root, nodes, body);
+        if (layout == null) {
+            LOGGER.warn(
+                    "AXION : {} déclare un corps dont le root_node n'est pas un node de son asset ; assembly inerte",
+                    definition.id());
+            return false;
+        }
+        rootNodes.put(index, layout.rootNode());
         byte[] nodeSection = nodes == null ? new byte[0] : nodes;
-        pending.add(new Pending(true, index, dimension, position, rotation, bodies, 0.0f, false, nodeSection, phys));
+        pending.add(new Pending(true, index, dimension, position, rotation, layout.bodies(), layout.assemblyMass(),
+                false, nodeSection, phys));
         ledger.attach(index, assembly);
         return true;
     }
@@ -212,6 +226,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         }
         implausibleBounds.remove(index);
         speeds.remove(index);
+        rootNodes.remove(index);
         pending.add(new Pending(false, index, 0L, null, null, null, 0.0f, false, null, null));
     }
 
@@ -328,15 +343,36 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         // ADR-120 : l'emprise de rang i est celle de l'état de rang i. Sans emprises (natif
         // antérieur au schéma 1 de SIM_OUT), les hitbox restent provisoires.
         boolean withBounds = bounds.size() == states.size();
+        // ADR-151 D2 : les états d'une assembly, regroupés ; celui de son corps racine pose l'entité.
+        Map<Integer, List<Integer>> ranks = new HashMap<>();
         for (int i = 0; i < states.size(); i++) {
             BodyState state = states.get(i);
-            if (state.handleGeneration() != GENERATION) {
+            if (state.handleGeneration() == GENERATION) {
+                ranks.computeIfAbsent(state.handleIndex(), key -> new ArrayList<>()).add(i);
+            }
+        }
+        for (int i = 0; i < states.size(); i++) {
+            BodyState state = states.get(i);
+            if (state.handleGeneration() != GENERATION
+                    || state.node() != rootNodes.getOrDefault(state.handleIndex(), 0)) {
                 continue;
             }
             AxionEntity entity = ledger.entity(state.handleIndex());
             if (entity == null) {
                 continue;
             }
+            List<Integer> own = ranks.get(state.handleIndex());
+            List<AxionEntity.BodyPose> secondary = new ArrayList<>(own.size() - 1);
+            for (int rank : own) {
+                if (rank != i) {
+                    BodyState other = states.get(rank);
+                    double[] o = other.position();
+                    float[] r = other.rotation();
+                    secondary.add(new AxionEntity.BodyPose(
+                            other.node(), o[0], o[1], o[2], new Quaternionf(r[0], r[1], r[2], r[3])));
+                }
+            }
+            entity.setSecondaryBodies(secondary);
             double[] p = state.position();
             // Position autoritaire du natif (coords monde recomposées par l'origine flottante).
             // Appliquée en fin de tick, elle prime sur toute position vanilla.
@@ -346,7 +382,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             float[] v = state.linearVelocity();
             speeds.put(state.handleIndex(), Math.sqrt((double) v[0] * v[0] + (double) v[1] * v[1] + (double) v[2] * v[2]));
             if (withBounds) {
-                applyBounds(entity, bounds.get(i));
+                applyBounds(entity, unionOf(states, bounds, own, p));
             }
             // ADR-150 D6 : l'état que les snapshots portent, une fois position, orientation et emprise
             // posées.
@@ -354,6 +390,28 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         }
         // R-500 : la durée de l'application des états, côté entité.
         EntityMetrics.GLOBAL.applied(System.nanoTime() - start);
+    }
+
+    /**
+     * L'emprise d'une assembly (ADR-151 D8) : l'union de celles de ses corps, relative à la position
+     * de son corps racine. Chaque emprise est relative à la translation de son corps.
+     */
+    private static BodyBounds unionOf(List<BodyState> states, List<BodyBounds> bounds, List<Integer> ranks, double[] root) {
+        if (ranks.size() == 1) {
+            return bounds.get(ranks.get(0));
+        }
+        float[] min = {Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY};
+        float[] max = {Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY};
+        for (int rank : ranks) {
+            double[] at = states.get(rank).position();
+            BodyBounds own = bounds.get(rank);
+            for (int axis = 0; axis < 3; axis++) {
+                float offset = (float) (at[axis] - root[axis]);
+                min[axis] = Math.min(min[axis], offset + own.min()[axis]);
+                max[axis] = Math.max(max[axis], offset + own.max()[axis]);
+            }
+        }
+        return new BodyBounds(min, max);
     }
 
     /**
@@ -398,5 +456,6 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         MinecraftForge.EVENT_BUS.unregister(this);
         ledger.clear();
         speeds.clear();
+        rootNodes.clear();
     }
 }

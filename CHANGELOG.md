@@ -59,6 +59,14 @@ Definition of Done (PARTIE 37.3).
     GameTest, T-425 en campagne (AXION_CAMPAGNE=t425) ; metriques reseau
     (R-500) et budget de debit par joueur (R-1850) ; limitation des trames
     du client, abus soutenu deconnecte (R-1690) ; overlay de debug network ;
+  - joints (C-34, C-31, ADR-151), en cours : une assembly porte plusieurs
+    corps, un par node racine que sa definition declare (`bodies[]`), crees
+    tous ou aucun ; ses corps ne se touchent pas entre eux (10.4) ; sommeil,
+    garde-fous et gestion d'activite par assembly entiere, plafond de corps
+    actifs compte en corps (R-613) ; ABI 7 : `CREATE_ASSEMBLY` porte les
+    corps et la section NODE, `BodyState` le node de son corps ; l'entite
+    suit le corps racine, son emprise couvre tous ses corps ; R-120 s'etend
+    aux ancetres d'un node a collider ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),
@@ -268,6 +276,11 @@ Definition of Done (PARTIE 37.3).
 
 ### Corrige
 
+- Physique (C-31, ADR-151) : les colliders d'un node sont poses par la
+  chaine des transformations de l'asset, echelle comprise. Le natif les
+  posait sans la pose de leur node : dans un asset dont un node porteur de
+  collider n'est pas a l'origine, les colliders ne se trouvaient pas sous
+  les meshes.
 - Import glTF (C-21) : une scene sans `nodes`, que glTF 2.0 admet, ne fait
   plus refuser le document. `gltf-json` 1.4.1 exigeait le membre ;
   l'exportateur de Blender en ecrit une pour chaque scene du fichier ou rien
