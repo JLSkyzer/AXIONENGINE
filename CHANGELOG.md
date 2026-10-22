@@ -67,6 +67,10 @@ Definition of Done (PARTIE 37.3).
     corps et la section NODE, `BodyState` le node de son corps ; l'entite
     suit le corps racine, son emprise couvre tous ses corps ; R-120 s'etend
     aux ancetres d'un node a collider ;
+    joints natifs au banc de physique : sept types, moteur, friction
+    interne, rupture en force, en couple et en energie, `JOINT_BROKEN` ;
+    Rapier 0.35.3 vendorise et corrige (ADR-152) : moteur et friction
+    resolus avec les axes bloques, effort de chaque joint publie ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

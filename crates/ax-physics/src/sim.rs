@@ -1125,6 +1125,7 @@ impl SimDriver {
         let Some(sim) = self.dimensions.get_mut(&dimension) else {
             return false;
         };
+        sim.world.remove_assembly_joints(handle);
         let mut removed = false;
         for body in bodies {
             removed |= sim.world.remove_body(body);

@@ -1788,3 +1788,43 @@ le script de campagne, qui cherchait `error[E` dans toute la sortie de `cargo te
 
 **Règle.** Une mutation classée « COMPILE » se relance seule, et son verdict se lit dans la sortie
 du test, avant de conclure qu'elle ne prouve rien.
+
+## 2026-10-22 | Un multiplicateur de solveur lu comme un effort
+
+**Ce qui a mal tourné.** L'étape 5 des joints lisait `ImpulseJoint::impulses` de Rapier comme l'effort
+du joint. Le couple d'un porte-à-faux s'y lisait nul, la force au quart, l'énergie d'un choc à zéro.
+
+**Cause.** Rapier n'y garde que le multiplicateur de son dernier sous-pas interne. Ce multiplicateur
+est pris dans une base qu'il orthogonalise lui-même, et l'ordre de cette base change selon la voie,
+scalaire ou SIMD, qu'il choisit en interne.
+
+**Règle.** Un multiplicateur de solveur n'est pas un effort. Exiger l'impulsion réellement appliquée
+(ADR-152, P3) ou la mesurer ; ne jamais en reconstruire une en rejouant les règles internes du
+solveur.
+
+## 2026-10-22 | Un moteur prouvé sans charge
+
+**Ce qui a mal tourné.** T-331 vérifiait le moteur sans gravité. Sous une charge en porte-à-faux, ni le
+moteur ni la friction de Rapier tel que publié ne tenaient : la boule tombait de 0,65 bloc en une
+seconde, même à force infinie.
+
+**Règle.** Un moteur, une friction ou un servo se testent aussi sous une charge couplée par un bras de
+levier, avec la chute ou la flèche attendue chiffrée.
+
+## 2026-10-22 | Un script Python a changé les fins de ligne d'un fichier
+
+**Ce qui a mal tourné.** Une réécriture par `open(p, "w").write(...)` a passé en CRLF un fichier LF de
+Rapier vendorisé. Le diff couvrait le fichier entier au lieu de 70 lignes.
+
+**Règle.** Un script qui modifie un fichier du dépôt lit et écrit des octets (`read_bytes`,
+`write_bytes`), ou passe `newline="
+"` ; on vérifie ensuite avec `file` que les fins de ligne n'ont
+pas bougé.
+
+## 2026-10-22 | Une commande bloquée sur l'entrée standard
+
+**Ce qui a mal tourné.** Un `cat > fichier` laissé sans argument dans une commande composée a attendu
+l'entrée standard jusqu'au délai, et la mesure qui suivait n'a jamais tourné.
+
+**Règle.** Une commande longue ou lancée en arrière-plan reçoit `< /dev/null`, et ne contient aucun
+`cat` sans fichier d'entrée.

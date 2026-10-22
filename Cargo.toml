@@ -15,7 +15,9 @@ members = ["crates/*", "tools/codegen"]
 # `libfuzzer-sys`, qui exige une chaine nightly et un desinfecteur. Les
 # inclure ici ferait echouer `cargo test --workspace` sur la chaine epinglee
 # dont la matrice deterministe de C-16 depend.
-exclude = ["fuzz"]
+# `third_party/rapier3d` est Rapier tel que publie, corrige pour AXION
+# (ADR-152) : du code tiers, que ni les tests ni clippy du workspace ne jugent.
+exclude = ["fuzz", "third_party/rapier3d"]
 
 [workspace.package]
 version = "1.0.0"
@@ -212,3 +214,9 @@ opt-level = 3
 
 [profile.dev]
 opt-level = 1
+
+# ADR-152 : Rapier 0.35.3 tel que publie sur crates.io, avec les correctifs
+# d'AXION (moteurs et friction resolus avec les axes bloques, impulsion
+# appliquee par joint). La liste est dans third_party/rapier3d/AXION.md.
+[patch.crates-io]
+rapier3d = { path = "third_party/rapier3d" }

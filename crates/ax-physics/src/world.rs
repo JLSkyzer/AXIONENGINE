@@ -40,6 +40,8 @@ use ax_model::dm::physics::{
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod joints;
+
 /// Plafond par défaut d'événements par tick (§10.7, `physics.max_events_per_tick`).
 const DEFAULT_MAX_EVENTS_PER_TICK: usize = 4096;
 
@@ -292,6 +294,14 @@ pub struct PhysicsWorld {
     /// est le corps racine, que l'entité suit (ADR-151 D2). L'assembly est l'unité
     /// d'activité, de garde-fou et de sommeil. Ordonnée (R-1020).
     members: BTreeMap<u64, Vec<BodyId>>,
+    /// Joints du monde (C-34, ADR-151 D4), par rang de création : l'ordre de l'étape 5 (R-1020).
+    joints: BTreeMap<u64, joints::JointEntry>,
+    /// Rang du prochain joint créé.
+    next_joint: u64,
+    /// Joints résolus au dernier sous-pas (R-631).
+    joints_solved: usize,
+    /// Ruptures de joints depuis la création du monde.
+    joints_broken: u64,
     /// Matériau de contact de chaque collider d'assembly ou de tuile (DM-07, ADR-149) : son
     /// index, que portent les événements et par lequel une table nouvelle se propage, et son
     /// roulement (D6). Consultée par clé, jamais itérée (R-1020) : la propagation suit l'ordre
@@ -512,6 +522,10 @@ impl PhysicsWorld {
             aero: HashMap::new(),
             identity: HashMap::new(),
             members: BTreeMap::new(),
+            joints: BTreeMap::new(),
+            next_joint: 0,
+            joints_solved: 0,
+            joints_broken: 0,
             collider_materials: HashMap::new(),
             sleep_state: HashMap::new(),
             events: Vec::new(),
@@ -750,6 +764,7 @@ impl PhysicsWorld {
         // clampé à un tick antérieur ne l'est plus tant qu'il ne dépasse pas de
         // nouveau. On repart donc de zéro à chaque `advance`, même à 0 sous-pas.
         self.guard_flags.clear();
+        self.start_joint_tick();
         let mut substeps = 0;
         while self.accumulator >= full_step {
             self.sim_clock += f64::from(dt);
@@ -766,6 +781,13 @@ impl PhysicsWorld {
             self.apply_rolling_friction();
             self.stage_log
                 .record(Stage::Integration, elapsed_nanos(integration_start));
+
+            // Étape 5 (C-40, R-660 ; ADR-151 D5) : les joints, après leur résolution — efforts,
+            // énergie absorbée, ruptures.
+            let joints_start = Instant::now();
+            self.resolve_joints(dt);
+            self.stage_log
+                .record(Stage::Joints, elapsed_nanos(joints_start));
 
             // Étape 6 (C-40, R-660) : collecte des contacts et des événements.
             let contacts_start = Instant::now();
