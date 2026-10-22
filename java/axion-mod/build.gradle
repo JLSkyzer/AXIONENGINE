@@ -251,6 +251,22 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
     }
 }
 
+// Le client de développement ne se met pas en pause quand sa fenêtre perd le focus : un essai lancé
+// pendant qu'une autre application est au premier plan resterait figé sur le menu de pause, le monde
+// solo arrêté. L'option est reposée à chaque lancement ; F3+P la bascule le temps d'une partie. Les
+// bancs de rendu la règlent eux-mêmes (`BancDeRendu.reglerLesOptions`).
+tasks.matching { it.name == 'runClient' }.configureEach {
+    doFirst {
+        def options = rootProject.file('run/options.txt')
+        def lignes = options.exists()
+                ? options.readLines('UTF-8').findAll { !it.startsWith('pauseOnLostFocus:') }
+                : []
+        lignes << 'pauseOnLostFocus:false'
+        options.parentFile.mkdirs()
+        options.setText(lignes.collect { it + System.lineSeparator() }.join(''), 'UTF-8')
+    }
+}
+
 // Banc de rendu (ADR-126), sur chaque backend : un monde et un rapport neufs à chaque passage ; la
 // tâche échoue si le rapport manque ou n'est pas vert.
 ['runRenderTest': 'run-rendertest', 'runRenderTestNative': 'run-rendertest-native',
