@@ -3154,7 +3154,8 @@ T-415..T-417 partent en M5, la part « déformation » de T-424 et T-823..T-829 
 tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, grippage, événements
 `JOINT_BROKEN` et `JAMMED`, overlays `joints` et `limits`, ce que portent snapshots et frontière.
 
-- [ ] Lecture du CDC et de l'état du natif ; ADR proposé à Killian.
+- [ ] Lecture du CDC et de l'état du natif ; ADR proposé à Killian. Lecture faite le 2026-10-22 ;
+      [ADR-151](../docs/decisions/ADR-151.md) proposé (dix points), en attente de Killian.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
