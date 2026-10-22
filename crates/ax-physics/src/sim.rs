@@ -31,6 +31,25 @@ use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, BodyState, PhysicsEvent, PhysicsMaterial, NO_MATERIAL};
 use std::collections::BTreeMap;
 
+/// Un corps d'une assembly à créer (ADR-151 D2) : son node racine dans l'asset, sa pose dans
+/// le repère de l'assembly — l'identité pour le corps racine —, son type, ses colliders dans
+/// son propre repère et sa description DM-08.
+#[derive(Debug, Clone)]
+pub struct AssemblyBody {
+    /// Node racine du corps, rapporté par ses `BodyState` et ses événements.
+    pub node: u32,
+    /// Position de son repère dans celui de l'assembly, en blocs.
+    pub translation: Vec3,
+    /// Rotation de son repère dans celui de l'assembly.
+    pub rotation: Quat,
+    /// Type de corps.
+    pub kind: BodyKind,
+    /// Colliders, posés dans le repère du corps.
+    pub colliders: Vec<BodyCollider>,
+    /// Description DM-08 (ADR-130) ; doit être valide.
+    pub desc: BodyDesc,
+}
+
 /// La simulation d'une dimension : son monde et son origine flottante.
 struct DimensionSim {
     world: PhysicsWorld,
@@ -89,12 +108,13 @@ pub(crate) fn handle_key(handle: Handle) -> u64 {
 
 /// Pilote de simulation : un monde physique par dimension (R-610).
 ///
-/// Tient aussi le routage d'un handle d'assembly vers son corps et sa dimension,
+/// Tient aussi le routage d'un handle d'assembly vers ses corps et sa dimension,
 /// pour appliquer les commandes de `SimIn` (ADR-114) qui ciblent un handle.
 pub struct SimDriver {
     dimensions: BTreeMap<u64, DimensionSim>,
-    /// handle → (dimension, corps). Consultée par clé, jamais itérée (R-1020).
-    routes: BTreeMap<u64, (u64, BodyId)>,
+    /// handle → (dimension, corps), le corps racine d'abord (ADR-151 D2). Consultée par
+    /// clé, jamais itérée (R-1020).
+    routes: BTreeMap<u64, (u64, Vec<BodyId>)>,
     /// (dimension, section 16³) → corps statique de la tuile de collision monde
     /// (C-38). Ordonnée : parcours déterministe (R-1020).
     tiles: BTreeMap<(u64, [i32; 3]), BodyId>,
@@ -464,10 +484,21 @@ impl SimDriver {
         self.tiles.get(&(dimension, section)).copied()
     }
 
-    /// La dimension et le corps d'une assembly, si elle existe.
+    /// La dimension et le corps racine d'une assembly, si elle existe : celui que l'entité
+    /// suit, et que visent les commandes sans node (ADR-151 D2).
     #[must_use]
     pub fn assembly_body(&self, handle: Handle) -> Option<(u64, BodyId)> {
-        self.routes.get(&handle_key(handle)).copied()
+        self.routes
+            .get(&handle_key(handle))
+            .and_then(|(dimension, bodies)| bodies.first().map(|body| (*dimension, *body)))
+    }
+
+    /// La dimension et les corps d'une assembly, le corps racine d'abord (ADR-151 D2).
+    #[must_use]
+    pub fn assembly_bodies(&self, handle: Handle) -> Option<(u64, &[BodyId])> {
+        self.routes
+            .get(&handle_key(handle))
+            .map(|(dimension, bodies)| (*dimension, bodies.as_slice()))
     }
 
     /// Nombre de colliders de toutes les dimensions : les feuilles des arbres de la phase
@@ -639,16 +670,37 @@ impl SimDriver {
                 .survey_activity(dimension, &observers, &mut candidates);
         }
 
-        let in_reach = candidates
+        // R-613 compte des corps : une assembly pèse tous les siens (ADR-151 D2).
+        let in_reach: usize = candidates
             .iter()
             .filter(|candidate| candidate.distance.is_some_and(|d| d <= limits.radius))
-            .count();
+            .map(|candidate| candidate.bodies)
+            .sum();
         let mut report = ActivityReport {
-            active: in_reach.min(limits.cap),
             over_cap: in_reach > limits.nominal_cap,
             ..ActivityReport::default()
         };
-        for (index, decision) in activity::plan(&candidates, limits) {
+        let decisions = activity::plan(&candidates, limits);
+        // Les actifs du tick, en corps : à portée, éveillés sans décision de sommeil, ou
+        // réveillés — le plafond se remplit d'assemblies entières (ADR-151 D2).
+        let mut decided = decisions.iter().peekable();
+        for (index, candidate) in candidates.iter().enumerate() {
+            while decided.next_if(|(at, _)| *at < index).is_some() {}
+            let decision = decided
+                .peek()
+                .filter(|(at, _)| *at == index)
+                .map(|(_, decision)| *decision);
+            let in_reach = candidate.distance.is_some_and(|d| d <= limits.radius);
+            let active = match decision {
+                Some(Decision::Wake) => true,
+                Some(Decision::Sleep { .. }) => false,
+                None => candidate.awake && in_reach,
+            };
+            if active {
+                report.active += candidate.bodies;
+            }
+        }
+        for (index, decision) in decisions {
             let candidate = &candidates[index];
             let Some(sim) = self.dimensions.get_mut(&candidate.dimension) else {
                 continue;
@@ -657,14 +709,16 @@ impl SimDriver {
                 Decision::Sleep { cause, budget } => {
                     sim.world.force_sleep(candidate.body, budget);
                     match cause {
-                        SleepCause::Radius => report.slept_by_radius += 1,
-                        SleepCause::Cap => report.slept_by_cap += 1,
+                        SleepCause::Radius => report.slept_by_radius += candidate.bodies,
+                        SleepCause::Cap => report.slept_by_cap += candidate.bodies,
                     }
-                    report.slept_by_budget += usize::from(budget);
+                    if budget {
+                        report.slept_by_budget += candidate.bodies;
+                    }
                 }
                 Decision::Wake => {
                     sim.world.end_forced_sleep(candidate.body);
-                    report.woken += 1;
+                    report.woken += candidate.bodies;
                 }
             }
         }
@@ -810,10 +864,11 @@ impl SimDriver {
         events
     }
 
-    /// Attache une identité d'assembly à un corps et l'enregistre au routage.
+    /// Attache une identité d'assembly à un corps et l'ajoute à son routage : le premier
+    /// corps enregistré d'un handle est son corps racine (ADR-151 D2). Une assembly vit
+    /// dans une seule dimension : l'enregistrer dans une autre recommence son routage.
     ///
-    /// C'est ce que fera `CREATE_ASSEMBLY` une fois C-32 disponible ; les tests
-    /// s'en servent pour poser des corps routables.
+    /// `CREATE_ASSEMBLY` y passe ; les tests s'en servent pour poser des corps routables.
     pub fn register_body(&mut self, dimension: u64, handle: Handle, body: BodyId, node: u32) {
         let exists = if let Some(sim) = self.dimensions.get_mut(&dimension) {
             sim.world.set_body_identity(body, handle, node);
@@ -822,7 +877,16 @@ impl SimDriver {
             false
         };
         if exists {
-            self.routes.insert(handle_key(handle), (dimension, body));
+            let route = self
+                .routes
+                .entry(handle_key(handle))
+                .or_insert_with(|| (dimension, Vec::new()));
+            if route.0 != dimension {
+                *route = (dimension, Vec::new());
+            }
+            if !route.1.contains(&body) {
+                route.1.push(body);
+            }
         }
     }
 
@@ -899,6 +963,129 @@ impl SimDriver {
         Some(body)
     }
 
+    /// Crée une assembly de plusieurs corps (`CREATE_ASSEMBLY`, ADR-151 D2, D7) : chaque
+    /// corps à la pose de spawn composée avec sa pose dans l'assembly, sa description
+    /// DM-08 appliquée et les groupes de la definition (R-980) sur tous ses colliders ; le
+    /// corps racine d'abord, puis l'enregistrement de chacun à son node.
+    ///
+    /// `assembly_mass` (kg ; `0` : aucune) se répartit entre les corps dont la description
+    /// ne déclare pas de masse, au prorata de celle que leurs densités donnent : leurs
+    /// densités sont mises à l'échelle, ce qui garde centre de masse et forme de l'inertie.
+    /// `self_collision` laisse les corps de l'assembly se toucher entre eux (§10.4).
+    ///
+    /// Tout ou rien : une forme refusée, ou des masses déclarées qui atteignent celle de
+    /// l'assembly, et aucun corps ne reste. Rend les corps créés, dans l'ordre de `bodies`.
+    // Sept paramètres, chacun lu d'un champ de `CREATE_ASSEMBLY`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_assembly_bodies(
+        &mut self,
+        dimension: u64,
+        handle: Handle,
+        spawn: WorldTransform,
+        bodies: &[AssemblyBody],
+        groups: CollisionGroups,
+        assembly_mass: f32,
+        self_collision: bool,
+    ) -> Option<Vec<BodyId>> {
+        if bodies.is_empty() {
+            return None;
+        }
+        let spawn_position = DVec3::from_array(spawn.position);
+        let spawn_rotation = Quat::from_array(spawn.rotation);
+        let mut created = Vec::with_capacity(bodies.len());
+        for body in bodies {
+            // ADR-149 : chaque collider prend le contact de son index dans la table de la session.
+            let colliders: Vec<BodyCollider> = body
+                .colliders
+                .iter()
+                .map(|collider| BodyCollider {
+                    material: self.resolve_material(collider.material),
+                    ..collider.clone()
+                })
+                .collect();
+            let world = spawn_position + (spawn_rotation * body.translation).as_dvec3();
+            let rotation = spawn_rotation * body.rotation;
+            let sim = self.dimension_mut(dimension);
+            let local = sim.origin.to_local(world);
+            if let Ok(id) = sim
+                .world
+                .add_assembly(body.kind, local, rotation, &colliders)
+            {
+                sim.world.apply_body_desc(id, &body.desc);
+                sim.world.set_collision_groups(id, groups);
+                created.push(id);
+            } else {
+                self.discard_bodies(dimension, &created);
+                return None;
+            }
+        }
+        if assembly_mass > 0.0
+            && !self.share_assembly_mass(dimension, &created, bodies, assembly_mass)
+        {
+            self.discard_bodies(dimension, &created);
+            return None;
+        }
+        for (id, body) in created.iter().zip(bodies) {
+            self.register_body(dimension, handle, *id, body.node);
+        }
+        if let Some(sim) = self.dimensions.get_mut(&dimension) {
+            sim.world.seal_assembly(handle, self_collision);
+        }
+        Some(created)
+    }
+
+    /// Répartit la masse d'une assembly entre ses corps sans masse déclarée (ADR-151 D2), au
+    /// prorata de celle que leurs densités donnent. Faux si les masses déclarées atteignent
+    /// la sienne, ou si ces corps n'en ont aucune ; vrai sans rien faire si tous déclarent
+    /// la leur.
+    fn share_assembly_mass(
+        &mut self,
+        dimension: u64,
+        created: &[BodyId],
+        bodies: &[AssemblyBody],
+        assembly_mass: f32,
+    ) -> bool {
+        let Some(sim) = self.dimensions.get_mut(&dimension) else {
+            return false;
+        };
+        let declared: f32 = bodies
+            .iter()
+            .map(|body| body.desc.mass)
+            .filter(|mass| *mass > 0.0)
+            .sum();
+        let shared: Vec<BodyId> = created
+            .iter()
+            .zip(bodies)
+            .filter(|(_, body)| body.desc.mass <= 0.0)
+            .map(|(id, _)| *id)
+            .collect();
+        if shared.is_empty() {
+            return true;
+        }
+        let computed: f32 = shared
+            .iter()
+            .filter_map(|id| sim.world.body_mass(*id))
+            .sum();
+        let remaining = assembly_mass - declared;
+        if !(remaining > 0.0 && remaining.is_finite() && computed > 0.0 && computed.is_finite()) {
+            return false;
+        }
+        let factor = remaining / computed;
+        for id in shared {
+            sim.world.scale_density(id, factor);
+        }
+        true
+    }
+
+    /// Retire les corps d'une assembly abandonnée, avant tout enregistrement.
+    fn discard_bodies(&mut self, dimension: u64, created: &[BodyId]) {
+        if let Some(sim) = self.dimensions.get_mut(&dimension) {
+            for id in created {
+                sim.world.remove_body(*id);
+            }
+        }
+    }
+
     /// Remplace la table des matériaux de la session (`SET_PHYSICS_MATERIALS`, ADR-149) et la
     /// propage : chaque collider et chaque tuile déjà posés prennent le contact de leur index,
     /// dimension après dimension, dans l'ordre des clés (R-1020). Rend le nombre de colliders
@@ -929,21 +1116,26 @@ impl SimDriver {
         }
     }
 
-    /// Applique `REMOVE_ASSEMBLY` : retire le corps et son routage. Rend vrai s'il
-    /// existait.
+    /// Applique `REMOVE_ASSEMBLY` : retire tous les corps de l'assembly et son routage.
+    /// Rend vrai si l'un existait.
     pub fn apply_remove_assembly(&mut self, handle: Handle) -> bool {
-        let Some((dimension, body)) = self.routes.remove(&handle_key(handle)) else {
+        let Some((dimension, bodies)) = self.routes.remove(&handle_key(handle)) else {
             return false;
         };
-        self.dimensions
-            .get_mut(&dimension)
-            .is_some_and(|sim| sim.world.remove_body(body))
+        let Some(sim) = self.dimensions.get_mut(&dimension) else {
+            return false;
+        };
+        let mut removed = false;
+        for body in bodies {
+            removed |= sim.world.remove_body(body);
+        }
+        removed
     }
 
     /// Applique `SET_KINEMATIC` : la pose monde imposée est ramenée au repère
     /// local de la dimension par l'origine flottante.
     pub fn apply_set_kinematic(&mut self, handle: Handle, world_position: DVec3, rotation: Quat) {
-        if let Some(&(dimension, body)) = self.routes.get(&handle_key(handle)) {
+        if let Some((dimension, body)) = self.assembly_body(handle) {
             if let Some(sim) = self.dimensions.get_mut(&dimension) {
                 let local = sim.origin.to_local(world_position);
                 sim.world.set_kinematic_pose(body, local, rotation);
@@ -953,7 +1145,7 @@ impl SimDriver {
 
     /// Applique `APPLY_IMPULSE`.
     pub fn apply_impulse(&mut self, handle: Handle, impulse: Vec3, point: Vec3, at_point: bool) {
-        if let Some(&(dimension, body)) = self.routes.get(&handle_key(handle)) {
+        if let Some((dimension, body)) = self.assembly_body(handle) {
             if let Some(sim) = self.dimensions.get_mut(&dimension) {
                 sim.world.apply_impulse(body, impulse, point, at_point);
             }
@@ -1117,8 +1309,8 @@ mod tests {
         });
         bille(&mut driver, 0);
         bille_au_handle(&mut driver, 0, Handle::new(2, 1));
-        let (_, premiere) = driver.routes[&handle_key(Handle::new(1, 1))];
-        let (_, seconde) = driver.routes[&handle_key(Handle::new(2, 1))];
+        let (_, premiere) = driver.assembly_body(Handle::new(1, 1)).unwrap();
+        let (_, seconde) = driver.assembly_body(Handle::new(2, 1)).unwrap();
         let world = driver.world_mut(0).unwrap();
         // Trois CLAMPED de budget pour une seule place : celui de la seconde bille, sans
         // événement de son identité au lot, est perdu ; le second de la première se fond dans
@@ -1375,7 +1567,7 @@ mod tests {
         use ax_model::dm::physics::{event_data, event_kind};
         let mut driver = SimDriver::new();
         bille(&mut driver, 0);
-        let (_, body) = driver.routes[&handle_key(Handle::new(1, 1))];
+        let (_, body) = driver.assembly_body(Handle::new(1, 1)).unwrap();
         let world = driver.world_mut(0).unwrap();
         world.force_sleep(body, false);
         assert!(world.drain_events().is_empty());

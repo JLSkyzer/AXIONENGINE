@@ -1,0 +1,377 @@
+//! ADR-151 D2 : une assembly porte plusieurs corps, un par node racine.
+//!
+//! Le corps racine d'abord : l'entité le suit, et les commandes sans node le visent. Les
+//! corps d'une même assembly ne se touchent pas (§10.4), sauf déclaration ; l'assembly
+//! reste l'unité d'activité, de garde-fou et de sommeil.
+
+use ax_math::{DVec3, Quat, Vec3};
+use ax_model::dm::geometry::WorldTransform;
+use ax_model::dm::physics::{body_state_flags, event_kind, BodyDesc};
+use ax_physics::{
+    AssemblyBody, BodyCollider, BodyId, BodyKind, CollisionGroups, ContactMaterial, Handle, Shape,
+    SimDriver, SimSettings,
+};
+
+const ASSEMBLY: Handle = Handle {
+    index: 7,
+    generation: 1,
+};
+
+/// Une boîte d'un bloc de côté, de densité `density`, au centre de son corps.
+fn boite(density: f32) -> BodyCollider {
+    BodyCollider {
+        shape: Shape::Cuboid {
+            half_extents: [0.5; 3],
+        },
+        density,
+        material: ContactMaterial::default(),
+        translation: Vec3::ZERO,
+        rotation: Quat::IDENTITY,
+    }
+}
+
+/// Un corps dynamique d'une boîte, au node `node`, posé en `translation` dans l'assembly.
+fn corps(node: u32, translation: Vec3) -> AssemblyBody {
+    AssemblyBody {
+        node,
+        translation,
+        rotation: Quat::IDENTITY,
+        kind: BodyKind::Dynamic,
+        colliders: vec![boite(1000.0)],
+        desc: BodyDesc::undeclared(2),
+    }
+}
+
+/// Un pilote sans gravité en dimension 0, de rayon et de plafond donnés.
+fn pilote(radius: f32, cap: usize) -> SimDriver {
+    let mut driver = SimDriver::with_settings(SimSettings {
+        simulation_radius: radius,
+        max_active_bodies: cap,
+        ..SimSettings::default()
+    });
+    driver.apply_dimension_env(0, Vec3::ZERO, Vec3::ZERO, None);
+    driver
+}
+
+fn spawn(position: [f64; 3], rotation: Quat) -> WorldTransform {
+    WorldTransform {
+        position,
+        rotation: rotation.to_array(),
+    }
+}
+
+fn creer(
+    driver: &mut SimDriver,
+    handle: Handle,
+    at: WorldTransform,
+    bodies: &[AssemblyBody],
+    self_collision: bool,
+) -> Option<Vec<BodyId>> {
+    driver.create_assembly_bodies(
+        0,
+        handle,
+        at,
+        bodies,
+        CollisionGroups::ALL,
+        0.0,
+        self_collision,
+    )
+}
+
+fn position(driver: &mut SimDriver, body: BodyId) -> Vec3 {
+    driver
+        .world_mut(0)
+        .and_then(|world| world.pose(body))
+        .expect("le corps existe")
+        .translation
+}
+
+fn dort(driver: &mut SimDriver, body: BodyId) -> bool {
+    driver
+        .world_mut(0)
+        .and_then(|world| world.is_sleeping(body))
+        .expect("le corps existe")
+}
+
+#[test]
+fn adr151_une_assembly_porte_ses_corps_le_corps_racine_d_abord() {
+    let mut driver = pilote(128.0, 2048);
+    let quart = Quat::from_rotation_y(core::f32::consts::FRAC_PI_2);
+    let corps_crees = creer(
+        &mut driver,
+        ASSEMBLY,
+        spawn([10.0, 64.0, 10.0], quart),
+        &[corps(0, Vec3::ZERO), corps(3, Vec3::new(2.0, 0.0, 0.0))],
+        false,
+    )
+    .expect("deux boîtes valides");
+
+    assert_eq!(corps_crees.len(), 2);
+    let (dimension, routes) = driver.assembly_bodies(ASSEMBLY).expect("routée");
+    assert_eq!(dimension, 0);
+    assert_eq!(routes, corps_crees.as_slice(), "le corps racine d'abord");
+    assert_eq!(driver.assembly_body(ASSEMBLY), Some((0, corps_crees[0])));
+
+    // Chaque corps rapporte son node ; le second est posé par la pose de spawn composée
+    // avec la sienne : (2, 0, 0) tourné d'un quart de tour autour de Y donne (0, 0, -2).
+    let reports = driver.collect_reports();
+    let nodes: Vec<(Handle, u32)> = reports.states.iter().map(|s| (s.handle, s.node)).collect();
+    assert_eq!(nodes, vec![(ASSEMBLY, 0), (ASSEMBLY, 3)]);
+    let second = reports.states[1].position;
+    assert!((second[0] - 10.0).abs() < 1e-4, "x = {}", second[0]);
+    assert!((second[2] - 8.0).abs() < 1e-4, "z = {}", second[2]);
+}
+
+#[test]
+fn adr151_les_corps_d_une_assembly_ne_se_touchent_pas_sauf_declaration() {
+    // Deux boîtes qui se chevauchent d'un demi-bloc : séparées, elles s'écartent ; d'une
+    // même assembly, elles restent où elles sont (§10.4) ; déclarées, elles s'écartent.
+    let ecart_apres = |self_collision: bool, meme_assembly: bool| -> f32 {
+        let mut driver = pilote(128.0, 2048);
+        let at = spawn([0.0, 64.0, 0.0], Quat::IDENTITY);
+        let (a, b) = if meme_assembly {
+            let ids = creer(
+                &mut driver,
+                ASSEMBLY,
+                at,
+                &[corps(0, Vec3::ZERO), corps(1, Vec3::new(0.5, 0.0, 0.0))],
+                self_collision,
+            )
+            .unwrap();
+            (ids[0], ids[1])
+        } else {
+            let a = creer(&mut driver, ASSEMBLY, at, &[corps(0, Vec3::ZERO)], false).unwrap()[0];
+            let at_b = spawn([0.5, 64.0, 0.0], Quat::IDENTITY);
+            let autre = Handle::new(8, 1);
+            let b = creer(&mut driver, autre, at_b, &[corps(0, Vec3::ZERO)], false).unwrap()[0];
+            (a, b)
+        };
+        for _ in 0..20 {
+            driver.advance_all(1.0 / 20.0);
+        }
+        (position(&mut driver, b) - position(&mut driver, a)).length()
+    };
+
+    let filtrees = ecart_apres(false, true);
+    assert!(
+        (filtrees - 0.5).abs() < 1e-5,
+        "aucun contact interne : {filtrees}"
+    );
+    let declarees = ecart_apres(true, true);
+    assert!(
+        declarees > 0.9,
+        "collisions internes déclarées : {declarees}"
+    );
+    let separees = ecart_apres(false, false);
+    assert!(separees > 0.9, "deux assemblies se touchent : {separees}");
+}
+
+#[test]
+fn adr151_retirer_l_assembly_retire_tous_ses_corps() {
+    let mut driver = pilote(128.0, 2048);
+    creer(
+        &mut driver,
+        ASSEMBLY,
+        spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
+        &[corps(0, Vec3::ZERO), corps(1, Vec3::new(3.0, 0.0, 0.0))],
+        false,
+    )
+    .unwrap();
+    assert_eq!(driver.world_mut(0).unwrap().body_count(), 2);
+
+    assert!(driver.apply_remove_assembly(ASSEMBLY));
+
+    assert_eq!(driver.world_mut(0).unwrap().body_count(), 0);
+    assert!(driver.assembly_bodies(ASSEMBLY).is_none());
+    assert!(driver.collect_reports().states.is_empty());
+}
+
+#[test]
+fn adr151_la_gestion_d_activite_endort_et_reveille_l_assembly_entiere() {
+    let mut driver = pilote(32.0, 2048);
+    let ids = creer(
+        &mut driver,
+        ASSEMBLY,
+        spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
+        &[corps(0, Vec3::ZERO), corps(1, Vec3::new(3.0, 0.0, 0.0))],
+        false,
+    )
+    .unwrap();
+
+    // Aucun joueur à portée : les deux corps s'endorment, et le compte est en corps.
+    driver.begin_tick();
+    driver.set_observers(0, &[DVec3::new(500.0, 64.0, 0.0)]);
+    let report = driver.manage_activity();
+    assert_eq!(report.slept_by_radius, 2);
+    assert!(dort(&mut driver, ids[0]) && dort(&mut driver, ids[1]));
+
+    // Un joueur revient : les deux se réveillent ensemble.
+    driver.begin_tick();
+    driver.set_observers(0, &[DVec3::new(1.0, 64.0, 0.0)]);
+    let report = driver.manage_activity();
+    assert_eq!(report.woken, 2);
+    assert_eq!(report.active, 2);
+    assert!(!dort(&mut driver, ids[0]) && !dort(&mut driver, ids[1]));
+}
+
+#[test]
+fn adr151_une_assembly_reste_a_portee_tant_que_l_un_de_ses_corps_l_est() {
+    // R-612 par assembly : sa racine est à 60 blocs du joueur, au-delà du rayon de 32, mais
+    // son second corps est à 10 blocs ; elle reste éveillée, entière.
+    let mut driver = pilote(32.0, 2048);
+    let ids = creer(
+        &mut driver,
+        ASSEMBLY,
+        spawn([60.0, 64.0, 0.0], Quat::IDENTITY),
+        &[corps(0, Vec3::ZERO), corps(1, Vec3::new(-50.0, 0.0, 0.0))],
+        false,
+    )
+    .unwrap();
+
+    driver.begin_tick();
+    driver.set_observers(0, &[DVec3::new(0.0, 64.0, 0.0)]);
+    let report = driver.manage_activity();
+
+    assert_eq!(report.slept_by_radius, 0);
+    assert_eq!(report.active, 2);
+    assert!(!dort(&mut driver, ids[0]) && !dort(&mut driver, ids[1]));
+}
+
+#[test]
+fn adr151_le_plafond_de_corps_actifs_prend_une_assembly_entiere_ou_pas_du_tout() {
+    // R-613 compte des corps : sous un plafond de deux, une assembly de trois corps, plus
+    // proche, ne tient pas ; la bille d'un corps, plus loin, garde sa place.
+    let mut driver = pilote(128.0, 2);
+    let trois = creer(
+        &mut driver,
+        ASSEMBLY,
+        spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
+        &[
+            corps(0, Vec3::ZERO),
+            corps(1, Vec3::new(3.0, 0.0, 0.0)),
+            corps(2, Vec3::new(6.0, 0.0, 0.0)),
+        ],
+        false,
+    )
+    .unwrap();
+    let seul = creer(
+        &mut driver,
+        Handle::new(9, 1),
+        spawn([40.0, 64.0, 0.0], Quat::IDENTITY),
+        &[corps(0, Vec3::ZERO)],
+        false,
+    )
+    .unwrap()[0];
+
+    driver.begin_tick();
+    driver.set_observers(0, &[DVec3::new(0.0, 64.0, 0.0)]);
+    let report = driver.manage_activity();
+
+    assert_eq!(report.slept_by_cap, 3);
+    assert_eq!(report.active, 1);
+    assert!(trois.iter().all(|id| dort(&mut driver, *id)));
+    assert!(!dort(&mut driver, seul));
+}
+
+#[test]
+fn adr151_un_corps_hors_du_monde_ramene_toute_son_assembly() {
+    // R-181 : le second corps naît hors du monde ; au premier pas il est restauré, et le
+    // corps racine avec lui, endormi — un seul état invalide compté, un seul RECOVERED.
+    let mut driver = pilote(128.0, 2048);
+    let ids = creer(
+        &mut driver,
+        ASSEMBLY,
+        spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
+        &[corps(0, Vec3::ZERO), corps(1, Vec3::new(2.0e7, 0.0, 0.0))],
+        false,
+    )
+    .unwrap();
+    driver.world_mut(0).unwrap().apply_impulse(
+        ids[0],
+        Vec3::new(0.0, 0.0, 5000.0),
+        Vec3::ZERO,
+        false,
+    );
+
+    driver.advance_all(1.0 / 20.0);
+
+    let world = driver.world_mut(0).unwrap();
+    assert_eq!(world.invalid_state_count(), 1);
+    let recovered: Vec<_> = world
+        .drain_events()
+        .into_iter()
+        .filter(|event| event.kind == event_kind::RECOVERED)
+        .collect();
+    assert_eq!(recovered.len(), 1);
+    assert_eq!(recovered[0].node_a, 1, "le corps fautif");
+    let reports = driver.collect_reports();
+    for state in &reports.states {
+        assert!(
+            state.flags & body_state_flags::SLEEPING != 0,
+            "node {} endormi",
+            state.node
+        );
+    }
+    let racine = reports.states.iter().find(|state| state.node == 0).unwrap();
+    assert!(
+        racine.position[2].abs() < 1e-3,
+        "le corps racine revient à sa pose valide : z = {}",
+        racine.position[2]
+    );
+}
+
+#[test]
+fn adr151_la_masse_de_l_assembly_se_repartit_au_prorata_des_densites() {
+    let masses = |bodies: &[AssemblyBody], assembly_mass: f32| -> Option<Vec<f32>> {
+        let mut driver = pilote(128.0, 2048);
+        let ids = driver.create_assembly_bodies(
+            0,
+            ASSEMBLY,
+            spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
+            bodies,
+            CollisionGroups::ALL,
+            assembly_mass,
+            false,
+        )?;
+        let world = driver.world_mut(0).unwrap();
+        Some(ids.iter().map(|id| world.body_mass(*id).unwrap()).collect())
+    };
+    let deux = [corps(0, Vec3::ZERO), corps(1, Vec3::new(3.0, 0.0, 0.0))];
+
+    // Deux boîtes égales : 100 kg pour l'assembly, 50 chacune.
+    let egales = masses(&deux, 100.0).unwrap();
+    assert!(
+        (egales[0] - 50.0).abs() < 1e-3 && (egales[1] - 50.0).abs() < 1e-3,
+        "{egales:?}"
+    );
+
+    // Une masse déclarée de 30 kg sur le second : le reste au premier.
+    let mut declaree = deux.clone();
+    declaree[1].desc.mass = 30.0;
+    let partagees = masses(&declaree, 100.0).unwrap();
+    assert!((partagees[0] - 70.0).abs() < 1e-3 && (partagees[1] - 30.0).abs() < 1e-3);
+
+    // Des masses déclarées qui atteignent celle de l'assembly : refusée, rien ne reste.
+    declaree[1].desc.mass = 100.0;
+    assert!(masses(&declaree, 100.0).is_none());
+}
+
+#[test]
+fn adr151_une_forme_refusee_n_en_laisse_aucun() {
+    let mut driver = pilote(128.0, 2048);
+    let mut fautif = corps(1, Vec3::new(3.0, 0.0, 0.0));
+    fautif.colliders[0].shape = Shape::ConvexHull {
+        points: vec![[0.0; 3], [1.0, 0.0, 0.0]],
+    };
+    let crees = creer(
+        &mut driver,
+        ASSEMBLY,
+        spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
+        &[corps(0, Vec3::ZERO), fautif],
+        false,
+    );
+
+    assert!(crees.is_none());
+    assert_eq!(driver.world_mut(0).unwrap().body_count(), 0);
+    assert!(driver.assembly_bodies(ASSEMBLY).is_none());
+}

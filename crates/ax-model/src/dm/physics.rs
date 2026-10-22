@@ -590,12 +590,13 @@ pub mod body_state_flags {
 /// linéaire et angulaire en repère monde.
 ///
 /// **Disposition figée en V1.0** : 80 octets, alignement 8 (imposé par la
-/// position `f64`), 4 octets de remplissage final. Le test de disposition la
-/// verrouille.
+/// position `f64`). Les 4 derniers octets, remplissage jusqu'à ADR-151, portent
+/// le node racine du corps : une assembly en a plusieurs (D2, D7). Le test de
+/// disposition la verrouille.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BodyState {
-    /// Corps concerné.
+    /// Assembly du corps.
     pub handle: Handle,
     /// Position monde, en blocs.
     pub position: [f64; 3],
@@ -607,14 +608,17 @@ pub struct BodyState {
     pub ang_vel: [f32; 3],
     /// Drapeaux, voir [`body_state_flags`].
     pub flags: u32,
+    /// Node racine du corps dans l'asset (ADR-151 D2) : celui du premier corps de
+    /// l'assembly, le corps racine, que l'entité suit ; celui de chaque autre corps.
+    pub node: u32,
 }
 
 impl BodyState {
-    /// Taille de la structure sur la frontière, en octets (remplissage compris).
+    /// Taille de la structure sur la frontière, en octets.
     pub const BYTES: usize = 80;
 
-    /// Sérialise l'état en little-endian, dans la disposition figée (80 octets,
-    /// remplissage final compris), à la fin de `out`.
+    /// Sérialise l'état en little-endian, dans la disposition figée (80 octets),
+    /// à la fin de `out`.
     pub fn write_le(&self, out: &mut Vec<u8>) {
         out.extend_from_slice(&self.handle.index.to_le_bytes());
         out.extend_from_slice(&self.handle.generation.to_le_bytes());
@@ -631,7 +635,7 @@ impl BodyState {
             out.extend_from_slice(&value.to_le_bytes());
         }
         out.extend_from_slice(&self.flags.to_le_bytes());
-        out.extend_from_slice(&[0u8; 4]); // remplissage final
+        out.extend_from_slice(&self.node.to_le_bytes());
     }
 }
 
@@ -1044,6 +1048,7 @@ mod tests {
             lin_vel: [4.0, 5.0, 6.0],
             ang_vel: [7.0, 8.0, 9.0],
             flags: 0b101,
+            node: 11,
         };
         let mut bytes = Vec::new();
         state.write_le(&mut bytes);
@@ -1053,6 +1058,7 @@ mod tests {
         assert_eq!(f64::from_le_bytes(bytes[8..16].try_into().unwrap()), 1.0);
         assert_eq!(f32::from_le_bytes(bytes[32..36].try_into().unwrap()), 0.1);
         assert_eq!(u32::from_le_bytes(bytes[72..76].try_into().unwrap()), 0b101);
+        assert_eq!(u32::from_le_bytes(bytes[76..80].try_into().unwrap()), 11);
     }
 
     #[test]
@@ -1092,6 +1098,7 @@ mod tests {
         assert_eq!(offset_of!(BodyState, lin_vel), 48);
         assert_eq!(offset_of!(BodyState, ang_vel), 60);
         assert_eq!(offset_of!(BodyState, flags), 72);
+        assert_eq!(offset_of!(BodyState, node), 76);
     }
 
     #[test]

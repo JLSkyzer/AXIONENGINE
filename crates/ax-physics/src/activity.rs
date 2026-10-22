@@ -92,13 +92,16 @@ impl Observers {
     }
 }
 
-/// Un corps dynamique sujet à la gestion d'activité, tel que son monde l'a relevé.
+/// Un corps dynamique sujet à la gestion d'activité, tel que son monde l'a relevé : le
+/// corps racine d'une assembly, qui la représente avec tous ses corps (ADR-151 D2).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Candidate {
     /// Dimension de son monde.
     pub dimension: u64,
     /// Le corps.
     pub body: BodyId,
+    /// Corps de son assembly, lui compris : le plafond de R-613 compte des corps.
+    pub bodies: usize,
     /// Distance au plus proche observateur, en blocs ; `None` au-delà du rayon configuré.
     pub distance: Option<f32>,
     /// Rang de création dans son monde : le plus petit est le plus ancien.
@@ -145,14 +148,25 @@ pub(crate) fn plan(candidates: &[Candidate], limits: ActivityLimits) -> Vec<(usi
             decisions.push((index, Decision::Sleep { cause, budget }));
         }
     }
-    // R-613 : à portée, les `cap` premiers dans l'ordre de maintien sont actifs.
+    // R-613 : à portée, dans l'ordre de maintien, sont actifs ceux dont les corps tiennent
+    // encore sous le plafond — une assembly entière ou pas du tout (ADR-151 D2).
     contenders.sort_by(|&left, &right| keep_order(&candidates[left], &candidates[right]));
-    for (rank, &index) in contenders.iter().enumerate() {
-        let active = rank < limits.cap;
+    let mut used = 0usize;
+    let mut used_nominal = 0usize;
+    for &index in &contenders {
+        let bodies = candidates[index].bodies.max(1);
+        let active = used + bodies <= limits.cap;
+        if active {
+            used += bodies;
+        }
+        let nominal = used_nominal + bodies <= limits.nominal_cap;
+        if nominal {
+            used_nominal += bodies;
+        }
         match (candidates[index].awake, active) {
             (true, false) => {
                 let cause = SleepCause::Cap;
-                let budget = rank < limits.nominal_cap;
+                let budget = nominal;
                 decisions.push((index, Decision::Sleep { cause, budget }));
             }
             (false, true) => decisions.push((index, Decision::Wake)),
@@ -195,6 +209,7 @@ mod tests {
         Candidate {
             dimension: 0,
             body: body(index),
+            bodies: 1,
             distance,
             birth: u64::from(index),
             awake,

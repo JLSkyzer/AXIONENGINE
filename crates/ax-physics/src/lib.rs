@@ -70,7 +70,7 @@ pub use materials::MaterialTable;
 pub use proxies::{EntityProxy, ProxyShape};
 pub use query::{RayHit, SensorMode, SpatialFilter, SweepHit};
 pub use scheduler::{check_order, SimMode, Stage, StageDurations, StageLog};
-pub use sim::{SimDriver, SimSettings};
+pub use sim::{AssemblyBody, SimDriver, SimSettings};
 pub use world::{BodyReports, PhysicsWorld, Pose, WorldCounters};
 
 // §10.7 : les événements sont une structure DM figée dans `ax-model` ; on les

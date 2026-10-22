@@ -3161,6 +3161,15 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
       T-330..T-334 définis. T-950..T-953 renvoyés en M7.
 - [ ] 1. Multi-corps natif (D2) : corps par node racine, colliders par corps, routes multiples, activité
       par assembly ; `CREATE_ASSEMBLY` étendu, `BodyState.node`, ABI 7.
+      - [x] 1a (2026-10-22). Cœur natif : `create_assembly_bodies` (tout ou rien, masse de l'assembly
+            répartie au prorata des densités), routes racine d'abord, filtre des paires internes
+            (§10.4, `user_data` et hook de rapier, sur les seules assemblies multi-corps), activité,
+            sommeil forcé, restauration R-181 et FM-22 par assembly, plafond R-613 compté en corps,
+            portée au plus proche de ses corps ; `BodyState.node` à l'offset 76. 9 tests, 12 mutations rouges.
+      - [ ] 1b. Frontière : `CREATE_ASSEMBLY` en `SimIn` 3 (corps, nodes, colliders recomposés dans le
+            repère de leur corps, échelle comprise), validation R-120 sur l'échelle cumulée, `SIM_OUT` 2,
+            ABI 7.
+      - [ ] 1c. Java : corps déduits de la definition, état de la racine à l'entité, GameTest.
 - [ ] 2. Schéma 2 et compilation (D3) : lecture, `definition-2.json`, `JointDesc` transcrit par Java.
 - [ ] 3. Joints natifs (D4, D5) : sept types, moteur, friction, étape 5, rupture, événements, métriques ;
       T-330..T-333 au banc.

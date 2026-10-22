@@ -5,10 +5,11 @@ use rapier3d::parry::mass_properties::MassProperties;
 use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::parry::utils::Array2;
 use rapier3d::prelude::{
-    ActiveEvents, CoefficientCombineRule, Collider, ColliderBuilder, ColliderHandle, ColliderSet,
-    CollisionEvent, CollisionEventFlags, ContactPair, EventHandler, PhysicsWorld as RapierWorld,
-    Pose as RapierPose, QueryFilter as RapierQueryFilter, QueryFilterFlags, Ray, Real, RigidBody,
-    RigidBodyBuilder, RigidBodyHandle, RigidBodySet, RigidBodyType, SharedShape, Vector,
+    ActiveEvents, ActiveHooks, CoefficientCombineRule, Collider, ColliderBuilder, ColliderHandle,
+    ColliderSet, CollisionEvent, CollisionEventFlags, ContactPair, EventHandler, PairFilterContext,
+    PhysicsHooks, PhysicsWorld as RapierWorld, Pose as RapierPose,
+    QueryFilter as RapierQueryFilter, QueryFilterFlags, Ray, Real, RigidBody, RigidBodyBuilder,
+    RigidBodyHandle, RigidBodySet, RigidBodyType, SharedShape, SolverFlags, Vector,
 };
 
 use crate::activity::{Candidate, Observers};
@@ -112,6 +113,42 @@ struct BodyForcePlan {
 struct BodyIdentity {
     assembly: Handle,
     node: u32,
+}
+
+/// Bit du `user_data` d'un collider : il appartient à une assembly à plusieurs corps, que
+/// [`AssemblyPairFilter`] filtre (§10.4, ADR-151 D2).
+const PAIR_FILTERED: u128 = 1;
+/// Bit du `user_data` : l'assembly déclare ses collisions internes (`physics.self_collision`).
+const PAIR_SELF_COLLIDES: u128 = 1 << 1;
+/// Décalage de l'identifiant d'assembly (`handle_key`) dans le `user_data`.
+const PAIR_ASSEMBLY_SHIFT: u32 = 64;
+
+/// Le filtre des paires de contact (§10.4, ADR-151 D2) : deux colliders marqués de la même
+/// assembly ne se touchent pas, sauf si elle déclare ses collisions internes. Sans état :
+/// la marque est dans le `user_data` de chaque collider, posée par
+/// [`PhysicsWorld::seal_assembly`] sur les seules assemblies à plusieurs corps — rapier
+/// n'appelle le filtre que pour une paire dont un collider l'active, et une assembly à un
+/// corps n'en paie rien.
+struct AssemblyPairFilter;
+
+impl PhysicsHooks for AssemblyPairFilter {
+    fn filter_contact_pair(&self, context: &PairFilterContext) -> Option<SolverFlags> {
+        let mark = |handle| {
+            context
+                .colliders
+                .get(handle)
+                .map_or(0, |collider| collider.user_data)
+        };
+        let (a, b) = (mark(context.collider1), mark(context.collider2));
+        let same_assembly = a & PAIR_FILTERED != 0
+            && b & PAIR_FILTERED != 0
+            && a >> PAIR_ASSEMBLY_SHIFT == b >> PAIR_ASSEMBLY_SHIFT;
+        if same_assembly && a & PAIR_SELF_COLLIDES == 0 {
+            None
+        } else {
+            Some(SolverFlags::COMPUTE_IMPULSES)
+        }
+    }
 }
 
 /// Dernière pose finie et dans le monde d'un corps, mémorisée pour la
@@ -251,6 +288,10 @@ pub struct PhysicsWorld {
     aero: HashMap<BodyId, AeroProfile>,
     /// Identités des corps, pour peupler les événements (§10.7).
     identity: HashMap<BodyId, BodyIdentity>,
+    /// Corps de chaque assembly, par `handle_key`, dans l'ordre de leur identité : le premier
+    /// est le corps racine, que l'entité suit (ADR-151 D2). L'assembly est l'unité
+    /// d'activité, de garde-fou et de sommeil. Ordonnée (R-1020).
+    members: BTreeMap<u64, Vec<BodyId>>,
     /// Matériau de contact de chaque collider d'assembly ou de tuile (DM-07, ADR-149) : son
     /// index, que portent les événements et par lequel une table nouvelle se propage, et son
     /// roulement (D6). Consultée par clé, jamais itérée (R-1020) : la propagation suit l'ordre
@@ -470,6 +511,7 @@ impl PhysicsWorld {
             stage_log: StageLog::default(),
             aero: HashMap::new(),
             identity: HashMap::new(),
+            members: BTreeMap::new(),
             collider_materials: HashMap::new(),
             sleep_state: HashMap::new(),
             events: Vec::new(),
@@ -653,6 +695,24 @@ impl PhysicsWorld {
         self.inner.bodies.get(id.handle()).map(RigidBody::mass)
     }
 
+    /// Multiplie la densité de chaque collider d'un corps par `factor` et recalcule sa
+    /// masse : la masse d'une assembly se répartit ainsi entre ses corps (ADR-151 D2), centre
+    /// de masse et forme de l'inertie gardés. Sans effet sur un corps absent.
+    pub fn scale_density(&mut self, id: BodyId, factor: f32) {
+        let colliders = match self.inner.bodies.get(id.handle()) {
+            Some(body) => body.colliders().to_vec(),
+            None => return,
+        };
+        for handle in colliders {
+            if let Some(collider) = self.inner.colliders.get_mut(handle) {
+                collider.set_density(collider.density() * factor);
+            }
+        }
+        if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
+            body.recompute_mass_properties_from_colliders(&self.inner.colliders);
+        }
+    }
+
     /// {@return le centre de masse du corps, en repère monde, ou `None`}
     ///
     /// Décalé vers les colliders les plus denses (R-622). Pour un corps à l'origine
@@ -701,7 +761,7 @@ impl PhysicsWorld {
             self.update_automatic_ccd(dt);
             self.record_pre_step_motion();
             let collector = ContactCollector::default();
-            self.inner.step_with_events(&(), &collector);
+            self.inner.step_with_events(&AssemblyPairFilter, &collector);
             self.enforce_body_guardrails();
             self.apply_rolling_friction();
             self.stage_log
@@ -782,12 +842,22 @@ impl PhysicsWorld {
         // reste dans la simulation et pourra se réveiller, un corps désactivé en
         // sort. Le rapport est propre à ce monde et vidé à chaque pas.
         let quarantined: Vec<RigidBodyHandle> = self.inner.quarantine().bodies().to_vec();
+        // Les corps déjà ramenés ce pas : l'assembly d'un corps restauré l'est entière, sans
+        // qu'aucun de ses autres corps ne compte pour un état invalide (ADR-151 D2).
+        let mut restored: HashSet<BodyId> = HashSet::new();
         for handle in quarantined {
+            let id = BodyId::from_handle(handle);
             if let Some(body) = self.inner.bodies.get_mut(handle) {
                 body.set_enabled(true);
                 body.sleep();
             }
-            self.signal_recovered(BodyId::from_handle(handle));
+            restored.insert(id);
+            self.signal_recovered(id);
+            for member in self.assembly_members(id) {
+                if restored.insert(member) {
+                    self.restore_body(member);
+                }
+            }
         }
 
         // (2) Bornes de vitesse (R-180) et hors-monde fini (R-181).
@@ -809,9 +879,29 @@ impl PhysicsWorld {
             })
             .collect();
 
+        // Une assembly dont un corps est invalide revient entière à son dernier état valide.
+        let invalid: HashSet<BodyId> = snapshot
+            .iter()
+            .filter(|(_, _, translation, rotation, linvel, angvel)| {
+                !state_is_valid(*translation, *rotation, *linvel, *angvel)
+            })
+            .map(|(id, ..)| *id)
+            .collect();
+        let mut pulled_back: HashSet<BodyId> = HashSet::new();
+        for (id, ..) in &snapshot {
+            if invalid.contains(id) {
+                pulled_back.extend(self.assembly_members(*id));
+            }
+        }
         for (id, handle, translation, rotation, linvel, angvel) in snapshot {
-            if !state_is_valid(translation, rotation, linvel, angvel) {
-                self.restore_last_valid(id, handle);
+            if restored.contains(&id) {
+                continue;
+            }
+            if pulled_back.contains(&id) {
+                self.restore_body(id);
+                if invalid.contains(&id) {
+                    self.signal_recovered(id);
+                }
                 continue;
             }
             self.clamp_velocities(id, handle, linvel, angvel);
@@ -827,15 +917,16 @@ impl PhysicsWorld {
     }
 
     /// Restaure un corps à son dernier état valide connu et l'endort (R-181,
-    /// `E-2030`), pour une position finie mais hors du monde.
-    fn restore_last_valid(&mut self, id: BodyId, handle: RigidBodyHandle) {
+    /// `E-2030`), pour une position finie mais hors du monde — ou parce qu'un autre corps
+    /// de son assembly l'est (ADR-151 D2) ; c'est l'appelant qui signale l'état invalide.
+    fn restore_body(&mut self, id: BodyId) {
         // Un corps passé par `add_body` a toujours un repli semé ; à défaut,
         // l'origine et l'identité, finies par construction.
         let valid = self.last_valid.get(&id).copied().unwrap_or(ValidPose {
             translation: Vec3::ZERO,
             rotation: Quat::IDENTITY,
         });
-        if let Some(body) = self.inner.bodies.get_mut(handle) {
+        if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
             body.set_position(
                 RapierPose::from_parts(valid.translation, valid.rotation),
                 false,
@@ -846,7 +937,6 @@ impl PhysicsWorld {
             // course ce tick.
             body.sleep();
         }
-        self.signal_recovered(id);
     }
 
     /// Compte une restauration (R-181, `E-2030`) et la rend visible : un `RECOVERED`
@@ -1467,7 +1557,11 @@ impl PhysicsWorld {
                 continue;
             }
             unstable.push(id);
-            let group = std::iter::once(id).chain(around.iter().copied());
+            // Le corps instable, ses voisins, et chacun avec toute son assembly (ADR-151 D2).
+            let group: Vec<BodyId> = std::iter::once(id)
+                .chain(around.iter().copied())
+                .flat_map(|member| self.assembly_members(member))
+                .collect();
             if previously_damped.contains(&id) {
                 to_sleep.extend(group);
             } else {
@@ -1860,11 +1954,96 @@ impl PhysicsWorld {
     /// À défaut, un corps émet ses événements à [`Handle::ABSENT`]. Le monde ne
     /// fait que transporter cette identité : il n'en interprète rien (moteur
     /// générique, pas de branche sur un contenu).
+    ///
+    /// Les corps d'une même assembly s'y rangent dans l'ordre de leur identité : le premier
+    /// est son corps racine (ADR-151 D2).
     pub fn set_body_identity(&mut self, id: BodyId, assembly: Handle, node: u32) {
         if self.inner.bodies.get(id.handle()).is_none() {
             return;
         }
-        self.identity.insert(id, BodyIdentity { assembly, node });
+        if let Some(previous) = self.identity.insert(id, BodyIdentity { assembly, node }) {
+            if previous.assembly != assembly {
+                self.forget_member(previous.assembly, id);
+            }
+        }
+        if !assembly.is_absent() {
+            let members = self.members.entry(handle_key(assembly)).or_default();
+            if !members.contains(&id) {
+                members.push(id);
+            }
+        }
+    }
+
+    /// Retire un corps de la liste de son assembly, et la liste vide.
+    fn forget_member(&mut self, assembly: Handle, id: BodyId) {
+        let key = handle_key(assembly);
+        if let Some(members) = self.members.get_mut(&key) {
+            members.retain(|member| *member != id);
+            if members.is_empty() {
+                self.members.remove(&key);
+            }
+        }
+    }
+
+    /// Marque les colliders d'une assembly à plusieurs corps pour le filtre de paires
+    /// (§10.4, ADR-151 D2) : ses corps ne se touchent pas entre eux, sauf
+    /// `self_collision`. Sans effet sur une assembly inconnue ou à un seul corps, que rien
+    /// ne filtre.
+    pub fn seal_assembly(&mut self, assembly: Handle, self_collision: bool) {
+        let key = handle_key(assembly);
+        let members = match self.members.get(&key) {
+            Some(members) if members.len() > 1 => members.clone(),
+            _ => return,
+        };
+        let mut mark = PAIR_FILTERED | (u128::from(key) << PAIR_ASSEMBLY_SHIFT);
+        if self_collision {
+            mark |= PAIR_SELF_COLLIDES;
+        }
+        for id in members {
+            let colliders = match self.inner.bodies.get(id.handle()) {
+                Some(body) => body.colliders().to_vec(),
+                None => continue,
+            };
+            for handle in colliders {
+                if let Some(collider) = self.inner.colliders.get_mut(handle) {
+                    collider.user_data = mark;
+                    collider.set_active_hooks(
+                        collider.active_hooks() | ActiveHooks::FILTER_CONTACT_PAIRS,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Les corps de l'assembly d'un corps, le corps racine d'abord (ADR-151 D2) ; le corps
+    /// seul s'il n'a pas d'identité ou que son assembly n'en a qu'un. L'assembly est l'unité
+    /// d'activité, de garde-fou et de sommeil : un joint ne relie jamais un corps qu'on a
+    /// endormi ou restauré à un corps qui ne l'a pas été.
+    fn assembly_members(&self, id: BodyId) -> Vec<BodyId> {
+        self.identity
+            .get(&id)
+            .and_then(|identity| self.members.get(&handle_key(identity.assembly)))
+            .filter(|members| members.len() > 1 && members.contains(&id))
+            .cloned()
+            .unwrap_or_else(|| vec![id])
+    }
+
+    /// Vrai pour un corps d'une assembly à plusieurs corps qui n'en est pas la racine :
+    /// la gestion d'activité relève l'assembly par sa racine.
+    fn is_secondary(&self, id: BodyId) -> bool {
+        self.identity
+            .get(&id)
+            .and_then(|identity| self.members.get(&handle_key(identity.assembly)))
+            .is_some_and(|members| members.len() > 1 && members[0] != id)
+    }
+
+    /// Les corps d'une assembly, le corps racine d'abord ; vide si elle n'en a aucun dans
+    /// ce monde.
+    #[must_use]
+    pub fn assembly_bodies(&self, assembly: Handle) -> &[BodyId] {
+        self.members
+            .get(&handle_key(assembly))
+            .map_or(&[], Vec::as_slice)
     }
 
     /// Résout de nouveau le matériau de chaque collider d'après la table de la session
@@ -2041,6 +2220,7 @@ impl PhysicsWorld {
                 lin_vel: body.linvel().to_array(),
                 ang_vel: body.angvel().to_array(),
                 flags,
+                node: identity.node,
             });
             reports
                 .bounds
@@ -2455,23 +2635,57 @@ impl PhysicsWorld {
         if self.mode == SimMode::Client {
             return;
         }
-        for (handle, body) in self.inner.bodies.iter() {
-            if !body.is_dynamic() {
-                continue;
-            }
-            let id = BodyId::from_handle(handle);
-            let awake = !body.is_sleeping();
+        // Une assembly se relève par son corps racine, avec tous ses corps (ADR-151 D2).
+        let roots: Vec<BodyId> = self
+            .inner
+            .bodies
+            .iter()
+            .filter(|(_, body)| body.is_dynamic())
+            .map(|(handle, _)| BodyId::from_handle(handle))
+            .filter(|id| !self.is_secondary(*id))
+            .collect();
+        for id in roots {
+            let members = self.assembly_members(id);
+            // À portée dès que l'un de ses corps l'est (R-612) : une assembly étirée ne
+            // s'endort pas sous les yeux d'un joueur parce que sa racine est loin.
+            let distance = members
+                .iter()
+                .filter_map(|member| self.inner.bodies.get(member.handle()))
+                .filter_map(|body| observers.nearest(body.translation()))
+                .reduce(f32::min);
+            let awake = members.iter().any(|member| {
+                self.inner
+                    .bodies
+                    .get(member.handle())
+                    .is_some_and(|body| body.is_dynamic() && !body.is_sleeping())
+            });
             if awake {
-                // Réveillé hors d'un pas (une impulsion venue de Java) : la vitesse
-                // retenue ne vaut plus.
-                self.forced_sleep.remove(&id);
-            } else if !self.forced_sleep.contains_key(&id) {
+                // Réveillée hors d'un pas (une impulsion venue de Java) : la vitesse retenue
+                // ne vaut plus pour ses corps éveillés ; ceux que la gestion tenait encore
+                // endormis repartent avec elle — l'assembly ne se coupe pas en deux.
+                for member in &members {
+                    let sleeping = self
+                        .inner
+                        .bodies
+                        .get(member.handle())
+                        .is_some_and(RigidBody::is_sleeping);
+                    if sleeping {
+                        self.wake_forced(*member);
+                    } else {
+                        self.forced_sleep.remove(member);
+                    }
+                }
+            } else if !members
+                .iter()
+                .any(|member| self.forced_sleep.contains_key(member))
+            {
                 continue;
             }
             out.push(Candidate {
                 dimension,
                 body: id,
-                distance: observers.nearest(body.translation()),
+                bodies: members.len(),
+                distance,
                 birth: self.births.get(&id).copied().unwrap_or_default(),
                 awake,
             });
@@ -2482,30 +2696,44 @@ impl PhysicsWorld {
     /// vitesse. **Endort, jamais ne supprime.** `budget` dit que seule la dégradation
     /// l'endort (FM-21) : un `CLAMPED` de code 2 le signale (ADR-123 §11).
     ///
-    /// Sans effet sur un corps absent, non dynamique ou déjà endormi.
+    /// Sans effet sur un corps absent, non dynamique ou déjà endormi. L'assembly du corps
+    /// s'endort entière (ADR-151 D2) ; le `CLAMPED` part une fois, pour ce corps.
     pub(crate) fn force_sleep(&mut self, id: BodyId, budget: bool) {
-        let Some(body) = self.inner.bodies.get_mut(id.handle()) else {
-            return;
-        };
-        if !body.is_dynamic() || body.is_sleeping() {
-            return;
+        let mut slept = false;
+        for member in self.assembly_members(id) {
+            let Some(body) = self.inner.bodies.get_mut(member.handle()) else {
+                continue;
+            };
+            if !body.is_dynamic() || body.is_sleeping() {
+                continue;
+            }
+            let frozen = ForcedSleep {
+                linvel: body.linvel(),
+                angvel: body.angvel(),
+            };
+            body.sleep();
+            self.forced_sleep.insert(member, frozen);
+            slept = true;
         }
-        let frozen = ForcedSleep {
-            linvel: body.linvel(),
-            angvel: body.angvel(),
-        };
-        body.sleep();
-        self.forced_sleep.insert(id, frozen);
-        if budget {
+        if slept && budget {
             self.push_single_body_event(id, event_kind::CLAMPED, event_data::CLAMPED_BUDGET);
         }
     }
 
     /// Réveille un corps endormi par la gestion d'activité et lui rend la vitesse qu'il
-    /// avait : sa simulation reprend où elle s'était suspendue (R-1890).
+    /// avait : sa simulation reprend où elle s'était suspendue (R-1890). Toute son
+    /// assembly se réveille avec lui (ADR-151 D2).
     ///
     /// Sans effet sur un corps que la gestion n'a pas endormi.
     pub(crate) fn end_forced_sleep(&mut self, id: BodyId) {
+        for member in self.assembly_members(id) {
+            self.wake_forced(member);
+        }
+    }
+
+    /// Réveille un seul corps endormi par la gestion d'activité, avec sa vitesse ; sans
+    /// effet sur un autre.
+    fn wake_forced(&mut self, id: BodyId) {
         let Some(frozen) = self.forced_sleep.remove(&id) else {
             return;
         };
@@ -2536,7 +2764,9 @@ impl PhysicsWorld {
     /// Retire un corps ; renvoie vrai s'il existait.
     pub fn remove_body(&mut self, id: BodyId) -> bool {
         self.aero.remove(&id);
-        self.identity.remove(&id);
+        if let Some(identity) = self.identity.remove(&id) {
+            self.forget_member(identity.assembly, id);
+        }
         self.sleep_state.remove(&id);
         self.velocity_limits.remove(&id);
         self.last_valid.remove(&id);
