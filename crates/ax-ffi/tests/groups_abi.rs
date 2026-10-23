@@ -103,6 +103,8 @@ fn assembly(colliders: &[ColliderDesc]) -> Vec<u8> {
         }],
         &[],
         &[],
+        &[],
+        &[],
     );
     payload.extend_from_slice(&phys);
     payload

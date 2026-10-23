@@ -20,12 +20,13 @@ use ax_model::dm::commands::{
 };
 use ax_model::dm::geometry::{Transform, WorldTransform};
 use ax_model::dm::handle::Handle;
+use ax_model::dm::joints::{joint_kind, JointDesc};
 use ax_model::dm::physics::{BodyDesc, ColliderDesc, ColliderShape};
 use ax_model::dm::scene::{name_hash, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 use axion_native::abi::{
-    axion_buffer_acquire, axion_buffer_release, axion_init, axion_shutdown, axion_sim_cancel,
-    axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_OK,
-    AXION_SIDE_SERVER,
+    axion_buffer_acquire, axion_buffer_release, axion_init, axion_metrics_export, axion_shutdown,
+    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
+    AXION_OK, AXION_SIDE_SERVER,
 };
 
 static CONTEXTE: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -92,6 +93,8 @@ fn command_stream(desc: BodyDesc) -> Vec<u8> {
         &[AssemblyBodyEntry { desc, root_node: 0 }],
         &[],
         &[],
+        &[],
+        &[],
     );
     assert_eq!(payload.len() % 8, 0, "PHYS suit les corps, aligné sur 8");
     payload.extend_from_slice(&phys);
@@ -118,6 +121,11 @@ fn soumettre(stream: &[u8]) -> (u32, Option<[f64; 3]>) {
 /// monde de chaque corps collecté (`BodyState` de 80 octets : position `f64` à l'offset 8,
 /// node à l'offset 76).
 fn etats(stream: &[u8]) -> Vec<(u32, [f64; 3])> {
+    etats_et_joints(stream).0
+}
+
+/// [`etats`], et la durée de l'étape 5 du tick (`axion.sim.last_step_joints_ns`).
+fn etats_et_joints(stream: &[u8]) -> (Vec<(u32, [f64; 3])>, u64) {
     let _contexte = CONTEXTE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -197,17 +205,50 @@ fn etats(stream: &[u8]) -> Vec<(u32, [f64; 3])> {
         }
     }
 
+    let joints_ns = metrique(ctx, "axion.sim.last_step_joints_ns");
     assert_eq!(unsafe { axion_sim_cancel(ctx) }, AXION_OK, "cancel");
     release_buffer(ctx, BufferKind::SimIn);
     release_buffer(ctx, BufferKind::SimOut);
     release_buffer(ctx, BufferKind::Events);
     assert_eq!(unsafe { axion_shutdown(ctx) }, AXION_OK, "shutdown");
-    etats
+    (etats, joints_ns)
+}
+
+/// La valeur d'une métrique de l'export (R-502).
+fn metrique(ctx: u64, nom: &str) -> u64 {
+    let mut needed = 0usize;
+    let code = unsafe { axion_metrics_export(ctx, std::ptr::null_mut(), 0, &raw mut needed) };
+    assert_eq!(code, AXION_OK, "taille de l'export");
+    let mut buffer = vec![0u8; needed];
+    let mut written = 0usize;
+    let code =
+        unsafe { axion_metrics_export(ctx, buffer.as_mut_ptr(), buffer.len(), &raw mut written) };
+    assert_eq!(code, AXION_OK, "export");
+    let json = String::from_utf8(buffer).expect("export UTF-8");
+    let marque = format!("\"name\": \"{nom}\"");
+    let ligne = json
+        .lines()
+        .find(|ligne| ligne.contains(&marque))
+        .unwrap_or_else(|| panic!("{nom} absente de l'export"));
+    ligne
+        .split("\"value\": ")
+        .nth(1)
+        .expect("valeur")
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .expect("valeur entière")
 }
 
 /// Une assembly de deux corps : la racine de l'asset et un node `porte` décalé d'un
 /// demi-bloc en x, chacun portant une boîte d'un bloc — elles se chevauchent.
 fn deux_corps(flags: u8) -> Vec<u8> {
+    deux_corps_relies(flags, 2, &[])
+}
+
+/// [`deux_corps`], la racine du type `body_kind`, reliés par `joints`.
+fn deux_corps_relies(flags: u8, body_kind: u8, joints: &[JointDesc]) -> Vec<u8> {
     let node = |name: &str, parent: u32, x: f32, collider: u32| NodeDesc {
         name_hash: name_hash(name),
         parent,
@@ -238,19 +279,26 @@ fn deux_corps(flags: u8) -> Vec<u8> {
             position: [5.0, 10.0, -2.0],
             rotation: [0.0, 0.0, 0.0, 1.0],
         },
-        body_kind: 2,
+        body_kind,
         flags,
         body_count: 0,
         joint_count: 0,
-        _pad: 0,
+        jam_points: 0,
         assembly_mass: 0.0,
         node_bytes: 0,
     };
-    let corps = |root_node| AssemblyBodyEntry {
-        desc: BodyDesc::undeclared(2),
+    let corps = |kind, root_node| AssemblyBodyEntry {
+        desc: BodyDesc::undeclared(kind),
         root_node,
     };
-    let payload = create_assembly_payload(&header, &[corps(0), corps(1)], &nodes, &phys);
+    let payload = create_assembly_payload(
+        &header,
+        &[corps(body_kind, 0), corps(2, 1)],
+        joints,
+        &[],
+        &nodes,
+        &phys,
+    );
     let mut stream = CommandStreamHeader::CURRENT_SCHEMA.to_le_bytes().to_vec();
     stream.extend_from_slice(&0u32.to_le_bytes());
     stream.extend_from_slice(&opcode::CREATE_ASSEMBLY.to_le_bytes());
@@ -302,4 +350,53 @@ fn t312_une_description_invalide_ou_d_un_autre_type_est_refusee() {
     };
     let (count, _) = soumettre(&command_stream(negative));
     assert_eq!(count, 0, "description invalide : refusée");
+}
+
+/// Un joint `Fixed` de la racine à la porte, ancré à l'origine de la porte.
+fn soudure() -> JointDesc {
+    JointDesc {
+        kind: joint_kind::FIXED,
+        flags: 0,
+        body_a: 0,
+        body_b: 1,
+        axes: [0; 6],
+        b_node: 1,
+        anchor: [0.0; 3],
+        axis: [0.0; 3],
+        limits: [0.0; 2],
+        motor_speed: 0.0,
+        motor_target: 0.0,
+        motor_stiffness: 0.0,
+        motor_damping: 0.0,
+        motor_max_force: f32::INFINITY,
+        friction: 0.0,
+        break_force: f32::INFINITY,
+        break_torque: f32::INFINITY,
+        break_energy: f32::INFINITY,
+        jam_friction: 0.0,
+        jam_first: 0,
+        jam_count: 0,
+        axis_limits: [[0.0; 2]; 6],
+        max_length: 0.0,
+        rest_length: 0.0,
+        stiffness: 0.0,
+        damping: 0.0,
+    }
+}
+
+#[test]
+fn adr151_un_joint_venu_par_l_abi_relie_les_corps_de_l_assembly() {
+    // ADR-151 D7 : la racine est statique ; soudée à elle, la porte reste à sa hauteur de spawn,
+    // et l'étape 5 est mesurée ; sans joint, elle tombe.
+    let hauteur = |joints: &[JointDesc]| {
+        // Un corps statique n'a pas d'état : seule la porte, au node 1, en rapporte un.
+        let (etats, joints_ns) = etats_et_joints(&deux_corps_relies(0, 0, joints));
+        let porte = etats.iter().find(|(node, _)| *node == 1).expect("la porte");
+        (porte.1[1], joints_ns)
+    };
+    let (tenue, mesuree) = hauteur(&[soudure()]);
+    assert!((tenue - 10.0).abs() < 1e-4, "soudée : {tenue}");
+    assert!(mesuree > 0, "étape 5 mesurée avec un joint");
+    let (libre, _) = hauteur(&[]);
+    assert!(libre < 10.0 - 1e-3, "libre, elle tombe : {libre}");
 }

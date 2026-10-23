@@ -1560,9 +1560,9 @@ fn submit_commands(session: &mut context::Session, command_count: u32) -> i32 {
 ///
 /// Un payload trop court, une description invalide, un corps d'un type inattendu, une
 /// section illisible, une forme non convertible, une échelle non uniforme sur la chaîne
-/// d'un collider ou des groupes discordants font **abandonner cette assembly** sans créer
-/// de corps — jamais de panique ni de corps à moitié formé. La commande a déjà été lue par
-/// `create_assembly_payloads`, qui a validé les bornes du flux.
+/// d'un collider, des groupes discordants ou un joint fautif font **abandonner cette
+/// assembly** sans créer de corps — jamais de panique ni d'assembly à moitié formée. La
+/// commande a déjà été lue par `create_assembly_payloads`, qui a validé les bornes du flux.
 fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
     let Some(request) = assembly::decode(payload) else {
         return;
@@ -1573,6 +1573,7 @@ fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
         header.handle,
         header.spawn,
         &request.bodies,
+        &request.joints,
         request.groups,
         header.assembly_mass,
         header.flags & create_assembly_flags::SELF_COLLISION != 0,

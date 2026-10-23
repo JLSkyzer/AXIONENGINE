@@ -3191,7 +3191,7 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             chargement au schéma 2, à la transcription au schéma 1), transcription vers les rangs des corps
             et l'annexe des courbes de grippage. Rien ne part encore au natif : la tranche 3 l'y branche.
             781 JUnit ; 14 mutations rouges.
-- [ ] 3. Joints natifs (D4, D5) : sept types, moteur, friction, étape 5, rupture, événements, métriques ;
+- [x] 3. Joints natifs (D4, D5) : sept types, moteur, friction, étape 5, rupture, événements, métriques ;
       T-330..T-333 au banc.
       - [x] 3a (2026-10-22). Cœur natif dans `ax-physics` : `JointSpec`, `add_joint`, étape 5 (force,
             couple autour de l'ancrage, énergie d'un choc sur le tick), rupture et `JOINT_BROKEN`,
@@ -3200,10 +3200,16 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             [ADR-152](../docs/decisions/ADR-152.md), tranché par Killian, vendorise Rapier 0.35.3 dans
             `third_party/rapier3d` et le corrige (P0..P3). 26 tests de joints, suite de Rapier verte ;
             13 mutations rouges.
-      - [ ] 3b. Frontière : joints décodés dans `CREATE_ASSEMBLY` (annexe des points de grippage,
-            `joint_count`, `_pad` renommé `jam_points`), repères depuis la pose de repos ; Java : corps
-            implicites des `b_node`, envoi des joints, `modules.joints = false` ; métrique
-            `axion.sim.last_step_joints_ns`.
+      - [x] 3b (2026-10-23). Frontière : `CREATE_ASSEMBLY` porte les joints puis l'annexe de
+            grippage (`jam_points` remplace `_pad`) ; le natif les juge (validité, cohérence avec le
+            type et l'assembly, courbe dans l'annexe) et pose leurs repères depuis la pose de repos ;
+            le pilote crée corps et joints tout ou rien. Java : corps implicites des `b_node`, envoi
+            des joints, `modules.joints = false` ; métrique `axion.sim.last_step_joints_ns`.
+            18 tests du décodeur, 12 multi-corps, un test ABI de bout en bout, 9 + 24 JUnit ;
+            28 mutations rouges.
+      - [ ] Restés de D2, constatés le 2026-10-23 : `physics.self_collision` est lu par le schéma
+            mais `AssemblyRuntime` envoie toujours `false` ; `bodies[].mass` n'est lu nulle part.
+      - [ ] `StepBreakdown` et le journal des ticks lents ne montrent pas encore l'étape 5.
 - [ ] 4. Grippage (D6) : `JAM_JOINT`, `BREAK_JOINT`, `JointState` ; T-334.
 - [ ] 5. Réseau et dessin (D8, D9) : descripteur 2, poses relatives, interpolation et dessin par corps.
 - [ ] 6. Overlays `joints` et `limits` (D7).

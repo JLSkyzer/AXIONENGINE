@@ -105,6 +105,8 @@ fn command_stream() -> Vec<u8> {
         }],
         &[],
         &[],
+        &[],
+        &[],
     );
     let mut payload = header;
     payload.extend_from_slice(&phys);

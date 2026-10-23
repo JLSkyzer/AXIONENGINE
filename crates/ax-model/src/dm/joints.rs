@@ -212,7 +212,7 @@ impl JointDesc {
     /// # Errors
     ///
     /// Le nom du champ : type ou drapeau inconnu, mode d'axe inconnu, valeur non finie, limites
-    /// croisées, axe nul, longueur ou réglage négatif, seuil nul ou négatif.
+    /// croisées, axe nul, deux moteurs, longueur ou réglage négatif, seuil nul ou négatif.
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.kind > joint_kind::SPRING {
             return Err("kind");
@@ -252,6 +252,11 @@ impl JointDesc {
             && !self.motor_max_force.is_nan()
             && self.motor_max_force >= 0.0)
         {
+            return Err("motor");
+        }
+        // Un moteur est en vitesse ou en position, pas les deux (D3).
+        let motors = joint_flags::MOTOR_VELOCITY | joint_flags::MOTOR_POSITION;
+        if self.flags & motors == motors {
             return Err("motor");
         }
         if !non_negative(self.friction) || !non_negative(self.jam_friction) {
@@ -373,6 +378,7 @@ mod tests {
         assert_eq!(faute(|j| j.axis = [0.0; 3]), "axis");
         assert_eq!(faute(|j| j.limits = [1.0, 0.0]), "limits");
         assert_eq!(faute(|j| j.motor_stiffness = -1.0), "motor");
+        assert_eq!(faute(|j| j.flags |= joint_flags::MOTOR_VELOCITY), "motor");
         assert_eq!(faute(|j| j.friction = -1.0), "friction");
         assert_eq!(faute(|j| j.break_force = 0.0), "break");
         assert_eq!(

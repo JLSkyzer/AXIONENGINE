@@ -17,6 +17,7 @@ import dev.axion.physics.BodyLedger;
 import dev.axion.physics.BodyState;
 import dev.axion.physics.BodyStateFlags;
 import dev.axion.physics.CollisionFilter;
+import dev.axion.physics.JointDescription;
 import dev.axion.physics.MaterialMarking;
 import dev.axion.physics.RefitMarking;
 import dev.axion.physics.SimCommandProvider;
@@ -79,6 +80,13 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     private final Supplier<AssetRegistry> assets;
     /** Index d'un matériau dans la table de la session (ADR-149 D2). */
     private final ToIntFunction<String> materialIndex;
+    /**
+     * {@code modules.joints} : faux, les joints des definitions sont ignorés, avec un avertissement
+     * par definition, et leurs corps déclarés restent séparés (ADR-151 D5).
+     */
+    private final boolean joints;
+    /** Definitions dont les joints ignorés ont déjà été signalés : une fois chacune. */
+    private final Set<String> jointsIgnored = new HashSet<>();
 
     /**
      * Index de handle → entité dotée d'un corps : route l'application des états, évite une
@@ -110,6 +118,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             double[] position,
             float[] rotation,
             List<SimCommandStream.AssemblyBody> bodies,
+            List<JointDescription> joints,
+            List<float[]> jamPoints,
             float assemblyMass,
             boolean selfCollision,
             byte[] nodes,
@@ -123,14 +133,17 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      * @param assets assets compilés courants (octets A3D → section {@code PHYS}), ou {@code null}
      *     avant tout chargement
      * @param materialIndex index d'un matériau physique dans la table de la session (ADR-149)
+     * @param joints {@code modules.joints} : faux, les joints des definitions sont ignorés
      */
     public AssemblyRuntime(
             Supplier<DefinitionRegistry> definitions,
             Supplier<AssetRegistry> assets,
-            ToIntFunction<String> materialIndex) {
+            ToIntFunction<String> materialIndex,
+            boolean joints) {
         this.definitions = definitions;
         this.assets = assets;
         this.materialIndex = materialIndex;
+        this.joints = joints;
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -189,19 +202,23 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         // par le registre contre lequel elle a été validée (ADR-132 A1), groupes tiers compris.
         CollisionGroupRegistry groups = registry.collisionGroups();
         phys = CollisionFilter.apply(phys, groups.membership(root), groups.filter(root));
-        // ADR-151 D2, D7 : les corps que la definition déclare, chacun à son node racine ; la section
-        // NODE part avec PHYS, chaque collider posé par la chaîne de son node.
-        AssemblyBodies.Layout layout = AssemblyBodies.of(root, nodes, body);
+        // ADR-151 D2, D7 : les corps que la definition déclare, chacun à son node racine, ceux que
+        // créent les b_node de ses joints, et ses joints ; la section NODE part avec PHYS, chaque
+        // collider posé par la chaîne de son node.
+        AssemblyBodies.Layout layout = AssemblyBodies.of(root, nodes, body, joints);
         if (layout == null) {
             LOGGER.warn(
-                    "AXION : {} déclare un corps dont le root_node n'est pas un node de son asset ; assembly inerte",
+                    "AXION : {} déclare un corps ou un joint qui ne se résout pas contre son asset ; assembly inerte",
                     definition.id());
             return false;
         }
+        if (!joints && root.has("joints") && jointsIgnored.add(definition.id().toString())) {
+            LOGGER.warn("AXION : modules.joints est désactivé ; les joints de {} sont ignorés", definition.id());
+        }
         rootNodes.put(index, layout.rootNode());
         byte[] nodeSection = nodes == null ? new byte[0] : nodes;
-        pending.add(new Pending(true, index, dimension, position, rotation, layout.bodies(), layout.assemblyMass(),
-                false, nodeSection, phys));
+        pending.add(new Pending(true, index, dimension, position, rotation, layout.bodies(), layout.joints(),
+                layout.jamPoints(), layout.assemblyMass(), false, nodeSection, phys));
         ledger.attach(index, assembly);
         return true;
     }
@@ -227,7 +244,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         implausibleBounds.remove(index);
         speeds.remove(index);
         rootNodes.remove(index);
-        pending.add(new Pending(false, index, 0L, null, null, null, 0.0f, false, null, null));
+        pending.add(new Pending(false, index, 0L, null, null, null, null, null, 0.0f, false, null, null));
     }
 
     /**
@@ -299,6 +316,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                         cmd.position(),
                         cmd.rotation(),
                         cmd.bodies(),
+                        cmd.joints(),
+                        cmd.jamPoints(),
                         cmd.assemblyMass(),
                         cmd.selfCollision(),
                         cmd.nodes(),

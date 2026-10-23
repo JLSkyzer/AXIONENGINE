@@ -101,6 +101,8 @@ fn command_stream() -> Vec<u8> {
         }],
         &[],
         &[],
+        &[],
+        &[],
     );
 
     let mut payload = header;

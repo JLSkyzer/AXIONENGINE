@@ -183,6 +183,52 @@ class SimCommandStreamTest {
     }
 
     @Test
+    void encodeLesJointsEtLeurAnnexeEntreLesCorpsEtNode() {
+        // ADR-151 D7 : les joints suivent les corps, puis les points de grippage, puis NODE
+        // complétée à 8 et PHYS ; l'en-tête compte les uns et les autres.
+        JointDescription joint = new JointDescription(0, 0, 0, 1, new int[6], 4, new float[3], new float[3],
+                new float[2], 0f, 0f, 0f, 0f, Float.POSITIVE_INFINITY, 0f, 8000f, Float.POSITIVE_INFINITY,
+                Float.POSITIVE_INFINITY, 0f, 0, 0, new float[6][2], 0f, 0f, 0f, 0f);
+        byte[] nodes = {9, 9, 9};
+        byte[] phys = {1, 2};
+        SimCommandStream stream = new SimCommandStream()
+                .createAssembly(
+                        7,
+                        1,
+                        0L,
+                        new double[] {0, 64, 0},
+                        new float[] {0, 0, 0, 1},
+                        List.of(
+                                new SimCommandStream.AssemblyBody(
+                                        BodyDescription.undeclared(SimCommandStream.BODY_STATIC), 0),
+                                new SimCommandStream.AssemblyBody(
+                                        BodyDescription.undeclared(SimCommandStream.BODY_DYNAMIC), 4)),
+                        List.of(joint),
+                        List.of(new float[] {0.0f, 1.0f}, new float[] {0.1f, 0.0f}),
+                        0.0f,
+                        false,
+                        nodes,
+                        phys);
+
+        byte[] bytes = stream.toBytes();
+        ByteBuffer b = wrap(bytes);
+        // payload = 72 + 2 × 64 + 160 + 2 × 8 + align8(3) + 2 = 386.
+        assertEquals(386, b.getInt(12), "payload_len");
+        assertEquals(1, b.getShort(76), "joint_count");
+        assertEquals(2, b.getShort(78), "jam_points");
+        int joints = 16 + 72 + 2 * 64;
+        assertEquals(1, b.getShort(joints + 4), "body_b du joint");
+        assertEquals(4, b.getInt(joints + 12), "b_node du joint");
+        assertEquals(8000f, b.getFloat(joints + 72), "break_force du joint");
+        int points = joints + JointDescription.BYTES;
+        assertEquals(1.0f, b.getFloat(points + 4), "fraction du premier point");
+        assertEquals(0.1f, b.getFloat(points + 8), "abscisse du second point");
+        int nodesAt = points + 2 * JointDescription.JAM_POINT_BYTES;
+        assertArrayEquals(nodes, Arrays.copyOfRange(bytes, nodesAt, nodesAt + 3), "section NODE");
+        assertArrayEquals(phys, Arrays.copyOfRange(bytes, nodesAt + 8, nodesAt + 10), "PHYS aligné sur 8");
+    }
+
+    @Test
     void createAssemblyRefuseUneAssemblyMalFormee() {
         BodyDescription dynamique = BodyDescription.undeclared(SimCommandStream.BODY_DYNAMIC);
         BodyDescription cinematique = BodyDescription.undeclared(SimCommandStream.BODY_KINEMATIC);

@@ -148,6 +148,9 @@ fn un_pas_dans_son_budget_est_mesure_sans_son_temps_cpu() {
         metrique(ctx, "axion.sim.last_step_integration_ns") > 0,
         "étape 4 mesurée"
     );
+    // L'étape 5, les joints (ADR-151 D5) : sans joint, son parcours vide peut durer moins que la
+    // résolution de l'horloge — sa mesure avec un joint est dans `create_assembly_abi`.
+    metrique(ctx, "axion.sim.last_step_joints_ns");
     metrique(ctx, "axion.sim.last_step_contacts_ns");
     // T-391 (R-661) : chaque étape qui existe a sa métrique — les commandes (1), au submit et
     // au début du collect, et la sérialisation (15), que la session mesure autour du pas.

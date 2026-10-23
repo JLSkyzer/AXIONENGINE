@@ -20,6 +20,7 @@ use crate::forces::FluidEnvironment;
 use crate::forces::FluidVolume;
 use crate::governor::{DegradationLevel, DegradationTransition, Governor};
 use crate::groups::CollisionGroups;
+use crate::joint::JointSpec;
 use crate::materials::MaterialTable;
 use crate::proxies::EntityProxy;
 use crate::scheduler::Stage;
@@ -48,6 +49,19 @@ pub struct AssemblyBody {
     pub colliders: Vec<BodyCollider>,
     /// Description DM-08 (ADR-130) ; doit être valide.
     pub desc: BodyDesc,
+}
+
+/// Un joint d'une assembly, créé avec ses corps (ADR-151 D4, D7).
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssemblyJoint {
+    /// Son rang dans la definition, que portent ses événements.
+    pub index: u16,
+    /// Les rangs de ses deux corps parmi ceux de l'assembly.
+    pub body_a: usize,
+    /// Le rang de son second corps.
+    pub body_b: usize,
+    /// Le joint, ses repères posés dans ceux de ses corps.
+    pub spec: JointSpec,
 }
 
 /// La simulation d'une dimension : son monde et son origine flottante.
@@ -971,11 +985,13 @@ impl SimDriver {
     /// `assembly_mass` (kg ; `0` : aucune) se répartit entre les corps dont la description
     /// ne déclare pas de masse, au prorata de celle que leurs densités donnent : leurs
     /// densités sont mises à l'échelle, ce qui garde centre de masse et forme de l'inertie.
-    /// `self_collision` laisse les corps de l'assembly se toucher entre eux (§10.4).
+    /// `self_collision` laisse les corps de l'assembly se toucher entre eux (§10.4). Les
+    /// `joints` relient ensuite ses corps, dans leur ordre (ADR-151 D4).
     ///
-    /// Tout ou rien : une forme refusée, ou des masses déclarées qui atteignent celle de
-    /// l'assembly, et aucun corps ne reste. Rend les corps créés, dans l'ordre de `bodies`.
-    // Sept paramètres, chacun lu d'un champ de `CREATE_ASSEMBLY`.
+    /// Tout ou rien : une forme refusée, des masses déclarées qui atteignent celle de
+    /// l'assembly ou un joint refusé, et ni corps ni joint ne restent. Rend les corps créés,
+    /// dans l'ordre de `bodies`.
+    // Huit paramètres, chacun lu d'un champ ou d'une section de `CREATE_ASSEMBLY`.
     #[allow(clippy::too_many_arguments)]
     pub fn create_assembly_bodies(
         &mut self,
@@ -983,6 +999,7 @@ impl SimDriver {
         handle: Handle,
         spawn: WorldTransform,
         bodies: &[AssemblyBody],
+        joints: &[AssemblyJoint],
         groups: CollisionGroups,
         assembly_mass: f32,
         self_collision: bool,
@@ -1022,6 +1039,10 @@ impl SimDriver {
         if assembly_mass > 0.0
             && !self.share_assembly_mass(dimension, &created, bodies, assembly_mass)
         {
+            self.discard_bodies(dimension, &created);
+            return None;
+        }
+        if !self.join_assembly_bodies(dimension, handle, &created, joints) {
             self.discard_bodies(dimension, &created);
             return None;
         }
@@ -1073,6 +1094,35 @@ impl SimDriver {
         let factor = remaining / computed;
         for id in shared {
             sim.world.scale_density(id, factor);
+        }
+        true
+    }
+
+    /// Relie les corps créés d'une assembly par ses joints. Faux, sans joint restant, si l'un
+    /// est refusé : un rang de corps hors de l'assembly, ou un réglage que le monde refuse.
+    fn join_assembly_bodies(
+        &mut self,
+        dimension: u64,
+        handle: Handle,
+        created: &[BodyId],
+        joints: &[AssemblyJoint],
+    ) -> bool {
+        let Some(sim) = self.dimensions.get_mut(&dimension) else {
+            return joints.is_empty();
+        };
+        for joint in joints {
+            let (Some(a), Some(b)) = (created.get(joint.body_a), created.get(joint.body_b)) else {
+                sim.world.remove_assembly_joints(handle);
+                return false;
+            };
+            if sim
+                .world
+                .add_joint(handle, joint.index, *a, *b, &joint.spec)
+                .is_err()
+            {
+                sim.world.remove_assembly_joints(handle);
+                return false;
+            }
         }
         true
     }

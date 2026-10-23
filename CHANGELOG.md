@@ -71,6 +71,10 @@ Definition of Done (PARTIE 37.3).
     interne, rupture en force, en couple et en energie, `JOINT_BROKEN` ;
     Rapier 0.35.3 vendorise et corrige (ADR-152) : moteur et friction
     resolus avec les axes bloques, effort de chaque joint publie ;
+    `CREATE_ASSEMBLY` porte les joints de la definition et leurs courbes de
+    grippage, juges par le natif ; le `b_node` d'un joint cree son corps ;
+    `modules.joints = false` les ignore, avec un avertissement ; metrique
+    `axion.sim.last_step_joints_ns` ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

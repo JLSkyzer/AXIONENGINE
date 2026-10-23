@@ -7,7 +7,9 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Les corps qu'une definition déclare (ADR-151 D2), pour {@code CREATE_ASSEMBLY}.
@@ -19,7 +21,10 @@ import java.util.List;
  * amortis comme elle, et sa masse déclarée se répartit entre tous les corps (le natif la
  * répartit au prorata des densités).
  *
- * <p>Les corps que créent les joints ({@code b_node}, ADR-151 D2) arrivent avec eux (tranche 3).
+ * <p>Le {@code b_node} d'un joint crée un corps à ce node s'il n'est pas déjà la racine d'un corps
+ * déclaré (ADR-151 D2) ; ces corps implicites suivent les corps déclarés, dans l'ordre des joints.
+ * Un joint nomme son corps {@code a} parmi ceux de {@code bodies[]}, que le chargement a vérifiés :
+ * une definition à joints déclare donc ses corps.
  */
 public final class AssemblyBodies {
 
@@ -38,48 +43,95 @@ public final class AssemblyBodies {
      * @param assemblyMass masse de l'assembly à répartir, en kg ; {@code 0} pour un seul corps,
      *     dont la description porte déjà la masse
      * @param rootNode node racine du corps racine : celui que porte son {@link BodyState}
+     * @param joints les joints, dans l'ordre de la definition
+     * @param jamPoints les points de leurs courbes de grippage, {@code [x, y]}
      */
-    public record Layout(List<SimCommandStream.AssemblyBody> bodies, float assemblyMass, int rootNode) {}
+    public record Layout(
+            List<SimCommandStream.AssemblyBody> bodies,
+            float assemblyMass,
+            int rootNode,
+            List<JointDescription> joints,
+            List<float[]> jamPoints) {}
 
     /**
-     * {@return les corps que la definition déclare, ou {@code null} si un {@code root_node} ne nomme
-     * aucun node de l'asset}
+     * {@return les corps et les joints que la definition déclare, ou {@code null} si un
+     * {@code root_node} ou un {@code b_node} ne nomme aucun node de l'asset, si les corps dépassent
+     * {@link SimCommandStream#MAX_ASSEMBLY_BODIES}, ou si un joint ne se transcrit pas}
      *
      * @param definition racine JSON de la definition
      * @param nodes section {@code NODE} de l'asset, ou {@code null}
      * @param physics description du bloc {@code physics}, son type compris ({@link BodyDescription#of})
+     * @param withJoints faux si le module joints est désactivé ({@code modules.joints}) : ni joint ni
+     *     corps implicite, les corps déclarés restent séparés
      */
-    public static Layout of(JsonObject definition, byte[] nodes, BodyDescription physics) {
+    public static Layout of(JsonObject definition, byte[] nodes, BodyDescription physics, boolean withJoints) {
         JsonElement declared = definition.get("bodies");
         if (!(declared instanceof JsonArray bodies) || bodies.isEmpty()) {
-            return new Layout(List.of(new SimCommandStream.AssemblyBody(physics, 0)), 0.0f, 0);
+            return single(physics, 0);
         }
         List<String> names = names(nodes);
-        int[] roots = new int[bodies.size()];
+        List<Integer> roots = new ArrayList<>(bodies.size());
+        Map<String, Integer> ranks = new HashMap<>();
         for (int i = 0; i < bodies.size(); i++) {
-            JsonElement root = bodies.get(i).getAsJsonObject().get("root_node");
-            if (root == null) {
-                // Seul le corps racine peut se passer de node : il prend la racine de l'asset.
-                if (i > 0) {
+            JsonObject body = bodies.get(i).getAsJsonObject();
+            JsonElement root = body.get("root_node");
+            int node = 0;
+            if (root != null) {
+                node = names.indexOf(root.getAsString());
+                if (node < 0) {
                     return null;
                 }
-                continue;
-            }
-            roots[i] = names.indexOf(root.getAsString());
-            if (roots[i] < 0) {
+            } else if (i > 0) {
+                // Seul le corps racine peut se passer de node : il prend la racine de l'asset.
                 return null;
             }
+            roots.add(node);
+            if (body.get("name") != null) {
+                ranks.put(body.get("name").getAsString(), i);
+            }
         }
-        if (roots.length == 1) {
-            return new Layout(List.of(new SimCommandStream.AssemblyBody(physics, roots[0])), 0.0f, roots[0]);
+        JsonArray joints = withJoints && definition.get("joints") instanceof JsonArray declaredJoints
+                ? declaredJoints
+                : new JsonArray();
+        for (JsonElement joint : joints) {
+            JsonElement bNode = joint.getAsJsonObject().get("b_node");
+            int node = bNode == null ? -1 : names.indexOf(bNode.getAsString());
+            if (node < 0) {
+                return null;
+            }
+            if (!roots.contains(node)) {
+                roots.add(node);
+            }
         }
-        List<SimCommandStream.AssemblyBody> layout = new ArrayList<>(roots.length);
-        layout.add(new SimCommandStream.AssemblyBody(withoutMass(physics, physics.bodyType()), roots[0]));
+        if (roots.size() > SimCommandStream.MAX_ASSEMBLY_BODIES) {
+            return null;
+        }
+        if (roots.size() == 1) {
+            return single(physics, roots.get(0));
+        }
+        Map<Integer, Integer> ranksByRoot = new HashMap<>();
+        for (int rank = 0; rank < roots.size(); rank++) {
+            ranksByRoot.put(roots.get(rank), rank);
+        }
+        AssemblyJoints.Transcription transcription = withJoints
+                ? AssemblyJoints.of(definition, names, ranks, ranksByRoot)
+                : new AssemblyJoints.Transcription(List.of(), List.of());
+        if (transcription == null) {
+            return null;
+        }
+        List<SimCommandStream.AssemblyBody> layout = new ArrayList<>(roots.size());
+        layout.add(new SimCommandStream.AssemblyBody(withoutMass(physics, physics.bodyType()), roots.get(0)));
         BodyDescription secondary = withoutMassProperties(physics);
-        for (int i = 1; i < roots.length; i++) {
-            layout.add(new SimCommandStream.AssemblyBody(secondary, roots[i]));
+        for (int rank = 1; rank < roots.size(); rank++) {
+            layout.add(new SimCommandStream.AssemblyBody(secondary, roots.get(rank)));
         }
-        return new Layout(List.copyOf(layout), physics.mass(), roots[0]);
+        return new Layout(List.copyOf(layout), physics.mass(), roots.get(0), transcription.joints(),
+                transcription.jamPoints());
+    }
+
+    /** Un seul corps, au node {@code root}, qui porte la description entière de l'assembly. */
+    private static Layout single(BodyDescription physics, int root) {
+        return new Layout(List.of(new SimCommandStream.AssemblyBody(physics, root)), 0.0f, root, List.of(), List.of());
     }
 
     /** La description sans sa masse, que le natif répartit ; centre et inertie déclarés gardés. */

@@ -95,6 +95,8 @@ fn assembly(index: u32) -> Vec<u8> {
         }],
         &[],
         &[],
+        &[],
+        &[],
     );
     payload.extend_from_slice(&phys);
     payload

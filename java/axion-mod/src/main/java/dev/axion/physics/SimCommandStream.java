@@ -310,6 +310,46 @@ public final class SimCommandStream {
             boolean selfCollision,
             byte[] nodes,
             byte[] phys) {
+        return createAssembly(handleIndex, handleGeneration, dimension, position, rotation, bodies, List.of(),
+                List.of(), assemblyMass, selfCollision, nodes, phys);
+    }
+
+    /**
+     * Ajoute une commande {@code CREATE_ASSEMBLY} avec ses joints (C-34, ADR-151 D7).
+     *
+     * <p>Les joints suivent les corps, {@link JointDescription#BYTES} octets chacun, puis les points
+     * de leurs courbes de grippage, {@link JointDescription#JAM_POINT_BYTES} octets chacun, avant la
+     * section {@code NODE}. Le natif crée corps et joints d'un coup, ou rien.
+     *
+     * @param handleIndex rang du handle d'assembly (routage des corps)
+     * @param handleGeneration génération du handle ({@code 0} est invalide)
+     * @param dimension dimension d'accueil (R-610)
+     * @param position position monde de spawn {@code [x, y, z]}, en blocs
+     * @param rotation quaternion de spawn {@code [x, y, z, w]}
+     * @param bodies les corps, de 1 à {@link #MAX_ASSEMBLY_BODIES}, le corps racine d'abord
+     * @param joints les joints, dans l'ordre de la definition ({@link AssemblyJoints#of})
+     * @param jamPoints les points des courbes de grippage, {@code [x, y]}, dans l'ordre des joints
+     * @param assemblyMass masse de l'assembly en kg, répartie entre ses corps sans masse
+     *     déclarée ; {@code 0} : aucune
+     * @param selfCollision vrai si ses corps se touchent entre eux (§10.4)
+     * @param nodes octets de la section {@code NODE} ; vide pour un seul corps aux colliders pris
+     *     tels quels
+     * @param phys octets de la section {@code PHYS} (colliders compilés)
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream createAssembly(
+            int handleIndex,
+            int handleGeneration,
+            long dimension,
+            double[] position,
+            float[] rotation,
+            List<AssemblyBody> bodies,
+            List<JointDescription> joints,
+            List<float[]> jamPoints,
+            float assemblyMass,
+            boolean selfCollision,
+            byte[] nodes,
+            byte[] phys) {
         if (position.length != 3) {
             throw new IllegalArgumentException("la position est un vecteur à 3 composantes");
         }
@@ -333,11 +373,20 @@ public final class SimCommandStream {
         if (nodes.length == 0 && bodies.size() > 1) {
             throw new IllegalArgumentException("plusieurs corps exigent la section NODE");
         }
+        if (joints == null || jamPoints == null || joints.size() > 0xFFFF || jamPoints.size() > 0xFFFF) {
+            throw new IllegalArgumentException("au plus 65 535 joints et 65 535 points de grippage");
+        }
+        for (float[] point : jamPoints) {
+            if (point.length != 2) {
+                throw new IllegalArgumentException("un point de grippage a deux composantes");
+            }
+        }
         int bodyKind = bodies.get(0).description().bodyType();
 
         // Le payload est aligné sur 8 octets : le lecteur natif avance d'un multiple de 8 après
         // chaque commande, pour lire la suivante en place (R-271, R-881).
         int physOffset = alignUp8(CREATE_ASSEMBLY_HEADER_BYTES + bodies.size() * ASSEMBLY_BODY_BYTES
+                + joints.size() * JointDescription.BYTES + jamPoints.size() * JointDescription.JAM_POINT_BYTES
                 + nodes.length);
         int payloadLen = physOffset + phys.length;
         int padded = alignUp8(payloadLen);
@@ -360,14 +409,21 @@ public final class SimCommandStream {
         command.put((byte) bodyKind);
         command.put((byte) (selfCollision ? CREATE_ASSEMBLY_SELF_COLLISION : 0));
         command.putShort((short) bodies.size());
-        command.putShort((short) 0); // joint_count : les joints viennent avec C-34
-        command.putShort((short) 0); // _pad
+        command.putShort((short) joints.size());
+        command.putShort((short) jamPoints.size());
         command.putFloat(assemblyMass);
         command.putInt(nodes.length);
         for (AssemblyBody body : bodies) {
             body.description().writeTo(command);
             command.putInt(body.rootNode());
             command.putInt(0); // réservé
+        }
+        for (JointDescription joint : joints) {
+            joint.writeTo(command);
+        }
+        for (float[] point : jamPoints) {
+            command.putFloat(point[0]);
+            command.putFloat(point[1]);
         }
         command.put(nodes);
         command.position(COMMAND_HEADER_BYTES + physOffset);

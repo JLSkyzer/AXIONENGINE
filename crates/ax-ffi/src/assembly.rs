@@ -1,18 +1,23 @@
 //! `CREATE_ASSEMBLY` d'une assembly à un ou plusieurs corps (ADR-151 D2, D7).
 //!
-//! Décode le payload — en-tête, corps, sections `NODE` et `PHYS` de l'asset — et range
-//! chaque collider dans le corps de son node, posé dans le repère de ce corps : la chaîne
-//! des transformations des nodes est composée depuis la racine de l'asset, échelle
-//! uniforme comprise (R-120). Rien n'est créé ici : le pilote reçoit des corps prêts, et
-//! un payload fautif n'en donne aucun.
+//! Décode le payload — en-tête, corps, joints, sections `NODE` et `PHYS` de l'asset — et
+//! range chaque collider dans le corps de son node, posé dans le repère de ce corps : la
+//! chaîne des transformations des nodes est composée depuis la racine de l'asset, échelle
+//! uniforme comprise (R-120). Chaque joint reçoit ses repères dans ses deux corps, pris à la
+//! pose de repos de l'asset. Rien n'est créé ici : le pilote reçoit des corps et des joints
+//! prêts, et un payload fautif n'en donne aucun.
 
 use ax_asset::a3d::{decode_colliders, decode_nodes};
 use ax_math::{Quat, Vec3};
 use ax_model::dm::commands::{AssemblyBodyEntry, CreateAssembly, MAX_ASSEMBLY_BODIES};
 use ax_model::dm::geometry::Transform;
+use ax_model::dm::joints::{joint_axis_mode, joint_flags, joint_kind, JointDesc};
 use ax_model::dm::physics::ColliderDesc;
 use ax_model::dm::scene::{NodeDesc, NONE_U32};
-use ax_physics::{AssemblyBody, BodyCollider, BodyKind, CollisionGroups, ContactMaterial, Shape};
+use ax_physics::{
+    AssemblyBody, AssemblyJoint, AxisMode, BodyCollider, BodyKind, BreakThresholds,
+    CollisionGroups, ContactMaterial, JointKind, JointMotor, JointSpec, Shape,
+};
 
 /// Une assembly décodée, prête pour `SimDriver::create_assembly_bodies`.
 #[derive(Debug)]
@@ -21,22 +26,22 @@ pub(crate) struct AssemblyRequest {
     pub header: CreateAssembly,
     /// Les corps, le corps racine d'abord, chacun avec ses colliders dans son repère.
     pub bodies: Vec<AssemblyBody>,
+    /// Les joints, dans l'ordre de la definition, leurs repères dans ceux de leurs corps.
+    pub joints: Vec<AssemblyJoint>,
     /// Les groupes de collision communs à tous les colliders (R-980).
     pub groups: CollisionGroups,
 }
 
 /// Décode un payload de `CREATE_ASSEMBLY`. `None` au premier écart — en-tête tronqué, aucun
-/// corps ou plus de 64, joints annoncés, description invalide, corps racine d'un autre type
-/// que l'en-tête ou autre corps non dynamique, masse non finie ou négative, section
-/// illisible, node ou collider hors de leur table, échelle non uniforme sur la chaîne d'un
-/// collider, corps sans collider, groupes discordants : l'assembly est abandonnée entière,
-/// jamais formée à moitié.
+/// corps ou plus de 64, description invalide, corps racine d'un autre type que l'en-tête ou
+/// autre corps non dynamique, masse non finie ou négative, joint invalide ou incohérent,
+/// section illisible, node ou collider hors de leur table, échelle non uniforme sur la
+/// chaîne d'un collider ou d'un `b_node`, corps sans collider, groupes discordants :
+/// l'assembly est abandonnée entière, jamais formée à moitié.
 pub(crate) fn decode(payload: &[u8]) -> Option<AssemblyRequest> {
     let header = CreateAssembly::read_le(payload)?;
     let count = usize::from(header.body_count);
-    // Les joints arrivent avec C-34 (ADR-151, tranche 3) : un payload qui en annonce n'est
-    // pas encore lisible.
-    if count == 0 || count > MAX_ASSEMBLY_BODIES || header.joint_count != 0 {
+    if count == 0 || count > MAX_ASSEMBLY_BODIES {
         return None;
     }
     if !(header.assembly_mass.is_finite() && header.assembly_mass >= 0.0) {
@@ -56,11 +61,28 @@ pub(crate) fn decode(payload: &[u8]) -> Option<AssemblyRequest> {
         return None;
     }
 
-    let nodes_at = CreateAssembly::BODIES_OFFSET + count * AssemblyBodyEntry::WIRE_BYTES;
+    // Les joints suivent les corps, puis les points de leurs courbes de grippage (D7).
+    let joints_at = CreateAssembly::BODIES_OFFSET + count * AssemblyBodyEntry::WIRE_BYTES;
+    let mut descs = Vec::with_capacity(usize::from(header.joint_count));
+    for index in 0..usize::from(header.joint_count) {
+        let desc = JointDesc::read_le(payload.get(joints_at + index * JointDesc::BYTES..)?)?;
+        desc.validate().ok()?;
+        descs.push(desc);
+    }
+    let jam_at = joints_at + descs.len() * JointDesc::BYTES;
+    let mut jam_points = Vec::with_capacity(usize::from(header.jam_points));
+    for index in 0..usize::from(header.jam_points) {
+        let at = jam_at + index * JointDesc::JAM_POINT_BYTES;
+        let point = payload.get(at..at + JointDesc::JAM_POINT_BYTES)?;
+        let f32_at = |at: usize| f32::from_le_bytes(point[at..at + 4].try_into().expect("borne"));
+        jam_points.push([f32_at(0), f32_at(4)]);
+    }
+
+    let nodes_at = jam_at + jam_points.len() * JointDesc::JAM_POINT_BYTES;
     let node_bytes = usize::try_from(header.node_bytes).ok()?;
     let nodes_end = nodes_at.checked_add(node_bytes)?;
     // Sans section NODE, les colliders sont pris tels quels ; un second corps n'y aurait pas
-    // de node racine, et `layout` le refuse.
+    // de node racine, et `Skeleton::new` le refuse.
     let nodes = if node_bytes == 0 {
         Vec::new()
     } else {
@@ -69,10 +91,17 @@ pub(crate) fn decode(payload: &[u8]) -> Option<AssemblyRequest> {
     let phys_at = nodes_end.next_multiple_of(8);
     let (colliders, points, children) = decode_colliders(payload.get(phys_at..)?).ok()?;
     let groups = body_groups(&colliders)?;
-    let bodies = layout(&entries, &nodes, &colliders, &points, &children)?;
+    let skeleton = Skeleton::new(&entries, &nodes)?;
+    let bodies = layout(&skeleton, &entries, &nodes, &colliders, &points, &children)?;
+    let joints = descs
+        .iter()
+        .enumerate()
+        .map(|(index, desc)| assembly_joint(&skeleton, &entries, &jam_points, index, desc))
+        .collect::<Option<Vec<_>>>()?;
     Some(AssemblyRequest {
         header,
         bodies,
+        joints,
         groups,
     })
 }
@@ -105,6 +134,15 @@ impl NodePose {
         (pose.translation.is_finite() && pose.rotation.is_finite() && pose.scale.is_finite())
             .then_some(pose)
     }
+
+    /// Un point et une rotation de l'asset, exprimés dans ce repère, sans son échelle.
+    fn local(&self, point: Vec3, rotation: Quat) -> (Vec3, Quat) {
+        let inverse = self.rotation.inverse();
+        (
+            inverse * (point - self.translation),
+            (inverse * rotation).normalize(),
+        )
+    }
 }
 
 /// L'échelle d'une transformation si elle est uniforme et positive.
@@ -113,56 +151,78 @@ fn uniform_scale(local: &Transform) -> Option<f32> {
     (local.has_uniform_scale() && scale > 0.0).then_some(scale)
 }
 
-/// Range les colliders en corps (ADR-151 D2).
+/// Les nodes d'une assembly à la pose de repos, et ses corps (ADR-151 D2).
 ///
 /// Chaque node appartient au corps dont la racine est son plus proche ancêtre, ou lui-même ;
 /// un node qu'aucune racine ne réclame appartient au corps racine. Le repère du corps racine
 /// est celui de l'asset ; celui d'un autre corps est la pose de son node racine, sans son
-/// échelle. Un collider de node y est posé par la pose de son node composée avec la sienne,
-/// sa forme mise à l'échelle de cette chaîne ; un collider qu'aucun node ne porte (le
-/// collider de l'asset entier) va au corps racine tel quel.
+/// échelle.
+struct Skeleton {
+    /// Poses dans l'asset, parent avant enfant (C-22) ; `None` pour une chaîne qu'une échelle
+    /// non uniforme rompt — elle ne peut porter ni collider, ni racine de corps, ni joint.
+    poses: Vec<Option<NodePose>>,
+    /// Le rang du corps de chaque node.
+    owner: Vec<usize>,
+    /// Le repère de chaque corps dans l'asset.
+    frames: Vec<NodePose>,
+}
+
+impl Skeleton {
+    /// `None` si un parent suit son enfant, ou si une racine de corps est hors de la table ou
+    /// sur une chaîne rompue.
+    fn new(entries: &[AssemblyBodyEntry], nodes: &[NodeDesc]) -> Option<Self> {
+        let mut poses: Vec<Option<NodePose>> = Vec::with_capacity(nodes.len());
+        for (index, node) in nodes.iter().enumerate() {
+            let parent = if node.is_root() {
+                Some(NodePose::ROOT)
+            } else {
+                let parent = node.parent as usize;
+                if parent >= index {
+                    return None;
+                }
+                poses[parent]
+            };
+            poses.push(parent.and_then(|pose| pose.then(&node.local)));
+        }
+
+        // Deux corps au même node racine : le second n'aurait aucun collider, et `layout` le
+        // refuse.
+        let roots: Vec<u32> = entries.iter().map(|entry| entry.root_node).collect();
+        if roots[1..].iter().any(|root| *root as usize >= nodes.len()) {
+            return None;
+        }
+        let mut owner = vec![0usize; nodes.len()];
+        for (index, node) in nodes.iter().enumerate() {
+            owner[index] = match roots.iter().position(|root| *root as usize == index) {
+                Some(rank) => rank,
+                None if node.is_root() => 0,
+                None => owner[node.parent as usize],
+            };
+        }
+        let mut frames = vec![NodePose::ROOT; roots.len()];
+        for (rank, root) in roots.iter().enumerate().skip(1) {
+            frames[rank] = poses[*root as usize]?;
+        }
+        Some(Self {
+            poses,
+            owner,
+            frames,
+        })
+    }
+}
+
+/// Range les colliders en corps (ADR-151 D2). Un collider de node est posé dans le repère de
+/// son corps par la pose de son node composée avec la sienne, sa forme mise à l'échelle de
+/// cette chaîne ; un collider qu'aucun node ne porte (le collider de l'asset entier) va au
+/// corps racine tel quel.
 fn layout(
+    skeleton: &Skeleton,
     entries: &[AssemblyBodyEntry],
     nodes: &[NodeDesc],
     colliders: &[ColliderDesc],
     points: &[[f32; 3]],
     children: &[ColliderDesc],
 ) -> Option<Vec<AssemblyBody>> {
-    // Poses dans l'asset, parent avant enfant (C-22) ; `None` pour une chaîne qu'une échelle
-    // non uniforme rompt — elle ne peut porter ni collider ni racine de corps.
-    let mut poses: Vec<Option<NodePose>> = Vec::with_capacity(nodes.len());
-    for (index, node) in nodes.iter().enumerate() {
-        let parent = if node.is_root() {
-            Some(NodePose::ROOT)
-        } else {
-            let parent = node.parent as usize;
-            if parent >= index {
-                return None;
-            }
-            poses[parent]
-        };
-        poses.push(parent.and_then(|pose| pose.then(&node.local)));
-    }
-
-    // Deux corps au même node racine : le second n'aurait aucun collider, et il est refusé
-    // plus bas.
-    let roots: Vec<u32> = entries.iter().map(|entry| entry.root_node).collect();
-    if roots[1..].iter().any(|root| *root as usize >= nodes.len()) {
-        return None;
-    }
-    let mut owner = vec![0usize; nodes.len()];
-    for (index, node) in nodes.iter().enumerate() {
-        owner[index] = match roots.iter().position(|root| *root as usize == index) {
-            Some(rank) => rank,
-            None if node.is_root() => 0,
-            None => owner[node.parent as usize],
-        };
-    }
-    let mut frames = vec![NodePose::ROOT; roots.len()];
-    for (rank, root) in roots.iter().enumerate().skip(1) {
-        frames[rank] = poses[*root as usize]?;
-    }
-
     // Le node porteur de chaque collider, au plus un.
     let mut carrier: Vec<Option<usize>> = vec![None; colliders.len()];
     for (index, node) in nodes.iter().enumerate() {
@@ -175,7 +235,7 @@ fn layout(
         }
     }
 
-    let mut placed: Vec<Vec<BodyCollider>> = vec![Vec::new(); roots.len()];
+    let mut placed: Vec<Vec<BodyCollider>> = vec![Vec::new(); entries.len()];
     for (index, collider) in colliders.iter().enumerate() {
         let shape = Shape::from_collider_shape(&collider.shape, points, children).ok()?;
         let local_scale = uniform_scale(&collider.local)?;
@@ -184,16 +244,12 @@ fn layout(
         let (rank, translation, rotation, scale) = match carrier[index] {
             None => (0, local_translation, local_rotation, local_scale),
             Some(node) => {
-                let pose = poses[node]?;
+                let pose = skeleton.poses[node]?;
                 let in_asset = pose.translation + pose.rotation * (local_translation * pose.scale);
-                let frame = frames[owner[node]];
-                let inverse = frame.rotation.inverse();
-                (
-                    owner[node],
-                    inverse * (in_asset - frame.translation),
-                    (inverse * pose.rotation * local_rotation).normalize(),
-                    pose.scale * local_scale,
-                )
+                let rank = skeleton.owner[node];
+                let (translation, rotation) =
+                    skeleton.frames[rank].local(in_asset, pose.rotation * local_rotation);
+                (rank, translation, rotation, pose.scale * local_scale)
             }
         };
         #[allow(clippy::float_cmp)] // une échelle exactement unitaire laisse la forme telle quelle
@@ -219,7 +275,7 @@ fn layout(
     Some(
         entries
             .iter()
-            .zip(frames)
+            .zip(&skeleton.frames)
             .zip(placed)
             .map(|((entry, frame), colliders)| AssemblyBody {
                 node: entry.root_node,
@@ -235,6 +291,140 @@ fn layout(
             })
             .collect(),
     )
+}
+
+/// Le joint de rang `index` (ADR-151 D3, D4) : cohérent avec son type et avec les corps de
+/// l'assembly, ses repères dans ses deux corps pris à la pose de repos. `anchor` et `axis` sont
+/// dans le repère de `b_node` ; l'axe X des deux repères est `axis`, ou celui de `b_node` sans
+/// axe. `None` pour un joint incohérent.
+fn assembly_joint(
+    skeleton: &Skeleton,
+    entries: &[AssemblyBodyEntry],
+    jam_points: &[[f32; 2]],
+    index: usize,
+    desc: &JointDesc,
+) -> Option<AssemblyJoint> {
+    if !coherent(desc, entries, jam_points) {
+        return None;
+    }
+    let (body_a, body_b) = (usize::from(desc.body_a), usize::from(desc.body_b));
+    let node = (*skeleton.poses.get(desc.b_node as usize)?)?;
+    let anchor = node.translation + node.rotation * (Vec3::from_array(desc.anchor) * node.scale);
+    let axis = Vec3::from_array(desc.axis);
+    let turn = if axis.length_squared() > f32::EPSILON {
+        Quat::from_rotation_arc(Vec3::X, axis.normalize())
+    } else {
+        Quat::IDENTITY
+    };
+    let rotation = (node.rotation * turn).normalize();
+    let frame_a = skeleton.frames[body_a].local(anchor, rotation);
+    let frame_b = skeleton.frames[body_b].local(anchor, rotation);
+    Some(AssemblyJoint {
+        index: u16::try_from(index).ok()?,
+        body_a,
+        body_b,
+        spec: spec(desc, frame_a, frame_b),
+    })
+}
+
+/// Un joint cohérent (ADR-151 D3, D7) : deux corps distincts de l'assembly, `b_node` racine du
+/// second ; limites et moteur sur un axe libre seulement (`revolute`, `prismatic`), friction
+/// sur un type qui laisse bouger, modes d'axes sur `generic` seulement, une longueur pour
+/// `rope` ; un grippage sur des limites déclarées, sa courbe dans l'annexe, d'abscisses
+/// positives strictement croissantes et de fractions dans [0, 1].
+fn coherent(desc: &JointDesc, entries: &[AssemblyBodyEntry], jam_points: &[[f32; 2]]) -> bool {
+    let (a, b) = (usize::from(desc.body_a), usize::from(desc.body_b));
+    if a == b || a >= entries.len() || b >= entries.len() || entries[b].root_node != desc.b_node {
+        return false;
+    }
+    let free_axis = matches!(desc.kind, joint_kind::REVOLUTE | joint_kind::PRISMATIC);
+    let moving = free_axis || matches!(desc.kind, joint_kind::SPHERICAL | joint_kind::GENERIC);
+    let on_free_axis =
+        joint_flags::LIMITS | joint_flags::MOTOR_VELOCITY | joint_flags::MOTOR_POSITION;
+    if (!free_axis && desc.flags & on_free_axis != 0)
+        || (!moving && desc.flags & joint_flags::FRICTION != 0)
+        || (desc.kind != joint_kind::GENERIC
+            && desc
+                .axes
+                .iter()
+                .any(|mode| *mode != joint_axis_mode::LOCKED))
+        || (desc.kind == joint_kind::ROPE && desc.max_length <= 0.0)
+    {
+        return false;
+    }
+    if desc.flags & joint_flags::JAM == 0 {
+        return desc.jam_count == 0;
+    }
+    let first = desc.jam_first as usize;
+    let Some(curve) = first
+        .checked_add(desc.jam_count as usize)
+        .and_then(|end| jam_points.get(first..end))
+    else {
+        return false;
+    };
+    desc.flags & joint_flags::LIMITS != 0
+        && !curve.is_empty()
+        && curve
+            .iter()
+            .all(|[x, f]| x.is_finite() && *x >= 0.0 && (0.0..=1.0).contains(f))
+        && curve.windows(2).all(|pair| pair[0][0] < pair[1][0])
+}
+
+/// Le joint de rapier d'un `JointDesc` cohérent : ses repères, ses réglages déclarés, et rien
+/// de ce qu'il ne déclare pas (ADR-109).
+fn spec(desc: &JointDesc, frame_a: (Vec3, Quat), frame_b: (Vec3, Quat)) -> JointSpec {
+    let declared = |flag: u8| desc.flags & flag != 0;
+    let motor = if declared(joint_flags::MOTOR_VELOCITY) {
+        Some(JointMotor::Velocity {
+            speed: desc.motor_speed,
+            max_force: desc.motor_max_force,
+        })
+    } else if declared(joint_flags::MOTOR_POSITION) {
+        Some(JointMotor::Position {
+            target: desc.motor_target,
+            speed: desc.motor_speed,
+            stiffness: desc.motor_stiffness,
+            damping: desc.motor_damping,
+            max_force: desc.motor_max_force,
+        })
+    } else {
+        None
+    };
+    let mut axes = [AxisMode::Locked; 6];
+    for ((mode, axis), limits) in axes.iter_mut().zip(desc.axes).zip(desc.axis_limits) {
+        *mode = match axis {
+            joint_axis_mode::FREE => AxisMode::Free,
+            joint_axis_mode::LIMITED => AxisMode::Limited(limits),
+            _ => AxisMode::Locked,
+        };
+    }
+    JointSpec {
+        kind: match desc.kind {
+            joint_kind::FIXED => JointKind::Fixed,
+            joint_kind::REVOLUTE => JointKind::Revolute,
+            joint_kind::PRISMATIC => JointKind::Prismatic,
+            joint_kind::SPHERICAL => JointKind::Spherical,
+            joint_kind::GENERIC => JointKind::Generic,
+            joint_kind::ROPE => JointKind::Rope,
+            _ => JointKind::Spring,
+        },
+        frame_a,
+        frame_b,
+        limits: declared(joint_flags::LIMITS).then_some(desc.limits),
+        motor,
+        friction: declared(joint_flags::FRICTION).then_some(desc.friction),
+        breaking: BreakThresholds {
+            force: desc.break_force,
+            torque: desc.break_torque,
+            energy: desc.break_energy,
+        },
+        axes,
+        max_length: desc.max_length,
+        rest_length: desc.rest_length,
+        stiffness: desc.stiffness,
+        damping: desc.damping,
+        collide: declared(joint_flags::COLLIDE),
+    }
 }
 
 /// Les groupes de collision d'une assembly (R-980) : appartenance et filtre communs à tous
@@ -323,6 +513,16 @@ mod tests {
         )
     }
 
+    /// Les corps de `entries`, rangés sans section `PHYS` annexe.
+    fn ranger(
+        entries: &[AssemblyBodyEntry],
+        nodes: &[NodeDesc],
+        colliders: &[ColliderDesc],
+    ) -> Option<Vec<AssemblyBody>> {
+        let skeleton = Skeleton::new(entries, nodes)?;
+        layout(&skeleton, entries, nodes, colliders, &[], &[])
+    }
+
     fn proche(a: Vec3, b: Vec3) -> bool {
         (a - b).length() < 1e-5
     }
@@ -332,7 +532,7 @@ mod tests {
         // Un seul corps : la boîte, à (0, 0, 1) dans la porte, est en (2, 0, 0) + quart de
         // tour de (0, 0, 2) = (4, 0, 0) dans l'asset, deux fois plus grande.
         let (nodes, colliders) = racine_et_porte();
-        let bodies = layout(&[entree(0)], &nodes, &colliders, &[], &[]).unwrap();
+        let bodies = ranger(&[entree(0)], &nodes, &colliders).unwrap();
         let collider = &bodies[0].colliders[0];
         assert!(
             proche(collider.translation, Vec3::new(4.0, 0.0, 0.0)),
@@ -353,7 +553,7 @@ mod tests {
         let (mut nodes, mut colliders) = racine_et_porte();
         nodes[0].collider = 1;
         colliders.push(boite([0.0; 3]));
-        let bodies = layout(&[entree(0), entree(1)], &nodes, &colliders, &[], &[]).unwrap();
+        let bodies = ranger(&[entree(0), entree(1)], &nodes, &colliders).unwrap();
 
         assert_eq!(bodies[0].colliders.len(), 1, "la racine garde le sien");
         assert!(proche(bodies[1].translation, Vec3::new(2.0, 0.0, 0.0)));
@@ -378,7 +578,7 @@ mod tests {
             node("racine", NO_PARENT, racine, NONE_U32),
             node("enfant", 0, enfant, 0),
         ];
-        let bodies = layout(&[entree(0)], &nodes, &[boite([0.0; 3])], &[], &[]).unwrap();
+        let bodies = ranger(&[entree(0)], &nodes, &[boite([0.0; 3])]).unwrap();
         let collider = &bodies[0].colliders[0];
         assert!(
             proche(collider.translation, Vec3::new(3.0, 0.0, 0.0)),
@@ -395,7 +595,7 @@ mod tests {
     #[test]
     fn un_collider_qu_aucun_node_ne_porte_va_au_corps_racine_tel_quel() {
         let nodes = vec![node("racine", NO_PARENT, Transform::identity(), NONE_U32)];
-        let bodies = layout(&[entree(0)], &nodes, &[boite([3.0, 0.0, 0.0])], &[], &[]).unwrap();
+        let bodies = ranger(&[entree(0)], &nodes, &[boite([3.0, 0.0, 0.0])]).unwrap();
         assert_eq!(bodies[0].colliders[0].translation, Vec3::new(3.0, 0.0, 0.0));
     }
 
@@ -405,7 +605,7 @@ mod tests {
         nodes[0].collider = 1;
         colliders.push(boite([0.0; 3]));
         colliders.push(boite([5.0, 0.0, 0.0]));
-        let bodies = layout(&[entree(0), entree(1)], &nodes, &colliders, &[], &[]).unwrap();
+        let bodies = ranger(&[entree(0), entree(1)], &nodes, &colliders).unwrap();
         assert_eq!(
             bodies[0].colliders.len(),
             2,
@@ -419,7 +619,7 @@ mod tests {
     fn un_collider_porte_par_deux_nodes_est_refuse() {
         let (mut nodes, colliders) = racine_et_porte();
         nodes[0].collider = 0;
-        assert!(layout(&[entree(0)], &nodes, &colliders, &[], &[]).is_none());
+        assert!(ranger(&[entree(0)], &nodes, &colliders).is_none());
     }
 
     #[test]
@@ -427,13 +627,13 @@ mod tests {
         // R-120 : le parent est étiré, l'enfant porteur ne l'est pas — la chaîne l'est.
         let (mut nodes, colliders) = racine_et_porte();
         nodes[0].local.scale = [1.0, 2.0, 1.0];
-        assert!(layout(&[entree(0)], &nodes, &colliders, &[], &[]).is_none());
+        assert!(ranger(&[entree(0)], &nodes, &colliders).is_none());
     }
 
     #[test]
     fn un_corps_sans_collider_est_refuse() {
         let (nodes, colliders) = racine_et_porte();
-        assert!(layout(&[entree(0), entree(1)], &nodes, &colliders, &[], &[]).is_none());
+        assert!(ranger(&[entree(0), entree(1)], &nodes, &colliders).is_none());
     }
 
     #[test]
@@ -442,7 +642,7 @@ mod tests {
         nodes.swap(0, 1);
         nodes[0].parent = 1;
         nodes[1].parent = NO_PARENT;
-        assert!(layout(&[entree(1)], &nodes, &colliders, &[], &[]).is_none());
+        assert!(ranger(&[entree(1)], &nodes, &colliders).is_none());
     }
 
     #[test]
@@ -451,10 +651,21 @@ mod tests {
         nodes[0].collider = 1;
         colliders.push(boite([0.0; 3]));
         let entries = [entree(0), entree(1), entree(1)];
-        assert!(layout(&entries, &nodes, &colliders, &[], &[]).is_none());
+        assert!(ranger(&entries, &nodes, &colliders).is_none());
     }
 
     fn payload(header: CreateAssembly, entries: &[AssemblyBodyEntry], with_nodes: bool) -> Vec<u8> {
+        payload_joints(header, entries, with_nodes, &[], &[])
+    }
+
+    /// Le payload de la racine et de la porte, avec `joints` et les points de grippage `jam`.
+    fn payload_joints(
+        header: CreateAssembly,
+        entries: &[AssemblyBodyEntry],
+        with_nodes: bool,
+        joints: &[JointDesc],
+        jam: &[[f32; 2]],
+    ) -> Vec<u8> {
         let (mut nodes, mut colliders) = racine_et_porte();
         nodes[0].collider = 1;
         colliders.push(boite([0.0; 3]));
@@ -465,7 +676,244 @@ mod tests {
             Vec::new()
         };
         let phys = encode_colliders(&colliders, &[], &[]).unwrap();
-        create_assembly_payload(&header, entries, &node_bytes, &phys)
+        create_assembly_payload(&header, entries, joints, jam, &node_bytes, &phys)
+    }
+
+    /// Une charnière entre la racine et la porte : ancrée en (0, 0, 1) dans la porte, autour de
+    /// son axe X, avec limites et friction, sans grippage.
+    fn charniere() -> JointDesc {
+        JointDesc {
+            kind: joint_kind::REVOLUTE,
+            flags: joint_flags::LIMITS | joint_flags::FRICTION,
+            body_a: 0,
+            body_b: 1,
+            axes: [joint_axis_mode::LOCKED; 6],
+            b_node: 1,
+            anchor: [0.0, 0.0, 1.0],
+            axis: [1.0, 0.0, 0.0],
+            limits: [-0.5, 1.5],
+            motor_speed: 0.0,
+            motor_target: 0.0,
+            motor_stiffness: 0.0,
+            motor_damping: 0.0,
+            motor_max_force: f32::INFINITY,
+            friction: 4.0,
+            break_force: 8000.0,
+            break_torque: f32::INFINITY,
+            break_energy: f32::INFINITY,
+            jam_friction: 0.0,
+            jam_first: 0,
+            jam_count: 0,
+            axis_limits: [[0.0; 2]; 6],
+            max_length: 0.0,
+            rest_length: 0.0,
+            stiffness: 0.0,
+            damping: 0.0,
+        }
+    }
+
+    fn proche_q(a: Quat, b: Quat) -> bool {
+        a.angle_between(b) < 1e-5
+    }
+
+    #[test]
+    fn un_joint_recoit_ses_reperes_dans_ses_deux_corps_a_la_pose_de_repos() {
+        // La porte est en (2, 0, 0), d'un quart de tour autour de Y, d'échelle 2 : l'ancrage
+        // (0, 0, 1) de son repère est en (2, 0, 0) + (2, 0, 0) = (4, 0, 0) dans l'asset, donc
+        // dans le corps racine ; dans le corps de la porte, sans son échelle, en (0, 0, 2).
+        let quart = Quat::from_rotation_y(core::f32::consts::FRAC_PI_2);
+        let corps = [entree(0), entree(1)];
+        let request = decode(&payload_joints(
+            en_tete(),
+            &corps,
+            true,
+            &[charniere()],
+            &[],
+        ))
+        .unwrap();
+        let joint = &request.joints[0];
+        assert_eq!((joint.index, joint.body_a, joint.body_b), (0, 0, 1));
+        let (anchor_a, rotation_a) = joint.spec.frame_a;
+        let (anchor_b, rotation_b) = joint.spec.frame_b;
+        assert!(proche(anchor_a, Vec3::new(4.0, 0.0, 0.0)), "{anchor_a}");
+        assert!(proche_q(rotation_a, quart), "{rotation_a}");
+        assert!(proche(anchor_b, Vec3::new(0.0, 0.0, 2.0)), "{anchor_b}");
+        assert!(proche_q(rotation_b, Quat::IDENTITY), "{rotation_b}");
+        assert_eq!(joint.spec.kind, JointKind::Revolute);
+        assert_eq!(joint.spec.limits, Some([-0.5, 1.5]));
+        assert_eq!(joint.spec.friction, Some(4.0));
+        assert_eq!(joint.spec.motor, None);
+        assert_eq!(joint.spec.breaking.force, 8000.0);
+    }
+
+    #[test]
+    fn l_axe_d_un_joint_devient_l_axe_x_de_ses_reperes() {
+        // Un axe Y dans la porte : le repère du joint tourne X vers Y, puis suit la porte.
+        let mut joint = charniere();
+        joint.axis = [0.0, 1.0, 0.0];
+        let corps = [entree(0), entree(1)];
+        let request = decode(&payload_joints(en_tete(), &corps, true, &[joint], &[])).unwrap();
+        let (_, rotation_b) = request.joints[0].spec.frame_b;
+        assert!(proche(rotation_b * Vec3::X, Vec3::Y), "{rotation_b}");
+        let (_, rotation_a) = request.joints[0].spec.frame_a;
+        let quart = Quat::from_rotation_y(core::f32::consts::FRAC_PI_2);
+        assert!(
+            proche(rotation_a * Vec3::X, quart * Vec3::Y),
+            "{rotation_a}"
+        );
+    }
+
+    #[test]
+    fn un_moteur_declare_devient_celui_du_joint() {
+        let mut vitesse = charniere();
+        vitesse.flags |= joint_flags::MOTOR_VELOCITY;
+        vitesse.motor_speed = 2.0;
+        vitesse.motor_max_force = 300.0;
+        let mut servo = charniere();
+        servo.flags |= joint_flags::MOTOR_POSITION;
+        servo.motor_target = 1.2;
+        servo.motor_stiffness = 50.0;
+        servo.motor_damping = 5.0;
+        let corps = [entree(0), entree(1)];
+        let lu = |joint: JointDesc| {
+            decode(&payload_joints(en_tete(), &corps, true, &[joint], &[]))
+                .unwrap()
+                .joints[0]
+                .spec
+                .motor
+        };
+        assert_eq!(
+            lu(vitesse),
+            Some(JointMotor::Velocity {
+                speed: 2.0,
+                max_force: 300.0
+            })
+        );
+        assert_eq!(
+            lu(servo),
+            Some(JointMotor::Position {
+                target: 1.2,
+                speed: 0.0,
+                stiffness: 50.0,
+                damping: 5.0,
+                max_force: f32::INFINITY
+            })
+        );
+    }
+
+    #[test]
+    fn un_joint_incoherent_abandonne_l_assembly() {
+        let corps = [entree(0), entree(1)];
+        let refuse = |change: fn(&mut JointDesc), jam: &[[f32; 2]]| {
+            let mut joint = charniere();
+            change(&mut joint);
+            decode(&payload_joints(en_tete(), &corps, true, &[joint], jam)).is_none()
+        };
+        assert!(!refuse(|_| {}, &[]), "la charnière est cohérente");
+        assert!(
+            refuse(|j| j.body_a = 1, &[]),
+            "deux bouts sur un même corps"
+        );
+        assert!(refuse(|j| j.body_b = 2, &[]), "un corps hors de l'assembly");
+        assert!(
+            refuse(|j| j.b_node = 0, &[]),
+            "b_node n'est pas la racine du second corps"
+        );
+        assert!(
+            refuse(|j| j.kind = joint_kind::FIXED, &[]),
+            "limites sur un fixed"
+        );
+        assert!(
+            refuse(
+                |j| {
+                    j.kind = joint_kind::SPHERICAL;
+                    j.flags = joint_flags::MOTOR_VELOCITY;
+                },
+                &[]
+            ),
+            "moteur sur un spherical"
+        );
+        assert!(
+            refuse(
+                |j| {
+                    j.kind = joint_kind::FIXED;
+                    j.flags = joint_flags::FRICTION;
+                },
+                &[]
+            ),
+            "friction sur un fixed"
+        );
+        assert!(
+            refuse(|j| j.axes[0] = joint_axis_mode::FREE, &[]),
+            "modes d'axes hors generic"
+        );
+        assert!(
+            refuse(
+                |j| {
+                    j.kind = joint_kind::ROPE;
+                    j.flags = 0;
+                },
+                &[]
+            ),
+            "corde sans longueur"
+        );
+        assert!(
+            refuse(|j| j.jam_count = 1, &[[0.0, 1.0]]),
+            "courbe sans grippage"
+        );
+        assert!(refuse(|j| j.b_node = 9, &[]), "b_node hors de la table");
+    }
+
+    #[test]
+    fn la_courbe_de_grippage_est_lue_et_jugee_dans_l_annexe() {
+        let corps = [entree(0), entree(1)];
+        let avec = |flags: u8, first: u32, count: u32, jam: &[[f32; 2]]| {
+            let mut joint = charniere();
+            joint.flags = flags | joint_flags::JAM;
+            joint.jam_first = first;
+            joint.jam_count = count;
+            decode(&payload_joints(en_tete(), &corps, true, &[joint], jam)).is_some()
+        };
+        let courbe = [[9.0, 9.0], [0.0, 1.0], [0.05, 0.5], [0.12, 0.0]];
+        assert!(
+            avec(joint_flags::LIMITS, 1, 3, &courbe),
+            "une courbe dans l'annexe"
+        );
+        assert!(!avec(0, 1, 3, &courbe), "un grippage sans limites");
+        assert!(
+            !avec(joint_flags::LIMITS, 2, 3, &courbe),
+            "hors de l'annexe"
+        );
+        assert!(!avec(joint_flags::LIMITS, 1, 0, &courbe), "une courbe vide");
+        let decroissante = [[0.1, 1.0], [0.05, 0.0]];
+        assert!(
+            !avec(joint_flags::LIMITS, 0, 2, &decroissante),
+            "abscisses décroissantes"
+        );
+        let egales = [[0.1, 1.0], [0.1, 0.0]];
+        assert!(
+            !avec(joint_flags::LIMITS, 0, 2, &egales),
+            "abscisses égales"
+        );
+        let fraction = [[0.0, 1.5]];
+        assert!(
+            !avec(joint_flags::LIMITS, 0, 1, &fraction),
+            "fraction au-delà de 1"
+        );
+        let negative = [[-0.1, 1.0]];
+        assert!(
+            !avec(joint_flags::LIMITS, 0, 1, &negative),
+            "abscisse négative"
+        );
+    }
+
+    #[test]
+    fn un_payload_tronque_dans_ses_joints_est_refuse() {
+        let corps = [entree(0), entree(1)];
+        let complet = payload_joints(en_tete(), &corps, true, &[charniere()], &[[0.0, 1.0]]);
+        let joints = CreateAssembly::BODIES_OFFSET + 2 * AssemblyBodyEntry::WIRE_BYTES;
+        assert!(decode(&complet[..joints + JointDesc::BYTES - 1]).is_none());
+        assert!(decode(&complet[..joints + JointDesc::BYTES + 4]).is_none());
     }
 
     fn en_tete() -> CreateAssembly {
@@ -480,7 +928,7 @@ mod tests {
             flags: 0,
             body_count: 0,
             joint_count: 0,
-            _pad: 0,
+            jam_points: 0,
             assembly_mass: 0.0,
             node_bytes: 0,
         }
@@ -497,11 +945,8 @@ mod tests {
     #[test]
     fn les_ecarts_d_en_tete_abandonnent_l_assembly() {
         let corps = [entree(0), entree(1)];
-        // Joints annoncés avant C-34, masse négative, racine d'un autre type, second corps
-        // non dynamique, deux corps sans section NODE.
-        let mut joints = en_tete();
-        joints.joint_count = 1;
-        assert!(decode(&payload(joints, &corps, true)).is_none());
+        // Masse négative, racine d'un autre type, second corps non dynamique, deux corps sans
+        // section NODE.
         let mut masse = en_tete();
         masse.assembly_mass = -1.0;
         assert!(decode(&payload(masse, &corps, true)).is_none());

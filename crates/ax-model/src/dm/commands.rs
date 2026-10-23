@@ -12,6 +12,7 @@
 
 use super::geometry::WorldTransform;
 use super::handle::Handle;
+use super::joints::JointDesc;
 use super::physics::BodyDesc;
 
 /// Valeurs d'opcode (ADR-114), champ `opcode` de [`SimCommandHeader`].
@@ -176,13 +177,15 @@ impl SetDimensionEnv {
 /// description des corps, ADR-130 ; plusieurs corps, ADR-151 D7).
 ///
 /// Suivi **dans le même payload** de `body_count` entrées [`AssemblyBodyEntry`], le corps
-/// racine d'abord ; puis des `node_bytes` octets de la section `NODE` de l'asset, complétés
-/// à 8 ; puis des octets de sa section `PHYS` jusqu'à la fin du payload. Java les extrait de
-/// l'A3D et les envoie, le natif les décode (Option A d'ADR-115) : chaque collider va au
-/// corps de son node, posé dans le repère de ce corps (ADR-151 D2). Sans section `NODE`
-/// (`node_bytes` nul), un seul corps est admis, et ses colliders sont pris tels quels.
-/// [`create_assembly_payload`] assemble ce payload. Les champs runtime de `AssemblyDesc`
-/// (DM-09) — asset, definition, propriétaire, qualité — s'ajouteront avec leur consommateur.
+/// racine d'abord ; puis de `joint_count` [`JointDesc`] et des `jam_points` points de leurs
+/// courbes de grippage ([`JointDesc::JAM_POINT_BYTES`] chacun) ; puis des `node_bytes`
+/// octets de la section `NODE` de l'asset, complétés à 8 ; puis des octets de sa section
+/// `PHYS` jusqu'à la fin du payload. Java les extrait de l'A3D et les envoie, le natif les
+/// décode (Option A d'ADR-115) : chaque collider va au corps de son node, posé dans le
+/// repère de ce corps (ADR-151 D2). Sans section `NODE` (`node_bytes` nul), un seul corps
+/// est admis, et ses colliders sont pris tels quels. [`create_assembly_payload`] assemble ce
+/// payload. Les champs runtime de `AssemblyDesc` (DM-09) — asset, definition, propriétaire,
+/// qualité — s'ajouteront avec leur consommateur.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CreateAssembly {
@@ -199,10 +202,10 @@ pub struct CreateAssembly {
     pub flags: u8,
     /// Nombre de corps, de 1 à [`MAX_ASSEMBLY_BODIES`] (R-190).
     pub body_count: u16,
-    /// Nombre de joints ; nul tant que C-34 ne les transcrit pas (ADR-151, tranche 3).
+    /// Nombre de joints (C-34, ADR-151 D7).
     pub joint_count: u16,
-    /// Réservé, à zéro.
-    pub _pad: u16,
+    /// Nombre de points des courbes de grippage, en annexe après les joints.
+    pub jam_points: u16,
     /// Masse de l'assembly, en kg, répartie entre ses corps sans masse déclarée ; `0` :
     /// aucune (ADR-151 D2).
     pub assembly_mass: f32,
@@ -241,7 +244,7 @@ impl CreateAssembly {
         out.push(self.flags);
         out.extend_from_slice(&self.body_count.to_le_bytes());
         out.extend_from_slice(&self.joint_count.to_le_bytes());
-        out.extend_from_slice(&self._pad.to_le_bytes());
+        out.extend_from_slice(&self.jam_points.to_le_bytes());
         out.extend_from_slice(&self.assembly_mass.to_le_bytes());
         out.extend_from_slice(&self.node_bytes.to_le_bytes());
     }
@@ -265,7 +268,7 @@ impl CreateAssembly {
             flags: bytes[57],
             body_count: u16_at(58),
             joint_count: u16_at(60),
-            _pad: u16_at(62),
+            jam_points: u16_at(62),
             assembly_mass: f32_at(64),
             node_bytes: u32_at(68),
         })
@@ -308,22 +311,28 @@ impl AssemblyBodyEntry {
     }
 }
 
-/// Le payload complet de `CREATE_ASSEMBLY` : l'en-tête — son `body_count` et son
-/// `node_bytes` pris de `bodies` et `nodes` —, les corps, la section `NODE` complétée à 8,
-/// puis les octets `PHYS`.
+/// Le payload complet de `CREATE_ASSEMBLY` : l'en-tête — ses `body_count`, `joint_count`,
+/// `jam_points` et `node_bytes` pris de `bodies`, `joints`, `jam_points` et `nodes` —, les
+/// corps, les joints, les points de grippage, la section `NODE` complétée à 8, puis les
+/// octets `PHYS`.
 ///
 /// # Panics
 ///
-/// Si `bodies` ou `nodes` dépassent ce que leur champ d'en-tête peut dire.
+/// Si `bodies`, `joints`, `jam_points` ou `nodes` dépassent ce que leur champ d'en-tête peut
+/// dire.
 #[must_use]
 pub fn create_assembly_payload(
     header: &CreateAssembly,
     bodies: &[AssemblyBodyEntry],
+    joints: &[JointDesc],
+    jam_points: &[[f32; 2]],
     nodes: &[u8],
     phys: &[u8],
 ) -> Vec<u8> {
     let header = CreateAssembly {
         body_count: u16::try_from(bodies.len()).expect("au plus 65 535 corps"),
+        joint_count: u16::try_from(joints.len()).expect("au plus 65 535 joints"),
+        jam_points: u16::try_from(jam_points.len()).expect("au plus 65 535 points"),
         node_bytes: u32::try_from(nodes.len()).expect("section NODE sous 4 Gio"),
         ..*header
     };
@@ -331,6 +340,13 @@ pub fn create_assembly_payload(
     header.write_le(&mut out);
     for body in bodies {
         body.write_le(&mut out);
+    }
+    for joint in joints {
+        joint.write_le(&mut out);
+    }
+    for point in jam_points {
+        out.extend_from_slice(&point[0].to_le_bytes());
+        out.extend_from_slice(&point[1].to_le_bytes());
     }
     out.extend_from_slice(nodes);
     out.resize(out.len().next_multiple_of(8), 0);
@@ -578,6 +594,7 @@ mod tests {
         assert_eq!(offset_of!(CreateAssembly, flags), 57);
         assert_eq!(offset_of!(CreateAssembly, body_count), 58);
         assert_eq!(offset_of!(CreateAssembly, joint_count), 60);
+        assert_eq!(offset_of!(CreateAssembly, jam_points), 62);
         assert_eq!(offset_of!(CreateAssembly, assembly_mass), 64);
         assert_eq!(offset_of!(CreateAssembly, node_bytes), 68);
         // ADR-151 D7 : les corps suivent l'en-tête, chacun sur 64 octets alignés sur 8.
@@ -587,8 +604,9 @@ mod tests {
 
     #[test]
     fn create_assembly_payload_aligne_ses_sections() {
-        // ADR-151 D7 : en-tête, corps, NODE complétée à 8, puis PHYS ; l'en-tête relu porte
-        // le nombre de corps et la taille de NODE pris des sections.
+        // ADR-151 D7 : en-tête, corps, joints, points de grippage, NODE complétée à 8, puis
+        // PHYS ; l'en-tête relu porte les nombres de corps, de joints et de points, et la
+        // taille de NODE, pris des sections.
         let header = CreateAssembly {
             handle: Handle::new(7, 1),
             dimension: 3,
@@ -600,7 +618,7 @@ mod tests {
             flags: create_assembly_flags::SELF_COLLISION,
             body_count: 0,
             joint_count: 0,
-            _pad: 0,
+            jam_points: 0,
             assembly_mass: 120.0,
             node_bytes: 0,
         };
@@ -614,17 +632,54 @@ mod tests {
                 root_node: 4,
             },
         ];
-        let payload = create_assembly_payload(&header, &bodies, &[9; 13], &[5; 3]);
+        let joint = JointDesc {
+            kind: super::super::joints::joint_kind::FIXED,
+            flags: 0,
+            body_a: 0,
+            body_b: 1,
+            axes: [0; 6],
+            b_node: 4,
+            anchor: [0.0; 3],
+            axis: [0.0; 3],
+            limits: [0.0; 2],
+            motor_speed: 0.0,
+            motor_target: 0.0,
+            motor_stiffness: 0.0,
+            motor_damping: 0.0,
+            motor_max_force: f32::INFINITY,
+            friction: 0.0,
+            break_force: f32::INFINITY,
+            break_torque: f32::INFINITY,
+            break_energy: f32::INFINITY,
+            jam_friction: 0.0,
+            jam_first: 0,
+            jam_count: 0,
+            axis_limits: [[0.0; 2]; 6],
+            max_length: 0.0,
+            rest_length: 0.0,
+            stiffness: 0.0,
+            damping: 0.0,
+        };
+        let jam = [[0.0, 1.0], [0.1, 0.0]];
+        let payload = create_assembly_payload(&header, &bodies, &[joint], &jam, &[9; 13], &[5; 3]);
 
         let read = CreateAssembly::read_le(&payload).unwrap();
         assert_eq!(read.body_count, 2);
+        assert_eq!(read.joint_count, 1);
+        assert_eq!(read.jam_points, 2);
         assert_eq!(read.node_bytes, 13);
         assert_eq!(read.assembly_mass, 120.0);
         assert_eq!(read.flags, create_assembly_flags::SELF_COLLISION);
         assert_eq!(read.spawn, header.spawn);
         let second = AssemblyBodyEntry::read_le(&payload[CreateAssembly::BODIES_OFFSET + 64..]);
         assert_eq!(second.unwrap().root_node, 4);
-        let nodes = CreateAssembly::BODIES_OFFSET + 2 * AssemblyBodyEntry::WIRE_BYTES;
+        let joints = CreateAssembly::BODIES_OFFSET + 2 * AssemblyBodyEntry::WIRE_BYTES;
+        assert_eq!(JointDesc::read_le(&payload[joints..]), Some(joint));
+        let points = joints + JointDesc::BYTES;
+        assert_eq!(&payload[points + 4..points + 8], &1.0f32.to_le_bytes());
+        assert_eq!(&payload[points + 8..points + 12], &0.1f32.to_le_bytes());
+        let nodes = points + 2 * JointDesc::JAM_POINT_BYTES;
+        assert_eq!(nodes % 8, 0, "NODE alignée sur 8");
         assert_eq!(&payload[nodes..nodes + 13], &[9; 13]);
         assert_eq!(
             &payload[nodes + 16..],

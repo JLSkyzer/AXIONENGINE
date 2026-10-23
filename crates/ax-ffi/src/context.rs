@@ -80,6 +80,7 @@ struct SessionMetrics {
     sim_step_cpu: MetricId,
     sim_last_step_cpu: MetricId,
     sim_last_step_integration: MetricId,
+    sim_last_step_joints: MetricId,
     sim_last_step_contacts: MetricId,
     sim_last_step_commands: MetricId,
     sim_last_step_serialization: MetricId,
@@ -444,6 +445,10 @@ impl Session {
         registry.set(
             metrics.sim_last_step_integration,
             self.physics.stage_duration(Stage::Integration),
+        );
+        registry.set(
+            metrics.sim_last_step_joints,
+            self.physics.stage_duration(Stage::Joints),
         );
         registry.set(
             metrics.sim_last_step_contacts,
@@ -935,6 +940,8 @@ fn build_metrics() -> SessionMetrics {
     let mut last_step = |name: &str| builder.gauge(name, "ns").expect("métrique du dernier pas");
     let sim_last_step_cpu = last_step("axion.sim.last_step_cpu_ns");
     let sim_last_step_integration = last_step("axion.sim.last_step_integration_ns");
+    // ADR-151 D5 : l'étape 5, les joints.
+    let sim_last_step_joints = last_step("axion.sim.last_step_joints_ns");
     let sim_last_step_contacts = last_step("axion.sim.last_step_contacts_ns");
     // C-40, R-661 : les étapes 1 et 15, que la session mesure autour du pas.
     let sim_last_step_commands = last_step("axion.sim.last_step_commands_ns");
@@ -1005,6 +1012,7 @@ fn build_metrics() -> SessionMetrics {
         sim_step_cpu,
         sim_last_step_cpu,
         sim_last_step_integration,
+        sim_last_step_joints,
         sim_last_step_contacts,
         sim_last_step_commands,
         sim_last_step_serialization,

@@ -8,8 +8,8 @@ use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::physics::{body_state_flags, event_kind, BodyDesc};
 use ax_physics::{
-    AssemblyBody, BodyCollider, BodyId, BodyKind, CollisionGroups, ContactMaterial, Handle, Shape,
-    SimDriver, SimSettings,
+    AssemblyBody, AssemblyJoint, AxisMode, BodyCollider, BodyId, BodyKind, BreakThresholds,
+    CollisionGroups, ContactMaterial, Handle, JointKind, JointSpec, Shape, SimDriver, SimSettings,
 };
 
 const ASSEMBLY: Handle = Handle {
@@ -72,6 +72,7 @@ fn creer(
         handle,
         at,
         bodies,
+        &[],
         CollisionGroups::ALL,
         0.0,
         self_collision,
@@ -329,6 +330,7 @@ fn adr151_la_masse_de_l_assembly_se_repartit_au_prorata_des_densites() {
             ASSEMBLY,
             spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
             bodies,
+            &[],
             CollisionGroups::ALL,
             assembly_mass,
             false,
@@ -374,4 +376,99 @@ fn adr151_une_forme_refusee_n_en_laisse_aucun() {
     assert!(crees.is_none());
     assert_eq!(driver.world_mut(0).unwrap().body_count(), 0);
     assert!(driver.assembly_bodies(ASSEMBLY).is_none());
+}
+
+/// Un joint `Fixed` entre le corps `a` et le corps `b` posé en `b_at` dans l'assembly, ancré à
+/// l'origine du repère de `a`.
+fn soudure(a: usize, b: usize, b_at: Vec3) -> AssemblyJoint {
+    AssemblyJoint {
+        index: 4,
+        body_a: a,
+        body_b: b,
+        spec: JointSpec {
+            kind: JointKind::Fixed,
+            frame_a: (Vec3::ZERO, Quat::IDENTITY),
+            frame_b: (-b_at, Quat::IDENTITY),
+            limits: None,
+            motor: None,
+            friction: None,
+            breaking: BreakThresholds::NONE,
+            axes: [AxisMode::Locked; 6],
+            max_length: 0.0,
+            rest_length: 0.0,
+            stiffness: 0.0,
+            damping: 0.0,
+            collide: false,
+        },
+    }
+}
+
+/// Une assembly dont la racine est statique et le second corps pend à deux blocs, sous la
+/// pesanteur, reliés par `joints`.
+fn pendue(driver: &mut SimDriver, joints: &[AssemblyJoint]) -> Option<Vec<BodyId>> {
+    driver.apply_dimension_env(0, Vec3::new(0.0, -9.81, 0.0), Vec3::ZERO, None);
+    let mut racine = corps(0, Vec3::ZERO);
+    racine.kind = BodyKind::Static;
+    racine.desc = BodyDesc::undeclared(0);
+    driver.create_assembly_bodies(
+        0,
+        ASSEMBLY,
+        spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
+        &[racine, corps(1, Vec3::new(2.0, 0.0, 0.0))],
+        joints,
+        CollisionGroups::ALL,
+        0.0,
+        false,
+    )
+}
+
+#[test]
+fn adr151_les_joints_relient_les_corps_de_l_assembly() {
+    // Soudé à la racine statique, le second corps reste en place ; sans joint, il tombe.
+    let hauteur = |joints: &[AssemblyJoint]| {
+        let mut driver = pilote(128.0, 2048);
+        let ids = pendue(&mut driver, joints).expect("assembly valide");
+        for _ in 0..20 {
+            driver.advance_all(1.0 / 20.0);
+        }
+        let counts = driver.world_mut(0).unwrap().joint_counts();
+        (position(&mut driver, ids[1]).y, counts.active)
+    };
+    let (tenu, actifs) = hauteur(&[soudure(0, 1, Vec3::new(2.0, 0.0, 0.0))]);
+    assert_eq!(actifs, 1);
+    let (libre, aucun) = hauteur(&[]);
+    assert_eq!(aucun, 0);
+    let depart = position_initiale();
+    assert!((tenu - depart).abs() < 0.01, "soudé : {tenu}");
+    assert!(libre < depart - 1.0, "libre, il tombe : {libre}");
+}
+
+/// La hauteur de spawn des assemblies de ces tests, dans le repère local du monde.
+fn position_initiale() -> f32 {
+    let mut driver = pilote(128.0, 2048);
+    let ids = pendue(&mut driver, &[]).expect("assembly valide");
+    position(&mut driver, ids[1]).y
+}
+
+#[test]
+fn adr151_un_joint_refuse_n_en_laisse_aucun() {
+    // Un joint vers un corps hors de l'assembly : ni corps ni joint ne restent.
+    let mut driver = pilote(128.0, 2048);
+    let joints = [
+        soudure(0, 1, Vec3::new(2.0, 0.0, 0.0)),
+        soudure(0, 5, Vec3::new(2.0, 0.0, 0.0)),
+    ];
+    assert!(pendue(&mut driver, &joints).is_none());
+    let world = driver.world_mut(0).unwrap();
+    assert_eq!(world.body_count(), 0);
+    assert_eq!(world.joint_counts().active, 0);
+    assert!(driver.assembly_bodies(ASSEMBLY).is_none());
+}
+
+#[test]
+fn adr151_retirer_l_assembly_retire_ses_joints() {
+    let mut driver = pilote(128.0, 2048);
+    pendue(&mut driver, &[soudure(0, 1, Vec3::new(2.0, 0.0, 0.0))]).unwrap();
+    assert!(driver.apply_remove_assembly(ASSEMBLY));
+    assert_eq!(driver.world_mut(0).unwrap().joint_counts().active, 0);
 }

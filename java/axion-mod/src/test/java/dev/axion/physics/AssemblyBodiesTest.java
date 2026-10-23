@@ -50,7 +50,7 @@ class AssemblyBodiesTest {
     @Test
     @DisplayName("Sans bodies : un seul corps, à la racine de l'asset, la description telle quelle")
     void sansBodies() {
-        AssemblyBodies.Layout layout = AssemblyBodies.of(definition("{}"), nodes("racine"), PHYSIQUE);
+        AssemblyBodies.Layout layout = AssemblyBodies.of(definition("{}"), nodes("racine"), PHYSIQUE, true);
         assertEquals(List.of(new SimCommandStream.AssemblyBody(PHYSIQUE, 0)), layout.bodies());
         assertEquals(0.0f, layout.assemblyMass());
         assertEquals(0, layout.rootNode());
@@ -62,7 +62,8 @@ class AssemblyBodiesTest {
         AssemblyBodies.Layout layout = AssemblyBodies.of(
                 definition("{\"bodies\": [{\"name\": \"caisse\", \"root_node\": \"chassis\"}]}"),
                 nodes("racine", "chassis"),
-                PHYSIQUE);
+                PHYSIQUE,
+                true);
         assertEquals(List.of(new SimCommandStream.AssemblyBody(PHYSIQUE, 1)), layout.bodies());
         assertEquals(1, layout.rootNode());
         assertEquals(0.0f, layout.assemblyMass());
@@ -76,7 +77,8 @@ class AssemblyBodiesTest {
                 nodes("a", "a_vue", "b"),
                 BodyDescription.of(
                         definition("{\"physics\": {\"mass\": 120, \"linear_damping\": 0.5, \"center_of_mass\": [0, 0.5, 0]}}"),
-                        SimCommandStream.BODY_STATIC));
+                        SimCommandStream.BODY_STATIC),
+                true);
 
         assertEquals(120.0f, layout.assemblyMass());
         assertEquals(0, layout.rootNode());
@@ -96,11 +98,11 @@ class AssemblyBodiesTest {
     @DisplayName("Un root_node qui ne nomme aucun node, ou un second corps sans node : aucun corps")
     void racineIntrouvable() {
         assertNull(AssemblyBodies.of(
-                definition("{\"bodies\": [{\"name\": \"a\", \"root_node\": \"absent\"}]}"), nodes("a"), PHYSIQUE));
+                definition("{\"bodies\": [{\"name\": \"a\", \"root_node\": \"absent\"}]}"), nodes("a"), PHYSIQUE, true));
         assertNull(AssemblyBodies.of(
-                definition("{\"bodies\": [{\"name\": \"a\"}, {\"name\": \"b\"}]}"), nodes("a", "b"), PHYSIQUE));
+                definition("{\"bodies\": [{\"name\": \"a\"}, {\"name\": \"b\"}]}"), nodes("a", "b"), PHYSIQUE, true));
         assertNull(AssemblyBodies.of(
-                definition("{\"bodies\": [{\"name\": \"a\", \"root_node\": \"a\"}]}"), null, PHYSIQUE));
+                definition("{\"bodies\": [{\"name\": \"a\", \"root_node\": \"a\"}]}"), null, PHYSIQUE, true));
     }
 
     @Test
@@ -110,5 +112,73 @@ class AssemblyBodiesTest {
         assertEquals(List.of("a", "b"), AssemblyBodies.names(complete));
         assertEquals(List.of(), AssemblyBodies.names(Arrays.copyOf(complete, complete.length - 1)));
         assertEquals(List.of(), AssemblyBodies.names(new byte[3]));
+    }
+
+    /** Une caisse déclarée, et une porte qu'un joint fixe relie à elle par son {@code b_node}. */
+    private static final String SOUDURE =
+            "{\"bodies\": [{\"name\": \"caisse\"}], \"joints\": [{\"name\": \"s\", \"type\": \"fixed\","
+                    + " \"a\": \"caisse\", \"b_node\": \"porte\"}]}";
+
+    @Test
+    @DisplayName("Le b_node d'un joint crée un corps à ce node, et le joint relie les deux corps")
+    void corpsImplicite() {
+        AssemblyBodies.Layout layout =
+                AssemblyBodies.of(definition(SOUDURE), nodes("racine", "porte"), PHYSIQUE, true);
+
+        assertEquals(2, layout.bodies().size());
+        assertEquals(1, layout.bodies().get(1).rootNode(), "le corps implicite, au b_node");
+        assertEquals(SimCommandStream.BODY_DYNAMIC, layout.bodies().get(1).description().bodyType());
+        assertEquals(120.0f, layout.assemblyMass(), "la masse se répartit entre les deux");
+        JointDescription joint = layout.joints().get(0);
+        assertEquals(0, joint.bodyA());
+        assertEquals(1, joint.bodyB());
+        assertEquals(1, joint.bNode());
+        assertEquals(List.of(), layout.jamPoints());
+    }
+
+    @Test
+    @DisplayName("Un b_node déjà racine d'un corps déclaré ne crée pas de second corps")
+    void bNodeDeclare() {
+        AssemblyBodies.Layout layout = AssemblyBodies.of(
+                definition("{\"bodies\": [{\"name\": \"caisse\"}, {\"name\": \"porte\", \"root_node\": \"porte\"}],"
+                        + " \"joints\": [{\"name\": \"s\", \"type\": \"fixed\", \"a\": \"caisse\","
+                        + " \"b_node\": \"porte\"}]}"),
+                nodes("racine", "porte"),
+                PHYSIQUE,
+                true);
+        assertEquals(2, layout.bodies().size());
+        assertEquals(1, layout.joints().get(0).bodyB());
+    }
+
+    @Test
+    @DisplayName("modules.joints désactivé : ni joint ni corps implicite")
+    void jointsDesactives() {
+        AssemblyBodies.Layout layout =
+                AssemblyBodies.of(definition(SOUDURE), nodes("racine", "porte"), PHYSIQUE, false);
+        assertEquals(List.of(new SimCommandStream.AssemblyBody(PHYSIQUE, 0)), layout.bodies());
+        assertEquals(List.of(), layout.joints());
+    }
+
+    /** Une caisse et {@code count} joints fixes, chacun vers son propre node {@code n1..n<count>}. */
+    private static AssemblyBodies.Layout soudures(int count) {
+        StringBuilder joints = new StringBuilder();
+        String[] names = new String[count + 1];
+        names[0] = "racine";
+        for (int i = 1; i <= count; i++) {
+            names[i] = "n" + i;
+            joints.append(i > 1 ? ", " : "")
+                    .append("{\"name\": \"j").append(i).append("\", \"type\": \"fixed\", \"a\": \"caisse\",")
+                    .append(" \"b_node\": \"n").append(i).append("\"}");
+        }
+        String json = "{\"bodies\": [{\"name\": \"caisse\"}], \"joints\": [" + joints + "]}";
+        return AssemblyBodies.of(definition(json), nodes(names), PHYSIQUE, true);
+    }
+
+    @Test
+    @DisplayName("Un b_node introuvable, ou plus de 64 corps avec les implicites : aucun corps")
+    void bNodeIntrouvable() {
+        assertNull(AssemblyBodies.of(definition(SOUDURE), nodes("racine"), PHYSIQUE, true));
+        assertEquals(64, soudures(63).bodies().size(), "64 corps, le plafond (R-190)");
+        assertNull(soudures(64), "65 corps");
     }
 }

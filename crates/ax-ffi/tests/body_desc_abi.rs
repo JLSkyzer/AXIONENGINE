@@ -99,6 +99,8 @@ fn assembly(desc: BodyDesc) -> Vec<u8> {
         &[AssemblyBodyEntry { desc, root_node: 0 }],
         &[],
         &[],
+        &[],
+        &[],
     );
     payload.extend_from_slice(&phys);
     payload
