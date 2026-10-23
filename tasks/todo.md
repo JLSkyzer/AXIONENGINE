@@ -3212,13 +3212,19 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             d'`AssemblyBodies`, 2 mutations rouges. Le passage de `self_collision` par
             `AssemblyRuntime` attend un GameTest à colliders qui se chevauchent (étape 7).
       - [ ] `StepBreakdown` et le journal des ticks lents ne montrent pas encore l'étape 5.
-- [ ] 4. Grippage (D6) : `JAM_JOINT`, `BREAK_JOINT`, `JointState` ; T-334.
+- [x] 4. Grippage (D6) : `JAM_JOINT`, `BREAK_JOINT`, `JointState` ; T-334.
       - [x] 4a (2026-10-24). Grippage natif : `Jam` (courbe depuis (0, 1), désalignement nul sans
             effet), `jam_joint` resserre la plage vers la position courante et mène la friction vers
             celle du grippage, rend à f = 1 les réglages d'origine au bit près, `JOINT_JAMMED` à
             l'entrée et à la sortie ; la courbe décodée part avec le joint. 8 tests T-334, 15
             mutations rouges.
-      - [ ] 4b. Frontière : opcodes `JAM_JOINT` et `BREAK_JOINT`, `JointState` dans `SIM_OUT`, Java.
+      - [x] 4b (2026-10-24). Frontière : `JAM_JOINT` et `BREAK_JOINT` visent un joint par son
+            rang ; `SIM_OUT` porte après les emprises la section des joints, préfixée par leur
+            nombre, un `JointState` par joint d'assembly éveillée. Java : `JointState`,
+            `CollectResult.joints()`, `SimCommandStream.jamJoint` et `breakJoint` ; essai JNI de
+            bout en bout (charnière compilée, grippée, rendue, rompue). 2 tests multi-corps
+            ajoutés ou renforcés (assembly visée, force et couple), 6 + 3 JUnit ; 29 mutations
+            rouges.
 - [ ] 5. Réseau et dessin (D8, D9) : descripteur 2, poses relatives, interpolation et dessin par corps.
 - [ ] 6. Overlays `joints` et `limits` (D7).
 - [ ] 7. Preuves de bout en bout : GameTests, S-05, documentation.

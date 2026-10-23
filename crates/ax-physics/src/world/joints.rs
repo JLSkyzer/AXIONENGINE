@@ -10,6 +10,7 @@ use crate::joint::{
 };
 use ax_math::Vec3;
 use ax_model::dm::handle::Handle;
+use ax_model::dm::joints::{joint_state_flags, JointState};
 use ax_model::dm::physics::{event_kind, PhysicsEvent, NO_MATERIAL};
 use rapier3d::prelude::{
     GenericJoint, GenericJointBuilder, ImpulseJointHandle, JointAxesMask, JointAxis, MotorModel,
@@ -136,6 +137,49 @@ impl PhysicsWorld {
     /// faux s'il est inconnu ou déjà rompu.
     pub fn break_joint(&mut self, id: JointId) -> bool {
         self.break_entry(id.0, 0.0)
+    }
+
+    /// Le joint de rang `index` de l'assembly `assembly`, rompu compris ; `None` s'il n'existe pas.
+    #[must_use]
+    pub fn assembly_joint(&self, assembly: Handle, index: u16) -> Option<JointId> {
+        self.joints
+            .iter()
+            .find(|(_, entry)| entry.assembly == assembly && entry.index == index)
+            .map(|(key, _)| JointId(*key))
+    }
+
+    /// L'état de chaque joint d'une assembly dont un corps est éveillé, rompu compris, dans
+    /// l'ordre de création des joints (ADR-151 D7, R-1020).
+    #[must_use]
+    pub fn joint_states(&self) -> Vec<JointState> {
+        self.joints
+            .values()
+            .filter(|entry| {
+                self.assembly_bodies(entry.assembly).iter().any(|id| {
+                    self.inner
+                        .bodies
+                        .get(id.handle())
+                        .is_some_and(|body| !body.is_sleeping())
+                })
+            })
+            .map(|entry| {
+                let mut flags = 0;
+                if entry.report.broken {
+                    flags |= joint_state_flags::BROKEN;
+                }
+                if entry.report.fraction < 1.0 {
+                    flags |= joint_state_flags::JAMMED;
+                }
+                JointState {
+                    handle: entry.assembly,
+                    index: entry.index,
+                    flags,
+                    fraction: entry.report.fraction,
+                    force: entry.report.force,
+                    torque: entry.report.torque,
+                }
+            })
+            .collect()
     }
 
     /// Remet à zéro l'énergie absorbée par chaque joint : elle se compte sur un tick (D5).

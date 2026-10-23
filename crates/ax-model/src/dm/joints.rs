@@ -290,6 +290,98 @@ impl JointDesc {
     }
 }
 
+/// Drapeaux de [`JointState`], champ `flags`.
+pub mod joint_state_flags {
+    /// Le joint est rompu (D5).
+    pub const BROKEN: u16 = 1 << 0;
+    /// Le joint est grippé : il lui reste moins que toute sa plage (D6).
+    pub const JAMMED: u16 = 1 << 1;
+}
+
+/// L'état d'un joint, dans `SIM_OUT` après les emprises des corps (ADR-151 D7).
+///
+/// **Disposition figée** : 24 octets, alignement 4. Un enregistrement par joint d'une assembly
+/// dont un corps est éveillé, rompu compris. Dans `SIM_OUT`, ils suivent les emprises des corps,
+/// précédés de leur nombre (`u32`) et de 4 octets réservés ([`JointState::write_section`]).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct JointState {
+    /// L'assembly du joint.
+    pub handle: super::handle::Handle,
+    /// Son rang dans la definition.
+    pub index: u16,
+    /// Voir [`joint_state_flags`].
+    pub flags: u16,
+    /// Fraction de sa plage qui lui reste : 1 libre, 0 bloqué.
+    pub fraction: f32,
+    /// Force qu'il transmet, en newtons, au dernier sous-pas.
+    pub force: f32,
+    /// Couple qu'il transmet autour de son ancrage, en newtons-mètres, au dernier sous-pas.
+    pub torque: f32,
+}
+
+impl JointState {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 24;
+
+    /// Taille de l'en-tête de la section des joints dans `SIM_OUT` : leur nombre et 4 octets
+    /// réservés, pour garder les enregistrements alignés sur 8.
+    pub const SECTION_HEADER_BYTES: usize = 8;
+
+    /// Écrit la section des joints de `SIM_OUT` à la fin de `out` : leur nombre, 4 octets
+    /// réservés, puis chacun d'eux.
+    ///
+    /// # Panics
+    ///
+    /// Au-delà de `u32::MAX` joints.
+    pub fn write_section(joints: &[Self], out: &mut Vec<u8>) {
+        let count = u32::try_from(joints.len()).expect("au plus u32::MAX joints");
+        out.extend_from_slice(&count.to_le_bytes());
+        out.extend_from_slice(&[0u8; 4]);
+        for joint in joints {
+            joint.write_le(out);
+        }
+    }
+
+    /// Lit la section des joints au début de `bytes` ; `None` si elle est tronquée.
+    #[must_use]
+    pub fn read_section(bytes: &[u8]) -> Option<Vec<Self>> {
+        let count = u32::from_le_bytes(bytes.get(..4)?.try_into().expect("borne")) as usize;
+        let records = bytes.get(Self::SECTION_HEADER_BYTES..)?;
+        (0..count)
+            .map(|rank| Self::read_le(records.get(rank.checked_mul(Self::BYTES)?..)?))
+            .collect()
+    }
+
+    /// Écrit l'état en little-endian, dans sa disposition figée, à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.handle.index.to_le_bytes());
+        out.extend_from_slice(&self.handle.generation.to_le_bytes());
+        out.extend_from_slice(&self.index.to_le_bytes());
+        out.extend_from_slice(&self.flags.to_le_bytes());
+        out.extend_from_slice(&self.fraction.to_le_bytes());
+        out.extend_from_slice(&self.force.to_le_bytes());
+        out.extend_from_slice(&self.torque.to_le_bytes());
+    }
+
+    /// Lit un état au début de `bytes` ; `None` s'il est tronqué.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..Self::BYTES)?;
+        let u16_at = |at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]);
+        let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
+        let f32_at = |at: usize| f32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
+        Some(Self {
+            handle: super::handle::Handle::new(u32_at(0), u32_at(4)),
+            index: u16_at(8),
+            flags: u16_at(10),
+            fraction: f32_at(12),
+            force: f32_at(16),
+            torque: f32_at(20),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,5 +486,49 @@ mod tests {
         rotule.kind = joint_kind::SPHERICAL;
         rotule.axis = [0.0; 3];
         assert_eq!(rotule.validate(), Ok(()));
+    }
+
+    #[test]
+    fn joint_state_disposition_figee() {
+        // ADR-151 D7 : 24 octets, alignement 4, champ à champ ; l'aller-retour garde tout.
+        assert_eq!(size_of::<JointState>(), JointState::BYTES);
+        assert_eq!(align_of::<JointState>(), 4);
+        assert_eq!(offset_of!(JointState, handle), 0);
+        assert_eq!(offset_of!(JointState, index), 8);
+        assert_eq!(offset_of!(JointState, flags), 10);
+        assert_eq!(offset_of!(JointState, fraction), 12);
+        assert_eq!(offset_of!(JointState, force), 16);
+        assert_eq!(offset_of!(JointState, torque), 20);
+        let state = JointState {
+            handle: crate::dm::handle::Handle::new(7, 2),
+            index: 3,
+            flags: joint_state_flags::JAMMED,
+            fraction: 0.25,
+            force: 640.5,
+            torque: 12.0,
+        };
+        let mut bytes = Vec::new();
+        state.write_le(&mut bytes);
+        assert_eq!(bytes.len(), JointState::BYTES);
+        assert_eq!(bytes[8..10], 3u16.to_le_bytes());
+        assert_eq!(bytes[10..12], joint_state_flags::JAMMED.to_le_bytes());
+        assert_eq!(JointState::read_le(&bytes), Some(state));
+        assert_eq!(JointState::read_le(&bytes[..23]), None);
+        // La section de SIM_OUT : nombre, 4 octets réservés, puis les états.
+        let mut section = Vec::new();
+        JointState::write_section(&[state, state], &mut section);
+        assert_eq!(
+            section.len(),
+            JointState::SECTION_HEADER_BYTES + 2 * JointState::BYTES
+        );
+        assert_eq!(section[..4], 2u32.to_le_bytes());
+        assert_eq!(JointState::read_section(&section), Some(vec![state, state]));
+        assert_eq!(
+            JointState::read_section(&section[..section.len() - 1]),
+            None
+        );
+        let mut vide = Vec::new();
+        JointState::write_section(&[], &mut vide);
+        assert_eq!(JointState::read_section(&vide), Some(Vec::new()));
     }
 }

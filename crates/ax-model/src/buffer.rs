@@ -149,7 +149,8 @@ impl BufferKind {
     ///
     /// - `SIM_OUT` = 2 (ADR-151 D7) : `BodyState[state_count]` puis
     ///   `BodyBounds[state_count]`, dans le même ordre (ADR-120) ; chaque état porte le
-    ///   node racine de son corps, une assembly en ayant plusieurs ;
+    ///   node racine de son corps, une assembly en ayant plusieurs ; puis la section des
+    ///   joints, leur nombre (`u32`), 4 octets réservés et `JointState[n]` ;
     /// - `DEBUG` = 2 (amendement A1 d'ADR-121) : en-tête, `DebugRange[]` puis
     ///   `DebugSegment[]` — le schéma 1, à `DebugBody[]`, n'est plus produit ;
     /// - `ASSET_OUT` = 1 (ADR-122 §6) : selon la fonction qui l'a déposée, le

@@ -54,6 +54,47 @@ pub mod opcode {
     /// [`super::SetPhysicsMaterials`] + `count ×` [`super::super::physics::PhysicsMaterial`]).
     /// ADR-149.
     pub const SET_PHYSICS_MATERIALS: u32 = 13;
+    /// Gripper un joint d'une assembly à un désalignement d'ancrage ([`super::JamJoint`]).
+    /// ADR-151 D6, D7.
+    pub const JAM_JOINT: u32 = 14;
+    /// Rompre un joint d'une assembly ([`super::BreakJoint`]). ADR-151 D5, D7.
+    pub const BREAK_JOINT: u32 = 15;
+}
+
+/// Payload de `JAM_JOINT` (ADR-151 D6, D7) : 16 octets.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct JamJoint {
+    /// L'assembly du joint.
+    pub handle: Handle,
+    /// Son rang dans la definition.
+    pub joint: u16,
+    /// Réservé, à zéro.
+    pub _pad: u16,
+    /// Désalignement d'ancrage, en blocs ; 0 rend les réglages d'origine.
+    pub misalignment: f32,
+}
+
+impl JamJoint {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 16;
+}
+
+/// Payload de `BREAK_JOINT` (ADR-151 D5, D7) : 12 octets.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BreakJoint {
+    /// L'assembly du joint.
+    pub handle: Handle,
+    /// Son rang dans la definition.
+    pub joint: u16,
+    /// Réservé, à zéro.
+    pub _pad: u16,
+}
+
+impl BreakJoint {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 12;
 }
 
 /// Forme d'un proxy d'entité vanilla, champ `shape` de [`EntityProxyDesc`] (R-614).
@@ -728,6 +769,8 @@ mod tests {
     fn dm_table_des_materiaux_disposition_figee() {
         // ADR-149 : opcode 13, en-tête de 8 octets ; le flux est au schéma 3 depuis ADR-151.
         assert_eq!(opcode::SET_PHYSICS_MATERIALS, 13);
+        assert_eq!(opcode::JAM_JOINT, 14);
+        assert_eq!(opcode::BREAK_JOINT, 15);
         assert_eq!(CommandStreamHeader::CURRENT_SCHEMA, 3);
         assert_eq!(size_of::<SetPhysicsMaterials>(), SetPhysicsMaterials::BYTES);
         assert_eq!(align_of::<SetPhysicsMaterials>(), 4);
@@ -761,5 +804,16 @@ mod tests {
         assert_eq!(offset_of!(EntityProxyDesc, entity), 48);
         assert_eq!(offset_of!(EntityProxyDesc, shape), 52);
         assert_eq!(offset_of!(EntityProxyDesc, _pad), 53);
+    }
+
+    #[test]
+    fn dm_commandes_de_joint_disposition_figee() {
+        // ADR-151 D7 : JAM_JOINT sur 16 octets, BREAK_JOINT sur 12.
+        assert_eq!(size_of::<JamJoint>(), JamJoint::BYTES);
+        assert_eq!(offset_of!(JamJoint, handle), 0);
+        assert_eq!(offset_of!(JamJoint, joint), 8);
+        assert_eq!(offset_of!(JamJoint, misalignment), 12);
+        assert_eq!(size_of::<BreakJoint>(), BreakJoint::BYTES);
+        assert_eq!(offset_of!(BreakJoint, joint), 8);
     }
 }

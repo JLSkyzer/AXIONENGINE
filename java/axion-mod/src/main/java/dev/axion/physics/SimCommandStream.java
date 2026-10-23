@@ -137,6 +137,21 @@ public final class SimCommandStream {
     /** Index « aucun matériau » d'une tuile ({@code NO_MATERIAL}, ADR-149). */
     public static final int NO_MATERIAL = 0xFFFF;
 
+    /** Opcode {@code JAM_JOINT} (ADR-151 D6, D7). */
+    public static final int OP_JAM_JOINT = 14;
+
+    /** Taille du payload {@code JamJoint}, en octets. */
+    public static final int JAM_JOINT_BYTES = 16;
+
+    /** Opcode {@code BREAK_JOINT} (ADR-151 D5, D7). */
+    public static final int OP_BREAK_JOINT = 15;
+
+    /** Taille du payload {@code BreakJoint}, en octets. */
+    public static final int BREAK_JOINT_BYTES = 12;
+
+    /** Plus grand rang de joint : il tient sur un {@code u16}. */
+    public static final int MAX_JOINT_INDEX = 0xFFFF;
+
     /** Taille de l'en-tête {@code SetObservers}, en octets (hors positions). */
     public static final int SET_OBSERVERS_HEADER_BYTES = 16;
 
@@ -741,6 +756,59 @@ public final class SimCommandStream {
         command.putInt(handleGeneration);
         commands.add(command.array());
         return this;
+    }
+
+    /**
+     * Ajoute une commande {@code JAM_JOINT} (C-34, ADR-151 D6) : grippe un joint d'une assembly
+     * au désalignement d'ancrage donné.
+     *
+     * <p>La courbe de grippage du joint en tire la fraction de plage restante. Un désalignement
+     * nul rend exactement ses réglages d'origine (R-632). Le natif ignore un désalignement
+     * négatif ou non fini, et un joint sans grippage.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param joint rang du joint dans la definition, de 0 à {@link #MAX_JOINT_INDEX}
+     * @param misalignment désalignement d'ancrage, en blocs
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream jamJoint(int handleIndex, int handleGeneration, int joint, float misalignment) {
+        checkJointIndex(joint);
+        ByteBuffer command = beginCommand(OP_JAM_JOINT, JAM_JOINT_BYTES);
+        command.putInt(handleIndex);
+        command.putInt(handleGeneration);
+        command.putShort((short) joint);
+        command.putShort((short) 0); // réservé
+        command.putFloat(misalignment);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code BREAK_JOINT} (C-34, ADR-151 D5) : rompt un joint d'une
+     * assembly, comme un seuil de rupture franchi. La recréation d'un joint rompu attend la
+     * réparation (M7).
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param joint rang du joint dans la definition, de 0 à {@link #MAX_JOINT_INDEX}
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream breakJoint(int handleIndex, int handleGeneration, int joint) {
+        checkJointIndex(joint);
+        ByteBuffer command = beginCommand(OP_BREAK_JOINT, BREAK_JOINT_BYTES);
+        command.putInt(handleIndex);
+        command.putInt(handleGeneration);
+        command.putShort((short) joint);
+        command.putShort((short) 0); // réservé
+        commands.add(command.array());
+        return this;
+    }
+
+    private static void checkJointIndex(int joint) {
+        if (joint < 0 || joint > MAX_JOINT_INDEX) {
+            throw new IllegalArgumentException("le rang d'un joint tient sur un u16 : " + joint);
+        }
     }
 
     /** {@return {@code value} arrondi au prochain multiple de 8} */

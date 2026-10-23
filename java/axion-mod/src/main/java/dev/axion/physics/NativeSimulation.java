@@ -36,6 +36,9 @@ public final class NativeSimulation {
      */
     private static final int BOUNDS_SINCE_SCHEMA = 1;
 
+    /** Premier schéma de {@code SIM_OUT} où la section des joints suit les emprises (ADR-151 D7). */
+    private static final int JOINTS_SINCE_SCHEMA = 2;
+
     private final long context;
 
     /** Réutilisé à chaque {@code collect} : aucune allocation par tick. */
@@ -137,6 +140,7 @@ public final class NativeSimulation {
                 (int) collectScratch[NativeBridge.SIM_FLAGS],
                 simOut.bodies(),
                 simOut.bounds(),
+                simOut.joints(),
                 events);
     }
 
@@ -149,26 +153,31 @@ public final class NativeSimulation {
         return NativeBridge.cancel(context);
     }
 
-    /** Ce que {@code SIM_OUT} porte : les états, et leurs emprises s'il les annonce. */
-    private record SimOut(List<BodyState> bodies, List<BodyBounds> bounds) {}
+    /**
+     * Ce que {@code SIM_OUT} porte : les états, et s'il les annonce leurs emprises et les états
+     * des joints.
+     */
+    private record SimOut(List<BodyState> bodies, List<BodyBounds> bounds, List<JointState> joints) {}
 
     /**
-     * Lit les {@code state_count} états de {@code SIM_OUT} et, depuis le schéma 1, leurs
-     * emprises (ADR-120), puis relâche (R-322).
+     * Lit les {@code state_count} états de {@code SIM_OUT}, depuis le schéma 1 leurs emprises
+     * (ADR-120), depuis le schéma 2 les états des joints (ADR-151 D7), puis relâche (R-322).
      *
-     * <p>Les emprises suivent les états, au même rang. Elles ne sont lues que si l'en-tête
-     * annonce un schéma qui les contient <strong>et</strong> si le tampon les couvre : un
-     * natif antérieur dégrade en liste vide, il ne fait pas lire au-delà de sa charge.
+     * <p>Les emprises suivent les états, au même rang, et la section des joints les emprises.
+     * Chacune n'est lue que si l'en-tête annonce un schéma qui la contient <strong>et</strong> si
+     * le tampon la couvre : un natif antérieur dégrade en liste vide, il ne fait pas lire au-delà
+     * de sa charge.
      */
     private SimOut readSimOut(int count) {
         ByteBuffer buffer = NativeBridge.acquire(context, BufferKinds.SIM_OUT, 0);
         if (buffer == null) {
-            return new SimOut(List.of(), List.of());
+            return new SimOut(List.of(), List.of(), List.of());
         }
         int generation = buffer.getInt(GENERATION_OFFSET);
         int schema = buffer.getInt(SCHEMA_OFFSET);
         List<BodyState> bodies = new ArrayList<>(count);
         List<BodyBounds> bounds = List.of();
+        List<JointState> joints = List.of();
         long available = Math.max(0, buffer.capacity() - BufferKinds.HEADER_BYTES);
         if ((long) count * BodyState.BYTES <= available) {
             for (int i = 0; i < count; i++) {
@@ -182,10 +191,14 @@ public final class NativeSimulation {
                     read.add(BodyBounds.decode(buffer, boundsAt + i * BodyBounds.BYTES));
                 }
                 bounds = read;
+                if (schema >= JOINTS_SINCE_SCHEMA) {
+                    joints = JointState.decodeSection(
+                            buffer, BufferKinds.HEADER_BYTES + count * (BodyState.BYTES + BodyBounds.BYTES));
+                }
             }
         }
         NativeBridge.release(context, BufferKinds.SIM_OUT, generation);
-        return new SimOut(bodies, bounds);
+        return new SimOut(bodies, bounds, joints);
     }
 
     /** Lit les {@code event_count} événements d'{@code EVENTS}, puis relâche (R-322). */

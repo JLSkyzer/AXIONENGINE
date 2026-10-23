@@ -33,6 +33,7 @@ use crate::materials::MaterialTable;
 use crate::sim::handle_key;
 use ax_model::dm::debug::{debug_body_flags, debug_frame, overlay, DebugSegment};
 use ax_model::dm::handle::Handle;
+use ax_model::dm::joints::JointState;
 use ax_model::dm::physics::{
     body_state_flags, event_data, event_kind, BodyBounds, BodyDesc, BodyState, PhysicsEvent,
     NO_MATERIAL,
@@ -443,6 +444,9 @@ pub struct BodyReports {
     pub states: Vec<BodyState>,
     /// Emprises des mêmes corps, dans le même ordre.
     pub bounds: Vec<BodyBounds>,
+    /// États des joints des assemblies éveillées, après les emprises dans `SIM_OUT` (ADR-151
+    /// D7).
+    pub joints: Vec<JointState>,
 }
 
 impl BodyReports {
@@ -451,6 +455,7 @@ impl BodyReports {
     pub fn append(&mut self, mut other: BodyReports) {
         self.states.append(&mut other.states);
         self.bounds.append(&mut other.bounds);
+        self.joints.append(&mut other.joints);
     }
 }
 
@@ -2251,6 +2256,7 @@ impl PhysicsWorld {
                     BodyBounds::EMPTY
                 }));
         }
+        reports.joints = self.joint_states();
         reports
     }
 

@@ -78,6 +78,9 @@ Definition of Done (PARTIE 37.3).
     grippage d'un joint (D6) : sa courbe resserre sa plage vers sa position
     et mene sa friction vers celle du grippage, `JOINT_JAMMED` a l'entree et a
     la sortie, un desalignement nul rend ses reglages d'origine au bit pres ;
+    commandes `JAM_JOINT` et `BREAK_JOINT` par la frontiere, et l'etat de
+    chaque joint (rompu, grippe, fraction de plage, force, couple) dans
+    `SIM_OUT`, lu par Java ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

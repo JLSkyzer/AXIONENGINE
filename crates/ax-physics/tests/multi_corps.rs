@@ -6,10 +6,12 @@
 
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::geometry::WorldTransform;
+use ax_model::dm::joints::joint_state_flags;
 use ax_model::dm::physics::{body_state_flags, event_kind, BodyDesc};
 use ax_physics::{
     AssemblyBody, AssemblyJoint, AxisMode, BodyCollider, BodyId, BodyKind, BreakThresholds,
-    CollisionGroups, ContactMaterial, Handle, JointKind, JointSpec, Shape, SimDriver, SimSettings,
+    CollisionGroups, ContactMaterial, Handle, Jam, JointKind, JointSpec, Shape, SimDriver,
+    SimSettings,
 };
 
 const ASSEMBLY: Handle = Handle {
@@ -472,4 +474,140 @@ fn adr151_retirer_l_assembly_retire_ses_joints() {
     pendue(&mut driver, &[soudure(0, 1, Vec3::new(2.0, 0.0, 0.0))]).unwrap();
     assert!(driver.apply_remove_assembly(ASSEMBLY));
     assert_eq!(driver.world_mut(0).unwrap().joint_counts().active, 0);
+}
+
+/// Une charnière grippable de la racine au second corps : plage [−1, 1], grippage à moitié à
+/// 0,1 bloc.
+fn charniere(b_at: Vec3) -> AssemblyJoint {
+    let mut joint = soudure(0, 1, b_at);
+    joint.spec.kind = JointKind::Revolute;
+    joint.spec.limits = Some([-1.0, 1.0]);
+    joint.spec.jam = Some(Jam {
+        curve: vec![[0.1, 0.5], [0.2, 0.0]],
+        friction: 0.0,
+    });
+    joint
+}
+
+#[test]
+fn adr151_jam_joint_et_break_joint_visent_un_joint_par_son_rang() {
+    let mut driver = pilote(128.0, 2048);
+    pendue(&mut driver, &[charniere(Vec3::new(2.0, 0.0, 0.0))]).unwrap();
+    driver.advance_all(1.0 / 20.0);
+    let etat = |driver: &mut SimDriver| driver.collect_reports().joints;
+    let libre = etat(&mut driver);
+    assert_eq!(libre.len(), 1, "un état par joint d'assembly éveillée");
+    assert_eq!(
+        (libre[0].handle, libre[0].index, libre[0].flags),
+        (ASSEMBLY, 4, 0)
+    );
+    // Le second corps, une boîte d'une tonne, pend à deux blocs de l'ancrage : la force porte son
+    // poids, le couple ce poids au bout d'un bras de deux blocs.
+    let poids = 1000.0 * 9.81;
+    assert!(
+        (libre[0].force - poids).abs() < 0.05 * poids,
+        "force {}",
+        libre[0].force
+    );
+    assert!(
+        (libre[0].torque - 2.0 * poids).abs() < 0.05 * 2.0 * poids,
+        "couple {}",
+        libre[0].torque
+    );
+
+    assert!(driver.apply_jam_joint(ASSEMBLY, 4, 0.1));
+    let grippe = etat(&mut driver);
+    assert_eq!(grippe[0].flags, joint_state_flags::JAMMED);
+    assert!((grippe[0].fraction - 0.5).abs() < 1e-6);
+    assert!(
+        !driver.apply_jam_joint(ASSEMBLY, 5, 0.1),
+        "aucun joint de ce rang"
+    );
+    let autre = Handle {
+        index: 8,
+        generation: 1,
+    };
+    assert!(
+        !driver.apply_jam_joint(autre, 4, 0.1),
+        "aucune assembly de ce handle"
+    );
+
+    assert!(driver.apply_break_joint(ASSEMBLY, 4));
+    assert!(!driver.apply_break_joint(ASSEMBLY, 4), "déjà rompu");
+    let rompu = etat(&mut driver);
+    assert_eq!(
+        rompu[0].flags,
+        joint_state_flags::BROKEN | joint_state_flags::JAMMED
+    );
+    let events = driver.drain_events();
+    assert!(events
+        .iter()
+        .any(|event| event.kind == event_kind::JOINT_BROKEN && event.data == 4));
+}
+
+#[test]
+fn adr151_jam_joint_ne_vise_que_le_joint_de_l_assembly_nommee() {
+    // Deux assemblies, chacune une charnière de même rang : gripper l'une laisse l'autre libre.
+    let mut driver = pilote(128.0, 2048);
+    pendue(&mut driver, &[charniere(Vec3::new(2.0, 0.0, 0.0))]).unwrap();
+    let voisine = Handle {
+        index: 8,
+        generation: 1,
+    };
+    let mut racine = corps(0, Vec3::ZERO);
+    racine.kind = BodyKind::Static;
+    racine.desc = BodyDesc::undeclared(0);
+    driver
+        .create_assembly_bodies(
+            0,
+            voisine,
+            spawn([20.0, 64.0, 0.0], Quat::IDENTITY),
+            &[racine, corps(1, Vec3::new(2.0, 0.0, 0.0))],
+            &[charniere(Vec3::new(2.0, 0.0, 0.0))],
+            CollisionGroups::ALL,
+            0.0,
+            false,
+        )
+        .unwrap();
+    driver.advance_all(1.0 / 20.0);
+
+    assert!(driver.apply_jam_joint(voisine, 4, 0.1));
+    let etats = driver.collect_reports().joints;
+    let flags_de = |handle| {
+        etats
+            .iter()
+            .find(|etat| etat.handle == handle)
+            .map(|etat| etat.flags)
+    };
+    assert_eq!(flags_de(voisine), Some(joint_state_flags::JAMMED));
+    assert_eq!(flags_de(ASSEMBLY), Some(0), "l'autre assembly reste libre");
+}
+
+#[test]
+fn adr151_une_assembly_endormie_ne_rapporte_pas_ses_joints() {
+    // Sans gravité, la soudure tient le second corps immobile : l'assembly s'endort, et ses
+    // joints ne sont plus rapportés ; une impulsion la réveille.
+    let mut driver = pilote(128.0, 2048);
+    let ids = driver
+        .create_assembly_bodies(
+            0,
+            ASSEMBLY,
+            spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
+            &[corps(0, Vec3::ZERO), corps(1, Vec3::new(2.0, 0.0, 0.0))],
+            &[soudure(0, 1, Vec3::new(2.0, 0.0, 0.0))],
+            CollisionGroups::ALL,
+            0.0,
+            false,
+        )
+        .unwrap();
+    driver.advance_all(1.0 / 20.0);
+    assert_eq!(driver.collect_reports().joints.len(), 1, "éveillée");
+    for _ in 0..200 {
+        driver.advance_all(1.0 / 20.0);
+    }
+    assert!(
+        dort(&mut driver, ids[0]) && dort(&mut driver, ids[1]),
+        "endormie"
+    );
+    assert!(driver.collect_reports().joints.is_empty(), "endormie, rien");
 }

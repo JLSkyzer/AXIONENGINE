@@ -42,6 +42,18 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class NativeBridgeTest {
 
+    /** Le maillage commun des glTF de test : un triangle dont la boîte couvre [0, 1]³. */
+    private static final String MAILLAGE_BOITE =
+            "\"meshes\":[{\"name\":\"boite\",\"primitives\":[{\"attributes\":"
+                    + "{\"POSITION\":0},\"indices\":1}]}],"
+                    + "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
+                    + "\"type\":\"VEC3\",\"min\":[0.0,0.0,0.0],\"max\":[1.0,1.0,1.0]},"
+                    + "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+                    + "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+                    + "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}],"
+                    + "\"buffers\":[{\"byteLength\":42,\"uri\":\"data:application/octet-stream;base64,"
+                    + "AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AAABAAIA\"}]}";
+
     /**
      * glTF minimal dont l'unique node porte {@code role=collider},
      * {@code shape=auto_box} : trois sommets couvrant l'AABB [0,0,0]–[1,1,1], donc
@@ -53,15 +65,19 @@ class NativeBridgeTest {
             "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
                     + "\"nodes\":[{\"name\":\"collideur\",\"mesh\":0,\"extras\":{\"axion\":"
                     + "{\"role\":\"collider\",\"shape\":\"auto_box\"}}}],"
-                    + "\"meshes\":[{\"name\":\"boite\",\"primitives\":[{\"attributes\":"
-                    + "{\"POSITION\":0},\"indices\":1}]}],"
-                    + "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
-                    + "\"type\":\"VEC3\",\"min\":[0.0,0.0,0.0],\"max\":[1.0,1.0,1.0]},"
-                    + "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
-                    + "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
-                    + "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}],"
-                    + "\"buffers\":[{\"byteLength\":42,\"uri\":\"data:application/octet-stream;base64,"
-                    + "AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AAABAAIA\"}]}";
+                    + MAILLAGE_BOITE;
+
+    /**
+     * Deux nodes colliders côte à côte, {@code cadre} et {@code porte} (2 blocs plus loin) : une
+     * definition en fait deux corps qu'un joint relie (ADR-151).
+     */
+    private static final String GLTF_DEUX_CORPS =
+            "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0,1]}],"
+                    + "\"nodes\":[{\"name\":\"cadre\",\"mesh\":0,\"extras\":{\"axion\":"
+                    + "{\"role\":\"collider\",\"shape\":\"auto_box\"}}},"
+                    + "{\"name\":\"porte\",\"mesh\":0,\"translation\":[2.0,0.0,0.0],\"extras\":{\"axion\":"
+                    + "{\"role\":\"collider\",\"shape\":\"auto_box\"}}}],"
+                    + MAILLAGE_BOITE;
 
     /**
      * Repertoire d'extraction, jamais nettoye.
@@ -794,6 +810,107 @@ class NativeBridgeTest {
         long pire = piresTraversees;
         assertTrue(pire > 0, "le compteur de traversées avance");
         assertTrue(pire < 32, () -> "INV-04 : " + pire + " traversées FFI sur un tick établi, 32 au plus");
+
+        // ADR-151 D7 : une charnière par le chemin du jeu — glTF compilé, definition lue par
+        // AssemblyBodies, CREATE_ASSEMBLY avec ses joints —, puis son état dans SIM_OUT et les deux
+        // commandes du grippage et de la rupture, par la vraie JNI. Dans une autre dimension, loin
+        // du premier corps.
+        byte[] a3dCharniere = compiler(
+                reprise, 0x4345L, dev.axion.asset.SourceFormats.GLTF,
+                GLTF_DEUX_CORPS.getBytes(StandardCharsets.UTF_8));
+        byte[] nodesCharniere = dev.axion.asset.A3dSections.section(a3dCharniere, "NODE");
+        byte[] physCharniere = dev.axion.asset.A3dSections.section(a3dCharniere, "PHYS");
+        assertNotNull(nodesCharniere, "section NODE absente de l'A3D compilé");
+        assertNotNull(physCharniere, "section PHYS absente de l'A3D compilé");
+        com.google.gson.JsonObject definitionCharniere = com.google.gson.JsonParser.parseString(
+                        "{\"bodies\":[{\"name\":\"cadre\",\"root_node\":\"cadre\"}],"
+                                + "\"joints\":[{\"type\":\"revolute\",\"a\":\"cadre\",\"b_node\":\"porte\","
+                                + "\"axis\":[0,1,0],\"limits\":[-1.0,1.0],"
+                                + "\"jam\":{\"curve\":[[1.0,0.0]],\"friction\":5.0}}]}")
+                .getAsJsonObject();
+        dev.axion.physics.AssemblyBodies.Layout charniere = dev.axion.physics.AssemblyBodies.of(
+                definitionCharniere,
+                nodesCharniere,
+                dev.axion.physics.BodyDescription.undeclared(dev.axion.physics.SimCommandStream.BODY_DYNAMIC),
+                true);
+        assertNotNull(charniere, "la definition se résout sur les nodes de l'asset");
+        assertEquals(2, charniere.bodies().size(), "le cadre déclaré, la porte implicite");
+        assertEquals(1, charniere.joints().size());
+        double[][] joueurPresDeLaCharniere = {{0.0, 100.0, 0.0}};
+        dev.axion.physics.CollectResult relie = simulation.tick(
+                200L,
+                new dev.axion.physics.SimCommandStream()
+                        .createAssembly(
+                                2,
+                                1,
+                                5L,
+                                new double[] {0.0, 100.0, 0.0},
+                                new float[] {0.0f, 0.0f, 0.0f, 1.0f},
+                                charniere.bodies(),
+                                charniere.joints(),
+                                charniere.jamPoints(),
+                                charniere.assemblyMass(),
+                                charniere.selfCollision(),
+                                nodesCharniere,
+                                physCharniere)
+                        .setObservers(5L, joueurPresDeLaCharniere),
+                0L);
+        assertTrue(relie.ok(), () -> "collect après la charnière refusé, code " + relie.code());
+        assertEquals(
+                2,
+                relie.bodies().stream().filter(etatCorps -> etatCorps.handleIndex() == 2).count(),
+                "deux corps sous le handle de la charnière");
+        assertEquals(1, relie.joints().size(), "un état par joint d'assembly éveillée");
+        dev.axion.physics.JointState libre = relie.joints().get(0);
+        assertEquals(2, libre.handleIndex());
+        assertEquals(1, libre.handleGeneration());
+        assertEquals(0, libre.index(), "rang du joint dans la definition");
+        assertEquals(0, libre.flags(), "ni rompu ni grippé");
+        assertEquals(1.0f, libre.fraction(), 0.0f, "toute sa plage");
+
+        // JAM_JOINT : la courbe va de (0, 1) à (1, 0) ; un demi-bloc de désalignement laisse la
+        // moitié de la plage, et l'entrée dans l'état grippé part en événement.
+        dev.axion.physics.CollectResult grippe = simulation.tick(
+                201L,
+                new dev.axion.physics.SimCommandStream()
+                        .jamJoint(2, 1, 0, 0.5f)
+                        .setObservers(5L, joueurPresDeLaCharniere),
+                0L);
+        assertTrue(grippe.ok(), () -> "collect après JAM_JOINT refusé, code " + grippe.code());
+        assertTrue(grippe.joints().get(0).jammed(), "grippé");
+        assertEquals(0.5f, grippe.joints().get(0).fraction(), 1.0e-6f);
+        assertTrue(
+                grippe.events().stream().anyMatch(evenement -> evenement.kind()
+                                == dev.axion.physics.PhysicsEventCodes.Kind.JOINT_JAMMED
+                        && evenement.assemblyAIndex() == 2
+                        && evenement.data() == 0),
+                () -> "JOINT_JAMMED attendu : " + grippe.events());
+
+        // Un désalignement nul rend toute la plage (R-632).
+        dev.axion.physics.CollectResult rendu = simulation.tick(
+                202L,
+                new dev.axion.physics.SimCommandStream()
+                        .jamJoint(2, 1, 0, 0.0f)
+                        .setObservers(5L, joueurPresDeLaCharniere),
+                0L);
+        assertEquals(0, rendu.joints().get(0).flags(), "plus grippé");
+        assertEquals(1.0f, rendu.joints().get(0).fraction(), 0.0f);
+
+        // BREAK_JOINT : rompu, rapporté tant que l'assembly est éveillée, et l'événement part.
+        dev.axion.physics.CollectResult rompu = simulation.tick(
+                203L,
+                new dev.axion.physics.SimCommandStream()
+                        .breakJoint(2, 1, 0)
+                        .setObservers(5L, joueurPresDeLaCharniere),
+                0L);
+        assertTrue(rompu.ok(), () -> "collect après BREAK_JOINT refusé, code " + rompu.code());
+        assertEquals(1, rompu.joints().size(), "un joint rompu reste rapporté");
+        assertTrue(rompu.joints().get(0).broken(), "rompu");
+        assertTrue(
+                rompu.events().stream().anyMatch(evenement -> evenement.kind()
+                                == dev.axion.physics.PhysicsEventCodes.Kind.JOINT_BROKEN
+                        && evenement.data() == 0),
+                () -> "JOINT_BROKEN attendu : " + rompu.events());
 
         // Annuler après un cycle clos est inoffensif.
         assertEquals(NativeBridge.OK, simulation.cancel());

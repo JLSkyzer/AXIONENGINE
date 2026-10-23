@@ -20,7 +20,7 @@ use ax_model::dm::commands::{
 };
 use ax_model::dm::geometry::{Transform, WorldTransform};
 use ax_model::dm::handle::Handle;
-use ax_model::dm::joints::{joint_kind, JointDesc};
+use ax_model::dm::joints::{joint_kind, JointDesc, JointState};
 use ax_model::dm::physics::{BodyDesc, ColliderDesc, ColliderShape};
 use ax_model::dm::scene::{name_hash, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 use axion_native::abi::{
@@ -117,15 +117,19 @@ fn soumettre(stream: &[u8]) -> (u32, Option<[f64; 3]>) {
     )
 }
 
+/// Le node d'un corps collecté et sa position monde.
+type EtatCorps = (u32, [f64; 3]);
+
 /// Soumet le flux dans une session neuve, collecte un tick, et rend le node et la position
 /// monde de chaque corps collecté (`BodyState` de 80 octets : position `f64` à l'offset 8,
 /// node à l'offset 76).
-fn etats(stream: &[u8]) -> Vec<(u32, [f64; 3])> {
+fn etats(stream: &[u8]) -> Vec<EtatCorps> {
     etats_et_joints(stream).0
 }
 
-/// [`etats`], et la durée de l'étape 5 du tick (`axion.sim.last_step_joints_ns`).
-fn etats_et_joints(stream: &[u8]) -> (Vec<(u32, [f64; 3])>, u64) {
+/// [`etats`], la durée de l'étape 5 du tick (`axion.sim.last_step_joints_ns`) et les
+/// `JointState` qui suivent les emprises dans `SIM_OUT` (ADR-151 D7).
+fn etats_et_joints(stream: &[u8]) -> (Vec<EtatCorps>, u64, Vec<JointState>) {
     let _contexte = CONTEXTE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -179,6 +183,7 @@ fn etats_et_joints(stream: &[u8]) -> (Vec<(u32, [f64; 3])>, u64) {
     );
 
     let mut etats = Vec::new();
+    let mut joints = Vec::new();
     if result.state_count > 0 {
         let mut out = AxionBufferInfo {
             ptr: std::ptr::null_mut(),
@@ -203,6 +208,9 @@ fn etats_et_joints(stream: &[u8]) -> (Vec<(u32, [f64; 3])>, u64) {
             let node = u32::from_le_bytes(out_view[base + 76..base + 80].try_into().unwrap());
             etats.push((node, [f(8), f(16), f(24)]));
         }
+        // La section des joints suit les états (80 o) et les emprises (24 o) des corps.
+        let section = HEADER_BYTES + result.state_count as usize * (80 + 24);
+        joints = JointState::read_section(&out_view[section..]).expect("section des joints");
     }
 
     let joints_ns = metrique(ctx, "axion.sim.last_step_joints_ns");
@@ -211,7 +219,7 @@ fn etats_et_joints(stream: &[u8]) -> (Vec<(u32, [f64; 3])>, u64) {
     release_buffer(ctx, BufferKind::SimOut);
     release_buffer(ctx, BufferKind::Events);
     assert_eq!(unsafe { axion_shutdown(ctx) }, AXION_OK, "shutdown");
-    (etats, joints_ns)
+    (etats, joints_ns, joints)
 }
 
 /// La valeur d'une métrique de l'export (R-502).
@@ -390,13 +398,21 @@ fn adr151_un_joint_venu_par_l_abi_relie_les_corps_de_l_assembly() {
     // et l'étape 5 est mesurée ; sans joint, elle tombe.
     let hauteur = |joints: &[JointDesc]| {
         // Un corps statique n'a pas d'état : seule la porte, au node 1, en rapporte un.
-        let (etats, joints_ns) = etats_et_joints(&deux_corps_relies(0, 0, joints));
+        let (etats, joints_ns, etats_joints) = etats_et_joints(&deux_corps_relies(0, 0, joints));
         let porte = etats.iter().find(|(node, _)| *node == 1).expect("la porte");
-        (porte.1[1], joints_ns)
+        (porte.1[1], joints_ns, etats_joints)
     };
-    let (tenue, mesuree) = hauteur(&[soudure()]);
+    let (tenue, mesuree, etats_joints) = hauteur(&[soudure()]);
     assert!((tenue - 10.0).abs() < 1e-4, "soudée : {tenue}");
     assert!(mesuree > 0, "étape 5 mesurée avec un joint");
-    let (libre, _) = hauteur(&[]);
+    // ADR-151 D7 : son état suit les emprises dans SIM_OUT, la porte pendue à lui.
+    assert_eq!(etats_joints.len(), 1);
+    assert_eq!(
+        (etats_joints[0].handle, etats_joints[0].index),
+        (Handle::new(7, 1), 0)
+    );
+    assert!(etats_joints[0].force > 0.0, "il porte la porte");
+    let (libre, _, aucun) = hauteur(&[]);
+    assert!(aucun.is_empty(), "sans joint, aucun JointState");
     assert!(libre < 10.0 - 1e-3, "libre, elle tombe : {libre}");
 }

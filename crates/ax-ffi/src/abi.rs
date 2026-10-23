@@ -38,6 +38,7 @@ use ax_model::budgets::Budget;
 use ax_model::dm::commands::create_assembly_flags;
 use ax_model::dm::debug::{debug_flags, encode_debug_payload, overlay};
 use ax_model::dm::handle::Handle;
+use ax_model::dm::joints::JointState;
 use ax_model::dm::physics::{BodyBounds, BodyState};
 use ax_physics::{DegradationLevel, PhysicsConfig, SimDriver, SimSettings, Stage};
 
@@ -1632,14 +1633,20 @@ pub unsafe extern "C" fn axion_sim_collect(
             session.physics().release_idle_dimensions();
 
             let writing = std::time::Instant::now();
-            let mut sim_out_bytes =
-                Vec::with_capacity(states.len() * (BodyState::BYTES + BodyBounds::BYTES));
+            let mut sim_out_bytes = Vec::with_capacity(
+                states.len() * (BodyState::BYTES + BodyBounds::BYTES)
+                    + JointState::SECTION_HEADER_BYTES
+                    + reports.joints.len() * JointState::BYTES,
+            );
             for state in states {
                 state.write_le(&mut sim_out_bytes);
             }
             for bounds in &reports.bounds {
                 bounds.write_le(&mut sim_out_bytes);
             }
+            // ADR-151 D7 : les états des joints suivent, précédés de leur nombre — l'en-tête du
+            // tampon, que l'acquisition par Java réécrit, ne le porte pas.
+            JointState::write_section(&reports.joints, &mut sim_out_bytes);
             let mut events_bytes = Vec::new();
             for event in &events {
                 event.write_le(&mut events_bytes);

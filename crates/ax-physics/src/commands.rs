@@ -10,8 +10,8 @@ use crate::proxies::{EntityProxy, ProxyShape};
 use crate::sim::SimDriver;
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::commands::{
-    dimension_env_flags, entity_proxy_shape, opcode, ApplyForce, CommandStreamHeader,
-    EntityProxyDesc, RemoveAssembly, RemoveWorldTile, SetDimensionEnv, SetEntityProxies,
+    dimension_env_flags, entity_proxy_shape, opcode, ApplyForce, BreakJoint, CommandStreamHeader,
+    EntityProxyDesc, JamJoint, RemoveAssembly, RemoveWorldTile, SetDimensionEnv, SetEntityProxies,
     SetKinematic, SetObservers, SetPhysicsMaterials, SetWorldCollision, SetWorldFluid,
     SetWorldHeightfield, SimCommandHeader,
 };
@@ -220,6 +220,19 @@ fn apply_one(
         opcode::SET_PHYSICS_MATERIALS => {
             let materials = read_physics_materials(payload)?;
             driver.set_physics_materials(&materials);
+            outcome.applied += 1;
+        }
+        // ADR-151 D7 : le grippage et la rupture d'un joint, par son rang dans la definition.
+        opcode::JAM_JOINT => {
+            expect_len(payload, JamJoint::BYTES)?;
+            let joint = u16::from_le_bytes([payload[8], payload[9]]);
+            driver.apply_jam_joint(read_handle(payload, 0), joint, read_f32(payload, 12));
+            outcome.applied += 1;
+        }
+        opcode::BREAK_JOINT => {
+            expect_len(payload, BreakJoint::BYTES)?;
+            let joint = u16::from_le_bytes([payload[8], payload[9]]);
+            driver.apply_break_joint(read_handle(payload, 0), joint);
             outcome.applied += 1;
         }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
@@ -1150,6 +1163,108 @@ mod tests {
         assert_eq!(
             apply_command_stream(&mut driver, &informe, 1),
             Err(CommandError::InvalidField)
+        );
+    }
+
+    #[test]
+    fn adr151_jam_joint_et_break_joint_se_decodent_par_rang() {
+        use crate::joint::{AxisMode, BreakThresholds, Jam, JointKind, JointSpec};
+        use crate::sim::{AssemblyBody, AssemblyJoint};
+        use ax_math::Quat;
+        use ax_model::dm::geometry::WorldTransform;
+        use ax_model::dm::joints::joint_state_flags;
+        use ax_model::dm::physics::BodyDesc;
+
+        let mut driver = SimDriver::new();
+        let handle = Handle::new(3, 1);
+        let corps = |node, x: f32| AssemblyBody {
+            node,
+            translation: Vec3::new(x, 0.0, 0.0),
+            rotation: Quat::IDENTITY,
+            kind: BodyKind::Dynamic,
+            colliders: vec![crate::body::BodyCollider {
+                shape: Shape::Ball { radius: 0.25 },
+                density: 1000.0,
+                material: ContactMaterial::default(),
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
+            desc: BodyDesc::undeclared(2),
+        };
+        let joint = AssemblyJoint {
+            index: 6,
+            body_a: 0,
+            body_b: 1,
+            spec: JointSpec {
+                kind: JointKind::Revolute,
+                frame_a: (Vec3::ZERO, Quat::IDENTITY),
+                frame_b: (Vec3::new(-1.0, 0.0, 0.0), Quat::IDENTITY),
+                limits: Some([-1.0, 1.0]),
+                motor: None,
+                friction: None,
+                breaking: BreakThresholds::NONE,
+                axes: [AxisMode::Locked; 6],
+                max_length: 0.0,
+                rest_length: 0.0,
+                stiffness: 0.0,
+                damping: 0.0,
+                collide: false,
+                jam: Some(Jam {
+                    curve: vec![[0.1, 0.5]],
+                    friction: 0.0,
+                }),
+            },
+        };
+        driver
+            .create_assembly_bodies(
+                0,
+                handle,
+                WorldTransform {
+                    position: [0.0, 64.0, 0.0],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                },
+                &[corps(0, 0.0), corps(1, 1.0)],
+                &[joint],
+                crate::groups::CollisionGroups::ALL,
+                0.0,
+                false,
+            )
+            .unwrap();
+
+        let mut jam = Vec::new();
+        jam.extend_from_slice(&handle.index.to_le_bytes());
+        jam.extend_from_slice(&handle.generation.to_le_bytes());
+        jam.extend_from_slice(&6u16.to_le_bytes());
+        jam.extend_from_slice(&0u16.to_le_bytes());
+        jam.extend_from_slice(&0.1f32.to_le_bytes());
+        assert_eq!(
+            appliquer(&mut driver, opcode::JAM_JOINT, &jam)
+                .unwrap()
+                .applied,
+            1
+        );
+        let etat = driver.collect_reports().joints[0];
+        assert_eq!(etat.flags, joint_state_flags::JAMMED);
+        assert!((etat.fraction - 0.5).abs() < 1e-6);
+        assert_eq!(
+            appliquer(&mut driver, opcode::JAM_JOINT, &jam[..12]),
+            Err(CommandError::BadPayloadLength)
+        );
+
+        let rupture = &jam[..12];
+        assert_eq!(
+            appliquer(&mut driver, opcode::BREAK_JOINT, rupture)
+                .unwrap()
+                .applied,
+            1
+        );
+        assert_ne!(
+            driver.collect_reports().joints[0].flags & joint_state_flags::BROKEN,
+            0
+        );
+        assert_eq!(
+            appliquer(&mut driver, opcode::BREAK_JOINT, &jam),
+            Err(CommandError::BadPayloadLength)
         );
     }
 }

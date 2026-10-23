@@ -1166,6 +1166,36 @@ impl SimDriver {
         }
     }
 
+    /// Applique `JAM_JOINT` (ADR-151 D6) : grippe le joint de rang `joint` de l'assembly au
+    /// désalignement `misalignment`. Faux pour une assembly ou un joint inconnus, ou ce que
+    /// [`PhysicsWorld::jam_joint`] refuse.
+    pub fn apply_jam_joint(&mut self, handle: Handle, joint: u16, misalignment: f32) -> bool {
+        self.assembly_world(handle).is_some_and(|world| {
+            world
+                .assembly_joint(handle, joint)
+                .is_some_and(|id| world.jam_joint(id, misalignment))
+        })
+    }
+
+    /// Applique `BREAK_JOINT` (ADR-151 D5) : rompt le joint de rang `joint` de l'assembly. Faux
+    /// pour une assembly ou un joint inconnus, ou déjà rompu.
+    pub fn apply_break_joint(&mut self, handle: Handle, joint: u16) -> bool {
+        self.assembly_world(handle).is_some_and(|world| {
+            world
+                .assembly_joint(handle, joint)
+                .is_some_and(|id| world.break_joint(id))
+        })
+    }
+
+    /// Le monde de la dimension où vit une assembly.
+    fn assembly_world(&mut self, handle: Handle) -> Option<&mut PhysicsWorld> {
+        let (dimension, _) = self.routes.get(&handle_key(handle))?;
+        let dimension = *dimension;
+        self.dimensions
+            .get_mut(&dimension)
+            .map(|sim| &mut sim.world)
+    }
+
     /// Applique `REMOVE_ASSEMBLY` : retire tous les corps de l'assembly et son routage.
     /// Rend vrai si l'un existait.
     pub fn apply_remove_assembly(&mut self, handle: Handle) -> bool {

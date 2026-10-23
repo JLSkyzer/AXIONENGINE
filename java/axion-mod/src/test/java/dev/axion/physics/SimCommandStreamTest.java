@@ -432,6 +432,47 @@ class SimCommandStreamTest {
     }
 
     @Test
+    void encodeUnJamJoint() {
+        // ADR-151 D7 : JamJoint, 16 octets — handle, rang u16, 2 octets réservés, désalignement.
+        byte[] bytes = new SimCommandStream().jamJoint(7, 3, 0xFFFF, 0.25f).toBytes();
+        assertEquals(8 + 8 + 16, bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(14, SimCommandStream.OP_JAM_JOINT, "opcode::JAM_JOINT du natif");
+        assertEquals(SimCommandStream.OP_JAM_JOINT, b.getInt(8), "opcode");
+        assertEquals(16, b.getInt(12), "payload_len");
+        assertEquals(7, b.getInt(16), "handle.index");
+        assertEquals(3, b.getInt(20), "handle.generation");
+        assertEquals(0xFFFF, Short.toUnsignedInt(b.getShort(24)), "rang du joint, u16 entier");
+        assertEquals(0, b.getShort(26), "réservé");
+        assertEquals(0.25f, b.getFloat(28), "désalignement");
+    }
+
+    @Test
+    void encodeUnBreakJointAligneSurHuit() {
+        // ADR-151 D7 : BreakJoint, 12 octets annoncés, complétés à 16 pour la commande suivante.
+        SimCommandStream stream = new SimCommandStream().breakJoint(7, 3, 2).removeAssembly(9, 1);
+        byte[] bytes = stream.toBytes();
+        assertEquals(8 + (8 + 16) + (8 + 8), bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(15, SimCommandStream.OP_BREAK_JOINT, "opcode::BREAK_JOINT du natif");
+        assertEquals(SimCommandStream.OP_BREAK_JOINT, b.getInt(8), "opcode");
+        assertEquals(12, b.getInt(12), "payload_len");
+        assertEquals(7, b.getInt(16), "handle.index");
+        assertEquals(3, b.getInt(20), "handle.generation");
+        assertEquals(2, b.getShort(24), "rang du joint");
+        assertEquals(0, b.getShort(26), "réservé");
+        assertEquals(SimCommandStream.OP_REMOVE_ASSEMBLY, b.getInt(8 + 8 + 16), "commande suivante, alignée");
+    }
+
+    @Test
+    void unRangDeJointHorsU16EstRefuse() {
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().jamJoint(1, 1, -1, 0.0f));
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().jamJoint(1, 1, 0x10000, 0.0f));
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().breakJoint(1, 1, -1));
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().breakJoint(1, 1, 0x10000));
+    }
+
+    @Test
     void mergeConcateneLesCommandes() {
         SimCommandStream a = new SimCommandStream().removeAssembly(1, 1);
         SimCommandStream b = new SimCommandStream()
