@@ -8,8 +8,8 @@ use ax_math::{Quat, Vec3};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::event_kind;
 use ax_physics::{
-    AxisMode, BodyCollider, BodyId, BodyKind, BreakThresholds, ContactMaterial, JointId, JointKind,
-    JointMotor, JointReport, JointSpec, PhysicsConfig, PhysicsWorld, Shape,
+    AxisMode, BodyCollider, BodyId, BodyKind, BreakThresholds, ContactMaterial, Jam, JointError,
+    JointId, JointKind, JointMotor, JointReport, JointSpec, PhysicsConfig, PhysicsWorld, Shape,
 };
 
 /// Écart toléré sur un axe linéaire bloqué, en blocs.
@@ -78,6 +78,7 @@ fn joint(kind: JointKind, axe: Vec3, position_b: Vec3) -> JointSpec {
         stiffness: 0.0,
         damping: 0.0,
         collide: false,
+        jam: None,
     }
 }
 
@@ -826,4 +827,248 @@ fn t333_un_joint_entre_deux_corps_endormis_n_est_pas_resolu() {
         "le corps relié se réveille avec l'autre"
     );
     assert_eq!(world.joint_counts().solved, 1);
+}
+
+// --- T-334 : grippage (ADR-151 D6) ----------------------------------------------------------
+
+/// Une courbe qui laisse la moitié de la plage à 0,1 bloc de désalignement, rien à 0,2.
+fn grippage(friction: f32) -> Jam {
+    Jam {
+        curve: vec![[0.1, 0.5], [0.2, 0.0]],
+        friction,
+    }
+}
+
+/// Une charnière autour de Z, sur la plage [−1, 1], de grippage `jam`, à la boule en (1, 0, 0).
+fn charniere_grippable(
+    world: &mut PhysicsWorld,
+    friction: Option<f32>,
+    jam: Jam,
+) -> (BodyId, JointId) {
+    let a = ancre(world);
+    let at = Vec3::new(1.0, 0.0, 0.0);
+    let b = boule(world, at);
+    let mut spec = joint(JointKind::Revolute, Vec3::Z, at);
+    spec.limits = Some([-1.0, 1.0]);
+    spec.friction = friction;
+    spec.jam = Some(jam);
+    let id = world.add_joint(ASSEMBLY, 2, a, b, &spec).unwrap();
+    (b, id)
+}
+
+fn grippages(world: &mut PhysicsWorld) -> Vec<u32> {
+    world
+        .drain_events()
+        .into_iter()
+        .filter(|event| event.kind == event_kind::JOINT_JAMMED)
+        .map(|event| event.data)
+        .collect()
+}
+
+#[test]
+fn t334_la_courbe_donne_la_fraction_de_plage_qui_reste() {
+    let jam = grippage(0.0);
+    for (desalignement, attendue) in [
+        (-1.0, 1.0),
+        (0.0, 1.0),
+        (0.05, 0.75),
+        (0.1, 0.5),
+        (0.15, 0.25),
+        (0.2, 0.0),
+        (3.0, 0.0),
+    ] {
+        let lue = jam.fraction(desalignement);
+        assert!((lue - attendue).abs() < 1e-6, "à {desalignement} : {lue}");
+    }
+}
+
+#[test]
+fn t334_le_grippage_resserre_la_plage_vers_la_position_courante() {
+    // Sans gravité, la boule tourne autour de la charnière à 2 rad/s ; libre, elle va jusqu'à
+    // sa butée à 1 rad ; grippée à moitié depuis 0, sa plage tombe à [−0,5, 0,5].
+    let plus_loin = |desalignement: f32| {
+        let mut world = monde(false);
+        let (b, id) = charniere_grippable(&mut world, None, grippage(0.0));
+        assert!(world.jam_joint(id, desalignement));
+        let masse = world.body_mass(b).unwrap();
+        let inertie = 0.4 * masse * 0.25 * 0.25;
+        let percussion = Vec3::new(inertie / masse, 0.0, 0.0);
+        world.apply_impulse(b, Vec3::new(0.0, masse * 2.0, 0.0), percussion, true);
+        derouler(&mut world, 30, |w| angle_z(rotation(w, b)))
+            .into_iter()
+            .fold(0.0f32, f32::max)
+    };
+    let libre = plus_loin(0.0);
+    assert!((libre - 1.0).abs() < 0.02, "plage entière : {libre}");
+    let grippee = plus_loin(0.1);
+    assert!((grippee - 0.5).abs() < 0.02, "moitié de plage : {grippee}");
+}
+
+#[test]
+fn t334_grippe_en_mouvement_le_joint_se_resserre_la_ou_il_est() {
+    // Sans gravité, la boule tourne à 2 rad/s ; vers 0,4 rad, un grippage total resserre la plage
+    // sur sa position courante : elle s'arrête là, et non à l'origine de sa plage.
+    let mut world = monde(false);
+    let (b, id) = charniere_grippable(&mut world, None, grippage(0.0));
+    let masse = world.body_mass(b).unwrap();
+    let inertie = 0.4 * masse * 0.25 * 0.25;
+    let percussion = Vec3::new(inertie / masse, 0.0, 0.0);
+    world.apply_impulse(b, Vec3::new(0.0, masse * 2.0, 0.0), percussion, true);
+    derouler(&mut world, 4, |_| ());
+    let saisie = angle_z(rotation(&world, b));
+    assert!(saisie > 0.3, "en mouvement : {saisie}");
+    assert!(world.jam_joint(id, 0.2));
+    let fin = derouler(&mut world, 20, |w| angle_z(rotation(w, b)))[19];
+    assert!((fin - saisie).abs() < 0.02, "bloquée à {saisie} : {fin}");
+}
+
+#[test]
+fn t334_le_grippage_monte_la_friction_vers_celle_du_grippage() {
+    // La pesanteur pèse m·g·1 sur la charnière horizontale ; sa friction, la moitié, cède. Le
+    // grippage la mène vers 1,6·m·g : à un quart de plage perdue, 0,775·m·g, elle cède encore ; à
+    // la moitié, 1,05·m·g, elle retient.
+    let chute = |desalignement: f32| {
+        let mut world = monde(true);
+        let a = ancre(&mut world);
+        let at = Vec3::new(1.0, 0.0, 0.0);
+        let b = boule(&mut world, at);
+        let charge = world.body_mass(b).unwrap() * 9.81;
+        let mut spec = joint(JointKind::Revolute, Vec3::Z, at);
+        spec.limits = Some([-1.0, 1.0]);
+        spec.friction = Some(0.5 * charge);
+        spec.jam = Some(grippage(1.6 * charge));
+        let id = world.add_joint(ASSEMBLY, 0, a, b, &spec).unwrap();
+        assert!(world.jam_joint(id, desalignement));
+        -derouler(&mut world, 20, |w| position(w, b).y)[19]
+    };
+    let libre = chute(0.0);
+    assert!(libre > 0.5, "sa friction cède : chute de {libre}");
+    let peu = chute(0.05);
+    assert!(
+        peu > 0.5,
+        "un peu grippée, elle cède encore : chute de {peu}"
+    );
+    let grippee = chute(0.1);
+    assert!(
+        grippee < 0.01,
+        "retenue par le grippage : chute de {grippee}"
+    );
+}
+
+#[test]
+fn t334_un_desalignement_nul_rend_les_reglages_d_origine() {
+    // En pleine chute, la charnière est grippée puis rendue : elle suit ensuite exactement la
+    // trajectoire de celle qu'on n'a jamais grippée — plage et friction d'origine, à l'identique.
+    let trajectoire = |grippee: bool| {
+        let mut world = monde(true);
+        let charge = 65.0 * 9.81;
+        let (b, id) = charniere_grippable(&mut world, Some(0.2 * charge), grippage(4.0 * charge));
+        derouler(&mut world, 4, |_| ());
+        if grippee {
+            assert!(world.jam_joint(id, 0.15));
+        }
+        assert!(world.jam_joint(id, 0.0));
+        derouler(&mut world, 40, |w| position(w, b))
+    };
+    let jamais = trajectoire(false);
+    let rendue = trajectoire(true);
+    assert_eq!(jamais, rendue, "à l'identique");
+    let plus_bas = jamais.iter().map(|p| p.y).fold(0.0f32, f32::min);
+    assert!(
+        plus_bas < -0.8,
+        "la trajectoire va jusqu'à la butée : {plus_bas}"
+    );
+}
+
+#[test]
+fn t334_rendue_en_rotation_la_charniere_retrouve_sa_butee_d_origine() {
+    // Sans gravité, la boule tourne à −2 rad/s vers sa butée basse, sur la plage [−1,3, 0,7]. À
+    // chacun des dix premiers ticks, elle est grippée puis rendue avant le pas suivant : elle bute
+    // ensuite exactement là où bute celle qu'on n'a jamais grippée. Recalculées depuis la position
+    // courante, les bornes s'écarteraient d'un ulp une fois sur quelques-unes.
+    let trajectoire = |grippee: bool| {
+        let mut world = monde(false);
+        let a = ancre(&mut world);
+        let at = Vec3::new(1.0, 0.0, 0.0);
+        let b = boule(&mut world, at);
+        let mut spec = joint(JointKind::Revolute, Vec3::Z, at);
+        spec.limits = Some([-1.3, 0.7]);
+        spec.jam = Some(grippage(0.0));
+        let id = world.add_joint(ASSEMBLY, 0, a, b, &spec).unwrap();
+        let masse = world.body_mass(b).unwrap();
+        let inertie = 0.4 * masse * 0.25 * 0.25;
+        let percussion = Vec3::new(inertie / masse, 0.0, 0.0);
+        world.apply_impulse(b, Vec3::new(0.0, -masse * 2.0, 0.0), percussion, true);
+        let mut poses = Vec::new();
+        for _ in 0..30 {
+            if grippee && poses.len() < 10 {
+                assert!(world.jam_joint(id, 0.15));
+                assert!(world.jam_joint(id, 0.0));
+            }
+            world.advance(TICK);
+            poses.push(rotation(&world, b));
+        }
+        poses
+    };
+    let jamais = trajectoire(false);
+    assert_eq!(jamais, trajectoire(true), "à l'identique");
+    let fin = angle_z(jamais[29]);
+    assert!((fin + 1.3).abs() < 0.02, "à sa butée d'origine : {fin}");
+}
+
+#[test]
+fn t334_joint_jammed_part_a_l_entree_et_a_la_sortie_du_grippage() {
+    let mut world = monde(false);
+    let (_, id) = charniere_grippable(&mut world, None, grippage(0.0));
+    assert!(world.jam_joint(id, 0.05));
+    assert_eq!(grippages(&mut world), vec![2], "entrée, au rang du joint");
+    assert!((world.joint_report(id).unwrap().fraction - 0.75).abs() < 1e-6);
+    assert!(world.jam_joint(id, 0.15));
+    assert!(grippages(&mut world).is_empty(), "toujours grippé : rien");
+    assert!(world.jam_joint(id, 0.0));
+    assert_eq!(grippages(&mut world), vec![2], "sortie");
+    assert_eq!(world.joint_report(id).unwrap().fraction, 1.0);
+    assert!(world.jam_joint(id, 0.0));
+    assert!(grippages(&mut world).is_empty(), "déjà libre : rien");
+}
+
+#[test]
+fn t334_un_grippage_hors_de_son_domaine_est_refuse() {
+    let mut world = monde(false);
+    let (_, id) = charniere_grippable(&mut world, None, grippage(0.0));
+    assert!(!world.jam_joint(id, -0.1), "désalignement négatif");
+    assert!(!world.jam_joint(id, f32::NAN), "désalignement non fini");
+    // Un joint sans grippage n'en prend pas.
+    let a = ancre(&mut world);
+    let at = Vec3::new(0.0, 3.0, 0.0);
+    let b = boule(&mut world, at);
+    let sans = world
+        .add_joint(ASSEMBLY, 0, a, b, &joint(JointKind::Revolute, Vec3::Z, at))
+        .unwrap();
+    assert!(!world.jam_joint(sans, 0.1));
+    // Un grippage exige des limites déclarées, sur l'axe libre de son joint, et une courbe valide.
+    let refuse = |change: fn(&mut JointSpec)| {
+        let mut world = monde(false);
+        let a = ancre(&mut world);
+        let at = Vec3::new(1.0, 0.0, 0.0);
+        let b = boule(&mut world, at);
+        let mut spec = joint(JointKind::Revolute, Vec3::Z, at);
+        spec.limits = Some([-1.0, 1.0]);
+        spec.jam = Some(grippage(0.0));
+        change(&mut spec);
+        world.add_joint(ASSEMBLY, 0, a, b, &spec)
+    };
+    assert!(refuse(|_| {}).is_ok());
+    assert_eq!(refuse(|s| s.limits = None), Err(JointError::InvalidSetting));
+    assert_eq!(
+        refuse(|s| s.kind = JointKind::Spherical),
+        Err(JointError::InvalidSetting)
+    );
+    assert_eq!(
+        refuse(|s| s.jam = Some(Jam {
+            curve: vec![[0.2, 0.5], [0.1, 0.0]],
+            friction: 0.0
+        })),
+        Err(JointError::InvalidSetting)
+    );
 }

@@ -16,7 +16,7 @@ use ax_model::dm::physics::ColliderDesc;
 use ax_model::dm::scene::{NodeDesc, NONE_U32};
 use ax_physics::{
     AssemblyBody, AssemblyJoint, AxisMode, BodyCollider, BodyKind, BreakThresholds,
-    CollisionGroups, ContactMaterial, JointKind, JointMotor, JointSpec, Shape,
+    CollisionGroups, ContactMaterial, Jam, JointKind, JointMotor, JointSpec, Shape,
 };
 
 /// Une assembly décodée, prête pour `SimDriver::create_assembly_bodies`.
@@ -323,7 +323,7 @@ fn assembly_joint(
         index: u16::try_from(index).ok()?,
         body_a,
         body_b,
-        spec: spec(desc, frame_a, frame_b),
+        spec: spec(desc, frame_a, frame_b, jam_points),
     })
 }
 
@@ -370,9 +370,14 @@ fn coherent(desc: &JointDesc, entries: &[AssemblyBodyEntry], jam_points: &[[f32;
         && curve.windows(2).all(|pair| pair[0][0] < pair[1][0])
 }
 
-/// Le joint de rapier d'un `JointDesc` cohérent : ses repères, ses réglages déclarés, et rien
-/// de ce qu'il ne déclare pas (ADR-109).
-fn spec(desc: &JointDesc, frame_a: (Vec3, Quat), frame_b: (Vec3, Quat)) -> JointSpec {
+/// Le joint de rapier d'un `JointDesc` cohérent : ses repères, ses réglages déclarés — son
+/// grippage pris dans l'annexe `jam_points` —, et rien de ce qu'il ne déclare pas (ADR-109).
+fn spec(
+    desc: &JointDesc,
+    frame_a: (Vec3, Quat),
+    frame_b: (Vec3, Quat),
+    jam_points: &[[f32; 2]],
+) -> JointSpec {
     let declared = |flag: u8| desc.flags & flag != 0;
     let motor = if declared(joint_flags::MOTOR_VELOCITY) {
         Some(JointMotor::Velocity {
@@ -424,6 +429,13 @@ fn spec(desc: &JointDesc, frame_a: (Vec3, Quat), frame_b: (Vec3, Quat)) -> Joint
         stiffness: desc.stiffness,
         damping: desc.damping,
         collide: declared(joint_flags::COLLIDE),
+        jam: declared(joint_flags::JAM).then(|| {
+            let first = desc.jam_first as usize;
+            Jam {
+                curve: jam_points[first..first + desc.jam_count as usize].to_vec(),
+                friction: desc.jam_friction,
+            }
+        }),
     }
 }
 
@@ -959,5 +971,33 @@ mod tests {
         assert!(decode(&payload(en_tete(), &corps, false)).is_none());
         // Un seul corps sans section NODE : ses colliders tels quels.
         assert!(decode(&payload(en_tete(), &corps[..1], false)).is_some());
+    }
+
+    #[test]
+    fn le_grippage_declare_part_avec_le_joint() {
+        let mut joint = charniere();
+        joint.flags |= joint_flags::JAM;
+        joint.jam_first = 1;
+        joint.jam_count = 2;
+        joint.jam_friction = 60.0;
+        let annexe = [[9.0, 0.0], [0.05, 0.5], [0.12, 0.0]];
+        let corps = [entree(0), entree(1)];
+        let request = decode(&payload_joints(en_tete(), &corps, true, &[joint], &annexe)).unwrap();
+        assert_eq!(
+            request.joints[0].spec.jam,
+            Some(Jam {
+                curve: vec![[0.05, 0.5], [0.12, 0.0]],
+                friction: 60.0
+            })
+        );
+        let sans = decode(&payload_joints(
+            en_tete(),
+            &corps,
+            true,
+            &[charniere()],
+            &[],
+        ))
+        .unwrap();
+        assert_eq!(sans.joints[0].spec.jam, None);
     }
 }

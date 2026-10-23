@@ -1828,3 +1828,13 @@ l'entrée standard jusqu'au délai, et la mesure qui suivait n'a jamais tourné.
 
 **Règle.** Une commande longue ou lancée en arrière-plan reçoit `< /dev/null`, et ne contient aucun
 `cat` sans fichier d'entrée.
+
+## 2026-10-24 | Une exactitude flottante testée sur un seul point
+
+**Ce qui a mal tourné.** Le test de réversibilité du grippage restait vert quand on remplaçait le
+rétablissement exact des limites par la formule générale à f = 1. La formule ne redonne pas les
+bornes au bit près pour 10 à 40 % des positions, mais le test n'en essayait qu'une, tombée du bon
+côté.
+
+**Règle.** Une propriété d'exactitude flottante (« à l'identique », « au bit près ») se teste sur
+de nombreuses valeurs ; on mesure d'abord, hors du test, la proportion de cas inexacts du mutant.

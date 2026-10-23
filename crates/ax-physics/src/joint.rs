@@ -113,6 +113,58 @@ pub struct JointSpec {
     pub damping: f32,
     /// Vrai si ses deux corps se touchent.
     pub collide: bool,
+    /// Son grippage, sur des limites déclarées (D6).
+    pub jam: Option<Jam>,
+}
+
+/// Le grippage d'un joint (ADR-151 D6) : la fraction de plage qui lui reste selon le
+/// désalignement de son ancrage, et la friction interne qu'il atteint quand elle tombe à 0.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Jam {
+    /// Points (désalignement en blocs, fraction de plage dans [0, 1]), d'abscisses positives
+    /// strictement croissantes.
+    pub curve: Vec<[f32; 2]>,
+    /// Friction interne quand la fraction tombe à 0, en newtons ou newtons-mètres.
+    pub friction: f32,
+}
+
+impl Jam {
+    /// La fraction de plage qui reste à `misalignment`. Un désalignement nul ne grippe pas
+    /// (R-632) ; au-delà, la courbe part de (0, 1), s'interpole entre ses points et garde sa
+    /// dernière fraction après son dernier point.
+    #[must_use]
+    pub fn fraction(&self, misalignment: f32) -> f32 {
+        if misalignment <= 0.0 {
+            return 1.0;
+        }
+        let mut previous = [0.0, 1.0];
+        for point in &self.curve {
+            if misalignment <= point[0] {
+                let span = point[0] - previous[0];
+                return if span > 0.0 {
+                    previous[1] + (point[1] - previous[1]) * (misalignment - previous[0]) / span
+                } else {
+                    point[1]
+                };
+            }
+            previous = *point;
+        }
+        previous[1]
+    }
+
+    /// Une courbe non vide, d'abscisses positives strictement croissantes et de fractions dans
+    /// [0, 1], et une friction positive ou nulle.
+    #[must_use]
+    pub fn is_valid(&self) -> bool {
+        !self.curve.is_empty()
+            && self
+                .curve
+                .iter()
+                .all(|[x, f]| x.is_finite() && *x >= 0.0 && (0.0..=1.0).contains(f))
+            && self.curve.windows(2).all(|pair| pair[0][0] < pair[1][0])
+            && self.friction.is_finite()
+            && self.friction >= 0.0
+    }
 }
 
 /// Référence d'un joint dans un [`PhysicsWorld`](crate::PhysicsWorld).
@@ -151,6 +203,8 @@ pub struct JointReport {
     pub torque: f32,
     /// Énergie absorbée depuis le début du tick, en joules.
     pub energy: f32,
+    /// Fraction de sa plage qui lui reste (D6) : 1 libre, moins grippé, 0 bloqué.
+    pub fraction: f32,
     /// Vrai s'il est rompu.
     pub broken: bool,
 }

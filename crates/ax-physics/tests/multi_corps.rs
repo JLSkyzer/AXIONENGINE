@@ -399,6 +399,7 @@ fn soudure(a: usize, b: usize, b_at: Vec3) -> AssemblyJoint {
             stiffness: 0.0,
             damping: 0.0,
             collide: false,
+            jam: None,
         },
     }
 }

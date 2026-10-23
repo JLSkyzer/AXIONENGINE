@@ -75,6 +75,9 @@ Definition of Done (PARTIE 37.3).
     grippage, juges par le natif ; le `b_node` d'un joint cree son corps ;
     `modules.joints = false` les ignore, avec un avertissement ; metrique
     `axion.sim.last_step_joints_ns` ;
+    grippage d'un joint (D6) : sa courbe resserre sa plage vers sa position
+    et mene sa friction vers celle du grippage, `JOINT_JAMMED` a l'entree et a
+    la sortie, un desalignement nul rend ses reglages d'origine au bit pres ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

@@ -68,7 +68,7 @@ pub use forces::{FluidEnvironment, FluidVolume, LiftSurface};
 pub use governor::{DegradationLevel, DegradationTransition, Governor, WINDOW_TICKS};
 pub use groups::{CollisionGroups, GroupError, GroupRegistry, ReservedGroup, GROUP_COUNT};
 pub use joint::{
-    AxisMode, BreakThresholds, JointCounts, JointError, JointId, JointKind, JointMotor,
+    AxisMode, BreakThresholds, Jam, JointCounts, JointError, JointId, JointKind, JointMotor,
     JointReport, JointSpec,
 };
 pub use materials::MaterialTable;

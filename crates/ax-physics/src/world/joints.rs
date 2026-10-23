@@ -34,6 +34,9 @@ pub(super) struct JointEntry {
     pub(super) index: u16,
     /// Le joint, absent une fois rompu.
     pub(super) joint: Option<ImpulseJointHandle>,
+    /// Le joint tel que déclaré : ses limites et sa friction d'origine, que le grippage resserre
+    /// et rend (D6).
+    pub(super) spec: JointSpec,
     pub(super) breaking: BreakThresholds,
     pub(super) report: JointReport,
 }
@@ -80,11 +83,13 @@ impl PhysicsWorld {
                 assembly,
                 index,
                 joint: Some(joint),
+                spec: spec.clone(),
                 breaking: spec.breaking,
                 report: JointReport {
                     force: 0.0,
                     torque: 0.0,
                     energy: 0.0,
+                    fraction: 1.0,
                     broken: false,
                 },
             },
@@ -205,16 +210,38 @@ impl PhysicsWorld {
 
     /// Rompt le joint `key` et émet son `JOINT_BROKEN`, portant `impulse`.
     fn break_entry(&mut self, key: u64, impulse: f32) -> bool {
-        let Some(entry) = self.joints.get_mut(&key) else {
+        let Some(entry) = self.joints.get(&key) else {
             return false;
         };
-        let Some(handle) = entry.joint.take() else {
+        let Some(handle) = entry.joint else {
             return false;
         };
-        entry.report.broken = true;
+        let event = self.joint_event(key, handle, event_kind::JOINT_BROKEN, impulse);
+        if let Some(entry) = self.joints.get_mut(&key) {
+            entry.joint = None;
+            entry.report.broken = true;
+        }
+        self.inner.impulse_joints.remove(handle, true);
+        self.joints_broken += 1;
+        if let Some(event) = event {
+            self.push_event(event);
+        }
+        true
+    }
+
+    /// Un événement du joint `key` (§10.7, ADR-151 D7) : l'assembly des deux côtés, les nodes
+    /// racines de ses deux corps, l'ancrage en monde, `impulse`, et son rang dans `data`.
+    fn joint_event(
+        &self,
+        key: u64,
+        handle: ImpulseJointHandle,
+        kind: u32,
+        impulse: f32,
+    ) -> Option<PhysicsEvent> {
+        let entry = self.joints.get(&key)?;
         let (assembly, index) = (entry.assembly, entry.index);
         let mut event = PhysicsEvent {
-            kind: event_kind::JOINT_BROKEN,
+            kind,
             assembly_a: assembly,
             assembly_b: assembly,
             node_a: 0,
@@ -243,10 +270,87 @@ impl PhysicsWorld {
             event.node_a = identity(joint.body1());
             event.node_b = identity(joint.body2());
         }
-        self.inner.impulse_joints.remove(handle, true);
-        self.joints_broken += 1;
-        self.push_event(event);
+        Some(event)
+    }
+
+    /// Grippe un joint (ADR-151 D6). À `misalignment`, son désalignement d'ancrage en blocs, sa
+    /// courbe donne la fraction f de plage qui lui reste : ses limites se resserrent vers sa
+    /// position courante, et sa friction interne va de la sienne à celle du grippage quand f va
+    /// de 1 à 0. Un `JOINT_JAMMED` part quand il entre dans cet état (f < 1) et quand il en sort ;
+    /// un désalignement nul lui rend exactement ses réglages d'origine (R-632).
+    ///
+    /// Faux, sans effet, pour un joint inconnu, rompu ou sans grippage, ou un désalignement négatif
+    /// ou non fini.
+    pub fn jam_joint(&mut self, id: JointId, misalignment: f32) -> bool {
+        if !(misalignment.is_finite() && misalignment >= 0.0) {
+            return false;
+        }
+        let Some(entry) = self.joints.get(&id.0) else {
+            return false;
+        };
+        let (Some(handle), Some(jam), Some(limits), Some(axis)) = (
+            entry.joint,
+            entry.spec.jam.clone(),
+            entry.spec.limits,
+            free_axis(entry.spec.kind),
+        ) else {
+            return false;
+        };
+        let fraction = jam.fraction(misalignment);
+        let jammed = fraction < 1.0;
+        let was_jammed = entry.report.fraction < 1.0;
+        let base = entry.spec.friction.unwrap_or(0.0);
+        let moving = moving_axes(&entry.spec);
+        let (narrowed, friction) = if jammed {
+            let current = self
+                .joint_coordinate(handle, axis)
+                .unwrap_or(0.0)
+                .clamp(limits[0], limits[1]);
+            (
+                [
+                    current - fraction * (current - limits[0]),
+                    current + fraction * (limits[1] - current),
+                ],
+                base + (jam.friction - base) * (1.0 - fraction),
+            )
+        } else {
+            (limits, base)
+        };
+        if let Some(joint) = self.inner.impulse_joints.get_mut(handle, true) {
+            joint.data.set_limits(axis, narrowed);
+            for axis in moving {
+                joint.data.set_friction(axis, friction);
+            }
+        }
+        if let Some(entry) = self.joints.get_mut(&id.0) {
+            entry.report.fraction = fraction;
+        }
+        if jammed != was_jammed {
+            if let Some(event) = self.joint_event(id.0, handle, event_kind::JOINT_JAMMED, 0.0) {
+                self.push_event(event);
+            }
+        }
         true
+    }
+
+    /// La coordonnée d'un joint sur son axe libre, dans la mesure de rapier : l'angle de la
+    /// rotation relative de ses repères autour de leur axe X, dans ]−π, π], ou l'écart de ses
+    /// ancrages le long de cet axe.
+    fn joint_coordinate(&self, handle: ImpulseJointHandle, axis: JointAxis) -> Option<f32> {
+        let joint = self.inner.impulse_joints.get(handle)?;
+        let frame1 = *self.inner.bodies.get(joint.body1())?.position() * joint.data.local_frame1;
+        let frame2 = *self.inner.bodies.get(joint.body2())?.position() * joint.data.local_frame2;
+        Some(if axis == JointAxis::LinX {
+            (frame2.translation - frame1.translation).dot(frame1.rotation * Vec3::X)
+        } else {
+            let relative = frame1.rotation.inverse() * frame2.rotation;
+            let relative = if relative.w < 0.0 {
+                -relative
+            } else {
+                relative
+            };
+            2.0 * relative.x.atan2(relative.w)
+        })
     }
 }
 
@@ -271,6 +375,10 @@ fn settings_are_valid(spec: &JointSpec) -> bool {
         && rotation_b.is_finite()
         && spec.limits.is_none_or(ordered)
         && spec.friction.is_none_or(non_negative)
+        // Un grippage resserre des limites déclarées, sur l'axe libre de son joint (D6).
+        && spec.jam.as_ref().is_none_or(|jam| {
+            jam.is_valid() && spec.limits.is_some() && free_axis(spec.kind).is_some()
+        })
         && spec.axes.iter().all(|mode| match mode {
             AxisMode::Limited(range) => ordered(*range),
             AxisMode::Locked | AxisMode::Free => true,
