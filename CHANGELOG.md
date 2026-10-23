@@ -284,6 +284,9 @@ Definition of Done (PARTIE 37.3).
 
 ### Corrige
 
+- Joints (C-34, ADR-151 D2) : `physics.self_collision` part enfin avec
+  l'assembly, que Java envoyait toujours sans collisions internes, et
+  `bodies[].mass` fixe la masse de son corps, au lieu d'etre ignore.
 - Physique (C-31, ADR-151) : les colliders d'un node sont poses par la
   chaine des transformations de l'asset, echelle comprise. Le natif les
   posait sans la pose de leur node : dans un asset dont un node porteur de

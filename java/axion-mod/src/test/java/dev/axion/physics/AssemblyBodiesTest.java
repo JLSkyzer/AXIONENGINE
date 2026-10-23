@@ -1,6 +1,7 @@
 package dev.axion.physics;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -180,5 +181,32 @@ class AssemblyBodiesTest {
         assertNull(AssemblyBodies.of(definition(SOUDURE), nodes("racine"), PHYSIQUE, true));
         assertEquals(64, soudures(63).bodies().size(), "64 corps, le plafond (R-190)");
         assertNull(soudures(64), "65 corps");
+    }
+
+    @Test
+    @DisplayName("bodies[].mass fixe la masse d'un corps ; celle de l'assembly reste à répartir")
+    void masseDeclaree() {
+        AssemblyBodies.Layout layout = AssemblyBodies.of(
+                definition("{\"bodies\": [{\"name\": \"a\", \"root_node\": \"a\", \"mass\": 30},"
+                        + " {\"name\": \"b\", \"root_node\": \"b\", \"mass\": 20}, {\"name\": \"c\", \"root_node\": \"c\"}]}"),
+                nodes("a", "b", "c"),
+                PHYSIQUE,
+                true);
+        assertEquals(30.0f, layout.bodies().get(0).description().mass(), "racine");
+        assertEquals(0.5f, layout.bodies().get(0).description().centerOfMassY(), "centre déclaré gardé");
+        assertEquals(20.0f, layout.bodies().get(1).description().mass(), "second corps");
+        assertEquals(0.0f, layout.bodies().get(2).description().mass(), "sans masse déclarée");
+        assertEquals(120.0f, layout.assemblyMass());
+    }
+
+    @Test
+    @DisplayName("physics.self_collision passe à l'assembly ; absent, ses corps ne se touchent pas")
+    void collisionsInternes() {
+        String corps = "\"bodies\": [{\"name\": \"a\", \"root_node\": \"a\"}, {\"name\": \"b\", \"root_node\": \"b\"}]";
+        assertTrue(AssemblyBodies.of(definition("{" + corps + ", \"physics\": {\"self_collision\": true}}"),
+                        nodes("a", "b"), PHYSIQUE, true)
+                .selfCollision());
+        assertFalse(AssemblyBodies.of(definition("{" + corps + "}"), nodes("a", "b"), PHYSIQUE, true)
+                .selfCollision());
     }
 }

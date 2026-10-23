@@ -218,7 +218,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         rootNodes.put(index, layout.rootNode());
         byte[] nodeSection = nodes == null ? new byte[0] : nodes;
         pending.add(new Pending(true, index, dimension, position, rotation, layout.bodies(), layout.joints(),
-                layout.jamPoints(), layout.assemblyMass(), false, nodeSection, phys));
+                layout.jamPoints(), layout.assemblyMass(), layout.selfCollision(), nodeSection, phys));
         ledger.attach(index, assembly);
         return true;
     }

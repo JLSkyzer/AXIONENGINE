@@ -3207,8 +3207,10 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             des joints, `modules.joints = false` ; métrique `axion.sim.last_step_joints_ns`.
             18 tests du décodeur, 12 multi-corps, un test ABI de bout en bout, 9 + 24 JUnit ;
             28 mutations rouges.
-      - [ ] Restés de D2, constatés le 2026-10-23 : `physics.self_collision` est lu par le schéma
-            mais `AssemblyRuntime` envoie toujours `false` ; `bodies[].mass` n'est lu nulle part.
+      - [x] Restés de D2, constatés le 2026-10-23, corrigés le 2026-10-24 : `physics.self_collision`
+            part avec l'assembly, `bodies[].mass` fixe la masse de son corps. 11 tests
+            d'`AssemblyBodies`, 2 mutations rouges. Le passage de `self_collision` par
+            `AssemblyRuntime` attend un GameTest à colliders qui se chevauchent (étape 7).
       - [ ] `StepBreakdown` et le journal des ticks lents ne montrent pas encore l'étape 5.
 - [ ] 4. Grippage (D6) : `JAM_JOINT`, `BREAK_JOINT`, `JointState` ; T-334.
 - [ ] 5. Réseau et dessin (D8, D9) : descripteur 2, poses relatives, interpolation et dessin par corps.
