@@ -327,6 +327,8 @@ public final class SimulationJournal {
         }
         return text.append(" (intégration ")
                 .append(millis(step.integrationNs()))
+                .append(", joints ")
+                .append(millis(step.jointsNs()))
                 .append(", contacts ")
                 .append(millis(step.contactsNs()))
                 .append(", ")

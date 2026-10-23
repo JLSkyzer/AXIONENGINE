@@ -74,7 +74,7 @@ Definition of Done (PARTIE 37.3).
     `CREATE_ASSEMBLY` porte les joints de la definition et leurs courbes de
     grippage, juges par le natif ; le `b_node` d'un joint cree son corps ;
     `modules.joints = false` les ignore, avec un avertissement ; metrique
-    `axion.sim.last_step_joints_ns` ;
+    `axion.sim.last_step_joints_ns`, citee par le journal des ticks lents ;
     grippage d'un joint (D6) : sa courbe resserre sa plage vers sa position
     et mene sa friction vers celle du grippage, `JOINT_JAMMED` a l'entree et a
     la sortie, un desalignement nul rend ses reglages d'origine au bit pres ;

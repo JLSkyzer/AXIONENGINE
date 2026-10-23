@@ -3211,7 +3211,8 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             part avec l'assembly, `bodies[].mass` fixe la masse de son corps. 11 tests
             d'`AssemblyBodies`, 2 mutations rouges. Le passage de `self_collision` par
             `AssemblyRuntime` attend un GameTest à colliders qui se chevauchent (étape 7).
-      - [ ] `StepBreakdown` et le journal des ticks lents ne montrent pas encore l'étape 5.
+      - [x] `StepBreakdown` et le journal des ticks lents montrent l'étape 5 (2026-10-24) :
+            `axion.sim.last_step_joints_ns`, entre intégration et contacts. 5 mutations rouges.
 - [x] 4. Grippage (D6) : `JAM_JOINT`, `BREAK_JOINT`, `JointState` ; T-334.
       - [x] 4a (2026-10-24). Grippage natif : `Jam` (courbe depuis (0, 1), désalignement nul sans
             effet), `jam_joint` resserre la plage vers la position courante et mène la friction vers

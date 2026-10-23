@@ -21,7 +21,7 @@ class StepBreakdownTest {
                 + valeur + "}";
     }
 
-    /** Les cinq métriques du pas, avec le temps CPU donné. */
+    /** Les six métriques du pas, avec le temps CPU donné. */
     private static String[] pas(String cpu) {
         return new String[] {
             "    {\"name\": \"axion.sim.step_ns\", \"kind\": \"duration\", \"unit\": \"ns\","
@@ -29,16 +29,17 @@ class StepBreakdownTest {
             jauge(StepBreakdown.STEP, "4100000"),
             jauge(StepBreakdown.CPU, cpu),
             jauge(StepBreakdown.INTEGRATION, "3900000"),
+            jauge(StepBreakdown.JOINTS, "60000"),
             jauge(StepBreakdown.CONTACTS, "120000"),
             jauge(StepBreakdown.COLLIDERS, "285"),
         };
     }
 
     @Test
-    void lesCinqMetriquesSontLuesParmiLesAutres() {
+    void lesSixMetriquesSontLuesParmiLesAutres() {
         StepBreakdown lu = StepBreakdown.parse(export(pas("310000")));
 
-        assertEquals(new StepBreakdown(4_100_000L, 310_000L, 3_900_000L, 120_000L, 285L), lu);
+        assertEquals(new StepBreakdown(4_100_000L, 310_000L, 3_900_000L, 60_000L, 120_000L, 285L), lu);
         assertTrue(lu.cpuMeasured());
     }
 

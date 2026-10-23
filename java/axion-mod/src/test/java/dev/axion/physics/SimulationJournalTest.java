@@ -211,7 +211,7 @@ class SimulationJournalTest {
 
     /** Un pas décomposé, d'un temps mural et d'un temps CPU donnés. */
     private static StepBreakdown pas(long stepNs, long cpuNs) {
-        return new StepBreakdown(stepNs, cpuNs, 3_900_000L, 120_000L, 285L);
+        return new StepBreakdown(stepNs, cpuNs, 3_900_000L, 60_000L, 120_000L, 285L);
     }
 
     @Test
@@ -240,7 +240,8 @@ class SimulationJournalTest {
         assertEquals(
                 "simulation : tick lent au tick 557 — cycle de simulation 8.21 ms pour un budget de"
                         + " 3.00 ms ; pas physique 8.05 ms dont 0.31 ms de calcul : le thread a"
-                        + " surtout attendu (intégration 3.90 ms, contacts 0.12 ms, 285 colliders)",
+                        + " surtout attendu (intégration 3.90 ms, joints 0.06 ms, contacts 0.12 ms,"
+                        + " 285 colliders)",
                 lignes.get(0).text());
     }
 
