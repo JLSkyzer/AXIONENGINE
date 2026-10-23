@@ -1838,3 +1838,18 @@ côté.
 
 **Règle.** Une propriété d'exactitude flottante (« à l'identique », « au bit près ») se teste sur
 de nombreuses valeurs ; on mesure d'abord, hors du test, la proportion de cas inexacts du mutant.
+
+## 2026-10-24 | Un banc de rendu bloqué qui remplit 13,8 Go de journal
+
+**Ce qui a mal tourné.** Sur la CI, le banc vanilla de 1f3da8b a tourné 55 minutes et laissé un
+journal de 13,8 Go, que ni `gh run view --log-failed` ni `gh api` n'ont pu rapatrier ; le job est
+resté « en cours » dans une étape post-run. Le run suivant, même code, était vert.
+
+**Cause.** Sous le rendu logiciel, la fenêtre de chargement anticipée de Forge n'a pas pu s'ouvrir dans
+son délai fixe de 30 s. Forge pose alors une question y/n (`tinyfd_messageBox`), qui sans interface
+graphique se pose sur la console ; l'entrée standard du banc étant vide, elle s'est reposée 292 562 fois.
+
+**Règle.** Un client ou un serveur lancé sans surveillance a une entrée standard qui répond, et chaque
+étape de CI qui le lance a son propre `timeout-minutes`. Un journal de job géant se lit par morceaux
+(`curl -m` sur l'API des journaux, puis comptage des lignes répétées), pas en entier. Désactiver
+`earlyWindowControl` n'est pas une parade : le banc testerait un autre contexte GL que les joueurs.

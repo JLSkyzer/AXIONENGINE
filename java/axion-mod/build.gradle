@@ -272,6 +272,10 @@ tasks.matching { it.name == 'runClient' }.configureEach {
 ['runRenderTest': 'run-rendertest', 'runRenderTestNative': 'run-rendertest-native',
         'runRenderTestShaders': 'run-rendertest-shaders'].each { tache, dossier ->
     tasks.matching { it.name == tache }.configureEach {
+        // Une fenêtre de chargement anticipée qui ne s'ouvre pas en 30 s fait poser par Forge une
+        // question y/n sur l'entrée standard ; vide, elle la faisait reposer sans fin (run
+        // 40031334950 de la CI : 13,8 Go de journal). Répondre non arrête le client net.
+        standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
         doFirst {
             delete rootProject.file("${dossier}/saves/axion-rendertest")
             delete rootProject.file("${dossier}/axion-rendertest")
