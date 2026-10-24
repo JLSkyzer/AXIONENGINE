@@ -265,10 +265,28 @@ class DebugOverlayRendererTest {
                 couleurs.add(DebugOverlayRenderer.colorOf(overlay, 0));
             }
         }
-        assertEquals(6, couleurs.size(), "six overlays à couleur fixe, six couleurs");
+        assertEquals(8, couleurs.size(), "huit overlays sans corps à colorer, huit couleurs");
         assertEquals(
                 DebugOverlayRenderer.STATIC,
                 DebugOverlayRenderer.colorOf(DebugOverlays.Overlay.COLLIDERS, DebugGeometry.BODY_STATIC));
+    }
+
+    @Test
+    @DisplayName("ADR-151 D7 : joints et limits prennent la couleur de l'état du joint, rompu d'abord")
+    void lesJointsOntLaCouleurDeLeurEtat() {
+        DebugOverlays.Overlay joints = DebugOverlays.Overlay.JOINTS;
+        DebugOverlays.Overlay limits = DebugOverlays.Overlay.LIMITS;
+        assertEquals(DebugOverlayRenderer.JOINT_COLOR, DebugOverlayRenderer.colorOf(joints, 0));
+        assertEquals(DebugOverlayRenderer.LIMIT_COLOR, DebugOverlayRenderer.colorOf(limits, 0));
+        assertEquals(DebugOverlayRenderer.JOINT_JAMMED_COLOR,
+                DebugOverlayRenderer.colorOf(joints, DebugGeometry.JOINT_JAMMED));
+        assertEquals(DebugOverlayRenderer.JOINT_JAMMED_COLOR,
+                DebugOverlayRenderer.colorOf(limits, DebugGeometry.JOINT_JAMMED));
+        assertEquals(DebugOverlayRenderer.JOINT_BROKEN_COLOR,
+                DebugOverlayRenderer.colorOf(joints, DebugGeometry.JOINT_BROKEN));
+        assertEquals(DebugOverlayRenderer.JOINT_BROKEN_COLOR,
+                DebugOverlayRenderer.colorOf(joints, DebugGeometry.JOINT_BROKEN | DebugGeometry.JOINT_JAMMED),
+                "rompu l'emporte sur grippé");
     }
 
     @Test
@@ -301,7 +319,7 @@ class DebugOverlayRendererTest {
                 new Matrix4f(),
                 new Matrix3f(),
                 new Vector3f(),
-                new DebugGeometry.Range(1, 1, 5, DebugGeometry.FRAME_BODY, 0, new float[] {0, 0, 0, 1, 0, 0}));
+                new DebugGeometry.Range(1, 1, 7, DebugGeometry.FRAME_BODY, 0, new float[] {0, 0, 0, 1, 0, 0}));
         assertEquals(0, emis);
         assertEquals(0, out.termines);
     }

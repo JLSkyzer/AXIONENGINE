@@ -26,6 +26,10 @@ public final class DebugOverlays {
         CONTACTS("contacts", NativeBridge.OVERLAY_CONTACTS, true),
         /** La normale de chaque point de contact (A1). Rang 4. */
         NORMALS("normals", NativeBridge.OVERLAY_NORMALS, true),
+        /** Chaque joint, d'un ancrage à l'autre, avec son axe (ADR-151 D7). Rang 5. */
+        JOINTS("joints", NativeBridge.OVERLAY_JOINTS, true),
+        /** La plage permise de l'axe libre de chaque joint limité, et sa position (ADR-151 D7). Rang 6. */
+        LIMITS("limits", NativeBridge.OVERLAY_LIMITS, true),
         /** Les tuiles de collision du monde (C-38, A1). Rang 30. */
         WORLD_TILES("world_tiles", NativeBridge.OVERLAY_WORLD_TILES, true),
         /** Le centre de masse de chaque corps (A1). Rang 31. */

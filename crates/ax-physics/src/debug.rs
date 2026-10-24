@@ -31,6 +31,18 @@ pub const NORMAL_LENGTH: f32 = 0.25;
 /// Côté de la croix du centre de masse, en mètres (A1 d'ADR-121).
 pub const MASS_CROSS: f32 = 0.2;
 
+/// Côté de la croix qui marque l'ancrage d'un joint, en mètres (ADR-151 D7).
+pub const JOINT_CROSS: f32 = 0.15;
+
+/// Rayon de l'arc de la plage d'une charnière, en mètres (ADR-151 D7).
+pub const LIMIT_RADIUS: f32 = 0.5;
+
+/// Segments de l'arc de la plage d'une charnière (ADR-151 D7).
+pub const LIMIT_ARC_STEPS: u32 = 16;
+
+/// Longueur des traits qui marquent les bornes d'une glissière, en mètres (ADR-151 D7).
+pub const LIMIT_TICK: f32 = 0.1;
+
 /// Une plage d'un overlay, avant sélection : ses segments et ce qui la classe.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DebugDraft {

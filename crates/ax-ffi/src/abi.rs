@@ -1248,6 +1248,10 @@ pub const AXION_OVERLAY_BODIES: u64 = overlay::BODIES;
 pub const AXION_OVERLAY_CONTACTS: u64 = overlay::CONTACTS;
 /// Overlay `normals` (A1) : bit 4.
 pub const AXION_OVERLAY_NORMALS: u64 = overlay::NORMALS;
+/// Overlay `joints` (ADR-151 D7) : bit 5.
+pub const AXION_OVERLAY_JOINTS: u64 = overlay::JOINTS;
+/// Overlay `limits` (ADR-151 D7) : bit 6.
+pub const AXION_OVERLAY_LIMITS: u64 = overlay::LIMITS;
 /// Overlay `world_tiles` (A1) : bit 30.
 pub const AXION_OVERLAY_WORLD_TILES: u64 = overlay::WORLD_TILES;
 /// Overlay `center_of_mass` (A1) : bit 31.
@@ -1259,6 +1263,8 @@ const SUPPORTED_OVERLAYS: u64 = AXION_OVERLAY_COLLIDERS
     | AXION_OVERLAY_BODIES
     | AXION_OVERLAY_CONTACTS
     | AXION_OVERLAY_NORMALS
+    | AXION_OVERLAY_JOINTS
+    | AXION_OVERLAY_LIMITS
     | AXION_OVERLAY_WORLD_TILES
     | AXION_OVERLAY_CENTER_OF_MASS;
 

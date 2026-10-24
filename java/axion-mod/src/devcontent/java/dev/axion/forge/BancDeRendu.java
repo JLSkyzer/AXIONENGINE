@@ -248,9 +248,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -568,6 +568,11 @@ public final class BancDeRendu {
             stabiliser("la charnière");
             serveur("relever les poses de la charnière", s -> posesCharniere = PosesCharniere.de(charniere));
             une("juger ADR-151 D9", mc -> jugerD9(capturer(mc, "d9_charniere.png"), derniereVue));
+            // ADR-151 D7 : joints et limits, que la scène des overlays de debug, sans joint, ne trace pas.
+            une("allumer les overlays sur la charnière", mc -> AxionRenderPass.setAllOverlays(true));
+            stabiliser("les overlays de la charnière");
+            une("juger ADR-151 D7", mc -> jugerD7());
+            une("éteindre les overlays de la charnière", mc -> AxionRenderPass.setAllOverlays(false));
             serveur("retirer la charnière", s -> charniere.discard());
             jusqua("la charnière retirée", 30, mc -> mc.level.getEntity(charniere.getId()) == null);
         }
@@ -1240,11 +1245,28 @@ public final class BancDeRendu {
         StringBuilder detail = new StringBuilder();
         boolean vert = true;
         for (dev.axion.debug.DebugOverlays.Overlay overlay : dev.axion.debug.DebugOverlays.Overlay.values()) {
+            if (overlay == dev.axion.debug.DebugOverlays.Overlay.JOINTS
+                    || overlay == dev.axion.debug.DebugOverlays.Overlay.LIMITS) {
+                // Ils tracent des joints : jugés sur la charnière (ADR-151 D7).
+                continue;
+            }
             int n = plages.getOrDefault(overlay.rank(), 0);
             vert &= n > 0;
             detail.append(detail.length() == 0 ? "" : ", ").append(overlay.commandName()).append(' ').append(n);
         }
         RAPPORT.noter("overlays de debug", vert, "plages reçues : " + detail);
+    }
+
+    /**
+     * ADR-151 D7 : allumés sur la charnière, {@code joints} et {@code limits} reçoivent chacun sa plage du
+     * natif, et la dessinent ; une erreur au dessin se journalise, et le verdict « erreurs AXION » la voit.
+     */
+    private static void jugerD7() {
+        java.util.Map<Integer, Integer> plages = AxionRenderPass.debugRangesByOverlay();
+        int joints = plages.getOrDefault(dev.axion.debug.DebugOverlays.Overlay.JOINTS.rank(), 0);
+        int limits = plages.getOrDefault(dev.axion.debug.DebugOverlays.Overlay.LIMITS.rank(), 0);
+        RAPPORT.noter("ADR-151 D7", joints > 0 && limits > 0, String.format(Locale.ROOT,
+                "plages reçues sur la charnière : joints %d, limits %d", joints, limits));
     }
 
     /** {@return ce qu'on sait d'un temps GPU de passe, sans le chiffre} */

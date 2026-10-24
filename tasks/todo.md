@@ -3245,7 +3245,10 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             client garde les bits des joints. Contrôle « ADR-151 D9 » au banc de rendu, vanilla et natif :
             silhouette d'une charnière à 1 px des poses du serveur, à 39 px d'un dessin rigide. 6 JUnit ;
             14 mutations rouges, dont un dessin rigide dans chaque backend.
-- [ ] 6. Overlays `joints` et `limits` (D7).
+- [x] 6. Overlays `joints` et `limits` (D7) (2026-10-24) : bits 5 et 6, une plage par joint en
+      repère d'origine, l'état du joint dans ses drapeaux et sa couleur ; essai JNI sur la charnière
+      rompue, contrôle « ADR-151 D7 » au banc de rendu (vanilla et natif). 6 tests natifs, 1 JUnit ; 15 mutations rouges. Les axes de `generic` n'ont pas encore
+      de plage.
 - [ ] 7. Preuves de bout en bout : GameTests, S-05, documentation.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1

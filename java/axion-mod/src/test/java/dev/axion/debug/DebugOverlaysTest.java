@@ -67,13 +67,17 @@ class DebugOverlaysTest {
         assertEquals(NativeBridge.OVERLAY_NORMALS, Overlay.NORMALS.bit());
         assertEquals(NativeBridge.OVERLAY_WORLD_TILES, Overlay.WORLD_TILES.bit());
         assertEquals(NativeBridge.OVERLAY_CENTER_OF_MASS, Overlay.CENTER_OF_MASS.bit());
-        assertEquals(7, java.util.Arrays.stream(Overlay.values()).filter(Overlay::nativeSide).count(),
-                "les six overlays de M3 et colliders, natifs (ADR-146 §1)");
-        assertEquals(8, Overlay.values().length, "et network, en Java seul, venu en M4 avec C-51 (ADR-146 §1)");
+        assertEquals(NativeBridge.OVERLAY_JOINTS, Overlay.JOINTS.bit());
+        assertEquals(NativeBridge.OVERLAY_LIMITS, Overlay.LIMITS.bit());
+        assertEquals(9, java.util.Arrays.stream(Overlay.values()).filter(Overlay::nativeSide).count(),
+                "les six overlays de M3, colliders, et joints et limits venus avec C-34 (ADR-151 D7), natifs");
+        assertEquals(10, Overlay.values().length, "et network, en Java seul, venu en M4 avec C-51 (ADR-146 §1)");
         assertFalse(Overlay.NETWORK.nativeSide(), "network ne part pas au natif");
         for (Overlay overlay : Overlay.values()) {
             assertEquals(overlay, Overlay.ofRank(overlay.rank()), overlay.commandName());
         }
-        assertEquals(null, Overlay.ofRank(5), "joints n'est pas implémenté");
+        assertEquals(Overlay.JOINTS, Overlay.ofRank(5));
+        assertEquals(Overlay.LIMITS, Overlay.ofRank(6));
+        assertEquals(null, Overlay.ofRank(7), "bones n'est pas implémenté");
     }
 }

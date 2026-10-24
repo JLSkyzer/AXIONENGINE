@@ -2384,6 +2384,9 @@ impl PhysicsWorld {
         if mask & (overlay::CONTACTS | overlay::NORMALS) != 0 {
             drafts.extend(self.contact_drafts(origin, camera, mask));
         }
+        if mask & (overlay::JOINTS | overlay::LIMITS) != 0 {
+            drafts.extend(self.joint_drafts(origin, camera, mask));
+        }
         drafts
     }
 

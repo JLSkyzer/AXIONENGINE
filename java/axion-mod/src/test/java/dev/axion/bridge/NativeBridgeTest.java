@@ -722,10 +722,10 @@ class NativeBridgeTest {
         assertTrue(boite.ok(), () -> "AABB refusée, code " + boite.code());
         assertEquals(1, boite.geometry().originRanges().size());
         assertTrue(boite.geometry().bodyRangesOf(1, 1).isEmpty());
-        // Un overlay que cette version ne trace pas (joints, rang 5) est refusé net.
+        // Un overlay que cette version ne trace pas (bones, rang 7) est refusé net.
         assertEquals(
                 NativeBridge.E_INVALID_BUFFER,
-                debug.fetch(1L << 5, 0L, 0.0, 100.0, 0.0, 1024).code());
+                debug.fetch(1L << 7, 0L, 0.0, 100.0, 0.0, 1024).code());
 
         // Ticks sans autre commande que le joueur, déclaré chaque tick comme en jeu : le corps
         // tombe sous la gravité par défaut (−9,81 m/s²). Sans joueur, il dormirait (R-612).
@@ -928,6 +928,21 @@ class NativeBridgeTest {
                                 == dev.axion.physics.PhysicsEventCodes.Kind.JOINT_BROKEN
                         && evenement.data() == 0),
                 () -> "JOINT_BROKEN attendu : " + rompu.events());
+
+        // ADR-151 D7 : les overlays joints et limits, par la vraie JNI. La charnière rompue reste tracée, ses
+        // ancrages marqués rompus, et n'a plus de plage.
+        dev.axion.debug.NativeDebugLoader.Fetched joints = debug.fetch(
+                NativeBridge.OVERLAY_JOINTS | NativeBridge.OVERLAY_LIMITS, 5L, 0.0, 100.0, 0.0, 1024);
+        assertTrue(joints.ok(), () -> "overlays des joints refusés, code " + joints.code());
+        java.util.List<dev.axion.debug.DebugGeometry.Range> charnieres = joints.geometry().originRanges().stream()
+                .filter(plage -> plage.handleIndex() == 2)
+                .toList();
+        assertEquals(1, charnieres.size(), () -> "une plage, joints seul : " + charnieres);
+        dev.axion.debug.DebugGeometry.Range plageJoint = charnieres.get(0);
+        assertEquals(dev.axion.debug.DebugOverlays.Overlay.JOINTS.rank(), plageJoint.overlay());
+        assertEquals(dev.axion.debug.DebugGeometry.FRAME_ORIGIN, plageJoint.frame());
+        assertTrue((plageJoint.flags() & dev.axion.debug.DebugGeometry.JOINT_BROKEN) != 0, "marquée rompue");
+        assertEquals(5, plageJoint.segmentCount(), "la croix de l'ancrage, le lien des ancrages, l'axe");
 
         // ADR-151 D9 : le repère d'un corps secondaire, tel que BodySkeleton le calcule pour le dessin, est
         // celui où le natif pose ce corps. Sans gravité, rien ne le bouge : à sa création, sa pose monde est

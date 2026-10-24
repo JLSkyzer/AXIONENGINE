@@ -1853,3 +1853,12 @@ graphique se pose sur la console ; l'entrée standard du banc étant vide, elle 
 étape de CI qui le lance a son propre `timeout-minutes`. Un journal de job géant se lit par morceaux
 (`curl -m` sur l'API des journaux, puis comptage des lignes répétées), pas en entier. Désactiver
 `earlyWindowControl` n'est pas une parade : le banc testerait un autre contexte GL que les joueurs.
+
+## 2026-10-24 | Un exemple de refus devenu une fonction
+
+**Ce qui a mal tourné.** En implémentant l'overlay `joints` (rang 5), quatre tests ont cassé — deux JUnit,
+l'essai JNI, un test ABI natif — : chacun le prenait pour l'exemple d'un overlay que le natif refuse.
+
+**Règle.** Avant d'implémenter ce qui était refusé, chercher les tests qui s'en servent comme exemple de
+refus (`grep` sur le rang, le nom, le bit), et les porter sur un autre exemple encore refusé dans le même
+commit.

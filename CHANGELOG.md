@@ -87,6 +87,7 @@ Definition of Done (PARTIE 37.3).
     le client interpole les poses des corps secondaires avec celle de la
     racine, et rattache chaque node a son corps comme le natif ;
     chaque corps se dessine a sa pose, dans les deux backends ;
+    overlays de debug `joints` et `limits`, a la couleur de l'etat du joint ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

@@ -61,8 +61,8 @@ pub use body::{
 pub use commands::{apply_command_stream, create_assembly_payloads, CommandError, CommandOutcome};
 pub use config::{ConfigError, PhysicsConfig};
 pub use debug::{
-    select_drafts, DebugDraft, DebugSelection, AXIS_LENGTH, CONTACT_CROSS, MASS_CROSS,
-    NORMAL_LENGTH, ROUND_SUBDIVISIONS,
+    select_drafts, DebugDraft, DebugSelection, AXIS_LENGTH, CONTACT_CROSS, JOINT_CROSS,
+    LIMIT_ARC_STEPS, LIMIT_RADIUS, LIMIT_TICK, MASS_CROSS, NORMAL_LENGTH, ROUND_SUBDIVISIONS,
 };
 pub use forces::{FluidEnvironment, FluidVolume, LiftSurface};
 pub use governor::{DegradationLevel, DegradationTransition, Governor, WINDOW_TICKS};

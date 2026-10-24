@@ -57,6 +57,12 @@ public final class DebugGeometry {
     /** Drapeau de corps : endormi. */
     public static final int BODY_SLEEPING = 1 << 2;
 
+    /** Drapeau d'une plage {@code joints} ou {@code limits} : le joint est rompu (ADR-151 D7). */
+    public static final int JOINT_BROKEN = 1 << 3;
+
+    /** Drapeau d'une plage {@code joints} ou {@code limits} : le joint est grippé (ADR-151 D7). */
+    public static final int JOINT_JAMMED = 1 << 4;
+
     /** Flottants par segment : {@code a.x, a.y, a.z, b.x, b.y, b.z}. */
     public static final int FLOATS_PER_SEGMENT = 6;
 

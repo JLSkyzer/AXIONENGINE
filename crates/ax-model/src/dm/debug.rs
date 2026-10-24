@@ -38,6 +38,11 @@ pub mod overlay {
     pub const CONTACTS: u64 = 1 << 3;
     /// `normals` : la normale de chaque point de contact (A1).
     pub const NORMALS: u64 = 1 << 4;
+    /// `joints` : chaque joint, d'un ancrage à l'autre, avec son axe (ADR-151 D7).
+    pub const JOINTS: u64 = 1 << 5;
+    /// `limits` : la plage permise de l'axe libre de chaque joint limité, et sa position
+    /// courante (ADR-151 D7).
+    pub const LIMITS: u64 = 1 << 6;
     /// `world_tiles` : les tuiles de collision du monde (C-38, A1).
     pub const WORLD_TILES: u64 = 1 << 30;
     /// `center_of_mass` : le centre de masse de chaque corps (A1).
@@ -79,6 +84,10 @@ pub mod debug_body_flags {
     pub const KINEMATIC: u32 = 1 << 1;
     /// Corps endormi.
     pub const SLEEPING: u32 = 1 << 2;
+    /// Joint rompu : plages `joints` (ADR-151 D7).
+    pub const JOINT_BROKEN: u32 = 1 << 3;
+    /// Joint grippé : plages `joints` et `limits` (ADR-151 D7).
+    pub const JOINT_JAMMED: u32 = 1 << 4;
 }
 
 /// Une plage de segments : ceux d'un overlay pour un corps ou une tuile, dans un

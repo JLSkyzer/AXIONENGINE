@@ -705,6 +705,12 @@ public final class NativeBridge {
     /** Overlay {@code normals} : bit 4 (A1). */
     public static final long OVERLAY_NORMALS = 1L << 4;
 
+    /** Overlay {@code joints} : bit 5 (ADR-151 D7). */
+    public static final long OVERLAY_JOINTS = 1L << 5;
+
+    /** Overlay {@code limits} : bit 6 (ADR-151 D7). */
+    public static final long OVERLAY_LIMITS = 1L << 6;
+
     /** Overlay {@code world_tiles} : bit 30 (A1). */
     public static final long OVERLAY_WORLD_TILES = 1L << 30;
 
@@ -720,7 +726,7 @@ public final class NativeBridge {
      * <p>À n'appeler que lorsqu'un overlay est allumé (R-800). Lecture seule côté natif.
      *
      * @param ctx jeton de contexte
-     * @param overlayMask overlays demandés, parmi les sept {@code OVERLAY_*}
+     * @param overlayMask overlays demandés, parmi les neuf {@code OVERLAY_*}
      * @param dimension identifiant de dimension, celui des commandes de simulation
      * @param cameraX position monde de la caméra
      * @param cameraY position monde de la caméra

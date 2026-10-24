@@ -4,11 +4,15 @@
 
 use super::PhysicsWorld;
 use crate::body::BodyId;
+use crate::debug::{
+    cross, DebugDraft, AXIS_LENGTH, JOINT_CROSS, LIMIT_ARC_STEPS, LIMIT_RADIUS, LIMIT_TICK,
+};
 use crate::joint::{
     AxisMode, BreakThresholds, JointCounts, JointError, JointId, JointKind, JointMotor,
     JointReport, JointSpec,
 };
-use ax_math::Vec3;
+use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
+use ax_model::dm::debug::{debug_body_flags, debug_frame, overlay, DebugSegment};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::joints::{joint_state_flags, JointState};
 use ax_model::dm::physics::{event_kind, PhysicsEvent, NO_MATERIAL};
@@ -35,6 +39,8 @@ pub(super) struct JointEntry {
     pub(super) index: u16,
     /// Le joint, absent une fois rompu.
     pub(super) joint: Option<ImpulseJointHandle>,
+    /// Ses deux corps, gardés après la rupture : l'overlay `joints` trace encore ses ancrages.
+    pub(super) bodies: [BodyId; 2],
     /// Le joint tel que déclaré : ses limites et sa friction d'origine, que le grippage resserre
     /// et rend (D6).
     pub(super) spec: JointSpec,
@@ -84,6 +90,7 @@ impl PhysicsWorld {
                 assembly,
                 index,
                 joint: Some(joint),
+                bodies: [body_a, body_b],
                 spec: spec.clone(),
                 breaking: spec.breaking,
                 report: JointReport {
@@ -375,6 +382,125 @@ impl PhysicsWorld {
             }
         }
         true
+    }
+
+    /// Plages `joints` et `limits` (ADR-151 D7) : une par joint et par overlay, en repère
+    /// d'origine, dans l'ordre de création des joints (R-1020), ancrées à l'ancrage du premier
+    /// corps. Leurs drapeaux disent l'état du joint : rompu, grippé.
+    ///
+    /// - `joints` : une croix à l'ancrage du premier corps, le segment jusqu'à celui du second —
+    ///   confondus tant que le joint tient —, et l'axe X du repère commun, à la longueur des axes
+    ///   de `bodies`. Un joint rompu garde ses ancrages, qui s'écartent.
+    /// - `limits` : pour l'axe libre limité d'un `revolute`, l'arc de sa plage courante —
+    ///   resserrée par un grippage — autour de l'axe, ses deux rayons extrêmes et le rayon de sa
+    ///   position, plus long ; pour celui d'un `prismatic`, le segment de sa plage le long de
+    ///   l'axe, un trait à chaque borne et une croix à sa position. Rien pour un joint rompu ou
+    ///   sans limites.
+    pub(super) fn joint_drafts(
+        &self,
+        origin: &FloatingOrigin,
+        camera: DVec3,
+        mask: u64,
+    ) -> Vec<DebugDraft> {
+        let relative = |local: Vec3| (origin.to_world(local) - camera).as_vec3().to_array();
+        let mut drafts = Vec::new();
+        for entry in self.joints.values() {
+            let (Some(body_a), Some(body_b)) = (
+                self.inner.bodies.get(entry.bodies[0].handle()),
+                self.inner.bodies.get(entry.bodies[1].handle()),
+            ) else {
+                continue;
+            };
+            let (pose_a, pose_b) = (body_a.position(), body_b.position());
+            let anchor_a = pose_a.translation + pose_a.rotation * entry.spec.frame_a.0;
+            let anchor_b = pose_b.translation + pose_b.rotation * entry.spec.frame_b.0;
+            let rotation = pose_a.rotation * entry.spec.frame_a.1;
+            let mut flags = 0;
+            if entry.report.broken {
+                flags |= debug_body_flags::JOINT_BROKEN;
+            }
+            if entry.report.fraction < 1.0 {
+                flags |= debug_body_flags::JOINT_JAMMED;
+            }
+            let draft = |bit: u64, segments: Vec<DebugSegment>| DebugDraft {
+                handle: entry.assembly,
+                overlay: overlay::rank(bit),
+                frame: debug_frame::ORIGIN,
+                flags,
+                anchor: origin.to_world(anchor_a),
+                segments,
+            };
+            if mask & overlay::JOINTS != 0 {
+                let mut segments = Vec::new();
+                cross(anchor_a, JOINT_CROSS, relative, &mut segments);
+                segments.push(DebugSegment {
+                    a: relative(anchor_a),
+                    b: relative(anchor_b),
+                });
+                segments.push(DebugSegment {
+                    a: relative(anchor_a),
+                    b: relative(anchor_a + rotation * Vec3::X * AXIS_LENGTH),
+                });
+                drafts.push(draft(overlay::JOINTS, segments));
+            }
+            if mask & overlay::LIMITS != 0 {
+                if let Some(segments) = self.limit_segments(entry, anchor_a, rotation, &relative) {
+                    drafts.push(draft(overlay::LIMITS, segments));
+                }
+            }
+        }
+        drafts
+    }
+
+    /// Les segments de l'overlay `limits` d'un joint (voir [`Self::joint_drafts`]) ; `None` pour
+    /// un joint rompu, sans axe libre ou sans limites.
+    fn limit_segments(
+        &self,
+        entry: &JointEntry,
+        anchor: Vec3,
+        rotation: Quat,
+        relative: &impl Fn(Vec3) -> [f32; 3],
+    ) -> Option<Vec<DebugSegment>> {
+        let handle = entry.joint?;
+        let axis = free_axis(entry.spec.kind)?;
+        let limits = self.inner.impulse_joints.get(handle)?.data.limits(axis)?;
+        let (min, max) = (limits.min, limits.max);
+        let position = self.joint_coordinate(handle, axis)?;
+        let segment = |a: Vec3, b: Vec3| DebugSegment {
+            a: relative(a),
+            b: relative(b),
+        };
+        let mut segments = Vec::new();
+        if axis == JointAxis::AngX {
+            // Une rotation d'angle θ autour de X porte Y vers cos θ · Y + sin θ · Z.
+            let (y, z) = (rotation * Vec3::Y, rotation * Vec3::Z);
+            let radial = |angle: f32| y * angle.cos() + z * angle.sin();
+            for step in 0..LIMIT_ARC_STEPS {
+                let from = min + (max - min) * step as f32 / LIMIT_ARC_STEPS as f32;
+                let to = min + (max - min) * (step + 1) as f32 / LIMIT_ARC_STEPS as f32;
+                segments.push(segment(
+                    anchor + radial(from) * LIMIT_RADIUS,
+                    anchor + radial(to) * LIMIT_RADIUS,
+                ));
+            }
+            for bound in [min, max] {
+                segments.push(segment(anchor, anchor + radial(bound) * LIMIT_RADIUS));
+            }
+            segments.push(segment(
+                anchor,
+                anchor + radial(position) * (LIMIT_RADIUS * 1.25),
+            ));
+        } else {
+            let x = rotation * Vec3::X;
+            let tick = rotation * Vec3::Y * (LIMIT_TICK * 0.5);
+            segments.push(segment(anchor + x * min, anchor + x * max));
+            for bound in [min, max] {
+                let at = anchor + x * bound;
+                segments.push(segment(at - tick, at + tick));
+            }
+            cross(anchor + x * position, LIMIT_TICK, relative, &mut segments);
+        }
+        Some(segments)
     }
 
     /// La coordonnée d'un joint sur son axe libre, dans la mesure de rapier : l'angle de la

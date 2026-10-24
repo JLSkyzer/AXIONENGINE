@@ -85,6 +85,18 @@ final class DebugOverlayRenderer {
     /** Couleur de l'overlay {@code world_tiles} (RGB). */
     static final int TILE_COLOR = 0xB3B3B3;
 
+    /** Couleur d'un joint libre, dans {@code joints} (RGB). */
+    static final int JOINT_COLOR = 0x66FF66;
+
+    /** Couleur de la plage d'un joint libre, dans {@code limits} (RGB). */
+    static final int LIMIT_COLOR = 0x4D99FF;
+
+    /** Couleur d'un joint grippé, dans {@code joints} et {@code limits} (RGB). */
+    static final int JOINT_JAMMED_COLOR = 0xFFB31A;
+
+    /** Couleur d'un joint rompu, dans {@code joints} (RGB). */
+    static final int JOINT_BROKEN_COLOR = 0xFF1A66;
+
     /** Couleur de l'emprise à la pose dessinée, dans {@code network} (RGB). */
     static final int NETWORK_SHOWN = 0x9966FF;
 
@@ -341,10 +353,26 @@ final class DebugOverlayRenderer {
             case AABB -> AABB_COLOR;
             case CONTACTS -> CONTACT_COLOR;
             case NORMALS -> NORMAL_COLOR;
+            case JOINTS -> jointColorOf(flags, JOINT_COLOR);
+            case LIMITS -> jointColorOf(flags, LIMIT_COLOR);
             case WORLD_TILES -> TILE_COLOR;
             case CENTER_OF_MASS -> MASS_COLOR;
             case NETWORK -> NETWORK_RECEIVED;
         };
+    }
+
+    /**
+     * {@return la couleur RGB d'une plage {@code joints} ou {@code limits} : l'état de son joint, rompu
+     * d'abord, puis grippé ; {@code free} sinon (ADR-151 D7)}
+     *
+     * @param flags drapeaux {@code JOINT_*} de la plage
+     * @param free couleur d'un joint libre
+     */
+    static int jointColorOf(int flags, int free) {
+        if ((flags & DebugGeometry.JOINT_BROKEN) != 0) {
+            return JOINT_BROKEN_COLOR;
+        }
+        return (flags & DebugGeometry.JOINT_JAMMED) != 0 ? JOINT_JAMMED_COLOR : free;
     }
 
     /**
@@ -359,6 +387,10 @@ final class DebugOverlayRenderer {
             case BODIES -> "axes du corps : rouge x, vert y, bleu z";
             case CONTACTS -> "rouge : les points de contact du dernier pas";
             case NORMALS -> "jaune : les normales de contact, du premier collider vers le second";
+            case JOINTS -> "vert : un joint libre, d'un ancrage à l'autre, avec son axe ; ambre : grippé ; rose :"
+                    + " rompu, ses ancrages écartés";
+            case LIMITS -> "bleu : la plage permise d'un joint et le trait de sa position ; ambre : resserrée par"
+                    + " un grippage";
             case WORLD_TILES -> "gris : les colliders des tuiles du monde";
             case CENTER_OF_MASS -> "blanc : le centre de masse de chaque corps";
             case NETWORK -> "violet : l'emprise à la pose dessinée, interpolée ; orange : au dernier état reçu du"
