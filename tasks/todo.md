@@ -3259,8 +3259,10 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             la porte), T-333 (la chaîne s'endort entière), T-334 (grippée puis rendue, chaque état reçu par
             un client simulé, `JAM_JOINT` émis par `GrippagesDeTest`), la grille d'un seul tenant ; T-332 par
             la charnière fragile de 5a. 34 GameTests verts ; une mutation du servo en fait échouer trois.
-      - [ ] 7d. S-05 au banc : 500 joints en chaînes et en grilles, temps du pas mesuré, aucune valeur non
-            finie, deux exécutions identiques.
+      - [x] 7d (2026-10-24). S-05 au banc (`ax-physics/tests/s05_joints.rs`) : dix chaînes de quatorze
+            rotules lâchées à l'horizontale et deux grilles de 10 × 10 plaques soudées, 500 joints, 200 ticks ;
+            aucune valeur non finie, aucun joint rompu, deux exécutions identiques au bit près ; le temps du pas
+            est affiché, sans seuil (mesures dans ADR-151). Quatre mutations rouges.
       - [ ] 7e. Documentation des joints pour les créateurs de contenu.
       - [x] `t390` attend `[Integration, Joints, Contacts]` par sous-pas (fait en 3a, `tests/world.rs`).
 

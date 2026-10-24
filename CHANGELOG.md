@@ -92,6 +92,8 @@ Definition of Done (PARTIE 37.3).
     et l'emprise de l'entite suit tous ses corps ;
     contenu d'essai des joints genere par `tools/assets/joints_essai.py` (porte,
     pendule, chaine, grille) et ses GameTests T-330, T-331, T-333 et T-334 ;
+    S-05 au banc de physique : 500 joints en chaines et en grilles, aucune
+    valeur non finie, deux executions identiques, temps du pas affiche ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),
