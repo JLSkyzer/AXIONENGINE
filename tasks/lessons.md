@@ -1879,3 +1879,19 @@ repos, pas ce qu'il voulait prouver : la pose relative transmise.
 juge la propriété visée contre l'état que tient le serveur (ici, la pose relative calculée depuis les
 poses monde, au quantum du réseau près), plus une borne grossière sur le mouvement. Un échec qui
 apparaît en ajoutant des tests ailleurs se vérifie d'abord en retirant ces tests de la découverte.
+
+## 2026-10-25 | La fenêtre anticipée de Forge bloquée sur la sonde de GL 4.6
+
+**Ce qui a mal tourné.** Le banc vanilla de 887795d a échoué deux fois de suite sur la CI, en dix
+secondes, « Timed out trying to setup the Game Window » ; les bancs natif et shaderpack du même job
+sont passés. Même image de runner, même Mesa (25.2.8), même Xvfb que le run vert précédent.
+
+**Cause.** La fenêtre anticipée de Forge sonde les versions de GL de la plus haute à la plus basse, sous
+un minuteur fixe de 10 s armé avant la première. Sous llvmpipe, qui ne fournit que GL 4.5, la sonde de
+4.6 échoue d'habitude aussitôt (run vert : 4.5 obtenu en 0,2 s) ; ici, elle s'est bloquée jusqu'au
+minuteur. Le code du commit n'y était pour rien : rien d'AXION ne tourne avant cette fenêtre.
+
+**Règle.** Sous rendu logiciel (`LIBGL_ALWAYS_SOFTWARE=1`), le banc pose
+`earlyWindowSkipGLVersions = ["4.6"]` dans le `fml.toml` de son répertoire : même contexte, sans la
+sonde. Sur une vraie carte, ne rien changer. Un échec d'infrastructure qui revient à la relance se
+compare d'abord, ligne à ligne, au journal du dernier run vert.

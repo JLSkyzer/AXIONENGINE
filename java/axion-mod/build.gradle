@@ -277,6 +277,20 @@ tasks.matching { it.name == 'runClient' }.configureEach {
         // 40031334950 de la CI : 13,8 Go de journal). Répondre non arrête le client net.
         standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
         doFirst {
+            // Sous rendu logiciel (llvmpipe, la CI), GL 4.6 n'existe pas : la fenêtre anticipée de Forge
+            // le sonde d'abord, et cette sonde se bloque parfois jusqu'au minuteur de 10 s de Forge (run
+            // 40139908450, deux tentatives), quand elle échoue d'habitude aussitôt pour obtenir 4.5. La
+            // sauter rend le même contexte 4.5, sans la sonde. Sur une vraie carte, rien ne change : le
+            // banc garde le contexte qu'obtiennent les joueurs.
+            if (System.getenv('LIBGL_ALWAYS_SOFTWARE') == '1') {
+                def fml = rootProject.file("${dossier}/config/fml.toml")
+                def lignes = fml.exists()
+                        ? fml.readLines('UTF-8').findAll { !it.trim().startsWith('earlyWindowSkipGLVersions') }
+                        : []
+                lignes << 'earlyWindowSkipGLVersions = ["4.6"]'
+                fml.parentFile.mkdirs()
+                fml.setText(lignes.collect { it + System.lineSeparator() }.join(''), 'UTF-8')
+            }
             delete rootProject.file("${dossier}/saves/axion-rendertest")
             delete rootProject.file("${dossier}/axion-rendertest")
             // Un cache de shaders neuf : le premier démarrage compile, les suivants relisent (T-905).
