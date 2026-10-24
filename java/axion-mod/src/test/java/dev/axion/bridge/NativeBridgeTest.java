@@ -80,6 +80,23 @@ class NativeBridgeTest {
                     + MAILLAGE_BOITE;
 
     /**
+     * Une chaîne tournée et mise à l'échelle : {@code socle} (un bloc en y, un quart de tour autour de z,
+     * échelle 2) porte son collider et {@code bras} (un bloc en x, un quart de tour autour de y), qui porte
+     * le sien. Une definition en fait deux corps, et le repère du bras dépend de toute la chaîne (ADR-151 D9).
+     */
+    private static final String GLTF_BRAS =
+            "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
+                    + "\"nodes\":[{\"name\":\"socle\",\"translation\":[0.0,1.0,0.0],"
+                    + "\"rotation\":[0.0,0.0,0.70710677,0.70710677],\"scale\":[2.0,2.0,2.0],\"children\":[1,2]},"
+                    + "{\"name\":\"socle_col\",\"mesh\":0,\"extras\":{\"axion\":"
+                    + "{\"role\":\"collider\",\"shape\":\"auto_box\"}}},"
+                    + "{\"name\":\"bras\",\"translation\":[1.0,0.0,0.0],"
+                    + "\"rotation\":[0.0,0.70710677,0.0,0.70710677],\"children\":[3]},"
+                    + "{\"name\":\"bras_col\",\"mesh\":0,\"extras\":{\"axion\":"
+                    + "{\"role\":\"collider\",\"shape\":\"auto_box\"}}}],"
+                    + MAILLAGE_BOITE;
+
+    /**
      * Repertoire d'extraction, jamais nettoye.
      *
      * <p>Une bibliotheque chargee par {@code System.load} reste verrouillee par
@@ -911,6 +928,49 @@ class NativeBridgeTest {
                                 == dev.axion.physics.PhysicsEventCodes.Kind.JOINT_BROKEN
                         && evenement.data() == 0),
                 () -> "JOINT_BROKEN attendu : " + rompu.events());
+
+        // ADR-151 D9 : le repère d'un corps secondaire, tel que BodySkeleton le calcule pour le dessin, est
+        // celui où le natif pose ce corps. Sans gravité, rien ne le bouge : à sa création, sa pose monde est
+        // la pose de spawn composée avec ce repère, sur une chaîne tournée et mise à l'échelle.
+        byte[] a3dBras = compiler(
+                reprise, 0x4346L, dev.axion.asset.SourceFormats.GLTF, GLTF_BRAS.getBytes(StandardCharsets.UTF_8));
+        byte[] nodesBras = dev.axion.asset.A3dSections.section(a3dBras, "NODE");
+        byte[] physBras = dev.axion.asset.A3dSections.section(a3dBras, "PHYS");
+        dev.axion.physics.AssemblyBodies.Layout bras = dev.axion.physics.AssemblyBodies.of(
+                com.google.gson.JsonParser.parseString(
+                                "{\"bodies\":[{\"name\":\"socle\",\"root_node\":\"socle\"},"
+                                        + "{\"name\":\"bras\",\"root_node\":\"bras\"}]}")
+                        .getAsJsonObject(),
+                nodesBras,
+                dev.axion.physics.BodyDescription.undeclared(dev.axion.physics.SimCommandStream.BODY_DYNAMIC),
+                true);
+        assertNotNull(bras, "les deux corps se résolvent sur les nodes de l'asset");
+        int noeudBras = bras.bodies().get(1).rootNode();
+        dev.axion.physics.CollectResult pose = simulation.tick(
+                300L,
+                new dev.axion.physics.SimCommandStream()
+                        .setDimensionEnv(6L, new float[3], new float[3], 0f, 0f, false)
+                        .createAssembly(3, 1, 6L, new double[] {0.0, 100.0, 0.0},
+                                new float[] {0.0f, 0.0f, 0.0f, 1.0f}, bras.bodies(), bras.joints(),
+                                bras.jamPoints(), bras.assemblyMass(), false, nodesBras, physBras)
+                        .setObservers(6L, new double[][] {{0.0, 100.0, 0.0}}),
+                0L);
+        dev.axion.physics.BodyState etatBras = pose.bodies().stream()
+                .filter(etatCorps -> etatCorps.handleIndex() == 3 && etatCorps.node() == noeudBras)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("le bras n'est pas rapporté : " + pose.bodies()));
+        dev.axion.render.BodySkeleton squelette =
+                dev.axion.render.BodySkeleton.of(nodesBras, bras.rootNode(), new int[] {noeudBras});
+        assertNotNull(squelette, "la section NODE compilée se lit");
+        float[] repere = squelette.frame(1);
+        assertArrayEquals(new double[] {repere[0], 100.0 + repere[1], repere[2]}, etatBras.position(), 1e-4,
+                "position du bras : celle du repère");
+        assertArrayEquals(new double[] {0.0, 103.0, 0.0}, etatBras.position(), 1e-4,
+                "(0, 1, 0) + quart de tour en z de (1, 0, 0) × 2, au-dessus du spawn");
+        float[] q = etatBras.rotation();
+        double alignement = Math.abs(q[0] * repere[3] + q[1] * repere[4] + q[2] * repere[5] + q[3] * repere[6]);
+        assertEquals(1.0, alignement, 1e-5, () -> "rotation du bras " + java.util.Arrays.toString(q)
+                + ", repère " + java.util.Arrays.toString(repere));
 
         // Annuler après un cycle clos est inoffensif.
         assertEquals(NativeBridge.OK, simulation.cancel());

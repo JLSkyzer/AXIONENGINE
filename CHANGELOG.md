@@ -84,6 +84,8 @@ Definition of Done (PARTIE 37.3).
     descripteur d'etats 2 et protocole `AXION-2` : les snapshots portent les
     corps secondaires en poses relatives au corps racine et les bits rompu et
     grippe de chaque joint ; un client `AXION-1` est refuse a la connexion ;
+    le client interpole les poses des corps secondaires avec celle de la
+    racine, et rattache chaque node a son corps comme le natif ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

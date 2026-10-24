@@ -3236,9 +3236,10 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             statique) ; 18 mutations rouges.
       - [ ] Racine statique : l'emprise de l'entité ne suit pas encore ses corps secondaires (D8 veut
             l'union de tous), le natif ne rapportant pas celle d'un corps statique.
-      - [ ] 5b. Le client. Les poses secondaires s'interpolent avec celle de la racine (ADR-150 D7) ;
-            rattachement de chaque node à son corps et pose de repos de chaque corps, depuis `NODE`,
-            comme le natif (`Skeleton`).
+      - [x] 5b (2026-10-24). Le client. Les poses secondaires s'interpolent au temps de rendu de la
+            racine, appariées par node (ADR-150 D7) ; `BodySkeleton` rattache chaque node à son corps et
+            donne le repère de repos de chaque corps depuis `NODE`, comme le natif (`Skeleton`) — un essai
+            JNI le recoupe sur une chaîne tournée et mise à l'échelle. 1 + 4 JUnit ; 14 mutations rouges.
       - [ ] 5c. Le dessin. Chaque node à la pose de son corps, backends vanilla et natif ; un contrôle
             multi-corps au banc de rendu.
 - [ ] 6. Overlays `joints` et `limits` (D7).

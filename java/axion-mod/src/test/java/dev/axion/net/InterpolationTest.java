@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayDeque;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.function.DoubleFunction;
@@ -64,6 +65,43 @@ class InterpolationTest {
         float[] r = autourDeY(attendu);
         double dot = Math.abs(r[0] * q[0] + r[1] * q[1] + r[2] * q[2] + r[3] * q[3]);
         return Math.toDegrees(2 * Math.acos(Math.min(1.0, dot)));
+    }
+
+    @Test
+    @DisplayName("ADR-151 D9 : les corps secondaires s'interpolent au temps de rendu de la racine, puis sont tenus")
+    void lesCorpsSecondairesSInterpolent() {
+        Interpolation interpolation = new Interpolation(EXTRAPOLATION_MS, SNAP);
+        AssemblyState.Body ouverte = AssemblyState.Body.of(5, new double[] {2, 0, 0}, DROIT);
+        AssemblyState.Body fermee = AssemblyState.Body.of(5, new double[] {2, 0, 4}, autourDeY(Math.PI / 2));
+        AssemblyState.Body tombe = AssemblyState.Body.of(9, new double[] {-1, 0, 0}, DROIT);
+        AssemblyState.Body tient = AssemblyState.Body.of(9, new double[] {-3, 0, 0}, DROIT);
+        AssemblyState.Body roue = AssemblyState.Body.of(12, new double[] {0, -1, 0}, DROIT);
+        // Les corps se reconnaissent à leur node, pas à leur rang.
+        interpolation.push(0, etat(0, 0).with(List.of(tient, ouverte), AssemblyState.JointBits.NONE), 0, 0);
+        interpolation.push(2, etat(0, 0).with(List.of(fermee, tombe, roue), AssemblyState.JointBits.NONE), 0, 0);
+
+        Interpolation.Pose milieu = interpolation.sample(50, 50);
+        assertEquals(3, milieu.bodies().size());
+        Interpolation.BodyPose porte = milieu.bodies().get(0);
+        assertEquals(5, porte.node());
+        assertEquals(2.0, porte.offset()[2], 1e-3, "à mi-chemin de 0 à 4");
+        assertTrue(ecartAutourDeY(Math.PI / 4, porte.rotation()) < 0.5, "à mi-rotation, par slerp");
+        assertEquals(9, milieu.bodies().get(1).node());
+        assertEquals(-2.0, milieu.bodies().get(1).offset()[0], 1e-3, "à mi-chemin de −3 à −1, rang changé");
+        assertEquals(-1.0, milieu.bodies().get(2).offset()[1], 1e-3, "un corps que la base n'a pas : tel quel");
+
+        // Au-delà du dernier snapshot, la racine extrapole et les corps sont tenus.
+        Interpolation.Pose apres = interpolation.sample(200, 200);
+        assertEquals(Interpolation.Mode.EXTRAPOLATED, apres.mode());
+        assertEquals(4.0, apres.bodies().get(0).offset()[2], 1e-3);
+
+        // Un snapshot qui corrige la racine laisse les corps à leur interpolation.
+        interpolation.push(6, etat(1, 0).with(List.of(fermee, tombe), AssemblyState.JointBits.NONE), 200, 200);
+        Interpolation.Pose corrigee = interpolation.sample(210, 210);
+        assertTrue(corrigee.x() < 0.3, "une correction retient la racine près de ce qui s'affichait : x = "
+                + corrigee.x());
+        assertEquals(2, corrigee.bodies().size(), "les corps passent la correction");
+        assertEquals(4.0, corrigee.bodies().get(0).offset()[2], 1e-3);
     }
 
     @Test

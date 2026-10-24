@@ -2,7 +2,9 @@ package dev.axion.net;
 
 import dev.axion.config.AxionConfig;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 
 /**
  * L'interpolation d'une assembly chez le client (21.7, ADR-150 D7), telle quelle.
@@ -15,6 +17,9 @@ import java.util.Iterator;
  *   <li>Au retour d'un snapshot : l'écart entre ce qui était affiché et ce qui doit l'être se résorbe en
  *       {@link #CORRECTION_MILLIS} — ou d'un coup au-delà de {@code net.snap_threshold}. En interpolation,
  *       un snapshot nouveau ne change pas ce qui s'affiche : seule la sortie d'une extrapolation corrige.</li>
+ *   <li>Les corps autres que le corps racine (ADR-151 D9), en poses relatives à lui, s'interpolent au même
+ *       temps de rendu : position linéaire et rotation par slerp, aucune vitesse relative n'étant
+ *       transmise ; au-delà du dernier snapshot, ils sont tenus.</li>
  * </ul>
  *
  * <p>Le temps de rendu — le temps du serveur estimé, moins {@code interpolation_delay_ms} — est fourni par
@@ -54,12 +59,38 @@ public final class Interpolation {
      * @param boundsMin coin minimal de l'emprise, relatif à la position, ou {@code null}
      * @param boundsMax coin maximal de l'emprise, relatif à la position, ou {@code null}
      * @param mode comment elle a été obtenue
+     * @param bodies les corps autres que le corps racine, en poses relatives à lui (ADR-151 D9)
      */
     public record Pose(double x, double y, double z, float[] rotation, float[] boundsMin, float[] boundsMax,
-            Mode mode) {}
+            Mode mode, List<BodyPose> bodies) {
+
+        /**
+         * La pose d'une assembly à un seul corps.
+         *
+         * @param x position x, en blocs
+         * @param y position y, en blocs
+         * @param z position z, en blocs
+         * @param rotation quaternion {@code (x, y, z, w)}
+         * @param boundsMin coin minimal de l'emprise, relatif à la position, ou {@code null}
+         * @param boundsMax coin maximal de l'emprise, relatif à la position, ou {@code null}
+         * @param mode comment elle a été obtenue
+         */
+        public Pose(double x, double y, double z, float[] rotation, float[] boundsMin, float[] boundsMax, Mode mode) {
+            this(x, y, z, rotation, boundsMin, boundsMax, mode, List.of());
+        }
+    }
+
+    /**
+     * La pose d'un corps autre que le corps racine, relative à lui, dans son repère (ADR-151 D8).
+     *
+     * @param node node racine du corps dans l'asset
+     * @param offset position relative, en blocs
+     * @param rotation rotation relative {@code (x, y, z, w)}
+     */
+    public record BodyPose(int node, double[] offset, float[] rotation) {}
 
     private record Sample(double millis, double[] position, float[] velocity, float[] rotation, float[] angular,
-            float[] boundsMin, float[] boundsMax) {}
+            float[] boundsMin, float[] boundsMax, List<BodyPose> bodies) {}
 
     private final double extrapolationMaxMillis;
     private final double snapThreshold;
@@ -103,8 +134,12 @@ public final class Interpolation {
         // Ce qui s'afficherait à cet instant sans ce snapshot, et ce qui doit s'afficher avec : comparés au
         // même temps de rendu, l'écart ne contient que ce que le snapshot apprend.
         Pose shown = samples.isEmpty() ? null : corrected(compute(renderMillis), nowMillis);
+        List<BodyPose> bodies = new ArrayList<>(state.bodies().size());
+        for (AssemblyState.Body body : state.bodies()) {
+            bodies.add(new BodyPose(body.node(), body.offsetBlocks(), body.quaternion()));
+        }
         samples.addLast(new Sample(millis, state.positionBlocks(), state.linearVelocity(), state.quaternion(),
-                state.angularVelocity(), state.boundsMin(), state.boundsMax()));
+                state.angularVelocity(), state.boundsMin(), state.boundsMax(), List.copyOf(bodies)));
         while (samples.size() > MAX_SAMPLES) {
             samples.removeFirst();
         }
@@ -170,7 +205,8 @@ public final class Interpolation {
         float[] rotation = Quaternions.multiply(
                 Quaternions.slerp(Quaternions.IDENTITY, errorRotation, (float) weight), raw.rotation());
         return new Pose(raw.x() + errorPosition[0] * weight, raw.y() + errorPosition[1] * weight,
-                raw.z() + errorPosition[2] * weight, rotation, raw.boundsMin(), raw.boundsMax(), raw.mode());
+                raw.z() + errorPosition[2] * weight, rotation, raw.boundsMin(), raw.boundsMax(), raw.mode(),
+                raw.bodies());
     }
 
     /**
@@ -234,11 +270,43 @@ public final class Interpolation {
         float[] rotation = Quaternions.slerp(a.rotation(), b.rotation(), (float) s);
         float[] min = lerp(a.boundsMin(), b.boundsMin(), s);
         float[] max = lerp(a.boundsMax(), b.boundsMax(), s);
-        return new Pose(position[0], position[1], position[2], rotation, min, max, Mode.INTERPOLATED);
+        return new Pose(position[0], position[1], position[2], rotation, min, max, Mode.INTERPOLATED,
+                bodies(a.bodies(), b.bodies(), s));
+    }
+
+    /**
+     * Les corps de {@code b}, chacun interpolé depuis le même node de {@code a} à la fraction {@code s} :
+     * position linéaire, rotation par slerp. Un corps que {@code a} n'a pas est pris tel quel.
+     */
+    private static List<BodyPose> bodies(List<BodyPose> a, List<BodyPose> b, double s) {
+        if (b.isEmpty()) {
+            return b;
+        }
+        List<BodyPose> bodies = new ArrayList<>(b.size());
+        for (BodyPose to : b) {
+            BodyPose from = null;
+            for (BodyPose candidate : a) {
+                if (candidate.node() == to.node()) {
+                    from = candidate;
+                    break;
+                }
+            }
+            if (from == null) {
+                bodies.add(to);
+                continue;
+            }
+            double[] offset = new double[3];
+            for (int axis = 0; axis < 3; axis++) {
+                offset[axis] = from.offset()[axis] + (to.offset()[axis] - from.offset()[axis]) * s;
+            }
+            bodies.add(new BodyPose(to.node(), offset, Quaternions.slerp(from.rotation(), to.rotation(), (float) s)));
+        }
+        return List.copyOf(bodies);
     }
 
     private static Pose pose(Sample sample, double[] position, float[] rotation, Mode mode) {
-        return new Pose(position[0], position[1], position[2], rotation, sample.boundsMin(), sample.boundsMax(), mode);
+        return new Pose(position[0], position[1], position[2], rotation, sample.boundsMin(), sample.boundsMax(), mode,
+                sample.bodies());
     }
 
     private static float[] lerp(float[] a, float[] b, double s) {
