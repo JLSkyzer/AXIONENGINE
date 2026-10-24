@@ -2204,7 +2204,9 @@ impl PhysicsWorld {
     ///
     /// Un seul rapport par corps **non statique** portant une identité : les
     /// corps statiques ne bougent pas, et un corps sans identité n'est pas
-    /// routable vers Java. La position monde (`f64`) est recomposée depuis la
+    /// routable vers Java. Seule exception, la racine fixe d'une assembly à
+    /// plusieurs corps (ADR-151 D8) : son emprise entre dans celle de l'entité, et
+    /// elle porte SLEEPING quand tous ses autres corps dorment. La position monde (`f64`) est recomposée depuis la
     /// simulation `f32` par l'origine flottante de la dimension (R-462). L'ordre
     /// suit l'itération déterministe de `rapier` (R-1020).
     ///
@@ -2218,20 +2220,35 @@ impl PhysicsWorld {
     pub fn body_reports(&self, origin: &FloatingOrigin) -> BodyReports {
         let mut reports = BodyReports::default();
         for (handle, body) in self.inner.bodies.iter() {
-            if !body.is_dynamic_or_kinematic() {
-                continue;
-            }
             let id = BodyId::from_handle(handle);
             let identity = match self.identity.get(&id) {
                 Some(identity) if !identity.assembly.is_absent() => identity,
                 _ => continue,
             };
+            // Un corps statique n'a rien à rapporter, sauf la racine fixe d'une assembly à plusieurs
+            // corps (ADR-151 D8) : son emprise entre dans celle de l'entité, que ses autres corps
+            // étirent. Elle dort quand ils dorment tous.
+            let fixed = !body.is_dynamic_or_kinematic();
+            let members = self.assembly_bodies(identity.assembly);
+            if fixed && members.len() < 2 {
+                continue;
+            }
             let pose = body.position();
             let world = origin.to_world(pose.translation);
 
             // Drapeaux de garde-fou du tick (CLAMPED), posés pendant `advance`.
             let mut flags = self.guard_flags.get(&id).copied().unwrap_or(0);
-            if body.is_sleeping() {
+            let sleeping = if fixed {
+                members.iter().all(|member| {
+                    self.inner
+                        .bodies
+                        .get(member.handle())
+                        .is_none_or(|other| !other.is_dynamic_or_kinematic() || other.is_sleeping())
+                })
+            } else {
+                body.is_sleeping()
+            };
+            if sleeping {
                 flags |= body_state_flags::SLEEPING;
             }
             if (self.fluid.is_some() || !self.fluid_volumes.is_empty())

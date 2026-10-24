@@ -392,10 +392,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             int rootNode = rootNodes.getOrDefault(handle, 0);
             int i = -1;
             List<AxionEntity.BodyPose> secondary = new ArrayList<>(own.size());
-            boolean sleeping = true;
             for (int rank : own) {
                 BodyState other = states.get(rank);
-                sleeping &= (other.flags() & BodyStateFlags.SLEEPING) != 0;
                 if (i < 0 && other.node() == rootNode) {
                     i = rank;
                     continue;
@@ -407,10 +405,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             }
             entity.setSecondaryBodies(secondary);
             if (i < 0) {
-                // ADR-151 D8 : un corps racine statique n'a pas d'état. L'entité garde sa pose, la sienne,
-                // et ses corps secondaires partent relatifs à elle ; son emprise reste celle qu'elle a.
-                speeds.put(handle, 0.0);
-                entity.updateNetState(new float[3], new float[3], sleeping);
+                // Le natif rapporte toujours le corps racine d'une assembly à plusieurs corps, fût-il
+                // statique (ADR-151 D8) : sans lui, rien à poser.
                 continue;
             }
             BodyState state = states.get(i);

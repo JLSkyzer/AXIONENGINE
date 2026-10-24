@@ -3234,8 +3234,7 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             garde les derniers bits connus ; une racine statique, sans état, prête sa pose à l'entité.
             4 tests de codec, 2 GameTests (charnière rompue reçue par un client simulé, racine
             statique) ; 18 mutations rouges.
-      - [ ] Racine statique : l'emprise de l'entité ne suit pas encore ses corps secondaires (D8 veut
-            l'union de tous), le natif ne rapportant pas celle d'un corps statique.
+      - [x] Racine statique : l'emprise de l'entité suit ses corps secondaires (étape 7a).
       - [x] 5b (2026-10-24). Le client. Les poses secondaires s'interpolent au temps de rendu de la
             racine, appariées par node (ADR-150 D7) ; `BodySkeleton` rattache chaque node à son corps et
             donne le repère de repos de chaque corps depuis `NODE`, comme le natif (`Skeleton`) — un essai
@@ -3250,6 +3249,15 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
       rompue, contrôle « ADR-151 D7 » au banc de rendu (vanilla et natif). 6 tests natifs, 1 JUnit ; 15 mutations rouges. Les axes de `generic` n'ont pas encore
       de plage.
 - [ ] 7. Preuves de bout en bout : GameTests, S-05, documentation.
+      - [x] 7a (2026-10-24). Racine statique : `SIM_OUT` rapporte la racine fixe d'une assembly à
+            plusieurs corps (décision de Killian), endormie avec les autres ; l'emprise de l'entité suit ses
+            corps. 1 test natif, 1 GameTest renforcé ; 3 mutations rouges.
+      - [ ] 7b. Contenu de test généré par un script du dépôt, sans Blender : porte, pendule, chaîne, grille.
+      - [ ] 7c. GameTests T-330..T-334 pour ce qui traverse la frontière et le réseau.
+      - [ ] 7d. S-05 au banc : 500 joints en chaînes et en grilles, temps du pas mesuré, aucune valeur non
+            finie, deux exécutions identiques.
+      - [ ] 7e. Documentation des joints pour les créateurs de contenu.
+      - [x] `t390` attend `[Integration, Joints, Contacts]` par sous-pas (fait en 3a, `tests/world.rs`).
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :

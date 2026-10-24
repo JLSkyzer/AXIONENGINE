@@ -88,6 +88,8 @@ Definition of Done (PARTIE 37.3).
     racine, et rattache chaque node a son corps comme le natif ;
     chaque corps se dessine a sa pose, dans les deux backends ;
     overlays de debug `joints` et `limits`, a la couleur de l'etat du joint ;
+    la racine fixe d'une assembly a plusieurs corps est rapportee dans `SIM_OUT`,
+    et l'emprise de l'entite suit tous ses corps ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

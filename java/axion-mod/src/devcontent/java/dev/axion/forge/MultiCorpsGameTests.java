@@ -150,6 +150,11 @@ public final class MultiCorpsGameTests {
                     Math.abs(ecart[0] - (1 + Math.cos(0.5))) < 0.05 && Math.abs(ecart[1] + Math.sin(0.5)) < 0.05
                             && Math.abs(ecart[2]) < 0.05,
                     "b tourné autour du gond, en (1 + cos ½, −sin ½, 0) : " + Arrays.toString(ecart));
+            // La racine statique est rapportée : l'emprise de l'entité est l'union de ses corps, b compris,
+            // qui pend sous elle.
+            AABB emprise = assembly.getBoundingBox();
+            helper.assertTrue(emprise.minY < assembly.getY() - 0.4,
+                    "l'emprise descend avec b : minY " + emprise.minY + ", racine " + assembly.getY());
         });
     }
 

@@ -584,6 +584,70 @@ fn adr151_jam_joint_ne_vise_que_le_joint_de_l_assembly_nommee() {
 }
 
 #[test]
+fn adr151_la_racine_fixe_d_une_assembly_a_plusieurs_corps_est_rapportee() {
+    // Sans gravité, une racine statique soudée à un corps qui finit par s'endormir : la racine est
+    // rapportée pour l'emprise de l'entité, et dort quand l'autre corps dort. Un corps statique seul,
+    // lui, n'a rien à rapporter.
+    let mut driver = pilote(128.0, 2048);
+    let mut racine = corps(0, Vec3::ZERO);
+    racine.kind = BodyKind::Static;
+    racine.desc = BodyDesc::undeclared(0);
+    let ids = driver
+        .create_assembly_bodies(
+            0,
+            ASSEMBLY,
+            spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
+            &[racine.clone(), corps(1, Vec3::new(2.0, 0.0, 0.0))],
+            &[soudure(0, 1, Vec3::new(2.0, 0.0, 0.0))],
+            CollisionGroups::ALL,
+            0.0,
+            false,
+        )
+        .unwrap();
+    let seule = Handle {
+        index: 8,
+        generation: 1,
+    };
+    creer(
+        &mut driver,
+        seule,
+        spawn([20.0, 64.0, 0.0], Quat::IDENTITY),
+        &[racine],
+        false,
+    )
+    .unwrap();
+    driver.advance_all(1.0 / 20.0);
+
+    let racine_rapportee = |driver: &mut SimDriver| {
+        let reports = driver.collect_reports();
+        assert!(
+            reports.states.iter().all(|state| state.handle != seule),
+            "un corps statique seul n'est pas rapporté"
+        );
+        let rang = reports
+            .states
+            .iter()
+            .position(|state| state.handle == ASSEMBLY && state.node == 0)
+            .expect("la racine fixe est rapportée");
+        assert_eq!(reports.bounds.len(), reports.states.len());
+        assert!(
+            reports.bounds[rang].max[1] > reports.bounds[rang].min[1],
+            "avec son emprise"
+        );
+        reports.states[rang].flags & body_state_flags::SLEEPING != 0
+    };
+    assert!(
+        !racine_rapportee(&mut driver),
+        "éveillée tant que l'autre corps l'est"
+    );
+    for _ in 0..200 {
+        driver.advance_all(1.0 / 20.0);
+    }
+    assert!(dort(&mut driver, ids[1]), "le corps soudé s'est endormi");
+    assert!(racine_rapportee(&mut driver), "elle dort avec lui");
+}
+
+#[test]
 fn adr151_une_assembly_endormie_ne_rapporte_pas_ses_joints() {
     // Sans gravité, la soudure tient le second corps immobile : l'assembly s'endort, et ses
     // joints ne sont plus rapportés ; une impulsion la réveille.
