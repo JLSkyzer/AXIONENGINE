@@ -81,6 +81,9 @@ Definition of Done (PARTIE 37.3).
     commandes `JAM_JOINT` et `BREAK_JOINT` par la frontiere, et l'etat de
     chaque joint (rompu, grippe, fraction de plage, force, couple) dans
     `SIM_OUT`, lu par Java ;
+    descripteur d'etats 2 et protocole `AXION-2` : les snapshots portent les
+    corps secondaires en poses relatives au corps racine et les bits rompu et
+    grippe de chaque joint ; un client `AXION-1` est refuse a la connexion ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

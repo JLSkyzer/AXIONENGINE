@@ -18,6 +18,7 @@ import dev.axion.physics.BodyState;
 import dev.axion.physics.BodyStateFlags;
 import dev.axion.physics.CollisionFilter;
 import dev.axion.physics.JointDescription;
+import dev.axion.physics.JointState;
 import dev.axion.physics.MaterialMarking;
 import dev.axion.physics.RefitMarking;
 import dev.axion.physics.SimCommandProvider;
@@ -30,6 +31,7 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -216,6 +218,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             LOGGER.warn("AXION : modules.joints est désactivé ; les joints de {} sont ignorés", definition.id());
         }
         rootNodes.put(index, layout.rootNode());
+        assembly.resetJoints(layout.joints().size());
         byte[] nodeSection = nodes == null ? new byte[0] : nodes;
         pending.add(new Pending(true, index, dimension, position, rotation, layout.bodies(), layout.joints(),
                 layout.jamPoints(), layout.assemblyMass(), layout.selfCollision(), nodeSection, phys));
@@ -356,42 +359,61 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     }
 
     @Override
-    public void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds) {
+    public void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds, List<JointState> joints) {
         AuthoritativeThread.require();
         long start = System.nanoTime();
+        // ADR-151 D8 : l'état de chaque joint rapporté, retenu sur son entité avant que son état réseau
+        // ne se calcule ; le natif tait ceux d'une assembly endormie, qui gardent le leur.
+        for (JointState joint : joints) {
+            AxionEntity entity = joint.handleGeneration() == GENERATION ? ledger.entity(joint.handleIndex()) : null;
+            if (entity != null) {
+                entity.setJointFlags(joint.index(), joint.flags());
+            }
+        }
         // ADR-120 : l'emprise de rang i est celle de l'état de rang i. Sans emprises (natif
         // antérieur au schéma 1 de SIM_OUT), les hitbox restent provisoires.
         boolean withBounds = bounds.size() == states.size();
-        // ADR-151 D2 : les états d'une assembly, regroupés ; celui de son corps racine pose l'entité.
-        Map<Integer, List<Integer>> ranks = new HashMap<>();
+        // ADR-151 D2 : les états d'une assembly, regroupés dans l'ordre du natif ; celui de son corps
+        // racine pose l'entité.
+        Map<Integer, List<Integer>> ranks = new LinkedHashMap<>();
         for (int i = 0; i < states.size(); i++) {
             BodyState state = states.get(i);
             if (state.handleGeneration() == GENERATION) {
                 ranks.computeIfAbsent(state.handleIndex(), key -> new ArrayList<>()).add(i);
             }
         }
-        for (int i = 0; i < states.size(); i++) {
-            BodyState state = states.get(i);
-            if (state.handleGeneration() != GENERATION
-                    || state.node() != rootNodes.getOrDefault(state.handleIndex(), 0)) {
-                continue;
-            }
-            AxionEntity entity = ledger.entity(state.handleIndex());
+        for (Map.Entry<Integer, List<Integer>> group : ranks.entrySet()) {
+            int handle = group.getKey();
+            AxionEntity entity = ledger.entity(handle);
             if (entity == null) {
                 continue;
             }
-            List<Integer> own = ranks.get(state.handleIndex());
-            List<AxionEntity.BodyPose> secondary = new ArrayList<>(own.size() - 1);
+            List<Integer> own = group.getValue();
+            int rootNode = rootNodes.getOrDefault(handle, 0);
+            int i = -1;
+            List<AxionEntity.BodyPose> secondary = new ArrayList<>(own.size());
+            boolean sleeping = true;
             for (int rank : own) {
-                if (rank != i) {
-                    BodyState other = states.get(rank);
-                    double[] o = other.position();
-                    float[] r = other.rotation();
-                    secondary.add(new AxionEntity.BodyPose(
-                            other.node(), o[0], o[1], o[2], new Quaternionf(r[0], r[1], r[2], r[3])));
+                BodyState other = states.get(rank);
+                sleeping &= (other.flags() & BodyStateFlags.SLEEPING) != 0;
+                if (i < 0 && other.node() == rootNode) {
+                    i = rank;
+                    continue;
                 }
+                double[] o = other.position();
+                float[] r = other.rotation();
+                secondary.add(new AxionEntity.BodyPose(
+                        other.node(), o[0], o[1], o[2], new Quaternionf(r[0], r[1], r[2], r[3])));
             }
             entity.setSecondaryBodies(secondary);
+            if (i < 0) {
+                // ADR-151 D8 : un corps racine statique n'a pas d'état. L'entité garde sa pose, la sienne,
+                // et ses corps secondaires partent relatifs à elle ; son emprise reste celle qu'elle a.
+                speeds.put(handle, 0.0);
+                entity.updateNetState(new float[3], new float[3], sleeping);
+                continue;
+            }
+            BodyState state = states.get(i);
             double[] p = state.position();
             // Position autoritaire du natif (coords monde recomposées par l'origine flottante).
             // Appliquée en fin de tick, elle prime sur toute position vanilla.

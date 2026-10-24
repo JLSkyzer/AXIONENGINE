@@ -1,5 +1,8 @@
 package dev.axion.forge;
 
+import dev.axion.forge.net.JoueurSimule;
+import dev.axion.net.AssemblyState;
+import java.util.Arrays;
 import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
@@ -79,6 +82,74 @@ public final class MultiCorpsGameTests {
             helper.assertTrue(
                     Math.abs(autres.get(0).y() - surLePilier) < 0.05,
                     "a reste sur le pilier : y = " + autres.get(0).y() + ", " + surLePilier + " attendu");
+        });
+    }
+
+    /**
+     * ADR-151 D8, R-630 : la charnière de {@code test/charniere_fragile} cède à un newton, sous le poids
+     * de {@code b}, dès le premier pas. Le serveur retient le joint rompu ; son état réseau porte {@code b}
+     * en pose relative au corps racine, et le bit rompu ; un client simulé les reçoit par les vrais
+     * snapshots.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void uneCharniereRompueArriveAuClientAvecLeSecondCorps(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        helper.setBlock(BlockPos.containing(4.0, DESSUS_DALLE, 4.0), Blocks.STONE);
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/charniere_fragile", new Vec3(4.5, DESSUS_DALLE + 1.0, 4.5),
+                new float[] {0f, 0f, 0f, 1f});
+        JoueurSimule joueur = JoueurSimule.rejoindre(
+                helper.getLevel(), "charniere", helper.absoluteVec(new Vec3(4.0, DESSUS_DALLE, 6.0)));
+        helper.onEachTick(joueur::tick);
+        helper.succeedWhen(() -> {
+            AssemblyState.JointBits serveur = assembly.jointBits();
+            helper.assertTrue(serveur.count() == 1 && serveur.flags(0) == AssemblyState.JointBits.BROKEN,
+                    "le joint rompu, retenu au serveur : " + serveur);
+            AssemblyState etat = assembly.netState();
+            helper.assertTrue(etat != null && etat.bodies().size() == 1, "l'état réseau porte le second corps");
+            double[] ecart = etat.bodies().get(0).offsetBlocks();
+            helper.assertTrue(
+                    Math.abs(ecart[0] - 2.0) < 0.1 && Math.abs(ecart[1] + 1.0) < 0.1 && Math.abs(ecart[2]) < 0.1,
+                    "b, tombé sur la dalle, à (2, −1, 0) de la racine : " + Arrays.toString(ecart));
+            helper.assertTrue(etat.joints().equals(serveur), "l'état réseau porte le bit rompu : " + etat.joints());
+            List<JoueurSimule.Recu> recus =
+                    joueur.recus().stream().filter(recu -> recu.handle() == assembly.getId()).toList();
+            helper.assertTrue(!recus.isEmpty(), "le client simulé n'a rien reçu");
+            AssemblyState dernier = recus.get(recus.size() - 1).state();
+            helper.assertTrue(
+                    dernier.joints().equals(serveur) && dernier.bodies().equals(etat.bodies()),
+                    "le client tient le bit rompu et la pose relative du serveur : " + dernier.joints() + ", "
+                            + dernier.bodies());
+            joueur.quitter();
+        });
+    }
+
+    /**
+     * ADR-151 D8 : un corps racine statique n'a pas d'état dans {@code SIM_OUT}. L'entité garde sa pose, et
+     * le second corps part relatif à elle : pendu à la charnière d'axe z de {@code test/charniere_fixe},
+     * limitée à un demi-radian, {@code b} pivote autour du gond, à un bloc de la racine, jusqu'à la butée.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void sousUneRacineStatiqueLeSecondCorpsPartRelatifALEntite(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/charniere_fixe", new Vec3(4.5, DESSUS_DALLE + 3.0, 4.5),
+                new float[] {0f, 0f, 0f, 1f});
+        double depart = assembly.getY();
+        helper.succeedWhen(() -> {
+            AssemblyState etat = assembly.netState();
+            helper.assertTrue(etat != null && etat.bodies().size() == 1, "l'état réseau porte le second corps");
+            helper.assertTrue(assembly.getY() == depart, "la racine statique ne bouge pas : y = " + assembly.getY());
+            float[] q = etat.bodies().get(0).quaternion();
+            double angle = 2 * Math.atan2(Math.abs(q[2]), Math.abs(q[3]));
+            helper.assertTrue(
+                    Math.abs(q[0]) < 0.02 && Math.abs(q[1]) < 0.02 && Math.abs(angle - 0.5) < 0.05,
+                    "b à la butée, un demi-radian autour de z : " + Arrays.toString(q));
+            double[] ecart = etat.bodies().get(0).offsetBlocks();
+            helper.assertTrue(
+                    Math.abs(ecart[0] - (1 + Math.cos(0.5))) < 0.05 && Math.abs(ecart[1] + Math.sin(0.5)) < 0.05
+                            && Math.abs(ecart[2]) < 0.05,
+                    "b tourné autour du gond, en (1 + cos ½, −sin ½, 0) : " + Arrays.toString(ecart));
         });
     }
 

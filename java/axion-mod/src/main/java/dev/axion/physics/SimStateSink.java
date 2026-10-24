@@ -21,6 +21,8 @@ public interface SimStateSink {
      * @param states états de corps décodés, dans l'ordre déterministe du natif (R-1020)
      * @param bounds emprises des mêmes corps (ADR-120) : {@code bounds.get(i)} est celle de
      *     {@code states.get(i)} ; liste vide si le natif ne les rapporte pas
+     * @param joints états des joints des assemblies éveillées (ADR-151 D7) ; ceux d'une assembly
+     *     endormie n'y sont pas, et restent tels que rapportés en dernier
      */
-    void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds);
+    void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds, List<JointState> joints);
 }

@@ -13,14 +13,21 @@ import java.util.Set;
  * <pre>
  * genre u8 = 5 | séquence varuint | tick serveur varulong | descripteur u8 | n varuint | n entrées
  * entrée : handle varuint | drapeaux u8 | [base varuint] | position | rotation i32
- *          | [vitesses 6 × i16] | [emprise 6 × i16]
+ *          | [vitesses 6 × i16] | [emprise 6 × i16] | [corps] | [joints]
  * position : 3 × i64 absolus (entrée complète) ou 3 × i32 de delta, au 1/1024 de bloc
+ * corps : n varuint | n × (node varuint | position 3 × i32 au 1/1024 de bloc | rotation i32)
+ * joints : n varuint | ⌈2n / 8⌉ octets, deux bits par joint
  * </pre>
  *
  * <p>Une entrée en delta nomme la séquence du snapshot qui portait sa base : le client vérifie qu'il la
  * tient, et redemande l'entrée complète sinon, plutôt que d'appliquer un delta à la mauvaise base. Une
  * vitesse ou une emprise absentes d'un delta sont celles de la base ; absentes d'une entrée complète, la
  * vitesse est nulle et l'emprise inconnue.
+ *
+ * <p>Les corps autres que le corps racine, en poses relatives à lui, et les bits de chaque joint suivent
+ * (descripteur 2, ADR-151 D8). Chacun part entier quand il a changé depuis la base, et pas du tout
+ * sinon : absents d'un delta, ce sont ceux de la base ; absents d'une entrée complète, l'assembly n'en a
+ * pas.
  *
  * @param sequence numéro du snapshot chez l'émetteur, à partir de 1
  * @param serverTick tick du serveur dont il porte les états
@@ -29,8 +36,11 @@ import java.util.Set;
  */
 public record SnapshotMessage(int sequence, long serverTick, int descriptor, List<Entry> entries) {
 
-    /** Le descripteur d'états procéduraux de M4 : versionné, et vide (ADR-150 D6). */
-    public static final int DESCRIPTOR_VERSION = 1;
+    /**
+     * Le descripteur d'états procéduraux (ADR-150 D6) : 2 depuis ADR-151 D8, qui y ajoute les corps
+     * autres que le corps racine et les joints.
+     */
+    public static final int DESCRIPTOR_VERSION = 2;
 
     /** Nombre maximal d'entrées d'un snapshot (R-1691). */
     static final int MAX_ENTRIES = 8192;
@@ -39,7 +49,10 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
     static final int FLAG_VELOCITY = 2;
     static final int FLAG_BOUNDS = 4;
     static final int FLAG_SLEEPING = 8;
-    private static final int KNOWN_FLAGS = FLAG_FULL | FLAG_VELOCITY | FLAG_BOUNDS | FLAG_SLEEPING;
+    static final int FLAG_BODIES = 16;
+    static final int FLAG_JOINTS = 32;
+    private static final int KNOWN_FLAGS =
+            FLAG_FULL | FLAG_VELOCITY | FLAG_BOUNDS | FLAG_SLEEPING | FLAG_BODIES | FLAG_JOINTS;
 
     /** Copie les entrées. */
     public SnapshotMessage {
@@ -58,6 +71,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      * @param velocity vitesses, ou {@code null} : celles de la base, nulles pour une entrée complète
      * @param bounds emprise, ou {@code null} : celle de la base, inconnue pour une entrée complète
      * @param sleeping le corps dort
+     * @param bodies corps autres que le corps racine, ou {@code null} : ceux de la base, aucun pour une
+     *     entrée complète
+     * @param joints bits des joints, ou {@code null} : ceux de la base, aucun pour une entrée complète
      */
     public record Entry(
             int handle,
@@ -68,7 +84,14 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             int rotation,
             AssemblyState.Velocity velocity,
             AssemblyState.Bounds bounds,
-            boolean sleeping) {
+            boolean sleeping,
+            List<AssemblyState.Body> bodies,
+            AssemblyState.JointBits joints) {
+
+        /** Copie les corps. */
+        public Entry {
+            bodies = bodies == null ? null : List.copyOf(bodies);
+        }
 
         /** {@return vrai pour une entrée complète} */
         public boolean full() {
@@ -84,7 +107,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.Velocity velocity =
                     AssemblyState.Velocity.ZERO.equals(state.velocity()) ? null : state.velocity();
             return new Entry(handle, 0, state.x(), state.y(), state.z(), state.rotation(), velocity,
-                    state.bounds(), state.sleeping());
+                    state.bounds(), state.sleeping(), state.bodies().isEmpty() ? null : state.bodies(),
+                    state.joints().count() == 0 ? null : state.joints());
         }
 
         /**
@@ -106,7 +130,10 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             }
             AssemblyState.Velocity velocity = state.velocity().equals(base.velocity()) ? null : state.velocity();
             AssemblyState.Bounds bounds = Objects.equals(state.bounds(), base.bounds()) ? null : state.bounds();
-            return new Entry(handle, baseSequence, dx, dy, dz, state.rotation(), velocity, bounds, state.sleeping());
+            List<AssemblyState.Body> bodies = state.bodies().equals(base.bodies()) ? null : state.bodies();
+            AssemblyState.JointBits joints = state.joints().equals(base.joints()) ? null : state.joints();
+            return new Entry(handle, baseSequence, dx, dy, dz, state.rotation(), velocity, bounds, state.sleeping(),
+                    bodies, joints);
         }
 
         /**
@@ -116,10 +143,12 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
         public AssemblyState resolve(AssemblyState base) {
             if (full()) {
                 return new AssemblyState(x, y, z, rotation,
-                        velocity == null ? AssemblyState.Velocity.ZERO : velocity, bounds, sleeping);
+                        velocity == null ? AssemblyState.Velocity.ZERO : velocity, bounds, sleeping,
+                        bodies == null ? List.of() : bodies, joints == null ? AssemblyState.JointBits.NONE : joints);
             }
             return new AssemblyState(base.x() + x, base.y() + y, base.z() + z, rotation,
-                    velocity == null ? base.velocity() : velocity, bounds == null ? base.bounds() : bounds, sleeping);
+                    velocity == null ? base.velocity() : velocity, bounds == null ? base.bounds() : bounds, sleeping,
+                    bodies == null ? base.bodies() : bodies, joints == null ? base.joints() : joints);
         }
 
         private static boolean fitsInt(long value) {
@@ -136,7 +165,20 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                 + (entry.full() ? 3 * Long.BYTES : varintSize(entry.base()) + 3 * Integer.BYTES)
                 + Integer.BYTES
                 + (entry.velocity() != null ? 6 * Short.BYTES : 0)
-                + (entry.bounds() != null ? 6 * Short.BYTES : 0);
+                + (entry.bounds() != null ? 6 * Short.BYTES : 0)
+                + (entry.bodies() != null ? bodiesSize(entry.bodies()) : 0)
+                + (entry.joints() != null
+                        ? varintSize(entry.joints().count())
+                                + AssemblyState.JointBits.packedLength(entry.joints().count())
+                        : 0);
+    }
+
+    private static int bodiesSize(List<AssemblyState.Body> bodies) {
+        int size = varintSize(bodies.size());
+        for (AssemblyState.Body body : bodies) {
+            size += varintSize(body.node()) + 4 * Integer.BYTES;
+        }
+        return size;
     }
 
     /**
@@ -169,7 +211,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             int flags = (entry.full() ? FLAG_FULL : 0)
                     | (entry.velocity() != null ? FLAG_VELOCITY : 0)
                     | (entry.bounds() != null ? FLAG_BOUNDS : 0)
-                    | (entry.sleeping() ? FLAG_SLEEPING : 0);
+                    | (entry.sleeping() ? FLAG_SLEEPING : 0)
+                    | (entry.bodies() != null ? FLAG_BODIES : 0)
+                    | (entry.joints() != null ? FLAG_JOINTS : 0);
             writer.varUInt(entry.handle()).u8(flags);
             if (entry.full()) {
                 writer.i64(entry.x()).i64(entry.y()).i64(entry.z());
@@ -184,6 +228,15 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             if (entry.bounds() != null) {
                 AssemblyState.Bounds b = entry.bounds();
                 writer.i16(b.minX()).i16(b.minY()).i16(b.minZ()).i16(b.maxX()).i16(b.maxY()).i16(b.maxZ());
+            }
+            if (entry.bodies() != null) {
+                writer.varUInt(entry.bodies().size());
+                for (AssemblyState.Body body : entry.bodies()) {
+                    writer.varUInt(body.node()).i32(body.x()).i32(body.y()).i32(body.z()).i32(body.rotation());
+                }
+            }
+            if (entry.joints() != null) {
+                writer.varUInt(entry.joints().count()).raw(entry.joints().packed());
             }
         }
         return writer.toByteArray();
@@ -246,9 +299,49 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     reader.i16(), reader.i16(), reader.i16(), reader.i16(), reader.i16(), reader.i16());
             AssemblyState.Bounds bounds = (flags & FLAG_BOUNDS) == 0 ? null : new AssemblyState.Bounds(
                     reader.i16(), reader.i16(), reader.i16(), reader.i16(), reader.i16(), reader.i16());
-            entries.add(new Entry(handle, base, x, y, z, rotation, velocity, bounds, (flags & FLAG_SLEEPING) != 0));
+            List<AssemblyState.Body> bodies = (flags & FLAG_BODIES) == 0 ? null : readBodies(reader, handle);
+            AssemblyState.JointBits joints = (flags & FLAG_JOINTS) == 0 ? null : readJoints(reader, handle);
+            entries.add(new Entry(handle, base, x, y, z, rotation, velocity, bounds, (flags & FLAG_SLEEPING) != 0,
+                    bodies, joints));
         }
         reader.expectEnd();
         return new SnapshotMessage(sequence, serverTick, descriptor, entries);
+    }
+
+    /** Les corps d'une entrée : au plus {@link AssemblyState#MAX_BODIES}, chacun à un node distinct. */
+    private static List<AssemblyState.Body> readBodies(WireReader reader, int handle) throws MalformedPacketException {
+        int count = reader.varUInt();
+        if (count > AssemblyState.MAX_BODIES) {
+            throw new MalformedPacketException("entité " + handle + " : " + count + " corps secondaires, au-delà de "
+                    + AssemblyState.MAX_BODIES);
+        }
+        List<AssemblyState.Body> bodies = new ArrayList<>(count);
+        Set<Integer> nodes = new HashSet<>();
+        for (int index = 0; index < count; index++) {
+            int node = reader.varUInt();
+            if (!nodes.add(node)) {
+                throw new MalformedPacketException("entité " + handle + " : node " + node + " de deux corps");
+            }
+            bodies.add(new AssemblyState.Body(node, reader.i32(), reader.i32(), reader.i32(), reader.i32()));
+        }
+        return bodies;
+    }
+
+    /** Les bits des joints d'une entrée : au plus 16 Kio, chaque octet lu dans ce que le message couvre. */
+    private static AssemblyState.JointBits readJoints(WireReader reader, int handle) throws MalformedPacketException {
+        int count = reader.varUInt();
+        if (count > AssemblyState.JointBits.MAX_JOINTS) {
+            throw new MalformedPacketException("entité " + handle + " : " + count + " joints, au-delà de "
+                    + AssemblyState.JointBits.MAX_JOINTS);
+        }
+        byte[] packed = new byte[AssemblyState.JointBits.packedLength(count)];
+        for (int index = 0; index < packed.length; index++) {
+            packed[index] = (byte) reader.u8();
+        }
+        try {
+            return new AssemblyState.JointBits(count, packed);
+        } catch (IllegalArgumentException padding) {
+            throw new MalformedPacketException("entité " + handle + " : " + padding.getMessage());
+        }
     }
 }

@@ -3227,6 +3227,20 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             ajoutés ou renforcés (assembly visée, force et couple), 6 + 3 JUnit ; 29 mutations
             rouges.
 - [ ] 5. Réseau et dessin (D8, D9) : descripteur 2, poses relatives, interpolation et dessin par corps.
+      - [x] 5a (2026-10-24). Le fil. Descripteur 2 et protocole `AXION-2` ; `AssemblyState` porte la
+            pose de chaque corps secondaire relative au corps racine (node, position au 1/1024 de bloc,
+            rotation « smallest three ») et les bits rompu/grippé de chaque joint, hérités de la base
+            quand ils n'ont pas changé. Serveur : le puits d'états reçoit les `JointState`, l'entité
+            garde les derniers bits connus ; une racine statique, sans état, prête sa pose à l'entité.
+            4 tests de codec, 2 GameTests (charnière rompue reçue par un client simulé, racine
+            statique) ; 18 mutations rouges.
+      - [ ] Racine statique : l'emprise de l'entité ne suit pas encore ses corps secondaires (D8 veut
+            l'union de tous), le natif ne rapportant pas celle d'un corps statique.
+      - [ ] 5b. Le client. Les poses secondaires s'interpolent avec celle de la racine (ADR-150 D7) ;
+            rattachement de chaque node à son corps et pose de repos de chaque corps, depuis `NODE`,
+            comme le natif (`Skeleton`).
+      - [ ] 5c. Le dessin. Chaque node à la pose de son corps, backends vanilla et natif ; un contrôle
+            multi-corps au banc de rendu.
 - [ ] 6. Overlays `joints` et `limits` (D7).
 - [ ] 7. Preuves de bout en bout : GameTests, S-05, documentation.
 

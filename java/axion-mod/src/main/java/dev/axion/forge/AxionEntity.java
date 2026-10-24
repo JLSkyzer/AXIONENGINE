@@ -6,6 +6,7 @@ import dev.axion.entity.AssemblyBinding;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.Interpolation;
 import dev.axion.net.RenderClock;
+import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
@@ -50,6 +51,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     private final Quaternionf bodyRotation = new Quaternionf();
     /** Les corps autres que le corps racine, à leur dernier état (serveur, ADR-151 D2). */
     private List<BodyPose> secondaryBodies = List.of();
+
+    /**
+     * Drapeaux de chaque joint de l'assembly, dans l'ordre de la definition, au dernier état que le
+     * natif en a rapporté (serveur, ADR-151 D8).
+     */
+    private int[] jointFlags = new int[0];
 
     /**
      * État de l'assembly tel que les snapshots le portent, côté serveur : posé à chaque tick simulé,
@@ -183,6 +190,36 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return secondaryBodies;
     }
 
+    /**
+     * Pose les joints de l'assembly, aucun rompu ni grippé (serveur, à la création de ses corps : le
+     * natif les crée intacts).
+     *
+     * @param count nombre de joints de la definition
+     */
+    void resetJoints(int count) {
+        jointFlags = new int[count];
+    }
+
+    /**
+     * Retient les drapeaux qu'un joint a au dernier tick (serveur, ADR-151 D8). Un rang hors de
+     * l'assembly est ignoré.
+     *
+     * @param joint rang du joint dans la definition
+     * @param flags ses drapeaux, rompu et grippé
+     */
+    void setJointFlags(int joint, int flags) {
+        if (joint >= 0 && joint < jointFlags.length) {
+            jointFlags[joint] = flags;
+        }
+    }
+
+    /**
+     * {@return l'état des joints de l'assembly, le dernier que le natif a rapporté (serveur, ADR-151 D8)}
+     */
+    public AssemblyState.JointBits jointBits() {
+        return AssemblyState.JointBits.of(jointFlags);
+    }
+
     /** Pose l'orientation autoritaire du corps (serveur, fin de tick, boucle C-40). */
     void setBodyRotation(float x, float y, float z, float w) {
         bodyRotation.set(x, y, z, w);
@@ -194,24 +231,37 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
-     * Quantifie l'état du corps pour les snapshots (serveur, fin de tick, après la position,
-     * l'orientation et l'emprise). Une position non finie ne se quantifie pas : l'état précédent reste.
+     * Quantifie l'état de l'assembly pour les snapshots (serveur, fin de tick, après la position,
+     * l'orientation, l'emprise, les corps secondaires et les joints). Une position non finie ne se
+     * quantifie pas : l'état précédent reste.
      *
-     * @param linear vitesse linéaire monde, en m/s
-     * @param angular vitesse angulaire monde, en rad/s
-     * @param sleeping le corps dort
+     * <p>Chaque corps secondaire part en pose relative au corps racine, dans son repère (ADR-151 D8) :
+     * tant que l'assembly bouge d'un bloc, rien ne change pour lui.
+     *
+     * @param linear vitesse linéaire monde du corps racine, en m/s
+     * @param angular vitesse angulaire monde du corps racine, en rad/s
+     * @param sleeping l'assembly dort
      */
     void updateNetState(float[] linear, float[] angular, boolean sleeping) {
         boolean bounded = hasPhysicalBounds();
+        double[] root = {getX(), getY(), getZ()};
+        float[] rootRotation = {bodyRotation.x, bodyRotation.y, bodyRotation.z, bodyRotation.w};
+        List<AssemblyState.Body> bodies = new ArrayList<>(secondaryBodies.size());
+        for (BodyPose body : secondaryBodies) {
+            Quaternionf r = body.rotation();
+            bodies.add(AssemblyState.Body.relative(body.node(), root, rootRotation,
+                    new double[] {body.x(), body.y(), body.z()}, new float[] {r.x, r.y, r.z, r.w}));
+        }
         try {
             netState = AssemblyState.of(
-                    new double[] {getX(), getY(), getZ()},
-                    new float[] {bodyRotation.x, bodyRotation.y, bodyRotation.z, bodyRotation.w},
+                    root,
+                    rootRotation,
                     linear,
                     angular,
                     bounded ? new float[] {boundsMin.x, boundsMin.y, boundsMin.z} : null,
                     bounded ? new float[] {boundsMax.x, boundsMax.y, boundsMax.z} : null,
-                    sleeping);
+                    sleeping)
+                    .with(bodies, AssemblyState.JointBits.of(jointFlags));
         } catch (IllegalArgumentException notFinite) {
             // Le natif ramène lui-même un corps non fini dans un état valide (E-2030) ; l'état précédent
             // reste celui des snapshots d'ici là.

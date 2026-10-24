@@ -32,6 +32,26 @@ class SnapshotSenderTest {
                 (short) 128, (short) 128, (short) 128), dort);
     }
 
+    /** Jusqu'à 63 corps secondaires, à des nodes distincts parfois au-delà d'un varint d'un octet. */
+    private static List<AssemblyState.Body> corps(Random random) {
+        List<AssemblyState.Body> corps = new ArrayList<>();
+        int nombre = random.nextInt(4) == 0 ? AssemblyState.MAX_BODIES : random.nextInt(4);
+        for (int index = 0; index < nombre; index++) {
+            corps.add(new AssemblyState.Body(index * 200, random.nextInt(), random.nextInt(), random.nextInt(),
+                    random.nextInt()));
+        }
+        return corps;
+    }
+
+    /** Des joints, de zéro à quelques centaines, aux drapeaux tirés au hasard. */
+    private static AssemblyState.JointBits joints(Random random) {
+        int[] drapeaux = new int[random.nextInt(4) == 0 ? 300 : random.nextInt(9)];
+        for (int index = 0; index < drapeaux.length; index++) {
+            drapeaux[index] = random.nextInt(4);
+        }
+        return AssemblyState.JointBits.of(drapeaux);
+    }
+
     private static SnapshotSender.Candidate candidat(int handle, AssemblyState etat) {
         return new SnapshotSender.Candidate(handle, etat, SnapshotSender.Frequency.of(etat), handle);
     }
@@ -315,8 +335,11 @@ class SnapshotSenderTest {
                 if (!handles.add(handle)) {
                     continue;
                 }
-                AssemblyState base = etat(random.nextInt(), random.nextInt(), random.nextBoolean());
-                AssemblyState cible = random.nextBoolean() ? base : etat(random.nextLong() >> 20, random.nextInt(), false);
+                AssemblyState base = etat(random.nextInt(), random.nextInt(), random.nextBoolean())
+                        .with(corps(random), joints(random));
+                AssemblyState cible = random.nextBoolean() ? base : etat(random.nextLong() >> 20, random.nextInt(), false)
+                        .with(random.nextBoolean() ? base.bodies() : corps(random),
+                                random.nextBoolean() ? base.joints() : joints(random));
                 SnapshotMessage.Entry entree = random.nextBoolean()
                         ? SnapshotMessage.Entry.full(handle, cible)
                         : SnapshotMessage.Entry.delta(handle, 1 + random.nextInt(1 << 20), base, cible);

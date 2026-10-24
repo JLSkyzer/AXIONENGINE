@@ -1,0 +1,12 @@
+{
+  "schema": 2,
+  "asset": "axion:models/test/deux_corps.gltf",
+  "kind": "rigid_object",
+  "bodies": [
+    { "name": "a", "root_node": "a" }
+  ],
+  "joints": [
+    { "name": "fragile", "type": "revolute", "a": "a", "b_node": "b", "anchor": [-1, 0, 0], "axis": [0, 0, 1],
+      "limits": [-0.5, 0.5], "break": { "force": 1 } }
+  ]
+}

@@ -529,7 +529,7 @@ public final class AxionRuntime {
         // Étape 15 (C-40) : les états collectés sont réappliqués aux entités liées via le
         // puits Forge (boucle C-40 ↔ C-50). Absent → rien à piloter.
         if (stateSink != null) {
-            stateSink.applyStates(tick, result.bodies(), result.bounds());
+            stateSink.applyStates(tick, result.bodies(), result.bounds(), result.joints());
         }
         // R-1010 : les événements, sur ce thread, après les états — une entité liée est déjà à sa
         // place quand un effet la touche. Les faits qu'ils portent vont au journal d'abord : un
