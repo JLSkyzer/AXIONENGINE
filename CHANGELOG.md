@@ -95,6 +95,10 @@ Definition of Done (PARTIE 37.3).
     S-05 au banc de physique : 500 joints en chaines et en grilles, aucune
     valeur non finie, deux executions identiques, temps du pas affiche ;
     corps et joints documentes pour les createurs de contenu (PHYSICS.md) ;
+  - persistance (C-52, ADR-153), en cours : schema NBT 3, qui garde la
+    position, les vitesses et le sommeil, chaque corps secondaire en
+    position monde et l'etat de chaque joint ; migration explicite du
+    schema 2 ; un schema posterieur reste inerte et intact ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

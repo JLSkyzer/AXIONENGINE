@@ -3275,7 +3275,9 @@ en position monde `f64`, état des joints, `axion:custom`) ; état restauré dan
 latéral à restauration automatique ; T-434 = migration 2 → 3 ; T-435 et T-713b en campagne réelle ; T-437
 admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
 
-- [ ] 1. Schéma 3 côté Java : clés de D2, migration 2 → 3 ; T-433, T-434.
+- [x] 1. Schéma 3 côté Java : clés de D2, migration 2 → 3 ; T-433, T-434 (2026-10-25). `PersistedState`, état lu
+      réécrit tel quel avant le premier pas, orientation rendue au bit près ; 820 JUnit, 37 GameTests,
+      12 mutations rouges. Le test de la charnière rompue juge la pose relative, plus la pose de repos.
 - [ ] 2. ABI 8 : section d'état restauré, création endormie, vitesses rendues au réveil ; T-430.
 - [ ] 3. Budget de chargement (R-1730).
 - [ ] 4. `CustomData` et `axion:custom` ; T-432.

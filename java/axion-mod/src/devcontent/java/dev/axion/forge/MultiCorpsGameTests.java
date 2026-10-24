@@ -12,6 +12,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
+import org.joml.Vector3f;
 
 /**
  * ADR-151 D2 : une assembly porte plusieurs corps, un par node racine que sa definition déclare.
@@ -107,10 +108,20 @@ public final class MultiCorpsGameTests {
                     "le joint rompu, retenu au serveur : " + serveur);
             AssemblyState etat = assembly.netState();
             helper.assertTrue(etat != null && etat.bodies().size() == 1, "l'état réseau porte le second corps");
+            // Où b se pose après sa chute — à plat ou sur le flanc — tient à un équilibre instable que la place
+            // du test dans le lot fait basculer (sa position absolue change les arrondis). L'oracle est donc la
+            // pose que le serveur tient : la pose relative du réseau est celle de b dans le repère de la
+            // racine, au quantum près, et b est tombé sous elle.
+            AxionEntity.BodyPose b = assembly.secondaryBodies().get(0);
+            Vector3f attendu = assembly.bodyRotation().conjugate().transform(new Vector3f(
+                    (float) (b.x() - assembly.getX()), (float) (b.y() - assembly.getY()), (float) (b.z() - assembly.getZ())));
             double[] ecart = etat.bodies().get(0).offsetBlocks();
-            helper.assertTrue(
-                    Math.abs(ecart[0] - 2.0) < 0.1 && Math.abs(ecart[1] + 1.0) < 0.1 && Math.abs(ecart[2]) < 0.1,
-                    "b, tombé sur la dalle, à (2, −1, 0) de la racine : " + Arrays.toString(ecart));
+            double quantum = 1.0 / 1024;
+            helper.assertTrue(Math.abs(ecart[0] - attendu.x) <= quantum && Math.abs(ecart[1] - attendu.y) <= quantum
+                            && Math.abs(ecart[2] - attendu.z) <= quantum,
+                    "pose relative " + Arrays.toString(ecart) + " pour " + attendu + " dans le repère de la racine");
+            helper.assertTrue(attendu.y < -0.4 && Math.abs(attendu.x) > 1.5,
+                    "b, détaché, tombé sur la dalle à côté de la racine : " + attendu);
             helper.assertTrue(etat.joints().equals(serveur), "l'état réseau porte le bit rompu : " + etat.joints());
             List<JoueurSimule.Recu> recus =
                     joueur.recus().stream().filter(recu -> recu.handle() == assembly.getId()).toList();

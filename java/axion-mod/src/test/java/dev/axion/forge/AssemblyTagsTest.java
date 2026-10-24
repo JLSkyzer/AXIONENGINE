@@ -34,7 +34,7 @@ class AssemblyTagsTest {
 
         CompoundTag sauvegarde = new CompoundTag();
         AssemblyTags.restore(liees, sauvegarde);
-        assertEquals(2, sauvegarde.getInt("axion:v"));
+        assertEquals(3, sauvegarde.getInt("axion:v"), "lié au schéma courant");
         assertEquals(0x1234L, sauvegarde.getLong("axion:def"));
         // Écrite par un composant à venir, relue par celui-ci : intacte.
         assertEquals(3, sauvegarde.getByteArray("axion:parts").length);

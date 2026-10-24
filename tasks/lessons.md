@@ -1862,3 +1862,20 @@ l'essai JNI, un test ABI natif — : chacun le prenait pour l'exemple d'un overl
 **Règle.** Avant d'implémenter ce qui était refusé, chercher les tests qui s'en servent comme exemple de
 refus (`grep` sur le rang, le nom, le bit), et les porter sur un autre exemple encore refusé dans le même
 commit.
+
+## 2026-10-25 | Une GameTest qui jugeait où un corps se pose après une chute
+
+**Ce qui a mal tourné.** Trois GameTests de persistance ajoutées, la charnière rompue de l'étape 5a
+d'ADR-151 a échoué, au bit près à chaque essai : `b` posé sur le flanc, à (2,5 ; −0,5) de la racine au
+lieu de (2 ; −1). Sans les trois tests, la suite passait. L'hypothèse d'une dégradation du gouverneur a
+été écartée : le second essai n'en montrait aucune.
+
+**Cause.** Les GameTests d'un lot sont disposées côte à côte : en ajouter déplace les autres, donc leur
+position absolue, donc les arrondis de la simulation. La chute de `b` après la rupture finit dans un
+équilibre instable — à plat ou sur le flanc — que ce décalage fait basculer. Le test jugeait la pose de
+repos, pas ce qu'il voulait prouver : la pose relative transmise.
+
+**Règle.** Une GameTest physique ne juge pas la pose de repos d'un corps qui tombe, roule ou bascule : elle
+juge la propriété visée contre l'état que tient le serveur (ici, la pose relative calculée depuis les
+poses monde, au quantum du réseau près), plus une borne grossière sur le mouvement. Un échec qui
+apparaît en ajoutant des tests ailleurs se vérifie d'abord en retirant ces tests de la découverte.

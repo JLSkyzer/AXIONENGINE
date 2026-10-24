@@ -21,8 +21,11 @@ import java.util.OptionalLong;
  */
 public record AssemblyBinding(Definition definition, String inertReason) {
 
-    /** Version du schéma NBT d'une assembly (PARTIE 22.2, {@code axion:v}). */
-    public static final int NBT_SCHEMA = 2;
+    /**
+     * Version du schéma NBT d'une assembly (PARTIE 22.2, {@code axion:v}) : 3 depuis ADR-153, qui y ajoute
+     * vitesses, sommeil, corps secondaires et état des joints ; le 2 se migre avant d'arriver ici.
+     */
+    public static final int NBT_SCHEMA = 3;
 
     /**
      * Résout ce qu'une entité désigne depuis son NBT.
@@ -43,9 +46,9 @@ public record AssemblyBinding(Definition definition, String inertReason) {
                     + ", conservé tel quel (R-1710)");
         }
         if (schema < NBT_SCHEMA) {
-            // Aucune version antérieure n'a jamais été écrite par AXION : il n'y
-            // a pas de migration à écrire, et pas de raison de deviner. Inerte,
-            // les octets restent intacts.
+            // Le schéma 2 arrive ici déjà migré (AssemblyTags.migrate) ; aucune
+            // version antérieure n'a été écrite par AXION : pas de raison de
+            // deviner. Inerte, les octets restent intacts.
             return inert("schéma NBT " + schema + " antérieur à " + NBT_SCHEMA
                     + ", sans migration connue");
         }

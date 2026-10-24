@@ -6,6 +6,7 @@ import dev.axion.entity.AssemblyBinding;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.Interpolation;
 import dev.axion.net.RenderClock;
+import dev.axion.physics.JointState;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.nbt.CompoundTag;
@@ -57,6 +58,25 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * natif en a rapporté (serveur, ADR-151 D8).
      */
     private int[] jointFlags = new int[0];
+
+    /**
+     * Le désalignement que Java a commandé en dernier à chaque joint, en blocs (serveur, ADR-153 D2) :
+     * en M4, la seule source d'un grippage, que le NBT garde.
+     */
+    private float[] jointMisalignment = new float[0];
+
+    /** Vitesses monde du corps racine au dernier état, en m/s et rad/s, et son sommeil (serveur). */
+    private final float[] linearVelocity = new float[3];
+
+    private final float[] angularVelocity = new float[3];
+
+    private boolean sleeping;
+
+    /**
+     * Vrai dès que le natif a rapporté un état depuis la lecture du NBT (serveur) : avant, l'état gardé
+     * est celui que le NBT portait, et il est réécrit tel quel.
+     */
+    private boolean simulated;
 
     /** Les bits des joints du plus récent snapshot reçu, et son tick serveur (client, ADR-151 D8). */
     private AssemblyState.JointBits receivedJoints = AssemblyState.JointBits.NONE;
@@ -172,15 +192,18 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /**
      * Pose d'un corps de l'assembly autre que le corps racine (ADR-151 D2) : son node racine dans
-     * l'asset, sa position monde et son orientation.
+     * l'asset, sa position monde, son orientation et ses vitesses monde.
      *
      * @param node node racine du corps
      * @param x position monde, en blocs
      * @param y idem
      * @param z idem
      * @param rotation orientation monde, copie
+     * @param linear vitesse linéaire monde, en m/s
+     * @param angular vitesse angulaire monde, en rad/s
      */
-    public record BodyPose(int node, double x, double y, double z, Quaternionf rotation) {}
+    public record BodyPose(
+            int node, double x, double y, double z, Quaternionf rotation, float[] linear, float[] angular) {}
 
     /**
      * Pose les corps de l'assembly autres que le corps racine (serveur, fin de tick), dans l'ordre
@@ -203,6 +226,20 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     void resetJoints(int count) {
         jointFlags = new int[count];
+        jointMisalignment = new float[count];
+    }
+
+    /**
+     * Retient le désalignement commandé à un joint (serveur, ADR-153 D2), au moment où la commande
+     * {@code JAM_JOINT} part. Un rang hors de l'assembly est ignoré.
+     *
+     * @param joint rang du joint dans la definition
+     * @param misalignment désalignement de son ancrage, en blocs ; 0 rend ses réglages d'origine
+     */
+    void commandMisalignment(int joint, float misalignment) {
+        if (joint >= 0 && joint < jointMisalignment.length) {
+            jointMisalignment[joint] = misalignment;
+        }
     }
 
     /**
@@ -249,6 +286,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param sleeping l'assembly dort
      */
     void updateNetState(float[] linear, float[] angular, boolean sleeping) {
+        System.arraycopy(linear, 0, linearVelocity, 0, 3);
+        System.arraycopy(angular, 0, angularVelocity, 0, 3);
+        this.sleeping = sleeping;
+        simulated = true;
         boolean bounded = hasPhysicalBounds();
         double[] root = {getX(), getY(), getZ()};
         float[] rootRotation = {bodyRotation.x, bodyRotation.y, bodyRotation.z, bodyRotation.w};
@@ -408,7 +449,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
-        stored = AssemblyTags.extract(tag);
+        // R-1710 : un schéma antérieur se migre par une fonction explicite avant d'être lu.
+        stored = AssemblyTags.migrate(AssemblyTags.extract(tag));
+        simulated = false;
         AssemblyBinding binding = AssemblyBinding.resolve(
                 AssemblyTags.version(stored),
                 AssemblyTags.definition(stored),
@@ -439,11 +482,37 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     @Override
     protected void addAdditionalSaveData(CompoundTag tag) {
         // Une assembly inerte est réécrite telle qu'elle a été lue (R-1710) : son orientation
-        // n'est pas celle d'un corps simulé, elle n'a pas à en recevoir une.
-        if (!inert) {
+        // n'est pas celle d'un corps simulé, elle n'a pas à en recevoir une. Liée mais pas encore
+        // simulée depuis sa lecture, elle garde l'état que son NBT portait (ADR-153 D2).
+        if (!inert && simulated) {
+            persistedState().write(stored);
+        } else if (!inert) {
             AssemblyTags.putRotation(stored, bodyRotation);
         }
         AssemblyTags.restore(stored, tag);
+    }
+
+    /** {@return l'état que le NBT garde au schéma 3, au dernier tick simulé (serveur, ADR-153 D2)} */
+    PersistedState persistedState() {
+        List<PersistedState.Body> bodies = new ArrayList<>(secondaryBodies.size());
+        for (BodyPose body : secondaryBodies) {
+            Quaternionf r = body.rotation();
+            bodies.add(new PersistedState.Body(body.node(), body.x(), body.y(), body.z(),
+                    new float[] {r.x, r.y, r.z, r.w}, body.linear().clone(), body.angular().clone()));
+        }
+        List<PersistedState.Joint> joints = new ArrayList<>(jointFlags.length);
+        for (int i = 0; i < jointFlags.length; i++) {
+            joints.add(new PersistedState.Joint(
+                    (jointFlags[i] & JointState.BROKEN) != 0, i < jointMisalignment.length ? jointMisalignment[i] : 0f));
+        }
+        return new PersistedState(
+                new double[] {getX(), getY(), getZ()},
+                new float[] {bodyRotation.x, bodyRotation.y, bodyRotation.z, bodyRotation.w},
+                linearVelocity.clone(),
+                angularVelocity.clone(),
+                sleeping,
+                List.copyOf(bodies),
+                List.copyOf(joints));
     }
 
     @Override

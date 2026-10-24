@@ -45,6 +45,8 @@ final class GrippagesDeTest implements SimCommandProvider {
             RuntimeAccess.get().addCommandProvider(actuel);
         }
         actuel.enAttente.add(new Grippage(AssemblyRuntime.handleIndexOf(assembly), joint, desalignement));
+        // ADR-153 D2 : le désalignement commandé est ce que le NBT garde du grippage.
+        assembly.commandMisalignment(joint, desalignement);
     }
 
     @Override

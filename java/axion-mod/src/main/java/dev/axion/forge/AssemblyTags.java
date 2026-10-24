@@ -18,10 +18,10 @@ import org.joml.Vector3f;
  * NBT et données d'apparition d'une AxionEntity (PARTIE 22.2, R-703).
  *
  * <p>Toutes les clés d'AXION commencent par {@code axion:}. L'entité en garde
- * une copie et la réécrit <strong>telle quelle</strong> : en M2, seules
- * {@code axion:v} et {@code axion:def} ont un composant qui les écrit, mais une
- * clé posée par une version ultérieure ne doit pas disparaître parce que cette
- * version-ci ne la comprend pas (R-1710).
+ * une copie et la réécrit <strong>telle quelle</strong> : seules version,
+ * definition et état ({@link PersistedState}) ont un composant qui les écrit, mais
+ * une clé posée par une version ultérieure ne doit pas disparaître parce que
+ * cette version-ci ne la comprend pas (R-1710).
  */
 final class AssemblyTags {
 
@@ -39,6 +39,9 @@ final class AssemblyTags {
 
     /** En deçà, un quaternion n'a pas de direction : il ne décrit aucune rotation. */
     private static final float MIN_QUATERNION_NORM_SQUARED = 1e-6f;
+
+    /** Écart du carré de la norme à 1 en deçà duquel un quaternion est tenu pour unitaire. */
+    private static final float UNIT_TOLERANCE = 1e-6f;
 
     /** Longueur maximale d'un identifiant transmis, celle des chaînes réseau de Minecraft. */
     static final int MAX_ID_CHARS = 32767;
@@ -96,6 +99,26 @@ final class AssemblyTags {
                 : OptionalLong.empty();
     }
 
+    /**
+     * {@return les clés gardées, migrées au schéma courant quand une fonction explicite le permet
+     * (R-1710)} Toute autre version reste telle quelle : postérieure, l'entité sera inerte et réécrite
+     * à l'identique ; antérieure à 2, aucune version d'AXION ne l'a écrite.
+     */
+    static CompoundTag migrate(CompoundTag stored) {
+        return version(stored).orElse(-1) == 2 ? migrate2To3(stored) : stored;
+    }
+
+    /**
+     * Le schéma 2 passe au 3 (ADR-153 D5) : il ne portait ni vitesses, ni sommeil, ni corps secondaires,
+     * ni état des joints, et la migration n'en invente pas — l'assembly repartira de sa pose de repos. Elle
+     * garde {@code axion:def}, {@code axion:rot} et toute autre clé, et ne change que la version.
+     */
+    private static CompoundTag migrate2To3(CompoundTag stored) {
+        CompoundTag migrated = stored.copy();
+        migrated.putInt(VERSION, 3);
+        return migrated;
+    }
+
     /** {@return les clés gardées, liées à une definition au schéma courant} */
     static CompoundTag bound(CompoundTag stored, long definitionHash) {
         CompoundTag out = stored.copy();
@@ -119,7 +142,9 @@ final class AssemblyTags {
                     new Quaternionf(list.getFloat(0), list.getFloat(1), list.getFloat(2), list.getFloat(3));
             float norm = rotation.lengthSquared();
             if (Float.isFinite(norm) && norm > MIN_QUATERNION_NORM_SQUARED) {
-                return rotation.normalize();
+                // Unitaire au flottant près, elle est rendue au bit près (ADR-153 D2) : la renormaliser
+                // changerait son dernier bit à chaque rechargement.
+                return Math.abs(norm - 1f) <= UNIT_TOLERANCE ? rotation : rotation.normalize();
             }
         }
         return new Quaternionf();

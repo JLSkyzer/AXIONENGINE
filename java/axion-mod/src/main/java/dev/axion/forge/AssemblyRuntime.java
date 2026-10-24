@@ -400,8 +400,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 }
                 double[] o = other.position();
                 float[] r = other.rotation();
-                secondary.add(new AxionEntity.BodyPose(
-                        other.node(), o[0], o[1], o[2], new Quaternionf(r[0], r[1], r[2], r[3])));
+                secondary.add(new AxionEntity.BodyPose(other.node(), o[0], o[1], o[2],
+                        new Quaternionf(r[0], r[1], r[2], r[3]), other.linearVelocity(), other.angularVelocity()));
             }
             entity.setSecondaryBodies(secondary);
             if (i < 0) {
