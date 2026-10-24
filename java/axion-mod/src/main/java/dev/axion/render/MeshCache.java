@@ -266,8 +266,13 @@ public final class MeshCache {
         return count;
     }
 
-    /** Même conteneur compilé : même publication, ou même clé (C-25). */
-    private static boolean sameContent(Published held, Published wanted) {
+    /**
+     * {@return vrai pour le même conteneur compilé : même publication, ou même clé (C-25)}
+     *
+     * @param held publication tenue
+     * @param wanted publication courante
+     */
+    public static boolean sameContent(Published held, Published wanted) {
         return held == wanted
                 || (held.key() != null
                         && held.key().equals(wanted.key())

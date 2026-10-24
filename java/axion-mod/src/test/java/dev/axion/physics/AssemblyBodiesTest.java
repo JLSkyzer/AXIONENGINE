@@ -96,6 +96,21 @@ class AssemblyBodiesTest {
     }
 
     @Test
+    @DisplayName("ADR-151 D9 : le client résout le node racine du corps racine comme le serveur")
+    void leNodeRacineSeResoutCommeAuServeur() {
+        JsonObject inverse = definition(
+                "{\"bodies\": [{\"name\": \"b\", \"root_node\": \"b\"}, {\"name\": \"a\", \"root_node\": \"a\"}]}");
+        byte[] section = nodes("a", "a_vue", "b");
+        assertEquals(2, AssemblyBodies.rootNodeOf(inverse, section));
+        assertEquals(AssemblyBodies.of(inverse, section, PHYSIQUE, true).rootNode(),
+                AssemblyBodies.rootNodeOf(inverse, section), "celui du serveur");
+        assertEquals(0, AssemblyBodies.rootNodeOf(definition("{}"), section), "sans bodies : la racine de l'asset");
+        assertEquals(0, AssemblyBodies.rootNodeOf(definition("{\"bodies\": [{\"name\": \"a\"}]}"), section));
+        assertEquals(-1, AssemblyBodies.rootNodeOf(
+                definition("{\"bodies\": [{\"name\": \"a\", \"root_node\": \"absent\"}]}"), section), "introuvable");
+    }
+
+    @Test
     @DisplayName("Un root_node qui ne nomme aucun node, ou un second corps sans node : aucun corps")
     void racineIntrouvable() {
         assertNull(AssemblyBodies.of(

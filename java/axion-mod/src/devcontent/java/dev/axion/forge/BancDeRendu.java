@@ -148,6 +148,15 @@ public final class BancDeRendu {
 
     private static final String CUBE = "axion:test_cube";
 
+    /**
+     * ADR-151 D9 : deux cubes, {@code a} statique et {@code b} pendu à une charnière d'axe z limitée à un
+     * demi-radian ({@code test/charniere_fixe}).
+     */
+    private static final String CHARNIERE = "axion:test/charniere_fixe";
+
+    /** Un quart de tour autour de y, vers la droite : l'axe x de l'asset part vers +z. */
+    private static final float[] QUART_DE_TOUR_A_DROITE = {0f, -0.70710677f, 0f, 0.70710677f};
+
     /** Les panneaux des cartes de matériau (ADR-127 §5) : le même, avec et sans normal map ni ORM. */
     private static final String RELIEF = "axion:test/materiaux/relief";
     private static final String PLAT = "axion:test/materiaux/plat";
@@ -239,9 +248,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -269,6 +278,11 @@ public final class BancDeRendu {
     private static Vue derniereVue;
     private static AxionEntity cube;
     private static int cubePrecedent;
+
+    /** ADR-151 D9 : la charnière, le fond sans elle, et ses poses au serveur à la capture. */
+    private static AxionEntity charniere;
+    private static CapturesDuBanc.Capture fondCharniere;
+    private static PosesCharniere posesCharniere;
 
     private static CapturesDuBanc.Capture avec;
     private static CapturesDuBanc.Capture sans;
@@ -539,6 +553,24 @@ public final class BancDeRendu {
                 jugerT474();
             }
         });
+
+        // ADR-151 D9 : une charnière à racine statique, à l'écart du cube, b pendu à la butée d'un
+        // demi-radian. Chaque corps se dessine à sa pose : la silhouette est celle des deux cubes aux poses
+        // du serveur, et non celle de l'asset au repos, b à l'horizontale.
+        if (!SHADERS) {
+            // Le retour à midi de T-474 éclaire encore le terrain : le fond attend une image stable.
+            stabiliser("le fond de la charnière");
+            une("capturer le fond de la charnière", mc -> fondCharniere = capturer(mc, "d9_fond.png"));
+            serveur("poser la charnière", s -> charniere = AssembliesDeTest.poser(
+                    s.overworld(), CHARNIERE, positionCharniere(), QUART_DE_TOUR_A_DROITE));
+            jusqua("b à la butée et dessiné", 60, mc -> rendu(mc, DERRIERE.size() + 2, charniere.getId())
+                    && aLaButee() && corpsDessines(mc));
+            stabiliser("la charnière");
+            serveur("relever les poses de la charnière", s -> posesCharniere = PosesCharniere.de(charniere));
+            une("juger ADR-151 D9", mc -> jugerD9(capturer(mc, "d9_charniere.png"), derniereVue));
+            serveur("retirer la charnière", s -> charniere.discard());
+            jusqua("la charnière retirée", 30, mc -> mc.level.getEntity(charniere.getId()) == null);
+        }
 
         // Cartes de matériau (ADR-127 §5) : deux panneaux identiques face à la caméra, l'un avec
         // normal map et ORM, l'autre sans. En natif, sous le soleil de midi, le relief fait varier la
@@ -903,6 +935,45 @@ public final class BancDeRendu {
         return new Vec3(-3.5, surface, 0.5);
     }
 
+    /** {@return où poser la charnière : plus loin que le cube, sur le côté, à un bloc et quart du sol} */
+    private static Vec3 positionCharniere() {
+        return new Vec3(-6.5, surface + 1.25, 3.0);
+    }
+
+    /** {@return vrai si b est à la butée au serveur : un demi-radian de rotation relative à la racine} */
+    private static boolean aLaButee() {
+        List<AxionEntity.BodyPose> corps = charniere.secondaryBodies();
+        if (corps.size() != 1) {
+            return false;
+        }
+        Quaternionf relative = charniere.bodyRotation().conjugate().mul(corps.get(0).rotation());
+        double angle = 2 * Math.acos(Math.min(1.0, Math.abs(relative.w)));
+        return Math.abs(angle - 0.5) < 0.03;
+    }
+
+    /** {@return vrai si le client tient le second corps de la charnière, prêt à le dessiner} */
+    private static boolean corpsDessines(Minecraft minecraft) {
+        return minecraft.level.getEntity(charniere.getId()) instanceof AxionEntity client
+                && client.renderPose(0f).bodies().size() == 1;
+    }
+
+    /**
+     * Les poses de la charnière au serveur : celle de son corps racine, et celle de {@code b}.
+     *
+     * @param racine position monde du corps racine
+     * @param rotationRacine son orientation
+     * @param b position monde de {@code b}
+     * @param rotationB son orientation
+     */
+    private record PosesCharniere(Vec3 racine, Quaternionf rotationRacine, Vec3 b, Quaternionf rotationB) {
+
+        static PosesCharniere de(AxionEntity charniere) {
+            AxionEntity.BodyPose b = charniere.secondaryBodies().get(0);
+            return new PosesCharniere(charniere.position(), charniere.bodyRotation(), new Vec3(b.x(), b.y(), b.z()),
+                    new Quaternionf(b.rotation()));
+        }
+    }
+
     private static void viser(float nouveauLacet, float nouveauTangage) {
         lacet = nouveauLacet;
         tangage = nouveauTangage;
@@ -1084,6 +1155,35 @@ public final class BancDeRendu {
                 masqueDroit.nombre(), Arrays.toString(masqueDroit.boite()), Arrays.toString(attenduDroit), ecartDroit,
                 masqueTourne.nombre(), Arrays.toString(masqueTourne.boite()), Arrays.toString(attenduTourne),
                 ecartTourne, Arrays.toString(arrondir(faces)), jour, nuit));
+    }
+
+    /**
+     * ADR-151 D9 : la silhouette de la charnière est la boîte des deux cubes à leurs poses du serveur, b penché.
+     * Celle de l'asset au repos, b à l'horizontale, doit s'en écarter : sans quoi le jugement ne départagerait
+     * pas un dessin par corps d'un dessin rigide.
+     */
+    private static void jugerD9(CapturesDuBanc.Capture capture, Vue vue) {
+        CapturesDuBanc.Masque masque = CapturesDuBanc.masque(fondCharniere, capture);
+        PosesCharniere p = posesCharniere;
+        Vector3f decalage = new Quaternionf(p.rotationRacine()).transform(new Vector3f(2f, 0f, 0f));
+        Vec3 bAuRepos = p.racine().add(decalage.x, decalage.y, decalage.z);
+        int[] attendue = boiteDesCubes(vue, capture, p.racine(), p.rotationRacine(), p.b(), p.rotationB());
+        int[] rigide = boiteDesCubes(vue, capture, p.racine(), p.rotationRacine(), bAuRepos, p.rotationRacine());
+        int ecart = ecart(masque, attendue);
+        int ecartRigide = ecart(masque, rigide);
+        // ADR-151 D8 : le client tient aussi l'état du joint, ni rompu ni grippé.
+        dev.axion.net.AssemblyState.JointBits joints =
+                Minecraft.getInstance().level.getEntity(charniere.getId()) instanceof AxionEntity client
+                        ? client.jointBits()
+                        : dev.axion.net.AssemblyState.JointBits.NONE;
+        boolean jointRecu = joints.count() == 1 && joints.flags(0) == 0;
+        boolean vert = masque.nombre() >= aire(attendue) / 4 && ecart <= ECART_BOITE && ecartRigide > ECART_BOITE
+                && jointRecu;
+        RAPPORT.noter("ADR-151 D9", vert, String.format(Locale.ROOT,
+                "%d px, boîte %s pour %s attendue, b à sa pose (écart %d) ; au repos, b à l'horizontale, %s"
+                        + " (écart %d) ; joints au client : %s",
+                masque.nombre(), Arrays.toString(masque.boite()), Arrays.toString(attendue), ecart,
+                Arrays.toString(rigide), ecartRigide, joints));
     }
 
     private static void jugerT471() {
@@ -1683,6 +1783,39 @@ public final class BancDeRendu {
             }
         }
         // Un pixel est couvert si son centre l'est.
+        return new int[] {
+            (int) Math.ceil(minX - 0.5f), (int) Math.ceil(minY - 0.5f),
+            (int) Math.floor(maxX - 0.5f), (int) Math.floor(maxY - 0.5f)
+        };
+    }
+
+    /**
+     * {@return la boîte, en pixels inclus, que couvrent deux cubes de {@code test/deux_corps} :
+     * {@code [-0,5 ; 0,5] × [0 ; 1] × [-0,5 ; 0,5]} autour de l'origine de chacun, à sa pose}
+     */
+    private static int[] boiteDesCubes(
+            Vue vue, CapturesDuBanc.Capture capture, Vec3 a, Quaternionf rotationA, Vec3 b, Quaternionf rotationB) {
+        float minX = Float.POSITIVE_INFINITY;
+        float minY = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY;
+        float maxY = Float.NEGATIVE_INFINITY;
+        Vec3[] origines = {a, b};
+        Quaternionf[] rotations = {rotationA, rotationB};
+        for (int cube = 0; cube < 2; cube++) {
+            for (float dx : new float[] {-0.5f, 0.5f}) {
+                for (float dy : new float[] {0f, 1f}) {
+                    for (float dz : new float[] {-0.5f, 0.5f}) {
+                        Vector3f coin = new Quaternionf(rotations[cube]).transform(new Vector3f(dx, dy, dz));
+                        float[] ecran = projeter(vue, origines[cube].add(coin.x, coin.y, coin.z), capture.largeur(),
+                                capture.hauteur());
+                        minX = Math.min(minX, ecran[0]);
+                        minY = Math.min(minY, ecran[1]);
+                        maxX = Math.max(maxX, ecran[0]);
+                        maxY = Math.max(maxY, ecran[1]);
+                    }
+                }
+            }
+        }
         return new int[] {
             (int) Math.ceil(minX - 0.5f), (int) Math.ceil(minY - 0.5f),
             (int) Math.floor(maxX - 0.5f), (int) Math.floor(maxY - 0.5f)

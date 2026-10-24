@@ -88,6 +88,33 @@ class BodySkeletonTest {
     }
 
     @Test
+    @DisplayName("Dans le repère de son corps, la pose de repos d'un node redevient sa transformation par rapport au corps")
+    void laPoseDeReposPasseDansLeRepereDuCorps() {
+        BodySkeleton squelette = BodySkeleton.of(NODES, 0, new int[] {1});
+        float[] repere = squelette.frame(1);
+        org.joml.Quaternionf rotation = new org.joml.Quaternionf(repere[3], repere[4], repere[5], repere[6]);
+        // Un node à (0, 0, 2) du bras, à l'échelle 2 : sa pose dans l'asset, composée par JOML.
+        float[] modele = new float[12];
+        for (int colonne = 0; colonne < 3; colonne++) {
+            org.joml.Vector3f axe = new org.joml.Vector3f(colonne == 0 ? 2f : 0f, colonne == 1 ? 2f : 0f, colonne == 2 ? 2f : 0f);
+            rotation.transform(axe);
+            modele[3 * colonne] = axe.x;
+            modele[3 * colonne + 1] = axe.y;
+            modele[3 * colonne + 2] = axe.z;
+        }
+        org.joml.Vector3f origine = rotation.transform(new org.joml.Vector3f(0f, 0f, 2f)).add(repere[0], repere[1], repere[2]);
+        modele[9] = origine.x;
+        modele[10] = origine.y;
+        modele[11] = origine.z;
+
+        assertArrayEquals(new float[] {2f, 0f, 0f, 0f, 2f, 0f, 0f, 0f, 2f, 0f, 0f, 2f},
+                squelette.modelInBody(1, modele), 1e-5f, "l'échelle et l'écart au bras, sans sa rotation");
+        float[] racine = {1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 4f, 5f, 6f};
+        org.junit.jupiter.api.Assertions.assertSame(racine, squelette.modelInBody(0, racine),
+                "le repère du corps racine est celui de l'asset");
+    }
+
+    @Test
     @DisplayName("La racine du corps racine garde les siens, même sous une racine secondaire")
     void laRacineDuCorpsRacineGardeLesSiens() {
         BodySkeleton squelette = BodySkeleton.of(NODES, 2, new int[] {1});

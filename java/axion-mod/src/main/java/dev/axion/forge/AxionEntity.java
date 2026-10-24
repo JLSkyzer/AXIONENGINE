@@ -58,6 +58,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     private int[] jointFlags = new int[0];
 
+    /** Les bits des joints du plus récent snapshot reçu, et son tick serveur (client, ADR-151 D8). */
+    private AssemblyState.JointBits receivedJoints = AssemblyState.JointBits.NONE;
+
+    private long receivedJointsTick = Long.MIN_VALUE;
+
     /**
      * État de l'assembly tel que les snapshots le portent, côté serveur : posé à chaque tick simulé,
      * {@code null} avant le premier (ADR-150 D6).
@@ -214,10 +219,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
-     * {@return l'état des joints de l'assembly, le dernier que le natif a rapporté (serveur, ADR-151 D8)}
+     * {@return l'état des joints de l'assembly (ADR-151 D8) : au serveur, le dernier que le natif a
+     * rapporté ; au client, celui du plus récent snapshot reçu}
      */
     public AssemblyState.JointBits jointBits() {
-        return AssemblyState.JointBits.of(jointFlags);
+        return level().isClientSide() ? receivedJoints : AssemblyState.JointBits.of(jointFlags);
     }
 
     /** Pose l'orientation autoritaire du corps (serveur, fin de tick, boucle C-40). */
@@ -300,6 +306,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     public void applySnapshot(AssemblyState state, long serverTick) {
         long now = System.nanoTime();
         interpolation.push(serverTick, state, clock.renderMillis(now), clock.localMillis(now));
+        // ADR-151 D8 : les bits des joints ne s'interpolent pas ; le plus récent état du serveur prime.
+        if (serverTick >= receivedJointsTick) {
+            receivedJoints = state.joints();
+            receivedJointsTick = serverTick;
+        }
     }
 
     /**
@@ -310,8 +321,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param z position
      * @param rotation orientation du corps, autour de son origine
      * @param mode comment l'interpolation de 21.7 l'a obtenue ; {@code null} avant le premier snapshot
+     * @param bodies les corps autres que le corps racine, en poses relatives à lui (ADR-151 D9) ; aucun avant le
+     *     premier snapshot
      */
-    public record RenderPose(double x, double y, double z, Quaternionf rotation, Interpolation.Mode mode) {}
+    public record RenderPose(
+            double x, double y, double z, Quaternionf rotation, Interpolation.Mode mode, List<Interpolation.BodyPose> bodies) {}
 
     /**
      * {@return où dessiner l'assembly à cette image (client)} C'est la pose de l'interpolation de 21.7,
@@ -324,12 +338,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (interpolation == null) {
             return new RenderPose(Mth.lerp(partialTick, xo, getX()), Mth.lerp(partialTick, yo, getY()),
                     Mth.lerp(partialTick, zo, getZ()), rotationO.slerp(rotation, partialTick, new Quaternionf()),
-                    null);
+                    null, List.of());
         }
         long frame = clock.frameNanos();
         Interpolation.Pose pose = interpolation.sample(clock.renderMillis(frame), clock.localMillis(frame));
         float[] q = pose.rotation();
-        return new RenderPose(pose.x(), pose.y(), pose.z(), new Quaternionf(q[0], q[1], q[2], q[3]), pose.mode());
+        return new RenderPose(pose.x(), pose.y(), pose.z(), new Quaternionf(q[0], q[1], q[2], q[3]), pose.mode(),
+                pose.bodies());
     }
 
     /**

@@ -141,6 +141,25 @@ public final class AssemblyBodies {
                 transcription.jamPoints(), selfCollision);
     }
 
+    /**
+     * {@return le node racine du corps racine que la definition déclare, résolu comme {@link #of} le résout :
+     * {@code bodies[0].root_node} par son nom dans la section {@code NODE}, la racine de l'asset s'il n'est
+     * pas déclaré ; {@code -1} s'il ne nomme aucun node}
+     *
+     * <p>Le client, qui dessine les corps sans refaire leur liste (ADR-151 D9), n'a besoin que de lui : les
+     * autres corps lui viennent du snapshot.
+     *
+     * @param definition racine JSON de la definition
+     * @param nodes section {@code NODE} de l'asset, ou {@code null}
+     */
+    public static int rootNodeOf(JsonObject definition, byte[] nodes) {
+        if (!(definition.get("bodies") instanceof JsonArray bodies) || bodies.isEmpty()
+                || !(bodies.get(0) instanceof JsonObject first) || first.get("root_node") == null) {
+            return 0;
+        }
+        return names(nodes).indexOf(first.get("root_node").getAsString());
+    }
+
     /** Un seul corps, au node {@code root}, qui porte la description entière de l'assembly. */
     private static Layout single(BodyDescription physics, int root, boolean selfCollision) {
         return new Layout(List.of(new SimCommandStream.AssemblyBody(physics, root)), 0.0f, root, List.of(), List.of(),

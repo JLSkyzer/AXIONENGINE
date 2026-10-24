@@ -2,6 +2,7 @@ package dev.axion.forge.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import dev.axion.AxionMod;
+import dev.axion.asset.A3dSections;
 import dev.axion.asset.AssetRegistry;
 import dev.axion.asset.NativeAssetLoader;
 import dev.axion.bootstrap.BootstrapOutcome;
@@ -15,7 +16,9 @@ import dev.axion.forge.AxionEntity;
 import dev.axion.forge.RuntimeAccess;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.diag.JavaMetrics;
+import dev.axion.physics.AssemblyBodies;
 import dev.axion.render.BackendSelection;
+import dev.axion.render.BodyRig;
 import dev.axion.render.GpuDegradation;
 import dev.axion.render.GpuPassTimings;
 import dev.axion.render.MeshCache;
@@ -26,6 +29,7 @@ import dev.axion.render.ShaderVariants;
 import dev.axion.render.ShaderpackProbe;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -120,6 +124,9 @@ public final class AxionRenderPass {
 
     /** Les modèles qu'une definition demande et que ce client n'a pas, avertis une fois (R-1640). */
     private static final MissingClientAssets MISSING = new MissingClientAssets();
+
+    /** Les corps de chaque definition dessinée, par identifiant (ADR-151 D9), sur le fil de rendu. */
+    private static final Map<String, Rig> RIGS = new HashMap<>();
 
     /** Overlays de debug allumés : la commande client les modifie, la passe les lit. */
     private static final DebugOverlays OVERLAYS = new DebugOverlays();
@@ -578,7 +585,8 @@ public final class AxionRenderPass {
         for (Entity entity : level.entitiesForRendering()) {
             if (entity instanceof AxionEntity assembly && !assembly.isInert()) {
                 RenderAsset asset = withAssets ? assetOf(runtime, assembly) : null;
-                assemblies.add(new RenderBackend.Assembly(assembly, asset));
+                BodyRig rig = asset == null ? null : rigOf(runtime, assembly);
+                assemblies.add(new RenderBackend.Assembly(assembly, asset, rig));
             }
         }
         return assemblies;
@@ -712,6 +720,32 @@ public final class AxionRenderPass {
     }
 
     /**
+     * {@return les corps de l'asset d'une assembly sous sa definition (ADR-151 D9), ou {@code null} si la
+     * definition ou l'asset manquent, ou si son corps racine ne se résout pas} Calculés une fois par
+     * definition et par conteneur compilé : un asset recompilé en donne d'autres.
+     */
+    private static BodyRig rigOf(AxionRuntime runtime, AxionEntity assembly) {
+        Definition definition = runtime.definitions().get(assembly.definitionId()).orElse(null);
+        AssetRegistry assets = runtime.clientAssets();
+        AssetRegistry.Published source = definition == null || assets == null ? null : assets.published(definition.asset());
+        if (source == null) {
+            return null;
+        }
+        String key = definition.id().toString();
+        Rig known = RIGS.get(key);
+        if (known == null || !MeshCache.sameContent(known.source(), source)) {
+            byte[] nodes = A3dSections.section(source.a3d(), "NODE");
+            int rootNode = nodes == null ? -1 : AssemblyBodies.rootNodeOf(definition.root(), nodes);
+            known = new Rig(source, rootNode < 0 ? null : new BodyRig(nodes, rootNode));
+            RIGS.put(key, known);
+        }
+        return known.rig();
+    }
+
+    /** Les corps d'une definition, et le conteneur compilé dont ils viennent. */
+    private record Rig(AssetRegistry.Published source, BodyRig rig) {}
+
+    /**
      * Rechargement des ressources du client (R-752) : maillages, textures et ressources GPU du backend
      * sont rendus, puis reconstruits à la demande ; le backend est choisi de nouveau à la passe
      * suivante (R-1490), ses shaders relus (R-760). Appelé sur le fil de rendu.
@@ -719,6 +753,7 @@ public final class AxionRenderPass {
     static void onResourcesReloaded() {
         closeBackend();
         nativeRefused = false;
+        RIGS.clear();
         if (meshes != null) {
             meshes.releaseAll();
         }

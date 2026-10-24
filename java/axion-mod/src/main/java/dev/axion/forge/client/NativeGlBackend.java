@@ -309,7 +309,7 @@ final class NativeGlBackend implements RenderBackend {
             if (asset == null || asset.mesh().vertexCount() == 0) {
                 continue;
             }
-            AssemblyPlacement at = null;
+            BodyParts bodies = null;
             NativeMeshes.GpuAsset gpu = null;
             for (GeometryTransfer.Draw draw : asset.mesh().draws()) {
                 MeshLook look = asset.look(draw.mesh());
@@ -319,14 +319,16 @@ final class NativeGlBackend implements RenderBackend {
                 if (!wanted || !look.visible() || mesh.indexCount() == 0) {
                     continue;
                 }
-                if (at == null) {
-                    at = AssemblyPlacement.of(frame.partialTick(), assembly.entity());
+                if (bodies == null) {
+                    bodies = BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig());
                     gpu = meshes.prepare(asset);
                 }
+                // ADR-151 D9 : chaque mesh à la pose du corps qui porte son node.
+                AssemblyPlacement at = bodies.at(draw);
                 Quaternionf q = at.rotation();
                 float[] rows = InstanceLayout.modelRows(
                         at.x() - camera.x, at.y() - camera.y, at.z() - camera.z,
-                        q.x(), q.y(), q.z(), q.w(), draw.model());
+                        q.x(), q.y(), q.z(), q.w(), bodies.model(draw));
                 parts.add(new Part(asset, gpu, mesh, draw.mesh(), look, rows, at.light()));
             }
         }

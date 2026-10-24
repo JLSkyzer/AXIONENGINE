@@ -102,7 +102,8 @@ final class VanillaConsumerBackend implements RenderBackend {
         boolean anyBox = false;
         for (Assembly assembly : frame.assemblies()) {
             if (assembly.asset() != null) {
-                placed.add(new Placed(assembly.asset(), AssemblyPlacement.of(frame.partialTick(), assembly.entity())));
+                placed.add(new Placed(assembly.asset(),
+                        BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig())));
             } else {
                 anyBox = true;
             }
@@ -132,9 +133,10 @@ final class VanillaConsumerBackend implements RenderBackend {
                     continue;
                 }
                 if (placed == null) {
-                    placed = new Placed(asset, AssemblyPlacement.of(frame.partialTick(), assembly.entity()));
+                    placed = new Placed(asset,
+                            BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig()));
                 }
-                parts.add(new Part(placed, draw, look, asset.albedo(draw.mesh())));
+                parts.add(Part.of(placed, draw, look, asset.albedo(draw.mesh())));
             }
         }
         if (parts.isEmpty()) {
@@ -170,18 +172,18 @@ final class VanillaConsumerBackend implements RenderBackend {
     /**
      * {@return la distance au carré, de la caméra au centre d'un mesh posé}
      *
-     * <p>Même chaîne que le dessin : transformation de repos du node, orientation du corps, position
-     * du corps relative à la caméra.
+     * <p>Même chaîne que le dessin : transformation de repos du node dans le repère de son corps,
+     * orientation du corps, position du corps relative à la caméra.
      */
     private static double squaredDistance(Part part, Vec3 camera) {
-        float[] m = part.draw().model();
+        float[] m = part.model();
         float[] c = part.look().center();
         // mat4x3 colonne-major (ADR-119) : trois axes puis la translation.
         Vector3f center = new Vector3f(
                 m[0] * c[0] + m[3] * c[1] + m[6] * c[2] + m[9],
                 m[1] * c[0] + m[4] * c[1] + m[7] * c[2] + m[10],
                 m[2] * c[0] + m[5] * c[1] + m[8] * c[2] + m[11]);
-        AssemblyPlacement at = part.assembly().at();
+        AssemblyPlacement at = part.at();
         at.rotation().transform(center);
         double x = at.x() - camera.x + center.x();
         double y = at.y() - camera.y + center.y();
@@ -202,7 +204,7 @@ final class VanillaConsumerBackend implements RenderBackend {
                 TextureRegion albedo = asset.albedo(draw.mesh());
                 RenderType type = AxionRenderTypes.entity(
                         bound(albedo), EntityShader.of(pass, look.doubleSided()), look.doubleSided());
-                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(new Part(assembly, draw, look, albedo));
+                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(Part.of(assembly, draw, look, albedo));
             }
         }
         drawBatches(frame, batches, false);
@@ -223,7 +225,7 @@ final class VanillaConsumerBackend implements RenderBackend {
                 }
                 TextureRegion emission = asset.emission(draw.mesh());
                 RenderType type = AxionRenderTypes.entity(bound(emission), EntityShader.EYES, look.doubleSided());
-                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(new Part(assembly, draw, look, emission));
+                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(Part.of(assembly, draw, look, emission));
             }
         }
         drawBatches(frame, batches, true);
@@ -251,7 +253,8 @@ final class VanillaConsumerBackend implements RenderBackend {
     }
 
     /**
-     * Dessine un mesh à la transformation de repos de son node.
+     * Dessine un mesh à la pose du corps qui porte son node, à sa transformation de repos dans le
+     * repère de ce corps (ADR-151 D9).
      *
      * <p>Les types de rendu d'entité sont en quads : chaque triangle y entre comme un quad
      * dégénéré {@code (a, b, c, c)}, dont le second triangle n'a pas d'aire.
@@ -261,7 +264,7 @@ final class VanillaConsumerBackend implements RenderBackend {
     private static void drawPart(Frame frame, Part part, VertexConsumer out, boolean emission) {
         GeometryTransfer mesh = part.assembly().asset().mesh();
         GeometryTransfer.Mesh desc = mesh.meshes().get(part.draw().mesh());
-        AssemblyPlacement at = part.assembly().at();
+        AssemblyPlacement at = part.at();
         MeshLook look = part.look();
         int light = emission || look.fullbright() ? LightTexture.FULL_BRIGHT : at.light();
 
@@ -271,7 +274,7 @@ final class VanillaConsumerBackend implements RenderBackend {
 
         // mat4x3 colonne-major (ADR-119) : trois axes puis la translation. Le constructeur
         // de JOML prend lui aussi les colonnes dans l'ordre.
-        float[] m = part.draw().model();
+        float[] m = part.model();
         Matrix4f model = new Matrix4f(
                 m[0], m[1], m[2], 0.0f,
                 m[3], m[4], m[5], 0.0f,
@@ -414,12 +417,20 @@ final class VanillaConsumerBackend implements RenderBackend {
         out.vertex(m, dx, dy, dz).color(r, g, b, 1.0f).endVertex();
     }
 
-    /** Une assembly prête, posée une fois pour la frame. */
-    private record Placed(RenderAsset asset, AssemblyPlacement at) {}
+    /** Une assembly prête, ses corps posés une fois pour la frame (ADR-151 D9). */
+    private record Placed(RenderAsset asset, BodyParts bodies) {}
 
     /**
-     * Un mesh à dessiner : son assembly, son dessin au repos, son apparence, et où lire sa texture
-     * pour ce dessin — albedo ou émission ; {@code null} pour la texture neutre.
+     * Un mesh à dessiner : son assembly, son dessin au repos, son apparence, où lire sa texture pour ce
+     * dessin — albedo ou émission ; {@code null} pour la texture neutre —, la pose de son corps et sa
+     * transformation de repos dans le repère de ce corps.
      */
-    private record Part(Placed assembly, GeometryTransfer.Draw draw, MeshLook look, TextureRegion region) {}
+    private record Part(
+            Placed assembly, GeometryTransfer.Draw draw, MeshLook look, TextureRegion region, AssemblyPlacement at,
+            float[] model) {
+
+        static Part of(Placed assembly, GeometryTransfer.Draw draw, MeshLook look, TextureRegion region) {
+            return new Part(assembly, draw, look, region, assembly.bodies().at(draw), assembly.bodies().model(draw));
+        }
+    }
 }

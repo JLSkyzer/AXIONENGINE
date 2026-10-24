@@ -120,6 +120,33 @@ public final class BodySkeleton {
     }
 
     /**
+     * La transformation de repos d'un node exprimée dans le repère de son corps : l'inverse de ce repère,
+     * composé avec elle. Posée à la pose de son corps, elle place le node là où le corps l'emporte.
+     *
+     * @param body corps du node
+     * @param model transformation de repos du node dans l'asset, {@code mat4x3} colonne-major : trois axes
+     *     puis la translation (ADR-119)
+     * @return la même, dans le repère du corps ; {@code model} lui-même pour le corps racine, dont le repère
+     *     est celui de l'asset
+     */
+    public float[] modelInBody(int body, float[] model) {
+        if (body == 0) {
+            return model;
+        }
+        float[] frame = frames[body];
+        // L'inverse d'une rotation unitaire est sa conjuguée ; celle d'un repère sans échelle s'en déduit.
+        float[] inverse = {0f, 0f, 0f, -frame[3], -frame[4], -frame[5], frame[6]};
+        float[] relative = new float[12];
+        for (int column = 0; column < 3; column++) {
+            float[] axis = rotate(inverse, new float[] {model[3 * column], model[3 * column + 1], model[3 * column + 2]});
+            System.arraycopy(axis, 0, relative, 3 * column, 3);
+        }
+        float[] translation = rotate(inverse, new float[] {model[9] - frame[0], model[10] - frame[1], model[11] - frame[2]});
+        System.arraycopy(translation, 0, relative, 9, 3);
+        return relative;
+    }
+
+    /**
      * La pose {@code base} (translation, rotation, échelle) suivie de la transformation locale lue à
      * {@code at} ; {@code null} si l'échelle locale n'est pas uniforme et positive, ou si le résultat n'est
      * pas fini.

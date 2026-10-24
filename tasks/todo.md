@@ -3226,7 +3226,7 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             bout en bout (charnière compilée, grippée, rendue, rompue). 2 tests multi-corps
             ajoutés ou renforcés (assembly visée, force et couple), 6 + 3 JUnit ; 29 mutations
             rouges.
-- [ ] 5. Réseau et dessin (D8, D9) : descripteur 2, poses relatives, interpolation et dessin par corps.
+- [x] 5. Réseau et dessin (D8, D9) : descripteur 2, poses relatives, interpolation et dessin par corps.
       - [x] 5a (2026-10-24). Le fil. Descripteur 2 et protocole `AXION-2` ; `AssemblyState` porte la
             pose de chaque corps secondaire relative au corps racine (node, position au 1/1024 de bloc,
             rotation « smallest three ») et les bits rompu/grippé de chaque joint, hérités de la base
@@ -3240,8 +3240,11 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             racine, appariées par node (ADR-150 D7) ; `BodySkeleton` rattache chaque node à son corps et
             donne le repère de repos de chaque corps depuis `NODE`, comme le natif (`Skeleton`) — un essai
             JNI le recoupe sur une chaîne tournée et mise à l'échelle. 1 + 4 JUnit ; 14 mutations rouges.
-      - [ ] 5c. Le dessin. Chaque node à la pose de son corps, backends vanilla et natif ; un contrôle
-            multi-corps au banc de rendu.
+      - [x] 5c (2026-10-24). Le dessin. Chaque mesh à la pose du corps qui porte son node, sa
+            transformation de repos dans le repère de ce corps, dans les deux backends (`BodyParts`) ; le
+            client garde les bits des joints. Contrôle « ADR-151 D9 » au banc de rendu, vanilla et natif :
+            silhouette d'une charnière à 1 px des poses du serveur, à 39 px d'un dessin rigide. 6 JUnit ;
+            14 mutations rouges, dont un dessin rigide dans chaque backend.
 - [ ] 6. Overlays `joints` et `limits` (D7).
 - [ ] 7. Preuves de bout en bout : GameTests, S-05, documentation.
 
