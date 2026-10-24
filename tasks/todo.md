@@ -3246,8 +3246,8 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             14 mutations rouges, dont un dessin rigide dans chaque backend.
 - [x] 6. Overlays `joints` et `limits` (D7) (2026-10-24) : bits 5 et 6, une plage par joint en
       repère d'origine, l'état du joint dans ses drapeaux et sa couleur ; essai JNI sur la charnière
-      rompue, contrôle « ADR-151 D7 » au banc de rendu (vanilla et natif). 6 tests natifs, 1 JUnit ; 15 mutations rouges. Les axes de `generic` n'ont pas encore
-      de plage.
+      rompue, contrôle « ADR-151 D7 » au banc de rendu (vanilla et natif). 6 tests natifs, 1 JUnit ; 15 mutations rouges. Les axes `limited`
+      de `generic` tracés à la clôture (2026-10-24, six mutations rouges).
 - [ ] 7. Preuves de bout en bout : GameTests, S-05, documentation.
       - [x] 7a (2026-10-24). Racine statique : `SIM_OUT` rapporte la racine fixe d'une assembly à
             plusieurs corps (décision de Killian), endormie avec les autres ; l'emprise de l'entité suit ses
@@ -3263,13 +3263,16 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             rotules lâchées à l'horizontale et deux grilles de 10 × 10 plaques soudées, 500 joints, 200 ticks ;
             aucune valeur non finie, aucun joint rompu, deux exécutions identiques au bit près ; le temps du pas
             est affiché, sans seuil (mesures dans ADR-151). Quatre mutations rouges.
-      - [ ] 7e. Documentation des joints pour les créateurs de contenu.
+      - [x] 7e (2026-10-24). `PHYSICS.md`, section « Corps et joints » : corps, types et réglages, erreurs,
+            réseau, overlays ; le format renvoie au schéma publié, les choix à ADR-151. `RENDERING.md` liste
+            les overlays tracés. **Chantier joints clos** ; suivant : persistance, ADR accepté avant le code.
       - [x] `t390` attend `[Integration, Joints, Contacts]` par sous-pas (fait en 3a, `tests/world.rs`).
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
 
-- [ ] C-31 avec C-34 : joints, événements `JOINT_BROKEN` et `JAMMED` (tranche 3c-ii) — ADR-146.
+- [x] C-31 avec C-34 : joints, événements `JOINT_BROKEN` et `JAMMED` (tranche 3c-ii) — ADR-146 ; fait par le
+      chantier joints (ADR-151), clos le 2026-10-24.
 - [ ] C-27, étapes 4 et 5 avec C-51 : `CompiledDefinition`, noms de nodes, de sockets et de parts
       résolus côté natif, synchronisation serveur → client — ADR-137, ADR-146 §5.
 - [ ] C-30 avec C-37 : le graphe de scène vivant au runtime, étape 14 du pas et

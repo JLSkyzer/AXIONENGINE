@@ -206,6 +206,83 @@ fn adr151_d7_la_plage_d_une_glissiere_est_un_segment_le_long_de_son_axe() {
 }
 
 #[test]
+fn adr151_d7_un_generic_trace_la_plage_de_chacun_de_ses_axes_limites() {
+    let mut world = monde();
+    let a = world
+        .add_body(
+            BodyKind::Static,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.05 },
+        )
+        .unwrap();
+    let at = Vec3::new(1.0, 0.0, 0.0);
+    let b = world
+        .add_body(
+            BodyKind::Dynamic,
+            at,
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.25 },
+        )
+        .unwrap();
+    let mut axes = [AxisMode::Locked; 6];
+    axes[2] = AxisMode::Limited([-0.2, 0.6]);
+    axes[4] = AxisMode::Limited([-0.5, 0.5]);
+    axes[5] = AxisMode::Free;
+    // Au repos, le repère de la boule est à 0,3 bloc le long de z et tourné de 0,25 rad autour de y.
+    let spec = JointSpec {
+        kind: JointKind::Generic,
+        frame_a: (Vec3::ZERO, Quat::IDENTITY),
+        frame_b: (-at + Vec3::Z * 0.3, Quat::from_rotation_y(0.25)),
+        limits: None,
+        motor: None,
+        friction: None,
+        breaking: BreakThresholds::NONE,
+        axes,
+        max_length: 0.0,
+        rest_length: 0.0,
+        stiffness: 0.0,
+        damping: 0.0,
+        collide: false,
+        jam: None,
+    };
+    world.add_joint(assembly(), 4, a, b, &spec).unwrap();
+
+    let limites = plages(&world, overlay::LIMITS, overlay::LIMITS, DVec3::ZERO);
+    assert_eq!(limites.len(), 1, "une plage par joint");
+    let segments = &limites[0].segments;
+    // z linéaire, puis y angulaire ; z angulaire, libre, n'a pas de plage.
+    assert_eq!(segments.len(), 6 + LIMIT_ARC_STEPS as usize + 3);
+    let (glissiere, arc) = segments.split_at(6);
+    proche(glissiere[0].a, Vec3::new(0.0, 0.0, -0.2));
+    proche(glissiere[0].b, Vec3::new(0.0, 0.0, 0.6));
+    for (trait_, borne) in glissiere[1..3].iter().zip([-0.2, 0.6]) {
+        proche(trait_.a, Vec3::new(-LIMIT_TICK * 0.5, 0.0, borne));
+        proche(trait_.b, Vec3::new(LIMIT_TICK * 0.5, 0.0, borne));
+    }
+    for segment in &glissiere[3..] {
+        let milieu = (Vec3::from_array(segment.a) + Vec3::from_array(segment.b)) * 0.5;
+        proche(milieu.to_array(), Vec3::new(0.0, 0.0, 0.3));
+    }
+    // Une rotation d'angle θ autour de y porte z vers sin θ · x + cos θ · z.
+    let rayon = |angle: f32| Vec3::new(angle.sin(), 0.0, angle.cos()) * LIMIT_RADIUS;
+    for segment in &arc[..LIMIT_ARC_STEPS as usize] {
+        for point in [segment.a, segment.b] {
+            assert!(
+                point[1].abs() < 1e-5,
+                "dans le plan perpendiculaire à y : {point:?}"
+            );
+        }
+    }
+    proche(arc[0].a, rayon(-0.5));
+    proche(arc[LIMIT_ARC_STEPS as usize - 1].b, rayon(0.5));
+    let bornes = &arc[LIMIT_ARC_STEPS as usize..];
+    proche(bornes[0].b, rayon(-0.5));
+    proche(bornes[1].b, rayon(0.5));
+    proche(bornes[2].b, rayon(0.25) * 1.25);
+}
+
+#[test]
 fn adr151_d7_un_joint_rompu_garde_ses_ancrages_sans_plage() {
     let mut world = monde();
     let (_, id) = relies(&mut world, JointKind::Revolute, Vec3::Z, [-1.0, 1.0], 0.0);

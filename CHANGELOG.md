@@ -59,7 +59,7 @@ Definition of Done (PARTIE 37.3).
     GameTest, T-425 en campagne (AXION_CAMPAGNE=t425) ; metriques reseau
     (R-500) et budget de debit par joueur (R-1850) ; limitation des trames
     du client, abus soutenu deconnecte (R-1690) ; overlay de debug network ;
-  - joints (C-34, C-31, ADR-151), en cours : une assembly porte plusieurs
+  - joints (C-34, C-31, ADR-151) : une assembly porte plusieurs
     corps, un par node racine que sa definition declare (`bodies[]`), crees
     tous ou aucun ; ses corps ne se touchent pas entre eux (10.4) ; sommeil,
     garde-fous et gestion d'activite par assembly entiere, plafond de corps
@@ -94,6 +94,7 @@ Definition of Done (PARTIE 37.3).
     pendule, chaine, grille) et ses GameTests T-330, T-331, T-333 et T-334 ;
     S-05 au banc de physique : 500 joints en chaines et en grilles, aucune
     valeur non finie, deux executions identiques, temps du pas affiche ;
+    corps et joints documentes pour les createurs de contenu (PHYSICS.md) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

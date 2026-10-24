@@ -452,8 +452,9 @@ impl PhysicsWorld {
         drafts
     }
 
-    /// Les segments de l'overlay `limits` d'un joint (voir [`Self::joint_drafts`]) ; `None` pour
-    /// un joint rompu, sans axe libre ou sans limites.
+    /// Les segments de l'overlay `limits` d'un joint (voir [`Self::joint_drafts`]) : ceux de chaque axe
+    /// qu'il laisse bouger et dont rapier tient une plage, dans l'ordre de `JointSpec::axes` ; `None`
+    /// pour un joint rompu ou sans plage.
     fn limit_segments(
         &self,
         entry: &JointEntry,
@@ -462,64 +463,79 @@ impl PhysicsWorld {
         relative: &impl Fn(Vec3) -> [f32; 3],
     ) -> Option<Vec<DebugSegment>> {
         let handle = entry.joint?;
-        let axis = free_axis(entry.spec.kind)?;
-        let limits = self.inner.impulse_joints.get(handle)?.data.limits(axis)?;
-        let (min, max) = (limits.min, limits.max);
-        let position = self.joint_coordinate(handle, axis)?;
+        let data = &self.inner.impulse_joints.get(handle)?.data;
         let segment = |a: Vec3, b: Vec3| DebugSegment {
             a: relative(a),
             b: relative(b),
         };
+        let basis = [rotation * Vec3::X, rotation * Vec3::Y, rotation * Vec3::Z];
         let mut segments = Vec::new();
-        if axis == JointAxis::AngX {
-            // Une rotation d'angle θ autour de X porte Y vers cos θ · Y + sin θ · Z.
-            let (y, z) = (rotation * Vec3::Y, rotation * Vec3::Z);
-            let radial = |angle: f32| y * angle.cos() + z * angle.sin();
-            for step in 0..LIMIT_ARC_STEPS {
-                let from = min + (max - min) * step as f32 / LIMIT_ARC_STEPS as f32;
-                let to = min + (max - min) * (step + 1) as f32 / LIMIT_ARC_STEPS as f32;
+        for axis in moving_axes(&entry.spec) {
+            let Some(limits) = data.limits(axis) else {
+                continue;
+            };
+            let (min, max) = (limits.min, limits.max);
+            let Some(position) = self.joint_coordinate(handle, axis) else {
+                continue;
+            };
+            // L'axe et les deux autres du repère, dans l'ordre direct : u × v porte l'axe.
+            let rank = component(axis);
+            let (unit, u, v) = (basis[rank], basis[(rank + 1) % 3], basis[(rank + 2) % 3]);
+            if is_angular(axis) {
+                // Une rotation d'angle θ autour de l'axe porte u vers cos θ · u + sin θ · v.
+                let radial = |angle: f32| u * angle.cos() + v * angle.sin();
+                for step in 0..LIMIT_ARC_STEPS {
+                    let from = min + (max - min) * step as f32 / LIMIT_ARC_STEPS as f32;
+                    let to = min + (max - min) * (step + 1) as f32 / LIMIT_ARC_STEPS as f32;
+                    segments.push(segment(
+                        anchor + radial(from) * LIMIT_RADIUS,
+                        anchor + radial(to) * LIMIT_RADIUS,
+                    ));
+                }
+                for bound in [min, max] {
+                    segments.push(segment(anchor, anchor + radial(bound) * LIMIT_RADIUS));
+                }
                 segments.push(segment(
-                    anchor + radial(from) * LIMIT_RADIUS,
-                    anchor + radial(to) * LIMIT_RADIUS,
+                    anchor,
+                    anchor + radial(position) * (LIMIT_RADIUS * 1.25),
                 ));
+            } else {
+                let tick = u * (LIMIT_TICK * 0.5);
+                segments.push(segment(anchor + unit * min, anchor + unit * max));
+                for bound in [min, max] {
+                    let at = anchor + unit * bound;
+                    segments.push(segment(at - tick, at + tick));
+                }
+                cross(
+                    anchor + unit * position,
+                    LIMIT_TICK,
+                    relative,
+                    &mut segments,
+                );
             }
-            for bound in [min, max] {
-                segments.push(segment(anchor, anchor + radial(bound) * LIMIT_RADIUS));
-            }
-            segments.push(segment(
-                anchor,
-                anchor + radial(position) * (LIMIT_RADIUS * 1.25),
-            ));
-        } else {
-            let x = rotation * Vec3::X;
-            let tick = rotation * Vec3::Y * (LIMIT_TICK * 0.5);
-            segments.push(segment(anchor + x * min, anchor + x * max));
-            for bound in [min, max] {
-                let at = anchor + x * bound;
-                segments.push(segment(at - tick, at + tick));
-            }
-            cross(anchor + x * position, LIMIT_TICK, relative, &mut segments);
         }
-        Some(segments)
+        (!segments.is_empty()).then_some(segments)
     }
 
-    /// La coordonnée d'un joint sur son axe libre, dans la mesure de rapier : l'angle de la
-    /// rotation relative de ses repères autour de leur axe X, dans ]−π, π], ou l'écart de ses
-    /// ancrages le long de cet axe.
+    /// La coordonnée d'un joint sur un de ses axes, dans la mesure de rapier : l'angle de la
+    /// rotation relative de ses repères autour de cet axe, dans ]−π, π], ou l'écart de ses
+    /// ancrages le long de lui.
     fn joint_coordinate(&self, handle: ImpulseJointHandle, axis: JointAxis) -> Option<f32> {
         let joint = self.inner.impulse_joints.get(handle)?;
         let frame1 = *self.inner.bodies.get(joint.body1())?.position() * joint.data.local_frame1;
         let frame2 = *self.inner.bodies.get(joint.body2())?.position() * joint.data.local_frame2;
-        Some(if axis == JointAxis::LinX {
-            (frame2.translation - frame1.translation).dot(frame1.rotation * Vec3::X)
-        } else {
+        let rank = component(axis);
+        Some(if is_angular(axis) {
             let relative = frame1.rotation.inverse() * frame2.rotation;
             let relative = if relative.w < 0.0 {
                 -relative
             } else {
                 relative
             };
-            2.0 * relative.x.atan2(relative.w)
+            2.0 * relative.to_array()[rank].atan2(relative.w)
+        } else {
+            let unit = [Vec3::X, Vec3::Y, Vec3::Z][rank];
+            (frame2.translation - frame1.translation).dot(frame1.rotation * unit)
         })
     }
 }
@@ -587,6 +603,16 @@ fn moving_axes(spec: &JointSpec) -> Vec<JointAxis> {
             .collect(),
         JointKind::Fixed | JointKind::Rope | JointKind::Spring => Vec::new(),
     }
+}
+
+/// Le rang d'un axe parmi x, y, z.
+fn component(axis: JointAxis) -> usize {
+    AXES.iter().position(|known| *known == axis).unwrap_or(0) % 3
+}
+
+/// Vrai pour un axe de rotation.
+fn is_angular(axis: JointAxis) -> bool {
+    matches!(axis, JointAxis::AngX | JointAxis::AngY | JointAxis::AngZ)
 }
 
 /// Les axes bloqués d'un joint à repères.

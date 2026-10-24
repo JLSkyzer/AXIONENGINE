@@ -1,10 +1,10 @@
 # Physique
 
-Ce que fait la physique d'AXION ENGINE aujourd'hui (jalon M3), et comment un pack la pilote. La
-référence normative reste le cahier des charges (PARTIE 10, fiches 5.23 à 5.32) ; les choix
-d'implémentation sont dans les ADR cités. Les options se règlent dans `axion-common.toml` :
-voir [CONFIGURATION.md](CONFIGURATION.md), sections `[sim]`, `[physics]`, `[world]` et
-`[budgets]`.
+Ce que fait la physique d'AXION ENGINE aujourd'hui (jalon M3, et les joints de M4), et comment un
+pack la pilote. La référence normative reste le cahier des charges (PARTIE 10, fiches 5.23 à
+5.32) ; les choix d'implémentation sont dans les ADR cités. Les options se règlent dans
+`axion-common.toml` : voir [CONFIGURATION.md](CONFIGURATION.md), sections `[sim]`, `[physics]`,
+`[world]` et `[budgets]`.
 
 ## Le modèle
 
@@ -79,6 +79,96 @@ rechargement qui change le registre le dit au journal.
 Les formes des colliders d'un corps dynamique sont des primitives, des enveloppes convexes de 4
 à 256 points ou des composés d'au plus 64 formes ; jamais un maillage concave (INV-13).
 
+## Corps et joints
+
+Au schéma 2 (`"schema": 2`, format complet dans
+[`docs/schema/definition-2.json`](docs/schema/definition-2.json)), une definition peut découper son
+assembly en plusieurs corps reliés par des joints (C-34, [ADR-151](docs/decisions/ADR-151.md)). La
+porte d'essai, que [`tools/assets/joints_essai.py`](tools/assets/joints_essai.py) génère avec un
+pendule, une chaîne et une grille, en donne un exemple :
+
+```json
+"kind": "static",
+"bodies": [{ "name": "montant", "root_node": "montant" }],
+"joints": [{
+  "name": "gond", "type": "revolute", "a": "montant", "b_node": "battant",
+  "anchor": [-0.5, 0.0, 0.0], "axis": [0, 1, 0], "limits": [0.0, 1.6],
+  "motor": { "target": 1.2, "stiffness": 4000, "damping": 400, "max_force": 5000 },
+  "jam": { "curve": [[0.5, 0.0]], "friction": 50 }
+}]
+```
+
+### Les corps
+
+Chaque entrée de `bodies[]` crée un corps au node `root_node` de l'asset ; le `b_node` d'un joint en
+crée un à ce node s'il n'est pas déjà la racine d'un corps. Une assembly a au plus 64 corps ; sans
+`bodies` ni `joints`, elle reste un corps unique.
+
+- Le premier corps déclaré est le **corps racine** : sa pose est celle de l'entité, et il prend le
+  `kind` de la definition — le montant de la porte est fixe. Les autres corps sont dynamiques.
+- Un node appartient au corps dont il est la racine, sinon à celui de son plus proche ancêtre qui en
+  est une, et à défaut au corps racine. Ses colliders et ses meshes suivent ce corps. Chaque corps porte
+  au moins un collider.
+- `physics.mass` reste la masse de l'assembly, répartie entre les corps selon la masse que leurs
+  densités leur donnent. `bodies[].mass` fixe celle d'un corps, les autres se partageant le reste ; des
+  masses déclarées qui atteignent celle de l'assembly la font refuser.
+- Les corps d'une assembly ne se touchent pas entre eux, sauf `physics.self_collision: true` ; même
+  alors, deux corps reliés par un joint ne se touchent que si ce joint déclare `collide: true`.
+- L'assembly reste l'unité d'activité : rayon de simulation, plafond de corps actifs — qui compte
+  chacun de ses corps — et garde-fous agissent sur tous ses corps à la fois.
+
+### Les joints
+
+`a` nomme un corps déclaré, `b_node` le node racine de l'autre. `anchor` est le point du joint dans le
+repère de `b_node`, son origine par défaut ; `axis` est son axe dans ce même repère. Les deux repères
+sont pris à la pose de repos de l'asset : le joint ne déplace rien à l'apparition. Unités : blocs
+(mètres), radians, newtons, newtons-mètres, joules.
+
+| `type` | Ce qu'il laisse libre | Ses réglages |
+|---|---|---|
+| `fixed` | rien : il soude | — |
+| `revolute` | la rotation autour de `axis` | `axis` (obligatoire), `limits` en radians, `motor`, `friction`, `jam` |
+| `prismatic` | la translation le long de `axis` | `axis` (obligatoire), `limits` en blocs, `motor`, `friction`, `jam` |
+| `spherical` | les trois rotations autour de l'ancrage | `friction` |
+| `generic` | ce que disent ses `axes` | `axes` (obligatoire), `friction` |
+| `rope` | tout, ses deux ancrages à `max_length` au plus l'un de l'autre | `max_length` (obligatoire) |
+| `spring` | tout, ses deux ancrages rappelés à `rest_length` l'un de l'autre | `rest_length` et `stiffness` (obligatoires), `damping` |
+
+Tous les types acceptent `break` et `collide`.
+
+- **`axes`** (`generic`) : six entrées dans le repère de `b_node` — x, y, z linéaires, puis x, y, z
+  angulaires —, chacune `locked`, `free` ou `limited` avec ses `limits`.
+- **`motor`** : `speed` seule fait un moteur en vitesse ; `target` avec `stiffness`, et `damping`, un
+  servo en position. `max_force` plafonne son effort.
+- **`friction`** : une friction interne, qui freine l'axe libre sans le bloquer ni gêner le moteur.
+- **`break`** : seuils de rupture en `force`, `torque` et `energy` ; le premier franchi rompt le joint,
+  qui émet `JOINT_BROKEN`.
+- **`jam`**, le grippage, sur un joint qui déclare des `limits` : `curve` donne, selon le
+  désalignement de l'ancrage en blocs (abscisses positives, strictement croissantes), la fraction de
+  plage qui reste, de 1 à 0. La plage se resserre autour de la position du moment, et la friction
+  monte vers `jam.friction`. Un désalignement remis à 0 rend les réglages d'origine. Rien en jeu ne
+  produit encore de désalignement : C-42 (M6) puis l'action `jam_joint` (M7) le feront.
+- Un réglage absent n'agit pas : pas de limite, pas de moteur, pas de friction, pas de seuil, pas de
+  grippage.
+
+### Erreurs, réseau et debug
+
+- Au chargement, un réglage sans objet pour son type, un champ obligatoire manquant, un axe nul, des
+  limites croisées, une courbe de grippage mal formée ou un `a` qui ne nomme aucun corps déclaré font
+  refuser la definition, avec le chemin du champ fautif (`$.joints[0].limits`). Les nodes se résolvent
+  contre l'asset, à l'apparition : un `root_node` ou un `b_node` qui n'en nomme aucun, ou un joint dont
+  les deux bouts tombent sur le même corps, laisse l'assembly inerte, avec un avertissement au journal.
+- `modules.joints = false` (voir [CONFIGURATION.md](CONFIGURATION.md)) ignore les joints, avec un
+  avertissement : les corps déclarés restent séparés.
+- Rupture et grippage se décident au serveur. Les clients reçoivent la pose de chaque corps relative au
+  corps racine et l'état de chaque joint, et dessinent chaque corps à sa pose. Ces poses et ces états
+  ne sont pas encore écrits dans la sauvegarde : c'est le chantier persistance de M4 (ADR-151 D8).
+- `/axion debug joints on` trace chaque joint d'un ancrage à l'autre, avec son axe : vert, ambre s'il
+  est grippé, rose s'il est rompu. `/axion debug limits on` trace la plage permise de chaque axe limité
+  — celui d'un `revolute` ou d'un `prismatic`, les axes `limited` d'un `generic` —, et sa position :
+  un arc pour une rotation, un segment pour une translation, en bleu tant que le joint est libre. Ces
+  overlays ne montrent rien chez un client relié à un serveur distant, qui ne simule pas.
+
 ## Activité, plafonds et CCD
 
 - **Rayon de simulation.** Un corps hors de `sim.simulation_radius` de tout joueur s'endort
@@ -104,7 +194,8 @@ vent, portance des surfaces déclarées (R-1000) et flottabilité s'appliquent �
 
 La simulation émet des événements par lot borné (`physics.max_events_per_tick`, R-1011) :
 sommeil et réveil, début et fin de contact, impulsion de contact au-delà de
-`physics.contact_event_threshold`, entrée et sortie de capteur. Un événement perdu faute de
+`physics.contact_event_threshold`, entrée et sortie de capteur, rupture d'un joint
+(`JOINT_BROKEN`), entrée et sortie de grippage (`JOINT_JAMMED`). Un événement perdu faute de
 place est compté, jamais tu.
 
 ## Dégradation
@@ -126,11 +217,12 @@ comptée — mondes `rapier` compris — par l'allocateur global de la biblioth�
 (`axion.mem.<arène>.bytes`) : `PERSISTENT` par défaut, `SCRATCH` pour ce qu'un job alloue
 (INV-08, ADR-133).
 
-Le pas suit l'ordre des étapes de R-660 : commandes, puis les étapes du monde — intégration et
-contacts répétés à chaque sous-pas, seul bloc où l'ordre revient en arrière —, puis la récolte et
-l'écriture des états. Chaque étape exécutée est journalisée, et en build de debug l'ordre est
-vérifié à chaque tick (T-390). La durée de chaque étape existante est exposée :
-`axion.sim.last_step_commands_ns`, `_integration_ns`, `_contacts_ns`, `_serialization_ns` (T-391) ;
+Le pas suit l'ordre des étapes de R-660 : commandes, puis les étapes du monde — intégration,
+joints et contacts répétés à chaque sous-pas, seul bloc où l'ordre revient en arrière —, puis la
+récolte et l'écriture des états. Chaque étape exécutée est journalisée, et en build de debug l'ordre
+est vérifié à chaque tick (T-390). La durée de chaque étape existante est exposée :
+`axion.sim.last_step_commands_ns`, `_integration_ns`, `_joints_ns`, `_contacts_ns`,
+`_serialization_ns` (T-391) ;
 les budgets par étape viennent avec le gouverneur (C-77, ADR-144).
 
 ## Requêtes spatiales
@@ -143,6 +235,8 @@ aujourd'hui que côté natif : aucune API Java ni fonction de la frontière ne l
 
 ## Ce qui n'existe pas encore
 
-Liaisons entre corps et leurs ruptures (C-34), matériau des parts d'assembly jusqu'au natif
-(DM-07, second temps d'ADR-145 ; contact neutre en attendant), densité propre à chaque fluide, chaîne de dommage et
-déformation (C-41..C-45, M6), pilotage des véhicules (M5).
+Sauvegarde des corps secondaires et de l'état des joints (chantier persistance de M4), joints entre
+assemblies (C-48, M5), producteurs du grippage (C-42 en M6, action `jam_joint` en M7), matériau des
+parts d'assembly jusqu'au natif (DM-07, second temps d'ADR-145 ; contact neutre en attendant),
+densité propre à chaque fluide, chaîne de dommage et déformation (C-41..C-45, M6), pilotage des
+véhicules (M5).

@@ -86,9 +86,11 @@ Le backend vanilla n'a pas de PBR : les `RenderType` de Minecraft n'en exposent 
 
 ## Overlays de debug
 
-`/axion debug <overlay> on|off`, en mode développeur (`-Daxion.dev=true`) ; seul `colliders` est
-tracé aujourd'hui (C-67, ADR-121). Éteint, un overlay ne coûte qu'un test de drapeau par frame
-(R-2280).
+`/axion debug <overlay> on|off`, en mode développeur (`-Daxion.dev=true`) (C-67, ADR-121). Sont
+tracés `colliders`, `aabb`, `bodies`, `contacts`, `normals`, `joints`, `limits`, `world_tiles`,
+`center_of_mass` et `network` ; les joints et leurs plages sont décrits dans
+[PHYSICS.md](PHYSICS.md#erreurs-réseau-et-debug). Éteint, un overlay ne coûte qu'un test de drapeau
+par frame (R-2280).
 
 ## Mesures
 
