@@ -1,0 +1,99 @@
+{
+  "schema": 2,
+  "asset": "axion:models/test/joints/chaine.gltf",
+  "kind": "static",
+  "bodies": [
+    {
+      "name": "ancre",
+      "root_node": "ancre"
+    },
+    {
+      "name": "maillon_0",
+      "root_node": "maillon_0"
+    },
+    {
+      "name": "maillon_1",
+      "root_node": "maillon_1"
+    },
+    {
+      "name": "maillon_2",
+      "root_node": "maillon_2"
+    },
+    {
+      "name": "maillon_3",
+      "root_node": "maillon_3"
+    },
+    {
+      "name": "maillon_4",
+      "root_node": "maillon_4"
+    }
+  ],
+  "joints": [
+    {
+      "name": "rotule_0",
+      "type": "spherical",
+      "a": "ancre",
+      "b_node": "maillon_0",
+      "anchor": [
+        0.0,
+        0.25,
+        0.0
+      ]
+    },
+    {
+      "name": "rotule_1",
+      "type": "spherical",
+      "a": "maillon_0",
+      "b_node": "maillon_1",
+      "anchor": [
+        0.0,
+        0.225,
+        0.0
+      ]
+    },
+    {
+      "name": "rotule_2",
+      "type": "spherical",
+      "a": "maillon_1",
+      "b_node": "maillon_2",
+      "anchor": [
+        0.0,
+        0.225,
+        0.0
+      ]
+    },
+    {
+      "name": "rotule_3",
+      "type": "spherical",
+      "a": "maillon_2",
+      "b_node": "maillon_3",
+      "anchor": [
+        0.0,
+        0.225,
+        0.0
+      ]
+    },
+    {
+      "name": "rotule_4",
+      "type": "spherical",
+      "a": "maillon_3",
+      "b_node": "maillon_4",
+      "anchor": [
+        0.0,
+        0.225,
+        0.0
+      ]
+    },
+    {
+      "name": "rotule_5",
+      "type": "spherical",
+      "a": "maillon_4",
+      "b_node": "maillon_5",
+      "anchor": [
+        0.0,
+        0.225,
+        0.0
+      ]
+    }
+  ]
+}

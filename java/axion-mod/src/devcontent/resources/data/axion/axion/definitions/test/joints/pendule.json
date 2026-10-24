@@ -1,0 +1,29 @@
+{
+  "schema": 2,
+  "asset": "axion:models/test/joints/pendule.gltf",
+  "kind": "static",
+  "bodies": [
+    {
+      "name": "pivot",
+      "root_node": "pivot"
+    }
+  ],
+  "joints": [
+    {
+      "name": "axe",
+      "type": "revolute",
+      "a": "pivot",
+      "b_node": "masse",
+      "anchor": [
+        -1.5,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  ]
+}

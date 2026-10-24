@@ -1,0 +1,328 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "AXION tools/assets/joints_essai.py"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0,
+    3,
+    6,
+    9,
+    12,
+    15,
+    18,
+    21,
+    24
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "name": "plaque_0_0",
+   "translation": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "children": [
+    1,
+    2
+   ]
+  },
+  {
+   "name": "plaque_0_0_vue",
+   "mesh": 0
+  },
+  {
+   "name": "plaque_0_0_collideur",
+   "mesh": 0,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "plaque_0_1",
+   "translation": [
+    0.0,
+    0.0,
+    0.5
+   ],
+   "children": [
+    4,
+    5
+   ]
+  },
+  {
+   "name": "plaque_0_1_vue",
+   "mesh": 0
+  },
+  {
+   "name": "plaque_0_1_collideur",
+   "mesh": 0,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "plaque_0_2",
+   "translation": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "children": [
+    7,
+    8
+   ]
+  },
+  {
+   "name": "plaque_0_2_vue",
+   "mesh": 0
+  },
+  {
+   "name": "plaque_0_2_collideur",
+   "mesh": 0,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "plaque_1_0",
+   "translation": [
+    0.5,
+    0.0,
+    0.0
+   ],
+   "children": [
+    10,
+    11
+   ]
+  },
+  {
+   "name": "plaque_1_0_vue",
+   "mesh": 0
+  },
+  {
+   "name": "plaque_1_0_collideur",
+   "mesh": 0,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "plaque_1_1",
+   "translation": [
+    0.5,
+    0.0,
+    0.5
+   ],
+   "children": [
+    13,
+    14
+   ]
+  },
+  {
+   "name": "plaque_1_1_vue",
+   "mesh": 0
+  },
+  {
+   "name": "plaque_1_1_collideur",
+   "mesh": 0,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "plaque_1_2",
+   "translation": [
+    0.5,
+    0.0,
+    1.0
+   ],
+   "children": [
+    16,
+    17
+   ]
+  },
+  {
+   "name": "plaque_1_2_vue",
+   "mesh": 0
+  },
+  {
+   "name": "plaque_1_2_collideur",
+   "mesh": 0,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "plaque_2_0",
+   "translation": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "children": [
+    19,
+    20
+   ]
+  },
+  {
+   "name": "plaque_2_0_vue",
+   "mesh": 0
+  },
+  {
+   "name": "plaque_2_0_collideur",
+   "mesh": 0,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "plaque_2_1",
+   "translation": [
+    1.0,
+    0.0,
+    0.5
+   ],
+   "children": [
+    22,
+    23
+   ]
+  },
+  {
+   "name": "plaque_2_1_vue",
+   "mesh": 0
+  },
+  {
+   "name": "plaque_2_1_collideur",
+   "mesh": 0,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "plaque_2_2",
+   "translation": [
+    1.0,
+    0.0,
+    1.0
+   ],
+   "children": [
+    25,
+    26
+   ]
+  },
+  {
+   "name": "plaque_2_2_vue",
+   "mesh": 0
+  },
+  {
+   "name": "plaque_2_2_collideur",
+   "mesh": 0,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  }
+ ],
+ "meshes": [
+  {
+   "name": "boite_0",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1
+     },
+     "indices": 2
+    }
+   ]
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3",
+   "min": [
+    -0.24,
+    -0.05,
+    -0.24
+   ],
+   "max": [
+    0.24,
+    0.05,
+    0.24
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5123,
+   "count": 36,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 288,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 576,
+   "byteLength": 72,
+   "target": 34963
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 648,
+   "uri": "data:application/octet-stream;base64,j8J1Ps3MTL2PwnU+j8J1Ps3MTL2PwnW+j8J1Ps3MTD2PwnW+j8J1Ps3MTD2PwnU+j8J1vs3MTL2PwnW+j8J1vs3MTL2PwnU+j8J1vs3MTD2PwnU+j8J1vs3MTD2PwnW+j8J1vs3MTD2PwnU+j8J1Ps3MTD2PwnU+j8J1Ps3MTD2PwnW+j8J1vs3MTD2PwnW+j8J1vs3MTL2PwnW+j8J1Ps3MTL2PwnW+j8J1Ps3MTL2PwnU+j8J1vs3MTL2PwnU+j8J1vs3MTL2PwnU+j8J1Ps3MTL2PwnU+j8J1Ps3MTD2PwnU+j8J1vs3MTD2PwnU+j8J1Ps3MTL2PwnW+j8J1vs3MTL2PwnW+j8J1vs3MTD2PwnW+j8J1Ps3MTD2PwnW+AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAABAAIAAAACAAMABAAFAAYABAAGAAcACAAJAAoACAAKAAsADAANAA4ADAAOAA8AEAARABIAEAASABMAFAAVABYAFAAWABcA"
+  }
+ ]
+}

@@ -1,0 +1,197 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "AXION tools/assets/joints_essai.py"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0,
+    3
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "name": "montant",
+   "translation": [
+    0.0,
+    1.0,
+    0.0
+   ],
+   "children": [
+    1,
+    2
+   ]
+  },
+  {
+   "name": "montant_vue",
+   "mesh": 0
+  },
+  {
+   "name": "montant_collideur",
+   "mesh": 0,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "battant",
+   "translation": [
+    0.6,
+    1.0,
+    0.0
+   ],
+   "children": [
+    4,
+    5
+   ]
+  },
+  {
+   "name": "battant_vue",
+   "mesh": 1
+  },
+  {
+   "name": "battant_collideur",
+   "mesh": 1,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  }
+ ],
+ "meshes": [
+  {
+   "name": "boite_0",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1
+     },
+     "indices": 2
+    }
+   ]
+  },
+  {
+   "name": "boite_1",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 3,
+      "NORMAL": 4
+     },
+     "indices": 5
+    }
+   ]
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3",
+   "min": [
+    -0.1,
+    -1.0,
+    -0.1
+   ],
+   "max": [
+    0.1,
+    1.0,
+    0.1
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5123,
+   "count": 36,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3",
+   "min": [
+    -0.5,
+    -1.0,
+    -0.05
+   ],
+   "max": [
+    0.5,
+    1.0,
+    0.05
+   ]
+  },
+  {
+   "bufferView": 4,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 5,
+   "componentType": 5123,
+   "count": 36,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 288,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 576,
+   "byteLength": 72,
+   "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 648,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 936,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 1224,
+   "byteLength": 72,
+   "target": 34963
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 1296,
+   "uri": "data:application/octet-stream;base64,zczMPQAAgL/NzMw9zczMPQAAgL/NzMy9zczMPQAAgD/NzMy9zczMPQAAgD/NzMw9zczMvQAAgL/NzMy9zczMvQAAgL/NzMw9zczMvQAAgD/NzMw9zczMvQAAgD/NzMy9zczMvQAAgD/NzMw9zczMPQAAgD/NzMw9zczMPQAAgD/NzMy9zczMvQAAgD/NzMy9zczMvQAAgL/NzMy9zczMPQAAgL/NzMy9zczMPQAAgL/NzMw9zczMvQAAgL/NzMw9zczMvQAAgL/NzMw9zczMPQAAgL/NzMw9zczMPQAAgD/NzMw9zczMvQAAgD/NzMw9zczMPQAAgL/NzMy9zczMvQAAgL/NzMy9zczMvQAAgD/NzMy9zczMPQAAgD/NzMy9AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAABAAIAAAACAAMABAAFAAYABAAGAAcACAAJAAoACAAKAAsADAANAA4ADAAOAA8AEAARABIAEAASABMAFAAVABYAFAAWABcAAAAAPwAAgL/NzEw9AAAAPwAAgL/NzEy9AAAAPwAAgD/NzEy9AAAAPwAAgD/NzEw9AAAAvwAAgL/NzEy9AAAAvwAAgL/NzEw9AAAAvwAAgD/NzEw9AAAAvwAAgD/NzEy9AAAAvwAAgD/NzEw9AAAAPwAAgD/NzEw9AAAAPwAAgD/NzEy9AAAAvwAAgD/NzEy9AAAAvwAAgL/NzEy9AAAAPwAAgL/NzEy9AAAAPwAAgL/NzEw9AAAAvwAAgL/NzEw9AAAAvwAAgL/NzEw9AAAAPwAAgL/NzEw9AAAAPwAAgD/NzEw9AAAAvwAAgD/NzEw9AAAAPwAAgL/NzEy9AAAAvwAAgL/NzEy9AAAAvwAAgD/NzEy9AAAAPwAAgD/NzEy9AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAABAAIAAAACAAMABAAFAAYABAAGAAcACAAJAAoACAAKAAsADAANAA4ADAAOAA8AEAARABIAEAASABMAFAAVABYAFAAWABcA"
+  }
+ ]
+}

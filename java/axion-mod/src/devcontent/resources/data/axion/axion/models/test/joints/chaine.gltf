@@ -1,0 +1,332 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "AXION tools/assets/joints_essai.py"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0,
+    3,
+    6,
+    9,
+    12,
+    15,
+    18
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "name": "ancre",
+   "translation": [
+    0.0,
+    6.0,
+    0.0
+   ],
+   "children": [
+    1,
+    2
+   ]
+  },
+  {
+   "name": "ancre_vue",
+   "mesh": 0
+  },
+  {
+   "name": "ancre_collideur",
+   "mesh": 0,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "maillon_0",
+   "translation": [
+    0.0,
+    5.6,
+    0.0
+   ],
+   "children": [
+    4,
+    5
+   ]
+  },
+  {
+   "name": "maillon_0_vue",
+   "mesh": 1
+  },
+  {
+   "name": "maillon_0_collideur",
+   "mesh": 1,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "maillon_1",
+   "translation": [
+    0.0,
+    5.1499999999999995,
+    0.0
+   ],
+   "children": [
+    7,
+    8
+   ]
+  },
+  {
+   "name": "maillon_1_vue",
+   "mesh": 1
+  },
+  {
+   "name": "maillon_1_collideur",
+   "mesh": 1,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "maillon_2",
+   "translation": [
+    0.0,
+    4.699999999999999,
+    0.0
+   ],
+   "children": [
+    10,
+    11
+   ]
+  },
+  {
+   "name": "maillon_2_vue",
+   "mesh": 1
+  },
+  {
+   "name": "maillon_2_collideur",
+   "mesh": 1,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "maillon_3",
+   "translation": [
+    0.0,
+    4.25,
+    0.0
+   ],
+   "children": [
+    13,
+    14
+   ]
+  },
+  {
+   "name": "maillon_3_vue",
+   "mesh": 1
+  },
+  {
+   "name": "maillon_3_collideur",
+   "mesh": 1,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "maillon_4",
+   "translation": [
+    0.0,
+    3.8,
+    0.0
+   ],
+   "children": [
+    16,
+    17
+   ]
+  },
+  {
+   "name": "maillon_4_vue",
+   "mesh": 1
+  },
+  {
+   "name": "maillon_4_collideur",
+   "mesh": 1,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  },
+  {
+   "name": "maillon_5",
+   "translation": [
+    0.0,
+    3.3499999999999996,
+    0.0
+   ],
+   "children": [
+    19,
+    20
+   ]
+  },
+  {
+   "name": "maillon_5_vue",
+   "mesh": 1
+  },
+  {
+   "name": "maillon_5_collideur",
+   "mesh": 1,
+   "extras": {
+    "axion": {
+     "role": "collider",
+     "shape": "auto_box"
+    }
+   }
+  }
+ ],
+ "meshes": [
+  {
+   "name": "boite_0",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1
+     },
+     "indices": 2
+    }
+   ]
+  },
+  {
+   "name": "boite_1",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 3,
+      "NORMAL": 4
+     },
+     "indices": 5
+    }
+   ]
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3",
+   "min": [
+    -0.15,
+    -0.15,
+    -0.15
+   ],
+   "max": [
+    0.15,
+    0.15,
+    0.15
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5123,
+   "count": 36,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3",
+   "min": [
+    -0.05,
+    -0.2,
+    -0.05
+   ],
+   "max": [
+    0.05,
+    0.2,
+    0.05
+   ]
+  },
+  {
+   "bufferView": 4,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 5,
+   "componentType": 5123,
+   "count": 36,
+   "type": "SCALAR"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 288,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 576,
+   "byteLength": 72,
+   "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 648,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 936,
+   "byteLength": 288,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 1224,
+   "byteLength": 72,
+   "target": 34963
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 1296,
+   "uri": "data:application/octet-stream;base64,mpkZPpqZGb6amRk+mpkZPpqZGb6amRm+mpkZPpqZGT6amRm+mpkZPpqZGT6amRk+mpkZvpqZGb6amRm+mpkZvpqZGb6amRk+mpkZvpqZGT6amRk+mpkZvpqZGT6amRm+mpkZvpqZGT6amRk+mpkZPpqZGT6amRk+mpkZPpqZGT6amRm+mpkZvpqZGT6amRm+mpkZvpqZGb6amRm+mpkZPpqZGb6amRm+mpkZPpqZGb6amRk+mpkZvpqZGb6amRk+mpkZvpqZGb6amRk+mpkZPpqZGb6amRk+mpkZPpqZGT6amRk+mpkZvpqZGT6amRk+mpkZPpqZGb6amRm+mpkZvpqZGb6amRm+mpkZvpqZGT6amRm+mpkZPpqZGT6amRm+AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAABAAIAAAACAAMABAAFAAYABAAGAAcACAAJAAoACAAKAAsADAANAA4ADAAOAA8AEAARABIAEAASABMAFAAVABYAFAAWABcAzcxMPc3MTL7NzEw9zcxMPc3MTL7NzEy9zcxMPc3MTD7NzEy9zcxMPc3MTD7NzEw9zcxMvc3MTL7NzEy9zcxMvc3MTL7NzEw9zcxMvc3MTD7NzEw9zcxMvc3MTD7NzEy9zcxMvc3MTD7NzEw9zcxMPc3MTD7NzEw9zcxMPc3MTD7NzEy9zcxMvc3MTD7NzEy9zcxMvc3MTL7NzEy9zcxMPc3MTL7NzEy9zcxMPc3MTL7NzEw9zcxMvc3MTL7NzEw9zcxMvc3MTL7NzEw9zcxMPc3MTL7NzEw9zcxMPc3MTD7NzEw9zcxMvc3MTD7NzEw9zcxMPc3MTL7NzEy9zcxMvc3MTL7NzEy9zcxMvc3MTD7NzEy9zcxMPc3MTD7NzEy9AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAABAAIAAAACAAMABAAFAAYABAAGAAcACAAJAAoACAAKAAsADAANAA4ADAAOAA8AEAARABIAEAASABMAFAAVABYAFAAWABcA"
+  }
+ ]
+}

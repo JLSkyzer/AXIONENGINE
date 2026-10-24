@@ -1,0 +1,177 @@
+{
+  "schema": 2,
+  "asset": "axion:models/test/joints/grille.gltf",
+  "kind": "rigid_object",
+  "bodies": [
+    {
+      "name": "plaque_0_0",
+      "root_node": "plaque_0_0"
+    },
+    {
+      "name": "plaque_0_1",
+      "root_node": "plaque_0_1"
+    },
+    {
+      "name": "plaque_0_2",
+      "root_node": "plaque_0_2"
+    },
+    {
+      "name": "plaque_1_0",
+      "root_node": "plaque_1_0"
+    },
+    {
+      "name": "plaque_1_1",
+      "root_node": "plaque_1_1"
+    },
+    {
+      "name": "plaque_1_2",
+      "root_node": "plaque_1_2"
+    },
+    {
+      "name": "plaque_2_0",
+      "root_node": "plaque_2_0"
+    },
+    {
+      "name": "plaque_2_1",
+      "root_node": "plaque_2_1"
+    },
+    {
+      "name": "plaque_2_2",
+      "root_node": "plaque_2_2"
+    }
+  ],
+  "joints": [
+    {
+      "name": "soudure_0_0_1_0",
+      "type": "fixed",
+      "a": "plaque_0_0",
+      "b_node": "plaque_1_0",
+      "anchor": [
+        -0.25,
+        0.0,
+        -0.0
+      ]
+    },
+    {
+      "name": "soudure_0_0_0_1",
+      "type": "fixed",
+      "a": "plaque_0_0",
+      "b_node": "plaque_0_1",
+      "anchor": [
+        -0.0,
+        0.0,
+        -0.25
+      ]
+    },
+    {
+      "name": "soudure_0_1_1_1",
+      "type": "fixed",
+      "a": "plaque_0_1",
+      "b_node": "plaque_1_1",
+      "anchor": [
+        -0.25,
+        0.0,
+        -0.0
+      ]
+    },
+    {
+      "name": "soudure_0_1_0_2",
+      "type": "fixed",
+      "a": "plaque_0_1",
+      "b_node": "plaque_0_2",
+      "anchor": [
+        -0.0,
+        0.0,
+        -0.25
+      ]
+    },
+    {
+      "name": "soudure_0_2_1_2",
+      "type": "fixed",
+      "a": "plaque_0_2",
+      "b_node": "plaque_1_2",
+      "anchor": [
+        -0.25,
+        0.0,
+        -0.0
+      ]
+    },
+    {
+      "name": "soudure_1_0_2_0",
+      "type": "fixed",
+      "a": "plaque_1_0",
+      "b_node": "plaque_2_0",
+      "anchor": [
+        -0.25,
+        0.0,
+        -0.0
+      ]
+    },
+    {
+      "name": "soudure_1_0_1_1",
+      "type": "fixed",
+      "a": "plaque_1_0",
+      "b_node": "plaque_1_1",
+      "anchor": [
+        -0.0,
+        0.0,
+        -0.25
+      ]
+    },
+    {
+      "name": "soudure_1_1_2_1",
+      "type": "fixed",
+      "a": "plaque_1_1",
+      "b_node": "plaque_2_1",
+      "anchor": [
+        -0.25,
+        0.0,
+        -0.0
+      ]
+    },
+    {
+      "name": "soudure_1_1_1_2",
+      "type": "fixed",
+      "a": "plaque_1_1",
+      "b_node": "plaque_1_2",
+      "anchor": [
+        -0.0,
+        0.0,
+        -0.25
+      ]
+    },
+    {
+      "name": "soudure_1_2_2_2",
+      "type": "fixed",
+      "a": "plaque_1_2",
+      "b_node": "plaque_2_2",
+      "anchor": [
+        -0.25,
+        0.0,
+        -0.0
+      ]
+    },
+    {
+      "name": "soudure_2_0_2_1",
+      "type": "fixed",
+      "a": "plaque_2_0",
+      "b_node": "plaque_2_1",
+      "anchor": [
+        -0.0,
+        0.0,
+        -0.25
+      ]
+    },
+    {
+      "name": "soudure_2_1_2_2",
+      "type": "fixed",
+      "a": "plaque_2_1",
+      "b_node": "plaque_2_2",
+      "anchor": [
+        -0.0,
+        0.0,
+        -0.25
+      ]
+    }
+  ]
+}

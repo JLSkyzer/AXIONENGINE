@@ -3252,8 +3252,13 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
       - [x] 7a (2026-10-24). Racine statique : `SIM_OUT` rapporte la racine fixe d'une assembly à
             plusieurs corps (décision de Killian), endormie avec les autres ; l'emprise de l'entité suit ses
             corps. 1 test natif, 1 GameTest renforcé ; 3 mutations rouges.
-      - [ ] 7b. Contenu de test généré par un script du dépôt, sans Blender : porte, pendule, chaîne, grille.
-      - [ ] 7c. GameTests T-330..T-334 pour ce qui traverse la frontière et le réseau.
+      - [x] 7b (2026-10-24). `tools/assets/joints_essai.py` écrit `test/joints/{porte, pendule, chaine,
+            grille}` (glTF texte et definitions au schéma 2), sans Blender ni hasard : deux exécutions, mêmes
+            octets.
+      - [x] 7c (2026-10-24). `JointsGameTests` : T-330 (le pendule garde son bras), T-331 (le servo ouvre
+            la porte), T-333 (la chaîne s'endort entière), T-334 (grippée puis rendue, chaque état reçu par
+            un client simulé, `JAM_JOINT` émis par `GrippagesDeTest`), la grille d'un seul tenant ; T-332 par
+            la charnière fragile de 5a. 34 GameTests verts ; une mutation du servo en fait échouer trois.
       - [ ] 7d. S-05 au banc : 500 joints en chaînes et en grilles, temps du pas mesuré, aucune valeur non
             finie, deux exécutions identiques.
       - [ ] 7e. Documentation des joints pour les créateurs de contenu.
