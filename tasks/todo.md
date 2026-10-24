@@ -3268,6 +3268,20 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
             les overlays tracés. **Chantier joints clos** ; suivant : persistance, ADR accepté avant le code.
       - [x] `t390` attend `[Integration, Joints, Contacts]` par sous-pas (fait en 3a, `tests/world.rs`).
 
+**Chantier persistance (C-52)** — ouvert le 2026-10-25. [ADR-153](../docs/decisions/ADR-153.md) **accepté par
+Killian le 2026-10-25**, huit points selon la proposition : schéma NBT 3 (vitesses, sommeil, corps secondaires
+en position monde `f64`, état des joints, `axion:custom`) ; état restauré dans `CREATE_ASSEMBLY`, ABI 8, sans
+événement ; création endormie et budget R-1730 ; `CustomData`, un blob par mod dans une table CBOR ; journal
+latéral à restauration automatique ; T-434 = migration 2 → 3 ; T-435 et T-713b en campagne réelle ; T-437
+admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
+
+- [ ] 1. Schéma 3 côté Java : clés de D2, migration 2 → 3 ; T-433, T-434.
+- [ ] 2. ABI 8 : section d'état restauré, création endormie, vitesses rendues au réveil ; T-430.
+- [ ] 3. Budget de chargement (R-1730).
+- [ ] 4. `CustomData` et `axion:custom` ; T-432.
+- [ ] 5. Journal latéral : écriture, compactage, plafond, restauration ; T-713c..T-713f.
+- [ ] 6. Preuves : T-436, T-437, campagne T-435/T-713b, documentation.
+
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
 
