@@ -558,6 +558,10 @@ public final class BancDeRendu {
         // demi-radian. Chaque corps se dessine à sa pose : la silhouette est celle des deux cubes aux poses
         // du serveur, et non celle de l'asset au repos, b à l'horizontale.
         if (!SHADERS) {
+            // R-612 : le joueur du banc est spectateur et n'observe pas ; sans observateur à portée, la
+            // gestion d'activité endormirait la charnière, racine fixe comprise (ADR-153 D4). Déclaré avant
+            // le fond : les assemblies qu'il réveille aussi s'y posent, et n'entrent pas dans la silhouette.
+            serveur("observer la charnière", s -> ObservateursDeTest.declarer(s.overworld(), positionCharniere()));
             // Le retour à midi de T-474 éclaire encore le terrain : le fond attend une image stable.
             stabiliser("le fond de la charnière");
             une("capturer le fond de la charnière", mc -> fondCharniere = capturer(mc, "d9_fond.png"));

@@ -343,7 +343,7 @@ jobs:
         timeout-minutes: 20
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
-        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runRenderTest --no-daemon --stacktrace
+        run: bash tools/ci/banc_de_rendu.sh runRenderTest
 
       # R-1491 : les deux backends sont testes ; le natif l'est meme si le vanilla a echoue.
       - name: Banc de rendu, backend natif (client automatise)
@@ -351,7 +351,7 @@ jobs:
         timeout-minutes: 20
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
-        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runRenderTestNative --no-daemon --stacktrace
+        run: bash tools/ci/banc_de_rendu.sh runRenderTestNative
 
       # T-480, T-490 : sous Oculus (et Embeddium, sa dependance), depuis le Maven de Modrinth, avec
       # le shaderpack de test du depot ; le backend n'est pas impose.
@@ -360,7 +360,7 @@ jobs:
         timeout-minutes: 20
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
-        run: xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runRenderTestShaders --no-daemon --stacktrace
+        run: bash tools/ci/banc_de_rendu.sh runRenderTestShaders
 
       - name: Rapports et captures
         if: always()

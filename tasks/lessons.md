@@ -1896,6 +1896,13 @@ minuteur. Le code du commit n'y était pour rien : rien d'AXION ne tourne avant 
 sonde. Sur une vraie carte, ne rien changer. Un échec d'infrastructure qui revient à la relance se
 compare d'abord, ligne à ligne, au journal du dernier run vert.
 
+**Correction, le même jour.** Le run de 96a05a0 a sauté la sonde 4.6 (« Skipping GL version 4.6 »)
+et expiré quand même, sur la sonde 4.5 : c'est la toute première ouverture d'un contexte llvmpipe du
+job qui est lente (4 à 5 s d'habitude, plus de 10 s ce jour-là), quelle que soit la version. La sonde
+sautée reste juste, mais ne suffisait pas : `tools/ci/banc_de_rendu.sh` rejoue une fois un banc dont
+la sortie porte « Timed out trying to setup the Game Window », et seulement celui-là. Ne pas tenir une
+cause pour établie sur un seul run vert après un correctif.
+
 ## 2026-10-25 | Deux tests qui ne voyaient pas ce qu'ils croyaient voir
 
 **Ce qui a mal tourné.** La mutation « le sommeil de naissance sans effet » a survécu aux tests de
