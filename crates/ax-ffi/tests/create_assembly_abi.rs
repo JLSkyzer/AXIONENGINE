@@ -129,6 +129,19 @@ fn etats(stream: &[u8]) -> Vec<EtatCorps> {
 
 /// [`etats`], la durée de l'étape 5 du tick (`axion.sim.last_step_joints_ns`) et les
 /// `JointState` qui suivent les emprises dans `SIM_OUT` (ADR-151 D7).
+/// Le nombre de commandes du flux : après son en-tête de 8 octets, chacune a un en-tête de 8 octets
+/// et un payload complété à 8.
+fn commandes(stream: &[u8]) -> u32 {
+    let mut at = 8;
+    let mut count = 0;
+    while at + 8 <= stream.len() {
+        let len = u32::from_le_bytes(stream[at + 4..at + 8].try_into().unwrap()) as usize;
+        at += 8 + len.next_multiple_of(8);
+        count += 1;
+    }
+    count
+}
+
 fn etats_et_joints(stream: &[u8]) -> (Vec<EtatCorps>, u64, Vec<JointState>) {
     let _contexte = CONTEXTE
         .lock()
@@ -171,7 +184,7 @@ fn etats_et_joints(stream: &[u8]) -> (Vec<EtatCorps>, u64, Vec<JointState>) {
 
     // Soumet la commande, puis collecte.
     assert_eq!(
-        unsafe { axion_sim_submit(ctx, 1, 1, 0) },
+        unsafe { axion_sim_submit(ctx, 1, commandes(stream), 0) },
         AXION_OK,
         "submit"
     );
@@ -312,6 +325,18 @@ fn deux_corps_relies(flags: u8, body_kind: u8, joints: &[JointDesc]) -> Vec<u8> 
     stream.extend_from_slice(&opcode::CREATE_ASSEMBLY.to_le_bytes());
     stream.extend_from_slice(&(payload.len() as u32).to_le_bytes());
     stream.extend_from_slice(&payload);
+    stream.resize(stream.len().next_multiple_of(8), 0);
+    // R-612 : un joueur au point d'apparition, sans quoi la gestion d'activité endort l'assembly,
+    // racine fixe comprise (ADR-153 D4).
+    let mut joueur = 0u64.to_le_bytes().to_vec();
+    joueur.extend_from_slice(&1u32.to_le_bytes());
+    joueur.extend_from_slice(&0u32.to_le_bytes());
+    for value in [5.0f64, 10.0, -2.0] {
+        joueur.extend_from_slice(&value.to_le_bytes());
+    }
+    stream.extend_from_slice(&opcode::SET_OBSERVERS.to_le_bytes());
+    stream.extend_from_slice(&(joueur.len() as u32).to_le_bytes());
+    stream.extend_from_slice(&joueur);
     stream
 }
 

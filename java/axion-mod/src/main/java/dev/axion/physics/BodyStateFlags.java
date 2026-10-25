@@ -31,4 +31,7 @@ public final class BodyStateFlags {
 
     /** Le corps est endommagé. */
     public static final int DAMAGED = 32;
+
+    /** Endormi par la gestion d'activité : vitesses gelées, nulles dans l'état (ADR-153 D4). */
+    public static final int SUSPENDED = 64;
 }

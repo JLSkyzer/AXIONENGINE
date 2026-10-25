@@ -33,23 +33,26 @@ use ax_asset::compile::CompileOptions;
 use ax_asset::import::{ImportLimits, SourceFormat};
 use ax_asset::options::AssetOptions;
 use ax_jobs::{CpuShare, JobBudgets, JobKind, Side, WorkerPolicy};
-use ax_math::{DVec3, Vec3};
+use ax_math::{DVec3, Quat, Vec3};
 use ax_model::budgets::Budget;
-use ax_model::dm::commands::create_assembly_flags;
+use ax_model::dm::commands::{create_assembly_flags, restored_joint_flags};
 use ax_model::dm::debug::{debug_flags, encode_debug_payload, overlay};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::joints::JointState;
 use ax_model::dm::physics::{BodyBounds, BodyState};
-use ax_physics::{DegradationLevel, PhysicsConfig, SimDriver, SimSettings, Stage};
+use ax_physics::{
+    DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimDriver, SimSettings, Stage,
+};
 
 /// Version de l'ABI.
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 7 depuis les assemblies à
-/// plusieurs corps et leurs joints (ADR-151 D7), après l'empreinte déterministe et la
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 8 depuis l'état restauré
+/// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
+/// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 7;
+pub const AXION_ABI_VERSION: u32 = 8;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -1575,7 +1578,7 @@ fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
         return;
     };
     let header = request.header;
-    physics.create_assembly_bodies(
+    let Some(created) = physics.create_assembly_bodies(
         header.dimension,
         header.handle,
         header.spawn,
@@ -1584,7 +1587,43 @@ fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
         request.groups,
         header.assembly_mass,
         header.flags & create_assembly_flags::SELF_COLLISION != 0,
-    );
+    ) else {
+        return;
+    };
+    // ADR-153 D3 : l'état que la sauvegarde a gardé, rendu avant tout pas, sans événement.
+    if let Some(restored) = &request.restored {
+        let saved: Vec<SavedBody> = restored
+            .bodies
+            .iter()
+            .map(|body| {
+                let rotation = Quat::from_array(body.rotation);
+                SavedBody {
+                    position: DVec3::from_array(body.position),
+                    // Unitaire au flottant près, elle est gardée au bit près.
+                    rotation: if rotation.is_normalized() {
+                        rotation
+                    } else {
+                        rotation.normalize()
+                    },
+                    linear: Vec3::from_array(body.lin_vel),
+                    angular: Vec3::from_array(body.ang_vel),
+                }
+            })
+            .collect();
+        let joints: Vec<SavedJoint> = restored
+            .joints
+            .iter()
+            .map(|joint| SavedJoint {
+                broken: joint.flags & restored_joint_flags::BROKEN != 0,
+                misalignment: joint.misalignment,
+            })
+            .collect();
+        physics.restore_assembly(header.dimension, header.handle, &created, &saved, &joints);
+    }
+    // 22.4, ADR-153 D4 : une assembly chargée naît endormie, ses vitesses gelées.
+    if header.flags & create_assembly_flags::ASLEEP != 0 {
+        physics.suspend_assembly(header.dimension, created[0]);
+    }
 }
 
 /// Durée écoulée depuis `start`, en nanosecondes, saturée.

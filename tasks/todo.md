@@ -3278,7 +3278,10 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
 - [x] 1. Schéma 3 côté Java : clés de D2, migration 2 → 3 ; T-433, T-434 (2026-10-25). `PersistedState`, état lu
       réécrit tel quel avant le premier pas, orientation rendue au bit près ; 820 JUnit, 37 GameTests,
       12 mutations rouges. Le test de la charnière rompue juge la pose relative, plus la pose de repos.
-- [ ] 2. ABI 8 : section d'état restauré, création endormie, vitesses rendues au réveil ; T-430.
+- [x] 2. ABI 8 : section d'état restauré, création endormie, vitesses rendues au réveil ; T-430 (2026-10-25).
+      Deux décisions de Killian en cours : drapeau `SUSPENDED` (DM-08) et grippage recentré ; une troisième,
+      le correctif P4 de Rapier. Corrigés en chemin : réveil différé des joints insérés, racines fixes hors
+      de la gestion d'activité. 823 JUnit, 40 GameTests, suite de Rapier, 21 mutations rouges.
 - [ ] 3. Budget de chargement (R-1730).
 - [ ] 4. `CustomData` et `axion:custom` ; T-432.
 - [ ] 5. Journal latéral : écriture, compactage, plafond, restauration ; T-713c..T-713f.

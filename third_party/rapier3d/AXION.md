@@ -15,13 +15,14 @@ ajout dans le code est marqué `AXION`.
 | P1 | `src/dynamics/solver/joint_constraint/joint_velocity_constraint.rs` | Dans `JointConstraint::<Real, 1>::update`, un seul groupe d'orthogonalisation : axes bloqués, moteurs, frictions, butées. |
 | P2 | `generic_joint.rs`, `joint_velocity_constraint.rs`, `src/dynamics/solver/contact_constraint/contact_constraints_set.rs` | `GenericJoint::friction`, `friction_axes`, `set_friction`, `GenericJointBuilder::friction` ; une ligne de friction par axe libre non couplé, comptée par `joint_data_num_constraints`. |
 | P3 | `src/dynamics/joint/impulse_joint/impulse_joint.rs`, `impulse_joint_set.rs`, `src/dynamics/solver/joint_constraint/joint_constraint_builder.rs`, `joint_constraints_set.rs` | `ImpulseJoint::applied_held` et `applied_driven` : l'impulsion appliquée au second corps sur le pas, sommée sur les sous-pas internes, linéaire puis angulaire autour de l'ancrage. |
+| P4 | `src/pipeline/user_changes.rs` ; test `tests/axion_fixed_body_insert_keeps_partner_asleep.rs`, déclaré dans `Cargo.toml` | Un corps fixe tout juste inséré — tous ses drapeaux de changement posés — ne réveille pas ses partenaires de joint : l'insertion du joint en décide (`wake_up`). Un corps fixe déplacé les réveille comme avant. Sans lui, une assembly qui naît endormie sur une racine fixe se réveillait à son premier pas ([ADR-153](../../docs/decisions/ADR-153.md) D4). |
 
 ## Monter de version
 
 1. Copier le nouveau paquet publié à la place de celui-ci (`~/.cargo/registry/src/*/rapier3d-<version>`).
-2. Réappliquer P0 à P3 : la différence avec le paquet d'origine se lit en comparant ce répertoire à
-   `rapier3d-0.35.3`.
+2. Réappliquer P0 à P4 : la différence avec le paquet d'origine se lit en comparant ce répertoire à
+   `rapier3d-0.35.3`. Le test de P4 se redéclare dans le `Cargo.toml` du paquet (`autotests = false`).
 3. Rejouer les tests de Rapier, depuis ce répertoire :
    `cargo test --release --features enhanced-determinism`.
-4. Rejouer `cargo test -p ax-physics --test joints` (T-330 à T-334) et S-05.
+4. Rejouer `cargo test -p ax-physics --test joints` (T-330 à T-334), S-05 et `--test restauration`.
 5. Mettre à jour ce fichier et ADR-152.

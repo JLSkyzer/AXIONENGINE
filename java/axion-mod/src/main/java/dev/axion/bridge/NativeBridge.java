@@ -31,11 +31,12 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}. 7 depuis les assemblies à plusieurs corps et leurs joints (ADR-151 D7),
-     * après l'empreinte déterministe et la compression des charges utiles réseau (6, ADR-150 D4,
-     * D5).
+     * {@code E-1002}. 8 depuis l'état restauré d'une assembly à sa création et le sommeil des
+     * assemblies chargées (ADR-153 D3, D4), après les assemblies à plusieurs corps et leurs joints
+     * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
+     * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 7;
+    public static final int EXPECTED_ABI_VERSION = 8;
 
     /** Succès. */
     public static final int OK = 0;

@@ -9,7 +9,10 @@
 
 use ax_asset::a3d::{decode_colliders, decode_nodes};
 use ax_math::{Quat, Vec3};
-use ax_model::dm::commands::{AssemblyBodyEntry, CreateAssembly, MAX_ASSEMBLY_BODIES};
+use ax_model::dm::commands::{
+    create_assembly_flags, AssemblyBodyEntry, CreateAssembly, RestoredBody, RestoredJoint,
+    MAX_ASSEMBLY_BODIES,
+};
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::joints::{joint_axis_mode, joint_flags, joint_kind, JointDesc};
 use ax_model::dm::physics::ColliderDesc;
@@ -30,6 +33,8 @@ pub(crate) struct AssemblyRequest {
     pub joints: Vec<AssemblyJoint>,
     /// Les groupes de collision communs à tous les colliders (R-980).
     pub groups: CollisionGroups,
+    /// L'état restauré, si l'en-tête porte `RESTORED` (ADR-153 D3).
+    pub restored: Option<Restored>,
 }
 
 /// Décode un payload de `CREATE_ASSEMBLY`. `None` au premier écart — en-tête tronqué, aucun
@@ -88,7 +93,33 @@ pub(crate) fn decode(payload: &[u8]) -> Option<AssemblyRequest> {
     } else {
         decode_nodes(payload.get(nodes_at..nodes_end)?).ok()?.nodes
     };
-    let phys_at = nodes_end.next_multiple_of(8);
+    // ADR-153 D3 : l'état restauré suit la section NODE, un état par corps puis par joint.
+    let (restored, restored_end) = if header.flags & create_assembly_flags::RESTORED == 0 {
+        (None, nodes_end)
+    } else {
+        let joints_state_at = nodes_end + count * RestoredBody::BYTES;
+        let restored_bodies = (0..count)
+            .map(|index| {
+                RestoredBody::read_le(payload.get(nodes_end + index * RestoredBody::BYTES..)?)
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let restored_joints = (0..descs.len())
+            .map(|index| {
+                RestoredJoint::read_le(
+                    payload.get(joints_state_at + index * RestoredJoint::BYTES..)?,
+                )
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let end = joints_state_at + descs.len() * RestoredJoint::BYTES;
+        (
+            Some(Restored {
+                bodies: restored_bodies,
+                joints: restored_joints,
+            }),
+            end,
+        )
+    };
+    let phys_at = restored_end.next_multiple_of(8);
     let (colliders, points, children) = decode_colliders(payload.get(phys_at..)?).ok()?;
     let groups = body_groups(&colliders)?;
     let skeleton = Skeleton::new(&entries, &nodes)?;
@@ -103,7 +134,18 @@ pub(crate) fn decode(payload: &[u8]) -> Option<AssemblyRequest> {
         bodies,
         joints,
         groups,
+        restored,
     })
+}
+
+/// L'état restauré d'une assembly (ADR-153 D3), lu de sa section : un état par corps, dans
+/// l'ordre des corps, puis un par joint, dans l'ordre de la definition.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Restored {
+    /// Pose et vitesses de chaque corps.
+    pub bodies: Vec<RestoredBody>,
+    /// État de chaque joint.
+    pub joints: Vec<RestoredJoint>,
 }
 
 /// Pose d'un node dans le repère de l'asset : translation, rotation et échelle uniforme.
@@ -453,7 +495,9 @@ fn body_groups(colliders: &[ColliderDesc]) -> Option<CollisionGroups> {
 mod tests {
     use super::*;
     use ax_asset::a3d::{encode_colliders, encode_nodes};
-    use ax_model::dm::commands::create_assembly_payload;
+    use ax_model::dm::commands::{
+        create_assembly_payload, create_assembly_payload_restored, restored_joint_flags,
+    };
     use ax_model::dm::geometry::WorldTransform;
     use ax_model::dm::handle::Handle;
     use ax_model::dm::physics::{BodyDesc, ColliderShape};
@@ -999,5 +1043,92 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(sans.joints[0].spec.jam, None);
+    }
+
+    /// Le payload de la racine et de la porte, sa charnière, et l'état restauré `restored`.
+    fn payload_restaure(restored: &[RestoredBody], joints: &[RestoredJoint]) -> Vec<u8> {
+        let (mut nodes, mut colliders) = racine_et_porte();
+        nodes[0].collider = 1;
+        colliders.push(boite([0.0; 3]));
+        let names = vec!["racine".to_owned(), "porte".to_owned()];
+        let node_bytes = encode_nodes(&nodes, &names).unwrap();
+        let phys = encode_colliders(&colliders, &[], &[]).unwrap();
+        create_assembly_payload_restored(
+            &en_tete(),
+            &[entree(0), entree(1)],
+            &[charniere()],
+            &[],
+            &node_bytes,
+            Some((restored, joints)),
+            &phys,
+        )
+    }
+
+    fn etats() -> (Vec<RestoredBody>, Vec<RestoredJoint>) {
+        (
+            vec![
+                RestoredBody {
+                    position: [10.25, 70.5, -3.125],
+                    rotation: [0.0, 0.247_403_96, 0.0, 0.968_912_4],
+                    lin_vel: [3.0, 0.0, 0.0],
+                    ang_vel: [0.0, 0.25, 0.0],
+                },
+                RestoredBody {
+                    position: [12.0, 70.5, -4.0],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                    lin_vel: [3.0, 0.5, 0.0],
+                    ang_vel: [0.0, 0.0, 0.0],
+                },
+            ],
+            vec![RestoredJoint {
+                flags: restored_joint_flags::BROKEN,
+                misalignment: 0.0,
+            }],
+        )
+    }
+
+    #[test]
+    fn adr153_d3_l_etat_restaure_se_lit_entre_node_et_phys() {
+        let (corps, joints) = etats();
+        let request = decode(&payload_restaure(&corps, &joints)).expect("payload restauré lisible");
+        assert_eq!(
+            request.restored,
+            Some(Restored {
+                bodies: corps,
+                joints
+            })
+        );
+        // PHYS se lit encore après la section : les deux corps ont leurs colliders.
+        assert_eq!(request.bodies.len(), 2);
+        assert!(request.bodies.iter().all(|body| !body.colliders.is_empty()));
+        // Sans le drapeau, aucune section n'est lue.
+        let sans = decode(&payload(en_tete(), &[entree(0), entree(1)], true)).unwrap();
+        assert_eq!(sans.restored, None);
+    }
+
+    #[test]
+    fn adr153_d3_un_etat_restaure_fautif_fait_refuser_l_assembly() {
+        let (mut corps, joints) = etats();
+        corps[1].lin_vel[0] = f32::NAN;
+        assert!(
+            decode(&payload_restaure(&corps, &joints)).is_none(),
+            "vitesse non finie"
+        );
+        let (mut corps, joints) = etats();
+        corps[0].rotation = [0.0; 4];
+        assert!(
+            decode(&payload_restaure(&corps, &joints)).is_none(),
+            "rotation nulle"
+        );
+        let (corps, mut joints) = etats();
+        joints[0].misalignment = -0.5;
+        assert!(
+            decode(&payload_restaure(&corps, &joints)).is_none(),
+            "désalignement négatif"
+        );
+        // Le drapeau sans la section : PHYS se cherche plus loin, et ne se lit pas.
+        let mut tronque = payload(en_tete(), &[entree(0), entree(1)], true);
+        tronque[57] |= create_assembly_flags::RESTORED;
+        assert!(decode(&tronque).is_none(), "drapeau sans section");
     }
 }

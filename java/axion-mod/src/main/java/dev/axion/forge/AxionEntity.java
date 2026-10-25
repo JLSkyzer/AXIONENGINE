@@ -9,6 +9,7 @@ import dev.axion.net.RenderClock;
 import dev.axion.physics.JointState;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -78,6 +79,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     private boolean simulated;
 
+    /**
+     * Vrai pour une entité lue d'une sauvegarde, jusqu'à la création de son assembly (serveur) : elle
+     * naît endormie (22.4). Une entité liée par {@link #bind} — {@code /axion spawn} — ne l'est pas.
+     */
+    private boolean loadedFromSave;
+
+    /** L'état que son NBT portait, jusqu'à la création de son assembly ; {@code null} sans état lu. */
+    private PersistedState savedState;
+
     /** Les bits des joints du plus récent snapshot reçu, et son tick serveur (client, ADR-151 D8). */
     private AssemblyState.JointBits receivedJoints = AssemblyState.JointBits.NONE;
 
@@ -141,6 +151,39 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         stored = AssemblyTags.bound(stored, definition.hash());
         definitionId = definition.id();
         inert = false;
+        loadedFromSave = false;
+        savedState = null;
+    }
+
+    /**
+     * {@return l'état que la sauvegarde de l'entité a gardé, pour la création de son assembly, ou vide
+     * pour une entité qui n'en sort pas} Rendu une fois : une assembly recréée plus tard part de l'état
+     * courant de l'entité (ADR-153 D3, D4).
+     */
+    Optional<PersistedState> takeSavedState() {
+        PersistedState state = savedState;
+        savedState = null;
+        return Optional.ofNullable(state);
+    }
+
+    /** {@return vrai si l'entité sort d'une sauvegarde : son assembly naît endormie (22.4)} Rendu une fois. */
+    boolean takeLoadedFromSave() {
+        boolean loaded = loadedFromSave;
+        loadedFromSave = false;
+        return loaded;
+    }
+
+    /**
+     * Pose l'état restauré des joints, à la création de l'assembly (serveur, ADR-153 D3) : rompus, et
+     * le désalignement commandé de chacun.
+     *
+     * @param joints un état par joint, dans l'ordre de la definition
+     */
+    void restoreJoints(List<PersistedState.Joint> joints) {
+        for (int i = 0; i < joints.size() && i < jointFlags.length; i++) {
+            jointFlags[i] = joints.get(i).broken() ? JointState.BROKEN : 0;
+            jointMisalignment[i] = joints.get(i).misalignment();
+        }
     }
 
     @Override
@@ -207,15 +250,37 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /**
      * Pose les corps de l'assembly autres que le corps racine (serveur, fin de tick), dans l'ordre
-     * de leurs états.
+     * de leurs états. Un corps que la gestion d'activité a endormi ({@code SUSPENDED}) a des vitesses
+     * gelées, que son état rapporte nulles : il garde celles qu'il avait, que la sauvegarde écrit et que
+     * son réveil lui rendra (ADR-153 D4).
+     *
+     * @param bodies les corps, à leur état du tick
+     * @param suspended pour chacun, vrai s'il est endormi par la gestion d'activité
      */
-    void setSecondaryBodies(List<BodyPose> bodies) {
-        secondaryBodies = List.copyOf(bodies);
+    void setSecondaryBodies(List<BodyPose> bodies, List<Boolean> suspended) {
+        List<BodyPose> merged = new ArrayList<>(bodies.size());
+        for (int i = 0; i < bodies.size(); i++) {
+            BodyPose body = bodies.get(i);
+            BodyPose before = i < suspended.size() && suspended.get(i) ? secondaryBody(body.node()) : null;
+            merged.add(before == null ? body : new BodyPose(body.node(), body.x(), body.y(), body.z(),
+                    body.rotation(), before.linear(), before.angular()));
+        }
+        secondaryBodies = List.copyOf(merged);
     }
 
     /** {@return les corps de l'assembly autres que le corps racine, à leur dernier état} */
     List<BodyPose> secondaryBodies() {
         return secondaryBodies;
+    }
+
+    /** {@return le dernier état du corps secondaire de node racine {@code node}, ou {@code null}} */
+    BodyPose secondaryBody(int node) {
+        for (BodyPose body : secondaryBodies) {
+            if (body.node() == node) {
+                return body;
+            }
+        }
+        return null;
     }
 
     /**
@@ -284,10 +349,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param linear vitesse linéaire monde du corps racine, en m/s
      * @param angular vitesse angulaire monde du corps racine, en rad/s
      * @param sleeping l'assembly dort
+     * @param suspended le corps racine dort, endormi par la gestion d'activité ({@code SUSPENDED})
      */
-    void updateNetState(float[] linear, float[] angular, boolean sleeping) {
-        System.arraycopy(linear, 0, linearVelocity, 0, 3);
-        System.arraycopy(angular, 0, angularVelocity, 0, 3);
+    void updateNetState(float[] linear, float[] angular, boolean sleeping, boolean suspended) {
+        // ADR-153 D4 : endormi par la gestion d'activité, le corps a des vitesses gelées que l'état
+        // rapporte nulles ; la sauvegarde garde celles d'avant, que le réveil lui rendra.
+        if (!suspended) {
+            System.arraycopy(linear, 0, linearVelocity, 0, 3);
+            System.arraycopy(angular, 0, angularVelocity, 0, 3);
+        }
         this.sleeping = sleeping;
         simulated = true;
         boolean bounded = hasPhysicalBounds();
@@ -452,6 +522,22 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // R-1710 : un schéma antérieur se migre par une fonction explicite avant d'être lu.
         stored = AssemblyTags.migrate(AssemblyTags.extract(tag));
         simulated = false;
+        loadedFromSave = true;
+        // ADR-153 D3 : l'état gardé, rendu à la création de l'assembly ; ses vitesses et ses corps
+        // secondaires sont aussi ceux que la sauvegarde suivante réécrit, tant que l'assembly dort.
+        savedState = PersistedState.read(stored).orElse(null);
+        if (savedState != null) {
+            System.arraycopy(savedState.linear(), 0, linearVelocity, 0, 3);
+            System.arraycopy(savedState.angular(), 0, angularVelocity, 0, 3);
+            sleeping = savedState.sleeping();
+            List<BodyPose> bodies = new ArrayList<>(savedState.bodies().size());
+            for (PersistedState.Body body : savedState.bodies()) {
+                float[] r = body.rotation();
+                bodies.add(new BodyPose(body.node(), body.x(), body.y(), body.z(),
+                        new Quaternionf(r[0], r[1], r[2], r[3]), body.linear(), body.angular()));
+            }
+            secondaryBodies = List.copyOf(bodies);
+        }
         AssemblyBinding binding = AssemblyBinding.resolve(
                 AssemblyTags.version(stored),
                 AssemblyTags.definition(stored),

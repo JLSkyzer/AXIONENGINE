@@ -228,6 +228,86 @@ class SimCommandStreamTest {
         assertArrayEquals(phys, Arrays.copyOfRange(bytes, nodesAt + 8, nodesAt + 10), "PHYS aligné sur 8");
     }
 
+    private static JointDescription jointDEssai() {
+        return new JointDescription(0, 0, 0, 1, new int[6], 4, new float[3], new float[3],
+                new float[2], 0f, 0f, 0f, 0f, Float.POSITIVE_INFINITY, 0f, 8000f, Float.POSITIVE_INFINITY,
+                Float.POSITIVE_INFINITY, 0f, 0, 0, new float[6][2], 0f, 0f, 0f, 0f);
+    }
+
+    private static List<SimCommandStream.AssemblyBody> deuxCorps() {
+        return List.of(
+                new SimCommandStream.AssemblyBody(BodyDescription.undeclared(SimCommandStream.BODY_STATIC), 0),
+                new SimCommandStream.AssemblyBody(BodyDescription.undeclared(SimCommandStream.BODY_DYNAMIC), 4));
+    }
+
+    private static SimCommandStream.Restored etatRestaure(float vitesse, float desalignement) {
+        return new SimCommandStream.Restored(
+                List.of(
+                        new SimCommandStream.RestoredBody(new double[] {10.25, 70.5, -3.125},
+                                new float[] {0f, 0.5f, 0f, 0.8660254f}, new float[] {vitesse, 0f, 0f},
+                                new float[] {0f, 0.25f, 0f}),
+                        new SimCommandStream.RestoredBody(new double[] {12.0, 70.5, -4.0},
+                                new float[] {0f, 0f, 0f, 1f}, new float[] {3f, 0.5f, 0f}, new float[3])),
+                List.of(new SimCommandStream.RestoredJoint(true, desalignement)));
+    }
+
+    @Test
+    void encodeLEtatRestaureEntreNodeEtPhys() {
+        // ADR-153 D3 : l'état restauré suit NODE — 64 octets par corps, 8 par joint —, puis PHYS
+        // aligné sur 8 ; les drapeaux RESTORED et ASLEEP sont dans l'en-tête.
+        byte[] nodes = {9, 9, 9};
+        byte[] phys = {1, 2};
+        SimCommandStream stream = new SimCommandStream().createAssembly(7, 1, 0L, new double[] {0, 64, 0},
+                new float[] {0, 0, 0, 1}, deuxCorps(), List.of(jointDEssai()), List.of(), 0.0f, false, nodes,
+                etatRestaure(3f, 0f), true, phys);
+
+        byte[] bytes = stream.toBytes();
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.CREATE_ASSEMBLY_RESTORED | SimCommandStream.CREATE_ASSEMBLY_ASLEEP, b.get(73),
+                "drapeaux");
+        int nodesAt = 16 + 72 + 2 * 64 + JointDescription.BYTES;
+        assertArrayEquals(nodes, Arrays.copyOfRange(bytes, nodesAt, nodesAt + 3), "section NODE");
+        int restored = nodesAt + 3;
+        assertEquals(10.25, b.getDouble(restored), "position x du corps racine");
+        assertEquals(-3.125, b.getDouble(restored + 16), "position z du corps racine");
+        assertEquals(0.5f, b.getFloat(restored + 24 + 4), "rotation y du corps racine");
+        assertEquals(3f, b.getFloat(restored + 40), "vitesse x du corps racine");
+        assertEquals(0.25f, b.getFloat(restored + 52 + 4), "vitesse angulaire y du corps racine");
+        assertEquals(12.0, b.getDouble(restored + 64), "position x du second corps");
+        assertEquals(0.5f, b.getFloat(restored + 64 + 44), "vitesse y du second corps");
+        int joint = restored + 2 * SimCommandStream.RESTORED_BODY_BYTES;
+        assertEquals(SimCommandStream.RESTORED_JOINT_BROKEN, b.get(joint), "joint rompu");
+        assertEquals(0, b.get(joint + 1) | b.get(joint + 2) | b.get(joint + 3), "réservés");
+        assertEquals(0f, b.getFloat(joint + 4), "désalignement");
+        // payload = align8(72 + 128 + 160 + 3 + 136) + 2 = 506.
+        assertEquals(506, b.getInt(12), "payload_len");
+        assertArrayEquals(phys, Arrays.copyOfRange(bytes, 16 + 504, 16 + 506), "PHYS aligné sur 8 après l'état");
+    }
+
+    @Test
+    void sansEtatRestaureLeDrapeauRestoredEstNul() {
+        SimCommandStream stream = new SimCommandStream().createAssembly(7, 1, 0L, new double[] {0, 64, 0},
+                new float[] {0, 0, 0, 1}, deuxCorps(), List.of(jointDEssai()), List.of(), 0.0f, true,
+                new byte[] {9}, null, true, new byte[] {1});
+        assertEquals(SimCommandStream.CREATE_ASSEMBLY_SELF_COLLISION | SimCommandStream.CREATE_ASSEMBLY_ASLEEP,
+                wrap(stream.toBytes()).get(73));
+    }
+
+    @Test
+    void unEtatRestaureFautifEstRefuseAvantLeNatif() {
+        double[] position = {0, 64, 0};
+        float[] rotation = {0, 0, 0, 1};
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().createAssembly(7, 1, 0L, position,
+                rotation, deuxCorps(), List.of(), List.of(), 0f, false, new byte[] {9}, etatRestaure(3f, 0f), false,
+                new byte[] {1}), "un état de joint sans joint");
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().createAssembly(7, 1, 0L, position,
+                rotation, deuxCorps(), List.of(jointDEssai()), List.of(), 0f, false, new byte[] {9},
+                etatRestaure(Float.NaN, 0f), false, new byte[] {1}), "vitesse non finie");
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().createAssembly(7, 1, 0L, position,
+                rotation, deuxCorps(), List.of(jointDEssai()), List.of(), 0f, false, new byte[] {9},
+                etatRestaure(3f, -0.5f), false, new byte[] {1}), "désalignement négatif");
+    }
+
     @Test
     void createAssemblyRefuseUneAssemblyMalFormee() {
         BodyDescription dynamique = BodyDescription.undeclared(SimCommandStream.BODY_DYNAMIC);

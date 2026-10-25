@@ -1895,3 +1895,19 @@ minuteur. Le code du commit n'y était pour rien : rien d'AXION ne tourne avant 
 `earlyWindowSkipGLVersions = ["4.6"]` dans le `fml.toml` de son répertoire : même contexte, sans la
 sonde. Sur une vraie carte, ne rien changer. Un échec d'infrastructure qui revient à la relance se
 compare d'abord, ligne à ligne, au journal du dernier run vert.
+
+## 2026-10-25 | Deux tests qui ne voyaient pas ce qu'ils croyaient voir
+
+**Ce qui a mal tourné.** La mutation « le sommeil de naissance sans effet » a survécu aux tests de
+restauration. Et un test ABI d'ADR-151 a cessé de passer quand les racines fixes sont entrées dans la
+gestion d'activité ; l'observateur ajouté au flux n'y changeait rien.
+
+**Cause.** Les tests de restauration faisaient leur premier tri d'activité sans joueur : la gestion
+d'activité y endort d'elle-même toute assembly, née endormie ou non. L'aide du test ABI annonçait une
+seule commande à `axion_sim_submit` (troisième argument), quel que soit son flux : la seconde était
+ignorée sans erreur. Le test ABI, lui, n'était vert que grâce au défaut corrigé.
+
+**Règle.** Un test de sommeil ou de réveil met un joueur à portée dès le premier tick, ou il ne
+distingue pas « né endormi » de « endormi par le rayon ». Une aide qui soumet un flux compte ses
+commandes au lieu de les annoncer. Un test qui casse quand un défaut se corrige s'appuyait sur ce
+défaut : sa prémisse se corrige avec lui, pas son assertion.

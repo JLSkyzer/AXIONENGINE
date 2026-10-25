@@ -125,6 +125,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             float assemblyMass,
             boolean selfCollision,
             byte[] nodes,
+            SimCommandStream.Restored restored,
+            boolean asleep,
             byte[] phys) {}
 
     /**
@@ -219,11 +221,62 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         }
         rootNodes.put(index, layout.rootNode());
         assembly.resetJoints(layout.joints().size());
+        // 22.4, ADR-153 D3, D4 : une assembly lue d'une sauvegarde naît endormie, et l'état que son
+        // NBT garde lui est rendu s'il correspond encore à ses corps et à ses joints.
+        boolean asleep = assembly.takeLoadedFromSave();
+        PersistedState persisted = assembly.takeSavedState().orElse(null);
+        SimCommandStream.Restored restored =
+                persisted == null ? null : restoredOf(persisted, layout, definition.id());
+        if (restored != null) {
+            assembly.restoreJoints(persisted.joints());
+        }
         byte[] nodeSection = nodes == null ? new byte[0] : nodes;
         pending.add(new Pending(true, index, dimension, position, rotation, layout.bodies(), layout.joints(),
-                layout.jamPoints(), layout.assemblyMass(), layout.selfCollision(), nodeSection, phys));
+                layout.jamPoints(), layout.assemblyMass(), layout.selfCollision(), nodeSection, restored, asleep,
+                phys));
         ledger.attach(index, assembly);
         return true;
+    }
+
+    /**
+     * L'état restauré de {@code CREATE_ASSEMBLY} (ADR-153 D3) : le corps racine à la pose et aux vitesses
+     * de la racine sauvegardée, chaque autre corps à celles du corps sauvegardé de même node racine, chaque
+     * joint à son état. {@code null}, avec un avertissement, si la sauvegarde ne correspond plus à la
+     * definition — un corps ou un joint de plus ou de moins : l'assembly repart de sa pose de repos.
+     */
+    private static SimCommandStream.Restored restoredOf(
+            PersistedState saved, AssemblyBodies.Layout layout, String definitionId) {
+        List<SimCommandStream.AssemblyBody> bodies = layout.bodies();
+        if (saved.bodies().size() != bodies.size() - 1 || saved.joints().size() != layout.joints().size()) {
+            LOGGER.warn("AXION : l'état sauvegardé d'une assembly de {} ne correspond plus à sa definition ({} corps "
+                    + "et {} joint(s) sauvegardés, {} et {} déclarés) ; elle repart de sa pose de repos",
+                    definitionId, saved.bodies().size() + 1, saved.joints().size(), bodies.size(),
+                    layout.joints().size());
+            return null;
+        }
+        List<SimCommandStream.RestoredBody> restored = new ArrayList<>(bodies.size());
+        restored.add(new SimCommandStream.RestoredBody(
+                saved.position(), saved.rotation(), saved.linear(), saved.angular()));
+        for (SimCommandStream.AssemblyBody body : bodies.subList(1, bodies.size())) {
+            PersistedState.Body match = null;
+            for (PersistedState.Body candidate : saved.bodies()) {
+                if (candidate.node() == body.rootNode()) {
+                    match = candidate;
+                }
+            }
+            if (match == null) {
+                LOGGER.warn("AXION : l'état sauvegardé d'une assembly de {} n'a pas le corps du node {} ; elle "
+                        + "repart de sa pose de repos", definitionId, body.rootNode());
+                return null;
+            }
+            restored.add(new SimCommandStream.RestoredBody(new double[] {match.x(), match.y(), match.z()},
+                    match.rotation(), match.linear(), match.angular()));
+        }
+        List<SimCommandStream.RestoredJoint> joints = new ArrayList<>(saved.joints().size());
+        for (PersistedState.Joint joint : saved.joints()) {
+            joints.add(new SimCommandStream.RestoredJoint(joint.broken(), joint.misalignment()));
+        }
+        return new SimCommandStream.Restored(List.copyOf(restored), List.copyOf(joints));
     }
 
     /**
@@ -247,7 +300,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         implausibleBounds.remove(index);
         speeds.remove(index);
         rootNodes.remove(index);
-        pending.add(new Pending(false, index, 0L, null, null, null, null, null, 0.0f, false, null, null));
+        pending.add(new Pending(false, index, 0L, null, null, null, null, null, 0.0f, false, null, null, false, null));
     }
 
     /**
@@ -324,6 +377,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                         cmd.assemblyMass(),
                         cmd.selfCollision(),
                         cmd.nodes(),
+                        cmd.restored(),
+                        cmd.asleep(),
                         cmd.phys());
             } else {
                 stream.removeAssembly(cmd.index(), GENERATION);
@@ -392,6 +447,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             int rootNode = rootNodes.getOrDefault(handle, 0);
             int i = -1;
             List<AxionEntity.BodyPose> secondary = new ArrayList<>(own.size());
+            List<Boolean> suspended = new ArrayList<>(own.size());
             for (int rank : own) {
                 BodyState other = states.get(rank);
                 if (i < 0 && other.node() == rootNode) {
@@ -402,8 +458,9 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 float[] r = other.rotation();
                 secondary.add(new AxionEntity.BodyPose(other.node(), o[0], o[1], o[2],
                         new Quaternionf(r[0], r[1], r[2], r[3]), other.linearVelocity(), other.angularVelocity()));
+                suspended.add((other.flags() & BodyStateFlags.SUSPENDED) != 0);
             }
-            entity.setSecondaryBodies(secondary);
+            entity.setSecondaryBodies(secondary, suspended);
             if (i < 0) {
                 // Le natif rapporte toujours le corps racine d'une assembly à plusieurs corps, fût-il
                 // statique (ADR-151 D8) : sans lui, rien à poser.
@@ -423,7 +480,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             }
             // ADR-150 D6 : l'état que les snapshots portent, une fois position, orientation et emprise
             // posées.
-            entity.updateNetState(v, state.angularVelocity(), (state.flags() & BodyStateFlags.SLEEPING) != 0);
+            entity.updateNetState(v, state.angularVelocity(), (state.flags() & BodyStateFlags.SLEEPING) != 0,
+                    (state.flags() & BodyStateFlags.SUSPENDED) != 0);
         }
         // R-500 : la durée de l'application des états, côté entité.
         EntityMetrics.GLOBAL.applied(System.nanoTime() - start);

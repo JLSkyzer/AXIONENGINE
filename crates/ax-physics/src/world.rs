@@ -303,6 +303,11 @@ pub struct PhysicsWorld {
     joints_solved: usize,
     /// Ruptures de joints depuis la création du monde.
     joints_broken: u64,
+    /// Assemblies dont l'état des joints vient d'être restauré (ADR-153 D3) : leurs joints sont
+    /// rapportés au prochain tick, même endormies, puis plus qu'éveillées. Ordonnées (R-1020).
+    joints_restored: BTreeSet<u64>,
+    /// Celles du tick courant, que [`joints::JointEntry`] rapporte quoi qu'il arrive.
+    joints_reported_once: BTreeSet<u64>,
     /// Matériau de contact de chaque collider d'assembly ou de tuile (DM-07, ADR-149) : son
     /// index, que portent les événements et par lequel une table nouvelle se propage, et son
     /// roulement (D6). Consultée par clé, jamais itérée (R-1020) : la propagation suit l'ordre
@@ -531,6 +536,8 @@ impl PhysicsWorld {
             next_joint: 0,
             joints_solved: 0,
             joints_broken: 0,
+            joints_restored: BTreeSet::new(),
+            joints_reported_once: BTreeSet::new(),
             collider_materials: HashMap::new(),
             sleep_state: HashMap::new(),
             events: Vec::new(),
@@ -2251,6 +2258,11 @@ impl PhysicsWorld {
             if sleeping {
                 flags |= body_state_flags::SLEEPING;
             }
+            // ADR-153 D4 : endormi par la gestion d'activité, ses vitesses gelées l'attendent ;
+            // celles de l'état sont nulles, comme celles de tout corps endormi.
+            if self.forced_sleep.contains_key(&id) {
+                flags |= body_state_flags::SUSPENDED;
+            }
             if (self.fluid.is_some() || !self.fluid_volumes.is_empty())
                 && self.body_in_fluid(handle)
             {
@@ -2683,14 +2695,22 @@ impl PhysicsWorld {
         if self.mode == SimMode::Client {
             return;
         }
-        // Une assembly se relève par son corps racine, avec tous ses corps (ADR-151 D2).
+        // Une assembly se relève par son corps racine, avec tous ses corps (ADR-151 D2) — fût-il
+        // fixe : une porte sur son montant s'endort et se réveille par son battant (ADR-153 D4).
         let roots: Vec<BodyId> = self
             .inner
             .bodies
             .iter()
-            .filter(|(_, body)| body.is_dynamic())
             .map(|(handle, _)| BodyId::from_handle(handle))
             .filter(|id| !self.is_secondary(*id))
+            .filter(|id| {
+                self.assembly_members(*id).iter().any(|member| {
+                    self.inner
+                        .bodies
+                        .get(member.handle())
+                        .is_some_and(RigidBody::is_dynamic)
+                })
+            })
             .collect();
         for id in roots {
             let members = self.assembly_members(id);
@@ -2777,6 +2797,40 @@ impl PhysicsWorld {
         for member in self.assembly_members(id) {
             self.wake_forced(member);
         }
+    }
+
+    /// Rend à un corps tout juste créé la pose et les vitesses que sa sauvegarde a gardées
+    /// (ADR-153 D3), avant tout pas ; sa dernière pose valide (R-181) devient celle-ci. Sans
+    /// effet si le corps n'existe pas.
+    pub fn restore_saved_body(
+        &mut self,
+        id: BodyId,
+        position: Vec3,
+        rotation: Quat,
+        linvel: Vec3,
+        angvel: Vec3,
+    ) {
+        let Some(body) = self.inner.bodies.get_mut(id.handle()) else {
+            return;
+        };
+        body.set_position(RapierPose::from_parts(position, rotation), false);
+        body.set_linvel(linvel, false);
+        body.set_angvel(angvel, false);
+        if state_is_valid(position, rotation, linvel, angvel) {
+            self.last_valid.insert(
+                id,
+                ValidPose {
+                    translation: position,
+                    rotation,
+                },
+            );
+        }
+    }
+
+    /// Endort l'assembly d'un corps tout juste créé comme la gestion d'activité l'endort (22.4,
+    /// ADR-153 D4) : ses vitesses gelées, rendues quand cette gestion la réveille.
+    pub fn suspend_assembly(&mut self, id: BodyId) {
+        self.force_sleep(id, false);
     }
 
     /// Réveille un seul corps endormi par la gestion d'activité, avec sa vitesse ; sans

@@ -71,6 +71,48 @@ public final class SimCommandStream {
     /** Drapeau {@code SELF_COLLISION} de {@code CreateAssembly} : ses corps se touchent (§10.4). */
     public static final int CREATE_ASSEMBLY_SELF_COLLISION = 1;
 
+    /** Drapeau {@code RESTORED} de {@code CreateAssembly} : une section d'état restauré suit {@code NODE}. */
+    public static final int CREATE_ASSEMBLY_RESTORED = 2;
+
+    /** Drapeau {@code ASLEEP} de {@code CreateAssembly} : l'assembly naît endormie (22.4, ADR-153 D4). */
+    public static final int CREATE_ASSEMBLY_ASLEEP = 4;
+
+    /** Taille de l'état restauré d'un corps ({@code RestoredBody}), en octets. */
+    public static final int RESTORED_BODY_BYTES = 64;
+
+    /** Taille de l'état restauré d'un joint ({@code RestoredJoint}), en octets. */
+    public static final int RESTORED_JOINT_BYTES = 8;
+
+    /** Drapeau d'un {@code RestoredJoint} : le joint est rompu. */
+    public static final int RESTORED_JOINT_BROKEN = 1;
+
+    /**
+     * L'état qu'une sauvegarde a gardé d'une assembly (ADR-153 D3), rendu à sa création par le natif,
+     * sans événement : un corps par corps de la commande, dans le même ordre, puis un joint par joint.
+     *
+     * @param bodies pose et vitesses de chaque corps
+     * @param joints état de chaque joint, dans l'ordre de la definition
+     */
+    public record Restored(List<RestoredBody> bodies, List<RestoredJoint> joints) {}
+
+    /**
+     * La pose monde et les vitesses monde d'un corps restauré.
+     *
+     * @param position position monde {@code [x, y, z]}, en blocs
+     * @param rotation quaternion {@code [x, y, z, w]}
+     * @param linear vitesse linéaire {@code [x, y, z]}, en m/s
+     * @param angular vitesse angulaire {@code [x, y, z]}, en rad/s
+     */
+    public record RestoredBody(double[] position, float[] rotation, float[] linear, float[] angular) {}
+
+    /**
+     * L'état d'un joint restauré.
+     *
+     * @param broken le joint est rompu
+     * @param misalignment désalignement de son ancrage, en blocs ; 0 ne grippe pas
+     */
+    public record RestoredJoint(boolean broken, float misalignment) {}
+
     /** {@code body_kind} : corps statique (miroir de {@code BodyKind::Static}). */
     public static final int BODY_STATIC = 0;
 
@@ -365,6 +407,47 @@ public final class SimCommandStream {
             boolean selfCollision,
             byte[] nodes,
             byte[] phys) {
+        return createAssembly(handleIndex, handleGeneration, dimension, position, rotation, bodies, joints,
+                jamPoints, assemblyMass, selfCollision, nodes, null, false, phys);
+    }
+
+    /**
+     * Ajoute une commande {@code CREATE_ASSEMBLY} qui rend à l'assembly l'état que sa sauvegarde a
+     * gardé (ADR-153 D3), et la fait naître endormie (22.4, D4). La section d'état restauré suit la
+     * section {@code NODE}, avant {@code PHYS}.
+     *
+     * @param handleIndex rang du handle d'assembly (routage des corps)
+     * @param handleGeneration génération du handle ({@code 0} est invalide)
+     * @param dimension dimension d'accueil (R-610)
+     * @param position position monde de spawn {@code [x, y, z]}, en blocs
+     * @param rotation quaternion de spawn {@code [x, y, z, w]}
+     * @param bodies les corps, de 1 à {@link #MAX_ASSEMBLY_BODIES}, le corps racine d'abord
+     * @param joints les joints, dans l'ordre de la definition ({@link AssemblyJoints#of})
+     * @param jamPoints les points des courbes de grippage, {@code [x, y]}, dans l'ordre des joints
+     * @param assemblyMass masse de l'assembly en kg, répartie entre ses corps sans masse
+     *     déclarée ; {@code 0} : aucune
+     * @param selfCollision vrai si ses corps se touchent entre eux (§10.4)
+     * @param nodes octets de la section {@code NODE}
+     * @param restored l'état restauré, un par corps et par joint ; {@code null} : aucun
+     * @param asleep vrai si l'assembly naît endormie, ses vitesses gelées
+     * @param phys octets de la section {@code PHYS} (colliders compilés)
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream createAssembly(
+            int handleIndex,
+            int handleGeneration,
+            long dimension,
+            double[] position,
+            float[] rotation,
+            List<AssemblyBody> bodies,
+            List<JointDescription> joints,
+            List<float[]> jamPoints,
+            float assemblyMass,
+            boolean selfCollision,
+            byte[] nodes,
+            Restored restored,
+            boolean asleep,
+            byte[] phys) {
         if (position.length != 3) {
             throw new IllegalArgumentException("la position est un vecteur à 3 composantes");
         }
@@ -396,13 +479,19 @@ public final class SimCommandStream {
                 throw new IllegalArgumentException("un point de grippage a deux composantes");
             }
         }
+        if (restored != null) {
+            checkRestored(restored, bodies.size(), joints.size());
+        }
         int bodyKind = bodies.get(0).description().bodyType();
+        int restoredBytes = restored == null
+                ? 0
+                : bodies.size() * RESTORED_BODY_BYTES + joints.size() * RESTORED_JOINT_BYTES;
 
         // Le payload est aligné sur 8 octets : le lecteur natif avance d'un multiple de 8 après
         // chaque commande, pour lire la suivante en place (R-271, R-881).
         int physOffset = alignUp8(CREATE_ASSEMBLY_HEADER_BYTES + bodies.size() * ASSEMBLY_BODY_BYTES
                 + joints.size() * JointDescription.BYTES + jamPoints.size() * JointDescription.JAM_POINT_BYTES
-                + nodes.length);
+                + nodes.length + restoredBytes);
         int payloadLen = physOffset + phys.length;
         int padded = alignUp8(payloadLen);
         ByteBuffer command = ByteBuffer.allocate(COMMAND_HEADER_BYTES + padded)
@@ -422,7 +511,9 @@ public final class SimCommandStream {
         command.putFloat(rotation[2]);
         command.putFloat(rotation[3]);
         command.put((byte) bodyKind);
-        command.put((byte) (selfCollision ? CREATE_ASSEMBLY_SELF_COLLISION : 0));
+        command.put((byte) ((selfCollision ? CREATE_ASSEMBLY_SELF_COLLISION : 0)
+                | (restored != null ? CREATE_ASSEMBLY_RESTORED : 0)
+                | (asleep ? CREATE_ASSEMBLY_ASLEEP : 0)));
         command.putShort((short) bodies.size());
         command.putShort((short) joints.size());
         command.putShort((short) jamPoints.size());
@@ -441,10 +532,63 @@ public final class SimCommandStream {
             command.putFloat(point[1]);
         }
         command.put(nodes);
+        if (restored != null) {
+            for (RestoredBody body : restored.bodies()) {
+                for (double value : body.position()) {
+                    command.putDouble(value);
+                }
+                for (float[] values : new float[][] {body.rotation(), body.linear(), body.angular()}) {
+                    for (float value : values) {
+                        command.putFloat(value);
+                    }
+                }
+            }
+            for (RestoredJoint joint : restored.joints()) {
+                command.put((byte) (joint.broken() ? RESTORED_JOINT_BROKEN : 0)).put((byte) 0).put((byte) 0)
+                        .put((byte) 0);
+                command.putFloat(joint.misalignment());
+            }
+        }
         command.position(COMMAND_HEADER_BYTES + physOffset);
         command.put(phys);
         commands.add(command.array());
         return this;
+    }
+
+    /**
+     * Un état restauré a un corps par corps et un joint par joint, aux vecteurs de bonne taille, aux
+     * valeurs finies, à la rotation non nulle et au désalignement positif ou nul : ce que le natif
+     * exige pour ne pas refuser la création.
+     */
+    private static void checkRestored(Restored restored, int bodyCount, int jointCount) {
+        if (restored.bodies().size() != bodyCount || restored.joints().size() != jointCount) {
+            throw new IllegalArgumentException("un état restauré par corps et par joint");
+        }
+        for (RestoredBody body : restored.bodies()) {
+            if (body.position().length != 3 || body.rotation().length != 4 || body.linear().length != 3
+                    || body.angular().length != 3) {
+                throw new IllegalArgumentException("un corps restauré : position, quaternion, deux vitesses");
+            }
+            float norm = 0f;
+            for (float c : body.rotation()) {
+                norm += c * c;
+            }
+            boolean finite = Double.isFinite(body.position()[0]) && Double.isFinite(body.position()[1])
+                    && Double.isFinite(body.position()[2]) && Float.isFinite(norm);
+            for (float[] values : new float[][] {body.linear(), body.angular()}) {
+                for (float value : values) {
+                    finite &= Float.isFinite(value);
+                }
+            }
+            if (!finite || norm <= 1e-6f) {
+                throw new IllegalArgumentException("un corps restauré a des valeurs finies et une rotation");
+            }
+        }
+        for (RestoredJoint joint : restored.joints()) {
+            if (!(Float.isFinite(joint.misalignment()) && joint.misalignment() >= 0f)) {
+                throw new IllegalArgumentException("un désalignement restauré est fini et positif ou nul");
+            }
+        }
     }
 
     /**

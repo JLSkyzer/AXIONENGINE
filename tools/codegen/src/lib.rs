@@ -275,7 +275,7 @@ pub const JAVA_BODY_STATE_FLAGS_PATH: &str =
     "java/axion-mod/src/main/java/dev/axion/physics/BodyStateFlags.java";
 
 /// Drapeaux d'un `BodyState` (DM-08) : nom, valeur, description. La valeur vient de `ax-model`.
-pub const BODY_STATE_FLAGS: [(&str, u32, &str); 6] = [
+pub const BODY_STATE_FLAGS: [(&str, u32, &str); 7] = [
     ("SLEEPING", body_state_flags::SLEEPING, "Le corps dort."),
     (
         "TOUCHING_GROUND",
@@ -301,6 +301,11 @@ pub const BODY_STATE_FLAGS: [(&str, u32, &str); 6] = [
         "DAMAGED",
         body_state_flags::DAMAGED,
         "Le corps est endommagé.",
+    ),
+    (
+        "SUSPENDED",
+        body_state_flags::SUSPENDED,
+        "Endormi par la gestion d'activité : vitesses gelées, nulles dans l'état (ADR-153 D4).",
     ),
 ];
 

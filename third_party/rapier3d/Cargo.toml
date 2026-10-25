@@ -115,6 +115,11 @@ required-features = [
 name = "additional_solver_iterations"
 path = "tests/additional_solver_iterations.rs"
 
+# AXION ENGINE (ADR-153, P4) : un corps fixe tout juste inséré ne réveille pas ses partenaires de joint.
+[[test]]
+name = "axion_fixed_body_insert_keeps_partner_asleep"
+path = "tests/axion_fixed_body_insert_keeps_partner_asleep.rs"
+
 [[test]]
 name = "broad_phase_pair_filter"
 path = "tests/broad_phase_pair_filter.rs"

@@ -99,6 +99,10 @@ Definition of Done (PARTIE 37.3).
     position, les vitesses et le sommeil, chaque corps secondaire en
     position monde et l'etat de chaque joint ; migration explicite du
     schema 2 ; un schema posterieur reste inerte et intact ;
+    ABI 8 : `CREATE_ASSEMBLY` rend l'etat sauvegarde (pose et vitesses de
+    chaque corps, joints rompus ou grippes, sans evenement) et fait naitre
+    endormie une assembly chargee, ses vitesses gelees jusqu'a son reveil ;
+    drapeau `SUSPENDED` de `BodyState` ; correctif P4 de Rapier vendorise ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),
@@ -308,6 +312,10 @@ Definition of Done (PARTIE 37.3).
 
 ### Corrige
 
+- Physique (C-31, ADR-153) : une assembly a racine fixe (porte, pendule,
+  chaine) n'etait jamais endormie hors de portee des joueurs (R-612) : la
+  gestion d'activite ne relevait que les racines dynamiques. Un joint insere
+  ne reveille plus ses corps deja eveilles.
 - Joints (C-34, ADR-151 D2) : `physics.self_collision` part enfin avec
   l'assembly, que Java envoyait toujours sans collisions internes, et
   `bodies[].mass` fixe la masse de son corps, au lieu d'etre ignore.

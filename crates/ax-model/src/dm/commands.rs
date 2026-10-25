@@ -258,6 +258,12 @@ pub struct CreateAssembly {
 pub mod create_assembly_flags {
     /// Les corps de l'assembly se touchent entre eux (`physics.self_collision`, §10.4).
     pub const SELF_COLLISION: u8 = 1 << 0;
+    /// Une section d'état restauré suit la section `NODE` (ADR-153 D3) : un
+    /// [`super::RestoredBody`] par corps, puis un [`super::RestoredJoint`] par joint.
+    pub const RESTORED: u8 = 1 << 1;
+    /// L'assembly naît endormie, comme la gestion d'activité endort : ses vitesses gelées,
+    /// rendues au réveil (22.4, ADR-153 D4).
+    pub const ASLEEP: u8 = 1 << 2;
 }
 
 /// Plafond de corps par assembly (R-190, `E-3050`).
@@ -352,6 +358,109 @@ impl AssemblyBodyEntry {
     }
 }
 
+/// L'état restauré d'un corps (ADR-153 D3) : sa pose monde et ses vitesses monde, telles que la
+/// sauvegarde les a gardées.
+///
+/// Sur la frontière, 64 octets little-endian : position `f64[3]`, rotation `f32[4]`
+/// `(x, y, z, w)`, vitesse linéaire `f32[3]` (m/s), vitesse angulaire `f32[3]` (rad/s).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RestoredBody {
+    /// Position monde, en blocs.
+    pub position: [f64; 3],
+    /// Rotation, quaternion `(x, y, z, w)`.
+    pub rotation: [f32; 4],
+    /// Vitesse linéaire monde, en m/s.
+    pub lin_vel: [f32; 3],
+    /// Vitesse angulaire monde, en rad/s.
+    pub ang_vel: [f32; 3],
+}
+
+impl RestoredBody {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 64;
+
+    /// Écrit l'état en little-endian à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        for value in self.position {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in self
+            .rotation
+            .iter()
+            .chain(&self.lin_vel)
+            .chain(&self.ang_vel)
+        {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+
+    /// Lit un état au début de `bytes` ; `None` s'il est tronqué, si une valeur n'est pas finie
+    /// ou si la rotation est nulle.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..Self::BYTES)?;
+        let f64_at = |at: usize| f64::from_le_bytes(bytes[at..at + 8].try_into().expect("borne"));
+        let f32_at = |at: usize| f32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
+        let body = Self {
+            position: [f64_at(0), f64_at(8), f64_at(16)],
+            rotation: [f32_at(24), f32_at(28), f32_at(32), f32_at(36)],
+            lin_vel: [f32_at(40), f32_at(44), f32_at(48)],
+            ang_vel: [f32_at(52), f32_at(56), f32_at(60)],
+        };
+        let finite = body.position.iter().all(|value| value.is_finite())
+            && body
+                .rotation
+                .iter()
+                .chain(&body.lin_vel)
+                .chain(&body.ang_vel)
+                .all(|value| value.is_finite());
+        let norm: f32 = body.rotation.iter().map(|value| value * value).sum();
+        (finite && norm > 1e-6).then_some(body)
+    }
+}
+
+/// L'état restauré d'un joint (ADR-153 D3) : rompu ou non, et le désalignement de son ancrage.
+///
+/// Sur la frontière, 8 octets : drapeaux `u8` ([`restored_joint_flags`]), 3 octets réservés à
+/// zéro, désalignement `f32` (blocs).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RestoredJoint {
+    /// Drapeaux, voir [`restored_joint_flags`].
+    pub flags: u8,
+    /// Désalignement de son ancrage, en blocs ; `0` ne grippe pas.
+    pub misalignment: f32,
+}
+
+/// Drapeaux de [`RestoredJoint`].
+pub mod restored_joint_flags {
+    /// Le joint est rompu.
+    pub const BROKEN: u8 = 1 << 0;
+}
+
+impl RestoredJoint {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 8;
+
+    /// Écrit l'état en little-endian à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        out.push(self.flags);
+        out.extend_from_slice(&[0u8; 3]);
+        out.extend_from_slice(&self.misalignment.to_le_bytes());
+    }
+
+    /// Lit un état au début de `bytes` ; `None` s'il est tronqué ou si son désalignement est
+    /// négatif ou non fini.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..Self::BYTES)?;
+        let misalignment = f32::from_le_bytes(bytes[4..8].try_into().expect("borne"));
+        (misalignment.is_finite() && misalignment >= 0.0).then_some(Self {
+            flags: bytes[0],
+            misalignment,
+        })
+    }
+}
+
 /// Le payload complet de `CREATE_ASSEMBLY` : l'en-tête — ses `body_count`, `joint_count`,
 /// `jam_points` et `node_bytes` pris de `bodies`, `joints`, `jam_points` et `nodes` —, les
 /// corps, les joints, les points de grippage, la section `NODE` complétée à 8, puis les
@@ -370,7 +479,33 @@ pub fn create_assembly_payload(
     nodes: &[u8],
     phys: &[u8],
 ) -> Vec<u8> {
+    create_assembly_payload_restored(header, bodies, joints, jam_points, nodes, None, phys)
+}
+
+/// Le payload de [`create_assembly_payload`], avec une section d'état restauré entre la section
+/// `NODE` et la section `PHYS` (ADR-153 D3) ; le drapeau
+/// [`create_assembly_flags::RESTORED`] de l'en-tête suit `restored`.
+///
+/// # Panics
+///
+/// Comme [`create_assembly_payload`], et si `restored` n'a pas un état par corps et par joint.
+#[must_use]
+pub fn create_assembly_payload_restored(
+    header: &CreateAssembly,
+    bodies: &[AssemblyBodyEntry],
+    joints: &[JointDesc],
+    jam_points: &[[f32; 2]],
+    nodes: &[u8],
+    restored: Option<(&[RestoredBody], &[RestoredJoint])>,
+    phys: &[u8],
+) -> Vec<u8> {
+    let flags = if restored.is_some() {
+        header.flags | create_assembly_flags::RESTORED
+    } else {
+        header.flags & !create_assembly_flags::RESTORED
+    };
     let header = CreateAssembly {
+        flags,
         body_count: u16::try_from(bodies.len()).expect("au plus 65 535 corps"),
         joint_count: u16::try_from(joints.len()).expect("au plus 65 535 joints"),
         jam_points: u16::try_from(jam_points.len()).expect("au plus 65 535 points"),
@@ -390,6 +525,16 @@ pub fn create_assembly_payload(
         out.extend_from_slice(&point[1].to_le_bytes());
     }
     out.extend_from_slice(nodes);
+    if let Some((restored_bodies, restored_joints)) = restored {
+        assert_eq!(restored_bodies.len(), bodies.len(), "un état par corps");
+        assert_eq!(restored_joints.len(), joints.len(), "un état par joint");
+        for body in restored_bodies {
+            body.write_le(&mut out);
+        }
+        for joint in restored_joints {
+            joint.write_le(&mut out);
+        }
+    }
     out.resize(out.len().next_multiple_of(8), 0);
     out.extend_from_slice(phys);
     out

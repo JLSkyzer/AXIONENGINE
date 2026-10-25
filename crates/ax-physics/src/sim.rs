@@ -64,6 +64,29 @@ pub struct AssemblyJoint {
     pub spec: JointSpec,
 }
 
+/// L'état d'un corps d'assembly que sa sauvegarde a gardé (ADR-153 D3) : sa pose monde et ses
+/// vitesses monde.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SavedBody {
+    /// Position monde, en blocs.
+    pub position: DVec3,
+    /// Rotation, unitaire.
+    pub rotation: Quat,
+    /// Vitesse linéaire monde, en m/s.
+    pub linear: Vec3,
+    /// Vitesse angulaire monde, en rad/s.
+    pub angular: Vec3,
+}
+
+/// L'état d'un joint d'assembly que sa sauvegarde a gardé (ADR-153 D3).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SavedJoint {
+    /// Le joint est rompu.
+    pub broken: bool,
+    /// Désalignement de son ancrage, en blocs ; `0` ne grippe pas.
+    pub misalignment: f32,
+}
+
 /// La simulation d'une dimension : son monde et son origine flottante.
 struct DimensionSim {
     world: PhysicsWorld,
@@ -1053,6 +1076,52 @@ impl SimDriver {
             sim.world.seal_assembly(handle, self_collision);
         }
         Some(created)
+    }
+
+    /// Rend à une assembly tout juste créée par [`Self::create_assembly_bodies`] l'état que sa
+    /// sauvegarde a gardé (ADR-153 D3), avant tout pas : chaque corps à sa pose et à ses
+    /// vitesses, chaque joint rompu ou grippé — sa plage resserrée autour de sa position
+    /// restaurée —, sans événement. `bodies` sont ceux que la création a rendus, dans l'ordre de
+    /// ses corps ; `saved` en a un par corps, `joints` un par joint, dans l'ordre de la
+    /// definition. Faux, sans effet, si `saved` n'a pas un état par corps.
+    pub fn restore_assembly(
+        &mut self,
+        dimension: u64,
+        handle: Handle,
+        bodies: &[BodyId],
+        saved: &[SavedBody],
+        joints: &[SavedJoint],
+    ) -> bool {
+        if saved.len() != bodies.len() {
+            return false;
+        }
+        let Some(sim) = self.dimensions.get_mut(&dimension) else {
+            return false;
+        };
+        for (id, state) in bodies.iter().zip(saved) {
+            let local = sim.origin.to_local(state.position);
+            sim.world
+                .restore_saved_body(*id, local, state.rotation, state.linear, state.angular);
+        }
+        for (index, joint) in joints.iter().enumerate() {
+            let Ok(index) = u16::try_from(index) else {
+                break;
+            };
+            if let Some(id) = sim.world.assembly_joint(handle, index) {
+                sim.world
+                    .restore_joint(id, joint.broken, joint.misalignment);
+            }
+        }
+        true
+    }
+
+    /// Endort une assembly tout juste créée, ses vitesses gelées, comme la gestion d'activité
+    /// endort (22.4, ADR-153 D4) : cette gestion la réveillera à portée d'un joueur, et lui
+    /// rendra ses vitesses. `body` est l'un de ses corps.
+    pub fn suspend_assembly(&mut self, dimension: u64, body: BodyId) {
+        if let Some(sim) = self.dimensions.get_mut(&dimension) {
+            sim.world.suspend_assembly(body);
+        }
     }
 
     /// Répartit la masse d'une assembly entre ses corps sans masse déclarée (ADR-151 D2), au

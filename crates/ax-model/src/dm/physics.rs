@@ -581,6 +581,10 @@ pub mod body_state_flags {
     pub const DEFORMED: u32 = 1 << 4;
     /// Le corps est endommagé.
     pub const DAMAGED: u32 = 1 << 5;
+    /// Le corps dort parce que la gestion d'activité l'a endormi (R-612, R-613) : ses vitesses
+    /// sont gelées et lui seront rendues au réveil ; celles de l'état sont celles d'un corps
+    /// endormi, nulles. Toujours avec [`SLEEPING`]. ADR-153 D4.
+    pub const SUSPENDED: u32 = 1 << 6;
 }
 
 /// État d'un corps rapporté par le cycle de simulation (DM-08, IF-03).

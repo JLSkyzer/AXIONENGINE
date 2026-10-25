@@ -11,6 +11,7 @@ use crate::joint::{
     AxisMode, BreakThresholds, JointCounts, JointError, JointId, JointKind, JointMotor,
     JointReport, JointSpec,
 };
+use crate::sim::handle_key;
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::debug::{debug_body_flags, debug_frame, overlay, DebugSegment};
 use ax_model::dm::handle::Handle;
@@ -76,11 +77,20 @@ impl PhysicsWorld {
         if !settings_are_valid(spec) {
             return Err(JointError::InvalidSetting);
         }
+        // Le joint ne réveille ses corps que s'il en joint un endormi : rapier différerait le réveil
+        // au pas suivant, et défairait le sommeil d'une assembly qui naît endormie (ADR-153 D4).
+        // Un corps fixe compte pour endormi chez rapier, et n'a rien à réveiller.
+        let asleep = [body_a, body_b].iter().any(|id| {
+            self.inner
+                .bodies
+                .get(id.handle())
+                .is_some_and(|body| body.is_dynamic() && body.is_sleeping())
+        });
         let joint = self.inner.impulse_joints.insert(
             body_a.handle(),
             body_b.handle(),
             rapier_joint(spec),
-            true,
+            asleep,
         );
         let id = JointId(self.next_joint);
         self.next_joint += 1;
@@ -156,18 +166,21 @@ impl PhysicsWorld {
     }
 
     /// L'état de chaque joint d'une assembly dont un corps est éveillé, rompu compris, dans
-    /// l'ordre de création des joints (ADR-151 D7, R-1020).
+    /// l'ordre de création des joints (ADR-151 D7, R-1020) ; et, une fois, celui des joints d'une
+    /// assembly restaurée juste avant le tick, même endormie (ADR-153 D3).
     #[must_use]
     pub fn joint_states(&self) -> Vec<JointState> {
         self.joints
             .values()
             .filter(|entry| {
-                self.assembly_bodies(entry.assembly).iter().any(|id| {
-                    self.inner
-                        .bodies
-                        .get(id.handle())
-                        .is_some_and(|body| !body.is_sleeping())
-                })
+                self.joints_reported_once
+                    .contains(&handle_key(entry.assembly))
+                    || self.assembly_bodies(entry.assembly).iter().any(|id| {
+                        self.inner
+                            .bodies
+                            .get(id.handle())
+                            .is_some_and(|body| !body.is_sleeping())
+                    })
             })
             .map(|entry| {
                 let mut flags = 0;
@@ -191,6 +204,8 @@ impl PhysicsWorld {
 
     /// Remet à zéro l'énergie absorbée par chaque joint : elle se compte sur un tick (D5).
     pub(super) fn start_joint_tick(&mut self) {
+        // ADR-153 D3 : les joints restaurés avant ce tick sont rapportés à sa fin, une fois.
+        self.joints_reported_once = std::mem::take(&mut self.joints_restored);
         for entry in self.joints.values_mut() {
             entry.report.energy = 0.0;
         }
@@ -268,16 +283,23 @@ impl PhysicsWorld {
             return false;
         };
         let event = self.joint_event(key, handle, event_kind::JOINT_BROKEN, impulse);
-        if let Some(entry) = self.joints.get_mut(&key) {
-            entry.joint = None;
-            entry.report.broken = true;
-        }
-        self.inner.impulse_joints.remove(handle, true);
+        self.unlink_entry(key, true);
         self.joints_broken += 1;
         if let Some(event) = event {
             self.push_event(event);
         }
         true
+    }
+
+    /// Retire de rapier le joint `key`, qui reste connu, rompu ; rend son joint rapier, ou `None`
+    /// s'il est inconnu ou déjà rompu. `wake` réveille ses corps : une rupture les laisse aller, un état
+    /// rendu à une assembly qui naît endormie ne la réveille pas (ADR-153 D4).
+    fn unlink_entry(&mut self, key: u64, wake: bool) -> Option<ImpulseJointHandle> {
+        let entry = self.joints.get_mut(&key)?;
+        let handle = entry.joint.take()?;
+        entry.report.broken = true;
+        self.inner.impulse_joints.remove(handle, wake);
+        Some(handle)
     }
 
     /// Un événement du joint `key` (§10.7, ADR-151 D7) : l'assembly des deux côtés, les nodes
@@ -333,6 +355,27 @@ impl PhysicsWorld {
     /// Faux, sans effet, pour un joint inconnu, rompu ou sans grippage, ou un désalignement négatif
     /// ou non fini.
     pub fn jam_joint(&mut self, id: JointId, misalignment: f32) -> bool {
+        self.jam_entry(id, misalignment, true)
+    }
+
+    /// Rend à un joint tout juste créé l'état que sa sauvegarde a gardé (ADR-153 D3) : rompu, il
+    /// quitte rapier ; grippé, il reçoit son désalignement, sa plage resserrée autour de sa
+    /// position restaurée. Sans événement ni compte de rupture : un état rendu n'est ni une
+    /// rupture ni une entrée en grippage. Faux, sans effet, pour un joint inconnu ou déjà rompu,
+    /// ou un désalignement que [`Self::jam_joint`] refuserait.
+    pub fn restore_joint(&mut self, id: JointId, broken: bool, misalignment: f32) -> bool {
+        if let Some(entry) = self.joints.get(&id.0) {
+            self.joints_restored.insert(handle_key(entry.assembly));
+        }
+        if broken {
+            return self.unlink_entry(id.0, false).is_some();
+        }
+        misalignment == 0.0 || self.jam_entry(id, misalignment, false)
+    }
+
+    /// Le grippage de [`Self::jam_joint`] ; `announce` dit si un `JOINT_JAMMED` part à l'entrée et
+    /// à la sortie de l'état, et si ses corps se réveillent.
+    fn jam_entry(&mut self, id: JointId, misalignment: f32, announce: bool) -> bool {
         if !(misalignment.is_finite() && misalignment >= 0.0) {
             return false;
         }
@@ -367,7 +410,8 @@ impl PhysicsWorld {
         } else {
             (limits, base)
         };
-        if let Some(joint) = self.inner.impulse_joints.get_mut(handle, true) {
+        // Commandé, le grippage réveille l'assembly pour agir ; rendu, il la laisse dormir (ADR-153 D4).
+        if let Some(joint) = self.inner.impulse_joints.get_mut(handle, announce) {
             joint.data.set_limits(axis, narrowed);
             for axis in moving {
                 joint.data.set_friction(axis, friction);
@@ -376,7 +420,7 @@ impl PhysicsWorld {
         if let Some(entry) = self.joints.get_mut(&id.0) {
             entry.report.fraction = fraction;
         }
-        if jammed != was_jammed {
+        if announce && jammed != was_jammed {
             if let Some(event) = self.joint_event(id.0, handle, event_kind::JOINT_JAMMED, 0.0) {
                 self.push_event(event);
             }

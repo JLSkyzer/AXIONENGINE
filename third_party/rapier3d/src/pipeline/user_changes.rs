@@ -1,3 +1,5 @@
+// Modified for AXION ENGINE (ADR-152, ADR-153, 2026-10-25): a fixed body that has just been
+// inserted does not wake its joint partners (P4). See third_party/rapier3d/AXION.md.
 use crate::alloc_prelude::*;
 use crate::dynamics::{
     ImpulseJointSet, IslandManager, JointEnabled, MultibodyJointSet, RigidBodyChanges,
@@ -230,8 +232,15 @@ pub(crate) fn handle_user_changes_to_rigid_bodies(
             // *contact* partners get woken through the modified-colliders
             // path. (A moved dynamic/kinematic body wakes its whole island,
             // joint partners included.)
+            //
+            // AXION (P4): a fixed body that has just been inserted did not move:
+            // the insertion sets every change flag. Whether its joint partners
+            // wake is decided by each joint's own insertion (`wake_up` of
+            // `ImpulseJointSet::insert`); otherwise a body put to sleep on a
+            // fixed anchor before its first step is woken by that step.
             let rb = &bodies[*handle];
-            if rb.is_fixed() && rb.changes.contains(RigidBodyChanges::POSITION) {
+            let just_inserted = rb.changes.contains(RigidBodyChanges::all());
+            if rb.is_fixed() && rb.changes.contains(RigidBodyChanges::POSITION) && !just_inserted {
                 let mut to_wake = Vec::new();
                 impulse_joints.map_attached_joints_mut(*handle, |rb1, rb2, _, _| {
                     to_wake.push(if rb1 == *handle { rb2 } else { rb1 });
