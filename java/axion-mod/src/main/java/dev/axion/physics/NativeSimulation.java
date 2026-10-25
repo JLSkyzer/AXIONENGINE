@@ -24,6 +24,9 @@ import java.util.List;
  */
 public final class NativeSimulation {
 
+    /** Durée du dernier {@code submit} natif, en nanosecondes. */
+    private long lastSubmitNanos;
+
     /** Position de la génération dans l'en-tête d'un tampon (IF-02). */
     private static final int GENERATION_OFFSET = 8;
 
@@ -88,7 +91,10 @@ public final class NativeSimulation {
     public int submit(long tick, SimCommandStream commands) {
         int count = commands.count();
         if (count == 0) {
-            return NativeBridge.submit(context, tick, 0, 0);
+            long start = System.nanoTime();
+            int code = NativeBridge.submit(context, tick, 0, 0);
+            lastSubmitNanos = System.nanoTime() - start;
+            return code;
         }
 
         byte[] stream = commands.toBytes();
@@ -104,9 +110,19 @@ public final class NativeSimulation {
         }
         buffer.put(stream);
 
+        long start = System.nanoTime();
         int code = NativeBridge.submit(context, tick, count, 0);
+        lastSubmitNanos = System.nanoTime() - start;
         NativeBridge.release(context, BufferKinds.SIM_IN, generation);
         return code;
+    }
+
+    /**
+     * {@return la durée du dernier {@code submit} natif, en nanosecondes} Le natif y applique les
+     * commandes du tick, créations d'assemblies comprises (R-1730, ADR-153 D4).
+     */
+    public long lastSubmitNanos() {
+        return lastSubmitNanos;
     }
 
     /**

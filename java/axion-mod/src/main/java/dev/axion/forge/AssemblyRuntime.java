@@ -19,6 +19,7 @@ import dev.axion.physics.BodyStateFlags;
 import dev.axion.physics.CollisionFilter;
 import dev.axion.physics.JointDescription;
 import dev.axion.physics.JointState;
+import dev.axion.physics.LoadQueue;
 import dev.axion.physics.MaterialMarking;
 import dev.axion.physics.RefitMarking;
 import dev.axion.physics.SimCommandProvider;
@@ -37,6 +38,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 import net.minecraft.world.level.Level;
@@ -113,6 +115,15 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      */
     private final Map<Integer, Integer> rootNodes = new HashMap<>();
 
+    /** Les créations en attente, avancées sous {@code persistence.max_load_ns_per_tick} (R-1730). */
+    private final LoadQueue<AxionEntity> loading = new LoadQueue<>(System::nanoTime);
+
+    /** {@code persistence.max_load_ns_per_tick}, en nanosecondes. */
+    private final long loadBudgetNs;
+
+    /** La durée de la dernière soumission native, que la file rapporte à ses créations. */
+    private final LongSupplier lastSubmitNs;
+
     private record Pending(
             boolean create,
             int index,
@@ -143,15 +154,22 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             Supplier<DefinitionRegistry> definitions,
             Supplier<AssetRegistry> assets,
             ToIntFunction<String> materialIndex,
-            boolean joints) {
+            boolean joints,
+            long loadBudgetNs,
+            LongSupplier lastSubmitNs) {
         this.definitions = definitions;
         this.assets = assets;
         this.materialIndex = materialIndex;
         this.joints = joints;
+        this.loadBudgetNs = loadBudgetNs;
+        this.lastSubmitNs = lastSubmitNs;
         MinecraftForge.EVENT_BUS.register(this);
     }
 
-    /** Apparition d'une entité (serveur) : crée son corps natif si elle est liée et a des colliders. */
+    /**
+     * Apparition d'une entité (serveur) : met en file la création de son corps natif, que la file des
+     * chargements fait partir sous budget (R-1730).
+     */
     @SubscribeEvent
     public void onJoin(EntityJoinLevelEvent event) {
         if (event.getLevel().isClientSide() || !(event.getEntity() instanceof AxionEntity assembly)) {
@@ -160,9 +178,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         // R-500 : une entrée, et une erreur si elle entre inerte (R-704).
         EntityMetrics.GLOBAL.joined(assembly.isInert());
         if (!ledger.hasBody(handleIndexOf(assembly))) {
-            createBody(assembly, (Level) event.getLevel());
+            loading.offer(assembly);
         }
-        EntityMetrics.GLOBAL.bodies(ledger.bodies());
     }
 
     /**
@@ -361,6 +378,13 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     @Override
     public SimCommandStream commandsForTick(long tick) {
         reconcile();
+        // R-1730, ADR-153 D4 : la soumission du tick précédent portait les créations de la file ; son coût
+        // fait celui d'une création, et la file avance sous le budget, d'un corps au moins.
+        loading.submitted(lastSubmitNs.getAsLong());
+        loading.drain(loadBudgetNs, assembly -> !assembly.isRemoved()
+                && !ledger.hasBody(handleIndexOf(assembly))
+                && createBody(assembly, assembly.level()));
+        EntityMetrics.GLOBAL.bodies(ledger.bodies());
         SimCommandStream stream = new SimCommandStream();
         Pending cmd;
         while ((cmd = pending.poll()) != null) {

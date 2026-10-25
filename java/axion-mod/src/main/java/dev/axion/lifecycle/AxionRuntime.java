@@ -1222,6 +1222,15 @@ public final class AxionRuntime {
     }
 
     /**
+     * {@return la durée de la dernière soumission native des commandes du tick, en nanosecondes, ou 0
+     * sans simulation} Le budget de chargement en tire le coût natif d'une création (R-1730, ADR-153 D4).
+     */
+    public long lastSubmitNanos() {
+        NativeSimulation current = simulation;
+        return current == null ? 0L : current.lastSubmitNanos();
+    }
+
+    /**
      * {@return l'export JSON des métriques natives et de celles que Java mesure (ADR-133 D1),
      * ou {@code null} si le runtime n'est pas opérationnel}
      *

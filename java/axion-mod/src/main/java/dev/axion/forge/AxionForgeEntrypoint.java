@@ -254,7 +254,9 @@ public final class AxionForgeEntrypoint {
                     runtime::definitions,
                     runtime::assets,
                     runtime::physicsMaterialIndex,
-                    runtime.outcome().config().getBoolean("modules.joints"));
+                    runtime.outcome().config().getBoolean("modules.joints"),
+                    runtime.outcome().config().getInt("persistence.max_load_ns_per_tick"),
+                    runtime::lastSubmitNanos);
             worldTileBridge =
                     new WorldTileBridge(
                             event.getServer(),

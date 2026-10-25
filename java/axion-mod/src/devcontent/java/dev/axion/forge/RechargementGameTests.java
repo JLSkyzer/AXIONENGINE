@@ -41,7 +41,9 @@ public final class RechargementGameTests {
      * prend un corps, tombe et repose sur la dalle. Lue dans le registre du démarrage, la definition
      * manquerait, et l'assembly resterait immobile, sans corps.
      */
-    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    // Un lot à lui : RegistreReseauGameTests recharge aussi le registre des definitions, au même tick de
+    // départ ; ce cube, créé par la file des chargements à la fin du tick (R-1730), y perdrait la sienne.
+    @GameTest(template = "test/plancher", batch = "rechargement_definitions", timeoutTicks = 200)
     public static void uneDefinitionAjouteeParUnRechargementPrendCorps(GameTestHelper helper) {
         AxionRuntime runtime = RuntimeAccess.get();
         helper.assertTrue(runtime != null && runtime.outcome() != null, "AXION n'est pas chargé");

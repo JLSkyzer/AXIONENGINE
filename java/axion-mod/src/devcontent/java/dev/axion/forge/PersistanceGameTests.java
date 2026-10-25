@@ -255,6 +255,39 @@ public final class PersistanceGameTests {
     }
 
     /**
+     * R-1730 : des assemblies entrées en nombre dans un même tick ont toutes leur corps — la file des
+     * chargements avance sous budget, et ne laisse personne en route.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void desAssembliesEntreesEnNombreOntToutesLeurCorps(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        List<AxionEntity> cubes = new java.util.ArrayList<>();
+        for (int i = 0; i < 24; i++) {
+            cubes.add(AssembliesDeTest.poser(helper, "axion:test_cube",
+                    new Vec3(1.5 + (i % 6) * 1.0, DESSUS_DALLE + 2.0 + (i / 6) * 1.5, 1.5 + (i % 4) * 1.5), DROIT));
+        }
+        helper.succeedWhen(() -> {
+            long sansCorps = cubes.stream().filter(cube -> cube.netState() == null).count();
+            helper.assertTrue(sansCorps == 0, sansCorps + " assembly(s) encore sans corps");
+        });
+    }
+
+    /**
+     * R-1730 : une assembly retirée avant que la file des chargements ne la crée n'a jamais de corps — un
+     * corps créé après sa sortie ne serait retiré par personne.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 100)
+    public static void uneAssemblyRetireeAvantSaCreationNAJamaisDeCorps(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity cube = AssembliesDeTest.poser(helper, "axion:test_cube", new Vec3(4.5, DESSUS_DALLE + 2.0, 4.5), DROIT);
+        cube.discard();
+        helper.runAfterDelay(20, () -> {
+            helper.assertTrue(cube.netState() == null, "un corps natif a été créé pour une assembly déjà retirée");
+            helper.succeed();
+        });
+    }
+
+    /**
      * T-434 : une entité sauvegardée au schéma 2 se relit liée à sa definition, au schéma 3, sans état
      * inventé ; le schéma 2 ne portait ni vitesses ni corps secondaires.
      */

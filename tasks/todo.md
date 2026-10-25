@@ -3287,7 +3287,9 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
       Deux décisions de Killian en cours : drapeau `SUSPENDED` (DM-08) et grippage recentré ; une troisième,
       le correctif P4 de Rapier. Corrigés en chemin : réveil différé des joints insérés, racines fixes hors
       de la gestion d'activité. 823 JUnit, 40 GameTests, suite de Rapier, 21 mutations rouges.
-- [ ] 3. Budget de chargement (R-1730).
+- [x] 3. Budget de chargement (R-1730) (2026-10-25). `LoadQueue` : l'entrée d'une entité met sa création en file,
+      avancée sous `persistence.max_load_ns_per_tick`, d'un élément au moins ; coût natif tiré de la soumission
+      mesurée. 42 GameTests, 7 mutations rouges.
 - [ ] 4. `CustomData` et `axion:custom` ; T-432.
 - [ ] 5. Journal latéral : écriture, compactage, plafond, restauration ; T-713c..T-713f.
 - [ ] 6. Preuves : T-436, T-437, campagne T-435/T-713b, documentation.
