@@ -1471,6 +1471,11 @@ est tenue par ce qui existe.
                 écrit le commit compilé (`axion-build.properties`, `-dirty` si l'arbre suivi bouge).
           - [ ] Bascule de `bench-quick` en bloquant (ADR-142 §3 ; hors DoD de M2, ADR-137) : vingt runs consécutifs sur master,
                 écart du p95 de chaque série sous 10 % pour le modèle de CPU le plus fréquent.
+                Constat du 2026-10-25 : sur les runners AMD EPYC 9V74, B-02 et B-09 sortent à +25 et +29 % de la
+                référence de ce processeur à chaque passage (9053dbd, 96a05a0), aux mêmes valeurs absolues (p95
+                ≈ 87 µs et 1,248 ms), pour des commits qui ne touchent pas le code mesuré. La référence ne se
+                renouvelant qu'après un run sans régression, elle reste figée sur une mesure plus basse. À trancher
+                avec Killian à la bascule (ADR-142 §3 lui renvoie la décision).
         - **Tranchées le 2026-10-16, quatrième tour** : (14) métriques de R-500 pour C-23, C-27 et C-50
           en M2 ; leur imputation aux budgets de la table 25.2, l'extension de T-007 à l'inventaire des
           composants, la surcharge et le fallback (R-1850) en M5 avec C-77 ; (15) R-1751 : la version de
