@@ -3298,10 +3298,12 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
       jeton du monde (décision de Killian). 873 JUnit, 51 GameTests, 32 mutations rouges. T-713f passe en
       tranche 6 (banc de rendu, client réel).
 - [ ] 6. Preuves : T-436, T-437, campagne T-435/T-713b, T-713f au banc de rendu, documentation.
-- [ ] Intermittence constatée le 2026-10-27 : `r1690_unclientquiinondeleserveurestdeconnecte`
-      (`HarnaisReseauGameTests`) échoue une fois sur une dizaine de passages, `ClosedChannelException`, sans
-      trace (le rapporteur ne la donne pas). La déconnexion est décidée dans `sendSnapshots` ; la cause
-      n'est pas trouvée. À reproduire avec la trace avant toute correction.
+- [x] Intermittence de `r1690_unclientquiinondeleserveurestdeconnecte` (2026-10-27) : le client simulé
+      renvoyait l'acquittement d'une trame lue après la fermeture de sa connexion (`ClosedChannelException`),
+      selon que la dernière trame du serveur précédait la déconnexion. Cause prouvée par sonde et trace ;
+      `JoueurSimule` n'envoie plus rien une fois déconnecté ; test déterministe
+      `unClientDeconnecteLitSansRienEnvoyer`, rouge avant le correctif ; six passages verts sur six après
+      (deux échecs sur six avant).
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :

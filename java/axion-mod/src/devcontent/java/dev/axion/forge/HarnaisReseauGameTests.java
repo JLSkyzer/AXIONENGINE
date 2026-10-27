@@ -19,6 +19,7 @@ import java.util.Locale;
 import java.util.Map;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
@@ -580,6 +581,39 @@ public final class HarnaisReseauGameTests {
             helper.assertTrue(limitees > 0, "aucune trame comptée comme limitée");
             helper.assertTrue(refus >= PlayerSync.ABUSE_SECONDS, "une ligne par seconde d'abus au journal, "
                     + refus + " comptée(s)");
+        });
+    }
+
+    /**
+     * Un client que le serveur déconnecte lit encore ce qu'il avait reçu avant, mais n'envoie plus rien —
+     * comme un vrai client. Le client simulé de ce harnais renvoyait l'acquittement d'une trame lue après la
+     * fermeture sur la connexion fermée, et {@code r1690} échouait sur une {@code ClosedChannelException}
+     * selon que la dernière trame du serveur précédait ou non la déconnexion. Le client cesse de lire dix
+     * ticks — une trame au moins l'attend alors, même à 2 Hz —, puis la connexion se ferme et il lit.
+     */
+    @GameTest(template = "test/plancher", batch = "harnais_reseau_deconnexion", timeoutTicks = 100)
+    public static void unClientDeconnecteLitSansRienEnvoyer(GameTestHelper helper) {
+        AssembliesDeTest.poser(helper, CUBE, new Vec3(1.5, DESSUS_DALLE + 4, 1.5), DROIT);
+        JoueurSimule joueur = JoueurSimule.rejoindre(helper.getLevel(), "sim-deconnexion",
+                helper.absoluteVec(new Vec3(4.5, DESSUS_DALLE, 4.5)));
+        int[] tick = {0};
+        helper.onEachTick(() -> {
+            tick[0]++;
+            if (tick[0] < 20) {
+                joueur.tick();
+            } else if (tick[0] == 30) {
+                int recues = joueur.tramesRecues();
+                int acquittements = joueur.acquittements();
+                helper.assertTrue(acquittements > 0, "aucun acquittement avant la déconnexion");
+                joueur.joueur().connection.disconnect(Component.literal("déconnexion du test"));
+                helper.assertTrue(!joueur.connecte(), "la connexion est restée ouverte");
+                joueur.tick();
+                helper.assertTrue(joueur.tramesRecues() > recues, "aucune trame en attente : le cas n'a pas eu lieu");
+                helper.assertTrue(joueur.acquittements() == acquittements,
+                        "un acquittement est parti sur la connexion fermée");
+                joueur.quitter();
+                helper.succeed();
+            }
         });
     }
 

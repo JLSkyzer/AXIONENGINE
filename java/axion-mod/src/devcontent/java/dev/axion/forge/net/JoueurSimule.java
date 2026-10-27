@@ -198,7 +198,9 @@ public final class JoueurSimule {
                 octetsRecus += trame == null ? 0 : trame.length;
                 byte[] acquittement = session.onPlayFrame(trame);
                 journal.addAll(session.drainJournal());
-                if (acquittement != null) {
+                // Déconnecté, le client lit encore ce qui l'attendait, mais n'envoie plus rien : la dernière trame
+                // du serveur peut précéder la fermeture dans le même tick (R-1690).
+                if (acquittement != null && canal.isOpen()) {
                     dernierAcquittement = acquittement;
                     canal.writeInbound(AxionChannel.CHANNEL.toVanillaPacket(
                             new ChannelFrames.PlayToServer(acquittement), NetworkDirection.PLAY_TO_SERVER));

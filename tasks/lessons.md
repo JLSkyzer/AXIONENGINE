@@ -1931,3 +1931,19 @@ et une licence changée (`zstd` 0.14 passe de MIT à BSD-3-Clause).
 
 **Règle.** Tout changement de `Cargo.lock` se suit de `python tools/deps/gen_notice.py`, et se vérifie par
 `python tools/ci/local_ci.py deps` avant de pousser — ce job rejoue exactement l'étape.
+
+## 2026-10-27 | Un client simulé qui écrivait sur une connexion fermée
+
+**Ce qui a mal tourné.** La GameTest `r1690` (un client qui inonde le serveur est déconnecté) échouait une
+fois sur trois à dix sur une `ClosedChannelException`, sans trace : le rapporteur des GameTests ne donne
+que le message.
+
+**Cause.** Le serveur envoie ses trames en fin de tick, puis déconnecte le joueur abusif dans le même tick.
+Au tick suivant, le client simulé lisait la trame restée dans la file de l'`EmbeddedChannel` fermé et y
+écrivait son acquittement. À 10 Hz, la dernière trame précédait ou non la déconnexion : d'où
+l'intermittence.
+
+**Règle.** Un client simulé lit ce qu'il a reçu, mais n'écrit que si sa connexion est ouverte. Une
+intermittence sans trace se reproduit avec une sonde qui imprime la pile, en attrapant `Throwable` :
+Netty relance des exceptions vérifiées sans les déclarer. Le test de non-régression force le cas
+(ne plus lire pendant dix ticks, puis fermer) au lieu de compter sur le hasard du tick.
