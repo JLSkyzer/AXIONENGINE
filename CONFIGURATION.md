@@ -189,7 +189,7 @@ alors ignorée (R-1830).
 | `max_load_ns_per_tick` | entier | `500000` | `0..` | non | non | Budget de chargement d'état persisté, en nanosecondes par tick. |
 | `journal_enabled` | booléen | `true` | `true \| false` | non | non | Active le journal latéral de récupération (22.5.2). |
 | `journal_ns_per_tick` | entier | `200000` | `0..2000000` | non | non | Budget d'écriture du journal, en nanosecondes par tick. |
-| `journal_max_bytes` | entier | `268435456` | `0..` | non | non | Taille maximale du journal, en octets. |
+| `journal_max_bytes` | entier | `268435456` | `16777216..8589934592` | non | non | Taille maximale du journal, en octets. |
 
 ### `[limits]`
 

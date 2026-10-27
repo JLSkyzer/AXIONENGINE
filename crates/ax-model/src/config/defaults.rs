@@ -271,7 +271,8 @@ pub const COMMON: &[ConfigOption] = &[
     ip("persistence.max_load_ns_per_tick", 500000, "Budget de chargement d'état persisté, en nanosecondes par tick."),
     b("persistence.journal_enabled", true, "Active le journal latéral de récupération (22.5.2)."),
     i("persistence.journal_ns_per_tick", 200000, 0, 2000000, "Budget d'écriture du journal, en nanosecondes par tick."),
-    ip("persistence.journal_max_bytes", 268435456, "Taille maximale du journal, en octets."),
+    // CDC 30 : de 16 MiB a 8 GiB.
+    i("persistence.journal_max_bytes", 268435456, 16777216, 8589934592, "Taille maximale du journal, en octets."),
 
     // [limits]
     ip("limits.max_assemblies_per_dimension", 4096, "Nombre maximal d'assemblies par dimension."),

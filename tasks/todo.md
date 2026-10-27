@@ -3293,8 +3293,15 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
 - [x] 4. `CustomData` et `axion:custom` ; T-432 (2026-10-27). `CustomTable` : map CBOR clés triées, réécrite
       seulement si elle a changé ; plafond contre max(plafond, taille actuelle) ; table illisible gardée
       intacte, en lecture seule. 837 JUnit, 44 GameTests, 20 mutations rouges.
-- [ ] 5. Journal latéral : écriture, compactage, plafond, restauration ; T-713c..T-713f.
-- [ ] 6. Preuves : T-436, T-437, campagne T-435/T-713b, documentation.
+- [x] 5. Journal latéral : écriture, compactage, plafond, restauration ; T-713c, T-713d, T-713e (2026-10-27).
+      `dev.axion.persist` et `JournalBridge` ; budget R-1744 mesuré, puis tenu par report des copies ;
+      jeton du monde (décision de Killian). 873 JUnit, 51 GameTests, 32 mutations rouges. T-713f passe en
+      tranche 6 (banc de rendu, client réel).
+- [ ] 6. Preuves : T-436, T-437, campagne T-435/T-713b, T-713f au banc de rendu, documentation.
+- [ ] Intermittence constatée le 2026-10-27 : `r1690_unclientquiinondeleserveurestdeconnecte`
+      (`HarnaisReseauGameTests`) échoue une fois sur une dizaine de passages, `ClosedChannelException`, sans
+      trace (le rapporteur ne la donne pas). La déconnexion est décidée dans `sendSnapshots` ; la cause
+      n'est pas trouvée. À reproduire avec la trace avant toute correction.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :

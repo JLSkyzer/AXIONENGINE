@@ -949,7 +949,7 @@ public final class ConfigSchema {
                     "persistence.journal_max_bytes",
                     Kind.INTEGER,
                     268435456L,
-                    new Domain(DomainKind.INT_RANGE, 0.0, Double.MAX_VALUE, List.of()),
+                    new Domain(DomainKind.INT_RANGE, 16777216.0, 8589934592.0, List.of()),
                     false,
                     false,
                     "Taille maximale du journal, en octets."),

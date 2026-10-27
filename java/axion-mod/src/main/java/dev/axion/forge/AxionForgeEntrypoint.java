@@ -20,6 +20,7 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -280,6 +281,14 @@ public final class AxionForgeEntrypoint {
                     runtime.outcome().config().getBoolean("physics.entity_push"),
                     runtime.outcome().config().getBoolean("physics.entity_damage")));
             runtime.setAssemblyDescriber(assemblyRuntime::describe);
+            // 22.5.2 : le journal latéral du monde, ni lu ni écrit s'il est coupé ou en mode DISABLED (cas 6).
+            if (runtime.outcome().config().getBoolean("persistence.journal_enabled")) {
+                JournalBridge.start(
+                        event.getServer(),
+                        platform.gameDir(),
+                        runtime.outcome().config().getInt("persistence.journal_max_bytes"),
+                        runtime.outcome().config().getInt("persistence.journal_ns_per_tick"));
+            }
         }
 
         // R-521 : barrière de démarrage. Sans elle, le monde se chargerait
@@ -327,6 +336,15 @@ public final class AxionForgeEntrypoint {
         logTransitions(runtime::onServerStopping);
         platform.setServer(null);
         reportDisabledHooks();
+    }
+
+    /**
+     * Arrête le journal latéral une fois le serveur arrêté : Forge émet {@link ServerStoppingEvent} avant la
+     * dernière sauvegarde du monde, dont les assemblies doivent encore partir au journal (22.5.2).
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onServerStopped(ServerStoppedEvent event) {
+        JournalBridge.stop();
     }
 
     /**
@@ -383,6 +401,10 @@ public final class AxionForgeEntrypoint {
             runtime.onTick();
             // Les états du natif viennent d'être appliqués aux entités : ils partent dans les snapshots.
             AxionNetwork.sendSnapshots(event.getServer());
+            JournalBridge journal = JournalBridge.active();
+            if (journal != null) {
+                journal.tick();
+            }
             logSimulationJournal();
             logAssetJournal();
         }

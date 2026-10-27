@@ -224,6 +224,9 @@ if (project.hasProperty('axion.shaderMods')
 tasks.matching { it.name == 'runGameTestServer' }.configureEach {
     doFirst {
         delete rootProject.file('run-gametest/world')
+        // Le journal latéral suit le monde (22.5.2) : celui d'un monde effacé, de même chemin et de même
+        // graine, restaurerait dans le monde neuf les assemblies du passage précédent.
+        delete rootProject.file('run-gametest/axion/world')
         // Un cache d'assets neuf : chaque passage compile ses sources, et ce qu'une compilation
         // journalise (ADR-148) s'y constate — un asset repris du cache ne dit rien.
         delete rootProject.file('run-gametest/axion/cache')
@@ -293,6 +296,8 @@ tasks.matching { it.name == 'runClient' }.configureEach {
             }
             delete rootProject.file("${dossier}/saves/axion-rendertest")
             delete rootProject.file("${dossier}/axion-rendertest")
+            // Le journal latéral suit le monde effacé (22.5.2).
+            delete rootProject.file("${dossier}/axion/world")
             // Un cache de shaders neuf : le premier démarrage compile, les suivants relisent (T-905).
             delete rootProject.file("${dossier}/axion/cache")
             // Un cache d'assets du client neuf (ADR-150 D3) : chaque passage compile chez le client,

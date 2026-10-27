@@ -576,6 +576,26 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (inert && !level().isClientSide()) {
             LOGGER.warn("AXION : assembly {} inerte — {}", getUUID(), inertReason);
         }
+        if (!level().isClientSide()) {
+            // R-1745 : présente dans le monde, son NBT fait foi ; le journal ne la recrée pas.
+            JournalBridge.seen(getUUID());
+        }
+    }
+
+    /**
+     * Suppression : une suppression explicite — tuée, retirée pour de bon — efface l'assembly du journal
+     * latéral ; un déchargement de chunk ou un changement de dimension ne l'efface pas (ADR-153 D6).
+     *
+     * <p>Ici et non dans {@code onRemovedFromWorld} : Forge n'appelle ce dernier qu'à la fin du suivi de
+     * l'entité, que n'a pas une entité supprimée pendant que son tronçon est caché. {@code kill()} et
+     * {@code discard()} passent tous deux par cette méthode.
+     */
+    @Override
+    public void remove(RemovalReason reason) {
+        super.remove(reason);
+        if (!level().isClientSide() && reason.shouldDestroy()) {
+            JournalBridge.removed(getUUID());
+        }
     }
 
     @Override
@@ -590,6 +610,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
         AssemblyTags.putCustom(stored, custom);
         AssemblyTags.restore(stored, tag);
+        // 22.5.2 : chaque sauvegarde part aussi au journal latéral, filet de sécurité si vanilla perd l'entité.
+        JournalBridge.saved(this, stored);
     }
 
     /**

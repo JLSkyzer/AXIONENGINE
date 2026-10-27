@@ -131,7 +131,7 @@ max_persisted_decals = 16         # 0..
 max_load_ns_per_tick = 500000     # 0..
 journal_enabled = true
 journal_ns_per_tick = 200000      # 0..2000000
-journal_max_bytes = 268435456     # 0..
+journal_max_bytes = 268435456     # 16777216..8589934592
 
 [limits]
 max_assemblies_per_dimension = 4096# 0..

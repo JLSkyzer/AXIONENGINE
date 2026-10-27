@@ -108,6 +108,11 @@ Definition of Done (PARTIE 37.3).
     `CustomData` (T-432) : chaque mod garde ses octets sous son espace de
     noms dans `axion:custom`, table CBOR plafonnee par
     `persistence.max_custom_bytes` ; une table illisible reste intacte ;
+    journal lateral (22.5.2) : chaque sauvegarde d'une assembly part, hors du
+    thread autoritatif, dans `<gameDir>/axion/world/<worldId>/`, sous budget ;
+    une assembly perdue par vanilla est restauree a sa position, endormie,
+    une seule fois, et listee dans `restaurations.log` ; le journal d'un
+    autre monde de meme chemin et de meme graine est mis de cote ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),
@@ -317,6 +322,8 @@ Definition of Done (PARTIE 37.3).
 
 ### Corrige
 
+- Configuration (C-04) : `persistence.journal_max_bytes` borne a 16 MiB..8 GiB,
+  comme au cahier des charges ; le schema acceptait toute valeur positive.
 - Dependances (C-24, R-2301) : `zstd-sys` 2.1.2, `zstd` 0.14.3 et `zstd-safe`
   8.2.0, pour RUSTSEC-2026-0391, -0398, -0403 et -0410. libzstd reste en
   1.5.7 : 23 assets de developpement compiles a l'identique, au bit pres.
