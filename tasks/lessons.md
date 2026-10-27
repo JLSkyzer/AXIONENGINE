@@ -1918,3 +1918,16 @@ ignorée sans erreur. Le test ABI, lui, n'était vert que grâce au défaut corr
 distingue pas « né endormi » de « endormi par le rayon ». Une aide qui soumet un flux compte ses
 commandes au lieu de les annoncer. Un test qui casse quand un défaut se corrige s'appuyait sur ce
 défaut : sa prémisse se corrige avec lui, pas son assertion.
+
+## 2026-10-27 | Une dépendance montée sans régénérer le NOTICE
+
+**Ce qui a mal tourné.** Quatre avis RustSec sur `zstd` rendaient `deps` rouge ; la montée de `zstd`,
+`zstd-safe` et `zstd-sys` a été vérifiée par `cargo deny`, les tests et les empreintes des assets, puis
+poussée — et `deps` est resté rouge : l'étape « NOTICE a jour » (R-2290) voyait les anciennes versions,
+et une licence changée (`zstd` 0.14 passe de MIT à BSD-3-Clause).
+
+**Cause.** Le NOTICE est engendré depuis l'arbre de dépendances ; rien ne le régénère tout seul, et
+`cargo deny check` ne le regarde pas.
+
+**Règle.** Tout changement de `Cargo.lock` se suit de `python tools/deps/gen_notice.py`, et se vérifie par
+`python tools/ci/local_ci.py deps` avant de pousser — ce job rejoue exactement l'étape.
