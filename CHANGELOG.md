@@ -105,6 +105,9 @@ Definition of Done (PARTIE 37.3).
     drapeau `SUSPENDED` de `BodyState` ; correctif P4 de Rapier vendorise ;
     les creations d'assemblies avancent en file sous
     `persistence.max_load_ns_per_tick` (R-1730), d'une au moins par tick ;
+    `CustomData` (T-432) : chaque mod garde ses octets sous son espace de
+    noms dans `axion:custom`, table CBOR plafonnee par
+    `persistence.max_custom_bytes` ; une table illisible reste intacte ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

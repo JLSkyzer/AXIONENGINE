@@ -1,10 +1,12 @@
 package dev.axion.forge;
 
 import dev.axion.entity.AssemblyBinding;
+import dev.axion.entity.CustomTable;
 import dev.axion.net.SnapshotMessage;
 import java.util.HexFormat;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.function.LongSupplier;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.ListTag;
@@ -36,6 +38,9 @@ final class AssemblyTags {
 
     /** Orientation du corps : quaternion {@code (x, y, z, w)}, quatre flottants (R-461). */
     static final String ROTATION = "axion:rot";
+
+    /** Données personnalisées des mods : une table CBOR, absente si elle est vide (ADR-153 D7). */
+    static final String CUSTOM = "axion:custom";
 
     /** En deçà, un quaternion n'a pas de direction : il ne décrit aucune rotation. */
     private static final float MIN_QUATERNION_NORM_SQUARED = 1e-6f;
@@ -97,6 +102,34 @@ final class AssemblyTags {
         return stored.contains(DEFINITION, Tag.TAG_LONG)
                 ? OptionalLong.of(stored.getLong(DEFINITION))
                 : OptionalLong.empty();
+    }
+
+    /**
+     * {@return la table des données personnalisées gardée, vide si le NBT n'en porte pas} Une clé
+     * {@code axion:custom} qui n'est pas un tableau d'octets rend la table illisible : gardée telle
+     * quelle, rien ne s'y écrit.
+     *
+     * @param limit plafond {@code persistence.max_custom_bytes}, en octets
+     * @param readOnly vrai pour la table d'une assembly inerte
+     */
+    static CustomTable custom(CompoundTag stored, LongSupplier limit, boolean readOnly) {
+        if (!stored.contains(CUSTOM)) {
+            return CustomTable.read(null, limit, readOnly);
+        }
+        if (!stored.contains(CUSTOM, Tag.TAG_BYTE_ARRAY)) {
+            return CustomTable.unreadable(CUSTOM + " n'est pas un tableau d'octets");
+        }
+        return CustomTable.read(stored.getByteArray(CUSTOM), limit, readOnly);
+    }
+
+    /**
+     * Écrit la table des données personnalisées si une écriture l'a changée, et la retire si elle est
+     * vide ; inchangée, la clé lue reste telle quelle.
+     */
+    static void putCustom(CompoundTag stored, CustomTable table) {
+        if (table.changed()) {
+            table.encoded().ifPresentOrElse(bytes -> stored.putByteArray(CUSTOM, bytes), () -> stored.remove(CUSTOM));
+        }
     }
 
     /**

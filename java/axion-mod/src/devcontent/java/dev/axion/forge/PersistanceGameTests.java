@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import dev.axion.net.AssemblyState;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -332,6 +333,66 @@ public final class PersistanceGameTests {
         CompoundTag reecrite = future.saveWithoutId(new CompoundTag());
         helper.assertTrue(AssemblyTags.extract(reecrite).equals(AssemblyTags.extract(v4)),
                 "clés réécrites : " + AssemblyTags.extract(reecrite) + " au lieu de " + AssemblyTags.extract(v4));
+        helper.succeed();
+    }
+
+    /**
+     * T-432 : les données personnalisées des mods sont rendues à l'identique après rechargement, et une
+     * écriture au-delà de {@code persistence.max_custom_bytes} est refusée, la table inchangée.
+     */
+    @GameTest(template = "test/plancher")
+    public static void t432_lesDonneesPersonnaliseesSontRenduesEtPlafonnees(GameTestHelper helper) {
+        AxionEntity cube = AssembliesDeTest.poser(helper, "axion:test_cube", new Vec3(2.0, DESSUS_DALLE + 2.0, 2.0), DROIT);
+        helper.assertTrue(cube.customData().put("mod_a", new byte[] {1, 2, 3}), "écriture refusée");
+        helper.assertTrue(cube.customData().put("mod_b", new byte[0]), "écriture vide refusée");
+        CompoundTag sauvegarde = new CompoundTag();
+        helper.assertTrue(cube.save(sauvegarde), "sauvegarde refusée");
+        byte[] table = sauvegarde.getByteArray(AssemblyTags.CUSTOM);
+        helper.assertTrue(table.length > 0, "aucune table écrite : " + sauvegarde);
+
+        AxionEntity relue = (AxionEntity) EntityType.loadEntityRecursive(sauvegarde, helper.getLevel(), entite -> entite);
+        helper.assertTrue(relue.customData().namespaces().equals(Set.of("mod_a", "mod_b")),
+                "espaces de noms relus : " + relue.customData().namespaces());
+        helper.assertTrue(Arrays.equals(relue.customData().get("mod_a").orElseThrow(), new byte[] {1, 2, 3}),
+                "mod_a relu");
+        helper.assertTrue(relue.customData().get("mod_b").orElseThrow().length == 0, "mod_b relu");
+
+        long plafond = AxionEntities.maxCustomBytes();
+        helper.assertTrue(plafond > 0, "plafond lu : " + plafond);
+        helper.assertTrue(!relue.customData().put("mod_c", new byte[(int) plafond]), "écriture au-delà du plafond acceptée");
+        helper.assertTrue(relue.customData().get("mod_c").isEmpty(), "la table a changé malgré le refus");
+        byte[] reecrite = relue.saveWithoutId(new CompoundTag()).getByteArray(AssemblyTags.CUSTOM);
+        helper.assertTrue(Arrays.equals(reecrite, table), "table réécrite autrement qu'elle a été lue");
+
+        relue.customData().remove("mod_a");
+        relue.customData().remove("mod_b");
+        helper.assertTrue(!relue.saveWithoutId(new CompoundTag()).contains(AssemblyTags.CUSTOM),
+                "une table vide laisse sa clé");
+        helper.succeed();
+    }
+
+    /**
+     * ADR-153 D7 : une table illisible — des octets qui ne sont pas une table, ou une clé qui n'est pas un
+     * tableau d'octets — reste intacte, et rien ne s'y écrit.
+     */
+    @GameTest(template = "test/plancher")
+    public static void uneTableIllisibleResteIntacte(GameTestHelper helper) {
+        AxionEntity cube = AssembliesDeTest.poser(helper, "axion:test_cube", new Vec3(2.0, DESSUS_DALLE + 2.0, 2.0), DROIT);
+        CompoundTag sauvegarde = new CompoundTag();
+        helper.assertTrue(cube.save(sauvegarde), "sauvegarde refusée");
+        byte[] illisible = {(byte) 0xA1, 0x61, 'm'};
+        sauvegarde.putByteArray(AssemblyTags.CUSTOM, illisible);
+        AxionEntity relue = (AxionEntity) EntityType.loadEntityRecursive(sauvegarde, helper.getLevel(), entite -> entite);
+        helper.assertTrue(!relue.isInert(), "assembly relue inerte");
+        helper.assertTrue(!relue.customData().put("mod_a", new byte[] {1}), "écriture acceptée dans une table illisible");
+        helper.assertTrue(Arrays.equals(relue.saveWithoutId(new CompoundTag()).getByteArray(AssemblyTags.CUSTOM), illisible),
+                "table illisible réécrite");
+
+        sauvegarde.putString(AssemblyTags.CUSTOM, "pas une table");
+        AxionEntity texte = (AxionEntity) EntityType.loadEntityRecursive(sauvegarde, helper.getLevel(), entite -> entite);
+        helper.assertTrue(!texte.customData().put("mod_a", new byte[] {1}), "écriture acceptée sous une clé texte");
+        helper.assertTrue("pas une table".equals(texte.saveWithoutId(new CompoundTag()).getString(AssemblyTags.CUSTOM)),
+                "clé texte réécrite");
         helper.succeed();
     }
 }

@@ -5,23 +5,24 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
- * Encodeur CBOR minimal, suffisant pour la configuration (C-04, IF-01) et le
- * texte des options de compilation d'un asset (IF-06, ADR-135).
+ * Encodeur CBOR minimal, suffisant pour la configuration (C-04, IF-01), le
+ * texte des options de compilation d'un asset (IF-06, ADR-135) et la table des
+ * données personnalisées d'une assembly (ADR-153 D7).
  *
  * <p>La configuration traverse la frontière encodée en CBOR, que le natif
  * décode avec {@code ciborium}. Côté Java, aucune bibliothèque CBOR n'est
  * disponible : Minecraft n'en fournit pas, et {@code validateJar} interdit
  * d'embarquer une dépendance shadée. Cet encodeur couvre donc exactement les
  * quatre types du modèle de configuration — booléen, entier, flottant, chaîne —
- * et rien de plus.
+ * plus la chaîne d'octets des données personnalisées, et rien de plus.
  *
  * <p>Ne pas confondre les ordres d'octets : CBOR est <strong>big-endian</strong>
  * (RFC 8949), alors que les tampons de transfert sont en little-endian (R-271).
  * Les deux se croisent dans ce paquet sans se ressembler.
  *
  * <p>Types non couverts, délibérément : tableaux, maps imbriquées, entiers
- * arbitrairement grands, dates, octets bruts. Le décodeur les refuse, et rien
- * dans la configuration n'en a besoin.
+ * arbitrairement grands, dates. Le décodeur les refuse, et rien dans la
+ * configuration n'en a besoin.
  */
 public final class CborWriter {
 
@@ -30,6 +31,9 @@ public final class CborWriter {
 
     /** Entier négatif, encodé comme {@code -1 - valeur}. */
     private static final int MAJOR_NEGATIVE = 0x20;
+
+    /** Chaîne d'octets. */
+    private static final int MAJOR_BYTES = 0x40;
 
     /** Chaîne UTF-8. */
     private static final int MAJOR_TEXT = 0x60;
@@ -54,7 +58,7 @@ public final class CborWriter {
      *
      * @param values valeurs à encoder, dont les types doivent être
      *     {@link Boolean}, {@link Long}, {@link Integer}, {@link Double},
-     *     {@link Float} ou {@link String}
+     *     {@link Float}, {@link String} ou {@code byte[]}
      * @return la représentation CBOR
      * @throws IllegalArgumentException si une valeur n'est pas d'un type
      *     supporté — c'est une erreur de programmation, pas une donnée douteuse
@@ -101,6 +105,9 @@ public final class CborWriter {
             writeDouble(out, number.doubleValue());
         } else if (value instanceof String text) {
             writeText(out, text);
+        } else if (value instanceof byte[] bytes) {
+            writeHead(out, MAJOR_BYTES, bytes.length);
+            out.write(bytes, 0, bytes.length);
         } else {
             throw new IllegalArgumentException(
                     "type non encodable pour " + path + " : "

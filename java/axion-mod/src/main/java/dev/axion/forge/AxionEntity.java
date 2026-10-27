@@ -1,8 +1,10 @@
 package dev.axion.forge;
 
 import com.mojang.logging.LogUtils;
+import dev.axion.api.CustomData;
 import dev.axion.definition.Definition;
 import dev.axion.entity.AssemblyBinding;
+import dev.axion.entity.CustomTable;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.Interpolation;
 import dev.axion.net.RenderClock;
@@ -102,6 +104,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Clés {@code axion:*} du NBT, gardées pour être réécrites telles quelles. */
     private CompoundTag stored = new CompoundTag();
 
+    /**
+     * Données personnalisées des mods ({@code axion:custom}, ADR-153 D7) : lues avec le NBT, en lecture
+     * seule tant que l'entité est inerte, réécrites dans {@link #stored} à la sauvegarde si elles ont changé.
+     */
+    private CustomTable custom = CustomTable.read(null, AxionEntities::maxCustomBytes, true);
+
     private String definitionId = "";
     private boolean inert = true;
 
@@ -149,6 +157,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Lie l'entité à une definition, au schéma NBT courant. */
     void bind(Definition definition) {
         stored = AssemblyTags.bound(stored, definition.hash());
+        // Inerte jusqu'ici, rien n'a pu écrire dans la table : la relire suffit à la rendre inscriptible.
+        custom = AssemblyTags.custom(stored, AxionEntities::maxCustomBytes, false);
         definitionId = definition.id();
         inert = false;
         loadedFromSave = false;
@@ -545,6 +555,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         inert = binding.isInert();
         inertReason = binding.inertReason();
         definitionId = binding.bound().map(Definition::id).orElse(AssemblyTags.describe(stored));
+        custom = AssemblyTags.custom(stored, AxionEntities::maxCustomBytes, inert);
+        custom.problem().ifPresent(problem ->
+                LOGGER.warn("AXION : assembly {}, données personnalisées — {}", getUUID(), problem));
         // §22.2 : le corps sera recréé avec l'orientation sauvegardée (identité si absente).
         bodyRotation.set(AssemblyTags.rotation(stored));
     }
@@ -575,7 +588,16 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         } else if (!inert) {
             AssemblyTags.putRotation(stored, bodyRotation);
         }
+        AssemblyTags.putCustom(stored, custom);
         AssemblyTags.restore(stored, tag);
+    }
+
+    /**
+     * {@return les données personnalisées des mods (serveur, thread autoritatif, ADR-153 D7)} En lecture
+     * seule pour une assembly inerte. Pas encore exposées aux mods par {@code AxionApi}.
+     */
+    CustomData customData() {
+        return custom;
     }
 
     /** {@return l'état que le NBT garde au schéma 3, au dernier tick simulé (serveur, ADR-153 D2)} */

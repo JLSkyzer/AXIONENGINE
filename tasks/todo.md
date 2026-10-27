@@ -3290,7 +3290,9 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
 - [x] 3. Budget de chargement (R-1730) (2026-10-25). `LoadQueue` : l'entrée d'une entité met sa création en file,
       avancée sous `persistence.max_load_ns_per_tick`, d'un élément au moins ; coût natif tiré de la soumission
       mesurée. 42 GameTests, 7 mutations rouges.
-- [ ] 4. `CustomData` et `axion:custom` ; T-432.
+- [x] 4. `CustomData` et `axion:custom` ; T-432 (2026-10-27). `CustomTable` : map CBOR clés triées, réécrite
+      seulement si elle a changé ; plafond contre max(plafond, taille actuelle) ; table illisible gardée
+      intacte, en lecture seule. 837 JUnit, 44 GameTests, 20 mutations rouges.
 - [ ] 5. Journal latéral : écriture, compactage, plafond, restauration ; T-713c..T-713f.
 - [ ] 6. Preuves : T-436, T-437, campagne T-435/T-713b, documentation.
 

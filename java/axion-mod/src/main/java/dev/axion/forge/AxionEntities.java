@@ -3,6 +3,7 @@ package dev.axion.forge;
 import dev.axion.AxionMod;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.lifecycle.AxionRuntime;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
@@ -62,6 +63,9 @@ public final class AxionEntities {
      */
     private static volatile Supplier<DefinitionRegistry> definitions = DefinitionRegistry::empty;
 
+    /** Plafond des données personnalisées, que le point d'entrée relie au runtime ; nul avant. */
+    private static volatile LongSupplier maxCustomBytes = () -> 0;
+
     private AxionEntities() {}
 
     /**
@@ -73,10 +77,16 @@ public final class AxionEntities {
     static void register(IEventBus modBus, AxionRuntime runtime) {
         ENTITY_TYPES.register(modBus);
         definitions = runtime::definitions;
+        maxCustomBytes = runtime::maxCustomBytes;
     }
 
     /** {@return les definitions chargées} */
     static DefinitionRegistry definitions() {
         return definitions.get();
+    }
+
+    /** {@return le plafond des données personnalisées d'une assembly, en octets (ADR-153 D7)} */
+    static long maxCustomBytes() {
+        return maxCustomBytes.getAsLong();
     }
 }

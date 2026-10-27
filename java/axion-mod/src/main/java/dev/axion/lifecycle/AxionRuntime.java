@@ -73,6 +73,8 @@ public final class AxionRuntime {
     /** Taille maximale d'une source, qui borne aussi les fichiers voisins gardés (ADR-139). */
     private static final String MAX_SOURCE_BYTES = "assets.max_source_bytes";
 
+    private static final String MAX_CUSTOM_BYTES = "persistence.max_custom_bytes";
+
     private final Map<String, HookGuard> guards = new LinkedHashMap<>();
     private final BiFunction<PlatformAdapter, Properties, BootstrapOutcome> bootstrap;
     private final NativeApi nativeApi;
@@ -788,11 +790,25 @@ public final class AxionRuntime {
      * borne quand même ce que le rechargement retient.
      */
     public long maxSiblingBytes() {
+        return commonLimit(MAX_SOURCE_BYTES);
+    }
+
+    /**
+     * {@return le plafond des données personnalisées d'une assembly, en octets :
+     * {@code persistence.max_custom_bytes} (ADR-153 D7)} Sans runtime natif, la valeur
+     * par défaut du registre.
+     */
+    public long maxCustomBytes() {
+        return commonLimit(MAX_CUSTOM_BYTES);
+    }
+
+    /** {@return une option entière commune : celle de la configuration chargée, sinon son défaut} */
+    private long commonLimit(String path) {
         if (hasNativeRuntime()) {
-            return outcome.config().getInt(MAX_SOURCE_BYTES);
+            return outcome.config().getInt(path);
         }
         return ConfigSchema.COMMON_OPTIONS.stream()
-                .filter(option -> option.path().equals(MAX_SOURCE_BYTES))
+                .filter(option -> option.path().equals(path))
                 .map(option -> (Long) option.defaultValue())
                 .findFirst()
                 .orElseThrow();

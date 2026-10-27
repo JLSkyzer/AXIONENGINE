@@ -97,6 +97,17 @@ class CborWriterTest {
     }
 
     @Test
+    @DisplayName("Chaînes d'octets (ADR-153 D7) : vecteurs de l'annexe A, et bascule au-delà de 23 octets")
+    void chainesDOctets() {
+        assertArrayEquals(bytes(0x40), encodeValue(new byte[0]));
+        assertArrayEquals(bytes(0x44, 0x01, 0x02, 0x03, 0x04), encodeValue(bytes(1, 2, 3, 4)));
+        byte[] long24 = encodeValue(new byte[24]);
+        assertEquals(26, long24.length);
+        assertEquals((byte) 0x58, long24[0]);
+        assertEquals((byte) 24, long24[1]);
+    }
+
+    @Test
     @DisplayName("Maps : en-tête, ordre d'insertion, et bascule au-delà de 23 entrées")
     void maps() {
         assertArrayEquals(bytes(0xA0), CborWriter.encodeMap(new LinkedHashMap<>()));
