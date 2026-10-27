@@ -317,6 +317,9 @@ Definition of Done (PARTIE 37.3).
 
 ### Corrige
 
+- Dependances (C-24, R-2301) : `zstd-sys` 2.1.2, `zstd` 0.14.3 et `zstd-safe`
+  8.2.0, pour RUSTSEC-2026-0391, -0398, -0403 et -0410. libzstd reste en
+  1.5.7 : 23 assets de developpement compiles a l'identique, au bit pres.
 - Physique (C-31, ADR-153) : une assembly a racine fixe (porte, pendule,
   chaine) n'etait jamais endormie hors de portee des joueurs (R-612) : la
   gestion d'activite ne relevait que les racines dynamiques. Un joint insere

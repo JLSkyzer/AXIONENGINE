@@ -94,7 +94,7 @@ crc32c = { version = "0.6", default-features = false }
 # C-24 : compression des sections A3D. Retenu par 32.2, licence BSD-3-Clause,
 # avec `lz4_flex` comme alternative evaluee. La decompression est toujours
 # bornee par une taille de sortie connue a l'avance (R-902).
-zstd = { version = "0.13", default-features = false }
+zstd = { version = "0.14", default-features = false }
 # INV-08 : les liaisons de l'API « experimentale » de libzstd, celle de `ZSTD_customMem`,
 # par laquelle les allocations de zstd passent par l'allocateur compteur. Meme crate et
 # meme bibliotheque C que ceux de `zstd` ci-dessus : la fonctionnalite ne change que les
