@@ -13,9 +13,10 @@ import java.util.function.LongSupplier;
  * (R-1744, ADR-153 D6).
  *
  * <p>Tout le temps que le journal prend au thread autoritatif est mesuré et compté contre le budget du
- * tick. Une sauvegarde arrivée quand le budget est épuisé est différée : elle attend, une par assembly — la
- * plus récente remplace la précédente —, et part en fin de tick dans ce qui reste du budget, une au moins
- * pour que la file avance toujours. Un budget nul ou négatif n'a pas de plafond.
+ * tick. Une sauvegarde que le budget ne laisse plus passer — à son coût prévu, celui de la dernière copie —
+ * est différée : elle attend, une par assembly — la plus récente remplace la précédente —, et part en fin
+ * de tick dans ce qui reste du budget, une au moins pour que la file avance toujours. Un budget nul ou
+ * négatif n'a pas de plafond.
  *
  * <p>Logique pure, sans Forge ; sur le thread autoritatif seulement.
  *
@@ -30,6 +31,9 @@ public final class JournalBudget<T> {
     /** Temps pris depuis la dernière fin de tick, en nanosecondes. */
     private long spentNs;
 
+    /** Coût de la dernière sauvegarde soumise : le coût prévu de la suivante. */
+    private long lastCostNs;
+
     /**
      * @param budgetNs budget par tick, en nanosecondes ; nul ou négatif : aucun
      * @param clock horloge monotone, en nanosecondes ({@code System::nanoTime} en jeu)
@@ -39,8 +43,9 @@ public final class JournalBudget<T> {
         this.clock = clock;
     }
 
+    /** {@return vrai si une sauvegarde de plus, à son coût prévu, dépasserait le budget du tick} */
     private boolean exhausted() {
-        return budgetNs > 0 && spentNs >= budgetNs;
+        return budgetNs > 0 && spentNs + lastCostNs > budgetNs;
     }
 
     /**
@@ -53,10 +58,12 @@ public final class JournalBudget<T> {
         deferred.remove(uuid);
         if (exhausted()) {
             deferred.put(uuid, save);
+            spentNs += clock.getAsLong() - start;
         } else {
             submit.accept(save);
+            lastCostNs = clock.getAsLong() - start;
+            spentNs += lastCostNs;
         }
-        spentNs += clock.getAsLong() - start;
     }
 
     /**
@@ -83,7 +90,8 @@ public final class JournalBudget<T> {
             T save = pending.next();
             pending.remove();
             submit.accept(save);
-            spentNs += clock.getAsLong() - start;
+            lastCostNs = clock.getAsLong() - start;
+            spentNs += lastCostNs;
             first = false;
         }
         long spent = spentNs;

@@ -28,15 +28,15 @@ class JournalBudgetTest {
     }
 
     @Test
-    @DisplayName("R-1744 : sous le budget, une sauvegarde part tout de suite ; au-delà, elle est différée")
+    @DisplayName("R-1744 : une sauvegarde part tant que son coût prévu tient dans le budget ; au-delà, elle est différée")
     void auDelaDuBudgetDifferee() {
         JournalBudget<String> budget = new JournalBudget<>(100, () -> maintenant);
         for (int n = 0; n < 6; n++) {
             budget.save(uuid(n), "s" + n, this::soumettre);
         }
-        // 30, 60, 90 : le budget de 100 n'est pas atteint ; 120 après la quatrième : les deux dernières attendent.
-        assertEquals(List.of("s0", "s1", "s2", "s3"), soumises);
-        assertEquals(2, budget.deferred());
+        // 30, 60, 90 : une quatrième, à 30 de plus, ferait 120 — elle et les suivantes attendent.
+        assertEquals(List.of("s0", "s1", "s2"), soumises);
+        assertEquals(3, budget.deferred());
     }
 
     @Test
@@ -46,12 +46,12 @@ class JournalBudgetTest {
         for (int n = 0; n < 10; n++) {
             budget.save(uuid(n), "s" + n, this::soumettre);
         }
+        assertEquals(7, budget.deferred());
+        assertEquals(120, budget.endTick(this::soumettre), "le budget épuisé, une part quand même");
         assertEquals(6, budget.deferred());
-        assertEquals(150, budget.endTick(this::soumettre), "le budget épuisé, une part quand même");
-        assertEquals(5, budget.deferred());
-        assertEquals(120, budget.endTick(this::soumettre), "un tick neuf : quatre partent, jusqu'au budget");
-        assertEquals(1, budget.deferred());
-        budget.endTick(this::soumettre);
+        assertEquals(90, budget.endTick(this::soumettre), "un tick neuf : trois partent, sans dépasser le budget");
+        assertEquals(3, budget.deferred());
+        assertEquals(90, budget.endTick(this::soumettre));
         assertEquals(0, budget.deferred());
         assertEquals(List.of("s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9"), soumises, "dans l'ordre");
     }

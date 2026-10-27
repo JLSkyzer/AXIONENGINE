@@ -116,7 +116,7 @@ final class JournalBridge {
         }
         // Le journal d'un autre monde de même chemin et de même graine est mis de côté (décision de Killian).
         try {
-            JournalToken.reconcile(dir, JournalWorldToken.of(server), System.currentTimeMillis(),
+            JournalToken.reconcile(dir, AxionRegistryData.journalToken(server), System.currentTimeMillis(),
                     message -> LOGGER.warn("AXION : {}", message));
         } catch (IOException e) {
             LOGGER.warn("AXION : jeton du journal latéral illisible ou non écrit, le journal est lu tel quel : {}",

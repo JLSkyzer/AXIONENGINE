@@ -3298,6 +3298,9 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
       jeton du monde (décision de Killian). 873 JUnit, 51 GameTests, 32 mutations rouges. T-713f passe en
       tranche 6 (banc de rendu, client réel).
 - [ ] 6. Preuves : T-436, T-437, campagne T-435/T-713b, T-713f au banc de rendu, documentation.
+      - [x] Correctifs (2026-10-28) : le jeton du journal vit dans l'unique `SavedData` permis par R-1711,
+            `axion_registry` (`AxionRegistryData`) ; `JournalBudget` s'arrête avant l'entrée dont le coût
+            prévu dépasserait le budget, comme `LoadQueue`. 2 mutations rouges.
 - [x] Intermittence de `r1690_unclientquiinondeleserveurestdeconnecte` (2026-10-27) : le client simulé
       renvoyait l'acquittement d'une trame lue après la fermeture de sa connexion (`ClosedChannelException`),
       selon que la dernière trame du serveur précédait la déconnexion. Cause prouvée par sonde et trace ;

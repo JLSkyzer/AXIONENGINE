@@ -19,6 +19,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
@@ -193,13 +194,22 @@ public final class JournalGameTests {
         });
     }
 
-    /** ADR-153 D6 : le journal porte le jeton du monde, que le monde garde dans data/axion_journal.dat. */
+    /** ADR-153 D6 : le journal porte le jeton du monde, que le monde garde dans data/axion_registry.dat (R-1711). */
     @GameTest(template = "test/plancher")
     public static void leJournalPorteLeJetonDuMonde(GameTestHelper helper) throws IOException {
         JournalBridge bridge = journal(helper);
-        String monde = JournalWorldToken.of(helper.getLevel().getServer());
+        String monde = AxionRegistryData.journalToken(helper.getLevel().getServer());
         String journal = Files.readString(bridge.dir().resolve(JournalToken.FILE), StandardCharsets.UTF_8);
         helper.assertTrue(!monde.isEmpty() && monde.equals(journal), "jeton du monde " + monde + ", du journal " + journal);
+        // R-1711 : un seul SavedData d'AXION, axion_registry ; le nom vient du cahier des charges, pas du code.
+        helper.getLevel().getServer().overworld().getDataStorage().save();
+        Path data = helper.getLevel().getServer().getWorldPath(LevelResource.ROOT).resolve("data");
+        helper.assertTrue(Files.exists(data.resolve("axion_registry.dat")), "data/axion_registry.dat absent");
+        try (Stream<Path> fichiers = Files.list(data)) {
+            List<String> axion = fichiers.map(f -> f.getFileName().toString())
+                    .filter(nom -> nom.startsWith("axion")).toList();
+            helper.assertTrue(axion.equals(List.of("axion_registry.dat")), "SavedData d'AXION : " + axion);
+        }
         helper.succeed();
     }
 
