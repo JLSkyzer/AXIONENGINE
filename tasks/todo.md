@@ -3301,6 +3301,11 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
       - [x] Correctifs (2026-10-28) : le jeton du journal vit dans l'unique `SavedData` permis par R-1711,
             `axion_registry` (`AxionRegistryData`) ; `JournalBudget` s'arrête avant l'entrée dont le coût
             prévu dépasserait le budget, comme `LoadQueue`. 2 mutations rouges.
+      - [x] T-436 (2026-10-28) : `PersistanceMasseGameTests`, 10 000 assemblies, mesure journalisée (ADR-153,
+            précisions de la tranche 6). 1 mutation rouge.
+      - [ ] T-437 : audit des fichiers écrits pendant une session de GameTests (R-1711).
+      - [ ] Campagne T-435/T-713b : trois lancements réels du serveur.
+      - [ ] T-713f au banc de rendu : asset visuel absent côté client.
 - [x] Intermittence de `r1690_unclientquiinondeleserveurestdeconnecte` (2026-10-27) : le client simulé
       renvoyait l'acquittement d'une trame lue après la fermeture de sa connexion (`ClosedChannelException`),
       selon que la dernière trame du serveur précédait la déconnexion. Cause prouvée par sonde et trace ;

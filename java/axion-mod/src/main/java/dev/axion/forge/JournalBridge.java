@@ -226,6 +226,16 @@ final class JournalBridge {
         }
     }
 
+    /** {@return les sauvegardes qui ne sont pas encore remises au fil du journal ou écrites par lui} */
+    int queued() {
+        return spending.deferred() + journal.pending();
+    }
+
+    /** {@return les sauvegardes différées par le budget, pas encore remises au fil du journal} */
+    int deferred() {
+        return spending.deferred();
+    }
+
     /** {@return la restauration, pour les tests} */
     RestorePlanner planner() {
         return planner;
