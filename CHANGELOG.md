@@ -134,6 +134,9 @@ Definition of Done (PARTIE 37.3).
     plafond `budgets.max_visible_instances` par frame : la frame descend d'un
     niveau, les plus lointaines sont ecartees ; a l'echeance, chaque assembly
     non examinee reprend sa decision de la frame d'avant ;
+    instancing (C-65) : le backend natif trie ses opaques par cle et dessine
+    d'un seul appel chaque serie d'au moins `render.instancing_threshold`
+    meshes identiques ;
     banc de rendu : jamais en pause, la pause au focus perdu coupee avant le
     chargement du monde et tout ecran de pause referme ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :

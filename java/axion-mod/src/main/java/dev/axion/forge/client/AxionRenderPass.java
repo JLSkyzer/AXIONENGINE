@@ -947,13 +947,14 @@ public final class AxionRenderPass {
             LOGGER.warn("AXION : backend natif indisponible — {}", missing);
             return null;
         }
-        int variants = (int) Math.min(Integer.MAX_VALUE,
-                ConfigLoader.load(Scope.CLIENT, FMLPaths.CONFIGDIR.get(), System.getProperties())
-                        .getInt("render.max_shader_variants"));
+        AxionConfig config = ConfigLoader.load(Scope.CLIENT, FMLPaths.CONFIGDIR.get(), System.getProperties());
+        int variants = (int) Math.min(Integer.MAX_VALUE, config.getInt("render.max_shader_variants"));
         // R-760 : le cache binaire des programmes, sous <gameDir>/axion/cache/shaders/.
         Path cache = FMLPaths.GAMEDIR.get().resolve("axion").resolve("cache").resolve("shaders");
         try {
-            return NativeGlBackend.create(Minecraft.getInstance().getResourceManager(), cache, variants);
+            NativeGlBackend created = NativeGlBackend.create(Minecraft.getInstance().getResourceManager(), cache, variants);
+            created.setInstancingThreshold((int) Math.min(Integer.MAX_VALUE, config.getInt("render.instancing_threshold")));
+            return created;
         } catch (NativeShaders.ShaderFailure failure) {
             LOGGER.error("AXION : shaders du backend natif refusés, bascule sur vanilla (E-4001) — {}",
                     failure.getMessage());

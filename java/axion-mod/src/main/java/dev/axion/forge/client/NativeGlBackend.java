@@ -9,6 +9,7 @@ import dev.axion.render.BackendSelection;
 import dev.axion.render.DepthOrder;
 import dev.axion.render.GpuPassTimings;
 import dev.axion.render.InstanceLayout;
+import dev.axion.render.InstanceRuns;
 import dev.axion.render.MeshLook;
 import dev.axion.render.RenderAsset;
 import dev.axion.render.ShaderVariant;
@@ -23,6 +24,7 @@ import java.nio.FloatBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -100,6 +102,23 @@ final class NativeGlBackend implements RenderBackend {
 
     /** Le sens des faces avant pendant une passe. */
     private int frontFace = GL11.GL_CCW;
+
+    /**
+     * Ordre des opaques (C-64, étape 5) : par arène de l'asset, mesh et sens des faces — la clé de
+     * regroupement de C-65 —, pour que les dessins de même clé se suivent et s'instancient.
+     */
+    private static final Comparator<Part> OPAQUE_ORDER = Comparator.comparingInt((Part part) -> part.gpu().vao())
+            .thenComparingInt(Part::rank)
+            .thenComparing(part -> InstanceLayout.mirrors(part.rows()));
+
+    /** {@code render.instancing_threshold} : taille minimale d'une série dessinée d'un seul appel. */
+    private int instancingThreshold = 4;
+
+    /** Appels de dessin de la frame en cours, passes opaques et translucide (T-477, T-485). */
+    private int drawCalls;
+
+    /** Appels de dessin de la dernière frame achevée. */
+    private int lastDrawCalls;
 
     private NativeGlBackend(NativeShaders shaders, NativeMeshes meshes) {
         this.shaders = shaders;
@@ -185,7 +204,10 @@ final class NativeGlBackend implements RenderBackend {
     private void drawOpaque(Frame frame) {
         meshes.nextFrame();
         shaders.poll();
+        lastDrawCalls = drawCalls;
+        drawCalls = 0;
         List<Part> parts = gather(frame, false);
+        parts.sort(OPAQUE_ORDER);
         if (!parts.isEmpty()) {
             Environment environment = Environment.of(frame);
             int activeTexture = GlStateManager._getActiveTexture();
@@ -217,6 +239,33 @@ final class NativeGlBackend implements RenderBackend {
         if (!pending.isEmpty()) {
             boxes.renderOpaque(new Frame(frame.pose(), frame.camera(), frame.partialTick(), frame.buffers(), pending));
         }
+    }
+
+    /**
+     * Règle le seuil d'instancing, {@code render.instancing_threshold} : une série de dessins de même clé
+     * plus courte se dessine dessin par dessin (R-781).
+     *
+     * @param threshold taille minimale d'une série instanciée ; 0 ou 1, toute série l'est
+     */
+    void setInstancingThreshold(int threshold) {
+        instancingThreshold = Math.max(0, threshold);
+    }
+
+    /** {@return les appels de dessin de la dernière frame achevée} */
+    int lastDrawCalls() {
+        return lastDrawCalls;
+    }
+
+    /** {@return vrai si deux meshes posés ont la même clé de regroupement : même asset, mesh, sens des faces} */
+    private static boolean sameKey(Part a, Part b) {
+        return a.gpu() == b.gpu()
+                && a.rank() == b.rank()
+                && InstanceLayout.mirrors(a.rows()) == InstanceLayout.mirrors(b.rows());
+    }
+
+    /** {@return les séries de dessins de même clé, dans l'ordre des meshes posés} */
+    private List<InstanceRuns.Run> runs(List<Part> parts) {
+        return InstanceRuns.of(parts.size(), (a, b) -> sameKey(parts.get(a), parts.get(b)), instancingThreshold);
     }
 
     /** Passe 4 du §19.10 : les translucides, du plus loin au plus près. */
@@ -373,8 +422,8 @@ final class NativeGlBackend implements RenderBackend {
      */
     private void drawSurfaces(List<Part> parts, SurfacePass pass, ShaderVariant variant, Environment environment) {
         NativeShaders.Program program = null;
-        for (int instance = 0; instance < parts.size(); instance++) {
-            Part part = parts.get(instance);
+        for (InstanceRuns.Run run : runs(parts)) {
+            Part part = parts.get(run.start());
             if (part.look().pass() != pass) {
                 continue;
             }
@@ -409,7 +458,7 @@ final class NativeGlBackend implements RenderBackend {
                 regionUniform(program, "u_orm_region", orm);
                 GL20.glUniform1f(program.uniform("u_occlusion_strength"), material.occlusionStrength());
             }
-            draw(part, instance, region);
+            drawRun(part, run, region);
         }
     }
 
@@ -417,8 +466,8 @@ final class NativeGlBackend implements RenderBackend {
     private void drawEmission(List<Part> parts, Environment environment) {
         NativeShaders.Program program = shaders.emission();
         boolean used = false;
-        for (int instance = 0; instance < parts.size(); instance++) {
-            Part part = parts.get(instance);
+        for (InstanceRuns.Run run : runs(parts)) {
+            Part part = parts.get(run.start());
             if (!part.asset().emits(part.rank())) {
                 continue;
             }
@@ -433,7 +482,7 @@ final class NativeGlBackend implements RenderBackend {
             GL20.glUniform3f(program.uniform("u_emissive_factor"), emissive[0], emissive[1], emissive[2]);
             // La couleur des sommets ne module pas l'émission (sémantique glTF).
             GL20.glUniform1i(program.uniform("u_vertex_color"), 0);
-            draw(part, instance, region);
+            drawRun(part, run, region);
         }
     }
 
@@ -448,8 +497,22 @@ final class NativeGlBackend implements RenderBackend {
         }
     }
 
-    /** Dessine un mesh posé, depuis son arène, sous son bloc d'instance. */
-    private void draw(Part part, int instance, TextureRegion region) {
+    /**
+     * Dessine une série de meshes posés de même clé : d'un seul appel instancié si elle atteint le seuil,
+     * dessin par dessin sinon (C-65, R-781). Les blocs d'instance de la série se suivent dans le tampon.
+     */
+    private void drawRun(Part part, InstanceRuns.Run run, TextureRegion region) {
+        if (run.instanced()) {
+            draw(part, run.start(), run.count(), region);
+        } else {
+            for (int offset = 0; offset < run.count(); offset++) {
+                draw(part, run.start() + offset, 1, region);
+            }
+        }
+    }
+
+    /** Dessine {@code count} instances d'un mesh, depuis son arène, sous les blocs à partir de {@code instance}. */
+    private void draw(Part part, int instance, int count, TextureRegion region) {
         if (part.gpu().vao() != boundVao) {
             GL30.glBindVertexArray(part.gpu().vao());
             boundVao = part.gpu().vao();
@@ -472,8 +535,9 @@ final class NativeGlBackend implements RenderBackend {
                 part.mesh().indexCount(),
                 GL11.GL_UNSIGNED_INT,
                 part.gpu().indexByteOffset(part.mesh()),
-                1,
+                count,
                 part.gpu().baseVertex(part.mesh()));
+        drawCalls++;
     }
 
     /**
