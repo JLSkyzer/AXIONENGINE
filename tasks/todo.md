@@ -3348,10 +3348,11 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
 - [x] 3. Plafond et échéance ; T-523, T-524 (2026-10-28). Plafond porté par la caméra (décalage 104), frame
       descendue d'un niveau puis plus lointains écartés, `AXION_RENDER_CAPPED` ; décision d'avant reprise à
       l'échéance. 4 mutations rouges. Le tri (étape 5) passe à la tranche 4, avec les dessins.
-- [ ] 4. Instancing (C-65) ; T-530..T-532, T-477, T-478.
+- [x] 4. Instancing (C-65) ; T-530..T-532, T-477, T-478.
       - [x] 4a (2026-10-28) : Java regroupe et trie (décision de Killian) ; séries de même clé instanciées
             au-delà du seuil ; T-530 ; 2 mutations rouges.
-      - [ ] 4b : au banc de rendu, T-477 (200 copies, au plus 3 appels) et T-478 (non instancié identique).
+      - [x] 4b (2026-10-28) : au banc natif, T-477 (200 copies : +0 appel de dessin) et T-478 (chemin non
+            instancié, +200 appels, 0 pixel différent) ; T-531 tenu par `InstanceLayoutTest` ; 1 mutation rouge.
 - [ ] 5. Indirect (GL 4.3) ; T-533, T-907.
 - [ ] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.
 

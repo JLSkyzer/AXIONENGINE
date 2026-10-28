@@ -251,6 +251,11 @@ final class NativeGlBackend implements RenderBackend {
         instancingThreshold = Math.max(0, threshold);
     }
 
+    /** {@return le seuil d'instancing en vigueur} */
+    int instancingThreshold() {
+        return instancingThreshold;
+    }
+
     /** {@return les appels de dessin de la dernière frame achevée} */
     int lastDrawCalls() {
         return lastDrawCalls;

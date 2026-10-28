@@ -302,6 +302,28 @@ public final class AxionRenderPass {
     public record ShaderStats(
             int cacheHits, int cacheMisses, int compiled, int onDemand, int pending, int refused, boolean cutoutReady) {}
 
+    /** {@return les appels de dessin de la dernière frame du backend natif, ou -1 sous un autre (T-477)} */
+    public static int nativeDrawCalls() {
+        return backend instanceof NativeGlBackend active ? active.lastDrawCalls() : -1;
+    }
+
+    /** {@return le seuil d'instancing du backend natif, ou -1 sous un autre} */
+    public static int instancingThreshold() {
+        return backend instanceof NativeGlBackend active ? active.instancingThreshold() : -1;
+    }
+
+    /**
+     * Règle le seuil d'instancing du backend natif (banc de rendu, T-478) : un seuil plus grand que toute
+     * série force le chemin non instancié. Sans effet sous un autre backend.
+     *
+     * @param threshold taille minimale d'une série instanciée
+     */
+    public static void setInstancingThreshold(int threshold) {
+        if (backend instanceof NativeGlBackend active) {
+            active.setInstancingThreshold(threshold);
+        }
+    }
+
     /** {@return les programmes du backend natif actif, ou {@code null} s'il ne l'est pas} */
     public static ShaderStats nativeShaderStats() {
         RenderSystem.assertOnRenderThread();

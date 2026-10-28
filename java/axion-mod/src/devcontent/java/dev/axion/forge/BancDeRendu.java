@@ -299,6 +299,17 @@ public final class BancDeRendu {
     private static float tangage;
     private static Vue derniereVue;
     private static AxionEntity cube;
+
+    /** Les 200 copies du cube de T-477 et T-478. */
+    private static final List<AxionEntity> copies = new ArrayList<>();
+
+    /** Appels de dessin et assemblies dessinées de la scène avant les copies (T-477). */
+    private static int appelsSansCopies;
+    private static int dessineesSansCopies;
+
+    /** L'image des copies instanciées, et le seuil d'instancing à rendre après T-478. */
+    private static CapturesDuBanc.Capture copiesInstanciees;
+    private static int seuilInstancing;
     private static int cubePrecedent;
 
     /** ADR-151 D9 : la charnière, le fond sans elle, et ses poses au serveur à la capture. */
@@ -643,6 +654,40 @@ public final class BancDeRendu {
             panneauPlat.discard();
         });
         jusqua("les panneaux retirés", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+
+        // T-477, T-478 (C-65, ADR-154) : 200 copies du cube devant la caméra. Instanciées, elles ne coûtent
+        // que quelques appels de dessin ; sans instancing, l'image est la même, pixel pour pixel.
+        if (NATIF) {
+            stabiliser("la scène sans les copies");
+            une("compter les appels sans les copies", mc -> {
+                appelsSansCopies = AxionRenderPass.nativeDrawCalls();
+                dessineesSansCopies = AxionRenderPass.lastFrame().assemblies();
+            });
+            serveur("poser 200 copies", s -> {
+                copies.clear();
+                for (int rangee = 0; rangee < 20; rangee++) {
+                    for (int colonne = 0; colonne < 10; colonne++) {
+                        copies.add(AssembliesDeTest.poser(s.overworld(), CUBE,
+                                new Vec3(-6.5 - 2.0 * rangee, surface, -8.5 + 2.0 * colonne), IDENTITE));
+                    }
+                }
+            });
+            jusqua("les copies rendues", 120, mc -> copies.stream().allMatch(c -> mc.level.getEntity(c.getId()) != null)
+                    && AxionRenderPass.lastFrame().withAsset() == AxionRenderPass.lastFrame().assemblies()
+                    && AxionRenderPass.lastFrame().assemblies() > dessineesSansCopies);
+            stabiliser("les copies");
+            une("juger T-477", mc -> jugerT477());
+            une("capturer les copies instanciées", mc -> copiesInstanciees = capturer(mc, "t478_instancie.png"));
+            une("couper l'instancing", mc -> {
+                seuilInstancing = AxionRenderPass.instancingThreshold();
+                AxionRenderPass.setInstancingThreshold(Integer.MAX_VALUE);
+            });
+            stabiliser("les copies sans instancing");
+            une("juger T-478", mc -> jugerT478(capturer(mc, "t478_direct.png")));
+            une("rendre l'instancing", mc -> AxionRenderPass.setInstancingThreshold(seuilInstancing));
+            serveur("retirer les copies", s -> copies.forEach(Entity::discard));
+            jusqua("les copies retirées", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+        }
 
         // T-476 (§19.13, R-1580) : la transparence ordonnée. Sous un shaderpack, le pack de test
         // efface le bleu de tout pixel (BLEU_DU_PACK) : le verdict ne s'y joue pas.
@@ -1344,6 +1389,34 @@ public final class BancDeRendu {
     /** {@return ce qu'on sait d'un temps GPU de passe, sans le chiffre} */
     private static String connu(long nanos) {
         return nanos < 0 ? "hors du natif" : nanos == 0 ? "inconnu" : "connu";
+    }
+
+    /**
+     * T-477 (§19.13) : 200 copies en au plus 3 appels de dessin — l'écart d'appels avec la scène sans elles,
+     * toutes dessinées.
+     */
+    private static void jugerT477() {
+        int appels = AxionRenderPass.nativeDrawCalls();
+        int dessinees = AxionRenderPass.lastFrame().assemblies() - dessineesSansCopies;
+        int ecart = appels - appelsSansCopies;
+        boolean vert = dessinees == copies.size() && appelsSansCopies >= 0 && ecart <= 3;
+        RAPPORT.noter("T-477", vert, String.format(Locale.ROOT,
+                "%d copies posées, %d dessinées ; %d appels de dessin sans elles, %d avec : %+d (au plus 3)",
+                copies.size(), dessinees, appelsSansCopies, appels, ecart));
+    }
+
+    /**
+     * T-478 (§19.13, R-781) : le chemin non instancié, forcé par un seuil plus grand que toute série, rend
+     * l'image du chemin instancié, pixel pour pixel.
+     */
+    private static void jugerT478(CapturesDuBanc.Capture direct) {
+        CapturesDuBanc.Masque ecart = CapturesDuBanc.masque(copiesInstanciees, direct);
+        int appels = AxionRenderPass.nativeDrawCalls();
+        boolean vert = ecart.nombre() == 0 && appels - appelsSansCopies >= copies.size();
+        RAPPORT.noter("T-478", vert, String.format(Locale.ROOT,
+                "chemin non instancié : %d appels de dessin (%+d sur la scène sans copies) ; %d pixel(s) différent(s)"
+                        + " de l'image instanciée",
+                appels, appels - appelsSansCopies, ecart.nombre()));
     }
 
     private static void jugerT479() {
