@@ -117,6 +117,8 @@ Definition of Done (PARTIE 37.3).
     pour le Java, releve du dossier de jeu pour le reste, natif compris ;
     campagne T-435/T-713b sur un serveur Forge de production : des assemblies
     perdues par Minecraft sans AXION sont restaurees a l'identique ;
+    un modele absent chez le client (T-713f) : boite de repli, client
+    connecte, simulation et persistance intactes, au banc de rendu ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

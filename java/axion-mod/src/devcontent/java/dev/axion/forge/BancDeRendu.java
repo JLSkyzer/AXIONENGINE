@@ -1,6 +1,7 @@
 package dev.axion.forge;
 
 import dev.axion.AxionMod;
+import dev.axion.asset.AssetRegistry;
 import dev.axion.forge.client.AxionRenderPass;
 import dev.axion.forge.client.GlStateCheck;
 import dev.axion.diag.StatusReport;
@@ -41,6 +42,7 @@ import net.minecraft.nbt.NbtIo;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.packs.repository.PackRepository;
+import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.GameRules;
@@ -197,6 +199,20 @@ public final class BancDeRendu {
     /** ADR-150 D3 : de combien, sur 255, le canal attendu doit l'emporter sur l'autre. */
     private static final int MARGE_D3 = 40;
 
+    /**
+     * T-713f (cas 4 de 22.5.3) : une definition et son modèle livrés par un datapack du monde. Le serveur
+     * lit les datapacks du monde ; le client, ses resource packs et les fichiers de ses mods (ADR-150 D3) :
+     * il n'a pas ce modèle.
+     */
+    private static final String ABSENT_CHEZ_LE_CLIENT = "axion:test/absent_chez_le_client";
+
+    private static final String ASSET_ABSENT = "axion:models/test/absent_chez_le_client.gltf";
+
+    /** Le datapack du monde qui les livre, et le cube du mod que son modèle recopie. */
+    private static final String PACK_ABSENT = "axion_absent_chez_le_client";
+
+    private static final String CUBE_DU_MOD = "/data/axion/axion/models/test/cube.gltf";
+
     /** Un quart de tour autour de la verticale : la face avant des panneaux, +Z, regarde l'est, la caméra. */
     private static final float[] VERS_L_EST = {0f, 0.70710678f, 0f, 0.70710678f};
 
@@ -248,9 +264,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -303,6 +319,15 @@ public final class BancDeRendu {
     private static double[] boisAvant;
     private static double[] boisAvecPack;
     private static AxionEntity modeleDuPack;
+    /**
+     * T-713f : l'assembly au modèle absent chez le client, la frame d'avant sa pose, et ce que le serveur en
+     * a relevé sur son thread — liée, état simulé rapporté, definition dans son NBT.
+     */
+    private static AxionEntity modeleAbsent;
+    private static AxionRenderPass.FrameStats avantModeleAbsent;
+    private static boolean modeleAbsentLie;
+    private static boolean modeleAbsentSimule;
+    private static boolean modeleAbsentPersiste;
     /** T-410 : l'assembly lâchée en l'air, son identifiant réseau, et ses hauteurs relevées. */
     private static AxionEntity chute;
     private static int chuteId;
@@ -660,6 +685,26 @@ public final class BancDeRendu {
             });
             jusqua("le modèle à texture de ressource retiré", 120,
                     mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+
+            // T-713f (cas 4 de 22.5.3, R-1640) : un modèle que le serveur a et que le client n'a pas. Le
+            // client dessine la boîte de repli, l'écrit au journal et reste connecté ; le serveur simule et
+            // persiste l'assembly comme les autres.
+            serveur("activer le datapack au modèle absent chez le client", s -> donneesDuServeur(s, true));
+            jusqua("la definition et le modèle du datapack prêts côté serveur", 120, mc -> modeleAbsentPret());
+            une("relever la frame d'avant", mc -> avantModeleAbsent = AxionRenderPass.lastFrame());
+            serveur("poser l'assembly au modèle absent chez le client", s -> modeleAbsent =
+                    AssembliesDeTest.poser(s.overworld(), ABSENT_CHEZ_LE_CLIENT, positionPanneau(Z_PLAT), IDENTITE));
+            jusqua("l'assembly au modèle absent rendue", 120,
+                    mc -> AxionRenderPass.lastFrame().assemblies() == avantModeleAbsent.assemblies() + 1);
+            jusqua("son état simulé rapporté par le serveur", 120, mc -> modeleAbsent.netState() != null);
+            serveur("relever l'assembly côté serveur", BancDeRendu::releverModeleAbsent);
+            une("juger T-713f", BancDeRendu::jugerT713f);
+            serveur("retirer l'assembly au modèle absent et son datapack", s -> {
+                modeleAbsent.discard();
+                donneesDuServeur(s, false);
+            });
+            jusqua("l'assembly au modèle absent retirée", 120,
+                    mc -> AxionRenderPass.lastFrame().assemblies() == avantModeleAbsent.assemblies());
 
         }
 
@@ -1568,6 +1613,81 @@ public final class BancDeRendu {
                 NATIF ? "natif" : "vanilla",
                 packDisponible ? "pack de test disponible" : "PACK DE TEST INTROUVABLE (" + PACK_DE_TEST + ")",
                 rgb(duPackAvant), rgb(duPackAvecPack), rgb(apres), MARGE_D3));
+    }
+
+    /**
+     * T-713f : écrit le datapack du monde qui livre la definition et le modèle absents chez le client — le
+     * cube du mod sous un autre nom —, puis l'active ou le retire, comme {@code /datapack enable|disable}.
+     */
+    private static void donneesDuServeur(MinecraftServer serveur, boolean actif) {
+        Path pack = serveur.getWorldPath(LevelResource.DATAPACK_DIR).resolve(PACK_ABSENT);
+        if (actif) {
+            try (var cube = BancDeRendu.class.getResourceAsStream(CUBE_DU_MOD)) {
+                if (cube == null) {
+                    throw new IllegalStateException("cube du mod introuvable : " + CUBE_DU_MOD);
+                }
+                Path donnees = pack.resolve("data/axion/axion");
+                Files.createDirectories(donnees.resolve("definitions/test"));
+                Files.createDirectories(donnees.resolve("models/test"));
+                Files.writeString(pack.resolve("pack.mcmeta"),
+                        "{\"pack\": {\"pack_format\": 15, \"description\": \"AXION, banc de rendu : T-713f\"}}");
+                Files.writeString(donnees.resolve("definitions/test/absent_chez_le_client.json"),
+                        "{\"schema\": 1, \"asset\": \"" + ASSET_ABSENT + "\", \"kind\": \"rigid_object\"}");
+                Files.write(donnees.resolve("models/test/absent_chez_le_client.gltf"), cube.readAllBytes());
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+        PackRepository depot = serveur.getPackRepository();
+        depot.reload();
+        List<String> choisis = new ArrayList<>(depot.getSelectedIds());
+        choisis.remove("file/" + PACK_ABSENT);
+        if (actif) {
+            choisis.add("file/" + PACK_ABSENT);
+        }
+        serveur.reloadResources(choisis);
+    }
+
+    /**
+     * {@return vrai quand le serveur tient la definition du datapack et son modèle compilé} Le modèle se
+     * nomme par l'asset de la definition chargée, comme le rendu le cherche.
+     */
+    private static boolean modeleAbsentPret() {
+        AxionRuntime runtime = RuntimeAccess.get();
+        return runtime.definitions().get(ABSENT_CHEZ_LE_CLIENT)
+                .map(definition -> definition.asset().equals(runtime.assets().resolve(definition.asset())))
+                .orElse(false);
+    }
+
+    /** T-713f : ce que le serveur tient de l'assembly, relevé sur son thread. */
+    private static void releverModeleAbsent(MinecraftServer serveur) {
+        modeleAbsentLie = !modeleAbsent.isInert();
+        modeleAbsentSimule = modeleAbsent.netState() != null;
+        long attendue = RuntimeAccess.get().definitions().get(ABSENT_CHEZ_LE_CLIENT).orElseThrow().hash();
+        modeleAbsentPersiste = modeleAbsent.saveWithoutId(new CompoundTag()).getLong("axion:def") == attendue;
+    }
+
+    /**
+     * T-713f (cas 4 de 22.5.3, R-1640) : le client dessine l'assembly sans son modèle — la boîte de repli, une
+     * assembly de plus sans une de plus avec son asset — et reste connecté ; le serveur la tient liée, en
+     * rapporte l'état simulé, et la persiste avec sa definition.
+     */
+    private static void jugerT713f(Minecraft mc) {
+        AxionRenderPass.FrameStats frame = AxionRenderPass.lastFrame();
+        boolean repli = frame.assemblies() == avantModeleAbsent.assemblies() + 1
+                && frame.withAsset() == avantModeleAbsent.withAsset();
+        boolean connecte = mc.getConnection() != null && mc.player != null;
+        AssetRegistry chezLeClient = RuntimeAccess.get().clientAssets();
+        String asset = RuntimeAccess.get().definitions().get(ABSENT_CHEZ_LE_CLIENT).orElseThrow().asset();
+        boolean absent = chezLeClient != null && !asset.equals(chezLeClient.resolve(asset));
+        RAPPORT.noter("T-713f", repli && connecte && absent && modeleAbsentLie && modeleAbsentSimule
+                && modeleAbsentPersiste, String.format(Locale.ROOT,
+                "%s : modèle %s chez le client ; frame de %d assemblies dont %d avec leur asset (avant : %d et %d) ;"
+                        + " client %s ; serveur : assembly %s, état simulé %s, NBT %s",
+                NATIF ? "natif" : "vanilla", absent ? "absent" : "PRÉSENT", frame.assemblies(), frame.withAsset(),
+                avantModeleAbsent.assemblies(), avantModeleAbsent.withAsset(), connecte ? "connecté" : "DÉCONNECTÉ",
+                modeleAbsentLie ? "liée" : "INERTE", modeleAbsentSimule ? "rapporté" : "ABSENT",
+                modeleAbsentPersiste ? "avec sa definition" : "SANS SA DEFINITION"));
     }
 
     /** {@return la couleur moyenne au centre de la face est du modèle ressource, tournée vers la caméra} */
