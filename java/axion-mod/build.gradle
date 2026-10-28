@@ -31,6 +31,13 @@ dependencies {
     devcontentImplementation sourceSets.main.output
 }
 
+// T-437 (R-1711) : l'audit des fichiers écrits pendant une session de GameTests. La JVM du serveur enregistre
+// chaque écriture avec sa pile (JFR) ; runGameTestServer relève son dossier avant le passage et vérifie
+// après, par tools/ci/audit_ecritures.py.
+def auditEcritures = layout.buildDirectory.dir('audit-ecritures').get().asFile
+def windows = System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')
+def python = windows ? 'python' : 'python3'
+
 minecraft {
     mappings channel: mapping_channel, version: mapping_version
 
@@ -79,6 +86,9 @@ minecraft {
             // partent d'un monde neuf (R-2190) et ne laissent rien dans celui de développement.
             workingDirectory rootProject.file('run-gametest')
             property 'forge.enabledGameTestNamespaces', mod_id
+            // T-437 : chaque écriture de fichier de la session, avec sa pile, pour l'audit qui suit le passage.
+            jvmArg "-XX:StartFlightRecording=filename=${new File(auditEcritures, 'ecritures.jfr')},settings=${rootProject.file('tools/ci/audit_ecritures.jfc')},dumponexit=true"
+            jvmArg '-XX:FlightRecorderOptions=stackdepth=256'
         }
 
         renderTest {
@@ -251,6 +261,21 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
         ])
         proprietes.parentFile.mkdirs()
         proprietes.withOutputStream { reglages.store(it, 'AXION : monde des GameTests reproductible (ADR-124 5)') }
+        // T-437 : le dossier de jeu tel que le passage le trouve, et un enregistrement neuf.
+        delete new File(auditEcritures, 'ecritures.jfr')
+        project.exec {
+            commandLine python, rootProject.file('tools/ci/audit_ecritures.py'), 'releve',
+                    rootProject.file('run-gametest'), new File(auditEcritures, 'releve.json')
+        }
+    }
+    // T-437 (R-1711) : rien d'AXION hors du NBT de ses entités, d'axion_registry et de <gameDir>/axion/.
+    doLast {
+        project.exec {
+            commandLine python, rootProject.file('tools/ci/audit_ecritures.py'), 'verifier',
+                    rootProject.file('run-gametest'), new File(auditEcritures, 'releve.json'),
+                    new File(auditEcritures, 'ecritures.jfr'), sourceSets.main.java.classesDirectory.get().asFile,
+                    new File(System.getProperty('java.home'), windows ? 'bin/jfr.exe' : 'bin/jfr')
+        }
     }
 }
 

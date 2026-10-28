@@ -113,6 +113,8 @@ Definition of Done (PARTIE 37.3).
     une assembly perdue par vanilla est restauree a sa position, endormie,
     une seule fois, et listee dans `restaurations.log` ; le journal d'un
     autre monde de meme chemin et de meme graine est mis de cote ;
+    chaque passage des GameTests audite ses ecritures (T-437, R-1711) : JFR
+    pour le Java, releve du dossier de jeu pour le reste, natif compris ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

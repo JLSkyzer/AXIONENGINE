@@ -3303,18 +3303,9 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
             prévu dépasserait le budget, comme `LoadQueue`. 2 mutations rouges.
       - [x] T-436 (2026-10-28) : `PersistanceMasseGameTests`, 10 000 assemblies, mesure journalisée (ADR-153,
             précisions de la tranche 6). 1 mutation rouge.
-      - [ ] T-437 : audit des fichiers écrits pendant une session de GameTests (R-1711).
-            Plan arrêté le 2026-10-28, rien d'écrit : `tools/ci/audit_ecritures.py` à deux volets.
-            (1) JFR `jdk.FileWrite` (seuil 0, pile) par `-XX:StartFlightRecording` ajouté au run
-            `gameTestServer` sous `-Paxion.auditEcritures`, enregistrement dans `build/` : toute écriture
-            dont la première classe `dev.axion` vient de `build/classes/java/main` doit viser
-            `<gameDir>/axion/` ou `config/axion-*.toml`. (2) Relevé de `run-gametest` avant (fin du
-            `doFirst` existant) et après (`doLast`) : tout fichier créé ou modifié hors des emplacements de
-            Minecraft/Forge (world/region|entities|poi|DIM*|playerdata|stats|advancements|serverconfig,
-            level.dat*, session.lock, data/ non-axion, logs, crash-reports, usernamecache.json,
-            server.properties, config/ non-axion, defaultconfigs) et d'AXION (axion/, config/axion-*.toml,
-            world/data/axion_registry.dat) est une violation — couvre le natif, que JFR ne voit pas.
-            Puis ci.yml (test-gametest) et local_ci.py passent `-Paxion.auditEcritures`.
+      - [x] T-437 (2026-10-28) : audit des fichiers écrits pendant chaque session de GameTests (R-1711),
+            JFR et relevé du dossier, intégré à `runGameTestServer` donc à la CI ; aucune violation ;
+            3 mutations rouges.
       - [ ] Campagne T-435/T-713b : trois lancements réels du serveur.
       - [ ] T-713f au banc de rendu : asset visuel absent côté client.
 - [x] Intermittence de `r1690_unclientquiinondeleserveurestdeconnecte` (2026-10-27) : le client simulé
