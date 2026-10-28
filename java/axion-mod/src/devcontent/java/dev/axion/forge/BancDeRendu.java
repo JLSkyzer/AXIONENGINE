@@ -310,6 +310,12 @@ public final class BancDeRendu {
     /** L'image des copies instanciées, et le seuil d'instancing à rendre après T-478. */
     private static CapturesDuBanc.Capture copiesInstanciees;
     private static int seuilInstancing;
+
+    /** Le chemin indirect de la configuration, l'image des copies par lui et ses appels (T-907). */
+    private static boolean indirectInitial;
+    private static boolean indirectTeste;
+    private static CapturesDuBanc.Capture copiesIndirectes;
+    private static int appelsIndirects;
     private static int cubePrecedent;
 
     /** ADR-151 D9 : la charnière, le fond sans elle, et ses poses au serveur à la capture. */
@@ -680,11 +686,38 @@ public final class BancDeRendu {
             une("capturer les copies instanciées", mc -> copiesInstanciees = capturer(mc, "t478_instancie.png"));
             une("couper l'instancing", mc -> {
                 seuilInstancing = AxionRenderPass.instancingThreshold();
+                indirectInitial = AxionRenderPass.nativeIndirect();
                 AxionRenderPass.setInstancingThreshold(Integer.MAX_VALUE);
             });
             stabiliser("les copies sans instancing");
             une("juger T-478", mc -> jugerT478(capturer(mc, "t478_direct.png")));
             une("rendre l'instancing", mc -> AxionRenderPass.setInstancingThreshold(seuilInstancing));
+            // T-907 (R-782) : sous GL 4.3, le chemin indirect rend l'image du chemin instancié direct. Le
+            // contexte se lit quand l'étape s'exécute : à la construction du scénario, aucun backend n'existe.
+            une("prendre le chemin indirect", mc -> {
+                indirectTeste = AxionRenderPass.indirectAvailable();
+                if (indirectTeste) {
+                    AxionRenderPass.setNativeIndirect(true);
+                }
+            });
+            stabiliser("les copies par le chemin indirect");
+            une("capturer le chemin indirect", mc -> {
+                if (indirectTeste) {
+                    appelsIndirects = AxionRenderPass.nativeDrawCalls();
+                    copiesIndirectes = capturer(mc, "t907_indirect.png");
+                    AxionRenderPass.setNativeIndirect(false);
+                }
+            });
+            stabiliser("les copies par le chemin direct");
+            une("juger T-907", mc -> {
+                if (indirectTeste) {
+                    jugerT907(capturer(mc, "t907_direct.png"));
+                    AxionRenderPass.setNativeIndirect(indirectInitial);
+                } else {
+                    RAPPORT.noter("T-907", true, "non exécuté : le contexte n'offre pas GL 4.3, le chemin indirect"
+                            + " est indisponible (R-782, optionnel) — " + AxionRenderPass.indirectSupport());
+                }
+            });
             serveur("retirer les copies", s -> copies.forEach(Entity::discard));
             jusqua("les copies retirées", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
         }
@@ -1417,6 +1450,18 @@ public final class BancDeRendu {
                 "chemin non instancié : %d appels de dessin (%+d sur la scène sans copies) ; %d pixel(s) différent(s)"
                         + " de l'image instanciée",
                 appels, appels - appelsSansCopies, ecart.nombre()));
+    }
+
+    /**
+     * T-907 (§19.13, R-782) : le chemin indirect (GL 4.3) rend l'image du chemin instancié direct, pixel pour
+     * pixel.
+     */
+    private static void jugerT907(CapturesDuBanc.Capture direct) {
+        CapturesDuBanc.Masque ecart = CapturesDuBanc.masque(copiesIndirectes, direct);
+        int appels = AxionRenderPass.nativeDrawCalls();
+        RAPPORT.noter("T-907", ecart.nombre() == 0, String.format(Locale.ROOT,
+                "chemin indirect : %d appels de dessin ; direct instancié : %d ; %d pixel(s) différent(s)",
+                appelsIndirects, appels, ecart.nombre()));
     }
 
     private static void jugerT479() {

@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Objects;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -41,6 +42,8 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL33;
+import org.lwjgl.opengl.GL40;
+import org.lwjgl.opengl.GL43;
 import org.lwjgl.system.MemoryStack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,6 +122,21 @@ final class NativeGlBackend implements RenderBackend {
 
     /** Appels de dessin de la dernière frame achevée. */
     private int lastDrawCalls;
+
+    /**
+     * Le chemin indirect (C-65, R-782) : sous GL 4.3 et {@code render.indirect}, les séries instanciées
+     * consécutives qui partagent tout leur état se dessinent d'un seul {@code glMultiDrawElementsIndirect}.
+     */
+    private boolean indirect;
+
+    /** Tampon des commandes indirectes, créé au premier usage ; 0 tant qu'il n'y en a pas. */
+    private int indirectBuffer;
+
+    /** Taille d'une {@code DrawElementsIndirectCommand}, en octets. */
+    private static final int INDIRECT_COMMAND_BYTES = 20;
+
+    /** Commandes d'un appel indirect : cinq {@code uint} chacune (count, instances, index, base, instance). */
+    private ByteBuffer commands = ByteBuffer.allocateDirect(INDIRECT_COMMAND_BYTES * 64).order(ByteOrder.LITTLE_ENDIAN);
 
     private NativeGlBackend(NativeShaders shaders, NativeMeshes meshes) {
         this.shaders = shaders;
@@ -251,6 +269,37 @@ final class NativeGlBackend implements RenderBackend {
         instancingThreshold = Math.max(0, threshold);
     }
 
+    /**
+     * Demande le chemin indirect ({@code render.indirect}) : il n'est pris que si le contexte offre GL 4.3.
+     *
+     * @param wanted vrai pour le prendre quand il est disponible
+     */
+    void setIndirect(boolean wanted) {
+        RenderSystem.assertOnRenderThread();
+        indirect = wanted && GL.getCapabilities().OpenGL43;
+    }
+
+    /** {@return vrai si le chemin indirect est pris} */
+    boolean indirect() {
+        return indirect;
+    }
+
+    /** {@return vrai si le contexte offre le chemin indirect (GL 4.3)} */
+    static boolean indirectAvailable() {
+        RenderSystem.assertOnRenderThread();
+        return GL.getCapabilities().OpenGL43;
+    }
+
+    /** {@return ce que le contexte dit du chemin indirect : sa version, GL 4.3 et les extensions qui le portent} */
+    static String indirectSupport() {
+        RenderSystem.assertOnRenderThread();
+        var caps = GL.getCapabilities();
+        return "GL " + GL11.glGetString(GL11.GL_VERSION) + " ; OpenGL43 " + caps.OpenGL43
+                + ", ARB_multi_draw_indirect " + caps.GL_ARB_multi_draw_indirect
+                + ", ARB_draw_indirect " + caps.GL_ARB_draw_indirect
+                + ", ARB_base_instance " + caps.GL_ARB_base_instance;
+    }
+
     /** {@return le seuil d'instancing en vigueur} */
     int instancingThreshold() {
         return instancingThreshold;
@@ -265,6 +314,24 @@ final class NativeGlBackend implements RenderBackend {
     private static boolean sameKey(Part a, Part b) {
         return a.gpu() == b.gpu()
                 && a.rank() == b.rank()
+                && InstanceLayout.mirrors(a.rows()) == InstanceLayout.mirrors(b.rows());
+    }
+
+    /**
+     * {@return vrai si deux meshes posés partagent tout l'état d'un dessin} — arène, passe, matériau,
+     * textures, plage d'UV, faces : un seul appel indirect peut alors les dessiner (R-782).
+     */
+    private static boolean sameState(Part a, Part b) {
+        return a.gpu() == b.gpu()
+                && a.look().pass() == b.look().pass()
+                && a.look().material() == b.look().material()
+                && a.look().doubleSided() == b.look().doubleSided()
+                && a.look().fullbright() == b.look().fullbright()
+                && Objects.equals(a.asset().albedo(a.rank()), b.asset().albedo(b.rank()))
+                && Objects.equals(a.asset().normalMap(a.rank()), b.asset().normalMap(b.rank()))
+                && Objects.equals(a.asset().orm(a.rank()), b.asset().orm(b.rank()))
+                && a.mesh().uvMin() == b.mesh().uvMin()
+                && a.mesh().uvSpan() == b.mesh().uvSpan()
                 && InstanceLayout.mirrors(a.rows()) == InstanceLayout.mirrors(b.rows());
     }
 
@@ -344,6 +411,11 @@ final class NativeGlBackend implements RenderBackend {
         meshes.close();
         shaders.close();
         timings.close();
+        if (indirectBuffer != 0) {
+            GL15.glDeleteBuffers(indirectBuffer);
+            NativeGlObjects.deleted();
+            indirectBuffer = 0;
+        }
         int left = NativeGlObjects.closed();
         if (left != 0) {
             LOGGER.error("AXION : le backend natif laisse {} objet(s) GL en vie à sa fermeture (R-744)", left);
@@ -427,7 +499,9 @@ final class NativeGlBackend implements RenderBackend {
      */
     private void drawSurfaces(List<Part> parts, SurfacePass pass, ShaderVariant variant, Environment environment) {
         NativeShaders.Program program = null;
-        for (InstanceRuns.Run run : runs(parts)) {
+        List<InstanceRuns.Run> runs = runs(parts);
+        for (int index = 0; index < runs.size(); index++) {
+            InstanceRuns.Run run = runs.get(index);
             Part part = parts.get(run.start());
             if (part.look().pass() != pass) {
                 continue;
@@ -463,8 +537,53 @@ final class NativeGlBackend implements RenderBackend {
                 regionUniform(program, "u_orm_region", orm);
                 GL20.glUniform1f(program.uniform("u_occlusion_strength"), material.occlusionStrength());
             }
-            drawRun(part, run, region);
+            if (indirect && run.instanced()) {
+                // R-782 : les séries instanciées suivantes au même état partent du même appel.
+                int last = index;
+                while (last + 1 < runs.size()
+                        && runs.get(last + 1).instanced()
+                        && sameState(part, parts.get(runs.get(last + 1).start()))) {
+                    last++;
+                }
+                drawIndirect(parts, runs.subList(index, last + 1), region);
+                index = last;
+            } else {
+                drawRun(part, run, region);
+            }
         }
+    }
+
+    /**
+     * Dessine des séries instanciées au même état d'un seul {@code glMultiDrawElementsIndirect} : une
+     * commande par série, dont {@code baseInstance} désigne le premier de ses blocs d'instance.
+     */
+    private void drawIndirect(List<Part> parts, List<InstanceRuns.Run> runs, TextureRegion region) {
+        Part first = parts.get(runs.get(0).start());
+        bindForDraw(first, region);
+        meshes.pointInstance(0);
+        int bytes = runs.size() * INDIRECT_COMMAND_BYTES;
+        if (commands.capacity() < bytes) {
+            commands = ByteBuffer.allocateDirect(Math.max(bytes, commands.capacity() * 2)).order(ByteOrder.LITTLE_ENDIAN);
+        }
+        commands.clear();
+        for (InstanceRuns.Run run : runs) {
+            Part part = parts.get(run.start());
+            commands.putInt(part.mesh().indexCount())
+                    .putInt(run.count())
+                    .putInt((int) (part.gpu().indexByteOffset(part.mesh()) / Integer.BYTES))
+                    .putInt(part.gpu().baseVertex(part.mesh()))
+                    .putInt(run.start());
+        }
+        commands.flip();
+        if (indirectBuffer == 0) {
+            indirectBuffer = GL15.glGenBuffers();
+            NativeGlObjects.created();
+        }
+        GL15.glBindBuffer(GL40.GL_DRAW_INDIRECT_BUFFER, indirectBuffer);
+        GL15.glBufferData(GL40.GL_DRAW_INDIRECT_BUFFER, commands, GL15.GL_STREAM_DRAW);
+        GL43.glMultiDrawElementsIndirect(GL11.GL_TRIANGLES, GL11.GL_UNSIGNED_INT, 0L, runs.size(), 0);
+        GL15.glBindBuffer(GL40.GL_DRAW_INDIRECT_BUFFER, 0);
+        drawCalls++;
     }
 
     /** Passe 5 : l'émission des meshes qui émettent, leur texture d'émission ou du blanc. */
@@ -518,11 +637,24 @@ final class NativeGlBackend implements RenderBackend {
 
     /** Dessine {@code count} instances d'un mesh, depuis son arène, sous les blocs à partir de {@code instance}. */
     private void draw(Part part, int instance, int count, TextureRegion region) {
+        bindForDraw(part, region);
+        meshes.pointInstance(instance);
+        GL32.glDrawElementsInstancedBaseVertex(
+                GL11.GL_TRIANGLES,
+                part.mesh().indexCount(),
+                GL11.GL_UNSIGNED_INT,
+                part.gpu().indexByteOffset(part.mesh()),
+                count,
+                part.gpu().baseVertex(part.mesh()));
+        drawCalls++;
+    }
+
+    /** Lie l'arène et l'albedo d'un mesh posé, et règle ses faces : ce que tout dessin demande. */
+    private void bindForDraw(Part part, TextureRegion region) {
         if (part.gpu().vao() != boundVao) {
             GL30.glBindVertexArray(part.gpu().vao());
             boundVao = part.gpu().vao();
         }
-        meshes.pointInstance(instance);
         bindTexture(NativeShaders.ALBEDO_UNIT, region == null ? VanillaConsumerBackend.NEUTRAL : region.binding());
         if (part.look().doubleSided()) {
             RenderSystem.disableCull();
@@ -535,14 +667,6 @@ final class NativeGlBackend implements RenderBackend {
             GL11.glFrontFace(front);
             frontFace = front;
         }
-        GL32.glDrawElementsInstancedBaseVertex(
-                GL11.GL_TRIANGLES,
-                part.mesh().indexCount(),
-                GL11.GL_UNSIGNED_INT,
-                part.gpu().indexByteOffset(part.mesh()),
-                count,
-                part.gpu().baseVertex(part.mesh()));
-        drawCalls++;
     }
 
     /**

@@ -3353,7 +3353,10 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
             au-delà du seuil ; T-530 ; 2 mutations rouges.
       - [x] 4b (2026-10-28) : au banc natif, T-477 (200 copies : +0 appel de dessin) et T-478 (chemin non
             instancié, +200 appels, 0 pixel différent) ; T-531 tenu par `InstanceLayoutTest` ; 1 mutation rouge.
-- [ ] 5. Indirect (GL 4.3) ; T-533, T-907.
+- [x] 5. Indirect (GL 4.3) ; T-533, T-907 (2026-10-28). Séries instanciées au même état fusionnées en un
+      `glMultiDrawElementsIndirect` ; T-907 au banc natif : 0 pixel différent ; 1 mutation rouge.
+- [ ] T-904 : deux pics isolés le 2026-10-28 (21,55 ms puis 10,46 ms, hors variantes), démentis au passage
+      suivant ; cause non établie, à surveiller.
 - [ ] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1

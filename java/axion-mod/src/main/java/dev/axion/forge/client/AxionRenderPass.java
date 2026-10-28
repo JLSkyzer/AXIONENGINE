@@ -307,6 +307,33 @@ public final class AxionRenderPass {
         return backend instanceof NativeGlBackend active ? active.lastDrawCalls() : -1;
     }
 
+    /** {@return vrai si le backend natif dessine par le chemin indirect (GL 4.3, R-782)} */
+    public static boolean nativeIndirect() {
+        return backend instanceof NativeGlBackend active && active.indirect();
+    }
+
+    /** {@return ce que le contexte dit du chemin indirect, ou {@code null} sans backend natif} */
+    public static String indirectSupport() {
+        return backend instanceof NativeGlBackend ? NativeGlBackend.indirectSupport() : null;
+    }
+
+    /** {@return vrai si le backend natif est actif et que le contexte offre le chemin indirect (GL 4.3)} */
+    public static boolean indirectAvailable() {
+        return backend instanceof NativeGlBackend && NativeGlBackend.indirectAvailable();
+    }
+
+    /**
+     * Prend ou quitte le chemin indirect du backend natif (banc de rendu, T-907). Sans effet sous un autre
+     * backend ; sans GL 4.3, il reste quitté.
+     *
+     * @param wanted vrai pour le prendre
+     */
+    public static void setNativeIndirect(boolean wanted) {
+        if (backend instanceof NativeGlBackend active) {
+            active.setIndirect(wanted);
+        }
+    }
+
     /** {@return le seuil d'instancing du backend natif, ou -1 sous un autre} */
     public static int instancingThreshold() {
         return backend instanceof NativeGlBackend active ? active.instancingThreshold() : -1;
@@ -976,6 +1003,7 @@ public final class AxionRenderPass {
         try {
             NativeGlBackend created = NativeGlBackend.create(Minecraft.getInstance().getResourceManager(), cache, variants);
             created.setInstancingThreshold((int) Math.min(Integer.MAX_VALUE, config.getInt("render.instancing_threshold")));
+            created.setIndirect(config.getBoolean("render.indirect"));
             return created;
         } catch (NativeShaders.ShaderFailure failure) {
             LOGGER.error("AXION : shaders du backend natif refusés, bascule sur vanilla (E-4001) — {}",
