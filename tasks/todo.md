@@ -3362,7 +3362,8 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
             mutation rouge.
       - [x] 6b (2026-10-28) : T-485 au banc natif (26 appels, 1 344 triangles, 110 assemblies) ; triangles comptés
             sur les dessins de la frame ; `RENDERING.md`.
-      - [ ] 6c : R-750 palier 2 par résidence par niveau (décision de Killian du 2026-10-28) ; T-484.
+      - [ ] 6c : R-750 palier 2, LOD forcé et mips les plus fins des textures retirés (décision de Killian du
+            2026-10-28, après correction : un LOD ne coûte que des indices, ADR-107) ; T-484.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
