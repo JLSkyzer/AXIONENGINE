@@ -3355,6 +3355,10 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
             instancié, +200 appels, 0 pixel différent) ; T-531 tenu par `InstanceLayoutTest` ; 1 mutation rouge.
 - [x] 5. Indirect (GL 4.3) ; T-533, T-907 (2026-10-28). Séries instanciées au même état fusionnées en un
       `glMultiDrawElementsIndirect` ; T-907 au banc natif : 0 pixel différent ; 1 mutation rouge.
+- [x] T-475 et T-906 au banc de rendu (2026-10-29) : niveaux croissants avec la distance, décisions stables sur
+      60 relevés ; 1 mutation rouge. **Chantier culling, LOD et instancing clos** (preuve attendue rendue).
+- [ ] Restes du chantier : avertissement Java d'une table `LODM` refusée (nommer l'asset) ; emprise exacte
+      des assemblies aux corps articulés (aujourd'hui `NO_CULL`).
 - [ ] T-904 : deux pics isolés le 2026-10-28 (21,55 ms puis 10,46 ms, hors variantes), démentis au passage
       suivant ; cause non établie, à surveiller.
 - [x] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.

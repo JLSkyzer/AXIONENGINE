@@ -447,6 +447,28 @@ public final class AxionRenderPass {
     }
 
     /**
+     * Allume ou éteint un overlay de debug : le banc de rendu, qui n'a pas de commande à taper. Render
+     * thread.
+     *
+     * @param overlay l'overlay
+     * @param on vrai pour l'allumer
+     */
+    public static void setOverlay(DebugOverlays.Overlay overlay, boolean on) {
+        OVERLAYS.set(overlay, on);
+    }
+
+    /**
+     * {@return ce que le culling a décidé d'une assembly à la dernière frame — son niveau de détail si elle
+     * est retenue, -1 si elle est écartée —, ou {@code null} si elle n'était pas candidate} Seulement quand
+     * {@code lod} ou {@code culling} est allumé (R-2280) ; le banc de rendu le lit (T-475, T-906).
+     *
+     * @param entity l'assembly
+     */
+    public static Integer decisionOf(AxionEntity entity) {
+        return FRAME_DECISIONS.get(entity);
+    }
+
+    /**
      * Allume ou éteint tous les overlays de debug implémentés : le banc de rendu, qui n'a pas de
      * commande à taper (amendement A1 d'ADR-121). Render thread.
      *

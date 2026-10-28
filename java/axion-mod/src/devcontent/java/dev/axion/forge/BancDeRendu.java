@@ -307,6 +307,15 @@ public final class BancDeRendu {
     private static int appelsSansCopies;
     private static int dessineesSansCopies;
 
+    /** Le ballon, qui porte quatre niveaux de détail (T-475). */
+    private static final String BALLON = "axion:test/ballon";
+
+    /** Les ballons proche et lointain de T-475, et les relevés de décisions de T-906. */
+    private static AxionEntity ballonPres;
+    private static AxionEntity ballonMilieu;
+    private static AxionEntity ballonLoin;
+    private static final List<java.util.Map<Integer, Integer>> releves = new ArrayList<>();
+
     /** Les octets des textures d'AXION avant le LOD forcé, puis sous lui (T-484). */
     private static long texturesAvant;
     private static long texturesForcees;
@@ -747,6 +756,37 @@ public final class BancDeRendu {
             // Celles d'assets retirés plus tôt, encore en cache avant l'essai, ne se rechargent pas.
             jusqua("les textures rendues à leur taille", 120, mc -> AxionRenderPass.textureBytes() >= 3 * texturesForcees
                     && AxionRenderPass.lastFrame().withAsset() == AxionRenderPass.lastFrame().assemblies());
+        }
+
+        // T-475 (§19.13) et T-906 (C-64) : trois ballons de plus en plus loin prennent des niveaux de détail de plus
+        // en plus grossiers — les seuils eux-mêmes, au pixel près, sont l'affaire de T-522, la taille apparente
+        // dépendant de la fenêtre ; caméra immobile, aucune décision ne change d'un relevé à l'autre. Les décisions
+        // ne sont gardées que sous l'overlay lod (R-2280) : il est allumé le temps de l'essai.
+        if (!SHADERS) {
+            une("allumer lod", mc -> AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.LOD, true));
+            serveur("poser les ballons", s -> {
+                ballonPres = AssembliesDeTest.poser(s.overworld(), BALLON, new Vec3(-3.5, surface, 3.5), IDENTITE);
+                ballonMilieu = AssembliesDeTest.poser(s.overworld(), BALLON, new Vec3(-20.5, surface, 3.5), IDENTITE);
+                ballonLoin = AssembliesDeTest.poser(s.overworld(), BALLON, new Vec3(-60.5, surface, 0.5), IDENTITE);
+            });
+            jusqua("les ballons décidés", 120, mc -> niveau(mc, ballonPres) != null && niveau(mc, ballonMilieu) != null
+                    && niveau(mc, ballonLoin) != null);
+            stabiliser("les ballons");
+            une("juger T-475", mc -> jugerT475(mc));
+            jusqua("relever 60 frames", 60, mc -> {
+                releves.add(decisions(mc));
+                return releves.size() >= 60;
+            });
+            une("juger T-906", mc -> jugerT906());
+            une("éteindre lod", mc -> AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.LOD, false));
+            serveur("retirer les ballons", s -> {
+                ballonPres.discard();
+                ballonMilieu.discard();
+                ballonLoin.discard();
+            });
+            jusqua("les ballons retirés", 120, mc -> mc.level.getEntity(ballonPres.getId()) == null
+                    && mc.level.getEntity(ballonMilieu.getId()) == null
+                    && mc.level.getEntity(ballonLoin.getId()) == null);
         }
 
         // T-476 (§19.13, R-1580) : la transparence ordonnée. Sous un shaderpack, le pack de test
@@ -1524,6 +1564,56 @@ public final class BancDeRendu {
                 "LOD forcé : textures d'AXION %d → %d octets (%.0f %%) ; %d assemblies dessinées, %d avec leur asset",
                 texturesAvant, apres, texturesAvant == 0 ? 0.0 : 100.0 * apres / texturesAvant,
                 frame.assemblies(), frame.withAsset()));
+    }
+
+    /** {@return la décision du culling pour une assembly posée, côté client, ou {@code null}} */
+    private static Integer niveau(Minecraft minecraft, AxionEntity posee) {
+        return minecraft.level.getEntity(posee.getId()) instanceof AxionEntity client
+                ? AxionRenderPass.decisionOf(client) : null;
+    }
+
+    /** {@return la décision du culling pour chaque assembly du client, par identifiant} */
+    private static java.util.Map<Integer, Integer> decisions(Minecraft minecraft) {
+        java.util.Map<Integer, Integer> decisions = new java.util.TreeMap<>();
+        for (Entity entity : minecraft.level.entitiesForRendering()) {
+            if (entity instanceof AxionEntity assembly && AxionRenderPass.decisionOf(assembly) != null) {
+                decisions.put(entity.getId(), AxionRenderPass.decisionOf(assembly));
+            }
+        }
+        return decisions;
+    }
+
+    /**
+     * T-475 (§19.13) : le LOD aux distances attendues — trois ballons retenus, de plus en plus loin, à des niveaux
+     * qui ne décroissent pas, le plus lointain plus grossier que le plus proche. Les seuils au pixel près sont
+     * jugés par T-522 : la taille apparente dépend de la fenêtre du banc.
+     */
+    private static void jugerT475(Minecraft minecraft) {
+        Integer pres = niveau(minecraft, ballonPres);
+        Integer milieu = niveau(minecraft, ballonMilieu);
+        Integer loin = niveau(minecraft, ballonLoin);
+        boolean vert = pres != null && milieu != null && loin != null && pres >= 0 && pres <= milieu
+                && milieu <= loin && pres < loin;
+        RAPPORT.noter("T-475", vert, String.format(Locale.ROOT,
+                "fenêtre de %d px de haut ; ballon à %.0f bloc(s) : niveau %s ; à %.0f : niveau %s ; à %.0f : niveau %s",
+                minecraft.getWindow().getHeight(),
+                minecraft.player.position().distanceTo(ballonPres.position()), pres,
+                minecraft.player.position().distanceTo(ballonMilieu.position()), milieu,
+                minecraft.player.position().distanceTo(ballonLoin.position()), loin));
+    }
+
+    /** T-906 (C-64, R-770) : caméra immobile, le culling et le LOD ne changent pas d'un relevé à l'autre. */
+    private static void jugerT906() {
+        int changements = 0;
+        for (int i = 1; i < releves.size(); i++) {
+            if (!releves.get(i).equals(releves.get(i - 1))) {
+                changements++;
+            }
+        }
+        boolean vert = releves.size() >= 60 && !releves.get(0).isEmpty() && changements == 0;
+        RAPPORT.noter("T-906", vert, String.format(Locale.ROOT,
+                "%d relevés de %d assemblies décidées : %d changement(s) de décision", releves.size(),
+                releves.isEmpty() ? 0 : releves.get(0).size(), changements));
     }
 
     private static void jugerT479() {
