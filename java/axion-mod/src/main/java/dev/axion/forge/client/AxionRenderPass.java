@@ -23,8 +23,10 @@ import dev.axion.render.GpuDegradation;
 import dev.axion.render.GpuPassTimings;
 import dev.axion.render.MeshCache;
 import dev.axion.render.MissingClientAssets;
+import dev.axion.render.NativeCulling;
 import dev.axion.render.RenderAsset;
 import dev.axion.render.RenderCapabilities;
+import dev.axion.render.RenderPrepCodec;
 import dev.axion.render.ShaderVariants;
 import dev.axion.render.ShaderpackProbe;
 import java.nio.file.Path;
@@ -38,6 +40,7 @@ import java.util.concurrent.Executors;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
@@ -47,6 +50,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLPaths;
+import org.joml.Quaternionf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -121,6 +125,19 @@ public final class AxionRenderPass {
 
     /** Maillages chargés ; créé au premier besoin. Render thread seul. */
     private static MeshCache meshes;
+
+    /**
+     * Le culling natif des frames (C-64, ADR-154), créé avec le cache de maillages ; {@code null}
+     * sans natif, ou après un échec : tout est alors dessiné, comme avant lui.
+     */
+    private static NativeCulling culling;
+
+    /** {@code render.max_distance} et {@code render.lod_bias}, lus au choix du backend. */
+    private static float maxDistance = 128f;
+    private static int lodBias;
+
+    /** Les assemblies retenues à la passe opaque, que la passe translucide de la frame reprend. */
+    private static List<RenderBackend.Assembly> frameAssemblies = List.of();
 
     /** Les modèles qu'une definition demande et que ce client n'a pas, avertis une fois (R-1640). */
     private static final MissingClientAssets MISSING = new MissingClientAssets();
@@ -426,8 +443,11 @@ public final class AxionRenderPass {
      */
     private static void renderSurfaces(RenderLevelStageEvent event, boolean translucent) {
         Minecraft minecraft = Minecraft.getInstance();
-        List<RenderBackend.Assembly> assemblies = assemblies(minecraft.level, true);
+        // La passe opaque culle (C-64) ; la translucide de la même frame dessine ce qu'elle a retenu.
+        List<RenderBackend.Assembly> assemblies =
+                translucent ? frameAssemblies : cull(event, minecraft, assemblies(minecraft.level, true));
         if (!translucent) {
+            frameAssemblies = assemblies;
             lastFrame = FrameStats.of(assemblies);
             reportFrame(assemblies);
         }
@@ -590,6 +610,75 @@ public final class AxionRenderPass {
             }
         }
         return assemblies;
+    }
+
+    /**
+     * {@return les assemblies de la frame que le culling natif retient (C-64, ADR-154)} Seules celles
+     * dont l'asset est chargé dans le natif sont candidates ; les autres — boîte de repli, asset en
+     * chargement — sont toujours dessinées. Est retenue sans test ({@link RenderPrepCodec#NO_CULL}) une
+     * assembly dont des corps articulés s'écartent de leur pose de repos, que l'emprise au repos de son
+     * asset ne borne pas, et une entité marquée {@code noCulling}, que Minecraft dessine lui aussi sans
+     * la culler. Un échec du natif coupe le culling, et tout est dessiné.
+     */
+    private static List<RenderBackend.Assembly> cull(
+            RenderLevelStageEvent event, Minecraft minecraft, List<RenderBackend.Assembly> all) {
+        NativeCulling active = culling;
+        if (active == null || all.isEmpty()) {
+            return all;
+        }
+        int[] candidates = new int[all.size()];
+        int count = 0;
+        for (int rank = 0; rank < all.size(); rank++) {
+            RenderAsset asset = all.get(rank).asset();
+            if (asset != null && asset.hasNativeHandle()) {
+                candidates[count++] = rank;
+            }
+        }
+        if (count == 0) {
+            return all;
+        }
+        Vec3 camera = event.getCamera().getPosition();
+        float partialTick = event.getPartialTick();
+        float[] projection = new float[16];
+        event.getProjectionMatrix().get(projection);
+        Quaternionf view = event.getPoseStack().last().pose().getNormalizedRotation(new Quaternionf());
+        byte[] desc = RenderPrepCodec.camera(projection, new float[] {view.x, view.y, view.z, view.w},
+                minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight(), maxDistance, lodBias, 0, count);
+        int[] ranks = candidates;
+        float[] rotation = new float[4];
+        NativeCulling.Outcome outcome = active.cull(desc, count, (buffer, offset, rank) -> {
+            RenderBackend.Assembly assembly = all.get(ranks[rank]);
+            AxionEntity.RenderPose pose = assembly.entity().renderPose(partialTick);
+            rotation[0] = pose.rotation().x;
+            rotation[1] = pose.rotation().y;
+            rotation[2] = pose.rotation().z;
+            rotation[3] = pose.rotation().w;
+            RenderPrepCodec.putCandidate(buffer, offset, assembly.entity().getId(), assembly.asset().nativeIndex(),
+                    assembly.asset().nativeGeneration(),
+                    pose.bodies().isEmpty() && !assembly.entity().noCulling ? 0 : RenderPrepCodec.NO_CULL,
+                    (float) (pose.x() - camera.x), (float) (pose.y() - camera.y), (float) (pose.z() - camera.z),
+                    1f, rotation);
+        }, renderPrepLimit);
+        if (outcome.code() != 0) {
+            culling = null;
+            LOGGER.warn("AXION : culling natif coupé après le code {}, tout est dessiné", outcome.code());
+            return all;
+        }
+        boolean[] kept = new boolean[all.size()];
+        java.util.Arrays.fill(kept, true);
+        for (int rank = 0; rank < count; rank++) {
+            kept[candidates[rank]] = false;
+        }
+        for (int retained : outcome.retained()) {
+            kept[candidates[retained]] = true;
+        }
+        List<RenderBackend.Assembly> drawn = new ArrayList<>(all.size());
+        for (int rank = 0; rank < all.size(); rank++) {
+            if (kept[rank]) {
+                drawn.add(all.get(rank));
+            }
+        }
+        return drawn;
     }
 
     private static RenderBackend.Frame frame(
@@ -793,6 +882,7 @@ public final class AxionRenderPass {
             renderPrepLimit = outcome.config().getInt("budgets.render_prep_ns");
             visibleLimit = outcome.config().getInt("budgets.max_visible_instances");
             trianglesLimit = outcome.config().getInt("budgets.max_triangles_frame");
+            culling = new NativeCulling(outcome.context());
             runtime.addNativeReleaser(cache::close);
             cache.setMaterialMaps(backend != null && backend.kind() == BackendSelection.Kind.NATIVE);
             meshes = cache;
@@ -816,6 +906,8 @@ public final class AxionRenderPass {
                     shaderpack.failure());
         }
         String requested = config.getString("render.backend");
+        maxDistance = (float) config.getFloat("render.max_distance");
+        lodBias = (int) config.getInt("render.lod_bias");
         NativeGlBackend candidate =
                 shaderpackInUse || nativeRefused || "vanilla".equals(requested) ? null : startNative();
         BackendSelection.Selection selection =

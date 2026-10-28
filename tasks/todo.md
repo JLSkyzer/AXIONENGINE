@@ -3330,13 +3330,14 @@ LOD géométrique ; plafond de frame en M4 ou M5). IF-05 et ABI 9 ; T-520..T-524
 ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
 
 - [x] Décision de Killian sur ADR-154 (Q1..Q4), 2026-10-28.
-- [ ] 1. Contexte de rendu : `ax-render-prep`, verrou séparé, jobs partagés ; IF-05 réduite au culling de
+- [x] 1. Contexte de rendu : `ax-render-prep`, verrou séparé, jobs partagés ; IF-05 réduite au culling de
       distance et de frustum ; Java dessine depuis `AXION_BUF_RENDER_OUT` ; ABI 9 ; T-520, T-521, T-524 (solo).
       - [x] 1a (2026-10-28) : `ax-render-prep`, caméra, candidats, culling scalaire et par lots ; T-520, T-521 ;
             5 mutations rouges.
       - [x] 1b (2026-10-28) : contexte de rendu hors de `SESSION`, `RENDER_IN`, IF-05, ABI 9, emprises publiées,
             lots sur les workers ; T-524 (solo) ; 8 mutations rouges.
-      - [ ] 1c : Java remet les candidats et dessine depuis `RENDER_OUT` ; bancs de rendu.
+      - [x] 1c (2026-10-28) : Java remet les candidats (génération du handle, `NO_CULL`) et ne dessine que les
+            retenus ; bancs vanilla et natif verts ; 4 mutations rouges.
 - [ ] 2. LOD : `LODM` lue et validée, sélection, hystérésis, `lod_bias` ; T-522, T-475, T-906.
 - [ ] 3. Tri, plafond, échéance ; T-523, T-524.
 - [ ] 4. Instancing (C-65) ; T-530..T-532, T-477, T-478.

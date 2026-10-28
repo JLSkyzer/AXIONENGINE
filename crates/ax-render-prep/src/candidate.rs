@@ -9,9 +9,11 @@ use core::fmt;
 pub struct Candidate {
     /// Identifiant stable tant que l'assembly est rendue ; il porte l'état de LOD.
     pub id: u32,
-    /// Index de l'asset dans le contexte de rendu.
+    /// Index du handle de l'asset.
     pub asset: u32,
-    /// Drapeaux : sélectionnée, inerte, overlay.
+    /// Génération du handle de l'asset : un index réemployé par un autre asset ne la porte pas.
+    pub generation: u32,
+    /// Drapeaux, voir [`Candidate::NO_CULL`].
     pub flags: u32,
     /// Position relative à la caméra, en blocs.
     pub position: Vec3,
@@ -54,8 +56,12 @@ impl fmt::Display for CandidateError {
 impl std::error::Error for CandidateError {}
 
 impl Candidate {
-    /// Taille d'un candidat, en octets : `id`, `asset`, `flags`, un réservé (`u32`), position
-    /// `f32[3]`, échelle `f32`, rotation `f32[4]`.
+    /// Drapeau : toujours retenu, sans test. Pour une assembly dont l'emprise au repos ne borne
+    /// pas ce qu'elle dessine — des corps articulés écartés de leur pose de repos.
+    pub const NO_CULL: u32 = 1 << 0;
+
+    /// Taille d'un candidat, en octets : `id`, index et génération du handle de l'asset, `flags`
+    /// (`u32`), position `f32[3]`, échelle `f32`, rotation `f32[4]`.
     pub const BYTES: usize = 48;
 
     /// Lit une liste de candidats little-endian.
@@ -93,7 +99,8 @@ impl Candidate {
             out.push(Candidate {
                 id: u32_at(raw, 0),
                 asset: u32_at(raw, 4),
-                flags: u32_at(raw, 8),
+                generation: u32_at(raw, 8),
+                flags: u32_at(raw, 12),
                 position,
                 scale,
                 rotation,
@@ -102,13 +109,14 @@ impl Candidate {
         Ok(out)
     }
 
-    /// Le candidat encodé ; le mot réservé vaut 0.
+    /// Le candidat encodé.
     #[must_use]
     pub fn to_bytes(&self) -> [u8; Self::BYTES] {
         let mut out = [0u8; Self::BYTES];
         out[0..4].copy_from_slice(&self.id.to_le_bytes());
         out[4..8].copy_from_slice(&self.asset.to_le_bytes());
-        out[8..12].copy_from_slice(&self.flags.to_le_bytes());
+        out[8..12].copy_from_slice(&self.generation.to_le_bytes());
+        out[12..16].copy_from_slice(&self.flags.to_le_bytes());
         for (i, v) in self.position.to_array().iter().enumerate() {
             out[16 + i * 4..20 + i * 4].copy_from_slice(&v.to_le_bytes());
         }

@@ -29,6 +29,7 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import net.minecraft.client.CloudStatus;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.Options;
 import net.minecraft.client.ParticleStatus;
 import net.minecraft.client.tutorial.TutorialSteps;
@@ -136,7 +137,11 @@ public final class BancDeRendu {
     /** Au-delà, une scène qui ne se stabilise pas fait échouer le banc. */
     private static final int STABILITE_MAX_S = 180;
 
-    /** Assemblies posées derrière la caméra : toutes les passes, opaque, découpe, translucide, émission. */
+    /**
+     * Assemblies posées derrière la caméra : toutes les passes, opaque, découpe, translucide, émission.
+     * Hors du champ, le culling (C-64) les écarterait ; le banc les marque {@code noCulling} côté client
+     * pour qu'elles exercent encore chaque passe, sans paraître à l'image.
+     */
     private static final List<String> DERRIERE = List.of(
             "axion:test_cube",
             "axion:test/materiaux/atlas",
@@ -480,6 +485,14 @@ public final class BancDeRendu {
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (ACTIF && event.phase == TickEvent.Phase.END) {
             ticks++;
+            ClientLevel level = Minecraft.getInstance().level;
+            if (level != null) {
+                for (Entity entity : level.entitiesForRendering()) {
+                    if (entity instanceof AxionEntity assembly && DERRIERE.contains(assembly.definitionId())) {
+                        assembly.noCulling = true;
+                    }
+                }
+            }
         }
     }
 

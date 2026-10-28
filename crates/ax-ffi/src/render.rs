@@ -189,11 +189,13 @@ fn cull_lot(
     assets: &[Option<RenderAsset>],
 ) -> (Vec<Visible>, CullStats) {
     let mut visible = Vec::new();
-    let bounds = |asset: u32| {
+    // Un index réemployé par un autre asset ne porte plus la génération du candidat : inconnu.
+    let bounds = |candidate: &Candidate| {
         assets
-            .get(asset as usize)
+            .get(candidate.asset as usize)
             .copied()
             .flatten()
+            .filter(|a| a.generation == candidate.generation)
             .and_then(|a| a.bounds)
     };
     let stats = cull_batched(camera, frustum, candidates, bounds, &mut visible);

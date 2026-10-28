@@ -86,8 +86,8 @@ fn record(
     }
 }
 
-/// Culling de référence, candidat par candidat. `bounds` rend l'emprise locale d'un asset, ou
-/// rien s'il est inconnu. Les retenus sont ajoutés à `out` dans l'ordre des candidats.
+/// Culling de référence, candidat par candidat. `bounds` rend l'emprise locale de l'asset d'un
+/// candidat, ou rien s'il est inconnu. Les retenus sont ajoutés à `out` dans l'ordre des candidats.
 pub fn cull_scalar<F>(
     camera: &Camera,
     frustum: &Frustum,
@@ -96,12 +96,16 @@ pub fn cull_scalar<F>(
     out: &mut Vec<Visible>,
 ) -> CullStats
 where
-    F: Fn(u32) -> Option<LocalBounds>,
+    F: Fn(&Candidate) -> Option<LocalBounds>,
 {
     let planes = frustum.planes.map(|p| p.to_array());
     let mut stats = CullStats::default();
     for (index, candidate) in candidates.iter().enumerate() {
-        let decision = match bounds(candidate.asset) {
+        let p = candidate.position;
+        let decision = match bounds(candidate) {
+            _ if candidate.flags & Candidate::NO_CULL != 0 => {
+                Decision::Visible(length(p.x, p.y, p.z))
+            }
             None => Decision::UnknownAsset,
             Some(local) => {
                 let [x, y, z, r] = sphere(candidate, local);
@@ -130,7 +134,7 @@ pub fn cull_batched<F>(
     out: &mut Vec<Visible>,
 ) -> CullStats
 where
-    F: Fn(u32) -> Option<LocalBounds>,
+    F: Fn(&Candidate) -> Option<LocalBounds>,
 {
     let planes = frustum.planes.map(|p| p.to_array());
     let mut stats = CullStats::default();
@@ -139,7 +143,7 @@ where
         let (mut x, mut y, mut z, mut r) =
             ([0f32; LANES], [0f32; LANES], [0f32; LANES], [0f32; LANES]);
         for (lane, candidate) in chunk.iter().enumerate() {
-            if let Some(local) = bounds(candidate.asset) {
+            if let Some(local) = bounds(candidate) {
                 known[lane] = true;
                 [x[lane], y[lane], z[lane], r[lane]] = sphere(candidate, local);
             }
@@ -157,7 +161,10 @@ where
             }
         }
         for (lane, candidate) in chunk.iter().enumerate() {
-            let decision = if !known[lane] {
+            let p = candidate.position;
+            let decision = if candidate.flags & Candidate::NO_CULL != 0 {
+                Decision::Visible(length(p.x, p.y, p.z))
+            } else if !known[lane] {
                 Decision::UnknownAsset
             } else if far[lane] {
                 Decision::Distance

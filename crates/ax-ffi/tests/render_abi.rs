@@ -109,10 +109,11 @@ fn camera(candidate_count: u32) -> Camera {
     }
 }
 
-fn candidate(id: u32, asset: u32, position: Vec3) -> Candidate {
+fn candidate(id: u32, asset: Handle, position: Vec3) -> Candidate {
     Candidate {
         id,
-        asset,
+        asset: asset.index,
+        generation: asset.generation,
         flags: 0,
         position,
         scale: 1.0,
@@ -198,17 +199,26 @@ fn if05_prepare_culle_depose_et_n_attend_pas_la_session() {
         AXION_OK
     );
     release(ctx, &asset_in);
-    let asset = handle.index;
+    let asset = handle;
+    let stale = Handle {
+        index: handle.index,
+        generation: handle.generation + 1,
+    };
+    let unknown = Handle {
+        index: 77,
+        generation: 1,
+    };
 
-    // T-520, T-521 : devant, derrière, trop loin, asset inconnu.
+    // T-520, T-521 : devant, derrière, trop loin, asset inconnu, handle périmé.
     let candidates = [
         candidate(10, asset, Vec3::new(0.0, 0.0, -10.0)),
         candidate(11, asset, Vec3::new(0.0, 0.0, 10.0)),
         candidate(12, asset, Vec3::new(0.0, 0.0, -300.0)),
-        candidate(13, 77, Vec3::new(0.0, 0.0, -5.0)),
+        candidate(13, unknown, Vec3::new(0.0, 0.0, -5.0)),
+        candidate(14, stale, Vec3::new(0.0, 0.0, -6.0)),
     ];
     write_candidates(ctx, &candidates);
-    let first = prepare(ctx, &camera(4), 1_000_000_000).expect("préparation");
+    let first = prepare(ctx, &camera(5), 1_000_000_000).expect("préparation");
     assert_eq!(first.instance_count, 1);
     assert_eq!(first.triangle_estimate, 12, "les douze triangles du cube");
     assert_eq!(first.flags, 0);
@@ -229,8 +239,8 @@ fn if05_prepare_culle_depose_et_n_attend_pas_la_session() {
     );
 
     // Une préparation sans libération de la précédente la clôt et la compte.
-    let a = prepare(ctx, &camera(4), 1_000_000_000).unwrap();
-    let b = prepare(ctx, &camera(4), 1_000_000_000).unwrap();
+    let a = prepare(ctx, &camera(5), 1_000_000_000).unwrap();
+    let b = prepare(ctx, &camera(5), 1_000_000_000).unwrap();
     assert_ne!(a.frame_id, b.frame_id);
     let unreleased = axion_native::render::with(ctx, |render| render.stats().unreleased).unwrap();
     assert_eq!(unreleased, 1);

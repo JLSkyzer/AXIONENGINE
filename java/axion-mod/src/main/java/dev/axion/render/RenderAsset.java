@@ -38,6 +38,10 @@ public final class RenderAsset {
     private final TextureRegion[] normalMaps;
     private final TextureRegion[] orms;
 
+    /** Index et génération du handle natif de l'asset (DM-01) ; index négatif : aucun. */
+    private final int nativeIndex;
+    private final int nativeGeneration;
+
     /**
      * Assemble un asset prêt à dessiner.
      *
@@ -53,6 +57,30 @@ public final class RenderAsset {
             MaterialTransfer materials,
             List<MeshLook> looks,
             Map<TextureKey, TextureRegion> textures) {
+        this(mesh, materials, looks, textures, -1, 0);
+    }
+
+    /**
+     * Assemble un asset prêt à dessiner, chargé dans le natif sous un handle : le culling natif
+     * le désigne par lui (ADR-154 D3).
+     *
+     * @param mesh géométrie et pose de repos
+     * @param materials matériaux et textures, tels que le natif les remet
+     * @param looks apparence de chaque mesh, dans l'ordre des meshes
+     * @param textures textures téléversées, par clé
+     * @param nativeIndex index du handle natif
+     * @param nativeGeneration génération du handle natif
+     * @throws IllegalArgumentException si les apparences ne sont pas une par mesh
+     */
+    public RenderAsset(
+            GeometryTransfer mesh,
+            MaterialTransfer materials,
+            List<MeshLook> looks,
+            Map<TextureKey, TextureRegion> textures,
+            int nativeIndex,
+            int nativeGeneration) {
+        this.nativeIndex = nativeIndex;
+        this.nativeGeneration = nativeGeneration;
         if (looks.size() != mesh.meshes().size()) {
             throw new IllegalArgumentException(
                     looks.size() + " apparences pour " + mesh.meshes().size() + " meshes");
@@ -94,6 +122,21 @@ public final class RenderAsset {
      */
     public TextureRegion orm(int rank) {
         return orms[rank];
+    }
+
+    /** {@return vrai si l'asset est chargé dans le natif sous un handle} */
+    public boolean hasNativeHandle() {
+        return nativeIndex >= 0;
+    }
+
+    /** {@return l'index du handle natif, négatif s'il n'y en a pas} */
+    public int nativeIndex() {
+        return nativeIndex;
+    }
+
+    /** {@return la génération du handle natif} */
+    public int nativeGeneration() {
+        return nativeGeneration;
     }
 
     /** {@return la géométrie et la pose de repos} */

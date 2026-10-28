@@ -1978,3 +1978,16 @@ mutation précédente avait échoué.
 
 **Règle.** Tout fichier qu'un test lit par chemin est déclaré en entrée (`inputs.files`) — `docs/schema`
 l'est désormais. Une mutation se joue après un passage vert, jamais à la suite d'une autre mutation.
+
+## 2026-10-28 | Le culling a rendu muets les témoins du banc de rendu
+
+**Ce qui a mal tourné.** Le premier banc de rendu après le culling (ADR-154) est resté rouge à « la scène
+prête » : il attendait dans la frame les assemblies qu'il pose derrière la caméra pour exercer chaque passe
+sans les montrer, et le culling les écartait à juste titre.
+
+**Cause.** Le banc tenait « posée hors du champ » pour « dessinée », vrai seulement tant que rien ne
+cullait.
+
+**Règle.** Un témoin qui doit être dessiné hors du champ le dit au moteur par un moyen générique
+(`noCulling`, que Minecraft honore aussi), jamais par une exception sur son nom dans le moteur. Avant de
+livrer un filtre de rendu, chercher ce que les bancs supposent dessiné.

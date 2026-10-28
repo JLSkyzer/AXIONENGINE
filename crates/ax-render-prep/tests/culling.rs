@@ -46,6 +46,7 @@ fn candidate(id: u32, asset: u32, position: Vec3) -> Candidate {
     Candidate {
         id,
         asset,
+        generation: 1,
         flags: 0,
         position,
         scale: 1.0,
@@ -54,8 +55,8 @@ fn candidate(id: u32, asset: u32, position: Vec3) -> Candidate {
 }
 
 /// Une sphère unité centrée sur l'origine de l'asset ; l'asset 99 est inconnu.
-fn unit(asset: u32) -> Option<LocalBounds> {
-    (asset != 99).then_some(LocalBounds {
+fn unit(candidate: &Candidate) -> Option<LocalBounds> {
+    (candidate.asset != 99).then_some(LocalBounds {
         center: Vec3::ZERO,
         radius: 1.0,
     })
@@ -162,7 +163,7 @@ fn t521_les_lots_rendent_exactement_la_decision_scalaire() {
         Quat::from_rotation_y(1.1),
         Quat::from_euler(ax_math::EulerRot::YXZ, -2.3, 0.4, 0.1),
     ];
-    let bounds = |asset: u32| match asset {
+    let bounds = |c: &Candidate| match c.asset {
         0 => Some(LocalBounds {
             center: Vec3::new(0.5, 1.0, -0.25),
             radius: 1.5,
@@ -184,6 +185,7 @@ fn t521_les_lots_rendent_exactement_la_decision_scalaire() {
             .map(|i| Candidate {
                 id: i,
                 asset: i % 4,
+                generation: 1,
                 flags: 0,
                 position: Vec3::new(rng.next() * 200.0, rng.next() * 60.0, rng.next() * 200.0),
                 scale: 0.5 + (rng.next() + 1.0) * 2.0,
@@ -248,6 +250,7 @@ fn candidats_aller_retour_et_refus() {
     let c = Candidate {
         id: 7,
         asset: 3,
+        generation: 9,
         flags: 1,
         position: Vec3::new(1.0, -2.0, 3.5),
         scale: 2.0,
@@ -322,4 +325,29 @@ fn l_emprise_reunit_les_meshes_poses() {
         None,
         "valeur non finie"
     );
+}
+
+#[test]
+fn no_cull_est_toujours_retenu() {
+    let cam = camera(128.0, Quat::IDENTITY);
+    let mut derriere = candidate(1, 0, Vec3::new(0.0, 0.0, 10.0));
+    derriere.flags = Candidate::NO_CULL;
+    let mut loin = candidate(2, 99, Vec3::new(0.0, 0.0, -500.0));
+    loin.flags = Candidate::NO_CULL;
+    let candidates = [derriere, loin, candidate(3, 0, Vec3::new(0.0, 0.0, 10.0))];
+    for batched in [false, true] {
+        let mut out = Vec::new();
+        let stats = if batched {
+            cull_batched(&cam, &cam.frustum(), &candidates, unit, &mut out)
+        } else {
+            cull_scalar(&cam, &cam.frustum(), &candidates, unit, &mut out)
+        };
+        assert_eq!(
+            out.iter().map(|v| v.id).collect::<Vec<_>>(),
+            [1, 2],
+            "lots : {batched}"
+        );
+        assert_eq!(out[1].distance, 500.0);
+        assert_eq!(stats.culled_frustum, 1);
+    }
 }

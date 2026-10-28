@@ -651,7 +651,8 @@ public final class MeshCache {
                         : stage.page.region(stage.page.tiles().get(index), binding));
             }
         }
-        RenderAsset asset = new RenderAsset(decoded.mesh, decoded.materials, looks, uploaded);
+        RenderAsset asset = new RenderAsset(decoded.mesh, decoded.materials, looks, uploaded,
+                decoded.handle.index(), decoded.handle.generation());
         Ready ready = new Ready(loading.source, asset, decoded.handle, List.copyOf(registered));
         if (!states.replace(path, loading, ready)) {
             // Fermé depuis un autre thread entre le contrôle et l'installation.
