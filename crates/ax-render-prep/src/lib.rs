@@ -10,7 +10,8 @@
 //! 1. culling de distance (`render.max_distance`) ;
 //! 2. culling de frustum : la sphère englobante contre les six plans, conservatif ;
 //! 3. occlusion : C-82, en M9 ;
-//! 4. à 7. LOD, tri, plafond : tranches suivantes d'ADR-154.
+//! 4. LOD : taille apparente, seuils, hystérésis et biais ([`lod`]) ;
+//! 5. à 7. tri, plafond : tranches suivantes d'ADR-154.
 //!
 //! # Deux chemins, une décision
 //!
@@ -19,12 +20,13 @@
 //! opérations flottantes dans le même ordre, sans `mul_add` : leurs décisions sont identiques,
 //! au bit près (T-521).
 //!
-//! Exigences : R-770, R-771. Tests : T-520, T-521.
+//! Exigences : R-770, R-771. Tests : T-520, T-521, T-522.
 
 mod bounds;
 mod camera;
 mod candidate;
 mod cull;
+pub mod lod;
 
 pub use bounds::bounds_of;
 pub use camera::{Camera, CameraError, Frustum};
