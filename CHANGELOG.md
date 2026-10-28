@@ -115,6 +115,8 @@ Definition of Done (PARTIE 37.3).
     autre monde de meme chemin et de meme graine est mis de cote ;
     chaque passage des GameTests audite ses ecritures (T-437, R-1711) : JFR
     pour le Java, releve du dossier de jeu pour le reste, natif compris ;
+    campagne T-435/T-713b sur un serveur Forge de production : des assemblies
+    perdues par Minecraft sans AXION sont restaurees a l'identique ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

@@ -3306,7 +3306,9 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
       - [x] T-437 (2026-10-28) : audit des fichiers écrits pendant chaque session de GameTests (R-1711),
             JFR et relevé du dossier, intégré à `runGameTestServer` donc à la CI ; aucune violation ;
             3 mutations rouges.
-      - [ ] Campagne T-435/T-713b : trois lancements réels du serveur.
+      - [x] Campagne T-435/T-713b (2026-10-28) : `tools/campagne/journal_lateral.py`, trois lancements d'un
+            serveur Forge de production — avec AXION, Forge seul, AXION de nouveau. Cinq assemblies perdues
+            par Minecraft, restaurées depuis le journal à l'identique ; campagne verte (ADR-153, précisions).
       - [ ] T-713f au banc de rendu : asset visuel absent côté client.
 - [x] Intermittence de `r1690_unclientquiinondeleserveurestdeconnecte` (2026-10-27) : le client simulé
       renvoyait l'acquittement d'une trame lue après la fermeture de sa connexion (`ClosedChannelException`),
