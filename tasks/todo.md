@@ -3324,12 +3324,19 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
       (deux échecs sur six avant).
 
 **Chantier culling, LOD et instancing (C-64, C-65)** — ouvert le 2026-10-28.
-[ADR-154](../docs/decisions/ADR-154.md) **proposé**, à trancher par Killian avant tout code : quatre questions
+[ADR-154](../docs/decisions/ADR-154.md) **accepté par Killian le 2026-10-28**, quatre questions selon la proposition
 (concurrence et verrou de rendu séparé de `SESSION` ; candidats remis par Java à chaque frame ; seuils du
 LOD géométrique ; plafond de frame en M4 ou M5). IF-05 et ABI 9 ; T-520..T-524 et T-530..T-533, que le CDC
 ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
 
-- [ ] Décision de Killian sur ADR-154 (Q1..Q4).
+- [x] Décision de Killian sur ADR-154 (Q1..Q4), 2026-10-28.
+- [ ] 1. Contexte de rendu : `ax-render-prep`, verrou séparé, jobs partagés ; IF-05 réduite au culling de
+      distance et de frustum ; Java dessine depuis `AXION_BUF_RENDER_OUT` ; ABI 9 ; T-520, T-521, T-524 (solo).
+- [ ] 2. LOD : `LODM` lue et validée, sélection, hystérésis, `lod_bias` ; T-522, T-475, T-906.
+- [ ] 3. Tri, plafond, échéance ; T-523, T-524.
+- [ ] 4. Instancing (C-65) ; T-530..T-532, T-477, T-478.
+- [ ] 5. Indirect (GL 4.3) ; T-533, T-907.
+- [ ] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
