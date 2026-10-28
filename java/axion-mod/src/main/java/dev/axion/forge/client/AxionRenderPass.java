@@ -143,6 +143,9 @@ public final class AxionRenderPass {
      */
     private static final Map<AxionEntity, Integer> FRAME_DECISIONS = new java.util.IdentityHashMap<>();
 
+    /** Triangles des dessins de la dernière frame (T-485, {@code budgets.max_triangles_frame}). */
+    private static long lastTriangles;
+
     /** Les assemblies retenues à la passe opaque, que la passe translucide de la frame reprend. */
     private static List<RenderBackend.Assembly> frameAssemblies = List.of();
 
@@ -312,6 +315,16 @@ public final class AxionRenderPass {
     /** {@return les appels de dessin de la dernière frame du backend natif, ou -1 sous un autre (T-477)} */
     public static int nativeDrawCalls() {
         return backend instanceof NativeGlBackend active ? active.lastDrawCalls() : -1;
+    }
+
+    /** {@return les triangles des dessins de la dernière frame} */
+    public static long lastTriangles() {
+        return lastTriangles;
+    }
+
+    /** {@return {@code budgets.max_triangles_frame} et {@code budgets.max_visible_instances}, lus au démarrage} */
+    public static long[] frameLimits() {
+        return new long[] {trianglesLimit, visibleLimit};
     }
 
     /** {@return vrai si le backend natif dessine par le chemin indirect (GL 4.3, R-782)} */
@@ -586,12 +599,17 @@ public final class AxionRenderPass {
      * les objets GL vivants et l'état des shaders du natif.
      */
     private static void reportFrame(List<RenderBackend.Assembly> assemblies) {
+        // Les triangles des dessins de la frame, au niveau de détail choisi : ni ceux des autres niveaux,
+        // ni ceux des meshes qu'aucun dessin ne désigne.
         long triangles = 0;
         for (RenderBackend.Assembly assembly : assemblies) {
             if (assembly.asset() != null) {
-                triangles += assembly.asset().mesh().indexCount() / 3;
+                for (dev.axion.asset.GeometryTransfer.Draw draw : assembly.draws()) {
+                    triangles += assembly.asset().mesh().meshes().get(draw.mesh()).indexCount() / 3;
+                }
             }
         }
+        lastTriangles = triangles;
         VISIBLE.report(assemblies.size(), visibleLimit);
         TRIANGLES.report(triangles, trianglesLimit);
         BACKEND.set(backend == null ? 0 : backend.kind() == BackendSelection.Kind.NATIVE ? 2 : 1);

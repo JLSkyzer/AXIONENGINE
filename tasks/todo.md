@@ -3360,7 +3360,8 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
 - [ ] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.
       - [x] 6a (2026-10-28) : overlays `lod` et `culling`, en Java, bits 24 et 25 du §31.4 ; bancs verts ; 1
             mutation rouge.
-      - [ ] 6b : T-485 (100 assemblies, draw calls et triangles mesurés), `RENDERING.md`.
+      - [x] 6b (2026-10-28) : T-485 au banc natif (26 appels, 1 344 triangles, 110 assemblies) ; triangles comptés
+            sur les dessins de la frame ; `RENDERING.md`.
       - [ ] 6c : R-750 palier 2 par résidence par niveau (décision de Killian du 2026-10-28) ; T-484.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1

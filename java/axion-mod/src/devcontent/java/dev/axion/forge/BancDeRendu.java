@@ -718,6 +718,12 @@ public final class BancDeRendu {
                             + " est indisponible (R-782, optionnel) — " + AxionRenderPass.indirectSupport());
                 }
             });
+            // T-485 (§19.13) : 100 assemblies visibles, appels de dessin et triangles mesurés et bornés.
+            serveur("retirer la moitié des copies", s -> copies.subList(100, copies.size()).forEach(Entity::discard));
+            jusqua("100 copies dessinées", 120, mc -> AxionRenderPass.lastFrame().assemblies() == dessineesSansCopies + 100
+                    && AxionRenderPass.lastFrame().withAsset() == AxionRenderPass.lastFrame().assemblies());
+            stabiliser("les 100 copies");
+            une("juger T-485", mc -> jugerT485());
             serveur("retirer les copies", s -> copies.forEach(Entity::discard));
             jusqua("les copies retirées", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
         }
@@ -1462,6 +1468,25 @@ public final class BancDeRendu {
         RAPPORT.noter("T-907", ecart.nombre() == 0, String.format(Locale.ROOT,
                 "chemin indirect : %d appels de dessin ; direct instancié : %d ; %d pixel(s) différent(s)",
                 appelsIndirects, appels, ecart.nombre()));
+    }
+
+    /**
+     * T-485 (§19.13) : 100 assemblies visibles — les appels de dessin et les triangles de la frame mesurés, publiés,
+     * et tenus sous {@code budgets.max_triangles_frame} et {@code budgets.max_visible_instances}.
+     */
+    private static void jugerT485() {
+        AxionRenderPass.FrameStats frame = AxionRenderPass.lastFrame();
+        long triangles = AxionRenderPass.lastTriangles();
+        long[] plafonds = AxionRenderPass.frameLimits();
+        int appels = AxionRenderPass.nativeDrawCalls();
+        boolean vert = frame.assemblies() - dessineesSansCopies == 100
+                && appels > 0
+                && triangles > 0 && triangles <= plafonds[0]
+                && frame.assemblies() <= plafonds[1];
+        RAPPORT.noter("T-485", vert, String.format(Locale.ROOT,
+                "100 copies et %d assemblies de la scène : %d appels de dessin, %d triangles (plafond %d),"
+                        + " %d assemblies dessinées (plafond %d)",
+                dessineesSansCopies, appels, triangles, plafonds[0], frame.assemblies(), plafonds[1]));
     }
 
     private static void jugerT479() {

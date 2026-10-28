@@ -140,6 +140,8 @@ Definition of Done (PARTIE 37.3).
     chemin indirect (GL 4.3, `render.indirect`) : les series au meme etat
     partent d'un seul `glMultiDrawElementsIndirect`, image identique ;
     overlays `lod` et `culling` (`/axion debug lod on`, `culling`) ;
+    les triangles de `budgets.max_triangles_frame` sont ceux des dessins de la
+    frame, au niveau choisi, et non plus toute la geometrie d'un asset ;
     banc de rendu : jamais en pause, la pause au focus perdu coupee avant le
     chargement du monde et tout ecran de pause referme ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :

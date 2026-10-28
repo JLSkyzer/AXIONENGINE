@@ -57,6 +57,27 @@ qu'elle a trouvé (R-1502, R-1503), y compris sous Oculus et Embeddium.
 Le backend vanilla n'a pas de PBR : les `RenderType` de Minecraft n'en exposent pas les entrées
 (R-1513).
 
+## Culling, niveaux de détail et instancing
+
+Chaque frame, le client remet au natif les assemblies que Minecraft lui donne à dessiner, leur pose
+relative à la caméra, et le natif décide (C-64, C-65, [ADR-154](docs/decisions/ADR-154.md)) :
+
+- **Culling** : une assembly au-delà de `render.max_distance`, ou entière hors du champ, n'est pas
+  dessinée. Une assembly aux corps articulés écartés de leur repos, ou marquée `noCulling`, l'est
+  toujours ; une boîte de repli aussi. L'occlusion viendra avec C-82 (M9).
+- **Niveaux de détail** : l'asset compilé porte ses LOD (4 par défaut) ; le natif choisit le niveau
+  de chaque assembly selon sa taille à l'écran — sous 200, 80, 30 et 10 pixels —, avec une hystérésis
+  de 10 % et le décalage `render.lod_bias`, et dit au client le mesh de chaque dessin.
+- **Plafond** : au-delà de `budgets.max_visible_instances`, la frame descend d'un niveau et les
+  assemblies les plus lointaines sont écartées.
+- **Échéance** : la préparation ne dépasse pas `budgets.render_prep_ns` ; une assembly qu'elle n'a pas
+  eu le temps d'examiner reprend sa décision de la frame d'avant. Elle n'attend jamais le pas
+  physique, même en solo, où le serveur intégré partage la bibliothèque native.
+- **Instancing** (backend natif) : les opaques sont triés par asset, mesh et sens des faces ; une série
+  d'au moins `render.instancing_threshold` meshes identiques (4 par défaut) se dessine d'un seul appel,
+  une plus courte dessin par dessin. Sous GL 4.3 et `render.indirect`, les séries au même état partent
+  d'un seul `glMultiDrawElementsIndirect`. L'image est la même par les trois chemins (T-478, T-907).
+
 ## Ressources GPU
 
 - **Maillages** sous-alloués dans des arènes de 16 Mio partagées (VBO, EBO), tampon d'instances
@@ -68,8 +89,8 @@ Le backend vanilla n'a pas de PBR : les `RenderType` de Minecraft n'en exposent 
   référencer n'y comptent pas.
 - **Dégradation** : la tenue du budget passe par des paliers, chacun journalisé avec sa cause
   (§19.12) — `NOMINAL`, `UNLOADING` (des assets non visibles sont déchargés), `UNRESOLVED` (les
-  assets en trop sont tous visibles ; le LOD forcé et la qualité de déformation, leviers suivants
-  de R-750, viennent avec C-64 et la M6). La descente est immédiate ; la remontée se fait d'un
+  assets en trop sont tous visibles ; le LOD forcé, par une résidence par niveau, et la qualité de
+  déformation, leviers suivants de R-750, viennent ensuite et avec la M6). La descente est immédiate ; la remontée se fait d'un
   palier à la fois, après 30 s sous le seuil et 10 s au moins après la précédente (SM-02). Le
   palier courant est la jauge `axion.render.gpu_degradation_level`.
 - **Textures** : décodées et mipmappées hors du render thread, téléversées par Minecraft
@@ -88,7 +109,8 @@ Le backend vanilla n'a pas de PBR : les `RenderType` de Minecraft n'en exposent 
 
 `/axion debug <overlay> on|off`, en mode développeur (`-Daxion.dev=true`) (C-67, ADR-121). Sont
 tracés `colliders`, `aabb`, `bodies`, `contacts`, `normals`, `joints`, `limits`, `world_tiles`,
-`center_of_mass` et `network` ; les joints et leurs plages sont décrits dans
+`center_of_mass`, `network`, `lod` (l'emprise de chaque assembly dessinée, colorée par son niveau) et
+`culling` (retenue en vert, écartée en rouge) ; les joints et leurs plages sont décrits dans
 [PHYSICS.md](PHYSICS.md#erreurs-réseau-et-debug). Éteint, un overlay ne coûte qu'un test de drapeau
 par frame (R-2280).
 
@@ -114,11 +136,13 @@ intact (T-472), bascule et retour sous shaderpack (T-480, T-490), compilation à
 à-coup (T-904, jugée sur GPU matériel seulement, ADR-127), transparence ordonnée (T-476), aucune
 texture d'AXION laissée sur le GPU par une bascule de backend (T-481), ressources d'AXION
 reconstruites par un vrai changement de resource pack (T-483), temps GPU des passes du natif
-connu (ADR-146 §2). La CI le joue à chaque push.
+connu (ADR-146 §2), culling et LOD des assemblies posées hors du champ, 200 copies d'un cube sans appel
+de dessin de plus (T-477), chemins non instancié et indirect à l'image identique (T-478, T-907), 100
+assemblies mesurées sous leurs plafonds (T-485). La CI le joue à chaque push.
 
 ## Ce qui n'existe pas encore
 
 Niveaux de qualité Q-0 à Q-4, sonde d'environnement (C-81) et tone mapping (C-83), effet des
 définitions autres que `CUTOUT` (skinning, déformation, parallax, clearcoat, sheen, anisotropie,
-décalques, ombres reçues, SSR), culling et LOD de rendu (C-64), temps GPU par matériau, d'ombre
-et de décalques (M9, avec ces passes).
+décalques, ombres reçues, SSR), occlusion culling (C-82, M9), LOD forcé sous pression de mémoire GPU
+(résidence par niveau, ADR-154), temps GPU par matériau, d'ombre et de décalques (M9, avec ces passes).
