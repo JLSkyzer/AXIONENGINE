@@ -3358,6 +3358,10 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
 - [ ] T-904 : deux pics isolés le 2026-10-28 (21,55 ms puis 10,46 ms, hors variantes), démentis au passage
       suivant ; cause non établie, à surveiller.
 - [ ] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.
+      - [x] 6a (2026-10-28) : overlays `lod` et `culling`, en Java, bits 24 et 25 du §31.4 ; bancs verts ; 1
+            mutation rouge.
+      - [ ] 6b : T-485 (100 assemblies, draw calls et triangles mesurés), `RENDERING.md`.
+      - [ ] 6c : R-750 palier 2 par résidence par niveau (décision de Killian du 2026-10-28) ; T-484.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :

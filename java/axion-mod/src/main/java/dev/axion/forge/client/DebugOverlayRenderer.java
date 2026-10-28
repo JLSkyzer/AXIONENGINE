@@ -126,6 +126,19 @@ final class DebugOverlayRenderer {
     /** Assemblies que {@code network} a dessinées à la dernière image. */
     private int networkDrawn;
 
+    /** Assemblies que {@code lod} et {@code culling} ont dessinées à la dernière image. */
+    private int lodDrawn;
+    private int cullingDrawn;
+
+    /** Couleur de l'emprise d'une assembly retenue, dans {@code culling} (RGB). */
+    static final int CULLING_KEPT = 0x40E040;
+
+    /** Couleur de l'emprise d'une assembly écartée, dans {@code culling} (RGB). */
+    static final int CULLING_REJECTED = 0xFF3030;
+
+    /** Couleur de l'emprise selon le niveau de détail, dans {@code lod} (RGB) : 0, 1, 2, puis au-delà. */
+    static final int[] LOD_COLORS = {0x20C0A0, 0xE0E040, 0xFF9020, 0xFF3030};
+
     /** Échec natif déjà dit depuis l'allumage : une fois. */
     private boolean failureReported;
 
@@ -195,8 +208,12 @@ final class DebugOverlayRenderer {
      */
     void draw(RenderBackend.Frame frame) {
         networkDrawn = 0;
+        lodDrawn = 0;
+        cullingDrawn = 0;
         boolean network = overlays.isOn(DebugOverlays.Overlay.NETWORK);
-        if (overlays.mask() == 0L || (geometry.ranges().isEmpty() && !network)) {
+        boolean lod = overlays.isOn(DebugOverlays.Overlay.LOD);
+        boolean culled = overlays.isOn(DebugOverlays.Overlay.CULLING);
+        if (overlays.mask() == 0L || (geometry.ranges().isEmpty() && !network && !lod && !culled)) {
             return;
         }
         RenderType type = RenderType.lines();
@@ -238,6 +255,9 @@ final class DebugOverlayRenderer {
         }
         if (network) {
             out = drawNetwork(frame, out, type, scratch);
+        }
+        if (lod || culled) {
+            out = drawCulling(frame, out, type, scratch, lod, culled);
         }
         if (out != null) {
             frame.buffers().endBatch(type);
@@ -310,6 +330,75 @@ final class DebugOverlayRenderer {
         };
     }
 
+    /**
+     * {@code lod} et {@code culling} (31.4) : l'emprise de chaque assembly candidate au culling de la frame,
+     * colorée par son niveau de détail, ou retenue en vert et écartée en rouge.
+     *
+     * @return le tampon, ouvert s'il a fallu dessiner
+     */
+    private VertexConsumer drawCulling(RenderBackend.Frame frame, VertexConsumer out, RenderType type, Vector3f scratch,
+            boolean lod, boolean culled) {
+        Vec3 eye = frame.camera();
+        PoseStack.Pose last = frame.pose().last();
+        for (RenderBackend.Assembly assembly : frame.assemblies()) {
+            AxionEntity entity = assembly.entity();
+            Integer decision = AxionRenderPass.cullingDecision(entity);
+            if (decision == null) {
+                continue;
+            }
+            if (out == null) {
+                out = frame.buffers().getBuffer(type);
+            }
+            // L'emprise de l'entité, à la pose dessinée : celle du tick, décalée de l'interpolation.
+            AxionEntity.RenderPose pose = entity.renderPose(frame.partialTick());
+            var box = entity.getBoundingBox();
+            double dx = pose.x() - entity.getX() - eye.x;
+            double dy = pose.y() - entity.getY() - eye.y;
+            double dz = pose.z() - entity.getZ() - eye.z;
+            float[] edges = boxEdges(box.minX + dx, box.minY + dy, box.minZ + dz, box.maxX + dx, box.maxY + dy,
+                    box.maxZ + dz);
+            if (lod && decision >= 0) {
+                emit(out, last.pose(), last.normal(), scratch, edges, lodColor(decision));
+                lodDrawn++;
+            }
+            if (culled) {
+                emit(out, last.pose(), last.normal(), scratch, edges, decision >= 0 ? CULLING_KEPT : CULLING_REJECTED);
+                cullingDrawn++;
+            }
+        }
+        return out;
+    }
+
+    /** {@return la couleur de l'emprise d'un niveau de détail, dans {@code lod}} */
+    static int lodColor(int level) {
+        return LOD_COLORS[Math.min(Math.max(level, 0), LOD_COLORS.length - 1)];
+    }
+
+    /** {@return les douze arêtes d'une boîte, six flottants chacune} */
+    static float[] boxEdges(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+        float x0 = (float) minX;
+        float y0 = (float) minY;
+        float z0 = (float) minZ;
+        float x1 = (float) maxX;
+        float y1 = (float) maxY;
+        float z1 = (float) maxZ;
+        return new float[] {
+            x0, y0, z0, x1, y0, z0, x1, y0, z0, x1, y0, z1, x1, y0, z1, x0, y0, z1, x0, y0, z1, x0, y0, z0,
+            x0, y1, z0, x1, y1, z0, x1, y1, z0, x1, y1, z1, x1, y1, z1, x0, y1, z1, x0, y1, z1, x0, y1, z0,
+            x0, y0, z0, x0, y1, z0, x1, y0, z0, x1, y1, z0, x1, y0, z1, x1, y1, z1, x0, y0, z1, x0, y1, z1,
+        };
+    }
+
+    /** {@return le nombre d'assemblies que {@code lod} a dessinées à la dernière image} */
+    int lodDrawn() {
+        return lodDrawn;
+    }
+
+    /** {@return le nombre d'assemblies que {@code culling} a dessinées à la dernière image} */
+    int cullingDrawn() {
+        return cullingDrawn;
+    }
+
     /** {@return le nombre d'assemblies que {@code network} a dessinées à la dernière image} */
     int networkDrawn() {
         return networkDrawn;
@@ -358,6 +447,8 @@ final class DebugOverlayRenderer {
             case WORLD_TILES -> TILE_COLOR;
             case CENTER_OF_MASS -> MASS_COLOR;
             case NETWORK -> NETWORK_RECEIVED;
+            case LOD -> LOD_COLORS[0];
+            case CULLING -> CULLING_KEPT;
         };
     }
 
@@ -395,6 +486,10 @@ final class DebugOverlayRenderer {
             case CENTER_OF_MASS -> "blanc : le centre de masse de chaque corps";
             case NETWORK -> "violet : l'emprise à la pose dessinée, interpolée ; orange : au dernier état reçu du"
                     + " serveur ; le trait les relie";
+            case LOD -> "l'emprise de chaque assembly dessinée, par niveau de détail : turquoise 0, jaune 1, orange 2,"
+                    + " rouge 3 et au-delà";
+            case CULLING -> "vert : une assembly retenue par le culling ; rouge : écartée — hors du champ, trop"
+                    + " loin, ou au-delà du plafond d'instances";
         };
     }
 

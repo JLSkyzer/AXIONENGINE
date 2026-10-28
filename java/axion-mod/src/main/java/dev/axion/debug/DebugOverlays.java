@@ -40,7 +40,17 @@ public final class DebugOverlays {
          * un overlay qu'il ne connaît pas ({@code abi.rs}). La divergence de champ du §31.4 vient avec la
          * déformation, en M6.
          */
-        NETWORK("network", 1L << 32, false);
+        NETWORK("network", 1L << 32, false),
+        /**
+         * L'emprise de chaque assembly retenue par le culling, colorée par son niveau de détail (C-64,
+         * ADR-146 §1, ADR-154). Rang 24. En Java seul : le niveau vient du résultat de la frame.
+         */
+        LOD("lod", 1L << 24, false),
+        /**
+         * L'emprise de chaque assembly candidate au culling : retenue en vert, écartée en rouge (C-64,
+         * ADR-146 §1, ADR-154). Rang 25. En Java seul, comme {@link #LOD}.
+         */
+        CULLING("culling", 1L << 25, false);
 
         private final String commandName;
         private final long bit;

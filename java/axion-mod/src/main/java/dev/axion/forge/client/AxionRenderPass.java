@@ -136,6 +136,13 @@ public final class AxionRenderPass {
     private static float maxDistance = 128f;
     private static int lodBias;
 
+    /**
+     * Ce que le culling a décidé de chaque candidate à la dernière frame, pour les overlays {@code lod} et
+     * {@code culling} : son niveau si elle est retenue, -1 si elle est écartée. Rempli seulement quand l'un
+     * d'eux est allumé (R-2280).
+     */
+    private static final Map<AxionEntity, Integer> FRAME_DECISIONS = new java.util.IdentityHashMap<>();
+
     /** Les assemblies retenues à la passe opaque, que la passe translucide de la frame reprend. */
     private static List<RenderBackend.Assembly> frameAssemblies = List.of();
 
@@ -430,6 +437,12 @@ public final class AxionRenderPass {
         if (DEBUG.networkDrawn() > 0) {
             counts.merge(DebugOverlays.Overlay.NETWORK.rank(), DEBUG.networkDrawn(), Integer::sum);
         }
+        if (DEBUG.lodDrawn() > 0) {
+            counts.merge(DebugOverlays.Overlay.LOD.rank(), DEBUG.lodDrawn(), Integer::sum);
+        }
+        if (DEBUG.cullingDrawn() > 0) {
+            counts.merge(DebugOverlays.Overlay.CULLING.rank(), DEBUG.cullingDrawn(), Integer::sum);
+        }
         return counts;
     }
 
@@ -618,6 +631,17 @@ public final class AxionRenderPass {
         return lastResidency;
     }
 
+    /**
+     * {@return ce que le culling a décidé d'une assembly à la dernière frame : son niveau de détail si elle est
+     * retenue, -1 si elle est écartée, ou {@code null} si elle n'était pas candidate} Rempli seulement quand
+     * {@code lod} ou {@code culling} est allumé.
+     *
+     * @param entity l'assembly
+     */
+    static Integer cullingDecision(AxionEntity entity) {
+        return FRAME_DECISIONS.get(entity);
+    }
+
     /** Passe DEBUG (§19.10, passe 6) : les overlays allumés, après le reste du niveau. */
     private static void renderDebug(RenderLevelStageEvent event) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -671,6 +695,7 @@ public final class AxionRenderPass {
      */
     private static List<RenderBackend.Assembly> cull(
             RenderLevelStageEvent event, Minecraft minecraft, List<RenderBackend.Assembly> all) {
+        FRAME_DECISIONS.clear();
         NativeCulling active = culling;
         if (active == null || all.isEmpty()) {
             return all;
@@ -709,6 +734,15 @@ public final class AxionRenderPass {
                     (float) (pose.x() - camera.x), (float) (pose.y() - camera.y), (float) (pose.z() - camera.z),
                     1f, rotation);
         }, renderPrepLimit);
+        if (outcome.code() == 0
+                && (OVERLAYS.isOn(DebugOverlays.Overlay.LOD) || OVERLAYS.isOn(DebugOverlays.Overlay.CULLING))) {
+            for (int rank = 0; rank < count; rank++) {
+                FRAME_DECISIONS.put(all.get(candidates[rank]).entity(), -1);
+            }
+            for (int rank = 0; rank < outcome.retained().length; rank++) {
+                FRAME_DECISIONS.put(all.get(candidates[outcome.retained()[rank]]).entity(), outcome.levels()[rank]);
+            }
+        }
         if (outcome.code() != 0) {
             culling = null;
             LOGGER.warn("AXION : culling natif coupé après le code {}, tout est dessiné", outcome.code());

@@ -265,7 +265,7 @@ class DebugOverlayRendererTest {
                 couleurs.add(DebugOverlayRenderer.colorOf(overlay, 0));
             }
         }
-        assertEquals(8, couleurs.size(), "huit overlays sans corps à colorer, huit couleurs");
+        assertEquals(10, couleurs.size(), "dix overlays sans corps à colorer, dix couleurs");
         assertEquals(
                 DebugOverlayRenderer.STATIC,
                 DebugOverlayRenderer.colorOf(DebugOverlays.Overlay.COLLIDERS, DebugGeometry.BODY_STATIC));
@@ -326,5 +326,32 @@ class DebugOverlayRendererTest {
 
     private static int couleur(int flags) {
         return DebugOverlayRenderer.colorOf(flags);
+    }
+
+    @Test
+    @DisplayName("ADR-154 : lod colore par niveau, borné ; culling sépare retenue et écartée")
+    void couleursDuCulling() {
+        assertEquals(DebugOverlayRenderer.LOD_COLORS[0], DebugOverlayRenderer.lodColor(0));
+        assertEquals(DebugOverlayRenderer.LOD_COLORS[2], DebugOverlayRenderer.lodColor(2));
+        assertEquals(DebugOverlayRenderer.LOD_COLORS[3], DebugOverlayRenderer.lodColor(7), "au-delà, la dernière");
+        assertEquals(DebugOverlayRenderer.LOD_COLORS[0], DebugOverlayRenderer.lodColor(-1));
+        assertTrue(DebugOverlayRenderer.CULLING_KEPT != DebugOverlayRenderer.CULLING_REJECTED);
+    }
+
+    @Test
+    @DisplayName("ADR-154 : l'emprise d'une assembly, douze arêtes entre ses deux coins")
+    void aretesDeLaBoite() {
+        float[] aretes = DebugOverlayRenderer.boxEdges(-1, 0, 2, 1, 3, 4);
+        assertEquals(12 * 6, aretes.length);
+        for (int i = 0; i < aretes.length; i += 3) {
+            assertTrue(aretes[i] == -1 || aretes[i] == 1, "x sur un coin");
+            assertTrue(aretes[i + 1] == 0 || aretes[i + 1] == 3, "y sur un coin");
+            assertTrue(aretes[i + 2] == 2 || aretes[i + 2] == 4, "z sur un coin");
+        }
+        for (int i = 0; i < aretes.length; i += 6) {
+            int differents = (aretes[i] != aretes[i + 3] ? 1 : 0) + (aretes[i + 1] != aretes[i + 4] ? 1 : 0)
+                    + (aretes[i + 2] != aretes[i + 5] ? 1 : 0);
+            assertEquals(1, differents, "une arête suit un seul axe");
+        }
     }
 }
