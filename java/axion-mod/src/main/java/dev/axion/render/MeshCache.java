@@ -94,6 +94,9 @@ public final class MeshCache {
      */
     private volatile boolean materialMaps;
 
+    /** Mips les plus fins retirés aux textures (R-750, LOD forcé). */
+    private volatile int mipSkip;
+
     /**
      * Crée un cache vide.
      *
@@ -159,6 +162,26 @@ public final class MeshCache {
             materialMaps = on;
             releaseAll();
         }
+    }
+
+    /**
+     * Retire les {@code skip} mips les plus fins des textures d'AXION (R-750, LOD forcé, ADR-154). Un
+     * changement rend tout, comme {@link #releaseAll} : chaque asset se recharge, ses textures à la
+     * nouvelle taille. Appelé sur le fil de rendu.
+     *
+     * @param skip mips à retirer, 0 pour aucun
+     */
+    public void setMipSkip(int skip) {
+        if (mipSkip != skip) {
+            mipSkip = skip;
+            textures.setMipSkip(skip);
+            releaseAll();
+        }
+    }
+
+    /** {@return les mips les plus fins retirés aux textures} */
+    public int mipSkip() {
+        return mipSkip;
     }
 
     /**

@@ -56,6 +56,14 @@ public interface TexturePipeline {
     int mipmapSetting();
 
     /**
+     * Retire les {@code skip} mips les plus fins des textures préparées ensuite (R-750, LOD forcé) : elles
+     * gardent leur chaîne de mipmaps, en plus petit. Sans effet pour un pipeline qui ne mipmappe pas.
+     *
+     * @param skip mips à retirer, 0 pour aucun
+     */
+    default void setMipSkip(int skip) {}
+
+    /**
      * Rend la mémoire d'une image décodée que rien ne prendra.
      *
      * @param image image décodée

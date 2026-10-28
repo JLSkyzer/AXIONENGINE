@@ -164,6 +164,7 @@ class MeshCacheTest {
         private boolean failUploads;
         private boolean failAtlas;
         private int mipmapSetting = 4;
+        private int mipSkip;
 
         @Override
         public Image decode(Request request) throws TextureRefusal {
@@ -182,7 +183,14 @@ class MeshCacheTest {
         @Override
         public Prepared prepare(Request request, Image image) {
             ((FakeImage) image).returns++;
-            return new Staged(new TextureBinding(request.location(), blur, mipmap), 4L * image.width() * image.height());
+            // Chaque mip le plus fin retiré divise la texture par quatre.
+            long bytes = (4L * image.width() * image.height()) >> (2 * mipSkip);
+            return new Staged(new TextureBinding(request.location(), blur, mipmap), bytes);
+        }
+
+        @Override
+        public void setMipSkip(int skip) {
+            mipSkip = skip;
         }
 
         @Override
@@ -1000,5 +1008,32 @@ class MeshCacheTest {
         assertFalse(textures.uploaded.contains(v1), "page d'un contenu supplanté téléversée");
         assertEquals(1, cache.liveTextures());
         textures.assertImagesReturned();
+    }
+
+    @Test
+    @DisplayName("R-750, LOD forcé : retirer un mip recharge les textures en quatre fois plus petit")
+    void retirerUnMipDivisePourQuatre() {
+        oneEmbeddedTexture();
+        Published source = published("cube");
+        cache.get(PATH, source);
+        settle();
+        assertNotNull(cache.get(PATH, source));
+        assertEquals(TEXTURE_BYTES, cache.textureBytes());
+
+        cache.setMipSkip(1);
+        assertEquals(0, cache.textureBytes(), "tout est rendu, pour se recharger");
+        assertEquals(1, cache.mipSkip());
+        cache.get(PATH, source);
+        settle();
+        assertNotNull(cache.get(PATH, source));
+        assertEquals(TEXTURE_BYTES / 4, cache.textureBytes());
+
+        cache.setMipSkip(1);
+        assertEquals(TEXTURE_BYTES / 4, cache.textureBytes(), "le même réglage ne recharge rien");
+        cache.setMipSkip(0);
+        cache.get(PATH, source);
+        settle();
+        assertNotNull(cache.get(PATH, source));
+        assertEquals(TEXTURE_BYTES, cache.textureBytes(), "le palier remonté, la texture entière");
     }
 }

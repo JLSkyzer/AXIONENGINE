@@ -142,6 +142,8 @@ Definition of Done (PARTIE 37.3).
     overlays `lod` et `culling` (`/axion debug lod on`, `culling`) ;
     les triangles de `budgets.max_triangles_frame` sont ceux des dessins de la
     frame, au niveau choisi, et non plus toute la geometrie d'un asset ;
+    budget GPU : le palier LOD force (R-750) decale le niveau de detail et
+    retire les mips les plus fins des textures d'AXION, rechargees en plus petit ;
     banc de rendu : jamais en pause, la pause au focus perdu coupee avant le
     chargement du monde et tout ecran de pause referme ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :

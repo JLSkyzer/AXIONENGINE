@@ -6,15 +6,19 @@ import java.util.concurrent.TimeUnit;
  * Les paliers de la tenue du budget GPU (R-750, T-484), et leurs transitions (R-1880).
  *
  * <p>R-750 ordonne les leviers : décharger les assets non visibles, le moins récemment vu
- * d'abord, puis forcer le LOD, puis réduire la qualité de déformation. Seul le premier existe en
- * M3 ; les deux suivants viennent avec C-64 (M4) et la déformation (M6). Tant qu'ils manquent, un
- * dépassement que les déchargements ne résorbent pas — les assets en trop sont tous visibles — se
- * tient au palier {@link Level#UNRESOLVED}, et le dit.
+ * d'abord, puis forcer le LOD, puis réduire la qualité de déformation. Le LOD forcé (ADR-154,
+ * décision de Killian) tient en deux paliers : chacun descend d'un niveau de détail de plus et
+ * retire un mip de plus aux textures d'AXION — un LOD ne coûte que des indices (ADR-107), ce sont
+ * les textures qui rendent de la mémoire. La qualité de déformation vient avec la M6 ; au-delà du
+ * second palier, un dépassement se tient à {@link Level#UNRESOLVED}, et le dit.
  *
  * <p>Le §19.12 veut chaque palier journalisé et réversible avec hystérésis, celle de la machine de
  * dégradation (SM-02, §25.6) : la remontée se fait d'un palier à la fois, au plus une toutes les
  * 10 s, après 30 s sous le seuil. La descente, elle, est immédiate : un budget de mémoire est
- * dépassé à la frame près, sans fenêtre de p95 à attendre (R-1870 vise les budgets de durée).
+ * dépassé à la frame près, sans fenêtre de p95 à attendre (R-1870 vise les budgets de durée). Seule
+ * la descente d'un palier de LOD forcé au suivant attend 10 s : le temps que les textures se
+ * rechargent à leur nouvelle taille, sans quoi chaque frame de rechargement compterait encore
+ * l'ancienne.
  *
  * <p>Fil de rendu seul.
  */
@@ -32,8 +36,26 @@ public final class GpuDegradation {
         NOMINAL,
         /** Premier levier de R-750 : des assets non visibles sont déchargés pour le tenir. */
         UNLOADING,
-        /** Les déchargements ne suffisent pas ; les leviers suivants de R-750 manquent encore. */
-        UNRESOLVED
+        /** Deuxième levier : un niveau de détail de plus, et un mip de texture retiré. */
+        FORCED_LOD_1,
+        /** Deuxième levier, renforcé : deux niveaux de plus, deux mips retirés. */
+        FORCED_LOD_2,
+        /** Les leviers jusqu'au LOD forcé ne suffisent pas ; la qualité de déformation vient en M6. */
+        UNRESOLVED;
+
+        /** {@return le décalage de niveau de détail que le palier impose} */
+        public int lodBias() {
+            return switch (this) {
+                case FORCED_LOD_1 -> 1;
+                case FORCED_LOD_2, UNRESOLVED -> 2;
+                default -> 0;
+            };
+        }
+
+        /** {@return les mips les plus fins que le palier retire aux textures d'AXION} */
+        public int mipSkip() {
+            return lodBias();
+        }
     }
 
     /**
@@ -57,14 +79,19 @@ public final class GpuDegradation {
             String cause = bytes + " octets tenus pour un budget de " + budgetBytes
                     + " (budgets.gpu_mem_bytes)";
             return switch (to) {
+                case FORCED_LOD_1, FORCED_LOD_2 -> degrades()
+                        ? "budget GPU dépassé par des assets visibles — palier " + from + " → " + to
+                                + " : LOD forcé de " + to.lodBias() + " niveau(x), " + to.mipSkip()
+                                + " mip(s) de texture retiré(s), " + cause
+                        : "budget GPU tenu depuis 30 s — palier " + from + " → " + to + ", " + cause;
                 case UNLOADING -> degrades()
                         ? "budget GPU dépassé — palier " + from + " → " + to
                                 + " : déchargement des assets non visibles, " + evicted
                                 + " asset(s) déchargé(s), " + cause
                         : "budget GPU tenu depuis 30 s — palier " + from + " → " + to + ", " + cause;
-                case UNRESOLVED -> "budget GPU dépassé par des assets tous visibles — palier " + from
-                        + " → " + to + ", " + cause + " ; les leviers suivants de R-750 — LOD forcé,"
-                        + " qualité de déformation — arrivent avec C-64 et la M6";
+                case UNRESOLVED -> "budget GPU dépassé malgré le LOD forcé — palier " + from
+                        + " → " + to + ", " + cause + " ; le dernier levier de R-750, la qualité de"
+                        + " déformation, arrive avec la M6";
                 case NOMINAL -> "budget GPU tenu depuis 30 s — palier " + from + " → " + to + ", " + cause;
             };
         }
@@ -74,6 +101,9 @@ public final class GpuDegradation {
     private Level level = Level.NOMINAL;
     /** Instant depuis lequel chaque frame tient le budget ; négatif pendant un dépassement. */
     private long calmSince = -1;
+    /** Instant de la dernière descente à un palier de LOD forcé. */
+    private long lastForced;
+
     /** Instant de la dernière remontée ; absent avant la première. */
     private long lastStepUp;
     private boolean steppedUp;
@@ -102,9 +132,20 @@ public final class GpuDegradation {
     public Transition observe(MeshCache.Residency frame, long nowNanos) {
         if (frame.exceeded()) {
             calmSince = -1;
-            Level target = frame.bytes() <= budgetBytes ? Level.UNLOADING : Level.UNRESOLVED;
-            // Un dépassement n'est jamais une raison de remonter : le palier ne fait que descendre.
-            return target.ordinal() > level.ordinal() ? move(target, frame) : null;
+            if (frame.bytes() <= budgetBytes) {
+                // Résorbé par les déchargements. Un dépassement n'est jamais une raison de remonter.
+                return Level.UNLOADING.ordinal() > level.ordinal() ? move(Level.UNLOADING, frame) : null;
+            }
+            // Les assets en trop sont visibles : le levier suivant, le LOD forcé, palier par palier.
+            if (level.ordinal() < Level.FORCED_LOD_1.ordinal()) {
+                lastForced = nowNanos;
+                return move(Level.FORCED_LOD_1, frame);
+            }
+            if (level == Level.UNRESOLVED || nowNanos - lastForced < STEP_NANOS) {
+                return null;
+            }
+            lastForced = nowNanos;
+            return move(Level.values()[level.ordinal() + 1], frame);
         }
         if (calmSince < 0) {
             calmSince = nowNanos;

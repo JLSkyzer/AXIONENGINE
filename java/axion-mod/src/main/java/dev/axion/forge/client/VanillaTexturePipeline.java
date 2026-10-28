@@ -13,6 +13,7 @@ import dev.axion.render.TextureSampling;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import net.minecraft.client.Minecraft;
@@ -70,17 +71,36 @@ final class VanillaTexturePipeline implements TexturePipeline {
         }
     }
 
+    /** Mips les plus fins retirés aux textures préparées (R-750, LOD forcé). */
+    private volatile int mipSkip;
+
+    @Override
+    public void setMipSkip(int skip) {
+        mipSkip = Math.max(0, skip);
+    }
+
     @Override
     public Prepared prepare(Request request, Image image) {
         Decoded decoded = (Decoded) image;
         NativeImage texture = decoded.image();
         try {
-            int levels = TextureRules.mipLevels(mipmapSetting(), texture.getWidth(), texture.getHeight());
-            NativeImage[] mips = MipmapGenerator.generateMipLevels(new NativeImage[] {texture}, levels);
+            int[] plan = TextureRules.skippedMips(mipmapSetting(), texture.getWidth(), texture.getHeight(), mipSkip);
+            NativeImage[] all = MipmapGenerator.generateMipLevels(new NativeImage[] {texture}, plan[0]);
+            // Les mips retirés sont rendus tout de suite ; la texture garde la chaîne à partir du suivant.
+            for (int level = 0; level < plan[1]; level++) {
+                if (all[level] != texture) {
+                    all[level].close();
+                }
+            }
+            NativeImage[] mips = Arrays.copyOfRange(all, plan[1], all.length);
+            int levels = mips.length - 1;
             TextureSampling sampling = decoded.sampling();
             Prepared prepared = new PreparedTexture(
                     new TextureBinding(request.location(), sampling.blur(), levels > 0),
                     new AxionTexture(mips, sampling.blur(), sampling.clamp()));
+            if (plan[1] > 0) {
+                texture.close();
+            }
             // Ses niveaux appartiennent désormais à la texture préparée.
             texture = null;
             return prepared;
@@ -111,8 +131,16 @@ final class VanillaTexturePipeline implements TexturePipeline {
             for (int index = 0; index < page.tiles().size(); index++) {
                 compose(page.tiles().get(index), (Decoded) images.get(index), levels, pageLevels);
             }
+            // R-750, LOD forcé : la page perd ses niveaux les plus fins, dans la limite des siens — au-delà,
+            // ses tuiles ne tomberaient plus sur des texels entiers.
+            int removed = Math.min(mipSkip, levels);
+            for (int level = 0; level < removed; level++) {
+                pageLevels[level].close();
+                pageLevels[level] = null;
+            }
+            NativeImage[] kept = Arrays.copyOfRange(pageLevels, removed, pageLevels.length);
             Prepared prepared = new PreparedTexture(
-                    new TextureBinding(location, blur, levels > 0), new AxionTexture(pageLevels, blur, true));
+                    new TextureBinding(location, blur, levels - removed > 0), new AxionTexture(kept, blur, true));
             LOGGER.debug("AXION : atlas {} — {} texture(s), {}×{}, {} niveau(x) de mipmaps",
                     location, page.tiles().size(), page.width(), page.height(), levels);
             // Ses niveaux appartiennent désormais à la page préparée.

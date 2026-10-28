@@ -70,6 +70,23 @@ public final class TextureRules {
     }
 
     /**
+     * {@return les niveaux à produire et ceux à retirer pour qu'une texture perde ses {@code skip} mips les
+     * plus fins (R-750, LOD forcé)} {@code [générés, retirés]} : on génère {@code skip} niveaux de plus
+     * que le réglage, bornés par la taille de l'image, et on garde la chaîne à partir du rang retiré —
+     * la texture garde ses niveaux de mipmaps, en plus petit. Une image trop petite en retire moins.
+     *
+     * @param vanillaLevels réglage « niveaux de mipmaps » de Minecraft
+     * @param width largeur de l'image
+     * @param height hauteur de l'image
+     * @param skip mips à retirer
+     */
+    public static int[] skippedMips(int vanillaLevels, int width, int height, int skip) {
+        int generated = mipLevels(vanillaLevels + Math.max(0, skip), width, height);
+        int removed = Math.min(Math.max(0, skip), generated);
+        return new int[] {generated, removed};
+    }
+
+    /**
      * {@return l'alpha binarisé d'un texel : 255 s'il atteint le seuil, 0 sinon}
      *
      * @param alpha alpha du texel, de 0 à 255

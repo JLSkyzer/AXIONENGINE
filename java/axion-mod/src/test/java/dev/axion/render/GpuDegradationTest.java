@@ -47,13 +47,34 @@ class GpuDegradationTest {
     }
 
     @Test
-    @DisplayName("T-484 : des assets tous visibles laissent le budget dépassé — palier insuffisant, dit une fois")
-    void palierInsuffisant() {
+    @DisplayName("T-484 : des assets visibles laissent le budget dépassé — LOD forcé, palier par palier, 10 s entre deux")
+    void lodForce() {
         GpuDegradation gpu = new GpuDegradation(BUDGET);
-        Transition descente = gpu.observe(new MeshCache.Residency(1_500, 0, true), 0);
-        assertEquals(Level.UNRESOLVED, descente.to());
-        assertTrue(descente.describe().contains("C-64"), descente.describe());
-        assertNull(gpu.observe(new MeshCache.Residency(1_500, 0, true), SECONDE));
+        MeshCache.Residency depasse = new MeshCache.Residency(1_500, 0, true);
+        Transition premier = gpu.observe(depasse, 0);
+        assertEquals(Level.FORCED_LOD_1, premier.to(), "le levier suivant, aussitôt");
+        assertEquals(1, gpu.level().lodBias());
+        assertEquals(1, gpu.level().mipSkip());
+        assertTrue(premier.describe().contains("LOD forcé de 1") && premier.describe().contains("1 mip"),
+                premier.describe());
+        assertNull(gpu.observe(depasse, 9 * SECONDE), "les textures se rechargent : on attend 10 s");
+        Transition second = gpu.observe(depasse, 10 * SECONDE);
+        assertEquals(Level.FORCED_LOD_2, second.to());
+        assertEquals(2, gpu.level().mipSkip());
+        Transition dernier = gpu.observe(depasse, 20 * SECONDE);
+        assertEquals(Level.UNRESOLVED, dernier.to());
+        assertTrue(dernier.describe().contains("M6"), dernier.describe());
+        assertEquals(2, gpu.level().lodBias(), "le palier non résolu garde le LOD forcé");
+        assertNull(gpu.observe(depasse, 40 * SECONDE), "dit une fois");
+    }
+
+    @Test
+    @DisplayName("T-484 : un dépassement résorbé par déchargement ne force pas le LOD")
+    void dechargementSansLodForce() {
+        GpuDegradation gpu = new GpuDegradation(BUDGET);
+        assertEquals(Level.UNLOADING, gpu.observe(new MeshCache.Residency(900, 2, true), 0).to());
+        assertEquals(0, gpu.level().lodBias());
+        assertEquals(0, gpu.level().mipSkip());
     }
 
     @Test
@@ -61,14 +82,15 @@ class GpuDegradationTest {
     void remonteeAvecHysteresis() {
         GpuDegradation gpu = new GpuDegradation(BUDGET);
         gpu.observe(new MeshCache.Residency(1_500, 0, true), 0);
-        assertEquals(Level.UNRESOLVED, gpu.level());
+        assertEquals(Level.FORCED_LOD_1, gpu.level());
 
         long calme = SECONDE;
         assertNull(gpu.observe(tenue(), calme), "début du calme");
         assertNull(gpu.observe(tenue(), calme + 29 * SECONDE), "29 s : trop tôt");
         Transition premiere = gpu.observe(tenue(), calme + 30 * SECONDE);
-        assertEquals(Level.UNRESOLVED, premiere.from());
+        assertEquals(Level.FORCED_LOD_1, premiere.from());
         assertEquals(Level.UNLOADING, premiere.to(), "un seul palier à la fois");
+        assertEquals(0, gpu.level().mipSkip(), "les textures retrouvent leurs mips");
         assertNull(gpu.observe(tenue(), calme + 35 * SECONDE), "moins de 10 s après la précédente");
         Transition seconde = gpu.observe(tenue(), calme + 40 * SECONDE);
         assertEquals(Level.NOMINAL, seconde.to());

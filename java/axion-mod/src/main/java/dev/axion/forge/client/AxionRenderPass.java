@@ -317,6 +317,29 @@ public final class AxionRenderPass {
         return backend instanceof NativeGlBackend active ? active.lastDrawCalls() : -1;
     }
 
+    /** Palier de la tenue du budget GPU imposé par le banc de rendu (T-484) ; {@code null} hors essai. */
+    private static GpuDegradation.Level forcedGpuLevel;
+
+    /** {@return le palier appliqué : celui qu'impose le banc, sinon celui de la tenue du budget} */
+    private static GpuDegradation.Level appliedGpuLevel() {
+        return forcedGpuLevel != null ? forcedGpuLevel : gpuDegradation.level();
+    }
+
+    /**
+     * Impose un palier de la tenue du budget GPU (banc de rendu, T-484) : ses effets — LOD forcé, mips de
+     * textures retirés — s'appliquent comme s'il avait été atteint. {@code null} rend le palier à la tenue.
+     *
+     * @param level palier imposé, ou {@code null}
+     */
+    public static void forceGpuLevel(GpuDegradation.Level level) {
+        forcedGpuLevel = level;
+    }
+
+    /** {@return les octets des textures d'AXION sur le GPU, ou 0 sans cache} */
+    public static long textureBytes() {
+        return meshes == null ? 0 : meshes.textureBytes();
+    }
+
     /** {@return les triangles des dessins de la dernière frame} */
     public static long lastTriangles() {
         return lastTriangles;
@@ -591,6 +614,8 @@ public final class AxionRenderPass {
             }
         }
         GPU_LEVEL.set(gpuDegradation.level().ordinal());
+        // R-750, LOD forcé : le palier décale le LOD de la frame et retire des mips aux textures d'AXION.
+        meshes.setMipSkip(appliedGpuLevel().mipSkip());
     }
 
     /**
@@ -735,7 +760,8 @@ public final class AxionRenderPass {
         event.getProjectionMatrix().get(projection);
         Quaternionf view = event.getPoseStack().last().pose().getNormalizedRotation(new Quaternionf());
         byte[] desc = RenderPrepCodec.camera(projection, new float[] {view.x, view.y, view.z, view.w},
-                minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight(), maxDistance, lodBias, 0, count,
+                minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight(), maxDistance,
+                lodBias + (gpuDegradation == null ? 0 : appliedGpuLevel().lodBias()), 0, count,
                 (int) Math.min(visibleLimit, Integer.MAX_VALUE));
         int[] ranks = candidates;
         float[] rotation = new float[4];

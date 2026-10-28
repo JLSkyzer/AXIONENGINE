@@ -79,4 +79,17 @@ class TextureRulesTest {
         // Jamais hors du masque.
         assertEquals(2, TextureRules.maskCoordinate(4, 5, 3));
     }
+
+    @Test
+    @DisplayName("R-750, LOD forcé : on génère les mips retirés en plus, dans la limite de l'image")
+    void mipsRetires() {
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new int[] {4, 0}, TextureRules.skippedMips(4, 512, 512, 0));
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new int[] {5, 1}, TextureRules.skippedMips(4, 512, 512, 1));
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new int[] {6, 2}, TextureRules.skippedMips(4, 512, 512, 2));
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new int[] {1, 1}, TextureRules.skippedMips(0, 512, 512, 1),
+                "sans mipmaps, la texture est réduite de moitié");
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new int[] {2, 2}, TextureRules.skippedMips(4, 4, 4, 3),
+                "une image de 4 texels ne descend que de deux niveaux");
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new int[] {4, 0}, TextureRules.skippedMips(4, 512, 512, -1));
+    }
 }

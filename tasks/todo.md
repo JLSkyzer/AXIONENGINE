@@ -3357,13 +3357,13 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
       `glMultiDrawElementsIndirect` ; T-907 au banc natif : 0 pixel différent ; 1 mutation rouge.
 - [ ] T-904 : deux pics isolés le 2026-10-28 (21,55 ms puis 10,46 ms, hors variantes), démentis au passage
       suivant ; cause non établie, à surveiller.
-- [ ] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.
+- [x] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.
       - [x] 6a (2026-10-28) : overlays `lod` et `culling`, en Java, bits 24 et 25 du §31.4 ; bancs verts ; 1
             mutation rouge.
       - [x] 6b (2026-10-28) : T-485 au banc natif (26 appels, 1 344 triangles, 110 assemblies) ; triangles comptés
             sur les dessins de la frame ; `RENDERING.md`.
-      - [ ] 6c : R-750 palier 2, LOD forcé et mips les plus fins des textures retirés (décision de Killian du
-            2026-10-28, après correction : un LOD ne coûte que des indices, ADR-107) ; T-484.
+      - [x] 6c (2026-10-29) : R-750 palier 2, LOD forcé et mips les plus fins des textures retirés (décision de
+            Killian) ; T-484 au banc : textures à 25 % ; 3 mutations rouges.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :

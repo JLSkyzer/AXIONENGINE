@@ -307,6 +307,10 @@ public final class BancDeRendu {
     private static int appelsSansCopies;
     private static int dessineesSansCopies;
 
+    /** Les octets des textures d'AXION avant le LOD forcé, puis sous lui (T-484). */
+    private static long texturesAvant;
+    private static long texturesForcees;
+
     /** L'image des copies instanciées, et le seuil d'instancing à rendre après T-478. */
     private static CapturesDuBanc.Capture copiesInstanciees;
     private static int seuilInstancing;
@@ -726,6 +730,23 @@ public final class BancDeRendu {
             une("juger T-485", mc -> jugerT485());
             serveur("retirer les copies", s -> copies.forEach(Entity::discard));
             jusqua("les copies retirées", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+        }
+
+        // T-484 (R-750, ADR-154) : le palier « LOD forcé » retire un mip aux textures d'AXION, qui se rechargent
+        // en plus petit, la scène toujours dessinée ; rendu, elles retrouvent leur taille.
+        if (!SHADERS) {
+            une("relever les textures", mc -> texturesAvant = AxionRenderPass.textureBytes());
+            une("forcer le LOD", mc -> AxionRenderPass.forceGpuLevel(dev.axion.render.GpuDegradation.Level.FORCED_LOD_1));
+            jusqua("les textures rechargées en plus petit", 120, mc -> AxionRenderPass.textureBytes() > 0
+                    && AxionRenderPass.textureBytes() < texturesAvant
+                    && AxionRenderPass.lastFrame().withAsset() == AxionRenderPass.lastFrame().assemblies());
+            stabiliser("le LOD forcé");
+            une("juger T-484", mc -> jugerT484());
+            une("rendre le palier", mc -> AxionRenderPass.forceGpuLevel(null));
+            // Rendues, les textures des assets dessinés retrouvent leurs mips : quatre fois leur taille réduite.
+            // Celles d'assets retirés plus tôt, encore en cache avant l'essai, ne se rechargent pas.
+            jusqua("les textures rendues à leur taille", 120, mc -> AxionRenderPass.textureBytes() >= 3 * texturesForcees
+                    && AxionRenderPass.lastFrame().withAsset() == AxionRenderPass.lastFrame().assemblies());
         }
 
         // T-476 (§19.13, R-1580) : la transparence ordonnée. Sous un shaderpack, le pack de test
@@ -1487,6 +1508,22 @@ public final class BancDeRendu {
                 "100 copies et %d assemblies de la scène : %d appels de dessin, %d triangles (plafond %d),"
                         + " %d assemblies dessinées (plafond %d)",
                 dessineesSansCopies, appels, triangles, plafonds[0], frame.assemblies(), plafonds[1]));
+    }
+
+    /**
+     * T-484 (R-750, palier 2) : sous le LOD forcé, les textures d'AXION tiennent au plus la moitié de leurs
+     * octets — un mip retiré en rend les trois quarts —, toutes les assemblies dessinées avec leur asset.
+     */
+    private static void jugerT484() {
+        long apres = AxionRenderPass.textureBytes();
+        texturesForcees = apres;
+        AxionRenderPass.FrameStats frame = AxionRenderPass.lastFrame();
+        boolean vert = texturesAvant > 0 && apres > 0 && apres * 2 <= texturesAvant
+                && frame.withAsset() == frame.assemblies();
+        RAPPORT.noter("T-484", vert, String.format(Locale.ROOT,
+                "LOD forcé : textures d'AXION %d → %d octets (%.0f %%) ; %d assemblies dessinées, %d avec leur asset",
+                texturesAvant, apres, texturesAvant == 0 ? 0.0 : 100.0 * apres / texturesAvant,
+                frame.assemblies(), frame.withAsset()));
     }
 
     private static void jugerT479() {

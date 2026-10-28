@@ -88,9 +88,12 @@ relative à la caméra, et le natif décide (C-64, C-65, [ADR-154](docs/decision
   et se recharge quand il revient (R-750, ADR-133). Les textures de Minecraft qu'AXION ne fait que
   référencer n'y comptent pas.
 - **Dégradation** : la tenue du budget passe par des paliers, chacun journalisé avec sa cause
-  (§19.12) — `NOMINAL`, `UNLOADING` (des assets non visibles sont déchargés), `UNRESOLVED` (les
-  assets en trop sont tous visibles ; le LOD forcé, par une résidence par niveau, et la qualité de
-  déformation, leviers suivants de R-750, viennent ensuite et avec la M6). La descente est immédiate ; la remontée se fait d'un
+  (§19.12) — `NOMINAL`, `UNLOADING` (des assets non visibles sont déchargés), `FORCED_LOD_1` et
+  `FORCED_LOD_2` (les assets en trop sont visibles : un, puis deux niveaux de détail de plus, et autant
+  de mips les plus fins retirés aux textures d'AXION, qui se rechargent quatre fois plus petites par mip
+  — un LOD ne coûtant que des indices, ce sont les textures qui rendent la mémoire), `UNRESOLVED` (le
+  LOD forcé ne suffit pas ; la qualité de déformation, dernier levier de R-750, vient avec la M6). Entre
+  deux paliers de LOD forcé, 10 s : le temps que les textures se rechargent. La descente est immédiate ; la remontée se fait d'un
   palier à la fois, après 30 s sous le seuil et 10 s au moins après la précédente (SM-02). Le
   palier courant est la jauge `axion.render.gpu_degradation_level`.
 - **Textures** : décodées et mipmappées hors du render thread, téléversées par Minecraft
@@ -138,11 +141,12 @@ texture d'AXION laissée sur le GPU par une bascule de backend (T-481), ressourc
 reconstruites par un vrai changement de resource pack (T-483), temps GPU des passes du natif
 connu (ADR-146 §2), culling et LOD des assemblies posées hors du champ, 200 copies d'un cube sans appel
 de dessin de plus (T-477), chemins non instancié et indirect à l'image identique (T-478, T-907), 100
-assemblies mesurées sous leurs plafonds (T-485). La CI le joue à chaque push.
+assemblies mesurées sous leurs plafonds (T-485), LOD forcé qui rend les trois quarts de la mémoire des
+textures (T-484). La CI le joue à chaque push.
 
 ## Ce qui n'existe pas encore
 
 Niveaux de qualité Q-0 à Q-4, sonde d'environnement (C-81) et tone mapping (C-83), effet des
 définitions autres que `CUTOUT` (skinning, déformation, parallax, clearcoat, sheen, anisotropie,
-décalques, ombres reçues, SSR), occlusion culling (C-82, M9), LOD forcé sous pression de mémoire GPU
-(résidence par niveau, ADR-154), temps GPU par matériau, d'ombre et de décalques (M9, avec ces passes).
+décalques, ombres reçues, SSR), occlusion culling (C-82, M9), temps GPU par matériau, d'ombre et de
+décalques (M9, avec ces passes).
