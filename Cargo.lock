@@ -164,6 +164,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ax-render-prep"
+version = "1.0.0"
+dependencies = [
+ "ax-math",
+]
+
+[[package]]
 name = "ax-scene"
 version = "1.0.0"
 dependencies = [

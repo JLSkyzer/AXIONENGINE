@@ -190,6 +190,7 @@ ax-asset = { path = "crates/ax-asset" }
 ax-det = { path = "crates/ax-det" }
 ax-model = { path = "crates/ax-model" }
 ax-scene = { path = "crates/ax-scene" }
+ax-render-prep = { path = "crates/ax-render-prep" }
 ax-physics = { path = "crates/ax-physics" }
 ax-bench = { path = "crates/ax-bench" }
 

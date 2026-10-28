@@ -1,0 +1,20 @@
+[package]
+name = "ax-render-prep"
+description = "C-64 : préparation du rendu d'AXION ENGINE (culling, LOD)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints.rust]
+# Logique pure, sans mémoire partagée ni FFI : `forbid`, aucun test n'ayant
+# besoin d'un allocateur global compteur.
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[dependencies]
+# Transformations : R-460 interdit tout type matrice propre.
+ax-math.workspace = true
