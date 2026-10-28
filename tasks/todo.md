@@ -3342,8 +3342,8 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
       - [x] 2a (2026-10-28) : sélection pure (`ax-render-prep::lod`) : taille apparente, seuils, hystérésis,
             biais, mémoire par `id` ; T-522 ; 4 mutations rouges.
       - [ ] 2b : `LODM` lue et validée au chargement, niveau par candidat dans `RENDER_OUT`, Java dessine le
-            mesh du niveau ; T-475, T-906. **Question à Killian d'abord** : comment Java reçoit la table
-            (section du transfert de géométrie, appel à part, ou mesh par dessin dans `RENDER_OUT`).
+            mesh du niveau ; T-475, T-906. Décidé par Killian le 2026-10-28 : `RENDER_OUT` porte le mesh de
+            chaque dessin.
 - [ ] 3. Tri, plafond, échéance ; T-523, T-524.
 - [ ] 4. Instancing (C-65) ; T-530..T-532, T-477, T-478.
 - [ ] 5. Indirect (GL 4.3) ; T-533, T-907.
