@@ -47,6 +47,7 @@ public final class RenderPrepCodec {
      * @param lodBias {@code render.lod_bias}
      * @param quality niveau de qualité
      * @param candidateCount nombre de candidats écrits dans {@code RENDER_IN}
+     * @param maxInstances {@code budgets.max_visible_instances} : retenus au plus ; 0, sans plafond
      * @throws IllegalArgumentException si la projection n'a pas 16 valeurs ou la rotation 4
      */
     public static byte[] camera(
@@ -57,7 +58,8 @@ public final class RenderPrepCodec {
             float maxDistance,
             int lodBias,
             int quality,
-            int candidateCount) {
+            int candidateCount,
+            int maxInstances) {
         if (projection.length != 16 || viewRotation.length != 4) {
             throw new IllegalArgumentException("projection de 16 valeurs et rotation de 4 attendues");
         }
@@ -68,7 +70,8 @@ public final class RenderPrepCodec {
         for (float value : viewRotation) {
             out.putFloat(value);
         }
-        out.putInt(width).putInt(height).putFloat(maxDistance).putInt(lodBias).putInt(quality).putInt(candidateCount);
+        out.putInt(width).putInt(height).putFloat(maxDistance).putInt(lodBias).putInt(quality).putInt(candidateCount)
+                .putInt(maxInstances);
         return out.array();
     }
 

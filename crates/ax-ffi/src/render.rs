@@ -26,6 +26,7 @@ use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::dm::handle::Handle;
 use ax_render_prep::lod::{biased, projected_px, LodState};
 use ax_render_prep::{cull_batched, Camera, Candidate, CullStats, Frustum, LocalBounds, Visible};
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -34,6 +35,13 @@ static RENDER: Mutex<Option<RenderContext>> = Mutex::new(None);
 
 /// Drapeau de `AxionRenderResult` : le résultat est partiel, l'échéance est passée (R-300).
 pub const AXION_RENDER_DEGRADED: u32 = 1 << 0;
+
+/// Drapeau de `AxionRenderResult` : la frame dépassait `budgets.max_visible_instances` ; elle est
+/// descendue d'un niveau de détail et ses retenus les plus lointains ont été écartés (étape 6).
+pub const AXION_RENDER_CAPPED: u32 = 1 << 1;
+
+/// Frames sans être examiné au bout desquelles la décision d'un candidat est oubliée.
+const FORGET_DECISION_AFTER: u64 = 64;
 
 /// Candidats traités d'un seul tenant ; au-delà, les lots suivants partent sur les workers.
 const LOT: usize = 1024;
@@ -72,6 +80,8 @@ pub struct RenderStats {
     pub last_prepare_ns: u64,
     /// Assets dont la table `LODM` a été refusée : ils se rendent au LOD 0.
     pub lod_refused: u64,
+    /// Frames plafonnées par `budgets.max_visible_instances` (étape 6).
+    pub capped: u64,
 }
 
 /// Ce que rend une préparation : les champs d'`AxionRenderResult` que la tranche 1 remplit.
@@ -101,6 +111,9 @@ pub struct RenderContext {
     stats: RenderStats,
     /// Le niveau de chaque candidat d'une frame à l'autre (hystérésis, R-770).
     lod: LodState,
+    /// La dernière décision de chaque candidat examiné — retenu ou non —, et la frame où elle a été
+    /// prise : un candidat que l'échéance laisse sans examen la reprend (R-300, R-770).
+    decisions: HashMap<u32, (bool, u64)>,
 }
 
 fn recover<T>(result: Result<T, PoisonError<T>>) -> T {
@@ -124,6 +137,7 @@ pub(crate) fn open(token: u64, jobs: Option<Arc<JobSystem>>) {
         in_flight: None,
         stats: RenderStats::default(),
         lod: LodState::new(),
+        decisions: HashMap::new(),
     });
 }
 
@@ -284,9 +298,12 @@ impl RenderContext {
     }
 
     /// Prépare une frame : lit les candidats de `RENDER_IN`, les culle, dépose les retenus dans
-    /// `RENDER_OUT`. Les lots au-delà du premier partent sur les workers ; un lot qui n'a pas
-    /// rendu son résultat à l'échéance est gardé entier, sans test — rien ne disparaît — et la
-    /// frame est marquée [`AXION_RENDER_DEGRADED`].
+    /// `RENDER_OUT`. Le premier lot se fait toujours ; les suivants partent sur les workers, ou se font
+    /// ici sans eux, tant que l'échéance n'est pas passée. Un candidat d'un lot sans résultat à
+    /// l'échéance reprend sa décision de la frame d'avant — retenu à son niveau, ou écarté — et un
+    /// candidat jamais examiné est retenu au niveau le plus grossier : rien ne scintille ; la frame
+    /// est marquée [`AXION_RENDER_DEGRADED`]. Au-delà de `max_instances`, toute la frame descend d'un
+    /// niveau et les retenus les plus lointains sont écartés ([`AXION_RENDER_CAPPED`]).
     ///
     /// # Errors
     ///
@@ -303,8 +320,10 @@ impl RenderContext {
 
         let mut flags = 0;
         let mut stats = CullStats::default();
-        // Les candidats d'un lot gardé sans test : ils reprennent leur niveau d'avant.
+        // Les candidats d'un lot sans examen, retenus : ils reprennent leur niveau d'avant.
         let mut partial: Vec<u32> = Vec::new();
+        // Les lots examinés, pour retenir la décision de chacun de leurs candidats.
+        let mut examined: Vec<std::ops::Range<usize>> = Vec::new();
         let mut visible = Vec::new();
         let starts: Vec<usize> = (0..candidates.len()).step_by(LOT).collect();
         // Les lots au-delà du premier partent sur les workers ; sans pool, ils se font ici.
@@ -331,26 +350,28 @@ impl RenderContext {
                 Some(handle) => handle
                     .wait(deadline.saturating_duration_since(Instant::now()))
                     .and_then(|result| result.value()),
-                None => Some(cull_lot(
-                    &camera,
-                    &frustum,
-                    &candidates[start..end],
-                    start,
-                    &assets,
-                )),
+                None => (Instant::now() < deadline)
+                    .then(|| cull_lot(&camera, &frustum, &candidates[start..end], start, &assets)),
             };
             if let Some((lot, part)) = done {
                 visible.extend(lot);
                 add(&mut stats, part);
+                examined.push(start..end);
             } else {
-                // Échéance passée : le lot est gardé entier, sans test. Rien ne disparaît.
+                // Échéance passée : chaque candidat du lot reprend sa décision d'avant ; jamais
+                // examiné, il est retenu. Rien ne disparaît, rien ne scintille.
                 flags |= AXION_RENDER_DEGRADED;
-                for candidate in &candidates[start..end] {
-                    partial.push(candidate.id);
-                }
                 for (offset, candidate) in candidates[start..end].iter().enumerate() {
                     stats.candidates += 1;
+                    if self
+                        .decisions
+                        .get(&candidate.id)
+                        .is_some_and(|&(kept, _)| !kept)
+                    {
+                        continue;
+                    }
                     stats.visible += 1;
+                    partial.push(candidate.id);
                     visible.push(Visible {
                         index: (start + offset) as u32,
                         id: candidate.id,
@@ -358,6 +379,46 @@ impl RenderContext {
                     });
                 }
             }
+        }
+        if !candidates.is_empty() {
+            examined.push(0..LOT.min(candidates.len()));
+        }
+        // La décision de chaque candidat examiné est retenue pour une frame que l'échéance couperait.
+        let frame = self.stats.frames;
+        let kept: HashSet<u32> = visible.iter().map(|v| v.id).collect();
+        for range in examined {
+            for candidate in &candidates[range] {
+                self.decisions
+                    .insert(candidate.id, (kept.contains(&candidate.id), frame));
+            }
+        }
+        self.decisions
+            .retain(|_, &mut (_, seen)| frame - seen <= FORGET_DECISION_AFTER);
+
+        // Étape 6 : au-delà du plafond, toute la frame descend d'un niveau, et les retenus les plus
+        // lointains sont écartés — par distance, puis par `id` —, l'ordre des candidats gardé.
+        let mut bias = camera.lod_bias;
+        let cap = camera.max_instances as usize;
+        if cap > 0 && visible.len() > cap {
+            flags |= AXION_RENDER_CAPPED;
+            self.stats.capped += 1;
+            bias = bias.saturating_add(1);
+            let mut ranked: Vec<usize> = (0..visible.len()).collect();
+            ranked.sort_by(|&a, &b| {
+                visible[a]
+                    .distance
+                    .total_cmp(&visible[b].distance)
+                    .then(visible[a].id.cmp(&visible[b].id))
+            });
+            let mut keep = vec![false; visible.len()];
+            for &rank in &ranked[..cap] {
+                keep[rank] = true;
+            }
+            let mut rank = 0;
+            visible.retain(|_| {
+                rank += 1;
+                keep[rank - 1]
+            });
         }
 
         if self.in_flight.take().is_some() {
@@ -381,7 +442,7 @@ impl RenderContext {
                 None => 0,
                 Some(a) if partial.contains(&candidate.id) => {
                     match self.lod.remembered(candidate.id) {
-                        Some(previous) => biased(previous, camera.lod_bias, a.levels),
+                        Some(previous) => biased(previous, bias, a.levels),
                         // Un candidat nouveau d'un lot partiel : le niveau le plus grossier (D3).
                         None => a.levels.max(1) - 1,
                     }
@@ -389,7 +450,7 @@ impl RenderContext {
                 Some(a) => {
                     let radius = a.bounds.map_or(0.0, |b| b.radius * candidate.scale);
                     let px = projected_px(&camera, radius, v.distance);
-                    self.lod.level(candidate.id, px, a.levels, camera.lod_bias)
+                    self.lod.level(candidate.id, px, a.levels, bias)
                 }
             };
             let first = u32::try_from(meshes.len()).map_err(|_| AXION_E_INVALID_BUFFER)?;
@@ -452,5 +513,207 @@ impl RenderContext {
         } else {
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! T-523 (plafond de la frame) et T-524 (échéance) : un contexte sans workers, où l'échéance se
+    //! juge entre deux lots sur le thread appelant — sans course, donc déterministe.
+
+    use super::*;
+    use ax_math::{Mat4, Quat, Vec3};
+
+    /// Un budget qui ne coupe rien : mille secondes.
+    const LARGE: u64 = 1_000_000_000_000;
+
+    /// Un asset sphère unité, à quatre niveaux, un dessin dont le mesh du niveau `n` est `n`.
+    fn context() -> RenderContext {
+        let assets = vec![Some(RenderAsset {
+            generation: 1,
+            bounds: Some(LocalBounds {
+                center: Vec3::ZERO,
+                radius: 1.0,
+            }),
+            triangles: 12,
+            levels: 4,
+            draw_meshes: vec![[0, 1, 2, 3, 3, 3, 3, 3]].into(),
+        })];
+        RenderContext {
+            token: 1,
+            poisoned: false,
+            buffers: BufferPool::new(),
+            assets: Arc::new(assets),
+            jobs: None,
+            next_frame: 1,
+            in_flight: None,
+            stats: RenderStats::default(),
+            lod: LodState::new(),
+            decisions: HashMap::new(),
+        }
+    }
+
+    fn camera(count: usize, max_instances: u32) -> [u8; Camera::BYTES] {
+        let f = 1.0 / (70f32.to_radians() / 2.0).tan();
+        let mut m = [0f32; 16];
+        m[0] = f / (16.0 / 9.0);
+        m[5] = f;
+        m[10] = -1.0;
+        m[11] = -1.0;
+        m[14] = -0.1;
+        Camera {
+            projection: Mat4::from_cols_array(&m),
+            view_rotation: Quat::IDENTITY,
+            viewport_width: 1920,
+            viewport_height: 1080,
+            max_distance: 512.0,
+            lod_bias: 0,
+            quality: 0,
+            candidate_count: count as u32,
+            max_instances,
+        }
+        .to_bytes()
+    }
+
+    fn write(context: &mut RenderContext, candidates: &[Candidate]) {
+        let len = (candidates.len() * Candidate::BYTES) as u64;
+        let info = context.buffers.acquire(BufferKind::RenderIn, len);
+        let buffer = context.buffers.get_mut(BufferKind::RenderIn).unwrap();
+        let bytes = buffer.as_mut_slice();
+        BufferHeader {
+            kind: BufferKind::RenderIn,
+            generation: info.generation,
+            schema_version: 1,
+            payload_len: 0,
+            element_count: 0,
+            crc32c: 0,
+        }
+        .write(bytes);
+        for (i, c) in candidates.iter().enumerate() {
+            let at = HEADER_BYTES + i * Candidate::BYTES;
+            bytes[at..at + Candidate::BYTES].copy_from_slice(&c.to_bytes());
+        }
+    }
+
+    fn candidate(id: u32, position: Vec3) -> Candidate {
+        Candidate {
+            id,
+            asset: 0,
+            generation: 1,
+            flags: 0,
+            position,
+            scale: 1.0,
+            rotation: Quat::IDENTITY,
+        }
+    }
+
+    /// Les retenus de la dernière frame : `(id, niveau)`.
+    fn retained(context: &mut RenderContext, count: u32) -> Vec<(u32, u32)> {
+        let out = context.buffers.get_mut(BufferKind::RenderOut).unwrap();
+        let bytes = out.as_slice();
+        let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+        (0..count as usize)
+            .map(|i| {
+                let record = HEADER_BYTES + OUT_HEADER + i * OUT_RECORD;
+                (word(record + 4), word(record + 8))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn t523_au_dela_du_plafond_les_plus_lointains_sont_ecartes_et_la_frame_descend_d_un_niveau() {
+        let mut context = context();
+        // Cinq candidats devant, dans le désordre des distances ; deux à égalité de distance.
+        let candidates = [
+            candidate(1, Vec3::new(0.0, 0.0, -40.0)),
+            candidate(2, Vec3::new(0.0, 0.0, -10.0)),
+            candidate(3, Vec3::new(0.0, 0.0, -30.0)),
+            candidate(5, Vec3::new(0.0, 0.0, -20.0)),
+            candidate(4, Vec3::new(0.0, 0.0, -20.0)),
+        ];
+        write(&mut context, &candidates);
+        let free = context.prepare(&camera(5, 0), LARGE).unwrap();
+        assert_eq!(free.flags, 0);
+        let levels: HashMap<u32, u32> = retained(&mut context, free.instance_count)
+            .into_iter()
+            .collect();
+
+        let capped = context.prepare(&camera(5, 3), LARGE).unwrap();
+        assert_eq!(capped.flags, AXION_RENDER_CAPPED);
+        assert_eq!(capped.instance_count, 3);
+        let kept = retained(&mut context, capped.instance_count);
+        // Les trois plus proches — 10, puis 20 deux fois, départagés par `id` : 2, 4, 5 —, dans
+        // l'ordre des candidats.
+        assert_eq!(
+            kept.iter().map(|&(id, _)| id).collect::<Vec<_>>(),
+            [2, 5, 4]
+        );
+        for (id, level) in kept {
+            assert_eq!(
+                level,
+                (levels[&id] + 1).min(3),
+                "le candidat {id} descend d'un niveau"
+            );
+        }
+        assert_eq!(context.stats().capped, 1);
+        // Sous le plafond, rien ne change.
+        let under = context.prepare(&camera(5, 5), LARGE).unwrap();
+        assert_eq!((under.flags, under.instance_count), (0, 5));
+    }
+
+    #[test]
+    fn t524_a_l_echeance_un_candidat_reprend_sa_decision_d_avant() {
+        let mut context = context();
+        // Trois lots : le premier se fait toujours, les deux autres seront coupés par l'échéance.
+        let devant = |id: u32| candidate(id, Vec3::new(0.0, 0.0, -10.0 - (id % 50) as f32));
+        let derriere = |id: u32| candidate(id, Vec3::new(0.0, 0.0, 10.0 + (id % 50) as f32));
+        let count = 3 * LOT;
+        // Frame 1, sans échéance : les pairs devant, les impairs derrière.
+        let first: Vec<Candidate> = (0..count as u32)
+            .map(|id| {
+                if id % 2 == 0 {
+                    devant(id)
+                } else {
+                    derriere(id)
+                }
+            })
+            .collect();
+        write(&mut context, &first);
+        let complete = context.prepare(&camera(count, 0), LARGE).unwrap();
+        assert_eq!(complete.flags, 0);
+        assert_eq!(complete.instance_count as usize, count / 2);
+
+        // Frame 2, échéance nulle : tout a changé de côté, et deux candidats sont nouveaux.
+        let mut second: Vec<Candidate> = (0..count as u32)
+            .map(|id| {
+                if id % 2 == 0 {
+                    derriere(id)
+                } else {
+                    devant(id)
+                }
+            })
+            .collect();
+        second[2 * LOT] = candidate(90_000, Vec3::new(0.0, 0.0, 10.0));
+        second[2 * LOT + 1] = candidate(90_001, Vec3::new(0.0, 0.0, -10.0));
+        write(&mut context, &second);
+        let rushed = context.prepare(&camera(count, 0), 0).unwrap();
+        assert_eq!(rushed.flags, AXION_RENDER_DEGRADED);
+        let kept = retained(&mut context, rushed.instance_count);
+        let ids: HashSet<u32> = kept.iter().map(|&(id, _)| id).collect();
+        // Le premier lot est examiné : ses impairs, passés devant, sont retenus, ses pairs non.
+        assert!((0..LOT as u32).all(|id| ids.contains(&id) == (id % 2 == 1)));
+        // Les lots coupés reprennent la frame 1 : leurs pairs restent retenus, leurs impairs écartés,
+        // quel que soit le côté où ils sont passés.
+        for id in LOT as u32..count as u32 {
+            if id != 2 * LOT as u32 && id != 2 * LOT as u32 + 1 {
+                assert_eq!(ids.contains(&id), id % 2 == 0, "candidat {id}");
+            }
+        }
+        // Jamais examinés : retenus tous deux, au niveau le plus grossier, même derrière la caméra.
+        for nouveau in [90_000, 90_001] {
+            let level = kept.iter().find(|&&(id, _)| id == nouveau).map(|&(_, l)| l);
+            assert_eq!(level, Some(3), "candidat nouveau {nouveau}");
+        }
+        assert_eq!(context.stats().degraded, 1);
     }
 }

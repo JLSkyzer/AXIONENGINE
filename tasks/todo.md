@@ -3345,7 +3345,9 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
             mesh du niveau ; T-475, T-906. Décidé par Killian le 2026-10-28 : `RENDER_OUT` porte le mesh de
             chaque dessin. 3 mutations rouges. Restent : T-475 au banc de rendu, T-906, l'avertissement Java
             d'une table `LODM` refusée.
-- [ ] 3. Tri, plafond, échéance ; T-523, T-524.
+- [x] 3. Plafond et échéance ; T-523, T-524 (2026-10-28). Plafond porté par la caméra (décalage 104), frame
+      descendue d'un niveau puis plus lointains écartés, `AXION_RENDER_CAPPED` ; décision d'avant reprise à
+      l'échéance. 4 mutations rouges. Le tri (étape 5) passe à la tranche 4, avec les dessins.
 - [ ] 4. Instancing (C-65) ; T-530..T-532, T-477, T-478.
 - [ ] 5. Indirect (GL 4.3) ; T-533, T-907.
 - [ ] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.

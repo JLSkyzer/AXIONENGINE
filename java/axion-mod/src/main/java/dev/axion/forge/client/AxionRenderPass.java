@@ -643,7 +643,8 @@ public final class AxionRenderPass {
         event.getProjectionMatrix().get(projection);
         Quaternionf view = event.getPoseStack().last().pose().getNormalizedRotation(new Quaternionf());
         byte[] desc = RenderPrepCodec.camera(projection, new float[] {view.x, view.y, view.z, view.w},
-                minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight(), maxDistance, lodBias, 0, count);
+                minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight(), maxDistance, lodBias, 0, count,
+                (int) Math.min(visibleLimit, Integer.MAX_VALUE));
         int[] ranks = candidates;
         float[] rotation = new float[4];
         NativeCulling.Outcome outcome = active.cull(desc, count, (buffer, offset, rank) -> {

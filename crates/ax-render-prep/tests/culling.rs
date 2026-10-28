@@ -39,6 +39,7 @@ fn camera(max_distance: f32, view_rotation: Quat) -> Camera {
         lod_bias: 0,
         quality: 2,
         candidate_count: 0,
+        max_instances: 0,
     }
 }
 

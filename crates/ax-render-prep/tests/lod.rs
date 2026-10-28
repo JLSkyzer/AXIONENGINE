@@ -23,6 +23,7 @@ fn camera() -> Camera {
         lod_bias: 0,
         quality: 0,
         candidate_count: 0,
+        max_instances: 0,
     }
 }
 

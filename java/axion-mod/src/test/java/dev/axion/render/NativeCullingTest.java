@@ -62,7 +62,7 @@ class NativeCullingTest {
     void disposition() {
         float[] projection = perspective();
         byte[] camera = RenderPrepCodec.camera(projection, new float[] {0.1f, 0.2f, 0.3f, 0.9f}, 1920, 1080,
-                96f, -1, 2, 7);
+                96f, -1, 2, 7, 512);
         assertEquals(RenderPrepCodec.CAMERA_BYTES, camera.length);
         ByteBuffer c = ByteBuffer.wrap(camera).order(ByteOrder.LITTLE_ENDIAN);
         assertEquals(projection[14], c.getFloat(14 * 4));
@@ -73,7 +73,8 @@ class NativeCullingTest {
         assertEquals(-1, c.getInt(92));
         assertEquals(2, c.getInt(96));
         assertEquals(7, c.getInt(100), "le nombre de candidats, au premier mot réservé");
-        assertEquals(0, c.getInt(104));
+        assertEquals(512, c.getInt(104), "le plafond d'instances");
+        assertEquals(0, c.getInt(108));
 
         ByteBuffer candidate = ByteBuffer.allocate(RenderPrepCodec.CANDIDATE_BYTES + 8).order(ByteOrder.LITTLE_ENDIAN);
         RenderPrepCodec.putCandidate(candidate, 8, 11, 3, 5, RenderPrepCodec.NO_CULL, 1f, 2f, -3f, 1.5f,
@@ -103,7 +104,7 @@ class NativeCullingTest {
             float[][] positions = {{0f, 0f, -10f}, {0f, 0f, 10f}, {0f, 0f, -6f}, {0f, 0f, 10f}};
             int[] generations = {asset.generation(), asset.generation(), asset.generation() + 1, asset.generation()};
             int[] flags = {0, 0, 0, RenderPrepCodec.NO_CULL};
-            byte[] camera = RenderPrepCodec.camera(perspective(), IDENTITY, 1920, 1080, 128f, 0, 0, 4);
+            byte[] camera = RenderPrepCodec.camera(perspective(), IDENTITY, 1920, 1080, 128f, 0, 0, 4, 0);
             NativeCulling culling = new NativeCulling(ctx);
             NativeCulling.Outcome outcome = culling.cull(camera, 4, (buffer, offset, rank) ->
                     RenderPrepCodec.putCandidate(buffer, offset, 100 + rank, asset.index(), generations[rank],
@@ -115,7 +116,7 @@ class NativeCullingTest {
             assertEquals(24, outcome.triangles(), "deux cubes de douze triangles");
 
             // Une caméra qui annonce plus de candidats que le tampon n'en tient est refusée.
-            byte[] menteuse = RenderPrepCodec.camera(perspective(), IDENTITY, 1920, 1080, 128f, 0, 0, 1_000_000);
+            byte[] menteuse = RenderPrepCodec.camera(perspective(), IDENTITY, 1920, 1080, 128f, 0, 0, 1_000_000, 0);
             assertEquals(NativeBridge.E_INVALID_BUFFER, culling.cull(menteuse, 1, (buffer, offset, rank) ->
                     RenderPrepCodec.putCandidate(buffer, offset, 1, asset.index(), asset.generation(), 0,
                             0f, 0f, -10f, 1f, IDENTITY), 1_000_000_000L).code());
@@ -129,7 +130,7 @@ class NativeCullingTest {
             assertTrue(anneau.ok(), () -> "chargement du tore refusé, code " + anneau.code());
             float[] distances = {5f, 120f};
             NativeCulling.Outcome lod = culling.cull(
-                    RenderPrepCodec.camera(perspective(), IDENTITY, 1920, 1080, 128f, 0, 0, 2), 2,
+                    RenderPrepCodec.camera(perspective(), IDENTITY, 1920, 1080, 128f, 0, 0, 2, 0), 2,
                     (buffer, offset, rank) -> RenderPrepCodec.putCandidate(buffer, offset, 200 + rank, anneau.index(),
                             anneau.generation(), 0, 0f, 0f, -distances[rank], 1f, IDENTITY),
                     1_000_000_000L);

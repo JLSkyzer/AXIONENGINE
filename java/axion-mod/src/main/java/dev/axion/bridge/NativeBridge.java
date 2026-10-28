@@ -719,6 +719,12 @@ public final class NativeBridge {
     public static final int RENDER_DEGRADED = 1;
 
     /**
+     * Drapeau du résultat : la frame dépassait {@code budgets.max_visible_instances} ; elle est descendue
+     * d'un niveau de détail et ses retenus les plus lointains ont été écartés (C-64, étape 6).
+     */
+    public static final int RENDER_CAPPED = 1 << 1;
+
+    /**
      * Prépare une frame de rendu (IF-05, §4.7) : le natif lit les candidats déjà écrits dans
      * {@code RENDER_IN}, les culle, et dépose les retenus dans {@code RENDER_OUT}, valides jusqu'à
      * {@link #releaseRender} (R-301). L'appel ne prend pas le verrou que tient le pas physique

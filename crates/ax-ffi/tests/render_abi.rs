@@ -106,6 +106,7 @@ fn camera(candidate_count: u32) -> Camera {
         lod_bias: 0,
         quality: 2,
         candidate_count,
+        max_instances: 0,
     }
 }
 

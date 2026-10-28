@@ -22,6 +22,8 @@ pub struct Camera {
     pub quality: u32,
     /// Nombre de candidats que Java a écrits dans `RENDER_IN` pour cette frame.
     pub candidate_count: u32,
+    /// `budgets.max_visible_instances` : retenus au plus dans la frame ; 0, sans plafond.
+    pub max_instances: u32,
 }
 
 /// Pourquoi un `AxionCameraDesc` est refusé.
@@ -69,8 +71,8 @@ pub(crate) fn u32_at(bytes: &[u8], at: usize) -> u32 {
 
 impl Camera {
     /// Taille de `AxionCameraDesc`, en octets : projection `f32[16]`, rotation `f32[4]`, largeur et
-    /// hauteur `u32`, distance `f32`, biais `i32`, qualité `u32`, nombre de candidats `u32`, deux
-    /// `u32` réservés.
+    /// hauteur `u32`, distance `f32`, biais `i32`, qualité `u32`, nombre de candidats `u32`, plafond
+    /// d'instances `u32`, un `u32` réservé.
     pub const BYTES: usize = 112;
 
     /// Lit un `AxionCameraDesc` little-endian. Une rotation unitaire au flottant près est gardée
@@ -122,6 +124,7 @@ impl Camera {
             lod_bias: i32::from_le_bytes([bytes[92], bytes[93], bytes[94], bytes[95]]),
             quality: u32_at(bytes, 96),
             candidate_count: u32_at(bytes, 100),
+            max_instances: u32_at(bytes, 104),
         })
     }
 
@@ -141,6 +144,7 @@ impl Camera {
         out[92..96].copy_from_slice(&self.lod_bias.to_le_bytes());
         out[96..100].copy_from_slice(&self.quality.to_le_bytes());
         out[100..104].copy_from_slice(&self.candidate_count.to_le_bytes());
+        out[104..108].copy_from_slice(&self.max_instances.to_le_bytes());
         out
     }
 

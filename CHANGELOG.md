@@ -131,6 +131,9 @@ Definition of Done (PARTIE 37.3).
     niveaux de detail : le natif choisit le niveau de chaque assembly (taille
     apparente, hysteresis de 10 %, `render.lod_bias`) et le mesh de chaque
     dessin, que le client dessine ; `RENDER_OUT` passe au schema 2 ;
+    plafond `budgets.max_visible_instances` par frame : la frame descend d'un
+    niveau, les plus lointaines sont ecartees ; a l'echeance, chaque assembly
+    non examinee reprend sa decision de la frame d'avant ;
     banc de rendu : jamais en pause, la pause au focus perdu coupee avant le
     chargement du monde et tout ecran de pause referme ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :

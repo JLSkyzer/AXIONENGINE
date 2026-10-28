@@ -1495,7 +1495,7 @@ pub struct AxionRenderResult {
     pub flags: u32,
 }
 
-pub use crate::render::AXION_RENDER_DEGRADED;
+pub use crate::render::{AXION_RENDER_CAPPED, AXION_RENDER_DEGRADED};
 
 /// Prépare une frame de rendu (IF-05, ADR-154 D3).
 ///
