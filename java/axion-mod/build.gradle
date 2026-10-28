@@ -274,7 +274,7 @@ tasks.matching { it.name == 'runGameTestServer' }.configureEach {
             commandLine python, rootProject.file('tools/ci/audit_ecritures.py'), 'verifier',
                     rootProject.file('run-gametest'), new File(auditEcritures, 'releve.json'),
                     new File(auditEcritures, 'ecritures.jfr'), sourceSets.main.java.classesDirectory.get().asFile,
-                    new File(System.getProperty('java.home'), windows ? 'bin/jfr.exe' : 'bin/jfr')
+                    new File(System.getProperty('java.home'), windows ? 'bin/java.exe' : 'bin/java')
         }
     }
 }

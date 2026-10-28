@@ -708,7 +708,8 @@ public final class AxionRuntime {
      */
     public void startTrace(Path file) throws IOException {
         stopTrace();
-        Files.createDirectories(file.getParent());
+        // Absolu d'abord : un nom de fichier nu n'a pas de parent, et c'est le dossier courant.
+        Files.createDirectories(file.toAbsolutePath().getParent());
         trace = new SimulationTrace(Files.newBufferedWriter(file, StandardCharsets.UTF_8));
         tracePath = file;
         simulationJournal.note(false, "trace de la simulation ouverte : " + file);

@@ -29,6 +29,8 @@ run-gametest/
 run-rendertest/
 run-rendertest-native/
 run-rendertest-shaders/
+# Serveur Forge de production de la campagne T-435/T-713b (ADR-153 D8)
+run-campagne/
 
 # Ressources produites par les generateurs de donnees Minecraft
 src/generated/

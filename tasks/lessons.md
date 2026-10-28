@@ -1947,3 +1947,21 @@ l'intermittence.
 intermittence sans trace se reproduit avec une sonde qui imprime la pile, en attrapant `Throwable` :
 Netty relance des exceptions vérifiées sans les déclarer. Le test de non-régression force le cas
 (ne plus lire pendant dix ticks, puis fermer) au lieu de compter sur le hasard du tick.
+
+## 2026-10-28 | Un audit d'écritures vert en local, rouge en CI, et à demi aveugle
+
+**Ce qui a mal tourné.** L'audit T-437 (JFR et relevé du dossier) passait en local avec trois mutations
+rouges, et la première CI l'a fait échouer : la trace de simulation, que seule la CI active par
+`JAVA_TOOL_OPTIONS`, s'écrivait à la racine du dossier de jeu. En cherchant pourquoi le volet JFR ne
+l'avait pas vue, il est apparu qu'il ne voyait presque rien : `jfr print` ne rend que 5 cadres par pile par
+défaut, et toute écriture faite derrière un `BufferedWriter` paraissait sans classe d'AXION.
+
+**Cause.** Deux angles morts. L'environnement local ne reproduisait pas celui de la CI (une option posée
+dans `ci.yml` seulement). Et les mutations de l'audit n'éprouvaient que des écritures à pile courte : aucune
+ne mettait AXION à plus de 5 cadres de l'écriture.
+
+**Règle.** Un contrôle qui tourne en CI se vérifie en local avec l'environnement de la CI, variables de
+`ci.yml` comprises — et sans espace dans les chemins de `JAVA_TOOL_OPTIONS`, qui les coupe. Un outil qui
+résume (`jfr print`, un formateur de pile) se lit avec ses limites par défaut en tête : demander la
+profondeur voulue, ou lire la source en flux. Les mutations d'un audit couvrent aussi le cas profond, pas
+seulement le cas direct.

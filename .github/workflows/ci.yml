@@ -279,9 +279,13 @@ jobs:
 
       # La trace de la simulation (TraceDesGameTests) est ouverte des le demarrage : un test
       # intermittent qui echoue laisse de quoi dire pourquoi (empilement_60s, ~1 echec sur 10).
+      # Elle s'ecrit sous <gameDir>/axion/traces, la ou AXION range ses traces : l'audit des
+      # ecritures (T-437, R-1711), qui suit le passage, refuse tout fichier d'AXION ailleurs. Le
+      # chemin est relatif au dossier du serveur (run-gametest) : JAVA_TOOL_OPTIONS coupe ses
+      # options aux espaces, et un chemin absolu qui en contient ne demarrerait plus la JVM.
       - name: GameTests (serveur dedie)
         env:
-          JAVA_TOOL_OPTIONS: -Daxion.gametest.trace=${{ github.workspace }}/run-gametest/trace-simulation.csv
+          JAVA_TOOL_OPTIONS: -Daxion.gametest.trace=axion/traces/trace-simulation.csv
         run: ./gradlew runGameTestServer --no-daemon --stacktrace
 
       # ADR-148 : l'avertissement de compilation de l'asset de test atteint le journal du jeu, une
@@ -295,7 +299,7 @@ jobs:
         with:
           name: gametests-trace
           path: |
-            run-gametest/trace-simulation.csv
+            run-gametest/axion/traces/trace-simulation.csv
             run-gametest/logs/latest.log
           if-no-files-found: warn
 

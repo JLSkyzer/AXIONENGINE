@@ -582,4 +582,19 @@ class AxionRuntimeTest {
         assertTrue(runtime.peers().isEmpty());
         assertNull(runtime.netSnapshot());
     }
+
+    @Test
+    @DisplayName("C-71 : une trace demandée par un simple nom de fichier s'ouvre dans le dossier courant")
+    void traceSansDossierParent() throws java.io.IOException {
+        AxionRuntime runtime = new AxionRuntime((p, q) -> null);
+        // Un nom nu n'a pas de parent : Path.getParent() est nul, et le dossier courant fait foi.
+        Path nu = Path.of("axion-trace-test-" + System.nanoTime() + ".csv");
+        try {
+            runtime.startTrace(nu);
+            assertTrue(java.nio.file.Files.exists(nu), "trace non créée");
+        } finally {
+            runtime.stopTrace();
+            java.nio.file.Files.deleteIfExists(nu);
+        }
+    }
 }
