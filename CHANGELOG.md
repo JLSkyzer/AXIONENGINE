@@ -121,6 +121,11 @@ Definition of Done (PARTIE 37.3).
     connecte, simulation et persistance intactes, au banc de rendu ;
     format persistant publie dans `docs/schema/persistence-3.md` (NBT 3,
     journal lateral a l'octet pres), confronte au code par les tests ;
+  - culling, LOD et instancing (C-64, C-65, ADR-154) : ABI 9, cycle de rendu
+    IF-05 (`axion_render_prepare`, `axion_render_release`) dans un contexte
+    natif hors du verrou de session, que le pas physique ne bloque jamais ;
+    tampon `RENDER_IN` des candidats d'une frame ; culling de distance et de
+    frustum natif (`ax-render-prep`), par lots sur les workers ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

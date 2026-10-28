@@ -43,6 +43,7 @@ pub static ALLOCATOR: ax_mem::CountingAllocator = ax_mem::CountingAllocator::new
 pub mod context;
 mod cpu_clock;
 pub mod jni_bridge;
+pub mod render;
 
 pub use abi::{
     AXION_ABI_VERSION, AXION_E_CONFIG, AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE,

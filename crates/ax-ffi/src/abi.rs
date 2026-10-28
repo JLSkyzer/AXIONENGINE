@@ -28,6 +28,7 @@ use ax_model::config::{self, ConfigScope, ParsedValue};
 use crate::assembly;
 use crate::asset_store::{decode_render_asset, requested_sections};
 use crate::context;
+use crate::render;
 use ax_asset::a3d::{announced_total_size, A3dLimits, HEADER_BYTES as A3D_HEADER_BYTES};
 use ax_asset::compile::CompileOptions;
 use ax_asset::import::{ImportLimits, SourceFormat};
@@ -52,7 +53,7 @@ use ax_physics::{
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 8;
+pub const AXION_ABI_VERSION: u32 = 9;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -1390,14 +1391,16 @@ pub unsafe extern "C" fn axion_buffer_acquire(
             return AXION_E_INVALID_BUFFER;
         };
 
-        let info = context::with(ctx, false, |session| {
-            let info = session.buffers().acquire(kind, min_capacity);
+        // Les tampons du rendu vivent hors de la session (ADR-154 D2) : leur acquisition ne
+        // prend pas le verrou que tient le pas physique.
+        let acquire = |buffers: &mut ax_core::BufferPool| {
+            let info = buffers.acquire(kind, min_capacity);
             // L'en-tête est posé dès l'acquisition : Java y lit la génération
             // sans second appel, et un tampon fraîchement acquis n'est jamais
             // dans un état que `BufferHeader::read` refuserait. La version de
             // schéma est celle du kind (R-262) : elle dit à Java comment lire la
             // charge — pour SIM_OUT, si les emprises suivent les états (ADR-120).
-            if let Some(buffer) = session.buffers().get_mut(kind) {
+            if let Some(buffer) = buffers.get_mut(kind) {
                 BufferHeader {
                     kind,
                     generation: info.generation,
@@ -1409,7 +1412,12 @@ pub unsafe extern "C" fn axion_buffer_acquire(
                 .write(buffer.as_mut_slice());
             }
             info
-        });
+        };
+        let info = if is_render_kind(kind) {
+            render::with(ctx, |render| acquire(render.buffers()))
+        } else {
+            context::with(ctx, false, |session| acquire(session.buffers()))
+        };
         match info {
             Ok(info) => {
                 // SAFETY: `out` est non nul, et le contrat impose qu'il soit
@@ -1445,11 +1453,108 @@ pub unsafe extern "C" fn axion_buffer_release(ctx: u64, kind: u32, generation: u
         let Some(kind) = BufferKind::from_u32(kind) else {
             return AXION_E_INVALID_BUFFER;
         };
-        match context::with(ctx, false, |session| {
-            session.buffers().release(kind, generation)
-        }) {
+        let released = if is_render_kind(kind) {
+            render::with(ctx, |render| render.buffers().release(kind, generation))
+        } else {
+            context::with(ctx, false, |session| {
+                session.buffers().release(kind, generation)
+            })
+        };
+        match released {
             Ok(true) => AXION_OK,
             Ok(false) => AXION_E_INVALID_BUFFER,
+            Err(code) => code,
+        }
+    })
+}
+
+/// Vrai pour les tampons du contexte de rendu (ADR-154 D2).
+const fn is_render_kind(kind: BufferKind) -> bool {
+    matches!(kind, BufferKind::RenderIn | BufferKind::RenderOut)
+}
+
+/// Résultat d'un [`axion_render_prepare`] (IF-05, §4.7), champ pour champ.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AxionRenderResult {
+    /// Candidats retenus, déposés dans `RENDER_OUT`.
+    pub instance_count: u32,
+    /// Groupes de dessin (C-65) ; 0 avant le regroupement.
+    pub draw_group_count: u32,
+    /// Octets de palettes (animation) ; 0 avant elle.
+    pub palette_bytes: u32,
+    /// Pages de déformation (M6) ; 0 avant elle.
+    pub deform_page_count: u32,
+    /// Décalques ; 0 avant eux.
+    pub decal_count: u32,
+    /// Triangles des retenus, au LOD 0.
+    pub triangle_estimate: u32,
+    /// Identifiant de la frame, à rendre par [`axion_render_release`].
+    pub frame_id: u32,
+    /// Drapeaux, voir [`AXION_RENDER_DEGRADED`].
+    pub flags: u32,
+}
+
+pub use crate::render::AXION_RENDER_DEGRADED;
+
+/// Prépare une frame de rendu (IF-05, ADR-154 D3).
+///
+/// Lit `AxionCameraDesc` (112 octets) puis les candidats que Java a déposés dans `RENDER_IN`,
+/// les culle, et dépose les retenus dans `RENDER_OUT`, valides jusqu'à
+/// [`axion_render_release`] (R-301). Ne prend jamais le verrou de session : elle n'attend pas
+/// un pas physique (ADR-154 D2). Au-delà de `budget_ns`, le résultat est partiel et porte
+/// [`AXION_RENDER_DEGRADED`] (R-300). `partial_tick` est reçu sans être lu : Java interpole
+/// les poses avant de les remettre.
+///
+/// # Safety
+///
+/// `cam` doit pointer sur 112 octets lisibles, `out` sur un [`AxionRenderResult`] accessible en
+/// écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_render_prepare(
+    ctx: u64,
+    cam: *const u8,
+    _partial_tick: f32,
+    budget_ns: u64,
+    out: *mut AxionRenderResult,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if cam.is_null() || out.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        // SAFETY: le contrat impose 112 octets lisibles à partir de `cam`, non nul.
+        let camera = unsafe { std::slice::from_raw_parts(cam, ax_render_prep::Camera::BYTES) };
+        match render::with(ctx, |render| render.prepare(camera, budget_ns)) {
+            Ok(Ok(prepared)) => {
+                // SAFETY: `out` est non nul, et le contrat impose qu'il soit accessible en
+                // écriture.
+                unsafe {
+                    out.write(AxionRenderResult {
+                        instance_count: prepared.instance_count,
+                        triangle_estimate: prepared.triangle_estimate,
+                        frame_id: prepared.frame_id,
+                        flags: prepared.flags,
+                        ..AxionRenderResult::default()
+                    });
+                }
+                AXION_OK
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Libère la frame `frame_id` de rendu (R-301) ; `E-2001` si elle n'est pas celle en vol.
+///
+/// # Safety
+///
+/// Aucun pointeur n'est déréférencé ; `unsafe` par symétrie avec le reste de l'ABI.
+#[no_mangle]
+pub unsafe extern "C" fn axion_render_release(ctx: u64, frame_id: u32) -> i32 {
+    shielded(Some(ctx), || {
+        match render::with(ctx, |render| render.release(frame_id)) {
+            Ok(true) => AXION_OK,
+            Ok(false) => AXION_E_INVALID_HANDLE,
             Err(code) => code,
         }
     })

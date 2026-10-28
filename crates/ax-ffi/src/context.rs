@@ -8,7 +8,7 @@
 //! courant.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::asset_store::{AssetStore, LoadedAsset};
 use crate::cpu_clock;
@@ -130,7 +130,10 @@ pub struct Session {
     side: Side,
     /// Pool de jobs de la session (C-12). Ses threads vivent aussi longtemps
     /// qu'elle : les créer par travail coûterait plus cher que le travail.
-    jobs: Option<JobSystem>,
+    ///
+    /// Partagé avec le contexte de rendu (ADR-154 D2), qui y lance ses lots de culling sans
+    /// prendre le verrou de session ; il s'arrête avec la session, le rendu fermé avant elle.
+    jobs: Option<Arc<JobSystem>>,
     metrics: SessionMetrics,
     /// Compilations d'assets en vol, par identifiant de travail (IF-06).
     ///
@@ -468,7 +471,7 @@ impl Session {
     /// travail se fera alors sur le thread appelant.
     #[must_use]
     pub fn jobs(&self) -> Option<&JobSystem> {
-        self.jobs.as_ref()
+        self.jobs.as_deref()
     }
 
     /// Produit l'export JSON des métriques (R-502).
@@ -714,7 +717,10 @@ impl Session {
                 .report_overrun(&self.metrics.registry, Budget::NativeMemBytes);
             return Err(full);
         }
-        Ok(self.assets.insert(asset))
+        let (bounds, triangles) = (asset.render_bounds(), asset.triangles());
+        let handle = self.assets.insert(asset);
+        crate::render::publish(self.token, handle, bounds, triangles);
+        Ok(handle)
     }
 
     /// Dépose dans `ASSET_OUT` le transfert de géométrie d'un asset chargé
@@ -784,6 +790,7 @@ impl Session {
         match self.assets.remove(handle) {
             Some(asset) => {
                 self.persistent.release(asset.resident_bytes());
+                crate::render::withdraw(self.token, handle);
                 true
             }
             None => false,
@@ -800,6 +807,7 @@ impl Session {
     pub fn record_panic(&mut self, message: impl Into<String>) {
         self.panics += 1;
         self.state = RuntimeState::Poisoned;
+        crate::render::poison(self.token);
         self.last_error = Some(message.into());
     }
 }
@@ -851,12 +859,14 @@ pub fn open(
     // veut que le calcul soit plus long, pas absent. La cause est consignée.
     let job_budgets = budgets;
     let (jobs, jobs_error) = match JobSystem::new(&workers, budgets) {
-        Ok(system) => (Some(system), None),
+        Ok(system) => (Some(Arc::new(system)), None),
         Err(error) => (None, Some(error.to_string())),
     };
 
     let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     let token = TOKEN_TAG | session;
+    // Ordre des verrous : la session, puis le rendu (ADR-154 D2).
+    crate::render::open(token, jobs.clone());
     *slot = Some(Session {
         token,
         state: RuntimeState::Ready,
@@ -1110,9 +1120,12 @@ pub fn close(token: u64) -> Result<AllocationBalance, i32> {
     let mut slot = sessions();
     match slot.as_mut() {
         Some(session) if session.token == token => {
+            // Le rendu se ferme d'abord : il tient une part du pool de jobs, qui ne s'arrête
+            // qu'avec sa dernière référence (R-482).
+            let (render_buffers, render_bytes) = crate::render::close(token);
             let balance = AllocationBalance {
-                live_buffers: session.buffers.live_buffers(),
-                live_bytes: session.buffers.total_bytes(),
+                live_buffers: session.buffers.live_buffers() + render_buffers,
+                live_bytes: session.buffers.total_bytes() + render_bytes,
                 live_assets: session.assets.live(),
                 persistent_bytes: session.persistent.used_bytes(),
             };

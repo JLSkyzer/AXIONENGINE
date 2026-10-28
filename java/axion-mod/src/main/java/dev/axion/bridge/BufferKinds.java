@@ -68,12 +68,21 @@ public final class BufferKinds {
     /** Géométrie de debug. */
     public static final int DEBUG = 13;
 
+    /** Candidats d'une frame de rendu, Java vers le natif. */
+    public static final int RENDER_IN = 14;
+
     /** Version du schéma de la charge de {@code SIM_OUT}, lue à l'octet 12 de l'en-tête. */
     public static final int SIM_OUT_SCHEMA = 2;
+
+    /** Version du schéma de la charge de {@code RENDER_OUT}, lue à l'octet 12 de l'en-tête. */
+    public static final int RENDER_OUT_SCHEMA = 1;
 
     /** Version du schéma de la charge de {@code ASSET_OUT}, lue à l'octet 12 de l'en-tête. */
     public static final int ASSET_OUT_SCHEMA = 1;
 
     /** Version du schéma de la charge de {@code DEBUG}, lue à l'octet 12 de l'en-tête. */
     public static final int DEBUG_SCHEMA = 2;
+
+    /** Version du schéma de la charge de {@code RENDER_IN}, lue à l'octet 12 de l'en-tête. */
+    public static final int RENDER_IN_SCHEMA = 1;
 }

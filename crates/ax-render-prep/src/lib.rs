@@ -21,10 +21,12 @@
 //!
 //! Exigences : R-770, R-771. Tests : T-520, T-521.
 
+mod bounds;
 mod camera;
 mod candidate;
 mod cull;
 
+pub use bounds::bounds_of;
 pub use camera::{Camera, CameraError, Frustum};
 pub use candidate::{Candidate, CandidateError, LocalBounds};
 pub use cull::{cull_batched, cull_scalar, CullStats, Visible, LANES};

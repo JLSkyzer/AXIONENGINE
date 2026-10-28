@@ -41,9 +41,9 @@ use crate::abi::{
     axion_asset_geometry, axion_asset_load, axion_asset_materials, axion_asset_poll,
     axion_asset_texture, axion_asset_unload, axion_buffer_acquire, axion_buffer_release,
     axion_debug_fill, axion_det_profile, axion_init, axion_last_error, axion_metrics_export,
-    axion_net_compress, axion_net_decompress, axion_shutdown, axion_sim_cancel, axion_sim_collect,
-    axion_sim_submit, AxionBufferInfo, AxionCollectResult, AxionDetProfile, AXION_E_INVALID_BUFFER,
-    AXION_OK,
+    axion_net_compress, axion_net_decompress, axion_render_prepare, axion_render_release,
+    axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo,
+    AxionCollectResult, AxionDetProfile, AxionRenderResult, AXION_E_INVALID_BUFFER, AXION_OK,
 };
 use ax_model::dm::handle::Handle;
 
@@ -52,6 +52,9 @@ const BRIDGE_CLASS: &str = "dev/axion/bridge/NativeBridge";
 
 /// Nombre de valeurs qu'`simCollect` écrit, une par champ d'[`AxionCollectResult`].
 const SIM_COLLECT_SLOTS: i32 = 7;
+
+/// Nombre de valeurs qu'`renderPrepare` écrit, une par champ d'[`AxionRenderResult`].
+const RENDER_PREPARE_SLOTS: i32 = 8;
 
 /// Nombre de valeurs qu'`assetLoad` écrit : l'index et la génération du handle.
 const ASSET_LOAD_SLOTS: i32 = 2;
@@ -190,6 +193,16 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "assetUnload".into(),
             sig: "(JII)I".into(),
             fn_ptr: jni_asset_unload as *mut c_void,
+        },
+        NativeMethod {
+            name: "renderPrepare".into(),
+            sig: "(J[BFJ[J)I".into(),
+            fn_ptr: jni_render_prepare as *mut c_void,
+        },
+        NativeMethod {
+            name: "renderRelease".into(),
+            sig: "(JI)I".into(),
+            fn_ptr: jni_render_release as *mut c_void,
         },
         NativeMethod {
             name: "debugFill".into(),
@@ -501,6 +514,73 @@ extern "system" fn jni_sim_submit(
 /// signés, dans le tableau fourni — qui doit compter au moins
 /// [`SIM_COLLECT_SLOTS`] éléments —, à l'image de `assetPoll` : le JNI ne fait
 /// pas traverser de `struct`, seulement des tableaux de sortie.
+/// `renderPrepare` : la caméra arrive en tableau d'octets, copiée une fois par frame (112
+/// octets) ; les candidats sont déjà dans `RENDER_IN`.
+extern "system" fn jni_render_prepare(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    camera: JByteArray,
+    partial_tick: f32,
+    budget_ns: jlong,
+    out: JLongArray,
+) -> jint {
+    if camera.is_null() || out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(&out) {
+        Ok(length) if length >= RENDER_PREPARE_SLOTS => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+    let mut desc = [0i8; ax_render_prep::Camera::BYTES];
+    match env.get_array_length(&camera) {
+        Ok(length) if length as usize == desc.len() => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+    if env.get_byte_array_region(&camera, 0, &mut desc).is_err() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    let mut result = AxionRenderResult::default();
+    // SAFETY: `desc` tient 112 octets lisibles ; `result` est une variable locale accessible en
+    // écriture.
+    let code = unsafe {
+        axion_render_prepare(
+            ctx as u64,
+            desc.as_ptr().cast::<u8>(),
+            partial_tick,
+            budget_ns.max(0) as u64,
+            &raw mut result,
+        )
+    };
+    if code != AXION_OK {
+        return code;
+    }
+    let values = [
+        jlong::from(result.instance_count),
+        jlong::from(result.draw_group_count),
+        jlong::from(result.palette_bytes),
+        jlong::from(result.deform_page_count),
+        jlong::from(result.decal_count),
+        jlong::from(result.triangle_estimate),
+        jlong::from(result.frame_id),
+        jlong::from(result.flags),
+    ];
+    match env.set_long_array_region(&out, 0, &values) {
+        Ok(()) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
+}
+
+extern "system" fn jni_render_release(
+    _env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    frame_id: jint,
+) -> jint {
+    // SAFETY: aucun pointeur n'est passé.
+    unsafe { axion_render_release(ctx as u64, frame_id as u32) }
+}
+
 extern "system" fn jni_sim_collect(
     env: JNIEnv,
     _class: JClass,

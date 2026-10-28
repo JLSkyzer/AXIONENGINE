@@ -31,12 +31,14 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}. 8 depuis l'état restauré d'une assembly à sa création et le sommeil des
-     * assemblies chargées (ADR-153 D3, D4), après les assemblies à plusieurs corps et leurs joints
+     * {@code E-1002}. 9 depuis le cycle de rendu IF-05, son contexte hors du verrou de session et
+     * le tampon {@code RENDER_IN} (ADR-154 D2, D3), après l'état restauré d'une assembly à sa
+     * création et le sommeil des assemblies chargées (8, ADR-153 D3, D4), les assemblies à
+     * plusieurs corps et leurs joints
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 8;
+    public static final int EXPECTED_ABI_VERSION = 9;
 
     /** Succès. */
     public static final int OK = 0;
@@ -143,6 +145,10 @@ public final class NativeBridge {
     static native int assetTexture(long ctx, int index, int generation, int texture, long[] out);
 
     static native int assetUnload(long ctx, int index, int generation);
+
+    static native int renderPrepare(long ctx, byte[] camera, float partialTick, long budgetNs, long[] out);
+
+    static native int renderRelease(long ctx, int frameId);
 
     static native int debugFill(
             long ctx,
@@ -684,6 +690,69 @@ public final class NativeBridge {
     public static int unloadAsset(long ctx, int index, int generation) {
         CROSSINGS.increment();
         return assetUnload(ctx, index, generation);
+    }
+
+    // --- Cycle de rendu (IF-05, ADR-154) ------------------------------------
+
+    /** Taille de {@code AxionCameraDesc}, en octets (ADR-154 D3). */
+    public static final int CAMERA_DESC_BYTES = 112;
+
+    /** Taille d'un candidat de {@code RENDER_IN}, en octets (ADR-154 D3). */
+    public static final int RENDER_CANDIDATE_BYTES = 48;
+
+    /** Nombre de valeurs qu'écrit {@link #prepareRender}, une par champ d'{@code AxionRenderResult}. */
+    public static final int RENDER_PREPARE_SLOTS = 8;
+
+    /** Index des candidats retenus dans le résultat de {@link #prepareRender}. */
+    public static final int RENDER_INSTANCE_COUNT = 0;
+
+    /** Index de l'estimation des triangles. */
+    public static final int RENDER_TRIANGLE_ESTIMATE = 5;
+
+    /** Index de l'identifiant de frame, à rendre par {@link #releaseRender}. */
+    public static final int RENDER_FRAME_ID = 6;
+
+    /** Index des drapeaux. */
+    public static final int RENDER_FLAGS = 7;
+
+    /** Drapeau du résultat : partiel, l'échéance passée (R-300). */
+    public static final int RENDER_DEGRADED = 1;
+
+    /**
+     * Prépare une frame de rendu (IF-05, §4.7) : le natif lit les candidats déjà écrits dans
+     * {@code RENDER_IN}, les culle, et dépose les retenus dans {@code RENDER_OUT}, valides jusqu'à
+     * {@link #releaseRender} (R-301). L'appel ne prend pas le verrou que tient le pas physique
+     * (ADR-154 D2).
+     *
+     * @param ctx jeton de contexte
+     * @param camera {@code AxionCameraDesc}, {@link #CAMERA_DESC_BYTES} octets little-endian
+     * @param partialTick fraction de tick de la frame
+     * @param budgetNs budget de la préparation, {@code budgets.render_prep_ns}
+     * @param out tableau d'au moins {@link #RENDER_PREPARE_SLOTS} éléments
+     * @return {@link #OK}, ou un code d'erreur négatif
+     */
+    public static int prepareRender(long ctx, byte[] camera, float partialTick, long budgetNs, long[] out) {
+        if (camera == null || camera.length != CAMERA_DESC_BYTES) {
+            throw new IllegalArgumentException("la caméra fait " + CAMERA_DESC_BYTES + " octets");
+        }
+        if (out == null || out.length < RENDER_PREPARE_SLOTS) {
+            throw new IllegalArgumentException(
+                    "le tableau de préparation compte au moins " + RENDER_PREPARE_SLOTS + " éléments");
+        }
+        CROSSINGS.increment();
+        return renderPrepare(ctx, camera, partialTick, budgetNs, out);
+    }
+
+    /**
+     * Libère une frame de rendu (R-301).
+     *
+     * @param ctx jeton de contexte
+     * @param frameId identifiant rendu par {@link #prepareRender}
+     * @return {@link #OK}, ou {@link #E_INVALID_HANDLE} si la frame n'est pas celle en vol
+     */
+    public static int releaseRender(long ctx, int frameId) {
+        CROSSINGS.increment();
+        return renderRelease(ctx, frameId);
     }
 
     // --- Géométrie de debug (C-67, ADR-121) --------------------------------

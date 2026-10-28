@@ -38,6 +38,7 @@ fn camera(max_distance: f32, view_rotation: Quat) -> Camera {
         max_distance,
         lod_bias: 0,
         quality: 2,
+        candidate_count: 0,
     }
 }
 
@@ -217,7 +218,10 @@ fn t521_les_lots_rendent_exactement_la_decision_scalaire() {
 
 #[test]
 fn camera_aller_retour_et_refus() {
-    let cam = camera(96.0, Quat::from_rotation_x(0.3));
+    let cam = Camera {
+        candidate_count: 1003,
+        ..camera(96.0, Quat::from_rotation_x(0.3))
+    };
     let bytes = cam.to_bytes();
     assert_eq!(bytes.len(), Camera::BYTES);
     assert_eq!(Camera::from_bytes(&bytes), Ok(cam));
@@ -262,4 +266,60 @@ fn candidats_aller_retour_et_refus() {
     let mut nan = bytes;
     nan[20..24].copy_from_slice(&f32::NAN.to_le_bytes());
     assert_eq!(Candidate::read_all(&nan), Err(CandidateError::Invalid(0)));
+}
+
+fn mesh(min: [f32; 3], max: [f32; 3]) -> ax_model::dm::geometry::MeshDesc {
+    ax_model::dm::geometry::MeshDesc {
+        vertex_offset: 0,
+        vertex_count: 0,
+        index_offset: 0,
+        index_count: 0,
+        material: 0,
+        lod: 0,
+        flags: 0,
+        aabb_min: min,
+        aabb_max: max,
+        region: u16::MAX,
+        uv0_range: 0,
+    }
+}
+
+fn draw(mesh: u32, translation: [f32; 3], scale: f32) -> ax_model::dm::render::RestDraw {
+    let [x, y, z] = translation;
+    ax_model::dm::render::RestDraw {
+        mesh,
+        node: 0,
+        node_flags: 0,
+        _pad: 0,
+        model: [scale, 0.0, 0.0, 0.0, scale, 0.0, 0.0, 0.0, scale, x, y, z],
+    }
+}
+
+#[test]
+fn l_emprise_reunit_les_meshes_poses() {
+    let meshes = [mesh([-1.0; 3], [1.0; 3])];
+    // Le même mesh au repos, puis déplacé de 4 blocs en X et doublé : de (-1, -2, -2) à (6, 2, 2).
+    let bounds = ax_render_prep::bounds_of(
+        &meshes,
+        &[draw(0, [0.0; 3], 1.0), draw(0, [4.0, 0.0, 0.0], 2.0)],
+    )
+    .expect("emprise");
+    assert_eq!(bounds.center, Vec3::new(2.5, 0.0, 0.0));
+    assert_eq!(bounds.radius, Vec3::new(3.5, 2.0, 2.0).length());
+    assert_eq!(
+        ax_render_prep::bounds_of(&meshes, &[]),
+        None,
+        "rien à dessiner"
+    );
+    assert_eq!(
+        ax_render_prep::bounds_of(&meshes, &[draw(1, [0.0; 3], 1.0)]),
+        None,
+        "mesh absent"
+    );
+    let infini = [mesh([-1.0; 3], [f32::INFINITY, 1.0, 1.0])];
+    assert_eq!(
+        ax_render_prep::bounds_of(&infini, &[draw(0, [0.0; 3], 1.0)]),
+        None,
+        "valeur non finie"
+    );
 }

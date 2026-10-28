@@ -18,3 +18,5 @@ missing_docs = "warn"
 [dependencies]
 # Transformations : R-460 interdit tout type matrice propre.
 ax-math.workspace = true
+# `MeshDesc` (DM-04) et `RestDraw` (ADR-119) : l'emprise d'un asset se tire de sa géométrie.
+ax-model.workspace = true

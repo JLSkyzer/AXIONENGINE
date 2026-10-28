@@ -18,6 +18,7 @@ use ax_model::dm::handle::Handle;
 use ax_model::dm::material::{texture_source, TextureDesc};
 use ax_model::dm::render::{encode_geometry_transfer, encode_material_transfer};
 use ax_model::dm::scene::NodeDesc;
+use ax_render_prep::{bounds_of, LocalBounds};
 use ax_scene::{rest_draws, SceneError};
 
 /// Sections que `axion_asset_load` sait charger : celles du rendu, `NODE` et
@@ -124,6 +125,11 @@ pub struct LoadedAsset {
     materials: Vec<u8>,
     /// Table de `TEXR` ; vide sans `MATL | TEXR`.
     textures: TextureTable,
+    /// Sphère qui contient l'asset au repos, pour le culling (ADR-154) ; `None` s'il ne
+    /// dessine rien.
+    bounds: Option<LocalBounds>,
+    /// Triangles dessinés au repos, au LOD 0.
+    triangles: u32,
 }
 
 impl LoadedAsset {
@@ -169,6 +175,18 @@ impl LoadedAsset {
             return None;
         }
         self.textures.data(index)
+    }
+
+    /// Sphère qui contient l'asset au repos ; `None` s'il ne dessine rien (ADR-154).
+    #[must_use]
+    pub fn render_bounds(&self) -> Option<LocalBounds> {
+        self.bounds
+    }
+
+    /// Triangles dessinés au repos, au LOD 0.
+    #[must_use]
+    pub fn triangles(&self) -> u32 {
+        self.triangles
     }
 
     /// Octets résidents, tels qu'imputés à l'arène `PERSISTENT` (R-480).
@@ -225,6 +243,14 @@ pub fn decode_render_asset(
         Vec::new()
     };
 
+    let bounds = bounds_of(&geometry.meshes, &draws);
+    let triangles = draws
+        .iter()
+        .filter_map(|draw| geometry.meshes.get(draw.mesh as usize))
+        .fold(0u32, |total, mesh| {
+            total.saturating_add(mesh.index_count / 3)
+        });
+
     let transfer = encode_geometry_transfer(
         &geometry.meshes,
         &geometry.vertices,
@@ -253,6 +279,8 @@ pub fn decode_render_asset(
         nodes,
         materials,
         textures,
+        bounds,
+        triangles,
     })
 }
 

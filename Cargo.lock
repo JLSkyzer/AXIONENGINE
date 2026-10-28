@@ -121,6 +121,7 @@ dependencies = [
  "ax-mem",
  "ax-model",
  "ax-physics",
+ "ax-render-prep",
  "ax-scene",
  "ax-telemetry",
  "ciborium",
@@ -168,6 +169,7 @@ name = "ax-render-prep"
 version = "1.0.0"
 dependencies = [
  "ax-math",
+ "ax-model",
 ]
 
 [[package]]

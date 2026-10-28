@@ -48,6 +48,8 @@ ax-telemetry.workspace = true
 ax-scene.workspace = true
 # C-13 / ADR-119 : les assets chargés sont imputés à l'arène PERSISTENT (R-480).
 ax-mem.workspace = true
+# C-64 / ADR-154 : le contexte de rendu culle les candidats de chaque frame (IF-05).
+ax-render-prep.workspace = true
 ciborium.workspace = true
 jni.workspace = true
 

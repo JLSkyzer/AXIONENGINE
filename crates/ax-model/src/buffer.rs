@@ -70,11 +70,13 @@ pub enum BufferKind {
     Persist = 12,
     /// Géométrie de debug.
     Debug = 13,
+    /// Candidats d'une frame de rendu, Java vers Rust (ADR-154 D3).
+    RenderIn = 14,
 }
 
 impl BufferKind {
     /// Tous les kinds, dans l'ordre de leur valeur.
-    pub const ALL: [BufferKind; 13] = [
+    pub const ALL: [BufferKind; 14] = [
         BufferKind::SimIn,
         BufferKind::SimOut,
         BufferKind::Events,
@@ -88,6 +90,7 @@ impl BufferKind {
         BufferKind::NetOut,
         BufferKind::Persist,
         BufferKind::Debug,
+        BufferKind::RenderIn,
     ];
 
     /// Convertit une valeur d'ABI en kind.
@@ -110,6 +113,7 @@ impl BufferKind {
             11 => BufferKind::NetOut,
             12 => BufferKind::Persist,
             13 => BufferKind::Debug,
+            14 => BufferKind::RenderIn,
             _ => return None,
         })
     }
@@ -138,6 +142,7 @@ impl BufferKind {
             BufferKind::NetOut => "NET_OUT",
             BufferKind::Persist => "PERSIST",
             BufferKind::Debug => "DEBUG",
+            BufferKind::RenderIn => "RENDER_IN",
         }
     }
 
@@ -156,12 +161,15 @@ impl BufferKind {
     /// - `ASSET_OUT` = 1 (ADR-122 §6) : selon la fonction qui l'a déposée, le
     ///   conteneur A3D compilé ou la géométrie d'ADR-119, inchangés, la table
     ///   des matériaux et des textures, ou les octets PNG d'une texture ;
+    /// - `RENDER_IN` = 1 et `RENDER_OUT` = 1 (ADR-154 D3, tranche 1) : les candidats d'une frame,
+    ///   48 octets chacun ; en retour, un en-tête de frame puis un enregistrement par candidat
+    ///   retenu ;
     /// - tous les autres kinds : 0, leur charge n'est pas encore versionnée.
     #[must_use]
     pub const fn schema_version(self) -> u32 {
         match self {
             BufferKind::Debug | BufferKind::SimOut => 2,
-            BufferKind::AssetOut => 1,
+            BufferKind::AssetOut | BufferKind::RenderIn | BufferKind::RenderOut => 1,
             _ => 0,
         }
     }
@@ -436,7 +444,7 @@ mod tests {
     /// oublié à zéro.
     #[test]
     fn kind_inconnu_refuse() {
-        for value in [0u32, 14, 99, u32::MAX] {
+        for value in [0u32, 15, 99, u32::MAX] {
             let mut raw = [0u8; HEADER_BYTES];
             sample().write(&mut raw);
             raw[4..8].copy_from_slice(&value.to_le_bytes());
@@ -486,7 +494,8 @@ mod tests {
     fn valeurs_d_abi_des_kinds() {
         assert_eq!(BufferKind::SimIn.as_u32(), 1);
         assert_eq!(BufferKind::Debug.as_u32(), 13);
-        assert_eq!(BufferKind::ALL.len(), 13);
+        assert_eq!(BufferKind::RenderIn.as_u32(), 14);
+        assert_eq!(BufferKind::ALL.len(), 14);
 
         for (index, kind) in BufferKind::ALL.iter().enumerate() {
             assert_eq!(kind.as_u32(), index as u32 + 1, "{kind} mal numéroté");
@@ -513,7 +522,7 @@ mod tests {
         for kind in BufferKind::ALL {
             let attendue = match kind {
                 BufferKind::Debug | BufferKind::SimOut => 2,
-                BufferKind::AssetOut => 1,
+                BufferKind::AssetOut | BufferKind::RenderIn | BufferKind::RenderOut => 1,
                 _ => 0,
             };
             assert_eq!(kind.schema_version(), attendue, "{kind}");
