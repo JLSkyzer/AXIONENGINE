@@ -416,6 +416,9 @@ tasks.named('test', Test).configure {
     // Le schema 2 (ADR-151 D3), publie de meme.
     systemProperty 'axion.schema2.file', rootProject.file('docs/schema/definition-2.json').absolutePath
     systemProperty 'axion.repo.dir', rootProject.projectDir.absolutePath
+    // Les schemas publies (definition, persistence-3.md) sont lus par les tests : declares en
+    // entree, un document modifie seul relance les tests au lieu de les laisser a jour.
+    inputs.files(rootProject.fileTree('docs/schema')).withPropertyName('axion.publishedSchemas')
     systemProperty 'axion.schema.update', System.getProperty('axion.schema.update', 'false')
     testLogging {
         events 'failed'

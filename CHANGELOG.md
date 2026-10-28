@@ -119,6 +119,8 @@ Definition of Done (PARTIE 37.3).
     perdues par Minecraft sans AXION sont restaurees a l'identique ;
     un modele absent chez le client (T-713f) : boite de repli, client
     connecte, simulation et persistance intactes, au banc de rendu ;
+    format persistant publie dans `docs/schema/persistence-3.md` (NBT 3,
+    journal lateral a l'octet pres), confronte au code par les tests ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

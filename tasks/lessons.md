@@ -1965,3 +1965,16 @@ ne mettait AXION à plus de 5 cadres de l'écriture.
 résume (`jfr print`, un formateur de pile) se lit avec ses limites par défaut en tête : demander la
 profondeur voulue, ou lire la source en flux. Les mutations d'un audit couvrent aussi le cas profond, pas
 seulement le cas direct.
+
+## 2026-10-28 | Des tests de document à jour sans avoir rien vérifié
+
+**Ce qui a mal tourné.** Les tests qui confrontent `docs/schema/persistence-3.md` au code passaient ;
+six mutations du document survivaient pourtant. La tâche `test` restait `UP-TO-DATE` : le document,
+lu par un chemin (`axion.repo.dir`), n'était pas une entrée de la tâche. Un premier rejeu des mutations
+les a toutes données rouges à tort : Gradle relance toujours une tâche qui vient d'échouer, et la
+mutation précédente avait échoué.
+
+**Cause.** Un chemin passé en propriété est une chaîne ; le contenu du fichier n'est pas suivi.
+
+**Règle.** Tout fichier qu'un test lit par chemin est déclaré en entrée (`inputs.files`) — `docs/schema`
+l'est désormais. Une mutation se joue après un passage vert, jamais à la suite d'une autre mutation.

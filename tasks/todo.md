@@ -3297,7 +3297,8 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
       `dev.axion.persist` et `JournalBridge` ; budget R-1744 mesuré, puis tenu par report des copies ;
       jeton du monde (décision de Killian). 873 JUnit, 51 GameTests, 32 mutations rouges. T-713f passe en
       tranche 6 (banc de rendu, client réel).
-- [ ] 6. Preuves : T-436, T-437, campagne T-435/T-713b, T-713f au banc de rendu, documentation.
+- [x] 6. Preuves : T-436, T-437, campagne T-435/T-713b, T-713f au banc de rendu, documentation (2026-10-28).
+      **Chantier persistance clos** ; suivant : culling et LOD, ADR accepté avant le code.
       - [x] Correctifs (2026-10-28) : le jeton du journal vit dans l'unique `SavedData` permis par R-1711,
             `axion_registry` (`AxionRegistryData`) ; `JournalBudget` s'arrête avant l'entrée dont le coût
             prévu dépasserait le budget, comme `LoadQueue`. 2 mutations rouges.
@@ -3312,6 +3313,9 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
       - [x] T-713f au banc de rendu (2026-10-28) : modèle livré par un datapack du monde, absent chez le
             client ; boîte de repli, client connecté, serveur qui simule et persiste. Vert en vanilla et en
             natif ; 1 mutation rouge.
+      - [x] Documentation (2026-10-28) : `docs/schema/persistence-3.md`, NBT 3 et journal latéral à l'octet
+            près, confronté au code par `PublishedPersistenceSchemaTest` et `PublishedJournalFormatTest` ;
+            `docs/schema` déclaré en entrée de la tâche `test`. 879 JUnit, 7 mutations rouges.
 - [x] Intermittence de `r1690_unclientquiinondeleserveurestdeconnecte` (2026-10-27) : le client simulé
       renvoyait l'acquittement d'une trame lue après la fermeture de sa connexion (`ClosedChannelException`),
       selon que la dernière trame du serveur précédait la déconnexion. Cause prouvée par sonde et trace ;
@@ -3334,8 +3338,9 @@ admet `config/axion-*.toml` ; T-431 avec C-41 (M6).
 - [ ] C-62 avec C-64 : paliers suivants de R-750 — ADR-144 §3, ADR-146.
 - [ ] C-67, overlays dont M4 produit les données : `joints`, `limits` (C-34) ; `bones`, `nodes`,
       `pivots` (C-37) ; `lod`, `culling`, `occluders` (C-64) ; `network` (C-51, fait le 2026-10-21) — ADR-146 §1.
-- [ ] C-50 avec C-52 : `persistence.max_load_ns_per_tick` (R-1730) ; R-1710 et ses tests T-433 et
-      T-434 — fixer ce que migre T-434, aucune v1 n'ayant existé (`NBT_SCHEMA` vaut 2) — ADR-137.
+- [x] C-50 avec C-52 : `persistence.max_load_ns_per_tick` (R-1730) ; R-1710 et ses tests T-433 et
+      T-434 — fixer ce que migre T-434, aucune v1 n'ayant existé (`NBT_SCHEMA` vaut 2) — ADR-137 ; fait par
+      le chantier persistance (ADR-153 : T-434 est la migration 2 → 3), clos le 2026-10-28.
 - [ ] C-70 : l'accesseur `animation` d'`Assembly` devient réel avec C-37 ; le fournisseur d'`AxionApi`
       attend que tous ses accesseurs le soient (M9) — ADR-137.
 - [x] Handshake de la PARTIE 21.3 : `RECONSTRUCT` entre deux plateformes d'empreintes distinctes —
