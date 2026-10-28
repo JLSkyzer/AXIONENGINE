@@ -3,8 +3,10 @@
 #
 # La toute première ouverture d'un contexte llvmpipe sur un runner froid dépasse parfois le minuteur
 # fixe de 10 s de la fenêtre anticipée de Forge, avant tout code d'AXION (runs 40139908450 et
-# 40146214298 ; 4 à 5 s d'habitude, presque rien aux lancements suivants). Seul cet échec-là se rejoue,
-# une fois : un banc rouge pour toute autre raison reste rouge.
+# 40146214298 ; 4 à 5 s d'habitude, presque rien aux lancements suivants). De même, `downloadAssets` de
+# ForgeGradle échoue parfois à télécharger des sons de Minecraft chez Mojang, avant tout code d'AXION
+# (runs 40741109112 et 40749722110, le 2026-10-28), et Gradle conseille de relancer. Seuls ces deux
+# échecs-là se rejouent, une fois : un banc rouge pour toute autre raison reste rouge.
 set -u
 tache="$1"
 sortie="banc-${tache}.log"
@@ -19,6 +21,11 @@ if lancer; then
 fi
 if grep -q "Timed out trying to setup the Game Window" "$sortie"; then
     echo "AXION : fenêtre anticipée de Forge expirée avant tout code d'AXION ; second lancement"
+    lancer
+    exit $?
+fi
+if grep -q "Some assets failed to download or validate" "$sortie"; then
+    echo "AXION : assets de Minecraft non téléchargés avant tout code d'AXION ; second lancement"
     lancer
     exit $?
 fi
