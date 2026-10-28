@@ -717,9 +717,20 @@ impl Session {
                 .report_overrun(&self.metrics.registry, Budget::NativeMemBytes);
             return Err(full);
         }
-        let (bounds, triangles) = (asset.render_bounds(), asset.triangles());
         let handle = self.assets.insert(asset);
-        crate::render::publish(self.token, handle, bounds, triangles);
+        if let Some(asset) = self.assets.get(handle) {
+            crate::render::publish(
+                self.token,
+                handle,
+                crate::render::Published {
+                    bounds: asset.render_bounds(),
+                    triangles: asset.triangles(),
+                    levels: asset.lod_levels(),
+                    draw_meshes: asset.draw_meshes(),
+                    lod_refused: asset.lod_refused().is_some(),
+                },
+            );
+        }
         Ok(handle)
     }
 

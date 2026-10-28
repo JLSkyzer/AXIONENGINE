@@ -1,9 +1,11 @@
 package dev.axion.forge.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.axion.asset.GeometryTransfer;
 import dev.axion.forge.AxionEntity;
 import dev.axion.render.BackendSelection;
 import dev.axion.render.BodyRig;
+import dev.axion.render.LeveledDraws;
 import dev.axion.render.RenderAsset;
 import java.util.List;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -94,6 +96,36 @@ interface RenderBackend {
      *     le backend dessine alors sa boîte de repli
      * @param rig les corps de son asset sous sa definition (ADR-151 D9), ou {@code null} : tout se dessine
      *     alors à la pose de l'assembly
+     * @param draws ses dessins à cette frame : ceux de la liste au repos, le mesh de chacun remplacé par
+     *     celui du niveau de détail que le natif a choisi (ADR-154, tranche 2b) ; vide sans asset
      */
-    record Assembly(AxionEntity entity, RenderAsset asset, BodyRig rig) {}
+    record Assembly(AxionEntity entity, RenderAsset asset, BodyRig rig, List<GeometryTransfer.Draw> draws) {
+
+        /**
+         * Une assembly dessinée au niveau 0 : les dessins de la liste au repos.
+         *
+         * @param entity entité de l'assembly
+         * @param asset géométrie et apparence, ou {@code null}
+         * @param rig les corps de son asset, ou {@code null}
+         */
+        Assembly(AxionEntity entity, RenderAsset asset, BodyRig rig) {
+            this(entity, asset, rig, asset == null ? List.of() : asset.mesh().draws());
+        }
+
+        /**
+         * {@return la même assembly, chaque dessin au mesh donné} Inchangée si les meshes sont ceux de la
+         * liste au repos, ou s'ils ne sont pas un par dessin — le natif et Java ne s'accorderaient pas,
+         * et le niveau 0 reste juste.
+         *
+         * @param meshes le mesh de chaque dessin, dans l'ordre de la liste au repos
+         */
+        Assembly withMeshes(int[] meshes) {
+            if (asset == null) {
+                return this;
+            }
+            List<GeometryTransfer.Draw> leveled =
+                    LeveledDraws.of(asset.mesh().draws(), asset.mesh().meshes().size(), meshes);
+            return leveled == draws ? this : new Assembly(entity, asset, rig, leveled);
+        }
+    }
 }

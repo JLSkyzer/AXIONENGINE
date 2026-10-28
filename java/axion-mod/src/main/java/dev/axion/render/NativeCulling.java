@@ -35,13 +35,16 @@ public final class NativeCulling {
      *
      * @param code {@link NativeBridge#OK}, ou le code de l'échec : rien n'est alors retenu
      * @param retained rangs des candidats retenus, dans l'ordre des candidats
+     * @param levels niveau de détail de chaque retenu
+     * @param meshes pour chaque retenu, le mesh de chacun de ses dessins, dans l'ordre de la liste au
+     *     repos (ADR-154, tranche 2b)
      * @param flags drapeaux du résultat, voir {@link NativeBridge#RENDER_DEGRADED}
      * @param triangles triangles estimés des retenus
      */
-    public record Outcome(int code, int[] retained, int flags, long triangles) {
+    public record Outcome(int code, int[] retained, int[] levels, int[][] meshes, int flags, long triangles) {
 
         static Outcome failed(int code) {
-            return new Outcome(code, new int[0], 0, 0);
+            return new Outcome(code, new int[0], new int[0], new int[0][], 0, 0);
         }
     }
 
@@ -72,7 +75,7 @@ public final class NativeCulling {
      */
     public Outcome cull(byte[] camera, int count, Candidates candidates, long budgetNs) {
         if (count == 0) {
-            return new Outcome(NativeBridge.OK, new int[0], 0, 0);
+            return new Outcome(NativeBridge.OK, new int[0], new int[0], new int[0][], 0, 0);
         }
         long bytes = (long) count * RenderPrepCodec.CANDIDATE_BYTES;
         ByteBuffer in = NativeBridge.acquire(context, BufferKinds.RENDER_IN, bytes);
@@ -108,10 +111,14 @@ public final class NativeCulling {
         try {
             int count = (int) result[NativeBridge.RENDER_INSTANCE_COUNT];
             int[] retained = new int[count];
+            int[] levels = new int[count];
+            int[][] meshes = new int[count][];
             for (int rank = 0; rank < count; rank++) {
                 retained[rank] = RenderPrepCodec.retainedIndex(out, BufferKinds.HEADER_BYTES, rank);
+                levels[rank] = RenderPrepCodec.retainedLevel(out, BufferKinds.HEADER_BYTES, rank);
+                meshes[rank] = RenderPrepCodec.retainedMeshes(out, BufferKinds.HEADER_BYTES, count, rank);
             }
-            return new Outcome(NativeBridge.OK, retained, (int) result[NativeBridge.RENDER_FLAGS],
+            return new Outcome(NativeBridge.OK, retained, levels, meshes, (int) result[NativeBridge.RENDER_FLAGS],
                     result[NativeBridge.RENDER_TRIANGLE_ESTIMATE]);
         } finally {
             NativeBridge.release(context, BufferKinds.RENDER_OUT, out.getInt(GENERATION_OFFSET));

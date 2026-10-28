@@ -18,11 +18,14 @@ public final class RenderPrepCodec {
     /** Taille d'un candidat, en octets. */
     public static final int CANDIDATE_BYTES = 48;
 
-    /** En-tête de frame de {@code RENDER_OUT} : {@code frame_id}, retenus, groupes, drapeaux. */
+    /** En-tête de frame de {@code RENDER_OUT} : {@code frame_id}, retenus, meshes, drapeaux. */
     public static final int OUT_HEADER_BYTES = 16;
 
-    /** Un retenu : index du candidat, {@code id}, LOD, distance. */
-    public static final int OUT_RECORD_BYTES = 16;
+    /**
+     * Un retenu (schéma 2) : index du candidat, {@code id}, niveau de détail, distance, premier mesh et
+     * nombre de meshes dans la table qui suit les retenus.
+     */
+    public static final int OUT_RECORD_BYTES = 24;
 
     /**
      * Drapeau d'un candidat : toujours retenu, sans test — une assembly dont l'emprise au repos ne
@@ -118,5 +121,36 @@ public final class RenderPrepCodec {
      */
     public static int retainedIndex(ByteBuffer renderOut, int payload, int rank) {
         return renderOut.getInt(payload + OUT_HEADER_BYTES + rank * OUT_RECORD_BYTES);
+    }
+
+    /**
+     * {@return le niveau de détail du retenu de rang {@code rank}}
+     *
+     * @param renderOut {@code RENDER_OUT}, little-endian
+     * @param payload position de la charge utile
+     * @param rank rang du retenu
+     */
+    public static int retainedLevel(ByteBuffer renderOut, int payload, int rank) {
+        return renderOut.getInt(payload + OUT_HEADER_BYTES + rank * OUT_RECORD_BYTES + 8);
+    }
+
+    /**
+     * {@return le mesh de chaque dessin du retenu de rang {@code rank}, dans l'ordre de la liste au repos}
+     *
+     * @param renderOut {@code RENDER_OUT}, little-endian
+     * @param payload position de la charge utile
+     * @param retained nombre de retenus de la frame
+     * @param rank rang du retenu
+     */
+    public static int[] retainedMeshes(ByteBuffer renderOut, int payload, int retained, int rank) {
+        int record = payload + OUT_HEADER_BYTES + rank * OUT_RECORD_BYTES;
+        int first = renderOut.getInt(record + 16);
+        int count = renderOut.getInt(record + 20);
+        int table = payload + OUT_HEADER_BYTES + retained * OUT_RECORD_BYTES;
+        int[] meshes = new int[count];
+        for (int i = 0; i < count; i++) {
+            meshes[i] = renderOut.getInt(table + (first + i) * 4);
+        }
+        return meshes;
     }
 }

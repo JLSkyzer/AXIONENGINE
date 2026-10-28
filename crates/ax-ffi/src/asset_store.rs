@@ -14,6 +14,7 @@ use core::mem::size_of;
 
 use ax_asset::a3d::{A3dError, A3dFile, A3dLimits, SectionMask, SectionTag, TextureTable};
 use ax_asset::load::decode_sections;
+use ax_asset::optimize::{LodTable, MAX_LOD_LEVELS};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::material::{texture_source, TextureDesc};
 use ax_model::dm::render::{encode_geometry_transfer, encode_material_transfer};
@@ -130,6 +131,13 @@ pub struct LoadedAsset {
     bounds: Option<LocalBounds>,
     /// Triangles dessinés au repos, au LOD 0.
     triangles: u32,
+    /// Niveaux de détail de l'asset (`LODM`, ADR-107) ; 1 sans table, ou si sa table est refusée.
+    lod_levels: u8,
+    /// Pour chaque dessin au repos, dans l'ordre de la liste au repos, le mesh à dessiner à chaque
+    /// niveau (ADR-154, décision de Killian : `RENDER_OUT` porte le mesh de chaque dessin).
+    draw_meshes: Vec<[u32; MAX_LOD_LEVELS]>,
+    /// Pourquoi la table `LODM` a été refusée, si elle l'a été : l'asset se rend alors au LOD 0.
+    lod_refused: Option<String>,
 }
 
 impl LoadedAsset {
@@ -189,6 +197,24 @@ impl LoadedAsset {
         self.triangles
     }
 
+    /// Niveaux de détail de l'asset ; 1 sans table utilisable.
+    #[must_use]
+    pub fn lod_levels(&self) -> u8 {
+        self.lod_levels
+    }
+
+    /// Le mesh de chaque dessin au repos, à chaque niveau.
+    #[must_use]
+    pub fn draw_meshes(&self) -> &[[u32; MAX_LOD_LEVELS]] {
+        &self.draw_meshes
+    }
+
+    /// Pourquoi la table `LODM` a été refusée, si elle l'a été.
+    #[must_use]
+    pub fn lod_refused(&self) -> Option<&str> {
+        self.lod_refused.as_deref()
+    }
+
     /// Octets résidents, tels qu'imputés à l'arène `PERSISTENT` (R-480).
     #[must_use]
     pub fn resident_bytes(&self) -> usize {
@@ -197,6 +223,7 @@ impl LoadedAsset {
             + self.materials.len()
             + self.textures.entries.len() * size_of::<TextureDesc>()
             + self.textures.blob.len()
+            + self.draw_meshes.len() * size_of::<[u32; MAX_LOD_LEVELS]>()
     }
 }
 
@@ -243,6 +270,35 @@ pub fn decode_render_asset(
         Vec::new()
     };
 
+    // `LODM` (ADR-107) se lit avec la géométrie qu'elle désigne. Une table refusée (R-540) ne refuse
+    // pas l'asset : il se rend au LOD 0 (ADR-154 D4).
+    let mut lod_refused = None;
+    let lods = if sections.contains(SectionTag::GEOM) {
+        match file
+            .section(SectionTag::LODM)
+            .and_then(|payload| match payload {
+                Some(bytes) => LodTable::from_bytes(&bytes, geometry.meshes.len()).map(Some),
+                None => Ok(None),
+            }) {
+            Ok(table) => table,
+            Err(error) => {
+                lod_refused = Some(error.to_string());
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let lod_levels = lods.as_ref().map_or(1, |table| table.levels);
+    let draw_meshes = draws
+        .iter()
+        .map(|draw| {
+            lods.as_ref()
+                .and_then(|table| table.rows.get(draw.mesh as usize).copied())
+                .unwrap_or([draw.mesh; MAX_LOD_LEVELS])
+        })
+        .collect();
+
     let bounds = bounds_of(&geometry.meshes, &draws);
     let triangles = draws
         .iter()
@@ -281,6 +337,9 @@ pub fn decode_render_asset(
         textures,
         bounds,
         triangles,
+        lod_levels,
+        draw_meshes,
+        lod_refused,
     })
 }
 

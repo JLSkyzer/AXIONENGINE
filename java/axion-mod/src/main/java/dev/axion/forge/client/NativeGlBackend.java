@@ -311,7 +311,7 @@ final class NativeGlBackend implements RenderBackend {
             }
             BodyParts bodies = null;
             NativeMeshes.GpuAsset gpu = null;
-            for (GeometryTransfer.Draw draw : asset.mesh().draws()) {
+            for (GeometryTransfer.Draw draw : assembly.draws()) {
                 MeshLook look = asset.look(draw.mesh());
                 boolean surface = look.pass() == SurfacePass.TRANSLUCENT;
                 boolean wanted = translucent ? surface : !surface || asset.emits(draw.mesh());

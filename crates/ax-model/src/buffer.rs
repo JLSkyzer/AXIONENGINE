@@ -161,15 +161,16 @@ impl BufferKind {
     /// - `ASSET_OUT` = 1 (ADR-122 §6) : selon la fonction qui l'a déposée, le
     ///   conteneur A3D compilé ou la géométrie d'ADR-119, inchangés, la table
     ///   des matériaux et des textures, ou les octets PNG d'une texture ;
-    /// - `RENDER_IN` = 1 et `RENDER_OUT` = 1 (ADR-154 D3, tranche 1) : les candidats d'une frame,
-    ///   48 octets chacun ; en retour, un en-tête de frame puis un enregistrement par candidat
-    ///   retenu ;
+    /// - `RENDER_IN` = 1 (ADR-154 D3) : les candidats d'une frame, 48 octets chacun ;
+    /// - `RENDER_OUT` = 2 (ADR-154, tranche 2b) : un en-tête de frame, un enregistrement de 24 octets
+    ///   par candidat retenu — son niveau de détail et la plage de ses meshes —, puis la table des
+    ///   meshes à dessiner, un par dessin au repos ;
     /// - tous les autres kinds : 0, leur charge n'est pas encore versionnée.
     #[must_use]
     pub const fn schema_version(self) -> u32 {
         match self {
-            BufferKind::Debug | BufferKind::SimOut => 2,
-            BufferKind::AssetOut | BufferKind::RenderIn | BufferKind::RenderOut => 1,
+            BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderOut => 2,
+            BufferKind::AssetOut | BufferKind::RenderIn => 1,
             _ => 0,
         }
     }
@@ -521,8 +522,8 @@ mod tests {
         // schéma 1 (matériaux et textures). Les autres kinds ne sont pas versionnés.
         for kind in BufferKind::ALL {
             let attendue = match kind {
-                BufferKind::Debug | BufferKind::SimOut => 2,
-                BufferKind::AssetOut | BufferKind::RenderIn | BufferKind::RenderOut => 1,
+                BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderOut => 2,
+                BufferKind::AssetOut | BufferKind::RenderIn => 1,
                 _ => 0,
             };
             assert_eq!(kind.schema_version(), attendue, "{kind}");

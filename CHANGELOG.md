@@ -128,6 +128,11 @@ Definition of Done (PARTIE 37.3).
     frustum natif (`ax-render-prep`), par lots sur les workers ;
     le client ne dessine que les assemblies retenues ; une assembly aux corps
     articules hors de leur repos, ou marquee `noCulling`, l'est toujours ;
+    niveaux de detail : le natif choisit le niveau de chaque assembly (taille
+    apparente, hysteresis de 10 %, `render.lod_bias`) et le mesh de chaque
+    dessin, que le client dessine ; `RENDER_OUT` passe au schema 2 ;
+    banc de rendu : jamais en pause, la pause au focus perdu coupee avant le
+    chargement du monde et tout ecran de pause referme ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

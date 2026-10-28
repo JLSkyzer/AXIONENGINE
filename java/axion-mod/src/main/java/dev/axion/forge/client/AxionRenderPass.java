@@ -664,18 +664,20 @@ public final class AxionRenderPass {
             LOGGER.warn("AXION : culling natif coupé après le code {}, tout est dessiné", outcome.code());
             return all;
         }
-        boolean[] kept = new boolean[all.size()];
-        java.util.Arrays.fill(kept, true);
+        // Chaque assembly retenue dessine le mesh du niveau que le natif a choisi (ADR-154, tranche 2b).
+        RenderBackend.Assembly[] kept = all.toArray(new RenderBackend.Assembly[0]);
         for (int rank = 0; rank < count; rank++) {
-            kept[candidates[rank]] = false;
+            kept[candidates[rank]] = null;
         }
-        for (int retained : outcome.retained()) {
-            kept[candidates[retained]] = true;
+        int[] retained = outcome.retained();
+        for (int rank = 0; rank < retained.length; rank++) {
+            int at = candidates[retained[rank]];
+            kept[at] = all.get(at).withMeshes(outcome.meshes()[rank]);
         }
         List<RenderBackend.Assembly> drawn = new ArrayList<>(all.size());
-        for (int rank = 0; rank < all.size(); rank++) {
-            if (kept[rank]) {
-                drawn.add(all.get(rank));
+        for (RenderBackend.Assembly assembly : kept) {
+            if (assembly != null) {
+                drawn.add(assembly);
             }
         }
         return drawn;

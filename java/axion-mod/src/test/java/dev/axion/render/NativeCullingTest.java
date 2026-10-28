@@ -94,7 +94,7 @@ class NativeCullingTest {
         long ctx = NativeBridge.initialize(new byte[0], NativeBridge.SIDE_CLIENT);
         assertTrue(ctx > 0, () -> "initialisation refusée, code " + ctx);
         try {
-            byte[] a3d = compile(ctx);
+            byte[] a3d = compile(ctx, ASSET_ID, CUBE);
             NativeAssetLoader loader = new NativeAssetLoader(ctx);
             AssetLoader.Loaded asset = loader.load(ASSET_ID, a3d);
             assertTrue(asset.ok(), () -> "chargement refusé, code " + asset.code());
@@ -121,16 +121,62 @@ class NativeCullingTest {
                             0f, 0f, -10f, 1f, IDENTITY), 1_000_000_000L).code());
 
             assertEquals(NativeBridge.OK, loader.unload(asset.index(), asset.generation()));
+
+            // ADR-154, tranche 2b : un tore que le compilateur simplifie. Près, le niveau 0 et les meshes
+            // de la liste au repos ; loin, un niveau plus grossier et d'autres meshes.
+            byte[] tore = compile(ctx, ASSET_ID + 1, torus());
+            AssetLoader.Loaded anneau = loader.load(ASSET_ID + 1, tore);
+            assertTrue(anneau.ok(), () -> "chargement du tore refusé, code " + anneau.code());
+            float[] distances = {5f, 120f};
+            NativeCulling.Outcome lod = culling.cull(
+                    RenderPrepCodec.camera(perspective(), IDENTITY, 1920, 1080, 128f, 0, 0, 2), 2,
+                    (buffer, offset, rank) -> RenderPrepCodec.putCandidate(buffer, offset, 200 + rank, anneau.index(),
+                            anneau.generation(), 0, 0f, 0f, -distances[rank], 1f, IDENTITY),
+                    1_000_000_000L);
+            assertEquals(NativeBridge.OK, lod.code());
+            assertArrayEquals(new int[] {0, 1}, lod.retained());
+            assertEquals(0, lod.levels()[0]);
+            assertTrue(lod.levels()[1] > 0, "à 120 blocs, le tore prend un LOD");
+            assertEquals(lod.meshes()[0].length, lod.meshes()[1].length, "un mesh par dessin au repos");
+            assertTrue(!java.util.Arrays.equals(lod.meshes()[0], lod.meshes()[1]), "le LOD dessine d'autres meshes");
+            assertEquals(NativeBridge.OK, loader.unload(anneau.index(), anneau.generation()));
         } finally {
             // Tampons relâchés et frames rendues à chaque appel : l'arrêt ne signale aucune fuite.
             assertEquals(NativeBridge.OK, NativeBridge.close(ctx));
         }
     }
 
-    /** Compile le cube par la vraie bibliothèque et relâche les tampons d'asset. */
-    private static byte[] compile(long ctx) {
+    /** Un tore de rayons 1 et 0,4, assez fin pour que le compilateur en tire des LOD. */
+    private static String torus() {
+        int around = 48;
+        int tube = 24;
+        StringBuilder obj = new StringBuilder();
+        for (int i = 0; i < around; i++) {
+            double u = 2 * Math.PI * i / around;
+            for (int j = 0; j < tube; j++) {
+                double v = 2 * Math.PI * j / tube;
+                double ring = 1 + 0.4 * Math.cos(v);
+                obj.append("v ").append((float) (ring * Math.cos(u))).append(' ').append((float) (0.4 * Math.sin(v)))
+                        .append(' ').append((float) (ring * Math.sin(u))).append('\n');
+            }
+        }
+        for (int i = 0; i < around; i++) {
+            for (int j = 0; j < tube; j++) {
+                int a = (i % around) * tube + (j % tube) + 1;
+                int b = ((i + 1) % around) * tube + (j % tube) + 1;
+                int c = ((i + 1) % around) * tube + ((j + 1) % tube) + 1;
+                int d = (i % around) * tube + ((j + 1) % tube) + 1;
+                obj.append("f ").append(a).append(' ').append(b).append(' ').append(c).append('\n');
+                obj.append("f ").append(a).append(' ').append(c).append(' ').append(d).append('\n');
+            }
+        }
+        return obj.toString();
+    }
+
+    /** Compile une source OBJ par la vraie bibliothèque et relâche les tampons d'asset. */
+    private static byte[] compile(long ctx, long assetId, String source) {
         NativeAssetCompiler compiler = new NativeAssetCompiler(ctx);
-        int job = compiler.submit(ASSET_ID, SourceFormats.OBJ, CUBE.getBytes(StandardCharsets.UTF_8), new byte[0],
+        int job = compiler.submit(assetId, SourceFormats.OBJ, source.getBytes(StandardCharsets.UTF_8), new byte[0],
                 SiblingFiles.NONE);
         assertTrue(job > 0, () -> "compilation refusée, code " + job);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);

@@ -19,10 +19,12 @@
 //! la compte, comme `axion_sim_submit` clôt un cycle non collecté (R-282).
 
 use crate::abi::{AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE};
+use ax_asset::optimize::MAX_LOD_LEVELS;
 use ax_core::BufferPool;
 use ax_jobs::{JobKind, JobSystem};
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::dm::handle::Handle;
+use ax_render_prep::lod::{biased, projected_px, LodState};
 use ax_render_prep::{cull_batched, Camera, Candidate, CullStats, Frustum, LocalBounds, Visible};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
@@ -36,18 +38,23 @@ pub const AXION_RENDER_DEGRADED: u32 = 1 << 0;
 /// Candidats traités d'un seul tenant ; au-delà, les lots suivants partent sur les workers.
 const LOT: usize = 1024;
 
-/// Taille de l'en-tête de frame de `RENDER_OUT` : `frame_id`, retenus, groupes, drapeaux.
+/// Taille de l'en-tête de frame de `RENDER_OUT` : `frame_id`, retenus, meshes, drapeaux.
 pub const OUT_HEADER: usize = 16;
 
-/// Taille d'un enregistrement retenu : index du candidat, `id`, LOD, distance.
-pub const OUT_RECORD: usize = 16;
+/// Taille d'un enregistrement retenu (schéma 2) : index du candidat, `id`, LOD, distance, premier
+/// mesh et nombre de meshes dans la table qui suit les enregistrements.
+pub const OUT_RECORD: usize = 24;
 
 /// Ce que le rendu sait d'un asset chargé.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct RenderAsset {
     generation: u32,
     bounds: Option<LocalBounds>,
     triangles: u32,
+    /// Niveaux de détail ; 1 sans table utilisable.
+    levels: u8,
+    /// Le mesh de chaque dessin au repos, à chaque niveau.
+    draw_meshes: Arc<[[u32; MAX_LOD_LEVELS]]>,
 }
 
 /// Les compteurs du contexte de rendu.
@@ -63,6 +70,8 @@ pub struct RenderStats {
     pub last: CullStats,
     /// Durée de la dernière préparation, en nanosecondes.
     pub last_prepare_ns: u64,
+    /// Assets dont la table `LODM` a été refusée : ils se rendent au LOD 0.
+    pub lod_refused: u64,
 }
 
 /// Ce que rend une préparation : les champs d'`AxionRenderResult` que la tranche 1 remplit.
@@ -90,6 +99,8 @@ pub struct RenderContext {
     next_frame: u32,
     in_flight: Option<u32>,
     stats: RenderStats,
+    /// Le niveau de chaque candidat d'une frame à l'autre (hystérésis, R-770).
+    lod: LodState,
 }
 
 fn recover<T>(result: Result<T, PoisonError<T>>) -> T {
@@ -112,6 +123,7 @@ pub(crate) fn open(token: u64, jobs: Option<Arc<JobSystem>>) {
         next_frame: 1,
         in_flight: None,
         stats: RenderStats::default(),
+        lod: LodState::new(),
     });
 }
 
@@ -152,9 +164,26 @@ pub(crate) fn poison(token: u64) {
     }
 }
 
+/// Ce que le rendu publie d'un asset chargé.
+pub(crate) struct Published<'a> {
+    /// Sphère au repos.
+    pub bounds: Option<LocalBounds>,
+    /// Triangles au LOD 0.
+    pub triangles: u32,
+    /// Niveaux de détail.
+    pub levels: u8,
+    /// Le mesh de chaque dessin au repos, à chaque niveau.
+    pub draw_meshes: &'a [[u32; MAX_LOD_LEVELS]],
+    /// La table `LODM` a été refusée.
+    pub lod_refused: bool,
+}
+
 /// Publie l'emprise d'un asset chargé, sous le handle qu'il vient de recevoir.
-pub(crate) fn publish(token: u64, handle: Handle, bounds: Option<LocalBounds>, triangles: u32) {
+pub(crate) fn publish(token: u64, handle: Handle, published: Published<'_>) {
     let _ = with(token, |context| {
+        if published.lod_refused {
+            context.stats.lod_refused += 1;
+        }
         let assets = Arc::make_mut(&mut context.assets);
         let index = handle.index as usize;
         if assets.len() <= index {
@@ -162,8 +191,10 @@ pub(crate) fn publish(token: u64, handle: Handle, bounds: Option<LocalBounds>, t
         }
         assets[index] = Some(RenderAsset {
             generation: handle.generation,
-            bounds,
-            triangles,
+            bounds: published.bounds,
+            triangles: published.triangles,
+            levels: published.levels,
+            draw_meshes: published.draw_meshes.into(),
         });
     });
 }
@@ -173,7 +204,10 @@ pub(crate) fn withdraw(token: u64, handle: Handle) {
     let _ = with(token, |context| {
         let assets = Arc::make_mut(&mut context.assets);
         if let Some(entry) = assets.get_mut(handle.index as usize) {
-            if entry.is_some_and(|asset| asset.generation == handle.generation) {
+            if entry
+                .as_ref()
+                .is_some_and(|asset| asset.generation == handle.generation)
+            {
                 *entry = None;
             }
         }
@@ -193,8 +227,7 @@ fn cull_lot(
     let bounds = |candidate: &Candidate| {
         assets
             .get(candidate.asset as usize)
-            .copied()
-            .flatten()
+            .and_then(Option::as_ref)
             .filter(|a| a.generation == candidate.generation)
             .and_then(|a| a.bounds)
     };
@@ -266,9 +299,12 @@ impl RenderContext {
         let candidates = Arc::new(self.read_candidates(camera.candidate_count as usize)?);
         let frustum = camera.frustum();
         let assets = Arc::clone(&self.assets);
+        self.lod.begin_frame();
 
         let mut flags = 0;
         let mut stats = CullStats::default();
+        // Les candidats d'un lot gardé sans test : ils reprennent leur niveau d'avant.
+        let mut partial: Vec<u32> = Vec::new();
         let mut visible = Vec::new();
         let starts: Vec<usize> = (0..candidates.len()).step_by(LOT).collect();
         // Les lots au-delà du premier partent sur les workers ; sans pool, ils se font ici.
@@ -309,6 +345,9 @@ impl RenderContext {
             } else {
                 // Échéance passée : le lot est gardé entier, sans test. Rien ne disparaît.
                 flags |= AXION_RENDER_DEGRADED;
+                for candidate in &candidates[start..end] {
+                    partial.push(candidate.id);
+                }
                 for (offset, candidate) in candidates[start..end].iter().enumerate() {
                     stats.candidates += 1;
                     stats.visible += 1;
@@ -327,23 +366,53 @@ impl RenderContext {
         let frame_id = self.next_frame;
         self.next_frame = self.next_frame.wrapping_add(1).max(1);
         let instance_count = u32::try_from(visible.len()).map_err(|_| AXION_E_INVALID_BUFFER)?;
-        let mut out = Vec::with_capacity(OUT_HEADER + visible.len() * OUT_RECORD);
-        for value in [frame_id, instance_count, 0, flags] {
-            out.extend_from_slice(&value.to_le_bytes());
-        }
+        // Étape 4 : le niveau de chaque retenu, puis le mesh de chacun de ses dessins à ce niveau
+        // (décision de Killian : `RENDER_OUT` porte le mesh de chaque dessin).
+        let mut records = Vec::with_capacity(visible.len() * OUT_RECORD);
+        let mut meshes: Vec<u32> = Vec::new();
         let mut triangles = 0u32;
         for v in &visible {
-            let asset = candidates[v.index as usize].asset;
-            let carried = assets
-                .get(asset as usize)
-                .copied()
-                .flatten()
-                .map_or(0, |a| a.triangles);
-            triangles = triangles.saturating_add(carried);
-            out.extend_from_slice(&v.index.to_le_bytes());
-            out.extend_from_slice(&v.id.to_le_bytes());
-            out.extend_from_slice(&0u32.to_le_bytes());
-            out.extend_from_slice(&v.distance.to_le_bytes());
+            let candidate = &candidates[v.index as usize];
+            let asset = assets
+                .get(candidate.asset as usize)
+                .and_then(Option::as_ref)
+                .filter(|a| a.generation == candidate.generation);
+            let level = match asset {
+                None => 0,
+                Some(a) if partial.contains(&candidate.id) => {
+                    match self.lod.remembered(candidate.id) {
+                        Some(previous) => biased(previous, camera.lod_bias, a.levels),
+                        // Un candidat nouveau d'un lot partiel : le niveau le plus grossier (D3).
+                        None => a.levels.max(1) - 1,
+                    }
+                }
+                Some(a) => {
+                    let radius = a.bounds.map_or(0.0, |b| b.radius * candidate.scale);
+                    let px = projected_px(&camera, radius, v.distance);
+                    self.lod.level(candidate.id, px, a.levels, camera.lod_bias)
+                }
+            };
+            let first = u32::try_from(meshes.len()).map_err(|_| AXION_E_INVALID_BUFFER)?;
+            if let Some(a) = asset {
+                triangles = triangles.saturating_add(a.triangles);
+                meshes.extend(a.draw_meshes.iter().map(|row| row[usize::from(level)]));
+            }
+            let count = u32::try_from(meshes.len()).map_err(|_| AXION_E_INVALID_BUFFER)? - first;
+            for value in [v.index, v.id, u32::from(level)] {
+                records.extend_from_slice(&value.to_le_bytes());
+            }
+            records.extend_from_slice(&v.distance.to_le_bytes());
+            records.extend_from_slice(&first.to_le_bytes());
+            records.extend_from_slice(&count.to_le_bytes());
+        }
+        let mesh_total = u32::try_from(meshes.len()).map_err(|_| AXION_E_INVALID_BUFFER)?;
+        let mut out = Vec::with_capacity(OUT_HEADER + records.len() + meshes.len() * 4);
+        for value in [frame_id, instance_count, mesh_total, flags] {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        out.extend_from_slice(&records);
+        for mesh in &meshes {
+            out.extend_from_slice(&mesh.to_le_bytes());
         }
         self.buffers
             .write_payload(BufferKind::RenderOut, &out)

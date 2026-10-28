@@ -149,6 +149,57 @@ fn u32_at(bytes: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
 }
 
+/// Un retenu lu dans `RENDER_OUT` (schéma 2) : son niveau et les meshes de ses dessins.
+fn lod_of(ctx: u64, result: &AxionRenderResult, rank: usize) -> (u32, Vec<u32>) {
+    let out = acquire(ctx, BufferKind::RenderOut, 0);
+    let bytes = view(&out);
+    let base = HEADER_BYTES;
+    let record = base + 16 + rank * 24;
+    let (level, first, count) = (
+        u32_at(bytes, record + 8),
+        u32_at(bytes, record + 16) as usize,
+        u32_at(bytes, record + 20) as usize,
+    );
+    let table = base + 16 + result.instance_count as usize * 24;
+    let meshes = (first..first + count)
+        .map(|m| u32_at(bytes, table + m * 4))
+        .collect();
+    (level, meshes)
+}
+
+/// Un tore de rayons 1 et 0,4, assez fin pour que le compilateur en tire des LOD, et sans pôle :
+/// une sphère UV aurait des triangles dégénérés.
+fn tore() -> String {
+    let (around, tube) = (48u32, 24u32);
+    let mut obj = String::new();
+    for i in 0..around {
+        let u = std::f32::consts::TAU * i as f32 / around as f32;
+        for j in 0..tube {
+            let v = std::f32::consts::TAU * j as f32 / tube as f32;
+            let ring = 1.0 + 0.4 * v.cos();
+            obj.push_str(&format!(
+                "v {} {} {}
+",
+                ring * u.cos(),
+                0.4 * v.sin(),
+                ring * u.sin()
+            ));
+        }
+    }
+    for i in 0..around {
+        for j in 0..tube {
+            let at = |i: u32, j: u32| (i % around) * tube + (j % tube) + 1;
+            let (a, b, c, d) = (at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1));
+            obj.push_str(&format!(
+                "f {a} {b} {c}
+f {a} {c} {d}
+"
+            ));
+        }
+    }
+    obj
+}
+
 /// Les `id` retenus, lus dans `RENDER_OUT` ; chaque enregistrement désigne, par son index, le
 /// candidat qui porte cet `id`.
 fn retained(ctx: u64, result: &AxionRenderResult, candidates: &[Candidate]) -> Vec<u32> {
@@ -165,8 +216,8 @@ fn retained(ctx: u64, result: &AxionRenderResult, candidates: &[Candidate]) -> V
     (0..result.instance_count as usize)
         .map(|i| {
             let (index, id) = (
-                u32_at(bytes, base + 16 + i * 16),
-                u32_at(bytes, base + 16 + i * 16 + 4),
+                u32_at(bytes, base + 16 + i * 24),
+                u32_at(bytes, base + 16 + i * 24 + 4),
             );
             assert_eq!(candidates[index as usize].id, id, "index du retenu {i}");
             id
@@ -345,6 +396,55 @@ fn if05_prepare_culle_depose_et_n_attend_pas_la_session() {
         unsafe { axion_render_release(ctx, after.frame_id) },
         AXION_OK
     );
+    release(ctx, &render_in);
+    release(ctx, &acquire(ctx, BufferKind::RenderOut, 0));
+
+    // T-522 de bout en bout : un tore que le compilateur simplifie. Près, le niveau 0 et le mesh
+    // de la liste au repos ; loin, un niveau plus grossier et un autre mesh, choisis par le natif.
+    let options = CompileOptions {
+        asset_id: ASSET_ID + 1,
+        source_hash: 0,
+        limits: ImportLimits::new(1 << 20),
+        dynamic_body: true,
+        authored: AssetOptions::DEFAULT,
+    };
+    let container = compile(tore().as_bytes(), SourceFormat::Obj, &options, |_| None)
+        .expect("tore refusé")
+        .bytes;
+    let asset_in = acquire(ctx, BufferKind::AssetIn, container.len() as u64);
+    view(&asset_in)[HEADER_BYTES..HEADER_BYTES + container.len()].copy_from_slice(&container);
+    let mut boule = Handle::ABSENT;
+    assert_eq!(
+        unsafe {
+            axion_asset_load(
+                ctx,
+                ASSET_ID + 1,
+                AXION_SECTION_NODE | AXION_SECTION_GEOM,
+                &raw mut boule,
+            )
+        },
+        AXION_OK
+    );
+    release(ctx, &asset_in);
+    let pres_loin = [
+        candidate(1, boule, Vec3::new(0.0, 0.0, -5.0)),
+        candidate(2, boule, Vec3::new(0.0, 0.0, -120.0)),
+    ];
+    let render_in = write_candidates(ctx, &pres_loin);
+    let lod = prepare(ctx, &camera(2), 1_000_000_000).unwrap();
+    assert_eq!(lod.instance_count, 2);
+    let (pres, mesh_pres) = lod_of(ctx, &lod, 0);
+    let (loin, mesh_loin) = lod_of(ctx, &lod, 1);
+    assert_eq!(pres, 0);
+    assert!(loin > 0, "à 120 blocs, le tore prend un LOD");
+    assert_eq!(
+        mesh_pres.len(),
+        mesh_loin.len(),
+        "un mesh par dessin au repos"
+    );
+    assert_ne!(mesh_pres, mesh_loin, "le LOD dessine un autre mesh");
+    assert_eq!(unsafe { axion_render_release(ctx, lod.frame_id) }, AXION_OK);
+    assert_eq!(unsafe { axion_asset_unload(ctx, boule) }, AXION_OK);
     release(ctx, &render_in);
     release(ctx, &acquire(ctx, BufferKind::RenderOut, 0));
 

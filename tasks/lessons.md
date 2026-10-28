@@ -1991,3 +1991,15 @@ cullait.
 **Règle.** Un témoin qui doit être dessiné hors du champ le dit au moteur par un moyen générique
 (`noCulling`, que Minecraft honore aussi), jamais par une exception sur son nom dans le moteur. Avant de
 livrer un filtre de rendu, chercher ce que les bancs supposent dessiné.
+
+## 2026-10-28 | Le banc de rendu en pause, bloqué dix minutes
+
+**Ce qui a mal tourné.** Un banc de rendu est resté 600 s à « le monde chargé », puis rouge. Killian l'avait
+annoncé : une fenêtre qui perd le focus pendant le chargement ouvre l'écran de pause, et l'étape attend un
+écran nul qui ne vient jamais. Un premier banc rouge du même après-midi, attribué au seul culling, a
+probablement attendu de même.
+
+**Cause.** `pauseOnLostFocus = false` n'était posé qu'à « figer les réglages », après le chargement.
+
+**Règle.** Un banc qui pilote le client coupe la pause au focus perdu avant de charger le monde, et
+referme tout écran de pause qui s'ouvre sur un monde chargé tant qu'il tourne.

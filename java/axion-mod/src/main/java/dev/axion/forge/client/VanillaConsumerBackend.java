@@ -103,7 +103,8 @@ final class VanillaConsumerBackend implements RenderBackend {
         for (Assembly assembly : frame.assemblies()) {
             if (assembly.asset() != null) {
                 placed.add(new Placed(assembly.asset(),
-                        BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig())));
+                        BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig()),
+                        assembly.draws()));
             } else {
                 anyBox = true;
             }
@@ -127,14 +128,15 @@ final class VanillaConsumerBackend implements RenderBackend {
                 continue;
             }
             Placed placed = null;
-            for (GeometryTransfer.Draw draw : asset.mesh().draws()) {
+            for (GeometryTransfer.Draw draw : assembly.draws()) {
                 MeshLook look = asset.look(draw.mesh());
                 if (look.pass() != SurfacePass.TRANSLUCENT || !look.visible()) {
                     continue;
                 }
                 if (placed == null) {
                     placed = new Placed(asset,
-                            BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig()));
+                            BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig()),
+                            assembly.draws());
                 }
                 parts.add(Part.of(placed, draw, look, asset.albedo(draw.mesh())));
             }
@@ -196,7 +198,7 @@ final class VanillaConsumerBackend implements RenderBackend {
         Map<RenderType, List<Part>> batches = new LinkedHashMap<>();
         for (Placed assembly : placed) {
             RenderAsset asset = assembly.asset();
-            for (GeometryTransfer.Draw draw : asset.mesh().draws()) {
+            for (GeometryTransfer.Draw draw : assembly.draws()) {
                 MeshLook look = asset.look(draw.mesh());
                 if (look.pass() != pass || !look.visible()) {
                     continue;
@@ -218,7 +220,7 @@ final class VanillaConsumerBackend implements RenderBackend {
         Map<RenderType, List<Part>> batches = new LinkedHashMap<>();
         for (Placed assembly : placed) {
             RenderAsset asset = assembly.asset();
-            for (GeometryTransfer.Draw draw : asset.mesh().draws()) {
+            for (GeometryTransfer.Draw draw : assembly.draws()) {
                 MeshLook look = asset.look(draw.mesh());
                 if (!look.visible() || !asset.emits(draw.mesh())) {
                     continue;
@@ -418,7 +420,7 @@ final class VanillaConsumerBackend implements RenderBackend {
     }
 
     /** Une assembly prête, ses corps posés une fois pour la frame (ADR-151 D9). */
-    private record Placed(RenderAsset asset, BodyParts bodies) {}
+    private record Placed(RenderAsset asset, BodyParts bodies, List<GeometryTransfer.Draw> draws) {}
 
     /**
      * Un mesh à dessiner : son assembly, son dessin au repos, son apparence, où lire sa texture pour ce

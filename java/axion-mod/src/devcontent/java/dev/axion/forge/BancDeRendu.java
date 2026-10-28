@@ -29,6 +29,7 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import net.minecraft.client.CloudStatus;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.Options;
 import net.minecraft.client.ParticleStatus;
@@ -485,7 +486,13 @@ public final class BancDeRendu {
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (ACTIF && event.phase == TickEvent.Phase.END) {
             ticks++;
-            ClientLevel level = Minecraft.getInstance().level;
+            Minecraft minecraft = Minecraft.getInstance();
+            // Garde-fou : le banc ne se joue jamais en pause. Un écran de pause ouvert sur un monde chargé
+            // — focus perdu, touche Échap — est refermé aussitôt.
+            if (!fini && minecraft.level != null && minecraft.screen instanceof PauseScreen) {
+                minecraft.setScreen(null);
+            }
+            ClientLevel level = minecraft.level;
             if (level != null) {
                 for (Entity entity : level.entitiesForRendering()) {
                     if (entity instanceof AxionEntity assembly && DERRIERE.contains(assembly.definitionId())) {
@@ -907,6 +914,9 @@ public final class BancDeRendu {
     // --- Mise en place ---------------------------------------------------------------------------
 
     private static void creerLeMonde(Minecraft minecraft) {
+        // Avant le chargement : une fenêtre qui perd le focus pendant qu'il se fait ouvrirait l'écran de
+        // pause, et « le monde chargé » attendrait un écran nul qui ne viendrait jamais.
+        minecraft.options.pauseOnLostFocus = false;
         GameRules regles = new GameRules();
         regles.getRule(GameRules.RULE_DAYLIGHT).set(false, null);
         regles.getRule(GameRules.RULE_WEATHER_CYCLE).set(false, null);
