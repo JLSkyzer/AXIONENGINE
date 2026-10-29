@@ -17,6 +17,8 @@ import dev.axion.forge.RuntimeAccess;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.diag.JavaMetrics;
 import dev.axion.physics.AssemblyBodies;
+import dev.axion.render.AnimationCommands;
+import dev.axion.render.AnimationSync;
 import dev.axion.render.BackendSelection;
 import dev.axion.render.BodyRig;
 import dev.axion.render.GpuDegradation;
@@ -131,6 +133,12 @@ public final class AxionRenderPass {
      * sans natif, ou après un échec : tout est alors dessiné, comme avant lui.
      */
     private static NativeCulling culling;
+
+    /** Ce que le contexte de rendu a reçu de l'animation de chaque assembly (ADR-155), créé avec lui. */
+    private static AnimationSync animations;
+
+    /** Un refus des commandes d'animation par le natif, signalé une fois. */
+    private static boolean animationRefusalLogged;
 
     /** {@code render.max_distance} et {@code render.lod_bias}, lus au choix du backend. */
     private static float maxDistance = 128f;
@@ -755,8 +763,12 @@ public final class AxionRenderPass {
      * dont l'asset est chargé dans le natif sont candidates ; les autres — boîte de repli, asset en
      * chargement — sont toujours dessinées. Est retenue sans test ({@link RenderPrepCodec#NO_CULL}) une
      * assembly dont des corps articulés s'écartent de leur pose de repos, que l'emprise au repos de son
-     * asset ne borne pas, et une entité marquée {@code noCulling}, que Minecraft dessine lui aussi sans
-     * la culler. Un échec du natif coupe le culling, et tout est dessiné.
+     * asset ne borne pas, une assembly dont une couche d'animation montre quelque chose, pour la même
+     * raison, et une entité marquée {@code noCulling}, que Minecraft dessine lui aussi sans la culler. Un
+     * échec du natif coupe le culling, et tout est dessiné.
+     *
+     * <p>Avant le culling, l'animation de chaque candidate est poussée au natif (ADR-155) : il en tire les
+     * matrices de ses dessins.
      */
     private static List<RenderBackend.Assembly> cull(
             RenderLevelStageEvent event, Minecraft minecraft, List<RenderBackend.Assembly> all) {
@@ -776,6 +788,21 @@ public final class AxionRenderPass {
         if (count == 0) {
             return all;
         }
+        double renderTick = ClientSnapshots.renderTick();
+        AnimationSync sync = animations;
+        for (int rank = 0; rank < count; rank++) {
+            RenderBackend.Assembly assembly = all.get(candidates[rank]);
+            sync.see(assembly.entity().getId(), assembly.asset().nativeIndex(), assembly.asset().nativeGeneration(),
+                    assembly.entity().animationState());
+        }
+        AnimationCommands commands = sync.flush(renderTick);
+        if (commands.count() > 0) {
+            int applied = active.animate(commands.bytes());
+            if (applied < 0 && !animationRefusalLogged) {
+                animationRefusalLogged = true;
+                LOGGER.warn("AXION : commandes d'animation refusées par le natif, code {}", applied);
+            }
+        }
         Vec3 camera = event.getCamera().getPosition();
         float partialTick = event.getPartialTick();
         float[] projection = new float[16];
@@ -794,12 +821,13 @@ public final class AxionRenderPass {
             rotation[1] = pose.rotation().y;
             rotation[2] = pose.rotation().z;
             rotation[3] = pose.rotation().w;
+            boolean atRest = pose.bodies().isEmpty() && !assembly.entity().animationState().visibleAt(renderTick);
             RenderPrepCodec.putCandidate(buffer, offset, assembly.entity().getId(), assembly.asset().nativeIndex(),
                     assembly.asset().nativeGeneration(),
-                    pose.bodies().isEmpty() && !assembly.entity().noCulling ? 0 : RenderPrepCodec.NO_CULL,
+                    atRest && !assembly.entity().noCulling ? 0 : RenderPrepCodec.NO_CULL,
                     (float) (pose.x() - camera.x), (float) (pose.y() - camera.y), (float) (pose.z() - camera.z),
                     1f, rotation);
-        }, renderPrepLimit, ClientSnapshots.renderTick());
+        }, renderPrepLimit, renderTick);
         if (outcome.code() == 0
                 && (OVERLAYS.isOn(DebugOverlays.Overlay.LOD) || OVERLAYS.isOn(DebugOverlays.Overlay.CULLING))) {
             for (int rank = 0; rank < count; rank++) {
@@ -1035,6 +1063,7 @@ public final class AxionRenderPass {
             visibleLimit = outcome.config().getInt("budgets.max_visible_instances");
             trianglesLimit = outcome.config().getInt("budgets.max_triangles_frame");
             culling = new NativeCulling(outcome.context());
+            animations = new AnimationSync();
             runtime.addNativeReleaser(cache::close);
             cache.setMaterialMaps(backend != null && backend.kind() == BackendSelection.Kind.NATIVE);
             meshes = cache;

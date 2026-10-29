@@ -2,10 +2,13 @@ package dev.axion.forge;
 
 import com.mojang.logging.LogUtils;
 import dev.axion.AxionMod;
+import dev.axion.asset.A3dSections;
 import dev.axion.forge.net.AxionChannel;
 import dev.axion.forge.net.AxionNetwork;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.lifecycle.HookGuard;
+import dev.axion.net.MalformedPacketException;
+import dev.axion.net.NetCompression;
 import dev.axion.net.ServerSnapshot;
 import dev.axion.physics.SimulationJournal;
 import java.util.function.Consumer;
@@ -257,7 +260,8 @@ public final class AxionForgeEntrypoint {
                     runtime::physicsMaterialIndex,
                     runtime.outcome().config().getBoolean("modules.joints"),
                     runtime.outcome().config().getInt("persistence.max_load_ns_per_tick"),
-                    runtime::lastSubmitNanos);
+                    runtime::lastSubmitNanos,
+                    zstd(runtime.netCompression()));
             worldTileBridge =
                     new WorldTileBridge(
                             event.getServer(),
@@ -449,5 +453,19 @@ public final class AxionForgeEntrypoint {
                 guard.failures().forEach(failure -> LOGGER.error("AXION :   {}", failure));
             }
         }
+    }
+
+    /**
+     * Le décompresseur des sections A3D compressées : le zstd du natif, celui des trames réseau, borné
+     * à la taille que la section déclare (ADR-155, section {@code ANIM}).
+     */
+    private static A3dSections.Decompressor zstd(NetCompression compression) {
+        return (frame, size) -> {
+            try {
+                return compression.decompress(frame, size);
+            } catch (MalformedPacketException refused) {
+                throw new IllegalArgumentException(refused.getMessage(), refused);
+            }
+        };
     }
 }

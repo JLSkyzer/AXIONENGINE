@@ -3407,7 +3407,16 @@ sources procédurales de véhicule (M5, T-365).
 - [x] Décisions de Killian pour la tranche 4 (2026-10-29) : `AnimationControl` interne en M4 (tests, GameTests, banc ;
       fournisseur en M9) ; descripteur v3 à la dernière commande par couche ; `drives_joint` avec la porte (M6) ;
       pas de persistance en M4.
-- [ ] 4. Réseau et API : descripteur v3, `AnimationControl`, `NO_CULL` des assemblies animées, banc en jeu.
+- [x] 4. Réseau et API (2026-10-29) : `AnimCommand` porte le temps de clip ; descripteur v3 (drapeau 64, dernière
+      commande de chaque couche, envoyée quand elle change, sans attendre l'échéance d'une assembly endormie) ;
+      `AnimationLayers.changesFrom`, seule source des commandes du serveur et du client ; `AnimationControl`
+      (`AssemblyAnimation`, R-1755, refus de D5, R-200 reproduit — `play_at` clôt d'abord les fondus achevés) ;
+      `AnimationSync` côté client (commandes à leur tick de rendu, `FORGET` après 64 frames), `NO_CULL` ; un
+      collider animé réveille son corps endormi naturellement ; `ANIM` compressée lue par le zstd du natif,
+      une section illisible ne fait plus tomber le tick ; `drives_joint` inconnu refusé (test). Glissière
+      générée par `tools/assets/animation_essai.py` : GameTest de bout en bout (54/54), banc de rendu (largeur
+      123 → 191 px, retour au repos à 0 px près) ; 10 mutations Java et 2 natives rouges.
+      Reste : une assembly sans collider n'a pas de corps, donc ni snapshot ni animation.
 - [ ] 5. Skinning natif : shader, TBO, repli UBO, palettes dans `RENDER_OUT` (schéma 3) ; T-540..T-542, T-908.
 - [ ] 6. Skinning vanilla (R-742), overlays `bones`, `nodes`, `pivots`, documentation.
 

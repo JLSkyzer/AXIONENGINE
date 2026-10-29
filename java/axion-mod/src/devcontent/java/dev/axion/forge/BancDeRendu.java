@@ -162,6 +162,15 @@ public final class BancDeRendu {
      */
     private static final String CHARNIERE = "axion:test/charniere_fixe";
 
+    /**
+     * ADR-155 : un socle et son coulisseau, que le clip {@code glisse} pousse d'un bloc le long de l'axe x de
+     * l'asset ({@code tools/assets/animation_essai.py}).
+     */
+    private static final String GLISSIERE = "axion:test/anime/glissiere";
+
+    /** ADR-155 : de combien de pixels, au moins, le coulisseau poussé élargit la silhouette. */
+    private static final int ELARGISSEMENT = 10;
+
     /** Un quart de tour autour de y, vers la droite : l'axe x de l'asset part vers +z. */
     private static final float[] QUART_DE_TOUR_A_DROITE = {0f, -0.70710677f, 0f, 0.70710677f};
 
@@ -270,9 +279,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -335,6 +344,12 @@ public final class BancDeRendu {
     private static AxionEntity charniere;
     private static CapturesDuBanc.Capture fondCharniere;
     private static PosesCharniere posesCharniere;
+
+    /** ADR-155 : la glissière, et le fond sans elle, puis au repos, puis le coulisseau poussé. */
+    private static AxionEntity glissiere;
+    private static CapturesDuBanc.Capture fondGlissiere;
+    private static CapturesDuBanc.Capture reposGlissiere;
+    private static CapturesDuBanc.Capture animeeGlissiere;
 
     private static CapturesDuBanc.Capture avec;
     private static CapturesDuBanc.Capture sans;
@@ -673,6 +688,30 @@ public final class BancDeRendu {
             panneauPlat.discard();
         });
         jusqua("les panneaux retirés", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+
+        // ADR-155, tranche 4 : la glissière, tournée pour que son coulisseau glisse en travers de l'image. Le
+        // serveur joue le clip par AnimationControl ; le descripteur v3 en porte l'état au client, qui le pousse
+        // au natif ; l'image montre le coulisseau poussé, puis, la couche arrêtée, revenu au repos.
+        if (!SHADERS) {
+            stabiliser("le fond de la glissière");
+            une("capturer le fond de la glissière", mc -> fondGlissiere = capturer(mc, "adr155_fond.png"));
+            serveur("poser la glissière", s -> glissiere = AssembliesDeTest.poser(
+                    s.overworld(), GLISSIERE, positionPanneau(Z_PLAT), QUART_DE_TOUR_A_DROITE));
+            jusqua("la glissière rendue, ses clips liés", 120, mc -> rendu(mc, DERRIERE.size() + 2, glissiere.getId())
+                    && !glissiere.animation().clips().isEmpty());
+            stabiliser("la glissière au repos");
+            une("capturer la glissière au repos", mc -> reposGlissiere = capturer(mc, "adr155_repos.png"));
+            serveur("jouer glisse", s -> glissiere.animation().play("glisse", 0, 1f, 0f));
+            jusqua("la couche reçue par le client", 60, mc -> coucheAuClient(mc).playing());
+            stabiliser("le coulisseau poussé");
+            une("capturer le coulisseau poussé", mc -> animeeGlissiere = capturer(mc, "adr155_animee.png"));
+            serveur("arrêter la couche", s -> glissiere.animation().stop(0, 0f));
+            jusqua("l'arrêt reçu par le client", 60, mc -> !coucheAuClient(mc).playing());
+            stabiliser("la glissière arrêtée");
+            une("juger ADR-155", mc -> jugerAnimation(capturer(mc, "adr155_arretee.png")));
+            serveur("retirer la glissière", s -> glissiere.discard());
+            jusqua("la glissière retirée", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+        }
 
         // T-477, T-478 (C-65, ADR-154) : 200 copies du cube devant la caméra. Instanciées, elles ne coûtent
         // que quelques appels de dessin ; sans instancing, l'image est la même, pixel pour pixel.
@@ -1133,6 +1172,36 @@ public final class BancDeRendu {
                 && minecraft.level.getBlockState(new BlockPos(1, surface + 1, -5)).is(Blocks.BLUE_STAINED_GLASS)
                 && frame.assemblies() == DERRIERE.size()
                 && frame.withAsset() == DERRIERE.size();
+    }
+
+    /** {@return la couche 0 de la glissière au client, telle que son plus récent snapshot la porte} */
+    private static dev.axion.net.AnimationLayers.Layer coucheAuClient(Minecraft minecraft) {
+        return minecraft.level.getEntity(glissiere.getId()) instanceof AxionEntity auClient
+                ? auClient.animationState().layer(0)
+                : dev.axion.net.AnimationLayers.Layer.EMPTY;
+    }
+
+    /**
+     * ADR-155, tranche 4 : poussé, le coulisseau élargit la silhouette de la glissière d'au moins
+     * {@link #ELARGISSEMENT} pixels ; arrêtée, la silhouette retrouve sa boîte du repos à un pixel près, et
+     * l'image ne s'en écarte que des arrondis des matrices du natif — un cinquantième de la silhouette au plus.
+     */
+    private static void jugerAnimation(CapturesDuBanc.Capture arretee) {
+        CapturesDuBanc.Masque repos = CapturesDuBanc.masque(fondGlissiere, reposGlissiere);
+        CapturesDuBanc.Masque animee = CapturesDuBanc.masque(fondGlissiere, animeeGlissiere);
+        CapturesDuBanc.Masque retour = CapturesDuBanc.masque(fondGlissiere, arretee);
+        int restes = CapturesDuBanc.masque(reposGlissiere, arretee).nombre();
+        int largeurRepos = repos.maxX() - repos.minX();
+        int largeurAnimee = animee.maxX() - animee.minX();
+        boolean visible = repos.nombre() > 0;
+        boolean poussee = largeurAnimee >= largeurRepos + ELARGISSEMENT;
+        boolean revenue = retour.nombre() > 0 && ecart(retour, repos.boite()) <= 1 && restes <= repos.nombre() / 50;
+        RAPPORT.noter("ADR-155, animation", visible && poussee && revenue, String.format(Locale.ROOT,
+                "au repos : %d px, boîte %s ; poussé : %d px, boîte %s (largeur %d → %d, %d attendus de plus) ;"
+                        + " arrêtée : boîte %s, %d px différents du repos (%d tolérés)",
+                repos.nombre(), Arrays.toString(repos.boite()), animee.nombre(), Arrays.toString(animee.boite()),
+                largeurRepos, largeurAnimee, ELARGISSEMENT, Arrays.toString(retour.boite()), restes,
+                repos.nombre() / 50));
     }
 
     /** {@return vrai si l'assembly {@code id} est au monde du client, et toutes dessinées avec leur asset} */

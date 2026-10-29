@@ -171,6 +171,16 @@ class DefinitionSchemaTest {
     }
 
     @Test
+    @DisplayName("ADR-155, tranche 4 : drives_joint nomme un joint de la definition, ou elle est refusée")
+    void drivesJointNommeUnJoint() {
+        // R-932 attend le scénario de la porte (M6) ; M4 vérifie seulement que le joint existe.
+        DefinitionException refus = refus(root -> at(root, "animations", "hood_open")
+                .addProperty("drives_joint", "charniere_absente"));
+        assertEquals("$.animations.hood_open.drives_joint", refus.path());
+        assertTrue(refus.getMessage().contains("charniere_absente"), refus::getMessage);
+    }
+
+    @Test
     @DisplayName("T-282 : une clé inconnue est refusée, sauf sous custom")
     void clesInconnues() {
         DefinitionException refus = refus(root -> at(root, "physics").addProperty("mas", 1650));

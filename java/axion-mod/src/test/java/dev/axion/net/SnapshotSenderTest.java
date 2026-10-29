@@ -197,6 +197,19 @@ class SnapshotSenderTest {
     }
 
     @Test
+    @DisplayName("ADR-155 : une animation changée part sans attendre l'échéance, même endormie")
+    void uneAnimationChangeePartAussitot() {
+        Liaison liaison = new Liaison(RATE_HZ, CAP);
+        AssemblyState repos = etat(500, 500, true);
+        liaison.tick(1, List.of(candidat(1, repos)), true);
+        AssemblyState joue = repos.withAnimation(
+                AnimationLayers.NONE.with(0, new AnimationLayers.Layer(0, 2L, 0f, 1f, 1f, 0f)));
+        assertNotNull(liaison.tick(2, List.of(candidat(1, joue)), true), "sans attendre les 2 Hz");
+        assertEquals(joue, liaison.tenus.get(1));
+        assertNull(liaison.tick(3, List.of(candidat(1, joue)), true), "inchangée, elle se tait de nouveau");
+    }
+
+    @Test
     @DisplayName("T-418 : au-delà du plafond, les entrées sont retardées et comptées, chacune finit par partir, et le débit tient")
     void t418_lePlafondRetardeSansOmettre() {
         long cap = 4096;

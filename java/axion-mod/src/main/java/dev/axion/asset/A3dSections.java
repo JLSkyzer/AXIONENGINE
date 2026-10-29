@@ -17,7 +17,9 @@ import java.nio.ByteOrder;
  * cache, et le natif les revalide au chargement (R-882, C-22). Il refuse en
  * revanche ce qu'il ne peut pas rendre correctement — magic absent, version
  * majeure inconnue (R-890), section compressée ({@code zstd}, que Java ne décode
- * pas) ou débordant du fichier —, plutôt que de rendre des octets faux.
+ * pas lui-même) ou débordant du fichier —, plutôt que de rendre des octets faux.
+ * Une section compressée se lit en lui donnant un {@link Decompressor} : celui du
+ * natif (ADR-155, la section {@code ANIM}).
  */
 public final class A3dSections {
 
@@ -39,7 +41,23 @@ public final class A3dSections {
     /** Position du champ {@code section_count} dans l'en-tête. */
     private static final int SECTION_COUNT_OFFSET = 12;
 
+    /** Position de {@code size_uncompressed} dans une entrée de la table. */
+    private static final int UNCOMPRESSED_SIZE_OFFSET = 24;
+
     private A3dSections() {}
+
+    /** Décompresse une trame zstd, celle qu'écrit le compilateur natif. */
+    @FunctionalInterface
+    public interface Decompressor {
+
+        /**
+         * @param frame la trame, telle que la section la stocke
+         * @param size la taille que l'entrée de la section déclare au contenu
+         * @return le contenu
+         * @throws IllegalArgumentException si la trame n'est pas du zstd, ou dépasse {@code size}
+         */
+        byte[] decompress(byte[] frame, int size);
+    }
 
     /**
      * Extrait les octets stockés d'une section, ou {@code null} si elle est
@@ -56,6 +74,22 @@ public final class A3dSections {
      * @throws IllegalStateException si la section existe mais est compressée
      */
     public static byte[] section(byte[] file, String tag) {
+        return section(file, tag, null);
+    }
+
+    /**
+     * Extrait les octets d'une section, décompressés si elle l'est, ou {@code null} si elle est
+     * absente.
+     *
+     * @param file octets complets d'un conteneur A3D
+     * @param tag tag de quatre caractères ASCII
+     * @param zstd décompresse une section compressée ; {@code null} : la refuser
+     * @return les octets de la section, ou {@code null} si absente
+     * @throws IllegalArgumentException si {@code file} n'est pas un A3D lisible, si {@code tag} n'a pas
+     *     quatre octets ASCII, ou si la section décompressée n'a pas la taille que son entrée déclare
+     * @throws IllegalStateException si la section est compressée et {@code zstd} absent
+     */
+    public static byte[] section(byte[] file, String tag, Decompressor zstd) {
         byte[] wanted = tagBytes(tag);
         if (file.length < HEADER_BYTES) {
             throw new IllegalArgumentException("fichier A3D tronqué : " + file.length + " octets");
@@ -85,7 +119,7 @@ public final class A3dSections {
             int flags = b.getInt(base + 4);
             long offset = b.getLong(base + 8);
             long size = b.getLong(base + 16);
-            if ((flags & FLAG_COMPRESSED) != 0) {
+            if ((flags & FLAG_COMPRESSED) != 0 && zstd == null) {
                 throw new IllegalStateException("section " + tag + " compressée : non gérée côté Java");
             }
             if (offset < 0 || size < 0 || offset + size > file.length) {
@@ -93,7 +127,19 @@ public final class A3dSections {
             }
             byte[] out = new byte[(int) size];
             System.arraycopy(file, (int) offset, out, 0, (int) size);
-            return out;
+            if ((flags & FLAG_COMPRESSED) == 0) {
+                return out;
+            }
+            int declared = b.getInt(base + UNCOMPRESSED_SIZE_OFFSET);
+            if (declared < 0) {
+                throw new IllegalArgumentException("section " + tag + " : taille décompressée " + declared);
+            }
+            byte[] content = zstd.decompress(out, declared);
+            if (content.length != declared) {
+                throw new IllegalArgumentException("section " + tag + " : " + content.length
+                        + " octets décompressés, " + declared + " déclarés");
+            }
+            return content;
         }
         return null;
     }

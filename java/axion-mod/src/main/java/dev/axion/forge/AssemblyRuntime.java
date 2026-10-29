@@ -3,6 +3,7 @@ package dev.axion.forge;
 import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
 import dev.axion.asset.A3dSections;
+import dev.axion.asset.AnimClips;
 import dev.axion.asset.AssetEntry;
 import dev.axion.asset.AssetRegistry;
 import dev.axion.definition.AssemblyKind;
@@ -10,6 +11,7 @@ import dev.axion.definition.CollisionGroupRegistry;
 import dev.axion.definition.Definition;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.diag.EntityMetrics;
+import dev.axion.net.AnimationLayers;
 import dev.axion.physics.AssemblyBodies;
 import dev.axion.physics.BodyBounds;
 import dev.axion.physics.BodyDescription;
@@ -80,6 +82,9 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     /** Génération de handle fixe pour la session (l'index suffit à distinguer). */
     public static final int GENERATION = 1;
 
+    /** Aucun node de masque : les commandes de l'API animent tous les nodes. */
+    private static final int[] NO_MASK = new int[0];
+
     private final Supplier<DefinitionRegistry> definitions;
     private final Supplier<AssetRegistry> assets;
     /** Index d'un matériau dans la table de la session (ADR-149 D2). */
@@ -115,6 +120,13 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      */
     private final Map<Integer, Integer> rootNodes = new HashMap<>();
 
+    /**
+     * L'état d'animation que le natif a reçu de chaque assembly dotée d'un corps (ADR-155, tranche 4) : à
+     * chaque tick, ce qui a changé depuis part en {@code ANIMATE_ASSEMBLY}. Un corps créé repart du repos, et
+     * reçoit l'état entier.
+     */
+    private final Map<Integer, AnimationLayers> animationSent = new HashMap<>();
+
     /** Les créations en attente, avancées sous {@code persistence.max_load_ns_per_tick} (R-1730). */
     private final LoadQueue<AxionEntity> loading = new LoadQueue<>(System::nanoTime);
 
@@ -123,6 +135,12 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
 
     /** La durée de la dernière soumission native, que la file rapporte à ses créations. */
     private final LongSupplier lastSubmitNs;
+
+    /** Le zstd du natif, qui lit les sections compressées de l'A3D — {@code ANIM} (ADR-155). */
+    private final A3dSections.Decompressor zstd;
+
+    /** Les sections illisibles déjà signalées, une fois par definition et par tag. */
+    private final Set<String> unreadableSections = new HashSet<>();
 
     private record Pending(
             boolean create,
@@ -150,6 +168,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      *     avant tout chargement
      * @param materialIndex index d'un matériau physique dans la table de la session (ADR-149)
      * @param joints {@code modules.joints} : faux, les joints des definitions sont ignorés
+     * @param zstd décompresse une section compressée de l'A3D : le zstd du natif
      */
     public AssemblyRuntime(
             Supplier<DefinitionRegistry> definitions,
@@ -157,13 +176,15 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             ToIntFunction<String> materialIndex,
             boolean joints,
             long loadBudgetNs,
-            LongSupplier lastSubmitNs) {
+            LongSupplier lastSubmitNs,
+            A3dSections.Decompressor zstd) {
         this.definitions = definitions;
         this.assets = assets;
         this.materialIndex = materialIndex;
         this.joints = joints;
         this.loadBudgetNs = loadBudgetNs;
         this.lastSubmitNs = lastSubmitNs;
+        this.zstd = zstd;
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -250,7 +271,15 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         }
         byte[] nodeSection = nodes == null ? new byte[0] : nodes;
         // ADR-155 : les clips de l'asset partent avec lui ; le natif ne les joue que si un collider en dépend.
+        // L'animation Java prend leurs noms et leurs pistes.
         byte[] anim = sectionOf(definition, "ANIM");
+        try {
+            assembly.animation().bind(AnimClips.decode(anim));
+        } catch (IllegalArgumentException malformed) {
+            LOGGER.warn("AXION : section ANIM de {} illisible côté Java ({}) ; aucun clip à jouer",
+                    definition.id(), malformed.getMessage());
+            assembly.animation().bind(AnimClips.NONE);
+        }
         pending.add(new Pending(true, index, dimension, position, rotation, layout.bodies(), layout.joints(),
                 layout.jamPoints(), layout.assemblyMass(), layout.selfCollision(), nodeSection, restored, asleep,
                 anim, phys));
@@ -408,11 +437,33 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                         cmd.asleep(),
                         cmd.anim(),
                         cmd.phys());
+                animationSent.put(cmd.index(), AnimationLayers.NONE);
             } else {
                 stream.removeAssembly(cmd.index(), GENERATION);
+                animationSent.remove(cmd.index());
             }
         }
+        animate(stream);
         return stream;
+    }
+
+    /**
+     * Pousse au natif ce qui a changé dans l'animation de chaque assembly dotée d'un corps (ADR-155) : les
+     * commandes que le client rejoue aussi, si bien que les deux natifs les reçoivent identiques (R-1430).
+     */
+    private void animate(SimCommandStream stream) {
+        ledger.forEachBody((index, assembly) -> {
+            AnimationLayers sent = animationSent.get(index);
+            AnimationLayers state = assembly.animation().state();
+            if (sent == null || sent == state) {
+                return;
+            }
+            for (AnimationLayers.Change change : state.changesFrom(sent)) {
+                stream.animateAssembly(index, GENERATION, change.tick(), change.action(), change.layer(),
+                        change.clip(), change.weight(), change.fade(), change.speed(), change.origin(), NO_MASK);
+            }
+            animationSent.put(index, state);
+        });
     }
 
     /**
@@ -564,7 +615,20 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             return null;
         }
         byte[] a3d = entry.compiled();
-        return a3d == null ? null : A3dSections.section(a3d, tag);
+        if (a3d == null) {
+            return null;
+        }
+        try {
+            return A3dSections.section(a3d, tag, zstd);
+        } catch (IllegalArgumentException | IllegalStateException unreadable) {
+            // Une section illisible fait d'elle une section absente pour cette assembly — sans PHYS, elle
+            // reste inerte au physique — et ne fait jamais tomber le tick de toutes les autres.
+            if (unreadableSections.add(definition.id() + " " + tag)) {
+                LOGGER.warn("AXION : section {} de {} illisible côté Java ({}) ; tenue pour absente", tag,
+                        definition.id(), unreadable.getMessage());
+            }
+            return null;
+        }
     }
 
     /** Mappe le genre d'assembly (DM-09) vers un type de corps (§10.3). */
@@ -580,5 +644,6 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         ledger.clear();
         speeds.clear();
         rootNodes.clear();
+        animationSent.clear();
     }
 }

@@ -21,6 +21,7 @@ import java.util.Set;
  * @param bodies les corps autres que le corps racine, en poses relatives à lui (ADR-151 D8), dans
  *     l'ordre du serveur
  * @param joints l'état de chaque joint de l'assembly, dans l'ordre de la definition (ADR-151 D8)
+ * @param animation la dernière commande de chaque couche d'animation (ADR-155, descripteur v3)
  */
 public record AssemblyState(
         long x,
@@ -31,7 +32,8 @@ public record AssemblyState(
         Bounds bounds,
         boolean sleeping,
         List<Body> bodies,
-        JointBits joints) {
+        JointBits joints,
+        AnimationLayers animation) {
 
     /** Corps autres que le corps racine d'une assembly, au plus : elle en a 64 (R-190). */
     public static final int MAX_BODIES = 63;
@@ -245,13 +247,16 @@ public record AssemblyState(
         }
     }
 
-    /** Refuse une vitesse, des corps ou des joints absents, et des corps trop nombreux ou en double. */
+    /**
+     * Refuse une vitesse, des corps, des joints ou une animation absents, et des corps trop nombreux ou en
+     * double.
+     */
     public AssemblyState {
         if (velocity == null) {
             throw new IllegalArgumentException("vitesse absente");
         }
-        if (bodies == null || joints == null) {
-            throw new IllegalArgumentException("corps ou joints absents");
+        if (bodies == null || joints == null || animation == null) {
+            throw new IllegalArgumentException("corps, joints ou animation absents");
         }
         if (bodies.size() > MAX_BODIES) {
             throw new IllegalArgumentException(bodies.size() + " corps secondaires, au-delà de " + MAX_BODIES);
@@ -277,7 +282,25 @@ public record AssemblyState(
      * @param sleeping le corps dort
      */
     public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping) {
-        this(x, y, z, rotation, velocity, bounds, sleeping, List.of(), JointBits.NONE);
+        this(x, y, z, rotation, velocity, bounds, sleeping, List.of(), JointBits.NONE, AnimationLayers.NONE);
+    }
+
+    /**
+     * L'état d'une assembly sans animation.
+     *
+     * @param x position x, au 1/1024 de bloc
+     * @param y position y, au 1/1024 de bloc
+     * @param z position z, au 1/1024 de bloc
+     * @param rotation rotation « smallest three »
+     * @param velocity vitesses quantifiées
+     * @param bounds emprise relative à la position, ou {@code null}
+     * @param sleeping le corps dort
+     * @param bodies les corps autres que le corps racine
+     * @param joints l'état de chaque joint
+     */
+    public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
+            List<Body> bodies, JointBits joints) {
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, AnimationLayers.NONE);
     }
 
     /**
@@ -286,7 +309,15 @@ public record AssemblyState(
      * @return cet état, avec ces corps et ces joints
      */
     public AssemblyState with(List<Body> otherBodies, JointBits jointBits) {
-        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits);
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation);
+    }
+
+    /**
+     * @param layers l'état d'animation
+     * @return cet état, avec cette animation
+     */
+    public AssemblyState withAnimation(AnimationLayers layers) {
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers);
     }
 
     /**

@@ -378,7 +378,7 @@ impl RenderContext {
                 fade: f32_at(c + 24),
                 speed: f32_at(c + 28),
                 mask_count: u32_at(c + 32),
-                _pad: 0,
+                origin: f32_at(c + 36),
             };
             let count = command.mask_count as usize;
             if count > MAX_NODES {

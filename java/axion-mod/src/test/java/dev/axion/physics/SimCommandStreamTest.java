@@ -689,7 +689,7 @@ class SimCommandStreamTest {
     @Test
     void encodeUneCommandeAnimateAssembly() {
         byte[] bytes = new SimCommandStream()
-                .animateAssembly(5, 1, 40.5, 4, 2, 0, 0f, 0f, 1f, new int[] {3, 7})
+                .animateAssembly(5, 1, 40.5, 4, 2, 0, 0f, 0f, 1f, 0.5f, new int[] {3, 7})
                 .toBytes();
         ByteBuffer b = wrap(bytes);
         assertEquals(SimCommandStream.OP_ANIMATE_ASSEMBLY, b.getInt(8));
@@ -701,6 +701,7 @@ class SimCommandStreamTest {
         assertEquals(2, b.getInt(36), "couche");
         assertEquals(1f, b.getFloat(52), "vitesse");
         assertEquals(2, b.getInt(56), "nodes du masque");
+        assertEquals(0.5f, b.getFloat(60), "temps de clip");
         assertEquals(3, b.getInt(16 + SimCommandStream.ANIMATE_ASSEMBLY_BYTES));
         assertEquals(7, b.getInt(16 + SimCommandStream.ANIMATE_ASSEMBLY_BYTES + 4));
     }

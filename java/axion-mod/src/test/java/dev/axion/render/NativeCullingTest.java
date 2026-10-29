@@ -119,7 +119,7 @@ class NativeCullingTest {
 
             // ADR-155, ABI 10 : une commande sur un asset sans clip est refusée seule ; un tampon tronqué
             // n'applique rien.
-            byte[] play = new AnimationCommands().play(100, asset.index(), asset.generation(), 0.0, 0, 0, 1f, 0f)
+            byte[] play = new AnimationCommands().play(100, asset.index(), asset.generation(), 0.0, 0, 0, 1f, 0f, 0f, 1f)
                     .bytes();
             assertEquals(0, culling.animate(play));
             assertEquals(NativeBridge.E_INVALID_BUFFER, culling.animate(java.util.Arrays.copyOf(play, play.length - 1)));

@@ -16,7 +16,7 @@ class AnimationCommandsTest {
     @DisplayName("Une commande suit RenderAnimate puis AnimCommand, little-endian, ses nodes de masque après")
     void disposition() {
         byte[] bytes = new AnimationCommands()
-                .play(42, 3, 7, 12.5, 1, 2, 0.75f, 0.25f)
+                .play(42, 3, 7, 12.5, 1, 2, 0.75f, 0.25f, 3.5f, 2f)
                 .mask(42, 3, 7, 13.0, 1, new int[] {4, 9})
                 .bytes();
         ByteBuffer b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
@@ -30,8 +30,9 @@ class AnimationCommandsTest {
         assertEquals(2, b.getInt(32), "clip");
         assertEquals(0.75f, b.getFloat(36), "poids");
         assertEquals(0.25f, b.getFloat(40), "fondu");
-        assertEquals(1f, b.getFloat(44), "vitesse");
+        assertEquals(2f, b.getFloat(44), "vitesse");
         assertEquals(0, b.getInt(48), "aucun node de masque");
+        assertEquals(3.5f, b.getFloat(52), "temps de clip");
 
         assertEquals(AnimationCommands.SET_MASK, b.getInt(record + 24));
         assertEquals(2, b.getInt(record + 48));

@@ -206,7 +206,9 @@ class SnapshotCodecTest {
                 "séquence nulle");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(1).varUInt(0).toByteArray(),
                 "descripteur 1, antérieur aux corps et aux joints");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(3).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(2).varUInt(0).toByteArray(),
+                "descripteur 2, antérieur à l'animation");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(4).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
@@ -379,5 +381,84 @@ class SnapshotCodecTest {
 
     private static void assertRefuse(byte[] message, String cas) {
         assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(message), cas);
+    }
+
+    /** Une couche qui joue le clip 2 depuis le tick 1200, à mi-chemin, deux fois plus vite. */
+    private static final AnimationLayers.Layer EN_COURS = new AnimationLayers.Layer(2, 1200L, 0.5f, 2f, 0.75f, 0.25f);
+
+    @Test
+    @DisplayName("ADR-155, descripteur 3 : l'animation fait l'aller-retour, complète puis en delta")
+    void lAnimationFaitLAllerRetour() {
+        AssemblyState base = etat(1, 2, 3, 0f, false);
+        AnimationLayers couches = AnimationLayers.NONE.with(0, EN_COURS)
+                .with(3, AnimationLayers.Layer.stopped(1300L, 0.5f));
+        AssemblyState anime = base.withAnimation(couches);
+
+        SnapshotMessage.Entry complete = SnapshotMessage.Entry.full(7, anime);
+        assertEquals(couches, complete.animation());
+        SnapshotMessage lu = lu(new SnapshotMessage(3, 1300, SnapshotMessage.DESCRIPTOR_VERSION, List.of(complete))
+                .encode());
+        assertEquals(anime, lu.entries().get(0).resolve(null));
+
+        // Inchangée depuis la base, l'animation ne part pas ; changée, elle part entière.
+        AssemblyState bouge = etat(1.5, 2, 3, 0f, false).withAnimation(couches);
+        assertNull(SnapshotMessage.Entry.delta(7, 3, anime, bouge).animation());
+        AnimationLayers arret = couches.with(0, AnimationLayers.Layer.stopped(1400L, 1f));
+        SnapshotMessage.Entry delta = SnapshotMessage.Entry.delta(7, 3, anime, bouge.withAnimation(arret));
+        assertEquals(arret, delta.animation());
+        SnapshotMessage relu = lu(new SnapshotMessage(4, 1400, SnapshotMessage.DESCRIPTOR_VERSION, List.of(delta))
+                .encode());
+        assertEquals(bouge.withAnimation(arret), relu.entries().get(0).resolve(anime));
+
+        // Sans animation, une entrée complète n'en porte pas, et se relit sans.
+        assertNull(SnapshotMessage.Entry.full(7, base).animation());
+        assertEquals(AnimationLayers.NONE, SnapshotMessage.Entry.full(7, base).resolve(null).animation());
+
+        // La taille annoncée est celle de l'encodage.
+        SnapshotMessage un = new SnapshotMessage(5, 1, SnapshotMessage.DESCRIPTOR_VERSION, List.of(complete));
+        assertEquals(un.encode().length, SnapshotMessage.headerSize(5, 1, 1) + SnapshotMessage.encodedSize(complete));
+    }
+
+    @Test
+    @DisplayName("ADR-155, descripteur 3 : une animation mal formée est refusée")
+    void uneAnimationMalFormeeEstRefusee() {
+        AssemblyState base = etat(1, 2, 3, 0f, false);
+        byte[] bon = new SnapshotMessage(1, 1, SnapshotMessage.DESCRIPTOR_VERSION,
+                List.of(SnapshotMessage.Entry.full(7, base.withAnimation(AnimationLayers.NONE.with(1, EN_COURS)))))
+                .encode();
+        lu(bon);
+        // Le masque suit l'entrée complète : en-tête, handle, drapeaux, position, rotation, vitesses, emprise.
+        int masque = SnapshotMessage.headerSize(1, 1, 1) + 1 + 1 + 3 * Long.BYTES + Integer.BYTES
+                + 2 * 6 * Short.BYTES;
+        assertEquals(1 << 1, bon[masque], "masque de la couche 1");
+
+        byte[] cinqCouches = bon.clone();
+        cinqCouches[masque] = (byte) 0x10;
+        assertRefuse(cinqCouches, "masque au-delà de quatre couches");
+
+        // Le poids, après le clip (un octet), le tick (deux octets pour 1200), le temps de clip et la vitesse.
+        int poids = masque + 1 + 1 + 2 + 2 * Float.BYTES;
+        byte[] lourd = bon.clone();
+        int nan = Float.floatToRawIntBits(Float.NaN);
+        for (int i = 0; i < 4; i++) {
+            lourd[poids + i] = (byte) (nan >>> (24 - 8 * i));
+        }
+        assertRefuse(lourd, "poids non fini");
+
+        assertThrows(IllegalArgumentException.class, () -> new AnimationLayers.Layer(128, 0L, 0f, 1f, 1f, 0f),
+                "clip au-delà de 127");
+        assertThrows(IllegalArgumentException.class, () -> new AnimationLayers.Layer(0, 0L, 0f, 1f, 1.5f, 0f));
+        assertThrows(IllegalArgumentException.class, () -> new AnimationLayers(List.of(EN_COURS)));
+    }
+
+    @Test
+    @DisplayName("ADR-155 : une couche montre quelque chose tant qu'elle joue ou que son fondu d'arrêt dure")
+    void visibiliteDesCouches() {
+        AnimationLayers.Layer arret = AnimationLayers.Layer.stopped(100L, 0.5f);
+        assertTrue(arret.visibleAt(109.0), "le fondu de 10 ticks dure");
+        assertTrue(!arret.visibleAt(110.0), "le fondu est fini");
+        assertTrue(EN_COURS.visibleAt(1e9));
+        assertTrue(!AnimationLayers.NONE.visibleAt(0.0));
+        assertEquals(0.5 + 2 * 2.0, EN_COURS.clipTimeAt(1240.0), 1e-9, "deux secondes à vitesse double");
     }
 }

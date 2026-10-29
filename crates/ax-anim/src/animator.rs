@@ -230,15 +230,11 @@ impl Animator {
     }
 
     /// Joue `clip` sur `layer`, de poids `weight`, avec un fondu de `fade` secondes depuis ce que
-    /// la couche montrait. Le clip part de son début.
-    ///
-    /// Si le fondu porterait l'instance au-delà de 256 pistes actives (R-200), il est coupé : le
-    /// clip remplace aussitôt le sortant.
+    /// la couche montrait. Le clip part de son début, à la vitesse de la couche.
     ///
     /// # Errors
     ///
-    /// [`AnimError`] si le clip ou la couche n'existent pas, qu'un paramètre est hors de ses
-    /// bornes, ou que l'instance dépasserait 256 pistes actives même fondu coupé.
+    /// Celles de [`Self::play_at`].
     pub fn play(
         &mut self,
         library: &ClipLibrary,
@@ -248,14 +244,51 @@ impl Animator {
         fade: f32,
         now: f64,
     ) -> Result<(), AnimError> {
+        let speed = self.layers.get(layer).map_or(1.0, |layer| layer.speed);
+        self.play_at(library, clip, layer, weight, fade, now, 0.0, speed)
+    }
+
+    /// Joue `clip` sur `layer` comme [`Self::play`], mais au temps de clip `origin` à l'instant
+    /// `now` et à la vitesse `speed`, qui devient celle de la couche : ce que rejoue un client qui
+    /// reçoit un clip déjà en cours (ADR-155, tranche 4).
+    ///
+    /// Si le fondu porterait l'instance au-delà de 256 pistes actives (R-200), il est coupé : le
+    /// clip remplace aussitôt le sortant. Les fondus achevés à `now` sont clos d'abord, sur toutes
+    /// les couches : le décompte ne dépend que des commandes reçues, pas des évaluations faites
+    /// entre elles, et le serveur Java le reproduit (ADR-155, tranche 4).
+    ///
+    /// # Errors
+    ///
+    /// [`AnimError`] si le clip ou la couche n'existent pas, qu'un paramètre est hors de ses
+    /// bornes, ou que l'instance dépasserait 256 pistes actives même fondu coupé.
+    #[allow(clippy::too_many_arguments)]
+    pub fn play_at(
+        &mut self,
+        library: &ClipLibrary,
+        clip: u32,
+        layer: usize,
+        weight: f32,
+        fade: f32,
+        now: f64,
+        origin: f32,
+        speed: f32,
+    ) -> Result<(), AnimError> {
         if layer >= LAYERS {
             return Err(AnimError::LayerOutOfRange);
         }
         if clip as usize >= library.len() {
             return Err(AnimError::UnknownClip);
         }
-        if !(0.0..=1.0).contains(&weight) || !valid_fade(fade) || !now.is_finite() {
+        if !(0.0..=1.0).contains(&weight)
+            || !valid_fade(fade)
+            || !now.is_finite()
+            || !origin.is_finite()
+            || !speed.is_finite()
+        {
             return Err(AnimError::InvalidParameter);
+        }
+        for each in &mut self.layers {
+            each.settle(now);
         }
         let others: usize = (0..LAYERS)
             .filter(|index| *index != layer)
@@ -269,7 +302,6 @@ impl Animator {
         }
 
         let target = &mut self.layers[layer];
-        target.settle(now);
         let leaving = if target.dominant_is_outgoing(now) {
             count(library, target.outgoing.as_ref())
         } else {
@@ -281,7 +313,10 @@ impl Animator {
             fade
         };
         target.start_fade(fade, now);
-        target.incoming = Some(Playing::new(library, clip, now, target.speed));
+        let mut playing = Playing::new(library, clip, now, speed);
+        playing.origin = f64::from(origin);
+        target.incoming = Some(playing);
+        target.speed = speed;
         target.weight = weight;
         Ok(())
     }
@@ -367,13 +402,15 @@ impl Animator {
         let now = command.tick / TICKS_PER_SECOND;
         let layer = command.layer as usize;
         match command.action {
-            anim_action::PLAY => self.play(
+            anim_action::PLAY => self.play_at(
                 library,
                 command.clip,
                 layer,
                 command.weight,
                 command.fade,
                 now,
+                command.origin,
+                command.speed,
             ),
             anim_action::STOP => self.stop(layer, command.fade, now),
             anim_action::SET_SPEED => self.set_speed(layer, command.speed, now),

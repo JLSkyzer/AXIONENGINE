@@ -174,6 +174,16 @@ Definition of Done (PARTIE 37.3).
     soumis ; seules les assemblies dont un collider depend d'un node anime
     sont echantillonnees (R-1430), a l'etape 2, leurs colliders reposes dans
     leurs corps ;
+    `AnimationControl` rempli (`clips`, `play`, `stop`, `setSpeed`,
+    `playing`), interne en M4 : thread autoritatif verifie (R-1755), refus
+    d'un clip inconnu ou d'une couche hors de 0..3, R-200 reproduit comme au
+    natif ; descripteur d'etats v3 : la derniere commande de chaque couche,
+    envoyee quand elle change, sans attendre l'echeance d'une assembly
+    endormie ; le serveur et le client poussent a leur natif les memes
+    commandes, le client a l'instant ou le tick de rendu les atteint, et
+    oublie une assembly non vue depuis 64 frames ; une assembly animee est
+    retenue `NO_CULL` ; `AnimCommand` porte le temps de clip (rejeu d'un clip
+    en cours) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),
@@ -383,6 +393,16 @@ Definition of Done (PARTIE 37.3).
 
 ### Corrige
 
+- Animation (C-37, ADR-155) : le serveur Java lisait la section `ANIM`, que
+  le compilateur compresse, par un lecteur qui refuse les sections
+  compressees ; le premier asset anime faisait lever la creation de son
+  corps, et le tick de simulation entier etait saute. `ANIM` se decompresse
+  desormais par le zstd du natif, et une section illisible ne vaut plus que
+  pour son assembly. Un collider anime reveille son corps endormi, sauf
+  suspendu par la gestion d'activite : rapier ne le faisait pas, et le
+  collider traversait ce qu'il poussait. `Animator::play_at` clot les fondus
+  acheves avant de compter les pistes (R-200), qui ne dependent plus des
+  evaluations faites entre deux commandes.
 - Configuration (C-04) : `persistence.journal_max_bytes` borne a 16 MiB..8 GiB,
   comme au cahier des charges ; le schema acceptait toute valeur positive.
 - Dependances (C-24, R-2301) : `zstd-sys` 2.1.2, `zstd` 0.14.3 et `zstd-safe`

@@ -2,7 +2,9 @@
 //! additives, masque de nodes, plafond de pistes actives ; boucle, vitesse et arrêt.
 
 use ax_anim::{AnimError, Animator, ClipLibrary};
-use ax_model::dm::animation::{animation_flags, channel, interp, AnimationDesc, TrackDesc};
+use ax_model::dm::animation::{
+    anim_action, animation_flags, channel, interp, AnimCommand, AnimationDesc, TrackDesc,
+};
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::scene::name_hash;
 
@@ -362,4 +364,66 @@ fn r200_au_dela_de_256_pistes_actives_le_fondu_est_coupe_puis_la_lecture_refusee
     animateur.play(&clips, 2, 0, 1.0, 0.5, 2.0).unwrap();
     assert_eq!(animateur.playing(0), Some(2));
     assert_eq!(animateur.active_tracks(&clips), 100);
+}
+
+#[test]
+fn r200_un_fondu_acheve_ailleurs_ne_compte_plus_meme_sans_evaluation() {
+    // ADR-155, tranche 4 : le décompte ne dépend que des commandes, pas des évaluations faites entre
+    // elles — le serveur Java le reproduit pour refuser ce que le natif refuserait.
+    let piste = [0.0, 1.0, 2.0, 3.0];
+    let gros = |nom, pistes: usize| {
+        (0..pistes).fold(Clip::new(nom, 0.0), |clip, _| {
+            clip.piste(0, channel::TRANSLATION, interp::STEP, &piste)
+        })
+    };
+    let clips = bibliotheque(
+        vec![
+            gros("deux_cents", 200),
+            gros("cinquante", 50),
+            gros("cent", 100),
+        ],
+        1,
+    );
+    let mut animateur = Animator::new(1);
+    animateur.play(&clips, 0, 0, 1.0, 0.0, 0.0).unwrap();
+    animateur.play(&clips, 1, 0, 1.0, 0.5, 1.0).unwrap();
+    // À 2 s, le fondu de la couche 0 est fini : 50 + 100 tiennent, sans que rien ne l'ait évalué.
+    animateur.play(&clips, 2, 1, 1.0, 0.0, 2.0).unwrap();
+    assert_eq!(animateur.playing(1), Some(2));
+    assert_eq!(animateur.active_tracks(&clips), 150);
+}
+
+#[test]
+fn un_clip_deja_en_cours_se_rejoue_a_son_temps_et_a_sa_vitesse() {
+    // ADR-155, tranche 4 : le descripteur v3 rejoue un clip en cours par son temps de clip au tick de
+    // début et sa vitesse.
+    let clips = clips();
+    let mut animateur = Animator::new(2);
+    animateur
+        .play_at(&clips, AVANCER, 0, 1.0, 0.0, 1.0, 0.25, 2.0)
+        .unwrap();
+    let x = |animateur: &mut Animator, t| pose(animateur, &clips, t)[0].translation;
+    assert!(proche(x(&mut animateur, 1.0), [0.25, 0.0, 0.0], 1e-6));
+    assert!(proche(x(&mut animateur, 1.125), [0.5, 0.0, 0.0], 1e-6));
+
+    // La même chose par une commande `PLAY`, horodatée en ticks.
+    let mut par_commande = Animator::new(2);
+    let commande = AnimCommand {
+        tick: 20.0,
+        action: anim_action::PLAY,
+        layer: 0,
+        clip: AVANCER,
+        weight: 1.0,
+        fade: 0.0,
+        speed: 2.0,
+        mask_count: 0,
+        origin: 0.25,
+    };
+    par_commande.apply(&clips, &commande, &[]).unwrap();
+    assert!(proche(x(&mut par_commande, 1.125), [0.5, 0.0, 0.0], 1e-6));
+
+    assert_eq!(
+        animateur.play_at(&clips, AVANCER, 0, 1.0, 0.0, 1.0, f32::NAN, 1.0),
+        Err(AnimError::InvalidParameter)
+    );
 }

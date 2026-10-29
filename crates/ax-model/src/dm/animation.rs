@@ -178,12 +178,13 @@ pub struct AnimCommand {
     pub weight: f32,
     /// Durée du fondu, en secondes (`PLAY`, `STOP`).
     pub fade: f32,
-    /// Vitesse (`SET_SPEED`).
+    /// Vitesse (`PLAY`, `SET_SPEED`).
     pub speed: f32,
     /// Nodes du masque qui suivent la commande (`SET_MASK`).
     pub mask_count: u32,
-    /// Réservé, à zéro.
-    pub _pad: u32,
+    /// Temps de clip à l'instant de la commande, en secondes (`PLAY`) : 0 joue le clip depuis son
+    /// début. Le descripteur réseau v3 rejoue ainsi un clip déjà en cours (ADR-155, tranche 4).
+    pub origin: f32,
 }
 
 impl AnimCommand {
@@ -244,6 +245,7 @@ mod tests {
         assert_eq!(offset_of!(AnimCommand, fade), 24);
         assert_eq!(offset_of!(AnimCommand, speed), 28);
         assert_eq!(offset_of!(AnimCommand, mask_count), 32);
+        assert_eq!(offset_of!(AnimCommand, origin), 36);
         assert_eq!(size_of::<RenderAnimate>(), RenderAnimate::BYTES);
         assert_eq!(offset_of!(RenderAnimate, asset), 8);
     }

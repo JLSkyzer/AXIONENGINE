@@ -424,3 +424,37 @@ fn t303_meme_scene_memes_decisions() {
     assert_eq!(report.slept_by_cap + report.slept_by_radius, 24 - 7);
     assert_eq!(dorment.iter().filter(|dort| !**dort).count(), 7);
 }
+
+#[test]
+fn r1430_un_collider_anime_reveille_son_corps_endormi_mais_pas_un_corps_suspendu() {
+    // ADR-155 : l'animation du serveur repose un collider dans son corps. Endormi de lui-même, le corps
+    // se réveille, sans quoi le collider traverserait ce qu'il pousse ; suspendu par la gestion
+    // d'activité, loin de tout joueur, il reste suspendu (ADR-153 D4).
+    let mut driver = pilote(32.0, 2048);
+    let pres = bille(&mut driver, 0, 1, [0.0; 3]);
+    let loin = bille(&mut driver, 0, 2, [300.0, 0.0, 0.0]);
+    for _ in 0..80 {
+        tick(&mut driver, 0, &[[1.0, 0.0, 0.0]]);
+        driver.advance_all(1.0 / 20.0);
+    }
+    assert!(
+        dort(&mut driver, 0, pres),
+        "immobile, la bille s'endort d'elle-même"
+    );
+    assert!(dort(&mut driver, 0, loin), "hors de portée, suspendue");
+
+    for index in [1, 2] {
+        assert!(driver.set_assembly_collider(
+            Handle::new(index, 1),
+            0,
+            0,
+            Vec3::new(0.3, 0.0, 0.0),
+            Quat::IDENTITY
+        ));
+    }
+    assert!(
+        !dort(&mut driver, 0, pres),
+        "le collider reposé la réveille"
+    );
+    assert!(dort(&mut driver, 0, loin), "la suspension tient");
+}

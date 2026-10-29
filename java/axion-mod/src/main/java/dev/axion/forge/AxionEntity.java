@@ -3,8 +3,10 @@ package dev.axion.forge;
 import com.mojang.logging.LogUtils;
 import dev.axion.api.CustomData;
 import dev.axion.definition.Definition;
+import dev.axion.entity.AssemblyAnimation;
 import dev.axion.entity.AssemblyBinding;
 import dev.axion.entity.CustomTable;
+import dev.axion.net.AnimationLayers;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.Interpolation;
 import dev.axion.net.RenderClock;
@@ -90,10 +92,22 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** L'état que son NBT portait, jusqu'à la création de son assembly ; {@code null} sans état lu. */
     private PersistedState savedState;
 
-    /** Les bits des joints du plus récent snapshot reçu, et son tick serveur (client, ADR-151 D8). */
+    /**
+     * Les bits des joints du plus récent snapshot reçu, son état d'animation, et son tick serveur (client,
+     * ADR-151 D8, ADR-155).
+     */
     private AssemblyState.JointBits receivedJoints = AssemblyState.JointBits.NONE;
 
+    private AnimationLayers receivedAnimation = AnimationLayers.NONE;
+
     private long receivedJointsTick = Long.MIN_VALUE;
+
+    /**
+     * L'animation de l'assembly (serveur, C-37) : ses clips sont ceux de l'asset, posés à la création de son
+     * corps ; le descripteur d'états v3 porte son état aux clients (ADR-155).
+     */
+    private final AssemblyAnimation animation = new AssemblyAnimation(
+            () -> getServer() == null ? 0L : getServer().getTickCount(), AuthoritativeThread::require);
 
     /**
      * État de l'assembly tel que les snapshots le portent, côté serveur : posé à chaque tick simulé,
@@ -338,6 +352,19 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return level().isClientSide() ? receivedJoints : AssemblyState.JointBits.of(jointFlags);
     }
 
+    /** {@return l'animation de l'assembly (serveur, C-37)} */
+    public AssemblyAnimation animation() {
+        return animation;
+    }
+
+    /**
+     * {@return l'état d'animation de l'assembly (ADR-155) : au serveur, celui de son animation ; au client,
+     * celui du plus récent snapshot reçu}
+     */
+    public AnimationLayers animationState() {
+        return level().isClientSide() ? receivedAnimation : animation.state();
+    }
+
     /** Pose l'orientation autoritaire du corps (serveur, fin de tick, boucle C-40). */
     void setBodyRotation(float x, float y, float z, float w) {
         bodyRotation.set(x, y, z, w);
@@ -388,15 +415,22 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     bounded ? new float[] {boundsMin.x, boundsMin.y, boundsMin.z} : null,
                     bounded ? new float[] {boundsMax.x, boundsMax.y, boundsMax.z} : null,
                     sleeping)
-                    .with(bodies, AssemblyState.JointBits.of(jointFlags));
+                    .with(bodies, AssemblyState.JointBits.of(jointFlags))
+                    .withAnimation(animation.state());
         } catch (IllegalArgumentException notFinite) {
             // Le natif ramène lui-même un corps non fini dans un état valide (E-2030) ; l'état précédent
             // reste celui des snapshots d'ici là.
         }
     }
 
-    /** {@return l'état que les snapshots portent, ou {@code null} avant le premier tick simulé} */
+    /**
+     * {@return l'état que les snapshots portent, ou {@code null} avant le premier tick simulé} Son animation
+     * est la courante, même pour une assembly endormie dont le natif ne rapporte plus l'état.
+     */
     public AssemblyState netState() {
+        if (netState != null && netState.animation() != animation.state()) {
+            netState = netState.withAnimation(animation.state());
+        }
         return netState;
     }
 
@@ -427,9 +461,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     public void applySnapshot(AssemblyState state, long serverTick) {
         long now = System.nanoTime();
         interpolation.push(serverTick, state, clock.renderMillis(now), clock.localMillis(now));
-        // ADR-151 D8 : les bits des joints ne s'interpolent pas ; le plus récent état du serveur prime.
+        // ADR-151 D8, ADR-155 : les bits des joints et l'animation ne s'interpolent pas ; le plus récent état
+        // du serveur prime.
         if (serverTick >= receivedJointsTick) {
             receivedJoints = state.joints();
+            receivedAnimation = state.animation();
             receivedJointsTick = serverTick;
         }
     }

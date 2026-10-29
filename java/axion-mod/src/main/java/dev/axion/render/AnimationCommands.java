@@ -51,12 +51,15 @@ public final class AnimationCommands {
      * @param clip rang du clip dans l'asset
      * @param weight poids, de 0 à 1
      * @param fadeSeconds durée du fondu, en secondes
+     * @param origin temps de clip à l'instant {@code tick}, en secondes : 0 joue le clip depuis son début
+     * @param speed vitesse
      * @return ce même tampon
      */
     public AnimationCommands play(
             int id, int assetIndex, int assetGeneration, double tick, int layer, int clip, float weight,
-            float fadeSeconds) {
-        return add(id, assetIndex, assetGeneration, tick, PLAY, layer, clip, weight, fadeSeconds, 1f, new int[0]);
+            float fadeSeconds, float origin, float speed) {
+        return add(id, assetIndex, assetGeneration, tick, PLAY, layer, clip, weight, fadeSeconds, speed, origin,
+                new int[0]);
     }
 
     /**
@@ -72,7 +75,7 @@ public final class AnimationCommands {
      */
     public AnimationCommands stop(
             int id, int assetIndex, int assetGeneration, double tick, int layer, float fadeSeconds) {
-        return add(id, assetIndex, assetGeneration, tick, STOP, layer, 0, 0f, fadeSeconds, 1f, new int[0]);
+        return add(id, assetIndex, assetGeneration, tick, STOP, layer, 0, 0f, fadeSeconds, 1f, 0f, new int[0]);
     }
 
     /**
@@ -88,7 +91,7 @@ public final class AnimationCommands {
      */
     public AnimationCommands speed(
             int id, int assetIndex, int assetGeneration, double tick, int layer, float speed) {
-        return add(id, assetIndex, assetGeneration, tick, SET_SPEED, layer, 0, 0f, 0f, speed, new int[0]);
+        return add(id, assetIndex, assetGeneration, tick, SET_SPEED, layer, 0, 0f, 0f, speed, 0f, new int[0]);
     }
 
     /**
@@ -104,7 +107,7 @@ public final class AnimationCommands {
      */
     public AnimationCommands mask(
             int id, int assetIndex, int assetGeneration, double tick, int layer, int[] nodes) {
-        return add(id, assetIndex, assetGeneration, tick, SET_MASK, layer, 0, 0f, 0f, 1f, nodes.clone());
+        return add(id, assetIndex, assetGeneration, tick, SET_MASK, layer, 0, 0f, 0f, 1f, 0f, nodes.clone());
     }
 
     /**
@@ -114,7 +117,7 @@ public final class AnimationCommands {
      * @return ce même tampon
      */
     public AnimationCommands forget(int id) {
-        return add(id, 0, 0, 0.0, FORGET, 0, 0, 0f, 0f, 1f, new int[0]);
+        return add(id, 0, 0, 0.0, FORGET, 0, 0, 0f, 0f, 1f, 0f, new int[0]);
     }
 
     /** {@return le nombre de commandes écrites} */
@@ -129,12 +132,12 @@ public final class AnimationCommands {
 
     private AnimationCommands add(
             int id, int assetIndex, int assetGeneration, double tick, int action, int layer, int clip, float weight,
-            float fade, float speed, int[] nodes) {
+            float fade, float speed, float origin, int[] nodes) {
         ByteBuffer record = ByteBuffer.allocate(HEADER_BYTES + COMMAND_BYTES + nodes.length * 4)
                 .order(ByteOrder.LITTLE_ENDIAN);
         record.putInt(id).putInt(0).putInt(assetIndex).putInt(assetGeneration);
         record.putDouble(tick).putInt(action).putInt(layer).putInt(clip).putFloat(weight).putFloat(fade)
-                .putFloat(speed).putInt(nodes.length).putInt(0);
+                .putFloat(speed).putInt(nodes.length).putFloat(origin);
         for (int node : nodes) {
             record.putInt(node);
         }

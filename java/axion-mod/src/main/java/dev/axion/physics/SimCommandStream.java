@@ -1024,6 +1024,7 @@ public final class SimCommandStream {
      * @param weight poids, de 0 à 1
      * @param fadeSeconds durée du fondu, en secondes
      * @param speed vitesse
+     * @param origin temps de clip à l'instant {@code tick}, en secondes ({@code PLAY}) ; 0 : le début
      * @param mask nodes du masque ({@code SET_MASK}) ; vide sinon
      * @return {@code this}, pour chaîner
      */
@@ -1037,11 +1038,12 @@ public final class SimCommandStream {
             float weight,
             float fadeSeconds,
             float speed,
+            float origin,
             int[] mask) {
         ByteBuffer command = beginCommand(OP_ANIMATE_ASSEMBLY, ANIMATE_ASSEMBLY_BYTES + mask.length * 4);
         command.putInt(handleIndex).putInt(handleGeneration).putDouble(tick).putInt(action).putInt(layer)
                 .putInt(clip).putFloat(weight).putFloat(fadeSeconds).putFloat(speed).putInt(mask.length)
-                .putInt(0);
+                .putFloat(origin);
         for (int node : mask) {
             command.putInt(node);
         }

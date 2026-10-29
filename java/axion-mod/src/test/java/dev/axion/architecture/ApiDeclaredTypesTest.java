@@ -27,8 +27,9 @@ class ApiDeclaredTypesTest {
     /** Les types d'ADR-143 : déclarés par le §23.2, sans membre jusqu'à leur composant. */
     private static final Set<String> DECLARED = Set.of(
             // Services et vues de la façade, chacun à son jalon (table d'ADR-143).
-            // CustomData en est sorti avec ses membres (ADR-153 D7).
-            "AnimationControl", "AssetService", "AttachmentService", "AttachmentView",
+            // CustomData en est sorti avec ses membres (ADR-153 D7), AnimationControl avec les siens
+            // (ADR-155 D5).
+            "AssetService", "AttachmentService", "AttachmentView",
             "DefinitionService", "DeformationService", "Diagnostics", "ImpactSource", "ParticleSetView",
             "PhysicsService", "QualityProfile", "RegistryAccess", "RuntimeState", "VehicleControl",
             // Les dix-huit événements du §23.2 et leur racine : leurs accesseurs viennent avec

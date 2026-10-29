@@ -147,7 +147,9 @@ public final class SnapshotSender {
             if (known && candidate.state().sleeping() && candidate.state().equals(track.lastSent)) {
                 continue;
             }
-            if (known && serverTick * rateHz < track.dueAt) {
+            // ADR-155 : une animation changée part sans attendre, le client rejoue ses commandes à leur tick.
+            boolean animated = known && !candidate.state().animation().equals(track.lastSent.animation());
+            if (known && !animated && serverTick * rateHz < track.dueAt) {
                 continue;
             }
             due.add(new Due(candidate, track));

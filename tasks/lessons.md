@@ -2018,3 +2018,22 @@ referme tout écran de pause qui s'ouvre sur un monde chargé tant qu'il tourne.
 des quatre plateformes. Windows, Linux et macOS x86_64 ont donné les mêmes octets jusqu'ici ; macOS
 aarch64 diffère et s'obtient par `gh workflow run CI --ref <branche> -f matrice=true` sur une branche
 temporaire : le test en échec imprime le contenu attendu.
+
+## 2026-10-29 | Un chemin serveur testé en natif seul, cassé par le premier asset réel
+
+**Ce qui a mal tourné.** La tranche 3b d'ADR-155 joignait la section `ANIM` à `CREATE_ASSEMBLY` par
+`A3dSections.section`, qui refuse toute section compressée ; or le compilateur compresse `ANIM`. Le test
+natif de la tranche bâtissait ses octets à la main et passait outre Java. Au premier asset animé réel
+(GameTest de la tranche 4), `createBody` a levé, la garde du tick (`HookGuard`) a avalé l'exception, et
+tout le tick de simulation a été sauté — sans une ligne au journal. Trois GameTests sont tombés, dont deux
+sans rapport apparent (chute libre, T-411), et la glissière n'avait pas de corps : son « bord +x 0,5 »
+était la boîte provisoire de l'entité.
+
+**Cause.** Une frontière prouvée d'un seul côté. Le même test natif, sur un corps cinématique qui ne
+dort jamais, ne pouvait pas voir non plus que rapier ne réveille pas un corps dont on repose un collider.
+
+**Règle.** Un chemin qui traverse Java et le natif se prouve aussi par un asset compilé par le vrai
+compilateur, de bout en bout (GameTest), dans la tranche qui l'ajoute. Des GameTests sans rapport qui
+tombent ensemble font d'abord chercher un tick sauté : la garde `tick` n'écrit au journal qu'à sa
+désactivation, après cinq échecs consécutifs.
+

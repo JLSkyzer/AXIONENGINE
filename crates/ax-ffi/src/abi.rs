@@ -1764,7 +1764,7 @@ fn apply_animate_assembly(session: &mut context::Session, payload: &[u8]) {
         fade: f32::from_bits(u32_at(24)),
         speed: f32::from_bits(u32_at(28)),
         mask_count: u32_at(32),
-        _pad: 0,
+        origin: f32::from_bits(u32_at(36)),
     };
     let count = command.mask_count as usize;
     if count > ax_model::dm::limits::MAX_NODES {

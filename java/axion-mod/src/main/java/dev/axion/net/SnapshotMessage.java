@@ -13,10 +13,12 @@ import java.util.Set;
  * <pre>
  * genre u8 = 5 | séquence varuint | tick serveur varulong | descripteur u8 | n varuint | n entrées
  * entrée : handle varuint | drapeaux u8 | [base varuint] | position | rotation i32
- *          | [vitesses 6 × i16] | [emprise 6 × i16] | [corps] | [joints]
+ *          | [vitesses 6 × i16] | [emprise 6 × i16] | [corps] | [joints] | [animation]
  * position : 3 × i64 absolus (entrée complète) ou 3 × i32 de delta, au 1/1024 de bloc
  * corps : n varuint | n × (node varuint | position 3 × i32 au 1/1024 de bloc | rotation i32)
  * joints : n varuint | ⌈2n / 8⌉ octets, deux bits par joint
+ * animation : masque u8 des couches non vides | par couche : clip + 1 varuint | tick varulong
+ *             | temps de clip f32 | vitesse f32 | poids f32 | fondu f32
  * </pre>
  *
  * <p>Une entrée en delta nomme la séquence du snapshot qui portait sa base : le client vérifie qu'il la
@@ -29,6 +31,9 @@ import java.util.Set;
  * sinon : absents d'un delta, ce sont ceux de la base ; absents d'une entrée complète, l'assembly n'en a
  * pas.
  *
+ * <p>L'animation (descripteur 3, ADR-155) suit la même règle : la dernière commande de chaque couche,
+ * entière quand elle a changé depuis la base ({@link AnimationLayers}).
+ *
  * @param sequence numéro du snapshot chez l'émetteur, à partir de 1
  * @param serverTick tick du serveur dont il porte les états
  * @param descriptor version du descripteur d'états procéduraux
@@ -37,10 +42,10 @@ import java.util.Set;
 public record SnapshotMessage(int sequence, long serverTick, int descriptor, List<Entry> entries) {
 
     /**
-     * Le descripteur d'états procéduraux (ADR-150 D6) : 2 depuis ADR-151 D8, qui y ajoute les corps
-     * autres que le corps racine et les joints.
+     * Le descripteur d'états procéduraux (ADR-150 D6) : 3 depuis l'animation (ADR-155), après les corps
+     * autres que le corps racine et les joints (2, ADR-151 D8).
      */
-    public static final int DESCRIPTOR_VERSION = 2;
+    public static final int DESCRIPTOR_VERSION = 3;
 
     /** Nombre maximal d'entrées d'un snapshot (R-1691). */
     static final int MAX_ENTRIES = 8192;
@@ -51,8 +56,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
     static final int FLAG_SLEEPING = 8;
     static final int FLAG_BODIES = 16;
     static final int FLAG_JOINTS = 32;
+    static final int FLAG_ANIMATION = 64;
     private static final int KNOWN_FLAGS =
-            FLAG_FULL | FLAG_VELOCITY | FLAG_BOUNDS | FLAG_SLEEPING | FLAG_BODIES | FLAG_JOINTS;
+            FLAG_FULL | FLAG_VELOCITY | FLAG_BOUNDS | FLAG_SLEEPING | FLAG_BODIES | FLAG_JOINTS | FLAG_ANIMATION;
 
     /** Copie les entrées. */
     public SnapshotMessage {
@@ -74,6 +80,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      * @param bodies corps autres que le corps racine, ou {@code null} : ceux de la base, aucun pour une
      *     entrée complète
      * @param joints bits des joints, ou {@code null} : ceux de la base, aucun pour une entrée complète
+     * @param animation état d'animation, ou {@code null} : celui de la base, aucun pour une entrée complète
      */
     public record Entry(
             int handle,
@@ -86,7 +93,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.Bounds bounds,
             boolean sleeping,
             List<AssemblyState.Body> bodies,
-            AssemblyState.JointBits joints) {
+            AssemblyState.JointBits joints,
+            AnimationLayers animation) {
 
         /** Copie les corps. */
         public Entry {
@@ -108,7 +116,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     AssemblyState.Velocity.ZERO.equals(state.velocity()) ? null : state.velocity();
             return new Entry(handle, 0, state.x(), state.y(), state.z(), state.rotation(), velocity,
                     state.bounds(), state.sleeping(), state.bodies().isEmpty() ? null : state.bodies(),
-                    state.joints().count() == 0 ? null : state.joints());
+                    state.joints().count() == 0 ? null : state.joints(),
+                    AnimationLayers.NONE.equals(state.animation()) ? null : state.animation());
         }
 
         /**
@@ -132,8 +141,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.Bounds bounds = Objects.equals(state.bounds(), base.bounds()) ? null : state.bounds();
             List<AssemblyState.Body> bodies = state.bodies().equals(base.bodies()) ? null : state.bodies();
             AssemblyState.JointBits joints = state.joints().equals(base.joints()) ? null : state.joints();
+            AnimationLayers animation = state.animation().equals(base.animation()) ? null : state.animation();
             return new Entry(handle, baseSequence, dx, dy, dz, state.rotation(), velocity, bounds, state.sleeping(),
-                    bodies, joints);
+                    bodies, joints, animation);
         }
 
         /**
@@ -144,11 +154,13 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             if (full()) {
                 return new AssemblyState(x, y, z, rotation,
                         velocity == null ? AssemblyState.Velocity.ZERO : velocity, bounds, sleeping,
-                        bodies == null ? List.of() : bodies, joints == null ? AssemblyState.JointBits.NONE : joints);
+                        bodies == null ? List.of() : bodies, joints == null ? AssemblyState.JointBits.NONE : joints,
+                        animation == null ? AnimationLayers.NONE : animation);
             }
             return new AssemblyState(base.x() + x, base.y() + y, base.z() + z, rotation,
                     velocity == null ? base.velocity() : velocity, bounds == null ? base.bounds() : bounds, sleeping,
-                    bodies == null ? base.bodies() : bodies, joints == null ? base.joints() : joints);
+                    bodies == null ? base.bodies() : bodies, joints == null ? base.joints() : joints,
+                    animation == null ? base.animation() : animation);
         }
 
         private static boolean fitsInt(long value) {
@@ -170,7 +182,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                 + (entry.joints() != null
                         ? varintSize(entry.joints().count())
                                 + AssemblyState.JointBits.packedLength(entry.joints().count())
-                        : 0);
+                        : 0)
+                + (entry.animation() != null ? entry.animation().encodedSize() : 0);
     }
 
     private static int bodiesSize(List<AssemblyState.Body> bodies) {
@@ -213,7 +226,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     | (entry.bounds() != null ? FLAG_BOUNDS : 0)
                     | (entry.sleeping() ? FLAG_SLEEPING : 0)
                     | (entry.bodies() != null ? FLAG_BODIES : 0)
-                    | (entry.joints() != null ? FLAG_JOINTS : 0);
+                    | (entry.joints() != null ? FLAG_JOINTS : 0)
+                    | (entry.animation() != null ? FLAG_ANIMATION : 0);
             writer.varUInt(entry.handle()).u8(flags);
             if (entry.full()) {
                 writer.i64(entry.x()).i64(entry.y()).i64(entry.z());
@@ -237,6 +251,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             }
             if (entry.joints() != null) {
                 writer.varUInt(entry.joints().count()).raw(entry.joints().packed());
+            }
+            if (entry.animation() != null) {
+                entry.animation().write(writer);
             }
         }
         return writer.toByteArray();
@@ -301,8 +318,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     reader.i16(), reader.i16(), reader.i16(), reader.i16(), reader.i16(), reader.i16());
             List<AssemblyState.Body> bodies = (flags & FLAG_BODIES) == 0 ? null : readBodies(reader, handle);
             AssemblyState.JointBits joints = (flags & FLAG_JOINTS) == 0 ? null : readJoints(reader, handle);
+            AnimationLayers animation = (flags & FLAG_ANIMATION) == 0 ? null : AnimationLayers.read(reader, handle);
             entries.add(new Entry(handle, base, x, y, z, rotation, velocity, bounds, (flags & FLAG_SLEEPING) != 0,
-                    bodies, joints));
+                    bodies, joints, animation));
         }
         reader.expectEnd();
         return new SnapshotMessage(sequence, serverTick, descriptor, entries);
