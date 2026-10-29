@@ -3359,8 +3359,10 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
       60 relevés ; 1 mutation rouge. **Chantier culling, LOD et instancing clos** (preuve attendue rendue).
 - [ ] Restes du chantier : avertissement Java d'une table `LODM` refusée (nommer l'asset) ; emprise exacte
       des assemblies aux corps articulés (aujourd'hui `NO_CULL`).
-- [ ] T-904 : deux pics isolés le 2026-10-28 (21,55 ms puis 10,46 ms, hors variantes), démentis au passage
-      suivant ; cause non établie, à surveiller.
+- [ ] T-904 : trois pics isolés, démentis au passage suivant — 21,55 ms puis 10,46 ms le 2026-10-28, 49,32 ms
+      le 2026-10-29 (variante « relue du cache », variantes au render thread à 0,49 ms : le pic n'est pas
+      celui des variantes) ; cause non établie. Un quatrième justifierait une instrumentation de la frame
+      lente (ce qui la remplit, hors variantes).
 - [x] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.
       - [x] 6a (2026-10-28) : overlays `lod` et `culling`, en Java, bits 24 et 25 du §31.4 ; bancs verts ; 1
             mutation rouge.
