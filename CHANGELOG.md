@@ -193,6 +193,12 @@ Definition of Done (PARTIE 37.3).
     sommet) : la table des palettes passe de `RENDER_OUT` au TBO sans copie
     Java, avec un repli UBO pagine ; les variantes de shader valent aussi
     pour les sommets, et l'emission a les siennes ;
+    le backend vanilla skinne sur le CPU, a l'emission des sommets (R-742) :
+    le culling y lit les palettes de `RENDER_OUT`, chaque mesh skinne une fois
+    par frame et par instance ; `render.vanilla_max_skinned_vertices` les
+    reserve aux instances les plus proches, les autres au repos, metriques
+    `axion.render.vanilla_skinned_vertices` et
+    `axion.render.vanilla_skinned_capped` (T-493) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

@@ -6,6 +6,7 @@ import dev.axion.AxionMod;
 import dev.axion.asset.GeometryTransfer;
 import dev.axion.forge.AxionEntity;
 import dev.axion.render.BackendSelection;
+import dev.axion.render.CpuSkinning;
 import dev.axion.render.DepthOrder;
 import dev.axion.render.EntityShader;
 import dev.axion.render.MeshLook;
@@ -49,6 +50,11 @@ import org.joml.Vector3f;
  * dessinée comme la <b>boîte</b> de T1, aux dimensions de son entité : rien ne disparaît, et la
  * boîte dit qu'il manque quelque chose.
  *
+ * <p>Un mesh skinné dont l'assembly porte une palette d'os se skinne sur le CPU, à l'émission de ses sommets
+ * (R-742) : chacun porté par ses os dans l'espace de l'asset, puis posé à la racine de l'assembly, sans sa
+ * matrice de dessin que glTF ignore — comme le backend natif le fait sur le GPU (C-66). Sans palette, ou
+ * au-delà de {@code render.vanilla_max_skinned_vertices}, il se dessine au repos.
+ *
  * <p>Le maillage tourne avec le corps, autour de son origine — celle de l'asset, au bas-centre
  * —, à l'orientation interpolée entre deux ticks, posé par {@link AssemblyPlacement}. La
  * hitbox vanilla, elle, reste alignée sur les axes : c'est l'AABB qui enclôt le corps tourné
@@ -91,6 +97,9 @@ final class VanillaConsumerBackend implements RenderBackend {
     /** En deçà, une normale transformée n'a plus de direction exploitable. */
     private static final float MIN_NORMAL_LENGTH_SQUARED = 1e-12f;
 
+    /** La transformation de repos d'un mesh skinné : l'identité, sa palette le porte dans l'espace de l'asset. */
+    private static final float[] SKINNED_REST = {1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f};
+
     @Override
     public BackendSelection.Kind kind() {
         return BackendSelection.Kind.VANILLA;
@@ -104,7 +113,7 @@ final class VanillaConsumerBackend implements RenderBackend {
             if (assembly.asset() != null) {
                 placed.add(new Placed(assembly.asset(),
                         BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig()),
-                        assembly.draws()));
+                        assembly.draws(), assembly.skin()));
             } else {
                 anyBox = true;
             }
@@ -136,7 +145,7 @@ final class VanillaConsumerBackend implements RenderBackend {
                 if (placed == null) {
                     placed = new Placed(asset,
                             BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig()),
-                            assembly.draws());
+                            assembly.draws(), assembly.skin());
                 }
                 parts.add(Part.of(placed, draw, look, asset.albedo(draw.mesh())));
             }
@@ -256,7 +265,7 @@ final class VanillaConsumerBackend implements RenderBackend {
 
     /**
      * Dessine un mesh à la pose du corps qui porte son node, à sa transformation de repos dans le
-     * repère de ce corps (ADR-151 D9).
+     * repère de ce corps (ADR-151 D9) ; ou, skinné sur le CPU, à la racine de l'assembly (R-742).
      *
      * <p>Les types de rendu d'entité sont en quads : chaque triangle y entre comme un quad
      * dégénéré {@code (a, b, c, c)}, dont le second triangle n'a pas d'aire.
@@ -295,6 +304,12 @@ final class VanillaConsumerBackend implements RenderBackend {
         TextureRegion region = part.region();
         int[] indices = mesh.indices();
         int base = desc.vertexOffset();
+        // Les sommets du repos, ou ceux que la palette a portés : ces derniers commencent au premier du mesh.
+        Vertices vertices = new Vertices(mesh.positions(), mesh.normals(), 0, mesh.uvs());
+        if (part.skinned()) {
+            CpuSkinning.Skinned skinned = part.assembly().skin().mesh(mesh, part.draw().mesh());
+            vertices = new Vertices(skinned.positions(), skinned.normals(), base, mesh.uvs());
+        }
         int end = desc.indexOffset() + desc.indexCount();
         for (int i = desc.indexOffset(); i < end; i += 3) {
             int a = indices[i];
@@ -308,13 +323,24 @@ final class VanillaConsumerBackend implements RenderBackend {
             int colorA = emission ? look.emissiveColor() : look.colorOf(a);
             int colorB = emission ? look.emissiveColor() : look.colorOf(b);
             int colorC = emission ? look.emissiveColor() : look.colorOf(c);
-            vertex(out, position, normal, scratch, mesh, region, base + a, colorA, light);
-            vertex(out, position, normal, scratch, mesh, region, base + b, colorB, light);
-            vertex(out, position, normal, scratch, mesh, region, base + c, colorC, light);
-            vertex(out, position, normal, scratch, mesh, region, base + c, colorC, light);
+            vertex(out, position, normal, scratch, vertices, region, base + a, colorA, light);
+            vertex(out, position, normal, scratch, vertices, region, base + b, colorB, light);
+            vertex(out, position, normal, scratch, vertices, region, base + c, colorC, light);
+            vertex(out, position, normal, scratch, vertices, region, base + c, colorC, light);
         }
         pose.popPose();
     }
+
+    /**
+     * Les sommets d'un mesh à émettre.
+     *
+     * @param positions positions, trois flottants par sommet
+     * @param normals normales, de même
+     * @param first le sommet qu'occupe la première place de ces deux tableaux : zéro s'ils sont ceux de la
+     *     géométrie, le premier du mesh s'il a été skinné
+     * @param uvs coordonnées de texture de la géométrie, deux flottants par sommet
+     */
+    private record Vertices(float[] positions, float[] normals, int first, float[] uvs) {}
 
     /**
      * Émet un sommet.
@@ -328,18 +354,19 @@ final class VanillaConsumerBackend implements RenderBackend {
             Matrix4f position,
             Matrix3f normal,
             Vector3f scratch,
-            GeometryTransfer mesh,
+            Vertices vertices,
             TextureRegion region,
             int vertex,
             int color,
             int light) {
-        float[] positions = mesh.positions();
-        float[] normals = mesh.normals();
-        float[] uvs = mesh.uvs();
+        float[] positions = vertices.positions();
+        float[] normals = vertices.normals();
+        float[] uvs = vertices.uvs();
+        int at = vertex - vertices.first();
 
         // Le format d'entité stocke la normale sur trois octets, sans la renormaliser : elle
         // doit sortir unitaire de la transformation.
-        scratch.set(normals[vertex * 3], normals[vertex * 3 + 1], normals[vertex * 3 + 2]).mul(normal);
+        scratch.set(normals[at * 3], normals[at * 3 + 1], normals[at * 3 + 2]).mul(normal);
         if (scratch.lengthSquared() < MIN_NORMAL_LENGTH_SQUARED) {
             scratch.set(0.0f, 1.0f, 0.0f).mul(normal);
         }
@@ -351,7 +378,7 @@ final class VanillaConsumerBackend implements RenderBackend {
             u = region.u(u);
             v = region.v(v);
         }
-        out.vertex(position, positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2])
+        out.vertex(position, positions[at * 3], positions[at * 3 + 1], positions[at * 3 + 2])
                 .color((color >>> 16) & 0xFF, (color >>> 8) & 0xFF, color & 0xFF, color >>> 24)
                 .uv(u, v)
                 .overlayCoords(OverlayTexture.NO_OVERLAY)
@@ -419,20 +446,33 @@ final class VanillaConsumerBackend implements RenderBackend {
         out.vertex(m, dx, dy, dz).color(r, g, b, 1.0f).endVertex();
     }
 
-    /** Une assembly prête, ses corps posés une fois pour la frame (ADR-151 D9). */
-    private record Placed(RenderAsset asset, BodyParts bodies, List<GeometryTransfer.Draw> draws) {}
+    /**
+     * Une assembly prête, ses corps posés une fois pour la frame (ADR-151 D9), et sa palette d'os pour le
+     * skinning sur le CPU, ou {@code null} (R-742).
+     */
+    private record Placed(RenderAsset asset, BodyParts bodies, List<GeometryTransfer.Draw> draws, CpuSkinning skin) {
+
+        /** {@return vrai si ce dessin se skinne : son mesh l'est, et l'assembly porte une palette} */
+        boolean skinned(GeometryTransfer.Draw draw) {
+            return skin != null && asset.mesh().meshes().get(draw.mesh()).has(GeometryTransfer.MESH_SKINNED);
+        }
+    }
 
     /**
      * Un mesh à dessiner : son assembly, son dessin au repos, son apparence, où lire sa texture pour ce
      * dessin — albedo ou émission ; {@code null} pour la texture neutre —, la pose de son corps et sa
-     * transformation de repos dans le repère de ce corps.
+     * transformation de repos dans le repère de ce corps ; s'il se skinne, la racine et l'identité.
      */
     private record Part(
             Placed assembly, GeometryTransfer.Draw draw, MeshLook look, TextureRegion region, AssemblyPlacement at,
-            float[] model) {
+            float[] model, boolean skinned) {
 
         static Part of(Placed assembly, GeometryTransfer.Draw draw, MeshLook look, TextureRegion region) {
-            return new Part(assembly, draw, look, region, assembly.bodies().at(draw), assembly.bodies().model(draw));
+            if (assembly.skinned(draw)) {
+                return new Part(assembly, draw, look, region, assembly.bodies().assembly(), SKINNED_REST, true);
+            }
+            return new Part(assembly, draw, look, region, assembly.bodies().at(draw), assembly.bodies().model(draw),
+                    false);
         }
     }
 }

@@ -83,6 +83,36 @@ class AnimationCommandsTest {
     }
 
     @Test
+    @DisplayName("RENDER_OUT schéma 4 : chaque palette, de sa première matrice aux matrices du retenu animé suivant")
+    void palettesLuesPourLeCpu() {
+        // Trois retenus : deux dessins animés puis deux os ; au repos ; un dessin animé puis trois os.
+        int retained = 3;
+        int meshTotal = 0;
+        int matrixTotal = 8;
+        int table = RenderPrepCodec.OUT_HEADER_BYTES + retained * RenderPrepCodec.OUT_RECORD_BYTES;
+        ByteBuffer out = ByteBuffer.allocate(table + matrixTotal * RenderPrepCodec.MATRIX_FLOATS * 4)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        out.putInt(4, retained).putInt(8, meshTotal).putInt(16, matrixTotal);
+        int[][] firsts = {{0, 2}, {RenderPrepCodec.NO_MATRICES, RenderPrepCodec.NO_PALETTE}, {4, 5}};
+        for (int rank = 0; rank < retained; rank++) {
+            int at = RenderPrepCodec.OUT_HEADER_BYTES + rank * RenderPrepCodec.OUT_RECORD_BYTES;
+            out.putFloat(at + 12, 1.5f * rank).putInt(at + 24, firsts[rank][0]).putInt(at + 28, firsts[rank][1]);
+        }
+        for (int i = 0; i < matrixTotal * RenderPrepCodec.MATRIX_FLOATS; i++) {
+            out.putFloat(table + i * 4, i);
+        }
+
+        float[][] palettes = RenderPrepCodec.retainedPalettes(out, 0, retained);
+        assertEquals(2 * RenderPrepCodec.MATRIX_FLOATS, palettes[0].length, "jusqu'aux matrices du troisième");
+        assertEquals(24f, palettes[0][0]);
+        assertNull(palettes[1]);
+        assertEquals(3 * RenderPrepCodec.MATRIX_FLOATS, palettes[2].length, "jusqu'à la fin de la table");
+        assertEquals(60f, palettes[2][0]);
+        assertEquals(95f, palettes[2][35]);
+        assertEquals(3f, RenderPrepCodec.retainedDistance(out, 0, 2));
+    }
+
+    @Test
     @DisplayName("RENDER_IN schéma 2 : le tick de rendu en tête, huit octets réservés à zéro")
     void tickDeRendu() {
         ByteBuffer in = ByteBuffer.allocate(32).order(ByteOrder.LITTLE_ENDIAN);

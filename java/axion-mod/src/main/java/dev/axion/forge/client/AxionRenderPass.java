@@ -21,6 +21,7 @@ import dev.axion.render.AnimationCommands;
 import dev.axion.render.AnimationSync;
 import dev.axion.render.BackendSelection;
 import dev.axion.render.BodyRig;
+import dev.axion.render.CpuSkinning;
 import dev.axion.render.GpuDegradation;
 import dev.axion.render.GpuPassTimings;
 import dev.axion.render.MeshCache;
@@ -144,6 +145,9 @@ public final class AxionRenderPass {
     private static float maxDistance = 128f;
     private static int lodBias;
 
+    /** {@code render.vanilla_max_skinned_vertices}, lu au choix du backend (R-742). */
+    private static long vanillaMaxSkinnedVertices = 50_000L;
+
     /**
      * Ce que le culling a décidé de chaque candidate à la dernière frame, pour les overlays {@code lod} et
      * {@code culling} : son niveau si elle est retenue, -1 si elle est écartée. Rempli seulement quand l'un
@@ -201,6 +205,14 @@ public final class AxionRenderPass {
     /** R-791 : les retenus skinnés de la dernière frame, et ceux que le plafond a laissés au repos. */
     private static final JavaMetrics.Metric SKINNED = METRICS.gauge("axion.render.skinned", "count");
     private static final JavaMetrics.Metric SKINNED_CAPPED = METRICS.counter("axion.render.skinned_capped", "count");
+    /**
+     * R-742 : les sommets que le backend vanilla a skinnés sur le CPU à la dernière frame, et les retenus que
+     * {@code render.vanilla_max_skinned_vertices} a laissés au repos.
+     */
+    private static final JavaMetrics.Metric VANILLA_SKINNED_VERTICES =
+            METRICS.gauge("axion.render.vanilla_skinned_vertices", "count");
+    private static final JavaMetrics.Metric VANILLA_SKINNED_CAPPED =
+            METRICS.counter("axion.render.vanilla_skinned_capped", "count");
     private static final JavaMetrics.Metric SHADER_REFUSED = METRICS.gauge("axion.render.shader.refused", "count");
     private static final JavaMetrics.Metric SHADER_CACHE_HITS = METRICS.gauge("axion.render.shader.cache_hits", "count");
     private static final JavaMetrics.Metric SHADER_CACHE_MISSES =
@@ -403,6 +415,11 @@ public final class AxionRenderPass {
     /** {@return vrai si la dernière table des palettes d'os a été lue par pages d'UBO} */
     public static boolean paletteUbo() {
         return backend instanceof NativeGlBackend active && active.palettes().ubo();
+    }
+
+    /** {@return {@code render.vanilla_max_skinned_vertices}, tel que lu au choix du backend (R-742)} */
+    public static long vanillaMaxSkinnedVertices() {
+        return vanillaMaxSkinnedVertices;
     }
 
     /** {@return le seuil d'instancing du backend natif, ou -1 sous un autre} */
@@ -857,10 +874,6 @@ public final class AxionRenderPass {
                 FRAME_DECISIONS.put(all.get(candidates[outcome.retained()[rank]]).entity(), outcome.levels()[rank]);
             }
         }
-        if (outcome.code() == 0) {
-            SKINNED.set(outcome.skinned());
-            SKINNED_CAPPED.add(outcome.skinnedCapped());
-        }
         if (outcome.code() != 0) {
             culling = null;
             LOGGER.warn("AXION : culling natif coupé après le code {}, tout est dessiné", outcome.code());
@@ -876,6 +889,13 @@ public final class AxionRenderPass {
             int at = candidates[retained[rank]];
             kept[at] = all.get(at).withMeshes(outcome.meshes()[rank], outcome.matrices()[rank], outcome.palettes()[rank]);
         }
+        SKINNED_CAPPED.add(outcome.skinnedCapped());
+        if (backend instanceof NativeGlBackend) {
+            SKINNED.set(outcome.skinned());
+            VANILLA_SKINNED_VERTICES.set(0);
+        } else {
+            SKINNED.set(skinOnCpu(kept, candidates, outcome));
+        }
         List<RenderBackend.Assembly> drawn = new ArrayList<>(all.size());
         for (RenderBackend.Assembly assembly : kept) {
             if (assembly != null) {
@@ -883,6 +903,48 @@ public final class AxionRenderPass {
             }
         }
         return drawn;
+    }
+
+    /**
+     * R-742 : le backend vanilla skinne sur le CPU, à l'émission, jusqu'à
+     * {@code render.vanilla_max_skinned_vertices} sommets par frame — les retenus les plus proches d'abord,
+     * parmi ceux que le natif a dotés d'une palette ; les autres se dessinent au repos, et la métrique les
+     * compte.
+     *
+     * @param kept les assemblies de la frame, à la place de leur candidate
+     * @param candidates la place de chaque candidate parmi elles
+     * @return les retenus skinnés
+     */
+    private static int skinOnCpu(RenderBackend.Assembly[] kept, int[] candidates, NativeCulling.Outcome outcome) {
+        int[] retained = outcome.retained();
+        float[][] bones = outcome.bones();
+        int[] vertices = new int[retained.length];
+        for (int rank = 0; rank < retained.length; rank++) {
+            RenderBackend.Assembly assembly = kept[candidates[retained[rank]]];
+            if (bones[rank] != null) {
+                vertices[rank] = CpuSkinning.vertices(assembly.asset(), assembly.draws());
+            }
+        }
+        boolean[] admitted = CpuSkinning.admit(vertices, outcome.distances(), vanillaMaxSkinnedVertices);
+        int skinned = 0;
+        long skinnedVertices = 0;
+        int capped = 0;
+        for (int rank = 0; rank < retained.length; rank++) {
+            if (vertices[rank] == 0) {
+                continue;
+            }
+            if (admitted[rank]) {
+                int at = candidates[retained[rank]];
+                kept[at] = kept[at].withSkin(new CpuSkinning(bones[rank]));
+                skinned++;
+                skinnedVertices += vertices[rank];
+            } else {
+                capped++;
+            }
+        }
+        VANILLA_SKINNED_VERTICES.set(skinnedVertices);
+        VANILLA_SKINNED_CAPPED.add(capped);
+        return skinned;
     }
 
     private static RenderBackend.Frame frame(
@@ -1113,6 +1175,7 @@ public final class AxionRenderPass {
         String requested = config.getString("render.backend");
         maxDistance = (float) config.getFloat("render.max_distance");
         lodBias = (int) config.getInt("render.lod_bias");
+        vanillaMaxSkinnedVertices = config.getInt("render.vanilla_max_skinned_vertices");
         NativeGlBackend candidate =
                 shaderpackInUse || nativeRefused || "vanilla".equals(requested) ? null : startNative();
         BackendSelection.Selection selection =

@@ -3431,7 +3431,20 @@ sources procédurales de véhicule (M5, T-365).
             repli UBO paginé (H-04) ; variantes appliquées aux sommets, variantes d'émission ; `palette_offset` ;
             dessin skinné à la racine, sans sa matrice de dessin ; bras skinné généré par code ; banc natif : T-908
             (partie skinning, 0 px d'écart), T-541, T-542 verts.
+- [x] Décisions de Killian pour la tranche 6 (2026-10-29) : overlays par `axion_render_debug` (ABI 11, segments
+      `DEBUG` depuis les instances animées du rendu) ; skinning vanilla en Java à l'émission, palettes lues dans
+      `RENDER_OUT` pour ce backend.
 - [ ] 6. Skinning vanilla (R-742), overlays `bones`, `nodes`, `pivots`, documentation.
+      - [x] 6a. (2026-10-29) Skinning vanilla sur le CPU (R-742) : os et poids lus dans le transfert, palettes
+            copiées de `RENDER_OUT` pour ce backend, chaque mesh skinné une fois par frame et par instance ;
+            plafond `render.vanilla_max_skinned_vertices` par distance, les plus lointains au repos, métriques
+            `axion.render.vanilla_skinned_vertices` et `_capped` ; matrice R-1493 à jour. Banc vanilla : R-742
+            (0 px d'écart), T-493 partie skinning (12 bras sur 65 sous un plafond de 400) ; banc natif vert.
+            11 mutations unitaires et 3 au banc rouges.
+      - [x] Décisions de Killian pour la 6b (2026-10-29) : tampon `RENDER_DEBUG` au pool du contexte de rendu
+            (schéma `DEBUG` 2) ; segments en repère d'origine, relatifs à la caméra de la frame, handle `ABSENT`.
+      - [ ] 6b. `axion_render_debug` (ABI 11) : os, nodes et pivots des instances animées ; overlays dessinés ;
+            banc.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :

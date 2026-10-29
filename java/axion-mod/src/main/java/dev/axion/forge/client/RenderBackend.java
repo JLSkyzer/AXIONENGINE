@@ -5,6 +5,7 @@ import dev.axion.asset.GeometryTransfer;
 import dev.axion.forge.AxionEntity;
 import dev.axion.render.BackendSelection;
 import dev.axion.render.BodyRig;
+import dev.axion.render.CpuSkinning;
 import dev.axion.render.LeveledDraws;
 import dev.axion.render.RenderAsset;
 import dev.axion.render.RenderPrepCodec;
@@ -101,9 +102,16 @@ interface RenderBackend {
      *     celui du niveau de détail que le natif a choisi (ADR-154, tranche 2b) ; vide sans asset
      * @param palette la première matrice de sa palette d'os dans la table que le natif a remise au GPU, ou
      *     {@link RenderPrepCodec#NO_PALETTE} : ses meshes skinnés se dessinent alors au repos (C-66)
+     * @param skin sa palette d'os pour le skinning sur le CPU du backend vanilla (R-742), ou {@code null} : ses
+     *     meshes skinnés s'y dessinent alors au repos
      */
     record Assembly(
-            AxionEntity entity, RenderAsset asset, BodyRig rig, List<GeometryTransfer.Draw> draws, int palette) {
+            AxionEntity entity,
+            RenderAsset asset,
+            BodyRig rig,
+            List<GeometryTransfer.Draw> draws,
+            int palette,
+            CpuSkinning skin) {
 
         /**
          * Une assembly dessinée au niveau 0 : les dessins de la liste au repos.
@@ -113,7 +121,8 @@ interface RenderBackend {
          * @param rig les corps de son asset, ou {@code null}
          */
         Assembly(AxionEntity entity, RenderAsset asset, BodyRig rig) {
-            this(entity, asset, rig, asset == null ? List.of() : asset.mesh().draws(), RenderPrepCodec.NO_PALETTE);
+            this(entity, asset, rig, asset == null ? List.of() : asset.mesh().draws(), RenderPrepCodec.NO_PALETTE,
+                    null);
         }
 
         /**
@@ -123,15 +132,24 @@ interface RenderBackend {
          *
          * @param meshes le mesh de chaque dessin, dans l'ordre de la liste au repos
          * @param matrices la matrice de chaque dessin d'une assembly animée (ADR-155), ou {@code null}
-         * @param skin la première matrice de sa palette d'os, ou {@link RenderPrepCodec#NO_PALETTE}
+         * @param first la première matrice de sa palette d'os, ou {@link RenderPrepCodec#NO_PALETTE}
          */
-        Assembly withMeshes(int[] meshes, float[][] matrices, int skin) {
+        Assembly withMeshes(int[] meshes, float[][] matrices, int first) {
             if (asset == null) {
                 return this;
             }
             List<GeometryTransfer.Draw> leveled =
                     LeveledDraws.of(asset.mesh().draws(), asset.mesh().meshes().size(), meshes, matrices);
-            return leveled == draws && skin == palette ? this : new Assembly(entity, asset, rig, leveled, skin);
+            return leveled == draws && first == palette ? this : new Assembly(entity, asset, rig, leveled, first, skin);
+        }
+
+        /**
+         * {@return la même assembly, skinnée sur le CPU par cette palette (R-742)}
+         *
+         * @param cpu sa palette d'os pour la frame
+         */
+        Assembly withSkin(CpuSkinning cpu) {
+            return new Assembly(entity, asset, rig, draws, palette, cpu);
         }
     }
 }

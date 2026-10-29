@@ -101,6 +101,10 @@ minecraft {
             property 'axion.rendertest', 'm3'
             property 'axion.debug.gl', 'true'
             property 'axion.render.backend', 'vanilla'
+            // T-493 : le plafond de sommets skinnés sur le CPU (R-742), abaissé pour que les bras de test
+            // l'atteignent avant le plafond d'instances skinnées (R-791) ; au défaut, il en faudrait plus d'un
+            // millier.
+            property 'axion.render.vanilla_max_skinned_vertices', '400'
             args '--width', '854', '--height', '480'
         }
 

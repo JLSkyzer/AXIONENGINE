@@ -201,6 +201,51 @@ public final class RenderPrepCodec {
     }
 
     /**
+     * {@return la palette d'os de chaque retenu, {@link #MATRIX_FLOATS} flottants par os dans l'ordre du
+     * squelette, ou {@code null} pour un retenu qui n'en porte pas} Le backend vanilla la lit pour skinner sur
+     * le CPU (R-742). Une palette suit les matrices des dessins de son retenu : elle s'arrête où commencent
+     * celles du retenu animé suivant, ou à la fin de la table.
+     *
+     * @param renderOut {@code RENDER_OUT}, little-endian
+     * @param payload position de la charge utile
+     * @param retained nombre de retenus de la frame
+     */
+    public static float[][] retainedPalettes(ByteBuffer renderOut, int payload, int retained) {
+        float[][] palettes = new float[retained][];
+        int meshTotal = renderOut.getInt(payload + 8);
+        int table = payload + OUT_HEADER_BYTES + retained * OUT_RECORD_BYTES + meshTotal * 4;
+        int end = renderOut.getInt(payload + 16);
+        for (int rank = retained - 1; rank >= 0; rank--) {
+            int record = payload + OUT_HEADER_BYTES + rank * OUT_RECORD_BYTES;
+            int first = renderOut.getInt(record + 28);
+            if (first != NO_PALETTE) {
+                float[] palette = new float[(end - first) * MATRIX_FLOATS];
+                for (int i = 0; i < palette.length; i++) {
+                    palette[i] = renderOut.getFloat(table + (first * MATRIX_FLOATS + i) * 4);
+                }
+                palettes[rank] = palette;
+            }
+            int matrices = renderOut.getInt(record + 24);
+            if (matrices != NO_MATRICES) {
+                end = matrices;
+            }
+        }
+        return palettes;
+    }
+
+    /**
+     * {@return la distance du retenu de rang {@code rank} à la caméra, en blocs, celle sur laquelle le natif
+     * a choisi ses retenus skinnés (R-791)}
+     *
+     * @param renderOut {@code RENDER_OUT}, little-endian
+     * @param payload position de la charge utile
+     * @param rank rang du retenu
+     */
+    public static float retainedDistance(ByteBuffer renderOut, int payload, int rank) {
+        return renderOut.getFloat(payload + OUT_HEADER_BYTES + rank * OUT_RECORD_BYTES + 12);
+    }
+
+    /**
      * {@return les retenus skinnés de la frame laissés au repos par {@code render.max_skinned_instances}
      * (R-791)}
      *

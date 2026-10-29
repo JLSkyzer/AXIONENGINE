@@ -52,6 +52,13 @@ public final class GeometryTransfer {
     /** Drapeau de mesh : soumis à la déformation continue. */
     public static final int MESH_DEFORMABLE = 1 << 3;
 
+    /** Os par sommet (R-140). */
+    public static final int BONES_PER_VERTEX = 4;
+
+    /** Position, dans un sommet, de ses os ({@code u8×4}) puis de leurs poids ({@code UNORM8×4}) (DM-04). */
+    private static final int BONES_OFFSET = 32;
+    private static final int WEIGHTS_OFFSET = 36;
+
     /**
      * Un mesh (DM-04).
      *
@@ -294,6 +301,29 @@ public final class GeometryTransfer {
     /** {@return les indices, locaux à leur mesh} */
     public int[] indices() {
         return indices;
+    }
+
+    /**
+     * {@return l'os d'un sommet, à sa place parmi ses quatre} Lu dans le transfert reçu, sans tableau de
+     * plus : seul le skinning du backend vanilla s'en sert (R-742). Le natif a vérifié qu'il désigne un os
+     * du squelette.
+     *
+     * @param vertex rang du sommet dans le tableau des sommets
+     * @param slot place de l'os, de 0 à {@link #BONES_PER_VERTEX} exclu
+     */
+    public int bone(int vertex, int slot) {
+        return Byte.toUnsignedInt(raw[verticesAt + vertex * VERTEX_BYTES + BONES_OFFSET + slot]);
+    }
+
+    /**
+     * {@return le poids de l'os d'un sommet à cette place, de 0 à 1} {@code UNORM8} comme le lit le GPU :
+     * l'octet sur 255. Les quatre font 1 (R-140).
+     *
+     * @param vertex rang du sommet dans le tableau des sommets
+     * @param slot place de l'os, de 0 à {@link #BONES_PER_VERTEX} exclu
+     */
+    public float weight(int vertex, int slot) {
+        return Byte.toUnsignedInt(raw[verticesAt + vertex * VERTEX_BYTES + WEIGHTS_OFFSET + slot]) / 255.0f;
     }
 
     /**

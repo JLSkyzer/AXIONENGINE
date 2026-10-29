@@ -115,7 +115,8 @@ public final class RenderCapabilities {
                 new Entry(Capability.INSTANCING, Availability.UNAVAILABLE,
                         "draw calls individuels"),
                 new Entry(Capability.SKINNING_DEFORMATION, Availability.NOT_DELIVERED,
-                        "sur CPU, plafonnés (R-742) : C-66, puis M6"),
+                        "skinning sur CPU, plafonné par render.vanilla_max_skinned_vertices (R-742) ;"
+                                + " déformation : M6 (C-68)"),
                 new Entry(Capability.OCCLUSION_CULLING, Availability.NOT_DELIVERED,
                         "indépendant du backend : C-82"));
     }
@@ -138,7 +139,8 @@ public final class RenderCapabilities {
                 new Entry(Capability.INSTANCING, Availability.NOT_DELIVERED,
                         "un dessin instancié par mesh posé ; regroupement et multi-draw indirect : C-65"),
                 new Entry(Capability.SKINNING_DEFORMATION, Availability.NOT_DELIVERED,
-                        "sur GPU : C-66, puis M6 (C-68)"),
+                        "skinning sur GPU, plafonné par render.max_skinned_instances (R-791) ;"
+                                + " déformation : M6 (C-68)"),
                 new Entry(Capability.OCCLUSION_CULLING, Availability.NOT_DELIVERED,
                         "indépendant du backend : C-82"));
     }

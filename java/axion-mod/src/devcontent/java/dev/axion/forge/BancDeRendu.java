@@ -296,7 +296,7 @@ public final class BancDeRendu {
             : NATIF
             ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-908", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "R-742", "T-493", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -366,6 +366,9 @@ public final class BancDeRendu {
     private static CapturesDuBanc.Capture brasTbo;
     private static final List<AxionEntity> brasCopies = new ArrayList<>();
     private static long plafonnesAvant;
+    /** R-742 : les sommets que skinne un bras sur le CPU, et les bras laissés au repos avant de plier les copies. */
+    private static long sommetsParBras;
+    private static long plafonnesVanillaAvant;
     private static int assembliesAvantBras;
 
     /** ADR-155 : la glissière, et le fond sans elle, puis au repos, puis le coulisseau poussé. */
@@ -736,6 +739,20 @@ public final class BancDeRendu {
             jusqua("la glissière retirée", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
         }
 
+        // ADR-155, tranche 6a : le skinning du backend vanilla, sur le CPU à l'émission des sommets (R-742). Le bras
+        // plié se dessine là où sa référence CPU le place ; au-delà de render.vanilla_max_skinned_vertices — abaissé
+        // pour le banc —, les bras les plus lointains restent au repos, et la métrique le compte (T-493).
+        if (!NATIF && !SHADERS) {
+            plierLeBras();
+            une("juger R-742", mc -> {
+                sommetsParBras = sommetsSkinnesVanilla();
+                jugerBrasPlie("R-742", "sur le CPU", capturer(mc, "r742.png"), derniereVue);
+            });
+            plierLesCopies(mc -> skinnes() == brasSkinnesVanilla() && plafonnesVanilla() > plafonnesVanillaAvant);
+            une("juger T-493", mc -> jugerT493());
+            retirerLesBras();
+        }
+
 
         // T-477, T-478 (C-65, ADR-154) : 200 copies du cube devant la caméra. Instanciées, elles ne coûtent
         // que quelques appels de dessin ; sans instancing, l'image est la même, pixel pour pixel.
@@ -1058,31 +1075,9 @@ public final class BancDeRendu {
             // SKINNED n'entrent au cache qu'ensuite, que T-905 réécrit entier. Le bras plié se dessine là où sa
             // référence CPU le place (T-908, partie skinning) ; le repli UBO donne la même image que le TBO
             // (T-541) ; au-delà de render.max_skinned_instances, la pose de repos et la métrique (T-542).
-            stabiliser("le fond du bras");
-            une("capturer le fond du bras", mc -> {
-                fondBras = capturer(mc, "skin_fond.png");
-                assembliesAvantBras = AxionRenderPass.lastFrame().assemblies();
-            });
-            serveur("poser le bras skinné", s -> bras = AssembliesDeTest.poser(
-                    s.overworld(), BRAS, positionPanneau(Z_PLAT), QUART_DE_TOUR_A_DROITE));
-            jusqua("le bras rendu, ses clips liés", 120, mc -> mc.level.getEntity(bras.getId()) != null
-                    && dessinees(assembliesAvantBras + 1) && !bras.animation().clips().isEmpty());
-            serveur("plier le bras", s -> bras.animation().play("plier", 0, 1f, 0f));
-            jusqua("le bras skinné au rendu", 120, mc -> skinnes() == 1);
-            stabiliser("le bras plié");
-            une("juger T-908", mc -> jugerT908(capturer(mc, "t908.png"), derniereVue));
-            serveur("poser 64 bras de plus", s -> {
-                brasCopies.clear();
-                for (int rang = 0; rang < PLAFOND_SKINNES; rang++) {
-                    brasCopies.add(AssembliesDeTest.poser(s.overworld(), BRAS,
-                            new Vec3(-6.5 - 2.0 * (rang / 10), surface, -8.5 + 2.0 * (rang % 10)), IDENTITE));
-                }
-            });
-            jusqua("les bras rendus, leurs clips liés", 240, mc -> dessinees(assembliesAvantBras + 1 + PLAFOND_SKINNES)
-                    && brasCopies.stream().noneMatch(copie -> copie.animation().clips().isEmpty()));
-            une("relever les plafonnés", mc -> plafonnesAvant = plafonnes());
-            serveur("plier tous les bras", s -> brasCopies.forEach(copie -> copie.animation().play("plier", 0, 1f, 0f)));
-            jusqua("le plafond atteint", 120, mc -> skinnes() == PLAFOND_SKINNES && plafonnes() > plafonnesAvant);
+            plierLeBras();
+            une("juger T-908", mc -> jugerBrasPlie("T-908", "au GPU", capturer(mc, "t908.png"), derniereVue));
+            plierLesCopies(mc -> skinnes() == PLAFOND_SKINNES && plafonnes() > plafonnesAvant);
             une("juger T-542", mc -> jugerT542());
             // T-541 sur les 65 bras : leurs palettes s'étalent dans la table, bien au-delà de la première page.
             stabiliser("les bras pliés");
@@ -1091,11 +1086,7 @@ public final class BancDeRendu {
             stabiliser("les bras pliés, en UBO");
             une("juger T-541", mc -> jugerT541(capturer(mc, "t541_ubo.png")));
             une("rendre le TBO", mc -> AxionRenderPass.setPaletteUbo(false));
-            serveur("retirer les bras", s -> {
-                bras.discard();
-                brasCopies.forEach(Entity::discard);
-            });
-            jusqua("les bras retirés", 120, mc -> AxionRenderPass.lastFrame().assemblies() == assembliesAvantBras);
+            retirerLesBras();
 
             // R-761 : une variante refusée à la demande, sur un natif qui avait démarré, fait aussi
             // basculer sur vanilla — jusqu'au rechargement suivant.
@@ -1247,6 +1238,58 @@ public final class BancDeRendu {
         return frame.assemblies() == attendues && frame.withAsset() == attendues;
     }
 
+    /**
+     * ADR-155 : le bras skinné posé devant la caméra, son fond capturé avant lui, puis plié ; à la fin, la frame le
+     * montre plié, skinné par le backend.
+     */
+    private static void plierLeBras() {
+        stabiliser("le fond du bras");
+        une("capturer le fond du bras", mc -> {
+            fondBras = capturer(mc, "skin_fond.png");
+            assembliesAvantBras = AxionRenderPass.lastFrame().assemblies();
+        });
+        serveur("poser le bras skinné", s -> bras = AssembliesDeTest.poser(
+                s.overworld(), BRAS, positionPanneau(Z_PLAT), QUART_DE_TOUR_A_DROITE));
+        jusqua("le bras rendu, ses clips liés", 120, mc -> mc.level.getEntity(bras.getId()) != null
+                && dessinees(assembliesAvantBras + 1) && !bras.animation().clips().isEmpty());
+        serveur("plier le bras", s -> bras.animation().play("plier", 0, 1f, 0f));
+        jusqua("le bras skinné au rendu", 120, mc -> skinnes() == 1);
+        stabiliser("le bras plié");
+    }
+
+    /**
+     * ADR-155 : 64 bras de plus, plus loin que le premier, rendus puis pliés, jusqu'à ce que le plafond de skinning
+     * du backend les départage.
+     *
+     * @param atteint vrai quand la frame montre le plafond atteint
+     */
+    private static void plierLesCopies(Predicate<Minecraft> atteint) {
+        serveur("poser 64 bras de plus", s -> {
+            brasCopies.clear();
+            for (int rang = 0; rang < PLAFOND_SKINNES; rang++) {
+                brasCopies.add(AssembliesDeTest.poser(s.overworld(), BRAS,
+                        new Vec3(-6.5 - 2.0 * (rang / 10), surface, -8.5 + 2.0 * (rang % 10)), IDENTITE));
+            }
+        });
+        jusqua("les bras rendus, leurs clips liés", 240, mc -> dessinees(assembliesAvantBras + 1 + PLAFOND_SKINNES)
+                && brasCopies.stream().noneMatch(copie -> copie.animation().clips().isEmpty()));
+        une("relever les plafonnés", mc -> {
+            plafonnesAvant = plafonnes();
+            plafonnesVanillaAvant = plafonnesVanilla();
+        });
+        serveur("plier tous les bras", s -> brasCopies.forEach(copie -> copie.animation().play("plier", 0, 1f, 0f)));
+        jusqua("le plafond atteint", 120, atteint);
+    }
+
+    /** ADR-155 : le bras et ses copies retirés, la scène revenue à ce qu'elle dessinait avant eux. */
+    private static void retirerLesBras() {
+        serveur("retirer les bras", s -> {
+            bras.discard();
+            brasCopies.forEach(Entity::discard);
+        });
+        jusqua("les bras retirés", 120, mc -> AxionRenderPass.lastFrame().assemblies() == assembliesAvantBras);
+    }
+
     /** {@return les retenus skinnés de la dernière frame : la jauge {@code axion.render.skinned}} */
     private static long skinnes() {
         return dev.axion.diag.JavaMetrics.GLOBAL.gauge("axion.render.skinned", "count").value();
@@ -1257,12 +1300,39 @@ public final class BancDeRendu {
         return dev.axion.diag.JavaMetrics.GLOBAL.counter("axion.render.skinned_capped", "count").value();
     }
 
+    /** {@return les sommets skinnés sur le CPU à la dernière frame : {@code axion.render.vanilla_skinned_vertices}} */
+    private static long sommetsSkinnesVanilla() {
+        return dev.axion.diag.JavaMetrics.GLOBAL.gauge("axion.render.vanilla_skinned_vertices", "count").value();
+    }
+
     /**
-     * T-908, partie skinning (ADR-155, tranche 5) : la silhouette du bras plié couvre la boîte que projettent
-     * ses sommets skinnés sur le CPU — chacun porté par ses os, au coude plié d'un quart de tour autour de z,
-     * puis posé à la place du bras —, à {@link #ECART_BOITE} pixels près. La déformation s'y ajoutera en M6.
+     * {@return les retenus laissés au repos par {@code render.vanilla_max_skinned_vertices} depuis le lancement :
+     * {@code axion.render.vanilla_skinned_capped}}
      */
-    private static void jugerT908(CapturesDuBanc.Capture plie, Vue vue) {
+    private static long plafonnesVanilla() {
+        return dev.axion.diag.JavaMetrics.GLOBAL.counter("axion.render.vanilla_skinned_capped", "count").value();
+    }
+
+    /**
+     * {@return les bras que {@code render.vanilla_max_skinned_vertices} laisse skinner, au plus ceux que le natif
+     * dote d'une palette (R-791) ; -1 tant que les sommets d'un bras ne sont pas relevés}
+     */
+    private static long brasSkinnesVanilla() {
+        return sommetsParBras <= 0
+                ? -1
+                : Math.min(PLAFOND_SKINNES, AxionRenderPass.vanillaMaxSkinnedVertices() / sommetsParBras);
+    }
+
+    /**
+     * T-908 au natif, partie skinning (ADR-155, tranche 5), et R-742 au vanilla (tranche 6a) : la silhouette du bras
+     * plié couvre la boîte que projettent ses sommets skinnés par cette référence — chacun porté par ses os, au
+     * coude plié d'un quart de tour autour de z, puis posé à la place du bras —, à {@link #ECART_BOITE} pixels
+     * près. La déformation s'y ajoutera en M6.
+     *
+     * @param id l'identifiant noté au rapport
+     * @param ou où le backend skinne : « au GPU », « sur le CPU »
+     */
+    private static void jugerBrasPlie(String id, String ou, CapturesDuBanc.Capture plie, Vue vue) {
         CapturesDuBanc.Masque masque = CapturesDuBanc.masque(fondBras, plie);
         Quaternionf pose = bras.bodyRotation();
         Vec3 origine = bras.position();
@@ -1304,10 +1374,28 @@ public final class BancDeRendu {
             (int) Math.floor(maxX - 0.5f), (int) Math.floor(maxY - 0.5f)
         };
         int ecart = ecart(masque, attendue);
-        RAPPORT.noter("T-908", masque.nombre() >= aire(attendue) / 4 && ecart <= ECART_BOITE, String.format(
-                Locale.ROOT, "bras plié skinné au GPU : %d px, boîte %s ; référence CPU projetée %s (écart %d, %d"
-                        + " tolérés) ; la déformation (R-792) s'y ajoute en M6",
-                masque.nombre(), Arrays.toString(masque.boite()), Arrays.toString(attendue), ecart, ECART_BOITE));
+        RAPPORT.noter(id, masque.nombre() >= aire(attendue) / 4 && ecart <= ECART_BOITE, String.format(
+                Locale.ROOT, "bras plié skinné %s : %d px, boîte %s ; référence projetée %s (écart %d, %d tolérés) ;"
+                        + " la déformation s'y ajoute en M6",
+                ou, masque.nombre(), Arrays.toString(masque.boite()), Arrays.toString(attendue), ecart, ECART_BOITE));
+    }
+
+    /**
+     * T-493 (R-742) : au-delà de {@code render.vanilla_max_skinned_vertices}, les bras les plus lointains restent au
+     * repos ; les sommets skinnés de la frame tiennent sous le plafond, et la métrique compte les bras laissés.
+     */
+    private static void jugerT493() {
+        long plafond = AxionRenderPass.vanillaMaxSkinnedVertices();
+        long attendus = brasSkinnesVanilla();
+        long skinnes = skinnes();
+        long sommets = sommetsSkinnesVanilla();
+        long laisses = plafonnesVanilla() - plafonnesVanillaAvant;
+        boolean vert = attendus > 0 && attendus < PLAFOND_SKINNES && skinnes == attendus
+                && sommets == skinnes * sommetsParBras && sommets <= plafond && laisses > 0;
+        RAPPORT.noter("T-493", vert, String.format(Locale.ROOT,
+                "%d bras pliés en vue, %d sommets skinnés par bras : %d skinnés sur le CPU (%d attendus), %d sommets"
+                        + " (render.vanilla_max_skinned_vertices = %d) ; %d laissé(s) au repos depuis le relevé",
+                PLAFOND_SKINNES + 1, sommetsParBras, skinnes, attendus, sommets, plafond, laisses));
     }
 
     /**

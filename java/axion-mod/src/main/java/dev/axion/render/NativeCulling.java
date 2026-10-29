@@ -58,13 +58,17 @@ public final class NativeCulling {
      * @param palettes pour chaque retenu, la première matrice de sa palette d'os, ou
      *     {@link RenderPrepCodec#NO_PALETTE} (ADR-155, schéma 4)
      * @param skinnedCapped retenus skinnés laissés au repos par {@code render.max_skinned_instances} (R-791)
+     * @param distances distance de chaque retenu à la caméra, en blocs
+     * @param bones pour chaque retenu, sa palette d'os lue pour le CPU — douze flottants par os —, ou
+     *     {@code null} : sans palette, ou quand la table part au GPU (backend natif)
      */
     public record Outcome(
             int code, int[] retained, int[] levels, int[][] meshes, float[][][] matrices, int flags, long triangles,
-            int[] palettes, int skinnedCapped) {
+            int[] palettes, int skinnedCapped, float[] distances, float[][] bones) {
 
         static Outcome failed(int code) {
-            return new Outcome(code, new int[0], new int[0], new int[0][], new float[0][][], 0, 0, new int[0], 0);
+            return new Outcome(code, new int[0], new int[0], new int[0][], new float[0][][], 0, 0, new int[0], 0,
+                    new float[0], new float[0][]);
         }
 
         /** {@return les retenus de la frame qui portent une palette d'os} */
@@ -114,14 +118,14 @@ public final class NativeCulling {
      * @param budgetNs budget de la préparation, {@code budgets.render_prep_ns}
      * @param renderTick tick de rendu de l'image (ADR-155)
      * @param table qui reçoit la table des matrices quand un retenu porte une palette, ou {@code null} : aucun
-     *     skinning sur le GPU (backend vanilla)
+     *     skinning sur le GPU (backend vanilla), et les palettes sont lues pour le CPU (R-742)
      * @return les retenus, ou le code de l'échec
      */
     public Outcome cull(
             byte[] camera, int count, Candidates candidates, long budgetNs, double renderTick, MatrixTable table) {
         if (count == 0) {
             return new Outcome(NativeBridge.OK, new int[0], new int[0], new int[0][], new float[0][][], 0, 0,
-                    new int[0], 0);
+                    new int[0], 0, new float[0], new float[0][]);
         }
         long bytes = RenderPrepCodec.IN_FRAME_HEADER_BYTES + (long) count * RenderPrepCodec.CANDIDATE_BYTES;
         ByteBuffer in = NativeBridge.acquire(context, BufferKinds.RENDER_IN, bytes);
@@ -162,7 +166,8 @@ public final class NativeCulling {
 
     /**
      * Lit les retenus de la frame préparée dans {@code RENDER_OUT}, remet sa table des matrices au GPU si
-     * un retenu porte une palette, puis relâche le tampon.
+     * un retenu porte une palette — ou, sans GPU qui la reçoive, en copie les palettes pour le CPU (R-742) —,
+     * puis relâche le tampon.
      */
     private Outcome read(MatrixTable table) {
         ByteBuffer out = NativeBridge.acquire(context, BufferKinds.RENDER_OUT, 0);
@@ -176,12 +181,18 @@ public final class NativeCulling {
             int[][] meshes = new int[count][];
             float[][][] matrices = new float[count][][];
             int[] palettes = new int[count];
+            float[] distances = new float[count];
             for (int rank = 0; rank < count; rank++) {
                 retained[rank] = RenderPrepCodec.retainedIndex(out, BufferKinds.HEADER_BYTES, rank);
                 levels[rank] = RenderPrepCodec.retainedLevel(out, BufferKinds.HEADER_BYTES, rank);
                 meshes[rank] = RenderPrepCodec.retainedMeshes(out, BufferKinds.HEADER_BYTES, count, rank);
                 matrices[rank] = RenderPrepCodec.retainedMatrices(out, BufferKinds.HEADER_BYTES, count, rank);
                 palettes[rank] = RenderPrepCodec.retainedPalette(out, BufferKinds.HEADER_BYTES, rank);
+                distances[rank] = RenderPrepCodec.retainedDistance(out, BufferKinds.HEADER_BYTES, rank);
+            }
+            float[][] bones = new float[count][];
+            if (table == null && skinned(palettes)) {
+                bones = RenderPrepCodec.retainedPalettes(out, BufferKinds.HEADER_BYTES, count);
             }
             if (table != null && skinned(palettes)) {
                 int payload = BufferKinds.HEADER_BYTES;
@@ -193,7 +204,7 @@ public final class NativeCulling {
             }
             return new Outcome(NativeBridge.OK, retained, levels, meshes, matrices,
                     (int) result[NativeBridge.RENDER_FLAGS], result[NativeBridge.RENDER_TRIANGLE_ESTIMATE],
-                    palettes, RenderPrepCodec.skinnedCapped(out, BufferKinds.HEADER_BYTES));
+                    palettes, RenderPrepCodec.skinnedCapped(out, BufferKinds.HEADER_BYTES), distances, bones);
         } finally {
             NativeBridge.release(context, BufferKinds.RENDER_OUT, out.getInt(GENERATION_OFFSET));
         }
