@@ -16,7 +16,8 @@
 //! intestable sans un gestionnaire de ressources autour.
 
 use crate::a3d::{
-    encode_colliders, encode_materials, encode_nodes, encode_textures, A3dWriter, SectionTag,
+    encode_animations, encode_bones, encode_colliders, encode_materials, encode_nodes,
+    encode_textures, A3dWriter, SectionTag,
 };
 use crate::collider::build_colliders;
 use crate::import::{
@@ -62,8 +63,10 @@ use core::fmt;
 /// d'être écartée, et l'asset entier prend `auto_capsule`, `convex` et `auto_convex`
 /// dans son repère ; 14 — `collision.resolution` prend effet (ADR-147) : la grille de
 /// la décomposition compte au plus 100 000 voxels par défaut, au lieu de la résolution
-/// par axe de `parry3d`.
-pub const COMPILER_VERSION: u32 = 14;
+/// par axe de `parry3d`. 15 — sections `SKEL` et `ANIM` (DM-10, ADR-155) : les skins
+/// glTF fusionnés en un squelette, les indices d'os des sommets traduits dans ce squelette, les
+/// animations importées.
+pub const COMPILER_VERSION: u32 = 15;
 
 /// Empreinte FNV-1a 64 bits d'une source, champ `source_hash` de l'en-tête A3D.
 ///
@@ -308,6 +311,10 @@ fn check(
             // donnent à chaque mesh un matériau, et c'est vérifié.
             materials: Some(&materials),
             texture_count: asset.textures.entries.len(),
+            bones: &asset.bones,
+            animations: &asset.animations.animations,
+            tracks: &asset.animations.tracks,
+            keys: &asset.animations.keys,
             dynamic_body: options.dynamic_body,
             missing_normals,
             ..AssetView::default()
@@ -563,6 +570,23 @@ fn write_container(
         writer
             .section(SectionTag::LODM, &lods.to_bytes())
             .map_err(CompileError::Container)?;
+    }
+    if !asset.bones.is_empty() {
+        // Sections du serveur comme du client (PARTIE 7.3) : R-1430 y échantillonne quand un
+        // socket, un collider ou une attache dépend d'un node animé.
+        let skel = encode_bones(&asset.bones).map_err(CompileError::Container)?;
+        writer
+            .section(SectionTag::SKEL, &skel)
+            .map_err(CompileError::Container)?;
+    }
+    if !asset.animations.animations.is_empty() {
+        let anim = encode_animations(&asset.animations).map_err(CompileError::Container)?;
+        if options.authored.compress {
+            writer.compressed_section(SectionTag::ANIM, &anim)
+        } else {
+            writer.section(SectionTag::ANIM, &anim)
+        }
+        .map_err(CompileError::Container)?;
     }
     if !asset.colliders.is_empty() {
         // Section `PHYS` : les colliders du runtime (C-32, ADR-115).

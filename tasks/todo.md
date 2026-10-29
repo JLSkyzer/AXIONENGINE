@@ -3369,6 +3369,29 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
       - [x] 6c (2026-10-29) : R-750 palier 2, LOD forcé et mips les plus fins des textures retirés (décision de
             Killian) ; T-484 au banc : textures à 25 % ; 3 mutations rouges.
 
+**Chantier animation (C-37, C-30, C-66)** — ouvert le 2026-10-29.
+[ADR-155](../docs/decisions/ADR-155.md) **accepté par Killian le 2026-10-29**, quatre questions selon la proposition
+(état d'animation autoritaire du serveur dans le descripteur v3 ; clés `f32`, quantification plus tard sur
+mesure ; `AnimationControl` minimal ; contenu de test glTF généré par code). T-540..T-542, que le CDC ne
+définit pas, définis par l'ADR. Hors chantier : machine à états (R-1440), déformation-driven et porte (M6),
+sources procédurales de véhicule (M5, T-365).
+
+- [x] Décision de Killian sur ADR-155 (Q1..Q4), 2026-10-29.
+- [x] 1. Format et import (2026-10-29) : DM-10, sections `SKEL` et `ANIM` (noms des clips compris),
+      `COMPILER_VERSION` 15 ; import glTF des skins (fusion par node, indices d'os traduits) et des clips ;
+      C-22 juge squelette et clips, `E-3060` au-delà de 128 os ou de 256 pistes ; modèles animés écrits par
+      code (bras, pendule, rebond, deux skins) ; 6 mutations rouges. Empreintes R-562 v15 : macOS aarch64
+      obtenue par la matrice de plateformes.
+- [ ] Question à Killian avant la tranche 2 : d'où vient la boucle d'un clip (`LOOP`) — ni glTF ni le CDC
+      ne le disent.
+- [ ] 2. `ax-anim` : échantillonnage (curseur, `STEP`, `LINEAR`, `CUBIC_SPLINE`), quatre couches, masque
+      d'os, blending TRS, crossfade ; tests des interpolations sur les modèles écrits par code.
+- [ ] 3. Graphe vivant : étapes 2 et 14 (client dans la préparation du rendu, serveur conditionnel R-1430),
+      `propagate_ns`, animation qui pilote un joint ; T-392, T-360..T-364.
+- [ ] 4. Réseau et API : descripteur v3, `AnimationControl`, triggers de definition.
+- [ ] 5. Skinning natif : shader, TBO, repli UBO, palettes dans `RENDER_OUT` (schéma 3) ; T-540..T-542, T-908.
+- [ ] 6. Skinning vanilla (R-742), overlays `bones`, `nodes`, `pivots`, documentation.
+
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
 

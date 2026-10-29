@@ -1,5 +1,6 @@
 //! Ce que le validateur examine.
 
+use ax_model::dm::animation::{AnimationDesc, BoneDesc, TrackDesc};
 use ax_model::dm::geometry::{MeshDesc, Vertex};
 use ax_model::dm::integrity::{DeformRegionDesc, StructuralLinkDesc};
 use ax_model::dm::material::MaterialDesc;
@@ -32,8 +33,8 @@ pub struct AssetView<'a> {
     pub links: &'a [StructuralLinkDesc],
     /// Bitsets d'ancrage des régions, concaténés.
     pub anchor_masks: &'a [u8],
-    /// Nombre d'os du squelette.
-    pub bone_count: usize,
+    /// Os du squelette (DM-10), vide si l'asset n'en porte pas.
+    pub bones: &'a [BoneDesc],
     /// Matériaux (DM-05) ; `None` si l'asset n'en porte pas de table.
     ///
     /// L'absence n'est pas une table vide : c'est un asset antérieur à
@@ -43,8 +44,12 @@ pub struct AssetView<'a> {
     pub materials: Option<&'a [MaterialDesc]>,
     /// Nombre de textures, entrées de `TEXR`.
     pub texture_count: usize,
-    /// Nombre d'animations.
-    pub animation_count: usize,
+    /// Animations (DM-10).
+    pub animations: &'a [AnimationDesc],
+    /// Pistes de toutes les animations.
+    pub tracks: &'a [TrackDesc],
+    /// Clés de toutes les pistes, `f32` (ADR-155 D2).
+    pub keys: &'a [f32],
     /// Noms de l'asset, par catégorie, pour la vérification d'unicité.
     pub names: &'a [NamedEntry<'a>],
     /// Les colliders sont portés par un body dynamique.

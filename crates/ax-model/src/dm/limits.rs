@@ -32,6 +32,10 @@ pub const MAX_TEXTURE_SIDE: u32 = 4096;
 /// Nombre maximal d'animations par asset (fiche C-22).
 pub const MAX_ANIMATIONS: usize = 128;
 
+/// Nombre maximal de pistes actives par assembly (R-200). Une animation qui en porte davantage
+/// ne pourrait jamais jouer : la compilation la refuse (ADR-155).
+pub const MAX_ACTIVE_TRACKS: usize = 256;
+
 /// Nombre maximal de parts par assembly (R-190, `E-3050`).
 pub const MAX_PARTS: usize = 64;
 

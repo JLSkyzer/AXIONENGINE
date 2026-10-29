@@ -15,12 +15,13 @@
 //! parts), DM-06 (colliders), DM-12 et DM-14 (régions de déformation, graphe
 //! structurel), et les plafonds de [`limits`]. Ce sont ceux que le validateur
 //! C-22 examine. DM-05 (matériaux) et le descripteur de texture d'ADR-122 sont
-//! venus avec C-26.
+//! venus avec C-26, DM-10 (squelette, animations) avec C-37 (ADR-155).
 //!
 //! Les autres viendront avec les composants qui les emploient. Les transcrire
 //! en avance figerait des dispositions mémoire avant que la première fonction
 //! ne s'en serve, ce qui est exactement la décision qu'on ne peut plus défaire.
 
+pub mod animation;
 pub mod commands;
 pub mod debug;
 pub mod geometry;

@@ -7,6 +7,7 @@
 //! délibéré. Une conversion silencieuse est ce qui fait qu'un modèle arrive à
 //! l'envers sans que personne ne sache où.
 
+use super::gltf_anim;
 use super::gltf_extras::{NodeAnnotations, NodeRole};
 use super::gltf_material::{self, GltfMaterials};
 use super::gltf_refs;
@@ -156,6 +157,23 @@ fn import_gltf_inner(
     // Les nodes ont été créés avant que les meshes n'existent : leur index de
     // mesh est posé maintenant, une fois que chacun connaît sa place.
     bind_meshes(&document, &placement, &mut asset, format)?;
+    // Une fois les meshes liés : les indices d'os de leurs sommets suivent le skin de leur node.
+    gltf_anim::import_skins(
+        &document,
+        &buffers,
+        &placement,
+        &mut asset,
+        &mut report,
+        format,
+    )?;
+    gltf_anim::import_animations(
+        &document,
+        &buffers,
+        &placement,
+        &mut asset,
+        &mut report,
+        format,
+    )?;
 
     // Les requêtes de collider se lisent une fois les nodes connus ; C-32 les
     // consomme après l'optimisation, quand les boîtes de mesh existent.

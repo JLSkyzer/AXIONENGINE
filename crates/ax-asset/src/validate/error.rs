@@ -36,6 +36,12 @@ pub enum Located {
     Link(usize),
     /// Un matériau, par son index.
     Material(usize),
+    /// Un os, par son index.
+    Bone(usize),
+    /// Une animation, par son index.
+    Animation(usize),
+    /// Une piste d'animation, par son index.
+    Track(usize),
 }
 
 impl fmt::Display for Located {
@@ -54,6 +60,9 @@ impl fmt::Display for Located {
             Located::Region(index) => write!(formatter, "région {index}"),
             Located::Link(index) => write!(formatter, "liaison {index}"),
             Located::Material(index) => write!(formatter, "matériau {index}"),
+            Located::Bone(index) => write!(formatter, "os {index}"),
+            Located::Animation(index) => write!(formatter, "animation {index}"),
+            Located::Track(index) => write!(formatter, "piste {index}"),
         }
     }
 }
@@ -130,6 +139,46 @@ pub enum Violation {
     NormalNotNormalizable,
     /// Poids d'os de somme nulle, donc non normalisables.
     WeightsNotNormalizable,
+    /// Squelette de plus de 128 os (R-200, `E-3060`).
+    TooManyBones {
+        /// Nombre constaté.
+        count: usize,
+    },
+    /// Animation de plus de 256 pistes, qui ne pourrait jamais jouer (R-200, `E-3060`).
+    TooManyTracks {
+        /// Nombre constaté.
+        count: usize,
+    },
+    /// Mesh `SKINNED` d'un asset sans squelette : ses os ne désignent rien.
+    SkinnedWithoutSkeleton,
+    /// Os ou piste désignant un node absent de la hiérarchie.
+    NodeOutOfRange {
+        /// Node invoqué.
+        node: u32,
+        /// Nombre de nodes.
+        node_count: usize,
+    },
+    /// Canal ou interpolation de piste inconnus (DM-10, ADR-155 D2).
+    UnknownTrackFormat {
+        /// Canal stocké.
+        channel: u8,
+        /// Interpolation stockée.
+        interp: u8,
+    },
+    /// Piste sans clé.
+    TrackWithoutKeys,
+    /// Temps de clé négatif, ou qui ne suit pas strictement le précédent.
+    KeyTimesNotIncreasing {
+        /// Rang de la clé fautive dans sa piste.
+        key: usize,
+    },
+    /// Durée d'animation antérieure au temps de la dernière clé de l'une de ses pistes.
+    DurationBeforeLastKey {
+        /// Durée déclarée.
+        duration: f32,
+        /// Temps de la dernière clé.
+        last: f32,
+    },
     /// Index d'os au-delà du squelette.
     BoneOutOfRange {
         /// Index invoqué.
@@ -306,6 +355,7 @@ impl Violation {
             Violation::DepthExceeded { .. } => -3022,
             Violation::UvOutOfRange { .. } => -3030,
             Violation::ConvexPointCount { .. } => -3040,
+            Violation::TooManyBones { .. } | Violation::TooManyTracks { .. } => -3060,
             _ => -3050,
         }
     }
@@ -364,6 +414,35 @@ impl fmt::Display for Violation {
             Violation::WeightsNotNormalizable => {
                 formatter.write_str("poids d'os de somme nulle, donc non normalisables")
             }
+            Violation::TooManyBones { count } => {
+                write!(formatter, "squelette de {count} os, maximum 128")
+            }
+            Violation::TooManyTracks { count } => write!(
+                formatter,
+                "animation de {count} pistes, maximum 256 actives par assembly"
+            ),
+            Violation::SkinnedWithoutSkeleton => {
+                formatter.write_str("mesh SKINNED dans un asset sans squelette")
+            }
+            Violation::NodeOutOfRange { node, node_count } => {
+                write!(
+                    formatter,
+                    "node {node} hors des {node_count} nodes de l'asset"
+                )
+            }
+            Violation::UnknownTrackFormat { channel, interp } => write!(
+                formatter,
+                "piste de canal {channel} et d'interpolation {interp} : format inconnu"
+            ),
+            Violation::TrackWithoutKeys => formatter.write_str("piste sans clé"),
+            Violation::KeyTimesNotIncreasing { key } => write!(
+                formatter,
+                "temps de la clé {key} négatif ou qui ne suit pas strictement la précédente"
+            ),
+            Violation::DurationBeforeLastKey { duration, last } => write!(
+                formatter,
+                "durée {duration} s antérieure à la dernière clé, à {last} s"
+            ),
             Violation::BoneOutOfRange { bone, bone_count } => {
                 write!(formatter, "os {bone} hors des {bone_count} os du squelette")
             }
@@ -555,6 +634,9 @@ mod tests {
             Violation::DepthExceeded { depth: 33 },
             Violation::UvOutOfRange { value: 12.0 },
             Violation::ConvexPointCount { count: 2 },
+            Violation::TooManyBones { count: 129 },
+            Violation::TooManyTracks { count: 257 },
+            Violation::KeyTimesNotIncreasing { key: 1 },
             Violation::PartCycle,
             Violation::DegenerateObb,
             Violation::InvalidName { reason: "vide" },
@@ -602,6 +684,9 @@ mod tests {
         assert_eq!(Violation::DepthExceeded { depth: 40 }.code(), -3022);
         assert_eq!(Violation::UvOutOfRange { value: 20.0 }.code(), -3030);
         assert_eq!(Violation::ConvexPointCount { count: 300 }.code(), -3040);
+        // R-200 nomme `E-3060` pour le squelette et les pistes.
+        assert_eq!(Violation::TooManyBones { count: 129 }.code(), -3060);
+        assert_eq!(Violation::TooManyTracks { count: 257 }.code(), -3060);
     }
 
     #[test]

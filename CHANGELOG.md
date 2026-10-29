@@ -146,6 +146,16 @@ Definition of Done (PARTIE 37.3).
     retire les mips les plus fins des textures d'AXION, rechargees en plus petit ;
     banc de rendu : jamais en pause, la pause au focus perdu coupee avant le
     chargement du monde et tout ecran de pause referme ;
+  - animation (C-37, ADR-155), en cours : DM-10 (`BoneDesc`, `AnimationDesc`,
+    `TrackDesc`) et sections A3D `SKEL` et `ANIM`, `COMPILER_VERSION` 15 ;
+    l'import glTF fusionne les skins en un squelette par node, traduit les
+    indices d'os des sommets dans ce squelette et importe les clips (temps et
+    valeurs de la source, `STEP`, `LINEAR`, `CUBIC_SPLINE`), les nodes animes
+    marques `ANIMATED` ; des `JOINTS_0` sans skin donnent un mesh rigide et un
+    avertissement, une piste de morphing est ignoree avec un avertissement ;
+    la validation juge le squelette et les clips (nodes vises, temps
+    croissants, valeurs finies, rotations unitaires, duree), et rend `E-3060`
+    au-dela de 128 os ou de 256 pistes par animation (R-200) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

@@ -50,8 +50,6 @@ fn view<'a>(
         names,
         materials: Some(materials),
         texture_count: asset.textures.entries.len(),
-        animation_count: 0,
-        bone_count: 0,
         dynamic_body: true,
         missing_normals: &asset.missing_normals,
         ..AssetView::default()

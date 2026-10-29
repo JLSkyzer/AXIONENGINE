@@ -3,6 +3,7 @@
 use super::error::{Located, Violation};
 use super::model::AssetView;
 use super::ValidationReport;
+use ax_model::dm::animation::channel;
 use ax_model::dm::geometry::{mesh_flags, uv_range_conflict, MeshDesc, UvRange};
 use ax_model::dm::limits;
 use ax_model::dm::material::NO_TEXTURE;
@@ -26,6 +27,8 @@ pub fn validate(asset: &AssetView<'_>, raw_uvs: &[[f32; 2]]) -> ValidationReport
     check_materials(asset, &mut report);
     check_raw_uvs(raw_uvs, &mut report);
     check_vertices(asset, &mut report);
+    check_skeleton(asset, &mut report);
+    check_animations(asset, &mut report);
     check_physics(asset, &mut report);
     check_deformation(asset, &mut report);
     check_structure(asset, &mut report);
@@ -36,18 +39,17 @@ pub fn validate(asset: &AssetView<'_>, raw_uvs: &[[f32; 2]]) -> ValidationReport
 
 /// LIMITES — les plafonds par asset.
 fn check_limits(asset: &AssetView<'_>, report: &mut ValidationReport) {
-    let cas: [(&'static str, usize, usize); 10] = [
+    let cas: [(&'static str, usize, usize); 9] = [
         ("nodes", asset.nodes.len(), limits::MAX_NODES),
         ("sommets", asset.vertices.len(), limits::MAX_VERTICES),
         ("indices", asset.indices.len(), limits::MAX_INDICES),
-        ("os", asset.bone_count, limits::MAX_BONES),
         (
             "matériaux",
             asset.materials.map_or(0, <[_]>::len),
             limits::MAX_MATERIALS,
         ),
         ("textures", asset.texture_count, limits::MAX_TEXTURES),
-        ("animations", asset.animation_count, limits::MAX_ANIMATIONS),
+        ("animations", asset.animations.len(), limits::MAX_ANIMATIONS),
         ("parts", asset.parts.len(), limits::MAX_PARTS),
         ("colliders", asset.colliders.len(), limits::MAX_COLLIDERS),
         ("régions", asset.regions.len(), limits::MAX_REGIONS),
@@ -59,6 +61,14 @@ fn check_limits(asset: &AssetView<'_>, report: &mut ValidationReport) {
                 Located::Asset,
             );
         }
+    }
+    if asset.bones.len() > limits::MAX_BONES {
+        report.push(
+            Violation::TooManyBones {
+                count: asset.bones.len(),
+            },
+            Located::Asset,
+        );
     }
     if asset.links.len() > limits::MAX_STRUCTURAL_LINKS {
         report.push(
@@ -402,7 +412,8 @@ fn check_raw_uvs(raw_uvs: &[[f32; 2]], report: &mut ValidationReport) {
 /// leurs bornes tiennent par construction, et les vérifier reviendrait à
 /// vérifier que le type fait ce qu'il dit.
 fn check_vertices(asset: &AssetView<'_>, report: &mut ValidationReport) {
-    let skinned = asset.bone_count > 0;
+    let bone_count = asset.bones.len();
+    let skinned = bone_count > 0;
 
     for (index, vertex) in asset.vertices.iter().enumerate() {
         let at = Located::Vertex(index);
@@ -419,16 +430,142 @@ fn check_vertices(asset: &AssetView<'_>, report: &mut ValidationReport) {
                 report.push(Violation::WeightsNotNormalizable, at);
             }
             for bone in vertex.bones {
-                if usize::from(bone) >= asset.bone_count {
-                    report.push(
-                        Violation::BoneOutOfRange {
-                            bone,
-                            bone_count: asset.bone_count,
-                        },
-                        at,
-                    );
+                if usize::from(bone) >= bone_count {
+                    report.push(Violation::BoneOutOfRange { bone, bone_count }, at);
                 }
             }
+        }
+    }
+}
+
+/// SQUELETTE — les os désignent des nodes, leurs matrices sont finies, et aucun mesh ne se dit
+/// skinné sans squelette (DM-10).
+fn check_skeleton(asset: &AssetView<'_>, report: &mut ValidationReport) {
+    for (index, bone) in asset.bones.iter().enumerate() {
+        let at = Located::Bone(index);
+        if bone.node as usize >= asset.nodes.len() {
+            report.push(
+                Violation::NodeOutOfRange {
+                    node: bone.node,
+                    node_count: asset.nodes.len(),
+                },
+                at,
+            );
+        }
+        if !bone.inverse_bind.iter().all(|value| value.is_finite()) {
+            report.push(Violation::NotFinite("la matrice de liaison inverse"), at);
+        }
+    }
+    if asset.bones.is_empty() {
+        for (index, mesh) in asset.meshes.iter().enumerate() {
+            if mesh.flags & mesh_flags::SKINNED != 0 {
+                report.push(Violation::SkinnedWithoutSkeleton, Located::Mesh(index));
+            }
+        }
+    }
+}
+
+/// ANIMATIONS — pistes bornées et jouables, nodes visés existants, temps de clés croissants,
+/// valeurs finies, rotations unitaires, durée couvrant les clés (DM-10, R-200).
+fn check_animations(asset: &AssetView<'_>, report: &mut ValidationReport) {
+    // Le temps de la dernière clé de chaque piste, quand ses clés se lisent.
+    let mut last_times = vec![None; asset.tracks.len()];
+    for (index, track) in asset.tracks.iter().enumerate() {
+        let at = Located::Track(index);
+        if track.target_node as usize >= asset.nodes.len() {
+            report.push(
+                Violation::NodeOutOfRange {
+                    node: track.target_node,
+                    node_count: asset.nodes.len(),
+                },
+                at,
+            );
+        }
+        let Some(stride) = track.key_stride() else {
+            report.push(
+                Violation::UnknownTrackFormat {
+                    channel: track.channel,
+                    interp: track.interp,
+                },
+                at,
+            );
+            continue;
+        };
+        if track.key_count == 0 {
+            report.push(Violation::TrackWithoutKeys, at);
+            continue;
+        }
+        let start = track.key_offset as usize;
+        let Some(keys) = (track.key_count as usize)
+            .checked_mul(stride)
+            .and_then(|length| start.checked_add(length))
+            .and_then(|end| asset.keys.get(start..end))
+        else {
+            report.push(Violation::RangeOutOfAsset { what: "clés" }, at);
+            continue;
+        };
+        let mut previous = None;
+        for (rank, key) in keys.chunks_exact(stride).enumerate() {
+            let time = key[0];
+            if !time.is_finite() || time < 0.0 || previous.is_some_and(|before| time <= before) {
+                report.push(Violation::KeyTimesNotIncreasing { key: rank }, at);
+                break;
+            }
+            previous = Some(time);
+            if !key[1..].iter().all(|value| value.is_finite()) {
+                report.push(Violation::NotFinite("une valeur de clé"), at);
+                break;
+            }
+            if track.channel == channel::ROTATION {
+                // La valeur est le quaternion du milieu en `CUBIC_SPLINE`, encadré de ses
+                // tangentes, que rien ne demande unitaires.
+                let value = if stride == 13 { &key[5..9] } else { &key[1..5] };
+                let norm = value.iter().map(|part| part * part).sum::<f32>().sqrt();
+                if !(limits::MIN_QUAT_NORM..=limits::MAX_QUAT_NORM).contains(&norm) {
+                    report.push(Violation::RotationNotNormalized, at);
+                    break;
+                }
+            }
+        }
+        last_times[index] = previous;
+    }
+
+    for (index, animation) in asset.animations.iter().enumerate() {
+        let at = Located::Animation(index);
+        if animation.track_count as usize > limits::MAX_ACTIVE_TRACKS {
+            report.push(
+                Violation::TooManyTracks {
+                    count: animation.track_count as usize,
+                },
+                at,
+            );
+        }
+        if !animation.duration.is_finite() || animation.duration < 0.0 {
+            report.push(Violation::NotFinite("la durée"), at);
+            continue;
+        }
+        let start = animation.track_offset as usize;
+        let Some(times) = start
+            .checked_add(animation.track_count as usize)
+            .and_then(|end| last_times.get(start..end))
+        else {
+            report.push(Violation::RangeOutOfAsset { what: "pistes" }, at);
+            continue;
+        };
+        if let Some(last) = times
+            .iter()
+            .flatten()
+            .copied()
+            .reduce(f32::max)
+            .filter(|last| *last > animation.duration)
+        {
+            report.push(
+                Violation::DurationBeforeLastKey {
+                    duration: animation.duration,
+                    last,
+                },
+                at,
+            );
         }
     }
 }

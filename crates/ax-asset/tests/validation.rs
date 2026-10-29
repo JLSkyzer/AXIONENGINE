@@ -13,6 +13,9 @@
 //! qui a mordu.
 
 use ax_asset::validate::{validate, AssetView, Located, NamedEntry, ValidationReport, Violation};
+use ax_model::dm::animation::{
+    animation_flags, channel, interp, AnimationDesc, BoneDesc, TrackDesc,
+};
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::geometry::{MeshDesc, Vertex, NO_REGION_U8};
 use ax_model::dm::integrity::{
@@ -198,10 +201,12 @@ struct Scene {
     links: Vec<StructuralLinkDesc>,
     anchors: Vec<u8>,
     names: Vec<NamedEntry<'static>>,
-    bone_count: usize,
+    bones: Vec<ax_model::dm::animation::BoneDesc>,
     materials: Option<Vec<MaterialDesc>>,
     texture_count: usize,
-    animation_count: usize,
+    animations: Vec<ax_model::dm::animation::AnimationDesc>,
+    tracks: Vec<TrackDesc>,
+    keys: Vec<f32>,
     dynamic_body: bool,
     missing_normals: Vec<bool>,
 }
@@ -227,10 +232,12 @@ impl Scene {
                 NamedEntry::new("node", "chassis"),
                 NamedEntry::new("part", "capot"),
             ],
-            bone_count: 0,
+            bones: Vec::new(),
             materials: Some(vec![materiau()]),
             texture_count: 1,
-            animation_count: 0,
+            animations: Vec::new(),
+            tracks: Vec::new(),
+            keys: Vec::new(),
             dynamic_body: true,
             missing_normals: Vec::new(),
         }
@@ -247,10 +254,12 @@ impl Scene {
             regions: &self.regions,
             links: &self.links,
             anchor_masks: &self.anchors,
-            bone_count: self.bone_count,
+            bones: &self.bones,
             materials: self.materials.as_deref(),
             texture_count: self.texture_count,
-            animation_count: self.animation_count,
+            animations: &self.animations,
+            tracks: &self.tracks,
+            keys: &self.keys,
             names: &self.names,
             dynamic_body: self.dynamic_body,
             missing_normals: &self.missing_normals,
@@ -488,7 +497,7 @@ fn t232_une_normale_absente_de_la_source_n_est_pas_reprochee() {
 #[test]
 fn t232_des_poids_de_skin_nuls_sont_refuses_sur_un_asset_squelette() {
     let mut scene = Scene::valide();
-    scene.bone_count = 4;
+    scene.bones = os(4);
     scene.vertices[0].weights = [0; 4];
 
     seule(&scene.valider(), &Violation::WeightsNotNormalizable);
@@ -497,7 +506,7 @@ fn t232_des_poids_de_skin_nuls_sont_refuses_sur_un_asset_squelette() {
 #[test]
 fn t232_un_index_d_os_hors_du_squelette_est_refuse() {
     let mut scene = Scene::valide();
-    scene.bone_count = 2;
+    scene.bones = os(2);
     scene.vertices[1].bones = [0, 0, 0, 9];
 
     seule(
@@ -1058,14 +1067,13 @@ fn depasse(report: &ValidationReport, what: &'static str, count: usize, limit: u
 
 #[test]
 fn t231_les_compteurs_sont_admis_au_plafond_et_refuses_au_dela() {
-    use ax_model::dm::limits::{MAX_ANIMATIONS, MAX_BONES, MAX_TEXTURES};
+    use ax_model::dm::limits::{MAX_ANIMATIONS, MAX_TEXTURES};
 
     type Reglage = fn(&mut Scene, usize);
-    let cas: [(&str, usize, Reglage); 3] = [
-        ("os", MAX_BONES, |scene, n| scene.bone_count = n),
+    let cas: [(&str, usize, Reglage); 2] = [
         ("textures", MAX_TEXTURES, |scene, n| scene.texture_count = n),
         ("animations", MAX_ANIMATIONS, |scene, n| {
-            scene.animation_count = n
+            scene.animations = vec![animation(); n]
         }),
     ];
     for (what, limit, regle) in cas {
@@ -1140,4 +1148,244 @@ fn t231_la_geometrie_au_dela_de_son_plafond_est_refusee() {
     let mut scene = Scene::valide();
     scene.indices = vec![0; MAX_INDICES + 1];
     depasse(&scene.valider(), "indices", MAX_INDICES + 1, MAX_INDICES);
+}
+
+/// `n` os à la racine, sur le premier node, de matrice identité.
+fn os(n: usize) -> Vec<BoneDesc> {
+    let mut identite = [0.0; 16];
+    for diagonale in [0, 5, 10, 15] {
+        identite[diagonale] = 1.0;
+    }
+    vec![
+        BoneDesc {
+            name_hash: 0,
+            parent: NONE_U16,
+            _pad: 0,
+            node: 0,
+            inverse_bind: identite,
+        };
+        n
+    ]
+}
+
+/// Une animation sans piste, de durée nulle.
+fn animation() -> AnimationDesc {
+    AnimationDesc {
+        name_hash: 0,
+        duration: 0.0,
+        track_offset: 0,
+        track_count: 0,
+        flags: animation_flags::LOOP,
+    }
+}
+
+/// Une scène animée valide : une rotation linéaire du node 1 en deux clés, sur une seconde.
+fn scene_animee() -> Scene {
+    let mut scene = Scene::valide();
+    scene.tracks = vec![TrackDesc {
+        target_node: 1,
+        channel: channel::ROTATION,
+        interp: interp::LINEAR,
+        _pad: [0; 2],
+        key_offset: 0,
+        key_count: 2,
+    }];
+    scene.keys = vec![
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        core::f32::consts::FRAC_1_SQRT_2,
+        core::f32::consts::FRAC_1_SQRT_2,
+    ];
+    scene.animations = vec![AnimationDesc {
+        duration: 1.0,
+        track_count: 1,
+        ..animation()
+    }];
+    scene
+}
+
+#[test]
+fn t231_un_squelette_de_plus_de_128_os_est_refuse_en_e3060() {
+    use ax_model::dm::limits::MAX_BONES;
+    let mut scene = Scene::valide();
+    scene.bones = os(MAX_BONES);
+    assert!(scene.valider().is_valid());
+    scene.bones = os(MAX_BONES + 1);
+    let report = scene.valider();
+    seule(
+        &report,
+        &Violation::TooManyBones {
+            count: MAX_BONES + 1,
+        },
+    );
+    assert_eq!(report.errors[0].violation.code(), -3060);
+}
+
+#[test]
+fn t232_un_os_hors_de_la_hierarchie_ou_a_matrice_non_finie_est_refuse() {
+    let mut scene = Scene::valide();
+    scene.bones = os(1);
+    scene.bones[0].node = 7;
+    seule(
+        &scene.valider(),
+        &Violation::NodeOutOfRange {
+            node: 7,
+            node_count: 2,
+        },
+    );
+
+    let mut scene = Scene::valide();
+    scene.bones = os(1);
+    scene.bones[0].inverse_bind[3] = f32::NAN;
+    seule(
+        &scene.valider(),
+        &Violation::NotFinite("la matrice de liaison inverse"),
+    );
+}
+
+#[test]
+fn t232_un_mesh_skinne_sans_squelette_est_refuse() {
+    let mut scene = Scene::valide();
+    scene.meshes[0].flags |= ax_model::dm::geometry::mesh_flags::SKINNED;
+    let report = scene.valider();
+    seule(&report, &Violation::SkinnedWithoutSkeleton);
+    assert_eq!(report.errors[0].at, Located::Mesh(0));
+
+    scene.bones = os(1);
+    assert!(scene.valider().is_valid());
+}
+
+#[test]
+fn une_animation_valide_passe() {
+    let report = scene_animee().valider();
+    assert!(report.is_valid(), "{:?}", report.errors);
+}
+
+#[test]
+fn une_piste_visant_un_node_absent_est_refusee() {
+    let mut scene = scene_animee();
+    scene.tracks[0].target_node = 2;
+    let report = scene.valider();
+    seule(
+        &report,
+        &Violation::NodeOutOfRange {
+            node: 2,
+            node_count: 2,
+        },
+    );
+    assert_eq!(report.errors[0].at, Located::Track(0));
+}
+
+#[test]
+fn des_temps_de_cles_qui_ne_croissent_pas_sont_refuses() {
+    for temps in [0.0, -0.5, f32::NAN] {
+        let mut scene = scene_animee();
+        scene.keys[5] = temps;
+        seule(
+            &scene.valider(),
+            &Violation::KeyTimesNotIncreasing { key: 1 },
+        );
+    }
+}
+
+#[test]
+fn une_valeur_de_cle_non_finie_ou_une_rotation_non_unitaire_est_refusee() {
+    let mut scene = scene_animee();
+    scene.keys[7] = f32::INFINITY;
+    seule(&scene.valider(), &Violation::NotFinite("une valeur de clé"));
+
+    let mut scene = scene_animee();
+    scene.keys[9] = 0.0;
+    seule(&scene.valider(), &Violation::RotationNotNormalized);
+}
+
+#[test]
+fn les_tangentes_cubiques_ne_sont_pas_tenues_unitaires() {
+    // Une clé cubique de rotation : temps, tangente d'entrée, valeur, tangente de sortie. Les
+    // tangentes sont des dérivées, pas des rotations.
+    let mut scene = scene_animee();
+    scene.tracks[0].interp = interp::CUBIC_SPLINE;
+    scene.tracks[0].key_count = 1;
+    scene.keys = vec![
+        0.0, 5.0, 5.0, 5.0, 5.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+    ];
+    let report = scene.valider();
+    assert!(report.is_valid(), "{:?}", report.errors);
+
+    scene.keys[8] = 2.0;
+    seule(&scene.valider(), &Violation::RotationNotNormalized);
+}
+
+#[test]
+fn des_cles_hors_du_tableau_ou_un_format_inconnu_sont_refuses() {
+    let mut scene = scene_animee();
+    scene.tracks[0].key_count = 3;
+    seule(
+        &scene.valider(),
+        &Violation::RangeOutOfAsset { what: "clés" },
+    );
+
+    let mut scene = scene_animee();
+    scene.tracks[0].channel = 7;
+    seule(
+        &scene.valider(),
+        &Violation::UnknownTrackFormat {
+            channel: 7,
+            interp: interp::LINEAR,
+        },
+    );
+
+    let mut scene = scene_animee();
+    scene.tracks[0].key_count = 0;
+    seule(&scene.valider(), &Violation::TrackWithoutKeys);
+}
+
+#[test]
+fn une_duree_anterieure_a_la_derniere_cle_est_refusee() {
+    let mut scene = scene_animee();
+    scene.animations[0].duration = 0.5;
+    seule(
+        &scene.valider(),
+        &Violation::DurationBeforeLastKey {
+            duration: 0.5,
+            last: 1.0,
+        },
+    );
+
+    let mut scene = scene_animee();
+    scene.animations[0].duration = f32::NAN;
+    seule(&scene.valider(), &Violation::NotFinite("la durée"));
+
+    let mut scene = scene_animee();
+    scene.animations[0].track_count = 2;
+    seule(
+        &scene.valider(),
+        &Violation::RangeOutOfAsset { what: "pistes" },
+    );
+}
+
+#[test]
+fn t231_une_animation_de_plus_de_256_pistes_est_refusee_en_e3060() {
+    use ax_model::dm::limits::MAX_ACTIVE_TRACKS;
+    let mut scene = scene_animee();
+    scene.tracks = vec![scene.tracks[0]; MAX_ACTIVE_TRACKS];
+    scene.animations[0].track_count = MAX_ACTIVE_TRACKS as u32;
+    assert!(scene.valider().is_valid());
+
+    scene.tracks.push(scene.tracks[0]);
+    scene.animations[0].track_count += 1;
+    let report = scene.valider();
+    seule(
+        &report,
+        &Violation::TooManyTracks {
+            count: MAX_ACTIVE_TRACKS + 1,
+        },
+    );
+    assert_eq!(report.errors[0].violation.code(), -3060);
 }

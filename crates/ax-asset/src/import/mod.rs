@@ -24,6 +24,7 @@
 //! chacun invérifiable.
 
 mod gltf;
+mod gltf_anim;
 mod gltf_extras;
 mod gltf_material;
 mod gltf_refs;
@@ -46,8 +47,9 @@ pub(crate) use material::plain_default_material;
 /// des options (PARTIE 6.4).
 pub(crate) use material::{DEFAULT_METALLIC, DEFAULT_ROUGHNESS};
 
-use crate::a3d::TextureTable;
+use crate::a3d::{AnimationTable, TextureTable};
 use crate::collider::ColliderRequest;
+use ax_model::dm::animation::BoneDesc;
 use ax_model::dm::geometry::{MeshDesc, Vertex};
 use ax_model::dm::material::{MaterialDesc, NO_TEXTURE};
 use ax_model::dm::physics::ColliderDesc;
@@ -532,6 +534,10 @@ pub struct ImportedAsset {
     pub compound_children: Vec<ColliderDesc>,
     /// Noms déclarés par la source, par catégorie.
     pub names: Vec<(&'static str, String)>,
+    /// Squelette (DM-10) : les skins glTF fusionnés par node, vide sans skin.
+    pub bones: Vec<BoneDesc>,
+    /// Animations, pistes et clés (DM-10), telles que la section `ANIM` les porte.
+    pub animations: AnimationTable,
 }
 
 #[cfg(test)]

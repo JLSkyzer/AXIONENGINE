@@ -1,13 +1,16 @@
 //! Conteneur A3D (C-24, PARTIE 7).
 
+mod animation;
 mod geometry;
 mod material;
 mod node;
 mod physics;
 mod read;
+mod skeleton;
 mod texture;
 mod write;
 
+pub use animation::{decode_animations, encode_animations, AnimationTable};
 pub use geometry::{decode_geometry, DecodedGeometry};
 pub use material::{
     check_texture_slots, decode_materials, encode_materials, DecodedMaterials, MATL_LAYOUT,
@@ -15,6 +18,7 @@ pub use material::{
 pub use node::{decode_nodes, encode_nodes, NodeTable, NODE_BYTES};
 pub use physics::{decode_colliders, encode_colliders, COLLIDER_BYTES};
 pub use read::{announced_total_size, A3dFile, A3dLimits};
+pub use skeleton::{decode_bones, encode_bones};
 pub use texture::{decode_textures, encode_textures, DecodedTextures, TextureTable, TEXR_LAYOUT};
 pub use write::A3dWriter;
 
