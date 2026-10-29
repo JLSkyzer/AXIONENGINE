@@ -50,14 +50,15 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 10 depuis l'animation
-/// (ADR-155) : `axion_render_animate`, le tick de rendu en tête de `RENDER_IN` (schéma 2) et les
-/// matrices des retenus animés dans `RENDER_OUT` (schéma 3) ; 9 depuis le cycle de rendu IF-05
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 11 depuis les overlays de
+/// l'animation (ADR-155, tranche 6b) : `axion_render_debug` et le tampon `RENDER_DEBUG` ; 10 depuis
+/// l'animation (ADR-155) : `axion_render_animate`, le tick de rendu en tête de `RENDER_IN` (schéma 2)
+/// et les matrices des retenus animés dans `RENDER_OUT` (schéma 3) ; 9 depuis le cycle de rendu IF-05
 /// (ADR-154). 8 depuis l'état restauré
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 10;
+pub const AXION_ABI_VERSION: u32 = 11;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -1267,6 +1268,12 @@ pub const AXION_OVERLAY_LIMITS: u64 = overlay::LIMITS;
 pub const AXION_OVERLAY_WORLD_TILES: u64 = overlay::WORLD_TILES;
 /// Overlay `center_of_mass` (A1) : bit 31.
 pub const AXION_OVERLAY_CENTER_OF_MASS: u64 = overlay::CENTER_OF_MASS;
+/// Overlay `bones` (ADR-155, tranche 6b) : bit 10, tracé par [`axion_render_debug`].
+pub const AXION_OVERLAY_BONES: u64 = overlay::BONES;
+/// Overlay `nodes` (ADR-155, tranche 6b) : bit 11, tracé par [`axion_render_debug`].
+pub const AXION_OVERLAY_NODES: u64 = overlay::NODES;
+/// Overlay `pivots` (ADR-155, tranche 6b) : bit 12, tracé par [`axion_render_debug`].
+pub const AXION_OVERLAY_PIVOTS: u64 = overlay::PIVOTS;
 
 /// Overlays dont cette version sait produire la géométrie.
 const SUPPORTED_OVERLAYS: u64 = AXION_OVERLAY_COLLIDERS
@@ -1475,9 +1482,12 @@ pub unsafe extern "C" fn axion_buffer_release(ctx: u64, kind: u32, generation: u
     })
 }
 
-/// Vrai pour les tampons du contexte de rendu (ADR-154 D2).
+/// Vrai pour les tampons du contexte de rendu (ADR-154 D2, ADR-155 tranche 6b).
 const fn is_render_kind(kind: BufferKind) -> bool {
-    matches!(kind, BufferKind::RenderIn | BufferKind::RenderOut)
+    matches!(
+        kind,
+        BufferKind::RenderIn | BufferKind::RenderOut | BufferKind::RenderDebug
+    )
 }
 
 /// Résultat d'un [`axion_render_prepare`] (IF-05, §4.7), champ pour champ.
@@ -1586,6 +1596,48 @@ pub unsafe extern "C" fn axion_render_animate(
                     // SAFETY: non nul, et le contrat l'impose accessible en écriture.
                     unsafe { applied.write(count) };
                 }
+                AXION_OK
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Overlays que le contexte de rendu sait tracer (ADR-155, tranche 6b).
+const RENDER_OVERLAYS: u64 = AXION_OVERLAY_BONES | AXION_OVERLAY_NODES | AXION_OVERLAY_PIVOTS;
+
+/// Dépose dans `RENDER_DEBUG` la géométrie des overlays de l'animation demandés — `bones`, `nodes`,
+/// `pivots` — pour les instances animées que la dernière frame préparée a retenues, à la pose qu'elle
+/// leur a donnée (ADR-155, tranche 6b, décisions de Killian). Schéma 2 de `DEBUG` : repère d'origine,
+/// relatif à la caméra de cette frame, chaque plage au handle `ABSENT` ; les plus proches d'abord, au
+/// plus `max_segments` segments. `out_size` reçoit la taille de la charge utile.
+///
+/// Sous le verrou du rendu seul, jamais celui de la session (ADR-154 D2). À n'appeler que lorsqu'un
+/// de ces overlays est allumé (R-2280) ; un masque vide, ou qui porte un overlay que le rendu ne trace
+/// pas, est refusé `E-2002`.
+///
+/// # Safety
+///
+/// `out_size` doit pointer sur un `u64` accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_render_debug(
+    ctx: u64,
+    overlay_mask: u64,
+    max_segments: u32,
+    out_size: *mut u64,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if out_size.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        if overlay_mask == 0 || overlay_mask & !RENDER_OVERLAYS != 0 {
+            return AXION_E_INVALID_BUFFER;
+        }
+        match render::with(ctx, |render| render.debug(overlay_mask, max_segments)) {
+            Ok(Ok(size)) => {
+                // SAFETY: nullité écartée ci-dessus ; le contrat impose que `out_size` soit
+                // accessible en écriture.
+                unsafe { out_size.write(size) };
                 AXION_OK
             }
             Ok(Err(code)) | Err(code) => code,

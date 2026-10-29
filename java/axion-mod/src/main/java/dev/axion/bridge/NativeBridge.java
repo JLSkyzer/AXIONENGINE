@@ -31,8 +31,9 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}. 10 depuis l'animation (ADR-155) : {@link #animateRender}, le tick de rendu en tête de
-     * {@code RENDER_IN} et les matrices des retenus animés dans {@code RENDER_OUT} ; 9 depuis le cycle de
+     * {@code E-1002}. 11 depuis les overlays de l'animation (ADR-155, tranche 6b) : {@link #fillRenderDebug} et
+     * le tampon {@code RENDER_DEBUG} ; 10 depuis l'animation (ADR-155) : {@link #animateRender}, le tick de rendu
+     * en tête de {@code RENDER_IN} et les matrices des retenus animés dans {@code RENDER_OUT} ; 9 depuis le cycle de
      * rendu IF-05, son contexte hors du verrou de session et
      * le tampon {@code RENDER_IN} (ADR-154 D2, D3), après l'état restauré d'une assembly à sa
      * création et le sommeil des assemblies chargées (8, ADR-153 D3, D4), les assemblies à
@@ -40,7 +41,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 10;
+    public static final int EXPECTED_ABI_VERSION = 11;
 
     /** Succès. */
     public static final int OK = 0;
@@ -153,6 +154,8 @@ public final class NativeBridge {
     static native int renderRelease(long ctx, int frameId);
 
     static native int renderAnimate(long ctx, byte[] commands);
+
+    static native int renderDebug(long ctx, long overlayMask, int maxSegments, long[] out);
 
     static native int debugFill(
             long ctx,
@@ -815,6 +818,15 @@ public final class NativeBridge {
     /** Overlay {@code center_of_mass} : bit 31 (A1). */
     public static final long OVERLAY_CENTER_OF_MASS = 1L << 31;
 
+    /** Overlay {@code bones} : bit 10, tracé par le contexte de rendu (ADR-155, tranche 6b). */
+    public static final long OVERLAY_BONES = 1L << 10;
+
+    /** Overlay {@code nodes} : bit 11, tracé par le contexte de rendu (ADR-155, tranche 6b). */
+    public static final long OVERLAY_NODES = 1L << 11;
+
+    /** Overlay {@code pivots} : bit 12, tracé par le contexte de rendu (ADR-155, tranche 6b). */
+    public static final long OVERLAY_PIVOTS = 1L << 12;
+
     /**
      * Dépose dans {@code AXION_BUF_DEBUG} la géométrie des overlays demandés (ADR-121 et son
      * amendement A1) : corps d'assembly et tuiles de la dimension, les plus proches de la caméra
@@ -848,5 +860,29 @@ public final class NativeBridge {
         }
         CROSSINGS.increment();
         return debugFill(ctx, overlayMask, dimension, cameraX, cameraY, cameraZ, maxSegments, out);
+    }
+
+    /**
+     * Dépose dans {@code RENDER_DEBUG} la géométrie des overlays de l'animation demandés — {@link #OVERLAY_BONES},
+     * {@link #OVERLAY_NODES}, {@link #OVERLAY_PIVOTS} — pour les instances animées que la dernière frame préparée a
+     * retenues, à la pose qu'elle leur a donnée (ADR-155, tranche 6b) : repère d'origine, relatif à la caméra de
+     * cette frame, chaque plage sans handle ; les plus proches d'abord, au plus {@code maxSegments} segments
+     * (schéma 2 de {@code DEBUG}). {@code out[0]} reçoit la taille de la charge utile.
+     *
+     * <p>Ne prend pas le verrou que tient le pas physique (ADR-154 D2). À n'appeler que lorsqu'un de ces overlays
+     * est allumé (R-2280).
+     *
+     * @param ctx jeton de contexte
+     * @param overlayMask overlays demandés, parmi les trois de l'animation
+     * @param maxSegments budget de segments, positif ou nul
+     * @param out tableau d'au moins un élément
+     * @return {@link #OK}, ou {@link #E_INVALID_BUFFER} pour un masque ou un budget refusé
+     */
+    public static int fillRenderDebug(long ctx, long overlayMask, int maxSegments, long[] out) {
+        if (out == null || out.length < 1) {
+            throw new IllegalArgumentException("le tableau de debug compte au moins un élément");
+        }
+        CROSSINGS.increment();
+        return renderDebug(ctx, overlayMask, maxSegments, out);
     }
 }

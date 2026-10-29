@@ -2064,3 +2064,18 @@ d'un jalon au lieu d'une règle.
 **Règle.** Une tranche qui livre une capacité de la matrice du §19.2bis met `RenderCapabilities` à jour dans
 le même commit, et son test exige la nouvelle déclaration. Lire la ligne « pas encore livrées » du journal
 d'un banc de rendu avant de clore un chantier de rendu.
+
+## 2026-10-29 | Un état de rendu vanilla qui ne coupe rien
+
+**Ce qui a mal tourné.** Les overlays `bones` et `pivots` sont dans la peau du bras : ils se dessinent à
+travers elle, par un type de lignes à `NO_DEPTH_TEST`. Au premier banc, ils restaient cachés : seul le bout
+d'un axe qui dépassait de la peau se voyait.
+
+**Cause.** Dans Minecraft 1.20.1, l'état `DepthTestStateShard` ne touche à rien pour la fonction
+`GL_ALWAYS` (519), celle de `NO_DEPTH_TEST` : relevé dans le bytecode de Forge 47.4.23, la mise en place
+comme le nettoyage sautent tout appel. Il suppose le test coupé entre deux types de rendu. Après les
+particules, il ne l'est plus, et les lignes passaient le test `LEQUAL` laissé par la passe d'avant.
+
+**Règle.** Un état de rendu vanilla dont l'effet compte se lit dans le bytecode avant de s'y fier. Ce qui
+doit se voir à travers une surface se juge par un pixel derrière elle — ici, le milieu de l'os, dans la
+colonne —, jamais par la seule présence des plages.

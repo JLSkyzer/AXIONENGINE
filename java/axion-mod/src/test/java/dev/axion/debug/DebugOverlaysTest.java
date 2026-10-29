@@ -69,18 +69,44 @@ class DebugOverlaysTest {
         assertEquals(NativeBridge.OVERLAY_CENTER_OF_MASS, Overlay.CENTER_OF_MASS.bit());
         assertEquals(NativeBridge.OVERLAY_JOINTS, Overlay.JOINTS.bit());
         assertEquals(NativeBridge.OVERLAY_LIMITS, Overlay.LIMITS.bit());
-        assertEquals(9, java.util.Arrays.stream(Overlay.values()).filter(Overlay::nativeSide).count(),
-                "les six overlays de M3, colliders, et joints et limits venus avec C-34 (ADR-151 D7), natifs");
-        assertEquals(12, Overlay.values().length,
-                "et network, lod et culling, en Java seul, venus en M4 avec C-51 et C-64 (ADR-146 §1, ADR-154)");
-        assertFalse(Overlay.NETWORK.nativeSide(), "network ne part pas au natif");
-        assertFalse(Overlay.LOD.nativeSide(), "lod ne part pas au natif");
-        assertFalse(Overlay.CULLING.nativeSide(), "culling ne part pas au natif");
+        assertEquals(NativeBridge.OVERLAY_BONES, Overlay.BONES.bit());
+        assertEquals(NativeBridge.OVERLAY_NODES, Overlay.NODES.bit());
+        assertEquals(NativeBridge.OVERLAY_PIVOTS, Overlay.PIVOTS.bit());
+        assertEquals(9, sourcedBy(DebugOverlays.Source.PHYSICS),
+                "les six overlays de M3, colliders, et joints et limits venus avec C-34 (ADR-151 D7), de la physique");
+        assertEquals(List.of(Overlay.BONES, Overlay.NODES, Overlay.PIVOTS), java.util.Arrays.stream(Overlay.values())
+                        .filter(overlay -> overlay.source() == DebugOverlays.Source.RENDER).toList(),
+                "bones, nodes et pivots, du contexte de rendu (ADR-155, tranche 6b)");
+        assertEquals(List.of(Overlay.NETWORK, Overlay.LOD, Overlay.CULLING), java.util.Arrays.stream(Overlay.values())
+                        .filter(overlay -> overlay.source() == DebugOverlays.Source.JAVA).toList(),
+                "network, lod et culling, en Java seul, venus en M4 avec C-51 et C-64 (ADR-146 §1, ADR-154)");
+        assertEquals(15, Overlay.values().length);
         for (Overlay overlay : Overlay.values()) {
             assertEquals(overlay, Overlay.ofRank(overlay.rank()), overlay.commandName());
         }
         assertEquals(Overlay.JOINTS, Overlay.ofRank(5));
         assertEquals(Overlay.LIMITS, Overlay.ofRank(6));
-        assertEquals(null, Overlay.ofRank(7), "bones n'est pas implémenté");
+        assertEquals(Overlay.BONES, Overlay.ofRank(10));
+        assertEquals(null, Overlay.ofRank(7), "raycasts n'est pas implémenté");
+    }
+
+    @Test
+    @DisplayName("ADR-155, tranche 6b : chaque masque ne porte que les overlays de sa source")
+    void unMasqueParSource() {
+        DebugOverlays overlays = new DebugOverlays();
+        for (Overlay overlay : Overlay.values()) {
+            overlays.set(overlay, true);
+        }
+        assertEquals(NativeBridge.OVERLAY_BONES | NativeBridge.OVERLAY_NODES | NativeBridge.OVERLAY_PIVOTS,
+                overlays.renderMask());
+        assertEquals(0L, overlays.nativeMask() & overlays.renderMask(), "aucun overlay n'a deux sources");
+        assertEquals(0L, overlays.nativeMask() & (NativeBridge.OVERLAY_BONES | (1L << 32)),
+                "ni bones ni network ne partent à la physique");
+        overlays.set(Overlay.BONES, false);
+        assertEquals(NativeBridge.OVERLAY_NODES | NativeBridge.OVERLAY_PIVOTS, overlays.renderMask());
+    }
+
+    private static long sourcedBy(DebugOverlays.Source source) {
+        return java.util.Arrays.stream(Overlay.values()).filter(overlay -> overlay.source() == source).count();
     }
 }

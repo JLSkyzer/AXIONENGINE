@@ -43,6 +43,12 @@ pub mod overlay {
     /// `limits` : la plage permise de l'axe libre de chaque joint limité, et sa position
     /// courante (ADR-151 D7).
     pub const LIMITS: u64 = 1 << 6;
+    /// `bones` : chaque os d'une instance animée, de son os parent à lui (ADR-155, tranche 6b).
+    pub const BONES: u64 = 1 << 10;
+    /// `nodes` : le repère de chaque node d'une instance animée (ADR-155, tranche 6b).
+    pub const NODES: u64 = 1 << 11;
+    /// `pivots` : l'origine de chaque node animé, autour de laquelle il tourne (ADR-155, tranche 6b).
+    pub const PIVOTS: u64 = 1 << 12;
     /// `world_tiles` : les tuiles de collision du monde (C-38, A1).
     pub const WORLD_TILES: u64 = 1 << 30;
     /// `center_of_mass` : le centre de masse de chaque corps (A1).

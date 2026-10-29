@@ -8,6 +8,9 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Chaque overlay s'allume et s'éteint indépendamment. Éteint, il ne coûte qu'un test de
  * drapeau : c'est le masque lu ici qui décide si le natif est seulement appelé.
+ *
+ * <p>Trois sources de géométrie ({@link Source}) : la physique de la session, une fois par tick ; le
+ * contexte de rendu, à chaque frame, pour l'animation (ADR-155, tranche 6b) ; Java seul.
  */
 public final class DebugOverlays {
 
@@ -17,54 +20,60 @@ public final class DebugOverlays {
      */
     public enum Overlay {
         /** Les colliders des corps, tournés avec eux (ADR-121). Rang 0. */
-        COLLIDERS("colliders", NativeBridge.OVERLAY_COLLIDERS, true),
+        COLLIDERS("colliders", NativeBridge.OVERLAY_COLLIDERS, Source.PHYSICS),
         /** L'AABB monde de chaque collider (amendement A1 d'ADR-121). Rang 1. */
-        AABB("aabb", NativeBridge.OVERLAY_AABB, true),
+        AABB("aabb", NativeBridge.OVERLAY_AABB, Source.PHYSICS),
         /** Les axes de chaque corps, à son origine (A1). Rang 2. */
-        BODIES("bodies", NativeBridge.OVERLAY_BODIES, true),
+        BODIES("bodies", NativeBridge.OVERLAY_BODIES, Source.PHYSICS),
         /** Les points de contact du dernier pas (A1). Rang 3. */
-        CONTACTS("contacts", NativeBridge.OVERLAY_CONTACTS, true),
+        CONTACTS("contacts", NativeBridge.OVERLAY_CONTACTS, Source.PHYSICS),
         /** La normale de chaque point de contact (A1). Rang 4. */
-        NORMALS("normals", NativeBridge.OVERLAY_NORMALS, true),
+        NORMALS("normals", NativeBridge.OVERLAY_NORMALS, Source.PHYSICS),
         /** Chaque joint, d'un ancrage à l'autre, avec son axe (ADR-151 D7). Rang 5. */
-        JOINTS("joints", NativeBridge.OVERLAY_JOINTS, true),
+        JOINTS("joints", NativeBridge.OVERLAY_JOINTS, Source.PHYSICS),
         /** La plage permise de l'axe libre de chaque joint limité, et sa position (ADR-151 D7). Rang 6. */
-        LIMITS("limits", NativeBridge.OVERLAY_LIMITS, true),
+        LIMITS("limits", NativeBridge.OVERLAY_LIMITS, Source.PHYSICS),
+        /** Chaque os d'une instance animée, de son os parent à lui (ADR-155, tranche 6b). Rang 10. */
+        BONES("bones", NativeBridge.OVERLAY_BONES, Source.RENDER),
+        /** Le repère de chaque node d'une instance animée (ADR-155, tranche 6b). Rang 11. */
+        NODES("nodes", NativeBridge.OVERLAY_NODES, Source.RENDER),
+        /** L'origine de chaque node animé, autour de laquelle il tourne (ADR-155, tranche 6b). Rang 12. */
+        PIVOTS("pivots", NativeBridge.OVERLAY_PIVOTS, Source.RENDER),
         /** Les tuiles de collision du monde (C-38, A1). Rang 30. */
-        WORLD_TILES("world_tiles", NativeBridge.OVERLAY_WORLD_TILES, true),
+        WORLD_TILES("world_tiles", NativeBridge.OVERLAY_WORLD_TILES, Source.PHYSICS),
         /** Le centre de masse de chaque corps (A1). Rang 31. */
-        CENTER_OF_MASS("center_of_mass", NativeBridge.OVERLAY_CENTER_OF_MASS, true),
+        CENTER_OF_MASS("center_of_mass", NativeBridge.OVERLAY_CENTER_OF_MASS, Source.PHYSICS),
         /**
          * La pose interpolée et le dernier état reçu de chaque assembly (C-51, ADR-146 §1). Rang 32. En Java
          * seul : sa géométrie vient de l'interpolation du client, et son bit ne part pas au natif, qui refuse
          * un overlay qu'il ne connaît pas ({@code abi.rs}). La divergence de champ du §31.4 vient avec la
          * déformation, en M6.
          */
-        NETWORK("network", 1L << 32, false),
+        NETWORK("network", 1L << 32, Source.JAVA),
         /**
          * L'emprise de chaque assembly retenue par le culling, colorée par son niveau de détail (C-64,
          * ADR-146 §1, ADR-154). Rang 24. En Java seul : le niveau vient du résultat de la frame.
          */
-        LOD("lod", 1L << 24, false),
+        LOD("lod", 1L << 24, Source.JAVA),
         /**
          * L'emprise de chaque assembly candidate au culling : retenue en vert, écartée en rouge (C-64,
          * ADR-146 §1, ADR-154). Rang 25. En Java seul, comme {@link #LOD}.
          */
-        CULLING("culling", 1L << 25, false);
+        CULLING("culling", 1L << 25, Source.JAVA);
 
         private final String commandName;
         private final long bit;
-        private final boolean nativeSide;
+        private final Source source;
 
-        Overlay(String commandName, long bit, boolean nativeSide) {
+        Overlay(String commandName, long bit, Source source) {
             this.commandName = commandName;
             this.bit = bit;
-            this.nativeSide = nativeSide;
+            this.source = source;
         }
 
-        /** {@return vrai si sa géométrie vient du natif, et son bit part dans le masque de l'appel} */
-        public boolean nativeSide() {
-            return nativeSide;
+        /** {@return d'où vient sa géométrie, et dans quel masque part son bit} */
+        public Source source() {
+            return source;
         }
 
         /** {@return le nom de l'overlay dans {@code /axion debug <overlay> on|off}} */
@@ -97,6 +106,16 @@ public final class DebugOverlays {
         }
     }
 
+    /** D'où vient la géométrie d'un overlay. */
+    public enum Source {
+        /** La physique de la session, une fois par tick : {@code axion_debug_fill} (ADR-121). */
+        PHYSICS,
+        /** Le contexte de rendu, à chaque frame : {@code axion_render_debug} (ADR-155, tranche 6b). */
+        RENDER,
+        /** Java seul : le bit ne part jamais au natif, qui refuse un overlay qu'il ne trace pas. */
+        JAVA
+    }
+
     private final AtomicLong mask = new AtomicLong();
 
     /**
@@ -123,18 +142,24 @@ public final class DebugOverlays {
         return mask.get();
     }
 
-    /** {@return le masque des overlays natifs allumés, tel que le natif l'attend} */
+    /** {@return le masque des overlays de la physique allumés, tel que {@code axion_debug_fill} l'attend} */
     public long nativeMask() {
-        return mask.get() & NATIVE_BITS;
+        return mask.get() & PHYSICS_BITS;
     }
 
-    /** Les bits des overlays dont la géométrie vient du natif. */
-    private static final long NATIVE_BITS = nativeBits();
+    /** {@return le masque des overlays de l'animation allumés, tel que {@code axion_render_debug} l'attend} */
+    public long renderMask() {
+        return mask.get() & RENDER_BITS;
+    }
 
-    private static long nativeBits() {
+    /** Les bits des overlays dont la géométrie vient de la physique, puis du contexte de rendu. */
+    private static final long PHYSICS_BITS = bitsOf(Source.PHYSICS);
+    private static final long RENDER_BITS = bitsOf(Source.RENDER);
+
+    private static long bitsOf(Source source) {
         long bits = 0;
         for (Overlay overlay : Overlay.values()) {
-            if (overlay.nativeSide()) {
+            if (overlay.source() == source) {
                 bits |= overlay.bit();
             }
         }

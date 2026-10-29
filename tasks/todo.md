@@ -3434,7 +3434,8 @@ sources procédurales de véhicule (M5, T-365).
 - [x] Décisions de Killian pour la tranche 6 (2026-10-29) : overlays par `axion_render_debug` (ABI 11, segments
       `DEBUG` depuis les instances animées du rendu) ; skinning vanilla en Java à l'émission, palettes lues dans
       `RENDER_OUT` pour ce backend.
-- [ ] 6. Skinning vanilla (R-742), overlays `bones`, `nodes`, `pivots`, documentation.
+- [x] 6. Skinning vanilla (R-742), overlays `bones`, `nodes`, `pivots`, documentation (2026-10-29) : RENDERING.md
+      dit l'animation, le skinning de chaque backend et ses plafonds, et les trois overlays.
       - [x] 6a. (2026-10-29) Skinning vanilla sur le CPU (R-742) : os et poids lus dans le transfert, palettes
             copiées de `RENDER_OUT` pour ce backend, chaque mesh skinné une fois par frame et par instance ;
             plafond `render.vanilla_max_skinned_vertices` par distance, les plus lointains au repos, métriques
@@ -3443,8 +3444,12 @@ sources procédurales de véhicule (M5, T-365).
             11 mutations unitaires et 3 au banc rouges.
       - [x] Décisions de Killian pour la 6b (2026-10-29) : tampon `RENDER_DEBUG` au pool du contexte de rendu
             (schéma `DEBUG` 2) ; segments en repère d'origine, relatifs à la caméra de la frame, handle `ABSENT`.
-      - [ ] 6b. `axion_render_debug` (ABI 11) : os, nodes et pivots des instances animées ; overlays dessinés ;
-            banc.
+      - [x] 6b. (2026-10-29) `axion_render_debug` (ABI 11) et `RENDER_DEBUG` au pool du rendu : os (os parent de
+            `SKEL`, vérifié au chargement), repères des nodes, pivots des nodes animés, à la pose de la dernière
+            frame, en repère d'origine ; Java les demande à chaque frame après le culling et les dessine à
+            travers la peau (`XRAY_LINES` : `NO_DEPTH_TEST` de vanilla ne coupe rien). Bancs vanilla et natif :
+            une plage par overlay, 9 pixels sur 9 au milieu de l'os. 11 mutations natives, 2 Java et 3 au banc
+            rouges.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
@@ -3457,10 +3462,13 @@ sources procédurales de véhicule (M5, T-365).
       `axion.scene.propagate_ns` — ADR-137, ADR-146 §7.
 - [ ] C-40 : T-392 — ADR-144 §3, ADR-146.
 - [ ] C-60 avec IF-05 : R-300, résultat partiel `AXION_RENDER_DEGRADED` (ADR-127) — ADR-146.
-- [ ] C-61 avec C-66 : R-742, skinning CPU — ADR-146.
+- [x] C-61 avec C-66 : R-742, skinning CPU — ADR-146 ; fait par la tranche 6a d'ADR-155 (c179994), le
+      2026-10-29.
 - [ ] C-62 avec C-64 : paliers suivants de R-750 — ADR-144 §3, ADR-146.
 - [ ] C-67, overlays dont M4 produit les données : `joints`, `limits` (C-34) ; `bones`, `nodes`,
       `pivots` (C-37) ; `lod`, `culling`, `occluders` (C-64) ; `network` (C-51, fait le 2026-10-21) — ADR-146 §1.
+      Faits : `joints` et `limits` (ADR-151), `lod` et `culling` (ADR-154), `bones`, `nodes` et `pivots`
+      (ADR-155, tranche 6b). Reste `occluders`.
 - [x] C-50 avec C-52 : `persistence.max_load_ns_per_tick` (R-1730) ; R-1710 et ses tests T-433 et
       T-434 — fixer ce que migre T-434, aucune v1 n'ayant existé (`NBT_SCHEMA` vaut 2) — ADR-137 ; fait par
       le chantier persistance (ADR-153 : T-434 est la migration 2 → 3), clos le 2026-10-28.

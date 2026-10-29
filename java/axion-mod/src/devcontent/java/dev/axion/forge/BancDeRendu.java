@@ -294,9 +294,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-908", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-908", "ADR-155, overlays", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "R-742", "T-493", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "R-742", "ADR-155, overlays", "T-493", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -369,6 +369,8 @@ public final class BancDeRendu {
     /** R-742 : les sommets que skinne un bras sur le CPU, et les bras laissés au repos avant de plier les copies. */
     private static long sommetsParBras;
     private static long plafonnesVanillaAvant;
+    /** ADR-155, tranche 6b : le bras plié, capturé sans overlay, pour juger les overlays de l'animation. */
+    private static CapturesDuBanc.Capture brasPlie;
     private static int assembliesAvantBras;
 
     /** ADR-155 : la glissière, et le fond sans elle, puis au repos, puis le coulisseau poussé. */
@@ -748,6 +750,7 @@ public final class BancDeRendu {
                 sommetsParBras = sommetsSkinnesVanilla();
                 jugerBrasPlie("R-742", "sur le CPU", capturer(mc, "r742.png"), derniereVue);
             });
+            jugerLesOverlaysDuBras();
             plierLesCopies(mc -> skinnes() == brasSkinnesVanilla() && plafonnesVanilla() > plafonnesVanillaAvant);
             une("juger T-493", mc -> jugerT493());
             retirerLesBras();
@@ -1077,6 +1080,7 @@ public final class BancDeRendu {
             // (T-541) ; au-delà de render.max_skinned_instances, la pose de repos et la métrique (T-542).
             plierLeBras();
             une("juger T-908", mc -> jugerBrasPlie("T-908", "au GPU", capturer(mc, "t908.png"), derniereVue));
+            jugerLesOverlaysDuBras();
             plierLesCopies(mc -> skinnes() == PLAFOND_SKINNES && plafonnes() > plafonnesAvant);
             une("juger T-542", mc -> jugerT542());
             // T-541 sur les 65 bras : leurs palettes s'étalent dans la table, bien au-delà de la première page.
@@ -1281,6 +1285,23 @@ public final class BancDeRendu {
         jusqua("le plafond atteint", 120, atteint);
     }
 
+    /**
+     * ADR-155, tranche 6b : sur le bras plié, les overlays {@code bones}, {@code nodes} et {@code pivots} allumés
+     * seuls, jugés, puis éteints.
+     */
+    private static void jugerLesOverlaysDuBras() {
+        une("allumer les overlays de l'animation", mc -> overlaysDeLAnimation(true));
+        stabiliser("les overlays de l'animation");
+        une("juger les overlays de l'animation", mc -> jugerOverlaysDuBras(capturer(mc, "adr155_overlays.png"), derniereVue));
+        une("éteindre les overlays de l'animation", mc -> overlaysDeLAnimation(false));
+    }
+
+    private static void overlaysDeLAnimation(boolean allumes) {
+        AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.BONES, allumes);
+        AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.NODES, allumes);
+        AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.PIVOTS, allumes);
+    }
+
     /** ADR-155 : le bras et ses copies retirés, la scène revenue à ce qu'elle dessinait avant eux. */
     private static void retirerLesBras() {
         serveur("retirer les bras", s -> {
@@ -1333,6 +1354,7 @@ public final class BancDeRendu {
      * @param ou où le backend skinne : « au GPU », « sur le CPU »
      */
     private static void jugerBrasPlie(String id, String ou, CapturesDuBanc.Capture plie, Vue vue) {
+        brasPlie = plie;
         CapturesDuBanc.Masque masque = CapturesDuBanc.masque(fondBras, plie);
         Quaternionf pose = bras.bodyRotation();
         Vec3 origine = bras.position();
@@ -1378,6 +1400,33 @@ public final class BancDeRendu {
                 Locale.ROOT, "bras plié skinné %s : %d px, boîte %s ; référence projetée %s (écart %d, %d tolérés) ;"
                         + " la déformation s'y ajoute en M6",
                 ou, masque.nombre(), Arrays.toString(masque.boite()), Arrays.toString(attendue), ecart, ECART_BOITE));
+    }
+
+    /**
+     * ADR-155, tranche 6b : allumés sur le bras plié, {@code bones}, {@code nodes} et {@code pivots} reçoivent chacun
+     * sa plage du contexte de rendu ; et l'os de l'épaule au coude se voit à travers la peau — au milieu de la
+     * colonne, où il passe, l'image n'est plus celle du bras sans overlay.
+     */
+    private static void jugerOverlaysDuBras(CapturesDuBanc.Capture avec, Vue vue) {
+        java.util.Map<Integer, Integer> plages = AxionRenderPass.debugRangesByOverlay();
+        int os = plages.getOrDefault(dev.axion.debug.DebugOverlays.Overlay.BONES.rank(), 0);
+        int nodes = plages.getOrDefault(dev.axion.debug.DebugOverlays.Overlay.NODES.rank(), 0);
+        int pivots = plages.getOrDefault(dev.axion.debug.DebugOverlays.Overlay.PIVOTS.rank(), 0);
+        Vector3f milieu = bras.bodyRotation().transform(new Vector3f(0f, BRAS_PIED + BRAS_SEGMENT / 2, 0f));
+        float[] ecran = projeter(vue, bras.position().add(milieu.x, milieu.y, milieu.z), avec.largeur(), avec.hauteur());
+        int cx = (int) Math.floor(ecran[0]);
+        int cy = (int) Math.floor(ecran[1]);
+        int changes = 0;
+        for (int y = Math.max(0, cy - 1); y <= Math.min(avec.hauteur() - 1, cy + 1); y++) {
+            for (int x = Math.max(0, cx - 1); x <= Math.min(avec.largeur() - 1, cx + 1); x++) {
+                if (avec.pixel(x, y) != brasPlie.pixel(x, y)) {
+                    changes++;
+                }
+            }
+        }
+        RAPPORT.noter("ADR-155, overlays", os > 0 && nodes > 0 && pivots > 0 && changes > 0, String.format(Locale.ROOT,
+                "plages reçues du rendu : bones %d, nodes %d, pivots %d ; au milieu de l'os, à travers la peau, %d pixel(s)"
+                        + " changé(s) sur 9 autour de (%d, %d)", os, nodes, pivots, changes, cx, cy));
     }
 
     /**
@@ -1779,6 +1828,10 @@ public final class BancDeRendu {
             if (overlay == dev.axion.debug.DebugOverlays.Overlay.JOINTS
                     || overlay == dev.axion.debug.DebugOverlays.Overlay.LIMITS) {
                 // Ils tracent des joints : jugés sur la charnière (ADR-151 D7).
+                continue;
+            }
+            if (overlay.source() == dev.axion.debug.DebugOverlays.Source.RENDER) {
+                // Ils tracent l'animation : jugés sur le bras plié (ADR-155, tranche 6b).
                 continue;
             }
             int n = plages.getOrDefault(overlay.rank(), 0);

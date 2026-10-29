@@ -41,9 +41,10 @@ use crate::abi::{
     axion_asset_geometry, axion_asset_load, axion_asset_materials, axion_asset_poll,
     axion_asset_texture, axion_asset_unload, axion_buffer_acquire, axion_buffer_release,
     axion_debug_fill, axion_det_profile, axion_init, axion_last_error, axion_metrics_export,
-    axion_net_compress, axion_net_decompress, axion_render_prepare, axion_render_release,
-    axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo,
-    AxionCollectResult, AxionDetProfile, AxionRenderResult, AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_net_compress, axion_net_decompress, axion_render_debug, axion_render_prepare,
+    axion_render_release, axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit,
+    AxionBufferInfo, AxionCollectResult, AxionDetProfile, AxionRenderResult,
+    AXION_E_INVALID_BUFFER, AXION_OK,
 };
 use ax_model::dm::handle::Handle;
 
@@ -208,6 +209,11 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "renderRelease".into(),
             sig: "(JI)I".into(),
             fn_ptr: jni_render_release as *mut c_void,
+        },
+        NativeMethod {
+            name: "renderDebug".into(),
+            sig: "(JJI[J)I".into(),
+            fn_ptr: jni_render_debug as *mut c_void,
         },
         NativeMethod {
             name: "debugFill".into(),
@@ -983,6 +989,28 @@ extern "system" fn jni_debug_fill(
     })
 }
 
+/// `NativeBridge.renderDebug(long, long, int, long[])` (ADR-155, tranche 6b).
+///
+/// Dépose la géométrie des overlays de l'animation dans `RENDER_DEBUG` et écrit sa taille dans
+/// `out[0]`. Un budget négatif est refusé : il ne désigne aucun nombre de segments.
+extern "system" fn jni_render_debug(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    overlay_mask: jlong,
+    max_segments: jint,
+    out: JLongArray,
+) -> jint {
+    let Ok(max_segments) = u32::try_from(max_segments) else {
+        return AXION_E_INVALID_BUFFER;
+    };
+    deposit_with_size(&env, &out, |size| {
+        // SAFETY: `size` désigne une variable locale de `deposit_with_size`,
+        // accessible en écriture pendant l'appel.
+        unsafe { axion_render_debug(ctx as u64, overlay_mask as u64, max_segments, size) }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     /// Les signatures JNI sont des chaînes non vérifiées par le compilateur :
@@ -1010,6 +1038,7 @@ mod tests {
             ("assetTexture", "(JIII[J)I"),
             ("assetUnload", "(JII)I"),
             ("debugFill", "(JJJDDDI[J)I"),
+            ("renderDebug", "(JJI[J)I"),
         ];
 
         for (nom, signature) in attendu {

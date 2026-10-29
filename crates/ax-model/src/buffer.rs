@@ -72,11 +72,13 @@ pub enum BufferKind {
     Debug = 13,
     /// Candidats d'une frame de rendu, Java vers Rust (ADR-154 D3).
     RenderIn = 14,
+    /// Géométrie de debug du contexte de rendu : les overlays de l'animation (ADR-155, tranche 6b).
+    RenderDebug = 15,
 }
 
 impl BufferKind {
     /// Tous les kinds, dans l'ordre de leur valeur.
-    pub const ALL: [BufferKind; 14] = [
+    pub const ALL: [BufferKind; 15] = [
         BufferKind::SimIn,
         BufferKind::SimOut,
         BufferKind::Events,
@@ -91,6 +93,7 @@ impl BufferKind {
         BufferKind::Persist,
         BufferKind::Debug,
         BufferKind::RenderIn,
+        BufferKind::RenderDebug,
     ];
 
     /// Convertit une valeur d'ABI en kind.
@@ -114,6 +117,7 @@ impl BufferKind {
             12 => BufferKind::Persist,
             13 => BufferKind::Debug,
             14 => BufferKind::RenderIn,
+            15 => BufferKind::RenderDebug,
             _ => return None,
         })
     }
@@ -143,6 +147,7 @@ impl BufferKind {
             BufferKind::Persist => "PERSIST",
             BufferKind::Debug => "DEBUG",
             BufferKind::RenderIn => "RENDER_IN",
+            BufferKind::RenderDebug => "RENDER_DEBUG",
         }
     }
 
@@ -161,15 +166,21 @@ impl BufferKind {
     /// - `ASSET_OUT` = 1 (ADR-122 §6) : selon la fonction qui l'a déposée, le
     ///   conteneur A3D compilé ou la géométrie d'ADR-119, inchangés, la table
     ///   des matériaux et des textures, ou les octets PNG d'une texture ;
-    /// - `RENDER_IN` = 1 (ADR-154 D3) : les candidats d'une frame, 48 octets chacun ;
-    /// - `RENDER_OUT` = 2 (ADR-154, tranche 2b) : un en-tête de frame, un enregistrement de 24 octets
-    ///   par candidat retenu — son niveau de détail et la plage de ses meshes —, puis la table des
-    ///   meshes à dessiner, un par dessin au repos ;
+    /// - `RENDER_IN` = 2 (ADR-155) : le tick de rendu en tête, puis les candidats d'une frame, 48 octets
+    ///   chacun (ADR-154 D3) ;
+    /// - `RENDER_OUT` = 4 (ADR-155, tranche 5b) : un en-tête de frame, un enregistrement de 32 octets
+    ///   par candidat retenu — son niveau de détail, la plage de ses meshes, sa première matrice et sa
+    ///   palette —, la table des meshes à dessiner, un par dessin au repos, puis celle des matrices ;
+    /// - `RENDER_DEBUG` = 2 (ADR-155, tranche 6b) : la charge de `DEBUG`, pour les overlays de
+    ///   l'animation ;
     /// - tous les autres kinds : 0, leur charge n'est pas encore versionnée.
     #[must_use]
     pub const fn schema_version(self) -> u32 {
         match self {
-            BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderIn => 2,
+            BufferKind::Debug
+            | BufferKind::SimOut
+            | BufferKind::RenderIn
+            | BufferKind::RenderDebug => 2,
             BufferKind::RenderOut => 4,
             BufferKind::AssetOut => 1,
             _ => 0,
@@ -446,7 +457,7 @@ mod tests {
     /// oublié à zéro.
     #[test]
     fn kind_inconnu_refuse() {
-        for value in [0u32, 15, 99, u32::MAX] {
+        for value in [0u32, 16, 99, u32::MAX] {
             let mut raw = [0u8; HEADER_BYTES];
             sample().write(&mut raw);
             raw[4..8].copy_from_slice(&value.to_le_bytes());
@@ -497,7 +508,8 @@ mod tests {
         assert_eq!(BufferKind::SimIn.as_u32(), 1);
         assert_eq!(BufferKind::Debug.as_u32(), 13);
         assert_eq!(BufferKind::RenderIn.as_u32(), 14);
-        assert_eq!(BufferKind::ALL.len(), 14);
+        assert_eq!(BufferKind::RenderDebug.as_u32(), 15);
+        assert_eq!(BufferKind::ALL.len(), 15);
 
         for (index, kind) in BufferKind::ALL.iter().enumerate() {
             assert_eq!(kind.as_u32(), index as u32 + 1, "{kind} mal numéroté");
@@ -521,12 +533,15 @@ mod tests {
         // ADR-151 : SIM_OUT au schéma 2 (états à node, puis emprises) ; A1 d'ADR-121 : DEBUG
         // au schéma 2 (plages par overlay et repère) ; ADR-122 : ASSET_OUT au
         // schéma 1 (matériaux et textures) ; ADR-155 : RENDER_IN au schéma 2 (tick de rendu en tête),
-        // RENDER_OUT au schéma 4 (matrices des retenus animés, puis leurs palettes d'os). Les autres
-        // kinds ne sont pas versionnés.
+        // RENDER_OUT au schéma 4 (matrices des retenus animés, puis leurs palettes d'os), RENDER_DEBUG
+        // au schéma de DEBUG. Les autres kinds ne sont pas versionnés.
         for kind in BufferKind::ALL {
             let attendue = match kind {
                 BufferKind::RenderOut => 4,
-                BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderIn => 2,
+                BufferKind::Debug
+                | BufferKind::SimOut
+                | BufferKind::RenderIn
+                | BufferKind::RenderDebug => 2,
                 BufferKind::AssetOut => 1,
                 _ => 0,
             };

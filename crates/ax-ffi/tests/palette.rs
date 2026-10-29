@@ -1,5 +1,6 @@
 //! T-540 (ADR-155 D7) : la palette d'une pose connue est celle du calcul de référence, os par os,
-//! liaison inverse comprise.
+//! liaison inverse comprise. Et l'overlay `bones` (tranche 6b) relie chaque os à l'os parent que
+//! `SKEL` lui donne.
 //!
 //! Le bras à deux os écrit par code est compilé par le vrai compilateur, ses sections `NODE`, `ANIM` et
 //! `SKEL` relues ; son coude, plié par le clip `plier`, donne une palette que l'on compare à
@@ -14,7 +15,10 @@ use ax_asset::a3d::{
 use ax_asset::compile::{compile, CompileOptions};
 use ax_asset::import::{ImportLimits, SourceFormat};
 use ax_asset::options::AssetOptions;
+use ax_math::Vec3;
 use ax_model::dm::animation::{anim_action, AnimCommand, BoneDesc};
+use ax_model::dm::geometry::Transform;
+use ax_model::dm::scene::{NONE_U32, NO_PARENT};
 use axion_native::animation::{AnimatedAsset, Instance};
 
 /// Les sections d'un modèle compilé : ses nodes et leurs noms, ses clips, ses os.
@@ -189,6 +193,19 @@ fn un_os_hors_de_l_asset_ou_non_affine_refuse_la_table() {
         );
     }
 
+    let mut parent_hors = charge.os.clone();
+    parent_hors[1].parent = charge.os.len() as u16;
+    assert!(
+        AnimatedAsset::new(
+            &charge.nodes.nodes,
+            charge.table.clone(),
+            Vec::new(),
+            &parent_hors
+        )
+        .is_err(),
+        "un os parent hors du squelette"
+    );
+
     let mut infinie = charge.os.clone();
     infinie[0].inverse_bind[12] = f32::INFINITY;
     assert!(AnimatedAsset::new(
@@ -205,4 +222,57 @@ fn un_os_hors_de_l_asset_ou_non_affine_refuse_la_table() {
         .expect("des clips");
     assert_eq!(sans.bone_count(), 0);
     assert!(palette(&sans, true, 20.0).is_empty());
+}
+
+/// Overlay `bones` (tranche 6b) : un node qui n'est pas un os, glissé entre l'épaule et le coude à
+/// (0, 0,5, 0), ne coupe pas l'os du coude de l'épaule, son os parent dans `SKEL`. Les index qui suivent
+/// le node inséré avancent d'un, dans les parents, les pistes et les os.
+#[test]
+fn adr155_l_os_du_coude_part_de_l_epaule_par_dela_un_node_intermediaire() {
+    let charge = charger(&modeles_animes::bras());
+    let coude = charge.table.tracks[0].target_node as usize;
+    let epaule = charge.nodes.nodes[coude].parent;
+    let decale = |node: u32| {
+        if node != NO_PARENT && node as usize >= coude {
+            node + 1
+        } else {
+            node
+        }
+    };
+    let mut nodes = charge.nodes.nodes.clone();
+    let mut milieu = nodes[epaule as usize];
+    milieu.name_hash ^= 1;
+    milieu.parent = epaule;
+    milieu.bone = NONE_U32;
+    milieu.local = Transform {
+        translation: [0.0, 0.5, 0.0],
+        rotation: [0.0, 0.0, 0.0, 1.0],
+        scale: [1.0; 3],
+    };
+    for node in &mut nodes {
+        node.parent = decale(node.parent);
+    }
+    nodes.insert(coude, milieu);
+    nodes[coude + 1].parent = coude as u32;
+    let mut table = charge.table.clone();
+    for track in &mut table.tracks {
+        track.target_node = decale(track.target_node);
+    }
+    let mut os = charge.os.clone();
+    for bone in &mut os {
+        bone.node = decale(bone.node);
+    }
+    let asset = AnimatedAsset::new(&nodes, table, Vec::new(), &os)
+        .expect("acceptée")
+        .expect("des clips");
+    let mut instance = Instance::new(&asset);
+    instance.draw_matrices(&asset, 0.0, &mut Vec::new());
+    let mut segments = Vec::new();
+    instance.bone_segments(&asset, |point: Vec3| point.to_array(), &mut segments);
+    assert_eq!(segments.len(), 1, "l'épaule est la racine du squelette");
+    assert!(Vec3::from(segments[0].a).length() < 1e-5, "{segments:?}");
+    assert!(
+        (Vec3::from(segments[0].b) - Vec3::new(0.0, 1.5, 0.0)).length() < 1e-5,
+        "{segments:?}"
+    );
 }

@@ -71,6 +71,9 @@ public final class BufferKinds {
     /** Candidats d'une frame de rendu, Java vers le natif. */
     public static final int RENDER_IN = 14;
 
+    /** Géométrie de debug du contexte de rendu : overlays de l'animation. */
+    public static final int RENDER_DEBUG = 15;
+
     /** Version du schéma de la charge de {@code SIM_OUT}, lue à l'octet 12 de l'en-tête. */
     public static final int SIM_OUT_SCHEMA = 2;
 
@@ -85,4 +88,7 @@ public final class BufferKinds {
 
     /** Version du schéma de la charge de {@code RENDER_IN}, lue à l'octet 12 de l'en-tête. */
     public static final int RENDER_IN_SCHEMA = 2;
+
+    /** Version du schéma de la charge de {@code RENDER_DEBUG}, lue à l'octet 12 de l'en-tête. */
+    public static final int RENDER_DEBUG_SCHEMA = 2;
 }

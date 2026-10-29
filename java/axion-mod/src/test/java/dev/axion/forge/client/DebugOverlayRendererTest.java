@@ -261,11 +261,13 @@ class DebugOverlayRendererTest {
         Set<Integer> couleurs = new HashSet<>();
         for (DebugOverlays.Overlay overlay : DebugOverlays.Overlay.values()) {
             assertFalse(DebugOverlayRenderer.legendOf(overlay).isBlank(), overlay.commandName());
-            if (overlay != DebugOverlays.Overlay.COLLIDERS && overlay != DebugOverlays.Overlay.BODIES) {
+            // colliders se colore par corps ; bodies et nodes, axe par axe.
+            if (overlay != DebugOverlays.Overlay.COLLIDERS && overlay != DebugOverlays.Overlay.BODIES
+                    && overlay != DebugOverlays.Overlay.NODES) {
                 couleurs.add(DebugOverlayRenderer.colorOf(overlay, 0));
             }
         }
-        assertEquals(10, couleurs.size(), "dix overlays sans corps à colorer, dix couleurs");
+        assertEquals(12, couleurs.size(), "douze overlays sans corps ni axes à colorer, douze couleurs");
         assertEquals(
                 DebugOverlayRenderer.STATIC,
                 DebugOverlayRenderer.colorOf(DebugOverlays.Overlay.COLLIDERS, DebugGeometry.BODY_STATIC));

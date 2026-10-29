@@ -537,6 +537,9 @@ public final class AxionRenderPass {
         for (DebugGeometry.Range range : DEBUG.geometry().ranges()) {
             counts.merge(range.overlay(), 1, Integer::sum);
         }
+        for (DebugGeometry.Range range : DEBUG.animationGeometry().ranges()) {
+            counts.merge(range.overlay(), 1, Integer::sum);
+        }
         if (DEBUG.networkDrawn() > 0) {
             counts.merge(DebugOverlays.Overlay.NETWORK.rank(), DEBUG.networkDrawn(), Integer::sum);
         }
@@ -810,6 +813,7 @@ public final class AxionRenderPass {
     private static List<RenderBackend.Assembly> cull(
             RenderLevelStageEvent event, Minecraft minecraft, List<RenderBackend.Assembly> all) {
         FRAME_DECISIONS.clear();
+        DEBUG.forgetAnimation();
         NativeCulling active = culling;
         if (active == null || all.isEmpty()) {
             return all;
@@ -890,6 +894,12 @@ public final class AxionRenderPass {
             kept[at] = all.get(at).withMeshes(outcome.meshes()[rank], outcome.matrices()[rank], outcome.palettes()[rank]);
         }
         SKINNED_CAPPED.add(outcome.skinnedCapped());
+        // ADR-155, tranche 6b : les overlays de l'animation, à la pose que cette frame vient de donner.
+        try {
+            DEBUG.animate(RuntimeAccess.get(), camera);
+        } catch (RuntimeException failure) {
+            disableOverlays(failure);
+        }
         if (backend instanceof NativeGlBackend) {
             SKINNED.set(outcome.skinned());
             VANILLA_SKINNED_VERTICES.set(0);

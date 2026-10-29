@@ -129,6 +129,9 @@ fn describe_kind(kind: BufferKind) -> &'static str {
         BufferKind::Persist => "Blobs de persistance sérialisés",
         BufferKind::Debug => "Géométrie de debug",
         BufferKind::RenderIn => "Candidats d'une frame de rendu, Java vers le natif",
+        BufferKind::RenderDebug => {
+            "Géométrie de debug du contexte de rendu : overlays de l'animation"
+        }
     }
 }
 

@@ -78,6 +78,22 @@ relative à la caméra, et le natif décide (C-64, C-65, [ADR-154](docs/decision
   une plus courte dessin par dessin. Sous GL 4.3 et `render.indirect`, les séries au même état partent
   d'un seul `glMultiDrawElementsIndirect`. L'image est la même par les trois chemins (T-478, T-907).
 
+## Animation et skinning
+
+Une assembly animée joue des clips que le serveur commande (C-37, [ADR-155](docs/decisions/ADR-155.md)) ;
+le client pousse l'état reçu au natif, qui évalue la pose à chaque frame et rend la matrice de chaque
+dessin. Un mesh skinné suit la palette de ses os — `monde(node de l'os) × liaison inverse` —, quatre os
+par sommet, et se pose à la racine de l'assembly :
+
+- **backend natif** : sur le GPU (variante `SKINNED`), la palette lue dans un TBO, ou par pages d'un UBO
+  quand le TBO ne suffit pas (C-66). `render.max_skinned_instances` (64) la réserve aux instances les
+  plus proches ; les autres se dessinent au repos, comptées par `axion.render.skinned_capped` ;
+- **backend vanilla** : sur le CPU, à l'émission des sommets, chaque mesh une fois par frame (R-742).
+  `render.vanilla_max_skinned_vertices` (50 000 par frame) borne les sommets skinnés, les instances les
+  plus proches d'abord ; les autres restent au repos, comptées par `axion.render.vanilla_skinned_capped`.
+
+La déformation continue, qui s'y ajoute, vient avec la M6.
+
 ## Ressources GPU
 
 - **Maillages** sous-alloués dans des arènes de 16 Mio partagées (VBO, EBO), tampon d'instances
@@ -114,8 +130,10 @@ relative à la caméra, et le natif décide (C-64, C-65, [ADR-154](docs/decision
 tracés `colliders`, `aabb`, `bodies`, `contacts`, `normals`, `joints`, `limits`, `world_tiles`,
 `center_of_mass`, `network`, `lod` (l'emprise de chaque assembly dessinée, colorée par son niveau) et
 `culling` (retenue en vert, écartée en rouge) ; les joints et leurs plages sont décrits dans
-[PHYSICS.md](PHYSICS.md#erreurs-réseau-et-debug). Éteint, un overlay ne coûte qu'un test de drapeau
-par frame (R-2280).
+[PHYSICS.md](PHYSICS.md#erreurs-réseau-et-debug). Pour les assemblies animées, `bones` (chaque os, de
+son os parent à lui), `nodes` (le repère de chaque node) et `pivots` (l'origine de chaque node animé) :
+la pose de la frame, vue à travers la peau, tracée par le contexte de rendu sans attendre la
+physique. Éteint, un overlay ne coûte qu'un test de drapeau par frame (R-2280).
 
 ## Mesures
 
@@ -142,11 +160,13 @@ reconstruites par un vrai changement de resource pack (T-483), temps GPU des pas
 connu (ADR-146 §2), culling et LOD des assemblies posées hors du champ, 200 copies d'un cube sans appel
 de dessin de plus (T-477), chemins non instancié et indirect à l'image identique (T-478, T-907), 100
 assemblies mesurées sous leurs plafonds (T-485), LOD forcé qui rend les trois quarts de la mémoire des
-textures (T-484). La CI le joue à chaque push.
+textures (T-484), bras skinné plié là où sa référence CPU le place, au GPU comme au CPU (T-908, R-742),
+même image par TBO et par UBO (T-541), plafonds du skinning tenus et comptés (T-542, T-493), os vus à
+travers la peau. La CI le joue à chaque push.
 
 ## Ce qui n'existe pas encore
 
 Niveaux de qualité Q-0 à Q-4, sonde d'environnement (C-81) et tone mapping (C-83), effet des
-définitions autres que `CUTOUT` (skinning, déformation, parallax, clearcoat, sheen, anisotropie,
+définitions autres que `CUTOUT` et `SKINNED` (déformation, parallax, clearcoat, sheen, anisotropie,
 décalques, ombres reçues, SSR), occlusion culling (C-82, M9), temps GPU par matériau, d'ombre et de
 décalques (M9, avec ces passes).

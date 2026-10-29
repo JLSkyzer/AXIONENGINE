@@ -3,7 +3,8 @@
 //! En solo, le serveur intégré et le client partagent la session native, et le pas physique
 //! tient le verrou de session pendant `axion_sim_collect`. Une préparation de rendu qui le
 //! prendrait attendrait le pas, et R-300 ne tiendrait pas. Ce qui sert au rendu vit donc ici :
-//! les tampons `RENDER_IN` et `RENDER_OUT`, l'emprise de chaque asset chargé, la frame en vol.
+//! les tampons `RENDER_IN`, `RENDER_OUT` et `RENDER_DEBUG`, l'emprise de chaque asset chargé, la
+//! frame en vol.
 //!
 //! # Ordre des verrous
 //!
@@ -23,10 +24,13 @@ use crate::animation::{AnimatedAsset, Instance};
 use ax_asset::optimize::MAX_LOD_LEVELS;
 use ax_core::BufferPool;
 use ax_jobs::{JobKind, JobSystem};
+use ax_math::{DVec3, Quat, Vec3};
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::dm::animation::{anim_action, AnimCommand, RenderAnimate};
+use ax_model::dm::debug::{debug_flags, debug_frame, encode_debug_payload, overlay};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::limits::MAX_NODES;
+use ax_physics::{select_drafts, DebugDraft};
 use ax_render_prep::lod::{biased, projected_px, LodState};
 use ax_render_prep::{cull_batched, Camera, Candidate, CullStats, Frustum, LocalBounds, Visible};
 use std::collections::{HashMap, HashSet};
@@ -143,6 +147,15 @@ pub struct Prepared {
     pub flags: u32,
 }
 
+/// La pose qu'une frame a donnée à une instance animée retenue : celle de son candidat.
+#[derive(Debug, Clone, Copy)]
+struct AnimatedPose {
+    id: u32,
+    position: Vec3,
+    rotation: Quat,
+    scale: f32,
+}
+
 /// L'état de rendu d'une session.
 #[derive(Debug)]
 pub struct RenderContext {
@@ -162,6 +175,9 @@ pub struct RenderContext {
     decisions: HashMap<u32, (bool, u64)>,
     /// L'animation de chaque assembly animée, par `id` de candidat, avec l'asset qu'elle anime.
     instances: HashMap<u32, (Handle, Instance)>,
+    /// Les instances animées retenues par la dernière frame préparée, à la pose de leur candidat : les
+    /// overlays de l'animation les tracent (ADR-155, tranche 6b).
+    animated_poses: Vec<AnimatedPose>,
     limits: RenderLimits,
 }
 
@@ -188,6 +204,7 @@ pub(crate) fn open(token: u64, jobs: Option<Arc<JobSystem>>, limits: RenderLimit
         lod: LodState::new(),
         decisions: HashMap::new(),
         instances: HashMap::new(),
+        animated_poses: Vec::new(),
         limits,
     });
 }
@@ -585,6 +602,7 @@ impl RenderContext {
         let mut meshes: Vec<u32> = Vec::new();
         let mut matrices: Vec<f32> = Vec::new();
         let mut animated = 0u32;
+        self.animated_poses.clear();
         let mut triangles = 0u32;
         // R-791 : une palette aux `render.max_skinned_instances` retenus skinnés les plus proches ; les
         // autres se dessinent au repos, et sont comptés.
@@ -642,6 +660,12 @@ impl RenderContext {
                         .map_err(|_| AXION_E_INVALID_BUFFER)?;
                     instance.draw_matrices(animation, tick, &mut matrices);
                     animated += 1;
+                    self.animated_poses.push(AnimatedPose {
+                        id: candidate.id,
+                        position: candidate.position,
+                        rotation: candidate.rotation,
+                        scale: candidate.scale,
+                    });
                     // La palette suit les matrices des dessins, de la pose qu'elles viennent d'évaluer.
                     if palettes[rank] {
                         palette_first = u32::try_from(matrices.len() / MATRIX_FLOATS)
@@ -716,6 +740,71 @@ impl RenderContext {
         })
     }
 
+    /// Dépose dans `RENDER_DEBUG` les segments des overlays de l'animation demandés — `bones`, `nodes`,
+    /// `pivots` — pour les instances animées que la dernière frame préparée a retenues, à la pose qu'elle
+    /// leur a donnée (ADR-155, tranche 6b). Repère d'origine, relatif à la caméra de cette frame ;
+    /// chaque plage au handle `ABSENT` (décision de Killian). Les plus proches d'abord, au plus
+    /// `max_segments` segments : une plage qui ne tient pas est omise et comptée (schéma 2 de `DEBUG`).
+    /// Rend la taille de la charge utile.
+    ///
+    /// # Errors
+    ///
+    /// `AXION_E_INVALID_BUFFER` si la charge ne s'encode pas ou ne se dépose pas.
+    pub fn debug(&mut self, mask: u64, max_segments: u32) -> Result<u64, i32> {
+        let mut drafts = Vec::new();
+        for pose in &self.animated_poses {
+            let Some((handle, instance)) = self.instances.get(&pose.id) else {
+                continue;
+            };
+            let Some(animation) = self
+                .assets
+                .get(handle.index as usize)
+                .and_then(Option::as_ref)
+                .filter(|a| a.generation == handle.generation)
+                .and_then(|a| a.animation.as_ref())
+            else {
+                continue;
+            };
+            let place =
+                |point: Vec3| (pose.position + pose.rotation * (point * pose.scale)).to_array();
+            for bit in [overlay::BONES, overlay::NODES, overlay::PIVOTS] {
+                if mask & bit == 0 {
+                    continue;
+                }
+                let mut segments = Vec::new();
+                match bit {
+                    overlay::BONES => instance.bone_segments(animation, place, &mut segments),
+                    overlay::NODES => instance.node_segments(place, &mut segments),
+                    _ => instance.pivot_segments(animation, place, &mut segments),
+                }
+                drafts.push(DebugDraft {
+                    handle: Handle::ABSENT,
+                    overlay: overlay::rank(bit),
+                    frame: debug_frame::ORIGIN,
+                    flags: 0,
+                    anchor: pose.position.as_dvec3(),
+                    segments,
+                });
+            }
+        }
+        let selection = select_drafts(drafts, DVec3::ZERO, max_segments);
+        let flags = if selection.omitted_ranges > 0 {
+            debug_flags::TRUNCATED
+        } else {
+            0
+        };
+        let payload = encode_debug_payload(
+            &selection.ranges,
+            &selection.segments,
+            flags,
+            selection.omitted_ranges,
+        )
+        .ok_or(AXION_E_INVALID_BUFFER)?;
+        self.buffers
+            .write_payload(BufferKind::RenderDebug, &payload)
+            .ok_or(AXION_E_INVALID_BUFFER)
+    }
+
     /// Indique si un candidat recevrait une palette : son asset est chargé, skinné et animé, et son
     /// assembly a une animation sur cet asset.
     fn skinnable(&self, candidate: &Candidate) -> bool {
@@ -781,6 +870,7 @@ mod tests {
             lod: LodState::new(),
             decisions: HashMap::new(),
             instances: HashMap::new(),
+            animated_poses: Vec::new(),
             limits: RenderLimits {
                 max_skinned_instances: 64,
             },

@@ -11,14 +11,21 @@
 //! `monde(node de l'os) × liaison inverse`, dans l'espace de l'asset : un sommet skinné y est porté
 //! sans passer par la matrice du node de son mesh, que glTF ignore pour un mesh skinné. T-540 la
 //! compare à ce calcul fait à part, os par os.
+//!
+//! # Les overlays (tranche 6b)
+//!
+//! Les overlays `bones`, `nodes` et `pivots` tracent la pose qu'une instance a évaluée en dernier :
+//! chaque os depuis son os parent, le repère de chaque node, une croix à l'origine de chaque node
+//! animé. Les points sont dans l'espace de l'asset ; l'appelant les place.
 
 use ax_anim::{Animator, ClipLibrary, TICKS_PER_SECOND};
 use ax_asset::a3d::AnimationTable;
 use ax_asset::validate::validate_animations;
 use ax_math::{Affine3A, Mat4, Quat, Vec3};
 use ax_model::dm::animation::{AnimCommand, BoneDesc};
+use ax_model::dm::debug::DebugSegment;
 use ax_model::dm::geometry::Transform;
-use ax_model::dm::scene::{node_state, NodeDesc};
+use ax_model::dm::scene::{node_state, NodeDesc, NONE_U16};
 use ax_scene::{mat4x3, SceneGraph};
 
 /// Les clips d'un asset chargé et ce qu'il faut pour en tirer les matrices de ses dessins.
@@ -37,15 +44,24 @@ pub struct AnimatedAsset {
     bones: Vec<Bone>,
 }
 
-/// Un os : son node, et sa matrice de liaison inverse.
+/// Un os : son node, son os parent dans le squelette, et sa matrice de liaison inverse.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Bone {
     node: u32,
+    /// Le plus proche ancêtre de son node qui soit un os, tel que le compilateur l'a relevé (DM-10) ;
+    /// `None` pour une racine du squelette.
+    parent: Option<usize>,
     inverse_bind: Affine3A,
 }
 
 /// Écart toléré à la dernière ligne `(0, 0, 0, 1)` d'une liaison inverse, que glTF veut affine.
 const AFFINE_TOLERANCE: f32 = 1e-5;
+
+/// Longueur des axes de l'overlay `nodes`, en blocs, échelle du node comprise (tranche 6b).
+pub const NODE_AXIS_LENGTH: f32 = 0.25;
+
+/// Côté de la croix de l'overlay `pivots`, en blocs (tranche 6b).
+pub const PIVOT_CROSS: f32 = 0.15;
 
 impl AnimatedAsset {
     /// Construit l'animation d'un asset depuis ses sections `ANIM` et `SKEL` ; `None` s'il n'a aucun
@@ -69,7 +85,7 @@ impl AnimatedAsset {
         let bones = skeleton
             .iter()
             .enumerate()
-            .map(|(index, bone)| bone_of(index, bone, nodes.len()))
+            .map(|(index, bone)| bone_of(index, bone, nodes.len(), skeleton.len()))
             .collect::<Result<Vec<_>, _>>()?;
         let report = validate_animations(nodes, &table.animations, &table.tracks, &table.keys);
         if let Some(error) = report.errors.first() {
@@ -133,12 +149,25 @@ impl AnimatedAsset {
     }
 }
 
-/// L'os `index` de `SKEL`, vérifié contre les `node_count` nodes de l'asset.
-fn bone_of(index: usize, bone: &BoneDesc, node_count: usize) -> Result<Bone, String> {
+/// L'os `index` de `SKEL`, vérifié contre les `node_count` nodes de l'asset et les `bone_count` os du
+/// squelette.
+fn bone_of(
+    index: usize,
+    bone: &BoneDesc,
+    node_count: usize,
+    bone_count: usize,
+) -> Result<Bone, String> {
     if bone.node as usize >= node_count {
         return Err(format!(
             "os {index} : node {} hors des {node_count} de l'asset",
             bone.node
+        ));
+    }
+    let parent = (bone.parent != NONE_U16).then_some(usize::from(bone.parent));
+    if parent.is_some_and(|parent| parent >= bone_count) {
+        return Err(format!(
+            "os {index} : os parent {} hors des {bone_count} du squelette",
+            bone.parent
         ));
     }
     let matrix = Mat4::from_cols_array(&bone.inverse_bind);
@@ -155,6 +184,7 @@ fn bone_of(index: usize, bone: &BoneDesc, node_count: usize) -> Result<Bone, Str
     }
     Ok(Bone {
         node: bone.node,
+        parent,
         inverse_bind: Affine3A::from_mat4(matrix),
     })
 }
@@ -233,6 +263,63 @@ impl Instance {
         let worlds = self.graph.worlds();
         for bone in &asset.bones {
             out.extend_from_slice(&mat4x3(&(worlds[bone.node as usize] * bone.inverse_bind)));
+        }
+    }
+
+    /// Ajoute à `out` les segments de l'overlay `bones`, à la pose que [`Self::draw_matrices`] a
+    /// évaluée en dernier : de l'origine de l'os parent de chaque os — celui que `SKEL` lui donne, le
+    /// plus proche ancêtre de son node qui soit un os — à la sienne. Une racine du squelette n'en a pas.
+    /// Chaque point de l'espace de l'asset passe par `place`.
+    pub fn bone_segments(
+        &self,
+        asset: &AnimatedAsset,
+        place: impl Fn(Vec3) -> [f32; 3],
+        out: &mut Vec<DebugSegment>,
+    ) {
+        let worlds = self.graph.worlds();
+        for bone in &asset.bones {
+            if let Some(parent) = bone.parent {
+                let parent = asset.bones[parent].node as usize;
+                out.push(DebugSegment {
+                    a: place(Vec3::from(worlds[parent].translation)),
+                    b: place(Vec3::from(worlds[bone.node as usize].translation)),
+                });
+            }
+        }
+    }
+
+    /// Ajoute à `out` les segments de l'overlay `nodes` : le repère de chaque node à la dernière pose
+    /// évaluée, trois axes de [`NODE_AXIS_LENGTH`] depuis son origine.
+    pub fn node_segments(&self, place: impl Fn(Vec3) -> [f32; 3], out: &mut Vec<DebugSegment>) {
+        for world in self.graph.worlds() {
+            let origin = place(Vec3::from(world.translation));
+            for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
+                out.push(DebugSegment {
+                    a: origin,
+                    b: place(world.transform_point3(axis * NODE_AXIS_LENGTH)),
+                });
+            }
+        }
+    }
+
+    /// Ajoute à `out` les segments de l'overlay `pivots` : une croix de [`PIVOT_CROSS`] à l'origine de
+    /// chaque node animé, autour de laquelle il tourne, à la dernière pose évaluée.
+    pub fn pivot_segments(
+        &self,
+        asset: &AnimatedAsset,
+        place: impl Fn(Vec3) -> [f32; 3],
+        out: &mut Vec<DebugSegment>,
+    ) {
+        let worlds = self.graph.worlds();
+        let half = PIVOT_CROSS * 0.5;
+        for &node in &asset.animated {
+            let center = Vec3::from(worlds[node as usize].translation);
+            for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
+                out.push(DebugSegment {
+                    a: place(center - axis * half),
+                    b: place(center + axis * half),
+                });
+            }
         }
     }
 }

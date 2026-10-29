@@ -1,11 +1,13 @@
 package dev.axion.forge.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import dev.axion.render.EntityShader;
 import dev.axion.render.TextureBinding;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.OptionalDouble;
 import net.minecraft.client.renderer.RenderType;
 
 /**
@@ -31,6 +33,46 @@ abstract class AxionRenderTypes extends RenderType {
 
     /** Types créés, par texture, shader et faces. */
     private static final Map<Key, RenderType> TYPES = new HashMap<>();
+
+    /** {@code GL_ALWAYS} : la fonction de profondeur qui laisse tout passer. */
+    private static final int GL_ALWAYS = 519;
+
+    /**
+     * Le test de profondeur coupé pour de bon. {@code NO_DEPTH_TEST} de vanilla n'en fait rien à sa mise en place :
+     * il le suppose coupé entre deux types, ce qu'il n'est plus après les particules — au banc de rendu, les lignes
+     * de l'animation restaient cachées par la peau. Il est coupé ici, et laissé coupé : l'état que les types vanilla
+     * laissent derrière eux.
+     */
+    private static final DepthTestStateShard DEPTH_OFF = new DepthTestStateShard("axion_depth_off", GL_ALWAYS) {
+        @Override
+        public void setupRenderState() {
+            RenderSystem.assertOnRenderThread();
+            RenderSystem.disableDepthTest();
+        }
+
+        @Override
+        public void clearRenderState() {
+            // Le test reste coupé, comme après tout type vanilla.
+        }
+    };
+
+    /**
+     * Des lignes vues à travers ce qui les cache : celles de {@code lines} vanilla, sans test ni écriture de la
+     * profondeur. Les overlays de l'animation en ont besoin — un os est dans la peau qu'il porte (ADR-155,
+     * tranche 6b).
+     */
+    static final RenderType XRAY_LINES = create("axion_xray_lines", DefaultVertexFormat.POSITION_COLOR_NORMAL,
+            VertexFormat.Mode.LINES, 256, false, false,
+            CompositeState.builder()
+                    .setShaderState(RENDERTYPE_LINES_SHADER)
+                    .setLineState(new LineStateShard(OptionalDouble.empty()))
+                    .setLayeringState(VIEW_OFFSET_Z_LAYERING)
+                    .setTransparencyState(TRANSLUCENT_TRANSPARENCY)
+                    .setOutputState(ITEM_ENTITY_TARGET)
+                    .setWriteMaskState(COLOR_WRITE)
+                    .setDepthTestState(DEPTH_OFF)
+                    .setCullState(NO_CULL)
+                    .createCompositeState(false));
 
     /** Jamais appelé : la classe ne sert qu'à atteindre les états de {@code RenderType}. */
     private AxionRenderTypes() {

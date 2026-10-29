@@ -60,7 +60,7 @@ class AxionClientCommandsTest {
         CommandDispatcher<CommandSourceStack> dispatcher = arbre();
         CommandSyntaxException echec = assertThrows(
                 CommandSyntaxException.class,
-                () -> dispatcher.execute("axion debug bones on", null));
+                () -> dispatcher.execute("axion debug raycasts on", null));
         assertEquals(
                 CommandSyntaxException.BUILT_IN_EXCEPTIONS.dispatcherUnknownArgument(),
                 echec.getType());

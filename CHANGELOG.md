@@ -199,6 +199,13 @@ Definition of Done (PARTIE 37.3).
     reserve aux instances les plus proches, les autres au repos, metriques
     `axion.render.vanilla_skinned_vertices` et
     `axion.render.vanilla_skinned_capped` (T-493) ;
+    overlays `bones`, `nodes` et `pivots` (ABI 11) : `axion_render_debug`
+    depose dans le nouveau tampon `RENDER_DEBUG`, au pool du contexte de
+    rendu et au schema 2 de `DEBUG`, la pose que la derniere frame a donnee
+    a chaque instance animee, en repere d'origine relatif a sa camera ; Java
+    les demande a chaque frame apres le culling, sans le verrou de session,
+    et les dessine a travers la peau ; l'os parent est celui de `SKEL`,
+    verifie au chargement ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

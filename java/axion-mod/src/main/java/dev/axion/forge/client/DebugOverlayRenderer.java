@@ -35,6 +35,11 @@ import org.slf4j.LoggerFactory;
  * moins la caméra courante, en {@code double} : ce sont les données du dernier pas, qui peuvent
  * avoir un tick de retard sur le maillage interpolé.
  *
+ * <p>Les overlays de l'animation — {@code bones}, {@code nodes}, {@code pivots} — viennent du contexte
+ * de rendu, à chaque frame après son culling : la pose que cette frame a donnée à chaque instance
+ * animée, en repère d'origine relatif à sa caméra (ADR-155, tranche 6b). Ils se dessinent à travers
+ * les maillages ({@link AxionRenderTypes#XRAY_LINES}) : un os est dans la peau qu'il porte.
+ *
  * <p>Couleurs : {@code colliders} selon le corps ({@link #COLLIDERS_LEGEND}), les autres
  * overlays une couleur chacun ({@link #legendOf}).
  *
@@ -109,6 +114,12 @@ final class DebugOverlayRenderer {
     /** Couleur de l'overlay {@code center_of_mass} (RGB). */
     static final int MASS_COLOR = 0xFFFFFF;
 
+    /** Couleur de l'overlay {@code bones} (RGB). */
+    static final int BONE_COLOR = 0xFFD24D;
+
+    /** Couleur de l'overlay {@code pivots} (RGB). */
+    static final int PIVOT_COLOR = 0xFF66CC;
+
     /** En deçà, un segment n'a pas de direction : le shader de lignes ne saurait l'épaissir. */
     private static final float MIN_SEGMENT_LENGTH = 1e-6f;
 
@@ -119,6 +130,9 @@ final class DebugOverlayRenderer {
 
     /** Géométrie du dernier tick, en repère des corps. */
     private DebugGeometry geometry = DebugGeometry.empty();
+
+    /** Géométrie des overlays de l'animation à la dernière frame, en repère d'origine (ADR-155, tranche 6b). */
+    private DebugGeometry animation = DebugGeometry.empty();
 
     /** Omission faute de budget déjà dite depuis l'allumage : une fois. */
     private boolean truncationReported;
@@ -190,9 +204,48 @@ final class DebugOverlayRenderer {
             return;
         }
         geometry = fetched.geometry();
-        if (geometry.truncated() && !truncationReported) {
+        reportTruncation(geometry, minecraft);
+    }
+
+    /**
+     * Après le culling d'une frame : (re)demande au contexte de rendu la géométrie des overlays de l'animation
+     * allumés, à la pose que cette frame a donnée à chaque instance animée (ADR-155, tranche 6b). Un appel par
+     * frame, l'animation changeant à chaque image, et seulement si l'un d'eux est allumé (R-2280). L'appel ne
+     * prend pas le verrou de session (ADR-154 D2).
+     *
+     * @param runtime runtime d'AXION, ou {@code null} avant la construction du mod
+     * @param camera la caméra de la frame, celle de ses candidats
+     */
+    void animate(AxionRuntime runtime, Vec3 camera) {
+        long mask = overlays.renderMask();
+        NativeDebugLoader source = mask == 0L ? null : loader(runtime);
+        if (source == null) {
+            animation = DebugGeometry.empty();
+            return;
+        }
+        NativeDebugLoader.Fetched fetched = source.fetchAnimation(mask, camera.x, camera.y, camera.z, MAX_SEGMENTS);
+        if (!fetched.ok()) {
+            animation = DebugGeometry.empty();
+            if (!failureReported) {
+                failureReported = true;
+                LOGGER.warn("AXION : géométrie de l'animation refusée par le natif (code {})", fetched.code());
+            }
+            return;
+        }
+        animation = fetched.geometry();
+        reportTruncation(animation, Minecraft.getInstance());
+    }
+
+    /** Aucun culling à cette frame : rien de l'animation à tracer. */
+    void forgetAnimation() {
+        animation = DebugGeometry.empty();
+    }
+
+    /** Dit, une fois depuis l'allumage, que le budget a omis des plages. */
+    private void reportTruncation(DebugGeometry fetched, Minecraft minecraft) {
+        if (fetched.truncated() && !truncationReported) {
             truncationReported = true;
-            String line = geometry.omittedRanges() + " plage(s) omise(s) par les overlays de debug, au-delà de "
+            String line = fetched.omittedRanges() + " plage(s) omise(s) par les overlays de debug, au-delà de "
                     + MAX_SEGMENTS + " segments : les plus lointaines de la caméra";
             LOGGER.warn("AXION : {}", line);
             if (minecraft.player != null) {
@@ -213,7 +266,8 @@ final class DebugOverlayRenderer {
         boolean network = overlays.isOn(DebugOverlays.Overlay.NETWORK);
         boolean lod = overlays.isOn(DebugOverlays.Overlay.LOD);
         boolean culled = overlays.isOn(DebugOverlays.Overlay.CULLING);
-        if (overlays.mask() == 0L || (geometry.ranges().isEmpty() && !network && !lod && !culled)) {
+        if (overlays.mask() == 0L
+                || (geometry.ranges().isEmpty() && animation.ranges().isEmpty() && !network && !lod && !culled)) {
             return;
         }
         RenderType type = RenderType.lines();
@@ -261,6 +315,20 @@ final class DebugOverlayRenderer {
         }
         if (out != null) {
             frame.buffers().endBatch(type);
+        }
+        // L'animation, à travers les maillages : la caméra de sa frame moins la caméra courante, en double.
+        if (!animation.originRanges().isEmpty()) {
+            RenderType xray = AxionRenderTypes.XRAY_LINES;
+            VertexConsumer lines = frame.buffers().getBuffer(xray);
+            Vec3 eye = frame.camera();
+            pose.pushPose();
+            pose.translate(animation.originX() - eye.x, animation.originY() - eye.y, animation.originZ() - eye.z);
+            PoseStack.Pose last = pose.last();
+            for (DebugGeometry.Range range : animation.originRanges()) {
+                emitRange(lines, last.pose(), last.normal(), scratch, range);
+            }
+            pose.popPose();
+            frame.buffers().endBatch(xray);
         }
     }
 
@@ -405,8 +473,8 @@ final class DebugOverlayRenderer {
     }
 
     /**
-     * Émet une plage dans la couleur de son overlay ; les axes de {@code bodies}, chacun dans la
-     * sienne. Une plage d'un overlay que ce client ne connaît pas est sautée.
+     * Émet une plage dans la couleur de son overlay ; les axes de {@code bodies} et de {@code nodes}, chacun
+     * dans la sienne. Une plage d'un overlay que ce client ne connaît pas est sautée.
      *
      * @return le nombre de segments émis
      */
@@ -417,7 +485,7 @@ final class DebugOverlayRenderer {
             return 0;
         }
         float[] segments = range.segments();
-        if (overlay != DebugOverlays.Overlay.BODIES) {
+        if (overlay != DebugOverlays.Overlay.BODIES && overlay != DebugOverlays.Overlay.NODES) {
             return emit(out, position, normal, scratch, segments, colorOf(overlay, range.flags()));
         }
         int emitted = 0;
@@ -444,6 +512,9 @@ final class DebugOverlayRenderer {
             case NORMALS -> NORMAL_COLOR;
             case JOINTS -> jointColorOf(flags, JOINT_COLOR);
             case LIMITS -> jointColorOf(flags, LIMIT_COLOR);
+            case BONES -> BONE_COLOR;
+            case NODES -> AXIS_COLORS[0];
+            case PIVOTS -> PIVOT_COLOR;
             case WORLD_TILES -> TILE_COLOR;
             case CENTER_OF_MASS -> MASS_COLOR;
             case NETWORK -> NETWORK_RECEIVED;
@@ -482,6 +553,9 @@ final class DebugOverlayRenderer {
                     + " rompu, ses ancrages écartés";
             case LIMITS -> "bleu : la plage permise d'un joint et le trait de sa position ; ambre : resserrée par"
                     + " un grippage";
+            case BONES -> "or : chaque os d'une instance animée, de son os parent à lui, vu à travers la peau";
+            case NODES -> "axes de chaque node d'une instance animée : rouge x, vert y, bleu z";
+            case PIVOTS -> "rose : l'origine de chaque node animé, autour de laquelle il tourne";
             case WORLD_TILES -> "gris : les colliders des tuiles du monde";
             case CENTER_OF_MASS -> "blanc : le centre de masse de chaque corps";
             case NETWORK -> "violet : l'emprise à la pose dessinée, interpolée ; orange : au dernier état reçu du"
@@ -498,6 +572,11 @@ final class DebugOverlayRenderer {
         return geometry;
     }
 
+    /** {@return la géométrie des overlays de l'animation à la dernière frame} */
+    DebugGeometry animationGeometry() {
+        return animation;
+    }
+
     /**
      * {@return vrai si le lecteur natif a été créé : il ne l'est qu'au premier tick d'un overlay
      * allumé — éteints, les overlays ne demandent rien au natif (R-2280, T-551)}
@@ -509,6 +588,7 @@ final class DebugOverlayRenderer {
     /** Oublie la géométrie et les écarts déjà dits : overlays éteints, ou sortie du monde. */
     void reset() {
         geometry = DebugGeometry.empty();
+        animation = DebugGeometry.empty();
         truncationReported = false;
         failureReported = false;
     }

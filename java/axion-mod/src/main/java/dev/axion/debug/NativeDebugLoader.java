@@ -6,7 +6,8 @@ import java.nio.ByteBuffer;
 
 /**
  * Demande au natif la géométrie des overlays allumés et la lit dans {@code DEBUG} (C-67,
- * ADR-121 et son amendement A1).
+ * ADR-121 et son amendement A1) ; celle des overlays de l'animation, dans {@code RENDER_DEBUG}
+ * (ADR-155, tranche 6b), au même schéma.
  *
  * <p>Protocole d'IF-02 : appeler {@code axion_debug_fill}, acquérir {@code DEBUG}, vérifier
  * le schéma et la taille, lire, relâcher. Le tampon est ré-acquis à chaque appel et
@@ -84,7 +85,32 @@ public final class NativeDebugLoader {
         if (code != NativeBridge.OK) {
             return Fetched.failed(code);
         }
-        ByteBuffer out = NativeBridge.acquire(context, BufferKinds.DEBUG, 0);
+        return read(BufferKinds.DEBUG, cameraX, cameraY, cameraZ);
+    }
+
+    /**
+     * Demande et lit la géométrie des overlays de l'animation : celle des instances animées que la
+     * dernière frame préparée a retenues, en repère d'origine, relatif à sa caméra (ADR-155, tranche 6b).
+     * Ne prend pas le verrou de session.
+     *
+     * @param overlayMask overlays de l'animation demandés, au rang du §31.4
+     * @param cameraX position monde de la caméra de la frame, celle de ses candidats
+     * @param cameraY position monde de la caméra de la frame
+     * @param cameraZ position monde de la caméra de la frame
+     * @param maxSegments budget de segments
+     * @return la géométrie, ou le code de l'échec
+     */
+    public Fetched fetchAnimation(long overlayMask, double cameraX, double cameraY, double cameraZ, int maxSegments) {
+        int code = NativeBridge.fillRenderDebug(context, overlayMask, maxSegments, sizeOut);
+        if (code != NativeBridge.OK) {
+            return Fetched.failed(code);
+        }
+        return read(BufferKinds.RENDER_DEBUG, cameraX, cameraY, cameraZ);
+    }
+
+    /** Lit la géométrie que le natif vient de déposer dans le tampon {@code kind}, puis le relâche. */
+    private Fetched read(int kind, double cameraX, double cameraY, double cameraZ) {
+        ByteBuffer out = NativeBridge.acquire(context, kind, 0);
         if (out == null) {
             return Fetched.failed(NativeBridge.E_INVALID_BUFFER);
         }
@@ -103,7 +129,7 @@ public final class NativeDebugLoader {
         } catch (IllegalArgumentException malformed) {
             return Fetched.failed(NativeBridge.E_INVALID_BUFFER);
         } finally {
-            NativeBridge.release(context, BufferKinds.DEBUG, generation);
+            NativeBridge.release(context, kind, generation);
         }
     }
 }
