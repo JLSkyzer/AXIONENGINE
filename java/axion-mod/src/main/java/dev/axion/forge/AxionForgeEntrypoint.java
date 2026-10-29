@@ -11,6 +11,7 @@ import dev.axion.net.MalformedPacketException;
 import dev.axion.net.NetCompression;
 import dev.axion.net.ServerSnapshot;
 import dev.axion.physics.SimulationJournal;
+import java.util.List;
 import java.util.function.Consumer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.profiling.ProfilerFiller;
@@ -339,6 +340,7 @@ public final class AxionForgeEntrypoint {
         logSimulationJournal();
         logTransitions(runtime::onServerStopping);
         platform.setServer(null);
+        reportHookFailures();
         reportDisabledHooks();
     }
 
@@ -361,6 +363,7 @@ public final class AxionForgeEntrypoint {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onGameShuttingDown(GameShuttingDownEvent event) {
         logTransitions(runtime::onGameShuttingDown);
+        reportHookFailures();
         reportDisabledHooks();
     }
 
@@ -375,6 +378,7 @@ public final class AxionForgeEntrypoint {
             for (String line : runtime.drainClientAssetJournal()) {
                 LOGGER.warn("AXION : client : {}", line);
             }
+            reportHookFailures();
         }
     }
 
@@ -411,6 +415,7 @@ public final class AxionForgeEntrypoint {
             }
             logSimulationJournal();
             logAssetJournal();
+            reportHookFailures();
         }
     }
 
@@ -436,6 +441,25 @@ public final class AxionForgeEntrypoint {
                 LOGGER.warn("AXION : {}", entry.text());
             } else {
                 LOGGER.info("AXION : {}", entry.text());
+            }
+        }
+    }
+
+    /**
+     * Écrit les échecs de hook signalés depuis le dernier passage (FM-02), exception comprise : un échec
+     * absorbé saute tout ce que son hook devait faire, et doit se voir sans attendre la désactivation.
+     * Chaque garde borne ce qu'il signale ; la désactivation (E-1010) s'écrit quand elle survient.
+     */
+    private void reportHookFailures() {
+        for (HookGuard guard : List.copyOf(runtime.guards().values())) {
+            for (HookGuard.Report report : guard.drainReports()) {
+                if (report.disabling()) {
+                    LOGGER.error("AXION : hook {} {}", report.hook(), report.message(), report.failure());
+                } else if (report.failure() != null) {
+                    LOGGER.warn("AXION : hook {} {}", report.hook(), report.message(), report.failure());
+                } else {
+                    LOGGER.warn("AXION : hook {} : {}", report.hook(), report.message());
+                }
             }
         }
     }

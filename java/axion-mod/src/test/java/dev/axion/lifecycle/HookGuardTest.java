@@ -2,8 +2,10 @@ package dev.axion.lifecycle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -103,5 +105,68 @@ class HookGuardTest {
         assertFalse(guard.isDisabled(), "désactivé trop tôt après un succès");
         guard.run(echoue);
         assertTrue(guard.isDisabled());
+    }
+
+    @Test
+    @DisplayName("FM-02 : un échec isolé est signalé au journal, avec son exception, une fois")
+    void unEchecIsoleEstSignale() {
+        HookGuard guard = new HookGuard("tick");
+        IllegalStateException cause = new IllegalStateException("section ANIM compressée");
+        guard.run(() -> {});
+        guard.run(() -> {
+            throw cause;
+        });
+        guard.run(() -> {});
+
+        List<HookGuard.Report> reports = guard.drainReports();
+        assertEquals(1, reports.size(), reports::toString);
+        HookGuard.Report report = reports.get(0);
+        assertEquals("tick", report.hook());
+        assertSame(cause, report.failure(), "l'exception part avec sa pile");
+        assertFalse(report.disabling());
+        assertTrue(guard.drainReports().isEmpty(), "signalé une fois");
+    }
+
+    @Test
+    @DisplayName("E-1010 : la désactivation est signalée quand elle survient, après le premier échec")
+    void laDesactivationEstSignaleeQuandElleSurvient() {
+        HookGuard guard = new HookGuard("damage");
+        for (int index = 0; index < HookGuard.MAX_CONSECUTIVE_FAILURES; index++) {
+            guard.run(() -> {
+                throw new IllegalStateException("échec répété");
+            });
+        }
+        List<HookGuard.Report> reports = guard.drainReports();
+        assertEquals(2, reports.size(), reports::toString);
+        assertFalse(reports.get(0).disabling(), "le premier échec");
+        assertTrue(reports.get(1).disabling(), "puis la désactivation");
+        assertTrue(reports.get(1).message().contains("E-1010"), reports.get(1)::message);
+        assertTrue(reports.get(1).message().contains("3 autre(s)"),
+                () -> "les échecs tus entre les deux sont comptés : " + reports.get(1).message());
+    }
+
+    @Test
+    @DisplayName("FM-02 : un hook qui échoue sans cesse, un appel sur deux, ne noie pas le journal")
+    void unHookIntermittentNeNoiePasLeJournal() {
+        HookGuard guard = new HookGuard("net");
+        Runnable echoue = () -> {
+            throw new IllegalStateException("intermittent");
+        };
+        for (int index = 0; index < 100; index++) {
+            guard.run(echoue);
+            guard.run(() -> {});
+        }
+        assertEquals(1, guard.drainReports().size(), "un seul signalé dans la fenêtre");
+        assertTrue(guard.failures().size() <= HookGuard.MAX_KEPT_FAILURES,
+                () -> "l'historique est borné : " + guard.failures().size());
+
+        // La fenêtre passée, les échecs tus sont dits, en nombre, même sans échec de plus.
+        for (long index = 0; index < HookGuard.REPORT_WINDOW; index++) {
+            guard.run(() -> {});
+        }
+        List<HookGuard.Report> reports = guard.drainReports();
+        assertEquals(1, reports.size(), reports::toString);
+        assertTrue(reports.get(0).message().contains("99"), reports.get(0)::message);
+        assertFalse(guard.isDisabled());
     }
 }

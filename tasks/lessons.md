@@ -2034,6 +2034,6 @@ dort jamais, ne pouvait pas voir non plus que rapier ne réveille pas un corps d
 
 **Règle.** Un chemin qui traverse Java et le natif se prouve aussi par un asset compilé par le vrai
 compilateur, de bout en bout (GameTest), dans la tranche qui l'ajoute. Des GameTests sans rapport qui
-tombent ensemble font d'abord chercher un tick sauté : la garde `tick` n'écrit au journal qu'à sa
-désactivation, après cinq échecs consécutifs.
+tombent ensemble font d'abord chercher un tick sauté : chercher « AXION : hook tick a échoué » au journal
+(écrit, pile comprise, depuis le même jour ; avant, la garde ne l'écrivait qu'à sa désactivation).
 

@@ -393,6 +393,13 @@ Definition of Done (PARTIE 37.3).
 
 ### Corrige
 
+- Hooks (C-01, FM-02) : un echec isole d'un hook ne laissait aucune trace au
+  journal, et sa desactivation (`E-1010`) ne s'y ecrivait qu'a l'arret du
+  jeu ; un echec du hook `tick` sautait un tick de simulation entier en
+  silence. Chaque echec s'ecrit desormais, pile comprise, au plus un par
+  minute d'appels du hook, les suivants comptes ; la desactivation s'ecrit
+  quand elle survient ; l'historique des incidents est borne, ou il
+  grossissait sans fin sous un hook qui echoue un appel sur deux.
 - Animation (C-37, ADR-155) : le serveur Java lisait la section `ANIM`, que
   le compilateur compresse, par un lecteur qui refuse les sections
   compressees ; le premier asset anime faisait lever la creation de son
