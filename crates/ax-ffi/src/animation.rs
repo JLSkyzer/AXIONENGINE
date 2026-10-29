@@ -216,9 +216,13 @@ impl Instance {
     /// Jamais : [`AnimatedAsset::new`] a déjà construit ce graphe.
     #[must_use]
     pub fn new(asset: &AnimatedAsset) -> Self {
+        let mut graph = SceneGraph::from_nodes(&asset.nodes).expect("graphe vérifié au chargement");
+        // La pose de repos dès la création : une instance dessinée avant sa première évaluation — reportée
+        // par l'échéance de sa frame — est au repos, pas à l'identité.
+        graph.propagate();
         Self {
             animator: Animator::new(asset.nodes.len()),
-            graph: SceneGraph::from_nodes(&asset.nodes).expect("graphe vérifié au chargement"),
+            graph,
             pose: asset.rest.clone(),
         }
     }
@@ -237,15 +241,10 @@ impl Instance {
         self.animator.apply(&asset.clips, command, mask)
     }
 
-    /// Évalue la pose au temps `tick`, la propage, et ajoute à `out` la matrice `mat4x3` de chaque
-    /// dessin au repos, dans leur ordre. Un node que l'évaluation rendrait non fini garde sa pose
-    /// d'avant : rien de non fini n'atteint le rendu. Rend la durée de chacune des deux étapes.
-    pub fn draw_matrices(
-        &mut self,
-        asset: &AnimatedAsset,
-        tick: f64,
-        out: &mut Vec<f32>,
-    ) -> PoseTimes {
+    /// Évalue la pose au temps `tick` — les pistes échantillonnées, étape 2 — et la propage, étape 14 ;
+    /// rend la durée de chacune. Un node que l'évaluation rendrait non fini garde sa pose d'avant : rien
+    /// de non fini n'atteint le rendu.
+    pub fn evaluate(&mut self, asset: &AnimatedAsset, tick: f64) -> PoseTimes {
         let started = Instant::now();
         self.animator.evaluate(
             &asset.clips,
@@ -269,10 +268,6 @@ impl Instance {
         let sampled = Instant::now();
         self.graph.propagate();
         let propagated = Instant::now();
-        let worlds = self.graph.worlds();
-        for &node in &asset.draw_nodes {
-            out.extend_from_slice(&mat4x3(&worlds[node as usize]));
-        }
         let nanos = |from: Instant, to: Instant| {
             u64::try_from(to.duration_since(from).as_nanos()).unwrap_or(u64::MAX)
         };
@@ -282,7 +277,16 @@ impl Instance {
         }
     }
 
-    /// Ajoute à `out` la palette de la pose que [`Self::draw_matrices`] a évaluée en dernier : la
+    /// Ajoute à `out` la matrice `mat4x3` de chaque dessin au repos, dans leur ordre, à la pose que
+    /// [`Self::evaluate`] a évaluée en dernier — celle du repos avant toute évaluation.
+    pub fn draw_matrices(&self, asset: &AnimatedAsset, out: &mut Vec<f32>) {
+        let worlds = self.graph.worlds();
+        for &node in &asset.draw_nodes {
+            out.extend_from_slice(&mat4x3(&worlds[node as usize]));
+        }
+    }
+
+    /// Ajoute à `out` la palette de la pose que [`Self::evaluate`] a évaluée en dernier : la
     /// matrice `mat4x3` de chaque os, `monde(node) × liaison inverse`, dans l'espace de l'asset et
     /// dans l'ordre de `SKEL`. Rien pour un asset sans skin.
     pub fn palette(&self, asset: &AnimatedAsset, out: &mut Vec<f32>) {
@@ -292,7 +296,7 @@ impl Instance {
         }
     }
 
-    /// Ajoute à `out` les segments de l'overlay `bones`, à la pose que [`Self::draw_matrices`] a
+    /// Ajoute à `out` les segments de l'overlay `bones`, à la pose que [`Self::evaluate`] a
     /// évaluée en dernier : de l'origine de l'os parent de chaque os — celui que `SKEL` lui donne, le
     /// plus proche ancêtre de son node qui soit un os — à la sienne. Une racine du squelette n'en a pas.
     /// Chaque point de l'espace de l'asset passe par `place`.

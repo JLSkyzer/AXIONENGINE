@@ -3409,6 +3409,11 @@ sources procédurales de véhicule (M5, T-365).
             graphe, dans le registre de la session partagé sans son verrou ; T-392 vert
             (`tests/client_steps.rs`) ; 5 mutations rouges. Restent : l'étape 14 côté serveur, qui attend les
             sockets (C-27, étapes 4 et 5) ; l'animation qui pilote un joint (`drives_joint`, M6).
+- [x] T-366, T-367 et T-368 (2026-10-30), que la preuve attendue d'ADR-155 nomme : T-366 tenu par le schéma
+      (test de T-283, qui le cite) ; T-367 sur un éventail de 128 os (1 mutation rouge) ; T-368 : l'évaluation
+      des poses suit l'échéance de la frame, dans un ordre tournant, au moins une par frame, les reportées à
+      leur dernière pose et comptées — 1000 bras animés mesurés entre 0,68 et 1,73 ms de préparation pour
+      2 ms de budget ; 6 mutations rouges.
 - [x] Décisions de Killian pour la tranche 4 (2026-10-29) : `AnimationControl` interne en M4 (tests, GameTests, banc ;
       fournisseur en M9) ; descripteur v3 à la dernière commande par couche ; `drives_joint` avec la porte (M6) ;
       pas de persistance en M4.

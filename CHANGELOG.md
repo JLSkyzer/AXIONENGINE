@@ -210,6 +210,11 @@ Definition of Done (PARTIE 37.3).
     etapes qu'elle execute, l'animation (2) puis le graphe (14), et rien
     d'autre ; chaque graphe propage se mesure dans `axion.scene.propagate_ns`,
     au registre de la session partage sans son verrou ;
+    l'evaluation des poses suit l'echeance de la frame (R-300, T-368) : dans
+    l'ordre des `id`, a partir du suivant du dernier evalue, au moins une par
+    frame ; au-dela, chaque instance garde sa derniere pose, la frame se dit
+    degradee et les reports se comptent ; une instance est au repos des sa
+    creation ; T-367 verifie la palette de 128 os ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

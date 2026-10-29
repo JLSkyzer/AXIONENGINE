@@ -1,6 +1,6 @@
 //! T-540 (ADR-155 D7) : la palette d'une pose connue est celle du calcul de référence, os par os,
 //! liaison inverse comprise. Et l'overlay `bones` (tranche 6b) relie chaque os à l'os parent que
-//! `SKEL` lui donne.
+//! `SKEL` lui donne. T-367 : 128 os, la limite de `SKEL`, chacun à sa place dans la palette.
 //!
 //! Le bras à deux os écrit par code est compilé par le vrai compilateur, ses sections `NODE`, `ANIM` et
 //! `SKEL` relues ; son coude, plié par le clip `plier`, donne une palette que l'on compare à
@@ -76,7 +76,7 @@ fn palette(asset: &AnimatedAsset, jouer: bool, tick: f64) -> Vec<f32> {
         };
         instance.apply(asset, &commande, &[]).expect("commande");
     }
-    instance.draw_matrices(asset, tick, &mut Vec::new());
+    instance.evaluate(asset, tick);
     let mut out = Vec::new();
     instance.palette(asset, &mut out);
     out
@@ -266,7 +266,7 @@ fn adr155_l_os_du_coude_part_de_l_epaule_par_dela_un_node_intermediaire() {
         .expect("acceptée")
         .expect("des clips");
     let mut instance = Instance::new(&asset);
-    instance.draw_matrices(&asset, 0.0, &mut Vec::new());
+    instance.evaluate(&asset, 0.0);
     let mut segments = Vec::new();
     instance.bone_segments(&asset, |point: Vec3| point.to_array(), &mut segments);
     assert_eq!(segments.len(), 1, "l'épaule est la racine du squelette");
@@ -275,4 +275,56 @@ fn adr155_l_os_du_coude_part_de_l_epaule_par_dela_un_node_intermediaire() {
         (Vec3::from(segments[0].b) - Vec3::new(0.0, 1.5, 0.0)).length() < 1e-5,
         "{segments:?}"
     );
+}
+
+/// T-367 (§18.7) : un squelette de 128 os, la limite de `SKEL` (E-3060), chacun lié par une matrice qui lui
+/// est propre, donne la palette du calcul de référence, os par os. L'os 0 tourné d'un quart de tour autour
+/// de `z` porte tout l'éventail : la palette de l'os `k` est `Rz(90°) · T(0,01·k, 0, 0)`.
+#[test]
+fn t367_128_os_la_palette_est_correcte() {
+    let charge = charger(&modeles_animes::eventail(128));
+    assert_eq!(charge.os.len(), 128);
+    let asset = animation(&charge);
+    assert_eq!(asset.bone_count(), 128);
+    let out = palette(&asset, true, 20.0);
+    assert_eq!(out.len(), 128 * 12);
+    for k in 0..128 {
+        let attendue = [
+            0.0,
+            1.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.01 * k as f32,
+            0.0,
+        ];
+        let m = &out[k * 12..k * 12 + 12];
+        assert!(
+            m.iter().zip(attendue).all(|(a, b)| (a - b).abs() < 1e-4),
+            "os {k} : {m:?}, attendu {attendue:?}"
+        );
+    }
+}
+
+/// T-368 : une instance qu'aucune frame n'a encore évaluée — reportée par l'échéance de la sienne — est au
+/// repos dès sa création : sa palette est l'identité pour chaque os, pas `liaison inverse` seule.
+#[test]
+fn t368_une_instance_jamais_evaluee_est_au_repos() {
+    let charge = charger(&modeles_animes::bras());
+    let asset = animation(&charge);
+    let instance = Instance::new(&asset);
+    let mut out = Vec::new();
+    instance.palette(&asset, &mut out);
+    let identite = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0];
+    for (os, m) in out.chunks_exact(12).enumerate() {
+        assert!(
+            m.iter().zip(identite).all(|(a, b)| (a - b).abs() < 1e-5),
+            "os {os} : {m:?}"
+        );
+    }
 }

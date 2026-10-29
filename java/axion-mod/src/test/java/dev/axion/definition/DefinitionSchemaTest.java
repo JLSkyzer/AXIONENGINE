@@ -371,7 +371,7 @@ class DefinitionSchemaTest {
     }
 
     @Test
-    @DisplayName("T-283 : sources procédurales de l'ANNEXE A.4, noms résolus")
+    @DisplayName("T-283, T-366 : une source procédurale hors de l'ANNEXE A.4 fait refuser la definition ; noms résolus")
     void sources() {
         String[] refusees = {"moteur.rpm", "engine.torque", "part.capot.health", "wheel.health"};
         for (String source : refusees) {

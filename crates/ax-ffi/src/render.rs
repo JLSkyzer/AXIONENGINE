@@ -21,6 +21,11 @@
 //! qu'elle exécute, que T-392 vérifie, et publie `axion.scene.propagate_ns` dans le registre de la
 //! session, partagé : sans en prendre le verrou.
 //!
+//! L'évaluation tient dans l'échéance de la frame (R-300, T-368) : les retenus animés s'évaluent
+//! dans l'ordre de leur `id`, à partir de celui qui suit le dernier évalué, au moins un par frame ;
+//! passée l'échéance, les autres gardent la pose de leur dernière évaluation, et la frame se dit
+//! dégradée. La suivante reprend où celle-ci s'est arrêtée : aucune instance ne reste figée.
+//!
 //! # Une frame en vol
 //!
 //! `RENDER_OUT` est unique : son contenu vaut jusqu'à `axion_render_release` (R-301). Une
@@ -140,6 +145,9 @@ pub struct RenderStats {
     pub skinned: u32,
     /// Retenus skinnés laissés au repos par `render.max_skinned_instances`, depuis l'ouverture (R-791).
     pub skinned_capped: u64,
+    /// Retenus animés qui ont gardé la pose de leur dernière évaluation, l'échéance de leur frame passée,
+    /// depuis l'ouverture (R-300, T-368).
+    pub animation_deferred: u64,
 }
 
 /// Ce que rend une préparation : les champs d'`AxionRenderResult` que la tranche 1 remplit.
@@ -217,6 +225,8 @@ pub struct RenderContext {
     animated_poses: Vec<AnimatedPose>,
     /// Les étapes du pas que la dernière frame a exécutées, et leur durée (R-661, R-662).
     stages: StageLog,
+    /// L'`id` du dernier retenu animé évalué : la frame suivante commence après lui (T-368).
+    animation_cursor: Option<u32>,
     telemetry: RenderTelemetry,
     limits: RenderLimits,
 }
@@ -251,6 +261,7 @@ pub(crate) fn open(
         instances: HashMap::new(),
         animated_poses: Vec::new(),
         stages: StageLog::default(),
+        animation_cursor: None,
         telemetry,
         limits,
     });
@@ -650,9 +661,55 @@ impl RenderContext {
         let mut matrices: Vec<f32> = Vec::new();
         let mut animated = 0u32;
         self.animated_poses.clear();
-        // R-662 : les étapes du client, 2 puis 14, cumulées sur les retenus animés.
+        // Étapes 2 et 14 (R-662) : chaque retenu animé s'évalue au tick de la frame, dans l'ordre de son
+        // `id` à partir de celui qui suit le dernier évalué, tant que l'échéance le permet (R-300) — au
+        // moins un par frame. Au-delà, il garde la pose de sa dernière évaluation : rien ne saute ni ne
+        // disparaît, la frame se dit dégradée, et la suivante reprend où celle-ci s'est arrêtée (T-368).
         self.stages.reset();
         let mut steps = PoseTimes::default();
+        let mut order: Vec<(u32, usize)> = visible
+            .iter()
+            .filter(|v| self.animates(&candidates[v.index as usize]))
+            .map(|v| (v.id, v.index as usize))
+            .collect();
+        order.sort_unstable_by_key(|&(id, _)| id);
+        let start = self
+            .animation_cursor
+            .map_or(0, |last| order.partition_point(|&(id, _)| id <= last));
+        let mut evaluated = 0usize;
+        for step in 0..order.len() {
+            if step > 0 && Instant::now() >= deadline {
+                break;
+            }
+            let (id, index) = order[(start + step) % order.len()];
+            let Some(animation) = assets
+                .get(candidates[index].asset as usize)
+                .and_then(Option::as_ref)
+                .and_then(|a| a.animation.as_ref())
+            else {
+                continue;
+            };
+            let Some((_, instance)) = self.instances.get_mut(&id) else {
+                continue;
+            };
+            let times = instance.evaluate(animation, tick);
+            self.telemetry
+                .scene
+                .record(&self.telemetry.registry, times.propagate_ns);
+            steps.animation_ns = steps.animation_ns.saturating_add(times.animation_ns);
+            steps.propagate_ns = steps.propagate_ns.saturating_add(times.propagate_ns);
+            self.animation_cursor = Some(id);
+            evaluated += 1;
+        }
+        if evaluated > 0 {
+            self.stages.record(Stage::Animation, steps.animation_ns);
+            self.stages.record(Stage::SceneGraph, steps.propagate_ns);
+        }
+        let deferred = order.len() - evaluated;
+        if deferred > 0 {
+            flags |= AXION_RENDER_DEGRADED;
+            self.stats.animation_deferred += deferred as u64;
+        }
         let mut triangles = 0u32;
         // R-791 : une palette aux `render.max_skinned_instances` retenus skinnés les plus proches ; les
         // autres se dessinent au repos, et sont comptés.
@@ -702,18 +759,13 @@ impl RenderContext {
             let mut palette_first = NO_PALETTE;
             let animation = asset.and_then(|a| a.animation.as_ref());
             if let (Some(animation), Some((handle, instance))) =
-                (animation, self.instances.get_mut(&candidate.id))
+                (animation, self.instances.get(&candidate.id))
             {
                 let current = Handle::new(candidate.asset, candidate.generation);
                 if *handle == current && animation.draw_count() == count as usize {
                     matrix_first = u32::try_from(matrices.len() / MATRIX_FLOATS)
                         .map_err(|_| AXION_E_INVALID_BUFFER)?;
-                    let times = instance.draw_matrices(animation, tick, &mut matrices);
-                    self.telemetry
-                        .scene
-                        .record(&self.telemetry.registry, times.propagate_ns);
-                    steps.animation_ns = steps.animation_ns.saturating_add(times.animation_ns);
-                    steps.propagate_ns = steps.propagate_ns.saturating_add(times.propagate_ns);
+                    instance.draw_matrices(animation, &mut matrices);
                     animated += 1;
                     self.animated_poses.push(AnimatedPose {
                         id: candidate.id,
@@ -721,7 +773,7 @@ impl RenderContext {
                         rotation: candidate.rotation,
                         scale: candidate.scale,
                     });
-                    // La palette suit les matrices des dessins, de la pose qu'elles viennent d'évaluer.
+                    // La palette suit les matrices des dessins, de la même pose.
                     if palettes[rank] {
                         palette_first = u32::try_from(matrices.len() / MATRIX_FLOATS)
                             .map_err(|_| AXION_E_INVALID_BUFFER)?;
@@ -738,10 +790,6 @@ impl RenderContext {
             records.extend_from_slice(&count.to_le_bytes());
             records.extend_from_slice(&matrix_first.to_le_bytes());
             records.extend_from_slice(&palette_first.to_le_bytes());
-        }
-        if animated > 0 {
-            self.stages.record(Stage::Animation, steps.animation_ns);
-            self.stages.record(Stage::SceneGraph, steps.propagate_ns);
         }
         let mesh_total = u32::try_from(meshes.len()).map_err(|_| AXION_E_INVALID_BUFFER)?;
         let matrix_total =
@@ -877,6 +925,25 @@ impl RenderContext {
             .ok_or(AXION_E_INVALID_BUFFER)
     }
 
+    /// Indique si un candidat est une instance animée de l'asset qu'il dessine : l'asset est chargé et
+    /// animé, une matrice par dessin, et l'assembly a son animation sur lui.
+    fn animates(&self, candidate: &Candidate) -> bool {
+        let current = Handle::new(candidate.asset, candidate.generation);
+        self.assets
+            .get(candidate.asset as usize)
+            .and_then(Option::as_ref)
+            .filter(|a| a.generation == candidate.generation)
+            .is_some_and(|a| {
+                a.animation
+                    .as_ref()
+                    .is_some_and(|animation| animation.draw_count() == a.draw_meshes.len())
+                    && self
+                        .instances
+                        .get(&candidate.id)
+                        .is_some_and(|(handle, _)| *handle == current)
+            })
+    }
+
     /// Indique si un candidat recevrait une palette : son asset est chargé, skinné et animé, et son
     /// assembly a une animation sur cet asset.
     fn skinnable(&self, candidate: &Candidate) -> bool {
@@ -944,6 +1011,7 @@ mod tests {
             instances: HashMap::new(),
             animated_poses: Vec::new(),
             stages: StageLog::default(),
+            animation_cursor: None,
             telemetry: RenderTelemetry::standalone(),
             limits: RenderLimits {
                 max_skinned_instances: 64,

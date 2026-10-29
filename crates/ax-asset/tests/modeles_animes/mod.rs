@@ -212,6 +212,74 @@ pub fn bras() -> String {
     bras_avec([1, 2], [liaison_inverse(0.0), liaison_inverse(1.0)])
 }
 
+/// Un éventail de `n` os (au plus 128, la limite de `SKEL`) : l'os 0 à l'origine, les autres ses enfants,
+/// l'os `k` à `(0, 0,1·k, 0)` — deux niveaux, sous la profondeur maximale d'une hiérarchie. L'os `k` est lié
+/// par `T(0,01·k, −0,1·k, 0)`, une matrice qui lui est propre : au repos, sa palette est `T(0,01·k, 0, 0)`.
+/// Un triangle par os le suit de tout son poids. Le clip `tourner` tourne l'os 0 d'un quart de tour autour
+/// de `z`, en une seconde, linéairement.
+pub fn eventail(n: usize) -> String {
+    assert!((1..=128).contains(&n), "{n} os");
+    let mut modele = Modele::default();
+    let mut positions = Vec::new();
+    let mut os = Vec::new();
+    let mut poids = Vec::new();
+    let mut indices = Vec::new();
+    for k in 0..n {
+        let y = 0.1 * k as f32;
+        positions.extend_from_slice(&[0.0, y, 0.0, 0.05, y, 0.0, 0.0, y + 0.05, 0.0]);
+        os.extend_from_slice(&[[k as u8, 0, 0, 0]; 3]);
+        poids.extend_from_slice(&[1.0, 0.0, 0.0, 0.0].repeat(3));
+        let premier = (3 * k) as u16;
+        indices.extend_from_slice(&[premier, premier + 1, premier + 2]);
+    }
+    let positions = modele.flottants(&positions, "VEC3");
+    let os = modele.joints(&os);
+    let poids = modele.flottants(&poids, "VEC4");
+    let indices = modele.indices(&indices);
+    let liaisons: Vec<f32> = (0..n)
+        .flat_map(|k| {
+            let mut m = liaison_inverse(0.1 * k as f32);
+            m[12] = 0.01 * k as f32;
+            m
+        })
+        .collect();
+    let liaison = modele.flottants(&liaisons, "MAT4");
+    let temps = modele.flottants(&[0.0, 1.0], "SCALAR");
+    let rotations = modele.flottants(
+        &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, DEMI_RACINE, DEMI_RACINE],
+        "VEC4",
+    );
+    // Le node 0 porte la peau ; les os sont les nodes 1 à n, les nodes 2 à n enfants du node 1.
+    let mut noeuds = vec!["{ \"name\": \"peau\", \"mesh\": 0, \"skin\": 0 }".to_owned()];
+    let enfants: Vec<String> = (2..=n).map(|node| node.to_string()).collect();
+    noeuds.push(format!(
+        "{{ \"name\": \"os_0\", \"children\": [{}] }}",
+        enfants.join(", ")
+    ));
+    for k in 1..n {
+        noeuds.push(format!(
+            "{{ \"name\": \"os_{k}\", \"translation\": [0.0, {:?}, 0.0] }}",
+            0.1 * k as f32
+        ));
+    }
+    let joints: Vec<String> = (1..=n).map(|node| node.to_string()).collect();
+    modele.document(&format!(
+        "\"scenes\": [{{ \"nodes\": [0, 1] }}],
+  \"nodes\": [
+    {}
+  ],
+  \"meshes\": [{{ \"name\": \"peau\", \"primitives\": [{{
+    \"attributes\": {{ \"POSITION\": {positions}, \"JOINTS_0\": {os}, \"WEIGHTS_0\": {poids} }},
+    \"indices\": {indices} }}] }}],
+  \"skins\": [{{ \"joints\": [{}], \"inverseBindMatrices\": {liaison} }}],
+  \"animations\": [{{ \"name\": \"tourner\",
+    \"samplers\": [{{ \"input\": {temps}, \"output\": {rotations}, \"interpolation\": \"LINEAR\" }}],
+    \"channels\": [{{ \"sampler\": 0, \"target\": {{ \"node\": 1, \"path\": \"rotation\" }} }}] }}]",
+        noeuds.join(",\n    "),
+        joints.join(", ")
+    ))
+}
+
 /// Un pendule de node : le clip `balancer` déplace le node en palier (0, puis 1 bloc en `x` à
 /// 0,5 s, puis 0 à 1 s) et le tourne d'un quart de tour autour de `z`, linéairement, sur 0,8 s.
 pub fn pendule() -> String {
