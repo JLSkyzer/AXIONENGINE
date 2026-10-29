@@ -3404,7 +3404,10 @@ sources procédurales de véhicule (M5, T-365).
             `ANIMATED`), `ANIMATE_ASSEMBLY` (opcode 16), dépendance des colliders jugée à la création (R-1430,
             T-360), étape 2 qui repose les colliders dépendants dans leurs corps ; 5 mutations rouges. Reste :
             étape 14 côté serveur avec les sockets ; T-392 (étapes côté client).
-- [ ] 4. Réseau et API : descripteur v3, `AnimationControl`, triggers de definition.
+- [x] Décisions de Killian pour la tranche 4 (2026-10-29) : `AnimationControl` interne en M4 (tests, GameTests, banc ;
+      fournisseur en M9) ; descripteur v3 à la dernière commande par couche ; `drives_joint` avec la porte (M6) ;
+      pas de persistance en M4.
+- [ ] 4. Réseau et API : descripteur v3, `AnimationControl`, `NO_CULL` des assemblies animées, banc en jeu.
 - [ ] 5. Skinning natif : shader, TBO, repli UBO, palettes dans `RENDER_OUT` (schéma 3) ; T-540..T-542, T-908.
 - [ ] 6. Skinning vanilla (R-742), overlays `bones`, `nodes`, `pivots`, documentation.
 
