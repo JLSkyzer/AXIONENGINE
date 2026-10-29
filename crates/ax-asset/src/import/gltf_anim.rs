@@ -8,11 +8,15 @@
 //! **Les clips** gardent les temps et les valeurs de la source, sans rééchantillonnage : une clé
 //! est un temps puis sa valeur, trois valeurs en `CUBIC_SPLINE` (tangente d'entrée, valeur,
 //! tangente de sortie). Les poids de morphing ne sont pas animés par le moteur : leurs pistes
-//! sont ignorées avec un avertissement (R-912), le reste du clip est importé.
+//! sont ignorées avec un avertissement (R-912), le reste du clip est importé. Un clip boucle si
+//! son animation glTF porte l'annotation `axion.loop` (décision de Killian, ADR-155).
 
 use super::gltf::GltfReport;
+use super::gltf_extras::animation_loops;
 use super::{ImportError, ImportedAsset, SourceFormat};
-use ax_model::dm::animation::{channel, interp, AnimationDesc, BoneDesc, TrackDesc};
+use ax_model::dm::animation::{
+    animation_flags, channel, interp, AnimationDesc, BoneDesc, TrackDesc,
+};
 use ax_model::dm::geometry::mesh_flags;
 use ax_model::dm::limits;
 use ax_model::dm::scene::{name_hash, node_flags, NONE_U16, NO_PARENT};
@@ -310,7 +314,15 @@ pub(super) fn import_animations(
             duration,
             track_offset: u32::try_from(track_offset).map_err(|_| too_large())?,
             track_count: u32::try_from(track_count).map_err(|_| too_large())?,
-            flags: 0,
+            flags: if animation
+                .extras()
+                .as_ref()
+                .is_some_and(|extras| animation_loops(extras.get()))
+            {
+                animation_flags::LOOP
+            } else {
+                0
+            },
         });
         if !name.is_empty() {
             asset.names.push(("animation", name.clone()));

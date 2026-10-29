@@ -2003,3 +2003,18 @@ probablement attendu de même.
 
 **Règle.** Un banc qui pilote le client coupe la pause au focus perdu avant de charger le monde, et
 referme tout écran de pause qui s'ouvre sur un monde chargé tant qu'il tourne.
+
+## 2026-10-29 | `COMPILER_VERSION` montée côté Rust seul, vue par la CI d'une branche
+
+**Ce qui a mal tourné.** La tranche 1 d'ADR-155 a monté `ax_asset::compile::COMPILER_VERSION` à 15 sans
+`CompilerVersion.CURRENT` côté Java ; `check_compiler_version.py` l'a refusé dans la CI de la branche
+`empreintes-v15`. Le contrôle a tenu, mais la CI locale n'avait pas été rejouée avant de pousser.
+
+**Cause.** La poussée vers une branche temporaire, faite pour obtenir l'empreinte de macOS aarch64, a
+été traitée comme une poussée sans conséquence, et `local_ci.py` sauté.
+
+**Règle.** `python tools/ci/local_ci.py` avant toute poussée, branche temporaire comprise. Une montée de
+`COMPILER_VERSION` touche trois choses : la constante Rust, `CompilerVersion.java`, et les empreintes R-562
+des quatre plateformes. Windows, Linux et macOS x86_64 ont donné les mêmes octets jusqu'ici ; macOS
+aarch64 diffère et s'obtient par `gh workflow run CI --ref <branche> -f matrice=true` sur une branche
+temporaire : le test en échec imprime le contenu attendu.

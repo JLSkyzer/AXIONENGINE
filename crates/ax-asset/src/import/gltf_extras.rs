@@ -200,6 +200,18 @@ impl NodeAnnotations {
     }
 }
 
+/// Lit l'annotation `axion.loop` des `extras` d'une animation glTF (ADR-155, décision de Killian
+/// du 2026-10-29) : le clip boucle-t-il ?
+///
+/// Facultative comme toute annotation (R-913) : absente, ou d'un autre type qu'un booléen, le
+/// clip ne boucle pas — il joue une fois et tient sa dernière pose.
+#[must_use]
+pub fn animation_loops(extras: &str) -> bool {
+    object_value(extras, "axion")
+        .and_then(|axion| bool_value(&axion, "loop"))
+        .unwrap_or(false)
+}
+
 /// Extrait la valeur d'une clé dont la valeur est un objet.
 ///
 /// Un analyseur minimal, et volontairement : la table 32.2 écarte un analyseur
@@ -479,6 +491,18 @@ mod tests {
         let annotations = NodeAnnotations::parse(r#"{"axion": {"role": 42, "lod": "non"}}"#);
         assert_eq!(annotations.role, NodeRole::Mesh);
         assert!(annotations.lod.is_empty());
+    }
+
+    #[test]
+    fn la_boucle_d_une_animation_se_lit_et_vaut_non_par_defaut() {
+        assert!(animation_loops(r#"{"axion": {"loop": true}}"#));
+        assert!(!animation_loops(r#"{"axion": {"loop": false}}"#));
+        assert!(!animation_loops(r#"{"axion": {}}"#));
+        assert!(
+            !animation_loops(r#"{"loop": true}"#),
+            "hors de la clé axion"
+        );
+        assert!(!animation_loops(r#"{"axion": {"loop": "oui"}}"#));
     }
 
     #[test]

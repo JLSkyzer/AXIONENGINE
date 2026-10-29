@@ -13,7 +13,7 @@ use ax_asset::compile::{compile, source_hash, CompileError, CompileOptions, COMP
 use ax_asset::import::{import_gltf, ImportError, ImportLimits, ImportedAsset, SourceFormat};
 use ax_asset::options::AssetOptions;
 use ax_asset::validate::{validate, AssetView, Violation};
-use ax_model::dm::animation::{channel, interp};
+use ax_model::dm::animation::{animation_flags, channel, interp};
 use ax_model::dm::geometry::mesh_flags;
 use ax_model::dm::scene::{name_hash, node_flags, NONE_U16, NONE_U32};
 use modeles_animes::{
@@ -119,7 +119,7 @@ fn le_clip_plier_garde_ses_temps_et_ses_valeurs() {
     assert_eq!(plier.name_hash, name_hash("plier"));
     assert_eq!(plier.duration, 1.0);
     assert_eq!((plier.track_offset, plier.track_count), (0, 1));
-    assert_eq!(plier.flags, 0, "glTF ne dit pas si un clip boucle");
+    assert_eq!(plier.flags, 0, "sans annotation, un clip ne boucle pas");
 
     let piste = table.tracks[0];
     assert_eq!(piste.target_node, 2);
@@ -155,6 +155,16 @@ fn le_clip_plier_garde_ses_temps_et_ses_valeurs() {
         .names
         .iter()
         .any(|(categorie, nom)| *categorie == "animation" && nom == "plier"));
+}
+
+#[test]
+fn l_annotation_axion_loop_fait_boucler_le_clip() {
+    let source = bras().replace(
+        "\"name\": \"plier\",",
+        "\"name\": \"plier\", \"extras\": { \"axion\": { \"loop\": true } },",
+    );
+    let (asset, _) = importe(&source);
+    assert_eq!(asset.animations.animations[0].flags, animation_flags::LOOP);
 }
 
 #[test]

@@ -3382,8 +3382,8 @@ sources procédurales de véhicule (M5, T-365).
       C-22 juge squelette et clips, `E-3060` au-delà de 128 os ou de 256 pistes ; modèles animés écrits par
       code (bras, pendule, rebond, deux skins) ; 6 mutations rouges. Empreintes R-562 v15 : macOS aarch64
       obtenue par la matrice de plateformes.
-- [ ] Question à Killian avant la tranche 2 : d'où vient la boucle d'un clip (`LOOP`) — ni glTF ni le CDC
-      ne le disent.
+- [x] Boucle d'un clip (2026-10-29), décision de Killian : annotation glTF `extras.axion.loop` sur
+      l'animation, facultative, défaut sans boucle.
 - [ ] 2. `ax-anim` : échantillonnage (curseur, `STEP`, `LINEAR`, `CUBIC_SPLINE`), quatre couches, masque
       d'os, blending TRS, crossfade ; tests des interpolations sur les modèles écrits par code.
 - [ ] 3. Graphe vivant : étapes 2 et 14 (client dans la préparation du rendu, serveur conditionnel R-1430),
