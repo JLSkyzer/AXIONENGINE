@@ -3394,8 +3394,10 @@ sources procédurales de véhicule (M5, T-365).
 - [x] Décisions de Killian pour la tranche 3 (2026-10-29) : `RENDER_OUT` schéma 3 à matrices par dessin ;
       `axion_render_animate`, commandes horodatées (ABI 10) ; opcodes serveur et colliders qui suivent leur
       node (R-1430) ; horloge en ticks du serveur.
-- [ ] 3. Graphe vivant : étapes 2 et 14 (client dans la préparation du rendu, serveur conditionnel R-1430),
-      `propagate_ns`, animation qui pilote un joint ; T-392, T-360.
+- [x] 3. Graphe vivant : étapes 2 et 14 (client dans la préparation du rendu, serveur conditionnel R-1430),
+      `propagate_ns`, animation qui pilote un joint ; T-392, T-360. Fait par 3a à 3c ; l'étape 14 côté
+      serveur, qui n'a d'objet qu'avec les sockets, passe au renvoi C-27 et C-30 ; `drives_joint` à la M6
+      (décision de Killian, tranche 4).
       - [x] 3a. Client (2026-10-29) : `ANIM` chargée, `axion_render_animate` (ABI 10), tick de rendu dans
             `RENDER_IN` (schéma 2), graphe vivant par instance animée, `RENDER_OUT` schéma 3, Java substitue
             les matrices ; pendule animé de bout en bout ; 5 mutations rouges. À faire à la tranche 4 : `NO_CULL`
@@ -3414,6 +3416,10 @@ sources procédurales de véhicule (M5, T-365).
       des poses suit l'échéance de la frame, dans un ordre tournant, au moins une par frame, les reportées à
       leur dernière pose et comptées — 1000 bras animés mesurés entre 0,68 et 1,73 ms de préparation pour
       2 ms de budget ; 6 mutations rouges.
+- [x] Preuve attendue rendue (2026-10-30) : T-360..T-364, T-366..T-368, T-392, T-540..T-542 et T-908 (partie
+      skinning) verts, chaque règle avec sa mutation rouge, bancs vanilla et natif verts, CI verte (c6550f5).
+      **Chantier animation clos.** Restes hors chantier : l'étape 14 côté serveur (sockets, renvois C-27 et
+      C-30), la part déformation de T-908 et de T-493 (M6), `drives_joint` (M6).
 - [x] Décisions de Killian pour la tranche 4 (2026-10-29) : `AnimationControl` interne en M4 (tests, GameTests, banc ;
       fournisseur en M9) ; descripteur v3 à la dernière commande par couche ; `drives_joint` avec la porte (M6) ;
       pas de persistance en M4.
