@@ -157,6 +157,12 @@ Definition of Done (PARTIE 37.3).
     la validation juge le squelette et les clips (nodes vises, temps
     croissants, valeurs finies, rotations unitaires, duree), et rend `E-3060`
     au-dela de 128 os ou de 256 pistes par animation (R-200) ;
+    `ax-anim` : clips echantillonnes a curseur, conformes a glTF (`STEP`,
+    `LINEAR` par slerp au plus court chemin, `CUBIC_SPLINE`), sans fonction
+    transcendante, pour une pose identique d'une plateforme a l'autre ;
+    quatre couches (`BASE`, deux additives, `OVERRIDE`), masque de nodes,
+    blending en TRS, crossfade sans saut, vitesse et boucle ; au plus 256
+    pistes actives par instance (R-200) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

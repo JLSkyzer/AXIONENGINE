@@ -24,6 +24,7 @@ workspace désigne.
 | `ax-model` | DM-* | Structures du modèle, registre des budgets, configuration, génération Java |
 | `ax-asset` | C-21..C-24 | Import de sources, validation, optimizer, conteneur A3D |
 | `ax-scene` | C-30 | Graphe de scène : propagation, états de node, visibilité |
+| `ax-anim` | C-37 | Animation : bibliothèque de clips, échantillonnage glTF à curseur, quatre couches, blending TRS, crossfade (ADR-155) |
 | `ax-render-prep` | C-64 | Préparation du rendu : caméra, candidats, culling de distance et de frustum (ADR-154) ; C-82 l'y rejoindra en M9 |
 | `ax-cli` | C-74 | Outil `axion-cli` : compile et inspecte un A3D par le même code que le jeu (R-830) |
 | `ax-bench` | C-72 | Harnais de benchmarks : format de résultat schéma 2, statistiques normatives, archivage (PARTIE 30) |

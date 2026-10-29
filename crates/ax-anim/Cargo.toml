@@ -1,0 +1,25 @@
+[package]
+name = "ax-anim"
+description = "C-37 : animation d'AXION ENGINE (échantillonnage, couches, blending)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints.rust]
+# Logique pure, sans mémoire partagée ni FFI : `forbid`, aucun test n'ayant
+# besoin d'un allocateur global compteur.
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[dependencies]
+# DM-10 (os, animations, pistes) et `Transform` (DM-02) : les clips et les poses en viennent.
+ax-model.workspace = true
+
+[dev-dependencies]
+# Le test de composition importe les modèles animés écrits par code (ADR-155 D8) par le même
+# importeur que le jeu, puis les échantillonne : la chaîne entière, du glTF à la pose.
+ax-asset.workspace = true

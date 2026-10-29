@@ -3384,8 +3384,11 @@ sources procédurales de véhicule (M5, T-365).
       obtenue par la matrice de plateformes.
 - [x] Boucle d'un clip (2026-10-29), décision de Killian : annotation glTF `extras.axion.loop` sur
       l'animation, facultative, défaut sans boucle.
-- [ ] 2. `ax-anim` : échantillonnage (curseur, `STEP`, `LINEAR`, `CUBIC_SPLINE`), quatre couches, masque
-      d'os, blending TRS, crossfade ; tests des interpolations sur les modèles écrits par code.
+- [x] 2. `ax-anim` (2026-10-29) : bibliothèque de clips, échantillonnage à curseur conforme à glTF (T-361,
+      contre une référence `f64`), slerp sans fonction transcendante (série d'Eberly à 16 termes, 1,4e-7
+      mesuré), quatre couches, additives relatives au repos, masque par node, crossfade sans saut (T-362),
+      R-200 à l'exécution ; T-363, T-364 ; composition glTF → pose sur les modèles écrits par code ;
+      9 mutations rouges.
 - [ ] 3. Graphe vivant : étapes 2 et 14 (client dans la préparation du rendu, serveur conditionnel R-1430),
       `propagate_ns`, animation qui pilote un joint ; T-392, T-360..T-364.
 - [ ] 4. Réseau et API : descripteur v3, `AnimationControl`, triggers de definition.
