@@ -3389,8 +3389,14 @@ sources procédurales de véhicule (M5, T-365).
       mesuré), quatre couches, additives relatives au repos, masque par node, crossfade sans saut (T-362),
       R-200 à l'exécution ; T-363, T-364 ; composition glTF → pose sur les modèles écrits par code ;
       9 mutations rouges.
+- [x] Décisions de Killian pour la tranche 3 (2026-10-29) : `RENDER_OUT` schéma 3 à matrices par dessin ;
+      `axion_render_animate`, commandes horodatées (ABI 10) ; opcodes serveur et colliders qui suivent leur
+      node (R-1430) ; horloge en ticks du serveur.
 - [ ] 3. Graphe vivant : étapes 2 et 14 (client dans la préparation du rendu, serveur conditionnel R-1430),
-      `propagate_ns`, animation qui pilote un joint ; T-392, T-360..T-364.
+      `propagate_ns`, animation qui pilote un joint ; T-392, T-360.
+      - [ ] 3a. Client : `ANIM` chargée, `axion_render_animate`, temps de rendu dans `RENDER_IN`, graphe vivant
+            par instance animée, `RENDER_OUT` schéma 3, Java substitue les matrices.
+      - [ ] 3b. Serveur : opcodes, `Animator` par assembly, dépendance des colliders, étapes 2 et 14, T-360.
 - [ ] 4. Réseau et API : descripteur v3, `AnimationControl`, triggers de definition.
 - [ ] 5. Skinning natif : shader, TBO, repli UBO, palettes dans `RENDER_OUT` (schéma 3) ; T-540..T-542, T-908.
 - [ ] 6. Skinning vanilla (R-742), overlays `bones`, `nodes`, `pivots`, documentation.
