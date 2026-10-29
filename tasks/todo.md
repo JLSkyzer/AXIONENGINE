@@ -3422,7 +3422,10 @@ sources procédurales de véhicule (M5, T-365).
 - [ ] 5. Skinning natif : shader, TBO, repli UBO, palettes dans `RENDER_OUT` ; T-540..T-542, T-908 (skinning).
       - [x] 5a. Palette native (2026-10-29) : `SKEL` chargée avec `ANIM`, os vérifiés (node, liaison inverse finie
             et affine), `Instance::palette` en espace de l'asset ; T-540 sur le bras compilé ; 4 mutations rouges.
-      - [ ] 5b. `RENDER_OUT` schéma 4 (`palette_first`), plafond R-791 par distance et sa métrique, lecture Java.
+      - [x] 5b. (2026-10-29) `RENDER_OUT` schéma 4 (`palette_first` à l'octet 28, plafonnés à l'octet 20 de
+            l'en-tête) ; plafond R-791 par distance, retenu par le natif à l'ouverture ; `axion.render.skinned` et
+            `axion.render.skinned_capped` publiés par Java ; description de la clé corrigée ; 5 mutations natives et
+            2 Java rouges.
       - [ ] 5c. Java : TBO des palettes depuis `RENDER_OUT`, `palette_offset`, variante `SKINNED` (attributs 6, 7 et
             14), dessin skinné hors de sa matrice de dessin, repli UBO ; banc : T-541, T-542, T-908 (skinning).
 - [ ] 6. Skinning vanilla (R-742), overlays `bones`, `nodes`, `pivots`, documentation.

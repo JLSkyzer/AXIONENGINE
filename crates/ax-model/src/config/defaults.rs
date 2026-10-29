@@ -347,7 +347,7 @@ pub const CLIENT: &[ConfigOption] = &[
     ip(
         "render.max_skinned_instances",
         64,
-        "Nombre maximal d'instances animées par squelette et par frame.",
+        "Nombre maximal d'instances skinnées par frame ; au-delà, les plus lointaines se dessinent au repos (R-791).",
     ),
     ip(
         "render.max_palette_bones",

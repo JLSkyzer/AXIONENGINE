@@ -942,6 +942,7 @@ pub fn open(
     budgets: JobBudgets,
     assets: AssetLimits,
     physics: SimSettings,
+    render: crate::render::RenderLimits,
 ) -> Result<u64, i32> {
     let mut slot = sessions();
     if slot.is_some() {
@@ -967,7 +968,7 @@ pub fn open(
     let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     let token = TOKEN_TAG | session;
     // Ordre des verrous : la session, puis le rendu (ADR-154 D2).
-    crate::render::open(token, jobs.clone());
+    crate::render::open(token, jobs.clone(), render);
     *slot = Some(Session {
         token,
         state: RuntimeState::Ready,
@@ -1306,6 +1307,9 @@ mod tests {
             JobBudgets::new(),
             assets,
             SimSettings::default(),
+            crate::render::RenderLimits {
+                max_skinned_instances: 64,
+            },
         )
     }
 

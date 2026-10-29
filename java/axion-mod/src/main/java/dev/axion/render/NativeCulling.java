@@ -40,12 +40,27 @@ public final class NativeCulling {
      *     repos (ADR-154, tranche 2b)
      * @param flags drapeaux du résultat, voir {@link NativeBridge#RENDER_DEGRADED}
      * @param triangles triangles estimés des retenus
+     * @param palettes pour chaque retenu, la première matrice de sa palette d'os, ou
+     *     {@link RenderPrepCodec#NO_PALETTE} (ADR-155, schéma 4)
+     * @param skinnedCapped retenus skinnés laissés au repos par {@code render.max_skinned_instances} (R-791)
      */
     public record Outcome(
-            int code, int[] retained, int[] levels, int[][] meshes, float[][][] matrices, int flags, long triangles) {
+            int code, int[] retained, int[] levels, int[][] meshes, float[][][] matrices, int flags, long triangles,
+            int[] palettes, int skinnedCapped) {
 
         static Outcome failed(int code) {
-            return new Outcome(code, new int[0], new int[0], new int[0][], new float[0][][], 0, 0);
+            return new Outcome(code, new int[0], new int[0], new int[0][], new float[0][][], 0, 0, new int[0], 0);
+        }
+
+        /** {@return les retenus de la frame qui portent une palette d'os} */
+        public int skinned() {
+            int skinned = 0;
+            for (int palette : palettes) {
+                if (palette != RenderPrepCodec.NO_PALETTE) {
+                    skinned++;
+                }
+            }
+            return skinned;
         }
     }
 
@@ -76,7 +91,8 @@ public final class NativeCulling {
      */
     public Outcome cull(byte[] camera, int count, Candidates candidates, long budgetNs, double renderTick) {
         if (count == 0) {
-            return new Outcome(NativeBridge.OK, new int[0], new int[0], new int[0][], new float[0][][], 0, 0);
+            return new Outcome(NativeBridge.OK, new int[0], new int[0], new int[0][], new float[0][][], 0, 0,
+                    new int[0], 0);
         }
         long bytes = RenderPrepCodec.IN_FRAME_HEADER_BYTES + (long) count * RenderPrepCodec.CANDIDATE_BYTES;
         ByteBuffer in = NativeBridge.acquire(context, BufferKinds.RENDER_IN, bytes);
@@ -127,14 +143,17 @@ public final class NativeCulling {
             int[] levels = new int[count];
             int[][] meshes = new int[count][];
             float[][][] matrices = new float[count][][];
+            int[] palettes = new int[count];
             for (int rank = 0; rank < count; rank++) {
                 retained[rank] = RenderPrepCodec.retainedIndex(out, BufferKinds.HEADER_BYTES, rank);
                 levels[rank] = RenderPrepCodec.retainedLevel(out, BufferKinds.HEADER_BYTES, rank);
                 meshes[rank] = RenderPrepCodec.retainedMeshes(out, BufferKinds.HEADER_BYTES, count, rank);
                 matrices[rank] = RenderPrepCodec.retainedMatrices(out, BufferKinds.HEADER_BYTES, count, rank);
+                palettes[rank] = RenderPrepCodec.retainedPalette(out, BufferKinds.HEADER_BYTES, rank);
             }
             return new Outcome(NativeBridge.OK, retained, levels, meshes, matrices,
-                    (int) result[NativeBridge.RENDER_FLAGS], result[NativeBridge.RENDER_TRIANGLE_ESTIMATE]);
+                    (int) result[NativeBridge.RENDER_FLAGS], result[NativeBridge.RENDER_TRIANGLE_ESTIMATE],
+                    palettes, RenderPrepCodec.skinnedCapped(out, BufferKinds.HEADER_BYTES));
         } finally {
             NativeBridge.release(context, BufferKinds.RENDER_OUT, out.getInt(GENERATION_OFFSET));
         }

@@ -184,6 +184,11 @@ Definition of Done (PARTIE 37.3).
     oublie une assembly non vue depuis 64 frames ; une assembly animee est
     retenue `NO_CULL` ; `AnimCommand` porte le temps de clip (rejeu d'un clip
     en cours) ;
+    skinning (C-66), en cours : le natif lit le squelette (`SKEL`) et calcule
+    la palette d'os de chaque instance skinnee (T-540) ; `RENDER_OUT` schema 4
+    la porte apres les matrices des dessins ; `render.max_skinned_instances`
+    la reserve aux instances les plus proches, les autres au repos, metriques
+    `axion.render.skinned` et `axion.render.skinned_capped` (R-791) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

@@ -26,7 +26,9 @@ use axion_native::abi::{
     AxionBufferInfo, AxionRenderResult, AXION_E_INVALID_BUFFER, AXION_OK, AXION_SECTION_GEOM,
     AXION_SECTION_NODE, AXION_SIDE_CLIENT,
 };
-use axion_native::render::{IN_FRAME_HEADER, MATRIX_FLOATS, NO_MATRICES, OUT_HEADER, OUT_RECORD};
+use axion_native::render::{
+    IN_FRAME_HEADER, MATRIX_FLOATS, NO_MATRICES, NO_PALETTE, OUT_HEADER, OUT_RECORD,
+};
 
 const ASSET_ID: u64 = 0x0A51_0C0B_E000_0155;
 
@@ -111,6 +113,9 @@ fn frame(ctx: u64, asset: Handle, tick: f64) -> (AxionRenderResult, Option<[f32;
     let mesh_total = word(base + 8) as usize;
     let matrix_total = word(base + 16) as usize;
     let first = word(base + OUT_HEADER + 24);
+    // Animé sans skin : aucune palette, et rien qui compte dans le plafond de R-791.
+    assert_eq!(word(base + OUT_HEADER + 28), NO_PALETTE);
+    assert_eq!(word(base + 20), 0);
     let matrix = (first != NO_MATRICES).then(|| {
         let table = base + OUT_HEADER + OUT_RECORD + mesh_total * 4;
         let at = table + first as usize * MATRIX_FLOATS * 4;

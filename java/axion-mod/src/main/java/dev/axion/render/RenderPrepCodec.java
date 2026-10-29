@@ -25,20 +25,27 @@ public final class RenderPrepCodec {
     public static final int IN_FRAME_HEADER_BYTES = 16;
 
     /**
-     * En-tête de frame de {@code RENDER_OUT} (schéma 3) : {@code frame_id}, retenus, meshes, drapeaux,
-     * matrices, un mot réservé.
+     * En-tête de frame de {@code RENDER_OUT} (schéma 4) : {@code frame_id}, retenus, meshes, drapeaux,
+     * matrices, puis les retenus skinnés laissés au repos par {@code render.max_skinned_instances}
+     * (R-791).
      */
     public static final int OUT_HEADER_BYTES = 24;
 
     /**
-     * Un retenu (schéma 3) : index du candidat, {@code id}, niveau de détail, distance, premier mesh et
-     * nombre de meshes dans la table qui suit les retenus, première matrice ({@link #NO_MATRICES} au
-     * repos).
+     * Un retenu (schéma 4, décision de Killian) : index du candidat, {@code id}, niveau de détail,
+     * distance, premier mesh et nombre de meshes dans la table qui suit les retenus, première matrice
+     * ({@link #NO_MATRICES} au repos), première matrice de sa palette d'os ({@link #NO_PALETTE} sans).
      */
-    public static final int OUT_RECORD_BYTES = 28;
+    public static final int OUT_RECORD_BYTES = 32;
 
     /** Première matrice d'un retenu qui n'en porte pas : il se dessine au repos. */
     public static final int NO_MATRICES = -1;
+
+    /**
+     * Première matrice de palette d'un retenu qui n'en a pas : sans skin, sans animation, ou au-delà de
+     * {@code render.max_skinned_instances} (R-791).
+     */
+    public static final int NO_PALETTE = -1;
 
     /** Flottants d'une matrice {@code mat4x3} de la table de {@code RENDER_OUT}. */
     public static final int MATRIX_FLOATS = 12;
@@ -179,6 +186,29 @@ public final class RenderPrepCodec {
      */
     public static int retainedIndex(ByteBuffer renderOut, int payload, int rank) {
         return renderOut.getInt(payload + OUT_HEADER_BYTES + rank * OUT_RECORD_BYTES);
+    }
+
+    /**
+     * {@return la première matrice de la palette d'os du retenu de rang {@code rank}, dans la table des
+     * matrices, ou {@link #NO_PALETTE}}
+     *
+     * @param renderOut {@code RENDER_OUT}, little-endian
+     * @param payload position de la charge utile
+     * @param rank rang du retenu
+     */
+    public static int retainedPalette(ByteBuffer renderOut, int payload, int rank) {
+        return renderOut.getInt(payload + OUT_HEADER_BYTES + rank * OUT_RECORD_BYTES + 28);
+    }
+
+    /**
+     * {@return les retenus skinnés de la frame laissés au repos par {@code render.max_skinned_instances}
+     * (R-791)}
+     *
+     * @param renderOut {@code RENDER_OUT}, little-endian
+     * @param payload position de la charge utile
+     */
+    public static int skinnedCapped(ByteBuffer renderOut, int payload) {
+        return renderOut.getInt(payload + 20);
     }
 
     /**

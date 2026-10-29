@@ -198,6 +198,9 @@ public final class AxionRenderPass {
     private static final JavaMetrics.Metric GL_OBJECTS = METRICS.gauge("axion.render.gl_objects", "count");
     private static final JavaMetrics.Metric SHADER_COMPILED = METRICS.gauge("axion.render.shader.compiled", "count");
     private static final JavaMetrics.Metric SHADER_PENDING = METRICS.gauge("axion.render.shader.pending", "count");
+    /** R-791 : les retenus skinnés de la dernière frame, et ceux que le plafond a laissés au repos. */
+    private static final JavaMetrics.Metric SKINNED = METRICS.gauge("axion.render.skinned", "count");
+    private static final JavaMetrics.Metric SKINNED_CAPPED = METRICS.counter("axion.render.skinned_capped", "count");
     private static final JavaMetrics.Metric SHADER_REFUSED = METRICS.gauge("axion.render.shader.refused", "count");
     private static final JavaMetrics.Metric SHADER_CACHE_HITS = METRICS.gauge("axion.render.shader.cache_hits", "count");
     private static final JavaMetrics.Metric SHADER_CACHE_MISSES =
@@ -836,6 +839,10 @@ public final class AxionRenderPass {
             for (int rank = 0; rank < outcome.retained().length; rank++) {
                 FRAME_DECISIONS.put(all.get(candidates[outcome.retained()[rank]]).entity(), outcome.levels()[rank]);
             }
+        }
+        if (outcome.code() == 0) {
+            SKINNED.set(outcome.skinned());
+            SKINNED_CAPPED.add(outcome.skinnedCapped());
         }
         if (outcome.code() != 0) {
             culling = null;

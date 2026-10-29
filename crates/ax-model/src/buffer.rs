@@ -170,7 +170,7 @@ impl BufferKind {
     pub const fn schema_version(self) -> u32 {
         match self {
             BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderIn => 2,
-            BufferKind::RenderOut => 3,
+            BufferKind::RenderOut => 4,
             BufferKind::AssetOut => 1,
             _ => 0,
         }
@@ -521,10 +521,11 @@ mod tests {
         // ADR-151 : SIM_OUT au schéma 2 (états à node, puis emprises) ; A1 d'ADR-121 : DEBUG
         // au schéma 2 (plages par overlay et repère) ; ADR-122 : ASSET_OUT au
         // schéma 1 (matériaux et textures) ; ADR-155 : RENDER_IN au schéma 2 (tick de rendu en tête),
-        // RENDER_OUT au schéma 3 (matrices des retenus animés). Les autres kinds ne sont pas versionnés.
+        // RENDER_OUT au schéma 4 (matrices des retenus animés, puis leurs palettes d'os). Les autres
+        // kinds ne sont pas versionnés.
         for kind in BufferKind::ALL {
             let attendue = match kind {
-                BufferKind::RenderOut => 3,
+                BufferKind::RenderOut => 4,
                 BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderIn => 2,
                 BufferKind::AssetOut => 1,
                 _ => 0,

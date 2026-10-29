@@ -69,6 +69,20 @@ class AnimationCommandsTest {
     }
 
     @Test
+    @DisplayName("RENDER_OUT schéma 4 : la palette d'os de chaque retenu, et les skinnés laissés au repos")
+    void palettesDeRenderOut() {
+        ByteBuffer out = ByteBuffer.allocate(RenderPrepCodec.OUT_HEADER_BYTES + 2 * RenderPrepCodec.OUT_RECORD_BYTES)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        out.putInt(20, 3);
+        int second = RenderPrepCodec.OUT_HEADER_BYTES + RenderPrepCodec.OUT_RECORD_BYTES;
+        out.putInt(RenderPrepCodec.OUT_HEADER_BYTES + 28, RenderPrepCodec.NO_PALETTE).putInt(second + 28, 7);
+        assertEquals(32, RenderPrepCodec.OUT_RECORD_BYTES, "le schéma 4 ajoute palette_first à l'octet 28");
+        assertEquals(RenderPrepCodec.NO_PALETTE, RenderPrepCodec.retainedPalette(out, 0, 0));
+        assertEquals(7, RenderPrepCodec.retainedPalette(out, 0, 1));
+        assertEquals(3, RenderPrepCodec.skinnedCapped(out, 0));
+    }
+
+    @Test
     @DisplayName("RENDER_IN schéma 2 : le tick de rendu en tête, huit octets réservés à zéro")
     void tickDeRendu() {
         ByteBuffer in = ByteBuffer.allocate(32).order(ByteOrder.LITTLE_ENDIAN);

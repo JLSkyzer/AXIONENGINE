@@ -287,6 +287,9 @@ pub unsafe extern "C" fn axion_init(
             applied.budgets,
             assets,
             applied.sim_settings(),
+            render::RenderLimits {
+                max_skinned_instances: applied.max_skinned_instances,
+            },
         ) {
             Ok(token) => token,
             Err(code) => return code,
@@ -2039,6 +2042,8 @@ struct AppliedConfig {
     max_source_bytes: u64,
     /// `budgets.native_mem_bytes` : plafond de l'arène `PERSISTENT` (R-480).
     native_mem_bytes: u64,
+    /// `render.max_skinned_instances` : retenus skinnés par frame (R-791).
+    max_skinned_instances: u32,
     /// Options du monde physique (ADR-123 §1), réunies en [`SimSettings`] à l'ouverture.
     physics: PhysicsOptions,
 }
@@ -2080,6 +2085,9 @@ const MAX_SOURCE_BYTES_PATH: &str = "assets.max_source_bytes";
 /// Chemin de l'option qui plafonne la mémoire native (ADR-119).
 const NATIVE_MEM_BYTES_PATH: &str = "budgets.native_mem_bytes";
 
+/// Chemin de l'option qui plafonne les retenus skinnés d'une frame (R-791).
+const MAX_SKINNED_INSTANCES_PATH: &str = "render.max_skinned_instances";
+
 impl AppliedConfig {
     /// Part des valeurs par défaut du registre.
     ///
@@ -2095,6 +2103,7 @@ impl AppliedConfig {
             max_compiled_bytes: 0,
             max_source_bytes: 0,
             native_mem_bytes: 0,
+            max_skinned_instances: 0,
             // Écrasés ci-dessous par les défauts du registre, source unique (R-430).
             physics: PhysicsOptions {
                 fixed_dt: 0.0,
@@ -2127,6 +2136,7 @@ impl AppliedConfig {
             MAX_COMPILED_BYTES_PATH,
             MAX_SOURCE_BYTES_PATH,
             NATIVE_MEM_BYTES_PATH,
+            MAX_SKINNED_INSTANCES_PATH,
         ];
         paths.extend(PHYSICS_PATHS);
         paths.extend(
@@ -2208,6 +2218,12 @@ impl AppliedConfig {
                     MAX_SOURCE_BYTES_PATH => self.max_source_bytes = value,
                     _ => self.native_mem_bytes = value,
                 }
+            }
+            return;
+        }
+        if path == MAX_SKINNED_INSTANCES_PATH {
+            if let ParsedValue::Int(value) = parsed {
+                self.max_skinned_instances = u32::try_from(*value).unwrap_or(0);
             }
             return;
         }

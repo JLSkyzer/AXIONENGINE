@@ -49,17 +49,29 @@ const FORGET_DECISION_AFTER: u64 = 64;
 /// Candidats traités d'un seul tenant ; au-delà, les lots suivants partent sur les workers.
 const LOT: usize = 1024;
 
-/// Taille de l'en-tête de frame de `RENDER_OUT` (schéma 3) : `frame_id`, retenus, meshes, drapeaux,
-/// matrices, un mot réservé.
+/// Taille de l'en-tête de frame de `RENDER_OUT` (schéma 4) : `frame_id`, retenus, meshes, drapeaux,
+/// matrices, puis les retenus skinnés laissés au repos par `render.max_skinned_instances` (R-791).
 pub const OUT_HEADER: usize = 24;
 
-/// Taille d'un enregistrement retenu (schéma 3) : index du candidat, `id`, LOD, distance, premier
-/// mesh et nombre de meshes dans la table qui suit les enregistrements, première matrice —
-/// [`NO_MATRICES`] pour un retenu au repos.
-pub const OUT_RECORD: usize = 28;
+/// Taille d'un enregistrement retenu (schéma 4, décision de Killian) : index du candidat, `id`, LOD,
+/// distance, premier mesh et nombre de meshes dans la table qui suit les enregistrements, première
+/// matrice — [`NO_MATRICES`] pour un retenu au repos —, première matrice de sa palette d'os —
+/// [`NO_PALETTE`] sans palette.
+pub const OUT_RECORD: usize = 32;
 
 /// Première matrice d'un retenu qui n'en porte pas : il se dessine au repos.
 pub const NO_MATRICES: u32 = u32::MAX;
+
+/// Première matrice de palette d'un retenu qui n'en a pas : sans skin, sans animation, ou au-delà de
+/// `render.max_skinned_instances` (R-791) — ses meshes skinnés se dessinent au repos.
+pub const NO_PALETTE: u32 = u32::MAX;
+
+/// Ce que la configuration fixe au contexte de rendu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderLimits {
+    /// `render.max_skinned_instances` : retenus skinnés par frame (R-791) ; les plus proches d'abord.
+    pub max_skinned_instances: u32,
+}
 
 /// Flottants d'une matrice `mat4x3` de la table de `RENDER_OUT`, un par dessin d'un retenu animé.
 pub const MATRIX_FLOATS: usize = 12;
@@ -110,6 +122,10 @@ pub struct RenderStats {
     /// Commandes d'animation refusées : asset absent ou périmé, clip ou couche inconnus,
     /// paramètre hors bornes, plus de 256 pistes (R-200).
     pub anim_rejected: u64,
+    /// Retenus skinnés de la dernière frame, leur palette posée.
+    pub skinned: u32,
+    /// Retenus skinnés laissés au repos par `render.max_skinned_instances`, depuis l'ouverture (R-791).
+    pub skinned_capped: u64,
 }
 
 /// Ce que rend une préparation : les champs d'`AxionRenderResult` que la tranche 1 remplit.
@@ -146,6 +162,7 @@ pub struct RenderContext {
     decisions: HashMap<u32, (bool, u64)>,
     /// L'animation de chaque assembly animée, par `id` de candidat, avec l'asset qu'elle anime.
     instances: HashMap<u32, (Handle, Instance)>,
+    limits: RenderLimits,
 }
 
 fn recover<T>(result: Result<T, PoisonError<T>>) -> T {
@@ -158,7 +175,7 @@ fn slot() -> MutexGuard<'static, Option<RenderContext>> {
 
 /// Ouvre le contexte de rendu de la session `token`. Appelé par l'ouverture de la session, qui
 /// tient son verrou.
-pub(crate) fn open(token: u64, jobs: Option<Arc<JobSystem>>) {
+pub(crate) fn open(token: u64, jobs: Option<Arc<JobSystem>>, limits: RenderLimits) {
     *slot() = Some(RenderContext {
         token,
         poisoned: false,
@@ -171,6 +188,7 @@ pub(crate) fn open(token: u64, jobs: Option<Arc<JobSystem>>) {
         lod: LodState::new(),
         decisions: HashMap::new(),
         instances: HashMap::new(),
+        limits,
     });
 }
 
@@ -568,7 +586,23 @@ impl RenderContext {
         let mut matrices: Vec<f32> = Vec::new();
         let mut animated = 0u32;
         let mut triangles = 0u32;
-        for v in &visible {
+        // R-791 : une palette aux `render.max_skinned_instances` retenus skinnés les plus proches ; les
+        // autres se dessinent au repos, et sont comptés.
+        let mut skinnable: Vec<(f32, u32, usize)> = visible
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| self.skinnable(&candidates[v.index as usize]))
+            .map(|(rank, v)| (v.distance, v.id, rank))
+            .collect();
+        skinnable.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let allowed = (self.limits.max_skinned_instances as usize).min(skinnable.len());
+        let mut palettes = vec![false; visible.len()];
+        for &(_, _, rank) in &skinnable[..allowed] {
+            palettes[rank] = true;
+        }
+        let skinned_capped = u32::try_from(skinnable.len() - allowed).unwrap_or(u32::MAX);
+        let mut skinned = 0u32;
+        for (rank, v) in visible.iter().enumerate() {
             let candidate = &candidates[v.index as usize];
             let asset = assets
                 .get(candidate.asset as usize)
@@ -597,6 +631,7 @@ impl RenderContext {
             let count = u32::try_from(meshes.len()).map_err(|_| AXION_E_INVALID_BUFFER)? - first;
             // L'animation d'un retenu qui en a une, sur l'asset qu'il dessine : une matrice par dessin.
             let mut matrix_first = NO_MATRICES;
+            let mut palette_first = NO_PALETTE;
             let animation = asset.and_then(|a| a.animation.as_ref());
             if let (Some(animation), Some((handle, instance))) =
                 (animation, self.instances.get_mut(&candidate.id))
@@ -607,6 +642,13 @@ impl RenderContext {
                         .map_err(|_| AXION_E_INVALID_BUFFER)?;
                     instance.draw_matrices(animation, tick, &mut matrices);
                     animated += 1;
+                    // La palette suit les matrices des dessins, de la pose qu'elles viennent d'évaluer.
+                    if palettes[rank] {
+                        palette_first = u32::try_from(matrices.len() / MATRIX_FLOATS)
+                            .map_err(|_| AXION_E_INVALID_BUFFER)?;
+                        instance.palette(animation, &mut matrices);
+                        skinned += 1;
+                    }
                 }
             }
             for value in [v.index, v.id, u32::from(level)] {
@@ -616,13 +658,21 @@ impl RenderContext {
             records.extend_from_slice(&first.to_le_bytes());
             records.extend_from_slice(&count.to_le_bytes());
             records.extend_from_slice(&matrix_first.to_le_bytes());
+            records.extend_from_slice(&palette_first.to_le_bytes());
         }
         let mesh_total = u32::try_from(meshes.len()).map_err(|_| AXION_E_INVALID_BUFFER)?;
         let matrix_total =
             u32::try_from(matrices.len() / MATRIX_FLOATS).map_err(|_| AXION_E_INVALID_BUFFER)?;
         let mut out =
             Vec::with_capacity(OUT_HEADER + records.len() + meshes.len() * 4 + matrices.len() * 4);
-        for value in [frame_id, instance_count, mesh_total, flags, matrix_total, 0] {
+        for value in [
+            frame_id,
+            instance_count,
+            mesh_total,
+            flags,
+            matrix_total,
+            skinned_capped,
+        ] {
             out.extend_from_slice(&value.to_le_bytes());
         }
         out.extend_from_slice(&records);
@@ -653,6 +703,8 @@ impl RenderContext {
         }
         self.stats.last = stats;
         self.stats.animated = animated;
+        self.stats.skinned = skinned;
+        self.stats.skinned_capped += u64::from(skinned_capped);
         self.stats.last_prepare_ns =
             u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
         Ok(Prepared {
@@ -662,6 +714,24 @@ impl RenderContext {
             frame_id,
             flags,
         })
+    }
+
+    /// Indique si un candidat recevrait une palette : son asset est chargé, skinné et animé, et son
+    /// assembly a une animation sur cet asset.
+    fn skinnable(&self, candidate: &Candidate) -> bool {
+        let current = Handle::new(candidate.asset, candidate.generation);
+        self.assets
+            .get(candidate.asset as usize)
+            .and_then(Option::as_ref)
+            .filter(|a| a.generation == candidate.generation)
+            .and_then(|a| a.animation.as_ref())
+            .is_some_and(|animation| {
+                animation.bone_count() > 0
+                    && self
+                        .instances
+                        .get(&candidate.id)
+                        .is_some_and(|(handle, _)| *handle == current)
+            })
     }
 
     /// Libère la frame `frame_id` ; faux si elle n'est pas celle en vol.
@@ -711,6 +781,9 @@ mod tests {
             lod: LodState::new(),
             decisions: HashMap::new(),
             instances: HashMap::new(),
+            limits: RenderLimits {
+                max_skinned_instances: 64,
+            },
         }
     }
 

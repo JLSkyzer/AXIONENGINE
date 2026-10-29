@@ -1179,7 +1179,7 @@ public final class ConfigSchema {
                     new Domain(DomainKind.INT_RANGE, 0.0, Double.MAX_VALUE, List.of()),
                     false,
                     false,
-                    "Nombre maximal d'instances animées par squelette et par frame."),
+                    "Nombre maximal d'instances skinnées par frame ; au-delà, les plus lointaines se dessinent au repos (R-791)."),
             new Option(
                     "render.max_palette_bones",
                     Kind.INTEGER,

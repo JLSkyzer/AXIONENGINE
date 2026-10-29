@@ -254,7 +254,7 @@ alors ignorée (R-1830).
 | `instancing_threshold` | entier | `4` | `0..` | non | non | Nombre d'instances identiques à partir duquel l'instanciation GPU est employée. |
 | `indirect` | booléen | `true` | `true \| false` | non | non | Autorise le rendu indirect. Utilisé seulement si GL 4.3 est disponible. |
 | `compute` | booléen | `true` | `true \| false` | non | non | Autorise les shaders de calcul. Utilisé seulement si GL 4.3 est disponible. |
-| `max_skinned_instances` | entier | `64` | `0..` | non | non | Nombre maximal d'instances animées par squelette et par frame. |
+| `max_skinned_instances` | entier | `64` | `0..` | non | non | Nombre maximal d'instances skinnées par frame ; au-delà, les plus lointaines se dessinent au repos (R-791). |
 | `max_palette_bones` | entier | `128` | `0..` | non | non | Nombre maximal d'os dans une palette de skinning. |
 | `max_deform_pages_per_frame` | entier | `256` | `0..` | non | non | Nombre maximal de pages de déformation téléversées vers le GPU par frame. |
 | `max_decals_per_assembly` | entier | `64` | `0..` | non | non | Nombre maximal de décalques portés par une assembly. |
