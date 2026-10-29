@@ -2037,3 +2037,16 @@ compilateur, de bout en bout (GameTest), dans la tranche qui l'ajoute. Des GameT
 tombent ensemble font d'abord chercher un tick sauté : chercher « AXION : hook tick a échoué » au journal
 (écrit, pile comprise, depuis le même jour ; avant, la garde ne l'écrivait qu'à sa désactivation).
 
+## 2026-10-29 | Un test de pagination dont les données tenaient dans la première page
+
+**Ce qui a mal tourné.** T-541 comparait le repli UBO au TBO sur un seul bras skinné. Sa palette commençait
+à l'octet 96 de la table, dans la première page d'alignement (256 octets) : un décalage qui oubliait de
+retrancher le début de la page donnait le même résultat, et la mutation a survécu.
+
+**Cause.** Le contenu du test rendait la mutation équivalente : rien ne tombait au-delà de la première
+page.
+
+**Règle.** Un test de pagination, d'alignement ou de découpage place des données au-delà de la première
+unité, et le plus loin possible. T-541 se joue désormais sur 65 bras, dont les 64 palettes s'étalent dans la
+table ; la mutation y est rouge.
+

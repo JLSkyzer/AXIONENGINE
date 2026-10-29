@@ -134,6 +134,23 @@ public final class InstanceLayout {
      * @param flags drapeaux de l'instance
      */
     public static void write(ByteBuffer out, float[] rows, float[] tint, int packedLight, int flags) {
+        write(out, rows, tint, packedLight, 0, flags);
+    }
+
+    /**
+     * Écrit un bloc à la position courante du tampon, qui avance de {@link #BYTES}, avec la palette d'os
+     * d'une instance skinnée (C-66).
+     *
+     * @param out tampon petit-boutiste
+     * @param rows les trois lignes de la matrice, relatives à la caméra
+     * @param tint couleur RGBA, quatre flottants
+     * @param packedLight lumière empaquetée comme Minecraft : bloc en bas, ciel en haut
+     * @param paletteOffset premier {@code vec4} de la palette de l'instance, dans le TBO ou la page d'UBO liée ;
+     *     0 sans palette
+     * @param flags drapeaux de l'instance
+     */
+    public static void write(ByteBuffer out, float[] rows, float[] tint, int packedLight, int paletteOffset,
+            int flags) {
         if (out.order() != ByteOrder.LITTLE_ENDIAN) {
             throw new IllegalArgumentException("le bloc d'instance s'écrit en petit-boutiste");
         }
@@ -145,7 +162,7 @@ public final class InstanceLayout {
         }
         out.putInt(packedLight & 0xFFFF);
         out.putInt(packedLight >>> 16);
-        out.putInt(0); // palette_offset : C-66
+        out.putInt(paletteOffset);
         out.putInt(0); // deform_offset : M6
         out.putInt(0); // decal_offset_count : C-69
         out.putInt(flags);

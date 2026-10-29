@@ -25,6 +25,7 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL31;
 import org.lwjgl.opengl.GLCapabilities;
 import org.lwjgl.opengl.KHRParallelShaderCompile;
 import org.slf4j.Logger;
@@ -60,6 +61,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Les attributs ont leur emplacement dans les sources ({@code layout(location = …)}) : ni
  * {@code glBindAttribLocation}, ni dépendance à l'ordre de liaison.
+ *
+ * <p>Une variante vaut pour les sommets comme pour les fragments : {@code SKINNED} skinne les sommets
+ * (C-66, ADR-155). L'émission a ses variantes, comme la surface : elle partage ses sommets, et un mesh
+ * skinné doit y retomber sur la profondeur que sa surface a écrite ({@code invariant gl_Position}).
  */
 final class NativeShaders implements AutoCloseable {
 
@@ -91,6 +96,15 @@ final class NativeShaders implements AutoCloseable {
     static final int LIGHTMAP_UNIT = 2;
 
     static final int ORM_UNIT = 3;
+
+    /** Unité de la palette d'os en TBO ({@code u_palette}, R-790). */
+    static final int PALETTE_UNIT = 4;
+
+    /** Point de liaison du bloc {@code AxionPalette}, la palette en UBO paginé (H-04, R-790). */
+    static final int PALETTE_BINDING = 0;
+
+    /** Nom du bloc d'uniformes de la palette en UBO. */
+    static final String PALETTE_BLOCK = "AxionPalette";
 
     private static final String SURFACE = "surface";
     private static final String EMISSION = "émission";
@@ -161,6 +175,8 @@ final class NativeShaders implements AutoCloseable {
     /** Une variante en route vers son service : son binaire en lecture, puis ses objets, une étape par frame. */
     private static final class Route {
         final ShaderVariant variant;
+        /** Vrai pour une variante du programme d'émission, faux pour la surface. */
+        final boolean emission;
         final String key;
         final CompletableFuture<Optional<ShaderBinaryFile.Binary>> reading;
         Step step;
@@ -168,8 +184,10 @@ final class NativeShaders implements AutoCloseable {
         int fragment;
         int program;
 
-        Route(ShaderVariant variant, String key, CompletableFuture<Optional<ShaderBinaryFile.Binary>> reading) {
+        Route(ShaderVariant variant, boolean emission, String key,
+                CompletableFuture<Optional<ShaderBinaryFile.Binary>> reading) {
             this.variant = variant;
+            this.emission = emission;
             this.key = key;
             this.reading = reading;
             this.step = reading == null ? Step.VERTEX : Step.READ;
@@ -178,10 +196,11 @@ final class NativeShaders implements AutoCloseable {
 
     private final String vertexSource;
     private final String surfaceSource;
+    private final String emissionSource;
     private final ShaderBinaryCache cache;
     private final boolean parallel;
     private final ShaderVariants<Program> surfaces;
-    private final Program emission;
+    private final ShaderVariants<Program> emissions;
     private final List<Route> routes = new ArrayList<>();
     private final Set<ShaderVariant> refusedReported = new HashSet<>();
     /** Variantes oubliées dont la prochaine mise en service se compile, sans relire le cache (T-904). */
@@ -196,6 +215,7 @@ final class NativeShaders implements AutoCloseable {
     private NativeShaders(
             String vertexSource,
             String surfaceSource,
+            String emissionSource,
             ShaderBinaryCache cache,
             boolean parallel,
             Program base,
@@ -204,10 +224,11 @@ final class NativeShaders implements AutoCloseable {
             int compiled) {
         this.vertexSource = vertexSource;
         this.surfaceSource = surfaceSource;
+        this.emissionSource = emissionSource;
         this.cache = cache;
         this.parallel = parallel;
         this.surfaces = new ShaderVariants<>(base, maxVariants);
-        this.emission = emission;
+        this.emissions = new ShaderVariants<>(emission, maxVariants);
         this.compiled = compiled;
     }
 
@@ -242,7 +263,7 @@ final class NativeShaders implements AutoCloseable {
             delete(base);
             throw failure;
         }
-        return new NativeShaders(vertex, surface, cache, parallel, base, emission, maxVariants, compiled[0]);
+        return new NativeShaders(vertex, surface, emissive, cache, parallel, base, emission, maxVariants, compiled[0]);
     }
 
     /**
@@ -318,9 +339,18 @@ final class NativeShaders implements AutoCloseable {
         return program;
     }
 
-    /** {@return le programme de la passe d'émission} */
-    Program emission() {
-        return emission;
+    /**
+     * {@return le programme d'émission qui dessine une variante à cette frame : le sien s'il est prêt, la
+     * base sinon} Seules les définitions qui touchent aux sommets — {@code SKINNED} — font une variante
+     * d'émission ; les autres n'y changent rien.
+     *
+     * @param variant la variante de la surface dont l'émission suit
+     */
+    Program emission(ShaderVariant variant) {
+        ShaderVariant wanted = variant.has(ShaderVariant.Define.SKINNED)
+                ? ShaderVariant.of(ShaderVariant.Define.SKINNED)
+                : ShaderVariant.BASE;
+        return emissions.program(wanted);
     }
 
     /**
@@ -342,7 +372,10 @@ final class NativeShaders implements AutoCloseable {
             }
         }
         for (ShaderVariant next = surfaces.nextToCompile(); next != null; next = surfaces.nextToCompile()) {
-            enter(next);
+            enter(next, false);
+        }
+        for (ShaderVariant next = emissions.nextToCompile(); next != null; next = emissions.nextToCompile()) {
+            enter(next, true);
         }
         Iterator<Route> waiting = routes.iterator();
         while (waiting.hasNext()) {
@@ -376,8 +409,10 @@ final class NativeShaders implements AutoCloseable {
     /** {@return ce que le banc de rendu relève des programmes} */
     Stats stats() {
         return new Stats(cache.hits(), cache.misses(), compiled, onDemand,
-                surfaces.inState(ShaderVariants.State.PENDING).size(),
-                surfaces.inState(ShaderVariants.State.REFUSED).size());
+                surfaces.inState(ShaderVariants.State.PENDING).size()
+                        + emissions.inState(ShaderVariants.State.PENDING).size(),
+                surfaces.inState(ShaderVariants.State.REFUSED).size()
+                        + emissions.inState(ShaderVariants.State.REFUSED).size());
     }
 
     @Override
@@ -390,17 +425,27 @@ final class NativeShaders implements AutoCloseable {
         for (Program program : surfaces.programs()) {
             delete(program);
         }
-        delete(emission);
+        for (Program program : emissions.programs()) {
+            delete(program);
+        }
     }
 
     /** Met une variante en route : la lecture de son binaire lancée, ou sa compilation à faire. Aucun appel OpenGL. */
-    private void enter(ShaderVariant variant) {
+    private void enter(ShaderVariant variant, boolean emission) {
         if (forcedVariantFailure) {
-            fail(variant, "échec provoqué (banc de rendu)");
+            fail(variant, emission, "échec provoqué (banc de rendu)");
             return;
         }
-        String key = cache.key(SURFACE, variant, vertexSource, surfaceSource);
-        routes.add(new Route(variant, key, bypassCache.remove(variant) ? null : cache.read(key)));
+        String key = emission
+                ? cache.key(EMISSION, variant, vertexSource, emissionSource)
+                : cache.key(SURFACE, variant, vertexSource, surfaceSource);
+        boolean bypass = !emission && bypassCache.remove(variant);
+        routes.add(new Route(variant, emission, key, bypass ? null : cache.read(key)));
+    }
+
+    /** {@return les variantes du programme d'une route : celles de l'émission, ou de la surface} */
+    private ShaderVariants<Program> variants(boolean emission) {
+        return emission ? emissions : surfaces;
     }
 
     /**
@@ -422,7 +467,7 @@ final class NativeShaders implements AutoCloseable {
                 }
                 int cached = cache.link(binary);
                 if (cached != 0) {
-                    surfaces.ready(route.variant, adopted(cached));
+                    variants(route.emission).ready(route.variant, adopted(cached));
                     onDemand++;
                     route.step = null;
                     return true;
@@ -431,12 +476,13 @@ final class NativeShaders implements AutoCloseable {
                 return binary.isPresent();
             }
             case VERTEX -> {
-                route.vertex = shader(GL20.GL_VERTEX_SHADER, vertexSource);
+                route.vertex = shader(GL20.GL_VERTEX_SHADER, route.variant.apply(vertexSource));
                 route.step = Step.FRAGMENT;
                 return true;
             }
             case FRAGMENT -> {
-                route.fragment = shader(GL20.GL_FRAGMENT_SHADER, route.variant.apply(surfaceSource));
+                route.fragment = shader(GL20.GL_FRAGMENT_SHADER,
+                        route.variant.apply(route.emission ? emissionSource : surfaceSource));
                 route.step = Step.LINK;
                 return true;
             }
@@ -468,7 +514,7 @@ final class NativeShaders implements AutoCloseable {
 
     /** Reprend une variante compilée : en service si elle se lie, perdue sinon (R-761). */
     private void adopt(Route route) {
-        String name = SURFACE + " " + route.variant.key();
+        String name = (route.emission ? EMISSION : SURFACE) + " " + route.variant.key();
         String error = null;
         if (GL20.glGetShaderi(route.vertex, GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE) {
             error = "compilation de « " + name + ", sommets » : " + GL20.glGetShaderInfoLog(route.vertex).strip();
@@ -479,7 +525,7 @@ final class NativeShaders implements AutoCloseable {
         }
         if (error != null) {
             discard(route);
-            fail(route.variant, error);
+            fail(route.variant, route.emission, error);
             return;
         }
         GL20.glDetachShader(route.program, route.vertex);
@@ -487,16 +533,17 @@ final class NativeShaders implements AutoCloseable {
         GL20.glDeleteShader(route.vertex);
         GL20.glDeleteShader(route.fragment);
         cache.store(route.key, route.program);
-        surfaces.ready(route.variant, adopted(route.program));
+        variants(route.emission).ready(route.variant, adopted(route.program));
         compiled++;
         onDemand++;
     }
 
     /** Une variante est perdue : la base la remplace, et le backend devra basculer (R-761). */
-    private void fail(ShaderVariant variant, String message) {
-        surfaces.failed(variant);
+    private void fail(ShaderVariant variant, boolean emission, String message) {
+        variants(emission).failed(variant);
         if (failure == null) {
-            failure = new ShaderFailure("variante " + variant.key() + " : " + message);
+            failure = new ShaderFailure((emission ? "variante d'émission " : "variante ") + variant.key() + " : "
+                    + message);
         }
     }
 
@@ -522,7 +569,7 @@ final class NativeShaders implements AutoCloseable {
         if (cached != 0) {
             return adopted(cached);
         }
-        Program linked = link(cache, name, vertex, variant.apply(fragment));
+        Program linked = link(cache, name, variant.apply(vertex), variant.apply(fragment));
         cache.store(key, linked.id);
         compiled[0]++;
         return linked;
@@ -539,6 +586,11 @@ final class NativeShaders implements AutoCloseable {
         setSampler(program, "u_lightmap", LIGHTMAP_UNIT);
         setSampler(program, "u_normal_map", NORMAL_UNIT);
         setSampler(program, "u_orm", ORM_UNIT);
+        setSampler(program, "u_palette", PALETTE_UNIT);
+        int block = GL31.glGetUniformBlockIndex(id, PALETTE_BLOCK);
+        if (block != GL31.GL_INVALID_INDEX) {
+            GL31.glUniformBlockBinding(id, block, PALETTE_BINDING);
+        }
         ProgramManager.glUseProgram(0);
         return program;
     }

@@ -7,6 +7,7 @@ import dev.axion.render.BackendSelection;
 import dev.axion.render.BodyRig;
 import dev.axion.render.LeveledDraws;
 import dev.axion.render.RenderAsset;
+import dev.axion.render.RenderPrepCodec;
 import java.util.List;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.world.phys.Vec3;
@@ -98,8 +99,11 @@ interface RenderBackend {
      *     alors à la pose de l'assembly
      * @param draws ses dessins à cette frame : ceux de la liste au repos, le mesh de chacun remplacé par
      *     celui du niveau de détail que le natif a choisi (ADR-154, tranche 2b) ; vide sans asset
+     * @param palette la première matrice de sa palette d'os dans la table que le natif a remise au GPU, ou
+     *     {@link RenderPrepCodec#NO_PALETTE} : ses meshes skinnés se dessinent alors au repos (C-66)
      */
-    record Assembly(AxionEntity entity, RenderAsset asset, BodyRig rig, List<GeometryTransfer.Draw> draws) {
+    record Assembly(
+            AxionEntity entity, RenderAsset asset, BodyRig rig, List<GeometryTransfer.Draw> draws, int palette) {
 
         /**
          * Une assembly dessinée au niveau 0 : les dessins de la liste au repos.
@@ -109,7 +113,7 @@ interface RenderBackend {
          * @param rig les corps de son asset, ou {@code null}
          */
         Assembly(AxionEntity entity, RenderAsset asset, BodyRig rig) {
-            this(entity, asset, rig, asset == null ? List.of() : asset.mesh().draws());
+            this(entity, asset, rig, asset == null ? List.of() : asset.mesh().draws(), RenderPrepCodec.NO_PALETTE);
         }
 
         /**
@@ -119,14 +123,15 @@ interface RenderBackend {
          *
          * @param meshes le mesh de chaque dessin, dans l'ordre de la liste au repos
          * @param matrices la matrice de chaque dessin d'une assembly animée (ADR-155), ou {@code null}
+         * @param skin la première matrice de sa palette d'os, ou {@link RenderPrepCodec#NO_PALETTE}
          */
-        Assembly withMeshes(int[] meshes, float[][] matrices) {
+        Assembly withMeshes(int[] meshes, float[][] matrices, int skin) {
             if (asset == null) {
                 return this;
             }
             List<GeometryTransfer.Draw> leveled =
                     LeveledDraws.of(asset.mesh().draws(), asset.mesh().meshes().size(), meshes, matrices);
-            return leveled == draws ? this : new Assembly(entity, asset, rig, leveled);
+            return leveled == draws && skin == palette ? this : new Assembly(entity, asset, rig, leveled, skin);
         }
     }
 }

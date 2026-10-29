@@ -12,6 +12,7 @@ import dev.axion.render.InstanceLayout;
 import dev.axion.render.InstanceRuns;
 import dev.axion.render.MeshLook;
 import dev.axion.render.RenderAsset;
+import dev.axion.render.RenderPrepCodec;
 import dev.axion.render.ShaderVariant;
 import dev.axion.render.ShaderVariants;
 import dev.axion.render.SurfacePass;
@@ -82,11 +83,20 @@ final class NativeGlBackend implements RenderBackend {
     /** La variante des surfaces découpées (R-762). */
     private static final ShaderVariant CUTOUT = ShaderVariant.of(ShaderVariant.Define.CUTOUT);
 
+    /** La variante des meshes skinnés (R-762, C-66) : celle de l'émission d'un mesh skinné. */
+    private static final ShaderVariant SKINNED = ShaderVariant.of(ShaderVariant.Define.SKINNED);
+
+    /** La transformation de repos d'un mesh skinné : l'identité, sa palette le porte dans l'espace de l'asset. */
+    private static final float[] SKINNED_REST = {1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f};
+
     /** Teinte d'une instance : aucune, en M3. */
     private static final float[] NO_TINT = {1.0f, 1.0f, 1.0f, 1.0f};
 
     private final NativeShaders shaders;
     private final NativeMeshes meshes;
+
+    /** Les palettes d'os des meshes skinnés (C-66), que le culling natif remet à chaque frame. */
+    private final NativePalettes palettes = new NativePalettes();
 
     /** Les boîtes de repli : celles du backend vanilla. */
     private final VanillaConsumerBackend boxes = new VanillaConsumerBackend();
@@ -112,7 +122,8 @@ final class NativeGlBackend implements RenderBackend {
      */
     private static final Comparator<Part> OPAQUE_ORDER = Comparator.comparingInt((Part part) -> part.gpu().vao())
             .thenComparingInt(Part::rank)
-            .thenComparing(part -> InstanceLayout.mirrors(part.rows()));
+            .thenComparing(part -> InstanceLayout.mirrors(part.rows()))
+            .thenComparing(Part::skinned);
 
     /** {@code render.instancing_threshold} : taille minimale d'une série dessinée d'un seul appel. */
     private int instancingThreshold = 4;
@@ -300,6 +311,11 @@ final class NativeGlBackend implements RenderBackend {
                 + ", ARB_base_instance " + caps.GL_ARB_base_instance;
     }
 
+    /** {@return la table des palettes d'os, que le culling natif remplit à chaque frame (C-66)} */
+    NativePalettes palettes() {
+        return palettes;
+    }
+
     /** {@return le seuil d'instancing en vigueur} */
     int instancingThreshold() {
         return instancingThreshold;
@@ -310,11 +326,17 @@ final class NativeGlBackend implements RenderBackend {
         return lastDrawCalls;
     }
 
-    /** {@return vrai si deux meshes posés ont la même clé de regroupement : même asset, mesh, sens des faces} */
-    private static boolean sameKey(Part a, Part b) {
+    /**
+     * {@return vrai si deux meshes posés ont la même clé de regroupement : même asset, mesh, sens des faces}
+     * Un mesh skinné ne s'instancie qu'avec un skinné, et jamais sous le repli UBO : chaque dessin y lie la
+     * page de sa palette (C-66).
+     */
+    private boolean sameKey(Part a, Part b) {
         return a.gpu() == b.gpu()
                 && a.rank() == b.rank()
-                && InstanceLayout.mirrors(a.rows()) == InstanceLayout.mirrors(b.rows());
+                && InstanceLayout.mirrors(a.rows()) == InstanceLayout.mirrors(b.rows())
+                && a.skinned() == b.skinned()
+                && !(a.skinned() && palettes.ubo());
     }
 
     /**
@@ -332,7 +354,8 @@ final class NativeGlBackend implements RenderBackend {
                 && Objects.equals(a.asset().orm(a.rank()), b.asset().orm(b.rank()))
                 && a.mesh().uvMin() == b.mesh().uvMin()
                 && a.mesh().uvSpan() == b.mesh().uvSpan()
-                && InstanceLayout.mirrors(a.rows()) == InstanceLayout.mirrors(b.rows());
+                && InstanceLayout.mirrors(a.rows()) == InstanceLayout.mirrors(b.rows())
+                && a.skinned() == b.skinned();
     }
 
     /** {@return les séries de dessins de même clé, dans l'ordre des meshes posés} */
@@ -411,6 +434,7 @@ final class NativeGlBackend implements RenderBackend {
         meshes.close();
         shaders.close();
         timings.close();
+        palettes.close();
         if (indirectBuffer != 0) {
             GL15.glDeleteBuffers(indirectBuffer);
             NativeGlObjects.deleted();
@@ -436,6 +460,7 @@ final class NativeGlBackend implements RenderBackend {
                 continue;
             }
             BodyParts bodies = null;
+            AssemblyPlacement root = null;
             NativeMeshes.GpuAsset gpu = null;
             for (GeometryTransfer.Draw draw : assembly.draws()) {
                 MeshLook look = asset.look(draw.mesh());
@@ -446,16 +471,22 @@ final class NativeGlBackend implements RenderBackend {
                     continue;
                 }
                 if (bodies == null) {
-                    bodies = BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig());
+                    root = AssemblyPlacement.of(frame.partialTick(), assembly.entity());
+                    bodies = BodyParts.of(root, assembly.rig());
                     gpu = meshes.prepare(asset);
                 }
-                // ADR-151 D9 : chaque mesh à la pose du corps qui porte son node.
-                AssemblyPlacement at = bodies.at(draw);
+                // C-66 : un mesh skinné, que sa palette porte dans l'espace de l'asset, se pose à la racine sans
+                // sa matrice de dessin, que glTF ignore. ADR-151 D9 : les autres, à la pose du corps qui porte
+                // leur node. Sans palette, un mesh skinné se dessine au repos, comme les autres.
+                boolean skinned = mesh.has(GeometryTransfer.MESH_SKINNED)
+                        && assembly.palette() != RenderPrepCodec.NO_PALETTE;
+                AssemblyPlacement at = skinned ? root : bodies.at(draw);
                 Quaternionf q = at.rotation();
                 float[] rows = InstanceLayout.modelRows(
                         at.x() - camera.x, at.y() - camera.y, at.z() - camera.z,
-                        q.x(), q.y(), q.z(), q.w(), bodies.model(draw));
-                parts.add(new Part(asset, gpu, mesh, draw.mesh(), look, rows, at.light()));
+                        q.x(), q.y(), q.z(), q.w(), skinned ? SKINNED_REST : bodies.model(draw));
+                parts.add(new Part(asset, gpu, mesh, draw.mesh(), look, rows, at.light(),
+                        skinned ? assembly.palette() : RenderPrepCodec.NO_PALETTE));
             }
         }
         return parts;
@@ -479,7 +510,8 @@ final class NativeGlBackend implements RenderBackend {
         }
         instances.clear();
         for (Part part : parts) {
-            InstanceLayout.write(instances, part.rows(), NO_TINT, part.light(), 0);
+            InstanceLayout.write(instances, part.rows(), NO_TINT, part.light(),
+                    part.skinned() ? palettes.offset(part.palette()) : 0, 0);
         }
         instances.flip();
         meshes.uploadInstances(instances);
@@ -499,6 +531,7 @@ final class NativeGlBackend implements RenderBackend {
      */
     private void drawSurfaces(List<Part> parts, SurfacePass pass, ShaderVariant variant, Environment environment) {
         NativeShaders.Program program = null;
+        boolean skinnedProgram = false;
         List<InstanceRuns.Run> runs = runs(parts);
         for (int index = 0; index < runs.size(); index++) {
             InstanceRuns.Run run = runs.get(index);
@@ -506,10 +539,16 @@ final class NativeGlBackend implements RenderBackend {
             if (part.look().pass() != pass) {
                 continue;
             }
-            if (program == null) {
-                program = shaders.surface(variant);
+            if (program == null || skinnedProgram != part.skinned()) {
+                // C-66 : un mesh skinné prend la variante SKINNED de la passe, les autres la sienne ; l'ordre de
+                // la passe reste celui des meshes posés.
+                program = shaders.surface(part.skinned() ? variant.with(ShaderVariant.Define.SKINNED) : variant);
                 GlStateManager._glUseProgram(program.id);
                 environment.upload(program, true);
+                if (part.skinned()) {
+                    usePalettes(program);
+                }
+                skinnedProgram = part.skinned();
             }
             MaterialTransfer.Material material = part.look().material();
             TextureRegion region = part.asset().albedo(part.rank());
@@ -588,17 +627,22 @@ final class NativeGlBackend implements RenderBackend {
 
     /** Passe 5 : l'émission des meshes qui émettent, leur texture d'émission ou du blanc. */
     private void drawEmission(List<Part> parts, Environment environment) {
-        NativeShaders.Program program = shaders.emission();
-        boolean used = false;
+        NativeShaders.Program program = null;
+        boolean skinnedProgram = false;
         for (InstanceRuns.Run run : runs(parts)) {
             Part part = parts.get(run.start());
             if (!part.asset().emits(part.rank())) {
                 continue;
             }
-            if (!used) {
+            if (program == null || skinnedProgram != part.skinned()) {
+                // Un mesh skinné retombe sur la profondeur que sa surface a écrite : même skinning.
+                program = shaders.emission(part.skinned() ? SKINNED : ShaderVariant.BASE);
                 GlStateManager._glUseProgram(program.id);
                 environment.upload(program, false);
-                used = true;
+                if (part.skinned()) {
+                    usePalettes(program);
+                }
+                skinnedProgram = part.skinned();
             }
             TextureRegion region = part.asset().emission(part.rank());
             meshUniforms(program, part, region);
@@ -608,6 +652,16 @@ final class NativeGlBackend implements RenderBackend {
             GL20.glUniform1i(program.uniform("u_vertex_color"), 0);
             drawRun(part, run, region);
         }
+    }
+
+    /**
+     * Prépare un programme skinné : le chemin de sa palette (R-790), et le TBO lié à son unité ; l'unité de
+     * l'albedo redevient l'unité active.
+     */
+    private void usePalettes(NativeShaders.Program program) {
+        GL20.glUniform1i(program.uniform("u_palette_ubo"), palettes.ubo() ? 1 : 0);
+        palettes.bindForPass();
+        RenderSystem.activeTexture(GL13.GL_TEXTURE0 + NativeShaders.ALBEDO_UNIT);
     }
 
     /** Uniformes de lecture des coordonnées de texture d'un mesh : sa plage d'UV, puis sa tuile. */
@@ -638,6 +692,10 @@ final class NativeGlBackend implements RenderBackend {
     /** Dessine {@code count} instances d'un mesh, depuis son arène, sous les blocs à partir de {@code instance}. */
     private void draw(Part part, int instance, int count, TextureRegion region) {
         bindForDraw(part, region);
+        if (part.skinned() && palettes.ubo()) {
+            // Repli UBO : le dessin lit sa palette dans sa page (H-04).
+            palettes.bindPage(part.palette());
+        }
         meshes.pointInstance(instance);
         GL32.glDrawElementsInstancedBaseVertex(
                 GL11.GL_TRIANGLES,
@@ -707,6 +765,7 @@ final class NativeGlBackend implements RenderBackend {
             RenderSystem.activeTexture(GL13.GL_TEXTURE0 + unit);
             RenderSystem.bindTexture(0);
         }
+        palettes.unbind();
         RenderSystem.activeTexture(activeTexture);
         Arrays.fill(boundTextures, null);
         RenderSystem.disableBlend();
@@ -727,6 +786,8 @@ final class NativeGlBackend implements RenderBackend {
      * @param look son apparence
      * @param rows sa transformation, relative à la caméra : les trois lignes du bloc d'instance
      * @param light lumière empaquetée au centre de son assembly
+     * @param palette la première matrice de sa palette d'os, ou {@link RenderPrepCodec#NO_PALETTE} : il ne se
+     *     skinne pas (C-66)
      */
     private record Part(
             RenderAsset asset,
@@ -735,7 +796,14 @@ final class NativeGlBackend implements RenderBackend {
             int rank,
             MeshLook look,
             float[] rows,
-            int light) {}
+            int light,
+            int palette) {
+
+        /** {@return vrai si le mesh se skinne : il l'est, et son assembly porte une palette} */
+        boolean skinned() {
+            return palette != RenderPrepCodec.NO_PALETTE;
+        }
+    }
 
     /**
      * Ce qui vaut pour toute une passe : la vue, la lumière du monde, le brouillard, la lightmap.

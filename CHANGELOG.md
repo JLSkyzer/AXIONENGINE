@@ -189,6 +189,10 @@ Definition of Done (PARTIE 37.3).
     la porte apres les matrices des dessins ; `render.max_skinned_instances`
     la reserve aux instances les plus proches, les autres au repos, metriques
     `axion.render.skinned` et `axion.render.skinned_capped` (R-791) ;
+    le backend natif skinne sur le GPU (variante `SKINNED`, quatre os par
+    sommet) : la table des palettes passe de `RENDER_OUT` au TBO sans copie
+    Java, avec un repli UBO pagine ; les variantes de shader valent aussi
+    pour les sommets, et l'emission a les siennes ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

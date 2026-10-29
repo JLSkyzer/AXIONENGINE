@@ -47,6 +47,14 @@ public record ShaderVariant(Set<Define> defines) {
         return new ShaderVariant(set);
     }
 
+    /** {@return cette variante, la définition ajoutée} */
+    public ShaderVariant with(Define define) {
+        EnumSet<Define> set = EnumSet.noneOf(Define.class);
+        set.addAll(defines);
+        set.add(define);
+        return new ShaderVariant(set);
+    }
+
     /** {@return vrai si la variante porte cette définition} */
     public boolean has(Define define) {
         return defines.contains(define);

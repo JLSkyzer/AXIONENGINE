@@ -31,6 +31,21 @@ public final class NativeCulling {
     }
 
     /**
+     * Remet au GPU la table des matrices d'une frame — matrices des dessins animés, puis palettes d'os —,
+     * avant que {@code RENDER_OUT} ne soit relâché : Java ne la copie pas (R-1460).
+     */
+    @FunctionalInterface
+    public interface MatrixTable {
+
+        /**
+         * @param renderOut {@code RENDER_OUT}, little-endian
+         * @param offset position du premier {@code mat4x3}, en-tête du tampon compris
+         * @param bytes taille de la table, en octets
+         */
+        void upload(ByteBuffer renderOut, int offset, int bytes);
+    }
+
+    /**
      * Ce qu'une frame a donné.
      *
      * @param code {@link NativeBridge#OK}, ou le code de l'échec : rien n'est alors retenu
@@ -64,6 +79,16 @@ public final class NativeCulling {
         }
     }
 
+    /** {@return vrai si un retenu porte une palette} */
+    private static boolean skinned(int[] palettes) {
+        for (int palette : palettes) {
+            if (palette != RenderPrepCodec.NO_PALETTE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Position de la génération dans l'en-tête d'un tampon (IF-02). */
     private static final int GENERATION_OFFSET = 8;
 
@@ -87,9 +112,13 @@ public final class NativeCulling {
      * @param count nombre de candidats
      * @param candidates qui écrit chacun d'eux
      * @param budgetNs budget de la préparation, {@code budgets.render_prep_ns}
+     * @param renderTick tick de rendu de l'image (ADR-155)
+     * @param table qui reçoit la table des matrices quand un retenu porte une palette, ou {@code null} : aucun
+     *     skinning sur le GPU (backend vanilla)
      * @return les retenus, ou le code de l'échec
      */
-    public Outcome cull(byte[] camera, int count, Candidates candidates, long budgetNs, double renderTick) {
+    public Outcome cull(
+            byte[] camera, int count, Candidates candidates, long budgetNs, double renderTick, MatrixTable table) {
         if (count == 0) {
             return new Outcome(NativeBridge.OK, new int[0], new int[0], new int[0][], new float[0][][], 0, 0,
                     new int[0], 0);
@@ -112,7 +141,7 @@ public final class NativeCulling {
             }
             int frameId = (int) result[NativeBridge.RENDER_FRAME_ID];
             try {
-                return read();
+                return read(table);
             } finally {
                 NativeBridge.releaseRender(context, frameId);
             }
@@ -131,8 +160,11 @@ public final class NativeCulling {
         return NativeBridge.animateRender(context, commands);
     }
 
-    /** Lit les retenus de la frame préparée dans {@code RENDER_OUT}, puis relâche le tampon. */
-    private Outcome read() {
+    /**
+     * Lit les retenus de la frame préparée dans {@code RENDER_OUT}, remet sa table des matrices au GPU si
+     * un retenu porte une palette, puis relâche le tampon.
+     */
+    private Outcome read(MatrixTable table) {
         ByteBuffer out = NativeBridge.acquire(context, BufferKinds.RENDER_OUT, 0);
         if (out == null) {
             return Outcome.failed(NativeBridge.E_INVALID_BUFFER);
@@ -150,6 +182,14 @@ public final class NativeCulling {
                 meshes[rank] = RenderPrepCodec.retainedMeshes(out, BufferKinds.HEADER_BYTES, count, rank);
                 matrices[rank] = RenderPrepCodec.retainedMatrices(out, BufferKinds.HEADER_BYTES, count, rank);
                 palettes[rank] = RenderPrepCodec.retainedPalette(out, BufferKinds.HEADER_BYTES, rank);
+            }
+            if (table != null && skinned(palettes)) {
+                int payload = BufferKinds.HEADER_BYTES;
+                int matrixTotal = out.getInt(payload + 16);
+                int meshTotal = out.getInt(payload + 8);
+                int offset = payload + RenderPrepCodec.OUT_HEADER_BYTES + count * RenderPrepCodec.OUT_RECORD_BYTES
+                        + meshTotal * Integer.BYTES;
+                table.upload(out, offset, matrixTotal * RenderPrepCodec.MATRIX_FLOATS * Float.BYTES);
             }
             return new Outcome(NativeBridge.OK, retained, levels, meshes, matrices,
                     (int) result[NativeBridge.RENDER_FLAGS], result[NativeBridge.RENDER_TRIANGLE_ESTIMATE],

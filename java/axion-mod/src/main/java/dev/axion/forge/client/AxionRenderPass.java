@@ -388,6 +388,23 @@ public final class AxionRenderPass {
         }
     }
 
+    /**
+     * Force le repli UBO des palettes d'os, ou rend le TBO (banc de rendu, T-541, H-04). Sans effet sous un
+     * autre backend.
+     *
+     * @param wanted vrai pour l'UBO paginé
+     */
+    public static void setPaletteUbo(boolean wanted) {
+        if (backend instanceof NativeGlBackend active) {
+            active.palettes().forceUbo(wanted);
+        }
+    }
+
+    /** {@return vrai si la dernière table des palettes d'os a été lue par pages d'UBO} */
+    public static boolean paletteUbo() {
+        return backend instanceof NativeGlBackend active && active.palettes().ubo();
+    }
+
     /** {@return le seuil d'instancing du backend natif, ou -1 sous un autre} */
     public static int instancingThreshold() {
         return backend instanceof NativeGlBackend active ? active.instancingThreshold() : -1;
@@ -830,7 +847,7 @@ public final class AxionRenderPass {
                     atRest && !assembly.entity().noCulling ? 0 : RenderPrepCodec.NO_CULL,
                     (float) (pose.x() - camera.x), (float) (pose.y() - camera.y), (float) (pose.z() - camera.z),
                     1f, rotation);
-        }, renderPrepLimit, renderTick);
+        }, renderPrepLimit, renderTick, backend instanceof NativeGlBackend natif ? natif.palettes() : null);
         if (outcome.code() == 0
                 && (OVERLAYS.isOn(DebugOverlays.Overlay.LOD) || OVERLAYS.isOn(DebugOverlays.Overlay.CULLING))) {
             for (int rank = 0; rank < count; rank++) {
@@ -857,7 +874,7 @@ public final class AxionRenderPass {
         int[] retained = outcome.retained();
         for (int rank = 0; rank < retained.length; rank++) {
             int at = candidates[retained[rank]];
-            kept[at] = all.get(at).withMeshes(outcome.meshes()[rank], outcome.matrices()[rank]);
+            kept[at] = all.get(at).withMeshes(outcome.meshes()[rank], outcome.matrices()[rank], outcome.palettes()[rank]);
         }
         List<RenderBackend.Assembly> drawn = new ArrayList<>(all.size());
         for (RenderBackend.Assembly assembly : kept) {

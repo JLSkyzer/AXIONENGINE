@@ -30,6 +30,16 @@ class ShaderVariantTest {
     }
 
     @Test
+    @DisplayName("C-66 : ajouter SKINNED à une variante la garde, dans l'ordre de R-762")
+    void ajouterUneDefinition() {
+        ShaderVariant cutout = ShaderVariant.of(Define.CUTOUT);
+        assertEquals(ShaderVariant.of(Define.SKINNED, Define.CUTOUT), cutout.with(Define.SKINNED));
+        assertEquals(ShaderVariant.of(Define.CUTOUT), cutout, "la variante d'origine ne change pas");
+        assertEquals(ShaderVariant.of(Define.SKINNED), ShaderVariant.BASE.with(Define.SKINNED));
+        assertEquals("SKINNED+CUTOUT", cutout.with(Define.SKINNED).key());
+    }
+
+    @Test
     @DisplayName("La variante de base laisse les sources telles quelles")
     void laBaseLaisseLesSources() {
         assertEquals(SOURCE, ShaderVariant.BASE.apply(SOURCE));

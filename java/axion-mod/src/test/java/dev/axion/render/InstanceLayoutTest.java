@@ -83,6 +83,17 @@ class InstanceLayoutTest {
     }
 
     @Test
+    @DisplayName("C-66 : le premier vec4 de la palette d'une instance skinnée va à palette_offset (R-780)")
+    void laPaletteVaAPaletteOffset() {
+        ByteBuffer bloc = ByteBuffer.allocate(InstanceLayout.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+        InstanceLayout.write(bloc, InstanceLayout.modelRows(0, 0, 0, 0, 0, 0, 1, repos(0, 0, 0)),
+                new float[] {1, 1, 1, 1}, 0, 384, 5);
+        assertEquals(384, bloc.getInt(InstanceLayout.PALETTE_OFFSET));
+        assertEquals(0, bloc.getInt(InstanceLayout.DEFORM_OFFSET));
+        assertEquals(5, bloc.getInt(InstanceLayout.FLAGS_OFFSET));
+    }
+
+    @Test
     @DisplayName("Les champs du §19.4 se suivent sans trou jusqu'à 88 octets")
     void lesChampsSeSuivent() {
         assertEquals(InstanceLayout.MODEL_OFFSET + 12 * 4, InstanceLayout.TINT_OFFSET);

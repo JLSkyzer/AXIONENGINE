@@ -171,6 +171,21 @@ public final class BancDeRendu {
     /** ADR-155 : de combien de pixels, au moins, le coulisseau poussé élargit la silhouette. */
     private static final int ELARGISSEMENT = 10;
 
+    /**
+     * ADR-155, tranche 5 : une colonne skinnée sur son socle, que le clip {@code plier} plie d'un quart de tour
+     * au coude ({@code tools/assets/animation_essai.py}).
+     */
+    private static final String BRAS = "axion:test/anime/bras_skinne";
+
+    /** Le bras : demi-largeur de la colonne, hauteur du socle, pied de la colonne, longueur d'un segment. */
+    private static final float BRAS_DEMI = 0.2f;
+    private static final float BRAS_SOCLE = 0.25f;
+    private static final float BRAS_PIED = 0.5f;
+    private static final float BRAS_SEGMENT = 1.0f;
+
+    /** R-791 : le défaut de {@code render.max_skinned_instances}, que le banc ne change pas. */
+    private static final int PLAFOND_SKINNES = 64;
+
     /** Un quart de tour autour de y, vers la droite : l'axe x de l'asset part vers +z. */
     private static final float[] QUART_DE_TOUR_A_DROITE = {0f, -0.70710677f, 0f, 0.70710677f};
 
@@ -279,7 +294,7 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-908", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
@@ -344,6 +359,14 @@ public final class BancDeRendu {
     private static AxionEntity charniere;
     private static CapturesDuBanc.Capture fondCharniere;
     private static PosesCharniere posesCharniere;
+
+    /** ADR-155, tranche 5 : le bras skinné, le fond sans lui, sa capture en TBO, et ses copies (T-542). */
+    private static AxionEntity bras;
+    private static CapturesDuBanc.Capture fondBras;
+    private static CapturesDuBanc.Capture brasTbo;
+    private static final List<AxionEntity> brasCopies = new ArrayList<>();
+    private static long plafonnesAvant;
+    private static int assembliesAvantBras;
 
     /** ADR-155 : la glissière, et le fond sans elle, puis au repos, puis le coulisseau poussé. */
     private static AxionEntity glissiere;
@@ -713,6 +736,7 @@ public final class BancDeRendu {
             jusqua("la glissière retirée", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
         }
 
+
         // T-477, T-478 (C-65, ADR-154) : 200 copies du cube devant la caméra. Instanciées, elles ne coûtent
         // que quelques appels de dessin ; sans instancing, l'image est la même, pixel pour pixel.
         if (NATIF) {
@@ -1030,6 +1054,49 @@ public final class BancDeRendu {
             une("juger T-492", mc -> jugerT492());
             une("juger T-481", mc -> jugerT481());
 
+            // ADR-155, tranche 5 : le skinning du backend natif, sur le natif rendu après T-492 — ses variantes
+            // SKINNED n'entrent au cache qu'ensuite, que T-905 réécrit entier. Le bras plié se dessine là où sa
+            // référence CPU le place (T-908, partie skinning) ; le repli UBO donne la même image que le TBO
+            // (T-541) ; au-delà de render.max_skinned_instances, la pose de repos et la métrique (T-542).
+            stabiliser("le fond du bras");
+            une("capturer le fond du bras", mc -> {
+                fondBras = capturer(mc, "skin_fond.png");
+                assembliesAvantBras = AxionRenderPass.lastFrame().assemblies();
+            });
+            serveur("poser le bras skinné", s -> bras = AssembliesDeTest.poser(
+                    s.overworld(), BRAS, positionPanneau(Z_PLAT), QUART_DE_TOUR_A_DROITE));
+            jusqua("le bras rendu, ses clips liés", 120, mc -> mc.level.getEntity(bras.getId()) != null
+                    && dessinees(assembliesAvantBras + 1) && !bras.animation().clips().isEmpty());
+            serveur("plier le bras", s -> bras.animation().play("plier", 0, 1f, 0f));
+            jusqua("le bras skinné au rendu", 120, mc -> skinnes() == 1);
+            stabiliser("le bras plié");
+            une("juger T-908", mc -> jugerT908(capturer(mc, "t908.png"), derniereVue));
+            serveur("poser 64 bras de plus", s -> {
+                brasCopies.clear();
+                for (int rang = 0; rang < PLAFOND_SKINNES; rang++) {
+                    brasCopies.add(AssembliesDeTest.poser(s.overworld(), BRAS,
+                            new Vec3(-6.5 - 2.0 * (rang / 10), surface, -8.5 + 2.0 * (rang % 10)), IDENTITE));
+                }
+            });
+            jusqua("les bras rendus, leurs clips liés", 240, mc -> dessinees(assembliesAvantBras + 1 + PLAFOND_SKINNES)
+                    && brasCopies.stream().noneMatch(copie -> copie.animation().clips().isEmpty()));
+            une("relever les plafonnés", mc -> plafonnesAvant = plafonnes());
+            serveur("plier tous les bras", s -> brasCopies.forEach(copie -> copie.animation().play("plier", 0, 1f, 0f)));
+            jusqua("le plafond atteint", 120, mc -> skinnes() == PLAFOND_SKINNES && plafonnes() > plafonnesAvant);
+            une("juger T-542", mc -> jugerT542());
+            // T-541 sur les 65 bras : leurs palettes s'étalent dans la table, bien au-delà de la première page.
+            stabiliser("les bras pliés");
+            une("capturer les bras en TBO", mc -> brasTbo = capturer(mc, "t541_tbo.png"));
+            une("passer au repli UBO", mc -> AxionRenderPass.setPaletteUbo(true));
+            stabiliser("les bras pliés, en UBO");
+            une("juger T-541", mc -> jugerT541(capturer(mc, "t541_ubo.png")));
+            une("rendre le TBO", mc -> AxionRenderPass.setPaletteUbo(false));
+            serveur("retirer les bras", s -> {
+                bras.discard();
+                brasCopies.forEach(Entity::discard);
+            });
+            jusqua("les bras retirés", 120, mc -> AxionRenderPass.lastFrame().assemblies() == assembliesAvantBras);
+
             // R-761 : une variante refusée à la demande, sur un natif qui avait démarré, fait aussi
             // basculer sur vanilla — jusqu'au rechargement suivant.
             une("refuser les variantes", mc -> {
@@ -1172,6 +1239,96 @@ public final class BancDeRendu {
                 && minecraft.level.getBlockState(new BlockPos(1, surface + 1, -5)).is(Blocks.BLUE_STAINED_GLASS)
                 && frame.assemblies() == DERRIERE.size()
                 && frame.withAsset() == DERRIERE.size();
+    }
+
+    /** {@return vrai si la dernière frame dessine {@code attendues} assemblies, toutes avec leur asset} */
+    private static boolean dessinees(int attendues) {
+        AxionRenderPass.FrameStats frame = AxionRenderPass.lastFrame();
+        return frame.assemblies() == attendues && frame.withAsset() == attendues;
+    }
+
+    /** {@return les retenus skinnés de la dernière frame : la jauge {@code axion.render.skinned}} */
+    private static long skinnes() {
+        return dev.axion.diag.JavaMetrics.GLOBAL.gauge("axion.render.skinned", "count").value();
+    }
+
+    /** {@return les retenus skinnés laissés au repos depuis le lancement : {@code axion.render.skinned_capped}} */
+    private static long plafonnes() {
+        return dev.axion.diag.JavaMetrics.GLOBAL.counter("axion.render.skinned_capped", "count").value();
+    }
+
+    /**
+     * T-908, partie skinning (ADR-155, tranche 5) : la silhouette du bras plié couvre la boîte que projettent
+     * ses sommets skinnés sur le CPU — chacun porté par ses os, au coude plié d'un quart de tour autour de z,
+     * puis posé à la place du bras —, à {@link #ECART_BOITE} pixels près. La déformation s'y ajoutera en M6.
+     */
+    private static void jugerT908(CapturesDuBanc.Capture plie, Vue vue) {
+        CapturesDuBanc.Masque masque = CapturesDuBanc.masque(fondBras, plie);
+        Quaternionf pose = bras.bodyRotation();
+        Vec3 origine = bras.position();
+        float minX = Float.POSITIVE_INFINITY;
+        float minY = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY;
+        float maxY = Float.NEGATIVE_INFINITY;
+        List<Vector3f> sommets = new ArrayList<>();
+        for (float x : new float[] {-0.5f, 0.5f}) {
+            for (float y : new float[] {0f, 2 * BRAS_SOCLE}) {
+                for (float z : new float[] {-0.5f, 0.5f}) {
+                    sommets.add(new Vector3f(x, y, z));
+                }
+            }
+        }
+        // Le coude pivote autour de (0, pied + segment, 0) : un sommet du milieu à moitié, du haut en entier.
+        float coude = BRAS_PIED + BRAS_SEGMENT;
+        for (float x : new float[] {-BRAS_DEMI, BRAS_DEMI}) {
+            for (float z : new float[] {-BRAS_DEMI, BRAS_DEMI}) {
+                for (int rang = 0; rang < 3; rang++) {
+                    float y = BRAS_PIED + rang * BRAS_SEGMENT;
+                    Vector3f repos = new Vector3f(x, y, z);
+                    Vector3f plieCoude = new Vector3f(-(y - coude), coude + x, z);
+                    float poids = rang * 0.5f;
+                    sommets.add(new Vector3f(repos).mul(1 - poids).add(new Vector3f(plieCoude).mul(poids)));
+                }
+            }
+        }
+        for (Vector3f sommet : sommets) {
+            Vector3f monde = pose.transform(new Vector3f(sommet));
+            float[] ecran = projeter(vue, origine.add(monde.x, monde.y, monde.z), plie.largeur(), plie.hauteur());
+            minX = Math.min(minX, ecran[0]);
+            minY = Math.min(minY, ecran[1]);
+            maxX = Math.max(maxX, ecran[0]);
+            maxY = Math.max(maxY, ecran[1]);
+        }
+        int[] attendue = {
+            (int) Math.ceil(minX - 0.5f), (int) Math.ceil(minY - 0.5f),
+            (int) Math.floor(maxX - 0.5f), (int) Math.floor(maxY - 0.5f)
+        };
+        int ecart = ecart(masque, attendue);
+        RAPPORT.noter("T-908", masque.nombre() >= aire(attendue) / 4 && ecart <= ECART_BOITE, String.format(
+                Locale.ROOT, "bras plié skinné au GPU : %d px, boîte %s ; référence CPU projetée %s (écart %d, %d"
+                        + " tolérés) ; la déformation (R-792) s'y ajoute en M6",
+                masque.nombre(), Arrays.toString(masque.boite()), Arrays.toString(attendue), ecart, ECART_BOITE));
+    }
+
+    /**
+     * T-541 (ADR-155 D7) : le repli UBO paginé donne l'image du chemin TBO, pixel pour pixel — sur 65 bras
+     * pliés, dont les 64 palettes s'étalent dans la table, chacune dans sa page.
+     */
+    private static void jugerT541(CapturesDuBanc.Capture ubo) {
+        int ecarts = CapturesDuBanc.masque(brasTbo, ubo).nombre();
+        boolean replie = AxionRenderPass.paletteUbo();
+        RAPPORT.noter("T-541", replie && ecarts == 0, String.format(Locale.ROOT,
+                "palettes lues par pages d'UBO : %s ; %d pixel(s) différent(s) du chemin TBO (0 attendu)",
+                replie ? "oui" : "non", ecarts));
+    }
+
+    /** T-542 (ADR-155 D7, R-791) : au-delà du plafond, la pose de repos s'applique et la métrique le compte. */
+    private static void jugerT542() {
+        long skinnes = skinnes();
+        long plafonnes = plafonnes() - plafonnesAvant;
+        RAPPORT.noter("T-542", skinnes == PLAFOND_SKINNES && plafonnes > 0, String.format(Locale.ROOT,
+                "%d bras pliés en vue : %d skinnés (render.max_skinned_instances = %d), %d laissé(s) au repos"
+                        + " depuis le relevé", PLAFOND_SKINNES + 1, skinnes, PLAFOND_SKINNES, plafonnes));
     }
 
     /** {@return la couche 0 de la glissière au client, telle que son plus récent snapshot la porte} */

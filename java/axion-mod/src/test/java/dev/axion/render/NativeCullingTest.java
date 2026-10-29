@@ -110,7 +110,7 @@ class NativeCullingTest {
             NativeCulling.Outcome outcome = culling.cull(camera, 4, (buffer, offset, rank) ->
                     RenderPrepCodec.putCandidate(buffer, offset, 100 + rank, asset.index(), generations[rank],
                             flags[rank], positions[rank][0], positions[rank][1], positions[rank][2], 1f, IDENTITY),
-                    1_000_000_000L, 0.0);
+                    1_000_000_000L, 0.0, null);
             assertEquals(NativeBridge.OK, outcome.code());
             assertArrayEquals(new int[] {0, 3}, outcome.retained());
             assertEquals(0, outcome.flags());
@@ -129,7 +129,7 @@ class NativeCullingTest {
             byte[] menteuse = RenderPrepCodec.camera(perspective(), IDENTITY, 1920, 1080, 128f, 0, 0, 1_000_000, 0);
             assertEquals(NativeBridge.E_INVALID_BUFFER, culling.cull(menteuse, 1, (buffer, offset, rank) ->
                     RenderPrepCodec.putCandidate(buffer, offset, 1, asset.index(), asset.generation(), 0,
-                            0f, 0f, -10f, 1f, IDENTITY), 1_000_000_000L, 0.0).code());
+                            0f, 0f, -10f, 1f, IDENTITY), 1_000_000_000L, 0.0, null).code());
 
             assertEquals(NativeBridge.OK, loader.unload(asset.index(), asset.generation()));
 
@@ -143,7 +143,7 @@ class NativeCullingTest {
                     RenderPrepCodec.camera(perspective(), IDENTITY, 1920, 1080, 128f, 0, 0, 2, 0), 2,
                     (buffer, offset, rank) -> RenderPrepCodec.putCandidate(buffer, offset, 200 + rank, anneau.index(),
                             anneau.generation(), 0, 0f, 0f, -distances[rank], 1f, IDENTITY),
-                    1_000_000_000L, 0.0);
+                    1_000_000_000L, 0.0, null);
             assertEquals(NativeBridge.OK, lod.code());
             assertArrayEquals(new int[] {0, 1}, lod.retained());
             assertEquals(0, lod.levels()[0]);
