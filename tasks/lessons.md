@@ -2050,3 +2050,17 @@ page.
 unité, et le plus loin possible. T-541 se joue désormais sur 65 bras, dont les 64 palettes s'étalent dans la
 table ; la mutation y est rouge.
 
+
+## 2026-10-29 | Une matrice de capacités restée en retard sur deux livraisons
+
+**Ce qui a mal tourné.** La matrice R-1493 du backend natif annonçait encore l'instancing et le multi-draw
+indirect « pas encore livrés » un jour après la clôture de C-65, et le skinning « à venir » après la 5c
+d'ADR-155. Le journal du démarrage et `/axion status` le disaient aux joueurs ; aucun test n'a rougi, parce
+que le test de la matrice exigeait justement « tout sauf l'éclairage pas encore livré ».
+
+**Cause.** La matrice se met à jour à la main, hors du code qui livre la capacité, et son test figeait l'état
+d'un jalon au lieu d'une règle.
+
+**Règle.** Une tranche qui livre une capacité de la matrice du §19.2bis met `RenderCapabilities` à jour dans
+le même commit, et son test exige la nouvelle déclaration. Lire la ligne « pas encore livrées » du journal
+d'un banc de rendu avant de clore un chantier de rendu.

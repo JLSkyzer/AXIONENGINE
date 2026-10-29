@@ -136,8 +136,10 @@ public final class RenderCapabilities {
                         "normal et ORM appliquées (ADR-127 §5) ; hauteur, avec la variante PARALLAX : C-63 ;"
                                 + " dommage : C-69"),
                 new Entry(Capability.SSR, Availability.NOT_DELIVERED, "expérimental, Q-4 (R-1560) : C-83"),
-                new Entry(Capability.INSTANCING, Availability.NOT_DELIVERED,
-                        "un dessin instancié par mesh posé ; regroupement et multi-draw indirect : C-65"),
+                new Entry(Capability.INSTANCING, Availability.AVAILABLE,
+                        "une série de même clé d'au moins render.instancing_threshold dessins en un dessin instancié,"
+                                + " une plus courte dessin par dessin ; les séries opaques au même état en un multi-draw"
+                                + " indirect, sous GL 4.3 et render.indirect (ADR-154)"),
                 new Entry(Capability.SKINNING_DEFORMATION, Availability.NOT_DELIVERED,
                         "skinning sur GPU, plafonné par render.max_skinned_instances (R-791) ;"
                                 + " déformation : M6 (C-68)"),

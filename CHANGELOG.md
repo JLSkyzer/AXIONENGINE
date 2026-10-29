@@ -408,6 +408,11 @@ Definition of Done (PARTIE 37.3).
 
 ### Corrige
 
+- Rendu (C-65, R-1493) : la matrice des capacites du backend natif declarait
+  l'instancing et le multi-draw indirect "pas encore livres", au journal et
+  dans `/axion status`, alors qu'ADR-154 les a livres le 2026-10-28. Elle les
+  declare disponibles, avec leur forme : series instanciees au seuil
+  `render.instancing_threshold`, indirect sous GL 4.3 et `render.indirect`.
 - Hooks (C-01, FM-02) : un echec isole d'un hook ne laissait aucune trace au
   journal, et sa desactivation (`E-1010`) ne s'y ecrivait qu'a l'arret du
   jeu ; un echec du hook `tick` sautait un tick de simulation entier en

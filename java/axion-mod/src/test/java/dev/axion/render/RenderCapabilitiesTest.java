@@ -64,14 +64,20 @@ class RenderCapabilitiesTest {
     }
 
     @Test
-    @DisplayName("R-1493 : le natif déclare l'éclairage du §19.5, et chaque capacité qui manque nomme son composant")
-    void natifLivreEnM3() {
+    @DisplayName("R-1493 : le natif déclare l'éclairage du §19.5 et l'instancing de C-65, et ce qui manque nomme son composant")
+    void natifLivre() {
         RenderCapabilities natif = RenderCapabilities.of(NATIVE);
         assertEquals(Availability.AVAILABLE, natif.availability(Capability.LIGHTING));
         Entry eclairage = natif.entries().get(Capability.LIGHTING.ordinal());
         assertTrue(eclairage.detail().contains("§19.5") && eclairage.detail().contains("C-81"), eclairage.detail());
+        // ADR-154 : séries instanciées au seuil, et multi-draw indirect sous sa condition.
+        assertEquals(Availability.AVAILABLE, natif.availability(Capability.INSTANCING));
+        Entry instancing = natif.entries().get(Capability.INSTANCING.ordinal());
+        assertTrue(instancing.detail().contains("render.instancing_threshold")
+                && instancing.detail().contains("GL 4.3") && instancing.detail().contains("render.indirect"),
+                instancing.detail());
         for (Entry entry : natif.entries()) {
-            if (entry.capability() != Capability.LIGHTING) {
+            if (entry.capability() != Capability.LIGHTING && entry.capability() != Capability.INSTANCING) {
                 assertEquals(Availability.NOT_DELIVERED, entry.availability(), entry.capability().name());
                 assertTrue(entry.detail().matches(".*\\bC-\\d+.*"), entry.detail());
             }
