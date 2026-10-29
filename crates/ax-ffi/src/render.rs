@@ -13,6 +13,14 @@
 //! rendu ne prend **jamais** le verrou de session : il n'attend jamais la simulation, et le seul
 //! qui puisse lui disputer ce verrou-ci est un chargement d'asset, section courte et bornée.
 //!
+//! # Les étapes côté client (R-662)
+//!
+//! La préparation d'une frame est le pas du client : elle échantillonne l'animation de chaque
+//! retenu animé (étape 2) et propage son graphe (étape 14), et rien d'autre — l'intégration
+//! physique et la chaîne de dommage (étapes 3 à 12) n'y existent pas. Elle journalise les étapes
+//! qu'elle exécute, que T-392 vérifie, et publie `axion.scene.propagate_ns` dans le registre de la
+//! session, partagé : sans en prendre le verrou.
+//!
 //! # Une frame en vol
 //!
 //! `RENDER_OUT` est unique : son contenu vaut jusqu'à `axion_render_release` (R-301). Une
@@ -20,7 +28,7 @@
 //! la compte, comme `axion_sim_submit` clôt un cycle non collecté (R-282).
 
 use crate::abi::{AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE};
-use crate::animation::{AnimatedAsset, Instance};
+use crate::animation::{AnimatedAsset, Instance, PoseTimes};
 use ax_asset::optimize::MAX_LOD_LEVELS;
 use ax_core::BufferPool;
 use ax_jobs::{JobKind, JobSystem};
@@ -30,9 +38,11 @@ use ax_model::dm::animation::{anim_action, AnimCommand, RenderAnimate};
 use ax_model::dm::debug::{debug_flags, debug_frame, encode_debug_payload, overlay};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::limits::MAX_NODES;
-use ax_physics::{select_drafts, DebugDraft};
+use ax_physics::{select_drafts, DebugDraft, Stage, StageLog};
 use ax_render_prep::lod::{biased, projected_px, LodState};
 use ax_render_prep::{cull_batched, Camera, Candidate, CullStats, Frustum, LocalBounds, Visible};
+use ax_scene::SceneMetrics;
+use ax_telemetry::Telemetry;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
@@ -147,6 +157,33 @@ pub struct Prepared {
     pub flags: u32,
 }
 
+/// Où le contexte de rendu publie ce qu'il mesure : le registre de la session, partagé — ses
+/// métriques s'écrivent sans verrou (C-15).
+#[derive(Debug, Clone)]
+pub struct RenderTelemetry {
+    /// Le registre de la session.
+    pub registry: Arc<Telemetry>,
+    /// `axion.scene.propagate_ns` (C-30).
+    pub scene: SceneMetrics,
+}
+
+impl RenderTelemetry {
+    /// Un registre à lui seul, pour un contexte de rendu ouvert hors de toute session.
+    ///
+    /// # Panics
+    ///
+    /// Jamais : un registre neuf accepte la déclaration.
+    #[must_use]
+    pub fn standalone() -> Self {
+        let mut builder = Telemetry::builder();
+        let scene = SceneMetrics::register(&mut builder).expect("registre neuf");
+        Self {
+            registry: Arc::new(builder.build()),
+            scene,
+        }
+    }
+}
+
 /// La pose qu'une frame a donnée à une instance animée retenue : celle de son candidat.
 #[derive(Debug, Clone, Copy)]
 struct AnimatedPose {
@@ -178,6 +215,9 @@ pub struct RenderContext {
     /// Les instances animées retenues par la dernière frame préparée, à la pose de leur candidat : les
     /// overlays de l'animation les tracent (ADR-155, tranche 6b).
     animated_poses: Vec<AnimatedPose>,
+    /// Les étapes du pas que la dernière frame a exécutées, et leur durée (R-661, R-662).
+    stages: StageLog,
+    telemetry: RenderTelemetry,
     limits: RenderLimits,
 }
 
@@ -190,8 +230,13 @@ fn slot() -> MutexGuard<'static, Option<RenderContext>> {
 }
 
 /// Ouvre le contexte de rendu de la session `token`. Appelé par l'ouverture de la session, qui
-/// tient son verrou.
-pub(crate) fn open(token: u64, jobs: Option<Arc<JobSystem>>, limits: RenderLimits) {
+/// tient son verrou ; `telemetry` est son registre, partagé.
+pub(crate) fn open(
+    token: u64,
+    jobs: Option<Arc<JobSystem>>,
+    limits: RenderLimits,
+    telemetry: RenderTelemetry,
+) {
     *slot() = Some(RenderContext {
         token,
         poisoned: false,
@@ -205,6 +250,8 @@ pub(crate) fn open(token: u64, jobs: Option<Arc<JobSystem>>, limits: RenderLimit
         decisions: HashMap::new(),
         instances: HashMap::new(),
         animated_poses: Vec::new(),
+        stages: StageLog::default(),
+        telemetry,
         limits,
     });
 }
@@ -603,6 +650,9 @@ impl RenderContext {
         let mut matrices: Vec<f32> = Vec::new();
         let mut animated = 0u32;
         self.animated_poses.clear();
+        // R-662 : les étapes du client, 2 puis 14, cumulées sur les retenus animés.
+        self.stages.reset();
+        let mut steps = PoseTimes::default();
         let mut triangles = 0u32;
         // R-791 : une palette aux `render.max_skinned_instances` retenus skinnés les plus proches ; les
         // autres se dessinent au repos, et sont comptés.
@@ -658,7 +708,12 @@ impl RenderContext {
                 if *handle == current && animation.draw_count() == count as usize {
                     matrix_first = u32::try_from(matrices.len() / MATRIX_FLOATS)
                         .map_err(|_| AXION_E_INVALID_BUFFER)?;
-                    instance.draw_matrices(animation, tick, &mut matrices);
+                    let times = instance.draw_matrices(animation, tick, &mut matrices);
+                    self.telemetry
+                        .scene
+                        .record(&self.telemetry.registry, times.propagate_ns);
+                    steps.animation_ns = steps.animation_ns.saturating_add(times.animation_ns);
+                    steps.propagate_ns = steps.propagate_ns.saturating_add(times.propagate_ns);
                     animated += 1;
                     self.animated_poses.push(AnimatedPose {
                         id: candidate.id,
@@ -683,6 +738,10 @@ impl RenderContext {
             records.extend_from_slice(&count.to_le_bytes());
             records.extend_from_slice(&matrix_first.to_le_bytes());
             records.extend_from_slice(&palette_first.to_le_bytes());
+        }
+        if animated > 0 {
+            self.stages.record(Stage::Animation, steps.animation_ns);
+            self.stages.record(Stage::SceneGraph, steps.propagate_ns);
         }
         let mesh_total = u32::try_from(meshes.len()).map_err(|_| AXION_E_INVALID_BUFFER)?;
         let matrix_total =
@@ -738,6 +797,19 @@ impl RenderContext {
             frame_id,
             flags,
         })
+    }
+
+    /// Les étapes du pas que la dernière frame préparée a exécutées, dans leur ordre (R-662, T-392) :
+    /// l'animation (2) et le graphe (14) quand elle a retenu une instance animée, rien sinon.
+    #[must_use]
+    pub fn stages(&self) -> &[Stage] {
+        self.stages.executed()
+    }
+
+    /// La durée d'une étape à la dernière frame préparée, en nanosecondes ; 0 si elle n'a pas couru.
+    #[must_use]
+    pub fn stage_duration(&self, stage: Stage) -> u64 {
+        self.stages.duration(stage)
     }
 
     /// Dépose dans `RENDER_DEBUG` les segments des overlays de l'animation demandés — `bones`, `nodes`,
@@ -871,6 +943,8 @@ mod tests {
             decisions: HashMap::new(),
             instances: HashMap::new(),
             animated_poses: Vec::new(),
+            stages: StageLog::default(),
+            telemetry: RenderTelemetry::standalone(),
             limits: RenderLimits {
                 max_skinned_instances: 64,
             },

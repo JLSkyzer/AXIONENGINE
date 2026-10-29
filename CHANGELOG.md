@@ -206,6 +206,10 @@ Definition of Done (PARTIE 37.3).
     les demande a chaque frame apres le culling, sans le verrou de session,
     et les dessine a travers la peau ; l'os parent est celui de `SKEL`,
     verifie au chargement ;
+    pas du client (R-662, T-392) : la preparation du rendu journalise les
+    etapes qu'elle execute, l'animation (2) puis le graphe (14), et rien
+    d'autre ; chaque graphe propage se mesure dans `axion.scene.propagate_ns`,
+    au registre de la session partage sans son verrou ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

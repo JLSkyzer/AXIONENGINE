@@ -3404,6 +3404,11 @@ sources procédurales de véhicule (M5, T-365).
             `ANIMATED`), `ANIMATE_ASSEMBLY` (opcode 16), dépendance des colliders jugée à la création (R-1430,
             T-360), étape 2 qui repose les colliders dépendants dans leurs corps ; 5 mutations rouges. Reste :
             étape 14 côté serveur avec les sockets ; T-392 (étapes côté client).
+      - [x] 3c. Client (2026-10-30) : la préparation du rendu journalise les étapes qu'elle exécute (2 puis 14,
+            seulement si une instance animée est retenue) et publie `axion.scene.propagate_ns`, une mesure par
+            graphe, dans le registre de la session partagé sans son verrou ; T-392 vert
+            (`tests/client_steps.rs`) ; 5 mutations rouges. Restent : l'étape 14 côté serveur, qui attend les
+            sockets (C-27, étapes 4 et 5) ; l'animation qui pilote un joint (`drives_joint`, M6).
 - [x] Décisions de Killian pour la tranche 4 (2026-10-29) : `AnimationControl` interne en M4 (tests, GameTests, banc ;
       fournisseur en M9) ; descripteur v3 à la dernière commande par couche ; `drives_joint` avec la porte (M6) ;
       pas de persistance en M4.
@@ -3459,8 +3464,10 @@ sources procédurales de véhicule (M5, T-365).
 - [ ] C-27, étapes 4 et 5 avec C-51 : `CompiledDefinition`, noms de nodes, de sockets et de parts
       résolus côté natif, synchronisation serveur → client — ADR-137, ADR-146 §5.
 - [ ] C-30 avec C-37 : le graphe de scène vivant au runtime, étape 14 du pas et
-      `axion.scene.propagate_ns` — ADR-137, ADR-146 §7.
-- [ ] C-40 : T-392 — ADR-144 §3, ADR-146.
+      `axion.scene.propagate_ns` — ADR-137, ADR-146 §7. Fait côté client (ADR-155, étape 3c, 2026-10-30) :
+      graphe vivant par instance animée, propagation mesurée. Reste l'étape 14 côté serveur, avec les sockets.
+- [x] C-40 : T-392 — ADR-144 §3, ADR-146 ; fait par l'étape 3c d'ADR-155 (`tests/client_steps.rs`), le
+      2026-10-30.
 - [ ] C-60 avec IF-05 : R-300, résultat partiel `AXION_RENDER_DEGRADED` (ADR-127) — ADR-146.
 - [x] C-61 avec C-66 : R-742, skinning CPU — ADR-146 ; fait par la tranche 6a d'ADR-155 (c179994), le
       2026-10-29.

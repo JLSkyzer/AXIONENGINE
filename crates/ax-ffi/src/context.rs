@@ -23,6 +23,7 @@ use ax_model::budgets::Budget;
 use ax_model::buffer::BufferKind;
 use ax_model::dm::handle::Handle;
 use ax_physics::{ActivityReport, SimDriver, SimSettings, Stage, StageLog, WINDOW_TICKS};
+use ax_scene::SceneMetrics;
 use ax_telemetry::{BudgetMetrics, MetricId, Telemetry};
 use std::collections::HashMap;
 use std::time::Instant;
@@ -67,8 +68,11 @@ pub fn init_error() -> Option<String> {
 /// coûter une recherche par nom (R-501).
 #[derive(Debug)]
 struct SessionMetrics {
-    registry: Telemetry,
+    /// Partagé avec le contexte de rendu, qui y publie sans le verrou de session (ADR-154 D2).
+    registry: Arc<Telemetry>,
     budgets: BudgetMetrics,
+    /// `axion.scene.propagate_ns` (C-30), que le rendu mesure à chaque graphe propagé.
+    scene: SceneMetrics,
     panics: MetricId,
     workers: MetricId,
     sim_unbalanced: MetricId,
@@ -968,7 +972,15 @@ pub fn open(
     let session = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
     let token = TOKEN_TAG | session;
     // Ordre des verrous : la session, puis le rendu (ADR-154 D2).
-    crate::render::open(token, jobs.clone(), render);
+    crate::render::open(
+        token,
+        jobs.clone(),
+        render,
+        crate::render::RenderTelemetry {
+            registry: Arc::clone(&metrics.registry),
+            scene: metrics.scene,
+        },
+    );
     *slot = Some(Session {
         token,
         state: RuntimeState::Ready,
@@ -1013,6 +1025,7 @@ pub fn open(
 fn build_metrics() -> SessionMetrics {
     let mut builder = Telemetry::builder();
     let budgets = BudgetMetrics::register(&mut builder).expect("métriques de budget");
+    let scene = SceneMetrics::register(&mut builder).expect("métriques du graphe de scène");
     // R-310 : chaque panic capturée incrémente `axion.native.panics`.
     let panics = builder
         .gauge("axion.native.panics", "count")
@@ -1114,8 +1127,9 @@ fn build_metrics() -> SessionMetrics {
     };
 
     SessionMetrics {
-        registry: builder.build(),
+        registry: Arc::new(builder.build()),
         budgets,
+        scene,
         panics,
         workers,
         sim_unbalanced,

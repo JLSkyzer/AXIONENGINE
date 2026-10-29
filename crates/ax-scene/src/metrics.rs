@@ -35,8 +35,14 @@ impl SceneMetrics {
         let start = Instant::now();
         let updated = graph.propagate();
         let nanos = u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX);
-        telemetry.record(self.propagate_ns, nanos);
+        self.record(telemetry, nanos);
         updated
+    }
+
+    /// Enregistre la propagation d'un graphe que l'appelant a mesurée lui-même — par graphe,
+    /// comme [`Self::propagate`].
+    pub fn record(&self, telemetry: &Telemetry, nanos: u64) {
+        telemetry.record(self.propagate_ns, nanos);
     }
 }
 

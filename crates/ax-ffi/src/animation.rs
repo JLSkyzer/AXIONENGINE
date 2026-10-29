@@ -27,6 +27,7 @@ use ax_model::dm::debug::DebugSegment;
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::scene::{node_state, NodeDesc, NONE_U16};
 use ax_scene::{mat4x3, SceneGraph};
+use std::time::Instant;
 
 /// Les clips d'un asset chargé et ce qu'il faut pour en tirer les matrices de ses dessins.
 #[derive(Debug, Clone, PartialEq)]
@@ -56,6 +57,16 @@ struct Bone {
 
 /// Écart toléré à la dernière ligne `(0, 0, 0, 1)` d'une liaison inverse, que glTF veut affine.
 const AFFINE_TOLERANCE: f32 = 1e-5;
+
+/// Ce qu'a coûté l'évaluation d'une pose, en nanosecondes (R-661) : l'échantillonnage des pistes,
+/// étape 2 du pas, puis la propagation du graphe, étape 14 (R-660).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PoseTimes {
+    /// Étape 2 : les pistes échantillonnées, les nodes animés posés.
+    pub animation_ns: u64,
+    /// Étape 14 : le graphe propagé (C-30).
+    pub propagate_ns: u64,
+}
 
 /// Longueur des axes de l'overlay `nodes`, en blocs, échelle du node comprise (tranche 6b).
 pub const NODE_AXIS_LENGTH: f32 = 0.25;
@@ -228,8 +239,14 @@ impl Instance {
 
     /// Évalue la pose au temps `tick`, la propage, et ajoute à `out` la matrice `mat4x3` de chaque
     /// dessin au repos, dans leur ordre. Un node que l'évaluation rendrait non fini garde sa pose
-    /// d'avant : rien de non fini n'atteint le rendu.
-    pub fn draw_matrices(&mut self, asset: &AnimatedAsset, tick: f64, out: &mut Vec<f32>) {
+    /// d'avant : rien de non fini n'atteint le rendu. Rend la durée de chacune des deux étapes.
+    pub fn draw_matrices(
+        &mut self,
+        asset: &AnimatedAsset,
+        tick: f64,
+        out: &mut Vec<f32>,
+    ) -> PoseTimes {
+        let started = Instant::now();
         self.animator.evaluate(
             &asset.clips,
             &asset.rest,
@@ -249,10 +266,19 @@ impl Instance {
                 .graph
                 .set_local(node, node_state::ANIMATION_DRIVEN, affine);
         }
+        let sampled = Instant::now();
         self.graph.propagate();
+        let propagated = Instant::now();
         let worlds = self.graph.worlds();
         for &node in &asset.draw_nodes {
             out.extend_from_slice(&mat4x3(&worlds[node as usize]));
+        }
+        let nanos = |from: Instant, to: Instant| {
+            u64::try_from(to.duration_since(from).as_nanos()).unwrap_or(u64::MAX)
+        };
+        PoseTimes {
+            animation_ns: nanos(started, sampled),
+            propagate_ns: nanos(sampled, propagated),
         }
     }
 
