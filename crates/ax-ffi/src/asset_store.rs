@@ -14,7 +14,8 @@ use core::mem::size_of;
 
 use crate::animation::AnimatedAsset;
 use ax_asset::a3d::{
-    decode_animations, A3dError, A3dFile, A3dLimits, SectionMask, SectionTag, TextureTable,
+    decode_animations, decode_bones, A3dError, A3dFile, A3dLimits, SectionMask, SectionTag,
+    TextureTable,
 };
 use ax_asset::load::decode_sections;
 use ax_asset::optimize::{LodTable, MAX_LOD_LEVELS};
@@ -324,8 +325,9 @@ pub fn decode_render_asset(
         })
         .collect();
 
-    // `ANIM` (ADR-155) se lit avec les dessins qu'elle anime. Comme `LODM`, une table refusée — par la
-    // lecture ou par la seconde passe de C-22 (R-540) — ne refuse pas l'asset : il se rend au repos.
+    // `ANIM` (ADR-155) se lit avec les dessins qu'elle anime, et `SKEL` avec elle : la palette d'un asset
+    // skinné suit ses os. Comme `LODM`, une table refusée — par la lecture ou par la seconde passe de C-22
+    // (R-540) — ne refuse pas l'asset : il se rend au repos.
     let mut anim_refused = None;
     let animation = if draws.is_empty() {
         None
@@ -337,7 +339,16 @@ pub fn decode_render_asset(
             .and_then(|payload| match payload {
                 Some(bytes) => decode_animations(&bytes)
                     .map_err(|error| error.to_string())
-                    .and_then(|table| AnimatedAsset::new(&nodes, table, draw_nodes)),
+                    .and_then(|table| {
+                        let skeleton = match file.section(SectionTag::SKEL) {
+                            Ok(Some(skel)) => {
+                                decode_bones(&skel).map_err(|error| error.to_string())?
+                            }
+                            Ok(None) => Vec::new(),
+                            Err(error) => return Err(error.to_string()),
+                        };
+                        AnimatedAsset::new(&nodes, table, draw_nodes, &skeleton)
+                    }),
                 None => Ok(None),
             }) {
             Ok(animation) => animation.map(Arc::new),

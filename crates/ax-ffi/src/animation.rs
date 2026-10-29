@@ -4,12 +4,19 @@
 //! L'instance évalue la pose locale de chaque node au temps demandé, la propage (étape 14), puis
 //! rend la matrice de chaque dessin au repos, dans l'espace de l'asset, comme `RestDraw.model` : le
 //! rendu les substitue au repos (`RENDER_OUT` schéma 3, décision de Killian).
+//!
+//! # La palette (C-66, tranche 5)
+//!
+//! Un asset skinné porte son squelette (`SKEL`). La palette d'une instance est, pour chaque os,
+//! `monde(node de l'os) × liaison inverse`, dans l'espace de l'asset : un sommet skinné y est porté
+//! sans passer par la matrice du node de son mesh, que glTF ignore pour un mesh skinné. T-540 la
+//! compare à ce calcul fait à part, os par os.
 
 use ax_anim::{Animator, ClipLibrary, TICKS_PER_SECOND};
 use ax_asset::a3d::AnimationTable;
 use ax_asset::validate::validate_animations;
-use ax_math::{Affine3A, Quat, Vec3};
-use ax_model::dm::animation::AnimCommand;
+use ax_math::{Affine3A, Mat4, Quat, Vec3};
+use ax_model::dm::animation::{AnimCommand, BoneDesc};
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::scene::{node_state, NodeDesc};
 use ax_scene::{mat4x3, SceneGraph};
@@ -26,24 +33,44 @@ pub struct AnimatedAsset {
     animated: Vec<u32>,
     /// Le node de chaque dessin au repos, dans l'ordre de la liste au repos.
     draw_nodes: Vec<u32>,
+    /// Les os du squelette, dans l'ordre de `SKEL` : vide pour un asset sans skin.
+    bones: Vec<Bone>,
 }
 
+/// Un os : son node, et sa matrice de liaison inverse.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Bone {
+    node: u32,
+    inverse_bind: Affine3A,
+}
+
+/// Écart toléré à la dernière ligne `(0, 0, 0, 1)` d'une liaison inverse, que glTF veut affine.
+const AFFINE_TOLERANCE: f32 = 1e-5;
+
 impl AnimatedAsset {
-    /// Construit l'animation d'un asset depuis sa section `ANIM` ; `None` s'il n'a aucun clip.
+    /// Construit l'animation d'un asset depuis ses sections `ANIM` et `SKEL` ; `None` s'il n'a aucun
+    /// clip.
     ///
     /// # Errors
     ///
     /// Un texte qui dit pourquoi la table est refusée : la seconde passe de C-22 (R-540) la juge,
-    /// et la hiérarchie ne doit pas mettre un node animé au-dessus d'un node physique (R-931).
-    /// L'asset se rend alors au repos, comme une table `LODM` refusée (ADR-154 D4).
+    /// et la hiérarchie ne doit pas mettre un node animé au-dessus d'un node physique (R-931). Un os
+    /// qui désigne un node absent, ou dont la liaison inverse n'est pas finie et affine, refuse
+    /// aussi la table. L'asset se rend alors au repos, comme une table `LODM` refusée (ADR-154 D4).
     pub fn new(
         nodes: &[NodeDesc],
         table: AnimationTable,
         draw_nodes: Vec<u32>,
+        skeleton: &[BoneDesc],
     ) -> Result<Option<Self>, String> {
         if table.animations.is_empty() {
             return Ok(None);
         }
+        let bones = skeleton
+            .iter()
+            .enumerate()
+            .map(|(index, bone)| bone_of(index, bone, nodes.len()))
+            .collect::<Result<Vec<_>, _>>()?;
         let report = validate_animations(nodes, &table.animations, &table.tracks, &table.keys);
         if let Some(error) = report.errors.first() {
             return Err(error.to_string());
@@ -75,7 +102,14 @@ impl AnimatedAsset {
             rest,
             animated,
             draw_nodes,
+            bones,
         }))
+    }
+
+    /// Le nombre d'os, donc de matrices de la palette d'une instance ; 0 sans skin.
+    #[must_use]
+    pub fn bone_count(&self) -> usize {
+        self.bones.len()
     }
 
     /// Les clips de l'asset.
@@ -95,7 +129,34 @@ impl AnimatedAsset {
     pub fn resident_bytes(&self) -> usize {
         self.nodes.len() * (size_of::<NodeDesc>() + size_of::<Transform>())
             + (self.animated.len() + self.draw_nodes.len()) * size_of::<u32>()
+            + self.bones.len() * size_of::<Bone>()
     }
+}
+
+/// L'os `index` de `SKEL`, vérifié contre les `node_count` nodes de l'asset.
+fn bone_of(index: usize, bone: &BoneDesc, node_count: usize) -> Result<Bone, String> {
+    if bone.node as usize >= node_count {
+        return Err(format!(
+            "os {index} : node {} hors des {node_count} de l'asset",
+            bone.node
+        ));
+    }
+    let matrix = Mat4::from_cols_array(&bone.inverse_bind);
+    let last = matrix.row(3);
+    if !matrix.is_finite()
+        || last.x.abs() > AFFINE_TOLERANCE
+        || last.y.abs() > AFFINE_TOLERANCE
+        || last.z.abs() > AFFINE_TOLERANCE
+        || (last.w - 1.0).abs() > AFFINE_TOLERANCE
+    {
+        return Err(format!(
+            "os {index} : liaison inverse non finie ou non affine"
+        ));
+    }
+    Ok(Bone {
+        node: bone.node,
+        inverse_bind: Affine3A::from_mat4(matrix),
+    })
 }
 
 /// L'animation d'une assembly : ses couches et son graphe vivant.
@@ -162,6 +223,16 @@ impl Instance {
         let worlds = self.graph.worlds();
         for &node in &asset.draw_nodes {
             out.extend_from_slice(&mat4x3(&worlds[node as usize]));
+        }
+    }
+
+    /// Ajoute à `out` la palette de la pose que [`Self::draw_matrices`] a évaluée en dernier : la
+    /// matrice `mat4x3` de chaque os, `monde(node) × liaison inverse`, dans l'espace de l'asset et
+    /// dans l'ordre de `SKEL`. Rien pour un asset sans skin.
+    pub fn palette(&self, asset: &AnimatedAsset, out: &mut Vec<f32>) {
+        let worlds = self.graph.worlds();
+        for bone in &asset.bones {
+            out.extend_from_slice(&mat4x3(&(worlds[bone.node as usize] * bone.inverse_bind)));
         }
     }
 }

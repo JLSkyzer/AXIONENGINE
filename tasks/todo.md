@@ -3417,7 +3417,14 @@ sources procédurales de véhicule (M5, T-365).
       générée par `tools/assets/animation_essai.py` : GameTest de bout en bout (54/54), banc de rendu (largeur
       123 → 191 px, retour au repos à 0 px près) ; 10 mutations Java et 2 natives rouges.
       Reste : une assembly sans collider n'a pas de corps, donc ni snapshot ni animation.
-- [ ] 5. Skinning natif : shader, TBO, repli UBO, palettes dans `RENDER_OUT` (schéma 3) ; T-540..T-542, T-908.
+- [x] Décisions de Killian pour la tranche 5 (2026-10-29) : `RENDER_OUT` schéma 4 (`palette_first` explicite) ;
+      T-908 pour sa partie skinning dès la tranche 5, la déformation en M6.
+- [ ] 5. Skinning natif : shader, TBO, repli UBO, palettes dans `RENDER_OUT` ; T-540..T-542, T-908 (skinning).
+      - [x] 5a. Palette native (2026-10-29) : `SKEL` chargée avec `ANIM`, os vérifiés (node, liaison inverse finie
+            et affine), `Instance::palette` en espace de l'asset ; T-540 sur le bras compilé ; 4 mutations rouges.
+      - [ ] 5b. `RENDER_OUT` schéma 4 (`palette_first`), plafond R-791 par distance et sa métrique, lecture Java.
+      - [ ] 5c. Java : TBO des palettes depuis `RENDER_OUT`, `palette_offset`, variante `SKINNED` (attributs 6, 7 et
+            14), dessin skinné hors de sa matrice de dessin, repli UBO ; banc : T-541, T-542, T-908 (skinning).
 - [ ] 6. Skinning vanilla (R-742), overlays `bones`, `nodes`, `pivots`, documentation.
 
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
