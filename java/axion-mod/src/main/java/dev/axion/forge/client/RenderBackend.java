@@ -118,13 +118,14 @@ interface RenderBackend {
          * et le niveau 0 reste juste.
          *
          * @param meshes le mesh de chaque dessin, dans l'ordre de la liste au repos
+         * @param matrices la matrice de chaque dessin d'une assembly animée (ADR-155), ou {@code null}
          */
-        Assembly withMeshes(int[] meshes) {
+        Assembly withMeshes(int[] meshes, float[][] matrices) {
             if (asset == null) {
                 return this;
             }
             List<GeometryTransfer.Draw> leveled =
-                    LeveledDraws.of(asset.mesh().draws(), asset.mesh().meshes().size(), meshes);
+                    LeveledDraws.of(asset.mesh().draws(), asset.mesh().meshes().size(), meshes, matrices);
             return leveled == draws ? this : new Assembly(entity, asset, rig, leveled);
         }
     }

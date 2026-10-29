@@ -33,12 +33,15 @@
 use crate::clip::ClipLibrary;
 use crate::quat::{self, Quat};
 use crate::sample::{sample, Cursor};
-use ax_model::dm::animation::channel;
+use ax_model::dm::animation::{anim_action, channel, AnimCommand};
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::limits::MAX_ACTIVE_TRACKS;
 
 /// Le nombre de couches, figé par R-1440.
 pub const LAYERS: usize = 4;
+
+/// Ticks de jeu par seconde : l'horloge des commandes est celle du serveur (ADR-155, tranche 3).
+pub const TICKS_PER_SECOND: f64 = 20.0;
 
 /// Les couches additives, par leur rang.
 const ADDITIVE: [bool; LAYERS] = [false, true, true, false];
@@ -345,6 +348,39 @@ impl Animator {
             bits
         });
         Ok(())
+    }
+
+    /// Applique une commande horodatée ([`AnimCommand`]) : son instant est en ticks, et devient des
+    /// secondes. `mask` sont les nodes qui suivent une commande `SET_MASK`. `FORGET` ne concerne pas
+    /// l'instance — c'est son détenteur qui l'oublie — et ne fait rien ici.
+    ///
+    /// # Errors
+    ///
+    /// Celles de la commande ; [`AnimError::InvalidParameter`] sur une action inconnue ou un instant
+    /// non fini.
+    pub fn apply(
+        &mut self,
+        library: &ClipLibrary,
+        command: &AnimCommand,
+        mask: &[u32],
+    ) -> Result<(), AnimError> {
+        let now = command.tick / TICKS_PER_SECOND;
+        let layer = command.layer as usize;
+        match command.action {
+            anim_action::PLAY => self.play(
+                library,
+                command.clip,
+                layer,
+                command.weight,
+                command.fade,
+                now,
+            ),
+            anim_action::STOP => self.stop(layer, command.fade, now),
+            anim_action::SET_SPEED => self.set_speed(layer, command.speed, now),
+            anim_action::SET_MASK => self.set_mask(layer, (!mask.is_empty()).then_some(mask)),
+            anim_action::FORGET => Ok(()),
+            _ => Err(AnimError::InvalidParameter),
+        }
     }
 
     /// Le clip qui joue sur `layer`, `None` si elle est vide ou qu'elle s'arrête.

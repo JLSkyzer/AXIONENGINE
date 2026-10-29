@@ -2,6 +2,7 @@ package dev.axion.render;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -109,17 +110,26 @@ class NativeCullingTest {
             NativeCulling.Outcome outcome = culling.cull(camera, 4, (buffer, offset, rank) ->
                     RenderPrepCodec.putCandidate(buffer, offset, 100 + rank, asset.index(), generations[rank],
                             flags[rank], positions[rank][0], positions[rank][1], positions[rank][2], 1f, IDENTITY),
-                    1_000_000_000L);
+                    1_000_000_000L, 0.0);
             assertEquals(NativeBridge.OK, outcome.code());
             assertArrayEquals(new int[] {0, 3}, outcome.retained());
             assertEquals(0, outcome.flags());
             assertEquals(24, outcome.triangles(), "deux cubes de douze triangles");
+            assertNull(outcome.matrices()[0], "un cube sans clip se dessine au repos");
+
+            // ADR-155, ABI 10 : une commande sur un asset sans clip est refusée seule ; un tampon tronqué
+            // n'applique rien.
+            byte[] play = new AnimationCommands().play(100, asset.index(), asset.generation(), 0.0, 0, 0, 1f, 0f)
+                    .bytes();
+            assertEquals(0, culling.animate(play));
+            assertEquals(NativeBridge.E_INVALID_BUFFER, culling.animate(java.util.Arrays.copyOf(play, play.length - 1)));
+            assertEquals(1, culling.animate(new AnimationCommands().forget(100).bytes()));
 
             // Une caméra qui annonce plus de candidats que le tampon n'en tient est refusée.
             byte[] menteuse = RenderPrepCodec.camera(perspective(), IDENTITY, 1920, 1080, 128f, 0, 0, 1_000_000, 0);
             assertEquals(NativeBridge.E_INVALID_BUFFER, culling.cull(menteuse, 1, (buffer, offset, rank) ->
                     RenderPrepCodec.putCandidate(buffer, offset, 1, asset.index(), asset.generation(), 0,
-                            0f, 0f, -10f, 1f, IDENTITY), 1_000_000_000L).code());
+                            0f, 0f, -10f, 1f, IDENTITY), 1_000_000_000L, 0.0).code());
 
             assertEquals(NativeBridge.OK, loader.unload(asset.index(), asset.generation()));
 
@@ -133,7 +143,7 @@ class NativeCullingTest {
                     RenderPrepCodec.camera(perspective(), IDENTITY, 1920, 1080, 128f, 0, 0, 2, 0), 2,
                     (buffer, offset, rank) -> RenderPrepCodec.putCandidate(buffer, offset, 200 + rank, anneau.index(),
                             anneau.generation(), 0, 0f, 0f, -distances[rank], 1f, IDENTITY),
-                    1_000_000_000L);
+                    1_000_000_000L, 0.0);
             assertEquals(NativeBridge.OK, lod.code());
             assertArrayEquals(new int[] {0, 1}, lod.retained());
             assertEquals(0, lod.levels()[0]);

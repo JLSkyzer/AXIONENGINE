@@ -19,11 +19,14 @@
 //! la compte, comme `axion_sim_submit` clôt un cycle non collecté (R-282).
 
 use crate::abi::{AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE};
+use crate::animation::{AnimatedAsset, Instance};
 use ax_asset::optimize::MAX_LOD_LEVELS;
 use ax_core::BufferPool;
 use ax_jobs::{JobKind, JobSystem};
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
+use ax_model::dm::animation::{anim_action, AnimCommand, RenderAnimate};
 use ax_model::dm::handle::Handle;
+use ax_model::dm::limits::MAX_NODES;
 use ax_render_prep::lod::{biased, projected_px, LodState};
 use ax_render_prep::{cull_batched, Camera, Candidate, CullStats, Frustum, LocalBounds, Visible};
 use std::collections::{HashMap, HashSet};
@@ -46,12 +49,24 @@ const FORGET_DECISION_AFTER: u64 = 64;
 /// Candidats traités d'un seul tenant ; au-delà, les lots suivants partent sur les workers.
 const LOT: usize = 1024;
 
-/// Taille de l'en-tête de frame de `RENDER_OUT` : `frame_id`, retenus, meshes, drapeaux.
-pub const OUT_HEADER: usize = 16;
+/// Taille de l'en-tête de frame de `RENDER_OUT` (schéma 3) : `frame_id`, retenus, meshes, drapeaux,
+/// matrices, un mot réservé.
+pub const OUT_HEADER: usize = 24;
 
-/// Taille d'un enregistrement retenu (schéma 2) : index du candidat, `id`, LOD, distance, premier
-/// mesh et nombre de meshes dans la table qui suit les enregistrements.
-pub const OUT_RECORD: usize = 24;
+/// Taille d'un enregistrement retenu (schéma 3) : index du candidat, `id`, LOD, distance, premier
+/// mesh et nombre de meshes dans la table qui suit les enregistrements, première matrice —
+/// [`NO_MATRICES`] pour un retenu au repos.
+pub const OUT_RECORD: usize = 28;
+
+/// Première matrice d'un retenu qui n'en porte pas : il se dessine au repos.
+pub const NO_MATRICES: u32 = u32::MAX;
+
+/// Flottants d'une matrice `mat4x3` de la table de `RENDER_OUT`, un par dessin d'un retenu animé.
+pub const MATRIX_FLOATS: usize = 12;
+
+/// En-tête de frame de `RENDER_IN` (schéma 2), entre l'en-tête du tampon et les candidats : le
+/// tick de rendu (`f64`, l'horloge du serveur interpolée, ADR-155), puis huit octets réservés.
+pub const IN_FRAME_HEADER: usize = 16;
 
 /// Ce que le rendu sait d'un asset chargé.
 #[derive(Debug, Clone)]
@@ -63,6 +78,8 @@ struct RenderAsset {
     levels: u8,
     /// Le mesh de chaque dessin au repos, à chaque niveau.
     draw_meshes: Arc<[[u32; MAX_LOD_LEVELS]]>,
+    /// Les clips de l'asset, s'il en a (ADR-155).
+    animation: Option<Arc<AnimatedAsset>>,
 }
 
 /// Les compteurs du contexte de rendu.
@@ -82,6 +99,17 @@ pub struct RenderStats {
     pub lod_refused: u64,
     /// Frames plafonnées par `budgets.max_visible_instances` (étape 6).
     pub capped: u64,
+    /// Assets dont la table `ANIM` a été refusée : ils se rendent au repos (ADR-155).
+    pub anim_refused: u64,
+    /// Retenus animés de la dernière frame.
+    pub animated: u32,
+    /// Assemblies animées que le contexte garde : une par `id`, retirées par `FORGET` ou avec leur asset.
+    pub instances: u32,
+    /// Commandes d'animation appliquées.
+    pub anim_commands: u64,
+    /// Commandes d'animation refusées : asset absent ou périmé, clip ou couche inconnus,
+    /// paramètre hors bornes, plus de 256 pistes (R-200).
+    pub anim_rejected: u64,
 }
 
 /// Ce que rend une préparation : les champs d'`AxionRenderResult` que la tranche 1 remplit.
@@ -91,6 +119,8 @@ pub struct Prepared {
     pub instance_count: u32,
     /// Triangles des retenus, au LOD 0.
     pub triangle_estimate: u32,
+    /// Octets de la table de matrices des retenus animés.
+    pub palette_bytes: u32,
     /// Identifiant de la frame, à rendre par `axion_render_release`.
     pub frame_id: u32,
     /// Drapeaux, voir [`AXION_RENDER_DEGRADED`].
@@ -114,6 +144,8 @@ pub struct RenderContext {
     /// La dernière décision de chaque candidat examiné — retenu ou non —, et la frame où elle a été
     /// prise : un candidat que l'échéance laisse sans examen la reprend (R-300, R-770).
     decisions: HashMap<u32, (bool, u64)>,
+    /// L'animation de chaque assembly animée, par `id` de candidat, avec l'asset qu'elle anime.
+    instances: HashMap<u32, (Handle, Instance)>,
 }
 
 fn recover<T>(result: Result<T, PoisonError<T>>) -> T {
@@ -138,6 +170,7 @@ pub(crate) fn open(token: u64, jobs: Option<Arc<JobSystem>>) {
         stats: RenderStats::default(),
         lod: LodState::new(),
         decisions: HashMap::new(),
+        instances: HashMap::new(),
     });
 }
 
@@ -190,6 +223,10 @@ pub(crate) struct Published<'a> {
     pub draw_meshes: &'a [[u32; MAX_LOD_LEVELS]],
     /// La table `LODM` a été refusée.
     pub lod_refused: bool,
+    /// Les clips de l'asset.
+    pub animation: Option<Arc<AnimatedAsset>>,
+    /// La table `ANIM` a été refusée.
+    pub anim_refused: bool,
 }
 
 /// Publie l'emprise d'un asset chargé, sous le handle qu'il vient de recevoir.
@@ -197,6 +234,9 @@ pub(crate) fn publish(token: u64, handle: Handle, published: Published<'_>) {
     let _ = with(token, |context| {
         if published.lod_refused {
             context.stats.lod_refused += 1;
+        }
+        if published.anim_refused {
+            context.stats.anim_refused += 1;
         }
         let assets = Arc::make_mut(&mut context.assets);
         let index = handle.index as usize;
@@ -209,6 +249,7 @@ pub(crate) fn publish(token: u64, handle: Handle, published: Published<'_>) {
             triangles: published.triangles,
             levels: published.levels,
             draw_meshes: published.draw_meshes.into(),
+            animation: published.animation,
         });
     });
 }
@@ -225,6 +266,8 @@ pub(crate) fn withdraw(token: u64, handle: Handle) {
                 *entry = None;
             }
         }
+        // Une animation ne survit pas à son asset.
+        context.instances.retain(|_, (asset, _)| *asset != handle);
     });
 }
 
@@ -269,14 +312,15 @@ impl RenderContext {
     /// Les compteurs.
     #[must_use]
     pub fn stats(&self) -> RenderStats {
-        self.stats
+        RenderStats {
+            instances: u32::try_from(self.instances.len()).unwrap_or(u32::MAX),
+            ..self.stats
+        }
     }
 
     /// Lit les `count` candidats de `RENDER_IN`.
-    fn read_candidates(&mut self, count: usize) -> Result<Vec<Candidate>, i32> {
-        if count == 0 {
-            return Ok(Vec::new());
-        }
+    /// Lit le tick de rendu et les candidats de `RENDER_IN` (schéma 2).
+    fn read_candidates(&mut self, count: usize) -> Result<(f64, Vec<Candidate>), i32> {
         let raw = self
             .buffers
             .get_mut(BufferKind::RenderIn)
@@ -287,14 +331,103 @@ impl RenderContext {
             Ok(header) if header.kind == BufferKind::RenderIn => {}
             _ => return Err(AXION_E_INVALID_BUFFER),
         }
+        let start = HEADER_BYTES + IN_FRAME_HEADER;
+        let tick = raw
+            .get(HEADER_BYTES..HEADER_BYTES + 8)
+            .map(|bytes| f64::from_le_bytes(bytes.try_into().unwrap_or([0; 8])))
+            .ok_or(AXION_E_INVALID_BUFFER)?;
+        if count == 0 {
+            return Ok((tick, Vec::new()));
+        }
         let len = count
             .checked_mul(Candidate::BYTES)
             .ok_or(AXION_E_INVALID_BUFFER)?;
-        let end = HEADER_BYTES
-            .checked_add(len)
-            .ok_or(AXION_E_INVALID_BUFFER)?;
-        let bytes = raw.get(HEADER_BYTES..end).ok_or(AXION_E_INVALID_BUFFER)?;
-        Candidate::read_all(bytes).map_err(|_| AXION_E_INVALID_BUFFER)
+        let end = start.checked_add(len).ok_or(AXION_E_INVALID_BUFFER)?;
+        let bytes = raw.get(start..end).ok_or(AXION_E_INVALID_BUFFER)?;
+        let candidates = Candidate::read_all(bytes).map_err(|_| AXION_E_INVALID_BUFFER)?;
+        Ok((tick, candidates))
+    }
+
+    /// Applique les commandes d'animation de `bytes` (`axion_render_animate`, ABI 10) : chacune un
+    /// [`RenderAnimate`], une [`AnimCommand`], puis ses nodes de masque. Le tampon est validé entier
+    /// avant que la première ne s'applique. Une commande sur un asset absent, périmé ou sans clips,
+    /// ou que l'animation refuse, est comptée et ne change rien ; `FORGET` oublie l'instance.
+    ///
+    /// # Errors
+    ///
+    /// `E-2002` si le tampon est tronqué ou annonce un masque démesuré : rien n'est appliqué.
+    pub fn animate(&mut self, bytes: &[u8]) -> Result<u32, i32> {
+        const RECORD: usize = RenderAnimate::BYTES + AnimCommand::BYTES;
+        let mut parsed = Vec::new();
+        let mut at = 0;
+        while at < bytes.len() {
+            let record = bytes.get(at..at + RECORD).ok_or(AXION_E_INVALID_BUFFER)?;
+            let u32_at = |offset: usize| {
+                u32::from_le_bytes(record[offset..offset + 4].try_into().unwrap_or([0; 4]))
+            };
+            let f32_at = |offset: usize| f32::from_bits(u32_at(offset));
+            let id = u32_at(0);
+            let asset = Handle::new(u32_at(8), u32_at(12));
+            let c = RenderAnimate::BYTES;
+            let command = AnimCommand {
+                tick: f64::from_le_bytes(record[c..c + 8].try_into().unwrap_or([0; 8])),
+                action: u32_at(c + 8),
+                layer: u32_at(c + 12),
+                clip: u32_at(c + 16),
+                weight: f32_at(c + 20),
+                fade: f32_at(c + 24),
+                speed: f32_at(c + 28),
+                mask_count: u32_at(c + 32),
+                _pad: 0,
+            };
+            let count = command.mask_count as usize;
+            if count > MAX_NODES {
+                return Err(AXION_E_INVALID_BUFFER);
+            }
+            let mask_end = at + RECORD + count * 4;
+            let mask: Vec<u32> = bytes
+                .get(at + RECORD..mask_end)
+                .ok_or(AXION_E_INVALID_BUFFER)?
+                .chunks_exact(4)
+                .map(|word| u32::from_le_bytes([word[0], word[1], word[2], word[3]]))
+                .collect();
+            parsed.push((id, asset, command, mask));
+            at = mask_end;
+        }
+        let mut applied = 0;
+        for (id, handle, command, mask) in parsed {
+            if command.action == anim_action::FORGET {
+                self.instances.remove(&id);
+                applied += 1;
+                continue;
+            }
+            let animation = self
+                .assets
+                .get(handle.index as usize)
+                .and_then(Option::as_ref)
+                .filter(|asset| asset.generation == handle.generation)
+                .and_then(|asset| asset.animation.clone());
+            let Some(animation) = animation else {
+                self.stats.anim_rejected += 1;
+                continue;
+            };
+            let entry = self
+                .instances
+                .entry(id)
+                .or_insert_with(|| (handle, Instance::new(&animation)));
+            if entry.0 != handle {
+                // L'assembly a changé d'asset : son animation repart de zéro.
+                *entry = (handle, Instance::new(&animation));
+            }
+            match entry.1.apply(&animation, &command, &mask) {
+                Ok(()) => {
+                    self.stats.anim_commands += 1;
+                    applied += 1;
+                }
+                Err(_) => self.stats.anim_rejected += 1,
+            }
+        }
+        Ok(applied)
     }
 
     /// Prépare une frame : lit les candidats de `RENDER_IN`, les culle, dépose les retenus dans
@@ -313,7 +446,8 @@ impl RenderContext {
         let started = Instant::now();
         let deadline = started + Duration::from_nanos(budget_ns);
         let camera = Camera::from_bytes(camera_desc).map_err(|_| AXION_E_INVALID_BUFFER)?;
-        let candidates = Arc::new(self.read_candidates(camera.candidate_count as usize)?);
+        let (tick, candidates) = self.read_candidates(camera.candidate_count as usize)?;
+        let candidates = Arc::new(candidates);
         let frustum = camera.frustum();
         let assets = Arc::clone(&self.assets);
         self.lod.begin_frame();
@@ -431,6 +565,8 @@ impl RenderContext {
         // (décision de Killian : `RENDER_OUT` porte le mesh de chaque dessin).
         let mut records = Vec::with_capacity(visible.len() * OUT_RECORD);
         let mut meshes: Vec<u32> = Vec::new();
+        let mut matrices: Vec<f32> = Vec::new();
+        let mut animated = 0u32;
         let mut triangles = 0u32;
         for v in &visible {
             let candidate = &candidates[v.index as usize];
@@ -459,21 +595,42 @@ impl RenderContext {
                 meshes.extend(a.draw_meshes.iter().map(|row| row[usize::from(level)]));
             }
             let count = u32::try_from(meshes.len()).map_err(|_| AXION_E_INVALID_BUFFER)? - first;
+            // L'animation d'un retenu qui en a une, sur l'asset qu'il dessine : une matrice par dessin.
+            let mut matrix_first = NO_MATRICES;
+            let animation = asset.and_then(|a| a.animation.as_ref());
+            if let (Some(animation), Some((handle, instance))) =
+                (animation, self.instances.get_mut(&candidate.id))
+            {
+                let current = Handle::new(candidate.asset, candidate.generation);
+                if *handle == current && animation.draw_count() == count as usize {
+                    matrix_first = u32::try_from(matrices.len() / MATRIX_FLOATS)
+                        .map_err(|_| AXION_E_INVALID_BUFFER)?;
+                    instance.draw_matrices(animation, tick, &mut matrices);
+                    animated += 1;
+                }
+            }
             for value in [v.index, v.id, u32::from(level)] {
                 records.extend_from_slice(&value.to_le_bytes());
             }
             records.extend_from_slice(&v.distance.to_le_bytes());
             records.extend_from_slice(&first.to_le_bytes());
             records.extend_from_slice(&count.to_le_bytes());
+            records.extend_from_slice(&matrix_first.to_le_bytes());
         }
         let mesh_total = u32::try_from(meshes.len()).map_err(|_| AXION_E_INVALID_BUFFER)?;
-        let mut out = Vec::with_capacity(OUT_HEADER + records.len() + meshes.len() * 4);
-        for value in [frame_id, instance_count, mesh_total, flags] {
+        let matrix_total =
+            u32::try_from(matrices.len() / MATRIX_FLOATS).map_err(|_| AXION_E_INVALID_BUFFER)?;
+        let mut out =
+            Vec::with_capacity(OUT_HEADER + records.len() + meshes.len() * 4 + matrices.len() * 4);
+        for value in [frame_id, instance_count, mesh_total, flags, matrix_total, 0] {
             out.extend_from_slice(&value.to_le_bytes());
         }
         out.extend_from_slice(&records);
         for mesh in &meshes {
             out.extend_from_slice(&mesh.to_le_bytes());
+        }
+        for value in &matrices {
+            out.extend_from_slice(&value.to_le_bytes());
         }
         self.buffers
             .write_payload(BufferKind::RenderOut, &out)
@@ -495,11 +652,13 @@ impl RenderContext {
             self.stats.degraded += 1;
         }
         self.stats.last = stats;
+        self.stats.animated = animated;
         self.stats.last_prepare_ns =
             u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
         Ok(Prepared {
             instance_count,
             triangle_estimate: triangles,
+            palette_bytes: matrix_total.saturating_mul((MATRIX_FLOATS * 4) as u32),
             frame_id,
             flags,
         })
@@ -538,6 +697,7 @@ mod tests {
             triangles: 12,
             levels: 4,
             draw_meshes: vec![[0, 1, 2, 3, 3, 3, 3, 3]].into(),
+            animation: None,
         })];
         RenderContext {
             token: 1,
@@ -550,6 +710,7 @@ mod tests {
             stats: RenderStats::default(),
             lod: LodState::new(),
             decisions: HashMap::new(),
+            instances: HashMap::new(),
         }
     }
 
@@ -576,21 +737,21 @@ mod tests {
     }
 
     fn write(context: &mut RenderContext, candidates: &[Candidate]) {
-        let len = (candidates.len() * Candidate::BYTES) as u64;
+        let len = (IN_FRAME_HEADER + candidates.len() * Candidate::BYTES) as u64;
         let info = context.buffers.acquire(BufferKind::RenderIn, len);
         let buffer = context.buffers.get_mut(BufferKind::RenderIn).unwrap();
         let bytes = buffer.as_mut_slice();
         BufferHeader {
             kind: BufferKind::RenderIn,
             generation: info.generation,
-            schema_version: 1,
+            schema_version: 2,
             payload_len: 0,
             element_count: 0,
             crc32c: 0,
         }
         .write(bytes);
         for (i, c) in candidates.iter().enumerate() {
-            let at = HEADER_BYTES + i * Candidate::BYTES;
+            let at = HEADER_BYTES + IN_FRAME_HEADER + i * Candidate::BYTES;
             bytes[at..at + Candidate::BYTES].copy_from_slice(&c.to_bytes());
         }
     }

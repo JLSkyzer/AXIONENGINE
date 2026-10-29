@@ -18,6 +18,6 @@ mod clip;
 pub mod quat;
 mod sample;
 
-pub use animator::{AnimError, Animator, LAYERS};
+pub use animator::{AnimError, Animator, LAYERS, TICKS_PER_SECOND};
 pub use clip::{ClipError, ClipLibrary};
 pub use sample::{sample, Cursor};

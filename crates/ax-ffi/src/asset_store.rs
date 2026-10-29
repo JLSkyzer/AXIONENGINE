@@ -12,7 +12,10 @@
 use core::fmt;
 use core::mem::size_of;
 
-use ax_asset::a3d::{A3dError, A3dFile, A3dLimits, SectionMask, SectionTag, TextureTable};
+use crate::animation::AnimatedAsset;
+use ax_asset::a3d::{
+    decode_animations, A3dError, A3dFile, A3dLimits, SectionMask, SectionTag, TextureTable,
+};
 use ax_asset::load::decode_sections;
 use ax_asset::optimize::{LodTable, MAX_LOD_LEVELS};
 use ax_model::dm::handle::Handle;
@@ -21,6 +24,7 @@ use ax_model::dm::render::{encode_geometry_transfer, encode_material_transfer};
 use ax_model::dm::scene::NodeDesc;
 use ax_render_prep::{bounds_of, LocalBounds};
 use ax_scene::{rest_draws, SceneError};
+use std::sync::Arc;
 
 /// Sections que `axion_asset_load` sait charger : celles du rendu, `NODE` et
 /// `GEOM` (ADR-119), `MATL` et `TEXR` (ADR-122). Le décodage est celui
@@ -138,6 +142,11 @@ pub struct LoadedAsset {
     draw_meshes: Vec<[u32; MAX_LOD_LEVELS]>,
     /// Pourquoi la table `LODM` a été refusée, si elle l'a été : l'asset se rend alors au LOD 0.
     lod_refused: Option<String>,
+    /// Les clips de l'asset et de quoi en tirer les matrices de ses dessins (ADR-155) ; `None` sans
+    /// `ANIM`, ou si sa table est refusée.
+    animation: Option<Arc<AnimatedAsset>>,
+    /// Pourquoi la table `ANIM` a été refusée, si elle l'a été : l'asset se rend alors au repos.
+    anim_refused: Option<String>,
 }
 
 impl LoadedAsset {
@@ -215,6 +224,18 @@ impl LoadedAsset {
         self.lod_refused.as_deref()
     }
 
+    /// Les clips de l'asset, s'il en a d'exploitables.
+    #[must_use]
+    pub fn animation(&self) -> Option<&Arc<AnimatedAsset>> {
+        self.animation.as_ref()
+    }
+
+    /// Pourquoi la table `ANIM` a été refusée, si elle l'a été.
+    #[must_use]
+    pub fn anim_refused(&self) -> Option<&str> {
+        self.anim_refused.as_deref()
+    }
+
     /// Octets résidents, tels qu'imputés à l'arène `PERSISTENT` (R-480).
     #[must_use]
     pub fn resident_bytes(&self) -> usize {
@@ -224,6 +245,10 @@ impl LoadedAsset {
             + self.textures.entries.len() * size_of::<TextureDesc>()
             + self.textures.blob.len()
             + self.draw_meshes.len() * size_of::<[u32; MAX_LOD_LEVELS]>()
+            + self
+                .animation
+                .as_ref()
+                .map_or(0, |animation| animation.resident_bytes())
     }
 }
 
@@ -299,6 +324,30 @@ pub fn decode_render_asset(
         })
         .collect();
 
+    // `ANIM` (ADR-155) se lit avec les dessins qu'elle anime. Comme `LODM`, une table refusée — par la
+    // lecture ou par la seconde passe de C-22 (R-540) — ne refuse pas l'asset : il se rend au repos.
+    let mut anim_refused = None;
+    let animation = if draws.is_empty() {
+        None
+    } else {
+        let draw_nodes = draws.iter().map(|draw| draw.node).collect();
+        match file
+            .section(SectionTag::ANIM)
+            .map_err(|error| error.to_string())
+            .and_then(|payload| match payload {
+                Some(bytes) => decode_animations(&bytes)
+                    .map_err(|error| error.to_string())
+                    .and_then(|table| AnimatedAsset::new(&nodes, table, draw_nodes)),
+                None => Ok(None),
+            }) {
+            Ok(animation) => animation.map(Arc::new),
+            Err(error) => {
+                anim_refused = Some(error);
+                None
+            }
+        }
+    };
+
     let bounds = bounds_of(&geometry.meshes, &draws);
     let triangles = draws
         .iter()
@@ -340,6 +389,8 @@ pub fn decode_render_asset(
         lod_levels,
         draw_meshes,
         lod_refused,
+        animation,
+        anim_refused,
     })
 }
 

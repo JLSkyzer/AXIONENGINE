@@ -35,4 +35,22 @@ class LeveledDrawsTest {
         assertSame(REPOS, LeveledDraws.of(REPOS, 6, new int[] {4, 6}), "mesh hors de la géométrie");
         assertSame(REPOS, LeveledDraws.of(REPOS, 6, new int[] {-1, 5}), "mesh négatif");
     }
+
+    @Test
+    @DisplayName("ADR-155 : une assembly animée prend la matrice de chaque dessin, au mesh de son niveau")
+    void matricesAnimees() {
+        float[] a = {0, 1, 0, -1, 0, 0, 0, 0, 1, 1, 2, 3};
+        float[] b = {1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 8, 9};
+        List<GeometryTransfer.Draw> anime = LeveledDraws.of(REPOS, 6, new int[] {0, 5}, new float[][] {a, b});
+        assertSame(a, anime.get(0).model());
+        assertSame(b, anime.get(1).model());
+        assertEquals(0, anime.get(0).mesh(), "au niveau 0, le mesh du repos");
+        assertEquals(5, anime.get(1).mesh());
+        assertEquals(1, anime.get(0).node());
+
+        // Des matrices qui ne sont pas une de douze flottants par dessin sont ignorées : le repos reste.
+        assertSame(REPOS, LeveledDraws.of(REPOS, 6, new int[] {0, 1}, new float[][] {a}));
+        assertSame(REPOS, LeveledDraws.of(REPOS, 6, new int[] {0, 1}, new float[][] {a, new float[11]}));
+        assertSame(REPOS, LeveledDraws.of(REPOS, 6, new int[] {0, 1}, null));
+    }
 }

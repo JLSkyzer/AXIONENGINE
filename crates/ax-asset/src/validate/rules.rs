@@ -465,6 +465,29 @@ fn check_skeleton(asset: &AssetView<'_>, report: &mut ValidationReport) {
     }
 }
 
+/// Valide les seuls clips d'un asset, contre ses nodes : la seconde passe de R-540 au chargement,
+/// quand le reste de l'asset a déjà été jugé par la lecture de ses sections.
+#[must_use]
+pub fn validate_animations(
+    nodes: &[ax_model::dm::scene::NodeDesc],
+    animations: &[ax_model::dm::animation::AnimationDesc],
+    tracks: &[ax_model::dm::animation::TrackDesc],
+    keys: &[f32],
+) -> ValidationReport {
+    let mut report = ValidationReport::default();
+    check_animations(
+        &AssetView {
+            nodes,
+            animations,
+            tracks,
+            keys,
+            ..AssetView::default()
+        },
+        &mut report,
+    );
+    report
+}
+
 /// ANIMATIONS — pistes bornées et jouables, nodes visés existants, temps de clés croissants,
 /// valeurs finies, rotations unitaires, durée couvrant les clés (DM-10, R-200).
 fn check_animations(asset: &AssetView<'_>, report: &mut ValidationReport) {

@@ -31,14 +31,16 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}. 9 depuis le cycle de rendu IF-05, son contexte hors du verrou de session et
+     * {@code E-1002}. 10 depuis l'animation (ADR-155) : {@link #animateRender}, le tick de rendu en tête de
+     * {@code RENDER_IN} et les matrices des retenus animés dans {@code RENDER_OUT} ; 9 depuis le cycle de
+     * rendu IF-05, son contexte hors du verrou de session et
      * le tampon {@code RENDER_IN} (ADR-154 D2, D3), après l'état restauré d'une assembly à sa
      * création et le sommeil des assemblies chargées (8, ADR-153 D3, D4), les assemblies à
      * plusieurs corps et leurs joints
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 9;
+    public static final int EXPECTED_ABI_VERSION = 10;
 
     /** Succès. */
     public static final int OK = 0;
@@ -149,6 +151,8 @@ public final class NativeBridge {
     static native int renderPrepare(long ctx, byte[] camera, float partialTick, long budgetNs, long[] out);
 
     static native int renderRelease(long ctx, int frameId);
+
+    static native int renderAnimate(long ctx, byte[] commands);
 
     static native int debugFill(
             long ctx,
@@ -747,6 +751,24 @@ public final class NativeBridge {
         }
         CROSSINGS.increment();
         return renderPrepare(ctx, camera, partialTick, budgetNs, out);
+    }
+
+    /**
+     * Pousse des commandes d'animation au contexte de rendu (ADR-155, ABI 10) : chacune un en-tête de
+     * 16 octets (id du candidat, réservé, handle d'asset), une commande de 40 octets et ses nodes de
+     * masque. L'appel ne prend pas le verrou que tient le pas physique (ADR-154 D2).
+     *
+     * @param ctx jeton de contexte
+     * @param commands les commandes, little-endian
+     * @return le nombre de commandes appliquées, ou un code d'erreur négatif ({@link #E_INVALID_BUFFER} si
+     *     le tampon est tronqué : rien n'est alors appliqué)
+     */
+    public static int animateRender(long ctx, byte[] commands) {
+        if (commands == null) {
+            throw new IllegalArgumentException("commandes attendues");
+        }
+        CROSSINGS.increment();
+        return renderAnimate(ctx, commands);
     }
 
     /**

@@ -127,6 +127,19 @@ impl ClipLibrary {
         &self.tracks[start..start + desc.track_count as usize]
     }
 
+    /// Les nodes qu'au moins une piste anime : ceux dont la source est `ANIMATION_DRIVEN` (R-930),
+    /// la priorité des autres sources se tranchant avec la definition.
+    #[must_use]
+    pub fn animated_nodes(&self, node_count: usize) -> Vec<bool> {
+        let mut animated = vec![false; node_count];
+        for track in &self.tracks {
+            if let Some(node) = animated.get_mut(track.target_node as usize) {
+                *node = true;
+            }
+        }
+        animated
+    }
+
     /// Les clés d'une piste, vérifiées à la construction.
     #[must_use]
     pub fn keys(&self, track: &TrackDesc) -> &[f32] {

@@ -200,6 +200,11 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             fn_ptr: jni_render_prepare as *mut c_void,
         },
         NativeMethod {
+            name: "renderAnimate".into(),
+            sig: "(J[B)I".into(),
+            fn_ptr: jni_render_animate as *mut c_void,
+        },
+        NativeMethod {
             name: "renderRelease".into(),
             sig: "(JI)I".into(),
             fn_ptr: jni_render_release as *mut c_void,
@@ -568,6 +573,32 @@ extern "system" fn jni_render_prepare(
     match env.set_long_array_region(&out, 0, &values) {
         Ok(()) => AXION_OK,
         Err(_) => AXION_E_INVALID_BUFFER,
+    }
+}
+
+/// `renderAnimate` : les commandes d'animation arrivent en tableau d'octets, copiées une fois. Rend
+/// le nombre de commandes appliquées, ou un code d'erreur négatif.
+extern "system" fn jni_render_animate(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    commands: JByteArray,
+) -> jint {
+    if commands.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    let Ok(bytes) = env.convert_byte_array(&commands) else {
+        return AXION_E_INVALID_BUFFER;
+    };
+    let mut applied = 0u32;
+    // SAFETY: `bytes` reste vivant pendant l'appel ; `applied` est une variable locale.
+    let code = unsafe {
+        crate::abi::axion_render_animate(ctx as u64, bytes.as_ptr(), bytes.len(), &raw mut applied)
+    };
+    if code == AXION_OK {
+        i32::try_from(applied).unwrap_or(i32::MAX)
+    } else {
+        code
     }
 }
 

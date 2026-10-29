@@ -799,7 +799,7 @@ public final class AxionRenderPass {
                     pose.bodies().isEmpty() && !assembly.entity().noCulling ? 0 : RenderPrepCodec.NO_CULL,
                     (float) (pose.x() - camera.x), (float) (pose.y() - camera.y), (float) (pose.z() - camera.z),
                     1f, rotation);
-        }, renderPrepLimit);
+        }, renderPrepLimit, ClientSnapshots.renderTick());
         if (outcome.code() == 0
                 && (OVERLAYS.isOn(DebugOverlays.Overlay.LOD) || OVERLAYS.isOn(DebugOverlays.Overlay.CULLING))) {
             for (int rank = 0; rank < count; rank++) {
@@ -822,7 +822,7 @@ public final class AxionRenderPass {
         int[] retained = outcome.retained();
         for (int rank = 0; rank < retained.length; rank++) {
             int at = candidates[retained[rank]];
-            kept[at] = all.get(at).withMeshes(outcome.meshes()[rank]);
+            kept[at] = all.get(at).withMeshes(outcome.meshes()[rank], outcome.matrices()[rank]);
         }
         List<RenderBackend.Assembly> drawn = new ArrayList<>(all.size());
         for (RenderBackend.Assembly assembly : kept) {

@@ -728,6 +728,8 @@ impl Session {
                     levels: asset.lod_levels(),
                     draw_meshes: asset.draw_meshes(),
                     lod_refused: asset.lod_refused().is_some(),
+                    animation: asset.animation().cloned(),
+                    anim_refused: asset.anim_refused().is_some(),
                 },
             );
         }

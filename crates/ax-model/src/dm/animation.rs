@@ -7,6 +7,7 @@
 //! `CUBIC_SPLINE` trois valeurs par clé, tangente d'entrée, valeur, tangente de sortie, comme
 //! glTF les range.
 
+use super::handle::Handle;
 use super::scene::NONE_U16;
 
 /// Os d'un squelette (DM-10).
@@ -142,6 +143,72 @@ impl TrackDesc {
     }
 }
 
+/// Ce qu'une [`AnimCommand`] demande, champ `action`.
+pub mod anim_action {
+    /// Jouer `clip` sur `layer`, de poids `weight`, avec un fondu de `fade` secondes.
+    pub const PLAY: u32 = 1;
+    /// Arrêter `layer` par un fondu de `fade` secondes.
+    pub const STOP: u32 = 2;
+    /// Régler la vitesse de `layer` à `speed`.
+    pub const SET_SPEED: u32 = 3;
+    /// Restreindre `layer` aux `mask_count` nodes qui suivent la commande ; aucun : tous.
+    pub const SET_MASK: u32 = 4;
+    /// Oublier l'instance : l'assembly a quitté le rendu (client seulement).
+    pub const FORGET: u32 = 5;
+}
+
+/// Une commande d'animation horodatée (ADR-155, tranche 3) : la même au client, que Java pousse par
+/// `axion_render_animate`, et au serveur, par `SIM_IN`.
+///
+/// `tick` est un instant en ticks de jeu, fraction comprise (décision de Killian : l'horloge est
+/// celle du serveur, 20 ticks par seconde). `fade` est en secondes, comme l'API le présente. Une
+/// commande `SET_MASK` est suivie de `mask_count` index de nodes `u32` ; les autres de rien.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct AnimCommand {
+    /// Instant de la commande, en ticks.
+    pub tick: f64,
+    /// Voir [`anim_action`].
+    pub action: u32,
+    /// Couche, de 0 à 3.
+    pub layer: u32,
+    /// Clip, rang dans la section `ANIM` de l'asset (`PLAY`).
+    pub clip: u32,
+    /// Poids, dans `[0, 1]` (`PLAY`).
+    pub weight: f32,
+    /// Durée du fondu, en secondes (`PLAY`, `STOP`).
+    pub fade: f32,
+    /// Vitesse (`SET_SPEED`).
+    pub speed: f32,
+    /// Nodes du masque qui suivent la commande (`SET_MASK`).
+    pub mask_count: u32,
+    /// Réservé, à zéro.
+    pub _pad: u32,
+}
+
+impl AnimCommand {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 40;
+}
+
+/// L'en-tête d'une commande d'animation du client : l'assembly, par l'`id` de son candidat de rendu
+/// (ADR-154), et son asset. La commande suit.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RenderAnimate {
+    /// `id` du candidat de rendu de l'assembly.
+    pub id: u32,
+    /// Réservé, à zéro.
+    pub _pad: u32,
+    /// L'asset de l'assembly.
+    pub asset: Handle,
+}
+
+impl RenderAnimate {
+    /// Taille sur la frontière, en octets, sans la commande qui suit.
+    pub const BYTES: usize = 16;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,6 +235,17 @@ mod tests {
         assert_eq!(offset_of!(TrackDesc, interp), 5);
         assert_eq!(offset_of!(TrackDesc, key_offset), 8);
         assert_eq!(offset_of!(TrackDesc, key_count), 12);
+
+        assert_eq!(size_of::<AnimCommand>(), AnimCommand::BYTES);
+        assert_eq!(offset_of!(AnimCommand, action), 8);
+        assert_eq!(offset_of!(AnimCommand, layer), 12);
+        assert_eq!(offset_of!(AnimCommand, clip), 16);
+        assert_eq!(offset_of!(AnimCommand, weight), 20);
+        assert_eq!(offset_of!(AnimCommand, fade), 24);
+        assert_eq!(offset_of!(AnimCommand, speed), 28);
+        assert_eq!(offset_of!(AnimCommand, mask_count), 32);
+        assert_eq!(size_of::<RenderAnimate>(), RenderAnimate::BYTES);
+        assert_eq!(offset_of!(RenderAnimate, asset), 8);
     }
 
     #[test]

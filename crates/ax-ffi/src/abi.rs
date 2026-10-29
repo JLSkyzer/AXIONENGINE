@@ -49,11 +49,14 @@ use ax_physics::{
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 8 depuis l'état restauré
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 10 depuis l'animation
+/// (ADR-155) : `axion_render_animate`, le tick de rendu en tête de `RENDER_IN` (schéma 2) et les
+/// matrices des retenus animés dans `RENDER_OUT` (schéma 3) ; 9 depuis le cycle de rendu IF-05
+/// (ADR-154). 8 depuis l'état restauré
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 9;
+pub const AXION_ABI_VERSION: u32 = 10;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -1532,10 +1535,52 @@ pub unsafe extern "C" fn axion_render_prepare(
                     out.write(AxionRenderResult {
                         instance_count: prepared.instance_count,
                         triangle_estimate: prepared.triangle_estimate,
+                        palette_bytes: prepared.palette_bytes,
                         frame_id: prepared.frame_id,
                         flags: prepared.flags,
                         ..AxionRenderResult::default()
                     });
+                }
+                AXION_OK
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Applique des commandes d'animation au contexte de rendu (ADR-155, tranche 3 ; ABI 10).
+///
+/// `bytes` porte une suite de commandes, chacune un `RenderAnimate` (16 octets), une `AnimCommand`
+/// (40 octets) et ses nodes de masque. Java les pousse quand l'état d'animation d'une assembly
+/// change ; `axion_render_prepare` évalue ensuite chaque assembly animée au tick de rendu. Ne prend
+/// jamais le verrou de session (ADR-154 D2). `applied`, s'il n'est pas nul, reçoit le nombre de
+/// commandes appliquées ; une commande refusée ne change rien et est comptée au bilan du rendu.
+///
+/// # Safety
+///
+/// `bytes` doit pointer sur `len` octets lisibles (nul si `len` vaut 0), `applied` être nul ou
+/// accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_render_animate(
+    ctx: u64,
+    bytes: *const u8,
+    len: usize,
+    applied: *mut u32,
+) -> i32 {
+    shielded(Some(ctx), || {
+        let commands = if len == 0 {
+            &[][..]
+        } else if bytes.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        } else {
+            // SAFETY: le contrat impose `len` octets lisibles à partir de `bytes`, non nul.
+            unsafe { std::slice::from_raw_parts(bytes, len) }
+        };
+        match render::with(ctx, |render| render.animate(commands)) {
+            Ok(Ok(count)) => {
+                if !applied.is_null() {
+                    // SAFETY: non nul, et le contrat l'impose accessible en écriture.
+                    unsafe { applied.write(count) };
                 }
                 AXION_OK
             }

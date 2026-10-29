@@ -3394,8 +3394,10 @@ sources procédurales de véhicule (M5, T-365).
       node (R-1430) ; horloge en ticks du serveur.
 - [ ] 3. Graphe vivant : étapes 2 et 14 (client dans la préparation du rendu, serveur conditionnel R-1430),
       `propagate_ns`, animation qui pilote un joint ; T-392, T-360.
-      - [ ] 3a. Client : `ANIM` chargée, `axion_render_animate`, temps de rendu dans `RENDER_IN`, graphe vivant
-            par instance animée, `RENDER_OUT` schéma 3, Java substitue les matrices.
+      - [x] 3a. Client (2026-10-29) : `ANIM` chargée, `axion_render_animate` (ABI 10), tick de rendu dans
+            `RENDER_IN` (schéma 2), graphe vivant par instance animée, `RENDER_OUT` schéma 3, Java substitue
+            les matrices ; pendule animé de bout en bout ; 5 mutations rouges. À faire à la tranche 4 : `NO_CULL`
+            pour une assembly animée, son emprise de repos ne bornant plus ce qu'elle dessine.
       - [ ] 3b. Serveur : opcodes, `Animator` par assembly, dépendance des colliders, étapes 2 et 14, T-360.
 - [ ] 4. Réseau et API : descripteur v3, `AnimationControl`, triggers de definition.
 - [ ] 5. Skinning natif : shader, TBO, repli UBO, palettes dans `RENDER_OUT` (schéma 3) ; T-540..T-542, T-908.

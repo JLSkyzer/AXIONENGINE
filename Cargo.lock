@@ -121,6 +121,7 @@ dependencies = [
 name = "ax-ffi"
 version = "1.0.0"
 dependencies = [
+ "ax-anim",
  "ax-asset",
  "ax-core",
  "ax-det",

@@ -169,8 +169,9 @@ impl BufferKind {
     #[must_use]
     pub const fn schema_version(self) -> u32 {
         match self {
-            BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderOut => 2,
-            BufferKind::AssetOut | BufferKind::RenderIn => 1,
+            BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderIn => 2,
+            BufferKind::RenderOut => 3,
+            BufferKind::AssetOut => 1,
             _ => 0,
         }
     }
@@ -519,11 +520,13 @@ mod tests {
     fn versions_de_schema_des_kinds() {
         // ADR-151 : SIM_OUT au schéma 2 (états à node, puis emprises) ; A1 d'ADR-121 : DEBUG
         // au schéma 2 (plages par overlay et repère) ; ADR-122 : ASSET_OUT au
-        // schéma 1 (matériaux et textures). Les autres kinds ne sont pas versionnés.
+        // schéma 1 (matériaux et textures) ; ADR-155 : RENDER_IN au schéma 2 (tick de rendu en tête),
+        // RENDER_OUT au schéma 3 (matrices des retenus animés). Les autres kinds ne sont pas versionnés.
         for kind in BufferKind::ALL {
             let attendue = match kind {
-                BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderOut => 2,
-                BufferKind::AssetOut | BufferKind::RenderIn => 1,
+                BufferKind::RenderOut => 3,
+                BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderIn => 2,
+                BufferKind::AssetOut => 1,
                 _ => 0,
             };
             assert_eq!(kind.schema_version(), attendue, "{kind}");

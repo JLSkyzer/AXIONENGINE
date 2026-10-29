@@ -7,6 +7,7 @@ import dev.axion.forge.net.AxionNetwork;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.net.Interpolation;
 import dev.axion.net.RenderClock;
+import dev.axion.net.ServerClock;
 import dev.axion.net.SnapshotReceiver;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -70,6 +71,19 @@ final class ClientSnapshots {
         if (clock != null) {
             clock.onFrame(nowNanos, paused);
         }
+    }
+
+    /**
+     * {@return le tick de rendu de l'image courante : le tick du serveur interpolé, fraction comprise,
+     * l'horloge des commandes d'animation (ADR-155) ; 0 avant le premier snapshot}
+     */
+    public static double renderTick() {
+        RenderClock current = clock;
+        if (current == null || !current.known()) {
+            return 0.0;
+        }
+        double millis = current.renderMillis(current.frameNanos());
+        return Double.isFinite(millis) ? millis / ServerClock.TICK_MILLIS : 0.0;
     }
 
     /** La connexion se ferme : la suivante aura son horloge, au retard de son serveur. */

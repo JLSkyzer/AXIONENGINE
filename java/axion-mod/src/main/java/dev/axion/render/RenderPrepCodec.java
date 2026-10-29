@@ -18,14 +18,30 @@ public final class RenderPrepCodec {
     /** Taille d'un candidat, en octets. */
     public static final int CANDIDATE_BYTES = 48;
 
-    /** En-tête de frame de {@code RENDER_OUT} : {@code frame_id}, retenus, meshes, drapeaux. */
-    public static final int OUT_HEADER_BYTES = 16;
+    /**
+     * En-tête de frame de {@code RENDER_IN} (schéma 2), avant les candidats : le tick de rendu en
+     * {@code double} — l'horloge du serveur interpolée (ADR-155) —, puis huit octets réservés.
+     */
+    public static final int IN_FRAME_HEADER_BYTES = 16;
 
     /**
-     * Un retenu (schéma 2) : index du candidat, {@code id}, niveau de détail, distance, premier mesh et
-     * nombre de meshes dans la table qui suit les retenus.
+     * En-tête de frame de {@code RENDER_OUT} (schéma 3) : {@code frame_id}, retenus, meshes, drapeaux,
+     * matrices, un mot réservé.
      */
-    public static final int OUT_RECORD_BYTES = 24;
+    public static final int OUT_HEADER_BYTES = 24;
+
+    /**
+     * Un retenu (schéma 3) : index du candidat, {@code id}, niveau de détail, distance, premier mesh et
+     * nombre de meshes dans la table qui suit les retenus, première matrice ({@link #NO_MATRICES} au
+     * repos).
+     */
+    public static final int OUT_RECORD_BYTES = 28;
+
+    /** Première matrice d'un retenu qui n'en porte pas : il se dessine au repos. */
+    public static final int NO_MATRICES = -1;
+
+    /** Flottants d'une matrice {@code mat4x3} de la table de {@code RENDER_OUT}. */
+    public static final int MATRIX_FLOATS = 12;
 
     /**
      * Drapeau d'un candidat : toujours retenu, sans test — une assembly dont l'emprise au repos ne
@@ -113,6 +129,45 @@ public final class RenderPrepCodec {
         for (int i = 0; i < 4; i++) {
             buffer.putFloat(offset + 32 + i * 4, rotation[i]);
         }
+    }
+
+    /**
+     * Écrit le tick de rendu en tête de {@code RENDER_IN} (schéma 2).
+     *
+     * @param buffer {@code RENDER_IN}
+     * @param payload position de la charge utile, après l'en-tête du tampon
+     * @param tick tick du serveur interpolé, fraction comprise ; 0 sans horloge
+     */
+    public static void putRenderTick(ByteBuffer buffer, int payload, double tick) {
+        buffer.putDouble(payload, tick).putLong(payload + 8, 0L);
+    }
+
+    /**
+     * {@return la matrice {@code mat4x3} de chaque dessin du retenu de rang {@code rank}, dans l'ordre de la
+     * liste au repos, ou {@code null} s'il se dessine au repos}
+     *
+     * @param renderOut {@code RENDER_OUT}, little-endian
+     * @param payload position de la charge utile
+     * @param retained nombre de retenus de la frame
+     * @param rank rang du retenu
+     */
+    public static float[][] retainedMatrices(ByteBuffer renderOut, int payload, int retained, int rank) {
+        int record = payload + OUT_HEADER_BYTES + rank * OUT_RECORD_BYTES;
+        int first = renderOut.getInt(record + 24);
+        if (first == NO_MATRICES) {
+            return null;
+        }
+        int count = renderOut.getInt(record + 20);
+        int meshTotal = renderOut.getInt(payload + 8);
+        int table = payload + OUT_HEADER_BYTES + retained * OUT_RECORD_BYTES + meshTotal * 4;
+        float[][] matrices = new float[count][MATRIX_FLOATS];
+        for (int draw = 0; draw < count; draw++) {
+            int at = table + (first + draw) * MATRIX_FLOATS * 4;
+            for (int i = 0; i < MATRIX_FLOATS; i++) {
+                matrices[draw][i] = renderOut.getFloat(at + i * 4);
+            }
+        }
+        return matrices;
     }
 
     /**

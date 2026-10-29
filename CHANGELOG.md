@@ -163,6 +163,12 @@ Definition of Done (PARTIE 37.3).
     quatre couches (`BASE`, deux additives, `OVERRIDE`), masque de nodes,
     blending en TRS, crossfade sans saut, vitesse et boucle ; au plus 256
     pistes actives par instance (R-200) ;
+    ABI 10 : `axion_render_animate` remet au rendu des commandes d'animation
+    horodatees en ticks du serveur ; le natif lit `ANIM` au chargement, garde
+    un graphe de scene vivant par assembly animee et depose dans
+    `RENDER_OUT` (schema 3) la matrice de chacun de ses dessins, que le
+    client substitue a celle du repos ; `RENDER_IN` (schema 2) porte le tick
+    de rendu ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

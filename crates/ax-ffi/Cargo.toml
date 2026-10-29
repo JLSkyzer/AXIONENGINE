@@ -50,6 +50,8 @@ ax-scene.workspace = true
 ax-mem.workspace = true
 # C-64 / ADR-154 : le contexte de rendu culle les candidats de chaque frame (IF-05).
 ax-render-prep.workspace = true
+# C-37 / ADR-155 : les clips d'un asset, joués par le rendu et, quand il le faut, par le serveur.
+ax-anim.workspace = true
 ciborium.workspace = true
 jni.workspace = true
 

@@ -44,4 +44,4 @@ mod rest;
 pub use bitset::BitSet;
 pub use graph::{SceneError, SceneGraph};
 pub use metrics::SceneMetrics;
-pub use rest::rest_draws;
+pub use rest::{mat4x3, rest_draws};

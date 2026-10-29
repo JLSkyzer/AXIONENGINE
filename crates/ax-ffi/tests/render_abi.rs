@@ -21,6 +21,7 @@ use axion_native::abi::{
     AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE, AXION_E_LEAK, AXION_OK, AXION_RENDER_DEGRADED,
     AXION_SECTION_GEOM, AXION_SECTION_NODE, AXION_SIDE_CLIENT,
 };
+use axion_native::render::{IN_FRAME_HEADER, OUT_HEADER, OUT_RECORD};
 use std::time::{Duration, Instant};
 
 const ASSET_ID: u64 = 0x0A51_0C0B_E000_0154;
@@ -127,11 +128,11 @@ fn write_candidates(ctx: u64, candidates: &[Candidate]) -> AxionBufferInfo {
     let buffer = acquire(
         ctx,
         BufferKind::RenderIn,
-        (candidates.len() * Candidate::BYTES) as u64,
+        (IN_FRAME_HEADER + candidates.len() * Candidate::BYTES) as u64,
     );
     let bytes = view(&buffer);
     for (i, c) in candidates.iter().enumerate() {
-        let at = HEADER_BYTES + i * Candidate::BYTES;
+        let at = HEADER_BYTES + IN_FRAME_HEADER + i * Candidate::BYTES;
         bytes[at..at + Candidate::BYTES].copy_from_slice(&c.to_bytes());
     }
     buffer
@@ -150,18 +151,18 @@ fn u32_at(bytes: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
 }
 
-/// Un retenu lu dans `RENDER_OUT` (schéma 2) : son niveau et les meshes de ses dessins.
+/// Un retenu lu dans `RENDER_OUT` (schéma 3) : son niveau et les meshes de ses dessins.
 fn lod_of(ctx: u64, result: &AxionRenderResult, rank: usize) -> (u32, Vec<u32>) {
     let out = acquire(ctx, BufferKind::RenderOut, 0);
     let bytes = view(&out);
     let base = HEADER_BYTES;
-    let record = base + 16 + rank * 24;
+    let record = base + OUT_HEADER + rank * OUT_RECORD;
     let (level, first, count) = (
         u32_at(bytes, record + 8),
         u32_at(bytes, record + 16) as usize,
         u32_at(bytes, record + 20) as usize,
     );
-    let table = base + 16 + result.instance_count as usize * 24;
+    let table = base + OUT_HEADER + result.instance_count as usize * OUT_RECORD;
     let meshes = (first..first + count)
         .map(|m| u32_at(bytes, table + m * 4))
         .collect();
@@ -217,8 +218,8 @@ fn retained(ctx: u64, result: &AxionRenderResult, candidates: &[Candidate]) -> V
     (0..result.instance_count as usize)
         .map(|i| {
             let (index, id) = (
-                u32_at(bytes, base + 16 + i * 24),
-                u32_at(bytes, base + 16 + i * 24 + 4),
+                u32_at(bytes, base + OUT_HEADER + i * OUT_RECORD),
+                u32_at(bytes, base + OUT_HEADER + i * OUT_RECORD + 4),
             );
             assert_eq!(candidates[index as usize].id, id, "index du retenu {i}");
             id

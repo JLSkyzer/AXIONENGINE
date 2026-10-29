@@ -31,6 +31,7 @@
 //!   par plateforme — ici parce que R-2120 confine `unsafe` à la frontière native.
 
 pub mod abi;
+pub mod animation;
 mod assembly;
 pub mod asset_store;
 

@@ -70,7 +70,7 @@ pub fn rest_draws(nodes: &[NodeDesc], mesh_count: usize) -> Result<Vec<RestDraw>
 
 /// Une transformation affine en `mat4x3` colonne-major : les trois axes, puis la
 /// translation (convention GLSL du bloc d'instance de §19.4).
-fn mat4x3(world: &Affine3A) -> [f32; 12] {
+pub fn mat4x3(world: &Affine3A) -> [f32; 12] {
     let axes = world.matrix3;
     let translation = world.translation;
     [
