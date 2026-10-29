@@ -58,7 +58,9 @@ pub use body::{
     BodyCollider, BodyError, BodyId, BodyKind, CombineRule, CompoundPart, ContactMaterial, Shape,
     ShapeConversionError,
 };
-pub use commands::{apply_command_stream, create_assembly_payloads, CommandError, CommandOutcome};
+pub use commands::{
+    apply_command_stream, create_assembly_payloads, payloads_of, CommandError, CommandOutcome,
+};
 pub use config::{ConfigError, PhysicsConfig};
 pub use debug::{
     select_drafts, DebugDraft, DebugSelection, AXIS_LENGTH, CONTACT_CROSS, JOINT_CROSS,

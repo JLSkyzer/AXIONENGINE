@@ -3400,7 +3400,10 @@ sources procédurales de véhicule (M5, T-365).
             `RENDER_IN` (schéma 2), graphe vivant par instance animée, `RENDER_OUT` schéma 3, Java substitue
             les matrices ; pendule animé de bout en bout ; 5 mutations rouges. À faire à la tranche 4 : `NO_CULL`
             pour une assembly animée, son emprise de repos ne bornant plus ce qu'elle dessine.
-      - [ ] 3b. Serveur : opcodes, `Animator` par assembly, dépendance des colliders, étapes 2 et 14, T-360.
+      - [x] 3b. Serveur (2026-10-29) : horloge du `tick` de `submit`, `ANIM` jointe à `CREATE_ASSEMBLY` (drapeau
+            `ANIMATED`), `ANIMATE_ASSEMBLY` (opcode 16), dépendance des colliders jugée à la création (R-1430,
+            T-360), étape 2 qui repose les colliders dépendants dans leurs corps ; 5 mutations rouges. Reste :
+            étape 14 côté serveur avec les sockets ; T-392 (étapes côté client).
 - [ ] 4. Réseau et API : descripteur v3, `AnimationControl`, triggers de definition.
 - [ ] 5. Skinning natif : shader, TBO, repli UBO, palettes dans `RENDER_OUT` (schéma 3) ; T-540..T-542, T-908.
 - [ ] 6. Skinning vanilla (R-742), overlays `bones`, `nodes`, `pivots`, documentation.

@@ -1779,6 +1779,37 @@ impl PhysicsWorld {
         })
     }
 
+    /// Pose le collider de rang `index` d'un corps dans le repère de ce corps : un collider porté
+    /// par un node animé suit sa pose (R-1430, ADR-155). Les rangs sont ceux de la création. La
+    /// masse du corps suit au pas suivant, comme rapier le fait d'un collider modifié. Faux si le
+    /// corps ou le rang n'existent pas, ou si la pose n'est pas finie.
+    pub fn set_collider_local(
+        &mut self,
+        id: BodyId,
+        index: usize,
+        translation: Vec3,
+        rotation: Quat,
+    ) -> bool {
+        if !translation.is_finite() || !rotation.is_finite() {
+            return false;
+        }
+        let Some(handle) = self
+            .inner
+            .bodies
+            .get(id.handle())
+            .and_then(|body| body.colliders().get(index).copied())
+        else {
+            return false;
+        };
+        match self.inner.colliders.get_mut(handle) {
+            Some(collider) => {
+                collider.set_position_wrt_parent(RapierPose::from_parts(translation, rotation));
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Impose la pose d'un corps cinématique pour le prochain pas (§10.2).
     ///
     /// Sans effet si le corps n'existe pas. Sur un corps non cinématique,

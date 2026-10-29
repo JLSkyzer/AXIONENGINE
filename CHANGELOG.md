@@ -169,6 +169,11 @@ Definition of Done (PARTIE 37.3).
     `RENDER_OUT` (schema 3) la matrice de chacun de ses dessins, que le
     client substitue a celle du repos ; `RENDER_IN` (schema 2) porte le tick
     de rendu ;
+    cote serveur, `CREATE_ASSEMBLY` porte la section `ANIM` (drapeau
+    `ANIMATED`) et `ANIMATE_ASSEMBLY` (opcode 16) joue un clip au tick
+    soumis ; seules les assemblies dont un collider depend d'un node anime
+    sont echantillonnees (R-1430), a l'etape 2, leurs colliders reposes dans
+    leurs corps ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

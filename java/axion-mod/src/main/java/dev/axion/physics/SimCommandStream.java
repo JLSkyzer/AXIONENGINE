@@ -77,6 +77,13 @@ public final class SimCommandStream {
     /** Drapeau {@code ASLEEP} de {@code CreateAssembly} : l'assembly naît endormie (22.4, ADR-153 D4). */
     public static final int CREATE_ASSEMBLY_ASLEEP = 4;
 
+    /**
+     * Drapeau {@code ANIMATED} de {@code CreateAssembly} : la section {@code ANIM} de l'asset suit l'état
+     * restauré, préfixée de sa taille et d'un mot réservé (ADR-155). Le natif ne l'anime que si un collider
+     * dépend d'un node animé (R-1430).
+     */
+    public static final int CREATE_ASSEMBLY_ANIMATED = 8;
+
     /** Taille de l'état restauré d'un corps ({@code RestoredBody}), en octets. */
     public static final int RESTORED_BODY_BYTES = 64;
 
@@ -190,6 +197,12 @@ public final class SimCommandStream {
 
     /** Taille du payload {@code BreakJoint}, en octets. */
     public static final int BREAK_JOINT_BYTES = 12;
+
+    /** Opcode {@code ANIMATE_ASSEMBLY} (ADR-155) : une commande d'animation pour une assembly. */
+    public static final int OP_ANIMATE_ASSEMBLY = 16;
+
+    /** Taille du payload {@code AnimateAssembly}, en octets, sans les nodes du masque. */
+    public static final int ANIMATE_ASSEMBLY_BYTES = 48;
 
     /** Plus grand rang de joint : il tient sur un {@code u16}. */
     public static final int MAX_JOINT_INDEX = 0xFFFF;
@@ -448,6 +461,47 @@ public final class SimCommandStream {
             Restored restored,
             boolean asleep,
             byte[] phys) {
+        return createAssembly(handleIndex, handleGeneration, dimension, position, rotation, bodies, joints, jamPoints,
+                assemblyMass, selfCollision, nodes, restored, asleep, null, phys);
+    }
+
+    /**
+     * Ajoute une commande {@code CREATE_ASSEMBLY} avec la section {@code ANIM} de l'asset (ADR-155), après
+     * l'état restauré : le serveur anime les colliders qui dépendent d'un node animé (R-1430).
+     *
+     * @param handleIndex rang du handle d'assembly (routage des corps)
+     * @param handleGeneration génération du handle ({@code 0} est invalide)
+     * @param dimension dimension d'accueil (R-610)
+     * @param position position monde de spawn {@code [x, y, z]}, en blocs
+     * @param rotation quaternion de spawn {@code [x, y, z, w]}
+     * @param bodies les corps, de 1 à {@link #MAX_ASSEMBLY_BODIES}, le corps racine d'abord
+     * @param joints les joints, dans l'ordre de la definition ({@link AssemblyJoints#of})
+     * @param jamPoints les points des courbes de grippage, {@code [x, y]}, dans l'ordre des joints
+     * @param assemblyMass masse de l'assembly en kg ; {@code 0} : aucune
+     * @param selfCollision vrai si ses corps se touchent entre eux (§10.4)
+     * @param nodes octets de la section {@code NODE}
+     * @param restored l'état restauré, un par corps et par joint ; {@code null} : aucun
+     * @param asleep vrai si l'assembly naît endormie, ses vitesses gelées
+     * @param anim octets de la section {@code ANIM} ; {@code null} : aucune
+     * @param phys octets de la section {@code PHYS} (colliders compilés)
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream createAssembly(
+            int handleIndex,
+            int handleGeneration,
+            long dimension,
+            double[] position,
+            float[] rotation,
+            List<AssemblyBody> bodies,
+            List<JointDescription> joints,
+            List<float[]> jamPoints,
+            float assemblyMass,
+            boolean selfCollision,
+            byte[] nodes,
+            Restored restored,
+            boolean asleep,
+            byte[] anim,
+            byte[] phys) {
         if (position.length != 3) {
             throw new IllegalArgumentException("la position est un vecteur à 3 composantes");
         }
@@ -486,12 +540,13 @@ public final class SimCommandStream {
         int restoredBytes = restored == null
                 ? 0
                 : bodies.size() * RESTORED_BODY_BYTES + joints.size() * RESTORED_JOINT_BYTES;
+        int animBytes = anim == null ? 0 : 8 + anim.length;
 
         // Le payload est aligné sur 8 octets : le lecteur natif avance d'un multiple de 8 après
         // chaque commande, pour lire la suivante en place (R-271, R-881).
         int physOffset = alignUp8(CREATE_ASSEMBLY_HEADER_BYTES + bodies.size() * ASSEMBLY_BODY_BYTES
                 + joints.size() * JointDescription.BYTES + jamPoints.size() * JointDescription.JAM_POINT_BYTES
-                + nodes.length + restoredBytes);
+                + nodes.length + restoredBytes + animBytes);
         int payloadLen = physOffset + phys.length;
         int padded = alignUp8(payloadLen);
         ByteBuffer command = ByteBuffer.allocate(COMMAND_HEADER_BYTES + padded)
@@ -513,7 +568,8 @@ public final class SimCommandStream {
         command.put((byte) bodyKind);
         command.put((byte) ((selfCollision ? CREATE_ASSEMBLY_SELF_COLLISION : 0)
                 | (restored != null ? CREATE_ASSEMBLY_RESTORED : 0)
-                | (asleep ? CREATE_ASSEMBLY_ASLEEP : 0)));
+                | (asleep ? CREATE_ASSEMBLY_ASLEEP : 0)
+                | (anim != null ? CREATE_ASSEMBLY_ANIMATED : 0)));
         command.putShort((short) bodies.size());
         command.putShort((short) joints.size());
         command.putShort((short) jamPoints.size());
@@ -548,6 +604,11 @@ public final class SimCommandStream {
                         .put((byte) 0);
                 command.putFloat(joint.misalignment());
             }
+        }
+        if (anim != null) {
+            command.putInt(anim.length);
+            command.putInt(0); // réservé
+            command.put(anim);
         }
         command.position(COMMAND_HEADER_BYTES + physOffset);
         command.put(phys);
@@ -945,6 +1006,45 @@ public final class SimCommandStream {
         command.putInt(handleGeneration);
         command.putShort((short) joint);
         command.putShort((short) 0); // réservé
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code ANIMATE_ASSEMBLY} (ADR-155) : une {@code AnimCommand} pour une assembly, et
+     * les nodes d'un masque. L'instant est un tick du serveur ; le fondu est en secondes.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param tick instant de la commande, en ticks du serveur
+     * @param action {@code PLAY}, {@code STOP}, {@code SET_SPEED} ou {@code SET_MASK}, les valeurs de
+     *     {@link dev.axion.render.AnimationCommands}
+     * @param layer couche, de 0 à 3
+     * @param clip rang du clip dans l'asset
+     * @param weight poids, de 0 à 1
+     * @param fadeSeconds durée du fondu, en secondes
+     * @param speed vitesse
+     * @param mask nodes du masque ({@code SET_MASK}) ; vide sinon
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream animateAssembly(
+            int handleIndex,
+            int handleGeneration,
+            double tick,
+            int action,
+            int layer,
+            int clip,
+            float weight,
+            float fadeSeconds,
+            float speed,
+            int[] mask) {
+        ByteBuffer command = beginCommand(OP_ANIMATE_ASSEMBLY, ANIMATE_ASSEMBLY_BYTES + mask.length * 4);
+        command.putInt(handleIndex).putInt(handleGeneration).putDouble(tick).putInt(action).putInt(layer)
+                .putInt(clip).putFloat(weight).putFloat(fadeSeconds).putFloat(speed).putInt(mask.length)
+                .putInt(0);
+        for (int node : mask) {
+            command.putInt(node);
+        }
         commands.add(command.array());
         return this;
     }

@@ -538,6 +538,30 @@ impl SimDriver {
             .map(|(dimension, bodies)| (*dimension, bodies.as_slice()))
     }
 
+    /// Pose un collider d'une assembly dans le repère de son corps (R-1430, ADR-155) : `body` est
+    /// le rang du corps dans l'assembly, `index` celui du collider dans le corps. Faux si
+    /// l'assembly, le corps ou le collider n'existent pas.
+    pub fn set_assembly_collider(
+        &mut self,
+        handle: Handle,
+        body: usize,
+        index: usize,
+        translation: Vec3,
+        rotation: Quat,
+    ) -> bool {
+        let Some((dimension, id)) = self
+            .routes
+            .get(&handle_key(handle))
+            .and_then(|(dimension, bodies)| Some((*dimension, *bodies.get(body)?)))
+        else {
+            return false;
+        };
+        self.dimensions.get_mut(&dimension).is_some_and(|sim| {
+            sim.world
+                .set_collider_local(id, index, translation, rotation)
+        })
+    }
+
     /// Nombre de colliders de toutes les dimensions : les feuilles des arbres de la phase
     /// large, que rapier refait en entier à chaque retrait de collider.
     #[must_use]

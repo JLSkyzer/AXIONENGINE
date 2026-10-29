@@ -89,9 +89,24 @@ pub fn create_assembly_payloads(
     bytes: &[u8],
     command_count: u32,
 ) -> Result<Vec<Vec<u8>>, CommandError> {
+    payloads_of(bytes, command_count, opcode::CREATE_ASSEMBLY)
+}
+
+/// Les payloads des commandes d'un opcode, dans l'ordre du flux : ceux que la frontière applique
+/// elle-même — `CREATE_ASSEMBLY`, `ANIMATE_ASSEMBLY` (ADR-155) — et ceux dont elle suit l'effet,
+/// comme `REMOVE_ASSEMBLY`. Valide l'en-tête et les bornes du flux.
+///
+/// # Errors
+///
+/// Celles de la lecture du flux.
+pub fn payloads_of(
+    bytes: &[u8],
+    command_count: u32,
+    wanted: u32,
+) -> Result<Vec<Vec<u8>>, CommandError> {
     let mut payloads = Vec::new();
     for_each_command(bytes, command_count, |op, payload| {
-        if op == opcode::CREATE_ASSEMBLY {
+        if op == wanted {
             payloads.push(payload.to_vec());
         }
         Ok(())
@@ -239,7 +254,10 @@ fn apply_one(
         // par la frontière (ax-ffi, `create_assembly_payloads`), qui seule décode
         // les colliders ; APPLY_FORCE continu attend la boucle de forces. Les deux
         // sont comptés « reportés » du point de vue d'ax-physics.
-        opcode::CREATE_ASSEMBLY | opcode::APPLY_FORCE => outcome.deferred += 1,
+        // ANIMATE_ASSEMBLY (ADR-155) : l'animation vit dans la session, que la frontière tient.
+        opcode::CREATE_ASSEMBLY | opcode::APPLY_FORCE | opcode::ANIMATE_ASSEMBLY => {
+            outcome.deferred += 1;
+        }
         // Inconnu : ignoré, comme les genres d'événements (ADR-113/114).
         _ => outcome.ignored += 1,
     }

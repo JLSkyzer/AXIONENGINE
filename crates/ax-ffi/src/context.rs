@@ -178,9 +178,30 @@ pub struct Session {
     /// Temps cumulé des travaux de chaque budget au dernier tick : la consommation du
     /// tick est l'écart, pas le cumul (INV-19).
     job_elapsed_seen: [u64; Budget::ALL.len()],
+    /// L'animation que le serveur joue pour chaque assembly dont un collider dépend d'un node
+    /// animé (R-1430, ADR-155), par handle d'assembly.
+    animations: HashMap<Handle, crate::assembly::ServerAnimation>,
+    /// Le tick de jeu du cycle ouvert, tel que `submit` l'a reçu : l'horloge de l'animation.
+    sim_tick: u64,
+    /// Le bilan de l'animation serveur.
+    animation_stats: AnimationStats,
     /// Détenu pour la durée de la session : c'est lui qui garantit l'unicité du
     /// contexte dans le processus (R-450).
     _guard: ContextGuard,
+}
+
+/// Le bilan de l'animation côté serveur (ADR-155, tranche 3b).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AnimationStats {
+    /// Assemblies que le serveur anime : un collider au moins dépend d'un node animé.
+    pub animated: u32,
+    /// Échantillonnages faits, une assembly par tick où elle bouge (T-360 : aucun si rien ne
+    /// dépend de l'animation).
+    pub samples: u64,
+    /// Commandes appliquées.
+    pub commands: u64,
+    /// Commandes sans effet : assembly que le serveur n'anime pas, commande refusée.
+    pub ignored: u64,
 }
 
 /// Plafonds des assets, connus dès l'ouverture d'une session (ADR-119).
@@ -267,6 +288,73 @@ impl Session {
     #[must_use]
     pub fn physics(&mut self) -> &mut SimDriver {
         &mut self.physics
+    }
+
+    /// Le tick de jeu du cycle à ouvrir : l'horloge de l'animation serveur (ADR-155).
+    pub fn set_sim_tick(&mut self, tick: u64) {
+        self.sim_tick = tick;
+    }
+
+    /// Garde l'animation d'une assembly que le serveur doit jouer (R-1430).
+    pub(crate) fn adopt_animation(
+        &mut self,
+        handle: Handle,
+        animation: crate::assembly::ServerAnimation,
+    ) {
+        self.animations.insert(handle, animation);
+        self.animation_stats.animated = u32::try_from(self.animations.len()).unwrap_or(u32::MAX);
+    }
+
+    /// Oublie l'animation d'une assembly retirée.
+    pub fn forget_animation(&mut self, handle: Handle) {
+        self.animations.remove(&handle);
+        self.animation_stats.animated = u32::try_from(self.animations.len()).unwrap_or(u32::MAX);
+    }
+
+    /// Applique une commande d'animation à une assembly ; sans effet, et comptée, si le serveur
+    /// ne l'anime pas ou que la commande est refusée.
+    pub fn animate(
+        &mut self,
+        handle: Handle,
+        command: &ax_model::dm::animation::AnimCommand,
+        mask: &[u32],
+    ) {
+        let applied = self
+            .animations
+            .get_mut(&handle)
+            .is_some_and(|animation| animation.apply(command, mask).is_ok());
+        if applied {
+            self.animation_stats.commands += 1;
+        } else {
+            self.animation_stats.ignored += 1;
+        }
+    }
+
+    /// Étape 2 (R-660) : échantillonne chaque assembly animée qui bouge au tick du cycle et repose
+    /// ses colliders dépendants dans leurs corps (R-1430). N'agit sur aucune autre.
+    pub fn sample_animations(&mut self) {
+        if self.animations.is_empty() {
+            return;
+        }
+        let tick = self.sim_tick as f64;
+        let mut poses = Vec::new();
+        for (handle, animation) in &mut self.animations {
+            poses.clear();
+            if !animation.sample(tick, &mut poses) {
+                continue;
+            }
+            self.animation_stats.samples += 1;
+            for &(body, index, translation, rotation) in &poses {
+                self.physics
+                    .set_assembly_collider(*handle, body, index, translation, rotation);
+            }
+        }
+    }
+
+    /// Le bilan de l'animation serveur.
+    #[must_use]
+    pub fn animation_stats(&self) -> AnimationStats {
+        self.animation_stats
     }
 
     /// Indique si un `submit` attend son `collect`.
@@ -904,6 +992,9 @@ pub fn open(
         native_budget_bytes: assets.persistent_bytes,
         pending_export: None,
         job_elapsed_seen: [0; Budget::ALL.len()],
+        animations: HashMap::new(),
+        sim_tick: 0,
+        animation_stats: AnimationStats::default(),
         _guard: guard,
     });
     Ok(token)

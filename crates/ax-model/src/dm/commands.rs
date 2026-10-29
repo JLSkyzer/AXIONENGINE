@@ -59,6 +59,9 @@ pub mod opcode {
     pub const JAM_JOINT: u32 = 14;
     /// Rompre un joint d'une assembly ([`super::BreakJoint`]). ADR-151 D5, D7.
     pub const BREAK_JOINT: u32 = 15;
+    /// Une commande d'animation pour une assembly ([`super::AnimateAssembly`], puis les nodes de
+    /// son masque). ADR-155, tranche 3.
+    pub const ANIMATE_ASSEMBLY: u32 = 16;
 }
 
 /// Payload de `JAM_JOINT` (ADR-151 D6, D7) : 16 octets.
@@ -95,6 +98,22 @@ pub struct BreakJoint {
 impl BreakJoint {
     /// Taille sur la frontière, en octets.
     pub const BYTES: usize = 12;
+}
+
+/// Payload d'`ANIMATE_ASSEMBLY` (ADR-155, tranche 3) : 48 octets, puis `command.mask_count`
+/// index de nodes `u32`. L'instant de la commande est un tick du serveur, celui que `submit` porte.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct AnimateAssembly {
+    /// L'assembly.
+    pub handle: Handle,
+    /// La commande.
+    pub command: super::animation::AnimCommand,
+}
+
+impl AnimateAssembly {
+    /// Taille sur la frontière, en octets, sans les nodes du masque.
+    pub const BYTES: usize = 48;
 }
 
 /// Forme d'un proxy d'entité vanilla, champ `shape` de [`EntityProxyDesc`] (R-614).
@@ -264,6 +283,10 @@ pub mod create_assembly_flags {
     /// L'assembly naît endormie, comme la gestion d'activité endort : ses vitesses gelées,
     /// rendues au réveil (22.4, ADR-153 D4).
     pub const ASLEEP: u8 = 1 << 2;
+    /// La section `ANIM` de l'asset suit l'état restauré (ADR-155, tranche 3) : `u32` sa taille, un
+    /// `u32` réservé, puis ses octets. Le serveur ne s'en sert que si un collider dépend d'un node
+    /// animé (R-1430).
+    pub const ANIMATED: u8 = 1 << 3;
 }
 
 /// Plafond de corps par assembly (R-190, `E-3050`).
@@ -499,11 +522,39 @@ pub fn create_assembly_payload_restored(
     restored: Option<(&[RestoredBody], &[RestoredJoint])>,
     phys: &[u8],
 ) -> Vec<u8> {
-    let flags = if restored.is_some() {
+    create_assembly_payload_full(
+        header, bodies, joints, jam_points, nodes, restored, None, phys,
+    )
+}
+
+/// Le payload de [`create_assembly_payload_restored`], avec la section `ANIM` de l'asset après
+/// l'état restauré (ADR-155) ; le drapeau [`create_assembly_flags::ANIMATED`] suit `anim`.
+///
+/// # Panics
+///
+/// Comme [`create_assembly_payload_restored`], et si `anim` dépasse 4 Gio.
+#[must_use]
+#[allow(clippy::too_many_arguments)]
+pub fn create_assembly_payload_full(
+    header: &CreateAssembly,
+    bodies: &[AssemblyBodyEntry],
+    joints: &[JointDesc],
+    jam_points: &[[f32; 2]],
+    nodes: &[u8],
+    restored: Option<(&[RestoredBody], &[RestoredJoint])>,
+    anim: Option<&[u8]>,
+    phys: &[u8],
+) -> Vec<u8> {
+    let mut flags = if restored.is_some() {
         header.flags | create_assembly_flags::RESTORED
     } else {
         header.flags & !create_assembly_flags::RESTORED
     };
+    if anim.is_some() {
+        flags |= create_assembly_flags::ANIMATED;
+    } else {
+        flags &= !create_assembly_flags::ANIMATED;
+    }
     let header = CreateAssembly {
         flags,
         body_count: u16::try_from(bodies.len()).expect("au plus 65 535 corps"),
@@ -534,6 +585,12 @@ pub fn create_assembly_payload_restored(
         for joint in restored_joints {
             joint.write_le(&mut out);
         }
+    }
+    if let Some(anim) = anim {
+        let size = u32::try_from(anim.len()).expect("section ANIM sous 4 Gio");
+        out.extend_from_slice(&size.to_le_bytes());
+        out.extend_from_slice(&0u32.to_le_bytes());
+        out.extend_from_slice(anim);
     }
     out.resize(out.len().next_multiple_of(8), 0);
     out.extend_from_slice(phys);
@@ -960,5 +1017,50 @@ mod tests {
         assert_eq!(offset_of!(JamJoint, misalignment), 12);
         assert_eq!(size_of::<BreakJoint>(), BreakJoint::BYTES);
         assert_eq!(offset_of!(BreakJoint, joint), 8);
+    }
+
+    #[test]
+    fn dm_commande_d_animation_disposition_figee() {
+        // ADR-155 : ANIMATE_ASSEMBLY sur 48 octets, la commande après le handle.
+        assert_eq!(size_of::<AnimateAssembly>(), AnimateAssembly::BYTES);
+        assert_eq!(offset_of!(AnimateAssembly, command), 8);
+    }
+
+    #[test]
+    fn la_section_anim_suit_l_etat_restaure_prefixee_de_sa_taille() {
+        let header = CreateAssembly::read_le(&{
+            let mut bytes = Vec::new();
+            CreateAssembly {
+                handle: Handle::new(1, 1),
+                dimension: 0,
+                spawn: WorldTransform {
+                    position: [0.0; 3],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                },
+                body_kind: 2,
+                flags: 0,
+                body_count: 0,
+                joint_count: 0,
+                jam_points: 0,
+                assembly_mass: 0.0,
+                node_bytes: 0,
+            }
+            .write_le(&mut bytes);
+            bytes
+        })
+        .expect("en-tête");
+        let anim = [7u8; 5];
+        let payload =
+            create_assembly_payload_full(&header, &[], &[], &[], &[], None, Some(&anim), &[9]);
+        let at = CreateAssembly::BODIES_OFFSET;
+        let written = CreateAssembly::read_le(&payload).expect("en-tête écrit");
+        assert_ne!(written.flags & create_assembly_flags::ANIMATED, 0);
+        assert_eq!(&payload[at..at + 4], &5u32.to_le_bytes());
+        assert_eq!(&payload[at + 8..at + 13], &anim);
+        assert_eq!(
+            payload.len(),
+            (at + 13).next_multiple_of(8) + 1,
+            "PHYS à la suite, aligné sur 8"
+        );
     }
 }

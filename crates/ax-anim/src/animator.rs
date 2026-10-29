@@ -392,6 +392,14 @@ impl Animator {
             .map(|playing| playing.clip)
     }
 
+    /// Indique si aucune couche ne joue ni ne s'efface : l'instance est au repos.
+    #[must_use]
+    pub fn is_idle(&self) -> bool {
+        self.layers
+            .iter()
+            .all(|layer| layer.incoming.is_none() && layer.outgoing.is_none())
+    }
+
     /// Les pistes actives de l'instance, fondus compris (R-200).
     #[must_use]
     pub fn active_tracks(&self, library: &ClipLibrary) -> usize {

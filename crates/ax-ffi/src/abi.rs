@@ -36,14 +36,15 @@ use ax_asset::options::AssetOptions;
 use ax_jobs::{CpuShare, JobBudgets, JobKind, Side, WorkerPolicy};
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::budgets::Budget;
-use ax_model::dm::commands::{create_assembly_flags, restored_joint_flags};
+use ax_model::dm::animation::AnimCommand;
+use ax_model::dm::commands::{
+    create_assembly_flags, opcode, restored_joint_flags, AnimateAssembly,
+};
 use ax_model::dm::debug::{debug_flags, encode_debug_payload, overlay};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::joints::JointState;
 use ax_model::dm::physics::{BodyBounds, BodyState};
-use ax_physics::{
-    DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimDriver, SimSettings, Stage,
-};
+use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSettings, Stage};
 
 /// Version de l'ABI.
 ///
@@ -1652,7 +1653,7 @@ const SERVER_TICK_DT: f32 = 1.0 / 20.0;
 #[no_mangle]
 pub unsafe extern "C" fn axion_sim_submit(
     ctx: u64,
-    _tick: u64,
+    tick: u64,
     command_count: u32,
     _impact_count: u32,
 ) -> i32 {
@@ -1660,6 +1661,8 @@ pub unsafe extern "C" fn axion_sim_submit(
         match context::with(ctx, false, |session| {
             // R-280 : le submit se mesure contre `budgets.submit_ns` (INV-19).
             let started = std::time::Instant::now();
+            // L'horloge de l'animation serveur : le tick de jeu que Java soumet (ADR-155).
+            session.set_sim_tick(tick);
             let code = submit_commands(session, command_count);
             session.record_submit(elapsed_ns(started));
             code
@@ -1706,12 +1709,76 @@ fn submit_commands(session: &mut context::Session, command_count: u32) -> i32 {
         Err(_) => return AXION_E_INVALID_BUFFER,
     };
     for payload in &assemblies {
-        apply_create_assembly(session.physics(), payload);
+        apply_create_assembly(session, payload);
+    }
+    // ADR-155 : les commandes d'animation, après les créations du même flux.
+    let Ok(animations) = ax_physics::payloads_of(&bytes, command_count, opcode::ANIMATE_ASSEMBLY)
+    else {
+        return AXION_E_INVALID_BUFFER;
+    };
+    for payload in &animations {
+        apply_animate_assembly(session, payload);
+    }
+    let Ok(removed) = ax_physics::payloads_of(&bytes, command_count, opcode::REMOVE_ASSEMBLY)
+    else {
+        return AXION_E_INVALID_BUFFER;
+    };
+    for payload in &removed {
+        if let Some(handle) = read_handle_at(payload, 0) {
+            session.forget_animation(handle);
+        }
     }
     match ax_physics::apply_command_stream(session.physics(), &bytes, command_count) {
         Ok(_) => AXION_OK,
         Err(_) => AXION_E_INVALID_BUFFER,
     }
+}
+
+/// Le handle `{index, generation}` à la position `at` d'un payload, s'il y tient.
+fn read_handle_at(payload: &[u8], at: usize) -> Option<Handle> {
+    let word = |at: usize| {
+        payload
+            .get(at..at + 4)
+            .map(|bytes| u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    };
+    Some(Handle::new(word(at)?, word(at + 4)?))
+}
+
+/// Applique un `ANIMATE_ASSEMBLY` (ADR-155) : `AnimateAssembly`, puis les nodes de son masque. Un
+/// payload tronqué, ou qui annonce un masque démesuré, est ignoré.
+fn apply_animate_assembly(session: &mut context::Session, payload: &[u8]) {
+    let Some(handle) = read_handle_at(payload, 0) else {
+        return;
+    };
+    let Some(body) = payload.get(8..AnimateAssembly::BYTES) else {
+        return;
+    };
+    let u32_at =
+        |at: usize| u32::from_le_bytes([body[at], body[at + 1], body[at + 2], body[at + 3]]);
+    let command = AnimCommand {
+        tick: f64::from_le_bytes(body[0..8].try_into().unwrap_or([0; 8])),
+        action: u32_at(8),
+        layer: u32_at(12),
+        clip: u32_at(16),
+        weight: f32::from_bits(u32_at(20)),
+        fade: f32::from_bits(u32_at(24)),
+        speed: f32::from_bits(u32_at(28)),
+        mask_count: u32_at(32),
+        _pad: 0,
+    };
+    let count = command.mask_count as usize;
+    if count > ax_model::dm::limits::MAX_NODES {
+        return;
+    }
+    let Some(nodes) = payload.get(AnimateAssembly::BYTES..AnimateAssembly::BYTES + count * 4)
+    else {
+        return;
+    };
+    let mask: Vec<u32> = nodes
+        .chunks_exact(4)
+        .map(|word| u32::from_le_bytes([word[0], word[1], word[2], word[3]]))
+        .collect();
+    session.animate(handle, &command, &mask);
 }
 
 /// Applique un `CREATE_ASSEMBLY` (ADR-151 D7) : le module `assembly` décode l'en-tête, les
@@ -1723,10 +1790,12 @@ fn submit_commands(session: &mut context::Session, command_count: u32) -> i32 {
 /// d'un collider, des groupes discordants ou un joint fautif font **abandonner cette
 /// assembly** sans créer de corps — jamais de panique ni d'assembly à moitié formée. La
 /// commande a déjà été lue par `create_assembly_payloads`, qui a validé les bornes du flux.
-fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
-    let Some(request) = assembly::decode(payload) else {
+fn apply_create_assembly(session: &mut context::Session, payload: &[u8]) {
+    let Some(mut request) = assembly::decode(payload) else {
         return;
     };
+    let animation = request.animation.take();
+    let physics = session.physics();
     let header = request.header;
     let Some(created) = physics.create_assembly_bodies(
         header.dimension,
@@ -1774,6 +1843,10 @@ fn apply_create_assembly(physics: &mut SimDriver, payload: &[u8]) {
     if header.flags & create_assembly_flags::ASLEEP != 0 {
         physics.suspend_assembly(header.dimension, created[0]);
     }
+    // R-1430 : le serveur ne joue l'animation que si un collider en dépend.
+    if let Some(animation) = animation {
+        session.adopt_animation(header.handle, animation);
+    }
 }
 
 /// Durée écoulée depuis `start`, en nanosecondes, saturée.
@@ -1812,6 +1885,10 @@ pub unsafe extern "C" fn axion_sim_collect(
             let activity = session.physics().manage_activity();
             session.record_activity(activity);
             session.record_stage(Stage::Commands, elapsed_ns(commands));
+            // Étape 2 (R-660) : l'animation qui repose les colliders qui en dépendent (R-1430).
+            let animation = std::time::Instant::now();
+            session.sample_animations();
+            session.record_stage(Stage::Animation, elapsed_ns(animation));
             // Le pas, mesuré ; FM-21 décide sur sa durée (§25.5).
             session.step_simulation(SERVER_TICK_DT);
             // Étape 15 (C-40) : la récolte des états et des événements, écrits pour Java.

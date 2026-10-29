@@ -7,8 +7,11 @@
 //! pose de repos de l'asset. Rien n'est créé ici : le pilote reçoit des corps et des joints
 //! prêts, et un payload fautif n'en donne aucun.
 
-use ax_asset::a3d::{decode_colliders, decode_nodes};
+use ax_anim::{AnimError, Animator, ClipLibrary, TICKS_PER_SECOND};
+use ax_asset::a3d::{decode_animations, decode_colliders, decode_nodes};
+use ax_asset::validate::validate_animations;
 use ax_math::{Quat, Vec3};
+use ax_model::dm::animation::AnimCommand;
 use ax_model::dm::commands::{
     create_assembly_flags, AssemblyBodyEntry, CreateAssembly, RestoredBody, RestoredJoint,
     MAX_ASSEMBLY_BODIES,
@@ -35,6 +38,9 @@ pub(crate) struct AssemblyRequest {
     pub groups: CollisionGroups,
     /// L'état restauré, si l'en-tête porte `RESTORED` (ADR-153 D3).
     pub restored: Option<Restored>,
+    /// L'animation que le serveur doit jouer : seulement si un collider dépend d'un node animé
+    /// (R-1430, ADR-155).
+    pub animation: Option<ServerAnimation>,
 }
 
 /// Décode un payload de `CREATE_ASSEMBLY`. `None` au premier écart — en-tête tronqué, aucun
@@ -119,11 +125,26 @@ pub(crate) fn decode(payload: &[u8]) -> Option<AssemblyRequest> {
             end,
         )
     };
-    let phys_at = restored_end.next_multiple_of(8);
+    // ADR-155 : la section `ANIM` de l'asset suit l'état restauré, préfixée de sa taille.
+    let (anim, anim_end) = if header.flags & create_assembly_flags::ANIMATED == 0 {
+        (None, restored_end)
+    } else {
+        let size = payload.get(restored_end..restored_end + 4)?;
+        let size = usize::try_from(u32::from_le_bytes(size.try_into().ok()?)).ok()?;
+        let start = restored_end.checked_add(8)?;
+        let end = start.checked_add(size)?;
+        (Some(payload.get(start..end)?), end)
+    };
+    let phys_at = anim_end.next_multiple_of(8);
     let (colliders, points, children) = decode_colliders(payload.get(phys_at..)?).ok()?;
     let groups = body_groups(&colliders)?;
     let skeleton = Skeleton::new(&entries, &nodes)?;
-    let bodies = layout(&skeleton, &entries, &nodes, &colliders, &points, &children)?;
+    let (bodies, placement) = layout(&skeleton, &entries, &nodes, &colliders, &points, &children)?;
+    // Une section illisible ou refusée n'abandonne pas l'assembly : elle n'est simplement pas
+    // animée côté serveur, comme le rendu garde un asset au repos.
+    let animation = anim.and_then(|bytes| {
+        ServerAnimation::new(bytes, &nodes, &skeleton, &entries, &colliders, &placement)
+    });
     let joints = descs
         .iter()
         .enumerate()
@@ -135,6 +156,7 @@ pub(crate) fn decode(payload: &[u8]) -> Option<AssemblyRequest> {
         joints,
         groups,
         restored,
+        animation,
     })
 }
 
@@ -149,7 +171,7 @@ pub(crate) struct Restored {
 }
 
 /// Pose d'un node dans le repère de l'asset : translation, rotation et échelle uniforme.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct NodePose {
     translation: Vec3,
     rotation: Quat,
@@ -257,6 +279,9 @@ impl Skeleton {
 /// son corps par la pose de son node composée avec la sienne, sa forme mise à l'échelle de
 /// cette chaîne ; un collider qu'aucun node ne porte (le collider de l'asset entier) va au
 /// corps racine tel quel.
+///
+/// Rend aussi, pour chaque collider, son corps, son rang dans ce corps et son node porteur : ce
+/// qu'il faut pour le reposer quand ce node s'anime (ADR-155).
 fn layout(
     skeleton: &Skeleton,
     entries: &[AssemblyBodyEntry],
@@ -264,7 +289,7 @@ fn layout(
     colliders: &[ColliderDesc],
     points: &[[f32; 3]],
     children: &[ColliderDesc],
-) -> Option<Vec<AssemblyBody>> {
+) -> Option<(Vec<AssemblyBody>, Vec<Placement>)> {
     // Le node porteur de chaque collider, au plus un.
     let mut carrier: Vec<Option<usize>> = vec![None; colliders.len()];
     for (index, node) in nodes.iter().enumerate() {
@@ -278,6 +303,7 @@ fn layout(
     }
 
     let mut placed: Vec<Vec<BodyCollider>> = vec![Vec::new(); entries.len()];
+    let mut placement = Vec::with_capacity(colliders.len());
     for (index, collider) in colliders.iter().enumerate() {
         let shape = Shape::from_collider_shape(&collider.shape, points, children).ok()?;
         let local_scale = uniform_scale(&collider.local)?;
@@ -300,6 +326,11 @@ fn layout(
         } else {
             shape.scaled(scale)
         };
+        placement.push(Placement {
+            body: rank,
+            index: placed[rank].len(),
+            node: carrier[index],
+        });
         placed[rank].push(BodyCollider {
             shape,
             density: collider.density,
@@ -314,7 +345,7 @@ fn layout(
         return None;
     }
 
-    Some(
+    Some((
         entries
             .iter()
             .zip(&skeleton.frames)
@@ -332,7 +363,173 @@ fn layout(
                 desc: entry.desc,
             })
             .collect(),
-    )
+        placement,
+    ))
+}
+
+/// Où un collider a été rangé : son corps, son rang dans ce corps, son node porteur.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Placement {
+    body: usize,
+    index: usize,
+    node: Option<usize>,
+}
+
+/// Un collider porté par un node animé : il suit sa pose dans son corps.
+#[derive(Debug, Clone, PartialEq)]
+struct Dependent {
+    body: usize,
+    index: usize,
+    node: usize,
+    /// Sa pose dans son node, celle de `ColliderDesc.local` sans l'échelle, que la forme a
+    /// déjà reçue à la création.
+    translation: Vec3,
+    rotation: Quat,
+}
+
+/// L'animation qu'un serveur joue pour une assembly (R-1430, ADR-155) : seulement quand un collider
+/// dépend d'un node animé. Elle tient ses couches, la pose de repos de ses nodes et ses colliders
+/// dépendants ; à chaque échantillonnage (étape 2), elle rend la pose de chacun dans son corps.
+///
+/// L'échelle d'un node animé ne change pas la forme d'un collider, posée une fois à la création ;
+/// une échelle animée non uniforme laisse le collider à sa pose précédente (R-120).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ServerAnimation {
+    clips: ClipLibrary,
+    animator: Animator,
+    rest: Vec<Transform>,
+    parents: Vec<Option<usize>>,
+    pose: Vec<Transform>,
+    poses: Vec<Option<NodePose>>,
+    dependents: Vec<Dependent>,
+    frames: Vec<NodePose>,
+    /// Les colliders sont à la pose que l'animateur au repos leur donne : rien à refaire tant
+    /// qu'il le reste.
+    settled: bool,
+}
+
+impl ServerAnimation {
+    /// `None` si la section est illisible ou refusée par C-22 (R-540), si une racine de corps
+    /// secondaire ou l'un de ses ancêtres est animé — la physique l'emporte (R-930), et un node
+    /// physique sous un node animé est interdit (R-931) —, ou si aucun collider ne dépend d'un node
+    /// animé : le serveur n'échantillonne alors rien (R-1430, T-360).
+    fn new(
+        bytes: &[u8],
+        nodes: &[NodeDesc],
+        skeleton: &Skeleton,
+        entries: &[AssemblyBodyEntry],
+        colliders: &[ColliderDesc],
+        placement: &[Placement],
+    ) -> Option<Self> {
+        let table = decode_animations(bytes).ok()?;
+        if !validate_animations(nodes, &table.animations, &table.tracks, &table.keys).is_valid() {
+            return None;
+        }
+        let clips = ClipLibrary::new(
+            table.animations,
+            table.names,
+            table.tracks,
+            table.keys,
+            nodes.len(),
+        )
+        .ok()?;
+        let animated = clips.animated_nodes(nodes.len());
+        let parents: Vec<Option<usize>> = nodes
+            .iter()
+            .map(|node| (!node.is_root()).then_some(node.parent as usize))
+            .collect();
+        for entry in &entries[1..] {
+            let mut node = Some(entry.root_node as usize);
+            while let Some(index) = node {
+                if animated[index] {
+                    return None;
+                }
+                node = parents[index];
+            }
+        }
+        let mut dependents = Vec::new();
+        for (collider, place) in colliders.iter().zip(placement) {
+            let Some(carrier) = place.node else {
+                continue;
+            };
+            let stop = (place.body > 0).then(|| entries[place.body].root_node as usize);
+            let mut node = Some(carrier);
+            let mut moves = false;
+            while let Some(index) = node {
+                if Some(index) == stop {
+                    break;
+                }
+                if animated[index] {
+                    moves = true;
+                    break;
+                }
+                node = parents[index];
+            }
+            if moves {
+                dependents.push(Dependent {
+                    body: place.body,
+                    index: place.index,
+                    node: carrier,
+                    translation: Vec3::from_array(collider.local.translation),
+                    rotation: Quat::from_array(collider.local.rotation),
+                });
+            }
+        }
+        if dependents.is_empty() {
+            return None;
+        }
+        let rest: Vec<Transform> = nodes.iter().map(|node| node.local).collect();
+        Some(Self {
+            clips,
+            animator: Animator::new(nodes.len()),
+            pose: rest.clone(),
+            poses: vec![None; nodes.len()],
+            rest,
+            parents,
+            dependents,
+            frames: skeleton.frames.clone(),
+            settled: true,
+        })
+    }
+
+    /// Applique une commande ; une commande refusée ne change rien.
+    pub(crate) fn apply(&mut self, command: &AnimCommand, mask: &[u32]) -> Result<(), AnimError> {
+        self.animator.apply(&self.clips, command, mask)
+    }
+
+    /// Échantillonne au tick `tick` et ajoute à `out` la pose de chaque collider dépendant dans
+    /// son corps : `(corps, rang, translation, rotation)`. Faux, sans rien ajouter, si l'animateur
+    /// est au repos et que les colliders y sont déjà.
+    pub(crate) fn sample(&mut self, tick: f64, out: &mut Vec<(usize, usize, Vec3, Quat)>) -> bool {
+        let idle = self.animator.is_idle();
+        if idle && self.settled {
+            return false;
+        }
+        self.settled = idle;
+        self.animator.evaluate(
+            &self.clips,
+            &self.rest,
+            tick / TICKS_PER_SECOND,
+            &mut self.pose,
+        );
+        for index in 0..self.pose.len() {
+            let parent = match self.parents[index] {
+                None => Some(NodePose::ROOT),
+                Some(parent) => self.poses[parent],
+            };
+            self.poses[index] = parent.and_then(|pose| pose.then(&self.pose[index]));
+        }
+        for dependent in &self.dependents {
+            let Some(pose) = self.poses[dependent.node] else {
+                continue;
+            };
+            let in_asset = pose.translation + pose.rotation * (dependent.translation * pose.scale);
+            let (translation, rotation) =
+                self.frames[dependent.body].local(in_asset, pose.rotation * dependent.rotation);
+            out.push((dependent.body, dependent.index, translation, rotation));
+        }
+        true
+    }
 }
 
 /// Le joint de rang `index` (ADR-151 D3, D4) : cohérent avec son type et avec les corps de
@@ -576,7 +773,7 @@ mod tests {
         colliders: &[ColliderDesc],
     ) -> Option<Vec<AssemblyBody>> {
         let skeleton = Skeleton::new(entries, nodes)?;
-        layout(&skeleton, entries, nodes, colliders, &[], &[])
+        layout(&skeleton, entries, nodes, colliders, &[], &[]).map(|(bodies, _)| bodies)
     }
 
     fn proche(a: Vec3, b: Vec3) -> bool {

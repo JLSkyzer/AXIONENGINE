@@ -662,4 +662,46 @@ class SimCommandStreamTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new SimCommandStream().setWorldCollision(0L, new int[] {0, 0, 0}, new float[0][], 0x10000));
     }
+
+    @Test
+    void laSectionAnimSuitLEtatRestaurePrefixeeDeSaTaille() {
+        // ADR-155 : ANIM après NODE (et l'état restauré), préfixée de sa taille et d'un mot réservé ;
+        // PHYS reste aligné sur 8.
+        byte[] anim = {1, 2, 3};
+        byte[] phys = {9};
+        byte[] bytes = new SimCommandStream()
+                .createAssembly(5, 1, 0L, new double[] {0, 0, 0}, new float[] {0, 0, 0, 1},
+                        java.util.List.of(new SimCommandStream.AssemblyBody(
+                                BodyDescription.undeclared(SimCommandStream.BODY_DYNAMIC), 0)),
+                        java.util.List.of(), java.util.List.of(), 0f, false, new byte[0], null, false, anim, phys)
+                .toBytes();
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.CREATE_ASSEMBLY_ANIMATED, b.get(73), "drapeau ANIMATED");
+        int anims = 16 + 72 + 64;
+        assertEquals(3, b.getInt(anims), "taille de la section ANIM");
+        assertEquals(0, b.getInt(anims + 4), "réservé");
+        assertArrayEquals(anim, Arrays.copyOfRange(bytes, anims + 8, anims + 11));
+        int physAt = 16 + ((72 + 64 + 8 + 3 + 7) & ~7);
+        assertEquals(9, bytes[physAt], "PHYS aligné sur 8 après ANIM");
+        assertEquals(physAt - 16 + 1, b.getInt(12), "payload_len");
+    }
+
+    @Test
+    void encodeUneCommandeAnimateAssembly() {
+        byte[] bytes = new SimCommandStream()
+                .animateAssembly(5, 1, 40.5, 4, 2, 0, 0f, 0f, 1f, new int[] {3, 7})
+                .toBytes();
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_ANIMATE_ASSEMBLY, b.getInt(8));
+        assertEquals(SimCommandStream.ANIMATE_ASSEMBLY_BYTES + 8, b.getInt(12), "payload et masque");
+        assertEquals(5, b.getInt(16));
+        assertEquals(1, b.getInt(20));
+        assertEquals(40.5, b.getDouble(24), "tick");
+        assertEquals(4, b.getInt(32), "action");
+        assertEquals(2, b.getInt(36), "couche");
+        assertEquals(1f, b.getFloat(52), "vitesse");
+        assertEquals(2, b.getInt(56), "nodes du masque");
+        assertEquals(3, b.getInt(16 + SimCommandStream.ANIMATE_ASSEMBLY_BYTES));
+        assertEquals(7, b.getInt(16 + SimCommandStream.ANIMATE_ASSEMBLY_BYTES + 4));
+    }
 }

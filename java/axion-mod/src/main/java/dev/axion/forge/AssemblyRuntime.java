@@ -138,6 +138,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             byte[] nodes,
             SimCommandStream.Restored restored,
             boolean asleep,
+            byte[] anim,
             byte[] phys) {}
 
     /**
@@ -248,9 +249,11 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             assembly.restoreJoints(persisted.joints());
         }
         byte[] nodeSection = nodes == null ? new byte[0] : nodes;
+        // ADR-155 : les clips de l'asset partent avec lui ; le natif ne les joue que si un collider en dépend.
+        byte[] anim = sectionOf(definition, "ANIM");
         pending.add(new Pending(true, index, dimension, position, rotation, layout.bodies(), layout.joints(),
                 layout.jamPoints(), layout.assemblyMass(), layout.selfCollision(), nodeSection, restored, asleep,
-                phys));
+                anim, phys));
         ledger.attach(index, assembly);
         return true;
     }
@@ -317,7 +320,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         implausibleBounds.remove(index);
         speeds.remove(index);
         rootNodes.remove(index);
-        pending.add(new Pending(false, index, 0L, null, null, null, null, null, 0.0f, false, null, null, false, null));
+        pending.add(new Pending(false, index, 0L, null, null, null, null, null, 0.0f, false, null, null, false, null, null));
     }
 
     /**
@@ -403,6 +406,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                         cmd.nodes(),
                         cmd.restored(),
                         cmd.asleep(),
+                        cmd.anim(),
                         cmd.phys());
             } else {
                 stream.removeAssembly(cmd.index(), GENERATION);
