@@ -3490,7 +3490,25 @@ sources procédurales de véhicule (M5, T-365).
             hors de la registry effective. Mesuré : 27 definitions compilées en 12,0 ms à la barrière du
             serveur de GameTests. Parité Java/natif sur la charnière de `NativeBridgeTest`.
       - [ ] 4. `CREATE_ASSEMBLY` par empreinte ; Java ne lit plus `NODE`, `PHYS` ni `ANIM` côté serveur ; le
-            rendu prend son node racine du résumé.
+            rendu prend son node racine du résumé. Décision de Killian (2026-10-30) : le résumé porte les
+            clips (nom et nombre de pistes), Java ne lit plus `ANIM`.
+            **En cours, non commité (arbre de travail, 2026-10-30)** — côté Rust : en-tête de 72 o
+            (`definition` à 56, drapeaux `RESTORED`/`ASLEEP` à 64), schéma du flux 4,
+            `apply_create_assembly` sur la definition compilée, `assembly::read_restored`, `decode`
+            supprimé, clips au résumé ; tests `ax-ffi` convertis et verts par `tests/common/mod.rs`
+            (`create_assembly_abi`, `body_desc_abi`, `debug_abi`, `groups_abi`, `materials_abi`,
+            `memory_abi`, `sim_activity_abi`, `sim_bounds_abi`). Reste :
+            - convertir `server_anim.rs` ; vérifier les clips du résumé dans `definition_abi.rs` ;
+            - Java : `DefinitionCompiler.Summary` lit les clips ; `SimCommandStream.createAssembly` au
+              nouvel en-tête, `CURRENT_SCHEMA = 4` ; `AssemblyRuntime.createBody` par
+              `compiledDefinition` (remise en file tant que la compilation attend ; `rootNodes`,
+              `resetJoints`, `restoredOf` et `animation().bind` depuis le résumé) ; retirer `sectionOf`,
+              le zstd et `materialIndex` d'`AssemblyRuntime` et de `AxionForgeEntrypoint` ;
+              `AxionRenderPass.rigOf` depuis le résumé ; supprimer `AssemblyBodies`, `RefitMarking`,
+              `MaterialMarking`, `CollisionFilter.apply` et leurs tests ; `NativeBridgeTest`,
+              `SimCommandStreamTest` ;
+            - ADR-156 (décision des clips, précisions de la tranche), CHANGELOG ; mutations ; CI locale
+              complète, banc compris ; commit.
       - [ ] 5. `axion_asset_warnings` et son journal ; `PHYSICS.md`, rustdoc de l'ABI, CHANGELOG.
 - [x] C-30 avec C-37 : le graphe de scène vivant au runtime, étape 14 du pas et
       `axion.scene.propagate_ns` — ADR-137, ADR-146 §7. Fait côté client (ADR-155, étape 3c, 2026-10-30) :
