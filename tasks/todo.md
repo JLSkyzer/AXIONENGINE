@@ -3474,12 +3474,22 @@ sources procédurales de véhicule (M5, T-365).
       chantier joints (ADR-151), clos le 2026-10-24.
 - [ ] C-27, étapes 4 et 5 avec C-51 : `CompiledDefinition`, noms de nodes, de sockets et de parts
       résolus côté natif, synchronisation serveur → client — ADR-137, ADR-146 §5. La synchronisation des
-      textes est faite (ADR-150 D5) ; le reste est proposé par ADR-156 (2026-10-30), en attente de Killian :
-      compilation native sur `DEFN`, registre de session, `CREATE_ASSEMBLY` par empreinte, ABI 12, et le
-      canal des avertissements `LODM`/`ANIM`.
-- [ ] C-30 avec C-37 : le graphe de scène vivant au runtime, étape 14 du pas et
+      textes est faite (ADR-150 D5) ; le reste par ADR-156, accepté par Killian le 2026-10-30 (Q1 à Q4
+      comme proposé) : compilation native sur `DEFN`, registre de session, `CREATE_ASSEMBLY` par empreinte,
+      ABI 12, et le canal des avertissements `LODM`/`ANIM`.
+      - [ ] 1. `DEFN` et sa lecture native : résolution des noms d'asset, marques des colliders (`REFITTABLE`,
+            matériau, groupes), refus R-190, R-931 et avertissement R-930 ; tests Rust et mutations.
+      - [ ] 2. Registre de session, `axion_definition_compile` et `axion_definition_remove`, `PHYS` et
+            animation au masque d'IF-06 ; ABI 12.
+      - [ ] 3. Java écrit `DEFN`, compile au rechargement et à la fin de la compilation des assets, tient
+            les refus d'étape 4.
+      - [ ] 4. `CREATE_ASSEMBLY` par empreinte ; Java ne lit plus `NODE`, `PHYS` ni `ANIM` côté serveur ; le
+            rendu prend son node racine du résumé.
+      - [ ] 5. `axion_asset_warnings` et son journal ; `PHYSICS.md`, rustdoc de l'ABI, CHANGELOG.
+- [x] C-30 avec C-37 : le graphe de scène vivant au runtime, étape 14 du pas et
       `axion.scene.propagate_ns` — ADR-137, ADR-146 §7. Fait côté client (ADR-155, étape 3c, 2026-10-30) :
-      graphe vivant par instance animée, propagation mesurée. Reste l'étape 14 côté serveur, avec les sockets.
+      graphe vivant par instance animée, propagation mesurée. L'étape 14 côté serveur part en M5 avec C-48
+      et C-53, ses premiers consommateurs (ADR-156 D6, décision de Killian du 2026-10-30).
 - [x] C-40 : T-392 — ADR-144 §3, ADR-146 ; fait par l'étape 3c d'ADR-155 (`tests/client_steps.rs`), le
       2026-10-30.
 - [x] C-60 avec IF-05 : R-300, résultat partiel `AXION_RENDER_DEGRADED` (ADR-127) — ADR-146 ; fait par
@@ -3514,6 +3524,7 @@ Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0
 - [x] **M3** Physique et premier rendu — C-31, C-32, C-38, C-39, C-40, C-60..C-63, C-67, C-26
 - [ ] **M4** Réseau, animation, culling/LOD, joints, persistance — C-34, C-37, C-51, C-52, C-64, C-65, C-66
 - [ ] **M5** Véhicules, sièges, attaches, gouverneur, overlay — C-33, C-48, C-53, C-73, C-77
+      · reprend l'étape 14 côté serveur (C-30), avec C-48 et C-53 (ADR-156 D6)
 - [ ] **M6** Impacts et déformation continue *(jalon central)* — C-28, C-41, C-42, C-45, C-68
       · **`[EFFORT MAX]`** sur tout le jalon, prévenir avant de commencer
 - [ ] **M7** Structure, rupture, détachement, réparation — C-43, C-44, C-46
