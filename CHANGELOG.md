@@ -224,6 +224,11 @@ Definition of Done (PARTIE 37.3).
     sous un node anime (`E-7002`, R-931) ; ABI 12 : `axion_definition_compile`
     et `axion_definition_remove` tiennent le registre de la session, et
     `axion_asset_load` charge `PHYS`, `SKEL` et `ANIM` pour une definition ;
+    Java ecrit le `DEFN` de chaque definition acceptee et la compile des que
+    son asset l'est, dans la pompe d'assets du tick et a la barriere du
+    serveur dedie ; un refus la retire des definitions en vigueur et se
+    journalise avec le chemin et le nom fautifs ; un asset indisponible la
+    desactive (`E-3001`) ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

@@ -184,7 +184,17 @@ public final class AssemblyJoints {
         return new Transcription(List.copyOf(joints), List.copyOf(jamPoints));
     }
 
-    private static JointDescription transcribe(
+    /**
+     * {@return la description d'un joint dont la forme et la cohérence sont vérifiées ({@link #check})}
+     * Ses points de grippage s'ajoutent à {@code jamPoints}, que la description désigne par rang.
+     *
+     * @param joint l'entrée de {@code joints[]}
+     * @param bodyA rang de son corps {@code a}
+     * @param bodyB rang du corps de son {@code b_node}
+     * @param bNode index de son {@code b_node} — ou, dans un {@code DEFN}, le rang de sa référence
+     * @param jamPoints les points des courbes de grippage, complétés
+     */
+    public static JointDescription transcribe(
             JsonObject joint, int bodyA, int bodyB, int bNode, List<float[]> jamPoints) {
         int flags = 0;
         float[] limits = {0.0f, 0.0f};

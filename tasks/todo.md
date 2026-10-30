@@ -3485,8 +3485,10 @@ sources procédurales de véhicule (M5, T-365).
       - [x] 2. (2026-10-30) Registre de session, `axion_definition_compile` et `axion_definition_remove`,
             `PHYS`, `SKEL` et `ANIM` au masque d'IF-06 ; ABI 12 ; pont JNI et `NativeBridge` ; test
             d'intégration `definition_abi`.
-      - [ ] 3. Java écrit `DEFN`, compile au rechargement et à la fin de la compilation des assets, tient
-            les refus d'étape 4.
+      - [x] 3. (2026-10-30) Java écrit `DEFN` (`DefinitionEncoder`), compile dans la pompe d'assets du tick
+            et à la barrière (`DefinitionCompilation`, `NativeDefinitionCompiler`), tient les refus d'étape 4
+            hors de la registry effective. Mesuré : 27 definitions compilées en 12,0 ms à la barrière du
+            serveur de GameTests. Parité Java/natif sur la charnière de `NativeBridgeTest`.
       - [ ] 4. `CREATE_ASSEMBLY` par empreinte ; Java ne lit plus `NODE`, `PHYS` ni `ANIM` côté serveur ; le
             rendu prend son node racine du résumé.
       - [ ] 5. `axion_asset_warnings` et son journal ; `PHYSICS.md`, rustdoc de l'ABI, CHANGELOG.

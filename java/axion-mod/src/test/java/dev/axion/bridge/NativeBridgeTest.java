@@ -853,6 +853,45 @@ class NativeBridgeTest {
         assertNotNull(charniere, "la definition se résout sur les nodes de l'asset");
         assertEquals(2, charniere.bodies().size(), "le cadre déclaré, la porte implicite");
         assertEquals(1, charniere.joints().size());
+
+        // ADR-156 D2 : la même charnière, écrite en DEFN par Java et compilée par le natif contre le même
+        // asset, forme les mêmes corps et le même joint que la résolution de Java.
+        com.google.gson.JsonObject racineCharniere = definitionCharniere.deepCopy();
+        racineCharniere.addProperty("schema", 2);
+        dev.axion.definition.Definition charniereDeclaree = new dev.axion.definition.Definition(
+                "axion:charniere", "axion:axion/definitions/charniere.json", 2, "axion:axion/models/charniere.gltf",
+                dev.axion.definition.AssemblyKind.ARTICULATED, racineCharniere, "0");
+        dev.axion.asset.NativeDefinitionCompiler compilateurDefinitions =
+                new dev.axion.asset.NativeDefinitionCompiler(reprise);
+        dev.axion.definition.DefinitionEncoder.Encoded defnCharniere = org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                () -> dev.axion.definition.DefinitionEncoder.encode(
+                        charniereDeclaree, true, dev.axion.definition.CollisionGroupRegistry.empty(), nom -> 0));
+        dev.axion.asset.DefinitionCompiler.Result compilee = compilateurDefinitions.compile(
+                charniereDeclaree.hash(), 0x4345L, a3dCharniere, defnCharniere.bytes());
+        assertTrue(compilee.compiled(), () -> "compilation refusée : " + compilee.code() + " " + compilee.message());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(
+                charniere.bodies().stream().mapToInt(dev.axion.physics.SimCommandStream.AssemblyBody::rootNode)
+                        .toArray(),
+                compilee.summary().roots(),
+                "les corps du natif sont ceux de Java, dans le même ordre");
+        assertEquals(charniere.joints().size(), compilee.summary().joints());
+
+        // R-580 : un b_node que l'asset n'a pas refuse la definition, à sa référence.
+        com.google.gson.JsonObject racineFautive = racineCharniere.deepCopy();
+        racineFautive.getAsJsonArray("joints").get(0).getAsJsonObject().addProperty("b_node", "capot");
+        dev.axion.definition.Definition fautive = new dev.axion.definition.Definition(
+                "axion:fautive", "axion:axion/definitions/fautive.json", 2, "axion:axion/models/charniere.gltf",
+                dev.axion.definition.AssemblyKind.ARTICULATED, racineFautive, "0");
+        dev.axion.definition.DefinitionEncoder.Encoded defnFautive = org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                () -> dev.axion.definition.DefinitionEncoder.encode(
+                        fautive, true, dev.axion.definition.CollisionGroupRegistry.empty(), nom -> 0));
+        dev.axion.asset.DefinitionCompiler.Result refusDefinition =
+                compilateurDefinitions.compile(fautive.hash(), 0x4345L, a3dCharniere, defnFautive.bytes());
+        assertEquals(dev.axion.asset.DefinitionCompiler.E_DEFINITION_INVALID, refusDefinition.code(),
+                refusDefinition.message());
+        assertEquals("$.joints[0].b_node « capot »", defnFautive.locate(refusDefinition.reference()));
+        assertTrue(compilateurDefinitions.remove(charniereDeclaree.hash()), "le registre de la session la tenait");
+        assertFalse(compilateurDefinitions.remove(fautive.hash()), "une definition refusée n'y est pas");
         double[][] joueurPresDeLaCharniere = {{0.0, 100.0, 0.0}};
         dev.axion.physics.CollectResult relie = simulation.tick(
                 200L,

@@ -3,7 +3,9 @@ package dev.axion.lifecycle;
 import dev.axion.asset.AssetCache;
 import dev.axion.asset.AssetRegistry;
 import dev.axion.asset.AssetSource;
+import dev.axion.asset.DefinitionCompiler;
 import dev.axion.asset.NativeAssetCompiler;
+import dev.axion.asset.NativeDefinitionCompiler;
 import dev.axion.bootstrap.AxionBootstrap;
 import dev.axion.bootstrap.BootstrapOutcome;
 import dev.axion.bootstrap.NativeApi;
@@ -11,6 +13,7 @@ import dev.axion.config.ConfigSchema;
 import dev.axion.config.ConfigSchema.Scope;
 import dev.axion.definition.BlockMaterialMappings;
 import dev.axion.definition.CollisionGroupRegistry;
+import dev.axion.definition.DefinitionCompilation;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
 import dev.axion.definition.PhysicsMaterialTable;
@@ -48,6 +51,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -97,7 +101,15 @@ public final class AxionRuntime {
      * cache s'ouvre seul sur son répertoire, et le serveur intégré tient le sien.
      */
     private volatile AssetRegistry clientAssets;
+    /** Les definitions acceptées aux étapes 1 à 3 : chargées, ou reçues d'un serveur distant. */
+    private volatile DefinitionRegistry loadedDefinitions = DefinitionRegistry.empty();
+    /**
+     * Celles que lisent l'apparition, le rendu et les commandes : les chargées, moins celles que leur
+     * compilation a refusées (étape 4 de C-27, ADR-156 D5).
+     */
     private volatile DefinitionRegistry definitions = DefinitionRegistry.empty();
+    /** La compilation des definitions par le natif (ADR-156) ; créée avec le premier rechargement. */
+    private volatile DefinitionCompilation compilation;
     private volatile PhysicsMaterials physicsMaterials = PhysicsMaterials.empty();
     /** Table des matériaux de la session (ADR-149) : index stables, renvoyée au natif quand elle change. */
     private final PhysicsMaterialTable materialTable = new PhysicsMaterialTable();
@@ -304,8 +316,15 @@ public final class AxionRuntime {
                 transitionTo(LifecyclePhase.RUNNING_CLIENT);
             }
             AssetRegistry registry = clientAssets;
-            if (registry != null && hasNativeRuntime() && !registry.isSettled()) {
-                registry.pump(outcome.config().getInt("budgets.asset_ns_per_tick"));
+            if (registry != null && hasNativeRuntime()) {
+                long budget = outcome.config().getInt("budgets.asset_ns_per_tick");
+                long start = System.nanoTime();
+                if (!registry.isSettled()) {
+                    registry.pump(budget);
+                }
+                if (remoteDefinitions) {
+                    pumpDefinitions(registry, Math.max(1, budget - (System.nanoTime() - start)));
+                }
             }
         });
     }
@@ -342,6 +361,10 @@ public final class AxionRuntime {
             int aCompiler = registry.discover();
             assets = registry;
             transitions.add(aCompiler + " asset(s) à compiler, " + reused(registry) + " repris du cache");
+            // ADR-156 D3 : une definition se compile contre l'asset du registre en vigueur.
+            if (!remoteDefinitions) {
+                recompileDefinitions(loadedDefinitions);
+            }
         });
         if (assets != null) {
             changed = (int) assets.entries().stream()
@@ -375,6 +398,10 @@ public final class AxionRuntime {
             // vers leur boîte de repli.
             pending[0] = registry.discover();
             clientAssets = registry;
+            // ADR-156 D5 : un client distant compile contre ses propres assets.
+            if (remoteDefinitions) {
+                recompileDefinitions(loadedDefinitions);
+            }
             transitions.add("client : " + pending[0] + " asset(s) à compiler, " + reused(registry)
                     + " repris du cache");
         });
@@ -439,6 +466,17 @@ public final class AxionRuntime {
         boolean[] settled = {true};
         guard("assetBarrier").run(() -> {
             settled[0] = assets.awaitSettled(timeoutNanos);
+            // ADR-156 D3 : la barrière peut attendre ; les definitions s'y compilent toutes, et le
+            // journal dit combien, et en combien de temps.
+            long compileStart = System.nanoTime();
+            pumpDefinitions(assets, 0);
+            DefinitionCompilation compiling = compilation;
+            if (compiling != null) {
+                transitions.add(String.format(java.util.Locale.ROOT,
+                        "%d definition(s) compilée(s), %d refusée(s) à la compilation, en %.1f ms",
+                        compiling.compiledCount(), compiling.refusedCount(),
+                        (System.nanoTime() - compileStart) / 1e6));
+            }
             long prets = assets.entries().stream()
                     .filter(entry -> entry.state().isUsable())
                     .count();
@@ -467,8 +505,16 @@ public final class AxionRuntime {
                 return;
             }
             long started = System.nanoTime();
-            if (assets != null && !assets.isSettled()) {
-                assets.pump(outcome.config().getInt("budgets.asset_ns_per_tick"));
+            AssetRegistry registry = assets;
+            if (registry != null) {
+                long budget = outcome.config().getInt("budgets.asset_ns_per_tick");
+                if (!registry.isSettled()) {
+                    registry.pump(budget);
+                }
+                // ADR-156 D3 : les definitions dont l'asset est prêt se compilent dans le reste du budget.
+                if (!remoteDefinitions) {
+                    pumpDefinitions(registry, Math.max(1, budget - (System.nanoTime() - started)));
+                }
             }
             driveSimulation();
             // INV-19 : un tick sans corps ni événement ne coûte que ce passage, que
@@ -674,7 +720,9 @@ public final class AxionRuntime {
      */
     public List<String> drainAssetJournal() {
         AssetRegistry registry = assets;
-        return registry == null ? List.of() : registry.drainJournal();
+        List<String> lines = new ArrayList<>(registry == null ? List.of() : registry.drainJournal());
+        lines.addAll(drainDefinitionJournal());
+        return lines;
     }
 
     /**
@@ -686,7 +734,15 @@ public final class AxionRuntime {
      */
     public List<String> drainClientAssetJournal() {
         AssetRegistry registry = clientAssets;
-        return registry == null ? List.of() : registry.drainJournal();
+        List<String> lines = new ArrayList<>(registry == null ? List.of() : registry.drainJournal());
+        lines.addAll(drainDefinitionJournal());
+        return lines;
+    }
+
+    /** {@return les refus et avertissements de la compilation des definitions (ADR-156), une fois chacun} */
+    private List<String> drainDefinitionJournal() {
+        DefinitionCompilation compiling = compilation;
+        return compiling == null ? List.of() : compiling.drainJournal();
     }
 
     /**
@@ -950,7 +1006,9 @@ public final class AxionRuntime {
             long start = System.nanoTime();
             DefinitionRegistry loaded = DefinitionRegistry.load(source, rules);
             long nanos = System.nanoTime() - start;
-            definitions = loaded;
+            // ADR-156 D3 : l'étape 4 attend les assets ; la pompe du tick ou la barrière la fait.
+            loadedDefinitions = loaded;
+            recompileDefinitions(loaded);
             DEFINITION_METRICS.reloaded(
                     loaded.size(), loaded.refusals().size(), nanos, sourceBytes(source));
             transitions.add(loaded.size() + " definition(s) chargée(s), "
@@ -1007,8 +1065,9 @@ public final class AxionRuntime {
      */
     public List<String> applyRemoteRegistry(RegistryContent registry) {
         RemoteRegistry.Loaded loaded = RemoteRegistry.load(registry);
-        definitions = loaded.definitions();
         remoteDefinitions = true;
+        loadedDefinitions = loaded.definitions();
+        recompileDefinitions(loaded.definitions());
         return loaded.journal();
     }
 
@@ -1020,7 +1079,8 @@ public final class AxionRuntime {
     public void onRemoteDisconnect() {
         if (remoteDefinitions) {
             remoteDefinitions = false;
-            definitions = DefinitionRegistry.empty();
+            loadedDefinitions = DefinitionRegistry.empty();
+            recompileDefinitions(DefinitionRegistry.empty());
         }
     }
 
@@ -1087,7 +1147,59 @@ public final class AxionRuntime {
         return total;
     }
 
-    /** {@return la registry des definitions, vide avant tout rechargement} */
+    /**
+     * Repart d'une registry de definitions : le registre natif oublie ce qu'il tenait, et chacune
+     * attend de nouveau sa compilation (ADR-156 D3). Sans runtime natif, rien ne se compile : la
+     * registry est lue telle quelle, et aucune assembly ne s'instancie de toute façon.
+     */
+    private void recompileDefinitions(DefinitionRegistry registry) {
+        if (!hasNativeRuntime()) {
+            definitions = registry;
+            return;
+        }
+        DefinitionCompilation compiling = compilation;
+        if (compiling == null) {
+            compiling = new DefinitionCompilation(
+                    new NativeDefinitionCompiler(outcome.context()),
+                    outcome.config().getBoolean("modules.joints"),
+                    this::physicsMaterialIndex);
+            compilation = compiling;
+        }
+        compiling.reset(registry);
+        definitions = compiling.effective();
+    }
+
+    /**
+     * Compile les definitions dont l'asset est prêt (ADR-156 D3), sous un budget ; {@code 0} pour
+     * toutes. Une definition refusée quitte la registry effective.
+     */
+    private void pumpDefinitions(AssetRegistry registry, long budgetNanos) {
+        DefinitionCompilation compiling = compilation;
+        if (compiling == null || compiling.isSettled()) {
+            return;
+        }
+        if (compiling.pump(path -> DefinitionCompilation.AssetStatus.of(registry.entry(path)), budgetNanos,
+                System::nanoTime)) {
+            definitions = compiling.effective();
+        }
+    }
+
+    /**
+     * {@return le résumé de la compilation d'une definition (ADR-156 D4) : le node racine de chaque
+     * corps, ses joints, l'animation serveur} Vide tant qu'elle attend son asset, ou si elle a été
+     * refusée.
+     *
+     * @param id identifiant de la definition
+     */
+    public Optional<DefinitionCompiler.Summary> compiledDefinition(String id) {
+        DefinitionCompilation compiling = compilation;
+        return compiling == null ? Optional.empty() : compiling.summary(id);
+    }
+
+    /**
+     * {@return la registry des definitions, vide avant tout rechargement} Celles que leur compilation
+     * a refusées n'y sont plus (ADR-156 D5).
+     */
     public DefinitionRegistry definitions() {
         return definitions;
     }

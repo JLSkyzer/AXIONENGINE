@@ -118,6 +118,32 @@ public record BodyDescription(
     }
 
     /**
+     * {@return la description du corps racine d'une assembly à plusieurs corps (ADR-151 D2)} Celle
+     * de l'assembly, à la masse que {@code bodies[0].mass} lui fixe, ou sans masse pour que le natif
+     * lui en répartisse une ; centre et inertie déclarés gardés.
+     *
+     * @param bodyMass masse déclarée du corps, {@code 0} sans
+     */
+    public BodyDescription asRootBody(float bodyMass) {
+        return new BodyDescription(bodyType, ccd, canSleep, bodyMass, centerOfMassX, centerOfMassY, centerOfMassZ,
+                inertiaX, inertiaY, inertiaZ, linearDamping, angularDamping, gravityScale, maxLinearVel,
+                maxAngularVel);
+    }
+
+    /**
+     * {@return la description d'un autre corps d'une assembly (ADR-151 D2)} Dynamique, amorti comme
+     * l'assembly, à la masse que sa déclaration lui fixe ou sans masse ; centre et inertie viennent
+     * de ses densités — le centre déclaré l'est dans le repère de l'asset, celui du corps racine.
+     *
+     * @param bodyMass masse déclarée du corps, {@code 0} sans
+     */
+    public BodyDescription asSecondaryBody(float bodyMass) {
+        return new BodyDescription(SimCommandStream.BODY_DYNAMIC, ccd, canSleep, bodyMass, Float.NaN, Float.NaN,
+                Float.NaN, 0.0f, 0.0f, 0.0f, linearDamping, angularDamping, gravityScale, maxLinearVel,
+                maxAngularVel);
+    }
+
+    /**
      * Écrit la description sur la frontière, à la position courante d'un tampon little-endian :
      * {@link #WIRE_BYTES} octets.
      *

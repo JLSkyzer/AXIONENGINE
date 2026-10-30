@@ -84,6 +84,38 @@ final class DefinitionChecker {
     }
 
     /**
+     * Un nom qu'une definition donne à un élément de son asset, que le natif résout à la
+     * compilation (étape 4 de C-27, ADR-156 D2).
+     *
+     * @param category {@link NameCategory#NODE}, {@link NameCategory#CLIP} ou {@link NameCategory#BONE}
+     * @param name le nom
+     * @param path son chemin JSON, pour le message d'un refus
+     */
+    record AssetReference(NameCategory category, String name, String path) {}
+
+    /**
+     * {@return les noms de nodes, de clips et d'os qu'une definition acceptée désigne, dans l'ordre
+     * du document} Les meshes, les colliders et les régions n'en sont pas : l'asset ne garde pas leurs
+     * noms, ou C-28 peut les générer (ADR-156, tranche 1).
+     *
+     * @param root document d'une definition acceptée aux étapes 1 à 3
+     */
+    static List<AssetReference> assetReferences(JsonObject root) {
+        DefinitionChecker checker = new DefinitionChecker();
+        checker.version = root.get("schema") instanceof com.google.gson.JsonPrimitive schema
+                && schema.isNumber() && schema.getAsDouble() == 2 ? 2 : 1;
+        checker.walk(SchemaOne.rootOf(checker.version), root, "$");
+        List<AssetReference> found = new ArrayList<>();
+        for (Reference reference : checker.references) {
+            NameCategory category = reference.category();
+            if (category == NameCategory.NODE || category == NameCategory.CLIP || category == NameCategory.BONE) {
+                found.add(new AssetReference(category, reference.name(), reference.path()));
+            }
+        }
+        return List.copyOf(found);
+    }
+
+    /**
      * ADR-151 D3 : au schéma 2, chaque joint est cohérent avec son type (C-34). Sa forme est déjà
      * juste : la règle ne lit que des champs du bon type.
      */

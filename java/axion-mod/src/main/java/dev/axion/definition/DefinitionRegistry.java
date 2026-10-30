@@ -405,6 +405,32 @@ public final class DefinitionRegistry {
     }
 
     /**
+     * {@return cette registry sans les definitions que leur compilation a refusées (étape 4 de C-27,
+     * ADR-156 D5)} Chacune rejoint les refus, sa ligne à la suite de ceux du chargement : une
+     * assembly qui la nomme reste inerte et intacte (R-704), comme si elle n'avait jamais été
+     * acceptée. Les textes que le réseau envoie ne changent pas : chaque côté juge contre ses propres
+     * assets.
+     *
+     * @param refused la ligne de refus de chaque definition refusée, par identifiant
+     */
+    public DefinitionRegistry without(SortedMap<String, String> refused) {
+        if (refused.isEmpty()) {
+            return this;
+        }
+        SortedMap<String, Definition> kept = new TreeMap<>(definitions);
+        Map<Long, Definition> hashes = new HashMap<>(byHash);
+        List<String> lines = new ArrayList<>(refusals);
+        for (Map.Entry<String, String> refusal : refused.entrySet()) {
+            Definition removed = kept.remove(refusal.getKey());
+            if (removed != null) {
+                hashes.values().removeIf(definition -> definition == removed);
+                lines.add(refusal.getValue());
+            }
+        }
+        return new DefinitionRegistry(kept, hashes, lines, collisionGroups, physicsMaterials, warnings);
+    }
+
+    /**
      * {@return une definition, ou vide}
      *
      * @param id identifiant

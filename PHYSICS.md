@@ -156,8 +156,11 @@ Tous les types acceptent `break` et `collide`.
 - Au chargement, un réglage sans objet pour son type, un champ obligatoire manquant, un axe nul, des
   limites croisées, une courbe de grippage mal formée ou un `a` qui ne nomme aucun corps déclaré font
   refuser la definition, avec le chemin du champ fautif (`$.joints[0].limits`). Les nodes se résolvent
-  contre l'asset, à l'apparition : un `root_node` ou un `b_node` qui n'en nomme aucun, ou un joint dont
-  les deux bouts tombent sur le même corps, laisse l'assembly inerte, avec un avertissement au journal.
+  contre l'asset dès qu'il est compilé (ADR-156) : un `root_node` ou un `b_node` qui n'en nomme aucun, un
+  joint dont les deux bouts tombent sur le même corps, plus de 64 corps avec ceux que créent les joints,
+  ou une racine de corps sous un node animé, fait refuser la definition, avec le chemin et le nom fautifs
+  (`E-7001 … — $.joints[0].b_node « capot » : aucun node de ce nom dans l'asset`). Une assembly qui la
+  nomme reste inerte.
 - `modules.joints = false` (voir [CONFIGURATION.md](CONFIGURATION.md)) ignore les joints, avec un
   avertissement : les corps déclarés restent séparés.
 - Rupture et grippage se décident au serveur. Les clients reçoivent la pose de chaque corps relative au

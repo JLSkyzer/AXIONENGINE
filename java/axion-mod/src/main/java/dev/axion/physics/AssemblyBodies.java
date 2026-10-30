@@ -171,9 +171,7 @@ public final class AssemblyBodies {
      * fixe, ou sans masse pour que le natif lui en répartisse une ; centre et inertie déclarés gardés.
      */
     private static BodyDescription root(BodyDescription d, float mass) {
-        return new BodyDescription(d.bodyType(), d.ccd(), d.canSleep(), mass, d.centerOfMassX(), d.centerOfMassY(),
-                d.centerOfMassZ(), d.inertiaX(), d.inertiaY(), d.inertiaZ(), d.linearDamping(), d.angularDamping(),
-                d.gravityScale(), d.maxLinearVel(), d.maxAngularVel());
+        return d.asRootBody(mass);
     }
 
     /**
@@ -182,9 +180,7 @@ public final class AssemblyBodies {
      * déclaré l'est dans le repère de l'asset, celui du corps racine.
      */
     private static BodyDescription secondary(BodyDescription d, float mass) {
-        return new BodyDescription(SimCommandStream.BODY_DYNAMIC, d.ccd(), d.canSleep(), mass, Float.NaN, Float.NaN,
-                Float.NaN, 0.0f, 0.0f, 0.0f, d.linearDamping(), d.angularDamping(), d.gravityScale(),
-                d.maxLinearVel(), d.maxAngularVel());
+        return d.asSecondaryBody(mass);
     }
 
     /**
