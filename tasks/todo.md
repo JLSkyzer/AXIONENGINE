@@ -3479,14 +3479,17 @@ sources procédurales de véhicule (M5, T-365).
       graphe vivant par instance animée, propagation mesurée. Reste l'étape 14 côté serveur, avec les sockets.
 - [x] C-40 : T-392 — ADR-144 §3, ADR-146 ; fait par l'étape 3c d'ADR-155 (`tests/client_steps.rs`), le
       2026-10-30.
-- [ ] C-60 avec IF-05 : R-300, résultat partiel `AXION_RENDER_DEGRADED` (ADR-127) — ADR-146.
+- [x] C-60 avec IF-05 : R-300, résultat partiel `AXION_RENDER_DEGRADED` (ADR-127) — ADR-146 ; fait par
+      ADR-154 (échéance des lots, T-524 vert à sa clôture) et étendu à l'animation par T-368 (c6550f5).
 - [x] C-61 avec C-66 : R-742, skinning CPU — ADR-146 ; fait par la tranche 6a d'ADR-155 (c179994), le
       2026-10-29.
-- [ ] C-62 avec C-64 : paliers suivants de R-750 — ADR-144 §3, ADR-146.
-- [ ] C-67, overlays dont M4 produit les données : `joints`, `limits` (C-34) ; `bones`, `nodes`,
+- [x] C-62 avec C-64 : paliers suivants de R-750 — ADR-144 §3, ADR-146 ; la part M4, le palier 2 (LOD
+      forcé), faite par ADR-154 D7 (T-484 vert) ; le palier 3, la qualité de déformation, va à la M6 avec C-42.
+- [x] C-67, overlays dont M4 produit les données : `joints`, `limits` (C-34) ; `bones`, `nodes`,
       `pivots` (C-37) ; `lod`, `culling`, `occluders` (C-64) ; `network` (C-51, fait le 2026-10-21) — ADR-146 §1.
       Faits : `joints` et `limits` (ADR-151), `lod` et `culling` (ADR-154), `bones`, `nodes` et `pivots`
-      (ADR-155, tranche 6b). Reste `occluders`.
+      (ADR-155, tranche 6b). `occluders` n'a pas de données en M4 : l'occlusion (C-82) part en M9 (ADR-154),
+      et un overlay sans données attend son système (ADR-146, Conséquences).
 - [x] C-50 avec C-52 : `persistence.max_load_ns_per_tick` (R-1730) ; R-1710 et ses tests T-433 et
       T-434 — fixer ce que migre T-434, aucune v1 n'ayant existé (`NBT_SCHEMA` vaut 2) — ADR-137 ; fait par
       le chantier persistance (ADR-153 : T-434 est la migration 2 → 3), clos le 2026-10-28.
