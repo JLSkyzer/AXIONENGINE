@@ -34,8 +34,6 @@ pub mod abi;
 pub mod animation;
 mod assembly;
 pub mod asset_store;
-// Lu par le registre de session et `axion_definition_compile` avec la tranche 2 d'ADR-156.
-#[allow(dead_code)]
 mod definition;
 
 /// INV-08, R-480 (ADR-133 D2) : toute allocation de la bibliothèque native passe par

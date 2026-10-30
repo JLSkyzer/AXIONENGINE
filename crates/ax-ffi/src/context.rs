@@ -10,8 +10,9 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use crate::asset_store::{AssetStore, LoadedAsset};
+use crate::asset_store::{AssetStore, DefinitionSections, LoadedAsset};
 use crate::cpu_clock;
+use crate::definition::CompiledDefinition;
 use ax_asset::a3d::A3dLimits;
 use ax_asset::compile::{CompileError, CompiledAsset};
 use ax_asset::import::ImportLimits;
@@ -189,6 +190,9 @@ pub struct Session {
     sim_tick: u64,
     /// Le bilan de l'animation serveur.
     animation_stats: AnimationStats,
+    /// Les definitions compilées, par empreinte (étape 5 de C-27, ADR-156 D5) : une compilation
+    /// remplace la précédente, un refus la retire.
+    definitions: HashMap<u64, CompiledDefinition>,
     /// Détenu pour la durée de la session : c'est lui qui garantit l'unicité du
     /// contexte dans le processus (R-450).
     _guard: ContextGuard,
@@ -902,6 +906,37 @@ impl Session {
         }
     }
 
+    /// Ce qu'une definition compile de l'asset `handle` (ADR-156 D3), partagé pour être lu hors
+    /// du verrou.
+    ///
+    /// # Errors
+    ///
+    /// `E-2001` si le handle est périmé ; `E-2002` si l'asset n'a pas été chargé avec `PHYS`.
+    pub fn definition_sections(&self, handle: Handle) -> Result<Arc<DefinitionSections>, i32> {
+        self.assets
+            .get(handle)
+            .ok_or(crate::abi::AXION_E_INVALID_HANDLE)?
+            .definition_sections()
+            .cloned()
+            .ok_or(crate::abi::AXION_E_INVALID_BUFFER)
+    }
+
+    /// Inscrit une definition compilée sous son empreinte, à la place de la précédente.
+    pub(crate) fn register_definition(&mut self, definition: u64, compiled: CompiledDefinition) {
+        self.definitions.insert(definition, compiled);
+    }
+
+    /// Retire une definition du registre ; faux si elle n'y était pas.
+    pub fn remove_definition(&mut self, definition: u64) -> bool {
+        self.definitions.remove(&definition).is_some()
+    }
+
+    /// Nombre de definitions compilées que le registre tient.
+    #[must_use]
+    pub fn definitions_held(&self) -> usize {
+        self.definitions.len()
+    }
+
     /// Enregistre une panic capturée et empoisonne le contexte.
     ///
     /// R-310 : la panic est comptée, et le contexte passe en `POISONED` dès
@@ -1008,6 +1043,7 @@ pub fn open(
         animations: HashMap::new(),
         sim_tick: 0,
         animation_stats: AnimationStats::default(),
+        definitions: HashMap::new(),
         _guard: guard,
     });
     Ok(token)

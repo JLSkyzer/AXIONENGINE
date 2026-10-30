@@ -60,7 +60,12 @@ pub(crate) struct AssetView<'a> {
 }
 
 /// Une definition compilée : ce que la création d'une assembly reprend tel quel.
+///
+/// Le résumé de l'ABI n'en lit que les racines, les joints, l'animation et les avertissements :
+/// `CREATE_ASSEMBLY` lira le reste en tranche 4 d'ADR-156, et le refit de la déformation (C-42, M6)
+/// les colliders marqués `REFITTABLE`.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) struct CompiledDefinition {
     /// Type du corps racine : `0` statique, `1` cinématique, `2` dynamique.
     pub body_kind: u8,

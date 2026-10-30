@@ -25,9 +25,9 @@ static CONTEXTE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 const ASSET_ID: u64 = 0x0A51_0C0B_E000_0042;
 const NODE_GEOM: u32 = AXION_SECTION_NODE | AXION_SECTION_GEOM;
-/// Bit de `PHYS` (rang 4 de la table de la PARTIE 7) : non pris en charge par
-/// `axion_asset_load` dans ADR-119.
-const PHYS: u32 = 1 << 4;
+/// Bit de `PART` (rang 7 de la table de la PARTIE 7) : `axion_asset_load` ne le
+/// charge pas.
+const PART: u32 = 1 << 7;
 
 /// Un cube unité compilé de bout en bout, comme le registre d'assets le reçoit.
 fn cube() -> Vec<u8> {
@@ -133,7 +133,7 @@ fn un_asset_se_charge_se_transfere_et_se_rend_sans_fuite() {
         "masque vide"
     );
     assert_eq!(
-        load(ctx, ASSET_ID, NODE_GEOM | PHYS),
+        load(ctx, ASSET_ID, NODE_GEOM | PART),
         Err(AXION_E_INVALID_BUFFER),
         "section non prise en charge"
     );

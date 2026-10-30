@@ -215,6 +215,15 @@ Definition of Done (PARTIE 37.3).
     frame ; au-dela, chaque instance garde sa derniere pose, la frame se dit
     degradee et les reports se comptent ; une instance est au repos des sa
     creation ; T-367 verifie la palette de 128 os ;
+  - definitions compilees par le natif (C-27, etapes 4 et 5, ADR-156), en
+    cours : format `DEFN` (la definition validee par Java, ses noms d'asset
+    en empreintes) ; la compilation resout les noms de node, de clip et d'os
+    contre l'asset, forme les corps et marque les colliders, et refuse la
+    definition seule, la reference fautive designee : nom introuvable
+    (`E-7001`, R-580), plus de 64 corps (`E-3050`, R-190), racine de corps
+    sous un node anime (`E-7002`, R-931) ; ABI 12 : `axion_definition_compile`
+    et `axion_definition_remove` tiennent le registre de la session, et
+    `axion_asset_load` charge `PHYS`, `SKEL` et `ANIM` pour une definition ;
 - M3 (Definition of Done prononcee le 2026-10-17, ADR-146) — physique et premier rendu :
   - `ax-physics` (C-31, rapier3d) : formes dynamiques (§10.3), groupes de
     collision par nom avec tuiles du monde dans `world` (R-980, ADR-132),

@@ -403,6 +403,131 @@ impl Definition {
     }
 }
 
+/// Drapeaux de [`DefinitionSummary`], champ `flags`.
+pub mod summary_flags {
+    /// Le serveur joue l'animation de l'asset : un collider dépend d'un node animé (R-1430).
+    pub const SERVER_ANIMATED: u32 = 1 << 0;
+}
+
+/// Ce que `axion_definition_compile` dépose dans `ASSET_OUT` quand la definition se compile
+/// (ADR-156 D4) : Java s'en sert pour la persistance et pour le rendu.
+///
+/// **Disposition** : `body_count`, `joint_count`, `flags` et un réservé en `u32` ; le node racine
+/// de chaque corps en `u32`, le corps racine d'abord ; puis les avertissements, au format des
+/// lignes de `NEEDS_FILES` (ADR-139) — `u32` du nombre, puis par ligne `u32` de sa longueur et ses
+/// octets UTF-8.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DefinitionSummary {
+    /// Node racine de chaque corps, le corps racine d'abord.
+    pub roots: Vec<u32>,
+    /// Nombre de joints.
+    pub joint_count: u32,
+    /// Drapeaux, voir [`summary_flags`].
+    pub flags: u32,
+    /// Avertissements de la compilation (R-930).
+    pub warnings: Vec<String>,
+}
+
+impl DefinitionSummary {
+    /// Écrit le résumé à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        let body_count = u32::try_from(self.roots.len()).unwrap_or(u32::MAX);
+        for value in [body_count, self.joint_count, self.flags, 0] {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        for root in &self.roots {
+            out.extend_from_slice(&root.to_le_bytes());
+        }
+        write_lines(&self.warnings, out);
+    }
+
+    /// Relit un résumé qui occupe exactement `bytes` ; `None` s'il est tronqué ou prolongé.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let mut rest = bytes;
+        let body_count = take_u32(&mut rest)?;
+        let joint_count = take_u32(&mut rest)?;
+        let flags = take_u32(&mut rest)?;
+        take_u32(&mut rest)?;
+        let roots = (0..body_count)
+            .map(|_| take_u32(&mut rest))
+            .collect::<Option<Vec<_>>>()?;
+        let warnings = read_lines(&mut rest)?;
+        rest.is_empty().then_some(Self {
+            roots,
+            joint_count,
+            flags,
+            warnings,
+        })
+    }
+}
+
+/// Ce que `axion_definition_compile` dépose dans `ASSET_OUT` quand il refuse la definition
+/// (ADR-156 D4).
+///
+/// **Disposition** : le code (`i32`, celui que l'appel rend), le rang de la référence fautive
+/// (`u32`, [`NONE_U32`] si le refus n'en désigne pas), puis le motif, une ligne au format de
+/// [`DefinitionSummary`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DefinitionRefusal {
+    /// `E-7001`, `E-3050` ou `E-7002`.
+    pub code: i32,
+    /// Rang de la référence fautive dans `DEFN`, [`NONE_U32`] si aucune.
+    pub reference: u32,
+    /// Ce qui ne va pas.
+    pub message: String,
+}
+
+impl DefinitionRefusal {
+    /// Écrit le refus à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.code.to_le_bytes());
+        out.extend_from_slice(&self.reference.to_le_bytes());
+        write_lines(std::slice::from_ref(&self.message), out);
+    }
+
+    /// Relit un refus qui occupe exactement `bytes` ; `None` s'il est tronqué, prolongé, ou s'il
+    /// n'a pas exactement une ligne.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let mut rest = bytes;
+        let code = i32::from_le_bytes(take_u32(&mut rest)?.to_le_bytes());
+        let reference = take_u32(&mut rest)?;
+        let mut lines = read_lines(&mut rest)?;
+        (rest.is_empty() && lines.len() == 1).then(|| Self {
+            code,
+            reference,
+            message: lines.remove(0),
+        })
+    }
+}
+
+fn write_lines(lines: &[String], out: &mut Vec<u8>) {
+    out.extend_from_slice(&u32::try_from(lines.len()).unwrap_or(u32::MAX).to_le_bytes());
+    for line in lines {
+        out.extend_from_slice(&u32::try_from(line.len()).unwrap_or(u32::MAX).to_le_bytes());
+        out.extend_from_slice(line.as_bytes());
+    }
+}
+
+fn read_lines(rest: &mut &[u8]) -> Option<Vec<String>> {
+    let count = take_u32(rest)?;
+    let mut lines = Vec::new();
+    for _ in 0..count {
+        let len = usize::try_from(take_u32(rest)?).ok()?;
+        let bytes = rest.get(..len)?;
+        lines.push(String::from_utf8(bytes.to_vec()).ok()?);
+        *rest = &rest[len..];
+    }
+    Some(lines)
+}
+
+fn take_u32(rest: &mut &[u8]) -> Option<u32> {
+    let bytes = rest.get(..4)?;
+    *rest = &rest[4..];
+    Some(u32::from_le_bytes(bytes.try_into().expect("borne")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -613,5 +738,44 @@ mod tests {
             Definition::read_le(&octets(&part)),
             Err(DefnError::Field("parts.flags"))
         );
+    }
+
+    #[test]
+    fn le_resume_se_relit_a_l_identique_et_sa_disposition_est_figee() {
+        let summary = DefinitionSummary {
+            roots: vec![0, 4],
+            joint_count: 1,
+            flags: summary_flags::SERVER_ANIMATED,
+            warnings: vec!["racine animée".to_owned()],
+        };
+        let mut bytes = Vec::new();
+        summary.write_le(&mut bytes);
+        assert_eq!(bytes.len(), 16 + 2 * 4 + 4 + 4 + "racine animée".len());
+        assert_eq!(&bytes[..4], &2u32.to_le_bytes(), "body_count en tête");
+        assert_eq!(
+            &bytes[16..20],
+            &0u32.to_le_bytes(),
+            "le node du corps racine"
+        );
+        assert_eq!(DefinitionSummary::read_le(&bytes), Some(summary));
+        assert_eq!(DefinitionSummary::read_le(&bytes[..bytes.len() - 1]), None);
+        bytes.push(0);
+        assert_eq!(DefinitionSummary::read_le(&bytes), None, "octet en trop");
+    }
+
+    #[test]
+    fn le_refus_se_relit_a_l_identique_et_sa_disposition_est_figee() {
+        let refusal = DefinitionRefusal {
+            code: -7001,
+            reference: 3,
+            message: "aucun node de ce nom dans l'asset".to_owned(),
+        };
+        let mut bytes = Vec::new();
+        refusal.write_le(&mut bytes);
+        assert_eq!(&bytes[..4], &(-7001i32).to_le_bytes());
+        assert_eq!(&bytes[4..8], &3u32.to_le_bytes());
+        assert_eq!(&bytes[8..12], &1u32.to_le_bytes(), "une ligne");
+        assert_eq!(DefinitionRefusal::read_le(&bytes), Some(refusal));
+        assert_eq!(DefinitionRefusal::read_le(&bytes[..bytes.len() - 1]), None);
     }
 }

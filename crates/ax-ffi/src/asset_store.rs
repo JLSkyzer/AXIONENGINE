@@ -13,14 +13,17 @@ use core::fmt;
 use core::mem::size_of;
 
 use crate::animation::AnimatedAsset;
+use crate::definition::AssetView;
 use ax_asset::a3d::{
-    decode_animations, decode_bones, A3dError, A3dFile, A3dLimits, SectionMask, SectionTag,
-    TextureTable,
+    decode_animations, decode_bones, decode_colliders, A3dError, A3dFile, A3dLimits, SectionMask,
+    SectionTag, TextureTable,
 };
-use ax_asset::load::decode_sections;
+use ax_asset::load::{decode_sections, render_sections};
 use ax_asset::optimize::{LodTable, MAX_LOD_LEVELS};
+use ax_model::dm::animation::BoneDesc;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::material::{texture_source, TextureDesc};
+use ax_model::dm::physics::ColliderDesc;
 use ax_model::dm::render::{encode_geometry_transfer, encode_material_transfer};
 use ax_model::dm::scene::NodeDesc;
 use ax_render_prep::{bounds_of, LocalBounds};
@@ -28,9 +31,16 @@ use ax_scene::{rest_draws, SceneError};
 use std::sync::Arc;
 
 /// Sections que `axion_asset_load` sait charger : celles du rendu, `NODE` et
-/// `GEOM` (ADR-119), `MATL` et `TEXR` (ADR-122). Le décodage est celui
-/// d'`ax_asset::load`, que `axion-cli validate` emploie aussi (R-830).
-pub use ax_asset::load::render_sections as supported_sections;
+/// `GEOM` (ADR-119), `MATL` et `TEXR` (ADR-122) — le décodage est celui
+/// d'`ax_asset::load`, que `axion-cli validate` emploie aussi (R-830) —, et
+/// celles qu'une definition compile, `PHYS`, `SKEL` et `ANIM` (ADR-156 D3).
+#[must_use]
+pub fn supported_sections() -> SectionMask {
+    render_sections()
+        .with(SectionTag::PHYS)
+        .with(SectionTag::SKEL)
+        .with(SectionTag::ANIM)
+}
 
 /// Masque de sections qu'accepte `axion_asset_load`, ou `None`.
 ///
@@ -39,13 +49,56 @@ pub use ax_asset::load::render_sections as supported_sections;
 /// et l'une de `MATL` et `TEXR` sans l'autre : les slots des matériaux
 /// désignent les entrées de la table des textures, si bien qu'aucune des deux
 /// ne se contrôle seule, et des textures que rien ne désigne ne servent à rien.
+/// De même, `PHYS` sans `NODE`, et `SKEL` ou `ANIM` sans `PHYS` : une definition
+/// se compile contre la hiérarchie de l'asset, et ses os et ses clips ne servent
+/// qu'à elle — le rendu lit les siens avec sa géométrie.
 #[must_use]
 pub fn requested_sections(bits: u32) -> Option<SectionMask> {
     if bits == 0 || bits & !supported_sections().bits() != 0 {
         return None;
     }
     let sections = SectionMask::from_bits(bits);
-    (sections.contains(SectionTag::MATL) == sections.contains(SectionTag::TEXR)).then_some(sections)
+    let physical = sections.contains(SectionTag::PHYS);
+    let coherent = sections.contains(SectionTag::MATL) == sections.contains(SectionTag::TEXR)
+        && (!physical || sections.contains(SectionTag::NODE))
+        && (physical
+            || !(sections.contains(SectionTag::SKEL) || sections.contains(SectionTag::ANIM)));
+    coherent.then_some(sections)
+}
+
+/// Ce qu'une definition compile d'un asset (ADR-156 D3) : sa hiérarchie, ses colliders, ses os et
+/// sa section `ANIM` telle qu'il la porte. Partagé : la compilation le lit hors du verrou de
+/// session.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DefinitionSections {
+    nodes: Vec<NodeDesc>,
+    colliders: Vec<ColliderDesc>,
+    points: Vec<[f32; 3]>,
+    children: Vec<ColliderDesc>,
+    anim: Option<Vec<u8>>,
+    bones: Vec<BoneDesc>,
+}
+
+impl DefinitionSections {
+    /// La vue que la compilation lit.
+    pub(crate) fn view(&self) -> AssetView<'_> {
+        AssetView {
+            nodes: &self.nodes,
+            colliders: &self.colliders,
+            points: &self.points,
+            children: &self.children,
+            anim: self.anim.as_deref(),
+            bones: &self.bones,
+        }
+    }
+
+    fn resident_bytes(&self) -> usize {
+        self.nodes.len() * size_of::<NodeDesc>()
+            + (self.colliders.len() + self.children.len()) * size_of::<ColliderDesc>()
+            + self.points.len() * size_of::<[f32; 3]>()
+            + self.anim.as_ref().map_or(0, Vec::len)
+            + self.bones.len() * size_of::<BoneDesc>()
+    }
 }
 
 /// Ce qui empêche de charger un asset.
@@ -148,6 +201,8 @@ pub struct LoadedAsset {
     animation: Option<Arc<AnimatedAsset>>,
     /// Pourquoi la table `ANIM` a été refusée, si elle l'a été : l'asset se rend alors au repos.
     anim_refused: Option<String>,
+    /// Ce qu'une definition compile, si `PHYS` a été chargée (ADR-156 D3).
+    definition: Option<Arc<DefinitionSections>>,
 }
 
 impl LoadedAsset {
@@ -237,6 +292,12 @@ impl LoadedAsset {
         self.anim_refused.as_deref()
     }
 
+    /// Ce qu'une definition compile de l'asset, s'il a été chargé avec `PHYS`.
+    #[must_use]
+    pub fn definition_sections(&self) -> Option<&Arc<DefinitionSections>> {
+        self.definition.as_ref()
+    }
+
     /// Octets résidents, tels qu'imputés à l'arène `PERSISTENT` (R-480).
     #[must_use]
     pub fn resident_bytes(&self) -> usize {
@@ -250,6 +311,10 @@ impl LoadedAsset {
                 .animation
                 .as_ref()
                 .map_or(0, |animation| animation.resident_bytes())
+            + self
+                .definition
+                .as_ref()
+                .map_or(0, |sections| sections.resident_bytes())
     }
 }
 
@@ -359,6 +424,51 @@ pub fn decode_render_asset(
         }
     };
 
+    // ADR-156 D3 : ce qu'une definition compile. `PHYS` invalide refuse l'asset, comme toute section
+    // demandée ; `ANIM` est gardée telle quelle, la compilation la juge, et `SKEL` illisible ne laisse
+    // aucun os, son motif dit avec celui de `ANIM`.
+    let definition = if sections.contains(SectionTag::PHYS) {
+        let (colliders, points, children) = match file.section(SectionTag::PHYS)? {
+            Some(bytes) => decode_colliders(&bytes)?,
+            None => (Vec::new(), Vec::new(), Vec::new()),
+        };
+        let anim = if sections.contains(SectionTag::ANIM) {
+            match file.section(SectionTag::ANIM) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    anim_refused.get_or_insert_with(|| error.to_string());
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let bones = if sections.contains(SectionTag::SKEL) {
+            match file
+                .section(SectionTag::SKEL)
+                .and_then(|payload| payload.map_or(Ok(Vec::new()), |bytes| decode_bones(&bytes)))
+            {
+                Ok(bones) => bones,
+                Err(error) => {
+                    anim_refused.get_or_insert_with(|| format!("SKEL : {error}"));
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        Some(Arc::new(DefinitionSections {
+            nodes: nodes.clone(),
+            colliders,
+            points,
+            children,
+            anim,
+            bones,
+        }))
+    } else {
+        None
+    };
+
     let bounds = bounds_of(&geometry.meshes, &draws);
     let triangles = draws
         .iter()
@@ -402,6 +512,7 @@ pub fn decode_render_asset(
         lod_refused,
         animation,
         anim_refused,
+        definition,
     })
 }
 
@@ -549,7 +660,7 @@ mod tests {
     }
 
     fn load_all(container: &[u8]) -> Result<LoadedAsset, LoadError> {
-        decode_render_asset(container, asset_id(container), supported_sections(), LIMITS)
+        decode_render_asset(container, asset_id(container), render_sections(), LIMITS)
     }
 
     /// Les quatre mots de l'en-tête d'un transfert de matériaux.
@@ -646,8 +757,7 @@ f 2 4 3
         })
         .expect("compilation refusée")
         .bytes;
-        let asset =
-            decode_render_asset(&bytes, 7, supported_sections(), LIMITS).expect("chargement");
+        let asset = decode_render_asset(&bytes, 7, render_sections(), LIMITS).expect("chargement");
         let transfer = asset.geometry_transfer().expect("NODE | GEOM chargés");
 
         let meshes = u32_at(transfer, 0) as usize;
@@ -672,7 +782,7 @@ f 2 4 3
     #[test]
     fn un_cube_compile_se_charge_et_se_transfere() {
         let asset =
-            decode_render_asset(&cube(42), 42, supported_sections(), LIMITS).expect("chargement");
+            decode_render_asset(&cube(42), 42, render_sections(), LIMITS).expect("chargement");
         let transfer = asset.geometry_transfer().expect("NODE | GEOM chargés");
 
         let meshes = u32_at(transfer, 0) as usize;
@@ -703,7 +813,7 @@ f 2 4 3
 
     #[test]
     fn des_octets_d_un_autre_asset_sont_refuses_e2002() {
-        let refus = decode_render_asset(&cube(42), 43, supported_sections(), LIMITS).unwrap_err();
+        let refus = decode_render_asset(&cube(42), 43, render_sections(), LIMITS).unwrap_err();
         assert_eq!(
             refus,
             LoadError::WrongAsset {
@@ -729,7 +839,7 @@ f 2 4 3
         let mut corrompu = original.clone();
         corrompu[geom.offset as usize] ^= 0xFF;
 
-        let refus = decode_render_asset(&corrompu, 7, supported_sections(), LIMITS).unwrap_err();
+        let refus = decode_render_asset(&corrompu, 7, render_sections(), LIMITS).unwrap_err();
         assert_eq!(
             refus,
             LoadError::Container(A3dError::SectionCorrupted(SectionTag::GEOM))
@@ -741,8 +851,8 @@ f 2 4 3
     fn un_conteneur_tronque_ou_etranger_est_refuse() {
         let original = cube(7);
         let tronque = &original[..original.len() - 1];
-        assert!(decode_render_asset(tronque, 7, supported_sections(), LIMITS).is_err());
-        assert!(decode_render_asset(b"pas un A3D", 7, supported_sections(), LIMITS).is_err());
+        assert!(decode_render_asset(tronque, 7, render_sections(), LIMITS).is_err());
+        assert!(decode_render_asset(b"pas un A3D", 7, render_sections(), LIMITS).is_err());
     }
 
     #[test]
@@ -757,7 +867,7 @@ f 2 4 3
     #[test]
     fn un_handle_rendu_est_perime_et_son_slot_reemploye() {
         let asset =
-            decode_render_asset(&cube(5), 5, supported_sections(), LIMITS).expect("chargement");
+            decode_render_asset(&cube(5), 5, render_sections(), LIMITS).expect("chargement");
         let mut store = AssetStore::new();
 
         let premier = store.insert(asset.clone());
@@ -789,12 +899,15 @@ f 2 4 3
     #[test]
     fn matl_et_texr_se_demandent_ensemble() {
         let bit = |tag: SectionTag| SectionMask::of(&[tag]).bits();
-        let [node, geom, matl, texr, phys] = [
+        let [node, geom, matl, texr, phys, skel, anim, part] = [
             SectionTag::NODE,
             SectionTag::GEOM,
             SectionTag::MATL,
             SectionTag::TEXR,
             SectionTag::PHYS,
+            SectionTag::SKEL,
+            SectionTag::ANIM,
+            SectionTag::PART,
         ]
         .map(bit);
         for admis in [
@@ -803,6 +916,9 @@ f 2 4 3
             matl | texr,
             node,
             geom,
+            node | phys,
+            node | phys | skel | anim,
+            node | geom | matl | texr | phys | anim,
         ] {
             assert_eq!(
                 requested_sections(admis).map(SectionMask::bits),
@@ -816,11 +932,34 @@ f 2 4 3
             texr,
             node | geom | matl,
             node | geom | texr,
-            node | geom | phys,
+            geom | phys,
+            node | anim,
+            node | geom | skel,
+            node | geom | part,
             1 << 31,
         ] {
             assert_eq!(requested_sections(refuse), None, "{refuse:#b}");
         }
+    }
+
+    #[test]
+    fn adr156_d3_phys_garde_ce_qu_une_definition_compile_et_le_compte() {
+        let phys = render_sections().with(SectionTag::PHYS);
+        let avec = decode_render_asset(&cube(42), 42, phys, LIMITS).expect("chargement");
+        let sans =
+            decode_render_asset(&cube(42), 42, render_sections(), LIMITS).expect("chargement");
+        assert!(sans.definition_sections().is_none(), "sans PHYS, rien");
+        let sections = avec.definition_sections().expect("PHYS chargée");
+        // Le cube est compilé sans collider : `PHYS` absente vaut une table vide (R-880).
+        let view = sections.view();
+        assert!(view.colliders.is_empty() && view.children.is_empty());
+        assert_eq!(view.nodes.len(), avec.nodes.len());
+        assert!(view.anim.is_none(), "ANIM non demandée");
+        assert_eq!(
+            avec.resident_bytes(),
+            sans.resident_bytes() + sections.resident_bytes(),
+            "imputé à l'arène PERSISTENT"
+        );
     }
 
     #[test]

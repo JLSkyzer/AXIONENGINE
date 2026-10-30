@@ -3482,8 +3482,9 @@ sources procédurales de véhicule (M5, T-365).
             matériau, `REFITTABLE`), refus R-580, R-190, R-931 et avertissement R-930 ; `assembly::prepare`
             partagé avec `CREATE_ASSEMBLY`. Les noms de mesh et de collider restent vérifiés dans leur forme :
             l'A3D ne les garde pas (écart avec D1, consigné). 28 tests, 24 mutations rouges.
-      - [ ] 2. Registre de session, `axion_definition_compile` et `axion_definition_remove`, `PHYS` et
-            animation au masque d'IF-06 ; ABI 12.
+      - [x] 2. (2026-10-30) Registre de session, `axion_definition_compile` et `axion_definition_remove`,
+            `PHYS`, `SKEL` et `ANIM` au masque d'IF-06 ; ABI 12 ; pont JNI et `NativeBridge` ; test
+            d'intégration `definition_abi`.
       - [ ] 3. Java écrit `DEFN`, compile au rechargement et à la fin de la compilation des assets, tient
             les refus d'étape 4.
       - [ ] 4. `CREATE_ASSEMBLY` par empreinte ; Java ne lit plus `NODE`, `PHYS` ni `ANIM` côté serveur ; le

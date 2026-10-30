@@ -41,16 +41,20 @@ use ax_model::dm::commands::{
     create_assembly_flags, opcode, restored_joint_flags, AnimateAssembly,
 };
 use ax_model::dm::debug::{debug_flags, encode_debug_payload, overlay};
+use ax_model::dm::definition::{summary_flags, Definition, DefinitionRefusal, DefinitionSummary};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::joints::JointState;
 use ax_model::dm::physics::{BodyBounds, BodyState};
+use ax_model::dm::scene::NONE_U32;
 use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSettings, Stage};
 
 /// Version de l'ABI.
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 11 depuis les overlays de
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 12 depuis la compilation des
+/// definitions par le natif (ADR-156) : `axion_definition_compile`, `axion_definition_remove`, et
+/// `PHYS`, `SKEL`, `ANIM` au masque d'`axion_asset_load`. 11 depuis les overlays de
 /// l'animation (ADR-155, tranche 6b) : `axion_render_debug` et le tampon `RENDER_DEBUG` ; 10 depuis
 /// l'animation (ADR-155) : `axion_render_animate`, le tick de rendu en tête de `RENDER_IN` (schéma 2)
 /// et les matrices des retenus animés dans `RENDER_OUT` (schéma 3) ; 9 depuis le cycle de rendu IF-05
@@ -58,7 +62,7 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 11;
+pub const AXION_ABI_VERSION: u32 = 12;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -1025,6 +1029,18 @@ pub const AXION_SECTION_MATL: u32 = 1 << 2;
 /// Bit de la section `TEXR` dans un masque de sections (IF-06, ADR-122).
 pub const AXION_SECTION_TEXR: u32 = 1 << 3;
 
+/// Bit de la section `PHYS` dans un masque de sections (IF-06, ADR-156 D3) : les colliders qu'une
+/// definition compile.
+pub const AXION_SECTION_PHYS: u32 = 1 << 4;
+
+/// Bit de la section `SKEL` dans un masque de sections (IF-06, ADR-156 D3) : les os que les
+/// références d'une definition désignent.
+pub const AXION_SECTION_SKEL: u32 = 1 << 5;
+
+/// Bit de la section `ANIM` dans un masque de sections (IF-06, ADR-156 D3) : les clips que les
+/// références d'une definition désignent, et que le serveur joue (R-1430).
+pub const AXION_SECTION_ANIM: u32 = 1 << 6;
+
 /// Charge un asset compilé et rend son handle (IF-06, ADR-119, ADR-122).
 ///
 /// Le conteneur A3D a été écrit par Java dans la charge utile du tampon
@@ -1038,10 +1054,12 @@ pub const AXION_SECTION_TEXR: u32 = 1 << 3;
 /// `sections_mask` porte le bit *i* pour le *i*-ème tag de la table de la PARTIE
 /// 7 ; sont pris en charge [`AXION_SECTION_NODE`], [`AXION_SECTION_GEOM`],
 /// [`AXION_SECTION_MATL`] et [`AXION_SECTION_TEXR`], ces deux derniers
-/// ensemble. Un masque vide, portant un autre bit, ou l'un de `MATL` et `TEXR`
-/// sans l'autre est refusé (`E-2002`) : un chargement qui « réussirait » sans
-/// rien charger ferait croire le contraire, et les slots des matériaux
-/// désignent la table des textures.
+/// ensemble, et, pour compiler une definition, [`AXION_SECTION_PHYS`] avec
+/// `NODE`, [`AXION_SECTION_SKEL`] et [`AXION_SECTION_ANIM`] avec `PHYS`. Un
+/// masque vide, portant un autre bit, ou qui ne respecte pas ces liens est
+/// refusé (`E-2002`) : un chargement qui « réussirait » sans rien charger ferait
+/// croire le contraire, et les slots des matériaux désignent la table des
+/// textures.
 ///
 /// Chaque appel crée un handle indépendant, que Java possède et doit rendre par
 /// [`axion_asset_unload`] (R-321) ; un handle non rendu est signalé à l'arrêt
@@ -1242,6 +1260,136 @@ pub unsafe extern "C" fn axion_asset_texture(
 pub unsafe extern "C" fn axion_asset_unload(ctx: u64, handle: Handle) -> i32 {
     shielded(Some(ctx), || {
         match context::with(ctx, false, |session| session.remove_asset(handle)) {
+            Ok(true) => AXION_OK,
+            Ok(false) => AXION_E_INVALID_HANDLE,
+            Err(code) => code,
+        }
+    })
+}
+
+/// Compile une definition contre un asset chargé (étape 4 de C-27, ADR-156 D2, D4), et l'inscrit au
+/// registre de la session sous son empreinte `definition` (étape 5).
+///
+/// Le `DEFN` est lu dans `ASSET_IN`, où Java l'a écrit : `defn_len` octets après l'en-tête, R-313
+/// interdisant à une fonction FFI d'allouer côté Java. L'asset est celui de `asset`, chargé avec
+/// `NODE | PHYS` — et `SKEL`, `ANIM` s'il en a. Les deux sont copiés sous le verrou de session, la
+/// compilation se fait **hors verrou** — elle ne fige pas le cycle de simulation —, et le résultat
+/// est inscrit sous verrou, à la place du précédent.
+///
+/// `ASSET_OUT` reçoit la réponse, `out_size` sa taille :
+///
+/// - en cas de succès, un [`DefinitionSummary`] : le node racine de chaque corps, le nombre de
+///   joints, l'animation serveur, les avertissements (R-930) ;
+/// - en cas de refus, un [`DefinitionRefusal`] : le rang de la référence fautive et le motif. La
+///   definition quitte alors le registre, et l'appel rend le code du refus : `E-7001` (R-580),
+///   `E-3050` (R-190) ou `E-7002` (R-931).
+///
+/// Rend `E-2001` si le handle est périmé, `E-2002` si l'asset n'a pas été chargé avec `PHYS`, si le
+/// `DEFN` sort du tampon ou se lit mal — un défaut de Java, jamais de la definition, que le dernier
+/// message d'erreur décrit —, ou si `ASSET_OUT` ne peut recevoir la réponse ; le registre est alors
+/// inchangé. L'appel ne bloque jamais (R-280).
+///
+/// # Safety
+///
+/// `out_size` doit être accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_definition_compile(
+    ctx: u64,
+    definition: u64,
+    asset: Handle,
+    defn_len: u64,
+    out_size: *mut u64,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if out_size.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let copied = context::with(ctx, false, |session| {
+            let bytes = session
+                .buffers()
+                .payload(BufferKind::AssetIn, defn_len)
+                .ok_or(AXION_E_INVALID_BUFFER)?
+                .to_vec();
+            Ok((bytes, session.definition_sections(asset)?))
+        });
+        let (bytes, sections) = match copied {
+            Ok(Ok(copy)) => copy,
+            Ok(Err(code)) | Err(code) => return code,
+        };
+        let parsed = match Definition::read_le(&bytes) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                let message = format!(
+                    "axion_definition_compile {definition:#018x} : DEFN illisible ({error:?})"
+                );
+                let _ = context::with(ctx, false, |session| session.set_last_error(message));
+                return AXION_E_INVALID_BUFFER;
+            }
+        };
+
+        // Hors verrou : la résolution des noms et le rangement des colliders.
+        let mut payload = Vec::new();
+        let (code, compiled) = match crate::definition::compile(&parsed, &sections.view()) {
+            Ok(compiled) => {
+                DefinitionSummary {
+                    roots: compiled.roots.clone(),
+                    joint_count: u32::try_from(compiled.joints.len()).unwrap_or(u32::MAX),
+                    flags: if compiled.animation.is_some() {
+                        summary_flags::SERVER_ANIMATED
+                    } else {
+                        0
+                    },
+                    warnings: compiled.warnings.clone(),
+                }
+                .write_le(&mut payload);
+                (AXION_OK, Some(compiled))
+            }
+            Err(refusal) => {
+                DefinitionRefusal {
+                    code: refusal.code,
+                    reference: refusal.reference.unwrap_or(NONE_U32),
+                    message: refusal.message,
+                }
+                .write_le(&mut payload);
+                (refusal.code, None)
+            }
+        };
+
+        let written = context::with(ctx, false, |session| {
+            let size = session
+                .buffers()
+                .write_payload(BufferKind::AssetOut, &payload)
+                .ok_or(AXION_E_INVALID_BUFFER)?;
+            match compiled {
+                Some(compiled) => session.register_definition(definition, compiled),
+                None => {
+                    session.remove_definition(definition);
+                }
+            }
+            Ok(size)
+        });
+        match written {
+            Ok(Ok(size)) => {
+                // SAFETY: nullité écartée ci-dessus ; accessible en écriture, contrat de l'appel.
+                unsafe { out_size.write(size) };
+                code
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
+/// Retire une definition du registre de la session (ADR-156 D4) : celle qu'un rechargement a fait
+/// disparaître. Une assembly déjà créée garde ce qu'elle en a pris. Rend `E-2001` si le registre ne
+/// la tient pas, sans effet de bord.
+///
+/// # Safety
+///
+/// Aucun pointeur n'est déréférencé ; la fonction est `unsafe` par symétrie avec le reste de l'ABI.
+#[no_mangle]
+pub unsafe extern "C" fn axion_definition_remove(ctx: u64, definition: u64) -> i32 {
+    shielded(Some(ctx), || {
+        match context::with(ctx, false, |session| session.remove_definition(definition)) {
             Ok(true) => AXION_OK,
             Ok(false) => AXION_E_INVALID_HANDLE,
             Err(code) => code,
@@ -2359,12 +2507,21 @@ mod tests {
             (SectionTag::GEOM, AXION_SECTION_GEOM),
             (SectionTag::MATL, AXION_SECTION_MATL),
             (SectionTag::TEXR, AXION_SECTION_TEXR),
+            (SectionTag::PHYS, AXION_SECTION_PHYS),
+            (SectionTag::SKEL, AXION_SECTION_SKEL),
+            (SectionTag::ANIM, AXION_SECTION_ANIM),
         ] {
             assert_eq!(SectionMask::of(&[tag]).bits(), bit, "{tag}");
         }
         assert_eq!(
             supported_sections().bits(),
-            AXION_SECTION_NODE | AXION_SECTION_GEOM | AXION_SECTION_MATL | AXION_SECTION_TEXR
+            AXION_SECTION_NODE
+                | AXION_SECTION_GEOM
+                | AXION_SECTION_MATL
+                | AXION_SECTION_TEXR
+                | AXION_SECTION_PHYS
+                | AXION_SECTION_SKEL
+                | AXION_SECTION_ANIM
         );
     }
 

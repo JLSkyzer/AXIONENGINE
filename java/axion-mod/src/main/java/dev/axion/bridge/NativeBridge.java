@@ -31,7 +31,10 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}. 11 depuis les overlays de l'animation (ADR-155, tranche 6b) : {@link #fillRenderDebug} et
+     * {@code E-1002}. 12 depuis la compilation des definitions par le natif (ADR-156) :
+     * {@link #compileDefinition}, {@link #removeDefinition}, et {@link #SECTION_PHYS}, {@link #SECTION_SKEL},
+     * {@link #SECTION_ANIM} au masque de {@link #loadAsset}. 11 depuis les overlays de l'animation (ADR-155,
+     * tranche 6b) : {@link #fillRenderDebug} et
      * le tampon {@code RENDER_DEBUG} ; 10 depuis l'animation (ADR-155) : {@link #animateRender}, le tick de rendu
      * en tête de {@code RENDER_IN} et les matrices des retenus animés dans {@code RENDER_OUT} ; 9 depuis le cycle de
      * rendu IF-05, son contexte hors du verrou de session et
@@ -41,7 +44,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 11;
+    public static final int EXPECTED_ABI_VERSION = 12;
 
     /** Succès. */
     public static final int OK = 0;
@@ -148,6 +151,11 @@ public final class NativeBridge {
     static native int assetTexture(long ctx, int index, int generation, int texture, long[] out);
 
     static native int assetUnload(long ctx, int index, int generation);
+
+    static native int definitionCompile(
+            long ctx, long definition, int index, int generation, long defnLength, long[] out);
+
+    static native int definitionRemove(long ctx, long definition);
 
     static native int renderPrepare(long ctx, byte[] camera, float partialTick, long budgetNs, long[] out);
 
@@ -593,6 +601,15 @@ public final class NativeBridge {
     /** Bit de la section {@code TEXR} dans un masque de sections (ADR-122). */
     public static final int SECTION_TEXR = 1 << 3;
 
+    /** Bit de la section {@code PHYS} : les colliders qu'une definition compile (ADR-156 D3). */
+    public static final int SECTION_PHYS = 1 << 4;
+
+    /** Bit de la section {@code SKEL} : les os que nomme une definition (ADR-156 D3). */
+    public static final int SECTION_SKEL = 1 << 5;
+
+    /** Bit de la section {@code ANIM} : les clips que nomme une definition et que joue le serveur (ADR-156 D3). */
+    public static final int SECTION_ANIM = 1 << 6;
+
     /** Nombre de valeurs que {@link #loadAsset} écrit : index et génération du handle. */
     public static final int ASSET_LOAD_SLOTS = 2;
 
@@ -609,7 +626,8 @@ public final class NativeBridge {
      * @param assetId identifiant de l'asset, celui que porte son en-tête
      * @param sectionsMask sections à charger parmi {@link #SECTION_NODE},
      *     {@link #SECTION_GEOM}, {@link #SECTION_MATL} et {@link #SECTION_TEXR} — ces deux
-     *     dernières ensemble, ou aucune
+     *     dernières ensemble, ou aucune —, et, pour compiler une definition, {@link #SECTION_PHYS}
+     *     avec {@code NODE}, {@link #SECTION_SKEL} et {@link #SECTION_ANIM} avec {@code PHYS}
      * @param out tableau d'au moins {@link #ASSET_LOAD_SLOTS} éléments
      * @return {@link #OK}, ou un code d'erreur négatif
      */
@@ -697,6 +715,59 @@ public final class NativeBridge {
     public static int unloadAsset(long ctx, int index, int generation) {
         CROSSINGS.increment();
         return assetUnload(ctx, index, generation);
+    }
+
+    // --- Definitions compilées (C-27, ADR-156) ------------------------------
+
+    /** Definition invalide ({@code E-7001}, R-580) : un nom d'asset introuvable, une assembly informe. */
+    public static final int E_DEFINITION_INVALID = -7001;
+
+    /** Plafond d'assembly dépassé ({@code E-3050}, R-190) : plus de 64 corps. */
+    public static final int E_ASSEMBLY_LIMIT = -3050;
+
+    /** Node physique sous un parent animé ({@code E-7002}, R-931). */
+    public static final int E_PHYSICS_UNDER_ANIMATED = -7002;
+
+    /**
+     * Compile une definition contre un asset chargé avec {@code NODE | PHYS} et l'inscrit au
+     * registre de la session sous son empreinte (étapes 4 et 5 de C-27, ADR-156 D4).
+     *
+     * <p>Le {@code DEFN} doit avoir été écrit dans la charge utile de {@code AXION_BUF_ASSET_IN}.
+     * {@code out[0]} reçoit la taille de la réponse déposée dans {@code AXION_BUF_ASSET_OUT} : le
+     * résumé en cas de succès (node racine de chaque corps, nombre de joints, animation serveur,
+     * avertissements), la référence fautive et le motif en cas de refus.
+     *
+     * @param ctx jeton de contexte
+     * @param definition empreinte de la definition, celle que porte le NBT
+     * @param index index du handle de l'asset
+     * @param generation génération du handle de l'asset
+     * @param defnLength taille du {@code DEFN}, en octets
+     * @param out tableau d'au moins un élément
+     * @return {@link #OK} ; {@link #E_DEFINITION_INVALID}, {@link #E_ASSEMBLY_LIMIT} ou
+     *     {@link #E_PHYSICS_UNDER_ANIMATED} pour un refus, la definition retirée du registre ;
+     *     {@link #E_INVALID_HANDLE} si le handle est périmé ; {@link #E_INVALID_BUFFER} si l'asset
+     *     n'a pas été chargé avec {@code PHYS} ou si le {@code DEFN} se lit mal
+     */
+    public static int compileDefinition(
+            long ctx, long definition, int index, int generation, long defnLength, long[] out) {
+        if (out == null || out.length < 1) {
+            throw new IllegalArgumentException("le tableau de compilation compte au moins un élément");
+        }
+        CROSSINGS.increment();
+        return definitionCompile(ctx, definition, index, generation, defnLength, out);
+    }
+
+    /**
+     * Retire une definition du registre de la session (ADR-156 D4) : celle qu'un rechargement a
+     * fait disparaître.
+     *
+     * @param ctx jeton de contexte
+     * @param definition empreinte de la definition
+     * @return {@link #OK}, ou {@link #E_INVALID_HANDLE} si le registre ne la tient pas
+     */
+    public static int removeDefinition(long ctx, long definition) {
+        CROSSINGS.increment();
+        return definitionRemove(ctx, definition);
     }
 
     // --- Cycle de rendu (IF-05, ADR-154) ------------------------------------

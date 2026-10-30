@@ -40,11 +40,11 @@ use crate::abi::{
     axion_abi_version, axion_asset_cancel, axion_asset_compile, axion_asset_diagnostics,
     axion_asset_geometry, axion_asset_load, axion_asset_materials, axion_asset_poll,
     axion_asset_texture, axion_asset_unload, axion_buffer_acquire, axion_buffer_release,
-    axion_debug_fill, axion_det_profile, axion_init, axion_last_error, axion_metrics_export,
-    axion_net_compress, axion_net_decompress, axion_render_debug, axion_render_prepare,
-    axion_render_release, axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit,
-    AxionBufferInfo, AxionCollectResult, AxionDetProfile, AxionRenderResult,
-    AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_debug_fill, axion_definition_compile, axion_definition_remove, axion_det_profile,
+    axion_init, axion_last_error, axion_metrics_export, axion_net_compress, axion_net_decompress,
+    axion_render_debug, axion_render_prepare, axion_render_release, axion_shutdown,
+    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
+    AxionDetProfile, AxionRenderResult, AXION_E_INVALID_BUFFER, AXION_OK,
 };
 use ax_model::dm::handle::Handle;
 
@@ -194,6 +194,16 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "assetUnload".into(),
             sig: "(JII)I".into(),
             fn_ptr: jni_asset_unload as *mut c_void,
+        },
+        NativeMethod {
+            name: "definitionCompile".into(),
+            sig: "(JJIIJ[J)I".into(),
+            fn_ptr: jni_definition_compile as *mut c_void,
+        },
+        NativeMethod {
+            name: "definitionRemove".into(),
+            sig: "(JJ)I".into(),
+            fn_ptr: jni_definition_remove as *mut c_void,
         },
         NativeMethod {
             name: "renderPrepare".into(),
@@ -950,6 +960,64 @@ extern "system" fn jni_asset_unload(
     unsafe { axion_asset_unload(ctx as u64, asset_handle(index, generation)) }
 }
 
+/// `NativeBridge.definitionCompile(long, long, int, int, long, long[])` (ADR-156 D4).
+///
+/// Compile le `DEFN` d'`ASSET_IN` contre l'asset, et écrit dans `out[0]` la taille de la réponse
+/// déposée dans `ASSET_OUT` — un résumé en cas de succès, le motif en cas de refus : la taille vaut
+/// pour les deux, et le code rendu les distingue.
+extern "system" fn jni_definition_compile(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    definition: jlong,
+    index: jint,
+    generation: jint,
+    defn_len: jlong,
+    out: JLongArray,
+) -> jint {
+    let Ok(defn_len) = u64::try_from(defn_len) else {
+        return AXION_E_INVALID_BUFFER;
+    };
+    if out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(&out) {
+        Ok(length) if length >= 1 => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+    // Rien n'est déposé si l'appel échoue avant sa réponse : la sentinelle le dit.
+    let mut size = u64::MAX;
+    // SAFETY: `size` est une variable locale, accessible en écriture pendant l'appel.
+    let code = unsafe {
+        axion_definition_compile(
+            ctx as u64,
+            definition as u64,
+            asset_handle(index, generation),
+            defn_len,
+            &raw mut size,
+        )
+    };
+    if size != u64::MAX
+        && env
+            .set_long_array_region(&out, 0, &[size as jlong])
+            .is_err()
+    {
+        return AXION_E_INVALID_BUFFER;
+    }
+    code
+}
+
+/// `NativeBridge.definitionRemove(long, long)` (ADR-156 D4).
+extern "system" fn jni_definition_remove(
+    _env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    definition: jlong,
+) -> jint {
+    // SAFETY: aucun pointeur n'est déréférencé.
+    unsafe { axion_definition_remove(ctx as u64, definition as u64) }
+}
+
 /// `NativeBridge.debugFill(long, long, long, double, double, double, int, long[])`
 /// (C-67, ADR-121).
 ///
@@ -1037,6 +1105,8 @@ mod tests {
             ("assetMaterials", "(JII[J)I"),
             ("assetTexture", "(JIII[J)I"),
             ("assetUnload", "(JII)I"),
+            ("definitionCompile", "(JJIIJ[J)I"),
+            ("definitionRemove", "(JJ)I"),
             ("debugFill", "(JJJDDDI[J)I"),
             ("renderDebug", "(JJI[J)I"),
         ];
