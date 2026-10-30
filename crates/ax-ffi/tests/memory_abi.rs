@@ -8,12 +8,12 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::a3d::encode_colliders;
+mod common;
+
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{
-    create_assembly_payload, opcode, AssemblyBodyEntry, CommandStreamHeader, CreateAssembly,
-};
-use ax_model::dm::geometry::Transform;
+use ax_model::dm::commands::{opcode, CommandStreamHeader};
+use ax_model::dm::geometry::{Transform, WorldTransform};
+use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, ColliderDesc, ColliderShape};
 use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_metrics_export, axion_shutdown,
@@ -21,10 +21,14 @@ use axion_native::abi::{
     AXION_SIDE_SERVER,
 };
 use axion_native::ALLOCATOR;
+use common::{creation, Modele};
 use std::time::{Duration, Instant};
 
 /// Corps créés pour peser sur la mémoire du monde physique.
 const BODIES: u32 = 200;
+
+/// L'empreinte de la definition que prennent toutes les boîtes.
+const DEFINITION: u64 = 0x0DEF_0000_0000_0016;
 
 fn empty_info() -> AxionBufferInfo {
     AxionBufferInfo {
@@ -52,8 +56,8 @@ fn push(stream: &mut Vec<u8>, op: u32, payload: &[u8]) {
     }
 }
 
-/// Payload `CREATE_ASSEMBLY` d'une boîte dynamique au handle (`index`, 1).
-fn assembly(index: u32) -> Vec<u8> {
+/// Une boîte dynamique d'un mètre, seule dans son asset.
+fn boite() -> Modele {
     let collider = ColliderDesc {
         shape: ColliderShape::Box {
             half_extents: [0.5, 0.5, 0.5],
@@ -72,34 +76,16 @@ fn assembly(index: u32) -> Vec<u8> {
         hull_points_offset: 0,
         hull_points_count: 0,
     };
-    let phys = encode_colliders(&[collider], &[], &[]).expect("encodage PHYS");
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&index.to_le_bytes());
-    payload.extend_from_slice(&1u32.to_le_bytes());
-    payload.extend_from_slice(&0u64.to_le_bytes());
-    for value in [f64::from(index) * 2.0, 10.0, 0.0] {
-        payload.extend_from_slice(&value.to_le_bytes());
-    }
-    for value in [0.0f32, 0.0, 0.0, 1.0] {
-        payload.extend_from_slice(&value.to_le_bytes());
-    }
-    payload.push(2);
-    payload.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
-    let en_tete = CreateAssembly::read_le(&payload).expect("en-tête complet");
-    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
-    let mut payload = create_assembly_payload(
-        &en_tete,
-        &[AssemblyBodyEntry {
-            desc: BodyDesc::undeclared(2),
-            root_node: 0,
-        }],
-        &[],
-        &[],
-        &[],
-        &[],
-    );
-    payload.extend_from_slice(&phys);
-    payload
+    Modele::seul(vec![collider], BodyDesc::undeclared(2))
+}
+
+/// Payload `CREATE_ASSEMBLY` d'une boîte au handle (`index`, 1).
+fn assembly(index: u32) -> Vec<u8> {
+    let spawn = WorldTransform {
+        position: [f64::from(index) * 2.0, 10.0, 0.0],
+        rotation: [0.0, 0.0, 0.0, 1.0],
+    };
+    creation(Handle::new(index, 1), 0, spawn, DEFINITION, 0, None)
 }
 
 /// Soumet et collecte un tick.
@@ -175,8 +161,8 @@ fn metrique(ctx: u64, nom: &str) -> u64 {
         .expect("valeur entière")
 }
 
-/// Une session complète : ouverture, deux cents corps, quelques ticks, fermeture.
-/// Rend la mémoire comptée par l'export au plus fort de la session, et avant les corps.
+/// Une session complète : ouverture, la definition compilée, deux cents corps, quelques ticks,
+/// fermeture. Rend la mémoire comptée par l'export au plus fort de la session, et avant les corps.
 fn session() -> (u64, u64) {
     let mut ctx = 0u64;
     assert_eq!(
@@ -185,6 +171,7 @@ fn session() -> (u64, u64) {
         "init"
     );
     tick(ctx, 1, &[]);
+    assert_eq!(boite().inscrire(ctx, DEFINITION), AXION_OK, "la definition se compile");
     let avant = metrique(ctx, "axion.budget.native_mem_bytes.consumed");
     let creations: Vec<(u32, Vec<u8>)> = (1..=BODIES)
         .map(|index| (opcode::CREATE_ASSEMBLY, assembly(index)))

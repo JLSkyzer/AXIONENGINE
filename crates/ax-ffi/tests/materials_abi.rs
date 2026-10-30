@@ -1,5 +1,5 @@
-//! ADR-149 par l'ABI : `CREATE_ASSEMBLY` porte l'index de matériau de chaque collider dans sa
-//! section `PHYS` ; `SET_PHYSICS_MATERIALS` le résout, même arrivé dans le même flux — la
+//! ADR-149 par l'ABI : la compilation d'une definition (ADR-156) pose sur chaque collider l'index
+//! du matériau de sa part ; `SET_PHYSICS_MATERIALS` le résout, même arrivé dans le même flux — la
 //! frontière crée les assemblies d'abord, puis applique le reste, et une table reçue se propage
 //! aux corps déjà posés.
 //!
@@ -8,12 +8,13 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::a3d::encode_colliders;
+mod common;
+
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{
-    create_assembly_payload, opcode, AssemblyBodyEntry, CommandStreamHeader, CreateAssembly,
-};
-use ax_model::dm::geometry::Transform;
+use ax_model::dm::commands::{opcode, CommandStreamHeader};
+use ax_model::dm::definition::DefinitionPart;
+use ax_model::dm::geometry::{Transform, WorldTransform};
+use ax_model::dm::scene::NO_PARENT;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{combine, BodyDesc, ColliderDesc, ColliderShape, PhysicsMaterial};
 use ax_physics::ContactMaterial;
@@ -23,6 +24,10 @@ use axion_native::abi::{
     AXION_SIDE_SERVER,
 };
 use axion_native::context;
+use common::{creation, noeud, Modele};
+
+/// L'empreinte de la definition de la boîte.
+const DEFINITION: u64 = 0x0DEF_0000_0000_0149;
 
 const ASSEMBLY: Handle = Handle {
     index: 7,
@@ -65,14 +70,14 @@ fn push(stream: &mut Vec<u8>, op: u32, payload: &[u8]) {
     }
 }
 
-/// `CREATE_ASSEMBLY` d'une boîte dont le collider porte l'index de matériau `material`.
-fn create_assembly(material: u16) -> Vec<u8> {
+/// Une boîte, au node `boite`, dans une part qui nomme le matériau d'index `material`.
+fn boite(material: u16) -> Modele {
     let collider = ColliderDesc {
         shape: ColliderShape::Box {
             half_extents: [0.5, 0.5, 0.5],
         },
         local: Transform::identity(),
-        material,
+        material: u16::MAX,
         _pad: 0,
         group: u32::MAX,
         mask: u32::MAX,
@@ -85,34 +90,31 @@ fn create_assembly(material: u16) -> Vec<u8> {
         hull_points_offset: 0,
         hull_points_count: 0,
     };
-    let phys = encode_colliders(&[collider], &[], &[]).expect("encodage PHYS");
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&ASSEMBLY.index.to_le_bytes());
-    payload.extend_from_slice(&ASSEMBLY.generation.to_le_bytes());
-    payload.extend_from_slice(&0u64.to_le_bytes()); // dimension
-    for value in [5.0f64, 10.0, -2.0] {
-        payload.extend_from_slice(&value.to_le_bytes());
-    }
-    for value in [0.0f32, 0.0, 0.0, 1.0] {
-        payload.extend_from_slice(&value.to_le_bytes());
-    }
-    payload.push(2); // dynamique
-    payload.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
-    let en_tete = CreateAssembly::read_le(&payload).expect("en-tête complet");
-    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
-    let mut payload = create_assembly_payload(
-        &en_tete,
-        &[AssemblyBodyEntry {
-            desc: BodyDesc::undeclared(2),
-            root_node: 0,
+    Modele {
+        nodes: vec![noeud("boite", NO_PARENT, Transform::identity(), 0)],
+        names: vec!["boite".to_owned()],
+        parts: vec![DefinitionPart {
+            root: 0,
+            material,
+            flags: 0,
         }],
-        &[],
-        &[],
-        &[],
-        &[],
-    );
-    payload.extend_from_slice(&phys);
-    payload
+        ..Modele::seul(vec![collider], BodyDesc::undeclared(2))
+    }
+}
+
+/// `CREATE_ASSEMBLY` de la boîte, sa definition compilée sous [`DEFINITION`].
+fn create_assembly() -> Vec<u8> {
+    creation(
+        ASSEMBLY,
+        0,
+        WorldTransform {
+            position: [5.0, 10.0, -2.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        },
+        DEFINITION,
+        0,
+        None,
+    )
 }
 
 /// `SET_PHYSICS_MATERIALS` d'une table.
@@ -187,6 +189,7 @@ fn adr149_une_table_du_meme_flux_resout_les_colliders_crees() {
     let mut ctx = 0u64;
     let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) };
     assert_eq!(code, AXION_OK, "init");
+    assert_eq!(boite(1).inscrire(ctx, DEFINITION), AXION_OK);
 
     let table = [materiau(0.6, combine::AVERAGE), materiau(0.2, combine::MIN)];
     // La table suit la création dans le flux : la frontière crée d'abord, puis applique la table,
@@ -194,7 +197,7 @@ fn adr149_une_table_du_meme_flux_resout_les_colliders_crees() {
     submit(
         ctx,
         &[
-            (opcode::CREATE_ASSEMBLY, create_assembly(1)),
+            (opcode::CREATE_ASSEMBLY, create_assembly()),
             (opcode::SET_PHYSICS_MATERIALS, set_materials(&table)),
         ],
     );

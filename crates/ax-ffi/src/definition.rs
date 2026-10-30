@@ -16,7 +16,7 @@ use ax_asset::a3d::decode_animations;
 use ax_model::dm::animation::BoneDesc;
 use ax_model::dm::commands::{AssemblyBodyEntry, MAX_ASSEMBLY_BODIES};
 use ax_model::dm::definition::{
-    definition_flags, part_flags, reference_category, Definition, DefinitionRef,
+    definition_flags, part_flags, reference_category, Definition, DefinitionRef, SummaryClip,
 };
 use ax_model::dm::joints::JointDesc;
 use ax_model::dm::physics::{collider_flags, ColliderDesc, ColliderShape};
@@ -59,16 +59,10 @@ pub(crate) struct AssetView<'a> {
     pub bones: &'a [BoneDesc],
 }
 
-/// Une definition compilée : ce que la création d'une assembly reprend tel quel.
-///
-/// Le résumé de l'ABI n'en lit que les racines, les joints, l'animation et les avertissements :
-/// `CREATE_ASSEMBLY` lira le reste en tranche 4 d'ADR-156, et le refit de la déformation (C-42, M6)
-/// les colliders marqués `REFITTABLE`.
+/// Une definition compilée : ce que `CREATE_ASSEMBLY` reprend tel quel (ADR-156 D4), et ce que le
+/// résumé de l'ABI rend à Java.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub(crate) struct CompiledDefinition {
-    /// Type du corps racine : `0` statique, `1` cinématique, `2` dynamique.
-    pub body_kind: u8,
     /// Les corps de l'assembly se touchent entre eux (§10.4).
     pub self_collision: bool,
     /// Masse à répartir entre les corps sans masse déclarée, en kg ; `0` pour un seul corps.
@@ -83,12 +77,17 @@ pub(crate) struct CompiledDefinition {
     pub groups: CollisionGroups,
     /// L'animation que le serveur joue, si un collider dépend d'un node animé (R-1430).
     pub animation: Option<ServerAnimation>,
-    /// Les colliders de l'asset, marqués : groupes, matériau, `REFITTABLE`.
+    /// Les colliders de l'asset, marqués : groupes, matériau, `REFITTABLE`. Le refit de la
+    /// déformation (C-42, M6) les lira ; les corps en portent déjà les formes.
+    #[allow(dead_code)]
     pub colliders: Vec<ColliderDesc>,
     /// Les enfants de composés, marqués comme leur composé.
+    #[allow(dead_code)]
     pub children: Vec<ColliderDesc>,
     /// Les avertissements de la compilation (R-930).
     pub warnings: Vec<String>,
+    /// Les clips de l'asset, dans l'ordre de sa section `ANIM` : ce que Java joue par leur nom.
+    pub clips: Vec<SummaryClip>,
 }
 
 /// Le refus d'une definition.
@@ -124,7 +123,10 @@ pub(crate) fn compile(
     definition: &Definition,
     asset: &AssetView<'_>,
 ) -> Result<CompiledDefinition, Refusal> {
-    let resolved = resolve(&definition.refs, asset)?;
+    let clips = clip_table(asset.anim);
+    let hashes: Vec<u64> = clips.iter().map(|(hash, _)| *hash).collect();
+    let clips: Vec<SummaryClip> = clips.into_iter().map(|(_, clip)| clip).collect();
+    let resolved = resolve(&definition.refs, asset, &hashes)?;
     let node_of = |reference: u32| resolved[reference as usize].expect("référence NODE résolue");
     let header = &definition.header;
 
@@ -144,8 +146,8 @@ pub(crate) fn compile(
             &[None],
             &[],
             0.0,
-            colliders,
-            children,
+            (colliders, children),
+            clips,
         );
     }
     let mut roots: Vec<u32> = Vec::with_capacity(definition.bodies.len());
@@ -230,8 +232,8 @@ pub(crate) fn compile(
         &origins,
         &joints,
         assembly_mass,
-        colliders,
-        children,
+        (colliders, children),
+        clips,
     )
 }
 
@@ -245,8 +247,8 @@ fn finish(
     origins: &[Option<u32>],
     joints: &[JointDesc],
     assembly_mass: f32,
-    colliders: Vec<ColliderDesc>,
-    children: Vec<ColliderDesc>,
+    (colliders, children): (Vec<ColliderDesc>, Vec<ColliderDesc>),
+    clips: Vec<SummaryClip>,
 ) -> Result<CompiledDefinition, Refusal> {
     let header = &definition.header;
     let prepared = prepare(
@@ -282,7 +284,6 @@ fn finish(
     };
 
     Ok(CompiledDefinition {
-        body_kind: header.physics.body_type,
         self_collision: header.flags & definition_flags::SELF_COLLISION != 0,
         assembly_mass,
         roots: entries.iter().map(|entry| entry.root_node).collect(),
@@ -293,18 +294,42 @@ fn finish(
         colliders,
         children,
         warnings,
+        clips,
     })
+}
+
+/// Les clips de la section `ANIM`, dans son ordre : l'empreinte de leur nom, qui résout les
+/// références `CLIP`, puis leur nom et leur nombre de pistes. Une section absente ou illisible n'en
+/// a aucun ; la valider est l'affaire de l'animation serveur ([`crate::assembly::prepare`]).
+fn clip_table(anim: Option<&[u8]>) -> Vec<(u64, SummaryClip)> {
+    anim.and_then(|bytes| decode_animations(bytes).ok())
+        .map(|table| {
+            table
+                .animations
+                .iter()
+                .zip(table.names)
+                .map(|(clip, name)| {
+                    (
+                        clip.name_hash,
+                        SummaryClip {
+                            name,
+                            tracks: clip.track_count,
+                        },
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Résout chaque référence contre la table de sa catégorie : le node d'un `NODE`, le premier de ce
 /// nom comme Java l'a toujours pris ; rien à garder d'un clip ou d'un os, dont seule l'existence
 /// se juge.
-fn resolve(refs: &[DefinitionRef], asset: &AssetView<'_>) -> Result<Vec<Option<u32>>, Refusal> {
-    let clips: Vec<u64> = asset
-        .anim
-        .and_then(|bytes| decode_animations(bytes).ok())
-        .map(|table| table.animations.iter().map(|clip| clip.name_hash).collect())
-        .unwrap_or_default();
+fn resolve(
+    refs: &[DefinitionRef],
+    asset: &AssetView<'_>,
+    clips: &[u64],
+) -> Result<Vec<Option<u32>>, Refusal> {
     let mut resolved = Vec::with_capacity(refs.len());
     for (rank, reference) in refs.iter().enumerate() {
         let rank = u32::try_from(rank).unwrap_or(u32::MAX);
@@ -456,12 +481,10 @@ impl Iterator for Chain<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ax_asset::a3d::{encode_animations, encode_colliders, encode_nodes, AnimationTable};
+    use ax_asset::a3d::{encode_animations, AnimationTable};
     use ax_model::dm::animation::{channel, interp, AnimationDesc, TrackDesc};
-    use ax_model::dm::commands::{create_assembly_payload_full, CreateAssembly};
     use ax_model::dm::definition::{DefinitionHeader, DefinitionPart};
-    use ax_model::dm::geometry::{Transform, WorldTransform};
-    use ax_model::dm::handle::Handle;
+    use ax_model::dm::geometry::Transform;
     use ax_model::dm::joints::{joint_axis_mode, joint_kind};
     use ax_model::dm::physics::BodyDesc;
     use ax_model::dm::scene::{name_hash, NO_PARENT};
@@ -1023,74 +1046,25 @@ mod tests {
     }
 
     #[test]
-    fn la_compilation_forme_l_assembly_que_create_assembly_formait() {
-        // Même definition, deux chemins : DEFN compilé, et le payload que Java envoyait, ses
-        // colliders marqués comme la compilation les marque.
-        // Un volet, enfant de la base, s'anime hors de la chaîne de la porte, racine d'un corps.
-        let (mut nodes, mut colliders, children) = caisse_composee();
-        nodes.push(node("volet", 0, -2.0, 3));
-        colliders.push(boite());
-        let anim = clips(3);
+    fn les_clips_de_l_asset_partent_avec_la_definition_compilee() {
+        // Décision de Killian (tranche 4) : Java joue les clips par leur nom sans lire ANIM.
+        let nodes = chaine();
+        let colliders = [boite(), boite(), boite()];
+        let anim = clips(1);
         let view = AssetView {
-            children: &children,
             anim: Some(&anim),
             ..asset(&nodes, &colliders)
         };
-        let mut definition = definition(Vec::new());
-        pieces(&mut definition);
-        definition.refs.push(nommer("porte"));
-        definition.bodies = vec![corps(NONE_U32, 4.0)];
-        definition.joints = vec![charniere(2)];
-        definition.header.flags = definition_flags::SELF_COLLISION;
-        let compiled = compile(&definition, &view).unwrap();
-
-        let names: Vec<String> = ["base", "caisse", "porte", "volet"]
-            .map(str::to_owned)
-            .to_vec();
-        let header = CreateAssembly {
-            handle: Handle {
-                index: 1,
-                generation: 1,
-            },
-            dimension: 0,
-            spawn: WorldTransform {
-                position: [0.0; 3],
-                rotation: [0.0, 0.0, 0.0, 1.0],
-            },
-            body_kind: compiled.body_kind,
-            flags: 0,
-            body_count: 0,
-            joint_count: 0,
-            jam_points: 0,
-            assembly_mass: compiled.assembly_mass,
-            node_bytes: 0,
-        };
-        let entries = [corps(0, 4.0), {
-            let mut implicit = corps(2, 0.0);
-            implicit.desc = definition.header.implicit;
-            implicit
-        }];
-        let mut joint = charniere(2);
-        joint.body_b = 1;
-        let payload = create_assembly_payload_full(
-            &header,
-            &entries,
-            &[joint],
-            &[],
-            &encode_nodes(&nodes, &names).unwrap(),
-            None,
-            Some(&anim),
-            &encode_colliders(&compiled.colliders, &[], &compiled.children).unwrap(),
-        );
-        let request = crate::assembly::decode(&payload).expect("payload valide");
+        let compiled = compile(&definition(Vec::new()), &view).unwrap();
         assert_eq!(
-            format!("{:?}", request.bodies),
-            format!("{:?}", compiled.bodies)
+            compiled.clips,
+            [SummaryClip {
+                name: "tourner".to_owned(),
+                tracks: 1
+            }]
         );
-        assert_eq!(request.joints, compiled.joints);
-        assert_eq!(request.groups, compiled.groups);
-        assert!(compiled.animation.is_some(), "le volet porte un collider");
-        assert_eq!(request.animation, compiled.animation);
+        let sans = compile(&definition(Vec::new()), &asset(&nodes, &colliders)).unwrap();
+        assert!(sans.clips.is_empty(), "sans section ANIM, aucun clip");
     }
 
     #[test]

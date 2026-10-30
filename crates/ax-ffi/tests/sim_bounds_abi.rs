@@ -7,17 +7,21 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::a3d::encode_colliders;
+mod common;
+
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{
-    create_assembly_payload, opcode, AssemblyBodyEntry, CommandStreamHeader, CreateAssembly,
-};
-use ax_model::dm::geometry::Transform;
+use ax_model::dm::commands::{opcode, CommandStreamHeader};
+use ax_model::dm::geometry::{Transform, WorldTransform};
+use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyBounds, BodyDesc, BodyState, ColliderDesc, ColliderShape};
 use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_shutdown, axion_sim_collect,
     axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_OK, AXION_SIDE_SERVER,
 };
+use common::{creation, Modele};
+
+/// L'empreinte de la definition de la boîte.
+const DEFINITION: u64 = 0x0DEF_0000_0000_0120;
 
 /// Rotation de spawn : 90° autour de Z, quaternion `(x, y, z, w)`.
 const QUART_DE_TOUR_Z: [f32; 4] = [
@@ -74,39 +78,14 @@ fn boite_posee() -> ColliderDesc {
     }
 }
 
-/// Flux `SimIn` : en-tête + une commande CREATE_ASSEMBLY, spawn tourné.
+/// Flux `SimIn` : en-tête + une commande CREATE_ASSEMBLY de la boîte au handle (7, 1), spawn
+/// tourné.
 fn command_stream() -> Vec<u8> {
-    let phys = encode_colliders(&[boite_posee()], &[], &[]).expect("encodage PHYS");
-
-    let mut header = Vec::new();
-    header.extend_from_slice(&7u32.to_le_bytes()); // handle.index
-    header.extend_from_slice(&1u32.to_le_bytes()); // handle.generation
-    header.extend_from_slice(&0u64.to_le_bytes()); // dimension
-    for value in [5.0f64, 10.0, -2.0] {
-        header.extend_from_slice(&value.to_le_bytes()); // spawn.position
-    }
-    for value in QUART_DE_TOUR_Z {
-        header.extend_from_slice(&value.to_le_bytes()); // spawn.rotation
-    }
-    header.push(2); // body_kind : dynamique
-    header.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
-    let en_tete = CreateAssembly::read_le(&header).expect("en-tête complet");
-    // ADR-130 : la description DM-08 du corps suit l'en-tête ; rien n'est déclaré.
-    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
-    let header = create_assembly_payload(
-        &en_tete,
-        &[AssemblyBodyEntry {
-            desc: BodyDesc::undeclared(2),
-            root_node: 0,
-        }],
-        &[],
-        &[],
-        &[],
-        &[],
-    );
-
-    let mut payload = header;
-    payload.extend_from_slice(&phys);
+    let spawn = WorldTransform {
+        position: [5.0, 10.0, -2.0],
+        rotation: QUART_DE_TOUR_Z,
+    };
+    let payload = creation(Handle::new(7, 1), 0, spawn, DEFINITION, 0, None);
 
     let mut stream = CommandStreamHeader::CURRENT_SCHEMA.to_le_bytes().to_vec();
     stream.extend_from_slice(&0u32.to_le_bytes()); // _pad
@@ -121,6 +100,8 @@ fn sim_out_porte_l_emprise_apres_les_etats() {
     let mut ctx = 0u64;
     let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) };
     assert_eq!(code, AXION_OK, "init");
+    let boite = Modele::seul(vec![boite_posee()], BodyDesc::undeclared(2));
+    assert_eq!(boite.inscrire(ctx, DEFINITION), AXION_OK, "la definition se compile");
 
     // CREATE_ASSEMBLY, comme NativeSimulation l'écrit : charge après l'en-tête
     // pré-rempli par le natif, puis submit, puis release.

@@ -6,13 +6,12 @@
 //! place ; leur disposition est figée et testée. Un opcode inconnu est ignoré
 //! (le lecteur saute son payload) — compatibilité avant.
 //!
-//! `CREATE_ASSEMBLY` porte l'en-tête [`CreateAssembly`], ses corps, puis les sections
-//! `NODE` et `PHYS` de l'asset (ADR-115, ADR-130, ADR-151) ; les champs runtime de
-//! `AssemblyDesc` (DM-09) viendront avec leur consommateur.
+//! `CREATE_ASSEMBLY` porte l'en-tête [`CreateAssembly`] — l'empreinte de la definition compilée
+//! que le registre de la session tient (ADR-156 D4) — puis, s'il y en a un, l'état restauré
+//! (ADR-153 D3). Corps, joints et colliders viennent de la definition compilée.
 
 use super::geometry::WorldTransform;
 use super::handle::Handle;
-use super::joints::JointDesc;
 use super::physics::BodyDesc;
 
 /// Valeurs d'opcode (ADR-114), champ `opcode` de [`SimCommandHeader`].
@@ -143,9 +142,10 @@ pub struct CommandStreamHeader {
 impl CommandStreamHeader {
     /// Taille sur la frontière, en octets.
     pub const BYTES: usize = 8;
-    /// Version courante du protocole : 3 depuis les assemblies à plusieurs corps (ADR-151
-    /// D7), après l'index de matériau des tuiles (2, ADR-149).
-    pub const CURRENT_SCHEMA: u32 = 3;
+    /// Version courante du protocole : 4 depuis `CREATE_ASSEMBLY` par empreinte de definition
+    /// compilée (ADR-156 D4), après les assemblies à plusieurs corps (3, ADR-151 D7) et l'index de
+    /// matériau des tuiles (2, ADR-149).
+    pub const CURRENT_SCHEMA: u32 = 4;
 }
 
 /// En-tête d'une commande : opcode et longueur de son payload (ADR-114).
@@ -233,19 +233,14 @@ impl SetDimensionEnv {
     pub const BYTES: usize = 48;
 }
 
-/// En-tête de `CREATE_ASSEMBLY` (IF-03, ADR-114 ; colliders en ligne, ADR-115 ;
-/// description des corps, ADR-130 ; plusieurs corps, ADR-151 D7).
+/// En-tête de `CREATE_ASSEMBLY` (IF-03, ADR-114 ; definition compilée, ADR-156 D4).
 ///
-/// Suivi **dans le même payload** de `body_count` entrées [`AssemblyBodyEntry`], le corps
-/// racine d'abord ; puis de `joint_count` [`JointDesc`] et des `jam_points` points de leurs
-/// courbes de grippage ([`JointDesc::JAM_POINT_BYTES`] chacun) ; puis des `node_bytes`
-/// octets de la section `NODE` de l'asset, complétés à 8 ; puis des octets de sa section
-/// `PHYS` jusqu'à la fin du payload. Java les extrait de l'A3D et les envoie, le natif les
-/// décode (Option A d'ADR-115) : chaque collider va au corps de son node, posé dans le
-/// repère de ce corps (ADR-151 D2). Sans section `NODE` (`node_bytes` nul), un seul corps
-/// est admis, et ses colliders sont pris tels quels. [`create_assembly_payload`] assemble ce
-/// payload. Les champs runtime de `AssemblyDesc` (DM-09) — asset, definition, propriétaire,
-/// qualité — s'ajouteront avec leur consommateur.
+/// L'assembly prend ce que sa definition déclare — corps, joints, colliders, groupes, animation
+/// serveur — de la definition compilée que le registre de la session tient sous `definition`
+/// (DM-09, `AssemblyDesc.definition`) ; l'en-tête ne porte que ce qui est propre à cette apparition.
+/// Suivi, si [`create_assembly_flags::RESTORED`], de l'état restauré (ADR-153 D3) : un
+/// [`RestoredBody`] par corps de la definition compilée, puis un [`RestoredJoint`] par joint.
+/// [`create_assembly_payload`] assemble ce payload.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CreateAssembly {
@@ -255,38 +250,25 @@ pub struct CreateAssembly {
     pub dimension: u64,
     /// Pose monde de spawn : celle du repère de l'assembly, que suit le corps racine.
     pub spawn: WorldTransform,
-    /// Type du corps racine : `0` statique, `1` cinématique, `2` dynamique (miroir de
-    /// `BodyKind`). Les autres corps sont dynamiques.
-    pub body_kind: u8,
+    /// Empreinte de la definition compilée : FNV-1a 64 de son identifiant, celle que porte le NBT.
+    pub definition: u64,
     /// Drapeaux, voir [`create_assembly_flags`].
     pub flags: u8,
-    /// Nombre de corps, de 1 à [`MAX_ASSEMBLY_BODIES`] (R-190).
-    pub body_count: u16,
-    /// Nombre de joints (C-34, ADR-151 D7).
-    pub joint_count: u16,
-    /// Nombre de points des courbes de grippage, en annexe après les joints.
-    pub jam_points: u16,
-    /// Masse de l'assembly, en kg, répartie entre ses corps sans masse déclarée ; `0` :
-    /// aucune (ADR-151 D2).
-    pub assembly_mass: f32,
-    /// Taille de la section `NODE` qui suit les corps, en octets, sans son complément.
-    pub node_bytes: u32,
+    /// Réservé, à zéro.
+    pub _pad: [u8; 7],
 }
 
 /// Drapeaux de [`CreateAssembly`], champ `flags`.
 pub mod create_assembly_flags {
-    /// Les corps de l'assembly se touchent entre eux (`physics.self_collision`, §10.4).
-    pub const SELF_COLLISION: u8 = 1 << 0;
-    /// Une section d'état restauré suit la section `NODE` (ADR-153 D3) : un
-    /// [`super::RestoredBody`] par corps, puis un [`super::RestoredJoint`] par joint.
+    /// L'état restauré suit l'en-tête (ADR-153 D3) : un [`super::RestoredBody`] par corps, puis
+    /// un [`super::RestoredJoint`] par joint.
     pub const RESTORED: u8 = 1 << 1;
     /// L'assembly naît endormie, comme la gestion d'activité endort : ses vitesses gelées,
     /// rendues au réveil (22.4, ADR-153 D4).
     pub const ASLEEP: u8 = 1 << 2;
-    /// La section `ANIM` de l'asset suit l'état restauré (ADR-155, tranche 3) : `u32` sa taille, un
-    /// `u32` réservé, puis ses octets. Le serveur ne s'en sert que si un collider dépend d'un node
-    /// animé (R-1430).
-    pub const ANIMATED: u8 = 1 << 3;
+    /// Tous les drapeaux connus. Le bit 0 (autocollision) et le bit 3 (section `ANIM`) d'avant
+    /// ADR-156 viennent désormais de la definition compilée.
+    pub const ALL: u8 = RESTORED | ASLEEP;
 }
 
 /// Plafond de corps par assembly (R-190, `E-3050`).
@@ -296,8 +278,8 @@ impl CreateAssembly {
     /// Taille de l'en-tête sur la frontière, en octets.
     pub const BYTES: usize = 72;
 
-    /// Décalage de la première entrée de corps dans le payload.
-    pub const BODIES_OFFSET: usize = Self::BYTES;
+    /// Décalage de l'état restauré dans le payload.
+    pub const RESTORED_OFFSET: usize = Self::BYTES;
 
     /// Écrit l'en-tête en little-endian, dans sa disposition figée, à la fin de `out`.
     pub fn write_le(&self, out: &mut Vec<u8>) {
@@ -310,37 +292,33 @@ impl CreateAssembly {
         for value in self.spawn.rotation {
             out.extend_from_slice(&value.to_le_bytes());
         }
-        out.push(self.body_kind);
+        out.extend_from_slice(&self.definition.to_le_bytes());
         out.push(self.flags);
-        out.extend_from_slice(&self.body_count.to_le_bytes());
-        out.extend_from_slice(&self.joint_count.to_le_bytes());
-        out.extend_from_slice(&self.jam_points.to_le_bytes());
-        out.extend_from_slice(&self.assembly_mass.to_le_bytes());
-        out.extend_from_slice(&self.node_bytes.to_le_bytes());
+        out.extend_from_slice(&[0u8; 7]);
     }
 
-    /// Lit un en-tête au début de `bytes` ; `None` s'il est tronqué.
+    /// Lit un en-tête au début de `bytes` ; `None` s'il est tronqué ou porte un drapeau inconnu.
     #[must_use]
     pub fn read_le(bytes: &[u8]) -> Option<Self> {
         let bytes = bytes.get(..Self::BYTES)?;
-        let u16_at = |at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]);
         let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
+        let u64_at = |at: usize| u64::from_le_bytes(bytes[at..at + 8].try_into().expect("borne"));
         let f32_at = |at: usize| f32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
         let f64_at = |at: usize| f64::from_le_bytes(bytes[at..at + 8].try_into().expect("borne"));
+        let flags = bytes[64];
+        if flags & !create_assembly_flags::ALL != 0 {
+            return None;
+        }
         Some(Self {
             handle: Handle::new(u32_at(0), u32_at(4)),
-            dimension: u64::from_le_bytes(bytes[8..16].try_into().expect("borne")),
+            dimension: u64_at(8),
             spawn: WorldTransform {
                 position: [f64_at(16), f64_at(24), f64_at(32)],
                 rotation: [f32_at(40), f32_at(44), f32_at(48), f32_at(52)],
             },
-            body_kind: bytes[56],
-            flags: bytes[57],
-            body_count: u16_at(58),
-            joint_count: u16_at(60),
-            jam_points: u16_at(62),
-            assembly_mass: f32_at(64),
-            node_bytes: u32_at(68),
+            definition: u64_at(56),
+            flags,
+            _pad: [0; 7],
         })
     }
 }
@@ -484,116 +462,28 @@ impl RestoredJoint {
     }
 }
 
-/// Le payload complet de `CREATE_ASSEMBLY` : l'en-tête — ses `body_count`, `joint_count`,
-/// `jam_points` et `node_bytes` pris de `bodies`, `joints`, `jam_points` et `nodes` —, les
-/// corps, les joints, les points de grippage, la section `NODE` complétée à 8, puis les
-/// octets `PHYS`.
-///
-/// # Panics
-///
-/// Si `bodies`, `joints`, `jam_points` ou `nodes` dépassent ce que leur champ d'en-tête peut
-/// dire.
+/// Le payload de `CREATE_ASSEMBLY` : l'en-tête, puis l'état restauré s'il y en a un ; le drapeau
+/// [`create_assembly_flags::RESTORED`] de l'en-tête suit `restored`.
 #[must_use]
 pub fn create_assembly_payload(
     header: &CreateAssembly,
-    bodies: &[AssemblyBodyEntry],
-    joints: &[JointDesc],
-    jam_points: &[[f32; 2]],
-    nodes: &[u8],
-    phys: &[u8],
-) -> Vec<u8> {
-    create_assembly_payload_restored(header, bodies, joints, jam_points, nodes, None, phys)
-}
-
-/// Le payload de [`create_assembly_payload`], avec une section d'état restauré entre la section
-/// `NODE` et la section `PHYS` (ADR-153 D3) ; le drapeau
-/// [`create_assembly_flags::RESTORED`] de l'en-tête suit `restored`.
-///
-/// # Panics
-///
-/// Comme [`create_assembly_payload`], et si `restored` n'a pas un état par corps et par joint.
-#[must_use]
-pub fn create_assembly_payload_restored(
-    header: &CreateAssembly,
-    bodies: &[AssemblyBodyEntry],
-    joints: &[JointDesc],
-    jam_points: &[[f32; 2]],
-    nodes: &[u8],
     restored: Option<(&[RestoredBody], &[RestoredJoint])>,
-    phys: &[u8],
 ) -> Vec<u8> {
-    create_assembly_payload_full(
-        header, bodies, joints, jam_points, nodes, restored, None, phys,
-    )
-}
-
-/// Le payload de [`create_assembly_payload_restored`], avec la section `ANIM` de l'asset après
-/// l'état restauré (ADR-155) ; le drapeau [`create_assembly_flags::ANIMATED`] suit `anim`.
-///
-/// # Panics
-///
-/// Comme [`create_assembly_payload_restored`], et si `anim` dépasse 4 Gio.
-#[must_use]
-#[allow(clippy::too_many_arguments)]
-pub fn create_assembly_payload_full(
-    header: &CreateAssembly,
-    bodies: &[AssemblyBodyEntry],
-    joints: &[JointDesc],
-    jam_points: &[[f32; 2]],
-    nodes: &[u8],
-    restored: Option<(&[RestoredBody], &[RestoredJoint])>,
-    anim: Option<&[u8]>,
-    phys: &[u8],
-) -> Vec<u8> {
-    let mut flags = if restored.is_some() {
+    let flags = if restored.is_some() {
         header.flags | create_assembly_flags::RESTORED
     } else {
         header.flags & !create_assembly_flags::RESTORED
     };
-    if anim.is_some() {
-        flags |= create_assembly_flags::ANIMATED;
-    } else {
-        flags &= !create_assembly_flags::ANIMATED;
-    }
-    let header = CreateAssembly {
-        flags,
-        body_count: u16::try_from(bodies.len()).expect("au plus 65 535 corps"),
-        joint_count: u16::try_from(joints.len()).expect("au plus 65 535 joints"),
-        jam_points: u16::try_from(jam_points.len()).expect("au plus 65 535 points"),
-        node_bytes: u32::try_from(nodes.len()).expect("section NODE sous 4 Gio"),
-        ..*header
-    };
     let mut out = Vec::new();
-    header.write_le(&mut out);
-    for body in bodies {
-        body.write_le(&mut out);
-    }
-    for joint in joints {
-        joint.write_le(&mut out);
-    }
-    for point in jam_points {
-        out.extend_from_slice(&point[0].to_le_bytes());
-        out.extend_from_slice(&point[1].to_le_bytes());
-    }
-    out.extend_from_slice(nodes);
-    if let Some((restored_bodies, restored_joints)) = restored {
-        assert_eq!(restored_bodies.len(), bodies.len(), "un état par corps");
-        assert_eq!(restored_joints.len(), joints.len(), "un état par joint");
-        for body in restored_bodies {
+    CreateAssembly { flags, ..*header }.write_le(&mut out);
+    if let Some((bodies, joints)) = restored {
+        for body in bodies {
             body.write_le(&mut out);
         }
-        for joint in restored_joints {
+        for joint in joints {
             joint.write_le(&mut out);
         }
     }
-    if let Some(anim) = anim {
-        let size = u32::try_from(anim.len()).expect("section ANIM sous 4 Gio");
-        out.extend_from_slice(&size.to_le_bytes());
-        out.extend_from_slice(&0u32.to_le_bytes());
-        out.extend_from_slice(anim);
-    }
-    out.resize(out.len().next_multiple_of(8), 0);
-    out.extend_from_slice(phys);
     out
 }
 
@@ -833,101 +723,72 @@ mod tests {
         assert_eq!(offset_of!(CreateAssembly, handle), 0);
         assert_eq!(offset_of!(CreateAssembly, dimension), 8);
         assert_eq!(offset_of!(CreateAssembly, spawn), 16);
-        assert_eq!(offset_of!(CreateAssembly, body_kind), 56);
-        assert_eq!(offset_of!(CreateAssembly, flags), 57);
-        assert_eq!(offset_of!(CreateAssembly, body_count), 58);
-        assert_eq!(offset_of!(CreateAssembly, joint_count), 60);
-        assert_eq!(offset_of!(CreateAssembly, jam_points), 62);
-        assert_eq!(offset_of!(CreateAssembly, assembly_mass), 64);
-        assert_eq!(offset_of!(CreateAssembly, node_bytes), 68);
-        // ADR-151 D7 : les corps suivent l'en-tête, chacun sur 64 octets alignés sur 8.
-        assert_eq!(CreateAssembly::BODIES_OFFSET % 8, 0);
+        assert_eq!(offset_of!(CreateAssembly, definition), 56);
+        assert_eq!(offset_of!(CreateAssembly, flags), 64);
+        assert_eq!(offset_of!(CreateAssembly, _pad), 65);
+        // ADR-153 D3 : l'état restauré suit l'en-tête, aligné sur 8.
+        assert_eq!(CreateAssembly::RESTORED_OFFSET % 8, 0);
         assert_eq!(AssemblyBodyEntry::WIRE_BYTES, BodyDesc::WIRE_BYTES + 8);
     }
 
-    #[test]
-    fn create_assembly_payload_aligne_ses_sections() {
-        // ADR-151 D7 : en-tête, corps, joints, points de grippage, NODE complétée à 8, puis
-        // PHYS ; l'en-tête relu porte les nombres de corps, de joints et de points, et la
-        // taille de NODE, pris des sections.
-        let header = CreateAssembly {
+    fn en_tete() -> CreateAssembly {
+        CreateAssembly {
             handle: Handle::new(7, 1),
             dimension: 3,
             spawn: WorldTransform {
                 position: [1.0, 2.0, 3.0],
                 rotation: [0.0, 0.0, 0.0, 1.0],
             },
-            body_kind: 2,
-            flags: create_assembly_flags::SELF_COLLISION,
-            body_count: 0,
-            joint_count: 0,
-            jam_points: 0,
-            assembly_mass: 120.0,
-            node_bytes: 0,
-        };
-        let bodies = [
-            AssemblyBodyEntry {
-                desc: BodyDesc::undeclared(2),
-                root_node: 0,
-            },
-            AssemblyBodyEntry {
-                desc: BodyDesc::undeclared(2),
-                root_node: 4,
-            },
-        ];
-        let joint = JointDesc {
-            kind: super::super::joints::joint_kind::FIXED,
-            flags: 0,
-            body_a: 0,
-            body_b: 1,
-            axes: [0; 6],
-            b_node: 4,
-            anchor: [0.0; 3],
-            axis: [0.0; 3],
-            limits: [0.0; 2],
-            motor_speed: 0.0,
-            motor_target: 0.0,
-            motor_stiffness: 0.0,
-            motor_damping: 0.0,
-            motor_max_force: f32::INFINITY,
-            friction: 0.0,
-            break_force: f32::INFINITY,
-            break_torque: f32::INFINITY,
-            break_energy: f32::INFINITY,
-            jam_friction: 0.0,
-            jam_first: 0,
-            jam_count: 0,
-            axis_limits: [[0.0; 2]; 6],
-            max_length: 0.0,
-            rest_length: 0.0,
-            stiffness: 0.0,
-            damping: 0.0,
-        };
-        let jam = [[0.0, 1.0], [0.1, 0.0]];
-        let payload = create_assembly_payload(&header, &bodies, &[joint], &jam, &[9; 13], &[5; 3]);
+            definition: 0x0123_4567_89AB_CDEF,
+            flags: create_assembly_flags::ASLEEP,
+            _pad: [0; 7],
+        }
+    }
 
-        let read = CreateAssembly::read_le(&payload).unwrap();
-        assert_eq!(read.body_count, 2);
-        assert_eq!(read.joint_count, 1);
-        assert_eq!(read.jam_points, 2);
-        assert_eq!(read.node_bytes, 13);
-        assert_eq!(read.assembly_mass, 120.0);
-        assert_eq!(read.flags, create_assembly_flags::SELF_COLLISION);
-        assert_eq!(read.spawn, header.spawn);
-        let second = AssemblyBodyEntry::read_le(&payload[CreateAssembly::BODIES_OFFSET + 64..]);
-        assert_eq!(second.unwrap().root_node, 4);
-        let joints = CreateAssembly::BODIES_OFFSET + 2 * AssemblyBodyEntry::WIRE_BYTES;
-        assert_eq!(JointDesc::read_le(&payload[joints..]), Some(joint));
-        let points = joints + JointDesc::BYTES;
-        assert_eq!(&payload[points + 4..points + 8], &1.0f32.to_le_bytes());
-        assert_eq!(&payload[points + 8..points + 12], &0.1f32.to_le_bytes());
-        let nodes = points + 2 * JointDesc::JAM_POINT_BYTES;
-        assert_eq!(nodes % 8, 0, "NODE alignée sur 8");
-        assert_eq!(&payload[nodes..nodes + 13], &[9; 13]);
+    #[test]
+    fn create_assembly_porte_l_empreinte_puis_l_etat_restaure() {
+        // ADR-156 D4 : l'en-tête et son empreinte, puis, s'il y en a un, l'état restauré.
+        let seul = create_assembly_payload(&en_tete(), None);
+        assert_eq!(seul.len(), CreateAssembly::BYTES);
+        assert_eq!(CreateAssembly::read_le(&seul), Some(en_tete()));
+
+        let corps = RestoredBody {
+            position: [1.0, 2.0, 3.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            lin_vel: [0.0; 3],
+            ang_vel: [0.0; 3],
+        };
+        let joint = RestoredJoint {
+            flags: restored_joint_flags::BROKEN,
+            misalignment: 0.0,
+        };
+        let restaure = create_assembly_payload(&en_tete(), Some((&[corps, corps], &[joint])));
         assert_eq!(
-            &payload[nodes + 16..],
-            &[5; 3],
-            "PHYS aligné sur 8 après NODE"
+            restaure.len(),
+            CreateAssembly::BYTES + 2 * RestoredBody::BYTES + RestoredJoint::BYTES
+        );
+        let relu = CreateAssembly::read_le(&restaure).expect("en-tête");
+        assert_eq!(
+            relu.flags,
+            create_assembly_flags::ASLEEP | create_assembly_flags::RESTORED
+        );
+        assert_eq!(
+            RestoredBody::read_le(&restaure[CreateAssembly::RESTORED_OFFSET..]),
+            Some(corps)
+        );
+    }
+
+    #[test]
+    fn un_drapeau_inconnu_fait_refuser_l_en_tete() {
+        // Les bits de l'autocollision et de la section ANIM d'avant ADR-156 sont refusés.
+        for bit in [1u8 << 0, 1 << 3, 1 << 7] {
+            let mut octets = create_assembly_payload(&en_tete(), None);
+            octets[64] |= bit;
+            assert_eq!(CreateAssembly::read_le(&octets), None, "{bit:#b}");
+        }
+        assert_eq!(
+            CreateAssembly::read_le(&[0; CreateAssembly::BYTES - 1]),
+            None
         );
     }
 
@@ -969,11 +830,11 @@ mod tests {
 
     #[test]
     fn dm_table_des_materiaux_disposition_figee() {
-        // ADR-149 : opcode 13, en-tête de 8 octets ; le flux est au schéma 3 depuis ADR-151.
+        // ADR-149 : opcode 13, en-tête de 8 octets ; le flux est au schéma 4 depuis ADR-156.
         assert_eq!(opcode::SET_PHYSICS_MATERIALS, 13);
         assert_eq!(opcode::JAM_JOINT, 14);
         assert_eq!(opcode::BREAK_JOINT, 15);
-        assert_eq!(CommandStreamHeader::CURRENT_SCHEMA, 3);
+        assert_eq!(CommandStreamHeader::CURRENT_SCHEMA, 4);
         assert_eq!(size_of::<SetPhysicsMaterials>(), SetPhysicsMaterials::BYTES);
         assert_eq!(align_of::<SetPhysicsMaterials>(), 4);
         assert_eq!(offset_of!(SetPhysicsMaterials, count), 0);
@@ -1024,43 +885,5 @@ mod tests {
         // ADR-155 : ANIMATE_ASSEMBLY sur 48 octets, la commande après le handle.
         assert_eq!(size_of::<AnimateAssembly>(), AnimateAssembly::BYTES);
         assert_eq!(offset_of!(AnimateAssembly, command), 8);
-    }
-
-    #[test]
-    fn la_section_anim_suit_l_etat_restaure_prefixee_de_sa_taille() {
-        let header = CreateAssembly::read_le(&{
-            let mut bytes = Vec::new();
-            CreateAssembly {
-                handle: Handle::new(1, 1),
-                dimension: 0,
-                spawn: WorldTransform {
-                    position: [0.0; 3],
-                    rotation: [0.0, 0.0, 0.0, 1.0],
-                },
-                body_kind: 2,
-                flags: 0,
-                body_count: 0,
-                joint_count: 0,
-                jam_points: 0,
-                assembly_mass: 0.0,
-                node_bytes: 0,
-            }
-            .write_le(&mut bytes);
-            bytes
-        })
-        .expect("en-tête");
-        let anim = [7u8; 5];
-        let payload =
-            create_assembly_payload_full(&header, &[], &[], &[], &[], None, Some(&anim), &[9]);
-        let at = CreateAssembly::BODIES_OFFSET;
-        let written = CreateAssembly::read_le(&payload).expect("en-tête écrit");
-        assert_ne!(written.flags & create_assembly_flags::ANIMATED, 0);
-        assert_eq!(&payload[at..at + 4], &5u32.to_le_bytes());
-        assert_eq!(&payload[at + 8..at + 13], &anim);
-        assert_eq!(
-            payload.len(),
-            (at + 13).next_multiple_of(8) + 1,
-            "PHYS à la suite, aligné sur 8"
-        );
     }
 }

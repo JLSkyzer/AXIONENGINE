@@ -1,6 +1,6 @@
-//! R-980 par l'ABI comme Java l'exerce : les groupes de collision qu'écrit Java dans les
-//! `ColliderDesc` de `PHYS` (`group`, `mask`) s'appliquent au corps créé par
-//! `CREATE_ASSEMBLY` ; des colliders qui ne s'accordent pas font refuser l'assembly.
+//! R-980 par l'ABI comme Java l'exerce : les groupes de collision que Java résout pour une
+//! definition (`DEFN`, ADR-156) s'écrivent sur chaque collider à la compilation, et s'appliquent au
+//! corps créé par `CREATE_ASSEMBLY` — quels que soient ceux que portait la section `PHYS`.
 //!
 //! Son propre binaire : la session native est globale au processus, et les tests
 //! s'y succèdent sous un verrou.
@@ -8,18 +8,21 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::a3d::encode_colliders;
+mod common;
+
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{
-    create_assembly_payload, opcode, AssemblyBodyEntry, CommandStreamHeader, CreateAssembly,
-    SetWorldCollision,
-};
-use ax_model::dm::geometry::Transform;
+use ax_model::dm::commands::{opcode, CommandStreamHeader, SetWorldCollision};
+use ax_model::dm::geometry::{Transform, WorldTransform};
+use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, ColliderDesc, ColliderShape};
 use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_shutdown, axion_sim_collect,
     axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_OK, AXION_SIDE_SERVER,
 };
+use common::{creation, Modele};
+
+/// L'empreinte de la definition du corps d'essai.
+const DEFINITION: u64 = 0x0DEF_0000_0000_0980;
 
 static CONTEXTE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -78,36 +81,19 @@ fn box_collider(group: u32, mask: u32) -> ColliderDesc {
     }
 }
 
-/// Payload `CREATE_ASSEMBLY` du corps (7, 1), dynamique, fait de `colliders`.
-fn assembly(colliders: &[ColliderDesc]) -> Vec<u8> {
-    let phys = encode_colliders(colliders, &[], &[]).expect("encodage PHYS");
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&7u32.to_le_bytes());
-    payload.extend_from_slice(&1u32.to_le_bytes());
-    payload.extend_from_slice(&0u64.to_le_bytes());
-    for value in CORPS {
-        payload.extend_from_slice(&value.to_le_bytes());
-    }
-    for value in [0.0f32, 0.0, 0.0, 1.0] {
-        payload.extend_from_slice(&value.to_le_bytes());
-    }
-    payload.push(2); // dynamique
-    payload.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
-    let en_tete = CreateAssembly::read_le(&payload).expect("en-tête complet");
-    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
-    let mut payload = create_assembly_payload(
-        &en_tete,
-        &[AssemblyBodyEntry {
-            desc: BodyDesc::undeclared(2),
-            root_node: 0,
-        }],
-        &[],
-        &[],
-        &[],
-        &[],
-    );
-    payload.extend_from_slice(&phys);
-    payload
+/// Payload `CREATE_ASSEMBLY` du corps (7, 1), de la definition compilée sous [`DEFINITION`].
+fn assembly() -> Vec<u8> {
+    creation(
+        Handle::new(7, 1),
+        0,
+        WorldTransform {
+            position: CORPS,
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        },
+        DEFINITION,
+        0,
+        None,
+    )
 }
 
 /// `SET_WORLD_COLLISION` : un plancher de y = 0 à y = 1 sur la section (0, 0, 0).
@@ -202,22 +188,29 @@ fn tick(ctx: u64, tick: u64, commands: &[(u32, Vec<u8>)]) -> Option<[f64; 3]> {
     Some(position)
 }
 
-/// Pose le plancher, crée le corps fait de `colliders` près d'un joueur, simule deux
-/// secondes, et rend sa hauteur — `None` si aucun corps n'a été créé.
-fn hauteur_apres_deux_secondes(colliders: &[ColliderDesc]) -> Option<f64> {
+/// Pose le plancher, crée près d'un joueur le corps fait de `colliders`, membre de `group` et qui
+/// heurte `mask` (la definition, R-980), simule deux secondes, et rend sa hauteur — `None` si aucun
+/// corps n'a été créé.
+fn hauteur_apres_deux_secondes(group: u32, mask: u32, colliders: &[ColliderDesc]) -> Option<f64> {
     let _contexte = CONTEXTE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut ctx = 0u64;
     let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) };
     assert_eq!(code, AXION_OK, "init");
+    let modele = Modele {
+        group,
+        mask,
+        ..Modele::seul(colliders.to_vec(), BodyDesc::undeclared(2))
+    };
+    assert_eq!(modele.inscrire(ctx, DEFINITION), AXION_OK);
 
     let mut position = tick(
         ctx,
         1,
         &[
             (opcode::SET_WORLD_COLLISION, plancher()),
-            (opcode::CREATE_ASSEMBLY, assembly(colliders)),
+            (opcode::CREATE_ASSEMBLY, assembly()),
             (opcode::SET_OBSERVERS, joueur_proche()),
         ],
     );
@@ -233,28 +226,32 @@ fn hauteur_apres_deux_secondes(colliders: &[ColliderDesc]) -> Option<f64> {
 }
 
 #[test]
-fn les_groupes_de_phys_s_appliquent_au_corps() {
+fn les_groupes_de_la_definition_s_appliquent_au_corps() {
     // Témoin : membre d'`assembly`, heurte tout — il se pose sur le plancher.
-    let pose = hauteur_apres_deux_secondes(&[box_collider(ASSEMBLY, u32::MAX)])
+    let pose = hauteur_apres_deux_secondes(ASSEMBLY, u32::MAX, &[box_collider(0, 0)])
         .expect("le témoin est créé");
     assert!(
         (pose - 1.5).abs() < 0.05,
         "le témoin repose sur le plancher, y={pose}"
     );
     // Le même corps, qui ne filtre pas `world`, traverse le plancher.
-    let traverse =
-        hauteur_apres_deux_secondes(&[box_collider(ASSEMBLY, !WORLD)]).expect("le corps est créé");
+    let traverse = hauteur_apres_deux_secondes(ASSEMBLY, !WORLD, &[box_collider(0, 0)])
+        .expect("le corps est créé");
     assert!(
         traverse < 0.0,
-        "le filtre transmis par PHYS le fait traverser, y={traverse}"
+        "le filtre de la definition le fait traverser, y={traverse}"
     );
 }
 
 #[test]
-fn des_colliders_aux_groupes_discordants_font_refuser_l_assembly() {
-    let refuse = hauteur_apres_deux_secondes(&[
-        box_collider(ASSEMBLY, u32::MAX),
-        box_collider(ASSEMBLY, WORLD),
-    ]);
-    assert_eq!(refuse, None, "aucun corps à moitié filtré");
+fn les_groupes_de_la_definition_l_emportent_sur_ceux_de_phys() {
+    // Des colliders aux groupes discordants dans PHYS : la compilation les met tous sous ceux de la
+    // definition, et le corps se forme, filtré comme elle le dit.
+    let traverse = hauteur_apres_deux_secondes(
+        ASSEMBLY,
+        !WORLD,
+        &[box_collider(ASSEMBLY, u32::MAX), box_collider(ASSEMBLY, WORLD)],
+    )
+    .expect("le corps est créé");
+    assert!(traverse < 0.0, "les groupes de la definition, y={traverse}");
 }

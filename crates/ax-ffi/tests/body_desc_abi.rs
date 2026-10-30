@@ -1,5 +1,5 @@
-//! T-312 (ADR-130), par l'ABI comme Java l'exerce : la description DM-08 d'un corps,
-//! jointe à `CREATE_ASSEMBLY`, lui est appliquée. Un joueur proche le garde éveillé
+//! T-312 (ADR-130), par l'ABI comme Java l'exerce : la description DM-08 d'un corps, portée par sa
+//! definition compilée (ADR-156), lui est appliquée. Un joueur proche le garde éveillé
 //! (R-612) ; une seconde simulée sépare le témoin, qui tombe, du corps à gravité
 //! nulle déclarée, qui reste à sa hauteur.
 //!
@@ -9,17 +9,21 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::a3d::encode_colliders;
+mod common;
+
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{
-    create_assembly_payload, opcode, AssemblyBodyEntry, CommandStreamHeader, CreateAssembly,
-};
-use ax_model::dm::geometry::Transform;
+use ax_model::dm::commands::{opcode, CommandStreamHeader};
+use ax_model::dm::geometry::{Transform, WorldTransform};
+use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, ColliderDesc, ColliderShape};
 use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_shutdown, axion_sim_collect,
     axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_OK, AXION_SIDE_SERVER,
 };
+use common::{creation, Modele};
+
+/// L'empreinte de la definition du corps d'essai.
+const DEFINITION: u64 = 0x0DEF_0000_0000_0130;
 
 static CONTEXTE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -77,33 +81,19 @@ fn box_collider() -> ColliderDesc {
     }
 }
 
-/// Payload `CREATE_ASSEMBLY` du corps (7, 1), dynamique, décrit par `desc`.
-fn assembly(desc: BodyDesc) -> Vec<u8> {
-    let phys = encode_colliders(&[box_collider()], &[], &[]).expect("encodage PHYS");
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&7u32.to_le_bytes());
-    payload.extend_from_slice(&1u32.to_le_bytes());
-    payload.extend_from_slice(&0u64.to_le_bytes());
-    for value in CORPS {
-        payload.extend_from_slice(&value.to_le_bytes());
-    }
-    for value in [0.0f32, 0.0, 0.0, 1.0] {
-        payload.extend_from_slice(&value.to_le_bytes());
-    }
-    payload.push(2); // dynamique
-    payload.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
-    let en_tete = CreateAssembly::read_le(&payload).expect("en-tête complet");
-    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
-    let mut payload = create_assembly_payload(
-        &en_tete,
-        &[AssemblyBodyEntry { desc, root_node: 0 }],
-        &[],
-        &[],
-        &[],
-        &[],
-    );
-    payload.extend_from_slice(&phys);
-    payload
+/// Payload `CREATE_ASSEMBLY` du corps (7, 1), de la definition compilée sous [`DEFINITION`].
+fn assembly() -> Vec<u8> {
+    creation(
+        Handle::new(7, 1),
+        0,
+        WorldTransform {
+            position: CORPS,
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        },
+        DEFINITION,
+        0,
+        None,
+    )
 }
 
 /// Un joueur, à quelques blocs du corps : il le garde éveillé (R-612).
@@ -187,12 +177,17 @@ fn hauteur_apres_une_seconde(desc: BodyDesc) -> f64 {
     let mut ctx = 0u64;
     let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) };
     assert_eq!(code, AXION_OK, "init");
+    // ADR-156 : la description du corps vient de sa definition compilée.
+    assert_eq!(
+        Modele::seul(vec![box_collider()], desc).inscrire(ctx, DEFINITION),
+        AXION_OK
+    );
 
     tick(
         ctx,
         1,
         &[
-            (opcode::CREATE_ASSEMBLY, assembly(desc)),
+            (opcode::CREATE_ASSEMBLY, assembly()),
             (opcode::SET_OBSERVERS, joueur_proche()),
         ],
     );

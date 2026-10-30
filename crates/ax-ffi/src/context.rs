@@ -926,6 +926,11 @@ impl Session {
         self.definitions.insert(definition, compiled);
     }
 
+    /// La definition compilée que le registre tient sous cette empreinte (ADR-156 D4).
+    pub(crate) fn definition(&self, definition: u64) -> Option<&CompiledDefinition> {
+        self.definitions.get(&definition)
+    }
+
     /// Retire une definition du registre ; faux si elle n'y était pas.
     pub fn remove_definition(&mut self, definition: u64) -> bool {
         self.definitions.remove(&definition).is_some()

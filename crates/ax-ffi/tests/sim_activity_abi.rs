@@ -7,22 +7,25 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::a3d::encode_colliders;
+mod common;
+
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{
-    create_assembly_payload, opcode, ApplyForce, AssemblyBodyEntry, CommandStreamHeader,
-    CreateAssembly, SetDimensionEnv,
-};
-use ax_model::dm::geometry::Transform;
+use ax_model::dm::commands::{opcode, ApplyForce, CommandStreamHeader, SetDimensionEnv};
+use ax_model::dm::geometry::{Transform, WorldTransform};
+use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{body_state_flags, BodyDesc, BodyState, ColliderDesc, ColliderShape};
 use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_metrics_export, axion_shutdown,
     axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_OK,
     AXION_SIDE_SERVER,
 };
+use common::{creation, Modele};
 
 /// Position monde du corps d'essai.
 const CORPS: [f64; 3] = [5.0, 10.0, -2.0];
+
+/// L'empreinte de la definition du cube.
+const DEFINITION: u64 = 0x0DEF_0000_0000_0612;
 
 fn empty_info() -> AxionBufferInfo {
     AxionBufferInfo {
@@ -57,8 +60,8 @@ fn sans_gravite() -> Vec<u8> {
     payload
 }
 
-/// Un cube dynamique d'une tonne au handle (7, 1), en `CORPS`.
-fn cube() -> Vec<u8> {
+/// Un cube dynamique d'une tonne, seul dans son asset.
+fn modele() -> Modele {
     let collider = ColliderDesc {
         shape: ColliderShape::Box {
             half_extents: [0.5, 0.5, 0.5],
@@ -77,35 +80,16 @@ fn cube() -> Vec<u8> {
         hull_points_offset: 0,
         hull_points_count: 0,
     };
-    let phys = encode_colliders(&[collider], &[], &[]).expect("encodage PHYS");
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&7u32.to_le_bytes());
-    payload.extend_from_slice(&1u32.to_le_bytes());
-    payload.extend_from_slice(&0u64.to_le_bytes());
-    for value in CORPS {
-        payload.extend_from_slice(&value.to_le_bytes());
-    }
-    for value in [0.0f32, 0.0, 0.0, 1.0] {
-        payload.extend_from_slice(&value.to_le_bytes());
-    }
-    payload.push(2); // dynamique
-    payload.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
-    let en_tete = CreateAssembly::read_le(&payload).expect("en-tête complet");
-    // ADR-130 : la description DM-08 du corps suit l'en-tête ; rien n'est déclaré.
-    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
-    let mut payload = create_assembly_payload(
-        &en_tete,
-        &[AssemblyBodyEntry {
-            desc: BodyDesc::undeclared(2),
-            root_node: 0,
-        }],
-        &[],
-        &[],
-        &[],
-        &[],
-    );
-    payload.extend_from_slice(&phys);
-    payload
+    Modele::seul(vec![collider], BodyDesc::undeclared(2))
+}
+
+/// Le cube au handle (7, 1), en `CORPS`.
+fn cube() -> Vec<u8> {
+    let spawn = WorldTransform {
+        position: CORPS,
+        rotation: [0.0, 0.0, 0.0, 1.0],
+    };
+    creation(Handle::new(7, 1), 0, spawn, DEFINITION, 0, None)
 }
 
 /// Un joueur, à quelques blocs du corps.
@@ -221,6 +205,7 @@ fn un_corps_sans_joueur_a_portee_s_endort_et_se_reveille_a_son_retour() {
     let mut ctx = 0u64;
     let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) };
     assert_eq!(code, AXION_OK, "init");
+    assert_eq!(modele().inscrire(ctx, DEFINITION), AXION_OK, "la definition se compile");
 
     // Un joueur près du corps qui naît : il reste éveillé.
     let flags = tick(

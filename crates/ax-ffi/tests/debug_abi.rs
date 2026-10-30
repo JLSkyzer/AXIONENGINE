@@ -8,15 +8,14 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::a3d::encode_colliders;
+mod common;
+
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{
-    create_assembly_payload, opcode, AssemblyBodyEntry, CommandStreamHeader, CreateAssembly,
-};
+use ax_model::dm::commands::{opcode, CommandStreamHeader};
 use ax_model::dm::debug::{
     debug_flags, debug_frame, overlay, DebugRange, DebugSegment, DEBUG_HEADER_BYTES,
 };
-use ax_model::dm::geometry::Transform;
+use ax_model::dm::geometry::{Transform, WorldTransform};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, ColliderDesc, ColliderShape};
 use axion_native::abi::{
@@ -25,7 +24,11 @@ use axion_native::abi::{
     AXION_E_INVALID_BUFFER, AXION_OK, AXION_OVERLAY_AABB, AXION_OVERLAY_BODIES,
     AXION_OVERLAY_CENTER_OF_MASS, AXION_OVERLAY_COLLIDERS, AXION_SIDE_SERVER,
 };
+use common::{creation, Modele};
 use std::collections::BTreeSet;
+
+/// L'empreinte de la definition du corps d'essai.
+const DEFINITION: u64 = 0x0DEF_0000_0000_0550;
 
 fn acquire(ctx: u64, kind: BufferKind, min_capacity: u64) -> AxionBufferInfo {
     let mut info = AxionBufferInfo {
@@ -75,41 +78,23 @@ fn boite_posee() -> ColliderDesc {
 
 /// Flux `SimIn` : une commande CREATE_ASSEMBLY, corps tourné en dimension 0.
 fn command_stream() -> Vec<u8> {
-    let phys = encode_colliders(&[boite_posee()], &[], &[]).expect("encodage PHYS");
-    let mut header = Vec::new();
-    header.extend_from_slice(&7u32.to_le_bytes()); // handle.index
-    header.extend_from_slice(&1u32.to_le_bytes()); // handle.generation
-    header.extend_from_slice(&0u64.to_le_bytes()); // dimension
-    for value in [5.0f64, 10.0, -2.0] {
-        header.extend_from_slice(&value.to_le_bytes()); // spawn.position
-    }
     // Spawn tourné de 90° autour de Z : le tracé, en repère du corps, n'en dépend pas.
-    for value in [
-        0.0f32,
-        0.0,
-        core::f32::consts::FRAC_1_SQRT_2,
-        core::f32::consts::FRAC_1_SQRT_2,
-    ] {
-        header.extend_from_slice(&value.to_le_bytes()); // spawn.rotation
-    }
-    header.push(2); // body_kind : dynamique
-    header.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
-    let en_tete = CreateAssembly::read_le(&header).expect("en-tête complet");
-    // ADR-130 : la description DM-08 du corps suit l'en-tête ; rien n'est déclaré.
-    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
-    let header = create_assembly_payload(
-        &en_tete,
-        &[AssemblyBodyEntry {
-            desc: BodyDesc::undeclared(2),
-            root_node: 0,
-        }],
-        &[],
-        &[],
-        &[],
-        &[],
+    let payload = creation(
+        Handle::new(7, 1),
+        0,
+        WorldTransform {
+            position: [5.0, 10.0, -2.0],
+            rotation: [
+                0.0,
+                0.0,
+                core::f32::consts::FRAC_1_SQRT_2,
+                core::f32::consts::FRAC_1_SQRT_2,
+            ],
+        },
+        DEFINITION,
+        0,
+        None,
     );
-    let mut payload = header;
-    payload.extend_from_slice(&phys);
 
     let mut stream = CommandStreamHeader::CURRENT_SCHEMA.to_le_bytes().to_vec();
     stream.extend_from_slice(&0u32.to_le_bytes());
@@ -193,6 +178,11 @@ fn t550_debug_porte_les_aretes_des_colliders_en_repere_du_corps() {
         unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) },
         AXION_OK,
         "init"
+    );
+    // ADR-156 : un seul corps, rien de déclaré, sa definition compilée avant sa création.
+    assert_eq!(
+        Modele::seul(vec![boite_posee()], BodyDesc::undeclared(2)).inscrire(ctx, DEFINITION),
+        AXION_OK
     );
 
     let stream = command_stream();

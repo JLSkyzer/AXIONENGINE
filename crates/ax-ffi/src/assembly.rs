@@ -1,20 +1,19 @@
-//! `CREATE_ASSEMBLY` d'une assembly à un ou plusieurs corps (ADR-151 D2, D7).
+//! Les corps et les joints d'une assembly (ADR-151 D2, D7), tels que sa definition compilée les
+//! tient (ADR-156 D2).
 //!
-//! Décode le payload — en-tête, corps, joints, sections `NODE` et `PHYS` de l'asset — et
-//! range chaque collider dans le corps de son node, posé dans le repère de ce corps : la
-//! chaîne des transformations des nodes est composée depuis la racine de l'asset, échelle
-//! uniforme comprise (R-120). Chaque joint reçoit ses repères dans ses deux corps, pris à la
-//! pose de repos de l'asset. Rien n'est créé ici : le pilote reçoit des corps et des joints
-//! prêts, et un payload fautif n'en donne aucun.
+//! [`prepare`] range chaque collider de l'asset dans le corps de son node, posé dans le repère de ce
+//! corps : la chaîne des transformations des nodes est composée depuis la racine de l'asset, échelle
+//! uniforme comprise (R-120). Chaque joint reçoit ses repères dans ses deux corps, pris à la pose de
+//! repos de l'asset. Rien n'est créé ici : la compilation d'une definition en garde le résultat, et
+//! `CREATE_ASSEMBLY` le reprend tel quel, avec l'état restauré que [`read_restored`] lit.
 
 use ax_anim::{AnimError, Animator, ClipLibrary, TICKS_PER_SECOND};
-use ax_asset::a3d::{decode_animations, decode_colliders, decode_nodes};
+use ax_asset::a3d::decode_animations;
 use ax_asset::validate::validate_animations;
 use ax_math::{Quat, Vec3};
 use ax_model::dm::animation::AnimCommand;
 use ax_model::dm::commands::{
-    create_assembly_flags, AssemblyBodyEntry, CreateAssembly, RestoredBody, RestoredJoint,
-    MAX_ASSEMBLY_BODIES,
+    AssemblyBodyEntry, CreateAssembly, RestoredBody, RestoredJoint, MAX_ASSEMBLY_BODIES,
 };
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::joints::{joint_axis_mode, joint_flags, joint_kind, JointDesc};
@@ -25,137 +24,23 @@ use ax_physics::{
     CollisionGroups, ContactMaterial, Jam, JointKind, JointMotor, JointSpec, Shape,
 };
 
-/// Une assembly décodée, prête pour `SimDriver::create_assembly_bodies`.
-#[derive(Debug)]
-pub(crate) struct AssemblyRequest {
-    /// L'en-tête lu.
-    pub header: CreateAssembly,
-    /// Les corps, le corps racine d'abord, chacun avec ses colliders dans son repère.
-    pub bodies: Vec<AssemblyBody>,
-    /// Les joints, dans l'ordre de la definition, leurs repères dans ceux de leurs corps.
-    pub joints: Vec<AssemblyJoint>,
-    /// Les groupes de collision communs à tous les colliders (R-980).
-    pub groups: CollisionGroups,
-    /// L'état restauré, si l'en-tête porte `RESTORED` (ADR-153 D3).
-    pub restored: Option<Restored>,
-    /// L'animation que le serveur doit jouer : seulement si un collider dépend d'un node animé
-    /// (R-1430, ADR-155).
-    pub animation: Option<ServerAnimation>,
-}
-
-/// Décode un payload de `CREATE_ASSEMBLY`. `None` au premier écart — en-tête tronqué, aucun
-/// corps ou plus de 64, description invalide, corps racine d'un autre type que l'en-tête ou
-/// autre corps non dynamique, masse non finie ou négative, joint invalide ou incohérent,
-/// section illisible, node ou collider hors de leur table, échelle non uniforme sur la
-/// chaîne d'un collider ou d'un `b_node`, corps sans collider, groupes discordants :
-/// l'assembly est abandonnée entière, jamais formée à moitié.
-pub(crate) fn decode(payload: &[u8]) -> Option<AssemblyRequest> {
-    let header = CreateAssembly::read_le(payload)?;
-    let count = usize::from(header.body_count);
-    if count == 0 || count > MAX_ASSEMBLY_BODIES {
+/// L'état restauré d'une assembly (ADR-153 D3), lu après l'en-tête de `CREATE_ASSEMBLY` : un état
+/// par corps de sa definition compilée, puis un par joint, et rien après. `None` au premier écart —
+/// payload tronqué ou prolongé, valeur non finie, rotation nulle, désalignement négatif : l'assembly
+/// est abandonnée entière, jamais formée à moitié.
+pub(crate) fn read_restored(payload: &[u8], bodies: usize, joints: usize) -> Option<Restored> {
+    let at = CreateAssembly::RESTORED_OFFSET;
+    let joints_at = at + bodies * RestoredBody::BYTES;
+    if payload.len() != joints_at + joints * RestoredJoint::BYTES {
         return None;
     }
-    if !(header.assembly_mass.is_finite() && header.assembly_mass >= 0.0) {
-        return None;
-    }
-    let mut entries = Vec::with_capacity(count);
-    for index in 0..count {
-        let at = CreateAssembly::BODIES_OFFSET + index * AssemblyBodyEntry::WIRE_BYTES;
-        let entry = AssemblyBodyEntry::read_le(payload.get(at..)?)?;
-        entry.desc.validate().ok()?;
-        entries.push(entry);
-    }
-    // Le corps racine a le type de l'assembly ; les autres suivent leurs joints, dynamiques.
-    if entries[0].desc.body_type != header.body_kind
-        || entries[1..].iter().any(|entry| entry.desc.body_type != 2)
-    {
-        return None;
-    }
-
-    // Les joints suivent les corps, puis les points de leurs courbes de grippage (D7).
-    let joints_at = CreateAssembly::BODIES_OFFSET + count * AssemblyBodyEntry::WIRE_BYTES;
-    let mut descs = Vec::with_capacity(usize::from(header.joint_count));
-    for index in 0..usize::from(header.joint_count) {
-        let desc = JointDesc::read_le(payload.get(joints_at + index * JointDesc::BYTES..)?)?;
-        desc.validate().ok()?;
-        descs.push(desc);
-    }
-    let jam_at = joints_at + descs.len() * JointDesc::BYTES;
-    let mut jam_points = Vec::with_capacity(usize::from(header.jam_points));
-    for index in 0..usize::from(header.jam_points) {
-        let at = jam_at + index * JointDesc::JAM_POINT_BYTES;
-        let point = payload.get(at..at + JointDesc::JAM_POINT_BYTES)?;
-        let f32_at = |at: usize| f32::from_le_bytes(point[at..at + 4].try_into().expect("borne"));
-        jam_points.push([f32_at(0), f32_at(4)]);
-    }
-
-    let nodes_at = jam_at + jam_points.len() * JointDesc::JAM_POINT_BYTES;
-    let node_bytes = usize::try_from(header.node_bytes).ok()?;
-    let nodes_end = nodes_at.checked_add(node_bytes)?;
-    // Sans section NODE, les colliders sont pris tels quels ; un second corps n'y aurait pas
-    // de node racine, et `Skeleton::new` le refuse.
-    let nodes = if node_bytes == 0 {
-        Vec::new()
-    } else {
-        decode_nodes(payload.get(nodes_at..nodes_end)?).ok()?.nodes
-    };
-    // ADR-153 D3 : l'état restauré suit la section NODE, un état par corps puis par joint.
-    let (restored, restored_end) = if header.flags & create_assembly_flags::RESTORED == 0 {
-        (None, nodes_end)
-    } else {
-        let joints_state_at = nodes_end + count * RestoredBody::BYTES;
-        let restored_bodies = (0..count)
-            .map(|index| {
-                RestoredBody::read_le(payload.get(nodes_end + index * RestoredBody::BYTES..)?)
-            })
-            .collect::<Option<Vec<_>>>()?;
-        let restored_joints = (0..descs.len())
-            .map(|index| {
-                RestoredJoint::read_le(
-                    payload.get(joints_state_at + index * RestoredJoint::BYTES..)?,
-                )
-            })
-            .collect::<Option<Vec<_>>>()?;
-        let end = joints_state_at + descs.len() * RestoredJoint::BYTES;
-        (
-            Some(Restored {
-                bodies: restored_bodies,
-                joints: restored_joints,
-            }),
-            end,
-        )
-    };
-    // ADR-155 : la section `ANIM` de l'asset suit l'état restauré, préfixée de sa taille.
-    let (anim, anim_end) = if header.flags & create_assembly_flags::ANIMATED == 0 {
-        (None, restored_end)
-    } else {
-        let size = payload.get(restored_end..restored_end + 4)?;
-        let size = usize::try_from(u32::from_le_bytes(size.try_into().ok()?)).ok()?;
-        let start = restored_end.checked_add(8)?;
-        let end = start.checked_add(size)?;
-        (Some(payload.get(start..end)?), end)
-    };
-    let phys_at = anim_end.next_multiple_of(8);
-    let (colliders, points, children) = decode_colliders(payload.get(phys_at..)?).ok()?;
-    let prepared = prepare(
-        &entries,
-        &descs,
-        &jam_points,
-        &nodes,
-        &colliders,
-        &points,
-        &children,
-        anim,
-    )
-    .ok()?;
-    Some(AssemblyRequest {
-        header,
-        bodies: prepared.bodies,
-        joints: prepared.joints,
-        groups: prepared.groups,
-        restored,
-        animation: prepared.animation.played(),
-    })
+    let bodies = (0..bodies)
+        .map(|index| RestoredBody::read_le(&payload[at + index * RestoredBody::BYTES..]))
+        .collect::<Option<Vec<_>>>()?;
+    let joints = (0..joints)
+        .map(|index| RestoredJoint::read_le(&payload[joints_at + index * RestoredJoint::BYTES..]))
+        .collect::<Option<Vec<_>>>()?;
+    Some(Restored { bodies, joints })
 }
 
 /// Ce qu'une assembly tire de ses corps, de ses joints et de son asset, avant toute pose monde.
@@ -240,18 +125,8 @@ pub(crate) enum AnimationVerdict {
     UnderAnimated(usize),
 }
 
-impl AnimationVerdict {
-    /// L'animation que le serveur joue, s'il en joue une.
-    pub(crate) fn played(self) -> Option<ServerAnimation> {
-        match self {
-            Self::Played(animation) => Some(*animation),
-            _ => None,
-        }
-    }
-}
-
-/// L'état restauré d'une assembly (ADR-153 D3), lu de sa section : un état par corps, dans
-/// l'ordre des corps, puis un par joint, dans l'ordre de la definition.
+/// L'état restauré d'une assembly (ADR-153 D3) : un état par corps, dans l'ordre des corps, puis
+/// un par joint, dans l'ordre de la definition.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Restored {
     /// Pose et vitesses de chaque corps.
@@ -795,10 +670,7 @@ fn body_groups(colliders: &[ColliderDesc]) -> Option<CollisionGroups> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ax_asset::a3d::{encode_colliders, encode_nodes};
-    use ax_model::dm::commands::{
-        create_assembly_payload, create_assembly_payload_restored, restored_joint_flags,
-    };
+    use ax_model::dm::commands::{create_assembly_payload, restored_joint_flags};
     use ax_model::dm::geometry::WorldTransform;
     use ax_model::dm::handle::Handle;
     use ax_model::dm::physics::{BodyDesc, ColliderShape};
@@ -1022,29 +894,22 @@ mod tests {
         assert!(ranger(&entries, &nodes, &colliders).is_none());
     }
 
-    fn payload(header: CreateAssembly, entries: &[AssemblyBodyEntry], with_nodes: bool) -> Vec<u8> {
-        payload_joints(header, entries, with_nodes, &[], &[])
-    }
-
-    /// Le payload de la racine et de la porte, avec `joints` et les points de grippage `jam`.
-    fn payload_joints(
-        header: CreateAssembly,
-        entries: &[AssemblyBodyEntry],
-        with_nodes: bool,
-        joints: &[JointDesc],
-        jam: &[[f32; 2]],
-    ) -> Vec<u8> {
+    /// La racine et la porte, la racine portant aussi une boîte : de quoi former deux corps.
+    fn racine_et_porte_pleines() -> (Vec<NodeDesc>, Vec<ColliderDesc>) {
         let (mut nodes, mut colliders) = racine_et_porte();
         nodes[0].collider = 1;
         colliders.push(boite([0.0; 3]));
-        let names = vec!["racine".to_owned(), "porte".to_owned()];
-        let node_bytes = if with_nodes {
-            encode_nodes(&nodes, &names).unwrap()
-        } else {
-            Vec::new()
-        };
-        let phys = encode_colliders(&colliders, &[], &[]).unwrap();
-        create_assembly_payload(&header, entries, joints, jam, &node_bytes, &phys)
+        (nodes, colliders)
+    }
+
+    /// Les corps `entries` de la racine et de la porte, avec `joints` et les points de grippage `jam`.
+    fn preparer(
+        entries: &[AssemblyBodyEntry],
+        joints: &[JointDesc],
+        jam: &[[f32; 2]],
+    ) -> Option<Prepared> {
+        let (nodes, colliders) = racine_et_porte_pleines();
+        prepare(entries, joints, jam, &nodes, &colliders, &[], &[], None).ok()
     }
 
     /// Une charnière entre la racine et la porte : ancrée en (0, 0, 1) dans la porte, autour de
@@ -1091,14 +956,7 @@ mod tests {
         // dans le corps racine ; dans le corps de la porte, sans son échelle, en (0, 0, 2).
         let quart = Quat::from_rotation_y(core::f32::consts::FRAC_PI_2);
         let corps = [entree(0), entree(1)];
-        let request = decode(&payload_joints(
-            en_tete(),
-            &corps,
-            true,
-            &[charniere()],
-            &[],
-        ))
-        .unwrap();
+        let request = preparer(&corps, &[charniere()], &[]).unwrap();
         let joint = &request.joints[0];
         assert_eq!((joint.index, joint.body_a, joint.body_b), (0, 0, 1));
         let (anchor_a, rotation_a) = joint.spec.frame_a;
@@ -1120,7 +978,7 @@ mod tests {
         let mut joint = charniere();
         joint.axis = [0.0, 1.0, 0.0];
         let corps = [entree(0), entree(1)];
-        let request = decode(&payload_joints(en_tete(), &corps, true, &[joint], &[])).unwrap();
+        let request = preparer(&corps, &[joint], &[]).unwrap();
         let (_, rotation_b) = request.joints[0].spec.frame_b;
         assert!(proche(rotation_b * Vec3::X, Vec3::Y), "{rotation_b}");
         let (_, rotation_a) = request.joints[0].spec.frame_a;
@@ -1144,9 +1002,7 @@ mod tests {
         servo.motor_damping = 5.0;
         let corps = [entree(0), entree(1)];
         let lu = |joint: JointDesc| {
-            decode(&payload_joints(en_tete(), &corps, true, &[joint], &[]))
-                .unwrap()
-                .joints[0]
+            preparer(&corps, &[joint], &[]).unwrap().joints[0]
                 .spec
                 .motor
         };
@@ -1175,7 +1031,7 @@ mod tests {
         let refuse = |change: fn(&mut JointDesc), jam: &[[f32; 2]]| {
             let mut joint = charniere();
             change(&mut joint);
-            decode(&payload_joints(en_tete(), &corps, true, &[joint], jam)).is_none()
+            preparer(&corps, &[joint], jam).is_none()
         };
         assert!(!refuse(|_| {}, &[]), "la charnière est cohérente");
         assert!(
@@ -1240,7 +1096,7 @@ mod tests {
             joint.flags = flags | joint_flags::JAM;
             joint.jam_first = first;
             joint.jam_count = count;
-            decode(&payload_joints(en_tete(), &corps, true, &[joint], jam)).is_some()
+            preparer(&corps, &[joint], jam).is_some()
         };
         let courbe = [[9.0, 9.0], [0.0, 1.0], [0.05, 0.5], [0.12, 0.0]];
         assert!(
@@ -1276,57 +1132,26 @@ mod tests {
     }
 
     #[test]
-    fn un_payload_tronque_dans_ses_joints_est_refuse() {
-        let corps = [entree(0), entree(1)];
-        let complet = payload_joints(en_tete(), &corps, true, &[charniere()], &[[0.0, 1.0]]);
-        let joints = CreateAssembly::BODIES_OFFSET + 2 * AssemblyBodyEntry::WIRE_BYTES;
-        assert!(decode(&complet[..joints + JointDesc::BYTES - 1]).is_none());
-        assert!(decode(&complet[..joints + JointDesc::BYTES + 4]).is_none());
-    }
-
-    fn en_tete() -> CreateAssembly {
-        CreateAssembly {
-            handle: Handle::new(7, 1),
-            dimension: 0,
-            spawn: WorldTransform {
-                position: [0.0, 64.0, 0.0],
-                rotation: [0.0, 0.0, 0.0, 1.0],
-            },
-            body_kind: 2,
-            flags: 0,
-            body_count: 0,
-            joint_count: 0,
-            jam_points: 0,
-            assembly_mass: 0.0,
-            node_bytes: 0,
-        }
+    fn deux_corps_se_forment_sur_la_racine_et_la_porte() {
+        let prepared = preparer(&[entree(0), entree(1)], &[], &[]).unwrap();
+        assert_eq!(prepared.bodies.len(), 2);
+        assert_eq!(prepared.bodies[1].node, 1);
     }
 
     #[test]
-    fn le_payload_complet_se_decode_en_corps() {
-        let request = decode(&payload(en_tete(), &[entree(0), entree(1)], true)).unwrap();
-        assert_eq!(request.bodies.len(), 2);
-        assert_eq!(request.bodies[1].node, 1);
-        assert_eq!(request.header.handle, Handle::new(7, 1));
-    }
-
-    #[test]
-    fn les_ecarts_d_en_tete_abandonnent_l_assembly() {
-        let corps = [entree(0), entree(1)];
-        // Masse négative, racine d'un autre type, second corps non dynamique, deux corps sans
-        // section NODE.
-        let mut masse = en_tete();
-        masse.assembly_mass = -1.0;
-        assert!(decode(&payload(masse, &corps, true)).is_none());
-        let mut statique = en_tete();
-        statique.body_kind = 0;
-        assert!(decode(&payload(statique, &corps, true)).is_none());
-        let mut cinematique = corps;
-        cinematique[1].desc = BodyDesc::undeclared(1);
-        assert!(decode(&payload(en_tete(), &cinematique, true)).is_none());
-        assert!(decode(&payload(en_tete(), &corps, false)).is_none());
-        // Un seul corps sans section NODE : ses colliders tels quels.
-        assert!(decode(&payload(en_tete(), &corps[..1], false)).is_some());
+    fn plusieurs_corps_exigent_la_hierarchie_un_seul_s_en_passe() {
+        let (_, colliders) = racine_et_porte_pleines();
+        let sans_nodes = |entries: &[AssemblyBodyEntry]| {
+            prepare(entries, &[], &[], &[], &colliders, &[], &[], None).is_ok()
+        };
+        assert!(
+            !sans_nodes(&[entree(0), entree(1)]),
+            "un second corps sans node racine"
+        );
+        assert!(
+            sans_nodes(&[entree(0)]),
+            "un seul corps : ses colliders tels quels"
+        );
     }
 
     #[test]
@@ -1338,7 +1163,7 @@ mod tests {
         joint.jam_friction = 60.0;
         let annexe = [[9.0, 0.0], [0.05, 0.5], [0.12, 0.0]];
         let corps = [entree(0), entree(1)];
-        let request = decode(&payload_joints(en_tete(), &corps, true, &[joint], &annexe)).unwrap();
+        let request = preparer(&corps, &[joint], &annexe).unwrap();
         assert_eq!(
             request.joints[0].spec.jam,
             Some(Jam {
@@ -1346,34 +1171,27 @@ mod tests {
                 friction: 60.0
             })
         );
-        let sans = decode(&payload_joints(
-            en_tete(),
-            &corps,
-            true,
-            &[charniere()],
-            &[],
-        ))
-        .unwrap();
+        let sans = preparer(&corps, &[charniere()], &[]).unwrap();
         assert_eq!(sans.joints[0].spec.jam, None);
     }
 
-    /// Le payload de la racine et de la porte, sa charnière, et l'état restauré `restored`.
+    fn en_tete() -> CreateAssembly {
+        CreateAssembly {
+            handle: Handle::new(7, 1),
+            dimension: 0,
+            spawn: WorldTransform {
+                position: [0.0, 64.0, 0.0],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+            },
+            definition: 42,
+            flags: 0,
+            _pad: [0; 7],
+        }
+    }
+
+    /// Le payload d'une création de la racine et de la porte, et l'état restauré `restored`.
     fn payload_restaure(restored: &[RestoredBody], joints: &[RestoredJoint]) -> Vec<u8> {
-        let (mut nodes, mut colliders) = racine_et_porte();
-        nodes[0].collider = 1;
-        colliders.push(boite([0.0; 3]));
-        let names = vec!["racine".to_owned(), "porte".to_owned()];
-        let node_bytes = encode_nodes(&nodes, &names).unwrap();
-        let phys = encode_colliders(&colliders, &[], &[]).unwrap();
-        create_assembly_payload_restored(
-            &en_tete(),
-            &[entree(0), entree(1)],
-            &[charniere()],
-            &[],
-            &node_bytes,
-            Some((restored, joints)),
-            &phys,
-        )
+        create_assembly_payload(&en_tete(), Some((restored, joints)))
     }
 
     fn etats() -> (Vec<RestoredBody>, Vec<RestoredJoint>) {
@@ -1400,22 +1218,19 @@ mod tests {
     }
 
     #[test]
-    fn adr153_d3_l_etat_restaure_se_lit_entre_node_et_phys() {
+    fn adr153_d3_l_etat_restaure_suit_l_en_tete() {
         let (corps, joints) = etats();
-        let request = decode(&payload_restaure(&corps, &joints)).expect("payload restauré lisible");
+        let payload = payload_restaure(&corps, &joints);
         assert_eq!(
-            request.restored,
+            read_restored(&payload, 2, 1),
             Some(Restored {
                 bodies: corps,
                 joints
             })
         );
-        // PHYS se lit encore après la section : les deux corps ont leurs colliders.
-        assert_eq!(request.bodies.len(), 2);
-        assert!(request.bodies.iter().all(|body| !body.colliders.is_empty()));
-        // Sans le drapeau, aucune section n'est lue.
-        let sans = decode(&payload(en_tete(), &[entree(0), entree(1)], true)).unwrap();
-        assert_eq!(sans.restored, None);
+        // Un état par corps et par joint de la definition compilée, ni plus ni moins.
+        assert_eq!(read_restored(&payload, 1, 1), None, "un corps de moins");
+        assert_eq!(read_restored(&payload, 2, 2), None, "un joint de plus");
     }
 
     #[test]
@@ -1423,24 +1238,23 @@ mod tests {
         let (mut corps, joints) = etats();
         corps[1].lin_vel[0] = f32::NAN;
         assert!(
-            decode(&payload_restaure(&corps, &joints)).is_none(),
+            read_restored(&payload_restaure(&corps, &joints), 2, 1).is_none(),
             "vitesse non finie"
         );
         let (mut corps, joints) = etats();
         corps[0].rotation = [0.0; 4];
         assert!(
-            decode(&payload_restaure(&corps, &joints)).is_none(),
+            read_restored(&payload_restaure(&corps, &joints), 2, 1).is_none(),
             "rotation nulle"
         );
         let (corps, mut joints) = etats();
         joints[0].misalignment = -0.5;
         assert!(
-            decode(&payload_restaure(&corps, &joints)).is_none(),
+            read_restored(&payload_restaure(&corps, &joints), 2, 1).is_none(),
             "désalignement négatif"
         );
-        // Le drapeau sans la section : PHYS se cherche plus loin, et ne se lit pas.
-        let mut tronque = payload(en_tete(), &[entree(0), entree(1)], true);
-        tronque[57] |= create_assembly_flags::RESTORED;
-        assert!(decode(&tronque).is_none(), "drapeau sans section");
+        // Le drapeau sans la section : rien à lire.
+        let seul = create_assembly_payload(&en_tete(), None);
+        assert!(read_restored(&seul, 2, 1).is_none(), "drapeau sans section");
     }
 }

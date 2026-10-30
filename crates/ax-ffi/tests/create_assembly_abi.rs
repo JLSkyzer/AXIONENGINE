@@ -1,10 +1,8 @@
-//! CREATE_ASSEMBLY d'IF-03, exercé par l'ABI comme Java le fera (C-32, Option A,
-//! ADR-115) : un flux `SimIn` porte une commande CREATE_ASSEMBLY dont le payload
-//! est l'en-tête `CreateAssembly` suivi des octets de la section `PHYS`. Le natif
-//! décode les colliders, crée un corps, et le corps apparaît dans le `collect`.
-//! Depuis ADR-130, la description DM-08 du corps suit l'en-tête ; invalide, ou d'un
-//! autre type de corps que l'en-tête, l'assembly est refusée (T-312). Qu'elle soit
-//! appliquée se voit dans `body_desc_abi`.
+//! CREATE_ASSEMBLY d'IF-03, exercé par l'ABI comme Java le fera : la definition compilée dans la
+//! session (ADR-156), puis un flux `SimIn` dont la commande CREATE_ASSEMBLY ne porte que son
+//! empreinte. Le natif reprend les corps de la definition compilée, les crée, et ils apparaissent
+//! dans le `collect`. Une description invalide est refusée à la compilation (T-312), et aucune
+//! assembly n'en naît ; une empreinte inconnue du registre ne crée rien (R-704).
 //!
 //! Son propre binaire : la session native est globale au processus, et les tests
 //! s'y succèdent sous un verrou.
@@ -12,12 +10,10 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::a3d::{encode_colliders, encode_nodes};
+mod common;
+
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::commands::{
-    create_assembly_flags, create_assembly_payload, opcode, AssemblyBodyEntry, CommandStreamHeader,
-    CreateAssembly,
-};
+use ax_model::dm::commands::{opcode, AssemblyBodyEntry, CommandStreamHeader};
 use ax_model::dm::geometry::{Transform, WorldTransform};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::joints::{joint_kind, JointDesc, JointState};
@@ -26,10 +22,23 @@ use ax_model::dm::scene::{name_hash, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_metrics_export, axion_shutdown,
     axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
-    AXION_OK, AXION_SIDE_SERVER,
+    AXION_E_INVALID_BUFFER, AXION_OK, AXION_SIDE_SERVER,
 };
+use common::{creation, Modele};
 
 static CONTEXTE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// L'empreinte sous laquelle chaque cas inscrit sa definition.
+const DEFINITION: u64 = 0x0DEF_0000_0000_0156;
+
+/// La pose de spawn de chaque cas.
+const SPAWN: WorldTransform = WorldTransform {
+    position: [5.0, 10.0, -2.0],
+    rotation: [0.0, 0.0, 0.0, 1.0],
+};
+
+/// Un cas : la definition à compiler, et le flux `SimIn` qui fait naître son assembly.
+type Cas = (Modele, Vec<u8>);
 
 fn release_buffer(ctx: u64, kind: BufferKind) {
     let mut info = AxionBufferInfo {
@@ -66,51 +75,39 @@ fn box_collider() -> ColliderDesc {
     }
 }
 
-/// Construit le flux `SimIn` : en-tête + une commande CREATE_ASSEMBLY (en-tête
-/// `CreateAssembly`, description DM-08 du corps, octets `PHYS`).
-fn command_stream(desc: BodyDesc) -> Vec<u8> {
-    let phys = encode_colliders(&[box_collider()], &[], &[]).expect("encodage PHYS");
-
-    // En-tête CreateAssembly (64 octets).
-    let mut payload = Vec::new();
-    payload.extend_from_slice(&7u32.to_le_bytes()); // handle.index
-    payload.extend_from_slice(&1u32.to_le_bytes()); // handle.generation
-    payload.extend_from_slice(&0u64.to_le_bytes()); // dimension
-    for value in [5.0f64, 10.0, -2.0] {
-        payload.extend_from_slice(&value.to_le_bytes()); // spawn.position
-    }
-    for value in [0.0f32, 0.0, 0.0, 1.0] {
-        payload.extend_from_slice(&value.to_le_bytes()); // spawn.rotation
-    }
-    payload.push(2); // body_kind : dynamique
-    payload.resize(CreateAssembly::BYTES, 0); // drapeaux, corps, joints, masse, NODE
-    let en_tete = CreateAssembly::read_le(&payload).expect("en-tête complet");
-
-    // ADR-130 : la description DM-08 du corps, puis les octets PHYS.
-    // ADR-151 D7 : un seul corps, à la racine de l'asset, sans section NODE.
-    let mut payload = create_assembly_payload(
-        &en_tete,
-        &[AssemblyBodyEntry { desc, root_node: 0 }],
-        &[],
-        &[],
-        &[],
-        &[],
-    );
-    assert_eq!(payload.len() % 8, 0, "PHYS suit les corps, aligné sur 8");
-    payload.extend_from_slice(&phys);
-
+/// Le flux `SimIn` d'une commande CREATE_ASSEMBLY de l'empreinte `definition`, et du joueur qui
+/// tient l'assembly éveillée (R-612).
+fn flux(definition: u64) -> Vec<u8> {
+    let payload = creation(Handle::new(7, 1), 0, SPAWN, definition, 0, None);
     let mut stream = CommandStreamHeader::CURRENT_SCHEMA.to_le_bytes().to_vec();
     stream.extend_from_slice(&0u32.to_le_bytes()); // _pad
     stream.extend_from_slice(&opcode::CREATE_ASSEMBLY.to_le_bytes());
     stream.extend_from_slice(&(payload.len() as u32).to_le_bytes());
     stream.extend_from_slice(&payload);
+    stream.resize(stream.len().next_multiple_of(8), 0);
+    // R-612 : un joueur au point d'apparition, sans quoi la gestion d'activité endort l'assembly,
+    // racine fixe comprise (ADR-153 D4).
+    let mut joueur = 0u64.to_le_bytes().to_vec();
+    joueur.extend_from_slice(&1u32.to_le_bytes());
+    joueur.extend_from_slice(&0u32.to_le_bytes());
+    for value in SPAWN.position {
+        joueur.extend_from_slice(&value.to_le_bytes());
+    }
+    stream.extend_from_slice(&opcode::SET_OBSERVERS.to_le_bytes());
+    stream.extend_from_slice(&(joueur.len() as u32).to_le_bytes());
+    stream.extend_from_slice(&joueur);
     stream
 }
 
-/// Soumet le flux dans une session neuve, collecte un tick, et rend le nombre de
+/// Un seul corps, décrit par `desc`, à la racine de l'asset.
+fn command_stream(desc: BodyDesc) -> Cas {
+    (Modele::seul(vec![box_collider()], desc), flux(DEFINITION))
+}
+
+/// Soumet le cas dans une session neuve, collecte un tick, et rend le nombre de
 /// corps collectés et la position monde du premier, s'il y en a un.
-fn soumettre(stream: &[u8]) -> (u32, Option<[f64; 3]>) {
-    let etats = etats(stream);
+fn soumettre(cas: &Cas) -> (u32, Option<[f64; 3]>) {
+    let (etats, _, _, _) = etats_et_joints(cas);
     (
         u32::try_from(etats.len()).unwrap(),
         etats.first().map(|(_, position)| *position),
@@ -120,15 +117,13 @@ fn soumettre(stream: &[u8]) -> (u32, Option<[f64; 3]>) {
 /// Le node d'un corps collecté et sa position monde.
 type EtatCorps = (u32, [f64; 3]);
 
-/// Soumet le flux dans une session neuve, collecte un tick, et rend le node et la position
+/// Soumet le cas dans une session neuve, collecte un tick, et rend le node et la position
 /// monde de chaque corps collecté (`BodyState` de 80 octets : position `f64` à l'offset 8,
 /// node à l'offset 76).
-fn etats(stream: &[u8]) -> Vec<EtatCorps> {
-    etats_et_joints(stream).0
+fn etats(cas: &Cas) -> Vec<EtatCorps> {
+    etats_et_joints(cas).0
 }
 
-/// [`etats`], la durée de l'étape 5 du tick (`axion.sim.last_step_joints_ns`) et les
-/// `JointState` qui suivent les emprises dans `SIM_OUT` (ADR-151 D7).
 /// Le nombre de commandes du flux : après son en-tête de 8 octets, chacune a un en-tête de 8 octets
 /// et un payload complété à 8.
 fn commandes(stream: &[u8]) -> u32 {
@@ -142,7 +137,10 @@ fn commandes(stream: &[u8]) -> u32 {
     count
 }
 
-fn etats_et_joints(stream: &[u8]) -> (Vec<EtatCorps>, u64, Vec<JointState>) {
+/// [`etats`], la durée de l'étape 5 du tick (`axion.sim.last_step_joints_ns`), les `JointState`
+/// qui suivent les emprises dans `SIM_OUT` (ADR-151 D7), et le code de la compilation.
+fn etats_et_joints(cas: &Cas) -> (Vec<EtatCorps>, u64, Vec<JointState>, i32) {
+    let (modele, stream) = cas;
     let _contexte = CONTEXTE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -150,6 +148,8 @@ fn etats_et_joints(stream: &[u8]) -> (Vec<EtatCorps>, u64, Vec<JointState>) {
     let mut ctx = 0u64;
     let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) };
     assert_eq!(code, AXION_OK, "init");
+    // ADR-156 : la definition se compile avant que l'assembly ne naisse.
+    let compilation = modele.inscrire(ctx, DEFINITION);
 
     // Écrit le flux dans SimIn (en-tête de tampon + payload).
     let mut info = AxionBufferInfo {
@@ -232,7 +232,7 @@ fn etats_et_joints(stream: &[u8]) -> (Vec<EtatCorps>, u64, Vec<JointState>) {
     release_buffer(ctx, BufferKind::SimOut);
     release_buffer(ctx, BufferKind::Events);
     assert_eq!(unsafe { axion_shutdown(ctx) }, AXION_OK, "shutdown");
-    (etats, joints_ns, joints)
+    (etats, joints_ns, joints, compilation)
 }
 
 /// La valeur d'une métrique de l'export (R-502).
@@ -264,12 +264,12 @@ fn metrique(ctx: u64, nom: &str) -> u64 {
 
 /// Une assembly de deux corps : la racine de l'asset et un node `porte` décalé d'un
 /// demi-bloc en x, chacun portant une boîte d'un bloc — elles se chevauchent.
-fn deux_corps(flags: u8) -> Vec<u8> {
-    deux_corps_relies(flags, 2, &[])
+fn deux_corps(self_collision: bool) -> Cas {
+    deux_corps_relies(self_collision, 2, &[])
 }
 
 /// [`deux_corps`], la racine du type `body_kind`, reliés par `joints`.
-fn deux_corps_relies(flags: u8, body_kind: u8, joints: &[JointDesc]) -> Vec<u8> {
+fn deux_corps_relies(self_collision: bool, body_kind: u8, joints: &[JointDesc]) -> Cas {
     let node = |name: &str, parent: u32, x: f32, collider: u32| NodeDesc {
         name_hash: name_hash(name),
         parent,
@@ -287,62 +287,27 @@ fn deux_corps_relies(flags: u8, body_kind: u8, joints: &[JointDesc]) -> Vec<u8> 
         state: 0,
         mesh_count: 0,
     };
-    let nodes = encode_nodes(
-        &[node("racine", NO_PARENT, 0.0, 0), node("porte", 0, 0.5, 1)],
-        &["racine".to_owned(), "porte".to_owned()],
-    )
-    .expect("encodage NODE");
-    let phys = encode_colliders(&[box_collider(), box_collider()], &[], &[]).expect("PHYS");
-    let header = CreateAssembly {
-        handle: Handle::new(7, 1),
-        dimension: 0,
-        spawn: WorldTransform {
-            position: [5.0, 10.0, -2.0],
-            rotation: [0.0, 0.0, 0.0, 1.0],
-        },
-        body_kind,
-        flags,
-        body_count: 0,
-        joint_count: 0,
-        jam_points: 0,
-        assembly_mass: 0.0,
-        node_bytes: 0,
-    };
     let corps = |kind, root_node| AssemblyBodyEntry {
         desc: BodyDesc::undeclared(kind),
         root_node,
     };
-    let payload = create_assembly_payload(
-        &header,
-        &[corps(body_kind, 0), corps(2, 1)],
-        joints,
-        &[],
-        &nodes,
-        &phys,
-    );
-    let mut stream = CommandStreamHeader::CURRENT_SCHEMA.to_le_bytes().to_vec();
-    stream.extend_from_slice(&0u32.to_le_bytes());
-    stream.extend_from_slice(&opcode::CREATE_ASSEMBLY.to_le_bytes());
-    stream.extend_from_slice(&(payload.len() as u32).to_le_bytes());
-    stream.extend_from_slice(&payload);
-    stream.resize(stream.len().next_multiple_of(8), 0);
-    // R-612 : un joueur au point d'apparition, sans quoi la gestion d'activité endort l'assembly,
-    // racine fixe comprise (ADR-153 D4).
-    let mut joueur = 0u64.to_le_bytes().to_vec();
-    joueur.extend_from_slice(&1u32.to_le_bytes());
-    joueur.extend_from_slice(&0u32.to_le_bytes());
-    for value in [5.0f64, 10.0, -2.0] {
-        joueur.extend_from_slice(&value.to_le_bytes());
-    }
-    stream.extend_from_slice(&opcode::SET_OBSERVERS.to_le_bytes());
-    stream.extend_from_slice(&(joueur.len() as u32).to_le_bytes());
-    stream.extend_from_slice(&joueur);
-    stream
+    let modele = Modele {
+        nodes: vec![node("racine", NO_PARENT, 0.0, 0), node("porte", 0, 0.5, 1)],
+        names: vec!["racine".to_owned(), "porte".to_owned()],
+        bodies: vec![corps(body_kind, 0), corps(2, 1)],
+        joints: joints.to_vec(),
+        self_collision,
+        ..Modele::seul(
+            vec![box_collider(), box_collider()],
+            BodyDesc::undeclared(body_kind),
+        )
+    };
+    (modele, flux(DEFINITION))
 }
 
 /// L'écart en x entre les deux corps de [`deux_corps`] après un tick.
-fn ecart(flags: u8) -> f64 {
-    let etats = etats(&deux_corps(flags));
+fn ecart(self_collision: bool) -> f64 {
+    let etats = etats(&deux_corps(self_collision));
     assert_eq!(
         etats.iter().map(|(node, _)| *node).collect::<Vec<_>>(),
         vec![0, 1],
@@ -355,9 +320,9 @@ fn ecart(flags: u8) -> f64 {
 fn adr151_une_assembly_de_deux_corps_nait_par_l_abi() {
     // ADR-151 D7 : le second corps est posé par son node ; ses colliders ne touchent pas ceux de
     // la racine (§10.4), sauf collisions internes déclarées.
-    let sans = ecart(0);
+    let sans = ecart(false);
     assert!((sans - 0.5).abs() < 1e-6, "aucun contact interne : {sans}");
-    let avec = ecart(create_assembly_flags::SELF_COLLISION);
+    let avec = ecart(true);
     assert!(avec > 0.5 + 1e-3, "collisions internes déclarées : {avec}");
 }
 
@@ -372,17 +337,24 @@ fn create_assembly_cree_un_corps_visible_au_collect() {
 }
 
 #[test]
-fn t312_une_description_invalide_ou_d_un_autre_type_est_refusee() {
-    // Corps statique décrit, en-tête dynamique : l'assembly est abandonnée.
-    let (count, _) = soumettre(&command_stream(BodyDesc::undeclared(0)));
-    assert_eq!(count, 0, "type de corps différent de l'en-tête : refusé");
-    // Masse négative : refusée, sans corps à moitié formé.
+fn t312_une_description_invalide_est_refusee_a_la_compilation() {
+    // Masse négative : le DEFN est refusé, et aucune assembly ne naît de son empreinte.
     let negative = BodyDesc {
         mass: -1.0,
         ..BodyDesc::undeclared(2)
     };
-    let (count, _) = soumettre(&command_stream(negative));
-    assert_eq!(count, 0, "description invalide : refusée");
+    let (etats, _, _, compilation) = etats_et_joints(&command_stream(negative));
+    assert_eq!(compilation, AXION_E_INVALID_BUFFER, "description invalide : refusée");
+    assert!(etats.is_empty(), "aucun corps à moitié formé");
+}
+
+#[test]
+fn adr156_une_empreinte_que_le_registre_ne_tient_pas_ne_cree_rien() {
+    // R-704 : une creation qui nomme une definition inconnue laisse l'assembly inerte.
+    let (modele, _) = command_stream(BodyDesc::undeclared(2));
+    let (etats, _, _, compilation) = etats_et_joints(&(modele, flux(DEFINITION ^ 1)));
+    assert_eq!(compilation, AXION_OK, "la definition se compile sous sa propre empreinte");
+    assert!(etats.is_empty(), "une autre empreinte ne crée rien");
 }
 
 /// Un joint `Fixed` de la racine à la porte, ancré à l'origine de la porte.
@@ -423,7 +395,8 @@ fn adr151_un_joint_venu_par_l_abi_relie_les_corps_de_l_assembly() {
     // et l'étape 5 est mesurée ; sans joint, elle tombe.
     let hauteur = |joints: &[JointDesc]| {
         // Un corps statique n'a pas d'état : seule la porte, au node 1, en rapporte un.
-        let (etats, joints_ns, etats_joints) = etats_et_joints(&deux_corps_relies(0, 0, joints));
+        let (etats, joints_ns, etats_joints, _) =
+            etats_et_joints(&deux_corps_relies(false, 0, joints));
         let porte = etats.iter().find(|(node, _)| *node == 1).expect("la porte");
         (porte.1[1], joints_ns, etats_joints)
     };

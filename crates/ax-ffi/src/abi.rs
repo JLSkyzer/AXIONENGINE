@@ -38,7 +38,7 @@ use ax_math::{DVec3, Quat, Vec3};
 use ax_model::budgets::Budget;
 use ax_model::dm::animation::AnimCommand;
 use ax_model::dm::commands::{
-    create_assembly_flags, opcode, restored_joint_flags, AnimateAssembly,
+    create_assembly_flags, opcode, restored_joint_flags, AnimateAssembly, CreateAssembly,
 };
 use ax_model::dm::debug::{debug_flags, encode_debug_payload, overlay};
 use ax_model::dm::definition::{summary_flags, Definition, DefinitionRefusal, DefinitionSummary};
@@ -1340,6 +1340,7 @@ pub unsafe extern "C" fn axion_definition_compile(
                         0
                     },
                     warnings: compiled.warnings.clone(),
+                    clips: compiled.clips.clone(),
                 }
                 .write_le(&mut payload);
                 (AXION_OK, Some(compiled))
@@ -1984,36 +1985,56 @@ fn apply_animate_assembly(session: &mut context::Session, payload: &[u8]) {
     session.animate(handle, &command, &mask);
 }
 
-/// Applique un `CREATE_ASSEMBLY` (ADR-151 D7) : le module `assembly` décode l'en-tête, les
-/// corps et les sections `NODE` et `PHYS`, range chaque collider dans le corps de son node,
-/// puis le pilote crée tous les corps ou aucun.
+/// Applique un `CREATE_ASSEMBLY` (ADR-156 D4) : l'assembly reprend les corps, les joints, les
+/// groupes et l'animation serveur de la definition compilée que le registre tient sous l'empreinte
+/// de l'en-tête, puis le pilote crée tous les corps ou aucun.
 ///
-/// Un payload trop court, une description invalide, un corps d'un type inattendu, une
-/// section illisible, une forme non convertible, une échelle non uniforme sur la chaîne
-/// d'un collider, des groupes discordants ou un joint fautif font **abandonner cette
-/// assembly** sans créer de corps — jamais de panique ni d'assembly à moitié formée. La
-/// commande a déjà été lue par `create_assembly_payloads`, qui a validé les bornes du flux.
+/// Un en-tête illisible, une empreinte que le registre ne tient pas — definition refusée, jamais
+/// compilée, ou retirée par un rechargement —, ou un état restauré qui ne correspond pas à la
+/// definition compilée font **abandonner cette assembly** sans créer de corps : elle reste inerte et
+/// intacte (R-704), jamais formée à moitié. La commande a déjà été lue par
+/// `create_assembly_payloads`, qui a validé les bornes du flux.
 fn apply_create_assembly(session: &mut context::Session, payload: &[u8]) {
-    let Some(mut request) = assembly::decode(payload) else {
+    let Some(header) = CreateAssembly::read_le(payload) else {
         return;
     };
-    let animation = request.animation.take();
+    let Some(compiled) = session.definition(header.definition) else {
+        return;
+    };
+    let restored = if header.flags & create_assembly_flags::RESTORED == 0 {
+        if payload.len() != CreateAssembly::BYTES {
+            return;
+        }
+        None
+    } else {
+        let Some(restored) =
+            assembly::read_restored(payload, compiled.bodies.len(), compiled.joints.len())
+        else {
+            return;
+        };
+        Some(restored)
+    };
+    let bodies = compiled.bodies.clone();
+    let joints = compiled.joints.clone();
+    let groups = compiled.groups;
+    let assembly_mass = compiled.assembly_mass;
+    let self_collision = compiled.self_collision;
+    let animation = compiled.animation.clone();
     let physics = session.physics();
-    let header = request.header;
     let Some(created) = physics.create_assembly_bodies(
         header.dimension,
         header.handle,
         header.spawn,
-        &request.bodies,
-        &request.joints,
-        request.groups,
-        header.assembly_mass,
-        header.flags & create_assembly_flags::SELF_COLLISION != 0,
+        &bodies,
+        &joints,
+        groups,
+        assembly_mass,
+        self_collision,
     ) else {
         return;
     };
     // ADR-153 D3 : l'état que la sauvegarde a gardé, rendu avant tout pas, sans événement.
-    if let Some(restored) = &request.restored {
+    if let Some(restored) = &restored {
         let saved: Vec<SavedBody> = restored
             .bodies
             .iter()
