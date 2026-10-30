@@ -2079,3 +2079,20 @@ particules, il ne l'est plus, et les lignes passaient le test `LEQUAL` laissé p
 **Règle.** Un état de rendu vanilla dont l'effet compte se lit dans le bytecode avant de s'y fier. Ce qui
 doit se voir à travers une surface se juge par un pixel derrière elle — ici, le milieu de l'os, dans la
 colonne —, jamais par la seule présence des plages.
+
+## 2026-10-30 | Un cache adressé par contenu qui servait l'A3D d'un autre asset
+
+**Ce qui a mal tourné.** La tranche 3 d'ADR-156 fait charger les assets du serveur par le natif pour
+compiler les definitions. Au banc de rendu de la CI, le modèle d'un datapack — copie, octet pour octet, du
+cube du mod — a été refusé : `E-2002`, « le tampon porte l'asset 0x2992…, pas l'asset 0xf142… annoncé ».
+Sa definition n'a jamais été compilée, et l'étape T-713f a attendu 120 s.
+
+**Cause.** La clé du cache (C-25) ne tient qu'au contenu, mais l'en-tête A3D porte l'identifiant de
+l'asset compilé, et le natif le confronte à celui qu'on lui annonce. Deux chemins aux mêmes octets se
+partageaient une entrée au nom du premier. Le défaut datait de C-25 : avant, le serveur lisait ses sections
+en Java sans regarder l'en-tête, et le client n'avait jamais eu deux modèles identiques.
+
+**Règle.** Une donnée reprise d'un cache adressé par contenu ne doit rien porter qui ne soit pas dans la
+clé, ou se réécrire à la reprise. Un test de cache se fait sur deux sources aux mêmes octets, pas
+seulement sur la même source rechargée. Un faux compilateur de test rend un en-tête réel, sinon
+l'identité qu'il porte n'est jamais vérifiée.

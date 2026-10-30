@@ -2,6 +2,7 @@ package dev.axion.asset;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.zip.CRC32C;
 
 /**
  * Localisateur de sections dans un conteneur A3D (C-24, PARTIE 7).
@@ -20,6 +21,9 @@ import java.nio.ByteOrder;
  * pas lui-même) ou débordant du fichier —, plutôt que de rendre des octets faux.
  * Une section compressée se lit en lui donnant un {@link Decompressor} : celui du
  * natif (ADR-155, la section {@code ANIM}).
+ *
+ * <p>Il récrit aussi l'identifiant d'asset de l'en-tête, avec son CRC
+ * ({@link #withAssetId}) : c'est ce que le cache, indexé par le seul contenu, demande.
  */
 public final class A3dSections {
 
@@ -40,6 +44,12 @@ public final class A3dSections {
 
     /** Position du champ {@code section_count} dans l'en-tête. */
     private static final int SECTION_COUNT_OFFSET = 12;
+
+    /** Position du champ {@code asset_id} dans l'en-tête. */
+    private static final int ASSET_ID_OFFSET = 16;
+
+    /** Position du champ {@code header_crc32c} dans l'en-tête. */
+    private static final int HEADER_CRC_OFFSET = 36;
 
     /** Position de {@code size_uncompressed} dans une entrée de la table. */
     private static final int UNCOMPRESSED_SIZE_OFFSET = 24;
@@ -91,19 +101,7 @@ public final class A3dSections {
      */
     public static byte[] section(byte[] file, String tag, Decompressor zstd) {
         byte[] wanted = tagBytes(tag);
-        if (file.length < HEADER_BYTES) {
-            throw new IllegalArgumentException("fichier A3D tronqué : " + file.length + " octets");
-        }
-        for (int i = 0; i < MAGIC.length; i++) {
-            if (file[i] != MAGIC[i]) {
-                throw new IllegalArgumentException("ce n'est pas un fichier A3D");
-            }
-        }
-        ByteBuffer b = ByteBuffer.wrap(file).order(ByteOrder.LITTLE_ENDIAN);
-        int major = b.getShort(4) & 0xFFFF;
-        if (major != VERSION_MAJOR) {
-            throw new IllegalArgumentException("version majeure A3D " + major + " inconnue");
-        }
+        ByteBuffer b = header(file);
 
         long count = b.getInt(SECTION_COUNT_OFFSET) & 0xFFFF_FFFFL;
         long tableEnd = (long) HEADER_BYTES + count * ENTRY_BYTES;
@@ -142,6 +140,59 @@ public final class A3dSections {
             return content;
         }
         return null;
+    }
+
+    /**
+     * {@return le conteneur {@code file} au nom de l'asset {@code assetId} : lui-même s'il le porte
+     * déjà, sinon une copie dont l'en-tête porte {@code assetId} et le CRC qui va avec}
+     *
+     * <p>La clé du cache ne tient qu'au contenu (C-25), quand l'en-tête porte l'identifiant de
+     * l'asset compilé (PARTIE 7), que le natif confronte à celui qu'on lui annonce au chargement
+     * ({@code E-2002}). Deux sources aux mêmes octets sous deux chemins partagent donc une entrée
+     * qui ne porte le nom que de l'une ; l'autre la reprend sous le sien. Rien d'autre ne change :
+     * le compilateur n'écrit l'identifiant que là. Le CRC couvre les 64 octets de l'en-tête, son
+     * propre champ annulé, comme {@code header_checksum} le calcule côté natif.
+     *
+     * @param file octets complets d'un conteneur A3D
+     * @param assetId identifiant de l'asset qui le reprend
+     * @throws IllegalArgumentException si {@code file} n'est pas un A3D lisible (taille, magic,
+     *     version majeure)
+     */
+    public static byte[] withAssetId(byte[] file, long assetId) {
+        if (header(file).getLong(ASSET_ID_OFFSET) == assetId) {
+            return file;
+        }
+        byte[] copy = file.clone();
+        ByteBuffer b = ByteBuffer.wrap(copy).order(ByteOrder.LITTLE_ENDIAN);
+        b.putLong(ASSET_ID_OFFSET, assetId);
+        b.putInt(HEADER_CRC_OFFSET, 0);
+        CRC32C crc = new CRC32C();
+        crc.update(copy, 0, HEADER_BYTES);
+        b.putInt(HEADER_CRC_OFFSET, (int) crc.getValue());
+        return copy;
+    }
+
+    /**
+     * {@return une vue little-endian de {@code file}, dont l'en-tête est lisible}
+     *
+     * @throws IllegalArgumentException si {@code file} est plus court qu'un en-tête, sans le magic,
+     *     ou d'une version majeure inconnue (R-890)
+     */
+    private static ByteBuffer header(byte[] file) {
+        if (file.length < HEADER_BYTES) {
+            throw new IllegalArgumentException("fichier A3D tronqué : " + file.length + " octets");
+        }
+        for (int i = 0; i < MAGIC.length; i++) {
+            if (file[i] != MAGIC[i]) {
+                throw new IllegalArgumentException("ce n'est pas un fichier A3D");
+            }
+        }
+        ByteBuffer b = ByteBuffer.wrap(file).order(ByteOrder.LITTLE_ENDIAN);
+        int major = b.getShort(4) & 0xFFFF;
+        if (major != VERSION_MAJOR) {
+            throw new IllegalArgumentException("version majeure A3D " + major + " inconnue");
+        }
+        return b;
     }
 
     /** {@return les quatre octets ASCII d'un tag} */

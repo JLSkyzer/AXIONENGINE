@@ -527,6 +527,15 @@ class NativeBridgeTest {
         // Les octets d'un autre asset que celui annoncé sont refusés (E-2002) ; rien
         // n'est rangé, et les tampons sont relâchés quand même.
         assertEquals(NativeBridge.E_INVALID_BUFFER, chargeur.load(0x9999L, triangle).code());
+        // C-25 : repris sous cet identifiant, comme le cache le fait pour une source aux mêmes
+        // octets sous un autre chemin, il se charge — l'en-tête et son CRC récrits tiennent.
+        dev.axion.asset.AssetLoader.Loaded repris =
+                chargeur.load(0x9999L, dev.axion.asset.A3dSections.withAssetId(triangle, 0x9999L));
+        assertTrue(
+                repris.ok(),
+                () -> "A3D repris refusé, code " + repris.code() + " : "
+                        + NativeBridge.lastErrorMessage(reprise));
+        assertEquals(NativeBridge.OK, chargeur.unload(repris.index(), repris.generation()));
 
         // Rendu, puis périmé (R-110) : la fermeture finale ne verra aucun handle.
         assertEquals(NativeBridge.OK, chargeur.unload(charge.index(), charge.generation()));

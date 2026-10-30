@@ -11,6 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.axion.asset.AssetCompiler.CompileStatus;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,12 +53,26 @@ class AssetRegistryTest {
         }
     }
 
+    /** Un A3D de 1024 octets dont seul l'en-tête compte : magic, version 1, identifiant d'asset. */
+    private static byte[] a3d(long assetId) {
+        ByteBuffer b = ByteBuffer.allocate(1024).order(ByteOrder.LITTLE_ENDIAN);
+        b.put(new byte[] {'A', '3', 'D', 0}).putShort((short) 1).putShort((short) 1);
+        b.putLong(16, assetId);
+        return b.array();
+    }
+
+    /** {@return l'identifiant d'asset que porte l'en-tête de {@code a3d}} */
+    private static long assetIdOf(byte[] a3d) {
+        return ByteBuffer.wrap(a3d).order(ByteOrder.LITTLE_ENDIAN).getLong(16);
+    }
+
     /**
      * Compilateur simulé : chaque travail aboutit après un nombre de sondages
-     * fixé, ou échoue.
+     * fixé, ou échoue. Il rend un A3D au nom de l'asset soumis, comme le natif.
      */
     private static final class FakeCompiler implements AssetCompiler {
         private final List<Long> submitted = new ArrayList<>();
+        private final Map<Integer, Long> assetsDesTravaux = new LinkedHashMap<>();
         private final Map<Long, byte[]> optionsRecues = new LinkedHashMap<>();
         private final Map<Long, SiblingFiles> voisinsRecus = new LinkedHashMap<>();
         private final List<Integer> abandonnes = new ArrayList<>();
@@ -79,6 +95,7 @@ class AssetRegistryTest {
             voisinsRecus.put(assetId, siblings);
             int job = nextJob++;
             restants.put(job, delay);
+            assetsDesTravaux.put(job, assetId);
             return job;
         }
 
@@ -92,7 +109,7 @@ class AssetRegistryTest {
             restants.remove(jobId);
             return failCompile
                     ? CompileStatus.failed(-3050, lignes)
-                    : CompileStatus.compiled(new byte[1024], lignes);
+                    : CompileStatus.compiled(a3d(assetsDesTravaux.getOrDefault(jobId, 0L)), lignes);
         }
 
         @Override
@@ -557,6 +574,62 @@ class AssetRegistryTest {
         assertNotNull(published);
         assertEquals(premier.published("m.obj").key(), published.key());
         assertArrayEquals(premier.published("m.obj").a3d(), published.a3d());
+    }
+
+    @Test
+    @DisplayName("C-25 : deux sources aux mêmes octets reprennent l'entrée du cache, chacune à son nom")
+    void deuxSourcesAuxMemesOctetsReprennentLeCacheAChacuneSonNom(@TempDir Path dossier) {
+        // Le cas du banc (T-713f) : le modèle d'un datapack, copie du cube du mod. La clé ne tient
+        // qu'au contenu, l'en-tête porte l'identifiant de l'asset compilé, et le natif refuse au
+        // chargement un A3D au nom d'un autre (E-2002).
+        AssetCache cache = new AssetCache(dossier, 1 << 20);
+        FakeSource mod = new FakeSource().put("axion:axion/models/cube.gltf", "{}");
+        AssetRegistry premier =
+                new AssetRegistry(mod, new FakeCompiler(), COMPILER_VERSION, 1, () -> 0L, cache);
+        premier.discover();
+        premier.pump(0);
+        premier.pump(0);
+        long cube = premier.entry("axion:axion/models/cube.gltf").assetId();
+        assertEquals(cube, assetIdOf(premier.published("axion:axion/models/cube.gltf").a3d()));
+
+        FakeSource datapack = new FakeSource()
+                .put("axion:axion/models/cube.gltf", "{}")
+                .put("axion:axion/models/copie.gltf", "{}");
+        AssetRegistry second =
+                new AssetRegistry(datapack, new FakeCompiler(), COMPILER_VERSION, 1, () -> 0L, cache);
+        assertEquals(0, second.discover(), "les deux reprises du cache, rien à compiler");
+        AssetEntry copie = second.entry("axion:axion/models/copie.gltf");
+        assertEquals(AssetState.CACHED, copie.state());
+        assertNotEquals(cube, copie.assetId());
+        assertEquals(copie.assetId(), assetIdOf(second.published("axion:axion/models/copie.gltf").a3d()),
+                "la copie à son nom");
+        assertEquals(cube, assetIdOf(second.published("axion:axion/models/cube.gltf").a3d()),
+                "le cube au sien");
+    }
+
+    @Test
+    @DisplayName("C-25 : une entrée du cache qui n'est pas un A3D se recompile, et le dit")
+    void uneEntreeDuCacheIllisibleSeRecompile(@TempDir Path dossier) {
+        FakeSource source = new FakeSource().put("m.obj", "v 0 0 0");
+        AssetCache cache = new AssetCache(dossier, 1 << 20);
+        FakeCompiler compiler = new FakeCompiler();
+        AssetRegistry registry =
+                new AssetRegistry(source, compiler, COMPILER_VERSION, 1, () -> 0L, cache);
+        registry.discover();
+        registry.pump(0);
+        registry.pump(0);
+        cache.put(registry.entry("m.obj").key(), new byte[1024]);
+
+        AssetRegistry suivant =
+                new AssetRegistry(source, compiler, COMPILER_VERSION, 1, () -> 0L, cache);
+        assertEquals(1, suivant.discover(), "à recompiler");
+        assertNotEquals(AssetState.CACHED, suivant.entry("m.obj").state());
+        assertTrue(suivant.diagnostics().stream()
+                        .anyMatch(ligne -> ligne.startsWith("m.obj — entrée du cache illisible, recompilée")),
+                () -> "diagnostics : " + suivant.diagnostics());
+        suivant.pump(0);
+        suivant.pump(0);
+        assertEquals(suivant.entry("m.obj").assetId(), assetIdOf(suivant.published("m.obj").a3d()));
     }
 
     @Test

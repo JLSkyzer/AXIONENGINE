@@ -438,6 +438,15 @@ Definition of Done (PARTIE 37.3).
 
 ### Corrige
 
+- Assets (C-25, C-20) : deux sources aux memes octets sous deux chemins se
+  partagent une entree du cache, dont la cle ne tient qu'au contenu, alors
+  que l'en-tete A3D porte l'identifiant de l'asset compile ; la seconde
+  reprenait l'A3D au nom de la premiere, et le natif le refusait au
+  chargement (`E-2002`). Le modele d'un datapack copie du cube du mod n'avait
+  donc plus de definition compilee cote serveur depuis la tranche 3
+  d'ADR-156. Un A3D repris du cache l'est desormais sous l'identifiant de
+  l'entree, en-tete et CRC recrits ; une entree illisible se recompile, et
+  le journal le dit.
 - Rendu (C-65, R-1493) : la matrice des capacites du backend natif declarait
   l'instancing et le multi-draw indirect "pas encore livres", au journal et
   dans `/axion status`, alors qu'ADR-154 les a livres le 2026-10-28. Elle les

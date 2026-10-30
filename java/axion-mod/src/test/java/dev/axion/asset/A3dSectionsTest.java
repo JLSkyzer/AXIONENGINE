@@ -3,11 +3,14 @@ package dev.axion.asset;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.zip.CRC32C;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -146,5 +149,40 @@ class A3dSectionsTest {
     void unTagMalFormeEstRefuse() {
         byte[] file = buildA3d(1, new Section("PHYS", 0, new byte[] {1}));
         assertThrows(IllegalArgumentException.class, () -> A3dSections.section(file, "PHY"));
+    }
+
+    @Test
+    void lIdentifiantSeRecritAvecLeCrcDeLEnTete() {
+        // C-25 : l'entrée du cache d'une source se reprend sous l'identifiant d'une autre aux
+        // mêmes octets. Le chargement natif d'un A3D réécrit est dans NativeBridgeTest.
+        byte[] file = buildA3d(1, new Section("PHYS", 0, new byte[] {1, 2, 3}));
+        // Un CRC quelconque en place : le nouveau se calcule sans lui.
+        ByteBuffer.wrap(file).order(ByteOrder.LITTLE_ENDIAN).putLong(16, 0x1111L).putInt(36, 0x5A5A_A5A5);
+        assertSame(file, A3dSections.withAssetId(file, 0x1111L), "déjà à son nom : sans copie");
+
+        byte[] repris = A3dSections.withAssetId(file, 0x2222L);
+        ByteBuffer b = ByteBuffer.wrap(repris).order(ByteOrder.LITTLE_ENDIAN);
+        assertEquals(0x2222L, b.getLong(16));
+        byte[] entete = Arrays.copyOf(repris, HEADER_BYTES);
+        Arrays.fill(entete, 36, 40, (byte) 0);
+        CRC32C crc = new CRC32C();
+        crc.update(entete);
+        assertEquals((int) crc.getValue(), b.getInt(36), "CRC des 64 octets, son propre champ annulé");
+        assertArrayEquals(
+                Arrays.copyOfRange(file, HEADER_BYTES, file.length),
+                Arrays.copyOfRange(repris, HEADER_BYTES, repris.length),
+                "le reste intact");
+        assertEquals(0x1111L, ByteBuffer.wrap(file).order(ByteOrder.LITTLE_ENDIAN).getLong(16),
+                "l'original intact");
+    }
+
+    @Test
+    void unConteneurIllisibleNeSeRecritPas() {
+        assertThrows(IllegalArgumentException.class, () -> A3dSections.withAssetId(new byte[63], 1L));
+        byte[] inconnue = buildA3d(2, new Section("PHYS", 0, new byte[] {1}));
+        assertThrows(IllegalArgumentException.class, () -> A3dSections.withAssetId(inconnue, 1L));
+        byte[] sansMagic = buildA3d(1, new Section("PHYS", 0, new byte[] {1}));
+        sansMagic[0] = 'X';
+        assertThrows(IllegalArgumentException.class, () -> A3dSections.withAssetId(sansMagic, 1L));
     }
 }

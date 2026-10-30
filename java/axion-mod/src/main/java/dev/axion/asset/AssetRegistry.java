@@ -180,6 +180,17 @@ public final class AssetRegistry {
             // seul cas ou un asset atteint son contenu sans passer par le pool.
             byte[] cached = cache == null ? null : cache.get(key);
             if (cached != null) {
+                // La clé ne tient qu'au contenu : une source aux mêmes octets sous un autre chemin
+                // a pu écrire l'entrée, à son nom. L'A3D se reprend sous celui de cette entrée.
+                try {
+                    cached = A3dSections.withAssetId(cached, entry.assetId());
+                } catch (IllegalArgumentException illisible) {
+                    diagnostics.add(path + " — entrée du cache illisible, recompilée : "
+                            + illisible.getMessage());
+                    cached = null;
+                }
+            }
+            if (cached != null) {
                 entry.transitionTo(AssetState.CACHED);
                 entry.setCompiled(cached);
                 publish(entry);
