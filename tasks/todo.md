@@ -3473,7 +3473,10 @@ sources procédurales de véhicule (M5, T-365).
 - [x] C-31 avec C-34 : joints, événements `JOINT_BROKEN` et `JAMMED` (tranche 3c-ii) — ADR-146 ; fait par le
       chantier joints (ADR-151), clos le 2026-10-24.
 - [ ] C-27, étapes 4 et 5 avec C-51 : `CompiledDefinition`, noms de nodes, de sockets et de parts
-      résolus côté natif, synchronisation serveur → client — ADR-137, ADR-146 §5.
+      résolus côté natif, synchronisation serveur → client — ADR-137, ADR-146 §5. La synchronisation des
+      textes est faite (ADR-150 D5) ; le reste est proposé par ADR-156 (2026-10-30), en attente de Killian :
+      compilation native sur `DEFN`, registre de session, `CREATE_ASSEMBLY` par empreinte, ABI 12, et le
+      canal des avertissements `LODM`/`ANIM`.
 - [ ] C-30 avec C-37 : le graphe de scène vivant au runtime, étape 14 du pas et
       `axion.scene.propagate_ns` — ADR-137, ADR-146 §7. Fait côté client (ADR-155, étape 3c, 2026-10-30) :
       graphe vivant par instance animée, propagation mesurée. Reste l'étape 14 côté serveur, avec les sockets.
