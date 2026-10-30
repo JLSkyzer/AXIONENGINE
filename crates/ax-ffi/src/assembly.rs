@@ -137,27 +137,117 @@ pub(crate) fn decode(payload: &[u8]) -> Option<AssemblyRequest> {
     };
     let phys_at = anim_end.next_multiple_of(8);
     let (colliders, points, children) = decode_colliders(payload.get(phys_at..)?).ok()?;
-    let groups = body_groups(&colliders)?;
-    let skeleton = Skeleton::new(&entries, &nodes)?;
-    let (bodies, placement) = layout(&skeleton, &entries, &nodes, &colliders, &points, &children)?;
-    // Une section illisible ou refusée n'abandonne pas l'assembly : elle n'est simplement pas
-    // animée côté serveur, comme le rendu garde un asset au repos.
-    let animation = anim.and_then(|bytes| {
-        ServerAnimation::new(bytes, &nodes, &skeleton, &entries, &colliders, &placement)
+    let prepared = prepare(
+        &entries,
+        &descs,
+        &jam_points,
+        &nodes,
+        &colliders,
+        &points,
+        &children,
+        anim,
+    )
+    .ok()?;
+    Some(AssemblyRequest {
+        header,
+        bodies: prepared.bodies,
+        joints: prepared.joints,
+        groups: prepared.groups,
+        restored,
+        animation: prepared.animation.played(),
+    })
+}
+
+/// Ce qu'une assembly tire de ses corps, de ses joints et de son asset, avant toute pose monde.
+/// `CREATE_ASSEMBLY` le calcule à chaque apparition ; la compilation d'une definition, une fois
+/// (ADR-156 D2).
+#[derive(Debug)]
+pub(crate) struct Prepared {
+    /// Les corps, le corps racine d'abord, chacun avec ses colliders dans son repère.
+    pub bodies: Vec<AssemblyBody>,
+    /// Les joints, dans l'ordre de la definition, leurs repères dans ceux de leurs corps.
+    pub joints: Vec<AssemblyJoint>,
+    /// Les groupes de collision communs à tous les colliders (R-980).
+    pub groups: CollisionGroups,
+    /// Ce que le serveur fait de l'animation de l'asset.
+    pub animation: AnimationVerdict,
+}
+
+/// Range les colliders de l'asset en corps, pose les joints et juge l'animation serveur.
+///
+/// # Errors
+///
+/// Ce qui empêche l'assembly de se former : groupes discordants, hiérarchie fautive, corps sans
+/// collider, collider porté par deux nodes, échelle non uniforme, joint incohérent. Une section
+/// `ANIM` illisible ou refusée n'en est pas : l'assembly n'est simplement pas animée côté serveur,
+/// comme le rendu garde un asset au repos.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare(
+    entries: &[AssemblyBodyEntry],
+    descs: &[JointDesc],
+    jam_points: &[[f32; 2]],
+    nodes: &[NodeDesc],
+    colliders: &[ColliderDesc],
+    points: &[[f32; 3]],
+    children: &[ColliderDesc],
+    anim: Option<&[u8]>,
+) -> Result<Prepared, &'static str> {
+    if entries.is_empty() || entries.len() > MAX_ASSEMBLY_BODIES {
+        return Err("de 1 à 64 corps (R-190)");
+    }
+    let groups = body_groups(colliders).ok_or(
+        "aucun collider, ou des groupes de collision qui diffèrent d'un collider à l'autre",
+    )?;
+    let skeleton = Skeleton::new(entries, nodes).ok_or(
+        "hiérarchie de l'asset : un parent suit son enfant, ou une racine de corps hors de la \
+         table ou sur une chaîne d'échelle non uniforme",
+    )?;
+    let (bodies, placement) = layout(&skeleton, entries, nodes, colliders, points, children)
+        .ok_or(
+            "un corps sans collider, un collider porté par deux nodes, une forme illisible ou une \
+             échelle non uniforme sur la chaîne d'un collider",
+        )?;
+    let animation = anim.map_or(AnimationVerdict::Still, |bytes| {
+        ServerAnimation::judge(bytes, nodes, &skeleton, entries, colliders, &placement)
     });
     let joints = descs
         .iter()
         .enumerate()
-        .map(|(index, desc)| assembly_joint(&skeleton, &entries, &jam_points, index, desc))
-        .collect::<Option<Vec<_>>>()?;
-    Some(AssemblyRequest {
-        header,
+        .map(|(index, desc)| assembly_joint(&skeleton, entries, jam_points, index, desc))
+        .collect::<Option<Vec<_>>>()
+        .ok_or("un joint incohérent avec son type ou avec les corps de l'assembly")?;
+    Ok(Prepared {
         bodies,
         joints,
         groups,
-        restored,
         animation,
     })
+}
+
+/// Ce que le serveur fait de l'animation d'une assembly (R-1430, ADR-155 ; ADR-156 D2).
+#[derive(Debug)]
+pub(crate) enum AnimationVerdict {
+    /// Un collider dépend d'un node animé : le serveur joue l'animation.
+    Played(Box<ServerAnimation>),
+    /// Rien à jouer : section illisible ou refusée par C-22 (R-540), ou aucun collider qui
+    /// dépende d'un node animé (T-360).
+    Still,
+    /// La racine du corps de ce rang est elle-même animée : la physique l'emporte, et le serveur
+    /// ne joue rien (R-930).
+    RootAnimated(usize),
+    /// Un ancêtre de la racine du corps de ce rang est animé : un node physique sous un node animé
+    /// (R-931, `E-7002`).
+    UnderAnimated(usize),
+}
+
+impl AnimationVerdict {
+    /// L'animation que le serveur joue, s'il en joue une.
+    pub(crate) fn played(self) -> Option<ServerAnimation> {
+        match self {
+            Self::Played(animation) => Some(*animation),
+            _ => None,
+        }
+    }
 }
 
 /// L'état restauré d'une assembly (ADR-153 D3), lu de sa section : un état par corps, dans
@@ -409,43 +499,57 @@ pub(crate) struct ServerAnimation {
 }
 
 impl ServerAnimation {
-    /// `None` si la section est illisible ou refusée par C-22 (R-540), si une racine de corps
-    /// secondaire ou l'un de ses ancêtres est animé — la physique l'emporte (R-930), et un node
-    /// physique sous un node animé est interdit (R-931) —, ou si aucun collider ne dépend d'un node
-    /// animé : le serveur n'échantillonne alors rien (R-1430, T-360).
-    fn new(
+    /// Le verdict de l'animation serveur : [`AnimationVerdict::Still`] si la section est illisible ou
+    /// refusée par C-22 (R-540), ou si aucun collider ne dépend d'un node animé — le serveur
+    /// n'échantillonne alors rien (R-1430, T-360) ; [`AnimationVerdict::UnderAnimated`] si un ancêtre de la
+    /// racine d'un corps secondaire est animé (R-931) ; [`AnimationVerdict::RootAnimated`] si cette racine
+    /// l'est elle-même, la physique l'emportant (R-930).
+    fn judge(
         bytes: &[u8],
         nodes: &[NodeDesc],
         skeleton: &Skeleton,
         entries: &[AssemblyBodyEntry],
         colliders: &[ColliderDesc],
         placement: &[Placement],
-    ) -> Option<Self> {
-        let table = decode_animations(bytes).ok()?;
+    ) -> AnimationVerdict {
+        let Ok(table) = decode_animations(bytes) else {
+            return AnimationVerdict::Still;
+        };
         if !validate_animations(nodes, &table.animations, &table.tracks, &table.keys).is_valid() {
-            return None;
+            return AnimationVerdict::Still;
         }
-        let clips = ClipLibrary::new(
+        let Ok(clips) = ClipLibrary::new(
             table.animations,
             table.names,
             table.tracks,
             table.keys,
             nodes.len(),
-        )
-        .ok()?;
+        ) else {
+            return AnimationVerdict::Still;
+        };
         let animated = clips.animated_nodes(nodes.len());
         let parents: Vec<Option<usize>> = nodes
             .iter()
             .map(|node| (!node.is_root()).then_some(node.parent as usize))
             .collect();
-        for entry in &entries[1..] {
-            let mut node = Some(entry.root_node as usize);
+        // Un ancêtre animé l'emporte sur une racine animée : c'est un refus, l'autre un
+        // avertissement.
+        let mut root_animated = None;
+        for (rank, entry) in entries.iter().enumerate().skip(1) {
+            let root = entry.root_node as usize;
+            let mut node = parents[root];
             while let Some(index) = node {
                 if animated[index] {
-                    return None;
+                    return AnimationVerdict::UnderAnimated(rank);
                 }
                 node = parents[index];
             }
+            if animated[root] && root_animated.is_none() {
+                root_animated = Some(rank);
+            }
+        }
+        if let Some(rank) = root_animated {
+            return AnimationVerdict::RootAnimated(rank);
         }
         let mut dependents = Vec::new();
         for (collider, place) in colliders.iter().zip(placement) {
@@ -476,10 +580,10 @@ impl ServerAnimation {
             }
         }
         if dependents.is_empty() {
-            return None;
+            return AnimationVerdict::Still;
         }
         let rest: Vec<Transform> = nodes.iter().map(|node| node.local).collect();
-        Some(Self {
+        AnimationVerdict::Played(Box::new(Self {
             clips,
             animator: Animator::new(nodes.len()),
             pose: rest.clone(),
@@ -489,7 +593,7 @@ impl ServerAnimation {
             dependents,
             frames: skeleton.frames.clone(),
             settled: true,
-        })
+        }))
     }
 
     /// Applique une commande ; une commande refusée ne change rien.
@@ -887,6 +991,17 @@ mod tests {
     fn un_corps_sans_collider_est_refuse() {
         let (nodes, colliders) = racine_et_porte();
         assert!(ranger(&[entree(0), entree(1)], &nodes, &colliders).is_none());
+    }
+
+    #[test]
+    fn prepare_refuse_une_assembly_sans_corps_ou_de_plus_de_64_sans_paniquer() {
+        let (nodes, colliders) = racine_et_porte();
+        let preparer = |entries: &[AssemblyBodyEntry]| {
+            prepare(entries, &[], &[], &nodes, &colliders, &[], &[], None).map(|_| ())
+        };
+        assert!(preparer(&[]).is_err());
+        assert!(preparer(&vec![entree(0); MAX_ASSEMBLY_BODIES + 1]).is_err());
+        assert!(preparer(&[entree(0)]).is_ok());
     }
 
     #[test]

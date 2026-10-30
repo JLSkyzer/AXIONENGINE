@@ -24,6 +24,7 @@
 pub mod animation;
 pub mod commands;
 pub mod debug;
+pub mod definition;
 pub mod geometry;
 pub mod handle;
 pub mod integrity;

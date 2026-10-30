@@ -3477,8 +3477,11 @@ sources procédurales de véhicule (M5, T-365).
       textes est faite (ADR-150 D5) ; le reste par ADR-156, accepté par Killian le 2026-10-30 (Q1 à Q4
       comme proposé) : compilation native sur `DEFN`, registre de session, `CREATE_ASSEMBLY` par empreinte,
       ABI 12, et le canal des avertissements `LODM`/`ANIM`.
-      - [ ] 1. `DEFN` et sa lecture native : résolution des noms d'asset, marques des colliders (`REFITTABLE`,
-            matériau, groupes), refus R-190, R-931 et avertissement R-930 ; tests Rust et mutations.
+      - [x] 1. (2026-10-30) `DEFN` v1 (`ax-model`) et la compilation native (`ax-ffi`, `definition.rs`) :
+            noms de node, de clip et d'os résolus, corps implicites, marques des colliders (groupes,
+            matériau, `REFITTABLE`), refus R-580, R-190, R-931 et avertissement R-930 ; `assembly::prepare`
+            partagé avec `CREATE_ASSEMBLY`. Les noms de mesh et de collider restent vérifiés dans leur forme :
+            l'A3D ne les garde pas (écart avec D1, consigné). 28 tests, 24 mutations rouges.
       - [ ] 2. Registre de session, `axion_definition_compile` et `axion_definition_remove`, `PHYS` et
             animation au masque d'IF-06 ; ABI 12.
       - [ ] 3. Java écrit `DEFN`, compile au rechargement et à la fin de la compilation des assets, tient
