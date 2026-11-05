@@ -78,7 +78,12 @@ fn box_collider() -> ColliderDesc {
 /// Le flux `SimIn` d'une commande CREATE_ASSEMBLY de l'empreinte `definition`, et du joueur qui
 /// tient l'assembly éveillée (R-612).
 fn flux(definition: u64) -> Vec<u8> {
-    let payload = creation(Handle::new(7, 1), 0, SPAWN, definition, 0, None);
+    flux_de(creation(Handle::new(7, 1), 0, SPAWN, definition, 0, None))
+}
+
+/// Le flux `SimIn` du payload de `CREATE_ASSEMBLY` `payload`, et du joueur qui tient l'assembly
+/// éveillée.
+fn flux_de(payload: Vec<u8>) -> Vec<u8> {
     let mut stream = CommandStreamHeader::CURRENT_SCHEMA.to_le_bytes().to_vec();
     stream.extend_from_slice(&0u32.to_le_bytes()); // _pad
     stream.extend_from_slice(&opcode::CREATE_ASSEMBLY.to_le_bytes());
@@ -344,7 +349,10 @@ fn t312_une_description_invalide_est_refusee_a_la_compilation() {
         ..BodyDesc::undeclared(2)
     };
     let (etats, _, _, compilation) = etats_et_joints(&command_stream(negative));
-    assert_eq!(compilation, AXION_E_INVALID_BUFFER, "description invalide : refusée");
+    assert_eq!(
+        compilation, AXION_E_INVALID_BUFFER,
+        "description invalide : refusée"
+    );
     assert!(etats.is_empty(), "aucun corps à moitié formé");
 }
 
@@ -353,8 +361,23 @@ fn adr156_une_empreinte_que_le_registre_ne_tient_pas_ne_cree_rien() {
     // R-704 : une creation qui nomme une definition inconnue laisse l'assembly inerte.
     let (modele, _) = command_stream(BodyDesc::undeclared(2));
     let (etats, _, _, compilation) = etats_et_joints(&(modele, flux(DEFINITION ^ 1)));
-    assert_eq!(compilation, AXION_OK, "la definition se compile sous sa propre empreinte");
+    assert_eq!(
+        compilation, AXION_OK,
+        "la definition se compile sous sa propre empreinte"
+    );
     assert!(etats.is_empty(), "une autre empreinte ne crée rien");
+}
+
+#[test]
+fn adr156_des_octets_apres_l_en_tete_sans_restored_ne_creent_rien() {
+    // Sans `RESTORED`, l'en-tête est tout le payload : un état qu'il n'annonce pas laisse l'assembly
+    // inerte (R-704), plutôt que d'être lu ou ignoré.
+    let mut payload = creation(Handle::new(7, 1), 0, SPAWN, DEFINITION, 0, None);
+    payload.extend_from_slice(&[0; 8]);
+    let (modele, _) = command_stream(BodyDesc::undeclared(2));
+    let (etats, _, _, compilation) = etats_et_joints(&(modele, flux_de(payload)));
+    assert_eq!(compilation, AXION_OK);
+    assert!(etats.is_empty(), "un payload prolongé ne crée rien");
 }
 
 /// Un joint `Fixed` de la racine à la porte, ancré à l'origine de la porte.

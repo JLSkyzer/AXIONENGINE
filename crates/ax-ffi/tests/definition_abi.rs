@@ -16,7 +16,7 @@ use ax_model::dm::animation::{channel, interp, AnimationDesc, TrackDesc};
 use ax_model::dm::commands::AssemblyBodyEntry;
 use ax_model::dm::definition::{
     reference_category, summary_flags, Definition, DefinitionHeader, DefinitionRef,
-    DefinitionRefusal, DefinitionSummary,
+    DefinitionRefusal, DefinitionSummary, SummaryClip,
 };
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::handle::Handle;
@@ -278,6 +278,14 @@ fn adr156_une_definition_se_compile_s_inscrit_se_refuse_et_se_retire_par_l_abi()
     assert_eq!(resume.joint_count, 0);
     assert_eq!(resume.flags, summary_flags::SERVER_ANIMATED);
     assert!(resume.warnings.is_empty());
+    // Les clips de l'asset partent avec le résumé : Java les joue sans lire ANIM (tranche 4).
+    assert_eq!(
+        resume.clips,
+        [SummaryClip {
+            name: "tourner".to_owned(),
+            tracks: 1
+        }]
+    );
 
     // R-580 : un nom introuvable refuse la definition, la référence fautive désignée.
     let (code, reponse) = compile(ctx, 2, asset, &definition(vec![corps(0)], &["capot"]));

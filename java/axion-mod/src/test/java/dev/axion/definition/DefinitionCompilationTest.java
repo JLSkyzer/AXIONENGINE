@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.axion.asset.AnimClips;
 import dev.axion.asset.AssetSource;
 import dev.axion.asset.DefinitionCompiler;
 import java.nio.charset.StandardCharsets;
@@ -25,7 +26,7 @@ class DefinitionCompilationTest {
     private static final byte[] A3D = {1, 2, 3};
 
     private static final DefinitionCompiler.Summary RESUME =
-            new DefinitionCompiler.Summary(new int[] {0, 2}, 1, false, List.of());
+            new DefinitionCompiler.Summary(new int[] {0, 2}, 1, false, List.of(), AnimClips.NONE);
 
     /** Le natif simulé : une issue par empreinte, OK par défaut. */
     private static final class FakeCompiler implements DefinitionCompiler {
@@ -195,7 +196,7 @@ class DefinitionCompilationTest {
     void avertissementsEtEchecs() {
         FakeCompiler natif = new FakeCompiler();
         natif.results.put(DefinitionIds.hash(id(PORTE)), new DefinitionCompiler.Result(0,
-                new DefinitionCompiler.Summary(new int[] {0}, 0, false, List.of("racine animée (R-930)")), -1, ""));
+                new DefinitionCompiler.Summary(new int[] {0}, 0, false, List.of("racine animée (R-930)"), AnimClips.NONE), -1, ""));
         natif.results.put(DefinitionIds.hash(id(CAISSE)),
                 new DefinitionCompiler.Result(-2002, null, -1, "tampon trop petit"));
         DefinitionCompilation compilation = new DefinitionCompilation(natif, true, name -> 0);

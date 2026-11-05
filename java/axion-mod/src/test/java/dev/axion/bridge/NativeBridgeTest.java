@@ -225,6 +225,34 @@ class NativeBridgeTest {
      * le test natif {@code t210} l'a montré sur un runner macOS de la CI, où cent mille sondages
      * ont tenu moins de 50 ms.
      */
+    /**
+     * Une definition au document {@code json}, encodée en {@code DEFN} par Java et compilée par le natif
+     * contre l'asset {@code assetId}, comme la pompe du tick le fait (ADR-156 D3) ; rend son résumé.
+     */
+    private static dev.axion.asset.DefinitionCompiler.Summary inscrire(
+            dev.axion.asset.NativeDefinitionCompiler compilateur,
+            dev.axion.definition.Definition definition,
+            long assetId,
+            byte[] a3d) {
+        dev.axion.definition.DefinitionEncoder.Encoded defn = org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                () -> dev.axion.definition.DefinitionEncoder.encode(
+                        definition, true, dev.axion.definition.CollisionGroupRegistry.empty(), nom -> 0));
+        dev.axion.asset.DefinitionCompiler.Result compilee =
+                compilateur.compile(definition.hash(), assetId, a3d, defn.bytes());
+        assertTrue(compilee.compiled(), () -> definition.id() + " refusée : " + compilee.code() + " "
+                + compilee.message());
+        return compilee.summary();
+    }
+
+    /** Une definition d'essai, au genre {@code kind}, à l'asset {@code asset}, au document {@code json}. */
+    private static dev.axion.definition.Definition declarer(
+            String id, String asset, dev.axion.definition.AssemblyKind kind, String json) {
+        com.google.gson.JsonObject racine = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+        racine.addProperty("schema", 2);
+        return new dev.axion.definition.Definition(
+                id, id.replace(":", ":axion/definitions/") + ".json", 2, asset, kind, racine, "0");
+    }
+
     private static dev.axion.asset.AssetCompiler.CompileStatus attendre(
             dev.axion.asset.NativeAssetCompiler compilateur, int job) {
         long echeance = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
@@ -642,11 +670,10 @@ class NativeBridgeTest {
         assertNotNull(pasDecompose, "le pas décomposé est dans l'export");
         assertTrue(pasDecompose.stepNs() > 0, "temps mural du pas mesuré");
 
-        // T-310/T-311 : CREATE_ASSEMBLY de bout en bout (C-32, Option A, ADR-115).
-        // Un glTF à node collider est compilé, Java localise sa section PHYS et
-        // l'envoie dans une commande CREATE_ASSEMBLY ; le natif crée un corps
-        // dynamique qui, ticks suivants, tombe sous la gravité. C'est le chemin
-        // complet colliders compilés → corps qui bouge en jeu.
+        // T-310/T-311 : CREATE_ASSEMBLY de bout en bout (C-32, ADR-156 D4). Un glTF à node collider est
+        // compilé, sa definition compilée contre lui par le natif, et CREATE_ASSEMBLY la nomme par son
+        // empreinte ; le natif crée un corps dynamique qui, ticks suivants, tombe sous la gravité. C'est le
+        // chemin complet colliders compilés → corps qui bouge en jeu.
         byte[] gltf = GLTF_COLLIDER.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         int jobCollider = compilateur.submit(
                 0x4343L, dev.axion.asset.SourceFormats.GLTF, gltf, new byte[0],
@@ -668,26 +695,23 @@ class NativeBridgeTest {
                 NativeBridge.OK,
                 NativeBridge.release(reprise, BufferKinds.ASSET_OUT, lireGeneration(reprise, BufferKinds.ASSET_OUT)));
 
-        // Java détient l'A3D et en extrait la section PHYS (chemin de spawn réel).
-        byte[] phys = dev.axion.asset.A3dSections.section(a3d, "PHYS");
-        assertNotNull(phys, "section PHYS absente de l'A3D compilé");
+        // La definition du cube, compilée par le natif contre l'A3D que Java détient (ADR-156 D3).
+        dev.axion.asset.NativeDefinitionCompiler compilateurDefinitions =
+                new dev.axion.asset.NativeDefinitionCompiler(reprise);
+        dev.axion.definition.Definition cube = declarer(
+                "axion:cube", "axion:axion/models/cube.gltf", dev.axion.definition.AssemblyKind.RIGID_OBJECT, "{}");
+        dev.axion.asset.DefinitionCompiler.Summary resumeCube = inscrire(compilateurDefinitions, cube, 0x4343L, a3d);
+        assertArrayEquals(new int[] {0}, resumeCube.roots(), "un seul corps, à la racine de l'asset");
 
         // Spawn d'un corps dynamique haut dans la dimension 0.
         dev.axion.physics.SimCommandStream spawn = new dev.axion.physics.SimCommandStream()
-                .createAssembly(
-                        1,
-                        1,
-                        0L,
-                        new double[] {0.0, 100.0, 0.0},
-                        new float[] {0.0f, 0.0f, 0.0f, 1.0f},
-                        dev.axion.physics.BodyDescription.undeclared(
-                                dev.axion.physics.SimCommandStream.BODY_DYNAMIC),
-                        phys)
+                .createAssembly(1, 1, 0L, new double[] {0.0, 100.0, 0.0}, new float[] {0.0f, 0.0f, 0.0f, 1.0f},
+                        cube.hash())
                 // ADR-123 : comme en jeu, un joueur près du corps le garde éveillé (R-612).
                 .setObservers(0L, JOUEUR_PRES_DU_CORPS);
         dev.axion.physics.CollectResult cree = simulation.tick(3L, spawn, 0L);
         assertTrue(cree.ok(), () -> "collect après CREATE_ASSEMBLY refusé, code " + cree.code());
-        assertEquals(1, cree.stateCount(), "un corps créé depuis la section PHYS");
+        assertEquals(1, cree.stateCount(), "un corps créé depuis la definition compilée");
         dev.axion.physics.BodyState corps = cree.bodies().get(0);
         assertEquals(1, corps.handleIndex(), "le corps est routé sur son handle");
         assertEquals(1, corps.handleGeneration());
@@ -837,56 +861,38 @@ class NativeBridgeTest {
         assertTrue(pire > 0, "le compteur de traversées avance");
         assertTrue(pire < 32, () -> "INV-04 : " + pire + " traversées FFI sur un tick établi, 32 au plus");
 
-        // ADR-151 D7 : une charnière par le chemin du jeu — glTF compilé, definition lue par
-        // AssemblyBodies, CREATE_ASSEMBLY avec ses joints —, puis son état dans SIM_OUT et les deux
-        // commandes du grippage et de la rupture, par la vraie JNI. Dans une autre dimension, loin
+        // ADR-151 D7, ADR-156 : une charnière par le chemin du jeu — glTF compilé, definition écrite en DEFN
+        // par Java et compilée par le natif, CREATE_ASSEMBLY par son empreinte —, puis son état dans SIM_OUT
+        // et les deux commandes du grippage et de la rupture, par la vraie JNI. Dans une autre dimension, loin
         // du premier corps.
         byte[] a3dCharniere = compiler(
                 reprise, 0x4345L, dev.axion.asset.SourceFormats.GLTF,
                 GLTF_DEUX_CORPS.getBytes(StandardCharsets.UTF_8));
         byte[] nodesCharniere = dev.axion.asset.A3dSections.section(a3dCharniere, "NODE");
-        byte[] physCharniere = dev.axion.asset.A3dSections.section(a3dCharniere, "PHYS");
         assertNotNull(nodesCharniere, "section NODE absente de l'A3D compilé");
-        assertNotNull(physCharniere, "section PHYS absente de l'A3D compilé");
-        com.google.gson.JsonObject definitionCharniere = com.google.gson.JsonParser.parseString(
-                        "{\"bodies\":[{\"name\":\"cadre\",\"root_node\":\"cadre\"}],"
-                                + "\"joints\":[{\"type\":\"revolute\",\"a\":\"cadre\",\"b_node\":\"porte\","
-                                + "\"axis\":[0,1,0],\"limits\":[-1.0,1.0],"
-                                + "\"jam\":{\"curve\":[[1.0,0.0]],\"friction\":5.0}}]}")
-                .getAsJsonObject();
-        dev.axion.physics.AssemblyBodies.Layout charniere = dev.axion.physics.AssemblyBodies.of(
-                definitionCharniere,
-                nodesCharniere,
-                dev.axion.physics.BodyDescription.undeclared(dev.axion.physics.SimCommandStream.BODY_DYNAMIC),
-                true);
-        assertNotNull(charniere, "la definition se résout sur les nodes de l'asset");
-        assertEquals(2, charniere.bodies().size(), "le cadre déclaré, la porte implicite");
-        assertEquals(1, charniere.joints().size());
-
-        // ADR-156 D2 : la même charnière, écrite en DEFN par Java et compilée par le natif contre le même
-        // asset, forme les mêmes corps et le même joint que la résolution de Java.
-        com.google.gson.JsonObject racineCharniere = definitionCharniere.deepCopy();
-        racineCharniere.addProperty("schema", 2);
-        dev.axion.definition.Definition charniereDeclaree = new dev.axion.definition.Definition(
-                "axion:charniere", "axion:axion/definitions/charniere.json", 2, "axion:axion/models/charniere.gltf",
-                dev.axion.definition.AssemblyKind.ARTICULATED, racineCharniere, "0");
-        dev.axion.asset.NativeDefinitionCompiler compilateurDefinitions =
-                new dev.axion.asset.NativeDefinitionCompiler(reprise);
-        dev.axion.definition.DefinitionEncoder.Encoded defnCharniere = org.junit.jupiter.api.Assertions.assertDoesNotThrow(
-                () -> dev.axion.definition.DefinitionEncoder.encode(
-                        charniereDeclaree, true, dev.axion.definition.CollisionGroupRegistry.empty(), nom -> 0));
-        dev.axion.asset.DefinitionCompiler.Result compilee = compilateurDefinitions.compile(
-                charniereDeclaree.hash(), 0x4345L, a3dCharniere, defnCharniere.bytes());
-        assertTrue(compilee.compiled(), () -> "compilation refusée : " + compilee.code() + " " + compilee.message());
-        org.junit.jupiter.api.Assertions.assertArrayEquals(
-                charniere.bodies().stream().mapToInt(dev.axion.physics.SimCommandStream.AssemblyBody::rootNode)
-                        .toArray(),
-                compilee.summary().roots(),
-                "les corps du natif sont ceux de Java, dans le même ordre");
-        assertEquals(charniere.joints().size(), compilee.summary().joints());
+        String documentCharniere = "{\"bodies\":[{\"name\":\"cadre\",\"root_node\":\"cadre\"}],"
+                + "\"joints\":[{\"type\":\"revolute\",\"a\":\"cadre\",\"b_node\":\"porte\","
+                + "\"axis\":[0,1,0],\"limits\":[-1.0,1.0],"
+                + "\"jam\":{\"curve\":[[1.0,0.0]],\"friction\":5.0}}]}";
+        dev.axion.definition.Definition charniereDeclaree = declarer("axion:charniere",
+                "axion:axion/models/charniere.gltf", dev.axion.definition.AssemblyKind.ARTICULATED, documentCharniere);
+        dev.axion.asset.DefinitionCompiler.Summary charniere =
+                inscrire(compilateurDefinitions, charniereDeclaree, 0x4345L, a3dCharniere);
+        // ADR-151 D2, D9 : le cadre déclaré, puis la porte implicite de son b_node, résolus comme le client
+        // résout le node racine contre ses propres nodes.
+        assertArrayEquals(
+                new int[] {
+                    dev.axion.physics.AssemblyBodies.rootNodeOf(charniereDeclaree.root(), nodesCharniere),
+                    dev.axion.physics.AssemblyBodies.rootNodeOf(com.google.gson.JsonParser.parseString(
+                                    "{\"bodies\":[{\"name\":\"p\",\"root_node\":\"porte\"}]}").getAsJsonObject(),
+                            nodesCharniere)
+                },
+                charniere.roots(),
+                "le cadre puis la porte");
+        assertEquals(1, charniere.joints());
 
         // R-580 : un b_node que l'asset n'a pas refuse la definition, à sa référence.
-        com.google.gson.JsonObject racineFautive = racineCharniere.deepCopy();
+        com.google.gson.JsonObject racineFautive = charniereDeclaree.root();
         racineFautive.getAsJsonArray("joints").get(0).getAsJsonObject().addProperty("b_node", "capot");
         dev.axion.definition.Definition fautive = new dev.axion.definition.Definition(
                 "axion:fautive", "axion:axion/definitions/fautive.json", 2, "axion:axion/models/charniere.gltf",
@@ -899,25 +905,22 @@ class NativeBridgeTest {
         assertEquals(dev.axion.asset.DefinitionCompiler.E_DEFINITION_INVALID, refusDefinition.code(),
                 refusDefinition.message());
         assertEquals("$.joints[0].b_node « capot »", defnFautive.locate(refusDefinition.reference()));
-        assertTrue(compilateurDefinitions.remove(charniereDeclaree.hash()), "le registre de la session la tenait");
         assertFalse(compilateurDefinitions.remove(fautive.hash()), "une definition refusée n'y est pas");
+        // R-704 : une création qui nomme une empreinte que le registre ne tient pas laisse l'assembly inerte.
+        dev.axion.physics.CollectResult inconnue = simulation.tick(
+                199L,
+                new dev.axion.physics.SimCommandStream().createAssembly(
+                        9, 1, 5L, new double[] {0.0, 100.0, 0.0}, new float[] {0.0f, 0.0f, 0.0f, 1.0f}, fautive.hash()),
+                0L);
+        assertTrue(inconnue.ok(), () -> "collect après une empreinte inconnue refusé, code " + inconnue.code());
+        assertTrue(inconnue.bodies().stream().noneMatch(etatCorps -> etatCorps.handleIndex() == 9),
+                "aucun corps pour une definition refusée");
         double[][] joueurPresDeLaCharniere = {{0.0, 100.0, 0.0}};
         dev.axion.physics.CollectResult relie = simulation.tick(
                 200L,
                 new dev.axion.physics.SimCommandStream()
-                        .createAssembly(
-                                2,
-                                1,
-                                5L,
-                                new double[] {0.0, 100.0, 0.0},
-                                new float[] {0.0f, 0.0f, 0.0f, 1.0f},
-                                charniere.bodies(),
-                                charniere.joints(),
-                                charniere.jamPoints(),
-                                charniere.assemblyMass(),
-                                charniere.selfCollision(),
-                                nodesCharniere,
-                                physCharniere)
+                        .createAssembly(2, 1, 5L, new double[] {0.0, 100.0, 0.0},
+                                new float[] {0.0f, 0.0f, 0.0f, 1.0f}, charniereDeclaree.hash())
                         .setObservers(5L, joueurPresDeLaCharniere),
                 0L);
         assertTrue(relie.ok(), () -> "collect après la charnière refusé, code " + relie.code());
@@ -998,24 +1001,19 @@ class NativeBridgeTest {
         byte[] a3dBras = compiler(
                 reprise, 0x4346L, dev.axion.asset.SourceFormats.GLTF, GLTF_BRAS.getBytes(StandardCharsets.UTF_8));
         byte[] nodesBras = dev.axion.asset.A3dSections.section(a3dBras, "NODE");
-        byte[] physBras = dev.axion.asset.A3dSections.section(a3dBras, "PHYS");
-        dev.axion.physics.AssemblyBodies.Layout bras = dev.axion.physics.AssemblyBodies.of(
-                com.google.gson.JsonParser.parseString(
-                                "{\"bodies\":[{\"name\":\"socle\",\"root_node\":\"socle\"},"
-                                        + "{\"name\":\"bras\",\"root_node\":\"bras\"}]}")
-                        .getAsJsonObject(),
-                nodesBras,
-                dev.axion.physics.BodyDescription.undeclared(dev.axion.physics.SimCommandStream.BODY_DYNAMIC),
-                true);
-        assertNotNull(bras, "les deux corps se résolvent sur les nodes de l'asset");
-        int noeudBras = bras.bodies().get(1).rootNode();
+        dev.axion.definition.Definition brasDeclare = declarer("axion:bras", "axion:axion/models/bras.gltf",
+                dev.axion.definition.AssemblyKind.ARTICULATED,
+                "{\"bodies\":[{\"name\":\"socle\",\"root_node\":\"socle\"},"
+                        + "{\"name\":\"bras\",\"root_node\":\"bras\"}]}");
+        dev.axion.asset.DefinitionCompiler.Summary bras = inscrire(compilateurDefinitions, brasDeclare, 0x4346L, a3dBras);
+        assertEquals(2, bras.roots().length, "les deux corps se résolvent sur les nodes de l'asset");
+        int noeudBras = bras.roots()[1];
         dev.axion.physics.CollectResult pose = simulation.tick(
                 300L,
                 new dev.axion.physics.SimCommandStream()
                         .setDimensionEnv(6L, new float[3], new float[3], 0f, 0f, false)
                         .createAssembly(3, 1, 6L, new double[] {0.0, 100.0, 0.0},
-                                new float[] {0.0f, 0.0f, 0.0f, 1.0f}, bras.bodies(), bras.joints(),
-                                bras.jamPoints(), bras.assemblyMass(), false, nodesBras, physBras)
+                                new float[] {0.0f, 0.0f, 0.0f, 1.0f}, brasDeclare.hash())
                         .setObservers(6L, new double[][] {{0.0, 100.0, 0.0}}),
                 0L);
         dev.axion.physics.BodyState etatBras = pose.bodies().stream()
@@ -1034,6 +1032,10 @@ class NativeBridgeTest {
         double alignement = Math.abs(q[0] * repere[3] + q[1] * repere[4] + q[2] * repere[5] + q[3] * repere[6]);
         assertEquals(1.0, alignement, 1e-5, () -> "rotation du bras " + java.util.Arrays.toString(q)
                 + ", repère " + java.util.Arrays.toString(repere));
+
+        // Le registre de la session rend ce qu'il tient, une fois chacune (ADR-156 D3).
+        assertTrue(compilateurDefinitions.remove(charniereDeclaree.hash()), "le registre de la session la tenait");
+        assertFalse(compilateurDefinitions.remove(charniereDeclaree.hash()), "déjà retirée");
 
         // Annuler après un cycle clos est inoffensif.
         assertEquals(NativeBridge.OK, simulation.cancel());

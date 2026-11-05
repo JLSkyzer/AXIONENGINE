@@ -1,13 +1,10 @@
 package dev.axion.physics;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,22 +18,8 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** R-980 : les groupes réservés, et les groupes d'une definition écrits sur ses colliders. */
+/** R-980 : les groupes réservés, et leur ordre, celui du natif. */
 class CollisionFilterTest {
-
-    /** Une section PHYS de {@code colliders} colliders, {@code points} points et {@code children} enfants. */
-    private static byte[] phys(int colliders, int points, int children) {
-        ByteBuffer out = ByteBuffer.allocate(4 + colliders * 104 + 4 + points * 12 + 4 + children * 104)
-                .order(ByteOrder.LITTLE_ENDIAN);
-        out.putInt(0, colliders);
-        out.putInt(4 + colliders * 104, points);
-        out.putInt(4 + colliders * 104 + 4 + points * 12, children);
-        return out.array();
-    }
-
-    private static int intAt(byte[] bytes, int at) {
-        return ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getInt(at);
-    }
 
     @Test
     @DisplayName("R-980 : un groupe réservé a le bit de son rang ; un autre nom n'en a pas ici")
@@ -46,29 +29,6 @@ class CollisionFilterTest {
         assertEquals(1 << 7, CollisionFilter.bit("debug"));
         // Les groupes tiers se résolvent par leur registre (CollisionGroupRegistryTest).
         assertThrows(IllegalArgumentException.class, () -> CollisionFilter.bit("mymod:lourd"));
-    }
-
-    @Test
-    @DisplayName("R-980 : chaque collider de PHYS, enfants compris, porte groupe et masque")
-    void ecritureDansPhys() {
-        byte[] phys = phys(2, 3, 1);
-        byte[] filtered = CollisionFilter.apply(phys, 1 << 3, 1);
-        int childrenAt = 4 + 2 * 104 + 4 + 3 * 12 + 4;
-        for (int at : new int[] {4, 4 + 104, childrenAt}) {
-            assertEquals(1 << 3, intAt(filtered, at + 72), "groupe à l'octet 72");
-            assertEquals(1, intAt(filtered, at + 76), "masque à l'octet 76");
-        }
-        // L'entrée n'est pas modifiée ; le reste de la section non plus.
-        assertEquals(0, intAt(phys, 4 + 72));
-        assertEquals(3, intAt(filtered, 4 + 2 * 104));
-    }
-
-    @Test
-    @DisplayName("R-980 : une section incohérente est rendue inchangée, le natif la juge")
-    void sectionIncoherente() {
-        byte[] phys = phys(1, 0, 0);
-        ByteBuffer.wrap(phys).order(ByteOrder.LITTLE_ENDIAN).putInt(0, 9);
-        assertArrayEquals(phys, CollisionFilter.apply(phys, 2, -1));
     }
 
     @Test

@@ -205,7 +205,11 @@ fn un_corps_sans_joueur_a_portee_s_endort_et_se_reveille_a_son_retour() {
     let mut ctx = 0u64;
     let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) };
     assert_eq!(code, AXION_OK, "init");
-    assert_eq!(modele().inscrire(ctx, DEFINITION), AXION_OK, "la definition se compile");
+    assert_eq!(
+        modele().inscrire(ctx, DEFINITION),
+        AXION_OK,
+        "la definition se compile"
+    );
 
     // Un joueur près du corps qui naît : il reste éveillé.
     let flags = tick(

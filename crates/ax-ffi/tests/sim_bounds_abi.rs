@@ -101,7 +101,11 @@ fn sim_out_porte_l_emprise_apres_les_etats() {
     let code = unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) };
     assert_eq!(code, AXION_OK, "init");
     let boite = Modele::seul(vec![boite_posee()], BodyDesc::undeclared(2));
-    assert_eq!(boite.inscrire(ctx, DEFINITION), AXION_OK, "la definition se compile");
+    assert_eq!(
+        boite.inscrire(ctx, DEFINITION),
+        AXION_OK,
+        "la definition se compile"
+    );
 
     // CREATE_ASSEMBLY, comme NativeSimulation l'écrit : charge après l'en-tête
     // pré-rempli par le natif, puis submit, puis release.

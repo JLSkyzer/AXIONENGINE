@@ -49,13 +49,18 @@ public interface DefinitionCompiler {
      * @param serverAnimated le serveur joue l'animation de l'asset : un collider dépend d'un node
      *     animé (R-1430)
      * @param warnings avertissements de la compilation (R-930)
+     * @param clips les clips de l'asset, leur nom et leur nombre de pistes : ce que l'animation Java
+     *     joue et compte (R-200), sans lire la section {@code ANIM} (décision de Killian, tranche 4)
      */
-    record Summary(int[] roots, int joints, boolean serverAnimated, List<String> warnings) {
+    record Summary(int[] roots, int joints, boolean serverAnimated, List<String> warnings, AnimClips clips) {
 
         /** Copie les tableaux : un résumé ne change plus. */
         public Summary {
             roots = roots.clone();
             warnings = List.copyOf(warnings);
+            if (clips == null) {
+                throw new IllegalArgumentException("les clips sont requis, AnimClips.NONE sans");
+            }
         }
 
         /** {@return une copie des nodes racines} */
@@ -72,7 +77,8 @@ public interface DefinitionCompiler {
         /**
          * {@return le résumé que le natif a déposé, ou {@code null} s'il ne se lit pas} Disposition :
          * nombre de corps, de joints, drapeaux, réservé ({@code u32}), le node racine de chaque corps
-         * ({@code u32}), puis les avertissements en lignes.
+         * ({@code u32}), les avertissements en lignes, puis les clips : leur nombre ({@code u32}), et par
+         * clip son nombre de pistes ({@code u32}) et son nom, en une liste d'une ligne.
          *
          * @param payload la charge d'{@code ASSET_OUT}
          */
@@ -91,9 +97,26 @@ public interface DefinitionCompiler {
                     roots[i] = in.getInt();
                 }
                 List<String> warnings = lines(in);
-                return warnings == null || in.hasRemaining()
+                if (warnings == null) {
+                    return null;
+                }
+                int clipCount = in.getInt();
+                if (clipCount < 0 || clipCount > in.remaining() / (3 * Integer.BYTES)) {
+                    return null;
+                }
+                List<String> names = new ArrayList<>(clipCount);
+                int[] tracks = new int[clipCount];
+                for (int clip = 0; clip < clipCount; clip++) {
+                    tracks[clip] = in.getInt();
+                    List<String> name = lines(in);
+                    if (tracks[clip] < 0 || name == null || name.size() != 1) {
+                        return null;
+                    }
+                    names.add(name.get(0));
+                }
+                return in.hasRemaining()
                         ? null
-                        : new Summary(roots, joints, (flags & 1) != 0, warnings);
+                        : new Summary(roots, joints, (flags & 1) != 0, warnings, new AnimClips(names, tracks));
             } catch (java.nio.BufferUnderflowException truncated) {
                 return null;
             }

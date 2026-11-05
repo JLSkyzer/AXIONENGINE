@@ -171,7 +171,11 @@ fn session() -> (u64, u64) {
         "init"
     );
     tick(ctx, 1, &[]);
-    assert_eq!(boite().inscrire(ctx, DEFINITION), AXION_OK, "la definition se compile");
+    assert_eq!(
+        boite().inscrire(ctx, DEFINITION),
+        AXION_OK,
+        "la definition se compile"
+    );
     let avant = metrique(ctx, "axion.budget.native_mem_bytes.consumed");
     let creations: Vec<(u32, Vec<u8>)> = (1..=BODIES)
         .map(|index| (opcode::CREATE_ASSEMBLY, assembly(index)))

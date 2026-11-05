@@ -15,18 +15,20 @@ import java.util.List;
  * le test {@code SimCommandStreamTest} l'épingle ici.
  *
  * <p>{@code SET_DIMENSION_ENV} règle l'environnement d'une dimension (aucun corps
- * requis) ; {@code CREATE_ASSEMBLY} crée un corps depuis les colliders d'un asset
- * (C-32, Option A d'ADR-115 : les octets de la section {@code PHYS} suivent
- * l'en-tête dans le même payload). Les commandes qui ciblent un handle existant
+ * requis) ; {@code CREATE_ASSEMBLY} fait naître une assembly de sa definition
+ * compilée, que le natif tient sous son empreinte (ADR-156 D4) : corps, joints,
+ * colliders et animation viennent de là, la commande ne porte que ce qui est propre
+ * à cette apparition. Les commandes qui ciblent un handle existant
  * (retrait, cinématique, impulsion) arriveront avec leur consommateur.
  */
 public final class SimCommandStream {
 
     /**
-     * Version courante du protocole ({@code CommandStreamHeader::CURRENT_SCHEMA}) : 3 depuis les
-     * assemblies à plusieurs corps (ADR-151 D7), après l'index de matériau des tuiles (2, ADR-149).
+     * Version courante du protocole ({@code CommandStreamHeader::CURRENT_SCHEMA}) : 4 depuis
+     * {@code CREATE_ASSEMBLY} par empreinte de definition compilée (ADR-156 D4), après les
+     * assemblies à plusieurs corps (3, ADR-151 D7) et l'index de matériau des tuiles (2, ADR-149).
      */
-    public static final int CURRENT_SCHEMA = 3;
+    public static final int CURRENT_SCHEMA = 4;
 
     /** Taille du {@code CommandStreamHeader}, en octets. */
     public static final int STREAM_HEADER_BYTES = 8;
@@ -53,36 +55,16 @@ public final class SimCommandStream {
     public static final int REMOVE_ASSEMBLY_BYTES = 8;
 
     /**
-     * Taille de l'en-tête {@code CreateAssembly}, en octets (hors corps et sections qui le
-     * suivent). Figé côté natif : {@code CreateAssembly::BYTES}.
+     * Taille de l'en-tête {@code CreateAssembly}, en octets (hors état restauré). Figé côté natif :
+     * {@code CreateAssembly::BYTES}.
      */
     public static final int CREATE_ASSEMBLY_HEADER_BYTES = 72;
 
-    /**
-     * Taille d'un corps de {@code CREATE_ASSEMBLY} : sa description ({@link BodyDescription},
-     * 56 o), son node racine, 4 octets réservés. Figé côté natif :
-     * {@code AssemblyBodyEntry::WIRE_BYTES}.
-     */
-    public static final int ASSEMBLY_BODY_BYTES = BodyDescription.WIRE_BYTES + 8;
-
-    /** Plafond de corps par assembly (R-190) : {@code MAX_ASSEMBLY_BODIES}. */
-    public static final int MAX_ASSEMBLY_BODIES = 64;
-
-    /** Drapeau {@code SELF_COLLISION} de {@code CreateAssembly} : ses corps se touchent (§10.4). */
-    public static final int CREATE_ASSEMBLY_SELF_COLLISION = 1;
-
-    /** Drapeau {@code RESTORED} de {@code CreateAssembly} : une section d'état restauré suit {@code NODE}. */
+    /** Drapeau {@code RESTORED} de {@code CreateAssembly} : l'état restauré suit l'en-tête. */
     public static final int CREATE_ASSEMBLY_RESTORED = 2;
 
     /** Drapeau {@code ASLEEP} de {@code CreateAssembly} : l'assembly naît endormie (22.4, ADR-153 D4). */
     public static final int CREATE_ASSEMBLY_ASLEEP = 4;
-
-    /**
-     * Drapeau {@code ANIMATED} de {@code CreateAssembly} : la section {@code ANIM} de l'asset suit l'état
-     * restauré, préfixée de sa taille et d'un mot réservé (ADR-155). Le natif ne l'anime que si un collider
-     * dépend d'un node animé (R-1430).
-     */
-    public static final int CREATE_ASSEMBLY_ANIMATED = 8;
 
     /** Taille de l'état restauré d'un corps ({@code RestoredBody}), en octets. */
     public static final int RESTORED_BODY_BYTES = 64;
@@ -95,7 +77,8 @@ public final class SimCommandStream {
 
     /**
      * L'état qu'une sauvegarde a gardé d'une assembly (ADR-153 D3), rendu à sa création par le natif,
-     * sans événement : un corps par corps de la commande, dans le même ordre, puis un joint par joint.
+     * sans événement : un corps par corps de sa definition compilée, dans le même ordre, puis un joint
+     * par joint. Le natif abandonne l'assembly si les nombres ne sont pas ceux de la definition.
      *
      * @param bodies pose et vitesses de chaque corps
      * @param joints état de chaque joint, dans l'ordre de la definition
@@ -298,152 +281,39 @@ public final class SimCommandStream {
     }
 
     /**
-     * Un corps de {@code CREATE_ASSEMBLY} (ADR-151 D2, D7) : sa description DM-08 et son node
-     * racine dans l'asset.
-     *
-     * @param description description du corps, son type compris
-     * @param rootNode index de son node racine dans la section {@code NODE}
-     */
-    public record AssemblyBody(BodyDescription description, int rootNode) {}
-
-    /**
-     * Ajoute une commande {@code CREATE_ASSEMBLY} d'un seul corps, sans section {@code NODE} :
-     * ses colliders sont pris tels quels, dans le repère de l'assembly (ADR-151 D7).
-     *
-     * @param handleIndex rang du handle d'assembly (routage du corps)
-     * @param handleGeneration génération du handle ({@code 0} est invalide)
-     * @param dimension dimension d'accueil (R-610)
-     * @param position position monde de spawn {@code [x, y, z]}, en blocs
-     * @param rotation quaternion de spawn {@code [x, y, z, w]}
-     * @param body description du corps, son type compris
-     * @param phys octets de la section {@code PHYS} (colliders compilés)
-     * @return {@code this}, pour chaîner
-     */
-    public SimCommandStream createAssembly(
-            int handleIndex,
-            int handleGeneration,
-            long dimension,
-            double[] position,
-            float[] rotation,
-            BodyDescription body,
-            byte[] phys) {
-        if (body == null) {
-            throw new IllegalArgumentException("la description du corps est requise");
-        }
-        return createAssembly(
-                handleIndex,
-                handleGeneration,
-                dimension,
-                position,
-                rotation,
-                List.of(new AssemblyBody(body, 0)),
-                0.0f,
-                false,
-                new byte[0],
-                phys);
-    }
-
-    /**
-     * Ajoute une commande {@code CREATE_ASSEMBLY} (§4.5, ADR-114 ; Option A d'ADR-115 ;
-     * ADR-151 D7).
-     *
-     * <p>Le payload est l'en-tête {@code CreateAssembly} (72 o), les corps (64 o chacun, le
-     * corps racine d'abord), les octets de la section {@code NODE} de l'asset complétés à 8,
-     * puis ceux de sa section {@code PHYS} — que l'appelant extrait de l'A3D
-     * ({@link dev.axion.asset.A3dSections}). Le natif range chaque collider dans le corps de son
-     * node, posé dans le repère de ce corps, crée tous les corps ou aucun, et applique à chacun
-     * sa description : masse, centre et inertie déclarés priment sur ceux des densités (R-622).
-     * Le type de l'en-tête est celui du corps racine ; les autres corps sont dynamiques.
+     * Ajoute une commande {@code CREATE_ASSEMBLY} sans état restauré (ADR-156 D4).
      *
      * @param handleIndex rang du handle d'assembly (routage des corps)
      * @param handleGeneration génération du handle ({@code 0} est invalide)
      * @param dimension dimension d'accueil (R-610)
      * @param position position monde de spawn {@code [x, y, z]}, en blocs
      * @param rotation quaternion de spawn {@code [x, y, z, w]}
-     * @param bodies les corps, de 1 à {@link #MAX_ASSEMBLY_BODIES}, le corps racine d'abord
-     * @param assemblyMass masse de l'assembly en kg, répartie entre ses corps sans masse
-     *     déclarée ; {@code 0} : aucune
-     * @param selfCollision vrai si ses corps se touchent entre eux (§10.4)
-     * @param nodes octets de la section {@code NODE} ; vide pour un seul corps aux colliders pris
-     *     tels quels
-     * @param phys octets de la section {@code PHYS} (colliders compilés)
+     * @param definition empreinte de la definition compilée, celle que porte le NBT
      * @return {@code this}, pour chaîner
      */
     public SimCommandStream createAssembly(
-            int handleIndex,
-            int handleGeneration,
-            long dimension,
-            double[] position,
-            float[] rotation,
-            List<AssemblyBody> bodies,
-            float assemblyMass,
-            boolean selfCollision,
-            byte[] nodes,
-            byte[] phys) {
-        return createAssembly(handleIndex, handleGeneration, dimension, position, rotation, bodies, List.of(),
-                List.of(), assemblyMass, selfCollision, nodes, phys);
+            int handleIndex, int handleGeneration, long dimension, double[] position, float[] rotation,
+            long definition) {
+        return createAssembly(handleIndex, handleGeneration, dimension, position, rotation, definition, null, false);
     }
 
     /**
-     * Ajoute une commande {@code CREATE_ASSEMBLY} avec ses joints (C-34, ADR-151 D7).
+     * Ajoute une commande {@code CREATE_ASSEMBLY} (§4.5, ADR-114 ; ADR-156 D4).
      *
-     * <p>Les joints suivent les corps, {@link JointDescription#BYTES} octets chacun, puis les points
-     * de leurs courbes de grippage, {@link JointDescription#JAM_POINT_BYTES} octets chacun, avant la
-     * section {@code NODE}. Le natif crée corps et joints d'un coup, ou rien.
+     * <p>Le payload est l'en-tête {@code CreateAssembly} (72 o) — handle, dimension, pose de spawn,
+     * empreinte de la definition, drapeaux —, suivi de l'état restauré s'il y en a un. L'assembly prend
+     * ses corps, ses joints, ses colliders et son animation serveur de la definition compilée que le
+     * natif tient sous {@code definition} ; il l'abandonne, inerte, si l'empreinte lui est inconnue ou
+     * si l'état restauré ne correspond pas à ses corps et à ses joints (R-704).
      *
      * @param handleIndex rang du handle d'assembly (routage des corps)
      * @param handleGeneration génération du handle ({@code 0} est invalide)
      * @param dimension dimension d'accueil (R-610)
      * @param position position monde de spawn {@code [x, y, z]}, en blocs
      * @param rotation quaternion de spawn {@code [x, y, z, w]}
-     * @param bodies les corps, de 1 à {@link #MAX_ASSEMBLY_BODIES}, le corps racine d'abord
-     * @param joints les joints, dans l'ordre de la definition ({@link AssemblyJoints#of})
-     * @param jamPoints les points des courbes de grippage, {@code [x, y]}, dans l'ordre des joints
-     * @param assemblyMass masse de l'assembly en kg, répartie entre ses corps sans masse
-     *     déclarée ; {@code 0} : aucune
-     * @param selfCollision vrai si ses corps se touchent entre eux (§10.4)
-     * @param nodes octets de la section {@code NODE} ; vide pour un seul corps aux colliders pris
-     *     tels quels
-     * @param phys octets de la section {@code PHYS} (colliders compilés)
-     * @return {@code this}, pour chaîner
-     */
-    public SimCommandStream createAssembly(
-            int handleIndex,
-            int handleGeneration,
-            long dimension,
-            double[] position,
-            float[] rotation,
-            List<AssemblyBody> bodies,
-            List<JointDescription> joints,
-            List<float[]> jamPoints,
-            float assemblyMass,
-            boolean selfCollision,
-            byte[] nodes,
-            byte[] phys) {
-        return createAssembly(handleIndex, handleGeneration, dimension, position, rotation, bodies, joints,
-                jamPoints, assemblyMass, selfCollision, nodes, null, false, phys);
-    }
-
-    /**
-     * Ajoute une commande {@code CREATE_ASSEMBLY} qui rend à l'assembly l'état que sa sauvegarde a
-     * gardé (ADR-153 D3), et la fait naître endormie (22.4, D4). La section d'état restauré suit la
-     * section {@code NODE}, avant {@code PHYS}.
-     *
-     * @param handleIndex rang du handle d'assembly (routage des corps)
-     * @param handleGeneration génération du handle ({@code 0} est invalide)
-     * @param dimension dimension d'accueil (R-610)
-     * @param position position monde de spawn {@code [x, y, z]}, en blocs
-     * @param rotation quaternion de spawn {@code [x, y, z, w]}
-     * @param bodies les corps, de 1 à {@link #MAX_ASSEMBLY_BODIES}, le corps racine d'abord
-     * @param joints les joints, dans l'ordre de la definition ({@link AssemblyJoints#of})
-     * @param jamPoints les points des courbes de grippage, {@code [x, y]}, dans l'ordre des joints
-     * @param assemblyMass masse de l'assembly en kg, répartie entre ses corps sans masse
-     *     déclarée ; {@code 0} : aucune
-     * @param selfCollision vrai si ses corps se touchent entre eux (§10.4)
-     * @param nodes octets de la section {@code NODE}
-     * @param restored l'état restauré, un par corps et par joint ; {@code null} : aucun
+     * @param definition empreinte de la definition compilée, celle que porte le NBT
+     * @param restored l'état restauré, un par corps et par joint de la definition ; {@code null} : aucun
      * @param asleep vrai si l'assembly naît endormie, ses vitesses gelées
-     * @param phys octets de la section {@code PHYS} (colliders compilés)
      * @return {@code this}, pour chaîner
      */
     public SimCommandStream createAssembly(
@@ -452,107 +322,27 @@ public final class SimCommandStream {
             long dimension,
             double[] position,
             float[] rotation,
-            List<AssemblyBody> bodies,
-            List<JointDescription> joints,
-            List<float[]> jamPoints,
-            float assemblyMass,
-            boolean selfCollision,
-            byte[] nodes,
+            long definition,
             Restored restored,
-            boolean asleep,
-            byte[] phys) {
-        return createAssembly(handleIndex, handleGeneration, dimension, position, rotation, bodies, joints, jamPoints,
-                assemblyMass, selfCollision, nodes, restored, asleep, null, phys);
-    }
-
-    /**
-     * Ajoute une commande {@code CREATE_ASSEMBLY} avec la section {@code ANIM} de l'asset (ADR-155), après
-     * l'état restauré : le serveur anime les colliders qui dépendent d'un node animé (R-1430).
-     *
-     * @param handleIndex rang du handle d'assembly (routage des corps)
-     * @param handleGeneration génération du handle ({@code 0} est invalide)
-     * @param dimension dimension d'accueil (R-610)
-     * @param position position monde de spawn {@code [x, y, z]}, en blocs
-     * @param rotation quaternion de spawn {@code [x, y, z, w]}
-     * @param bodies les corps, de 1 à {@link #MAX_ASSEMBLY_BODIES}, le corps racine d'abord
-     * @param joints les joints, dans l'ordre de la definition ({@link AssemblyJoints#of})
-     * @param jamPoints les points des courbes de grippage, {@code [x, y]}, dans l'ordre des joints
-     * @param assemblyMass masse de l'assembly en kg ; {@code 0} : aucune
-     * @param selfCollision vrai si ses corps se touchent entre eux (§10.4)
-     * @param nodes octets de la section {@code NODE}
-     * @param restored l'état restauré, un par corps et par joint ; {@code null} : aucun
-     * @param asleep vrai si l'assembly naît endormie, ses vitesses gelées
-     * @param anim octets de la section {@code ANIM} ; {@code null} : aucune
-     * @param phys octets de la section {@code PHYS} (colliders compilés)
-     * @return {@code this}, pour chaîner
-     */
-    public SimCommandStream createAssembly(
-            int handleIndex,
-            int handleGeneration,
-            long dimension,
-            double[] position,
-            float[] rotation,
-            List<AssemblyBody> bodies,
-            List<JointDescription> joints,
-            List<float[]> jamPoints,
-            float assemblyMass,
-            boolean selfCollision,
-            byte[] nodes,
-            Restored restored,
-            boolean asleep,
-            byte[] anim,
-            byte[] phys) {
+            boolean asleep) {
         if (position.length != 3) {
             throw new IllegalArgumentException("la position est un vecteur à 3 composantes");
         }
         if (rotation.length != 4) {
             throw new IllegalArgumentException("la rotation est un quaternion à 4 composantes");
         }
-        if (bodies == null || bodies.isEmpty() || bodies.size() > MAX_ASSEMBLY_BODIES) {
-            throw new IllegalArgumentException("une assembly a de 1 à 64 corps (R-190)");
-        }
-        for (int i = 1; i < bodies.size(); i++) {
-            if (bodies.get(i).description().bodyType() != BODY_DYNAMIC) {
-                throw new IllegalArgumentException("un corps autre que la racine est dynamique");
-            }
-        }
-        if (!(Float.isFinite(assemblyMass) && assemblyMass >= 0.0f)) {
-            throw new IllegalArgumentException("la masse de l'assembly est finie et positive ou nulle");
-        }
-        if (nodes == null || phys == null) {
-            throw new IllegalArgumentException("les octets NODE et PHYS sont requis");
-        }
-        if (nodes.length == 0 && bodies.size() > 1) {
-            throw new IllegalArgumentException("plusieurs corps exigent la section NODE");
-        }
-        if (joints == null || jamPoints == null || joints.size() > 0xFFFF || jamPoints.size() > 0xFFFF) {
-            throw new IllegalArgumentException("au plus 65 535 joints et 65 535 points de grippage");
-        }
-        for (float[] point : jamPoints) {
-            if (point.length != 2) {
-                throw new IllegalArgumentException("un point de grippage a deux composantes");
-            }
-        }
         if (restored != null) {
-            checkRestored(restored, bodies.size(), joints.size());
+            checkRestored(restored);
         }
-        int bodyKind = bodies.get(0).description().bodyType();
         int restoredBytes = restored == null
                 ? 0
-                : bodies.size() * RESTORED_BODY_BYTES + joints.size() * RESTORED_JOINT_BYTES;
-        int animBytes = anim == null ? 0 : 8 + anim.length;
-
+                : restored.bodies().size() * RESTORED_BODY_BYTES + restored.joints().size() * RESTORED_JOINT_BYTES;
         // Le payload est aligné sur 8 octets : le lecteur natif avance d'un multiple de 8 après
         // chaque commande, pour lire la suivante en place (R-271, R-881).
-        int physOffset = alignUp8(CREATE_ASSEMBLY_HEADER_BYTES + bodies.size() * ASSEMBLY_BODY_BYTES
-                + joints.size() * JointDescription.BYTES + jamPoints.size() * JointDescription.JAM_POINT_BYTES
-                + nodes.length + restoredBytes + animBytes);
-        int payloadLen = physOffset + phys.length;
-        int padded = alignUp8(payloadLen);
-        ByteBuffer command = ByteBuffer.allocate(COMMAND_HEADER_BYTES + padded)
+        int payloadLen = CREATE_ASSEMBLY_HEADER_BYTES + restoredBytes;
+        ByteBuffer command = ByteBuffer.allocate(COMMAND_HEADER_BYTES + alignUp8(payloadLen))
                 .order(ByteOrder.LITTLE_ENDIAN);
         command.putInt(OP_CREATE_ASSEMBLY);
-        // La longueur annoncée est celle du payload utile, sans le remplissage.
         command.putInt(payloadLen);
         // En-tête CreateAssembly (disposition figée, ax-model/dm/commands.rs).
         command.putInt(handleIndex);
@@ -565,29 +355,10 @@ public final class SimCommandStream {
         command.putFloat(rotation[1]);
         command.putFloat(rotation[2]);
         command.putFloat(rotation[3]);
-        command.put((byte) bodyKind);
-        command.put((byte) ((selfCollision ? CREATE_ASSEMBLY_SELF_COLLISION : 0)
-                | (restored != null ? CREATE_ASSEMBLY_RESTORED : 0)
-                | (asleep ? CREATE_ASSEMBLY_ASLEEP : 0)
-                | (anim != null ? CREATE_ASSEMBLY_ANIMATED : 0)));
-        command.putShort((short) bodies.size());
-        command.putShort((short) joints.size());
-        command.putShort((short) jamPoints.size());
-        command.putFloat(assemblyMass);
-        command.putInt(nodes.length);
-        for (AssemblyBody body : bodies) {
-            body.description().writeTo(command);
-            command.putInt(body.rootNode());
-            command.putInt(0); // réservé
-        }
-        for (JointDescription joint : joints) {
-            joint.writeTo(command);
-        }
-        for (float[] point : jamPoints) {
-            command.putFloat(point[0]);
-            command.putFloat(point[1]);
-        }
-        command.put(nodes);
+        command.putLong(definition);
+        command.put((byte) ((restored != null ? CREATE_ASSEMBLY_RESTORED : 0)
+                | (asleep ? CREATE_ASSEMBLY_ASLEEP : 0)));
+        command.position(COMMAND_HEADER_BYTES + CREATE_ASSEMBLY_HEADER_BYTES);
         if (restored != null) {
             for (RestoredBody body : restored.bodies()) {
                 for (double value : body.position()) {
@@ -605,25 +376,19 @@ public final class SimCommandStream {
                 command.putFloat(joint.misalignment());
             }
         }
-        if (anim != null) {
-            command.putInt(anim.length);
-            command.putInt(0); // réservé
-            command.put(anim);
-        }
-        command.position(COMMAND_HEADER_BYTES + physOffset);
-        command.put(phys);
         commands.add(command.array());
         return this;
     }
 
     /**
-     * Un état restauré a un corps par corps et un joint par joint, aux vecteurs de bonne taille, aux
-     * valeurs finies, à la rotation non nulle et au désalignement positif ou nul : ce que le natif
-     * exige pour ne pas refuser la création.
+     * Un état restauré a au moins le corps racine, des vecteurs de bonne taille, des valeurs finies, une
+     * rotation non nulle et un désalignement positif ou nul : ce que le natif exige pour ne pas
+     * abandonner la création. Le nombre de corps et de joints, lui, se juge contre la definition
+     * compilée, que le natif tient.
      */
-    private static void checkRestored(Restored restored, int bodyCount, int jointCount) {
-        if (restored.bodies().size() != bodyCount || restored.joints().size() != jointCount) {
-            throw new IllegalArgumentException("un état restauré par corps et par joint");
+    private static void checkRestored(Restored restored) {
+        if (restored.bodies().isEmpty()) {
+            throw new IllegalArgumentException("un état restauré a au moins le corps racine");
         }
         for (RestoredBody body : restored.bodies()) {
             if (body.position().length != 3 || body.rotation().length != 4 || body.linear().length != 3

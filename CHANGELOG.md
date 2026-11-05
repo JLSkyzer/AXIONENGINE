@@ -428,6 +428,11 @@ Definition of Done (PARTIE 37.3).
 
 ### Modifie
 
+- Definitions (C-27, ADR-156, tranche 4) : `CREATE_ASSEMBLY` nomme la
+  definition compilee par son empreinte, suivie au plus de l'etat restaure ;
+  le schema du flux de commandes passe a 4. Le serveur Java ne lit plus les
+  sections `NODE`, `PHYS` ni `ANIM` des assets : le resume de la compilation
+  lui donne le node racine, les joints et les clips (nom et nombre de pistes).
 - Identite du mod alignee sur le cahier des charges : `mod_id` `axion`,
   paquet Java `dev.axion`, licence Apache-2.0.
 

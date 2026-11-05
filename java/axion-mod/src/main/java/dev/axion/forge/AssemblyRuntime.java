@@ -1,29 +1,17 @@
 package dev.axion.forge;
 
-import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
-import dev.axion.asset.A3dSections;
-import dev.axion.asset.AnimClips;
-import dev.axion.asset.AssetEntry;
-import dev.axion.asset.AssetRegistry;
-import dev.axion.definition.AssemblyKind;
-import dev.axion.definition.CollisionGroupRegistry;
+import dev.axion.asset.DefinitionCompiler;
 import dev.axion.definition.Definition;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.diag.EntityMetrics;
 import dev.axion.net.AnimationLayers;
-import dev.axion.physics.AssemblyBodies;
 import dev.axion.physics.BodyBounds;
-import dev.axion.physics.BodyDescription;
 import dev.axion.physics.BodyLedger;
 import dev.axion.physics.BodyState;
 import dev.axion.physics.BodyStateFlags;
-import dev.axion.physics.CollisionFilter;
-import dev.axion.physics.JointDescription;
 import dev.axion.physics.JointState;
 import dev.axion.physics.LoadQueue;
-import dev.axion.physics.MaterialMarking;
-import dev.axion.physics.RefitMarking;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.physics.SimStateSink;
@@ -38,11 +26,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
-import java.util.function.ToIntFunction;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
@@ -56,9 +45,10 @@ import org.slf4j.Logger;
  * {@link AxionEntity} liée à un corps physique natif, et lui réapplique l'état simulé.
  *
  * <ul>
- *   <li>À l'apparition d'une entité liée (serveur) : résout les colliders de son asset
- *       (section {@code PHYS} de l'A3D), lui attribue un handle, et met en file une commande
- *       {@code CREATE_ASSEMBLY} (étape 1 du pas, C-40).
+ *   <li>À l'apparition d'une entité liée (serveur) : lui attribue un handle, et met en file une
+ *       commande {@code CREATE_ASSEMBLY} qui nomme sa definition compilée par son empreinte
+ *       (étape 1 du pas, C-40 ; ADR-156 D4). Le natif en tient corps, joints et colliders : Java
+ *       ne lit plus l'asset côté serveur.
  *   <li>Chaque tick : les commandes en file (création, retrait) sont émises via
  *       {@link SimCommandProvider}.
  *   <li>Fin de tick : les {@code BodyState} collectés repositionnent et orientent les entités
@@ -86,9 +76,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     private static final int[] NO_MASK = new int[0];
 
     private final Supplier<DefinitionRegistry> definitions;
-    private final Supplier<AssetRegistry> assets;
-    /** Index d'un matériau dans la table de la session (ADR-149 D2). */
-    private final ToIntFunction<String> materialIndex;
+    /** Le résumé de la compilation d'une definition, par identifiant ; vide tant qu'elle l'attend. */
+    private final Function<String, Optional<DefinitionCompiler.Summary>> compiled;
     /**
      * {@code modules.joints} : faux, les joints des definitions sont ignorés, avec un avertissement
      * par definition, et leurs corps déclarés restent séparés (ADR-151 D5).
@@ -136,11 +125,11 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     /** La durée de la dernière soumission native, que la file rapporte à ses créations. */
     private final LongSupplier lastSubmitNs;
 
-    /** Le zstd du natif, qui lit les sections compressées de l'A3D — {@code ANIM} (ADR-155). */
-    private final A3dSections.Decompressor zstd;
-
-    /** Les sections illisibles déjà signalées, une fois par definition et par tag. */
-    private final Set<String> unreadableSections = new HashSet<>();
+    /**
+     * Les assemblies dont la definition attend encore sa compilation (ADR-156 D3) — en solo, la pompe
+     * d'assets du tick l'avance : remises en file après chaque passage de la file, jamais pendant.
+     */
+    private final List<AxionEntity> awaiting = new ArrayList<>();
 
     private record Pending(
             boolean create,
@@ -148,43 +137,33 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             long dimension,
             double[] position,
             float[] rotation,
-            List<SimCommandStream.AssemblyBody> bodies,
-            List<JointDescription> joints,
-            List<float[]> jamPoints,
-            float assemblyMass,
-            boolean selfCollision,
-            byte[] nodes,
+            long definition,
             SimCommandStream.Restored restored,
-            boolean asleep,
-            byte[] anim,
-            byte[] phys) {}
+            boolean asleep) {}
 
     /**
-     * Les deux registres sont lus à chaque création de corps : un {@code /reload} ou un
-     * {@code /axion assets reload} en installe de nouveaux, que la création suivante prend.
+     * La registry et les compilations sont lues à chaque création de corps : un {@code /reload} ou un
+     * {@code /axion assets reload} en installe de nouvelles, que la création suivante prend.
      *
-     * @param definitions definitions courantes (résolution par identifiant)
-     * @param assets assets compilés courants (octets A3D → section {@code PHYS}), ou {@code null}
-     *     avant tout chargement
-     * @param materialIndex index d'un matériau physique dans la table de la session (ADR-149)
+     * @param definitions definitions courantes (résolution par identifiant) : celles que leur
+     *     compilation a refusées n'y sont plus (ADR-156 D5)
+     * @param compiled le résumé de la compilation d'une definition, par identifiant ; vide tant
+     *     qu'elle attend son asset ou sa compilation
      * @param joints {@code modules.joints} : faux, les joints des definitions sont ignorés
-     * @param zstd décompresse une section compressée de l'A3D : le zstd du natif
+     * @param loadBudgetNs {@code persistence.max_load_ns_per_tick}, en nanosecondes
+     * @param lastSubmitNs la durée de la dernière soumission native
      */
     public AssemblyRuntime(
             Supplier<DefinitionRegistry> definitions,
-            Supplier<AssetRegistry> assets,
-            ToIntFunction<String> materialIndex,
+            Function<String, Optional<DefinitionCompiler.Summary>> compiled,
             boolean joints,
             long loadBudgetNs,
-            LongSupplier lastSubmitNs,
-            A3dSections.Decompressor zstd) {
+            LongSupplier lastSubmitNs) {
         this.definitions = definitions;
-        this.assets = assets;
-        this.materialIndex = materialIndex;
+        this.compiled = compiled;
         this.joints = joints;
         this.loadBudgetNs = loadBudgetNs;
         this.lastSubmitNs = lastSubmitNs;
-        this.zstd = zstd;
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -209,80 +188,48 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      * — sauvegardée ({@code axion:rot}, §22.2) pour une entité qui entre, simulée pour une
      * entité qui revient : un corps tombé sur le flanc le reste.
      *
+     * <p>Sa definition compilée dit tout le reste (ADR-156 D4) : son corps racine, que l'entité
+     * suit, ses joints, ses clips. Une definition qui attend sa compilation met l'assembly de côté,
+     * remise en file au passage suivant ; une definition refusée n'est plus dans la registry.
+     *
      * @return vrai si un corps est demandé ; faux pour une assembly inerte, sans definition, ou
-     *     dont l'asset n'est pas prêt ou n'a pas de collider — elle reste inerte au physique
+     *     dont la definition attend encore sa compilation
      */
     private boolean createBody(AxionEntity assembly, Level level) {
         if (assembly.isInert()) {
             return false;
         }
-        DefinitionRegistry registry = definitions.get();
-        Definition definition = registry.get(assembly.definitionId()).orElse(null);
+        Definition definition = definitions.get().get(assembly.definitionId()).orElse(null);
         if (definition == null) {
             return false;
         }
-        byte[] phys = sectionOf(definition, "PHYS");
-        if (phys == null) {
+        DefinitionCompiler.Summary summary = compiled.apply(definition.id().toString()).orElse(null);
+        if (summary == null) {
+            awaiting.add(assembly);
             return false;
+        }
+        if (!joints && definition.root().has("joints") && jointsIgnored.add(definition.id().toString())) {
+            LOGGER.warn("AXION : modules.joints est désactivé ; les joints de {} sont ignorés", definition.id());
         }
         int index = handleIndexOf(assembly);
         long dimension = DimensionId.of(level.dimension().location().toString());
         double[] position = {assembly.getX(), assembly.getY(), assembly.getZ()};
         Quaternionf saved = assembly.bodyRotation();
         float[] rotation = {saved.x(), saved.y(), saved.z(), saved.w()};
-        // ADR-130 : la description DM-08 que la definition déclare ; REFITTABLE posé par Java sur les
-        // colliders des parts déformables d'un corps dynamique (R-623).
-        JsonObject root = definition.root();
-        int kind = bodyKind(definition.kind());
-        BodyDescription body = BodyDescription.of(root, kind);
-        byte[] nodes = sectionOf(definition, "NODE");
-        if (kind == SimCommandStream.BODY_DYNAMIC) {
-            phys = RefitMarking.mark(phys, nodes, RefitMarking.rootsOf(root));
-        }
-        // ADR-149 D2 : chaque collider porte l'index du matériau de sa part, l'acier générique sans.
-        phys = MaterialMarking.mark(phys, nodes, MaterialMarking.rootsOf(root), materialIndex);
-        // R-980 : les groupes que la definition nomme, sur chaque collider du corps — résolus en bits
-        // par le registre contre lequel elle a été validée (ADR-132 A1), groupes tiers compris.
-        CollisionGroupRegistry groups = registry.collisionGroups();
-        phys = CollisionFilter.apply(phys, groups.membership(root), groups.filter(root));
-        // ADR-151 D2, D7 : les corps que la definition déclare, chacun à son node racine, ceux que
-        // créent les b_node de ses joints, et ses joints ; la section NODE part avec PHYS, chaque
-        // collider posé par la chaîne de son node.
-        AssemblyBodies.Layout layout = AssemblyBodies.of(root, nodes, body, joints);
-        if (layout == null) {
-            LOGGER.warn(
-                    "AXION : {} déclare un corps ou un joint qui ne se résout pas contre son asset ; assembly inerte",
-                    definition.id());
-            return false;
-        }
-        if (!joints && root.has("joints") && jointsIgnored.add(definition.id().toString())) {
-            LOGGER.warn("AXION : modules.joints est désactivé ; les joints de {} sont ignorés", definition.id());
-        }
-        rootNodes.put(index, layout.rootNode());
-        assembly.resetJoints(layout.joints().size());
+        rootNodes.put(index, summary.rootNode());
+        assembly.resetJoints(summary.joints());
         // 22.4, ADR-153 D3, D4 : une assembly lue d'une sauvegarde naît endormie, et l'état que son
         // NBT garde lui est rendu s'il correspond encore à ses corps et à ses joints.
         boolean asleep = assembly.takeLoadedFromSave();
         PersistedState persisted = assembly.takeSavedState().orElse(null);
         SimCommandStream.Restored restored =
-                persisted == null ? null : restoredOf(persisted, layout, definition.id());
+                persisted == null ? null : restoredOf(persisted, summary, definition.id().toString());
         if (restored != null) {
             assembly.restoreJoints(persisted.joints());
         }
-        byte[] nodeSection = nodes == null ? new byte[0] : nodes;
-        // ADR-155 : les clips de l'asset partent avec lui ; le natif ne les joue que si un collider en dépend.
-        // L'animation Java prend leurs noms et leurs pistes.
-        byte[] anim = sectionOf(definition, "ANIM");
-        try {
-            assembly.animation().bind(AnimClips.decode(anim));
-        } catch (IllegalArgumentException malformed) {
-            LOGGER.warn("AXION : section ANIM de {} illisible côté Java ({}) ; aucun clip à jouer",
-                    definition.id(), malformed.getMessage());
-            assembly.animation().bind(AnimClips.NONE);
-        }
-        pending.add(new Pending(true, index, dimension, position, rotation, layout.bodies(), layout.joints(),
-                layout.jamPoints(), layout.assemblyMass(), layout.selfCollision(), nodeSection, restored, asleep,
-                anim, phys));
+        // ADR-155, tranche 4 d'ADR-156 : l'animation Java joue les clips du résumé, par leur nom.
+        assembly.animation().bind(summary.clips());
+        pending.add(new Pending(true, index, dimension, position, rotation, definition.hash(), restored, asleep));
         ledger.attach(index, assembly);
         return true;
     }
@@ -291,31 +238,30 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      * L'état restauré de {@code CREATE_ASSEMBLY} (ADR-153 D3) : le corps racine à la pose et aux vitesses
      * de la racine sauvegardée, chaque autre corps à celles du corps sauvegardé de même node racine, chaque
      * joint à son état. {@code null}, avec un avertissement, si la sauvegarde ne correspond plus à la
-     * definition — un corps ou un joint de plus ou de moins : l'assembly repart de sa pose de repos.
+     * definition compilée — un corps ou un joint de plus ou de moins : l'assembly repart de sa pose de repos.
      */
     private static SimCommandStream.Restored restoredOf(
-            PersistedState saved, AssemblyBodies.Layout layout, String definitionId) {
-        List<SimCommandStream.AssemblyBody> bodies = layout.bodies();
-        if (saved.bodies().size() != bodies.size() - 1 || saved.joints().size() != layout.joints().size()) {
+            PersistedState saved, DefinitionCompiler.Summary summary, String definitionId) {
+        int[] roots = summary.roots();
+        if (saved.bodies().size() != roots.length - 1 || saved.joints().size() != summary.joints()) {
             LOGGER.warn("AXION : l'état sauvegardé d'une assembly de {} ne correspond plus à sa definition ({} corps "
                     + "et {} joint(s) sauvegardés, {} et {} déclarés) ; elle repart de sa pose de repos",
-                    definitionId, saved.bodies().size() + 1, saved.joints().size(), bodies.size(),
-                    layout.joints().size());
+                    definitionId, saved.bodies().size() + 1, saved.joints().size(), roots.length, summary.joints());
             return null;
         }
-        List<SimCommandStream.RestoredBody> restored = new ArrayList<>(bodies.size());
+        List<SimCommandStream.RestoredBody> restored = new ArrayList<>(roots.length);
         restored.add(new SimCommandStream.RestoredBody(
                 saved.position(), saved.rotation(), saved.linear(), saved.angular()));
-        for (SimCommandStream.AssemblyBody body : bodies.subList(1, bodies.size())) {
+        for (int rootNode : Arrays.copyOfRange(roots, 1, roots.length)) {
             PersistedState.Body match = null;
             for (PersistedState.Body candidate : saved.bodies()) {
-                if (candidate.node() == body.rootNode()) {
+                if (candidate.node() == rootNode) {
                     match = candidate;
                 }
             }
             if (match == null) {
                 LOGGER.warn("AXION : l'état sauvegardé d'une assembly de {} n'a pas le corps du node {} ; elle "
-                        + "repart de sa pose de repos", definitionId, body.rootNode());
+                        + "repart de sa pose de repos", definitionId, rootNode);
                 return null;
             }
             restored.add(new SimCommandStream.RestoredBody(new double[] {match.x(), match.y(), match.z()},
@@ -349,7 +295,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         implausibleBounds.remove(index);
         speeds.remove(index);
         rootNodes.remove(index);
-        pending.add(new Pending(false, index, 0L, null, null, null, null, null, 0.0f, false, null, null, false, null, null));
+        pending.add(new Pending(false, index, 0L, null, null, 0L, null, false));
     }
 
     /**
@@ -416,27 +362,18 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         loading.drain(loadBudgetNs, assembly -> !assembly.isRemoved()
                 && !ledger.hasBody(handleIndexOf(assembly))
                 && createBody(assembly, assembly.level()));
+        // ADR-156 D3 : une definition qui attend sa compilation garde son assembly en file, au tick suivant.
+        for (AxionEntity assembly : awaiting) {
+            loading.offer(assembly);
+        }
+        awaiting.clear();
         EntityMetrics.GLOBAL.bodies(ledger.bodies());
         SimCommandStream stream = new SimCommandStream();
         Pending cmd;
         while ((cmd = pending.poll()) != null) {
             if (cmd.create()) {
-                stream.createAssembly(
-                        cmd.index(),
-                        GENERATION,
-                        cmd.dimension(),
-                        cmd.position(),
-                        cmd.rotation(),
-                        cmd.bodies(),
-                        cmd.joints(),
-                        cmd.jamPoints(),
-                        cmd.assemblyMass(),
-                        cmd.selfCollision(),
-                        cmd.nodes(),
-                        cmd.restored(),
-                        cmd.asleep(),
-                        cmd.anim(),
-                        cmd.phys());
+                stream.createAssembly(cmd.index(), GENERATION, cmd.dimension(), cmd.position(), cmd.rotation(),
+                        cmd.definition(), cmd.restored(), cmd.asleep());
                 animationSent.put(cmd.index(), AnimationLayers.NONE);
             } else {
                 stream.removeAssembly(cmd.index(), GENERATION);
@@ -605,37 +542,6 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                     Arrays.toString(bounds.min()),
                     Arrays.toString(bounds.max()));
         }
-    }
-
-    /** {@return les octets d'une section de l'asset de la definition, ou {@code null}} */
-    private byte[] sectionOf(Definition definition, String tag) {
-        AssetRegistry registry = assets.get();
-        AssetEntry entry = registry == null ? null : registry.entry(definition.asset());
-        if (entry == null) {
-            return null;
-        }
-        byte[] a3d = entry.compiled();
-        if (a3d == null) {
-            return null;
-        }
-        try {
-            return A3dSections.section(a3d, tag, zstd);
-        } catch (IllegalArgumentException | IllegalStateException unreadable) {
-            // Une section illisible fait d'elle une section absente pour cette assembly — sans PHYS, elle
-            // reste inerte au physique — et ne fait jamais tomber le tick de toutes les autres.
-            if (unreadableSections.add(definition.id() + " " + tag)) {
-                LOGGER.warn("AXION : section {} de {} illisible côté Java ({}) ; tenue pour absente", tag,
-                        definition.id(), unreadable.getMessage());
-            }
-            return null;
-        }
-    }
-
-    /** Mappe le genre d'assembly (DM-09) vers un type de corps (§10.3). */
-    private static int bodyKind(AssemblyKind kind) {
-        return kind == AssemblyKind.STATIC
-                ? SimCommandStream.BODY_STATIC
-                : SimCommandStream.BODY_DYNAMIC;
     }
 
     /** Se désabonne du bus d'événements et oublie les assemblies (arrêt du serveur). */

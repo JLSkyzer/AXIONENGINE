@@ -9,12 +9,12 @@
 // On exerce des points d'entrée `unsafe extern "C"` : c'est l'objet du test.
 #![allow(unsafe_code)]
 
-use ax_asset::a3d::{encode_animations, encode_colliders, encode_nodes, AnimationTable};
+mod common;
+
+use ax_asset::a3d::{encode_animations, AnimationTable};
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
 use ax_model::dm::animation::{anim_action, channel, interp, AnimationDesc, TrackDesc};
-use ax_model::dm::commands::{
-    create_assembly_payload_full, opcode, AssemblyBodyEntry, CommandStreamHeader, CreateAssembly,
-};
+use ax_model::dm::commands::{opcode, CommandStreamHeader};
 use ax_model::dm::geometry::{Transform, WorldTransform};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, ColliderDesc, ColliderShape};
@@ -23,11 +23,18 @@ use axion_native::abi::{
     axion_buffer_acquire, axion_buffer_release, axion_init, axion_shutdown, axion_sim_collect,
     axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_OK, AXION_SIDE_SERVER,
 };
+use common::Modele;
 
 const DEMI_RACINE: f32 = core::f32::consts::FRAC_1_SQRT_2;
 
 /// Type de corps cinématique : rapporté par la simulation, et immobile sans ordre.
 const CINEMATIQUE: u8 = 1;
+
+/// L'empreinte de la definition dont le bras porte une boîte.
+const BRAS_PORTEUR: u64 = 0x0DEF_0000_0000_1430;
+
+/// L'empreinte de celle dont le bras ne porte rien.
+const BRAS_NU: u64 = 0x0DEF_0000_0000_1431;
 
 fn node(name: &str, parent: u32, collider: u32) -> NodeDesc {
     NodeDesc {
@@ -105,10 +112,10 @@ fn clips() -> Vec<u8> {
     .expect("ANIM")
 }
 
-/// Une assembly cinématique : la base porte une boîte à l'origine ; le bras, enfant de la base,
-/// porte une boîte à 2 blocs en x si `bras_porte` — sinon il ne porte rien, et seul le node est
-/// animé.
-fn creation(index: u32, bras_porte: bool) -> Vec<u8> {
+/// Une assembly cinématique, un seul corps : la base porte une boîte à l'origine ; le bras, enfant
+/// de la base, porte une boîte à 2 blocs en x si `bras_porte` — sinon il ne porte rien, et seul le
+/// node est animé.
+fn modele(bras_porte: bool) -> Modele {
     let nodes = [
         node("base", NO_PARENT, 0),
         node("bras", 0, if bras_porte { 1 } else { NONE_U32 }),
@@ -119,32 +126,21 @@ fn creation(index: u32, bras_porte: bool) -> Vec<u8> {
     } else {
         vec![boite(0.0)]
     };
-    let header = CreateAssembly {
-        handle: Handle::new(index, 1),
-        dimension: 0,
-        spawn: WorldTransform {
-            position: [0.0, 64.0, 0.0],
-            rotation: [0.0, 0.0, 0.0, 1.0],
-        },
-        body_kind: CINEMATIQUE,
-        flags: 0,
-        body_count: 0,
-        joint_count: 0,
-        jam_points: 0,
-        assembly_mass: 0.0,
-        node_bytes: 0,
+    Modele {
+        nodes: nodes.to_vec(),
+        names: names.to_vec(),
+        anim: Some(clips()),
+        ..Modele::seul(colliders, BodyDesc::undeclared(CINEMATIQUE))
+    }
+}
+
+/// `CREATE_ASSEMBLY` de l'assembly `index`, de la definition `definition`.
+fn creation(index: u32, definition: u64) -> Vec<u8> {
+    let spawn = WorldTransform {
+        position: [0.0, 64.0, 0.0],
+        rotation: [0.0, 0.0, 0.0, 1.0],
     };
-    let desc = BodyDesc::undeclared(CINEMATIQUE);
-    create_assembly_payload_full(
-        &header,
-        &[AssemblyBodyEntry { desc, root_node: 0 }],
-        &[],
-        &[],
-        &encode_nodes(&nodes, &names).expect("NODE"),
-        None,
-        Some(&clips()),
-        &encode_colliders(&colliders, &[], &[]).expect("PHYS"),
-    )
+    common::creation(Handle::new(index, 1), 0, spawn, definition, 0, None)
 }
 
 /// `ANIMATE_ASSEMBLY` : jouer le clip 0 sur la couche 0 au tick donné.
@@ -248,14 +244,16 @@ fn adr155_le_serveur_anime_un_collider_et_seulement_lui() {
         unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) },
         AXION_OK
     );
+    assert_eq!(modele(true).inscrire(ctx, BRAS_PORTEUR), AXION_OK);
+    assert_eq!(modele(false).inscrire(ctx, BRAS_NU), AXION_OK);
 
     // Au tick 0 : deux assemblies et leur clip. La seconde n'a aucun collider sur son node animé.
     cycle(
         ctx,
         0,
         &[
-            (opcode::CREATE_ASSEMBLY, creation(1, true)),
-            (opcode::CREATE_ASSEMBLY, creation(2, false)),
+            (opcode::CREATE_ASSEMBLY, creation(1, BRAS_PORTEUR)),
+            (opcode::CREATE_ASSEMBLY, creation(2, BRAS_NU)),
             (opcode::ANIMATE_ASSEMBLY, jouer(1, 0.0)),
             (opcode::ANIMATE_ASSEMBLY, jouer(2, 0.0)),
         ],

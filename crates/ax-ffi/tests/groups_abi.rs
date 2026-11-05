@@ -250,7 +250,10 @@ fn les_groupes_de_la_definition_l_emportent_sur_ceux_de_phys() {
     let traverse = hauteur_apres_deux_secondes(
         ASSEMBLY,
         !WORLD,
-        &[box_collider(ASSEMBLY, u32::MAX), box_collider(ASSEMBLY, WORLD)],
+        &[
+            box_collider(ASSEMBLY, u32::MAX),
+            box_collider(ASSEMBLY, WORLD),
+        ],
     )
     .expect("le corps est créé");
     assert!(traverse < 0.0, "les groupes de la definition, y={traverse}");

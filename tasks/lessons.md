@@ -2096,3 +2096,17 @@ en Java sans regarder l'en-tête, et le client n'avait jamais eu deux modèles i
 clé, ou se réécrire à la reprise. Un test de cache se fait sur deux sources aux mêmes octets, pas
 seulement sur la même source rechargée. Un faux compilateur de test rend un en-tête réel, sinon
 l'identité qu'il porte n'est jamais vérifiée.
+
+## 2026-11-05 | Une tranche inachevée laissée dans l'arbre de master, poussée telle quelle
+
+**Ce qui a mal tourné.** La tranche 4 d'ADR-156 s'est arrêtée à mi-chemin à la demande de Killian : le natif
+parlait le nouveau `CREATE_ASSEMBLY`, Java encore l'ancien, et le code est resté non commité dans l'arbre de
+travail de `master`. Un commit global (`d0613ea`) l'a emporté et poussé, avec les résultats de benchmarks non
+suivis : CI rouge sur huit jobs.
+
+**Cause.** Un arbre de travail sale sur la branche principale n'est protégé par rien ; seul `todo.md` disait
+que le code n'était pas commitable.
+
+**Règle.** Un travail qui s'arrête avant d'être vert part sur une branche `wip/<sujet>` commitée et poussée,
+`master` remis propre ; `todo.md` nomme la branche. Ne jamais laisser sur `master` un arbre que le premier
+`git add -A` venu casserait.

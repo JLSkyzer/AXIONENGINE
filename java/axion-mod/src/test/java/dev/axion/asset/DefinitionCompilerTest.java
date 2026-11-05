@@ -17,28 +17,38 @@ import org.junit.jupiter.api.Test;
 /** ADR-156 D4 : ce que Java lit de la réponse du natif, dans la disposition d'{@code ax_model::dm::definition}. */
 class DefinitionCompilerTest {
 
-    private static byte[] lignes(ByteBuffer out, String... lines) {
+    private static ByteBuffer ecrire(ByteBuffer out, String... lines) {
         out.putInt(lines.length);
         for (String line : lines) {
             byte[] bytes = line.getBytes(StandardCharsets.UTF_8);
             out.putInt(bytes.length);
             out.put(bytes);
         }
+        return out;
+    }
+
+    private static byte[] lignes(ByteBuffer out, String... lines) {
+        ecrire(out, lines);
         return Arrays.copyOf(out.array(), out.position());
     }
 
     @Test
-    @DisplayName("ADR-156 D4 : le résumé — corps, joints, animation serveur, avertissements")
+    @DisplayName("ADR-156 D4 : le résumé — corps, joints, animation serveur, avertissements, clips")
     void resume() {
         ByteBuffer out = ByteBuffer.allocate(256).order(ByteOrder.LITTLE_ENDIAN);
         out.putInt(2).putInt(1).putInt(1).putInt(0).putInt(0).putInt(4);
-        byte[] payload = lignes(out, "racine animée");
+        ecrire(out, "racine animée");
+        // Deux clips : « ouvrir » à 3 pistes, puis un clip sans nom à 1 piste.
+        out.putInt(2);
+        ecrire(out.putInt(3), "ouvrir");
+        byte[] payload = lignes(out.putInt(1), "");
         DefinitionCompiler.Summary summary = DefinitionCompiler.Summary.read(payload);
         assertArrayEquals(new int[] {0, 4}, summary.roots());
         assertEquals(0, summary.rootNode());
         assertEquals(1, summary.joints());
         assertTrue(summary.serverAnimated());
         assertEquals(List.of("racine animée"), summary.warnings());
+        assertEquals(new AnimClips(List.of("ouvrir", ""), new int[] {3, 1}), summary.clips());
 
         assertNull(DefinitionCompiler.Summary.read(Arrays.copyOf(payload, payload.length - 1)), "tronqué");
         assertNull(DefinitionCompiler.Summary.read(Arrays.copyOf(payload, payload.length + 1)), "prolongé");

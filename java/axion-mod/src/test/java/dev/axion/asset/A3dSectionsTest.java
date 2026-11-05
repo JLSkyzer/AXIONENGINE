@@ -115,28 +115,6 @@ class A3dSectionsTest {
     }
 
     @Test
-    void uneSectionCompresseeSeLitParLeDecompresseur() {
-        // ADR-155 : le décompresseur reçoit la trame stockée et la taille déclarée par l'entrée.
-        byte[] file = buildA3d(1, new Section("ANIM", FLAG_COMPRESSED, new byte[] {1, 2, 3, 4}));
-        int[] demandee = {-1};
-        byte[] lue = A3dSections.section(file, "ANIM", (trame, taille) -> {
-            assertArrayEquals(new byte[] {1, 2, 3, 4}, trame);
-            demandee[0] = taille;
-            return new byte[] {4, 3, 2, 1};
-        });
-        assertArrayEquals(new byte[] {4, 3, 2, 1}, lue);
-        assertEquals(4, demandee[0]);
-        // Un contenu d'une autre taille que celle déclarée est refusé.
-        assertThrows(IllegalArgumentException.class,
-                () -> A3dSections.section(file, "ANIM", (trame, taille) -> new byte[taille + 1]));
-        // Une section non compressée ne passe pas par lui.
-        byte[] claire = buildA3d(1, new Section("ANIM", 0, new byte[] {7}));
-        assertArrayEquals(new byte[] {7}, A3dSections.section(claire, "ANIM", (trame, taille) -> {
-            throw new AssertionError("non compressée");
-        }));
-    }
-
-    @Test
     void uneSectionHorsBornesEstRefusee() {
         byte[] file = buildA3d(1, new Section("PHYS", 0, new byte[] {1, 2, 3, 4}));
         // Gonfle la taille annoncée de l'entrée PHYS au-delà du fichier.
