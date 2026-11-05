@@ -3477,6 +3477,41 @@ sources procédurales de véhicule (M5, T-365).
             une plage par overlay, 9 pixels sur 9 au milieu de l'os. 11 mutations natives, 2 Java et 3 au banc
             rouges.
 
+**Bilan de la DoD de M4 — préparé le 2026-11-05, à prononcer par Killian.**
+
+- **Les cinq chantiers sont clos**, chacun par un ADR accepté avant le code : réseau (ADR-150, le
+  2026-10-22), joints (ADR-151, le 2026-10-24), persistance (ADR-153, le 2026-10-28), culling, LOD et
+  instancing (ADR-154, le 2026-10-29), animation (ADR-155, le 2026-10-30).
+- **Les renvois des jalons précédents** (liste ci-dessous) sont faits, dont C-27 étapes 4 et 5 (ADR-156,
+  le 2026-11-05). Reste C-70, qui attend que tous les accesseurs d'`AxionApi` soient réels : renvoi en M9,
+  déjà écrit.
+- **Restes ouverts, proposés comme renvois** :
+  - l'emprise exacte des assemblies articulées et animées au culling (aujourd'hui `NO_CULL`) :
+    [ADR-157](../docs/decisions/ADR-157.md) proposé, dont la Q3 tranche M4 ou M5 ;
+  - T-904 : des pics isolés, que le banc décompose désormais ; aucun en sept passages le 2026-11-05 ;
+  - ADR-150 D7 : un rouge isolé (177 m/s) le 2026-11-05, vert six fois ensuite ; D7 dit sa pire frame.
+- **Critères « Jalon terminé »** (forme d'ADR-146) :
+  - acceptance vérifiée mécaniquement : GameTests en CI et banc de rendu (vanilla, natif, sous Oculus et
+    shaderpack), verts en CI locale complète le 2026-11-05 ; CI GitHub verte de 7d77205, edac297 et
+    d75d3f4 ;
+  - JAR installable : `validate-jar` vert dans la même CI ;
+  - aucune régression : `MilestoneTestsCoveredTest` étendu à M4. **Essai à blanc du 2026-11-05** : sept
+    tests que le CDC déclare pour M4 ne sont portés par aucun test exécuté.
+    - Cinq sont exclus par un ADR accepté : T-415..T-417 (ADR-150 : la prédiction d'un véhicule, M5),
+      T-365 (ADR-155 : sources procédurales de véhicule, M5), T-431 (ADR-153 : avec C-41, M6).
+    - **Deux sont à trancher** : T-435 (campagne réelle, `tools/campagne/journal_lateral.py`, jouée le
+      2026-10-28) et T-437 (audit des écritures, `tools/ci/audit_ecritures.py` et
+      `AuditEcrituresJfr.java`, à chaque passage des GameTests). Ils existent, mais hors des racines que
+      le contrôle parcourt : soit une exclusion qui cite ADR-153 (« joué en campagne » / « audit de CI »),
+      soit le contrôle étendu à `tools/ci` et `tools/campagne`.
+    - T-531..T-533, que l'essai trouvait aussi manquants, étaient livrés sous d'autres noms : ils sont
+      désormais nommés là où ils vivent (8ca91ea).
+  - benchmarks : en M12 (ADR-131) ;
+  - CHANGELOG : l'entrée « M4 (en cours) » est tenue ; elle passe à « terminé » au prononcé.
+- **Au prononcé** : `M4` dans `COMPLETED_MILESTONES`, avec les cinq exclusions et la décision sur T-435 et
+  T-437 ; section « Prononcé » dans ADR-146 ou un ADR de clôture ; les renvois deviennent des lignes de la
+  DoD de M5 et suivants ; M5 s'ouvre par son séquencement, proposé avant tout code.
+
 **Renvois des jalons précédents** — lignes de la DoD de M4 (colonne 3 d'ADR-137 et d'ADR-146, et les §1
 à §7 d'ADR-146) :
 
