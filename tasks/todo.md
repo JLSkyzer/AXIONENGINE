@@ -3253,7 +3253,8 @@ tout code : multi-corps natif, types et réglages, étape 5 du pas et ruptures, 
       repère d'origine, l'état du joint dans ses drapeaux et sa couleur ; essai JNI sur la charnière
       rompue, contrôle « ADR-151 D7 » au banc de rendu (vanilla et natif). 6 tests natifs, 1 JUnit ; 15 mutations rouges. Les axes `limited`
       de `generic` tracés à la clôture (2026-10-24, six mutations rouges).
-- [ ] 7. Preuves de bout en bout : GameTests, S-05, documentation.
+- [x] 7. Preuves de bout en bout : GameTests, S-05, documentation (sous-cases faites le 2026-10-24 ; case cochée le
+      2026-11-05, oubliée à la clôture).
       - [x] 7a (2026-10-24). Racine statique : `SIM_OUT` rapporte la racine fixe d'une assembly à
             plusieurs corps (décision de Killian), endormie avec les autres ; l'emprise de l'entité suit ses
             corps. 1 test natif, 1 GameTest renforcé ; 3 mutations rouges.
@@ -3357,12 +3358,14 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
       `glMultiDrawElementsIndirect` ; T-907 au banc natif : 0 pixel différent ; 1 mutation rouge.
 - [x] T-475 et T-906 au banc de rendu (2026-10-29) : niveaux croissants avec la distance, décisions stables sur
       60 relevés ; 1 mutation rouge. **Chantier culling, LOD et instancing clos** (preuve attendue rendue).
-- [ ] Restes du chantier : avertissement Java d'une table `LODM` refusée (nommer l'asset) ; emprise exacte
-      des assemblies aux corps articulés (aujourd'hui `NO_CULL`).
+- [ ] Restes du chantier : emprise exacte des assemblies aux corps articulés (aujourd'hui `NO_CULL`).
+      L'avertissement Java d'une table `LODM` refusée est fait par la tranche 5 d'ADR-156 (2026-11-05) :
+      `MeshCache` l'écrit au journal en nommant l'asset.
 - [ ] T-904 : trois pics isolés, démentis au passage suivant — 21,55 ms puis 10,46 ms le 2026-10-28, 49,32 ms
       le 2026-10-29 (variante « relue du cache », variantes au render thread à 0,49 ms : le pic n'est pas
       celui des variantes) ; cause non établie. Un quatrième justifierait une instrumentation de la frame
-      lente (ce qui la remplit, hors variantes).
+      lente (ce qui la remplit, hors variantes). **Quatrième le 2026-10-30** : 28,51 ms, encore « relue du
+      cache », variantes à 0,398 ms, en CI locale ; vert à la relance. L'instrumentation est donc due.
 - [x] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.
       - [x] 6a (2026-10-28) : overlays `lod` et `culling`, en Java, bits 24 et 25 du §31.4 ; bancs verts ; 1
             mutation rouge.
