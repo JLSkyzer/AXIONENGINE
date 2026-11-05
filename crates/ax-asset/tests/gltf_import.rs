@@ -26,6 +26,17 @@ const DATA_PREFIX: &str = "data:application/octet-stream;base64,";
 /// Trois positions en `f32`, puis trois indices en `u16` : l'encodage base64
 /// est celui que produit n'importe quel exportateur pour un `.gltf` autonome.
 fn triangle(extras: &str, extensions: &str) -> String {
+    triangle_indexe(extras, extensions, 2)
+}
+
+/// Le triangle de [`triangle`], ses indices sur `largeur` octets — 1, 2 ou 4 : `UNSIGNED_BYTE`,
+/// `UNSIGNED_SHORT` ou `UNSIGNED_INT` —, dans une vue à leur taille.
+fn triangle_indexe(extras: &str, extensions: &str, largeur: usize) -> String {
+    let composant = match largeur {
+        1 => 5121,
+        2 => 5123,
+        _ => 5125,
+    };
     let mut buffer = Vec::new();
     for position in [[0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]] {
         for value in position {
@@ -33,9 +44,10 @@ fn triangle(extras: &str, extensions: &str) -> String {
         }
     }
     let index_offset = buffer.len();
-    for index in [0u16, 1, 2] {
-        buffer.extend_from_slice(&index.to_le_bytes());
+    for index in [0u32, 1, 2] {
+        buffer.extend_from_slice(&index.to_le_bytes()[..largeur]);
     }
+    let index_length = 3 * largeur;
 
     let encoded = encode(&buffer);
     let len = buffer.len();
@@ -61,11 +73,11 @@ fn triangle(extras: &str, extensions: &str) -> String {
   \"accessors\": [
     {{ \"bufferView\": 0, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC3\",
       \"min\": [0.0, 0.0, 0.0], \"max\": [1.0, 1.0, 0.0] }},
-    {{ \"bufferView\": 1, \"componentType\": 5123, \"count\": 3, \"type\": \"SCALAR\" }}
+    {{ \"bufferView\": 1, \"componentType\": {composant}, \"count\": 3, \"type\": \"SCALAR\" }}
   ],
   \"bufferViews\": [
     {{ \"buffer\": 0, \"byteOffset\": 0, \"byteLength\": 36 }},
-    {{ \"buffer\": 0, \"byteOffset\": {index_offset}, \"byteLength\": 6 }}
+    {{ \"buffer\": 0, \"byteOffset\": {index_offset}, \"byteLength\": {index_length} }}
   ],
   \"buffers\": [{{ \"byteLength\": {len}, \"uri\": \"{DATA_PREFIX}{encoded}\" }}]
 }}"
@@ -288,16 +300,19 @@ fn t680_les_trois_types_d_indices_admis_restent_acceptes() {
     // La réciproque : la vérification ne doit refuser que ce que glTF interdit.
     // `5121` est `UNSIGNED_BYTE`, `5123` `UNSIGNED_SHORT`, `5125`
     // `UNSIGNED_INT` — les trois seuls que la spécification admet.
-    for composant in ["5121", "5123", "5125"] {
-        let source = triangle("", "").replace(
-            "\"componentType\": 5123",
-            &format!("\"componentType\": {composant}"),
-        );
+    // Chacun à sa largeur : glTF veut aussi l'accesseur dans sa vue.
+    for largeur in [1, 2, 4] {
+        let source = triangle_indexe("", "", largeur);
         let resultat = import_gltf(source.as_bytes(), &LIMITS, |_| None);
         assert!(
             resultat.is_ok(),
-            "componentType {composant} refusé : {:?}",
+            "indices sur {largeur} octet(s) refusés : {:?}",
             resultat.err()
+        );
+        assert_eq!(
+            resultat.unwrap().0.indices,
+            vec![0, 1, 2],
+            "{largeur} octet(s)"
         );
     }
 }
@@ -1253,6 +1268,30 @@ fn t680_l_entree_trouvee_par_le_fuzzing_est_refusee_sans_paniquer() {
         matches!(refus, ImportError::Malformed { .. }),
         "refus de forme attendu, obtenu {refus:?}"
     );
+}
+
+#[test]
+fn t680_un_accesseur_dont_l_etendue_deborde_ou_sort_de_sa_vue_est_refuse() {
+    // Trouvé par la campagne planifiée du 2026-10-31 : un accesseur au `count` de seize
+    // chiffres. `gltf` 1.4.1 calcule `offset + pas * (count - 1) + taille` sans arithmétique
+    // vérifiée (`accessor/util.rs:384`) et panique. glTF veut l'accesseur dans sa vue : un
+    // refus de forme, qui nomme l'accesseur, est attendu — et pour un `count` simplement
+    // trop grand d'un.
+    for count in ["3444444444444444444", "4"] {
+        let source = triangle("", "").replacen(
+            "\"componentType\": 5126, \"count\": 3",
+            &format!("\"componentType\": 5126, \"count\": {count}"),
+            1,
+        );
+        let refus = import_gltf(source.as_bytes(), &LIMITS, |_| None).unwrap_err();
+        let message = format!("{refus}");
+        assert!(
+            matches!(refus, ImportError::Malformed { .. })
+                && message.contains("accessors[0]")
+                && message.contains("bufferViews[0]"),
+            "count {count} : {message}"
+        );
+    }
 }
 
 #[test]

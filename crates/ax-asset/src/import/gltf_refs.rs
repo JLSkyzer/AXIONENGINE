@@ -39,8 +39,12 @@
 //! module balaie le document entier plutôt que ce que l'import déréférence
 //! aujourd'hui.
 //!
-//! Rien d'autre : ni les longueurs de tampon, ni la cohérence sémantique —
-//! C-22 s'en charge sur l'asset importé, et R-530 sur les extensions.
+//! S'y ajoutent, trouvées après coup par le même fuzzer, les contraintes
+//! numériques du format (`count` non nul, pas borné) et l'étendue de chaque
+//! accesseur dans sa vue, que le lecteur du crate calcule sans arithmétique
+//! vérifiée. Rien d'autre : ni la longueur des tampons eux-mêmes, ni la
+//! cohérence sémantique — C-22 s'en charge sur l'asset importé, et R-530 sur
+//! les extensions.
 //!
 //! Le balayage est **exhaustif sur le document**, pas seulement sur ce que
 //! l'import lit aujourd'hui. Se limiter à ce qu'on déréférence obligerait à
@@ -431,8 +435,89 @@ impl Verificateur<'_> {
                     });
                 }
             }
+            self.etendues(rang, accesseur)?;
         }
         Ok(())
+    }
+
+    /// Sixième famille : l'étendue d'un accesseur dans sa `bufferView`.
+    ///
+    /// Le lecteur du crate calcule `offset + pas * (count - 1) + taille` sans
+    /// arithmétique vérifiée : un `count` de seize chiffres y déborde, et il
+    /// panique. glTF exige de toute façon que l'accesseur tienne dans sa vue ;
+    /// on le vérifie ici, en arithmétique vérifiée, pour l'accesseur et pour les
+    /// deux parties d'un accesseur « sparse ». Trouvé par fuzzing (R-903),
+    /// une fois `count` nul et le pas aberrant couverts.
+    ///
+    /// Appelée après les vérifications d'indices et d'énumérations de
+    /// l'accesseur : ses vues existent, ses types sont connus.
+    fn etendues(&self, rang: usize, accesseur: &gltf::json::Accessor) -> Result<(), ImportError> {
+        use gltf::json::validation::Checked;
+        let (Checked::Valid(composant), Checked::Valid(genre)) =
+            (&accesseur.component_type, &accesseur.type_)
+        else {
+            return Ok(());
+        };
+        let taille = (composant.0.size() * genre.multiplicity()) as u64;
+        if let Some(vue) = accesseur.buffer_view {
+            self.etendue(
+                &format!("accessors[{rang}]"),
+                vue.value(),
+                accesseur.byte_offset.map_or(0, |decalage| decalage.0),
+                taille,
+                accesseur.count.0,
+            )?;
+        }
+        if let Some(sparse) = &accesseur.sparse {
+            if let Checked::Valid(indices) = &sparse.indices.component_type {
+                self.etendue(
+                    &format!("accessors[{rang}].sparse.indices"),
+                    sparse.indices.buffer_view.value(),
+                    sparse.indices.byte_offset.0,
+                    indices.0.size() as u64,
+                    sparse.count.0,
+                )?;
+            }
+            self.etendue(
+                &format!("accessors[{rang}].sparse.values"),
+                sparse.values.buffer_view.value(),
+                sparse.values.byte_offset.0,
+                taille,
+                sparse.count.0,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Refuse `count` éléments de `taille` octets, à partir de `decalage` dans
+    /// la vue `vue`, qui sortent de la vue — ou dont l'étendue déborde.
+    fn etendue(
+        &self,
+        ou: &str,
+        vue: usize,
+        decalage: u64,
+        taille: u64,
+        count: u64,
+    ) -> Result<(), ImportError> {
+        let longueur = self.root.buffer_views[vue].byte_length.0;
+        let pas = self.root.buffer_views[vue]
+            .byte_stride
+            .map_or(taille, |pas| pas.0 as u64);
+        let fin = count
+            .checked_sub(1)
+            .and_then(|n| n.checked_mul(pas))
+            .and_then(|n| n.checked_add(decalage))
+            .and_then(|n| n.checked_add(taille));
+        match fin {
+            Some(fin) if fin <= longueur => Ok(()),
+            _ => Err(ImportError::Malformed {
+                format: self.format,
+                detail: format!(
+                    "{ou} : {count} éléments de {taille} octets au pas de {pas}, depuis l'octet \
+                     {decalage}, sortent de bufferViews[{vue}] ({longueur} octets)"
+                ),
+            }),
+        }
     }
 
     /// Quatrieme famille : les champs que glTF rend **obligatoires**.

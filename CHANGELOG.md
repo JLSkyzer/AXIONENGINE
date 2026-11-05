@@ -447,6 +447,12 @@ Definition of Done (PARTIE 37.3).
 
 ### Corrige
 
+- Import glTF (C-21, R-903) : un accesseur au `count` demesure faisait
+  paniquer `gltf` 1.4.1, qui calcule son etendue sans arithmetique verifiee ;
+  trouve par la campagne de fuzzing du 2026-10-31. L'etendue de chaque
+  accesseur, et des deux parties d'un accesseur « sparse », est desormais
+  verifiee dans sa `bufferView` avant toute lecture : un fichier qui en sort
+  est refuse en nommant l'accesseur, comme glTF l'exige.
 - Assets (C-25, C-20) : deux sources aux memes octets sous deux chemins se
   partagent une entree du cache, dont la cle ne tient qu'au contenu, alors
   que l'en-tete A3D porte l'identifiant de l'asset compile ; la seconde
