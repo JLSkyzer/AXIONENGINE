@@ -3626,6 +3626,11 @@ T-980..T-984.
           (R-840), aucun effet sur la simulation autoritative (R-841, T-983, T-984), palier `SAFE` ;
         - overlay (C-73) : métriques, niveaux et causes (R-820), indicateur de capacités.
 
+- [ ] **Sièges et entrées (C-53)** — [ADR-158](../docs/decisions/ADR-158.md) proposé le 2026-11-05 : rayon
+      du serveur sur les colliders (ABI 14), passagers de `Entity` avec sièges AXION, `C2S_Input` genre 7
+      (protocole 3), descente et éjection sûres, interactions `sit`/`toggle_animation`/`play_animation`,
+      T-440..T-444 et T-957 définis. Q1 à Q4 à trancher par Killian ; aucun code avant.
+
 ---
 
 ## Jalons suivants
