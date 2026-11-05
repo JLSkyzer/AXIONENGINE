@@ -2110,3 +2110,16 @@ que le code n'était pas commitable.
 **Règle.** Un travail qui s'arrête avant d'être vert part sur une branche `wip/<sujet>` commitée et poussée,
 `master` remis propre ; `todo.md` nomme la branche. Ne jamais laisser sur `master` un arbre que le premier
 `git add -A` venu casserait.
+
+## 2026-11-05 | Un contrôle « hors du champ » posé dans le champ de sa scène
+
+**Ce qui a mal tourné.** Le contrôle ADR-157 D2 du banc posait une seconde charnière « derrière la
+caméra » à (−4.5, 6.5), sur le modèle de la glissière d'ADR-157 D1, et la trouvait retenue. Une sonde a
+montré que la sphère était bien calculée et envoyée : la scène de la charnière tourne la caméra vers
+l'ouest, et ce point y était dans le champ.
+
+**Cause.** « Derrière » dépend de la caméra de chaque scène, que `fixerLaCamera` règle par scène.
+
+**Règle.** Au banc, une assembly qu'on veut hors de vue se pose au bout de la rangée `DERRIERE` (au
+sud-est), « hors de vue au nord comme à l'ouest ». Un contrôle de culling qui échoue se sonde d'abord
+côté Java (ce qui est envoyé) avant de soupçonner le natif.
