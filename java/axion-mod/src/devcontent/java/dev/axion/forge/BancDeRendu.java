@@ -162,6 +162,9 @@ public final class BancDeRendu {
      */
     private static final String CHARNIERE = "axion:test/charniere_fixe";
 
+    /** ADR-158 : la caisse à deux sièges. */
+    private static final String SIEGE = "axion:test/siege";
+
     /**
      * ADR-155 : un socle et son coulisseau, que le clip {@code glisse} pousse d'un bloc le long de l'axe x de
      * l'asset ({@code tools/assets/animation_essai.py}).
@@ -360,6 +363,12 @@ public final class BancDeRendu {
 
     /** ADR-157 D2 : une seconde charnière, derrière la caméra. */
     private static AxionEntity charniereDerriere;
+
+    /** ADR-158 D3 : le siège, derrière la caméra, son passager, et la position du passager au serveur. */
+    private static AxionEntity siege;
+    private static Entity passager;
+    private static boolean passagerAssis;
+    private static Vec3 passagerServeur;
     private static CapturesDuBanc.Capture fondCharniere;
     private static PosesCharniere posesCharniere;
 
@@ -748,6 +757,31 @@ public final class BancDeRendu {
             serveur("retirer la charnière de derrière", s -> charniereDerriere.discard());
             serveur("retirer la charnière", s -> charniere.discard());
             jusqua("la charnière retirée", 30, mc -> mc.level.getEntity(charniere.getId()) == null);
+            // ADR-158 D3 : le client place lui-même ses passagers, d'après la table des sièges synchronisée et ses
+            // propres poses de corps. Un cochon assis au serveur doit être chez le client au même endroit. Hors de
+            // vue, au bout de la rangée de DERRIERE.
+            serveur("poser le siège et son passager", s -> {
+                Vec3 ou = new Vec3(1.5 + 2 * DERRIERE.size(), surface + 0.25, 6.5);
+                ObservateursDeTest.declarer(s.overworld(), ou);
+                siege = AssembliesDeTest.poser(s.overworld(), SIEGE, ou, IDENTITE);
+                passager = net.minecraft.world.entity.EntityType.PIG.create(s.overworld());
+                passager.moveTo(ou.x, ou.y + 2.0, ou.z, 0f, 0f);
+                ((net.minecraft.world.entity.Mob) passager).setNoAi(true);
+                s.overworld().addFreshEntity(passager);
+            });
+            jusqua("le siège simulé", 60, mc -> siege.hasPhysicalBounds());
+            serveur("asseoir le passager", s -> passagerAssis = siege.sit(passager, 0));
+            jusqua("le passager assis chez le client", 60,
+                    mc -> passagerChezLeClient(mc) == 0);
+            pendant("le siège au repos", 40);
+            serveur("relever le passager au serveur", s -> passagerServeur = passager.position());
+            une("juger ADR-158 D3", BancDeRendu::jugerSiegeClient);
+            serveur("retirer le siège", s -> {
+                passager.discard();
+                siege.discard();
+            });
+            jusqua("le siège retiré", 30, mc -> mc.level.getEntity(siege.getId()) == null
+                    && mc.level.getEntity(passager.getId()) == null);
         }
 
         // Cartes de matériau (ADR-127 §5) : deux panneaux identiques face à la caméra, l'un avec
@@ -2033,6 +2067,28 @@ public final class BancDeRendu {
                         + " retenue, la seconde écartée",
                 devant == null ? "non candidate" : devant < 0 ? "écartée" : "retenue au niveau " + devant,
                 derriere == null ? "non candidate" : derriere < 0 ? "écartée" : "retenue au niveau " + derriere));
+    }
+
+    /**
+     * ADR-158 D3 : le passager est, chez le client, au siège que le serveur lui a donné et à la position où le
+     * serveur le tient — le client l'a posé lui-même, de la table des sièges synchronisée et de ses poses de
+     * corps. L'assembly au repos, les deux ne diffèrent que de la quantification des snapshots (1/1024 de bloc).
+     */
+    /** {@return le siège du passager chez le client, -1 s'il n'y est pas assis} */
+    private static int passagerChezLeClient(Minecraft minecraft) {
+        Entity auClient = minecraft.level.getEntity(passager.getId());
+        return auClient != null && auClient.getVehicle() instanceof AxionEntity vehicule ? vehicule.seatOf(auClient) : -1;
+    }
+
+    private static void jugerSiegeClient(Minecraft minecraft) {
+        Entity auClient = minecraft.level.getEntity(passager.getId());
+        AxionEntity vehicule = auClient != null && auClient.getVehicle() instanceof AxionEntity v ? v : null;
+        int place = vehicule == null ? -1 : vehicule.seatOf(auClient);
+        double ecart = auClient == null || passagerServeur == null ? Double.NaN : auClient.position().distanceTo(passagerServeur);
+        boolean vert = passagerAssis && place == 0 && ecart < 0.01;
+        RAPPORT.noter("ADR-158 D3", vert, String.format(Locale.ROOT,
+                "passager assis au serveur : %s ; chez le client au siège %d, à %.4f bloc de sa position au serveur"
+                        + " (au plus 0,01)", passagerAssis, place, ecart));
     }
 
     /** {@return la décision du culling pour une assembly posée, côté client, ou {@code null}} */

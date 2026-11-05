@@ -2,7 +2,12 @@ package dev.axion.forge;
 
 import com.mojang.logging.LogUtils;
 import dev.axion.api.CustomData;
+import dev.axion.asset.Anatomy;
+import dev.axion.asset.DefinitionCompiler;
 import dev.axion.definition.Definition;
+import dev.axion.definition.Seating;
+import dev.axion.seat.SeatOccupancy;
+import dev.axion.seat.SeatPlacement;
 import dev.axion.entity.AssemblyAnimation;
 import dev.axion.entity.AssemblyBinding;
 import dev.axion.entity.CustomTable;
@@ -16,14 +21,21 @@ import java.util.List;
 import java.util.Optional;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.entity.IEntityAdditionalSpawnData;
 import net.minecraftforge.network.NetworkHooks;
 import org.joml.Quaternionf;
@@ -210,11 +222,299 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
     }
 
+    /**
+     * L'occupant de chaque siège (ADR-158 D3), sous la clé {@code s} : le client place lui-même ses
+     * passagers à chaque tick, et doit savoir qui est assis où. Minecraft ne transporte que la liste des
+     * passagers, dans leur ordre de montée.
+     */
+    private static final EntityDataAccessor<CompoundTag> SEATS =
+            SynchedEntityData.defineId(AxionEntity.class, EntityDataSerializers.COMPOUND_TAG);
+
+    /** Clé de la table des occupants dans {@link #SEATS}. */
+    private static final String SEATS_KEY = "s";
+
+    /**
+     * Clé, dans les données persistantes d'un joueur, du nom du siège qu'il occupe (ADR-158 D3) :
+     * Minecraft le remonte dans son véhicule à son retour, AXION lui rend ce siège.
+     */
+    static final String REMEMBERED_SEAT = "axion:seat";
+
+    /** Le siège qu'une montée en cours a choisi, le temps que Minecraft ajoute le passager ; -1 sans. */
+    private int mountingSeat = SeatOccupancy.FREE;
+
+    /** Les corps secondaires à la pose du dernier tick, relatifs au corps racine (client) ; aucun avant. */
+    private List<Interpolation.BodyPose> tickBodies = List.of();
+
     @Override
     protected void defineSynchedData() {
-        // Rien à synchroniser par Minecraft : la definition voyage dans les données d'apparition,
-        // l'état du corps dans les snapshots d'AXION (ADR-150 D2). Une donnée synchronisée sale
-        // réveillerait aussi le suivi de position de Minecraft.
+        // La definition voyage dans les données d'apparition, l'état du corps dans les snapshots d'AXION
+        // (ADR-150 D2). Seuls les sièges passent par Minecraft : ils changent à la montée et à la descente,
+        // et la position que le suivi de Minecraft renvoie alors est ignorée ({@link #lerpTo}).
+        entityData.define(SEATS, new CompoundTag());
+    }
+
+    /** {@return les sièges et les interactions de la definition, ou {@code null} : inerte, ou pas encore compilée} */
+    private Seating seating() {
+        return inert ? null : AxionEntities.seating(definitionId).orElse(null);
+    }
+
+    /** {@return l'occupation des sièges, telle que la donnée synchronisée la porte} */
+    private SeatOccupancy occupancy(Seating seating) {
+        return SeatOccupancy.of(seating.seats().size(), entityData.get(SEATS).getIntArray(SEATS_KEY));
+    }
+
+    private void storeOccupancy(SeatOccupancy occupancy) {
+        CompoundTag tag = new CompoundTag();
+        tag.putIntArray(SEATS_KEY, occupancy.toArray());
+        entityData.set(SEATS, tag);
+    }
+
+    /**
+     * {@return le siège qu'occupe une entité dans cette assembly, -1 sans}
+     *
+     * @param passenger l'entité
+     */
+    public int seatOf(Entity passenger) {
+        Seating seating = seating();
+        return seating == null ? SeatOccupancy.FREE : occupancy(seating).seatOf(passenger.getId());
+    }
+
+    /**
+     * Le clic droit d'un joueur (ADR-158 D2) : sur une assembly qui déclare des sièges ou des
+     * interactions, le serveur lance son propre rayon, de l'œil du joueur dans sa direction de regard
+     * et sur sa portée d'entité, contre les seuls colliders de l'assembly ; le collider touché donne son
+     * node, puis le premier ancêtre qui porte une interaction ou un siège. Le point que le client a visé
+     * n'est pas lu (R-1620). Un siège visé assoit le joueur ; les autres interactions viennent avec la
+     * tranche 4. La main secondaire ne fait rien : la principale a déjà répondu.
+     */
+    @Override
+    public InteractionResult interact(Player player, InteractionHand hand) {
+        Seating seating = seating();
+        if (seating == null || hand != InteractionHand.MAIN_HAND
+                || (seating.seats().isEmpty() && seating.interactions().isEmpty())) {
+            return InteractionResult.PASS;
+        }
+        if (level().isClientSide()) {
+            return InteractionResult.SUCCESS;
+        }
+        Seating.Target target = aim(player, seating);
+        if (target == null || target.seat() < 0) {
+            return InteractionResult.PASS;
+        }
+        return sit(player, target.seat()) ? InteractionResult.CONSUME : InteractionResult.PASS;
+    }
+
+    /** {@return ce que vise le joueur, d'après le rayon du serveur, ou {@code null}} */
+    private Seating.Target aim(Player player, Seating seating) {
+        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        if (summary == null) {
+            return null;
+        }
+        Vec3 eye = player.getEyePosition();
+        Vec3 look = player.getViewVector(1.0f);
+        double[] ray = {eye.x, eye.y, eye.z, look.x, look.y, look.z, player.getEntityReach()};
+        double[] hit = new double[dev.axion.bridge.NativeBridge.RAY_OUTPUT];
+        int code = AxionEntities.rays().cast(AssemblyRuntime.handleIndexOf(this), AssemblyRuntime.GENERATION, ray, hit);
+        if (code != 0 || hit[0] < 0) {
+            return null;
+        }
+        int node = summary.anatomy().carrier((int) hit[0], (int) hit[1]);
+        return seating.target(node, summary.anatomy());
+    }
+
+    /**
+     * Assoit une entité dans un siège libre (serveur) ; déjà passagère de cette assembly, elle en change.
+     *
+     * @param passenger l'entité
+     * @param seat rang du siège
+     * @return vrai si elle y est assise
+     */
+    boolean sit(Entity passenger, int seat) {
+        Seating seating = seating();
+        if (seating == null || seat < 0 || seat >= seating.seats().size()) {
+            return false;
+        }
+        SeatOccupancy occupancy = occupancy(seating);
+        if (passenger.getVehicle() == this) {
+            if (!occupancy.sit(passenger.getId(), seat)) {
+                return false;
+            }
+            storeOccupancy(occupancy);
+            remember(passenger, seating.seats().get(seat));
+            return true;
+        }
+        if (occupancy.occupant(seat) != SeatOccupancy.FREE) {
+            return false;
+        }
+        mountingSeat = seat;
+        try {
+            return passenger.startRiding(this);
+        } finally {
+            mountingSeat = SeatOccupancy.FREE;
+        }
+    }
+
+    private static void remember(Entity passenger, Seating.Seat seat) {
+        if (passenger instanceof Player player) {
+            player.getPersistentData().putString(REMEMBERED_SEAT, seat.name());
+        }
+    }
+
+    @Override
+    protected boolean canAddPassenger(Entity passenger) {
+        Seating seating = seating();
+        return seating != null && occupancy(seating).firstFree() != SeatOccupancy.FREE;
+    }
+
+    /**
+     * Un passager arrive (ADR-158 D3) : au siège que la montée a choisi ; sinon — Minecraft remonte un
+     * joueur dans son véhicule à son retour, une commande assoit une entité — au siège dont le joueur a
+     * gardé le nom s'il est libre, puis au premier libre. Sans siège libre, il est descendu au tick
+     * suivant (une remontée forcée ne demande pas {@link #canAddPassenger}).
+     */
+    @Override
+    protected void addPassenger(Entity passenger) {
+        super.addPassenger(passenger);
+        Seating seating = seating();
+        if (level().isClientSide() || seating == null) {
+            return;
+        }
+        SeatOccupancy occupancy = occupancy(seating);
+        int seat = mountingSeat != SeatOccupancy.FREE && occupancy.occupant(mountingSeat) == SeatOccupancy.FREE
+                ? mountingSeat
+                : SeatPlacement.seatFor(seating, occupancy, remembered(passenger));
+        if (seat != SeatOccupancy.FREE && occupancy.sit(passenger.getId(), seat)) {
+            storeOccupancy(occupancy);
+            remember(passenger, seating.seats().get(seat));
+        }
+    }
+
+    /** {@return le nom du siège qu'un joueur a gardé, {@code null} sans} */
+    private static String remembered(Entity passenger) {
+        return passenger instanceof Player player && player.getPersistentData().contains(REMEMBERED_SEAT)
+                ? player.getPersistentData().getString(REMEMBERED_SEAT)
+                : null;
+    }
+
+    /**
+     * Chaque tick, au serveur : un passager sans siège — arrivé avant que la definition ne soit compilée,
+     * ou remonté de force dans une assembly pleine — reçoit le siège qu'il avait gardé ou le premier libre ;
+     * sans siège libre, il descend. Un occupant qui n'est plus passager libère le sien.
+     */
+    private void settlePassengers() {
+        Seating seating = seating();
+        if (seating == null) {
+            return;
+        }
+        SeatOccupancy occupancy = occupancy(seating);
+        boolean changed = false;
+        for (int seat = 0; seat < occupancy.seats(); seat++) {
+            int occupant = occupancy.occupant(seat);
+            if (occupant != SeatOccupancy.FREE
+                    && getPassengers().stream().noneMatch(passenger -> passenger.getId() == occupant)) {
+                occupancy.release(occupant);
+                changed = true;
+            }
+        }
+        List<Entity> unseated = new ArrayList<>();
+        for (Entity passenger : getPassengers()) {
+            if (occupancy.seatOf(passenger.getId()) != SeatOccupancy.FREE) {
+                continue;
+            }
+            int seat = SeatPlacement.seatFor(seating, occupancy, remembered(passenger));
+            if (seat != SeatOccupancy.FREE && occupancy.sit(passenger.getId(), seat)) {
+                remember(passenger, seating.seats().get(seat));
+                changed = true;
+            } else {
+                unseated.add(passenger);
+            }
+        }
+        if (changed) {
+            storeOccupancy(occupancy);
+        }
+        for (Entity passenger : unseated) {
+            passenger.stopRiding();
+        }
+    }
+
+    @Override
+    protected void removePassenger(Entity passenger) {
+        super.removePassenger(passenger);
+        Seating seating = seating();
+        if (level().isClientSide() || seating == null) {
+            return;
+        }
+        SeatOccupancy occupancy = occupancy(seating);
+        if (occupancy.release(passenger.getId()) != SeatOccupancy.FREE) {
+            storeOccupancy(occupancy);
+        }
+    }
+
+    /**
+     * Pose un passager à son siège, à chaque tick, au serveur comme au client (ADR-158 D3) : la pose
+     * monde du node {@code SEAT}, celle de son corps composée avec la sienne dans ce corps. Le node
+     * marque l'assise : le passager y est posé, son décalage de monture compris. Sans siège connu, ou
+     * avant que la definition ne soit compilée, Minecraft le pose comme sur toute entité.
+     */
+    @Override
+    protected void positionRider(Entity passenger, Entity.MoveFunction move) {
+        SeatPlacement.Pose pose = seatPose(seatOf(passenger));
+        if (pose == null) {
+            super.positionRider(passenger, move);
+            return;
+        }
+        move.accept(passenger, pose.x(), pose.y() + passenger.getMyRidingOffset(), pose.z());
+    }
+
+    /**
+     * {@return la pose monde d'un siège, ou {@code null} : siège inconnu, definition pas encore
+     * compilée, ou corps dont la pose n'est pas connue}
+     *
+     * @param seat rang du siège
+     */
+    public SeatPlacement.Pose seatPose(int seat) {
+        Seating seating = seating();
+        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        if (seating == null || summary == null || seat < 0 || seat >= seating.seats().size()) {
+            return null;
+        }
+        return SeatPlacement.place(summary.anatomy(), seating.seats().get(seat).node(), bodyPoses(summary));
+    }
+
+    /**
+     * {@return la pose monde de chaque corps, dans l'ordre de l'assembly ; {@code null} pour un corps dont
+     * la pose n'est pas connue} Au serveur, les états du dernier tick ; au client, la pose que le tick a
+     * prise de l'interpolation.
+     */
+    private List<SeatPlacement.BodyPose> bodyPoses(DefinitionCompiler.Summary summary) {
+        boolean client = level().isClientSide();
+        Quaternionf q = client ? rotation : bodyRotation;
+        SeatPlacement.BodyPose root = new SeatPlacement.BodyPose(getX(), getY(), getZ(), new float[] {q.x, q.y, q.z, q.w});
+        int[] roots = summary.roots();
+        List<SeatPlacement.BodyPose> poses = new ArrayList<>(roots.length);
+        poses.add(root);
+        for (int rank = 1; rank < roots.length; rank++) {
+            poses.add(client ? relativeBody(root, roots[rank]) : worldBody(roots[rank]));
+        }
+        return poses;
+    }
+
+    private SeatPlacement.BodyPose worldBody(int node) {
+        BodyPose body = secondaryBody(node);
+        if (body == null) {
+            return null;
+        }
+        Quaternionf r = body.rotation();
+        return new SeatPlacement.BodyPose(body.x(), body.y(), body.z(), new float[] {r.x, r.y, r.z, r.w});
+    }
+
+    private SeatPlacement.BodyPose relativeBody(SeatPlacement.BodyPose root, int node) {
+        for (Interpolation.BodyPose body : tickBodies) {
+            if (body.node() == node) {
+                return SeatPlacement.compose(root, body.offset(), body.rotation());
+            }
+        }
+        return null;
     }
 
     /**
@@ -548,6 +848,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     public void tick() {
         super.tick();
         rotationO.set(rotation);
+        if (!level().isClientSide()) {
+            settlePassengers();
+        }
         if (interpolation == null) {
             return;
         }
@@ -555,6 +858,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         Interpolation.Pose pose = interpolation.sample(clock.renderMillis(now), clock.localMillis(now));
         float[] q = pose.rotation();
         rotation.set(q[0], q[1], q[2], q[3]);
+        tickBodies = pose.bodies();
         if (pose.boundsMin() != null && pose.boundsMax() != null) {
             boundsMin.set(pose.boundsMin()[0], pose.boundsMin()[1], pose.boundsMin()[2]);
             boundsMax.set(pose.boundsMax()[0], pose.boundsMax()[1], pose.boundsMax()[2]);

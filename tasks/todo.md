@@ -3636,7 +3636,8 @@ T-980..T-984.
       - [x] Tranche 2a (2026-11-05) : rayon natif contre les colliders d'une assembly (ABI 15), nodes et
             porteurs des colliders au résumé, cible d'un clic. Position du siège en Java des deux côtés
             (écart à D3, consigné).
-      - [ ] Tranche 2b : montée, position imposée, siège conservé (T-440, T-444).
+      - [x] Tranche 2b (2026-11-05) : montée au clic, position imposée au serveur et au client, occupation
+            synchronisée, siège conservé ; T-440, T-444 en GameTest, « ADR-158 D3 » au banc.
       - [ ] Tranche 3 : descente et éjection sûres (T-441, T-957).
       - [ ] Tranche 4 : `C2S_Input` (protocole 3) et interactions au clic (T-442, T-443).
 

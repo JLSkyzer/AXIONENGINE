@@ -1197,6 +1197,33 @@ public final class AxionRuntime {
     }
 
     /**
+     * {@return les sièges et les interactions d'une definition compilée (ADR-158 D1)} Vide tant qu'elle
+     * attend son asset, ou si elle a été refusée.
+     *
+     * @param id identifiant de la definition
+     */
+    public Optional<dev.axion.definition.Seating> seating(String id) {
+        DefinitionCompilation compiling = compilation;
+        return compiling == null ? Optional.empty() : compiling.seating(id);
+    }
+
+    /**
+     * Lance un rayon contre les seuls colliders d'une assembly (ADR-158 D2), sur le fil du serveur.
+     *
+     * @param index index du handle de l'assembly
+     * @param generation génération du handle
+     * @param ray origine monde, direction, portée
+     * @param out l'impact : {@code out[0]} vaut {@code -1} si rien n'est touché
+     * @return {@code OK}, un code d'erreur sinon — {@code E_INVALID_HANDLE} sans runtime natif
+     */
+    public int raycastAssembly(int index, int generation, double[] ray, double[] out) {
+        if (!hasNativeRuntime()) {
+            return dev.axion.bridge.NativeBridge.E_INVALID_HANDLE;
+        }
+        return dev.axion.bridge.NativeBridge.raycastAssembly(outcome.context(), index, generation, ray, out);
+    }
+
+    /**
      * {@return la registry des definitions, vide avant tout rechargement} Celles que leur compilation
      * a refusées n'y sont plus (ADR-156 D5).
      */

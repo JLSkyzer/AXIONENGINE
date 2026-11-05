@@ -10,6 +10,11 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- Sieges (C-53, ADR-158, tranche 2b) : un clic droit sur le siege ou sur une
+  portiere `sit` d'une assembly y assoit le joueur, vise par un rayon du
+  serveur ; le passager est pose a son siege a chaque tick, au serveur comme
+  au client ; un siege pris refuse ; le joueur retrouve son siege quand il
+  revient en jeu.
 - Sieges (C-53, ADR-158, tranche 2a) : un rayon natif qui ne vise que les
   colliders d'une assembly, et rend le corps et le collider touches ; le
   resume de compilation rend les nodes de l'asset (parent, corps, pose dans

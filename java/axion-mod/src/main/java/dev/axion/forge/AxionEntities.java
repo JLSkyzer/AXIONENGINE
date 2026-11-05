@@ -1,8 +1,12 @@
 package dev.axion.forge;
 
 import dev.axion.AxionMod;
+import dev.axion.asset.DefinitionCompiler;
 import dev.axion.definition.DefinitionRegistry;
+import dev.axion.definition.Seating;
 import dev.axion.lifecycle.AxionRuntime;
+import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import net.minecraft.world.entity.EntityType;
@@ -66,6 +70,28 @@ public final class AxionEntities {
     /** Plafond des données personnalisées, que le point d'entrée relie au runtime ; nul avant. */
     private static volatile LongSupplier maxCustomBytes = () -> 0;
 
+    /** Le résumé de la compilation d'une definition (ADR-156 D4), par identifiant. */
+    private static volatile Function<String, Optional<DefinitionCompiler.Summary>> summaries = id -> Optional.empty();
+
+    /** Les sièges et les interactions d'une definition compilée (ADR-158 D1), par identifiant. */
+    private static volatile Function<String, Optional<Seating>> seatings = id -> Optional.empty();
+
+    /** Le rayon contre les colliders d'une assembly (ADR-158 D2) ; sans runtime, il ne touche rien. */
+    private static volatile Rays rays = (index, generation, ray, out) -> -2001;
+
+    /** Le rayon contre les colliders d'une assembly, vu de l'entité. */
+    @FunctionalInterface
+    interface Rays {
+        /**
+         * @param index index du handle de l'assembly
+         * @param generation génération du handle
+         * @param ray origine monde, direction, portée
+         * @param out l'impact ; {@code out[0]} vaut {@code -1} si rien n'est touché
+         * @return 0 si l'appel a réussi
+         */
+        int cast(int index, int generation, double[] ray, double[] out);
+    }
+
     private AxionEntities() {}
 
     /**
@@ -78,6 +104,9 @@ public final class AxionEntities {
         ENTITY_TYPES.register(modBus);
         definitions = runtime::definitions;
         maxCustomBytes = runtime::maxCustomBytes;
+        summaries = runtime::compiledDefinition;
+        seatings = runtime::seating;
+        rays = runtime::raycastAssembly;
     }
 
     /** {@return les definitions chargées} */
@@ -88,5 +117,28 @@ public final class AxionEntities {
     /** {@return le plafond des données personnalisées d'une assembly, en octets (ADR-153 D7)} */
     static long maxCustomBytes() {
         return maxCustomBytes.getAsLong();
+    }
+
+    /**
+     * {@return le résumé de la compilation d'une definition, vide tant qu'elle l'attend}
+     *
+     * @param id identifiant de la definition
+     */
+    static Optional<DefinitionCompiler.Summary> summary(String id) {
+        return summaries.apply(id);
+    }
+
+    /**
+     * {@return les sièges et les interactions d'une definition compilée, vide tant qu'elle l'attend}
+     *
+     * @param id identifiant de la definition
+     */
+    static Optional<Seating> seating(String id) {
+        return seatings.apply(id);
+    }
+
+    /** {@return le rayon contre les colliders d'une assembly} */
+    static Rays rays() {
+        return rays;
     }
 }

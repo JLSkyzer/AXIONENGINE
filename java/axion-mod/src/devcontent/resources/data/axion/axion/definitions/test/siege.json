@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "asset": "axion:models/test/siege.gltf",
+  "kind": "rigid_object",
+  "seats": [
+    {
+      "name": "conducteur",
+      "node": "siege_g",
+      "role": "driver",
+      "exit_offsets": [
+        [
+          -1.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "controls": [
+        "throttle",
+        "steer"
+      ]
+    },
+    {
+      "name": "passager",
+      "node": "siege_d"
+    }
+  ],
+  "interaction": [
+    {
+      "node": "porte_d",
+      "action": "sit",
+      "seat": "passager"
+    }
+  ]
+}
