@@ -88,6 +88,9 @@ pub(crate) struct CompiledDefinition {
     pub warnings: Vec<String>,
     /// Les clips de l'asset, dans l'ordre de sa section `ANIM` : ce que Java joue par leur nom.
     pub clips: Vec<SummaryClip>,
+    /// Le node que désigne chaque référence, dans l'ordre de `DEFN` ; [`NONE_U32`] pour un clip ou
+    /// un os. Java en tire le node de ses sièges et de ses interactions (ADR-158 D1).
+    pub nodes: Vec<u32>,
 }
 
 /// Le refus d'une definition.
@@ -127,6 +130,10 @@ pub(crate) fn compile(
     let hashes: Vec<u64> = clips.iter().map(|(hash, _)| *hash).collect();
     let clips: Vec<SummaryClip> = clips.into_iter().map(|(_, clip)| clip).collect();
     let resolved = resolve(&definition.refs, asset, &hashes)?;
+    let nodes: Vec<u32> = resolved
+        .iter()
+        .map(|node| node.unwrap_or(NONE_U32))
+        .collect();
     let node_of = |reference: u32| resolved[reference as usize].expect("référence NODE résolue");
     let header = &definition.header;
 
@@ -147,7 +154,7 @@ pub(crate) fn compile(
             &[],
             0.0,
             (colliders, children),
-            clips,
+            (clips, nodes),
         );
     }
     let mut roots: Vec<u32> = Vec::with_capacity(definition.bodies.len());
@@ -233,7 +240,7 @@ pub(crate) fn compile(
         &joints,
         assembly_mass,
         (colliders, children),
-        clips,
+        (clips, nodes),
     )
 }
 
@@ -248,7 +255,7 @@ fn finish(
     joints: &[JointDesc],
     assembly_mass: f32,
     (colliders, children): (Vec<ColliderDesc>, Vec<ColliderDesc>),
-    clips: Vec<SummaryClip>,
+    (clips, nodes): (Vec<SummaryClip>, Vec<u32>),
 ) -> Result<CompiledDefinition, Refusal> {
     let header = &definition.header;
     let prepared = prepare(
@@ -295,6 +302,7 @@ fn finish(
         children,
         warnings,
         clips,
+        nodes,
     })
 }
 

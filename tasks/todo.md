@@ -3630,6 +3630,12 @@ T-980..T-984.
       du serveur sur les colliders (ABI 14), passagers de `Entity` avec sièges AXION, `C2S_Input` genre 7
       (protocole 3), descente et éjection sûres, interactions `sit`/`toggle_animation`/`play_animation`,
       T-440..T-444 et T-957 définis. **Accepté par Killian le 2026-11-05**, Q1 à Q4 comme proposé.
+      - [x] Tranche 1 (2026-11-05) : sièges et interactions dans la definition compilée, règles de forme,
+            avertissement des actions sans système ; ABI 14 (le node de chaque référence au résumé).
+            Sockets laissés à leur premier consommateur (ADR-156 D1, R-001).
+      - [ ] Tranche 2 : requête native de rayon (ABI 15), montée, position imposée, siège conservé (T-440, T-444).
+      - [ ] Tranche 3 : descente et éjection sûres (T-441, T-957).
+      - [ ] Tranche 4 : `C2S_Input` (protocole 3) et interactions au clic (T-442, T-443).
 
 ---
 

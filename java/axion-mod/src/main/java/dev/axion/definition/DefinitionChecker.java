@@ -77,6 +77,8 @@ final class DefinitionChecker {
         checker.resolve();
         checker.checkLinks(root);
         checker.checkZoneParents(root);
+        checker.checkSeats(root);
+        checker.checkInteractions(root);
         if (checker.version == 2 && checker.issues.isEmpty()) {
             checker.checkJoints(root);
         }
@@ -372,6 +374,70 @@ final class DefinitionChecker {
             if (a != null && a.equals(b)) {
                 invalid("$.structural_links[" + index + "].b",
                         "une liaison relie deux parts distinctes");
+            }
+        }
+    }
+
+    /**
+     * ADR-158 D1 : un siège a un node, qui lui donne sa position ; une definition a un conducteur au
+     * plus ; chaque contrôle est l'un de ceux de {@code VehicleInput} (12.8).
+     */
+    private void checkSeats(JsonObject root) {
+        if (!(root.get("seats") instanceof JsonArray seats)) {
+            return;
+        }
+        String driver = null;
+        for (int i = 0; i < seats.size(); i++) {
+            if (!(seats.get(i) instanceof JsonObject seat)) {
+                continue;
+            }
+            String path = "$.seats[" + i + "]";
+            if (seat.get("node") == null) {
+                invalid(path, "un siège est porté par un node, qui lui donne sa position (ADR-158 D1)");
+            }
+            if ("driver".equals(string(seat, "role"))) {
+                if (driver != null) {
+                    invalid(path + ".role", "un seul siège conducteur par definition, déjà " + driver
+                            + " (ADR-158 D1)");
+                } else {
+                    driver = path;
+                }
+            }
+            if (seat.get("controls") instanceof JsonArray controls) {
+                for (int k = 0; k < controls.size(); k++) {
+                    if (controls.get(k) instanceof JsonPrimitive control && control.isString()
+                            && Seating.Control.of(control.getAsString()) == null) {
+                        invalid(path + ".controls[" + k + "]", "contrôle inconnu « " + control.getAsString()
+                                + " » ; attendu throttle, brake, steer, clutch, handbrake ou gear");
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * ADR-158 D6 : une interaction est portée par un node, où le joueur clique ; {@code sit} nomme son
+     * siège, {@code toggle_animation} et {@code play_animation} leur clip.
+     */
+    private void checkInteractions(JsonObject root) {
+        if (!(root.get("interaction") instanceof JsonArray interactions)) {
+            return;
+        }
+        for (int i = 0; i < interactions.size(); i++) {
+            if (!(interactions.get(i) instanceof JsonObject interaction)) {
+                continue;
+            }
+            String path = "$.interaction[" + i + "]";
+            if (interaction.get("node") == null) {
+                invalid(path, "une interaction est portée par le node où le joueur clique (ADR-158 D6)");
+            }
+            String action = string(interaction, "action");
+            if ("sit".equals(action) && interaction.get("seat") == null) {
+                invalid(path, "l'action « sit » nomme le siège où elle assoit");
+            }
+            if (("toggle_animation".equals(action) || "play_animation".equals(action))
+                    && interaction.get("animation") == null) {
+                invalid(path, "l'action « " + action + " » nomme le clip qu'elle joue");
             }
         }
     }

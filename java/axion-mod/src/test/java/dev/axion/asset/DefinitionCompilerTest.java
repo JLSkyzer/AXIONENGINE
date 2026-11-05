@@ -41,7 +41,10 @@ class DefinitionCompilerTest {
         // Deux clips : « ouvrir » à 3 pistes, puis un clip sans nom à 1 piste.
         out.putInt(2);
         ecrire(out.putInt(3), "ouvrir");
-        byte[] payload = lignes(out.putInt(1), "");
+        ecrire(out.putInt(1), "");
+        // ADR-158 D1 : deux références, un node puis un clip.
+        out.putInt(2).putInt(5).putInt(-1);
+        byte[] payload = Arrays.copyOf(out.array(), out.position());
         DefinitionCompiler.Summary summary = DefinitionCompiler.Summary.read(payload);
         assertArrayEquals(new int[] {0, 4}, summary.roots());
         assertEquals(0, summary.rootNode());
@@ -49,6 +52,7 @@ class DefinitionCompilerTest {
         assertTrue(summary.serverAnimated());
         assertEquals(List.of("racine animée"), summary.warnings());
         assertEquals(new AnimClips(List.of("ouvrir", ""), new int[] {3, 1}), summary.clips());
+        assertArrayEquals(new int[] {5, -1}, summary.nodes());
 
         assertNull(DefinitionCompiler.Summary.read(Arrays.copyOf(payload, payload.length - 1)), "tronqué");
         assertNull(DefinitionCompiler.Summary.read(Arrays.copyOf(payload, payload.length + 1)), "prolongé");

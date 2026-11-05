@@ -10,6 +10,11 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- Sieges (C-53, ADR-158, tranche 1) : la definition compilee garde ses sieges
+  et ses interactions, chacun au node que le natif a resolu ; un siege sans
+  node, un second conducteur, un controle inconnu et une interaction
+  incomplete sont refuses ; les actions sans systeme sont signalees. ABI 14 :
+  le resume de compilation rend le node de chaque reference.
 - M4 (termine le 2026-11-05, Definition of Done prononcee par Killian) — reseau, animation,
   culling et LOD, joints, persistance :
   - reseau (C-51, ADR-150) : canal `axion:main` exige des deux cotes, un

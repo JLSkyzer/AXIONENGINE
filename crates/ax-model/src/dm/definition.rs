@@ -419,7 +419,9 @@ pub mod summary_flags {
 /// pistes et son nom, vide s'il n'en a pas, en une ligne comme le motif de [`DefinitionRefusal`] :
 /// le nombre de lignes, 1, puis la ligne. Java joue les clips par leur nom
 /// (`AnimationControl`) et compte leurs pistes (R-200) sans lire la section `ANIM` (décision de
-/// Killian, tranche 4).
+/// Killian, tranche 4). Enfin le node de chaque référence de `DEFN` — `u32` du nombre, celui des
+/// références, puis par référence l'index du node qu'elle désigne, [`NONE_U32`] pour un clip ou un
+/// os : Java en tire le node de chaque siège et de chaque interaction (ADR-158 D1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefinitionSummary {
     /// Node racine de chaque corps, le corps racine d'abord.
@@ -432,6 +434,9 @@ pub struct DefinitionSummary {
     pub warnings: Vec<String>,
     /// Les clips de l'asset, dans l'ordre de sa section `ANIM` : leur nom et leur nombre de pistes.
     pub clips: Vec<SummaryClip>,
+    /// Le node que désigne chaque référence de `DEFN`, dans leur ordre ; [`NONE_U32`] pour une
+    /// référence qui n'est pas un node.
+    pub nodes: Vec<u32>,
 }
 
 /// Un clip de l'asset, tel que le résumé le donne à Java.
@@ -463,6 +468,14 @@ impl DefinitionSummary {
             out.extend_from_slice(&clip.tracks.to_le_bytes());
             write_lines(std::slice::from_ref(&clip.name), out);
         }
+        out.extend_from_slice(
+            &u32::try_from(self.nodes.len())
+                .unwrap_or(u32::MAX)
+                .to_le_bytes(),
+        );
+        for node in &self.nodes {
+            out.extend_from_slice(&node.to_le_bytes());
+        }
     }
 
     /// Relit un résumé qui occupe exactement `bytes` ; `None` s'il est tronqué ou prolongé.
@@ -490,12 +503,20 @@ impl DefinitionSummary {
                 tracks,
             });
         }
+        let node_count = take_u32(&mut rest)?;
+        if node_count as usize > rest.len() / 4 {
+            return None;
+        }
+        let nodes = (0..node_count)
+            .map(|_| take_u32(&mut rest))
+            .collect::<Option<Vec<_>>>()?;
         rest.is_empty().then_some(Self {
             roots,
             joint_count,
             flags,
             warnings,
             clips,
+            nodes,
         })
     }
 }
@@ -789,12 +810,22 @@ mod tests {
                 name: "ouvrir".to_owned(),
                 tracks: 2,
             }],
+            nodes: vec![3, NONE_U32],
         };
         let mut bytes = Vec::new();
         summary.write_le(&mut bytes);
         let avertissements = 4 + 4 + "racine animée".len();
         let clips = 4 + 4 + 4 + 4 + "ouvrir".len();
-        assert_eq!(bytes.len(), 16 + 2 * 4 + avertissements + clips);
+        let nodes = 4 + 2 * 4;
+        assert_eq!(bytes.len(), 16 + 2 * 4 + avertissements + clips + nodes);
+        let node = 16 + 2 * 4 + avertissements + clips;
+        assert_eq!(
+            &bytes[node..node + 4],
+            &2u32.to_le_bytes(),
+            "deux références"
+        );
+        assert_eq!(&bytes[node + 4..node + 8], &3u32.to_le_bytes(), "un node");
+        assert_eq!(&bytes[node + 8..], &NONE_U32.to_le_bytes(), "un clip");
         let clip = 16 + 2 * 4 + avertissements;
         assert_eq!(&bytes[clip..clip + 4], &1u32.to_le_bytes(), "un clip");
         assert_eq!(

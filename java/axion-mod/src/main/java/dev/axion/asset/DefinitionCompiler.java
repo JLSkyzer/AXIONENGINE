@@ -51,13 +51,17 @@ public interface DefinitionCompiler {
      * @param warnings avertissements de la compilation (R-930)
      * @param clips les clips de l'asset, leur nom et leur nombre de pistes : ce que l'animation Java
      *     joue et compte (R-200), sans lire la section {@code ANIM} (décision de Killian, tranche 4)
+     * @param nodes le node que désigne chaque référence du {@code DEFN}, dans leur ordre ; {@code -1}
+     *     pour un clip ou un os (ADR-158 D1)
      */
-    record Summary(int[] roots, int joints, boolean serverAnimated, List<String> warnings, AnimClips clips) {
+    record Summary(
+            int[] roots, int joints, boolean serverAnimated, List<String> warnings, AnimClips clips, int[] nodes) {
 
         /** Copie les tableaux : un résumé ne change plus. */
         public Summary {
             roots = roots.clone();
             warnings = List.copyOf(warnings);
+            nodes = nodes.clone();
             if (clips == null) {
                 throw new IllegalArgumentException("les clips sont requis, AnimClips.NONE sans");
             }
@@ -69,6 +73,12 @@ public interface DefinitionCompiler {
             return roots.clone();
         }
 
+        /** {@return une copie du node de chaque référence} */
+        @Override
+        public int[] nodes() {
+            return nodes.clone();
+        }
+
         /** {@return le node racine du corps racine} */
         public int rootNode() {
             return roots[0];
@@ -78,7 +88,9 @@ public interface DefinitionCompiler {
          * {@return le résumé que le natif a déposé, ou {@code null} s'il ne se lit pas} Disposition :
          * nombre de corps, de joints, drapeaux, réservé ({@code u32}), le node racine de chaque corps
          * ({@code u32}), les avertissements en lignes, puis les clips : leur nombre ({@code u32}), et par
-         * clip son nombre de pistes ({@code u32}) et son nom, en une liste d'une ligne.
+         * clip son nombre de pistes ({@code u32}) et son nom, en une liste d'une ligne ; enfin le
+         * nombre de références ({@code u32}) et le node de chacune ({@code u32}, {@code 0xFFFFFFFF}
+         * sans).
          *
          * @param payload la charge d'{@code ASSET_OUT}
          */
@@ -114,9 +126,17 @@ public interface DefinitionCompiler {
                     }
                     names.add(name.get(0));
                 }
+                int nodeCount = in.getInt();
+                if (nodeCount < 0 || nodeCount > in.remaining() / Integer.BYTES) {
+                    return null;
+                }
+                int[] nodes = new int[nodeCount];
+                for (int i = 0; i < nodeCount; i++) {
+                    nodes[i] = in.getInt();
+                }
                 return in.hasRemaining()
                         ? null
-                        : new Summary(roots, joints, (flags & 1) != 0, warnings, new AnimClips(names, tracks));
+                        : new Summary(roots, joints, (flags & 1) != 0, warnings, new AnimClips(names, tracks), nodes);
             } catch (java.nio.BufferUnderflowException truncated) {
                 return null;
             }

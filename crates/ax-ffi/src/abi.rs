@@ -63,7 +63,7 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 13;
+pub const AXION_ABI_VERSION: u32 = 14;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -1386,6 +1386,7 @@ pub unsafe extern "C" fn axion_definition_compile(
                     },
                     warnings: compiled.warnings.clone(),
                     clips: compiled.clips.clone(),
+                    nodes: compiled.nodes.clone(),
                 }
                 .write_le(&mut payload);
                 (AXION_OK, Some(compiled))

@@ -40,6 +40,7 @@ public final class DefinitionCompilation {
     private DefinitionRegistry loaded = DefinitionRegistry.empty();
     private final SortedMap<String, Definition> pending = new TreeMap<>();
     private final Map<String, DefinitionCompiler.Summary> compiled = new HashMap<>();
+    private final Map<String, Seating> seatings = new HashMap<>();
     private final SortedMap<String, String> refused = new TreeMap<>();
 
     /** Les assets dont les avertissements sont déjà au journal depuis le dernier {@link #reset}. */
@@ -70,6 +71,7 @@ public final class DefinitionCompilation {
             compiler.remove(DefinitionIds.hash(id));
         }
         compiled.clear();
+        seatings.clear();
         refused.clear();
         pending.clear();
         warnedAssets.clear();
@@ -153,8 +155,22 @@ public final class DefinitionCompilation {
             }
         }
         if (result.compiled()) {
+            Seating seating;
+            try {
+                seating = Seating.of(definition.root(), encoded.references(), result.summary().nodes());
+            } catch (IllegalArgumentException unresolved) {
+                // Le natif a rendu un résumé sans le node d'une référence : la frontière a failli.
+                compiler.remove(definition.hash());
+                refuse(definition, "E-" + (-DefinitionCompiler.E_DEFINITION_INVALID), "$",
+                        "compilation impossible : " + unresolved.getMessage());
+                return;
+            }
             compiled.put(definition.id(), result.summary());
+            seatings.put(definition.id(), seating);
             for (String warning : result.summary().warnings()) {
+                journal.add("AXION : definition " + definition.id() + " : " + warning);
+            }
+            for (String warning : seating.warnings()) {
                 journal.add("AXION : definition " + definition.id() + " : " + warning);
             }
         } else if (result.refused()) {
@@ -183,6 +199,16 @@ public final class DefinitionCompilation {
      */
     public synchronized Optional<DefinitionCompiler.Summary> summary(String id) {
         return Optional.ofNullable(compiled.get(id));
+    }
+
+    /**
+     * {@return les sièges et les interactions d'une definition compilée, ou vide si elle attend ou a
+     * été refusée (ADR-158 D1)}
+     *
+     * @param id identifiant de la definition
+     */
+    public synchronized Optional<Seating> seating(String id) {
+        return Optional.ofNullable(seatings.get(id));
     }
 
     /** {@return vrai si aucune definition n'attend plus son asset} */

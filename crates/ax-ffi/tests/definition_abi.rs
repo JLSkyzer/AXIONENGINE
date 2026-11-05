@@ -278,6 +278,7 @@ fn adr156_une_definition_se_compile_s_inscrit_se_refuse_et_se_retire_par_l_abi()
     assert_eq!(resume.joint_count, 0);
     assert_eq!(resume.flags, summary_flags::SERVER_ANIMATED);
     assert!(resume.warnings.is_empty());
+    assert!(resume.nodes.is_empty(), "aucune référence, aucun node");
     // Les clips de l'asset partent avec le résumé : Java les joue sans lire ANIM (tranche 4).
     assert_eq!(
         resume.clips,
@@ -295,8 +296,15 @@ fn adr156_une_definition_se_compile_s_inscrit_se_refuse_et_se_retire_par_l_abi()
     assert!(refus.message.contains("node"), "{}", refus.message);
 
     // Une compilation remplace la précédente ; un refus la retire.
-    let (code, _) = compile(ctx, 3, asset, &definition(vec![corps(0)], &["porte"]));
+    let (code, reponse) = compile(ctx, 3, asset, &definition(vec![corps(0)], &["porte"]));
     assert_eq!(code, AXION_OK);
+    // ADR-158 D1 : le node de chaque référence part avec le résumé, pour les sièges de Java.
+    let resume = DefinitionSummary::read_le(&reponse.expect("résumé")).expect("lisible");
+    assert_eq!(
+        resume.nodes,
+        [1],
+        "la référence « porte » désigne le node 1"
+    );
     let (code, _) = compile(ctx, 3, asset, &definition(vec![corps(0)], &["capot"]));
     assert_eq!(code, -7001);
     assert_eq!(
