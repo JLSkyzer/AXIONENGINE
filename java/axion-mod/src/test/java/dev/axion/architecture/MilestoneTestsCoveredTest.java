@@ -57,7 +57,13 @@ class MilestoneTestsCoveredTest {
             "M3", Map.of(
                     "T-308", "ADR-128 : aucune fiche ne le définit",
                     "T-309", "ADR-128 : aucune fiche ne le définit",
-                    "T-493", "ADR-128 : joué avec C-66 (M4) et la M6"));
+                    "T-493", "ADR-128 : joué avec C-66 (M4) et la M6"),
+            "M4", Map.of(
+                    "T-365", "ADR-155 : sources procédurales de véhicule, en M5",
+                    "T-415", "ADR-150 : prédiction d'un véhicule, en M5",
+                    "T-416", "ADR-150 : prédiction d'un véhicule, en M5",
+                    "T-417", "ADR-150 : prédiction d'un véhicule, en M5",
+                    "T-431", "ADR-153 : avec C-41, premier composant qui modifie l'état d'une part (M6)"));
 
     /**
      * {@return vrai si une source de test porte cet identifiant : écrit tel quel, ou en
@@ -125,6 +131,12 @@ class MilestoneTestsCoveredTest {
      * développement ({@code src/devcontent}, jamais empaqueté) en porte aussi : les
      * GameTests ({@code @GameTest}) et le banc de rendu, qui juge chaque vérification
      * par son rapport ({@code RAPPORT.noter}) — l'acceptance de M3 y vit.
+     *
+     * <p>Les campagnes ({@code tools/campagne}) et les audits de CI ({@code tools/ci}) en portent
+     * d'autres, en Python ou en Java : T-435 se joue en campagne réelle, T-437 s'audite à chaque
+     * passage des GameTests (ADR-153, décision de Killian du 2026-11-05). Chaque fichier y compte,
+     * sauf l'orchestrateur de la CI locale, qui cite des identifiants dans ses libellés sans rien
+     * vérifier.
      */
     private static List<String> testSources() throws IOException {
         List<Path> roots = List.of(
@@ -148,6 +160,17 @@ class MilestoneTestsCoveredTest {
                     if (content.contains("@Test") || content.contains("#[test]")
                             || content.contains("@GameTest") || content.contains("RAPPORT.noter(")) {
                         contents.add(content);
+                    }
+                }
+            }
+        }
+        Path tools = Path.of(System.getProperty("axion.tools.dir"));
+        for (String dir : List.of("ci", "campagne")) {
+            try (Stream<Path> files = Files.walk(tools.resolve(dir))) {
+                for (Path file : files.filter(Files::isRegularFile).toList()) {
+                    String name = file.getFileName().toString();
+                    if ((name.endsWith(".py") || name.endsWith(".java")) && !name.equals("local_ci.py")) {
+                        contents.add(Files.readString(file, StandardCharsets.UTF_8));
                     }
                 }
             }

@@ -399,6 +399,8 @@ tasks.named('test', Test).configure {
     systemProperty 'axion.test.dir', file('src/test/java').absolutePath
     // Les GameTests et le banc de rendu portent aussi des tests de jalon (M3).
     systemProperty 'axion.devcontent.dir', file('src/devcontent/java').absolutePath
+    // Les campagnes et les audits de CI en portent d'autres (M4 : T-435, T-437).
+    systemProperty 'axion.tools.dir', rootProject.file('tools').absolutePath
     // T-019 (INV-12) lit le bytecode du moteur : aucun appel GL hors du render thread.
     systemProperty 'axion.classes.dir', sourceSets.main.java.classesDirectory.get().asFile.absolutePath
     // R-1751 : la version que porte l'artefact axion-api, confrontee a ApiVersion.CURRENT.

@@ -3491,7 +3491,7 @@ sources procédurales de véhicule (M5, T-365).
   déjà écrit.
 - **Restes ouverts, proposés comme renvois** :
   - l'emprise exacte des assemblies articulées et animées au culling (aujourd'hui `NO_CULL`) :
-    [ADR-157](../docs/decisions/ADR-157.md) proposé, dont la Q3 tranche M4 ou M5 ;
+    [ADR-157](../docs/decisions/ADR-157.md) **accepté le 2026-11-05, en M4** : à livrer avant le prononcé ;
   - T-904 : des pics isolés, que le banc décompose désormais ; aucun en sept passages le 2026-11-05 ;
   - ADR-150 D7 : un rouge isolé (177 m/s) le 2026-11-05, vert six fois ensuite ; D7 dit sa pire frame.
 - **Critères « Jalon terminé »** (forme d'ADR-146) :
@@ -3503,11 +3503,10 @@ sources procédurales de véhicule (M5, T-365).
     tests que le CDC déclare pour M4 ne sont portés par aucun test exécuté.
     - Cinq sont exclus par un ADR accepté : T-415..T-417 (ADR-150 : la prédiction d'un véhicule, M5),
       T-365 (ADR-155 : sources procédurales de véhicule, M5), T-431 (ADR-153 : avec C-41, M6).
-    - **Deux sont à trancher** : T-435 (campagne réelle, `tools/campagne/journal_lateral.py`, jouée le
-      2026-10-28) et T-437 (audit des écritures, `tools/ci/audit_ecritures.py` et
-      `AuditEcrituresJfr.java`, à chaque passage des GameTests). Ils existent, mais hors des racines que
-      le contrôle parcourt : soit une exclusion qui cite ADR-153 (« joué en campagne » / « audit de CI »),
-      soit le contrôle étendu à `tools/ci` et `tools/campagne`.
+    - T-435 (campagne réelle, `tools/campagne/journal_lateral.py`) et T-437 (audit des écritures,
+      `tools/ci/audit_ecritures.py`, `AuditEcrituresJfr.java`) : **tranché par Killian le 2026-11-05**, le
+      contrôle parcourt désormais `tools/ci` et `tools/campagne` (hors `local_ci.py`). Les cinq exclusions
+      d'ADR sont écrites dans `EXCLUDED` ; l'essai à blanc de M4 est vert.
     - T-531..T-533, que l'essai trouvait aussi manquants, étaient livrés sous d'autres noms : ils sont
       désormais nommés là où ils vivent (8ca91ea).
   - benchmarks : en M12 (ADR-131) ;
