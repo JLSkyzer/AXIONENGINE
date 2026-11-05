@@ -21,6 +21,9 @@ pub struct Candidate {
     pub scale: f32,
     /// Orientation.
     pub rotation: Quat,
+    /// La sphère que le candidat donne lui-même, dans son repère, si [`Candidate::BOUNDS`] est posé
+    /// (ADR-157 D2) : elle remplace celle de son asset au culling.
+    pub bounds: Option<LocalBounds>,
 }
 
 /// Pourquoi un candidat est refusé.
@@ -28,8 +31,8 @@ pub struct Candidate {
 pub enum CandidateError {
     /// La liste n'est pas un multiple de [`Candidate::BYTES`] octets.
     Length(usize),
-    /// Le candidat à cet index porte une valeur non finie, une échelle non positive ou une
-    /// rotation nulle.
+    /// Le candidat à cet index porte une valeur non finie, une échelle non positive, une rotation
+    /// nulle, ou, sous [`Candidate::BOUNDS`], une sphère non finie ou de rayon non positif.
     Invalid(usize),
 }
 
@@ -60,9 +63,15 @@ impl Candidate {
     /// pas ce qu'elle dessine — des corps articulés écartés de leur pose de repos.
     pub const NO_CULL: u32 = 1 << 0;
 
+    /// Drapeau : la sphère des octets 48 à 64 remplace celle de l'asset au culling (ADR-157 D2). Pour
+    /// une assembly dont des corps articulés s'écartent de leur pose de repos : Java unit l'emprise de
+    /// chaque corps, à sa pose.
+    pub const BOUNDS: u32 = 1 << 1;
+
     /// Taille d'un candidat, en octets : `id`, index et génération du handle de l'asset, `flags`
-    /// (`u32`), position `f32[3]`, échelle `f32`, rotation `f32[4]`.
-    pub const BYTES: usize = 48;
+    /// (`u32`), position `f32[3]`, échelle `f32`, rotation `f32[4]`, puis la sphère `[cx, cy, cz, r]`
+    /// en `f32`, lue seulement sous [`Candidate::BOUNDS`] (ADR-157 D2).
+    pub const BYTES: usize = 64;
 
     /// Lit une liste de candidats little-endian.
     ///
@@ -96,14 +105,26 @@ impl Candidate {
             if (norm - 1.0).abs() > 1e-6 {
                 rotation = rotation.normalize();
             }
+            let flags = u32_at(raw, 12);
+            let bounds = if flags & Self::BOUNDS == 0 {
+                None
+            } else {
+                let center = Vec3::new(f32_at(raw, 48), f32_at(raw, 52), f32_at(raw, 56));
+                let radius = f32_at(raw, 60);
+                if !center.is_finite() || !radius.is_finite() || radius <= 0.0 {
+                    return Err(CandidateError::Invalid(i));
+                }
+                Some(LocalBounds { center, radius })
+            };
             out.push(Candidate {
                 id: u32_at(raw, 0),
                 asset: u32_at(raw, 4),
                 generation: u32_at(raw, 8),
-                flags: u32_at(raw, 12),
+                flags,
                 position,
                 scale,
                 rotation,
+                bounds,
             });
         }
         Ok(out)
@@ -123,6 +144,12 @@ impl Candidate {
         out[28..32].copy_from_slice(&self.scale.to_le_bytes());
         for (i, v) in self.rotation.to_array().iter().enumerate() {
             out[32 + i * 4..36 + i * 4].copy_from_slice(&v.to_le_bytes());
+        }
+        if let Some(bounds) = self.bounds {
+            for (i, v) in bounds.center.to_array().iter().enumerate() {
+                out[48 + i * 4..52 + i * 4].copy_from_slice(&v.to_le_bytes());
+            }
+            out[60..64].copy_from_slice(&bounds.radius.to_le_bytes());
         }
         out
     }

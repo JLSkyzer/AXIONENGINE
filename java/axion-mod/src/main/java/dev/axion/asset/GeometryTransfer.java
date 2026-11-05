@@ -120,6 +120,8 @@ public final class GeometryTransfer {
     public record Draw(int mesh, int node, int nodeFlags, float[] model) {}
 
     private final List<Mesh> meshes;
+    /** L'emprise de chaque mesh, six flottants par mesh : le minimum puis le maximum (ADR-157 D2). */
+    private final float[] meshBounds;
     private final float[] positions;
     private final float[] normals;
     private final float[] uvs;
@@ -134,6 +136,7 @@ public final class GeometryTransfer {
 
     private GeometryTransfer(
             List<Mesh> meshes,
+            float[] meshBounds,
             float[] positions,
             float[] normals,
             float[] uvs,
@@ -144,6 +147,7 @@ public final class GeometryTransfer {
             int verticesAt,
             int indicesAt) {
         this.meshes = meshes;
+        this.meshBounds = meshBounds;
         this.positions = positions;
         this.normals = normals;
         this.uvs = uvs;
@@ -187,8 +191,13 @@ public final class GeometryTransfer {
         int drawsAt = indicesAt + (int) indexCount * Integer.BYTES;
 
         List<Mesh> meshes = new ArrayList<>((int) meshCount);
+        float[] meshBounds = new float[(int) meshCount * 6];
         for (int rank = 0; rank < meshCount; rank++) {
             int at = meshesAt + rank * MESH_BYTES;
+            // aabb_min puis aabb_max du MeshDesc, aux octets 20 à 44.
+            for (int value = 0; value < 6; value++) {
+                meshBounds[rank * 6 + value] = in.getFloat(at + 20 + value * 4);
+            }
             meshes.add(new Mesh(
                     in.getInt(at),
                     in.getInt(at + 4),
@@ -251,8 +260,23 @@ public final class GeometryTransfer {
         }
 
         return new GeometryTransfer(
-                List.copyOf(meshes), positions, normals, uvs, colors, indices, List.copyOf(draws),
+                List.copyOf(meshes), meshBounds, positions, normals, uvs, colors, indices, List.copyOf(draws),
                 bytes, verticesAt, indicesAt);
+    }
+
+    /**
+     * {@return l'emprise d'un mesh dans son repère, {@code [minx, miny, minz, maxx, maxy, maxz]} ; copie} ou
+     * {@code null} pour un rang hors de la table
+     *
+     * @param mesh rang du mesh
+     */
+    public float[] meshBounds(int mesh) {
+        if (mesh < 0 || mesh >= meshes.size()) {
+            return null;
+        }
+        float[] box = new float[6];
+        System.arraycopy(meshBounds, mesh * 6, box, 0, 6);
+        return box;
     }
 
     /** {@return les meshes, dans l'ordre du transfert} */

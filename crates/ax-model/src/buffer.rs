@@ -177,10 +177,8 @@ impl BufferKind {
     #[must_use]
     pub const fn schema_version(self) -> u32 {
         match self {
-            BufferKind::Debug
-            | BufferKind::SimOut
-            | BufferKind::RenderIn
-            | BufferKind::RenderDebug => 2,
+            BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderDebug => 2,
+            BufferKind::RenderIn => 3,
             BufferKind::RenderOut => 4,
             BufferKind::AssetOut => 1,
             _ => 0,
@@ -538,10 +536,8 @@ mod tests {
         for kind in BufferKind::ALL {
             let attendue = match kind {
                 BufferKind::RenderOut => 4,
-                BufferKind::Debug
-                | BufferKind::SimOut
-                | BufferKind::RenderIn
-                | BufferKind::RenderDebug => 2,
+                BufferKind::RenderIn => 3,
+                BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderDebug => 2,
                 BufferKind::AssetOut => 1,
                 _ => 0,
             };

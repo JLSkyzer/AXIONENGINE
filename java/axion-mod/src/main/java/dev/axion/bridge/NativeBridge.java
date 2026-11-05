@@ -31,7 +31,8 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}. 12 depuis la compilation des definitions par le natif (ADR-156) :
+     * {@code E-1002}. 13 depuis la sphère explicite du candidat de rendu (ADR-157 D2) : 64 octets, drapeau
+     * {@code BOUNDS}, {@code RENDER_IN} au schéma 3. 12 depuis la compilation des definitions par le natif (ADR-156) :
      * {@link #compileDefinition}, {@link #removeDefinition}, et {@link #SECTION_PHYS}, {@link #SECTION_SKEL},
      * {@link #SECTION_ANIM} au masque de {@link #loadAsset}. 11 depuis les overlays de l'animation (ADR-155,
      * tranche 6b) : {@link #fillRenderDebug} et
@@ -44,7 +45,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 12;
+    public static final int EXPECTED_ABI_VERSION = 13;
 
     /** Succès. */
     public static final int OK = 0;
@@ -798,8 +799,8 @@ public final class NativeBridge {
     /** Taille de {@code AxionCameraDesc}, en octets (ADR-154 D3). */
     public static final int CAMERA_DESC_BYTES = 112;
 
-    /** Taille d'un candidat de {@code RENDER_IN}, en octets (ADR-154 D3). */
-    public static final int RENDER_CANDIDATE_BYTES = 48;
+    /** Taille d'un candidat de {@code RENDER_IN}, en octets (ADR-154 D3, ADR-157 D2). */
+    public static final int RENDER_CANDIDATE_BYTES = 64;
 
     /** Nombre de valeurs qu'écrit {@link #prepareRender}, une par champ d'{@code AxionRenderResult}. */
     public static final int RENDER_PREPARE_SLOTS = 8;

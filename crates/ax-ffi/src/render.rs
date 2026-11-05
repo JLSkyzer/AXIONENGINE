@@ -381,6 +381,10 @@ fn cull_lot(
     let mut visible = Vec::new();
     // Un index réemployé par un autre asset ne porte plus la génération du candidat : inconnu.
     let bounds = |candidate: &Candidate| {
+        // ADR-157 D2 : la sphère que Java donne pour une assembly aux corps écartés de leur repos.
+        if candidate.flags & Candidate::BOUNDS != 0 {
+            return candidate.bounds;
+        }
         assets
             .get(candidate.asset as usize)
             .and_then(Option::as_ref)
@@ -1078,6 +1082,7 @@ mod tests {
             position,
             scale: 1.0,
             rotation: Quat::IDENTITY,
+            bounds: None,
         }
     }
 
@@ -1121,6 +1126,45 @@ mod tests {
                 .unwrap()
                 .instance_count,
             1
+        );
+    }
+
+    #[test]
+    fn adr157_d2_la_sphere_du_candidat_remplace_celle_de_l_asset() {
+        let mut context = context();
+        let borne = |position: Vec3, center: Vec3| Candidate {
+            flags: Candidate::BOUNDS,
+            bounds: Some(LocalBounds {
+                center,
+                radius: 1.0,
+            }),
+            ..candidate(8, position)
+        };
+        // Derrière la caméra, l'asset est hors du champ ; la sphère du candidat, dix blocs devant lui, y
+        // entre : retenu.
+        write(
+            &mut context,
+            &[borne(Vec3::new(0.0, 0.0, 5.0), Vec3::new(0.0, 0.0, -10.0))],
+        );
+        assert_eq!(
+            context
+                .prepare(&camera(1, 0), LARGE)
+                .unwrap()
+                .instance_count,
+            1
+        );
+        // Devant la caméra, l'asset est dans le champ ; la sphère du candidat, dix blocs derrière lui,
+        // n'y est pas : écarté.
+        write(
+            &mut context,
+            &[borne(Vec3::new(0.0, 0.0, -5.0), Vec3::new(0.0, 0.0, 10.0))],
+        );
+        assert_eq!(
+            context
+                .prepare(&camera(1, 0), LARGE)
+                .unwrap()
+                .instance_count,
+            0
         );
     }
 

@@ -17,11 +17,14 @@ import dev.axion.forge.RuntimeAccess;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.diag.JavaMetrics;
 import dev.axion.net.AnimationLayers;
+import dev.axion.net.Interpolation;
 import dev.axion.physics.AssemblyBodies;
 import dev.axion.render.AnimationCommands;
 import dev.axion.render.AnimationSync;
+import dev.axion.render.ArticulatedBounds;
 import dev.axion.render.BackendSelection;
 import dev.axion.render.BodyRig;
+import dev.axion.render.BodySkeleton;
 import dev.axion.render.CpuSkinning;
 import dev.axion.render.GpuDegradation;
 import dev.axion.render.GpuPassTimings;
@@ -809,6 +812,15 @@ public final class AxionRenderPass {
         return assemblies;
     }
 
+    /** {@return les nodes racines des corps secondaires, dans l'ordre de leurs poses} */
+    private static int[] bodyNodes(List<Interpolation.BodyPose> bodies) {
+        int[] nodes = new int[bodies.size()];
+        for (int rank = 0; rank < nodes.length; rank++) {
+            nodes[rank] = bodies.get(rank).node();
+        }
+        return nodes;
+    }
+
     /**
      * {@return les assemblies de la frame que le culling natif retient (C-64, ADR-154)} Seules celles
      * dont l'asset est chargé dans le natif sont candidates ; les autres — boîte de repli, asset en
@@ -876,13 +888,24 @@ public final class AxionRenderPass {
             rotation[2] = pose.rotation().z;
             rotation[3] = pose.rotation().w;
             AnimationLayers animation = assembly.entity().animationState();
-            boolean bounded = pose.bodies().isEmpty()
-                    && (!animation.visibleAt(renderTick) || animation.singleClipAt(renderTick));
+            boolean animated = animation.visibleAt(renderTick);
+            float[] sphere = null;
+            boolean bounded;
+            if (pose.bodies().isEmpty()) {
+                bounded = !animated || animation.singleClipAt(renderTick);
+            } else {
+                // ADR-157 D2 : des corps écartés de leur repos — Java unit leurs emprises, chacun à sa pose.
+                // Animés de surcroît, rien ne borne leurs dessins : retenus sans test.
+                BodySkeleton skeleton = animated || assembly.rig() == null
+                        ? null : assembly.rig().skeleton(bodyNodes(pose.bodies()));
+                sphere = skeleton == null ? null : ArticulatedBounds.of(assembly.asset().mesh(), skeleton, pose.bodies());
+                bounded = sphere != null;
+            }
+            boolean tested = bounded && !assembly.entity().noCulling;
             RenderPrepCodec.putCandidate(buffer, offset, assembly.entity().getId(), assembly.asset().nativeIndex(),
-                    assembly.asset().nativeGeneration(),
-                    bounded && !assembly.entity().noCulling ? 0 : RenderPrepCodec.NO_CULL,
+                    assembly.asset().nativeGeneration(), tested ? 0 : RenderPrepCodec.NO_CULL,
                     (float) (pose.x() - camera.x), (float) (pose.y() - camera.y), (float) (pose.z() - camera.z),
-                    1f, rotation);
+                    1f, rotation, tested ? sphere : null);
         }, renderPrepLimit, renderTick, backend instanceof NativeGlBackend natif ? natif.palettes() : null);
         if (outcome.code() == 0
                 && (OVERLAYS.isOn(DebugOverlays.Overlay.LOD) || OVERLAYS.isOn(DebugOverlays.Overlay.CULLING))) {

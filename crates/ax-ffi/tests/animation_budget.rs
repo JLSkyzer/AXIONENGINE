@@ -150,6 +150,7 @@ fn frame(ctx: u64, asset: Handle, ids: &[u32], tick: f64, budget_ns: u64) -> Fra
             ),
             scale: 1.0,
             rotation: Quat::IDENTITY,
+            bounds: None,
         };
         let at = HEADER_BYTES + IN_FRAME_HEADER + rang * Candidate::BYTES;
         bytes[at..at + Candidate::BYTES].copy_from_slice(&candidate.to_bytes());

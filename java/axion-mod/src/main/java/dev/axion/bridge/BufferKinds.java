@@ -87,7 +87,7 @@ public final class BufferKinds {
     public static final int DEBUG_SCHEMA = 2;
 
     /** Version du schéma de la charge de {@code RENDER_IN}, lue à l'octet 12 de l'en-tête. */
-    public static final int RENDER_IN_SCHEMA = 2;
+    public static final int RENDER_IN_SCHEMA = 3;
 
     /** Version du schéma de la charge de {@code RENDER_DEBUG}, lue à l'octet 12 de l'en-tête. */
     public static final int RENDER_DEBUG_SCHEMA = 2;

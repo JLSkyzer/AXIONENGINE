@@ -357,6 +357,9 @@ public final class BancDeRendu {
 
     /** ADR-151 D9 : la charnière, le fond sans elle, et ses poses au serveur à la capture. */
     private static AxionEntity charniere;
+
+    /** ADR-157 D2 : une seconde charnière, derrière la caméra. */
+    private static AxionEntity charniereDerriere;
     private static CapturesDuBanc.Capture fondCharniere;
     private static PosesCharniere posesCharniere;
 
@@ -728,6 +731,21 @@ public final class BancDeRendu {
             stabiliser("les overlays de la charnière");
             une("juger ADR-151 D7", mc -> jugerD7());
             une("éteindre les overlays de la charnière", mc -> AxionRenderPass.setAllOverlays(false));
+            // ADR-157 D2 : une assembly à plusieurs corps se culle par la sphère que Java unit, chaque corps à sa
+            // pose. Derrière la caméra, la seconde charnière est écartée ; devant, la première reste retenue.
+            // Au bout de la rangée de DERRIERE, au sud-est : hors de vue au nord comme à l'ouest.
+            serveur("poser une charnière derrière la caméra", s -> charniereDerriere = AssembliesDeTest.poser(
+                    s.overworld(), CHARNIERE, new Vec3(1.5 + 2 * DERRIERE.size(), surface + 1.25, 6.5), IDENTITE));
+            jusqua("ses corps connus du client", 120,
+                    mc -> mc.level.getEntity(charniereDerriere.getId()) instanceof AxionEntity auClient
+                            && !auClient.renderPose(0f).bodies().isEmpty());
+            une("allumer culling sur les charnières",
+                    mc -> AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.CULLING, true));
+            pendant("relever les décisions des charnières", 20);
+            une("juger ADR-157 D2", BancDeRendu::jugerCullingArticule);
+            une("éteindre culling sur les charnières",
+                    mc -> AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.CULLING, false));
+            serveur("retirer la charnière de derrière", s -> charniereDerriere.discard());
             serveur("retirer la charnière", s -> charniere.discard());
             jusqua("la charnière retirée", 30, mc -> mc.level.getEntity(charniere.getId()) == null);
         }
@@ -1996,6 +2014,22 @@ public final class BancDeRendu {
         boolean vert = devant != null && devant >= 0 && derriere != null && derriere < 0;
         RAPPORT.noter("ADR-157 D1", vert, String.format(Locale.ROOT,
                 "deux glissières qui jouent « glisse » : devant la caméra %s, derrière elle %s — la première doit être"
+                        + " retenue, la seconde écartée",
+                devant == null ? "non candidate" : devant < 0 ? "écartée" : "retenue au niveau " + devant,
+                derriere == null ? "non candidate" : derriere < 0 ? "écartée" : "retenue au niveau " + derriere));
+    }
+
+    /**
+     * ADR-157 D2 : deux charnières, chacune de deux corps ; la première, devant la caméra, est retenue, la
+     * seconde, derrière elle, est écartée. Avant ADR-157, une assembly dont les corps secondaires ont une pose
+     * était toujours retenue, sans test : la seconde l'aurait été.
+     */
+    private static void jugerCullingArticule(Minecraft minecraft) {
+        Integer devant = niveau(minecraft, charniere);
+        Integer derriere = niveau(minecraft, charniereDerriere);
+        boolean vert = devant != null && devant >= 0 && derriere != null && derriere < 0;
+        RAPPORT.noter("ADR-157 D2", vert, String.format(Locale.ROOT,
+                "deux charnières à deux corps : devant la caméra %s, derrière elle %s — la première doit être"
                         + " retenue, la seconde écartée",
                 devant == null ? "non candidate" : devant < 0 ? "écartée" : "retenue au niveau " + devant,
                 derriere == null ? "non candidate" : derriere < 0 ? "écartée" : "retenue au niveau " + derriere));

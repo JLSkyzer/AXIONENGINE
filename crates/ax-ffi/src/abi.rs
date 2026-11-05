@@ -52,7 +52,8 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 12 depuis la compilation des
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 13 depuis la sphère explicite du
+/// candidat de rendu (ADR-157 D2) : 64 octets, drapeau `BOUNDS`, `RENDER_IN` au schéma 3. 12 depuis la compilation des
 /// definitions par le natif (ADR-156) : `axion_definition_compile`, `axion_definition_remove`, et
 /// `PHYS`, `SKEL`, `ANIM` au masque d'`axion_asset_load`. 11 depuis les overlays de
 /// l'animation (ADR-155, tranche 6b) : `axion_render_debug` et le tampon `RENDER_DEBUG` ; 10 depuis
@@ -62,7 +63,7 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 12;
+pub const AXION_ABI_VERSION: u32 = 13;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;

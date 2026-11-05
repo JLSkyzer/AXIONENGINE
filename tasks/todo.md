@@ -3358,7 +3358,8 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
       `glMultiDrawElementsIndirect` ; T-907 au banc natif : 0 pixel différent ; 1 mutation rouge.
 - [x] T-475 et T-906 au banc de rendu (2026-10-29) : niveaux croissants avec la distance, décisions stables sur
       60 relevés ; 1 mutation rouge. **Chantier culling, LOD et instancing clos** (preuve attendue rendue).
-- [ ] Restes du chantier : emprise exacte des assemblies aux corps articulés (aujourd'hui `NO_CULL`).
+- [x] Restes du chantier : emprise exacte des assemblies aux corps articulés et animées — ADR-157, livré le
+      2026-11-05 (tranches 1 et 2).
       L'avertissement Java d'une table `LODM` refusée est fait par la tranche 5 d'ADR-156 (2026-11-05) :
       `MeshCache` l'écrit au journal en nommant l'asset.
 - [ ] T-904 : trois pics isolés, démentis au passage suivant — 21,55 ms puis 10,46 ms le 2026-10-28, 49,32 ms
@@ -3491,8 +3492,9 @@ sources procédurales de véhicule (M5, T-365).
   déjà écrit.
 - **Restes ouverts, proposés comme renvois** :
   - l'emprise exacte des assemblies articulées et animées au culling (aujourd'hui `NO_CULL`) :
-    [ADR-157](../docs/decisions/ADR-157.md) **accepté le 2026-11-05, en M4** : tranche 1 (animation, sphère
-    balayée) faite le 2026-11-05 ; reste la tranche 2 (corps articulés, sphère explicite, ABI 13) ;
+    [ADR-157](../docs/decisions/ADR-157.md) **accepté le 2026-11-05, en M4** : tranches 1 (animation, sphère
+    balayée) et 2 (corps articulés, sphère explicite, ABI 13) faites le 2026-11-05 : ADR-157 livré, le reste
+    du chantier culling est soldé ;
   - T-904 : des pics isolés, que le banc décompose désormais ; aucun en sept passages le 2026-11-05 ;
   - ADR-150 D7 : un rouge isolé (177 m/s) le 2026-11-05, vert six fois ensuite ; D7 dit sa pire frame.
 - **Critères « Jalon terminé »** (forme d'ADR-146) :

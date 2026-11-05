@@ -52,6 +52,7 @@ fn candidate(id: u32, asset: u32, position: Vec3) -> Candidate {
         position,
         scale: 1.0,
         rotation: Quat::IDENTITY,
+        bounds: None,
     }
 }
 
@@ -197,6 +198,7 @@ fn t521_les_lots_rendent_exactement_la_decision_scalaire() {
                     rng.next(),
                 )
                 .normalize(),
+                bounds: None,
             })
             .collect();
         let frustum = cam.frustum();
@@ -256,6 +258,7 @@ fn candidats_aller_retour_et_refus() {
         position: Vec3::new(1.0, -2.0, 3.5),
         scale: 2.0,
         rotation: Quat::from_rotation_z(0.7),
+        bounds: None,
     };
     let mut bytes = c.to_bytes().to_vec();
     bytes.extend_from_slice(&c.to_bytes());
@@ -264,12 +267,36 @@ fn candidats_aller_retour_et_refus() {
         Candidate::read_all(&bytes[..47]),
         Err(CandidateError::Length(47))
     );
+    let second = Candidate::BYTES;
     let mut zero = bytes.clone();
-    zero[48 + 28..48 + 32].copy_from_slice(&0f32.to_le_bytes());
+    zero[second + 28..second + 32].copy_from_slice(&0f32.to_le_bytes());
     assert_eq!(Candidate::read_all(&zero), Err(CandidateError::Invalid(1)));
-    let mut nan = bytes;
+    let mut nan = bytes.clone();
     nan[20..24].copy_from_slice(&f32::NAN.to_le_bytes());
     assert_eq!(Candidate::read_all(&nan), Err(CandidateError::Invalid(0)));
+    // Sans BOUNDS, les seize derniers octets ne sont pas lus : une sphère quelconque n'y change rien.
+    let mut ignore = bytes;
+    ignore[60..64].copy_from_slice(&f32::NAN.to_le_bytes());
+    assert_eq!(Candidate::read_all(&ignore), Ok(vec![c, c]));
+
+    // ADR-157 D2 : sous BOUNDS, la sphère fait l'aller-retour ; non finie ou de rayon nul, elle est
+    // refusée.
+    let borne = Candidate {
+        flags: Candidate::BOUNDS,
+        bounds: Some(LocalBounds {
+            center: Vec3::new(0.5, 1.0, -2.0),
+            radius: 3.0,
+        }),
+        ..c
+    };
+    let octets = borne.to_bytes();
+    assert_eq!(Candidate::read_all(&octets), Ok(vec![borne]));
+    let mut plat = octets;
+    plat[60..64].copy_from_slice(&0f32.to_le_bytes());
+    assert_eq!(Candidate::read_all(&plat), Err(CandidateError::Invalid(0)));
+    let mut perdu = octets;
+    perdu[48..52].copy_from_slice(&f32::INFINITY.to_le_bytes());
+    assert_eq!(Candidate::read_all(&perdu), Err(CandidateError::Invalid(0)));
 }
 
 fn mesh(min: [f32; 3], max: [f32; 3]) -> ax_model::dm::geometry::MeshDesc {

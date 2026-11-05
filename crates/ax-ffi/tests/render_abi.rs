@@ -120,6 +120,7 @@ fn candidate(id: u32, asset: Handle, position: Vec3) -> Candidate {
         position,
         scale: 1.0,
         rotation: Quat::IDENTITY,
+        bounds: None,
     }
 }
 

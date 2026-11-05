@@ -192,6 +192,7 @@ fn r791_la_palette_du_plus_proche_traverse_le_rendu_l_autre_reste_au_repos() {
             position: Vec3::new(0.0, 0.0, *z),
             scale: 1.0,
             rotation: Quat::IDENTITY,
+            bounds: None,
         };
         let at = HEADER_BYTES + IN_FRAME_HEADER + rang * Candidate::BYTES;
         bytes[at..at + Candidate::BYTES].copy_from_slice(&candidate.to_bytes());

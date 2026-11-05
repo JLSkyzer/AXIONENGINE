@@ -428,6 +428,10 @@ Definition of Done (PARTIE 37.3).
 
 ### Modifie
 
+- Rendu (C-64, ADR-157, tranche 2) : une assembly a plusieurs corps n'est
+  plus retenue sans test au culling. Java unit l'emprise de chaque corps, a
+  sa pose, et la donne au candidat, qui passe a 64 octets (drapeau `BOUNDS`) ;
+  ABI 13, `RENDER_IN` au schema 3.
 - Rendu (C-64, ADR-157, tranche 1) : une assembly qui joue un seul clip
   n'est plus retenue sans test au culling. Le natif calcule, au chargement
   d'un asset anime, la sphere que balaient ses clips, et le culling la teste

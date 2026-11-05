@@ -16,7 +16,7 @@ public final class RenderPrepCodec {
     public static final int CAMERA_BYTES = 112;
 
     /** Taille d'un candidat, en octets. */
-    public static final int CANDIDATE_BYTES = 48;
+    public static final int CANDIDATE_BYTES = 64;
 
     /**
      * En-tête de frame de {@code RENDER_IN} (schéma 2), avant les candidats : le tick de rendu en
@@ -55,6 +55,12 @@ public final class RenderPrepCodec {
      * borne pas ce qu'elle dessine, des corps articulés écartés de leur pose de repos.
      */
     public static final int NO_CULL = 1;
+
+    /**
+     * Drapeau d'un candidat : la sphère des octets 48 à 64 remplace celle de l'asset au culling
+     * (ADR-157 D2) — une assembly dont des corps articulés s'écartent de leur pose de repos.
+     */
+    public static final int BOUNDS = 2;
 
     private RenderPrepCodec() {}
 
@@ -125,6 +131,39 @@ public final class RenderPrepCodec {
             float z,
             float scale,
             float[] rotation) {
+        putCandidate(buffer, offset, id, assetIndex, assetGeneration, flags, x, y, z, scale, rotation, null);
+    }
+
+    /**
+     * Écrit un candidat qui peut donner sa propre sphère (ADR-157 D2) : {@code bounds} non nul pose
+     * {@link #BOUNDS} et l'écrit aux octets 48 à 64 ; nul, ces octets restent à zéro.
+     *
+     * @param buffer {@code RENDER_IN}
+     * @param offset position du candidat
+     * @param id identifiant stable de l'assembly
+     * @param assetIndex index du handle de son asset
+     * @param assetGeneration génération du handle
+     * @param flags drapeaux, voir {@link #NO_CULL}
+     * @param x position relative à la caméra
+     * @param y position relative à la caméra
+     * @param z position relative à la caméra
+     * @param scale échelle uniforme
+     * @param rotation quaternion {@code [x, y, z, w]}
+     * @param bounds sphère {@code [cx, cy, cz, r]} dans le repère du candidat, ou {@code null}
+     */
+    public static void putCandidate(
+            ByteBuffer buffer,
+            int offset,
+            int id,
+            int assetIndex,
+            int assetGeneration,
+            int flags,
+            float x,
+            float y,
+            float z,
+            float scale,
+            float[] rotation,
+            float[] bounds) {
         buffer.putInt(offset, id)
                 .putInt(offset + 4, assetIndex)
                 .putInt(offset + 8, assetGeneration)
@@ -135,6 +174,12 @@ public final class RenderPrepCodec {
                 .putFloat(offset + 28, scale);
         for (int i = 0; i < 4; i++) {
             buffer.putFloat(offset + 32 + i * 4, rotation[i]);
+        }
+        for (int i = 0; i < 4; i++) {
+            buffer.putFloat(offset + 48 + i * 4, bounds == null ? 0f : bounds[i]);
+        }
+        if (bounds != null) {
+            buffer.putInt(offset + 12, flags | BOUNDS);
         }
     }
 

@@ -89,6 +89,7 @@ fn frame(ctx: u64, asset: Handle, tick: f64) -> (AxionRenderResult, Option<[f32;
         position: Vec3::new(0.0, 0.0, -10.0),
         scale: 1.0,
         rotation: Quat::IDENTITY,
+        bounds: None,
     };
     let input = acquire(
         ctx,

@@ -121,6 +121,7 @@ fn frame(ctx: u64, asset: Handle, ids: &[u32]) {
             position: Vec3::new(0.0, 0.0, -5.0 * (rang + 1) as f32),
             scale: 1.0,
             rotation: Quat::IDENTITY,
+            bounds: None,
         };
         let at = HEADER_BYTES + IN_FRAME_HEADER + rang * Candidate::BYTES;
         bytes[at..at + Candidate::BYTES].copy_from_slice(&candidate.to_bytes());
