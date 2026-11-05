@@ -10,7 +10,7 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
-- M4 (en cours, Definition of Done non prononcee) — reseau, animation,
+- M4 (termine le 2026-11-05, Definition of Done prononcee par Killian) — reseau, animation,
   culling et LOD, joints, persistance :
   - reseau (C-51, ADR-150) : canal `axion:main` exige des deux cotes, un
     client sans AXION etant refuse par Forge avec un message (R-1630) ;

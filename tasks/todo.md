@@ -3482,7 +3482,7 @@ sources procédurales de véhicule (M5, T-365).
             une plage par overlay, 9 pixels sur 9 au milieu de l'os. 11 mutations natives, 2 Java et 3 au banc
             rouges.
 
-**Bilan de la DoD de M4 — préparé le 2026-11-05, à prononcer par Killian.**
+**Bilan de la DoD de M4 — préparé le 2026-11-05, prononcé par Killian le même jour.**
 
 - **Les cinq chantiers sont clos**, chacun par un ADR accepté avant le code : réseau (ADR-150, le
   2026-10-22), joints (ADR-151, le 2026-10-24), persistance (ADR-153, le 2026-10-28), culling, LOD et
@@ -3583,7 +3583,8 @@ Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0
       · les huit composants sont faits ; l'acceptance attend le fuzzing et la CI
 - [x] **M2** Scene graph, cache, optimizer, entité, API — C-23, C-25, C-27, C-30, C-50, C-70, C-72, C-74
 - [x] **M3** Physique et premier rendu — C-31, C-32, C-38, C-39, C-40, C-60..C-63, C-67, C-26
-- [ ] **M4** Réseau, animation, culling/LOD, joints, persistance — C-34, C-37, C-51, C-52, C-64, C-65, C-66
+- [x] **M4** Réseau, animation, culling/LOD, joints, persistance — C-34, C-37, C-51, C-52, C-64, C-65, C-66 —
+      **prononcé par Killian le 2026-11-05** (ADR-146, « Prononcé de M4 »)
 - [ ] **M5** Véhicules, sièges, attaches, gouverneur, overlay — C-33, C-48, C-53, C-73, C-77
       · reprend l'étape 14 côté serveur (C-30), avec C-48 et C-53 (ADR-156 D6)
 - [ ] **M6** Impacts et déformation continue *(jalon central)* — C-28, C-41, C-42, C-45, C-68
