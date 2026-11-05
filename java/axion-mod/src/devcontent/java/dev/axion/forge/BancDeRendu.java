@@ -1889,7 +1889,7 @@ public final class BancDeRendu {
     }
 
     /**
-     * T-477 (§19.13) : 200 copies en au plus 3 appels de dessin — l'écart d'appels avec la scène sans elles,
+     * T-477 et T-532 (§19.13, ADR-154) : 200 copies en au plus 3 appels de dessin — l'écart d'appels avec la scène sans elles,
      * toutes dessinées.
      */
     private static void jugerT477() {
@@ -1903,7 +1903,7 @@ public final class BancDeRendu {
     }
 
     /**
-     * T-478 (§19.13, R-781) : le chemin non instancié, forcé par un seuil plus grand que toute série, rend
+     * T-478 et T-532 (§19.13, R-781, ADR-154) : le chemin non instancié, forcé par un seuil plus grand que toute série, rend
      * l'image du chemin instancié, pixel pour pixel.
      */
     private static void jugerT478(CapturesDuBanc.Capture direct) {
@@ -1917,7 +1917,7 @@ public final class BancDeRendu {
     }
 
     /**
-     * T-907 (§19.13, R-782) : le chemin indirect (GL 4.3) rend l'image du chemin instancié direct, pixel pour
+     * T-907 et T-533 (§19.13, R-782, ADR-154) : le chemin indirect (GL 4.3) rend l'image du chemin instancié direct, pixel pour
      * pixel.
      */
     private static void jugerT907(CapturesDuBanc.Capture direct) {

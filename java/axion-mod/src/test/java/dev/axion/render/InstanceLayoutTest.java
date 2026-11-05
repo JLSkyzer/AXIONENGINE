@@ -11,7 +11,10 @@ import java.nio.ByteOrder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** Le bloc d'instance du §19.4 et la transformation d'un mesh posé (ADR-127 §2). */
+/**
+ * Le bloc d'instance du §19.4 et la transformation d'un mesh posé (ADR-127 §2). T-531 (ADR-154) : le bloc
+ * garde ses 88 octets et leur disposition (R-780).
+ */
 class InstanceLayoutTest {
 
     private static final float EPS = 1e-6f;
