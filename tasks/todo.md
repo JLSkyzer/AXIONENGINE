@@ -3370,6 +3370,10 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
       passes d'AXION, variantes, collectes de la JVM, le reste hors d'AXION. Sept passages du banc natif, aucun
       pic ; le seul à-coup relevé (4,36 ms, série hors verdict) était à 4,11 ms hors d'AXION, sans collecte.
       Le prochain pic dira où il est.
+- [ ] `bench-quick` rouge sans cause de code, le 2026-11-05 : B-02 et B-09 à +28,4 % et +29,6 % de p95 pour
+      d66d5a6, dont le diff ne touche aucun code Rust (banc de rendu Java, un accesseur, le todo) ; vert pour
+      8ca91ea, au même code Rust. Bruit du runner partagé au-delà du seuil de 20 % de R-2251. Un second cas
+      justifierait de rejouer la mesure avant de conclure (ADR-142 garde le seuil).
 - [ ] ADR-150 D7 rouge une fois, le 2026-11-05 en CI locale : vitesse rendue 177,02 m/s pour 10,85 m/s de
       chute, sans autre écart ; vert aux six autres passages du jour (10,3 à 11,2 m/s). D7 dit désormais sa
       pire frame (rang, intervalle, descente, modes) : à relire au prochain rouge, avant toute hypothèse.
