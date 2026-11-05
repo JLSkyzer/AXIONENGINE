@@ -32,19 +32,20 @@
 
 use std::ffi::c_void;
 
-use jni::objects::{JByteArray, JClass, JLongArray, JObject};
+use jni::objects::{JByteArray, JClass, JDoubleArray, JLongArray, JObject};
 use jni::sys::{jdouble, jint, jlong, JNI_ERR, JNI_VERSION_1_6};
 use jni::{JNIEnv, JavaVM, NativeMethod};
 
 use crate::abi::{
-    axion_abi_version, axion_asset_cancel, axion_asset_compile, axion_asset_diagnostics,
-    axion_asset_geometry, axion_asset_load, axion_asset_materials, axion_asset_poll,
-    axion_asset_texture, axion_asset_unload, axion_asset_warnings, axion_buffer_acquire,
-    axion_buffer_release, axion_debug_fill, axion_definition_compile, axion_definition_remove,
-    axion_det_profile, axion_init, axion_last_error, axion_metrics_export, axion_net_compress,
-    axion_net_decompress, axion_render_debug, axion_render_prepare, axion_render_release,
-    axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo,
-    AxionCollectResult, AxionDetProfile, AxionRenderResult, AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_abi_version, axion_assembly_raycast, axion_asset_cancel, axion_asset_compile,
+    axion_asset_diagnostics, axion_asset_geometry, axion_asset_load, axion_asset_materials,
+    axion_asset_poll, axion_asset_texture, axion_asset_unload, axion_asset_warnings,
+    axion_buffer_acquire, axion_buffer_release, axion_debug_fill, axion_definition_compile,
+    axion_definition_remove, axion_det_profile, axion_init, axion_last_error, axion_metrics_export,
+    axion_net_compress, axion_net_decompress, axion_render_debug, axion_render_prepare,
+    axion_render_release, axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit,
+    AxionBufferInfo, AxionCollectResult, AxionDetProfile, AxionRenderResult,
+    AXION_E_INVALID_BUFFER, AXION_OK, AXION_RAY_INPUT, AXION_RAY_OUTPUT,
 };
 use ax_model::dm::handle::Handle;
 
@@ -199,6 +200,11 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "assetWarnings".into(),
             sig: "(JII[J)I".into(),
             fn_ptr: jni_asset_warnings as *mut c_void,
+        },
+        NativeMethod {
+            name: "assemblyRaycast".into(),
+            sig: "(JII[D[D)I".into(),
+            fn_ptr: jni_assembly_raycast as *mut c_void,
         },
         NativeMethod {
             name: "definitionCompile".into(),
@@ -972,6 +978,51 @@ extern "system" fn jni_asset_warnings(
     })
 }
 
+/// `NativeBridge.assemblyRaycast(long, int, int, double[], double[])` (ADR-158 D2).
+///
+/// Lit le rayon de `ray` — origine monde, direction, portée — et écrit l'impact dans `out` :
+/// corps, collider, distance, point monde, normale ; `out[0]` vaut `-1` si rien n'est touché.
+extern "system" fn jni_assembly_raycast(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    index: jint,
+    generation: jint,
+    ray: JDoubleArray,
+    out: JDoubleArray,
+) -> jint {
+    if ray.is_null() || out.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match (env.get_array_length(&ray), env.get_array_length(&out)) {
+        (Ok(input), Ok(output))
+            if usize::try_from(input).is_ok_and(|length| length >= AXION_RAY_INPUT)
+                && usize::try_from(output).is_ok_and(|length| length >= AXION_RAY_OUTPUT) => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+    let mut input = [0.0f64; AXION_RAY_INPUT];
+    if env.get_double_array_region(&ray, 0, &mut input).is_err() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    let mut hit = [0.0f64; AXION_RAY_OUTPUT];
+    // SAFETY: `input` et `hit` sont des tableaux locaux des tailles que l'appel lit et écrit.
+    let code = unsafe {
+        axion_assembly_raycast(
+            ctx as u64,
+            asset_handle(index, generation),
+            input.as_ptr(),
+            hit.as_mut_ptr(),
+        )
+    };
+    if code != AXION_OK {
+        return code;
+    }
+    match env.set_double_array_region(&out, 0, &hit) {
+        Ok(()) => AXION_OK,
+        Err(_) => AXION_E_INVALID_BUFFER,
+    }
+}
+
 /// `NativeBridge.assetUnload(long, int, int)` (IF-06).
 extern "system" fn jni_asset_unload(
     _env: JNIEnv,
@@ -1132,6 +1183,7 @@ mod tests {
             ("assetWarnings", "(JII[J)I"),
             ("definitionCompile", "(JJIIJ[J)I"),
             ("definitionRemove", "(JJ)I"),
+            ("assemblyRaycast", "(JII[D[D)I"),
             ("debugFill", "(JJJDDDI[J)I"),
             ("renderDebug", "(JJI[J)I"),
         ];

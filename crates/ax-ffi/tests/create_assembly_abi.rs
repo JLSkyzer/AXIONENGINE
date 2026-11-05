@@ -20,9 +20,10 @@ use ax_model::dm::joints::{joint_kind, JointDesc, JointState};
 use ax_model::dm::physics::{BodyDesc, ColliderDesc, ColliderShape};
 use ax_model::dm::scene::{name_hash, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 use axion_native::abi::{
-    axion_buffer_acquire, axion_buffer_release, axion_init, axion_metrics_export, axion_shutdown,
-    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
-    AXION_E_INVALID_BUFFER, AXION_OK, AXION_SIDE_SERVER,
+    axion_assembly_raycast, axion_buffer_acquire, axion_buffer_release, axion_init,
+    axion_metrics_export, axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit,
+    AxionBufferInfo, AxionCollectResult, AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE, AXION_OK,
+    AXION_RAY_INPUT, AXION_RAY_OUTPUT, AXION_SIDE_SERVER,
 };
 use common::{creation, Modele};
 
@@ -145,6 +146,14 @@ fn commandes(stream: &[u8]) -> u32 {
 /// [`etats`], la durée de l'étape 5 du tick (`axion.sim.last_step_joints_ns`), les `JointState`
 /// qui suivent les emprises dans `SIM_OUT` (ADR-151 D7), et le code de la compilation.
 fn etats_et_joints(cas: &Cas) -> (Vec<EtatCorps>, u64, Vec<JointState>, i32) {
+    etats_et_joints_sonde(cas, |_| {})
+}
+
+/// [`etats_et_joints`], et `sonde` appelée sur la session après le collect, avant sa fermeture.
+fn etats_et_joints_sonde(
+    cas: &Cas,
+    sonde: impl FnOnce(u64),
+) -> (Vec<EtatCorps>, u64, Vec<JointState>, i32) {
     let (modele, stream) = cas;
     let _contexte = CONTEXTE
         .lock()
@@ -232,6 +241,7 @@ fn etats_et_joints(cas: &Cas) -> (Vec<EtatCorps>, u64, Vec<JointState>, i32) {
     }
 
     let joints_ns = metrique(ctx, "axion.sim.last_step_joints_ns");
+    sonde(ctx);
     assert_eq!(unsafe { axion_sim_cancel(ctx) }, AXION_OK, "cancel");
     release_buffer(ctx, BufferKind::SimIn);
     release_buffer(ctx, BufferKind::SimOut);
@@ -436,4 +446,63 @@ fn adr151_un_joint_venu_par_l_abi_relie_les_corps_de_l_assembly() {
     let (libre, _, aucun) = hauteur(&[]);
     assert!(aucun.is_empty(), "sans joint, aucun JointState");
     assert!(libre < 10.0 - 1e-3, "libre, elle tombe : {libre}");
+}
+
+/// Lance un rayon par l'ABI : le code, et ce que `out` a reçu.
+fn rayon(
+    ctx: u64,
+    assembly: Handle,
+    ray: [f64; AXION_RAY_INPUT],
+) -> (i32, [f64; AXION_RAY_OUTPUT]) {
+    let mut out = [f64::NAN; AXION_RAY_OUTPUT];
+    let code = unsafe { axion_assembly_raycast(ctx, assembly, ray.as_ptr(), out.as_mut_ptr()) };
+    (code, out)
+}
+
+#[test]
+fn adr158_un_rayon_vise_les_colliders_d_une_assembly_par_l_abi() {
+    let cas = command_stream(BodyDesc::undeclared(2));
+    let mut vu = false;
+    etats_et_joints_sonde(&cas, |ctx| {
+        vu = true;
+        let assembly = Handle::new(7, 1);
+        // La boîte de 1 bloc au spawn (5, 10, −2) : un rayon venu de z = −10 la touche à z = −2,5,
+        // en coordonnées monde absolues.
+        let (code, out) = rayon(ctx, assembly, [5.0, 10.0, -10.0, 0.0, 0.0, 1.0, 20.0]);
+        assert_eq!(code, AXION_OK);
+        assert_eq!(
+            (out[0], out[1]),
+            (0.0, 0.0),
+            "corps racine, premier collider"
+        );
+        assert!((out[2] - 7.5).abs() < 1.0e-3, "distance {}", out[2]);
+        assert!((out[3] - 5.0).abs() < 1.0e-3 && (out[4] - 10.0).abs() < 1.0e-3);
+        assert!(
+            (out[5] + 2.5).abs() < 1.0e-3,
+            "point monde {:?}",
+            &out[3..6]
+        );
+        assert!(out[8] < -0.9, "normale vers le rayon {:?}", &out[6..9]);
+
+        // Dos à la boîte, ou trop court : rien, et l'appel réussit.
+        let (code, out) = rayon(ctx, assembly, [5.0, 10.0, -10.0, 0.0, 0.0, -1.0, 20.0]);
+        assert_eq!((code, out[0]), (AXION_OK, -1.0));
+        let (code, out) = rayon(ctx, assembly, [5.0, 10.0, -10.0, 0.0, 0.0, 1.0, 5.0]);
+        assert_eq!((code, out[0]), (AXION_OK, -1.0));
+        let (code, out) = rayon(ctx, assembly, [f64::NAN, 10.0, -10.0, 0.0, 0.0, 1.0, 20.0]);
+        assert_eq!((code, out[0]), (AXION_OK, -1.0), "origine non finie");
+
+        // Une assembly inconnue, un pointeur nul.
+        let (code, _) = rayon(
+            ctx,
+            Handle::new(8, 1),
+            [5.0, 10.0, -10.0, 0.0, 0.0, 1.0, 20.0],
+        );
+        assert_eq!(code, AXION_E_INVALID_HANDLE);
+        let mut out = [0.0; AXION_RAY_OUTPUT];
+        let code =
+            unsafe { axion_assembly_raycast(ctx, assembly, std::ptr::null(), out.as_mut_ptr()) };
+        assert_eq!(code, AXION_E_INVALID_BUFFER);
+    });
+    assert!(vu, "la sonde a tourné");
 }

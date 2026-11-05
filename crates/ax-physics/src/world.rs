@@ -14,7 +14,7 @@ use rapier3d::prelude::{
 
 use crate::activity::{Candidate, Observers};
 use crate::proxies::{EntityProxy, ProxyShape};
-use crate::query::{RayHit, SensorMode, SpatialFilter, SweepHit};
+use crate::query::{AssemblyRayHit, RayHit, SensorMode, SpatialFilter, SweepHit};
 use crate::scheduler::{SimMode, Stage, StageLog};
 use std::time::Instant;
 
@@ -3007,6 +3007,64 @@ impl PhysicsWorld {
             point: origin + dir * hit.time_of_impact,
             normal: hit.normal,
         })
+    }
+
+    /// Lance un rayon contre les seuls colliders solides des corps donnés, et rend l'impact le plus
+    /// proche (ADR-158 D2) : le rang du corps dans `bodies` et celui du collider dans ce corps. Les
+    /// autres corps du monde ne masquent rien : c'est l'assembly qu'on vise, pas ce qui la cache.
+    /// À distance égale, le premier dans l'ordre des corps puis des colliders l'emporte.
+    ///
+    /// `direction` est normalisée. `None` si rien n'est touché, si l'origine ou la direction ne sont
+    /// pas finies, si la direction est nulle, ou si `max_distance` est non fini ou ≤ 0.
+    #[must_use]
+    pub fn raycast_bodies(
+        &self,
+        bodies: &[BodyId],
+        origin: Vec3,
+        direction: Vec3,
+        max_distance: f32,
+    ) -> Option<AssemblyRayHit> {
+        if !origin.is_finite() || !direction.is_finite() {
+            return None;
+        }
+        let dir = direction.normalize_or_zero();
+        if dir == Vec3::ZERO || !max_distance.is_finite() || max_distance <= 0.0 {
+            return None;
+        }
+        let ray = Ray::new(origin, dir);
+        let mut best: Option<AssemblyRayHit> = None;
+        for (rank, id) in bodies.iter().enumerate() {
+            let Some(body) = self.inner.bodies.get(id.handle()) else {
+                continue;
+            };
+            for (index, handle) in body.colliders().iter().enumerate() {
+                let Some(collider) = self.inner.colliders.get(*handle) else {
+                    continue;
+                };
+                if collider.is_sensor() {
+                    continue;
+                }
+                let limit = best.map_or(max_distance, |hit| hit.distance);
+                let Some(hit) = collider.shape().cast_ray_and_get_normal(
+                    collider.position(),
+                    &ray,
+                    limit,
+                    true,
+                ) else {
+                    continue;
+                };
+                if best.is_none_or(|current| hit.time_of_impact < current.distance) {
+                    best = Some(AssemblyRayHit {
+                        body: rank,
+                        collider: index,
+                        distance: hit.time_of_impact,
+                        point: origin + dir * hit.time_of_impact,
+                        normal: hit.normal,
+                    });
+                }
+            }
+        }
+        best
     }
 
     /// Balaye une forme le long de `direction` et rend le premier corps heurté (C-39).

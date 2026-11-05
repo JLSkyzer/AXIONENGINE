@@ -3633,7 +3633,10 @@ T-980..T-984.
       - [x] Tranche 1 (2026-11-05) : sièges et interactions dans la definition compilée, règles de forme,
             avertissement des actions sans système ; ABI 14 (le node de chaque référence au résumé).
             Sockets laissés à leur premier consommateur (ADR-156 D1, R-001).
-      - [ ] Tranche 2 : requête native de rayon (ABI 15), montée, position imposée, siège conservé (T-440, T-444).
+      - [x] Tranche 2a (2026-11-05) : rayon natif contre les colliders d'une assembly (ABI 15), nodes et
+            porteurs des colliders au résumé, cible d'un clic. Position du siège en Java des deux côtés
+            (écart à D3, consigné).
+      - [ ] Tranche 2b : montée, position imposée, siège conservé (T-440, T-444).
       - [ ] Tranche 3 : descente et éjection sûres (T-441, T-957).
       - [ ] Tranche 4 : `C2S_Input` (protocole 3) et interactions au clic (T-442, T-443).
 

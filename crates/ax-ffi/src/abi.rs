@@ -63,7 +63,7 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 14;
+pub const AXION_ABI_VERSION: u32 = 15;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -1387,6 +1387,8 @@ pub unsafe extern "C" fn axion_definition_compile(
                     warnings: compiled.warnings.clone(),
                     clips: compiled.clips.clone(),
                     nodes: compiled.nodes.clone(),
+                    anatomy: compiled.anatomy.clone(),
+                    carriers: compiled.carriers.clone(),
                 }
                 .write_le(&mut payload);
                 (AXION_OK, Some(compiled))
@@ -2122,6 +2124,87 @@ fn apply_create_assembly(session: &mut context::Session, payload: &[u8]) {
 /// Durée écoulée depuis `start`, en nanosecondes, saturée.
 fn elapsed_ns(start: std::time::Instant) -> u64 {
     u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX)
+}
+
+/// Nombre de valeurs que lit `axion_assembly_raycast` : origine monde (3), direction (3), portée.
+pub const AXION_RAY_INPUT: usize = 7;
+
+/// Nombre de valeurs qu'écrit `axion_assembly_raycast` : corps, collider, distance, point monde
+/// (3), normale (3).
+pub const AXION_RAY_OUTPUT: usize = 9;
+
+/// Lance un rayon contre les seuls colliders solides d'une assembly (ADR-158 D2).
+///
+/// `ray` porte [`AXION_RAY_INPUT`] valeurs : l'origine en coordonnées monde absolues, en blocs ; la
+/// direction, normalisée ici ; la portée, en blocs. `out` reçoit [`AXION_RAY_OUTPUT`] valeurs : le
+/// rang du corps touché parmi ceux de l'assembly, le rang du collider dans ce corps — la definition
+/// compilée en donne le node porteur —, la distance, le point d'impact en coordonnées monde et la
+/// normale. Rien de touché, ou un rayon non fini, nul ou de portée nulle : `out[0]` vaut `-1`, et
+/// l'appel réussit.
+///
+/// Lecture seule (R-650). Le pas se fait dans `axion_sim_collect`, sous le verrou de la session :
+/// hors de cet appel, le rayon voit le monde du dernier pas, l'état du début du tick (R-651).
+///
+/// Rend `E-2001` si l'assembly n'existe pas, `E-2002` si un pointeur est nul.
+///
+/// # Safety
+///
+/// `ray` doit désigner [`AXION_RAY_INPUT`] `f64` lisibles, `out` [`AXION_RAY_OUTPUT`] `f64`
+/// accessibles en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_assembly_raycast(
+    ctx: u64,
+    assembly: Handle,
+    ray: *const f64,
+    out: *mut f64,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if ray.is_null() || out.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        // SAFETY: l'appelant garantit AXION_RAY_INPUT valeurs lisibles.
+        let input = unsafe { std::slice::from_raw_parts(ray, AXION_RAY_INPUT) };
+        let origin = DVec3::new(input[0], input[1], input[2]);
+        #[allow(clippy::cast_possible_truncation)] // une direction et une portée en f32 (DM-06)
+        let (direction, max) = (
+            Vec3::new(input[3] as f32, input[4] as f32, input[5] as f32),
+            input[6] as f32,
+        );
+        let found = context::with(ctx, false, |session| {
+            let physics = session.physics();
+            if !physics.has_assembly(assembly) {
+                return Err(AXION_E_INVALID_HANDLE);
+            }
+            Ok(physics.assembly_raycast(assembly, origin, direction, max))
+        });
+        let hit = match found {
+            Ok(Ok(hit)) => hit,
+            Ok(Err(code)) | Err(code) => return code,
+        };
+        let values: [f64; AXION_RAY_OUTPUT] = match hit {
+            #[allow(clippy::cast_precision_loss)]
+            // des rangs bornés à 64 corps et à leurs colliders
+            Some((hit, point)) => [
+                hit.body as f64,
+                hit.collider as f64,
+                f64::from(hit.distance),
+                point.x,
+                point.y,
+                point.z,
+                f64::from(hit.normal.x),
+                f64::from(hit.normal.y),
+                f64::from(hit.normal.z),
+            ],
+            None => {
+                let mut miss = [0.0; AXION_RAY_OUTPUT];
+                miss[0] = -1.0;
+                miss
+            }
+        };
+        // SAFETY: l'appelant garantit AXION_RAY_OUTPUT valeurs accessibles en écriture.
+        unsafe { std::ptr::copy_nonoverlapping(values.as_ptr(), out, AXION_RAY_OUTPUT) };
+        AXION_OK
+    })
 }
 
 /// Récolte le résultat d'un tick (IF-03) : avance la simulation, dépose les

@@ -23,6 +23,7 @@ use crate::groups::CollisionGroups;
 use crate::joint::JointSpec;
 use crate::materials::MaterialTable;
 use crate::proxies::EntityProxy;
+use crate::query::AssemblyRayHit;
 use crate::scheduler::Stage;
 use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
@@ -536,6 +537,36 @@ impl SimDriver {
         self.routes
             .get(&handle_key(handle))
             .map(|(dimension, bodies)| (*dimension, bodies.as_slice()))
+    }
+
+    /// Lance un rayon contre les seuls corps d'une assembly (ADR-158 D2), en coordonnées monde
+    /// absolues : l'impact le plus proche, et son point en coordonnées monde. `None` si l'assembly
+    /// n'existe pas ou que rien n'est touché. Lecture seule (R-650) : hors du pas, le monde est celui
+    /// du dernier pas, l'état du début du tick (R-651).
+    #[must_use]
+    pub fn assembly_raycast(
+        &self,
+        handle: Handle,
+        origin: DVec3,
+        direction: Vec3,
+        max_distance: f32,
+    ) -> Option<(AssemblyRayHit, DVec3)> {
+        let (dimension, bodies) = self.routes.get(&handle_key(handle))?;
+        let sim = self.dimensions.get(dimension)?;
+        if !origin.is_finite() {
+            return None;
+        }
+        let local = sim.origin.to_local(origin);
+        let hit = sim
+            .world
+            .raycast_bodies(bodies, local, direction, max_distance)?;
+        Some((hit, sim.origin.to_world(hit.point)))
+    }
+
+    /// Dit si une assembly existe.
+    #[must_use]
+    pub fn has_assembly(&self, handle: Handle) -> bool {
+        self.routes.contains_key(&handle_key(handle))
     }
 
     /// Pose un collider d'une assembly dans le repère de son corps (R-1430, ADR-155) : `body` est

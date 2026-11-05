@@ -17,6 +17,7 @@ use ax_model::dm::animation::BoneDesc;
 use ax_model::dm::commands::{AssemblyBodyEntry, MAX_ASSEMBLY_BODIES};
 use ax_model::dm::definition::{
     definition_flags, part_flags, reference_category, Definition, DefinitionRef, SummaryClip,
+    SummaryNode,
 };
 use ax_model::dm::joints::JointDesc;
 use ax_model::dm::physics::{collider_flags, ColliderDesc, ColliderShape};
@@ -91,6 +92,10 @@ pub(crate) struct CompiledDefinition {
     /// Le node que désigne chaque référence, dans l'ordre de `DEFN` ; [`NONE_U32`] pour un clip ou
     /// un os. Java en tire le node de ses sièges et de ses interactions (ADR-158 D1).
     pub nodes: Vec<u32>,
+    /// Chaque node de l'asset : son parent, son corps, sa pose de repos dans ce corps (ADR-158 D3).
+    pub anatomy: Vec<SummaryNode>,
+    /// Pour chaque corps, le node porteur de chacun de ses colliders (ADR-158 D2).
+    pub carriers: Vec<Vec<u32>>,
 }
 
 /// Le refus d'une definition.
@@ -303,6 +308,8 @@ fn finish(
         warnings,
         clips,
         nodes,
+        anatomy: prepared.anatomy,
+        carriers: prepared.carriers,
     })
 }
 
@@ -762,6 +769,58 @@ mod tests {
             compiled.bodies[1].desc.mass.abs() < f32::EPSILON,
             "le corps implicite prend la description `implicit`, sans masse"
         );
+    }
+
+    #[test]
+    fn adr158_chaque_node_rend_son_parent_son_corps_et_sa_pose_dans_ce_corps() {
+        let mut nodes = chaine();
+        // La porte tournée d'un quart de tour autour de y : sa pose dans son propre corps reste
+        // l'identité, celle d'un enfant s'exprime dans son repère.
+        nodes[2].local.rotation = [0.0, DEMI_RACINE, 0.0, DEMI_RACINE];
+        nodes.push(node("poignee", 2, 0.5, NONE_U32));
+        let colliders = [boite(), boite(), boite()];
+        let mut definition = definition(vec![nommer("porte")]);
+        definition.bodies = vec![corps(NONE_U32, 0.0)];
+        definition.joints = vec![charniere(0)];
+        let compiled = compile(&definition, &asset(&nodes, &colliders)).unwrap();
+
+        let parents: Vec<u32> = compiled.anatomy.iter().map(|node| node.parent).collect();
+        assert_eq!(parents, [NONE_U32, 0, 1, 2]);
+        let corps: Vec<u32> = compiled.anatomy.iter().map(|node| node.body).collect();
+        assert_eq!(
+            corps,
+            [0, 0, 1, 1],
+            "la porte et sa poignée au corps de la porte"
+        );
+        assert_eq!(compiled.anatomy[1].translation, [2.0, 0.0, 0.0]);
+        let porte = compiled.anatomy[2];
+        assert!(porte.translation.iter().all(|value| value.abs() < 1.0e-6));
+        assert!(
+            (porte.rotation[3] - 1.0).abs() < 1.0e-6,
+            "{:?}",
+            porte.rotation
+        );
+        let poignee = compiled.anatomy[3];
+        assert!(
+            (poignee.translation[0] - 0.5).abs() < 1.0e-6
+                && poignee.translation[1].abs() < 1.0e-6
+                && poignee.translation[2].abs() < 1.0e-6,
+            "dans le repère de la porte, sans sa rotation : {:?}",
+            poignee.translation
+        );
+
+        // Le node porteur de chaque collider, corps par corps, dans leur ordre.
+        assert_eq!(compiled.carriers, [vec![0, 1], vec![2]]);
+    }
+
+    #[test]
+    fn adr158_un_collider_qu_aucun_node_ne_porte_n_a_pas_de_porteur() {
+        let nodes = [node("base", NO_PARENT, 0.0, NONE_U32)];
+        let colliders = [boite()];
+        let compiled = compile(&definition(Vec::new()), &asset(&nodes, &colliders)).unwrap();
+        assert_eq!(compiled.carriers, [vec![NONE_U32]]);
+        assert_eq!(compiled.anatomy.len(), 1);
+        assert_eq!(compiled.anatomy[0].body, 0);
     }
 
     #[test]

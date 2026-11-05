@@ -10,6 +10,10 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- Sieges (C-53, ADR-158, tranche 2a) : un rayon natif qui ne vise que les
+  colliders d'une assembly, et rend le corps et le collider touches ; le
+  resume de compilation rend les nodes de l'asset (parent, corps, pose dans
+  le corps) et le node porteur de chaque collider. ABI 15.
 - Sieges (C-53, ADR-158, tranche 1) : la definition compilee garde ses sieges
   et ses interactions, chacun au node que le natif a resolu ; un siege sans
   node, un second conducteur, un controle inconnu et une interaction

@@ -170,6 +170,42 @@ class SeatingTest {
     }
 
     @Test
+    @DisplayName("ADR-158 D2 : un clic se rapporte au premier ancêtre qui porte une interaction ou un siège")
+    void cible() {
+        JsonObject root = document();
+        List<DefinitionChecker.AssetReference> references = DefinitionChecker.assetReferences(root);
+        Seating seating = Seating.of(root, references, resolus(references));
+        int siegeG = seating.seats().get(0).node();
+        int siegeD = seating.seats().get(1).node();
+        int porteG = seating.interactions().get(0).node();
+        int porteD = seating.interactions().get(1).node();
+        int crochet = seating.interactions().get(2).node();
+        // Une table de nodes assez grande : la caisse (0) porte les sièges et les portières ; sous le
+        // siège droit, son dossier ; sous la portière gauche, sa poignée.
+        int size = 40;
+        int[] parents = new int[size];
+        java.util.Arrays.fill(parents, 0);
+        parents[0] = -1;
+        int dossier = 30;
+        int poignee = 31;
+        parents[dossier] = siegeD;
+        parents[poignee] = porteG;
+        assertTrue(siegeD < dossier && porteG < poignee, "un parent précède son enfant");
+        dev.axion.asset.Anatomy anatomy =
+                dev.axion.asset.Anatomy.of(parents, new int[size], new float[size * 7], new int[][] {});
+
+        assertEquals(new Seating.Target(-1, 0), seating.target(siegeG, anatomy), "l'assise");
+        assertEquals(new Seating.Target(-1, 1), seating.target(dossier, anatomy), "le dossier, par son parent");
+        assertEquals(new Seating.Target(0, 0), seating.target(poignee, anatomy), "la portière qui assoit");
+        assertEquals(new Seating.Target(0, 0), seating.target(porteG, anatomy));
+        assertEquals(new Seating.Target(1, -1), seating.target(porteD, anatomy), "la portière qui s'ouvre");
+        assertEquals(new Seating.Target(2, -1), seating.target(crochet, anatomy), "l'action sans système");
+        assertEquals(null, seating.target(0, anatomy), "la caisse ne porte rien");
+        assertEquals(null, seating.target(-1, anatomy), "le collider de l'asset entier");
+        assertEquals(null, seating.target(5, anatomy), "un node sous la caisse seule");
+    }
+
+    @Test
     @DisplayName("ADR-158 D1 : une definition sans siège ni interaction n'a rien à garder")
     void rien() {
         JsonObject root = JsonParser.parseString("""

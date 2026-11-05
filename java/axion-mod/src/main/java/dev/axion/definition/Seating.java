@@ -181,6 +181,42 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
     public record Interaction(int node, Action action, String animation, int seat) {}
 
     /**
+     * Ce qu'un clic vise (ADR-158 D2) : une interaction, ou un siège où s'asseoir.
+     *
+     * @param interaction rang de l'interaction visée, {@code -1} sans
+     * @param seat rang du siège visé, {@code -1} sans ; celui d'une interaction {@code sit} si elle en a un
+     */
+    public record Target(int interaction, int seat) {}
+
+    /**
+     * {@return ce que vise un clic sur un node, ou {@code null} : du node touché vers la racine, le
+     * premier node qui porte une interaction ou un siège} Sur ce node, l'interaction l'emporte : elle est
+     * déclarée pour lui ; un siège seul y assoit. Un clic sur l'assise, le dossier ou la portière s'y
+     * rapporte ainsi sans que chaque collider le déclare.
+     *
+     * @param node le node qui porte le collider touché, {@code -1} sans
+     * @param anatomy les nodes de l'asset, pour leurs parents
+     */
+    public Target target(int node, dev.axion.asset.Anatomy anatomy) {
+        int current = node;
+        // Une chaîne plus longue que la table serait un cycle, que l'asset refuse : elle s'arrête là.
+        for (int steps = 0; current >= 0 && steps <= anatomy.size(); steps++) {
+            for (int i = 0; i < interactions.size(); i++) {
+                Interaction interaction = interactions.get(i);
+                if (interaction.node() == current) {
+                    return new Target(i, interaction.action() == Action.SIT ? interaction.seat() : -1);
+                }
+            }
+            int seat = seatAt(current);
+            if (seat >= 0) {
+                return new Target(-1, seat);
+            }
+            current = anatomy.parent(current);
+        }
+        return null;
+    }
+
+    /**
      * {@return le premier siège que porte ce node, ou {@code -1}}
      *
      * @param node index d'un node de l'asset

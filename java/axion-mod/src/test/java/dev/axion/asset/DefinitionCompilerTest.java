@@ -44,6 +44,15 @@ class DefinitionCompilerTest {
         ecrire(out.putInt(1), "");
         // ADR-158 D1 : deux références, un node puis un clip.
         out.putInt(2).putInt(5).putInt(-1);
+        // ADR-158 D3 : deux nodes, la racine au corps 0, l'enfant au corps 1 ; puis les porteurs des
+        // colliders des deux corps.
+        out.putInt(2);
+        out.putInt(-1).putInt(0).putFloat(0f).putFloat(0f).putFloat(0f)
+                .putFloat(0f).putFloat(0f).putFloat(0f).putFloat(1f);
+        out.putInt(0).putInt(1).putFloat(0.5f).putFloat(-1f).putFloat(2f)
+                .putFloat(0f).putFloat(1f).putFloat(0f).putFloat(0f);
+        out.putInt(2).putInt(-1).putInt(0);
+        out.putInt(1).putInt(1);
         byte[] payload = Arrays.copyOf(out.array(), out.position());
         DefinitionCompiler.Summary summary = DefinitionCompiler.Summary.read(payload);
         assertArrayEquals(new int[] {0, 4}, summary.roots());
@@ -53,6 +62,18 @@ class DefinitionCompilerTest {
         assertEquals(List.of("racine animée"), summary.warnings());
         assertEquals(new AnimClips(List.of("ouvrir", ""), new int[] {3, 1}), summary.clips());
         assertArrayEquals(new int[] {5, -1}, summary.nodes());
+        Anatomy anatomy = summary.anatomy();
+        assertEquals(2, anatomy.size());
+        assertEquals(-1, anatomy.parent(0));
+        assertEquals(0, anatomy.parent(1));
+        assertEquals(1, anatomy.body(1));
+        assertArrayEquals(new float[] {0.5f, -1f, 2f}, anatomy.translation(1));
+        assertArrayEquals(new float[] {0f, 1f, 0f, 0f}, anatomy.rotation(1));
+        assertEquals(-1, anatomy.carrier(0, 0), "le collider de l'asset entier");
+        assertEquals(0, anatomy.carrier(0, 1));
+        assertEquals(1, anatomy.carrier(1, 0));
+        assertEquals(-1, anatomy.carrier(1, 1), "hors du corps");
+        assertEquals(-1, anatomy.carrier(2, 0), "hors de l'assembly");
 
         assertNull(DefinitionCompiler.Summary.read(Arrays.copyOf(payload, payload.length - 1)), "tronqué");
         assertNull(DefinitionCompiler.Summary.read(Arrays.copyOf(payload, payload.length + 1)), "prolongé");

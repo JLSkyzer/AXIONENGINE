@@ -2579,3 +2579,170 @@ fn adr120_une_emprise_incalculable_est_nulle_et_comptee() {
     assert_eq!(reports.bounds, vec![BodyBounds::EMPTY]);
     assert_eq!(world.bounds_unavailable_count(), 1);
 }
+
+// --- ADR-158 D2 : le rayon contre les seuls corps d'une assembly --------------------------
+
+/// Une portière : un corps statique à deux colliders, le premier à x = 0, le second à x = 3 ; puis
+/// un mur, autre corps, entre l'œil et la portière.
+fn portiere() -> (PhysicsWorld, BodyId, BodyId) {
+    let mut world = PhysicsWorld::new(config());
+    let portiere = world
+        .add_assembly(
+            BodyKind::Static,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            &[cube_de_densite_1000(0.0), cube_de_densite_1000(3.0)],
+        )
+        .expect("une portière est valide");
+    let mur = world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, 0.0, -2.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [10.0, 10.0, 0.1],
+            },
+        )
+        .expect("un mur est valide");
+    world.advance(1.0 / 60.0);
+    (world, portiere, mur)
+}
+
+#[test]
+fn adr158_le_rayon_rend_le_corps_et_le_collider_touches() {
+    let (world, portiere, _) = portiere();
+    let hit = world
+        .raycast_bodies(
+            &[portiere],
+            Vec3::new(3.0, 0.0, -5.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            10.0,
+        )
+        .expect("le second collider est devant le rayon");
+    assert_eq!((hit.body, hit.collider), (0, 1));
+    assert!((hit.distance - 4.5).abs() < 1.0e-3, "{}", hit.distance);
+    assert!((hit.point.z + 0.5).abs() < 1.0e-3, "{:?}", hit.point);
+    assert!(hit.normal.z < -0.9, "{:?}", hit.normal);
+
+    let premier = world
+        .raycast_bodies(
+            &[portiere],
+            Vec3::new(0.0, 0.0, -5.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            10.0,
+        )
+        .expect("le premier collider");
+    assert_eq!((premier.body, premier.collider), (0, 0));
+}
+
+#[test]
+fn adr158_le_rayon_ignore_les_autres_corps_et_prend_le_plus_proche() {
+    let (world, portiere, mur) = portiere();
+    // Le mur est devant : seul `raycast` le voit, `raycast_bodies` vise la portière derrière lui.
+    let mur_touche = world
+        .raycast(
+            Vec3::new(0.0, 0.0, -5.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            10.0,
+            SpatialFilter::new(),
+        )
+        .expect("le mur");
+    assert_eq!(mur_touche.body, mur);
+    let hit = world
+        .raycast_bodies(
+            &[portiere],
+            Vec3::new(0.0, 0.0, -5.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            10.0,
+        )
+        .expect("la portière derrière le mur");
+    assert_eq!(hit.collider, 0);
+
+    // Le long de l'axe x, le rayon traverse les deux colliders : le plus proche l'emporte, dans les
+    // deux sens.
+    let vers_x = world
+        .raycast_bodies(
+            &[portiere],
+            Vec3::new(-5.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            20.0,
+        )
+        .expect("touché");
+    assert_eq!(vers_x.collider, 0);
+    let vers_moins_x = world
+        .raycast_bodies(
+            &[portiere],
+            Vec3::new(8.0, 0.0, 0.0),
+            Vec3::new(-1.0, 0.0, 0.0),
+            20.0,
+        )
+        .expect("touché");
+    assert_eq!(vers_moins_x.collider, 1);
+
+    // Deux corps : le rang rendu est celui dans la liste donnée.
+    let deux = world
+        .raycast_bodies(
+            &[mur, portiere],
+            Vec3::new(3.0, 0.0, 5.0),
+            Vec3::new(0.0, 0.0, -1.0),
+            10.0,
+        )
+        .expect("la portière, devant le mur de ce côté");
+    assert_eq!((deux.body, deux.collider), (1, 1));
+}
+
+#[test]
+fn adr158_le_rayon_ne_touche_rien_hors_de_portee_ni_un_capteur_ni_un_rayon_invalide() {
+    let (mut world, portiere, _) = portiere();
+    let devant = |world: &PhysicsWorld, max: f32| {
+        world.raycast_bodies(
+            &[portiere],
+            Vec3::new(0.0, 0.0, -5.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            max,
+        )
+    };
+    assert!(devant(&world, 4.0).is_none(), "hors de portée");
+    assert!(devant(&world, 0.0).is_none(), "portée nulle");
+    assert!(devant(&world, f32::NAN).is_none(), "portée non finie");
+    assert!(world
+        .raycast_bodies(&[portiere], Vec3::ZERO, Vec3::ZERO, 10.0)
+        .is_none());
+    assert!(world
+        .raycast_bodies(
+            &[portiere],
+            Vec3::new(f32::NAN, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            10.0
+        )
+        .is_none());
+    assert!(world
+        .raycast_bodies(&[], Vec3::new(0.0, 0.0, -5.0), Vec3::Z, 10.0)
+        .is_none());
+    world.set_sensor(portiere, true);
+    assert!(devant(&world, 10.0).is_none(), "un capteur ne se vise pas");
+}
+
+#[test]
+fn adr158_a_distance_egale_le_premier_collider_l_emporte() {
+    let mut world = PhysicsWorld::new(config());
+    // Deux colliders confondus : le rayon les touche à la même distance.
+    let doublon = world
+        .add_assembly(
+            BodyKind::Static,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            &[cube_de_densite_1000(0.0), cube_de_densite_1000(0.0)],
+        )
+        .expect("deux cubes confondus sont valides");
+    world.advance(1.0 / 60.0);
+    let hit = world
+        .raycast_bodies(
+            &[doublon],
+            Vec3::new(0.0, 0.0, -5.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            10.0,
+        )
+        .expect("touché");
+    assert_eq!(hit.collider, 0, "l'ordre des colliders départage");
+}

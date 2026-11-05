@@ -1042,6 +1042,28 @@ class NativeBridgeTest {
         assertEquals(1.0, alignement, 1e-5, () -> "rotation du bras " + java.util.Arrays.toString(q)
                 + ", repère " + java.util.Arrays.toString(repere));
 
+        // ADR-158 D2 : un rayon vise les colliders de l'assembly ; le résumé ramène le collider touché à
+        // son node. La boîte du bras couvre [0, 1]³ dans son node, tourné d'un quart de tour en z : son
+        // centre est à (−0,5 ; 0,5 ; 0,5) de la position du bras.
+        double[] centre = {etatBras.position()[0] - 0.5, etatBras.position()[1] + 0.5, etatBras.position()[2] + 0.5};
+        double[] rayonBras = new double[NativeBridge.RAY_OUTPUT];
+        assertEquals(NativeBridge.OK, NativeBridge.raycastAssembly(reprise, 3, 1,
+                new double[] {centre[0], centre[1], centre[2] - 10.0, 0.0, 0.0, 1.0, 20.0}, rayonBras));
+        assertTrue(rayonBras[0] >= 0, () -> "le rayon touche l'assembly : " + java.util.Arrays.toString(rayonBras));
+        assertEquals(1.0, rayonBras[0], () -> "le corps du bras : " + java.util.Arrays.toString(rayonBras));
+        int porteur = bras.anatomy().carrier((int) rayonBras[0], (int) rayonBras[1]);
+        assertEquals(1, bras.anatomy().body(porteur), "le porteur du collider est au corps du bras");
+        int ancetre = porteur;
+        while (ancetre >= 0 && ancetre != noeudBras) {
+            ancetre = bras.anatomy().parent(ancetre);
+        }
+        assertEquals(noeudBras, ancetre, () -> "le node " + porteur + " descend de la racine du bras");
+        assertEquals(NativeBridge.OK, NativeBridge.raycastAssembly(reprise, 3, 1,
+                new double[] {centre[0], centre[1], centre[2] - 10.0, 0.0, 0.0, -1.0, 20.0}, rayonBras));
+        assertEquals(-1.0, rayonBras[0], "dos à l'assembly, rien");
+        assertEquals(NativeBridge.E_INVALID_HANDLE, NativeBridge.raycastAssembly(reprise, 99, 1,
+                new double[] {0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0}, rayonBras), "une assembly inconnue");
+
         // Le registre de la session rend ce qu'il tient, une fois chacune (ADR-156 D3).
         assertTrue(compilateurDefinitions.remove(charniereDeclaree.hash()), "le registre de la session la tenait");
         assertFalse(compilateurDefinitions.remove(charniereDeclaree.hash()), "déjà retirée");

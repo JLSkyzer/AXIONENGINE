@@ -53,18 +53,40 @@ public interface DefinitionCompiler {
      *     joue et compte (R-200), sans lire la section {@code ANIM} (décision de Killian, tranche 4)
      * @param nodes le node que désigne chaque référence du {@code DEFN}, dans leur ordre ; {@code -1}
      *     pour un clip ou un os (ADR-158 D1)
+     * @param anatomy les nodes de l'asset (ADR-158 D3)
      */
     record Summary(
-            int[] roots, int joints, boolean serverAnimated, List<String> warnings, AnimClips clips, int[] nodes) {
+            int[] roots,
+            int joints,
+            boolean serverAnimated,
+            List<String> warnings,
+            AnimClips clips,
+            int[] nodes,
+            Anatomy anatomy) {
 
         /** Copie les tableaux : un résumé ne change plus. */
         public Summary {
             roots = roots.clone();
             warnings = List.copyOf(warnings);
             nodes = nodes.clone();
-            if (clips == null) {
-                throw new IllegalArgumentException("les clips sont requis, AnimClips.NONE sans");
+            if (clips == null || anatomy == null) {
+                throw new IllegalArgumentException("clips et nodes requis, AnimClips.NONE et Anatomy.NONE sans");
             }
+        }
+
+        /**
+         * Un résumé sans node d'asset : celui d'une definition sans siège, pour les tests.
+         *
+         * @param roots node racine de chaque corps
+         * @param joints nombre de joints
+         * @param serverAnimated le serveur joue l'animation de l'asset
+         * @param warnings avertissements de la compilation
+         * @param clips les clips de l'asset
+         * @param nodes le node de chaque référence
+         */
+        public Summary(
+                int[] roots, int joints, boolean serverAnimated, List<String> warnings, AnimClips clips, int[] nodes) {
+            this(roots, joints, serverAnimated, warnings, clips, nodes, Anatomy.NONE);
         }
 
         /** {@return une copie des nodes racines} */
@@ -90,7 +112,8 @@ public interface DefinitionCompiler {
          * ({@code u32}), les avertissements en lignes, puis les clips : leur nombre ({@code u32}), et par
          * clip son nombre de pistes ({@code u32}) et son nom, en une liste d'une ligne ; enfin le
          * nombre de références ({@code u32}) et le node de chacune ({@code u32}, {@code 0xFFFFFFFF}
-         * sans).
+         * sans) ; puis les nodes de l'asset et les porteurs des colliders de chaque corps
+         * ({@link Anatomy#read}).
          *
          * @param payload la charge d'{@code ASSET_OUT}
          */
@@ -134,9 +157,11 @@ public interface DefinitionCompiler {
                 for (int i = 0; i < nodeCount; i++) {
                     nodes[i] = in.getInt();
                 }
-                return in.hasRemaining()
+                Anatomy anatomy = Anatomy.read(in, bodies);
+                return anatomy == null || in.hasRemaining()
                         ? null
-                        : new Summary(roots, joints, (flags & 1) != 0, warnings, new AnimClips(names, tracks), nodes);
+                        : new Summary(roots, joints, (flags & 1) != 0, warnings, new AnimClips(names, tracks), nodes,
+                                anatomy);
             } catch (java.nio.BufferUnderflowException truncated) {
                 return null;
             }

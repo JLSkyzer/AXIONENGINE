@@ -79,6 +79,22 @@ pub struct RayHit {
     pub normal: Vec3,
 }
 
+/// Impact d'un rayon lancé contre les seuls corps d'une assembly (ADR-158 D2) : ce qui désigne le
+/// collider touché, que la definition compilée relie à son node.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AssemblyRayHit {
+    /// Rang du corps touché parmi ceux de l'assembly, le corps racine d'abord.
+    pub body: usize,
+    /// Rang du collider touché dans ce corps, celui de sa création.
+    pub collider: usize,
+    /// Distance le long du rayon jusqu'à l'impact, en blocs.
+    pub distance: f32,
+    /// Point d'impact, en repère local du monde (blocs).
+    pub point: Vec3,
+    /// Normale de surface à l'impact.
+    pub normal: Vec3,
+}
+
 /// Impact d'un balayage de forme (sweep, C-39).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SweepHit {

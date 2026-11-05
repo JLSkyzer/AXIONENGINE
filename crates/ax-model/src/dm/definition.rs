@@ -421,8 +421,12 @@ pub mod summary_flags {
 /// (`AnimationControl`) et compte leurs pistes (R-200) sans lire la section `ANIM` (décision de
 /// Killian, tranche 4). Enfin le node de chaque référence de `DEFN` — `u32` du nombre, celui des
 /// références, puis par référence l'index du node qu'elle désigne, [`NONE_U32`] pour un clip ou un
-/// os : Java en tire le node de chaque siège et de chaque interaction (ADR-158 D1).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// os : Java en tire le node de chaque siège et de chaque interaction (ADR-158 D1). Puis les nodes de
+/// l'asset — `u32` du nombre, puis par node [`SummaryNode::BYTES`] octets : son parent, son corps, sa
+/// pose de repos dans le repère de ce corps — et, pour chaque corps dans l'ordre de `roots`, le node
+/// porteur de chacun de ses colliders — `u32` du nombre, puis un `u32` par collider : Java pose un
+/// siège et retrouve le node qu'un rayon a touché (ADR-158 D2, D3).
+#[derive(Debug, Clone, PartialEq)]
 pub struct DefinitionSummary {
     /// Node racine de chaque corps, le corps racine d'abord.
     pub roots: Vec<u32>,
@@ -437,6 +441,30 @@ pub struct DefinitionSummary {
     /// Le node que désigne chaque référence de `DEFN`, dans leur ordre ; [`NONE_U32`] pour une
     /// référence qui n'est pas un node.
     pub nodes: Vec<u32>,
+    /// Les nodes de l'asset, dans son ordre.
+    pub anatomy: Vec<SummaryNode>,
+    /// Pour chaque corps, le node porteur de chacun de ses colliders, dans l'ordre où le corps les
+    /// tient ; [`NONE_U32`] pour le collider de l'asset entier, qu'aucun node ne porte.
+    pub carriers: Vec<Vec<u32>>,
+}
+
+/// Un node de l'asset, tel que le résumé le donne à Java (ADR-158 D3).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SummaryNode {
+    /// Son parent, [`NONE_U32`] pour une racine.
+    pub parent: u32,
+    /// Le rang du corps qui le porte, [`NONE_U32`] sur une chaîne qu'une échelle non uniforme
+    /// rompt : il n'a pas de pose.
+    pub body: u32,
+    /// Sa position de repos dans le repère de son corps, en blocs.
+    pub translation: [f32; 3],
+    /// Sa rotation de repos dans le repère de son corps, `(x, y, z, w)`.
+    pub rotation: [f32; 4],
+}
+
+impl SummaryNode {
+    /// Taille d'un node dans le résumé, en octets.
+    pub const BYTES: usize = 36;
 }
 
 /// Un clip de l'asset, tel que le résumé le donne à Java.
@@ -476,6 +504,28 @@ impl DefinitionSummary {
         for node in &self.nodes {
             out.extend_from_slice(&node.to_le_bytes());
         }
+        out.extend_from_slice(
+            &u32::try_from(self.anatomy.len())
+                .unwrap_or(u32::MAX)
+                .to_le_bytes(),
+        );
+        for node in &self.anatomy {
+            out.extend_from_slice(&node.parent.to_le_bytes());
+            out.extend_from_slice(&node.body.to_le_bytes());
+            for value in node.translation.iter().chain(&node.rotation) {
+                out.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        for carriers in &self.carriers {
+            out.extend_from_slice(
+                &u32::try_from(carriers.len())
+                    .unwrap_or(u32::MAX)
+                    .to_le_bytes(),
+            );
+            for node in carriers {
+                out.extend_from_slice(&node.to_le_bytes());
+            }
+        }
     }
 
     /// Relit un résumé qui occupe exactement `bytes` ; `None` s'il est tronqué ou prolongé.
@@ -510,6 +560,37 @@ impl DefinitionSummary {
         let nodes = (0..node_count)
             .map(|_| take_u32(&mut rest))
             .collect::<Option<Vec<_>>>()?;
+        let anatomy_count = take_u32(&mut rest)?;
+        if anatomy_count as usize > rest.len() / SummaryNode::BYTES {
+            return None;
+        }
+        let mut anatomy = Vec::with_capacity(anatomy_count as usize);
+        for _ in 0..anatomy_count {
+            let parent = take_u32(&mut rest)?;
+            let body = take_u32(&mut rest)?;
+            let mut values = [0.0f32; 7];
+            for value in &mut values {
+                *value = f32::from_bits(take_u32(&mut rest)?);
+            }
+            anatomy.push(SummaryNode {
+                parent,
+                body,
+                translation: [values[0], values[1], values[2]],
+                rotation: [values[3], values[4], values[5], values[6]],
+            });
+        }
+        let mut carriers = Vec::with_capacity(roots.len());
+        for _ in 0..roots.len() {
+            let count = take_u32(&mut rest)?;
+            if count as usize > rest.len() / 4 {
+                return None;
+            }
+            carriers.push(
+                (0..count)
+                    .map(|_| take_u32(&mut rest))
+                    .collect::<Option<Vec<_>>>()?,
+            );
+        }
         rest.is_empty().then_some(Self {
             roots,
             joint_count,
@@ -517,6 +598,8 @@ impl DefinitionSummary {
             warnings,
             clips,
             nodes,
+            anatomy,
+            carriers,
         })
     }
 }
@@ -811,13 +894,33 @@ mod tests {
                 tracks: 2,
             }],
             nodes: vec![3, NONE_U32],
+            anatomy: vec![
+                SummaryNode {
+                    parent: NONE_U32,
+                    body: 0,
+                    translation: [0.0; 3],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                },
+                SummaryNode {
+                    parent: 0,
+                    body: 1,
+                    translation: [0.5, -1.0, 2.0],
+                    rotation: [0.0, 1.0, 0.0, 0.0],
+                },
+            ],
+            carriers: vec![vec![NONE_U32, 0], vec![1]],
         };
         let mut bytes = Vec::new();
         summary.write_le(&mut bytes);
         let avertissements = 4 + 4 + "racine animée".len();
         let clips = 4 + 4 + 4 + 4 + "ouvrir".len();
         let nodes = 4 + 2 * 4;
-        assert_eq!(bytes.len(), 16 + 2 * 4 + avertissements + clips + nodes);
+        let anatomy = 4 + 2 * SummaryNode::BYTES;
+        let carriers = (4 + 2 * 4) + (4 + 4);
+        assert_eq!(
+            bytes.len(),
+            16 + 2 * 4 + avertissements + clips + nodes + anatomy + carriers
+        );
         let node = 16 + 2 * 4 + avertissements + clips;
         assert_eq!(
             &bytes[node..node + 4],
@@ -825,7 +928,33 @@ mod tests {
             "deux références"
         );
         assert_eq!(&bytes[node + 4..node + 8], &3u32.to_le_bytes(), "un node");
-        assert_eq!(&bytes[node + 8..], &NONE_U32.to_le_bytes(), "un clip");
+        assert_eq!(
+            &bytes[node + 8..node + 12],
+            &NONE_U32.to_le_bytes(),
+            "un clip"
+        );
+        let second = node + nodes + 4 + SummaryNode::BYTES;
+        assert_eq!(
+            &bytes[second..second + 4],
+            &0u32.to_le_bytes(),
+            "son parent"
+        );
+        assert_eq!(
+            &bytes[second + 4..second + 8],
+            &1u32.to_le_bytes(),
+            "son corps"
+        );
+        assert_eq!(
+            &bytes[second + 8..second + 12],
+            &0.5f32.to_le_bytes(),
+            "puis sa pose"
+        );
+        let porteurs = node + nodes + anatomy;
+        assert_eq!(
+            &bytes[porteurs..porteurs + 4],
+            &2u32.to_le_bytes(),
+            "deux colliders au corps racine"
+        );
         let clip = 16 + 2 * 4 + avertissements;
         assert_eq!(&bytes[clip..clip + 4], &1u32.to_le_bytes(), "un clip");
         assert_eq!(

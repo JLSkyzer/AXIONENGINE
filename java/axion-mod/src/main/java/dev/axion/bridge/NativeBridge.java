@@ -45,7 +45,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 14;
+    public static final int EXPECTED_ABI_VERSION = 15;
 
     /** Succès. */
     public static final int OK = 0;
@@ -159,6 +159,8 @@ public final class NativeBridge {
             long ctx, long definition, int index, int generation, long defnLength, long[] out);
 
     static native int definitionRemove(long ctx, long definition);
+
+    static native int assemblyRaycast(long ctx, int index, int generation, double[] ray, double[] out);
 
     static native int renderPrepare(long ctx, byte[] camera, float partialTick, long budgetNs, long[] out);
 
@@ -792,6 +794,38 @@ public final class NativeBridge {
     public static int removeDefinition(long ctx, long definition) {
         CROSSINGS.increment();
         return definitionRemove(ctx, definition);
+    }
+
+    // --- Requêtes sur une assembly (ADR-158 D2) -----------------------------
+
+    /** Valeurs que lit {@link #raycastAssembly} : origine monde (3), direction (3), portée. */
+    public static final int RAY_INPUT = 7;
+
+    /**
+     * Valeurs qu'écrit {@link #raycastAssembly} : rang du corps, rang du collider dans ce corps,
+     * distance, point monde (3), normale (3).
+     */
+    public static final int RAY_OUTPUT = 9;
+
+    /**
+     * Lance un rayon contre les seuls colliders solides d'une assembly (ADR-158 D2). Hors du collect,
+     * il voit le monde du dernier pas, l'état du début du tick (R-651).
+     *
+     * @param ctx jeton de contexte
+     * @param index index du handle de l'assembly
+     * @param generation génération du handle de l'assembly
+     * @param ray {@link #RAY_INPUT} valeurs : origine en coordonnées monde absolues, direction, portée
+     *     en blocs
+     * @param out {@link #RAY_OUTPUT} valeurs : {@code out[0]} vaut {@code -1} si rien n'est touché
+     * @return {@link #OK}, {@link #E_INVALID_HANDLE} si l'assembly n'existe pas
+     */
+    public static int raycastAssembly(long ctx, int index, int generation, double[] ray, double[] out) {
+        if (ray == null || ray.length < RAY_INPUT || out == null || out.length < RAY_OUTPUT) {
+            throw new IllegalArgumentException("un rayon compte " + RAY_INPUT + " valeurs, son impact "
+                    + RAY_OUTPUT);
+        }
+        CROSSINGS.increment();
+        return assemblyRaycast(ctx, index, generation, ray, out);
     }
 
     // --- Cycle de rendu (IF-05, ADR-154) ------------------------------------

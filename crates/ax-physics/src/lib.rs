@@ -75,7 +75,7 @@ pub use joint::{
 };
 pub use materials::MaterialTable;
 pub use proxies::{EntityProxy, ProxyShape};
-pub use query::{RayHit, SensorMode, SpatialFilter, SweepHit};
+pub use query::{AssemblyRayHit, RayHit, SensorMode, SpatialFilter, SweepHit};
 pub use scheduler::{check_order, SimMode, Stage, StageDurations, StageLog};
 pub use sim::{AssemblyBody, AssemblyJoint, SavedBody, SavedJoint, SimDriver, SimSettings};
 pub use world::{BodyReports, PhysicsWorld, Pose, WorldCounters};

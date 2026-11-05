@@ -15,6 +15,7 @@ use ax_model::dm::animation::AnimCommand;
 use ax_model::dm::commands::{
     AssemblyBodyEntry, CreateAssembly, RestoredBody, RestoredJoint, MAX_ASSEMBLY_BODIES,
 };
+use ax_model::dm::definition::SummaryNode;
 use ax_model::dm::geometry::Transform;
 use ax_model::dm::joints::{joint_axis_mode, joint_flags, joint_kind, JointDesc};
 use ax_model::dm::physics::ColliderDesc;
@@ -56,6 +57,10 @@ pub(crate) struct Prepared {
     pub groups: CollisionGroups,
     /// Ce que le serveur fait de l'animation de l'asset.
     pub animation: AnimationVerdict,
+    /// Chaque node de l'asset : son parent, son corps, sa pose de repos dans ce corps (ADR-158 D3).
+    pub anatomy: Vec<SummaryNode>,
+    /// Pour chaque corps, le node porteur de chacun de ses colliders, dans son ordre (ADR-158 D2).
+    pub carriers: Vec<Vec<u32>>,
 }
 
 /// Range les colliders de l'asset en corps, pose les joints et juge l'animation serveur.
@@ -101,11 +106,23 @@ pub(crate) fn prepare(
         .map(|(index, desc)| assembly_joint(&skeleton, entries, jam_points, index, desc))
         .collect::<Option<Vec<_>>>()
         .ok_or("un joint incohérent avec son type ou avec les corps de l'assembly")?;
+    let anatomy = skeleton.anatomy(nodes);
+    let mut carriers: Vec<Vec<u32>> = bodies
+        .iter()
+        .map(|body| vec![NONE_U32; body.colliders.len()])
+        .collect();
+    for place in &placement {
+        if let Some(node) = place.node {
+            carriers[place.body][place.index] = u32::try_from(node).unwrap_or(NONE_U32);
+        }
+    }
     Ok(Prepared {
         bodies,
         joints,
         groups,
         animation,
+        anatomy,
+        carriers,
     })
 }
 
@@ -197,6 +214,42 @@ struct Skeleton {
 }
 
 impl Skeleton {
+    /// Chaque node, son parent, son corps et sa pose de repos dans le repère de ce corps, sans son
+    /// échelle : ce que Java compose avec la pose du corps pour poser un siège (ADR-158 D3). Un node
+    /// sur une chaîne rompue n'a ni corps ni pose.
+    fn anatomy(&self, nodes: &[NodeDesc]) -> Vec<SummaryNode> {
+        nodes
+            .iter()
+            .zip(&self.poses)
+            .zip(&self.owner)
+            .map(|((node, pose), owner)| {
+                let parent = if node.is_root() {
+                    NONE_U32
+                } else {
+                    node.parent
+                };
+                match pose {
+                    Some(pose) => {
+                        let (translation, rotation) =
+                            self.frames[*owner].local(pose.translation, pose.rotation);
+                        SummaryNode {
+                            parent,
+                            body: u32::try_from(*owner).unwrap_or(NONE_U32),
+                            translation: translation.to_array(),
+                            rotation: rotation.to_array(),
+                        }
+                    }
+                    None => SummaryNode {
+                        parent,
+                        body: NONE_U32,
+                        translation: [0.0; 3],
+                        rotation: [0.0, 0.0, 0.0, 1.0],
+                    },
+                }
+            })
+            .collect()
+    }
+
     /// `None` si un parent suit son enfant, ou si une racine de corps est hors de la table ou
     /// sur une chaîne rompue.
     fn new(entries: &[AssemblyBodyEntry], nodes: &[NodeDesc]) -> Option<Self> {
