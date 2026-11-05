@@ -3491,7 +3491,8 @@ sources procédurales de véhicule (M5, T-365).
   déjà écrit.
 - **Restes ouverts, proposés comme renvois** :
   - l'emprise exacte des assemblies articulées et animées au culling (aujourd'hui `NO_CULL`) :
-    [ADR-157](../docs/decisions/ADR-157.md) **accepté le 2026-11-05, en M4** : à livrer avant le prononcé ;
+    [ADR-157](../docs/decisions/ADR-157.md) **accepté le 2026-11-05, en M4** : tranche 1 (animation, sphère
+    balayée) faite le 2026-11-05 ; reste la tranche 2 (corps articulés, sphère explicite, ABI 13) ;
   - T-904 : des pics isolés, que le banc décompose désormais ; aucun en sept passages le 2026-11-05 ;
   - ADR-150 D7 : un rouge isolé (177 m/s) le 2026-11-05, vert six fois ensuite ; D7 dit sa pire frame.
 - **Critères « Jalon terminé »** (forme d'ADR-146) :

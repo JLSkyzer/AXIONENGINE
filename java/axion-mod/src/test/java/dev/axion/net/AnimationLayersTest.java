@@ -1,6 +1,7 @@
 package dev.axion.net;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.axion.net.AnimationLayers.Change;
@@ -33,6 +34,28 @@ class AnimationLayersTest {
                 new Change(Change.PLAY, 0, 100.0, 0, 1f, 0f, 0f, 1f),
                 new Change(Change.PLAY, 2, 300.0, 1, 0.5f, 0.25f, 0.5f, 2f)), changes);
         assertEquals(List.of(), state.changesFrom(state));
+    }
+
+    @Test
+    @DisplayName("ADR-157 D1 : un seul clip, à poids plein, fondu d'entrée fini ; sinon la pose compose plusieurs clips")
+    void unSeulClip() {
+        Layer seul = new Layer(0, 100L, 0f, 1f, 1f, 0f);
+        assertTrue(AnimationLayers.NONE.with(0, seul).singleClipAt(150.0));
+        assertFalse(AnimationLayers.NONE.singleClipAt(150.0), "rien ne joue : le repos, pas un clip");
+        // Le fondu d'entrée de 0,5 s, soit 10 ticks : un clip et le repos, mêlés, jusqu'au tick 110.
+        Layer fondu = new Layer(0, 100L, 0f, 1f, 1f, 0.5f);
+        assertFalse(AnimationLayers.NONE.with(0, fondu).singleClipAt(105.0));
+        assertTrue(AnimationLayers.NONE.with(0, fondu).singleClipAt(110.0));
+        assertFalse(AnimationLayers.NONE.with(0, new Layer(0, 100L, 0f, 1f, 0.5f, 0f)).singleClipAt(150.0),
+                "poids partiel");
+        assertFalse(AnimationLayers.NONE.with(0, seul).with(1, new Layer(1, 100L, 0f, 1f, 1f, 0f)).singleClipAt(150.0),
+                "deux couches");
+        // Une couche qui s'arrête en fondu montre encore son clip, mêlé au repos.
+        assertFalse(AnimationLayers.NONE.with(0, Layer.stopped(140L, 1f)).singleClipAt(150.0));
+        assertFalse(AnimationLayers.NONE.with(0, seul).with(1, Layer.stopped(140L, 1f)).singleClipAt(150.0),
+                "un clip et le fondu d'arrêt d'un autre");
+        assertTrue(AnimationLayers.NONE.with(0, seul).with(1, Layer.stopped(100L, 1f)).singleClipAt(150.0),
+                "le fondu d'arrêt fini ne montre plus rien");
     }
 
     @Test

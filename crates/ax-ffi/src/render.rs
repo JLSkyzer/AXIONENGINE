@@ -104,6 +104,9 @@ pub const IN_FRAME_HEADER: usize = 16;
 struct RenderAsset {
     generation: u32,
     bounds: Option<LocalBounds>,
+    /// Sphère que le culling teste : balayée par les clips d'un asset animé (ADR-157 D1). Le LOD garde
+    /// la sphère de repos : la taille apparente ne change pas parce qu'un clip pourrait bouger l'asset.
+    cull_bounds: Option<LocalBounds>,
     triangles: u32,
     /// Niveaux de détail ; 1 sans table utilisable.
     levels: u8,
@@ -308,6 +311,8 @@ pub(crate) fn poison(token: u64) {
 pub(crate) struct Published<'a> {
     /// Sphère au repos.
     pub bounds: Option<LocalBounds>,
+    /// Sphère que le culling teste (ADR-157 D1).
+    pub cull_bounds: Option<LocalBounds>,
     /// Triangles au LOD 0.
     pub triangles: u32,
     /// Niveaux de détail.
@@ -339,6 +344,7 @@ pub(crate) fn publish(token: u64, handle: Handle, published: Published<'_>) {
         assets[index] = Some(RenderAsset {
             generation: handle.generation,
             bounds: published.bounds,
+            cull_bounds: published.cull_bounds,
             triangles: published.triangles,
             levels: published.levels,
             draw_meshes: published.draw_meshes.into(),
@@ -379,7 +385,7 @@ fn cull_lot(
             .get(candidate.asset as usize)
             .and_then(Option::as_ref)
             .filter(|a| a.generation == candidate.generation)
-            .and_then(|a| a.bounds)
+            .and_then(|a| a.cull_bounds)
     };
     let stats = cull_batched(camera, frustum, candidates, bounds, &mut visible);
     for v in &mut visible {
@@ -986,12 +992,14 @@ mod tests {
 
     /// Un asset sphère unité, à quatre niveaux, un dessin dont le mesh du niveau `n` est `n`.
     fn context() -> RenderContext {
+        let unite = Some(LocalBounds {
+            center: Vec3::ZERO,
+            radius: 1.0,
+        });
         let assets = vec![Some(RenderAsset {
             generation: 1,
-            bounds: Some(LocalBounds {
-                center: Vec3::ZERO,
-                radius: 1.0,
-            }),
+            bounds: unite,
+            cull_bounds: unite,
             triangles: 12,
             levels: 4,
             draw_meshes: vec![[0, 1, 2, 3, 3, 3, 3, 3]].into(),
@@ -1084,6 +1092,36 @@ mod tests {
                 (word(record + 4), word(record + 8))
             })
             .collect()
+    }
+
+    #[test]
+    fn adr157_d1_le_culling_teste_la_sphere_de_culling_et_non_celle_du_repos() {
+        // Derrière la caméra, la sphère de repos est écartée par le frustum ; la sphère que balaient les
+        // clips, dix blocs devant elle, entre dans le champ : le candidat est retenu.
+        let mut context = context();
+        write(&mut context, &[candidate(7, Vec3::new(0.0, 0.0, 5.0))]);
+        assert_eq!(
+            context
+                .prepare(&camera(1, 0), LARGE)
+                .unwrap()
+                .instance_count,
+            0
+        );
+        Arc::make_mut(&mut context.assets)[0]
+            .as_mut()
+            .unwrap()
+            .cull_bounds = Some(LocalBounds {
+            center: Vec3::new(0.0, 0.0, -10.0),
+            radius: 1.0,
+        });
+        write(&mut context, &[candidate(7, Vec3::new(0.0, 0.0, 5.0))]);
+        assert_eq!(
+            context
+                .prepare(&camera(1, 0), LARGE)
+                .unwrap()
+                .instance_count,
+            1
+        );
     }
 
     #[test]

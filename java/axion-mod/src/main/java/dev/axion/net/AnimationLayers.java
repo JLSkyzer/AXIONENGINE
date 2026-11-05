@@ -146,6 +146,27 @@ public record AnimationLayers(List<Layer> layers) {
     }
 
     /**
+     * @param now tick du serveur, fraction comprise
+     * @return vrai si, à cet instant, la pose est celle d'un seul clip joué seul : une seule couche
+     *     visible, qui joue à poids plein, son fondu d'entrée fini. La sphère que balaient les clips de
+     *     l'asset la borne alors (ADR-157 D1) ; deux couches, un fondu ou un poids partiel composent une
+     *     pose qu'aucun clip seul ne balaie
+     */
+    public boolean singleClipAt(double now) {
+        Layer seen = null;
+        for (Layer layer : layers) {
+            if (layer.visibleAt(now)) {
+                if (seen != null) {
+                    return false;
+                }
+                seen = layer;
+            }
+        }
+        return seen != null && seen.playing() && seen.weight() >= 1f
+                && now >= seen.tick() + seen.fade() * TICKS_PER_SECOND;
+    }
+
+    /**
      * Une commande d'animation qui mène un natif d'un état à l'autre.
      *
      * @param action {@link #PLAY}, {@link #STOP} ou {@link #SET_SPEED}, les codes d'{@code anim_action}

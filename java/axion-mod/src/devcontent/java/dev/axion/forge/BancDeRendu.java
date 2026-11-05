@@ -375,6 +375,9 @@ public final class BancDeRendu {
 
     /** ADR-155 : la glissière, et le fond sans elle, puis au repos, puis le coulisseau poussé. */
     private static AxionEntity glissiere;
+
+    /** ADR-157 D1 : une seconde glissière, derrière la caméra, qui joue le même clip. */
+    private static AxionEntity glissiereDerriere;
     private static CapturesDuBanc.Capture fondGlissiere;
     private static CapturesDuBanc.Capture reposGlissiere;
     private static CapturesDuBanc.Capture animeeGlissiere;
@@ -763,6 +766,25 @@ public final class BancDeRendu {
             jusqua("la couche reçue par le client", 60, mc -> coucheAuClient(mc).playing());
             stabiliser("le coulisseau poussé");
             une("capturer le coulisseau poussé", mc -> animeeGlissiere = capturer(mc, "adr155_animee.png"));
+            // ADR-157 D1 : une assembly qui joue un seul clip se culle par la sphère que balaient ses clips.
+            // Derrière la caméra, la seconde est écartée ; devant, la première reste retenue.
+            serveur("poser une glissière derrière la caméra", s -> glissiereDerriere = AssembliesDeTest.poser(
+                    s.overworld(), GLISSIERE, new Vec3(-2.5, surface, 6.5), IDENTITE));
+            jusqua("la glissière de derrière connue du client, ses clips liés", 120,
+                    mc -> mc.level.getEntity(glissiereDerriere.getId()) instanceof AxionEntity
+                            && !glissiereDerriere.animation().clips().isEmpty());
+            serveur("jouer glisse derrière", s -> glissiereDerriere.animation().play("glisse", 0, 1f, 0f));
+            une("allumer culling", mc -> AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.CULLING, true));
+            jusqua("la couche de derrière reçue, les décisions relevées", 60, mc ->
+                    mc.level.getEntity(glissiereDerriere.getId()) instanceof AxionEntity auClient
+                            && auClient.animationState().layer(0).playing()
+                            && niveau(mc, glissiere) != null && niveau(mc, glissiereDerriere) != null);
+            // Le client dessine au tick du serveur interpolé, en retard sur celui de la commande : avant qu'il
+            // l'atteigne, la couche n'a pas commencé, et la pose n'est pas encore celle d'un seul clip.
+            pendant("laisser le rendu rejoindre la commande", 20, mc -> { });
+            une("juger ADR-157 D1", BancDeRendu::jugerCullingAnime);
+            une("éteindre culling", mc -> AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.CULLING, false));
+            serveur("retirer la glissière de derrière", s -> glissiereDerriere.discard());
             serveur("arrêter la couche", s -> glissiere.animation().stop(0, 0f));
             jusqua("l'arrêt reçu par le client", 60, mc -> !coucheAuClient(mc).playing());
             stabiliser("la glissière arrêtée");
@@ -1961,6 +1983,22 @@ public final class BancDeRendu {
                 "LOD forcé : textures d'AXION %d → %d octets (%.0f %%) ; %d assemblies dessinées, %d avec leur asset",
                 texturesAvant, apres, texturesAvant == 0 ? 0.0 : 100.0 * apres / texturesAvant,
                 frame.assemblies(), frame.withAsset()));
+    }
+
+    /**
+     * ADR-157 D1 : deux glissières jouent le même clip ; la première, devant la caméra, est retenue, la
+     * seconde, derrière elle, est écartée. Avant ADR-157, une assembly animée était toujours retenue, sans
+     * test : la seconde l'aurait été.
+     */
+    private static void jugerCullingAnime(Minecraft minecraft) {
+        Integer devant = niveau(minecraft, glissiere);
+        Integer derriere = niveau(minecraft, glissiereDerriere);
+        boolean vert = devant != null && devant >= 0 && derriere != null && derriere < 0;
+        RAPPORT.noter("ADR-157 D1", vert, String.format(Locale.ROOT,
+                "deux glissières qui jouent « glisse » : devant la caméra %s, derrière elle %s — la première doit être"
+                        + " retenue, la seconde écartée",
+                devant == null ? "non candidate" : devant < 0 ? "écartée" : "retenue au niveau " + devant,
+                derriere == null ? "non candidate" : derriere < 0 ? "écartée" : "retenue au niveau " + derriere));
     }
 
     /** {@return la décision du culling pour une assembly posée, côté client, ou {@code null}} */

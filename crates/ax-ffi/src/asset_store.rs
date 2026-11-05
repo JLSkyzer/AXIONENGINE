@@ -187,6 +187,9 @@ pub struct LoadedAsset {
     /// Sphère qui contient l'asset au repos, pour le culling (ADR-154) ; `None` s'il ne
     /// dessine rien.
     bounds: Option<LocalBounds>,
+    /// Sphère que le culling teste (ADR-157 D1) : celle du repos, ou, pour un asset animé, celle que
+    /// balaient ses clips, pose de repos comprise.
+    cull_bounds: Option<LocalBounds>,
     /// Triangles dessinés au repos, au LOD 0.
     triangles: u32,
     /// Niveaux de détail de l'asset (`LODM`, ADR-107) ; 1 sans table, ou si sa table est refusée.
@@ -254,6 +257,13 @@ impl LoadedAsset {
     #[must_use]
     pub fn render_bounds(&self) -> Option<LocalBounds> {
         self.bounds
+    }
+
+    /// Sphère que le culling teste (ADR-157 D1) : la sphère balayée d'un asset animé, la sphère de
+    /// repos sinon.
+    #[must_use]
+    pub fn cull_bounds(&self) -> Option<LocalBounds> {
+        self.cull_bounds
     }
 
     /// Triangles dessinés au repos, au LOD 0.
@@ -485,6 +495,10 @@ pub fn decode_render_asset(
     };
 
     let bounds = bounds_of(&geometry.meshes, &draws);
+    // ADR-157 D1 : un asset animé se culle par la sphère que balaient ses clips, calculée une fois ici.
+    let cull_bounds = animation.as_ref().map_or(bounds, |animated| {
+        animated.swept_bounds(&geometry.meshes, &draws).or(bounds)
+    });
     let triangles = draws
         .iter()
         .filter_map(|draw| geometry.meshes.get(draw.mesh as usize))
@@ -521,6 +535,7 @@ pub fn decode_render_asset(
         materials,
         textures,
         bounds,
+        cull_bounds,
         triangles,
         lod_levels,
         draw_meshes,

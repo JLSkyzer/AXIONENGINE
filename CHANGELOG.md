@@ -428,6 +428,11 @@ Definition of Done (PARTIE 37.3).
 
 ### Modifie
 
+- Rendu (C-64, ADR-157, tranche 1) : une assembly qui joue un seul clip
+  n'est plus retenue sans test au culling. Le natif calcule, au chargement
+  d'un asset anime, la sphere que balaient ses clips, et le culling la teste
+  a la place de la sphere de repos. Plusieurs couches, un fondu ou un poids
+  partiel gardent l'assembly retenue sans test.
 - Assets (C-24, ADR-156, tranche 5) : `axion_asset_warnings` rend les tables
   `LODM` et `ANIM` qu'un asset a refusees sans etre refuse lui-meme ; le
   client les ecrit au journal au chargement pour le rendu, le serveur a la

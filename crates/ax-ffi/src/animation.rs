@@ -22,10 +22,12 @@ use ax_anim::{Animator, ClipLibrary, TICKS_PER_SECOND};
 use ax_asset::a3d::AnimationTable;
 use ax_asset::validate::validate_animations;
 use ax_math::{Affine3A, Mat4, Quat, Vec3};
-use ax_model::dm::animation::{AnimCommand, BoneDesc};
+use ax_model::dm::animation::{anim_action, AnimCommand, BoneDesc};
 use ax_model::dm::debug::DebugSegment;
-use ax_model::dm::geometry::Transform;
+use ax_model::dm::geometry::{MeshDesc, Transform};
+use ax_model::dm::render::RestDraw;
 use ax_model::dm::scene::{node_state, NodeDesc, NONE_U16};
+use ax_render_prep::LocalBounds;
 use ax_scene::{mat4x3, SceneGraph};
 use std::time::Instant;
 
@@ -67,6 +69,18 @@ pub struct PoseTimes {
     /// Étape 14 : le graphe propagé (C-30).
     pub propagate_ns: u64,
 }
+
+/// Échantillons de la sphère balayée par seconde de clip (ADR-157 D1) : huit par tick du serveur.
+const SWEEP_SAMPLES_PER_SECOND: f64 = 8.0 * TICKS_PER_SECOND;
+
+/// Échantillons de la sphère balayée par intervalle entre deux clés d'une piste, au moins : entre deux
+/// clés, glTF interpole une rotation sur au plus un demi-tour, que quatre échantillons découpent en
+/// arcs d'au plus 45°. Sans cela, une pièce plus rapide que l'échantillonnage serait vue immobile.
+const SWEEP_SAMPLES_PER_KEY: usize = 4;
+
+/// Plafond d'échantillons par clip : au-delà, un clip est échantillonné moins finement, la marge
+/// suivant l'écart entre ses échantillons.
+const SWEEP_MAX_SAMPLES: usize = 4096;
 
 /// Longueur des axes de l'overlay `nodes`, en blocs, échelle du node comprise (tranche 6b).
 pub const NODE_AXIS_LENGTH: f32 = 0.25;
@@ -131,6 +145,86 @@ impl AnimatedAsset {
             draw_nodes,
             bones,
         }))
+    }
+
+    /// La sphère que balaient les dessins de l'asset (ADR-157 D1) : la pose de repos, et chaque clip
+    /// joué seul, à poids plein, sur toute sa durée ; `None` si un dessin désigne un mesh absent ou que
+    /// les dessins ne sont pas ceux de l'animation.
+    ///
+    /// Chaque clip est échantillonné [`SWEEP_SAMPLES_PER_SECOND`] fois par seconde, et au moins
+    /// [`SWEEP_SAMPLES_PER_KEY`] fois par intervalle entre deux clés de sa piste la plus dense, au plus
+    /// [`SWEEP_MAX_SAMPLES`] fois. Les huit coins de l'emprise de chaque mesh y sont posés par la
+    /// matrice de leur dessin. Entre deux échantillons, un coin suit une trajectoire interpolée : la
+    /// boîte s'élargit du plus grand déplacement d'un coin entre deux échantillons voisins, qui borne
+    /// l'écart d'un point de la trajectoire au plus proche des deux tant qu'elle reste plus courte que le
+    /// double de ce déplacement. Le test `adr157_d1_la_sphere_balayee_contient_chaque_pose` le vérifie à
+    /// un échantillonnage dix fois plus fin.
+    ///
+    /// Une pose composée de plusieurs clips — deux couches, un fondu, un poids partiel — n'est pas
+    /// bornée par cette sphère : Java retient alors l'assembly sans test (`NO_CULL`).
+    #[must_use]
+    pub fn swept_bounds(&self, meshes: &[MeshDesc], draws: &[RestDraw]) -> Option<LocalBounds> {
+        if draws.len() != self.draw_nodes.len() {
+            return None;
+        }
+        let rest: Vec<f32> = draws.iter().flat_map(|draw| draw.model).collect();
+        let mut min = Vec3::splat(f32::INFINITY);
+        let mut max = Vec3::splat(f32::NEG_INFINITY);
+        let mut margin = 0.0f32;
+        let mut corners = Vec::new();
+        posed_corners(meshes, draws, &rest, &mut corners)?;
+        for corner in &corners {
+            min = min.min(*corner);
+            max = max.max(*corner);
+        }
+        let mut matrices = Vec::new();
+        let mut previous = Vec::new();
+        for clip in 0..u32::try_from(self.clips.len()).ok()? {
+            let duration = f64::from(self.clips.clip(clip).duration.max(0.0));
+            let densest = self
+                .clips
+                .tracks(clip)
+                .iter()
+                .map(|track| track.key_count as usize)
+                .max()
+                .unwrap_or(0);
+            let steps = ((duration * SWEEP_SAMPLES_PER_SECOND).ceil() as usize)
+                .max(densest.saturating_sub(1) * SWEEP_SAMPLES_PER_KEY)
+                .clamp(1, SWEEP_MAX_SAMPLES);
+            let mut instance = Instance::new(self);
+            let play = AnimCommand {
+                tick: 0.0,
+                action: anim_action::PLAY,
+                layer: 0,
+                clip,
+                weight: 1.0,
+                fade: 0.0,
+                speed: 1.0,
+                mask_count: 0,
+                origin: 0.0,
+            };
+            instance.apply(self, &play, &[]).ok()?;
+            previous.clear();
+            for step in 0..=steps {
+                let seconds = duration * step as f64 / steps as f64;
+                instance.evaluate(self, seconds * TICKS_PER_SECOND);
+                matrices.clear();
+                instance.draw_matrices(self, &mut matrices);
+                corners.clear();
+                posed_corners(meshes, draws, &matrices, &mut corners)?;
+                for (index, corner) in corners.iter().enumerate() {
+                    min = min.min(*corner);
+                    max = max.max(*corner);
+                    if let Some(before) = previous.get(index) {
+                        margin = margin.max(corner.distance(*before));
+                    }
+                }
+                std::mem::swap(&mut previous, &mut corners);
+            }
+        }
+        let grown = Vec3::splat(margin);
+        (min.is_finite() && max.is_finite() && margin.is_finite())
+            .then(|| LocalBounds::from_aabb(min - grown, max + grown))
     }
 
     /// Le nombre d'os, donc de matrices de la palette d'une instance ; 0 sans skin.
@@ -198,6 +292,32 @@ fn bone_of(
         parent,
         inverse_bind: Affine3A::from_mat4(matrix),
     })
+}
+
+/// Ajoute à `out` les huit coins de l'emprise du mesh de chaque dessin, posés par sa matrice `mat4x3`
+/// dans `matrices` (douze flottants par dessin, dans leur ordre) ; `None` si un mesh manque.
+fn posed_corners(
+    meshes: &[MeshDesc],
+    draws: &[RestDraw],
+    matrices: &[f32],
+    out: &mut Vec<Vec3>,
+) -> Option<()> {
+    for (draw, m) in draws.iter().zip(matrices.chunks_exact(12)) {
+        let mesh = meshes.get(usize::try_from(draw.mesh).ok()?)?;
+        let model = Affine3A::from_cols_array(&[
+            m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11],
+        ]);
+        let (lo, hi) = (Vec3::from(mesh.aabb_min), Vec3::from(mesh.aabb_max));
+        for corner in 0..8u8 {
+            let local = Vec3::new(
+                if corner & 1 == 0 { lo.x } else { hi.x },
+                if corner & 2 == 0 { lo.y } else { hi.y },
+                if corner & 4 == 0 { lo.z } else { hi.z },
+            );
+            out.push(model.transform_point3(local));
+        }
+    }
+    Some(())
 }
 
 /// L'animation d'une assembly : ses couches et son graphe vivant.

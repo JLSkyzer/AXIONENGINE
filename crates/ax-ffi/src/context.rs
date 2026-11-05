@@ -826,6 +826,7 @@ impl Session {
                 handle,
                 crate::render::Published {
                     bounds: asset.render_bounds(),
+                    cull_bounds: asset.cull_bounds(),
                     triangles: asset.triangles(),
                     levels: asset.lod_levels(),
                     draw_meshes: asset.draw_meshes(),

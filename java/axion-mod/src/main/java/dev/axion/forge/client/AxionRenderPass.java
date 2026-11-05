@@ -16,6 +16,7 @@ import dev.axion.forge.AxionEntity;
 import dev.axion.forge.RuntimeAccess;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.diag.JavaMetrics;
+import dev.axion.net.AnimationLayers;
 import dev.axion.physics.AssemblyBodies;
 import dev.axion.render.AnimationCommands;
 import dev.axion.render.AnimationSync;
@@ -813,9 +814,11 @@ public final class AxionRenderPass {
      * dont l'asset est chargé dans le natif sont candidates ; les autres — boîte de repli, asset en
      * chargement — sont toujours dessinées. Est retenue sans test ({@link RenderPrepCodec#NO_CULL}) une
      * assembly dont des corps articulés s'écartent de leur pose de repos, que l'emprise au repos de son
-     * asset ne borne pas, une assembly dont une couche d'animation montre quelque chose, pour la même
-     * raison, et une entité marquée {@code noCulling}, que Minecraft dessine lui aussi sans la culler. Un
-     * échec du natif coupe le culling, et tout est dessiné.
+     * asset ne borne pas, une assembly dont l'animation compose plusieurs clips — deux couches, un fondu,
+     * un poids partiel —, que la sphère balayée par chaque clip ne borne pas (ADR-157 D1), et une entité
+     * marquée {@code noCulling}, que Minecraft dessine lui aussi sans la culler. Une assembly qui joue un
+     * seul clip se culle par la sphère que balaient les clips de son asset. Un échec du natif coupe le
+     * culling, et tout est dessiné.
      *
      * <p>Avant le culling, l'animation de chaque candidate est poussée au natif (ADR-155) : il en tire les
      * matrices de ses dessins.
@@ -872,10 +875,12 @@ public final class AxionRenderPass {
             rotation[1] = pose.rotation().y;
             rotation[2] = pose.rotation().z;
             rotation[3] = pose.rotation().w;
-            boolean atRest = pose.bodies().isEmpty() && !assembly.entity().animationState().visibleAt(renderTick);
+            AnimationLayers animation = assembly.entity().animationState();
+            boolean bounded = pose.bodies().isEmpty()
+                    && (!animation.visibleAt(renderTick) || animation.singleClipAt(renderTick));
             RenderPrepCodec.putCandidate(buffer, offset, assembly.entity().getId(), assembly.asset().nativeIndex(),
                     assembly.asset().nativeGeneration(),
-                    atRest && !assembly.entity().noCulling ? 0 : RenderPrepCodec.NO_CULL,
+                    bounded && !assembly.entity().noCulling ? 0 : RenderPrepCodec.NO_CULL,
                     (float) (pose.x() - camera.x), (float) (pose.y() - camera.y), (float) (pose.z() - camera.z),
                     1f, rotation);
         }, renderPrepLimit, renderTick, backend instanceof NativeGlBackend natif ? natif.palettes() : null);
