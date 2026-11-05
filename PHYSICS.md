@@ -164,8 +164,9 @@ Tous les types acceptent `break` et `collide`.
 - `modules.joints = false` (voir [CONFIGURATION.md](CONFIGURATION.md)) ignore les joints, avec un
   avertissement : les corps déclarés restent séparés.
 - Rupture et grippage se décident au serveur. Les clients reçoivent la pose de chaque corps relative au
-  corps racine et l'état de chaque joint, et dessinent chaque corps à sa pose. Ces poses et ces états
-  ne sont pas encore écrits dans la sauvegarde : c'est le chantier persistance de M4 (ADR-151 D8).
+  corps racine et l'état de chaque joint, et dessinent chaque corps à sa pose. La sauvegarde garde la
+  pose et les vitesses de chaque corps et l'état de chaque joint : une assembly rechargée repart où elle
+  était, endormie (ADR-153).
 - `/axion debug joints on` trace chaque joint d'un ancrage à l'autre, avec son axe : vert, ambre s'il
   est grippé, rose s'il est rompu. `/axion debug limits on` trace la plage permise de chaque axe limité
   — celui d'un `revolute` ou d'un `prismatic`, les axes `limited` d'un `generic` —, et sa position :
@@ -238,8 +239,6 @@ aujourd'hui que côté natif : aucune API Java ni fonction de la frontière ne l
 
 ## Ce qui n'existe pas encore
 
-Sauvegarde des corps secondaires et de l'état des joints (chantier persistance de M4), joints entre
-assemblies (C-48, M5), producteurs du grippage (C-42 en M6, action `jam_joint` en M7), matériau des
-parts d'assembly jusqu'au natif (DM-07, second temps d'ADR-145 ; contact neutre en attendant),
+Joints entre assemblies (C-48, M5), producteurs du grippage (C-42 en M6, action `jam_joint` en M7),
 densité propre à chaque fluide, chaîne de dommage et déformation (C-41..C-45, M6), pilotage des
 véhicules (M5).

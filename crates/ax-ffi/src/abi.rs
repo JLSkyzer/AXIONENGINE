@@ -1248,6 +1248,50 @@ pub unsafe extern "C" fn axion_asset_texture(
     })
 }
 
+/// Rend les avertissements d'un asset chargé (ADR-156 D4) : une ligne par table refusée sans que
+/// l'asset le soit — `LODM`, rendue au LOD 0, puis `ANIM`, l'asset au repos —, son motif compris.
+/// Java les journalise en nommant l'asset : il ne lit pas ces tables, et ne saurait pas les nommer.
+///
+/// Les lignes sont déposées dans `ASSET_OUT` au format de la liste `NEEDS_FILES` (ADR-139) — `u32`
+/// du nombre, puis par ligne `u32` de sa longueur et ses octets UTF-8 (R-263) —, et `out_size`
+/// reçoit leur taille. Sans ligne, `out_size` reçoit 0 et `ASSET_OUT` n'est pas touché. Les lignes
+/// restent à l'asset : un second appel rend les mêmes.
+///
+/// Rend `E-2001` si le handle est périmé, `E-2002` si `ASSET_OUT` ne peut pas les contenir.
+/// L'appel ne bloque jamais (R-280).
+///
+/// # Safety
+///
+/// `out_size` doit pointer sur un `u64` accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_asset_warnings(ctx: u64, handle: Handle, out_size: *mut u64) -> i32 {
+    shielded(Some(ctx), || {
+        if out_size.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let outcome = context::with(ctx, false, |session| {
+            let lines = session
+                .asset_warnings(handle)
+                .ok_or(AXION_E_INVALID_HANDLE)?;
+            if lines.is_empty() {
+                return Ok(0);
+            }
+            session
+                .buffers()
+                .write_payload(BufferKind::AssetOut, &encode_names(&lines))
+                .ok_or(AXION_E_INVALID_BUFFER)
+        });
+        match outcome {
+            Ok(Ok(size)) => {
+                // SAFETY: nullité écartée ci-dessus.
+                unsafe { out_size.write(size) };
+                AXION_OK
+            }
+            Ok(Err(code)) | Err(code) => code,
+        }
+    })
+}
+
 /// Rend un asset chargé (IF-06) : ses octets quittent l'arène `PERSISTENT` et
 /// son handle devient périmé (R-110). Un handle déjà périmé rend `E-2001`, sans
 /// effet de bord.

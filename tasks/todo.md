@@ -3472,11 +3472,11 @@ sources procédurales de véhicule (M5, T-365).
 
 - [x] C-31 avec C-34 : joints, événements `JOINT_BROKEN` et `JAMMED` (tranche 3c-ii) — ADR-146 ; fait par le
       chantier joints (ADR-151), clos le 2026-10-24.
-- [ ] C-27, étapes 4 et 5 avec C-51 : `CompiledDefinition`, noms de nodes, de sockets et de parts
+- [x] C-27, étapes 4 et 5 avec C-51 : `CompiledDefinition`, noms de nodes, de sockets et de parts
       résolus côté natif, synchronisation serveur → client — ADR-137, ADR-146 §5. La synchronisation des
       textes est faite (ADR-150 D5) ; le reste par ADR-156, accepté par Killian le 2026-10-30 (Q1 à Q4
       comme proposé) : compilation native sur `DEFN`, registre de session, `CREATE_ASSEMBLY` par empreinte,
-      ABI 12, et le canal des avertissements `LODM`/`ANIM`.
+      ABI 12, et le canal des avertissements `LODM`/`ANIM`. Fait le 2026-11-05 (tranches 1 à 5).
       - [x] 1. (2026-10-30) `DEFN` v1 (`ax-model`) et la compilation native (`ax-ffi`, `definition.rs`) :
             noms de node, de clip et d'os résolus, corps implicites, marques des colliders (groupes,
             matériau, `REFITTABLE`), refus R-580, R-190, R-931 et avertissement R-930 ; `assembly::prepare`
@@ -3493,7 +3493,9 @@ sources procédurales de véhicule (M5, T-365).
             résumé porte les clips (décision de Killian du 2026-10-30) ; Java ne lit plus `NODE`, `PHYS` ni
             `ANIM` côté serveur. Le rendu garde sa résolution du node racine contre les assets du client
             (écart consigné dans ADR-156). 5 mutations rouges.
-      - [ ] 5. `axion_asset_warnings` et son journal ; `PHYSICS.md`, rustdoc de l'ABI, CHANGELOG.
+      - [x] 5. (2026-11-05) `axion_asset_warnings` et son journal, client (`MeshCache`) et serveur
+            (`DefinitionCompilation`) ; `PHYSICS.md` remis à jour, rustdoc de l'ABI, CHANGELOG. 5 mutations
+            rouges. ADR-156 entièrement livré : le renvoi « C-27, étapes 4 et 5 » est fait.
 - [x] C-30 avec C-37 : le graphe de scène vivant au runtime, étape 14 du pas et
       `axion.scene.propagate_ns` — ADR-137, ADR-146 §7. Fait côté client (ADR-155, étape 3c, 2026-10-30) :
       graphe vivant par instance animée, propagation mesurée. L'étape 14 côté serveur part en M5 avec C-48

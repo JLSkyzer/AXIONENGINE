@@ -1,5 +1,7 @@
 package dev.axion.asset;
 
+import java.util.List;
+
 /**
  * Ce que le rendu attend du chargeur d'assets natif (IF-06) : la géométrie (ADR-119), les
  * matériaux et les textures (ADR-122).
@@ -47,6 +49,44 @@ public interface AssetLoader {
      * @return les octets, ou le code de l'échec
      */
     FetchedTexture texture(int index, int generation, int texture);
+
+    /**
+     * Lit les avertissements d'un asset chargé (ADR-156 D4) : les tables refusées sans que l'asset le
+     * soit, que seul le natif lit et sait nommer.
+     *
+     * @param index index du handle
+     * @param generation génération du handle
+     * @return les lignes, ou le code de l'échec
+     */
+    FetchedWarnings warnings(int index, int generation);
+
+    /**
+     * Ce qu'une lecture des avertissements d'un asset a produit.
+     *
+     * @param code {@code 0}, ou le code d'erreur de l'ANNEXE A.1
+     * @param lines une ligne par avertissement, vide sans avertissement ou en cas d'échec
+     */
+    record FetchedWarnings(int code, List<String> lines) {
+
+        /** Copie les lignes. */
+        public FetchedWarnings {
+            lines = List.copyOf(lines);
+        }
+
+        /** {@return vrai si les avertissements ont été lus} */
+        public boolean ok() {
+            return code == 0;
+        }
+
+        /**
+         * {@return une lecture refusée}
+         *
+         * @param code code de l'échec
+         */
+        public static FetchedWarnings failed(int code) {
+            return new FetchedWarnings(code, List.of());
+        }
+    }
 
     /**
      * Ce qu'une lecture de la table des matériaux a produit.

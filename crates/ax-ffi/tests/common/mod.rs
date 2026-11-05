@@ -262,7 +262,8 @@ pub fn creation(
     )
 }
 
-fn acquerir(ctx: u64, kind: BufferKind, min: u64) -> AxionBufferInfo {
+/// Acquiert le tampon `kind`, d'au moins `min` octets de charge.
+pub fn acquerir(ctx: u64, kind: BufferKind, min: u64) -> AxionBufferInfo {
     let mut out = AxionBufferInfo {
         ptr: std::ptr::null_mut(),
         capacity: 0,
@@ -274,7 +275,8 @@ fn acquerir(ctx: u64, kind: BufferKind, min: u64) -> AxionBufferInfo {
     out
 }
 
-fn relacher(ctx: u64, buffer: AxionBufferInfo) {
+/// Relâche le tampon `buffer`.
+pub fn relacher(ctx: u64, buffer: AxionBufferInfo) {
     assert_eq!(
         unsafe { axion_buffer_release(ctx, buffer.kind, buffer.generation) },
         AXION_OK
@@ -282,7 +284,7 @@ fn relacher(ctx: u64, buffer: AxionBufferInfo) {
 }
 
 /// Écrit `bytes` dans la charge d'`ASSET_IN`, acquis jusqu'à ce que l'appel qui le lit soit fait.
-fn ecrire(ctx: u64, bytes: &[u8]) -> AxionBufferInfo {
+pub fn ecrire(ctx: u64, bytes: &[u8]) -> AxionBufferInfo {
     let buffer = acquerir(ctx, BufferKind::AssetIn, bytes.len() as u64);
     let view = unsafe {
         std::slice::from_raw_parts_mut(buffer.ptr, usize::try_from(buffer.capacity).unwrap())

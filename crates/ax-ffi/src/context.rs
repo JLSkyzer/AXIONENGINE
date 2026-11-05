@@ -750,6 +750,12 @@ impl Session {
         self.asset_jobs.insert(id, AssetJob::Diagnostics(lines));
     }
 
+    /// Les avertissements de l'asset `handle` (ADR-156 D4) ; `None` si le handle est périmé.
+    #[must_use]
+    pub fn asset_warnings(&self, handle: Handle) -> Option<Vec<String>> {
+        self.assets.get(handle).map(LoadedAsset::warnings)
+    }
+
     /// Rend, et oublie, les lignes d'une compilation que le sondage a terminée (ADR-148) ;
     /// `None` si l'identifiant n'en retient pas — jamais sondé, en cours, déjà lu ou abandonné.
     pub fn take_asset_diagnostics(&mut self, id: u32) -> Option<Vec<String>> {

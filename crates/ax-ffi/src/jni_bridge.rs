@@ -39,12 +39,12 @@ use jni::{JNIEnv, JavaVM, NativeMethod};
 use crate::abi::{
     axion_abi_version, axion_asset_cancel, axion_asset_compile, axion_asset_diagnostics,
     axion_asset_geometry, axion_asset_load, axion_asset_materials, axion_asset_poll,
-    axion_asset_texture, axion_asset_unload, axion_buffer_acquire, axion_buffer_release,
-    axion_debug_fill, axion_definition_compile, axion_definition_remove, axion_det_profile,
-    axion_init, axion_last_error, axion_metrics_export, axion_net_compress, axion_net_decompress,
-    axion_render_debug, axion_render_prepare, axion_render_release, axion_shutdown,
-    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
-    AxionDetProfile, AxionRenderResult, AXION_E_INVALID_BUFFER, AXION_OK,
+    axion_asset_texture, axion_asset_unload, axion_asset_warnings, axion_buffer_acquire,
+    axion_buffer_release, axion_debug_fill, axion_definition_compile, axion_definition_remove,
+    axion_det_profile, axion_init, axion_last_error, axion_metrics_export, axion_net_compress,
+    axion_net_decompress, axion_render_debug, axion_render_prepare, axion_render_release,
+    axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo,
+    AxionCollectResult, AxionDetProfile, AxionRenderResult, AXION_E_INVALID_BUFFER, AXION_OK,
 };
 use ax_model::dm::handle::Handle;
 
@@ -194,6 +194,11 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "assetUnload".into(),
             sig: "(JII)I".into(),
             fn_ptr: jni_asset_unload as *mut c_void,
+        },
+        NativeMethod {
+            name: "assetWarnings".into(),
+            sig: "(JII[J)I".into(),
+            fn_ptr: jni_asset_warnings as *mut c_void,
         },
         NativeMethod {
             name: "definitionCompile".into(),
@@ -948,6 +953,25 @@ extern "system" fn jni_asset_texture(
     })
 }
 
+/// `NativeBridge.assetWarnings(long, int, int, long[])` (ADR-156 D4).
+///
+/// Dépose les avertissements de l'asset dans `ASSET_OUT` et écrit leur taille dans `out[0]`, 0 sans
+/// avertissement.
+extern "system" fn jni_asset_warnings(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    index: jint,
+    generation: jint,
+    out: JLongArray,
+) -> jint {
+    deposit_with_size(&env, &out, |size| {
+        // SAFETY: `size` désigne une variable locale de `deposit_with_size`,
+        // accessible en écriture pendant l'appel.
+        unsafe { axion_asset_warnings(ctx as u64, asset_handle(index, generation), size) }
+    })
+}
+
 /// `NativeBridge.assetUnload(long, int, int)` (IF-06).
 extern "system" fn jni_asset_unload(
     _env: JNIEnv,
@@ -1105,6 +1129,7 @@ mod tests {
             ("assetMaterials", "(JII[J)I"),
             ("assetTexture", "(JIII[J)I"),
             ("assetUnload", "(JII)I"),
+            ("assetWarnings", "(JII[J)I"),
             ("definitionCompile", "(JJIIJ[J)I"),
             ("definitionRemove", "(JJ)I"),
             ("debugFill", "(JJJDDDI[J)I"),

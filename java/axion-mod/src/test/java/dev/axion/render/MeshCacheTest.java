@@ -77,6 +77,8 @@ class MeshCacheTest {
         private int materialsCode;
         private MaterialTransfer materials = MaterialTransfer.empty();
         private byte[] transfer = new byte[GeometryTransfer.HEADER_BYTES];
+        private List<String> warnings = List.of();
+        private int warningsCode;
 
         @Override
         public Loaded load(long assetId, byte[] a3d) {
@@ -103,6 +105,11 @@ class MeshCacheTest {
             textureReads.add(texture);
             byte[] png = pngs.get(texture);
             return png == null ? FetchedTexture.failed(-2002) : new FetchedTexture(0, png);
+        }
+
+        @Override
+        public FetchedWarnings warnings(int index, int generation) {
+            return warningsCode != 0 ? FetchedWarnings.failed(warningsCode) : new FetchedWarnings(0, warnings);
         }
     }
 
@@ -432,6 +439,25 @@ class MeshCacheTest {
         assertEquals(1, diagnostics.size(), () -> diagnostics.toString());
         assertTrue(diagnostics.get(0).contains("-3007"));
         assertEquals(0, cache.liveHandles());
+    }
+
+    @Test
+    @DisplayName("ADR-156 D4 : les avertissements de l'asset vont au journal en le nommant, et l'asset s'affiche")
+    void lesAvertissementsDeLAssetVontAuJournal() {
+        loader.warnings = List.of("table LODM refusée, rendu au LOD 0 : niveau 2 hors des meshes");
+        cache.get(PATH, published("cube"));
+        settle();
+
+        assertNotNull(cache.get(PATH, published("cube")), "l'asset s'affiche malgré sa table");
+        assertEquals(List.of(PATH + " — avertissement : table LODM refusée, rendu au LOD 0 : niveau 2 hors des meshes"),
+                diagnostics);
+
+        // Illisibles, ils ne l'empêchent pas non plus : le journal dit le code.
+        loader.warningsCode = -2002;
+        cache.get(PATH + "2", published("cube2"));
+        settle();
+        assertNotNull(cache.get(PATH + "2", published("cube2")));
+        assertTrue(diagnostics.get(1).endsWith("avertissements refusés, code -2002"), () -> diagnostics.toString());
     }
 
     @Test

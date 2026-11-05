@@ -292,6 +292,21 @@ impl LoadedAsset {
         self.anim_refused.as_deref()
     }
 
+    /// Les avertissements de l'asset (ADR-156 D4) : une ligne par table refusée sans que l'asset le
+    /// soit — `LODM`, puis `ANIM` —, son motif compris. Java ne peut pas les nommer lui-même : il ne
+    /// lit pas ces tables. Vide si rien n'a été refusé.
+    #[must_use]
+    pub fn warnings(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        if let Some(reason) = &self.lod_refused {
+            lines.push(format!("table LODM refusée, rendu au LOD 0 : {reason}"));
+        }
+        if let Some(reason) = &self.anim_refused {
+            lines.push(format!("table ANIM refusée, asset au repos : {reason}"));
+        }
+        lines
+    }
+
     /// Ce qu'une definition compile de l'asset, s'il a été chargé avec `PHYS`.
     #[must_use]
     pub fn definition_sections(&self) -> Option<&Arc<DefinitionSections>> {
@@ -940,6 +955,42 @@ f 2 4 3
         ] {
             assert_eq!(requested_sections(refuse), None, "{refuse:#b}");
         }
+    }
+
+    #[test]
+    fn adr156_d4_une_table_refusee_sans_refuser_l_asset_devient_un_avertissement() {
+        // Le cube, ses sections copiées, plus une table LODM et une table ANIM illisibles.
+        let source = cube(42);
+        let file = A3dFile::open(&source, LIMITS).expect("conteneur");
+        let header = file.header();
+        let mut writer =
+            A3dWriter::new(header.asset_id, header.source_hash, header.compiler_version);
+        for entry in file.entries() {
+            writer
+                .section(entry.tag, &section_of(&source, entry.tag))
+                .expect("écriture");
+        }
+        writer.section(SectionTag::LODM, &[1, 2, 3]).expect("LODM");
+        writer.section(SectionTag::ANIM, &[9; 4]).expect("ANIM");
+        let fautif = writer.finish().expect("écriture");
+
+        let asset = load_all(&fautif).expect("l'asset se charge malgré ses tables");
+        let lignes = asset.warnings();
+        assert_eq!(lignes.len(), 2, "{lignes:?}");
+        assert!(
+            lignes[0].starts_with("table LODM refusée, rendu au LOD 0 : "),
+            "{}",
+            lignes[0]
+        );
+        assert!(
+            lignes[1].starts_with("table ANIM refusée, asset au repos : "),
+            "{}",
+            lignes[1]
+        );
+        assert!(
+            load_all(&source).expect("chargement").warnings().is_empty(),
+            "un asset sain n'avertit de rien"
+        );
     }
 
     #[test]

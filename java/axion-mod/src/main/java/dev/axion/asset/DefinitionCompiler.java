@@ -132,8 +132,36 @@ public interface DefinitionCompiler {
      * @param summary le résumé, si elle se compile
      * @param reference rang de la référence fautive d'un refus, {@code -1} sans
      * @param message motif d'un refus ou d'un échec
+     * @param assetWarnings avertissements de l'asset chargé pour la compilation (ADR-156 D4) : les
+     *     tables refusées sans que l'asset le soit
      */
-    record Result(int code, Summary summary, int reference, String message) {
+    record Result(int code, Summary summary, int reference, String message, List<String> assetWarnings) {
+
+        /** Copie les avertissements de l'asset. */
+        public Result {
+            assetWarnings = List.copyOf(assetWarnings);
+        }
+
+        /**
+         * Une issue sans avertissement d'asset.
+         *
+         * @param code le code
+         * @param summary le résumé, si elle se compile
+         * @param reference rang de la référence fautive d'un refus, {@code -1} sans
+         * @param message motif d'un refus ou d'un échec
+         */
+        public Result(int code, Summary summary, int reference, String message) {
+            this(code, summary, reference, message, List.of());
+        }
+
+        /**
+         * {@return la même issue, avec les avertissements de l'asset}
+         *
+         * @param warnings les avertissements de l'asset
+         */
+        public Result withAssetWarnings(List<String> warnings) {
+            return new Result(code, summary, reference, message, warnings);
+        }
 
         /** {@return vrai si la definition se compile} */
         public boolean compiled() {

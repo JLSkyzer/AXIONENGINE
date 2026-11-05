@@ -3,6 +3,7 @@ package dev.axion.asset;
 import dev.axion.bridge.BufferKinds;
 import dev.axion.bridge.NativeBridge;
 import java.nio.ByteBuffer;
+import java.util.List;
 
 /**
  * Chargement d'un asset compilé dans le natif et récupération de sa géométrie (IF-06,
@@ -95,6 +96,35 @@ public final class NativeAssetLoader implements AssetLoader {
                 return Loaded.failed(NativeBridge.E_INVALID_BUFFER);
             }
             return new Loaded(NativeBridge.OK, index, generation, transfer);
+        }
+    }
+
+    /**
+     * Lit les avertissements d'un asset chargé (ADR-156 D4).
+     *
+     * <p>Peut s'appeler depuis n'importe quel thread, comme {@link #load}.
+     *
+     * @param index index du handle
+     * @param generation génération du handle
+     * @return les lignes, ou le code de l'échec : {@link NativeBridge#E_INVALID_HANDLE} pour un handle
+     *     périmé, {@link NativeBridge#E_INVALID_BUFFER} pour une charge illisible
+     */
+    @Override
+    public FetchedWarnings warnings(int index, int generation) {
+        synchronized (AssetBuffers.LOCK) {
+            sizeOut[0] = 0;
+            int code = NativeBridge.warningsOf(context, index, generation, sizeOut);
+            if (code != NativeBridge.OK) {
+                return FetchedWarnings.failed(code);
+            }
+            if (sizeOut[0] == 0) {
+                return new FetchedWarnings(NativeBridge.OK, List.of());
+            }
+            byte[] bytes = readAssetOut(GEOMETRY_SINCE_SCHEMA);
+            List<String> lines = bytes == null ? null : NativeAssetCompiler.decodeNames(bytes);
+            return lines == null
+                    ? FetchedWarnings.failed(NativeBridge.E_INVALID_BUFFER)
+                    : new FetchedWarnings(NativeBridge.OK, lines);
         }
     }
 

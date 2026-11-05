@@ -428,6 +428,10 @@ Definition of Done (PARTIE 37.3).
 
 ### Modifie
 
+- Assets (C-24, ADR-156, tranche 5) : `axion_asset_warnings` rend les tables
+  `LODM` et `ANIM` qu'un asset a refusees sans etre refuse lui-meme ; le
+  client les ecrit au journal au chargement pour le rendu, le serveur a la
+  compilation des definitions, en nommant l'asset, une fois.
 - Definitions (C-27, ADR-156, tranche 4) : `CREATE_ASSEMBLY` nomme la
   definition compilee par son empreinte, suivie au plus de l'etat restaure ;
   le schema du flux de commandes passe a 4. Le serveur Java ne lit plus les

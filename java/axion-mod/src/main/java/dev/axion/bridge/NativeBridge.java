@@ -152,6 +152,8 @@ public final class NativeBridge {
 
     static native int assetUnload(long ctx, int index, int generation);
 
+    static native int assetWarnings(long ctx, int index, int generation, long[] out);
+
     static native int definitionCompile(
             long ctx, long definition, int index, int generation, long defnLength, long[] out);
 
@@ -679,6 +681,27 @@ public final class NativeBridge {
         }
         CROSSINGS.increment();
         return assetMaterials(ctx, index, generation, out);
+    }
+
+    /**
+     * Dépose dans {@code AXION_BUF_ASSET_OUT} les avertissements d'un asset chargé (ADR-156 D4) : une
+     * ligne par table refusée sans que l'asset le soit, au format de {@code NEEDS_FILES} ;
+     * {@code out[0]} reçoit leur taille, 0 sans avertissement — {@code ASSET_OUT} n'est alors pas
+     * touché.
+     *
+     * @param ctx jeton de contexte
+     * @param index index du handle
+     * @param generation génération du handle
+     * @param out tableau d'au moins un élément
+     * @return {@link #OK}, {@link #E_INVALID_HANDLE} si le handle est périmé,
+     *     {@link #E_INVALID_BUFFER} si {@code ASSET_OUT} ne peut pas les contenir
+     */
+    public static int warningsOf(long ctx, int index, int generation, long[] out) {
+        if (out == null || out.length < 1) {
+            throw new IllegalArgumentException("le tableau des avertissements compte au moins un élément");
+        }
+        CROSSINGS.increment();
+        return assetWarnings(ctx, index, generation, out);
     }
 
     /**

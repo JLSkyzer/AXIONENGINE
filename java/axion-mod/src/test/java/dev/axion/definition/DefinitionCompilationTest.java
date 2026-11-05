@@ -34,12 +34,14 @@ class DefinitionCompilationTest {
         final List<Long> compiled = new ArrayList<>();
         final List<Long> removed = new ArrayList<>();
         final List<Long> assets = new ArrayList<>();
+        /** Les avertissements de l'asset, joints à chaque issue. */
+        List<String> assetWarnings = List.of();
 
         @Override
         public Result compile(long definition, long assetId, byte[] a3d, byte[] defn) {
             compiled.add(definition);
             assets.add(assetId);
-            return results.getOrDefault(definition, new Result(0, RESUME, -1, ""));
+            return results.getOrDefault(definition, new Result(0, RESUME, -1, "")).withAssetWarnings(assetWarnings);
         }
 
         @Override
@@ -113,6 +115,29 @@ class DefinitionCompilationTest {
         assertEquals(List.of(42L), natif.assets, "contre son asset");
         assertEquals(0, compilation.summary(id(PORTE)).orElseThrow().rootNode());
         assertTrue(compilation.effective().get(id(PORTE)).isPresent());
+    }
+
+    @Test
+    @DisplayName("ADR-156 D4 : les tables refusées de l'asset vont au journal en le nommant, une fois par asset")
+    void lesAvertissementsDeLAssetVontAuJournal() {
+        FakeCompiler natif = new FakeCompiler();
+        natif.assetWarnings = List.of("table ANIM refusée, asset au repos : section tronquée");
+        DefinitionCompilation compilation = new DefinitionCompilation(natif, true, name -> 0);
+        compilation.reset(registry(PORTE, CAISSE));
+        compilation.pump(DefinitionCompilationTest::pret, 0, System::nanoTime);
+
+        List<String> journal = compilation.drainJournal();
+        assertEquals(2, natif.compiled.size(), "les deux definitions de l'asset se compilent");
+        List<String> lignes = journal.stream().filter(ligne -> ligne.contains("table ANIM refusée")).toList();
+        assertEquals(1, lignes.size(), () -> "une fois pour l'asset partagé : " + journal);
+        assertTrue(lignes.get(0).startsWith("AXION : asset "), lignes.get(0));
+        assertTrue(lignes.get(0).contains("porte.glb"), "l'asset nommé : " + lignes.get(0));
+        assertTrue(compilation.summary(id(PORTE)).isPresent(), "l'avertissement ne refuse pas la definition");
+
+        // Une nouvelle compilation le redit, une fois.
+        compilation.reset(registry(PORTE, CAISSE));
+        compilation.pump(DefinitionCompilationTest::pret, 0, System::nanoTime);
+        assertEquals(1, compilation.drainJournal().stream().filter(ligne -> ligne.contains("table ANIM")).count());
     }
 
     @Test

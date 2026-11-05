@@ -3,6 +3,7 @@ package dev.axion.asset;
 import dev.axion.bridge.BufferKinds;
 import dev.axion.bridge.NativeBridge;
 import java.nio.ByteBuffer;
+import java.util.List;
 
 /**
  * La compilation d'une definition par le natif (ADR-156 D3, D4).
@@ -55,29 +56,54 @@ public final class NativeDefinitionCompiler implements DefinitionCompiler {
             int index = (int) handleOut[0];
             int generation = (int) handleOut[1];
             try {
-                code = write(defn);
-                if (code != NativeBridge.OK) {
-                    return new Result(code, null, -1, "DEFN non écrit");
-                }
-                sizeOut[0] = -1;
-                code = NativeBridge.compileDefinition(context, definition, index, generation, defn.length, sizeOut);
-                releaseIn();
-                byte[] payload = sizeOut[0] < 0 ? null : readAssetOut();
-                if (code == NativeBridge.OK) {
-                    Summary summary = payload == null ? null : Summary.read(payload);
-                    return summary == null
-                            ? new Result(NativeBridge.E_INVALID_BUFFER, null, -1, "résumé illisible")
-                            : new Result(NativeBridge.OK, summary, -1, "");
-                }
-                Result refusal = new Result(code, null, -1, "");
-                if (refusal.refused() && payload != null) {
-                    return Result.readRefusal(code, payload);
-                }
-                return new Result(code, null, -1, NativeBridge.lastErrorMessage(context));
+                List<String> warnings = warnings(index, generation);
+                return compileLoaded(definition, index, generation, defn).withAssetWarnings(warnings);
             } finally {
                 NativeBridge.unloadAsset(context, index, generation);
             }
         }
+    }
+
+    /** Sous le verrou : compile le {@code DEFN} contre l'asset chargé, et lit la réponse. */
+    private Result compileLoaded(long definition, int index, int generation, byte[] defn) {
+        int code = write(defn);
+        if (code != NativeBridge.OK) {
+            return new Result(code, null, -1, "DEFN non écrit");
+        }
+        sizeOut[0] = -1;
+        code = NativeBridge.compileDefinition(context, definition, index, generation, defn.length, sizeOut);
+        releaseIn();
+        byte[] payload = sizeOut[0] < 0 ? null : readAssetOut();
+        if (code == NativeBridge.OK) {
+            Summary summary = payload == null ? null : Summary.read(payload);
+            return summary == null
+                    ? new Result(NativeBridge.E_INVALID_BUFFER, null, -1, "résumé illisible")
+                    : new Result(NativeBridge.OK, summary, -1, "");
+        }
+        Result refusal = new Result(code, null, -1, "");
+        if (refusal.refused() && payload != null) {
+            return Result.readRefusal(code, payload);
+        }
+        return new Result(code, null, -1, NativeBridge.lastErrorMessage(context));
+    }
+
+    /**
+     * Sous le verrou : les avertissements de l'asset chargé (ADR-156 D4), lus avant la compilation, qui
+     * réemploie {@code ASSET_OUT}. Illisibles, ils deviennent un avertissement qui le dit : la
+     * compilation n'en dépend pas.
+     */
+    private List<String> warnings(int index, int generation) {
+        sizeOut[0] = 0;
+        int code = NativeBridge.warningsOf(context, index, generation, sizeOut);
+        if (code != NativeBridge.OK) {
+            return List.of("avertissements illisibles, code " + code);
+        }
+        if (sizeOut[0] == 0) {
+            return List.of();
+        }
+        byte[] payload = readAssetOut();
+        List<String> lines = payload == null ? null : NativeAssetCompiler.decodeNames(payload);
+        return lines == null ? List.of("avertissements illisibles") : lines;
     }
 
     @Override

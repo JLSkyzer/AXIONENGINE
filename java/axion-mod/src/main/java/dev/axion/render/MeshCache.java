@@ -526,6 +526,7 @@ public final class MeshCache {
             }
             Handle handle = new Handle(loaded.index(), loaded.generation());
             live.add(handle);
+            reportWarnings(path, handle);
             GeometryTransfer mesh;
             try {
                 mesh = GeometryTransfer.parse(loaded.transfer());
@@ -539,6 +540,28 @@ public final class MeshCache {
             Set<Integer> refused = new HashSet<>();
             List<TexturePipeline.Request> requests = requests(path, loading, handle, materials, refused);
             return new Decoded(mesh, materials, read != null, handle, requests, refused);
+        }
+    }
+
+    /**
+     * Sous {@link #nativeLock} : les avertissements de l'asset (ADR-156 D4) — une table refusée sans que
+     * l'asset le soit —, au journal en le nommant, une fois par chargement. Illisibles, ils ne
+     * l'empêchent pas de s'afficher.
+     */
+    private void reportWarnings(String path, Handle handle) {
+        AssetLoader.FetchedWarnings warnings;
+        try {
+            warnings = loader.warnings(handle.index(), handle.generation());
+        } catch (RuntimeException | UnsatisfiedLinkError failure) {
+            diagnostics.accept(path + " — avertissements illisibles : " + failure);
+            return;
+        }
+        if (!warnings.ok()) {
+            diagnostics.accept(path + " — avertissements refusés, code " + warnings.code());
+            return;
+        }
+        for (String line : warnings.lines()) {
+            diagnostics.accept(path + " — avertissement : " + line);
         }
     }
 

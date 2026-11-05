@@ -5,9 +5,11 @@ import dev.axion.asset.AssetState;
 import dev.axion.asset.DefinitionCompiler;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.function.Function;
@@ -39,6 +41,9 @@ public final class DefinitionCompilation {
     private final SortedMap<String, Definition> pending = new TreeMap<>();
     private final Map<String, DefinitionCompiler.Summary> compiled = new HashMap<>();
     private final SortedMap<String, String> refused = new TreeMap<>();
+
+    /** Les assets dont les avertissements sont déjà au journal depuis le dernier {@link #reset}. */
+    private final Set<String> warnedAssets = new HashSet<>();
     private final List<String> journal = new ArrayList<>();
     private DefinitionRegistry effective = loaded;
 
@@ -67,6 +72,7 @@ public final class DefinitionCompilation {
         compiled.clear();
         refused.clear();
         pending.clear();
+        warnedAssets.clear();
         loaded = registry;
         for (String id : registry.ids()) {
             registry.get(id).ifPresent(definition -> pending.put(id, definition));
@@ -140,6 +146,12 @@ public final class DefinitionCompilation {
             return;
         }
         DefinitionCompiler.Result result = compiler.compile(definition.hash(), assetId, a3d, encoded.bytes());
+        // ADR-156 D4 : les tables que l'asset a refusées, une fois par asset et par compilation, en le nommant.
+        if (!result.assetWarnings().isEmpty() && warnedAssets.add(definition.asset())) {
+            for (String warning : result.assetWarnings()) {
+                journal.add("AXION : asset " + definition.asset() + " : " + warning);
+            }
+        }
         if (result.compiled()) {
             compiled.put(definition.id(), result.summary());
             for (String warning : result.summary().warnings()) {

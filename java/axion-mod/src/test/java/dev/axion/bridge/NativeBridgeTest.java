@@ -565,11 +565,20 @@ class NativeBridgeTest {
                         + NativeBridge.lastErrorMessage(reprise));
         assertEquals(NativeBridge.OK, chargeur.unload(repris.index(), repris.generation()));
 
+        // ADR-156 D4 : un asset sain n'a aucun avertissement — ce qui prouve aussi l'enregistrement
+        // d'assetWarnings.
+        dev.axion.asset.AssetLoader.FetchedWarnings avertissements =
+                chargeur.warnings(charge.index(), charge.generation());
+        assertTrue(avertissements.ok(), () -> "avertissements refusés, code " + avertissements.code());
+        assertTrue(avertissements.lines().isEmpty(), () -> "avertissements : " + avertissements.lines());
+
         // Rendu, puis périmé (R-110) : la fermeture finale ne verra aucun handle.
         assertEquals(NativeBridge.OK, chargeur.unload(charge.index(), charge.generation()));
         assertEquals(
                 NativeBridge.E_INVALID_HANDLE,
                 chargeur.unload(charge.index(), charge.generation()));
+        assertEquals(NativeBridge.E_INVALID_HANDLE, chargeur.warnings(charge.index(), charge.generation()).code(),
+                "un handle périmé n'a plus d'avertissements");
 
         // ADR-122 : un glTF au matériau texturé, compilé puis chargé par la vraie JNI — ce qui
         // prouve l'enregistrement d'assetMaterials et d'assetTexture. La table nomme ses deux
