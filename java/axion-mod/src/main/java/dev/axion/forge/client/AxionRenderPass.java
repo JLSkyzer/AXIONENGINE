@@ -322,6 +322,16 @@ public final class AxionRenderPass {
     }
 
     /**
+     * {@return le temps CPU, en nanosecondes, que les passes d'AXION ont pris à la frame en cours ou
+     * qui vient de finir} Il se remet à zéro au premier stage de la frame suivante : lu au début d'une
+     * frame, il est celui de la précédente. Relevé par le banc de rendu (T-904).
+     */
+    public static long framePrepNanos() {
+        RenderSystem.assertOnRenderThread();
+        return framePrepNanos;
+    }
+
+    /**
      * Les programmes du backend natif, tels que le banc de rendu les relève (T-512, T-905).
      *
      * @param cacheHits programmes relus du cache binaire

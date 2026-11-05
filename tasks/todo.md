@@ -3366,6 +3366,13 @@ ne définit pas, définis par l'ADR. Occlusion (C-82) en M9, hors du chantier.
       celui des variantes) ; cause non établie. Un quatrième justifierait une instrumentation de la frame
       lente (ce qui la remplit, hors variantes). **Quatrième le 2026-10-30** : 28,51 ms, encore « relue du
       cache », variantes à 0,398 ms, en CI locale ; vert à la relance. L'instrumentation est donc due.
+      **Instrumentée le 2026-11-05** (décision de Killian) : chaque série décompose sa frame la plus lente —
+      passes d'AXION, variantes, collectes de la JVM, le reste hors d'AXION. Sept passages du banc natif, aucun
+      pic ; le seul à-coup relevé (4,36 ms, série hors verdict) était à 4,11 ms hors d'AXION, sans collecte.
+      Le prochain pic dira où il est.
+- [ ] ADR-150 D7 rouge une fois, le 2026-11-05 en CI locale : vitesse rendue 177,02 m/s pour 10,85 m/s de
+      chute, sans autre écart ; vert aux six autres passages du jour (10,3 à 11,2 m/s). D7 dit désormais sa
+      pire frame (rang, intervalle, descente, modes) : à relire au prochain rouge, avant toute hypothèse.
 - [x] 6. R-750 palier 2 (T-484), overlays `lod` et `culling`, T-485, mesures, `RENDERING.md`.
       - [x] 6a (2026-10-28) : overlays `lod` et `culling`, en Java, bits 24 et 25 du §31.4 ; bancs verts ; 1
             mutation rouge.

@@ -430,11 +430,34 @@ public final class BancDeRendu {
 
     /**
      * T-904 : une série de frames — l'intervalle entre deux débuts de frame, et le temps que les
-     * variantes à la demande du natif ont pris au render thread pendant la frame.
+     * variantes à la demande du natif ont pris au render thread pendant la frame. Pour dire ce qui
+     * remplit une frame lente, hors verdict : le temps des passes d'AXION, et le temps et le nombre
+     * des collectes de la JVM pendant la frame.
      */
     private static final class SerieT904 {
         final List<Long> intervalles = new ArrayList<>();
         final List<Long> variantes = new ArrayList<>();
+        final List<Long> passes = new ArrayList<>();
+        final List<Long> collectesNanos = new ArrayList<>();
+        final List<Long> collectes = new ArrayList<>();
+    }
+
+    /** Temps cumulé des collectes de la JVM au début de la frame précédente, en millisecondes. */
+    private static long collecteMsPrecedente;
+
+    /** Nombre cumulé des collectes de la JVM au début de la frame précédente. */
+    private static long collectesPrecedentes;
+
+    /** {@return le temps cumulé des collectes de la JVM, en millisecondes, et leur nombre} */
+    private static long[] collectesDeLaJvm() {
+        long temps = 0;
+        long nombre = 0;
+        for (java.lang.management.GarbageCollectorMXBean collecteur
+                : java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()) {
+            temps += Math.max(0, collecteur.getCollectionTime());
+            nombre += Math.max(0, collecteur.getCollectionCount());
+        }
+        return new long[] {temps, nombre};
     }
 
     /** La série relevée, ou {@code null} : aucune. */
@@ -498,10 +521,17 @@ public final class BancDeRendu {
             // T-904 : l'intervalle couvre la frame qui vient de finir, et le temps des variantes est
             // celui qu'elle a pris.
             long maintenant = System.nanoTime();
+            // Relevées à chaque frame : la première d'une série ne compte que ses propres collectes.
+            long[] jvm = collectesDeLaJvm();
             if (serieT904 != null && debutDeFramePrecedent != 0) {
                 serieT904.intervalles.add(maintenant - debutDeFramePrecedent);
                 serieT904.variantes.add(AxionRenderPass.nativeShaderPollNanos());
+                serieT904.passes.add(AxionRenderPass.framePrepNanos());
+                serieT904.collectesNanos.add((jvm[0] - collecteMsPrecedente) * 1_000_000L);
+                serieT904.collectes.add(jvm[1] - collectesPrecedentes);
             }
+            collecteMsPrecedente = jvm[0];
+            collectesPrecedentes = jvm[1];
             debutDeFramePrecedent = maintenant;
             fixerLaCamera(minecraft);
             return;
@@ -2226,12 +2256,29 @@ public final class BancDeRendu {
      * chute ne le permet — {@code √(2 g h)}, à 50 % près pour la mesure des frames : un saut, une
      * téléportation le dépasseraient ; elle finit où le serveur pose l'assembly.
      */
+    /**
+     * {@return la frame de la pire vitesse rendue de D7, hors verdict : son rang, l'intervalle et la
+     * descente depuis la précédente, et le mode d'interpolation des deux} De quoi distinguer un saut de
+     * la pose d'un intervalle de frame minuscule.
+     */
+    private static String pireFrame(int index) {
+        if (index <= 0) {
+            return "";
+        }
+        double[] avant = chuteRendue.get(index - 1);
+        double[] releve = chuteRendue.get(index);
+        return String.format(Locale.ROOT, " (pire à la frame %d : %.3f ms après la précédente, %.4f bloc, mode %d puis"
+                        + " %d)", index, (releve[0] - avant[0]) / 1e6, avant[1] - releve[1], (int) avant[2],
+                (int) releve[2]);
+    }
+
     private static void jugerD7(Minecraft minecraft, net.minecraft.world.entity.Entity client) {
         double gravite = Math.abs(RuntimeAccess.get().outcome().config().getFloat("physics.gravity"));
         double vitesseMax = Math.sqrt(2 * gravite * Math.max(0, positionChute().y - chuteServeur));
         int premiere = -1;
         int sansInterpolation = 0;
         double pireVitesse = 0;
+        int pire = -1;
         for (int index = 0; index < chuteRendue.size(); index++) {
             double[] releve = chuteRendue.get(index);
             if (releve[2] >= 0 && premiere < 0) {
@@ -2242,8 +2289,9 @@ public final class BancDeRendu {
             if (index > 0 && premiere >= 0 && premiere < index) {
                 double[] avant = chuteRendue.get(index - 1);
                 double secondes = (releve[0] - avant[0]) / 1e9;
-                if (secondes > 0) {
-                    pireVitesse = Math.max(pireVitesse, Math.abs(releve[1] - avant[1]) / secondes);
+                if (secondes > 0 && Math.abs(releve[1] - avant[1]) / secondes > pireVitesse) {
+                    pireVitesse = Math.abs(releve[1] - avant[1]) / secondes;
+                    pire = index;
                 }
             }
         }
@@ -2257,10 +2305,10 @@ public final class BancDeRendu {
                 "%d frame(s) relevée(s), interpolées dès la %d-e, %d sans interpolation ensuite ; descente rendue"
                         + " %.3f bloc ; vitesse rendue au plus %.2f m/s pour %.2f m/s de chute au plus ; à la fin"
                         + " %s pour %.3f chez le serveur — elle doit être interpolée, descendre de 2 blocs, ne"
-                        + " jamais dépasser 1,5 fois la vitesse de chute, et finir à 0,01 près",
+                        + " jamais dépasser 1,5 fois la vitesse de chute, et finir à 0,01 près%s",
                 chuteRendue.size(), premiere + 1, sansInterpolation, descente, pireVitesse, vitesseMax,
                 fin == null ? "absente" : String.format(Locale.ROOT, "%.3f (%s)", fin.y(), fin.mode()),
-                chuteServeur));
+                chuteServeur, pireFrame(pire)));
     }
 
     private static void jugerModeleDuPack(double[] apres) {
@@ -2517,11 +2565,35 @@ public final class BancDeRendu {
         return !serie.intervalles.isEmpty() && maximum(serie.variantes) <= budget && maximum(serie.intervalles) <= plafond;
     }
 
-    /** {@return une série de T-904, dite en millisecondes, avec son jugement} */
+    /** {@return une série de T-904, dite en millisecondes, avec son jugement et sa frame la plus lente décomposée} */
     private static String decrire(String quoi, SerieT904 serie, long budget, long plafond) {
         return String.format(Locale.ROOT, "%s : %d frame(s), variantes au render thread %.3f ms au plus, frame la plus"
-                        + " lente %.2f ms — %s", quoi, serie.intervalles.size(), millis(maximum(serie.variantes)),
-                millis(maximum(serie.intervalles)), sansACoup(serie, budget, plafond) ? "sans à-coup" : "À-COUP");
+                        + " lente %.2f ms — %s%s", quoi, serie.intervalles.size(), millis(maximum(serie.variantes)),
+                millis(maximum(serie.intervalles)), sansACoup(serie, budget, plafond) ? "sans à-coup" : "À-COUP",
+                decomposer(serie));
+    }
+
+    /**
+     * {@return ce qui remplit la frame la plus lente d'une série, hors verdict} Les passes d'AXION
+     * comprennent les variantes ; les collectes de la JVM se mesurent à la milliseconde, et peuvent
+     * chevaucher les passes ; « hors d'AXION » est ce qui reste de la frame une fois les passes ôtées.
+     */
+    private static String decomposer(SerieT904 serie) {
+        if (serie.intervalles.isEmpty()) {
+            return "";
+        }
+        int rang = 0;
+        for (int i = 1; i < serie.intervalles.size(); i++) {
+            if (serie.intervalles.get(i) > serie.intervalles.get(rang)) {
+                rang = i;
+            }
+        }
+        long frame = serie.intervalles.get(rang);
+        long passe = serie.passes.get(rang);
+        return String.format(Locale.ROOT, " (frame %d : passes d'AXION %.2f ms, dont variantes %.3f ms ; collectes de"
+                        + " la JVM %.0f ms en %d ; hors d'AXION %.2f ms)", rang, millis(passe),
+                millis(serie.variantes.get(rang)), millis(serie.collectesNanos.get(rang)),
+                serie.collectes.get(rang), millis(frame - passe));
     }
 
     private static long maximum(List<Long> valeurs) {
