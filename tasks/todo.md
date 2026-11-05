@@ -3584,9 +3584,10 @@ montée/descente sûres ; entrées validées ; attaches persistées ; gouverneur
 niveaux, cause affichée. Tests : T-320..T-329, T-415..T-417, T-440..T-444, T-570, T-890..T-895,
 T-980..T-984.
 
-- [ ] **Séquencement de M5** — lecture faite le 2026-11-05 (fiches 5.25, 5.40, 5.44, 5.60, 5.64, PARTIE 12,
-      bloc M5, renvois de M4, état du code). À faire décider par Killian avant tout code ; un ADR de
-      frontière par chantier, accepté avant son code.
+- [x] **Séquencement de M5** — lecture faite le 2026-11-05 (fiches 5.25, 5.40, 5.44, 5.60, 5.64, PARTIE 12,
+      bloc M5, renvois de M4, état du code). **Ordre décidé par Killian le 2026-11-05** : sièges et entrées
+      (C-53), véhicules (C-33), attaches (C-48), gouverneur (C-77), overlay (C-73). Un ADR de frontière par
+      chantier, accepté avant son code.
       - Constats qui pèsent sur l'ordre :
         - **aucun canal d'entrées du client vers le serveur** n'existe : piloter (C-33), monter et descendre
           (C-53) et la prédiction (T-415..T-417) l'attendent tous ; R-710 le veut borné en fréquence et
