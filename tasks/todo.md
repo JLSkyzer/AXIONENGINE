@@ -3575,6 +3575,58 @@ sources procédurales de véhicule (M5, T-365).
 
 ---
 
+## M5 — Véhicules, sièges, attaches, gouverneur, overlay (ouvert le 2026-11-05)
+
+Ouvert le 2026-11-05, au prononcé de M4. Fiche du jalon (PARTIE 37.2) :
+`grep -n '^### M5 ' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md` — C-33, C-48, C-53, C-73, C-77. Livrable :
+véhicule pilotable en multijoueur avec prédiction ; remorquage. Acceptance : 10 tests véhicules ;
+montée/descente sûres ; entrées validées ; attaches persistées ; gouverneur qui baisse et remonte les
+niveaux, cause affichée. Tests : T-320..T-329, T-415..T-417, T-440..T-444, T-570, T-890..T-895,
+T-980..T-984.
+
+- [ ] **Séquencement de M5** — lecture faite le 2026-11-05 (fiches 5.25, 5.40, 5.44, 5.60, 5.64, PARTIE 12,
+      bloc M5, renvois de M4, état du code). À faire décider par Killian avant tout code ; un ADR de
+      frontière par chantier, accepté avant son code.
+      - Constats qui pèsent sur l'ordre :
+        - **aucun canal d'entrées du client vers le serveur** n'existe : piloter (C-33), monter et descendre
+          (C-53) et la prédiction (T-415..T-417) l'attendent tous ; R-710 le veut borné en fréquence et
+          validé au serveur ;
+        - **aucun joint entre deux assemblies** : les joints de M4 relient les corps d'une même assembly ;
+          les attaches (C-48) relient deux assemblies par leurs sockets, persistées par identifiant (R-692) ;
+        - les sockets sont résolus à la compilation des definitions (ADR-156), mais la definition compilée
+          n'en garde rien encore : leur premier consommateur est ici (sièges, attaches, roues) ;
+        - les requêtes spatiales existent côté natif (C-39) et n'ont aucune exposition : les roues par
+          raycast (ADR-003, 12.2) les emploieraient au natif, dans le pas ;
+        - le CDC ne définit pas T-440..T-444 (C-53) ni T-570 (C-73) : leur fiche n'en donne que la plage.
+          T-320..T-329 (12.9), T-890..T-895 (C-48) et T-980..T-984 (C-77) sont définis. T-960..T-963
+          (véhicule et dommage) ne sont déclarés par aucun jalon : avec la chaîne de dommage (M6) ;
+        - le gouverneur existe en partie : FM-21 (`ax-physics/src/governor.rs`) dégrade la simulation par
+          paliers ; son palier `SAFE` attend les sièges. C-77 généralise à tous les sous-systèmes, avec
+          `QualityProfile` (DM-18) et la cause de chaque changement, que l'overlay (C-73) affiche (R-820).
+      - **Renvois des jalons précédents**, lignes de la DoD de M5 :
+        - C-77 : profil de qualité initial tiré des capacités GPU ; surcharge et fallback des budgets
+          (R-1850), budgets de frame du rendu compris (ADR-146 §7) ; revue de la table 25.2 (R-474) ;
+          palier `SAFE` de SM-02 ;
+        - C-73 : indicateur des capacités du rendu ;
+        - C-33 : la moitié Java de R-651 (requêtes) avec les roues ; T-365 (sources procédurales de
+          véhicule, ADR-155) ; T-415..T-417 (prédiction, ADR-150) ; la priorité HIGH du véhicule piloté
+          (ADR-150) ;
+        - C-48 et C-53 : l'étape 14 côté serveur (ADR-156 D6) — un socket, une attache ou un siège qui
+          dépend d'un node animé ; `ATTACH`/`DETACH` (ADR-146).
+      - Chantiers proposés, le détail allant à l'ADR de chacun :
+        - sièges et entrées (C-53) : canal d'entrées validé (R-710), nodes `SEAT`, montée et sortie sûres
+          (R-711, R-712), interactions déclaratives, sockets conservés par la definition compilée ;
+        - véhicules (C-33) : roues par raycast, suspension, pneus, motopropulseur, direction, freins,
+          aérodynamique, entrées du siège conducteur ; puis prédiction (T-415..T-417) et sources
+          procédurales (T-365) ;
+        - attaches (C-48) : joints entre assemblies par sockets, types `RIGID` à `SEATED`, graphe acyclique
+          et chaîne bornée (R-690, R-691), persistance et suspension (R-692), remorquage ;
+        - gouverneur (C-77) : `QualityProfile`, niveaux par sous-système, hystérésis, niveau forcé respecté
+          (R-840), aucun effet sur la simulation autoritative (R-841, T-983, T-984), palier `SAFE` ;
+        - overlay (C-73) : métriques, niveaux et causes (R-820), indicateur de capacités.
+
+---
+
 ## Jalons suivants
 
 Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
