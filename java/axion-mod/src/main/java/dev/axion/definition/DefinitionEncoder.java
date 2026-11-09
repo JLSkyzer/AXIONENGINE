@@ -36,12 +36,13 @@ import java.util.function.ToIntFunction;
  * joint         160 o : JointDescription, b_node au rang de sa référence, corps b à 0xFFFF
  * point           8 o : f32, f32
  * part            8 o : rang de la référence de son root_node u32, matériau u16 (0xFFFF sans), drapeaux u16
+ * véhicule          : si {@link #FLAG_VEHICLE}, voir {@link VehicleSpec} (ADR-159)
  * </pre>
  */
 public final class DefinitionEncoder {
 
     /** Version du format. */
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     /** Taille de l'en-tête, en octets. */
     public static final int HEADER_BYTES = 32 + 2 * BodyDescription.WIRE_BYTES;
@@ -57,6 +58,9 @@ public final class DefinitionEncoder {
 
     /** Les corps de l'assembly se touchent entre eux ({@code physics.self_collision}). */
     static final int FLAG_SELF_COLLISION = 1;
+
+    /** Une section véhicule suit les parts (ADR-159). */
+    static final int FLAG_VEHICLE = 2;
 
     /** La part porte au moins une région de déformation (R-623). */
     static final int PART_DEFORMABLE = 1;
@@ -114,6 +118,25 @@ public final class DefinitionEncoder {
     }
 
     /**
+     * Écrit le {@code DEFN} d'une definition acceptée, sans aucun pneu déclaré.
+     *
+     * @param definition la definition
+     * @param withJoints faux si le module joints est désactivé
+     * @param groups le registre contre lequel elle a été validée
+     * @param materialIndex index d'un matériau physique dans la table de la session
+     * @return le {@code DEFN} et ses références
+     * @throws DefinitionException voir l'autre forme
+     */
+    public static Encoded encode(
+            Definition definition,
+            boolean withJoints,
+            CollisionGroupRegistry groups,
+            ToIntFunction<String> materialIndex)
+            throws DefinitionException {
+        return encode(definition, withJoints, groups, materialIndex, TireProfiles.empty());
+    }
+
+    /**
      * Écrit le {@code DEFN} d'une definition acceptée.
      *
      * @param definition la definition
@@ -121,6 +144,7 @@ public final class DefinitionEncoder {
      *     corps implicite
      * @param groups le registre contre lequel elle a été validée, qui résout ses groupes en bits
      * @param materialIndex index d'un matériau physique dans la table de la session (ADR-149)
+     * @param tires les pneus que ses roues nomment (ADR-159 Q1)
      * @return le {@code DEFN} et ses références
      * @throws DefinitionException {@code E-7001} pour ce que Java rendait inerte à l'apparition et
      *     que le natif ne peut pas trancher : un corps autre que le premier sans {@code root_node}, un
@@ -130,7 +154,8 @@ public final class DefinitionEncoder {
             Definition definition,
             boolean withJoints,
             CollisionGroupRegistry groups,
-            ToIntFunction<String> materialIndex)
+            ToIntFunction<String> materialIndex,
+            TireProfiles tires)
             throws DefinitionException {
         JsonObject root = definition.root();
         List<DefinitionChecker.AssetReference> references = DefinitionChecker.assetReferences(root);
@@ -213,16 +238,18 @@ public final class DefinitionEncoder {
             }
         }
 
+        boolean vehicle = VehicleSpec.declared(root);
         int size = HEADER_BYTES
                 + references.size() * REFERENCE_BYTES
                 + bodies.size() * BODY_BYTES
                 + joints.size() * JointDescription.BYTES
                 + jamPoints.size() * JointDescription.JAM_POINT_BYTES
-                + parts.size() * PART_BYTES;
+                + parts.size() * PART_BYTES
+                + (vehicle ? VehicleSpec.size(root) : 0);
         ByteBuffer out = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN);
         out.put("DEFN".getBytes(StandardCharsets.US_ASCII));
         out.putShort((short) VERSION);
-        out.putShort((short) (selfCollision ? FLAG_SELF_COLLISION : 0));
+        out.putShort((short) ((selfCollision ? FLAG_SELF_COLLISION : 0) | (vehicle ? FLAG_VEHICLE : 0)));
         out.putInt(groups.membership(root));
         out.putInt(groups.filter(root));
         out.putFloat(physics.mass());
@@ -258,6 +285,9 @@ public final class DefinitionEncoder {
             out.putInt(part[0]);
             out.putShort((short) part[1]);
             out.putShort((short) part[2]);
+        }
+        if (vehicle) {
+            VehicleSpec.write(root, tires, byPath, out);
         }
         return new Encoded(out.array(), references);
     }

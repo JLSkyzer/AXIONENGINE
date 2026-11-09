@@ -233,6 +233,8 @@ final class SchemaOne {
                 .opt("width", number())
                 .opt("mass", number())
                 .opt("tire", id())
+                // ADR-159 D5, R-1061 : le nom de l'essieu, le même sur ses deux roues.
+                .opt("axle", text())
                 .opt("suspension", obj()
                         .opt("rest_length", number())
                         .opt("max_travel", number())

@@ -3646,7 +3646,9 @@ T-980..T-984.
 
 - [ ] **Véhicules (C-33)** — [ADR-159](../docs/decisions/ADR-159.md) proposé le 2026-11-09 : modèle pur dans `ax-vehicle`,
       rayons au sous-pas, ABI 18, réplication (descripteur 4), monde natif au client pour la prédiction (protocole 4),
-      six tranches. Q1 à Q4 tranchées par Killian le 2026-11-09, comme proposé. **Aucun code avant son feu vert.**
+      six tranches. **Accepté par Killian le 2026-11-09**, Q1 à Q4 comme proposé.
+      - [x] Tranche 1 (2026-11-09) : `DEFN` 2 et ABI 18, pneus (`axion/tires/`, protocole 4), essieux, règles de forme,
+            crate `ax-vehicle` (suspension, pneu). Rien de visible en jeu : les roues agissent à la tranche 2.
 
 ---
 

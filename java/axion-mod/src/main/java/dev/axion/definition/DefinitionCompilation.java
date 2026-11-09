@@ -142,7 +142,8 @@ public final class DefinitionCompilation {
     private void compile(Definition definition, long assetId, byte[] a3d) {
         DefinitionEncoder.Encoded encoded;
         try {
-            encoded = DefinitionEncoder.encode(definition, withJoints, loaded.collisionGroups(), materialIndex);
+            encoded = DefinitionEncoder.encode(
+                    definition, withJoints, loaded.collisionGroups(), materialIndex, loaded.tires());
         } catch (DefinitionException refusal) {
             refuse(definition, refusal.codeName(), refusal.path(), refusal.getMessage());
             return;

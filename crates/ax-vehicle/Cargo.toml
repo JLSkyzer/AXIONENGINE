@@ -1,0 +1,18 @@
+[package]
+name = "ax-vehicle"
+description = "C-33 : modèle de véhicule d'AXION ENGINE (suspension, pneus)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[dependencies]
+# ADR-159 D2 : des fonctions pures sur les descriptions de la definition, sans Rapier ni monde.
+ax-model.workspace = true

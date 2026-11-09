@@ -156,7 +156,7 @@ public final class AxionForgeEntrypoint {
         // Les données JSON après les modèles, dans l'ordre où elles se nomment : Minecraft
         // applique les écouteurs dans l'ordre d'ajout. Les matériaux physiques d'abord (DM-07,
         // ADR-145) ; les groupes de collision tiers (R-980, ADR-132 A1) ; les mappages bloc →
-        // matériau, qui nomment des matériaux ; les definitions enfin, qui vérifient leur modèle
+        // matériau, qui nomment des matériaux ; les pneus ; les definitions enfin, qui vérifient leur modèle
         // (C-27, étape 3), leurs groupes de collision et leurs matériaux.
         event.addListener(dataListener(ResourceAssetSource.PHYSICS_MATERIALS, "matériau physique",
                 runtime::onPhysicsMaterialReload));
@@ -164,6 +164,7 @@ public final class AxionForgeEntrypoint {
                 runtime::onCollisionGroupReload));
         event.addListener(dataListener(ResourceAssetSource.BLOCK_MATERIALS, "mappage bloc → matériau",
                 runtime::onBlockMaterialReload));
+        event.addListener(dataListener(ResourceAssetSource.TIRES, "pneu", runtime::onTireReload));
         // Les definitions rechargées rebâtissent le registre réseau ; s'il a changé, il repart vers les
         // joueurs distants (ADR-150 D5).
         event.addListener(dataListener(ResourceAssetSource.DEFINITIONS, "definition", source -> {

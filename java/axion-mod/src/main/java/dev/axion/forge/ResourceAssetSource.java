@@ -45,6 +45,9 @@ public final class ResourceAssetSource implements AssetSource {
     /** Préfixe des mappages bloc → matériau (§11.4, ADR-145), relatif à la racine du gestionnaire. */
     public static final String BLOCK_MATERIALS = "axion/block_materials";
 
+    /** Préfixe des pneus (ADR-159 Q1), relatif à la racine du gestionnaire. */
+    public static final String TIRES = "axion/tires";
+
     /** Contenu par chemin, dans l'ordre d'énumération ; {@code null} si illisible. */
     private final Map<String, byte[]> files = new LinkedHashMap<>();
     private final Map<String, IOException> unreadable = new HashMap<>();

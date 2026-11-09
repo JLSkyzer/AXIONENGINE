@@ -5,6 +5,7 @@ import dev.axion.definition.CollisionGroupRegistry;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
 import dev.axion.definition.PhysicsMaterials;
+import dev.axion.definition.TireProfiles;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +51,8 @@ public final class RemoteRegistry {
                 PhysicsMaterials.load(source(registry.files(RegistryContent.Family.PHYSICS_MATERIALS)));
         CollisionGroupRegistry groups =
                 CollisionGroupRegistry.load(source(registry.files(RegistryContent.Family.COLLISION_GROUPS)));
-        DefinitionRules rules = new DefinitionRules(true, model -> true, true, groups, materials);
+        TireProfiles tires = TireProfiles.load(source(registry.files(RegistryContent.Family.TIRES)));
+        DefinitionRules rules = new DefinitionRules(true, model -> true, true, groups, materials, tires);
         DefinitionRegistry definitions =
                 DefinitionRegistry.load(source(registry.files(RegistryContent.Family.DEFINITIONS)), rules);
 
@@ -58,7 +60,7 @@ public final class RemoteRegistry {
         journal.add("registre du serveur appliqué : " + definitions.size() + " definition(s), "
                 + materials.ids().size() + " matériau(x) physique(s), "
                 + groups.ids().size() + " groupe(s) de collision");
-        Stream.of(materials.refusals(), groups.refusals(), definitions.refusals())
+        Stream.of(materials.refusals(), groups.refusals(), tires.refusals(), definitions.refusals())
                 .flatMap(List::stream)
                 .forEach(refusal -> journal.add("refusé chez le client : " + refusal));
         return new Loaded(definitions, journal);

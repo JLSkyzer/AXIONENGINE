@@ -154,6 +154,7 @@ impl Modele {
             joints,
             jam_points: self.jam_points.clone(),
             parts,
+            vehicle: None,
         }
         .write_le(&mut bytes);
         bytes

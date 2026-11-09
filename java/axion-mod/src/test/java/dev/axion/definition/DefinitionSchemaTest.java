@@ -49,7 +49,7 @@ class DefinitionSchemaTest {
                                             "stiffness": 30.0, "damping_compression": 2.3,
                                             "damping_rebound": 2.8, "max_force": 60000.0,
                                             "anti_roll": 0.0 } },
-                          { "node": "wheel_rl", "powered": true } ],
+                          { "node": "wheel_rl", "radius": 0.36, "powered": true } ],
               "powertrain": {
                 "engine": { "torque_curve": [[0, 0], [1000, 180]], "idle_rpm": 800,
                             "max_rpm": 7000, "inertia": 0.3, "braking_torque": 25.0 },

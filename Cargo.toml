@@ -193,6 +193,7 @@ ax-scene = { path = "crates/ax-scene" }
 ax-render-prep = { path = "crates/ax-render-prep" }
 ax-anim = { path = "crates/ax-anim" }
 ax-physics = { path = "crates/ax-physics" }
+ax-vehicle = { path = "crates/ax-vehicle" }
 ax-bench = { path = "crates/ax-bench" }
 
 # Les profils s'appliquent a tout le workspace.

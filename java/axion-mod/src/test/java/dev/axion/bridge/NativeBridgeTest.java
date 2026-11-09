@@ -887,6 +887,23 @@ class NativeBridgeTest {
                 "axion:axion/models/charniere.gltf", dev.axion.definition.AssemblyKind.ARTICULATED, documentCharniere);
         dev.axion.asset.DefinitionCompiler.Summary charniere =
                 inscrire(compilateurDefinitions, charniereDeclaree, 0x4345L, a3dCharniere);
+        // ADR-159 : un véhicule complet, écrit par Java et relu par le natif ; une disposition fausse le refuserait.
+        dev.axion.definition.Definition vehicule = declarer("axion:vehicule_charniere",
+                "axion:axion/models/charniere.gltf", dev.axion.definition.AssemblyKind.VEHICLE, """
+                {"asset": "axion:models/charniere.gltf", "kind": "vehicle",
+                 "wheels": [{"node": "porte", "radius": 0.3, "steering": true, "powered": true}],
+                 "powertrain": {"engine": {"torque_curve": [[0, 10], [5000, 200]]},
+                                "transmission": {"type": "automatic", "gears": [-3, 0, 3, 1]},
+                                "differential": {"type": "limited_slip", "lock": 0.4}},
+                 "steering": {"max_angle": 0.5}, "brakes": {"abs": {"enabled": true}},
+                 "aero": {"drag_coefficient": 0.3, "frontal_area": 2.0,
+                          "surfaces": [{"node": "porte", "area": 1.0, "cl": 0.5, "cd": 0.1}]}}
+                """);
+        dev.axion.asset.DefinitionCompiler.Summary resumeVehicule =
+                inscrire(compilateurDefinitions, vehicule, 0x4345L, a3dCharniere);
+        assertEquals(1, resumeVehicule.roots().length, "la roue n'est pas un corps");
+        assertTrue(compilateurDefinitions.remove(vehicule.hash()));
+
         // ADR-151 D2, D9 : le cadre déclaré, puis la porte implicite de son b_node, résolus comme le client
         // résout le node racine contre ses propres nodes.
         assertArrayEquals(

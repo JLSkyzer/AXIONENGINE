@@ -25,25 +25,29 @@
 //!                                                  body_b : NONE_U16, tranché par le natif
 //! [f32; 2][jam_points]                       8 o chacun
 //! DefinitionPart[part_count]                 8 o chacune
+//! VehicleDesc                                 si `VEHICLE` : voir [`super::vehicle`] (ADR-159)
 //! ```
 
 use super::commands::{AssemblyBodyEntry, MAX_ASSEMBLY_BODIES};
 use super::joints::JointDesc;
 use super::physics::BodyDesc;
 use super::scene::{NONE_U16, NONE_U32};
+use super::vehicle::VehicleDesc;
 
 /// Signature d'un `DEFN`.
 pub const DEFN_MAGIC: [u8; 4] = *b"DEFN";
 
 /// Version du format.
-pub const DEFN_VERSION: u16 = 1;
+pub const DEFN_VERSION: u16 = 2;
 
 /// Drapeaux de [`DefinitionHeader`], champ `flags`.
 pub mod definition_flags {
     /// Les corps de l'assembly se touchent entre eux (`physics.self_collision`, §10.4).
     pub const SELF_COLLISION: u16 = 1 << 0;
+    /// Une section véhicule suit les parts (ADR-159).
+    pub const VEHICLE: u16 = 1 << 1;
     /// Tous les drapeaux connus.
-    pub const ALL: u16 = SELF_COLLISION;
+    pub const ALL: u16 = SELF_COLLISION | VEHICLE;
 }
 
 /// Catégorie d'une [`DefinitionRef`] : la table de l'asset où son nom se résout.
@@ -246,6 +250,8 @@ pub struct Definition {
     pub jam_points: Vec<[f32; 2]>,
     /// Les parts.
     pub parts: Vec<DefinitionPart>,
+    /// Le véhicule qu'elle déclare, s'il en est un (ADR-159).
+    pub vehicle: Option<VehicleDesc>,
 }
 
 impl Definition {
@@ -262,6 +268,11 @@ impl Definition {
             joint_count: count(self.joints.len()),
             jam_points: count(self.jam_points.len()),
             part_count: count(self.parts.len()),
+            flags: if self.vehicle.is_some() {
+                self.header.flags | definition_flags::VEHICLE
+            } else {
+                self.header.flags & !definition_flags::VEHICLE
+            },
             ..self.header
         }
         .write_le(out);
@@ -280,6 +291,9 @@ impl Definition {
         }
         for part in &self.parts {
             part.write_le(out);
+        }
+        if let Some(vehicle) = &self.vehicle {
+            vehicle.write_le(out);
         }
     }
 
@@ -389,6 +403,14 @@ impl Definition {
             parts.push(part);
         }
 
+        let vehicle = if header.flags & definition_flags::VEHICLE != 0 {
+            let (vehicle, size) = VehicleDesc::read_le(&bytes[at..], node_ref)?;
+            at += size;
+            Some(vehicle)
+        } else {
+            None
+        };
+
         if at != bytes.len() {
             return Err(DefnError::Trailing);
         }
@@ -399,6 +421,7 @@ impl Definition {
             joints,
             jam_points,
             parts,
+            vehicle,
         })
     }
 }
@@ -758,6 +781,7 @@ mod tests {
                 material: 3,
                 flags: part_flags::DEFORMABLE,
             }],
+            vehicle: None,
         }
     }
 
@@ -811,8 +835,8 @@ mod tests {
         magic[0] = b'X';
         assert_eq!(Definition::read_le(&magic), Err(DefnError::Magic));
         let mut version = bytes;
-        version[4] = 2;
-        assert_eq!(Definition::read_le(&version), Err(DefnError::Version(2)));
+        version[4] = 9;
+        assert_eq!(Definition::read_le(&version), Err(DefnError::Version(9)));
     }
 
     #[test]

@@ -347,6 +347,9 @@
             "type": "string",
             "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
           },
+          "axle": {
+            "type": "string"
+          },
           "suspension": {
             "type": "object",
             "properties": {

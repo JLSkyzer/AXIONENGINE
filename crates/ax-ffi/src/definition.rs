@@ -21,7 +21,8 @@ use ax_model::dm::definition::{
 };
 use ax_model::dm::joints::JointDesc;
 use ax_model::dm::physics::{collider_flags, ColliderDesc, ColliderShape};
-use ax_model::dm::scene::{NodeDesc, NONE_U16, NONE_U32};
+use ax_model::dm::scene::{NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
+use ax_model::dm::vehicle::VehicleDesc;
 use ax_physics::{AssemblyBody, AssemblyJoint, CollisionGroups};
 
 use crate::assembly::{prepare, AnimationVerdict, ServerAnimation};
@@ -96,6 +97,29 @@ pub(crate) struct CompiledDefinition {
     pub anatomy: Vec<SummaryNode>,
     /// Pour chaque corps, le node porteur de chacun de ses colliders (ADR-158 D2).
     pub carriers: Vec<Vec<u32>>,
+    /// Le véhicule qu'elle déclare (ADR-159). Le pas physique le lira à la tranche 2.
+    #[allow(dead_code)]
+    pub vehicle: Option<CompiledVehicle>,
+}
+
+/// Un véhicule compilé : sa description, et où chaque roue est montée.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CompiledVehicle {
+    /// La section véhicule du `DEFN`.
+    pub desc: VehicleDesc,
+    /// Le montage de chaque roue, dans l'ordre de `desc.wheels`.
+    pub mounts: Vec<WheelMount>,
+}
+
+/// Où une roue est montée (ADR-159 D3).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct WheelMount {
+    /// Le node de la roue.
+    pub node: u32,
+    /// Le rang du corps qui la porte.
+    pub body: u32,
+    /// Le centre de la roue au repos, dans le repère de ce corps, en mètres.
+    pub center: [f32; 3],
 }
 
 /// Le refus d'une definition.
@@ -142,6 +166,17 @@ pub(crate) fn compile(
     let node_of = |reference: u32| resolved[reference as usize].expect("référence NODE résolue");
     let header = &definition.header;
 
+    // ADR-159 D3 : une roue n'est pas un corps, et ses colliders ne touchent pas le sol.
+    check_wheel_roots(definition, &resolved)?;
+    let pruned = prune_wheel_colliders(definition, asset, &resolved);
+    let pruned_view = pruned.as_ref().map(|(nodes, colliders, _)| AssetView {
+        nodes,
+        colliders,
+        ..*asset
+    });
+    let asset = pruned_view.as_ref().unwrap_or(asset);
+    let removed = pruned.as_ref().map_or(0, |(_, _, removed)| *removed);
+
     // ADR-151 D2 : les corps déclarés, chacun à son node racine — la racine de l'asset pour le
     // corps racine qui n'en nomme pas —, puis un corps par `b_node` qui n'est la racine d'aucun.
     // Sans `bodies`, un seul corps à la racine de l'asset ; `DEFN` n'a alors aucun joint.
@@ -160,7 +195,8 @@ pub(crate) fn compile(
             0.0,
             (colliders, children),
             (clips, nodes),
-        );
+        )
+        .and_then(|compiled| with_vehicle(definition, compiled, &resolved, removed));
     }
     let mut roots: Vec<u32> = Vec::with_capacity(definition.bodies.len());
     // La référence qui nomme le node racine de chaque corps, pour désigner un refus.
@@ -247,6 +283,136 @@ pub(crate) fn compile(
         (colliders, children),
         (clips, nodes),
     )
+    .and_then(|compiled| with_vehicle(definition, compiled, &resolved, removed))
+}
+
+/// ADR-159 D3 : le node d'une roue ne peut pas être la racine d'un corps, ni celle de l'asset.
+fn check_wheel_roots(definition: &Definition, resolved: &[Option<u32>]) -> Result<(), Refusal> {
+    let Some(vehicle) = &definition.vehicle else {
+        return Ok(());
+    };
+    let node_of = |reference: u32| resolved[reference as usize];
+    let first_root = definition
+        .bodies
+        .first()
+        .and_then(|body| (body.root_node != NONE_U32).then_some(body.root_node))
+        .map_or(Some(0), node_of);
+    for wheel in &vehicle.wheels {
+        let node = node_of(wheel.node);
+        let is_root = node == first_root
+            || node == Some(0)
+            || definition
+                .bodies
+                .iter()
+                .filter(|body| body.root_node != NONE_U32)
+                .any(|body| node_of(body.root_node) == node)
+            || definition
+                .joints
+                .iter()
+                .any(|joint| node_of(joint.b_node) == node);
+        if is_root {
+            return Err(Refusal::invalid(
+                Some(wheel.node),
+                "une roue est portée par un corps, elle n'en est pas la racine (ADR-159 D3)",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// ADR-159 D3 : retire les colliders du sous-arbre des roues. Un collider de roue toucherait le
+/// sol avant l'équilibre du rayon. Rend les nodes réindexés, les colliders restants et le nombre de
+/// retirés ; `None` si rien n'est à retirer.
+fn prune_wheel_colliders(
+    definition: &Definition,
+    asset: &AssetView<'_>,
+    resolved: &[Option<u32>],
+) -> Option<(Vec<NodeDesc>, Vec<ColliderDesc>, usize)> {
+    let vehicle = definition.vehicle.as_ref()?;
+    // Les parents précèdent leurs enfants : une passe suffit.
+    let mut in_wheel = vec![false; asset.nodes.len()];
+    for wheel in &vehicle.wheels {
+        if let Some(node) = resolved[wheel.node as usize] {
+            in_wheel[node as usize] = true;
+        }
+    }
+    for (index, node) in asset.nodes.iter().enumerate() {
+        if node.parent != NO_PARENT && in_wheel.get(node.parent as usize) == Some(&true) {
+            in_wheel[index] = true;
+        }
+    }
+    let mut dropped = vec![false; asset.colliders.len()];
+    for (index, node) in asset.nodes.iter().enumerate() {
+        if in_wheel[index] && node.collider != NONE_U32 {
+            if let Some(slot) = dropped.get_mut(node.collider as usize) {
+                *slot = true;
+            }
+        }
+    }
+    let removed = dropped.iter().filter(|gone| **gone).count();
+    if removed == 0 {
+        return None;
+    }
+    // Un collider retiré doit quitter la table : sans node, il irait au corps racine.
+    let mut remap = vec![NONE_U32; dropped.len()];
+    let mut colliders = Vec::with_capacity(dropped.len() - removed);
+    for (index, collider) in asset.colliders.iter().enumerate() {
+        if !dropped[index] {
+            remap[index] = u32::try_from(colliders.len()).unwrap_or(NONE_U32);
+            colliders.push(*collider);
+        }
+    }
+    let nodes = asset
+        .nodes
+        .iter()
+        .map(|node| NodeDesc {
+            collider: remap
+                .get(node.collider as usize)
+                .copied()
+                .unwrap_or(NONE_U32),
+            ..*node
+        })
+        .collect();
+    Some((nodes, colliders, removed))
+}
+
+/// Attache à une definition compilée son véhicule : le corps et la position de chaque roue.
+fn with_vehicle(
+    definition: &Definition,
+    mut compiled: CompiledDefinition,
+    resolved: &[Option<u32>],
+    removed: usize,
+) -> Result<CompiledDefinition, Refusal> {
+    let Some(desc) = &definition.vehicle else {
+        return Ok(compiled);
+    };
+    let mut mounts = Vec::with_capacity(desc.wheels.len());
+    for wheel in &desc.wheels {
+        let node = resolved[wheel.node as usize].expect("référence NODE résolue");
+        let anatomy = compiled.anatomy[node as usize];
+        if anatomy.body == NONE_U32 {
+            return Err(Refusal::invalid(
+                Some(wheel.node),
+                "une échelle non uniforme sépare cette roue de son corps",
+            ));
+        }
+        mounts.push(WheelMount {
+            node,
+            body: anatomy.body,
+            center: anatomy.translation,
+        });
+    }
+    if removed > 0 {
+        compiled.warnings.push(format!(
+            "{removed} collider(s) du sous-arbre des roues retiré(s) : le rayon de la roue en tient \
+             lieu (ADR-159 D3)"
+        ));
+    }
+    compiled.vehicle = Some(CompiledVehicle {
+        desc: desc.clone(),
+        mounts,
+    });
+    Ok(compiled)
 }
 
 /// Range les colliders marqués en corps, pose les joints et juge l'animation serveur. `origins`
@@ -310,6 +476,7 @@ fn finish(
         nodes,
         anatomy: prepared.anatomy,
         carriers: prepared.carriers,
+        vehicle: None,
     })
 }
 
@@ -599,7 +766,144 @@ mod tests {
             joints: Vec::new(),
             jam_points: Vec::new(),
             parts: Vec::new(),
+            vehicle: None,
         }
+    }
+
+    /// Un véhicule d'une roue à la référence `node`.
+    fn vehicule(node: u32) -> VehicleDesc {
+        use ax_model::dm::vehicle::{
+            AeroDesc, BrakesDesc, DifferentialDesc, EngineDesc, SteeringDesc, SuspensionDesc,
+            TireCurve, TransmissionDesc, WheelDesc,
+        };
+        let courbe = TireCurve {
+            peak_slip: 0.12,
+            peak_value: 1.0,
+            tail_slip: 0.5,
+            tail_value: 0.75,
+        };
+        VehicleDesc {
+            flags: 0,
+            engine: EngineDesc {
+                idle_rpm: 800.0,
+                max_rpm: 7000.0,
+                inertia: 0.3,
+                braking_torque: 25.0,
+            },
+            transmission: TransmissionDesc {
+                kind: 2,
+                final_drive: 1.0,
+                shift_time: 0.0,
+                auto_shift_up_rpm: 6200.0,
+                auto_shift_down_rpm: 2200.0,
+                efficiency: 1.0,
+            },
+            differential: DifferentialDesc {
+                kind: 0,
+                front_rear_split: 0.0,
+                lock: 0.0,
+            },
+            steering: SteeringDesc {
+                max_angle: 0.61,
+                speed: 3.0,
+                return_speed: 4.0,
+                speed_sensitivity: 0.6,
+                ackermann: 1.0,
+            },
+            brakes: BrakesDesc {
+                max_torque_front: 3000.0,
+                max_torque_rear: 1800.0,
+                handbrake_torque: 4000.0,
+                abs_slip_threshold: 0.15,
+            },
+            aero: AeroDesc {
+                drag_coefficient: 0.0,
+                frontal_area: 0.0,
+                downforce_front: 0.0,
+                downforce_rear: 0.0,
+            },
+            wheels: vec![WheelDesc {
+                node,
+                flags: 0,
+                axle: NONE_U16,
+                radius: 0.36,
+                width: 0.24,
+                mass: 20.0,
+                suspension: SuspensionDesc {
+                    rest_length: 0.35,
+                    max_travel: 0.25,
+                    stiffness: 30.0,
+                    damping_compression: 2.3,
+                    damping_rebound: 2.8,
+                    max_force: 60_000.0,
+                    anti_roll: 0.0,
+                },
+                mu_long: 1.0,
+                mu_lat: 1.0,
+                long: courbe,
+                lat: courbe,
+            }],
+            torque_curve: Vec::new(),
+            gears: Vec::new(),
+            surfaces: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn adr159_d3_la_roue_est_montee_sur_son_corps_a_sa_place() {
+        let nodes = vec![
+            node("base", NO_PARENT, 0.0, 0),
+            node("roue", 0, 2.0, NONE_U32),
+        ];
+        let colliders = vec![boite()];
+        let mut d = definition(vec![nommer("roue")]);
+        d.vehicle = Some(vehicule(0));
+        let compilee = compile(&d, &asset(&nodes, &colliders)).expect("compilée");
+        let v = compilee.vehicle.expect("véhicule");
+        assert_eq!(
+            v.mounts,
+            vec![WheelMount {
+                node: 1,
+                body: 0,
+                center: [2.0, 0.0, 0.0],
+            }]
+        );
+        assert!(compilee.warnings.is_empty(), "rien de retiré");
+    }
+
+    #[test]
+    fn adr159_d3_les_colliders_sous_une_roue_quittent_l_assembly() {
+        // La jante, sous la roue, porte le collider 1 ; le suivant reste à sa place.
+        let nodes = vec![
+            node("base", NO_PARENT, 0.0, 0),
+            node("roue", 0, 2.0, NONE_U32),
+            node("jante", 1, 1.0, 1),
+            node("aile", 0, 5.0, 2),
+        ];
+        let colliders = vec![boite(), boite(), boite()];
+        let mut d = definition(vec![nommer("roue")]);
+        d.vehicle = Some(vehicule(0));
+        let compilee = compile(&d, &asset(&nodes, &colliders)).expect("compilée");
+        assert_eq!(compilee.bodies.len(), 1);
+        assert_eq!(compilee.bodies[0].colliders.len(), 2, "la jante est partie");
+        assert_eq!(
+            compilee.bodies[0].colliders[1].translation.x, 5.0,
+            "l'aile garde sa place, sans glisser au corps racine"
+        );
+        assert_eq!(compilee.carriers[0], vec![0, 3], "le porteur de chacun");
+        assert_eq!(compilee.warnings.len(), 1, "{:?}", compilee.warnings);
+        assert!(compilee.warnings[0].contains("ADR-159 D3"));
+    }
+
+    #[test]
+    fn adr159_d3_une_roue_n_est_pas_la_racine_d_un_corps() {
+        let nodes = chaine();
+        let colliders = vec![boite(), boite(), boite()];
+        let mut d = definition(vec![nommer("base")]);
+        d.vehicle = Some(vehicule(0));
+        let refus = refus(&d, &asset(&nodes, &colliders));
+        assert_eq!(refus.code, E_DEFINITION_INVALID);
+        assert_eq!(refus.reference, Some(0), "la référence de la roue");
     }
 
     fn corps(root_node: u32, mass: f32) -> AssemblyBodyEntry {

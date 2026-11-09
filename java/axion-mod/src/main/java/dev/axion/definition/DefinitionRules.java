@@ -18,19 +18,41 @@ import java.util.function.Predicate;
  *     nommer (R-980, ADR-132 A1), chargés avant elle
  * @param physicsMaterials les matériaux physiques qu'une definition peut nommer
  *     (R-171, ADR-145), chargés avant elle ; un nom inconnu avertit (R-1032)
+ * @param tires les pneus qu'une definition peut nommer (ADR-159 Q1), chargés avant elle ; un nom
+ *     inconnu avertit
  */
 public record DefinitionRules(
         boolean vehiclesEnabled,
         Predicate<String> assetExists,
         boolean examplesEnabled,
         CollisionGroupRegistry collisionGroups,
-        PhysicsMaterials physicsMaterials) {
+        PhysicsMaterials physicsMaterials,
+        TireProfiles tires) {
 
     /** Refuse une règle absente. */
     public DefinitionRules {
         Objects.requireNonNull(assetExists);
         Objects.requireNonNull(collisionGroups);
         Objects.requireNonNull(physicsMaterials);
+        Objects.requireNonNull(tires);
+    }
+
+    /**
+     * Des règles sans pneu déclaré : tout nom de pneu avertit.
+     *
+     * @param vehiclesEnabled le module {@code vehicles} est actif (§24.1)
+     * @param assetExists indique si un modèle a été découvert
+     * @param examplesEnabled les definitions de démonstration se chargent
+     * @param collisionGroups les groupes de collision tiers
+     * @param physicsMaterials les matériaux physiques
+     */
+    public DefinitionRules(
+            boolean vehiclesEnabled,
+            Predicate<String> assetExists,
+            boolean examplesEnabled,
+            CollisionGroupRegistry collisionGroups,
+            PhysicsMaterials physicsMaterials) {
+        this(vehiclesEnabled, assetExists, examplesEnabled, collisionGroups, physicsMaterials, TireProfiles.empty());
     }
 
     /**

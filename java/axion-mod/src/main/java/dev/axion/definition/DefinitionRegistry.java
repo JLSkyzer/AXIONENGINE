@@ -68,6 +68,7 @@ public final class DefinitionRegistry {
     private final String fingerprint;
     private final CollisionGroupRegistry collisionGroups;
     private final PhysicsMaterials physicsMaterials;
+    private final TireProfiles tires;
     private final List<String> warnings;
 
     private DefinitionRegistry(
@@ -76,6 +77,7 @@ public final class DefinitionRegistry {
             List<String> refusals,
             CollisionGroupRegistry collisionGroups,
             PhysicsMaterials physicsMaterials,
+            TireProfiles tires,
             List<String> warnings) {
         this.definitions = definitions;
         this.byHash = byHash;
@@ -83,6 +85,7 @@ public final class DefinitionRegistry {
         this.fingerprint = fingerprintOf(definitions);
         this.collisionGroups = collisionGroups;
         this.physicsMaterials = physicsMaterials;
+        this.tires = tires;
         this.warnings = List.copyOf(warnings);
     }
 
@@ -90,7 +93,7 @@ public final class DefinitionRegistry {
     public static DefinitionRegistry empty() {
         return new DefinitionRegistry(
                 new TreeMap<>(), new HashMap<>(), List.of(), CollisionGroupRegistry.empty(),
-                PhysicsMaterials.empty(), List.of());
+                PhysicsMaterials.empty(), TireProfiles.empty(), List.of());
     }
 
     /**
@@ -163,9 +166,10 @@ public final class DefinitionRegistry {
         List<String> warnings = new ArrayList<>();
         for (Definition definition : accepted.values()) {
             materialWarnings(definition, rules.physicsMaterials(), warnings);
+            tireWarnings(definition, rules.tires(), warnings);
         }
         return new DefinitionRegistry(accepted, byHash, refusals, rules.collisionGroups(),
-                rules.physicsMaterials(), warnings);
+                rules.physicsMaterials(), rules.tires(), warnings);
     }
 
     /**
@@ -187,6 +191,21 @@ public final class DefinitionRegistry {
                             + "].material : matériau « " + named.getAsString() + " » non déclaré ;"
                             + " l'acier générique en tient lieu (R-1032)");
                 }
+            }
+        }
+    }
+
+    /** ADR-159 Q1 : comme un matériau, un pneu non déclaré avertit, et le pneu générique en tient lieu. */
+    private static void tireWarnings(Definition definition, TireProfiles tires, List<String> warnings) {
+        if (!(definition.root().get("wheels") instanceof JsonArray wheels)) {
+            return;
+        }
+        for (int index = 0; index < wheels.size(); index++) {
+            if (wheels.get(index) instanceof JsonObject wheel
+                    && wheel.get("tire") instanceof JsonPrimitive named
+                    && !tires.knows(named.getAsString())) {
+                warnings.add(definition.location() + " — $.wheels[" + index + "].tire : pneu « "
+                        + named.getAsString() + " » non déclaré ; le pneu générique en tient lieu");
             }
         }
     }
@@ -427,7 +446,7 @@ public final class DefinitionRegistry {
                 lines.add(refusal.getValue());
             }
         }
-        return new DefinitionRegistry(kept, hashes, lines, collisionGroups, physicsMaterials, warnings);
+        return new DefinitionRegistry(kept, hashes, lines, collisionGroups, physicsMaterials, tires, warnings);
     }
 
     /**
@@ -487,5 +506,10 @@ public final class DefinitionRegistry {
      */
     public PhysicsMaterials physicsMaterials() {
         return physicsMaterials;
+    }
+
+    /** {@return les pneus contre lesquels ces definitions ont été validées (ADR-159 Q1)} */
+    public TireProfiles tires() {
+        return tires;
     }
 }

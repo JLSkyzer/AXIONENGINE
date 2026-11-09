@@ -156,6 +156,7 @@ fn definition(bodies: Vec<AssemblyBodyEntry>, noms: &[&str]) -> Vec<u8> {
         joints: Vec::new(),
         jam_points: Vec::new(),
         parts: Vec::new(),
+        vehicle: None,
     }
     .write_le(&mut bytes);
     bytes

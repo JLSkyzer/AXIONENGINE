@@ -18,6 +18,7 @@ import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
 import dev.axion.definition.PhysicsMaterialTable;
 import dev.axion.definition.PhysicsMaterials;
+import dev.axion.definition.TireProfiles;
 import dev.axion.physics.CollectResult;
 import dev.axion.physics.DegradationGauges;
 import dev.axion.physics.NativeSimulation;
@@ -122,6 +123,10 @@ public final class AxionRuntime {
     private SortedMap<String, byte[]> materialTexts = new TreeMap<>();
     /** Textes des groupes de collision du dernier rechargement, pour le registre réseau (ADR-150 D5). */
     private SortedMap<String, byte[]> groupTexts = new TreeMap<>();
+
+    /** Les pneus du dernier rechargement (ADR-159 Q1), et leurs textes pour le registre réseau. */
+    private volatile TireProfiles tires = TireProfiles.empty();
+    private SortedMap<String, byte[]> tireTexts = new TreeMap<>();
     /**
      * Ce que le serveur envoie à chaque connexion (ADR-150 D4, D5), rebâti après chaque rechargement
      * des definitions ; {@code null} sans runtime natif ou hors d'un serveur. {@code volatile} : Forge
@@ -973,6 +978,24 @@ public final class AxionRuntime {
         return collisionGroups.ids().size();
     }
 
+    /**
+     * Charge les pneus d'un rechargement de données (ADR-159 Q1), avant les definitions qui les nomment.
+     *
+     * @param source ressources sous {@code axion/tires}
+     */
+    public void onTireReload(AssetSource source) {
+        if (!hasNativeRuntime()) {
+            return;
+        }
+        guard("tireReload").run(() -> {
+            TireProfiles loaded = TireProfiles.load(source);
+            tires = loaded;
+            tireTexts = ServerRegistry.read(source);
+            transitions.add(loaded.ids().size() + " pneu(s) chargé(s), " + loaded.refusals().size() + " refusé(s)");
+            loaded.refusals().forEach(transitions::add);
+        });
+    }
+
     /** {@return le registre des groupes de collision tiers, les réservés seuls avant tout rechargement} */
     public CollisionGroupRegistry collisionGroups() {
         return collisionGroups;
@@ -1002,7 +1025,8 @@ public final class AxionRuntime {
                     path -> known != null && known.entry(path) != null,
                     outcome.config().getBoolean("content.examples"),
                     collisionGroups,
-                    physicsMaterials);
+                    physicsMaterials,
+                    tires);
             long start = System.nanoTime();
             DefinitionRegistry loaded = DefinitionRegistry.load(source, rules);
             long nanos = System.nanoTime() - start;
@@ -1031,7 +1055,7 @@ public final class AxionRuntime {
     private void rebuildNetSnapshot(DefinitionRegistry loaded, SortedMap<String, byte[]> definitionTexts) {
         try {
             RegistryContent.Builder registry =
-                    ServerRegistry.collect(materialTexts, groupTexts, loaded, definitionTexts);
+                    ServerRegistry.collect(materialTexts, groupTexts, tireTexts, loaded, definitionTexts);
             ServerSnapshot snapshot = ServerSnapshot.build(outcome.config(), registry.build(), registry.excluded(),
                     DetProfile.ofThisBinary(), new NativeNetCompression(outcome.context()));
             netSnapshot = snapshot;

@@ -45,14 +45,32 @@ public final class ServerRegistry {
      * @param groups textes des groupes de collision lus
      * @param definitions definitions acceptées par le serveur
      * @param definitionTexts textes des definitions lues
-     * @return le registre à envoyer, entrées hors des bornes du protocole écartées
+     * @return le registre à envoyer, sans pneu
      */
     public static RegistryContent.Builder collect(
             Map<String, byte[]> materials,
             Map<String, byte[]> groups,
             DefinitionRegistry definitions,
             Map<String, byte[]> definitionTexts) {
+        return collect(materials, groups, Map.of(), definitions, definitionTexts);
+    }
+
+    /**
+     * @param materials textes des matériaux physiques lus
+     * @param groups textes des groupes de collision lus
+     * @param tires textes des pneus lus (ADR-159 Q1)
+     * @param definitions definitions acceptées par le serveur
+     * @param definitionTexts textes des definitions lues
+     * @return le registre à envoyer, entrées hors des bornes du protocole écartées
+     */
+    public static RegistryContent.Builder collect(
+            Map<String, byte[]> materials,
+            Map<String, byte[]> groups,
+            Map<String, byte[]> tires,
+            DefinitionRegistry definitions,
+            Map<String, byte[]> definitionTexts) {
         RegistryContent.Builder builder = RegistryContent.builder();
+        tires.forEach((path, json) -> builder.add(RegistryContent.Family.TIRES, path, json));
         materials.forEach((path, json) -> builder.add(RegistryContent.Family.PHYSICS_MATERIALS, path, json));
         groups.forEach((path, json) -> builder.add(RegistryContent.Family.COLLISION_GROUPS, path, json));
         for (String id : definitions.ids()) {

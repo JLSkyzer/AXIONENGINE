@@ -19,10 +19,10 @@ import org.junit.jupiter.api.Test;
 class AxionChannelTest {
 
     @Test
-    @DisplayName("T-419 : seul un pair AXION-3 est accepté ; canal absent et client vanilla sont refusés")
+    @DisplayName("T-419 : seul un pair AXION-4 est accepté ; canal absent et client vanilla sont refusés")
     void t419_unClientSansAxionEstRefuse() {
         assertTrue(NetProtocol.accepts(NetProtocol.VERSION));
-        assertTrue(NetProtocol.accepts("AXION-3"), "ADR-158 D4 : C2S_Input monte le protocole");
+        assertTrue(NetProtocol.accepts("AXION-4"), "ADR-159 Q1 : la famille des pneus monte le protocole");
         assertFalse(NetProtocol.accepts(NetworkRegistry.ABSENT.version()), "canal absent");
         assertFalse(NetProtocol.accepts(NetworkRegistry.ACCEPTVANILLA), "client vanilla");
         assertFalse(NetProtocol.accepts("AXION-1"), "version de protocole antérieure");

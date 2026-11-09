@@ -14,13 +14,13 @@ import java.util.regex.Pattern;
  * Ce que porte {@code S2C_Registry} (21.4, ADR-150 D5) : les textes JSON que le serveur a lus, par
  * famille, chacun sous son identifiant de ressource.
  *
- * <p>Trois familles en M4 : les matériaux physiques, les groupes de collision et les definitions — ce
+ * <p>Les familles : les matériaux physiques, les groupes de collision, les pneus et les definitions — ce
  * dont une definition a besoin pour se valider chez le client comme chez le serveur. Les sources de
  * dégâts (M6) et les profils d'usure (M9) viendront avec leurs systèmes.
  *
  * <p>Les empreintes (21.3) se calculent sur les textes, triés par identifiant : deux serveurs qui ont
  * lu les mêmes fichiers annoncent la même empreinte, quel que soit l'ordre de leur lecture. Celle des
- * definitions couvre aussi les groupes de collision, qui les paramètrent.
+ * definitions couvre aussi les groupes de collision et les pneus, qui les paramètrent.
  */
 public final class RegistryContent {
 
@@ -31,7 +31,9 @@ public final class RegistryContent {
         /** Groupes de collision tiers (ADR-132 A1). */
         COLLISION_GROUPS(2, "axion/collision_groups/"),
         /** Definitions (C-27). */
-        DEFINITIONS(3, "axion/definitions/");
+        DEFINITIONS(3, "axion/definitions/"),
+        /** Pneus (ADR-159 Q1). */
+        TIRES(4, "axion/tires/");
 
         final int code;
         final String prefix;
@@ -88,6 +90,7 @@ public final class RegistryContent {
         files.put(Family.PHYSICS_MATERIALS, family(Family.PHYSICS_MATERIALS, materials));
         files.put(Family.COLLISION_GROUPS, family(Family.COLLISION_GROUPS, groups));
         files.put(Family.DEFINITIONS, family(Family.DEFINITIONS, definitions));
+        files.put(Family.TIRES, new TreeMap<>());
         return new RegistryContent(files);
     }
 
@@ -181,9 +184,9 @@ public final class RegistryContent {
         return Collections.unmodifiableSortedMap(files.get(family));
     }
 
-    /** {@return l'empreinte des definitions et des groupes de collision (21.3 {@code definitions_hash})} */
+    /** {@return l'empreinte des definitions, des groupes de collision et des pneus (21.3 {@code definitions_hash})} */
     public long definitionsHash() {
-        return digest(EMPTY_DIGEST, Family.COLLISION_GROUPS, Family.DEFINITIONS);
+        return digest(EMPTY_DIGEST, Family.COLLISION_GROUPS, Family.TIRES, Family.DEFINITIONS);
     }
 
     /** {@return l'empreinte des matériaux physiques (21.3 {@code materials_hash})} */

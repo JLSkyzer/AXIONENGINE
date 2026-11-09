@@ -198,6 +198,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ax-vehicle"
+version = "1.0.0"
+dependencies = [
+ "ax-model",
+]
+
+[[package]]
 name = "axion-codegen"
 version = "1.0.0"
 dependencies = [

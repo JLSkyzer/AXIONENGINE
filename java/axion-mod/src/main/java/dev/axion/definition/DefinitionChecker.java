@@ -82,6 +82,9 @@ final class DefinitionChecker {
         if (checker.version == 2 && checker.issues.isEmpty()) {
             checker.checkJoints(root);
         }
+        if (checker.issues.isEmpty()) {
+            VehicleSpec.check(root, checker::invalid);
+        }
         return List.copyOf(checker.issues);
     }
 
@@ -112,6 +115,14 @@ final class DefinitionChecker {
             NameCategory category = reference.category();
             if (category == NameCategory.NODE || category == NameCategory.CLIP || category == NameCategory.BONE) {
                 found.add(new AssetReference(category, reference.name(), reference.path()));
+            }
+        }
+        // ADR-159 : une roue déclare son nom, qui est celui d'un node de l'asset.
+        if (root.get("wheels") instanceof JsonArray wheels) {
+            for (int i = 0; i < wheels.size(); i++) {
+                if (wheels.get(i) instanceof JsonObject wheel && string(wheel, "node") != null) {
+                    found.add(new AssetReference(NameCategory.NODE, string(wheel, "node"), "$.wheels[" + i + "].node"));
+                }
             }
         }
         return List.copyOf(found);

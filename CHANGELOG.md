@@ -10,6 +10,9 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- Vehicules (C-33, ADR-159, tranche 1) : les definitions compilent leurs roues,
+  motopropulseur, direction, freins et aero ; pneus declares sous
+  `data/<ns>/axion/tires/`, champ `axle` des roues. ABI 18, protocole 4.
 - Sieges (C-53, ADR-158, tranche 4) : le conducteur envoie ses entrees au
   serveur, qui les valide et les borne (`C2S_Input`, protocole 3) ; un clic
   sur un node joue ou bascule son animation, vue des autres joueurs. ABI 17.
