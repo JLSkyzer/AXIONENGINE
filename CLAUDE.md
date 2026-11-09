@@ -113,6 +113,12 @@ pas la matrice de plateformes) : vérification rapide avant de pousser, et secou
 si GitHub Actions est indisponible — la tranche se note alors « CI locale verte »,
 jamais « CI verte ».
 
+## Montrer l'avancée
+
+Dès qu'un rendu en jeu permet de montrer l'avancée, filmer une vidéo en 60 Hz et donner son chemin à
+Killian. Recette sans téléchargement dans `D:\BDC` : le client lit son framebuffer à chaque frame, un
+encodeur Windows assemble les PNG en MP4. Regarder des images extraites du MP4 avant de l'annoncer.
+
 ## Commits
 
 Le CDC impose de citer les identifiants concernés :
