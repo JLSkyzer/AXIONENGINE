@@ -1046,6 +1046,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param sleeping l'assembly dort
      * @param suspended le corps racine dort, endormi par la gestion d'activité ({@code SUSPENDED})
      */
+    /** {@return vrai si la physique a endormi l'assembly} */
+    boolean netSleeping() {
+        return sleeping;
+    }
+
     void updateNetState(float[] linear, float[] angular, boolean sleeping, boolean suspended) {
         // ADR-153 D4 : endormi par la gestion d'activité, le corps a des vitesses gelées que l'état
         // rapporte nulles ; la sauvegarde garde celles d'avant, que le réveil lui rendra.

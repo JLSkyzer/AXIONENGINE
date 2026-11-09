@@ -51,6 +51,12 @@ public final class SimCommandStream {
     /** Opcode {@code REMOVE_ASSEMBLY} (ADR-114). */
     public static final int OP_REMOVE_ASSEMBLY = 1;
 
+    /** Opcode de {@code APPLY_IMPULSE}. */
+    public static final int OP_APPLY_IMPULSE = 4;
+
+    /** Taille du payload de {@code APPLY_IMPULSE}, en octets. */
+    public static final int APPLY_IMPULSE_BYTES = 36;
+
     /** Taille du payload {@code RemoveAssembly} (un {@code Handle}), en octets. */
     public static final int REMOVE_ASSEMBLY_BYTES = 8;
 
@@ -724,6 +730,32 @@ public final class SimCommandStream {
         ByteBuffer command = beginCommand(OP_REMOVE_ASSEMBLY, REMOVE_ASSEMBLY_BYTES);
         command.putInt(handleIndex);
         command.putInt(handleGeneration);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code APPLY_IMPULSE} : une impulsion au centre de masse du corps racine
+     * d'une assembly, en repère monde.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param x composante x, en N·s
+     * @param y composante y, en N·s
+     * @param z composante z, en N·s
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream applyImpulse(int handleIndex, int handleGeneration, float x, float y, float z) {
+        ByteBuffer command = beginCommand(OP_APPLY_IMPULSE, APPLY_IMPULSE_BYTES);
+        command.putInt(handleIndex);
+        command.putInt(handleGeneration);
+        command.putFloat(x);
+        command.putFloat(y);
+        command.putFloat(z);
+        command.putFloat(0f);
+        command.putFloat(0f);
+        command.putFloat(0f);
+        command.putInt(0);
         commands.add(command.array());
         return this;
     }

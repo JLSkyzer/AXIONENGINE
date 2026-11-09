@@ -962,6 +962,15 @@ public final class NativeBridge {
     /** Overlay {@code limits} : bit 6 (ADR-151 D7). */
     public static final long OVERLAY_LIMITS = 1L << 6;
 
+    /** {@code raycasts} : le rayon de chaque roue (ADR-159). */
+    public static final long OVERLAY_RAYCASTS = 1L << 7;
+
+    /** {@code wheels} : le cercle de chaque roue (ADR-159). */
+    public static final long OVERLAY_WHEELS = 1L << 8;
+
+    /** {@code suspension} : de l'ancrage au centre de chaque roue (ADR-159). */
+    public static final long OVERLAY_SUSPENSION = 1L << 9;
+
     /** Overlay {@code world_tiles} : bit 30 (A1). */
     public static final long OVERLAY_WORLD_TILES = 1L << 30;
 

@@ -170,6 +170,7 @@ version = "1.0.0"
 dependencies = [
  "ax-math",
  "ax-model",
+ "ax-vehicle",
  "rapier3d",
 ]
 

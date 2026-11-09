@@ -223,6 +223,15 @@ impl CollisionGroups {
         self.filter
     }
 
+    /// Les mêmes groupes, sans heurter les proxies d'entités (R-1051).
+    #[must_use]
+    pub const fn without_entity_proxies(self) -> Self {
+        Self {
+            memberships: self.memberships,
+            filter: self.filter & !(1 << ReservedGroup::EntityProxy.bit()),
+        }
+    }
+
     /// Traduit en `InteractionGroups` de `rapier`, en mode « AND » — le test
     /// symétrique de §10.4.
     pub(crate) fn to_rapier(self) -> InteractionGroups {

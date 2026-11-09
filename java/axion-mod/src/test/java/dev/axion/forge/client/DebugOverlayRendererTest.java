@@ -321,7 +321,7 @@ class DebugOverlayRendererTest {
                 new Matrix4f(),
                 new Matrix3f(),
                 new Vector3f(),
-                new DebugGeometry.Range(1, 1, 7, DebugGeometry.FRAME_BODY, 0, new float[] {0, 0, 0, 1, 0, 0}));
+                new DebugGeometry.Range(1, 1, 13, DebugGeometry.FRAME_BODY, 0, new float[] {0, 0, 0, 1, 0, 0}));
         assertEquals(0, emis);
         assertEquals(0, out.termines);
     }

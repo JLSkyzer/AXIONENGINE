@@ -25,12 +25,14 @@ use crate::materials::MaterialTable;
 use crate::proxies::EntityProxy;
 use crate::query::AssemblyRayHit;
 use crate::scheduler::Stage;
+use crate::world::vehicles::{WheelMount, WheelState};
 use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::debug::overlay;
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, BodyState, PhysicsEvent, PhysicsMaterial, NO_MATERIAL};
+use ax_model::dm::vehicle::VehicleDesc;
 use std::collections::BTreeMap;
 
 /// Un corps d'une assembly à créer (ADR-151 D2) : son node racine dans l'asset, sa pose dans
@@ -427,6 +429,7 @@ impl SimDriver {
         sim.world
             .set_collision_groups(body, CollisionGroups::WORLD_TILE);
         self.tiles.insert((dimension, section), body);
+        self.wake_vehicles_at_tile(dimension, section);
         true
     }
 
@@ -496,6 +499,7 @@ impl SimDriver {
         sim.world
             .set_collision_groups(body, CollisionGroups::WORLD_TILE);
         self.tiles.insert((dimension, section), body);
+        self.wake_vehicles_at_tile(dimension, section);
         true
     }
 
@@ -507,7 +511,49 @@ impl SimDriver {
         if let Some(sim) = self.dimensions.get_mut(&dimension) {
             sim.world.remove_body(body);
         }
+        self.wake_vehicles_at_tile(dimension, section);
         true
+    }
+
+    /// ADR-159 D3 : une tuile qui change réveille les véhicules à sa portée.
+    fn wake_vehicles_at_tile(&mut self, dimension: u64, section: [i32; 3]) {
+        let Some(sim) = self.dimensions.get_mut(&dimension) else {
+            return;
+        };
+        let corner = DVec3::new(
+            f64::from(section[0]) * 16.0,
+            f64::from(section[1]) * 16.0,
+            f64::from(section[2]) * 16.0,
+        );
+        let min = sim.origin.to_local(corner);
+        let max = sim.origin.to_local(corner + DVec3::splat(16.0));
+        sim.world.wake_vehicles_near(min, max);
+    }
+
+    /// Fait d'une assembly tout juste créée un véhicule (ADR-159). `bodies` sont ceux que la création
+    /// a rendus ; sans effet si sa dimension n'existe pas.
+    pub fn attach_vehicle(
+        &mut self,
+        dimension: u64,
+        handle: Handle,
+        bodies: &[BodyId],
+        desc: VehicleDesc,
+        mounts: &[WheelMount],
+        groups: CollisionGroups,
+    ) {
+        if let Some(sim) = self.dimensions.get_mut(&dimension) {
+            sim.world
+                .attach_vehicle(handle, bodies, desc, mounts, groups);
+        }
+    }
+
+    /// L'état des roues d'un véhicule, ou `None` s'il n'y en a pas (ADR-159).
+    #[must_use]
+    pub fn vehicle_wheels(&self, dimension: u64, handle: Handle) -> Option<&[WheelState]> {
+        self.dimensions
+            .get(&dimension)?
+            .world
+            .vehicle_wheels(handle)
     }
 
     /// Nombre de tuiles de collision monde actives, toutes dimensions confondues.

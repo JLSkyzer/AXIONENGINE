@@ -91,6 +91,16 @@ minecraft {
             jvmArg '-XX:FlightRecorderOptions=stackdepth=256'
         }
 
+        filmVehicule {
+            // Le film de l'avancée (ADR-159) : un client qui joue sa scène, se filme et s'arrête ;
+            // tools/film/encoder.py assemble ses images en MP4.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('run-film')
+            property 'axion.film', 'vehicule'
+            jvmArgs '-Xmx4G'
+            args '--width', '1280', '--height', '656'
+        }
+
         renderTest {
             // Banc de rendu client (ADR-126) : un client qui joue son scénario, écrit son rapport
             // et s'arrête seul. Un dossier à part, dont le monde est effacé avant chaque passage ;
@@ -296,6 +306,16 @@ tasks.matching { it.name == 'runClient' }.configureEach {
         lignes << 'pauseOnLostFocus:false'
         options.parentFile.mkdirs()
         options.setText(lignes.collect { it + System.lineSeparator() }.join(''), 'UTF-8')
+    }
+}
+
+// Un film se tourne dans un monde neuf.
+tasks.matching { it.name == 'runFilmVehicule' }.configureEach {
+    standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
+    doFirst {
+        delete rootProject.file('run-film/saves/axion-film')
+        delete rootProject.file('run-film/axion-film')
+        delete rootProject.file('run-film/axion/world')
     }
 }
 

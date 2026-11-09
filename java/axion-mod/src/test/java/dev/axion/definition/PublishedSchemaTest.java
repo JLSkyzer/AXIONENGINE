@@ -276,8 +276,11 @@ class PublishedSchemaTest {
                 int colon = asset.indexOf(':');
                 String ns = asset.substring(0, colon);
                 String path = asset.substring(colon + 1);
-                return Files.isRegularFile(racine.resolve("assets").resolve(ns).resolve(path))
-                        || Files.isRegularFile(racine.resolve("data").resolve(ns).resolve(path));
+                // Le contenu de développement se charge avec les ressources du mod : il en voit les modèles.
+                Path livrees = racine.getParent().resolveSibling("main").resolve("resources");
+                return List.of(racine, livrees).stream().anyMatch(ressources ->
+                        Files.isRegularFile(ressources.resolve("assets").resolve(ns).resolve(path))
+                                || Files.isRegularFile(ressources.resolve("data").resolve(ns).resolve(path)));
             }, false, registre);
             try {
                 DefinitionRegistry.read(location, Files.readAllBytes(file), rules);

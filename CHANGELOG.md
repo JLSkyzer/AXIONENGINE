@@ -10,6 +10,8 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- Vehicules (C-33, ADR-159, tranche 2) : roues par rayon, suspension et pneus
+  dans le pas physique ; overlays `raycasts`, `wheels`, `suspension`.
 - Vehicules (C-33, ADR-159, tranche 1) : les definitions compilent leurs roues,
   motopropulseur, direction, freins et aero ; pneus declares sous
   `data/<ns>/axion/tires/`, champ `axle` des roues. ABI 18, protocole 4.

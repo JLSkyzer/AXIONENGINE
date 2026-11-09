@@ -1971,8 +1971,12 @@ public final class BancDeRendu {
         StringBuilder detail = new StringBuilder();
         boolean vert = true;
         for (dev.axion.debug.DebugOverlays.Overlay overlay : dev.axion.debug.DebugOverlays.Overlay.values()) {
+            // Ni joint ni véhicule dans cette scène ; les overlays des roues se testent à part (ADR-159).
             if (overlay == dev.axion.debug.DebugOverlays.Overlay.JOINTS
-                    || overlay == dev.axion.debug.DebugOverlays.Overlay.LIMITS) {
+                    || overlay == dev.axion.debug.DebugOverlays.Overlay.LIMITS
+                    || overlay == dev.axion.debug.DebugOverlays.Overlay.RAYCASTS
+                    || overlay == dev.axion.debug.DebugOverlays.Overlay.WHEELS
+                    || overlay == dev.axion.debug.DebugOverlays.Overlay.SUSPENSION) {
                 // Ils tracent des joints : jugés sur la charnière (ADR-151 D7).
                 continue;
             }

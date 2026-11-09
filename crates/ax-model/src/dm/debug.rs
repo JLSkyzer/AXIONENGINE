@@ -43,6 +43,12 @@ pub mod overlay {
     /// `limits` : la plage permise de l'axe libre de chaque joint limité, et sa position
     /// courante (ADR-151 D7).
     pub const LIMITS: u64 = 1 << 6;
+    /// `raycasts` : le rayon de chaque roue, de son ancrage à son contact ou à sa portée (ADR-159).
+    pub const RAYCASTS: u64 = 1 << 7;
+    /// `wheels` : le cercle de chaque roue, à sa position courante (ADR-159).
+    pub const WHEELS: u64 = 1 << 8;
+    /// `suspension` : de l'ancrage de chaque roue au centre de la roue (ADR-159).
+    pub const SUSPENSION: u64 = 1 << 9;
     /// `bones` : chaque os d'une instance animée, de son os parent à lui (ADR-155, tranche 6b).
     pub const BONES: u64 = 1 << 10;
     /// `nodes` : le repère de chaque node d'une instance animée (ADR-155, tranche 6b).
@@ -358,6 +364,9 @@ mod tests {
             (overlay::BODIES, 2),
             (overlay::CONTACTS, 3),
             (overlay::NORMALS, 4),
+            (overlay::RAYCASTS, 7),
+            (overlay::WHEELS, 8),
+            (overlay::SUSPENSION, 9),
             (overlay::WORLD_TILES, 30),
             (overlay::CENTER_OF_MASS, 31),
         ] {

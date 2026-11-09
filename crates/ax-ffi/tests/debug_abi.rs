@@ -280,14 +280,14 @@ fn t550_debug_porte_les_aretes_des_colliders_en_repere_du_corps() {
     assert!(vide.ranges.is_empty());
     assert_eq!((vide.flags, vide.omitted), (0, 0));
 
-    // Refus nets : masque vide, overlay non pris en charge (bones, rang 7), caméra non
+    // Refus nets : masque vide, overlay non pris en charge (sockets, rang 13), caméra non
     // finie, sortie nulle.
     assert_eq!(
         fill(ctx, 0, 0, u32::MAX).err(),
         Some(AXION_E_INVALID_BUFFER)
     );
     assert_eq!(
-        fill(ctx, 1 << 7, 0, u32::MAX).err(),
+        fill(ctx, 1 << 13, 0, u32::MAX).err(),
         Some(AXION_E_INVALID_BUFFER)
     );
     let mut size = 0u64;

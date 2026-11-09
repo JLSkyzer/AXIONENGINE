@@ -512,6 +512,9 @@ final class DebugOverlayRenderer {
             case NORMALS -> NORMAL_COLOR;
             case JOINTS -> jointColorOf(flags, JOINT_COLOR);
             case LIMITS -> jointColorOf(flags, LIMIT_COLOR);
+            case RAYCASTS -> CONTACT_COLOR;
+            case WHEELS -> TILE_COLOR;
+            case SUSPENSION -> NORMAL_COLOR;
             case BONES -> BONE_COLOR;
             case NODES -> AXIS_COLORS[0];
             case PIVOTS -> PIVOT_COLOR;
@@ -553,6 +556,9 @@ final class DebugOverlayRenderer {
                     + " rompu, ses ancrages écartés";
             case LIMITS -> "bleu : la plage permise d'un joint et le trait de sa position ; ambre : resserrée par"
                     + " un grippage";
+            case RAYCASTS -> "rouge : le rayon de chaque roue, de son ancrage à son contact ou à sa portée";
+            case WHEELS -> "gris : le cercle de chaque roue, à sa position courante";
+            case SUSPENSION -> "jaune : de l'ancrage de chaque roue à son centre";
             case BONES -> "or : chaque os d'une instance animée, de son os parent à lui, vu à travers la peau";
             case NODES -> "axes de chaque node d'une instance animée : rouge x, vert y, bleu z";
             case PIVOTS -> "rose : l'origine de chaque node animé, autour de laquelle il tourne";

@@ -13,6 +13,7 @@
 //! avertissement : la physique l'emporte (R-930).
 
 use ax_asset::a3d::decode_animations;
+use ax_math::Vec3;
 use ax_model::dm::animation::{animation_flags, BoneDesc};
 use ax_model::dm::commands::{AssemblyBodyEntry, MAX_ASSEMBLY_BODIES};
 use ax_model::dm::definition::{
@@ -23,7 +24,7 @@ use ax_model::dm::joints::JointDesc;
 use ax_model::dm::physics::{collider_flags, ColliderDesc, ColliderShape};
 use ax_model::dm::scene::{NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 use ax_model::dm::vehicle::VehicleDesc;
-use ax_physics::{AssemblyBody, AssemblyJoint, CollisionGroups};
+use ax_physics::{AssemblyBody, AssemblyJoint, CollisionGroups, WheelMount};
 
 use crate::assembly::{prepare, AnimationVerdict, ServerAnimation};
 
@@ -97,8 +98,7 @@ pub(crate) struct CompiledDefinition {
     pub anatomy: Vec<SummaryNode>,
     /// Pour chaque corps, le node porteur de chacun de ses colliders (ADR-158 D2).
     pub carriers: Vec<Vec<u32>>,
-    /// Le véhicule qu'elle déclare (ADR-159). Le pas physique le lira à la tranche 2.
-    #[allow(dead_code)]
+    /// Le véhicule qu'elle déclare (ADR-159).
     pub vehicle: Option<CompiledVehicle>,
 }
 
@@ -109,17 +109,6 @@ pub(crate) struct CompiledVehicle {
     pub desc: VehicleDesc,
     /// Le montage de chaque roue, dans l'ordre de `desc.wheels`.
     pub mounts: Vec<WheelMount>,
-}
-
-/// Où une roue est montée (ADR-159 D3).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct WheelMount {
-    /// Le node de la roue.
-    pub node: u32,
-    /// Le rang du corps qui la porte.
-    pub body: u32,
-    /// Le centre de la roue au repos, dans le repère de ce corps, en mètres.
-    pub center: [f32; 3],
 }
 
 /// Le refus d'une definition.
@@ -397,9 +386,8 @@ fn with_vehicle(
             ));
         }
         mounts.push(WheelMount {
-            node,
-            body: anatomy.body,
-            center: anatomy.translation,
+            body: anatomy.body as usize,
+            center: Vec3::from_array(anatomy.translation),
         });
     }
     if removed > 0 {
@@ -863,9 +851,8 @@ mod tests {
         assert_eq!(
             v.mounts,
             vec![WheelMount {
-                node: 1,
                 body: 0,
-                center: [2.0, 0.0, 0.0],
+                center: Vec3::new(2.0, 0.0, 0.0),
             }]
         );
         assert!(compilee.warnings.is_empty(), "rien de retiré");

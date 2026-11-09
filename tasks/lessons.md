@@ -2131,3 +2131,10 @@ La commande qui lisait le résultat de `local_ci.py` enchaînait aussi le commit
 
 **Règle : lire le verdict d'abord, dans un appel à part ; commiter dans l'appel suivant, seulement sur
 « CI locale : verte ».** Un code de sortie 0 du processus d'arrière-plan ne dit rien : c'est celui de `tail`.
+
+**[2026-11-09] | Le premier film d'un véhicule affichait « il roule sur la rampe » pendant qu'il restait à 0 m/s |
+Une scène filmée juge elle-même ce qu'elle prétend montrer, et le tournage échoue si cela n'a pas eu lieu.**
+
+Une légende écrite à l'avance ment dès que la scène tourne autrement. `FilmDuVehicule.jugement` exige que le
+véhicule atteigne le mur et que le véhicule garé tombe ; et les images extraites du MP4 se regardent avant d'annoncer
+le film. Cause ce jour-là : une pente de blocs est un escalier à marches plates pour un rayon vertical.

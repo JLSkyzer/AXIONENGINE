@@ -1461,6 +1461,12 @@ pub const AXION_OVERLAY_NORMALS: u64 = overlay::NORMALS;
 pub const AXION_OVERLAY_JOINTS: u64 = overlay::JOINTS;
 /// Overlay `limits` (ADR-151 D7) : bit 6.
 pub const AXION_OVERLAY_LIMITS: u64 = overlay::LIMITS;
+/// `raycasts` : le rayon de chaque roue (ADR-159).
+pub const AXION_OVERLAY_RAYCASTS: u64 = overlay::RAYCASTS;
+/// `wheels` : le cercle de chaque roue (ADR-159).
+pub const AXION_OVERLAY_WHEELS: u64 = overlay::WHEELS;
+/// `suspension` : de l'ancrage au centre de chaque roue (ADR-159).
+pub const AXION_OVERLAY_SUSPENSION: u64 = overlay::SUSPENSION;
 /// Overlay `world_tiles` (A1) : bit 30.
 pub const AXION_OVERLAY_WORLD_TILES: u64 = overlay::WORLD_TILES;
 /// Overlay `center_of_mass` (A1) : bit 31.
@@ -1480,6 +1486,9 @@ const SUPPORTED_OVERLAYS: u64 = AXION_OVERLAY_COLLIDERS
     | AXION_OVERLAY_NORMALS
     | AXION_OVERLAY_JOINTS
     | AXION_OVERLAY_LIMITS
+    | AXION_OVERLAY_RAYCASTS
+    | AXION_OVERLAY_WHEELS
+    | AXION_OVERLAY_SUSPENSION
     | AXION_OVERLAY_WORLD_TILES
     | AXION_OVERLAY_CENTER_OF_MASS;
 
@@ -2068,6 +2077,7 @@ fn apply_create_assembly(session: &mut context::Session, payload: &[u8]) {
     let assembly_mass = compiled.assembly_mass;
     let self_collision = compiled.self_collision;
     let animation = compiled.animation.clone();
+    let vehicle = compiled.vehicle.clone();
     let physics = session.physics();
     let Some(created) = physics.create_assembly_bodies(
         header.dimension,
@@ -2110,6 +2120,17 @@ fn apply_create_assembly(session: &mut context::Session, payload: &[u8]) {
             })
             .collect();
         physics.restore_assembly(header.dimension, header.handle, &created, &saved, &joints);
+    }
+    // ADR-159 : ses roues entrent au pas physique avec elle.
+    if let Some(vehicle) = vehicle {
+        physics.attach_vehicle(
+            header.dimension,
+            header.handle,
+            &created,
+            vehicle.desc,
+            &vehicle.mounts,
+            groups,
+        );
     }
     // 22.4, ADR-153 D4 : une assembly chargée naît endormie, ses vitesses gelées.
     if header.flags & create_assembly_flags::ASLEEP != 0 {

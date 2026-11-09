@@ -42,6 +42,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod joints;
+pub mod vehicles;
 
 /// Plafond par défaut d'événements par tick (§10.7, `physics.max_events_per_tick`).
 const DEFAULT_MAX_EVENTS_PER_TICK: usize = 4096;
@@ -313,6 +314,8 @@ pub struct PhysicsWorld {
     /// roulement (D6). Consultée par clé, jamais itérée (R-1020) : la propagation suit l'ordre
     /// des colliders de `rapier`.
     collider_materials: HashMap<ColliderHandle, ContactMaterial>,
+    /// Les véhicules, dans leur ordre d'apparition (ADR-159).
+    vehicles: Vec<vehicles::Vehicle>,
     /// Dernier état de sommeil connu de chaque corps dynamique, pour détecter les
     /// transitions SLEEP/WAKE. Consultée par clé, jamais itérée (R-1020).
     sleep_state: HashMap<BodyId, bool>,
@@ -539,6 +542,7 @@ impl PhysicsWorld {
             joints_restored: BTreeSet::new(),
             joints_reported_once: BTreeSet::new(),
             collider_materials: HashMap::new(),
+            vehicles: Vec::new(),
             sleep_state: HashMap::new(),
             events: Vec::new(),
             max_events_per_tick: DEFAULT_MAX_EVENTS_PER_TICK,
@@ -781,8 +785,16 @@ impl PhysicsWorld {
         while self.accumulator >= full_step {
             self.sim_clock += f64::from(dt);
 
-            // Étape 4 (C-40, R-660) : intégration physique — forces, intégration Rapier,
+            // Étape 3 (C-40, R-660 ; ADR-159) : rayons, suspension et pneus des véhicules. Puis
+            // étape 4 : intégration physique — forces, intégration Rapier,
             // puis garde-fous R-180/R-181 avant la récolte, pour lire un état sain.
+            if !self.vehicles.is_empty() {
+                let vehicles_start = Instant::now();
+                self.step_vehicles(dt);
+                self.stage_log
+                    .record(Stage::Vehicles, elapsed_nanos(vehicles_start));
+            }
+
             let integration_start = Instant::now();
             self.apply_aero_forces();
             self.update_automatic_ccd(dt);
@@ -2452,6 +2464,9 @@ impl PhysicsWorld {
         if mask & (overlay::JOINTS | overlay::LIMITS) != 0 {
             drafts.extend(self.joint_drafts(origin, camera, mask));
         }
+        if mask & (overlay::RAYCASTS | overlay::WHEELS | overlay::SUSPENSION) != 0 {
+            self.vehicle_drafts(origin, camera, mask, &mut drafts);
+        }
         drafts
     }
 
@@ -2901,6 +2916,7 @@ impl PhysicsWorld {
 
     /// Retire un corps ; renvoie vrai s'il existait.
     pub fn remove_body(&mut self, id: BodyId) -> bool {
+        self.forget_vehicle_body(id);
         self.aero.remove(&id);
         if let Some(identity) = self.identity.remove(&id) {
             self.forget_member(identity.assembly, id);

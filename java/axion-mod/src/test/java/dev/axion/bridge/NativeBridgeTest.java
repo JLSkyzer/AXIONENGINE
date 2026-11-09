@@ -767,7 +767,7 @@ class NativeBridgeTest {
         // Un overlay que cette version ne trace pas (bones, rang 7) est refusé net.
         assertEquals(
                 NativeBridge.E_INVALID_BUFFER,
-                debug.fetch(1L << 7, 0L, 0.0, 100.0, 0.0, 1024).code());
+                debug.fetch(1L << 13, 0L, 0.0, 100.0, 0.0, 1024).code());
 
         // Ticks sans autre commande que le joueur, déclaré chaque tick comme en jeu : le corps
         // tombe sous la gravité par défaut (−9,81 m/s²). Sans joueur, il dormirait (R-612).

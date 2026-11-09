@@ -33,6 +33,12 @@ public final class DebugOverlays {
         JOINTS("joints", NativeBridge.OVERLAY_JOINTS, Source.PHYSICS),
         /** La plage permise de l'axe libre de chaque joint limité, et sa position (ADR-151 D7). Rang 6. */
         LIMITS("limits", NativeBridge.OVERLAY_LIMITS, Source.PHYSICS),
+        /** Le rayon de chaque roue, de son ancrage à son contact (ADR-159). Rang 7. */
+        RAYCASTS("raycasts", NativeBridge.OVERLAY_RAYCASTS, Source.PHYSICS),
+        /** Le cercle de chaque roue, à sa position courante (ADR-159). Rang 8. */
+        WHEELS("wheels", NativeBridge.OVERLAY_WHEELS, Source.PHYSICS),
+        /** De l'ancrage au centre de chaque roue (ADR-159). Rang 9. */
+        SUSPENSION("suspension", NativeBridge.OVERLAY_SUSPENSION, Source.PHYSICS),
         /** Chaque os d'une instance animée, de son os parent à lui (ADR-155, tranche 6b). Rang 10. */
         BONES("bones", NativeBridge.OVERLAY_BONES, Source.RENDER),
         /** Le repère de chaque node d'une instance animée (ADR-155, tranche 6b). Rang 11. */

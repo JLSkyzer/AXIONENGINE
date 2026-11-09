@@ -72,22 +72,23 @@ class DebugOverlaysTest {
         assertEquals(NativeBridge.OVERLAY_BONES, Overlay.BONES.bit());
         assertEquals(NativeBridge.OVERLAY_NODES, Overlay.NODES.bit());
         assertEquals(NativeBridge.OVERLAY_PIVOTS, Overlay.PIVOTS.bit());
-        assertEquals(9, sourcedBy(DebugOverlays.Source.PHYSICS),
-                "les six overlays de M3, colliders, et joints et limits venus avec C-34 (ADR-151 D7), de la physique");
+        assertEquals(12, sourcedBy(DebugOverlays.Source.PHYSICS),
+                "les six overlays de M3, colliders, joints et limits de C-34 (ADR-151 D7), et les trois des roues (ADR-159)");
         assertEquals(List.of(Overlay.BONES, Overlay.NODES, Overlay.PIVOTS), java.util.Arrays.stream(Overlay.values())
                         .filter(overlay -> overlay.source() == DebugOverlays.Source.RENDER).toList(),
                 "bones, nodes et pivots, du contexte de rendu (ADR-155, tranche 6b)");
         assertEquals(List.of(Overlay.NETWORK, Overlay.LOD, Overlay.CULLING), java.util.Arrays.stream(Overlay.values())
                         .filter(overlay -> overlay.source() == DebugOverlays.Source.JAVA).toList(),
                 "network, lod et culling, en Java seul, venus en M4 avec C-51 et C-64 (ADR-146 §1, ADR-154)");
-        assertEquals(15, Overlay.values().length);
+        assertEquals(18, Overlay.values().length);
         for (Overlay overlay : Overlay.values()) {
             assertEquals(overlay, Overlay.ofRank(overlay.rank()), overlay.commandName());
         }
         assertEquals(Overlay.JOINTS, Overlay.ofRank(5));
         assertEquals(Overlay.LIMITS, Overlay.ofRank(6));
         assertEquals(Overlay.BONES, Overlay.ofRank(10));
-        assertEquals(null, Overlay.ofRank(7), "raycasts n'est pas implémenté");
+        assertEquals(Overlay.RAYCASTS, Overlay.ofRank(7));
+        assertEquals(null, Overlay.ofRank(13), "sockets n'est pas implémenté");
     }
 
     @Test
