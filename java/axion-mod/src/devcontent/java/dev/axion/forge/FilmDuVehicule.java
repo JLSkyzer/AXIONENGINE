@@ -88,11 +88,17 @@ public final class FilmDuVehicule {
     private static boolean pilierRetire;
     private static volatile AxionEntity vehiculeServeur;
     private static volatile boolean poussee;
+    private static volatile boolean capotDevant;
+    private static final java.util.List<String> MESURES_SERVEUR = new java.util.ArrayList<>();
+    private static final java.util.List<String> MESURES_CLIENT = new java.util.ArrayList<>();
     private static double zMax = Double.NEGATIVE_INFINITY;
     private static double hauteurGareInitiale = Double.NaN;
 
     /** La poussée imposée, en newtons. */
-    private static final float POUSSEE_N = 1500f;
+    private static final float POUSSEE_N = Float.parseFloat(System.getProperty("axion.film.poussee", "1500"));
+
+    /** La definition filmée. */
+    private static final String DEFINITION = System.getProperty("axion.film.definition", "axion:test/vehicule");
 
     private static long debutFilm;
     private static int imagesEcrites;
@@ -197,7 +203,10 @@ public final class FilmDuVehicule {
                 }
             }
             case VEHICULES -> {
-                garde();
+                // Une definition refusée ne viendra jamais : inutile de laisser le jeu tourner à vide.
+                if (System.nanoTime() - debutPhase > TimeUnit.SECONDS.toNanos(45)) {
+                    throw new IllegalStateException("definition " + DEFINITION + " indisponible : voir le journal");
+                }
                 minecraft.player.getAbilities().flying = true;
                 minecraft.getSingleplayerServer().execute(() -> poserLesVehicules(minecraft));
                 if (idVehicule >= 0 && minecraft.level.getEntity(idVehicule) != null
@@ -215,6 +224,7 @@ public final class FilmDuVehicule {
     private static void reglerLesOptions(Minecraft minecraft) {
         Options options = minecraft.options;
         options.hideGui = true;
+        options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER).set(0.0);
         options.pauseOnLostFocus = false;
         options.tutorialStep = TutorialSteps.NONE;
         options.onboardAccessibility = false;
@@ -284,7 +294,7 @@ public final class FilmDuVehicule {
 
     private static boolean poser(ServerLevel level, Vec3 ou, Consumer<AxionEntity> garder) {
         try {
-            garder.accept(AssembliesDeTest.poser(level, "axion:test/vehicule", ou, new float[] {0f, 0f, 0f, 1f}));
+            garder.accept(AssembliesDeTest.poser(level, DEFINITION, ou, new float[] {0f, 1f, 0f, 0f}));
             return true;
         } catch (IllegalStateException pasEncore) {
             return false;
@@ -309,6 +319,11 @@ public final class FilmDuVehicule {
     private static SimCommandStream pousser(long tick) {
         SimCommandStream commandes = new SimCommandStream();
         AxionEntity cible = vehiculeServeur;
+        if (cible != null) {
+            noter(MESURES_SERVEUR, cible);
+            // §6.5 : l'avant d'un véhicule est son -Z.
+            capotDevant = cible.bodyRotation().transform(new org.joml.Vector3f(0f, 0f, -1f)).z > 0.9f;
+        }
         if (poussee && cible != null) {
             commandes.applyImpulse(AssemblyRuntime.handleIndexOf(cible), AssemblyRuntime.GENERATION,
                     0f, 0f, POUSSEE_N * 0.05f);
@@ -337,7 +352,8 @@ public final class FilmDuVehicule {
         }
         Vec3 cible = vehicule.getPosition(partiel).add(0, 0.6, 0);
         zCamera = Double.isNaN(zCamera) ? cible.z : zCamera + (cible.z - zCamera) * 0.06;
-        Vec3 oeil = new Vec3(cible.x - 13.0, SOL + 6.0, zCamera - 9.0);
+        // Jamais derrière le mur du bout de piste.
+        Vec3 oeil = new Vec3(cible.x - 8.5, SOL + 2.4, Math.min(zCamera + 7.0, 104.0));
         joueur.getAbilities().flying = true;
         joueur.setDeltaMovement(Vec3.ZERO);
         double piedsY = oeil.y - joueur.getEyeHeight();
@@ -369,6 +385,9 @@ public final class FilmDuVehicule {
         }
         Entity vehicule = minecraft.level.getEntity(idVehicule);
         mesurer(vehicule);
+        if (vehicule instanceof AxionEntity assembly) {
+            noter(MESURES_CLIENT, assembly);
+        }
         zMax = Math.max(zMax, vehicule.getZ());
         Entity garee = minecraft.level.getEntity(idGare);
         if (Double.isNaN(hauteurGareInitiale) && secondes > 3.0 && garee != null) {
@@ -399,6 +418,15 @@ public final class FilmDuVehicule {
         ecriture.execute(() -> ecrire(dossierImages, premiere, repetitions, pixels, largeur, hauteur, legende, valeurs, temps));
     }
 
+    /** Hauteur et assiette, relevées telles quelles : ce qu'on voit doit pouvoir se comparer à ce qui est simulé. */
+    private static void noter(java.util.List<String> mesures, AxionEntity vehicule) {
+        org.joml.Vector3f avant = vehicule.bodyRotation().transform(new org.joml.Vector3f(0f, 0f, 1f));
+        synchronized (mesures) {
+            mesures.add(String.format(Locale.ROOT, "%.3f,%.4f,%.4f,%.5f",
+                    (System.nanoTime() - debutFilm) / 1e9, vehicule.getZ(), vehicule.getY() - SOL, avant.y));
+        }
+    }
+
     private static void mesurer(Entity vehicule) {
         Vec3 ici = vehicule.position();
         long maintenant = System.nanoTime();
@@ -417,7 +445,7 @@ public final class FilmDuVehicule {
             return "Chute de 10 blocs : quatre rayons, suspension, atterrissage";
         }
         if (secondes < 7.5) {
-            return "Poussée imposée de 1500 N (le moteur arrive à la tranche 3) : il roule droit";
+            return String.format(Locale.ROOT, "Poussée imposée de %.0f N (le moteur arrive après) : il roule droit", POUSSEE_N);
         }
         if (secondes < 16.0) {
             return "Sur sa lancée : bosses d'un huitième de bloc, puis le mur";
@@ -425,14 +453,15 @@ public final class FilmDuVehicule {
         return "Le pilier du véhicule garé disparaît : endormi, il se réveille et tombe";
     }
 
-    private static void ecrire(Path dossier, int premiere, int repetitions, int[] abgr, int largeur, int hauteur,
+    private static void ecrire(Path dossier, int premiere, int repetitions, int[] argb, int largeur, int hauteur,
             String legende, String valeurs, String temps) {
         try {
             BufferedImage image = new BufferedImage(LARGEUR, HAUTEUR_JEU + BANDEAU, BufferedImage.TYPE_INT_RGB);
-            int[] rgb = new int[abgr.length];
-            for (int i = 0; i < abgr.length; i++) {
-                int p = abgr[i];
-                rgb[i] = ((p & 0xFF) << 16) | (p & 0xFF00) | ((p >> 16) & 0xFF);
+            int[] rgb = new int[argb.length];
+            for (int i = 0; i < argb.length; i++) {
+                int p = argb[i];
+                // makePixelArray rend déjà de l'ARGB : l'échanger inversait rouge et bleu.
+                rgb[i] = p & 0xFFFFFF;
             }
             image.setRGB(0, 0, Math.min(largeur, LARGEUR), Math.min(hauteur, HAUTEUR_JEU), rgb, 0, largeur);
             Graphics2D g = image.createGraphics();
@@ -464,6 +493,9 @@ public final class FilmDuVehicule {
 
     /** {@return ce que le film prétend montrer et qui ne s'est pas produit, ou {@code null}} */
     private static String jugement(Minecraft minecraft) {
+        if (!capotDevant) {
+            return "le véhicule ne roule pas capot en avant";
+        }
         if (zMax < 100.0) {
             return "le véhicule n'a pas atteint le mur : z max " + zMax;
         }
@@ -508,6 +540,12 @@ public final class FilmDuVehicule {
             Files.writeString(dossier(minecraft).resolve("termine.json"), bilan, StandardCharsets.UTF_8);
         } catch (IOException faute2) {
             LOGGER.error("bilan non écrit", faute2);
+        }
+        try {
+            Files.write(dossier(minecraft).resolve("serveur.csv"), MESURES_SERVEUR, StandardCharsets.UTF_8);
+            Files.write(dossier(minecraft).resolve("client.csv"), MESURES_CLIENT, StandardCharsets.UTF_8);
+        } catch (IOException faute3) {
+            LOGGER.error("mesures non écrites", faute3);
         }
         LOGGER.info("[film] bilan : {}", bilan.trim());
         minecraft.stop();

@@ -1215,7 +1215,7 @@ pub unsafe extern "C" fn axion_asset_materials(
 /// `texture` d'un asset chargé (ajout à IF-06, ADR-122 §6) ; `out_size` reçoit
 /// leur nombre.
 ///
-/// Une texture par appel : une table de 128 textures de 4096² ne transite pas
+/// Une texture par appel : une table de 256 textures de 4096² ne transite pas
 /// d'un bloc. Les octets sont ceux du fichier, non décodés (R-532) — le natif
 /// n'en a lu que la signature et l'`IHDR`.
 ///

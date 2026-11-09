@@ -322,7 +322,7 @@ mod tests {
 
         let mut trop = bon.clone();
         trop[0..4].copy_from_slice(&129u32.to_le_bytes());
-        assert!(est_refusee(&trop), "plus de 128 textures");
+        assert!(est_refusee(&trop), "plus de MAX_TEXTURES textures");
 
         let mut reserve = bon.clone();
         reserve[12] = 1;

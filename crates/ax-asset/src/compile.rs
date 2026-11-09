@@ -21,8 +21,8 @@ use crate::a3d::{
 };
 use crate::collider::build_colliders;
 use crate::import::{
-    import_gltf, import_obj, import_stl, plain_default_material, ImportError, ImportLimits,
-    ImportedAsset, ImportedMaterial, SourceFormat,
+    heal_geometry, import_gltf, import_obj, import_stl, plain_default_material, ImportError,
+    ImportLimits, ImportedAsset, ImportedMaterial, SourceFormat,
 };
 use crate::optimize::{optimize, Aabb, LodTable};
 use crate::options::{AssetOptions, MaterialDefaults, NormalsMode, OptionsOrigin, UpAxis};
@@ -220,6 +220,15 @@ pub fn compile(
         reframe(&mut asset, authored.scale, authored.up_axis);
     }
     warnings.extend(oversized_textures(&asset, authored.max_texture_size));
+    // R-142, R-542, ADR-159 : ce qui ne se voit pas ne refuse pas un modèle, et l'auteur en est averti.
+    let healed = heal_geometry(&mut asset);
+    if healed.shifted + healed.removed > 0 {
+        warnings.push(format!(
+            "géométrie reprise : {} triangle(s) aux coordonnées de texture ramenées près de l'origine \
+             (dont {} resserré(s)), {} triangle(s) d'aire nulle retiré(s)",
+            healed.shifted, healed.squeezed, healed.removed
+        ));
+    }
     if authored.generate_normals == NormalsMode::Always {
         // Toutes les normales sont recalculées (ADR-135) : celles de l'auteur ne
         // sont pas jugées, C-23 les remplace.

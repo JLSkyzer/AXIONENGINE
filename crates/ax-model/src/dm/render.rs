@@ -173,7 +173,7 @@ pub fn material_transfer_len(
 /// que deux entrées partagent n'y figure qu'une fois —, une entrée `EMBEDDED` y
 /// a `data_offset = 0` et pour `data_size` la taille de son PNG. Ses octets
 /// passent par `axion_asset_texture`, **une texture par appel** : une table de
-/// 128 textures de 4096² ne transite pas d'un bloc.
+/// 256 textures de 4096² ne transite pas d'un bloc.
 ///
 /// Rend `None` si un dénombrement ne tient pas dans un `u32`, si une entrée
 /// désigne des octets hors de `data`, ou si sa provenance est inconnue — ce que

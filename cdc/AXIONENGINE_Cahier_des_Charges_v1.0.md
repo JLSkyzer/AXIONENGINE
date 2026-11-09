@@ -781,7 +781,7 @@ pub struct Vertex {
 
 - R-140 : format de vertex **unique et figé**. `region` et `def_w` remplacent 2 octets de la zone réservée de la révision 1 : la taille et l'alignement sont inchangés.
 - R-141 : `def_w` encode le poids de déformation par sommet (0 = totalement rigide, 255 = pleinement déformable). Il provient des vertex groups Blender (PARTIE 8) ou d'un calcul par défaut.
-- R-142 : UV ramenés dans `[0,1]` par l'optimizer ; hors `[-8,9]` avant normalisation = `E-3030`.
+- R-142 : UV ramenés dans `[0,1]` par l'optimizer. Un triangle hors `[-8,9]` avant normalisation est repris à l'import par un décalage entier pair, sans effet à l'écran, et l'auteur en est averti (ADR-159) ; seule une valeur non finie reste `E-3030`.
 - R-143 : plafonds par asset : 2 000 000 vertices, 6 000 000 indices (`E-3031`).
 
 ## 3.5 DM-05 : MaterialDesc (rendu)
@@ -1779,7 +1779,7 @@ glTF : parsing strict ; aucune extension inconnue interprétée ; aucun URI exte
 ```text
 STRUCTURE   acyclique, ordre topologique, profondeur <= 32
 LIMITES     nodes <= 4096, vertices <= 2e6, indices <= 6e6, bones <= 128,
-            matériaux <= 256, textures <= 128, animations <= 128, parts <= 64,
+            matériaux <= 256, textures <= 256, animations <= 128, parts <= 64,
             colliders <= 256, régions <= 32, liaisons structurelles <= 256
 GÉOMÉTRIE   indices dans les bornes, pas de NaN/Inf, aire de triangle > 1e-9,
             AABB finie et <= 512 blocs

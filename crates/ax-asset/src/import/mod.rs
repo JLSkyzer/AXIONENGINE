@@ -29,6 +29,7 @@ mod gltf_extras;
 mod gltf_material;
 mod gltf_refs;
 mod gltf_scenes;
+mod heal;
 mod material;
 mod obj;
 mod obj_material;
@@ -36,6 +37,7 @@ mod stl;
 
 pub use gltf::{import_gltf, GltfReport, ImageRef, SUPPORTED_EXTENSIONS};
 pub use gltf_extras::{NodeAnnotations, NodeRole};
+pub use heal::{heal_geometry, Healed};
 pub use obj::import_obj;
 pub use stl::import_stl;
 

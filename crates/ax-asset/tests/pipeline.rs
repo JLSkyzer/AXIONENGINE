@@ -5,7 +5,7 @@
 //! seul.
 
 use ax_asset::a3d::{A3dFile, A3dLimits, A3dWriter, SectionTag};
-use ax_asset::import::{import_obj, import_stl, ImportLimits, ImportedAsset};
+use ax_asset::import::{heal_geometry, import_obj, import_stl, ImportLimits, ImportedAsset};
 use ax_asset::validate::{validate, AssetView, NamedEntry};
 use ax_model::dm::material::MaterialDesc;
 
@@ -145,4 +145,106 @@ fn t226_un_obj_aux_coordonnees_hors_bornes_est_refuse_par_le_validateur() {
 
     assert!(!report.is_valid(), "coordonnée hors bornes acceptée");
     assert_eq!(report.code(), -3030);
+}
+
+/// Deux triangles qui partagent une arête, aux coordonnées `a`, `b`, `c`, `d`.
+fn deux_triangles(a: [f32; 2], b: [f32; 2], c: [f32; 2], d: [f32; 2]) -> String {
+    format!(
+        "v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nvt {} {}\nvt {} {}\nvt {} {}\nvt {} {}\nvn 0 0 1\n\
+         f 1/1/1 2/2/1 3/3/1\nf 1/1/1 3/3/1 4/4/1\n",
+        a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]
+    )
+}
+
+fn valide_apres_reprise(asset: &ax_asset::import::ImportedAsset) {
+    let names = [NamedEntry::new("node", "cube")];
+    let materials = table(asset);
+    let report = validate(&view(asset, &names, &materials), &asset.raw_uvs);
+    assert!(report.is_valid(), "{:?}", report.errors.first());
+}
+
+#[test]
+fn adr159_des_coordonnees_de_texture_lointaines_sont_ramenees_sans_changer_la_repetition() {
+    let source = deux_triangles([818.25, 0.5], [818.75, 0.5], [818.75, 0.75], [818.25, 0.75]);
+    let mut asset = import_obj(&source, &SOURCE_LIMITS, |_| None).expect("import");
+    let healed = heal_geometry(&mut asset);
+    assert_eq!(healed.shifted, 2);
+    assert_eq!(healed.squeezed, 0);
+    assert_eq!(healed.removed, 0);
+    valide_apres_reprise(&asset);
+    for uv in &asset.raw_uvs {
+        assert_eq!((uv[0] * 4.0).rem_euclid(8.0) % 1.0, 0.0, "{uv:?}");
+        // 818 est pair : le décalage laisse la même position dans la texture, en répétition comme en miroir.
+        assert!((0.0..2.0).contains(&uv[0]), "{uv:?}");
+    }
+    assert_eq!(
+        asset.vertices.len(),
+        4,
+        "des triangles qui s'accordent partagent leurs sommets"
+    );
+}
+
+#[test]
+fn adr159_deux_triangles_decales_differemment_ne_partagent_plus_leurs_sommets() {
+    // Le second triangle a son centre bien plus loin que le premier.
+    let source = deux_triangles([0.5, 0.5], [20.5, 0.5], [20.5, 0.75], [60.5, 0.75]);
+    let mut asset = import_obj(&source, &SOURCE_LIMITS, |_| None).expect("import");
+    let healed = heal_geometry(&mut asset);
+    assert_eq!(healed.shifted, 2);
+    valide_apres_reprise(&asset);
+    assert_eq!(asset.vertices.len(), 6);
+    assert_eq!(asset.indices.len(), 6);
+}
+
+#[test]
+fn adr159_un_triangle_trop_etendu_est_resserre_et_reste_valide() {
+    let source = deux_triangles([-100.0, 0.5], [100.0, 0.5], [100.0, 0.75], [-100.0, 0.75]);
+    let mut asset = import_obj(&source, &SOURCE_LIMITS, |_| None).expect("import");
+    let healed = heal_geometry(&mut asset);
+    assert_eq!(healed.squeezed, 2);
+    valide_apres_reprise(&asset);
+}
+
+#[test]
+fn r542_un_triangle_d_aire_nulle_est_retire() {
+    let source = "v 0 0 0\nv 1 0 0\nv 1 1 0\nv 2 0 0\nvt 0 0\nvn 0 0 1\n\
+                  f 1/1/1 2/1/1 3/1/1\nf 1/1/1 2/1/1 4/1/1\n";
+    let mut asset = import_obj(source, &SOURCE_LIMITS, |_| None).expect("import");
+    let healed = heal_geometry(&mut asset);
+    assert_eq!(healed.removed, 1);
+    assert_eq!(asset.indices.len(), 3);
+    valide_apres_reprise(&asset);
+}
+
+#[test]
+fn r870_un_modele_sain_n_est_pas_touche() {
+    let mut asset = import_obj(CUBE_OBJ, &SOURCE_LIMITS, |_| None).expect("import");
+    let avant = (
+        asset.vertices.clone(),
+        asset.indices.clone(),
+        asset.raw_uvs.clone(),
+    );
+    assert_eq!(
+        heal_geometry(&mut asset),
+        ax_asset::import::Healed::default()
+    );
+    assert_eq!(
+        avant,
+        (
+            asset.vertices.clone(),
+            asset.indices.clone(),
+            asset.raw_uvs.clone()
+        )
+    );
+}
+
+#[test]
+fn adr159_une_coordonnee_non_finie_reste_au_validateur() {
+    let source = deux_triangles([f32::NAN, 0.5], [50.0, 0.5], [0.0, 0.0], [0.0, 1.0]);
+    if let Ok(mut asset) = import_obj(&source, &SOURCE_LIMITS, |_| None) {
+        assert_eq!(
+            heal_geometry(&mut asset),
+            ax_asset::import::Healed::default()
+        );
+    }
 }

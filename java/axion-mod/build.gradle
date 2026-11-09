@@ -97,6 +97,10 @@ minecraft {
             parent minecraft.runs.client
             workingDirectory rootProject.file('run-film')
             property 'axion.film', 'vehicule'
+            // Le modèle local de Killian, hors du dépôt, s'il est là ; le buggy d'exemple sinon.
+            def local = file('src/devcontent/resources/data/axion/axion/definitions/local/charger.json').exists()
+            property 'axion.film.definition', local ? 'axion:local/charger' : 'axion:test/vehicule'
+            property 'axion.film.poussee', local ? '5000' : '1500'
             jvmArgs '-Xmx4G'
             args '--width', '1280', '--height', '656'
         }
@@ -309,10 +313,22 @@ tasks.matching { it.name == 'runClient' }.configureEach {
     }
 }
 
+// Un client lancé par un agent : ni question du narrateur au premier lancement, ni son.
+def clientSilencieux = { File dossier ->
+    def options = new File(dossier, 'options.txt')
+    def regles = [onboardAccessibility: 'false', narrator: '0', soundCategory_master: '0.0']
+    def lignes = options.exists() ? options.readLines('UTF-8').findAll { !regles.containsKey(it.split(':', 2)[0]) } : []
+    regles.each { cle, valeur -> lignes << "${cle}:${valeur}" }
+    dossier.mkdirs()
+    def fin = System.lineSeparator()
+    options.setText(lignes.join(fin) + fin, 'UTF-8')
+}
+
 // Un film se tourne dans un monde neuf.
 tasks.matching { it.name == 'runFilmVehicule' }.configureEach {
     standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
     doFirst {
+        clientSilencieux(rootProject.file('run-film'))
         delete rootProject.file('run-film/saves/axion-film')
         delete rootProject.file('run-film/axion-film')
         delete rootProject.file('run-film/axion/world')
@@ -343,6 +359,7 @@ tasks.matching { it.name == 'runFilmVehicule' }.configureEach {
                 fml.parentFile.mkdirs()
                 fml.setText(lignes.collect { it + System.lineSeparator() }.join(''), 'UTF-8')
             }
+            clientSilencieux(rootProject.file(dossier))
             delete rootProject.file("${dossier}/saves/axion-rendertest")
             delete rootProject.file("${dossier}/axion-rendertest")
             // Le journal latéral suit le monde effacé (22.5.2).
