@@ -3646,7 +3646,7 @@ T-980..T-984.
 
 - [ ] **Véhicules (C-33)** — [ADR-159](../docs/decisions/ADR-159.md) proposé le 2026-11-09 : modèle pur dans `ax-vehicle`,
       rayons au sous-pas, ABI 18, réplication (descripteur 4), monde natif au client pour la prédiction (protocole 4),
-      six tranches. **En attente de Killian (Q1 à Q4) ; aucun code avant son acceptation.**
+      six tranches. Q1 à Q4 tranchées par Killian le 2026-11-09, comme proposé. **Aucun code avant son feu vert.**
 
 ---
 
