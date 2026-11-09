@@ -3644,6 +3644,10 @@ T-980..T-984.
       - [x] Tranche 4 (2026-11-09) : `C2S_Input` (protocole 3), interactions au clic, ABI 17 (durée et boucle des
             clips au résumé) ; T-442, T-443 en GameTest, « ADR-158 D4 » au banc.
 
+- [ ] **Véhicules (C-33)** — [ADR-159](../docs/decisions/ADR-159.md) proposé le 2026-11-09 : modèle pur dans `ax-vehicle`,
+      rayons au sous-pas, ABI 18, réplication (descripteur 4), monde natif au client pour la prédiction (protocole 4),
+      six tranches. **En attente de Killian (Q1 à Q4) ; aucun code avant son acceptation.**
+
 ---
 
 ## Jalons suivants
