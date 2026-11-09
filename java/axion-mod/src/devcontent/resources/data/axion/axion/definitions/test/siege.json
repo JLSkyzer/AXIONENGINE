@@ -9,6 +9,11 @@
       "role": "driver",
       "exit_offsets": [
         [
+          2.0,
+          0.0,
+          0.0
+        ],
+        [
           -1.0,
           0.0,
           0.0
@@ -21,7 +26,19 @@
     },
     {
       "name": "passager",
-      "node": "siege_d"
+      "node": "siege_d",
+      "exit_offsets": [
+        [
+          0.0,
+          0.0,
+          1.5
+        ],
+        [
+          0.0,
+          0.0,
+          -1.5
+        ]
+      ]
     }
   ],
   "interaction": [

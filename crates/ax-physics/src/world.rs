@@ -3067,6 +3067,28 @@ impl PhysicsWorld {
         best
     }
 
+    /// Dit si une boîte alignée sur les axes touche un collider solide d'une assembly (ADR-158 D5). Le
+    /// terrain et les entités vanilla, qui sont aussi des corps du monde, ne comptent pas : Minecraft
+    /// juge ceux-là. Faux si la boîte n'est pas une forme valide.
+    #[must_use]
+    pub fn box_touches_assembly(&self, center: Vec3, half_extents: [f32; 3]) -> bool {
+        let Ok(shared) = shared_shape_of(&Shape::Cuboid { half_extents }) else {
+            return false;
+        };
+        let filter = SpatialFilter::new();
+        let rfilter = to_rapier_filter(&filter);
+        let pipeline = self.query_pipeline(rfilter);
+        let pose = RapierPose::from_parts(center, Quat::IDENTITY);
+        let touched = pipeline
+            .intersect_shape(pose, shared.as_ref())
+            .any(|(_, collider)| {
+                collider
+                    .parent()
+                    .is_some_and(|parent| self.assembly_of(parent).is_some())
+            });
+        touched
+    }
+
     /// Balaye une forme le long de `direction` et rend le premier corps heurté (C-39).
     ///
     /// `max_distance` borne la distance parcourue, en blocs. `None` si aucun impact, si la

@@ -14,6 +14,9 @@ public final class SeatOccupancy {
     /** Un siège libre. */
     public static final int FREE = -1;
 
+    /** Un siège perdu : son node est détaché, ou sa part détruite (R-712). Plus personne ne s'y assoit. */
+    public static final int LOST = -2;
+
     private final int[] occupants;
 
     /**
@@ -27,7 +30,8 @@ public final class SeatOccupancy {
     /**
      * {@return une table relue de sa forme transportée} Les entrées au-delà de {@code seats} sont
      * ignorées, celles qui manquent sont libres, et un occupant présent deux fois ne garde que son
-     * premier siège : une table reçue ne peut pas rompre la règle d'un siège par occupant.
+     * premier siège : une table reçue ne peut pas rompre la règle d'un siège par occupant. Plusieurs
+     * sièges peuvent être perdus.
      *
      * @param seats nombre de sièges de la definition
      * @param occupants l'occupant de chaque siège, {@link #FREE} sans
@@ -36,7 +40,7 @@ public final class SeatOccupancy {
         SeatOccupancy table = new SeatOccupancy(seats);
         for (int seat = 0; seat < table.occupants.length && seat < occupants.length; seat++) {
             int occupant = occupants[seat];
-            if (occupant != FREE && table.seatOf(occupant) == FREE) {
+            if (occupant == LOST || (occupant != FREE && table.seatOf(occupant) == FREE)) {
                 table.occupants[seat] = occupant;
             }
         }
@@ -84,7 +88,7 @@ public final class SeatOccupancy {
      * @return vrai si elle y est assise ; faux si le siège est hors de la table ou pris par un autre
      */
     public boolean sit(int entity, int seat) {
-        if (entity == FREE || seat < 0 || seat >= occupants.length) {
+        if (entity == FREE || entity == LOST || seat < 0 || seat >= occupants.length) {
             return false;
         }
         if (occupants[seat] == entity) {
@@ -110,6 +114,17 @@ public final class SeatOccupancy {
             occupants[seat] = FREE;
         }
         return seat;
+    }
+
+    /**
+     * Perd un siège : il ne reçoit plus personne. Son occupant, s'il en a un, est à faire descendre avant.
+     *
+     * @param seat rang du siège
+     */
+    public void lose(int seat) {
+        if (seat >= 0 && seat < occupants.length) {
+            occupants[seat] = LOST;
+        }
     }
 
     /** {@return l'occupant de chaque siège, {@link #FREE} sans : la forme transportée, copie} */

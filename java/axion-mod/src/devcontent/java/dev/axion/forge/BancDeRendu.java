@@ -369,6 +369,12 @@ public final class BancDeRendu {
     private static Entity passager;
     private static boolean passagerAssis;
     private static Vec3 passagerServeur;
+
+    /** ADR-158 D5 : la sortie attendue du joueur, et sa pose d'avant, à lui rendre. */
+    private static Vec3 sortieAttendue;
+    private static Vec3 joueurAvant;
+    private static float lacetAvant;
+    private static float tangageAvant;
     private static CapturesDuBanc.Capture fondCharniere;
     private static PosesCharniere posesCharniere;
 
@@ -776,6 +782,31 @@ public final class BancDeRendu {
             pendant("le siège au repos", 40);
             serveur("relever le passager au serveur", s -> passagerServeur = passager.position());
             une("juger ADR-158 D3", BancDeRendu::jugerSiegeClient);
+            // ADR-158 D5 : le vrai joueur s'assoit, et descend au sneak : c'est son client qui tient sa position,
+            // et elle doit être la sortie que le serveur a choisie.
+            serveur("asseoir le joueur du banc", s -> {
+                passager.discard();
+                net.minecraft.server.level.ServerPlayer joueur = s.getPlayerList().getPlayers().get(0);
+                joueurAvant = joueur.position();
+                lacetAvant = joueur.getYRot();
+                tangageAvant = joueur.getXRot();
+                joueur.setGameMode(GameType.CREATIVE);
+                dev.axion.seat.SeatPlacement.Pose pose = siege.seatPose(1);
+                sortieAttendue = new Vec3(pose.x(), pose.y(), pose.z() + 1.5);
+                passagerAssis = siege.sit(joueur, 1);
+            });
+            jusqua("le joueur assis chez le client", 60, mc -> mc.player.getVehicle() instanceof AxionEntity);
+            une("presser sneak", mc -> mc.options.keyShift.setDown(true));
+            jusqua("le joueur descendu chez le client", 60, mc -> mc.player.getVehicle() == null);
+            une("relâcher sneak", mc -> mc.options.keyShift.setDown(false));
+            pendant("le joueur posé", 20);
+            une("juger ADR-158 D5", BancDeRendu::jugerSortieClient);
+            serveur("rendre le joueur du banc à sa place", s -> {
+                net.minecraft.server.level.ServerPlayer joueur = s.getPlayerList().getPlayers().get(0);
+                joueur.setGameMode(GameType.SPECTATOR);
+                joueur.teleportTo(s.overworld(), joueurAvant.x, joueurAvant.y, joueurAvant.z, lacetAvant, tangageAvant);
+            });
+            pendant("le joueur revenu", 20);
             serveur("retirer le siège", s -> {
                 passager.discard();
                 siege.discard();
@@ -2078,6 +2109,14 @@ public final class BancDeRendu {
     private static int passagerChezLeClient(Minecraft minecraft) {
         Entity auClient = minecraft.level.getEntity(passager.getId());
         return auClient != null && auClient.getVehicle() instanceof AxionEntity vehicule ? vehicule.seatOf(auClient) : -1;
+    }
+
+    private static void jugerSortieClient(Minecraft minecraft) {
+        double horizontal = Math.hypot(minecraft.player.getX() - sortieAttendue.x, minecraft.player.getZ() - sortieAttendue.z);
+        boolean vert = passagerAssis && horizontal < 0.05;
+        RAPPORT.noter("ADR-158 D5", vert, String.format(Locale.ROOT,
+                "joueur assis : %s ; descendu au sneak, son client est à %.3f bloc, à l'horizontale, de la sortie que le"
+                        + " serveur a choisie (au plus 0,05)", passagerAssis, horizontal));
     }
 
     private static void jugerSiegeClient(Minecraft minecraft) {

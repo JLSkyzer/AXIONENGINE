@@ -3638,7 +3638,8 @@ T-980..T-984.
             (écart à D3, consigné).
       - [x] Tranche 2b (2026-11-05) : montée au clic, position imposée au serveur et au client, occupation
             synchronisée, siège conservé ; T-440, T-444 en GameTest, « ADR-158 D3 » au banc.
-      - [ ] Tranche 3 : descente et éjection sûres (T-441, T-957).
+      - [x] Tranche 3 (2026-11-09) : descente et éjection sûres, ABI 16 ; T-441, T-957, suppression et
+            déconnexion réelle en GameTest, « ADR-158 D5 » au banc. `loseNode` attend son producteur (M6, C-48).
       - [ ] Tranche 4 : `C2S_Input` (protocole 3) et interactions au clic (T-442, T-443).
 
 ---

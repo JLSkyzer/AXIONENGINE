@@ -563,6 +563,21 @@ impl SimDriver {
         Some((hit, sim.origin.to_world(hit.point)))
     }
 
+    /// Dit si la boîte `min..max`, en coordonnées monde absolues, touche un collider solide d'une
+    /// assembly de la dimension (ADR-158 D5). Faux pour une dimension sans simulation. Lecture seule
+    /// (R-650).
+    #[must_use]
+    pub fn box_touches_assembly(&self, dimension: u64, min: DVec3, max: DVec3) -> bool {
+        let Some(sim) = self.dimensions.get(&dimension) else {
+            return false;
+        };
+        let half = (max - min) * 0.5;
+        #[allow(clippy::cast_possible_truncation)] // une demi-largeur de boîte d'entité, en blocs
+        let half_extents = [half.x as f32, half.y as f32, half.z as f32];
+        sim.world
+            .box_touches_assembly(sim.origin.to_local(min + half), half_extents)
+    }
+
     /// Dit si une assembly existe.
     #[must_use]
     pub fn has_assembly(&self, handle: Handle) -> bool {

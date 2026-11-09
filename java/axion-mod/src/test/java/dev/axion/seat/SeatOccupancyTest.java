@@ -49,6 +49,20 @@ class SeatOccupancyTest {
     }
 
     @Test
+    @DisplayName("R-712 : un siège perdu ne reçoit plus personne, et se transporte tel quel")
+    void perdu() {
+        SeatOccupancy table = new SeatOccupancy(3);
+        table.lose(0);
+        table.lose(2);
+        table.lose(7);
+        assertFalse(table.sit(4, 0), "perdu");
+        assertEquals(1, table.firstFree(), "le premier libre l'évite");
+        assertFalse(table.sit(SeatOccupancy.LOST, 1), "un siège perdu n'est pas un occupant");
+        assertEquals(SeatOccupancy.FREE, table.seatOf(4));
+        assertArrayEquals(new int[] {-2, -1, -2}, SeatOccupancy.of(3, table.toArray()).toArray(), "plusieurs sièges perdus");
+    }
+
+    @Test
     @DisplayName("ADR-158 D3 : la table relue d'une forme transportée garde la règle d'un siège par occupant")
     void forme() {
         SeatOccupancy table = new SeatOccupancy(3);

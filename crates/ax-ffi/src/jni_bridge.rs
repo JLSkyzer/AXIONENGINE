@@ -40,12 +40,13 @@ use crate::abi::{
     axion_abi_version, axion_assembly_raycast, axion_asset_cancel, axion_asset_compile,
     axion_asset_diagnostics, axion_asset_geometry, axion_asset_load, axion_asset_materials,
     axion_asset_poll, axion_asset_texture, axion_asset_unload, axion_asset_warnings,
-    axion_buffer_acquire, axion_buffer_release, axion_debug_fill, axion_definition_compile,
-    axion_definition_remove, axion_det_profile, axion_init, axion_last_error, axion_metrics_export,
-    axion_net_compress, axion_net_decompress, axion_render_debug, axion_render_prepare,
-    axion_render_release, axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit,
-    AxionBufferInfo, AxionCollectResult, AxionDetProfile, AxionRenderResult,
-    AXION_E_INVALID_BUFFER, AXION_OK, AXION_RAY_INPUT, AXION_RAY_OUTPUT,
+    axion_box_touches_assembly, axion_buffer_acquire, axion_buffer_release, axion_debug_fill,
+    axion_definition_compile, axion_definition_remove, axion_det_profile, axion_init,
+    axion_last_error, axion_metrics_export, axion_net_compress, axion_net_decompress,
+    axion_render_debug, axion_render_prepare, axion_render_release, axion_shutdown,
+    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
+    AxionDetProfile, AxionRenderResult, AXION_BOX_INPUT, AXION_E_INVALID_BUFFER, AXION_OK,
+    AXION_RAY_INPUT, AXION_RAY_OUTPUT,
 };
 use ax_model::dm::handle::Handle;
 
@@ -200,6 +201,11 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "assetWarnings".into(),
             sig: "(JII[J)I".into(),
             fn_ptr: jni_asset_warnings as *mut c_void,
+        },
+        NativeMethod {
+            name: "boxTouchesAssembly".into(),
+            sig: "(JJ[D)I".into(),
+            fn_ptr: jni_box_touches_assembly as *mut c_void,
         },
         NativeMethod {
             name: "assemblyRaycast".into(),
@@ -978,6 +984,45 @@ extern "system" fn jni_asset_warnings(
     })
 }
 
+/// `NativeBridge.boxTouchesAssembly(long, long, double[])` (ADR-158 D5).
+///
+/// Lit la boîte d'`aabb` — coin minimal, coin maximal — et rend `1` si elle touche un collider solide
+/// d'une assembly, `0` sinon, ou un code d'erreur négatif.
+extern "system" fn jni_box_touches_assembly(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    dimension: jlong,
+    aabb: JDoubleArray,
+) -> jint {
+    if aabb.is_null() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    match env.get_array_length(&aabb) {
+        Ok(length) if usize::try_from(length).is_ok_and(|length| length >= AXION_BOX_INPUT) => {}
+        _ => return AXION_E_INVALID_BUFFER,
+    }
+    let mut input = [0.0f64; AXION_BOX_INPUT];
+    if env.get_double_array_region(&aabb, 0, &mut input).is_err() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    let mut touched = 0u32;
+    // SAFETY: `input` est un tableau local de la taille lue, `touched` une variable locale.
+    let code = unsafe {
+        axion_box_touches_assembly(
+            ctx as u64,
+            dimension as u64,
+            input.as_ptr(),
+            &raw mut touched,
+        )
+    };
+    if code == AXION_OK {
+        touched as jint
+    } else {
+        code
+    }
+}
+
 /// `NativeBridge.assemblyRaycast(long, int, int, double[], double[])` (ADR-158 D2).
 ///
 /// Lit le rayon de `ray` — origine monde, direction, portée — et écrit l'impact dans `out` :
@@ -1184,6 +1229,7 @@ mod tests {
             ("definitionCompile", "(JJIIJ[J)I"),
             ("definitionRemove", "(JJ)I"),
             ("assemblyRaycast", "(JII[D[D)I"),
+            ("boxTouchesAssembly", "(JJ[D)I"),
             ("debugFill", "(JJJDDDI[J)I"),
             ("renderDebug", "(JJI[J)I"),
         ];

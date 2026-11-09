@@ -2746,3 +2746,55 @@ fn adr158_a_distance_egale_le_premier_collider_l_emporte() {
         .expect("touché");
     assert_eq!(hit.collider, 0, "l'ordre des colliders départage");
 }
+
+// --- ADR-158 D5 : une boîte libre, vue des colliders des assemblies ------------------------
+
+#[test]
+fn adr158_une_boite_ne_compte_que_les_colliders_solides_des_assemblies() {
+    let mut world = PhysicsWorld::new(config());
+    let voiture = world
+        .add_assembly(
+            BodyKind::Static,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            &[cube_de_densite_1000(0.0)],
+        )
+        .expect("une boîte est valide");
+    world.set_body_identity(voiture, Handle::new(4, 1), 0);
+    // Le terrain et les entités vanilla sont des corps sans assembly.
+    world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(5.0, 0.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [0.5; 3],
+            },
+        )
+        .expect("un sol est valide");
+    world.advance(1.0 / 60.0);
+
+    assert!(world.box_touches_assembly(Vec3::ZERO, [0.2; 3]), "dedans");
+    assert!(
+        world.box_touches_assembly(Vec3::new(0.6, 0.0, 0.0), [0.2; 3]),
+        "à cheval sur son flanc"
+    );
+    assert!(
+        !world.box_touches_assembly(Vec3::new(1.0, 0.0, 0.0), [0.2; 3]),
+        "à côté"
+    );
+    assert!(
+        !world.box_touches_assembly(Vec3::new(5.0, 0.0, 0.0), [0.2; 3]),
+        "un corps sans assembly : c'est Minecraft qui juge le terrain"
+    );
+    assert!(
+        !world.box_touches_assembly(Vec3::ZERO, [-1.0; 3]),
+        "une boîte invalide ne touche rien"
+    );
+
+    world.set_sensor(voiture, true);
+    assert!(
+        !world.box_touches_assembly(Vec3::ZERO, [0.2; 3]),
+        "un capteur n'occupe pas la place"
+    );
+}

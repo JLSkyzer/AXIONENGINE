@@ -45,7 +45,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 15;
+    public static final int EXPECTED_ABI_VERSION = 16;
 
     /** Succès. */
     public static final int OK = 0;
@@ -161,6 +161,8 @@ public final class NativeBridge {
     static native int definitionRemove(long ctx, long definition);
 
     static native int assemblyRaycast(long ctx, int index, int generation, double[] ray, double[] out);
+
+    static native int boxTouchesAssembly(long ctx, long dimension, double[] box);
 
     static native int renderPrepare(long ctx, byte[] camera, float partialTick, long budgetNs, long[] out);
 
@@ -826,6 +828,25 @@ public final class NativeBridge {
         }
         CROSSINGS.increment();
         return assemblyRaycast(ctx, index, generation, ray, out);
+    }
+
+    /** Valeurs que lit {@link #touchesAssembly} : le coin minimal (3), puis le maximal (3). */
+    public static final int BOX_INPUT = 6;
+
+    /**
+     * Dit si une boîte alignée sur les axes touche un collider solide d'une assembly (ADR-158 D5).
+     *
+     * @param ctx jeton de contexte
+     * @param dimension dimension
+     * @param box {@link #BOX_INPUT} valeurs, en coordonnées monde absolues
+     * @return 1 si elle en touche un, 0 sinon ; {@link #E_INVALID_BUFFER} pour une boîte vide ou non finie
+     */
+    public static int touchesAssembly(long ctx, long dimension, double[] box) {
+        if (box == null || box.length < BOX_INPUT) {
+            throw new IllegalArgumentException("une boîte compte " + BOX_INPUT + " valeurs");
+        }
+        CROSSINGS.increment();
+        return boxTouchesAssembly(ctx, dimension, box);
     }
 
     // --- Cycle de rendu (IF-05, ADR-154) ------------------------------------

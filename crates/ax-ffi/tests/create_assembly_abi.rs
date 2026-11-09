@@ -20,10 +20,10 @@ use ax_model::dm::joints::{joint_kind, JointDesc, JointState};
 use ax_model::dm::physics::{BodyDesc, ColliderDesc, ColliderShape};
 use ax_model::dm::scene::{name_hash, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 use axion_native::abi::{
-    axion_assembly_raycast, axion_buffer_acquire, axion_buffer_release, axion_init,
-    axion_metrics_export, axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit,
-    AxionBufferInfo, AxionCollectResult, AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE, AXION_OK,
-    AXION_RAY_INPUT, AXION_RAY_OUTPUT, AXION_SIDE_SERVER,
+    axion_assembly_raycast, axion_box_touches_assembly, axion_buffer_acquire, axion_buffer_release,
+    axion_init, axion_metrics_export, axion_shutdown, axion_sim_cancel, axion_sim_collect,
+    axion_sim_submit, AxionBufferInfo, AxionCollectResult, AXION_E_INVALID_BUFFER,
+    AXION_E_INVALID_HANDLE, AXION_OK, AXION_RAY_INPUT, AXION_RAY_OUTPUT, AXION_SIDE_SERVER,
 };
 use common::{creation, Modele};
 
@@ -502,6 +502,58 @@ fn adr158_un_rayon_vise_les_colliders_d_une_assembly_par_l_abi() {
         let mut out = [0.0; AXION_RAY_OUTPUT];
         let code =
             unsafe { axion_assembly_raycast(ctx, assembly, std::ptr::null(), out.as_mut_ptr()) };
+        assert_eq!(code, AXION_E_INVALID_BUFFER);
+    });
+    assert!(vu, "la sonde a tourné");
+}
+
+/// Demande par l'ABI si la boîte touche une assembly : le code, et la réponse.
+fn boite(ctx: u64, dimension: u64, aabb: [f64; 6]) -> (i32, u32) {
+    let mut out = u32::MAX;
+    let code = unsafe { axion_box_touches_assembly(ctx, dimension, aabb.as_ptr(), &raw mut out) };
+    (code, out)
+}
+
+#[test]
+fn adr158_une_boite_touche_les_colliders_d_une_assembly_et_rien_d_autre() {
+    let cas = command_stream(BodyDesc::undeclared(2));
+    let mut vu = false;
+    etats_et_joints_sonde(&cas, |ctx| {
+        vu = true;
+        // La boîte de 1 bloc au spawn (5, 10, −2), qu'un tick de chute n'a presque pas bougée.
+        assert_eq!(
+            boite(ctx, 0, [4.8, 9.8, -2.2, 5.2, 10.2, -1.8]),
+            (AXION_OK, 1),
+            "dedans"
+        );
+        assert_eq!(
+            boite(ctx, 0, [5.4, 9.8, -2.2, 6.0, 10.2, -1.8]),
+            (AXION_OK, 1),
+            "à cheval sur son flanc"
+        );
+        assert_eq!(
+            boite(ctx, 0, [5.6, 9.8, -2.2, 6.0, 10.2, -1.8]),
+            (AXION_OK, 0),
+            "à côté"
+        );
+        assert_eq!(
+            boite(ctx, 99, [4.8, 9.8, -2.2, 5.2, 10.2, -1.8]),
+            (AXION_OK, 0),
+            "une dimension sans simulation"
+        );
+        for fautive in [
+            [f64::NAN, 9.8, -2.2, 5.2, 10.2, -1.8],
+            [5.2, 9.8, -2.2, 4.8, 10.2, -1.8],
+            [4.8, 9.8, -2.2, 4.8, 10.2, -1.8],
+        ] {
+            assert_eq!(
+                boite(ctx, 0, fautive).0,
+                AXION_E_INVALID_BUFFER,
+                "{fautive:?}"
+            );
+        }
+        let code =
+            unsafe { axion_box_touches_assembly(ctx, 0, std::ptr::null(), std::ptr::null_mut()) };
         assert_eq!(code, AXION_E_INVALID_BUFFER);
     });
     assert!(vu, "la sonde a tourné");

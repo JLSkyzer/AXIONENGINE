@@ -63,7 +63,7 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 15;
+pub const AXION_ABI_VERSION: u32 = 16;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -2204,6 +2204,52 @@ pub unsafe extern "C" fn axion_assembly_raycast(
         // SAFETY: l'appelant garantit AXION_RAY_OUTPUT valeurs accessibles en écriture.
         unsafe { std::ptr::copy_nonoverlapping(values.as_ptr(), out, AXION_RAY_OUTPUT) };
         AXION_OK
+    })
+}
+
+/// Nombre de valeurs que lit `axion_box_touches_assembly` : le coin minimal (3) puis le maximal (3).
+pub const AXION_BOX_INPUT: usize = 6;
+
+/// Dit si une boîte alignée sur les axes touche un collider solide d'une assembly (ADR-158 D5) : ce
+/// qui rend une place occupée pour le passager qui descend, avec les blocs que Java juge lui-même.
+///
+/// `aabb` porte [`AXION_BOX_INPUT`] valeurs, en coordonnées monde absolues. `out` reçoit `1` si elle
+/// en touche un, `0` sinon — une dimension sans simulation n'en a aucun. Lecture seule (R-650).
+///
+/// Rend `E-2002` si un pointeur est nul, si une valeur n'est pas finie ou si la boîte est vide.
+///
+/// # Safety
+///
+/// `aabb` doit désigner [`AXION_BOX_INPUT`] `f64` lisibles, `out` un `u32` accessible en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_box_touches_assembly(
+    ctx: u64,
+    dimension: u64,
+    aabb: *const f64,
+    out: *mut u32,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if aabb.is_null() || out.is_null() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        // SAFETY: l'appelant garantit AXION_BOX_INPUT valeurs lisibles.
+        let input = unsafe { std::slice::from_raw_parts(aabb, AXION_BOX_INPUT) };
+        let min = DVec3::new(input[0], input[1], input[2]);
+        let max = DVec3::new(input[3], input[4], input[5]);
+        if !min.is_finite() || !max.is_finite() || !min.cmplt(max).all() {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let touched = context::with(ctx, false, |session| {
+            session.physics().box_touches_assembly(dimension, min, max)
+        });
+        match touched {
+            Ok(touched) => {
+                // SAFETY: l'appelant garantit `out` accessible en écriture.
+                unsafe { out.write(u32::from(touched)) };
+                AXION_OK
+            }
+            Err(code) => code,
+        }
     })
 }
 

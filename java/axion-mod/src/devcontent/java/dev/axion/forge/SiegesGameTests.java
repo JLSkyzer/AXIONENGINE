@@ -1,14 +1,21 @@
 package dev.axion.forge;
 
 import com.mojang.authlib.GameProfile;
+import dev.axion.forge.net.JoueurSimule;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import dev.axion.asset.Anatomy;
+import dev.axion.definition.Seating;
+import dev.axion.seat.SeatEjection;
+import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
+import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.util.FakePlayerFactory;
 import net.minecraftforge.gametest.GameTestHolder;
@@ -118,7 +125,7 @@ public final class SiegesGameTests {
                     "la portière assoit au siège passager");
             helper.assertTrue(assembly.seatOf(joueur) == 1, "il a changé de siège, " + assembly.seatOf(joueur));
             assembly.positionRider(joueur);
-            proche(helper, duModele(assembly, 2f, 1f, 0f).add(0, joueur.getMyRidingOffset(), 0), joueur,
+            proche(helper, duModele(assembly, 2f, 1.1f, 0f).add(0, joueur.getMyRidingOffset(), 0), joueur,
                     "le passager est au node sans collider que la portière nomme");
             helper.assertTrue("passager".equals(joueur.getPersistentData().getString(AxionEntity.REMEMBERED_SEAT)),
                     "le joueur garde le nom de son siège");
@@ -165,5 +172,188 @@ public final class SiegesGameTests {
             a.stopRiding();
             b.stopRiding();
         });
+    }
+
+    /**
+     * T-444, le chemin réel : Minecraft emporte le véhicule d'un joueur qui s'en va s'il en est le seul
+     * passager joueur, et le remet au monde à son retour. Le joueur retrouve l'assembly et son siège.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 300)
+    public static void unJoueurAssisQuiSeDeconnecteRetrouveSonVehiculeEtSonSiege(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), QUART);
+        Vec3 ou = helper.absoluteVec(new Vec3(1.0, DESSUS_DALLE, 1.0));
+        JoueurSimule[] simule = {JoueurSimule.rejoindre(helper.getLevel(), "revenant", ou)};
+        helper.onEachTick(() -> simule[0].tick());
+        int[] etape = {0};
+        helper.succeedWhen(() -> {
+            helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée");
+            if (etape[0] == 0) {
+                helper.assertTrue(assembly.sit(simule[0].joueur(), 1), "assis au siège passager");
+                etape[0] = 1;
+                helper.fail("attendre un tick");
+            }
+            if (etape[0] == 1) {
+                simule[0].quitter();
+                helper.assertTrue(assembly.isRemoved(), "Minecraft emporte le véhicule avec son seul joueur, "
+                        + assembly.getRemovalReason());
+                simule[0] = JoueurSimule.rejoindre(helper.getLevel(), "revenant", ou);
+                etape[0] = 2;
+            }
+            ServerPlayer revenu = simule[0].joueur();
+            helper.assertTrue(revenu.getVehicle() instanceof AxionEntity, "le joueur est remonté : " + revenu.getVehicle());
+            AxionEntity retrouvee = (AxionEntity) revenu.getVehicle();
+            helper.assertTrue(retrouvee.getUUID().equals(assembly.getUUID()), "la même assembly");
+            helper.assertTrue(retrouvee.hasPhysicalBounds(), "de nouveau simulée");
+            helper.assertTrue(retrouvee.seatOf(revenu) == 1, "au siège qu'il occupait, " + retrouvee.seatOf(revenu));
+            simule[0].quitter();
+        });
+    }
+
+    /** Rassoit un joueur au siège passager, de force : Minecraft refuse une remontée trop rapprochée. */
+    private static void rasseoir(AxionEntity assembly, ServerPlayer joueur) {
+        joueur.getPersistentData().putString(AxionEntity.REMEMBERED_SEAT, "passager");
+        if (!joueur.startRiding(assembly, true) || assembly.seatOf(joueur) != 1) {
+            throw new GameTestAssertException("le joueur n'est pas rassis au siège passager");
+        }
+    }
+
+    /** Rassoit le joueur, et lui fait tenir le sneak. */
+    private static void descendre(AxionEntity assembly, ServerPlayer joueur) {
+        rasseoir(assembly, joueur);
+        joueur.setShiftKeyDown(true);
+    }
+
+    private static void pierre(GameTestHelper helper, Vec3 ou) {
+        helper.getLevel().setBlockAndUpdate(BlockPos.containing(ou), Blocks.STONE.defaultBlockState());
+    }
+
+    /** Le joueur a quitté l'assembly, et se tient à la place attendue, à 1 cm près. */
+    private static void sorti(GameTestHelper helper, Vec3 attendu, ServerPlayer joueur, String quoi) {
+        helper.assertTrue(joueur.getVehicle() == null, quoi + " : il est descendu");
+        double ecart = attendu.distanceTo(joueur.position());
+        helper.assertTrue(ecart < 0.01, quoi + " : " + joueur.position() + ", " + attendu + " attendu");
+        helper.assertTrue(helper.getLevel().noCollision(joueur, joueur.getBoundingBox().deflate(1.0e-3)),
+                quoi + " : sa boîte ne touche aucun bloc");
+    }
+
+    /**
+     * T-441 (R-711) : au sneak, une sortie dans un collider de l'assembly est écartée ; la première sortie
+     * libre, dans l'ordre déclaré ; prise, la suivante ; toutes
+     * prises, la position du siège ; prise aussi, la place libre la plus proche — un bloc au-dessus. Rien de
+     * libre : le joueur reste assis, sans recommencer la recherche à chaque tick ; de la place revenue, il
+     * descend.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 400)
+    public static void laDescenteSuitSesSortiesPuisLeSiegePuisLaPlaceLaPlusProche(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), QUART);
+        ServerPlayer joueur = joueur(helper, "descendeur");
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    // La première sortie du conducteur tombe dans la caisse : seul le natif le voit.
+                    joueur.getPersistentData().putString(AxionEntity.REMEMBERED_SEAT, "conducteur");
+                    helper.assertTrue(joueur.startRiding(assembly, true) && assembly.seatOf(joueur) == 0, "assis");
+                    joueur.setShiftKeyDown(true);
+                })
+                .thenExecuteAfter(2, () -> {
+                    sorti(helper, duModele(assembly, -3f, 0f, 0f), joueur, "la sortie dans un collider est écartée");
+                    descendre(assembly, joueur);
+                })
+                .thenExecuteAfter(2, () -> {
+                    sorti(helper, duModele(assembly, 2f, 1.1f, 1.5f), joueur, "la première sortie");
+                    pierre(helper, duModele(assembly, 2f, 1.1f, 1.5f));
+                    descendre(assembly, joueur);
+                })
+                .thenExecuteAfter(2, () -> {
+                    sorti(helper, duModele(assembly, 2f, 1.1f, -1.5f), joueur, "la seconde sortie, la première prise");
+                    pierre(helper, duModele(assembly, 2f, 1.1f, -1.5f));
+                    descendre(assembly, joueur);
+                })
+                .thenExecuteAfter(2, () -> {
+                    sorti(helper, duModele(assembly, 2f, 1.1f, 0f), joueur, "le siège, les sorties prises");
+                    pierre(helper, duModele(assembly, 2f, 1.1f, 0f));
+                    descendre(assembly, joueur);
+                })
+                .thenExecuteAfter(2, () -> {
+                    sorti(helper, duModele(assembly, 2f, 2.1f, 0f), joueur, "la place la plus proche, le siège pris");
+                    assembly.exitProbe((x, y, z) -> false);
+                    descendre(assembly, joueur);
+                })
+                .thenExecuteAfter(2, () -> {
+                    helper.assertTrue(joueur.getVehicle() == assembly && assembly.seatOf(joueur) == 1,
+                            "rien de libre : il reste assis");
+                    assembly.exitProbe(null);
+                    joueur.setShiftKeyDown(true);
+                })
+                .thenExecuteAfter(2, () -> {
+                    helper.assertTrue(joueur.getVehicle() == assembly,
+                            "la recherche ne se refait pas à chaque tick");
+                })
+                .thenExecuteAfter(25, () -> joueur.setShiftKeyDown(true))
+                .thenExecuteAfter(2, () -> {
+                    sorti(helper, duModele(assembly, 2f, 2.1f, 0f), joueur, "de la place revenue, il descend");
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * T-957 (R-712) : le node qui porte un siège, ou un ancêtre, est perdu : au tick suivant l'occupant est
+     * éjecté, à une place sûre, l'éjection est retenue avec sa cause, et les sièges perdus ne reçoivent plus
+     * personne.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void unOccupantEstEjecteSiSonSiegeEstDetache(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), QUART);
+        ServerPlayer joueur = joueur(helper, "ejecte");
+        ServerPlayer autre = joueur(helper, "ejecte_autre");
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    rasseoir(assembly, joueur);
+                    Seating seating = AxionEntities.seating(assembly.definitionId()).orElseThrow();
+                    Anatomy anatomie = AxionEntities.summary(assembly.definitionId()).orElseThrow().anatomy();
+                    // Le parent du node du siège : la caisse, qui porte les deux sièges.
+                    assembly.loseNode(anatomie.parent(seating.seats().get(1).node()), SeatEjection.Cause.DETACHED);
+                    helper.assertTrue(joueur.getVehicle() == assembly, "l'éjection attend le tick suivant");
+                })
+                .thenExecuteAfter(2, () -> {
+                    sorti(helper, duModele(assembly, 2f, 1.1f, 1.5f), joueur, "éjecté à sa première sortie libre");
+                    helper.assertTrue(new SeatEjection("passager", joueur.getId(), SeatEjection.Cause.DETACHED)
+                            .equals(assembly.lastEjection()), "l'éjection retenue : " + assembly.lastEjection());
+                    helper.assertFalse(assembly.sit(autre, 1), "le siège perdu ne reçoit plus personne");
+                    helper.assertFalse(assembly.sit(autre, 0), "l'autre siège, porté par le même node, non plus");
+                })
+                .thenSucceed();
+    }
+
+    /** ADR-158 D5 : une assembly supprimée fait descendre son passager par la même règle, pas à la verticale. */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void uneAssemblySupprimeeFaitDescendreSonPassager(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), QUART);
+        ServerPlayer joueur = joueur(helper, "supprime");
+        Vec3[] sortie = new Vec3[1];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    rasseoir(assembly, joueur);
+                    sortie[0] = duModele(assembly, 2f, 1.1f, 1.5f);
+                    assembly.discard();
+                    sorti(helper, sortie[0], joueur, "à sa première sortie libre");
+                    helper.assertTrue(assembly.lastEjection() != null
+                            && assembly.lastEjection().cause() == SeatEjection.Cause.ASSEMBLY_REMOVED,
+                            "l'éjection retenue : " + assembly.lastEjection());
+                })
+                .thenSucceed();
     }
 }

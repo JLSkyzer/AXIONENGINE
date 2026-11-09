@@ -1224,6 +1224,17 @@ public final class AxionRuntime {
     }
 
     /**
+     * Dit si une boîte touche un collider solide d'une assembly (ADR-158 D5), sur le fil du serveur.
+     *
+     * @param dimension dimension
+     * @param box coin minimal, coin maximal, en coordonnées monde absolues
+     * @return vrai si elle en touche un ; faux sans runtime natif, où aucune assembly n'existe
+     */
+    public boolean boxTouchesAssembly(long dimension, double[] box) {
+        return hasNativeRuntime() && dev.axion.bridge.NativeBridge.touchesAssembly(outcome.context(), dimension, box) > 0;
+    }
+
+    /**
      * {@return la registry des definitions, vide avant tout rechargement} Celles que leur compilation
      * a refusées n'y sont plus (ADR-156 D5).
      */

@@ -79,6 +79,20 @@ public final class AxionEntities {
     /** Le rayon contre les colliders d'une assembly (ADR-158 D2) ; sans runtime, il ne touche rien. */
     private static volatile Rays rays = (index, generation, ray, out) -> -2001;
 
+    /** Une boîte touche-t-elle un collider d'assembly (ADR-158 D5) ; sans runtime, aucune assembly. */
+    private static volatile Boxes boxes = (dimension, box) -> false;
+
+    /** La boîte contre les colliders des assemblies, vue de l'entité. */
+    @FunctionalInterface
+    interface Boxes {
+        /**
+         * @param dimension dimension
+         * @param box coin minimal, coin maximal, en coordonnées monde absolues
+         * @return vrai si elle touche un collider solide d'une assembly
+         */
+        boolean touch(long dimension, double[] box);
+    }
+
     /** Le rayon contre les colliders d'une assembly, vu de l'entité. */
     @FunctionalInterface
     interface Rays {
@@ -107,6 +121,7 @@ public final class AxionEntities {
         summaries = runtime::compiledDefinition;
         seatings = runtime::seating;
         rays = runtime::raycastAssembly;
+        boxes = runtime::boxTouchesAssembly;
     }
 
     /** {@return les definitions chargées} */
@@ -135,6 +150,11 @@ public final class AxionEntities {
      */
     static Optional<Seating> seating(String id) {
         return seatings.apply(id);
+    }
+
+    /** {@return la boîte contre les colliders des assemblies} */
+    static Boxes boxes() {
+        return boxes;
     }
 
     /** {@return le rayon contre les colliders d'une assembly} */

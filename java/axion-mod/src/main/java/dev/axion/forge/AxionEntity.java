@@ -6,8 +6,11 @@ import dev.axion.asset.Anatomy;
 import dev.axion.asset.DefinitionCompiler;
 import dev.axion.definition.Definition;
 import dev.axion.definition.Seating;
+import dev.axion.seat.SeatEjection;
+import dev.axion.seat.SeatExit;
 import dev.axion.seat.SeatOccupancy;
 import dev.axion.seat.SeatPlacement;
+import dev.axion.world.DimensionId;
 import dev.axion.entity.AssemblyAnimation;
 import dev.axion.entity.AssemblyBinding;
 import dev.axion.entity.CustomTable;
@@ -17,8 +20,11 @@ import dev.axion.net.Interpolation;
 import dev.axion.net.RenderClock;
 import dev.axion.physics.JointState;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -32,8 +38,11 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.pathfinder.WalkNodeEvaluator;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.entity.IEntityAdditionalSpawnData;
@@ -242,6 +251,40 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Le siège qu'une montée en cours a choisi, le temps que Minecraft ajoute le passager ; -1 sans. */
     private int mountingSeat = SeatOccupancy.FREE;
 
+    /**
+     * Ticks avant de chercher de nouveau une sortie pour un joueur qui tient le sneak dans une assembly
+     * sans place libre : la recherche complète ne se refait pas à chaque tick.
+     */
+    private static final int EXIT_RETRY_TICKS = 20;
+
+    /**
+     * Un passager qui s'en va : Minecraft le retire de l'assembly avant d'en demander la sortie, et son
+     * siège serait déjà oublié.
+     *
+     * @param passenger identifiant d'entité
+     * @param seat son siège, -1 sans
+     * @param spot la place que la descente a déjà trouvée, {@code null} sans
+     */
+    private record Departure(int passenger, int seat, SeatExit.Spot spot) {}
+
+    /** Un node perdu, en attente du tick suivant (R-712). */
+    private record LostNode(int node, SeatEjection.Cause cause) {}
+
+    private Departure departure;
+
+    /** Vrai pendant une éjection : elle n'est pas refusée. */
+    private boolean ejecting;
+
+    /** Tick où chaque joueur refusé pourra de nouveau chercher une sortie. */
+    private final Map<Integer, Integer> exitRefusedUntil = new HashMap<>();
+
+    private final List<LostNode> lostNodes = new ArrayList<>();
+
+    private SeatEjection lastEjection;
+
+    /** Ce qui juge une place à la place du monde, pour les tests ; {@code null} en jeu. */
+    private SeatExit.FreeSpot exitProbe;
+
     /** Les corps secondaires à la pose du dernier tick, relatifs au corps racine (client) ; aucun avant. */
     private List<Interpolation.BodyPose> tickBodies = List.of();
 
@@ -406,11 +449,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (seating == null) {
             return;
         }
+        applyLostNodes(seating);
         SeatOccupancy occupancy = occupancy(seating);
         boolean changed = false;
         for (int seat = 0; seat < occupancy.seats(); seat++) {
             int occupant = occupancy.occupant(seat);
-            if (occupant != SeatOccupancy.FREE
+            if (occupant != SeatOccupancy.FREE && occupant != SeatOccupancy.LOST
                     && getPassengers().stream().noneMatch(passenger -> passenger.getId() == occupant)) {
                 occupancy.release(occupant);
                 changed = true;
@@ -433,8 +477,192 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             storeOccupancy(occupancy);
         }
         for (Entity passenger : unseated) {
-            passenger.stopRiding();
+            eject(passenger, SeatEjection.Cause.NO_SEAT);
         }
+    }
+
+    /**
+     * Un node de l'assembly est perdu (serveur, R-712) : au tick suivant, tout siège qu'il porte, lui ou un
+     * descendant, éjecte son occupant et ne reçoit plus personne. La chaîne de dommage (M6) et les
+     * détachements l'appelleront ; rien d'autre ne perd de node aujourd'hui.
+     *
+     * @param node index du node
+     * @param cause {@code DETACHED} ou {@code DESTROYED}
+     */
+    void loseNode(int node, SeatEjection.Cause cause) {
+        lostNodes.add(new LostNode(node, cause));
+    }
+
+    private void applyLostNodes(Seating seating) {
+        if (lostNodes.isEmpty()) {
+            return;
+        }
+        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        if (summary == null) {
+            return;
+        }
+        Anatomy anatomy = summary.anatomy();
+        for (LostNode lost : List.copyOf(lostNodes)) {
+            for (int seat = 0; seat < seating.seats().size(); seat++) {
+                if (!carriedBy(anatomy, seating.seats().get(seat).node(), lost.node())) {
+                    continue;
+                }
+                int occupant = occupancy(seating).occupant(seat);
+                for (Entity passenger : getPassengers()) {
+                    if (passenger.getId() == occupant) {
+                        eject(passenger, lost.cause());
+                    }
+                }
+                SeatOccupancy occupancy = occupancy(seating);
+                occupancy.lose(seat);
+                storeOccupancy(occupancy);
+            }
+        }
+        lostNodes.clear();
+    }
+
+    /** {@return vrai si {@code node} est {@code carrier} ou l'un de ses descendants} */
+    private static boolean carriedBy(Anatomy anatomy, int node, int carrier) {
+        int current = node;
+        for (int steps = 0; current >= 0 && steps <= anatomy.size(); steps++) {
+            if (current == carrier) {
+                return true;
+            }
+            current = anatomy.parent(current);
+        }
+        return false;
+    }
+
+    /** {@return la dernière éjection de cette assembly, {@code null} sans (serveur)} */
+    SeatEjection lastEjection() {
+        return lastEjection;
+    }
+
+    /**
+     * Fait descendre un passager sans lui laisser le refus (R-712), à la place qu'{@link SeatExit#eject}
+     * trouve.
+     *
+     * @param passenger le passager
+     * @param cause ce qui l'éjecte
+     */
+    private void eject(Entity passenger, SeatEjection.Cause cause) {
+        int seat = seatOf(passenger);
+        Seating seating = seating();
+        String name = seating != null && seat >= 0 && seat < seating.seats().size()
+                ? seating.seats().get(seat).name() : null;
+        ejecting = true;
+        try {
+            passenger.stopRiding();
+        } finally {
+            ejecting = false;
+        }
+        // Minecraft ne demande une sortie que pour une entité vivante ; les autres restent à poser.
+        if (!(passenger instanceof LivingEntity) && departure != null && departure.passenger() == passenger.getId()) {
+            SeatExit.Spot spot = exitSpot(passenger, departure.seat(), true);
+            passenger.setPos(spot.x(), spot.y(), spot.z());
+            departure = null;
+        }
+        lastEjection = new SeatEjection(name, passenger.getId(), cause);
+        LOGGER.info("AXION : assembly {}, passager {} éjecté du siège {} ({})", getUUID(), passenger.getId(), name, cause);
+    }
+
+    /**
+     * Un passager descend (serveur, {@code EntityMountEvent}). Une descente au sneak se refuse s'il n'y a
+     * aucune place libre (R-711) : le joueur reste assis, et le serveur le journalise. Tout le reste — une
+     * éjection, la mort, une téléportation, une commande — passe, la sortie étant alors celle d'une
+     * éjection ({@link #getDismountLocationForPassenger}).
+     *
+     * @param passenger le passager
+     * @return faux si la descente est refusée
+     */
+    boolean allowsDismount(Entity passenger) {
+        if (level().isClientSide() || ejecting || isRemoved()
+                || !(passenger instanceof Player player) || !player.isShiftKeyDown()) {
+            return true;
+        }
+        int id = passenger.getId();
+        Integer until = exitRefusedUntil.get(id);
+        // Minecraft saute la pose du passager au tick d'une descente : un refus la refait.
+        if (until != null && tickCount < until) {
+            positionRider(passenger);
+            return false;
+        }
+        int seat = seatOf(passenger);
+        SeatExit.Spot spot = exitSpot(passenger, seat, false);
+        if (spot == null) {
+            exitRefusedUntil.put(id, tickCount + EXIT_RETRY_TICKS);
+            LOGGER.info("AXION : assembly {}, aucune place libre pour faire descendre {} (R-711)", getUUID(), player.getName().getString());
+            positionRider(passenger);
+            return false;
+        }
+        exitRefusedUntil.remove(id);
+        departure = new Departure(id, seat, spot);
+        return true;
+    }
+
+    /**
+     * La sortie d'un passager (ADR-158 D5) : celle que sa descente a trouvée ; sinon — éjection, mort,
+     * commande — celle d'une éjection, qui ne se refuse pas.
+     */
+    @Override
+    public Vec3 getDismountLocationForPassenger(LivingEntity passenger) {
+        Departure leaving = departure != null && departure.passenger() == passenger.getId() ? departure : null;
+        departure = null;
+        SeatExit.Spot spot = leaving != null && leaving.spot() != null
+                ? leaving.spot()
+                : exitSpot(passenger, leaving == null ? SeatOccupancy.FREE : leaving.seat(), true);
+        return new Vec3(spot.x(), spot.y(), spot.z());
+    }
+
+    /**
+     * {@return la place où poser un passager, {@code null} si sa descente est à refuser} Sans siège connu,
+     * la recherche part de lui, sans position de sortie.
+     *
+     * @param passenger le passager
+     * @param seat son siège, -1 sans
+     * @param forced vrai pour une éjection, qui trouve toujours une place
+     */
+    private SeatExit.Spot exitSpot(Entity passenger, int seat, boolean forced) {
+        Seating seating = seating();
+        SeatPlacement.Pose pose = seatPose(seat);
+        if (pose == null) {
+            pose = new SeatPlacement.Pose(passenger.getX(), passenger.getY(), passenger.getZ(), new float[] {0f, 0f, 0f, 1f});
+        }
+        List<float[]> exits = seating != null && seat >= 0 && seat < seating.seats().size()
+                ? seating.seats().get(seat).exits() : List.of();
+        AABB bounds = getBoundingBox();
+        int radius = SeatExit.radius(pose.x(), pose.z(), bounds.minX, bounds.minZ, bounds.maxX, bounds.maxZ);
+        SeatExit.FreeSpot free = exitProbe != null ? exitProbe : (x, y, z) -> exitFree(passenger, x, y, z);
+        return forced
+                ? SeatExit.eject(pose, exits, radius, level().getMaxBuildHeight(), free)
+                : SeatExit.descend(pose, exits, radius, free);
+    }
+
+    /**
+     * {@return vrai si le passager, debout, tient à cette place : son tronçon est chargé, sa boîte ne
+     * touche ni bloc solide, ni bloc qui brûle, ni collider d'assembly (ADR-158 D5)} Effleurer ne compte
+     * pas : une assembly au repos s'enfonce d'un rien dans le sol, et une sortie à sa hauteur avec elle.
+     */
+    private boolean exitFree(Entity passenger, double x, double y, double z) {
+        if (!level().isLoaded(BlockPos.containing(x, y, z))) {
+            return false;
+        }
+        AABB core = passenger.getDimensions(Pose.STANDING).makeBoundingBox(x, y, z).deflate(1.0e-3);
+        if (!level().noCollision(passenger, core)
+                || level().getBlockStatesIfLoaded(core).anyMatch(WalkNodeEvaluator::isBurningBlock)) {
+            return false;
+        }
+        return !AxionEntities.boxes().touch(DimensionId.of(level().dimension().location().toString()),
+                new double[] {core.minX, core.minY, core.minZ, core.maxX, core.maxY, core.maxZ});
+    }
+
+    /**
+     * Remplace le jugement du monde, pour un test.
+     *
+     * @param probe ce qui juge une place, {@code null} pour le monde
+     */
+    void exitProbe(SeatExit.FreeSpot probe) {
+        exitProbe = probe;
     }
 
     @Override
@@ -445,8 +673,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return;
         }
         SeatOccupancy occupancy = occupancy(seating);
-        if (occupancy.release(passenger.getId()) != SeatOccupancy.FREE) {
+        int seat = occupancy.release(passenger.getId());
+        if (seat != SeatOccupancy.FREE) {
             storeOccupancy(occupancy);
+        }
+        exitRefusedUntil.remove(passenger.getId());
+        if (departure == null || departure.passenger() != passenger.getId()) {
+            departure = new Departure(passenger.getId(), seat, null);
         }
     }
 
@@ -932,6 +1165,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     @Override
     public void remove(RemovalReason reason) {
+        // ADR-158 D5, avant que l'entité ne soit marquée retirée : Minecraft ne demande plus alors de sortie.
+        if (!level().isClientSide() && reason.shouldDestroy()) {
+            for (Entity passenger : List.copyOf(getPassengers())) {
+                eject(passenger, SeatEjection.Cause.ASSEMBLY_REMOVED);
+            }
+        }
         super.remove(reason);
         if (!level().isClientSide() && reason.shouldDestroy()) {
             JournalBridge.removed(getUUID());

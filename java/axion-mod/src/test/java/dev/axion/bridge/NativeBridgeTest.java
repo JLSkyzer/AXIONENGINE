@@ -1051,6 +1051,7 @@ class NativeBridgeTest {
                 new double[] {centre[0], centre[1], centre[2] - 10.0, 0.0, 0.0, 1.0, 20.0}, rayonBras));
         assertTrue(rayonBras[0] >= 0, () -> "le rayon touche l'assembly : " + java.util.Arrays.toString(rayonBras));
         assertEquals(1.0, rayonBras[0], () -> "le corps du bras : " + java.util.Arrays.toString(rayonBras));
+        double[] pointBras = {rayonBras[3], rayonBras[4], rayonBras[5]};
         int porteur = bras.anatomy().carrier((int) rayonBras[0], (int) rayonBras[1]);
         assertEquals(1, bras.anatomy().body(porteur), "le porteur du collider est au corps du bras");
         int ancetre = porteur;
@@ -1061,6 +1062,12 @@ class NativeBridgeTest {
         assertEquals(NativeBridge.OK, NativeBridge.raycastAssembly(reprise, 3, 1,
                 new double[] {centre[0], centre[1], centre[2] - 10.0, 0.0, 0.0, -1.0, 20.0}, rayonBras));
         assertEquals(-1.0, rayonBras[0], "dos à l'assembly, rien");
+        // ADR-158 D5 : la même boîte, vue d'une place où poser un passager.
+        double[] autourDuBras = {pointBras[0] - 0.1, pointBras[1] - 0.1, pointBras[2] - 0.1,
+                pointBras[0] + 0.1, pointBras[1] + 0.1, pointBras[2] + 0.1};
+        assertEquals(1, NativeBridge.touchesAssembly(reprise, 6L, autourDuBras), "sur le collider du bras");
+        assertEquals(0, NativeBridge.touchesAssembly(reprise, 7L, autourDuBras), "une dimension sans simulation");
+        assertEquals(NativeBridge.E_INVALID_BUFFER, NativeBridge.touchesAssembly(reprise, 6L, new double[6]), "boîte vide");
         assertEquals(NativeBridge.E_INVALID_HANDLE, NativeBridge.raycastAssembly(reprise, 99, 1,
                 new double[] {0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0}, rayonBras), "une assembly inconnue");
 

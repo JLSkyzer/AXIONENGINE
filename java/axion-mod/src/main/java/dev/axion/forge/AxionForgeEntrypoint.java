@@ -184,6 +184,19 @@ public final class AxionForgeEntrypoint {
         }
     }
 
+    /**
+     * Un passager quitte une assembly : celle-ci peut refuser une descente au sneak quand aucune place
+     * n'est libre (ADR-158 D5, R-711). Seul Forge permet de l'empêcher : Minecraft retire le véhicule du
+     * joueur avant d'en demander la position de sortie.
+     */
+    @SubscribeEvent
+    public void onEntityMount(net.minecraftforge.event.entity.EntityMountEvent event) {
+        if (event.isDismounting() && event.getEntityBeingMounted() instanceof AxionEntity assembly
+                && !assembly.allowsDismount(event.getEntityMounting())) {
+            event.setCanceled(true);
+        }
+    }
+
     /** Un joueur quitte le serveur : sa connexion sort du statut. */
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
