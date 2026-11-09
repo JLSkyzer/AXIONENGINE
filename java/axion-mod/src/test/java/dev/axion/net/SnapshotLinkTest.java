@@ -42,7 +42,7 @@ class SnapshotLinkTest {
             for (byte[] trame : trames) {
                 byte[] ack = client.onPlayFrame(trame);
                 if (ack != null) {
-                    serveur.onAckFrame(ack);
+                    serveur.onClientFrame(ack);
                 }
             }
             return trames.size();
@@ -155,7 +155,7 @@ class SnapshotLinkTest {
         byte[] ack = Fragments.split(new AckMessage(0, List.of()).encode(), 0).get(0);
         // Une seconde à cinquante trames : dix ignorées, une ligne au journal à la fin de la seconde.
         for (int index = 0; index < 50; index++) {
-            serveur.onAckFrame(ack);
+            serveur.onClientFrame(ack);
         }
         serveur.tick(1, handle -> null, 0);
         assertEquals(10, serveur.lastTickLimited(), "les trames ignorées depuis le tick précédent");
@@ -175,7 +175,7 @@ class SnapshotLinkTest {
         long tick = 40;
         for (int seconde = 1; seconde <= 5; seconde++) {
             for (int index = 0; index < 41; index++) {
-                serveur.onAckFrame(ack);
+                serveur.onClientFrame(ack);
             }
             for (int pas = 0; pas < 20; pas++) {
                 serveur.tick(++tick, handle -> null, 0);
@@ -192,9 +192,9 @@ class SnapshotLinkTest {
     @DisplayName("T-422 : un acquittement fautif est ignoré et dit, sans lever")
     void unAcquittementFautifEstIgnore() {
         Liaison liaison = new Liaison();
-        liaison.serveur.onAckFrame(null);
-        liaison.serveur.onAckFrame(Fragments.split(new byte[] {(byte) MessageKinds.SNAPSHOT}, 0).get(0));
-        liaison.serveur.onAckFrame(Fragments.split(new AckMessage(50, List.of()).encode(), 0).get(0));
+        liaison.serveur.onClientFrame(null);
+        liaison.serveur.onClientFrame(Fragments.split(new byte[] {(byte) MessageKinds.SNAPSHOT}, 0).get(0));
+        liaison.serveur.onClientFrame(Fragments.split(new AckMessage(50, List.of()).encode(), 0).get(0));
         List<String> journal = liaison.serveur.drainJournal();
         assertEquals(3, journal.size(), journal::toString);
         journal.forEach(ligne -> assertTrue(ligne.startsWith("E-5001 paquet ignoré (acquittement)"), ligne));
@@ -213,7 +213,7 @@ class SnapshotLinkTest {
                 SnapshotSender.Frequency.NORMAL, 0), 0);
         byte[] ack = client.onPlayFrame(trames.get(0));
         assertNotNull(ack);
-        serveur.onAckFrame(ack);
+        serveur.onClientFrame(ack);
         assertEquals(1, serveur.sender().acked());
         assertTrue(String.join("\n", client.drainJournal()).contains("états du snapshot non appliqués"));
     }

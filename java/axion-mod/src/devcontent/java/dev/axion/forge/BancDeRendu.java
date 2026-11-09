@@ -801,8 +801,19 @@ public final class BancDeRendu {
             une("relâcher sneak", mc -> mc.options.keyShift.setDown(false));
             pendant("le joueur posé", 20);
             une("juger ADR-158 D5", BancDeRendu::jugerSortieClient);
+            // ADR-158 D4 : le client envoie ses entrées, au volant ; le serveur les reçoit.
+            serveur("mettre le joueur au volant", s -> passagerAssis =
+                    siege.reseat(s.getPlayerList().getPlayers().get(0), "conducteur"));
+            jusqua("le joueur au volant chez le client", 60, mc -> mc.player.getVehicle() instanceof AxionEntity);
+            une("presser l'avant", mc -> mc.options.keyUp.setDown(true));
+            jusqua("les entrées reçues au serveur", 30, mc -> siege.seatInput(0).throttle() > 0f);
+            une("juger ADR-158 D4", mc -> RAPPORT.noter("ADR-158 D4", passagerAssis && siege.seatInput(0).throttle() == 1f,
+                    String.format(Locale.ROOT, "au volant, la touche avant du vrai client donne au serveur un accélérateur de %.2f",
+                            siege.seatInput(0).throttle())));
+            une("relâcher l'avant", mc -> mc.options.keyUp.setDown(false));
             serveur("rendre le joueur du banc à sa place", s -> {
                 net.minecraft.server.level.ServerPlayer joueur = s.getPlayerList().getPlayers().get(0);
+                joueur.stopRiding();
                 joueur.setGameMode(GameType.SPECTATOR);
                 joueur.teleportTo(s.overworld(), joueurAvant.x, joueurAvant.y, joueurAvant.z, lacetAvant, tangageAvant);
             });

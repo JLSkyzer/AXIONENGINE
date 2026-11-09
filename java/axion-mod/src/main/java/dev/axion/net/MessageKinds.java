@@ -26,6 +26,9 @@ public final class MessageKinds {
     /** {@code C2S_Ack} (21.4) : le dernier snapshot reçu, et les entités à renvoyer en entier. */
     public static final int ACK = 6;
 
+    /** {@code C2S_Input} (21.4, ADR-158 D4) : les entrées d'un joueur assis. */
+    public static final int INPUT = 7;
+
     private MessageKinds() {
         throw new AssertionError("classe de constantes, non instanciable");
     }

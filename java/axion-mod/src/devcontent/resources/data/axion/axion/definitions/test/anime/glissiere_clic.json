@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "asset": "axion:models/test/anime/glissiere.gltf",
+  "kind": "rigid_object",
+  "animations": {
+    "ouvrir": {
+      "clip": "glisse",
+      "layer": 1
+    }
+  },
+  "interaction": [
+    {
+      "node": "coulisseau",
+      "action": "toggle_animation",
+      "animation": "ouvrir"
+    },
+    {
+      "node": "socle",
+      "action": "play_animation",
+      "animation": "ouvrir"
+    }
+  ]
+}

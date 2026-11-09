@@ -3626,7 +3626,7 @@ T-980..T-984.
           (R-840), aucun effet sur la simulation autoritative (R-841, T-983, T-984), palier `SAFE` ;
         - overlay (C-73) : métriques, niveaux et causes (R-820), indicateur de capacités.
 
-- [ ] **Sièges et entrées (C-53)** — [ADR-158](../docs/decisions/ADR-158.md) proposé le 2026-11-05 : rayon
+- [x] **Sièges et entrées (C-53)** — [ADR-158](../docs/decisions/ADR-158.md) proposé le 2026-11-05 : rayon
       du serveur sur les colliders (ABI 14), passagers de `Entity` avec sièges AXION, `C2S_Input` genre 7
       (protocole 3), descente et éjection sûres, interactions `sit`/`toggle_animation`/`play_animation`,
       T-440..T-444 et T-957 définis. **Accepté par Killian le 2026-11-05**, Q1 à Q4 comme proposé.
@@ -3641,7 +3641,8 @@ T-980..T-984.
       - [x] Tranche 3 (2026-11-09) : descente et éjection sûres, ABI 16 ; T-441, T-957, suppression et
             « ADR-158 D5 » au banc. `loseNode` attend son producteur (M6, C-48). Décision de Killian du 2026-11-09 :
             l'assembly reste au monde quand son seul joueur se déconnecte, le joueur est rassis à son retour.
-      - [ ] Tranche 4 : `C2S_Input` (protocole 3) et interactions au clic (T-442, T-443).
+      - [x] Tranche 4 (2026-11-09) : `C2S_Input` (protocole 3), interactions au clic, ABI 17 (durée et boucle des
+            clips au résumé) ; T-442, T-443 en GameTest, « ADR-158 D4 » au banc.
 
 ---
 

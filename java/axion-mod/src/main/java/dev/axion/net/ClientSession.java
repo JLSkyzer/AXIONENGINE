@@ -1,5 +1,6 @@
 package dev.axion.net;
 
+import dev.axion.seat.VehicleInput;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -43,6 +44,8 @@ public final class ClientSession {
     private final RegistrySink sink;
     private final SnapshotSink snapshotSink;
     private final SnapshotReceiver snapshots = new SnapshotReceiver();
+    private int nextInputSequence;
+
     private final Fragments.Reassembler login = new Fragments.Reassembler();
     private final Fragments.Reassembler play = new Fragments.Reassembler();
     private final Queue<String> journal = new ConcurrentLinkedQueue<>();
@@ -145,6 +148,17 @@ public final class ClientSession {
      */
     public void forgetEntity(int handle) {
         snapshots.forget(handle);
+    }
+
+    /**
+     * {@return la trame des entrées de ce tick client (ADR-158 D4), sous la séquence suivante de la connexion}
+     *
+     * @param entity identifiant réseau de l'assembly
+     * @param seat rang du siège
+     * @param input les entrées
+     */
+    public synchronized byte[] inputFrame(int entity, int seat, VehicleInput input) {
+        return reply(new InputMessage(nextInputSequence++, entity, seat, input).encode());
     }
 
     private static byte[] present(byte[] frame) throws MalformedPacketException {

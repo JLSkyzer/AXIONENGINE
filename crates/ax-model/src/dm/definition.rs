@@ -416,7 +416,7 @@ pub mod summary_flags {
 /// de chaque corps en `u32`, le corps racine d'abord ; puis les avertissements, au format des
 /// lignes de `NEEDS_FILES` (ADR-139) — `u32` du nombre, puis par ligne `u32` de sa longueur et ses
 /// octets UTF-8 ; puis les clips de l'asset — `u32` du nombre, puis par clip `u32` de son nombre de
-/// pistes et son nom, vide s'il n'en a pas, en une ligne comme le motif de [`DefinitionRefusal`] :
+/// pistes, sa durée en `f32`, `1` s'il boucle et son nom, vide s'il n'en a pas, en une ligne comme le motif de [`DefinitionRefusal`] :
 /// le nombre de lignes, 1, puis la ligne. Java joue les clips par leur nom
 /// (`AnimationControl`) et compte leurs pistes (R-200) sans lire la section `ANIM` (décision de
 /// Killian, tranche 4). Enfin le node de chaque référence de `DEFN` — `u32` du nombre, celui des
@@ -468,12 +468,16 @@ impl SummaryNode {
 }
 
 /// Un clip de l'asset, tel que le résumé le donne à Java.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SummaryClip {
     /// Son nom, vide s'il n'en a pas.
     pub name: String,
     /// Son nombre de pistes.
     pub tracks: u32,
+    /// Sa durée, en secondes.
+    pub duration: f32,
+    /// Il boucle : passé sa durée, il reprend à zéro.
+    pub loops: bool,
 }
 
 impl DefinitionSummary {
@@ -494,6 +498,8 @@ impl DefinitionSummary {
         );
         for clip in &self.clips {
             out.extend_from_slice(&clip.tracks.to_le_bytes());
+            out.extend_from_slice(&clip.duration.to_le_bytes());
+            out.extend_from_slice(&u32::from(clip.loops).to_le_bytes());
             write_lines(std::slice::from_ref(&clip.name), out);
         }
         out.extend_from_slice(
@@ -544,6 +550,8 @@ impl DefinitionSummary {
         let mut clips = Vec::new();
         for _ in 0..clip_count {
             let tracks = take_u32(&mut rest)?;
+            let duration = f32::from_bits(take_u32(&mut rest)?);
+            let loops = take_u32(&mut rest)? != 0;
             let mut name = read_lines(&mut rest)?;
             if name.len() != 1 {
                 return None;
@@ -551,6 +559,8 @@ impl DefinitionSummary {
             clips.push(SummaryClip {
                 name: name.remove(0),
                 tracks,
+                duration,
+                loops,
             });
         }
         let node_count = take_u32(&mut rest)?;
@@ -892,6 +902,8 @@ mod tests {
             clips: vec![SummaryClip {
                 name: "ouvrir".to_owned(),
                 tracks: 2,
+                duration: 1.5,
+                loops: true,
             }],
             nodes: vec![3, NONE_U32],
             anatomy: vec![
@@ -913,7 +925,7 @@ mod tests {
         let mut bytes = Vec::new();
         summary.write_le(&mut bytes);
         let avertissements = 4 + 4 + "racine animée".len();
-        let clips = 4 + 4 + 4 + 4 + "ouvrir".len();
+        let clips = 4 + 4 + 4 + 4 + 4 + 4 + "ouvrir".len();
         let nodes = 4 + 2 * 4;
         let anatomy = 4 + 2 * SummaryNode::BYTES;
         let carriers = (4 + 2 * 4) + (4 + 4);

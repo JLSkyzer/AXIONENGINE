@@ -34,7 +34,7 @@ class SeatingTest {
                   "exit_offsets": [[-1.0, 0.0, 0.5], [0.0, 1.5, 0.0]],
                   "controls": ["throttle", "steer", "handbrake"] },
                 { "name": "passager", "node": "siege_d" } ],
-              "animations": { "ouvrir": { "clip": "porte_ouverte" } },
+              "animations": { "ouvrir": { "clip": "porte_ouverte", "layer": 2 } },
               "interaction": [
                 { "node": "porte_g", "action": "sit", "seat": "conducteur" },
                 { "node": "porte_d", "action": "toggle_animation", "animation": "ouvrir" },
@@ -160,6 +160,8 @@ class SeatingTest {
         Seating.Interaction porte = seating.interactions().get(1);
         assertEquals(Seating.Action.TOGGLE_ANIMATION, porte.action());
         assertEquals("ouvrir", porte.animation());
+        assertEquals("porte_ouverte", porte.clip(), "le clip que l'animation déclare");
+        assertEquals(2, porte.layer(), "et sa couche");
         assertEquals(-1, porte.seat());
 
         // Q4 : l'action sans système compile, avec un avertissement qui dit ce qu'elle attend.

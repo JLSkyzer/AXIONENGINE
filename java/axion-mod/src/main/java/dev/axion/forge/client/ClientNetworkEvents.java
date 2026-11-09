@@ -5,8 +5,10 @@ import dev.axion.forge.AxionEntity;
 import dev.axion.forge.RuntimeAccess;
 import dev.axion.forge.net.AxionNetwork;
 import dev.axion.lifecycle.AxionRuntime;
+import dev.axion.seat.VehicleInput;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.event.TickEvent;
@@ -48,6 +50,26 @@ public final class ClientNetworkEvents {
         AxionRuntime runtime = RuntimeAccess.get();
         if (runtime != null) {
             runtime.onRemoteDisconnect();
+        }
+    }
+
+    /**
+     * Fin d'un tick client : un joueur assis à un siège qui déclare des contrôles envoie ses entrées, une
+     * fois par tick (R-710, ADR-158 D4). Rien sinon, ni dans un jeu en pause.
+     */
+    @SubscribeEvent
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        LocalPlayer player = minecraft.player;
+        ClientPacketListener connection = minecraft.getConnection();
+        if (event.phase != TickEvent.Phase.END || player == null || connection == null || minecraft.isPaused()
+                || !(player.getVehicle() instanceof AxionEntity assembly)) {
+            return;
+        }
+        int seat = assembly.seatOf(player);
+        if (assembly.seatTakesInput(seat)) {
+            AxionNetwork.sendInput(connection.getConnection(), assembly.getId(), seat,
+                    VehicleInput.ofKeys(player.input.forwardImpulse, player.input.leftImpulse, player.input.jumping));
         }
     }
 

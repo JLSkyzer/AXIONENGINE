@@ -110,7 +110,8 @@ public interface DefinitionCompiler {
          * {@return le résumé que le natif a déposé, ou {@code null} s'il ne se lit pas} Disposition :
          * nombre de corps, de joints, drapeaux, réservé ({@code u32}), le node racine de chaque corps
          * ({@code u32}), les avertissements en lignes, puis les clips : leur nombre ({@code u32}), et par
-         * clip son nombre de pistes ({@code u32}) et son nom, en une liste d'une ligne ; enfin le
+         * clip son nombre de pistes ({@code u32}), sa durée ({@code f32}), 1 s'il boucle ({@code u32}) et
+         * son nom, en une liste d'une ligne ; enfin le
          * nombre de références ({@code u32}) et le node de chacune ({@code u32}, {@code 0xFFFFFFFF}
          * sans) ; puis les nodes de l'asset et les porteurs des colliders de chaque corps
          * ({@link Anatomy#read}).
@@ -136,13 +137,17 @@ public interface DefinitionCompiler {
                     return null;
                 }
                 int clipCount = in.getInt();
-                if (clipCount < 0 || clipCount > in.remaining() / (3 * Integer.BYTES)) {
+                if (clipCount < 0 || clipCount > in.remaining() / (5 * Integer.BYTES)) {
                     return null;
                 }
                 List<String> names = new ArrayList<>(clipCount);
                 int[] tracks = new int[clipCount];
+                float[] durations = new float[clipCount];
+                boolean[] loops = new boolean[clipCount];
                 for (int clip = 0; clip < clipCount; clip++) {
                     tracks[clip] = in.getInt();
+                    durations[clip] = in.getFloat();
+                    loops[clip] = in.getInt() != 0;
                     List<String> name = lines(in);
                     if (tracks[clip] < 0 || name == null || name.size() != 1) {
                         return null;
@@ -160,8 +165,8 @@ public interface DefinitionCompiler {
                 Anatomy anatomy = Anatomy.read(in, bodies);
                 return anatomy == null || in.hasRemaining()
                         ? null
-                        : new Summary(roots, joints, (flags & 1) != 0, warnings, new AnimClips(names, tracks), nodes,
-                                anatomy);
+                        : new Summary(roots, joints, (flags & 1) != 0, warnings,
+                                new AnimClips(names, tracks, durations, loops), nodes, anatomy);
             } catch (java.nio.BufferUnderflowException truncated) {
                 return null;
             }

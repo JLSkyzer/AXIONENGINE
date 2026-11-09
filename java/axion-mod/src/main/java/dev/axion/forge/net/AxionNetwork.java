@@ -9,7 +9,9 @@ import dev.axion.forge.AxionEntity;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.ClientSession;
 import dev.axion.net.DetProfile;
+import dev.axion.net.InputMessage;
 import dev.axion.net.PlayerSync;
+import dev.axion.seat.VehicleInput;
 import dev.axion.net.RegistryAck;
 import dev.axion.net.ServerHandshake;
 import dev.axion.net.ServerPeer;
@@ -159,9 +161,38 @@ public final class AxionNetwork {
             PlayerSync sync = SYNCS.get(player.getUUID());
             if (sync != null) {
                 NetworkMetrics.GLOBAL.ackReceived();
-                sync.onAckFrame(message.frame());
+                sync.onClientFrame(message.frame());
+                for (InputMessage input : sync.drainInputs()) {
+                    applyInput(player, sync, input);
+                }
             }
         });
+    }
+
+    /** ADR-158 D4 : les entrées d'un joueur, sur le thread du serveur ; une entrée refusée se journalise. */
+    private static void applyInput(ServerPlayer player, PlayerSync sync, InputMessage input) {
+        String fault = player.serverLevel().getEntity(input.entity()) instanceof AxionEntity assembly
+                ? assembly.receiveInput(player, input.seat(), input.input())
+                : "entrées pour une entité qui n'est pas une assembly";
+        if (fault != null) {
+            sync.reportInput(fault);
+        }
+    }
+
+    /**
+     * Chez le client : envoie les entrées de ce tick (ADR-158 D4).
+     *
+     * @param connection connexion du client
+     * @param entity identifiant réseau de l'assembly
+     * @param seat rang du siège
+     * @param input les entrées
+     */
+    public static void sendInput(Connection connection, int entity, int seat, VehicleInput input) {
+        ClientSession session = connection.channel().attr(CLIENT_SESSION).get();
+        if (session != null) {
+            AxionChannel.CHANNEL.sendTo(new ChannelFrames.PlayToServer(session.inputFrame(entity, seat, input)),
+                    connection, NetworkDirection.PLAY_TO_SERVER);
+        }
     }
 
     /**

@@ -79,6 +79,9 @@ public final class AxionEntities {
     /** Le rayon contre les colliders d'une assembly (ADR-158 D2) ; sans runtime, il ne touche rien. */
     private static volatile Rays rays = (index, generation, ray, out) -> -2001;
 
+    /** Délai des entrées d'un siège, en millisecondes (ADR-158 D4). */
+    private static volatile LongSupplier inputTimeoutMillis = () -> 0;
+
     /** Une boîte touche-t-elle un collider d'assembly (ADR-158 D5) ; sans runtime, aucune assembly. */
     private static volatile Boxes boxes = (dimension, box) -> false;
 
@@ -122,6 +125,7 @@ public final class AxionEntities {
         seatings = runtime::seating;
         rays = runtime::raycastAssembly;
         boxes = runtime::boxTouchesAssembly;
+        inputTimeoutMillis = runtime::inputTimeoutMillis;
     }
 
     /** {@return les definitions chargées} */
@@ -150,6 +154,11 @@ public final class AxionEntities {
      */
     static Optional<Seating> seating(String id) {
         return seatings.apply(id);
+    }
+
+    /** {@return le délai au-delà duquel les entrées d'un siège ne valent plus, en millisecondes} */
+    static long inputTimeoutMillis() {
+        return inputTimeoutMillis.getAsLong();
     }
 
     /** {@return la boîte contre les colliders des assemblies} */

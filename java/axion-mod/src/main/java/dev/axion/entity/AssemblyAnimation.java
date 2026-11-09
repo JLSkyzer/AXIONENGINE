@@ -100,6 +100,33 @@ public final class AssemblyAnimation implements AnimationControl {
         state = state.with(layer, new AnimationLayers.Layer(index, now, 0f, speeds[layer], weight, fade));
     }
 
+    /**
+     * Joue un clip, ou repart en sens inverse s'il est déjà celui de la couche (ADR-158 D6) : d'où il en
+     * est, ramené dans le clip. Sans cela, un clip resté à sa fin depuis trente secondes mettrait trente
+     * secondes à revenir.
+     *
+     * @param clip nom du clip
+     * @param layer couche
+     * @throws IllegalArgumentException si le clip est inconnu, ou le serait au-delà de R-200
+     */
+    public void toggle(String clip, int layer) {
+        authoritative.run();
+        checkLayer(layer);
+        int index = clips.indexOf(clip);
+        AnimationLayers.Layer current = state.layer(layer);
+        if (index < 0 || !current.playing() || current.clip() != index) {
+            speeds[layer] = 1f;
+            play(clip, layer, 1f, 0f);
+            return;
+        }
+        long now = ticks.getAsLong();
+        float reversed = -current.speed();
+        speeds[layer] = reversed;
+        outgoing[layer] = NONE;
+        state = state.with(layer, new AnimationLayers.Layer(index, now, (float) clips.wrap(index, current.clipTimeAt(now)),
+                reversed, current.weight(), 0f));
+    }
+
     @Override
     public void stop(int layer, float fadeSeconds) {
         authoritative.run();

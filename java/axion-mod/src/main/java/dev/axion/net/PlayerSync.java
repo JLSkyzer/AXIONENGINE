@@ -49,6 +49,14 @@ public final class PlayerSync {
     private long lastTickLimited;
     private final Set<Integer> tracked = new LinkedHashSet<>();
     private final Fragments.Reassembler acks = new Fragments.Reassembler();
+
+    /** Plus grande séquence d'entrées reçue, non signée ; -1 avant la première. */
+    private long lastInputSequence = -1;
+
+    private final List<InputMessage> inputs = new ArrayList<>();
+
+    /** Causes d'entrées refusées déjà journalisées pour ce joueur. */
+    private final java.util.Set<String> reportedInputs = new java.util.HashSet<>();
     private final List<String> journal = new ArrayList<>();
 
     /**
@@ -180,12 +188,12 @@ public final class PlayerSync {
     }
 
     /**
-     * Lit une trame d'acquittement du client. Ne lève jamais (R-1650) : une trame fautive est ignorée et
+     * Lit une trame du client : un acquittement, ou des entrées. Ne lève jamais (R-1650) : une trame fautive est ignorée et
      * journalisée.
      *
      * @param frame trame reçue, ou {@code null} si le canal l'a écartée pour sa taille
      */
-    public void onAckFrame(byte[] frame) {
+    public void onClientFrame(byte[] frame) {
         if (++packetsThisSecond > maxPacketsPerSecond) {
             limitedThisSecond++;
             limitedSinceTick++;
@@ -196,11 +204,53 @@ public final class PlayerSync {
                 throw new MalformedPacketException("trame de plus de " + NetProtocol.MAX_FRAME_BYTES + " octets");
             }
             byte[] message = acks.accept(frame);
-            if (message != null) {
+            if (message == null) {
+                return;
+            }
+            if (message.length > 0 && (message[0] & 0xFF) == MessageKinds.INPUT) {
+                onInput(message);
+            } else {
                 sender.onAck(AckMessage.decode(message));
             }
         } catch (MalformedPacketException error) {
             journal.add(error.report("acquittement"));
+        }
+    }
+
+    /** ADR-158 D4 : une séquence qui ne croît pas s'ignore ; les autres attendent le tick du serveur. */
+    private void onInput(byte[] message) {
+        InputMessage input;
+        try {
+            input = InputMessage.decode(message);
+        } catch (MalformedPacketException error) {
+            reportInput("message d'entrées mal formé");
+            return;
+        }
+        long sequence = Integer.toUnsignedLong(input.sequence());
+        if (sequence <= lastInputSequence) {
+            reportInput("séquence d'entrées qui ne croît pas");
+            return;
+        }
+        lastInputSequence = sequence;
+        inputs.add(input);
+    }
+
+    /** {@return les entrées reçues depuis l'appel précédent, à appliquer dans cet ordre, puis les oublie} */
+    public List<InputMessage> drainInputs() {
+        List<InputMessage> drained = List.copyOf(inputs);
+        inputs.clear();
+        return drained;
+    }
+
+    /**
+     * Journalise une entrée refusée, une fois par cause (R-710) : un client fautif enverrait sinon une ligne
+     * par tick.
+     *
+     * @param cause ce qui ne va pas
+     */
+    public void reportInput(String cause) {
+        if (reportedInputs.add(cause)) {
+            journal.add(new MalformedPacketException(cause).report("entrées"));
         }
     }
 

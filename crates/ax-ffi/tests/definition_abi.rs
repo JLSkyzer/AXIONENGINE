@@ -284,7 +284,9 @@ fn adr156_une_definition_se_compile_s_inscrit_se_refuse_et_se_retire_par_l_abi()
         resume.clips,
         [SummaryClip {
             name: "tourner".to_owned(),
-            tracks: 1
+            tracks: 1,
+            duration: 1.0,
+            loops: false
         }]
     );
 

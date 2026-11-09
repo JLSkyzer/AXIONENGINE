@@ -6,7 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import dev.axion.asset.Anatomy;
 import dev.axion.definition.Seating;
+import dev.axion.net.AnimationLayers;
+import dev.axion.net.Fragments;
+import dev.axion.net.InputMessage;
+import dev.axion.net.MessageKinds;
 import dev.axion.seat.SeatEjection;
+import dev.axion.seat.VehicleInput;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
@@ -426,6 +431,138 @@ public final class SiegesGameTests {
                     helper.assertTrue(assembly.lastEjection() != null
                             && assembly.lastEjection().cause() == SeatEjection.Cause.ASSEMBLY_REMOVED,
                             "l'éjection retenue : " + assembly.lastEjection());
+                })
+                .thenSucceed();
+    }
+
+    private static byte[] trame(int sequence, AxionEntity assembly, int siege, VehicleInput entree) {
+        return Fragments.split(new InputMessage(sequence, assembly.getId(), siege, entree).encode(), 0).get(0);
+    }
+
+    /**
+     * T-442 (R-710, INV-02), de bout en bout par le canal : l'entrée d'un siège non occupé, une séquence
+     * rétrograde, un message mal formé sont ignorés ; un NaN, une valeur hors bornes, un contrôle non déclaré
+     * sont ramenés dans les bornes ; un débit au-delà de R-1690 est limité ; un siège libéré ou muet ne commande
+     * plus rien ; et rien de tout cela ne déplace l'assembly.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 300)
+    public static void lesEntreesDuClientSontValideesAuServeur(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), QUART);
+        JoueurSimule simule = JoueurSimule.rejoindre(
+                helper.getLevel(), "pilote", helper.absoluteVec(new Vec3(1.0, DESSUS_DALLE, 1.0)));
+        helper.onEachTick(simule::tick);
+        ServerPlayer joueur = simule.joueur();
+        VehicleInput plein = new VehicleInput(0.5f, 1f, -0.25f, 1f, 1f, (byte) 3, 7);
+        VehicleInput borne = new VehicleInput(0.5f, 0f, -0.25f, 0f, 0f, (byte) 0, 0);
+        Vec3[] avant = new Vec3[1];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    avant[0] = assembly.position();
+                    helper.assertTrue(assembly.reseat(joueur, "passager"), "assis à la place du passager");
+                    simule.envoyer(trame(1, assembly, 0, plein));
+                })
+                .thenExecuteAfter(1, () -> {
+                    helper.assertTrue(VehicleInput.NONE.equals(assembly.seatInput(0)), "un passager ne conduit pas");
+                    joueur.stopRiding();
+                    helper.assertTrue(assembly.reseat(joueur, "conducteur"), "assis au volant");
+                    simule.envoyer(trame(2, assembly, 0, plein));
+                })
+                .thenExecuteAfter(1, () -> {
+                    helper.assertTrue(borne.equals(assembly.seatInput(0)), "contrôles déclarés seuls : " + assembly.seatInput(0));
+                    simule.envoyer(trame(1, assembly, 0, new VehicleInput(1f, 0f, 1f, 0f, 0f, (byte) 0, 0)));
+                    simule.envoyer(new byte[] {0, (byte) MessageKinds.INPUT, 1});
+                })
+                .thenExecuteAfter(1, () -> {
+                    helper.assertTrue(borne.equals(assembly.seatInput(0)), "séquence rétrograde et message coupé ignorés");
+                    simule.envoyer(trame(3, assembly, 0, new VehicleInput(Float.NaN, 0f, -9f, 0f, 0f, (byte) 0, 0)));
+                })
+                .thenExecuteAfter(1, () -> {
+                    helper.assertTrue(new VehicleInput(0f, 0f, -1f, 0f, 0f, (byte) 0, 0).equals(assembly.seatInput(0)),
+                            "NaN à zéro, hors bornes ramené : " + assembly.seatInput(0));
+                    joueur.stopRiding();
+                    helper.assertTrue(VehicleInput.NONE.equals(assembly.seatInput(0)), "un siège libéré ne commande plus");
+                    helper.assertTrue(assembly.reseat(joueur, "conducteur"), "rassis");
+                    simule.envoyer(trame(4, assembly, 0, plein));
+                })
+                .thenExecuteAfter(1, () -> helper.assertTrue(borne.equals(assembly.seatInput(0)), "de nouveau au volant"))
+                .thenExecuteAfter(10, () -> helper.assertTrue(VehicleInput.NONE.equals(assembly.seatInput(0)),
+                        "rien depuis net.extrapolation_max_ms : plus d'entrée"))
+                .thenExecute(() -> {
+                    for (int sequence = 100; sequence < 160; sequence++) {
+                        simule.envoyer(trame(sequence, assembly, 0, plein));
+                    }
+                })
+                .thenExecuteAfter(1, () -> {
+                    helper.assertTrue(simule.synchronisation().lastTickLimited() > 0, "R-1690 : le flot est limité");
+                    helper.assertTrue(assembly.position().distanceTo(avant[0]) < 0.01,
+                            "INV-02 : rien de tout cela n'a déplacé l'assembly");
+                    simule.quitter();
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * T-443 : un clic sur le coulisseau bascule son clip, à l'endroit puis à l'envers ; un clic sur le socle le
+     * rejoue depuis son début ; un second client le voit, par les snapshots.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 300)
+    public static void unClicJoueLaClipDeSonNodeEtUnSecondClientLeVoit(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(helper, "axion:test/anime/glissiere_clic",
+                new Vec3(4.5, DESSUS_DALLE, 4.5), new float[] {0f, 0f, 0f, 1f});
+        ServerPlayer joueur = joueur(helper, "cliqueur");
+        JoueurSimule temoin = JoueurSimule.rejoindre(
+                helper.getLevel(), "temoin", helper.absoluteVec(new Vec3(4.0, DESSUS_DALLE, 7.0)));
+        helper.onEachTick(temoin::tick);
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    helper.assertTrue(cliquer(assembly, joueur, 0f, 1.25f, 0f) == InteractionResult.CONSUME, "le coulisseau");
+                    AnimationLayers.Layer couche = assembly.animation().state().layer(1);
+                    helper.assertTrue(couche.playing() && couche.speed() == 1f, "joué à l'endroit, à la couche déclarée : " + couche);
+                })
+                .thenWaitUntil(() -> temoinVoit(helper, temoin, assembly, 1f))
+                .thenExecute(() -> {
+                    helper.assertTrue(cliquer(assembly, joueur, 0f, 1.25f, 0f) == InteractionResult.CONSUME, "le coulisseau, encore");
+                    helper.assertTrue(assembly.animation().state().layer(1).speed() == -1f, "à l'envers");
+                })
+                .thenWaitUntil(() -> temoinVoit(helper, temoin, assembly, -1f))
+                .thenExecute(() -> {
+                    helper.assertTrue(cliquer(assembly, joueur, 0f, 0.5f, 0f) == InteractionResult.CONSUME, "le socle");
+                    AnimationLayers.Layer couche = assembly.animation().state().layer(1);
+                    helper.assertTrue(couche.speed() == 1f && couche.origin() == 0f, "rejoué depuis son début : " + couche);
+                    temoin.quitter();
+                })
+                .thenSucceed();
+    }
+
+    private static void temoinVoit(GameTestHelper helper, JoueurSimule temoin, AxionEntity assembly, float vitesse) {
+        boolean vu = false;
+        for (JoueurSimule.Recu recu : temoin.recus()) {
+            vu = recu.handle() == assembly.getId() && recu.state().animation().layer(1).playing()
+                    && recu.state().animation().layer(1).speed() == vitesse || vu;
+        }
+        helper.assertTrue(vu, "le témoin voit la vitesse " + vitesse);
+    }
+
+    /** T-443 : une action sans système compile, et un clic reste sans effet. */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void uneActionSansSystemeResteSansEffet(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(helper, "axion:test/anime/glissiere_reparer",
+                new Vec3(4.5, DESSUS_DALLE, 4.5), new float[] {0f, 0f, 0f, 1f});
+        ServerPlayer joueur = joueur(helper, "reparateur");
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    helper.assertTrue(cliquer(assembly, joueur, 0f, 0.5f, 0f) == InteractionResult.PASS, "sans effet");
+                    helper.assertTrue(assembly.animation().state().equals(AnimationLayers.NONE), "aucun clip joué");
                 })
                 .thenSucceed();
     }

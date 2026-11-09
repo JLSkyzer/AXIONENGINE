@@ -1224,6 +1224,14 @@ public final class AxionRuntime {
     }
 
     /**
+     * {@return le délai au-delà duquel les dernières entrées d'un siège ne valent plus, en millisecondes
+     * ({@code net.extrapolation_max_ms}, ADR-158 D4)} Nul sans runtime natif.
+     */
+    public long inputTimeoutMillis() {
+        return hasNativeRuntime() ? outcome.config().getInt("net.extrapolation_max_ms") : 0L;
+    }
+
+    /**
      * Dit si une boîte touche un collider solide d'une assembly (ADR-158 D5), sur le fil du serveur.
      *
      * @param dimension dimension

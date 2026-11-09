@@ -11,8 +11,10 @@ import java.util.List;
  *
  * @param names le nom de chaque clip, vide s'il n'en a pas
  * @param tracks le nombre de pistes de chaque clip
+ * @param durations la durée de chaque clip, en secondes
+ * @param loops pour chaque clip, vrai s'il boucle
  */
-public record AnimClips(List<String> names, int[] tracks) {
+public record AnimClips(List<String> names, int[] tracks, float[] durations, boolean[] loops) {
 
     /** Aucun clip : un asset sans section {@code ANIM}. */
     public static final AnimClips NONE = new AnimClips(List.of(), new int[0]);
@@ -21,9 +23,36 @@ public record AnimClips(List<String> names, int[] tracks) {
     public AnimClips {
         names = List.copyOf(names);
         tracks = tracks.clone();
-        if (names.size() != tracks.length) {
+        durations = durations.clone();
+        loops = loops.clone();
+        if (names.size() != tracks.length || names.size() != durations.length || names.size() != loops.length) {
             throw new IllegalArgumentException(names.size() + " noms pour " + tracks.length + " clips");
         }
+    }
+
+    /**
+     * Des clips sans durée connue : ceux dont seuls comptent les noms et les pistes.
+     *
+     * @param names le nom de chaque clip
+     * @param tracks le nombre de pistes de chaque clip
+     */
+    public AnimClips(List<String> names, int[] tracks) {
+        this(names, tracks, new float[tracks.length], new boolean[tracks.length]);
+    }
+
+    /**
+     * {@return ce qu'un temps de clip donne une fois ramené dans le clip, comme le natif l'échantillonne :
+     * modulo sa durée s'il boucle, borné à sa durée sinon}
+     *
+     * @param clip rang d'un clip
+     * @param time temps de clip, en secondes
+     */
+    public double wrap(int clip, double time) {
+        double duration = durations[clip];
+        if (loops[clip] && duration > 0.0) {
+            return ((time % duration) + duration) % duration;
+        }
+        return Math.max(0.0, Math.min(duration, time));
     }
 
     /**
@@ -53,8 +82,19 @@ public record AnimClips(List<String> names, int[] tracks) {
     }
 
     @Override
+    public float[] durations() {
+        return durations.clone();
+    }
+
+    @Override
+    public boolean[] loops() {
+        return loops.clone();
+    }
+
+    @Override
     public boolean equals(Object other) {
-        return other instanceof AnimClips that && names.equals(that.names) && Arrays.equals(tracks, that.tracks);
+        return other instanceof AnimClips that && names.equals(that.names) && Arrays.equals(tracks, that.tracks)
+                && Arrays.equals(durations, that.durations) && Arrays.equals(loops, that.loops);
     }
 
     @Override

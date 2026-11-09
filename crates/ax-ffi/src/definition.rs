@@ -13,7 +13,7 @@
 //! avertissement : la physique l'emporte (R-930).
 
 use ax_asset::a3d::decode_animations;
-use ax_model::dm::animation::BoneDesc;
+use ax_model::dm::animation::{animation_flags, BoneDesc};
 use ax_model::dm::commands::{AssemblyBodyEntry, MAX_ASSEMBLY_BODIES};
 use ax_model::dm::definition::{
     definition_flags, part_flags, reference_category, Definition, DefinitionRef, SummaryClip,
@@ -329,6 +329,8 @@ fn clip_table(anim: Option<&[u8]>) -> Vec<(u64, SummaryClip)> {
                         SummaryClip {
                             name,
                             tracks: clip.track_count,
+                            duration: clip.duration,
+                            loops: clip.flags & animation_flags::LOOP != 0,
                         },
                     )
                 })
@@ -1127,7 +1129,9 @@ mod tests {
             compiled.clips,
             [SummaryClip {
                 name: "tourner".to_owned(),
-                tracks: 1
+                tracks: 1,
+                duration: compiled.clips[0].duration,
+                loops: false
             }]
         );
         let sans = compile(&definition(Vec::new()), &asset(&nodes, &colliders)).unwrap();

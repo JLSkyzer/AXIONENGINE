@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "asset": "axion:models/test/anime/glissiere.gltf",
+  "kind": "rigid_object",
+  "interaction": [
+    {
+      "node": "socle",
+      "action": "repair"
+    }
+  ]
+}

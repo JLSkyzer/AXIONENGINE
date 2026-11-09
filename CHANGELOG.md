@@ -10,6 +10,9 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- Sieges (C-53, ADR-158, tranche 4) : le conducteur envoie ses entrees au
+  serveur, qui les valide et les borne (`C2S_Input`, protocole 3) ; un clic
+  sur un node joue ou bascule son animation, vue des autres joueurs. ABI 17.
 - Sieges (C-53, ADR-158) : une assembly reste dans le monde quand son seul
   joueur se deconnecte ; il retrouve son siege a son retour.
 - Sieges (C-53, ADR-158, tranche 3) : le passager descend a la premiere sortie

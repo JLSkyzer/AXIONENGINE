@@ -40,8 +40,8 @@ class DefinitionCompilerTest {
         ecrire(out, "racine animée");
         // Deux clips : « ouvrir » à 3 pistes, puis un clip sans nom à 1 piste.
         out.putInt(2);
-        ecrire(out.putInt(3), "ouvrir");
-        ecrire(out.putInt(1), "");
+        ecrire(out.putInt(3).putFloat(1.5f).putInt(1), "ouvrir");
+        ecrire(out.putInt(1).putFloat(0.25f).putInt(0), "");
         // ADR-158 D1 : deux références, un node puis un clip.
         out.putInt(2).putInt(5).putInt(-1);
         // ADR-158 D3 : deux nodes, la racine au corps 0, l'enfant au corps 1 ; puis les porteurs des
@@ -60,7 +60,8 @@ class DefinitionCompilerTest {
         assertEquals(1, summary.joints());
         assertTrue(summary.serverAnimated());
         assertEquals(List.of("racine animée"), summary.warnings());
-        assertEquals(new AnimClips(List.of("ouvrir", ""), new int[] {3, 1}), summary.clips());
+        assertEquals(new AnimClips(List.of("ouvrir", ""), new int[] {3, 1}, new float[] {1.5f, 0.25f},
+                new boolean[] {true, false}), summary.clips());
         assertArrayEquals(new int[] {5, -1}, summary.nodes());
         Anatomy anatomy = summary.anatomy();
         assertEquals(2, anatomy.size());

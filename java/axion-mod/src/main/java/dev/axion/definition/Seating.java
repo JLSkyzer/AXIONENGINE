@@ -175,10 +175,12 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      *
      * @param node l'index du node qui la porte
      * @param action ce qu'elle fait
-     * @param animation le clip qu'elle joue, {@code null} sans
+     * @param animation l'animation de la definition qu'elle joue, {@code null} sans
+     * @param clip le clip de cette animation, son nom s'il n'en déclare pas ; {@code null} sans
+     * @param layer la couche de cette animation, 0 si elle n'en déclare pas
      * @param seat l'index du siège où elle assoit, {@code -1} sans
      */
-    public record Interaction(int node, Action action, String animation, int seat) {}
+    public record Interaction(int node, Action action, String animation, String clip, int layer, int seat) {}
 
     /**
      * Ce qu'un clic vise (ADR-158 D2) : une interaction, ou un siège où s'asseoir.
@@ -277,7 +279,12 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                         + action.awaits() + " (ADR-158 D6)");
             }
             String seat = text(interaction, "seat");
-            interactions.add(new Interaction(node(byPath, path + ".node"), action, text(interaction, "animation"),
+            String animation = text(interaction, "animation");
+            JsonObject played = animation != null && root.get("animations") instanceof JsonObject animations
+                    && animations.get(animation) instanceof JsonObject declared ? declared : null;
+            String clip = played != null && text(played, "clip") != null ? text(played, "clip") : animation;
+            int layer = played != null && played.has("layer") ? played.get("layer").getAsInt() : 0;
+            interactions.add(new Interaction(node(byPath, path + ".node"), action, animation, clip, layer,
                     seat == null ? -1 : seatRanks.getOrDefault(seat, -1)));
         }
         return seats.isEmpty() && interactions.isEmpty() ? NONE : new Seating(seats, interactions, warnings);

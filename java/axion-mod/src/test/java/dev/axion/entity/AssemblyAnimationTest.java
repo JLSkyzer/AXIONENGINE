@@ -15,6 +15,49 @@ import org.junit.jupiter.api.Test;
 /** C-37, ADR-155 D5 : l'animation d'une assembly côté serveur, et ce qu'elle refuse. */
 class AssemblyAnimationTest {
 
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("ADR-158 D6 : un clip basculé repart en sens inverse de là où il en est, ramené dans le clip")
+    void bascule() {
+        long[] tick = {100};
+        AssemblyAnimation animation = new AssemblyAnimation(() -> tick[0], () -> {});
+        animation.bind(new AnimClips(java.util.List.of("porte", "tourne"), new int[] {1, 1}, new float[] {2f, 2f},
+                new boolean[] {false, true}));
+
+        animation.toggle("porte", 1);
+        AnimationLayers.Layer jouee = animation.state().layer(1);
+        org.junit.jupiter.api.Assertions.assertEquals(1f, jouee.speed());
+        org.junit.jupiter.api.Assertions.assertEquals(0f, jouee.origin());
+
+        // À mi-course : il revient de 1 s.
+        tick[0] = 120;
+        animation.toggle("porte", 1);
+        AnimationLayers.Layer retour = animation.state().layer(1);
+        org.junit.jupiter.api.Assertions.assertEquals(-1f, retour.speed());
+        org.junit.jupiter.api.Assertions.assertEquals(1f, retour.origin(), 1e-6f);
+        org.junit.jupiter.api.Assertions.assertEquals(120L, retour.tick());
+
+        // Resté à son début 30 s durant : il repart de 0, pas de −29 s.
+        tick[0] = 720;
+        animation.toggle("porte", 1);
+        AnimationLayers.Layer aller = animation.state().layer(1);
+        org.junit.jupiter.api.Assertions.assertEquals(1f, aller.speed());
+        org.junit.jupiter.api.Assertions.assertEquals(0f, aller.origin(), 1e-6f);
+
+        // Resté à sa fin : il repart de sa durée.
+        tick[0] = 1320;
+        animation.toggle("porte", 1);
+        org.junit.jupiter.api.Assertions.assertEquals(2f, animation.state().layer(1).origin(), 1e-6f);
+
+        // Un clip qui boucle se ramène modulo sa durée ; un autre clip sur la couche repart à l'endroit.
+        animation.toggle("tourne", 2);
+        tick[0] = 1390;
+        animation.toggle("tourne", 2);
+        org.junit.jupiter.api.Assertions.assertEquals(1.5f, animation.state().layer(2).origin(), 1e-6f);
+        animation.toggle("porte", 2);
+        org.junit.jupiter.api.Assertions.assertEquals(1f, animation.state().layer(2).speed());
+        org.junit.jupiter.api.Assertions.assertEquals(0, animation.state().layer(2).clip());
+    }
+
     private static final AnimClips MARCHE = new AnimClips(List.of("marche", "salut", ""), new int[] {3, 2, 1});
 
     private long now;

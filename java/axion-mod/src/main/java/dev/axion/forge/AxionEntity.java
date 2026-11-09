@@ -10,6 +10,7 @@ import dev.axion.seat.SeatEjection;
 import dev.axion.seat.SeatExit;
 import dev.axion.seat.SeatOccupancy;
 import dev.axion.seat.SeatPlacement;
+import dev.axion.seat.VehicleInput;
 import dev.axion.world.DimensionId;
 import dev.axion.entity.AssemblyAnimation;
 import dev.axion.entity.AssemblyBinding;
@@ -274,6 +275,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Un node perdu, en attente du tick suivant (R-712). */
     private record LostNode(int node, SeatEjection.Cause cause) {}
 
+    /** Les dernières entrées valides d'un siège, et le tick de leur réception. */
+    private record ReceivedInput(VehicleInput input, int tick) {}
+
+    private static final int MILLIS_PER_TICK = 50;
+
+    private final Map<Integer, ReceivedInput> receivedInputs = new HashMap<>();
+
     private Departure departure;
 
     /** Vrai pendant une éjection : elle n'est pas refusée. */
@@ -331,8 +339,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * interactions, le serveur lance son propre rayon, de l'œil du joueur dans sa direction de regard
      * et sur sa portée d'entité, contre les seuls colliders de l'assembly ; le collider touché donne son
      * node, puis le premier ancêtre qui porte une interaction ou un siège. Le point que le client a visé
-     * n'est pas lu (R-1620). Un siège visé assoit le joueur ; les autres interactions viennent avec la
-     * tranche 4. La main secondaire ne fait rien : la principale a déjà répondu.
+     * n'est pas lu (R-1620). Un siège visé assoit le joueur ; une interaction joue son clip, que les
+     * snapshots portent aux clients ; une action sans système ne fait rien (ADR-158 D6). La main secondaire
+     * ne fait rien : la principale a déjà répondu.
      */
     @Override
     public InteractionResult interact(Player player, InteractionHand hand) {
@@ -345,10 +354,73 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return InteractionResult.SUCCESS;
         }
         Seating.Target target = aim(player, seating);
-        if (target == null || target.seat() < 0) {
+        if (target == null) {
             return InteractionResult.PASS;
         }
-        return sit(player, target.seat()) ? InteractionResult.CONSUME : InteractionResult.PASS;
+        if (target.seat() >= 0) {
+            return sit(player, target.seat()) ? InteractionResult.CONSUME : InteractionResult.PASS;
+        }
+        return target.interaction() >= 0 && play(seating.interactions().get(target.interaction()))
+                ? InteractionResult.CONSUME : InteractionResult.PASS;
+    }
+
+    /** {@return vrai si l'interaction a joué son clip} Un clip refusé — R-200 — se journalise. */
+    private boolean play(Seating.Interaction interaction) {
+        if (interaction.action() != Seating.Action.TOGGLE_ANIMATION
+                && interaction.action() != Seating.Action.PLAY_ANIMATION) {
+            return false;
+        }
+        try {
+            if (interaction.action() == Seating.Action.TOGGLE_ANIMATION) {
+                animation.toggle(interaction.clip(), interaction.layer());
+            } else {
+                animation.setSpeed(interaction.layer(), 1f);
+                animation.play(interaction.clip(), interaction.layer(), 1f, 0f);
+            }
+            return true;
+        } catch (IllegalArgumentException refused) {
+            LOGGER.warn("AXION : assembly {}, interaction refusée — {}", getUUID(), refused.getMessage());
+            return false;
+        }
+    }
+
+    /** {@return vrai si ce siège déclare au moins un contrôle} */
+    public boolean seatTakesInput(int seat) {
+        Seating seating = seating();
+        return seating != null && seat >= 0 && seat < seating.seats().size() && seating.seats().get(seat).controls() != 0;
+    }
+
+    /**
+     * Reçoit les entrées d'un passager (serveur, ADR-158 D4) : elles ne valent que s'il occupe ce siège, et
+     * sont bornées avant d'être retenues (R-1110). La dernière reçue l'emporte.
+     *
+     * @param sender le passager qui les envoie
+     * @param seat rang du siège annoncé
+     * @param input les entrées, telles que reçues
+     * @return la faute à journaliser, {@code null} sans ; une valeur non finie compte pour zéro, et se journalise
+     */
+    public String receiveInput(Entity sender, int seat, VehicleInput input) {
+        Seating seating = seating();
+        if (seating == null || seat < 0 || seat >= seating.seats().size()
+                || sender.getVehicle() != this || seatOf(sender) != seat) {
+            return "entrées pour un siège que le joueur n'occupe pas";
+        }
+        receivedInputs.put(seat, new ReceivedInput(input.sanitized(seating.seats().get(seat)), tickCount));
+        return input.finite() ? null : "entrée non finie, comptée pour zéro (R-1110)";
+    }
+
+    /**
+     * {@return les entrées d'un siège, à ce tick : les dernières reçues, ou aucune s'il est libre ou que
+     * rien n'arrive depuis {@code net.extrapolation_max_ms}} Les véhicules les liront (C-33).
+     *
+     * @param seat rang du siège
+     */
+    public VehicleInput seatInput(int seat) {
+        ReceivedInput received = receivedInputs.get(seat);
+        if (received == null || (tickCount - received.tick()) * MILLIS_PER_TICK > AxionEntities.inputTimeoutMillis()) {
+            return VehicleInput.NONE;
+        }
+        return received.input();
     }
 
     /** {@return ce que vise le joueur, d'après le rayon du serveur, ou {@code null}} */
@@ -727,6 +799,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         int seat = occupancy.release(passenger.getId());
         if (seat != SeatOccupancy.FREE) {
             storeOccupancy(occupancy);
+            receivedInputs.remove(seat);
         }
         exitRefusedUntil.remove(passenger.getId());
         forgetSeat(passenger);
