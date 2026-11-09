@@ -48,6 +48,7 @@ final class SeatReturns {
      * @param server le serveur
      */
     void tick(MinecraftServer server) {
+        AuthoritativeThread.require();
         for (Iterator<Pending> it = pending.iterator(); it.hasNext(); ) {
             Pending wait = it.next();
             ServerPlayer player = server.getPlayerList().getPlayer(wait.player());

@@ -2123,3 +2123,11 @@ l'ouest, et ce point y était dans le champ.
 **Règle.** Au banc, une assembly qu'on veut hors de vue se pose au bout de la rangée `DERRIERE` (au
 sud-est), « hors de vue au nord comme à l'ouest ». Un contrôle de culling qui échoue se sonde d'abord
 côté Java (ce qui est envoyé) avant de soupçonner le natif.
+
+## 2026-11-09 | Un commit poussé alors que la CI locale était rouge
+
+La commande qui lisait le résultat de `local_ci.py` enchaînait aussi le commit et le push : `tail` a affiché
+« ROUGE » trop tard, `1fbd0ac` était parti. Cause : la lecture du verdict et la publication dans le même appel.
+
+**Règle : lire le verdict d'abord, dans un appel à part ; commiter dans l'appel suivant, seulement sur
+« CI locale : verte ».** Un code de sortie 0 du processus d'arrière-plan ne dit rien : c'est celui de `tail`.
