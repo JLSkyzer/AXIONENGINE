@@ -134,8 +134,8 @@ public final class SiegesGameTests {
     }
 
     /**
-     * T-444 : un siège pris refuse un second joueur ; un siège libéré par la descente se reprend ; un
-     * joueur remonté de force retrouve le siège qu'il a gardé ; une entité remontée de force dans une
+     * T-444 : un siège pris refuse un second joueur ; un siège libéré par la descente se reprend ; une
+     * entité remontée de force dans une
      * assembly pleine en descend au tick suivant.
      */
     @GameTest(template = "test/plancher", timeoutTicks = 200)
@@ -156,12 +156,13 @@ public final class SiegesGameTests {
                 helper.assertTrue(b.getVehicle() == null, "b reste debout");
                 helper.assertTrue(cliquer(assembly, b, 2f, 0.5f, 0f) == InteractionResult.CONSUME,
                         "b prend le siège passager");
-                // a descend, puis remonte de force, comme Minecraft le fait au retour d'un joueur : il
-                // retrouve le siège conducteur qu'il a gardé.
+                // a descend, puis remonte de force : le siège qu'il vient de libérer est le seul libre.
                 a.stopRiding();
                 helper.assertTrue(assembly.seatOf(a) == -1, "la descente libère le siège");
+                helper.assertFalse(a.getPersistentData().contains(AxionEntity.REMEMBERED_SEAT),
+                        "une descente oublie le siège : il ne serait pas rendu au retour");
                 helper.assertTrue(a.startRiding(assembly, true), "remontée forcée");
-                helper.assertTrue(assembly.seatOf(a) == 0, "a retrouve son siège, " + assembly.seatOf(a));
+                helper.assertTrue(assembly.seatOf(a) == 0, "a reprend le siège libre, " + assembly.seatOf(a));
                 // L'assembly est pleine : c, remonté de force, n'a pas de siège.
                 helper.assertTrue(c.startRiding(assembly, true), "remontée forcée dans une assembly pleine");
                 helper.assertTrue(assembly.seatOf(c) == -1, "aucun siège pour c");
@@ -175,46 +176,119 @@ public final class SiegesGameTests {
     }
 
     /**
-     * T-444, le chemin réel : Minecraft emporte le véhicule d'un joueur qui s'en va s'il en est le seul
-     * passager joueur, et le remet au monde à son retour. Le joueur retrouve l'assembly et son siège.
+     * T-444, le chemin réel, joueur simulé entier : à sa déconnexion l'assembly reste au monde, le joueur en
+     * descend ; à son retour il retrouve son siège.
      */
     @GameTest(template = "test/plancher", timeoutTicks = 300)
-    public static void unJoueurAssisQuiSeDeconnecteRetrouveSonVehiculeEtSonSiege(GameTestHelper helper) {
+    public static void unJoueurQuiSeDeconnecteLaisseLAssemblyEtRetrouveSonSiege(GameTestHelper helper) {
         ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
         AxionEntity assembly = AssembliesDeTest.poser(
                 helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), QUART);
         Vec3 ou = helper.absoluteVec(new Vec3(1.0, DESSUS_DALLE, 1.0));
         JoueurSimule[] simule = {JoueurSimule.rejoindre(helper.getLevel(), "revenant", ou)};
         helper.onEachTick(() -> simule[0].tick());
-        int[] etape = {0};
-        helper.succeedWhen(() -> {
-            helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée");
-            if (etape[0] == 0) {
-                helper.assertTrue(assembly.sit(simule[0].joueur(), 1), "assis au siège passager");
-                etape[0] = 1;
-                helper.fail("attendre un tick");
-            }
-            if (etape[0] == 1) {
-                simule[0].quitter();
-                helper.assertTrue(assembly.isRemoved(), "Minecraft emporte le véhicule avec son seul joueur, "
-                        + assembly.getRemovalReason());
-                simule[0] = JoueurSimule.rejoindre(helper.getLevel(), "revenant", ou);
-                etape[0] = 2;
-            }
-            ServerPlayer revenu = simule[0].joueur();
-            helper.assertTrue(revenu.getVehicle() instanceof AxionEntity, "le joueur est remonté : " + revenu.getVehicle());
-            AxionEntity retrouvee = (AxionEntity) revenu.getVehicle();
-            helper.assertTrue(retrouvee.getUUID().equals(assembly.getUUID()), "la même assembly");
-            helper.assertTrue(retrouvee.hasPhysicalBounds(), "de nouveau simulée");
-            helper.assertTrue(retrouvee.seatOf(revenu) == 1, "au siège qu'il occupait, " + retrouvee.seatOf(revenu));
-            simule[0].quitter();
-        });
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenExecute(() -> helper.assertTrue(assembly.sit(simule[0].joueur(), 1), "assis au siège passager"))
+                .thenExecuteAfter(2, () -> {
+                    simule[0].quitter();
+                    helper.assertFalse(assembly.isRemoved(), "l'assembly reste au monde : " + assembly.getRemovalReason());
+                    helper.assertTrue(assembly.getPassengers().isEmpty(), "son siège est libre");
+                    simule[0] = JoueurSimule.rejoindre(helper.getLevel(), "revenant", ou);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(simule[0].joueur().getVehicle() == assembly, "le joueur est rassis"))
+                .thenExecute(() -> {
+                    helper.assertTrue(assembly.seatOf(simule[0].joueur()) == 1,
+                            "au siège qu'il occupait, " + assembly.seatOf(simule[0].joueur()));
+                    simule[0].quitter();
+                })
+                .thenSucceed();
+    }
+
+    /** T-444 : à son retour, son siège pris, le joueur reçoit le premier libre. */
+    @GameTest(template = "test/plancher", timeoutTicks = 300)
+    public static void unJoueurDontLeSiegeEstPrisRecoitLePremierLibre(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), QUART);
+        Vec3 ou = helper.absoluteVec(new Vec3(1.0, DESSUS_DALLE, 1.0));
+        JoueurSimule[] simule = {JoueurSimule.rejoindre(helper.getLevel(), "supplante", ou)};
+        helper.onEachTick(() -> simule[0].tick());
+        ServerPlayer autre = joueur(helper, "supplante_autre");
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenExecute(() -> helper.assertTrue(assembly.sit(simule[0].joueur(), 1), "assis au siège passager"))
+                .thenExecuteAfter(2, () -> {
+                    simule[0].quitter();
+                    helper.assertTrue(assembly.sit(autre, 1), "un autre prend le siège");
+                    simule[0] = JoueurSimule.rejoindre(helper.getLevel(), "supplante", ou);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(simule[0].joueur().getVehicle() == assembly, "le joueur est rassis"))
+                .thenExecute(() -> {
+                    helper.assertTrue(assembly.seatOf(simule[0].joueur()) == 0, "au premier libre");
+                    autre.stopRiding();
+                    simule[0].quitter();
+                })
+                .thenSucceed();
+    }
+
+    /** ADR-158 : un joueur revenu qui a déjà marché n'est pas ramené de force sur son siège. */
+    @GameTest(template = "test/plancher", timeoutTicks = 300)
+    public static void unJoueurRevenuQuiABougeNEstPasRassis(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), QUART);
+        Vec3 ou = helper.absoluteVec(new Vec3(1.0, DESSUS_DALLE, 1.0));
+        JoueurSimule[] simule = {JoueurSimule.rejoindre(helper.getLevel(), "marcheur", ou)};
+        helper.onEachTick(() -> simule[0].tick());
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenExecute(() -> helper.assertTrue(assembly.sit(simule[0].joueur(), 1), "assis au siège passager"))
+                .thenExecuteAfter(2, () -> {
+                    simule[0].quitter();
+                    simule[0] = JoueurSimule.rejoindre(helper.getLevel(), "marcheur", ou);
+                    simule[0].joueur().moveTo(ou.x + 4.0, ou.y, ou.z);
+                })
+                .thenExecuteAfter(3, () -> {
+                    helper.assertTrue(simule[0].joueur().getVehicle() == null, "il a repris sa route");
+                    helper.assertFalse(simule[0].joueur().getPersistentData().contains(AxionEntity.REMEMBERED_SEAT),
+                            "son siège est oublié");
+                    simule[0].quitter();
+                })
+                .thenSucceed();
+    }
+
+    /** ADR-158 : l'assembly supprimée pendant son absence, le joueur revient à pied, et ses clés sont oubliées. */
+    @GameTest(template = "test/plancher", timeoutTicks = 400)
+    public static void unJoueurDontLAssemblyADisparuRevientAPied(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), QUART);
+        Vec3 ou = helper.absoluteVec(new Vec3(1.0, DESSUS_DALLE, 1.0));
+        JoueurSimule[] simule = {JoueurSimule.rejoindre(helper.getLevel(), "pieton", ou)};
+        helper.onEachTick(() -> simule[0].tick());
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenExecute(() -> helper.assertTrue(assembly.sit(simule[0].joueur(), 1), "assis au siège passager"))
+                .thenExecuteAfter(2, () -> {
+                    simule[0].quitter();
+                    assembly.discard();
+                    simule[0] = JoueurSimule.rejoindre(helper.getLevel(), "pieton", ou);
+                    helper.assertTrue(simule[0].joueur().getPersistentData().contains(AxionEntity.REMEMBERED_SEAT),
+                            "son fichier avait gardé son siège");
+                })
+                .thenExecuteAfter(205, () -> {
+                    helper.assertTrue(simule[0].joueur().getVehicle() == null, "il revient à pied");
+                    helper.assertFalse(simule[0].joueur().getPersistentData().contains(AxionEntity.REMEMBERED_SEAT),
+                            "l'attente finie, le siège est oublié");
+                    simule[0].quitter();
+                })
+                .thenSucceed();
     }
 
     /** Rassoit un joueur au siège passager, de force : Minecraft refuse une remontée trop rapprochée. */
     private static void rasseoir(AxionEntity assembly, ServerPlayer joueur) {
-        joueur.getPersistentData().putString(AxionEntity.REMEMBERED_SEAT, "passager");
-        if (!joueur.startRiding(assembly, true) || assembly.seatOf(joueur) != 1) {
+        if (!assembly.reseat(joueur, "passager") || assembly.seatOf(joueur) != 1) {
             throw new GameTestAssertException("le joueur n'est pas rassis au siège passager");
         }
     }
@@ -256,8 +330,7 @@ public final class SiegesGameTests {
                 .thenIdle(40)
                 .thenExecute(() -> {
                     // La première sortie du conducteur tombe dans la caisse : seul le natif le voit.
-                    joueur.getPersistentData().putString(AxionEntity.REMEMBERED_SEAT, "conducteur");
-                    helper.assertTrue(joueur.startRiding(assembly, true) && assembly.seatOf(joueur) == 0, "assis");
+                    helper.assertTrue(assembly.reseat(joueur, "conducteur") && assembly.seatOf(joueur) == 0, "assis");
                     joueur.setShiftKeyDown(true);
                 })
                 .thenExecuteAfter(2, () -> {

@@ -181,8 +181,12 @@ public final class AxionForgeEntrypoint {
     public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             AxionNetwork.onPlayerLoggedIn(player);
+            seatReturns.onLogin(player);
         }
     }
+
+    /** Les joueurs assis à leur départ, à rasseoir (ADR-158). */
+    private final SeatReturns seatReturns = new SeatReturns();
 
     /**
      * Un passager quitte une assembly : celle-ci peut refuser une descente au sneak quand aucune place
@@ -415,6 +419,7 @@ public final class AxionForgeEntrypoint {
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             runtime.onTick();
+            seatReturns.tick(event.getServer());
             // Les états du natif viennent d'être appliqués aux entités : ils partent dans les snapshots.
             AxionNetwork.sendSnapshots(event.getServer());
             JournalBridge journal = JournalBridge.active();

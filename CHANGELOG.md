@@ -10,6 +10,8 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- Sieges (C-53, ADR-158) : une assembly reste dans le monde quand son seul
+  joueur se deconnecte ; il retrouve son siege a son retour.
 - Sieges (C-53, ADR-158, tranche 3) : le passager descend a la premiere sortie
   libre, sinon au siege, sinon a la place libre la plus proche ; sans aucune
   place, il reste assis ; une ejection n'est jamais refusee. Une assembly

@@ -30,6 +30,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
@@ -243,10 +244,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     private static final String SEATS_KEY = "s";
 
     /**
-     * Clé, dans les données persistantes d'un joueur, du nom du siège qu'il occupe (ADR-158 D3) :
-     * Minecraft le remonte dans son véhicule à son retour, AXION lui rend ce siège.
+     * Clé, dans les données persistantes d'un joueur, du nom du siège qu'il occupe (ADR-158 D3) : à son
+     * retour, {@link SeatReturns} le lui rend.
      */
     static final String REMEMBERED_SEAT = "axion:seat";
+
+    /** Clé, dans les mêmes données, de l'assembly où il est assis. */
+    static final String REMEMBERED_ASSEMBLY = "axion:seat_assembly";
 
     /** Le siège qu'une montée en cours a choisi, le temps que Minecraft ajoute le passager ; -1 sans. */
     private int mountingSeat = SeatOccupancy.FREE;
@@ -397,9 +401,64 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
     }
 
-    private static void remember(Entity passenger, Seating.Seat seat) {
+    private void remember(Entity passenger, Seating.Seat seat) {
         if (passenger instanceof Player player) {
             player.getPersistentData().putString(REMEMBERED_SEAT, seat.name());
+            player.getPersistentData().putUUID(REMEMBERED_ASSEMBLY, getUUID());
+        }
+    }
+
+    /**
+     * Oublie le siège d'un joueur. À sa déconnexion, Minecraft sauvegarde le joueur avant de le faire
+     * descendre (bytecode de {@code PlayerList.remove} lu) : le fichier garde son siège, sa descente ne
+     * l'efface que de la mémoire.
+     *
+     * @param passenger le joueur
+     */
+    static void forgetSeat(Entity passenger) {
+        if (passenger instanceof Player player) {
+            player.getPersistentData().remove(REMEMBERED_SEAT);
+            player.getPersistentData().remove(REMEMBERED_ASSEMBLY);
+        }
+    }
+
+    /**
+     * Minecraft emporte avec lui le véhicule d'un joueur qui se déconnecte, s'il en est le seul passager
+     * joueur, et le sauve dans le fichier du joueur. Pas une assembly : elle reste au monde, visible des
+     * autres, et le joueur retrouve son siège à son retour (décision de Killian du 2026-11-09).
+     */
+    @Override
+    public boolean hasExactlyOnePlayerPassenger() {
+        return false;
+    }
+
+    /** {@return vrai si les sièges de la definition sont connus : elle est compilée (serveur)} */
+    boolean seatingKnown() {
+        return seating() != null;
+    }
+
+    /**
+     * Rassoit un passager de force, sans le délai de Minecraft entre deux montées : le siège de ce nom s'il
+     * est libre, sinon le premier libre.
+     *
+     * @param passenger le passager
+     * @param seatName nom du siège
+     * @return vrai s'il est assis
+     */
+    boolean reseat(Entity passenger, String seatName) {
+        Seating seating = seating();
+        if (seating == null) {
+            return false;
+        }
+        int seat = SeatPlacement.seatFor(seating, occupancy(seating), seatName);
+        if (seat == SeatOccupancy.FREE) {
+            return false;
+        }
+        mountingSeat = seat;
+        try {
+            return passenger.startRiding(this, true) && seatOf(passenger) == seat;
+        } finally {
+            mountingSeat = SeatOccupancy.FREE;
         }
     }
 
@@ -410,10 +469,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
-     * Un passager arrive (ADR-158 D3) : au siège que la montée a choisi ; sinon — Minecraft remonte un
-     * joueur dans son véhicule à son retour, une commande assoit une entité — au siège dont le joueur a
-     * gardé le nom s'il est libre, puis au premier libre. Sans siège libre, il est descendu au tick
-     * suivant (une remontée forcée ne demande pas {@link #canAddPassenger}).
+     * Un passager arrive (ADR-158 D3) : au siège que la montée a choisi ; sinon — une commande assoit une
+     * entité — au premier libre. Sans siège libre, il est descendu au tick suivant (une remontée forcée ne
+     * demande pas {@link #canAddPassenger}).
      */
     @Override
     protected void addPassenger(Entity passenger) {
@@ -425,24 +483,17 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         SeatOccupancy occupancy = occupancy(seating);
         int seat = mountingSeat != SeatOccupancy.FREE && occupancy.occupant(mountingSeat) == SeatOccupancy.FREE
                 ? mountingSeat
-                : SeatPlacement.seatFor(seating, occupancy, remembered(passenger));
+                : occupancy.firstFree();
         if (seat != SeatOccupancy.FREE && occupancy.sit(passenger.getId(), seat)) {
             storeOccupancy(occupancy);
             remember(passenger, seating.seats().get(seat));
         }
     }
 
-    /** {@return le nom du siège qu'un joueur a gardé, {@code null} sans} */
-    private static String remembered(Entity passenger) {
-        return passenger instanceof Player player && player.getPersistentData().contains(REMEMBERED_SEAT)
-                ? player.getPersistentData().getString(REMEMBERED_SEAT)
-                : null;
-    }
-
     /**
      * Chaque tick, au serveur : un passager sans siège — arrivé avant que la definition ne soit compilée,
-     * ou remonté de force dans une assembly pleine — reçoit le siège qu'il avait gardé ou le premier libre ;
-     * sans siège libre, il descend. Un occupant qui n'est plus passager libère le sien.
+     * ou remonté de force dans une assembly pleine — reçoit le premier libre ; sans siège libre, il
+     * descend. Un occupant qui n'est plus passager libère le sien.
      */
     private void settlePassengers() {
         Seating seating = seating();
@@ -465,7 +516,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             if (occupancy.seatOf(passenger.getId()) != SeatOccupancy.FREE) {
                 continue;
             }
-            int seat = SeatPlacement.seatFor(seating, occupancy, remembered(passenger));
+            int seat = occupancy.firstFree();
             if (seat != SeatOccupancy.FREE && occupancy.sit(passenger.getId(), seat)) {
                 remember(passenger, seating.seats().get(seat));
                 changed = true;
@@ -577,7 +628,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     boolean allowsDismount(Entity passenger) {
         if (level().isClientSide() || ejecting || isRemoved()
-                || !(passenger instanceof Player player) || !player.isShiftKeyDown()) {
+                || !(passenger instanceof ServerPlayer player) || !player.isShiftKeyDown() || player.hasDisconnected()) {
             return true;
         }
         int id = passenger.getId();
@@ -678,6 +729,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             storeOccupancy(occupancy);
         }
         exitRefusedUntil.remove(passenger.getId());
+        forgetSeat(passenger);
         if (departure == null || departure.passenger() != passenger.getId()) {
             departure = new Departure(passenger.getId(), seat, null);
         }

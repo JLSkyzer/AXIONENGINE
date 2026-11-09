@@ -3639,7 +3639,8 @@ T-980..T-984.
       - [x] Tranche 2b (2026-11-05) : montée au clic, position imposée au serveur et au client, occupation
             synchronisée, siège conservé ; T-440, T-444 en GameTest, « ADR-158 D3 » au banc.
       - [x] Tranche 3 (2026-11-09) : descente et éjection sûres, ABI 16 ; T-441, T-957, suppression et
-            déconnexion réelle en GameTest, « ADR-158 D5 » au banc. `loseNode` attend son producteur (M6, C-48).
+            « ADR-158 D5 » au banc. `loseNode` attend son producteur (M6, C-48). Décision de Killian du 2026-11-09 :
+            l'assembly reste au monde quand son seul joueur se déconnecte, le joueur est rassis à son retour.
       - [ ] Tranche 4 : `C2S_Input` (protocole 3) et interactions au clic (T-442, T-443).
 
 ---
