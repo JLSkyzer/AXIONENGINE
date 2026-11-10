@@ -39,7 +39,7 @@ use ax_core::BufferPool;
 use ax_jobs::{JobKind, JobSystem};
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::buffer::{BufferHeader, BufferKind, HEADER_BYTES};
-use ax_model::dm::animation::{anim_action, AnimCommand, RenderAnimate};
+use ax_model::dm::animation::{anim_action, AnimCommand, PoseDelta, RenderAnimate};
 use ax_model::dm::debug::{debug_flags, debug_frame, encode_debug_payload, overlay};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::limits::MAX_NODES;
@@ -452,9 +452,10 @@ impl RenderContext {
     }
 
     /// Applique les commandes d'animation de `bytes` (`axion_render_animate`, ABI 10) : chacune un
-    /// [`RenderAnimate`], une [`AnimCommand`], puis ses nodes de masque. Le tampon est validé entier
-    /// avant que la première ne s'applique. Une commande sur un asset absent, périmé ou sans clips,
-    /// ou que l'animation refuse, est comptée et ne change rien ; `FORGET` oublie l'instance.
+    /// [`RenderAnimate`], une [`AnimCommand`], puis ses nodes de masque, ou ses [`PoseDelta`] pour
+    /// `SET_POSE` (ADR-159 D9). Le tampon est validé entier avant que la première ne s'applique. Une
+    /// commande sur un asset absent ou périmé, de lecture sur un asset sans clips, ou que l'animation
+    /// refuse, est comptée et ne change rien ; `FORGET` oublie l'instance.
     ///
     /// # Errors
     ///
@@ -487,18 +488,32 @@ impl RenderContext {
             if count > MAX_NODES {
                 return Err(AXION_E_INVALID_BUFFER);
             }
-            let mask_end = at + RECORD + count * 4;
-            let mask: Vec<u32> = bytes
+            let is_pose = command.action == anim_action::SET_POSE;
+            let element = if is_pose { PoseDelta::BYTES } else { 4 };
+            let mask_end = at + RECORD + count * element;
+            let extra = bytes
                 .get(at + RECORD..mask_end)
-                .ok_or(AXION_E_INVALID_BUFFER)?
-                .chunks_exact(4)
-                .map(|word| u32::from_le_bytes([word[0], word[1], word[2], word[3]]))
-                .collect();
-            parsed.push((id, asset, command, mask));
+                .ok_or(AXION_E_INVALID_BUFFER)?;
+            let mut mask = Vec::new();
+            let mut poses = Vec::new();
+            if is_pose {
+                poses.extend(
+                    extra
+                        .chunks_exact(PoseDelta::BYTES)
+                        .filter_map(PoseDelta::read_le),
+                );
+            } else {
+                mask.extend(
+                    extra
+                        .chunks_exact(4)
+                        .map(|word| u32::from_le_bytes([word[0], word[1], word[2], word[3]])),
+                );
+            }
+            parsed.push((id, asset, command, mask, poses));
             at = mask_end;
         }
         let mut applied = 0;
-        for (id, handle, command, mask) in parsed {
+        for (id, handle, command, mask, poses) in parsed {
             if command.action == anim_action::FORGET {
                 self.instances.remove(&id);
                 applied += 1;
@@ -510,7 +525,9 @@ impl RenderContext {
                 .and_then(Option::as_ref)
                 .filter(|asset| asset.generation == handle.generation)
                 .and_then(|asset| asset.animation.clone());
-            let Some(animation) = animation else {
+            // Sans clip, seul `SET_POSE` a un sens : un PLAY refusé ne crée pas d'instance.
+            let posing = command.action == anim_action::SET_POSE;
+            let Some(animation) = animation.filter(|a| posing || !a.clips().is_empty()) else {
                 self.stats.anim_rejected += 1;
                 continue;
             };
@@ -522,12 +539,17 @@ impl RenderContext {
                 // L'assembly a changé d'asset : son animation repart de zéro.
                 *entry = (handle, Instance::new(&animation));
             }
-            match entry.1.apply(&animation, &command, &mask) {
+            let outcome = if posing {
+                entry.1.set_pose(&poses).map_err(|_| ())
+            } else {
+                entry.1.apply(&animation, &command, &mask).map_err(|_| ())
+            };
+            match outcome {
                 Ok(()) => {
                     self.stats.anim_commands += 1;
                     applied += 1;
                 }
-                Err(_) => self.stats.anim_rejected += 1,
+                Err(()) => self.stats.anim_rejected += 1,
             }
         }
         Ok(applied)
@@ -1097,6 +1119,140 @@ mod tests {
                 (word(record + 4), word(record + 8))
             })
             .collect()
+    }
+
+    /// Une commande `SET_POSE` sérialisée pour l'assembly `id`, sur l'asset 0 de génération 1.
+    fn set_pose(id: u32, deltas: &[PoseDelta]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for word in [id, 0, 0, 1] {
+            out.extend_from_slice(&word.to_le_bytes());
+        }
+        out.extend_from_slice(&0f64.to_le_bytes());
+        for word in [anim_action::SET_POSE, 0, 0, 0, 0, 0, deltas.len() as u32, 0] {
+            out.extend_from_slice(&word.to_le_bytes());
+        }
+        for delta in deltas {
+            out.extend_from_slice(&delta.node.to_le_bytes());
+            for value in delta.translation.iter().chain(&delta.rotation) {
+                out.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        out
+    }
+
+    /// L'asset du contexte, un dessin sur un node `STATIC` à `(1, 0, 0)`, sans aucun clip.
+    fn sans_clip(context: &mut RenderContext) {
+        let node = ax_model::dm::scene::NodeDesc {
+            name_hash: 1,
+            parent: ax_model::dm::scene::NO_PARENT,
+            local: ax_model::dm::geometry::Transform {
+                translation: [1.0, 0.0, 0.0],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+                scale: [1.0; 3],
+            },
+            flags: ax_model::dm::scene::node_flags::VISIBLE,
+            mesh: ax_model::dm::scene::NONE_U32,
+            collider: ax_model::dm::scene::NONE_U32,
+            bone: ax_model::dm::scene::NONE_U32,
+            part: ax_model::dm::scene::NONE_U16,
+            region: ax_model::dm::scene::NONE_U16,
+            lod_mask: 0xFF,
+            state: ax_model::dm::scene::node_state::STATIC,
+            mesh_count: 0,
+        };
+        let animation = AnimatedAsset::new(&[node], Default::default(), vec![0], &[])
+            .expect("une table vide est acceptée");
+        Arc::make_mut(&mut context.assets)[0]
+            .as_mut()
+            .unwrap()
+            .animation = Some(Arc::new(animation));
+    }
+
+    #[test]
+    fn adr159_d9_set_pose_produit_les_matrices_d_une_instance_sans_clip() {
+        let mut context = context();
+        sans_clip(&mut context);
+        // Sans pose, aucune instance : le dessin reste au repos.
+        write(&mut context, &[candidate(7, Vec3::new(0.0, 0.0, -5.0))]);
+        context.prepare(&camera(1, 0), LARGE).unwrap();
+        assert_eq!(context.stats.animated, 0, "aucune instance sans pose");
+
+        let quart = std::f32::consts::FRAC_1_SQRT_2;
+        let pose = PoseDelta {
+            node: 0,
+            translation: [0.0, 0.5, 0.0],
+            rotation: [0.0, quart, 0.0, quart],
+        };
+        assert_eq!(context.animate(&set_pose(7, &[pose])), Ok(1));
+        write(&mut context, &[candidate(7, Vec3::new(0.0, 0.0, -5.0))]);
+        context.prepare(&camera(1, 0), LARGE).unwrap();
+        assert_eq!(
+            context.stats.animated, 1,
+            "la pose fait une instance animée"
+        );
+
+        let out = context.buffers.get_mut(BufferKind::RenderOut).unwrap();
+        let bytes = out.as_slice();
+        let first = HEADER_BYTES + OUT_HEADER + OUT_RECORD + 4;
+        let matrix: Vec<f32> = bytes[first..first + 48]
+            .chunks_exact(4)
+            .map(|word| f32::from_le_bytes(word.try_into().unwrap()))
+            .collect();
+        // La translation de repos s'ajoute au delta, et la colonne X tourne d'un quart de tour autour de Y.
+        assert!((matrix[9] - 1.0).abs() < 1e-5, "{matrix:?}");
+        assert!((matrix[10] - 0.5).abs() < 1e-5, "{matrix:?}");
+        assert!(
+            matrix[0].abs() < 1e-5 && (matrix[2] + 1.0).abs() < 1e-5,
+            "{matrix:?}"
+        );
+    }
+
+    #[test]
+    fn adr159_d9_un_delta_non_fini_est_refuse_sans_rien_changer() {
+        let mut context = context();
+        sans_clip(&mut context);
+        let sain = PoseDelta {
+            node: 0,
+            translation: [0.0, 0.5, 0.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        };
+        for mauvais in [
+            PoseDelta {
+                translation: [f32::NAN, 0.0, 0.0],
+                ..sain
+            },
+            PoseDelta {
+                rotation: [0.0, f32::INFINITY, 0.0, 1.0],
+                ..sain
+            },
+            PoseDelta {
+                rotation: [0.0; 4],
+                ..sain
+            },
+            PoseDelta { node: 1, ..sain },
+        ] {
+            assert_eq!(context.animate(&set_pose(9, &[sain, mauvais])), Ok(0));
+        }
+        assert_eq!(context.stats.anim_rejected, 4);
+        let (_, instance) = context.instances.get(&9).expect("l'instance existe");
+        assert!(!instance.has_pose(), "rien n'a été posé");
+    }
+
+    #[test]
+    fn adr159_d9_une_lecture_sur_un_asset_sans_clip_ne_cree_pas_d_instance() {
+        let mut context = context();
+        sans_clip(&mut context);
+        let mut play = Vec::new();
+        for word in [3u32, 0, 0, 1] {
+            play.extend_from_slice(&word.to_le_bytes());
+        }
+        play.extend_from_slice(&0f64.to_le_bytes());
+        for word in [anim_action::PLAY, 0, 0, 0, 0, 0, 0, 0] {
+            play.extend_from_slice(&word.to_le_bytes());
+        }
+        assert_eq!(context.animate(&play), Ok(0));
+        assert_eq!(context.stats.anim_rejected, 1);
+        assert!(!context.instances.contains_key(&3));
     }
 
     #[test]

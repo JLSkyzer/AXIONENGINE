@@ -2,6 +2,7 @@ package dev.axion.render;
 
 import dev.axion.net.AnimationLayers;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -13,7 +14,8 @@ import java.util.Map;
  * <p>À chaque frame, l'état d'animation de chaque candidate — celui du plus récent snapshot — se compare à
  * celui déjà mis en file : la différence devient des commandes ({@link AnimationLayers#changesFrom}), qui
  * attendent que le tick de rendu atteigne leur tick. Le natif les applique ainsi à l'instant où l'image les
- * montre, et non quand le snapshot arrive, en avance de l'interpolation. Une assembly qu'aucune frame n'a vue
+ * montre, et non quand le snapshot arrive, en avance de l'interpolation. Les deltas des pistes procédurales
+ * (ADR-159 D9) suivent les commandes, envoyés seulement quand ils changent. Une assembly qu'aucune frame n'a vue
  * depuis {@link #FORGET_AFTER_FRAMES} est oubliée du natif ; revue, elle rejoue son état entier.
  */
 public final class AnimationSync {
@@ -29,6 +31,10 @@ public final class AnimationSync {
         AnimationLayers state = AnimationLayers.NONE;
         /** Ses commandes pas encore échues, par tick croissant. */
         final ArrayDeque<AnimationLayers.Change> pending = new ArrayDeque<>();
+        /** Les deltas de cette frame, ou {@code null}. */
+        ProceduralTracks.Pose pose;
+        /** Les derniers deltas envoyés au natif. */
+        ProceduralTracks.Pose sent;
         long seen;
 
         Pushed(int assetIndex, int assetGeneration) {
@@ -50,15 +56,30 @@ public final class AnimationSync {
      * @param state son état d'animation
      */
     public void see(int id, int assetIndex, int assetGeneration, AnimationLayers state) {
+        see(id, assetIndex, assetGeneration, state, null);
+    }
+
+    /**
+     * Une candidate de la frame, avec les deltas de ses pistes procédurales.
+     *
+     * @param id {@code id} de son candidat de rendu
+     * @param assetIndex index du handle natif de son asset
+     * @param assetGeneration génération de ce handle
+     * @param state son état d'animation
+     * @param pose ses deltas à cette frame, ou {@code null} : une assembly qui n'a ni animation ni deltas
+     *     n'a rien à pousser
+     */
+    public void see(int id, int assetIndex, int assetGeneration, AnimationLayers state, ProceduralTracks.Pose pose) {
         Pushed entry = pushed.get(id);
         if (entry == null || entry.assetIndex != assetIndex || entry.assetGeneration != assetGeneration) {
-            if (entry == null && state.equals(AnimationLayers.NONE)) {
+            if (entry == null && state.equals(AnimationLayers.NONE) && pose == null) {
                 return;
             }
             entry = new Pushed(assetIndex, assetGeneration);
             pushed.put(id, entry);
         }
         entry.seen = frame;
+        entry.pose = pose;
         if (entry.state != state && !entry.state.equals(state)) {
             entry.pending.addAll(state.changesFrom(entry.state));
             entry.state = state;
@@ -94,9 +115,18 @@ public final class AnimationSync {
                             change.layer(), change.speed());
                 }
             }
+            if (entry.pose != null && !same(entry.pose, entry.sent)) {
+                commands.pose(id, entry.assetIndex, entry.assetGeneration, renderTick, entry.pose);
+                entry.sent = entry.pose;
+            }
+            entry.pose = null;
         }
         frame++;
         return commands;
+    }
+
+    private static boolean same(ProceduralTracks.Pose a, ProceduralTracks.Pose b) {
+        return b != null && Arrays.equals(a.nodes(), b.nodes()) && Arrays.equals(a.deltas(), b.deltas());
     }
 
     /** {@return le nombre d'assemblies que le natif anime ou animera} */

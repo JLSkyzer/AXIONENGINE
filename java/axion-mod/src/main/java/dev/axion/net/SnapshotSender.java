@@ -31,7 +31,7 @@ public final class SnapshotSender {
 
     /** Fréquence d'émission d'une assembly (R-1662). */
     public enum Frequency {
-        /** 20 Hz : pilotée par un joueur proche. Le pilotage vient en M5. */
+        /** 20 Hz : un véhicule éveillé (ADR-159 D9). */
         HIGH,
         /** {@code net.snapshot_rate_hz}. */
         NORMAL,
@@ -39,15 +39,20 @@ public final class SnapshotSender {
         LOW;
 
         /**
-         * La fréquence d'une assembly en M4 : endormie, {@link #LOW} ; sinon {@link #NORMAL}. La distance qui
-         * rendra une assembly « lointaine » viendra avec les niveaux du chantier LOD ; {@link #HIGH} avec le
-         * pilotage, en M5.
+         * La fréquence d'une assembly : endormie, {@link #LOW} ; avec des roues, {@link #HIGH} ; sinon
+         * {@link #NORMAL}. La distance qui rendra une assembly « lointaine » viendra avec les niveaux du
+         * chantier LOD. ADR-159 D9 réserve {@code HIGH} au véhicule au siège {@code driver} occupé ; rien ici
+         * ne connaît encore le conducteur, et ses roues doivent déjà se voir tourner : tout véhicule
+         * éveillé en profite.
          *
          * @param state état de l'assembly
          * @return sa fréquence
          */
         public static Frequency of(AssemblyState state) {
-            return state.sleeping() ? LOW : NORMAL;
+            if (state.sleeping()) {
+                return LOW;
+            }
+            return state.wheels().count() > 0 ? HIGH : NORMAL;
         }
     }
 

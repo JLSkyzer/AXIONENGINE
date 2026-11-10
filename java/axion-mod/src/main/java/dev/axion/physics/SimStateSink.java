@@ -23,6 +23,9 @@ public interface SimStateSink {
      *     {@code states.get(i)} ; liste vide si le natif ne les rapporte pas
      * @param joints états des joints des assemblies éveillées (ADR-151 D7) ; ceux d'une assembly
      *     endormie n'y sont pas, et restent tels que rapportés en dernier
+     * @param wheels états des roues des véhicules éveillés (ADR-159 D9) ; ceux d'un véhicule endormi n'y
+     *     sont pas, et restent tels que rapportés en dernier
      */
-    void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds, List<JointState> joints);
+    void applyStates(
+            long tick, List<BodyState> states, List<BodyBounds> bounds, List<JointState> joints, List<WheelReport> wheels);
 }

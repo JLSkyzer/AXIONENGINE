@@ -20,6 +20,8 @@ import java.util.List;
  *   <li>Les corps autres que le corps racine (ADR-151 D9), en poses relatives à lui, s'interpolent au même
  *       temps de rendu : position linéaire et rotation par slerp, aucune vitesse relative n'étant
  *       transmise ; au-delà du dernier snapshot, ils sont tenus.</li>
+ *   <li>Les roues (ADR-159 D9) s'interpolent linéairement avec le corps, et sont tenues au-delà du dernier
+ *       snapshot. Une assembly endormie, ou figée au-delà de la borne d'extrapolation, a des roues immobiles.</li>
  * </ul>
  *
  * <p>Le temps de rendu — le temps du serveur estimé, moins {@code interpolation_delay_ms} — est fourni par
@@ -60,9 +62,10 @@ public final class Interpolation {
      * @param boundsMax coin maximal de l'emprise, relatif à la position, ou {@code null}
      * @param mode comment elle a été obtenue
      * @param bodies les corps autres que le corps racine, en poses relatives à lui (ADR-151 D9)
+     * @param wheels l'état de chaque roue, dans l'ordre de la definition (ADR-159 D9)
      */
     public record Pose(double x, double y, double z, float[] rotation, float[] boundsMin, float[] boundsMax,
-            Mode mode, List<BodyPose> bodies) {
+            Mode mode, List<BodyPose> bodies, List<WheelPose> wheels) {
 
         /**
          * La pose d'une assembly à un seul corps.
@@ -76,7 +79,7 @@ public final class Interpolation {
          * @param mode comment elle a été obtenue
          */
         public Pose(double x, double y, double z, float[] rotation, float[] boundsMin, float[] boundsMax, Mode mode) {
-            this(x, y, z, rotation, boundsMin, boundsMax, mode, List.of());
+            this(x, y, z, rotation, boundsMin, boundsMax, mode, List.of(), List.of());
         }
     }
 
@@ -89,8 +92,18 @@ public final class Interpolation {
      */
     public record BodyPose(int node, double[] offset, float[] rotation) {}
 
+    /**
+     * L'état affiché d'une roue (ADR-159 D9).
+     *
+     * @param compression compression relative au modèle posé, en fraction du débattement
+     * @param spin vitesse de rotation, en rad/s
+     * @param steer braquage, en radians
+     * @param onGround elle touche le sol
+     */
+    public record WheelPose(float compression, float spin, float steer, boolean onGround) {}
+
     private record Sample(double millis, double[] position, float[] velocity, float[] rotation, float[] angular,
-            float[] boundsMin, float[] boundsMax, List<BodyPose> bodies) {}
+            float[] boundsMin, float[] boundsMax, List<BodyPose> bodies, List<WheelPose> wheels) {}
 
     private final double extrapolationMaxMillis;
     private final double snapThreshold;
@@ -139,7 +152,7 @@ public final class Interpolation {
             bodies.add(new BodyPose(body.node(), body.offsetBlocks(), body.quaternion()));
         }
         samples.addLast(new Sample(millis, state.positionBlocks(), state.linearVelocity(), state.quaternion(),
-                state.angularVelocity(), state.boundsMin(), state.boundsMax(), List.copyOf(bodies)));
+                state.angularVelocity(), state.boundsMin(), state.boundsMax(), List.copyOf(bodies), wheels(state)));
         while (samples.size() > MAX_SAMPLES) {
             samples.removeFirst();
         }
@@ -206,7 +219,7 @@ public final class Interpolation {
                 Quaternions.slerp(Quaternions.IDENTITY, errorRotation, (float) weight), raw.rotation());
         return new Pose(raw.x() + errorPosition[0] * weight, raw.y() + errorPosition[1] * weight,
                 raw.z() + errorPosition[2] * weight, rotation, raw.boundsMin(), raw.boundsMax(), raw.mode(),
-                raw.bodies());
+                raw.bodies(), raw.wheels());
     }
 
     /**
@@ -271,7 +284,7 @@ public final class Interpolation {
         float[] min = lerp(a.boundsMin(), b.boundsMin(), s);
         float[] max = lerp(a.boundsMax(), b.boundsMax(), s);
         return new Pose(position[0], position[1], position[2], rotation, min, max, Mode.INTERPOLATED,
-                bodies(a.bodies(), b.bodies(), s));
+                bodies(a.bodies(), b.bodies(), s), wheels(a.wheels(), b.wheels(), s));
     }
 
     /**
@@ -304,9 +317,47 @@ public final class Interpolation {
         return List.copyOf(bodies);
     }
 
+    /** Les roues d'un snapshot ; une assembly endormie a des roues immobiles. */
+    private static List<WheelPose> wheels(AssemblyState state) {
+        AssemblyState.Wheels wheels = state.wheels();
+        List<WheelPose> poses = new ArrayList<>(wheels.count());
+        for (int wheel = 0; wheel < wheels.count(); wheel++) {
+            poses.add(new WheelPose(wheels.compression(wheel), state.sleeping() ? 0f : wheels.spin(wheel),
+                    wheels.steer(wheel), wheels.onGround(wheel)));
+        }
+        return List.copyOf(poses);
+    }
+
+    /** Les roues de {@code b}, interpolées linéairement depuis celles de {@code a} ; un autre nombre de roues : {@code b}. */
+    private static List<WheelPose> wheels(List<WheelPose> a, List<WheelPose> b, double s) {
+        if (a.size() != b.size()) {
+            return b;
+        }
+        List<WheelPose> wheels = new ArrayList<>(b.size());
+        for (int wheel = 0; wheel < b.size(); wheel++) {
+            WheelPose from = a.get(wheel);
+            WheelPose to = b.get(wheel);
+            wheels.add(new WheelPose(
+                    (float) (from.compression() + (to.compression() - from.compression()) * s),
+                    (float) (from.spin() + (to.spin() - from.spin()) * s),
+                    (float) (from.steer() + (to.steer() - from.steer()) * s),
+                    to.onGround()));
+        }
+        return List.copyOf(wheels);
+    }
+
     private static Pose pose(Sample sample, double[] position, float[] rotation, Mode mode) {
         return new Pose(position[0], position[1], position[2], rotation, sample.boundsMin(), sample.boundsMax(), mode,
-                sample.bodies());
+                sample.bodies(), mode == Mode.FROZEN ? stopped(sample.wheels()) : sample.wheels());
+    }
+
+    /** Figée au-delà de la borne : ce qui tourne s'arrête. */
+    private static List<WheelPose> stopped(List<WheelPose> wheels) {
+        List<WheelPose> still = new ArrayList<>(wheels.size());
+        for (WheelPose wheel : wheels) {
+            still.add(new WheelPose(wheel.compression(), 0f, wheel.steer(), wheel.onGround()));
+        }
+        return List.copyOf(still);
     }
 
     private static float[] lerp(float[] a, float[] b, double s) {

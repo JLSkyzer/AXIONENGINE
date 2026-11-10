@@ -16,5 +16,17 @@
     { "node": "roue_arriere_droite", "radius": 0.30, "width": 0.22, "mass": 12.0,
       "suspension": { "rest_length": 0.25, "max_travel": 0.18, "stiffness": 25.0,
                       "damping_compression": 2.0, "damping_rebound": 2.5, "max_force": 20000.0 } }
+  ],
+  "procedural": [
+    {"node": "roue_avant_gauche", "channel": "translation", "axis": "y", "source": "wheel.roue_avant_gauche.compression", "scale": 0.18},
+    {"node": "roue_avant_gauche", "channel": "rotation", "axis": "y", "source": "wheel.roue_avant_gauche.steer_angle", "scale": -1.0},
+    {"node": "roue_avant_gauche", "channel": "rotation", "axis": "x", "source": "wheel.roue_avant_gauche.spin_angle", "scale": -1.0},
+    {"node": "roue_avant_droite", "channel": "translation", "axis": "y", "source": "wheel.roue_avant_droite.compression", "scale": 0.18},
+    {"node": "roue_avant_droite", "channel": "rotation", "axis": "y", "source": "wheel.roue_avant_droite.steer_angle", "scale": -1.0},
+    {"node": "roue_avant_droite", "channel": "rotation", "axis": "x", "source": "wheel.roue_avant_droite.spin_angle", "scale": -1.0},
+    {"node": "roue_arriere_gauche", "channel": "translation", "axis": "y", "source": "wheel.roue_arriere_gauche.compression", "scale": 0.18},
+    {"node": "roue_arriere_gauche", "channel": "rotation", "axis": "x", "source": "wheel.roue_arriere_gauche.spin_angle", "scale": -1.0},
+    {"node": "roue_arriere_droite", "channel": "translation", "axis": "y", "source": "wheel.roue_arriere_droite.compression", "scale": 0.18},
+    {"node": "roue_arriere_droite", "channel": "rotation", "axis": "x", "source": "wheel.roue_arriere_droite.spin_angle", "scale": -1.0}
   ]
 }

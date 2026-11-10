@@ -56,7 +56,6 @@ fn animation(charge: &Charge) -> AnimatedAsset {
         &charge.os,
     )
     .expect("table acceptée")
-    .expect("des clips")
 }
 
 /// La palette de l'instance au tick `tick`, le clip 0 joué depuis le tick 0 si `jouer`.
@@ -218,8 +217,7 @@ fn un_os_hors_de_l_asset_ou_non_affine_refuse_la_table() {
 
     // Sans squelette, aucune palette.
     let sans = AnimatedAsset::new(&charge.nodes.nodes, charge.table.clone(), Vec::new(), &[])
-        .expect("acceptée")
-        .expect("des clips");
+        .expect("acceptée");
     assert_eq!(sans.bone_count(), 0);
     assert!(palette(&sans, true, 20.0).is_empty());
 }
@@ -262,9 +260,7 @@ fn adr155_l_os_du_coude_part_de_l_epaule_par_dela_un_node_intermediaire() {
     for bone in &mut os {
         bone.node = decale(bone.node);
     }
-    let asset = AnimatedAsset::new(&nodes, table, Vec::new(), &os)
-        .expect("acceptée")
-        .expect("des clips");
+    let asset = AnimatedAsset::new(&nodes, table, Vec::new(), &os).expect("acceptée");
     let mut instance = Instance::new(&asset);
     instance.evaluate(&asset, 0.0);
     let mut segments = Vec::new();

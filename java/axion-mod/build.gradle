@@ -330,7 +330,8 @@ tasks.matching { it.name == 'runFilmVehicule' }.configureEach {
     doFirst {
         clientSilencieux(rootProject.file('run-film'))
         delete rootProject.file('run-film/saves/axion-film')
-        delete rootProject.file('run-film/axion-film')
+        // Le contenu, pas le dossier : un dossier ouvert ailleurs ne doit pas faire échouer le tournage.
+        delete fileTree(rootProject.file('run-film/axion-film'))
         delete rootProject.file('run-film/axion/world')
     }
 }

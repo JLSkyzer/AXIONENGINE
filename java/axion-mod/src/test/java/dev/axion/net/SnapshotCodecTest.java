@@ -2,6 +2,7 @@ package dev.axion.net;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -208,12 +209,14 @@ class SnapshotCodecTest {
                 "descripteur 1, antérieur aux corps et aux joints");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(2).varUInt(0).toByteArray(),
                 "descripteur 2, antérieur à l'animation");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(4).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(3).varUInt(0).toByteArray(),
+                "descripteur 3, antérieur aux roues");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(5).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
         // Sur une entrée complète, que rien d'autre ne fasse refuser.
-        assertRefuse(complete(0x40).toByteArray(), "drapeau inconnu");
+        assertRefuse(complete(SnapshotMessage.FLAG_ANIMATION).toByteArray(), "animation annoncée, absente");
         assertRefuse(entree(9, 0, 9), "base égale à la séquence");
         assertRefuse(entree(9, 0, 0), "base nulle d'un delta");
         WireWriter enDouble = new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(9).varULong(1).u8(v).varUInt(2);
@@ -460,5 +463,79 @@ class SnapshotCodecTest {
         assertTrue(EN_COURS.visibleAt(1e9));
         assertTrue(!AnimationLayers.NONE.visibleAt(0.0));
         assertEquals(0.5 + 2 * 2.0, EN_COURS.clipTimeAt(1240.0), 1e-9, "deux secondes à vitesse double");
+    }
+
+    private static AssemblyState.Wheels roues(float compression, float vitesse) {
+        return AssemblyState.Wheels.of(new float[] {compression, 0f}, new float[] {vitesse, 0f}, new float[] {0.5f, 0f},
+                new boolean[] {true, false});
+    }
+
+    private static AssemblyState avecRoues(AssemblyState.Wheels roues) {
+        return new AssemblyState(1024L, 2048L, 0L, SmallestThree.encode(0f, 0f, 0f, 1f), AssemblyState.Velocity.ZERO, null,
+                false).withWheels(roues);
+    }
+
+    @Test
+    @DisplayName("ADR-159 D9 : les roues se quantifient à leurs pas, et se relisent à l'identique")
+    void adr159RouesQuantifiees() throws MalformedPacketException {
+        AssemblyState.Wheels roues = roues(0.5f, 321.25f);
+        assertEquals(0.5f, roues.compression(0), 2f / 127f);
+        assertEquals(321.25f, roues.spin(0), 1f / 8f, "au-delà des 100 rad/s de Quantization.angular");
+        assertEquals(0.5f, roues.steer(0), 0.02f);
+        assertTrue(roues.onGround(0));
+        assertFalse(roues.onGround(1));
+        assertEquals(2f, AssemblyState.Wheels.of(new float[] {9f}, new float[] {0f}, new float[] {0f},
+                new boolean[] {false}).compression(0), 1e-6f, "borné à 2");
+
+        AssemblyState etat = avecRoues(roues);
+        SnapshotMessage.Entry complete = SnapshotMessage.Entry.full(5, etat);
+        byte[] octets = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(complete)).encode();
+        assertEquals(SnapshotMessage.headerSize(2, 40L, 1) + SnapshotMessage.encodedSize(complete), octets.length);
+        SnapshotMessage lu = SnapshotMessage.decode(octets);
+        assertEquals(etat, lu.entries().get(0).resolve(null));
+        assertEquals(roues, lu.entries().get(0).wheels());
+    }
+
+    @Test
+    @DisplayName("ADR-159 D9 : un delta ne porte les roues que si elles ont changé")
+    void adr159RouesEnDelta() throws MalformedPacketException {
+        AssemblyState base = avecRoues(roues(0.5f, 10f));
+        assertNull(SnapshotMessage.Entry.delta(5, 1, base, base).wheels(), "inchangées : tues");
+        AssemblyState change = avecRoues(roues(-0.5f, 20f));
+        SnapshotMessage.Entry delta = SnapshotMessage.Entry.delta(5, 1, base, change);
+        assertEquals(change.wheels(), delta.wheels());
+        byte[] octets = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(delta)).encode();
+        assertEquals(change, SnapshotMessage.decode(octets).entries().get(0).resolve(base));
+    }
+
+    @Test
+    @DisplayName("ADR-159 D9 : des roues mal formées sont refusées à la lecture (R-1650)")
+    void adr159RouesMalFormees() {
+        byte[] sain = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION,
+                List.of(SnapshotMessage.Entry.full(5, avecRoues(roues(0.5f, 10f))))).encode();
+        // Les roues terminent le message : n = 2, puis 2 × 4 octets, puis un octet de bits.
+        byte[] trop = sain.clone();
+        trop[trop.length - 10] = (byte) (AssemblyState.Wheels.MAX_WHEELS + 1);
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(trop), "trop de roues");
+        byte[] horsBorne = sain.clone();
+        horsBorne[horsBorne.length - 9] = Byte.MIN_VALUE;
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(horsBorne), "compression -128");
+        byte[] remplissage = sain.clone();
+        remplissage[remplissage.length - 1] = (byte) 0xFF;
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(remplissage), "bits de remplissage");
+        byte[] tronque = Arrays.copyOf(sain, sain.length - 1);
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(tronque), "tronqué");
+    }
+
+    @Test
+    @DisplayName("ADR-159 D9 : une assembly à roues éveillée part à la fréquence HIGH")
+    void adr159Frequence() {
+        assertEquals(SnapshotSender.Frequency.HIGH, SnapshotSender.Frequency.of(avecRoues(roues(0f, 0f))));
+        AssemblyState sansRoues = new AssemblyState(0L, 0L, 0L, SmallestThree.encode(0f, 0f, 0f, 1f),
+                AssemblyState.Velocity.ZERO, null, false);
+        assertEquals(SnapshotSender.Frequency.NORMAL, SnapshotSender.Frequency.of(sansRoues));
+        AssemblyState dort = new AssemblyState(0L, 0L, 0L, SmallestThree.encode(0f, 0f, 0f, 1f),
+                AssemblyState.Velocity.ZERO, null, true).withWheels(roues(0f, 0f));
+        assertEquals(SnapshotSender.Frequency.LOW, SnapshotSender.Frequency.of(dort));
     }
 }

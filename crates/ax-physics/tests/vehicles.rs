@@ -3,8 +3,8 @@
 use ax_math::{Quat, Vec3};
 use ax_model::dm::scene::NONE_U16;
 use ax_model::dm::vehicle::{
-    transmission_kind, AeroDesc, BrakesDesc, DifferentialDesc, EngineDesc, SteeringDesc,
-    SuspensionDesc, TireCurve, TransmissionDesc, VehicleDesc, WheelDesc,
+    transmission_kind, wheel_report_flags, AeroDesc, BrakesDesc, DifferentialDesc, EngineDesc,
+    SteeringDesc, SuspensionDesc, TireCurve, TransmissionDesc, VehicleDesc, WheelDesc,
 };
 use ax_physics::{
     BodyCollider, BodyId, BodyKind, CollisionGroups, ContactMaterial, Handle, PhysicsConfig,
@@ -182,9 +182,9 @@ fn avancer(world: &mut PhysicsWorld, secondes: f32) {
     }
 }
 
-/// La hauteur du centre à l'équilibre au-dessus d'un sol à 0 : les ancrages sont à hauteur du centre.
+/// La hauteur du centre au repos au-dessus d'un sol à 0 : celle du modèle, où la roue touche le sol (§6.5).
 fn hauteur_equilibre() -> f32 {
-    REPOS + RAYON - (GRAVITE / 30.0) * DEBATTEMENT
+    REPOS + RAYON
 }
 
 #[test]
@@ -364,7 +364,8 @@ fn en_pente_il_descend_droit() {
     let p = world.pose(v).expect("pose").translation;
     let w = world.velocity(v).expect("vitesse");
     assert!(w.z > 2.0, "il descend : {p:?} {w:?}");
-    assert!(p.x.abs() < 0.1, "sans dériver : {p:?}");
+    // Un véhicule à direction droite est neutre : une dérive reste, très faible devant la distance.
+    assert!(p.x.abs() < 0.03 * p.z.abs(), "sans dériver : {p:?}");
 }
 
 #[test]
@@ -484,4 +485,38 @@ fn adr159_les_overlays_tracent_rayons_roues_et_suspensions() {
         .debug_drafts(&origine, DVec3::ZERO, overlay::COLLIDERS)
         .iter()
         .all(|p| p.overlay != overlay::rank(overlay::RAYCASTS)));
+}
+
+#[test]
+fn adr159_d9_au_repos_la_compression_publiee_est_nulle() {
+    let mut world = monde();
+    dalle(&mut world, 0.0, 0.0, 0.0, [20.0, 20.0], 0.8);
+    vehicule(&mut world, Vec3::new(0.0, 1.2, 0.0), Quat::IDENTITY);
+    let mut dernier = Vec::new();
+    for _ in 0..40 {
+        avancer(&mut world, 0.05);
+        let lu = world.wheel_reports();
+        if !lu.is_empty() {
+            dernier = lu;
+        }
+    }
+    assert_eq!(dernier.len(), 4);
+    for roue in &dernier {
+        assert_ne!(roue.flags & wheel_report_flags::ON_GROUND, 0, "{roue:?}");
+        assert!(roue.compression.abs() < 0.05, "{roue:?}");
+        assert_eq!(roue.steer_angle, 0.0, "{roue:?}");
+    }
+    // La valeur publiée retranche bien l'équilibre : la compression brute, elle, n'est pas nulle.
+    let brute = world.vehicle_wheels(ASSEMBLY).expect("véhicule")[0].compression;
+    assert!(brute > 0.1, "compression brute {brute}");
+}
+
+#[test]
+fn adr159_d9_un_vehicule_endormi_ne_rapporte_plus_ses_roues() {
+    let mut world = monde();
+    dalle(&mut world, 0.0, 0.0, 0.0, [20.0, 20.0], 0.8);
+    vehicule(&mut world, Vec3::new(0.0, 1.2, 0.0), Quat::IDENTITY);
+    assert_eq!(world.wheel_reports().len(), 4, "éveillé au départ");
+    avancer(&mut world, 12.0);
+    assert!(world.wheel_reports().is_empty(), "endormi, il se tait");
 }

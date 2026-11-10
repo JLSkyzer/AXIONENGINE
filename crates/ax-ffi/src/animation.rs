@@ -22,13 +22,14 @@ use ax_anim::{Animator, ClipLibrary, TICKS_PER_SECOND};
 use ax_asset::a3d::AnimationTable;
 use ax_asset::validate::validate_animations;
 use ax_math::{Affine3A, Mat4, Quat, Vec3};
-use ax_model::dm::animation::{anim_action, AnimCommand, BoneDesc};
+use ax_model::dm::animation::{anim_action, AnimCommand, BoneDesc, PoseDelta};
 use ax_model::dm::debug::DebugSegment;
 use ax_model::dm::geometry::{MeshDesc, Transform};
 use ax_model::dm::render::RestDraw;
 use ax_model::dm::scene::{node_state, NodeDesc, NONE_U16};
 use ax_render_prep::LocalBounds;
 use ax_scene::{mat4x3, SceneGraph};
+use std::collections::BTreeMap;
 use std::time::Instant;
 
 /// Les clips d'un asset chargé et ce qu'il faut pour en tirer les matrices de ses dessins.
@@ -89,8 +90,8 @@ pub const NODE_AXIS_LENGTH: f32 = 0.25;
 pub const PIVOT_CROSS: f32 = 0.15;
 
 impl AnimatedAsset {
-    /// Construit l'animation d'un asset depuis ses sections `ANIM` et `SKEL` ; `None` s'il n'a aucun
-    /// clip.
+    /// Construit l'animation d'un asset depuis ses sections `ANIM` et `SKEL`. Un asset sans clip en a
+    /// une aussi, à table vide : des pistes procédurales peuvent poser ses nodes (ADR-159 D9).
     ///
     /// # Errors
     ///
@@ -103,10 +104,7 @@ impl AnimatedAsset {
         table: AnimationTable,
         draw_nodes: Vec<u32>,
         skeleton: &[BoneDesc],
-    ) -> Result<Option<Self>, String> {
-        if table.animations.is_empty() {
-            return Ok(None);
-        }
+    ) -> Result<Self, String> {
         let bones = skeleton
             .iter()
             .enumerate()
@@ -137,14 +135,14 @@ impl AnimatedAsset {
         // jamais à la première frame animée.
         SceneGraph::from_nodes(&nodes).map_err(|error| error.to_string())?;
         let rest = nodes.iter().map(|node| node.local).collect();
-        Ok(Some(Self {
+        Ok(Self {
             clips,
             nodes,
             rest,
             animated,
             draw_nodes,
             bones,
-        }))
+        })
     }
 
     /// La sphère que balaient les dessins de l'asset (ADR-157 D1) : la pose de repos, et chaque clip
@@ -320,12 +318,34 @@ fn posed_corners(
     Some(())
 }
 
+/// Ce qu'un `SET_POSE` refuse (ADR-159 D9) : rien n'a été changé.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetPoseError {
+    /// Une translation ou une rotation n'est pas finie.
+    NotFinite {
+        /// Le node fautif.
+        node: u32,
+    },
+    /// Une rotation nulle, qui ne se normalise pas.
+    NullRotation {
+        /// Le node fautif.
+        node: u32,
+    },
+    /// Node hors de l'asset, ou qu'une piste ne peut pas piloter (R-930, R-931).
+    NotPosable {
+        /// Le node fautif.
+        node: u32,
+    },
+}
+
 /// L'animation d'une assembly : ses couches et son graphe vivant.
 #[derive(Debug, Clone)]
 pub struct Instance {
     animator: Animator,
     graph: SceneGraph,
     pose: Vec<Transform>,
+    /// Les deltas posés par `SET_POSE` sur le repos de chaque node (ADR-159 D9) : translation et rotation.
+    procedural: BTreeMap<u32, (Vec3, Quat)>,
 }
 
 impl Instance {
@@ -344,7 +364,14 @@ impl Instance {
             animator: Animator::new(asset.nodes.len()),
             graph,
             pose: asset.rest.clone(),
+            procedural: BTreeMap::new(),
         }
+    }
+
+    /// Indique si un `SET_POSE` a posé au moins un node.
+    #[must_use]
+    pub fn has_pose(&self) -> bool {
+        !self.procedural.is_empty()
     }
 
     /// Applique une commande ; une commande refusée ne change rien (`ax-anim`).
@@ -359,6 +386,42 @@ impl Instance {
         mask: &[u32],
     ) -> Result<(), ax_anim::AnimError> {
         self.animator.apply(&asset.clips, command, mask)
+    }
+
+    /// Pose le delta de chaque node de `deltas` sur son repos (`SET_POSE`, ADR-159 D9) ; un node déjà
+    /// posé garde son delta s'il n'est pas repris. Un node `STATIC` devient `PROCEDURAL`.
+    ///
+    /// # Errors
+    ///
+    /// Une valeur non finie, une rotation nulle, un node hors de l'asset ou qu'une piste ne peut pas
+    /// piloter (R-930, R-931) : rien n'est changé.
+    pub fn set_pose(&mut self, deltas: &[PoseDelta]) -> Result<(), SetPoseError> {
+        for delta in deltas {
+            let translation = Vec3::from(delta.translation);
+            let rotation = Quat::from_array(delta.rotation);
+            if !translation.is_finite() || !rotation.is_finite() {
+                return Err(SetPoseError::NotFinite { node: delta.node });
+            }
+            if rotation.length_squared() <= f32::EPSILON {
+                return Err(SetPoseError::NullRotation { node: delta.node });
+            }
+            self.graph
+                .check_promotable(delta.node)
+                .map_err(|_| SetPoseError::NotPosable { node: delta.node })?;
+        }
+        for delta in deltas {
+            self.graph
+                .promote_procedural(delta.node)
+                .map_err(|_| SetPoseError::NotPosable { node: delta.node })?;
+            self.procedural.insert(
+                delta.node,
+                (
+                    Vec3::from(delta.translation),
+                    Quat::from_array(delta.rotation).normalize(),
+                ),
+            );
+        }
+        Ok(())
     }
 
     /// Évalue la pose au temps `tick` — les pistes échantillonnées, étape 2 — et la propage, étape 14 ;
@@ -384,6 +447,17 @@ impl Instance {
             let _ = self
                 .graph
                 .set_local(node, node_state::ANIMATION_DRIVEN, affine);
+        }
+        // ADR-159 D9 : les pistes procédurales, sur le repos, avant la propagation.
+        for (&node, &(translation, rotation)) in &self.procedural {
+            let rest = &asset.rest[node as usize];
+            let affine = Affine3A::from_scale_rotation_translation(
+                Vec3::from(rest.scale),
+                Quat::from_array(rest.rotation) * rotation,
+                Vec3::from(rest.translation) + translation,
+            );
+            // Le node a été promu, et le delta vérifié fini : l'erreur laisse la pose d'avant.
+            let _ = self.graph.set_local(node, node_state::PROCEDURAL, affine);
         }
         let sampled = Instant::now();
         self.graph.propagate();

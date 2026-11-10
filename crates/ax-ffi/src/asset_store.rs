@@ -15,8 +15,8 @@ use core::mem::size_of;
 use crate::animation::AnimatedAsset;
 use crate::definition::AssetView;
 use ax_asset::a3d::{
-    decode_animations, decode_bones, decode_colliders, A3dError, A3dFile, A3dLimits, SectionMask,
-    SectionTag, TextureTable,
+    decode_animations, decode_bones, decode_colliders, A3dError, A3dFile, A3dLimits,
+    AnimationTable, SectionMask, SectionTag, TextureTable,
 };
 use ax_asset::load::{decode_sections, render_sections};
 use ax_asset::optimize::{LodTable, MAX_LOD_LEVELS};
@@ -439,9 +439,10 @@ pub fn decode_render_asset(
                         };
                         AnimatedAsset::new(&nodes, table, draw_nodes, &skeleton)
                     }),
-                None => Ok(None),
+                // ADR-159 D9 : sans clip, des pistes procédurales peuvent encore poser ses nodes.
+                None => AnimatedAsset::new(&nodes, AnimationTable::default(), draw_nodes, &[]),
             }) {
-            Ok(animation) => animation.map(Arc::new),
+            Ok(animation) => Some(Arc::new(animation)),
             Err(error) => {
                 anim_refused = Some(error);
                 None
@@ -496,9 +497,12 @@ pub fn decode_render_asset(
 
     let bounds = bounds_of(&geometry.meshes, &draws);
     // ADR-157 D1 : un asset animé se culle par la sphère que balaient ses clips, calculée une fois ici.
-    let cull_bounds = animation.as_ref().map_or(bounds, |animated| {
-        animated.swept_bounds(&geometry.meshes, &draws).or(bounds)
-    });
+    let cull_bounds = animation
+        .as_ref()
+        .filter(|animated| !animated.clips().is_empty())
+        .map_or(bounds, |animated| {
+            animated.swept_bounds(&geometry.meshes, &draws).or(bounds)
+        });
     let triangles = draws
         .iter()
         .filter_map(|draw| geometry.meshes.get(draw.mesh as usize))

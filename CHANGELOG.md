@@ -10,6 +10,8 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- Vehicules (C-33, ADR-159) : les roues suivent la suspension et tournent a
+  l'image, pose procedurale des nodes au client. ABI 19, protocole 5.
 - Vehicules (C-33, ADR-159, tranche 2) : roues par rayon, suspension et pneus
   dans le pas physique ; overlays `raycasts`, `wheels`, `suspension`.
 - Vehicules (C-33, ADR-159, tranche 1) : les definitions compilent leurs roues,

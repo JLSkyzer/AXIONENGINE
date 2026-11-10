@@ -25,6 +25,96 @@ use super::scene::NONE_U16;
 /// Nombre maximal de roues d'une assembly (R-1052).
 pub const MAX_WHEELS: usize = 32;
 
+/// Drapeaux de [`WheelReport`], champ `flags`.
+pub mod wheel_report_flags {
+    /// Le rayon de la roue touche le sol.
+    pub const ON_GROUND: u16 = 1 << 0;
+}
+
+/// L'état d'une roue pour Java, à la fin d'un tick (ADR-159 D9), dans la section des roues de
+/// `SIM_OUT` : leur nombre (`u32`), 4 octets réservés, puis un enregistrement par roue d'un véhicule
+/// éveillé.
+///
+/// **Disposition figée** : 24 octets, alignement 4, comme [`super::joints::JointState`].
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WheelReport {
+    /// L'assembly de la roue.
+    pub handle: super::handle::Handle,
+    /// Son rang dans `wheels` de la definition.
+    pub index: u16,
+    /// Voir [`wheel_report_flags`].
+    pub flags: u16,
+    /// Vitesse de rotation, en rad/s, positive en marche avant.
+    pub spin_speed: f32,
+    /// Compression relative à la pose du modèle, en fraction du débattement : 0 quand la roue est à
+    /// sa position dans le modèle posé, positive quand elle monte vers la caisse.
+    pub compression: f32,
+    /// Angle de braquage, en radians.
+    pub steer_angle: f32,
+}
+
+impl WheelReport {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 24;
+
+    /// Taille de l'en-tête de la section des roues dans `SIM_OUT` : leur nombre et 4 octets réservés,
+    /// pour garder les enregistrements alignés sur 8.
+    pub const SECTION_HEADER_BYTES: usize = 8;
+
+    /// Écrit la roue en little-endian, dans sa disposition figée, à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.handle.index.to_le_bytes());
+        out.extend_from_slice(&self.handle.generation.to_le_bytes());
+        out.extend_from_slice(&self.index.to_le_bytes());
+        out.extend_from_slice(&self.flags.to_le_bytes());
+        for value in [self.spin_speed, self.compression, self.steer_angle] {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+
+    /// Lit une roue au début de `bytes` ; `None` si elle est tronquée.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..Self::BYTES)?;
+        let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
+        let f32_at = |at: usize| f32::from_bits(u32_at(at));
+        Some(Self {
+            handle: super::handle::Handle::new(u32_at(0), u32_at(4)),
+            index: u16::from_le_bytes([bytes[8], bytes[9]]),
+            flags: u16::from_le_bytes([bytes[10], bytes[11]]),
+            spin_speed: f32_at(12),
+            compression: f32_at(16),
+            steer_angle: f32_at(20),
+        })
+    }
+
+    /// Écrit la section des roues de `SIM_OUT` à la fin de `out` : leur nombre, 4 octets réservés, puis
+    /// chacune d'elles.
+    ///
+    /// # Panics
+    ///
+    /// Au-delà de `u32::MAX` roues.
+    pub fn write_section(wheels: &[Self], out: &mut Vec<u8>) {
+        let count = u32::try_from(wheels.len()).expect("au plus u32::MAX roues");
+        out.extend_from_slice(&count.to_le_bytes());
+        out.extend_from_slice(&[0u8; 4]);
+        for wheel in wheels {
+            wheel.write_le(out);
+        }
+    }
+
+    /// Lit la section des roues au début de `bytes` ; `None` si elle est tronquée.
+    #[must_use]
+    pub fn read_section(bytes: &[u8]) -> Option<Vec<Self>> {
+        let count = u32::from_le_bytes(bytes.get(..4)?.try_into().expect("borne")) as usize;
+        let records = bytes.get(Self::SECTION_HEADER_BYTES..)?;
+        (0..count)
+            .map(|rank| Self::read_le(records.get(rank.checked_mul(Self::BYTES)?..)?))
+            .collect()
+    }
+}
+
 /// Drapeaux de [`WheelDesc`].
 pub mod wheel_flags {
     /// La roue braque.
@@ -610,6 +700,49 @@ impl VehicleDesc {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn adr159_d9_wheel_report_round_trip() {
+        use super::{wheel_report_flags, WheelReport};
+        use crate::dm::handle::Handle;
+        use std::mem::{align_of, offset_of, size_of};
+
+        assert_eq!(size_of::<WheelReport>(), WheelReport::BYTES);
+        assert_eq!(align_of::<WheelReport>(), 4);
+        assert_eq!(offset_of!(WheelReport, handle), 0);
+        assert_eq!(offset_of!(WheelReport, index), 8);
+        assert_eq!(offset_of!(WheelReport, flags), 10);
+        assert_eq!(offset_of!(WheelReport, spin_speed), 12);
+        assert_eq!(offset_of!(WheelReport, compression), 16);
+        assert_eq!(offset_of!(WheelReport, steer_angle), 20);
+        let roue = WheelReport {
+            handle: Handle::new(7, 3),
+            index: 2,
+            flags: wheel_report_flags::ON_GROUND,
+            spin_speed: -12.5,
+            compression: 0.25,
+            steer_angle: 0.5,
+        };
+        let mut octets = Vec::new();
+        roue.write_le(&mut octets);
+        assert_eq!(octets.len(), WheelReport::BYTES);
+        assert_eq!(&octets[0..4], &7u32.to_le_bytes());
+        assert_eq!(&octets[12..16], &(-12.5f32).to_le_bytes());
+        assert_eq!(WheelReport::read_le(&octets), Some(roue));
+        assert_eq!(WheelReport::read_le(&octets[..23]), None);
+
+        let mut section = Vec::new();
+        WheelReport::write_section(&[roue, roue], &mut section);
+        assert_eq!(
+            section.len(),
+            WheelReport::SECTION_HEADER_BYTES + 2 * WheelReport::BYTES
+        );
+        assert_eq!(WheelReport::read_section(&section), Some(vec![roue, roue]));
+        assert_eq!(
+            WheelReport::read_section(&section[..section.len() - 1]),
+            None
+        );
+    }
+
     use super::*;
 
     fn courbe() -> TireCurve {

@@ -37,6 +37,12 @@ public final class AnimationCommands {
     /** Oublier l'animation d'une assembly qui quitte le rendu. */
     public static final int FORGET = 5;
 
+    /** Poser le delta de nodes sur leur repos : les pistes {@code procedural} (ADR-159 D9). */
+    public static final int SET_POSE = 6;
+
+    /** Taille d'un élément de {@link #SET_POSE}, en octets : node, translation, rotation. */
+    public static final int POSE_BYTES = 32;
+
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
     private int count;
 
@@ -118,6 +124,36 @@ public final class AnimationCommands {
      */
     public AnimationCommands forget(int id) {
         return add(id, 0, 0, 0.0, FORGET, 0, 0, 0f, 0f, 1f, 0f, new int[0]);
+    }
+
+    /**
+     * Pose le delta de nodes sur leur repos.
+     *
+     * @param id {@code id} du candidat de rendu de l'assembly
+     * @param assetIndex index du handle natif de son asset
+     * @param assetGeneration génération de ce handle
+     * @param tick instant, en ticks du serveur
+     * @param pose les nodes et leurs deltas
+     * @return ce même tampon
+     */
+    public AnimationCommands pose(
+            int id, int assetIndex, int assetGeneration, double tick, ProceduralTracks.Pose pose) {
+        int[] nodes = pose.nodes();
+        float[] deltas = pose.deltas();
+        ByteBuffer record = ByteBuffer.allocate(HEADER_BYTES + COMMAND_BYTES + nodes.length * POSE_BYTES)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        record.putInt(id).putInt(0).putInt(assetIndex).putInt(assetGeneration);
+        record.putDouble(tick).putInt(SET_POSE).putInt(0).putInt(0).putFloat(0f).putFloat(0f).putFloat(1f)
+                .putInt(nodes.length).putFloat(0f);
+        for (int rank = 0; rank < nodes.length; rank++) {
+            record.putInt(nodes[rank]);
+            for (int component = 0; component < ProceduralTracks.DELTA_FLOATS; component++) {
+                record.putFloat(deltas[rank * ProceduralTracks.DELTA_FLOATS + component]);
+            }
+        }
+        out.writeBytes(record.array());
+        count++;
+        return this;
     }
 
     /** {@return le nombre de commandes écrites} */

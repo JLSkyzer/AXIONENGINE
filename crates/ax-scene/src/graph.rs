@@ -390,6 +390,49 @@ impl SceneGraph {
         Ok(())
     }
 
+    /// Fait d'un node `STATIC` ou `ANIMATION_DRIVEN` un node `PROCEDURAL` : une piste procédurale
+    /// le pilote désormais, et prime sur l'animation (R-930). Déjà `PROCEDURAL`, il le reste.
+    ///
+    /// # Errors
+    ///
+    /// [`SceneError::NodeOutOfRange`], [`SceneError::WrongSource`] pour un node d'un autre état,
+    /// [`SceneError::PhysicsUnderAnimatedParent`] s'il a un enfant `PHYSICS_DRIVEN` (R-931). Le graphe
+    /// n'est pas modifié.
+    pub fn promote_procedural(&mut self, node: u32) -> Result<(), SceneError> {
+        self.check_promotable(node)?;
+        self.state[node as usize] = node_state::PROCEDURAL;
+        Ok(())
+    }
+
+    /// Vérifie que [`Self::promote_procedural`] réussirait, sans rien changer.
+    ///
+    /// # Errors
+    ///
+    /// Celles de [`Self::promote_procedural`].
+    pub fn check_promotable(&self, node: u32) -> Result<(), SceneError> {
+        let index = self.check(node)?;
+        let state = self.state[index];
+        if !matches!(
+            state,
+            node_state::STATIC | node_state::ANIMATION_DRIVEN | node_state::PROCEDURAL
+        ) {
+            return Err(SceneError::WrongSource {
+                node,
+                state,
+                source: node_state::PROCEDURAL,
+            });
+        }
+        if let Some(child) = (index + 1..self.len()).find(|&child| {
+            self.parent[child] == node && self.state[child] == node_state::PHYSICS_DRIVEN
+        }) {
+            return Err(SceneError::PhysicsUnderAnimatedParent {
+                node: child as u32,
+                parent: node,
+            });
+        }
+        Ok(())
+    }
+
     /// Transmet la transform monde qu'un body impose à son node (R-600).
     ///
     /// Elle est appliquée à la propagation suivante, avant les enfants du node,
@@ -752,6 +795,42 @@ mod tests {
             Vec3::new(-8.0, 0.0, 0.0)
         ));
         assert!(proche(translation(&graph, 2), Vec3::new(12.0, 1.0, 0.0)));
+    }
+
+    #[test]
+    fn adr159_d9_une_piste_promeut_un_node_statique_et_prime_sur_l_animation() {
+        let mut graphe = SceneGraph::from_nodes(&[
+            node(NO_PARENT, node_state::STATIC, [0.0; 3]),
+            node(0, node_state::ANIMATION_DRIVEN, [1.0, 0.0, 0.0]),
+        ])
+        .unwrap();
+        let local = Affine3A::from_translation(Vec3::new(0.0, 2.0, 0.0));
+        assert!(graphe.set_local(0, node_state::PROCEDURAL, local).is_err());
+        graphe.promote_procedural(0).unwrap();
+        graphe.promote_procedural(0).unwrap();
+        graphe.set_local(0, node_state::PROCEDURAL, local).unwrap();
+        graphe.promote_procedural(1).unwrap();
+        assert_eq!(graphe.states()[1], node_state::PROCEDURAL);
+        graphe.propagate();
+        assert!(proche(translation(&graphe, 1), Vec3::new(1.0, 2.0, 0.0)));
+    }
+
+    #[test]
+    fn adr159_d9_r931_une_piste_refuse_le_parent_d_un_node_physique() {
+        let mut graphe = SceneGraph::from_nodes(&[
+            node(NO_PARENT, node_state::STATIC, [0.0; 3]),
+            node(0, node_state::PHYSICS_DRIVEN, [1.0, 0.0, 0.0]),
+        ])
+        .unwrap();
+        assert!(matches!(
+            graphe.promote_procedural(0),
+            Err(SceneError::PhysicsUnderAnimatedParent { node: 1, parent: 0 })
+        ));
+        assert!(matches!(
+            graphe.promote_procedural(1),
+            Err(SceneError::WrongSource { node: 1, .. })
+        ));
+        assert_eq!(graphe.states()[0], node_state::STATIC, "rien n'a changé");
     }
 
     #[test]

@@ -92,4 +92,45 @@ class AnimationSyncTest {
         assertEquals(1, rejeu.count());
         assertEquals(4, ByteBuffer.wrap(rejeu.bytes()).order(ByteOrder.LITTLE_ENDIAN).getInt(8));
     }
+
+    private static ProceduralTracks.Pose pose(float y) {
+        return new ProceduralTracks.Pose(new int[] {3}, new float[] {0f, y, 0f, 0f, 0f, 0f, 1f});
+    }
+
+    @Test
+    @DisplayName("ADR-159 D9 : les deltas font une entrée, partent une fois, et leur oubli passe par FORGET")
+    void lesDeltasFontUneEntree() {
+        AnimationSync sync = new AnimationSync();
+        sync.see(7, 1, 2, AnimationLayers.NONE, pose(0.25f));
+        AnimationCommands premiere = sync.flush(10.0);
+        assertEquals(1, premiere.count());
+        ByteBuffer octets = ByteBuffer.wrap(premiere.bytes()).order(ByteOrder.LITTLE_ENDIAN);
+        assertEquals(RECORD + AnimationCommands.POSE_BYTES, octets.capacity());
+        assertEquals(AnimationCommands.SET_POSE, octets.getInt(AnimationCommands.HEADER_BYTES + 8));
+        assertEquals(1, octets.getInt(AnimationCommands.HEADER_BYTES + 32), "un delta");
+        assertEquals(3, octets.getInt(RECORD), "son node");
+        assertEquals(0.25f, octets.getFloat(RECORD + 8), "sa translation y");
+        assertEquals(1f, octets.getFloat(RECORD + 28), "sa rotation w");
+
+        sync.see(7, 1, 2, AnimationLayers.NONE, pose(0.25f));
+        assertEquals(0, sync.flush(11.0).count(), "inchangés, ils ne repartent pas");
+        sync.see(7, 1, 2, AnimationLayers.NONE, pose(0.5f));
+        assertEquals(1, sync.flush(12.0).count(), "changés, ils repartent");
+
+        AnimationCommands oubli = new AnimationCommands();
+        for (int frame = 0; frame < AnimationSync.FORGET_AFTER_FRAMES; frame++) {
+            oubli = sync.flush(20.0 + frame);
+        }
+        assertEquals(1, oubli.count());
+        assertEquals(AnimationCommands.FORGET, action(oubli, 0));
+        assertEquals(0, sync.tracked());
+    }
+
+    @Test
+    @DisplayName("ADR-159 D9 : sans animation ni deltas, une candidate reste ignorée")
+    void sansRienResteIgnoree() {
+        AnimationSync sync = new AnimationSync();
+        sync.see(7, 1, 2, AnimationLayers.NONE, null);
+        assertEquals(0, sync.tracked());
+    }
 }

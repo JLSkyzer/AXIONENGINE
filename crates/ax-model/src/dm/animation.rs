@@ -155,6 +155,42 @@ pub mod anim_action {
     pub const SET_MASK: u32 = 4;
     /// Oublier l'instance : l'assembly a quitté le rendu (client seulement).
     pub const FORGET: u32 = 5;
+    /// Poser le delta de `mask_count` nodes sur leur repos (client seulement, ADR-159 D9) : `mask_count`
+    /// [`super::PoseDelta`] suivent la commande, au lieu de ses nodes de masque.
+    pub const SET_POSE: u32 = 6;
+}
+
+/// Le delta d'un node sur sa pose de repos, posé par [`anim_action::SET_POSE`] (ADR-159 D9) : les
+/// pistes `procedural` évaluées au client.
+///
+/// **Disposition figée** : 32 octets, little-endian.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PoseDelta {
+    /// Le node, rang dans la section `NODE` de l'asset.
+    pub node: u32,
+    /// Ajouté à la translation de repos, dans le repère du parent, en blocs.
+    pub translation: [f32; 3],
+    /// Composé après la rotation de repos, quaternion `[x, y, z, w]`.
+    pub rotation: [f32; 4],
+}
+
+impl PoseDelta {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 32;
+
+    /// Lit un delta au début de `bytes` ; `None` s'il est tronqué.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..Self::BYTES)?;
+        let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
+        let float = |at: usize| f32::from_bits(word(at));
+        Some(Self {
+            node: word(0),
+            translation: [float(4), float(8), float(12)],
+            rotation: [float(16), float(20), float(24), float(28)],
+        })
+    }
 }
 
 /// Une commande d'animation horodatée (ADR-155, tranche 3) : la même au client, que Java pousse par
@@ -162,7 +198,8 @@ pub mod anim_action {
 ///
 /// `tick` est un instant en ticks de jeu, fraction comprise (décision de Killian : l'horloge est
 /// celle du serveur, 20 ticks par seconde). `fade` est en secondes, comme l'API le présente. Une
-/// commande `SET_MASK` est suivie de `mask_count` index de nodes `u32` ; les autres de rien.
+/// commande `SET_MASK` est suivie de `mask_count` index de nodes `u32`, une `SET_POSE` de `mask_count`
+/// [`PoseDelta`] ; les autres de rien.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct AnimCommand {
@@ -180,7 +217,7 @@ pub struct AnimCommand {
     pub fade: f32,
     /// Vitesse (`PLAY`, `SET_SPEED`).
     pub speed: f32,
-    /// Nodes du masque qui suivent la commande (`SET_MASK`).
+    /// Nodes du masque (`SET_MASK`) ou deltas (`SET_POSE`) qui suivent la commande.
     pub mask_count: u32,
     /// Temps de clip à l'instant de la commande, en secondes (`PLAY`) : 0 joue le clip depuis son
     /// début. Le descripteur réseau v3 rejoue ainsi un clip déjà en cours (ADR-155, tranche 4).

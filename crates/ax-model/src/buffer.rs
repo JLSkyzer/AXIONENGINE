@@ -157,10 +157,11 @@ impl BufferKind {
     /// comment lire ce qui suit. Elle change avec la disposition de la charge,
     /// et le lecteur refuse une version qu'il ne connaît pas (R-262, R-491).
     ///
-    /// - `SIM_OUT` = 2 (ADR-151 D7) : `BodyState[state_count]` puis
+    /// - `SIM_OUT` = 3 (ADR-159 D9) : `BodyState[state_count]` puis
     ///   `BodyBounds[state_count]`, dans le même ordre (ADR-120) ; chaque état porte le
     ///   node racine de son corps, une assembly en ayant plusieurs ; puis la section des
-    ///   joints, leur nombre (`u32`), 4 octets réservés et `JointState[n]` ;
+    ///   joints, leur nombre (`u32`), 4 octets réservés et `JointState[n]` (schéma 2,
+    ///   ADR-151 D7) ; puis celle des roues, de même forme, `WheelReport[n]` ;
     /// - `DEBUG` = 2 (amendement A1 d'ADR-121) : en-tête, `DebugRange[]` puis
     ///   `DebugSegment[]` — le schéma 1, à `DebugBody[]`, n'est plus produit ;
     /// - `ASSET_OUT` = 1 (ADR-122 §6) : selon la fonction qui l'a déposée, le
@@ -177,8 +178,8 @@ impl BufferKind {
     #[must_use]
     pub const fn schema_version(self) -> u32 {
         match self {
-            BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderDebug => 2,
-            BufferKind::RenderIn => 3,
+            BufferKind::Debug | BufferKind::RenderDebug => 2,
+            BufferKind::SimOut | BufferKind::RenderIn => 3,
             BufferKind::RenderOut => 4,
             BufferKind::AssetOut => 1,
             _ => 0,
@@ -537,7 +538,8 @@ mod tests {
             let attendue = match kind {
                 BufferKind::RenderOut => 4,
                 BufferKind::RenderIn => 3,
-                BufferKind::Debug | BufferKind::SimOut | BufferKind::RenderDebug => 2,
+                BufferKind::Debug | BufferKind::RenderDebug => 2,
+                BufferKind::SimOut => 3,
                 BufferKind::AssetOut => 1,
                 _ => 0,
             };

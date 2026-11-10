@@ -1,5 +1,6 @@
 package dev.axion.forge;
 
+import dev.axion.net.AssemblyState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -11,9 +12,8 @@ import net.minecraftforge.gametest.PrefixGameTestTemplate;
 /**
  * ADR-159, tranche 2 : un véhicule sur de vrais blocs (T-320, T-326, D3).
  *
- * <p>La definition {@code test/vehicule} a pour origine le contact des roues au repos (§6.5). À
- * l'équilibre, le ressort se comprime de {@code g / raideur} de son débattement : son origine est sous
- * le sol de cette hauteur.
+ * <p>La definition {@code test/vehicule} a pour origine le contact des roues au repos (§6.5) : posé,
+ * ressorts comprimés de leur charge, son origine est au niveau du sol.
  */
 @GameTestHolder("axion")
 @PrefixGameTestTemplate(false)
@@ -23,9 +23,6 @@ public final class VehiculesGameTests {
     private static final double DESSUS_DALLE = 2.0;
 
     private static final float[] IDENTITE = {0f, 0f, 0f, 1f};
-
-    /** L'enfoncement à l'équilibre : {@code g / raideur · débattement} de la definition, en blocs. */
-    private static final double ENFONCEMENT = 9.81 / 25.0 * 0.18;
 
     private static final Vec3 CENTRE = new Vec3(4.5, DESSUS_DALLE, 4.5);
 
@@ -48,11 +45,31 @@ public final class VehiculesGameTests {
                 .thenIdle(120)
                 .thenExecute(() -> {
                     double h = hauteur(helper, assembly);
-                    helper.assertTrue(Math.abs(h + ENFONCEMENT) < 0.03,
-                            "hauteur " + h + ", " + (-ENFONCEMENT) + " attendu");
+                    helper.assertTrue(Math.abs(h) < 0.03, "hauteur " + h + " : le modèle doit être posé au sol");
                     Vec3 ici = helper.relativeVec(assembly.position());
                     helper.assertTrue(Math.abs(ici.x - CENTRE.x) < 0.02 && Math.abs(ici.z - CENTRE.z) < 0.02,
                             "dérive : " + ici);
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * ADR-159 D9 : au repos, la compression publiée de chaque roue est nulle : la roue est où le modèle la
+     * dessine.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void auReposLaCompressionPublieeEstNulle(GameTestHelper helper) {
+        AxionEntity assembly = poser(helper, 0.1);
+        helper.startSequence()
+                .thenIdle(120)
+                .thenExecute(() -> {
+                    AssemblyState.Wheels roues = assembly.netState().wheels();
+                    helper.assertTrue(roues.count() == 4, "roues publiées : " + roues.count());
+                    for (int roue = 0; roue < roues.count(); roue++) {
+                        helper.assertTrue(Math.abs(roues.compression(roue)) < 0.08,
+                                "compression publiée de la roue " + roue + " : " + roues.compression(roue));
+                        helper.assertTrue(roues.onGround(roue), "roue " + roue + " en l'air");
+                    }
                 })
                 .thenSucceed();
     }
@@ -79,7 +96,7 @@ public final class VehiculesGameTests {
                 .thenExecute(() -> {
                     double h = hauteur(helper, assembly);
                     helper.assertTrue(touche[0], "jamais arrivé au sol");
-                    helper.assertTrue(Math.abs(h + ENFONCEMENT) < 0.05, "fin à " + h);
+                    helper.assertTrue(Math.abs(h) < 0.05, "fin à " + h);
                     helper.assertTrue(plusBasEnsuite[0] > -0.6, "écrasé à " + plusBasEnsuite[0]);
                 })
                 .thenSucceed();

@@ -59,8 +59,7 @@ fn charger(gltf: &str) -> Modele {
     let draws = rest_draws(&nodes, meshes.len()).expect("dessins");
     let table = decode_animations(&section(SectionTag::ANIM)).expect("ANIM");
     let animation = AnimatedAsset::new(&nodes, table, draws.iter().map(|d| d.node).collect(), &[])
-        .expect("table acceptée")
-        .expect("des clips");
+        .expect("table acceptée");
     Modele {
         conteneur: bytes,
         meshes,

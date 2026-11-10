@@ -20,7 +20,9 @@ import dev.axion.net.AssemblyState;
 import dev.axion.net.Interpolation;
 import dev.axion.net.RenderClock;
 import dev.axion.physics.JointState;
+import dev.axion.render.ProceduralTracks;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,6 +94,21 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * en M4, la seule source d'un grippage, que le NBT garde.
      */
     private float[] jointMisalignment = new float[0];
+
+    /** Compression publiée de chaque roue (serveur, ADR-159 D9), en fraction du débattement. */
+    private float[] wheelCompression = new float[0];
+
+    /** Vitesse de rotation de chaque roue (serveur, ADR-159 D9), en rad/s. */
+    private float[] wheelSpin = new float[0];
+
+    /** Braquage de chaque roue (serveur, ADR-159 D9), en radians. */
+    private float[] wheelSteer = new float[0];
+
+    /** Contact au sol de chaque roue (serveur, ADR-159 D9). */
+    private boolean[] wheelGround = new boolean[0];
+
+    /** L'angle de chaque roue, intégré au rendu (client, ADR-159 D9). */
+    private final ProceduralTracks.Spin wheelVisualSpin = new ProceduralTracks.Spin();
 
     /** Vitesses monde du corps racine au dernier état, en m/s et rad/s, et son sommeil (serveur). */
     private final float[] linearVelocity = new float[3];
@@ -1010,6 +1027,44 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return level().isClientSide() ? receivedJoints : AssemblyState.JointBits.of(jointFlags);
     }
 
+    /**
+     * Retient l'état qu'une roue a rapporté (serveur, thread autoritatif, ADR-159 D9). Le tableau suit le
+     * plus grand rang rapporté ; une roue hors de {@link AssemblyState.Wheels#MAX_WHEELS} est ignorée.
+     *
+     * @param wheel rang de la roue dans la definition
+     * @param grounded elle touche le sol
+     * @param spin vitesse de rotation, en rad/s
+     * @param compression compression relative au modèle posé, en fraction du débattement
+     * @param steer braquage, en radians
+     */
+    void setWheelState(int wheel, boolean grounded, float spin, float compression, float steer) {
+        AuthoritativeThread.require();
+        if (wheel < 0 || wheel >= AssemblyState.Wheels.MAX_WHEELS) {
+            return;
+        }
+        if (wheel >= wheelCompression.length) {
+            wheelCompression = Arrays.copyOf(wheelCompression, wheel + 1);
+            wheelSpin = Arrays.copyOf(wheelSpin, wheel + 1);
+            wheelSteer = Arrays.copyOf(wheelSteer, wheel + 1);
+            wheelGround = Arrays.copyOf(wheelGround, wheel + 1);
+        }
+        wheelCompression[wheel] = compression;
+        wheelSpin[wheel] = spin;
+        wheelSteer[wheel] = steer;
+        wheelGround[wheel] = grounded;
+    }
+
+    private AssemblyState.Wheels wheelStates() {
+        return wheelCompression.length == 0
+                ? AssemblyState.Wheels.NONE
+                : AssemblyState.Wheels.of(wheelCompression, wheelSpin, wheelSteer, wheelGround);
+    }
+
+    /** {@return l'angle accumulé de chaque roue pour le rendu (client, thread de rendu, ADR-159 D9)} */
+    public ProceduralTracks.Spin wheelSpin() {
+        return wheelVisualSpin;
+    }
+
     /** {@return l'animation de l'assembly (serveur, C-37)} */
     public AssemblyAnimation animation() {
         return animation;
@@ -1079,7 +1134,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     bounded ? new float[] {boundsMax.x, boundsMax.y, boundsMax.z} : null,
                     sleeping)
                     .with(bodies, AssemblyState.JointBits.of(jointFlags))
-                    .withAnimation(animation.state());
+                    .withAnimation(animation.state())
+                    .withWheels(wheelStates());
         } catch (IllegalArgumentException notFinite) {
             // Le natif ramène lui-même un corps non fini dans un état valide (E-2030) ; l'état précédent
             // reste celui des snapshots d'ici là.
@@ -1143,9 +1199,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param mode comment l'interpolation de 21.7 l'a obtenue ; {@code null} avant le premier snapshot
      * @param bodies les corps autres que le corps racine, en poses relatives à lui (ADR-151 D9) ; aucun avant le
      *     premier snapshot
+     * @param wheels l'état de chaque roue, dans l'ordre de la definition (ADR-159 D9) ; aucun avant le
+     *     premier snapshot
      */
     public record RenderPose(
-            double x, double y, double z, Quaternionf rotation, Interpolation.Mode mode, List<Interpolation.BodyPose> bodies) {}
+            double x, double y, double z, Quaternionf rotation, Interpolation.Mode mode, List<Interpolation.BodyPose> bodies,
+            List<Interpolation.WheelPose> wheels) {}
 
     /**
      * {@return où dessiner l'assembly à cette image (client)} C'est la pose de l'interpolation de 21.7,
@@ -1158,13 +1217,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (interpolation == null) {
             return new RenderPose(Mth.lerp(partialTick, xo, getX()), Mth.lerp(partialTick, yo, getY()),
                     Mth.lerp(partialTick, zo, getZ()), rotationO.slerp(rotation, partialTick, new Quaternionf()),
-                    null, List.of());
+                    null, List.of(), List.of());
         }
         long frame = clock.frameNanos();
         Interpolation.Pose pose = interpolation.sample(clock.renderMillis(frame), clock.localMillis(frame));
         float[] q = pose.rotation();
         return new RenderPose(pose.x(), pose.y(), pose.z(), new Quaternionf(q[0], q[1], q[2], q[3]), pose.mode(),
-                pose.bodies());
+                pose.bodies(), pose.wheels());
     }
 
     /**

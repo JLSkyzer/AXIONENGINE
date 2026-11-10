@@ -393,4 +393,38 @@ class InterpolationTest {
         horloge.onSnapshot(108, 6_000_000_000L);
         assertEquals(5400, horloge.serverMillis(6_000_000_000L), 1e-6);
     }
+
+    private static AssemblyState avecRoue(float compression, float vitesse, boolean dort) {
+        AssemblyState.Wheels roues = AssemblyState.Wheels.of(new float[] {compression}, new float[] {vitesse},
+                new float[] {0f}, new boolean[] {true});
+        return new AssemblyState(0L, 0L, 0L, SmallestThree.encode(0f, 0f, 0f, 1f), AssemblyState.Velocity.ZERO, null, dort)
+                .withWheels(roues);
+    }
+
+    @Test
+    @DisplayName("ADR-159 D9 : les roues s'interpolent, sont tenues après le dernier snapshot, et s'arrêtent figées")
+    void lesRouesSInterpolent() {
+        Interpolation interpolation = new Interpolation(EXTRAPOLATION_MS, SNAP);
+        interpolation.push(0, avecRoue(0f, 10f, false), 0, 0);
+        interpolation.push(2, avecRoue(1f, 20f, false), 0, 0);
+        Interpolation.WheelPose milieu = interpolation.sample(50, 50).wheels().get(0);
+        assertEquals(0.5f, milieu.compression(), 0.02f);
+        assertEquals(15f, milieu.spin(), 0.13f);
+        Interpolation.Pose apres = interpolation.sample(150, 150);
+        assertEquals(Interpolation.Mode.EXTRAPOLATED, apres.mode());
+        assertEquals(1f, apres.wheels().get(0).compression(), 0.02f, "tenue");
+        assertEquals(20f, apres.wheels().get(0).spin(), 0.13f, "tenue");
+        Interpolation.Pose figee = interpolation.sample(100 + EXTRAPOLATION_MS + 1, 1000);
+        assertEquals(Interpolation.Mode.FROZEN, figee.mode());
+        assertEquals(0f, figee.wheels().get(0).spin(), "figée, la roue ne tourne plus");
+        assertEquals(1f, figee.wheels().get(0).compression(), 0.02f, "figée, elle reste où elle est");
+    }
+
+    @Test
+    @DisplayName("ADR-159 D9 : les roues d'une assembly endormie sont immobiles")
+    void lesRouesEndormiesSontImmobiles() {
+        Interpolation interpolation = new Interpolation(EXTRAPOLATION_MS, SNAP);
+        interpolation.push(0, avecRoue(0f, 10f, true), 0, 0);
+        assertEquals(0f, interpolation.sample(0, 0).wheels().get(0).spin());
+    }
 }

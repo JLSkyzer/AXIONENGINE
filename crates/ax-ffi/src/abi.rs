@@ -46,13 +46,16 @@ use ax_model::dm::handle::Handle;
 use ax_model::dm::joints::JointState;
 use ax_model::dm::physics::{BodyBounds, BodyState};
 use ax_model::dm::scene::NONE_U32;
+use ax_model::dm::vehicle::WheelReport;
 use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSettings, Stage};
 
 /// Version de l'ABI.
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 13 depuis la sphère explicite du
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 19 depuis l'état des roues
+/// (ADR-159 D9) : section `WheelReport` de `SIM_OUT` (schéma 3) et opcode `SET_POSE` d'`axion_render_animate`.
+/// 13 depuis la sphère explicite du
 /// candidat de rendu (ADR-157 D2) : 64 octets, drapeau `BOUNDS`, `RENDER_IN` au schéma 3. 12 depuis la compilation des
 /// definitions par le natif (ADR-156) : `axion_definition_compile`, `axion_definition_remove`, et
 /// `PHYS`, `SKEL`, `ANIM` au masque d'`axion_asset_load`. 11 depuis les overlays de
@@ -63,7 +66,7 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 18;
+pub const AXION_ABI_VERSION: u32 = 19;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -2275,7 +2278,7 @@ pub unsafe extern "C" fn axion_box_touches_assembly(
 }
 
 /// Récolte le résultat d'un tick (IF-03) : avance la simulation, dépose les
-/// `BodyState` puis leurs `BodyBounds` dans `SimOut` (schéma 1, ADR-120) et les
+/// `BodyState` puis leurs `BodyBounds` dans `SimOut` (schéma 3, ADR-120, ADR-159 D9) et les
 /// `PhysicsEvent` dans `Events`, détruit les mondes devenus sans objet (R-610) et
 /// remplit `out`.
 ///
@@ -2328,7 +2331,9 @@ pub unsafe extern "C" fn axion_sim_collect(
             let mut sim_out_bytes = Vec::with_capacity(
                 states.len() * (BodyState::BYTES + BodyBounds::BYTES)
                     + JointState::SECTION_HEADER_BYTES
-                    + reports.joints.len() * JointState::BYTES,
+                    + reports.joints.len() * JointState::BYTES
+                    + WheelReport::SECTION_HEADER_BYTES
+                    + reports.wheels.len() * WheelReport::BYTES,
             );
             for state in states {
                 state.write_le(&mut sim_out_bytes);
@@ -2339,6 +2344,8 @@ pub unsafe extern "C" fn axion_sim_collect(
             // ADR-151 D7 : les états des joints suivent, précédés de leur nombre — l'en-tête du
             // tampon, que l'acquisition par Java réécrit, ne le porte pas.
             JointState::write_section(&reports.joints, &mut sim_out_bytes);
+            // ADR-159 D9 : les roues suivent, sous la même forme.
+            WheelReport::write_section(&reports.wheels, &mut sim_out_bytes);
             let mut events_bytes = Vec::new();
             for event in &events {
                 event.write_le(&mut events_bytes);

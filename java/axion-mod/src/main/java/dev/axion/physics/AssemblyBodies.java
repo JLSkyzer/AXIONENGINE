@@ -50,7 +50,7 @@ public final class AssemblyBodies {
      * lit pas. Disposition : nombre de nodes et taille des noms ({@code u32}), les nodes, puis pour
      * chacun le décalage et la longueur de son nom ({@code u32}), puis les noms en UTF-8.
      */
-    static List<String> names(byte[] nodes) {
+    public static List<String> names(byte[] nodes) {
         if (nodes == null || nodes.length < HEADER_BYTES) {
             return List.of();
         }

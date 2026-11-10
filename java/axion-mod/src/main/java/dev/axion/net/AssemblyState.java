@@ -22,6 +22,7 @@ import java.util.Set;
  *     l'ordre du serveur
  * @param joints l'état de chaque joint de l'assembly, dans l'ordre de la definition (ADR-151 D8)
  * @param animation la dernière commande de chaque couche d'animation (ADR-155, descripteur v3)
+ * @param wheels l'état de chaque roue, dans l'ordre de la definition (ADR-159 D9, descripteur 4)
  */
 public record AssemblyState(
         long x,
@@ -33,7 +34,8 @@ public record AssemblyState(
         boolean sleeping,
         List<Body> bodies,
         JointBits joints,
-        AnimationLayers animation) {
+        AnimationLayers animation,
+        Wheels wheels) {
 
     /** Corps autres que le corps racine d'une assembly, au plus : elle en a 64 (R-190). */
     public static final int MAX_BODIES = 63;
@@ -248,15 +250,163 @@ public record AssemblyState(
     }
 
     /**
-     * Refuse une vitesse, des corps, des joints ou une animation absents, et des corps trop nombreux ou en
-     * double.
+     * L'état de chaque roue d'un véhicule (ADR-159 D9), quantifié : par roue, compression i8 en fraction du
+     * débattement dans {@code [-2, 2]}, vitesse de rotation i16 au 1/8 rad/s, braquage i8 dans
+     * {@code [-π/2, π/2]} ; puis un bit {@code on_ground} par roue. {@code -128} n'est pas une valeur de
+     * compression ni de braquage : un entier à bornes symétriques, relues à l'identique.
+     *
+     * @param count nombre de roues
+     * @param packed les valeurs, {@link #packedLength} octets ; copie
+     */
+    public record Wheels(int count, byte[] packed) {
+
+        /** Roues d'un véhicule, au plus (R-1052). */
+        public static final int MAX_WHEELS = 32;
+
+        /** Aucune roue. */
+        public static final Wheels NONE = new Wheels(0, new byte[0]);
+
+        private static final int RECORD_BYTES = 4;
+        private static final float COMPRESSION_STEPS = 127f / 2f;
+        private static final float SPIN_STEPS = 8f;
+        private static final float STEER_STEPS = (float) (127.0 / (Math.PI / 2.0));
+
+        /** Copie les valeurs, et refuse un nombre, une longueur, une borne ou des bits de remplissage incohérents. */
+        public Wheels {
+            if (count < 0 || count > MAX_WHEELS) {
+                throw new IllegalArgumentException("nombre de roues " + count);
+            }
+            if (packed.length != packedLength(count)) {
+                throw new IllegalArgumentException(packed.length + " octets pour " + count + " roues");
+            }
+            for (int wheel = 0; wheel < count; wheel++) {
+                if (packed[wheel * RECORD_BYTES] == Byte.MIN_VALUE || packed[wheel * RECORD_BYTES + 3] == Byte.MIN_VALUE) {
+                    throw new IllegalArgumentException("roue " + wheel + " hors de ses bornes");
+                }
+            }
+            int spare = count % 8;
+            if (spare != 0 && (packed[packed.length - 1] & 0xFF) >>> spare != 0) {
+                throw new IllegalArgumentException("bits non nuls après la dernière roue");
+            }
+            packed = packed.clone();
+        }
+
+        /**
+         * @param count nombre de roues
+         * @return la longueur de leurs valeurs, en octets
+         */
+        public static int packedLength(int count) {
+            return count * RECORD_BYTES + (count + 7) / 8;
+        }
+
+        /**
+         * Quantifie l'état des roues. Une valeur non finie compte pour zéro ; une valeur hors bornes est
+         * ramenée à sa borne.
+         *
+         * @param compression compression de chaque roue, en fraction du débattement
+         * @param spin vitesse de rotation de chaque roue, en rad/s
+         * @param steer braquage de chaque roue, en radians
+         * @param onGround la roue touche le sol
+         * @return leur état
+         */
+        public static Wheels of(float[] compression, float[] spin, float[] steer, boolean[] onGround) {
+            int count = compression.length;
+            byte[] packed = new byte[packedLength(count)];
+            int grounds = count * RECORD_BYTES;
+            for (int wheel = 0; wheel < count; wheel++) {
+                int at = wheel * RECORD_BYTES;
+                short speed = (short) bounded(spin[wheel] * SPIN_STEPS, Short.MAX_VALUE);
+                packed[at] = (byte) bounded(compression[wheel] * COMPRESSION_STEPS, Byte.MAX_VALUE);
+                packed[at + 1] = (byte) (speed >> 8);
+                packed[at + 2] = (byte) speed;
+                packed[at + 3] = (byte) bounded(steer[wheel] * STEER_STEPS, Byte.MAX_VALUE);
+                if (onGround[wheel]) {
+                    packed[grounds + wheel / 8] |= (byte) (1 << (wheel % 8));
+                }
+            }
+            return new Wheels(count, packed);
+        }
+
+        private static int bounded(float steps, int limit) {
+            if (!Float.isFinite(steps)) {
+                return 0;
+            }
+            return Math.max(-limit, Math.min(limit, Math.round(steps)));
+        }
+
+        /**
+         * @param wheel rang de la roue
+         * @return sa compression, en fraction du débattement
+         */
+        public float compression(int wheel) {
+            return packed[at(wheel)] / COMPRESSION_STEPS;
+        }
+
+        /**
+         * @param wheel rang de la roue
+         * @return sa vitesse de rotation, en rad/s
+         */
+        public float spin(int wheel) {
+            int at = at(wheel);
+            return (short) ((packed[at + 1] & 0xFF) << 8 | packed[at + 2] & 0xFF) / SPIN_STEPS;
+        }
+
+        /**
+         * @param wheel rang de la roue
+         * @return son braquage, en radians
+         */
+        public float steer(int wheel) {
+            return packed[at(wheel) + 3] / STEER_STEPS;
+        }
+
+        /**
+         * @param wheel rang de la roue
+         * @return vrai si elle touche le sol
+         */
+        public boolean onGround(int wheel) {
+            at(wheel);
+            return (packed[count * RECORD_BYTES + wheel / 8] >>> (wheel % 8) & 1) != 0;
+        }
+
+        private int at(int wheel) {
+            if (wheel < 0 || wheel >= count) {
+                throw new IndexOutOfBoundsException("roue " + wheel + " sur " + count);
+            }
+            return wheel * RECORD_BYTES;
+        }
+
+        /** {@return les valeurs, copie} */
+        @Override
+        public byte[] packed() {
+            return packed.clone();
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof Wheels wheels && count == wheels.count && Arrays.equals(packed, wheels.packed);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * count + Arrays.hashCode(packed);
+        }
+
+        @Override
+        public String toString() {
+            return "Wheels[count=" + count + ", packed=" + Arrays.toString(packed) + "]";
+        }
+    }
+
+    /**
+     * Refuse une vitesse, des corps, des joints, une animation ou des roues absents, et des corps trop
+     * nombreux ou en double.
      */
     public AssemblyState {
         if (velocity == null) {
             throw new IllegalArgumentException("vitesse absente");
         }
-        if (bodies == null || joints == null || animation == null) {
-            throw new IllegalArgumentException("corps, joints ou animation absents");
+        if (bodies == null || joints == null || animation == null || wheels == null) {
+            throw new IllegalArgumentException("corps, joints, animation ou roues absents");
         }
         if (bodies.size() > MAX_BODIES) {
             throw new IllegalArgumentException(bodies.size() + " corps secondaires, au-delà de " + MAX_BODIES);
@@ -282,7 +432,7 @@ public record AssemblyState(
      * @param sleeping le corps dort
      */
     public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping) {
-        this(x, y, z, rotation, velocity, bounds, sleeping, List.of(), JointBits.NONE, AnimationLayers.NONE);
+        this(x, y, z, rotation, velocity, bounds, sleeping, List.of(), JointBits.NONE, AnimationLayers.NONE, Wheels.NONE);
     }
 
     /**
@@ -300,7 +450,26 @@ public record AssemblyState(
      */
     public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
             List<Body> bodies, JointBits joints) {
-        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, AnimationLayers.NONE);
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, AnimationLayers.NONE, Wheels.NONE);
+    }
+
+    /**
+     * L'état d'une assembly sans roues.
+     *
+     * @param x position x, au 1/1024 de bloc
+     * @param y position y, au 1/1024 de bloc
+     * @param z position z, au 1/1024 de bloc
+     * @param rotation rotation « smallest three »
+     * @param velocity vitesses quantifiées
+     * @param bounds emprise relative à la position, ou {@code null}
+     * @param sleeping le corps dort
+     * @param bodies les corps autres que le corps racine
+     * @param joints l'état de chaque joint
+     * @param animation l'état d'animation
+     */
+    public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
+            List<Body> bodies, JointBits joints, AnimationLayers animation) {
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, Wheels.NONE);
     }
 
     /**
@@ -309,7 +478,7 @@ public record AssemblyState(
      * @return cet état, avec ces corps et ces joints
      */
     public AssemblyState with(List<Body> otherBodies, JointBits jointBits) {
-        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation);
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation, wheels);
     }
 
     /**
@@ -317,7 +486,15 @@ public record AssemblyState(
      * @return cet état, avec cette animation
      */
     public AssemblyState withAnimation(AnimationLayers layers) {
-        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers);
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers, wheels);
+    }
+
+    /**
+     * @param states l'état des roues
+     * @return cet état, avec ces roues
+     */
+    public AssemblyState withWheels(Wheels states) {
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, states);
     }
 
     /**

@@ -3649,6 +3649,8 @@ T-980..T-984.
       six tranches. **Accepté par Killian le 2026-11-09**, Q1 à Q4 comme proposé.
       - [x] Tranche 1 (2026-11-09) : `DEFN` 2 et ABI 18, pneus (`axion/tires/`, protocole 4), essieux, règles de forme,
             crate `ax-vehicle` (suspension, pneu). Rien de visible en jeu : les roues agissent à la tranche 2.
+      - [x] Tranche 2b (2026-11-10) : véhicule posé à sa hauteur de modèle, hitbox réelle par pièce, roues à l'image (ABI 19,
+            protocole 5, descripteur 4, `SET_POSE`, `ProceduralTracks`).
       - [x] Tranche 2 (2026-11-09) : rayons, suspension et pneus au sous-pas, réveil par les tuiles, overlays ; T-320, T-325,
             T-326 ; premier film (`runFilmVehicule`). Avant la tranche 3 : l'avant du buggy d'exemple est en `+z` (§6.5 : `-z`).
 

@@ -37,8 +37,6 @@ import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.SnowLayerBlock;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import net.minecraft.world.phys.Vec3;
@@ -224,6 +222,8 @@ public final class FilmDuVehicule {
     private static void reglerLesOptions(Minecraft minecraft) {
         Options options = minecraft.options;
         options.hideGui = true;
+        options.fullscreen().set(false);
+        minecraft.getWindow().setWindowed(LARGEUR, HAUTEUR_JEU);
         options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER).set(0.0);
         options.pauseOnLostFocus = false;
         options.tutorialStep = TutorialSteps.NONE;
@@ -271,9 +271,10 @@ public final class FilmDuVehicule {
                 level.setBlockAndUpdate(new BlockPos(x, SOL - 1, z), Blocks.SMOOTH_STONE.defaultBlockState());
             }
             for (int z = 46; z < 66; z += 3) {
-                // Une couche de neige de n couches a une collision de (n - 1) / 8 de bloc.
-                BlockState neige = Blocks.SNOW.defaultBlockState().setValue(SnowLayerBlock.LAYERS, 2);
-                level.setBlockAndUpdate(new BlockPos(x, SOL, z), neige);
+                // Un tapis de 1/16 de bloc, sous les seules roues : la caisse, à 8 cm du sol, passe au-dessus.
+                if (x == -1 || x == 1) {
+                    level.setBlockAndUpdate(new BlockPos(x, SOL, z), Blocks.WHITE_CARPET.defaultBlockState());
+                }
             }
             for (int y = 0; y < 4; y++) {
                 level.setBlockAndUpdate(new BlockPos(x, SOL + y, 112), Blocks.BRICKS.defaultBlockState());
@@ -448,7 +449,7 @@ public final class FilmDuVehicule {
             return String.format(Locale.ROOT, "Poussée imposée de %.0f N (le moteur arrive après) : il roule droit", POUSSEE_N);
         }
         if (secondes < 16.0) {
-            return "Sur sa lancée : bosses d'un huitième de bloc, puis le mur";
+            return "Sur sa lancée : tapis de 6 cm sous les roues, puis le mur";
         }
         return "Le pilier du véhicule garé disparaît : endormi, il se réveille et tombe";
     }
@@ -463,8 +464,12 @@ public final class FilmDuVehicule {
                 // makePixelArray rend déjà de l'ARGB : l'échanger inversait rouge et bleu.
                 rgb[i] = p & 0xFFFFFF;
             }
-            image.setRGB(0, 0, Math.min(largeur, LARGEUR), Math.min(hauteur, HAUTEUR_JEU), rgb, 0, largeur);
+            // La fenêtre peut avoir une autre taille : l'image entière, mise à l'échelle.
+            BufferedImage jeu = new BufferedImage(largeur, hauteur, BufferedImage.TYPE_INT_RGB);
+            jeu.setRGB(0, 0, largeur, hauteur, rgb, 0, largeur);
             Graphics2D g = image.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.drawImage(jeu, 0, 0, LARGEUR, HAUTEUR_JEU, null);
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             g.setColor(new Color(18, 20, 26));
             g.fillRect(0, HAUTEUR_JEU, LARGEUR, BANDEAU);

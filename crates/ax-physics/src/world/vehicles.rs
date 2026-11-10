@@ -12,7 +12,7 @@ use crate::sim::handle_key;
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::debug::{debug_frame, overlay, DebugSegment};
 use ax_model::dm::handle::Handle;
-use ax_model::dm::vehicle::VehicleDesc;
+use ax_model::dm::vehicle::{wheel_report_flags, VehicleDesc, WheelReport};
 use ax_vehicle::{suspension, tire};
 use rapier3d::prelude::{
     Collider, ColliderHandle, QueryFilter as RapierQueryFilter, QueryFilterFlags, Ray,
@@ -38,6 +38,8 @@ pub struct WheelState {
     pub spin_speed: f32,
     /// Compression, `0` au repos et `1` en butée.
     pub compression: f32,
+    /// Angle de braquage, en radians, `0` tant que la direction n'existe pas (ADR-159, tranche 3).
+    pub steer_angle: f32,
     /// Le rayon touche le sol.
     pub on_ground: bool,
     /// Force de suspension, en newtons.
@@ -63,6 +65,12 @@ pub(super) struct Vehicle {
     carriers: Vec<RigidBodyHandle>,
     /// Le centre au repos de chaque roue, dans le repère de son corps.
     centers: Vec<Vec3>,
+    /// La hauteur de l'ancrage de chaque roue au-dessus de son centre au repos : le modèle montre
+    /// le véhicule **posé** (§6.5), ressort déjà comprimé de `g / raideur`.
+    anchor_heights: Vec<f32>,
+    /// La compression de chaque roue quand le véhicule est posé, `g / raideur` bornée à 1 : la position
+    /// de la roue dans le modèle (§6.5).
+    settled: Vec<f32>,
     /// Le nombre de roues de chaque roue sur son corps : le diviseur de `mass_ref`.
     sharing: Vec<f32>,
     groups: CollisionGroups,
@@ -105,12 +113,34 @@ impl PhysicsWorld {
                     + suspension::ray_length(&wheel.suspension, wheel.radius)
             })
             .fold(0.0, f32::max);
+        let gravity = self.config.gravity.length();
+        let settled: Vec<f32> = desc
+            .wheels
+            .iter()
+            .map(|wheel| {
+                if wheel.suspension.stiffness > 0.0 {
+                    (gravity / wheel.suspension.stiffness).min(1.0)
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+        let anchor_heights = desc
+            .wheels
+            .iter()
+            .zip(&settled)
+            .map(|(wheel, settled)| {
+                wheel.suspension.rest_length - settled * wheel.suspension.max_travel
+            })
+            .collect();
         let wheels = vec![WheelState::default(); desc.wheels.len()];
         self.vehicles.push(Vehicle {
             assembly,
             bodies: bodies.iter().map(|id| id.handle()).collect(),
             carriers,
             centers: mounts.iter().map(|mount| mount.center).collect(),
+            anchor_heights,
+            settled,
             sharing,
             groups,
             reach,
@@ -127,6 +157,41 @@ impl PhysicsWorld {
             .iter()
             .find(|vehicle| handle_key(vehicle.assembly) == handle_key(assembly))
             .map(|vehicle| vehicle.wheels.as_slice())
+    }
+
+    /// L'état des roues de chaque véhicule éveillé, pour Java (ADR-159 D9). La compression y est
+    /// relative à la pose du modèle : `0` quand la roue est où le modèle la dessine, positive quand elle
+    /// monte vers la caisse, en fraction du débattement.
+    #[must_use]
+    pub fn wheel_reports(&self) -> Vec<WheelReport> {
+        let mut reports = Vec::new();
+        for vehicle in self.vehicles.iter().filter(|v| !self.vehicle_asleep(v)) {
+            for (index, state) in vehicle.wheels.iter().enumerate() {
+                reports.push(WheelReport {
+                    handle: vehicle.assembly,
+                    index: u16::try_from(index).unwrap_or(u16::MAX),
+                    flags: if state.on_ground {
+                        wheel_report_flags::ON_GROUND
+                    } else {
+                        0
+                    },
+                    spin_speed: state.spin_speed,
+                    compression: state.compression.clamp(-1.0, 1.0) - vehicle.settled[index],
+                    steer_angle: state.steer_angle,
+                });
+            }
+        }
+        reports
+    }
+
+    /// Tous les corps du véhicule dorment : ses roues ne sont ni simulées ni rapportées.
+    fn vehicle_asleep(&self, vehicle: &Vehicle) -> bool {
+        vehicle.bodies.iter().all(|handle| {
+            self.inner
+                .bodies
+                .get(*handle)
+                .is_none_or(rapier3d::prelude::RigidBody::is_sleeping)
+        })
     }
 
     /// Oublie les véhicules qu'un corps retiré portait.
@@ -168,13 +233,7 @@ impl PhysicsWorld {
         }
         let mut vehicles = std::mem::take(&mut self.vehicles);
         for vehicle in &mut vehicles {
-            let asleep = vehicle.bodies.iter().all(|handle| {
-                self.inner
-                    .bodies
-                    .get(*handle)
-                    .is_none_or(rapier3d::prelude::RigidBody::is_sleeping)
-            });
-            if !asleep {
+            if !self.vehicle_asleep(vehicle) {
                 self.plan_vehicle(vehicle, dt);
                 for (handle, impulse, point) in vehicle.impulses.drain(..) {
                     if let Some(body) = self.inner.bodies.get_mut(handle) {
@@ -278,7 +337,7 @@ impl PhysicsWorld {
             let up = rotation * Vec3::Y;
             let forward = rotation * Vec3::NEG_Z;
             let center = pose.translation + rotation * vehicle.centers[index];
-            let anchor = center + up * wheel.suspension.rest_length;
+            let anchor = center + up * vehicle.anchor_heights[index];
             let down = -up;
             let length = suspension::ray_length(&wheel.suspension, wheel.radius);
             state.anchor = anchor;
