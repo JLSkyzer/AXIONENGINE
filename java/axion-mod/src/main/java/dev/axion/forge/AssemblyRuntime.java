@@ -51,7 +51,8 @@ import org.slf4j.Logger;
  *       (étape 1 du pas, C-40 ; ADR-156 D4). Le natif en tient corps, joints et colliders : Java
  *       ne lit plus l'asset côté serveur.
  *   <li>Chaque tick : les commandes en file (création, retrait) sont émises via
- *       {@link SimCommandProvider}.
+ *       {@link SimCommandProvider}, puis l'entrée du siège {@code driver} de chaque véhicule, quand elle a
+ *       changé (ADR-159 D8).
  *   <li>Fin de tick : les {@code BodyState} collectés repositionnent et orientent les entités
  *       par handle, et leurs {@code BodyBounds} calent leur hitbox (R-702, ADR-120)
  *       ({@link SimStateSink}).
@@ -116,6 +117,12 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      * reçoit l'état entier.
      */
     private final Map<Integer, AnimationLayers> animationSent = new HashMap<>();
+
+    /**
+     * Ce que le natif a reçu du siège {@code driver} de chaque véhicule doté d'un corps (ADR-159 D8) : une entrée
+     * ne part que si elle a changé. Un corps créé repart sans conducteur, ce que le natif suppose.
+     */
+    private final Map<Integer, AxionEntity.DriverInput> driveSent = new HashMap<>();
 
     /** Les créations en attente, avancées sous {@code persistence.max_load_ns_per_tick} (R-1730). */
     private final LoadQueue<AxionEntity> loading = new LoadQueue<>(System::nanoTime);
@@ -380,9 +387,27 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 stream.removeAssembly(cmd.index(), GENERATION);
                 animationSent.remove(cmd.index());
             }
+            driveSent.remove(cmd.index());
         }
         animate(stream);
+        drive(stream);
         return stream;
+    }
+
+    /**
+     * Pousse au natif l'entrée du siège {@code driver} de chaque véhicule, quand elle a changé (ADR-159 D8) : le
+     * natif la garde d'un tick à l'autre. Une definition sans siège {@code driver} n'envoie rien : son véhicule
+     * reste sans conducteur, frein de stationnement serré (Q3).
+     */
+    private void drive(SimCommandStream stream) {
+        ledger.forEachBody((index, assembly) -> {
+            AxionEntity.DriverInput now = assembly.driverInput();
+            if (now == null || now.equals(driveSent.getOrDefault(index, AxionEntity.DriverInput.ABSENT))) {
+                return;
+            }
+            stream.setVehicleInput(index, GENERATION, now.input(), now.present());
+            driveSent.put(index, now);
+        });
     }
 
     /**
@@ -561,5 +586,6 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         speeds.clear();
         rootNodes.clear();
         animationSent.clear();
+        driveSent.clear();
     }
 }

@@ -9,10 +9,10 @@
 //! Little-endian, sans remplissage, à la suite des parts quand le drapeau `VEHICLE` est posé :
 //!
 //! ```text
-//! en-tête                 108 o : roues, points de couple, rapports, surfaces en u16 ;
+//! en-tête                 116 o : roues, points de couple, rapports, surfaces en u16 ;
 //!                                 drapeaux u16 ; transmission u8 ; différentiel u8 ;
-//!                                 puis 24 f32 : moteur (4), transmission (5), différentiel (2),
-//!                                 direction (5), freins (4), aéro (4)
+//!                                 puis 26 f32 : moteur (4), transmission (5), différentiel (2),
+//!                                 direction (5), freins (4), aéro (4), correcteurs (2)
 //! WheelDesc[roues]         88 o
 //! [f32; 2][points]          8 o : régime, couple
 //! f32[rapports]             4 o
@@ -133,8 +133,126 @@ pub mod vehicle_flags {
     pub const POWERTRAIN: u16 = 1 << 0;
     /// L'ABS est actif (R-1090).
     pub const ABS: u16 = 1 << 1;
+    /// L'antipatinage est actif (R-1090, ADR-159 tranche 3).
+    pub const TRACTION_CONTROL: u16 = 1 << 2;
+    /// Le contrôle de stabilité est actif (R-1090, ADR-159 tranche 3).
+    pub const STABILITY_CONTROL: u16 = 1 << 3;
     /// Tous les drapeaux connus.
-    pub const ALL: u16 = POWERTRAIN | ABS;
+    pub const ALL: u16 = POWERTRAIN | ABS | TRACTION_CONTROL | STABILITY_CONTROL;
+}
+
+/// Les entrées d'un conducteur (12.8), telles que la commande `SET_VEHICLE_INPUT` les porte.
+///
+/// **Disposition figée** : 24 octets, alignement 4.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct VehicleInput {
+    /// Accélérateur, dans [0, 1].
+    pub throttle: f32,
+    /// Frein, dans [0, 1].
+    pub brake: f32,
+    /// Direction, dans [-1, 1], positive à droite.
+    pub steer: f32,
+    /// Embrayage, dans [0, 1] : 1 débraye.
+    pub clutch: f32,
+    /// Frein à main, dans [0, 1].
+    pub handbrake: f32,
+    /// Rapport demandé, relatif au rapport nul de `gears` : 0 point mort, négatif en marche arrière.
+    pub gear: i8,
+    /// Drapeaux ; aucun n'est défini à ce jour.
+    pub flags: u8,
+    /// Réservé, à zéro.
+    pub _pad: [u8; 2],
+}
+
+impl VehicleInput {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 24;
+
+    /// Aucune entrée.
+    pub const NONE: Self = Self {
+        throttle: 0.0,
+        brake: 0.0,
+        steer: 0.0,
+        clutch: 0.0,
+        handbrake: 0.0,
+        gear: 0,
+        flags: 0,
+        _pad: [0; 2],
+    };
+
+    /// L'entrée bornée (R-1110, INV-02) : une valeur non finie vaut zéro, chacune est ramenée dans
+    /// ses bornes, et aucun drapeau inconnu ne passe. Le booléen dit si une valeur n'était pas finie.
+    #[must_use]
+    pub fn sanitized(&self) -> (Self, bool) {
+        let values = [
+            self.throttle,
+            self.brake,
+            self.steer,
+            self.clutch,
+            self.handbrake,
+        ];
+        let bound = |value: f32, min: f32| {
+            if value.is_finite() {
+                value.clamp(min, 1.0)
+            } else {
+                0.0
+            }
+        };
+        (
+            Self {
+                throttle: bound(self.throttle, 0.0),
+                brake: bound(self.brake, 0.0),
+                steer: bound(self.steer, -1.0),
+                clutch: bound(self.clutch, 0.0),
+                handbrake: bound(self.handbrake, 0.0),
+                gear: self.gear,
+                flags: 0,
+                _pad: [0; 2],
+            },
+            !values.iter().all(|value| value.is_finite()),
+        )
+    }
+
+    /// Vrai si le conducteur commande ce qui fait bouger le véhicule : accélérateur, frein ou
+    /// direction. Le frein à main, l'embrayage ou le rapport seuls ne le réveillent pas.
+    #[must_use]
+    pub fn moves(&self) -> bool {
+        self.throttle > 0.0 || self.brake > 0.0 || self.steer != 0.0
+    }
+
+    /// Écrit l'entrée en little-endian, dans sa disposition figée, à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        for value in [
+            self.throttle,
+            self.brake,
+            self.steer,
+            self.clutch,
+            self.handbrake,
+        ] {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        out.extend_from_slice(&self.gear.to_le_bytes());
+        out.push(self.flags);
+        out.extend_from_slice(&[0u8; 2]);
+    }
+
+    /// Lit une entrée au début de `bytes` ; `None` si elle est tronquée. Ses valeurs restent à borner.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..Self::BYTES)?;
+        let f32_at = |at: usize| f32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
+        Some(Self {
+            throttle: f32_at(0),
+            brake: f32_at(4),
+            steer: f32_at(8),
+            clutch: f32_at(12),
+            handbrake: f32_at(16),
+            gear: i8::from_le_bytes([bytes[20]]),
+            flags: bytes[21],
+            _pad: [0; 2],
+        })
+    }
 }
 
 /// Types de transmission (12.5, ADR-159 D6).
@@ -294,6 +412,15 @@ pub struct BrakesDesc {
     pub abs_slip_threshold: f32,
 }
 
+/// Les correcteurs déclaratifs autres que l'ABS (R-1090), actifs selon [`vehicle_flags`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AssistDesc {
+    /// Glissement d'une roue motrice au-delà duquel l'antipatinage réduit le couple du moteur.
+    pub traction_slip_threshold: f32,
+    /// Écart au lacet visé, en rad/s, au-delà duquel le contrôle de stabilité freine une roue.
+    pub stability_yaw_tolerance: f32,
+}
+
 /// L'aérodynamique (12.7).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AeroDesc {
@@ -342,6 +469,8 @@ pub struct VehicleDesc {
     pub brakes: BrakesDesc,
     /// Aérodynamique.
     pub aero: AeroDesc,
+    /// Antipatinage et contrôle de stabilité.
+    pub assists: AssistDesc,
     /// Les roues, dans l'ordre de la definition.
     pub wheels: Vec<WheelDesc>,
     /// La courbe de couple : régime, couple.
@@ -480,7 +609,7 @@ fn put_curve(out: &mut Vec<u8>, curve: &TireCurve) {
 
 impl VehicleDesc {
     /// Taille de l'en-tête de la section, en octets.
-    pub const HEADER_BYTES: usize = 108;
+    pub const HEADER_BYTES: usize = 116;
 
     /// Écrit la section en little-endian à la fin de `out`.
     ///
@@ -535,6 +664,8 @@ impl VehicleDesc {
                 a.frontal_area,
                 a.downforce_front,
                 a.downforce_rear,
+                self.assists.traction_slip_threshold,
+                self.assists.stability_yaw_tolerance,
             ],
         );
         for wheel in &self.wheels {
@@ -640,6 +771,13 @@ impl VehicleDesc {
             downforce_front: c.f32("aero")?,
             downforce_rear: c.f32("aero")?,
         };
+        let assists = AssistDesc {
+            traction_slip_threshold: c.f32("assists")?,
+            stability_yaw_tolerance: c.f32("assists")?,
+        };
+        if !(assists.traction_slip_threshold > 0.0 && assists.stability_yaw_tolerance > 0.0) {
+            return Err(DefnError::Field("assists"));
+        }
 
         let mut wheel_table = Vec::with_capacity(wheels);
         for _ in 0..wheels {
@@ -688,6 +826,7 @@ impl VehicleDesc {
                 steering,
                 brakes,
                 aero,
+                assists,
                 wheels: wheel_table,
                 torque_curve,
                 gears: gear_table,
@@ -819,6 +958,10 @@ mod tests {
                 downforce_front: 1.0,
                 downforce_rear: 2.0,
             },
+            assists: AssistDesc {
+                traction_slip_threshold: 0.2,
+                stability_yaw_tolerance: 0.15,
+            },
             wheels: vec![roue(1), roue(2)],
             torque_curve: vec![[0.0, 0.0], [3000.0, 260.0]],
             gears: vec![-3.2, 0.0, 3.5],
@@ -856,6 +999,67 @@ mod tests {
     }
 
     #[test]
+    fn r1110_l_entree_du_conducteur_se_relit_et_se_borne() {
+        use std::mem::{align_of, offset_of, size_of};
+        assert_eq!(size_of::<VehicleInput>(), VehicleInput::BYTES);
+        assert_eq!(align_of::<VehicleInput>(), 4);
+        assert_eq!(offset_of!(VehicleInput, handbrake), 16);
+        assert_eq!(offset_of!(VehicleInput, gear), 20);
+        assert_eq!(offset_of!(VehicleInput, flags), 21);
+        let entree = VehicleInput {
+            throttle: 0.5,
+            brake: 0.25,
+            steer: -0.75,
+            clutch: 0.125,
+            handbrake: 1.0,
+            gear: -1,
+            flags: 0,
+            _pad: [0; 2],
+        };
+        let mut octets = Vec::new();
+        entree.write_le(&mut octets);
+        assert_eq!(octets.len(), VehicleInput::BYTES);
+        assert_eq!(VehicleInput::read_le(&octets), Some(entree));
+        assert_eq!(VehicleInput::read_le(&octets[..23]), None);
+        assert_eq!(entree.sanitized(), (entree, false));
+
+        let folle = VehicleInput {
+            throttle: f32::NAN,
+            brake: 7.0,
+            steer: -9.0,
+            clutch: f32::INFINITY,
+            handbrake: -2.0,
+            gear: 4,
+            flags: 0xFF,
+            _pad: [0; 2],
+        };
+        let bornee = VehicleInput {
+            throttle: 0.0,
+            brake: 1.0,
+            steer: -1.0,
+            clutch: 0.0,
+            handbrake: 0.0,
+            gear: 4,
+            flags: 0,
+            _pad: [0; 2],
+        };
+        assert_eq!(folle.sanitized(), (bornee, true));
+        assert!(!VehicleInput::NONE.moves());
+        let immobile = VehicleInput {
+            handbrake: 1.0,
+            clutch: 1.0,
+            gear: 2,
+            ..VehicleInput::NONE
+        };
+        assert!(!immobile.moves(), "frein à main, embrayage, rapport");
+        let braque = VehicleInput {
+            steer: -0.1,
+            ..VehicleInput::NONE
+        };
+        assert!(braque.moves());
+    }
+
+    #[test]
     fn une_section_coupee_est_tronquee() {
         let bytes = octets(&vehicule());
         assert_eq!(lire(&bytes[..bytes.len() - 1]), Err(DefnError::Truncated));
@@ -873,7 +1077,7 @@ mod tests {
     #[test]
     fn une_forme_fausse_est_refusee_par_son_champ() {
         type Faussaire = fn(&mut VehicleDesc);
-        let cas: [(Faussaire, &str); 8] = [
+        let cas: [(Faussaire, &str); 9] = [
             (|v| v.wheels[0].node = 99, "wheels.node"),
             (|v| v.wheels[0].axle = 2, "wheels.axle"),
             (|v| v.wheels[0].flags = 1 << 7, "wheels.flags"),
@@ -885,6 +1089,7 @@ mod tests {
             (|v| v.wheels[0].long.tail_slip = 0.01, "wheels.tire"),
             (|v| v.engine.max_rpm = f32::NAN, "engine"),
             (|v| v.torque_curve[1][0] = 0.0, "engine.torque_curve"),
+            (|v| v.assists.stability_yaw_tolerance = 0.0, "assists"),
         ];
         for (fausser, champ) in cas {
             let mut v = vehicule();

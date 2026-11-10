@@ -24,7 +24,7 @@ import java.util.function.BiConsumer;
 final class VehicleSpec {
 
     /** Taille de l'en-tête de la section, en octets. */
-    static final int HEADER_BYTES = 108;
+    static final int HEADER_BYTES = 116;
 
     /** Taille d'une roue, en octets. */
     static final int WHEEL_BYTES = 88;
@@ -38,6 +38,20 @@ final class VehicleSpec {
     private static final int WHEEL_HANDBRAKE = 4;
     private static final int VEHICLE_POWERTRAIN = 1;
     private static final int VEHICLE_ABS = 2;
+    private static final int VEHICLE_TRACTION_CONTROL = 4;
+    private static final int VEHICLE_STABILITY_CONTROL = 8;
+
+    /**
+     * Seuil de l'antipatinage par défaut : le glissement d'une roue motrice, rapporté à la vitesse du sol,
+     * au-delà duquel le couple du moteur diminue. Choix d'ADR-159 (tranche 3), faute de valeur au CDC.
+     */
+    static final float TRACTION_SLIP_THRESHOLD = 0.2f;
+
+    /**
+     * Tolérance du contrôle de stabilité par défaut, en rad/s : l'écart au lacet visé au-delà duquel une roue
+     * est freinée. Choix d'ADR-159 (tranche 3), faute de valeur au CDC.
+     */
+    static final float STABILITY_YAW_TOLERANCE = 0.15f;
 
     private static final List<String> TRANSMISSIONS = List.of("manual", "automatic", "direct");
     private static final List<String> DIFFERENTIALS = List.of("open", "locked", "limited_slip");
@@ -163,6 +177,7 @@ final class VehicleSpec {
         JsonObject differential = object(powertrain, "differential");
         fraction(differential, "front_rear_split", "$.powertrain.differential", true, fault);
         fraction(differential, "lock", "$.powertrain.differential", true, fault);
+        atLeast(object(powertrain, "traction_control"), "slip_threshold", "$.powertrain.traction_control", false, fault);
 
         boolean driven = powertrain.get("drive_wheels") instanceof JsonArray list && !list.isEmpty();
         for (JsonElement wheel : wheels) {
@@ -219,6 +234,7 @@ final class VehicleSpec {
         atLeast(brakes, "max_torque_rear", at, true, fault);
         atLeast(brakes, "handbrake_torque", at, true, fault);
         atLeast(object(brakes, "abs"), "slip_threshold", at + ".abs", false, fault);
+        atLeast(object(brakes, "stability_control"), "yaw_tolerance", at + ".stability_control", false, fault);
     }
 
     private static void checkAero(JsonObject aero, BiConsumer<String, String> fault) {
@@ -290,13 +306,17 @@ final class VehicleSpec {
         JsonObject steering = object(root, "steering");
         JsonObject brakes = object(root, "brakes");
         JsonObject abs = object(brakes, "abs");
+        JsonObject traction = object(powertrain, "traction_control");
+        JsonObject stability = object(brakes, "stability_control");
         JsonObject aero = object(root, "aero");
 
         out.putShort((short) wheels.size());
         out.putShort((short) count(engine, "torque_curve"));
         out.putShort((short) count(transmission, "gears"));
         out.putShort((short) count(aero, "surfaces"));
-        out.putShort((short) ((powertrain != null ? VEHICLE_POWERTRAIN : 0) | (bool(abs, "enabled") ? VEHICLE_ABS : 0)));
+        out.putShort((short) ((powertrain != null ? VEHICLE_POWERTRAIN : 0) | (bool(abs, "enabled") ? VEHICLE_ABS : 0)
+                | (bool(traction, "enabled") ? VEHICLE_TRACTION_CONTROL : 0)
+                | (bool(stability, "enabled") ? VEHICLE_STABILITY_CONTROL : 0)));
         String type = transmission == null ? "direct" : stringOr(transmission, "type", "manual");
         out.put((byte) TRANSMISSIONS.indexOf(type));
         out.put((byte) DIFFERENTIALS.indexOf(stringOr(differential, "type", "open")));
@@ -314,6 +334,8 @@ final class VehicleSpec {
                 number(brakes, "handbrake_torque", 4000f), number(abs, "slip_threshold", 0.15f));
         put(out, number(aero, "drag_coefficient", 0f), number(aero, "frontal_area", 0f),
                 number(aero, "downforce_front", 0f), number(aero, "downforce_rear", 0f));
+        put(out, number(traction, "slip_threshold", TRACTION_SLIP_THRESHOLD),
+                number(stability, "yaw_tolerance", STABILITY_YAW_TOLERANCE));
 
         Set<String> steered = listOr(steering, "steered_wheels");
         Set<String> driven = listOr(powertrain, "drive_wheels");

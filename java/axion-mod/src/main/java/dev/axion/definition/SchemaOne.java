@@ -273,6 +273,8 @@ final class SchemaOne {
                         .opt("lock", number())
                         .build())
                 .opt("drive_wheels", list(refers(NameCategory.WHEEL)))
+                // R-1090, ADR-159 tranche 3 : l'antipatinage, désactivé par défaut.
+                .opt("traction_control", obj().opt("enabled", bool()).opt("slip_threshold", number()).build())
                 .build();
     }
 
@@ -296,6 +298,8 @@ final class SchemaOne {
                 .opt("handbrake_torque", number())
                 .opt("handbrake_wheels", list(refers(NameCategory.WHEEL)))
                 .opt("abs", obj().opt("enabled", bool()).opt("slip_threshold", number()).build())
+                // R-1090, ADR-159 tranche 3 : le contrôle de stabilité, désactivé par défaut.
+                .opt("stability_control", obj().opt("enabled", bool()).opt("yaw_tolerance", number()).build())
                 .build();
     }
 

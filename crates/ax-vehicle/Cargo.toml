@@ -16,3 +16,5 @@ missing_docs = "warn"
 [dependencies]
 # ADR-159 D2 : des fonctions pures sur les descriptions de la definition, sans Rapier ni monde.
 ax-model.workspace = true
+# Le couplage des roues par le mouvement de leur corps (ADR-159, tranche 3) : vecteurs et inertie.
+ax-math.workspace = true

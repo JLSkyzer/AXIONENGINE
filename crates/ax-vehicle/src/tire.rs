@@ -61,15 +61,6 @@ pub fn forces(wheel: &WheelDesc, surface: f32, normal: f32, long: f32, lat: f32)
     }
 }
 
-/// Borne une force à celle qui annule en un sous-pas la vitesse de glissement `slip_speed` d'une
-/// masse `mass` (ADR-159 D4) : un pneu ne peut pas inverser ce qu'il combat. C'est ce qui évite le
-/// tremblement à l'arrêt, là où `slip_long` diverge.
-#[must_use]
-pub fn no_reversal(force: f32, slip_speed: f32, mass: f32, dt: f32) -> f32 {
-    let bound = (mass * slip_speed.abs() / dt).abs();
-    force.clamp(-bound, bound)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,23 +162,5 @@ mod tests {
     fn sans_charge_le_pneu_n_a_aucune_force() {
         let f = forces(&roue(), 1.0, 0.0, 0.1, 0.1);
         assert!(proche(f.long, 0.0) && proche(f.lat, 0.0));
-    }
-
-    #[test]
-    fn adr159_d4_le_pneu_n_inverse_pas_le_glissement_qu_il_combat() {
-        // 300 kg, 1/60 s : à 1 cm/s de glissement, 180 N suffisent à l'annuler.
-        assert!(proche(no_reversal(5000.0, 0.01, 300.0, 1.0 / 60.0), 180.0));
-        assert!(proche(
-            no_reversal(-5000.0, -0.01, 300.0, 1.0 / 60.0),
-            -180.0
-        ));
-        assert!(
-            proche(no_reversal(100.0, 0.01, 300.0, 1.0 / 60.0), 100.0),
-            "sous la borne"
-        );
-        assert!(
-            proche(no_reversal(5000.0, 0.0, 300.0, 1.0 / 60.0), 0.0),
-            "rien à combattre"
-        );
     }
 }

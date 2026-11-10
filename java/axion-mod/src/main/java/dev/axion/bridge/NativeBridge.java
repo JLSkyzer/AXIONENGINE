@@ -31,7 +31,8 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}. 13 depuis la sphère explicite du candidat de rendu (ADR-157 D2) : 64 octets, drapeau
+     * {@code E-1002}. 20 depuis l'entrée du conducteur (ADR-159, tranche 3) : {@code SET_VEHICLE_INPUT}, {@code DEFN}
+     * version 3. 13 depuis la sphère explicite du candidat de rendu (ADR-157 D2) : 64 octets, drapeau
      * {@code BOUNDS}, {@code RENDER_IN} au schéma 3. 12 depuis la compilation des definitions par le natif (ADR-156) :
      * {@link #compileDefinition}, {@link #removeDefinition}, et {@link #SECTION_PHYS}, {@link #SECTION_SKEL},
      * {@link #SECTION_ANIM} au masque de {@link #loadAsset}. 11 depuis les overlays de l'animation (ADR-155,
@@ -45,7 +46,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 19;
+    public static final int EXPECTED_ABI_VERSION = 20;
 
     /** Succès. */
     public static final int OK = 0;

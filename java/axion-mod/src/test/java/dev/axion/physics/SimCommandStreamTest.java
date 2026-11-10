@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.axion.seat.VehicleInput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -377,6 +378,36 @@ class SimCommandStreamTest {
         assertEquals(2, b.getShort(24), "rang du joint");
         assertEquals(0, b.getShort(26), "réservé");
         assertEquals(SimCommandStream.OP_REMOVE_ASSEMBLY, b.getInt(8 + 8 + 16), "commande suivante, alignée");
+    }
+
+    @Test
+    void encodeUneEntreeDeVehicule() throws IOException {
+        // ADR-159, tranche 3 : SetVehicleInput, 36 octets — handle, VehicleInput de 12.8, drapeaux ; complétés
+        // à 40 pour la commande suivante.
+        VehicleInput entree = new VehicleInput(0.5f, 0.25f, -0.75f, 0.125f, 1f, (byte) -1, 0);
+        byte[] bytes = new SimCommandStream().setVehicleInput(7, 3, entree, true).removeAssembly(9, 1).toBytes();
+        assertEquals(8 + (8 + 40) + (8 + 8), bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_SET_VEHICLE_INPUT, b.getInt(8), "opcode");
+        assertEquals(36, b.getInt(12), "payload_len");
+        assertEquals(7, b.getInt(16), "handle.index");
+        assertEquals(3, b.getInt(20), "handle.generation");
+        assertEquals(0.5f, b.getFloat(24), "throttle");
+        assertEquals(1f, b.getFloat(40), "handbrake");
+        assertEquals(-1, b.get(44), "gear, i8");
+        assertEquals(0, b.get(45), "flags de l'entrée");
+        assertEquals(SimCommandStream.VEHICLE_INPUT_DRIVER, b.getInt(48), "conducteur présent");
+        assertEquals(SimCommandStream.OP_REMOVE_ASSEMBLY, b.getInt(8 + 8 + 40), "commande suivante, alignée");
+        byte[] sans = new SimCommandStream().setVehicleInput(7, 3, VehicleInput.NONE, false).toBytes();
+        assertEquals(0, wrap(sans).getInt(48), "siège libre");
+
+        Path source = Path.of(System.getProperty("axion.crates.dir"), "ax-model", "src", "dm", "commands.rs");
+        String rust = Files.readString(source, StandardCharsets.UTF_8);
+        assertTrue(rust.contains("pub const SET_VEHICLE_INPUT: u32 = " + SimCommandStream.OP_SET_VEHICLE_INPUT + ";"));
+        Matcher taille = Pattern.compile("impl SetVehicleInput \\{[^}]*?pub const BYTES: usize = (\\d+);").matcher(rust);
+        assertTrue(taille.find(), "SetVehicleInput::BYTES dans commands.rs");
+        assertEquals(Integer.parseInt(taille.group(1)), SimCommandStream.SET_VEHICLE_INPUT_BYTES);
+        assertTrue(rust.contains("pub const DRIVER: u32 = 1 << 0;"));
     }
 
     @Test

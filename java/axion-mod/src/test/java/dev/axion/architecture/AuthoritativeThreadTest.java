@@ -25,6 +25,11 @@ import org.objectweb.asm.tree.MethodNode;
  * vérification, et ce test s'assure, sur le graphe d'appels du moteur ({@link CallGraph}),
  * qu'aucun chemin vers une mutation ne l'évite.
  *
+ * <p><b>La garde</b> : {@code AuthoritativeThread.require} (thread du serveur), partout ; ou
+ * {@code requireClient} (thread principal du client, 2.4), mais seulement dans {@code dev.axion.forge.client} :
+ * le code du client y tient la copie locale du monde, et rien d'autre ne peut s'en réclamer pour toucher l'état
+ * du serveur.
+ *
  * <p><b>Mutation</b> : appel d'une méthode d'état du monde, des entités ou de leurs données
  * synchronisées dont le nom dit qu'elle modifie ({@link #MUTATORS}), y compris héritée par une
  * classe du moteur ; ou écriture d'un champ de Minecraft.
@@ -39,6 +44,7 @@ import org.objectweb.asm.tree.MethodNode;
 class AuthoritativeThreadTest {
 
     private static final String GUARD_OWNER = "dev/axion/forge/AuthoritativeThread";
+    private static final String CLIENT_CODE = "dev/axion/forge/client/";
 
     /** Préfixes de nom des méthodes qui modifient l'état. */
     static final List<String> MUTATORS = List.of(
@@ -66,6 +72,12 @@ class AuthoritativeThreadTest {
         @Override
         public boolean guards(MethodInsnNode call) {
             return call.owner.equals(GUARD_OWNER) && call.name.equals("require");
+        }
+
+        @Override
+        public boolean guards(ClassNode owner, MethodInsnNode call) {
+            return guards(call) || owner.name.startsWith(CLIENT_CODE)
+                    && call.owner.equals(GUARD_OWNER) && call.name.equals("requireClient");
         }
 
         @Override
@@ -147,5 +159,12 @@ class AuthoritativeThreadTest {
                 Opcodes.PUTFIELD, "net/minecraft/world/entity/Entity", "hurtMarked", "Z");
         assertEquals("Entity.hurtMarked =", RULE.sensitive(owner, tick, hurtMarked, graph));
         assertTrue(RULE.guards(new MethodInsnNode(Opcodes.INVOKESTATIC, GUARD_OWNER, "require", "()V", false)));
+        MethodInsnNode requireClient = new MethodInsnNode(
+                Opcodes.INVOKESTATIC, GUARD_OWNER, "requireClient", "()V", false);
+        ClassNode client = new ClassNode();
+        client.name = "dev/axion/forge/client/X";
+        assertTrue(RULE.guards(client, requireClient), "le thread du client garde le code du client");
+        assertTrue(!RULE.guards(owner, requireClient), "hors du code du client, il ne garde rien");
+        assertTrue(!RULE.guards(requireClient), "sans classe appelante, il ne garde rien");
     }
 }

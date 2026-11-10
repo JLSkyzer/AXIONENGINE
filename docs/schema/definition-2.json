@@ -475,6 +475,18 @@
             "pattern": "^[ -~]{1,64}$",
             "x-axion-refers": "wheel"
           }
+        },
+        "traction_control": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "slip_threshold": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -535,6 +547,18 @@
               "type": "boolean"
             },
             "slip_threshold": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        "stability_control": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "yaw_tolerance": {
               "type": "number"
             }
           },

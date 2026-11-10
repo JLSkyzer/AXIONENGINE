@@ -25,14 +25,14 @@ use crate::materials::MaterialTable;
 use crate::proxies::EntityProxy;
 use crate::query::AssemblyRayHit;
 use crate::scheduler::Stage;
-use crate::world::vehicles::{WheelMount, WheelState};
+use crate::world::vehicles::{SurfaceMount, VehicleTelemetry, WheelMount, WheelState};
 use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::debug::overlay;
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, BodyState, PhysicsEvent, PhysicsMaterial, NO_MATERIAL};
-use ax_model::dm::vehicle::VehicleDesc;
+use ax_model::dm::vehicle::{VehicleDesc, VehicleInput};
 use std::collections::BTreeMap;
 
 /// Un corps d'une assembly à créer (ADR-151 D2) : son node racine dans l'asset, sa pose dans
@@ -532,6 +532,7 @@ impl SimDriver {
 
     /// Fait d'une assembly tout juste créée un véhicule (ADR-159). `bodies` sont ceux que la création
     /// a rendus ; sans effet si sa dimension n'existe pas.
+    #[allow(clippy::too_many_arguments)]
     pub fn attach_vehicle(
         &mut self,
         dimension: u64,
@@ -539,11 +540,12 @@ impl SimDriver {
         bodies: &[BodyId],
         desc: VehicleDesc,
         mounts: &[WheelMount],
+        surfaces: &[SurfaceMount],
         groups: CollisionGroups,
     ) {
         if let Some(sim) = self.dimensions.get_mut(&dimension) {
             sim.world
-                .attach_vehicle(handle, bodies, desc, mounts, groups);
+                .attach_vehicle(handle, bodies, desc, mounts, surfaces, groups);
         }
     }
 
@@ -554,6 +556,15 @@ impl SimDriver {
             .get(&dimension)?
             .world
             .vehicle_wheels(handle)
+    }
+
+    /// Le moteur, la boîte et la direction d'un véhicule, ou `None` s'il n'y en a pas (ADR-159).
+    #[must_use]
+    pub fn vehicle_telemetry(&self, dimension: u64, handle: Handle) -> Option<VehicleTelemetry> {
+        self.dimensions
+            .get(&dimension)?
+            .world
+            .vehicle_telemetry(handle)
     }
 
     /// Nombre de tuiles de collision monde actives, toutes dimensions confondues.
@@ -1360,6 +1371,19 @@ impl SimDriver {
                 .assembly_joint(handle, joint)
                 .is_some_and(|id| world.jam_joint(id, misalignment))
         })
+    }
+
+    /// Applique `SET_VEHICLE_INPUT` (ADR-159, tranche 3) : l'entrée du siège `driver` d'un véhicule,
+    /// et sa présence. `None` pour une assembly inconnue ou qui n'est pas un véhicule ; sinon vrai si
+    /// une valeur de l'entrée n'était pas finie (R-1110 : elle compte pour zéro).
+    pub fn apply_set_vehicle_input(
+        &mut self,
+        handle: Handle,
+        input: &VehicleInput,
+        driver: bool,
+    ) -> Option<bool> {
+        self.assembly_world(handle)?
+            .set_vehicle_input(handle, input, driver)
     }
 
     /// Applique `BREAK_JOINT` (ADR-151 D5) : rompt le joint de rang `joint` de l'assembly. Faux

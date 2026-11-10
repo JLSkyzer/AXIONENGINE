@@ -1,19 +1,29 @@
 package dev.axion.forge;
 
+import com.mojang.authlib.GameProfile;
+import dev.axion.forge.net.JoueurSimule;
 import dev.axion.net.AssemblyState;
+import dev.axion.net.Fragments;
+import dev.axion.net.InputMessage;
+import dev.axion.seat.VehicleInput;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.common.util.FakePlayerFactory;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 /**
- * ADR-159, tranche 2 : un véhicule sur de vrais blocs (T-320, T-326, D3).
+ * ADR-159, tranche 2 : un véhicule sur de vrais blocs (T-320, T-326, D3) ; tranche 3 : il se conduit par les
+ * entrées de son conducteur.
  *
  * <p>La definition {@code test/vehicule} a pour origine le contact des roues au repos (§6.5) : posé,
- * ressorts comprimés de leur charge, son origine est au niveau du sol.
+ * ressorts comprimés de leur charge, son origine est au niveau du sol. Son avant est son -Z.
  */
 @GameTestHolder("axion")
 @PrefixGameTestTemplate(false)
@@ -106,6 +116,91 @@ public final class VehiculesGameTests {
      * ADR-159 D3 : un véhicule endormi ne touche pas le sol par son châssis ; les blocs qui disparaissent
      * sous ses roues le réveillent quand même, et il tombe.
      */
+    /** Un joueur factice de Forge, hors de la liste des joueurs : assis, il est tické par son véhicule. */
+    private static ServerPlayer figurant(GameTestHelper helper, String nom) {
+        UUID uuid = UUID.nameUUIDFromBytes(("axion-vehicule:" + nom).getBytes(StandardCharsets.UTF_8));
+        ServerPlayer joueur = FakePlayerFactory.get(helper.getLevel(), new GameProfile(uuid, nom));
+        joueur.stopRiding();
+        joueur.getPersistentData().remove(AxionEntity.REMEMBERED_SEAT);
+        return joueur;
+    }
+
+    /**
+     * ADR-159, tranche 3, par le vrai canal des entrées (C2S_Input, comme {@code SiegesGameTests}) : un passager qui
+     * accélère n'a aucun effet, un conducteur assis sans rien commander laisse le véhicule libre ; au volant,
+     * l'accélérateur le fait avancer vers son -Z ; les entrées arrêtées et le siège libéré, le frein de
+     * stationnement l'arrête (D8, Q3).
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 500)
+    public static void auVolantLAccelerateurLeFaitAvancerEtSansConducteurIlSArrete(GameTestHelper helper) {
+        Vec3 depart = new Vec3(8.0, DESSUS_DALLE, 12.5);
+        ObservateursDeTest.declarer(helper, depart);
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule", depart, IDENTITE);
+        // Un nom à lui : un joueur simulé du même nom, dans un test voisin, aurait le même UUID, et Minecraft
+        // déconnecterait l'un des deux.
+        JoueurSimule simule = JoueurSimule.rejoindre(
+                helper.getLevel(), "volant_vehicule", helper.absoluteVec(new Vec3(2.0, DESSUS_DALLE, 12.5)));
+        ServerPlayer conducteur = figurant(helper, "conducteur");
+        VehicleInput plein = new VehicleInput(1f, 0f, 0f, 0f, 0f, (byte) 0, 0);
+        // L'entrée envoyée à chaque tick, et sa séquence ; aucune tant qu'elle est nulle.
+        VehicleInput[] envoyee = {null};
+        int[] sequence = {0};
+        helper.onEachTick(() -> {
+            simule.tick();
+            int siege = vehicule.seatOf(simule.joueur());
+            if (envoyee[0] != null && siege >= 0) {
+                sequence[0]++;
+                simule.envoyer(Fragments.split(
+                        new InputMessage(sequence[0], vehicule.getId(), siege, envoyee[0]).encode(), 0).get(0));
+            }
+        });
+        Vec3[] repere = new Vec3[1];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds(), "le véhicule est simulé"))
+                .thenIdle(30)
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.reseat(conducteur, "conducteur"), "un conducteur, sans entrée");
+                    helper.assertTrue(vehicule.reseat(simule.joueur(), "passager"), "le joueur, passager");
+                    envoyee[0] = plein;
+                    repere[0] = vehicule.position();
+                })
+                .thenIdle(30)
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.seatInput(1).throttle() == 1f,
+                            "l'accélérateur du passager est reçu : " + vehicule.seatInput(1));
+                    double ecart = vehicule.position().distanceTo(repere[0]);
+                    helper.assertTrue(ecart < 0.05, "D8 : un passager ne conduit pas ; déplacement " + ecart);
+                    envoyee[0] = null;
+                    conducteur.stopRiding();
+                    simule.joueur().stopRiding();
+                    helper.assertTrue(vehicule.reseat(simule.joueur(), "conducteur"), "le joueur, au volant");
+                    envoyee[0] = plein;
+                    repere[0] = vehicule.position();
+                })
+                .thenIdle(30)
+                .thenExecute(() -> {
+                    Vec3 parcouru = vehicule.position().subtract(repere[0]);
+                    helper.assertTrue(parcouru.z < -1.0, "il avance vers son -Z : " + parcouru);
+                    helper.assertTrue(Math.abs(parcouru.x) < 0.2 * -parcouru.z, "tout droit : " + parcouru);
+                    envoyee[0] = null;
+                    simule.joueur().stopRiding();
+                    repere[0] = vehicule.position();
+                })
+                .thenIdle(60)
+                .thenExecute(() -> {
+                    double glisse = vehicule.position().distanceTo(repere[0]);
+                    helper.assertTrue(glisse < 4.0, "freiné après " + glisse + " bloc(s)");
+                    repere[0] = vehicule.position();
+                })
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    double encore = vehicule.position().distanceTo(repere[0]);
+                    helper.assertTrue(encore < 0.02, "Q3 : sans conducteur, il est arrêté ; encore " + encore);
+                    simule.quitter();
+                })
+                .thenSucceed();
+    }
+
     @GameTest(template = "test/plancher", timeoutTicks = 400)
     public static void lesBlocsRetiresSousUnVehiculeEndormiLeFontTomber(GameTestHelper helper) {
         AxionEntity assembly = poser(helper, 0.1);

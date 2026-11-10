@@ -17,10 +17,11 @@ use ax_cli::{compile_source, max_compiled_bytes, options, validate_container};
 use ax_model::dm::scene::node_flags;
 use std::path::PathBuf;
 
-/// Un node du conteneur compilé : son nom et ses drapeaux.
+/// Un node du conteneur compilé : son nom, ses drapeaux, sa position dans son parent.
 struct Node {
     name: String,
     flags: u32,
+    translation: [f32; 3],
 }
 
 /// Ce que la compilation d'un exemple a produit.
@@ -50,6 +51,15 @@ impl Compiled {
 
     fn visible(&self, name: &str) -> bool {
         self.flags(name) & node_flags::VISIBLE != 0
+    }
+
+    /// La position d'un node nommé dans son parent.
+    fn translation(&self, name: &str) -> [f32; 3] {
+        self.nodes
+            .iter()
+            .find(|node| node.name == name)
+            .unwrap_or_else(|| panic!("node « {name} » absent du modèle"))
+            .translation
     }
 }
 
@@ -91,6 +101,7 @@ fn compile(name: &str) -> Compiled {
         .map(|(node, name)| Node {
             name,
             flags: node.flags,
+            translation: node.local.translation,
         })
         .collect();
     Compiled {
@@ -124,6 +135,21 @@ fn t631_buggy_compile_et_se_charge() {
         ]
     );
     assert_eq!(buggy.with(node_flags::SEAT), ["siege_conducteur"]);
+    // §6.5 : -Z avant, +X droite (ADR-159, tranche 3).
+    for (roue, x, z) in [
+        ("roue_avant_gauche", -1.0, -1.0),
+        ("roue_avant_droite", 1.0, -1.0),
+        ("roue_arriere_gauche", -1.0, 1.0),
+        ("roue_arriere_droite", 1.0, 1.0),
+    ] {
+        let [px, _, pz] = buggy.translation(roue);
+        assert!(px * x > 0.0 && pz * z > 0.0, "{roue} en ({px}, {pz})");
+    }
+    assert!(buggy.translation("capot")[2] < 0.0, "le capot devant");
+    assert!(
+        buggy.translation("attelage")[2] > 0.0,
+        "l'attelage derrière"
+    );
     assert_eq!(buggy.with(node_flags::SOCKET), ["attelage"]);
     for part in ["chassis", "carrosserie", "capot", "volant"] {
         assert!(buggy.visible(part), "{part} est rendu");

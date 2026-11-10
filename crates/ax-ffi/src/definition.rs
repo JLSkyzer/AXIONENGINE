@@ -13,7 +13,7 @@
 //! avertissement : la physique l'emporte (R-930).
 
 use ax_asset::a3d::decode_animations;
-use ax_math::Vec3;
+use ax_math::{Quat, Vec3};
 use ax_model::dm::animation::{animation_flags, BoneDesc};
 use ax_model::dm::commands::{AssemblyBodyEntry, MAX_ASSEMBLY_BODIES};
 use ax_model::dm::definition::{
@@ -24,7 +24,7 @@ use ax_model::dm::joints::JointDesc;
 use ax_model::dm::physics::{collider_flags, ColliderDesc, ColliderShape};
 use ax_model::dm::scene::{NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 use ax_model::dm::vehicle::VehicleDesc;
-use ax_physics::{AssemblyBody, AssemblyJoint, CollisionGroups, WheelMount};
+use ax_physics::{AssemblyBody, AssemblyJoint, CollisionGroups, SurfaceMount, WheelMount};
 
 use crate::assembly::{prepare, AnimationVerdict, ServerAnimation};
 
@@ -109,6 +109,8 @@ pub(crate) struct CompiledVehicle {
     pub desc: VehicleDesc,
     /// Le montage de chaque roue, dans l'ordre de `desc.wheels`.
     pub mounts: Vec<WheelMount>,
+    /// Le montage de chaque surface portante, dans l'ordre de `desc.surfaces` (12.7).
+    pub surfaces: Vec<SurfaceMount>,
 }
 
 /// Le refus d'une definition.
@@ -390,6 +392,23 @@ fn with_vehicle(
             center: Vec3::from_array(anatomy.translation),
         });
     }
+    // 12.7 : une surface portante s'applique au node qui la porte, de normale son +Y.
+    let mut surfaces = Vec::with_capacity(desc.surfaces.len());
+    for surface in &desc.surfaces {
+        let node = resolved[surface.node as usize].expect("référence NODE résolue");
+        let anatomy = compiled.anatomy[node as usize];
+        if anatomy.body == NONE_U32 {
+            return Err(Refusal::invalid(
+                Some(surface.node),
+                "une échelle non uniforme sépare cette surface portante de son corps",
+            ));
+        }
+        surfaces.push(SurfaceMount {
+            body: anatomy.body as usize,
+            point: Vec3::from_array(anatomy.translation),
+            normal: Quat::from_array(anatomy.rotation) * Vec3::Y,
+        });
+    }
     if removed > 0 {
         compiled.warnings.push(format!(
             "{removed} collider(s) du sous-arbre des roues retiré(s) : le rayon de la roue en tient \
@@ -399,6 +418,7 @@ fn with_vehicle(
     compiled.vehicle = Some(CompiledVehicle {
         desc: desc.clone(),
         mounts,
+        surfaces,
     });
     Ok(compiled)
 }
@@ -761,8 +781,8 @@ mod tests {
     /// Un véhicule d'une roue à la référence `node`.
     fn vehicule(node: u32) -> VehicleDesc {
         use ax_model::dm::vehicle::{
-            AeroDesc, BrakesDesc, DifferentialDesc, EngineDesc, SteeringDesc, SuspensionDesc,
-            TireCurve, TransmissionDesc, WheelDesc,
+            AeroDesc, AssistDesc, BrakesDesc, DifferentialDesc, EngineDesc, SteeringDesc,
+            SuspensionDesc, TireCurve, TransmissionDesc, WheelDesc,
         };
         let courbe = TireCurve {
             peak_slip: 0.12,
@@ -809,6 +829,10 @@ mod tests {
                 frontal_area: 0.0,
                 downforce_front: 0.0,
                 downforce_rear: 0.0,
+            },
+            assists: AssistDesc {
+                traction_slip_threshold: 0.2,
+                stability_yaw_tolerance: 0.15,
             },
             wheels: vec![WheelDesc {
                 node,

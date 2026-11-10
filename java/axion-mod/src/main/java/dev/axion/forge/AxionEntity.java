@@ -6,6 +6,7 @@ import dev.axion.asset.Anatomy;
 import dev.axion.asset.DefinitionCompiler;
 import dev.axion.definition.Definition;
 import dev.axion.definition.Seating;
+import dev.axion.seat.GearRange;
 import dev.axion.seat.SeatEjection;
 import dev.axion.seat.SeatExit;
 import dev.axion.seat.SeatOccupancy;
@@ -440,6 +441,44 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return received.input();
     }
 
+    /**
+     * Ce que le siège {@code driver} commande au véhicule (ADR-159 D8).
+     *
+     * @param input son entrée : nulle s'il est libre, muet ou que rien n'arrive depuis
+     *     {@code net.extrapolation_max_ms}
+     * @param present vrai s'il est occupé ; sans conducteur, le frein de stationnement est serré (Q3)
+     */
+    public record DriverInput(VehicleInput input, boolean present) {
+
+        /** Siège libre : le frein de stationnement serré, ce que le natif suppose d'un véhicule neuf. */
+        public static final DriverInput ABSENT = new DriverInput(VehicleInput.NONE, false);
+    }
+
+    /**
+     * {@return l'entrée du siège {@code driver}, ou {@code null} si la definition n'en déclare pas} Seul ce siège
+     * pilote ; les contrôles d'un passager restent lisibles par {@link #seatInput}, sans effet sur le véhicule (D8).
+     */
+    public DriverInput driverInput() {
+        Seating seating = seating();
+        if (seating == null) {
+            return null;
+        }
+        for (int seat = 0; seat < seating.seats().size(); seat++) {
+            if (seating.seats().get(seat).driver()) {
+                int occupant = occupancy(seating).occupant(seat);
+                boolean present = occupant != SeatOccupancy.FREE && occupant != SeatOccupancy.LOST;
+                return present ? new DriverInput(seatInput(seat), true) : DriverInput.ABSENT;
+            }
+        }
+        return null;
+    }
+
+    /** {@return les rangs de rapport que la boîte de ce véhicule accepte de son conducteur (ADR-159 D6)} */
+    public GearRange gearRange() {
+        return AxionEntities.definitions().get(definitionId).map(definition -> GearRange.of(definition.root()))
+                .orElse(GearRange.NONE);
+    }
+
     /** {@return ce que vise le joueur, d'après le rayon du serveur, ou {@code null}} */
     private Seating.Target aim(Player player, Seating seating) {
         DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
@@ -857,19 +896,56 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * {@return la pose monde d'un siège à une image (client), ou {@code null}} Celle que donne la pose dont
+     * l'assembly est dessinée à cette image, et non celle du dernier tick : Minecraft dessine une entité entre
+     * ses deux derniers ticks, l'assembly l'est à l'heure de l'image, et un passager posé au tick aurait un tick
+     * de retard sur son siège.
+     *
+     * @param seat rang du siège
+     * @param shown la pose dessinée à cette image ({@link #renderPose})
+     */
+    public SeatPlacement.Pose seatPoseAt(int seat, RenderPose shown) {
+        Seating seating = seating();
+        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        if (seating == null || summary == null || seat < 0 || seat >= seating.seats().size()) {
+            return null;
+        }
+        return SeatPlacement.place(summary.anatomy(), seating.seats().get(seat).node(),
+                relativePoses(summary, shown.x(), shown.y(), shown.z(), shown.rotation(), shown.bodies()));
+    }
+
+    /**
      * {@return la pose monde de chaque corps, dans l'ordre de l'assembly ; {@code null} pour un corps dont
      * la pose n'est pas connue} Au serveur, les états du dernier tick ; au client, la pose que le tick a
      * prise de l'interpolation.
      */
     private List<SeatPlacement.BodyPose> bodyPoses(DefinitionCompiler.Summary summary) {
-        boolean client = level().isClientSide();
-        Quaternionf q = client ? rotation : bodyRotation;
+        if (level().isClientSide()) {
+            return relativePoses(summary, getX(), getY(), getZ(), rotation, tickBodies);
+        }
+        Quaternionf q = bodyRotation;
         SeatPlacement.BodyPose root = new SeatPlacement.BodyPose(getX(), getY(), getZ(), new float[] {q.x, q.y, q.z, q.w});
         int[] roots = summary.roots();
         List<SeatPlacement.BodyPose> poses = new ArrayList<>(roots.length);
         poses.add(root);
         for (int rank = 1; rank < roots.length; rank++) {
-            poses.add(client ? relativeBody(root, roots[rank]) : worldBody(roots[rank]));
+            poses.add(worldBody(roots[rank]));
+        }
+        return poses;
+    }
+
+    /**
+     * {@return la pose monde de chaque corps, au client : le corps racine à la pose donnée, les autres
+     * composés avec leur pose relative de l'interpolation ; {@code null} pour un corps qui n'y figure pas}
+     */
+    private static List<SeatPlacement.BodyPose> relativePoses(DefinitionCompiler.Summary summary, double x, double y,
+            double z, Quaternionf q, List<Interpolation.BodyPose> bodies) {
+        SeatPlacement.BodyPose root = new SeatPlacement.BodyPose(x, y, z, new float[] {q.x, q.y, q.z, q.w});
+        int[] roots = summary.roots();
+        List<SeatPlacement.BodyPose> poses = new ArrayList<>(roots.length);
+        poses.add(root);
+        for (int rank = 1; rank < roots.length; rank++) {
+            poses.add(relativeBody(root, roots[rank], bodies));
         }
         return poses;
     }
@@ -883,8 +959,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return new SeatPlacement.BodyPose(body.x(), body.y(), body.z(), new float[] {r.x, r.y, r.z, r.w});
     }
 
-    private SeatPlacement.BodyPose relativeBody(SeatPlacement.BodyPose root, int node) {
-        for (Interpolation.BodyPose body : tickBodies) {
+    private static SeatPlacement.BodyPose relativeBody(SeatPlacement.BodyPose root, int node,
+            List<Interpolation.BodyPose> bodies) {
+        for (Interpolation.BodyPose body : bodies) {
             if (body.node() == node) {
                 return SeatPlacement.compose(root, body.offset(), body.rotation());
             }

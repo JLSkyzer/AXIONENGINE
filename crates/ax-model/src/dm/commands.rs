@@ -61,6 +61,34 @@ pub mod opcode {
     /// Une commande d'animation pour une assembly ([`super::AnimateAssembly`], puis les nodes de
     /// son masque). ADR-155, tranche 3.
     pub const ANIMATE_ASSEMBLY: u32 = 16;
+    /// Les entrées du conducteur d'un véhicule ([`super::SetVehicleInput`]). ADR-159, tranche 3.
+    pub const SET_VEHICLE_INPUT: u32 = 17;
+}
+
+/// Drapeaux de [`SetVehicleInput`], champ `flags`.
+pub mod vehicle_input_flags {
+    /// Le siège `driver` est occupé (ADR-159 D8) : sans lui, le frein de stationnement est serré (Q3).
+    pub const DRIVER: u32 = 1 << 0;
+    /// Tous les drapeaux connus.
+    pub const ALL: u32 = DRIVER;
+}
+
+/// Payload de `SET_VEHICLE_INPUT` (ADR-159, tranche 3) : 36 octets. L'entrée vaut jusqu'à la suivante ;
+/// le natif la borne de nouveau (R-1110).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SetVehicleInput {
+    /// L'assembly du véhicule.
+    pub handle: Handle,
+    /// L'entrée du siège `driver` (12.8), nulle s'il est vide ou muet.
+    pub input: super::vehicle::VehicleInput,
+    /// Drapeaux, voir [`vehicle_input_flags`].
+    pub flags: u32,
+}
+
+impl SetVehicleInput {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 36;
 }
 
 /// Payload de `JAM_JOINT` (ADR-151 D6, D7) : 16 octets.
@@ -878,6 +906,17 @@ mod tests {
         assert_eq!(offset_of!(JamJoint, misalignment), 12);
         assert_eq!(size_of::<BreakJoint>(), BreakJoint::BYTES);
         assert_eq!(offset_of!(BreakJoint, joint), 8);
+    }
+
+    #[test]
+    fn dm_entree_de_vehicule_disposition_figee() {
+        // ADR-159, tranche 3 : opcode 17, le handle, l'entrée de 12.8, les drapeaux.
+        assert_eq!(opcode::SET_VEHICLE_INPUT, 17);
+        assert_eq!(size_of::<SetVehicleInput>(), SetVehicleInput::BYTES);
+        assert_eq!(align_of::<SetVehicleInput>(), 4);
+        assert_eq!(offset_of!(SetVehicleInput, handle), 0);
+        assert_eq!(offset_of!(SetVehicleInput, input), 8);
+        assert_eq!(offset_of!(SetVehicleInput, flags), 32);
     }
 
     #[test]

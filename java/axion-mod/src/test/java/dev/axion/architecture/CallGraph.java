@@ -62,6 +62,14 @@ final class CallGraph {
         boolean guards(MethodInsnNode call);
 
         /**
+         * {@return vrai si cet appel, fait depuis cette classe, affirme le thread exigé} Par défaut, la classe
+         * appelante ne compte pas ; une règle dont une garde ne vaut que dans une partie du moteur la redéfinit.
+         */
+        default boolean guards(ClassNode owner, MethodInsnNode call) {
+            return guards(call);
+        }
+
+        /**
          * {@return l'accès sensible que fait {@code insn}, nommé pour le message, ou {@code null}}
          *
          * @param owner classe qui contient l'instruction
@@ -217,7 +225,7 @@ final class CallGraph {
                     sensitive.computeIfAbsent(self, k -> new TreeSet<>()).add(access);
                 }
                 if (insn instanceof MethodInsnNode call) {
-                    if (rule.guards(call)) {
+                    if (rule.guards(node, call)) {
                         asserting.add(self);
                     }
                     if (call.owner.startsWith(ENGINE)) {

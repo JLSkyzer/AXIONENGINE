@@ -41,8 +41,8 @@ import java.util.function.ToIntFunction;
  */
 public final class DefinitionEncoder {
 
-    /** Version du format. */
-    public static final int VERSION = 2;
+    /** Version du format : 3 depuis les correcteurs de la section véhicule (ADR-159, tranche 3). */
+    public static final int VERSION = 3;
 
     /** Taille de l'en-tête, en octets. */
     public static final int HEADER_BYTES = 32 + 2 * BodyDescription.WIRE_BYTES;

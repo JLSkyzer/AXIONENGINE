@@ -76,6 +76,8 @@ class InputMessageTest {
     void clavier() {
         assertEquals(new VehicleInput(1f, 0f, -1f, 0f, 0f, (byte) 0, 0), VehicleInput.ofKeys(1f, 1f, false));
         assertEquals(new VehicleInput(0f, 1f, 1f, 0f, 1f, (byte) 0, 0), VehicleInput.ofKeys(-1f, -1f, true));
+        assertEquals(new VehicleInput(1f, 0f, 0f, 0f, 0f, (byte) -1, 0), VehicleInput.ofKeys(1f, 0f, false, (byte) -1),
+                "ADR-159 D6 : le rapport des touches de boîte, l'embrayage automatique");
     }
 
     @Test

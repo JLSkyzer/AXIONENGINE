@@ -10,13 +10,14 @@ use crate::proxies::{EntityProxy, ProxyShape};
 use crate::sim::SimDriver;
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::commands::{
-    dimension_env_flags, entity_proxy_shape, opcode, ApplyForce, BreakJoint, CommandStreamHeader,
-    EntityProxyDesc, JamJoint, RemoveAssembly, RemoveWorldTile, SetDimensionEnv, SetEntityProxies,
-    SetKinematic, SetObservers, SetPhysicsMaterials, SetWorldCollision, SetWorldFluid,
-    SetWorldHeightfield, SimCommandHeader,
+    dimension_env_flags, entity_proxy_shape, opcode, vehicle_input_flags, ApplyForce, BreakJoint,
+    CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly, RemoveWorldTile,
+    SetDimensionEnv, SetEntityProxies, SetKinematic, SetObservers, SetPhysicsMaterials,
+    SetVehicleInput, SetWorldCollision, SetWorldFluid, SetWorldHeightfield, SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::PhysicsMaterial;
+use ax_model::dm::vehicle::VehicleInput;
 
 /// Plafond de boîtes d'une tuile (collision ou fluide), donnée hostile bornée avant
 /// allocation (R-901, ADR-117). C'est le seuil de R-641 : au-delà, la collision passe en
@@ -42,6 +43,8 @@ pub struct CommandOutcome {
     pub deferred: u32,
     /// Opcodes inconnus, ignorés (compatibilité avant).
     pub ignored: u32,
+    /// Entrées de véhicule dont une valeur non finie a été ramenée à zéro (R-1110).
+    pub sanitized: u32,
 }
 
 /// Ce qui empêche de lire le flux (donnée externe fautive, interdiction 3.13).
@@ -248,6 +251,19 @@ fn apply_one(
             expect_len(payload, BreakJoint::BYTES)?;
             let joint = u16::from_le_bytes([payload[8], payload[9]]);
             driver.apply_break_joint(read_handle(payload, 0), joint);
+            outcome.applied += 1;
+        }
+        // ADR-159, tranche 3 : l'entrée du conducteur, bornée de nouveau ici (R-1110). Un drapeau
+        // inconnu est ignoré, comme un opcode inconnu.
+        opcode::SET_VEHICLE_INPUT => {
+            expect_len(payload, SetVehicleInput::BYTES)?;
+            let input = VehicleInput::read_le(&payload[8..]).ok_or(CommandError::Truncated)?;
+            let driving = read_u32(payload, 32) & vehicle_input_flags::DRIVER != 0;
+            if driver.apply_set_vehicle_input(read_handle(payload, 0), &input, driving)
+                == Some(true)
+            {
+                outcome.sanitized += 1;
+            }
             outcome.applied += 1;
         }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
@@ -604,7 +620,8 @@ mod tests {
             CommandOutcome {
                 applied: 1,
                 deferred: 0,
-                ignored: 0
+                ignored: 0,
+                sanitized: 0,
             }
         );
         assert_eq!(driver.dimension_count(), 1);
@@ -670,7 +687,8 @@ mod tests {
             CommandOutcome {
                 applied: 0,
                 deferred: 1,
-                ignored: 1
+                ignored: 1,
+                sanitized: 0,
             }
         );
     }
@@ -1282,6 +1300,29 @@ mod tests {
         );
         assert_eq!(
             appliquer(&mut driver, opcode::BREAK_JOINT, &jam),
+            Err(CommandError::BadPayloadLength)
+        );
+    }
+
+    #[test]
+    fn adr159_set_vehicle_input_se_lit_et_ignore_ce_qui_n_est_pas_un_vehicule() {
+        // ADR-159, tranche 3 : le handle, l'entrée de 12.8, puis les drapeaux ; l'assembly inconnue
+        // ne change rien, une longueur fausse refuse le flux.
+        let mut driver = SimDriver::new();
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&7u32.to_le_bytes());
+        payload.extend_from_slice(&1u32.to_le_bytes());
+        VehicleInput {
+            throttle: f32::NAN,
+            ..VehicleInput::NONE
+        }
+        .write_le(&mut payload);
+        payload.extend_from_slice(&(vehicle_input_flags::DRIVER | 1 << 9).to_le_bytes());
+        assert_eq!(payload.len(), SetVehicleInput::BYTES);
+        let outcome = appliquer(&mut driver, opcode::SET_VEHICLE_INPUT, &payload).unwrap();
+        assert_eq!((outcome.applied, outcome.sanitized), (1, 0));
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_VEHICLE_INPUT, &payload[..32]),
             Err(CommandError::BadPayloadLength)
         );
     }

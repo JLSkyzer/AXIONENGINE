@@ -12,7 +12,7 @@
 
   "joints": [
     { "name": "charniere_capot", "type": "revolute", "a": "caisse", "b_node": "capot",
-      "axis": [1, 0, 0], "limits": [0.0, 1.2], "break_force": 6000.0 }
+      "axis": [-1, 0, 0], "limits": [0.0, 1.2], "break_force": 6000.0 }
   ],
 
   "wheels": [

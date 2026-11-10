@@ -1,5 +1,6 @@
 package dev.axion.physics;
 
+import dev.axion.seat.VehicleInput;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -186,6 +187,15 @@ public final class SimCommandStream {
 
     /** Taille du payload {@code BreakJoint}, en octets. */
     public static final int BREAK_JOINT_BYTES = 12;
+
+    /** Opcode {@code SET_VEHICLE_INPUT} (ADR-159, tranche 3). */
+    public static final int OP_SET_VEHICLE_INPUT = 17;
+
+    /** Taille du payload {@code SetVehicleInput}, en octets : le handle, l'entrée de 12.8, les drapeaux. */
+    public static final int SET_VEHICLE_INPUT_BYTES = 36;
+
+    /** Drapeau {@code DRIVER} de {@code SetVehicleInput} : le siège {@code driver} est occupé (ADR-159 D8). */
+    public static final int VEHICLE_INPUT_DRIVER = 1;
 
     /** Opcode {@code ANIMATE_ASSEMBLY} (ADR-155) : une commande d'animation pour une assembly. */
     public static final int OP_ANIMATE_ASSEMBLY = 16;
@@ -844,6 +854,28 @@ public final class SimCommandStream {
         for (int node : mask) {
             command.putInt(node);
         }
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_VEHICLE_INPUT} (ADR-159, tranche 3) : l'entrée du siège {@code driver} d'un
+     * véhicule, qui vaut jusqu'à la suivante, et la présence de son conducteur. Sans conducteur, le natif serre
+     * le frein de stationnement (Q3). Il borne de nouveau l'entrée (R-1110).
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param input l'entrée, déjà bornée par le siège
+     * @param driver vrai si le siège {@code driver} est occupé
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setVehicleInput(int handleIndex, int handleGeneration, VehicleInput input, boolean driver) {
+        ByteBuffer command = beginCommand(OP_SET_VEHICLE_INPUT, SET_VEHICLE_INPUT_BYTES);
+        command.putInt(handleIndex).putInt(handleGeneration)
+                .putFloat(input.throttle()).putFloat(input.brake()).putFloat(input.steer())
+                .putFloat(input.clutch()).putFloat(input.handbrake())
+                .put(input.gear()).put((byte) input.flags()).putShort((short) 0)
+                .putInt(driver ? VEHICLE_INPUT_DRIVER : 0);
         commands.add(command.array());
         return this;
     }

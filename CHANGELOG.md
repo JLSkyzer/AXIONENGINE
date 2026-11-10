@@ -10,6 +10,14 @@ Definition of Done (PARTIE 37.3).
 
 ### Ajoute
 
+- Vehicules (C-33, ADR-159, tranche 3) : la voiture se conduit au clavier.
+  Moteur, embrayage automatique, boites manuelle, automatique (marche arriere
+  par la touche de frein tenue a l'arret) et directe, differentiels libre,
+  bloque et a glissement limite, direction d'Ackermann, freins et frein a
+  main, resistance au roulement, trainee et appui ; ABS, antipatinage et
+  controle de stabilite declaratifs, desactives par defaut. Sans conducteur,
+  le frein de stationnement est serre. Deux touches de boite reassignables
+  (`R`, `F`). `DEFN` 3, ABI 20.
 - Vehicules (C-33, ADR-159) : les roues suivent la suspension et tournent a
   l'image, pose procedurale des nodes au client. ABI 19, protocole 5.
 - Vehicules (C-33, ADR-159, tranche 2) : roues par rayon, suspension et pneus
@@ -458,6 +466,11 @@ Definition of Done (PARTIE 37.3).
 
 ### Modifie
 
+- Le buggy d'exemple a son avant en `-z`, comme le veut le repere des
+  vehicules (§6.5) ; l'axe de la charniere de son capot suit.
+- Le passager d'une assembly est pose a son siege a chaque image : il ne
+  recule plus quand le vehicule accelere, et le regard du joueur assis tourne
+  avec le vehicule (ADR-158 D3 precise par ADR-159).
 - Rendu (C-64, ADR-157, tranche 2) : une assembly a plusieurs corps n'est
   plus retenue sans test au culling. Java unit l'emprise de chaque corps, a
   sa pose, et la donne au candidat, qui passe a 64 octets (drapeau `BOUNDS`) ;

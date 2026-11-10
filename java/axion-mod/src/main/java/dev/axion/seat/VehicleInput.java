@@ -21,14 +21,29 @@ public record VehicleInput(float throttle, float brake, float steer, float clutc
 
     /**
      * {@return ce que le clavier du joueur commande : l'avant accélère, l'arrière freine, le saut serre le
-     * frein à main} Boîte et embrayage attendent leurs touches, avec les véhicules (C-33).
+     * frein à main} Au point mort, l'embrayage restant automatique (ADR-159 D6).
      *
      * @param forward impulsion vers l'avant, dans [-1, 1]
      * @param left impulsion vers la gauche, dans [-1, 1]
      * @param jumping vrai si le joueur saute
      */
     public static VehicleInput ofKeys(float forward, float left, boolean jumping) {
-        return new VehicleInput(Math.max(forward, 0f), Math.max(-forward, 0f), -left, 0f, jumping ? 1f : 0f, (byte) 0, 0);
+        return ofKeys(forward, left, jumping, (byte) 0);
+    }
+
+    /**
+     * {@return ce que le clavier du joueur commande, avec le rapport que ses deux touches de boîte ont choisi}
+     * L'embrayage reste automatique au clavier (ADR-159 D6).
+     *
+     * @param forward impulsion vers l'avant, dans [-1, 1]
+     * @param left impulsion vers la gauche, dans [-1, 1]
+     * @param jumping vrai si le joueur saute
+     * @param gear rang du rapport demandé, voir {@link GearSelector}
+     */
+    public static VehicleInput ofKeys(float forward, float left, boolean jumping, byte gear) {
+        // 0 - left et non -left : sans touche latérale, un zéro positif, que l'égalité des records ne distingue pas
+        // de celui d'une entrée nulle.
+        return new VehicleInput(Math.max(forward, 0f), Math.max(-forward, 0f), 0f - left, 0f, jumping ? 1f : 0f, gear, 0);
     }
 
     /** {@return vrai si toutes les valeurs sont finies : une autre se journalise (R-1110)} */

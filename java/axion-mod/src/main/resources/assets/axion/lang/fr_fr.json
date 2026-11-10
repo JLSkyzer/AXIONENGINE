@@ -1,4 +1,7 @@
 {
   "death.attack.axion.collision": "%1$s a été percuté par un objet en mouvement",
-  "death.attack.axion.collision.player": "%1$s a été percuté par un objet en mouvement en essayant d'échapper à %2$s"
+  "death.attack.axion.collision.player": "%1$s a été percuté par un objet en mouvement en essayant d'échapper à %2$s",
+  "key.categories.axion": "AXION ENGINE",
+  "key.axion.gear_up": "Rapport supérieur",
+  "key.axion.gear_down": "Rapport inférieur"
 }

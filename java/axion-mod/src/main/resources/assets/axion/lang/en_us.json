@@ -1,4 +1,7 @@
 {
   "death.attack.axion.collision": "%1$s was hit by a moving object",
-  "death.attack.axion.collision.player": "%1$s was hit by a moving object whilst trying to escape %2$s"
+  "death.attack.axion.collision.player": "%1$s was hit by a moving object whilst trying to escape %2$s",
+  "key.categories.axion": "AXION ENGINE",
+  "key.axion.gear_up": "Gear up",
+  "key.axion.gear_down": "Gear down"
 }

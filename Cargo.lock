@@ -202,6 +202,7 @@ dependencies = [
 name = "ax-vehicle"
 version = "1.0.0"
 dependencies = [
+ "ax-math",
  "ax-model",
 ]
 

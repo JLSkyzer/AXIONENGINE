@@ -100,7 +100,6 @@ minecraft {
             // Le modèle local de Killian, hors du dépôt, s'il est là ; le buggy d'exemple sinon.
             def local = file('src/devcontent/resources/data/axion/axion/definitions/local/charger.json').exists()
             property 'axion.film.definition', local ? 'axion:local/charger' : 'axion:test/vehicule'
-            property 'axion.film.poussee', local ? '5000' : '1500'
             jvmArgs '-Xmx4G'
             args '--width', '1280', '--height', '656'
         }
