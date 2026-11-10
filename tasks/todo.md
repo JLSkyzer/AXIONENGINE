@@ -3704,10 +3704,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         tranchées par Killian (ADR-160 D10).
   - [x] Organisation du dépôt (ADR-161) : `.runs/`, `local/`, CDC dans `docs/spec`, guides dans `docs/guides`, README
         par dossier, index des ADR ; CI GitHub verte sur les quatre commits.
-  - [ ] ADR de l'API d'enregistrement du contenu et du retrait des datapacks (D9) : **ADR-162 proposé le
-        2026-11-10**, à faire accepter par Killian (Q1 builder généré, Q2 paquets de l'API, Q3 nom de la configuration
-        des administrateurs) avant tout code ; six tranches.
-  - [ ] Son code, exemples enregistrés par l'API interne d'AXION, tests et films migrés.
+  - [x] ADR de l'API d'enregistrement du contenu et du retrait des datapacks (D9) : **ADR-162 accepté par Killian
+        le 2026-11-10** (builder généré depuis le schéma, API découpée en paquets, `axion-server-overrides.toml`).
+  - [ ] Son code, en six tranches (ADR-162) ; la tranche 1 d'abord : fournisseur, phase d'enregistrement, registre,
+        exemples par l'API publique, contenu de test et films migrés, écouteurs de datapack retirés, paquets de l'API.
   - [ ] Tranche 4 de C-33 (sources, volant, touches libres, canaux de lumière) écrite sur cette API.
 
 Exigence de Killian (2026-11-10) : « notre moteur et API doit leur permettre de tout faire », « aucune
