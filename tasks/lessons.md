@@ -2212,3 +2212,16 @@ créateur de contenu attend du sujet.
 référence (DynamX, Immersive Vehicles…) et ce que le contenu de test montre (une voiture de police a des feux et une
 sirène) — et lister ce qui n'a ni champ, ni règle, ni composant. Un manque se propose, il ne se tait pas
 (exigence « aucune impossibilité », 2026-11-10).
+
+## 2026-11-10 | Deux audits ont manqué que les réglages d'un véhicule devaient valoir par instance
+
+**Ce qui a mal tourné.** Après deux audits et trente manques inscrits, la question de Killian sur des améliorations
+de moteur a fait apparaître ce qu'aucun n'avait vu : un réglage doit porter sur un véhicule, s'appliquer à chaud, se
+sauvegarder, se répliquer et se prédire.
+
+**Cause.** Les audits confrontaient le moteur à des listes de fonctionnalités. Une exigence transversale — par
+instance, persistance, réplication, prédiction, bornes, multijoueur — n'est pas une fonctionnalité : une liste ne
+la voit pas.
+
+**Règle.** Auditer aussi par scénarios de créateur, suivis couche par couche, et fermer chaque capacité à la grille
+transversale d'ADR-160 D7. Un audit ne garantit pas l'exhaustivité ; la grille appliquée à chaque chantier, si.
