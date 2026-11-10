@@ -26,9 +26,6 @@ java/axion-mod/logs/
 .runs/
 # Contenu personnel, de licence non verifiee : hors du depot public (ADR-161 D1)
 local/
-docs/3d model/
-java/axion-mod/src/devcontent/resources/data/axion/axion/models/local/
-java/axion-mod/src/devcontent/resources/data/axion/axion/definitions/local/
 
 # Ressources produites par les generateurs de donnees Minecraft
 src/generated/

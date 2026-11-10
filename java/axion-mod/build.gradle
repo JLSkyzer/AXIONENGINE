@@ -19,7 +19,11 @@ base {
 // développement, jamais empaquetés — le mod livré n'embarque que ses definitions de
 // démonstration (R-1790).
 sourceSets {
-    devcontent
+    devcontent {
+        // Le contenu personnel de Killian (la Charger des films), hors du dépôt public (ADR-161 D1) :
+        // lu comme le reste du contenu d'essai quand il est là.
+        resources.srcDir rootProject.file('local/contenu')
+    }
 }
 
 // Ses GameTests (§29.5) compilent contre le mod et Minecraft, et ne vivent qu'en développement,
@@ -98,7 +102,7 @@ minecraft {
             workingDirectory rootProject.file('.runs/film')
             property 'axion.film', 'vehicule'
             // Le modèle local de Killian, hors du dépôt, s'il est là ; le buggy d'exemple sinon.
-            def local = file('src/devcontent/resources/data/axion/axion/definitions/local/charger.json').exists()
+            def local = rootProject.file('local/contenu/data/axion/axion/definitions/local/charger.json').exists()
             property 'axion.film.definition', local ? 'axion:local/charger' : 'axion:test/vehicule'
             jvmArgs '-Xmx4G'
             args '--width', '1280', '--height', '656'
