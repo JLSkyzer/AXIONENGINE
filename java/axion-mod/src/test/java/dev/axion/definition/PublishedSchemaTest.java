@@ -34,7 +34,7 @@ class PublishedSchemaTest {
 
     /** Répertoires sans definition, dont le parcours ne ferait que coûter. */
     private static final Set<String> SKIPPED =
-            Set.of(".git", ".gradle", ".idea", "build", "target", "run", "run-data", "node_modules");
+            Set.of(".git", ".gradle", ".idea", "build", "target", ".runs", "local", "node_modules");
 
     private static Path property(String name) {
         String value = System.getProperty(name);

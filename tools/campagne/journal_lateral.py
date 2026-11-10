@@ -12,7 +12,7 @@ Sans joueur, rien n'est simulé (R-612) : l'état comparé est celui que l'entit
 schéma, orientation donnée à la création. La persistance de l'état simulé est prouvée par T-430 en
 GameTest ; la campagne prouve ce qu'aucune GameTest ne peut : la perte réelle par Minecraft sans AXION.
 
-Le serveur vit dans `run-campagne/serveur` (installé par l'installeur officiel de Forge 1.20.1-47.4.23,
+Le serveur vit dans `.runs/campagne/serveur` (installé par l'installeur officiel de Forge 1.20.1-47.4.23,
 CLUF accepté par Killian), le jar est celui de `./gradlew :axion-mod:validateJar`, le contenu celui que le
 jar livre (`axion:example/*`).
 
@@ -33,7 +33,7 @@ from datetime import datetime
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[2]
-CAMPAGNE = RACINE / "run-campagne"
+CAMPAGNE = RACINE / ".runs/campagne"
 SERVEUR = CAMPAGNE / "serveur"
 JAR = RACINE / "java/axion-mod/build/libs/axion-1.0.0-SNAPSHOT.jar"
 FORGE_ARGS = "libraries/net/minecraftforge/forge/1.20.1-47.4.23/" + ("win_args.txt" if os.name == "nt" else "unix_args.txt")

@@ -21,21 +21,14 @@ replay_pid*
 # Journaux d'execution du mod (log4j), produits par les runs et les tests
 java/axion-mod/logs/
 
-# Repertoires de travail des lancements de developpement
-run/
-run-data/
-run-server/
-run-gametest/
-run-rendertest/
-run-film/
-# Modèle de test local, de licence non vérifiée : hors du dépôt public.
+# Repertoires de travail des lancements de developpement, un par tache, et le serveur
+# de la campagne T-435/T-713b (ADR-161 D2)
+.runs/
+# Contenu personnel, de licence non verifiee : hors du depot public (ADR-161 D1)
+local/
 docs/3d model/
 java/axion-mod/src/devcontent/resources/data/axion/axion/models/local/
 java/axion-mod/src/devcontent/resources/data/axion/axion/definitions/local/
-run-rendertest-native/
-run-rendertest-shaders/
-# Serveur Forge de production de la campagne T-435/T-713b (ADR-153 D8)
-run-campagne/
 
 # Ressources produites par les generateurs de donnees Minecraft
 src/generated/

@@ -3,7 +3,7 @@
 
 Le serveur de GameTests part d'un cache d'assets vide (`runGameTestServer` l'efface avant chaque
 passage) : il compile `test/avertissement/triangle.gltf`, dont R-530 ignore une extension avec
-avertissement, et la couche Forge en écrit la ligne dans `run-gametest/logs/latest.log`. Ce script
+avertissement, et la couche Forge en écrit la ligne dans `.runs/gametest/logs/latest.log`. Ce script
 l'y compte : exactement une, puisque l'asset est compilé une fois.
 
 La ligne est reconnue à ses fragments ASCII : l'encodage du journal varie selon la plateforme, et
@@ -25,7 +25,7 @@ FRAGMENTS = (
 
 
 def main(argv: list[str]) -> int:
-    journal = Path(argv[1] if len(argv) > 1 else "run-gametest/logs/latest.log")
+    journal = Path(argv[1] if len(argv) > 1 else ".runs/gametest/logs/latest.log")
     if not journal.is_file():
         print(f"ADR-148 : journal absent : {journal}")
         return 1

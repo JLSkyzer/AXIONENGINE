@@ -281,7 +281,7 @@ jobs:
       # intermittent qui echoue laisse de quoi dire pourquoi (empilement_60s, ~1 echec sur 10).
       # Elle s'ecrit sous <gameDir>/axion/traces, la ou AXION range ses traces : l'audit des
       # ecritures (T-437, R-1711), qui suit le passage, refuse tout fichier d'AXION ailleurs. Le
-      # chemin est relatif au dossier du serveur (run-gametest) : JAVA_TOOL_OPTIONS coupe ses
+      # chemin est relatif au dossier du serveur (.runs/gametest) : JAVA_TOOL_OPTIONS coupe ses
       # options aux espaces, et un chemin absolu qui en contient ne demarrerait plus la JVM.
       - name: GameTests (serveur dedie)
         env:
@@ -291,7 +291,7 @@ jobs:
       # ADR-148 : l'avertissement de compilation de l'asset de test atteint le journal du jeu, une
       # fois -- le passage part d'un cache d'assets vide.
       - name: Avertissement de compilation au journal (ADR-148)
-        run: python3 tools/ci/gametest_journal.py run-gametest/logs/latest.log
+        run: python3 tools/ci/gametest_journal.py .runs/gametest/logs/latest.log
 
       - name: Trace et journal des GameTests
         if: failure()
@@ -299,8 +299,8 @@ jobs:
         with:
           name: gametests-trace
           path: |
-            run-gametest/axion/traces/trace-simulation.csv
-            run-gametest/logs/latest.log
+            .runs/gametest/axion/traces/trace-simulation.csv
+            .runs/gametest/logs/latest.log
           if-no-files-found: warn
 
   test-render:
@@ -372,9 +372,9 @@ jobs:
         with:
           name: banc-de-rendu
           path: |
-            run-rendertest/axion-rendertest/
-            run-rendertest-native/axion-rendertest/
-            run-rendertest-shaders/axion-rendertest/
+            .runs/rendertest/axion-rendertest/
+            .runs/rendertest-native/axion-rendertest/
+            .runs/rendertest-shaders/axion-rendertest/
           if-no-files-found: warn
 
   platform:
