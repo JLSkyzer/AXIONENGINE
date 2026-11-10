@@ -3702,9 +3702,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
 - **Suite décidée par Killian, dans cet ordre** :
   - [x] Audit 4 : vision « développeur d'addon Java » (V3) → CAP-44 à CAP-52, axe Propriété ; onze questions
         tranchées par Killian (ADR-160 D10).
-  - [ ] Organisation du dépôt : demandée par Killian avant de continuer (« le workspace est un bazar complet »).
-  - [ ] ADR de l'API d'enregistrement du contenu et du retrait des datapacks (D9), ce que deviennent les
-        fonctionnalités de M1 à M4 qu'il touche.
+  - [x] Organisation du dépôt (ADR-161) : `.runs/`, `local/`, CDC dans `docs/spec`, guides dans `docs/guides`, README
+        par dossier, index des ADR ; CI GitHub verte sur les quatre commits.
+  - [ ] ADR de l'API d'enregistrement du contenu et du retrait des datapacks (D9) : **ADR-162 proposé le
+        2026-11-10**, à faire accepter par Killian (Q1 builder généré, Q2 paquets de l'API, Q3 nom de la configuration
+        des administrateurs) avant tout code ; six tranches.
   - [ ] Son code, exemples enregistrés par l'API interne d'AXION, tests et films migrés.
   - [ ] Tranche 4 de C-33 (sources, volant, touches libres, canaux de lumière) écrite sur cette API.
 

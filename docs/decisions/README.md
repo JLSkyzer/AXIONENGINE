@@ -104,10 +104,11 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 | [ADR-107](ADR-107.md) | LOD : sommets partagés, section `LODM`, et visibilité des nodes par niveau | 2026-09-13 | accepté |
 | [ADR-106](ADR-106.md) | Tangentes et cache de sommets : les bibliothèques de la table 32.2, et ce que R-553 en exige | 2026-09-13 | accepté |
 
-## API publique
+## API publique et enregistrement du contenu
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
+| [ADR-162](ADR-162.md) | L'API d'enregistrement du contenu : un mod Java déclare ce qu'AXION connaît | 2026-11-10 | proposé |
 | [ADR-143](ADR-143.md) | Un type exigé par une signature du §23.2, sans membre ni fournisseur, n'est pas un bouchon (R-001) | 2026-10-16 | accepté |
 
 ## Noyau natif, mémoire et déterminisme
