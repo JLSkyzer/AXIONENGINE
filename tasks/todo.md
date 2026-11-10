@@ -3682,6 +3682,23 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
       amendé (38.9, A3 à A6) : M5 scindé, **M5b** pour les véhicules hors roues ; joueurs portés ; chunks de la
       trajectoire ; ensemble attaché prédit ; **le contenu passe par un mod Java et l'API** (D9), datapacks
       supprimés, EX-02 et CAP-32 retirés, exemples gardés dans le mod AXION.
+- **Feuille de route de M5**, présentée à Killian le 2026-11-10. Chaque étape visible en jeu se filme ; chaque
+  chantier relit l'annexe A.7 et se ferme à la grille D7 :
+  1. Audit 4 (vision « développeur d'addon Java ») → ADR-160.
+  2. ADR de l'API d'enregistrement du contenu (D9), soumis à Killian avant tout code.
+  3. Son code : `AxionApi.get()` fourni, contenu enregistré par l'API, datapacks retirés, exemples, tests, films et
+     Charger migrés.
+  4. C-33 tranche 4 : sources `vehicle.*`/`engine.*`, volant et aiguilles, touches libres (CAP-01), variables
+     (CAP-02), visibilité, émissif et couleur pilotés (CAP-04), cycles (CAP-05) ; film du gyrophare de la Charger.
+  5. C-33 tranche 5 : réplication et paramètres d'instance (D6 ; CAP-03, CAP-39) — les upgrades.
+  6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37).
+  7. Le reste des capacités de M5 : caméra de véhicule (CAP-10), API (CAP-11), occupants (CAP-13), joueurs portés
+     (CAP-14), énergie et démarrage (CAP-12), pneus et météo (CAP-20), rechargement à chaud (CAP-33), commandes
+     (CAP-34), contenu qui évolue (CAP-38), addons d'un seul côté (CAP-40), validation hors jeu (CAP-42), sources
+     du monde (CAP-43) ; anti-roulis (R-1061).
+  8. C-48 attaches : remorquage, ancrage au monde (CAP-15, CAP-16).
+  9. C-77 gouverneur, C-73 overlay.
+  10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).
 - **Suite décidée par Killian, dans cet ordre** :
   - [ ] Audit 4 : vision « développeur d'addon Java » (nouvelle), en rejouant V1 et V2 (ADR-160 D8).
   - [ ] ADR de l'API d'enregistrement du contenu et du retrait des datapacks (D9), ce que deviennent les
@@ -3780,6 +3797,8 @@ Fiches complètes : `sed -n '7180,7319p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0
       **prononcé par Killian le 2026-11-05** (ADR-146, « Prononcé de M4 »)
 - [ ] **M5** Véhicules, sièges, attaches, gouverneur, overlay — C-33, C-48, C-53, C-73, C-77
       · reprend l'étape 14 côté serveur (C-30), avec C-48 et C-53 (ADR-156 D6)
+- [ ] **M5b** Véhicules hors roues — C-33 : bateaux, avions, hélicoptères, deux-roues, rails (CAP-17 à CAP-19) ;
+      scindé de M5 par Killian le 2026-11-10 (CDC 37.2, amendement A5)
 - [ ] **M6** Impacts et déformation continue *(jalon central)* — C-28, C-41, C-42, C-45, C-68
       · **`[EFFORT MAX]`** sur tout le jalon, prévenir avant de commencer
 - [ ] **M7** Structure, rupture, détachement, réparation — C-43, C-44, C-46
