@@ -8150,7 +8150,7 @@ Un jalon n'est pas prononcé tant qu'une capacité qui lui est affectée reste o
 | CAP-08 | Particules d'effet : échappement, poussière, éclaboussures, étincelles, fumée | M8 |
 | CAP-09 | Traces au sol : décalques posés sur le monde (pneus, freinage) | M9 |
 | CAP-10 | Caméra de véhicule (qui suit, cockpit) et tableau de bord à l'écran | M5 |
-| CAP-11 | API d'addons utilisable : fournisseur, `EventBus`, accesseurs des événements, contrats des interfaces que 23.2 nomme sans les spécifier | M5, puis chaque jalon pour ses services |
+| CAP-11 | API d'addons utilisable et sans limite (D5) : fournisseur enregistré, `EventBus`, accesseurs des événements, contrats des interfaces que 23.2 nomme sans les spécifier ; tout ce qu'une definition déclare se fait aussi par l'API, et inversement ; chaque liste fermée du schéma (sources procédurales, actions, contrôles de siège, canaux, types d'interaction, de son et de lumière) s'étend par un registre de l'API | M5, puis chaque jalon pour ses services |
 | CAP-12 | Énergie (carburant, batterie, panne) et démarrage du moteur (`engine.running` produit) | M5 |
 | CAP-13 | Pose et échelle des occupants, par siège, caméra à la première personne comprise | M5 |
 | CAP-14 | Joueurs et entités sur une assembly : plateau, pont ou ascenseur qui porte un joueur debout, poussée sur le joueur, masse de son proxy. La contradiction 10.2/10.8 est tranchée (Q2) | M5 |

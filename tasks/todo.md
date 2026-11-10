@@ -3657,12 +3657,13 @@ T-980..T-984.
             (marche arrière par le frein tenu à l'arrêt) et `direct`, différentiels, direction d'Ackermann, freins, frein
             de stationnement sans conducteur (Q3), aéro, ABS, antipatinage et stabilité ; micro-pas de 1/720 s ;
             `SET_VEHICLE_INPUT` (ABI 20), `DEFN` 3, touches de boîte. T-321..T-324, T-327, T-328 en Rust, GameTest par le
-            vrai canal des entrées ; film conduit au clavier, écrit mais pas encore tourné. Buggy d'exemple retourné.
+            vrai canal des entrées ; film conduit au clavier, tourné le 2026-11-10 (vue éloignée et vue conducteur, Charger
+            locale ×1,5). Buggy d'exemple retourné. Commit `5db5297`, CI locale verte.
       - [ ] Relevé à la tranche 3 : l'anti-roulis (R-1061, D5) est compilé et validé, mais le pas ne l'applique pas encore.
-      - [ ] Relevé au film du 2026-11-10 : le passager avait un tick de retard sur la carrosserie (75 cm à 15 m/s) et
+      - [x] Relevé au film du 2026-11-10 : le passager avait un tick de retard sur la carrosserie (75 cm à 15 m/s) et
             ne tournait pas avec elle. Corrigé : `SeatedPassengers` le pose à chaque image au siège de la pose dessinée ;
-            le film le juge (écart ≤ 2 cm, regard ≤ 0,5°), mutation rouge à 0,98 m. Côté serveur, le lacet d'un passager
-            non joueur ne suit pas encore le véhicule.
+            le film le juge (écart ≤ 2 cm, regard ≤ 0,5°), mutation rouge à 0,98 m.
+      - [ ] Côté serveur, le lacet d'un passager qui n'est pas un joueur ne suit pas encore le véhicule.
       - [ ] Échelle des occupants (Killian, 2026-11-10 : « scale la voiture ») : un joueur assis a la tête 1,29 m au-dessus
             du coussin ; une voiture à l'échelle réelle ne le contient pas. La Charger locale est passée à ×1,5. Aucun
             champ ne règle la pose ni l'échelle d'un occupant (audit, point 13).
