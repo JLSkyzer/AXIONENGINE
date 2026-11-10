@@ -52,7 +52,7 @@ Les familles d'identifiants sont définies en PARTIE 0.4 : `R` exigence,
 
 ## 2. La boucle de travail
 
-Imposée par le CDC (`sed -n '8210,8224p' ...`) :
+Imposée par le CDC (contrat d'implémentation, section 2 ; plage : `grep -n 'Boucle de travail' docs/spec/INDEX.md`) :
 
 ```
 READ SPEC -> INSPECT REPOSITORY -> PLAN -> IMPLEMENT -> BUILD -> TEST -> FIX
@@ -115,7 +115,7 @@ Régénèrent ce qui dérive de la source unique de configuration :
 
 ## 4. Ce qui est interdit
 
-La liste normative complète est en `sed -n '8226,8264p' ...`. Les interdictions
+La liste normative complète est au contrat d'implémentation, section 3 (plage : `grep -n 'Interdictions absolues' docs/spec/INDEX.md`). Les interdictions
 qui se violent le plus facilement sans y penser :
 
 - **Aucun `TODO`, `FIXME`, `todo!()`, `unimplemented!()`, stub ni implémentation
@@ -140,7 +140,7 @@ qui se violent le plus facilement sans y penser :
 
 ## 5. Ce qui est obligatoire
 
-Liste complète en `sed -n '8265,8283p' ...`. En particulier :
+Liste complète au contrat d'implémentation, section 4 (plage : `grep -n '4. Obligations' docs/spec/INDEX.md`). En particulier :
 
 - Tout commit cite ses identifiants : `feat(C-42): ... [R-1220, T-810]`.
 - Tout composant expose ses métriques, son budget et son niveau de maturité.

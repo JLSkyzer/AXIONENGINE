@@ -8136,28 +8136,29 @@ VARIABLE      var.<n>   (définie par l'API ou par une action déclarative)
 Ajoutée le 2026-11-10 (ADR-160), à la demande de Killian : deux audits ont relevé ce que le moteur ne permettait
 pas à un créateur de contenu. Chaque capacité est une exigence de la V1.0, au même titre qu'une `R-xxx`. Sa
 preuve et son origine sont dans ADR-160. Le jalon est proposé, jusqu'à ce que Killian le confirme (ADR-160, Q1).
-Un jalon n'est pas prononcé tant qu'une capacité qui lui est affectée reste ouverte (R-2394).
+Un jalon n'est pas prononcé tant qu'une capacité qui lui est affectée reste ouverte (R-2394), et chaque
+jalon s'ouvre par un audit par scénarios dont les trouvailles s'ajoutent ici (ADR-160 D3).
 
 | CAP | Capacité exigée | Jalon |
 |---|---|---|
-| CAP-01 | Entrées libres vers un état : contrôles de siège ouverts, drapeaux de `VehicleInput`, touches déclarées par la definition (phares, klaxon, clignotants, sirène, contact) | M5 |
-| CAP-02 | Variables et événements de contenu : le système derrière `set_variable` et `emit_event`, lisible comme source (`var.*`) et par l'API | M5 |
-| CAP-03 | Une variable règle un paramètre physique (couple, régime, rapports, freinage, adhérence, masse). Contrôleurs déclaratifs, avec la contradiction R-1083/R-1170/R-1171 tranchée (Q3). Le réglage vaut pour une instance, s'applique à chaud, se sauvegarde et se réplique, prédiction comprise (D6) | M5 |
-| CAP-04 | Canaux procéduraux de visibilité, d'intensité émissive et de couleur ; `set_material_param` piloté par une source | M5 |
+| CAP-01 | Entrées libres vers un état : contrôles de siège ouverts, drapeaux de `VehicleInput`, touches déclarées par la definition (phares, klaxon, clignotants, sirène, contact) ; un jeu fixe de touches génériques réassignables, que la definition relie à ses actions, avec un libellé ; l'état basculé passe dans le flux d'entrées prédit ; débit plafonné par joueur | M5 |
+| CAP-02 | Variables et événements de contenu : le système derrière `set_variable` et `emit_event`, lisible comme source (`var.*`) et par l'API ; portée (véhicule ou siège), sauvegarde déclarée, envoi aux clients dès leur arrivée, droits d'écriture et débit par joueur ; événements portés aux clients | M5 |
+| CAP-03 | Une variable règle un paramètre physique (couple, régime, rapports, freinage, adhérence, masse). Contrôleurs déclaratifs, avec la contradiction R-1083/R-1170/R-1171 tranchée (Q3). Le réglage vaut pour une instance, s'applique à chaud, se sauvegarde et se réplique, prédiction comprise (D6) ; plages réglables déclarées par la definition et limites du moteur ; valeurs dérivées recalculées à chaud ; réglage sauvegardé revalidé quand la definition change ; composition avec les autres causes (CAP-39) | M5 |
+| CAP-04 | Canaux procéduraux de visibilité, d'intensité émissive et de couleur ; `set_material_param` piloté par une source ; les actions `swap_mesh`, `hide_node` et `show_node` exécutées, et pas seulement au schéma | M5 |
 | CAP-05 | Pistes dans le temps : cycles (clignotant, gyrophare), lissage et durées, poids pilotables, masque d'os, fondu, grammaire de `trigger` | M5 |
 | CAP-06 | Lumière qui éclaire le décor : sémantique du rôle `light` (phares, feux, gyrophare, éclairage intérieur) | M9 |
-| CAP-07 | Son : sous-système data-driven (moteur selon régime et charge, contacts et roulement par matériau, klaxon, sirène, sons continus paramétrés, son 3D, Doppler) | M8 |
+| CAP-07 | Son : sous-système data-driven (moteur selon régime et charge, contacts et roulement par matériau, klaxon, sirène, sons continus paramétrés, son 3D, Doppler) ; sons ponctuels entendus des autres joueurs | M8 |
 | CAP-08 | Particules d'effet : échappement, poussière, éclaboussures, étincelles, fumée | M8 |
 | CAP-09 | Traces au sol : décalques posés sur le monde (pneus, freinage) | M9 |
 | CAP-10 | Caméra de véhicule (qui suit, cockpit) et tableau de bord à l'écran | M5 |
-| CAP-11 | API d'addons utilisable et sans limite (D5) : fournisseur enregistré, `EventBus`, accesseurs des événements, contrats des interfaces que 23.2 nomme sans les spécifier ; tout ce qu'une definition déclare se fait aussi par l'API, et inversement ; chaque liste fermée du schéma (sources procédurales, actions, contrôles de siège, canaux, types d'interaction, de son et de lumière) s'étend par un registre de l'API | M5, puis chaque jalon pour ses services |
+| CAP-11 | API d'addons utilisable et sans limite (D5) : fournisseur enregistré, `EventBus`, accesseurs des événements, contrats des interfaces que 23.2 nomme sans les spécifier ; tout ce qu'une definition déclare se fait aussi par l'API, et inversement ; chaque liste fermée du schéma (sources procédurales, actions, contrôles de siège, canaux, types d'interaction, de son et de lumière) s'étend par un registre de l'API ; événements refusables (siège, interaction, attache, réparation) ; données des mods (`CustomData`) envoyables aux clients ; sections JSON d'extension validées au niveau de la pièce | M5, puis chaque jalon pour ses services |
 | CAP-12 | Énergie (carburant, batterie, panne) et démarrage du moteur (`engine.running` produit) | M5 |
 | CAP-13 | Pose et échelle des occupants, par siège, caméra à la première personne comprise | M5 |
 | CAP-14 | Joueurs et entités sur une assembly : plateau, pont ou ascenseur qui porte un joueur debout, poussée sur le joueur, masse de son proxy. La contradiction 10.2/10.8 est tranchée (Q2) | M5 |
 | CAP-15 | Attaches déclarables (type accepté, force, transferts, seuil de désalignement) et ancrage au monde | M5 (C-48) |
 | CAP-16 | Paramètres des interactions (`attach`, `detach`, `repair`, `emit_event`, `set_variable`, `open_container`) et capteurs déclarables (`SENSOR`) | M5 |
 | CAP-17 | Propulsion hors roues (poussée, hélice, gouvernes, rotor) et entrées de tangage, roulis et lacet | M5 (Q6) |
-| CAP-18 | Flottabilité paramétrable : points de flottaison, `gravity_scale` au schéma, densité par fluide | M5 (Q6) |
+| CAP-18 | Flottabilité paramétrable : points de flottaison, `gravity_scale` au schéma, densité par fluide ; l'eau fait partie du monde prédit | M5 (Q6) |
 | CAP-19 | Équilibre des deux-roues ; véhicules sur rails | M5 (Q6) |
 | CAP-20 | Usure des pneus dans le temps ; la météo agit sur l'adhérence | M5 |
 | CAP-21 | Dégâts aux entités percutées réglables par definition et par part (aujourd'hui deux booléens globaux) | M6 |
@@ -8166,7 +8167,7 @@ Un jalon n'est pas prononcé tant qu'une capacité qui lui est affectée reste o
 | CAP-24 | Débris : ramassage, `consume_debris`, mode `dangling` déclarables | M7 |
 | CAP-25 | Rendu de détail : textures animées, écrans avec texte, vrais miroirs | M9 |
 | CAP-26 | Addon Blender pour les versions en usage (5.x ; R-920 s'arrête à 4.x) | M9 (C-75) |
-| CAP-27 | Boucle de jeu : item et onglet créatif (dès M5), artisanat, coffre et inventaire, propriété et clés, livrées et variantes (`TINTABLE` au schéma), pièces modulaires (une pièce remplacée apporte ses caractéristiques et son modèle, aux garanties de D6), permissions par joueur | M10 |
+| CAP-27 | Boucle de jeu : item et onglet créatif (dès M5), artisanat, coffre et inventaire, propriété et clés, livrées et variantes (`TINTABLE` au schéma), pièces modulaires (une pièce remplacée apporte ses caractéristiques et son modèle, aux garanties de D6), permissions par joueur ; pièce venue d'un autre asset avec sa masse et sa collision, repli quand le client n'a pas l'asset ; la partie visible d'une amélioration avance avec CAP-03 (M5) | M10 |
 | CAP-28 | Blocs et items à modèle AXION : forme de collision déclarée (R-721), identité de bloc par contenu, multiblocs | M10 |
 | CAP-29 | Équipement porté par un joueur, armes et outils physiques, créatures (déplacement, IA), ragdolls | M10 |
 | CAP-30 | Effecteurs sur le monde (labour, forage, récolte) et capabilities Forge (items, fluides, énergie) | M10 |
@@ -8176,6 +8177,13 @@ Un jalon n'est pas prononcé tant qu'une capacité qui lui est affectée reste o
 | CAP-34 | Joints engrenage et crémaillère ; commandes d'administration (téléporter, échelle, renommer, figer) ; masse variable (aux garanties de D6) ; échelle par definition | M5 |
 | CAP-35 | Chunks non chargés (traversée, chargement par un véhicule) et changement de dimension (R-023). 26.3 et A.5 sont tranchés (Q5) | M11 |
 | CAP-36 | Documentation créateur : les fichiers de la PARTIE 33, chaque jalon pour ce qu'il livre | chaque jalon, complète en M12 |
+| CAP-37 | Ensemble attaché et périmètre de la prédiction : un ensemble attaché (remorque, voiture remorquée) se prédit, se cadence, s'endort et se décharge comme un tout ; les rivaux proches sont avancés au temps prédit, ou leurs contacts ne sont pas prédits (R-1680 tranché, Q7) | M5 |
+| CAP-38 | Le contenu évolue sous des assemblies sauvegardées : identités par nom (corps, joint, pièce, région), version de definition, migrations déclarées, restauration partielle et nommée plutôt que tout abandonner | M5 |
+| CAP-39 | Plusieurs causes sur une même valeur (definition, amélioration, dommage, usure, météo, variable, addon) : ordre et opération définis, chaque cause retirable seule, valeur et origines lisibles | M5 |
+| CAP-40 | Addons présents d'un seul côté : les registres d'extension entrent dans l'empreinte du handshake ; une extension qui touche la physique est déterministe et rembobinable pour la prédiction, ajoutée comme étage du modèle plutôt qu'en le remplaçant | M5 |
+| CAP-41 | Emporter une assembly avec tout son état (améliorations, dommage, données des mods) : item, copie, structure, transfert entre joueurs | M10 |
+| CAP-42 | Valider une definition contre son modèle sans lancer le jeu (`ax-cli`), et voir en jeu les definitions refusées et pourquoi (commande `/axion`) | M5 |
+| CAP-43 | Sources procédurales du monde (heure, lumière du ciel, pluie), lues de même au client et au serveur | M5 |
 
 Hors périmètre, par décision de Killian du 2026-11-10 : construire en jeu des véhicules ou des objets à partir
 de blocs de Minecraft. AXION importe des modèles 3D (ADR-160 D2).

@@ -48,13 +48,16 @@ testés. Un travail n'est terminé que quand sa Definition of Done est cochée.
 - Aucune classe hors de `dev.axion.forge` n'importe `net.minecraftforge.*`
   (R-401, T-020).
 - Aucune capacité exigée oubliée : avant tout ADR de chantier, relire l'ANNEXE A.7
-  du CDC (`CAP-01` à `CAP-36`, [ADR-160](docs/decisions/ADR-160.md)) et dire celles
-  que le chantier tient. Un jalon ne se prononce pas tant qu'une capacité qui lui
-  est affectée reste ouverte (R-2394). Confronter aussi la fiche du chantier à ce
-  qu'un créateur fera du sujet : un manque se propose, il ne se tait pas.
+  du CDC (`CAP-xx`, [ADR-160](docs/decisions/ADR-160.md)) et dire celles que le
+  chantier tient ; le fermer à la grille transversale d'ADR-160 D7, axe par axe.
+  Un jalon ne se prononce pas tant qu'une capacité qui lui est affectée reste
+  ouverte (R-2394), et chaque jalon s'ouvre par un audit par scénarios de créateur
+  dont les trouvailles entrent en annexe A.7 avant le premier code. Un manque se
+  propose, il ne se tait pas.
 
-La liste complète des 25 interdictions et des 14 obligations est dans le CDC :
-`sed -n '8226,8283p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`.
+La liste complète des 25 interdictions et des 14 obligations est dans le CDC, au
+contrat d'implémentation final, sections 3 et 4 ; leurs plages de lignes :
+`grep -n 'Interdictions absolues\|4. Obligations' docs/spec/INDEX.md`.
 
 ## Choix du modèle
 

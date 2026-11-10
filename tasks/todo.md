@@ -3673,12 +3673,12 @@ T-980..T-984.
 
 ## Manques du CDC relevés le 2026-11-10 — inscrits au CDC, à ne jamais oublier
 
-**Inscrits** au CDC comme `CAP-01` à `CAP-36` (ANNEXE A.7) par [ADR-160](../docs/decisions/ADR-160.md), qui en
-donne le découpage, le jalon proposé et les questions à Killian (Q1 à Q6 : placement, joueurs portés, variables et
-physique, logique sans Java, chunks, scission de M5). R-2394 : un jalon n'est pas prononcé tant qu'une capacité qui
+**Inscrits** au CDC comme `CAP-01` à `CAP-43` (ANNEXE A.7) par [ADR-160](../docs/decisions/ADR-160.md), qui en
+donne le découpage, le jalon proposé et les questions à Killian (Q1 à Q7 : placement, joueurs portés, variables et
+physique, logique sans Java, chunks, scission de M5, périmètre de la prédiction). R-2394 : un jalon n'est pas prononcé tant qu'une capacité qui
 lui est affectée reste ouverte. Les points ci-dessous sont les constats des deux audits, avec leurs preuves.
 
-- [ ] **Placement des capacités dans les jalons** : à confirmer par Killian (ADR-160, Q1 à Q6).
+- [ ] **Placement des capacités dans les jalons** : à confirmer par Killian (ADR-160, Q1 à Q7).
 
 Exigence de Killian (2026-11-10) : « notre moteur et API doit leur permettre de tout faire », « aucune
 impossibilité », de l'extérieur à l'intérieur. Audit en lecture du CDC, du schéma, des ADR et du code, chaque
@@ -3748,6 +3748,14 @@ classés de même :
 
 Précision : les dégâts aux entités vanilla existent (R-614, ADR-123), mais en deux booléens globaux, sans réglage
 par definition ni par part.
+
+**Troisième audit (2026-11-10)**, par scénarios de créateur suivis couche par couche (atelier d'améliorations,
+voiture de police, dépanneuse, garage, course à huit, bateau et hydravion, turbo d'un addon, serveur de 200
+véhicules, créateur qui itère, monde d'une version antérieure). Inscrit à l'ADR-160 : CAP-37 à CAP-43 (ensemble
+attaché et périmètre de la prédiction, contenu qui évolue sous des assemblies sauvegardées, causes composées sur
+une même valeur, addons d'un seul côté, emporter une assembly avec son état, valider sans lancer le jeu, sources
+du monde), précisions de CAP-01 à 04, 07, 11, 18 et 27, six axes de plus à la grille D7, et la question Q7.
+**Règle** : chaque jalon s'ouvre par un audit par scénarios (ADR-160 D3).
 
 ---
 
