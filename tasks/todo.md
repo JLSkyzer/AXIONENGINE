@@ -3700,7 +3700,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
   9. C-77 gouverneur, C-73 overlay.
   10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).
 - **Suite décidée par Killian, dans cet ordre** :
-  - [ ] Audit 4 : vision « développeur d'addon Java » (nouvelle), en rejouant V1 et V2 (ADR-160 D8).
+  - [x] Audit 4 : vision « développeur d'addon Java » (V3) → CAP-44 à CAP-52, axe Propriété ; onze questions
+        tranchées par Killian (ADR-160 D10).
+  - [ ] Organisation du dépôt : demandée par Killian avant de continuer (« le workspace est un bazar complet »).
   - [ ] ADR de l'API d'enregistrement du contenu et du retrait des datapacks (D9), ce que deviennent les
         fonctionnalités de M1 à M4 qu'il touche.
   - [ ] Son code, exemples enregistrés par l'API interne d'AXION, tests et films migrés.

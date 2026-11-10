@@ -8200,6 +8200,15 @@ ses trouvailles s'ajoutent ici.
 | CAP-41 | Emporter une assembly avec tout son état (améliorations, dommage, données des mods) : item, copie, structure, transfert entre joueurs | M10 |
 | CAP-42 | Valider une definition contre son modèle sans lancer le jeu (`ax-cli`), et voir en jeu les definitions refusées et pourquoi (commande `/axion`) | M5 |
 | CAP-43 | Sources procédurales du monde (heure, lumière du ciel, pluie), lues de même au client et au serveur | M5 |
+| CAP-44 | Ouvrir l'API d'enregistrement du contenu dès M5, sans attendre que tous les services soient réels : la règle d'ADR-137 et d'ADR-143 (fournisseur seulement quand tous ses accesseurs sont réels) est amendée | M5 |
+| CAP-45 | Une phase d'enregistrement propre à AXION, séquentielle : tout est collecté puis résolu en une passe, extensions avant definitions, partie client à part, placée avant le gel des registres Forge si une definition a son item | M5 |
+| CAP-46 | Propriété : chaque entrée connaît le mod qui l'a déclarée ; espace de noms, doublons refusés en nommant les deux mods, remplacement explicite de l'entrée d'un autre mod | M5 |
+| CAP-47 | Une forme canonique unique pour une definition : le builder Java et le JSON optionnel produisent le même document, validé par le même schéma, sérialisé de façon stable pour l'empreinte | M5 |
+| CAP-48 | Distribuer l'API : publication Maven, forme de l'artefact, interdiction documentée de l'embarquer, version de l'API déclarable comme dépendance d'un addon | M5 |
+| CAP-49 | Kit de test d'addon (harnais GameTest publié, validateur Java hors jeu) et un addon témoin compilé contre `axion-api` seul, en CI | M5 |
+| CAP-50 | Recharger en développement : relancer l'enregistrement, relire JSON et GLB sans redémarrer, renvoyer le registre aux clients | M5 |
+| CAP-51 | Ce que les administrateurs et les modpacks réglaient sans code (matériaux, blocs d'un mod tiers, équilibrage) : une voie décidée, ou l'abandon assumé | M5 |
+| CAP-52 | Garde de compatibilité binaire de l'API : un outil en CI, des méthodes `default` sur toute interface qu'un addon implémente | M5 |
 
 Hors périmètre, par décision de Killian du 2026-11-10 : construire en jeu des véhicules ou des objets à partir
 de blocs de Minecraft. AXION importe des modèles 3D (ADR-160 D2).
