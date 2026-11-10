@@ -9,7 +9,7 @@ pointeurs, les commandes et les règles de conduite.
 
 ## 1. La source de vérité
 
-`cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md` — 8285 lignes, révision 2.1,
+`docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md` — 8285 lignes, révision 2.1,
 **FINAL / FROZEN**.
 
 Il est trop gros pour tenir dans un contexte : ne jamais l'ouvrir en entier.
@@ -24,7 +24,7 @@ grep -n "PARTIE 14" docs/spec/INDEX.md
 On lit ensuite exactement cette plage :
 
 ```bash
-sed -n '3587,3966p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md
+sed -n '3587,3966p' docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md
 ```
 
 **Trouver un identifiant** (`R-1220`, `C-42`, `T-808`, `INV-11`, `ADR-011`) :

@@ -69,7 +69,7 @@ impl AnnexValue {
 
 fn spec_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md")
+        .join("../../docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md")
 }
 
 /// Extrait les options de l'ANNEXE A.3, par fichier de configuration.
@@ -219,7 +219,7 @@ fn configuration_md_est_a_jour() {
     // est l'équivalent local du job `docs` de la CI : il échoue dès qu'une
     // option est ajoutée, modifiée ou décrite autrement sans régénérer le
     // fichier. Le remède tient en une commande, rappelée dans le message.
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../CONFIGURATION.md");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/guides/CONFIGURATION.md");
     let sur_disque = std::fs::read_to_string(&path).unwrap_or_else(|err| {
         panic!(
             "{} illisible ({err}) — le générer avec :\n  \

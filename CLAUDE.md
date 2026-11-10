@@ -12,7 +12,7 @@ Minecraft 1.20.1 + Forge 47.x. Architecture Java + Rust. Licence Apache-2.0.
 
 ## La source de vérité
 
-`cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`, 8285 lignes, **FINAL / FROZEN**.
+`docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md`, 8285 lignes, **FINAL / FROZEN**.
 Tout en découle : composants, exigences, tests, budgets, critères d'acceptation.
 
 **Ne jamais le lire en entier.** Il ne tient pas dans un contexte, et le lire en
@@ -20,7 +20,7 @@ bloc gaspille la session. Deux index générés servent à n'en lire que l'utile
 
 ```bash
 grep -n "PARTIE 14" docs/spec/INDEX.md      # trouver la plage de lignes
-sed -n '3587,3966p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md
+sed -n '3587,3966p' docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md
 grep -P '^C-42\t' docs/spec/ID-MAP.tsv      # trouver un identifiant
 ```
 

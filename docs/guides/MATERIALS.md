@@ -3,7 +3,7 @@
 Un matériau physique (DM-07, PARTIE 11) porte les propriétés de matière d'une surface : son
 contact, sa masse, sa rigidité, ses seuils de rupture, son comportement, sa surface. C'est le seul
 endroit où elles se déclarent (§11.1) : le moteur ne connaît aucun nom de matériau, la bibliothèque
-d'AXION est un datapack comme un autre (R-1030). Le format est celui d'[ADR-145](docs/decisions/ADR-145.md).
+d'AXION est un datapack comme un autre (R-1030). Le format est celui d'[ADR-145](../decisions/ADR-145.md).
 
 ## Déclarer un matériau
 

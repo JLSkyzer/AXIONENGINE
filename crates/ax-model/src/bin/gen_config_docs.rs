@@ -12,7 +12,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    let target = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../CONFIGURATION.md");
+    let target =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/guides/CONFIGURATION.md");
 
     let rendered = ax_model::config::render_markdown();
     match std::fs::write(&target, rendered) {

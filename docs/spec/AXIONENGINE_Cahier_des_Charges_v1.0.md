@@ -6623,13 +6623,17 @@ cargo-deny, cargo-fuzz, cargo-nextest, cargo-miri (CI)
 axion-engine/
 ├── settings.gradle, build.gradle, gradle.properties, gradle/
 ├── Cargo.toml, Cargo.lock, rust-toolchain.toml, deny.toml
-├── LICENSE (Apache-2.0), NOTICE, CHANGELOG.md, README.md
-├── ARCHITECTURE.md, BUILDING.md, INSTALLATION.md, CONFIGURATION.md
-├── COMPATIBILITY.md, ASSETS.md, PHYSICS.md, DAMAGE.md, DEFORMATION.md,
-│   RENDERING.md, NETWORKING.md, API.md, BENCHMARKS.md, TROUBLESHOOTING.md,
-│   RELEASING.md, SECURITY.md, CONTRIBUTING.md
+├── LICENSE (Apache-2.0), NOTICE, CHANGELOG.md, README.md (plan du dépôt)
+├── .runs/                       ignoré : un dossier de jeu par tâche (amendement A7)
+├── local/                       ignoré : contenu personnel (amendement A7)
 ├── docs/
 │   ├── AGENT.md                 contrat de l'agent de développement
+│   ├── guides/                  ARCHITECTURE.md, BUILDING.md, INSTALLATION.md,
+│   │                            CONFIGURATION.md, COMPATIBILITY.md, ASSETS.md,
+│   │                            PHYSICS.md, DAMAGE.md, DEFORMATION.md, RENDERING.md,
+│   │                            NETWORKING.md, API.md, BENCHMARKS.md,
+│   │                            TROUBLESHOOTING.md, RELEASING.md, SECURITY.md,
+│   │                            CONTRIBUTING.md (amendement A7 : hors de la racine)
 │   ├── spec/                    copie versionnée de ce cahier des charges
 │   ├── decisions/               ADR-001.md ... ADR-026.md
 │   ├── schema/                  definition-1.json, a3d-1.md, packets-1.md,
@@ -7782,6 +7786,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A4 | 2026-11-10 | ADR-160, accepté par Killian | 0.4 : famille `CAP-xx` ; 37.1 : R-2394 ; ANNEXE A.7 : capacités exigées, trouvées par trois audits ; chaque jalon s'ouvre par un audit qui rejoue les visions prises et en ajoute une (ADR-160 D3, D8) |
 | A5 | 2026-11-10 | ADR-160 Q2, Q5, Q6, Q7, tranchés par Killian | 10.8 : un joueur debout sur une assembly est porté par elle ; R-640, 26.3 et A.5 : un véhicule piloté charge les chunks de sa trajectoire, borné ; 37.2 : M5 scindé, M5b pour les véhicules hors roues ; R-1680 : l'ensemble attaché au véhicule piloté est prédit, les rivaux proches extrapolés |
 | A6 | 2026-11-10 | ADR-160 D9, décidé par Killian | le contenu passe par un mod Java et l'API, le JSON en option chargé par ce mod ; le chargement par datapack est supprimé (sa conception suit l'audit « développeur d'addon Java ») ; EX-02 et CAP-32 retirés |
+| A7 | 2026-11-10 | ADR-161, décidé par Killian | PARTIE 33 : les guides de documentation passent de la racine à `docs/guides/` ; la racine garde README (avec le plan du dépôt), LICENSE, NOTICE, CHANGELOG et le build ; dossiers de jeu sous `.runs/`, contenu personnel sous `local/`, tous deux ignorés |
 
 ---
 

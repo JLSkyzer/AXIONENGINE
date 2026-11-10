@@ -83,7 +83,7 @@ Les formes des colliders d'un corps dynamique sont des primitives, des enveloppe
 
 Au schéma 2 (`"schema": 2`, format complet dans
 [`docs/schema/definition-2.json`](docs/schema/definition-2.json)), une definition peut découper son
-assembly en plusieurs corps reliés par des joints (C-34, [ADR-151](docs/decisions/ADR-151.md)). La
+assembly en plusieurs corps reliés par des joints (C-34, [ADR-151](../decisions/ADR-151.md)). La
 porte d'essai, que [`tools/assets/joints_essai.py`](tools/assets/joints_essai.py) génère avec un
 pendule, une chaîne et une grille, en donne un exemple :
 

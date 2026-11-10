@@ -1,6 +1,6 @@
 ﻿# AXION ENGINE — plan de travail
 
-Source de vérité : `cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md` (8270 lignes,
+Source de vérité : `docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md` (8270 lignes,
 FINAL / FROZEN). Ne jamais le lire en entier : passer par
 [l'index](../docs/spec/INDEX.md) et lire la plage de lignes utile.
 
@@ -62,7 +62,7 @@ assemble, une fois la frontière FFI posée en M0.4.
 
 ## M0 — Squelette et frontière native
 
-Fiche du jalon : `sed -n '7182,7192p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+Fiche du jalon : `sed -n '7182,7192p' docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 Composants : C-01..C-05, C-10, C-11, C-13, C-14 (contrôle).
 Tests : T-100..T-103, T-110..T-114, T-120..T-124, T-130..T-133, T-150..T-152.
@@ -331,7 +331,7 @@ Tâches :
 ### Definition of Done de M0
 
 Prononcée le 2026-09-10. Acceptance du CDC (PARTIE 37.2) :
-`sed -n '7182,7191p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+`sed -n '7182,7191p' docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 - [x] **JAR installable.** `validateJar` : 62 entrées, `META-INF/mods.toml`,
       `axion.mixins.json`, une bibliothèque native avec son empreinte, aucune
@@ -369,7 +369,7 @@ que sur une seule. Rien d'autre du critère d'acceptance n'est en suspens.
 
 ## M1 — Assets, noyau déterministe, jobs
 
-Fiche : `sed -n '7193,7201p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+Fiche : `sed -n '7193,7201p' docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 - [x] **C-12 — Job System.** Crate `ax-jobs`, 33 tests.
       - pool **dédié** au-dessus de `rayon` (R-470). Le pool global est partagé
@@ -1262,7 +1262,7 @@ Fiche : `sed -n '7193,7201p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 ### Definition of Done de M1
 
 Prononcée le 2026-10-04, sur décision de Killian. Acceptance du CDC (PARTIE 37.2) :
-`sed -n '7193,7201p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+`sed -n '7193,7201p' docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 - [x] **Fixtures compilées, golden files stables.** T-590 relit le fichier de
       référence v1.1 et ceux des compilateurs 6 et 7 ; T-591 le reproduit à l'octet ;
@@ -2700,7 +2700,7 @@ substituable sans changer rapier »).
 
 ### Definition of Done de M3 — vérification du 2026-10-12, prononcée par Killian le 2026-10-17
 
-Grille du CDC §37.3 (`sed -n '7320,7366p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`), vérifiée sur le
+Grille du CDC §37.3 (`sed -n '7320,7366p' docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md`), vérifiée sur le
 commit c6e1369 (CI verte). Deux audits des composants, physique et rendu, en lecture seule ; leurs
 constats repris ici ont été recoupés sur les points décisifs. **Verdict : M3 ne peut pas être prononcé
 en l'état.**
@@ -2964,7 +2964,7 @@ amortissement dans l'eau, `/axion remove`).
 ## M4 — Réseau, animation, culling/LOD, joints, persistance (ouvert le 2026-10-17)
 
 Ouvert le 2026-10-17, au prononcé de M3. Fiche du jalon (PARTIE 37.2) :
-`grep -n '^### M4 ' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md` — C-34, C-37, C-51, C-52, C-64, C-65,
+`grep -n '^### M4 ' docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md` — C-34, C-37, C-51, C-52, C-64, C-65,
 C-66. Livrable : multijoueur fonctionnel, objets animés, LODés, persistés. Acceptance : bande passante
 sous plafond ; interpolation fluide à 200 ms et 20 % de perte ; joints conformes ; animation conforme
 glTF ; sauvegarde exacte. Tests : T-330..T-334, T-360..T-368, T-410..T-425, T-430..T-437,
@@ -3578,7 +3578,7 @@ sources procédurales de véhicule (M5, T-365).
 ## M5 — Véhicules, sièges, attaches, gouverneur, overlay (ouvert le 2026-11-05)
 
 Ouvert le 2026-11-05, au prononcé de M4. Fiche du jalon (PARTIE 37.2) :
-`grep -n '^### M5 ' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md` — C-33, C-48, C-53, C-73, C-77. Livrable :
+`grep -n '^### M5 ' docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md` — C-33, C-48, C-53, C-73, C-77. Livrable :
 véhicule pilotable en multijoueur avec prédiction ; remorquage. Acceptance : 10 tests véhicules ;
 montée/descente sûres ; entrées validées ; attaches persistées ; gouverneur qui baisse et remonte les
 niveaux, cause affichée. Tests : T-320..T-329, T-415..T-417, T-440..T-444, T-570, T-890..T-895,
@@ -3789,7 +3789,7 @@ du monde), précisions de CAP-01 à 04, 07, 11, 18 et 27, six axes de plus à la
 
 ## Jalons suivants
 
-Fiches complètes : `sed -n '7180,7319p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+Fiches complètes : `sed -n '7180,7319p' docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 - [x] **M1** Assets, noyau déterministe, jobs — C-12, C-15, C-16, C-20, C-21, C-22, C-24, C-71
       · les huit composants sont faits ; l'acceptance attend le fuzzing et la CI

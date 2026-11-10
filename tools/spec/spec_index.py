@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SPEC = ROOT / "cdc" / "AXIONENGINE_Cahier_des_Charges_v1.0.md"
+SPEC = ROOT / "docs" / "spec" / "AXIONENGINE_Cahier_des_Charges_v1.0.md"
 OUT_INDEX = ROOT / "docs" / "spec" / "INDEX.md"
 OUT_IDMAP = ROOT / "docs" / "spec" / "ID-MAP.tsv"
 

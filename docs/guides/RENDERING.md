@@ -60,7 +60,7 @@ Le backend vanilla n'a pas de PBR : les `RenderType` de Minecraft n'en exposent 
 ## Culling, niveaux de détail et instancing
 
 Chaque frame, le client remet au natif les assemblies que Minecraft lui donne à dessiner, leur pose
-relative à la caméra, et le natif décide (C-64, C-65, [ADR-154](docs/decisions/ADR-154.md)) :
+relative à la caméra, et le natif décide (C-64, C-65, [ADR-154](../decisions/ADR-154.md)) :
 
 - **Culling** : une assembly au-delà de `render.max_distance`, ou entière hors du champ, n'est pas
   dessinée. Une assembly aux corps articulés écartés de leur repos, ou marquée `noCulling`, l'est
@@ -80,7 +80,7 @@ relative à la caméra, et le natif décide (C-64, C-65, [ADR-154](docs/decision
 
 ## Animation et skinning
 
-Une assembly animée joue des clips que le serveur commande (C-37, [ADR-155](docs/decisions/ADR-155.md)) ;
+Une assembly animée joue des clips que le serveur commande (C-37, [ADR-155](../decisions/ADR-155.md)) ;
 le client pousse l'état reçu au natif, qui évalue la pose à chaque frame et rend la matrice de chaque
 dessin. Un mesh skinné suit la palette de ses os — `monde(node de l'os) × liaison inverse` —, quatre os
 par sommet, et se pose à la racine de l'assembly :
