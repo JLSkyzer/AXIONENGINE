@@ -143,6 +143,7 @@ Q-xx      niveau de qualité
 AC-xx     critère de correction (PARTIE 38)
 PF-xx     critère de performance (PARTIE 38)
 EX-xx     critère d'extensibilité (PARTIE 38)
+CAP-xx    capacité exigée hors du texte gelé (ANNEXE A.7, ADR-160)
 ```
 
 Toute implémentation DOIT citer les identifiants concernés dans l'en-tête de module et dans les messages de commit :
@@ -7174,6 +7175,7 @@ COMPATIBILITÉ
 - R-2391 : chaque jalon **préserve intégralement** les fonctionnalités des précédents.
 - R-2392 : chaque jalon a des critères d'acceptation vérifiables mécaniquement.
 - R-2393 : aucune fonctionnalité `STABLE` ni `EXPERIMENTAL` n'est introduite sans tests, métriques, budget, fallback et documentation.
+- R-2394 : un jalon n'est pas prononcé tant qu'une capacité `CAP-xx` qui lui est affectée en ANNEXE A.7 reste ouverte ; l'ADR d'un chantier relit l'annexe et dit lesquelles il tient (ADR-160).
 
 ## 37.2 Jalons
 
@@ -8128,6 +8130,55 @@ VARIABLE      var.<n>   (définie par l'API ou par une action déclarative)
 | Noyau déterministe | opérations bit-identiques client/serveur dans la matrice de validation (5.12bis) |
 | Empreinte de champ | hachage 64 bits détectant une divergence |
 | Attache | liaison entre deux assemblies par sockets |
+
+## ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+
+Ajoutée le 2026-11-10 (ADR-160), à la demande de Killian : deux audits ont relevé ce que le moteur ne permettait
+pas à un créateur de contenu. Chaque capacité est une exigence de la V1.0, au même titre qu'une `R-xxx`. Sa
+preuve et son origine sont dans ADR-160. Le jalon est proposé, jusqu'à ce que Killian le confirme (ADR-160, Q1).
+Un jalon n'est pas prononcé tant qu'une capacité qui lui est affectée reste ouverte (R-2394).
+
+| CAP | Capacité exigée | Jalon |
+|---|---|---|
+| CAP-01 | Entrées libres vers un état : contrôles de siège ouverts, drapeaux de `VehicleInput`, touches déclarées par la definition (phares, klaxon, clignotants, sirène, contact) | M5 |
+| CAP-02 | Variables et événements de contenu : le système derrière `set_variable` et `emit_event`, lisible comme source (`var.*`) et par l'API | M5 |
+| CAP-03 | Une variable règle un paramètre physique (couple, freinage, adhérence, masse). Contrôleurs déclaratifs, avec la contradiction R-1083/R-1170/R-1171 tranchée (Q3) | M5 |
+| CAP-04 | Canaux procéduraux de visibilité, d'intensité émissive et de couleur ; `set_material_param` piloté par une source | M5 |
+| CAP-05 | Pistes dans le temps : cycles (clignotant, gyrophare), lissage et durées, poids pilotables, masque d'os, fondu, grammaire de `trigger` | M5 |
+| CAP-06 | Lumière qui éclaire le décor : sémantique du rôle `light` (phares, feux, gyrophare, éclairage intérieur) | M9 |
+| CAP-07 | Son : sous-système data-driven (moteur selon régime et charge, contacts et roulement par matériau, klaxon, sirène, sons continus paramétrés, son 3D, Doppler) | M8 |
+| CAP-08 | Particules d'effet : échappement, poussière, éclaboussures, étincelles, fumée | M8 |
+| CAP-09 | Traces au sol : décalques posés sur le monde (pneus, freinage) | M9 |
+| CAP-10 | Caméra de véhicule (qui suit, cockpit) et tableau de bord à l'écran | M5 |
+| CAP-11 | API d'addons utilisable : fournisseur, `EventBus`, accesseurs des événements, contrats des interfaces que 23.2 nomme sans les spécifier | M5, puis chaque jalon pour ses services |
+| CAP-12 | Énergie (carburant, batterie, panne) et démarrage du moteur (`engine.running` produit) | M5 |
+| CAP-13 | Pose et échelle des occupants, par siège, caméra à la première personne comprise | M5 |
+| CAP-14 | Joueurs et entités sur une assembly : plateau, pont ou ascenseur qui porte un joueur debout, poussée sur le joueur, masse de son proxy. La contradiction 10.2/10.8 est tranchée (Q2) | M5 |
+| CAP-15 | Attaches déclarables (type accepté, force, transferts, seuil de désalignement) et ancrage au monde | M5 (C-48) |
+| CAP-16 | Paramètres des interactions (`attach`, `detach`, `repair`, `emit_event`, `set_variable`, `open_container`) et capteurs déclarables (`SENSOR`) | M5 |
+| CAP-17 | Propulsion hors roues (poussée, hélice, gouvernes, rotor) et entrées de tangage, roulis et lacet | M5 (Q6) |
+| CAP-18 | Flottabilité paramétrable : points de flottaison, `gravity_scale` au schéma, densité par fluide | M5 (Q6) |
+| CAP-19 | Équilibre des deux-roues ; véhicules sur rails | M5 (Q6) |
+| CAP-20 | Usure des pneus dans le temps ; la météo agit sur l'adhérence | M5 |
+| CAP-21 | Dégâts aux entités percutées réglables par definition et par part (aujourd'hui deux booléens globaux) | M6 |
+| CAP-22 | Casse de blocs par une assembly, déclarée par la definition (10.8 l'annonce sans champ ni règle) | M7 |
+| CAP-23 | Feu, fumée et explosion émis par le contenu | M7 |
+| CAP-24 | Débris : ramassage, `consume_debris`, mode `dangling` déclarables | M7 |
+| CAP-25 | Rendu de détail : textures animées, écrans avec texte, vrais miroirs | M9 |
+| CAP-26 | Addon Blender pour les versions en usage (5.x ; R-920 s'arrête à 4.x) | M9 (C-75) |
+| CAP-27 | Boucle de jeu : item et onglet créatif (dès M5), artisanat, coffre et inventaire, propriété et clés, livrées et variantes (`TINTABLE` au schéma), pièces modulaires, permissions par joueur | M10 |
+| CAP-28 | Blocs et items à modèle AXION : forme de collision déclarée (R-721), identité de bloc par contenu, multiblocs | M10 |
+| CAP-29 | Équipement porté par un joueur, armes et outils physiques, créatures (déplacement, IA), ragdolls | M10 |
+| CAP-30 | Effecteurs sur le monde (labour, forage, récolte) et capabilities Forge (items, fluides, énergie) | M10 |
+| CAP-31 | Pilotage autonome et trajets | M10 |
+| CAP-32 | Logique sans Java : conditions déclaratives, redstone, compatibilité KubeJS et CraftTweaker (R-581 tranché, Q4) | M10, M11 |
+| CAP-33 | Rechargement à chaud des assemblies déjà au monde (elles gardent leur definition compilée, ADR-156) | M5 |
+| CAP-34 | Joints engrenage et crémaillère ; commandes d'administration (téléporter, échelle, renommer, figer) ; masse variable ; échelle par definition | M5 |
+| CAP-35 | Chunks non chargés (traversée, chargement par un véhicule) et changement de dimension (R-023). 26.3 et A.5 sont tranchés (Q5) | M11 |
+| CAP-36 | Documentation créateur : les fichiers de la PARTIE 33, chaque jalon pour ce qu'il livre | chaque jalon, complète en M12 |
+
+Hors périmètre, par décision de Killian du 2026-11-10 : construire en jeu des véhicules ou des objets à partir
+de blocs de Minecraft. AXION importe des modèles 3D (ADR-160 D2).
 
 ---
 

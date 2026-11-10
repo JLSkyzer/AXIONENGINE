@@ -20,7 +20,7 @@ bloc gaspille la session. Deux index générés servent à n'en lire que l'utile
 
 ```bash
 grep -n "PARTIE 14" docs/spec/INDEX.md      # trouver la plage de lignes
-sed -n '3586,3965p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md
+sed -n '3587,3966p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md
 grep -P '^C-42\t' docs/spec/ID-MAP.tsv      # trouver un identifiant
 ```
 
@@ -47,9 +47,14 @@ testés. Un travail n'est terminé que quand sa Definition of Done est cochée.
 - Aucune dépendance ni import de RUSTFORGE-X : le projet en est indépendant.
 - Aucune classe hors de `dev.axion.forge` n'importe `net.minecraftforge.*`
   (R-401, T-020).
+- Aucune capacité exigée oubliée : avant tout ADR de chantier, relire l'ANNEXE A.7
+  du CDC (`CAP-01` à `CAP-36`, [ADR-160](docs/decisions/ADR-160.md)) et dire celles
+  que le chantier tient. Un jalon ne se prononce pas tant qu'une capacité qui lui
+  est affectée reste ouverte (R-2394). Confronter aussi la fiche du chantier à ce
+  qu'un créateur fera du sujet : un manque se propose, il ne se tait pas.
 
 La liste complète des 25 interdictions et des 14 obligations est dans le CDC :
-`sed -n '8175,8232p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`.
+`sed -n '8226,8283p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`.
 
 ## Choix du modèle
 

@@ -24,7 +24,7 @@ grep -n "PARTIE 14" docs/spec/INDEX.md
 On lit ensuite exactement cette plage :
 
 ```bash
-sed -n '3586,3965p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md
+sed -n '3587,3966p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md
 ```
 
 **Trouver un identifiant** (`R-1220`, `C-42`, `T-808`, `INV-11`, `ADR-011`) :
@@ -52,7 +52,7 @@ Les familles d'identifiants sont définies en PARTIE 0.4 : `R` exigence,
 
 ## 2. La boucle de travail
 
-Imposée par le CDC (`sed -n '8159,8173p' ...`) :
+Imposée par le CDC (`sed -n '8210,8224p' ...`) :
 
 ```
 READ SPEC -> INSPECT REPOSITORY -> PLAN -> IMPLEMENT -> BUILD -> TEST -> FIX
@@ -66,7 +66,7 @@ En pratique :
 2. Après chaque implémentation, builder **et** exécuter les tests immédiatement.
 3. Ne jamais empiler plusieurs composants non testés.
 4. Un travail n'est pas terminé tant que sa Definition of Done n'est pas cochée
-   (`sed -n '7318,7364p' ...`).
+   (`sed -n '7320,7366p' ...`).
 5. Chaque jalon se termine par un JAR installable et jouable.
 
 L'état d'avancement vit dans [`tasks/todo.md`](../tasks/todo.md), les pièges déjà
@@ -115,7 +115,7 @@ Régénèrent ce qui dérive de la source unique de configuration :
 
 ## 4. Ce qui est interdit
 
-La liste normative complète est en `sed -n '8175,8213p' ...`. Les interdictions
+La liste normative complète est en `sed -n '8226,8264p' ...`. Les interdictions
 qui se violent le plus facilement sans y penser :
 
 - **Aucun `TODO`, `FIXME`, `todo!()`, `unimplemented!()`, stub ni implémentation
@@ -140,7 +140,7 @@ qui se violent le plus facilement sans y penser :
 
 ## 5. Ce qui est obligatoire
 
-Liste complète en `sed -n '8214,8232p' ...`. En particulier :
+Liste complète en `sed -n '8265,8283p' ...`. En particulier :
 
 - Tout commit cite ses identifiants : `feat(C-42): ... [R-1220, T-810]`.
 - Tout composant expose ses métriques, son budget et son niveau de maturité.

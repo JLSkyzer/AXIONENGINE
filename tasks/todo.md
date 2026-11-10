@@ -62,7 +62,7 @@ assemble, une fois la frontière FFI posée en M0.4.
 
 ## M0 — Squelette et frontière native
 
-Fiche du jalon : `sed -n '7180,7190p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+Fiche du jalon : `sed -n '7182,7192p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 Composants : C-01..C-05, C-10, C-11, C-13, C-14 (contrôle).
 Tests : T-100..T-103, T-110..T-114, T-120..T-124, T-130..T-133, T-150..T-152.
@@ -331,7 +331,7 @@ Tâches :
 ### Definition of Done de M0
 
 Prononcée le 2026-09-10. Acceptance du CDC (PARTIE 37.2) :
-`sed -n '7180,7189p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+`sed -n '7182,7191p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 - [x] **JAR installable.** `validateJar` : 62 entrées, `META-INF/mods.toml`,
       `axion.mixins.json`, une bibliothèque native avec son empreinte, aucune
@@ -369,7 +369,7 @@ que sur une seule. Rien d'autre du critère d'acceptance n'est en suspens.
 
 ## M1 — Assets, noyau déterministe, jobs
 
-Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+Fiche : `sed -n '7193,7201p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 - [x] **C-12 — Job System.** Crate `ax-jobs`, 33 tests.
       - pool **dédié** au-dessus de `rayon` (R-470). Le pool global est partagé
@@ -1262,7 +1262,7 @@ Fiche : `sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 ### Definition of Done de M1
 
 Prononcée le 2026-10-04, sur décision de Killian. Acceptance du CDC (PARTIE 37.2) :
-`sed -n '7191,7199p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+`sed -n '7193,7201p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 - [x] **Fixtures compilées, golden files stables.** T-590 relit le fichier de
       référence v1.1 et ceux des compilateurs 6 et 7 ; T-591 le reproduit à l'octet ;
@@ -2700,7 +2700,7 @@ substituable sans changer rapier »).
 
 ### Definition of Done de M3 — vérification du 2026-10-12, prononcée par Killian le 2026-10-17
 
-Grille du CDC §37.3 (`sed -n '7318,7364p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`), vérifiée sur le
+Grille du CDC §37.3 (`sed -n '7320,7366p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`), vérifiée sur le
 commit c6e1369 (CI verte). Deux audits des composants, physique et rendu, en lecture seule ; leurs
 constats repris ici ont été recoupés sur les points décisifs. **Verdict : M3 ne peut pas être prononcé
 en l'état.**
@@ -3652,13 +3652,107 @@ T-980..T-984.
       - [x] Tranche 2b (2026-11-10) : véhicule posé à sa hauteur de modèle, hitbox réelle par pièce, roues à l'image (ABI 19,
             protocole 5, descripteur 4, `SET_POSE`, `ProceduralTracks`).
       - [x] Tranche 2 (2026-11-09) : rayons, suspension et pneus au sous-pas, réveil par les tuiles, overlays ; T-320, T-325,
-            T-326 ; premier film (`runFilmVehicule`). Avant la tranche 3 : l'avant du buggy d'exemple est en `+z` (§6.5 : `-z`).
+            T-326 ; premier film (`runFilmVehicule`). L'avant du buggy d'exemple était en `+z` : retourné à la tranche 3.
+      - [x] Tranche 3 (2026-11-10) : pilotable au serveur. Moteur, embrayage automatique, boîtes `manual`, `automatic`
+            (marche arrière par le frein tenu à l'arrêt) et `direct`, différentiels, direction d'Ackermann, freins, frein
+            de stationnement sans conducteur (Q3), aéro, ABS, antipatinage et stabilité ; micro-pas de 1/720 s ;
+            `SET_VEHICLE_INPUT` (ABI 20), `DEFN` 3, touches de boîte. T-321..T-324, T-327, T-328 en Rust, GameTest par le
+            vrai canal des entrées ; film conduit au clavier, écrit mais pas encore tourné. Buggy d'exemple retourné.
+      - [ ] Relevé à la tranche 3 : l'anti-roulis (R-1061, D5) est compilé et validé, mais le pas ne l'applique pas encore.
+      - [ ] Relevé au film du 2026-11-10 : le passager avait un tick de retard sur la carrosserie (75 cm à 15 m/s) et
+            ne tournait pas avec elle. Corrigé : `SeatedPassengers` le pose à chaque image au siège de la pose dessinée ;
+            le film le juge (écart ≤ 2 cm, regard ≤ 0,5°), mutation rouge à 0,98 m. Côté serveur, le lacet d'un passager
+            non joueur ne suit pas encore le véhicule.
+      - [ ] Échelle des occupants (Killian, 2026-11-10 : « scale la voiture ») : un joueur assis a la tête 1,29 m au-dessus
+            du coussin ; une voiture à l'échelle réelle ne le contient pas. La Charger locale est passée à ×1,5. Aucun
+            champ ne règle la pose ni l'échelle d'un occupant (audit, point 13).
+
+
+---
+
+## Manques du CDC relevés le 2026-11-10 — inscrits au CDC, à ne jamais oublier
+
+**Inscrits** au CDC comme `CAP-01` à `CAP-36` (ANNEXE A.7) par [ADR-160](../docs/decisions/ADR-160.md), qui en
+donne le découpage, le jalon proposé et les questions à Killian (Q1 à Q6 : placement, joueurs portés, variables et
+physique, logique sans Java, chunks, scission de M5). R-2394 : un jalon n'est pas prononcé tant qu'une capacité qui
+lui est affectée reste ouverte. Les points ci-dessous sont les constats des deux audits, avec leurs preuves.
+
+- [ ] **Placement des capacités dans les jalons** : à confirmer par Killian (ADR-160, Q1 à Q6).
+
+Exigence de Killian (2026-11-10) : « notre moteur et API doit leur permettre de tout faire », « aucune
+impossibilité », de l'extérieur à l'intérieur. Audit en lecture du CDC, du schéma, des ADR et du code, chaque
+point avec sa preuve ; classés par ce qu'ils bloquent pour un créateur. Aucun n'a encore de jalon.
+
+1. [ ] **Entrées personnalisées → état** : `VehicleInput.flags` sans drapeau défini, contrôles de siège en liste fermée
+       de 6, `set_variable`/`emit_event` sans système de variables ni bus d'événements de contenu (ADR-158). Bloque
+       phares, klaxon, clignotants, sirène, contact, essuie-glaces, grues pilotées.
+2. [ ] **Son** : aucun sous-système (moteur au régime, contacts par matériau, sons continus, 3D, Doppler) ; seuls
+       `sound_group` (DM-07) et une phrase de R-1041.
+3. [ ] **API d'addons utilisable** : `AxionApi.get()` lève, pas d'EventBus, 18 événements sans accesseurs (ADR-137).
+4. [ ] **Lumière qui éclaire le décor** (rôle `light` et drapeau `LIGHT` sans règle) ; canaux procéduraux de
+       visibilité, d'intensité émissive et de couleur (`ProceduralTracks` : rotation et translation seulement) ;
+       `set_material_param` sans source.
+5. [ ] **Particules d'effet** (échappement, poussière, étincelles, fumée ; C-36 ne fait que tissus et cordes) et
+       **traces de pneus au sol** (décalques en espace objet seulement).
+6. [ ] **Caméra de véhicule** (suivi, cockpit) et **tableau de bord à l'écran** (C-73 n'est qu'un overlay de diagnostic).
+7. [ ] **Boucle de jeu** : item et onglet créatif, artisanat, inventaire (`open_container` sans spécification),
+       propriété et clés, livrées et variantes (`TINTABLE` sans champ), pièces modulaires, permissions par joueur.
+8. [ ] **Propulsion hors roues** (poussée, gouvernes, rotor : bateaux, avions, hélicoptères), **rails**, **équilibre
+       des motos**.
+9. [ ] **Énergie** (carburant, batterie, panne) et **démarrage du moteur** (`engine.running` sans producteur).
+10. [ ] **Logique sans Java** (conditions, redstone, KubeJS/CraftTweaker) : contraire à R-581, à arbitrer.
+11. [ ] **Destruction et environnement** : casse de blocs annoncée sans champ ni règle (10.8), feu et explosion émis
+        par le contenu, ragdolls, usure des pneus dans le temps, météo sans effet sur l'adhérence.
+12. [ ] **Rendu de détail** : matériaux animés (texture qui défile, écrans, texte), vrais miroirs.
+13. [ ] **Occupants et objets portés** : pose et échelle des passagers, équipement sur un joueur, armes et outils
+        physiques, multiblocs, créatures avec IA.
+14. [ ] **Documentation créateur** : aucun des 17 fichiers exigés n'existe (déjà en dette, M12).
+
+Incohérences relevées : `pathfinding_blocker` (R-1930) absent du schéma de definition ; le CDC nomme
+`deformation_extras` (14.8), le schéma `deformation.extras`.
+
+**Second audit (2026-11-10)**, dans l'autre sens : les promesses du CDC sans chemin, et ce qu'offrent DynamX,
+Immersive Vehicles (MTS), Valkyrien Skies 2 et Create (pages publiques lues, URL au rapport). Nouveaux manques,
+classés de même :
+
+15. [ ] **Joueurs et entités face aux assemblies** : pas de plateforme ni de plateau qui porte un joueur debout
+        (10.2 promet des plateformes cinématiques, 10.8 interdit de modifier le mouvement d'un joueur non assis ;
+        `AxionEntity` ne redéfinit pas `canBeCollidedWith`) ; le proxy du joueur a une masse infinie.
+16. [ ] **Attaches non déclarables, pas d'ancrage au monde** (C-48, R-941, DM-17) : `sockets` n'est qu'une liste de
+        noms, sans type accepté, force, transfert ni seuil ; `AttachmentDesc` relie toujours deux assemblies.
+        Urgent : C-48 est dans M5.
+17. [ ] **Variable → paramètre physique** (MTS `variableModifiers`) et contradiction à trancher : R-1083
+        (`torque_scale`) et R-1171 (`engine_power`) contre la liste fermée de R-1170 et R-1171 lui-même.
+18. [ ] **Animations** : poids pilotables, masque d'os, fondu, grammaire de `trigger`, cycles et lissage dans le
+        temps (la courbe `map` est tenue à ses bouts : `time.seconds` ne peut pas clignoter).
+19. [ ] **Blocs et items** : la `VoxelShape` « obligatoire » (R-721) n'a aucun champ ; pas d'identité de bloc par
+        contenu (un seul bloc-entité `axion:model`, R-720 ; les registres de Forge sont figés avant les datapacks).
+20. [ ] **Paramètres des interactions** : `attach`, `detach`, `repair`, `emit_event`, `set_variable`,
+        `open_container` sans aucun paramètre au schéma.
+21. [ ] **Capteurs** (`SENSOR`, DM-06, 10.7) : aucun extras ni champ ne pose le drapeau.
+22. [x] ~~Construction en jeu à partir de blocs~~ : **hors périmètre**, décision de Killian du 2026-11-10 (« on
+        importe des modèles 3d ») ; ADR-160 D2. Un audit futur ne le repropose pas.
+23. [ ] **Flottabilité** : 8 coins de l'AABB seulement, pas de point de flottaison déclarable, `gravity_scale`
+        (DM-08) absent du schéma, une seule densité de fluide (lave comprise).
+24. [ ] **Chunks non chargés** traités comme solides et jamais chargés (véhicules rapides, convois) ; passage
+        d'une dimension à l'autre sans règle ni test (R-023).
+25. [ ] **Effecteurs sur le monde** (labour, forage) et **capabilities Forge** (items, fluides) pour l'automatisation.
+26. [ ] **Pilotage autonome** et trajets.
+27. [ ] **Rechargement à chaud** des assemblies déjà au monde (elles gardent leur definition compilée, ADR-156).
+28. [ ] **Débris** : ramassage, `consume_debris`, mode `dangling` sans champ (15.4, 16.4, R-1331).
+29. [ ] **Joints engrenage et crémaillère**, commandes d'administration (téléporter, échelle, renommer, figer),
+        masse variable, échelle par definition.
+30. [ ] **Interfaces de l'API** nommées sans contrat dans le CDC (23.2 : `PhysicsService`, `EventBus`,
+        `VehicleControl`…) ; addon Blender borné à 3.6 et 4.x (R-920) alors que Killian a la 5.2.
+
+Précision : les dégâts aux entités vanilla existent (R-614, ADR-123), mais en deux booléens globaux, sans réglage
+par definition ni par part.
 
 ---
 
 ## Jalons suivants
 
-Fiches complètes : `sed -n '7178,7317p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
+Fiches complètes : `sed -n '7180,7319p' cdc/AXIONENGINE_Cahier_des_Charges_v1.0.md`
 
 - [x] **M1** Assets, noyau déterministe, jobs — C-12, C-15, C-16, C-20, C-21, C-22, C-24, C-71
       · les huit composants sont faits ; l'acceptance attend le fuzzing et la CI
@@ -3724,7 +3818,7 @@ ses critères vérifiés **mécaniquement**.
       création de contenu, référence technique, développement), pas par ordre
       alphabétique ; le tableau est dans l'ADR.
 - [ ] **`docs/decisions/`.** Le CDC veut une copie des ADR-001..ADR-026, qui ne
-      vivent aujourd'hui que dans le CDC (`sed -n '6891,7004p' ...`). Les ADR
+      vivent aujourd'hui que dans le CDC (`sed -n '6892,7005p' ...`). Les ADR
       propres au dépôt commencent à ADR-100 pour éviter toute collision.
 - [ ] **Plateformes non vérifiées.** L'acceptance de M0 demande un boot
       `READY` « sur les plateformes ». Seule `windows-x86_64` a été lancée : ni

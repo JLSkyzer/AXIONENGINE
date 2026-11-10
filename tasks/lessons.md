@@ -2138,3 +2138,77 @@ Une scène filmée juge elle-même ce qu'elle prétend montrer, et le tournage �
 Une légende écrite à l'avance ment dès que la scène tourne autrement. `FilmDuVehicule.jugement` exige que le
 véhicule atteigne le mur et que le véhicule garé tombe ; et les images extraites du MP4 se regardent avant d'annoncer
 le film. Cause ce jour-là : une pente de blocs est un escalier à marches plates pour un rayon vertical.
+
+## 2026-11-10 | Une roue intégrée à 60 Hz patinait d'un glissement que rien ne demandait
+
+**Ce qui a mal tourné.** Le premier schéma de la tranche 3 d'ADR-159 intégrait la rotation des roues au sous-pas de
+1/60 s, la force du pneu bornée pour ne pas inverser le glissement. Le calcul montre qu'en régime, la borne laisse un
+glissement de `F · dt / m_roue` : près de 5 m/s au plein couple d'une berline en première, assez pour passer en queue
+de courbe et patiner sans fin.
+
+**Cause.** La roue est légère, prise entre deux masses lourdes (moteur ramené par la boîte, véhicule par le pneu) : un
+schéma explicite à ce pas ne voit pas l'équilibre du pneu.
+
+**Règle.** Les rotations des roues, du moteur et de l'embrayage s'intègrent en micro-pas (au plus 1/720 s), le véhicule
+au sous-pas ; chaque force y garde sa borne de non-inversion. Avant de juger un schéma de frottement, calculer le
+glissement qu'il laisse en régime.
+
+## 2026-11-10 | Un véhicule freiné remontait la pente : Rapier déplace un corps à sa vitesse moyenne
+
+**Ce qui a mal tourné.** Le pneu annulait la vitesse de son contact en fin de sous-pas, gravité comprise ; éveillé,
+un véhicule tenu par son frein à main remontait une pente de 10° à 1 cm/s. Sans la gravité, il la descendait.
+
+**Cause, mesurée.** Le solveur TGS de Rapier intègre gravité et positions en `num_solver_iterations` sous-itérations :
+la position avance à `v + g·dt·(k + 1)/2k`, et la vitesse lue après le pas n'est pas celle qui a déplacé le corps. Une
+impulsion posée avant le pas agit, elle, en entier dès la première sous-itération.
+
+**Règle.** Une impulsion qui doit annuler un déplacement vise la vitesse moyenne du pas Rapier, pas sa vitesse finale.
+Comparer `Δposition / dt` à la vitesse rapportée tranche la question en une mesure.
+
+## 2026-11-10 | `sed -i` sous Git Bash a converti un fichier CRLF en LF
+
+Une correction d'un mot par `sed -i` a réécrit tout `commands.rs` en LF. **Règle : un fichier CRLF ne se modifie que
+par l'outil d'édition ou par un script qui relit ses fins de ligne et les rend ; `file` le vérifie après coup.**
+
+## 2026-11-10 | Un record Java distingue `-0.0f` de `0.0f`
+
+`VehicleInput.ofKeys` rendait `steer = -left`, soit `-0.0` sans touche latérale : l'égalité d'un record (par
+`Float.compare`) le voyait différent de l'entrée nulle, et un test l'a relevé. **Règle : un flottant construit par
+négation et comparé par `equals` s'écrit `0f - x`.**
+
+## 2026-11-10 | Un film s'est jugé réussi sans montrer le véhicule
+
+**Ce qui a mal tourné.** La caméra du film, un `ArmorStand` hors du monde, suivait la voiture mais regardait toujours
+vers l'avant de la piste : aucune image ne montrait la Charger, et le bilan disait « réussi ».
+
+**Cause.** Pour une entité vivante, la vue suit la tête : `LivingEntity.getViewYRot` lit `yHeadRot`, pas `yRot`. Et
+le film ne jugeait que la physique, jamais ce qu'il filmait.
+
+**Règle.** Un film juge sa propre image : à chaque image capturée, l'entité de la caméra de la frame rendue
+(`gameRenderer.getMainCamera()`) et l'angle entre son regard et le sujet. Une caméra vivante s'oriente par sa tête.
+
+## 2026-11-10 | Le passager reculait sur son siège à mesure que la voiture accélérait
+
+**Ce qui a mal tourné.** À 15 m/s, le joueur assis apparaissait 75 cm derrière son siège, et son regard ne tournait
+pas avec la voiture ; ni le GameTest ni le banc ne le voyaient (ils comparent des positions de tick, au repos).
+
+**Cause.** L'assembly est dessinée à la pose de l'interpolation datée de l'image ; Minecraft dessine une entité entre
+ses deux derniers ticks. Posé au tick, le passager avait un tick de retard sur la carrosserie.
+
+**Règle.** Ce qui s'attache à une assembly au client — passagers, caméra du joueur assis — se pose à l'image, au début
+de `RenderTickEvent`, depuis la pose dessinée. Un contrôle de suivi se mesure en mouvement, dans le repère de la
+carrosserie dessinée ; sa mutation (l'appel retiré) doit le faire échouer : 0,98 m ici.
+
+## 2026-11-10 | ADR-159 a été écrit sans relever qu'aucune lumière, aucun son, aucune touche libre n'existait
+
+**Ce qui a mal tourné.** Le chantier véhicules a été découpé depuis sa seule fiche du CDC. Killian a dû relever que
+phares, clignotants, gyrophare et voyants n'avaient aucun chemin ; l'audit qui a suivi a trouvé quatorze manques
+du même ordre (son, API d'addons, entrées vers un état, caméra de véhicule…).
+
+**Cause.** Le CDC a été tenu pour complet. Un ADR de chantier n'y vérifiait que la cohérence interne, pas ce qu'un
+créateur de contenu attend du sujet.
+
+**Règle.** Avant l'ADR d'un chantier, confronter sa fiche à ce qu'un créateur fera du sujet — les mods de
+référence (DynamX, Immersive Vehicles…) et ce que le contenu de test montre (une voiture de police a des feux et une
+sirène) — et lister ce qui n'a ni champ, ni règle, ni composant. Un manque se propose, il ne se tait pas
+(exigence « aucune impossibilité », 2026-11-10).

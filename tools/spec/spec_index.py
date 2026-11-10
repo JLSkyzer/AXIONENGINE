@@ -40,6 +40,7 @@ ID_PATTERNS = {
     "AC": r"\bAC-\d{2}\b",
     "PF": r"\bPF-\d{2}\b",
     "EX": r"\bEX-\d{2}\b",
+    "CAP": r"\bCAP-\d{2}\b",
 }
 
 
