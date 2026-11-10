@@ -8137,7 +8137,8 @@ Ajoutée le 2026-11-10 (ADR-160), à la demande de Killian : deux audits ont rel
 pas à un créateur de contenu. Chaque capacité est une exigence de la V1.0, au même titre qu'une `R-xxx`. Sa
 preuve et son origine sont dans ADR-160. Le jalon est proposé, jusqu'à ce que Killian le confirme (ADR-160, Q1).
 Un jalon n'est pas prononcé tant qu'une capacité qui lui est affectée reste ouverte (R-2394), et chaque
-jalon s'ouvre par un audit par scénarios dont les trouvailles s'ajoutent ici (ADR-160 D3).
+jalon s'ouvre par un audit qui rejoue les visions déjà prises et en ajoute une nouvelle (ADR-160 D8) ;
+ses trouvailles s'ajoutent ici.
 
 | CAP | Capacité exigée | Jalon |
 |---|---|---|
