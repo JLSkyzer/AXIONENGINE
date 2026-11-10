@@ -8142,7 +8142,7 @@ Un jalon n'est pas prononcé tant qu'une capacité qui lui est affectée reste o
 |---|---|---|
 | CAP-01 | Entrées libres vers un état : contrôles de siège ouverts, drapeaux de `VehicleInput`, touches déclarées par la definition (phares, klaxon, clignotants, sirène, contact) | M5 |
 | CAP-02 | Variables et événements de contenu : le système derrière `set_variable` et `emit_event`, lisible comme source (`var.*`) et par l'API | M5 |
-| CAP-03 | Une variable règle un paramètre physique (couple, freinage, adhérence, masse). Contrôleurs déclaratifs, avec la contradiction R-1083/R-1170/R-1171 tranchée (Q3) | M5 |
+| CAP-03 | Une variable règle un paramètre physique (couple, régime, rapports, freinage, adhérence, masse). Contrôleurs déclaratifs, avec la contradiction R-1083/R-1170/R-1171 tranchée (Q3). Le réglage vaut pour une instance, s'applique à chaud, se sauvegarde et se réplique, prédiction comprise (D6) | M5 |
 | CAP-04 | Canaux procéduraux de visibilité, d'intensité émissive et de couleur ; `set_material_param` piloté par une source | M5 |
 | CAP-05 | Pistes dans le temps : cycles (clignotant, gyrophare), lissage et durées, poids pilotables, masque d'os, fondu, grammaire de `trigger` | M5 |
 | CAP-06 | Lumière qui éclaire le décor : sémantique du rôle `light` (phares, feux, gyrophare, éclairage intérieur) | M9 |
@@ -8166,14 +8166,14 @@ Un jalon n'est pas prononcé tant qu'une capacité qui lui est affectée reste o
 | CAP-24 | Débris : ramassage, `consume_debris`, mode `dangling` déclarables | M7 |
 | CAP-25 | Rendu de détail : textures animées, écrans avec texte, vrais miroirs | M9 |
 | CAP-26 | Addon Blender pour les versions en usage (5.x ; R-920 s'arrête à 4.x) | M9 (C-75) |
-| CAP-27 | Boucle de jeu : item et onglet créatif (dès M5), artisanat, coffre et inventaire, propriété et clés, livrées et variantes (`TINTABLE` au schéma), pièces modulaires, permissions par joueur | M10 |
+| CAP-27 | Boucle de jeu : item et onglet créatif (dès M5), artisanat, coffre et inventaire, propriété et clés, livrées et variantes (`TINTABLE` au schéma), pièces modulaires (une pièce remplacée apporte ses caractéristiques et son modèle, aux garanties de D6), permissions par joueur | M10 |
 | CAP-28 | Blocs et items à modèle AXION : forme de collision déclarée (R-721), identité de bloc par contenu, multiblocs | M10 |
 | CAP-29 | Équipement porté par un joueur, armes et outils physiques, créatures (déplacement, IA), ragdolls | M10 |
 | CAP-30 | Effecteurs sur le monde (labour, forage, récolte) et capabilities Forge (items, fluides, énergie) | M10 |
 | CAP-31 | Pilotage autonome et trajets | M10 |
 | CAP-32 | Logique sans Java : conditions déclaratives, redstone, compatibilité KubeJS et CraftTweaker (R-581 tranché, Q4) | M10, M11 |
 | CAP-33 | Rechargement à chaud des assemblies déjà au monde (elles gardent leur definition compilée, ADR-156) | M5 |
-| CAP-34 | Joints engrenage et crémaillère ; commandes d'administration (téléporter, échelle, renommer, figer) ; masse variable ; échelle par definition | M5 |
+| CAP-34 | Joints engrenage et crémaillère ; commandes d'administration (téléporter, échelle, renommer, figer) ; masse variable (aux garanties de D6) ; échelle par definition | M5 |
 | CAP-35 | Chunks non chargés (traversée, chargement par un véhicule) et changement de dimension (R-023). 26.3 et A.5 sont tranchés (Q5) | M11 |
 | CAP-36 | Documentation créateur : les fichiers de la PARTIE 33, chaque jalon pour ce qu'il livre | chaque jalon, complète en M12 |
 
