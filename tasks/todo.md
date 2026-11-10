@@ -3678,7 +3678,16 @@ donne le découpage, le jalon proposé et les questions à Killian (Q1 à Q7 : p
 physique, logique sans Java, chunks, scission de M5, périmètre de la prédiction). R-2394 : un jalon n'est pas prononcé tant qu'une capacité qui
 lui est affectée reste ouverte. Les points ci-dessous sont les constats des deux audits, avec leurs preuves.
 
-- [ ] **Placement des capacités dans les jalons** : à confirmer par Killian (ADR-160, Q1 à Q7).
+- [x] **Placement des capacités dans les jalons** : tranché par Killian le 2026-11-10 (ADR-160, Q1 à Q7) ; CDC
+      amendé (38.9, A3 à A6) : M5 scindé, **M5b** pour les véhicules hors roues ; joueurs portés ; chunks de la
+      trajectoire ; ensemble attaché prédit ; **le contenu passe par un mod Java et l'API** (D9), datapacks
+      supprimés, EX-02 et CAP-32 retirés, exemples gardés dans le mod AXION.
+- **Suite décidée par Killian, dans cet ordre** :
+  - [ ] Audit 4 : vision « développeur d'addon Java » (nouvelle), en rejouant V1 et V2 (ADR-160 D8).
+  - [ ] ADR de l'API d'enregistrement du contenu et du retrait des datapacks (D9), ce que deviennent les
+        fonctionnalités de M1 à M4 qu'il touche.
+  - [ ] Son code, exemples enregistrés par l'API interne d'AXION, tests et films migrés.
+  - [ ] Tranche 4 de C-33 (sources, volant, touches libres, canaux de lumière) écrite sur cette API.
 
 Exigence de Killian (2026-11-10) : « notre moteur et API doit leur permettre de tout faire », « aucune
 impossibilité », de l'extérieur à l'intérieur. Audit en lecture du CDC, du schéma, des ADR et du code, chaque

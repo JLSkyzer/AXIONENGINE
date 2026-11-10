@@ -1,21 +1,21 @@
 id	famille	ligne_def	ligne_1re	occurrences	section
-AC-01	AC	7473	7473	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-02	AC	7474	7474	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-03	AC	7475	7475	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-04	AC	7476	7476	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-05	AC	7477	7477	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-06	AC	7478	7478	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-07	AC	7479	7479	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-08	AC	7480	7480	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-09	AC	7481	7481	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-10	AC	7482	7482	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-11	AC	7483	7483	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-12	AC	7484	7484	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-13	AC	7486	7486	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-14	AC	7487	7487	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-15	AC	7489	7489	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-16	AC	7490	7490	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-17	AC	7491	7491	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-01	AC	7483	7483	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-02	AC	7484	7484	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-03	AC	7485	7485	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-04	AC	7486	7486	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-05	AC	7487	7487	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-06	AC	7488	7488	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-07	AC	7489	7489	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-08	AC	7490	7490	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-09	AC	7491	7491	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-10	AC	7492	7492	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-11	AC	7493	7493	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-12	AC	7494	7494	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-13	AC	7496	7496	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-14	AC	7497	7497	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-15	AC	7499	7499	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-16	AC	7500	7500	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-17	AC	7501	7501	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
 ADR-001	ADR	6896	2589	3	ADR-001 — glTF 2.0 / GLB comme format d'échange principal
 ADR-002	ADR	6899	1994	2	ADR-002 — Rapier3D comme moteur physique
 ADR-003	ADR	6902	3246	2	ADR-003 — Modèle de véhicule par raycast
@@ -42,11 +42,11 @@ ADR-023	ADR	6987	6987	1	ADR-023 — Niveaux de qualité et gouverneur
 ADR-024	ADR	6992	6992	1	ADR-024 — Décalques en espace objet, suivant la déformation
 ADR-025	ADR	6996	6996	2	ADR-025 — Système d'attache entre assemblies
 ADR-026	ADR	7000	6634	4	ADR-026 — Chemins accélérés GL 4.x optionnels sur une base GL 3.3
-ADR-123	ADR		7768	1	38.9 Registre des amendements postérieurs au gel
-ADR-134	ADR		7769	1	38.9 Registre des amendements postérieurs au gel
-ADR-156	ADR		8177	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-ADR-159	ADR		785	1	3.4 DM-04 : Mesh et vertex
-ADR-160	ADR		146	8	0.4 Identifiants normatifs
+ADR-123	ADR		7779	1	38.9 Registre des amendements postérieurs au gel
+ADR-134	ADR		7780	1	38.9 Registre des amendements postérieurs au gel
+ADR-156	ADR		8192	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+ADR-159	ADR		785	2	3.4 DM-04 : Mesh et vertex
+ADR-160	ADR		146	14	0.4 Identifiants normatifs
 B-01	B	6429	5797	9	30.2 Ce qui est mesuré
 B-02	B	6430	6430	3	30.2 Ce qui est mesuré
 B-03	B	6431	6431	1	30.2 Ce qui est mesuré
@@ -101,7 +101,7 @@ C-28	C	1891	396	28	5.21 C-28 : Compilateur de déformation et de structure
 C-30	C	1973	383	8	5.22 C-30 : Scene Graph
 C-31	C	1992	383	14	5.23 C-31 : Physics World
 C-32	C	2017	383	8	5.24 C-32 : Collider Builder
-C-33	C	2028	384	8	5.25 C-33 : Vehicle System
+C-33	C	2028	384	9	5.25 C-33 : Vehicle System
 C-34	C	2034	384	8	5.26 C-34 : Joints & Constraints
 C-35	C	2046	384	16	5.27 C-35 : Damage Model
 C-36	C	2052	385	11	5.28 C-36 : Particle Solver
@@ -145,49 +145,49 @@ C-80	C	2548	375	10	5.65 C-80 : Ombres AXION
 C-81	C	2554	375	10	5.66 C-81 : Sonde d'environnement & IBL synthétique
 C-82	C	2560	376	12	5.67 C-82 : Occlusion culling logiciel
 C-83	C	2566	376	10	5.68 C-83 : Effets intégrés (tone mapping, SSR)
-CAP-01	CAP	8145	8145	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-02	CAP	8146	8146	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-03	CAP	8147	8147	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-04	CAP	8148	8148	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-05	CAP	8149	8149	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-06	CAP	8150	8150	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-07	CAP	8151	8151	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-08	CAP	8152	8152	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-09	CAP	8153	8153	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-10	CAP	8154	8154	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-11	CAP	8155	8155	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-12	CAP	8156	8156	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-13	CAP	8157	8157	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-14	CAP	8158	8158	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-15	CAP	8159	8159	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-16	CAP	8160	8160	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-17	CAP	8161	8161	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-18	CAP	8162	8162	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-19	CAP	8163	8163	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-20	CAP	8164	8164	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-21	CAP	8165	8165	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-22	CAP	8166	8166	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-23	CAP	8167	8167	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-24	CAP	8168	8168	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-25	CAP	8169	8169	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-26	CAP	8170	8170	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-27	CAP	8171	8171	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-28	CAP	8172	8172	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-29	CAP	8173	8173	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-30	CAP	8174	8174	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-31	CAP	8175	8175	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-32	CAP	8176	8176	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-33	CAP	8177	8177	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-34	CAP	8178	8178	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-35	CAP	8179	8179	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-36	CAP	8180	8180	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-37	CAP	8181	8181	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-38	CAP	8182	8182	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-39	CAP	8183	8147	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-40	CAP	8184	8184	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-41	CAP	8185	8185	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-42	CAP	8186	8186	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-43	CAP	8187	8187	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-01	CAP	8160	8160	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-02	CAP	8161	8161	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-03	CAP	8162	8162	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-04	CAP	8163	8163	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-05	CAP	8164	8164	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-06	CAP	8165	8165	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-07	CAP	8166	8166	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-08	CAP	8167	8167	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-09	CAP	8168	8168	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-10	CAP	8169	8169	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-11	CAP	8170	8170	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-12	CAP	8171	8171	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-13	CAP	8172	8172	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-14	CAP	8173	3069	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-15	CAP	8174	8174	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-16	CAP	8175	8175	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-17	CAP	8176	7250	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-18	CAP	8177	8177	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-19	CAP	8178	7250	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-20	CAP	8179	8179	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-21	CAP	8180	8180	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-22	CAP	8181	8181	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-23	CAP	8182	8182	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-24	CAP	8183	8183	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-25	CAP	8184	8184	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-26	CAP	8185	8185	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-27	CAP	8186	8186	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-28	CAP	8187	8187	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-29	CAP	8188	8188	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-30	CAP	8189	8189	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-31	CAP	8190	8190	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-32	CAP	8191	7784	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-33	CAP	8192	8192	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-34	CAP	8193	8193	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-35	CAP	8194	2076	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-36	CAP	8195	8195	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-37	CAP	8196	5123	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-38	CAP	8197	8197	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-39	CAP	8198	8162	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-40	CAP	8199	8199	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-41	CAP	8200	8200	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-42	CAP	8201	8201	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-43	CAP	8202	8202	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 DM-01	DM	690	690	1	3.1 DM-01 : identifiants
 DM-02	DM	709	709	1	3.2 DM-02 : Transform
 DM-03	DM	719	719	1	3.3 DM-03 : Node
@@ -217,7 +217,7 @@ E-2000	E		1432	2	4.9 IF-07 : erreurs et panics
 E-2001	E		705	2	3.1 DM-01 : identifiants
 E-2002	E		1335	3	4.4 IF-02 : mémoire partagée et anneaux de transfert
 E-2003	E		1448	2	4.10 Propriété et durée de vie
-E-2004	E		7791	1	ANNEXE A.1 — Codes d'erreur
+E-2004	E		7806	1	ANNEXE A.1 — Codes d'erreur
 E-2010	E		717	2	3.2 DM-02 : Transform
 E-2020	E		850	2	3.6 DM-06 : Collider
 E-2030	E		921	3	3.8 DM-08 : BodyDesc et BodyState
@@ -241,11 +241,11 @@ E-3040	E		851	1	3.6 DM-06 : Collider
 E-3050	E		941	1	3.9 DM-09 : Assembly
 E-3060	E		955	2	3.10 DM-10 : Skeleton et Animation
 E-4001	E		2371	2	5.50 C-63 : Matériaux & Shaders
-E-4002	E		7807	1	ANNEXE A.1 — Codes d'erreur
+E-4002	E		7822	1	ANNEXE A.1 — Codes d'erreur
 E-5001	E		5050	2	21.4 Paquets
-E-5002	E		7809	1	ANNEXE A.1 — Codes d'erreur
-E-6001	E		7810	1	ANNEXE A.1 — Codes d'erreur
-E-6002	E		7811	1	ANNEXE A.1 — Codes d'erreur
+E-5002	E		7824	1	ANNEXE A.1 — Codes d'erreur
+E-6001	E		7825	1	ANNEXE A.1 — Codes d'erreur
+E-6002	E		7826	1	ANNEXE A.1 — Codes d'erreur
 E-7001	E		1886	2	5.20 C-27 : Definitions data-driven
 E-7002	E		2943	2	9.2 États de node (SM-03)
 E-7003	E		5582	2	23.4 Schéma de Definition (normatif)
@@ -254,13 +254,13 @@ E-8010	E		1964	2	5.21 C-28 : Compilateur de déformation et de structure
 E-8011	E		1964	2	5.21 C-28 : Compilateur de déformation et de structure
 E-8020	E		2171	4	5.33 C-41 : Impact Solver
 E-8030	E		2260	2	5.40 C-48 : Attachment System
-EX-01	EX	7514	7514	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-02	EX	7515	7515	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-03	EX	7517	7517	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-04	EX	7519	7519	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-05	EX	7522	7522	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-06	EX	7523	7523	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-07	EX	7524	7524	2	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-01	EX	7524	7524	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-02	EX	7525	7525	2	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-03	EX	7527	7527	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-04	EX	7529	7529	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-05	EX	7532	7532	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-06	EX	7533	7533	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-07	EX	7534	7534	2	38.4 Critères d'extensibilité — identifiants `EX-xx`
 FM-01	FM		1491	1	5.1 C-01 : Forge Integration
 FM-02	FM		1491	1	5.1 C-01 : Forge Integration
 FM-03	FM		1491	1	5.1 C-01 : Forge Integration
@@ -295,25 +295,25 @@ IF-05	IF	1389	1389	1	4.7 IF-05 : cycle de rendu
 IF-06	IF	1411	1411	1	4.8 IF-06 : assets, particules, structure
 IF-07	IF	1430	1430	2	4.9 IF-07 : erreurs et panics
 IF-10	IF		1471	1	5.1 C-01 : Forge Integration
-INV-01	INV	7824	316	7	ANNEXE A.2 — Index des invariants
-INV-02	INV	7825	318	8	ANNEXE A.2 — Index des invariants
-INV-03	INV	7826	319	6	ANNEXE A.2 — Index des invariants
-INV-04	INV	7827	320	7	ANNEXE A.2 — Index des invariants
-INV-05	INV	7828	324	4	ANNEXE A.2 — Index des invariants
-INV-06	INV	7829	326	6	ANNEXE A.2 — Index des invariants
-INV-07	INV	7830	548	6	ANNEXE A.2 — Index des invariants
-INV-08	INV	7831	1230	4	ANNEXE A.2 — Index des invariants
-INV-09	INV	7832	1231	3	ANNEXE A.2 — Index des invariants
-INV-10	INV	7833	1232	9	ANNEXE A.2 — Index des invariants
-INV-11	INV	7834	1233	3	ANNEXE A.2 — Index des invariants
-INV-12	INV	7835	539	6	ANNEXE A.2 — Index des invariants
-INV-13	INV	7836	329	10	ANNEXE A.2 — Index des invariants
-INV-14	INV	7711	1236	11	Invariants modifiés
-INV-15	INV	7839	330	8	ANNEXE A.2 — Index des invariants
-INV-16	INV	7712	1238	8	Invariants modifiés
-INV-17	INV	7842	1239	7	ANNEXE A.2 — Index des invariants
-INV-18	INV	7843	1240	5	ANNEXE A.2 — Index des invariants
-INV-19	INV	7844	1241	9	ANNEXE A.2 — Index des invariants
+INV-01	INV	7839	316	7	ANNEXE A.2 — Index des invariants
+INV-02	INV	7840	318	8	ANNEXE A.2 — Index des invariants
+INV-03	INV	7841	319	6	ANNEXE A.2 — Index des invariants
+INV-04	INV	7842	320	7	ANNEXE A.2 — Index des invariants
+INV-05	INV	7843	324	4	ANNEXE A.2 — Index des invariants
+INV-06	INV	7844	326	6	ANNEXE A.2 — Index des invariants
+INV-07	INV	7845	548	6	ANNEXE A.2 — Index des invariants
+INV-08	INV	7846	1230	4	ANNEXE A.2 — Index des invariants
+INV-09	INV	7847	1231	3	ANNEXE A.2 — Index des invariants
+INV-10	INV	7848	1232	9	ANNEXE A.2 — Index des invariants
+INV-11	INV	7849	1233	3	ANNEXE A.2 — Index des invariants
+INV-12	INV	7850	539	6	ANNEXE A.2 — Index des invariants
+INV-13	INV	7851	329	10	ANNEXE A.2 — Index des invariants
+INV-14	INV	7721	1236	11	Invariants modifiés
+INV-15	INV	7854	330	8	ANNEXE A.2 — Index des invariants
+INV-16	INV	7722	1238	8	Invariants modifiés
+INV-17	INV	7857	1239	7	ANNEXE A.2 — Index des invariants
+INV-18	INV	7858	1240	5	ANNEXE A.2 — Index des invariants
+INV-19	INV	7859	1241	9	ANNEXE A.2 — Index des invariants
 P-01	P	316	316	5	1.4 Principes directeurs
 P-02	P	317	317	4	1.4 Principes directeurs
 P-03	P	318	318	1	1.4 Principes directeurs
@@ -329,17 +329,17 @@ P-12	P	327	327	2	1.4 Principes directeurs
 P-13	P	328	328	1	1.4 Principes directeurs
 P-14	P	329	329	3	1.4 Principes directeurs
 P-15	P	330	330	3	1.4 Principes directeurs
-PF-01	PF	7497	7497	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-02	PF	7498	7498	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-03	PF	7499	7499	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-04	PF	7501	7501	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-05	PF	7502	7502	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-06	PF	7503	7503	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-07	PF	7504	7504	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-08	PF	7505	7505	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-09	PF	7506	7506	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-10	PF	7508	7508	1	38.3 Critères de performance — identifiants `PF-xx`
-Q-0	Q	7258	196	22	M6 — Impacts et déformation continue *(jalon central)*
+PF-01	PF	7507	7507	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-02	PF	7508	7508	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-03	PF	7509	7509	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-04	PF	7511	7511	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-05	PF	7512	7512	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-06	PF	7513	7513	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-07	PF	7514	7514	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-08	PF	7515	7515	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-09	PF	7516	7516	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-10	PF	7518	7518	1	38.3 Critères de performance — identifiants `PF-xx`
+Q-0	Q	7268	196	22	M6 — Impacts et déformation continue *(jalon central)*
 Q-1	Q		3709	10	14.5 Niveaux de qualité de déformation
 Q-2	Q		3599	6	14.1 Évaluation des approches
 Q-3	Q		1049	11	3.12 DM-12 : Régions de déformation et champ
@@ -381,7 +381,7 @@ R-131	R	751	751	1	3.3 DM-03 : Node
 R-132	R		751	1	3.3 DM-03 : Node
 R-140	R	783	783	1	3.4 DM-04 : Mesh et vertex
 R-141	R	784	784	1	3.4 DM-04 : Mesh et vertex
-R-142	R	785	785	1	3.4 DM-04 : Mesh et vertex
+R-142	R	785	785	2	3.4 DM-04 : Mesh et vertex
 R-143	R	786	786	1	3.4 DM-04 : Mesh et vertex
 R-150	R	818	818	1	3.5 DM-05 : MaterialDesc (rendu)
 R-151	R	819	819	1	3.5 DM-05 : MaterialDesc (rendu)
@@ -491,7 +491,7 @@ R-563	R	1846	1846	1	5.18 C-25 : Asset Cache
 R-570	R	1863	1863	1	5.19 C-26 : Textures & Matériaux (client)
 R-571	R	1864	1864	1	5.19 C-26 : Textures & Matériaux (client)
 R-580	R	1886	1886	1	5.20 C-27 : Definitions data-driven
-R-581	R	1887	1887	2	5.20 C-27 : Definitions data-driven
+R-581	R	1887	1887	1	5.20 C-27 : Definitions data-driven
 R-590	R	1958	1958	1	5.21 C-28 : Compilateur de déformation et de structure
 R-591	R	1959	1959	1	5.21 C-28 : Compilateur de déformation et de structure
 R-592	R	1960	1960	1	5.21 C-28 : Compilateur de déformation et de structure
@@ -510,7 +510,7 @@ R-623	R	2024	2024	1	5.24 C-32 : Collider Builder
 R-630	R	2040	2040	1	5.26 C-34 : Joints & Constraints
 R-631	R	2041	2041	1	5.26 C-34 : Joints & Constraints
 R-632	R	2042	2042	1	5.26 C-34 : Joints & Constraints
-R-640	R	2076	2076	1	5.30 C-38 : World Collision Provider
+R-640	R	2076	2076	2	5.30 C-38 : World Collision Provider
 R-641	R	2077	2077	1	5.30 C-38 : World Collision Provider
 R-642	R	2078	2078	1	5.30 C-38 : World Collision Provider
 R-643	R	2079	2079	1	5.30 C-38 : World Collision Provider
@@ -807,7 +807,7 @@ R-1671	R	5106	5106	1	21.6 Réplication de la déformation (mécanisme central)
 R-1672	R	5107	5107	1	21.6 Réplication de la déformation (mécanisme central)
 R-1673	R	5108	5108	1	21.6 Réplication de la déformation (mécanisme central)
 R-1674	R	5109	5109	1	21.6 Réplication de la déformation (mécanisme central)
-R-1680	R	5123	5123	2	21.8 Prédiction et réconciliation
+R-1680	R	5123	5123	3	21.8 Prédiction et réconciliation
 R-1681	R	5124	5124	2	21.8 Prédiction et réconciliation
 R-1682	R	5125	5125	1	21.8 Prédiction et réconciliation
 R-1683	R	5126	5126	1	21.8 Prédiction et réconciliation
@@ -966,9 +966,9 @@ R-2390	R	7174	7174	1	37.1 Règles
 R-2391	R	7175	7175	1	37.1 Règles
 R-2392	R	7176	7176	1	37.1 Règles
 R-2393	R	7177	7177	1	37.1 Règles
-R-2394	R	7178	7178	2	37.1 Règles
-R-2400	R	8061	8061	1	ANNEXE A.3 — Configuration complète (référence normative)
-R-2410	R	8087	8087	1	ANNEXE A.4 — Sources procédurales (liste fermée V1.0)
+R-2394	R	7178	7178	5	37.1 Règles
+R-2400	R	8076	8076	1	ANNEXE A.3 — Configuration complète (référence normative)
+R-2410	R	8102	8102	1	ANNEXE A.4 — Sources procédurales (liste fermée V1.0)
 S-01	S	6383	6383	1	29.7 Tests de stress et d'endurance
 S-02	S	6384	6384	1	29.7 Tests de stress et d'endurance
 S-03	S	6385	6385	1	29.7 Tests de stress et d'endurance
@@ -1378,4 +1378,4 @@ T-981	T		2544	1	5.64 C-77 : Gouverneur de qualité
 T-982	T		2544	1	5.64 C-77 : Gouverneur de qualité
 T-983	T		2544	3	5.64 C-77 : Gouverneur de qualité
 T-984	T		2544	3	5.64 C-77 : Gouverneur de qualité
-T-999	T		7648	1	38.7 Registre des changements de la révision 2
+T-999	T		7658	1	38.7 Registre des changements de la révision 2

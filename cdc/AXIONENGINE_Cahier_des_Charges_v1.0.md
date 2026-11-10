@@ -2073,7 +2073,7 @@ Spécifié en **PARTIE 18**.
 5. les tuiles sans assembly proche (world.tile_radius, défaut 3) sont libérées
 ```
 
-- R-640 : la construction ne charge **jamais** de chunk ; une section non chargée est traitée comme **pleine et solide** (choix conservateur, empêche toute traversée).
+- R-640 : la construction ne charge **jamais** de chunk ; une section non chargée est traitée comme **pleine et solide** (choix conservateur, empêche toute traversée). Seule exception (amendement A5, CAP-35) : un véhicule piloté charge les chunks de sa trajectoire, dans un rayon borné et au budget du gouverneur.
 - R-641 : au-delà de 4096 boîtes, la tuile est représentée par une heightfield conservative, avec avertissement.
 - R-642 : les fluides sont des **volumes de flottabilité** (capteurs) ; poussée d'Archimède et traînée appliquées selon le volume immergé approché par échantillonnage de 8 points de l'AABB. Modèle explicitement approximatif, documenté.
 - R-643 : chaque tuile porte le **matériau physique** dominant de ses blocs, résolu par le mappage data-driven `block_materials` (héritage par tag, défaut générique). Aucun nom de bloc n'est codé en dur. Ce matériau alimente la friction des roues et l'énergie des impacts contre le monde.
@@ -3066,7 +3066,7 @@ pub struct PhysicsEvent {
 
 ```text
 - elle ne remplace pas la physique des entités vanilla
-- elle ne modifie pas le mouvement des joueurs (sauf assis)
+- elle ne modifie pas le mouvement des joueurs, sauf assis ou portés debout par une assembly (amendement A5, CAP-14)
 - elle ne pousse pas les blocs
 - elle ne casse pas de blocs par défaut ; si une definition l'active, cela passe
   par les API vanilla, sur le thread autoritatif, avec les événements Forge
@@ -5120,7 +5120,7 @@ seq          varint
 
 ## 21.8 Prédiction et réconciliation
 
-- R-1680 : la prédiction est **limitée au véhicule piloté** ; aucune autre assembly n'est prédite.
+- R-1680 : la prédiction porte sur le **véhicule piloté et l'ensemble qui lui est attaché** ; les autres assemblies proches sont extrapolées au temps prédit, et leurs contacts sont corrigés par le serveur (amendement A5, CAP-37).
 - R-1681 : le client prédit le mouvement, **jamais la déformation plastique** (INV-17). Un choc pendant la prédiction produit chez le client une déformation **élastique** provisoire ; le plastique n'apparaît qu'à la réception de l'impact autoritatif. L'écart est imperceptible (une frame ou deux) et cette règle supprime toute possibilité de dommage fantôme.
 - R-1682 : réconciliation : historique de 64 entrées, rejeu depuis l'état serveur ; si le rejeu dépasse son budget, le client accepte l'état serveur sans rejeu.
 - R-1683 : la prédiction est désactivable et automatiquement désactivée au-delà de `net.prediction_max_ping` (400 ms) ou si le taux de corrections dépasse un seuil.
@@ -5829,7 +5829,7 @@ T-847b impacts conservés en mode SAFE
 |---|---|---|
 | Entités | `AxionEntity` normale ; entités vanilla en proxies cinématiques | aucun changement de comportement vanilla |
 | Blocs | lecture des `VoxelShape` pour les tuiles | aucun bloc modifié, aucun chunk chargé |
-| Chunks | suivi du chargement | jamais de chargement forcé |
+| Chunks | suivi du chargement | aucun chargement forcé, hors la trajectoire bornée d'un véhicule piloté (A5) |
 | Dimensions | un monde physique par dimension | cycle de vie suivi |
 | Capabilities | AXION n'attache rien à des objets tiers | additif |
 | Événements Forge | abonnement seul, jamais d'annulation | R-400 |
@@ -7156,7 +7156,7 @@ COMPATIBILITÉ
 | Items 3D sans état | **levée** | état de dommage et champ compact en NBT |
 | Mobs vanilla ne contournent pas les assemblies | **conservée**, atténuation ajoutée | `pathfinding_blocker` EXPERIMENTAL (R-1930) ; modifier le pathfinding reste non additif |
 | Flottabilité approchée par échantillonnage | **conservée**, motivée | un solveur de fluides est hors périmètre ; le modèle est documenté |
-| Section de chunk non chargée traitée comme solide | **conservée**, motivée | choix conservateur ; charger un chunk serait un effet de bord inacceptable |
+| Section de chunk non chargée traitée comme solide | **conservée**, motivée, puis amendée (A5) | choix conservateur ; seul un véhicule piloté charge sa trajectoire, borné |
 | Pas de tri intra-mesh des translucides | **conservée**, motivée | coût prohibitif ; recommandation d'auteur documentée |
 | Client obligatoire pour rejoindre | **conservée**, motivée | des entités non représentables produiraient des fantômes |
 | FBX, Collada, USD, PLY non importés | **conservée**, motivée | licence (FBX) et coût (autres) ; contournement Blender documenté |
@@ -7239,6 +7239,16 @@ Acceptance : 10 tests véhicules ; montée/descente sûres ; entrées validées 
              cause affichée.
 Tests : T-320..T-329, T-415..T-417, T-440..T-444, T-570, T-890..T-895,
         T-980..T-984
+Et les capacités de l'ANNEXE A.7 affectées à M5 (R-2394).
+```
+
+### M5b — Véhicules hors roues (amendement A5)
+```text
+C-33 (propulsion hors roues, flottabilité, deux-roues, rails)
+Livrable : bateaux, avions, hélicoptères, deux-roues et véhicules sur rails
+           pilotables en multijoueur avec prédiction.
+Acceptance : les capacités de l'ANNEXE A.7 affectées à M5b (CAP-17 à CAP-19,
+             R-2394), à la grille transversale d'ADR-160 D7.
 ```
 
 ### M6 — Impacts et déformation continue *(jalon central)*
@@ -7512,8 +7522,8 @@ PF-10  taille de persistance mesurée et proportionnelle au dommage réel
 
 ```text
 EX-01  un mod tiers crée un objet physique déformable complet sans modifier AXION
-EX-02  un créateur sans compétence Java livre un véhicule cabossable
-       (GLB + JSON dans un datapack/resourcepack)
+EX-02  retiré le 2026-11-10 (amendement A6) : le contenu passe par un mod Java
+       et l'API, le JSON en option chargé par ce mod (ADR-160 D9)
 EX-03  un GLB SANS AUCUNE ANNOTATION devient déformable et destructible
        grâce aux générations automatiques de C-28
 EX-04  un mod tiers enregistre matériau, profil d'usure, règle de réparation,
@@ -7761,12 +7771,17 @@ Aucun ADR annulé, aucune décision d'architecture renversée.
 ## 38.9 Registre des amendements postérieurs au gel
 
 Le document reste gelé : un amendement ne s'y inscrit que ratifié, avec la décision qui le
-porte. Il ajoute ce qui manquait à une exigence existante ; il ne retire ni ne reporte rien.
+porte. Il ajoute ce qui manquait à une exigence existante. Depuis le 2026-11-10, Killian peut aussi retirer,
+assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit et nomme sa décision.
 
 | # | Date | Décision | Amendement |
 |---|---|---|---|
 | A1 | 2026-10-04 | ADR-123, ratifié par le mainteneur | ANNEXE A.3, `[physics]` : `entity_push` et `entity_damage`, booléens, vrais par défaut — le réglage que R-614 exige (« l'effet d'une collision sur une entité vanilla … est configurable ») et que l'annexe ne portait pas |
 | A2 | 2026-10-14 | ADR-134, tranché par le mainteneur | ANNEXE A.3, `axion-common.toml`, nouvelle section `[content]` : `examples`, booléen, faux par défaut — l'option que R-1790 nomme (« désactivables (`content.examples`, défaut `false` en release) ») et que l'annexe ne portait pas |
+| A3 | 2026-11-10 | ADR-159, décidé par Killian | R-142 : l'import reprend les UV lointains et retire les triangles nuls au lieu de refuser l'asset ; textures par asset portées de 128 à 256 |
+| A4 | 2026-11-10 | ADR-160, accepté par Killian | 0.4 : famille `CAP-xx` ; 37.1 : R-2394 ; ANNEXE A.7 : capacités exigées, trouvées par trois audits ; chaque jalon s'ouvre par un audit qui rejoue les visions prises et en ajoute une (ADR-160 D3, D8) |
+| A5 | 2026-11-10 | ADR-160 Q2, Q5, Q6, Q7, tranchés par Killian | 10.8 : un joueur debout sur une assembly est porté par elle ; R-640, 26.3 et A.5 : un véhicule piloté charge les chunks de sa trajectoire, borné ; 37.2 : M5 scindé, M5b pour les véhicules hors roues ; R-1680 : l'ensemble attaché au véhicule piloté est prédit, les rivaux proches extrapolés |
+| A6 | 2026-11-10 | ADR-160 D9, décidé par Killian | le contenu passe par un mod Java et l'API, le JSON en option chargé par ce mod ; le chargement par datapack est supprimé (sa conception suit l'audit « développeur d'addon Java ») ; EX-02 et CAP-32 retirés |
 
 ---
 
@@ -8097,7 +8112,7 @@ VARIABLE      var.<n>   (définie par l'API ou par une action déclarative)
 - les mobs vanilla ne contournent pas les assemblies (atténuation EXPERIMENTAL)
 - la collision des blocs AXION reste une VoxelShape déclarée
 - la flottabilité est approchée par échantillonnage
-- une section de chunk non chargée est traitée comme solide
+- une section de chunk non chargée est traitée comme solide, hors la trajectoire bornée d'un véhicule piloté (A5)
 - la physique n'est pas déterministe entre machines (le noyau de déformation l'est)
 - le client doit posséder le mod pour rejoindre
 - pas de pipeline HDR ni de post-processing plein écran
@@ -8144,7 +8159,7 @@ ses trouvailles s'ajoutent ici.
 |---|---|---|
 | CAP-01 | Entrées libres vers un état : contrôles de siège ouverts, drapeaux de `VehicleInput`, touches déclarées par la definition (phares, klaxon, clignotants, sirène, contact) ; un jeu fixe de touches génériques réassignables, que la definition relie à ses actions, avec un libellé ; l'état basculé passe dans le flux d'entrées prédit ; débit plafonné par joueur | M5 |
 | CAP-02 | Variables et événements de contenu : le système derrière `set_variable` et `emit_event`, lisible comme source (`var.*`) et par l'API ; portée (véhicule ou siège), sauvegarde déclarée, envoi aux clients dès leur arrivée, droits d'écriture et débit par joueur ; événements portés aux clients | M5 |
-| CAP-03 | Une variable règle un paramètre physique (couple, régime, rapports, freinage, adhérence, masse). Contrôleurs déclaratifs, avec la contradiction R-1083/R-1170/R-1171 tranchée (Q3). Le réglage vaut pour une instance, s'applique à chaud, se sauvegarde et se réplique, prédiction comprise (D6) ; plages réglables déclarées par la definition et limites du moteur ; valeurs dérivées recalculées à chaud ; réglage sauvegardé revalidé quand la definition change ; composition avec les autres causes (CAP-39) | M5 |
+| CAP-03 | Une variable règle un paramètre physique (couple, régime, rapports, freinage, adhérence, masse). Par l'API Java d'abord, le JSON en option chargé par le mod (Q3, D9) ; la contradiction R-1083/R-1170/R-1171 se règle dans l'ADR de l'API. Le réglage vaut pour une instance, s'applique à chaud, se sauvegarde et se réplique, prédiction comprise (D6) ; plages réglables déclarées par la definition et limites du moteur ; valeurs dérivées recalculées à chaud ; réglage sauvegardé revalidé quand la definition change ; composition avec les autres causes (CAP-39) | M5 |
 | CAP-04 | Canaux procéduraux de visibilité, d'intensité émissive et de couleur ; `set_material_param` piloté par une source ; les actions `swap_mesh`, `hide_node` et `show_node` exécutées, et pas seulement au schéma | M5 |
 | CAP-05 | Pistes dans le temps : cycles (clignotant, gyrophare), lissage et durées, poids pilotables, masque d'os, fondu, grammaire de `trigger` | M5 |
 | CAP-06 | Lumière qui éclaire le décor : sémantique du rôle `light` (phares, feux, gyrophare, éclairage intérieur) | M9 |
@@ -8154,13 +8169,13 @@ ses trouvailles s'ajoutent ici.
 | CAP-10 | Caméra de véhicule (qui suit, cockpit) et tableau de bord à l'écran | M5 |
 | CAP-11 | API d'addons utilisable et sans limite (D5) : fournisseur enregistré, `EventBus`, accesseurs des événements, contrats des interfaces que 23.2 nomme sans les spécifier ; tout ce qu'une definition déclare se fait aussi par l'API, et inversement ; chaque liste fermée du schéma (sources procédurales, actions, contrôles de siège, canaux, types d'interaction, de son et de lumière) s'étend par un registre de l'API ; événements refusables (siège, interaction, attache, réparation) ; données des mods (`CustomData`) envoyables aux clients ; sections JSON d'extension validées au niveau de la pièce | M5, puis chaque jalon pour ses services |
 | CAP-12 | Énergie (carburant, batterie, panne) et démarrage du moteur (`engine.running` produit) | M5 |
-| CAP-13 | Pose et échelle des occupants, par siège, caméra à la première personne comprise | M5 |
-| CAP-14 | Joueurs et entités sur une assembly : plateau, pont ou ascenseur qui porte un joueur debout, poussée sur le joueur, masse de son proxy. La contradiction 10.2/10.8 est tranchée (Q2) | M5 |
+| CAP-13 | Pose et échelle des occupants, par siège, caméra à la première personne comprise ; les deux conventions restent possibles : agrandir le modèle, ou régler l'échelle des occupants (décision de Killian) | M5 |
+| CAP-14 | Joueurs et entités sur une assembly : plateau, pont ou ascenseur qui porte un joueur debout, poussée sur le joueur, masse de son proxy. Un joueur debout est porté par l'assembly (Q2, amendement A5) | M5 |
 | CAP-15 | Attaches déclarables (type accepté, force, transferts, seuil de désalignement) et ancrage au monde | M5 (C-48) |
 | CAP-16 | Paramètres des interactions (`attach`, `detach`, `repair`, `emit_event`, `set_variable`, `open_container`) et capteurs déclarables (`SENSOR`) | M5 |
-| CAP-17 | Propulsion hors roues (poussée, hélice, gouvernes, rotor) et entrées de tangage, roulis et lacet | M5 (Q6) |
-| CAP-18 | Flottabilité paramétrable : points de flottaison, `gravity_scale` au schéma, densité par fluide ; l'eau fait partie du monde prédit | M5 (Q6) |
-| CAP-19 | Équilibre des deux-roues ; véhicules sur rails | M5 (Q6) |
+| CAP-17 | Propulsion hors roues (poussée, hélice, gouvernes, rotor) et entrées de tangage, roulis et lacet | M5b |
+| CAP-18 | Flottabilité paramétrable : points de flottaison, `gravity_scale` au schéma, densité par fluide ; l'eau fait partie du monde prédit | M5b |
+| CAP-19 | Équilibre des deux-roues ; véhicules sur rails | M5b |
 | CAP-20 | Usure des pneus dans le temps ; la météo agit sur l'adhérence | M5 |
 | CAP-21 | Dégâts aux entités percutées réglables par definition et par part (aujourd'hui deux booléens globaux) | M6 |
 | CAP-22 | Casse de blocs par une assembly, déclarée par la definition (10.8 l'annonce sans champ ni règle) | M7 |
@@ -8173,12 +8188,12 @@ ses trouvailles s'ajoutent ici.
 | CAP-29 | Équipement porté par un joueur, armes et outils physiques, créatures (déplacement, IA), ragdolls | M10 |
 | CAP-30 | Effecteurs sur le monde (labour, forage, récolte) et capabilities Forge (items, fluides, énergie) | M10 |
 | CAP-31 | Pilotage autonome et trajets | M10 |
-| CAP-32 | Logique sans Java : conditions déclaratives, redstone, compatibilité KubeJS et CraftTweaker (R-581 tranché, Q4) | M10, M11 |
+| CAP-32 | ~~Logique sans Java~~ : **retirée** par Killian le 2026-11-10 — tout passe par un mod Java et l'API (D9) | — |
 | CAP-33 | Rechargement à chaud des assemblies déjà au monde (elles gardent leur definition compilée, ADR-156) | M5 |
 | CAP-34 | Joints engrenage et crémaillère ; commandes d'administration (téléporter, échelle, renommer, figer) ; masse variable (aux garanties de D6) ; échelle par definition | M5 |
-| CAP-35 | Chunks non chargés (traversée, chargement par un véhicule) et changement de dimension (R-023). 26.3 et A.5 sont tranchés (Q5) | M11 |
+| CAP-35 | Chunks non chargés (traversée, chargement par un véhicule) et changement de dimension (R-023). un véhicule piloté charge les chunks de sa trajectoire dans un rayon borné, au budget du gouverneur (Q5, amendement A5) | M11 |
 | CAP-36 | Documentation créateur : les fichiers de la PARTIE 33, chaque jalon pour ce qu'il livre | chaque jalon, complète en M12 |
-| CAP-37 | Ensemble attaché et périmètre de la prédiction : un ensemble attaché (remorque, voiture remorquée) se prédit, se cadence, s'endort et se décharge comme un tout ; les rivaux proches sont avancés au temps prédit, ou leurs contacts ne sont pas prédits (R-1680 tranché, Q7) | M5 |
+| CAP-37 | Ensemble attaché et périmètre de la prédiction : un ensemble attaché (remorque, voiture remorquée) se prédit, se cadence, s'endort et se décharge comme un tout ; les rivaux proches sont avancés au temps prédit, ou leurs contacts ne sont pas prédits (R-1680 amendé, Q7, A5) | M5 |
 | CAP-38 | Le contenu évolue sous des assemblies sauvegardées : identités par nom (corps, joint, pièce, région), version de definition, migrations déclarées, restauration partielle et nommée plutôt que tout abandonner | M5 |
 | CAP-39 | Plusieurs causes sur une même valeur (definition, amélioration, dommage, usure, météo, variable, addon) : ordre et opération définis, chaque cause retirable seule, valeur et origines lisibles | M5 |
 | CAP-40 | Addons présents d'un seul côté : les registres d'extension entrent dans l'empreinte du handshake ; une extension qui touche la physique est déterministe et rembobinable pour la prédiction, ajoutée comme étage du modèle plutôt qu'en le remplaçant | M5 |
