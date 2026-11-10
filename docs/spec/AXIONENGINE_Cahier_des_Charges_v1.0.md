@@ -8214,6 +8214,7 @@ ses trouvailles s'ajoutent ici.
 | CAP-50 | Recharger en développement : relancer l'enregistrement, relire JSON et GLB sans redémarrer, renvoyer le registre aux clients | M5 |
 | CAP-51 | Ce que les administrateurs et les modpacks réglaient sans code (matériaux, blocs d'un mod tiers, équilibrage) : une voie décidée, ou l'abandon assumé | M5 |
 | CAP-52 | Garde de compatibilité binaire de l'API : un outil en CI, des méthodes `default` sur toute interface qu'un addon implémente | M5 |
+| CAP-53 | Parallélisme et fréquence mesurés puis étendus : part du travail sur le thread principal et sur le pool natif, usage réel des cœurs, mesurés avec le gouverneur ; chaque jalon sort du thread principal ce qu'il ajoute ; chaque sous-système choisit sa fréquence de sous-pas sur mesure (comme les 720 Hz des véhicules) — demande de Killian, 2026-11-10 | M5 (mesure), puis chaque jalon |
 
 Hors périmètre, par décision de Killian du 2026-11-10 : construire en jeu des véhicules ou des objets à partir
 de blocs de Minecraft. AXION importe des modèles 3D (ADR-160 D2).
