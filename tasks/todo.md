@@ -3728,11 +3728,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
               valeurs JSON, copié et figé, refus nommés par chemin), `ContentRegistrar.register(name, document)` et
               `replace(target, document)` ; le registre la range sous la clé de son fichier, avec sa forme canonique
               pour octets, et tout l'aval est celui d'un fichier. `DefinitionDocumentTest`.
-        - [ ] 2c — Le générateur (`tools/codegen`) lit `docs/schema/definition-3.json` et écrit le builder dans
-              `axion-api` : une classe par objet, un setter typé par champ, les champs obligatoires d'un élément de
-              tableau en arguments, les mots réservés de Java renommés ; parité vérifiée en CI comme la configuration.
-        - [ ] 2d — Preuve : le buggy d'exemple construit par le builder a la même forme canonique et la même empreinte
-              que son JSON ; grille d'ADR-160 D7.
+        - [x] 2c — Le générateur (2026-11-11) : `gen_definition_builder` lit le dernier schéma publié et écrit
+              `DefinitionBuilder` (42 classes imbriquées, javadoc complète sous `doclint:all`) ; `parite_builder` en CI.
+              `DefinitionDocument` admet désormais le `null` de JSON (un mesh absent), que le schéma admet.
+        - [x] 2d — Preuve (2026-11-11) : le buggy écrit avec le builder a la forme canonique, le schéma et l'empreinte
+              de `buggy.json` (`DefinitionBuilderTest`) ; grille d'ADR-160 D7 dans ADR-162. Tranche 2 close.
   - [x] Tranche 4 de C-33 (2026-11-11) : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
         variables par assembly). Trois sous-tranches, un film à chacune :
         - [x] 4a (2026-11-11) — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5,

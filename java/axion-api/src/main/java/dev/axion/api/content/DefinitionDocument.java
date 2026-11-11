@@ -15,8 +15,9 @@ import java.util.Objects;
  * <p>Le builder généré depuis le schéma en produit un ; {@link #of} en accepte un écrit à la main. Les valeurs
  * admises sont celles de JSON : {@link String}, {@link Boolean}, les nombres finis — rangés en {@link Long} pour
  * {@code Byte}, {@code Short}, {@code Integer} et {@code Long}, en {@link Double} pour {@code Float} et
- * {@code Double} —, les {@link List} de valeurs et les {@link Map} à clés textuelles. Ni {@code null}, ni lambda, ni
- * autre objet : une definition part chez le client (R-581).
+ * {@code Double} —, les {@link List} de valeurs, les {@link Map} à clés textuelles, et {@code null}, le
+ * {@code null} de JSON (un mesh absent, par exemple). Ni lambda, ni autre objet : une definition part chez le client
+ * (R-581).
  *
  * <p>Le document est copié et figé à la construction. Sa validation est celle d'un fichier : le même schéma, au
  * chargement, et la même forme canonique, donc la même empreinte qu'un fichier de même contenu (CAP-47).
@@ -68,7 +69,7 @@ public final class DefinitionDocument {
     }
 
     private static Object value(Object value, String path) {
-        if (value instanceof String || value instanceof Boolean) {
+        if (value == null || value instanceof String || value instanceof Boolean) {
             return value;
         }
         if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) {
@@ -91,7 +92,7 @@ public final class DefinitionDocument {
         if (value instanceof Map<?, ?> map) {
             return object(map, path);
         }
-        throw new IllegalArgumentException(path + " : " + (value == null ? "null" : value.getClass().getName())
+        throw new IllegalArgumentException(path + " : " + value.getClass().getName()
                 + " n'est pas une valeur de definition");
     }
 }

@@ -53,12 +53,13 @@ class DefinitionDocumentTest {
     }
 
     @Test
-    @DisplayName("R-581 : ni null, ni nombre non fini, ni objet quelconque ; le refus nomme le chemin")
+    @DisplayName("R-581 : ni nombre non fini, ni objet quelconque ; le refus nomme le chemin ; null est celui de JSON")
     void lesValeursHorsJsonSontRefusees() {
         Map<String, Object> nul = new HashMap<>();
-        nul.put("asset", null);
-        assertTrue(assertThrows(IllegalArgumentException.class, () -> DefinitionDocument.of(nul))
-                .getMessage().startsWith("$.asset : null"));
+        nul.put("intact", null);
+        assertTrue(DefinitionDocument.of(nul).root().containsKey("intact"));
+        assertEquals("{\"intact\":null}", new String(ContentRegistry.canonicalBytes(DefinitionDocument.of(nul)),
+                StandardCharsets.UTF_8));
         assertTrue(assertThrows(IllegalArgumentException.class, () -> DefinitionDocument.of(
                 Map.of("physics", Map.of("mass", Double.NaN)))).getMessage().startsWith("$.physics.mass"));
         assertTrue(assertThrows(IllegalArgumentException.class, () -> DefinitionDocument.of(

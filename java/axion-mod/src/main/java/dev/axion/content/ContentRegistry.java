@@ -2,6 +2,7 @@ package dev.axion.content;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import dev.axion.api.content.ContentKind;
@@ -139,6 +140,9 @@ public final class ContentRegistry {
 
     /** {@return une valeur de {@link DefinitionDocument} en arbre JSON} */
     private static JsonElement json(Object value) {
+        if (value == null) {
+            return JsonNull.INSTANCE;
+        }
         if (value instanceof Map<?, ?> map) {
             JsonObject object = new JsonObject();
             map.forEach((key, child) -> object.add((String) key, json(child)));

@@ -211,6 +211,7 @@ name = "axion-codegen"
 version = "1.0.0"
 dependencies = [
  "ax-model",
+ "serde_json",
 ]
 
 [[package]]

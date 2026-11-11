@@ -7,6 +7,8 @@
 //! **générée** depuis le registre, et un test de parité (T-005) vérifie qu'elle
 //! n'a pas été modifiée à la main.
 
+pub mod definition_builder;
+
 use ax_model::buffer::{BufferKind, HEADER_BYTES, MAGIC};
 use ax_model::config::{ConfigDomain, ConfigOption, ConfigScope, ConfigValue};
 use ax_model::dm::physics::{body_state_flags, event_data, event_kind};
