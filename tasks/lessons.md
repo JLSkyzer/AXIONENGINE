@@ -2250,3 +2250,17 @@ rien, et le filtre en masquait le message.
 **Règle.** `git add … && git commit … && git push` — jamais `;` entre eux, jamais de tube après `git add`. Avant le
 commit, relire `git diff --cached --stat` : le nombre de fichiers doit être celui du changement. Un fichier passé par
 `git mv` ne se redonne pas à `git add` sous son ancien nom.
+
+## 2026-11-11 | Les textures de la Charger étaient floues en jeu
+
+**Ce qui a mal tourné.** Killian trouvait les textures floues en jeu par rapport au rendu de Blender. À l'import du
+2026-11-09, l'agent avait réduit à 1024 px toute texture plus grande (« le jeu n'en a pas besoin ») : carrosserie
+4096 → 2048, feux et cartes de normales 2048 → 1024, combiné 1280×720 → 1024×576. Les images réduites étaient restées
+empaquetées dans le `.blend`, et chaque export suivant les reprenait.
+
+**Cause.** Une réduction de qualité pour raison de coût, décidée en silence, contraire à la règle du projet : le coût
+se règle par un budget, un LOD ou un repli (le budget GPU retire déjà des mips au besoin), jamais en appauvrissant la
+source.
+
+**Règle.** Ne jamais réduire une texture source à l'import ; garder les originales et laisser le moteur gérer le
+coût. Avant un export, comparer la taille des images du `.blend` à celle des fichiers d'origine.

@@ -3749,8 +3749,14 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                     vaut 0 : pose au repos, nœud caché ou éteint) ; champs au schéma 3.
               - [x] 4c-2 rendu (2026-11-11, en Java, sans montée d'ABI) : l'apparence de chaque nœud piloté jusqu'aux dessins, dans les deux backends ; un nœud
                     que rien ne pilote ne coûte rien de plus ; banc : un nœud caché, éteint, allumé, teinté.
-              - [ ] 4c-3 contenu : un phare du buggy d'exemple piloté par `world.time` (la CI le prouve) ; Charger
-                    découpée dans Blender (annoncé avant) — lampes, phares, feux, aiguilles ; film du gyrophare.
+              - [ ] 4c-3 contenu :
+                    - [x] Charger (2026-11-11, contenu local, hors dépôt) : gyrophare en deux lampes, feux de calandre,
+                          phares, feux stop, aiguilles du compte-tours et du compteur (pivot au centre du cadran, axe
+                          = normale du cadran, aiguille entière : lame, corps, contrepoids), écrans du combiné et
+                          central séparés ; textures d'origine rétablies (réduites à l'import du 2026-11-09). Film
+                          jugé : gyrophare et calandre alternent rouge et bleu après G, éteints au second G ; aiguilles
+                          à 5 800 tr/min et 30 mph, comme le bandeau ; aucun dépassement du budget GPU au journal.
+                    - [ ] un phare du buggy d'exemple piloté par `world.time` (la CI le prouve).
 
 Exigence de Killian (2026-11-10) : « notre moteur et API doit leur permettre de tout faire », « aucune
 impossibilité », de l'extérieur à l'intérieur. Audit en lecture du CDC, du schéma, des ADR et du code, chaque
