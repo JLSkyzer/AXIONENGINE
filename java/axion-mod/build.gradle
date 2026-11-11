@@ -86,6 +86,8 @@ minecraft {
             // production (R-2270).
             property 'axion.dev', 'true'
             property 'axion.souris.libre', sourisLibre
+            // ADR-162 D9 : /axion dev reload, en développement.
+            property 'axion.content.dev_reload', 'true'
         }
 
         server {
@@ -95,6 +97,8 @@ minecraft {
             workingDirectory rootProject.file('.runs/server')
             property 'forge.enabledGameTestNamespaces', mod_id
             args '--nogui'
+            // ADR-162 D9 : /axion dev reload, en développement.
+            property 'axion.content.dev_reload', 'true'
         }
 
         essaiClientAddons {
@@ -115,6 +119,20 @@ minecraft {
             // T-437 : chaque écriture de fichier de la session, avec sa pile, pour l'audit qui suit le passage.
             jvmArg "-XX:StartFlightRecording=filename=${new File(auditEcritures, 'ecritures.jfr')},settings=${rootProject.file('tools/ci/audit_ecritures.jfc')},dumponexit=true"
             jvmArg '-XX:FlightRecorderOptions=stackdepth=256'
+            // ADR-162 D9 : /axion dev reload, et le dossier du contenu de développement tel que le jeu le lit, où son
+            // GameTest ajoute puis retire un fichier (RechargementDevGameTests).
+            property 'axion.content.dev_reload', 'true'
+            property 'axion.essai.devcontent', sourceSets.devcontent.output.resourcesDir.absolutePath
+        }
+
+        essaiRechargementDev {
+            // ADR-162 D9, essai de bout en bout en solo (EssaiRechargementDev, contenu de développement) : un modèle
+            // et une definition ajoutés au dossier du mod, /axion dev reload, l'objet en jeu, une capture, l'arrêt.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/essai-rechargement')
+            property 'axion.essai.rechargement', 'true'
+            property 'axion.essai.devcontent', sourceSets.devcontent.output.resourcesDir.absolutePath
+            property 'axion.souris.libre', 'true'
         }
 
         filmVehicule {
@@ -358,6 +376,20 @@ tasks.matching { it.name == 'runEssaiClientAddons' }.configureEach {
     standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
     doFirst {
         clientSilencieux(rootProject.file('.runs/essai-client'))
+    }
+}
+
+// ADR-162 D9 : l'essai du rechargement en solo, muet, sans pause au focus perdu, dans un monde neuf.
+tasks.matching { it.name == 'runEssaiRechargementDev' }.configureEach {
+    standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
+    doFirst {
+        def dossier = rootProject.file('.runs/essai-rechargement')
+        clientSilencieux(dossier)
+        def options = new File(dossier, 'options.txt')
+        def lignes = options.readLines('UTF-8').findAll { !it.startsWith('pauseOnLostFocus:') }
+        lignes << 'pauseOnLostFocus:false'
+        options.setText(lignes.collect { it + System.lineSeparator() }.join(''), 'UTF-8')
+        delete new File(dossier, 'saves/essai-rechargement-dev')
     }
 }
 

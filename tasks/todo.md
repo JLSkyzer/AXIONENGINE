@@ -3746,6 +3746,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
               registre) ; `docs/guides/NETWORKING.md` pour l'administrateur ; grille d'ADR-160 D7 dans ADR-165 ; note
               `D:\BDC` sur le refus d'un client pendant la connexion. Manque trouvé : les correspondances bloc → matériau
               ne voyagent pas, inscrit à la tranche 6 de C-33. Tranche 3 close.
+        - [x] Tranche 4 — recharger en développement (2026-11-11, CAP-50) : `/axion dev reload` sous
+              `content.dev_reload` (amendement A13) ; fournisseurs gardés et rappelés (`ContentProviders`), familles
+              remises au runtime par le code du rechargement des données, registre renvoyé, modèles du client en solo.
+              `ContentProvidersTest`, `DevReloadTest`, `RechargementDevGameTests`, essai en solo
+              (`runEssaiRechargementDev`, capture). Grille d'ADR-160 D7 dans ADR-162.
   - [x] Tranche 4 de C-33 (2026-11-11) : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
         variables par assembly). Trois sous-tranches, un film à chacune :
         - [x] 4a (2026-11-11) — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5,

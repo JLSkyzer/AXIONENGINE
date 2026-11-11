@@ -155,6 +155,7 @@ blocks = true
 
 [content]
 examples = false
+dev_reload = false
 
 [integration.rustforgex]
 mode = "auto"                     # auto | off

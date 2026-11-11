@@ -2459,6 +2459,7 @@ Spécifiée intégralement en **PARTIE 23**.
 /axion defs list | info <id>
 /axion spawn <definition> [pos] [nbt] | remove <selector>
 /axion variables <selector>          (amendement A10)
+/axion dev reload                    (amendement A13 ; seulement si content.dev_reload)
 /axion sim pause|resume|step <n> | budget <ns>
 /axion damage <selector> <part> <energy> [--point x y z] [--normal x y z]
 /axion deform show <selector> | reset <selector> [part] | quality <level>
@@ -7810,6 +7811,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A10 | 2026-11-11 | ADR-163 D2, accepté par Killian | Les variables de contenu : schéma de definition 3 (`variables`, commandes liées des sièges, `set_variable` effectif, R-1783) ; 22.2 : `axion:v` 4 et `axion:vars` ; C-71 : `/axion variables` (CAP-01, CAP-02) |
 | A11 | 2026-11-11 | ADR-164, accepté par Killian | R-570 : le filtrage anisotrope des textures d'AXION suit `render.anisotropy` (16 par défaut, 1 l'éteint), et non un « réglage vanilla » que Minecraft n'offre pas ; ANNEXE A.3 : la clé. Inscrit avec A12 : l'inscription avait été oubliée à l'acceptation |
 | A12 | 2026-11-11 | ADR-165, accepté par Killian | 21.3 : protocole 7, les addons propriétaires de contenu et leurs versions dans `S2C_Handshake`, celles du client dans `C2S_Handshake` ; R-1640 : un addon absent ou d'une autre version refuse la connexion en le nommant ; ANNEXE A.3 : `axion-server-overrides.toml` (CAP-40, CAP-46, CAP-51) |
+| A13 | 2026-11-11 | ADR-162 D9, accepté par Killian | C-71 : `/axion dev reload`, qui rappelle l'enregistrement de chaque mod, relit son dossier depuis le disque quand il tourne depuis ses sources, et renvoie le registre aux clients ; ANNEXE A.3 : `content.dev_reload`, faux par défaut (CAP-50) |
 
 ---
 
@@ -8040,6 +8042,7 @@ animation = true ; attachments = true ; blocks = true
 
 [content]
 examples = false
+dev_reload = false                # /axion dev reload (ADR-162 D9, amendement A13)
 
 [integration.rustforgex]
 mode = "auto"                     # auto | off

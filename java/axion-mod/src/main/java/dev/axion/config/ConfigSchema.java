@@ -1074,6 +1074,14 @@ public final class ConfigSchema {
                     true,
                     "Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `axion/definitions/example/` à la racine du JAR et enregistrées par AXION comme un addon (ADR-162)."),
             new Option(
+                    "content.dev_reload",
+                    Kind.BOOLEAN,
+                    false,
+                    new Domain(DomainKind.BOOLEAN, 0.0, 0.0, List.of()),
+                    true,
+                    false,
+                    "Autorise `/axion dev reload` (opérateur) : rappelle l'enregistrement de chaque mod, relit son dossier depuis le disque quand il tourne depuis ses sources, et renvoie le registre aux clients (ADR-162 D9). Réservé au développement."),
+            new Option(
                     "integration.rustforgex.mode",
                     Kind.STRING,
                     "auto",

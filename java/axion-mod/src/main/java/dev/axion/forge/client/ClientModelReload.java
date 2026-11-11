@@ -7,7 +7,11 @@ import dev.axion.content.RegisteredContent;
 import dev.axion.forge.ResourceAssetSource;
 import dev.axion.forge.RuntimeAccess;
 import dev.axion.lifecycle.AxionRuntime;
+import java.util.concurrent.CompletableFuture;
+import net.minecraft.Util;
+import net.minecraft.client.Minecraft;
 import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.util.profiling.InactiveProfiler;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
 import net.minecraft.util.profiling.ProfilerFiller;
 import org.slf4j.Logger;
@@ -28,6 +32,27 @@ import org.slf4j.Logger;
 final class ClientModelReload extends SimplePreparableReloadListener<ResourceAssetSource> {
 
     private static final Logger LOGGER = LogUtils.getLogger();
+
+    /**
+     * ADR-162 D9 : après {@code /axion dev reload} en solo, recompile les modèles du client depuis le contenu
+     * réenregistré, sans recharger toutes ses ressources. Appelé du thread du serveur intégré : les packs se lisent
+     * sur un thread de fond, et l'application se fait sur le thread du client, comme lors d'un rechargement ; puis
+     * AXION rend ses maillages et ses textures, reconstruits à la demande.
+     */
+    static void refresh() {
+        Minecraft minecraft = Minecraft.getInstance();
+        ResourceManager manager = minecraft.getResourceManager();
+        ClientModelReload reload = new ClientModelReload();
+        CompletableFuture.supplyAsync(() -> reload.prepare(manager, InactiveProfiler.INSTANCE), Util.backgroundExecutor())
+                .thenAcceptAsync(packs -> {
+                    reload.apply(packs, manager, InactiveProfiler.INSTANCE);
+                    AxionRenderPass.onResourcesReloaded();
+                }, minecraft)
+                .exceptionally(failure -> {
+                    LOGGER.error("AXION : client : modèles non rechargés après /axion dev reload", failure);
+                    return null;
+                });
+    }
 
     @Override
     protected ResourceAssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {

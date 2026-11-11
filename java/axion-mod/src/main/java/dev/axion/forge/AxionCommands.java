@@ -66,8 +66,10 @@ final class AxionCommands {
      *
      * @param dispatcher répartiteur de commandes du serveur
      * @param runtime cycle de vie à interroger
+     * @param devReload le rechargement en développement (ADR-162 D9)
      */
-    static void register(CommandDispatcher<CommandSourceStack> dispatcher, AxionRuntime runtime) {
+    static void register(CommandDispatcher<CommandSourceStack> dispatcher, AxionRuntime runtime,
+            DevReload devReload) {
         dispatcher.register(
                 Commands.literal("axion")
                         .requires(source -> source.hasPermission(OPERATOR))
@@ -98,6 +100,9 @@ final class AxionCommands {
                                                                         context, "chemin"))))))
                                 .then(Commands.literal("reload")
                                         .executes(context -> reloadAssets(context.getSource(), runtime))))
+                        .then(Commands.literal("dev")
+                                .then(Commands.literal("reload")
+                                        .executes(context -> devReload.run(context.getSource()))))
                         .then(Commands.literal("spawn")
                                 .then(Commands.argument("definition", ResourceLocationArgument.id())
                                         .suggests((context, builder) -> SharedSuggestionProvider.suggest(

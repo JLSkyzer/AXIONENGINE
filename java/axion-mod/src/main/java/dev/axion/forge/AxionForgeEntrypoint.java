@@ -140,7 +140,7 @@ public final class AxionForgeEntrypoint {
      */
     @SubscribeEvent
     public void onRegisterCommands(RegisterCommandsEvent event) {
-        AxionCommands.register(event.getDispatcher(), runtime);
+        AxionCommands.register(event.getDispatcher(), runtime, new DevReload(runtime, this::reloadFamilies));
     }
 
     /**
@@ -157,21 +157,72 @@ public final class AxionForgeEntrypoint {
      */
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onAddReloadListener(AddReloadListenerEvent event) {
-        event.addListener(contentListener(ContentKind.MODEL, "modèle", runtime::onAssetReload));
-        event.addListener(contentListener(ContentKind.PHYSICS_MATERIAL, "matériau physique",
-                runtime::onPhysicsMaterialReload));
-        event.addListener(contentListener(ContentKind.COLLISION_GROUP, "groupe de collision",
-                runtime::onCollisionGroupReload));
-        event.addListener(contentListener(ContentKind.BLOCK_MATERIAL, "mappage bloc → matériau",
-                runtime::onBlockMaterialReload));
-        event.addListener(contentListener(ContentKind.TIRE, "pneu", runtime::onTireReload));
-        // Les definitions rebâtissent le registre réseau ; s'il a changé, il repart vers les joueurs distants
-        // (ADR-150 D5).
-        event.addListener(contentListener(ContentKind.DEFINITION, "definition", source -> {
-            ServerSnapshot before = runtime.netSnapshot();
-            runtime.onDefinitionReload(source);
-            AxionNetwork.onRegistryReloaded(before, runtime.netSnapshot());
-        }));
+        families().forEach(family -> event.addListener(contentListener(family)));
+    }
+
+    /**
+     * Une famille du contenu enregistré, telle que le runtime la reçoit.
+     *
+     * @param kind la famille
+     * @param what ce qu'est une entrée de la famille, pour le journal
+     * @param reload chargement par le runtime
+     */
+    private record Family(ContentKind kind, String what, Consumer<AssetSource> reload) {}
+
+    /** {@return les familles, dans l'ordre où elles se nomment : chacune ne nomme que celles qui la précèdent} */
+    private List<Family> families() {
+        return List.of(
+                new Family(ContentKind.MODEL, "modèle", runtime::onAssetReload),
+                new Family(ContentKind.PHYSICS_MATERIAL, "matériau physique", runtime::onPhysicsMaterialReload),
+                new Family(ContentKind.COLLISION_GROUP, "groupe de collision", runtime::onCollisionGroupReload),
+                new Family(ContentKind.BLOCK_MATERIAL, "mappage bloc → matériau", runtime::onBlockMaterialReload),
+                new Family(ContentKind.TIRE, "pneu", runtime::onTireReload),
+                // Les definitions rebâtissent le registre réseau ; s'il a changé, il repart vers les joueurs
+                // distants (ADR-150 D5).
+                new Family(ContentKind.DEFINITION, "definition", source -> {
+                    ServerSnapshot before = runtime.netSnapshot();
+                    runtime.onDefinitionReload(source);
+                    AxionNetwork.onRegistryReloaded(before, runtime.netSnapshot());
+                }));
+    }
+
+    /**
+     * ADR-162 D9 : remet au runtime toutes les familles du contenu enregistré, dans leur ordre, sur le thread
+     * appelant — celui du serveur, pour {@code /axion dev reload}. Les surcharges de l'administrateur sont relues,
+     * comme à un {@code /reload}.
+     */
+    private void reloadFamilies() {
+        ServerOverrides overrides = ServerOverrides.read(FMLPaths.CONFIGDIR.get().resolve(ServerOverrides.FILE_NAME));
+        for (Family family : families()) {
+            List<String> applied = new ArrayList<>();
+            List<String> refused = new ArrayList<>();
+            if (family.kind() == ContentKind.DEFINITION) {
+                refused.addAll(overrides.refusals());
+            }
+            applyFamily(family, RegisteredContent.source(family.kind(), overrides, applied, refused), applied,
+                    refused);
+        }
+    }
+
+    /**
+     * Remet une famille au runtime, et journalise ce que les surcharges en ont fait.
+     *
+     * @param family la famille
+     * @param source son contenu, surcharges appliquées
+     * @param applied les surcharges appliquées
+     * @param refused les surcharges refusées
+     */
+    private void applyFamily(Family family, AssetSource source, List<String> applied, List<String> refused) {
+        logTransitions(() -> {
+            if (!RegisteredContent.published()) {
+                LOGGER.warn("AXION : aucun contenu enregistré à remettre ({}) : l'enregistrement des mods n'a pas "
+                        + "eu lieu", family.what());
+            }
+            applied.forEach(line -> LOGGER.info("AXION : surcharge appliquée — {}", line));
+            refused.forEach(line -> LOGGER.warn("AXION : surcharge refusée — {}", line));
+            ServerOverrides.record(family.kind(), applied.size(), refused.size());
+            family.reload().accept(source);
+        });
     }
 
     /**
@@ -245,12 +296,9 @@ public final class AxionForgeEntrypoint {
     /**
      * {@return un écouteur qui remet au runtime le contenu enregistré d'une famille}
      *
-     * @param kind la famille
-     * @param what ce qu'est une entrée de la famille, pour le journal
-     * @param reload chargement par le runtime
+     * @param family la famille
      */
-    private SimplePreparableReloadListener<AssetSource> contentListener(
-            ContentKind kind, String what, Consumer<AssetSource> reload) {
+    private SimplePreparableReloadListener<AssetSource> contentListener(Family family) {
         return new SimplePreparableReloadListener<>() {
             private final List<String> applied = new ArrayList<>();
             private final List<String> refused = new ArrayList<>();
@@ -262,24 +310,15 @@ public final class AxionForgeEntrypoint {
                 refused.clear();
                 ServerOverrides overrides =
                         ServerOverrides.read(FMLPaths.CONFIGDIR.get().resolve(ServerOverrides.FILE_NAME));
-                if (kind == ContentKind.DEFINITION) {
+                if (family.kind() == ContentKind.DEFINITION) {
                     refused.addAll(overrides.refusals());
                 }
-                return RegisteredContent.source(kind, overrides, applied, refused);
+                return RegisteredContent.source(family.kind(), overrides, applied, refused);
             }
 
             @Override
             protected void apply(AssetSource source, ResourceManager manager, ProfilerFiller profiler) {
-                logTransitions(() -> {
-                    if (!RegisteredContent.published()) {
-                        LOGGER.warn("AXION : aucun contenu enregistré à remettre ({}) : l'enregistrement des "
-                                + "mods n'a pas eu lieu", what);
-                    }
-                    applied.forEach(line -> LOGGER.info("AXION : surcharge appliquée — {}", line));
-                    refused.forEach(line -> LOGGER.warn("AXION : surcharge refusée — {}", line));
-                    ServerOverrides.record(kind, applied.size(), refused.size());
-                    reload.accept(source);
-                });
+                applyFamily(family, source, applied, refused);
             }
         };
     }

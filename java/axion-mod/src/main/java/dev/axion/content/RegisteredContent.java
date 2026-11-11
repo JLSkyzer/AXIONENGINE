@@ -9,18 +9,21 @@ import dev.axion.api.content.ContentKind;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Le contenu que les mods ont enregistré, une fois résolu (ADR-162 D2).
  *
- * <p>Publié une fois l'enregistrement fini, pendant le chargement des mods ; lu ensuite par les écouteurs qui
- * remettent chaque famille au runtime, au démarrage du serveur comme au rechargement des ressources du client. Le
- * même contenu sert au serveur et au client d'une même JVM : ils ont les mêmes mods.
+ * <p>Publié une fois l'enregistrement fini, pendant le chargement des mods, puis à chaque {@code /axion dev reload}
+ * (ADR-162 D9) ; lu ensuite par les écouteurs qui remettent chaque famille au runtime, au démarrage du serveur comme
+ * au rechargement des ressources du client. Le même contenu sert au serveur et au client d'une même JVM : ils ont les
+ * mêmes mods.
  */
 public final class RegisteredContent {
 
     private static volatile Map<ContentKind, List<ContentRegistry.Entry>> current;
     private static volatile Map<String, String> owners = Map.of();
+    private static final AtomicLong GENERATION = new AtomicLong();
 
     private RegisteredContent() {
         throw new AssertionError("classe utilitaire, non instanciable");
@@ -35,6 +38,12 @@ public final class RegisteredContent {
         Map<ContentKind, List<ContentRegistry.Entry>> copy = new EnumMap<>(ContentKind.class);
         resolved.forEach((kind, entries) -> copy.put(kind, List.copyOf(entries)));
         current = copy;
+        GENERATION.incrementAndGet();
+    }
+
+    /** {@return le nombre de publications : 1 après l'enregistrement du chargement, plus un par rechargement} */
+    public static long generation() {
+        return GENERATION.get();
     }
 
     /**

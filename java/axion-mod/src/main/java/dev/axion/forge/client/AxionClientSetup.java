@@ -4,6 +4,7 @@ import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import dev.axion.forge.net.AxionNetwork;
 import dev.axion.AxionMod;
 import dev.axion.forge.AxionEntities;
+import dev.axion.forge.DevReload;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.EntityRenderersEvent;
@@ -37,6 +38,8 @@ public final class AxionClientSetup {
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
         AxionNetwork.installClientSnapshots(ClientSnapshots::apply);
+        // ADR-162 D9 : en solo, /axion dev reload recompile aussi les modèles du client.
+        DevReload.installClientRefresh(ClientModelReload::refresh);
     }
 
     @SubscribeEvent

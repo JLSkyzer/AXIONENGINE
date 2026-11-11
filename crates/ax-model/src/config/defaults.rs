@@ -296,6 +296,7 @@ pub const COMMON: &[ConfigOption] = &[
 
     // [content]
     srv(b("content.examples", false, "Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `axion/definitions/example/` à la racine du JAR et enregistrées par AXION comme un addon (ADR-162).")),
+    hot(b("content.dev_reload", false, "Autorise `/axion dev reload` (opérateur) : rappelle l'enregistrement de chaque mod, relit son dossier depuis le disque quand il tourne depuis ses sources, et renvoie le registre aux clients (ADR-162 D9). Réservé au développement.")),
 
     // [integration.rustforgex]
     e("integration.rustforgex.mode", "auto", &["auto", "off"], "Détection d'un mod d'optimisation tiers. AXION n'en dépend jamais et fonctionne identiquement en son absence."),
