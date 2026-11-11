@@ -895,7 +895,7 @@ pub struct PhysicsMaterial {
 ```
 
 - R-170 : `BRITTLE` (fragile) désactive la plasticité et transforme tout dépassement en rupture ; `DUCTILE` privilégie la plasticité ; `SOFT` autorise de grandes déformations élastiques ; `NON_DEFORMABLE` exclut la matière du système de déformation (verre, chrome fin, pierre).
-- R-171 : les matériaux physiques sont data-driven (`data/<ns>/axion/physics_materials/*.json`), avec héritage par `parent`, et une bibliothèque de base fournie (`axion:steel`, `axion:aluminium`, `axion:plastic`, `axion:glass`, `axion:rubber`, `axion:wood`, `axion:fabric`, `axion:stone`, `axion:flesh`). Cette bibliothèque est du **contenu de référence**, pas une exception codée en dur : elle est chargée comme n'importe quel datapack.
+- R-171 : les matériaux physiques sont data-driven (`axion/physics_materials/*.json`, qu'un mod enregistre par l'API, ADR-162), avec héritage par `parent`, et une bibliothèque de base fournie (`axion:steel`, `axion:aluminium`, `axion:plastic`, `axion:glass`, `axion:rubber`, `axion:wood`, `axion:fabric`, `axion:stone`, `axion:flesh`). Cette bibliothèque est du **contenu de référence**, pas une exception codée en dur : AXION l'enregistre comme un addon enregistre son contenu (amendement A8).
 
 ## 3.8 DM-08 : BodyDesc et BodyState
 
@@ -1867,13 +1867,17 @@ clé = sha256(source || options || COMPILER_VERSION || ABI)
 
 ## 5.20 C-27 : Definitions data-driven
 
+Le contenu vient des mods, qui l'enregistrent par l'API (ADR-162, amendement A8) : en Java, ou en JSON dans un dossier
+de leur JAR qu'ils déclarent (`registerFolder`), dans l'espace de noms de leur modId. Aucun datapack n'est lu.
+
 ```text
-data/<ns>/axion/definitions/<name>.json         objets, véhicules, personnages, machines
-data/<ns>/axion/physics_materials/<name>.json   matériaux physiques
-data/<ns>/axion/collision_groups/<name>.json    groupes et masques
-data/<ns>/axion/block_materials/<name>.json     mappage bloc -> matériau physique
-data/<ns>/axion/wear_profiles/<name>.json       profils d'usure
-data/<ns>/axion/repair_rules/<name>.json        règles de réparation
+axion/definitions/<name>.json         objets, véhicules, personnages, machines
+axion/physics_materials/<name>.json   matériaux physiques
+axion/collision_groups/<name>.json    groupes et masques
+axion/block_materials/<name>.json     mappage bloc -> matériau physique
+axion/tires/<name>.json               profils de pneu (ADR-159)
+axion/wear_profiles/<name>.json       profils d'usure
+axion/repair_rules/<name>.json        règles de réparation
 ```
 
 ```text
@@ -3159,7 +3163,7 @@ energy_absorption[0,1] fraction de l'énergie d'impact convertie en travail de
 | Tissu | `SOFT`, géré par le solveur de particules | drapé |
 | Chair | `SOFT`, plasticity faible, elasticity moyenne | s'enfonce et revient |
 
-- R-1030 : la bibliothèque de matériaux de base (`axion:steel`, `aluminium`, `plastic`, `glass`, `rubber`, `wood`, `stone`, `fabric`, `flesh`, `concrete`, `carbon_fiber`) est fournie comme **contenu de datapack** du mod, surchargeable et extensible. Le moteur n'a aucune connaissance de ces noms.
+- R-1030 : la bibliothèque de matériaux de base (`axion:steel`, `aluminium`, `plastic`, `glass`, `rubber`, `wood`, `stone`, `fabric`, `flesh`, `concrete`, `carbon_fiber`) est fournie comme **contenu** qu'AXION enregistre par l'API, comme un addon : un autre mod l'étend, ou la remplace explicitement (`replace`), et un administrateur la règle dans des bornes (ADR-162 D8, amendement A8). Le moteur n'a aucune connaissance de ces noms.
 - R-1031 : l'héritage est supporté (`"parent": "axion:steel"`), avec surcharge champ par champ.
 - R-1032 : les valeurs par défaut d'un matériau non déclaré sont celles d'un acier générique, avec avertissement à la compilation de la definition.
 
@@ -5024,7 +5028,7 @@ S2C_Handshake :
   definitions_hash u64 | damage_sources_hash u64 | materials_hash u64
 ```
 
-- R-1640 : si un hash diffère, le serveur envoie les données correspondantes (definitions, matériaux, sources de dégâts) compressées avant l'entrée en jeu. Les **assets** ne transitent jamais par le réseau : ils viennent des resource packs. Un asset manquant côté client produit l'asset de secours et un avertissement, jamais une déconnexion.
+- R-1640 : si un hash diffère, le serveur envoie les données correspondantes (definitions, matériaux, sources de dégâts) compressées avant l'entrée en jeu. Les **assets** ne transitent jamais par le réseau : ils viennent des mods installés chez le client, qui les enregistrent ; un resource pack n'en remplace que l'apparence (ADR-162 D5, amendement A8). Un asset manquant côté client produit l'asset de secours et un avertissement, jamais une déconnexion.
 - R-1641 : `deform_quant_policy` garantit que les deux côtés quantifient identiquement. Une divergence de politique désactive la reconstruction et bascule sur les instantanés (mode dégradé, journalisé).
 
 ## 21.4 Paquets
@@ -5352,6 +5356,9 @@ T-884  réparation en cours reprise après rechargement
 
 ## 23.2 Surface de l'API
 
+La surface ci-dessous est la cible. La façade publiée ne porte que ce que le moteur rend réellement : un service, une
+vue ou un événement y entre avec le composant qui le livre, en méthode `default` (ADR-162 D1, amendement A8).
+
 ```java
 package dev.axion.api;
 
@@ -5490,6 +5497,9 @@ public interface PartView {
 | Hook de rendu | `AssemblyRenderHook` (client) | `axion:render_hook` |
 | Importer de format | `AssetImporter` | `axion:importer` |
 
+Un JSON n'est jamais lu dans un datapack : le mod qui le livre l'enregistre (ADR-162, amendement A8) ; chaque liste
+fermée du schéma s'étend par un registre de l'API (ADR-160 D5).
+
 - R-1770 : une extension tierce est **isolée** : son coût est mesuré séparément et son dépassement répété du budget la désactive avec un message la nommant.
 - R-1771 : les extensions Java ne s'exécutent jamais sur les workers natifs ; elles sont appelées sur le thread autoritatif entre deux pas, ou sur le render thread pour les hooks de rendu.
 - R-1772 : un `DeformationKernel` tiers **doit** respecter le contrat de déterminisme ; s'il ne le respecte pas, la reconstruction client échoue et le système bascule automatiquement sur l'envoi d'instantanés pour les assemblies concernées, avec un avertissement nommant le mod. Le jeu reste correct.
@@ -5586,7 +5596,7 @@ public interface PartView {
 
 ## 23.5 Contenu de démonstration
 
-- R-1790 : le mod embarque **exactement cinq** definitions de démonstration, désactivables (`content.examples`, défaut `false` en release) :
+- R-1790 : le mod embarque **exactement cinq** definitions de démonstration, désactivables (`content.examples`, défaut `false` en release), sous `axion/` à la racine de son JAR, qu'il enregistre comme un addon (amendement A8) :
   1. `axion:example/crate` — caisse physique déformable (bois)
   2. `axion:example/buggy` — véhicule 4 roues minimal, carrosserie déformable, capot détachable
   3. `axion:example/flag` — drapeau (particules `VISUAL`)
@@ -6151,7 +6161,7 @@ RUSTFORGE-X présent -> AXION : fonctionnement normal, complet
 
 ```text
 - assets (resource packs, y compris server resource pack)
-- definitions, matériaux, profils, règles (datapacks)
+- definitions, matériaux, profils, règles, enregistrés par les mods installés (ADR-162)
 - paquets réseau reçus, dont les lots d'ImpactDesc et les instantanés de champ
 - NBT d'entités et de BlockEntity (mondes partagés)
 - entrées de contrôle des joueurs
@@ -7606,9 +7616,9 @@ EX-07  un noyau de déformation tiers non déterministe bascule automatiquement
 | 16 | Ombres vs non-altération du monde vanilla | ADR-021 : ombres appliquées aux seuls objets AXION |
 | 17 | SSR vs LDR et shaderpacks | EXPERIMENTAL, Q-4, désactivé sous shaderpack, repli sur la sonde |
 | 18 | Cloth avec effet gameplay vs coût serveur | ADR-012 : proxy `SERVER_SIMPLE` de quelques dizaines de particules |
-| 19 | Datapacks puissants vs sécurité | ADR-009 : données déclaratives, listes fermées, aucune exécution |
+| 19 | Contenu puissant vs sécurité | ADR-009 : données déclaratives, listes fermées, aucune exécution ; depuis A8, le contenu vient de mods installés des deux côtés |
 | 20 | Un `EntityType` unique vs richesse du contenu | ADR-010 : contenu porté par la definition |
-| 21 | Générique vs bibliothèque de matériaux fournie | la bibliothèque est du **contenu de datapack**, le moteur en ignore les noms |
+| 21 | Générique vs bibliothèque de matériaux fournie | la bibliothèque est du **contenu** qu'AXION enregistre comme un addon, le moteur en ignore les noms |
 | 22 | Extension tierce du noyau de déformation vs déterminisme | EX-07 : bascule automatique sur instantanés, avertissement nommant le mod |
 | 23 | Gouverneur de qualité vs correction serveur | R-841 : liste fermée de paramètres sans effet sur la correction, testée (T-983) |
 | 24 | Partage CPU avec RUSTFORGE-X vs non-réduction de fonctionnalités | R-2062 : le temps s'allonge, le gouverneur ajuste les niveaux ; rien n'est retiré |
@@ -7787,6 +7797,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A5 | 2026-11-10 | ADR-160 Q2, Q5, Q6, Q7, tranchés par Killian | 10.8 : un joueur debout sur une assembly est porté par elle ; R-640, 26.3 et A.5 : un véhicule piloté charge les chunks de sa trajectoire, borné ; 37.2 : M5 scindé, M5b pour les véhicules hors roues ; R-1680 : l'ensemble attaché au véhicule piloté est prédit, les rivaux proches extrapolés |
 | A6 | 2026-11-10 | ADR-160 D9, décidé par Killian | le contenu passe par un mod Java et l'API, le JSON en option chargé par ce mod ; le chargement par datapack est supprimé (sa conception suit l'audit « développeur d'addon Java ») ; EX-02 et CAP-32 retirés |
 | A7 | 2026-11-10 | ADR-161, décidé par Killian | PARTIE 33 : les guides de documentation passent de la racine à `docs/guides/` ; la racine garde README (avec le plan du dépôt), LICENSE, NOTICE, CHANGELOG et le build ; dossiers de jeu sous `.runs/`, contenu personnel sous `local/`, tous deux ignorés |
+| A8 | 2026-11-11 | ADR-162, accepté par Killian | Le contenu vient des mods, qui l'enregistrent par l'API (C-27, 23.3, R-171, R-1030, R-1640, R-1790, 28.1, conflits 19 et 21) ; aucun datapack n'est lu, hormis les registres de Minecraft lui-même ; la façade publiée ne porte que le réel (23.2) |
 
 ---
 

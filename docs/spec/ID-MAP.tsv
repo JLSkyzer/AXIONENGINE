@@ -1,85 +1,86 @@
 id	famille	ligne_def	ligne_1re	occurrences	section
-AC-01	AC	7487	7487	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-02	AC	7488	7488	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-03	AC	7489	7489	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-04	AC	7490	7490	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-05	AC	7491	7491	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-06	AC	7492	7492	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-07	AC	7493	7493	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-08	AC	7494	7494	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-09	AC	7495	7495	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-10	AC	7496	7496	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-11	AC	7497	7497	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-12	AC	7498	7498	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-13	AC	7500	7500	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-14	AC	7501	7501	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-15	AC	7503	7503	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-16	AC	7504	7504	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-AC-17	AC	7505	7505	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
-ADR-001	ADR	6900	2589	3	ADR-001 — glTF 2.0 / GLB comme format d'échange principal
-ADR-002	ADR	6903	1994	2	ADR-002 — Rapier3D comme moteur physique
-ADR-003	ADR	6906	3246	2	ADR-003 — Modèle de véhicule par raycast
+AC-01	AC	7497	7497	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-02	AC	7498	7498	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-03	AC	7499	7499	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-04	AC	7500	7500	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-05	AC	7501	7501	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-06	AC	7502	7502	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-07	AC	7503	7503	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-08	AC	7504	7504	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-09	AC	7505	7505	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-10	AC	7506	7506	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-11	AC	7507	7507	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-12	AC	7508	7508	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-13	AC	7510	7510	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-14	AC	7511	7511	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-15	AC	7513	7513	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-16	AC	7514	7514	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+AC-17	AC	7515	7515	1	38.2 Critères de correction (bloquants) — identifiants `AC-xx`
+ADR-001	ADR	6910	2593	3	ADR-001 — glTF 2.0 / GLB comme format d'échange principal
+ADR-002	ADR	6913	1998	2	ADR-002 — Rapier3D comme moteur physique
+ADR-003	ADR	6916	3250	2	ADR-003 — Modèle de véhicule par raycast
 ADR-004	ADR	1274	159	3	4.2 ADR-004 : mécanisme d'interopérabilité
-ADR-005	ADR	6912	3080	3	ADR-005 — Autorité serveur, sans déterminisme physique inter-plateformes
-ADR-006	ADR	6915	1256	4	ADR-006 — Rendu piloté depuis Java sur le contexte GL de Minecraft
-ADR-007	ADR	6918	6918	3	ADR-007 — Deux backends de rendu maintenus, équivalence fonctionnelle et non pixellaire
-ADR-008	ADR	6930	168	7	ADR-008 — PBR avec environnement synthétisé *(révisé en révision 2)*
-ADR-009	ADR		1887	3	5.20 C-27 : Definitions data-driven
-ADR-010	ADR		2270	2	5.41 C-50 : Axion Entity
-ADR-011	ADR	6935	3605	4	ADR-011 — Déformation continue par champ de lattice *(révisé en révision 2)*
-ADR-012	ADR	6940	4351	5	ADR-012 — Solveur de particules unifié à trois modes d'autorité *(révisé)*
-ADR-013	ADR	6944	6584	2	ADR-013 — Pas d'ECS tiers, structures SoA propres
-ADR-014	ADR	6947	6947	1	ADR-014 — Job system dédié au-dessus de rayon, jamais le pool global
-ADR-015	ADR	6950	6950	2	ADR-015 — Indépendance vis-à-vis de RUSTFORGE-X, compatibilité par conception
-ADR-016	ADR	6953	6953	1	ADR-016 — Empreinte Mixin fermée et minimale
-ADR-017	ADR	6956	6956	1	ADR-017 — Persistance du seul état non dérivable
-ADR-018	ADR	6959	3081	8	ADR-018 — Réplication de la déformation par événements et reconstruction déterministe
-ADR-019	ADR	6971	6971	2	ADR-019 — Refit de collider par déformation des points d'enveloppe
-ADR-020	ADR	6976	6976	1	ADR-020 — Graphe structurel pour la rupture et le détachement
-ADR-021	ADR	6981	4792	4	ADR-021 — Carte d'ombre dédiée aux objets AXION
-ADR-022	ADR	6986	4769	3	ADR-022 — Occlusion culling logiciel plutôt que requêtes GPU
-ADR-023	ADR	6991	6991	1	ADR-023 — Niveaux de qualité et gouverneur
-ADR-024	ADR	6996	6996	1	ADR-024 — Décalques en espace objet, suivant la déformation
-ADR-025	ADR	7000	7000	2	ADR-025 — Système d'attache entre assemblies
-ADR-026	ADR	7004	6638	4	ADR-026 — Chemins accélérés GL 4.x optionnels sur une base GL 3.3
-ADR-123	ADR		7783	1	38.9 Registre des amendements postérieurs au gel
-ADR-134	ADR		7784	1	38.9 Registre des amendements postérieurs au gel
-ADR-137	ADR		8208	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-ADR-143	ADR		8208	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-ADR-156	ADR		8197	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-ADR-159	ADR		785	2	3.4 DM-04 : Mesh et vertex
-ADR-160	ADR		146	14	0.4 Identifiants normatifs
-ADR-161	ADR		7789	1	38.9 Registre des amendements postérieurs au gel
-B-01	B	6429	5797	9	30.2 Ce qui est mesuré
-B-02	B	6430	6430	3	30.2 Ce qui est mesuré
-B-03	B	6431	6431	1	30.2 Ce qui est mesuré
-B-04	B	6432	6432	2	30.2 Ce qui est mesuré
-B-05	B	6433	6433	1	30.2 Ce qui est mesuré
-B-06	B	6434	6434	2	30.2 Ce qui est mesuré
-B-07	B	6435	6435	3	30.2 Ce qui est mesuré
-B-08	B	6436	1620	4	30.2 Ce qui est mesuré
-B-09	B	6437	3877	4	30.2 Ce qui est mesuré
-B-10	B	6438	3877	3	30.2 Ce qui est mesuré
-B-11	B	6439	6439	3	30.2 Ce qui est mesuré
-B-12	B	6440	6440	1	30.2 Ce qui est mesuré
-B-13	B	6441	6441	2	30.2 Ce qui est mesuré
-B-14	B	6442	6442	1	30.2 Ce qui est mesuré
-B-15	B	6443	6443	1	30.2 Ce qui est mesuré
-B-16	B	6444	6444	2	30.2 Ce qui est mesuré
-B-17	B	6445	6445	1	30.2 Ce qui est mesuré
-B-18	B	6446	5797	8	30.2 Ce qui est mesuré
-B-19	B	6447	3794	8	30.2 Ce qui est mesuré
-B-20	B	6448	6448	1	30.2 Ce qui est mesuré
-B-21	B	6449	3839	5	30.2 Ce qui est mesuré
-B-22	B	6450	6450	2	30.2 Ce qui est mesuré
-B-23	B	6451	1700	4	30.2 Ce qui est mesuré
-B-24	B	6452	5236	3	30.2 Ce qui est mesuré
-B-25	B	6453	3878	7	30.2 Ce qui est mesuré
-B-26	B	6454	6454	1	30.2 Ce qui est mesuré
-B-27	B	6455	6455	1	30.2 Ce qui est mesuré
-B-28	B	6456	6456	1	30.2 Ce qui est mesuré
-B-29	B	6457	6457	2	30.2 Ce qui est mesuré
-B-30	B	6458	6458	7	30.2 Ce qui est mesuré
+ADR-005	ADR	6922	3084	3	ADR-005 — Autorité serveur, sans déterminisme physique inter-plateformes
+ADR-006	ADR	6925	1256	4	ADR-006 — Rendu piloté depuis Java sur le contexte GL de Minecraft
+ADR-007	ADR	6928	6928	3	ADR-007 — Deux backends de rendu maintenus, équivalence fonctionnelle et non pixellaire
+ADR-008	ADR	6940	168	7	ADR-008 — PBR avec environnement synthétisé *(révisé en révision 2)*
+ADR-009	ADR		1891	3	5.20 C-27 : Definitions data-driven
+ADR-010	ADR		2274	2	5.41 C-50 : Axion Entity
+ADR-011	ADR	6945	3609	4	ADR-011 — Déformation continue par champ de lattice *(révisé en révision 2)*
+ADR-012	ADR	6950	4355	5	ADR-012 — Solveur de particules unifié à trois modes d'autorité *(révisé)*
+ADR-013	ADR	6954	6594	2	ADR-013 — Pas d'ECS tiers, structures SoA propres
+ADR-014	ADR	6957	6957	1	ADR-014 — Job system dédié au-dessus de rayon, jamais le pool global
+ADR-015	ADR	6960	6960	2	ADR-015 — Indépendance vis-à-vis de RUSTFORGE-X, compatibilité par conception
+ADR-016	ADR	6963	6963	1	ADR-016 — Empreinte Mixin fermée et minimale
+ADR-017	ADR	6966	6966	1	ADR-017 — Persistance du seul état non dérivable
+ADR-018	ADR	6969	3085	8	ADR-018 — Réplication de la déformation par événements et reconstruction déterministe
+ADR-019	ADR	6981	6981	2	ADR-019 — Refit de collider par déformation des points d'enveloppe
+ADR-020	ADR	6986	6986	1	ADR-020 — Graphe structurel pour la rupture et le détachement
+ADR-021	ADR	6991	4796	4	ADR-021 — Carte d'ombre dédiée aux objets AXION
+ADR-022	ADR	6996	4773	3	ADR-022 — Occlusion culling logiciel plutôt que requêtes GPU
+ADR-023	ADR	7001	7001	1	ADR-023 — Niveaux de qualité et gouverneur
+ADR-024	ADR	7006	7006	1	ADR-024 — Décalques en espace objet, suivant la déformation
+ADR-025	ADR	7010	7010	2	ADR-025 — Système d'attache entre assemblies
+ADR-026	ADR	7014	6648	4	ADR-026 — Chemins accélérés GL 4.x optionnels sur une base GL 3.3
+ADR-123	ADR		7793	1	38.9 Registre des amendements postérieurs au gel
+ADR-134	ADR		7794	1	38.9 Registre des amendements postérieurs au gel
+ADR-137	ADR		8219	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+ADR-143	ADR		8219	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+ADR-156	ADR		8208	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+ADR-159	ADR		785	3	3.4 DM-04 : Mesh et vertex
+ADR-160	ADR		146	15	0.4 Identifiants normatifs
+ADR-161	ADR		7799	1	38.9 Registre des amendements postérieurs au gel
+ADR-162	ADR		898	8	3.7 DM-07 : PhysicsMaterial — modèle de matière étendu
+B-01	B	6439	5807	9	30.2 Ce qui est mesuré
+B-02	B	6440	6440	3	30.2 Ce qui est mesuré
+B-03	B	6441	6441	1	30.2 Ce qui est mesuré
+B-04	B	6442	6442	2	30.2 Ce qui est mesuré
+B-05	B	6443	6443	1	30.2 Ce qui est mesuré
+B-06	B	6444	6444	2	30.2 Ce qui est mesuré
+B-07	B	6445	6445	3	30.2 Ce qui est mesuré
+B-08	B	6446	1620	4	30.2 Ce qui est mesuré
+B-09	B	6447	3881	4	30.2 Ce qui est mesuré
+B-10	B	6448	3881	3	30.2 Ce qui est mesuré
+B-11	B	6449	6449	3	30.2 Ce qui est mesuré
+B-12	B	6450	6450	1	30.2 Ce qui est mesuré
+B-13	B	6451	6451	2	30.2 Ce qui est mesuré
+B-14	B	6452	6452	1	30.2 Ce qui est mesuré
+B-15	B	6453	6453	1	30.2 Ce qui est mesuré
+B-16	B	6454	6454	2	30.2 Ce qui est mesuré
+B-17	B	6455	6455	1	30.2 Ce qui est mesuré
+B-18	B	6456	5807	8	30.2 Ce qui est mesuré
+B-19	B	6457	3798	8	30.2 Ce qui est mesuré
+B-20	B	6458	6458	1	30.2 Ce qui est mesuré
+B-21	B	6459	3843	5	30.2 Ce qui est mesuré
+B-22	B	6460	6460	2	30.2 Ce qui est mesuré
+B-23	B	6461	1700	4	30.2 Ce qui est mesuré
+B-24	B	6462	5240	3	30.2 Ce qui est mesuré
+B-25	B	6463	3882	7	30.2 Ce qui est mesuré
+B-26	B	6464	6464	1	30.2 Ce qui est mesuré
+B-27	B	6465	6465	1	30.2 Ce qui est mesuré
+B-28	B	6466	6466	1	30.2 Ce qui est mesuré
+B-29	B	6467	6467	2	30.2 Ce qui est mesuré
+B-30	B	6468	6468	7	30.2 Ce qui est mesuré
 C-01	C	1460	404	12	5.1 C-01 : Forge Integration
 C-02	C	1497	404	5	5.2 C-02 : Bootstrap
 C-03	C	1516	404	6	5.3 C-03 : Native Loader
@@ -99,108 +100,108 @@ C-23	C	1806	394	10	5.16 C-23 : Asset Optimizer
 C-24	C	1830	394	9	5.17 C-24 : Conteneur A3D
 C-25	C	1836	394	8	5.18 C-25 : Asset Cache
 C-26	C	1850	395	6	5.19 C-26 : Textures & Matériaux (client)
-C-27	C	1868	395	6	5.20 C-27 : Definitions data-driven
-C-28	C	1891	396	28	5.21 C-28 : Compilateur de déformation et de structure
-C-30	C	1973	383	8	5.22 C-30 : Scene Graph
-C-31	C	1992	383	14	5.23 C-31 : Physics World
-C-32	C	2017	383	8	5.24 C-32 : Collider Builder
-C-33	C	2028	384	9	5.25 C-33 : Vehicle System
-C-34	C	2034	384	8	5.26 C-34 : Joints & Constraints
-C-35	C	2046	384	16	5.27 C-35 : Damage Model
-C-36	C	2052	385	11	5.28 C-36 : Particle Solver
-C-37	C	2058	385	8	5.29 C-37 : Animation System
-C-38	C	2064	166	11	5.30 C-38 : World Collision Provider
-C-39	C	2083	386	7	5.31 C-39 : Spatial Queries
-C-40	C	2093	386	12	5.32 C-40 : Simulation Scheduler
-C-41	C	2123	387	26	5.33 C-41 : Impact Solver
-C-42	C	2179	152	22	5.34 C-42 : Deformation Engine
-C-43	C	2187	388	16	5.35 C-43 : Structural Integrity
-C-44	C	2193	388	12	5.36 C-44 : Fracture & Detachment
-C-45	C	2199	389	11	5.37 C-45 : Collider Refit
-C-46	C	2207	389	8	5.38 C-46 : Repair System
-C-47	C	2213	390	15	5.39 C-47 : Surface State & Wear
-C-48	C	2245	390	10	5.40 C-48 : Attachment System
-C-50	C	2268	379	13	5.41 C-50 : Axion Entity
-C-51	C	2281	379	10	5.42 C-51 : Network Sync
-C-52	C	2287	379	9	5.43 C-52 : Persistance
-C-53	C	2293	380	6	5.44 C-53 : Interaction & Sièges
-C-54	C	2311	380	7	5.45 C-54 : Bloc & BlockEntity 3D
-C-55	C	2319	380	7	5.46 C-55 : Item 3D
-C-60	C	2327	370	10	5.47 C-60 : Backend NATIVE_GL
-C-61	C	2333	167	8	5.48 C-61 : Backend VANILLA_CONSUMER
-C-62	C	2349	371	5	5.49 C-62 : GPU Resource Manager
-C-63	C	2366	371	7	5.50 C-63 : Matériaux & Shaders
-C-64	C	2376	372	12	5.51 C-64 : Culling & LOD
-C-65	C	2395	161	8	5.52 C-65 : Instancing & Batching
-C-66	C	2412	162	8	5.53 C-66 : Skinning GPU
-C-67	C	2426	373	8	5.54 C-67 : Debug Renderer
-C-68	C	2434	162	12	5.55 C-68 : Déformation GPU
-C-69	C	2440	374	13	5.56 C-69 : Décalques & états de surface (rendu)
-C-70	C	2446	365	5	5.57 C-70 : API publique
-C-71	C	2450	365	5	5.58 C-71 : Commandes
-C-72	C	2473	365	6	5.59 C-72 : Benchmark Harness
-C-73	C	2477	366	5	5.60 C-73 : Overlay diagnostics
-C-74	C	2485	366	6	5.61 C-74 : CLI `axion-cli`
-C-75	C	2503	366	8	5.62 C-75 : Addon Blender
-C-76	C	2507	367	17	5.63 C-76 : Bridge RUSTFORGE-X
-C-77	C	2511	367	14	5.64 C-77 : Gouverneur de qualité
-C-80	C	2548	375	10	5.65 C-80 : Ombres AXION
-C-81	C	2554	375	10	5.66 C-81 : Sonde d'environnement & IBL synthétique
-C-82	C	2560	376	12	5.67 C-82 : Occlusion culling logiciel
-C-83	C	2566	376	10	5.68 C-83 : Effets intégrés (tone mapping, SSR)
-CAP-01	CAP	8165	8165	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-02	CAP	8166	8166	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-03	CAP	8167	8167	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-04	CAP	8168	8168	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-05	CAP	8169	8169	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-06	CAP	8170	8170	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-07	CAP	8171	8171	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-08	CAP	8172	8172	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-09	CAP	8173	8173	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-10	CAP	8174	8174	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-11	CAP	8175	8175	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-12	CAP	8176	8176	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-13	CAP	8177	8177	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-14	CAP	8178	3069	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-15	CAP	8179	8179	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-16	CAP	8180	8180	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-17	CAP	8181	7254	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-18	CAP	8182	8182	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-19	CAP	8183	7254	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-20	CAP	8184	8184	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-21	CAP	8185	8185	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-22	CAP	8186	8186	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-23	CAP	8187	8187	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-24	CAP	8188	8188	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-25	CAP	8189	8189	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-26	CAP	8190	8190	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-27	CAP	8191	8191	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-28	CAP	8192	8192	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-29	CAP	8193	8193	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-30	CAP	8194	8194	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-31	CAP	8195	8195	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-32	CAP	8196	7788	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-33	CAP	8197	8197	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-34	CAP	8198	8198	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-35	CAP	8199	2076	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-36	CAP	8200	8200	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-37	CAP	8201	5123	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-38	CAP	8202	8202	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-39	CAP	8203	8167	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-40	CAP	8204	8204	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-41	CAP	8205	8205	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-42	CAP	8206	8206	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-43	CAP	8207	8207	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-44	CAP	8208	8208	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-45	CAP	8209	8209	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-46	CAP	8210	8210	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-47	CAP	8211	8211	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-48	CAP	8212	8212	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-49	CAP	8213	8213	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-50	CAP	8214	8214	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-51	CAP	8215	8215	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-52	CAP	8216	8216	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-53	CAP	8217	8217	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+C-27	C	1868	395	7	5.20 C-27 : Definitions data-driven
+C-28	C	1895	396	28	5.21 C-28 : Compilateur de déformation et de structure
+C-30	C	1977	383	8	5.22 C-30 : Scene Graph
+C-31	C	1996	383	14	5.23 C-31 : Physics World
+C-32	C	2021	383	8	5.24 C-32 : Collider Builder
+C-33	C	2032	384	9	5.25 C-33 : Vehicle System
+C-34	C	2038	384	8	5.26 C-34 : Joints & Constraints
+C-35	C	2050	384	16	5.27 C-35 : Damage Model
+C-36	C	2056	385	11	5.28 C-36 : Particle Solver
+C-37	C	2062	385	8	5.29 C-37 : Animation System
+C-38	C	2068	166	11	5.30 C-38 : World Collision Provider
+C-39	C	2087	386	7	5.31 C-39 : Spatial Queries
+C-40	C	2097	386	12	5.32 C-40 : Simulation Scheduler
+C-41	C	2127	387	26	5.33 C-41 : Impact Solver
+C-42	C	2183	152	22	5.34 C-42 : Deformation Engine
+C-43	C	2191	388	16	5.35 C-43 : Structural Integrity
+C-44	C	2197	388	12	5.36 C-44 : Fracture & Detachment
+C-45	C	2203	389	11	5.37 C-45 : Collider Refit
+C-46	C	2211	389	8	5.38 C-46 : Repair System
+C-47	C	2217	390	15	5.39 C-47 : Surface State & Wear
+C-48	C	2249	390	10	5.40 C-48 : Attachment System
+C-50	C	2272	379	13	5.41 C-50 : Axion Entity
+C-51	C	2285	379	10	5.42 C-51 : Network Sync
+C-52	C	2291	379	9	5.43 C-52 : Persistance
+C-53	C	2297	380	6	5.44 C-53 : Interaction & Sièges
+C-54	C	2315	380	7	5.45 C-54 : Bloc & BlockEntity 3D
+C-55	C	2323	380	7	5.46 C-55 : Item 3D
+C-60	C	2331	370	10	5.47 C-60 : Backend NATIVE_GL
+C-61	C	2337	167	8	5.48 C-61 : Backend VANILLA_CONSUMER
+C-62	C	2353	371	5	5.49 C-62 : GPU Resource Manager
+C-63	C	2370	371	7	5.50 C-63 : Matériaux & Shaders
+C-64	C	2380	372	12	5.51 C-64 : Culling & LOD
+C-65	C	2399	161	8	5.52 C-65 : Instancing & Batching
+C-66	C	2416	162	8	5.53 C-66 : Skinning GPU
+C-67	C	2430	373	8	5.54 C-67 : Debug Renderer
+C-68	C	2438	162	12	5.55 C-68 : Déformation GPU
+C-69	C	2444	374	13	5.56 C-69 : Décalques & états de surface (rendu)
+C-70	C	2450	365	5	5.57 C-70 : API publique
+C-71	C	2454	365	5	5.58 C-71 : Commandes
+C-72	C	2477	365	6	5.59 C-72 : Benchmark Harness
+C-73	C	2481	366	5	5.60 C-73 : Overlay diagnostics
+C-74	C	2489	366	6	5.61 C-74 : CLI `axion-cli`
+C-75	C	2507	366	8	5.62 C-75 : Addon Blender
+C-76	C	2511	367	17	5.63 C-76 : Bridge RUSTFORGE-X
+C-77	C	2515	367	14	5.64 C-77 : Gouverneur de qualité
+C-80	C	2552	375	10	5.65 C-80 : Ombres AXION
+C-81	C	2558	375	10	5.66 C-81 : Sonde d'environnement & IBL synthétique
+C-82	C	2564	376	12	5.67 C-82 : Occlusion culling logiciel
+C-83	C	2570	376	10	5.68 C-83 : Effets intégrés (tone mapping, SSR)
+CAP-01	CAP	8176	8176	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-02	CAP	8177	8177	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-03	CAP	8178	8178	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-04	CAP	8179	8179	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-05	CAP	8180	8180	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-06	CAP	8181	8181	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-07	CAP	8182	8182	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-08	CAP	8183	8183	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-09	CAP	8184	8184	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-10	CAP	8185	8185	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-11	CAP	8186	8186	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-12	CAP	8187	8187	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-13	CAP	8188	8188	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-14	CAP	8189	3073	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-15	CAP	8190	8190	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-16	CAP	8191	8191	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-17	CAP	8192	7264	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-18	CAP	8193	8193	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-19	CAP	8194	7264	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-20	CAP	8195	8195	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-21	CAP	8196	8196	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-22	CAP	8197	8197	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-23	CAP	8198	8198	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-24	CAP	8199	8199	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-25	CAP	8200	8200	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-26	CAP	8201	8201	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-27	CAP	8202	8202	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-28	CAP	8203	8203	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-29	CAP	8204	8204	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-30	CAP	8205	8205	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-31	CAP	8206	8206	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-32	CAP	8207	7798	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-33	CAP	8208	8208	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-34	CAP	8209	8209	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-35	CAP	8210	2080	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-36	CAP	8211	8211	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-37	CAP	8212	5127	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-38	CAP	8213	8213	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-39	CAP	8214	8178	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-40	CAP	8215	8215	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-41	CAP	8216	8216	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-42	CAP	8217	8217	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-43	CAP	8218	8218	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-44	CAP	8219	8219	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-45	CAP	8220	8220	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-46	CAP	8221	8221	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-47	CAP	8222	8222	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-48	CAP	8223	8223	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-49	CAP	8224	8224	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-50	CAP	8225	8225	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-51	CAP	8226	8226	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-52	CAP	8227	8227	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-53	CAP	8228	8228	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 DM-01	DM	690	690	1	3.1 DM-01 : identifiants
 DM-02	DM	709	709	1	3.2 DM-02 : Transform
 DM-03	DM	719	719	1	3.3 DM-03 : Node
@@ -230,7 +231,7 @@ E-2000	E		1432	2	4.9 IF-07 : erreurs et panics
 E-2001	E		705	2	3.1 DM-01 : identifiants
 E-2002	E		1335	3	4.4 IF-02 : mémoire partagée et anneaux de transfert
 E-2003	E		1448	2	4.10 Propriété et durée de vie
-E-2004	E		7811	1	ANNEXE A.1 — Codes d'erreur
+E-2004	E		7822	1	ANNEXE A.1 — Codes d'erreur
 E-2010	E		717	2	3.2 DM-02 : Transform
 E-2020	E		850	2	3.6 DM-06 : Collider
 E-2030	E		921	3	3.8 DM-08 : BodyDesc et BodyState
@@ -240,9 +241,9 @@ E-3003	E		1771	2	5.14 C-21 : Importers
 E-3004	E		1773	2	5.14 C-21 : Importers
 E-3005	E		1774	2	5.14 C-21 : Importers
 E-3006	E		1863	2	5.19 C-26 : Textures & Matériaux (client)
-E-3007	E		2747	2	7.3 Sections normatives
-E-3008	E		2752	2	7.4 Versionnement et migration
-E-3009	E		2829	2	8.2 Convention par les `extras` glTF
+E-3007	E		2751	2	7.3 Sections normatives
+E-3008	E		2756	2	7.4 Versionnement et migration
+E-3009	E		2833	2	8.2 Convention par les `extras` glTF
 E-3010	E		707	2	3.1 DM-01 : identifiants
 E-3020	E		716	2	3.2 DM-02 : Transform
 E-3021	E		750	1	3.3 DM-03 : Node
@@ -253,39 +254,39 @@ E-3031	E		786	1	3.4 DM-04 : Mesh et vertex
 E-3040	E		851	1	3.6 DM-06 : Collider
 E-3050	E		941	1	3.9 DM-09 : Assembly
 E-3060	E		955	2	3.10 DM-10 : Skeleton et Animation
-E-4001	E		2371	2	5.50 C-63 : Matériaux & Shaders
-E-4002	E		7827	1	ANNEXE A.1 — Codes d'erreur
-E-5001	E		5050	2	21.4 Paquets
-E-5002	E		7829	1	ANNEXE A.1 — Codes d'erreur
-E-6001	E		7830	1	ANNEXE A.1 — Codes d'erreur
-E-6002	E		7831	1	ANNEXE A.1 — Codes d'erreur
-E-7001	E		1886	2	5.20 C-27 : Definitions data-driven
-E-7002	E		2943	2	9.2 États de node (SM-03)
-E-7003	E		5582	2	23.4 Schéma de Definition (normatif)
+E-4001	E		2375	2	5.50 C-63 : Matériaux & Shaders
+E-4002	E		7838	1	ANNEXE A.1 — Codes d'erreur
+E-5001	E		5054	2	21.4 Paquets
+E-5002	E		7840	1	ANNEXE A.1 — Codes d'erreur
+E-6001	E		7841	1	ANNEXE A.1 — Codes d'erreur
+E-6002	E		7842	1	ANNEXE A.1 — Codes d'erreur
+E-7001	E		1890	2	5.20 C-27 : Definitions data-driven
+E-7002	E		2947	2	9.2 États de node (SM-03)
+E-7003	E		5592	2	23.4 Schéma de Definition (normatif)
 E-8001	E		1604	3	5.9 C-13 : Memory / Arenas
-E-8010	E		1964	2	5.21 C-28 : Compilateur de déformation et de structure
-E-8011	E		1964	2	5.21 C-28 : Compilateur de déformation et de structure
-E-8020	E		2171	4	5.33 C-41 : Impact Solver
-E-8030	E		2260	2	5.40 C-48 : Attachment System
-EX-01	EX	7528	7528	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-02	EX	7529	7529	2	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-03	EX	7531	7531	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-04	EX	7533	7533	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-05	EX	7536	7536	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-06	EX	7537	7537	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
-EX-07	EX	7538	7538	2	38.4 Critères d'extensibilité — identifiants `EX-xx`
+E-8010	E		1968	2	5.21 C-28 : Compilateur de déformation et de structure
+E-8011	E		1968	2	5.21 C-28 : Compilateur de déformation et de structure
+E-8020	E		2175	4	5.33 C-41 : Impact Solver
+E-8030	E		2264	2	5.40 C-48 : Attachment System
+EX-01	EX	7538	7538	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-02	EX	7539	7539	2	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-03	EX	7541	7541	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-04	EX	7543	7543	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-05	EX	7546	7546	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-06	EX	7547	7547	1	38.4 Critères d'extensibilité — identifiants `EX-xx`
+EX-07	EX	7548	7548	2	38.4 Critères d'extensibilité — identifiants `EX-xx`
 FM-01	FM		1491	1	5.1 C-01 : Forge Integration
 FM-02	FM		1491	1	5.1 C-01 : Forge Integration
 FM-03	FM		1491	1	5.1 C-01 : Forge Integration
-FM-10	FM		1964	1	5.21 C-28 : Compilateur de déformation et de structure
-FM-11	FM		1964	1	5.21 C-28 : Compilateur de déformation et de structure
-FM-12	FM		1964	1	5.21 C-28 : Compilateur de déformation et de structure
-FM-20	FM		2013	1	5.23 C-31 : Physics World
-FM-21	FM		2013	1	5.23 C-31 : Physics World
-FM-22	FM		2013	1	5.23 C-31 : Physics World
-FM-30	FM		2171	1	5.33 C-41 : Impact Solver
-FM-31	FM		2171	1	5.33 C-41 : Impact Solver
-FM-32	FM		2171	1	5.33 C-41 : Impact Solver
+FM-10	FM		1968	1	5.21 C-28 : Compilateur de déformation et de structure
+FM-11	FM		1968	1	5.21 C-28 : Compilateur de déformation et de structure
+FM-12	FM		1968	1	5.21 C-28 : Compilateur de déformation et de structure
+FM-20	FM		2017	1	5.23 C-31 : Physics World
+FM-21	FM		2017	1	5.23 C-31 : Physics World
+FM-22	FM		2017	1	5.23 C-31 : Physics World
+FM-30	FM		2175	1	5.33 C-41 : Impact Solver
+FM-31	FM		2175	1	5.33 C-41 : Impact Solver
+FM-32	FM		2175	1	5.33 C-41 : Impact Solver
 H-01	H	159	159	2	0.5 Hypothèses explicites
 H-02	H	160	160	1	0.5 Hypothèses explicites
 H-03	H	161	161	3	0.5 Hypothèses explicites
@@ -308,25 +309,25 @@ IF-05	IF	1389	1389	1	4.7 IF-05 : cycle de rendu
 IF-06	IF	1411	1411	1	4.8 IF-06 : assets, particules, structure
 IF-07	IF	1430	1430	2	4.9 IF-07 : erreurs et panics
 IF-10	IF		1471	1	5.1 C-01 : Forge Integration
-INV-01	INV	7844	316	7	ANNEXE A.2 — Index des invariants
-INV-02	INV	7845	318	8	ANNEXE A.2 — Index des invariants
-INV-03	INV	7846	319	6	ANNEXE A.2 — Index des invariants
-INV-04	INV	7847	320	7	ANNEXE A.2 — Index des invariants
-INV-05	INV	7848	324	4	ANNEXE A.2 — Index des invariants
-INV-06	INV	7849	326	6	ANNEXE A.2 — Index des invariants
-INV-07	INV	7850	548	6	ANNEXE A.2 — Index des invariants
-INV-08	INV	7851	1230	4	ANNEXE A.2 — Index des invariants
-INV-09	INV	7852	1231	3	ANNEXE A.2 — Index des invariants
-INV-10	INV	7853	1232	9	ANNEXE A.2 — Index des invariants
-INV-11	INV	7854	1233	3	ANNEXE A.2 — Index des invariants
-INV-12	INV	7855	539	6	ANNEXE A.2 — Index des invariants
-INV-13	INV	7856	329	10	ANNEXE A.2 — Index des invariants
-INV-14	INV	7725	1236	11	Invariants modifiés
-INV-15	INV	7859	330	8	ANNEXE A.2 — Index des invariants
-INV-16	INV	7726	1238	8	Invariants modifiés
-INV-17	INV	7862	1239	7	ANNEXE A.2 — Index des invariants
-INV-18	INV	7863	1240	5	ANNEXE A.2 — Index des invariants
-INV-19	INV	7864	1241	9	ANNEXE A.2 — Index des invariants
+INV-01	INV	7855	316	7	ANNEXE A.2 — Index des invariants
+INV-02	INV	7856	318	8	ANNEXE A.2 — Index des invariants
+INV-03	INV	7857	319	6	ANNEXE A.2 — Index des invariants
+INV-04	INV	7858	320	7	ANNEXE A.2 — Index des invariants
+INV-05	INV	7859	324	4	ANNEXE A.2 — Index des invariants
+INV-06	INV	7860	326	6	ANNEXE A.2 — Index des invariants
+INV-07	INV	7861	548	6	ANNEXE A.2 — Index des invariants
+INV-08	INV	7862	1230	4	ANNEXE A.2 — Index des invariants
+INV-09	INV	7863	1231	3	ANNEXE A.2 — Index des invariants
+INV-10	INV	7864	1232	9	ANNEXE A.2 — Index des invariants
+INV-11	INV	7865	1233	3	ANNEXE A.2 — Index des invariants
+INV-12	INV	7866	539	6	ANNEXE A.2 — Index des invariants
+INV-13	INV	7867	329	10	ANNEXE A.2 — Index des invariants
+INV-14	INV	7735	1236	11	Invariants modifiés
+INV-15	INV	7870	330	8	ANNEXE A.2 — Index des invariants
+INV-16	INV	7736	1238	8	Invariants modifiés
+INV-17	INV	7873	1239	7	ANNEXE A.2 — Index des invariants
+INV-18	INV	7874	1240	5	ANNEXE A.2 — Index des invariants
+INV-19	INV	7875	1241	9	ANNEXE A.2 — Index des invariants
 P-01	P	316	316	5	1.4 Principes directeurs
 P-02	P	317	317	4	1.4 Principes directeurs
 P-03	P	318	318	1	1.4 Principes directeurs
@@ -342,19 +343,19 @@ P-12	P	327	327	2	1.4 Principes directeurs
 P-13	P	328	328	1	1.4 Principes directeurs
 P-14	P	329	329	3	1.4 Principes directeurs
 P-15	P	330	330	3	1.4 Principes directeurs
-PF-01	PF	7511	7511	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-02	PF	7512	7512	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-03	PF	7513	7513	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-04	PF	7515	7515	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-05	PF	7516	7516	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-06	PF	7517	7517	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-07	PF	7518	7518	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-08	PF	7519	7519	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-09	PF	7520	7520	1	38.3 Critères de performance — identifiants `PF-xx`
-PF-10	PF	7522	7522	1	38.3 Critères de performance — identifiants `PF-xx`
-Q-0	Q	7272	196	22	M6 — Impacts et déformation continue *(jalon central)*
-Q-1	Q		3709	10	14.5 Niveaux de qualité de déformation
-Q-2	Q		3599	6	14.1 Évaluation des approches
+PF-01	PF	7521	7521	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-02	PF	7522	7522	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-03	PF	7523	7523	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-04	PF	7525	7525	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-05	PF	7526	7526	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-06	PF	7527	7527	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-07	PF	7528	7528	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-08	PF	7529	7529	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-09	PF	7530	7530	1	38.3 Critères de performance — identifiants `PF-xx`
+PF-10	PF	7532	7532	1	38.3 Critères de performance — identifiants `PF-xx`
+Q-0	Q	7282	196	22	M6 — Impacts et déformation continue *(jalon central)*
+Q-1	Q		3713	10	14.5 Niveaux de qualité de déformation
+Q-2	Q		3603	6	14.1 Évaluation des approches
 Q-3	Q		1049	11	3.12 DM-12 : Régions de déformation et champ
 Q-4	Q		196	19	0.6 Terminologie
 R-001	R	119	119	1	0.3 Niveaux de maturité
@@ -403,7 +404,7 @@ R-161	R	851	851	1	3.6 DM-06 : Collider
 R-162	R	852	852	1	3.6 DM-06 : Collider
 R-163	R	853	853	1	3.6 DM-06 : Collider
 R-170	R	897	897	1	3.7 DM-07 : PhysicsMaterial — modèle de matière étendu
-R-171	R	898	898	1	3.7 DM-07 : PhysicsMaterial — modèle de matière étendu
+R-171	R	898	898	2	3.7 DM-07 : PhysicsMaterial — modèle de matière étendu
 R-180	R	920	920	1	3.8 DM-08 : BodyDesc et BodyState
 R-181	R	921	921	1	3.8 DM-08 : BodyDesc et BodyState
 R-190	R	941	941	1	3.9 DM-09 : Assembly
@@ -503,509 +504,509 @@ R-562	R	1845	1845	1	5.18 C-25 : Asset Cache
 R-563	R	1846	1846	1	5.18 C-25 : Asset Cache
 R-570	R	1863	1863	1	5.19 C-26 : Textures & Matériaux (client)
 R-571	R	1864	1864	1	5.19 C-26 : Textures & Matériaux (client)
-R-580	R	1886	1886	1	5.20 C-27 : Definitions data-driven
-R-581	R	1887	1887	1	5.20 C-27 : Definitions data-driven
-R-590	R	1958	1958	1	5.21 C-28 : Compilateur de déformation et de structure
-R-591	R	1959	1959	1	5.21 C-28 : Compilateur de déformation et de structure
-R-592	R	1960	1960	1	5.21 C-28 : Compilateur de déformation et de structure
-R-600	R	1985	1985	1	5.22 C-30 : Scene Graph
-R-601	R	1986	1986	2	5.22 C-30 : Scene Graph
-R-610	R	2006	2006	1	5.23 C-31 : Physics World
-R-611	R	2007	2007	1	5.23 C-31 : Physics World
-R-612	R	2008	2008	1	5.23 C-31 : Physics World
-R-613	R	2009	2009	1	5.23 C-31 : Physics World
-R-614	R	2010	2010	2	5.23 C-31 : Physics World
-R-615	R	2011	2011	1	5.23 C-31 : Physics World
-R-620	R	2021	2021	1	5.24 C-32 : Collider Builder
-R-621	R	2022	2022	1	5.24 C-32 : Collider Builder
-R-622	R	2023	2023	1	5.24 C-32 : Collider Builder
-R-623	R	2024	2024	1	5.24 C-32 : Collider Builder
-R-630	R	2040	2040	1	5.26 C-34 : Joints & Constraints
-R-631	R	2041	2041	1	5.26 C-34 : Joints & Constraints
-R-632	R	2042	2042	1	5.26 C-34 : Joints & Constraints
-R-640	R	2076	2076	2	5.30 C-38 : World Collision Provider
-R-641	R	2077	2077	1	5.30 C-38 : World Collision Provider
-R-642	R	2078	2078	1	5.30 C-38 : World Collision Provider
-R-643	R	2079	2079	1	5.30 C-38 : World Collision Provider
-R-650	R	2087	2087	1	5.31 C-39 : Spatial Queries
-R-651	R	2088	2088	1	5.31 C-39 : Spatial Queries
-R-652	R	2089	2089	1	5.31 C-39 : Spatial Queries
-R-660	R	2117	2117	1	5.32 C-40 : Simulation Scheduler
-R-661	R	2118	2118	1	5.32 C-40 : Simulation Scheduler
-R-662	R	2119	2119	1	5.32 C-40 : Simulation Scheduler
-R-670	R	2164	2164	1	5.33 C-41 : Impact Solver
-R-671	R	2165	2165	1	5.33 C-41 : Impact Solver
-R-672	R	2166	2166	1	5.33 C-41 : Impact Solver
-R-673	R	2167	2167	1	5.33 C-41 : Impact Solver
-R-680	R	2233	2233	1	5.39 C-47 : Surface State & Wear
-R-681	R	2234	2234	2	5.39 C-47 : Surface State & Wear
-R-682	R	2235	2235	1	5.39 C-47 : Surface State & Wear
-R-690	R	2260	2260	1	5.40 C-48 : Attachment System
-R-691	R	2261	2261	1	5.40 C-48 : Attachment System
-R-692	R	2262	2262	1	5.40 C-48 : Attachment System
-R-700	R	2272	2272	1	5.41 C-50 : Axion Entity
-R-701	R	2273	2273	2	5.41 C-50 : Axion Entity
-R-702	R	2274	2274	1	5.41 C-50 : Axion Entity
-R-703	R	2275	2275	1	5.41 C-50 : Axion Entity
-R-704	R	2276	2276	1	5.41 C-50 : Axion Entity
-R-705	R	2277	2277	1	5.41 C-50 : Axion Entity
-R-710	R	2305	2305	1	5.44 C-53 : Interaction & Sièges
-R-711	R	2306	2306	1	5.44 C-53 : Interaction & Sièges
-R-712	R	2307	2307	2	5.44 C-53 : Interaction & Sièges
-R-720	R	2313	2313	1	5.45 C-54 : Bloc & BlockEntity 3D
-R-721	R	2314	2314	2	5.45 C-54 : Bloc & BlockEntity 3D
-R-722	R	2315	2315	2	5.45 C-54 : Bloc & BlockEntity 3D
-R-730	R	2321	2321	1	5.46 C-55 : Item 3D
-R-731	R	2322	2322	1	5.46 C-55 : Item 3D
-R-732	R	2323	2323	2	5.46 C-55 : Item 3D
-R-740	R	2337	2337	2	5.48 C-61 : Backend VANILLA_CONSUMER
-R-741	R	2340	2340	1	5.48 C-61 : Backend VANILLA_CONSUMER
-R-742	R	2341	2341	1	5.48 C-61 : Backend VANILLA_CONSUMER
-R-743	R	2342	2342	1	5.48 C-61 : Backend VANILLA_CONSUMER
-R-744	R	2343	2343	1	5.48 C-61 : Backend VANILLA_CONSUMER
-R-750	R	2360	2360	1	5.49 C-62 : GPU Resource Manager
-R-751	R	2361	2361	1	5.49 C-62 : GPU Resource Manager
-R-752	R	2362	2362	1	5.49 C-62 : GPU Resource Manager
-R-760	R	2370	2370	1	5.50 C-63 : Matériaux & Shaders
-R-761	R	2371	2371	1	5.50 C-63 : Matériaux & Shaders
-R-762	R	2372	2372	1	5.50 C-63 : Matériaux & Shaders
-R-770	R	2389	2389	1	5.51 C-64 : Culling & LOD
-R-771	R	2390	2390	1	5.51 C-64 : Culling & LOD
-R-772	R	2391	2391	1	5.51 C-64 : Culling & LOD
-R-780	R	2406	2406	1	5.52 C-65 : Instancing & Batching
-R-781	R	2407	2407	1	5.52 C-65 : Instancing & Batching
-R-782	R	2408	2408	1	5.52 C-65 : Instancing & Batching
-R-790	R	2420	2420	1	5.53 C-66 : Skinning GPU
-R-791	R	2421	2421	1	5.53 C-66 : Skinning GPU
-R-792	R	2422	2422	3	5.53 C-66 : Skinning GPU
-R-800	R	2430	2430	1	5.54 C-67 : Debug Renderer
-R-810	R	2468	2468	1	5.58 C-71 : Commandes
-R-811	R	2469	2469	1	5.58 C-71 : Commandes
-R-820	R	2481	2481	1	5.60 C-73 : Overlay diagnostics
-R-830	R	2499	2499	3	5.61 C-74 : CLI `axion-cli`
-R-840	R	2536	2536	1	5.64 C-77 : Gouverneur de qualité
-R-841	R	2537	2537	4	5.64 C-77 : Gouverneur de qualité
-R-842	R	2538	2538	1	5.64 C-77 : Gouverneur de qualité
-R-850	R	2595	2595	1	6.2 Décisions figées
-R-860	R	2633	2633	1	6.3 Pipeline complet
-R-861	R	2634	2634	1	6.3 Pipeline complet
-R-862	R	2635	2635	1	6.3 Pipeline complet
-R-870	R	2663	2663	1	6.4 Options de compilation
-R-871	R	2664	2664	1	6.4 Options de compilation
-R-872	R	2665	2665	2	6.4 Options de compilation
-R-880	R	2745	2745	1	7.3 Sections normatives
-R-881	R	2746	2746	1	7.3 Sections normatives
-R-882	R	2747	2747	1	7.3 Sections normatives
-R-883	R	2748	2748	1	7.3 Sections normatives
-R-890	R	2752	2752	1	7.4 Versionnement et migration
-R-891	R	2753	2753	1	7.4 Versionnement et migration
-R-892	R	2754	2754	1	7.4 Versionnement et migration
-R-893	R	2755	2755	1	7.4 Versionnement et migration
-R-900	R	2759	2759	1	7.5 Sécurité de lecture
-R-901	R	2760	2760	1	7.5 Sécurité de lecture
-R-902	R	2761	2761	1	7.5 Sécurité de lecture
-R-903	R	2762	2762	1	7.5 Sécurité de lecture
-R-910	R	2827	2827	1	8.2 Convention par les `extras` glTF
-R-911	R	2828	2828	1	8.2 Convention par les `extras` glTF
-R-912	R	2829	2829	1	8.2 Convention par les `extras` glTF
-R-913	R	2830	2830	1	8.2 Convention par les `extras` glTF
-R-920	R	2873	2873	2	8.3 Addon Blender (C-75)
-R-921	R	2874	2874	1	8.3 Addon Blender (C-75)
-R-922	R	2875	2875	1	8.3 Addon Blender (C-75)
-R-923	R	2876	2876	1	8.3 Addon Blender (C-75)
-R-930	R	2942	2942	1	9.2 États de node (SM-03)
-R-931	R	2943	2943	1	9.2 États de node (SM-03)
-R-932	R	2944	2944	1	9.2 États de node (SM-03)
-R-933	R	2945	2945	1	9.2 États de node (SM-03)
-R-940	R	2959	2959	2	9.3 Sockets
-R-941	R	2960	2960	4	9.3 Sockets
-R-950	R	2964	2964	1	9.4 Visibilité, LOD et révélation
-R-951	R	2965	2965	1	9.4 Visibilité, LOD et révélation
-R-952	R	2966	2966	1	9.4 Visibilité, LOD et révélation
-R-960	R	2970	2970	2	9.5 Instanciation et partage
-R-961	R	2971	2971	1	9.5 Instanciation et partage
-R-962	R	2972	2972	1	9.5 Instanciation et partage
-R-970	R	3001	3001	1	10.3 Formes de collision
-R-971	R	3002	3002	1	10.3 Formes de collision
-R-980	R	3013	3013	1	10.4 Broad phase / narrow phase
-R-990	R	3028	3028	1	10.5 Intégration et solveur
-R-991	R	3029	3029	1	10.5 Intégration et solveur
-R-1000	R	3041	3041	1	10.6 Forces environnementales
-R-1010	R	3061	3061	1	10.7 Événements physiques
-R-1011	R	3062	3062	1	10.7 Événements physiques
-R-1012	R	3063	3063	1	10.7 Événements physiques
-R-1020	R	3082	3082	1	10.9 Déterminisme
-R-1030	R	3162	3162	1	11.3 Sémantique normative des paramètres de déformation
-R-1031	R	3163	3163	1	11.3 Sémantique normative des paramètres de déformation
-R-1032	R	3164	3164	1	11.3 Sémantique normative des paramètres de déformation
-R-1035	R	3222	3222	2	11.5 Cohérence dimensionnelle (référence normative)
-R-1036	R	3225	3225	1	11.5 Cohérence dimensionnelle (référence normative)
-R-1037	R	3228	3228	1	11.5 Cohérence dimensionnelle (référence normative)
-R-1038	R	3232	3232	2	11.5 Cohérence dimensionnelle (référence normative)
-R-1040	R	3178	3178	1	11.4 Mappage bloc → matériau
-R-1041	R	3179	3179	1	11.4 Mappage bloc → matériau
-R-1050	R	3265	3265	1	12.2 Modèle de roue
-R-1051	R	3266	3266	1	12.2 Modèle de roue
-R-1052	R	3267	3267	1	12.2 Modèle de roue
-R-1053	R	3268	3268	1	12.2 Modèle de roue
-R-1060	R	3280	3280	1	12.3 Suspension
-R-1061	R	3281	3281	1	12.3 Suspension
-R-1070	R	3297	3297	1	12.4 Modèle de pneu
-R-1071	R	3298	3298	1	12.4 Modèle de pneu
-R-1080	R	3315	3315	1	12.5 Groupe motopropulseur
-R-1081	R	3316	3316	1	12.5 Groupe motopropulseur
-R-1082	R	3317	3317	1	12.5 Groupe motopropulseur
-R-1083	R	3318	3318	2	12.5 Groupe motopropulseur
-R-1090	R	3331	3331	1	12.6 Direction et freinage
-R-1091	R	3332	3332	1	12.6 Direction et freinage
-R-1100	R	3342	3342	1	12.7 Aérodynamique
-R-1110	R	3354	3354	1	12.8 Entrées
-R-1120	R	3414	3414	1	13.2 Sources d'impact
-R-1121	R	3415	3415	1	13.2 Sources d'impact
-R-1130	R	3450	3450	1	13.3 Distribution de l'énergie (C-35)
-R-1140	R	3451	3451	1	13.3 Distribution de l'énergie (C-35)
-R-1150	R	3452	3452	1	13.3 Distribution de l'énergie (C-35)
-R-1155	R	3501	3501	2	13.3bis Modèle d'indentation plastique (référence normative)
-R-1156	R	3504	3504	1	13.3bis Modèle d'indentation plastique (référence normative)
-R-1157	R	3508	3508	1	13.3bis Modèle d'indentation plastique (référence normative)
-R-1158	R	3510	3510	2	13.3bis Modèle d'indentation plastique (référence normative)
-R-1160	R	3453	3453	1	13.3 Distribution de l'énergie (C-35)
-R-1170	R	3530	3530	2	13.4 Effets fonctionnels
-R-1171	R	3531	3531	2	13.4 Effets fonctionnels
-R-1180	R	3535	3535	1	13.5 Dommage continu
-R-1181	R	3536	3536	1	13.5 Dommage continu
-R-1190	R	3547	3547	1	13.6 Budgets et dégradation
-R-1200	R	3632	3632	1	14.2 Modèle mathématique
-R-1201	R	3633	3633	1	14.2 Modèle mathématique
-R-1202	R	3634	3634	1	14.2 Modèle mathématique
-R-1210	R	3649	3649	2	14.3 Composantes du champ
-R-1211	R	3650	3650	1	14.3 Composantes du champ
-R-1220	R	3700	3700	2	14.4 Application d'un impact (noyau déterministe)
-R-1221	R	3701	3701	1	14.4 Application d'un impact (noyau déterministe)
-R-1222	R	3702	3702	1	14.4 Application d'un impact (noyau déterministe)
-R-1230	R	3714	3714	1	14.5 Niveaux de qualité de déformation
-R-1231	R	3715	3715	1	14.5 Niveaux de qualité de déformation
-R-1232	R	3716	3716	1	14.5 Niveaux de qualité de déformation
-R-1233	R	3717	3717	1	14.5 Niveaux de qualité de déformation
-R-1240	R	3762	3762	1	14.6 Pipeline de rendu de la déformation (C-68)
-R-1241	R	3763	3763	1	14.6 Pipeline de rendu de la déformation (C-68)
-R-1242	R	3764	3764	2	14.6 Pipeline de rendu de la déformation (C-68)
-R-1243	R	3765	3765	1	14.6 Pipeline de rendu de la déformation (C-68)
-R-1250	R	3778	3778	2	14.7 LOD de déformation
-R-1251	R	3779	3779	1	14.7 LOD de déformation
-R-1260	R	3794	3794	2	14.8 Compléments déclaratifs
-R-1261	R	3795	3795	1	14.8 Compléments déclaratifs
-R-1262	R	3796	3796	1	14.8 Compléments déclaratifs
-R-1270	R	3836	3836	1	14.9 Déformation et collision (C-45)
-R-1271	R	3837	3837	1	14.9 Déformation et collision (C-45)
-R-1272	R	3838	3838	1	14.9 Déformation et collision (C-45)
-R-1273	R	3839	3839	1	14.9 Déformation et collision (C-45)
-R-1280	R	3843	3843	1	14.10 Déchirure
-R-1281	R	3844	3844	1	14.10 Déchirure
-R-1282	R	3845	3845	1	14.10 Déchirure
-R-1283	R	3846	3846	1	14.10 Déchirure
-R-1290	R	3861	3861	1	14.11 Budgets, mémoire et performance
-R-1291	R	3862	3862	1	14.11 Budgets, mémoire et performance
-R-1292	R	3863	3863	1	14.11 Budgets, mémoire et performance
-R-1293	R	3864	3864	1	14.11 Budgets, mémoire et performance
-R-1294	R	3865	3865	2	14.11 Budgets, mémoire et performance
-R-1295	R	3866	3866	1	14.11 Budgets, mémoire et performance
-R-1296	R	3882	3882	2	14.11bis Modèle de coût : portée exacte des garanties
-R-1297	R	3886	3886	1	14.11bis Modèle de coût : portée exacte des garanties
-R-1298	R	3889	3889	1	14.11bis Modèle de coût : portée exacte des garanties
-R-1299	R	3892	3892	2	14.11bis Modèle de coût : portée exacte des garanties
-R-1300	R	3898	3898	1	14.12 Réplication et persistance (résumé, détail en PARTIE 21 et 22)
-R-1301	R	3899	3899	1	14.12 Réplication et persistance (résumé, détail en PARTIE 21 et 22)
-R-1302	R	3900	3900	1	14.12 Réplication et persistance (résumé, détail en PARTIE 21 et 22)
-R-1310	R	4068	4068	1	15.2 Propagation de l'énergie structurelle (C-43)
-R-1311	R	4069	4069	1	15.2 Propagation de l'énergie structurelle (C-43)
-R-1312	R	4070	4070	1	15.2 Propagation de l'énergie structurelle (C-43)
-R-1315	R	4036	4036	2	15.1bis Estimation de l'aire de liaison (référence normative)
-R-1316	R	4038	4038	1	15.1bis Estimation de l'aire de liaison (référence normative)
-R-1317	R	4041	4041	2	15.1bis Estimation de l'aire de liaison (référence normative)
-R-1320	R	4108	4108	1	15.3 Rupture et détachement (C-44)
-R-1321	R	4109	4109	1	15.3 Rupture et détachement (C-44)
-R-1322	R	4110	4110	1	15.3 Rupture et détachement (C-44)
-R-1330	R	4126	4126	1	15.4 Débris
-R-1331	R	4127	4127	1	15.4 Débris
-R-1340	R	4131	4131	2	15.5 Effets sur les mécanismes
-R-1341	R	4132	4132	1	15.5 Effets sur les mécanismes
-R-1342	R	4133	4133	1	15.5 Effets sur les mécanismes
-R-1350	R	4197	4197	1	16.2 Restauration du champ de déformation
-R-1351	R	4198	4198	1	16.2 Restauration du champ de déformation
-R-1352	R	4199	4199	1	16.2 Restauration du champ de déformation
-R-1360	R	4220	4220	1	16.3 Règles data-driven
-R-1361	R	4221	4221	1	16.3 Règles data-driven
-R-1362	R	4222	4222	1	16.3 Règles data-driven
-R-1370	R	4269	4269	1	17.2 Modes d'autorité
-R-1371	R	4270	4270	1	17.2 Modes d'autorité
-R-1372	R	4271	4271	2	17.2 Modes d'autorité
-R-1373	R	4298	4298	3	17.2bis Autorité et reconstruction visuelle (référence normative)
-R-1374	R	4303	4303	2	17.2bis Autorité et reconstruction visuelle (référence normative)
-R-1375	R	4339	4339	1	17.2bis Autorité et reconstruction visuelle (référence normative)
-R-1376	R	4341	4341	1	17.2bis Autorité et reconstruction visuelle (référence normative)
-R-1377	R	4345	4345	2	17.2bis Autorité et reconstruction visuelle (référence normative)
-R-1380	R	4369	4369	1	17.3 Solveur
-R-1381	R	4370	4370	1	17.3 Solveur
-R-1390	R	4381	4381	1	17.4 Limites et budgets
-R-1391	R	4382	4382	1	17.4 Limites et budgets
-R-1400	R	4411	4411	1	17.6 Cordes et câbles physiques
-R-1401	R	4412	4412	1	17.6 Cordes et câbles physiques
-R-1402	R	4413	4413	1	17.6 Cordes et câbles physiques
-R-1410	R	4417	4417	1	17.7 Interaction avec la déformation
-R-1420	R	4418	152	2	17.7 Interaction avec la déformation
-R-1430	R	4468	4468	1	18.1 Types d'animation
-R-1440	R	4481	4481	1	18.2 Échantillonnage et blending
-R-1450	R	4500	4500	1	18.3 Animation procédurale déclarative
-R-1460	R	4504	4504	1	18.4 Palettes de skinning et ordre d'application
-R-1461	R	4505	4505	2	18.4 Palettes de skinning et ordre d'application
-R-1462	R	4506	4506	1	18.4 Palettes de skinning et ordre d'application
-R-1470	R	4555	4555	1	18.5 Couplage animation / physique / dégâts (scénario normatif de la porte)
-R-1471	R	4556	4556	1	18.5 Couplage animation / physique / dégâts (scénario normatif de la porte)
-R-1480	R	4560	4560	1	18.6 Root motion
-R-1490	R	4624	4624	1	19.2 Les deux backends
-R-1491	R	4625	4625	1	19.2 Les deux backends
-R-1492	R	4626	4626	2	19.2 Les deux backends
-R-1493	R	4662	4662	2	19.2bis Portée de l'équivalence entre backends (référence normative)
-R-1494	R	4666	4666	2	19.2bis Portée de l'équivalence entre backends (référence normative)
-R-1495	R	4669	4669	1	19.2bis Portée de l'équivalence entre backends (référence normative)
-R-1496	R	4672	4672	2	19.2bis Portée de l'équivalence entre backends (référence normative)
-R-1500	R	4678	4678	1	19.3 Gestion d'état OpenGL (règle critique)
-R-1501	R	4679	4679	1	19.3 Gestion d'état OpenGL (règle critique)
-R-1502	R	4680	4680	1	19.3 Gestion d'état OpenGL (règle critique)
-R-1503	R	4681	4681	1	19.3 Gestion d'état OpenGL (règle critique)
-R-1504	R	4682	4682	1	19.3 Gestion d'état OpenGL (règle critique)
-R-1505	R	4683	4683	2	19.3 Gestion d'état OpenGL (règle critique)
-R-1510	R	4752	4752	1	19.5 Modèle d'éclairage : PBR avec environnement synthétisé
-R-1511	R	4753	4753	1	19.5 Modèle d'éclairage : PBR avec environnement synthétisé
-R-1512	R	4754	4754	1	19.5 Modèle d'éclairage : PBR avec environnement synthétisé
-R-1513	R	4755	4755	1	19.5 Modèle d'éclairage : PBR avec environnement synthétisé
-R-1514	R	4756	4756	1	19.5 Modèle d'éclairage : PBR avec environnement synthétisé
-R-1520	R	4762	4762	1	19.6 Déformation dans le pipeline de rendu
-R-1521	R	4763	4763	1	19.6 Déformation dans le pipeline de rendu
-R-1522	R	4764	4764	1	19.6 Déformation dans le pipeline de rendu
-R-1523	R	4765	4765	1	19.6 Déformation dans le pipeline de rendu
-R-1530	R	4786	4786	1	19.7 Occlusion culling logiciel (C-82)
-R-1531	R	4787	4787	1	19.7 Occlusion culling logiciel (C-82)
-R-1532	R	4788	4788	1	19.7 Occlusion culling logiciel (C-82)
-R-1540	R	4811	4811	1	19.8 Ombres AXION (C-80)
-R-1541	R	4812	4812	1	19.8 Ombres AXION (C-80)
-R-1542	R	4813	4813	1	19.8 Ombres AXION (C-80)
-R-1550	R	4819	4819	1	19.9 Effets intégrés (C-83)
-R-1560	R	4823	4823	1	19.9 Effets intégrés (C-83)
-R-1561	R	4824	4824	1	19.9 Effets intégrés (C-83)
-R-1570	R	4840	4840	1	19.10 Passes de rendu
-R-1580	R	4844	4844	1	19.11 Transparence
-R-1581	R	4845	4845	1	19.11 Transparence
-R-1590	R	4939	4939	1	20.1 États visuels
-R-1591	R	4940	4940	1	20.1 États visuels
-R-1600	R	4957	4957	1	20.2 Décalques (C-69)
-R-1601	R	4958	4958	1	20.2 Décalques (C-69)
-R-1602	R	4959	4959	1	20.2 Décalques (C-69)
-R-1610	R	4974	4974	1	20.3 Profils d'usure
-R-1620	R	5004	5004	1	21.1 Modèle d'autorité
-R-1630	R	5013	5013	3	21.2 Canal et protocole
-R-1631	R	5014	5014	1	21.2 Canal et protocole
-R-1640	R	5027	5027	1	21.3 Handshake
-R-1641	R	5028	5028	1	21.3 Handshake
-R-1650	R	5050	5050	1	21.4 Paquets
-R-1651	R	5051	5051	1	21.4 Paquets
-R-1660	R	5065	5065	1	21.5 Snapshots, quantification, delta
-R-1661	R	5066	5066	1	21.5 Snapshots, quantification, delta
-R-1662	R	5067	5067	1	21.5 Snapshots, quantification, delta
-R-1663	R	5068	5068	1	21.5 Snapshots, quantification, delta
-R-1664	R	5069	5069	1	21.5 Snapshots, quantification, delta
-R-1670	R	5105	5105	1	21.6 Réplication de la déformation (mécanisme central)
-R-1671	R	5106	5106	1	21.6 Réplication de la déformation (mécanisme central)
-R-1672	R	5107	5107	1	21.6 Réplication de la déformation (mécanisme central)
-R-1673	R	5108	5108	1	21.6 Réplication de la déformation (mécanisme central)
-R-1674	R	5109	5109	1	21.6 Réplication de la déformation (mécanisme central)
-R-1680	R	5123	5123	3	21.8 Prédiction et réconciliation
-R-1681	R	5124	5124	2	21.8 Prédiction et réconciliation
-R-1682	R	5125	5125	1	21.8 Prédiction et réconciliation
-R-1683	R	5126	5126	1	21.8 Prédiction et réconciliation
-R-1690	R	5130	5130	1	21.9 Sécurité réseau
-R-1691	R	5131	5131	1	21.9 Sécurité réseau
-R-1692	R	5132	5132	1	21.9 Sécurité réseau
-R-1693	R	5133	5133	1	21.9 Sécurité réseau
-R-1700	R	5197	5197	1	22.1 Ce qui est persisté
-R-1701	R	5198	5198	1	22.1 Ce qui est persisté
-R-1710	R	5222	5222	1	22.2 Format NBT
-R-1711	R	5223	5223	1	22.2 Format NBT
-R-1720	R	5234	5234	1	22.3 Sérialisation du champ de déformation
-R-1721	R	5235	5235	1	22.3 Sérialisation du champ de déformation
-R-1722	R	5236	5236	1	22.3 Sérialisation du champ de déformation
-R-1730	R	5248	5248	1	22.4 Chargement et déchargement de chunk
-R-1740	R	5293	5293	2	22.5.3 Matrice de comportement (normative)
-R-1741	R	5295	5295	1	22.5.3 Matrice de comportement (normative)
-R-1742	R	5299	5299	2	22.5.3 Matrice de comportement (normative)
-R-1743	R	5263	5263	2	22.5.2 Journal latéral (side-car)
-R-1744	R	5269	5269	1	22.5.2 Journal latéral (side-car)
-R-1745	R	5273	5273	1	22.5.2 Journal latéral (side-car)
-R-1746	R	5277	5277	1	22.5.2 Journal latéral (side-car)
-R-1747	R	5302	5302	1	22.5.3 Matrice de comportement (normative)
-R-1748	R	5305	5305	1	22.5.3 Matrice de comportement (normative)
-R-1749	R	5308	5308	2	22.5.3 Matrice de comportement (normative)
-R-1750	R	5346	5346	1	23.1 Principes
-R-1751	R	5347	5347	1	23.1 Principes
-R-1752	R	5348	5348	1	23.1 Principes
-R-1753	R	5349	5349	1	23.1 Principes
-R-1754	R	5350	5350	1	23.1 Principes
-R-1755	R	5351	5351	1	23.1 Principes
-R-1760	R	5473	5473	1	23.2 Surface de l'API
-R-1761	R	5474	5474	1	23.2 Surface de l'API
-R-1762	R	5475	5475	1	23.2 Surface de l'API
-R-1770	R	5493	5493	1	23.3 Points d'extension
-R-1771	R	5494	5494	1	23.3 Points d'extension
-R-1772	R	5495	5495	1	23.3 Points d'extension
-R-1780	R	5582	5582	1	23.4 Schéma de Definition (normatif)
-R-1781	R	5583	5583	1	23.4 Schéma de Definition (normatif)
-R-1782	R	5584	5584	1	23.4 Schéma de Definition (normatif)
-R-1783	R	5585	5585	1	23.4 Schéma de Definition (normatif)
-R-1790	R	5589	5589	2	23.5 Contenu de démonstration
-R-1800	R	5627	5627	1	24.1 Modules
-R-1801	R	5628	5628	1	24.1 Modules
-R-1802	R	5629	5629	1	24.1 Modules
-R-1810	R	5646	5646	1	24.2 Niveaux de qualité
-R-1811	R	5647	5647	1	24.2 Niveaux de qualité
-R-1812	R	5648	5648	1	24.2 Niveaux de qualité
-R-1820	R	5652	5652	1	24.3 Chargement à la demande
-R-1821	R	5653	5653	1	24.3 Chargement à la demande
-R-1822	R	5654	5654	1	24.3 Chargement à la demande
-R-1830	R	5666	5666	1	24.4 Fichiers de configuration
-R-1840	R	5675	5675	1	25.1 Position de principe
-R-1850	R	5702	5702	1	25.2 Budgets par défaut
-R-1860	R	5733	5733	1	25.4 Double tampon et interpolation
-R-1861	R	5734	5734	1	25.4 Double tampon et interpolation
-R-1870	R	5743	5743	1	25.5 Détection de dépassement
-R-1880	R	5769	5769	1	25.6 Machine de dégradation (SM-02)
-R-1890	R	5770	5770	1	25.6 Machine de dégradation (SM-02)
-R-1891	R	5771	5771	2	25.6 Machine de dégradation (SM-02)
-R-1892	R	5772	5772	1	25.6 Machine de dégradation (SM-02)
-R-1900	R	5787	5787	1	25.8 Watchdog
-R-1901	R	5788	5788	1	25.8 Watchdog
-R-1910	R	5810	5810	1	26.1 Principe
-R-1911	R	5811	5811	1	26.1 Principe
-R-1912	R	5812	5812	1	26.1 Principe
-R-1920	R	5823	5823	1	26.2 Empreinte Mixin (liste fermée)
-R-1921	R	5824	5824	2	26.2 Empreinte Mixin (liste fermée)
-R-1930	R	5844	5844	2	26.4 Limites documentées
-R-1940	R	5858	5858	1	26.5 Mods tiers
-R-1941	R	5859	5859	1	26.5 Mods tiers
-R-1950	R	5893	5893	1	27.0 Position fondamentale
-R-1960	R	5916	5916	1	27.1 Détection
-R-1961	R	5917	5917	1	27.1 Détection
-R-1962	R	5918	5918	1	27.1 Détection
-R-1970	R	5933	5933	1	27.2 Ce que la détection change (et ne change pas)
-R-1980	R	5946	5946	2	27.3.1 Classloading
-R-1990	R	5956	5954	3	27.3.2 Instrumentation et bytecode
-R-2000	R	5968	5968	1	27.3.3 Threads et scheduler
-R-2010	R	5972	5972	1	27.3.4 Tick et événements Forge
-R-2020	R	5985	5985	2	27.3.5 Mémoire native et bibliothèques
-R-2030	R	5989	5989	1	27.3.6 Rendu
-R-2040	R	5993	5993	1	27.3.7 Réseau, monde, sauvegarde
-R-2050	R	5997	5997	1	27.3.8 Cycle de vie et arrêt
-R-2051	R	5998	5998	1	27.3.8 Cycle de vie et arrêt
-R-2060	R	6009	6009	1	27.4 Partage du budget CPU
-R-2061	R	6010	6010	1	27.4 Partage du budget CPU
-R-2062	R	6011	6011	2	27.4 Partage du budget CPU
-R-2070	R	6037	6037	1	27.5 Bridge d'interopérabilité optionnel (C-76)
-R-2071	R	6038	6038	1	27.5 Bridge d'interopérabilité optionnel (C-76)
-R-2072	R	6039	6039	1	27.5 Bridge d'interopérabilité optionnel (C-76)
-R-2073	R	6040	6040	1	27.5 Bridge d'interopérabilité optionnel (C-76)
-R-2074	R	6043	6043	1	27.5 Bridge d'interopérabilité optionnel (C-76)
-R-2075	R	6044	6044	1	27.5 Bridge d'interopérabilité optionnel (C-76)
-R-2080	R	6048	6048	1	27.6 Indication de non-transformation
-R-2081	R	6049	6049	1	27.6 Indication de non-transformation
-R-2082	R	6050	6050	1	27.6 Indication de non-transformation
-R-2090	R	6116	6116	1	27.10.1 Mod de simulation (obligatoire, toujours exécuté)
-R-2100	R	6120	6120	1	27.10.2 Test avec l'artefact réel (obligatoire quand disponible)
-R-2110	R	6161	6161	1	28.1 Surface d'attaque
-R-2120	R	6165	6165	1	28.2 Code `unsafe` en Rust
-R-2121	R	6166	6166	1	28.2 Code `unsafe` en Rust
-R-2122	R	6167	6167	1	28.2 Code `unsafe` en Rust
-R-2130	R	6194	6194	1	28.3 Limites dures
-R-2131	R	6195	6195	1	28.3 Limites dures
-R-2140	R	6211	6211	1	28.4 Confinement des pannes
-R-2150	R	6215	6215	1	28.5 Vie privée
-R-2160	R	6219	6219	1	28.6 Reproduction d'incident
-R-2170	R	6243	6243	1	29.1 Principes
-R-2171	R	6244	6244	1	29.1 Principes
-R-2172	R	6245	6245	1	29.1 Principes
-R-2173	R	6246	6246	1	29.1 Principes
-R-2174	R	6247	6247	1	29.1 Principes
-R-2180	R	6302	6302	1	29.3 Tests unitaires
-R-2190	R	6344	6344	1	29.5 Tests de gameplay et scénarios déclaratifs
-R-2200	R	6377	6377	1	29.6 Test de bout en bout obligatoire (T-970)
-R-2201	R	6378	6378	1	29.6 Test de bout en bout obligatoire (T-970)
-R-2210	R	6402	6402	1	29.7 Tests de stress et d'endurance
-R-2220	R	6414	6414	1	29.8 Infrastructure
-R-2230	R	6422	6422	1	30.1 Position de principe
-R-2231	R	6423	6423	1	30.1 Position de principe
-R-2240	R	6473	6473	1	30.3 Méthodologie normative
-R-2241	R	6474	6474	1	30.3 Méthodologie normative
-R-2242	R	6475	6475	1	30.3 Méthodologie normative
-R-2243	R	6476	6476	1	30.3 Méthodologie normative
-R-2250	R	6491	6491	1	30.5 Non-régression
-R-2251	R	6492	6492	1	30.5 Non-régression
-R-2252	R	6493	6493	1	30.5 Non-régression
-R-2260	R	6514	6514	1	31.2 Outils
-R-2261	R	6515	6515	1	31.2 Outils
-R-2262	R	6516	6516	1	31.2 Outils
-R-2263	R	6517	6517	1	31.2 Outils
-R-2270	R	6523	6523	1	31.3 Mode développeur
-R-2280	R	6537	6537	1	31.4 Overlays de debug
-R-2290	R	6553	6553	1	32.1 Licence du projet
-R-2291	R	6554	6554	1	32.1 Licence du projet
-R-2292	R	6555	6555	1	32.1 Licence du projet
-R-2300	R	6591	6591	1	32.2 Dépendances Rust
-R-2301	R	6592	6592	1	32.2 Dépendances Rust
-R-2302	R	6593	6593	1	32.2 Dépendances Rust
-R-2310	R	6605	6605	1	32.3 Dépendances Java
-R-2320	R	6616	6616	1	32.4 Outillage et SBOM
-R-2330	R	6729	6729	2	PARTIE 33 : ARBORESCENCE DU DÉPÔT
-R-2331	R	6730	6730	1	PARTIE 33 : ARBORESCENCE DU DÉPÔT
-R-2340	R	6787	6787	1	34.1 Chaîne de build
-R-2341	R	6788	6788	2	34.1 Chaîne de build
-R-2342	R	6789	6789	1	34.1 Chaîne de build
-R-2350	R	6842	6842	1	34.3 CI/CD
-R-2351	R	6843	6843	1	34.3 CI/CD
-R-2352	R	6844	6844	1	34.3 CI/CD
-R-2360	R	6866	6866	1	34.4 Versionnement et release
-R-2361	R	6867	6867	1	34.4 Versionnement et release
-R-2370	R	7135	7135	1	36.3 Hors périmètre — exclu de la V1
-R-2380	R	7170	7170	1	36.4 Audit des limitations de la révision 1
-R-2390	R	7178	7178	1	37.1 Règles
-R-2391	R	7179	7179	1	37.1 Règles
-R-2392	R	7180	7180	1	37.1 Règles
-R-2393	R	7181	7181	1	37.1 Règles
-R-2394	R	7182	7182	5	37.1 Règles
-R-2400	R	8081	8081	1	ANNEXE A.3 — Configuration complète (référence normative)
-R-2410	R	8107	8107	1	ANNEXE A.4 — Sources procédurales (liste fermée V1.0)
-S-01	S	6383	6383	1	29.7 Tests de stress et d'endurance
-S-02	S	6384	6384	1	29.7 Tests de stress et d'endurance
-S-03	S	6385	6385	1	29.7 Tests de stress et d'endurance
-S-04	S	6386	6386	1	29.7 Tests de stress et d'endurance
-S-05	S	6387	6387	1	29.7 Tests de stress et d'endurance
-S-06	S	6388	6388	1	29.7 Tests de stress et d'endurance
-S-07	S	6389	6389	1	29.7 Tests de stress et d'endurance
-S-08	S	6390	6390	1	29.7 Tests de stress et d'endurance
-S-09	S	6391	6391	1	29.7 Tests de stress et d'endurance
-S-10	S	6392	6392	1	29.7 Tests de stress et d'endurance
-S-11	S	6393	6393	1	29.7 Tests de stress et d'endurance
-S-12	S	6394	6394	1	29.7 Tests de stress et d'endurance
-S-13	S	6395	6395	2	29.7 Tests de stress et d'endurance
-S-14	S	6396	6396	1	29.7 Tests de stress et d'endurance
-S-15	S	6397	6397	1	29.7 Tests de stress et d'endurance
-S-16	S	6398	6398	1	29.7 Tests de stress et d'endurance
-S-17	S	6399	6399	2	29.7 Tests de stress et d'endurance
+R-580	R	1890	1890	1	5.20 C-27 : Definitions data-driven
+R-581	R	1891	1891	1	5.20 C-27 : Definitions data-driven
+R-590	R	1962	1962	1	5.21 C-28 : Compilateur de déformation et de structure
+R-591	R	1963	1963	1	5.21 C-28 : Compilateur de déformation et de structure
+R-592	R	1964	1964	1	5.21 C-28 : Compilateur de déformation et de structure
+R-600	R	1989	1989	1	5.22 C-30 : Scene Graph
+R-601	R	1990	1990	2	5.22 C-30 : Scene Graph
+R-610	R	2010	2010	1	5.23 C-31 : Physics World
+R-611	R	2011	2011	1	5.23 C-31 : Physics World
+R-612	R	2012	2012	1	5.23 C-31 : Physics World
+R-613	R	2013	2013	1	5.23 C-31 : Physics World
+R-614	R	2014	2014	2	5.23 C-31 : Physics World
+R-615	R	2015	2015	1	5.23 C-31 : Physics World
+R-620	R	2025	2025	1	5.24 C-32 : Collider Builder
+R-621	R	2026	2026	1	5.24 C-32 : Collider Builder
+R-622	R	2027	2027	1	5.24 C-32 : Collider Builder
+R-623	R	2028	2028	1	5.24 C-32 : Collider Builder
+R-630	R	2044	2044	1	5.26 C-34 : Joints & Constraints
+R-631	R	2045	2045	1	5.26 C-34 : Joints & Constraints
+R-632	R	2046	2046	1	5.26 C-34 : Joints & Constraints
+R-640	R	2080	2080	2	5.30 C-38 : World Collision Provider
+R-641	R	2081	2081	1	5.30 C-38 : World Collision Provider
+R-642	R	2082	2082	1	5.30 C-38 : World Collision Provider
+R-643	R	2083	2083	1	5.30 C-38 : World Collision Provider
+R-650	R	2091	2091	1	5.31 C-39 : Spatial Queries
+R-651	R	2092	2092	1	5.31 C-39 : Spatial Queries
+R-652	R	2093	2093	1	5.31 C-39 : Spatial Queries
+R-660	R	2121	2121	1	5.32 C-40 : Simulation Scheduler
+R-661	R	2122	2122	1	5.32 C-40 : Simulation Scheduler
+R-662	R	2123	2123	1	5.32 C-40 : Simulation Scheduler
+R-670	R	2168	2168	1	5.33 C-41 : Impact Solver
+R-671	R	2169	2169	1	5.33 C-41 : Impact Solver
+R-672	R	2170	2170	1	5.33 C-41 : Impact Solver
+R-673	R	2171	2171	1	5.33 C-41 : Impact Solver
+R-680	R	2237	2237	1	5.39 C-47 : Surface State & Wear
+R-681	R	2238	2238	2	5.39 C-47 : Surface State & Wear
+R-682	R	2239	2239	1	5.39 C-47 : Surface State & Wear
+R-690	R	2264	2264	1	5.40 C-48 : Attachment System
+R-691	R	2265	2265	1	5.40 C-48 : Attachment System
+R-692	R	2266	2266	1	5.40 C-48 : Attachment System
+R-700	R	2276	2276	1	5.41 C-50 : Axion Entity
+R-701	R	2277	2277	2	5.41 C-50 : Axion Entity
+R-702	R	2278	2278	1	5.41 C-50 : Axion Entity
+R-703	R	2279	2279	1	5.41 C-50 : Axion Entity
+R-704	R	2280	2280	1	5.41 C-50 : Axion Entity
+R-705	R	2281	2281	1	5.41 C-50 : Axion Entity
+R-710	R	2309	2309	1	5.44 C-53 : Interaction & Sièges
+R-711	R	2310	2310	1	5.44 C-53 : Interaction & Sièges
+R-712	R	2311	2311	2	5.44 C-53 : Interaction & Sièges
+R-720	R	2317	2317	1	5.45 C-54 : Bloc & BlockEntity 3D
+R-721	R	2318	2318	2	5.45 C-54 : Bloc & BlockEntity 3D
+R-722	R	2319	2319	2	5.45 C-54 : Bloc & BlockEntity 3D
+R-730	R	2325	2325	1	5.46 C-55 : Item 3D
+R-731	R	2326	2326	1	5.46 C-55 : Item 3D
+R-732	R	2327	2327	2	5.46 C-55 : Item 3D
+R-740	R	2341	2341	2	5.48 C-61 : Backend VANILLA_CONSUMER
+R-741	R	2344	2344	1	5.48 C-61 : Backend VANILLA_CONSUMER
+R-742	R	2345	2345	1	5.48 C-61 : Backend VANILLA_CONSUMER
+R-743	R	2346	2346	1	5.48 C-61 : Backend VANILLA_CONSUMER
+R-744	R	2347	2347	1	5.48 C-61 : Backend VANILLA_CONSUMER
+R-750	R	2364	2364	1	5.49 C-62 : GPU Resource Manager
+R-751	R	2365	2365	1	5.49 C-62 : GPU Resource Manager
+R-752	R	2366	2366	1	5.49 C-62 : GPU Resource Manager
+R-760	R	2374	2374	1	5.50 C-63 : Matériaux & Shaders
+R-761	R	2375	2375	1	5.50 C-63 : Matériaux & Shaders
+R-762	R	2376	2376	1	5.50 C-63 : Matériaux & Shaders
+R-770	R	2393	2393	1	5.51 C-64 : Culling & LOD
+R-771	R	2394	2394	1	5.51 C-64 : Culling & LOD
+R-772	R	2395	2395	1	5.51 C-64 : Culling & LOD
+R-780	R	2410	2410	1	5.52 C-65 : Instancing & Batching
+R-781	R	2411	2411	1	5.52 C-65 : Instancing & Batching
+R-782	R	2412	2412	1	5.52 C-65 : Instancing & Batching
+R-790	R	2424	2424	1	5.53 C-66 : Skinning GPU
+R-791	R	2425	2425	1	5.53 C-66 : Skinning GPU
+R-792	R	2426	2426	3	5.53 C-66 : Skinning GPU
+R-800	R	2434	2434	1	5.54 C-67 : Debug Renderer
+R-810	R	2472	2472	1	5.58 C-71 : Commandes
+R-811	R	2473	2473	1	5.58 C-71 : Commandes
+R-820	R	2485	2485	1	5.60 C-73 : Overlay diagnostics
+R-830	R	2503	2503	3	5.61 C-74 : CLI `axion-cli`
+R-840	R	2540	2540	1	5.64 C-77 : Gouverneur de qualité
+R-841	R	2541	2541	4	5.64 C-77 : Gouverneur de qualité
+R-842	R	2542	2542	1	5.64 C-77 : Gouverneur de qualité
+R-850	R	2599	2599	1	6.2 Décisions figées
+R-860	R	2637	2637	1	6.3 Pipeline complet
+R-861	R	2638	2638	1	6.3 Pipeline complet
+R-862	R	2639	2639	1	6.3 Pipeline complet
+R-870	R	2667	2667	1	6.4 Options de compilation
+R-871	R	2668	2668	1	6.4 Options de compilation
+R-872	R	2669	2669	2	6.4 Options de compilation
+R-880	R	2749	2749	1	7.3 Sections normatives
+R-881	R	2750	2750	1	7.3 Sections normatives
+R-882	R	2751	2751	1	7.3 Sections normatives
+R-883	R	2752	2752	1	7.3 Sections normatives
+R-890	R	2756	2756	1	7.4 Versionnement et migration
+R-891	R	2757	2757	1	7.4 Versionnement et migration
+R-892	R	2758	2758	1	7.4 Versionnement et migration
+R-893	R	2759	2759	1	7.4 Versionnement et migration
+R-900	R	2763	2763	1	7.5 Sécurité de lecture
+R-901	R	2764	2764	1	7.5 Sécurité de lecture
+R-902	R	2765	2765	1	7.5 Sécurité de lecture
+R-903	R	2766	2766	1	7.5 Sécurité de lecture
+R-910	R	2831	2831	1	8.2 Convention par les `extras` glTF
+R-911	R	2832	2832	1	8.2 Convention par les `extras` glTF
+R-912	R	2833	2833	1	8.2 Convention par les `extras` glTF
+R-913	R	2834	2834	1	8.2 Convention par les `extras` glTF
+R-920	R	2877	2877	2	8.3 Addon Blender (C-75)
+R-921	R	2878	2878	1	8.3 Addon Blender (C-75)
+R-922	R	2879	2879	1	8.3 Addon Blender (C-75)
+R-923	R	2880	2880	1	8.3 Addon Blender (C-75)
+R-930	R	2946	2946	1	9.2 États de node (SM-03)
+R-931	R	2947	2947	1	9.2 États de node (SM-03)
+R-932	R	2948	2948	1	9.2 États de node (SM-03)
+R-933	R	2949	2949	1	9.2 États de node (SM-03)
+R-940	R	2963	2963	2	9.3 Sockets
+R-941	R	2964	2964	4	9.3 Sockets
+R-950	R	2968	2968	1	9.4 Visibilité, LOD et révélation
+R-951	R	2969	2969	1	9.4 Visibilité, LOD et révélation
+R-952	R	2970	2970	1	9.4 Visibilité, LOD et révélation
+R-960	R	2974	2974	2	9.5 Instanciation et partage
+R-961	R	2975	2975	1	9.5 Instanciation et partage
+R-962	R	2976	2976	1	9.5 Instanciation et partage
+R-970	R	3005	3005	1	10.3 Formes de collision
+R-971	R	3006	3006	1	10.3 Formes de collision
+R-980	R	3017	3017	1	10.4 Broad phase / narrow phase
+R-990	R	3032	3032	1	10.5 Intégration et solveur
+R-991	R	3033	3033	1	10.5 Intégration et solveur
+R-1000	R	3045	3045	1	10.6 Forces environnementales
+R-1010	R	3065	3065	1	10.7 Événements physiques
+R-1011	R	3066	3066	1	10.7 Événements physiques
+R-1012	R	3067	3067	1	10.7 Événements physiques
+R-1020	R	3086	3086	1	10.9 Déterminisme
+R-1030	R	3166	3166	2	11.3 Sémantique normative des paramètres de déformation
+R-1031	R	3167	3167	1	11.3 Sémantique normative des paramètres de déformation
+R-1032	R	3168	3168	1	11.3 Sémantique normative des paramètres de déformation
+R-1035	R	3226	3226	2	11.5 Cohérence dimensionnelle (référence normative)
+R-1036	R	3229	3229	1	11.5 Cohérence dimensionnelle (référence normative)
+R-1037	R	3232	3232	1	11.5 Cohérence dimensionnelle (référence normative)
+R-1038	R	3236	3236	2	11.5 Cohérence dimensionnelle (référence normative)
+R-1040	R	3182	3182	1	11.4 Mappage bloc → matériau
+R-1041	R	3183	3183	1	11.4 Mappage bloc → matériau
+R-1050	R	3269	3269	1	12.2 Modèle de roue
+R-1051	R	3270	3270	1	12.2 Modèle de roue
+R-1052	R	3271	3271	1	12.2 Modèle de roue
+R-1053	R	3272	3272	1	12.2 Modèle de roue
+R-1060	R	3284	3284	1	12.3 Suspension
+R-1061	R	3285	3285	1	12.3 Suspension
+R-1070	R	3301	3301	1	12.4 Modèle de pneu
+R-1071	R	3302	3302	1	12.4 Modèle de pneu
+R-1080	R	3319	3319	1	12.5 Groupe motopropulseur
+R-1081	R	3320	3320	1	12.5 Groupe motopropulseur
+R-1082	R	3321	3321	1	12.5 Groupe motopropulseur
+R-1083	R	3322	3322	2	12.5 Groupe motopropulseur
+R-1090	R	3335	3335	1	12.6 Direction et freinage
+R-1091	R	3336	3336	1	12.6 Direction et freinage
+R-1100	R	3346	3346	1	12.7 Aérodynamique
+R-1110	R	3358	3358	1	12.8 Entrées
+R-1120	R	3418	3418	1	13.2 Sources d'impact
+R-1121	R	3419	3419	1	13.2 Sources d'impact
+R-1130	R	3454	3454	1	13.3 Distribution de l'énergie (C-35)
+R-1140	R	3455	3455	1	13.3 Distribution de l'énergie (C-35)
+R-1150	R	3456	3456	1	13.3 Distribution de l'énergie (C-35)
+R-1155	R	3505	3505	2	13.3bis Modèle d'indentation plastique (référence normative)
+R-1156	R	3508	3508	1	13.3bis Modèle d'indentation plastique (référence normative)
+R-1157	R	3512	3512	1	13.3bis Modèle d'indentation plastique (référence normative)
+R-1158	R	3514	3514	2	13.3bis Modèle d'indentation plastique (référence normative)
+R-1160	R	3457	3457	1	13.3 Distribution de l'énergie (C-35)
+R-1170	R	3534	3534	2	13.4 Effets fonctionnels
+R-1171	R	3535	3535	2	13.4 Effets fonctionnels
+R-1180	R	3539	3539	1	13.5 Dommage continu
+R-1181	R	3540	3540	1	13.5 Dommage continu
+R-1190	R	3551	3551	1	13.6 Budgets et dégradation
+R-1200	R	3636	3636	1	14.2 Modèle mathématique
+R-1201	R	3637	3637	1	14.2 Modèle mathématique
+R-1202	R	3638	3638	1	14.2 Modèle mathématique
+R-1210	R	3653	3653	2	14.3 Composantes du champ
+R-1211	R	3654	3654	1	14.3 Composantes du champ
+R-1220	R	3704	3704	2	14.4 Application d'un impact (noyau déterministe)
+R-1221	R	3705	3705	1	14.4 Application d'un impact (noyau déterministe)
+R-1222	R	3706	3706	1	14.4 Application d'un impact (noyau déterministe)
+R-1230	R	3718	3718	1	14.5 Niveaux de qualité de déformation
+R-1231	R	3719	3719	1	14.5 Niveaux de qualité de déformation
+R-1232	R	3720	3720	1	14.5 Niveaux de qualité de déformation
+R-1233	R	3721	3721	1	14.5 Niveaux de qualité de déformation
+R-1240	R	3766	3766	1	14.6 Pipeline de rendu de la déformation (C-68)
+R-1241	R	3767	3767	1	14.6 Pipeline de rendu de la déformation (C-68)
+R-1242	R	3768	3768	2	14.6 Pipeline de rendu de la déformation (C-68)
+R-1243	R	3769	3769	1	14.6 Pipeline de rendu de la déformation (C-68)
+R-1250	R	3782	3782	2	14.7 LOD de déformation
+R-1251	R	3783	3783	1	14.7 LOD de déformation
+R-1260	R	3798	3798	2	14.8 Compléments déclaratifs
+R-1261	R	3799	3799	1	14.8 Compléments déclaratifs
+R-1262	R	3800	3800	1	14.8 Compléments déclaratifs
+R-1270	R	3840	3840	1	14.9 Déformation et collision (C-45)
+R-1271	R	3841	3841	1	14.9 Déformation et collision (C-45)
+R-1272	R	3842	3842	1	14.9 Déformation et collision (C-45)
+R-1273	R	3843	3843	1	14.9 Déformation et collision (C-45)
+R-1280	R	3847	3847	1	14.10 Déchirure
+R-1281	R	3848	3848	1	14.10 Déchirure
+R-1282	R	3849	3849	1	14.10 Déchirure
+R-1283	R	3850	3850	1	14.10 Déchirure
+R-1290	R	3865	3865	1	14.11 Budgets, mémoire et performance
+R-1291	R	3866	3866	1	14.11 Budgets, mémoire et performance
+R-1292	R	3867	3867	1	14.11 Budgets, mémoire et performance
+R-1293	R	3868	3868	1	14.11 Budgets, mémoire et performance
+R-1294	R	3869	3869	2	14.11 Budgets, mémoire et performance
+R-1295	R	3870	3870	1	14.11 Budgets, mémoire et performance
+R-1296	R	3886	3886	2	14.11bis Modèle de coût : portée exacte des garanties
+R-1297	R	3890	3890	1	14.11bis Modèle de coût : portée exacte des garanties
+R-1298	R	3893	3893	1	14.11bis Modèle de coût : portée exacte des garanties
+R-1299	R	3896	3896	2	14.11bis Modèle de coût : portée exacte des garanties
+R-1300	R	3902	3902	1	14.12 Réplication et persistance (résumé, détail en PARTIE 21 et 22)
+R-1301	R	3903	3903	1	14.12 Réplication et persistance (résumé, détail en PARTIE 21 et 22)
+R-1302	R	3904	3904	1	14.12 Réplication et persistance (résumé, détail en PARTIE 21 et 22)
+R-1310	R	4072	4072	1	15.2 Propagation de l'énergie structurelle (C-43)
+R-1311	R	4073	4073	1	15.2 Propagation de l'énergie structurelle (C-43)
+R-1312	R	4074	4074	1	15.2 Propagation de l'énergie structurelle (C-43)
+R-1315	R	4040	4040	2	15.1bis Estimation de l'aire de liaison (référence normative)
+R-1316	R	4042	4042	1	15.1bis Estimation de l'aire de liaison (référence normative)
+R-1317	R	4045	4045	2	15.1bis Estimation de l'aire de liaison (référence normative)
+R-1320	R	4112	4112	1	15.3 Rupture et détachement (C-44)
+R-1321	R	4113	4113	1	15.3 Rupture et détachement (C-44)
+R-1322	R	4114	4114	1	15.3 Rupture et détachement (C-44)
+R-1330	R	4130	4130	1	15.4 Débris
+R-1331	R	4131	4131	1	15.4 Débris
+R-1340	R	4135	4135	2	15.5 Effets sur les mécanismes
+R-1341	R	4136	4136	1	15.5 Effets sur les mécanismes
+R-1342	R	4137	4137	1	15.5 Effets sur les mécanismes
+R-1350	R	4201	4201	1	16.2 Restauration du champ de déformation
+R-1351	R	4202	4202	1	16.2 Restauration du champ de déformation
+R-1352	R	4203	4203	1	16.2 Restauration du champ de déformation
+R-1360	R	4224	4224	1	16.3 Règles data-driven
+R-1361	R	4225	4225	1	16.3 Règles data-driven
+R-1362	R	4226	4226	1	16.3 Règles data-driven
+R-1370	R	4273	4273	1	17.2 Modes d'autorité
+R-1371	R	4274	4274	1	17.2 Modes d'autorité
+R-1372	R	4275	4275	2	17.2 Modes d'autorité
+R-1373	R	4302	4302	3	17.2bis Autorité et reconstruction visuelle (référence normative)
+R-1374	R	4307	4307	2	17.2bis Autorité et reconstruction visuelle (référence normative)
+R-1375	R	4343	4343	1	17.2bis Autorité et reconstruction visuelle (référence normative)
+R-1376	R	4345	4345	1	17.2bis Autorité et reconstruction visuelle (référence normative)
+R-1377	R	4349	4349	2	17.2bis Autorité et reconstruction visuelle (référence normative)
+R-1380	R	4373	4373	1	17.3 Solveur
+R-1381	R	4374	4374	1	17.3 Solveur
+R-1390	R	4385	4385	1	17.4 Limites et budgets
+R-1391	R	4386	4386	1	17.4 Limites et budgets
+R-1400	R	4415	4415	1	17.6 Cordes et câbles physiques
+R-1401	R	4416	4416	1	17.6 Cordes et câbles physiques
+R-1402	R	4417	4417	1	17.6 Cordes et câbles physiques
+R-1410	R	4421	4421	1	17.7 Interaction avec la déformation
+R-1420	R	4422	152	2	17.7 Interaction avec la déformation
+R-1430	R	4472	4472	1	18.1 Types d'animation
+R-1440	R	4485	4485	1	18.2 Échantillonnage et blending
+R-1450	R	4504	4504	1	18.3 Animation procédurale déclarative
+R-1460	R	4508	4508	1	18.4 Palettes de skinning et ordre d'application
+R-1461	R	4509	4509	2	18.4 Palettes de skinning et ordre d'application
+R-1462	R	4510	4510	1	18.4 Palettes de skinning et ordre d'application
+R-1470	R	4559	4559	1	18.5 Couplage animation / physique / dégâts (scénario normatif de la porte)
+R-1471	R	4560	4560	1	18.5 Couplage animation / physique / dégâts (scénario normatif de la porte)
+R-1480	R	4564	4564	1	18.6 Root motion
+R-1490	R	4628	4628	1	19.2 Les deux backends
+R-1491	R	4629	4629	1	19.2 Les deux backends
+R-1492	R	4630	4630	2	19.2 Les deux backends
+R-1493	R	4666	4666	2	19.2bis Portée de l'équivalence entre backends (référence normative)
+R-1494	R	4670	4670	2	19.2bis Portée de l'équivalence entre backends (référence normative)
+R-1495	R	4673	4673	1	19.2bis Portée de l'équivalence entre backends (référence normative)
+R-1496	R	4676	4676	2	19.2bis Portée de l'équivalence entre backends (référence normative)
+R-1500	R	4682	4682	1	19.3 Gestion d'état OpenGL (règle critique)
+R-1501	R	4683	4683	1	19.3 Gestion d'état OpenGL (règle critique)
+R-1502	R	4684	4684	1	19.3 Gestion d'état OpenGL (règle critique)
+R-1503	R	4685	4685	1	19.3 Gestion d'état OpenGL (règle critique)
+R-1504	R	4686	4686	1	19.3 Gestion d'état OpenGL (règle critique)
+R-1505	R	4687	4687	2	19.3 Gestion d'état OpenGL (règle critique)
+R-1510	R	4756	4756	1	19.5 Modèle d'éclairage : PBR avec environnement synthétisé
+R-1511	R	4757	4757	1	19.5 Modèle d'éclairage : PBR avec environnement synthétisé
+R-1512	R	4758	4758	1	19.5 Modèle d'éclairage : PBR avec environnement synthétisé
+R-1513	R	4759	4759	1	19.5 Modèle d'éclairage : PBR avec environnement synthétisé
+R-1514	R	4760	4760	1	19.5 Modèle d'éclairage : PBR avec environnement synthétisé
+R-1520	R	4766	4766	1	19.6 Déformation dans le pipeline de rendu
+R-1521	R	4767	4767	1	19.6 Déformation dans le pipeline de rendu
+R-1522	R	4768	4768	1	19.6 Déformation dans le pipeline de rendu
+R-1523	R	4769	4769	1	19.6 Déformation dans le pipeline de rendu
+R-1530	R	4790	4790	1	19.7 Occlusion culling logiciel (C-82)
+R-1531	R	4791	4791	1	19.7 Occlusion culling logiciel (C-82)
+R-1532	R	4792	4792	1	19.7 Occlusion culling logiciel (C-82)
+R-1540	R	4815	4815	1	19.8 Ombres AXION (C-80)
+R-1541	R	4816	4816	1	19.8 Ombres AXION (C-80)
+R-1542	R	4817	4817	1	19.8 Ombres AXION (C-80)
+R-1550	R	4823	4823	1	19.9 Effets intégrés (C-83)
+R-1560	R	4827	4827	1	19.9 Effets intégrés (C-83)
+R-1561	R	4828	4828	1	19.9 Effets intégrés (C-83)
+R-1570	R	4844	4844	1	19.10 Passes de rendu
+R-1580	R	4848	4848	1	19.11 Transparence
+R-1581	R	4849	4849	1	19.11 Transparence
+R-1590	R	4943	4943	1	20.1 États visuels
+R-1591	R	4944	4944	1	20.1 États visuels
+R-1600	R	4961	4961	1	20.2 Décalques (C-69)
+R-1601	R	4962	4962	1	20.2 Décalques (C-69)
+R-1602	R	4963	4963	1	20.2 Décalques (C-69)
+R-1610	R	4978	4978	1	20.3 Profils d'usure
+R-1620	R	5008	5008	1	21.1 Modèle d'autorité
+R-1630	R	5017	5017	3	21.2 Canal et protocole
+R-1631	R	5018	5018	1	21.2 Canal et protocole
+R-1640	R	5031	5031	2	21.3 Handshake
+R-1641	R	5032	5032	1	21.3 Handshake
+R-1650	R	5054	5054	1	21.4 Paquets
+R-1651	R	5055	5055	1	21.4 Paquets
+R-1660	R	5069	5069	1	21.5 Snapshots, quantification, delta
+R-1661	R	5070	5070	1	21.5 Snapshots, quantification, delta
+R-1662	R	5071	5071	1	21.5 Snapshots, quantification, delta
+R-1663	R	5072	5072	1	21.5 Snapshots, quantification, delta
+R-1664	R	5073	5073	1	21.5 Snapshots, quantification, delta
+R-1670	R	5109	5109	1	21.6 Réplication de la déformation (mécanisme central)
+R-1671	R	5110	5110	1	21.6 Réplication de la déformation (mécanisme central)
+R-1672	R	5111	5111	1	21.6 Réplication de la déformation (mécanisme central)
+R-1673	R	5112	5112	1	21.6 Réplication de la déformation (mécanisme central)
+R-1674	R	5113	5113	1	21.6 Réplication de la déformation (mécanisme central)
+R-1680	R	5127	5127	3	21.8 Prédiction et réconciliation
+R-1681	R	5128	5128	2	21.8 Prédiction et réconciliation
+R-1682	R	5129	5129	1	21.8 Prédiction et réconciliation
+R-1683	R	5130	5130	1	21.8 Prédiction et réconciliation
+R-1690	R	5134	5134	1	21.9 Sécurité réseau
+R-1691	R	5135	5135	1	21.9 Sécurité réseau
+R-1692	R	5136	5136	1	21.9 Sécurité réseau
+R-1693	R	5137	5137	1	21.9 Sécurité réseau
+R-1700	R	5201	5201	1	22.1 Ce qui est persisté
+R-1701	R	5202	5202	1	22.1 Ce qui est persisté
+R-1710	R	5226	5226	1	22.2 Format NBT
+R-1711	R	5227	5227	1	22.2 Format NBT
+R-1720	R	5238	5238	1	22.3 Sérialisation du champ de déformation
+R-1721	R	5239	5239	1	22.3 Sérialisation du champ de déformation
+R-1722	R	5240	5240	1	22.3 Sérialisation du champ de déformation
+R-1730	R	5252	5252	1	22.4 Chargement et déchargement de chunk
+R-1740	R	5297	5297	2	22.5.3 Matrice de comportement (normative)
+R-1741	R	5299	5299	1	22.5.3 Matrice de comportement (normative)
+R-1742	R	5303	5303	2	22.5.3 Matrice de comportement (normative)
+R-1743	R	5267	5267	2	22.5.2 Journal latéral (side-car)
+R-1744	R	5273	5273	1	22.5.2 Journal latéral (side-car)
+R-1745	R	5277	5277	1	22.5.2 Journal latéral (side-car)
+R-1746	R	5281	5281	1	22.5.2 Journal latéral (side-car)
+R-1747	R	5306	5306	1	22.5.3 Matrice de comportement (normative)
+R-1748	R	5309	5309	1	22.5.3 Matrice de comportement (normative)
+R-1749	R	5312	5312	2	22.5.3 Matrice de comportement (normative)
+R-1750	R	5350	5350	1	23.1 Principes
+R-1751	R	5351	5351	1	23.1 Principes
+R-1752	R	5352	5352	1	23.1 Principes
+R-1753	R	5353	5353	1	23.1 Principes
+R-1754	R	5354	5354	1	23.1 Principes
+R-1755	R	5355	5355	1	23.1 Principes
+R-1760	R	5480	5480	1	23.2 Surface de l'API
+R-1761	R	5481	5481	1	23.2 Surface de l'API
+R-1762	R	5482	5482	1	23.2 Surface de l'API
+R-1770	R	5503	5503	1	23.3 Points d'extension
+R-1771	R	5504	5504	1	23.3 Points d'extension
+R-1772	R	5505	5505	1	23.3 Points d'extension
+R-1780	R	5592	5592	1	23.4 Schéma de Definition (normatif)
+R-1781	R	5593	5593	1	23.4 Schéma de Definition (normatif)
+R-1782	R	5594	5594	1	23.4 Schéma de Definition (normatif)
+R-1783	R	5595	5595	1	23.4 Schéma de Definition (normatif)
+R-1790	R	5599	5599	3	23.5 Contenu de démonstration
+R-1800	R	5637	5637	1	24.1 Modules
+R-1801	R	5638	5638	1	24.1 Modules
+R-1802	R	5639	5639	1	24.1 Modules
+R-1810	R	5656	5656	1	24.2 Niveaux de qualité
+R-1811	R	5657	5657	1	24.2 Niveaux de qualité
+R-1812	R	5658	5658	1	24.2 Niveaux de qualité
+R-1820	R	5662	5662	1	24.3 Chargement à la demande
+R-1821	R	5663	5663	1	24.3 Chargement à la demande
+R-1822	R	5664	5664	1	24.3 Chargement à la demande
+R-1830	R	5676	5676	1	24.4 Fichiers de configuration
+R-1840	R	5685	5685	1	25.1 Position de principe
+R-1850	R	5712	5712	1	25.2 Budgets par défaut
+R-1860	R	5743	5743	1	25.4 Double tampon et interpolation
+R-1861	R	5744	5744	1	25.4 Double tampon et interpolation
+R-1870	R	5753	5753	1	25.5 Détection de dépassement
+R-1880	R	5779	5779	1	25.6 Machine de dégradation (SM-02)
+R-1890	R	5780	5780	1	25.6 Machine de dégradation (SM-02)
+R-1891	R	5781	5781	2	25.6 Machine de dégradation (SM-02)
+R-1892	R	5782	5782	1	25.6 Machine de dégradation (SM-02)
+R-1900	R	5797	5797	1	25.8 Watchdog
+R-1901	R	5798	5798	1	25.8 Watchdog
+R-1910	R	5820	5820	1	26.1 Principe
+R-1911	R	5821	5821	1	26.1 Principe
+R-1912	R	5822	5822	1	26.1 Principe
+R-1920	R	5833	5833	1	26.2 Empreinte Mixin (liste fermée)
+R-1921	R	5834	5834	2	26.2 Empreinte Mixin (liste fermée)
+R-1930	R	5854	5854	2	26.4 Limites documentées
+R-1940	R	5868	5868	1	26.5 Mods tiers
+R-1941	R	5869	5869	1	26.5 Mods tiers
+R-1950	R	5903	5903	1	27.0 Position fondamentale
+R-1960	R	5926	5926	1	27.1 Détection
+R-1961	R	5927	5927	1	27.1 Détection
+R-1962	R	5928	5928	1	27.1 Détection
+R-1970	R	5943	5943	1	27.2 Ce que la détection change (et ne change pas)
+R-1980	R	5956	5956	2	27.3.1 Classloading
+R-1990	R	5966	5964	3	27.3.2 Instrumentation et bytecode
+R-2000	R	5978	5978	1	27.3.3 Threads et scheduler
+R-2010	R	5982	5982	1	27.3.4 Tick et événements Forge
+R-2020	R	5995	5995	2	27.3.5 Mémoire native et bibliothèques
+R-2030	R	5999	5999	1	27.3.6 Rendu
+R-2040	R	6003	6003	1	27.3.7 Réseau, monde, sauvegarde
+R-2050	R	6007	6007	1	27.3.8 Cycle de vie et arrêt
+R-2051	R	6008	6008	1	27.3.8 Cycle de vie et arrêt
+R-2060	R	6019	6019	1	27.4 Partage du budget CPU
+R-2061	R	6020	6020	1	27.4 Partage du budget CPU
+R-2062	R	6021	6021	2	27.4 Partage du budget CPU
+R-2070	R	6047	6047	1	27.5 Bridge d'interopérabilité optionnel (C-76)
+R-2071	R	6048	6048	1	27.5 Bridge d'interopérabilité optionnel (C-76)
+R-2072	R	6049	6049	1	27.5 Bridge d'interopérabilité optionnel (C-76)
+R-2073	R	6050	6050	1	27.5 Bridge d'interopérabilité optionnel (C-76)
+R-2074	R	6053	6053	1	27.5 Bridge d'interopérabilité optionnel (C-76)
+R-2075	R	6054	6054	1	27.5 Bridge d'interopérabilité optionnel (C-76)
+R-2080	R	6058	6058	1	27.6 Indication de non-transformation
+R-2081	R	6059	6059	1	27.6 Indication de non-transformation
+R-2082	R	6060	6060	1	27.6 Indication de non-transformation
+R-2090	R	6126	6126	1	27.10.1 Mod de simulation (obligatoire, toujours exécuté)
+R-2100	R	6130	6130	1	27.10.2 Test avec l'artefact réel (obligatoire quand disponible)
+R-2110	R	6171	6171	1	28.1 Surface d'attaque
+R-2120	R	6175	6175	1	28.2 Code `unsafe` en Rust
+R-2121	R	6176	6176	1	28.2 Code `unsafe` en Rust
+R-2122	R	6177	6177	1	28.2 Code `unsafe` en Rust
+R-2130	R	6204	6204	1	28.3 Limites dures
+R-2131	R	6205	6205	1	28.3 Limites dures
+R-2140	R	6221	6221	1	28.4 Confinement des pannes
+R-2150	R	6225	6225	1	28.5 Vie privée
+R-2160	R	6229	6229	1	28.6 Reproduction d'incident
+R-2170	R	6253	6253	1	29.1 Principes
+R-2171	R	6254	6254	1	29.1 Principes
+R-2172	R	6255	6255	1	29.1 Principes
+R-2173	R	6256	6256	1	29.1 Principes
+R-2174	R	6257	6257	1	29.1 Principes
+R-2180	R	6312	6312	1	29.3 Tests unitaires
+R-2190	R	6354	6354	1	29.5 Tests de gameplay et scénarios déclaratifs
+R-2200	R	6387	6387	1	29.6 Test de bout en bout obligatoire (T-970)
+R-2201	R	6388	6388	1	29.6 Test de bout en bout obligatoire (T-970)
+R-2210	R	6412	6412	1	29.7 Tests de stress et d'endurance
+R-2220	R	6424	6424	1	29.8 Infrastructure
+R-2230	R	6432	6432	1	30.1 Position de principe
+R-2231	R	6433	6433	1	30.1 Position de principe
+R-2240	R	6483	6483	1	30.3 Méthodologie normative
+R-2241	R	6484	6484	1	30.3 Méthodologie normative
+R-2242	R	6485	6485	1	30.3 Méthodologie normative
+R-2243	R	6486	6486	1	30.3 Méthodologie normative
+R-2250	R	6501	6501	1	30.5 Non-régression
+R-2251	R	6502	6502	1	30.5 Non-régression
+R-2252	R	6503	6503	1	30.5 Non-régression
+R-2260	R	6524	6524	1	31.2 Outils
+R-2261	R	6525	6525	1	31.2 Outils
+R-2262	R	6526	6526	1	31.2 Outils
+R-2263	R	6527	6527	1	31.2 Outils
+R-2270	R	6533	6533	1	31.3 Mode développeur
+R-2280	R	6547	6547	1	31.4 Overlays de debug
+R-2290	R	6563	6563	1	32.1 Licence du projet
+R-2291	R	6564	6564	1	32.1 Licence du projet
+R-2292	R	6565	6565	1	32.1 Licence du projet
+R-2300	R	6601	6601	1	32.2 Dépendances Rust
+R-2301	R	6602	6602	1	32.2 Dépendances Rust
+R-2302	R	6603	6603	1	32.2 Dépendances Rust
+R-2310	R	6615	6615	1	32.3 Dépendances Java
+R-2320	R	6626	6626	1	32.4 Outillage et SBOM
+R-2330	R	6739	6739	2	PARTIE 33 : ARBORESCENCE DU DÉPÔT
+R-2331	R	6740	6740	1	PARTIE 33 : ARBORESCENCE DU DÉPÔT
+R-2340	R	6797	6797	1	34.1 Chaîne de build
+R-2341	R	6798	6798	2	34.1 Chaîne de build
+R-2342	R	6799	6799	1	34.1 Chaîne de build
+R-2350	R	6852	6852	1	34.3 CI/CD
+R-2351	R	6853	6853	1	34.3 CI/CD
+R-2352	R	6854	6854	1	34.3 CI/CD
+R-2360	R	6876	6876	1	34.4 Versionnement et release
+R-2361	R	6877	6877	1	34.4 Versionnement et release
+R-2370	R	7145	7145	1	36.3 Hors périmètre — exclu de la V1
+R-2380	R	7180	7180	1	36.4 Audit des limitations de la révision 1
+R-2390	R	7188	7188	1	37.1 Règles
+R-2391	R	7189	7189	1	37.1 Règles
+R-2392	R	7190	7190	1	37.1 Règles
+R-2393	R	7191	7191	1	37.1 Règles
+R-2394	R	7192	7192	5	37.1 Règles
+R-2400	R	8092	8092	1	ANNEXE A.3 — Configuration complète (référence normative)
+R-2410	R	8118	8118	1	ANNEXE A.4 — Sources procédurales (liste fermée V1.0)
+S-01	S	6393	6393	1	29.7 Tests de stress et d'endurance
+S-02	S	6394	6394	1	29.7 Tests de stress et d'endurance
+S-03	S	6395	6395	1	29.7 Tests de stress et d'endurance
+S-04	S	6396	6396	1	29.7 Tests de stress et d'endurance
+S-05	S	6397	6397	1	29.7 Tests de stress et d'endurance
+S-06	S	6398	6398	1	29.7 Tests de stress et d'endurance
+S-07	S	6399	6399	1	29.7 Tests de stress et d'endurance
+S-08	S	6400	6400	1	29.7 Tests de stress et d'endurance
+S-09	S	6401	6401	1	29.7 Tests de stress et d'endurance
+S-10	S	6402	6402	1	29.7 Tests de stress et d'endurance
+S-11	S	6403	6403	1	29.7 Tests de stress et d'endurance
+S-12	S	6404	6404	1	29.7 Tests de stress et d'endurance
+S-13	S	6405	6405	2	29.7 Tests de stress et d'endurance
+S-14	S	6406	6406	1	29.7 Tests de stress et d'endurance
+S-15	S	6407	6407	1	29.7 Tests de stress et d'endurance
+S-16	S	6408	6408	1	29.7 Tests de stress et d'endurance
+S-17	S	6409	6409	2	29.7 Tests de stress et d'endurance
 SM-01	SM		1729	2	5.13 C-20 : Asset Orchestrator
-SM-02	SM		5745	2	25.6 Machine de dégradation (SM-02)
-SM-03	SM		2929	2	9.2 États de node (SM-03)
+SM-02	SM		5755	2	25.6 Machine de dégradation (SM-02)
+SM-03	SM		2933	2	9.2 États de node (SM-03)
 T-004	T		529	1	2.3 Graphe de dépendances
 T-005	T		681	3	PARTIE 3 : MODÈLE DE DONNÉES CANONIQUE
 T-006	T		1223	2	3.20 Invariants globaux
-T-007	T	5800	1241	6	25.9 Tests
+T-007	T	5810	1241	6	25.9 Tests
 T-010	T		630	1	2.7 Séparation client / serveur
 T-011	T		1225	2	3.20 Invariants globaux
 T-012	T		1226	3	3.20 Invariants globaux
@@ -1020,7 +1021,7 @@ T-020	T		1486	2	5.1 C-01 : Forge Integration
 T-021	T		1540	2	5.4 C-04 : Configuration
 T-022	T		1548	2	5.5 C-05 : Diagnostics & Logging
 T-023	T		1551	2	5.5 C-05 : Diagnostics & Logging
-T-024	T	5870	5823	2	26.6 Tests
+T-024	T	5880	5833	2	26.6 Tests
 T-100	T		1493	2	5.1 C-01 : Forge Integration
 T-103	T		1493	2	5.1 C-01 : Forge Integration
 T-110	T		1514	2	5.2 C-02 : Bootstrap
@@ -1058,337 +1059,337 @@ T-260	T		1848	2	5.18 C-25 : Asset Cache
 T-263	T		1848	2	5.18 C-25 : Asset Cache
 T-270	T		1866	1	5.19 C-26 : Textures & Matériaux (client)
 T-273	T		1866	1	5.19 C-26 : Textures & Matériaux (client)
-T-280	T		1889	2	5.20 C-27 : Definitions data-driven
-T-284	T		1889	2	5.20 C-27 : Definitions data-driven
-T-290	T		1990	2	5.22 C-30 : Scene Graph
-T-292	T		1990	2	5.22 C-30 : Scene Graph
-T-300	T		2015	2	5.23 C-31 : Physics World
-T-307	T		2015	1	5.23 C-31 : Physics World
-T-310	T		2026	1	5.24 C-32 : Collider Builder
-T-312	T		2026	2	5.24 C-32 : Collider Builder
-T-320	T	3359	2032	3	12.9 Tests véhicules
-T-321	T	3360	3360	1	12.9 Tests véhicules
-T-322	T	3361	3361	1	12.9 Tests véhicules
-T-323	T	3362	3362	1	12.9 Tests véhicules
-T-324	T	3363	3363	1	12.9 Tests véhicules
-T-325	T	3364	3364	1	12.9 Tests véhicules
-T-326	T	3365	3365	1	12.9 Tests véhicules
-T-327	T	3366	3366	1	12.9 Tests véhicules
-T-328	T	3367	3367	1	12.9 Tests véhicules
-T-329	T	3368	2032	3	12.9 Tests véhicules
-T-330	T		2044	2	5.26 C-34 : Joints & Constraints
-T-334	T		2044	2	5.26 C-34 : Joints & Constraints
-T-340	T		2050	1	5.27 C-35 : Damage Model
-T-349	T		2050	1	5.27 C-35 : Damage Model
-T-350	T	4423	2056	3	17.8 Tests
-T-351	T	4424	4424	1	17.8 Tests
-T-352	T	4425	4425	1	17.8 Tests
-T-353	T	4426	4426	1	17.8 Tests
-T-354	T	4427	4427	1	17.8 Tests
-T-355	T	4428	4428	1	17.8 Tests
-T-356	T	4429	4429	1	17.8 Tests
-T-357	T	4430	2056	3	17.8 Tests
-T-360	T	4565	2062	4	18.7 Tests
-T-361	T	4566	4566	1	18.7 Tests
-T-362	T	4567	4567	1	18.7 Tests
-T-363	T	4568	4568	1	18.7 Tests
-T-364	T		4568	1	18.7 Tests
-T-365	T	4569	4569	1	18.7 Tests
-T-366	T	4570	4570	1	18.7 Tests
-T-367	T	4571	4571	1	18.7 Tests
-T-368	T	4572	2062	3	18.7 Tests
-T-370	T		2081	2	5.30 C-38 : World Collision Provider
-T-375	T		2081	2	5.30 C-38 : World Collision Provider
-T-380	T		2091	2	5.31 C-39 : Spatial Queries
-T-384	T		2091	2	5.31 C-39 : Spatial Queries
-T-390	T		2121	1	5.32 C-40 : Simulation Scheduler
-T-392	T		2121	1	5.32 C-40 : Simulation Scheduler
-T-400	T		2279	2	5.41 C-50 : Axion Entity
-T-404	T		2279	2	5.41 C-50 : Axion Entity
-T-410	T	5148	2285	3	21.11 Tests
-T-411	T	5149	5149	1	21.11 Tests
-T-412	T	5150	5150	1	21.11 Tests
-T-413	T	5151	5151	1	21.11 Tests
-T-414	T	5152	5152	1	21.11 Tests
-T-415	T	5153	5153	2	21.11 Tests
-T-416	T	5154	5154	1	21.11 Tests
-T-417	T	5155	1224	4	21.11 Tests
-T-418	T	5156	5156	1	21.11 Tests
-T-419	T	5157	5157	1	21.11 Tests
-T-420	T	5158	5158	1	21.11 Tests
-T-421	T	5159	5159	1	21.11 Tests
-T-422	T	5160	5160	1	21.11 Tests
-T-423	T	5161	5161	1	21.11 Tests
-T-424	T	5162	5162	1	21.11 Tests
-T-425	T	5163	2285	3	21.11 Tests
-T-430	T	5315	2291	3	22.6 Tests
-T-431	T	5316	5316	1	22.6 Tests
-T-432	T	5317	5317	1	22.6 Tests
-T-433	T	5318	5318	1	22.6 Tests
-T-434	T	5319	5319	1	22.6 Tests
-T-435	T	5320	1233	4	22.6 Tests
-T-436	T	5321	5321	1	22.6 Tests
-T-437	T	5322	2291	3	22.6 Tests
-T-440	T		2309	2	5.44 C-53 : Interaction & Sièges
+T-280	T		1893	2	5.20 C-27 : Definitions data-driven
+T-284	T		1893	2	5.20 C-27 : Definitions data-driven
+T-290	T		1994	2	5.22 C-30 : Scene Graph
+T-292	T		1994	2	5.22 C-30 : Scene Graph
+T-300	T		2019	2	5.23 C-31 : Physics World
+T-307	T		2019	1	5.23 C-31 : Physics World
+T-310	T		2030	1	5.24 C-32 : Collider Builder
+T-312	T		2030	2	5.24 C-32 : Collider Builder
+T-320	T	3363	2036	3	12.9 Tests véhicules
+T-321	T	3364	3364	1	12.9 Tests véhicules
+T-322	T	3365	3365	1	12.9 Tests véhicules
+T-323	T	3366	3366	1	12.9 Tests véhicules
+T-324	T	3367	3367	1	12.9 Tests véhicules
+T-325	T	3368	3368	1	12.9 Tests véhicules
+T-326	T	3369	3369	1	12.9 Tests véhicules
+T-327	T	3370	3370	1	12.9 Tests véhicules
+T-328	T	3371	3371	1	12.9 Tests véhicules
+T-329	T	3372	2036	3	12.9 Tests véhicules
+T-330	T		2048	2	5.26 C-34 : Joints & Constraints
+T-334	T		2048	2	5.26 C-34 : Joints & Constraints
+T-340	T		2054	1	5.27 C-35 : Damage Model
+T-349	T		2054	1	5.27 C-35 : Damage Model
+T-350	T	4427	2060	3	17.8 Tests
+T-351	T	4428	4428	1	17.8 Tests
+T-352	T	4429	4429	1	17.8 Tests
+T-353	T	4430	4430	1	17.8 Tests
+T-354	T	4431	4431	1	17.8 Tests
+T-355	T	4432	4432	1	17.8 Tests
+T-356	T	4433	4433	1	17.8 Tests
+T-357	T	4434	2060	3	17.8 Tests
+T-360	T	4569	2066	4	18.7 Tests
+T-361	T	4570	4570	1	18.7 Tests
+T-362	T	4571	4571	1	18.7 Tests
+T-363	T	4572	4572	1	18.7 Tests
+T-364	T		4572	1	18.7 Tests
+T-365	T	4573	4573	1	18.7 Tests
+T-366	T	4574	4574	1	18.7 Tests
+T-367	T	4575	4575	1	18.7 Tests
+T-368	T	4576	2066	3	18.7 Tests
+T-370	T		2085	2	5.30 C-38 : World Collision Provider
+T-375	T		2085	2	5.30 C-38 : World Collision Provider
+T-380	T		2095	2	5.31 C-39 : Spatial Queries
+T-384	T		2095	2	5.31 C-39 : Spatial Queries
+T-390	T		2125	1	5.32 C-40 : Simulation Scheduler
+T-392	T		2125	1	5.32 C-40 : Simulation Scheduler
+T-400	T		2283	2	5.41 C-50 : Axion Entity
+T-404	T		2283	2	5.41 C-50 : Axion Entity
+T-410	T	5152	2289	3	21.11 Tests
+T-411	T	5153	5153	1	21.11 Tests
+T-412	T	5154	5154	1	21.11 Tests
+T-413	T	5155	5155	1	21.11 Tests
+T-414	T	5156	5156	1	21.11 Tests
+T-415	T	5157	5157	2	21.11 Tests
+T-416	T	5158	5158	1	21.11 Tests
+T-417	T	5159	1224	4	21.11 Tests
+T-418	T	5160	5160	1	21.11 Tests
+T-419	T	5161	5161	1	21.11 Tests
+T-420	T	5162	5162	1	21.11 Tests
+T-421	T	5163	5163	1	21.11 Tests
+T-422	T	5164	5164	1	21.11 Tests
+T-423	T	5165	5165	1	21.11 Tests
+T-424	T	5166	5166	1	21.11 Tests
+T-425	T	5167	2289	3	21.11 Tests
+T-430	T	5319	2295	3	22.6 Tests
+T-431	T	5320	5320	1	22.6 Tests
+T-432	T	5321	5321	1	22.6 Tests
+T-433	T	5322	5322	1	22.6 Tests
+T-434	T	5323	5323	1	22.6 Tests
+T-435	T	5324	1233	4	22.6 Tests
+T-436	T	5325	5325	1	22.6 Tests
+T-437	T	5326	2295	3	22.6 Tests
+T-440	T		2313	2	5.44 C-53 : Interaction & Sièges
 T-442	T		1224	2	3.20 Invariants globaux
-T-444	T		2309	2	5.44 C-53 : Interaction & Sièges
-T-450	T		2317	2	5.45 C-54 : Bloc & BlockEntity 3D
-T-452	T		2317	2	5.45 C-54 : Bloc & BlockEntity 3D
-T-460	T		2325	2	5.46 C-55 : Item 3D
-T-462	T		2325	2	5.46 C-55 : Item 3D
-T-470	T	4869	2331	3	19.13 Tests de rendu
-T-471	T	4870	4870	1	19.13 Tests de rendu
-T-472	T	4871	4871	1	19.13 Tests de rendu
-T-473	T	4872	4872	1	19.13 Tests de rendu
-T-474	T	4873	4873	2	19.13 Tests de rendu
-T-475	T	4874	4874	1	19.13 Tests de rendu
-T-476	T		4874	1	19.13 Tests de rendu
-T-477	T	4875	4875	1	19.13 Tests de rendu
-T-478	T	4876	4876	1	19.13 Tests de rendu
-T-479	T	4877	4877	2	19.13 Tests de rendu
-T-480	T	4878	4878	2	19.13 Tests de rendu
-T-481	T	4879	4879	1	19.13 Tests de rendu
-T-482	T	4880	4880	1	19.13 Tests de rendu
-T-483	T	4881	4881	1	19.13 Tests de rendu
-T-484	T	4882	4882	1	19.13 Tests de rendu
-T-485	T	4883	2331	2	19.13 Tests de rendu
-T-490	T		2347	2	5.48 C-61 : Backend VANILLA_CONSUMER
-T-491	T		2347	2	5.48 C-61 : Backend VANILLA_CONSUMER
-T-492	T		2347	1	5.48 C-61 : Backend VANILLA_CONSUMER
-T-493	T		2347	2	5.48 C-61 : Backend VANILLA_CONSUMER
-T-500	T		2364	2	5.49 C-62 : GPU Resource Manager
-T-503	T		2364	2	5.49 C-62 : GPU Resource Manager
-T-510	T		2374	2	5.50 C-63 : Matériaux & Shaders
-T-512	T		2374	2	5.50 C-63 : Matériaux & Shaders
-T-520	T		2393	2	5.51 C-64 : Culling & LOD
-T-524	T		2393	2	5.51 C-64 : Culling & LOD
-T-530	T		2410	2	5.52 C-65 : Instancing & Batching
-T-533	T		2410	2	5.52 C-65 : Instancing & Batching
-T-540	T		2424	2	5.53 C-66 : Skinning GPU
-T-542	T		2424	2	5.53 C-66 : Skinning GPU
-T-550	T		2432	2	5.54 C-67 : Debug Renderer
-T-551	T		2430	4	5.54 C-67 : Debug Renderer
-T-560	T		2471	1	5.58 C-71 : Commandes
-T-562	T		2471	1	5.58 C-71 : Commandes
-T-570	T		2483	2	5.60 C-73 : Overlay diagnostics
-T-580	T		2501	2	5.61 C-74 : CLI `axion-cli`
+T-444	T		2313	2	5.44 C-53 : Interaction & Sièges
+T-450	T		2321	2	5.45 C-54 : Bloc & BlockEntity 3D
+T-452	T		2321	2	5.45 C-54 : Bloc & BlockEntity 3D
+T-460	T		2329	2	5.46 C-55 : Item 3D
+T-462	T		2329	2	5.46 C-55 : Item 3D
+T-470	T	4873	2335	3	19.13 Tests de rendu
+T-471	T	4874	4874	1	19.13 Tests de rendu
+T-472	T	4875	4875	1	19.13 Tests de rendu
+T-473	T	4876	4876	1	19.13 Tests de rendu
+T-474	T	4877	4877	2	19.13 Tests de rendu
+T-475	T	4878	4878	1	19.13 Tests de rendu
+T-476	T		4878	1	19.13 Tests de rendu
+T-477	T	4879	4879	1	19.13 Tests de rendu
+T-478	T	4880	4880	1	19.13 Tests de rendu
+T-479	T	4881	4881	2	19.13 Tests de rendu
+T-480	T	4882	4882	2	19.13 Tests de rendu
+T-481	T	4883	4883	1	19.13 Tests de rendu
+T-482	T	4884	4884	1	19.13 Tests de rendu
+T-483	T	4885	4885	1	19.13 Tests de rendu
+T-484	T	4886	4886	1	19.13 Tests de rendu
+T-485	T	4887	2335	2	19.13 Tests de rendu
+T-490	T		2351	2	5.48 C-61 : Backend VANILLA_CONSUMER
+T-491	T		2351	2	5.48 C-61 : Backend VANILLA_CONSUMER
+T-492	T		2351	1	5.48 C-61 : Backend VANILLA_CONSUMER
+T-493	T		2351	2	5.48 C-61 : Backend VANILLA_CONSUMER
+T-500	T		2368	2	5.49 C-62 : GPU Resource Manager
+T-503	T		2368	2	5.49 C-62 : GPU Resource Manager
+T-510	T		2378	2	5.50 C-63 : Matériaux & Shaders
+T-512	T		2378	2	5.50 C-63 : Matériaux & Shaders
+T-520	T		2397	2	5.51 C-64 : Culling & LOD
+T-524	T		2397	2	5.51 C-64 : Culling & LOD
+T-530	T		2414	2	5.52 C-65 : Instancing & Batching
+T-533	T		2414	2	5.52 C-65 : Instancing & Batching
+T-540	T		2428	2	5.53 C-66 : Skinning GPU
+T-542	T		2428	2	5.53 C-66 : Skinning GPU
+T-550	T		2436	2	5.54 C-67 : Debug Renderer
+T-551	T		2434	4	5.54 C-67 : Debug Renderer
+T-560	T		2475	1	5.58 C-71 : Commandes
+T-562	T		2475	1	5.58 C-71 : Commandes
+T-570	T		2487	2	5.60 C-73 : Overlay diagnostics
+T-580	T		2505	2	5.61 C-74 : CLI `axion-cli`
 T-590	T		1834	3	5.17 C-24 : Conteneur A3D
 T-591	T		1834	3	5.17 C-24 : Conteneur A3D
-T-600	T		2878	2	8.3 Addon Blender (C-75)
-T-602	T		2878	2	8.3 Addon Blender (C-75)
-T-610	T		2974	1	9.5 Instanciation et partage
-T-612	T		1990	1	5.22 C-30 : Scene Graph
-T-613	T		2974	1	9.5 Instanciation et partage
-T-620	T		3084	1	10.9 Déterminisme
-T-622	T		3084	1	10.9 Déterminisme
-T-630	T		5598	2	23.5 Contenu de démonstration
-T-634	T		5598	2	23.5 Contenu de démonstration
-T-640	T	5793	5793	1	25.9 Tests
-T-641	T	5794	5794	1	25.9 Tests
-T-642	T	5795	5795	1	25.9 Tests
-T-643	T	5796	5796	1	25.9 Tests
-T-644	T	5797	5797	1	25.9 Tests
-T-645	T	5798	5798	1	25.9 Tests
-T-646	T	5799	5799	1	25.9 Tests
-T-650	T	5864	5864	2	26.6 Tests
-T-651	T	5865	5865	1	26.6 Tests
-T-652	T	5866	5866	1	26.6 Tests
-T-653	T	5867	5867	1	26.6 Tests
-T-654	T	5868	5868	1	26.6 Tests
-T-655	T	5869	5869	1	26.6 Tests
-T-656	T	5871	5871	2	26.6 Tests
-T-660	T	6126	6126	4	27.10.3 Matrice
-T-661	T	6127	5985	2	27.10.3 Matrice
-T-662	T	6128	6128	1	27.10.3 Matrice
-T-663	T	6129	5933	3	27.10.3 Matrice
-T-664	T	6130	6130	1	27.10.3 Matrice
-T-665	T	6131	6131	1	27.10.3 Matrice
-T-666	T	6132	6132	1	27.10.3 Matrice
-T-667	T	6133	6133	1	27.10.3 Matrice
-T-668	T	6134	5972	2	27.10.3 Matrice
-T-669	T	6135	6135	1	27.10.3 Matrice
-T-670	T	6136	6136	1	27.10.3 Matrice
-T-671	T	6137	6137	4	27.10.3 Matrice
-T-672	T	6139	6139	6	27.10.3 Matrice
-T-673	T	6140	6140	1	27.10.3 Matrice
-T-674	T	6141	6141	1	27.10.3 Matrice
-T-675	T	6142	6142	4	27.10.3 Matrice
-T-676	T	6138	6138	5	27.10.3 Matrice
-T-680	T	6224	6224	2	28.7 Tests
-T-681	T	6225	6225	1	28.7 Tests
-T-682	T	6226	6226	1	28.7 Tests
-T-683	T	6227	6227	1	28.7 Tests
-T-684	T	6228	6228	1	28.7 Tests
-T-685	T	6229	6229	1	28.7 Tests
-T-686	T	6230	6230	1	28.7 Tests
-T-687	T	6231	6231	1	28.7 Tests
-T-688	T	6232	6232	1	28.7 Tests
-T-689	T	6233	6233	1	28.7 Tests
-T-690	T	6234	6234	1	28.7 Tests
-T-691	T	6235	6235	2	28.7 Tests
-T-700	T		6543	1	31.5 Reproduction
-T-702	T		6523	1	31.3 Mode développeur
-T-703	T		6543	1	31.5 Reproduction
-T-710	T		6789	2	34.1 Chaîne de build
+T-600	T		2882	2	8.3 Addon Blender (C-75)
+T-602	T		2882	2	8.3 Addon Blender (C-75)
+T-610	T		2978	1	9.5 Instanciation et partage
+T-612	T		1994	1	5.22 C-30 : Scene Graph
+T-613	T		2978	1	9.5 Instanciation et partage
+T-620	T		3088	1	10.9 Déterminisme
+T-622	T		3088	1	10.9 Déterminisme
+T-630	T		5608	2	23.5 Contenu de démonstration
+T-634	T		5608	2	23.5 Contenu de démonstration
+T-640	T	5803	5803	1	25.9 Tests
+T-641	T	5804	5804	1	25.9 Tests
+T-642	T	5805	5805	1	25.9 Tests
+T-643	T	5806	5806	1	25.9 Tests
+T-644	T	5807	5807	1	25.9 Tests
+T-645	T	5808	5808	1	25.9 Tests
+T-646	T	5809	5809	1	25.9 Tests
+T-650	T	5874	5874	2	26.6 Tests
+T-651	T	5875	5875	1	26.6 Tests
+T-652	T	5876	5876	1	26.6 Tests
+T-653	T	5877	5877	1	26.6 Tests
+T-654	T	5878	5878	1	26.6 Tests
+T-655	T	5879	5879	1	26.6 Tests
+T-656	T	5881	5881	2	26.6 Tests
+T-660	T	6136	6136	4	27.10.3 Matrice
+T-661	T	6137	5995	2	27.10.3 Matrice
+T-662	T	6138	6138	1	27.10.3 Matrice
+T-663	T	6139	5943	3	27.10.3 Matrice
+T-664	T	6140	6140	1	27.10.3 Matrice
+T-665	T	6141	6141	1	27.10.3 Matrice
+T-666	T	6142	6142	1	27.10.3 Matrice
+T-667	T	6143	6143	1	27.10.3 Matrice
+T-668	T	6144	5982	2	27.10.3 Matrice
+T-669	T	6145	6145	1	27.10.3 Matrice
+T-670	T	6146	6146	1	27.10.3 Matrice
+T-671	T	6147	6147	4	27.10.3 Matrice
+T-672	T	6149	6149	6	27.10.3 Matrice
+T-673	T	6150	6150	1	27.10.3 Matrice
+T-674	T	6151	6151	1	27.10.3 Matrice
+T-675	T	6152	6152	4	27.10.3 Matrice
+T-676	T	6148	6148	5	27.10.3 Matrice
+T-680	T	6234	6234	2	28.7 Tests
+T-681	T	6235	6235	1	28.7 Tests
+T-682	T	6236	6236	1	28.7 Tests
+T-683	T	6237	6237	1	28.7 Tests
+T-684	T	6238	6238	1	28.7 Tests
+T-685	T	6239	6239	1	28.7 Tests
+T-686	T	6240	6240	1	28.7 Tests
+T-687	T	6241	6241	1	28.7 Tests
+T-688	T	6242	6242	1	28.7 Tests
+T-689	T	6243	6243	1	28.7 Tests
+T-690	T	6244	6244	1	28.7 Tests
+T-691	T	6245	6245	2	28.7 Tests
+T-700	T		6553	1	31.5 Reproduction
+T-702	T		6533	1	31.3 Mode développeur
+T-703	T		6553	1	31.5 Reproduction
+T-710	T		6799	2	34.1 Chaîne de build
 T-713	T		1233	4	3.20 Invariants globaux
-T-714	T		6893	1	34.6 Test d'installation propre (obligatoire avant release)
+T-714	T		6903	1	34.6 Test d'installation propre (obligatoire avant release)
 T-800	T		1804	4	5.15 C-22 : Asset Validator
 T-801	T		1828	2	5.16 C-23 : Asset Optimizer
 T-802	T		152	2	0.4 Identifiants normatifs
-T-803	T		1968	1	5.21 C-28 : Compilateur de déformation et de structure
-T-804	T		1968	1	5.21 C-28 : Compilateur de déformation et de structure
-T-805	T		1968	1	5.21 C-28 : Compilateur de déformation et de structure
-T-806	T		1968	1	5.21 C-28 : Compilateur de déformation et de structure
-T-807	T		1968	1	5.21 C-28 : Compilateur de déformation et de structure
-T-808	T	3905	1238	8	14.13 Tests
-T-809	T	3909	1240	4	14.13 Tests
-T-810	T	3910	2438	3	14.13 Tests
-T-811	T	3911	3911	1	14.13 Tests
-T-812	T	3912	3702	2	14.13 Tests
-T-813	T	3913	3913	1	14.13 Tests
-T-814	T	3914	3914	1	14.13 Tests
-T-815	T	3915	3915	1	14.13 Tests
-T-816	T	3917	2438	3	14.13 Tests
-T-817	T	3918	2501	2	14.13 Tests
-T-818	T	3919	3919	1	14.13 Tests
-T-819	T	3924	3924	2	14.13 Tests
-T-820	T	3925	1236	8	14.13 Tests
-T-821	T	3926	1723	3	14.13 Tests
-T-822	T	3927	1723	4	14.13 Tests
-T-823	T	3928	2285	3	14.13 Tests
-T-824	T	3929	3929	2	14.13 Tests
-T-825	T	3930	1237	4	14.13 Tests
-T-826	T	3931	1224	5	14.13 Tests
-T-827	T	3932	2121	2	14.13 Tests
-T-828	T	3933	2185	5	14.13 Tests
-T-829	T	5167	5167	1	21.11 Tests
-T-830	T		2050	4	5.27 C-35 : Damage Model
-T-831	T		2175	1	5.33 C-41 : Impact Solver
-T-832	T		2175	1	5.33 C-41 : Impact Solver
-T-833	T		2175	1	5.33 C-41 : Impact Solver
-T-834	T		2175	1	5.33 C-41 : Impact Solver
-T-835	T		2175	2	5.33 C-41 : Impact Solver
-T-836	T	3553	2279	2	13.7 Tests
-T-837	T	3554	3453	2	13.7 Tests
-T-838	T	3555	3555	1	13.7 Tests
-T-839	T	3556	2050	2	13.7 Tests
-T-840	T		3181	1	11.4 Mappage bloc → matériau
-T-841	T		3181	1	11.4 Mappage bloc → matériau
-T-842	T		3181	1	11.4 Mappage bloc → matériau
-T-843	T	3557	3557	1	13.7 Tests
-T-844	T	3558	3558	1	13.7 Tests
-T-845	T	3559	3559	1	13.7 Tests
-T-846	T	3560	3560	1	13.7 Tests
-T-847	T	3561	3561	1	13.7 Tests
-T-848	T	3562	3562	2	13.7 Tests
-T-849	T	3563	3563	2	13.7 Tests
-T-850	T	4148	1804	4	15.7 Tests
-T-851	T	3934	3934	2	14.13 Tests
-T-852	T	3935	3935	1	14.13 Tests
-T-853	T	3936	3936	1	14.13 Tests
-T-854	T	3937	3937	1	14.13 Tests
-T-855	T	3938	1235	4	14.13 Tests
-T-856	T	3939	2091	2	14.13 Tests
-T-857	T	3940	3940	1	14.13 Tests
-T-858	T	3941	2205	3	14.13 Tests
-T-859	T	3942	2191	3	14.13 Tests
-T-860	T	4149	2197	2	15.7 Tests
-T-861	T	4150	4150	1	15.7 Tests
-T-862	T	4151	4151	1	15.7 Tests
-T-863	T	4152	4152	1	15.7 Tests
-T-864	T	4153	4153	1	15.7 Tests
-T-865	T	4154	4126	2	15.7 Tests
-T-866	T	4155	4155	1	15.7 Tests
-T-867	T	4156	4156	1	15.7 Tests
-T-868	T	4157	4157	1	15.7 Tests
-T-869	T	4158	2197	3	15.7 Tests
+T-803	T		1972	1	5.21 C-28 : Compilateur de déformation et de structure
+T-804	T		1972	1	5.21 C-28 : Compilateur de déformation et de structure
+T-805	T		1972	1	5.21 C-28 : Compilateur de déformation et de structure
+T-806	T		1972	1	5.21 C-28 : Compilateur de déformation et de structure
+T-807	T		1972	1	5.21 C-28 : Compilateur de déformation et de structure
+T-808	T	3909	1238	8	14.13 Tests
+T-809	T	3913	1240	4	14.13 Tests
+T-810	T	3914	2442	3	14.13 Tests
+T-811	T	3915	3915	1	14.13 Tests
+T-812	T	3916	3706	2	14.13 Tests
+T-813	T	3917	3917	1	14.13 Tests
+T-814	T	3918	3918	1	14.13 Tests
+T-815	T	3919	3919	1	14.13 Tests
+T-816	T	3921	2442	3	14.13 Tests
+T-817	T	3922	2505	2	14.13 Tests
+T-818	T	3923	3923	1	14.13 Tests
+T-819	T	3928	3928	2	14.13 Tests
+T-820	T	3929	1236	8	14.13 Tests
+T-821	T	3930	1723	3	14.13 Tests
+T-822	T	3931	1723	4	14.13 Tests
+T-823	T	3932	2289	3	14.13 Tests
+T-824	T	3933	3933	2	14.13 Tests
+T-825	T	3934	1237	4	14.13 Tests
+T-826	T	3935	1224	5	14.13 Tests
+T-827	T	3936	2125	2	14.13 Tests
+T-828	T	3937	2189	5	14.13 Tests
+T-829	T	5171	5171	1	21.11 Tests
+T-830	T		2054	4	5.27 C-35 : Damage Model
+T-831	T		2179	1	5.33 C-41 : Impact Solver
+T-832	T		2179	1	5.33 C-41 : Impact Solver
+T-833	T		2179	1	5.33 C-41 : Impact Solver
+T-834	T		2179	1	5.33 C-41 : Impact Solver
+T-835	T		2179	2	5.33 C-41 : Impact Solver
+T-836	T	3557	2283	2	13.7 Tests
+T-837	T	3558	3457	2	13.7 Tests
+T-838	T	3559	3559	1	13.7 Tests
+T-839	T	3560	2054	2	13.7 Tests
+T-840	T		3185	1	11.4 Mappage bloc → matériau
+T-841	T		3185	1	11.4 Mappage bloc → matériau
+T-842	T		3185	1	11.4 Mappage bloc → matériau
+T-843	T	3561	3561	1	13.7 Tests
+T-844	T	3562	3562	1	13.7 Tests
+T-845	T	3563	3563	1	13.7 Tests
+T-846	T	3564	3564	1	13.7 Tests
+T-847	T	3565	3565	1	13.7 Tests
+T-848	T	3566	3566	2	13.7 Tests
+T-849	T	3567	3567	2	13.7 Tests
+T-850	T	4152	1804	4	15.7 Tests
+T-851	T	3938	3938	2	14.13 Tests
+T-852	T	3939	3939	1	14.13 Tests
+T-853	T	3940	3940	1	14.13 Tests
+T-854	T	3941	3941	1	14.13 Tests
+T-855	T	3942	1235	4	14.13 Tests
+T-856	T	3943	2095	2	14.13 Tests
+T-857	T	3944	3944	1	14.13 Tests
+T-858	T	3945	2209	3	14.13 Tests
+T-859	T	3946	2195	3	14.13 Tests
+T-860	T	4153	2201	2	15.7 Tests
+T-861	T	4154	4154	1	15.7 Tests
+T-862	T	4155	4155	1	15.7 Tests
+T-863	T	4156	4156	1	15.7 Tests
+T-864	T	4157	4157	1	15.7 Tests
+T-865	T	4158	4130	2	15.7 Tests
+T-866	T	4159	4159	1	15.7 Tests
+T-867	T	4160	4160	1	15.7 Tests
+T-868	T	4161	4161	1	15.7 Tests
+T-869	T	4162	2201	3	15.7 Tests
 T-870	T		1866	5	5.19 C-26 : Textures & Matériaux (client)
-T-871	T		2241	1	5.39 C-47 : Surface State & Wear
-T-872	T		2241	1	5.39 C-47 : Surface State & Wear
-T-873	T		2241	1	5.39 C-47 : Surface State & Wear
-T-874	T		2241	1	5.39 C-47 : Surface State & Wear
-T-875	T		2241	1	5.39 C-47 : Surface State & Wear
-T-876	T		2317	2	5.45 C-54 : Bloc & BlockEntity 3D
-T-877	T		2325	2	5.46 C-55 : Item 3D
-T-878	T		2471	1	5.58 C-71 : Commandes
-T-879	T	4168	2444	4	15.7 Tests
-T-880	T	4241	2211	3	16.4 Remplacement de part
-T-881	T	4242	4242	1	16.4 Remplacement de part
-T-882	T	4243	4243	1	16.4 Remplacement de part
-T-883	T	4244	4244	1	16.4 Remplacement de part
-T-884	T	4245	2291	3	16.4 Remplacement de part
-T-885	T	4246	4246	1	16.4 Remplacement de part
-T-886	T	4247	4247	1	16.4 Remplacement de part
-T-887	T	4248	4248	1	16.4 Remplacement de part
-T-888	T	4249	4249	1	16.4 Remplacement de part
-T-889	T	4250	2211	3	16.4 Remplacement de part
-T-890	T		2266	2	5.40 C-48 : Attachment System
-T-891	T		2266	1	5.40 C-48 : Attachment System
-T-892	T		2266	1	5.40 C-48 : Attachment System
-T-893	T		2266	1	5.40 C-48 : Attachment System
-T-894	T		2266	1	5.40 C-48 : Attachment System
-T-895	T		2266	2	5.40 C-48 : Attachment System
-T-900	T	4884	2331	3	19.13 Tests de rendu
-T-901	T	4885	2347	3	19.13 Tests de rendu
-T-902	T	4887	2347	2	19.13 Tests de rendu
-T-903	T	4888	2364	2	19.13 Tests de rendu
-T-904	T	4889	2374	2	19.13 Tests de rendu
-T-905	T	4890	2374	2	19.13 Tests de rendu
-T-906	T	4891	2393	2	19.13 Tests de rendu
-T-907	T	4892	2410	2	19.13 Tests de rendu
-T-908	T	4893	2424	2	19.13 Tests de rendu
-T-909	T	4894	2432	2	19.13 Tests de rendu
-T-910	T	4895	2438	4	19.13 Tests de rendu
-T-911	T	4897	4897	1	19.13 Tests de rendu
-T-912	T	4898	4898	1	19.13 Tests de rendu
-T-913	T	4899	2438	2	19.13 Tests de rendu
-T-914	T	4900	2444	3	19.13 Tests de rendu
-T-915	T	4901	4901	1	19.13 Tests de rendu
-T-916	T	4902	2444	3	19.13 Tests de rendu
-T-917	T	4903	2552	2	19.13 Tests de rendu
-T-918	T	4904	4904	1	19.13 Tests de rendu
-T-919	T	4905	2331	3	19.13 Tests de rendu
-T-920	T	4906	2558	2	19.13 Tests de rendu
-T-921	T	4907	4907	1	19.13 Tests de rendu
-T-922	T	4908	2558	2	19.13 Tests de rendu
-T-923	T	4909	2564	2	19.13 Tests de rendu
-T-924	T	4910	4910	1	19.13 Tests de rendu
-T-925	T	4911	4786	2	19.13 Tests de rendu
-T-926	T	4912	2564	2	19.13 Tests de rendu
-T-927	T	4913	2570	3	19.13 Tests de rendu
-T-928	T	4914	4824	2	19.13 Tests de rendu
-T-929	T	4915	2570	3	19.13 Tests de rendu
-T-930	T	4431	2056	3	17.8 Tests
-T-931	T	4432	4432	1	17.8 Tests
-T-932	T	4433	4433	1	17.8 Tests
-T-933	T	4434	4434	1	17.8 Tests
-T-934	T	4435	4435	1	17.8 Tests
-T-935	T	4436	4436	1	17.8 Tests
-T-936	T	4437	4437	1	17.8 Tests
-T-937	T	4438	4438	1	17.8 Tests
-T-938	T	4439	4439	1	17.8 Tests
-T-940	T		2878	2	8.3 Addon Blender (C-75)
-T-941	T		2878	2	8.3 Addon Blender (C-75)
-T-945	T	4451	2056	3	17.8 Tests
-T-950	T	4573	2044	3	18.7 Tests
-T-951	T	4574	4574	1	18.7 Tests
-T-952	T	4575	4575	1	18.7 Tests
-T-953	T	4576	2044	2	18.7 Tests
-T-954	T	4577	2974	2	18.7 Tests
-T-955	T	4578	4578	1	18.7 Tests
-T-956	T	4579	4579	1	18.7 Tests
-T-957	T	4580	2309	2	18.7 Tests
-T-958	T	4581	4581	1	18.7 Tests
-T-959	T	4582	2062	2	18.7 Tests
-T-960	T	3369	3369	1	12.9 Tests véhicules
-T-961	T	3370	3370	1	12.9 Tests véhicules
-T-962	T	3371	3371	1	12.9 Tests véhicules
-T-963	T	3372	3372	1	12.9 Tests véhicules
-T-970	T		5598	9	23.5 Contenu de démonstration
-T-971	T		6378	7	29.6 Test de bout en bout obligatoire (T-970)
-T-980	T		2483	3	5.60 C-73 : Overlay diagnostics
-T-981	T		2544	1	5.64 C-77 : Gouverneur de qualité
-T-982	T		2544	1	5.64 C-77 : Gouverneur de qualité
-T-983	T		2544	3	5.64 C-77 : Gouverneur de qualité
-T-984	T		2544	3	5.64 C-77 : Gouverneur de qualité
-T-999	T		7662	1	38.7 Registre des changements de la révision 2
+T-871	T		2245	1	5.39 C-47 : Surface State & Wear
+T-872	T		2245	1	5.39 C-47 : Surface State & Wear
+T-873	T		2245	1	5.39 C-47 : Surface State & Wear
+T-874	T		2245	1	5.39 C-47 : Surface State & Wear
+T-875	T		2245	1	5.39 C-47 : Surface State & Wear
+T-876	T		2321	2	5.45 C-54 : Bloc & BlockEntity 3D
+T-877	T		2329	2	5.46 C-55 : Item 3D
+T-878	T		2475	1	5.58 C-71 : Commandes
+T-879	T	4172	2448	4	15.7 Tests
+T-880	T	4245	2215	3	16.4 Remplacement de part
+T-881	T	4246	4246	1	16.4 Remplacement de part
+T-882	T	4247	4247	1	16.4 Remplacement de part
+T-883	T	4248	4248	1	16.4 Remplacement de part
+T-884	T	4249	2295	3	16.4 Remplacement de part
+T-885	T	4250	4250	1	16.4 Remplacement de part
+T-886	T	4251	4251	1	16.4 Remplacement de part
+T-887	T	4252	4252	1	16.4 Remplacement de part
+T-888	T	4253	4253	1	16.4 Remplacement de part
+T-889	T	4254	2215	3	16.4 Remplacement de part
+T-890	T		2270	2	5.40 C-48 : Attachment System
+T-891	T		2270	1	5.40 C-48 : Attachment System
+T-892	T		2270	1	5.40 C-48 : Attachment System
+T-893	T		2270	1	5.40 C-48 : Attachment System
+T-894	T		2270	1	5.40 C-48 : Attachment System
+T-895	T		2270	2	5.40 C-48 : Attachment System
+T-900	T	4888	2335	3	19.13 Tests de rendu
+T-901	T	4889	2351	3	19.13 Tests de rendu
+T-902	T	4891	2351	2	19.13 Tests de rendu
+T-903	T	4892	2368	2	19.13 Tests de rendu
+T-904	T	4893	2378	2	19.13 Tests de rendu
+T-905	T	4894	2378	2	19.13 Tests de rendu
+T-906	T	4895	2397	2	19.13 Tests de rendu
+T-907	T	4896	2414	2	19.13 Tests de rendu
+T-908	T	4897	2428	2	19.13 Tests de rendu
+T-909	T	4898	2436	2	19.13 Tests de rendu
+T-910	T	4899	2442	4	19.13 Tests de rendu
+T-911	T	4901	4901	1	19.13 Tests de rendu
+T-912	T	4902	4902	1	19.13 Tests de rendu
+T-913	T	4903	2442	2	19.13 Tests de rendu
+T-914	T	4904	2448	3	19.13 Tests de rendu
+T-915	T	4905	4905	1	19.13 Tests de rendu
+T-916	T	4906	2448	3	19.13 Tests de rendu
+T-917	T	4907	2556	2	19.13 Tests de rendu
+T-918	T	4908	4908	1	19.13 Tests de rendu
+T-919	T	4909	2335	3	19.13 Tests de rendu
+T-920	T	4910	2562	2	19.13 Tests de rendu
+T-921	T	4911	4911	1	19.13 Tests de rendu
+T-922	T	4912	2562	2	19.13 Tests de rendu
+T-923	T	4913	2568	2	19.13 Tests de rendu
+T-924	T	4914	4914	1	19.13 Tests de rendu
+T-925	T	4915	4790	2	19.13 Tests de rendu
+T-926	T	4916	2568	2	19.13 Tests de rendu
+T-927	T	4917	2574	3	19.13 Tests de rendu
+T-928	T	4918	4828	2	19.13 Tests de rendu
+T-929	T	4919	2574	3	19.13 Tests de rendu
+T-930	T	4435	2060	3	17.8 Tests
+T-931	T	4436	4436	1	17.8 Tests
+T-932	T	4437	4437	1	17.8 Tests
+T-933	T	4438	4438	1	17.8 Tests
+T-934	T	4439	4439	1	17.8 Tests
+T-935	T	4440	4440	1	17.8 Tests
+T-936	T	4441	4441	1	17.8 Tests
+T-937	T	4442	4442	1	17.8 Tests
+T-938	T	4443	4443	1	17.8 Tests
+T-940	T		2882	2	8.3 Addon Blender (C-75)
+T-941	T		2882	2	8.3 Addon Blender (C-75)
+T-945	T	4455	2060	3	17.8 Tests
+T-950	T	4577	2048	3	18.7 Tests
+T-951	T	4578	4578	1	18.7 Tests
+T-952	T	4579	4579	1	18.7 Tests
+T-953	T	4580	2048	2	18.7 Tests
+T-954	T	4581	2978	2	18.7 Tests
+T-955	T	4582	4582	1	18.7 Tests
+T-956	T	4583	4583	1	18.7 Tests
+T-957	T	4584	2313	2	18.7 Tests
+T-958	T	4585	4585	1	18.7 Tests
+T-959	T	4586	2066	2	18.7 Tests
+T-960	T	3373	3373	1	12.9 Tests véhicules
+T-961	T	3374	3374	1	12.9 Tests véhicules
+T-962	T	3375	3375	1	12.9 Tests véhicules
+T-963	T	3376	3376	1	12.9 Tests véhicules
+T-970	T		5608	9	23.5 Contenu de démonstration
+T-971	T		6388	7	29.6 Test de bout en bout obligatoire (T-970)
+T-980	T		2487	3	5.60 C-73 : Overlay diagnostics
+T-981	T		2548	1	5.64 C-77 : Gouverneur de qualité
+T-982	T		2548	1	5.64 C-77 : Gouverneur de qualité
+T-983	T		2548	3	5.64 C-77 : Gouverneur de qualité
+T-984	T		2548	3	5.64 C-77 : Gouverneur de qualité
+T-999	T		7672	1	38.7 Registre des changements de la révision 2

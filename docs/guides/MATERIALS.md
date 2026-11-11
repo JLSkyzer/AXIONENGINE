@@ -3,11 +3,11 @@
 Un matériau physique (DM-07, PARTIE 11) porte les propriétés de matière d'une surface : son
 contact, sa masse, sa rigidité, ses seuils de rupture, son comportement, sa surface. C'est le seul
 endroit où elles se déclarent (§11.1) : le moteur ne connaît aucun nom de matériau, la bibliothèque
-d'AXION est un datapack comme un autre (R-1030). Le format est celui d'[ADR-145](../decisions/ADR-145.md).
+d'AXION est un contenu qu'il enregistre comme un addon (R-1030, ADR-162). Le format est celui d'[ADR-145](../decisions/ADR-145.md).
 
 ## Déclarer un matériau
 
-`data/<ns>/axion/physics_materials/<chemin>.json` déclare `<ns>:<chemin>`. Toutes les clés sont
+`axion/physics_materials/<chemin>.json`, dans le dossier qu'un mod enregistre, déclare `<modId>:<chemin>`. Toutes les clés sont
 facultatives ; ce sont les noms des champs de DM-07, plus `parent` :
 
 ```json
@@ -43,7 +43,7 @@ le matériau, nommé, au journal (R-580) — jamais un bornage silencieux.
 
 ## Associer un bloc à un matériau
 
-`data/<ns>/axion/block_materials/<chemin>.json`, au format du §11.4 :
+`axion/block_materials/<chemin>.json`, dans le dossier qu'un mod enregistre, au format du §11.4 :
 
 ```json
 {
@@ -78,7 +78,7 @@ servent à la déformation, à la rupture et à l'usure, avec leurs composants (
 
 ## La bibliothèque d'AXION
 
-Dix-huit matériaux, dans `data/axion/axion/physics_materials/` : les onze de R-1030 et sept de
+Dix-huit matériaux, dans `content/examples/axion/physics_materials/` (sous `axion/` à la racine du JAR) : les onze de R-1030 et sept de
 référence pour les blocs de Minecraft. Les valeurs y sont de trois natures :
 
 - **sourcées** — mesurées et publiées, référence ci-dessous ;

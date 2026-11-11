@@ -26,7 +26,7 @@ Les blocs autour de chaque assembly deviennent des **tuiles de collision** par s
 (C-38) : des boîtes regroupées, ou un champ de hauteur pour un terrain régulier, au plus
 `world.tiles_per_tick` tuiles extraites par tick dans un rayon de `world.tile_radius` tuiles.
 Frottement et rebond viennent du matériau physique dominant de la section, que résolvent les
-mappages `data/<ns>/axion/block_materials/` — par bloc, puis par étiquette, puis le défaut
+mappages `axion/block_materials/` des mods — par bloc, puis par étiquette, puis le défaut
 (§11.4, ADR-145) ; les matériaux et leur format sont décrits dans [MATERIALS.md](MATERIALS.md).
 Les blocs de fluide deviennent des volumes de fluide, à la
 densité de l'eau quel que soit le fluide pour l'instant : un corps qui y entre subit poussée
@@ -68,7 +68,7 @@ réservés — `world`, `assembly`, `part`, `debris`, `entity_proxy`, `sensor`, 
 proxies d'entités membres d'`entity_proxy` et ne heurtent qu'`assembly`.
 
 Un pack déclare ses propres groupes, un par fichier (registre `axion:collision_group`, ADR-132
-A1) : `data/<ns>/axion/collision_groups/<chemin>.json` déclare `<ns>:<chemin>`, et son seul
+A1) : `axion/collision_groups/<chemin>.json`, dans le dossier qu'un mod enregistre, déclare `<modId>:<chemin>`, et son seul
 champ, `collides_with`, facultatif, est le masque par défaut du groupe — celui que prend une
 definition qui le nomme sans `collides_with`. Les groupes tiers, triés par identifiant, ont les
 bits 8 à 31, 24 au plus ; au-delà, ou s'il nomme un groupe inconnu, un groupe est refusé et

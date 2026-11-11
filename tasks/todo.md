@@ -3706,7 +3706,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         par dossier, index des ADR ; CI GitHub verte sur les quatre commits.
   - [x] ADR de l'API d'enregistrement du contenu et du retrait des datapacks (D9) : **ADR-162 accepté par Killian
         le 2026-11-10** (builder généré depuis le schéma, API découpée en paquets, `axion-server-overrides.toml`).
-  - [ ] Son code, en six tranches (ADR-162) ; la tranche 1 d'abord : fournisseur, phase d'enregistrement, registre,
+  - [ ] Son code, en six tranches (ADR-162) — **tranche 1 faite le 2026-11-11** (1a à 1e ci-dessous) ; les tranches 2 à 6
+        (builder généré, handshake des addons et surcharges, rechargement en développement, publication, garde
+        binaire) suivent la tranche 4 de C-33. La tranche 1 d'abord : fournisseur, phase d'enregistrement, registre,
         exemples par l'API publique, contenu de test et films migrés, écouteurs de datapack retirés, paquets de l'API.
         Tranche 1 découpée (2026-11-11), chaque étape commitée verte :
         - [x] 1a — API découpée en paquets (`api`, `api.assembly`, `api.content`, `api.event`, `api.damage`,
@@ -3716,7 +3718,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         - [x] 1c — Branchement : le serveur et le client lisent le contenu enregistré (plus de `ResourceManager`
               pour AXION) ; exemples par l'API publique, contenu de test, films et Charger enregistrés ; GameTests.
         - [x] 1d — Fournisseur d'`AxionApi` sur une surface ramenée au réel (ADR-162 D1).
-        - [ ] 1e — Textes du CDC (C-27, 23.3, R-171, R-1030, R-1640, 28.1, R-1783, R-1790, conflits 19 et 21),
+        - [x] 1e — Textes du CDC (C-27, 23.3, R-171, R-1030, R-1640, 28.1, R-1783, R-1790, conflits 19 et 21),
               ADR-160 D5, guides ; amendement A8.
   - [ ] Tranche 4 de C-33 (sources, volant, touches libres, canaux de lumière) écrite sur cette API.
 
