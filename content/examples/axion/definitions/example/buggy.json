@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 3,
   "asset": "axion:models/example/buggy.glb",
   "kind": "vehicle",
 
@@ -12,7 +12,7 @@
 
   "joints": [
     { "name": "charniere_capot", "type": "revolute", "a": "caisse", "b_node": "capot",
-      "axis": [-1, 0, 0], "limits": [0.0, 1.2], "break_force": 6000.0 }
+      "axis": [-1, 0, 0], "limits": [0.0, 1.2], "break": { "force": 6000.0 } }
   ],
 
   "wheels": [
@@ -84,12 +84,20 @@
   "seats": [
     { "name": "conducteur", "node": "siege_conducteur", "role": "driver",
       "exit_offsets": [[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]],
-      "controls": ["throttle", "brake", "steer", "gear", "handbrake"] }
+      "controls": ["throttle", "brake", "steer", "gear", "handbrake"],
+      "bindings": [
+        { "command": 1, "label": "axion.example.buggy.attelage", "variable": "attelage_sorti", "mode": "toggle" } ] }
   ],
+
+  "variables": {
+    "attelage_sorti": { "type": "bool", "default": false, "persist": true, "replicate": "all", "write": "driver" }
+  },
 
   "sockets": ["attelage"],
 
   "procedural": [
+    { "node": "attelage", "channel": "translation", "axis": "z",
+      "source": "var.attelage_sorti", "scale": 0.2 },
     { "node": "volant", "channel": "rotation", "axis": "y",
       "source": "vehicle.steer", "scale": -3.0 },
     { "node": "roue_avant_gauche", "channel": "rotation", "axis": "x",

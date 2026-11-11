@@ -24,6 +24,8 @@ import java.util.List;
  *       snapshot. Une assembly endormie, ou figée au-delà de la borne d'extrapolation, a des roues immobiles.</li>
  *   <li>L'état du véhicule (ADR-163 D1) aussi : régime, charge et entrées linéairement, rapport et drapeaux du
  *       snapshot suivant ; sa vitesse est celle du corps racine, nulle une fois figée.</li>
+ *   <li>Les variables de contenu (ADR-163 D2) ne s'interpolent pas : ce sont celles du snapshot suivant, tenues
+ *       au-delà du dernier.</li>
  * </ul>
  *
  * <p>Le temps de rendu — le temps du serveur estimé, moins {@code interpolation_delay_ms} — est fourni par
@@ -66,9 +68,11 @@ public final class Interpolation {
      * @param bodies les corps autres que le corps racine, en poses relatives à lui (ADR-151 D9)
      * @param wheels l'état de chaque roue, dans l'ordre de la definition (ADR-159 D9)
      * @param vehicle l'état du véhicule et la vitesse du corps racine (ADR-163 D1)
+     * @param variables les variables de contenu reçues (ADR-163 D2)
      */
     public record Pose(double x, double y, double z, float[] rotation, float[] boundsMin, float[] boundsMax,
-            Mode mode, List<BodyPose> bodies, List<WheelPose> wheels, VehiclePose vehicle) {
+            Mode mode, List<BodyPose> bodies, List<WheelPose> wheels, VehiclePose vehicle,
+            AssemblyState.VariableValues variables) {
 
         /**
          * La pose d'une assembly à un seul corps.
@@ -82,7 +86,8 @@ public final class Interpolation {
          * @param mode comment elle a été obtenue
          */
         public Pose(double x, double y, double z, float[] rotation, float[] boundsMin, float[] boundsMax, Mode mode) {
-            this(x, y, z, rotation, boundsMin, boundsMax, mode, List.of(), List.of(), VehiclePose.NONE);
+            this(x, y, z, rotation, boundsMin, boundsMax, mode, List.of(), List.of(), VehiclePose.NONE,
+                    AssemblyState.VariableValues.NONE);
         }
     }
 
@@ -128,7 +133,7 @@ public final class Interpolation {
 
     private record Sample(double millis, double[] position, float[] velocity, float[] rotation, float[] angular,
             float[] boundsMin, float[] boundsMax, List<BodyPose> bodies, List<WheelPose> wheels,
-            AssemblyState.Vehicle vehicle) {}
+            AssemblyState.Vehicle vehicle, AssemblyState.VariableValues variables) {}
 
     private final double extrapolationMaxMillis;
     private final double snapThreshold;
@@ -178,7 +183,7 @@ public final class Interpolation {
         }
         samples.addLast(new Sample(millis, state.positionBlocks(), state.linearVelocity(), state.quaternion(),
                 state.angularVelocity(), state.boundsMin(), state.boundsMax(), List.copyOf(bodies), wheels(state),
-                state.vehicle()));
+                state.vehicle(), state.variables()));
         while (samples.size() > MAX_SAMPLES) {
             samples.removeFirst();
         }
@@ -245,7 +250,7 @@ public final class Interpolation {
                 Quaternions.slerp(Quaternions.IDENTITY, errorRotation, (float) weight), raw.rotation());
         return new Pose(raw.x() + errorPosition[0] * weight, raw.y() + errorPosition[1] * weight,
                 raw.z() + errorPosition[2] * weight, rotation, raw.boundsMin(), raw.boundsMax(), raw.mode(),
-                raw.bodies(), raw.wheels(), raw.vehicle());
+                raw.bodies(), raw.wheels(), raw.vehicle(), raw.variables());
     }
 
     /**
@@ -312,7 +317,7 @@ public final class Interpolation {
         float[] velocity = lerp(a.velocity(), b.velocity(), s);
         return new Pose(position[0], position[1], position[2], rotation, min, max, Mode.INTERPOLATED,
                 bodies(a.bodies(), b.bodies(), s), wheels(a.wheels(), b.wheels(), s),
-                vehicle(a.vehicle(), b.vehicle(), s, velocity, rotation));
+                vehicle(a.vehicle(), b.vehicle(), s, velocity, rotation), b.variables());
     }
 
     /**
@@ -400,7 +405,8 @@ public final class Interpolation {
         boolean frozen = mode == Mode.FROZEN;
         return new Pose(position[0], position[1], position[2], rotation, sample.boundsMin(), sample.boundsMax(), mode,
                 sample.bodies(), frozen ? stopped(sample.wheels()) : sample.wheels(),
-                vehicle(sample.vehicle(), sample.vehicle(), 1.0, frozen ? new float[3] : sample.velocity(), rotation));
+                vehicle(sample.vehicle(), sample.vehicle(), 1.0, frozen ? new float[3] : sample.velocity(), rotation),
+                sample.variables());
     }
 
     /** Figée au-delà de la borne : ce qui tourne s'arrête. */

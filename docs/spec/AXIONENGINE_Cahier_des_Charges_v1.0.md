@@ -2458,6 +2458,7 @@ Spécifiée intégralement en **PARTIE 23**.
 /axion assets list | info <id> | reload
 /axion defs list | info <id>
 /axion spawn <definition> [pos] [nbt] | remove <selector>
+/axion variables <selector>          (amendement A10)
 /axion sim pause|resume|step <n> | budget <ns>
 /axion damage <selector> <part> <energy> [--point x y z] [--normal x y z]
 /axion deform show <selector> | reset <selector> [part] | quality <level>
@@ -5204,7 +5205,7 @@ T-829  100 impacts par seconde sur 20 assemblies : trafic mesuré et borné
 ## 22.2 Format NBT
 
 ```text
-axion:v         int      version du schéma (2)
+axion:v         int      version du schéma (4 depuis l'amendement A10)
 axion:def       long
 axion:pos       [double] 3        axion:rot  [float] 4
 axion:lvel      [float]  3        axion:avel [float] 3
@@ -5221,6 +5222,7 @@ axion:attach    list     attaches (uuid distant, type, sockets)
 axion:repair    compound réparation en cours
 axion:power     compound
 axion:custom    byte[]   CBOR, optionnel
+axion:vars      compound valeur de chaque variable persist, par nom (amendement A10)
 ```
 
 - R-1710 : le schéma est versionné ; une version **supérieure** rend l'assembly inerte **sans perte** (les octets sont conservés et réécrits tels quels). Une version inférieure est migrée par une fonction explicite et testée.
@@ -5592,7 +5594,7 @@ fermée du schéma s'étend par un registre de l'API (ADR-160 D5).
 - R-1780 : `schema` obligatoire ; valeur inconnue → refus (`E-7003`).
 - R-1781 : tous les champs sauf `schema`, `asset` et `kind` sont optionnels avec des défauts documentés. **Un objet déformable et destructible fonctionne avec `asset` + `kind` seuls**, grâce aux générations automatiques de C-28.
 - R-1782 : les actions d'interaction et les actions de `on_part_stage` forment des **listes fermées** (13.4, PARTIE 24).
-- R-1783 : le schéma JSON complet est publié dans `docs/schema/definition-1.json` et validé en CI contre toutes les definitions du dépôt.
+- R-1783 : le schéma JSON complet est publié dans `docs/schema/definition-1.json` et validé en CI contre toutes les definitions du dépôt ; chaque version suivante l'est de même (`definition-2.json`, `definition-3.json`, amendement A10).
 
 ## 23.5 Contenu de démonstration
 
@@ -7799,6 +7801,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A7 | 2026-11-10 | ADR-161, décidé par Killian | PARTIE 33 : les guides de documentation passent de la racine à `docs/guides/` ; la racine garde README (avec le plan du dépôt), LICENSE, NOTICE, CHANGELOG et le build ; dossiers de jeu sous `.runs/`, contenu personnel sous `local/`, tous deux ignorés |
 | A8 | 2026-11-11 | ADR-162, accepté par Killian | Le contenu vient des mods, qui l'enregistrent par l'API (C-27, 23.3, R-171, R-1030, R-1640, R-1790, 28.1, conflits 19 et 21) ; aucun datapack n'est lu, hormis les registres de Minecraft lui-même ; la façade publiée ne porte que le réel (23.2) |
 | A9 | 2026-11-11 | ADR-163 D1, accepté par Killian | ANNEXE A.4 en V1.1 : les sources du monde `world.time`, `world.sky_light` et `world.rain` (CAP-43, R-2410) |
+| A10 | 2026-11-11 | ADR-163 D2, accepté par Killian | Les variables de contenu : schéma de definition 3 (`variables`, commandes liées des sièges, `set_variable` effectif, R-1783) ; 22.2 : `axion:v` 4 et `axion:vars` ; C-71 : `/axion variables` (CAP-01, CAP-02) |
 
 ---
 

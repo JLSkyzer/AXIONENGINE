@@ -295,7 +295,8 @@ public final class AxionNetwork {
                     if (!(player.serverLevel().getEntity(handle) instanceof AxionEntity assembly)) {
                         return null;
                     }
-                    AssemblyState state = assembly.netState();
+                    // ADR-163 D2 : les variables que ce joueur reçoit, selon leur replicate.
+                    AssemblyState state = assembly.netStateFor(player);
                     double distance = player.distanceTo(assembly);
                     if (state == null || distance > syncRadius) {
                         return null;

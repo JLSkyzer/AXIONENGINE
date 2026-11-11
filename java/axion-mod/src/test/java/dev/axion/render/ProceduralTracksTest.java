@@ -108,8 +108,8 @@ class ProceduralTracksTest {
             new Interpolation.VehiclePose(3000f, 0.4f, -1, AssemblyState.Vehicle.RUNNING, 0.6f, 0.2f, -0.5f, 1f, 12f, -11f);
 
     private static ProceduralTracks.Frame cadre(double secondes, float heure, float ciel, float pluie) {
-        return new ProceduralTracks.Frame(ROUES, new double[2], VEHICULE, new boolean[] {true, false}, secondes, heure,
-                ciel, pluie);
+        return new ProceduralTracks.Frame(ROUES, new double[2], VEHICULE, AssemblyState.VariableValues.NONE,
+                new boolean[] {true, false}, secondes, heure, ciel, pluie);
     }
 
     private static float translation(ProceduralTracks pistes, ProceduralTracks.Frame cadre) {
@@ -152,9 +152,9 @@ class ProceduralTracksTest {
     }
 
     @Test
-    @DisplayName("ADR-163 D1 : un siège inconnu, une source sans producteur ou une variable avant 4b sont ignorés")
+    @DisplayName("ADR-163 D1 : un siège inconnu, une source sans producteur ou une variable non déclarée sont ignorés")
     void sourcesNonPrisesEnCharge() {
-        for (String source : new String[] {"seat.absent.occupied", "wheel.roue_g.slip_long", "var.gyrophare",
+        for (String source : new String[] {"seat.absent.occupied", "wheel.roue_g.slip_long", "var.inconnue",
                 "engine.temperature", "world", "vehicle.speed.x"}) {
             List<String> journal = new ArrayList<>();
             assertSame(ProceduralTracks.NONE, pistesDuVehicule("{\"node\":\"caisse\",\"channel\":\"translation\","
@@ -191,8 +191,8 @@ class ProceduralTracksTest {
         ProceduralTracks pistes = pistesDuVehicule("{\"node\":\"roue_g\",\"channel\":\"translation\",\"axis\":\"y\","
                 + "\"source\":\"wheel.roue_g.compression\"},{\"node\":\"caisse\",\"channel\":\"translation\","
                 + "\"axis\":\"x\",\"source\":\"engine.rpm\",\"scale\":0.001}", new ArrayList<>());
-        ProceduralTracks.Frame sans = new ProceduralTracks.Frame(List.of(), new double[0], VEHICULE, new boolean[0], 0.0,
-                0f, 0f, 0f);
+        ProceduralTracks.Frame sans = new ProceduralTracks.Frame(List.of(), new double[0], VEHICULE,
+                AssemblyState.VariableValues.NONE, new boolean[0], 0.0, 0f, 0f, 0f);
         ProceduralTracks.Pose pose = pistes.evaluate(sans);
         assertArrayEquals(new int[] {1, 0}, pose.nodes());
         assertArrayEquals(new float[] {0f, 0f, 0f, 0f, 0f, 0f, 1f, 3f, 0f, 0f, 0f, 0f, 0f, 1f}, pose.deltas(), 1e-6f);
@@ -206,5 +206,31 @@ class ProceduralTracksTest {
         assertEquals(0.0, spin.advance(100.0, roues)[0], 1e-9, "la première image ne fait que dater");
         assertEquals(0.2, spin.advance(102.0, roues)[0], 1e-9, "2 rad/s pendant 2 ticks");
         assertEquals(0.2, spin.advance(101.0, roues)[0], 1e-9, "un tick de rendu qui recule n'ajoute rien");
+    }
+
+    @Test
+    @DisplayName("ADR-163 D2 : var.<n> lit la variable reçue, son défaut tant qu'elle ne l'est pas")
+    void variables() {
+        JsonObject racine = JsonParser.parseString("{\"variables\":{\"phares\":{\"type\":\"int\",\"default\":1},"
+                + "\"cote.gauche\":{\"type\":\"float\"}},\"procedural\":["
+                + "{\"node\":\"caisse\",\"channel\":\"translation\",\"axis\":\"x\",\"source\":\"var.phares\"},"
+                + "{\"node\":\"caisse\",\"channel\":\"translation\",\"axis\":\"y\",\"source\":\"var.cote.gauche\"}]}")
+                .getAsJsonObject();
+        List<String> journal = new ArrayList<>();
+        ProceduralTracks pistes = ProceduralTracks.of(racine, NOMS, journal::add);
+        assertTrue(journal.isEmpty(), journal.toString());
+        ProceduralTracks.Frame rien = ProceduralTracks.Frame.ofWheels(List.of(), new double[0]);
+        float[] d = pistes.evaluate(rien).deltas();
+        assertEquals(1f, d[0], 1e-6f, "pas encore reçue : son défaut");
+        assertEquals(0f, d[1], 1e-6f);
+        AssemblyState.VariableValues recues = new AssemblyState.VariableValues(2, 0b11L, new float[] {2f, 0.5f});
+        ProceduralTracks.Frame cadre = new ProceduralTracks.Frame(List.of(), new double[0],
+                Interpolation.VehiclePose.NONE, recues, new boolean[0], 0.0, 0f, 0f, 0f);
+        d = pistes.evaluate(cadre).deltas();
+        assertEquals(2f, d[0], 1e-6f, "reçue");
+        assertEquals(0.5f, d[1], 1e-6f, "un nom à point");
+        ProceduralTracks.Frame filtre = new ProceduralTracks.Frame(List.of(), new double[0],
+                Interpolation.VehiclePose.NONE, recues.only(0b10L), new boolean[0], 0.0, 0f, 0f, 0f);
+        assertEquals(1f, pistes.evaluate(filtre).deltas()[0], 1e-6f, "retirée pour ce joueur : son défaut");
     }
 }

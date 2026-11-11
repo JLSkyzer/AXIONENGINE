@@ -3,5 +3,14 @@
   "death.attack.axion.collision.player": "%1$s was hit by a moving object whilst trying to escape %2$s",
   "key.categories.axion": "AXION ENGINE",
   "key.axion.gear_up": "Gear up",
-  "key.axion.gear_down": "Gear down"
+  "key.axion.gear_down": "Gear down",
+  "key.axion.command_1": "AXION command 1",
+  "key.axion.command_2": "AXION command 2",
+  "key.axion.command_3": "AXION command 3",
+  "key.axion.command_4": "AXION command 4",
+  "key.axion.command_5": "AXION command 5",
+  "key.axion.command_6": "AXION command 6",
+  "key.axion.command_7": "AXION command 7",
+  "key.axion.command_8": "AXION command 8",
+  "axion.example.buggy.attelage": "Tow hitch (extend/retract)"
 }

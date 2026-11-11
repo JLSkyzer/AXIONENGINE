@@ -126,6 +126,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     private AssemblyVariables variables;
 
+    /** La version des variables que {@link #netState} porte, et celles que seul le conducteur reçoit (serveur). */
+    private long netVariablesVersion = -1L;
+
+    private long driverOnly;
+
     /** Vitesses monde du corps racine au dernier état, en m/s et rad/s, et son sommeil (serveur). */
     private final float[] linearVelocity = new float[3];
 
@@ -444,6 +449,19 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             LOGGER.warn("AXION : assembly {}, interaction refusée — {}", getUUID(), refused.getMessage());
             return false;
         }
+    }
+
+    /**
+     * {@return les commandes génériques qu'un siège lie (ADR-163 D2), vide sans siège de ce rang ou sans definition
+     * compilée}
+     *
+     * @param seat rang du siège
+     */
+    public List<Seating.Binding> seatBindings(int seat) {
+        Seating seating = seating();
+        return seating == null || seat < 0 || seat >= seating.seats().size()
+                ? List.of()
+                : seating.seats().get(seat).bindings();
     }
 
     /** {@return vrai si ce siège envoie des entrées : un contrôle ou une commande liée (ADR-163 D2)} */
@@ -1352,7 +1370,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     .with(bodies, AssemblyState.JointBits.of(jointFlags))
                     .withAnimation(animation.state())
                     .withWheels(wheelStates())
-                    .withVehicle(vehicleState());
+                    .withVehicle(vehicleState())
+                    .withVariables(replicatedVariables());
         } catch (IllegalArgumentException notFinite) {
             // Le natif ramène lui-même un corps non fini dans un état valide (E-2030) ; l'état précédent
             // reste celui des snapshots d'ici là.
@@ -1367,7 +1386,53 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (netState != null && netState.animation() != animation.state()) {
             netState = netState.withAnimation(animation.state());
         }
+        // ADR-163 D2 : une variable posée sur une assembly endormie, que le natif ne rapporte plus, part aussi.
+        if (netState != null && variables != null && variables.version() != netVariablesVersion) {
+            netState = netState.withVariables(replicatedVariables());
+        }
         return netState;
+    }
+
+    /**
+     * {@return l'état que les snapshots portent à ce joueur (serveur, ADR-163 D2)} Celui de {@link #netState()}, sans
+     * les variables {@code replicate: driver} s'il n'occupe pas le siège {@code driver}.
+     *
+     * @param player le joueur qui le recevra
+     */
+    public AssemblyState netStateFor(Entity player) {
+        AssemblyState state = netState();
+        if (state == null || variables == null || driverOnly == 0L) {
+            return state;
+        }
+        Seating seating = seating();
+        int seat = seating == null ? -1 : seatOf(player);
+        boolean driver = seat >= 0 && seating.seats().get(seat).driver();
+        return driver ? state : state.withVariables(state.variables().only(~driverOnly));
+    }
+
+    /**
+     * {@return les variables que les snapshots portent (serveur, ADR-163 D2) : toutes celles qui partent, aux valeurs
+     * du serveur} Celles de {@code replicate: none} n'y sont pas ; celles de {@code driver}, si — {@link #netStateFor}
+     * les retire pour les autres joueurs.
+     */
+    private AssemblyState.VariableValues replicatedVariables() {
+        if (variables == null || variables.size() == 0) {
+            return AssemblyState.VariableValues.NONE;
+        }
+        long sent = 0L;
+        long onlyDriver = 0L;
+        for (int i = 0; i < variables.size(); i++) {
+            dev.axion.definition.Variables.Replicate replicate = variables.declared().get(i).replicate();
+            if (replicate != dev.axion.definition.Variables.Replicate.NONE) {
+                sent |= 1L << i;
+            }
+            if (replicate == dev.axion.definition.Variables.Replicate.DRIVER) {
+                onlyDriver |= 1L << i;
+            }
+        }
+        driverOnly = onlyDriver;
+        netVariablesVersion = variables.version();
+        return AssemblyState.VariableValues.of(variables.values()).only(sent);
     }
 
     /** {@return vrai si l'interpolation de 21.7 a commencé : un snapshot au moins est arrivé (client)} */
@@ -1420,10 +1485,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      *     premier snapshot
      * @param vehicle l'état du véhicule et la vitesse du corps racine (ADR-163 D1) ; {@code NONE} avant le premier
      *     snapshot
+     * @param variables les variables de contenu reçues (ADR-163 D2) ; {@code NONE} avant le premier snapshot
      */
     public record RenderPose(
             double x, double y, double z, Quaternionf rotation, Interpolation.Mode mode, List<Interpolation.BodyPose> bodies,
-            List<Interpolation.WheelPose> wheels, Interpolation.VehiclePose vehicle) {}
+            List<Interpolation.WheelPose> wheels, Interpolation.VehiclePose vehicle,
+            AssemblyState.VariableValues variables) {}
 
     /**
      * {@return où dessiner l'assembly à cette image (client)} C'est la pose de l'interpolation de 21.7,
@@ -1436,13 +1503,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (interpolation == null) {
             return new RenderPose(Mth.lerp(partialTick, xo, getX()), Mth.lerp(partialTick, yo, getY()),
                     Mth.lerp(partialTick, zo, getZ()), rotationO.slerp(rotation, partialTick, new Quaternionf()),
-                    null, List.of(), List.of(), Interpolation.VehiclePose.NONE);
+                    null, List.of(), List.of(), Interpolation.VehiclePose.NONE, AssemblyState.VariableValues.NONE);
         }
         long frame = clock.frameNanos();
         Interpolation.Pose pose = interpolation.sample(clock.renderMillis(frame), clock.localMillis(frame));
         float[] q = pose.rotation();
         return new RenderPose(pose.x(), pose.y(), pose.z(), new Quaternionf(q[0], q[1], q[2], q[3]), pose.mode(),
-                pose.bodies(), pose.wheels(), pose.vehicle());
+                pose.bodies(), pose.wheels(), pose.vehicle(), pose.variables());
     }
 
     /**

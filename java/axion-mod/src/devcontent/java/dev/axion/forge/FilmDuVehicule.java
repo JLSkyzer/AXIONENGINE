@@ -168,6 +168,18 @@ public final class FilmDuVehicule {
     private static double volantMax = Double.NEGATIVE_INFINITY;
     private static double regimeMax;
     private static int rapportMax;
+    /**
+     * ADR-163 D2 : les commandes liées au siège du joueur que le film joue — une bascule sur la commande 1, une
+     * commande tenue sur la 3 —, leur variable, et ce que le client en a reçu : la bascule allumée après l'appui,
+     * éteinte à la fin ; la tenue posée pendant le freinage, relâchée ensuite. {@code -1} sans telle commande.
+     */
+    private static int varBascule = -1;
+    private static int varTenue = -1;
+    private static boolean basculeVue;
+    private static boolean tenueVue;
+    private static float basculeFinale = Float.NaN;
+    private static float tenueFinale = Float.NaN;
+    private static String nomsVariables = "";
     private static double vitesseApresFrein = Double.NaN;
     private static double[] departRecul;
     private static double capRecul;
@@ -616,6 +628,49 @@ public final class FilmDuVehicule {
     }
 
     /** Les touches du client, comme les presserait un joueur. */
+    /** Tient ou relâche une commande générique (ADR-163 D2), de 1 à 8, comme le ferait sa touche. */
+    private static void commande(int numero, boolean tenue) {
+        dev.axion.forge.client.VehicleKeys.COMMANDS.get(numero - 1).setDown(tenue);
+    }
+
+    /** ADR-163 D2 : repère, au siège du joueur, la bascule de la commande 1 et la commande tenue de la 3. */
+    private static void reperer(Minecraft minecraft, AxionEntity vehicule) {
+        if (!nomsVariables.isEmpty() || minecraft.player == null) {
+            return;
+        }
+        int siege = vehicule.seatOf(minecraft.player);
+        for (dev.axion.definition.Seating.Binding liaison : vehicule.seatBindings(siege)) {
+            if (liaison.command() == 1 && liaison.mode() == dev.axion.definition.Seating.Mode.TOGGLE) {
+                varBascule = liaison.variable();
+            }
+            if (liaison.command() == 3 && liaison.mode() == dev.axion.definition.Seating.Mode.HOLD) {
+                varTenue = liaison.variable();
+            }
+        }
+        dev.axion.definition.Variables declarees = RuntimeAccess.get().definitions().get(vehicule.definitionId())
+                .map(definition -> dev.axion.definition.Variables.of(definition.root()))
+                .orElse(dev.axion.definition.Variables.NONE);
+        StringBuilder noms = new StringBuilder();
+        for (int i = 0; i < declarees.size(); i++) {
+            noms.append(noms.length() == 0 ? "" : ",").append(declarees.get(i).name());
+        }
+        nomsVariables = noms.length() == 0 ? "-" : noms.toString();
+    }
+
+    /** {@return les variables que le client a reçues, « nom valeur » ; vide sans} */
+    private static String variablesRecues(dev.axion.net.AssemblyState.VariableValues recues) {
+        if (nomsVariables.isEmpty() || "-".equals(nomsVariables)) {
+            return "";
+        }
+        String[] noms = nomsVariables.split(",");
+        StringBuilder texte = new StringBuilder("   ");
+        for (int i = 0; i < noms.length; i++) {
+            texte.append(i == 0 ? "" : "  ").append(noms[i]).append(' ')
+                    .append(recues.has(i) ? String.format(Locale.ROOT, "%.0f", recues.value(i)) : "?");
+        }
+        return texte.toString();
+    }
+
     private static void touches(Minecraft minecraft, boolean avant, boolean arriere, boolean gauche, boolean droite,
             boolean saut) {
         Options o = minecraft.options;
@@ -676,10 +731,15 @@ public final class FilmDuVehicule {
             }
             case FREIN -> {
                 touches(minecraft, false, true, false, false, false);
+                // ADR-163 D2 : la commande 3 tenue pendant le freinage.
+                commande(3, true);
                 suivante = vitesse < 0.3 ? Etape.ARRET : null;
             }
             case ARRET -> {
                 touches(minecraft, false, false, false, false, false);
+                commande(3, false);
+                // ADR-163 D2 : la commande 1, pressée un instant à l'arrêt.
+                commande(1, dansLEtape >= 0.2 && dansLEtape < 0.4);
                 if (dansLEtape >= etape.duree) {
                     vitesseApresFrein = vitesse;
                     departRecul = new double[] {xServeur, zServeur};
@@ -698,7 +758,11 @@ public final class FilmDuVehicule {
                     suivante = Etape.FIN;
                 }
             }
-            case FIN -> touches(minecraft, false, false, false, false, true);
+            case FIN -> {
+                touches(minecraft, false, false, false, false, true);
+                // ADR-163 D2 : la commande 1, pressée de nouveau.
+                commande(1, dansLEtape >= 0.2 && dansLEtape < 0.4);
+            }
             default -> throw new IllegalStateException();
         }
         if (etape == Etape.SLALOM_GAUCHE || etape == Etape.SLALOM_DROITE || etape == Etape.REDRESSE) {
@@ -761,14 +825,28 @@ public final class FilmDuVehicule {
         dev.axion.net.Interpolation.VehiclePose recu = vehicule instanceof AxionEntity assembly
                 ? assembly.renderPose(minecraft.getFrameTime()).vehicle()
                 : dev.axion.net.Interpolation.VehiclePose.NONE;
+        if (vehicule instanceof AxionEntity assembly) {
+            reperer(minecraft, assembly);
+        }
+        dev.axion.net.AssemblyState.VariableValues variables = vehicule instanceof AxionEntity assembly
+                ? assembly.renderPose(minecraft.getFrameTime()).variables()
+                : dev.axion.net.AssemblyState.VariableValues.NONE;
+        if (varBascule >= 0 && variables.has(varBascule)) {
+            basculeVue |= variables.value(varBascule) == 1f;
+            basculeFinale = variables.value(varBascule);
+        }
+        if (varTenue >= 0 && variables.has(varTenue)) {
+            tenueVue |= variables.value(varTenue) == 1f;
+            tenueFinale = variables.value(varTenue);
+        }
         volantMin = Math.min(volantMin, recu.steer());
         volantMax = Math.max(volantMax, recu.steer());
         regimeMax = Math.max(regimeMax, recu.rpm());
         rapportMax = Math.max(rapportMax, recu.gear());
         String valeurs = String.format(Locale.ROOT,
-                "%svitesse %.1f m/s   cap %+.0f°   à %.1f m   volant %+.2f   %.0f tr/min   rapport %d",
+                "%svitesse %.1f m/s   cap %+.0f°   à %.1f m   volant %+.2f   %.0f tr/min   rapport %d%s",
                 vueConducteur ? "vue du conducteur   " : "", vitesse, Math.toDegrees(cap), parcouru, recu.steer(),
-                recu.rpm(), recu.gear());
+                recu.rpm(), recu.gear(), variablesRecues(variables));
         String legende = legende();
         String temps = String.format(Locale.ROOT, "%.1f s", secondes);
         Path dossierImages = dossier(minecraft).resolve("images");
@@ -795,10 +873,11 @@ public final class FilmDuVehicule {
             case SLALOM_GAUCHE -> "Touche gauche : il braque à gauche";
             case SLALOM_DROITE -> "Touche droite : il braque à droite";
             case REDRESSE -> "Retour au cap de départ";
-            case FREIN -> "Touche arrière : il freine";
-            case ARRET -> "Arrêté";
+            case FREIN -> "Touche arrière : il freine" + (varTenue >= 0 ? " ; commande 3 (J) tenue" : "");
+            case ARRET -> varBascule >= 0 ? "Arrêté ; commande 1 (G) pressée : sa variable bascule" : "Arrêté";
             case RECUL -> "Touche arrière tenue à l'arrêt : la boîte passe en marche arrière";
-            case FIN -> vitesse < 0.2 ? "Saut : frein à main serré, il est arrêté" : "Saut : frein à main serré";
+            case FIN -> (vitesse < 0.2 ? "Saut : frein à main serré, il est arrêté" : "Saut : frein à main serré")
+                    + (varBascule >= 0 ? " ; G de nouveau" : "");
         };
     }
 
@@ -827,7 +906,7 @@ public final class FilmDuVehicule {
             g.setColor(new Color(170, 200, 235));
             g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 18));
             g.drawString(valeurs, 16, HAUTEUR_JEU + 52);
-            g.drawString("AXION ENGINE, C-33   " + temps, LARGEUR - 280, HAUTEUR_JEU + 52);
+            g.drawString("AXION ENGINE, C-33   " + temps, LARGEUR - 280, HAUTEUR_JEU + 26);
             g.dispose();
             Path fichier = dossier.resolve(nom(premiere));
             ImageIO.write(image, "png", fichier.toFile());
@@ -869,6 +948,14 @@ public final class FilmDuVehicule {
             return String.format(Locale.ROOT, "la direction reçue par le client ne va que de %+.2f à %+.2f",
                     volantMin, volantMax);
         }
+        if (varBascule >= 0 && !(basculeVue && basculeFinale == 0f)) {
+            return "la commande 1 n'a pas allumé puis éteint sa variable chez le client (vue allumée : " + basculeVue
+                    + ", finale : " + basculeFinale + ")";
+        }
+        if (varTenue >= 0 && !(tenueVue && tenueFinale == 0f)) {
+            return "la commande 3 tenue n'a pas posé puis relâché sa variable chez le client (vue posée : " + tenueVue
+                    + ", finale : " + tenueFinale + ")";
+        }
         if (!(regimeMax >= 1500.0 && rapportMax >= 1)) {
             return String.format(Locale.ROOT, "le client ne reçoit qu'un régime de %.0f tr/min et un rapport de %d",
                     regimeMax, rapportMax);
@@ -908,10 +995,13 @@ public final class FilmDuVehicule {
                 "{\"images\": %d, \"uniques\": %d, \"echec\": %s, \"distance_avant\": %.2f, \"cap_slalom_deg\": %.1f,"
                         + " \"vitesse_apres_frein\": %.3f, \"recul\": %.2f, \"ecart_passager\": %.4f,"
                         + " \"ecart_lacet_passager_deg\": %.2f, \"volant_min\": %.2f, \"volant_max\": %.2f,"
-                        + " \"regime_max\": %.0f, \"rapport_max\": %d}%n",
+                        + " \"regime_max\": %.0f, \"rapport_max\": %d, \"variables\": \"%s\", \"bascule_vue\": %s,"
+                        + " \"bascule_finale\": %s, \"tenue_vue\": %s, \"tenue_finale\": %s}%n",
                 imagesEcrites, imagesUniques, faute == null ? "null" : "\"" + faute.replace('"', '\'') + "\"",
                 distanceAvant, Math.toDegrees(capMax - capMin), vitesseApresFrein, recul, ecartPassager,
-                ecartLacetPassager, volantMin, volantMax, regimeMax, rapportMax);
+                ecartLacetPassager, volantMin, volantMax, regimeMax, rapportMax, nomsVariables, basculeVue,
+                Float.isNaN(basculeFinale) ? "null" : Float.toString(basculeFinale), tenueVue,
+                Float.isNaN(tenueFinale) ? "null" : Float.toString(tenueFinale));
         try {
             Files.createDirectories(dossier(minecraft));
             Files.writeString(dossier(minecraft).resolve("termine.json"), bilan, StandardCharsets.UTF_8);

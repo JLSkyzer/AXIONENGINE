@@ -72,6 +72,7 @@ public final class ClientNetworkEvents {
         }
         if (!(player.getVehicle() instanceof AxionEntity assembly)) {
             GEAR.reset();
+            SeatCommands.forget();
             return;
         }
         int seat = assembly.seatOf(player);
@@ -79,8 +80,10 @@ public final class ClientNetworkEvents {
                 VehicleKeys.presses(VehicleKeys.GEAR_DOWN), assembly.gearRange());
         if (assembly.seatTakesInput(seat)) {
             AxionNetwork.sendInput(connection.getConnection(), assembly.getId(), seat, VehicleInput.ofKeys(
-                    player.input.forwardImpulse, player.input.leftImpulse, player.input.jumping, gear));
+                    player.input.forwardImpulse, player.input.leftImpulse, player.input.jumping, gear,
+                    VehicleKeys.heldCommands()));
         }
+        SeatCommands.show(player, assembly, seat);
     }
 
     /**

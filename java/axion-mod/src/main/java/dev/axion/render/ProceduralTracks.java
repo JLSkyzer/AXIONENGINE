@@ -3,6 +3,7 @@ package dev.axion.render;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.axion.definition.Variables;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.Interpolation;
 import dev.axion.net.ServerClock;
@@ -32,6 +33,8 @@ import java.util.function.Consumer;
  *   <li>{@code transmission.gear} (rang, négatif en marche arrière), {@code transmission.shifting} (0 ou 1) ;</li>
  *   <li>{@code seat.<siège>.occupied} (0 ou 1) ;</li>
  *   <li>{@code time.seconds} (secondes de l'horloge du serveur) ;</li>
+ *   <li>{@code var.<variable>} : une variable de contenu (ADR-163 D2), celle que le joueur a reçue, ou son défaut
+ *       tant qu'il ne l'a pas reçue — elle ne part pas à lui ({@code replicate}) ou rien n'est encore arrivé ;</li>
  *   <li>{@code world.time} (heure du jour : 0 à minuit, 0,5 à midi), {@code world.sky_light} (lumière du ciel au
  *       bloc de l'assembly, 0 à 15, sans l'heure), {@code world.rain} (0 à 1).</li>
  * </ul>
@@ -48,7 +51,7 @@ import java.util.function.Consumer;
 public final class ProceduralTracks {
 
     /** Aucune piste. */
-    public static final ProceduralTracks NONE = new ProceduralTracks(new Track[0], new int[0]);
+    public static final ProceduralTracks NONE = new ProceduralTracks(new Track[0], new int[0], new double[0]);
 
     /** Flottants d'un delta : translation x, y, z, puis rotation x, y, z, w. */
     public static final int DELTA_FLOATS = 7;
@@ -61,6 +64,7 @@ public final class ProceduralTracks {
         GEAR, SHIFTING,
         SEAT_OCCUPIED,
         SECONDS,
+        VARIABLE,
         WORLD_TIME, SKY_LIGHT, RAIN
     }
 
@@ -70,7 +74,7 @@ public final class ProceduralTracks {
      * @param slot rang de son node dans {@link #nodes}
      * @param rotation canal rotation, sinon translation
      * @param axis axe, de 0 à 2
-     * @param index rang de la roue ou du siège source, 0 pour une autre source
+     * @param index rang de la roue, du siège ou de la variable source, 0 pour une autre source
      * @param source grandeur lue
      * @param scale multiplicateur
      * @param mapX abscisses de la courbe, strictement croissantes, ou {@code null}
@@ -95,6 +99,7 @@ public final class ProceduralTracks {
      * @param wheels état de chaque roue, dans l'ordre de la definition
      * @param spinAngles angle de chaque roue, voir {@link Spin#advance}
      * @param vehicle état du véhicule et vitesse du corps racine
+     * @param variables variables de contenu reçues
      * @param seats occupation de chaque siège, dans l'ordre de la definition
      * @param seconds temps de l'horloge du serveur, en secondes
      * @param worldTime heure du jour, 0 à minuit, 0,5 à midi
@@ -102,7 +107,8 @@ public final class ProceduralTracks {
      * @param rain pluie, de 0 à 1
      */
     public record Frame(List<Interpolation.WheelPose> wheels, double[] spinAngles, Interpolation.VehiclePose vehicle,
-            boolean[] seats, double seconds, float worldTime, float skyLight, float rain) {
+            AssemblyState.VariableValues variables, boolean[] seats, double seconds, float worldTime, float skyLight,
+            float rain) {
 
         /**
          * {@return un cadre où seules les roues ont un état} Le reste vaut zéro.
@@ -111,7 +117,8 @@ public final class ProceduralTracks {
          * @param spinAngles angle de chaque roue
          */
         public static Frame ofWheels(List<Interpolation.WheelPose> wheels, double[] spinAngles) {
-            return new Frame(wheels, spinAngles, Interpolation.VehiclePose.NONE, new boolean[0], 0.0, 0f, 0f, 0f);
+            return new Frame(wheels, spinAngles, Interpolation.VehiclePose.NONE, AssemblyState.VariableValues.NONE,
+                    new boolean[0], 0.0, 0f, 0f, 0f);
         }
     }
 
@@ -164,10 +171,13 @@ public final class ProceduralTracks {
 
     private final Track[] tracks;
     private final int[] nodes;
+    /** Le défaut de chaque variable de la definition, que {@code var.<n>} lit tant qu'elle n'est pas reçue. */
+    private final double[] defaults;
 
-    private ProceduralTracks(Track[] tracks, int[] nodes) {
+    private ProceduralTracks(Track[] tracks, int[] nodes, double[] defaults) {
         this.tracks = tracks;
         this.nodes = nodes;
+        this.defaults = defaults;
     }
 
     /**
@@ -184,20 +194,25 @@ public final class ProceduralTracks {
         }
         Map<String, Integer> wheels = ranks(root, "wheels", "node");
         Map<String, Integer> seats = ranks(root, "seats", "name");
+        Variables variables = Variables.of(root);
         Map<Integer, Integer> slots = new LinkedHashMap<>();
         List<Track> tracks = new ArrayList<>();
         Set<String> notes = new LinkedHashSet<>();
         for (JsonElement entry : entries) {
             if (entry instanceof JsonObject track) {
-                read(track, wheels, seats, nodeNames, slots, tracks, notes);
+                read(track, wheels, seats, variables, nodeNames, slots, tracks, notes);
             }
         }
         notes.forEach(journal);
         if (tracks.isEmpty()) {
             return NONE;
         }
+        double[] defaults = new double[variables.size()];
+        for (int i = 0; i < defaults.length; i++) {
+            defaults[i] = variables.get(i).initial();
+        }
         return new ProceduralTracks(
-                tracks.toArray(new Track[0]), slots.keySet().stream().mapToInt(Integer::intValue).toArray());
+                tracks.toArray(new Track[0]), slots.keySet().stream().mapToInt(Integer::intValue).toArray(), defaults);
     }
 
     /** Le rang de chaque élément d'une liste de la definition, par la clé qui le nomme. */
@@ -214,11 +229,12 @@ public final class ProceduralTracks {
     }
 
     private static void read(JsonObject entry, Map<String, Integer> wheels, Map<String, Integer> seats,
-            List<String> names, Map<Integer, Integer> slots, List<Track> tracks, Set<String> notes) {
+            Variables variables, List<String> names, Map<Integer, Integer> slots, List<Track> tracks,
+            Set<String> notes) {
         String source = text(entry, "source");
         String name = text(entry, "node") != null ? text(entry, "node") : text(entry, "bone");
         Source kind = kind(source);
-        Integer index = kind == null ? null : index(kind, source, wheels, seats);
+        Integer index = kind == null ? null : index(kind, source, wheels, seats, variables);
         if (kind == null || index == null) {
             notes.add("piste procédurale ignorée : source « " + source + " » non prise en charge");
             return;
@@ -288,6 +304,8 @@ public final class ProceduralTracks {
                 default -> null;
             };
             case "time" -> !named && "seconds".equals(field) ? Source.SECONDS : null;
+            // Le nom d'une variable est tout ce qui suit « var. », points compris.
+            case "var" -> Source.VARIABLE;
             case "world" -> named ? null : switch (field) {
                 case "time" -> Source.WORLD_TIME;
                 case "sky_light" -> Source.SKY_LIGHT;
@@ -299,10 +317,15 @@ public final class ProceduralTracks {
     }
 
     /** {@return le rang de la roue ou du siège qu'une source nomme, 0 pour une autre, {@code null} s'il manque} */
-    private static Integer index(Source kind, String source, Map<String, Integer> wheels, Map<String, Integer> seats) {
+    private static Integer index(Source kind, String source, Map<String, Integer> wheels, Map<String, Integer> seats,
+            Variables variables) {
         return switch (kind) {
             case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND -> wheels.get(element(source));
             case SEAT_OCCUPIED -> seats.get(element(source));
+            case VARIABLE -> {
+                int rank = variables.indexOf(source.substring(source.indexOf('.') + 1));
+                yield rank < 0 ? null : rank;
+            }
             default -> 0;
         };
     }
@@ -379,7 +402,7 @@ public final class ProceduralTracks {
     }
 
     /** {@return la valeur brute de la source d'une piste à cette image, {@code null} si sa roue ou son siège manque} */
-    private static Double raw(Track track, Frame frame) {
+    private Double raw(Track track, Frame frame) {
         Interpolation.VehiclePose vehicle = frame.vehicle();
         return switch (track.source()) {
             case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND -> wheel(track, frame);
@@ -396,6 +419,9 @@ public final class ProceduralTracks {
             case GEAR -> (double) vehicle.gear();
             case SHIFTING -> flag((vehicle.flags() & AssemblyState.Vehicle.SHIFTING) != 0);
             case SECONDS -> frame.seconds();
+            case VARIABLE -> frame.variables().has(track.index())
+                    ? (double) frame.variables().value(track.index())
+                    : defaults[track.index()];
             case WORLD_TIME -> (double) frame.worldTime();
             case SKY_LIGHT -> (double) frame.skyLight();
             case RAIN -> (double) frame.rain();

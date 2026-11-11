@@ -24,6 +24,7 @@ import java.util.Set;
  * @param animation la dernière commande de chaque couche d'animation (ADR-155, descripteur v3)
  * @param wheels l'état de chaque roue, dans l'ordre de la definition (ADR-159 D9, descripteur 4)
  * @param vehicle l'état du véhicule, {@link Vehicle#NONE} si l'assembly n'en est pas un (ADR-163 D1, descripteur 5)
+ * @param variables les variables de contenu, {@link VariableValues#NONE} sans (ADR-163 D2, descripteur 5)
  */
 public record AssemblyState(
         long x,
@@ -37,7 +38,8 @@ public record AssemblyState(
         JointBits joints,
         AnimationLayers animation,
         Wheels wheels,
-        Vehicle vehicle) {
+        Vehicle vehicle,
+        VariableValues variables) {
 
     /** Corps autres que le corps racine d'une assembly, au plus : elle en a 64 (R-190). */
     public static final int MAX_BODIES = 63;
@@ -554,6 +556,121 @@ public record AssemblyState(
     }
 
     /**
+     * Les variables de contenu d'une assembly (ADR-163 D2), telles qu'un joueur les reçoit : celles que le masque
+     * désigne, chacune en {@code f32} — un booléen ou un entier de moins de 2<sup>24</sup> y tient exactement. Le
+     * serveur ne met dans le masque que les variables que ce joueur doit recevoir ({@code replicate}).
+     *
+     * @param count nombre de variables de la definition, au plus {@link #MAX_VARIABLES}
+     * @param mask les variables présentes, un bit par rang
+     * @param values la valeur de chaque variable, 0 pour une absente ; copie
+     */
+    public record VariableValues(int count, long mask, float[] values) {
+
+        /** Variables d'une definition, au plus (ADR-163 D2). */
+        public static final int MAX_VARIABLES = 64;
+
+        /** Aucune variable. */
+        public static final VariableValues NONE = new VariableValues(0, 0L, new float[0]);
+
+        /** Copie les valeurs, et refuse un nombre, un masque ou une valeur incohérents. */
+        public VariableValues {
+            if (count < 0 || count > MAX_VARIABLES || values.length != count) {
+                throw new IllegalArgumentException(values.length + " valeurs pour " + count + " variables");
+            }
+            if (count < 64 && mask >>> count != 0) {
+                throw new IllegalArgumentException("bits de variables au-delà de la dernière");
+            }
+            for (int i = 0; i < count; i++) {
+                boolean present = (mask >>> i & 1L) != 0;
+                if (!Float.isFinite(values[i]) || (!present && Float.floatToRawIntBits(values[i]) != 0)) {
+                    throw new IllegalArgumentException("variable " + i + " : valeur " + values[i]);
+                }
+            }
+            values = values.clone();
+        }
+
+        /**
+         * {@return les variables d'une assembly, toutes présentes}
+         *
+         * @param values la valeur de chacune, dans l'ordre de la definition
+         */
+        public static VariableValues of(double[] values) {
+            float[] floats = new float[values.length];
+            long mask = 0L;
+            for (int i = 0; i < values.length; i++) {
+                floats[i] = (float) values[i];
+                mask |= 1L << i;
+            }
+            return new VariableValues(values.length, mask, floats);
+        }
+
+        /**
+         * {@return ces variables, réduites à celles du masque}
+         *
+         * @param keep les variables à garder, un bit par rang
+         */
+        public VariableValues only(long keep) {
+            long kept = mask & keep;
+            if (kept == mask) {
+                return this;
+            }
+            float[] filtered = new float[count];
+            for (int i = 0; i < count; i++) {
+                if ((kept >>> i & 1L) != 0) {
+                    filtered[i] = values[i];
+                }
+            }
+            return new VariableValues(count, kept, filtered);
+        }
+
+        /**
+         * {@return vrai si cette variable est présente}
+         *
+         * @param index son rang
+         */
+        public boolean has(int index) {
+            return index >= 0 && index < count && (mask >>> index & 1L) != 0;
+        }
+
+        /**
+         * {@return la valeur d'une variable présente, 0 sinon}
+         *
+         * @param index son rang
+         */
+        public float value(int index) {
+            return has(index) ? values[index] : 0f;
+        }
+
+        /** {@return les valeurs, copie} */
+        @Override
+        public float[] values() {
+            return values.clone();
+        }
+
+        /** {@return le nombre de variables présentes} */
+        public int present() {
+            return Long.bitCount(mask);
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof VariableValues that && count == that.count && mask == that.mask
+                    && Arrays.equals(values, that.values);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * (31 * count + Long.hashCode(mask)) + Arrays.hashCode(values);
+        }
+
+        @Override
+        public String toString() {
+            return "VariableValues[count=" + count + ", mask=" + Long.toBinaryString(mask) + ", values="
+                    + Arrays.toString(values) + "]";
+        }
+    }
+
+    /**
      * Refuse une vitesse, des corps, des joints, une animation, des roues ou un véhicule absents, et des corps
      * trop nombreux ou en double.
      */
@@ -561,8 +678,9 @@ public record AssemblyState(
         if (velocity == null) {
             throw new IllegalArgumentException("vitesse absente");
         }
-        if (bodies == null || joints == null || animation == null || wheels == null || vehicle == null) {
-            throw new IllegalArgumentException("corps, joints, animation, roues ou véhicule absents");
+        if (bodies == null || joints == null || animation == null || wheels == null || vehicle == null
+                || variables == null) {
+            throw new IllegalArgumentException("corps, joints, animation, roues, véhicule ou variables absents");
         }
         if (bodies.size() > MAX_BODIES) {
             throw new IllegalArgumentException(bodies.size() + " corps secondaires, au-delà de " + MAX_BODIES);
@@ -589,7 +707,7 @@ public record AssemblyState(
      */
     public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping) {
         this(x, y, z, rotation, velocity, bounds, sleeping, List.of(), JointBits.NONE, AnimationLayers.NONE, Wheels.NONE,
-                Vehicle.NONE);
+                Vehicle.NONE, VariableValues.NONE);
     }
 
     /**
@@ -608,7 +726,7 @@ public record AssemblyState(
     public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
             List<Body> bodies, JointBits joints) {
         this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, AnimationLayers.NONE, Wheels.NONE,
-                Vehicle.NONE);
+                Vehicle.NONE, VariableValues.NONE);
     }
 
     /**
@@ -627,7 +745,8 @@ public record AssemblyState(
      */
     public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
             List<Body> bodies, JointBits joints, AnimationLayers animation) {
-        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, Wheels.NONE, Vehicle.NONE);
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, Wheels.NONE, Vehicle.NONE,
+                VariableValues.NONE);
     }
 
     /**
@@ -647,7 +766,30 @@ public record AssemblyState(
      */
     public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
             List<Body> bodies, JointBits joints, AnimationLayers animation, Wheels wheels) {
-        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, Vehicle.NONE);
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, Vehicle.NONE,
+                VariableValues.NONE);
+    }
+
+    /**
+     * L'état d'une assembly sans variables de contenu.
+     *
+     * @param x position x, au 1/1024 de bloc
+     * @param y position y, au 1/1024 de bloc
+     * @param z position z, au 1/1024 de bloc
+     * @param rotation rotation « smallest three »
+     * @param velocity vitesses quantifiées
+     * @param bounds emprise relative à la position, ou {@code null}
+     * @param sleeping le corps dort
+     * @param bodies les corps autres que le corps racine
+     * @param joints l'état de chaque joint
+     * @param animation l'état d'animation
+     * @param wheels l'état de chaque roue
+     * @param vehicle l'état du véhicule
+     */
+    public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
+            List<Body> bodies, JointBits joints, AnimationLayers animation, Wheels wheels, Vehicle vehicle) {
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, vehicle,
+                VariableValues.NONE);
     }
 
     /**
@@ -656,8 +798,8 @@ public record AssemblyState(
      * @return cet état, avec ces corps et ces joints
      */
     public AssemblyState with(List<Body> otherBodies, JointBits jointBits) {
-        return new AssemblyState(
-                x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation, wheels, vehicle);
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation,
+                wheels, vehicle, variables);
     }
 
     /**
@@ -665,7 +807,8 @@ public record AssemblyState(
      * @return cet état, avec cette animation
      */
     public AssemblyState withAnimation(AnimationLayers layers) {
-        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers, wheels, vehicle);
+        return new AssemblyState(
+                x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers, wheels, vehicle, variables);
     }
 
     /**
@@ -673,7 +816,8 @@ public record AssemblyState(
      * @return cet état, avec ces roues
      */
     public AssemblyState withWheels(Wheels states) {
-        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, states, vehicle);
+        return new AssemblyState(
+                x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, states, vehicle, variables);
     }
 
     /**
@@ -681,7 +825,17 @@ public record AssemblyState(
      * @return cet état, avec ce véhicule
      */
     public AssemblyState withVehicle(Vehicle state) {
-        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, state);
+        return new AssemblyState(
+                x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, state, variables);
+    }
+
+    /**
+     * @param values les variables de contenu
+     * @return cet état, avec ces variables
+     */
+    public AssemblyState withVariables(VariableValues values) {
+        return new AssemblyState(
+                x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, vehicle, values);
     }
 
     /**

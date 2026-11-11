@@ -222,4 +222,42 @@ public final class VariablesGameTests {
                 })
                 .thenSucceed();
     }
+
+    /**
+     * ADR-163 D2 : les snapshots portent à chaque joueur les variables qu'il doit recevoir — toutes celles de
+     * {@code replicate: all}, celles de {@code driver} au seul conducteur, jamais celles de {@code none}.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void chaqueJoueurRecoitSesVariables(GameTestHelper helper) {
+        AxionEntity assembly = poser(helper);
+        ServerPlayer conducteur = SiegesGameTests.joueur(helper, "conducteur_replique");
+        ServerPlayer passager = SiegesGameTests.joueur(helper, "passager_replique");
+        int compteur = 4;
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.netState() != null, "état réseau calculé"))
+                .thenExecute(() -> {
+                    helper.assertTrue(assembly.sit(conducteur, 0), "assis au volant");
+                    helper.assertTrue(assembly.sit(passager, 1), "assis au siège passager");
+                    assembly.variables().set(GYROPHARE, 1, "test");
+                    assembly.variables().set(BIP, 1, "test");
+                    assembly.variables().set(compteur, 7, "test");
+                })
+                .thenIdle(1)
+                .thenExecute(() -> {
+                    dev.axion.net.AssemblyState.VariableValues auConducteur =
+                            assembly.netStateFor(conducteur).variables();
+                    dev.axion.net.AssemblyState.VariableValues auPassager = assembly.netStateFor(passager).variables();
+                    helper.assertTrue(auConducteur.count() == 5, "cinq variables déclarées : " + auConducteur);
+                    helper.assertTrue(auConducteur.has(GYROPHARE) && auConducteur.value(GYROPHARE) == 1f,
+                            "gyrophare au conducteur : " + auConducteur);
+                    helper.assertTrue(auPassager.has(GYROPHARE) && auPassager.value(GYROPHARE) == 1f,
+                            "gyrophare au passager : " + auPassager);
+                    helper.assertTrue(auConducteur.has(BIP), "bip (driver) au conducteur");
+                    helper.assertTrue(!auPassager.has(BIP), "bip (driver) pas au passager");
+                    helper.assertTrue(!auConducteur.has(compteur) && !auPassager.has(compteur), "compteur (none) à personne");
+                    conducteur.stopRiding();
+                    passager.stopRiding();
+                })
+                .thenSucceed();
+    }
 }

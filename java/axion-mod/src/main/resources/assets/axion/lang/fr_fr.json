@@ -3,5 +3,14 @@
   "death.attack.axion.collision.player": "%1$s a été percuté par un objet en mouvement en essayant d'échapper à %2$s",
   "key.categories.axion": "AXION ENGINE",
   "key.axion.gear_up": "Rapport supérieur",
-  "key.axion.gear_down": "Rapport inférieur"
+  "key.axion.gear_down": "Rapport inférieur",
+  "key.axion.command_1": "AXION : commande 1",
+  "key.axion.command_2": "AXION : commande 2",
+  "key.axion.command_3": "AXION : commande 3",
+  "key.axion.command_4": "AXION : commande 4",
+  "key.axion.command_5": "AXION : commande 5",
+  "key.axion.command_6": "AXION : commande 6",
+  "key.axion.command_7": "AXION : commande 7",
+  "key.axion.command_8": "AXION : commande 8",
+  "axion.example.buggy.attelage": "Attelage (sortir/rentrer)"
 }

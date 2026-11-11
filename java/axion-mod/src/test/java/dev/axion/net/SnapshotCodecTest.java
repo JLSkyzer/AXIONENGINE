@@ -623,4 +623,55 @@ class SnapshotCodecTest {
         byte[] tronque = Arrays.copyOf(sain, sain.length - 1);
         assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(tronque), "tronqué");
     }
+
+    @Test
+    @DisplayName("ADR-163 D2 : les variables font l'aller-retour ; un delta ne les porte que si elles ont changé")
+    void adr163Variables() throws MalformedPacketException {
+        AssemblyState.VariableValues variables = AssemblyState.VariableValues.of(new double[] {1, 0, 2, 0.25, 42.5})
+                .only(0b10111L);
+        assertTrue(!variables.has(3) && variables.value(3) == 0f, "retirée : absente, à zéro");
+        AssemblyState etat = avecRoues(roues(0.5f, 10f)).withVariables(variables);
+        SnapshotMessage.Entry complete = SnapshotMessage.Entry.full(5, etat);
+        byte[] octets = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(complete)).encode();
+        assertEquals(SnapshotMessage.headerSize(2, 40L, 1) + SnapshotMessage.encodedSize(complete), octets.length);
+        SnapshotMessage.Entry lue = SnapshotMessage.decode(octets).entries().get(0);
+        assertEquals(variables, lue.variables());
+        assertEquals(etat, lue.resolve(null));
+        assertNull(SnapshotMessage.Entry.full(5, avecRoues(roues(0.5f, 10f))).variables(), "sans variables, rien");
+
+        assertNull(SnapshotMessage.Entry.delta(5, 1, etat, etat).variables(), "inchangées : tues");
+        AssemblyState change = etat.withVariables(AssemblyState.VariableValues.of(new double[] {0, 0, 2, 0.25, 42.5})
+                .only(0b10111L));
+        SnapshotMessage.Entry delta = SnapshotMessage.Entry.delta(5, 1, etat, change);
+        assertEquals(change.variables(), delta.variables());
+        byte[] enDelta = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(delta)).encode();
+        assertEquals(change, SnapshotMessage.decode(enDelta).entries().get(0).resolve(etat));
+    }
+
+    @Test
+    @DisplayName("ADR-163 D2 : des variables mal formées sont refusées à la lecture (R-1650)")
+    void adr163VariablesMalFormees() {
+        AssemblyState etat = avecRoues(roues(0.5f, 10f))
+                .withVariables(AssemblyState.VariableValues.of(new double[] {1, 2}));
+        byte[] sain = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION,
+                List.of(SnapshotMessage.Entry.full(5, etat))).encode();
+        // Les variables terminent le message : n = 2, un octet de masque, deux f32.
+        int debut = sain.length - 2 * Float.BYTES - 2;
+        byte[] trop = sain.clone();
+        trop[debut] = (byte) 65;
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(trop), "plus de 64 variables");
+        byte[] masque = sain.clone();
+        masque[debut + 1] = (byte) 0b111;
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(masque), "bit au-delà de la dernière");
+        byte[] nan = sain.clone();
+        int bits = Float.floatToRawIntBits(Float.NaN);
+        for (int i = 0; i < 4; i++) {
+            nan[debut + 2 + i] = (byte) (bits >>> (24 - 8 * i));
+        }
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(nan), "valeur non finie");
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(Arrays.copyOf(sain, sain.length - 1)),
+                "tronqué");
+        assertThrows(IllegalArgumentException.class,
+                () -> new AssemblyState.VariableValues(1, 0L, new float[] {3f}), "absente mais non nulle");
+    }
 }

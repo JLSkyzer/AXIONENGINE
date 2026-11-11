@@ -41,9 +41,23 @@ public record VehicleInput(float throttle, float brake, float steer, float clutc
      * @param gear rang du rapport demandé, voir {@link GearSelector}
      */
     public static VehicleInput ofKeys(float forward, float left, boolean jumping, byte gear) {
+        return ofKeys(forward, left, jumping, gear, 0);
+    }
+
+    /**
+     * {@return ce que le clavier du joueur commande, rapport et commandes génériques tenues compris (ADR-163 D2)}
+     *
+     * @param forward impulsion vers l'avant, dans [-1, 1]
+     * @param left impulsion vers la gauche, dans [-1, 1]
+     * @param jumping vrai si le joueur saute
+     * @param gear rang du rapport demandé, voir {@link GearSelector}
+     * @param commands les commandes tenues, un bit par commande : le bit 0 pour la commande 1
+     */
+    public static VehicleInput ofKeys(float forward, float left, boolean jumping, byte gear, int commands) {
         // 0 - left et non -left : sans touche latérale, un zéro positif, que l'égalité des records ne distingue pas
         // de celui d'une entrée nulle.
-        return new VehicleInput(Math.max(forward, 0f), Math.max(-forward, 0f), 0f - left, 0f, jumping ? 1f : 0f, gear, 0);
+        return new VehicleInput(Math.max(forward, 0f), Math.max(-forward, 0f), 0f - left, 0f, jumping ? 1f : 0f, gear,
+                commands);
     }
 
     /** {@return vrai si toutes les valeurs sont finies : une autre se journalise (R-1110)} */

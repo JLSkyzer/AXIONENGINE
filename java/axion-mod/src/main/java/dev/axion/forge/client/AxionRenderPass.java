@@ -1150,7 +1150,7 @@ public final class AxionRenderPass {
         Level level = entity.level();
         BlockPos at = BlockPos.containing(pose.x(), pose.y(), pose.z());
         return known.tracks().evaluate(new ProceduralTracks.Frame(wheels, entity.wheelSpin().advance(renderTick, wheels),
-                pose.vehicle(), entity.seatsOccupied(), renderTick * ServerClock.TICK_MILLIS / 1000.0,
+                pose.vehicle(), pose.variables(), entity.seatsOccupied(), renderTick * ServerClock.TICK_MILLIS / 1000.0,
                 ProceduralTracks.worldTime(level.getDayTime()), level.getBrightness(LightLayer.SKY, at),
                 level.getRainLevel(partialTick)));
     }
