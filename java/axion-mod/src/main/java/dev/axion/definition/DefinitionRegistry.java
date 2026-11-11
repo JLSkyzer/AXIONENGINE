@@ -242,7 +242,8 @@ public final class DefinitionRegistry {
         }
         collisionGroupsOf(root, rules.collisionGroups());
 
-        return new Definition(id, location, schema, asset, kind, root, sha256(content));
+        // ADR-162 D4 : l'empreinte porte sur la forme canonique, pas sur les octets du fichier.
+        return new Definition(id, location, schema, asset, kind, root, CanonicalJson.sha256(root));
     }
 
     /**
@@ -395,13 +396,9 @@ public final class DefinitionRegistry {
         return number.stripTrailingZeros().scale() <= 0 ? number : null;
     }
 
-    private static String sha256(byte[] content) {
-        return HexFormat.of().formatHex(digest().digest(content));
-    }
-
     /**
-     * Empreinte de la registry : identifiants et empreintes de fichiers, dans
-     * l'ordre des identifiants.
+     * Empreinte de la registry : identifiants et empreintes de leurs formes
+     * canoniques, dans l'ordre des identifiants.
      *
      * <p>C'est elle que le serveur comparera au login (R-1640) : deux registries
      * de même contenu ont la même empreinte, quel que soit l'ordre dans lequel

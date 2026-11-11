@@ -17,7 +17,8 @@ import java.util.Objects;
  * @param asset modèle désigné, sous la forme {@code <ns>:axion/<chemin>}
  * @param kind genre d'assembly
  * @param root document complet
- * @param sha256 empreinte du fichier, en hexadécimal
+ * @param sha256 empreinte SHA-256 de sa forme canonique ({@link CanonicalJson}, ADR-162 D4), en hexadécimal : la
+ *     même pour un même contenu, qu'il vienne d'un fichier ou du builder
  */
 public record Definition(
         String id,

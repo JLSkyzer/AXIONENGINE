@@ -3720,6 +3720,18 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         - [x] 1d — Fournisseur d'`AxionApi` sur une surface ramenée au réel (ADR-162 D1).
         - [x] 1e — Textes du CDC (C-27, 23.3, R-171, R-1030, R-1640, 28.1, R-1783, R-1790, conflits 19 et 21),
               ADR-160 D5, guides ; amendement A8.
+        Tranche 2 — le builder et la forme canonique (D4, CAP-47), découpée le 2026-11-11, chaque étape commitée verte :
+        - [x] 2a — Forme canonique (RFC 8785 : clés triées, aucun espace, nombres au plus court décimal de leur valeur
+              double, calculé par `BigDecimal` pour ne pas dépendre du JDK) ; l'empreinte d'une definition porte sur
+              elle et non plus sur les octets du fichier. `CanonicalJsonTest`.
+        - [ ] 2b — Une definition construite en Java entre par l'API (`ContentRegistrar`) : un document sans dépendance
+              (arbre de valeurs), converti en JSON côté mod et validé par le même `SchemaOne` ; propriétaire et source
+              (« builder ») gardés comme pour un fichier.
+        - [ ] 2c — Le générateur (`tools/codegen`) lit `docs/schema/definition-3.json` et écrit le builder dans
+              `axion-api` : une classe par objet, un setter typé par champ, les champs obligatoires d'un élément de
+              tableau en arguments, les mots réservés de Java renommés ; parité vérifiée en CI comme la configuration.
+        - [ ] 2d — Preuve : le buggy d'exemple construit par le builder a la même forme canonique et la même empreinte
+              que son JSON ; grille d'ADR-160 D7.
   - [x] Tranche 4 de C-33 (2026-11-11) : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
         variables par assembly). Trois sous-tranches, un film à chacune :
         - [x] 4a (2026-11-11) — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5,
