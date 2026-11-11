@@ -1,0 +1,40 @@
+/* Le site de la documentation (ADR-101) : ajustements du thème Material. */
+
+/* Plus de place pour le contenu sur les grands écrans : les tableaux de configuration ont sept colonnes. */
+.md-grid {
+  max-width: 1600px;
+}
+
+/* Un tableau occupe toute la largeur du contenu et y replie son texte, plutôt que de déborder. */
+.md-typeset__table {
+  display: block;
+  width: 100%;
+}
+
+.md-typeset table:not([class]) {
+  display: table;
+  width: 100%;
+  font-size: 0.68rem;
+}
+
+.md-typeset table:not([class]) td,
+.md-typeset table:not([class]) th {
+  padding: 0.55em 0.7em;
+}
+
+/* Material donne 5rem au moins à chaque colonne : sept colonnes n'y tiennent pas. Les colonnes courtes (type,
+   « chaud », « serveur ») se contentent de leur contenu, et la description prend le reste. */
+.md-typeset table:not([class]) th {
+  min-width: 0;
+}
+
+/* Un nom d'option ou une valeur se lit d'un bloc : le code d'un tableau ne se replie qu'à ses espaces (une liste
+   de valeurs permises), jamais au milieu d'un mot. */
+.md-typeset table:not([class]) td:first-child code {
+  white-space: nowrap;
+}
+
+.md-typeset table:not([class]) td code {
+  word-break: normal;
+  overflow-wrap: normal;
+}

@@ -80,6 +80,9 @@ nav:
       - Rendu: RENDERING.md
       - Matériaux physiques: MATERIALS.md
 
+extra_css:
+  - stylesheets/extra.css
+
 # Les liens qui sortent des guides vers le reste du dépôt pointent vers GitHub (tools/docs/hooks.py).
 hooks:
   - tools/docs/hooks.py
