@@ -1,11 +1,13 @@
 package dev.axion.net;
 
 import dev.axion.seat.VehicleInput;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Function;
 
 /**
  * La connexion d'un client à un serveur AXION, vue du client (ADR-150 D4, D5) : le handshake reçu, le
@@ -43,6 +45,7 @@ public final class ClientSession {
     private final DetProfile self;
     private final RegistrySink sink;
     private final SnapshotSink snapshotSink;
+    private final Function<String, String> installed;
     private final SnapshotReceiver snapshots = new SnapshotReceiver();
     private int nextInputSequence;
 
@@ -58,12 +61,16 @@ public final class ClientSession {
      * @param self empreinte déterministe de ce client
      * @param sink application d'un registre reçu
      * @param snapshotSink application des états reçus par un snapshot
+     * @param installed la version d'un mod installé chez ce client, ou {@code null} s'il ne l'est pas : la réponse
+     *     au handshake en donne une par addon que le serveur exige (ADR-165 D2)
      */
-    public ClientSession(NetCompression compression, DetProfile self, RegistrySink sink, SnapshotSink snapshotSink) {
+    public ClientSession(NetCompression compression, DetProfile self, RegistrySink sink, SnapshotSink snapshotSink,
+            Function<String, String> installed) {
         this.compression = compression;
         this.self = self;
         this.sink = sink;
         this.snapshotSink = snapshotSink;
+        this.installed = installed;
     }
 
     /**
@@ -88,9 +95,9 @@ public final class ClientSession {
         int kind = message[0] & 0xFF;
         if (kind == MessageKinds.SERVER_HANDSHAKE) {
             readHandshake(message);
-            // La réponse ne dépend pas de ce qui a été lu : l'empreinte de ce client est connue même
-            // quand le handshake du serveur est refusé, et le serveur en a besoin pour choisir.
-            return reply(new ClientHandshake(NetProtocol.PROTOCOL_VERSION, self).encode());
+            // L'empreinte de ce client est connue même quand le handshake du serveur est refusé, et le serveur
+            // en a besoin pour choisir ; les versions d'addons, elles, répondent à la liste reçue.
+            return reply(new ClientHandshake(NetProtocol.PROTOCOL_VERSION, self, versions(server)).encode());
         }
         if (kind == MessageKinds.REGISTRY) {
             return reply(applyRegistry(message, "registre de la connexion").encode());
@@ -166,6 +173,30 @@ public final class ClientSession {
             throw new MalformedPacketException("trame de plus de " + NetProtocol.MAX_FRAME_BYTES + " octets");
         }
         return frame;
+    }
+
+    /**
+     * {@return la version que ce client a de chaque addon que le serveur exige, dans son ordre ; vide pour un addon
+     * absent} Une version trop longue pour le message s'écrit {@code ?} : elle diffère de toute façon de celle du
+     * serveur, qui tient dans la limite.
+     */
+    private List<String> versions(ServerHandshake received) {
+        if (received == null) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>(received.requiredMods().size());
+        for (RequiredMod mod : received.requiredMods()) {
+            String version = installed.apply(mod.modId());
+            if (version == null) {
+                out.add("");
+            } else if (version.isEmpty()
+                    || version.getBytes(StandardCharsets.UTF_8).length > RequiredMod.MAX_VERSION_BYTES) {
+                out.add("?");
+            } else {
+                out.add(version);
+            }
+        }
+        return out;
     }
 
     private void readHandshake(byte[] message) {

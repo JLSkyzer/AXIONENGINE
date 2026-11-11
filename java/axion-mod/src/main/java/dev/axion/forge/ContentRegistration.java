@@ -8,6 +8,7 @@ import dev.axion.content.ContentRegistry;
 import dev.axion.content.RegisteredContent;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.TreeMap;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -89,6 +90,14 @@ final class ContentRegistration {
         Map<ContentKind, List<ContentRegistry.Entry>> resolved = registry.resolve();
         registry.errors().forEach(error -> LOGGER.warn("AXION : contenu — {}", error));
         RegisteredContent.publish(resolved);
+        // ADR-165 D1 : chaque mod propriétaire d'une entrée, remplacements compris, est exigé du client.
+        Map<String, String> owners = new TreeMap<>();
+        resolved.values().forEach(entries -> entries.forEach(entry -> {
+            String version = dev.axion.forge.net.RequiredAddons.installed(entry.owner());
+            owners.put(entry.owner(), version == null ? "?" : version);
+        }));
+        RegisteredContent.publishOwners(owners);
+        LOGGER.info("AXION : addons de contenu exigés des clients (ADR-165) : {}", owners);
         LOGGER.info("AXION : contenu enregistré par {} — {}",
                 messages.stream().map(InterModComms.IMCMessage::senderModId).distinct().toList(),
                 resolved.entrySet().stream()

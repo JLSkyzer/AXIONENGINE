@@ -1,6 +1,8 @@
 package dev.axion.net;
 
 import dev.axion.config.AxionConfig;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * {@code S2C_Handshake} (21.3), complété de l'empreinte déterministe du serveur (ADR-150 D4).
@@ -23,6 +25,7 @@ import dev.axion.config.AxionConfig;
  * @param damageSourcesHash empreinte des sources de dégâts ; celle d'un registre vide jusqu'en M6
  * @param materialsHash empreinte des matériaux physiques
  * @param det empreinte de configuration déterministe du serveur (5.12bis)
+ * @param requiredMods les addons que le serveur exige du client, triés par identifiant (ADR-165 D1)
  */
 public record ServerHandshake(
         int protocolVersion,
@@ -37,7 +40,13 @@ public record ServerHandshake(
         long definitionsHash,
         long damageSourcesHash,
         long materialsHash,
-        DetProfile det) {
+        DetProfile det,
+        List<RequiredMod> requiredMods) {
+
+    /** Garde une copie figée de la liste. */
+    public ServerHandshake {
+        requiredMods = List.copyOf(requiredMods);
+    }
 
     /**
      * Politique de quantification de la déformation (R-1641). Une seule existe tant que la déformation
@@ -52,9 +61,11 @@ public record ServerHandshake(
      * @param config configuration commune du serveur
      * @param registry registre qu'il envoie
      * @param det son empreinte déterministe
+     * @param requiredMods les addons qu'il exige du client (ADR-165 D1)
      * @return le handshake
      */
-    public static ServerHandshake of(AxionConfig config, RegistryContent registry, DetProfile det) {
+    public static ServerHandshake of(
+            AxionConfig config, RegistryContent registry, DetProfile det, List<RequiredMod> requiredMods) {
         return new ServerHandshake(
                 NetProtocol.PROTOCOL_VERSION,
                 (float) config.getFloat("sim.fixed_dt"),
@@ -69,12 +80,13 @@ public record ServerHandshake(
                 // Les sources de dégâts viennent avec leur système, en M6 (ADR-150 D5).
                 RegistryContent.EMPTY_DIGEST,
                 registry.materialsHash(),
-                det);
+                det,
+                requiredMods);
     }
 
     /** {@return le message, genre compris} */
     public byte[] encode() {
-        return new WireWriter(64)
+        WireWriter writer = new WireWriter(64 + 32 * requiredMods.size())
                 .u8(MessageKinds.SERVER_HANDSHAKE)
                 .u16(protocolVersion)
                 .f32(fixedDt)
@@ -91,7 +103,11 @@ public record ServerHandshake(
                 .i32(det.kernelVersion())
                 .bool(det.inMatrix())
                 .i64(det.profile())
-                .toByteArray();
+                .u16(requiredMods.size());
+        for (RequiredMod mod : requiredMods) {
+            writer.utf8(mod.modId()).utf8(mod.version());
+        }
+        return writer.toByteArray();
     }
 
     /**
@@ -135,9 +151,23 @@ public record ServerHandshake(
         int kernel = reader.i32();
         boolean inMatrix = reader.bool();
         long profile = reader.i64();
+        int count = reader.u16();
+        if (count > RequiredMod.MAX_MODS) {
+            throw new MalformedPacketException(count + " addons exigés, " + RequiredMod.MAX_MODS + " au plus");
+        }
+        List<RequiredMod> required = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            String modId = reader.utf8(64);
+            String version = reader.utf8(RequiredMod.MAX_VERSION_BYTES);
+            try {
+                required.add(new RequiredMod(modId, version));
+            } catch (IllegalArgumentException invalid) {
+                throw new MalformedPacketException("addon exigé invalide : " + invalid.getMessage());
+            }
+        }
         reader.expectEnd();
         return new ServerHandshake(protocol, fixedDt, maxSubsteps, gravity, rate, delay, prediction,
                 deformation, quantPolicy, definitions, damageSources, materials,
-                new DetProfile(profile, kernel, inMatrix));
+                new DetProfile(profile, kernel, inMatrix), required);
     }
 }

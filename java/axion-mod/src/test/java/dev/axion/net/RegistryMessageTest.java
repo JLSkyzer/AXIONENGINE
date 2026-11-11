@@ -204,7 +204,7 @@ class RegistryMessageTest {
         assertEquals(RegistryMessage.MAX_CONTENT_BYTES, borneRecue[0]);
         // Un autre genre de message.
         byte[] autreGenre = new ClientHandshake(NetProtocol.PROTOCOL_VERSION,
-                new DetProfile(0L, 1, false)).encode();
+                new DetProfile(0L, 1, false), java.util.List.of()).encode();
         assertThrows(MalformedPacketException.class, () -> RegistryMessage.decode(autreGenre, IDENTITE));
     }
 

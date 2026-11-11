@@ -46,6 +46,7 @@ public final class ServerSnapshot {
      * @param excluded fichiers que l'admission a écartés, chacun avec sa raison
      * @param det empreinte déterministe du serveur
      * @param compression compression des charges utiles réseau
+     * @param requiredMods les addons que le serveur exige du client (ADR-165 D1)
      * @return l'instantané
      */
     public static ServerSnapshot build(
@@ -53,7 +54,8 @@ public final class ServerSnapshot {
             RegistryContent registry,
             List<String> excluded,
             DetProfile det,
-            NetCompression compression) {
+            NetCompression compression,
+            List<RequiredMod> requiredMods) {
         List<String> notes = new ArrayList<>(excluded);
         byte[] message;
         try {
@@ -63,7 +65,7 @@ public final class ServerSnapshot {
             notes.add("registre réseau non construit : " + refused.getMessage()
                     + " ; les clients distants n'en recevront aucun");
         }
-        return new ServerSnapshot(ServerHandshake.of(config, registry, det), registry, message, notes);
+        return new ServerSnapshot(ServerHandshake.of(config, registry, det, requiredMods), registry, message, notes);
     }
 
     /** {@return le handshake annoncé} */

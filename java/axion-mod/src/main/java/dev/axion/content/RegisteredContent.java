@@ -15,6 +15,7 @@ import java.util.Map;
 public final class RegisteredContent {
 
     private static volatile Map<ContentKind, List<ContentRegistry.Entry>> current;
+    private static volatile Map<String, String> owners = Map.of();
 
     private RegisteredContent() {
         throw new AssertionError("classe utilitaire, non instanciable");
@@ -29,6 +30,20 @@ public final class RegisteredContent {
         Map<ContentKind, List<ContentRegistry.Entry>> copy = new EnumMap<>(ContentKind.class);
         resolved.forEach((kind, entries) -> copy.put(kind, List.copyOf(entries)));
         current = copy;
+    }
+
+    /**
+     * Publie la version de chaque mod propriétaire de contenu, que le serveur exige du client (ADR-165 D1).
+     *
+     * @param versions la version de chaque propriétaire, par identifiant
+     */
+    public static void publishOwners(Map<String, String> versions) {
+        owners = Map.copyOf(versions);
+    }
+
+    /** {@return la version de chaque mod propriétaire de contenu, vide avant l'enregistrement} */
+    public static Map<String, String> owners() {
+        return owners;
     }
 
     /** {@return vrai si l'enregistrement a eu lieu} */

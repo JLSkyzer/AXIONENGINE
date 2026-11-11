@@ -19,7 +19,7 @@ class HandshakeMessagesTest {
 
     private static ServerHandshake serveur(float dt, int sousPas, float gravite, int frequence, int retard) {
         return new ServerHandshake(NetProtocol.PROTOCOL_VERSION, dt, sousPas, gravite, frequence, retard,
-                true, true, 0, 11L, RegistryContent.EMPTY_DIGEST, 22L, VALIDEE);
+                true, true, 0, 11L, RegistryContent.EMPTY_DIGEST, 22L, VALIDEE, List.of());
     }
 
     @Test
@@ -29,7 +29,7 @@ class HandshakeMessagesTest {
         assertEquals(serveur, ServerHandshake.decode(serveur.encode()));
 
         ClientHandshake client = new ClientHandshake(NetProtocol.PROTOCOL_VERSION,
-                new DetProfile(-1L, 1, false));
+                new DetProfile(-1L, 1, false), List.of());
         assertEquals(client, ClientHandshake.decode(client.encode()));
     }
 
@@ -92,7 +92,7 @@ class HandshakeMessagesTest {
     @DisplayName("T-422 : un autre genre, une autre version de protocole, un message tronqué ou trop long sont refusés")
     void t422_unMessageMalFormeEstRefuse() {
         byte[] serveur = serveur(0.05f, 4, -9.81f, 10, 100).encode();
-        byte[] client = new ClientHandshake(NetProtocol.PROTOCOL_VERSION, VALIDEE).encode();
+        byte[] client = new ClientHandshake(NetProtocol.PROTOCOL_VERSION, VALIDEE, List.of()).encode();
 
         assertThrows(MalformedPacketException.class, () -> ServerHandshake.decode(client));
         assertThrows(MalformedPacketException.class, () -> ClientHandshake.decode(serveur));
@@ -104,9 +104,9 @@ class HandshakeMessagesTest {
                 () -> ClientHandshake.decode(Arrays.copyOf(client, client.length - 1)));
 
         ServerHandshake autreVersion = new ServerHandshake(NetProtocol.PROTOCOL_VERSION + 1, 0.05f, 4,
-                -9.81f, 10, 100, true, true, 0, 0L, 0L, 0L, VALIDEE);
+                -9.81f, 10, 100, true, true, 0, 0L, 0L, 0L, VALIDEE, List.of());
         assertThrows(MalformedPacketException.class, () -> ServerHandshake.decode(autreVersion.encode()));
-        ClientHandshake clientAutreVersion = new ClientHandshake(NetProtocol.PROTOCOL_VERSION + 1, VALIDEE);
+        ClientHandshake clientAutreVersion = new ClientHandshake(NetProtocol.PROTOCOL_VERSION + 1, VALIDEE, List.of());
         assertThrows(MalformedPacketException.class, () -> ClientHandshake.decode(clientAutreVersion.encode()));
     }
 

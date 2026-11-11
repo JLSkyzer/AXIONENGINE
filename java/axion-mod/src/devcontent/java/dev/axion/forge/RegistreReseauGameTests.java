@@ -55,7 +55,7 @@ public final class RegistreReseauGameTests {
             RemoteRegistry.Loaded relu = RemoteRegistry.load(registre);
             tenues.add(relu.definitions());
             return relu.journal();
-        }, etats -> {});
+        }, etats -> {}, dev.axion.forge.net.RequiredAddons::installed);
         for (byte[] trame : instantane.loginFrames(false)) {
             pair.onLoginReply(client.onLoginFrame(trame));
         }

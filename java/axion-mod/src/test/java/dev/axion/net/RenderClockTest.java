@@ -46,7 +46,7 @@ class RenderClockTest {
         AxionConfig client = config(Map.of("net.interpolation_delay_ms", 40L));
         AxionConfig serveur = config(Map.of("net.interpolation_delay_ms", 250L));
         ServerHandshake handshake = ServerHandshake.of(serveur, RegistryContent.of(Map.of(), Map.of(), Map.of()),
-                new DetProfile(0x0123_4567_89AB_CDEFL, 1, true));
+                new DetProfile(0x0123_4567_89AB_CDEFL, 1, true), java.util.List.of());
         RenderClock annonce = RenderClock.of(handshake, client);
         annonce.onSnapshot(20, 1000 * MS);
         assertEquals(1000 - 250, annonce.renderMillis(1000 * MS), 1e-6);

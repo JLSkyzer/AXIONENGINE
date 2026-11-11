@@ -3733,6 +3733,15 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
               `DefinitionDocument` admet désormais le `null` de JSON (un mesh absent), que le schéma admet.
         - [x] 2d — Preuve (2026-11-11) : le buggy écrit avec le builder a la forme canonique, le schéma et l'empreinte
               de `buggy.json` (`DefinitionBuilderTest`) ; grille d'ADR-160 D7 dans ADR-162. Tranche 2 close.
+        Tranche 3 — handshake des addons et surcharges d'administrateur : **ADR-165 accepté le 2026-11-11** (versions
+        exactes, multiplicateurs de 0,1 à 10, clés `mass`, `engine_torque`, `brake_torque`) :
+        - [x] 3a — Les addons exigés (2026-11-11) : protocole 7, liste des propriétaires de contenu dans le handshake,
+              versions du client dans sa réponse, refus par le serveur avec un message traduit qui nomme chaque addon.
+              Prouvé de bout en bout : vrai serveur dédié et vrai client (`runEssaiClientAddons`).
+        - [ ] 3b — `axion-server-overrides.toml` : multiplicateurs bornés et correspondances de blocs, appliqués au
+              registre résolu avant la validation ; diagnostic au journal et dans `/axion status`.
+        - [ ] 3c — Le CDC (21.3, R-1640, A.3, amendement A11), le guide d'administration, la grille d'ADR-160 D7 ; dans
+              `D:\BDC`, la fermeture d'une connexion de Minecraft avec des données non lues sous Windows.
   - [x] Tranche 4 de C-33 (2026-11-11) : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
         variables par assembly). Trois sous-tranches, un film à chacune :
         - [x] 4a (2026-11-11) — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5,

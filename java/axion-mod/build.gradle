@@ -97,6 +97,16 @@ minecraft {
             args '--nogui'
         }
 
+        essaiClientAddons {
+            // ADR-165 D3, essai de bout en bout : ce client se connecte au serveur de runServer, lancé sous
+            // AXION_ESSAI_ADDON_EXIGE=<modId>@<version> (EssaiAddonsExiges, contenu de développement), écrit au
+            // journal l'écran de déconnexion, puis s'arrête.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/essai-client')
+            property 'axion.essai.deconnexion', 'true'
+            property 'axion.souris.libre', 'true'
+        }
+
         gameTestServer {
             // Un dossier à part, dont le monde est effacé avant chaque passage : les GameTests
             // partent d'un monde neuf (R-2190) et ne laissent rien dans celui de développement.
@@ -341,6 +351,14 @@ def clientSilencieux = { File dossier ->
     dossier.mkdirs()
     def fin = System.lineSeparator()
     options.setText(lignes.join(fin) + fin, 'UTF-8')
+}
+
+// ADR-165 D3 : le client d'essai, muet ; le serveur d'essai est runServer, sous AXION_ESSAI_ADDON_EXIGE.
+tasks.matching { it.name == 'runEssaiClientAddons' }.configureEach {
+    standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/essai-client'))
+    }
 }
 
 // Un film se tourne dans un monde neuf.

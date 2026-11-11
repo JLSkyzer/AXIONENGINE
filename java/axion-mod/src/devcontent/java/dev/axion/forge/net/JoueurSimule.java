@@ -103,7 +103,7 @@ public final class JoueurSimule {
             RemoteRegistry.Loaded relu = RemoteRegistry.load(registre);
             registres.add(relu.definitions());
             return relu.journal();
-        }, this::appliquer);
+        }, this::appliquer, dev.axion.forge.net.RequiredAddons::installed);
     }
 
     /**

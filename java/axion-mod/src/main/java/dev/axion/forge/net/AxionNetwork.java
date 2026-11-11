@@ -7,7 +7,9 @@ import dev.axion.config.AxionConfig;
 import dev.axion.diag.NetworkMetrics;
 import dev.axion.forge.AxionEntity;
 import dev.axion.net.AssemblyState;
+import dev.axion.net.ClientHandshake;
 import dev.axion.net.ClientSession;
+import dev.axion.net.RequiredMod;
 import dev.axion.net.DetProfile;
 import dev.axion.net.InputMessage;
 import dev.axion.net.PlayerSync;
@@ -24,12 +26,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.protocol.login.ClientboundLoginDisconnectPacket;
+import net.minecraft.server.network.ServerLoginPacketListenerImpl;
 import net.minecraft.world.entity.Entity;
 import net.minecraftforge.network.HandshakeHandler;
 import net.minecraftforge.network.NetworkDirection;
@@ -55,6 +60,9 @@ public final class AxionNetwork {
     private static final AttributeKey<ClientSession> CLIENT_SESSION = AttributeKey.valueOf("axion_client_session");
 
     private static final AttributeKey<ServerPeer> SERVER_PEER = AttributeKey.valueOf("axion_server_peer");
+
+    /** ADR-165 D3 : posé quand le serveur a refusé ce client, pour ne le refuser qu'une fois. */
+    private static final AttributeKey<Boolean> REFUSED = AttributeKey.valueOf("axion_refused");
 
     /** Séquence des messages fragmentés envoyés en jeu ; la phase de connexion emploie 0 et 1. */
     private static final AtomicInteger SEQUENCE = new AtomicInteger(2);
@@ -126,11 +134,49 @@ public final class AxionNetwork {
         NetworkEvent.Context context = supplier.get();
         context.setPacketHandled(true);
         try {
-            serverPeer(context.getNetworkManager()).onLoginReply(message.frame());
+            ServerPeer peer = serverPeer(context.getNetworkManager());
+            peer.onLoginReply(message.frame());
+            refuseMissingAddons(context.getNetworkManager(), peer);
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.error("AXION : réponse de connexion non traitée — {}", failure.toString());
         }
     }
+
+    /**
+     * ADR-165 D3 : à la réponse du client au handshake, refuse le client à qui manque un addon que le serveur exige,
+     * ou qui l'a dans une autre version. Le message nomme chaque addon en cause ; le serveur journalise le refus.
+     */
+    private static void refuseMissingAddons(Connection connection, ServerPeer peer) {
+        ClientHandshake client = peer.client().orElse(null);
+        AxionRuntime runtime = RuntimeAccess.get();
+        ServerSnapshot snapshot = runtime == null ? null : runtime.netSnapshot();
+        if (client == null || snapshot == null || connection.channel().attr(REFUSED).get() != null) {
+            return;
+        }
+        List<RequiredMod.Mismatch> mismatches =
+                RequiredMod.mismatches(snapshot.handshake().requiredMods(), client.versions());
+        if (mismatches.isEmpty()) {
+            return;
+        }
+        connection.channel().attr(REFUSED).set(Boolean.TRUE);
+        Component reason = RequiredAddons.refusal(mismatches);
+        String player = connection.getPacketListener() instanceof ServerLoginPacketListenerImpl login
+                ? login.getUserName() : connection.getRemoteAddress().toString();
+        LOGGER.warn("AXION : connexion de {} refusée, addons manquants ou d'une autre version : {}", player,
+                RequiredAddons.describe(mismatches));
+        // Le paquet de déconnexion de la phase de connexion, puis plus rien ne se lit : aucune autre réponse ne fait
+        // avancer la connexion. Le client ferme de lui-même en recevant le paquet ; le serveur ne ferme qu'après un
+        // délai. Fermer aussitôt laissait des réponses non lues dans le tampon du serveur, et Windows coupait alors
+        // la connexion d'un coup : le client perdait le paquet et affichait une erreur réseau (constaté le
+        // 2026-11-11).
+        connection.send(new ClientboundLoginDisconnectPacket(reason));
+        connection.setReadOnly();
+        connection.channel().eventLoop().schedule(() -> connection.disconnect(reason), REFUSAL_CLOSE_SECONDS,
+                TimeUnit.SECONDS);
+    }
+
+    /** Le délai laissé au client refusé pour fermer de lui-même, avant que le serveur ne ferme (ADR-165 D3). */
+    private static final long REFUSAL_CLOSE_SECONDS = 2;
 
     /** Chez le client : un message en jeu, sur le thread de Netty ; un snapshot est acquitté aussitôt. */
     static void onPlayToClient(ChannelFrames.PlayToClient message, Supplier<NetworkEvent.Context> supplier) {
@@ -470,7 +516,7 @@ public final class AxionNetwork {
         }
         AxionRuntime runtime = RuntimeAccess.get();
         ClientSession created = new ClientSession(runtime.netCompression(), runtime.detProfile(),
-                runtime::applyRemoteRegistry, states -> clientSnapshots.apply(states));
+                runtime::applyRemoteRegistry, states -> clientSnapshots.apply(states), RequiredAddons::installed);
         ClientSession raced = attribute.setIfAbsent(created);
         return raced == null ? created : raced;
     }

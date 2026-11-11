@@ -132,7 +132,7 @@ class InputMessageTest {
     }
 
     private static int numero(int rang) throws MalformedPacketException {
-        ClientSession session = new ClientSession(null, null, null, null);
+        ClientSession session = new ClientSession(null, null, null, null, null);
         byte[] frame = null;
         for (int i = 0; i <= rang; i++) {
             frame = session.inputFrame(2, 0, VehicleInput.NONE);

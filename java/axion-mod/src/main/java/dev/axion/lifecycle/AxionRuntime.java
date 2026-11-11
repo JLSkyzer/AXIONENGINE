@@ -1058,7 +1058,8 @@ public final class AxionRuntime {
             RegistryContent.Builder registry =
                     ServerRegistry.collect(materialTexts, groupTexts, tireTexts, loaded, definitionTexts);
             ServerSnapshot snapshot = ServerSnapshot.build(outcome.config(), registry.build(), registry.excluded(),
-                    DetProfile.ofThisBinary(), new NativeNetCompression(outcome.context()));
+                    DetProfile.ofThisBinary(), new NativeNetCompression(outcome.context()),
+                    dev.axion.net.RequiredMod.of(dev.axion.content.RegisteredContent.owners()));
             netSnapshot = snapshot;
             transitions.add(snapshot.describe());
             snapshot.notes().forEach(transitions::add);

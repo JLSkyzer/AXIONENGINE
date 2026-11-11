@@ -100,7 +100,7 @@ class LoginFlowTest {
 
         ServerSnapshot instantane(DetProfile det) {
             RegistryContent.Builder registre = ServerRegistry.collect(materiaux, groupes, acceptees, definitions);
-            return ServerSnapshot.build(CONFIG, registre.build(), registre.excluded(), det, IDENTITE);
+            return ServerSnapshot.build(CONFIG, registre.build(), registre.excluded(), det, IDENTITE, List.of());
         }
     }
 
@@ -146,7 +146,7 @@ class LoginFlowTest {
                 RemoteRegistry.Loaded relu = RemoteRegistry.load(registre);
                 appliques.add(relu.definitions());
                 return relu.journal();
-            }, etats::addAll);
+            }, etats::addAll, mod -> null);
         }
     }
 
@@ -294,7 +294,7 @@ class LoginFlowTest {
         assertEquals(0, client.session.onLoginFrame(null).length, "une trame écartée reçoit un simple acquittement");
         assertEquals(0, client.session.onLoginFrame(Fragments.split(new byte[] {9}, 0).get(0)).length);
         client.session.onPlayFrame(Fragments.split(
-                new ClientHandshake(NetProtocol.PROTOCOL_VERSION, VALIDEE).encode(), 0).get(0));
+                new ClientHandshake(NetProtocol.PROTOCOL_VERSION, VALIDEE, List.of()).encode(), 0).get(0));
         client.session.onPlayFrame(null);
         List<String> journal = client.session.drainJournal();
         assertEquals(4, journal.size(), journal::toString);
@@ -312,7 +312,7 @@ class LoginFlowTest {
     @DisplayName("Un handshake du serveur refusé laisse quand même la connexion aboutir : le client répond par le sien")
     void unHandshakeRefuseObtientQuandMemeUneReponse() {
         ServerHandshake fautif = new ServerHandshake(NetProtocol.PROTOCOL_VERSION, 0f, 4, -9.81f, 10, 100,
-                true, true, 0, 0L, 0L, 0L, VALIDEE);
+                true, true, 0, 0L, 0L, 0L, VALIDEE, List.of());
         Client client = new Client(VALIDEE);
         ServerPeer pair = new ServerPeer(VALIDEE);
         pair.onLoginReply(client.session.onLoginFrame(Fragments.split(fautif.encode(), 0).get(0)));
@@ -363,7 +363,7 @@ class LoginFlowTest {
     void unClientQuiNePeutAppliquerDitNeRienTenir() {
         ServerSnapshot instantane = serveur().instantane(VALIDEE);
 
-        ClientSession sansNatif = new ClientSession(null, VALIDEE, registre -> List.of(), etats -> {});
+        ClientSession sansNatif = new ClientSession(null, VALIDEE, registre -> List.of(), etats -> {}, mod -> null);
         ServerPeer pair = new ServerPeer(VALIDEE);
         connecter(instantane.loginFrames(false), sansNatif, pair);
         assertEquals(RegistryAck.NONE, pair.registry().orElseThrow());
@@ -371,7 +371,7 @@ class LoginFlowTest {
 
         ClientSession enEchec = new ClientSession(IDENTITE, VALIDEE, registre -> {
             throw new IllegalStateException("échec simulé");
-        }, etats -> {});
+        }, etats -> {}, mod -> null);
         ServerPeer autre = new ServerPeer(VALIDEE);
         connecter(instantane.loginFrames(false), enEchec, autre);
         assertEquals(RegistryAck.NONE, autre.registry().orElseThrow());
@@ -396,7 +396,7 @@ class LoginFlowTest {
         assertTrue(ecartees.get(0).startsWith("mymod:axion/definitions/gros.json non transmis aux clients : "
                 + (RegistryContent.MAX_FILE_BYTES + 1) + " octets"), ecartees::toString);
 
-        ServerSnapshot instantane = ServerSnapshot.build(CONFIG, registre.build(), ecartees, VALIDEE, IDENTITE);
+        ServerSnapshot instantane = ServerSnapshot.build(CONFIG, registre.build(), ecartees, VALIDEE, IDENTITE, List.of());
         assertTrue(instantane.hasRegistry());
         assertEquals(ecartees, instantane.notes());
     }
@@ -408,7 +408,7 @@ class LoginFlowTest {
         for (int index = 0; index <= RegistryContent.MAX_ENTRIES; index++) {
             registre.add(RegistryContent.Family.DEFINITIONS, "axion:axion/definitions/d" + index + ".json", json("{}"));
         }
-        ServerSnapshot instantane = ServerSnapshot.build(CONFIG, registre.build(), List.of(), VALIDEE, IDENTITE);
+        ServerSnapshot instantane = ServerSnapshot.build(CONFIG, registre.build(), List.of(), VALIDEE, IDENTITE, List.of());
 
         assertFalse(instantane.hasRegistry());
         assertEquals(1, instantane.loginFrames(false).size(), "le handshake part quand même");
@@ -434,11 +434,11 @@ class LoginFlowTest {
         values.put("deformation.enabled", true);
         AxionConfig config = new AxionConfig(ConfigSchema.Scope.COMMON, values, List.of());
         RegistryContent registre = serveur().instantane(VALIDEE).registry();
-        ServerSnapshot instantane = ServerSnapshot.build(config, registre, List.of(), VALIDEE, IDENTITE);
+        ServerSnapshot instantane = ServerSnapshot.build(config, registre, List.of(), VALIDEE, IDENTITE, List.of());
 
         assertEquals(new ServerHandshake(NetProtocol.PROTOCOL_VERSION, 0.0333333f, 3, -4.5f, 15, 250, false, true,
                 ServerHandshake.DEFORM_QUANT_POLICY, registre.definitionsHash(), RegistryContent.EMPTY_DIGEST,
-                registre.materialsHash(), VALIDEE), instantane.handshake());
+                registre.materialsHash(), VALIDEE, List.of()), instantane.handshake());
         assertTrue(registre.definitionsHash() != registre.materialsHash());
 
         ServerHandshake parDefaut = serveur().instantane(VALIDEE).handshake();

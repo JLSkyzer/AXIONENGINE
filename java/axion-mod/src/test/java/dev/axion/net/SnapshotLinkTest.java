@@ -29,7 +29,7 @@ class SnapshotLinkTest {
     private static final class Liaison {
         final PlayerSync serveur = new PlayerSync(new SnapshotSender(20, 32_768));
         final List<SnapshotReceiver.Applied> recus = new ArrayList<>();
-        final ClientSession client = new ClientSession(null, VALIDEE, registre -> List.of(), recus::addAll);
+        final ClientSession client = new ClientSession(null, VALIDEE, registre -> List.of(), recus::addAll, mod -> null);
         final Map<Integer, AssemblyState> monde = new HashMap<>();
         int sequence = 2;
 
@@ -206,7 +206,7 @@ class SnapshotLinkTest {
     void unPuitsQuiEchoueLaisseAcquitter() {
         ClientSession client = new ClientSession(null, VALIDEE, registre -> List.of(), etats -> {
             throw new IllegalStateException("échec simulé");
-        });
+        }, mod -> null);
         PlayerSync serveur = new PlayerSync(new SnapshotSender(20, 32_768));
         serveur.track(1);
         List<byte[]> trames = serveur.tick(1, handle -> new SnapshotSender.Candidate(handle, etat(1, false),
