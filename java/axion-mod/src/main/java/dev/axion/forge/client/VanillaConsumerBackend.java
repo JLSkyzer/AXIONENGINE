@@ -10,6 +10,7 @@ import dev.axion.render.CpuSkinning;
 import dev.axion.render.DepthOrder;
 import dev.axion.render.EntityShader;
 import dev.axion.render.MeshLook;
+import dev.axion.render.NodeLooks;
 import dev.axion.render.RenderAsset;
 import dev.axion.render.SurfacePass;
 import dev.axion.render.TextureBinding;
@@ -113,7 +114,7 @@ final class VanillaConsumerBackend implements RenderBackend {
             if (assembly.asset() != null) {
                 placed.add(new Placed(assembly.asset(),
                         BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig()),
-                        assembly.draws(), assembly.skin()));
+                        assembly.draws(), assembly.skin(), assembly.looks()));
             } else {
                 anyBox = true;
             }
@@ -137,17 +138,18 @@ final class VanillaConsumerBackend implements RenderBackend {
                 continue;
             }
             Placed placed = null;
-            for (GeometryTransfer.Draw draw : assembly.draws()) {
+            for (int rank = 0; rank < assembly.draws().size(); rank++) {
+                GeometryTransfer.Draw draw = assembly.draws().get(rank);
                 MeshLook look = asset.look(draw.mesh());
-                if (look.pass() != SurfacePass.TRANSLUCENT || !look.visible()) {
+                if (look.pass() != SurfacePass.TRANSLUCENT || !look.visible() || NodeLooks.hidden(assembly.looks(), rank)) {
                     continue;
                 }
                 if (placed == null) {
                     placed = new Placed(asset,
                             BodyParts.of(AssemblyPlacement.of(frame.partialTick(), assembly.entity()), assembly.rig()),
-                            assembly.draws(), assembly.skin());
+                            assembly.draws(), assembly.skin(), assembly.looks());
                 }
-                parts.add(Part.of(placed, draw, look, asset.albedo(draw.mesh())));
+                parts.add(Part.of(placed, draw, rank, look, asset.albedo(draw.mesh())));
             }
         }
         if (parts.isEmpty()) {
@@ -207,15 +209,17 @@ final class VanillaConsumerBackend implements RenderBackend {
         Map<RenderType, List<Part>> batches = new LinkedHashMap<>();
         for (Placed assembly : placed) {
             RenderAsset asset = assembly.asset();
-            for (GeometryTransfer.Draw draw : assembly.draws()) {
+            for (int rank = 0; rank < assembly.draws().size(); rank++) {
+                GeometryTransfer.Draw draw = assembly.draws().get(rank);
                 MeshLook look = asset.look(draw.mesh());
-                if (look.pass() != pass || !look.visible()) {
+                if (look.pass() != pass || !look.visible() || NodeLooks.hidden(assembly.looks(), rank)) {
                     continue;
                 }
                 TextureRegion albedo = asset.albedo(draw.mesh());
                 RenderType type = AxionRenderTypes.entity(
                         bound(albedo), EntityShader.of(pass, look.doubleSided()), look.doubleSided());
-                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(Part.of(assembly, draw, look, albedo));
+                batches.computeIfAbsent(type, unused -> new ArrayList<>())
+                        .add(Part.of(assembly, draw, rank, look, albedo));
             }
         }
         drawBatches(frame, batches, false);
@@ -229,14 +233,16 @@ final class VanillaConsumerBackend implements RenderBackend {
         Map<RenderType, List<Part>> batches = new LinkedHashMap<>();
         for (Placed assembly : placed) {
             RenderAsset asset = assembly.asset();
-            for (GeometryTransfer.Draw draw : assembly.draws()) {
+            for (int rank = 0; rank < assembly.draws().size(); rank++) {
+                GeometryTransfer.Draw draw = assembly.draws().get(rank);
                 MeshLook look = asset.look(draw.mesh());
-                if (!look.visible() || !asset.emits(draw.mesh())) {
+                if (!look.visible() || !asset.emits(draw.mesh()) || NodeLooks.hidden(assembly.looks(), rank)) {
                     continue;
                 }
                 TextureRegion emission = asset.emission(draw.mesh());
                 RenderType type = AxionRenderTypes.entity(bound(emission), EntityShader.EYES, look.doubleSided());
-                batches.computeIfAbsent(type, unused -> new ArrayList<>()).add(Part.of(assembly, draw, look, emission));
+                batches.computeIfAbsent(type, unused -> new ArrayList<>())
+                        .add(Part.of(assembly, draw, rank, look, emission));
             }
         }
         drawBatches(frame, batches, true);
@@ -320,9 +326,11 @@ final class VanillaConsumerBackend implements RenderBackend {
                 b = c;
                 c = swap;
             }
-            int colorA = emission ? look.emissiveColor() : look.colorOf(a);
-            int colorB = emission ? look.emissiveColor() : look.colorOf(b);
-            int colorC = emission ? look.emissiveColor() : look.colorOf(c);
+            // ADR-163 D3 : la couleur multipliée par la teinte du dessin, et par son émission pour la passe 5.
+            float[] looks = part.assembly().looks();
+            int colorA = NodeLooks.tinted(emission ? look.emissiveColor() : look.colorOf(a), looks, part.rank(), emission);
+            int colorB = NodeLooks.tinted(emission ? look.emissiveColor() : look.colorOf(b), looks, part.rank(), emission);
+            int colorC = NodeLooks.tinted(emission ? look.emissiveColor() : look.colorOf(c), looks, part.rank(), emission);
             vertex(out, position, normal, scratch, vertices, region, base + a, colorA, light);
             vertex(out, position, normal, scratch, vertices, region, base + b, colorB, light);
             vertex(out, position, normal, scratch, vertices, region, base + c, colorC, light);
@@ -450,7 +458,8 @@ final class VanillaConsumerBackend implements RenderBackend {
      * Une assembly prête, ses corps posés une fois pour la frame (ADR-151 D9), et sa palette d'os pour le
      * skinning sur le CPU, ou {@code null} (R-742).
      */
-    private record Placed(RenderAsset asset, BodyParts bodies, List<GeometryTransfer.Draw> draws, CpuSkinning skin) {
+    private record Placed(RenderAsset asset, BodyParts bodies, List<GeometryTransfer.Draw> draws, CpuSkinning skin,
+            float[] looks) {
 
         /** {@return vrai si ce dessin se skinne : son mesh l'est, et l'assembly porte une palette} */
         boolean skinned(GeometryTransfer.Draw draw) {
@@ -464,15 +473,15 @@ final class VanillaConsumerBackend implements RenderBackend {
      * transformation de repos dans le repère de ce corps ; s'il se skinne, la racine et l'identité.
      */
     private record Part(
-            Placed assembly, GeometryTransfer.Draw draw, MeshLook look, TextureRegion region, AssemblyPlacement at,
-            float[] model, boolean skinned) {
+            Placed assembly, GeometryTransfer.Draw draw, int rank, MeshLook look, TextureRegion region,
+            AssemblyPlacement at, float[] model, boolean skinned) {
 
-        static Part of(Placed assembly, GeometryTransfer.Draw draw, MeshLook look, TextureRegion region) {
+        static Part of(Placed assembly, GeometryTransfer.Draw draw, int rank, MeshLook look, TextureRegion region) {
             if (assembly.skinned(draw)) {
-                return new Part(assembly, draw, look, region, assembly.bodies().assembly(), SKINNED_REST, true);
+                return new Part(assembly, draw, rank, look, region, assembly.bodies().assembly(), SKINNED_REST, true);
             }
-            return new Part(assembly, draw, look, region, assembly.bodies().at(draw), assembly.bodies().model(draw),
-                    false);
+            return new Part(assembly, draw, rank, look, region, assembly.bodies().at(draw),
+                    assembly.bodies().model(draw), false);
         }
     }
 }

@@ -31,6 +31,7 @@ import dev.axion.render.GpuDegradation;
 import dev.axion.render.GpuPassTimings;
 import dev.axion.render.MeshCache;
 import dev.axion.render.MissingClientAssets;
+import dev.axion.render.NodeLooks;
 import dev.axion.render.NativeCulling;
 import dev.axion.render.ProceduralTracks;
 import dev.axion.render.RenderAsset;
@@ -867,10 +868,12 @@ public final class AxionRenderPass {
         AnimationSync sync = animations;
         AxionRuntime runtime = RuntimeAccess.get();
         boolean[] posed = new boolean[count];
+        float[][] looks = new float[count][];
         for (int rank = 0; rank < count; rank++) {
             RenderBackend.Assembly assembly = all.get(candidates[rank]);
             ProceduralTracks.Pose pose = proceduralPose(runtime, assembly.entity(), partialTick, renderTick);
             posed[rank] = pose != null;
+            looks[rank] = drawLooks(runtime, assembly, pose);
             sync.see(assembly.entity().getId(), assembly.asset().nativeIndex(), assembly.asset().nativeGeneration(),
                     assembly.entity().animationState(), pose);
         }
@@ -941,7 +944,8 @@ public final class AxionRenderPass {
         int[] retained = outcome.retained();
         for (int rank = 0; rank < retained.length; rank++) {
             int at = candidates[retained[rank]];
-            kept[at] = all.get(at).withMeshes(outcome.meshes()[rank], outcome.matrices()[rank], outcome.palettes()[rank]);
+            kept[at] = all.get(at).withMeshes(outcome.meshes()[rank], outcome.matrices()[rank], outcome.palettes()[rank])
+                    .withLooks(looks[retained[rank]]);
         }
         SKINNED_CAPPED.add(outcome.skinnedCapped());
         // ADR-155, tranche 6b : les overlays de l'animation, à la pose que cette frame vient de donner.
@@ -1152,7 +1156,26 @@ public final class AxionRenderPass {
         return known.tracks().evaluate(new ProceduralTracks.Frame(wheels, entity.wheelSpin().advance(renderTick, wheels),
                 pose.vehicle(), pose.variables(), entity.seatsOccupied(), renderTick * ServerClock.TICK_MILLIS / 1000.0,
                 ProceduralTracks.worldTime(level.getDayTime()), level.getBrightness(LightLayer.SKY, at),
-                level.getRainLevel(partialTick)));
+                level.getRainLevel(partialTick)), entity.trackState());
+    }
+
+    /**
+     * {@return l'apparence de chaque dessin d'une assembly à cette image (ADR-163 D3), ou {@code null} si aucune piste
+     * ne la pilote} Chaque dessin hérite du nœud qui le porte et de ses ancêtres.
+     */
+    private static float[] drawLooks(AxionRuntime runtime, RenderBackend.Assembly assembly, ProceduralTracks.Pose pose) {
+        if (pose == null || pose.looks() == null || runtime == null) {
+            return null;
+        }
+        Rig known = known(runtime, assembly.entity());
+        if (known == null || known.parents() == null) {
+            return null;
+        }
+        List<Integer> nodes = new ArrayList<>(assembly.draws().size());
+        for (dev.axion.asset.GeometryTransfer.Draw draw : assembly.draws()) {
+            nodes.add(draw.node());
+        }
+        return NodeLooks.ofDraws(known.parents(), pose, nodes);
     }
 
     /**
@@ -1180,14 +1203,17 @@ public final class AxionRenderPass {
             int rootNode = nodes == null ? -1 : AssemblyBodies.rootNodeOf(definition.root(), nodes);
             ProceduralTracks tracks = ProceduralTracks.of(definition.root(), AssemblyBodies.names(nodes),
                     note -> LOGGER.warn("AXION : {} — {}", key, note));
-            known = new Rig(source, rootNode < 0 ? null : new BodyRig(nodes, rootNode), tracks);
+            known = new Rig(source, rootNode < 0 ? null : new BodyRig(nodes, rootNode), tracks, NodeLooks.parents(nodes));
             RIGS.put(key, known);
         }
         return known;
     }
 
-    /** Les corps d'une definition, ses pistes procédurales, et le conteneur compilé dont ils viennent. */
-    private record Rig(AssetRegistry.Published source, BodyRig rig, ProceduralTracks tracks) {}
+    /**
+     * Les corps d'une definition, ses pistes procédurales, le parent de chaque nœud de son asset (ADR-163 D3), et le
+     * conteneur compilé dont ils viennent.
+     */
+    private record Rig(AssetRegistry.Published source, BodyRig rig, ProceduralTracks tracks, int[] parents) {}
 
     /**
      * Rechargement des ressources du client (R-752) : maillages, textures et ressources GPU du backend

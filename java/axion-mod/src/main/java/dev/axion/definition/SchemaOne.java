@@ -122,7 +122,7 @@ final class SchemaOne {
                 .opt("particles", cap(particles(), 8))
                 .opt("seats", cap(seat(version), 16))
                 .opt("sockets", list(declares(NameCategory.SOCKET)))
-                .opt("procedural", list(procedural()))
+                .opt("procedural", list(procedural(version)))
                 .opt("animations",
                         new Dict(new TextRule.Declares(NameCategory.ANIMATION), animation(), 128))
                 .opt("on_part_stage", new Dict(new TextRule.Refers(NameCategory.PART),
@@ -492,13 +492,24 @@ final class SchemaOne {
                 .build();
     }
 
-    /** §18.3 ; {@code source} dans l'ANNEXE A.4. */
-    private static SchemaNode procedural() {
-        return obj()
+    /**
+     * §18.3 ; {@code source} dans l'ANNEXE A.4. Au schéma 3 (ADR-163 D3), les canaux forment une liste fermée — dont
+     * {@code visibility}, {@code emissive} et {@code color} —, et une piste a une période, un lissage et une porte.
+     */
+    private static SchemaNode procedural(int version) {
+        ObjBuilder track = obj()
                 .opt("node", refers(NameCategory.NODE))
-                .opt("bone", refers(NameCategory.BONE))
-                .opt("channel", text())
-                .opt("axis", text())
+                .opt("bone", refers(NameCategory.BONE));
+        if (version >= 3) {
+            track.req("channel", oneOf("rotation", "translation", "visibility", "emissive", "color"))
+                    .opt("axis", oneOf("x", "y", "z", "r", "g", "b"))
+                    .opt("period", new Num(0, Double.POSITIVE_INFINITY, true, false))
+                    .opt("smoothing", new Num(0, Double.POSITIVE_INFINITY, false, false))
+                    .opt("gate", new Text(new TextRule.Source()));
+        } else {
+            track.opt("channel", text()).opt("axis", text());
+        }
+        return track
                 .req("source", new Text(new TextRule.Source()))
                 .opt("scale", number())
                 .opt("map", curve())

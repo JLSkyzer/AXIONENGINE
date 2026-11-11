@@ -1,0 +1,15 @@
+{
+  "schema": 3,
+  "asset": "axion:models/test/materiaux/panneau_emissif.glb",
+  "kind": "rigid_object",
+  "variables": {
+    "eclairage": { "type": "float", "default": 1, "min": 0, "max": 1, "write": "none" },
+    "rouge": { "type": "float", "default": 1, "min": 0, "max": 1, "write": "none" },
+    "visible": { "type": "bool", "default": true, "write": "none" }
+  },
+  "procedural": [
+    { "node": "grille_lumineuse", "channel": "emissive", "source": "var.eclairage" },
+    { "node": "panneau", "channel": "color", "axis": "r", "source": "var.rouge" },
+    { "node": "grille_lumineuse", "channel": "visibility", "source": "var.visible" }
+  ]
+}

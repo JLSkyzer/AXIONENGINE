@@ -104,6 +104,8 @@ interface RenderBackend {
      *     {@link RenderPrepCodec#NO_PALETTE} : ses meshes skinnés se dessinent alors au repos (C-66)
      * @param skin sa palette d'os pour le skinning sur le CPU du backend vanilla (R-742), ou {@code null} : ses
      *     meshes skinnés s'y dessinent alors au repos
+     * @param looks l'apparence de chaque dessin, dans l'ordre des dessins (ADR-163 D3, {@link NodeLooks}), ou
+     *     {@code null} si aucune piste ne la pilote
      */
     record Assembly(
             AxionEntity entity,
@@ -111,7 +113,8 @@ interface RenderBackend {
             BodyRig rig,
             List<GeometryTransfer.Draw> draws,
             int palette,
-            CpuSkinning skin) {
+            CpuSkinning skin,
+            float[] looks) {
 
         /**
          * Une assembly dessinée au niveau 0 : les dessins de la liste au repos.
@@ -122,7 +125,7 @@ interface RenderBackend {
          */
         Assembly(AxionEntity entity, RenderAsset asset, BodyRig rig) {
             this(entity, asset, rig, asset == null ? List.of() : asset.mesh().draws(), RenderPrepCodec.NO_PALETTE,
-                    null);
+                    null, null);
         }
 
         /**
@@ -140,7 +143,9 @@ interface RenderBackend {
             }
             List<GeometryTransfer.Draw> leveled =
                     LeveledDraws.of(asset.mesh().draws(), asset.mesh().meshes().size(), meshes, matrices);
-            return leveled == draws && first == palette ? this : new Assembly(entity, asset, rig, leveled, first, skin);
+            return leveled == draws && first == palette
+                    ? this
+                    : new Assembly(entity, asset, rig, leveled, first, skin, looks);
         }
 
         /**
@@ -149,7 +154,16 @@ interface RenderBackend {
          * @param cpu sa palette d'os pour la frame
          */
         Assembly withSkin(CpuSkinning cpu) {
-            return new Assembly(entity, asset, rig, draws, palette, cpu);
+            return new Assembly(entity, asset, rig, draws, palette, cpu, looks);
+        }
+
+        /**
+         * {@return la même assembly, avec l'apparence de ses dessins (ADR-163 D3)}
+         *
+         * @param drawLooks l'apparence de chaque dessin, ou {@code null}
+         */
+        Assembly withLooks(float[] drawLooks) {
+            return drawLooks == looks ? this : new Assembly(entity, asset, rig, draws, palette, skin, drawLooks);
         }
     }
 }

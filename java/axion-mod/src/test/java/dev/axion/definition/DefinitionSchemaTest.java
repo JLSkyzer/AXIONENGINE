@@ -624,4 +624,50 @@ class DefinitionSchemaTest {
             r.getAsJsonArray("interaction").get(2).getAsJsonObject().addProperty("value", 7);
         }).path());
     }
+
+    @Test
+    @DisplayName("ADR-163 D3 : au schéma 3, une piste a un canal connu, un axe qui lui convient, une période positive et une porte connue")
+    void pistesAuSchemaTrois() {
+        accepte(r -> {
+            enSchemaTrois(r);
+            JsonObject piste = at(r, "procedural", "1");
+            piste.addProperty("channel", "emissive");
+            piste.remove("axis");
+            piste.addProperty("source", "time.seconds");
+            piste.addProperty("period", 0.5);
+            piste.addProperty("smoothing", 0.1);
+            piste.addProperty("gate", "var.gyrophare");
+        });
+        accepte(r -> {
+            enSchemaTrois(r);
+            at(r, "procedural", "1").addProperty("channel", "color");
+            at(r, "procedural", "1").addProperty("axis", "g");
+        });
+        assertEquals("$.procedural[1].channel", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "procedural", "1").addProperty("channel", "opacity");
+        }).path());
+        assertEquals("$.procedural[1].axis", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "procedural", "1").addProperty("channel", "color");
+        }).path(), "color veut r, g ou b");
+        assertEquals("$.procedural[1].axis", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "procedural", "1").addProperty("channel", "visibility");
+        }).path(), "visibility ne prend pas d'axe");
+        assertEquals("$.procedural[1].period", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "procedural", "1").addProperty("period", 0);
+        }).path());
+        assertEquals("$.procedural[1].gate", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "procedural", "1").addProperty("gate", "var.inconnue");
+        }).path());
+        assertEquals("$.procedural[1].channel", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "procedural", "1").remove("channel");
+        }).path(), "au schéma 3, le canal est obligatoire");
+        assertEquals("$.procedural[1].period", refus(r -> at(r, "procedural", "1").addProperty("period", 1.0)).path(),
+                "la période n'existe qu'au schéma 3");
+    }
 }

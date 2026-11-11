@@ -3743,7 +3743,14 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                     `VehicleInput.flags`, libellés au siège ; exemple au buggy, guide, film. Le guide créateur des
                     variables et des commandes rejoint `API.md`, guide d'addon de la tranche 5 d'ADR-162.
         - [ ] 4c — canaux `visibility`, `emissive`, `color` ; `period`, `smoothing`, `gate` ; rendu par nœud dans les
-              deux backends ; Charger découpée dans Blender ; film du gyrophare.
+              deux backends ; Charger découpée dans Blender ; film du gyrophare. Plan (2026-11-11) :
+              - [x] 4c-1 pistes (2026-11-11) : canaux d'apparence évalués (`visibility` : toutes au-dessus de 0,5 ; `emissive` et
+                    `color` : produit des pistes), `period`, `smoothing` (état par assembly), `gate` (fermée, la piste
+                    vaut 0 : pose au repos, nœud caché ou éteint) ; champs au schéma 3.
+              - [x] 4c-2 rendu (2026-11-11, en Java, sans montée d'ABI) : l'apparence de chaque nœud piloté jusqu'aux dessins, dans les deux backends ; un nœud
+                    que rien ne pilote ne coûte rien de plus ; banc : un nœud caché, éteint, allumé, teinté.
+              - [ ] 4c-3 contenu : un phare du buggy d'exemple piloté par `world.time` (la CI le prouve) ; Charger
+                    découpée dans Blender (annoncé avant) — lampes, phares, feux, aiguilles ; film du gyrophare.
 
 Exigence de Killian (2026-11-10) : « notre moteur et API doit leur permettre de tout faire », « aucune
 impossibilité », de l'extérieur à l'intérieur. Audit en lecture du CDC, du schéma, des ADR et du code, chaque

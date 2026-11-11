@@ -511,6 +511,13 @@ final class DefinitionChecker {
                 }
             }
         }
+        if (root.get("procedural") instanceof JsonArray tracks) {
+            for (int i = 0; i < tracks.size(); i++) {
+                if (tracks.get(i) instanceof JsonObject track) {
+                    checkTrackAxis(track, "$.procedural[" + i + "]");
+                }
+            }
+        }
         if (root.get("interaction") instanceof JsonArray interactions) {
             for (int i = 0; i < interactions.size(); i++) {
                 if (!(interactions.get(i) instanceof JsonObject interaction)
@@ -525,6 +532,29 @@ final class DefinitionChecker {
                     literal(variables.get(variable), interaction.get("value"), path + ".value");
                 }
             }
+        }
+    }
+
+    /**
+     * ADR-163 D3 : l'axe d'une piste convient à son canal — {@code x}, {@code y} ou {@code z} pour {@code rotation} et
+     * {@code translation}, {@code r}, {@code g} ou {@code b} pour {@code color}, aucun pour {@code visibility} et
+     * {@code emissive}.
+     */
+    private void checkTrackAxis(JsonObject track, String path) {
+        String channel = string(track, "channel");
+        String axis = string(track, "axis");
+        if (channel == null) {
+            return;
+        }
+        boolean spatial = "rotation".equals(channel) || "translation".equals(channel);
+        boolean ok = switch (channel) {
+            case "rotation", "translation" -> axis != null && "xyz".contains(axis);
+            case "color" -> axis != null && "rgb".contains(axis);
+            default -> axis == null;
+        };
+        if (!ok) {
+            invalid(path + ".axis", "le canal « " + channel + " » prend "
+                    + (spatial ? "l'axe x, y ou z" : "color".equals(channel) ? "la composante r, g ou b" : "aucun axe"));
         }
     }
 

@@ -42,8 +42,17 @@ import java.util.function.Consumer;
  * <p>Une piste de toute autre source, ou mal formée, est ignorée, et dite une seule fois au journal : les autres
  * familles viennent avec leur producteur.
  *
- * <p>La valeur d'une piste est sa source, passée par {@code map} (courbe par morceaux, tenue à ses bouts),
- * multipliée par {@code scale}, puis bornée par {@code clamp}, le tout en double. Plusieurs pistes sur un node
+ * <p>La valeur d'une piste est sa source, ramenée dans {@code [0, period)} si la piste a une période, passée par
+ * {@code map} (courbe par morceaux, tenue à ses bouts), multipliée par {@code scale}, puis bornée par {@code clamp},
+ * le tout en double (ADR-163 D3). Une piste à {@code gate} ne vaut que tant que cette source dépasse 0,5 ; fermée,
+ * elle vaut 0 — pose au repos, nœud caché ou éteint. Une piste à {@code smoothing} suit sa valeur par un lissage
+ * exponentiel de cette constante de temps, en secondes de l'horloge du serveur, porte comprise : une lampe qui s'éteint
+ * s'estompe.
+ *
+ * <p>Les canaux : {@code rotation} et {@code translation} (axe {@code x}, {@code y} ou {@code z}) font le delta d'un
+ * nœud ; {@code visibility}, {@code emissive} et {@code color} (axe {@code r}, {@code g} ou {@code b}) son apparence
+ * ({@link Pose#looks}). Un nœud n'est dessiné que si chacune de ses pistes de visibilité dépasse 0,5 ; ses pistes
+ * d'émission et de couleur se multiplient, à partir de 1, et ne descendent pas sous 0. Plusieurs pistes sur un node
  * s'ajoutent en translation et se composent en rotation dans l'ordre de leur déclaration : la suivante tourne dans
  * le repère de la précédente, le braquage se déclare donc avant la rotation de la roue. Un angle est ramené dans
  * {@code [-π, π]} avant d'être composé : une rotation menée par {@code time.seconds} reste exacte après des jours.
@@ -55,6 +64,22 @@ public final class ProceduralTracks {
 
     /** Flottants d'un delta : translation x, y, z, puis rotation x, y, z, w. */
     public static final int DELTA_FLOATS = 7;
+
+    /** Flottants de l'apparence d'un nœud (ADR-163 D3) : visibilité (0 ou 1), émission, teinte r, g, b. */
+    public static final int LOOK_FLOATS = 5;
+
+    /** Le canal d'une piste. */
+    private enum Channel {
+        ROTATION, TRANSLATION, VISIBILITY, EMISSIVE, COLOR
+    }
+
+    /**
+     * Ce qu'une piste lit, ou ce qui l'ouvre.
+     *
+     * @param source la grandeur lue
+     * @param index rang de la roue, du siège ou de la variable, 0 pour une autre source
+     */
+    private record Reading(Source source, int index) {}
 
     /** Ce qu'une source lit. Celles d'une roue ou d'un siège portent un rang. */
     private enum Source {
@@ -72,26 +97,52 @@ public final class ProceduralTracks {
      * Une piste valide.
      *
      * @param slot rang de son node dans {@link #nodes}
-     * @param rotation canal rotation, sinon translation
-     * @param axis axe, de 0 à 2
-     * @param index rang de la roue, du siège ou de la variable source, 0 pour une autre source
-     * @param source grandeur lue
+     * @param channel son canal
+     * @param axis axe, de 0 à 2 : x, y, z, ou r, g, b pour {@code color} ; 0 pour {@code visibility} et
+     *     {@code emissive}
+     * @param reading ce qu'elle lit
      * @param scale multiplicateur
      * @param mapX abscisses de la courbe, strictement croissantes, ou {@code null}
      * @param mapY ordonnées de la courbe, ou {@code null}
      * @param low borne basse
      * @param high borne haute
+     * @param period période de la source, 0 sans
+     * @param smoothing constante de temps du lissage, en secondes, 0 sans
+     * @param gate ce qui l'ouvre, {@code null} sans
      */
-    private record Track(int slot, boolean rotation, int axis, int index, Source source, double scale, double[] mapX,
-            double[] mapY, double low, double high) {}
+    private record Track(int slot, Channel channel, int axis, Reading reading, double scale, double[] mapX,
+            double[] mapY, double low, double high, double period, double smoothing, Reading gate) {}
 
     /**
-     * Les deltas d'une image, à pousser au natif.
+     * Les deltas et l'apparence d'une image, à pousser au natif.
      *
      * @param nodes les nodes, rangs dans l'asset
      * @param deltas {@link #DELTA_FLOATS} flottants par node
+     * @param looks {@link #LOOK_FLOATS} flottants par node, ou {@code null} si aucune piste ne pilote l'apparence : un
+     *     nœud que rien ne pilote ne coûte rien de plus
      */
-    public record Pose(int[] nodes, float[] deltas) {}
+    public record Pose(int[] nodes, float[] deltas, float[] looks) {
+
+        /**
+         * Des deltas sans apparence.
+         *
+         * @param nodes les nodes
+         * @param deltas leurs deltas
+         */
+        public Pose(int[] nodes, float[] deltas) {
+            this(nodes, deltas, null);
+        }
+    }
+
+    /**
+     * Ce qu'une assembly garde d'une image à l'autre pour ses pistes lissées (ADR-163 D3) : la valeur de chacune et
+     * l'instant de la dernière image. Une par assembly, sur le thread de rendu.
+     */
+    public static final class State {
+
+        private double[] values = new double[0];
+        private double lastSeconds = Double.NaN;
+    }
 
     /**
      * Ce qu'une image donne à lire aux pistes (ADR-163 D1).
@@ -173,11 +224,19 @@ public final class ProceduralTracks {
     private final int[] nodes;
     /** Le défaut de chaque variable de la definition, que {@code var.<n>} lit tant qu'elle n'est pas reçue. */
     private final double[] defaults;
+    /** Vrai si une piste pilote l'apparence d'un nœud. */
+    private final boolean looked;
 
     private ProceduralTracks(Track[] tracks, int[] nodes, double[] defaults) {
         this.tracks = tracks;
         this.nodes = nodes;
         this.defaults = defaults;
+        boolean any = false;
+        for (Track track : tracks) {
+            any |= track.channel() == Channel.VISIBILITY || track.channel() == Channel.EMISSIVE
+                    || track.channel() == Channel.COLOR;
+        }
+        this.looked = any;
     }
 
     /**
@@ -233,21 +292,34 @@ public final class ProceduralTracks {
             Set<String> notes) {
         String source = text(entry, "source");
         String name = text(entry, "node") != null ? text(entry, "node") : text(entry, "bone");
-        Source kind = kind(source);
-        Integer index = kind == null ? null : index(kind, source, wheels, seats, variables);
-        if (kind == null || index == null) {
+        Reading reading = reading(source, wheels, seats, variables);
+        if (reading == null) {
             notes.add("piste procédurale ignorée : source « " + source + " » non prise en charge");
             return;
+        }
+        Reading gate = null;
+        if (entry.has("gate")) {
+            gate = reading(text(entry, "gate"), wheels, seats, variables);
+            if (gate == null) {
+                notes.add("piste procédurale ignorée : gate « " + text(entry, "gate") + " » non prise en charge");
+                return;
+            }
         }
         int node = name == null ? -1 : names.indexOf(name);
         if (node < 0) {
             notes.add("piste procédurale ignorée : node « " + name + " » absent de l'asset");
             return;
         }
-        String channel = text(entry, "channel");
-        int axis = axis(text(entry, "axis"));
-        if (!("rotation".equals(channel) || "translation".equals(channel)) || axis < 0) {
+        Channel channel = channel(text(entry, "channel"));
+        int axis = axis(channel, text(entry, "axis"));
+        if (channel == null || axis < 0) {
             notes.add("piste procédurale de « " + name + " » ignorée : canal ou axe inconnu");
+            return;
+        }
+        double period = entry.has("period") ? entry.get("period").getAsDouble() : 0.0;
+        double smoothing = entry.has("smoothing") ? entry.get("smoothing").getAsDouble() : 0.0;
+        if (!(period >= 0.0) || !(smoothing >= 0.0) || Double.isInfinite(period) || Double.isInfinite(smoothing)) {
+            notes.add("piste procédurale de « " + name + " » ignorée : période ou lissage hors de [0, +∞)");
             return;
         }
         double[][] map = map(entry.get("map"));
@@ -256,10 +328,44 @@ public final class ProceduralTracks {
             return;
         }
         double[] clamp = clamp(entry.get("clamp"));
-        tracks.add(new Track(slots.computeIfAbsent(node, key -> slots.size()), "rotation".equals(channel), axis,
-                index, kind, entry.has("scale") ? entry.get("scale").getAsDouble() : 1.0,
+        tracks.add(new Track(slots.computeIfAbsent(node, key -> slots.size()), channel, axis, reading,
+                entry.has("scale") ? entry.get("scale").getAsDouble() : 1.0,
                 map == null ? null : map[0], map == null ? null : map[1],
-                clamp[0], clamp[1]));
+                clamp[0], clamp[1], period, smoothing, gate));
+    }
+
+    /** {@return ce que lit une source, ou {@code null} si ce jeu ne la prend pas en charge ou que son élément manque} */
+    private static Reading reading(String source, Map<String, Integer> wheels, Map<String, Integer> seats,
+            Variables variables) {
+        Source kind = kind(source);
+        Integer index = kind == null ? null : index(kind, source, wheels, seats, variables);
+        return kind == null || index == null ? null : new Reading(kind, index);
+    }
+
+    private static Channel channel(String channel) {
+        if (channel == null) {
+            return null;
+        }
+        return switch (channel) {
+            case "rotation" -> Channel.ROTATION;
+            case "translation" -> Channel.TRANSLATION;
+            case "visibility" -> Channel.VISIBILITY;
+            case "emissive" -> Channel.EMISSIVE;
+            case "color" -> Channel.COLOR;
+            default -> null;
+        };
+    }
+
+    /** {@return le rang de l'axe d'un canal, {@code -1} s'il ne lui convient pas} */
+    private static int axis(Channel channel, String axis) {
+        if (channel == null) {
+            return -1;
+        }
+        return switch (channel) {
+            case ROTATION, TRANSLATION -> axis == null ? -1 : "xyz".indexOf(axis.length() == 1 ? axis : "?");
+            case COLOR -> axis == null ? -1 : "rgb".indexOf(axis.length() == 1 ? axis : "?");
+            case VISIBILITY, EMISSIVE -> axis == null ? 0 : -1;
+        };
     }
 
     private static String text(JsonObject object, String key) {
@@ -335,10 +441,6 @@ public final class ProceduralTracks {
         return source.substring(source.indexOf('.') + 1, source.lastIndexOf('.'));
     }
 
-    private static int axis(String axis) {
-        return axis == null ? -1 : "xyz".indexOf(axis.length() == 1 ? axis : "?");
-    }
-
     /** La courbe {@code [[x, y]...]} en deux colonnes, ou {@code null} si elle n'est pas croissante en x. */
     private static double[][] map(JsonElement element) {
         if (!(element instanceof JsonArray points) || points.isEmpty()) {
@@ -372,12 +474,24 @@ public final class ProceduralTracks {
     }
 
     /**
-     * Évalue les pistes à une image. Une piste dont la roue ou le siège n'a pas d'état laisse son node au repos.
+     * Évalue les pistes à une image, sans lissage. Une piste dont la roue ou le siège n'a pas d'état laisse son node au
+     * repos.
      *
      * @param frame ce que l'image donne à lire
      * @return les deltas, ou {@code null} sans piste
      */
     public Pose evaluate(Frame frame) {
+        return evaluate(frame, null);
+    }
+
+    /**
+     * Évalue les pistes à une image. Une piste dont la roue ou le siège n'a pas d'état laisse son node au repos.
+     *
+     * @param frame ce que l'image donne à lire
+     * @param state ce que l'assembly garde pour ses pistes lissées, {@code null} pour ne pas lisser
+     * @return les deltas et l'apparence, ou {@code null} sans piste
+     */
+    public Pose evaluate(Frame frame, State state) {
         if (tracks.length == 0) {
             return null;
         }
@@ -385,24 +499,63 @@ public final class ProceduralTracks {
         for (int slot = 0; slot < nodes.length; slot++) {
             deltas[slot * DELTA_FLOATS + 6] = 1f;
         }
-        for (Track track : tracks) {
-            Double raw = raw(track, frame);
+        float[] looks = looked ? new float[nodes.length * LOOK_FLOATS] : null;
+        if (looks != null) {
+            java.util.Arrays.fill(looks, 1f);
+        }
+        double elapsed = 0.0;
+        if (state != null) {
+            if (state.values.length != tracks.length) {
+                state.values = new double[tracks.length];
+                java.util.Arrays.fill(state.values, Double.NaN);
+            }
+            elapsed = Double.isNaN(state.lastSeconds) ? 0.0 : Math.max(0.0, frame.seconds() - state.lastSeconds);
+            state.lastSeconds = frame.seconds();
+        }
+        for (int rank = 0; rank < tracks.length; rank++) {
+            Track track = tracks[rank];
+            Double raw = raw(track.reading(), frame);
             if (raw == null) {
                 continue;
             }
             double value = value(track, raw);
-            int at = track.slot() * DELTA_FLOATS;
-            if (track.rotation()) {
-                compose(deltas, at + 3, track.axis(), Math.IEEEremainder(value, 2.0 * Math.PI));
-            } else {
-                deltas[at + track.axis()] += (float) value;
+            if (track.gate() != null) {
+                Double gate = raw(track.gate(), frame);
+                if (gate == null || !(gate > 0.5)) {
+                    value = 0.0;
+                }
             }
+            if (state != null && track.smoothing() > 0.0) {
+                double previous = state.values[rank];
+                value = Double.isNaN(previous)
+                        ? value
+                        : previous + (value - previous) * (1.0 - Math.exp(-elapsed / track.smoothing()));
+                state.values[rank] = value;
+            }
+            apply(track, value, deltas, looks);
         }
-        return new Pose(nodes.clone(), deltas);
+        return new Pose(nodes.clone(), deltas, looks);
     }
 
-    /** {@return la valeur brute de la source d'une piste à cette image, {@code null} si sa roue ou son siège manque} */
-    private Double raw(Track track, Frame frame) {
+    private static void apply(Track track, double value, float[] deltas, float[] looks) {
+        int at = track.slot() * DELTA_FLOATS;
+        int look = track.slot() * LOOK_FLOATS;
+        switch (track.channel()) {
+            case ROTATION -> compose(deltas, at + 3, track.axis(), Math.IEEEremainder(value, 2.0 * Math.PI));
+            case TRANSLATION -> deltas[at + track.axis()] += (float) value;
+            case VISIBILITY -> {
+                if (!(value > 0.5)) {
+                    looks[look] = 0f;
+                }
+            }
+            case EMISSIVE -> looks[look + 1] *= (float) Math.max(0.0, value);
+            case COLOR -> looks[look + 2 + track.axis()] *= (float) Math.max(0.0, value);
+            default -> throw new IllegalStateException();
+        }
+    }
+
+    /** {@return la valeur d'une source à cette image, {@code null} si sa roue ou son siège manque} */
+    private Double raw(Reading track, Frame frame) {
         Interpolation.VehiclePose vehicle = frame.vehicle();
         return switch (track.source()) {
             case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND -> wheel(track, frame);
@@ -428,7 +581,7 @@ public final class ProceduralTracks {
         };
     }
 
-    private static Double wheel(Track track, Frame frame) {
+    private static Double wheel(Reading track, Frame frame) {
         if (track.index() >= frame.wheels().size()) {
             return null;
         }
@@ -446,7 +599,8 @@ public final class ProceduralTracks {
     }
 
     private static double value(Track track, double raw) {
-        double mapped = track.mapX() == null ? raw : interpolate(track.mapX(), track.mapY(), raw);
+        double source = track.period() > 0.0 ? raw - track.period() * Math.floor(raw / track.period()) : raw;
+        double mapped = track.mapX() == null ? source : interpolate(track.mapX(), track.mapY(), source);
         return Math.max(track.low(), Math.min(track.high(), mapped * track.scale()));
     }
 

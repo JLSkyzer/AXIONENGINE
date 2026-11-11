@@ -170,6 +170,17 @@ public final class BancDeRendu {
     /** ADR-158 : la caisse à deux sièges. */
     private static final String SIEGE = "axion:test/siege";
 
+    /** ADR-163 D3 : le panneau dont trois variables pilotent l'apparence — émission, rouge, visibilité. */
+    private static final String APPARENCE = "axion:test/materiaux/apparence";
+
+    /** ADR-163 D3 : le rang de chaque variable du panneau piloté. */
+    private static final int ECLAIRAGE = 0;
+    private static final int ROUGE = 1;
+    private static final int VISIBLE = 2;
+
+    /** ADR-163 D3 : l'écart de luminance qu'une grille éteinte doit perdre au moins, sur 255. */
+    private static final double MARGE_ECLAIRAGE = 10.0;
+
     /** T-365 : le véhicule d'essai, à quatre roues. */
     private static final String VEHICULE_ESSAI = "axion:test/vehicule";
 
@@ -313,9 +324,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-908", "ADR-155, overlays", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-908", "ADR-155, overlays", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "ADR-163 D3", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "R-742", "ADR-155, overlays", "T-493", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "R-742", "ADR-155, overlays", "T-493", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "ADR-163 D3", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -392,6 +403,13 @@ public final class BancDeRendu {
      */
     private static AxionEntity vehiculeEssai;
     private static boolean conducteurAssis;
+
+    /** ADR-163 D3 : le panneau piloté, et ses captures allumé, éteint, teinté, caché. */
+    private static AxionEntity panneauPilote;
+    private static CapturesDuBanc.Capture apparenceAllume;
+    private static CapturesDuBanc.Capture apparenceEteint;
+    private static CapturesDuBanc.Capture apparenceTeint;
+    private static CapturesDuBanc.Capture apparenceCache;
     private static double[] angleRoues = new double[0];
     private static double[] angleVu;
     private static Vec3 poseVue;
@@ -906,6 +924,35 @@ public final class BancDeRendu {
             panneauPlat.discard();
         });
         jusqua("les panneaux retirés", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+
+        // ADR-163 D3 : un panneau face à la caméra, dont trois variables pilotent l'apparence par ses pistes —
+        // l'émission de sa grille, le rouge de son panneau, la visibilité de sa grille. Le serveur les pose ; le
+        // client les reçoit, ses pistes les lisent, et le backend dessine la grille éteinte, le panneau sans rouge,
+        // puis la grille cachée.
+        if (!SHADERS) {
+            serveur("poser le panneau piloté", s -> panneauPilote = AssembliesDeTest.poser(
+                    s.overworld(), APPARENCE, positionPanneau(Z_PLAT), VERS_L_EST));
+            jusqua("le panneau piloté rendu", 120, mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 2
+                    && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 2);
+            stabiliser("le panneau allumé");
+            une("capturer le panneau allumé", mc -> apparenceAllume = capturer(mc, "adr163_allume.png"));
+            serveur("éteindre la grille", s -> panneauPilote.variables().set(ECLAIRAGE, 0, "banc"));
+            jusqua("la grille éteinte chez le client", 60, mc -> recue(mc, ECLAIRAGE, 0f));
+            stabiliser("le panneau éteint");
+            une("capturer le panneau éteint", mc -> apparenceEteint = capturer(mc, "adr163_eteint.png"));
+            serveur("ôter le rouge", s -> panneauPilote.variables().set(ROUGE, 0, "banc"));
+            jusqua("le rouge ôté chez le client", 60, mc -> recue(mc, ROUGE, 0f));
+            stabiliser("le panneau sans rouge");
+            une("capturer le panneau sans rouge", mc -> apparenceTeint = capturer(mc, "adr163_teint.png"));
+            serveur("cacher la grille", s -> panneauPilote.variables().set(VISIBLE, 0, "banc"));
+            jusqua("la grille cachée chez le client", 60, mc -> recue(mc, VISIBLE, 0f));
+            stabiliser("le panneau sans grille");
+            une("capturer le panneau sans grille", mc -> apparenceCache = capturer(mc, "adr163_cache.png"));
+            une("juger ADR-163 D3", mc -> jugerApparence());
+            serveur("retirer le panneau piloté", s -> panneauPilote.discard());
+            jusqua("le panneau piloté retiré", 120,
+                    mc -> AxionRenderPass.lastFrame().assemblies() == DERRIERE.size() + 1);
+        }
 
         // ADR-155, tranche 4 : la glissière, tournée pour que son coulisseau glisse en travers de l'image. Le
         // serveur joue le clip par AnimationControl ; le descripteur v3 en porte l'état au client, qui le pousse
@@ -2176,6 +2223,54 @@ public final class BancDeRendu {
                         + " retenue, la seconde écartée",
                 devant == null ? "non candidate" : devant < 0 ? "écartée" : "retenue au niveau " + devant,
                 derriere == null ? "non candidate" : derriere < 0 ? "écartée" : "retenue au niveau " + derriere));
+    }
+
+    /** {@return vrai si le client a reçu cette valeur de la variable du panneau piloté (ADR-163 D3)} */
+    private static boolean recue(Minecraft mc, int variable, float valeur) {
+        return mc.level.getEntity(panneauPilote.getId()) instanceof AxionEntity auClient
+                && auClient.renderPose(mc.getFrameTime()).variables().has(variable)
+                && auClient.renderPose(mc.getFrameTime()).variables().value(variable) == valeur;
+    }
+
+    /** {@return la moyenne de chaque composante, rouge, vert, bleu, sur les pixels du masque} */
+    private static double[] couleurMoyenne(CapturesDuBanc.Capture capture, CapturesDuBanc.Masque masque) {
+        double[] somme = new double[3];
+        for (int i = 0; i < masque.change().length; i++) {
+            if (masque.change()[i]) {
+                int abgr = capture.pixels()[i];
+                somme[0] += abgr & 0xFF;
+                somme[1] += (abgr >>> 8) & 0xFF;
+                somme[2] += (abgr >>> 16) & 0xFF;
+            }
+        }
+        int nombre = Math.max(1, masque.nombre());
+        return new double[] {somme[0] / nombre, somme[1] / nombre, somme[2] / nombre};
+    }
+
+    /**
+     * ADR-163 D3 : éteinte, la grille perd de sa luminance ; sans rouge, le panneau perd sa composante rouge et garde
+     * les autres ; cachée, la grille disparaît de l'image. Chaque fois, l'image ne change que là où le canal agit.
+     */
+    private static void jugerApparence() {
+        CapturesDuBanc.Masque eteinte = CapturesDuBanc.masque(apparenceAllume, apparenceEteint);
+        double allumee = CapturesDuBanc.luminance(apparenceAllume, eteinte);
+        double eteint = CapturesDuBanc.luminance(apparenceEteint, eteinte);
+        boolean emission = eteinte.nombre() > 0 && allumee - eteint >= MARGE_ECLAIRAGE;
+
+        CapturesDuBanc.Masque sansRouge = CapturesDuBanc.masque(apparenceEteint, apparenceTeint);
+        double[] avant = couleurMoyenne(apparenceEteint, sansRouge);
+        double[] apres = couleurMoyenne(apparenceTeint, sansRouge);
+        boolean teinte = sansRouge.nombre() > 0 && apres[0] < avant[0] * 0.5
+                && Math.abs(apres[1] - avant[1]) <= 3.0 && Math.abs(apres[2] - avant[2]) <= 3.0;
+
+        CapturesDuBanc.Masque cachee = CapturesDuBanc.masque(apparenceTeint, apparenceCache);
+        boolean visibilite = cachee.nombre() > 0;
+
+        RAPPORT.noter("ADR-163 D3", emission && teinte && visibilite, String.format(Locale.ROOT,
+                "grille éteinte : %d pixels, luminance %.1f → %.1f ; panneau sans rouge : %d pixels, rouge %.1f → %.1f,"
+                        + " vert %.1f → %.1f, bleu %.1f → %.1f ; grille cachée : %d pixels changés",
+                eteinte.nombre(), allumee, eteint, sansRouge.nombre(), avant[0], apres[0], avant[1], apres[1], avant[2],
+                apres[2], cachee.nombre()));
     }
 
     /**

@@ -11,6 +11,7 @@ import dev.axion.render.GpuPassTimings;
 import dev.axion.render.InstanceLayout;
 import dev.axion.render.InstanceRuns;
 import dev.axion.render.MeshLook;
+import dev.axion.render.NodeLooks;
 import dev.axion.render.RenderAsset;
 import dev.axion.render.RenderPrepCodec;
 import dev.axion.render.ShaderVariant;
@@ -250,10 +251,14 @@ final class NativeGlBackend implements RenderBackend {
                 drawSurfaces(parts, SurfacePass.OPAQUE, ShaderVariant.BASE, environment);
                 drawSurfaces(parts, SurfacePass.CUTOUT, CUTOUT, environment);
 
-                // Passe 5 : l'émission s'ajoute à la surface, sans écrire la profondeur.
+                // Passe 5 : l'émission s'ajoute à la surface, sans écrire la profondeur. ADR-163 D3 : une assembly
+                // dont les pistes pilotent l'apparence y porte sa teinte multipliée par son émission.
                 RenderSystem.enableBlend();
                 RenderSystem.blendFunc(GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE);
                 RenderSystem.depthMask(false);
+                if (parts.stream().anyMatch(part -> part.looks() != null)) {
+                    uploadInstances(parts, true);
+                }
                 drawEmission(parts, environment);
             } finally {
                 finish(activeTexture);
@@ -462,12 +467,14 @@ final class NativeGlBackend implements RenderBackend {
             BodyParts bodies = null;
             AssemblyPlacement root = null;
             NativeMeshes.GpuAsset gpu = null;
-            for (GeometryTransfer.Draw draw : assembly.draws()) {
+            for (int rank = 0; rank < assembly.draws().size(); rank++) {
+                GeometryTransfer.Draw draw = assembly.draws().get(rank);
                 MeshLook look = asset.look(draw.mesh());
                 boolean surface = look.pass() == SurfacePass.TRANSLUCENT;
                 boolean wanted = translucent ? surface : !surface || asset.emits(draw.mesh());
                 GeometryTransfer.Mesh mesh = asset.mesh().meshes().get(draw.mesh());
-                if (!wanted || !look.visible() || mesh.indexCount() == 0) {
+                // ADR-163 D3 : un dessin que ses pistes cachent n'est émis dans aucune passe.
+                if (!wanted || !look.visible() || mesh.indexCount() == 0 || NodeLooks.hidden(assembly.looks(), rank)) {
                     continue;
                 }
                 if (bodies == null) {
@@ -486,7 +493,7 @@ final class NativeGlBackend implements RenderBackend {
                         at.x() - camera.x, at.y() - camera.y, at.z() - camera.z,
                         q.x(), q.y(), q.z(), q.w(), skinned ? SKINNED_REST : bodies.model(draw));
                 parts.add(new Part(asset, gpu, mesh, draw.mesh(), look, rows, at.light(),
-                        skinned ? assembly.palette() : RenderPrepCodec.NO_PALETTE));
+                        skinned ? assembly.palette() : RenderPrepCodec.NO_PALETTE, assembly.looks(), rank));
             }
         }
         return parts;
@@ -502,19 +509,28 @@ final class NativeGlBackend implements RenderBackend {
         return x * x + y * y + z * z;
     }
 
-    /** Ouvre une passe : blocs d'instance téléversés, lightmap liée, unité de l'albedo active. */
-    private void begin(List<Part> parts, Environment environment) {
+    /**
+     * Téléverse le bloc de chaque instance (ADR-163 D3) : sa teinte est la couleur de son dessin, multipliée par son
+     * émission pour la passe d'émission ; blanche sans apparence.
+     */
+    private void uploadInstances(List<Part> parts, boolean emission) {
         int bytes = parts.size() * InstanceLayout.BYTES;
         if (instances.capacity() < bytes) {
             instances = ByteBuffer.allocateDirect(Math.max(bytes, instances.capacity() * 2)).order(ByteOrder.LITTLE_ENDIAN);
         }
         instances.clear();
         for (Part part : parts) {
-            InstanceLayout.write(instances, part.rows(), NO_TINT, part.light(),
+            InstanceLayout.write(instances, part.rows(),
+                    part.looks() == null ? NO_TINT : NodeLooks.tint(part.looks(), part.draw(), emission), part.light(),
                     part.skinned() ? palettes.offset(part.palette()) : 0, 0);
         }
         instances.flip();
         meshes.uploadInstances(instances);
+    }
+
+    /** Ouvre une passe : blocs d'instance téléversés, lightmap liée, unité de l'albedo active. */
+    private void begin(List<Part> parts, Environment environment) {
+        uploadInstances(parts, false);
 
         RenderSystem.activeTexture(GL13.GL_TEXTURE0 + NativeShaders.LIGHTMAP_UNIT);
         RenderSystem.bindTexture(environment.lightmap());
@@ -788,6 +804,8 @@ final class NativeGlBackend implements RenderBackend {
      * @param light lumière empaquetée au centre de son assembly
      * @param palette la première matrice de sa palette d'os, ou {@link RenderPrepCodec#NO_PALETTE} : il ne se
      *     skinne pas (C-66)
+     * @param looks l'apparence des dessins de son assembly (ADR-163 D3), ou {@code null}
+     * @param draw le rang de son dessin dans son assembly
      */
     private record Part(
             RenderAsset asset,
@@ -797,7 +815,9 @@ final class NativeGlBackend implements RenderBackend {
             MeshLook look,
             float[] rows,
             int light,
-            int palette) {
+            int palette,
+            float[] looks,
+            int draw) {
 
         /** {@return vrai si le mesh se skinne : il l'est, et son assembly porte une palette} */
         boolean skinned() {

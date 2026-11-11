@@ -5,6 +5,8 @@
 
 in vec3 v_position;
 in vec2 v_uv;
+// La teinte de l'instance (ADR-163 D3) : la couleur du dessin multipliée par son émission ; blanche sans pistes.
+in vec4 v_color;
 
 uniform sampler2D u_emission;
 uniform vec3 u_emissive_factor;
@@ -30,7 +32,7 @@ float fogDistance(vec3 position) {
 }
 
 void main() {
-    vec3 emission = toLinear(texture(u_emission, v_uv).rgb) * u_emissive_factor;
+    vec3 emission = toLinear(texture(u_emission, v_uv).rgb) * u_emissive_factor * v_color.rgb;
     float distance = fogDistance(v_position);
     float fade = distance <= u_fog_start ? 1.0
             : (distance < u_fog_end ? 1.0 - smoothstep(u_fog_start, u_fog_end, distance) : 0.0);

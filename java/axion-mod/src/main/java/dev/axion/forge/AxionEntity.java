@@ -113,6 +113,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** L'angle de chaque roue, intégré au rendu (client, ADR-159 D9). */
     private final ProceduralTracks.Spin wheelVisualSpin = new ProceduralTracks.Spin();
 
+    /** Ce que ses pistes lissées gardent d'une image à l'autre (client, ADR-163 D3). */
+    private final ProceduralTracks.State trackState = new ProceduralTracks.State();
+
     /**
      * Le motopropulseur au dernier rapport du natif (serveur, ADR-163 D1) : régime, charge, rapport, drapeaux et
      * position de la direction ; {@code null} tant que le natif n'en a rapporté aucun, l'assembly n'étant alors pas
@@ -1284,6 +1287,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return wheelCompression.length == 0
                 ? AssemblyState.Wheels.NONE
                 : AssemblyState.Wheels.of(wheelCompression, wheelSpin, wheelSteer, wheelGround);
+    }
+
+    /** {@return l'état des pistes lissées de l'assembly (client, thread de rendu, ADR-163 D3)} */
+    public ProceduralTracks.State trackState() {
+        return trackState;
     }
 
     /** {@return l'angle accumulé de chaque roue pour le rendu (client, thread de rendu, ADR-159 D9)} */

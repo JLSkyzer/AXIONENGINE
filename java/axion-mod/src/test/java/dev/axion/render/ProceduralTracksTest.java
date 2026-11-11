@@ -233,4 +233,92 @@ class ProceduralTracksTest {
                 Interpolation.VehiclePose.NONE, recues.only(0b10L), new boolean[0], 0.0, 0f, 0f, 0f);
         assertEquals(1f, pistes.evaluate(filtre).deltas()[0], 1e-6f, "retirée pour ce joueur : son défaut");
     }
+
+    /** Une definition à variables et pistes données, sur les nodes de {@link #NOMS}. */
+    private static ProceduralTracks apparence(String pistes, List<String> journal) {
+        JsonObject racine = JsonParser.parseString("{\"variables\":{\"gyrophare\":{\"type\":\"bool\"}},"
+                + "\"procedural\":[" + pistes + "]}").getAsJsonObject();
+        return ProceduralTracks.of(racine, NOMS, journal::add);
+    }
+
+    private static ProceduralTracks.Frame instant(double secondes, float gyrophare) {
+        return new ProceduralTracks.Frame(List.of(), new double[0], Interpolation.VehiclePose.NONE,
+                new AssemblyState.VariableValues(1, 1L, new float[] {gyrophare}), new boolean[0], secondes, 0f, 0f, 0f);
+    }
+
+    @Test
+    @DisplayName("ADR-163 D3 : le gyrophare de l'ADR — emissive en créneau sur time.seconds, gate var.gyrophare")
+    void gyrophare() {
+        List<String> journal = new ArrayList<>();
+        ProceduralTracks pistes = apparence("{\"node\":\"roue_g\",\"channel\":\"emissive\","
+                + "\"source\":\"time.seconds\",\"period\":0.5,\"map\":[[0,1],[0.25,1],[0.2501,0],[0.5,0]],"
+                + "\"gate\":\"var.gyrophare\"}", journal);
+        assertTrue(journal.isEmpty(), journal.toString());
+        assertEquals(1f, pistes.evaluate(instant(100.1, 1f)).looks()[1], 1e-6f, "allumé, première moitié");
+        assertEquals(0f, pistes.evaluate(instant(100.4, 1f)).looks()[1], 1e-6f, "allumé, seconde moitié");
+        assertEquals(1f, pistes.evaluate(instant(1e6 + 0.1, 1f)).looks()[1], 1e-6f, "la période tient après des jours");
+        assertEquals(0f, pistes.evaluate(instant(100.1, 0f)).looks()[1], 1e-6f, "porte fermée : éteint");
+        ProceduralTracks.Pose pose = pistes.evaluate(instant(100.1, 1f));
+        assertArrayEquals(new float[] {0f, 0f, 0f, 0f, 0f, 0f, 1f}, pose.deltas(), 1e-6f, "aucun delta");
+        assertEquals(1f, pose.looks()[0], "toujours visible");
+    }
+
+    @Test
+    @DisplayName("ADR-163 D3 : visibility exige chacune de ses pistes ; emissive et color se multiplient")
+    void canauxDApparence() {
+        ProceduralTracks pistes = apparence(
+                "{\"node\":\"roue_g\",\"channel\":\"visibility\",\"source\":\"var.gyrophare\"},"
+                + "{\"node\":\"roue_g\",\"channel\":\"visibility\",\"source\":\"time.seconds\",\"map\":[[0,1],[10,1]]},"
+                + "{\"node\":\"roue_g\",\"channel\":\"emissive\",\"source\":\"time.seconds\",\"scale\":0.5},"
+                + "{\"node\":\"roue_g\",\"channel\":\"emissive\",\"source\":\"time.seconds\",\"scale\":0.5},"
+                + "{\"node\":\"roue_g\",\"channel\":\"color\",\"axis\":\"g\",\"source\":\"var.gyrophare\",\"scale\":-1},"
+                + "{\"node\":\"caisse\",\"channel\":\"rotation\",\"axis\":\"y\",\"source\":\"time.seconds\"}",
+                new ArrayList<>());
+        float[] looks = pistes.evaluate(instant(3.0, 1f)).looks();
+        assertEquals(2 * ProceduralTracks.LOOK_FLOATS, looks.length, "deux nœuds pilotés");
+        assertArrayEquals(new float[] {1f, 2.25f, 1f, 0f, 1f}, java.util.Arrays.copyOfRange(looks, 0, 5), 1e-6f,
+                "visible, 1,5 × 1,5, vert négatif ramené à 0");
+        assertArrayEquals(new float[] {1f, 1f, 1f, 1f, 1f}, java.util.Arrays.copyOfRange(looks, 5, 10), 1e-6f,
+                "la caisse n'a que sa rotation : apparence au repos");
+        assertEquals(0f, pistes.evaluate(instant(3.0, 0f)).looks()[0], "une piste sous 0,5 cache le nœud");
+    }
+
+    @Test
+    @DisplayName("ADR-163 D3 : sans piste d'apparence, une pose ne porte pas d'apparence")
+    void sansApparence() {
+        ProceduralTracks pistes = apparence(
+                "{\"node\":\"caisse\",\"channel\":\"rotation\",\"axis\":\"y\",\"source\":\"time.seconds\"}",
+                new ArrayList<>());
+        assertNull(pistes.evaluate(instant(1.0, 0f)).looks());
+    }
+
+    @Test
+    @DisplayName("ADR-163 D3 : smoothing suit sa valeur par un lissage exponentiel, en secondes du serveur")
+    void lissage() {
+        ProceduralTracks pistes = apparence("{\"node\":\"roue_g\",\"channel\":\"emissive\","
+                + "\"source\":\"var.gyrophare\",\"smoothing\":0.5}", new ArrayList<>());
+        ProceduralTracks.State etat = new ProceduralTracks.State();
+        assertEquals(0f, pistes.evaluate(instant(10.0, 0f), etat).looks()[1], 1e-6f, "première image : la valeur");
+        float apres = pistes.evaluate(instant(10.5, 1f), etat).looks()[1];
+        assertEquals(1.0 - Math.exp(-1.0), apres, 1e-5, "une constante de temps plus tard : 63 %");
+        float encore = pistes.evaluate(instant(10.5, 1f), etat).looks()[1];
+        assertEquals(apres, encore, 1e-6f, "même instant : rien n'avance");
+        assertEquals(1f, pistes.evaluate(instant(10.5, 1f)).looks()[1], 1e-6f, "sans état, pas de lissage");
+    }
+
+    @Test
+    @DisplayName("ADR-163 D3 : un axe qui ne va pas au canal, un canal inconnu ou une gate sans source écartent la piste")
+    void canauxMalFormes() {
+        for (String piste : new String[] {
+            "{\"node\":\"roue_g\",\"channel\":\"color\",\"axis\":\"x\",\"source\":\"time.seconds\"}",
+            "{\"node\":\"roue_g\",\"channel\":\"rotation\",\"axis\":\"r\",\"source\":\"time.seconds\"}",
+            "{\"node\":\"roue_g\",\"channel\":\"emissive\",\"axis\":\"x\",\"source\":\"time.seconds\"}",
+            "{\"node\":\"roue_g\",\"channel\":\"opacity\",\"source\":\"time.seconds\"}",
+            "{\"node\":\"roue_g\",\"channel\":\"emissive\",\"source\":\"time.seconds\",\"gate\":\"var.absente\"}",
+            "{\"node\":\"roue_g\",\"channel\":\"emissive\",\"source\":\"time.seconds\",\"period\":-1}"}) {
+            List<String> journal = new ArrayList<>();
+            assertSame(ProceduralTracks.NONE, apparence(piste, journal), piste);
+            assertEquals(1, journal.size(), piste + " : " + journal);
+        }
+    }
 }
