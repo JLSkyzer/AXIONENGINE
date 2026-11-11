@@ -57,7 +57,7 @@ python tools/ci/local_ci.py
 - [Le cahier des charges](docs/spec/) : la source de vérité. Il ne se lit pas d'un bloc : `docs/spec/INDEX.md` donne
   la plage de lignes de chaque section, `docs/spec/ID-MAP.tsv` situe chaque identifiant.
 - [Les décisions](docs/decisions/README.md), rangées par sujet.
-- [Les guides](docs/guides/) : physique, rendu, matériaux, configuration.
+- [Les guides](docs/guides/) : physique, rendu, matériaux, configuration, réseau.
 
 ## Licence et marques
 

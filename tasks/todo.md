@@ -3691,7 +3691,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
   4. C-33 tranche 4 : sources `vehicle.*`/`engine.*`, volant et aiguilles, touches libres (CAP-01), variables
      (CAP-02), visibilité, émissif et couleur pilotés (CAP-04), cycles (CAP-05) ; film du gyrophare de la Charger.
   5. C-33 tranche 5 : réplication et paramètres d'instance (D6 ; CAP-03, CAP-39) — les upgrades.
-  6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37).
+  6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37) ; le registre envoyé au client
+     porte alors les correspondances bloc → matériau, surcharges de l'administrateur comprises (ADR-165, précision 3c).
   7. Le reste des capacités de M5 : caméra de véhicule (CAP-10), API (CAP-11), occupants (CAP-13), joueurs portés
      (CAP-14), énergie et démarrage (CAP-12), pneus et météo (CAP-20), rechargement à chaud (CAP-33), commandes
      (CAP-34), contenu qui évolue (CAP-38), addons d'un seul côté (CAP-40), validation hors jeu (CAP-42), sources
@@ -3741,8 +3742,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         - [x] 3b — `axion-server-overrides.toml` (2026-11-11) : multiplicateurs bornés et correspondances de blocs,
               appliqués au registre résolu avant ses lecteurs ; modèle écrit au premier démarrage ; journal et
               `/axion status`. `ServerOverridesTest` ; vérifié sur un vrai serveur dédié.
-        - [ ] 3c — Le CDC (21.3, R-1640, A.3, amendement A11), le guide d'administration, la grille d'ADR-160 D7 ; dans
-              `D:\BDC`, la fermeture d'une connexion de Minecraft avec des données non lues sous Windows.
+        - [x] 3c — Le CDC (2026-11-11) : 21.3, R-1640, A.3, amendement **A12** (A11 revient à ADR-164, oublié au
+              registre) ; `docs/guides/NETWORKING.md` pour l'administrateur ; grille d'ADR-160 D7 dans ADR-165 ; note
+              `D:\BDC` sur le refus d'un client pendant la connexion. Manque trouvé : les correspondances bloc → matériau
+              ne voyagent pas, inscrit à la tranche 6 de C-33. Tranche 3 close.
   - [x] Tranche 4 de C-33 (2026-11-11) : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
         variables par assembly). Trois sous-tranches, un film à chacune :
         - [x] 4a (2026-11-11) — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5,

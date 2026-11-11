@@ -5027,9 +5027,15 @@ S2C_Handshake :
   prediction_enabled bool | deformation_enabled bool
   deform_quant_policy u8  (politique de quantification, doit être identique)
   definitions_hash u64 | damage_sources_hash u64 | materials_hash u64
+  det_kernel_version u32 | in_matrix bool | det_profile u64        (ADR-150 D4)
+  content_mods u16 | content_mods × (mod_id str | version str)      (ADR-165 D2, protocole 7)
+
+C2S_Handshake (ADR-150 D4) :
+  protocol_version u16 | det_kernel_version u32 | in_matrix bool | det_profile u64
+  content_mods u16 | content_mods × version str     (dans l'ordre reçu ; vide si l'addon manque)
 ```
 
-- R-1640 : si un hash diffère, le serveur envoie les données correspondantes (definitions, matériaux, sources de dégâts) compressées avant l'entrée en jeu. Les **assets** ne transitent jamais par le réseau : ils viennent des mods installés chez le client, qui les enregistrent ; un resource pack n'en remplace que l'apparence (ADR-162 D5, amendement A8). Un asset manquant côté client produit l'asset de secours et un avertissement, jamais une déconnexion.
+- R-1640 : si un hash diffère, le serveur envoie les données correspondantes (definitions, matériaux, sources de dégâts) compressées avant l'entrée en jeu. Les **assets** ne transitent jamais par le réseau : ils viennent des mods installés chez le client, qui les enregistrent ; un resource pack n'en remplace que l'apparence (ADR-162 D5, amendement A8). Le serveur exige donc du client chaque mod propriétaire d'une entrée de son contenu, dans la même version : un addon absent, ou d'une autre version, refuse la connexion avant l'entrée en jeu, par un message qui nomme chaque addon en cause, la version attendue et celle du client (ADR-165 D1 à D3, amendement A12). Un asset manquant d'un addon présent produit l'asset de secours et un avertissement, jamais une déconnexion.
 - R-1641 : `deform_quant_policy` garantit que les deux côtés quantifient identiquement. Une divergence de politique désactive la reconstruction et bascule sur les instantanés (mode dégradé, journalisé).
 
 ## 21.4 Paquets
@@ -7802,6 +7808,8 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A8 | 2026-11-11 | ADR-162, accepté par Killian | Le contenu vient des mods, qui l'enregistrent par l'API (C-27, 23.3, R-171, R-1030, R-1640, R-1790, 28.1, conflits 19 et 21) ; aucun datapack n'est lu, hormis les registres de Minecraft lui-même ; la façade publiée ne porte que le réel (23.2) |
 | A9 | 2026-11-11 | ADR-163 D1, accepté par Killian | ANNEXE A.4 en V1.1 : les sources du monde `world.time`, `world.sky_light` et `world.rain` (CAP-43, R-2410) |
 | A10 | 2026-11-11 | ADR-163 D2, accepté par Killian | Les variables de contenu : schéma de definition 3 (`variables`, commandes liées des sièges, `set_variable` effectif, R-1783) ; 22.2 : `axion:v` 4 et `axion:vars` ; C-71 : `/axion variables` (CAP-01, CAP-02) |
+| A11 | 2026-11-11 | ADR-164, accepté par Killian | R-570 : le filtrage anisotrope des textures d'AXION suit `render.anisotropy` (16 par défaut, 1 l'éteint), et non un « réglage vanilla » que Minecraft n'offre pas ; ANNEXE A.3 : la clé. Inscrit avec A12 : l'inscription avait été oubliée à l'acceptation |
+| A12 | 2026-11-11 | ADR-165, accepté par Killian | 21.3 : protocole 7, les addons propriétaires de contenu et leurs versions dans `S2C_Handshake`, celles du client dans `C2S_Handshake` ; R-1640 : un addon absent ou d'une autre version refuse la connexion en le nommant ; ANNEXE A.3 : `axion-server-overrides.toml` (CAP-40, CAP-46, CAP-51) |
 
 ---
 
@@ -8094,6 +8102,7 @@ kick_on_input_abuse = true
 allow_experimental_authority = false   # SERVER_FULL pour les particules
 ```
 
+- `axion-server-overrides.toml` : les surcharges de l'administrateur du serveur, des multiplicateurs bornés de 0,1 à 10 et des correspondances de blocs, sans nouveau contenu (ADR-165 D4, amendement A12). Ses sections nomment du contenu — matériaux, definitions, pneus, blocs —, que le registre de configuration ne connaît pas : son format est dans ADR-165 et dans `CONFIGURATION.md`, non dans cette annexe.
 - R-2400 : cette annexe est **générée** depuis la source unique et vérifiée en CI ; une divergence entre code, documentation et annexe casse le build.
 
 ## ANNEXE A.4 — Sources procédurales (liste fermée V1.1, amendement A9)
