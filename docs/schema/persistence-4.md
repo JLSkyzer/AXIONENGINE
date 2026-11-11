@@ -1,8 +1,8 @@
-# AXION ENGINE — persistance, schéma 3
+# AXION ENGINE — persistance, schéma 4
 
-Forme publiée de ce qu'AXION écrit sur le disque (PARTIE 22) : le NBT d'une assembly au schéma 3 et le
-journal latéral de récupération (22.5.2). Décidé par [ADR-153](../decisions/ADR-153.md) ; ce document en
-donne les octets. `PublishedPersistenceSchemaTest` et `PublishedJournalFormatTest` confrontent les
+Forme publiée de ce qu'AXION écrit sur le disque (PARTIE 22) : le NBT d'une assembly au schéma 4 et le
+journal latéral de récupération (22.5.2). Décidé par [ADR-153](../decisions/ADR-153.md), les variables gardées par
+[ADR-163](../decisions/ADR-163.md) D2 ; ce document en donne les octets. `PublishedPersistenceSchemaTest` et `PublishedJournalFormatTest` confrontent les
 valeurs ci-dessous au code : un changement de format qui n'y est pas reporté fait échouer le build.
 
 AXION n'écrit rien d'autre que le NBT de ses propres entités, l'unique `SavedData` `axion_registry` et
@@ -15,7 +15,7 @@ réécrit telles quelles : une clé qu'une version ultérieure aurait posée ne 
 version-ci ne la comprend pas (R-1710). Les nombres d'un `byte[]` sont en little-endian.
 
 ```text
-axion:v       int       3
+axion:v       int       4
 axion:def     long      identifiant 64 bits de la definition
 axion:pos     [double]  3, position monde du corps racine, en blocs
 axion:rot     [float]   4, orientation du corps racine, quaternion (x, y, z, w)
@@ -25,6 +25,7 @@ axion:flags   int       bit 0 : endormie ; les autres réservés, écrits à 0, 
 axion:bodies  byte[]    68 octets par corps secondaire
 axion:joints  byte[]    8 octets par joint, dans l'ordre de la definition
 axion:custom  byte[]    table CBOR des données personnalisées, absente si elle est vide
+axion:vars    compound  valeur de chaque variable gardée, par nom, absente sans elles
 ```
 
 - **`axion:bodies`**, pour chaque corps autre que le corps racine : `node u32` (node racine du corps dans
@@ -40,6 +41,13 @@ axion:custom  byte[]    table CBOR des données personnalisées, absente si elle
 - **Chargement.** Toute assembly chargée est créée endormie (22.4), puis réveillée par la gestion
   d'activité ; ses vitesses lui sont rendues au réveil.
 
+### `axion:vars`
+
+À chaque variable de la definition déclarée `persist` (ADR-163 D2), son nom, une valeur `double`. Un booléen vaut 0
+ou 1. À la lecture, une valeur que sa variable refuse désormais — la definition a changé ses bornes ou son type —
+laisse la variable à son défaut, et se journalise ; jamais tronquée. Un nom que la definition ne déclare plus est
+gardé tel quel (R-1710). Une entrée qui n'est pas un `double` est ignorée.
+
 ### `axion:custom`
 
 Une map CBOR de longueur définie : à chaque espace de noms de mod (`[a-z0-9_.-]+`, chaîne de texte), une
@@ -54,9 +62,10 @@ illisible est gardée telle quelle, en lecture seule.
 | `axion:v` | Ce qu'en fait AXION |
 |---|---|
 | absente, ou inférieure à 2 | entité inerte, octets intacts : aucune version d'AXION ne l'a écrite |
-| 2 | migrée en 3 (T-434) : `axion:v` passe à 3, `axion:def`, `axion:rot` et toute autre clé gardées ; aucun état inventé, l'assembly repart de sa pose de repos, à vitesse nulle, endormie |
-| 3 | lue |
-| supérieure à 3 | entité inerte, octets réécrits à l'identique (T-433) |
+| 2 | migrée en 3 (T-434) : `axion:v` passe à 3, `axion:def`, `axion:rot` et toute autre clé gardées ; aucun état inventé, l'assembly repart de sa pose de repos, à vitesse nulle, endormie ; puis en 4 |
+| 3 | migrée en 4 : `axion:v` passe à 4, toute clé gardée ; ses variables repartent de leur défaut |
+| 4 | lue |
+| supérieure à 4 | entité inerte, octets réécrits à l'identique (T-433) |
 
 Le schéma 2 ne portait que `axion:v`, `axion:def` et `axion:rot`.
 

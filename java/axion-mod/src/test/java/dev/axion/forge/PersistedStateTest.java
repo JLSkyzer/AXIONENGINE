@@ -162,9 +162,40 @@ class PersistedStateTest {
     }
 
     @Test
+    @DisplayName("ADR-163 D2 : un NBT au schéma 3 se migre au 4, sans variable inventée ni clé perdue")
+    void migration3Vers4() {
+        CompoundTag v3 = new CompoundTag();
+        v3.putInt("axion:v", 3);
+        v3.putLong("axion:def", 0x1234L);
+        v3.putByteArray("axion:parts", new byte[] {4, 5});
+        CompoundTag v4 = AssemblyTags.migrate(v3);
+        assertEquals(4, AssemblyTags.version(v4).orElseThrow());
+        assertEquals(AssemblyBinding.NBT_SCHEMA, AssemblyTags.version(v4).orElseThrow());
+        assertArrayEquals(new byte[] {4, 5}, v4.getByteArray("axion:parts"), "une clé inconnue reste");
+        assertTrue(AssemblyTags.variables(v4).isEmpty(), "le schéma 3 n'avait pas de variables : rien d'inventé");
+        assertEquals(3, v3.getInt("axion:v"), "l'original n'est pas touché");
+    }
+
+    @Test
+    @DisplayName("ADR-163 D2 : axion:vars garde chaque variable par nom, et celles que la definition ne déclare plus")
+    void variablesGardees() {
+        CompoundTag stored = new CompoundTag();
+        stored.put("axion:vars", new CompoundTag());
+        stored.getCompound("axion:vars").putDouble("ancienne", 7.0);
+        stored.getCompound("axion:vars").putString("illisible", "x");
+        AssemblyTags.putVariables(stored, java.util.Map.of("gyrophare", 1.0, "phares", 2.0));
+        java.util.Map<String, Double> relues = AssemblyTags.variables(stored);
+        assertEquals(java.util.Map.of("ancienne", 7.0, "gyrophare", 1.0, "phares", 2.0), relues,
+                "une entrée qui n'est pas un double est ignorée ; une variable disparue reste (R-1710)");
+        CompoundTag vide = new CompoundTag();
+        AssemblyTags.putVariables(vide, java.util.Map.of());
+        assertTrue(!vide.contains("axion:vars"), "sans variable gardée, pas de clé");
+    }
+
+    @Test
     @DisplayName("T-433 : un schéma postérieur, ou antérieur à 2, traverse la migration intact (R-1710)")
     void autresVersionsIntactes() {
-        for (int version : new int[] {1, 4, 9}) {
+        for (int version : new int[] {1, 4, 5, 9}) {
             CompoundTag gardees = new CompoundTag();
             gardees.putInt("axion:v", version);
             gardees.putLong("axion:def", 77L);

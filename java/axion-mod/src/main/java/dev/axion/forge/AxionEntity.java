@@ -14,6 +14,7 @@ import dev.axion.seat.SeatPlacement;
 import dev.axion.seat.VehicleInput;
 import dev.axion.world.DimensionId;
 import dev.axion.entity.AssemblyAnimation;
+import dev.axion.entity.AssemblyVariables;
 import dev.axion.entity.AssemblyBinding;
 import dev.axion.entity.CustomTable;
 import dev.axion.net.AnimationLayers;
@@ -118,6 +119,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * un véhicule.
      */
     private VehicleReport vehicleReport;
+
+    /**
+     * Les variables de l'assembly (serveur, ADR-163 D2) ; {@code null} tant que sa definition n'est pas compilée.
+     * Voir {@link #variables()}.
+     */
+    private AssemblyVariables variables;
 
     /** Vitesses monde du corps racine au dernier état, en m/s et rad/s, et son sommeil (serveur). */
     private final float[] linearVelocity = new float[3];
@@ -404,12 +411,23 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (target.seat() >= 0) {
             return sit(player, target.seat()) ? InteractionResult.CONSUME : InteractionResult.PASS;
         }
-        return target.interaction() >= 0 && play(seating.interactions().get(target.interaction()))
+        return target.interaction() >= 0 && play(seating.interactions().get(target.interaction()), player)
                 ? InteractionResult.CONSUME : InteractionResult.PASS;
     }
 
-    /** {@return vrai si l'interaction a joué son clip} Un clip refusé — R-200 — se journalise. */
-    private boolean play(Seating.Interaction interaction) {
+    /**
+     * {@return vrai si l'interaction a eu son effet : son clip joué, ou sa variable posée (ADR-163 D2)} Un clip
+     * refusé — R-200 — se journalise.
+     */
+    private boolean play(Seating.Interaction interaction, Player player) {
+        if (interaction.action() == Seating.Action.SET_VARIABLE) {
+            AssemblyVariables held = interaction.variable() < 0 ? null : variables();
+            if (held == null) {
+                return false;
+            }
+            held.set(interaction.variable(), interaction.value(), "interaction (" + player.getName().getString() + ")");
+            return true;
+        }
         if (interaction.action() != Seating.Action.TOGGLE_ANIMATION
                 && interaction.action() != Seating.Action.PLAY_ANIMATION) {
             return false;
@@ -428,10 +446,32 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
     }
 
-    /** {@return vrai si ce siège déclare au moins un contrôle} */
+    /** {@return vrai si ce siège envoie des entrées : un contrôle ou une commande liée (ADR-163 D2)} */
     public boolean seatTakesInput(int seat) {
         Seating seating = seating();
-        return seating != null && seat >= 0 && seat < seating.seats().size() && seating.seats().get(seat).controls() != 0;
+        return seating != null && seat >= 0 && seat < seating.seats().size() && seating.seats().get(seat).takesInput();
+    }
+
+    /**
+     * {@return les variables de l'assembly (serveur, ADR-163 D2), {@code null} si sa definition n'est pas encore
+     * compilée, ou au client} Créées à la première demande, à leur défaut puis aux valeurs que la sauvegarde gardait
+     * ({@code axion:vars}). Une definition recompilée les refait, en gardant la valeur de chaque variable qui existe
+     * encore et l'accepte.
+     */
+    public AssemblyVariables variables() {
+        Seating seating = level().isClientSide() ? null : seating();
+        if (seating == null) {
+            return null;
+        }
+        if (variables == null || variables.declared() != seating.variables()) {
+            AssemblyVariables fresh = new AssemblyVariables(seating.variables());
+            List<String> refusals = variables != null ? fresh.adopt(variables) : fresh.restore(AssemblyTags.variables(stored));
+            for (String refusal : refusals) {
+                LOGGER.warn("AXION : assembly {} — {}", getUUID(), refusal);
+            }
+            variables = fresh;
+        }
+        return variables;
     }
 
     /**
@@ -449,7 +489,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 || sender.getVehicle() != this || seatOf(sender) != seat) {
             return "entrées pour un siège que le joueur n'occupe pas";
         }
-        receivedInputs.put(seat, new ReceivedInput(input.sanitized(seating.seats().get(seat)), tickCount));
+        Seating.Seat declared = seating.seats().get(seat);
+        VehicleInput sanitized = input.sanitized(declared);
+        receivedInputs.put(seat, new ReceivedInput(sanitized, tickCount));
+        // ADR-163 D2 : les commandes tenues, sur la séquence des entrées de ce siège.
+        AssemblyVariables held = declared.bindings().isEmpty() ? null : variables();
+        if (held != null) {
+            held.input(seat, declared.bindings(), sanitized.flags(),
+                    "siège " + declared.name() + " (" + sender.getName().getString() + ")");
+        }
         return input.finite() ? null : "entrée non finie, comptée pour zéro (R-1110)";
     }
 
@@ -460,11 +508,39 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param seat rang du siège
      */
     public VehicleInput seatInput(int seat) {
+        return inputSilent(seat) ? VehicleInput.NONE : receivedInputs.get(seat).input();
+    }
+
+    /** {@return vrai si rien n'est arrivé de ce siège, ou plus rien depuis {@code net.extrapolation_max_ms}} */
+    private boolean inputSilent(int seat) {
         ReceivedInput received = receivedInputs.get(seat);
-        if (received == null || (tickCount - received.tick()) * MILLIS_PER_TICK > AxionEntities.inputTimeoutMillis()) {
-            return VehicleInput.NONE;
+        return received == null
+                || (tickCount - received.tick()) * MILLIS_PER_TICK > AxionEntities.inputTimeoutMillis();
+    }
+
+    /**
+     * Chaque tick, au serveur (ADR-163 D2) : un {@code press} qui a eu son tick revient, et un siège quitté ou dont
+     * les entrées se taisent relâche ses commandes {@code hold}.
+     */
+    private void tickVariables(Seating seating) {
+        AssemblyVariables held = variables();
+        if (held == null) {
+            return;
         }
-        return received.input();
+        held.tick();
+        SeatOccupancy occupancy = occupancy(seating);
+        for (int seat = 0; seat < seating.seats().size(); seat++) {
+            Seating.Seat declared = seating.seats().get(seat);
+            if (declared.bindings().isEmpty()) {
+                continue;
+            }
+            int occupant = occupancy.occupant(seat);
+            if (occupant == SeatOccupancy.FREE || occupant == SeatOccupancy.LOST) {
+                held.release(seat, declared.bindings(), "siège " + declared.name() + " (quitté)");
+            } else if (inputSilent(seat)) {
+                held.release(seat, declared.bindings(), "siège " + declared.name() + " (entrées tues)");
+            }
+        }
     }
 
     /**
@@ -647,7 +723,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /**
      * Chaque tick, au serveur : un passager sans siège — arrivé avant que la definition ne soit compilée,
      * ou remonté de force dans une assembly pleine — reçoit le premier libre ; sans siège libre, il
-     * descend. Un occupant qui n'est plus passager libère le sien.
+     * descend. Un occupant qui n'est plus passager libère le sien. Puis les variables ont leur tick
+     * ({@link #tickVariables}).
      */
     private void settlePassengers() {
         Seating seating = seating();
@@ -684,6 +761,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         for (Entity passenger : unseated) {
             eject(passenger, SeatEjection.Cause.NO_SEAT);
         }
+        tickVariables(seating);
     }
 
     /**
@@ -1518,6 +1596,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             AssemblyTags.putRotation(stored, bodyRotation);
         }
         AssemblyTags.putCustom(stored, custom);
+        // ADR-163 D2 : les variables gardées, si l'assembly en a déjà ; sinon, celles que son NBT portait restent.
+        if (!inert && variables != null) {
+            AssemblyTags.putVariables(stored, variables.persisted());
+        }
         AssemblyTags.restore(stored, tag);
         // 22.5.2 : chaque sauvegarde part aussi au journal latéral, filet de sécurité si vanilla perd l'entité.
         JournalBridge.saved(this, stored);

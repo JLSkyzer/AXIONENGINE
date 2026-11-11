@@ -129,6 +129,11 @@ final class AxionCommands {
                                         .executes(context -> remove(
                                                 context.getSource(),
                                                 EntityArgument.getEntities(context, "cibles")))))
+                        .then(Commands.literal("variables")
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .executes(context -> variables(
+                                                context.getSource(),
+                                                EntityArgument.getEntity(context, "cible")))))
                         .then(Commands.literal("debug")
                                 .then(Commands.literal("trace")
                                         .then(Commands.literal("on")
@@ -320,6 +325,53 @@ final class AxionCommands {
         int count = removed;
         source.sendSuccess(() -> Component.literal("AXION : " + count + " assembly(s) retirée(s)"), true);
         return count;
+    }
+
+    /**
+     * Montre les variables d'une assembly (C-71, ADR-163 D2) : pour chacune, sa valeur, son type et ses bornes, ses
+     * règles, et ce qui l'a posée en dernier. Lecture seule.
+     */
+    private static int variables(CommandSourceStack source, Entity target) {
+        if (!(target instanceof AxionEntity assembly)) {
+            source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));
+            return 0;
+        }
+        dev.axion.entity.AssemblyVariables held = assembly.variables();
+        if (held == null) {
+            source.sendFailure(Component.literal("AXION : definition " + assembly.definitionId()
+                    + " pas encore compilée"));
+            return 0;
+        }
+        List<String> lines = variableLines(assembly.definitionId(), held);
+        source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
+        return held.size();
+    }
+
+    /** {@return les lignes de {@code /axion variables} : un en-tête, puis une ligne par variable} */
+    static List<String> variableLines(String definition, dev.axion.entity.AssemblyVariables held) {
+        List<String> lines = new java.util.ArrayList<>();
+        lines.add("AXION : " + definition + " — " + held.size() + " variable(s)");
+        for (int i = 0; i < held.size(); i++) {
+            dev.axion.definition.Variables.Variable variable = held.declared().get(i);
+            String bounds = variable.type() == dev.axion.definition.Variables.Type.BOOL
+                    || (Double.isInfinite(variable.min()) && Double.isInfinite(variable.max()))
+                    ? ""
+                    : " dans [" + number(variable.min()) + ", " + number(variable.max()) + "]";
+            lines.add("  " + variable.name() + " = " + number(held.get(i)) + " (" + variable.type().key() + bounds
+                    + ") — posée par " + held.writer(i) + " ; persist " + variable.persist()
+                    + ", replicate " + variable.replicate().name().toLowerCase(java.util.Locale.ROOT)
+                    + ", write " + variable.write().name().toLowerCase(java.util.Locale.ROOT));
+        }
+        return lines;
+    }
+
+    private static String number(double value) {
+        if (Double.isInfinite(value)) {
+            return value > 0 ? "+∞" : "-∞";
+        }
+        return value == Math.rint(value) && Math.abs(value) < 1e15
+                ? Long.toString((long) value)
+                : Double.toString(value);
     }
 
     /** Affiche la valeur effective d'une option de configuration (C-71). */

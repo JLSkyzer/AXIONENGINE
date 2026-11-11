@@ -478,8 +478,10 @@ tasks.named('test', Test).configure {
     systemProperty 'axion.schema.file', rootProject.file('docs/schema/definition-1.json').absolutePath
     // Le schema 2 (ADR-151 D3), publie de meme.
     systemProperty 'axion.schema2.file', rootProject.file('docs/schema/definition-2.json').absolutePath
+    // Le schema 3 (ADR-163 D2) : les variables et ce qui les ecrit.
+    systemProperty 'axion.schema3.file', rootProject.file('docs/schema/definition-3.json').absolutePath
     systemProperty 'axion.repo.dir', rootProject.projectDir.absolutePath
-    // Les schemas publies (definition, persistence-3.md) sont lus par les tests : declares en
+    // Les schemas publies (definition, persistence-4.md) sont lus par les tests : declares en
     // entree, un document modifie seul relance les tests au lieu de les laisser a jour.
     inputs.files(rootProject.fileTree('docs/schema')).withPropertyName('axion.publishedSchemas')
     systemProperty 'axion.schema.update', System.getProperty('axion.schema.update', 'false')

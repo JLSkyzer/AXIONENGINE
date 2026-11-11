@@ -302,4 +302,60 @@ class SeatingTest {
         assertEquals(List.of(DefinitionIds.hash(id)), natif.removed, "et du registre natif");
         assertEquals(1, compilation.refusedCount());
     }
+
+    @Test
+    @DisplayName("ADR-163 D2 : au schéma 3, les commandes liées et set_variable se lisent avec leur variable")
+    void commandesLieesAuSchemaTrois() {
+        JsonObject root = JsonParser.parseString("""
+                { "schema": 3, "asset": "mymod:models/voiture.glb", "kind": "rigid_object",
+                  "variables": {
+                    "gyrophare": { "type": "bool", "persist": true },
+                    "phares": { "type": "int", "min": 0, "max": 2, "write": "seat" } },
+                  "seats": [
+                    { "name": "conducteur", "node": "siege_g", "role": "driver",
+                      "bindings": [
+                        { "command": 1, "label": "mymod.voiture.gyrophare", "variable": "gyrophare", "mode": "toggle" },
+                        { "command": 3, "variable": "phares", "mode": "cycle", "values": [0, 1, 2] } ] },
+                    { "name": "passager", "node": "siege_d",
+                      "bindings": [ { "command": 2, "variable": "phares", "mode": "hold", "values": [0, 2] } ] } ],
+                  "interaction": [ { "node": "tableau", "action": "set_variable", "variable": "phares", "value": 1 } ] }
+                """).getAsJsonObject();
+        assertEquals(List.of(), DefinitionChecker.check(root));
+        List<DefinitionChecker.AssetReference> references = DefinitionChecker.assetReferences(root);
+        Seating seating = Seating.of(root, references, resolus(references));
+        assertEquals(List.of("gyrophare", "phares"),
+                seating.variables().declared().stream().map(Variables.Variable::name).toList());
+        Seating.Seat conducteur = seating.seats().get(0);
+        assertEquals(2, conducteur.bindings().size());
+        Seating.Binding gyrophare = conducteur.bindings().get(0);
+        assertEquals(1, gyrophare.command());
+        assertEquals("mymod.voiture.gyrophare", gyrophare.label());
+        assertEquals(0, gyrophare.variable());
+        assertEquals(Seating.Mode.TOGGLE, gyrophare.mode());
+        assertArrayEquals(new double[] {0.0, 1.0}, gyrophare.values(), "sans valeurs, 0 puis 1");
+        assertArrayEquals(new double[] {0.0, 1.0, 2.0}, conducteur.bindings().get(1).values());
+        assertEquals(0b101, conducteur.commandMask(), "commandes 1 et 3");
+        assertTrue(conducteur.takesInput());
+        Seating.Seat passager = seating.seats().get(1);
+        assertEquals(0b10, passager.commandMask());
+        assertTrue(passager.takesInput(), "sans contrôle, il envoie ses commandes");
+        Seating.Interaction poser = seating.interactions().get(0);
+        assertEquals(Seating.Action.SET_VARIABLE, poser.action());
+        assertEquals(1, poser.variable());
+        assertEquals(1.0, poser.value());
+        assertTrue(seating.warnings().isEmpty(), seating.warnings().toString());
+    }
+
+    @Test
+    @DisplayName("ADR-163 D2 : sans siège ni interaction, des variables seules font une table")
+    void variablesSeules() {
+        JsonObject root = JsonParser.parseString("""
+                { "schema": 3, "asset": "mymod:models/voiture.glb", "kind": "rigid_object",
+                  "variables": { "compteur": { "type": "float" } } }
+                """).getAsJsonObject();
+        assertEquals(List.of(), DefinitionChecker.check(root));
+        Seating seating = Seating.of(root, List.of(), new int[0]);
+        assertEquals(1, seating.variables().size());
+        assertTrue(seating.seats().isEmpty() && seating.interactions().isEmpty());
+    }
 }

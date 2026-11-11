@@ -12,7 +12,7 @@ import dev.axion.definition.Seating;
  * @param clutch embrayage, dans [0, 1]
  * @param handbrake frein à main, dans [0, 1]
  * @param gear rapport engagé
- * @param flags drapeaux ; aucun n'est défini à ce jour
+ * @param flags les commandes génériques tenues (ADR-163 D2), un bit par commande : le bit 0 pour la commande 1
  */
 public record VehicleInput(float throttle, float brake, float steer, float clutch, float handbrake, byte gear, int flags) {
 
@@ -54,7 +54,7 @@ public record VehicleInput(float throttle, float brake, float steer, float clutc
 
     /**
      * {@return l'entrée que le serveur retient (R-1110, INV-02) : une valeur non finie vaut zéro, chacune est
-     * bornée, un contrôle que le siège ne déclare pas vaut zéro}
+     * bornée, un contrôle que le siège ne déclare pas vaut zéro, une commande qu'il ne lie pas n'est pas tenue}
      *
      * @param seat le siège d'où elle vient
      */
@@ -66,7 +66,7 @@ public record VehicleInput(float throttle, float brake, float steer, float clutc
                 seat.allows(Seating.Control.CLUTCH) ? clamp(clutch, 0f) : 0f,
                 seat.allows(Seating.Control.HANDBRAKE) ? clamp(handbrake, 0f) : 0f,
                 seat.allows(Seating.Control.GEAR) ? gear : 0,
-                0);
+                flags & seat.commandMask());
     }
 
     private static float clamp(float value, float min) {

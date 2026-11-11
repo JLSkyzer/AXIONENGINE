@@ -2237,3 +2237,16 @@ relâchait qu'après, le banc une seule fois, `runClient` jamais. Relâcher apr�
 **Règle.** Aucun client lancé par l'agent sans `SourisLibre` (`-Daxion.souris.libre=true`, posé par Gradle) : la
 fenêtre y est tenue pour inactive, et `grabMouse()` ne capture alors jamais. Vérifier « souris libre » au journal du
 client à chaque lancement.
+
+## 2026-11-11 | Un commit vide de son contenu est parti sur origin
+
+**Ce qui a mal tourné.** `git add` d'une liste de fichiers a échoué en bloc (un chemin, déjà renommé par `git mv`,
+n'existait plus) ; la commande suivante, `git commit`, est passée quand même, avec seulement le renommage déjà indexé,
+et le push l'a publié (17191c0) sous un message qui décrivait tout 4b-1 et 4b-2.
+
+**Cause.** Les commandes étaient enchaînées par `;` et par des tubes vers `grep` : l'échec de `git add` n'arrêtait
+rien, et le filtre en masquait le message.
+
+**Règle.** `git add … && git commit … && git push` — jamais `;` entre eux, jamais de tube après `git add`. Avant le
+commit, relire `git diff --cached --stat` : le nombre de fichiers doit être celui du changement. Un fichier passé par
+`git mv` ne se redonne pas à `git add` sous son ancien nom.

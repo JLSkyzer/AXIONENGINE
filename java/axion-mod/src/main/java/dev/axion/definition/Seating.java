@@ -10,8 +10,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Les sièges et les interactions d'une definition compilée (ADR-158 D1, D6) : ce que la montée, la
- * descente et le clic sur un node liront, chacun à l'index du node que le natif a résolu.
+ * Les sièges, les interactions et les variables d'une definition compilée (ADR-158 D1, D6, ADR-163 D2) : ce que la
+ * montée, la descente, le clic sur un node et les commandes liées liront, chacun à l'index du node que le natif a
+ * résolu.
  *
  * <p>Les règles de forme — un siège a un node, un seul conducteur, des contrôles connus, une
  * interaction complète — sont tranchées avant, par {@link DefinitionChecker} : une definition qui
@@ -20,17 +21,29 @@ import java.util.Map;
  * @param seats les sièges, dans l'ordre de la definition
  * @param interactions les interactions, dans l'ordre de la definition
  * @param warnings les actions déclarées qui restent sans effet jusqu'à leur chantier (ADR-158 D6)
+ * @param variables les variables que les commandes liées, les interactions et l'API écrivent (ADR-163 D2)
  */
-public record Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings) {
+public record Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings, Variables variables) {
 
-    /** Aucun siège, aucune interaction. */
-    public static final Seating NONE = new Seating(List.of(), List.of(), List.of());
+    /** Aucun siège, aucune interaction, aucune variable. */
+    public static final Seating NONE = new Seating(List.of(), List.of(), List.of(), Variables.NONE);
 
     /** Copie les listes : une table compilée ne change plus. */
     public Seating {
         seats = List.copyOf(seats);
         interactions = List.copyOf(interactions);
         warnings = List.copyOf(warnings);
+    }
+
+    /**
+     * Une table sans variable.
+     *
+     * @param seats les sièges
+     * @param interactions les interactions
+     * @param warnings les actions sans effet
+     */
+    public Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings) {
+        this(seats, interactions, warnings, Variables.NONE);
     }
 
     /** Les contrôles qu'un siège peut autoriser, ceux de {@code VehicleInput} (12.8), en bits. */
@@ -87,12 +100,42 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      * @param driver vrai pour le siège conducteur
      * @param exits les positions de sortie, dans le repère du siège, dans l'ordre déclaré
      * @param controls les contrôles qu'il autorise, en bits de {@link Control}
+     * @param bindings les commandes génériques qu'il lie à des variables (ADR-163 D2)
      */
-    public record Seat(String name, int node, boolean driver, List<float[]> exits, int controls) {
+    public record Seat(String name, int node, boolean driver, List<float[]> exits, int controls,
+            List<Binding> bindings) {
 
-        /** Copie les positions de sortie. */
+        /** Copie les positions de sortie et les commandes. */
         public Seat {
             exits = exits.stream().map(float[]::clone).toList();
+            bindings = List.copyOf(bindings);
+        }
+
+        /**
+         * Un siège sans commande liée.
+         *
+         * @param name son nom
+         * @param node l'index de son node
+         * @param driver vrai pour le siège conducteur
+         * @param exits ses positions de sortie
+         * @param controls ses contrôles
+         */
+        public Seat(String name, int node, boolean driver, List<float[]> exits, int controls) {
+            this(name, node, driver, exits, controls, List.of());
+        }
+
+        /** {@return vrai si le siège envoie des entrées : un contrôle ou une commande liée} */
+        public boolean takesInput() {
+            return controls != 0 || !bindings.isEmpty();
+        }
+
+        /** {@return les commandes qu'il lie, un bit par commande : le bit 0 pour la commande 1} */
+        public int commandMask() {
+            int mask = 0;
+            for (Binding binding : bindings) {
+                mask |= 1 << (binding.command() - 1);
+            }
+            return mask;
         }
 
         /** {@return une copie des positions de sortie} */
@@ -111,6 +154,64 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         }
     }
 
+    /** Comment une commande liée pose sa variable (ADR-163 D2), sur la séquence des entrées. */
+    public enum Mode {
+        /** Au front montant, passe de l'une à l'autre de ses deux valeurs. */
+        TOGGLE,
+        /** Tenue, sa seconde valeur ; relâchée, la première. */
+        HOLD,
+        /** Au front montant, sa seconde valeur pour un seul tick, puis la première. */
+        PRESS,
+        /** Au front montant, la valeur suivante de sa liste, en boucle. */
+        CYCLE;
+
+        /**
+         * {@return le mode de ce nom}
+         *
+         * @param key nom dans une definition
+         */
+        static Mode of(String key) {
+            return valueOf(key.toUpperCase(java.util.Locale.ROOT));
+        }
+    }
+
+    /**
+     * Une commande générique liée à une variable (ADR-163 D2).
+     *
+     * @param command la commande, de 1 à 8
+     * @param label son libellé, une clé de traduction ; {@code null} sans
+     * @param variable le rang de la variable qu'elle pose
+     * @param mode comment elle la pose
+     * @param values les valeurs qu'elle pose : relâchée puis pressée, ou la liste d'un cycle ; copie
+     */
+    public record Binding(int command, String label, int variable, Mode mode, double[] values) {
+
+        /** Copie les valeurs. */
+        public Binding {
+            values = values.clone();
+        }
+
+        /** {@return les valeurs, copie} */
+        @Override
+        public double[] values() {
+            return values.clone();
+        }
+
+        /**
+         * {@return la valeur de ce rang}
+         *
+         * @param rank rang dans {@link #values}
+         */
+        public double value(int rank) {
+            return values[rank];
+        }
+
+        /** {@return le nombre de valeurs} */
+        public int count() {
+            return values.length;
+        }
+    }
+
     /** Ce qu'une interaction fait, et le chantier qui donnera leur effet aux autres (ADR-158 D6). */
     public enum Action {
         /** S'asseoir dans un siège. */
@@ -123,8 +224,8 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         OPEN_CONTAINER("open_container", "un système de conteneurs, qu'aucun chantier ne porte encore"),
         /** Émettre un événement de contenu. */
         EMIT_EVENT("emit_event", "un bus d'événements de contenu, qu'aucun chantier ne porte encore"),
-        /** Poser une variable de contenu. */
-        SET_VARIABLE("set_variable", "des variables de contenu, qu'aucun chantier ne porte encore"),
+        /** Poser une variable de contenu (ADR-163 D2). */
+        SET_VARIABLE("set_variable", null),
         /** Réparer. */
         REPAIR("repair", "le dommage (M6)"),
         /** Attacher. */
@@ -179,8 +280,26 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      * @param clip le clip de cette animation, son nom s'il n'en déclare pas ; {@code null} sans
      * @param layer la couche de cette animation, 0 si elle n'en déclare pas
      * @param seat l'index du siège où elle assoit, {@code -1} sans
+     * @param variable le rang de la variable que {@code set_variable} pose, {@code -1} sans
+     * @param value la valeur qu'elle pose
      */
-    public record Interaction(int node, Action action, String animation, String clip, int layer, int seat) {}
+    public record Interaction(int node, Action action, String animation, String clip, int layer, int seat,
+            int variable, double value) {
+
+        /**
+         * Une interaction qui ne pose pas de variable.
+         *
+         * @param node l'index de son node
+         * @param action ce qu'elle fait
+         * @param animation l'animation jouée
+         * @param clip son clip
+         * @param layer sa couche
+         * @param seat le siège où elle assoit
+         */
+        public Interaction(int node, Action action, String animation, String clip, int layer, int seat) {
+            this(node, action, animation, clip, layer, seat, -1, 0.0);
+        }
+    }
 
     /**
      * Ce qu'un clic vise (ADR-158 D2) : une interaction, ou un siège où s'asseoir.
@@ -247,6 +366,7 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         for (int rank = 0; rank < references.size() && rank < nodes.length; rank++) {
             byPath.put(references.get(rank).path(), nodes[rank]);
         }
+        Variables variables = Variables.of(root);
         List<Seat> seats = new ArrayList<>();
         Map<String, Integer> seatRanks = new HashMap<>();
         for (JsonObject seat : objects(root, "seats")) {
@@ -265,9 +385,21 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                     exits.add(new float[] {xyz.get(0).getAsFloat(), xyz.get(1).getAsFloat(), xyz.get(2).getAsFloat()});
                 }
             }
+            List<Binding> bindings = new ArrayList<>();
+            for (JsonObject binding : objects(seat, "bindings")) {
+                double[] values = {0.0, 1.0};
+                if (binding.get("values") instanceof JsonArray declared) {
+                    values = new double[declared.size()];
+                    for (int v = 0; v < values.length; v++) {
+                        values[v] = Variables.value(declared.get(v));
+                    }
+                }
+                bindings.add(new Binding(binding.get("command").getAsInt(), text(binding, "label"),
+                        variables.indexOf(text(binding, "variable")), Mode.of(text(binding, "mode")), values));
+            }
             seatRanks.putIfAbsent(name, seats.size());
             seats.add(new Seat(name, node(byPath, path + ".node"),
-                    "driver".equals(text(seat, "role")), exits, controls));
+                    "driver".equals(text(seat, "role")), exits, controls, bindings));
         }
         List<Interaction> interactions = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -278,6 +410,12 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                 warnings.add(path + " : l'action « " + action.key() + " » reste sans effet jusqu'à "
                         + action.awaits() + " (ADR-158 D6)");
             }
+            int variable = variables.indexOf(text(interaction, "variable"));
+            if (action == Action.SET_VARIABLE && variable < 0) {
+                // Avant le schéma 3, aucune variable ne se déclare : l'interaction reste sans effet.
+                warnings.add(path + " : l'action « set_variable » ne pose rien sans variable déclarée, au schéma 3"
+                        + " (ADR-163 D2)");
+            }
             String seat = text(interaction, "seat");
             String animation = text(interaction, "animation");
             JsonObject played = animation != null && root.get("animations") instanceof JsonObject animations
@@ -285,9 +423,12 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
             String clip = played != null && text(played, "clip") != null ? text(played, "clip") : animation;
             int layer = played != null && played.has("layer") ? played.get("layer").getAsInt() : 0;
             interactions.add(new Interaction(node(byPath, path + ".node"), action, animation, clip, layer,
-                    seat == null ? -1 : seatRanks.getOrDefault(seat, -1)));
+                    seat == null ? -1 : seatRanks.getOrDefault(seat, -1), variable,
+                    variable >= 0 && interaction.get("value") != null ? Variables.value(interaction.get("value")) : 0.0));
         }
-        return seats.isEmpty() && interactions.isEmpty() ? NONE : new Seating(seats, interactions, warnings);
+        return seats.isEmpty() && interactions.isEmpty() && variables.size() == 0
+                ? NONE
+                : new Seating(seats, interactions, warnings, variables);
     }
 
     private static int node(Map<String, Integer> byPath, String path) {

@@ -56,6 +56,9 @@ public final class DefinitionRegistry {
     /** Schéma de definition 2 (ADR-151 D3) : les réglages des joints de C-34. */
     public static final int SCHEMA_TWO = 2;
 
+    /** Schéma de definition 3 (ADR-163 D2) : les variables, et les commandes et interactions qui les posent. */
+    public static final int SCHEMA_THREE = 3;
+
     /** Espace de noms d'une {@code ResourceLocation}. */
     static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]+");
 
@@ -313,10 +316,11 @@ public final class DefinitionRegistry {
             throw DefinitionException.invalid("$.schema", "attendu un entier");
         }
         if (number.compareTo(BigDecimal.valueOf(SCHEMA)) != 0
-                && number.compareTo(BigDecimal.valueOf(SCHEMA_TWO)) != 0) {
+                && number.compareTo(BigDecimal.valueOf(SCHEMA_TWO)) != 0
+                && number.compareTo(BigDecimal.valueOf(SCHEMA_THREE)) != 0) {
             throw DefinitionException.unknownSchema(
                     "$.schema", "version " + number.toPlainString() + " inconnue, seules "
-                            + SCHEMA + " et " + SCHEMA_TWO + " sont lues");
+                            + SCHEMA + ", " + SCHEMA_TWO + " et " + SCHEMA_THREE + " sont lues");
         }
         return number.intValueExact();
     }

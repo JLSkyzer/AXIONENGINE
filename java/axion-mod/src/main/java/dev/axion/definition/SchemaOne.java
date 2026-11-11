@@ -79,19 +79,26 @@ final class SchemaOne {
     /** Racine du schéma 2 (ADR-151 D3). */
     static final SchemaNode ROOT_TWO = root(2);
 
+    /** Racine du schéma 3 (ADR-163 D2) : le schéma 2, les variables et ce qui les écrit. */
+    static final SchemaNode ROOT_THREE = root(3);
+
     private SchemaOne() {}
 
     /**
      * {@return la racine du schéma {@code version}}
      *
-     * @param version 1 ou 2
+     * @param version 1, 2 ou 3
      */
     static SchemaNode rootOf(int version) {
-        return version == 2 ? ROOT_TWO : ROOT;
+        return switch (version) {
+            case 3 -> ROOT_THREE;
+            case 2 -> ROOT_TWO;
+            default -> ROOT;
+        };
     }
 
     private static SchemaNode root(int version) {
-        return obj()
+        ObjBuilder root = obj()
                 // Vérifiés avant le parcours, avec leurs codes propres (R-1780).
                 .req("schema", any())
                 .req("asset", any())
@@ -100,7 +107,7 @@ final class SchemaOne {
                 // R-190 : 64 bodies, 128 joints, 64 parts, 16 sièges, 8 ensembles
                 // de particules par assembly. C-22 : 256 liaisons, 128 animations.
                 .opt("bodies", cap(body(version), 64))
-                .opt("joints", cap(version == 2 ? jointTwo() : joint(), 128))
+                .opt("joints", cap(version >= 2 ? jointTwo() : joint(), 128))
                 // R-1052 : de 1 à 32 roues.
                 .opt("wheels", new Arr(wheel(), 1, 32, false))
                 .opt("powertrain", powertrain())
@@ -113,27 +120,32 @@ final class SchemaOne {
                 .opt("deformation", deformation())
                 .opt("wear", obj().opt("profile", id()).build())
                 .opt("particles", cap(particles(), 8))
-                .opt("seats", cap(seat(), 16))
+                .opt("seats", cap(seat(version), 16))
                 .opt("sockets", list(declares(NameCategory.SOCKET)))
                 .opt("procedural", list(procedural()))
                 .opt("animations",
                         new Dict(new TextRule.Declares(NameCategory.ANIMATION), animation(), 128))
                 .opt("on_part_stage", new Dict(new TextRule.Refers(NameCategory.PART),
-                        new Dict(new TextRule.OneOf(STAGES), actions(), Integer.MAX_VALUE),
+                        new Dict(new TextRule.OneOf(STAGES), actions(version), Integer.MAX_VALUE),
                         Integer.MAX_VALUE))
                 .opt("on_detach",
-                        new Dict(new TextRule.Refers(NameCategory.PART), actions(), Integer.MAX_VALUE))
+                        new Dict(new TextRule.Refers(NameCategory.PART), actions(version), Integer.MAX_VALUE))
                 .opt("render", render())
-                .opt("interaction", list(interaction()))
+                .opt("interaction", list(interaction(version)))
                 .opt("repair_rule", id())
-                .opt("custom", new Dict(new TextRule.Free(), any(), Integer.MAX_VALUE))
-                .build();
+                .opt("custom", new Dict(new TextRule.Free(), any(), Integer.MAX_VALUE));
+        if (version >= 3) {
+            // ADR-163 D2 : 64 variables au plus, chacune par instance.
+            root.opt("variables",
+                    new Dict(new TextRule.Declares(NameCategory.VARIABLE), variable(), Variables.MAX));
+        }
+        return root.build();
     }
 
     /** DM-08. */
     private static SchemaNode physics(int version) {
         ObjBuilder physics = obj();
-        if (version == 2) {
+        if (version >= 2) {
             // §10.4, ADR-151 D2 : les corps d'une assembly se touchent entre eux.
             physics.opt("self_collision", bool());
         }
@@ -159,7 +171,7 @@ final class SchemaOne {
                 .req("name", declares(NameCategory.BODY))
                 .opt("root_node", refers(NameCategory.NODE))
                 .opt("colliders", text());
-        if (version == 2) {
+        if (version >= 2) {
             // ADR-151 D2 : la masse d'un corps, dans le domaine de celle d'une part.
             body.opt("mass", new Num(0.001, 1e6, false, false));
         }
@@ -437,14 +449,46 @@ final class SchemaOne {
                 .build();
     }
 
-    /** C-53. */
-    private static SchemaNode seat() {
-        return obj()
+    /** C-53 ; au schéma 3, les commandes génériques qu'il lie à des variables (ADR-163 D2). */
+    private static SchemaNode seat(int version) {
+        ObjBuilder seat = obj()
                 .req("name", declares(NameCategory.SEAT))
                 .opt("node", refers(NameCategory.NODE))
                 .opt("role", oneOf("driver", "passenger"))
                 .opt("exit_offsets", list(vec3()))
-                .opt("controls", list(text()))
+                .opt("controls", list(text()));
+        if (version >= 3) {
+            seat.opt("bindings", cap(binding(), 8));
+        }
+        return seat.build();
+    }
+
+    /**
+     * ADR-163 D2 : une variable de contenu. Le type, le défaut et les bornes se jugent ensemble dans
+     * {@link DefinitionChecker} ; {@code scope} n'a qu'une valeur, l'assembly, tant que la portée par siège n'existe
+     * pas (Q4).
+     */
+    private static SchemaNode variable() {
+        return obj()
+                .req("type", oneOf("bool", "int", "float"))
+                .opt("default", any())
+                .opt("min", number())
+                .opt("max", number())
+                .opt("persist", bool())
+                .opt("replicate", oneOf("all", "driver", "none"))
+                .opt("write", oneOf("driver", "seat", "none"))
+                .opt("scope", oneOf("assembly"))
+                .build();
+    }
+
+    /** ADR-163 D2 : une commande générique, de 1 à 8, liée à une variable. */
+    private static SchemaNode binding() {
+        return obj()
+                .req("command", new Num(1, 8, false, true))
+                .opt("label", text())
+                .req("variable", refers(NameCategory.VARIABLE))
+                .req("mode", oneOf("toggle", "hold", "press", "cycle"))
+                .opt("values", list(any()))
                 .build();
     }
 
@@ -476,10 +520,11 @@ final class SchemaOne {
      * Actions de §13.4, liste fermée de R-1170. Les arguments dont le cahier des
      * charges donne un exemple ont sa forme ; les autres ne sont pas typés.
      */
-    private static SchemaNode actions() {
+    private static SchemaNode actions(int version) {
         return obj()
-                .opt("set_variable",
-                        new Dict(new TextRule.Free(), number(), Integer.MAX_VALUE))
+                // Au schéma 3, une variable posée est une variable déclarée (ADR-163 D2).
+                .opt("set_variable", new Dict(version >= 3 ? new TextRule.Refers(NameCategory.VARIABLE)
+                        : new TextRule.Free(), number(), Integer.MAX_VALUE))
                 .opt("emit_event", text())
                 .opt("hide_node", refers(NameCategory.NODE))
                 .opt("show_node", any())
@@ -504,16 +549,19 @@ final class SchemaOne {
                 .build();
     }
 
-    /** C-53 : actions d'interaction, liste fermée (R-1782). */
-    private static SchemaNode interaction() {
-        return obj()
+    /** C-53 : actions d'interaction, liste fermée (R-1782) ; au schéma 3, la variable et la valeur qu'elle pose. */
+    private static SchemaNode interaction(int version) {
+        ObjBuilder interaction = obj()
                 .opt("node", refers(NameCategory.NODE))
                 .req("action", oneOf("sit", "toggle_animation", "play_animation",
                         "open_container", "emit_event", "set_variable", "repair", "attach",
                         "detach"))
                 .opt("animation", refers(NameCategory.ANIMATION))
-                .opt("seat", refers(NameCategory.SEAT))
-                .build();
+                .opt("seat", refers(NameCategory.SEAT));
+        if (version >= 3) {
+            interaction.opt("variable", refers(NameCategory.VARIABLE)).opt("value", any());
+        }
+        return interaction.build();
     }
 
     // Construction de l'arbre.

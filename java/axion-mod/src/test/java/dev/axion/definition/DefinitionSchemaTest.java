@@ -458,14 +458,170 @@ class DefinitionSchemaTest {
     }
 
     @Test
-    @DisplayName("ADR-151 D3 : le schéma 1 reste lu comme avant, sans les champs du schéma 2 ; le 3 est inconnu")
+    @DisplayName("ADR-151 D3 : le schéma 1 reste lu comme avant, sans les champs du schéma 2 ; le 4 est inconnu")
     void schemaUnInchange() {
         DefinitionException friction = refus(root -> at(root, "joints", "0").addProperty("friction", 4.0));
         assertEquals("$.joints[0].friction", friction.path());
         assertTrue(friction.getMessage().contains("clé inconnue du schéma 1"), friction.getMessage());
         assertEquals("$.bodies[0].mass",
                 refus(root -> at(root, "bodies", "0").addProperty("mass", 10.0)).path());
-        DefinitionException trois = refus(root -> root.addProperty("schema", 3));
-        assertEquals(DefinitionException.UNKNOWN_SCHEMA, trois.code());
+        DefinitionException quatre = refus(root -> root.addProperty("schema", 4));
+        assertEquals(DefinitionException.UNKNOWN_SCHEMA, quatre.code());
+        assertEquals("$.variables", refus(root -> root.add("variables", new JsonObject())).path(),
+                "les variables n'existent qu'au schéma 3");
+    }
+
+    /**
+     * L'exemple au schéma 3 (ADR-163 D2) : le schéma 2, la variable qu'il posait déjà, et celles qu'un siège
+     * lie à ses commandes.
+     */
+    private static void enSchemaTrois(JsonObject root) {
+        enSchemaDeux(root);
+        root.addProperty("schema", 3);
+        root.add("variables", JsonParser.parseString("""
+                { "engine_power": { "type": "float", "default": 1.0, "min": 0, "max": 1, "write": "none" },
+                  "gyrophare": { "type": "bool", "default": false, "persist": true, "replicate": "all" },
+                  "klaxon": { "type": "bool" },
+                  "phares": { "type": "int", "default": 0, "min": 0, "max": 2, "persist": true,
+                              "replicate": "driver", "write": "seat", "scope": "assembly" } }
+                """));
+        at(root, "seats", "0").add("bindings", JsonParser.parseString("""
+                [ { "command": 1, "label": "mymod.pickup.gyrophare", "variable": "gyrophare", "mode": "toggle" },
+                  { "command": 2, "label": "mymod.pickup.klaxon", "variable": "klaxon", "mode": "hold" },
+                  { "command": 3, "variable": "phares", "mode": "cycle", "values": [0, 1, 2] },
+                  { "command": 8, "variable": "klaxon", "mode": "press", "values": [false, true] } ]
+                """));
+        root.getAsJsonArray("interaction").add(JsonParser.parseString(
+                "{ \"node\": \"hood\", \"action\": \"set_variable\", \"variable\": \"phares\", \"value\": 2 }"));
+    }
+
+    @Test
+    @DisplayName("ADR-163 D2 : au schéma 3, les variables, les commandes liées et set_variable sont acceptés et lus")
+    void schemaTrois() throws DefinitionException {
+        JsonObject root = complete();
+        enSchemaTrois(root);
+        at(root, "procedural", "1").addProperty("source", "var.phares");
+        Definition definition = read(root);
+        assertEquals(3, definition.schema());
+        Variables variables = Variables.of(definition.root());
+        assertEquals(4, variables.size());
+        Variables.Variable phares = variables.get(variables.indexOf("phares"));
+        assertEquals(Variables.Type.INT, phares.type());
+        assertEquals(Variables.Replicate.DRIVER, phares.replicate());
+        assertEquals(Variables.Write.SEAT, phares.write());
+        assertTrue(phares.persist());
+        Variables.Variable klaxon = variables.get(variables.indexOf("klaxon"));
+        assertEquals(0.0, klaxon.initial(), "sans défaut, 0");
+        assertEquals(Variables.Replicate.ALL, klaxon.replicate(), "par défaut, à tous");
+        assertEquals(Variables.Write.DRIVER, klaxon.write(), "par défaut, au conducteur");
+        assertTrue(!klaxon.persist(), "par défaut, pas sauvegardée");
+        assertEquals(1.0, klaxon.max());
+        assertEquals("variable « phares » : 3.0 hors de [0.0, 2.0]", phares.refusal(3.0));
+        assertEquals("variable « phares » : entier attendu, 1.5 reçu", phares.refusal(1.5));
+        assertEquals(null, phares.refusal(2.0));
+    }
+
+    @Test
+    @DisplayName("ADR-163 D2 : un défaut, une borne ou une valeur hors de la variable fait refuser la definition")
+    void variablesMalFormees() {
+        assertEquals("$.variables.gyrophare", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "variables", "gyrophare").addProperty("max", 2);
+        }).path(), "un booléen n'a pas de bornes");
+        assertEquals("$.variables.phares.default", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "variables", "phares").addProperty("default", 5);
+        }).path(), "défaut hors bornes");
+        assertEquals("$.variables.engine_power.default", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "variables", "engine_power").addProperty("default", true);
+        }).path(), "un booléen pour un réel");
+        assertEquals("$.variables.phares.min", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "variables", "phares").addProperty("min", 3);
+        }).path(), "bornes inversées");
+        assertEquals("$.variables.phares.max", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "variables", "phares").addProperty("max", 2.5);
+        }).path(), "borne non entière d'un entier");
+        assertEquals("$.variables.klaxon.type", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "variables", "klaxon").addProperty("type", "text");
+        }).path());
+        assertEquals("$.variables.klaxon.scope", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "variables", "klaxon").addProperty("scope", "seat");
+        }).path(), "la portée par siège n'existe pas encore (Q4)");
+    }
+
+    @Test
+    @DisplayName("ADR-163 D2 : une commande liée se refuse sans droit d'écriture, en double, ou avec des valeurs que la variable refuse")
+    void commandesMalLiees() {
+        assertEquals("$.seats[0].bindings[0].variable", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "seats", "0", "bindings", "0").addProperty("variable", "engine_power");
+        }).path(), "write : none");
+        assertEquals("$.seats[0].bindings[0].variable", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "seats", "0").addProperty("role", "passenger");
+        }).path(), "write : driver, depuis un siège passager");
+        accepte(r -> {
+            enSchemaTrois(r);
+            at(r, "seats", "0").addProperty("role", "passenger");
+            r.getAsJsonObject("variables").getAsJsonObject("gyrophare").addProperty("write", "seat");
+            r.getAsJsonObject("variables").getAsJsonObject("klaxon").addProperty("write", "seat");
+        });
+        assertEquals("$.seats[0].bindings[1].command", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "seats", "0", "bindings", "1").addProperty("command", 1);
+        }).path(), "commande 1 liée deux fois");
+        assertEquals("$.seats[0].bindings[0].command", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "seats", "0", "bindings", "0").addProperty("command", 9);
+        }).path(), "huit commandes");
+        assertEquals("$.seats[0].bindings[2].values", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "seats", "0", "bindings", "2").add("values", JsonParser.parseString("[1]"));
+        }).path(), "un cycle d'une seule valeur");
+        assertEquals("$.seats[0].bindings[2].values[2]", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "seats", "0", "bindings", "2").add("values", JsonParser.parseString("[0, 1, 3]"));
+        }).path(), "une valeur hors bornes");
+        assertEquals("$.seats[0].bindings[0].values", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "seats", "0", "bindings", "0").add("values", JsonParser.parseString("[0, 1, 0]"));
+        }).path(), "toggle prend deux valeurs");
+        assertEquals("$.seats[0].bindings[0].variable", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "seats", "0", "bindings", "0").addProperty("variable", "inconnue");
+        }).path(), "variable non déclarée");
+        assertEquals("$.seats[0].bindings[0].mode", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "seats", "0", "bindings", "0").addProperty("mode", "double_clic");
+        }).path());
+    }
+
+    @Test
+    @DisplayName("ADR-163 D2 : au schéma 3, var.<n> et set_variable nomment une variable déclarée ; set_variable sa valeur")
+    void variablesNommees() {
+        assertEquals("$.procedural[1].source", refus(r -> {
+            enSchemaTrois(r);
+            at(r, "procedural", "1").addProperty("source", "var.inconnue");
+        }).path());
+        accepte(r -> at(r, "procedural", "1").addProperty("source", "var.inconnue"));
+        assertTrue(refus(r -> {
+            enSchemaTrois(r);
+            r.getAsJsonObject("variables").remove("engine_power");
+        }).path().contains("set_variable"), "on_part_stage pose une variable déclarée");
+        DefinitionException sansValeur = refus(r -> {
+            enSchemaTrois(r);
+            JsonObject interaction = r.getAsJsonArray("interaction").get(2).getAsJsonObject();
+            interaction.remove("value");
+        });
+        assertEquals("$.interaction[2]", sansValeur.path());
+        assertEquals("$.interaction[2].value", refus(r -> {
+            enSchemaTrois(r);
+            r.getAsJsonArray("interaction").get(2).getAsJsonObject().addProperty("value", 7);
+        }).path());
     }
 }

@@ -43,6 +43,9 @@ public interface Assembly {
     /** {@return les données personnalisées des mods tiers}. Thread : autoritatif. */
     CustomData customData();
 
+    /** {@return les variables de contenu de l'assembly (ADR-163 D2)}. Thread : autoritatif. */
+    Variables variables();
+
     /** {@return vrai tant que l'assembly existe côté runtime}. Thread : quelconque. */
     boolean isValid();
 

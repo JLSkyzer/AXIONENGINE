@@ -1,0 +1,38 @@
+{
+  "schema": 3,
+  "asset": "axion:models/test/siege.gltf",
+  "kind": "rigid_object",
+  "variables": {
+    "gyrophare": { "type": "bool", "persist": true },
+    "klaxon": { "type": "bool" },
+    "phares": { "type": "int", "default": 0, "min": 0, "max": 2, "persist": true, "write": "seat" },
+    "bip": { "type": "bool", "replicate": "driver" },
+    "compteur": { "type": "float", "min": 0, "max": 100, "write": "none", "replicate": "none" }
+  },
+  "seats": [
+    {
+      "name": "conducteur",
+      "node": "siege_g",
+      "role": "driver",
+      "exit_offsets": [[2.0, 0.0, 0.0], [-1.0, 0.0, 0.0]],
+      "controls": ["throttle", "steer"],
+      "bindings": [
+        { "command": 1, "label": "axion.test.gyrophare", "variable": "gyrophare", "mode": "toggle" },
+        { "command": 2, "label": "axion.test.klaxon", "variable": "klaxon", "mode": "hold" },
+        { "command": 3, "label": "axion.test.phares", "variable": "phares", "mode": "cycle", "values": [0, 1, 2] },
+        { "command": 4, "label": "axion.test.bip", "variable": "bip", "mode": "press" }
+      ]
+    },
+    {
+      "name": "passager",
+      "node": "siege_d",
+      "exit_offsets": [[0.0, 0.0, 1.5], [0.0, 0.0, -1.5]],
+      "bindings": [
+        { "command": 3, "label": "axion.test.phares", "variable": "phares", "mode": "hold", "values": [0, 2] }
+      ]
+    }
+  ],
+  "interaction": [
+    { "node": "porte_d", "action": "set_variable", "variable": "phares", "value": 2 }
+  ]
+}

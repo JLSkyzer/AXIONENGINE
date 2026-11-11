@@ -70,17 +70,18 @@ final class DefinitionChecker {
      */
     static List<Issue> check(JsonObject root) {
         DefinitionChecker checker = new DefinitionChecker();
-        // Le numéro a déjà été jugé (R-1780) : 2 lit le schéma 2 (ADR-151 D3), tout le reste le 1.
-        checker.version = root.get("schema") instanceof com.google.gson.JsonPrimitive schema
-                && schema.isNumber() && schema.getAsDouble() == 2 ? 2 : 1;
+        checker.version = versionOf(root);
         checker.walk(SchemaOne.rootOf(checker.version), root, "$");
         checker.resolve();
         checker.checkLinks(root);
         checker.checkZoneParents(root);
         checker.checkSeats(root);
         checker.checkInteractions(root);
-        if (checker.version == 2 && checker.issues.isEmpty()) {
+        if (checker.version >= 2 && checker.issues.isEmpty()) {
             checker.checkJoints(root);
+        }
+        if (checker.version >= 3 && checker.issues.isEmpty()) {
+            checker.checkVariables(root);
         }
         if (checker.issues.isEmpty()) {
             VehicleSpec.check(root, checker::invalid);
@@ -107,8 +108,7 @@ final class DefinitionChecker {
      */
     static List<AssetReference> assetReferences(JsonObject root) {
         DefinitionChecker checker = new DefinitionChecker();
-        checker.version = root.get("schema") instanceof com.google.gson.JsonPrimitive schema
-                && schema.isNumber() && schema.getAsDouble() == 2 ? 2 : 1;
+        checker.version = versionOf(root);
         checker.walk(SchemaOne.rootOf(checker.version), root, "$");
         List<AssetReference> found = new ArrayList<>();
         for (Reference reference : checker.references) {
@@ -310,6 +310,23 @@ final class DefinitionChecker {
         }
     }
 
+    /**
+     * {@return le schéma qu'une definition déclare} Le numéro a déjà été jugé (R-1780) : 2 lit le schéma 2 (ADR-151
+     * D3), 3 le schéma 3 (ADR-163 D2), tout le reste le 1.
+     */
+    private static int versionOf(JsonObject root) {
+        if (root.get("schema") instanceof JsonPrimitive schema && schema.isNumber()) {
+            double number = schema.getAsDouble();
+            if (number == 3) {
+                return 3;
+            }
+            if (number == 2) {
+                return 2;
+            }
+        }
+        return 1;
+    }
+
     /** ANNEXE A.4 : famille, nom éventuel, champ. */
     private void source(String value, String path) {
         for (SourceFamily family : SchemaOne.SOURCES) {
@@ -326,9 +343,11 @@ final class DefinitionChecker {
                 return;
             }
             if (family.fields().isEmpty()) {
-                // var.<n> : le nom est libre, défini par l'API ou par une action.
+                // var.<n> : au schéma 3, une variable déclarée (ADR-163 D2) ; avant, un nom libre.
                 if (rest.isEmpty()) {
                     invalid(path, "variable sans nom");
+                } else if (version >= 3 && validName(rest, path)) {
+                    references.add(new Reference(NameCategory.VARIABLE, rest, path));
                 }
                 return;
             }
@@ -450,6 +469,119 @@ final class DefinitionChecker {
                     && interaction.get("animation") == null) {
                 invalid(path, "l'action « " + action + " » nomme le clip qu'elle joue");
             }
+        }
+    }
+
+    /**
+     * ADR-163 D2 : le défaut et les bornes d'une variable sont de son type, le défaut dans les bornes ; une commande
+     * liée l'est une fois par siège, à une variable que ce siège peut écrire, avec des valeurs que la variable
+     * accepte ; une interaction {@code set_variable} nomme une variable et une valeur qu'elle accepte.
+     */
+    private void checkVariables(JsonObject root) {
+        Variables variables = Variables.of(root);
+        if (root.get("variables") instanceof JsonObject declared) {
+            for (Map.Entry<String, JsonElement> entry : declared.entrySet()) {
+                String path = StrictJson.member("$.variables", entry.getKey());
+                JsonObject spec = entry.getValue().getAsJsonObject();
+                boolean bool = "bool".equals(string(spec, "type"));
+                if (bool && (spec.has("min") || spec.has("max"))) {
+                    invalid(path, "un booléen n'a pas de bornes : il vaut 0 ou 1");
+                    continue;
+                }
+                if (spec.has("min") && spec.has("max") && spec.get("min").getAsDouble() > spec.get("max").getAsDouble()) {
+                    invalid(path + ".min", "borne basse au-dessus de la borne haute");
+                    continue;
+                }
+                if ("int".equals(string(spec, "type"))) {
+                    for (String bound : new String[] {"min", "max"}) {
+                        if (spec.has(bound) && spec.get(bound).getAsDouble() != Math.rint(spec.get(bound).getAsDouble())) {
+                            invalid(path + "." + bound, "une variable entière a des bornes entières");
+                        }
+                    }
+                }
+                if (spec.has("default")) {
+                    literal(variables.get(variables.indexOf(entry.getKey())), spec.get("default"), path + ".default");
+                }
+            }
+        }
+        if (root.get("seats") instanceof JsonArray seats) {
+            for (int i = 0; i < seats.size(); i++) {
+                if (seats.get(i) instanceof JsonObject seat && seat.get("bindings") instanceof JsonArray bindings) {
+                    checkBindings(variables, "driver".equals(string(seat, "role")), bindings, "$.seats[" + i + "]");
+                }
+            }
+        }
+        if (root.get("interaction") instanceof JsonArray interactions) {
+            for (int i = 0; i < interactions.size(); i++) {
+                if (!(interactions.get(i) instanceof JsonObject interaction)
+                        || !"set_variable".equals(string(interaction, "action"))) {
+                    continue;
+                }
+                String path = "$.interaction[" + i + "]";
+                int variable = variables.indexOf(string(interaction, "variable"));
+                if (variable < 0 || interaction.get("value") == null) {
+                    invalid(path, "l'action « set_variable » nomme sa variable et la valeur qu'elle pose");
+                } else {
+                    literal(variables.get(variable), interaction.get("value"), path + ".value");
+                }
+            }
+        }
+    }
+
+    private void checkBindings(Variables variables, boolean driver, JsonArray bindings, String seat) {
+        Map<Integer, String> commands = new HashMap<>();
+        for (int k = 0; k < bindings.size(); k++) {
+            JsonObject binding = bindings.get(k).getAsJsonObject();
+            String path = seat + ".bindings[" + k + "]";
+            int command = binding.get("command").getAsInt();
+            String first = commands.putIfAbsent(command, path);
+            if (first != null) {
+                invalid(path + ".command", "commande " + command + " déjà liée par ce siège en " + first);
+            }
+            Variables.Variable variable = variables.get(variables.indexOf(string(binding, "variable")));
+            if (variable.write() == Variables.Write.NONE
+                    || (variable.write() == Variables.Write.DRIVER && !driver)) {
+                invalid(path + ".variable", "variable « " + variable.name() + " » que ce siège ne peut pas écrire"
+                        + " (write : " + variable.write().name().toLowerCase(java.util.Locale.ROOT) + ")");
+                continue;
+            }
+            String mode = string(binding, "mode");
+            JsonArray values = binding.get("values") instanceof JsonArray list ? list : null;
+            if ("cycle".equals(mode) && (values == null || values.size() < 2)) {
+                invalid(path + ".values", "le mode « cycle » parcourt au moins deux valeurs");
+                continue;
+            }
+            if (!"cycle".equals(mode) && values != null && values.size() != 2) {
+                invalid(path + ".values", "le mode « " + mode + " » prend deux valeurs : relâchée, puis pressée");
+                continue;
+            }
+            if (values == null && variable.type() != Variables.Type.BOOL
+                    && (variable.refusal(0.0) != null || variable.refusal(1.0) != null)) {
+                invalid(path + ".values", "sans valeurs, la commande pose 0 puis 1, que « " + variable.name()
+                        + " » refuse");
+            }
+            if (values != null) {
+                for (int v = 0; v < values.size(); v++) {
+                    literal(variable, values.get(v), path + ".values[" + v + "]");
+                }
+            }
+        }
+    }
+
+    /** Un littéral — booléen ou nombre — que la variable accepte. */
+    private void literal(Variables.Variable variable, JsonElement value, String path) {
+        if (!(value instanceof JsonPrimitive primitive) || !(primitive.isBoolean() || primitive.isNumber())) {
+            invalid(path, "attendu un booléen ou un nombre");
+            return;
+        }
+        if (primitive.isBoolean() && variable.type() != Variables.Type.BOOL) {
+            invalid(path, "variable « " + variable.name() + " » de type " + variable.type().key()
+                    + " : un nombre est attendu");
+            return;
+        }
+        String refusal = variable.refusal(Variables.value(primitive));
+        if (refusal != null) {
+            invalid(path, refusal);
         }
     }
 

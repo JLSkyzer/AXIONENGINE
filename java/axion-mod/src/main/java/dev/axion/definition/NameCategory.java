@@ -32,6 +32,8 @@ enum NameCategory {
     ANIMATION("animation", true),
     /** Ensemble de particules, {@code particles[].name}. */
     PARTICLES("ensemble de particules", true),
+    /** Variable de contenu, clé de {@code variables} (schéma 3, ADR-163 D2). */
+    VARIABLE("variable", true),
     /** Node de l'asset. */
     NODE("node", false),
     /** Mesh de l'asset. */

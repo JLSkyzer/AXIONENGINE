@@ -59,7 +59,7 @@ public final class SiegesGameTests {
      * Un joueur factice de Forge, hors de la liste des joueurs : un test qui échoue ne laisse derrière lui
      * aucun joueur que les tests suivants compteraient. Passager, il est tické par son véhicule.
      */
-    private static ServerPlayer joueur(GameTestHelper helper, String nom) {
+    static ServerPlayer joueur(GameTestHelper helper, String nom) {
         UUID uuid = UUID.nameUUIDFromBytes(("axion-siege:" + nom).getBytes(StandardCharsets.UTF_8));
         ServerPlayer joueur = FakePlayerFactory.get(helper.getLevel(), new GameProfile(uuid, nom));
         joueur.stopRiding();
@@ -85,7 +85,7 @@ public final class SiegesGameTests {
     }
 
     /** Vise un point du modèle depuis un pas et demi à côté de lui, du côté {@code cote} du monde en z. */
-    private static InteractionResult cliquer(AxionEntity assembly, ServerPlayer joueur, float x, float y, float z) {
+    static InteractionResult cliquer(AxionEntity assembly, ServerPlayer joueur, float x, float y, float z) {
         Vec3 cible = duModele(assembly, x, y, z);
         double cote = Math.signum(cible.z - assembly.getZ());
         viser(joueur, new Vec3(cible.x + 1.5, assembly.getY(), cible.z + cote * 0.5), cible);

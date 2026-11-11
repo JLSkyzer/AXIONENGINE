@@ -3728,7 +3728,19 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
               backends, T-365 (angle × rayon / distance de 0,986 à 1,002), film jugé. Précisions dans ADR-163.
               À la 4c : le découpage Blender de la Charger garde l'orientation du nœud `volant` (axe `y` = colonne).
         - [ ] 4b — variables (`persist`, `replicate`, `write`, bornes), commandes génériques et `bindings`,
-              `set_variable`, `Assembly.variables()`, `/axion variables`.
+              `set_variable`, `Assembly.variables()`, `/axion variables`. Plan (2026-11-11) :
+              - [x] 4b-1 format (2026-11-11) : schéma de definition 3 (`variables`, `seats[].bindings`, interaction `variable`
+                    et `value`, `var.<n>` et `set_variable` résolus contre les variables déclarées), lecture,
+                    vérifications (droit d'écriture du siège, valeurs dans les bornes et du bon type, `cycle` à
+                    deux valeurs au moins, une commande par siège), schéma publié `definition-3.json`.
+              - [x] 4b-2 serveur (2026-11-11) : magasin de variables (logique pure), modes sur la séquence des entrées
+                    (`toggle`, `cycle` au front montant, `hold`, `press` un tick ; relâché au silence et à la
+                    descente), interaction `set_variable`, sauvegarde (`axion:v` 4, `axion:vars`, migration 3 → 4,
+                    document publié), `Assembly.variables()`, `/axion variables`.
+              - [ ] 4b-3 réseau et client : `FLAG_VARIABLES` (512) filtré par destinataire (`replicate`), état du
+                    client, `var.<n>` lu par les pistes.
+              - [ ] 4b-4 touches : huit commandes déclarées à Forge (G H J K Y U B N), état tenu dans
+                    `VehicleInput.flags`, libellés au siège ; exemple au buggy, guide, film.
         - [ ] 4c — canaux `visibility`, `emissive`, `color` ; `period`, `smoothing`, `gate` ; rendu par nœud dans les
               deux backends ; Charger découpée dans Blender ; film du gyrophare.
 

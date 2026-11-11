@@ -60,10 +60,10 @@ class AssemblyEntityRulesTest {
     }
 
     @Test
-    @DisplayName("T-402 : un NBT au schéma 3 et à definition connue se lie")
+    @DisplayName("T-402 : un NBT au schéma courant et à definition connue se lie")
     void liaison() {
-        AssemblyBinding binding =
-                AssemblyBinding.resolve(OptionalInt.of(3), OptionalLong.of(CAISSE), REGISTRY);
+        AssemblyBinding binding = AssemblyBinding.resolve(
+                OptionalInt.of(AssemblyBinding.NBT_SCHEMA), OptionalLong.of(CAISSE), REGISTRY);
         assertFalse(binding.isInert());
         assertEquals("demo:caisse", binding.bound().map(Definition::id).orElseThrow());
     }
@@ -71,20 +71,22 @@ class AssemblyEntityRulesTest {
     @Test
     @DisplayName("T-402 : definition inconnue, schéma autre ou NBT vide → inerte (R-704, R-1710)")
     void inertie() {
-        AssemblyBinding inconnue =
-                AssemblyBinding.resolve(OptionalInt.of(3), OptionalLong.of(CAISSE + 1), REGISTRY);
+        AssemblyBinding inconnue = AssemblyBinding.resolve(
+                OptionalInt.of(AssemblyBinding.NBT_SCHEMA), OptionalLong.of(CAISSE + 1), REGISTRY);
         assertTrue(inconnue.isInert());
         assertTrue(inconnue.inertReason().contains("R-704"), inconnue.inertReason());
 
-        AssemblyBinding future =
-                AssemblyBinding.resolve(OptionalInt.of(4), OptionalLong.of(CAISSE), REGISTRY);
+        AssemblyBinding future = AssemblyBinding.resolve(
+                OptionalInt.of(AssemblyBinding.NBT_SCHEMA + 1), OptionalLong.of(CAISSE), REGISTRY);
         assertTrue(future.isInert());
         assertTrue(future.inertReason().contains("R-1710"), future.inertReason());
 
         assertTrue(AssemblyBinding.resolve(OptionalInt.of(1), OptionalLong.of(CAISSE), REGISTRY)
                 .isInert());
-        // Le schéma 2 se migre avant la liaison (AssemblyTags.migrate) : non migré, il ne se lie pas.
+        // Les schémas 2 et 3 se migrent avant la liaison (AssemblyTags.migrate) : non migrés, ils ne se lient pas.
         assertTrue(AssemblyBinding.resolve(OptionalInt.of(2), OptionalLong.of(CAISSE), REGISTRY)
+                .isInert());
+        assertTrue(AssemblyBinding.resolve(OptionalInt.of(3), OptionalLong.of(CAISSE), REGISTRY)
                 .isInert());
         assertTrue(AssemblyBinding.resolve(OptionalInt.empty(), OptionalLong.empty(), REGISTRY)
                 .isInert());

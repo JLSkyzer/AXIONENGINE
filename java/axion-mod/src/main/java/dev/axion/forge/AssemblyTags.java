@@ -4,6 +4,8 @@ import dev.axion.entity.AssemblyBinding;
 import dev.axion.entity.CustomTable;
 import dev.axion.net.SnapshotMessage;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.function.LongSupplier;
@@ -41,6 +43,9 @@ final class AssemblyTags {
 
     /** Données personnalisées des mods : une table CBOR, absente si elle est vide (ADR-153 D7). */
     static final String CUSTOM = "axion:custom";
+
+    /** Variables gardées (ADR-163 D2) : à chaque nom de variable {@code persist}, sa valeur ; absente sans elles. */
+    static final String VARIABLES = "axion:vars";
 
     /** En deçà, un quaternion n'a pas de direction : il ne décrit aucune rotation. */
     private static final float MIN_QUATERNION_NORM_SQUARED = 1e-6f;
@@ -138,7 +143,54 @@ final class AssemblyTags {
      * à l'identique ; antérieure à 2, aucune version d'AXION ne l'a écrite.
      */
     static CompoundTag migrate(CompoundTag stored) {
-        return version(stored).orElse(-1) == 2 ? migrate2To3(stored) : stored;
+        CompoundTag migrated = version(stored).orElse(-1) == 2 ? migrate2To3(stored) : stored;
+        return version(migrated).orElse(-1) == 3 ? migrate3To4(migrated) : migrated;
+    }
+
+    /**
+     * Le schéma 3 passe au 4 (ADR-163 D2) : il ne portait pas de variables, qui repartent de leur défaut. Toute clé
+     * est gardée ; seule la version change.
+     */
+    private static CompoundTag migrate3To4(CompoundTag stored) {
+        CompoundTag migrated = stored.copy();
+        migrated.putInt(VERSION, 4);
+        return migrated;
+    }
+
+    /**
+     * {@return les variables gardées, par nom ; vide sans {@code axion:vars}} Une entrée qui n'est pas un
+     * {@code double} est ignorée.
+     */
+    static Map<String, Double> variables(CompoundTag stored) {
+        Map<String, Double> saved = new LinkedHashMap<>();
+        if (stored.contains(VARIABLES, Tag.TAG_COMPOUND)) {
+            CompoundTag variables = stored.getCompound(VARIABLES);
+            for (String name : variables.getAllKeys()) {
+                if (variables.contains(name, Tag.TAG_DOUBLE)) {
+                    saved.put(name, variables.getDouble(name));
+                }
+            }
+        }
+        return saved;
+    }
+
+    /**
+     * Écrit les variables gardées. Une variable que la definition ne déclare plus garde la valeur lue (R-1710) ;
+     * sans aucune, la clé est retirée.
+     *
+     * @param stored les clés gardées
+     * @param persisted la valeur de chaque variable {@code persist}, par nom
+     */
+    static void putVariables(CompoundTag stored, Map<String, Double> persisted) {
+        CompoundTag variables = stored.contains(VARIABLES, Tag.TAG_COMPOUND)
+                ? stored.getCompound(VARIABLES).copy()
+                : new CompoundTag();
+        persisted.forEach(variables::putDouble);
+        if (variables.isEmpty()) {
+            stored.remove(VARIABLES);
+        } else {
+            stored.put(VARIABLES, variables);
+        }
     }
 
     /**

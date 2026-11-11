@@ -85,6 +85,42 @@ class PublishedSchemaTest {
     }
 
     @Test
+    @DisplayName("T-284 : docs/schema/definition-3.json est le rendu exact du schéma 3 (ADR-163 D2)")
+    void schemaTroisPublieAJour() throws IOException {
+        Path file = property("axion.schema3.file");
+        String rendu = SchemaExport.render(3);
+
+        if (Boolean.getBoolean("axion.schema.update")) {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, rendu, StandardCharsets.UTF_8);
+        }
+
+        assertTrue(Files.isReadable(file), () -> "schéma publié absent : " + file);
+        String publie = Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        assertEquals(rendu, publie,
+                "le schéma 3 publié a divergé du validateur ; le régénérer avec :\n"
+                        + "  ./gradlew :axion-mod:test --tests dev.axion.definition.PublishedSchemaTest"
+                        + " -Daxion.schema.update=true");
+    }
+
+    @Test
+    @DisplayName("ADR-163 D2 : le schéma 3 porte les variables, les commandes liées des sièges et la variable posée")
+    void contraintesDuSchemaTrois() {
+        JsonObject properties = JsonParser.parseString(SchemaExport.render(3)).getAsJsonObject()
+                .getAsJsonObject("properties");
+        assertEquals(3, properties.getAsJsonObject("schema").get("const").getAsInt());
+        assertTrue(properties.has("variables"));
+        assertTrue(properties.getAsJsonObject("seats").getAsJsonObject("items").getAsJsonObject("properties")
+                .has("bindings"));
+        JsonObject interaction = properties.getAsJsonObject("interaction").getAsJsonObject("items")
+                .getAsJsonObject("properties");
+        assertTrue(interaction.has("variable") && interaction.has("value"));
+        JsonObject deux = JsonParser.parseString(SchemaExport.render(2)).getAsJsonObject()
+                .getAsJsonObject("properties");
+        assertTrue(!deux.has("variables"), "le schéma 2 ne déclare pas de variable");
+    }
+
+    @Test
     @DisplayName("ADR-151 D3 : le schéma 2 porte les réglages de C-34, la masse d'un corps et les collisions internes")
     void contraintesDuSchemaDeux() {
         JsonObject document = JsonParser.parseString(SchemaExport.render(2)).getAsJsonObject();

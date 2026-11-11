@@ -56,7 +56,8 @@ public final class PersistanceGameTests {
             helper.assertTrue(grippee[0] && porte.jointBits().count() == 1
                     && porte.jointBits().flags(0) == AssemblyState.JointBits.JAMMED, "le gond est grippé");
             CompoundTag sauvegarde = porte.saveWithoutId(new CompoundTag());
-            helper.assertTrue(sauvegarde.getInt("axion:v") == 3, "schéma " + sauvegarde.getInt("axion:v"));
+            helper.assertTrue(sauvegarde.getInt("axion:v") == dev.axion.entity.AssemblyBinding.NBT_SCHEMA,
+                    "schéma " + sauvegarde.getInt("axion:v"));
             PersistedState lu = PersistedState.read(AssemblyTags.extract(sauvegarde))
                     .orElseThrow(() -> new IllegalStateException("aucun état lisible dans " + sauvegarde));
             helper.assertTrue(lu.position()[0] == porte.getX() && lu.position()[1] == porte.getY()
@@ -289,7 +290,7 @@ public final class PersistanceGameTests {
     }
 
     /**
-     * T-434 : une entité sauvegardée au schéma 2 se relit liée à sa definition, au schéma 3, sans état
+     * T-434 : une entité sauvegardée au schéma 2 se relit liée à sa definition, au schéma courant, sans état
      * inventé ; le schéma 2 ne portait ni vitesses ni corps secondaires.
      */
     @GameTest(template = "test/plancher")
@@ -309,7 +310,8 @@ public final class PersistanceGameTests {
         helper.assertTrue(!migree.isInert(), "assembly migrée inerte");
         helper.assertTrue("axion:test_cube".equals(migree.definitionId()), "definition " + migree.definitionId());
         CompoundTag v3 = migree.saveWithoutId(new CompoundTag());
-        helper.assertTrue(v3.getInt("axion:v") == 3, "schéma réécrit " + v3.getInt("axion:v"));
+        helper.assertTrue(v3.getInt("axion:v") == dev.axion.entity.AssemblyBinding.NBT_SCHEMA,
+                "schéma réécrit " + v3.getInt("axion:v"));
         helper.assertTrue(v3.getLong("axion:def") == v2.getLong("axion:def"), "definition gardée");
         helper.assertTrue(v3.get("axion:rot").equals(v2.get("axion:rot")), "orientation gardée");
         helper.assertTrue(!v3.contains(PersistedState.LINEAR) && !v3.contains(PersistedState.BODIES),
@@ -323,7 +325,7 @@ public final class PersistanceGameTests {
         AxionEntity cube = AssembliesDeTest.poser(helper, "axion:test_cube", new Vec3(2.0, DESSUS_DALLE + 2.0, 2.0), DROIT);
         CompoundTag v4 = new CompoundTag();
         helper.assertTrue(cube.save(v4), "sauvegarde refusée");
-        v4.putInt("axion:v", 4);
+        v4.putInt("axion:v", dev.axion.entity.AssemblyBinding.NBT_SCHEMA + 1);
         v4.putString("axion:inconnue", "écrite par une version future");
         v4.putByteArray(PersistedState.BODIES, new byte[] {1, 2, 3});
         Entity relue = EntityType.loadEntityRecursive(v4, helper.getLevel(), entite -> entite);

@@ -7,6 +7,7 @@ import dev.axion.api.assembly.AnimationControl;
 import dev.axion.api.assembly.AssemblyService;
 import dev.axion.api.assembly.CustomData;
 import dev.axion.api.assembly.Transform;
+import dev.axion.api.assembly.Variables;
 import dev.axion.api.content.DefinitionRef;
 import dev.axion.entity.AssemblySpawns;
 import dev.axion.lifecycle.AxionRuntime;
@@ -96,6 +97,61 @@ public final class ForgeAxionApi implements AxionApi {
         }
     }
 
+    /**
+     * Les variables d'une assembly vues par l'API (ADR-163 D2) : une fenêtre sur celles de son entité, lues et écrites
+     * sur le thread autoritatif ; une écriture se signe « API ».
+     */
+    private record VariablesView(AxionEntity entity) implements Variables {
+
+        private dev.axion.entity.AssemblyVariables held() {
+            AuthoritativeThread.require();
+            return entity.variables();
+        }
+
+        private int index(String name) {
+            dev.axion.entity.AssemblyVariables held = held();
+            int index = held == null ? -1 : held.declared().indexOf(name);
+            if (index < 0) {
+                throw new IllegalArgumentException("variable « " + name + " » que la definition "
+                        + entity.definitionId() + " ne déclare pas" + (held == null ? ", ou pas encore compilée" : ""));
+            }
+            return index;
+        }
+
+        @Override
+        public java.util.List<String> names() {
+            dev.axion.entity.AssemblyVariables held = held();
+            return held == null ? java.util.List.of()
+                    : held.declared().declared().stream().map(dev.axion.definition.Variables.Variable::name).toList();
+        }
+
+        @Override
+        public boolean has(String name) {
+            dev.axion.entity.AssemblyVariables held = held();
+            return held != null && held.declared().indexOf(name) >= 0;
+        }
+
+        @Override
+        public double get(String name) {
+            return held().get(index(name));
+        }
+
+        @Override
+        public boolean getBoolean(String name) {
+            return get(name) != 0.0;
+        }
+
+        @Override
+        public void set(String name, double value) {
+            held().set(index(name), value, "API");
+        }
+
+        @Override
+        public void setBoolean(String name, boolean value) {
+            set(name, value ? 1.0 : 0.0);
+        }
+    }
+
     /** Une assembly vue par l'API : une fenêtre sur son entité, sans état propre. */
     private record View(AxionEntity entity) implements Assembly {
 
@@ -122,6 +178,11 @@ public final class ForgeAxionApi implements AxionApi {
         @Override
         public CustomData customData() {
             return entity.customData();
+        }
+
+        @Override
+        public Variables variables() {
+            return new VariablesView(entity);
         }
 
         @Override

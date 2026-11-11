@@ -14,7 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * Le journal latéral publié dans {@code docs/schema/persistence-3.md} est celui qu'écrit le code (R-1743,
+ * Le journal latéral publié dans {@code docs/schema/persistence-4.md} est celui qu'écrit le code (R-1743,
  * ADR-153 D6) : un en-tête, un type ou un nom de fichier changé sans être reporté fait échouer le build.
  */
 class PublishedJournalFormatTest {
@@ -22,7 +22,7 @@ class PublishedJournalFormatTest {
     private static String published() throws IOException {
         String repo = System.getProperty("axion.repo.dir");
         assertTrue(repo != null && !repo.isBlank(), "axion.repo.dir non fourni par le build");
-        Path file = Path.of(repo, "docs", "schema", "persistence-3.md");
+        Path file = Path.of(repo, "docs", "schema", "persistence-4.md");
         assertTrue(Files.isReadable(file), () -> "schéma de persistance publié absent : " + file);
         return Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
     }
