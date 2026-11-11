@@ -7,6 +7,7 @@ import dev.axion.world.WorldCollisionSource.SectionTile;
 import dev.axion.world.WorldTileGeometry;
 import java.util.Arrays;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -14,7 +15,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ObserverBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
@@ -29,7 +32,109 @@ public final class CollisionDuMondeGameTests {
 
     private static final int SIZE = WorldTileGeometry.SECTION_SIZE;
 
+    /** Le dessus de la dalle des gabarits {@code plancher}, en coordonnées du test. */
+    private static final double DESSUS_DALLE = 2.0;
+
+    private static final float[] DROIT = {0f, 0f, 0f, 1f};
+
     private CollisionDuMondeGameTests() {}
+
+    /**
+     * Une section reconstruite à l'identique ne réveille rien. Une horloge de deux observateurs face à face fait
+     * invalider sa section tous les deux ticks ; chaque remplacement de la tuile réveillait tout corps posé dessus
+     * — rapier réveille les corps d'un contact dont il retire le collider — et tout véhicule à sa portée (ADR-159
+     * D3) : un véhicule et un cube de la section, à plus de 4 m de l'horloge, restaient éveillés 300 ticks sur 300.
+     * Poser les observateurs change vraiment la section et les réveille une fois — un vrai changement part toujours
+     * au natif — ; ils se rendorment, puis dorment pendant que l'horloge bat.
+     *
+     * <p>Dans un lot à lui : les balises que Minecraft pose au coin des gabarits voisins changeraient vraiment la
+     * section. Sur {@code plancher_16}, la plus grande part du gabarit que tient une seule colonne de sections a
+     * huit blocs de côté au moins, où que le gabarit soit posé.
+     */
+    @GameTest(template = "test/plancher_16", batch = "horloge_de_redstone", timeoutTicks = 400)
+    public static void uneHorlogeDeRedstoneNeReveillePasCeQuiDortDansSaSection(GameTestHelper helper) {
+        BlockPos origine = helper.absolutePos(BlockPos.ZERO);
+        int[] x = partDansUneSection(origine.getX());
+        int[] z = partDansUneSection(origine.getZ());
+        BlockPos[] horloge = {new BlockPos(x[0], 2, z[0]), new BlockPos(x[0] + 1, 2, z[0])};
+        Vec3 centre = new Vec3((x[0] + x[1]) / 2.0, DESSUS_DALLE, (z[0] + z[1]) / 2.0);
+        Vec3 coin = new Vec3(x[1] - 0.5, DESSUS_DALLE, z[1] - 0.5);
+        SectionPos section = SectionPos.of(BlockPos.containing(helper.absoluteVec(centre)));
+        for (Vec3 point : new Vec3[] {Vec3.atCenterOf(horloge[0]), Vec3.atCenterOf(horloge[1]), coin}) {
+            helper.assertTrue(SectionPos.of(BlockPos.containing(helper.absoluteVec(point))).equals(section),
+                    point + " hors de la section " + section + " du véhicule");
+        }
+        helper.assertTrue(centre.distanceTo(Vec3.atCenterOf(horloge[1])) > 4.0, "l'horloge, loin des roues");
+
+        ObservateursDeTest.declarer(helper, centre);
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule", centre.add(0, 0.1, 0), DROIT);
+        AxionEntity cube = AssembliesDeTest.poser(helper, "axion:test_cube", coin.add(0, 1.0, 0), DROIT);
+        boolean[] posee = {false};
+        boolean[] reveilles = {false, false};
+        boolean[] guet = {false};
+        boolean[] alimente = {false};
+        int[] eveilles = {0};
+        int[] battements = {0};
+        helper.onEachTick(() -> {
+            if (posee[0]) {
+                reveilles[0] |= !vehicule.netSleeping();
+                reveilles[1] |= !cube.netSleeping();
+            }
+            if (!guet[0]) {
+                return;
+            }
+            if (!vehicule.netSleeping() || !cube.netSleeping()) {
+                eveilles[0]++;
+            }
+            boolean bat = helper.getBlockState(horloge[0]).getValue(ObserverBlock.POWERED);
+            if (bat != alimente[0]) {
+                alimente[0] = bat;
+                battements[0]++;
+            }
+        });
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.netSleeping() && cube.netSleeping(),
+                        "le véhicule et le cube s'endorment"))
+                .thenExecute(() -> {
+                    helper.setBlock(horloge[0], Blocks.OBSERVER.defaultBlockState()
+                            .setValue(ObserverBlock.FACING, Direction.EAST));
+                    helper.setBlock(horloge[1], Blocks.OBSERVER.defaultBlockState()
+                            .setValue(ObserverBlock.FACING, Direction.WEST));
+                    posee[0] = true;
+                })
+                // Un vrai changement de la section, qui part au natif : il réveille l'un et l'autre.
+                .thenWaitUntil(() -> helper.assertTrue(reveilles[0] && reveilles[1],
+                        "poser les observateurs devait réveiller le véhicule (" + reveilles[0] + ") et le cube ("
+                                + reveilles[1] + ")"))
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.netSleeping() && cube.netSleeping(),
+                        "l'horloge les tient éveillés : véhicule endormi " + vehicule.netSleeping()
+                                + ", cube endormi " + cube.netSleeping()))
+                .thenExecute(() -> guet[0] = true)
+                .thenIdle(100)
+                .thenExecute(() -> {
+                    helper.assertTrue(battements[0] >= 20, "l'horloge bat : " + battements[0] + " changements");
+                    helper.assertTrue(eveilles[0] == 0,
+                            eveilles[0] + " tick(s) sur 100 où le véhicule ou le cube était éveillé");
+                    // L'horloge s'arrête avec le test : elle battrait sinon jusqu'à la fin du serveur.
+                    helper.setBlock(horloge[0], Blocks.AIR);
+                    helper.setBlock(horloge[1], Blocks.AIR);
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * {@return {@code [début, fin)}, en coordonnées du test, de la plus longue part d'un gabarit de seize blocs qui
+     * tient dans une seule section, le long d'un axe} Huit blocs au moins.
+     *
+     * @param debut coordonnée absolue du premier bloc du gabarit sur cet axe
+     */
+    private static int[] partDansUneSection(int debut) {
+        int coupe = Math.floorMod(-debut, SIZE);
+        if (coupe == 0) {
+            return new int[] {0, SIZE};
+        }
+        return coupe >= SIZE - coupe ? new int[] {0, coupe} : new int[] {coupe, SIZE};
+    }
 
     /**
      * R-640 : une section dont le chunk n'est pas chargé est rendue pleine et solide, et la lire ne

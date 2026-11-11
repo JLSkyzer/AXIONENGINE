@@ -55,12 +55,14 @@ class ComponentMetricsTest {
         tiles.tick(List.of(
                 Tile.built(0, 0, 0, 12, 0, true),
                 Tile.built(1, 0, 0, Tile.HEIGHTFIELD, 0, false),
-                Tile.released(5, 0, 0)), 4, 9, 2_500);
-        tiles.tick(List.of(Tile.built(2, 0, 0, 3, 1, false)), 0, 10, -7);
+                Tile.released(5, 0, 0)), 2, 4, 9, 2_500);
+        tiles.tick(List.of(Tile.built(2, 0, 0, 3, 1, false)), 1, 0, 10, -7);
         tiles.unloadedSection();
 
         String p = WorldTileMetrics.PREFIX;
         assertEquals(3, metrics.counter(p + "tiles_built", "count").value());
+        assertEquals(3, metrics.counter(p + "tiles_unchanged", "count").value(),
+                "relues identiques, non renvoyées au natif");
         assertEquals(1, metrics.counter(p + "tiles_released", "count").value());
         assertEquals(1, metrics.counter(p + "tiles_heightfield", "count").value(), "R-641 : un repli");
         assertEquals(1, metrics.counter(p + "sections_unloaded", "count").value(), "R-640 : un repli");

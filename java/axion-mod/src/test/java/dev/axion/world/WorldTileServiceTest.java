@@ -125,6 +125,77 @@ class WorldTileServiceTest {
         assertEquals(List.of(), service.lastTiles(), "rien de neuf, rien à tracer");
     }
 
+    /**
+     * Une section reconstruite à l'identique — une horloge de redstone, un observateur, un comparateur la font
+     * invalider tous les deux ticks — n'est pas renvoyée : le natif remplacerait sa tuile en bloc, et ce
+     * remplacement réveille tout corps posé dessus et tout véhicule à sa portée (ADR-159 D3).
+     */
+    @Test
+    void uneTuileRelueIdentiqueNEstPasRenvoyee() {
+        SectionTile[] courante = {sol(3)};
+        WorldTileService service =
+                new WorldTileService(new WorldTilePlanner(0, 8), (dim, x, y, z) -> courante[0]);
+        assertEquals(2, service.tick(abri(0, 0, 0)).count(), "la première fois, collision et fluide");
+
+        // Relue identique, construite à neuf : même contenu, autres tableaux.
+        courante[0] = sol(3);
+        service.invalidate(new SectionKey(0L, 0, 0, 0));
+        SimCommandStream relue = service.tick(abri(0, 0, 0));
+        assertEquals(0, relue.count(), "rien n'est renvoyé au natif");
+        assertEquals(List.of(), service.lastTiles(), "rien n'est posé : la trace n'a rien à dire");
+        assertEquals(1, service.lastUnchanged(), "la relecture est comptée");
+        assertEquals(1, service.loadedCount(), "la tuile reste tenue");
+    }
+
+    /** Tout ce qu'une tuile envoie compte : un seul élément changé, et elle part. */
+    @Test
+    void uneTuileQuiChangeEnQuoiQueCeSoitEstRenvoyee() {
+        float[][] dalle = {{0f, 0f, 0f, 16f, 1f, 16f}};
+        float[][] eau = {{0f, 1f, 0f, 16f, 9f, 16f}};
+        SectionTile depart = new SectionTile(new CollisionShape.Boxes(dalle, 3), eau, 1000f);
+        List<SectionTile> variantes = List.of(
+                new SectionTile(new CollisionShape.Boxes(new float[][] {{0f, 0f, 0f, 16f, 2f, 16f}}, 3), eau, 1000f),
+                new SectionTile(new CollisionShape.Boxes(dalle, 4), eau, 1000f),
+                new SectionTile(new CollisionShape.Boxes(dalle, 3), new float[][] {{0f, 1f, 0f, 16f, 8f, 16f}}, 1000f),
+                new SectionTile(new CollisionShape.Boxes(dalle, 3), eau, 1025f),
+                new SectionTile(new CollisionShape.Boxes(dalle, 3), new float[0][], 1000f),
+                new SectionTile(new CollisionShape.Heightfield(
+                        2, 2, new float[] {1f, 1f, 1f, 1f}, new float[] {16f, 1f, 16f}, 3), eau, 1000f),
+                new SectionTile(new CollisionShape.Heightfield(
+                        2, 2, new float[] {1f, 1f, 1f, 2f}, new float[] {16f, 1f, 16f}, 3), eau, 1000f),
+                new SectionTile(new CollisionShape.Heightfield(
+                        2, 2, new float[] {1f, 1f, 1f, 2f}, new float[] {16f, 2f, 16f}, 3), eau, 1000f));
+        SectionTile[] courante = {depart};
+        WorldTileService service =
+                new WorldTileService(new WorldTilePlanner(0, 8), (dim, x, y, z) -> courante[0]);
+        service.tick(abri(0, 0, 0));
+        for (SectionTile variante : variantes) {
+            courante[0] = variante;
+            service.invalidate(new SectionKey(0L, 0, 0, 0));
+            assertEquals(2, service.tick(abri(0, 0, 0)).count(), "renvoyée : " + variante);
+            assertEquals(0, service.lastUnchanged());
+        }
+    }
+
+    /** Une section libérée a quitté le natif : redemandée, elle repart, même identique. */
+    @Test
+    void uneSectionLibereePuisRedemandeeEstRenvoyee() {
+        WorldTileService service =
+                new WorldTileService(new WorldTilePlanner(0, 64), constant(sol(3)));
+        service.tick(abri(0, 0, 0));
+        service.tick(abri(50, 0, 0));
+        SimCommandStream retour = service.tick(abri(0, 0, 0));
+        assertEquals(List.of(Tile.released(50, 0, 0), Tile.built(0, 0, 0, 1, 0, true)), service.lastTiles());
+        assertEquals(4, retour.count(), "deux retraits, puis la collision et le fluide de l'origine");
+        assertEquals(0, service.lastUnchanged());
+    }
+
+    /** {@return une dalle d'un bloc au fond de la section, du matériau {@code material}, sans fluide} */
+    private static SectionTile sol(int material) {
+        return new SectionTile(
+                new CollisionShape.Boxes(new float[][] {{0f, 0f, 0f, 16f, 1f, 16f}}, material), new float[0][], 0f);
+    }
+
     /** {@return un corps réduit à la section {@code (x, y, z)}} */
     private static List<Footprint> abri(int x, int y, int z) {
         return List.of(Footprint.at(new SectionKey(0L, x, y, z)));

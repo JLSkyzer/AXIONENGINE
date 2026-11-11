@@ -2321,3 +2321,18 @@ pouvait pas le voir : son étape de build compile tout le dépôt avant les Game
 **Règle.** Un mod chargé par les lancements depuis un autre projet a sa dépendance explicite
 (`tasks.matching { it.name.startsWith('prepareRun') }.configureEach { dependsOn ':projet:classes' }`). Pour vérifier un
 changement des lancements, supprimer les sorties concernées et lancer le job seul, comme un clone neuf.
+
+## 2026-11-12 | Une horloge de redstone tenait éveillé tout ce qui reposait dans sa section
+
+**Ce qui a mal tourné.** Mesuré en GameTest : deux observateurs face à face, à plus de 4 m d'un véhicule et 3 m d'un
+cube posés dans la même section, les ont tenus éveillés 300 ticks sur 300. La trace comptait 6 382 remplacements de la
+tuile, un tous les 2 ticks, tous à 8 boîtes.
+
+**Cause.** C-38 renvoyait au natif chaque section invalidée, même relue identique ; or toute mise à jour de voisin
+l'invalide (redstone, observateur, comparateur). Le natif remplace une tuile en bloc, et rapier réveille les corps d'un
+contact dont il retire le collider (`remove_pair`, d'origine dans rapier 0.35.3) ; ADR-159 D3 réveille en plus les
+véhicules à portée. Un remplacement à l'identique n'est donc jamais neutre.
+
+**Règle.** Une donnée relue n'est renvoyée au natif que si elle diffère de ce qui lui a été envoyé : comparer au
+dernier envoi (empreinte), pas à l'événement qui a fait relire. Et un remplacement de collider se traite comme un
+changement du monde : il réveille.

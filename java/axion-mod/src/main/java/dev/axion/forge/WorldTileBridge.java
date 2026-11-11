@@ -158,7 +158,7 @@ public final class WorldTileBridge implements SimCommandProvider {
         long nanos = System.nanoTime() - start;
         // R-500 : opérations, replis, mémoire et durée de C-38, à chaque tick.
         WorldTileMetrics.GLOBAL.tick(
-                service.lastTiles(), service.pendingCount(), service.loadedCount(), nanos);
+                service.lastTiles(), service.lastUnchanged(), service.pendingCount(), service.loadedCount(), nanos);
         trace.tiles(tick, service.lastTiles(), service.pendingCount());
         return stream;
     }

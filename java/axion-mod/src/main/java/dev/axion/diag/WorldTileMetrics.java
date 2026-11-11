@@ -11,7 +11,8 @@ import java.util.List;
  * erreurs, sa mémoire et sa durée :
  *
  * <ul>
- *   <li>opérations — tuiles construites, et libérées, faute d'assembly proche ;
+ *   <li>opérations — tuiles construites, libérées faute d'assembly proche, et relues identiques à ce que
+ *       le natif tient, donc non renvoyées ;
  *   <li>replis — tuiles posées en champ de hauteurs au-delà de 4096 boîtes (R-641), sections
  *       non chargées tenues pour pleines et solides (R-640) ;
  *   <li>mémoire — tuiles tenues, celles que le natif garde ;
@@ -34,6 +35,7 @@ public final class WorldTileMetrics {
 
     private final JavaMetrics.Metric built;
     private final JavaMetrics.Metric released;
+    private final JavaMetrics.Metric unchanged;
     private final JavaMetrics.Metric heightfields;
     private final JavaMetrics.Metric unloaded;
     private final JavaMetrics.Metric builtLastTick;
@@ -50,6 +52,7 @@ public final class WorldTileMetrics {
     public WorldTileMetrics(JavaMetrics metrics) {
         built = metrics.counter(PREFIX + "tiles_built", "count");
         released = metrics.counter(PREFIX + "tiles_released", "count");
+        unchanged = metrics.counter(PREFIX + "tiles_unchanged", "count");
         heightfields = metrics.counter(PREFIX + "tiles_heightfield", "count");
         unloaded = metrics.counter(PREFIX + "sections_unloaded", "count");
         builtLastTick = metrics.gauge(PREFIX + "tiles_built_last_tick", "count");
@@ -63,11 +66,13 @@ public final class WorldTileMetrics {
      * Ce qu'un tick a fait des tuiles.
      *
      * @param tiles tuiles posées et retirées pendant le tick
+     * @param unchangedNow sections relues identiques pendant le tick, que le natif n'a pas reçues
      * @param pendingAfter sections encore en file après lui
      * @param loadedAfter tuiles tenues après lui
      * @param nanos durée de la construction, en nanosecondes
      */
-    public void tick(List<Tile> tiles, int pendingAfter, int loadedAfter, long nanos) {
+    public void tick(List<Tile> tiles, int unchangedNow, int pendingAfter, int loadedAfter, long nanos) {
+        unchanged.add(unchangedNow);
         int builtNow = 0;
         for (Tile tile : tiles) {
             if (tile.released()) {
