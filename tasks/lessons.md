@@ -2264,3 +2264,27 @@ source.
 
 **Règle.** Ne jamais réduire une texture source à l'import ; garder les originales et laisser le moteur gérer le
 coût. Avant un export, comparer la taille des images du `.blend` à celle des fichiers d'origine.
+
+## 2026-11-11 | T-437 refusait le modèle des surcharges d'administrateur
+
+**Ce qui a mal tourné.** La sous-tranche 3b d'ADR-165 écrit `config/axion-server-overrides.toml` au premier
+démarrage. La CI locale a rougi sur T-437 : l'audit des écritures (`tools/ci/audit_ecritures.py`) n'admettait que
+`config/axion-[a-z]+.toml`, sans tiret, et le fichier n'était déclaré nulle part.
+
+**Cause.** Un fichier écrit hors de `<gameDir>/axion/` n'est admis par R-1711 (lecture d'ADR-153) que s'il est un
+fichier de configuration `config/axion-*.toml` déclaré par `CONFIGURATION.md` ; le motif de l'audit était plus étroit
+que celui de la règle.
+
+**Règle.** Avant d'écrire un nouveau fichier hors de `<gameDir>/axion/`, le déclarer dans `CONFIGURATION.md` (par
+`render_markdown()` d'`ax-model`, puis `gen_config_docs`) et vérifier que T-437 l'admet — en le supprimant du dossier
+`.runs/gametest` pour que le passage l'écrive vraiment.
+
+## 2026-11-11 | L'amendement d'ADR-164 manquait au registre 38.9
+
+**Ce qui a mal tourné.** ADR-164 amendait R-570 et l'ANNEXE A.3, mais le registre des amendements (38.9) ne l'avait
+pas reçu ; ADR-165 réservait A11, qui revenait en fait à ADR-164. Trouvé en rédigeant 3c, corrigé par A11 et A12.
+
+**Cause.** Le texte du CDC avait été modifié sans passer par la ligne du registre.
+
+**Règle.** Tout commit qui touche le texte gelé du CDC ajoute sa ligne à 38.9 dans le même commit ; avant d'annoncer
+un numéro d'amendement, relire la dernière ligne du registre.
