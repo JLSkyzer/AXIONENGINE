@@ -619,3 +619,30 @@ tasks.named('jar', Jar).configure {
 
     finalizedBy 'reobfJar'
 }
+
+// CAP-48 (ADR-162 D11, tranche 5) : le JAR d'AXION, API comprise, se publie sur le depot Maven d'AXION. Un addon
+// le declare en runtimeOnly fg.deobf(...) pour lancer le jeu en developpement avec AXION ; en jeu, le joueur
+// installe ce meme JAR. R-2341 : un JAR partial ne se publie pas, quelle que soit la facon de lancer la
+// publication ; validateJar passe avant.
+apply from: rootProject.file('gradle/publication.gradle')
+
+publishing {
+    publications {
+        register('mod', MavenPublication) {
+            artifactId = mod_id
+            artifact jar
+            axionPom(pom, 'AXION ENGINE', 'Physique, deformation et rendu 3D pour Minecraft Forge 1.20.1.')
+        }
+    }
+}
+
+tasks.withType(PublishToMavenRepository).configureEach {
+    dependsOn 'reobfJar', 'validateJar'
+    doFirst {
+        def partiel = layout.buildDirectory.file('natives-partial.txt').get().asFile
+        if (partiel.exists()) {
+            throw new GradleException('R-2341 : un JAR partial ne se publie pas ; cibles manquantes : '
+                    + partiel.text.trim().readLines().join(', '))
+        }
+    }
+}

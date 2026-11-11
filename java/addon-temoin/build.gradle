@@ -23,3 +23,41 @@ dependencies {
     // declare de meme, depuis le depot Maven d'AXION, et ne l'embarque jamais.
     compileOnly project(':axion-api')
 }
+
+// Le modele de mod a telecharger (CAP-49) : les sources du temoin, telles quelles, avec les fichiers d'un projet
+// autonome (modele/) et le lanceur Gradle du depot. Un debutant le decompresse et lance ./gradlew runClient :
+// AXION et son API viennent de maven.eriniumlab.com. Les versions sont celles de ce build, inscrites dans son
+// gradle.properties.
+def modeleZip = tasks.register('modeleZip', Zip) {
+    group = 'publishing'
+    description = 'Construit le modele de mod autonome (axion-addon-template).'
+    archiveBaseName = 'axion-addon-template'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    def valeurs = [
+            forge_version    : forge_version,
+            axion_api_version: project(':axion-api').version.toString(),
+            axion_version    : project(':axion-mod').version.toString(),
+    ]
+    inputs.properties valeurs
+    from(file('modele')) {
+        filesMatching('gradle.properties') { expand valeurs }
+    }
+    from(file('src')) { into 'src' }
+    from(rootProject.file('gradlew'))
+    from(rootProject.file('gradlew.bat'))
+    from(rootProject.file('gradle/wrapper')) { into 'gradle/wrapper' }
+    from(rootProject.file('LICENSE'))
+}
+
+// Publie avec l'API et AXION : https://maven.eriniumlab.com/<snapshots|releases>/dev/axion/axion-addon-template/.
+apply from: rootProject.file('gradle/publication.gradle')
+
+publishing {
+    publications {
+        register('modele', MavenPublication) {
+            artifactId = 'axion-addon-template'
+            artifact(modeleZip)
+            axionPom(pom, 'AXION addon template', 'Modele de mod pret a lancer pour ecrire un addon AXION.')
+        }
+    }
+}

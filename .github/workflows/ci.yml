@@ -32,6 +32,8 @@
 #   build-natives      -> job platform, etape nommee (34.2)
 #   JAR complet        -> job jar-complet : natifs de la matrice reunis, mode
 #                         release qui refuse un JAR partial (R-2341, 37.3)
+#   publication (34.4) -> job publication-maven : axion-api et le JAR complet en
+#                         -SNAPSHOT sur maven.eriniumlab.com (CAP-48, ADR-162)
 #   R-2122 (Miri)      -> job miri : les tests d'ax-mem, qui porte l'allocateur
 #                         compteur (ADR-133 D2), sous l'interprete Miri
 #   bench-quick        -> job bench-quick : B-02 et B-09 compares au dernier
@@ -528,6 +530,52 @@ jobs:
           path: java/axion-mod/build/libs/*.jar
           if-no-files-found: error
           retention-days: 14
+
+  # CAP-48 (ADR-162 D11, tranche 5) : axion-api (jar, sources, javadoc) et le JAR d'AXION, natifs des quatre
+  # plateformes reunis, publies en -SNAPSHOT sur maven.eriniumlab.com (depot de Killian, lecture libre) a chaque
+  # poussee sur master, une fois la matrice et les tests verts. -Paxion.targets exige les quatre cibles sans
+  # passer en version publiee ; un JAR partial ne se publie pas (R-2341, gradle/publication.gradle).
+  # Les identifiants sont les secrets AXION_MAVEN_USERNAME et AXION_MAVEN_PASSWORD (un jeton Reposilite limite
+  # a l'ecriture de dev/axion) ; tant qu'ils manquent, le job le dit et ne publie rien.
+  publication-maven:
+    name: publication-maven
+    needs: [platform, build-and-test, test-gametest]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: natif-*
+          path: natifs
+
+      - name: Publier sur maven.eriniumlab.com
+        env:
+          ORG_GRADLE_PROJECT_axionUsername: ${{ secrets.AXION_MAVEN_USERNAME }}
+          ORG_GRADLE_PROJECT_axionPassword: ${{ secrets.AXION_MAVEN_PASSWORD }}
+        run: |
+          if [ -z "$ORG_GRADLE_PROJECT_axionUsername" ] || [ -z "$ORG_GRADLE_PROJECT_axionPassword" ]; then
+            echo "::warning::secrets AXION_MAVEN_USERNAME / AXION_MAVEN_PASSWORD absents : rien n'est publie"
+            exit 0
+          fi
+          ./gradlew :axion-api:publishAllPublicationsToAxionRepository \
+            :axion-mod:publishAllPublicationsToAxionRepository \
+            -Paxion.targets=windows-x86_64,linux-x86_64,macos-aarch64,macos-x86_64 \
+            -Paxion.prebuilt="$PWD/natifs" --no-daemon --stacktrace
 
   # R-2250 : le sous-ensemble rapide des benchmarks dont le composant existe — B-02 et
   # B-09 ; B-01, B-07, B-11, B-18, B-19, B-21 et B-23 entrent avec le leur —, compare au

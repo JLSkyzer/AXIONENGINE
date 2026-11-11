@@ -1,0 +1,70 @@
+// An AXION addon: a Forge mod that sends its content to AXION ENGINE.
+// Guide: https://axionenginedocs.eriniumlab.com/en/addons/
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'net.minecraftforge.gradle' version '[6.0.16,6.2)'
+}
+
+group = mod_group_id
+version = mod_version
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+minecraft {
+    mappings channel: 'official', version: minecraft_version
+    copyIdeResources = true
+
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            // Lets `/axion dev reload` re-read your content without restarting the game.
+            property 'axion.content.dev_reload', 'true'
+
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        client {
+        }
+
+        server {
+            args '--nogui'
+        }
+    }
+}
+
+repositories {
+    // AXION's Maven repository: free to read, no account needed.
+    maven {
+        name = 'AXION snapshots'
+        url = 'https://maven.eriniumlab.com/snapshots'
+    }
+    maven {
+        name = 'AXION releases'
+        url = 'https://maven.eriniumlab.com/releases'
+    }
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // The AXION API, to compile against. AXION provides it in game: never embed it in your jar.
+    compileOnly "dev.axion:axion-api:${axion_api_version}"
+
+    // AXION itself, so that `runClient` and `runServer` launch the game with it.
+    runtimeOnly fg.deobf("dev.axion:axion:${axion_version}")
+}
+
+tasks.named('jar', Jar).configure {
+    finalizedBy 'reobfJar'
+}

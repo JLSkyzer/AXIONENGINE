@@ -2306,3 +2306,18 @@ le serveur de GameTests, qui enchaîne ~100 à 190 ticks/s, ne lui retire aucun 
 jamais à un tick fixe : sa section 16³ est partagée avec les gabarits voisins du lot, qui la modifient à des instants
 qui varient. Un intermittent se prouve en le reproduisant de façon déterministe (la perturbation soupçonnée, posée au
 tick critique), pas en relançant jusqu'à l'échec.
+
+## 2026-11-12 | La CI GitHub rouge : le témoin introuvable au lancement des GameTests et du banc
+
+**Ce qui a mal tourné.** 9dd2a94 a ajouté l'addon témoin aux lancements de développement
+(`mods { example_addon { source project(':addon-temoin').sourceSets.main } }`). En local, tout était vert ; sur la CI,
+`runGameTestServer` et `runRenderTest` ont échoué : « Invalid paths argument, contained no existing paths » sur
+`java/addon-temoin/build`.
+
+**Cause.** Sous ForgeGradle 6, citer le source set d'un autre projet dans `mods {}` ne crée aucune dépendance de tâche.
+En local, le témoin avait été compilé à la main avant ; un clone neuf n'a pas ses dossiers de sortie. La CI locale ne
+pouvait pas le voir : son étape de build compile tout le dépôt avant les GameTests.
+
+**Règle.** Un mod chargé par les lancements depuis un autre projet a sa dépendance explicite
+(`tasks.matching { it.name.startsWith('prepareRun') }.configureEach { dependsOn ':projet:classes' }`). Pour vérifier un
+changement des lancements, supprimer les sorties concernées et lancer le job seul, comme un clone neuf.

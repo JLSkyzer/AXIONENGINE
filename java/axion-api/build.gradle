@@ -40,3 +40,20 @@ javadoc {
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 }
+
+// CAP-48 (ADR-162 D11, tranche 5) : l'API se publie sur le depot Maven d'AXION, en jar, sources et javadoc.
+// Un addon la declare en compileOnly : AXION la fournit en jeu, et l'embarquer la mettrait dans deux mods.
+// L'artefact ne declare aucune dependance : Minecraft et Forge sont ceux de l'addon lui-meme.
+apply from: rootProject.file('gradle/publication.gradle')
+
+publishing {
+    publications {
+        register('api', MavenPublication) {
+            artifactId = 'axion-api'
+            artifact jar
+            artifact sourcesJar
+            artifact javadocJar
+            axionPom(pom, 'AXION ENGINE API', 'API publique d\'AXION ENGINE, pour les addons (compileOnly).')
+        }
+    }
+}

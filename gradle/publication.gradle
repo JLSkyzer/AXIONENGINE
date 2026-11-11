@@ -1,0 +1,40 @@
+// Publication sur le depot Maven d'AXION ENGINE (ADR-162 D11, tranche 5 ; CAP-48).
+//
+// Le depot est celui de Killian, maven.eriniumlab.com (Reposilite) : lecture libre, sans compte ni jeton,
+// publication par jeton. Une version -SNAPSHOT va dans /snapshots, une version publiee dans /releases.
+//
+// Les identifiants de publication ne vivent jamais dans le depot : Gradle les lit dans les proprietes
+// axionUsername et axionPassword (nom et secret d'un jeton Reposilite), que la CI recoit de ses secrets par
+// les variables ORG_GRADLE_PROJECT_axionUsername et ORG_GRADLE_PROJECT_axionPassword.
+//
+// Applique par :axion-api et :axion-mod, apres que chacun a fixe sa version.
+apply plugin: 'maven-publish'
+
+publishing {
+    repositories {
+        maven {
+            name = 'axion'
+            url = version.toString().endsWith('-SNAPSHOT')
+                    ? 'https://maven.eriniumlab.com/snapshots'
+                    : 'https://maven.eriniumlab.com/releases'
+            credentials(PasswordCredentials)
+        }
+    }
+}
+
+/** La fiche POM commune : ce qu'est l'artefact, sa licence, ou est son code. */
+ext.axionPom = { MavenPom pom, String titre, String resume ->
+    pom.name = titre
+    pom.description = resume
+    pom.url = 'https://axionenginedocs.eriniumlab.com/'
+    pom.licenses {
+        license {
+            name = 'Apache-2.0'
+            url = 'https://www.apache.org/licenses/LICENSE-2.0'
+        }
+    }
+    pom.scm {
+        url = 'https://github.com/JLSkyzer/AXIONENGINE'
+        connection = 'scm:git:https://github.com/JLSkyzer/AXIONENGINE.git'
+    }
+}
