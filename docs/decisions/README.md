@@ -110,6 +110,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
+| [ADR-165](ADR-165.md) | Les addons exigés à la connexion, et ce qu'un administrateur règle sans code | 2026-11-11 | proposé |
 | [ADR-162](ADR-162.md) | L'API d'enregistrement du contenu : un mod Java déclare ce qu'AXION connaît | 2026-11-10 | accepté |
 | [ADR-143](ADR-143.md) | Un type exigé par une signature du §23.2, sans membre ni fournisseur, n'est pas un bouchon (R-001) | 2026-10-16 | accepté |
 
