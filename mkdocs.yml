@@ -1,6 +1,7 @@
 # Le site de la documentation (ADR-101) : construit depuis les guides versionnés de docs/guides, jamais modifié à la
 # main. Construire : python tools/docs/site.py build ; aperçu : python tools/docs/site.py serve.
 site_name: AXION ENGINE
+site_url: https://axionenginedocs.eriniumlab.com/
 site_description: Physique, déformation et rendu 3D pour Minecraft Forge 1.20.1
 repo_url: https://github.com/JLSkyzer/AXIONENGINE
 repo_name: JLSkyzer/AXIONENGINE
