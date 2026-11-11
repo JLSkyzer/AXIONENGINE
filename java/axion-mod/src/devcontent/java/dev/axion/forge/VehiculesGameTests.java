@@ -201,13 +201,21 @@ public final class VehiculesGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-159 D3 : les blocs retirés sous un véhicule endormi le font tomber — son châssis ne touche pas le sol, Rapier
+     * ne le réveillerait pas.
+     *
+     * <p>« Un véhicule au repos dort » (D3), sans délai fixé : le test attend qu'il dorme, dans son délai, puis retire
+     * le plancher au tick même. Toute tuile qui change à portée de ses roues le réveille, et la sienne est une section
+     * 16³ que partagent les gabarits voisins du lot, où Minecraft pose une balise au chargement et à la fin de chaque
+     * test : jugé à un tick fixe, il était parfois réveillé par un voisin, à quelques ticks de se rendormir.
+     */
     @GameTest(template = "test/plancher", timeoutTicks = 400)
     public static void lesBlocsRetiresSousUnVehiculeEndormiLeFontTomber(GameTestHelper helper) {
         AxionEntity assembly = poser(helper, 0.1);
         helper.startSequence()
-                .thenIdle(200)
+                .thenWaitUntil(() -> helper.assertTrue(assembly.netSleeping(), "il devrait dormir"))
                 .thenExecute(() -> {
-                    helper.assertTrue(assembly.netSleeping(), "il devrait dormir");
                     for (int x = 0; x < 9; x++) {
                         for (int z = 0; z < 9; z++) {
                             helper.setBlock(new BlockPos(x, 1, z), Blocks.AIR);

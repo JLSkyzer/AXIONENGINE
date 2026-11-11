@@ -2288,3 +2288,21 @@ pas reçu ; ADR-165 réservait A11, qui revenait en fait à ADR-164. Trouvé en 
 
 **Règle.** Tout commit qui touche le texte gelé du CDC ajoute sa ligne à 38.9 dans le même commit ; avant d'annoncer
 un numéro d'amendement, relire la dernière ligne du registre.
+
+## 2026-11-11 | Un véhicule réveillé par la balise d'un test voisin, jugé endormi à un tick fixe
+
+**Ce qui a mal tourné.** `lesBlocsRetiresSousUnVehiculeEndormiLeFontTomber` a échoué une fois en CI locale sur « il
+devrait dormir » au tick 200, sur un code vert au passage précédent et sur GitHub.
+
+**Cause.** ADR-159 D3 réveille un véhicule à chaque tuile qui change à portée de ses roues, et une tuile est une
+section 16³ entière. Dans `defaultBatch`, la section du véhicule couvre aussi le coin du gabarit voisin, où Minecraft
+pose une balise (balise, verre, 3×3 fer : `ReportGameListener.spawnBeacon`) au chargement et à la fin de chaque test.
+La trace (`AXION_GAMETEST_TRACE`) l'a montré : chaque reconstruction de la section réveille le véhicule, qui se rendort
+9 ticks plus tard ; et un bloc posé au tick 195 à 5,7 m, dans la même section, a reproduit l'échec à l'identique. La fin
+des tests voisins varie d'un passage à l'autre. Ce n'était pas la cadence : le natif avance de 1/20 s fixe par tick, et
+le serveur de GameTests, qui enchaîne ~100 à 190 ticks/s, ne lui retire aucun pas.
+
+**Règle.** Une GameTest attend par `thenWaitUntil`, dans son délai, un état qui « finit par » arriver (dormir, s'arrêter),
+jamais à un tick fixe : sa section 16³ est partagée avec les gabarits voisins du lot, qui la modifient à des instants
+qui varient. Un intermittent se prouve en le reproduisant de façon déterministe (la perturbation soupçonnée, posée au
+tick critique), pas en relançant jusqu'à l'échec.
