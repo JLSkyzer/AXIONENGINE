@@ -18,7 +18,7 @@ publique `axion-api`, en Java ou par des fichiers JSON que le mod charge.
 
     Déclare des véhicules et des objets depuis ton mod, en JSON ou en Java, et recharge-les sans redémarrer.
 
-    [:octicons-arrow-right-24: Premier addon](addons/premier-addon.md)
+    [:octicons-arrow-right-24: Débuter avec AXION](addons/index.md)
 
 -   **Jouer et héberger**
 

@@ -1,0 +1,6 @@
+{
+  "schema": 3,
+  "asset": "example_addon:models/crate.gltf",
+  "kind": "rigid_object",
+  "physics": { "mass": 40 }
+}

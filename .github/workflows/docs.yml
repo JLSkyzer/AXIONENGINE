@@ -1,5 +1,5 @@
-# Le site de la documentation (ADR-101) : construit en mode strict à chaque changement des guides, publié sur GitHub
-# Pages depuis master. Une pull request le construit sans le publier : un lien cassé y fait échouer la vérification.
+# Le site de la documentation (ADR-101) : construit en mode strict à chaque changement des guides, du glossaire ou de
+# l'addon témoin (dont le guide tire ses extraits), publié sur GitHub Pages depuis master. Une pull request le construit sans le publier : un lien cassé y fait échouer la vérification.
 #
 # Le site se construit aussi sur la machine : python tools/docs/site.py build (ou serve pour un aperçu), et par la
 # CI locale : python tools/ci/local_ci.py docs-site.
@@ -11,12 +11,16 @@ on:
     branches: [master]
     paths:
       - "docs/guides/**"
+      - "docs/glossaire.yml"
+      - "java/addon-temoin/**"
       - "mkdocs.yml"
       - "tools/docs/**"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/guides/**"
+      - "docs/glossaire.yml"
+      - "java/addon-temoin/**"
       - "mkdocs.yml"
       - "tools/docs/**"
       - ".github/workflows/docs.yml"

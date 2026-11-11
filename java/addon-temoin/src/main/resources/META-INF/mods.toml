@@ -1,0 +1,34 @@
+modLoader = "javafml"
+loaderVersion = "[47,)"
+license = "Apache-2.0"
+
+[[mods]]
+modId = "example_addon"
+version = "1.0.0"
+displayName = "AXION example addon"
+description = '''The witness addon of AXION ENGINE: a crate, declared in JSON and in Java.'''
+
+[[dependencies.example_addon]]
+    modId = "forge"
+    mandatory = true
+    versionRange = "[47,)"
+    ordering = "NONE"
+    side = "BOTH"
+
+[[dependencies.example_addon]]
+    modId = "minecraft"
+    mandatory = true
+    versionRange = "[1.20.1,1.21)"
+    ordering = "NONE"
+    side = "BOTH"
+
+# --8<-- [start:axion]
+# AXION is required on both sides, client and server.
+# 1.0.0-SNAPSHOT: development builds of AXION are accepted as well as releases.
+[[dependencies.example_addon]]
+    modId = "axion"
+    mandatory = true
+    versionRange = "[1.0.0-SNAPSHOT,)"
+    ordering = "AFTER"
+    side = "BOTH"
+# --8<-- [end:axion]

@@ -1,125 +1,113 @@
 # Your first addon
 
-An AXION addon is an ordinary Forge mod that declares content to AXION: definitions (what an object or a vehicle
-is), their 3D models, physical materials, tires. AXION reads nothing on its own: it only knows what mods send it
-([ADR-162](https://github.com/JLSkyzer/AXIONENGINE/blob/master/docs/decisions/ADR-162.md), in French).
+On this page, you declare a **40 kg crate** to AXION, first with a JSON file, then in Java, and you reload it without
+restarting the game. If a word escapes you, hover over it or open the [glossary](glossaire.md).
 
-This page declares a 40 kg crate, first in JSON, then in Java.
+All excerpts come from AXION's **witness addon**
+([`java/addon-temoin`](../../../java/addon-temoin/src/main/java/com/example/addon/ExampleAddon.java) on GitHub): a
+real mod, compiled with every AXION build. What you read here works.
 
-## 1. Depend on AXION
+!!! info "The downloadable mod template is coming soon"
+    For now, `axion-api` (the library your mod uses) is not published yet: the witness addon only runs from AXION's
+    repository. With the release, this same witness will become a ready-to-use template that you copy and run on its
+    own. Read this page now: nothing in it will change.
 
-In `META-INF/mods.toml`, AXION is required on both sides, client and server:
+## 1. Tell Forge your mod needs AXION
+
+Each mod has a `src/main/resources/META-INF/mods.toml` file that introduces it to Forge. AXION is added there as a
+dependency:
 
 ```toml
-[[dependencies.mymod]]
-    modId = "axion"
-    mandatory = true
-    versionRange = "[1.0,)"
-    ordering = "AFTER"
-    side = "BOTH"
+--8<-- "java/addon-temoin/src/main/resources/META-INF/mods.toml:axion"
 ```
 
-In `build.gradle`, the API only, at compile time:
+!!! question "Why `side = \"BOTH\"`?"
+    AXION simulates objects on the server and draws them for each player: it must be installed on both sides, and so
+    must your addon. Without AXION, Forge refuses to start the game and says which one is missing.
 
-```groovy
-dependencies {
-    compileOnly "dev.axion:axion-api:<version>"
-}
-```
+## 2. Lay out your content
 
-!!! warning "Never embed `axion-api`"
-    AXION provides the API in game. An addon that embeds it in its JAR puts the `dev.axion.api` package in two mods at
-    once.
-
-!!! info "Not published yet"
-    The `dev.axion:axion-api` artifact is not published yet: it will be with slice 5 of ADR-162, and this page will
-    then say where to get it.
-
-## 2. Lay out the content
-
-Content lives under `axion/`, at the root of the mod's resources:
+Your content lives under `axion/`, at the root of the mod's resources. Each kind of content has its folder:
 
 ```text
 src/main/resources/
 └── axion/
-    ├── definitions/         crate.json
-    ├── models/              crate.glb
-    ├── physics_materials/
-    ├── collision_groups/
-    ├── block_materials/
-    └── tires/
+    ├── definitions/         crate.json    ← your crate's sheet
+    └── models/              crate.gltf    ← its 3D shape, exported from Blender
 ```
 
-The namespace is the modId: `axion/definitions/crate.json` becomes the definition `mymod:crate`, and
-`axion/models/crate.glb` the model `mymod:models/crate.glb`. A mod only declares in its own namespace.
+Other folders exist to go further: `physics_materials/`, `tires/`, `collision_groups/`, `block_materials/`.
 
-## 3. Send the content to AXION
+!!! question "How does AXION name your crate?"
+    From the file path, prefixed with the modId: `axion/definitions/crate.json` becomes `example_addon:crate`, and
+    `axion/models/crate.gltf` becomes `example_addon:models/crate.gltf`. You never write these names by hand anywhere
+    but in your own files.
 
-The mod sends AXION a `ContentProvider` through Forge's inter-mod messages, during `InterModEnqueueEvent`:
+## 3. Your crate's sheet
+
+`src/main/resources/axion/definitions/crate.json`:
+
+```json
+--8<-- "java/addon-temoin/src/main/resources/axion/definitions/crate.json"
+```
+
+| Field | What it says |
+|---|---|
+| `schema` | the version of the sheet format; keep `3` |
+| `asset` | the object's 3D model |
+| `kind` | the kind: `rigid_object` for an object that falls and rolls, `vehicle` for a vehicle… |
+| `physics.mass` | the mass, in kilograms (from 0.001 to 1,000,000) |
+
+## 4. Send your content to AXION
+
+This is the only Java code your first addon needs. When Forge loads your mod, it calls its constructor, which
+registers for the moment mods send each other messages:
 
 ```java
-@Mod("mymod")
-public final class MyMod {
-
-    public MyMod() {
-        FMLJavaModLoadingContext.get().getModEventBus().addListener(this::send);
-    }
-
-    private void send(InterModEnqueueEvent event) {
-        InterModComms.sendTo(AxionContent.MOD_ID, AxionContent.REGISTER,
-                () -> (ContentProvider) registrar -> registrar.registerFolder("axion/"));
-    }
-}
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddon.java:constructor"
 ```
 
-AXION calls each provider once, on the main thread, in modId order. The `registrar` is only valid during the call:
-do not keep it.
+At that moment, your mod sends AXION a **provider**: the piece of code AXION will call to learn your content.
 
-## 4. A definition, in JSON or in Java
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddon.java:provider"
+```
 
-Both forms produce the same document: same canonical form, same schema, same fingerprint.
+`registerFolder("axion/")` sends your whole `axion/` folder. The next line shows the other way: the same kind of
+sheet, written in Java with the *builder*, for a 400 kg crate.
 
-=== "JSON"
+!!! question "JSON or Java?"
+    Both produce exactly the same sheet, checked the same way. JSON is enough to start with; Java is useful when you
+    want to compute a sheet, for example ten variants of the same crate.
 
-    `src/main/resources/axion/definitions/crate.json`:
+## 5. See your crate in game
 
-    ```json
-    {
-      "schema": 3,
-      "asset": "mymod:models/crate.glb",
-      "kind": "rigid_object",
-      "physics": { "mass": 40 }
-    }
-    ```
+Launch the game, open a world in creative mode, then type:
 
-    The folder is read by `registrar.registerFolder("axion/")`.
+```text
+/axion spawn example_addon:crate ^ ^1 ^3
+```
 
-=== "Java"
+Your crate appears three blocks in front of you and falls to the ground. `example_addon:heavy_crate` spawns the
+400 kg one.
 
-    In the provider, with the builder generated from the schema:
+## 6. Change things without restarting
 
-    ```java
-    registrar -> registrar.register("crate",
-            DefinitionBuilder.rigidObject("mymod:models/crate.glb")
-                    .physics(p -> p.mass(40))
-                    .build())
-    ```
+Restarting Minecraft for every try takes time. AXION can reload your content mid-game:
 
-    The builder checks types; bounds (a mass from 0.001 to 1,000,000 kg) are checked at load time, as for a file.
+1. enable the `content.dev_reload` option in `config/axion-common.toml` (or launch the game with
+   `-Daxion.content.dev_reload=true`);
+2. after each change, copy your resources: `./gradlew processResources`, or your IDE's build;
+3. type `/axion dev reload` in game.
 
-An error — duplicate, out-of-bounds field, missing model — is written to the game log with the mod, file or call at
-fault; the faulty definition is dropped, the rest of the content loads.
+AXION re-reads your folder and recompiles your models. Crates already placed keep their old sheet: spawn a new one to
+see the change.
 
-## 5. Iterate without restarting
+!!! warning "Your provider must be callable again"
+    `/axion dev reload` calls your provider again. It must only register your content, nothing else.
 
-Enable `content.dev_reload` in `config/axion-common.toml` (or launch the game with
-`-Daxion.content.dev_reload=true`), then, after each change:
+## If it does not work
 
-1. copy the resources through the build: `./gradlew processResources`, or your IDE's build;
-2. type `/axion dev reload` in game (operator).
-
-AXION calls your provider again, re-reads your folder from disk and sends the registry to players. In singleplayer,
-the client's models are recompiled too. Objects already placed keep their old definition: spawn a new one.
-
-!!! tip "The provider must be callable again"
-    `/axion dev reload` calls the same `ContentProvider` again. It must only register, with no other effect.
+Open the game log (`logs/latest.log`) and look for your mod's name (`example_addon`) on the lines starting with
+`AXION`. Each error there names the sheet or the file, and what is wrong: a duplicate, an out-of-bounds field, a
+missing model. The faulty sheet is dropped, the rest loads.

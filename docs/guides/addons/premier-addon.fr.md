@@ -1,127 +1,116 @@
-# Premier addon
+# Ton premier addon
 
-Un addon AXION est un mod Forge ordinaire qui déclare du contenu à AXION : des definitions (ce qu'est un objet, un
-véhicule), leurs modèles 3D, des matériaux physiques, des pneus. AXION ne lit rien de lui-même : il ne connaît que ce
-que les mods lui envoient ([ADR-162](https://github.com/JLSkyzer/AXIONENGINE/blob/master/docs/decisions/ADR-162.md)).
+Dans cette page, tu déclares une **caisse de 40 kg** à AXION, d'abord avec un fichier JSON, puis en Java, et tu la
+recharges sans redémarrer le jeu. Si un mot t'échappe, survole-le ou ouvre le [glossaire](glossaire.md).
 
-Cette page déclare une caisse de 40 kg, d'abord en JSON, puis en Java.
+Tous les extraits viennent de l'**addon témoin** d'AXION
+([`java/addon-temoin`](../../../java/addon-temoin/src/main/java/com/example/addon/ExampleAddon.java) sur GitHub) :
+un vrai mod, compilé à chaque build d'AXION. Ce que tu lis ici marche.
 
-## 1. Dépendre d'AXION
+!!! info "Le modèle de mod à télécharger arrive bientôt"
+    Pour l'instant, `axion-api` (la bibliothèque que ton mod utilise) n'est pas encore publiée : l'addon témoin ne
+    se lance que depuis le dépôt d'AXION. Avec la publication, ce même témoin deviendra un modèle prêt à l'emploi,
+    que tu copieras et lanceras seul. Lis cette page dès maintenant : rien n'y changera.
 
-Dans `META-INF/mods.toml`, AXION est requis des deux côtés, client et serveur :
+## 1. Dire à Forge que ton mod a besoin d'AXION
+
+Chaque mod a un fichier `src/main/resources/META-INF/mods.toml` qui le présente à Forge. On y ajoute AXION comme
+dépendance :
 
 ```toml
-[[dependencies.monmod]]
-    modId = "axion"
-    mandatory = true
-    versionRange = "[1.0,)"
-    ordering = "AFTER"
-    side = "BOTH"
+--8<-- "java/addon-temoin/src/main/resources/META-INF/mods.toml:axion"
 ```
 
-Dans `build.gradle`, l'API seulement, à la compilation :
+!!! question "Pourquoi `side = \"BOTH\"` ?"
+    AXION simule les objets sur le serveur et les dessine chez chaque joueur : il doit être installé des deux côtés,
+    et ton addon aussi. Sans AXION, Forge refuse de lancer le jeu et dit lequel manque.
 
-```groovy
-dependencies {
-    compileOnly "dev.axion:axion-api:<version>"
-}
-```
+## 2. Ranger ton contenu
 
-!!! warning "Ne jamais embarquer `axion-api`"
-    AXION fournit l'API en jeu. Un addon qui l'embarque dans son JAR place le paquet `dev.axion.api` dans deux mods à
-    la fois.
-
-!!! info "Pas encore publié"
-    L'artefact `dev.axion:axion-api` n'est pas encore publié : il le sera avec la tranche 5 d'ADR-162, et cette page
-    dira alors où le trouver.
-
-## 2. Ranger le contenu
-
-Le contenu se range sous `axion/`, à la racine des ressources du mod :
+Ton contenu se range sous `axion/`, à la racine des ressources du mod. Chaque sorte de contenu a son dossier :
 
 ```text
 src/main/resources/
 └── axion/
-    ├── definitions/         caisse.json
-    ├── models/              caisse.glb
-    ├── physics_materials/
-    ├── collision_groups/
-    ├── block_materials/
-    └── tires/
+    ├── definitions/         crate.json    ← la fiche de ta caisse
+    └── models/              crate.gltf    ← sa forme 3D, exportée de Blender
 ```
 
-L'espace de noms est le modId : `axion/definitions/caisse.json` devient la definition `monmod:caisse`, et
-`axion/models/caisse.glb` le modèle `monmod:models/caisse.glb`. Un mod ne déclare que dans le sien.
+D'autres dossiers existent pour aller plus loin : `physics_materials/`, `tires/`, `collision_groups/`,
+`block_materials/`.
 
-## 3. Envoyer le contenu à AXION
+!!! question "Comment AXION nomme ta caisse ?"
+    Par le chemin du fichier, précédé du modId : `axion/definitions/crate.json` devient `example_addon:crate`, et
+    `axion/models/crate.gltf` devient `example_addon:models/crate.gltf`. Tu n'écris jamais ces noms à la main ailleurs
+    que dans tes fichiers.
 
-Le mod envoie à AXION un `ContentProvider` par les messages entre mods de Forge, pendant `InterModEnqueueEvent` :
+## 3. La fiche de ta caisse
+
+`src/main/resources/axion/definitions/crate.json` :
+
+```json
+--8<-- "java/addon-temoin/src/main/resources/axion/definitions/crate.json"
+```
+
+| Champ | Ce qu'il dit |
+|---|---|
+| `schema` | la version du format de fiche ; garde `3` |
+| `asset` | le modèle 3D de l'objet |
+| `kind` | le genre : `rigid_object` pour un objet qui tombe et roule, `vehicle` pour un véhicule… |
+| `physics.mass` | la masse, en kilogrammes (de 0,001 à 1 000 000) |
+
+## 4. Envoyer ton contenu à AXION
+
+C'est le seul code Java dont ton premier addon a besoin. Quand Forge charge ton mod, il appelle son constructeur, qui
+s'inscrit pour le moment où les mods s'envoient des messages :
 
 ```java
-@Mod("monmod")
-public final class MonMod {
-
-    public MonMod() {
-        FMLJavaModLoadingContext.get().getModEventBus().addListener(this::envoyer);
-    }
-
-    private void envoyer(InterModEnqueueEvent event) {
-        InterModComms.sendTo(AxionContent.MOD_ID, AxionContent.REGISTER,
-                () -> (ContentProvider) registrar -> registrar.registerFolder("axion/"));
-    }
-}
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddon.java:constructor"
 ```
 
-AXION appelle chaque fournisseur une fois, sur le thread principal, dans l'ordre des modId. Le `registrar` n'est
-valable que pendant l'appel : ne le garde pas.
+À ce moment-là, ton mod envoie à AXION un **fournisseur** : le morceau de code qu'AXION appellera pour connaître ton
+contenu.
 
-## 4. Une definition, en JSON ou en Java
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddon.java:provider"
+```
 
-Les deux formes donnent le même document : même forme canonique, même schéma, même empreinte.
+`registerFolder("axion/")` envoie tout ton dossier `axion/`. La ligne suivante montre l'autre façon de faire : la
+même sorte de fiche, écrite en Java avec le *builder*, pour une caisse de 400 kg.
 
-=== "JSON"
+!!! question "JSON ou Java ?"
+    Les deux donnent exactement la même fiche, vérifiée de la même façon. Le JSON suffit pour commencer ; le Java sert
+    quand tu veux calculer une fiche, par exemple dix variantes d'une même caisse.
 
-    `src/main/resources/axion/definitions/caisse.json` :
+## 5. Voir ta caisse en jeu
 
-    ```json
-    {
-      "schema": 3,
-      "asset": "monmod:models/caisse.glb",
-      "kind": "rigid_object",
-      "physics": { "mass": 40 }
-    }
-    ```
+Lance le jeu, ouvre un monde en créatif, puis tape :
 
-    Le dossier est lu par `registrar.registerFolder("axion/")`.
+```text
+/axion spawn example_addon:crate ^ ^1 ^3
+```
 
-=== "Java"
+Ta caisse apparaît trois blocs devant toi et tombe au sol. `example_addon:heavy_crate` fait apparaître celle de
+400 kg.
 
-    Dans le fournisseur, avec le builder généré depuis le schéma :
+## 6. Modifier sans redémarrer
 
-    ```java
-    registrar -> registrar.register("caisse",
-            DefinitionBuilder.rigidObject("monmod:models/caisse.glb")
-                    .physics(p -> p.mass(40))
-                    .build())
-    ```
+Redémarrer Minecraft à chaque essai prend du temps. AXION peut recharger ton contenu en pleine partie :
 
-    Le builder vérifie les types ; les bornes (une masse de 0,001 à 1 000 000 kg) se vérifient au chargement, comme
-    pour un fichier.
+1. active l'option `content.dev_reload` dans `config/axion-common.toml` (ou lance le jeu avec
+   `-Daxion.content.dev_reload=true`) ;
+2. après chaque modification, recopie tes ressources : `./gradlew processResources`, ou la construction de ton IDE ;
+3. tape `/axion dev reload` en jeu.
 
-Une erreur — doublon, champ hors bornes, modèle absent — est écrite au journal du jeu avec le mod, le fichier ou
-l'appel en cause ; la definition fautive est écartée, le reste du contenu se charge.
+AXION relit ton dossier et recompile tes modèles. Les caisses déjà posées gardent leur ancienne fiche : fais-en
+apparaître une nouvelle pour voir le changement.
 
-## 5. Itérer sans redémarrer
+!!! warning "Ton fournisseur doit pouvoir être rappelé"
+    `/axion dev reload` rappelle ton fournisseur. Il ne doit faire qu'enregistrer ton contenu, rien d'autre.
 
-Active `content.dev_reload` dans `config/axion-common.toml` (ou lance le jeu avec
-`-Daxion.content.dev_reload=true`), puis, après chaque modification :
+## Si ça ne marche pas
 
-1. recopie les ressources par le build : `./gradlew processResources`, ou la construction de ton IDE ;
-2. tape `/axion dev reload` en jeu (opérateur).
-
-AXION rappelle ton fournisseur, relit ton dossier depuis le disque et renvoie le registre aux joueurs. En solo, les
-modèles du client se recompilent aussi. Les objets déjà posés gardent leur ancienne definition : fais-en apparaître
-un nouveau.
-
-!!! tip "Le fournisseur doit pouvoir être rappelé"
-    `/axion dev reload` rappelle le même `ContentProvider`. Il ne doit faire qu'enregistrer, sans autre effet.
+Ouvre le journal du jeu (`logs/latest.log`) et cherche le nom de ton mod (`example_addon`) sur les lignes qui
+commencent par `AXION`. Chaque erreur y nomme la fiche ou le fichier, et ce qui ne va pas : un doublon, un champ hors
+des bornes, un modèle introuvable. La fiche fautive est écartée, le
+reste se charge.

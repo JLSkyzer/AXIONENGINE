@@ -3751,6 +3751,19 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
               remises au runtime par le code du rechargement des données, registre renvoyé, modèles du client en solo.
               `ContentProvidersTest`, `DevReloadTest`, `RechargementDevGameTests`, essai en solo
               (`runEssaiRechargementDev`, capture). Grille d'ADR-160 D7 dans ADR-162.
+        Tranche 5 — publication, témoin, guide (CAP-48, CAP-49) ; décisions de Killian du 2026-11-11 : Maven à lui
+        (`maven.eriniumlab.com`), site sur GitHub Pages à `axionenginedocs.eriniumlab.com`, parcours débutant tutoyé,
+        français et anglais, violet et cyan :
+        - [x] Le site (2026-11-11) : MkDocs Material bilingue, publié par `.github/workflows/docs.yml`, HTTPS forcé ;
+              tableaux à la largeur du contenu ; liens vers le dépôt réécrits vers GitHub ; `local_ci.py docs-site`.
+        - [x] L'addon témoin (2026-11-11) : `java/addon-temoin`, compilé contre `axion-api` seul ;
+              `AddonTemoinGameTests` (78 GameTests verts).
+        - [x] Le parcours débutant (2026-11-11) : quatre pages et un glossaire à infobulles, en deux langues ; extraits
+              tirés du témoin.
+        - [ ] Traduire en anglais les guides existants, et les descriptions de `CONFIGURATION.md` (générateur bilingue).
+        - [ ] Publication : Reposilite sur le mini PC (`maven.eriniumlab.com`), `maven-publish` d'`axion-api` et du
+              JAR d'AXION, le témoin en modèle de mod qui se lance seul ; secret de CI posé par Killian.
+        - [ ] ADR : version d'API exigée par un addon (D11), kit de test et validateur hors jeu (CAP-49).
   - [x] Tranche 4 de C-33 (2026-11-11) : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
         variables par assembly). Trois sous-tranches, un film à chacune :
         - [x] 4a (2026-11-11) — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5,

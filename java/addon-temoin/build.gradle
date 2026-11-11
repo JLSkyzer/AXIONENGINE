@@ -1,0 +1,25 @@
+// CAP-49 (ADR-162, tranche 5) : l'addon temoin.
+//
+// Un mod Forge separe, qui declare du contenu a AXION exactement comme un addon tiers : il ne voit que
+// l'API publique (axion-api), jamais l'implementation (axion-mod). S'il compile, un addon peut s'ecrire
+// avec l'API seule ; la CI le compile a chaque build. Les lancements de developpement d'AXION le chargent
+// comme un mod a part, et un GameTest verifie son contenu en jeu (AddonTemoinGameTests).
+//
+// Le guide d'addon du site (docs/guides/addons) tire ses extraits de code de ces fichiers : ils sont
+// donc toujours compiles et toujours a jour.
+apply plugin: 'net.minecraftforge.gradle'
+
+base {
+    archivesName = 'axion-addon-temoin'
+}
+
+minecraft {
+    mappings channel: mapping_channel, version: mapping_version
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    // L'API seule, a la compilation : AXION la fournit en jeu (ADR-162 D11). Un addon publie la
+    // declare de meme, depuis le depot Maven d'AXION, et ne l'embarque jamais.
+    compileOnly project(':axion-api')
+}

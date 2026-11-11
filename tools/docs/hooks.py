@@ -7,11 +7,16 @@ mène à rien reste tel quel : le mode strict de MkDocs le signale, et il se cor
 
 Dans une ligne de tableau, une portée de code qui contient une barre échappée (« \\| », comme le générateur de
 CONFIGURATION.md en écrit) devient du HTML où la barre est une entité : GitHub et le site l'affichent alors de même.
+
+Le glossaire (docs/glossaire.yml) donne une infobulle à chacun de ses mots, dans chaque page de sa langue ; la page
+qui porte le marqueur <!-- glossaire --> le reçoit en tableau.
 """
 
 import re
 from pathlib import Path
 from urllib.parse import unquote
+
+import yaml
 
 RACINE = Path(__file__).resolve().parents[2]
 DEPOT = "https://github.com/JLSkyzer/AXIONENGINE/blob/master/"
@@ -23,6 +28,10 @@ LIEN = re.compile(r"\]\((?!https?://|mailto:|#)([^)\s]+)\)")
 # cellule ; Python-Markdown y laisse la barre oblique inverse.
 CODE_A_BARRE = re.compile(r"`([^`]*\\\|[^`]*)`")
 
+GLOSSAIRE = RACINE / "docs" / "glossaire.yml"
+MARQUEUR = "<!-- glossaire -->"
+ENTETES = {"fr": "| Mot | Ce que c'est |\n|---|---|", "en": "| Term | What it is |\n|---|---|"}
+
 
 def _code_html(code: re.Match) -> str:
     texte = code.group(1).replace("&", "&amp;").replace("<", "&lt;").replace("\\|", "&#124;")
@@ -31,6 +40,21 @@ def _code_html(code: re.Match) -> str:
 
 def _barres(ligne: str) -> str:
     return CODE_A_BARRE.sub(_code_html, ligne) if ligne.lstrip().startswith("|") else ligne
+
+
+def _langue(page) -> str:
+    return "en" if page.file.src_uri.endswith(".en.md") else "fr"
+
+
+def _glossaire(markdown: str, langue: str) -> str:
+    """Le tableau du glossaire à la place de son marqueur, et l'infobulle de chaque mot en fin de page."""
+    entrees = yaml.safe_load(GLOSSAIRE.read_text(encoding="utf-8"))
+    if MARQUEUR in markdown:
+        triees = sorted(entrees, key=lambda entree: entree[langue].lower())
+        lignes = [f"| **{entree[langue]}** | {entree[langue + '_texte']} |" for entree in triees]
+        markdown = markdown.replace(MARQUEUR, ENTETES[langue] + "\n" + "\n".join(lignes))
+    infobulles = [f"*[{entree[langue]}]: {entree[langue + '_texte']}" for entree in entrees]
+    return markdown + "\n\n" + "\n".join(infobulles) + "\n"
 
 
 def on_page_markdown(markdown, page, config, files):
@@ -46,4 +70,4 @@ def on_page_markdown(markdown, page, config, files):
         return "](" + adresse + ")"
 
     markdown = "\n".join(_barres(ligne) for ligne in markdown.split("\n"))
-    return LIEN.sub(reecrire, markdown)
+    return _glossaire(LIEN.sub(reecrire, markdown), _langue(page))

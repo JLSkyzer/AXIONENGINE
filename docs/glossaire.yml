@@ -1,0 +1,45 @@
+# Le glossaire du site de la documentation (ADR-101), en français et en anglais.
+#
+# Une seule source : tools/docs/hooks.py en tire la page « Glossaire » (le marqueur <!-- glossaire --> y devient un
+# tableau) et une infobulle sur chaque mot, dans chaque page de la même langue. Un mot n'a d'infobulle que hors du
+# code. Garder les explications courtes : elles s'affichent au survol.
+
+- fr: definition
+  en: definition
+  fr_texte: "La fiche d'un objet : son modèle 3D, son genre (objet, véhicule…), sa masse, ses matériaux. Un fichier JSON, ou du code Java."
+  en_texte: "An object's sheet: its 3D model, its kind (object, vehicle…), its mass, its materials. A JSON file, or Java code."
+
+- fr: assembly
+  en: assembly
+  fr_texte: "Un objet d'AXION posé dans le monde, construit d'après sa definition. La definition est la recette, l'assembly le plat."
+  en_texte: "An AXION object placed in the world, built from its definition. The definition is the recipe, the assembly the dish."
+
+- fr: modId
+  en: modId
+  fr_texte: "L'identifiant de ton mod, en minuscules (example_addon). C'est aussi l'espace de noms de tout ce qu'il déclare."
+  en_texte: "Your mod's identifier, in lowercase (example_addon). It is also the namespace of everything it declares."
+
+- fr: espace de noms
+  en: namespace
+  fr_texte: "La partie avant les deux-points d'un identifiant : example_addon dans example_addon:crate. Deux mods ne se marchent pas dessus."
+  en_texte: "The part before the colon of an identifier: example_addon in example_addon:crate. Two mods never collide."
+
+- fr: addon
+  en: addon
+  fr_texte: "Un mod qui ajoute du contenu à AXION : des objets, des véhicules, des matériaux. Il dépend d'AXION."
+  en_texte: "A mod that adds content to AXION: objects, vehicles, materials. It depends on AXION."
+
+- fr: Forge
+  en: Forge
+  fr_texte: "Le chargeur de mods de Minecraft qu'utilise AXION (Forge 47, pour Minecraft 1.20.1)."
+  en_texte: "The Minecraft mod loader AXION uses (Forge 47, for Minecraft 1.20.1)."
+
+- fr: glTF
+  en: glTF
+  fr_texte: "Le format des modèles 3D qu'AXION lit (.gltf ou .glb). Blender l'exporte : Fichier › Exporter › glTF 2.0."
+  en_texte: "The 3D model format AXION reads (.gltf or .glb). Blender exports it: File › Export › glTF 2.0."
+
+- fr: fournisseur
+  en: provider
+  fr_texte: "Le morceau de code (un ContentProvider) que ton mod envoie à AXION, et qu'AXION appelle pour connaître ton contenu."
+  en_texte: "The piece of code (a ContentProvider) your mod sends to AXION, which AXION calls to learn your content."

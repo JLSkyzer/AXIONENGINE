@@ -21,3 +21,8 @@ project(':axion-api').projectDir = file('java/axion-api')
 
 include ':axion-mod'
 project(':axion-mod').projectDir = file('java/axion-mod')
+
+// CAP-49 (ADR-162, tranche 5) : l'addon temoin, un mod separe compile contre axion-api seul,
+// comme un addon tiers ; les extraits de code du guide d'addon en sont tires.
+include ':addon-temoin'
+project(':addon-temoin').projectDir = file('java/addon-temoin')

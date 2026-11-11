@@ -21,7 +21,7 @@ in Java or with JSON files the mod loads.
 
     Declare vehicles and objects from your mod, in JSON or in Java, and reload them without restarting.
 
-    [:octicons-arrow-right-24: Your first addon](addons/premier-addon.md)
+    [:octicons-arrow-right-24: Getting started with AXION](addons/index.md)
 
 -   **Play and host**
 

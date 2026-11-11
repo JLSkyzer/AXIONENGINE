@@ -76,6 +76,10 @@ minecraft {
                     // Le contenu d'essai aussi, en developpement seulement.
                     source sourceSets.devcontent
                 }
+                // CAP-49 : l'addon temoin, un mod a part, comme un addon tiers (AddonTemoinGameTests).
+                example_addon {
+                    source project(':addon-temoin').sourceSets.main
+                }
             }
         }
 
