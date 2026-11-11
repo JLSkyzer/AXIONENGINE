@@ -3720,7 +3720,14 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         - [x] 1d — Fournisseur d'`AxionApi` sur une surface ramenée au réel (ADR-162 D1).
         - [x] 1e — Textes du CDC (C-27, 23.3, R-171, R-1030, R-1640, 28.1, R-1783, R-1790, conflits 19 et 21),
               ADR-160 D5, guides ; amendement A8.
-  - [ ] Tranche 4 de C-33 (sources, volant, touches libres, canaux de lumière) écrite sur cette API.
+  - [ ] Tranche 4 de C-33 : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
+        variables par assembly). Trois sous-tranches, un film à chacune :
+        - [ ] 4a — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5, `HIGH`,
+              sources `vehicle.*`, `engine.*`, `transmission.*`, `seat.*`, `time.seconds`, `world.*`) ; volant.
+        - [ ] 4b — variables (`persist`, `replicate`, `write`, bornes), commandes génériques et `bindings`,
+              `set_variable`, `Assembly.variables()`, `/axion variables`.
+        - [ ] 4c — canaux `visibility`, `emissive`, `color` ; `period`, `smoothing`, `gate` ; rendu par nœud dans les
+              deux backends ; Charger découpée dans Blender ; film du gyrophare.
 
 Exigence de Killian (2026-11-10) : « notre moteur et API doit leur permettre de tout faire », « aucune
 impossibilité », de l'extérieur à l'intérieur. Audit en lecture du CDC, du schéma, des ADR et du code, chaque
