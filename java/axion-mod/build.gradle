@@ -364,6 +364,13 @@ tasks.matching { it.name == 'runClient' }.configureEach {
     }
 }
 
+// CAP-49 : chaque lancement charge l'addon temoin depuis ses dossiers de sortie. ForgeGradle n'en deduit
+// aucune dependance : sur un clone neuf (la CI), ces dossiers n'existeraient pas, et Forge refuserait de demarrer
+// (« Invalid paths argument, contained no existing paths »). Chaque preparation de lancement compile donc le temoin.
+tasks.matching { it.name.startsWith('prepareRun') }.configureEach {
+    dependsOn ':addon-temoin:classes'
+}
+
 // Un client lancé par un agent : ni question du narrateur au premier lancement, ni son.
 def clientSilencieux = { File dossier ->
     def options = new File(dossier, 'options.txt')
