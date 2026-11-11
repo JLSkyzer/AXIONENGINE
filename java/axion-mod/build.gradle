@@ -118,7 +118,7 @@ minecraft {
             def local = rootProject.file('local/contenu/axion/definitions/local/charger.json').exists()
             property 'axion.film.definition', local ? 'axion:local/charger' : 'axion:test/vehicule'
             jvmArgs '-Xmx4G'
-            args '--width', '1280', '--height', '656'
+            args '--width', '1920', '--height', '984'
         }
 
         renderTest {

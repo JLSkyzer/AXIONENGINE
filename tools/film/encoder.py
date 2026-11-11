@@ -16,8 +16,8 @@ FW = Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319")
 UNION = Path(r"C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.26100.0\Windows.winmd")
 EXE = RACINE / "build" / "film" / "MfEncoder.exe"
 FPS = 60
-LARGEUR, HAUTEUR = 1280, 720
-DEBIT = 8_000_000
+LARGEUR, HAUTEUR = 1920, 1080
+DEBIT = 16_000_000
 
 
 def compiler():

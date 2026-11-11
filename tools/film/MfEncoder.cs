@@ -22,7 +22,7 @@ public static class MfEncoder {
     string r = "duree=" + clip.OriginalDuration + " taille=" + p.Width + "x" + p.Height + " sujet=" + p.Subtype + " debit=" + p.Bitrate;
     Directory.CreateDirectory(dossier);
     foreach (var s in secondes) {
-      var st = Wait(comp.GetThumbnailAsync(TimeSpan.FromSeconds(s), 1280, 720, VideoFramePrecision.NearestFrame));
+      var st = Wait(comp.GetThumbnailAsync(TimeSpan.FromSeconds(s), (int)p.Width, (int)p.Height, VideoFramePrecision.NearestFrame));
       using (var ins = System.IO.WindowsRuntimeStreamExtensions.AsStreamForRead(st))
       using (var o = File.Create(Path.Combine(dossier, "t" + ((int)(s * 10)).ToString("D5") + ".jpg"))) { ins.CopyTo(o); }
     }

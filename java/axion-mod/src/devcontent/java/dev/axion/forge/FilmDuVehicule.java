@@ -1,6 +1,7 @@
 package dev.axion.forge;
 
-import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.platform.GlStateManager;
 import dev.axion.AxionMod;
 import dev.axion.physics.SimCommandStream;
 import java.awt.Color;
@@ -10,6 +11,8 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,14 +20,17 @@ import java.util.Locale;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 import net.minecraft.client.Camera;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.CloudStatus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.ParticleStatus;
-import net.minecraft.client.Screenshot;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.tutorial.TutorialSteps;
@@ -51,6 +57,9 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL21;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -105,9 +114,10 @@ public final class FilmDuVehicule {
     private static final long IMAGE_NS = 1_000_000_000L / 60L;
     /** L'écart toléré entre l'axe de la vue et le véhicule : au-delà, il sort de l'image ou s'y colle au bord. */
     private static final double CHAMP_TOLERE_DEG = 20.0;
-    private static final int LARGEUR = 1280;
-    private static final int HAUTEUR_JEU = 656;
-    private static final int BANDEAU = 64;
+    /** Le film en 1920 × 1080, comme un écran d'aujourd'hui : le jeu au-dessus, le bandeau en dessous. */
+    private static final int LARGEUR = 1920;
+    private static final int HAUTEUR_JEU = 984;
+    private static final int BANDEAU = 96;
 
     /** Délai maximal d'une phase d'attente. */
     private static final long ATTENTE_MAX_NS = TimeUnit.SECONDS.toNanos(180);
@@ -194,6 +204,8 @@ public final class FilmDuVehicule {
     private static long debutFilm;
     private static int imagesEcrites;
     private static int imagesUniques;
+    /** Le temps que chaque capture prend au fil de rendu : lecture de l'image du jeu et copie en pixels. */
+    private static final java.util.List<Long> CAPTURES_NS = new java.util.ArrayList<>();
     private static double xCamera = Double.NaN;
     /** Vrai quand l'image se tourne du siège conducteur, faux depuis la caméra qui suit le véhicule. */
     private static boolean vueConducteur;
@@ -473,7 +485,9 @@ public final class FilmDuVehicule {
         } catch (IOException faute) {
             throw new UncheckedIOException(faute);
         }
-        ecriture = new ThreadPoolExecutor(6, 6, 0L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(48),
+        // En 1920 × 1080, une image coûte environ 50 ms à écrire (mesuré le 2026-11-11, compression rapide) : douze
+        // fils tiennent les 60 images par seconde sans que le fil de rendu ait à écrire lui-même.
+        ecriture = new ThreadPoolExecutor(12, 12, 0L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(96),
                 new ThreadPoolExecutor.CallerRunsPolicy());
         debutFilm = System.nanoTime();
         debutEtape = 0.0;
@@ -812,14 +826,6 @@ public final class FilmDuVehicule {
         int premiere = imagesEcrites + 1;
         imagesEcrites += repetitions;
         imagesUniques++;
-        int[] pixels;
-        int largeur;
-        int hauteur;
-        try (NativeImage image = Screenshot.takeScreenshot(minecraft.getMainRenderTarget())) {
-            pixels = image.makePixelArray();
-            largeur = image.getWidth();
-            hauteur = image.getHeight();
-        }
         double parcouru = Math.hypot(xServeur - DEPART.x, zServeur - DEPART.z);
         // ADR-163 D1 : ce que le client a reçu du véhicule, à la pose de cette image : le volant le suit.
         dev.axion.net.Interpolation.VehiclePose recu = vehicule instanceof AxionEntity assembly
@@ -850,7 +856,133 @@ public final class FilmDuVehicule {
         String legende = legende();
         String temps = String.format(Locale.ROOT, "%.1f s", secondes);
         Path dossierImages = dossier(minecraft).resolve("images");
-        ecriture.execute(() -> ecrire(dossierImages, premiere, repetitions, pixels, largeur, hauteur, legende, valeurs, temps));
+        long debutCapture = System.nanoTime();
+        lire(minecraft.getMainRenderTarget(), new Image(dossierImages, premiere, repetitions, legende, valeurs, temps));
+        CAPTURES_NS.add(System.nanoTime() - debutCapture);
+    }
+
+    /** Une image du film en attente de ses pixels : où et sous quels numéros l'écrire, et son bandeau. */
+    private record Image(Path dossier, int premiere, int repetitions, String legende, String valeurs, String temps) {}
+
+    /**
+     * Lecture asynchrone de l'image du jeu : le GPU la copie dans un tampon (PBO) pendant que le jeu continue, et elle
+     * n'est reprise que deux images plus tard, quand la copie est faite. Lire l'image tout de suite coûtait 12 ms au
+     * fil de rendu en 1920 × 1080 (médiane mesurée le 2026-11-11), assez pour tomber sous 60 images par seconde.
+     */
+    private static final int TAMPONS = 3;
+    private static int[] tampons;
+    private static int tamponLargeur;
+    private static int tamponHauteur;
+    private static final Image[] EN_COPIE = new Image[TAMPONS];
+    private static int prochainTampon;
+
+    /** Lance la copie de l'image du jeu dans le prochain tampon, et reprend celle lancée deux images plus tôt. */
+    private static void lire(RenderTarget cible, Image image) {
+        if (tampons == null || cible.width != tamponLargeur || cible.height != tamponHauteur) {
+            viderLesTampons();
+            tamponLargeur = cible.width;
+            tamponHauteur = cible.height;
+            tampons = new int[TAMPONS];
+            for (int i = 0; i < TAMPONS; i++) {
+                tampons[i] = GL15.glGenBuffers();
+                GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, tampons[i]);
+                GL15.glBufferData(GL21.GL_PIXEL_PACK_BUFFER, 4L * tamponLargeur * tamponHauteur, GL15.GL_STREAM_READ);
+            }
+            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
+        }
+        int tampon = prochainTampon;
+        GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, tampons[tampon]);
+        GlStateManager._pixelStore(GL11.GL_PACK_ALIGNMENT, 4);
+        GlStateManager._bindTexture(cible.getColorTextureId());
+        GL11.glGetTexImage(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, 0L);
+        GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
+        EN_COPIE[tampon] = image;
+        prochainTampon = (tampon + 1) % TAMPONS;
+        // Le tampon suivant a été lancé deux images plus tôt : sa copie est faite.
+        reprendre(prochainTampon);
+    }
+
+    /** Reprend les pixels d'un tampon lancé plus tôt et les confie à l'écriture ; rien s'il n'attend rien. */
+    private static void reprendre(int tampon) {
+        Image image = EN_COPIE[tampon];
+        if (image == null) {
+            return;
+        }
+        EN_COPIE[tampon] = null;
+        int largeur = tamponLargeur;
+        int hauteur = tamponHauteur;
+        int[] rgba = new int[largeur * hauteur];
+        GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, tampons[tampon]);
+        ByteBuffer copie = GL15.glMapBuffer(GL21.GL_PIXEL_PACK_BUFFER, GL15.GL_READ_ONLY);
+        if (copie != null) {
+            copie.order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().get(rgba);
+        }
+        GL15.glUnmapBuffer(GL21.GL_PIXEL_PACK_BUFFER);
+        GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
+        if (copie == null) {
+            LOGGER.error("[film] tampon de l'image {} illisible", image.premiere());
+            return;
+        }
+        ecriture.execute(() -> ecrire(image.dossier(), image.premiere(), image.repetitions(),
+                retourner(rgba, largeur, hauteur), largeur, hauteur, image.legende(), image.valeurs(), image.temps()));
+    }
+
+    /** Reprend toutes les images encore en copie, de la plus ancienne à la plus récente, puis rend les tampons. */
+    private static void viderLesTampons() {
+        if (tampons == null) {
+            return;
+        }
+        for (int k = 0; k < TAMPONS; k++) {
+            reprendre((prochainTampon + k) % TAMPONS);
+        }
+        for (int tampon : tampons) {
+            GL15.glDeleteBuffers(tampon);
+        }
+        tampons = null;
+    }
+
+    /**
+     * {@return l'image en ARGB, haut en premier} Le GPU la rend en octets RGBA, ligne du bas en premier ; lue en
+     * entiers petit-boutistes, chaque pixel vaut {@code A B G R} du poids fort au poids faible.
+     */
+    private static int[] retourner(int[] rgba, int largeur, int hauteur) {
+        int[] argb = new int[rgba.length];
+        for (int y = 0; y < hauteur; y++) {
+            int source = (hauteur - 1 - y) * largeur;
+            int cible = y * largeur;
+            for (int x = 0; x < largeur; x++) {
+                int p = rgba[source + x];
+                argb[cible + x] = 0xFF000000 | (p & 0xFF) << 16 | (p & 0xFF00) | (p >>> 16) & 0xFF;
+            }
+        }
+        return argb;
+    }
+
+    /**
+     * Écrit une image en PNG, compression rapide : en 1920 × 1080, 49 ms au lieu de 86 au réglage par défaut, pour un
+     * fichier un quart plus gros (mesuré le 2026-11-11 sur une image du film).
+     */
+    private static void ecrirePng(BufferedImage image, Path fichier) throws IOException {
+        ImageWriter ecrivain = ImageIO.getImageWritersByFormatName("png").next();
+        try (ImageOutputStream sortie = ImageIO.createImageOutputStream(fichier.toFile())) {
+            ImageWriteParam reglage = ecrivain.getDefaultWriteParam();
+            reglage.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            reglage.setCompressionQuality(0.9f);
+            ecrivain.setOutput(sortie);
+            ecrivain.write(null, new IIOImage(image, null, null), reglage);
+        } finally {
+            ecrivain.dispose();
+        }
+    }
+
+    /** {@return ce quantile du temps de capture au fil de rendu, en millisecondes ; 0 sans capture} */
+    private static double quantileMs(double q) {
+        if (CAPTURES_NS.isEmpty()) {
+            return 0.0;
+        }
+        java.util.List<Long> tries = new java.util.ArrayList<>(CAPTURES_NS);
+        java.util.Collections.sort(tries);
+        return tries.get(Math.min(tries.size() - 1, (int) (q * tries.size()))) / 1e6;
     }
 
     /** Position, hauteur et cap côté client, relevés tels quels : ce qu'on voit se compare à ce qui est simulé. */
@@ -901,15 +1033,15 @@ public final class FilmDuVehicule {
             g.setColor(new Color(18, 20, 26));
             g.fillRect(0, HAUTEUR_JEU, LARGEUR, BANDEAU);
             g.setColor(Color.WHITE);
-            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 20));
-            g.drawString(legende, 16, HAUTEUR_JEU + 26);
+            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 30));
+            g.drawString(legende, 24, HAUTEUR_JEU + 39);
             g.setColor(new Color(170, 200, 235));
-            g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 18));
-            g.drawString(valeurs, 16, HAUTEUR_JEU + 52);
-            g.drawString("AXION ENGINE, C-33   " + temps, LARGEUR - 280, HAUTEUR_JEU + 26);
+            g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 27));
+            g.drawString(valeurs, 24, HAUTEUR_JEU + 78);
+            g.drawString("AXION ENGINE, C-33   " + temps, LARGEUR - 420, HAUTEUR_JEU + 39);
             g.dispose();
             Path fichier = dossier.resolve(nom(premiere));
-            ImageIO.write(image, "png", fichier.toFile());
+            ecrirePng(image, fichier);
             for (int k = 1; k < repetitions; k++) {
                 Files.createLink(dossier.resolve(nom(premiere + k)), fichier);
             }
@@ -982,6 +1114,8 @@ public final class FilmDuVehicule {
         passer(Phase.FIN);
         String faute = motif;
         if (ecriture != null) {
+            // Les dernières images sont encore en copie dans leurs tampons : les reprendre avant de fermer l'écriture.
+            viderLesTampons();
             ecriture.shutdown();
             try {
                 if (!ecriture.awaitTermination(120, TimeUnit.SECONDS)) {
@@ -996,12 +1130,13 @@ public final class FilmDuVehicule {
                         + " \"vitesse_apres_frein\": %.3f, \"recul\": %.2f, \"ecart_passager\": %.4f,"
                         + " \"ecart_lacet_passager_deg\": %.2f, \"volant_min\": %.2f, \"volant_max\": %.2f,"
                         + " \"regime_max\": %.0f, \"rapport_max\": %d, \"variables\": \"%s\", \"bascule_vue\": %s,"
-                        + " \"bascule_finale\": %s, \"tenue_vue\": %s, \"tenue_finale\": %s}%n",
+                        + " \"bascule_finale\": %s, \"tenue_vue\": %s, \"tenue_finale\": %s,"
+                        + " \"capture_ms_mediane\": %.1f, \"capture_ms_p90\": %.1f}%n",
                 imagesEcrites, imagesUniques, faute == null ? "null" : "\"" + faute.replace('"', '\'') + "\"",
                 distanceAvant, Math.toDegrees(capMax - capMin), vitesseApresFrein, recul, ecartPassager,
                 ecartLacetPassager, volantMin, volantMax, regimeMax, rapportMax, nomsVariables, basculeVue,
                 Float.isNaN(basculeFinale) ? "null" : Float.toString(basculeFinale), tenueVue,
-                Float.isNaN(tenueFinale) ? "null" : Float.toString(tenueFinale));
+                Float.isNaN(tenueFinale) ? "null" : Float.toString(tenueFinale), quantileMs(0.5), quantileMs(0.9));
         try {
             Files.createDirectories(dossier(minecraft));
             Files.writeString(dossier(minecraft).resolve("termine.json"), bilan, StandardCharsets.UTF_8);
