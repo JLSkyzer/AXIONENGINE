@@ -3708,6 +3708,16 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         le 2026-11-10** (builder généré depuis le schéma, API découpée en paquets, `axion-server-overrides.toml`).
   - [ ] Son code, en six tranches (ADR-162) ; la tranche 1 d'abord : fournisseur, phase d'enregistrement, registre,
         exemples par l'API publique, contenu de test et films migrés, écouteurs de datapack retirés, paquets de l'API.
+        Tranche 1 découpée (2026-11-11), chaque étape commitée verte :
+        - [x] 1a — API découpée en paquets (`api`, `api.assembly`, `api.content`, `api.event`, `api.damage`,
+              `api.attachment`, `api.vehicle`) : déplacement mécanique, imports et services suivis.
+        - [ ] 1b — Événement et registre d'enregistrement : types de l'API, propriétaire, espace de noms = modId,
+              doublons refusés en nommant les deux mods, `replace` explicite ; tests unitaires.
+        - [ ] 1c — Branchement : le serveur et le client lisent le contenu enregistré (plus de `ResourceManager`
+              pour AXION) ; exemples par l'API publique, contenu de test, films et Charger enregistrés ; GameTests.
+        - [ ] 1d — Fournisseur d'`AxionApi` sur une surface ramenée au réel (ADR-162 D1).
+        - [ ] 1e — Textes du CDC (C-27, 23.3, R-171, R-1030, R-1640, 28.1, R-1783, R-1790, conflits 19 et 21),
+              ADR-160 D5, guides ; amendement A8.
   - [ ] Tranche 4 de C-33 (sources, volant, touches libres, canaux de lumière) écrite sur cette API.
 
 Exigence de Killian (2026-11-10) : « notre moteur et API doit leur permettre de tout faire », « aucune

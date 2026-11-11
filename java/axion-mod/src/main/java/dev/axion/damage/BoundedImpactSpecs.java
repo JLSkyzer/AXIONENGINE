@@ -1,9 +1,9 @@
 package dev.axion.damage;
 
-import dev.axion.api.ImpactFlag;
-import dev.axion.api.ImpactSource;
-import dev.axion.api.ImpactSpec;
-import dev.axion.api.ImpactSpecFactory;
+import dev.axion.api.damage.ImpactFlag;
+import dev.axion.api.damage.ImpactSource;
+import dev.axion.api.damage.ImpactSpec;
+import dev.axion.api.damage.ImpactSpecFactory;
 import dev.axion.config.AxionConfig;
 import dev.axion.config.ConfigSchema.Scope;
 import java.util.Collections;

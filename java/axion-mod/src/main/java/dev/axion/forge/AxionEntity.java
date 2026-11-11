@@ -1,7 +1,7 @@
 package dev.axion.forge;
 
 import com.mojang.logging.LogUtils;
-import dev.axion.api.CustomData;
+import dev.axion.api.assembly.CustomData;
 import dev.axion.asset.Anatomy;
 import dev.axion.asset.DefinitionCompiler;
 import dev.axion.definition.Definition;

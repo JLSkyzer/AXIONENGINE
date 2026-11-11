@@ -1,8 +1,8 @@
 package dev.axion.forge;
 
-import dev.axion.api.ImpactFlag;
-import dev.axion.api.ImpactSource;
-import dev.axion.api.ImpactSpec;
+import dev.axion.api.damage.ImpactFlag;
+import dev.axion.api.damage.ImpactSource;
+import dev.axion.api.damage.ImpactSpec;
 import dev.axion.damage.BoundedImpactSpecs;
 import java.util.List;
 import java.util.Locale;

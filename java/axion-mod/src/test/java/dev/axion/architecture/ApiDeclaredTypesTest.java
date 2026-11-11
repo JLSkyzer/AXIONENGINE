@@ -47,13 +47,17 @@ class ApiDeclaredTypesTest {
         assertNotNull(repo, "axion.repo.dir non fourni par le build");
         Path sources = Path.of(repo, "java", "axion-api", "src", "main", "java", "dev", "axion", "api");
         Set<String> empty = new TreeSet<>();
-        try (Stream<Path> files = Files.list(sources)) {
-            for (Path file : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+        // L'API est découpée en sous-paquets (ADR-162 Q2) : on les parcourt tous.
+        try (Stream<Path> files = Files.walk(sources)) {
+            for (Path file : files.filter(p -> p.toString().endsWith(".java")).sorted().toList()) {
                 String name = file.getFileName().toString().replace(".java", "");
                 if (name.equals("package-info")) {
                     continue;
                 }
-                Class<?> type = Class.forName("dev.axion.api." + name);
+                String relative = sources.relativize(file.getParent()).toString()
+                        .replace(java.io.File.separatorChar, '.');
+                Class<?> type = Class.forName(
+                        "dev.axion.api." + (relative.isEmpty() ? "" : relative + ".") + name);
                 if (type.isInterface() && !type.isAnnotation()
                         && type.getDeclaredMethods().length == 0
                         && type.getDeclaredClasses().length == 0) {

@@ -26,7 +26,7 @@
  * <p><strong>État de C-70.</strong> Les deux premières tranches portent la façade
  * {@link dev.axion.api.AxionApi}, tout ce que sa surface d'assembly et de dommage
  * référence, et les dix-huit événements du §23.2 avec leur
- * {@link dev.axion.api.EventBus}, transcrits du cahier des charges. Les services
+ * {@link dev.axion.api.event.EventBus}, transcrits du cahier des charges. Les services
  * seulement nommés y sont déclarés comme interfaces vides, complétées par leur
  * composant à son jalon. Le mod n'enregistre encore aucun fournisseur : tant
  * qu'il n'en a pas, {@link dev.axion.api.AxionApi#get()} lève et

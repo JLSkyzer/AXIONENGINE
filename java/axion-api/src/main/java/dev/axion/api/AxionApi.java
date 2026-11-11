@@ -1,5 +1,15 @@
 package dev.axion.api;
 
+import dev.axion.api.assembly.AssemblyService;
+import dev.axion.api.attachment.AttachmentService;
+import dev.axion.api.content.AssetService;
+import dev.axion.api.content.DefinitionService;
+import dev.axion.api.content.RegistryAccess;
+import dev.axion.api.damage.DamageService;
+import dev.axion.api.damage.DeformationService;
+import dev.axion.api.event.EventBus;
+import dev.axion.api.physics.PhysicsService;
+
 import java.util.Optional;
 
 /**

@@ -468,6 +468,9 @@ Definition of Done (PARTIE 37.3).
 
 - Le buggy d'exemple a son avant en `-z`, comme le veut le repere des
   vehicules (§6.5) ; l'axe de la charniere de son capot suit.
+- L'API publique est decoupee en paquets (ADR-162) : `dev.axion.api` garde la
+  facade, `assembly`, `content`, `event`, `damage`, `physics`, `attachment` et
+  `vehicle` recoivent leurs types.
 - Le passager d'une assembly est pose a son siege a chaque image : il ne
   recule plus quand le vehicule accelere, et le regard du joueur assis tourne
   avec le vehicule (ADR-158 D3 precise par ADR-159).

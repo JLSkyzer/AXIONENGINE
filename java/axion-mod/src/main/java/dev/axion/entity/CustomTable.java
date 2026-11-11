@@ -1,6 +1,6 @@
 package dev.axion.entity;
 
-import dev.axion.api.CustomData;
+import dev.axion.api.assembly.CustomData;
 import dev.axion.bridge.CborWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;

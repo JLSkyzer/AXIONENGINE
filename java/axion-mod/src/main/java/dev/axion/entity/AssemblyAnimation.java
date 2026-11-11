@@ -1,6 +1,6 @@
 package dev.axion.entity;
 
-import dev.axion.api.AnimationControl;
+import dev.axion.api.assembly.AnimationControl;
 import dev.axion.asset.AnimClips;
 import dev.axion.net.AnimationLayers;
 import java.util.Arrays;

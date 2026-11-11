@@ -5,9 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.axion.api.ImpactFlag;
-import dev.axion.api.ImpactSource;
-import dev.axion.api.ImpactSpec;
+import dev.axion.api.damage.ImpactFlag;
+import dev.axion.api.damage.ImpactSource;
+import dev.axion.api.damage.ImpactSpec;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 import net.minecraft.world.phys.Vec3;
