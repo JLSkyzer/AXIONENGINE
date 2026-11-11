@@ -2225,3 +2225,15 @@ la voit pas.
 
 **Règle.** Auditer aussi par scénarios de créateur, suivis couche par couche, et fermer chaque capacité à la grille
 transversale d'ADR-160 D7. Un audit ne garantit pas l'exhaustivité ; la grille appliquée à chaque chantier, si.
+
+## 2026-11-11 | Un client lancé par l'agent enfermait la souris de Killian
+
+**Ce qui a mal tourné.** Les clients des films et des bancs capturaient la souris : Killian, qui pilote le PC en
+bureau à distance plein écran, restait enfermé dans la fenêtre du jeu, sans pouvoir revenir à son poste.
+
+**Cause.** Minecraft capture la souris à la fermeture de chaque écran et au clic dans le monde ; le film ne la
+relâchait qu'après, le banc une seule fois, `runClient` jamais. Relâcher après coup laisse une capture d'une image.
+
+**Règle.** Aucun client lancé par l'agent sans `SourisLibre` (`-Daxion.souris.libre=true`, posé par Gradle) : la
+fenêtre y est tenue pour inactive, et `grabMouse()` ne capture alors jamais. Vérifier « souris libre » au journal du
+client à chaque lancement.

@@ -55,6 +55,11 @@ minecraft {
     // l'IDE avant le lancement du jeu.
     copyIdeResources = true
 
+    // Un client lancé par un agent ne capture pas la souris (`SourisLibre`, contenu de développement) : piloté à
+    // distance en plein écran, le poste resterait enfermé dans la fenêtre du jeu. Le film et les bancs, toujours ;
+    // runClient, quand un agent le lance (CLAUDECODE) ou sous -Paxion.sourisLibre=true.
+    def sourisLibre = (findProperty('axion.sourisLibre') ?: (System.getenv('CLAUDECODE') == '1')).toString()
+
     runs {
         configureEach {
             // Les repertoires de travail restent a la racine du depot.
@@ -80,6 +85,7 @@ minecraft {
             // debug disponibles. Le client de developpement seulement ; inerte en
             // production (R-2270).
             property 'axion.dev', 'true'
+            property 'axion.souris.libre', sourisLibre
         }
 
         server {
@@ -107,6 +113,7 @@ minecraft {
             parent minecraft.runs.client
             workingDirectory rootProject.file('.runs/film')
             property 'axion.film', 'vehicule'
+            property 'axion.souris.libre', 'true'
             // Le modèle local de Killian, hors du dépôt, s'il est là ; le buggy d'exemple sinon.
             def local = rootProject.file('local/contenu/axion/definitions/local/charger.json').exists()
             property 'axion.film.definition', local ? 'axion:local/charger' : 'axion:test/vehicule'
@@ -124,6 +131,7 @@ minecraft {
             property 'axion.rendertest', 'm3'
             property 'axion.debug.gl', 'true'
             property 'axion.render.backend', 'vanilla'
+            property 'axion.souris.libre', 'true'
             // T-493 : le plafond de sommets skinnés sur le CPU (R-742), abaissé pour que les bras de test
             // l'atteignent avant le plafond d'instances skinnées (R-791) ; au défaut, il en faudrait plus d'un
             // millier.
@@ -139,6 +147,7 @@ minecraft {
             property 'axion.rendertest', 'm3'
             property 'axion.debug.gl', 'true'
             property 'axion.render.backend', 'native'
+            property 'axion.souris.libre', 'true'
             args '--width', '854', '--height', '480'
         }
 
@@ -151,6 +160,7 @@ minecraft {
             property 'axion.rendertest', 'm3'
             property 'axion.rendertest.shaders', 'true'
             property 'axion.debug.gl', 'true'
+            property 'axion.souris.libre', 'true'
             // Les mixins d'Oculus et d'Embeddium, remappés par fg.deobf, retrouvent leurs cibles
             // sous les noms de développement.
             property 'mixin.env.remapRefMap', 'true'
