@@ -147,11 +147,15 @@ fn t631_buggy_compile_et_se_charge() {
     }
     assert!(buggy.translation("capot")[2] < 0.0, "le capot devant");
     assert!(
+        buggy.translation("phares")[2] < 0.0,
+        "les phares devant (ADR-163 D3)"
+    );
+    assert!(
         buggy.translation("attelage")[2] > 0.0,
         "l'attelage derrière"
     );
     assert_eq!(buggy.with(node_flags::SOCKET), ["attelage"]);
-    for part in ["chassis", "carrosserie", "capot", "volant"] {
+    for part in ["chassis", "carrosserie", "capot", "volant", "phares"] {
         assert!(buggy.visible(part), "{part} est rendu");
     }
     assert!(

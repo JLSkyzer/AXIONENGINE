@@ -3720,7 +3720,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         - [x] 1d — Fournisseur d'`AxionApi` sur une surface ramenée au réel (ADR-162 D1).
         - [x] 1e — Textes du CDC (C-27, 23.3, R-171, R-1030, R-1640, 28.1, R-1783, R-1790, conflits 19 et 21),
               ADR-160 D5, guides ; amendement A8.
-  - [ ] Tranche 4 de C-33 : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
+  - [x] Tranche 4 de C-33 (2026-11-11) : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
         variables par assembly). Trois sous-tranches, un film à chacune :
         - [x] 4a (2026-11-11) — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5,
               `HIGH`, sources `vehicle.*`, `engine.*`, `transmission.*`, `seat.*`, `time.seconds`, `world.*`, A.4 V1.1
@@ -3742,21 +3742,23 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
               - [x] 4b-4 touches (2026-11-11) : huit commandes déclarées à Forge (G H J K Y U B N), état tenu dans
                     `VehicleInput.flags`, libellés au siège ; exemple au buggy, guide, film. Le guide créateur des
                     variables et des commandes rejoint `API.md`, guide d'addon de la tranche 5 d'ADR-162.
-        - [ ] 4c — canaux `visibility`, `emissive`, `color` ; `period`, `smoothing`, `gate` ; rendu par nœud dans les
+        - [x] 4c (2026-11-11) — canaux `visibility`, `emissive`, `color` ; `period`, `smoothing`, `gate` ; rendu par nœud dans les
               deux backends ; Charger découpée dans Blender ; film du gyrophare. Plan (2026-11-11) :
               - [x] 4c-1 pistes (2026-11-11) : canaux d'apparence évalués (`visibility` : toutes au-dessus de 0,5 ; `emissive` et
                     `color` : produit des pistes), `period`, `smoothing` (état par assembly), `gate` (fermée, la piste
                     vaut 0 : pose au repos, nœud caché ou éteint) ; champs au schéma 3.
               - [x] 4c-2 rendu (2026-11-11, en Java, sans montée d'ABI) : l'apparence de chaque nœud piloté jusqu'aux dessins, dans les deux backends ; un nœud
                     que rien ne pilote ne coûte rien de plus ; banc : un nœud caché, éteint, allumé, teinté.
-              - [ ] 4c-3 contenu :
+              - [x] 4c-3 contenu (2026-11-11) :
                     - [x] Charger (2026-11-11, contenu local, hors dépôt) : gyrophare en deux lampes, feux de calandre,
                           phares, feux stop, aiguilles du compte-tours et du compteur (pivot au centre du cadran, axe
                           = normale du cadran, aiguille entière : lame, corps, contrepoids), écrans du combiné et
                           central séparés ; textures d'origine rétablies (réduites à l'import du 2026-11-09). Film
                           jugé : gyrophare et calandre alternent rouge et bleu après G, éteints au second G ; aiguilles
                           à 5 800 tr/min et 30 mph, comme le bandeau ; aucun dépassement du budget GPU au journal.
-                    - [ ] un phare du buggy d'exemple piloté par `world.time` (la CI le prouve).
+                    - [x] les phares du buggy d'exemple pilotés par `world.time` (2026-11-11) : nœud `phares`, allumés de
+                          18 h 30 à 6 h ; `exemples_r-1790.blend` remis en accord avec le GLB (retourné de 180° en
+                          tranche 3 d'ADR-159) ; test JUnit à minuit, 20 h, 9 h et midi ; `ax-cli` les voit devant.
   - [x] Filtrage anisotrope (ADR-164, 2026-11-11, demande de Killian sur le flou des textures) : `render.anisotropy`,
         1 à 16, 16 par défaut, borné par le GPU, posé au téléversement de chaque texture d'AXION (deux backends et
         shaderpack) ; R-570 amendé, ANNEXE A.3. JUnit, CI locale verte, banc « ADR-164 » sur les trois backends.

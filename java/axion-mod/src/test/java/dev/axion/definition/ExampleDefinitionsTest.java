@@ -9,6 +9,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.axion.asset.AssetSource;
+import dev.axion.net.AssemblyState;
+import dev.axion.net.Interpolation;
+import dev.axion.render.ProceduralTracks;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -109,6 +112,34 @@ class ExampleDefinitionsTest {
         designations("$", null, JsonParser.parseString(new String(json, StandardCharsets.UTF_8)),
                 noms(modele), manquants);
         assertTrue(manquants.isEmpty(), nom + " désigne ce que son modèle n'a pas : " + manquants);
+    }
+
+    @Test
+    @DisplayName("ADR-163 D3 : les phares du buggy suivent world.time — allumés la nuit, éteints le jour")
+    void pharesDuBuggyALaNuit() throws IOException, DefinitionException {
+        byte[] json = embarquee("axion/definitions/example/buggy.json");
+        List<String> nodes = List.copyOf(noms(embarquee("axion/models/example/buggy.glb")).nodes());
+        List<String> journal = new ArrayList<>();
+        ProceduralTracks pistes = ProceduralTracks.of(StrictJson.parse(json).getAsJsonObject(), nodes, journal::add);
+        assertTrue(journal.isEmpty(), journal.toString());
+        assertEquals(1f, phares(pistes, nodes, 18000L), 1e-6f, "minuit");
+        assertEquals(1f, phares(pistes, nodes, 14000L), 1e-6f, "20 h");
+        assertEquals(0f, phares(pistes, nodes, 6000L), 1e-6f, "midi");
+        assertEquals(0f, phares(pistes, nodes, 3000L), 1e-6f, "9 h");
+    }
+
+    /** {@return l'émission des phares du buggy à ce temps du jour de Minecraft, sans lissage} */
+    private static float phares(ProceduralTracks pistes, List<String> nodes, long tempsDuJour) {
+        ProceduralTracks.Pose pose = pistes.evaluate(new ProceduralTracks.Frame(List.of(), new double[0],
+                Interpolation.VehiclePose.NONE, AssemblyState.VariableValues.NONE, new boolean[0], 0.0,
+                ProceduralTracks.worldTime(tempsDuJour), 15f, 0f));
+        int phares = nodes.indexOf("phares");
+        for (int slot = 0; slot < pose.nodes().length; slot++) {
+            if (pose.nodes()[slot] == phares) {
+                return pose.looks()[slot * ProceduralTracks.LOOK_FLOATS + 1];
+            }
+        }
+        throw new AssertionError("aucune piste ne pilote les phares du buggy");
     }
 
     /** Ce qu'un GLB nomme : ses nodes, ses meshes, et ses nodes de rôle {@code socket}. */
