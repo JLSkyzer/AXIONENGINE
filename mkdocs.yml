@@ -1,0 +1,107 @@
+# Le site de la documentation (ADR-101) : construit depuis les guides versionnés de docs/guides, jamais modifié à la
+# main. Construire : python tools/docs/site.py build ; aperçu : python tools/docs/site.py serve.
+site_name: AXION ENGINE
+site_description: Physique, déformation et rendu 3D pour Minecraft Forge 1.20.1
+repo_url: https://github.com/JLSkyzer/AXIONENGINE
+repo_name: JLSkyzer/AXIONENGINE
+docs_dir: docs/guides
+site_dir: target/site
+strict: true
+
+theme:
+  name: material
+  language: fr
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Mode sombre
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Mode clair
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search:
+      lang: [fr, en]
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: fr
+          default: true
+          name: Français
+          build: true
+        - locale: en
+          name: English
+          build: true
+          site_description: Physics, deformation and 3D rendering for Minecraft Forge 1.20.1
+          nav_translations:
+            Accueil: Home
+            Développer un addon: Addon development
+            Premier addon: Your first addon
+            Jouer et héberger: Play and host
+            Configuration: Configuration
+            Réseau: Networking
+            Comprendre le moteur: Engine reference
+            Physique: Physics
+            Rendu: Rendering
+            Matériaux physiques: Physical materials
+
+nav:
+  - Accueil: index.md
+  - Développer un addon:
+      - Premier addon: addons/premier-addon.md
+  - Jouer et héberger:
+      - Configuration: CONFIGURATION.md
+      - Réseau: NETWORKING.md
+  - Comprendre le moteur:
+      - Physique: PHYSICS.md
+      - Rendu: RENDERING.md
+      - Matériaux physiques: MATERIALS.md
+
+# Les liens qui sortent des guides vers le reste du dépôt pointent vers GitHub (tools/docs/hooks.py).
+hooks:
+  - tools/docs/hooks.py
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      # Les ancres gardent leurs accents, comme sur GitHub : un lien vers une section marche aux deux endroits.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
