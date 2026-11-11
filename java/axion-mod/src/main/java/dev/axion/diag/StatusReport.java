@@ -89,6 +89,8 @@ public final class StatusReport {
         ServerSnapshot snapshot = runtime.netSnapshot();
         if (snapshot != null) {
             lines.add("  réseau : protocole " + NetProtocol.VERSION + " ; " + snapshot.describe());
+            lines.add("  surcharges de l'administrateur (" + dev.axion.definition.ServerOverrides.FILE_NAME + ") : "
+                    + dev.axion.definition.ServerOverrides.summary());
             lines.add("  réplication : " + ServerPeer.summarize(runtime.peers()));
         }
 

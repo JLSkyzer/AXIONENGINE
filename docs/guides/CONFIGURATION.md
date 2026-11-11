@@ -310,3 +310,32 @@ alors ignorée (R-1830).
 | `allow_client_prediction` | booléen | `true` | `true \| false` | non | non | Autorise les clients à prédire le mouvement de l'assembly qu'ils pilotent. |
 | `kick_on_input_abuse` | booléen | `true` | `true \| false` | non | non | Expulse un client dont les entrées sortent des bornes admises de façon répétée. |
 | `allow_experimental_authority` | booléen | `false` | `true \| false` | non | non | Autorise le mode d'autorité SERVER_FULL pour les particules. EXPERIMENTAL. |
+
+## `axion-server-overrides.toml`
+
+Les surcharges de l'administrateur du serveur (ADR-162 D8, ADR-165 D4) : des
+multiplicateurs bornés et des correspondances de blocs, appliqués au contenu
+résolu avant sa validation ; aucun nouveau contenu. Le serveur envoie aux
+clients le contenu surchargé : ils n'ont pas besoin de ce fichier.
+
+Le serveur l'écrit au premier démarrage, entièrement commenté — il ne porte
+alors aucune surcharge —, et le relit au démarrage et à chaque `/reload`.
+Chaque surcharge, appliquée ou refusée avec sa cause, s'écrit au journal du
+serveur ; `/axion status` en donne le compte.
+
+| Section | Clé | Effet |
+|---|---|---|
+| `[physics_materials."<ns>:<matériau>"]` | une grandeur numérique du matériau (DM-07) | la multiplie |
+| `[definitions."<ns>:<définition>"]` | `mass` | multiplie toutes les masses écrites : `physics.mass`, corps, pièces, roues |
+| `[definitions."<ns>:<définition>"]` | `engine_torque` | multiplie chaque couple de `powertrain.engine.torque_curve` |
+| `[definitions."<ns>:<définition>"]` | `brake_torque` | multiplie `brakes.max_torque_front`, `max_torque_rear` et `handbrake_torque` |
+| `[tires."<ns>:<pneu>"]` | `grip` | multiplie `mu_long` et `mu_lat` |
+| `[block_materials]` | `"<ns>:<bloc>"` ou `"#<ns>:<étiquette>"` | le matériau d'un bloc ou d'une étiquette de blocs, lu après les correspondances des mods |
+
+Un multiplicateur va de 0,1 à 10 et ne touche que les valeurs écrites ; le
+produit s'arrondit à douze chiffres significatifs. Une surcharge est refusée,
+et dite au journal avec sa cause, si sa cible n'existe pas, si sa clé est
+inconnue, si son multiplicateur sort des bornes, si sa cible n'écrit aucune
+valeur à multiplier, si une valeur multipliée sort de son domaine, si une
+définition surchargée ne passe plus son schéma, ou si une correspondance de
+blocs nomme un matériau qu'aucun mod ne déclare.

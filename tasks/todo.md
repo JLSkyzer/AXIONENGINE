@@ -3738,8 +3738,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         - [x] 3a — Les addons exigés (2026-11-11) : protocole 7, liste des propriétaires de contenu dans le handshake,
               versions du client dans sa réponse, refus par le serveur avec un message traduit qui nomme chaque addon.
               Prouvé de bout en bout : vrai serveur dédié et vrai client (`runEssaiClientAddons`).
-        - [ ] 3b — `axion-server-overrides.toml` : multiplicateurs bornés et correspondances de blocs, appliqués au
-              registre résolu avant la validation ; diagnostic au journal et dans `/axion status`.
+        - [x] 3b — `axion-server-overrides.toml` (2026-11-11) : multiplicateurs bornés et correspondances de blocs,
+              appliqués au registre résolu avant ses lecteurs ; modèle écrit au premier démarrage ; journal et
+              `/axion status`. `ServerOverridesTest` ; vérifié sur un vrai serveur dédié.
         - [ ] 3c — Le CDC (21.3, R-1640, A.3, amendement A11), le guide d'administration, la grille d'ADR-160 D7 ; dans
               `D:\BDC`, la fermeture d'une connexion de Minecraft avec des données non lues sous Windows.
   - [x] Tranche 4 de C-33 (2026-11-11) : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,

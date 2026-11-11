@@ -39,7 +39,7 @@ from pathlib import Path
 # Ce qu'AXION peut écrire, relativement au dossier de jeu (R-1711).
 AXION_PERMIS = [re.compile(motif) for motif in (
     r"axion/.+",
-    r"config/axion-[a-z]+\.toml",
+    r"config/axion-[a-z-]+\.toml",
     r"world/data/axion_registry\.dat",
 )]
 
@@ -134,7 +134,7 @@ def volet_jfr(dossier: Path, enregistrement: Path, classes: Path, java: str) -> 
             else:
                 violations.append(f"JFR : {classe} fait écrire Minecraft hors de ses emplacements : {chemin} ({nombre} fois)")
         elif cible.startswith(racine_axion) or (
-                os.path.dirname(cible) == config and re.fullmatch(r"axion-[a-z]+\.toml", os.path.basename(cible))):
+                os.path.dirname(cible) == config and re.fullmatch(r"axion-[a-z-]+\.toml", os.path.basename(cible))):
             bilan["AXION, emplacements permis"] += int(nombre)
         else:
             violations.append(f"JFR : {classe} écrit hors des emplacements permis : {chemin} ({nombre} fois)")

@@ -1,5 +1,12 @@
 package dev.axion.forge;
 
+import java.util.ArrayList;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Files;
+import net.minecraftforge.fml.loading.FMLPaths;
+import dev.axion.definition.ServerOverrides;
 import com.mojang.logging.LogUtils;
 import dev.axion.AxionMod;
 import dev.axion.api.content.ContentKind;
@@ -102,6 +109,7 @@ public final class AxionForgeEntrypoint {
         // Le démarrage a lieu ici : la configuration est lisible, et Forge
         // attend de cette phase qu'elle prépare le mod.
         runtime.onSetup(System.getProperties());
+        writeOverridesTemplate();
 
         var outcome = runtime.outcome();
         if (outcome == null) {
@@ -221,6 +229,19 @@ public final class AxionForgeEntrypoint {
         }
     }
 
+    /** ADR-165 D4 : le modèle commenté du fichier des surcharges, s'il manque ; il n'en porte aucune. */
+    private static void writeOverridesTemplate() {
+        Path file = FMLPaths.CONFIGDIR.get().resolve(ServerOverrides.FILE_NAME);
+        if (Files.exists(file)) {
+            return;
+        }
+        try {
+            Files.writeString(file, ServerOverrides.template(), StandardCharsets.UTF_8);
+        } catch (IOException failure) {
+            LOGGER.warn("AXION : modèle de {} non écrit : {}", ServerOverrides.FILE_NAME, failure.toString());
+        }
+    }
+
     /**
      * {@return un écouteur qui remet au runtime le contenu enregistré d'une famille}
      *
@@ -231,9 +252,20 @@ public final class AxionForgeEntrypoint {
     private SimplePreparableReloadListener<AssetSource> contentListener(
             ContentKind kind, String what, Consumer<AssetSource> reload) {
         return new SimplePreparableReloadListener<>() {
+            private final List<String> applied = new ArrayList<>();
+            private final List<String> refused = new ArrayList<>();
+
             @Override
             protected AssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {
-                return RegisteredContent.source(kind);
+                // ADR-165 D4 : les surcharges de l'administrateur, relues à chaque rechargement des données.
+                applied.clear();
+                refused.clear();
+                ServerOverrides overrides =
+                        ServerOverrides.read(FMLPaths.CONFIGDIR.get().resolve(ServerOverrides.FILE_NAME));
+                if (kind == ContentKind.DEFINITION) {
+                    refused.addAll(overrides.refusals());
+                }
+                return RegisteredContent.source(kind, overrides, applied, refused);
             }
 
             @Override
@@ -243,6 +275,9 @@ public final class AxionForgeEntrypoint {
                         LOGGER.warn("AXION : aucun contenu enregistré à remettre ({}) : l'enregistrement des "
                                 + "mods n'a pas eu lieu", what);
                     }
+                    applied.forEach(line -> LOGGER.info("AXION : surcharge appliquée — {}", line));
+                    refused.forEach(line -> LOGGER.warn("AXION : surcharge refusée — {}", line));
+                    ServerOverrides.record(kind, applied.size(), refused.size());
                     reload.accept(source);
                 });
             }

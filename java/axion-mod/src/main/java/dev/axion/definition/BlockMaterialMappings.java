@@ -24,7 +24,9 @@ import java.util.TreeMap;
  * fichiers se fusionnent dans l'ordre de leurs identifiants : une entrée d'un fichier plus tardif
  * remplace celle d'un plus précoce, ce que les notes disent ; {@code default} aussi. La priorité
  * des étiquettes est leur ordre de déclaration — fichier après fichier, et une étiquette reprise
- * par un fichier plus tardif garde sa place. Une entrée qui nomme un matériau inconnu est refusée,
+ * par un fichier plus tardif garde sa place. Le fichier des surcharges de l'administrateur
+ * ({@link ServerOverrides#BLOCK_MAPPING_KEY}) se lit après tous les autres et l'emporte sur eux (ADR-165 D4). Une
+ * entrée qui nomme un matériau inconnu est refusée,
  * nommée ; les autres entrées du fichier restent.
  *
  * <p>Ce que le mappage garde de chaque matériau est son contact (groupe CONTACT de DM-07), ce que
@@ -87,7 +89,12 @@ public final class BlockMaterialMappings {
         Map<String, String> origin = new LinkedHashMap<>();
         String fallback = null;
         String fallbackOrigin = null;
-        for (String location : byId.values()) {
+        // ADR-165 D4 : le fichier de l'administrateur, s'il est là, passe après ceux des mods.
+        List<String> ordered = new ArrayList<>(byId.values());
+        if (ordered.remove(ServerOverrides.BLOCK_MAPPING_KEY)) {
+            ordered.add(ServerOverrides.BLOCK_MAPPING_KEY);
+        }
+        for (String location : ordered) {
             JsonObject root;
             try {
                 root = document(source.read(location));

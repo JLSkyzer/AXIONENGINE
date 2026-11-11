@@ -540,8 +540,38 @@ pub fn render_markdown() -> String {
             ));
         }
     }
+    out.push_str(SERVER_OVERRIDES_SECTION);
     out
 }
+
+/// Le fichier des surcharges de l'administrateur (ADR-165 D4). Ses clés nomment
+/// du contenu — un matériau, une définition, un pneu, un bloc — et ne sont donc
+/// pas des options déclarées : la couche Forge l'écrit, commenté, au premier
+/// démarrage, et le relit à chaque rechargement des données.
+const SERVER_OVERRIDES_SECTION: &str = "\n## `axion-server-overrides.toml`\n\n\
+     Les surcharges de l'administrateur du serveur (ADR-162 D8, ADR-165 D4) : des\n\
+     multiplicateurs bornés et des correspondances de blocs, appliqués au contenu\n\
+     résolu avant sa validation ; aucun nouveau contenu. Le serveur envoie aux\n\
+     clients le contenu surchargé : ils n'ont pas besoin de ce fichier.\n\n\
+     Le serveur l'écrit au premier démarrage, entièrement commenté — il ne porte\n\
+     alors aucune surcharge —, et le relit au démarrage et à chaque `/reload`.\n\
+     Chaque surcharge, appliquée ou refusée avec sa cause, s'écrit au journal du\n\
+     serveur ; `/axion status` en donne le compte.\n\n\
+     | Section | Clé | Effet |\n\
+     |---|---|---|\n\
+     | `[physics_materials.\"<ns>:<matériau>\"]` | une grandeur numérique du matériau (DM-07) | la multiplie |\n\
+     | `[definitions.\"<ns>:<définition>\"]` | `mass` | multiplie toutes les masses écrites : `physics.mass`, corps, pièces, roues |\n\
+     | `[definitions.\"<ns>:<définition>\"]` | `engine_torque` | multiplie chaque couple de `powertrain.engine.torque_curve` |\n\
+     | `[definitions.\"<ns>:<définition>\"]` | `brake_torque` | multiplie `brakes.max_torque_front`, `max_torque_rear` et `handbrake_torque` |\n\
+     | `[tires.\"<ns>:<pneu>\"]` | `grip` | multiplie `mu_long` et `mu_lat` |\n\
+     | `[block_materials]` | `\"<ns>:<bloc>\"` ou `\"#<ns>:<étiquette>\"` | le matériau d'un bloc ou d'une étiquette de blocs, lu après les correspondances des mods |\n\n\
+     Un multiplicateur va de 0,1 à 10 et ne touche que les valeurs écrites ; le\n\
+     produit s'arrondit à douze chiffres significatifs. Une surcharge est refusée,\n\
+     et dite au journal avec sa cause, si sa cible n'existe pas, si sa clé est\n\
+     inconnue, si son multiplicateur sort des bornes, si sa cible n'écrit aucune\n\
+     valeur à multiplier, si une valeur multipliée sort de son domaine, si une\n\
+     définition surchargée ne passe plus son schéma, ou si une correspondance de\n\
+     blocs nomme un matériau qu'aucun mod ne déclare.\n";
 
 #[cfg(test)]
 mod tests {
