@@ -73,7 +73,7 @@ public final class MonMod {
 ```
 
 AXION appelle chaque fournisseur une fois, sur le thread principal, dans l'ordre des modId. Le `registrar` n'est
-valable que pendant l'appel : ne pas le garder.
+valable que pendant l'appel : ne le garde pas.
 
 ## 4. Une definition, en JSON ou en Java
 
@@ -113,15 +113,15 @@ l'appel en cause ; la definition fautive est écartée, le reste du contenu se c
 
 ## 5. Itérer sans redémarrer
 
-Activez `content.dev_reload` dans `config/axion-common.toml` (ou lancez le jeu avec
+Active `content.dev_reload` dans `config/axion-common.toml` (ou lance le jeu avec
 `-Daxion.content.dev_reload=true`), puis, après chaque modification :
 
-1. recopiez les ressources par le build : `./gradlew processResources`, ou la construction de votre IDE ;
-2. tapez `/axion dev reload` en jeu (opérateur).
+1. recopie les ressources par le build : `./gradlew processResources`, ou la construction de ton IDE ;
+2. tape `/axion dev reload` en jeu (opérateur).
 
-AXION rappelle votre fournisseur, relit votre dossier depuis le disque et renvoie le registre aux joueurs. En solo,
-les modèles du client se recompilent aussi. Les objets déjà posés gardent leur ancienne definition : faites-en
-apparaître un nouveau.
+AXION rappelle ton fournisseur, relit ton dossier depuis le disque et renvoie le registre aux joueurs. En solo, les
+modèles du client se recompilent aussi. Les objets déjà posés gardent leur ancienne definition : fais-en apparaître
+un nouveau.
 
 !!! tip "Le fournisseur doit pouvoir être rappelé"
     `/axion dev reload` rappelle le même `ContentProvider`. Il ne doit faire qu'enregistrer, sans autre effet.

@@ -90,6 +90,10 @@ JOBS: list[tuple[str, list[tuple[str, list[str]]]]] = [
         ("banc de rendu, sous Oculus et shaderpack (client automatise)",
          [GRADLEW, "runRenderTestShaders", "--no-daemon", "--stacktrace"]),
     ]),
+    # Le site de la documentation (ADR-101), comme le construit .github/workflows/docs.yml.
+    ("docs-site", [
+        ("site de la documentation (strict)", [PYTHON, "tools/docs/site.py", "build"]),
+    ]),
     ("platform-hote", [
         ("configuration deterministe", ["cargo", "run", "--quiet", "-p", "ax-det",
                                         "--example", "profil"]),

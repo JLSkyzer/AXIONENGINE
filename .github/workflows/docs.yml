@@ -1,0 +1,65 @@
+# Le site de la documentation (ADR-101) : construit en mode strict à chaque changement des guides, publié sur GitHub
+# Pages depuis master. Une pull request le construit sans le publier : un lien cassé y fait échouer la vérification.
+#
+# Le site se construit aussi sur la machine : python tools/docs/site.py build (ou serve pour un aperçu), et par la
+# CI locale : python tools/ci/local_ci.py docs-site.
+
+name: Documentation
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "docs/guides/**"
+      - "mkdocs.yml"
+      - "tools/docs/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/guides/**"
+      - "mkdocs.yml"
+      - "tools/docs/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Une seule publication à la fois ; une nouvelle poussée remplace celle qui attend.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: construire le site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Material for MkDocs exige Python 3.11 au moins.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Construire le site (strict, versions épinglées)
+        run: python tools/docs/site.py build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/site
+
+  deploy:
+    name: publier sur GitHub Pages
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publication.outputs.page_url }}
+    steps:
+      - id: publication
+        uses: actions/deploy-pages@v4
