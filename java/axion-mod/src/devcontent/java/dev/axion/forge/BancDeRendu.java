@@ -321,12 +321,12 @@ public final class BancDeRendu {
 
     private static final List<Etape> SCENARIO = new ArrayList<>();
     private static final RapportDuBanc RAPPORT = new RapportDuBanc(SHADERS
-            ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
+            ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "ADR-164", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-908", "ADR-155, overlays", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "ADR-163 D3", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-164", "ADR-155, animation", "T-908", "ADR-155, overlays", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "ADR-163 D3", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "R-742", "ADR-155, overlays", "T-493", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "ADR-163 D3", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-164", "ADR-155, animation", "R-742", "ADR-155, overlays", "T-493", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "ADR-163 D3", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -919,6 +919,8 @@ public final class BancDeRendu {
                 && AxionRenderPass.lastFrame().withAsset() == DERRIERE.size() + 3);
         stabiliser("les panneaux");
         une("juger les cartes de matériau", mc -> jugerCartes(capturer(mc, "cartes.png"), derniereVue));
+        // ADR-164 : les textures des panneaux viennent d'être téléversées ; chacune porte le filtrage anisotrope.
+        une("juger ADR-164", mc -> jugerAnisotropie());
         serveur("retirer les panneaux", s -> {
             panneauRelief.discard();
             panneauPlat.discard();
@@ -2560,6 +2562,25 @@ public final class BancDeRendu {
             return -1;
         }
         return relisibles;
+    }
+
+    /**
+     * ADR-164 (R-570) : le filtrage anisotrope relu sur la dernière texture d'AXION téléversée vaut
+     * {@code render.anisotropy} borné par le maximum du GPU. Sans l'extension, rien n'est posé.
+     */
+    private static void jugerAnisotropie() {
+        float attendu = dev.axion.render.TextureRules.anisotropy(
+                dev.axion.forge.client.TextureAnisotropy.requested(), dev.axion.forge.client.TextureAnisotropy.gpuMax());
+        boolean avec = dev.axion.forge.client.TextureAnisotropy.supported();
+        long posees = dev.axion.forge.client.TextureAnisotropy.applications();
+        float pose = dev.axion.forge.client.TextureAnisotropy.level();
+        float relu = dev.axion.forge.client.TextureAnisotropy.lastRead();
+        boolean vert = avec ? posees > 0 && attendu > 1f && pose == attendu && relu == attendu : posees == 0 && pose == 1f;
+        RAPPORT.noter("ADR-164", vert, String.format(Locale.ROOT,
+                "%s : render.anisotropy = %d, maximum du GPU ×%.0f, posé ×%.0f sur %d texture(s), relu ×%.1f",
+                avec ? "GPU avec filtrage anisotrope" : "GPU sans filtrage anisotrope",
+                dev.axion.forge.client.TextureAnisotropy.requested(), dev.axion.forge.client.TextureAnisotropy.gpuMax(),
+                pose, posees, relu));
     }
 
     /**

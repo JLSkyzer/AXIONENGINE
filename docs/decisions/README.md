@@ -30,7 +30,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
-| [ADR-163](ADR-163.md) | Ce qui s'allume et bouge : état du véhicule, variables, touches libres, canaux pilotés | 2026-11-11 | proposé |
+| [ADR-163](ADR-163.md) | Ce qui s'allume et bouge : état du véhicule, variables, touches libres, canaux pilotés | 2026-11-11 | accepté |
 | [ADR-159](ADR-159.md) | Les véhicules : roues par rayon, motopropulseur, réplication et prédiction | 2026-11-09 | accepté |
 | [ADR-158](ADR-158.md) | Les sièges, la montée et le canal des entrées du client | 2026-11-05 | accepté |
 
@@ -66,6 +66,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
+| [ADR-164](ADR-164.md) | Le filtrage anisotrope des textures d'AXION | 2026-11-11 | accepté |
 | [ADR-157](ADR-157.md) | L'emprise exacte des assemblies articulées et animées au culling | 2026-11-05 | accepté |
 | [ADR-154](ADR-154.md) | Culling, LOD et instancing de M4 : IF-05, contexte de rendu séparé, ABI 9 | 2026-10-28 | accepté |
 | [ADR-133](ADR-133.md) | Métriques de rendu, mémoire native et textures : ce qui reste à compter | 2026-10-13 | accepté |

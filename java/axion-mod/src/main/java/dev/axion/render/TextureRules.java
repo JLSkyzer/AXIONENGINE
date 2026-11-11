@@ -87,6 +87,20 @@ public final class TextureRules {
     }
 
     /**
+     * {@return le niveau de filtrage anisotrope posé sur une texture (R-570, ADR-164)} Le niveau demandé, borné par
+     * le maximum du GPU ; 1 — pas de filtrage anisotrope — quand le GPU ne l'offre pas ou qu'on ne le demande pas.
+     *
+     * @param requested {@code render.anisotropy}, de 1 à 16
+     * @param gpuMax {@code GL_MAX_TEXTURE_MAX_ANISOTROPY} ; 1 ou moins sans l'extension
+     */
+    public static float anisotropy(long requested, float gpuMax) {
+        if (!(gpuMax > 1f) || requested <= 1) {
+            return 1f;
+        }
+        return Math.min((float) requested, gpuMax);
+    }
+
+    /**
      * {@return l'alpha binarisé d'un texel : 255 s'il atteint le seuil, 0 sinon}
      *
      * @param alpha alpha du texel, de 0 à 255

@@ -1149,6 +1149,14 @@ public final class ConfigSchema {
                     false,
                     "Décalage appliqué au choix du niveau de détail. Négatif privilégie la qualité."),
             new Option(
+                    "render.anisotropy",
+                    Kind.INTEGER,
+                    16L,
+                    new Domain(DomainKind.INT_RANGE, 1.0, 16.0, List.of()),
+                    false,
+                    false,
+                    "Filtrage anisotrope des textures d'AXION, borné par le maximum du GPU : garde nettes les surfaces vues de biais. 1 l'éteint (ADR-164)."),
+            new Option(
                     "render.instancing_threshold",
                     Kind.INTEGER,
                     4L,

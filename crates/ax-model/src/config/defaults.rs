@@ -329,6 +329,13 @@ pub const CLIENT: &[ConfigOption] = &[
         3,
         "Décalage appliqué au choix du niveau de détail. Négatif privilégie la qualité.",
     ),
+    i(
+        "render.anisotropy",
+        16,
+        1,
+        16,
+        "Filtrage anisotrope des textures d'AXION, borné par le maximum du GPU : garde nettes les surfaces vues de biais. 1 l'éteint (ADR-164).",
+    ),
     ip(
         "render.instancing_threshold",
         4,

@@ -251,6 +251,7 @@ alors ignorée (R-1830).
 | `backend` | chaîne | `"auto"` | `auto \| native \| vanilla` | non | non | Backend de rendu. auto bascule sur vanilla en présence d'un shaderpack. |
 | `max_distance` | flottant | `128.0` | `0.0..` | non | non | Distance maximale de rendu des objets AXION, en blocs. |
 | `lod_bias` | entier | `0` | `-2..3` | non | non | Décalage appliqué au choix du niveau de détail. Négatif privilégie la qualité. |
+| `anisotropy` | entier | `16` | `1..16` | non | non | Filtrage anisotrope des textures d'AXION, borné par le maximum du GPU : garde nettes les surfaces vues de biais. 1 l'éteint (ADR-164). |
 | `instancing_threshold` | entier | `4` | `0..` | non | non | Nombre d'instances identiques à partir duquel l'instanciation GPU est employée. |
 | `indirect` | booléen | `true` | `true \| false` | non | non | Autorise le rendu indirect. Utilisé seulement si GL 4.3 est disponible. |
 | `compute` | booléen | `true` | `true \| false` | non | non | Autorise les shaders de calcul. Utilisé seulement si GL 4.3 est disponible. |

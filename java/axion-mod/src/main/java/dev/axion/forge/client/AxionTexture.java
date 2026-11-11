@@ -12,7 +12,8 @@ import net.minecraft.server.packs.resources.ResourceManager;
  *
  * <p>Ses niveaux de mipmaps sont produits hors du fil de rendu ; {@link #upload} les téléverse
  * selon la recette de l'atlas vanilla — {@code TextureUtil.prepareImage}, puis un
- * {@code NativeImage.upload} par niveau —, sans appel OpenGL direct (R-741).
+ * {@code NativeImage.upload} par niveau —, sans appel OpenGL direct (R-741). Le filtrage anisotrope y est posé
+ * par {@code GlStateManager}, comme Minecraft pose son filtre (ADR-164).
  *
  * <p>{@link #load} ne fait rien : ses octets viennent d'AXION, pas d'un fichier du resource
  * pack. Un rechargement de ressources ne la relit donc pas ; AXION la libère et la reconstruit
@@ -92,6 +93,8 @@ final class AxionTexture extends AbstractTexture {
                 // Fermée par le téléversement lui-même (dernier argument).
                 image.upload(next, 0, 0, 0, 0, image.getWidth(), image.getHeight(), smooth, clamp, maxLevel > 0, true);
             }
+            // La texture est encore liée par prepareImage : le filtrage anisotrope s'y pose (R-570, ADR-164).
+            TextureAnisotropy.applyToBoundTexture();
         } finally {
             for (; next <= maxLevel; next++) {
                 images[next].close();

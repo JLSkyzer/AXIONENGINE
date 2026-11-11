@@ -81,6 +81,18 @@ class TextureRulesTest {
     }
 
     @Test
+    @DisplayName("R-570, ADR-164 : le filtrage anisotrope demandé, borné par le GPU ; aucun sans l'extension")
+    void anisotropie() {
+        assertEquals(16f, TextureRules.anisotropy(16, 16f));
+        assertEquals(8f, TextureRules.anisotropy(16, 8f), "borné par le maximum du GPU");
+        assertEquals(4f, TextureRules.anisotropy(4, 16f), "le niveau demandé, quand le GPU accepte plus");
+        assertEquals(1f, TextureRules.anisotropy(1, 16f), "1 l'éteint");
+        assertEquals(1f, TextureRules.anisotropy(16, 1f), "GPU sans l'extension");
+        assertEquals(1f, TextureRules.anisotropy(16, 0f), "maximum illisible");
+        assertEquals(1f, TextureRules.anisotropy(16, Float.NaN), "maximum illisible");
+    }
+
+    @Test
     @DisplayName("R-750, LOD forcé : on génère les mips retirés en plus, dans la limite de l'image")
     void mipsRetires() {
         org.junit.jupiter.api.Assertions.assertArrayEquals(new int[] {4, 0}, TextureRules.skippedMips(4, 512, 512, 0));

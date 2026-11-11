@@ -1290,6 +1290,7 @@ public final class AxionRenderPass {
         String requested = config.getString("render.backend");
         maxDistance = (float) config.getFloat("render.max_distance");
         lodBias = (int) config.getInt("render.lod_bias");
+        TextureAnisotropy.configure(config.getInt("render.anisotropy"));
         vanillaMaxSkinnedVertices = config.getInt("render.vanilla_max_skinned_vertices");
         NativeGlBackend candidate =
                 shaderpackInUse || nativeRefused || "vanilla".equals(requested) ? null : startNative();
@@ -1298,6 +1299,8 @@ public final class AxionRenderPass {
         RenderCapabilities capabilities = RenderCapabilities.of(selection);
         // R-1493 : une entrée unique au démarrage du backend, ce qu'il ne sait pas faire compris.
         LOGGER.info("AXION : rendu — {}", String.join("\n  ", capabilities.describe()));
+        // ADR-164 : à part de la matrice du §19.2bis, que l'entrée du backend reproduit seule (R-1493).
+        LOGGER.info("AXION : textures — {}", TextureAnisotropy.describe());
         AxionRuntime runtime = RuntimeAccess.get();
         if (runtime != null) {
             runtime.setRenderCapabilities(capabilities);

@@ -1860,7 +1860,7 @@ clé = sha256(source || options || COMPILER_VERSION || ABI)
 - atlas de décalques séparé, 2048x2048, 16x16 tuiles
 ```
 
-- R-570 : taille maximale 4096×4096 (`E-3006`) ; mipmapping activé ; anisotropie selon le réglage vanilla.
+- R-570 : taille maximale 4096×4096 (`E-3006`) ; mipmapping activé ; filtrage anisotrope selon `render.anisotropy` (16 par défaut, 1 l'éteint), borné par le maximum du GPU, sur les textures d'AXION seulement (ADR-164 ; le texte gelé disait « selon le réglage vanilla », que Minecraft n'offre pas).
 - R-571 : AXION ne modifie ni n'enrichit l'atlas de blocs vanilla.
 
 **Tests.** T-270..T-273, T-870 (atlas de décalques).
@@ -8050,6 +8050,7 @@ record_incidents = false
 backend = "auto"                  # auto | native | vanilla
 max_distance = 128.0
 lod_bias = 0                      # -2..3
+anisotropy = 16                   # 1..16 ; filtrage anisotrope, borné par le GPU (ADR-164)
 instancing_threshold = 4
 indirect = true                   # utilisé seulement si GL 4.3
 compute = true                    # idem
@@ -8234,6 +8235,8 @@ ses trouvailles s'ajoutent ici.
 | CAP-51 | Ce que les administrateurs et les modpacks réglaient sans code (matériaux, blocs d'un mod tiers, équilibrage) : une voie décidée, ou l'abandon assumé | M5 |
 | CAP-52 | Garde de compatibilité binaire de l'API : un outil en CI, des méthodes `default` sur toute interface qu'un addon implémente | M5 |
 | CAP-53 | Parallélisme et fréquence mesurés puis étendus : part du travail sur le thread principal et sur le pool natif, usage réel des cœurs, mesurés avec le gouverneur ; chaque jalon sort du thread principal ce qu'il ajoute ; chaque sous-système choisit sa fréquence de sous-pas sur mesure (comme les 720 Hz des véhicules) — demande de Killian, 2026-11-10 | M5 (mesure), puis chaque jalon |
+| CAP-54 | Écrans dans le monde : une surface d'un modèle déclarée écran, plusieurs par assembly, affiche une toile dessinée par une application enregistrée par l'API (référence 1280×720, adaptée aux proportions de la surface : ni coupée, ni déformée, toute la surface servie) ; affichage seul, ou interactif sans GUI — on vise au réticule, un curseur suit sur l'écran, clics et molette vont à l'écran et passent par le serveur ; zoom à la touche C tenue, comme OptiFine, réassignable ; démonstration sur le combiné et l'écran central de la Charger — demande de Killian, 2026-11-11 | M9 |
+| CAP-55 | Anticrénelage des modèles AXION : leurs bords sont lissés sans toucher aux pixels de Minecraft (le CDC exclut tout post-traitement plein écran) — par exemple un MSAA limité à leurs pixels —, en option du client (éteint, ×2, ×4, ×8) ; repli dit au journal là où le backend ne le permet pas (shaderpack) — demande de Killian, 2026-11-11 | M9 |
 
 Hors périmètre, par décision de Killian du 2026-11-10 : construire en jeu des véhicules ou des objets à partir
 de blocs de Minecraft. AXION importe des modèles 3D (ADR-160 D2).

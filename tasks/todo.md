@@ -3757,6 +3757,12 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                           jugé : gyrophare et calandre alternent rouge et bleu après G, éteints au second G ; aiguilles
                           à 5 800 tr/min et 30 mph, comme le bandeau ; aucun dépassement du budget GPU au journal.
                     - [ ] un phare du buggy d'exemple piloté par `world.time` (la CI le prouve).
+  - [x] Filtrage anisotrope (ADR-164, 2026-11-11, demande de Killian sur le flou des textures) : `render.anisotropy`,
+        1 à 16, 16 par défaut, borné par le GPU, posé au téléversement de chaque texture d'AXION (deux backends et
+        shaderpack) ; R-570 amendé, ANNEXE A.3. JUnit, CI locale verte, banc « ADR-164 » sur les trois backends.
+  - Écrans dans le monde, interactifs sans GUI, zoom à la touche C : **CAP-54, M9** (Killian, 2026-11-11 :
+    « n'accélérons pas les choses »). Démonstration prévue sur le combiné et l'écran central de la Charger.
+  - Anticrénelage des modèles AXION, en option du client : **CAP-55, M9** (Killian, 2026-11-11).
 
 Exigence de Killian (2026-11-10) : « notre moteur et API doit leur permettre de tout faire », « aucune
 impossibilité », de l'extérieur à l'intérieur. Audit en lecture du CDC, du schéma, des ADR et du code, chaque

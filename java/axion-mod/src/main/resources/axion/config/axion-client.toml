@@ -4,6 +4,7 @@
 backend = "auto"                  # auto | native | vanilla
 max_distance = 128.0              # 0.0..
 lod_bias = 0                      # -2..3
+anisotropy = 16                   # 1..16
 instancing_threshold = 4          # 0..
 indirect = true
 compute = true
