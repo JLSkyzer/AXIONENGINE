@@ -3711,7 +3711,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         Tranche 1 découpée (2026-11-11), chaque étape commitée verte :
         - [x] 1a — API découpée en paquets (`api`, `api.assembly`, `api.content`, `api.event`, `api.damage`,
               `api.attachment`, `api.vehicle`) : déplacement mécanique, imports et services suivis.
-        - [ ] 1b — Événement et registre d'enregistrement : types de l'API, propriétaire, espace de noms = modId,
+        - [x] 1b — Événement et registre d'enregistrement : types de l'API, propriétaire, espace de noms = modId,
               doublons refusés en nommant les deux mods, `replace` explicite ; tests unitaires.
         - [ ] 1c — Branchement : le serveur et le client lisent le contenu enregistré (plus de `ResourceManager`
               pour AXION) ; exemples par l'API publique, contenu de test, films et Charger enregistrés ; GameTests.
