@@ -160,6 +160,14 @@ public final class FilmDuVehicule {
     private static double arreteDepuis = Double.NaN;
     private static double capMin = Double.POSITIVE_INFINITY;
     private static double capMax = Double.NEGATIVE_INFINITY;
+    /**
+     * ADR-163 D1 : la direction et le régime que le client a reçus, aux images capturées — ce que le volant et le
+     * bandeau montrent.
+     */
+    private static double volantMin = Double.POSITIVE_INFINITY;
+    private static double volantMax = Double.NEGATIVE_INFINITY;
+    private static double regimeMax;
+    private static int rapportMax;
     private static double vitesseApresFrein = Double.NaN;
     private static double[] departRecul;
     private static double capRecul;
@@ -577,9 +585,12 @@ public final class FilmDuVehicule {
         minecraft.options.hideGui = true;
     }
 
-    /** La ligne droite se voit du siège conducteur ; le reste, de la caméra qui suit le véhicule de côté. */
+    /**
+     * La ligne droite et le slalom se voient du siège conducteur — le volant y tourne (ADR-163 D1) ; le reste, de la
+     * caméra qui suit le véhicule de côté.
+     */
     private static void choisirLaVue(Minecraft minecraft) {
-        vueConducteur = etape == Etape.LIGNE;
+        vueConducteur = etape == Etape.LIGNE || etape == Etape.SLALOM_GAUCHE || etape == Etape.SLALOM_DROITE;
         Entity voulue = vueConducteur ? minecraft.player : camera;
         if (voulue != null && minecraft.getCameraEntity() != voulue) {
             minecraft.setCameraEntity(voulue);
@@ -746,8 +757,18 @@ public final class FilmDuVehicule {
             hauteur = image.getHeight();
         }
         double parcouru = Math.hypot(xServeur - DEPART.x, zServeur - DEPART.z);
-        String valeurs = String.format(Locale.ROOT, "%svitesse %.1f m/s   cap %+.0f°   à %.1f m du départ",
-                vueConducteur ? "vue du conducteur   " : "", vitesse, Math.toDegrees(cap), parcouru);
+        // ADR-163 D1 : ce que le client a reçu du véhicule, à la pose de cette image : le volant le suit.
+        dev.axion.net.Interpolation.VehiclePose recu = vehicule instanceof AxionEntity assembly
+                ? assembly.renderPose(minecraft.getFrameTime()).vehicle()
+                : dev.axion.net.Interpolation.VehiclePose.NONE;
+        volantMin = Math.min(volantMin, recu.steer());
+        volantMax = Math.max(volantMax, recu.steer());
+        regimeMax = Math.max(regimeMax, recu.rpm());
+        rapportMax = Math.max(rapportMax, recu.gear());
+        String valeurs = String.format(Locale.ROOT,
+                "%svitesse %.1f m/s   cap %+.0f°   à %.1f m   volant %+.2f   %.0f tr/min   rapport %d",
+                vueConducteur ? "vue du conducteur   " : "", vitesse, Math.toDegrees(cap), parcouru, recu.steer(),
+                recu.rpm(), recu.gear());
         String legende = legende();
         String temps = String.format(Locale.ROOT, "%.1f s", secondes);
         Path dossierImages = dossier(minecraft).resolve("images");
@@ -844,6 +865,14 @@ public final class FilmDuVehicule {
         if (!(capMax - capMin >= Math.toRadians(45.0))) {
             return String.format(Locale.ROOT, "le slalom ne change le cap que de %.0f°", Math.toDegrees(capMax - capMin));
         }
+        if (!(volantMin <= -0.5 && volantMax >= 0.5)) {
+            return String.format(Locale.ROOT, "la direction reçue par le client ne va que de %+.2f à %+.2f",
+                    volantMin, volantMax);
+        }
+        if (!(regimeMax >= 1500.0 && rapportMax >= 1)) {
+            return String.format(Locale.ROOT, "le client ne reçoit qu'un régime de %.0f tr/min et un rapport de %d",
+                    regimeMax, rapportMax);
+        }
         if (!(vitesseApresFrein < 1.5)) {
             return "vitesse après le freinage : " + vitesseApresFrein + " m/s";
         }
@@ -878,10 +907,11 @@ public final class FilmDuVehicule {
         String bilan = String.format(Locale.ROOT,
                 "{\"images\": %d, \"uniques\": %d, \"echec\": %s, \"distance_avant\": %.2f, \"cap_slalom_deg\": %.1f,"
                         + " \"vitesse_apres_frein\": %.3f, \"recul\": %.2f, \"ecart_passager\": %.4f,"
-                        + " \"ecart_lacet_passager_deg\": %.2f}%n",
+                        + " \"ecart_lacet_passager_deg\": %.2f, \"volant_min\": %.2f, \"volant_max\": %.2f,"
+                        + " \"regime_max\": %.0f, \"rapport_max\": %d}%n",
                 imagesEcrites, imagesUniques, faute == null ? "null" : "\"" + faute.replace('"', '\'') + "\"",
                 distanceAvant, Math.toDegrees(capMax - capMin), vitesseApresFrein, recul, ecartPassager,
-                ecartLacetPassager);
+                ecartLacetPassager, volantMin, volantMax, regimeMax, rapportMax);
         try {
             Files.createDirectories(dossier(minecraft));
             Files.writeString(dossier(minecraft).resolve("termine.json"), bilan, StandardCharsets.UTF_8);

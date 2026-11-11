@@ -4,9 +4,10 @@
 use ax_math::{Quat, Vec3};
 use ax_model::dm::scene::NONE_U16;
 use ax_model::dm::vehicle::{
-    differential_kind, transmission_kind, vehicle_flags, wheel_flags, wheel_report_flags, AeroDesc,
-    AssistDesc, BrakesDesc, DifferentialDesc, EngineDesc, SteeringDesc, SuspensionDesc, TireCurve,
-    TransmissionDesc, VehicleDesc, VehicleInput, WheelDesc,
+    differential_kind, transmission_kind, vehicle_flags, vehicle_report_flags, wheel_flags,
+    wheel_report_flags, AeroDesc, AssistDesc, BrakesDesc, DifferentialDesc, EngineDesc,
+    SteeringDesc, SuspensionDesc, TireCurve, TransmissionDesc, VehicleDesc, VehicleInput,
+    WheelDesc,
 };
 use ax_physics::{
     BodyCollider, BodyId, BodyKind, CollisionGroups, CombineRule, ContactMaterial, Handle,
@@ -1076,6 +1077,81 @@ fn t320_le_frein_a_main_tient_la_pente_sans_deriver() {
 fn adr159_q3_sans_conducteur_il_ne_devale_pas() {
     let (derive, _) = sur_la_pente(None);
     assert!(derive < 0.005, "dérive de {derive} m en 5 s");
+}
+
+#[test]
+fn adr163_d1_le_rapport_du_vehicule_dit_son_regime_sa_charge_son_rapport_et_son_conducteur() {
+    let (mut world, _) = sur_le_plat(berline(), [100.0, 100.0], 1.0);
+    conduire(&mut world, entree(0.6, 0.0, 0.4));
+    avancer(&mut world, 2.0);
+    let rapports = world.vehicle_reports();
+    assert_eq!(rapports.len(), 1, "un véhicule éveillé, un rapport");
+    let rapport = rapports[0];
+    let telemetrie = world.vehicle_telemetry(ASSEMBLY).expect("véhicule");
+    assert_eq!(rapport.handle, ASSEMBLY);
+    assert!(
+        (rapport.rpm - telemetrie.engine_rpm).abs() < 1e-3,
+        "régime {} contre {}",
+        rapport.rpm,
+        telemetrie.engine_rpm
+    );
+    assert!(
+        rapport.rpm > 800.0,
+        "le moteur tourne au-dessus du ralenti : {}",
+        rapport.rpm
+    );
+    assert_eq!(rapport.gear, telemetrie.gear);
+    assert!(rapport.gear >= 1, "en marche avant : {}", rapport.gear);
+    let attendue = if telemetrie.shifting { 0.0 } else { 0.6 };
+    assert!(
+        rapport.load <= 0.6 + 1e-6 && (telemetrie.shifting || rapport.load > 0.0),
+        "charge {} pour un accélérateur à 0,6 (attendue au plus {attendue})",
+        rapport.load
+    );
+    assert_ne!(
+        rapport.flags & vehicle_report_flags::RUNNING,
+        0,
+        "un motopropulseur tourne"
+    );
+    assert_ne!(
+        rapport.flags & vehicle_report_flags::DRIVER,
+        0,
+        "le conducteur est assis"
+    );
+    assert_eq!(
+        rapport.flags & vehicle_report_flags::SHIFTING != 0,
+        telemetrie.shifting
+    );
+    // La direction est la position que la vitesse de braquage a atteinte, celle que les roues suivent.
+    assert!(
+        (rapport.steer - telemetrie.steer).abs() < 1e-6,
+        "direction {} contre {}",
+        rapport.steer,
+        telemetrie.steer
+    );
+    assert!(
+        rapport.steer > 0.3 && rapport.steer <= 0.4 + 1e-6,
+        "la direction a rejoint la consigne de 0,4 : {}",
+        rapport.steer
+    );
+
+    // Sans conducteur, le drapeau tombe, et le pied levé ne charge plus le moteur.
+    assert_eq!(
+        world.set_vehicle_input(ASSEMBLY, &VehicleInput::NONE, false),
+        Some(false)
+    );
+    avancer(&mut world, 0.5);
+    let rapport = world.vehicle_reports()[0];
+    assert_eq!(
+        rapport.flags & vehicle_report_flags::DRIVER,
+        0,
+        "personne au volant"
+    );
+    assert!(
+        rapport.load.abs() < 1e-6,
+        "charge {} sans accélérateur",
+        rapport.load
+    );
 }
 
 #[test]

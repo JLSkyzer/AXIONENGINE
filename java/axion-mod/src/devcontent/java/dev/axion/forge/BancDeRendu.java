@@ -170,6 +170,12 @@ public final class BancDeRendu {
     /** ADR-158 : la caisse à deux sièges. */
     private static final String SIEGE = "axion:test/siege";
 
+    /** T-365 : le véhicule d'essai, à quatre roues. */
+    private static final String VEHICULE_ESSAI = "axion:test/vehicule";
+
+    /** T-365 : l'écart toléré entre l'angle d'une roue fois son rayon et la distance parcourue, relatif. */
+    private static final double ECART_T365 = 0.05;
+
     /**
      * ADR-155 : un socle et son coulisseau, que le clip {@code glisse} pousse d'un bloc le long de l'axe x de
      * l'asset ({@code tools/assets/animation_essai.py}).
@@ -260,6 +266,9 @@ public final class BancDeRendu {
     private static final double Z_RELIEF = -1.5;
     private static final double Z_PLAT = 1.5;
     private static final float[] IDENTITE = {0f, 0f, 0f, 1f};
+
+    /** Un demi-tour autour de y : l'avant d'un véhicule, son -Z, regarde vers +Z, à l'opposé de la caméra. */
+    private static final float[] DEMI_TOUR = {0f, 1f, 0f, 0f};
     /** Un huitième de tour autour de y : {@code [0, sin 22,5°, 0, cos 22,5°]}. */
     private static final float[] HUITIEME_DE_TOUR = {0f, 0.38268343f, 0f, 0.9238795f};
 
@@ -304,9 +313,9 @@ public final class BancDeRendu {
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "R-1490, changement de shaderpack",
                     "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
-            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-908", "ADR-155, overlays", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
+            ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "T-908", "ADR-155, overlays", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "R-742", "ADR-155, overlays", "T-493", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-155, animation", "R-742", "ADR-155, overlays", "T-493", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -376,6 +385,17 @@ public final class BancDeRendu {
     private static Entity passager;
     private static boolean passagerAssis;
     private static Vec3 passagerServeur;
+
+    /**
+     * T-365 : le véhicule d'essai, l'angle que le rendu a intégré pour chacune de ses roues sur la mesure, déroulé,
+     * l'angle et la pose de l'image précédente, et la distance que le client a dessinée.
+     */
+    private static AxionEntity vehiculeEssai;
+    private static boolean conducteurAssis;
+    private static double[] angleRoues = new double[0];
+    private static double[] angleVu;
+    private static Vec3 poseVue;
+    private static double distanceVue;
 
     /** ADR-158 D5 : la sortie attendue du joueur, et sa pose d'avant, à lui rendre. */
     private static Vec3 sortieAttendue;
@@ -831,6 +851,42 @@ public final class BancDeRendu {
             });
             jusqua("le siège retiré", 30, mc -> mc.level.getEntity(siege.getId()) == null
                     && mc.level.getEntity(passager.getId()) == null);
+
+            // T-365 (ADR-159 D9, ADR-163 D1) : la roue dessinée tourne d'autant que le véhicule avance. Le joueur du
+            // banc prend le volant du véhicule d'essai, tourné vers +Z derrière la caméra ; il accélère, puis lâche
+            // tout. Sur la roue libre, l'angle que le rendu intègre pour chaque roue, fois son rayon, doit valoir la
+            // distance que le client dessine.
+            serveur("poser le véhicule d'essai", s -> {
+                Vec3 ou = new Vec3(1.5 + 2 * DERRIERE.size(), surface + 0.6, 12.5);
+                ObservateursDeTest.declarer(s.overworld(), ou);
+                vehiculeEssai = AssembliesDeTest.poser(s.overworld(), VEHICULE_ESSAI, ou, DEMI_TOUR);
+            });
+            jusqua("le véhicule d'essai simulé", 60, mc -> vehiculeEssai.hasPhysicalBounds());
+            serveur("mettre le joueur au volant du véhicule d'essai", s -> {
+                net.minecraft.server.level.ServerPlayer joueur = s.getPlayerList().getPlayers().get(0);
+                joueurAvant = joueur.position();
+                lacetAvant = joueur.getYRot();
+                tangageAvant = joueur.getXRot();
+                joueur.setGameMode(GameType.CREATIVE);
+                conducteurAssis = vehiculeEssai.sit(joueur, 0);
+            });
+            jusqua("le joueur au volant du véhicule d'essai chez le client", 60,
+                    mc -> mc.player.getVehicle() instanceof AxionEntity);
+            une("accélérer", mc -> mc.options.keyUp.setDown(true));
+            pendant("l'élan", 30);
+            une("lâcher l'accélérateur", mc -> mc.options.keyUp.setDown(false));
+            pendant("la roue libre installée", 10);
+            pendant("la roue libre mesurée", 40, BancDeRendu::releverRoues);
+            une("juger T-365", BancDeRendu::jugerT365);
+            serveur("rendre le joueur du banc à sa place après T-365", s -> {
+                net.minecraft.server.level.ServerPlayer joueur = s.getPlayerList().getPlayers().get(0);
+                joueur.stopRiding();
+                joueur.setGameMode(GameType.SPECTATOR);
+                joueur.teleportTo(s.overworld(), joueurAvant.x, joueurAvant.y, joueurAvant.z, lacetAvant, tangageAvant);
+            });
+            pendant("le joueur revenu après T-365", 20);
+            serveur("retirer le véhicule d'essai", s -> vehiculeEssai.discard());
+            jusqua("le véhicule d'essai retiré", 30, mc -> mc.level.getEntity(vehiculeEssai.getId()) == null);
         }
 
         // Cartes de matériau (ADR-127 §5) : deux panneaux identiques face à la caméra, l'un avec
@@ -2120,6 +2176,47 @@ public final class BancDeRendu {
                         + " retenue, la seconde écartée",
                 devant == null ? "non candidate" : devant < 0 ? "écartée" : "retenue au niveau " + devant,
                 derriere == null ? "non candidate" : derriere < 0 ? "écartée" : "retenue au niveau " + derriere));
+    }
+
+    /**
+     * T-365 : à chaque image, ce que le rendu a intégré pour chaque roue depuis l'image précédente, déroulé — d'une
+     * image à l'autre, une roue tourne de bien moins d'un demi-tour —, et le chemin que la pose dessinée a parcouru.
+     */
+    private static void releverRoues(Minecraft mc) {
+        if (!(mc.level.getEntity(vehiculeEssai.getId()) instanceof AxionEntity auClient)) {
+            return;
+        }
+        AxionEntity.RenderPose pose = auClient.renderPose(mc.getFrameTime());
+        double[] angles = auClient.wheelSpin().angles();
+        Vec3 ici = new Vec3(pose.x(), pose.y(), pose.z());
+        if (angleVu != null && angles.length == angleVu.length) {
+            for (int roue = 0; roue < angles.length; roue++) {
+                angleRoues[roue] += Math.IEEEremainder(angles[roue] - angleVu[roue], 2.0 * Math.PI);
+            }
+            distanceVue += ici.distanceTo(poseVue);
+        } else {
+            angleRoues = new double[angles.length];
+            distanceVue = 0.0;
+        }
+        angleVu = angles;
+        poseVue = ici;
+    }
+
+    /** T-365 : chaque roue a tourné, au rayon que lui donne la definition, de la distance que le client a dessinée. */
+    private static void jugerT365(Minecraft mc) {
+        com.google.gson.JsonArray roues = RuntimeAccess.get().definitions().get(vehiculeEssai.definitionId())
+                .orElseThrow().root().getAsJsonArray("wheels");
+        boolean vert = conducteurAssis && roues.size() == angleRoues.length && distanceVue > 3.0;
+        StringBuilder rapports = new StringBuilder();
+        for (int roue = 0; roue < angleRoues.length && roue < roues.size(); roue++) {
+            double rayon = roues.get(roue).getAsJsonObject().get("radius").getAsDouble();
+            double rapport = Math.abs(angleRoues[roue]) * rayon / distanceVue;
+            vert &= Math.abs(rapport - 1.0) <= ECART_T365;
+            rapports.append(rapports.length() == 0 ? "" : ", ").append(String.format(Locale.ROOT, "%.3f", rapport));
+        }
+        RAPPORT.noter("T-365", vert, String.format(Locale.ROOT,
+                "sur %.2f blocs de roue libre dessinés, angle × rayon / distance de chaque roue : %s (écart toléré %.0f %%)",
+                distanceVue, rapports, ECART_T365 * 100));
     }
 
     /**

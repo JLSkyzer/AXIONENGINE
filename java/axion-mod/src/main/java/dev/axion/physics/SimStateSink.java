@@ -25,7 +25,8 @@ public interface SimStateSink {
      *     endormie n'y sont pas, et restent tels que rapportés en dernier
      * @param wheels états des roues des véhicules éveillés (ADR-159 D9) ; ceux d'un véhicule endormi n'y
      *     sont pas, et restent tels que rapportés en dernier
+     * @param vehicles états des motopropulseurs des véhicules éveillés (ADR-163 D1) ; comme les roues
      */
-    void applyStates(
-            long tick, List<BodyState> states, List<BodyBounds> bounds, List<JointState> joints, List<WheelReport> wheels);
+    void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds, List<JointState> joints,
+            List<WheelReport> wheels, List<VehicleReport> vehicles);
 }

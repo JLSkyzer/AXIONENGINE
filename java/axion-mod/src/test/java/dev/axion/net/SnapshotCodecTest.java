@@ -211,7 +211,9 @@ class SnapshotCodecTest {
                 "descripteur 2, antérieur à l'animation");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(3).varUInt(0).toByteArray(),
                 "descripteur 3, antérieur aux roues");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(5).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(4).varUInt(0).toByteArray(),
+                "descripteur 4, antérieur au véhicule");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(6).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
@@ -221,7 +223,7 @@ class SnapshotCodecTest {
         assertRefuse(entree(9, 0, 0), "base nulle d'un delta");
         WireWriter enDouble = new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(9).varULong(1).u8(v).varUInt(2);
         for (int index = 0; index < 2; index++) {
-            enDouble.varUInt(4).u8(SnapshotMessage.FLAG_FULL).i64(0).i64(0).i64(0).i32(0);
+            enDouble.varUInt(4).u16(SnapshotMessage.FLAG_FULL).i64(0).i64(0).i64(0).i32(0);
         }
         assertRefuse(enDouble.toByteArray(), "entité en double");
         assertRefuse(Arrays.copyOf(bon, bon.length - 1), "tronqué");
@@ -253,13 +255,13 @@ class SnapshotCodecTest {
     /** Le début d'un snapshot à une entrée complète, aux drapeaux donnés, jusqu'à sa rotation. */
     private static WireWriter complete(int flags) {
         return new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(9).varULong(1).u8(SnapshotMessage.DESCRIPTOR_VERSION)
-                .varUInt(1).varUInt(4).u8(flags | SnapshotMessage.FLAG_FULL).i64(0).i64(0).i64(0).i32(0);
+                .varUInt(1).varUInt(4).u16(flags | SnapshotMessage.FLAG_FULL).i64(0).i64(0).i64(0).i32(0);
     }
 
     private static byte[] entree(int sequence, int flags, int base) {
         return new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(sequence).varULong(1)
                 .u8(SnapshotMessage.DESCRIPTOR_VERSION).varUInt(1)
-                .varUInt(4).u8(flags).varUInt(base).i32(0).i32(0).i32(0).i32(0).toByteArray();
+                .varUInt(4).u16(flags).varUInt(base).i32(0).i32(0).i32(0).i32(0).toByteArray();
     }
 
     @Test
@@ -430,8 +432,9 @@ class SnapshotCodecTest {
                 List.of(SnapshotMessage.Entry.full(7, base.withAnimation(AnimationLayers.NONE.with(1, EN_COURS)))))
                 .encode();
         lu(bon);
-        // Le masque suit l'entrée complète : en-tête, handle, drapeaux, position, rotation, vitesses, emprise.
-        int masque = SnapshotMessage.headerSize(1, 1, 1) + 1 + 1 + 3 * Long.BYTES + Integer.BYTES
+        // Le masque suit l'entrée complète : en-tête, handle, drapeaux (u16, ADR-163 D1), position, rotation,
+        // vitesses, emprise.
+        int masque = SnapshotMessage.headerSize(1, 1, 1) + 1 + Short.BYTES + 3 * Long.BYTES + Integer.BYTES
                 + 2 * 6 * Short.BYTES;
         assertEquals(1 << 1, bon[masque], "masque de la couche 1");
 
@@ -528,14 +531,96 @@ class SnapshotCodecTest {
     }
 
     @Test
-    @DisplayName("ADR-159 D9 : une assembly à roues éveillée part à la fréquence HIGH")
-    void adr159Frequence() {
-        assertEquals(SnapshotSender.Frequency.HIGH, SnapshotSender.Frequency.of(avecRoues(roues(0f, 0f))));
+    @DisplayName("R-1662, ADR-163 D1 : un véhicule piloté part à la fréquence HIGH ; sans conducteur, NORMAL")
+    void adr163Frequence() {
+        AssemblyState pilote = avecRoues(roues(0f, 0f)).withVehicle(vehicule(AssemblyState.Vehicle.DRIVER));
+        assertEquals(SnapshotSender.Frequency.HIGH, SnapshotSender.Frequency.of(pilote));
+        assertEquals(SnapshotSender.Frequency.NORMAL, SnapshotSender.Frequency.of(avecRoues(roues(0f, 0f))
+                .withVehicle(vehicule(AssemblyState.Vehicle.RUNNING))), "à roues, sans conducteur");
         AssemblyState sansRoues = new AssemblyState(0L, 0L, 0L, SmallestThree.encode(0f, 0f, 0f, 1f),
                 AssemblyState.Velocity.ZERO, null, false);
         assertEquals(SnapshotSender.Frequency.NORMAL, SnapshotSender.Frequency.of(sansRoues));
         AssemblyState dort = new AssemblyState(0L, 0L, 0L, SmallestThree.encode(0f, 0f, 0f, 1f),
-                AssemblyState.Velocity.ZERO, null, true).withWheels(roues(0f, 0f));
+                AssemblyState.Velocity.ZERO, null, true).withWheels(roues(0f, 0f))
+                .withVehicle(vehicule(AssemblyState.Vehicle.DRIVER));
         assertEquals(SnapshotSender.Frequency.LOW, SnapshotSender.Frequency.of(dort));
+    }
+
+    private static AssemblyState.Vehicle vehicule(int drapeaux) {
+        return AssemblyState.Vehicle.of(3000f, 0.5f, 2, drapeaux, 0.75f, 0f, -0.25f, 0f);
+    }
+
+    @Test
+    @DisplayName("ADR-163 D1 : l'état du véhicule se quantifie à ses pas, borné, et se relit à l'identique")
+    void adr163VehiculeQuantifie() throws MalformedPacketException {
+        AssemblyState.Vehicle vehicule = AssemblyState.Vehicle.of(6543.2f, 0.4f, -1,
+                AssemblyState.Vehicle.SHIFTING | AssemblyState.Vehicle.RUNNING | AssemblyState.Vehicle.DRIVER,
+                1f, 0.25f, -0.6f, 1f);
+        assertEquals(6543.2f, vehicule.rpm(), AssemblyState.Vehicle.RPM_STEP / 2f);
+        assertEquals(0.4f, vehicule.load(), 0.5f / 255f);
+        assertEquals(-1, vehicule.gear());
+        assertEquals(7, vehicule.flags());
+        assertEquals(1f, vehicule.throttle(), 1e-6f);
+        assertEquals(0.25f, vehicule.brake(), 0.5f / 255f);
+        assertEquals(-0.6f, vehicule.steer(), 0.5f / 127f);
+        assertEquals(1f, vehicule.handbrake(), 1e-6f);
+
+        AssemblyState.Vehicle borne = AssemblyState.Vehicle.of(1e9f, 3f, 500, 0xFF, -2f, Float.NaN, -9f, 2f);
+        assertEquals(Short.MAX_VALUE * (float) AssemblyState.Vehicle.RPM_STEP, borne.rpm(), 1e-3f, "régime borné");
+        assertEquals(1f, borne.load(), 1e-6f);
+        assertEquals(Byte.MAX_VALUE, borne.gear(), "rapport borné à l'octet signé");
+        assertEquals(7, borne.flags(), "un drapeau inconnu n'est pas émis");
+        assertEquals(0f, borne.throttle(), 1e-6f);
+        assertEquals(0f, borne.brake(), 1e-6f, "non fini : zéro");
+        assertEquals(-1f, borne.steer(), 1e-6f);
+        assertEquals(-Short.MAX_VALUE * (float) AssemblyState.Vehicle.RPM_STEP,
+                AssemblyState.Vehicle.of(-1e9f, 0f, 0, 0, 0f, 0f, 0f, 0f).rpm(), 1e-3f, "un régime négatif, borné");
+
+        AssemblyState etat = avecRoues(roues(0.5f, 10f)).withVehicle(vehicule);
+        SnapshotMessage.Entry complete = SnapshotMessage.Entry.full(5, etat);
+        byte[] octets = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(complete)).encode();
+        assertEquals(SnapshotMessage.headerSize(2, 40L, 1) + SnapshotMessage.encodedSize(complete), octets.length);
+        SnapshotMessage lu = SnapshotMessage.decode(octets);
+        assertEquals(etat, lu.entries().get(0).resolve(null));
+        assertEquals(vehicule, lu.entries().get(0).vehicle());
+        assertNull(SnapshotMessage.Entry.full(5, avecRoues(roues(0.5f, 10f))).vehicle(),
+                "une assembly qui n'est pas un véhicule ne le porte pas");
+    }
+
+    @Test
+    @DisplayName("ADR-163 D1 : un delta ne porte l'état du véhicule que s'il a changé")
+    void adr163VehiculeEnDelta() throws MalformedPacketException {
+        AssemblyState base = avecRoues(roues(0.5f, 10f)).withVehicle(vehicule(AssemblyState.Vehicle.DRIVER));
+        assertNull(SnapshotMessage.Entry.delta(5, 1, base, base).vehicle(), "inchangé : tu");
+        AssemblyState change = base.withVehicle(AssemblyState.Vehicle.of(4000f, 0.5f, 3, AssemblyState.Vehicle.DRIVER,
+                0.75f, 0f, 0.5f, 0f));
+        SnapshotMessage.Entry delta = SnapshotMessage.Entry.delta(5, 1, base, change);
+        assertEquals(change.vehicle(), delta.vehicle());
+        assertNull(delta.wheels(), "les roues, inchangées, restent tues");
+        byte[] octets = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(delta)).encode();
+        assertEquals(change, SnapshotMessage.decode(octets).entries().get(0).resolve(base));
+    }
+
+    @Test
+    @DisplayName("ADR-163 D1 : un état de véhicule mal formé est refusé à la lecture (R-1650)")
+    void adr163VehiculeMalForme() {
+        byte[] sain = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION,
+                List.of(SnapshotMessage.Entry.full(5, avecRoues(roues(0.5f, 10f))
+                        .withVehicle(vehicule(AssemblyState.Vehicle.DRIVER))))).encode();
+        // L'état du véhicule termine le message : régime (2), charge, rapport, drapeaux, accélérateur, frein,
+        // direction, frein à main.
+        int debut = sain.length - AssemblyState.Vehicle.BYTES;
+        byte[] regime = sain.clone();
+        regime[debut] = Byte.MIN_VALUE;
+        regime[debut + 1] = 0;
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(regime), "régime -32768");
+        byte[] drapeau = sain.clone();
+        drapeau[debut + 4] = (byte) 0x08;
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(drapeau), "drapeau inconnu");
+        byte[] direction = sain.clone();
+        direction[debut + 7] = Byte.MIN_VALUE;
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(direction), "direction -128");
+        byte[] tronque = Arrays.copyOf(sain, sain.length - 1);
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(tronque), "tronqué");
     }
 }

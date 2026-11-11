@@ -45,6 +45,9 @@ public final class NativeSimulation {
     /** Premier schéma de {@code SIM_OUT} où la section des roues suit celle des joints (ADR-159 D9). */
     private static final int WHEELS_SINCE_SCHEMA = 3;
 
+    /** Premier schéma de {@code SIM_OUT} où la section des véhicules suit celle des roues (ADR-163 D1). */
+    private static final int VEHICLES_SINCE_SCHEMA = 4;
+
     private final long context;
 
     /** Réutilisé à chaque {@code collect} : aucune allocation par tick. */
@@ -161,6 +164,7 @@ public final class NativeSimulation {
                 simOut.bounds(),
                 simOut.joints(),
                 simOut.wheels(),
+                simOut.vehicles(),
                 events);
     }
 
@@ -175,15 +179,15 @@ public final class NativeSimulation {
 
     /**
      * Ce que {@code SIM_OUT} porte : les états, et s'il les annonce leurs emprises, les états des
-     * joints et ceux des roues.
+     * joints, ceux des roues et ceux des motopropulseurs.
      */
     private record SimOut(List<BodyState> bodies, List<BodyBounds> bounds, List<JointState> joints,
-            List<WheelReport> wheels) {}
+            List<WheelReport> wheels, List<VehicleReport> vehicles) {}
 
     /**
      * Lit les {@code state_count} états de {@code SIM_OUT}, depuis le schéma 1 leurs emprises
      * (ADR-120), depuis le schéma 2 les états des joints (ADR-151 D7), depuis le schéma 3 ceux des
-     * roues (ADR-159 D9), puis relâche (R-322).
+     * roues (ADR-159 D9), depuis le schéma 4 ceux des motopropulseurs (ADR-163 D1), puis relâche (R-322).
      *
      * <p>Les emprises suivent les états, au même rang, et la section des joints les emprises.
      * Chacune n'est lue que si l'en-tête annonce un schéma qui la contient <strong>et</strong> si
@@ -193,7 +197,7 @@ public final class NativeSimulation {
     private SimOut readSimOut(int count) {
         ByteBuffer buffer = NativeBridge.acquire(context, BufferKinds.SIM_OUT, 0);
         if (buffer == null) {
-            return new SimOut(List.of(), List.of(), List.of(), List.of());
+            return new SimOut(List.of(), List.of(), List.of(), List.of(), List.of());
         }
         int generation = buffer.getInt(GENERATION_OFFSET);
         int schema = buffer.getInt(SCHEMA_OFFSET);
@@ -201,6 +205,7 @@ public final class NativeSimulation {
         List<BodyBounds> bounds = List.of();
         List<JointState> joints = List.of();
         List<WheelReport> wheels = List.of();
+        List<VehicleReport> vehicles = List.of();
         long available = Math.max(0, buffer.capacity() - BufferKinds.HEADER_BYTES);
         if ((long) count * BodyState.BYTES <= available) {
             for (int i = 0; i < count; i++) {
@@ -218,14 +223,18 @@ public final class NativeSimulation {
                     int jointsAt = BufferKinds.HEADER_BYTES + count * (BodyState.BYTES + BodyBounds.BYTES);
                     joints = JointState.decodeSection(buffer, jointsAt);
                     if (schema >= WHEELS_SINCE_SCHEMA) {
-                        wheels = WheelReport.decodeSection(buffer,
-                                jointsAt + JointState.SECTION_HEADER_BYTES + joints.size() * JointState.BYTES);
+                        int wheelsAt = jointsAt + JointState.SECTION_HEADER_BYTES + joints.size() * JointState.BYTES;
+                        wheels = WheelReport.decodeSection(buffer, wheelsAt);
+                        if (schema >= VEHICLES_SINCE_SCHEMA) {
+                            vehicles = VehicleReport.decodeSection(buffer,
+                                    wheelsAt + WheelReport.SECTION_HEADER_BYTES + wheels.size() * WheelReport.BYTES);
+                        }
                     }
                 }
             }
         }
         NativeBridge.release(context, BufferKinds.SIM_OUT, generation);
-        return new SimOut(bodies, bounds, joints, wheels);
+        return new SimOut(bodies, bounds, joints, wheels, vehicles);
     }
 
     /** Lit les {@code event_count} événements d'{@code EVENTS}, puis relâche (R-322). */

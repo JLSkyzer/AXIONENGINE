@@ -3722,8 +3722,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
               ADR-160 D5, guides ; amendement A8.
   - [ ] Tranche 4 de C-33 : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
         variables par assembly). Trois sous-tranches, un film à chacune :
-        - [ ] 4a — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5, `HIGH`,
-              sources `vehicle.*`, `engine.*`, `transmission.*`, `seat.*`, `time.seconds`, `world.*`) ; volant.
+        - [x] 4a (2026-11-11) — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5,
+              `HIGH`, sources `vehicle.*`, `engine.*`, `transmission.*`, `seat.*`, `time.seconds`, `world.*`, A.4 V1.1
+              par l'amendement A9) ; volant du buggy et de la Charger. CI locale verte, banc vert sur les trois
+              backends, T-365 (angle × rayon / distance de 0,986 à 1,002), film jugé. Précisions dans ADR-163.
+              À la 4c : le découpage Blender de la Charger garde l'orientation du nœud `volant` (axe `y` = colonne).
         - [ ] 4b — variables (`persist`, `replicate`, `write`, bornes), commandes génériques et `bindings`,
               `set_variable`, `Assembly.variables()`, `/axion variables`.
         - [ ] 4c — canaux `visibility`, `emissive`, `color` ; `period`, `smoothing`, `gate` ; rendu par nœud dans les

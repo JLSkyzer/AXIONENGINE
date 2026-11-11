@@ -46,14 +46,15 @@ use ax_model::dm::handle::Handle;
 use ax_model::dm::joints::JointState;
 use ax_model::dm::physics::{BodyBounds, BodyState};
 use ax_model::dm::scene::NONE_U32;
-use ax_model::dm::vehicle::WheelReport;
+use ax_model::dm::vehicle::{VehicleReport, WheelReport};
 use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSettings, Stage};
 
 /// Version de l'ABI.
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 20 depuis l'entrée du conducteur
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 21 depuis l'état du motopropulseur
+/// (ADR-163 D1) : section `VehicleReport` de `SIM_OUT` (schéma 4), après les roues. 20 depuis l'entrée du conducteur
 /// (ADR-159, tranche 3) : opcode `SET_VEHICLE_INPUT`, `DEFN` version 3 et ses correcteurs. 19 depuis l'état des roues
 /// (ADR-159 D9) : section `WheelReport` de `SIM_OUT` (schéma 3) et opcode `SET_POSE` d'`axion_render_animate`.
 /// 13 depuis la sphère explicite du
@@ -67,7 +68,7 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 20;
+pub const AXION_ABI_VERSION: u32 = 21;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -2280,7 +2281,7 @@ pub unsafe extern "C" fn axion_box_touches_assembly(
 }
 
 /// Récolte le résultat d'un tick (IF-03) : avance la simulation, dépose les
-/// `BodyState` puis leurs `BodyBounds` dans `SimOut` (schéma 3, ADR-120, ADR-159 D9) et les
+/// `BodyState` puis leurs `BodyBounds` dans `SimOut` (schéma 4, ADR-120, ADR-159 D9, ADR-163 D1) et les
 /// `PhysicsEvent` dans `Events`, détruit les mondes devenus sans objet (R-610) et
 /// remplit `out`.
 ///
@@ -2335,7 +2336,9 @@ pub unsafe extern "C" fn axion_sim_collect(
                     + JointState::SECTION_HEADER_BYTES
                     + reports.joints.len() * JointState::BYTES
                     + WheelReport::SECTION_HEADER_BYTES
-                    + reports.wheels.len() * WheelReport::BYTES,
+                    + reports.wheels.len() * WheelReport::BYTES
+                    + VehicleReport::SECTION_HEADER_BYTES
+                    + reports.vehicles.len() * VehicleReport::BYTES,
             );
             for state in states {
                 state.write_le(&mut sim_out_bytes);
@@ -2348,6 +2351,8 @@ pub unsafe extern "C" fn axion_sim_collect(
             JointState::write_section(&reports.joints, &mut sim_out_bytes);
             // ADR-159 D9 : les roues suivent, sous la même forme.
             WheelReport::write_section(&reports.wheels, &mut sim_out_bytes);
+            // ADR-163 D1 : les motopropulseurs suivent les roues (schéma 4).
+            VehicleReport::write_section(&reports.vehicles, &mut sim_out_bytes);
             let mut events_bytes = Vec::new();
             for event in &events {
                 event.write_le(&mut events_bytes);

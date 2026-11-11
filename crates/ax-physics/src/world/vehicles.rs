@@ -16,8 +16,8 @@ use ax_model::dm::debug::{debug_frame, overlay, DebugSegment};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::scene::NONE_U16;
 use ax_model::dm::vehicle::{
-    transmission_kind, vehicle_flags, wheel_flags, wheel_report_flags, VehicleDesc, VehicleInput,
-    WheelReport,
+    transmission_kind, vehicle_flags, vehicle_report_flags, wheel_flags, wheel_report_flags,
+    VehicleDesc, VehicleInput, VehicleReport, WheelReport,
 };
 use ax_vehicle::powertrain::{self, DriveCommand, WheelDrive};
 use ax_vehicle::steering::{self, Geometry, Steering};
@@ -149,6 +149,9 @@ pub(super) struct Vehicle {
     grounded: Vec<bool>,
     /// Le pire patinage des roues motrices au sous-pas précédent, que l'antipatinage lit.
     traction_slip: f32,
+    /// La charge du moteur au dernier sous-pas : l'accélérateur qu'il reçoit, après l'antipatinage et la coupure
+    /// d'un passage de rapport (ADR-163 D1).
+    load: f32,
 }
 
 impl PhysicsWorld {
@@ -292,6 +295,7 @@ impl PhysicsWorld {
             contacts: vec![Contact::default(); count],
             grounded: vec![false; count],
             traction_slip: 0.0,
+            load: 0.0,
             desc,
         });
     }
@@ -404,6 +408,35 @@ impl PhysicsWorld {
             }
         }
         reports
+    }
+
+    /// L'état du motopropulseur de chaque véhicule éveillé, pour Java (ADR-163 D1).
+    #[must_use]
+    pub fn vehicle_reports(&self) -> Vec<VehicleReport> {
+        self.vehicles
+            .iter()
+            .filter(|v| !self.vehicle_asleep(v))
+            .map(|vehicle| {
+                let mut flags = 0;
+                if vehicle.gearbox.shifting() {
+                    flags |= vehicle_report_flags::SHIFTING;
+                }
+                if vehicle.desc.flags & vehicle_flags::POWERTRAIN != 0 {
+                    flags |= vehicle_report_flags::RUNNING;
+                }
+                if vehicle.driver {
+                    flags |= vehicle_report_flags::DRIVER;
+                }
+                VehicleReport {
+                    handle: vehicle.assembly,
+                    rpm: vehicle.engine_speed * engine::RPM_PER_RAD_S,
+                    load: vehicle.load,
+                    gear: vehicle.gearbox.gear(),
+                    flags,
+                    steer: vehicle.steering.position(),
+                }
+            })
+            .collect()
     }
 
     /// Tous les corps du véhicule dorment : ses roues ne sont ni simulées ni rapportées.
@@ -623,6 +656,11 @@ impl PhysicsWorld {
                 }
             }
         }
+        vehicle.load = if desc.flags & vehicle_flags::POWERTRAIN != 0 {
+            throttle.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
         let command = DriveCommand {
             ratio: if desc.flags & vehicle_flags::POWERTRAIN != 0 {
                 vehicle.gearbox.ratio(desc)

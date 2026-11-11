@@ -18,6 +18,7 @@ import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.diag.JavaMetrics;
 import dev.axion.net.AnimationLayers;
 import dev.axion.net.Interpolation;
+import dev.axion.net.ServerClock;
 import dev.axion.physics.AssemblyBodies;
 import dev.axion.render.AnimationCommands;
 import dev.axion.render.AnimationSync;
@@ -47,7 +48,10 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
@@ -1131,8 +1135,9 @@ public final class AxionRenderPass {
     }
 
     /**
-     * {@return les deltas des pistes procédurales d'une assembly à cette image (ADR-159 D9), ou {@code null}
-     * sans piste ni état de roue} Appelé une fois par image : l'angle de chaque roue s'y intègre.
+     * {@return les deltas des pistes procédurales d'une assembly à cette image (ADR-159 D9, ADR-163 D1), ou
+     * {@code null} sans piste} Appelé une fois par image : l'angle de chaque roue s'y intègre. Le monde se lit au
+     * bloc où l'assembly est dessinée.
      */
     private static ProceduralTracks.Pose proceduralPose(
             AxionRuntime runtime, AxionEntity entity, float partialTick, double renderTick) {
@@ -1140,8 +1145,14 @@ public final class AxionRenderPass {
         if (known == null || known.tracks().isEmpty()) {
             return null;
         }
-        List<Interpolation.WheelPose> wheels = entity.renderPose(partialTick).wheels();
-        return known.tracks().evaluate(wheels, entity.wheelSpin().advance(renderTick, wheels));
+        AxionEntity.RenderPose pose = entity.renderPose(partialTick);
+        List<Interpolation.WheelPose> wheels = pose.wheels();
+        Level level = entity.level();
+        BlockPos at = BlockPos.containing(pose.x(), pose.y(), pose.z());
+        return known.tracks().evaluate(new ProceduralTracks.Frame(wheels, entity.wheelSpin().advance(renderTick, wheels),
+                pose.vehicle(), entity.seatsOccupied(), renderTick * ServerClock.TICK_MILLIS / 1000.0,
+                ProceduralTracks.worldTime(level.getDayTime()), level.getBrightness(LightLayer.SKY, at),
+                level.getRainLevel(partialTick)));
     }
 
     /**

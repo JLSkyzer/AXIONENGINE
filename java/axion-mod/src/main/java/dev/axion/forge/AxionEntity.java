@@ -21,6 +21,7 @@ import dev.axion.net.AssemblyState;
 import dev.axion.net.Interpolation;
 import dev.axion.net.RenderClock;
 import dev.axion.physics.JointState;
+import dev.axion.physics.VehicleReport;
 import dev.axion.render.ProceduralTracks;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -110,6 +111,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** L'angle de chaque roue, intégré au rendu (client, ADR-159 D9). */
     private final ProceduralTracks.Spin wheelVisualSpin = new ProceduralTracks.Spin();
+
+    /**
+     * Le motopropulseur au dernier rapport du natif (serveur, ADR-163 D1) : régime, charge, rapport, drapeaux et
+     * position de la direction ; {@code null} tant que le natif n'en a rapporté aucun, l'assembly n'étant alors pas
+     * un véhicule.
+     */
+    private VehicleReport vehicleReport;
 
     /** Vitesses monde du corps racine au dernier état, en m/s et rad/s, et son sommeil (serveur). */
     private final float[] linearVelocity = new float[3];
@@ -350,6 +358,24 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     public int seatOf(Entity passenger) {
         Seating seating = seating();
         return seating == null ? SeatOccupancy.FREE : occupancy(seating).seatOf(passenger.getId());
+    }
+
+    /**
+     * {@return l'occupation de chaque siège, dans l'ordre de la definition : la source {@code seat.<n>.occupied}
+     * (ADR-163 D1)} Un siège dont l'occupant est perdu est libre. Vide sans sièges.
+     */
+    public boolean[] seatsOccupied() {
+        Seating seating = seating();
+        if (seating == null) {
+            return new boolean[0];
+        }
+        SeatOccupancy occupancy = occupancy(seating);
+        boolean[] occupied = new boolean[seating.seats().size()];
+        for (int seat = 0; seat < occupied.length; seat++) {
+            int occupant = occupancy.occupant(seat);
+            occupied[seat] = occupant != SeatOccupancy.FREE && occupant != SeatOccupancy.LOST;
+        }
+        return occupied;
     }
 
     /**
@@ -1131,6 +1157,33 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         wheelGround[wheel] = grounded;
     }
 
+    /**
+     * Retient l'état que le motopropulseur a rapporté (serveur, thread autoritatif, ADR-163 D1).
+     *
+     * @param report le rapport du natif
+     */
+    void setVehicleState(VehicleReport report) {
+        AuthoritativeThread.require();
+        vehicleReport = report;
+    }
+
+    /**
+     * {@return l'état du véhicule pour les snapshots (serveur, ADR-163 D1)} Le motopropulseur vient du natif ;
+     * l'accélérateur, le frein et le frein à main, de l'entrée du siège {@code driver}. Sans conducteur, le frein de
+     * stationnement est serré, comme le natif le suppose (ADR-159 D8, Q3).
+     */
+    private AssemblyState.Vehicle vehicleState() {
+        if (vehicleReport == null) {
+            return AssemblyState.Vehicle.NONE;
+        }
+        DriverInput driver = driverInput();
+        DriverInput held = driver == null ? DriverInput.ABSENT : driver;
+        VehicleInput input = held.input();
+        return AssemblyState.Vehicle.of(vehicleReport.rpm(), vehicleReport.load(), vehicleReport.gear(),
+                vehicleReport.flags(), input.throttle(), input.brake(), vehicleReport.steer(),
+                held.present() ? input.handbrake() : 1f);
+    }
+
     private AssemblyState.Wheels wheelStates() {
         return wheelCompression.length == 0
                 ? AssemblyState.Wheels.NONE
@@ -1220,7 +1273,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     sleeping)
                     .with(bodies, AssemblyState.JointBits.of(jointFlags))
                     .withAnimation(animation.state())
-                    .withWheels(wheelStates());
+                    .withWheels(wheelStates())
+                    .withVehicle(vehicleState());
         } catch (IllegalArgumentException notFinite) {
             // Le natif ramène lui-même un corps non fini dans un état valide (E-2030) ; l'état précédent
             // reste celui des snapshots d'ici là.
@@ -1286,10 +1340,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      *     premier snapshot
      * @param wheels l'état de chaque roue, dans l'ordre de la definition (ADR-159 D9) ; aucun avant le
      *     premier snapshot
+     * @param vehicle l'état du véhicule et la vitesse du corps racine (ADR-163 D1) ; {@code NONE} avant le premier
+     *     snapshot
      */
     public record RenderPose(
             double x, double y, double z, Quaternionf rotation, Interpolation.Mode mode, List<Interpolation.BodyPose> bodies,
-            List<Interpolation.WheelPose> wheels) {}
+            List<Interpolation.WheelPose> wheels, Interpolation.VehiclePose vehicle) {}
 
     /**
      * {@return où dessiner l'assembly à cette image (client)} C'est la pose de l'interpolation de 21.7,
@@ -1302,13 +1358,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (interpolation == null) {
             return new RenderPose(Mth.lerp(partialTick, xo, getX()), Mth.lerp(partialTick, yo, getY()),
                     Mth.lerp(partialTick, zo, getZ()), rotationO.slerp(rotation, partialTick, new Quaternionf()),
-                    null, List.of(), List.of());
+                    null, List.of(), List.of(), Interpolation.VehiclePose.NONE);
         }
         long frame = clock.frameNanos();
         Interpolation.Pose pose = interpolation.sample(clock.renderMillis(frame), clock.localMillis(frame));
         float[] q = pose.rotation();
         return new RenderPose(pose.x(), pose.y(), pose.z(), new Quaternionf(q[0], q[1], q[2], q[3]), pose.mode(),
-                pose.bodies(), pose.wheels());
+                pose.bodies(), pose.wheels(), pose.vehicle());
     }
 
     /**

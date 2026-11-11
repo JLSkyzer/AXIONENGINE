@@ -38,7 +38,7 @@ use ax_model::dm::physics::{
     body_state_flags, event_data, event_kind, BodyBounds, BodyDesc, BodyState, PhysicsEvent,
     NO_MATERIAL,
 };
-use ax_model::dm::vehicle::WheelReport;
+use ax_model::dm::vehicle::{VehicleReport, WheelReport};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -458,6 +458,8 @@ pub struct BodyReports {
     pub joints: Vec<JointState>,
     /// États des roues des véhicules éveillés, après les joints dans `SIM_OUT` (ADR-159 D9).
     pub wheels: Vec<WheelReport>,
+    /// États des motopropulseurs des véhicules éveillés, après les roues dans `SIM_OUT` (ADR-163 D1).
+    pub vehicles: Vec<VehicleReport>,
 }
 
 impl BodyReports {
@@ -468,6 +470,7 @@ impl BodyReports {
         self.bounds.append(&mut other.bounds);
         self.joints.append(&mut other.joints);
         self.wheels.append(&mut other.wheels);
+        self.vehicles.append(&mut other.vehicles);
     }
 }
 
@@ -2339,6 +2342,7 @@ impl PhysicsWorld {
         }
         reports.joints = self.joint_states();
         reports.wheels = self.wheel_reports();
+        reports.vehicles = self.vehicle_reports();
         reports
     }
 

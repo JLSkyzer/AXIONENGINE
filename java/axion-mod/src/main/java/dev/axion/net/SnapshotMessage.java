@@ -12,8 +12,8 @@ import java.util.Set;
  *
  * <pre>
  * genre u8 = 5 | séquence varuint | tick serveur varulong | descripteur u8 | n varuint | n entrées
- * entrée : handle varuint | drapeaux u8 | [base varuint] | position | rotation i32
- *          | [vitesses 6 × i16] | [emprise 6 × i16] | [corps] | [joints] | [animation] | [roues]
+ * entrée : handle varuint | drapeaux u16 | [base varuint] | position | rotation i32
+ *          | [vitesses 6 × i16] | [emprise 6 × i16] | [corps] | [joints] | [animation] | [roues] | [véhicule]
  * position : 3 × i64 absolus (entrée complète) ou 3 × i32 de delta, au 1/1024 de bloc
  * corps : n varuint | n × (node varuint | position 3 × i32 au 1/1024 de bloc | rotation i32)
  * joints : n varuint | ⌈2n / 8⌉ octets, deux bits par joint
@@ -21,6 +21,8 @@ import java.util.Set;
  *             | temps de clip f32 | vitesse f32 | poids f32 | fondu f32
  * roues : n varuint | n × (compression i8 | vitesse de rotation i16 | braquage i8) | ⌈n / 8⌉ octets,
  *         un bit de contact par roue
+ * véhicule : régime i16 | charge u8 | rapport i8 | drapeaux u8 | accélérateur u8 | frein u8 | direction i8
+ *            | frein à main u8
  * </pre>
  *
  * <p>Une entrée en delta nomme la séquence du snapshot qui portait sa base : le client vérifie qu'il la
@@ -37,7 +39,8 @@ import java.util.Set;
  * entière quand elle a changé depuis la base ({@link AnimationLayers}).
  *
  * <p>Les roues (descripteur 4, ADR-159 D9) aussi : entières quand elles ont changé depuis la base
- * ({@link AssemblyState.Wheels}).
+ * ({@link AssemblyState.Wheels}). Et l'état du véhicule (descripteur 5, ADR-163 D1), dont l'entrée a fait passer
+ * les drapeaux sur 16 bits ({@link AssemblyState.Vehicle}).
  *
  * @param sequence numéro du snapshot chez l'émetteur, à partir de 1
  * @param serverTick tick du serveur dont il porte les états
@@ -47,10 +50,11 @@ import java.util.Set;
 public record SnapshotMessage(int sequence, long serverTick, int descriptor, List<Entry> entries) {
 
     /**
-     * Le descripteur d'états procéduraux (ADR-150 D6) : 4 depuis les roues (ADR-159 D9), après
-     * l'animation (3, ADR-155), les corps autres que le corps racine et les joints (2, ADR-151 D8).
+     * Le descripteur d'états procéduraux (ADR-150 D6) : 5 depuis l'état du véhicule et les drapeaux sur 16 bits
+     * (ADR-163 D1), après les roues (4, ADR-159 D9), l'animation (3, ADR-155), les corps autres que le corps
+     * racine et les joints (2, ADR-151 D8).
      */
-    public static final int DESCRIPTOR_VERSION = 4;
+    public static final int DESCRIPTOR_VERSION = 5;
 
     /** Nombre maximal d'entrées d'un snapshot (R-1691). */
     static final int MAX_ENTRIES = 8192;
@@ -63,8 +67,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
     static final int FLAG_JOINTS = 32;
     static final int FLAG_ANIMATION = 64;
     static final int FLAG_WHEELS = 128;
+    static final int FLAG_VEHICLE = 256;
     private static final int KNOWN_FLAGS = FLAG_FULL | FLAG_VELOCITY | FLAG_BOUNDS | FLAG_SLEEPING | FLAG_BODIES
-            | FLAG_JOINTS | FLAG_ANIMATION | FLAG_WHEELS;
+            | FLAG_JOINTS | FLAG_ANIMATION | FLAG_WHEELS | FLAG_VEHICLE;
 
     /** Copie les entrées. */
     public SnapshotMessage {
@@ -88,6 +93,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      * @param joints bits des joints, ou {@code null} : ceux de la base, aucun pour une entrée complète
      * @param animation état d'animation, ou {@code null} : celui de la base, aucun pour une entrée complète
      * @param wheels état des roues, ou {@code null} : celui de la base, aucun pour une entrée complète
+     * @param vehicle état du véhicule, ou {@code null} : celui de la base, aucun pour une entrée complète
      */
     public record Entry(
             int handle,
@@ -102,7 +108,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             List<AssemblyState.Body> bodies,
             AssemblyState.JointBits joints,
             AnimationLayers animation,
-            AssemblyState.Wheels wheels) {
+            AssemblyState.Wheels wheels,
+            AssemblyState.Vehicle vehicle) {
 
         /** Copie les corps. */
         public Entry {
@@ -126,7 +133,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     state.bounds(), state.sleeping(), state.bodies().isEmpty() ? null : state.bodies(),
                     state.joints().count() == 0 ? null : state.joints(),
                     AnimationLayers.NONE.equals(state.animation()) ? null : state.animation(),
-                    state.wheels().count() == 0 ? null : state.wheels());
+                    state.wheels().count() == 0 ? null : state.wheels(),
+                    AssemblyState.Vehicle.NONE.equals(state.vehicle()) ? null : state.vehicle());
         }
 
         /**
@@ -152,8 +160,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.JointBits joints = state.joints().equals(base.joints()) ? null : state.joints();
             AnimationLayers animation = state.animation().equals(base.animation()) ? null : state.animation();
             AssemblyState.Wheels wheels = state.wheels().equals(base.wheels()) ? null : state.wheels();
+            AssemblyState.Vehicle vehicle = state.vehicle().equals(base.vehicle()) ? null : state.vehicle();
             return new Entry(handle, baseSequence, dx, dy, dz, state.rotation(), velocity, bounds, state.sleeping(),
-                    bodies, joints, animation, wheels);
+                    bodies, joints, animation, wheels, vehicle);
         }
 
         /**
@@ -166,12 +175,14 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                         velocity == null ? AssemblyState.Velocity.ZERO : velocity, bounds, sleeping,
                         bodies == null ? List.of() : bodies, joints == null ? AssemblyState.JointBits.NONE : joints,
                         animation == null ? AnimationLayers.NONE : animation,
-                        wheels == null ? AssemblyState.Wheels.NONE : wheels);
+                        wheels == null ? AssemblyState.Wheels.NONE : wheels,
+                        vehicle == null ? AssemblyState.Vehicle.NONE : vehicle);
             }
             return new AssemblyState(base.x() + x, base.y() + y, base.z() + z, rotation,
                     velocity == null ? base.velocity() : velocity, bounds == null ? base.bounds() : bounds, sleeping,
                     bodies == null ? base.bodies() : bodies, joints == null ? base.joints() : joints,
-                    animation == null ? base.animation() : animation, wheels == null ? base.wheels() : wheels);
+                    animation == null ? base.animation() : animation, wheels == null ? base.wheels() : wheels,
+                    vehicle == null ? base.vehicle() : vehicle);
         }
 
         private static boolean fitsInt(long value) {
@@ -184,7 +195,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      * @return sa taille sur le fil, en octets : celle qu'{@link #encode} lui donne
      */
     static int encodedSize(Entry entry) {
-        return varintSize(entry.handle()) + 1
+        return varintSize(entry.handle()) + Short.BYTES
                 + (entry.full() ? 3 * Long.BYTES : varintSize(entry.base()) + 3 * Integer.BYTES)
                 + Integer.BYTES
                 + (entry.velocity() != null ? 6 * Short.BYTES : 0)
@@ -198,7 +209,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                 + (entry.wheels() != null
                         ? varintSize(entry.wheels().count())
                                 + AssemblyState.Wheels.packedLength(entry.wheels().count())
-                        : 0);
+                        : 0)
+                + (entry.vehicle() != null ? AssemblyState.Vehicle.BYTES : 0);
     }
 
     private static int bodiesSize(List<AssemblyState.Body> bodies) {
@@ -243,8 +255,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     | (entry.bodies() != null ? FLAG_BODIES : 0)
                     | (entry.joints() != null ? FLAG_JOINTS : 0)
                     | (entry.animation() != null ? FLAG_ANIMATION : 0)
-                    | (entry.wheels() != null ? FLAG_WHEELS : 0);
-            writer.varUInt(entry.handle()).u8(flags);
+                    | (entry.wheels() != null ? FLAG_WHEELS : 0)
+                    | (entry.vehicle() != null ? FLAG_VEHICLE : 0);
+            writer.varUInt(entry.handle()).u16(flags);
             if (entry.full()) {
                 writer.i64(entry.x()).i64(entry.y()).i64(entry.z());
             } else {
@@ -273,6 +286,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             }
             if (entry.wheels() != null) {
                 writer.varUInt(entry.wheels().count()).raw(entry.wheels().packed());
+            }
+            if (entry.vehicle() != null) {
+                writer.raw(entry.vehicle().packed());
             }
         }
         return writer.toByteArray();
@@ -309,7 +325,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             if (!handles.add(handle)) {
                 throw new MalformedPacketException("entité " + handle + " en double dans le snapshot");
             }
-            int flags = reader.u8();
+            int flags = reader.u16();
             if ((flags & ~KNOWN_FLAGS) != 0) {
                 throw new MalformedPacketException("drapeaux d'entrée inconnus : " + flags);
             }
@@ -339,8 +355,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.JointBits joints = (flags & FLAG_JOINTS) == 0 ? null : readJoints(reader, handle);
             AnimationLayers animation = (flags & FLAG_ANIMATION) == 0 ? null : AnimationLayers.read(reader, handle);
             AssemblyState.Wheels wheels = (flags & FLAG_WHEELS) == 0 ? null : readWheels(reader, handle);
+            AssemblyState.Vehicle vehicle = (flags & FLAG_VEHICLE) == 0 ? null : readVehicle(reader, handle);
             entries.add(new Entry(handle, base, x, y, z, rotation, velocity, bounds, (flags & FLAG_SLEEPING) != 0,
-                    bodies, joints, animation, wheels));
+                    bodies, joints, animation, wheels, vehicle));
         }
         reader.expectEnd();
         return new SnapshotMessage(sequence, serverTick, descriptor, entries);
@@ -378,6 +395,19 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
         }
         try {
             return new AssemblyState.Wheels(count, packed);
+        } catch (IllegalArgumentException bounds) {
+            throw new MalformedPacketException("entité " + handle + " : " + bounds.getMessage());
+        }
+    }
+
+    /** L'état du véhicule d'une entrée, bornes et drapeaux vérifiés (R-1650). */
+    private static AssemblyState.Vehicle readVehicle(WireReader reader, int handle) throws MalformedPacketException {
+        byte[] packed = new byte[AssemblyState.Vehicle.BYTES];
+        for (int index = 0; index < packed.length; index++) {
+            packed[index] = (byte) reader.u8();
+        }
+        try {
+            return new AssemblyState.Vehicle(packed);
         } catch (IllegalArgumentException bounds) {
             throw new MalformedPacketException("entité " + handle + " : " + bounds.getMessage());
         }

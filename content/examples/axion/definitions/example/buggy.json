@@ -91,7 +91,7 @@
 
   "procedural": [
     { "node": "volant", "channel": "rotation", "axis": "y",
-      "source": "vehicle.steer", "scale": 3.0 },
+      "source": "vehicle.steer", "scale": -3.0 },
     { "node": "roue_avant_gauche", "channel": "rotation", "axis": "x",
       "source": "wheel.roue_avant_gauche.spin_angle" },
     { "node": "roue_avant_droite", "channel": "rotation", "axis": "x",

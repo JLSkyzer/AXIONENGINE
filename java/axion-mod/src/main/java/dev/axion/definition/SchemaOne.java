@@ -44,7 +44,10 @@ final class SchemaOne {
      */
     record SourceFamily(String prefix, boolean named, NameCategory category, Set<String> fields) {}
 
-    /** ANNEXE A.4, liste fermée V1.0 (R-1450). */
+    /**
+     * ANNEXE A.4, liste fermée (R-1450), en V1.1 : la V1.0 et les sources du monde (ADR-163 D1, amendement A9 du
+     * registre 38.9, R-2410).
+     */
     static final List<SourceFamily> SOURCES = List.of(
             fixed("vehicle", "speed", "forward_speed", "throttle", "brake", "steer", "handbrake"),
             fixed("engine", "rpm", "load", "running"),
@@ -67,6 +70,7 @@ final class SchemaOne {
             named("seat", NameCategory.SEAT, "occupied"),
             named("particles", NameCategory.PARTICLES, "max_stretch", "torn_ratio"),
             fixed("time", "seconds"),
+            fixed("world", "time", "sky_light", "rain"),
             new SourceFamily("var", true, null, Set.of()));
 
     /** Racine du schéma 1. */

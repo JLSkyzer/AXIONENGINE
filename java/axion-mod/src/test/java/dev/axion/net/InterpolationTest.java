@@ -401,6 +401,37 @@ class InterpolationTest {
                 .withWheels(roues);
     }
 
+    private static AssemblyState avecVehicule(float rpm, int rapport, float direction, double vx, float[] q) {
+        return etat(new double[] {0, 64, 0}, new double[] {vx, 0, 0}, q, new float[3])
+                .withVehicle(AssemblyState.Vehicle.of(rpm, 0.5f, rapport, AssemblyState.Vehicle.DRIVER, 1f, 0f,
+                        direction, 0f));
+    }
+
+    @Test
+    @DisplayName("ADR-163 D1 : l'état du véhicule s'interpole avec le corps, et sa vitesse suit l'avant, -Z")
+    void leVehiculeSInterpole() {
+        Interpolation interpolation = new Interpolation(EXTRAPOLATION_MS, SNAP);
+        // Tourné d'un quart de tour autour de y, l'avant -Z regarde vers -X : rouler vers -X, c'est avancer.
+        float[] quart = autourDeY(Math.PI / 2);
+        interpolation.push(0, avecVehicule(2000f, 1, -1f, -10, quart), 0, 0);
+        interpolation.push(2, avecVehicule(4000f, 2, 1f, -20, quart), 0, 0);
+        Interpolation.VehiclePose milieu = interpolation.sample(50, 50).vehicle();
+        assertEquals(3000f, milieu.rpm(), 2f);
+        assertEquals(0f, milieu.steer(), 0.01f, "la direction aussi, pour que le volant suive les roues");
+        assertEquals(2, milieu.gear(), "le rapport est celui du snapshot suivant");
+        assertEquals(AssemblyState.Vehicle.DRIVER, milieu.flags());
+        assertEquals(15f, milieu.speed(), 0.05f);
+        assertEquals(15f, milieu.forwardSpeed(), 0.05f, "en avançant, positive");
+        Interpolation.Pose figee = interpolation.sample(100 + EXTRAPOLATION_MS + 1, 1000);
+        assertEquals(Interpolation.Mode.FROZEN, figee.mode());
+        assertEquals(0f, figee.vehicle().speed(), "figée, elle ne roule plus");
+        assertEquals(4000f, figee.vehicle().rpm(), 2f, "son moteur reste où il est");
+
+        Interpolation recule = new Interpolation(EXTRAPOLATION_MS, SNAP);
+        recule.push(0, avecVehicule(900f, -1, 0f, 3, quart), 0, 0);
+        assertEquals(-3f, recule.sample(0, 0).vehicle().forwardSpeed(), 0.05f, "en reculant, négative");
+    }
+
     @Test
     @DisplayName("ADR-159 D9 : les roues s'interpolent, sont tenues après le dernier snapshot, et s'arrêtent figées")
     void lesRouesSInterpolent() {

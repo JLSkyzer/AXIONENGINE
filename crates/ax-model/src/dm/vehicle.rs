@@ -115,6 +115,101 @@ impl WheelReport {
     }
 }
 
+/// Drapeaux de [`VehicleReport`].
+pub mod vehicle_report_flags {
+    /// Un changement de rapport est en cours.
+    pub const SHIFTING: u8 = 1 << 0;
+    /// Le moteur tourne : le véhicule a un motopropulseur (ADR-159 D6 ; il ne cale pas avant CAP-12).
+    pub const RUNNING: u8 = 1 << 1;
+    /// Le siège `driver` est occupé (ADR-159 D8).
+    pub const DRIVER: u8 = 1 << 2;
+}
+
+/// L'état du motopropulseur d'un véhicule pour Java, à la fin d'un tick (ADR-163 D1), dans la section des
+/// véhicules de `SIM_OUT`, après celle des roues : leur nombre (`u32`), 4 octets réservés, puis un enregistrement
+/// par véhicule éveillé.
+///
+/// **Disposition figée** : 24 octets, alignement 4, comme [`WheelReport`] : le handle, le régime, la charge, le
+/// rapport, les drapeaux, 2 octets réservés, puis la direction.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VehicleReport {
+    /// L'assembly du véhicule.
+    pub handle: super::handle::Handle,
+    /// Régime du moteur, en tr/min.
+    pub rpm: f32,
+    /// Charge du moteur dans [0, 1] : l'accélérateur qu'il reçoit, après l'antipatinage et la coupure d'un
+    /// passage de rapport.
+    pub load: f32,
+    /// Rang du rapport engagé, relatif au rapport nul : négatif en marche arrière.
+    pub gear: i8,
+    /// Voir [`vehicle_report_flags`].
+    pub flags: u8,
+    /// Position de la direction dans [-1, 1], positive à droite : la consigne du conducteur après la vitesse de
+    /// braquage (ADR-159 D7). C'est elle que le volant suit, pas la touche.
+    pub steer: f32,
+}
+
+impl VehicleReport {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 24;
+
+    /// Taille de l'en-tête de la section des véhicules dans `SIM_OUT` : leur nombre et 4 octets réservés.
+    pub const SECTION_HEADER_BYTES: usize = 8;
+
+    /// Écrit le véhicule en little-endian, dans sa disposition figée, à la fin de `out`.
+    pub fn write_le(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&self.handle.index.to_le_bytes());
+        out.extend_from_slice(&self.handle.generation.to_le_bytes());
+        out.extend_from_slice(&self.rpm.to_le_bytes());
+        out.extend_from_slice(&self.load.to_le_bytes());
+        out.extend_from_slice(&self.gear.to_le_bytes());
+        out.push(self.flags);
+        out.extend_from_slice(&[0u8; 2]);
+        out.extend_from_slice(&self.steer.to_le_bytes());
+    }
+
+    /// Lit un véhicule au début de `bytes` ; `None` s'il en manque.
+    #[must_use]
+    pub fn read_le(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..Self::BYTES)?;
+        let u32_at = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().expect("borne"));
+        Some(Self {
+            handle: super::handle::Handle::new(u32_at(0), u32_at(4)),
+            rpm: f32::from_bits(u32_at(8)),
+            load: f32::from_bits(u32_at(12)),
+            gear: i8::from_le_bytes([bytes[16]]),
+            flags: bytes[17],
+            steer: f32::from_bits(u32_at(20)),
+        })
+    }
+
+    /// Écrit la section des véhicules de `SIM_OUT` à la fin de `out` : leur nombre, 4 octets réservés, puis
+    /// chacun d'eux.
+    ///
+    /// # Panics
+    ///
+    /// Au-delà de `u32::MAX` véhicules.
+    pub fn write_section(vehicles: &[Self], out: &mut Vec<u8>) {
+        let count = u32::try_from(vehicles.len()).expect("au plus u32::MAX véhicules");
+        out.extend_from_slice(&count.to_le_bytes());
+        out.extend_from_slice(&[0u8; 4]);
+        for vehicle in vehicles {
+            vehicle.write_le(out);
+        }
+    }
+
+    /// Lit la section des véhicules au début de `bytes` ; `None` si elle est tronquée.
+    #[must_use]
+    pub fn read_section(bytes: &[u8]) -> Option<Vec<Self>> {
+        let count = u32::from_le_bytes(bytes.get(..4)?.try_into().expect("borne")) as usize;
+        let records = bytes.get(Self::SECTION_HEADER_BYTES..)?;
+        (0..count)
+            .map(|rank| Self::read_le(records.get(rank.checked_mul(Self::BYTES)?..)?))
+            .collect()
+    }
+}
+
 /// Drapeaux de [`WheelDesc`].
 pub mod wheel_flags {
     /// La roue braque.
@@ -839,6 +934,44 @@ impl VehicleDesc {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn un_rapport_de_vehicule_fait_vingt_quatre_octets_et_se_relit() {
+        let report = super::VehicleReport {
+            handle: crate::dm::handle::Handle::new(7, 3),
+            rpm: 3125.5,
+            load: 0.75,
+            gear: -1,
+            flags: super::vehicle_report_flags::SHIFTING | super::vehicle_report_flags::DRIVER,
+            steer: -0.5,
+        };
+        let mut out = Vec::new();
+        super::VehicleReport::write_section(&[report, report], &mut out);
+        assert_eq!(
+            out.len(),
+            super::VehicleReport::SECTION_HEADER_BYTES + 2 * super::VehicleReport::BYTES
+        );
+        assert_eq!(
+            super::VehicleReport::read_section(&out),
+            Some(vec![report, report])
+        );
+        assert_eq!(
+            super::VehicleReport::read_section(&out[..out.len() - 1]),
+            None,
+            "section tronquée"
+        );
+        assert_eq!(
+            out[8 + 16],
+            0xFF,
+            "le rapport -1 en complément à deux, à l'octet 16"
+        );
+        assert_eq!(out[8 + 18..8 + 20], [0, 0], "deux octets réservés, nuls");
+        assert_eq!(
+            out[8 + 20..8 + 24],
+            (-0.5f32).to_le_bytes(),
+            "la direction à l'octet 20"
+        );
+    }
+
     #[test]
     fn adr159_d9_wheel_report_round_trip() {
         use super::{wheel_report_flags, WheelReport};

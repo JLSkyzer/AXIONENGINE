@@ -23,6 +23,7 @@ import java.util.Set;
  * @param joints l'état de chaque joint de l'assembly, dans l'ordre de la definition (ADR-151 D8)
  * @param animation la dernière commande de chaque couche d'animation (ADR-155, descripteur v3)
  * @param wheels l'état de chaque roue, dans l'ordre de la definition (ADR-159 D9, descripteur 4)
+ * @param vehicle l'état du véhicule, {@link Vehicle#NONE} si l'assembly n'en est pas un (ADR-163 D1, descripteur 5)
  */
 public record AssemblyState(
         long x,
@@ -35,7 +36,8 @@ public record AssemblyState(
         List<Body> bodies,
         JointBits joints,
         AnimationLayers animation,
-        Wheels wheels) {
+        Wheels wheels,
+        Vehicle vehicle) {
 
     /** Corps autres que le corps racine d'une assembly, au plus : elle en a 64 (R-190). */
     public static final int MAX_BODIES = 63;
@@ -398,15 +400,169 @@ public record AssemblyState(
     }
 
     /**
-     * Refuse une vitesse, des corps, des joints, une animation ou des roues absents, et des corps trop
-     * nombreux ou en double.
+     * L'état d'un véhicule (ADR-163 D1), quantifié sur {@link #BYTES} octets : régime i16 par pas de
+     * {@value #RPM_STEP} tr/min, charge u8 au 1/255, rapport i8, drapeaux u8, puis les entrées répliquées —
+     * accélérateur u8 au 1/255, frein u8 au 1/255, direction i8 au 1/127 dans {@code [-1, 1]}, frein à main u8 au
+     * 1/255. Le régime est d'abord l'octet fort. {@code -32768} n'est pas un régime ni {@code -128} une direction :
+     * des bornes symétriques, relues à l'identique.
+     *
+     * <p>Tout à zéro, c'est {@link #NONE} : une assembly qui n'est pas un véhicule, et qu'un snapshot ne porte pas.
+     * Un véhicule à motopropulseur a toujours {@link #RUNNING} : il n'est jamais {@code NONE}.
+     *
+     * @param packed les valeurs, {@link #BYTES} octets ; copie
+     */
+    public record Vehicle(byte[] packed) {
+
+        /** Taille de l'état, en octets. */
+        public static final int BYTES = 9;
+
+        /** Pas du régime, en tr/min. */
+        public static final int RPM_STEP = 2;
+
+        /** Drapeau : un changement de rapport est en cours. */
+        public static final int SHIFTING = 1;
+
+        /** Drapeau : le moteur tourne. */
+        public static final int RUNNING = 2;
+
+        /** Drapeau : le siège {@code driver} est occupé. */
+        public static final int DRIVER = 4;
+
+        private static final int KNOWN_FLAGS = SHIFTING | RUNNING | DRIVER;
+
+        private static final float UNIT_STEPS = 255f;
+
+        private static final float STEER_STEPS = 127f;
+
+        /** Aucun véhicule. */
+        public static final Vehicle NONE = new Vehicle(new byte[BYTES]);
+
+        /** Copie les valeurs, et refuse une longueur, une borne ou un drapeau incohérents. */
+        public Vehicle {
+            if (packed.length != BYTES) {
+                throw new IllegalArgumentException(packed.length + " octets pour l'état d'un véhicule");
+            }
+            if (packed[0] == Byte.MIN_VALUE && packed[1] == 0) {
+                throw new IllegalArgumentException("régime hors de ses bornes");
+            }
+            if ((packed[4] & 0xFF & ~KNOWN_FLAGS) != 0) {
+                throw new IllegalArgumentException("drapeaux de véhicule inconnus : " + (packed[4] & 0xFF));
+            }
+            if (packed[7] == Byte.MIN_VALUE) {
+                throw new IllegalArgumentException("direction hors de ses bornes");
+            }
+            packed = packed.clone();
+        }
+
+        /**
+         * Quantifie l'état d'un véhicule. Une valeur non finie compte pour zéro ; une valeur hors bornes est
+         * ramenée à sa borne.
+         *
+         * @param rpm régime, en tr/min
+         * @param load charge du moteur, dans [0, 1]
+         * @param gear rapport engagé, négatif en marche arrière
+         * @param flags {@link #SHIFTING}, {@link #RUNNING}, {@link #DRIVER} ; un autre bit est ignoré
+         * @param throttle accélérateur, dans [0, 1]
+         * @param brake frein, dans [0, 1]
+         * @param steer direction, dans [-1, 1]
+         * @param handbrake frein à main, dans [0, 1]
+         * @return son état
+         */
+        public static Vehicle of(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
+                float handbrake) {
+            short steps = (short) bounded(rpm / RPM_STEP, -Short.MAX_VALUE, Short.MAX_VALUE);
+            return new Vehicle(new byte[] {
+                (byte) (steps >> 8),
+                (byte) steps,
+                (byte) bounded(load * UNIT_STEPS, 0, 255),
+                (byte) Math.max(Byte.MIN_VALUE, Math.min(Byte.MAX_VALUE, gear)),
+                (byte) (flags & KNOWN_FLAGS),
+                (byte) bounded(throttle * UNIT_STEPS, 0, 255),
+                (byte) bounded(brake * UNIT_STEPS, 0, 255),
+                (byte) bounded(steer * STEER_STEPS, -Byte.MAX_VALUE, Byte.MAX_VALUE),
+                (byte) bounded(handbrake * UNIT_STEPS, 0, 255),
+            });
+        }
+
+        private static int bounded(float steps, int low, int high) {
+            if (!Float.isFinite(steps)) {
+                return 0;
+            }
+            return Math.max(low, Math.min(high, Math.round(steps)));
+        }
+
+        /** {@return le régime, en tr/min} */
+        public float rpm() {
+            return (short) ((packed[0] & 0xFF) << 8 | packed[1] & 0xFF) * (float) RPM_STEP;
+        }
+
+        /** {@return la charge du moteur, dans [0, 1]} */
+        public float load() {
+            return (packed[2] & 0xFF) / UNIT_STEPS;
+        }
+
+        /** {@return le rapport engagé, négatif en marche arrière, 0 au point mort} */
+        public int gear() {
+            return packed[3];
+        }
+
+        /** {@return les drapeaux} */
+        public int flags() {
+            return packed[4] & 0xFF;
+        }
+
+        /** {@return l'accélérateur, dans [0, 1]} */
+        public float throttle() {
+            return (packed[5] & 0xFF) / UNIT_STEPS;
+        }
+
+        /** {@return le frein, dans [0, 1]} */
+        public float brake() {
+            return (packed[6] & 0xFF) / UNIT_STEPS;
+        }
+
+        /** {@return la direction, dans [-1, 1], positive à droite} */
+        public float steer() {
+            return packed[7] / STEER_STEPS;
+        }
+
+        /** {@return le frein à main, dans [0, 1]} */
+        public float handbrake() {
+            return (packed[8] & 0xFF) / UNIT_STEPS;
+        }
+
+        /** {@return les valeurs, copie} */
+        @Override
+        public byte[] packed() {
+            return packed.clone();
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof Vehicle vehicle && Arrays.equals(packed, vehicle.packed);
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(packed);
+        }
+
+        @Override
+        public String toString() {
+            return "Vehicle[packed=" + Arrays.toString(packed) + "]";
+        }
+    }
+
+    /**
+     * Refuse une vitesse, des corps, des joints, une animation, des roues ou un véhicule absents, et des corps
+     * trop nombreux ou en double.
      */
     public AssemblyState {
         if (velocity == null) {
             throw new IllegalArgumentException("vitesse absente");
         }
-        if (bodies == null || joints == null || animation == null || wheels == null) {
-            throw new IllegalArgumentException("corps, joints, animation ou roues absents");
+        if (bodies == null || joints == null || animation == null || wheels == null || vehicle == null) {
+            throw new IllegalArgumentException("corps, joints, animation, roues ou véhicule absents");
         }
         if (bodies.size() > MAX_BODIES) {
             throw new IllegalArgumentException(bodies.size() + " corps secondaires, au-delà de " + MAX_BODIES);
@@ -432,7 +588,8 @@ public record AssemblyState(
      * @param sleeping le corps dort
      */
     public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping) {
-        this(x, y, z, rotation, velocity, bounds, sleeping, List.of(), JointBits.NONE, AnimationLayers.NONE, Wheels.NONE);
+        this(x, y, z, rotation, velocity, bounds, sleeping, List.of(), JointBits.NONE, AnimationLayers.NONE, Wheels.NONE,
+                Vehicle.NONE);
     }
 
     /**
@@ -450,7 +607,8 @@ public record AssemblyState(
      */
     public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
             List<Body> bodies, JointBits joints) {
-        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, AnimationLayers.NONE, Wheels.NONE);
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, AnimationLayers.NONE, Wheels.NONE,
+                Vehicle.NONE);
     }
 
     /**
@@ -469,7 +627,27 @@ public record AssemblyState(
      */
     public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
             List<Body> bodies, JointBits joints, AnimationLayers animation) {
-        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, Wheels.NONE);
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, Wheels.NONE, Vehicle.NONE);
+    }
+
+    /**
+     * L'état d'une assembly qui n'est pas un véhicule.
+     *
+     * @param x position x, au 1/1024 de bloc
+     * @param y position y, au 1/1024 de bloc
+     * @param z position z, au 1/1024 de bloc
+     * @param rotation rotation « smallest three »
+     * @param velocity vitesses quantifiées
+     * @param bounds emprise relative à la position, ou {@code null}
+     * @param sleeping le corps dort
+     * @param bodies les corps autres que le corps racine
+     * @param joints l'état de chaque joint
+     * @param animation l'état d'animation
+     * @param wheels l'état de chaque roue
+     */
+    public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
+            List<Body> bodies, JointBits joints, AnimationLayers animation, Wheels wheels) {
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, Vehicle.NONE);
     }
 
     /**
@@ -478,7 +656,8 @@ public record AssemblyState(
      * @return cet état, avec ces corps et ces joints
      */
     public AssemblyState with(List<Body> otherBodies, JointBits jointBits) {
-        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation, wheels);
+        return new AssemblyState(
+                x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation, wheels, vehicle);
     }
 
     /**
@@ -486,7 +665,7 @@ public record AssemblyState(
      * @return cet état, avec cette animation
      */
     public AssemblyState withAnimation(AnimationLayers layers) {
-        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers, wheels);
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers, wheels, vehicle);
     }
 
     /**
@@ -494,7 +673,15 @@ public record AssemblyState(
      * @return cet état, avec ces roues
      */
     public AssemblyState withWheels(Wheels states) {
-        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, states);
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, states, vehicle);
+    }
+
+    /**
+     * @param state l'état du véhicule
+     * @return cet état, avec ce véhicule
+     */
+    public AssemblyState withVehicle(Vehicle state) {
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, state);
     }
 
     /**

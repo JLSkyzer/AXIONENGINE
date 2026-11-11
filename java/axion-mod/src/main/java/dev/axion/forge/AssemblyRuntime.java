@@ -15,6 +15,7 @@ import dev.axion.physics.LoadQueue;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.physics.SimStateSink;
+import dev.axion.physics.VehicleReport;
 import dev.axion.physics.WheelReport;
 import dev.axion.world.DimensionId;
 import java.util.ArrayDeque;
@@ -456,8 +457,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     }
 
     @Override
-    public void applyStates(
-            long tick, List<BodyState> states, List<BodyBounds> bounds, List<JointState> joints, List<WheelReport> wheels) {
+    public void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds, List<JointState> joints,
+            List<WheelReport> wheels, List<VehicleReport> vehicles) {
         AuthoritativeThread.require();
         long start = System.nanoTime();
         // ADR-151 D8 : l'état de chaque joint rapporté, retenu sur son entité avant que son état réseau
@@ -474,6 +475,13 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             if (entity != null) {
                 entity.setWheelState(wheel.index(), wheel.onGround(), wheel.spinSpeed(), wheel.compression(),
                         wheel.steerAngle());
+            }
+        }
+        // ADR-163 D1 : le motopropulseur de chaque véhicule éveillé ; un véhicule endormi garde le sien.
+        for (VehicleReport vehicle : vehicles) {
+            AxionEntity entity = vehicle.handleGeneration() == GENERATION ? ledger.entity(vehicle.handleIndex()) : null;
+            if (entity != null) {
+                entity.setVehicleState(vehicle);
             }
         }
         // ADR-120 : l'emprise de rang i est celle de l'état de rang i. Sans emprises (natif

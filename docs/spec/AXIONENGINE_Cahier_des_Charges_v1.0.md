@@ -7798,6 +7798,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A6 | 2026-11-10 | ADR-160 D9, décidé par Killian | le contenu passe par un mod Java et l'API, le JSON en option chargé par ce mod ; le chargement par datapack est supprimé (sa conception suit l'audit « développeur d'addon Java ») ; EX-02 et CAP-32 retirés |
 | A7 | 2026-11-10 | ADR-161, décidé par Killian | PARTIE 33 : les guides de documentation passent de la racine à `docs/guides/` ; la racine garde README (avec le plan du dépôt), LICENSE, NOTICE, CHANGELOG et le build ; dossiers de jeu sous `.runs/`, contenu personnel sous `local/`, tous deux ignorés |
 | A8 | 2026-11-11 | ADR-162, accepté par Killian | Le contenu vient des mods, qui l'enregistrent par l'API (C-27, 23.3, R-171, R-1030, R-1640, R-1790, 28.1, conflits 19 et 21) ; aucun datapack n'est lu, hormis les registres de Minecraft lui-même ; la façade publiée ne porte que le réel (23.2) |
+| A9 | 2026-11-11 | ADR-163 D1, accepté par Killian | ANNEXE A.4 en V1.1 : les sources du monde `world.time`, `world.sky_light` et `world.rain` (CAP-43, R-2410) |
 
 ---
 
@@ -8091,7 +8092,7 @@ allow_experimental_authority = false   # SERVER_FULL pour les particules
 
 - R-2400 : cette annexe est **générée** depuis la source unique et vérifiée en CI ; une divergence entre code, documentation et annexe casse le build.
 
-## ANNEXE A.4 — Sources procédurales (liste fermée V1.0)
+## ANNEXE A.4 — Sources procédurales (liste fermée V1.1, amendement A9)
 
 ```text
 VÉHICULE      vehicle.speed | forward_speed | throttle | brake | steer | handbrake
@@ -8112,10 +8113,14 @@ ATTACHE       attach.<n>.length | tension | attached
 SIÈGE         seat.<n>.occupied
 PARTICULES    particles.<n>.max_stretch | torn_ratio
 TEMPS         time.seconds
+MONDE         world.time | sky_light | rain                       (V1.1)
 VARIABLE      var.<n>   (définie par l'API ou par une action déclarative)
 ```
 
 - R-2410 : l'ajout d'une source est une évolution de schéma versionnée.
+- V1.1 (amendement A9, ADR-163 D1) : `world.time` est l'heure du jour, de 0 à minuit à 0,5 à midi ; `world.sky_light`,
+  la lumière du ciel au bloc de l'assembly, de 0 à 15, sans l'heure ; `world.rain`, la pluie, de 0 à 1. Le client et
+  le serveur les lisent de même, depuis le niveau.
 
 ## ANNEXE A.5 — Limitations connues de la V1.0
 

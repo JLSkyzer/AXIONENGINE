@@ -18,12 +18,13 @@ public final class NetProtocol {
      * Version de protocole négociée par Forge (21.2). Elle est indépendante de la version du mod et
      * ne monte que sur une rupture (R-1631) : 2 avec le descripteur d'états 2 (ADR-151 D8), 3 avec
      * {@code C2S_Input} (ADR-158 D4), 4 avec la famille des pneus du registre (ADR-159 Q1), 5 avec le
-     * descripteur d'états 4, les roues (ADR-159 D9).
+     * descripteur d'états 4, les roues (ADR-159 D9), 6 avec le descripteur d'états 5, l'état du véhicule et
+     * les drapeaux d'entrée sur 16 bits (ADR-163 D1).
      */
-    public static final String VERSION = "AXION-5";
+    public static final String VERSION = "AXION-6";
 
     /** {@code protocol_version} du handshake (21.3) : le numéro de {@link #VERSION}. */
-    public static final int PROTOCOL_VERSION = 5;
+    public static final int PROTOCOL_VERSION = 6;
 
     /**
      * Taille maximale d'une trame AXION, en-tête de fragment compris, dans les deux sens.

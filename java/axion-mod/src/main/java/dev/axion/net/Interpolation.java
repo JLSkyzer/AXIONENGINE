@@ -22,6 +22,8 @@ import java.util.List;
  *       transmise ; au-delà du dernier snapshot, ils sont tenus.</li>
  *   <li>Les roues (ADR-159 D9) s'interpolent linéairement avec le corps, et sont tenues au-delà du dernier
  *       snapshot. Une assembly endormie, ou figée au-delà de la borne d'extrapolation, a des roues immobiles.</li>
+ *   <li>L'état du véhicule (ADR-163 D1) aussi : régime, charge et entrées linéairement, rapport et drapeaux du
+ *       snapshot suivant ; sa vitesse est celle du corps racine, nulle une fois figée.</li>
  * </ul>
  *
  * <p>Le temps de rendu — le temps du serveur estimé, moins {@code interpolation_delay_ms} — est fourni par
@@ -63,9 +65,10 @@ public final class Interpolation {
      * @param mode comment elle a été obtenue
      * @param bodies les corps autres que le corps racine, en poses relatives à lui (ADR-151 D9)
      * @param wheels l'état de chaque roue, dans l'ordre de la definition (ADR-159 D9)
+     * @param vehicle l'état du véhicule et la vitesse du corps racine (ADR-163 D1)
      */
     public record Pose(double x, double y, double z, float[] rotation, float[] boundsMin, float[] boundsMax,
-            Mode mode, List<BodyPose> bodies, List<WheelPose> wheels) {
+            Mode mode, List<BodyPose> bodies, List<WheelPose> wheels, VehiclePose vehicle) {
 
         /**
          * La pose d'une assembly à un seul corps.
@@ -79,7 +82,7 @@ public final class Interpolation {
          * @param mode comment elle a été obtenue
          */
         public Pose(double x, double y, double z, float[] rotation, float[] boundsMin, float[] boundsMax, Mode mode) {
-            this(x, y, z, rotation, boundsMin, boundsMax, mode, List.of(), List.of());
+            this(x, y, z, rotation, boundsMin, boundsMax, mode, List.of(), List.of(), VehiclePose.NONE);
         }
     }
 
@@ -102,8 +105,30 @@ public final class Interpolation {
      */
     public record WheelPose(float compression, float spin, float steer, boolean onGround) {}
 
+    /**
+     * L'état affiché d'un véhicule (ADR-163 D1), et la vitesse de son corps racine.
+     *
+     * @param rpm régime, en tr/min
+     * @param load charge du moteur, dans [0, 1]
+     * @param gear rapport engagé, négatif en marche arrière
+     * @param flags drapeaux de {@link AssemblyState.Vehicle}
+     * @param throttle accélérateur, dans [0, 1]
+     * @param brake frein, dans [0, 1]
+     * @param steer direction, dans [-1, 1], positive à droite
+     * @param handbrake frein à main, dans [0, 1]
+     * @param speed vitesse du corps racine, en m/s
+     * @param forwardSpeed sa composante le long de l'avant du véhicule, son {@code -Z}, en m/s : négative en reculant
+     */
+    public record VehiclePose(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
+            float handbrake, float speed, float forwardSpeed) {
+
+        /** Rien : ni véhicule, ni vitesse. */
+        public static final VehiclePose NONE = new VehiclePose(0f, 0f, 0, 0, 0f, 0f, 0f, 0f, 0f, 0f);
+    }
+
     private record Sample(double millis, double[] position, float[] velocity, float[] rotation, float[] angular,
-            float[] boundsMin, float[] boundsMax, List<BodyPose> bodies, List<WheelPose> wheels) {}
+            float[] boundsMin, float[] boundsMax, List<BodyPose> bodies, List<WheelPose> wheels,
+            AssemblyState.Vehicle vehicle) {}
 
     private final double extrapolationMaxMillis;
     private final double snapThreshold;
@@ -152,7 +177,8 @@ public final class Interpolation {
             bodies.add(new BodyPose(body.node(), body.offsetBlocks(), body.quaternion()));
         }
         samples.addLast(new Sample(millis, state.positionBlocks(), state.linearVelocity(), state.quaternion(),
-                state.angularVelocity(), state.boundsMin(), state.boundsMax(), List.copyOf(bodies), wheels(state)));
+                state.angularVelocity(), state.boundsMin(), state.boundsMax(), List.copyOf(bodies), wheels(state),
+                state.vehicle()));
         while (samples.size() > MAX_SAMPLES) {
             samples.removeFirst();
         }
@@ -219,7 +245,7 @@ public final class Interpolation {
                 Quaternions.slerp(Quaternions.IDENTITY, errorRotation, (float) weight), raw.rotation());
         return new Pose(raw.x() + errorPosition[0] * weight, raw.y() + errorPosition[1] * weight,
                 raw.z() + errorPosition[2] * weight, rotation, raw.boundsMin(), raw.boundsMax(), raw.mode(),
-                raw.bodies(), raw.wheels());
+                raw.bodies(), raw.wheels(), raw.vehicle());
     }
 
     /**
@@ -283,8 +309,32 @@ public final class Interpolation {
         float[] rotation = Quaternions.slerp(a.rotation(), b.rotation(), (float) s);
         float[] min = lerp(a.boundsMin(), b.boundsMin(), s);
         float[] max = lerp(a.boundsMax(), b.boundsMax(), s);
+        float[] velocity = lerp(a.velocity(), b.velocity(), s);
         return new Pose(position[0], position[1], position[2], rotation, min, max, Mode.INTERPOLATED,
-                bodies(a.bodies(), b.bodies(), s), wheels(a.wheels(), b.wheels(), s));
+                bodies(a.bodies(), b.bodies(), s), wheels(a.wheels(), b.wheels(), s),
+                vehicle(a.vehicle(), b.vehicle(), s, velocity, rotation));
+    }
+
+    /**
+     * L'état du véhicule de {@code b}, ses valeurs continues interpolées depuis {@code a} à la fraction {@code s} ;
+     * sa vitesse, celle du corps racine.
+     */
+    private static VehiclePose vehicle(AssemblyState.Vehicle a, AssemblyState.Vehicle b, double s, float[] velocity,
+            float[] rotation) {
+        float t = (float) s;
+        return new VehiclePose(a.rpm() + (b.rpm() - a.rpm()) * t, a.load() + (b.load() - a.load()) * t, b.gear(),
+                b.flags(), a.throttle() + (b.throttle() - a.throttle()) * t, a.brake() + (b.brake() - a.brake()) * t,
+                a.steer() + (b.steer() - a.steer()) * t, a.handbrake() + (b.handbrake() - a.handbrake()) * t,
+                (float) Math.sqrt(velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2]),
+                forwardSpeed(velocity, rotation));
+    }
+
+    /** {@return la composante de la vitesse le long de {@code -Z} tourné par {@code rotation} : l'avant du véhicule} */
+    private static float forwardSpeed(float[] velocity, float[] q) {
+        float fx = -2f * (q[0] * q[2] + q[3] * q[1]);
+        float fy = -2f * (q[1] * q[2] - q[3] * q[0]);
+        float fz = -(1f - 2f * (q[0] * q[0] + q[1] * q[1]));
+        return velocity[0] * fx + velocity[1] * fy + velocity[2] * fz;
     }
 
     /**
@@ -347,8 +397,10 @@ public final class Interpolation {
     }
 
     private static Pose pose(Sample sample, double[] position, float[] rotation, Mode mode) {
+        boolean frozen = mode == Mode.FROZEN;
         return new Pose(position[0], position[1], position[2], rotation, sample.boundsMin(), sample.boundsMax(), mode,
-                sample.bodies(), mode == Mode.FROZEN ? stopped(sample.wheels()) : sample.wheels());
+                sample.bodies(), frozen ? stopped(sample.wheels()) : sample.wheels(),
+                vehicle(sample.vehicle(), sample.vehicle(), 1.0, frozen ? new float[3] : sample.velocity(), rotation));
     }
 
     /** Figée au-delà de la borne : ce qui tourne s'arrête. */
