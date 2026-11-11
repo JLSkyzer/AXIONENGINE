@@ -46,4 +46,31 @@ public interface ContentRegistrar {
      * @throws IllegalStateException hors de la phase d'enregistrement
      */
     void replace(ContentKind kind, String target, String file);
+
+    /**
+     * Enregistre une definition construite en Java (ADR-162 D3, D4) : la definition {@code <modId>:<name>}, comme le
+     * ferait le fichier {@code definitions/<name>.json} d'un dossier enregistré par {@link #registerFolder}.
+     *
+     * <p>Elle suit ensuite le chemin d'un fichier : le même schéma la valide au chargement, et sa forme canonique a
+     * la même empreinte qu'un fichier de même contenu. Un fichier et une definition Java de même nom sont un doublon,
+     * refusé en nommant les deux. Une erreur de contenu ne lève pas : elle est consignée, avec le mod et la source.
+     *
+     * @param name chemin de la definition dans l'espace de noms du mod, sans extension, par exemple
+     *     {@code "vehicules/patrouille"}
+     * @param definition le document, construit par le builder ou par {@link DefinitionDocument#of}
+     * @throws IllegalArgumentException si le nom est vide, porte une extension, ou sort de {@code [a-z0-9_./-]}
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    void register(String name, DefinitionDocument definition);
+
+    /**
+     * Remplace la definition d'un autre mod par une definition construite en Java, comme {@link #replace(ContentKind,
+     * String, String)} le fait par un fichier.
+     *
+     * @param target identifiant de la definition remplacée, {@code <ns>:<chemin>}, d'un autre mod
+     * @param definition le document qui la remplace
+     * @throws IllegalArgumentException si l'identifiant est mal formé, ou appartient à ce mod
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    void replace(String target, DefinitionDocument definition);
 }

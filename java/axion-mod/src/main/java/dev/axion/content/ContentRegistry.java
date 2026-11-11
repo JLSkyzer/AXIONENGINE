@@ -1,10 +1,17 @@
 package dev.axion.content;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import dev.axion.api.content.ContentKind;
 import dev.axion.api.content.ContentRegistrar;
+import dev.axion.api.content.DefinitionDocument;
 import dev.axion.asset.AssetSiblings;
+import dev.axion.definition.CanonicalJson;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -120,6 +127,46 @@ public final class ContentRegistry {
         Map<ContentKind, List<Entry>> resolved = new EnumMap<>(ContentKind.class);
         entries.forEach((kind, family) -> resolved.put(kind, List.copyOf(family.values())));
         return resolved;
+    }
+
+    /**
+     * {@return les octets d'une definition construite en Java : sa forme canonique (ADR-162 D4)} Ils entrent au
+     * registre comme ceux d'un fichier ; le même contenu y a les mêmes octets, d'où qu'il vienne.
+     */
+    static byte[] canonicalBytes(DefinitionDocument definition) {
+        return CanonicalJson.of(json(definition.root())).getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** {@return une valeur de {@link DefinitionDocument} en arbre JSON} */
+    private static JsonElement json(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            JsonObject object = new JsonObject();
+            map.forEach((key, child) -> object.add((String) key, json(child)));
+            return object;
+        }
+        if (value instanceof List<?> list) {
+            JsonArray array = new JsonArray(list.size());
+            list.forEach(child -> array.add(json(child)));
+            return array;
+        }
+        if (value instanceof String text) {
+            return new JsonPrimitive(text);
+        }
+        if (value instanceof Boolean flag) {
+            return new JsonPrimitive(flag);
+        }
+        return new JsonPrimitive((Number) value);
+    }
+
+    /** {@return le nom d'une definition construite en Java, vérifié : un chemin de Minecraft, sans extension} */
+    private static String checkedName(String name) {
+        Objects.requireNonNull(name, "name");
+        if (!PATH.matcher(name).matches() || name.startsWith("/") || name.endsWith("/") || name.endsWith(".json")
+                || name.contains("//") || List.of(name.split("/")).contains("..")) {
+            throw new IllegalArgumentException("nom de definition attendu, chemin [a-z0-9_./-] sans extension : "
+                    + name);
+        }
+        return name;
     }
 
     /** {@return la clé de fichier d'une entrée de ce mod} */
@@ -266,6 +313,29 @@ public final class ContentRegistry {
             } catch (IOException failure) {
                 errors.add("fichier illisible : " + source + " — " + failure.getMessage());
             }
+        }
+
+        @Override
+        public void register(String name, DefinitionDocument definition) {
+            ensureOpen();
+            String path = checkedName(name) + ".json";
+            Objects.requireNonNull(definition, "definition");
+            String source = modId + " — builder, register(\"" + name + "\")";
+            add(new Entry(ContentKind.DEFINITION, key(modId, ContentKind.DEFINITION, path), modId, source,
+                    canonicalBytes(definition)));
+        }
+
+        @Override
+        public void replace(String target, DefinitionDocument definition) {
+            ensureOpen();
+            Objects.requireNonNull(definition, "definition");
+            String key = keyOf(ContentKind.DEFINITION, Objects.requireNonNull(target, "target"));
+            if (key.startsWith(modId + ":")) {
+                throw new IllegalArgumentException(modId + " ne remplace pas sa propre entrée " + target
+                        + " : il la déclare directement");
+            }
+            replacements.add(new Replacement(ContentKind.DEFINITION, key, modId,
+                    modId + " — builder, replace(\"" + target + "\")", canonicalBytes(definition)));
         }
 
         @Override

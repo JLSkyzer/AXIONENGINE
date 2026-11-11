@@ -3724,9 +3724,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         - [x] 2a — Forme canonique (RFC 8785 : clés triées, aucun espace, nombres au plus court décimal de leur valeur
               double, calculé par `BigDecimal` pour ne pas dépendre du JDK) ; l'empreinte d'une definition porte sur
               elle et non plus sur les octets du fichier. `CanonicalJsonTest`.
-        - [ ] 2b — Une definition construite en Java entre par l'API (`ContentRegistrar`) : un document sans dépendance
-              (arbre de valeurs), converti en JSON côté mod et validé par le même `SchemaOne` ; propriétaire et source
-              (« builder ») gardés comme pour un fichier.
+        - [x] 2b — Une definition construite en Java entre par l'API (2026-11-11) : `DefinitionDocument` (arbre de
+              valeurs JSON, copié et figé, refus nommés par chemin), `ContentRegistrar.register(name, document)` et
+              `replace(target, document)` ; le registre la range sous la clé de son fichier, avec sa forme canonique
+              pour octets, et tout l'aval est celui d'un fichier. `DefinitionDocumentTest`.
         - [ ] 2c — Le générateur (`tools/codegen`) lit `docs/schema/definition-3.json` et écrit le builder dans
               `axion-api` : une classe par objet, un setter typé par champ, les champs obligatoires d'un élément de
               tableau en arguments, les mots réservés de Java renommés ; parité vérifiée en CI comme la configuration.
