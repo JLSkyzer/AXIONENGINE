@@ -30,6 +30,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
+| [ADR-163](ADR-163.md) | Ce qui s'allume et bouge : état du véhicule, variables, touches libres, canaux pilotés | 2026-11-11 | proposé |
 | [ADR-159](ADR-159.md) | Les véhicules : roues par rayon, motopropulseur, réplication et prédiction | 2026-11-09 | accepté |
 | [ADR-158](ADR-158.md) | Les sièges, la montée et le canal des entrées du client | 2026-11-05 | accepté |
 
