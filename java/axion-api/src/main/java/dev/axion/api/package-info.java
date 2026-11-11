@@ -23,13 +23,12 @@
  * chaque méthode documente son effet, le thread autorisé, son coût et ses
  * conditions d'échec (R-1754).
  *
- * <p><strong>État de C-70.</strong> Les deux premières tranches portent la façade
- * {@link dev.axion.api.AxionApi}, tout ce que sa surface d'assembly et de dommage
- * référence, et les dix-huit événements du §23.2 avec leur
- * {@link dev.axion.api.event.EventBus}, transcrits du cahier des charges. Les services
- * seulement nommés y sont déclarés comme interfaces vides, complétées par leur
- * composant à son jalon. Le mod n'enregistre encore aucun fournisseur : tant
- * qu'il n'en a pas, {@link dev.axion.api.AxionApi#get()} lève et
- * {@link dev.axion.api.AxionApi#getIfReady()} rend vide.
+ * <p><strong>État de C-70.</strong> La surface ne porte que ce que le moteur rend
+ * vraiment (ADR-162 D1) : la façade {@link dev.axion.api.AxionApi} et le service
+ * des assemblies, l'enregistrement du contenu
+ * ({@link dev.axion.api.content.ContentProvider}), la description d'un impact
+ * ({@link dev.axion.api.damage.ImpactSpec}). Les services, vues et événements que
+ * le §23.2 nomme et que leur composant n'a pas encore livrés y entrent à leur
+ * jalon. La surface nouvelle est {@code @Experimental} jusqu'au prononcé de M5.
  */
 package dev.axion.api;

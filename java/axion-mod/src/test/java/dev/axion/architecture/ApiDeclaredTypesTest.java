@@ -24,21 +24,13 @@ import org.junit.jupiter.api.Test;
  */
 class ApiDeclaredTypesTest {
 
-    /** Les types d'ADR-143 : déclarés par le §23.2, sans membre jusqu'à leur composant. */
+    /**
+     * Les types d'ADR-143 qu'une signature exige encore sans leur donner de membre. ADR-162 D1 a retiré de la surface
+     * ceux qu'aucune signature réelle n'exigeait plus ; chacun y revient avec son composant.
+     */
     private static final Set<String> DECLARED = Set.of(
-            // Services et vues de la façade, chacun à son jalon (table d'ADR-143).
-            // CustomData en est sorti avec ses membres (ADR-153 D7), AnimationControl avec les siens
-            // (ADR-155 D5).
-            "AssetService", "AttachmentService", "AttachmentView",
-            "DefinitionService", "DeformationService", "Diagnostics", "ImpactSource", "ParticleSetView",
-            "PhysicsService", "QualityProfile", "RegistryAccess", "RuntimeState", "VehicleControl",
-            // Les dix-huit événements du §23.2 et leur racine : leurs accesseurs viennent avec
-            // l'EventBus, lui-même avec le fournisseur d'AxionApi (ADR-137).
-            "AxionEvent", "AssemblySpawnEvent", "AssemblyRemoveEvent", "ImpactEvent", "ContactEvent",
-            "SensorEvent", "PartDeformedEvent", "PartStageChangeEvent", "PartDetachedEvent",
-            "LinkBrokenEvent", "DebrisSpawnedEvent", "SeatEnterEvent", "SeatExitEvent",
-            "VehicleInputEvent", "AttachEvent", "DetachEvent", "RepairEvent", "QualityChangeEvent",
-            "DegradationEvent");
+            // La source d'un impact, que l'ImpactSpec porte ; ses accesseurs viennent avec la chaîne de dommage (M6).
+            "damage.ImpactSource");
 
     @Test
     @DisplayName("R-001, ADR-143 : les interfaces sans membre de l'API sont exactement celles de la liste")
@@ -61,7 +53,7 @@ class ApiDeclaredTypesTest {
                 if (type.isInterface() && !type.isAnnotation()
                         && type.getDeclaredMethods().length == 0
                         && type.getDeclaredClasses().length == 0) {
-                    empty.add(name);
+                    empty.add(relative.isEmpty() ? name : relative + "." + name);
                 }
             }
         }

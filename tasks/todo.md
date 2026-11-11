@@ -3715,7 +3715,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
               doublons refusés en nommant les deux mods, `replace` explicite ; tests unitaires.
         - [x] 1c — Branchement : le serveur et le client lisent le contenu enregistré (plus de `ResourceManager`
               pour AXION) ; exemples par l'API publique, contenu de test, films et Charger enregistrés ; GameTests.
-        - [ ] 1d — Fournisseur d'`AxionApi` sur une surface ramenée au réel (ADR-162 D1).
+        - [x] 1d — Fournisseur d'`AxionApi` sur une surface ramenée au réel (ADR-162 D1).
         - [ ] 1e — Textes du CDC (C-27, 23.3, R-171, R-1030, R-1640, 28.1, R-1783, R-1790, conflits 19 et 21),
               ADR-160 D5, guides ; amendement A8.
   - [ ] Tranche 4 de C-33 (sources, volant, touches libres, canaux de lumière) écrite sur cette API.

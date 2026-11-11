@@ -468,6 +468,10 @@ Definition of Done (PARTIE 37.3).
 
 - Le buggy d'exemple a son avant en `-z`, comme le veut le repere des
   vehicules (§6.5) ; l'axe de la charniere de son capot suit.
+- `AxionApi.get()` a son fournisseur (ADR-162 D1) : la facade ne porte plus que
+  la version et le service des assemblies (creer, retrouver, lire, retirer),
+  reellement implementes ; les services, vues et evenements pas encore livres
+  quittent la surface jusqu'a leur jalon.
 - Le contenu passe par l'API (ADR-162, tranche 1) : un mod envoie a AXION un
   `ContentProvider` par les messages entre mods de Forge et enregistre un
   dossier de son JAR ; espace de noms = modId, doublons refuses en nommant les

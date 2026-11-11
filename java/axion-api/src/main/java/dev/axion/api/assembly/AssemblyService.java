@@ -1,6 +1,6 @@
 package dev.axion.api.assembly;
 
-import dev.axion.api.Stable;
+import dev.axion.api.Experimental;
 import dev.axion.api.content.DefinitionRef;
 
 import java.util.Collection;
@@ -13,7 +13,7 @@ import org.joml.Quaternionf;
 /**
  * Création et recherche d'assemblies (§23.2).
  */
-@Stable
+@Experimental
 public interface AssemblyService {
 
     /**

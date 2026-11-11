@@ -1,14 +1,6 @@
 package dev.axion.api;
 
 import dev.axion.api.assembly.AssemblyService;
-import dev.axion.api.attachment.AttachmentService;
-import dev.axion.api.content.AssetService;
-import dev.axion.api.content.DefinitionService;
-import dev.axion.api.content.RegistryAccess;
-import dev.axion.api.damage.DamageService;
-import dev.axion.api.damage.DeformationService;
-import dev.axion.api.event.EventBus;
-import dev.axion.api.physics.PhysicsService;
 
 import java.util.Optional;
 
@@ -19,8 +11,16 @@ import java.util.Optional;
  * #get()} lorsque l'appelant sait AXION présent, ou par {@link #getIfReady()}
  * sinon. Les accesseurs rendent les services, dont chacun documente ses propres
  * contrats de thread et d'échec.
+ *
+ * <p><strong>Une surface réelle.</strong> La façade ne porte que les services que
+ * le moteur rend vraiment (ADR-162 D1) : aucun accesseur ne lève « pas encore
+ * disponible ». Les services que le §23.2 nomme et que leur composant n'a pas
+ * encore livrés — physique, dommage, déformation, attaches, événements, registres,
+ * diagnostics, qualité — y entrent à leur jalon, en méthodes {@code default} qui ne
+ * cassent aucun mod. Le contenu, lui, ne passe pas par cette façade : un mod
+ * l'envoie à AXION avant qu'elle existe ({@link dev.axion.api.content.ContentProvider}).
  */
-@Stable
+@Experimental
 public interface AxionApi {
 
     /**
@@ -46,42 +46,9 @@ public interface AxionApi {
         return AxionApiProvider.get();
     }
 
-    /** {@return la version de l'API}. */
+    /** {@return la version de l'API}. Thread : quelconque. */
     ApiVersion version();
 
-    /** {@return l'état du runtime}. */
-    RuntimeState state();
-
-    /** {@return le profil de qualité effectif}. */
-    QualityProfile quality();
-
-    /** {@return le service des assets}. */
-    AssetService assets();
-
-    /** {@return le service des definitions}. */
-    DefinitionService definitions();
-
-    /** {@return le service des assemblies}. */
+    /** {@return le service des assemblies}. Thread : quelconque ; chaque méthode dit le sien. */
     AssemblyService assemblies();
-
-    /** {@return le service physique}. */
-    PhysicsService physics();
-
-    /** {@return le service de dommage}. */
-    DamageService damage();
-
-    /** {@return le service de déformation}. */
-    DeformationService deformation();
-
-    /** {@return le service des attaches}. */
-    AttachmentService attachments();
-
-    /** {@return le bus d'événements}. */
-    EventBus events();
-
-    /** {@return l'accès aux registres data-driven}. */
-    RegistryAccess registries();
-
-    /** {@return l'accès aux diagnostics}. */
-    Diagnostics diagnostics();
 }

@@ -1166,6 +1166,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * {@return l'orientation du corps racine, copie} Au serveur, l'orientation autoritaire ; au client, celle que son
+     * dernier tick a prise de l'interpolation.
+     */
+    Quaternionf orientation() {
+        return new Quaternionf(level().isClientSide() ? rotation : bodyRotation);
+    }
+
+    /**
      * Quantifie l'état de l'assembly pour les snapshots (serveur, fin de tick, après la position,
      * l'orientation, l'emprise, les corps secondaires et les joints). Une position non finie ne se
      * quantifie pas : l'état précédent reste.
