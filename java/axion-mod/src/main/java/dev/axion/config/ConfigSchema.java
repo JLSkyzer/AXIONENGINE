@@ -1072,7 +1072,7 @@ public final class ConfigSchema {
                     new Domain(DomainKind.BOOLEAN, 0.0, 0.0, List.of()),
                     false,
                     true,
-                    "Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `data/axion/axion/definitions/example/`."),
+                    "Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `axion/definitions/example/` à la racine du JAR et enregistrées par AXION comme un addon (ADR-162)."),
             new Option(
                     "integration.rustforgex.mode",
                     Kind.STRING,

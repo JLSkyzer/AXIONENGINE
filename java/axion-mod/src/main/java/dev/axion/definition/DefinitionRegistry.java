@@ -267,8 +267,8 @@ public final class DefinitionRegistry {
             throws DefinitionException {
         if (!groups.knows(name)) {
             throw DefinitionException.invalid(path, "groupe de collision « " + name
-                    + " » inconnu ; aucun data/<ns>/" + CollisionGroupRegistry.PREFIX
-                    + " ne le déclare");
+                    + " » inconnu ; aucun mod ne le déclare sous <ns>:" + CollisionGroupRegistry.PREFIX
+                    + " (ADR-162)");
         }
     }
 

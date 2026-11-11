@@ -1,5 +1,7 @@
 package dev.axion.forge;
 
+import dev.axion.content.RegisteredContent;
+import dev.axion.api.content.ContentKind;
 import dev.axion.asset.AssetSource;
 import dev.axion.lifecycle.AxionRuntime;
 import java.io.IOException;
@@ -47,10 +49,7 @@ public final class RechargementGameTests {
     public static void uneDefinitionAjouteeParUnRechargementPrendCorps(GameTestHelper helper) {
         AxionRuntime runtime = RuntimeAccess.get();
         helper.assertTrue(runtime != null && runtime.outcome() != null, "AXION n'est pas chargé");
-        ResourceAssetSource courantes = new ResourceAssetSource(
-                helper.getLevel().getServer().getResourceManager(),
-                ResourceAssetSource.DEFINITIONS,
-                path -> path.endsWith(".json"));
+        AssetSource courantes = RegisteredContent.source(ContentKind.DEFINITION);
         AssetSource avecUneDePlus = new AssetSource() {
             @Override
             public List<String> list() {
@@ -75,7 +74,7 @@ public final class RechargementGameTests {
                     Math.abs(cube.getY() - sol) < 0.05,
                     "l'assembly est à y = " + cube.getY() + ", la dalle à " + sol
                             + " : sans corps, la boucle de l'entité lit des definitions d'avant le rechargement");
-            // Les autres tests retrouvent les definitions du pack, sans celle du test.
+            // Les autres tests retrouvent les definitions enregistrées, sans celle du test.
             runtime.onDefinitionReload(courantes);
         });
     }

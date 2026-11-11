@@ -1,5 +1,7 @@
 package dev.axion.forge;
 
+import dev.axion.content.RegisteredContent;
+import dev.axion.api.content.ContentKind;
 import dev.axion.asset.AssetSource;
 import dev.axion.diag.JavaMetrics;
 import dev.axion.lifecycle.AxionRuntime;
@@ -222,10 +224,7 @@ public final class JournalGameTests {
     public static void t713e_uneDefinitionRetireePuisRendueNePerdRien(GameTestHelper helper) {
         AxionRuntime runtime = RuntimeAccess.get();
         helper.assertTrue(runtime != null && runtime.outcome() != null, "AXION n'est pas chargé");
-        ResourceAssetSource courantes = new ResourceAssetSource(
-                helper.getLevel().getServer().getResourceManager(),
-                ResourceAssetSource.DEFINITIONS,
-                path -> path.endsWith(".json"));
+        AssetSource courantes = RegisteredContent.source(ContentKind.DEFINITION);
         AssetSource avecElle = new AssetSource() {
             @Override
             public List<String> list() {

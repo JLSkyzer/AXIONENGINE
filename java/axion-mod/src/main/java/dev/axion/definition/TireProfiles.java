@@ -15,7 +15,7 @@ import java.util.TreeMap;
 /**
  * Registre des profils de pneus, {@code axion:tire} (12.4, ADR-159 Q1).
  *
- * <p>Un fichier {@code data/<ns>/axion/tires/<chemin>.json} déclare le pneu {@code <ns>:tire/<chemin>},
+ * <p>Un fichier {@code axion/tires/<chemin>.json} qu'un mod enregistre déclare le pneu {@code <ns>:tire/<chemin>},
  * l'identifiant que la definition nomme ({@code "tire": "mymod:tire/road"}). Il porte {@code schema} 1,
  * {@code mu_long}, {@code mu_lat} et les deux courbes {@code long} et {@code lat}, chacune de quatre
  * points : aucun champ n'a de valeur implicite. Une faute refuse le pneu, nommé, sans toucher aux autres.

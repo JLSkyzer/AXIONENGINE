@@ -22,8 +22,8 @@ import struct
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[2]
-MODELES = RACINE / "java/axion-mod/src/devcontent/resources/data/axion/axion/models/test/joints"
-DEFINITIONS = RACINE / "java/axion-mod/src/devcontent/resources/data/axion/axion/definitions/test/joints"
+MODELES = RACINE / "content/test/axion/models/test/joints"
+DEFINITIONS = RACINE / "content/test/axion/definitions/test/joints"
 
 # Chaque face : normale, axe u, axe v, avec u × v = normale (sens trigonométrique vu de dehors).
 FACES = [

@@ -11,9 +11,9 @@ import java.util.List;
  * pour tester une machine a etats, et ce qui demande un monde charge n'est
  * teste par personne.
  *
- * <p>L'implementation reelle enumere les chemins que la fiche C-20 designe :
- * {@code assets/<ns>/axion/models/**} pour les modeles, et les repertoires de
- * {@code data/<ns>/axion/} pour les definitions.
+ * <p>Les implementations reelles rendent le contenu que les mods enregistrent
+ * (ADR-162), sous les cles {@code <modId>:axion/<famille>/<chemin>}, et, chez le
+ * client, les modeles {@code assets/<ns>/axion/models/**} des resource packs.
  */
 public interface AssetSource {
 

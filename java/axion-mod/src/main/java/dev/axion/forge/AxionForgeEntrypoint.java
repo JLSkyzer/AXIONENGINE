@@ -2,6 +2,9 @@ package dev.axion.forge;
 
 import com.mojang.logging.LogUtils;
 import dev.axion.AxionMod;
+import dev.axion.api.content.ContentKind;
+import dev.axion.asset.AssetSource;
+import dev.axion.content.RegisteredContent;
 import dev.axion.forge.net.AxionChannel;
 import dev.axion.forge.net.AxionNetwork;
 import dev.axion.lifecycle.AxionRuntime;
@@ -29,6 +32,8 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLLoadCompleteEvent;
+import net.minecraftforge.fml.event.lifecycle.InterModEnqueueEvent;
+import net.minecraftforge.fml.event.lifecycle.InterModProcessEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
 
@@ -77,6 +82,10 @@ public final class AxionForgeEntrypoint {
         IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
         modBus.addListener(EventPriority.HIGHEST, this::onCommonSetup);
         modBus.addListener(EventPriority.LOWEST, this::onLoadComplete);
+        // ADR-162 D2 : le contenu arrive par les messages entre mods, AXION compris.
+        modBus.addListener((InterModEnqueueEvent event) -> ContentRegistration.enqueue(event));
+        modBus.addListener((InterModProcessEvent event) ->
+                ContentRegistration.process(event, runtime::maxSiblingBytes));
         AxionEntities.register(modBus, runtime);
         RuntimeAccess.install(runtime);
         // Le canal doit exister avant la première connexion : AXION est exigé des deux côtés
@@ -127,47 +136,30 @@ public final class AxionForgeEntrypoint {
     }
 
     /**
-     * Énumère les sources d'assets à chaque rechargement de ressources (C-20).
+     * Remet au runtime, à chaque rechargement des données du serveur, le contenu que les mods ont enregistré
+     * (ADR-162 D2, D10).
      *
-     * <p>L'énumération et la lecture ont lieu dans la phase de préparation, que
-     * Minecraft exécute hors du thread principal : R-521 interdit de le
-     * bloquer, et lire quelques mégaoctets de modèles suffirait à le faire.
+     * <p>Plus rien ne se lit dans les datapacks : le contenu vient de l'enregistrement, fait une fois au chargement
+     * des mods. Ces écouteurs ne servent qu'au cycle de vie du serveur, qui charge ses données à son démarrage et à
+     * chaque {@code /reload} : ils y remettent le même contenu, dans l'ordre où ses familles se nomment. Les modèles
+     * d'abord ; les matériaux physiques (DM-07, ADR-145) ; les groupes de collision (R-980, ADR-132 A1) ; les
+     * mappages bloc → matériau, qui nomment des matériaux ; les pneus ; les definitions enfin, qui vérifient leur
+     * modèle (C-27, étape 3), leurs groupes et leurs matériaux. Minecraft applique les écouteurs dans l'ordre
+     * d'ajout.
      */
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onAddReloadListener(AddReloadListenerEvent event) {
-        event.addListener(new SimplePreparableReloadListener<ResourceAssetSource>() {
-            @Override
-            protected ResourceAssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {
-                return new ResourceAssetSource(
-                        manager, ResourceAssetSource.MODELS, runtime.maxSiblingBytes());
-            }
-
-            @Override
-            protected void apply(
-                    ResourceAssetSource source, ResourceManager manager, ProfilerFiller profiler) {
-                logTransitions(() -> {
-                    source.failures().forEach(failure ->
-                            LOGGER.warn("AXION : ressource illisible — {}", failure));
-                    runtime.onAssetReload(source);
-                });
-            }
-        });
-
-        // Les données JSON après les modèles, dans l'ordre où elles se nomment : Minecraft
-        // applique les écouteurs dans l'ordre d'ajout. Les matériaux physiques d'abord (DM-07,
-        // ADR-145) ; les groupes de collision tiers (R-980, ADR-132 A1) ; les mappages bloc →
-        // matériau, qui nomment des matériaux ; les pneus ; les definitions enfin, qui vérifient leur modèle
-        // (C-27, étape 3), leurs groupes de collision et leurs matériaux.
-        event.addListener(dataListener(ResourceAssetSource.PHYSICS_MATERIALS, "matériau physique",
+        event.addListener(contentListener(ContentKind.MODEL, "modèle", runtime::onAssetReload));
+        event.addListener(contentListener(ContentKind.PHYSICS_MATERIAL, "matériau physique",
                 runtime::onPhysicsMaterialReload));
-        event.addListener(dataListener(ResourceAssetSource.COLLISION_GROUPS, "groupe de collision",
+        event.addListener(contentListener(ContentKind.COLLISION_GROUP, "groupe de collision",
                 runtime::onCollisionGroupReload));
-        event.addListener(dataListener(ResourceAssetSource.BLOCK_MATERIALS, "mappage bloc → matériau",
+        event.addListener(contentListener(ContentKind.BLOCK_MATERIAL, "mappage bloc → matériau",
                 runtime::onBlockMaterialReload));
-        event.addListener(dataListener(ResourceAssetSource.TIRES, "pneu", runtime::onTireReload));
-        // Les definitions rechargées rebâtissent le registre réseau ; s'il a changé, il repart vers les
-        // joueurs distants (ADR-150 D5).
-        event.addListener(dataListener(ResourceAssetSource.DEFINITIONS, "definition", source -> {
+        event.addListener(contentListener(ContentKind.TIRE, "pneu", runtime::onTireReload));
+        // Les definitions rebâtissent le registre réseau ; s'il a changé, il repart vers les joueurs distants
+        // (ADR-150 D5).
+        event.addListener(contentListener(ContentKind.DEFINITION, "definition", source -> {
             ServerSnapshot before = runtime.netSnapshot();
             runtime.onDefinitionReload(source);
             AxionNetwork.onRegistryReloaded(before, runtime.netSnapshot());
@@ -230,27 +222,27 @@ public final class AxionForgeEntrypoint {
     }
 
     /**
-     * {@return un écouteur qui énumère et lit les fichiers JSON d'une famille de données, puis les
-     * remet au runtime}
+     * {@return un écouteur qui remet au runtime le contenu enregistré d'une famille}
      *
-     * @param prefix famille, relative à la racine du gestionnaire de données
-     * @param what ce qu'est un fichier de la famille, pour le journal
+     * @param kind la famille
+     * @param what ce qu'est une entrée de la famille, pour le journal
      * @param reload chargement par le runtime
      */
-    private SimplePreparableReloadListener<ResourceAssetSource> dataListener(
-            String prefix, String what, Consumer<ResourceAssetSource> reload) {
+    private SimplePreparableReloadListener<AssetSource> contentListener(
+            ContentKind kind, String what, Consumer<AssetSource> reload) {
         return new SimplePreparableReloadListener<>() {
             @Override
-            protected ResourceAssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {
-                return new ResourceAssetSource(manager, prefix, path -> path.endsWith(".json"));
+            protected AssetSource prepare(ResourceManager manager, ProfilerFiller profiler) {
+                return RegisteredContent.source(kind);
             }
 
             @Override
-            protected void apply(
-                    ResourceAssetSource source, ResourceManager manager, ProfilerFiller profiler) {
+            protected void apply(AssetSource source, ResourceManager manager, ProfilerFiller profiler) {
                 logTransitions(() -> {
-                    source.failures().forEach(failure ->
-                            LOGGER.warn("AXION : {} illisible — {}", what, failure));
+                    if (!RegisteredContent.published()) {
+                        LOGGER.warn("AXION : aucun contenu enregistré à remettre ({}) : l'enregistrement des "
+                                + "mods n'a pas eu lieu", what);
+                    }
                     reload.accept(source);
                 });
             }

@@ -16,7 +16,7 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 
 /**
- * Mappages bloc → matériau physique, {@code data/<ns>/axion/block_materials/**.json} (§11.4,
+ * Mappages bloc → matériau physique, {@code axion/block_materials/**.json} qu'un mod enregistre (§11.4,
  * R-643, R-1040, R-1041, ADR-145 point 4).
  *
  * <p>Un fichier porte {@code schema} 1 et, chacun facultatif, {@code default}, {@code by_tag} et
@@ -174,7 +174,7 @@ public final class BlockMaterialMappings {
         String material = primitive.getAsString();
         if (!materials.knows(material)) {
             refusals.add("E-7001 " + location + " — " + path + " : matériau « " + material
-                    + " » inconnu ; aucun data/<ns>/" + PhysicsMaterials.PREFIX + " ne le déclare");
+                    + " » inconnu ; aucun mod ne le déclare sous <ns>:" + PhysicsMaterials.PREFIX + " (ADR-162)");
             return null;
         }
         return material;

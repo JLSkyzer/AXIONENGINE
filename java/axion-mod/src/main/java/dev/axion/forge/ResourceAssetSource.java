@@ -23,30 +23,15 @@ import net.minecraft.server.packs.resources.ResourceManager;
  * gestionnaire périmé — ce qui, sur un serveur qui recharge ses datapacks,
  * arrive exactement au moment où l'on croit avoir fini.
  *
- * <p>Le préfixe est relatif à la racine du gestionnaire. Le même
- * {@code axion/models} désigne donc {@code assets/&lt;ns&gt;/axion/models} côté
- * client et {@code data/&lt;ns&gt;/axion/models} côté serveur : ce sont deux
- * gestionnaires distincts, et chacun ne voit que sa racine.
+ * <p>Le préfixe est relatif à la racine du gestionnaire. Le contenu d'AXION ne
+ * se lit plus ainsi : les mods l'enregistrent (ADR-162 D2). Seul le client lit
+ * encore ici {@code assets/&lt;ns&gt;/axion/models} de ses resource packs, qui
+ * remplacent l'apparence d'un modèle enregistré (ADR-162 D5).
  */
 public final class ResourceAssetSource implements AssetSource {
 
     /** Préfixe des modèles, relatif à la racine du gestionnaire. */
     public static final String MODELS = "axion/models";
-
-    /** Préfixe des definitions (C-27), relatif à la racine du gestionnaire. */
-    public static final String DEFINITIONS = "axion/definitions";
-
-    /** Préfixe des groupes de collision tiers (R-980, ADR-132 A1), relatif à la racine du gestionnaire. */
-    public static final String COLLISION_GROUPS = "axion/collision_groups";
-
-    /** Préfixe des matériaux physiques (DM-07, R-171, ADR-145), relatif à la racine du gestionnaire. */
-    public static final String PHYSICS_MATERIALS = "axion/physics_materials";
-
-    /** Préfixe des mappages bloc → matériau (§11.4, ADR-145), relatif à la racine du gestionnaire. */
-    public static final String BLOCK_MATERIALS = "axion/block_materials";
-
-    /** Préfixe des pneus (ADR-159 Q1), relatif à la racine du gestionnaire. */
-    public static final String TIRES = "axion/tires";
 
     /** Contenu par chemin, dans l'ordre d'énumération ; {@code null} si illisible. */
     private final Map<String, byte[]> files = new LinkedHashMap<>();
@@ -71,18 +56,6 @@ public final class ResourceAssetSource implements AssetSource {
      */
     public ResourceAssetSource(ResourceManager manager, String prefix, long maxSiblingBytes) {
         this(manager, prefix, ResourceAssetSource::isModelFile, maxSiblingBytes);
-    }
-
-    /**
-     * Énumère et lit les ressources sous un préfixe, filtrées par chemin.
-     *
-     * @param manager gestionnaire de ressources du rechargement en cours
-     * @param prefix préfixe à explorer
-     * @param accepted indique si un chemin est à lire
-     */
-    public ResourceAssetSource(
-            ResourceManager manager, String prefix, Predicate<String> accepted) {
-        this(manager, prefix, accepted, Long.MAX_VALUE);
     }
 
     private ResourceAssetSource(

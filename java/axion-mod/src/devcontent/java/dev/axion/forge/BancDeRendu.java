@@ -1,5 +1,11 @@
 package dev.axion.forge;
 
+import java.nio.charset.StandardCharsets;
+import dev.axion.forge.net.AxionNetwork;
+import dev.axion.net.ServerSnapshot;
+import dev.axion.asset.AssetSource;
+import dev.axion.content.RegisteredContent;
+import dev.axion.api.content.ContentKind;
 import dev.axion.AxionMod;
 import dev.axion.asset.AssetRegistry;
 import dev.axion.forge.client.AxionRenderPass;
@@ -44,7 +50,6 @@ import net.minecraft.nbt.NbtIo;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.packs.repository.PackRepository;
-import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.GameRules;
@@ -233,18 +238,20 @@ public final class BancDeRendu {
     private static final int MARGE_D3 = 40;
 
     /**
-     * T-713f (cas 4 de 22.5.3) : une definition et son modèle livrés par un datapack du monde. Le serveur
-     * lit les datapacks du monde ; le client, ses resource packs et les fichiers de ses mods (ADR-150 D3) :
-     * il n'a pas ce modèle.
+     * T-713f (cas 4 de 22.5.3) : une definition et son modèle que le serveur a et que le client n'a pas.
+     * Sans datapack (ADR-162 D10), le banc les remet au seul serveur, en plus du contenu enregistré : le
+     * client garde ses modèles enregistrés et ses resource packs (ADR-150 D3, ADR-162 D5), sans celui-là.
      */
     private static final String ABSENT_CHEZ_LE_CLIENT = "axion:test/absent_chez_le_client";
 
     private static final String ASSET_ABSENT = "axion:models/test/absent_chez_le_client.gltf";
 
-    /** Le datapack du monde qui les livre, et le cube du mod que son modèle recopie. */
-    private static final String PACK_ABSENT = "axion_absent_chez_le_client";
+    /** Leurs clés de contenu, et le cube du contenu de test que son modèle recopie. */
+    private static final String CLE_DEFINITION_ABSENTE = "axion:axion/definitions/test/absent_chez_le_client.json";
 
-    private static final String CUBE_DU_MOD = "/data/axion/axion/models/test/cube.gltf";
+    private static final String CLE_MODELE_ABSENT = "axion:axion/models/test/absent_chez_le_client.gltf";
+
+    private static final String CUBE_DU_MOD = "/axion/models/test/cube.gltf";
 
     /** Un quart de tour autour de la verticale : la face avant des panneaux, +Z, regarde l'est, la caméra. */
     private static final float[] VERS_L_EST = {0f, 0.70710678f, 0f, 0.70710678f};
@@ -2506,40 +2513,54 @@ public final class BancDeRendu {
     }
 
     /**
-     * T-713f : écrit le datapack du monde qui livre la definition et le modèle absents chez le client — le
-     * cube du mod sous un autre nom —, puis l'active ou le retire, comme {@code /datapack enable|disable}.
+     * T-713f : remet au seul serveur le contenu enregistré, plus — ou de nouveau sans — la definition et le
+     * modèle absents chez le client, le cube du contenu de test sous un autre nom. Le registre réseau rebâti
+     * repart vers les joueurs, comme après un rechargement (ADR-150 D5).
      */
     private static void donneesDuServeur(MinecraftServer serveur, boolean actif) {
-        Path pack = serveur.getWorldPath(LevelResource.DATAPACK_DIR).resolve(PACK_ABSENT);
+        AxionRuntime runtime = RuntimeAccess.get();
+        AssetSource modeles = RegisteredContent.source(ContentKind.MODEL);
+        AssetSource definitions = RegisteredContent.source(ContentKind.DEFINITION);
         if (actif) {
-            try (var cube = BancDeRendu.class.getResourceAsStream(CUBE_DU_MOD)) {
-                if (cube == null) {
-                    throw new IllegalStateException("cube du mod introuvable : " + CUBE_DU_MOD);
+            byte[] cube;
+            try (var flux = BancDeRendu.class.getResourceAsStream(CUBE_DU_MOD)) {
+                if (flux == null) {
+                    throw new IllegalStateException("cube du contenu de test introuvable : " + CUBE_DU_MOD);
                 }
-                Path donnees = pack.resolve("data/axion/axion");
-                Files.createDirectories(donnees.resolve("definitions/test"));
-                Files.createDirectories(donnees.resolve("models/test"));
-                Files.writeString(pack.resolve("pack.mcmeta"),
-                        "{\"pack\": {\"pack_format\": 15, \"description\": \"AXION, banc de rendu : T-713f\"}}");
-                Files.writeString(donnees.resolve("definitions/test/absent_chez_le_client.json"),
-                        "{\"schema\": 1, \"asset\": \"" + ASSET_ABSENT + "\", \"kind\": \"rigid_object\"}");
-                Files.write(donnees.resolve("models/test/absent_chez_le_client.gltf"), cube.readAllBytes());
+                cube = flux.readAllBytes();
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
+            byte[] definition = ("{\"schema\": 1, \"asset\": \"" + ASSET_ABSENT + "\", \"kind\": \"rigid_object\"}")
+                    .getBytes(StandardCharsets.UTF_8);
+            modeles = avecUnFichierDePlus(modeles, CLE_MODELE_ABSENT, cube);
+            definitions = avecUnFichierDePlus(definitions, CLE_DEFINITION_ABSENTE, definition);
         }
-        PackRepository depot = serveur.getPackRepository();
-        depot.reload();
-        List<String> choisis = new ArrayList<>(depot.getSelectedIds());
-        choisis.remove("file/" + PACK_ABSENT);
-        if (actif) {
-            choisis.add("file/" + PACK_ABSENT);
-        }
-        serveur.reloadResources(choisis);
+        runtime.onAssetReload(modeles);
+        ServerSnapshot avant = runtime.netSnapshot();
+        runtime.onDefinitionReload(definitions);
+        AxionNetwork.onRegistryReloaded(avant, runtime.netSnapshot());
+    }
+
+    /** {@return la même source, plus un fichier} */
+    private static AssetSource avecUnFichierDePlus(AssetSource source, String cle, byte[] contenu) {
+        return new AssetSource() {
+            @Override
+            public List<String> list() {
+                List<String> cles = new ArrayList<>(source.list());
+                cles.add(cle);
+                return cles;
+            }
+
+            @Override
+            public byte[] read(String path) throws IOException {
+                return cle.equals(path) ? contenu.clone() : source.read(path);
+            }
+        };
     }
 
     /**
-     * {@return vrai quand le serveur tient la definition du datapack et son modèle compilé} Le modèle se
+     * {@return vrai quand le serveur tient la definition absente chez le client et son modèle compilé} Le modèle se
      * nomme par l'asset de la definition chargée, comme le rendu le cherche.
      */
     private static boolean modeleAbsentPret() {

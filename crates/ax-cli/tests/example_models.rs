@@ -66,7 +66,7 @@ impl Compiled {
 /// Le modèle embarqué d'un exemple, tel que le JAR le porte.
 fn model(name: &str) -> Vec<u8> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../java/axion-mod/src/main/resources/data/axion/axion/models/example")
+        .join("../../content/examples/axion/models/example")
         .join(format!("{name}.glb"));
     std::fs::read(&path).unwrap_or_else(|error| panic!("{} : {error}", path.display()))
 }

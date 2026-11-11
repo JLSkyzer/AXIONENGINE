@@ -295,7 +295,7 @@ pub const COMMON: &[ConfigOption] = &[
     b("modules.blocks", true, "Active le module blocs et items 3D."),
 
     // [content]
-    srv(b("content.examples", false, "Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `data/axion/axion/definitions/example/`.")),
+    srv(b("content.examples", false, "Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `axion/definitions/example/` à la racine du JAR et enregistrées par AXION comme un addon (ADR-162).")),
 
     // [integration.rustforgex]
     e("integration.rustforgex.mode", "auto", &["auto", "off"], "Détection d'un mod d'optimisation tiers. AXION n'en dépend jamais et fonctionne identiquement en son absence."),

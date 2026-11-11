@@ -28,7 +28,7 @@ import java.util.TreeMap;
  * Registre des matériaux physiques, {@code axion:physics_material} (DM-07, PARTIE 11, R-171,
  * ADR-145).
  *
- * <p>Un fichier {@code data/<ns>/axion/physics_materials/<chemin>.json} déclare le matériau
+ * <p>Un fichier {@code axion/physics_materials/<chemin>.json} qu'un mod enregistre déclare le matériau
  * {@code <ns>:<chemin>}. Ses clés sont les noms des champs de DM-07, tous facultatifs, plus
  * {@code parent} : un champ absent se prend à l'ancêtre le plus proche qui le déclare (R-1031), et
  * ce qu'aucun ancêtre ne déclare prend la valeur de l'acier générique du moteur
@@ -333,8 +333,8 @@ public final class PhysicsMaterials {
         for (String parent = candidate.parent(); parent != null; ) {
             Candidate next = candidates.get(parent);
             if (next == null) {
-                return "matériau parent « " + parent + " » inconnu ; aucun data/<ns>/" + PREFIX
-                        + " ne le déclare";
+                return "matériau parent « " + parent + " » inconnu ; aucun mod ne le déclare sous <ns>:" + PREFIX
+                        + " (ADR-162)";
             }
             if (!seen.add(parent)) {
                 return "héritage circulaire par « " + parent + " »";

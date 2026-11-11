@@ -224,7 +224,7 @@ alors ignorée (R-1830).
 
 | Option | Type | Défaut | Domaine | Chaud | Serveur | Description |
 |---|---|---|---|---|---|---|
-| `examples` | booléen | `false` | `true \| false` | non | oui | Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `data/axion/axion/definitions/example/`. |
+| `examples` | booléen | `false` | `true \| false` | non | oui | Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `axion/definitions/example/` à la racine du JAR et enregistrées par AXION comme un addon (ADR-162). |
 
 ### `[integration.rustforgex]`
 

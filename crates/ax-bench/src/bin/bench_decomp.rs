@@ -136,8 +136,8 @@ fn main() -> ExitCode {
 
 /// Les cinq exemples de R-1790, dans le repère de leur asset, comme les décompose `ax-asset`.
 fn exemples() -> Result<Vec<(String, Geometry)>, String> {
-    let dossier = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../java/axion-mod/src/main/resources/data/axion/axion/models/example");
+    let dossier =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content/examples/axion/models/example");
     let mut corpus = Vec::new();
     for nom in ["barrier", "buggy", "crate", "flag", "winch_rope"] {
         let path = dossier.join(format!("{nom}.glb"));

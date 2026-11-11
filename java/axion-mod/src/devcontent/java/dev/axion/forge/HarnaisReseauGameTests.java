@@ -628,7 +628,7 @@ public final class HarnaisReseauGameTests {
         long octetsAvant = metrique("registry_bytes_sent", true, "bytes");
         JoueurSimule joueur = JoueurSimule.rejoindre(helper.getLevel(), "sim-registre",
                 helper.absoluteVec(new Vec3(4.5, DESSUS_DALLE, 4.5)));
-        ResourceAssetSource courantes = RegistreReseauGameTests.definitionsCourantes(helper);
+        AssetSource courantes = RegistreReseauGameTests.definitionsCourantes(helper);
         AssetSource avecUneDePlus = RegistreReseauGameTests.avecUneDefinitionDePlus(courantes);
         try {
             helper.assertTrue(joueur.registres().size() == 1,

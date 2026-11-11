@@ -3713,7 +3713,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
               `api.attachment`, `api.vehicle`) : déplacement mécanique, imports et services suivis.
         - [x] 1b — Événement et registre d'enregistrement : types de l'API, propriétaire, espace de noms = modId,
               doublons refusés en nommant les deux mods, `replace` explicite ; tests unitaires.
-        - [ ] 1c — Branchement : le serveur et le client lisent le contenu enregistré (plus de `ResourceManager`
+        - [x] 1c — Branchement : le serveur et le client lisent le contenu enregistré (plus de `ResourceManager`
               pour AXION) ; exemples par l'API publique, contenu de test, films et Charger enregistrés ; GameTests.
         - [ ] 1d — Fournisseur d'`AxionApi` sur une surface ramenée au réel (ADR-162 D1).
         - [ ] 1e — Textes du CDC (C-27, 23.3, R-171, R-1030, R-1640, 28.1, R-1783, R-1790, conflits 19 et 21),

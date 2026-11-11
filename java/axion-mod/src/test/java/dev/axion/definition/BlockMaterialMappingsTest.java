@@ -149,8 +149,8 @@ class BlockMaterialMappingsTest {
     @Test
     @DisplayName("ADR-145 : le mappage livré et la bibliothèque de base se chargent sans refus, contact conservé")
     void donneesLivrees() throws IOException {
-        Path data = Path.of(System.getProperty("axion.repo.dir"), "java", "axion-mod", "src", "main",
-                "resources", "data");
+        // Les exemples d'AXION, enregistrés depuis axion/ à la racine du JAR (ADR-162 D3).
+        Path data = Path.of(System.getProperty("axion.repo.dir"), "content", "examples");
         PhysicsMaterials materials = PhysicsMaterials.load(source(data, PhysicsMaterials.PREFIX));
         assertTrue(materials.refusals().isEmpty(), materials.refusals()::toString);
         for (String id : List.of("axion:steel", "axion:aluminium", "axion:plastic", "axion:glass",
@@ -173,20 +173,14 @@ class BlockMaterialMappingsTest {
         assertEquals(contact("axion:stone", 0.6, 0), mapping.fallback());
     }
 
-    /** {@return les fichiers {@code data/<ns>/<prefix>**.json} d'une racine, comme le jeu les énumère} */
-    private static AssetSource source(Path data, String prefix) throws IOException {
+    /** {@return les fichiers {@code <racine>/<prefix>**.json}, avec les clés qu'AXION leur donne en les enregistrant} */
+    private static AssetSource source(Path root, String prefix) throws IOException {
         Map<String, Path> files = new TreeMap<>();
-        try (Stream<Path> namespaces = Files.list(data)) {
-            for (Path namespace : namespaces.toList()) {
-                Path dir = namespace.resolve(prefix);
-                if (!Files.isDirectory(dir)) {
-                    continue;
-                }
-                try (Stream<Path> walk = Files.walk(dir)) {
-                    for (Path file : walk.filter(Files::isRegularFile).toList()) {
-                        files.put(namespace.getFileName() + ":"
-                                + namespace.relativize(file).toString().replace('\\', '/'), file);
-                    }
+        Path dir = root.resolve(prefix);
+        if (Files.isDirectory(dir)) {
+            try (Stream<Path> walk = Files.walk(dir)) {
+                for (Path file : walk.filter(Files::isRegularFile).toList()) {
+                    files.put("axion:" + root.relativize(file).toString().replace(java.io.File.separatorChar, '/'), file);
                 }
             }
         }

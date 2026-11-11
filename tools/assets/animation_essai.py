@@ -24,7 +24,7 @@ import struct
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[2]
-CONTENU = RACINE / "java/axion-mod/src/devcontent/resources/data/axion/axion"
+CONTENU = RACINE / "content/test/axion"
 MODELES = CONTENU / "models/test/anime"
 DEFINITIONS = CONTENU / "definitions/test/anime"
 

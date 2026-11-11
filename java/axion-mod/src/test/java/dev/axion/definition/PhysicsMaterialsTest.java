@@ -194,8 +194,8 @@ class PhysicsMaterialsTest {
     @Test
     @DisplayName("R-1032 : les definitions livrées ne nomment que des matériaux de la bibliothèque")
     void lesDefinitionsLivreesNommentDesMateriauxDeclares() throws IOException {
-        java.nio.file.Path data = java.nio.file.Path.of(System.getProperty("axion.repo.dir"),
-                "java", "axion-mod", "src", "main", "resources", "data", "axion");
+        // Les exemples d'AXION, enregistrés depuis axion/ à la racine du JAR (ADR-162 D3).
+        java.nio.file.Path data = java.nio.file.Path.of(System.getProperty("axion.repo.dir"), "content", "examples");
         PhysicsMaterials bibliotheque = PhysicsMaterials.load(dossier(data, "axion:", PhysicsMaterials.PREFIX));
         assertTrue(bibliotheque.refusals().isEmpty(), bibliotheque.refusals()::toString);
 

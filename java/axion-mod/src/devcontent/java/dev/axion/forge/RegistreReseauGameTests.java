@@ -1,5 +1,7 @@
 package dev.axion.forge;
 
+import dev.axion.content.RegisteredContent;
+import dev.axion.api.content.ContentKind;
 import dev.axion.asset.AssetSource;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.lifecycle.AxionRuntime;
@@ -101,20 +103,17 @@ public final class RegistreReseauGameTests {
      * Un rechargement des definitions rebâtit l'instantané : le registre change d'empreinte, et la
      * definition ajoutée part vers les clients distants.
      */
-    /** {@return les definitions des packs du serveur, telles qu'un rechargement les lit} */
-    static ResourceAssetSource definitionsCourantes(GameTestHelper helper) {
-        return new ResourceAssetSource(
-                helper.getLevel().getServer().getResourceManager(),
-                ResourceAssetSource.DEFINITIONS,
-                path -> path.endsWith(".json"));
+    /** {@return les definitions enregistrées par les mods, telles qu'un rechargement les remet au runtime} */
+    static AssetSource definitionsCourantes(GameTestHelper helper) {
+        return RegisteredContent.source(ContentKind.DEFINITION);
     }
 
     /**
      * {@return les mêmes definitions, plus {@link #AJOUTEE}}
      *
-     * @param courantes definitions des packs
+     * @param courantes definitions enregistrées
      */
-    static AssetSource avecUneDefinitionDePlus(ResourceAssetSource courantes) {
+    static AssetSource avecUneDefinitionDePlus(AssetSource courantes) {
         return new AssetSource() {
             @Override
             public List<String> list() {
@@ -133,7 +132,7 @@ public final class RegistreReseauGameTests {
     @GameTest(template = "test/plancher")
     public static void unRechargementRebatitLeRegistreReseau(GameTestHelper helper) {
         AxionRuntime runtime = runtime(helper);
-        ResourceAssetSource courantes = definitionsCourantes(helper);
+        AssetSource courantes = definitionsCourantes(helper);
         AssetSource avecUneDePlus = avecUneDefinitionDePlus(courantes);
         ServerSnapshot avant = runtime.netSnapshot();
         try {

@@ -32,6 +32,9 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class PublishedSchemaTest {
 
+    /** L'espace de noms du contenu du dépôt : celui d'AXION, qui l'enregistre (ADR-162 D3). */
+    private static final String NAMESPACE = "axion";
+
     /** Répertoires sans definition, dont le parcours ne ferait que coûter. */
     private static final Set<String> SKIPPED =
             Set.of(".git", ".gradle", ".idea", "build", "target", ".runs", "local", "node_modules");
@@ -171,28 +174,30 @@ class PublishedSchemaTest {
     @DisplayName("T-284 : toutes les definitions du dépôt respectent le schéma 1")
     void definitionsDuDepot() throws IOException {
         Path depot = property("axion.repo.dir");
-        List<String> refus = validate(find(depot));
+        List<Path> trouvees = find(depot);
+        // Un parcours qui ne trouverait plus rien passerait à vide : les cinq exemples au moins (R-1790).
+        assertTrue(trouvees.stream().filter(f -> f.getParent().getFileName().toString().equals("example")).count() >= 5,
+                () -> "definitions du dépôt trouvées : " + trouvees);
+        List<String> refus = validate(trouvees);
         assertTrue(refus.isEmpty(), () -> String.join("\n", refus));
     }
 
     @Test
     @DisplayName("T-284 : le parcours du dépôt trouve et juge chaque definition")
     void parcoursDuDepot(@TempDir Path depot) throws IOException {
-        Path ressources = depot.resolve("java/demo/src/main/resources");
-        write(ressources.resolve("assets/demo/axion/models/caisse.obj"), "o caisse\n");
-        write(ressources.resolve("data/demo/axion/definitions/caisse.json"),
-                "{\"schema\": 1, \"asset\": \"demo:models/caisse.obj\", \"kind\": \"rigid_object\"}");
-        write(ressources.resolve("data/demo/axion/definitions/cassee.json"),
-                "{\"schema\": 1, \"asset\": \"demo:models/absente.obj\", \"kind\": \"rigid_object\"}");
-        // Un groupe de collision tiers des mêmes ressources se nomme (ADR-132 A1).
-        write(ressources.resolve("data/demo/axion/collision_groups/fantome.json"),
-                "{\"collides_with\": [\"world\"]}");
-        write(ressources.resolve("data/demo/axion/definitions/fantome.json"),
-                "{\"schema\": 1, \"asset\": \"demo:models/caisse.obj\", \"kind\": \"rigid_object\","
-                        + " \"physics\": {\"collision_group\": \"demo:fantome\"}}");
+        Path ressources = depot.resolve("content/demo");
+        write(ressources.resolve("axion/models/caisse.obj"), "o caisse\n");
+        write(ressources.resolve("axion/definitions/caisse.json"),
+                "{\"schema\": 1, \"asset\": \"axion:models/caisse.obj\", \"kind\": \"rigid_object\"}");
+        write(ressources.resolve("axion/definitions/cassee.json"),
+                "{\"schema\": 1, \"asset\": \"axion:models/absente.obj\", \"kind\": \"rigid_object\"}");
+        // Un groupe de collision du même contenu se nomme (ADR-132 A1).
+        write(ressources.resolve("axion/collision_groups/fantome.json"), "{\"collides_with\": [\"world\"]}");
+        write(ressources.resolve("axion/definitions/fantome.json"),
+                "{\"schema\": 1, \"asset\": \"axion:models/caisse.obj\", \"kind\": \"rigid_object\","
+                        + " \"physics\": {\"collision_group\": \"axion:fantome\"}}");
         // Un build n'est pas une source : sa copie des ressources ne compte pas.
-        write(depot.resolve("java/demo/build/resources/main/data/demo/axion/definitions/caisse.json"),
-                "{}");
+        write(depot.resolve("java/demo/build/resources/main/axion/definitions/caisse.json"), "{}");
 
         List<Path> trouvees = find(depot);
         assertEquals(3, trouvees.size(), trouvees::toString);
@@ -206,7 +211,7 @@ class PublishedSchemaTest {
         Files.writeString(file, content, StandardCharsets.UTF_8);
     }
 
-    /** Toute ressource {@code data/<ns>/axion/definitions/**.json} hors des builds. */
+    /** Toute definition {@code <racine>/axion/definitions/**.json} du dépôt, hors des builds. */
     private static List<Path> find(Path depot) throws IOException {
         List<Path> found = new ArrayList<>();
         Files.walkFileTree(depot, new SimpleFileVisitor<>() {
@@ -230,9 +235,10 @@ class PublishedSchemaTest {
     }
 
     /**
-     * {@return la racine de ressources d'une definition, ou {@code null}}
+     * {@return la racine de contenu d'une definition, ou {@code null}}
      *
-     * <p>{@code <racine>/data/<ns>/axion/definitions/<chemin>.json}.
+     * <p>{@code <racine>/axion/definitions/<chemin>.json} : le dossier qu'un mod enregistre (ADR-162 D3). Tout le
+     * contenu du dépôt est celui d'AXION, enregistré dans l'espace de noms {@value #NAMESPACE}.
      */
     private static Path resourcesRoot(Path file) {
         String name = file.getFileName().toString();
@@ -243,10 +249,8 @@ class PublishedSchemaTest {
                 dir = dir.getParent()) {
             Path axion = dir.getParent();
             if (dir.getFileName().toString().equals("definitions")
-                    && axion.getFileName().toString().equals("axion")
-                    && axion.getParent() != null && axion.getParent().getParent() != null
-                    && axion.getParent().getParent().getFileName().toString().equals("data")) {
-                return axion.getParent().getParent().getParent();
+                    && axion.getFileName().toString().equals("axion") && axion.getParent() != null) {
+                return axion.getParent();
             }
         }
         return null;
@@ -255,15 +259,14 @@ class PublishedSchemaTest {
     private static List<String> validate(List<Path> definitions) throws IOException {
         List<String> refus = new ArrayList<>();
         Map<Path, CollisionGroupRegistry> groupes = new HashMap<>();
+        // En développement, tout le contenu rejoint le même dossier du mod : chaque definition en voit les modèles.
+        List<Path> racines = definitions.stream().map(PublishedSchemaTest::resourcesRoot).distinct().toList();
         for (Path file : definitions) {
             Path racine = resourcesRoot(file);
-            Path relatif = racine.resolve("data").relativize(file);
-            String namespace = relatif.getName(0).toString();
-            String chemin = relatif.subpath(1, relatif.getNameCount()).toString().replace('\\', '/');
-            String location = namespace + ":" + chemin;
+            String location = NAMESPACE + ":" + racine.relativize(file).toString().replace('\\', '/');
 
-            // Les groupes de collision tiers que déclarent les mêmes ressources (ADR-132 A1), chargés
-            // une fois par racine ; un groupe refusé est une faute du dépôt comme une definition.
+            // Les groupes de collision que déclare le même contenu (ADR-132 A1), chargés une fois par racine ; un
+            // groupe refusé est une faute du dépôt comme une definition.
             CollisionGroupRegistry registre = groupes.get(racine);
             if (registre == null) {
                 registre = groupes(racine);
@@ -271,16 +274,9 @@ class PublishedSchemaTest {
                 registre.refusals().forEach(groupe -> refus.add(racine + " — " + groupe));
             }
 
-            // Un modèle existe s'il figure dans les ressources, côté client ou serveur.
             DefinitionRules rules = new DefinitionRules(true, asset -> {
-                int colon = asset.indexOf(':');
-                String ns = asset.substring(0, colon);
-                String path = asset.substring(colon + 1);
-                // Le contenu de développement se charge avec les ressources du mod : il en voit les modèles.
-                Path livrees = racine.getParent().resolveSibling("main").resolve("resources");
-                return List.of(racine, livrees).stream().anyMatch(ressources ->
-                        Files.isRegularFile(ressources.resolve("assets").resolve(ns).resolve(path))
-                                || Files.isRegularFile(ressources.resolve("data").resolve(ns).resolve(path)));
+                String path = asset.substring(asset.indexOf(':') + 1);
+                return racines.stream().anyMatch(r -> Files.isRegularFile(r.resolve(path)));
             }, false, registre);
             try {
                 DefinitionRegistry.read(location, Files.readAllBytes(file), rules);
@@ -292,23 +288,15 @@ class PublishedSchemaTest {
         return refus;
     }
 
-    /** {@return le registre des {@code data/<ns>/axion/collision_groups/**.json} d'une racine de ressources} */
+    /** {@return le registre des {@code <racine>/axion/collision_groups/**.json} d'une racine de contenu} */
     private static CollisionGroupRegistry groupes(Path racine) throws IOException {
-        Path data = racine.resolve("data");
+        Path dossier = racine.resolve(CollisionGroupRegistry.PREFIX);
         Map<String, Path> fichiers = new TreeMap<>();
-        if (Files.isDirectory(data)) {
-            try (Stream<Path> espaces = Files.list(data)) {
-                for (Path espace : espaces.toList()) {
-                    Path dossier = espace.resolve(CollisionGroupRegistry.PREFIX);
-                    if (!Files.isDirectory(dossier)) {
-                        continue;
-                    }
-                    try (Stream<Path> parcours = Files.walk(dossier)) {
-                        for (Path fichier : parcours.filter(Files::isRegularFile).toList()) {
-                            String chemin = espace.relativize(fichier).toString().replace('\\', '/');
-                            fichiers.put(espace.getFileName() + ":" + chemin, fichier);
-                        }
-                    }
+        if (Files.isDirectory(dossier)) {
+            try (Stream<Path> parcours = Files.walk(dossier)) {
+                for (Path fichier : parcours.filter(Files::isRegularFile).toList()) {
+                    fichiers.put(NAMESPACE + ":" + racine.relativize(fichier).toString().replace('\\', '/'),
+                            fichier);
                 }
             }
         }

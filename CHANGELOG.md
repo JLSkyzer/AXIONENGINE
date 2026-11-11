@@ -468,6 +468,12 @@ Definition of Done (PARTIE 37.3).
 
 - Le buggy d'exemple a son avant en `-z`, comme le veut le repere des
   vehicules (§6.5) ; l'axe de la charniere de son capot suit.
+- Le contenu passe par l'API (ADR-162, tranche 1) : un mod envoie a AXION un
+  `ContentProvider` par les messages entre mods de Forge et enregistre un
+  dossier de son JAR ; espace de noms = modId, doublons refuses en nommant les
+  deux sources, remplacement explicite. AXION ne lit plus de datapack pour son
+  contenu ; ses exemples sont sous `axion/` a la racine du JAR, enregistres
+  comme ceux d'un addon. Les resource packs gardent l'apparence des modeles.
 - L'API publique est decoupee en paquets (ADR-162) : `dev.axion.api` garde la
   facade, `assembly`, `content`, `event`, `damage`, `physics`, `attachment` et
   `vehicle` recoivent leurs types.

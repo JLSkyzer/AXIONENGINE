@@ -12,7 +12,7 @@ import java.util.TreeSet;
  *
  * <p>C'est la règle des resource packs de Minecraft : un pack remplace un fichier, pas un dossier.
  * Le client compile ainsi les modèles de ses resource packs ({@code assets/<ns>/axion/models}) et, à
- * défaut, ceux des mods installés chez lui ({@code data/<ns>/axion/models}). Les deux donnent les
+ * défaut, ceux que les mods installés chez lui ont enregistrés (ADR-162). Les deux donnent les
  * mêmes chemins ({@code ns:axion/models/...}) : un modèle de resource pack remplace celui du mod.
  */
 public final class LayeredAssetSource implements AssetSource {

@@ -19,9 +19,15 @@ base {
 // développement, jamais empaquetés — le mod livré n'embarque que ses definitions de
 // démonstration (R-1790).
 sourceSets {
+    main {
+        // Les exemples d'AXION (R-1790), à la racine du JAR sous axion/ : AXION les enregistre par son API
+        // publique, comme un addon enregistre son dossier (ADR-162 D3, D10 ; ADR-161 D3).
+        resources.srcDir rootProject.file('content/examples')
+    }
     devcontent {
-        // Le contenu personnel de Killian (la Charger des films), hors du dépôt public (ADR-161 D1) :
-        // lu comme le reste du contenu d'essai quand il est là.
+        // Le contenu de test et, s'il est là, le contenu personnel de Killian (la Charger des films), hors du
+        // dépôt public (ADR-161 D1) : en développement, ils rejoignent le dossier axion/ du mod.
+        resources.srcDir rootProject.file('content/test')
         resources.srcDir rootProject.file('local/contenu')
     }
 }
@@ -102,7 +108,7 @@ minecraft {
             workingDirectory rootProject.file('.runs/film')
             property 'axion.film', 'vehicule'
             // Le modèle local de Killian, hors du dépôt, s'il est là ; le buggy d'exemple sinon.
-            def local = rootProject.file('local/contenu/data/axion/axion/definitions/local/charger.json').exists()
+            def local = rootProject.file('local/contenu/axion/definitions/local/charger.json').exists()
             property 'axion.film.definition', local ? 'axion:local/charger' : 'axion:test/vehicule'
             jvmArgs '-Xmx4G'
             args '--width', '1280', '--height', '656'

@@ -22,8 +22,8 @@ import zlib
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[2]
-MODELES = RACINE / "java/axion-mod/src/devcontent/resources/data/axion/axion/models/test/materiaux"
-DEFINITIONS = RACINE / "java/axion-mod/src/devcontent/resources/data/axion/axion/definitions/test/materiaux"
+MODELES = RACINE / "content/test/axion/models/test/materiaux"
+DEFINITIONS = RACINE / "content/test/axion/definitions/test/materiaux"
 
 TAILLE = 64
 STRIES = 8

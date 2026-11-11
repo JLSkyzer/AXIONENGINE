@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
 /**
  * T-630..T-634 — les cinq definitions de démonstration de R-1790, option A d'ADR-134.
  *
- * <p>Chacune est embarquée sous {@code data/axion/axion/definitions/example/}, ne se charge que
+ * <p>Chacune est embarquée sous {@code axion/definitions/example/}, ne se charge que
  * si {@code content.examples} est vrai, passe le validateur du schéma 1 (C-27, le même qui juge
  * toute definition) sans aucune faute, et désigne un modèle embarqué.
  *
@@ -50,11 +50,14 @@ class ExampleDefinitionsTest {
         }
     }
 
-    /** {@code <ns>:axion/<chemin>} désigne-t-il une ressource embarquée sous {@code data/} ? */
+    /**
+     * {@code axion:axion/<chemin>} désigne-t-il une ressource du dossier qu'AXION enregistre, {@code axion/} à la
+     * racine de son JAR (ADR-162 D3) ?
+     */
     private static final Predicate<String> MODELE_EMBARQUE = resolu -> {
         int colon = resolu.indexOf(':');
-        String chemin = "data/" + resolu.substring(0, colon) + "/" + resolu.substring(colon + 1);
-        return ExampleDefinitionsTest.class.getClassLoader().getResource(chemin) != null;
+        return resolu.startsWith("axion:") && ExampleDefinitionsTest.class.getClassLoader()
+                .getResource(resolu.substring(colon + 1)) != null;
     };
 
     /** La seule definition d'un exemple, lue comme le jeu la lit. */
@@ -72,8 +75,8 @@ class ExampleDefinitionsTest {
 
     private static void verifie(String nom, AssemblyKind genre)
             throws IOException, DefinitionException {
-        byte[] json = embarquee("data/axion/axion/definitions/example/" + nom + ".json");
-        byte[] modele = embarquee("data/axion/axion/models/example/" + nom + ".glb");
+        byte[] json = embarquee("axion/definitions/example/" + nom + ".json");
+        byte[] modele = embarquee("axion/models/example/" + nom + ".glb");
         assertArrayEquals(GLB_MAGIC, Arrays.copyOf(modele, 4), nom + ".glb n'est pas un GLB");
 
         Source source = new Source(DefinitionRegistry.EXAMPLES + nom + ".json", json);

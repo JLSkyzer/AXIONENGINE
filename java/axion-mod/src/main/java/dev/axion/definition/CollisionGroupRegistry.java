@@ -23,7 +23,7 @@ import java.util.TreeMap;
  * Registre des groupes de collision tiers, {@code axion:collision_group} (§23.3, R-980, ADR-132
  * amendement A1).
  *
- * <p>Un fichier {@code data/<ns>/axion/collision_groups/<chemin>.json} déclare le groupe
+ * <p>Un fichier {@code axion/collision_groups/<chemin>.json} qu'un mod enregistre déclare le groupe
  * {@code <ns>:<chemin>}. Son JSON est un objet qui porte au plus {@code collides_with}, liste de
  * noms de groupes — réservés ou tiers : le masque <strong>par défaut</strong> du groupe, que prend
  * une definition qui déclare ce {@code collision_group} sans {@code collides_with}. Sans lui, le
@@ -150,7 +150,7 @@ public final class CollisionGroupRegistry {
                         candidates.remove(candidate.id());
                         refusals.add("E-7001 " + candidate.location() + " — $." + COLLIDES_WITH
                                 + "[" + index + "] : groupe de collision « " + name
-                                + " » inconnu ; aucun data/<ns>/" + PREFIX + " ne le déclare");
+                                + " » inconnu ; aucun mod ne le déclare sous <ns>:" + PREFIX + " (ADR-162)");
                         removed = true;
                         break;
                     }

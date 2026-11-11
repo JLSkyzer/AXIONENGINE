@@ -304,34 +304,46 @@ class EngineGenericityTest {
     /**
      * {@return les identifiants du contenu du dépôt}
      *
-     * <p>Sous {@code data/<espace>/}, le premier dossier est le genre ({@code structures},
-     * {@code gametest}), ou {@code axion/<genre>} pour le contenu d'AXION ; le reste du chemin,
-     * sans extension, est l'identifiant — {@code test/materiaux/vitre}, {@code test_cube}.
+     * <p>Le contenu d'AXION vit sous {@code content/<racine>/axion/<famille>/} (ADR-162 D3) : sous les exemples, seules
+     * les definitions sont du contenu, le reste (modèle de repli, bibliothèque de matériaux) appartenant au moteur ;
+     * sous le contenu de test, tout l'est. Les ressources de Minecraft que les GameTests gardent sous
+     * {@code data/<espace>/<genre>/} ({@code structures}, {@code gametest}) en sont aussi. Le reste du chemin, sans
+     * extension, est l'identifiant — {@code test/materiaux/vitre}, {@code test_cube}.
      */
     static Set<String> contentIds() throws IOException {
         Set<String> ids = new TreeSet<>();
+        Path repo = property("axion.repo.dir");
+        Path examples = repo.resolve("content/examples/axion");
+        for (Path root : List.of(examples, repo.resolve("content/test/axion"))) {
+            for (Path file : files(root, "")) {
+                List<String> parts = new ArrayList<>();
+                root.relativize(file).forEach(part -> parts.add(part.toString()));
+                if (parts.size() < 2 || root == examples && !parts.get(0).equals("definitions")) {
+                    continue;
+                }
+                addId(ids, parts.subList(1, parts.size()));
+            }
+        }
         Path main = property("axion.source.dir").getParent().resolve("resources/data");
         Path dev = property("axion.devcontent.dir").getParent().resolve("resources/data");
         for (Path data : List.of(main, dev)) {
             for (Path file : files(data, "")) {
                 List<String> parts = new ArrayList<>();
                 data.relativize(file).forEach(part -> parts.add(part.toString()));
-                int skip = parts.size() > 3 && parts.get(1).equals("axion") ? 3 : 2;
-                if (parts.size() <= skip) {
+                // data/<espace>/<genre>/... : les types de dégâts de main appartiennent au moteur.
+                if (parts.size() <= 2 || data == main) {
                     continue;
                 }
-                // Hors devcontent, seules les definitions sont du contenu : le reste (modèle de
-                // repli, types de dégâts) appartient au moteur.
-                if (data == main && !(skip == 3 && parts.get(2).equals("definitions"))) {
-                    continue;
-                }
-                String id = String.join("/", parts.subList(skip, parts.size()))
-                        .toLowerCase(Locale.ROOT);
-                int dot = id.lastIndexOf('.');
-                ids.add(dot > id.lastIndexOf('/') ? id.substring(0, dot) : id);
+                addId(ids, parts.subList(2, parts.size()));
             }
         }
         return ids;
+    }
+
+    private static void addId(Set<String> ids, List<String> parts) {
+        String id = String.join("/", parts).toLowerCase(Locale.ROOT);
+        int dot = id.lastIndexOf('.');
+        ids.add(dot > id.lastIndexOf('/') ? id.substring(0, dot) : id);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -362,6 +374,7 @@ class EngineGenericityTest {
     void leContenuEstRecense() throws IOException {
         Set<String> ids = contentIds();
         assertTrue(ids.contains("test_cube"), ids::toString);
+        assertTrue(ids.contains("example/buggy"), ids::toString);
         assertTrue(ids.contains("test/materiaux/vitre"), ids::toString);
         assertTrue(ids.contains("scenarios/physique/empilement_60s"), ids::toString);
         assertTrue(!ids.contains("builtin/missing"), "le modèle de repli est au moteur");
