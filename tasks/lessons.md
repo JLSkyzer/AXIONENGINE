@@ -2336,3 +2336,16 @@ véhicules à portée. Un remplacement à l'identique n'est donc jamais neutre.
 **Règle.** Une donnée relue n'est renvoyée au natif que si elle diffère de ce qui lui a été envoyé : comparer au
 dernier envoi (empreinte), pas à l'événement qui a fait relire. Et un remplacement de collider se traite comme un
 changement du monde : il réveille.
+
+## 2026-11-12 | Un script de nettoyage écrit pour un problème qui n'existait pas
+
+**Ce qui a mal tourné.** J'ai affirmé à Killian que Reposilite gardait toutes les copies d'un SNAPSHOT, et qu'elles
+s'accumuleraient (21,5 Mo par publication). Sur cette base, il a décidé d'en garder 10, et j'ai écrit, testé et branché
+en CI un script de nettoyage. Après cinq publications, une seule copie était sur le dépôt : Reposilite efface lui-même
+les copies dépassées (« Preserved snapshots », faux par défaut). Le script a été retiré.
+
+**Cause.** L'affirmation venait de ma mémoire, et de l'absence d'option de nettoyage dans les pages de documentation
+lues, pas du code ni d'une observation. Elle a servi de prémisse à une décision de Killian.
+
+**Règle.** Avant de présenter un problème à résoudre, le constater (publier deux fois, compter les fichiers) ou le lire
+dans le code de la version installée. Une absence dans la documentation ne prouve pas une absence de comportement.

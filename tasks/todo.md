@@ -3764,9 +3764,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         - [x] Publication (2026-11-12) : Reposilite sur le mini PC (`maven.eriniumlab.com`), `axion-api`, le JAR
               complet d'AXION et le modèle d'addon publiés en `-SNAPSHOT` par la CI ; lien de téléchargement dans le
               guide. 21,5 Mo par publication.
-        - [x] Nettoyage (2026-11-12, décision de Killian : garder les 10 dernières copies) : `tools/ci/nettoyer_snapshots.py`,
-              lancé par la CI après chaque publication, avec le jeton qui publie ; tri testé
-              (`test_nettoyer_snapshots.py`).
+        - [x] Anciennes copies (2026-11-12) : Reposilite n'en garde que la dernière (« Preserved snapshots » faux par
+              défaut) ; le script de nettoyage, écrit sur une affirmation fausse, est retiré (décision de Killian).
         - [x] ADR-166 (accepté le 2026-11-12, tout comme proposé) et son code : version d'API exigée dans le
               `mods.toml` (avertissement Forge, contenu non chargé), `AxionApi.content()`, kit de GameTest
               (`dev.axion.api.testing`), validateur hors jeu (`checkAxionContent`, sur `./gradlew build`) ; CDC
