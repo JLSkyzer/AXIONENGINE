@@ -1,6 +1,7 @@
 package dev.axion.api;
 
 import dev.axion.api.assembly.AssemblyService;
+import dev.axion.api.content.ContentQuery;
 
 import java.util.Optional;
 
@@ -17,8 +18,9 @@ import java.util.Optional;
  * disponible ». Les services que le §23.2 nomme et que leur composant n'a pas
  * encore livrés — physique, dommage, déformation, attaches, événements, registres,
  * diagnostics, qualité — y entrent à leur jalon, en méthodes {@code default} qui ne
- * cassent aucun mod. Le contenu, lui, ne passe pas par cette façade : un mod
- * l'envoie à AXION avant qu'elle existe ({@link dev.axion.api.content.ContentProvider}).
+ * cassent aucun mod. Le contenu, lui, ne s'enregistre pas par cette façade : un mod
+ * l'envoie à AXION avant qu'elle existe ({@link dev.axion.api.content.ContentProvider}) ; elle dit
+ * ensuite ce qu'AXION en a fait ({@link #content()}).
  */
 @Experimental
 public interface AxionApi {
@@ -51,4 +53,16 @@ public interface AxionApi {
 
     /** {@return le service des assemblies}. Thread : quelconque ; chaque méthode dit le sien. */
     AssemblyService assemblies();
+
+    /**
+     * {@return ce qu'AXION a fait du contenu enregistré : definitions chargées, causes des refus (ADR-166 D2)}
+     * Thread : quelconque.
+     *
+     * <p>Méthode {@code default} (ADR-162 D1) : un fournisseur qui ne suit pas le contenu — un double de test — ne
+     * rapporte rien de chargé ni de refusé ({@link ContentQuery#NONE}) ; celui d'AXION lit son registre.
+     */
+    @Experimental
+    default ContentQuery content() {
+        return ContentQuery.NONE;
+    }
 }

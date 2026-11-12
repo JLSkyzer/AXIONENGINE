@@ -119,7 +119,8 @@ minecraft {
             // Un dossier à part, dont le monde est effacé avant chaque passage : les GameTests
             // partent d'un monde neuf (R-2190) et ne laissent rien dans celui de développement.
             workingDirectory rootProject.file('.runs/gametest')
-            property 'forge.enabledGameTestNamespaces', mod_id
+            // ADR-166 D3 : les GameTests de l'addon temoin, ecrits avec le kit de l'API, tournent avec ceux d'AXION.
+            property 'forge.enabledGameTestNamespaces', "${mod_id},example_addon"
             // T-437 : chaque écriture de fichier de la session, avec sa pile, pour l'audit qui suit le passage.
             jvmArg "-XX:StartFlightRecording=filename=${new File(auditEcritures, 'ecritures.jfr')},settings=${rootProject.file('tools/ci/audit_ecritures.jfc')},dumponexit=true"
             jvmArg '-XX:FlightRecorderOptions=stackdepth=256'
@@ -136,6 +137,15 @@ minecraft {
             workingDirectory rootProject.file('.runs/essai-rechargement')
             property 'axion.essai.rechargement', 'true'
             property 'axion.essai.devcontent', sourceSets.devcontent.output.resourcesDir.absolutePath
+            property 'axion.souris.libre', 'true'
+        }
+
+        essaiCaptureDemarrage {
+            // ADR-166 D1 : le premier ecran apres le chargement (avertissements de Forge compris), au journal et en
+            // capture (EssaiCaptureDemarrage, contenu de developpement), puis l'arret.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/essai-demarrage')
+            property 'axion.essai.capture.demarrage', 'true'
             property 'axion.souris.libre', 'true'
         }
 
@@ -387,6 +397,14 @@ tasks.matching { it.name == 'runEssaiClientAddons' }.configureEach {
     standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
     doFirst {
         clientSilencieux(rootProject.file('.runs/essai-client'))
+    }
+}
+
+// ADR-166 D1 : l'essai de l'ecran de fin de chargement, muet.
+tasks.matching { it.name == 'runEssaiCaptureDemarrage' }.configureEach {
+    standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/essai-demarrage'))
     }
 }
 

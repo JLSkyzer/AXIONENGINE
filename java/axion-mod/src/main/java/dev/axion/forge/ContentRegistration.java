@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import dev.axion.api.content.AxionContent;
 import dev.axion.api.content.ContentKind;
 import dev.axion.api.content.ContentProvider;
+import dev.axion.content.ApiRequirements;
 import dev.axion.content.ContentProviders;
 import dev.axion.content.ContentRegistry;
 import dev.axion.content.RegisteredContent;
@@ -114,6 +115,12 @@ final class ContentRegistration {
                 .sorted(Comparator.comparing(InterModComms.IMCMessage::senderModId))
                 .forEach(message -> {
                     String mod = message.senderModId();
+                    if (ApiRequirements.isRefused(mod)) {
+                        // ADR-166 D1 : la version d'API qu'il exige manque ; l'avertissement est déjà affiché.
+                        LOGGER.warn("AXION : contenu — {} n'est pas enregistré : il exige une version de l'API "
+                                + "qu'AXION ne fournit pas", mod);
+                        return;
+                    }
                     Object provided;
                     try {
                         provided = message.messageSupplier().get();

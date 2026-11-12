@@ -24,6 +24,21 @@ dependencies {
     compileOnly project(':axion-api')
 }
 
+// ADR-166 D4 : le validateur hors jeu sur le contenu du temoin, comme dans le modele d'addon, mais avec AXION tel
+// que ce depot le construit. `./gradlew build` le joue, donc la CI.
+tasks.register('checkAxionContent', JavaExec) {
+    group = 'verification'
+    description = 'Verifie le contenu AXION du temoin avec les regles du jeu, modeles compris.'
+    classpath = project(':axion-mod').sourceSets.main.runtimeClasspath
+    mainClass = 'dev.axion.tools.ContentCheck'
+    args 'example_addon', file('src/main/resources').absolutePath,
+            layout.buildDirectory.dir('axion-check').get().asFile.absolutePath
+}
+
+tasks.named('check') {
+    dependsOn 'checkAxionContent'
+}
+
 // Le modele de mod a telecharger (CAP-49) : les sources du temoin, telles quelles, avec les fichiers d'un projet
 // autonome (modele/) et le lanceur Gradle du depot. Un debutant le decompresse et lance ./gradlew runClient :
 // AXION et son API viennent de maven.eriniumlab.com. Les versions sont celles de ce build, inscrites dans son

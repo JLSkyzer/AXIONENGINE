@@ -11,7 +11,16 @@ import com.mojang.logging.LogUtils;
 import dev.axion.AxionMod;
 import dev.axion.api.content.ContentKind;
 import dev.axion.asset.AssetSource;
+import dev.axion.api.ApiVersion;
+import dev.axion.content.ApiRequirements;
 import dev.axion.content.RegisteredContent;
+import java.util.HashMap;
+import java.util.Map;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.fml.ModLoader;
+import net.minecraftforge.fml.ModLoadingStage;
+import net.minecraftforge.fml.ModLoadingWarning;
+import net.minecraftforge.forgespi.language.IModInfo;
 import dev.axion.forge.net.AxionChannel;
 import dev.axion.forge.net.AxionNetwork;
 import dev.axion.lifecycle.AxionRuntime;
@@ -95,6 +104,8 @@ public final class AxionForgeEntrypoint {
                 ContentRegistration.process(event, runtime::maxSiblingBytes));
         AxionEntities.register(modBus, runtime);
         RuntimeAccess.install(runtime);
+        // ADR-166 D1 : la version d'API que chaque addon exige, lue avant que son contenu ne soit enregistré.
+        checkApiRequirements();
         // Le canal doit exister avant la première connexion : AXION est exigé des deux côtés
         // (R-1630, ADR-150).
         AxionChannel.register();
@@ -103,6 +114,34 @@ public final class AxionForgeEntrypoint {
 
         runtime.onConstructed(platform);
         LOGGER.info("AXION ENGINE construit sur {}", platform.platformName());
+    }
+
+    /**
+     * ADR-166 D1 : lit {@code [modproperties.<modId>] axion_api} pour chaque mod chargé. Un addon que l'API présente ne
+     * satisfait pas reçoit un avertissement de chargement, que Forge affiche à la fin du chargement, et son contenu
+     * n'est pas enregistré ; le jeu démarre (Q1).
+     */
+    private static void checkApiRequirements() {
+        Map<String, Object> declared = new HashMap<>();
+        Map<String, IModInfo> infos = new HashMap<>();
+        for (IModInfo info : ModList.get().getMods()) {
+            Object value = info.getModProperties().get(ApiRequirements.PROPERTY);
+            if (value != null) {
+                declared.put(info.getModId(), value);
+                infos.put(info.getModId(), info);
+            }
+        }
+        List<ApiRequirements.Refusal> refusals = ApiRequirements.check(declared, ApiVersion.CURRENT);
+        ApiRequirements.publish(refusals);
+        for (ApiRequirements.Refusal refusal : refusals) {
+            LOGGER.warn("AXION : {}", refusal.describe());
+            ModLoader.get().addWarning(refusal.required()
+                    .map(required -> new ModLoadingWarning(infos.get(refusal.modId()), ModLoadingStage.CONSTRUCT,
+                            "axion.loading.api_too_old", refusal.modId(), required.toString(),
+                            refusal.present().toString()))
+                    .orElseGet(() -> new ModLoadingWarning(infos.get(refusal.modId()), ModLoadingStage.CONSTRUCT,
+                            "axion.loading.api_malformed", refusal.modId(), refusal.declared())));
+        }
     }
 
     private void onCommonSetup(FMLCommonSetupEvent event) {

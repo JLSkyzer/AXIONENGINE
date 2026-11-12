@@ -8,6 +8,12 @@ version = "1.0.0"
 displayName = "AXION example addon"
 description = '''The witness addon of AXION ENGINE: a crate, declared in JSON and in Java.'''
 
+# --8<-- [start:api]
+# The oldest AXION API this addon works with. An older AXION shows a warning and does not load this addon's content.
+[modproperties.example_addon]
+    axion_api = "1.0"
+# --8<-- [end:api]
+
 [[dependencies.example_addon]]
     modId = "forge"
     mandatory = true

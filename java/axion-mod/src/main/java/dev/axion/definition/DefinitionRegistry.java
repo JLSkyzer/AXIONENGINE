@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
@@ -68,6 +69,7 @@ public final class DefinitionRegistry {
     private final SortedMap<String, Definition> definitions;
     private final Map<Long, Definition> byHash;
     private final List<String> refusals;
+    private final SortedMap<String, String> refusalById;
     private final String fingerprint;
     private final CollisionGroupRegistry collisionGroups;
     private final PhysicsMaterials physicsMaterials;
@@ -78,6 +80,7 @@ public final class DefinitionRegistry {
             SortedMap<String, Definition> definitions,
             Map<Long, Definition> byHash,
             List<String> refusals,
+            SortedMap<String, String> refusalById,
             CollisionGroupRegistry collisionGroups,
             PhysicsMaterials physicsMaterials,
             TireProfiles tires,
@@ -85,6 +88,7 @@ public final class DefinitionRegistry {
         this.definitions = definitions;
         this.byHash = byHash;
         this.refusals = List.copyOf(refusals);
+        this.refusalById = Collections.unmodifiableSortedMap(new TreeMap<>(refusalById));
         this.fingerprint = fingerprintOf(definitions);
         this.collisionGroups = collisionGroups;
         this.physicsMaterials = physicsMaterials;
@@ -95,7 +99,7 @@ public final class DefinitionRegistry {
     /** {@return une registry vide, avant tout rechargement} */
     public static DefinitionRegistry empty() {
         return new DefinitionRegistry(
-                new TreeMap<>(), new HashMap<>(), List.of(), CollisionGroupRegistry.empty(),
+                new TreeMap<>(), new HashMap<>(), List.of(), new TreeMap<>(), CollisionGroupRegistry.empty(),
                 PhysicsMaterials.empty(), TireProfiles.empty(), List.of());
     }
 
@@ -125,6 +129,7 @@ public final class DefinitionRegistry {
             AssetSource source, DefinitionRules rules, ToLongFunction<String> hasher) {
         SortedMap<String, Definition> accepted = new TreeMap<>();
         List<String> refusals = new ArrayList<>();
+        SortedMap<String, String> refusalById = new TreeMap<>();
 
         for (String location : source.list()) {
             if (!rules.examplesEnabled() && location.startsWith(EXAMPLES)) {
@@ -136,10 +141,11 @@ public final class DefinitionRegistry {
                 Definition definition = read(location, source.read(location), rules);
                 accepted.put(definition.id(), definition);
             } catch (DefinitionException refusal) {
-                refusals.add(refusal.codeName() + " " + location + " — " + refusal.path()
-                        + " : " + refusal.getMessage());
+                refuse(refusals, refusalById, location, refusal.codeName() + " " + location + " — "
+                        + refusal.path() + " : " + refusal.getMessage());
             } catch (IOException failure) {
-                refusals.add("E-7001 " + location + " — illisible : " + failure.getMessage());
+                refuse(refusals, refusalById, location, "E-7001 " + location + " — illisible : "
+                        + failure.getMessage());
             }
         }
 
@@ -158,8 +164,8 @@ public final class DefinitionRegistry {
         }
         for (String id : colliding) {
             Definition definition = accepted.remove(id);
-            refusals.add("E-3010 " + definition.location() + " — $ : empreinte d'identifiant "
-                    + "partagée avec une autre definition ; renommer l'une des deux");
+            refuse(refusals, refusalById, definition.location(), "E-3010 " + definition.location()
+                    + " — $ : empreinte d'identifiant partagée avec une autre definition ; renommer l'une des deux");
         }
 
         Map<Long, Definition> byHash = new HashMap<>();
@@ -171,7 +177,7 @@ public final class DefinitionRegistry {
             materialWarnings(definition, rules.physicsMaterials(), warnings);
             tireWarnings(definition, rules.tires(), warnings);
         }
-        return new DefinitionRegistry(accepted, byHash, refusals, rules.collisionGroups(),
+        return new DefinitionRegistry(accepted, byHash, refusals, refusalById, rules.collisionGroups(),
                 rules.physicsMaterials(), rules.tires(), warnings);
     }
 
@@ -440,14 +446,16 @@ public final class DefinitionRegistry {
         SortedMap<String, Definition> kept = new TreeMap<>(definitions);
         Map<Long, Definition> hashes = new HashMap<>(byHash);
         List<String> lines = new ArrayList<>(refusals);
+        SortedMap<String, String> byId = new TreeMap<>(refusalById);
         for (Map.Entry<String, String> refusal : refused.entrySet()) {
             Definition removed = kept.remove(refusal.getKey());
             if (removed != null) {
                 hashes.values().removeIf(definition -> definition == removed);
                 lines.add(refusal.getValue());
+                byId.put(refusal.getKey(), refusal.getValue());
             }
         }
-        return new DefinitionRegistry(kept, hashes, lines, collisionGroups, physicsMaterials, tires, warnings);
+        return new DefinitionRegistry(kept, hashes, lines, byId, collisionGroups, physicsMaterials, tires, warnings);
     }
 
     /**
@@ -481,6 +489,27 @@ public final class DefinitionRegistry {
     /** {@return les refus, un par definition refusée} */
     public List<String> refusals() {
         return refusals;
+    }
+
+    /**
+     * {@return la cause du refus d'une definition, telle que le journal l'écrit, ou vide si elle n'a pas été refusée}
+     * (ADR-166 D2)
+     *
+     * @param id identifiant, {@code <ns>:<chemin>}
+     */
+    public Optional<String> refusal(String id) {
+        return Optional.ofNullable(refusalById.get(id));
+    }
+
+    /** Consigne un refus, et sous son identifiant quand la ressource en donne un. */
+    private static void refuse(List<String> refusals, SortedMap<String, String> refusalById, String location,
+            String line) {
+        refusals.add(line);
+        try {
+            refusalById.put(idOf(location), line);
+        } catch (DefinitionException horsDefinition) {
+            // Une ressource hors de <ns>:axion/definitions/ n'a pas d'identifiant de definition : la ligne suffit.
+        }
     }
 
     /** {@return les avertissements du chargement, un par matériau non déclaré (R-1032)} */

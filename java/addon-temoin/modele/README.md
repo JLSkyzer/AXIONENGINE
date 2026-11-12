@@ -32,9 +32,15 @@ To rename the mod from `example_addon` to your own id (lowercase letters, digits
 1. `gradle.properties`: `mod_id` and `mod_group_id`;
 2. `src/main/resources/META-INF/mods.toml`: `modId`, `displayName`, and the three `[[dependencies.example_addon]]`;
 3. `ExampleAddon.java`: `MOD_ID`, and the model id `example_addon:models/crate.gltf`;
-4. `src/main/resources/axion/definitions/crate.json`: the model id in `asset`.
+4. `src/main/resources/axion/definitions/crate.json`: the model id in `asset`;
+5. rename the folder `src/main/resources/data/example_addon` to your mod id: it holds the slab your GameTests stand on.
 
 Your content then becomes `yourmod:crate`.
+
+## Test it
+
+`./gradlew runGameTestServer` runs the addon's GameTests (`ExampleAddonGameTests.java`) in a game server, then stops:
+the crate must load, fall onto the slab and come to rest.
 
 ## Change things without restarting
 

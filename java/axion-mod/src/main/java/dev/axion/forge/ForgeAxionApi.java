@@ -8,12 +8,15 @@ import dev.axion.api.assembly.AssemblyService;
 import dev.axion.api.assembly.CustomData;
 import dev.axion.api.assembly.Transform;
 import dev.axion.api.assembly.Variables;
+import dev.axion.api.content.ContentQuery;
 import dev.axion.api.content.DefinitionRef;
+import dev.axion.definition.DefinitionRegistry;
 import dev.axion.entity.AssemblySpawns;
 import dev.axion.lifecycle.AxionRuntime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -27,12 +30,14 @@ import org.joml.Quaternionf;
  * Le fournisseur d'{@link AxionApi} (ADR-162 D1), déclaré à {@code ServiceLoader} par
  * {@code META-INF/services/dev.axion.api.AxionApi}.
  *
- * <p>Il ne rend que ce que le moteur fait vraiment : la version de l'API et le service des assemblies, qui passe
- * par le même chemin que {@code /axion spawn} (definition vérifiée, entité créée, liée, ajoutée au monde).
+ * <p>Il ne rend que ce que le moteur fait vraiment : la version de l'API, le service des assemblies, qui passe
+ * par le même chemin que {@code /axion spawn} (definition vérifiée, entité créée, liée, ajoutée au monde), et la lecture
+ * du contenu chargé (ADR-166 D2).
  */
 public final class ForgeAxionApi implements AxionApi {
 
     private final AssemblyService assemblies = new Assemblies();
+    private final ContentQuery content = new Content();
 
     /** Constructeur public, exigé par {@code ServiceLoader}. */
     public ForgeAxionApi() {}
@@ -45,6 +50,38 @@ public final class ForgeAxionApi implements AxionApi {
     @Override
     public AssemblyService assemblies() {
         return assemblies;
+    }
+
+    @Override
+    public ContentQuery content() {
+        return content;
+    }
+
+    /**
+     * ADR-166 D2 : le registre effectif des definitions — celles que leur compilation a refusées en sont retirées —,
+     * lu tel qu'il est à l'appel. Avant le chargement d'un monde, il est vide.
+     */
+    private static final class Content implements ContentQuery {
+
+        private static DefinitionRegistry registry() {
+            AxionRuntime runtime = RuntimeAccess.get();
+            return runtime == null ? DefinitionRegistry.empty() : runtime.definitions();
+        }
+
+        @Override
+        public boolean isLoaded(String definitionId) {
+            return registry().get(definitionId).isPresent();
+        }
+
+        @Override
+        public Optional<String> refusal(String definitionId) {
+            return registry().refusal(definitionId);
+        }
+
+        @Override
+        public Set<String> definitions() {
+            return Set.copyOf(registry().ids());
+        }
     }
 
     /** Le service des assemblies. */

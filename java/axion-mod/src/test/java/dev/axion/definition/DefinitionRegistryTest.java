@@ -132,6 +132,28 @@ class DefinitionRegistryTest {
     }
 
     @Test
+    @DisplayName("ADR-166 D2 : la cause d'un refus se lit par l'identifiant de la definition, compilation comprise")
+    void refusParIdentifiant() {
+        FakeSource source = new FakeSource()
+                .put("mymod:axion/definitions/a.json",
+                        "{\"schema\": 1, \"asset\": \"mymod:models/pickup.glb\", \"kind\": \"visual\"}")
+                .put("mymod:axion/definitions/b.json", "{\"schema\": 9}");
+
+        DefinitionRegistry registry = DefinitionRegistry.load(source, RULES);
+
+        assertEquals(registry.refusals().get(0), registry.refusal("mymod:b").orElseThrow());
+        assertTrue(registry.refusal("mymod:a").isEmpty(), "une definition chargée n'a pas de refus");
+        assertTrue(registry.refusal("mymod:inconnue").isEmpty(), "une definition inconnue n'a pas de refus");
+
+        // Refusée ensuite par sa compilation (ADR-156 D5) : elle quitte le registre, et sa cause s'y lit.
+        DefinitionRegistry effectif = registry.without(new java.util.TreeMap<>(
+                Map.of("mymod:a", "E-3002 mymod:a — noeud « roue » absent du modèle")));
+        assertTrue(effectif.get("mymod:a").isEmpty());
+        assertEquals("E-3002 mymod:a — noeud « roue » absent du modèle", effectif.refusal("mymod:a").orElseThrow());
+        assertEquals(registry.refusals().get(0), effectif.refusal("mymod:b").orElseThrow());
+    }
+
+    @Test
     @DisplayName("T-281 : l'empreinte ne dépend que du contenu, pas de l'ordre des packs")
     void empreinteDeRegistry() {
         String a = "{\"schema\": 1, \"asset\": \"mymod:models/pickup.glb\", \"kind\": \"visual\"}";

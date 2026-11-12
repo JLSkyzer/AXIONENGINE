@@ -40,6 +40,11 @@ minecraft {
         server {
             args '--nogui'
         }
+
+        // Runs this addon's GameTests (src/main/java/.../ExampleAddonGameTests.java) in a game server, then stops.
+        gameTestServer {
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
     }
 }
 
@@ -66,6 +71,22 @@ dependencies {
     runtimeOnly fg.deobf("dev.axion:axion:${axion_version}")
 }
 // --8<-- [end:depot]
+
+// --8<-- [start:verification]
+// Checks src/main/resources/axion/ with AXION's own loading rules, models included, without launching the game.
+// `./gradlew build` runs it: content that would not load in game fails the build, and says why.
+tasks.register('checkAxionContent', JavaExec) {
+    group = 'verification'
+    description = 'Checks the AXION content of this addon with the rules of the game, models included.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'dev.axion.tools.ContentCheck'
+    args mod_id, file('src/main/resources').absolutePath, layout.buildDirectory.dir('axion-check').get().asFile.absolutePath
+}
+
+tasks.named('check') {
+    dependsOn 'checkAxionContent'
+}
+// --8<-- [end:verification]
 
 tasks.named('jar', Jar).configure {
     finalizedBy 'reobfJar'
