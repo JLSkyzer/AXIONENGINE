@@ -30,6 +30,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
+| [ADR-167](ADR-167.md) | Les paramètres d'une instance : réglage à chaud, causes composées, contrôleurs de véhicule | 2026-11-12 | proposé |
 | [ADR-163](ADR-163.md) | Ce qui s'allume et bouge : état du véhicule, variables, touches libres, canaux pilotés | 2026-11-11 | accepté |
 | [ADR-159](ADR-159.md) | Les véhicules : roues par rayon, motopropulseur, réplication et prédiction | 2026-11-09 | accepté |
 | [ADR-158](ADR-158.md) | Les sièges, la montée et le canal des entrées du client | 2026-11-05 | accepté |
@@ -110,7 +111,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
-| [ADR-166](ADR-166.md) | La version d'API qu'un addon exige, le kit de GameTest et le validateur hors jeu | 2026-11-12 | proposé |
+| [ADR-166](ADR-166.md) | La version d'API qu'un addon exige, le kit de GameTest et le validateur hors jeu | 2026-11-12 | accepté |
 | [ADR-165](ADR-165.md) | Les addons exigés à la connexion, et ce qu'un administrateur règle sans code | 2026-11-11 | accepté |
 | [ADR-162](ADR-162.md) | L'API d'enregistrement du contenu : un mod Java déclare ce qu'AXION connaît | 2026-11-10 | accepté |
 | [ADR-143](ADR-143.md) | Un type exigé par une signature du §23.2, sans membre ni fournisseur, n'est pas un bouchon (R-001) | 2026-10-16 | accepté |
