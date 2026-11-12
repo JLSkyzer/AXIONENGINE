@@ -22,7 +22,7 @@ SUJETS = [
     ("Animation", [155]),
     ("Réseau et persistance", [150, 153]),
     ("Assets et compilation", [106, 107, 108, 110, 115, 119, 122, 135, 136, 139, 140]),
-    ("API publique et enregistrement du contenu", [143, 162, 165]),
+    ("API publique et enregistrement du contenu", [143, 162, 165, 166]),
     ("Noyau natif, mémoire et déterminisme", [104, 116, 138]),
     ("Socle, build, CI et outillage", [100, 101, 102, 103, 105, 111, 124, 126, 131, 142, 148]),
 ]
