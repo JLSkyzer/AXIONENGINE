@@ -3761,8 +3761,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         - [x] Le parcours débutant (2026-11-11) : quatre pages et un glossaire à infobulles, en deux langues ; extraits
               tirés du témoin.
         - [ ] Traduire en anglais les guides existants, et les descriptions de `CONFIGURATION.md` (générateur bilingue).
-        - [ ] Publication : Reposilite sur le mini PC (`maven.eriniumlab.com`), `maven-publish` d'`axion-api` et du
-              JAR d'AXION, le témoin en modèle de mod qui se lance seul ; secret de CI posé par Killian.
+        - [x] Publication (2026-11-12) : Reposilite sur le mini PC (`maven.eriniumlab.com`), `axion-api`, le JAR
+              complet d'AXION et le modèle d'addon publiés en `-SNAPSHOT` par la CI ; lien de téléchargement dans le
+              guide. 21,5 Mo par publication.
+        - [ ] Nettoyage des anciennes versions de développement sur le dépôt Maven (à proposer à Killian).
         - [ ] ADR : version d'API exigée par un addon (D11), kit de test et validateur hors jeu (CAP-49).
   - [x] Tranche 4 de C-33 (2026-11-11) : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
         variables par assembly). Trois sous-tranches, un film à chacune :

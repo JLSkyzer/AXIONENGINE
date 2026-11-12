@@ -7,10 +7,32 @@ All excerpts come from AXION's **witness addon**
 ([`java/addon-temoin`](../../../java/addon-temoin/src/main/java/com/example/addon/ExampleAddon.java) on GitHub): a
 real mod, compiled with every AXION build. What you read here works.
 
-!!! info "The downloadable mod template is coming soon"
-    For now, `axion-api` (the library your mod uses) is not published yet: the witness addon only runs from AXION's
-    repository. With the release, this same witness will become a ready-to-use template that you copy and run on its
-    own. Read this page now: nothing in it will change.
+## 0. Download the mod template
+
+The easiest way to start: begin from a mod that already works.
+
+[:material-download: Download the addon template](https://maven.eriniumlab.com/api/maven/latest/file/snapshots/dev/axion/axion-addon-template?extension=zip){ .md-button .md-button--primary }
+
+Unzip it, open the folder in IntelliJ IDEA (*File › Open*, pick the folder), then launch the game with the Gradle task
+`runClient`, or in a terminal:
+
+```bash
+./gradlew runClient
+```
+
+The first launch downloads Minecraft, Forge and AXION: allow a few minutes. On Windows, the command is
+`gradlew.bat runClient`. The template's `README.md` explains how to rename it to your own name.
+
+!!! question "Where does AXION come from in this project?"
+    From AXION's Maven repository, `maven.eriniumlab.com`, which the template's `build.gradle` declares. You have
+    nothing to install by hand:
+
+    ```groovy
+    --8<-- "java/addon-temoin/modele/build.gradle:depot"
+    ```
+
+    `compileOnly`: your mod compiles against the API but does not embed it — AXION provides it in game.
+    `runtimeOnly`: AXION launches with your mod when you test.
 
 ## 1. Tell Forge your mod needs AXION
 

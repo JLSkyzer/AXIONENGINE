@@ -7,10 +7,32 @@ Tous les extraits viennent de l'**addon témoin** d'AXION
 ([`java/addon-temoin`](../../../java/addon-temoin/src/main/java/com/example/addon/ExampleAddon.java) sur GitHub) :
 un vrai mod, compilé à chaque build d'AXION. Ce que tu lis ici marche.
 
-!!! info "Le modèle de mod à télécharger arrive bientôt"
-    Pour l'instant, `axion-api` (la bibliothèque que ton mod utilise) n'est pas encore publiée : l'addon témoin ne
-    se lance que depuis le dépôt d'AXION. Avec la publication, ce même témoin deviendra un modèle prêt à l'emploi,
-    que tu copieras et lanceras seul. Lis cette page dès maintenant : rien n'y changera.
+## 0. Télécharger le modèle de mod
+
+Le plus simple pour commencer : partir d'un mod qui marche déjà.
+
+[:material-download: Télécharger le modèle d'addon](https://maven.eriniumlab.com/api/maven/latest/file/snapshots/dev/axion/axion-addon-template?extension=zip){ .md-button .md-button--primary }
+
+Décompresse-le, ouvre le dossier dans IntelliJ IDEA (*File › Open*, choisis le dossier), puis lance le jeu avec la
+tâche Gradle `runClient`, ou dans un terminal :
+
+```bash
+./gradlew runClient
+```
+
+Le premier lancement télécharge Minecraft, Forge et AXION : compte quelques minutes. Sous Windows, la commande est
+`gradlew.bat runClient`. Le fichier `README.md` du modèle dit comment le renommer à ton nom.
+
+!!! question "D'où vient AXION dans ce projet ?"
+    Du dépôt Maven d'AXION, `maven.eriniumlab.com`, que le `build.gradle` du modèle déclare. Tu n'as rien à
+    installer à la main :
+
+    ```groovy
+    --8<-- "java/addon-temoin/modele/build.gradle:depot"
+    ```
+
+    `compileOnly` : ton mod compile contre l'API, mais ne l'embarque pas — AXION la fournit en jeu. `runtimeOnly` :
+    AXION se lance avec ton mod quand tu testes.
 
 ## 1. Dire à Forge que ton mod a besoin d'AXION
 

@@ -39,6 +39,10 @@ def modeleZip = tasks.register('modeleZip', Zip) {
             axion_version    : project(':axion-mod').version.toString(),
     ]
     inputs.properties valeurs
+    // Les reperes d'extrait du guide (« --8<-- ») ne servent qu'au site : le modele ne les porte pas.
+    filesMatching(['**/*.java', '**/*.gradle', '**/*.toml']) {
+        filter { String ligne -> ligne.contains('--8<--') ? null : ligne }
+    }
     from(file('modele')) {
         filesMatching('gradle.properties') { expand valeurs }
     }

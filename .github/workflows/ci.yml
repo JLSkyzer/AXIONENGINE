@@ -531,8 +531,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # CAP-48 (ADR-162 D11, tranche 5) : axion-api (jar, sources, javadoc) et le JAR d'AXION, natifs des quatre
-  # plateformes reunis, publies en -SNAPSHOT sur maven.eriniumlab.com (depot de Killian, lecture libre) a chaque
+  # CAP-48, CAP-49 (ADR-162 D11, tranche 5) : axion-api (jar, sources, javadoc), le JAR d'AXION, natifs des quatre
+  # plateformes reunis, et le modele d'addon (axion-addon-template, zip), publies en -SNAPSHOT sur maven.eriniumlab.com (depot de Killian, lecture libre) a chaque
   # poussee sur master, une fois la matrice et les tests verts. -Paxion.targets exige les quatre cibles sans
   # passer en version publiee ; un JAR partial ne se publie pas (R-2341, gradle/publication.gradle).
   # Les identifiants sont les secrets AXION_MAVEN_USERNAME et AXION_MAVEN_PASSWORD (un jeton Reposilite limite
@@ -574,6 +574,7 @@ jobs:
           fi
           ./gradlew :axion-api:publishAllPublicationsToAxionRepository \
             :axion-mod:publishAllPublicationsToAxionRepository \
+            :addon-temoin:publishAllPublicationsToAxionRepository \
             -Paxion.targets=windows-x86_64,linux-x86_64,macos-aarch64,macos-x86_64 \
             -Paxion.prebuilt="$PWD/natifs" --no-daemon --stacktrace
 

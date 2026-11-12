@@ -43,6 +43,7 @@ minecraft {
     }
 }
 
+// --8<-- [start:depot]
 repositories {
     // AXION's Maven repository: free to read, no account needed.
     maven {
@@ -64,6 +65,7 @@ dependencies {
     // AXION itself, so that `runClient` and `runServer` launch the game with it.
     runtimeOnly fg.deobf("dev.axion:axion:${axion_version}")
 }
+// --8<-- [end:depot]
 
 tasks.named('jar', Jar).configure {
     finalizedBy 'reobfJar'
