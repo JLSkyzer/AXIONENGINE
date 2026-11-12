@@ -458,14 +458,14 @@ class DefinitionSchemaTest {
     }
 
     @Test
-    @DisplayName("ADR-151 D3 : le schéma 1 reste lu comme avant, sans les champs du schéma 2 ; le 4 est inconnu")
+    @DisplayName("ADR-151 D3 : le schéma 1 reste lu comme avant, sans les champs du schéma 2 ; le 5 est inconnu")
     void schemaUnInchange() {
         DefinitionException friction = refus(root -> at(root, "joints", "0").addProperty("friction", 4.0));
         assertEquals("$.joints[0].friction", friction.path());
         assertTrue(friction.getMessage().contains("clé inconnue du schéma 1"), friction.getMessage());
         assertEquals("$.bodies[0].mass",
                 refus(root -> at(root, "bodies", "0").addProperty("mass", 10.0)).path());
-        DefinitionException quatre = refus(root -> root.addProperty("schema", 4));
+        DefinitionException quatre = refus(root -> root.addProperty("schema", 5));
         assertEquals(DefinitionException.UNKNOWN_SCHEMA, quatre.code());
         assertEquals("$.variables", refus(root -> root.add("variables", new JsonObject())).path(),
                 "les variables n'existent qu'au schéma 3");

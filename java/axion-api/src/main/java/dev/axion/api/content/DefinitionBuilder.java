@@ -1,5 +1,5 @@
 // Fichier généré par `cargo run -p axion-codegen --bin gen_definition_builder` depuis
-// docs/schema/definition-3.json (ADR-162 D4) : ne pas le modifier à la main. Le test de parité
+// docs/schema/definition-4.json (ADR-162 D4) : ne pas le modifier à la main. Le test de parité
 // parite_builder échoue s'il diverge du schéma.
 package dev.axion.api.content;
 
@@ -13,7 +13,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Le builder d'une definition (ADR-162 D3, D4) : une méthode par champ du schéma 3, dont il est généré.
+ * Le builder d'une definition (ADR-162 D3, D4) : une méthode par champ du schéma 4, dont il est généré.
  *
  * <p>Il produit le même document qu'un fichier JSON : {@link #build()} rend un {@link DefinitionDocument}
  * que {@link ContentRegistrar#register} enregistre, que le même schéma valide au chargement et dont
@@ -35,7 +35,7 @@ import java.util.function.Consumer;
 public final class DefinitionBuilder {
 
     /** La version du schéma que ce builder écrit dans le champ {@code schema}. */
-    public static final int SCHEMA = 3;
+    public static final int SCHEMA = 4;
 
     private final Map<String, Object> values = new LinkedHashMap<>();
 
@@ -592,6 +592,18 @@ public final class DefinitionBuilder {
      */
     public DefinitionBuilder structuralLink(String name) {
         return structuralLink(name, item -> { });
+    }
+
+    /**
+     * {@code tuning}.
+     *
+     * @param config règle l'objet ; rappelée, elle complète le même
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder tuning(Consumer<Tuning> config) {
+        Map<String, Object> nested = object(values, "tuning");
+        Objects.requireNonNull(config, "config").accept(new Tuning(nested));
+        return this;
     }
 
     /**
@@ -4092,6 +4104,73 @@ public final class DefinitionBuilder {
         public StructuralLink torque(double value) {
             values.put("torque", value);
             return this;
+        }
+    }
+
+    /** {@code tuning.ranges.*}. */
+    @Experimental
+    public static final class TuningRange {
+
+        private final Map<String, Object> values;
+
+        private TuningRange(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code tuning.ranges.*.max}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public TuningRange max(double value) {
+            values.put("max", value);
+            return this;
+        }
+
+        /**
+         * {@code tuning.ranges.*.min}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public TuningRange min(double value) {
+            values.put("min", value);
+            return this;
+        }
+    }
+
+    /** {@code tuning}. */
+    @Experimental
+    public static final class Tuning {
+
+        private final Map<String, Object> values;
+
+        private Tuning(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code tuning.ranges}.
+         *
+         * @param parameter clé de la table
+         * @param config règle l'élément ; rappelée avec les mêmes clés, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Tuning range(String parameter, Consumer<TuningRange> config) {
+            Map<String, Object> item = path(values, "ranges", parameter);
+            Objects.requireNonNull(config, "config").accept(new TuningRange(item));
+            return this;
+        }
+
+        /**
+         * {@code tuning.ranges}.
+         *
+         * @param parameter clé de la table
+         * @return ce réglage, pour enchaîner
+         */
+        public Tuning range(String parameter) {
+            return range(parameter, item -> { });
         }
     }
 

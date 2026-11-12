@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import dev.axion.api.assembly.Parameters;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -52,6 +53,26 @@ final class VehicleSpec {
      * est freinée. Choix d'ADR-159 (tranche 3), faute de valeur au CDC.
      */
     static final float STABILITY_YAW_TOLERANCE = 0.15f;
+
+    /*
+     * Les défauts des grandeurs réglables (ADR-167 D1) : l'encodage de la section et la table des paramètres les lisent
+     * tous deux, pour que la base que Java compose soit exactement celle que le natif reçoit.
+     */
+    private static final float IDLE_RPM = 800f;
+    private static final float MAX_RPM = 7000f;
+    private static final float FINAL_DRIVE = 3.7f;
+    private static final float FINAL_DRIVE_DIRECT = 1f;
+    private static final float SHIFT_TIME = 0.25f;
+    private static final float SHIFT_TIME_DIRECT = 0f;
+    private static final float MAX_ANGLE = 0.61f;
+    private static final float BRAKE_FRONT = 3000f;
+    private static final float BRAKE_REAR = 1800f;
+    private static final float HANDBRAKE = 4000f;
+    private static final float DRAG = 0f;
+    private static final float DOWNFORCE = 0f;
+
+    /** Le braquage maximal admis, exclu : la règle de forme de {@code steering.max_angle}. */
+    private static final float MAX_ANGLE_LIMIT = (float) (Math.PI / 2);
 
     private static final List<String> TRANSMISSIONS = List.of("manual", "automatic", "direct");
     private static final List<String> DIFFERENTIALS = List.of("open", "locked", "limited_slip");
@@ -154,7 +175,7 @@ final class VehicleSpec {
         atLeast(engine, "max_rpm", eat, false, fault);
         atLeast(engine, "inertia", eat, false, fault);
         atLeast(engine, "braking_torque", eat, true, fault);
-        if (number(engine, "max_rpm", 7000f) <= number(engine, "idle_rpm", 800f)) {
+        if (number(engine, "max_rpm", MAX_RPM) <= number(engine, "idle_rpm", IDLE_RPM)) {
             fault.accept(eat + ".max_rpm", "doit dépasser idle_rpm");
         }
 
@@ -216,7 +237,7 @@ final class VehicleSpec {
         }
         String at = "$.steering";
         atLeast(steering, "max_angle", at, false, fault);
-        if (number(steering, "max_angle", 0.61f) >= (float) (Math.PI / 2)) {
+        if (number(steering, "max_angle", MAX_ANGLE) >= MAX_ANGLE_LIMIT) {
             fault.accept(at + ".max_angle", "en radians, sous π/2");
         }
         atLeast(steering, "speed", at, false, fault);
@@ -321,19 +342,20 @@ final class VehicleSpec {
         out.put((byte) TRANSMISSIONS.indexOf(type));
         out.put((byte) DIFFERENTIALS.indexOf(stringOr(differential, "type", "open")));
 
-        put(out, number(engine, "idle_rpm", 800f), number(engine, "max_rpm", 7000f),
+        put(out, number(engine, "idle_rpm", IDLE_RPM), number(engine, "max_rpm", MAX_RPM),
                 number(engine, "inertia", 0.3f), number(engine, "braking_torque", 25f));
         boolean direct = transmission == null;
-        put(out, number(transmission, "final_drive", direct ? 1f : 3.7f), number(transmission, "shift_time", direct ? 0f : 0.25f),
+        put(out, number(transmission, "final_drive", direct ? FINAL_DRIVE_DIRECT : FINAL_DRIVE),
+                number(transmission, "shift_time", direct ? SHIFT_TIME_DIRECT : SHIFT_TIME),
                 number(transmission, "auto_shift_up_rpm", 6200f), number(transmission, "auto_shift_down_rpm", 2200f),
                 number(transmission, "efficiency", direct ? 1f : 0.92f));
         put(out, number(differential, "front_rear_split", 0f), number(differential, "lock", 0f));
-        put(out, number(steering, "max_angle", 0.61f), number(steering, "speed", 3f), number(steering, "return_speed", 4f),
+        put(out, number(steering, "max_angle", MAX_ANGLE), number(steering, "speed", 3f), number(steering, "return_speed", 4f),
                 number(steering, "speed_sensitivity", 0.6f), number(steering, "ackermann", 1f));
-        put(out, number(brakes, "max_torque_front", 3000f), number(brakes, "max_torque_rear", 1800f),
-                number(brakes, "handbrake_torque", 4000f), number(abs, "slip_threshold", 0.15f));
-        put(out, number(aero, "drag_coefficient", 0f), number(aero, "frontal_area", 0f),
-                number(aero, "downforce_front", 0f), number(aero, "downforce_rear", 0f));
+        put(out, number(brakes, "max_torque_front", BRAKE_FRONT), number(brakes, "max_torque_rear", BRAKE_REAR),
+                number(brakes, "handbrake_torque", HANDBRAKE), number(abs, "slip_threshold", 0.15f));
+        put(out, number(aero, "drag_coefficient", DRAG), number(aero, "frontal_area", 0f),
+                number(aero, "downforce_front", DOWNFORCE), number(aero, "downforce_rear", DOWNFORCE));
         put(out, number(traction, "slip_threshold", TRACTION_SLIP_THRESHOLD),
                 number(stability, "yaw_tolerance", STABILITY_YAW_TOLERANCE));
 
@@ -381,6 +403,75 @@ final class VehicleSpec {
                 put(out, number(surface, "area", 0f), number(surface, "cl", 0f), number(surface, "cd", 0f));
             }
         }
+    }
+
+    /**
+     * Ajoute les paramètres réglables d'un véhicule (ADR-167 D1), leur base lue avec les défauts mêmes de
+     * {@link #write} : le moteur et la boîte s'il a un groupe motopropulseur — un rapport par rang de {@code gears},
+     * hors boîte {@code direct} —, puis les freins, les pneus, les suspensions, le braquage et l'aérodynamique. Les
+     * limites sont les règles de forme de {@link #check}.
+     *
+     * @param root une definition qui déclare un véhicule, ses règles de forme passées
+     * @param out reçoit les paramètres, dans l'ordre fixe de {@link dev.axion.api.assembly.Parameters}
+     */
+    static void parameters(JsonObject root, List<Tuning.Parameter> out) {
+        JsonObject powertrain = object(root, "powertrain");
+        if (powertrain != null) {
+            JsonObject engine = object(powertrain, "engine");
+            float peak = 0f;
+            if (engine != null && engine.get("torque_curve") instanceof JsonArray curve) {
+                for (JsonElement point : curve) {
+                    peak = Math.max(peak, point.getAsJsonArray().get(1).getAsFloat());
+                }
+            }
+            // Un moteur sans couple n'a pas de courbe à mettre à l'échelle.
+            if (peak > 0f) {
+                out.add(Tuning.above(Parameters.ENGINE_TORQUE, "N·m", peak, 0, true));
+            }
+            out.add(Tuning.above(Parameters.ENGINE_MAX_RPM, "tr/min", number(engine, "max_rpm", MAX_RPM),
+                    number(engine, "idle_rpm", IDLE_RPM), false));
+            JsonObject transmission = object(powertrain, "transmission");
+            boolean direct = transmission == null;
+            out.add(Tuning.above(Parameters.FINAL_DRIVE, "",
+                    number(transmission, "final_drive", direct ? FINAL_DRIVE_DIRECT : FINAL_DRIVE), 0, false));
+            String type = direct ? "direct" : stringOr(transmission, "type", "manual");
+            if (!"direct".equals(type)) {
+                out.add(Tuning.above(Parameters.SHIFT_TIME, "s", number(transmission, "shift_time", SHIFT_TIME), 0,
+                        true));
+                JsonArray gears = transmission.getAsJsonArray("gears");
+                int neutral = 0;
+                while (gears.get(neutral).getAsFloat() != 0f) {
+                    neutral++;
+                }
+                for (int i = 0; i < gears.size(); i++) {
+                    float ratio = gears.get(i).getAsFloat();
+                    if (i == neutral) {
+                        continue;
+                    }
+                    // Un rapport garde son signe : sinon le point mort ou la marche avant changeraient de rang.
+                    out.add(new Tuning.Parameter(Parameters.gear(i - neutral), "", ratio, ratio > 0
+                            ? new Parameters.Range(0, false, Double.POSITIVE_INFINITY, false)
+                            : new Parameters.Range(Double.NEGATIVE_INFINITY, false, 0, false), Tuning.unbounded()));
+                }
+            }
+        }
+        JsonObject brakes = object(root, "brakes");
+        out.add(Tuning.above(Parameters.BRAKES_FRONT, "N·m", number(brakes, "max_torque_front", BRAKE_FRONT), 0, true));
+        out.add(Tuning.above(Parameters.BRAKES_REAR, "N·m", number(brakes, "max_torque_rear", BRAKE_REAR), 0, true));
+        out.add(Tuning.above(Parameters.BRAKES_HANDBRAKE, "N·m", number(brakes, "handbrake_torque", HANDBRAKE), 0,
+                true));
+        out.add(Tuning.above(Parameters.TIRES_GRIP, "×", 1, 0, false));
+        out.add(Tuning.above(Parameters.SUSPENSION_STIFFNESS, "×", 1, 0, true));
+        out.add(Tuning.above(Parameters.SUSPENSION_DAMPING, "×", 1, 0, true));
+        out.add(new Tuning.Parameter(Parameters.STEERING_MAX_ANGLE, "rad",
+                number(object(root, "steering"), "max_angle", MAX_ANGLE),
+                new Parameters.Range(0, false, MAX_ANGLE_LIMIT, false), Tuning.unbounded()));
+        JsonObject aero = object(root, "aero");
+        out.add(Tuning.above(Parameters.AERO_DRAG, "", number(aero, "drag_coefficient", DRAG), 0, true));
+        out.add(new Tuning.Parameter(Parameters.AERO_DOWNFORCE_FRONT, "N", number(aero, "downforce_front", DOWNFORCE),
+                Tuning.unbounded(), Tuning.unbounded()));
+        out.add(new Tuning.Parameter(Parameters.AERO_DOWNFORCE_REAR, "N", number(aero, "downforce_rear", DOWNFORCE),
+                Tuning.unbounded(), Tuning.unbounded()));
     }
 
     private static void put(ByteBuffer out, float... values) {

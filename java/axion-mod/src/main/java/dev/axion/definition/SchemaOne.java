@@ -82,15 +82,19 @@ final class SchemaOne {
     /** Racine du schéma 3 (ADR-163 D2) : le schéma 2, les variables et ce qui les écrit. */
     static final SchemaNode ROOT_THREE = root(3);
 
+    /** Racine du schéma 4 (ADR-167) : le schéma 3, et le réglage des paramètres d'une instance. */
+    static final SchemaNode ROOT_FOUR = root(4);
+
     private SchemaOne() {}
 
     /**
      * {@return la racine du schéma {@code version}}
      *
-     * @param version 1, 2 ou 3
+     * @param version 1, 2, 3 ou 4
      */
     static SchemaNode rootOf(int version) {
         return switch (version) {
+            case 4 -> ROOT_FOUR;
             case 3 -> ROOT_THREE;
             case 2 -> ROOT_TWO;
             default -> ROOT;
@@ -138,6 +142,14 @@ final class SchemaOne {
             // ADR-163 D2 : 64 variables au plus, chacune par instance.
             root.opt("variables",
                     new Dict(new TextRule.Declares(NameCategory.VARIABLE), variable(), Variables.MAX));
+        }
+        if (version >= 4) {
+            // ADR-167 D2 : la plage qu'un réglage peut donner à chaque paramètre, dans son unité. Le nom du paramètre et
+            // la base que la plage doit contenir se vérifient avec la definition entière (Tuning.check).
+            root.opt("tuning", obj()
+                    .opt("ranges", new Dict(new TextRule.Free(),
+                            obj().opt("min", number()).opt("max", number()).build(), Integer.MAX_VALUE))
+                    .build());
         }
         return root.build();
     }

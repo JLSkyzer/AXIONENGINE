@@ -86,6 +86,9 @@ final class DefinitionChecker {
         if (checker.issues.isEmpty()) {
             VehicleSpec.check(root, checker::invalid);
         }
+        if (checker.version >= 4 && checker.issues.isEmpty()) {
+            Tuning.check(root, checker::invalid);
+        }
         return List.copyOf(checker.issues);
     }
 
@@ -317,6 +320,9 @@ final class DefinitionChecker {
     private static int versionOf(JsonObject root) {
         if (root.get("schema") instanceof JsonPrimitive schema && schema.isNumber()) {
             double number = schema.getAsDouble();
+            if (number == 4) {
+                return 4;
+            }
             if (number == 3) {
                 return 3;
             }

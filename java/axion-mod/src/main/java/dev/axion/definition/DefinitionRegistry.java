@@ -60,6 +60,9 @@ public final class DefinitionRegistry {
     /** Schéma de definition 3 (ADR-163 D2) : les variables, et les commandes et interactions qui les posent. */
     public static final int SCHEMA_THREE = 3;
 
+    /** Schéma de definition 4 (ADR-167) : le réglage des paramètres d'une instance ({@code tuning}). */
+    public static final int SCHEMA_FOUR = 4;
+
     /** Espace de noms d'une {@code ResourceLocation}. */
     static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]+");
 
@@ -324,10 +327,11 @@ public final class DefinitionRegistry {
         }
         if (number.compareTo(BigDecimal.valueOf(SCHEMA)) != 0
                 && number.compareTo(BigDecimal.valueOf(SCHEMA_TWO)) != 0
-                && number.compareTo(BigDecimal.valueOf(SCHEMA_THREE)) != 0) {
+                && number.compareTo(BigDecimal.valueOf(SCHEMA_THREE)) != 0
+                && number.compareTo(BigDecimal.valueOf(SCHEMA_FOUR)) != 0) {
             throw DefinitionException.unknownSchema(
                     "$.schema", "version " + number.toPlainString() + " inconnue, seules "
-                            + SCHEMA + ", " + SCHEMA_TWO + " et " + SCHEMA_THREE + " sont lues");
+                            + SCHEMA + ", " + SCHEMA_TWO + ", " + SCHEMA_THREE + " et " + SCHEMA_FOUR + " sont lues");
         }
         return number.intValueExact();
     }

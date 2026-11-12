@@ -104,6 +104,38 @@ class PublishedSchemaTest {
     }
 
     @Test
+    @DisplayName("T-284 : docs/schema/definition-4.json est le rendu exact du schéma 4 (ADR-167)")
+    void schemaQuatrePublieAJour() throws IOException {
+        Path file = property("axion.schema4.file");
+        String rendu = SchemaExport.render(4);
+
+        if (Boolean.getBoolean("axion.schema.update")) {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, rendu, StandardCharsets.UTF_8);
+        }
+
+        assertTrue(Files.isReadable(file), () -> "schéma publié absent : " + file);
+        String publie = Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        assertEquals(rendu, publie,
+                "le schéma 4 publié a divergé du validateur ; le régénérer avec :\n"
+                        + "  ./gradlew :axion-mod:test --tests dev.axion.definition.PublishedSchemaTest"
+                        + " -Daxion.schema.update=true");
+    }
+
+    @Test
+    @DisplayName("ADR-167 D2 : le schéma 4 porte les plages du réglage ; le schéma 3 ne les porte pas")
+    void contraintesDuSchemaQuatre() {
+        JsonObject properties = JsonParser.parseString(SchemaExport.render(4)).getAsJsonObject()
+                .getAsJsonObject("properties");
+        assertEquals(4, properties.getAsJsonObject("schema").get("const").getAsInt());
+        assertTrue(properties.getAsJsonObject("tuning").getAsJsonObject("properties").has("ranges"));
+        assertTrue(properties.has("variables"), "le schéma 4 garde les variables du schéma 3");
+        JsonObject trois = JsonParser.parseString(SchemaExport.render(3)).getAsJsonObject()
+                .getAsJsonObject("properties");
+        assertTrue(!trois.has("tuning"), "le schéma 3 ne règle pas d'instance");
+    }
+
+    @Test
     @DisplayName("ADR-163 D2 : le schéma 3 porte les variables, les commandes liées des sièges et la variable posée")
     void contraintesDuSchemaTrois() {
         JsonObject properties = JsonParser.parseString(SchemaExport.render(3)).getAsJsonObject()

@@ -159,8 +159,8 @@ class DefinitionBuilderTest {
         assertEquals(Map.of("hide_node", "capot", "set_variable", Map.of("x", 1.0)),
                 ((Map<?, ?>) ((Map<?, ?>) racine.get("on_part_stage")).get("capot")).get("destroyed"));
         assertEquals(Map.of("monmod:reglage", 3.5), racine.get("custom"));
-        assertEquals(3L, racine.get("schema"));
-        assertEquals(3, DefinitionBuilder.SCHEMA);
+        assertEquals(4L, racine.get("schema"));
+        assertEquals(4, DefinitionBuilder.SCHEMA);
     }
 
     @Test

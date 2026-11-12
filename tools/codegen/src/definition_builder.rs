@@ -101,6 +101,7 @@ pub const SINGULARS: &[(&str, &str)] = &[
     ("morphs", "morph"),
     ("particles", "particle"),
     ("parts", "part"),
+    ("ranges", "range"),
     ("seats", "seat"),
     ("structural_links", "structural_link"),
     ("surfaces", "surface"),
@@ -113,6 +114,7 @@ const TABLE_KEYS: &[(&str, &[&str])] = &[
     ("custom", &["key"]),
     ("on_detach", &["part"]),
     ("on_part_stage", &["part", "stage"]),
+    ("ranges", &["parameter"]),
     ("set_variable", &["variable"]),
 ];
 
