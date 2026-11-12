@@ -134,6 +134,11 @@ public final class AxionRuntime {
      * le lit sur un thread de Netty, à l'arrivée d'un client.
      */
     private volatile ServerSnapshot netSnapshot;
+    /**
+     * {@code axion-server.toml} du serveur qui tourne, lu à son premier besoin et oublié à son arrêt : un serveur
+     * intégré démarre chez un client, dont l'amorçage ne lit que la portée du client. Ses défauts sans fichier.
+     */
+    private volatile dev.axion.config.AxionConfig serverConfig;
     /** Les definitions tenues viennent d'un serveur distant (ADR-150 D5) : la déconnexion les oublie. */
     private volatile boolean remoteDefinitions;
     /** Les connexions en cours, vues du serveur, par joueur : leur mode de réplication (5.12bis). */
@@ -1062,7 +1067,8 @@ public final class AxionRuntime {
         try {
             RegistryContent.Builder registry =
                     ServerRegistry.collect(materialTexts, groupTexts, tireTexts, loaded, definitionTexts);
-            ServerSnapshot snapshot = ServerSnapshot.build(outcome.config(), registry.build(), registry.excluded(),
+            ServerSnapshot snapshot = ServerSnapshot.build(outcome.config(), serverConfig(), registry.build(),
+                    registry.excluded(),
                     DetProfile.ofThisBinary(), new NativeNetCompression(outcome.context()),
                     dev.axion.net.RequiredMod.of(
                             dev.axion.content.RegisteredContent.required(loaded.controllerOwners())),
@@ -1083,6 +1089,21 @@ public final class AxionRuntime {
      */
     public ServerSnapshot netSnapshot() {
         return netSnapshot;
+    }
+
+    /**
+     * {@return {@code axion-server.toml}, la configuration propre au serveur qui tourne (ADR-168 D8)} Lue à son premier
+     * besoin dans le répertoire de configuration du jeu, avec les surcharges {@code -Daxion.*} ; ses problèmes vont au
+     * journal des transitions. Le serveur suivant la relit.
+     */
+    public dev.axion.config.AxionConfig serverConfig() {
+        dev.axion.config.AxionConfig loaded = serverConfig;
+        if (loaded == null) {
+            loaded = dev.axion.config.ConfigLoader.load(Scope.SERVER, platform.configDir(), System.getProperties());
+            loaded.issues().forEach(issue -> transitions.add(issue.path() + " — " + issue.message()));
+            serverConfig = loaded;
+        }
+        return loaded;
     }
 
     /**
@@ -1341,6 +1362,7 @@ public final class AxionRuntime {
         guard("serverStopping").run(() -> {
             // L'instantané et les connexions étaient ceux de ce serveur ; le suivant rebâtit les siens.
             netSnapshot = null;
+            serverConfig = null;
             peers.clear();
             if (processIsEnding()) {
                 shutdown();

@@ -29,6 +29,12 @@ public final class MessageKinds {
     /** {@code C2S_Input} (21.4, ADR-158 D4) : les entrées d'un joueur assis. */
     public static final int INPUT = 7;
 
+    /**
+     * {@code S2C_Correction} (ADR-168 D4) : l'état du véhicule qu'un joueur conduit, calculé par le serveur, à chaque
+     * tick. Le protocole 8 l'ajoute sans changer de numéro : rien n'en était publié.
+     */
+    public static final int CORRECTION = 8;
+
     private MessageKinds() {
         throw new AssertionError("classe de constantes, non instanciable");
     }

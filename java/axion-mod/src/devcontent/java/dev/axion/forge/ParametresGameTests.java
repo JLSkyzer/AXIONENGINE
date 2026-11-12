@@ -226,8 +226,10 @@ public final class ParametresGameTests {
                     AssemblyParameters table = assembly.parameters();
                     couple[0] = table.tuning().indexOf(Parameters.ENGINE_TORQUE);
                     helper.assertTrue(table.value(couple[0]) == 60.0, "à la base : " + table.value(couple[0]));
-                    int siege = assembly.seatOf(conducteur);
-                    assembly.receiveInput(conducteur, siege, commande);
+                    assembly.receiveInput(conducteur, assembly.seatOf(conducteur), commande);
+                })
+                // ADR-168 D3 : une entrée s'applique au tick qui suit sa réception, une par tick.
+                .thenExecuteAfter(1, () -> {
                     helper.assertTrue(assembly.variables().get(0) == 1.0, "la commande 1 bascule la variable");
                     helper.assertTrue(assembly.parameters().value(couple[0]) == 30.0,
                             "couple bridé : " + assembly.parameters().value(couple[0]));
@@ -247,12 +249,17 @@ public final class ParametresGameTests {
                     int siege = assembly.seatOf(conducteur);
                     assembly.receiveInput(conducteur, siege, VehicleInput.NONE);
                     assembly.receiveInput(conducteur, siege, commande);
+                })
+                .thenExecuteAfter(2, () -> {
                     helper.assertTrue(assembly.variables().get(0) == 0.0, "second appui : débridé");
                     // 60 - 25 = 35 N·m ; bridé, 17,5 N·m sortirait de la plage [20, 80].
                     AxionApi.get().assemblies().byEntity(assembly).orElseThrow().parameters().modify(
                             new Modifier("essai:lest", Parameters.ENGINE_TORQUE, Modifier.Operation.ADD, -25));
+                    int siege = assembly.seatOf(conducteur);
                     assembly.receiveInput(conducteur, siege, VehicleInput.NONE);
                     assembly.receiveInput(conducteur, siege, commande);
+                })
+                .thenExecuteAfter(2, () -> {
                     helper.assertTrue(assembly.variables().get(0) == 0.0, "la touche est refusée");
                     helper.assertTrue(assembly.parameters().value(couple[0]) == 35.0,
                             "couple inchangé : " + assembly.parameters().value(couple[0]));

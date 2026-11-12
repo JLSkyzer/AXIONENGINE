@@ -383,7 +383,9 @@ public final class AxionForgeEntrypoint {
                     runtime::lastSubmitNanos,
                     new dev.axion.entity.ControllerRunner.Limits(
                             runtime.outcome().config().getInt("vehicle.controller_budget_ns"),
-                            (int) runtime.outcome().config().getInt("vehicle.controller_strikes")));
+                            (int) runtime.outcome().config().getInt("vehicle.controller_strikes")),
+                    runtime.serverConfig().getBoolean("server.allow_client_prediction"),
+                    dev.axion.forge.net.AxionNetwork::queueCorrection);
             worldTileBridge =
                     new WorldTileBridge(
                             event.getServer(),

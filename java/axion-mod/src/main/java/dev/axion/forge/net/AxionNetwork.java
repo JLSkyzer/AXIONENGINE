@@ -218,13 +218,30 @@ public final class AxionNetwork {
         });
     }
 
-    /** ADR-158 D4 : les entrées d'un joueur, sur le thread du serveur ; une entrée refusée se journalise. */
+    /**
+     * ADR-158 D4 : les entrées d'un joueur, sur le thread du serveur ; une entrée refusée se journalise. Elles attendent
+     * leur tick dans la file de leur siège, avec leur séquence (ADR-168 D3).
+     */
     private static void applyInput(ServerPlayer player, PlayerSync sync, InputMessage input) {
         String fault = player.serverLevel().getEntity(input.entity()) instanceof AxionEntity assembly
-                ? assembly.receiveInput(player, input.seat(), input.input())
+                ? assembly.receiveInput(player, input.seat(), Integer.toUnsignedLong(input.sequence()), input.input())
                 : "entrées pour une entité qui n'est pas une assembly";
         if (fault != null) {
             sync.reportInput(fault);
+        }
+    }
+
+    /**
+     * Pose la correction d'un conducteur, calculée à ce tick (ADR-168 D4) : elle part en fin de tick, avant son
+     * snapshot. Sur le thread du serveur.
+     *
+     * @param player le conducteur
+     * @param message le message {@code S2C_Correction}, genre compris
+     */
+    public static void queueCorrection(ServerPlayer player, byte[] message) {
+        PlayerSync sync = SYNCS.get(player.getUUID());
+        if (sync != null) {
+            sync.correct(message);
         }
     }
 
@@ -340,6 +357,13 @@ public final class AxionNetwork {
             }
             players++;
             try {
+                // ADR-168 D4 : la correction du conducteur d'abord, dans le même débit.
+                if (sync.hasCorrection()) {
+                    for (byte[] frame : sync.correctionFrames(SEQUENCE.getAndIncrement() & Integer.MAX_VALUE)) {
+                        AxionChannel.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
+                                new ChannelFrames.PlayToClient(frame));
+                    }
+                }
                 List<byte[]> frames = sync.tick(tick, handle -> {
                     if (!(player.serverLevel().getEntity(handle) instanceof AxionEntity assembly)) {
                         return null;

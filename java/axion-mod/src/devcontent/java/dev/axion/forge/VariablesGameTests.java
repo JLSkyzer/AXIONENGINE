@@ -80,45 +80,63 @@ public final class VariablesGameTests {
                     helper.assertTrue(assembly.sit(conducteur, 0), "assis au volant");
                     helper.assertTrue(assembly.sit(passager, 1), "assis au siège passager");
                     helper.assertTrue(assembly.variables() != null, "variables créées");
-                    // toggle : au front montant.
+                    // toggle : au front montant. ADR-168 D3 : chaque siège applique une entrée par tick, au tick
+                    // qui suit sa réception ; deux posées ensemble s'appliquent l'une après l'autre.
                     envoyer(helper, assembly, conducteur, 0, commandes(1));
+                })
+                .thenExecuteAfter(1, () -> {
                     vaut(helper, assembly, GYROPHARE, 1, "gyrophare allumé au front");
                     envoyer(helper, assembly, conducteur, 0, commandes(1));
+                })
+                .thenExecuteAfter(1, () -> {
                     vaut(helper, assembly, GYROPHARE, 1, "tenu, toujours allumé");
                     envoyer(helper, assembly, conducteur, 0, commandes());
                     envoyer(helper, assembly, conducteur, 0, commandes(1));
+                })
+                .thenExecuteAfter(2, () -> {
                     vaut(helper, assembly, GYROPHARE, 0, "second front : éteint");
-                    envoyer(helper, assembly, conducteur, 0, commandes());
                     // cycle.
+                    envoyer(helper, assembly, conducteur, 0, commandes());
                     envoyer(helper, assembly, conducteur, 0, commandes(3));
+                })
+                .thenExecuteAfter(2, () -> {
                     vaut(helper, assembly, PHARES, 1, "phares, premier cran");
                     envoyer(helper, assembly, conducteur, 0, commandes());
                     envoyer(helper, assembly, conducteur, 0, commandes(3));
-                    vaut(helper, assembly, PHARES, 2, "phares, second cran");
-                    envoyer(helper, assembly, conducteur, 0, commandes());
-                    // Une commande qu'aucune liaison du siège ne nomme n'est pas tenue.
-                    envoyer(helper, assembly, conducteur, 0, commandes(8));
-                    helper.assertTrue(assembly.seatInput(0).flags() == 0, "commande 8 non liée : réduite");
-                    // press : un tick.
-                    envoyer(helper, assembly, conducteur, 0, commandes(4));
-                    vaut(helper, assembly, BIP, 1, "bip posé à l'entrée");
-                    // hold, du passager : sa liaison pose 2, relâchée 0.
-                    envoyer(helper, assembly, passager, 1, commandes(3));
-                    vaut(helper, assembly, PHARES, 2, "phares tenus par le passager");
-                    envoyer(helper, assembly, passager, 1, commandes());
-                    vaut(helper, assembly, PHARES, 0, "relâchés par le passager");
-                    // hold du conducteur, puis ses entrées se taisent.
-                    envoyer(helper, assembly, conducteur, 0, commandes(2));
-                    vaut(helper, assembly, KLAXON, 1, "klaxon tenu");
                 })
-                .thenIdle(2)
-                .thenExecute(() -> vaut(helper, assembly, BIP, 0, "bip revenu après son tick"))
+                .thenExecuteAfter(2, () -> {
+                    vaut(helper, assembly, PHARES, 2, "phares, second cran");
+                    // Une commande qu'aucune liaison du siège ne nomme n'est pas tenue.
+                    envoyer(helper, assembly, conducteur, 0, commandes());
+                    envoyer(helper, assembly, conducteur, 0, commandes(8));
+                })
+                .thenExecuteAfter(2, () -> {
+                    helper.assertTrue(assembly.seatInput(0).flags() == 0, "commande 8 non liée : réduite");
+                    // press : un tick ; et le passager tient les phares par sa propre liaison, qui pose 2.
+                    envoyer(helper, assembly, conducteur, 0, commandes(4));
+                    envoyer(helper, assembly, passager, 1, commandes(3));
+                })
+                .thenExecuteAfter(1, () -> {
+                    vaut(helper, assembly, BIP, 1, "bip posé à l'entrée");
+                    vaut(helper, assembly, PHARES, 2, "phares tenus par le passager");
+                    // Relâchés, 0 ; et le conducteur tient le klaxon.
+                    envoyer(helper, assembly, passager, 1, commandes());
+                    envoyer(helper, assembly, conducteur, 0, commandes(2));
+                })
+                .thenExecuteAfter(1, () -> {
+                    vaut(helper, assembly, PHARES, 0, "relâchés par le passager");
+                    vaut(helper, assembly, KLAXON, 1, "klaxon tenu");
+                    vaut(helper, assembly, BIP, 0, "bip revenu après son tick");
+                })
+                // Puis les entrées du conducteur se taisent.
                 .thenIdle((int) silence)
                 .thenExecute(() -> {
                     vaut(helper, assembly, KLAXON, 0, "entrées tues : klaxon relâché");
                     helper.assertTrue(assembly.variables().writer(KLAXON).contains("entrées tues"),
                             assembly.variables().writer(KLAXON));
                     envoyer(helper, assembly, conducteur, 0, commandes(2));
+                })
+                .thenExecuteAfter(1, () -> {
                     vaut(helper, assembly, KLAXON, 1, "klaxon de nouveau tenu");
                     conducteur.stopRiding();
                 })

@@ -42,6 +42,19 @@ public record AxionConfig(Scope scope, Map<String, Object> values, List<ConfigIs
     }
 
     /**
+     * {@return la configuration d'une portée à ses défauts, sans fichier ni surcharge}
+     *
+     * @param scope portée
+     */
+    public static AxionConfig defaults(Scope scope) {
+        Map<String, Object> values = new java.util.LinkedHashMap<>();
+        for (Option option : scope.options()) {
+            values.put(option.path(), option.defaultValue());
+        }
+        return new AxionConfig(scope, values, List.of());
+    }
+
+    /**
      * {@return la valeur booléenne de l'option}
      *
      * @param path chemin de l'option

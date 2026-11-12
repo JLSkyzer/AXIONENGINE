@@ -27,6 +27,7 @@ import dev.axion.render.ProceduralTracks;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -381,12 +382,22 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Un node perdu, en attente du tick suivant (R-712). */
     private record LostNode(int node, SeatEjection.Cause cause) {}
 
-    /** Les dernières entrées valides d'un siège, et le tick de leur réception. */
-    private record ReceivedInput(VehicleInput input, int tick) {}
+    /** Une entrée reçue, bornée, et qui l'a écrite : le journal des variables la nomme. */
+    private record QueuedInput(VehicleInput input, String writer) {}
+
+    /**
+     * Les entrées d'un siège (ADR-168 D3) : leur file, et celle que le dernier tick a appliquée, avec ce tick.
+     */
+    private static final class SeatInputs {
+        final dev.axion.seat.InputQueue<QueuedInput> queue = new dev.axion.seat.InputQueue<>();
+        VehicleInput applied;
+        int appliedTick;
+    }
 
     private static final int MILLIS_PER_TICK = 50;
 
-    private final Map<Integer, ReceivedInput> receivedInputs = new HashMap<>();
+    /** Les entrées de chaque siège, par rang : un tick les parcourt dans l'ordre des sièges. */
+    private final Map<Integer, SeatInputs> seatInputs = new java.util.TreeMap<>();
 
     private Departure departure;
 
@@ -826,26 +837,75 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * definition n'en déclare pas}
      */
     String driverName() {
-        Seating seating = seating();
-        if (seating == null) {
+        int occupant = driverOccupant();
+        if (occupant == SeatOccupancy.FREE) {
             return null;
         }
+        for (Entity passenger : getPassengers()) {
+            if (passenger.getId() == occupant) {
+                return passenger.getName().getString();
+            }
+        }
+        return "#" + occupant;
+    }
+
+    /** {@return l'identifiant de l'occupant du siège {@code driver}, {@link SeatOccupancy#FREE} sans} */
+    private int driverOccupant() {
+        Seating seating = seating();
+        if (seating == null) {
+            return SeatOccupancy.FREE;
+        }
         for (int seat = 0; seat < seating.seats().size(); seat++) {
-            if (!seating.seats().get(seat).driver()) {
-                continue;
+            if (seating.seats().get(seat).driver()) {
+                int occupant = occupancy(seating).occupant(seat);
+                return occupant == SeatOccupancy.LOST ? SeatOccupancy.FREE : occupant;
             }
-            int occupant = occupancy(seating).occupant(seat);
-            if (occupant == SeatOccupancy.FREE || occupant == SeatOccupancy.LOST) {
-                return null;
+        }
+        return SeatOccupancy.FREE;
+    }
+
+    /**
+     * {@return le joueur que la correction suit (serveur, ADR-168 D4) : celui qui tient le siège {@code driver} d'un
+     * véhicule, {@code null} sans} Un mod qui conduit n'en reçoit pas : rien ne prédit chez lui.
+     */
+    public ServerPlayer correctedDriver() {
+        int occupant = driverOccupant();
+        if (occupant == SeatOccupancy.FREE || wheelNodes().isEmpty()) {
+            return null;
+        }
+        for (Entity passenger : getPassengers()) {
+            if (passenger.getId() == occupant && passenger instanceof ServerPlayer player) {
+                return player;
             }
-            for (Entity passenger : getPassengers()) {
-                if (passenger.getId() == occupant) {
-                    return passenger.getName().getString();
-                }
-            }
-            return "#" + occupant;
         }
         return null;
+    }
+
+    /**
+     * {@return la correction de ce véhicule à ce tick (serveur, ADR-168 D4)} La séquence est celle de la dernière entrée
+     * que son conducteur a appliquée ; les variables, celles qu'il reçoit, en pleine précision ; les paramètres se
+     * datent du tick de leurs modificateurs, que les snapshots portent.
+     *
+     * @param tick le tick du serveur dont l'état est le résultat
+     * @param states l'état complet exporté de chaque assembly de l'ensemble, celui-ci d'abord
+     */
+    public dev.axion.net.CorrectionMessage correction(long tick, List<dev.axion.net.CorrectionMessage.State> states) {
+        return new dev.axion.net.CorrectionMessage(tick, driverSequence(), getId(), netParameters.tick(),
+                correctionVariables(), states);
+    }
+
+    /** {@return les variables que le conducteur reçoit : toutes, sauf {@code replicate: none} (ADR-163 D2)} */
+    private dev.axion.net.CorrectionMessage.Variables correctionVariables() {
+        if (variables == null || variables.size() == 0) {
+            return dev.axion.net.CorrectionMessage.Variables.NONE;
+        }
+        long sent = 0L;
+        for (int i = 0; i < variables.size(); i++) {
+            if (variables.declared().get(i).replicate() != dev.axion.definition.Variables.Replicate.NONE) {
+                sent |= 1L << i;
+            }
+        }
+        return dev.axion.net.CorrectionMessage.Variables.of(variables.values(), sent);
     }
 
     /**
@@ -888,47 +948,114 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
-     * Reçoit les entrées d'un passager (serveur, ADR-158 D4) : elles ne valent que s'il occupe ce siège, et
-     * sont bornées avant d'être retenues (R-1110). La dernière reçue l'emporte.
+     * Reçoit des entrées sans séquence (serveur) : à la suite des dernières reçues de ce siège. Le canal porte une
+     * séquence ({@link #receiveInput(Entity, int, long, VehicleInput)}) ; un essai qui pose les entrées lui-même, non.
      *
      * @param sender le passager qui les envoie
      * @param seat rang du siège annoncé
      * @param input les entrées, telles que reçues
-     * @return la faute à journaliser, {@code null} sans ; une valeur non finie compte pour zéro, et se journalise
+     * @return la faute à journaliser, {@code null} sans
      */
     public String receiveInput(Entity sender, int seat, VehicleInput input) {
+        SeatInputs inputs = seatInputs.get(seat);
+        return receiveInput(sender, seat, inputs == null ? 0 : inputs.queue.lastOffered() + 1, input);
+    }
+
+    /**
+     * Reçoit les entrées d'un passager (serveur, ADR-158 D4) : elles ne valent que s'il occupe ce siège, et sont
+     * bornées avant d'être retenues (R-1110). Elles attendent leur tick dans la file du siège : chaque tick en applique
+     * une, dans l'ordre des séquences (ADR-168 D3).
+     *
+     * @param sender le passager qui les envoie
+     * @param seat rang du siège annoncé
+     * @param sequence leur séquence, non signée : celle du canal
+     * @param input les entrées, telles que reçues
+     * @return la faute à journaliser, {@code null} sans ; une valeur non finie compte pour zéro, et se journalise
+     */
+    public String receiveInput(Entity sender, int seat, long sequence, VehicleInput input) {
         Seating seating = seating();
         if (seating == null || seat < 0 || seat >= seating.seats().size()
                 || sender.getVehicle() != this || seatOf(sender) != seat) {
             return "entrées pour un siège que le joueur n'occupe pas";
         }
         Seating.Seat declared = seating.seats().get(seat);
-        VehicleInput sanitized = input.sanitized(declared);
-        receivedInputs.put(seat, new ReceivedInput(sanitized, tickCount));
-        // ADR-163 D2 : les commandes tenues, sur la séquence des entrées de ce siège.
-        AssemblyVariables held = declared.bindings().isEmpty() ? null : variables();
-        if (held != null) {
-            logRefusals(held.input(seat, declared.bindings(), sanitized.flags(),
-                    "siège " + declared.name() + " (" + sender.getName().getString() + ")"));
+        QueuedInput queued = new QueuedInput(input.sanitized(declared),
+                "siège " + declared.name() + " (" + sender.getName().getString() + ")");
+        if (!seatInputs.computeIfAbsent(seat, key -> new SeatInputs()).queue.offer(sequence, queued)) {
+            return "séquence d'entrées qui ne croît pas";
         }
         return input.finite() ? null : "entrée non finie, comptée pour zéro (R-1110)";
     }
 
     /**
-     * {@return les entrées d'un siège, à ce tick : les dernières reçues, ou aucune s'il est libre ou que
+     * Chaque tick, au serveur (ADR-168 D3) : chaque siège applique une entrée de sa file, la plus ancienne ; une file
+     * vide garde celle d'avant. Les commandes tenues suivent, entrée par entrée, celles que la file a sautées pour
+     * rattraper comprises (ADR-163 D2).
+     */
+    private void tickInputs(Seating seating) {
+        for (Iterator<Map.Entry<Integer, SeatInputs>> it = seatInputs.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<Integer, SeatInputs> entry = it.next();
+            int seat = entry.getKey();
+            if (seat >= seating.seats().size()) {
+                it.remove();
+                continue;
+            }
+            SeatInputs inputs = entry.getValue();
+            dev.axion.seat.InputQueue.Step<QueuedInput> step = inputs.queue.next();
+            if (step == null) {
+                continue;
+            }
+            Seating.Seat declared = seating.seats().get(seat);
+            for (QueuedInput skipped : step.skipped()) {
+                hold(seat, declared, skipped);
+            }
+            hold(seat, declared, step.applied());
+            inputs.applied = step.applied().input();
+            inputs.appliedTick = tickCount;
+        }
+    }
+
+    /** ADR-163 D2 : les commandes tenues d'un siège, sur la séquence de ses entrées. */
+    private void hold(int seat, Seating.Seat declared, QueuedInput input) {
+        AssemblyVariables held = declared.bindings().isEmpty() ? null : variables();
+        if (held != null) {
+            logRefusals(held.input(seat, declared.bindings(), input.input().flags(), input.writer()));
+        }
+    }
+
+    /**
+     * {@return les entrées d'un siège, à ce tick : celles que sa file a appliquées, ou aucune s'il est libre ou que
      * rien n'arrive depuis {@code net.extrapolation_max_ms}} Les véhicules les liront (C-33).
      *
      * @param seat rang du siège
      */
     public VehicleInput seatInput(int seat) {
-        return inputSilent(seat) ? VehicleInput.NONE : receivedInputs.get(seat).input();
+        return inputSilent(seat) ? VehicleInput.NONE : seatInputs.get(seat).applied;
     }
 
-    /** {@return vrai si rien n'est arrivé de ce siège, ou plus rien depuis {@code net.extrapolation_max_ms}} */
+    /** {@return vrai si rien n'est appliqué à ce siège, ou plus rien depuis {@code net.extrapolation_max_ms}} */
     private boolean inputSilent(int seat) {
-        ReceivedInput received = receivedInputs.get(seat);
-        return received == null
-                || (tickCount - received.tick()) * MILLIS_PER_TICK > AxionEntities.inputTimeoutMillis();
+        SeatInputs inputs = seatInputs.get(seat);
+        return inputs == null || inputs.applied == null
+                || (tickCount - inputs.appliedTick) * MILLIS_PER_TICK > AxionEntities.inputTimeoutMillis();
+    }
+
+    /**
+     * {@return la séquence de la dernière entrée que le siège {@code driver} a appliquée (ADR-168 D3), -1 sans} La
+     * correction la rend au conducteur : ce qu'il a envoyé après, il le rejoue.
+     */
+    public long driverSequence() {
+        Seating seating = seating();
+        if (seating == null) {
+            return -1;
+        }
+        for (int seat = 0; seat < seating.seats().size(); seat++) {
+            if (seating.seats().get(seat).driver()) {
+                SeatInputs inputs = seatInputs.get(seat);
+                return inputs == null ? -1 : inputs.queue.lastApplied();
+            }
+        }
+        return -1;
     }
 
     /**
@@ -1140,8 +1267,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /**
      * Chaque tick, au serveur : un passager sans siège — arrivé avant que la definition ne soit compilée,
      * ou remonté de force dans une assembly pleine — reçoit le premier libre ; sans siège libre, il
-     * descend. Un occupant qui n'est plus passager libère le sien. Puis les variables ont leur tick
-     * ({@link #tickVariables}).
+     * descend. Un occupant qui n'est plus passager libère le sien. Puis chaque siège applique l'entrée de ce tick
+     * ({@link #tickInputs}), et les variables ont le leur ({@link #tickVariables}).
      */
     private void settlePassengers() {
         Seating seating = seating();
@@ -1182,6 +1309,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             // ADR-167 D9 : le joueur qui prend le volant reprend la conduite ; en sortant, il ne la rend pas au mod.
             modDrive = null;
         }
+        tickInputs(seating);
         tickVariables(seating);
     }
 
@@ -1380,7 +1508,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         int seat = occupancy.release(passenger.getId());
         if (seat != SeatOccupancy.FREE) {
             storeOccupancy(occupancy);
-            receivedInputs.remove(seat);
+            seatInputs.remove(seat);
         }
         exitRefusedUntil.remove(passenger.getId());
         forgetSeat(passenger);

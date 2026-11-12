@@ -2403,3 +2403,17 @@ rotation, gardée par l'entraînement, n'était pas restaurée.
 **Règle.** Pour exporter ou restaurer l'état d'un sous-système natif, partir de ce que son pas **lit** au début du
 sous-pas, pas de ce qu'il publie. Une divergence de rejeu se localise par une restauration « à vide » (l'état présent
 reposé : rien ne doit changer), puis par la comparaison tick par tick jusqu'au premier champ qui diffère.
+
+## 2026-11-12 | Aucune correction : un champ paresseux lu sans son accesseur
+
+**Ce qui s'est passé.** Le GameTest de la 6b ne reçoit aucune correction en 20 ticks, et `t411` échoue dans un autre
+lot : « les métriques du tick ne disent pas le joueur et ses 49 assemblies ».
+
+**Cause.** `AxionEntity.correctedDriver()` lisait le champ `wheelNodes`, que seule la méthode `wheelNodes()` calcule à
+la demande : vide tant que rien ne l'avait appelée, il faisait du véhicule une assembly sans roues. L'échec de `t411`
+en découlait : le test échoué n'avait pas atteint `quitter()`, ses deux joueurs simulés restaient connectés, et `t411`
+compte un seul joueur synchronisé.
+
+**Règle.** Dans `AxionEntity`, un champ qui a un accesseur du même nom (`wheelNodes`, et les autres caches de la
+definition) se lit par l'accesseur. Quand un test qui compte les joueurs échoue après un autre échec, chercher d'abord un
+`JoueurSimule` resté connecté par le test qui a échoué avant lui.

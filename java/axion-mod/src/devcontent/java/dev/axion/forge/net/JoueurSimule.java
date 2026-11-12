@@ -84,6 +84,8 @@ public final class JoueurSimule {
     private final RenderClock horloge;
     private final Map<Integer, Interpolation> interpolations = new HashMap<>();
     private final List<Recu> recus = new ArrayList<>();
+    /** Les corrections reçues (ADR-168 D4), dans l'ordre de leur arrivée. */
+    private final List<dev.axion.net.CorrectionMessage> corrections = new ArrayList<>();
     private final List<DefinitionRegistry> registres = new ArrayList<>();
     private final List<String> journal = new ArrayList<>();
     private ServerPlayer joueur;
@@ -196,8 +198,12 @@ public final class JoueurSimule {
                 byte[] trame = ChannelFrames.PlayToClient.decode(donnees).frame();
                 tramesRecues++;
                 octetsRecus += trame == null ? 0 : trame.length;
+                long avant = session.corrections();
                 byte[] acquittement = session.onPlayFrame(trame);
                 journal.addAll(session.drainJournal());
+                if (session.corrections() != avant) {
+                    corrections.add(session.lastCorrection());
+                }
                 // Déconnecté, le client lit encore ce qui l'attendait, mais n'envoie plus rien : la dernière trame
                 // du serveur peut précéder la fermeture dans le même tick (R-1690).
                 if (acquittement != null && canal.isOpen()) {
@@ -296,6 +302,13 @@ public final class JoueurSimule {
         List<Recu> lus = new ArrayList<>(recus);
         recus.clear();
         return lus;
+    }
+
+    /** {@return les corrections reçues depuis le dernier appel, retirées : celles du véhicule qu'il conduit} */
+    public List<dev.axion.net.CorrectionMessage> drainCorrections() {
+        List<dev.axion.net.CorrectionMessage> lues = new ArrayList<>(corrections);
+        corrections.clear();
+        return lues;
     }
 
     /** {@return les lignes du journal du client depuis le dernier appel, retirées} */

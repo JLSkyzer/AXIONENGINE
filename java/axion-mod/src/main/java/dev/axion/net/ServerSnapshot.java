@@ -1,6 +1,7 @@
 package dev.axion.net;
 
 import dev.axion.config.AxionConfig;
+import dev.axion.config.ConfigSchema;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -47,7 +48,7 @@ public final class ServerSnapshot {
      * @param det empreinte déterministe du serveur
      * @param compression compression des charges utiles réseau
      * @param requiredMods les addons que le serveur exige du client (ADR-165 D1)
-     * @return l'instantané
+     * @return l'instantané, {@code axion-server.toml} à ses défauts
      */
     public static ServerSnapshot build(
             AxionConfig config,
@@ -56,7 +57,8 @@ public final class ServerSnapshot {
             DetProfile det,
             NetCompression compression,
             List<RequiredMod> requiredMods) {
-        return build(config, registry, excluded, det, compression, requiredMods, List.of());
+        return build(config, AxionConfig.defaults(ConfigSchema.Scope.SERVER), registry, excluded, det, compression,
+                requiredMods, List.of());
     }
 
     /**
@@ -64,6 +66,7 @@ public final class ServerSnapshot {
      * (ADR-167 Q7).
      *
      * @param config configuration commune du serveur
+     * @param server sa configuration propre, {@code axion-server.toml}
      * @param registry registre qu'il envoie
      * @param excluded les entrées tenues hors du registre, à dire au journal
      * @param det son empreinte déterministe
@@ -74,6 +77,7 @@ public final class ServerSnapshot {
      */
     public static ServerSnapshot build(
             AxionConfig config,
+            AxionConfig server,
             RegistryContent registry,
             List<String> excluded,
             DetProfile det,
@@ -89,7 +93,7 @@ public final class ServerSnapshot {
             notes.add("registre réseau non construit : " + refused.getMessage()
                     + " ; les clients distants n'en recevront aucun");
         }
-        return new ServerSnapshot(ServerHandshake.of(config, registry, det, requiredMods, controllers), registry,
+        return new ServerSnapshot(ServerHandshake.of(config, server, registry, det, requiredMods, controllers), registry,
                 message, notes);
     }
 

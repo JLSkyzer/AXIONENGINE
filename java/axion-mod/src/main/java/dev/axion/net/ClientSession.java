@@ -57,6 +57,9 @@ public final class ClientSession {
     private final Queue<String> journal = new ConcurrentLinkedQueue<>();
     private volatile ServerHandshake server;
     private volatile ReplicationMode mode;
+    /** La dernière correction reçue du serveur (ADR-168 D4) : celle du véhicule que ce joueur conduit. */
+    private volatile CorrectionMessage lastCorrection;
+    private volatile long corrections;
 
     /**
      * @param compression compression des charges utiles réseau, ou {@code null} si le runtime natif de
@@ -159,12 +162,32 @@ public final class ClientSession {
             // Acquitté même refusé : le serveur y lit aussi les entrées à renvoyer en entier.
             return reply(snapshots.ack().encode());
         }
-        if (kind == MessageKinds.REGISTRY) {
+        if (kind == MessageKinds.CORRECTION) {
+            try {
+                lastCorrection = CorrectionMessage.decode(message);
+                corrections++;
+            } catch (MalformedPacketException error) {
+                journal.add(error.report("correction"));
+            }
+        } else if (kind == MessageKinds.REGISTRY) {
             applyRegistry(message, "registre en jeu");
         } else {
             journal.add(new MalformedPacketException("genre " + kind + " inattendu en jeu").report("jeu"));
         }
         return null;
+    }
+
+    /**
+     * {@return la dernière correction reçue du serveur (ADR-168 D4), {@code null} avant la première} Elle porte l'état
+     * du véhicule que ce joueur conduit, la séquence de sa dernière entrée appliquée, ses variables.
+     */
+    public CorrectionMessage lastCorrection() {
+        return lastCorrection;
+    }
+
+    /** {@return les corrections reçues depuis la connexion} */
+    public long corrections() {
+        return corrections;
     }
 
     /**

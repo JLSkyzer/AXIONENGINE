@@ -430,11 +430,16 @@ class LoginFlowTest {
         values.put("physics.gravity", -4.5);
         values.put("net.snapshot_rate_hz", 15L);
         values.put("net.interpolation_delay_ms", 250L);
-        values.put("net.prediction", false);
         values.put("deformation.enabled", true);
         AxionConfig config = new AxionConfig(ConfigSchema.Scope.COMMON, values, List.of());
+        // ADR-168 D8 : le handshake dit si le serveur permet la prédiction, non ce que vaut net.prediction chez lui.
+        Map<String, Object> propres = new HashMap<>(AxionConfig.defaults(ConfigSchema.Scope.SERVER).values());
+        propres.put("server.allow_client_prediction", false);
+        AxionConfig serveurPropre = new AxionConfig(ConfigSchema.Scope.SERVER, propres, List.of());
+        assertTrue(config.getBoolean("net.prediction"), "net.prediction reste vrai : lu à sa place, il se verrait");
         RegistryContent registre = serveur().instantane(VALIDEE).registry();
-        ServerSnapshot instantane = ServerSnapshot.build(config, registre, List.of(), VALIDEE, IDENTITE, List.of());
+        ServerSnapshot instantane = ServerSnapshot.build(config, serveurPropre, registre, List.of(), VALIDEE, IDENTITE,
+                List.of(), List.of());
 
         assertEquals(new ServerHandshake(NetProtocol.PROTOCOL_VERSION, 0.0333333f, 3, -4.5f, 15, 250, false, true,
                 ServerHandshake.DEFORM_QUANT_POLICY, registre.definitionsHash(), RegistryContent.EMPTY_DIGEST,

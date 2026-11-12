@@ -3800,7 +3800,12 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            - Preuve : export → import → export identique ; restaurer puis rejouer les mêmes entrées reste près de la
              course d'origine — l'écart se mesure et s'inscrit à l'ADR (rapier garde un état de contact qui ne se
              restaure pas : le bit près n'est pas promis), et deux rejeux d'une même restauration sont identiques.
-     - [ ] 6b — serveur : file d'entrées, une par tick, séquence appliquée ; `S2C_Correction` à chaque tick.
+     - [x] 6b — serveur : file d'entrées, une par tick, séquence appliquée ; `S2C_Correction` à chaque tick
+           (2026-11-12). File par siège (`seat.InputQueue`, deux en attente au plus, rattrapage aux plus récentes,
+           fronts gardés) ; export demandé pour le véhicule d'un joueur conducteur ; correction au seul conducteur à
+           chaque tick où son véhicule avance, variables en `f64`, dans le débit du joueur ; `axion-server.toml` lu
+           par Java (`AxionRuntime.serverConfig()`), le handshake porte `server.allow_client_prediction`. À mesurer en
+           6e : le coût des corrections envoyées à un client qui ne prédit pas (précisions 6b d'ADR-168).
      - [ ] 6c — client : monde prédit, tuiles du niveau client (découpage commun), proxies extrapolés, boucle prédite,
            historique de 64, réconciliation, lissage, désactivation, rendu à la pose prédite.
      - [ ] 6d — variables, paramètres et contrôleurs prédits, `VehicleControl.state()` au client, correspondances

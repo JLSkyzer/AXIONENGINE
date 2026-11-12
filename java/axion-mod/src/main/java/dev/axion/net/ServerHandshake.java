@@ -1,6 +1,7 @@
 package dev.axion.net;
 
 import dev.axion.config.AxionConfig;
+import dev.axion.config.ConfigSchema;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,7 +19,7 @@ import java.util.List;
  * @param gravity {@code physics.gravity}, en m/s²
  * @param snapshotRateHz {@code net.snapshot_rate_hz}
  * @param interpolationDelayMs {@code net.interpolation_delay_ms}
- * @param predictionEnabled {@code net.prediction}
+ * @param predictionEnabled {@code server.allow_client_prediction} : le serveur permet la prédiction (ADR-168 D8)
  * @param deformationEnabled {@code deformation.enabled}
  * @param deformQuantPolicy politique de quantification de la déformation (R-1641) ; 0 jusqu'en M6
  * @param definitionsHash empreinte des definitions et des groupes de collision (ADR-150 D5)
@@ -77,7 +78,7 @@ public record ServerHandshake(
      * @param gravity {@code physics.gravity}
      * @param snapshotRateHz {@code net.snapshot_rate_hz}
      * @param interpolationDelayMs {@code net.interpolation_delay_ms}
-     * @param predictionEnabled {@code net.prediction}
+     * @param predictionEnabled {@code server.allow_client_prediction} (ADR-168 D8)
      * @param deformationEnabled {@code deformation.enabled}
      * @param deformQuantPolicy politique de quantification de la déformation
      * @param definitionsHash empreinte des definitions
@@ -134,25 +135,26 @@ public record ServerHandshake(
      * @param registry registre qu'il envoie
      * @param det son empreinte déterministe
      * @param requiredMods les addons qu'il exige du client (ADR-165 D1)
-     * @return le handshake, qui n'annonce aucun contrôleur
+     * @return le handshake, qui n'annonce aucun contrôleur ; {@code axion-server.toml} à ses défauts
      */
     public static ServerHandshake of(AxionConfig config, RegistryContent registry, DetProfile det,
             List<RequiredMod> requiredMods) {
-        return of(config, registry, det, requiredMods, List.of());
+        return of(config, AxionConfig.defaults(ConfigSchema.Scope.SERVER), registry, det, requiredMods, List.of());
     }
 
     /**
      * Le handshake d'un serveur, avec les contrôleurs que ses definitions nomment (ADR-167 Q7).
      *
      * @param config configuration commune du serveur
+     * @param server sa configuration propre, {@code axion-server.toml}
      * @param registry registre qu'il envoie
      * @param det son empreinte déterministe
      * @param requiredMods les addons qu'il exige du client (ADR-165 D1)
      * @param controllers les contrôleurs que ses definitions nomment, triés
      * @return le handshake
      */
-    public static ServerHandshake of(AxionConfig config, RegistryContent registry, DetProfile det,
-            List<RequiredMod> requiredMods, List<String> controllers) {
+    public static ServerHandshake of(AxionConfig config, AxionConfig server, RegistryContent registry,
+            DetProfile det, List<RequiredMod> requiredMods, List<String> controllers) {
         return new ServerHandshake(
                 NetProtocol.PROTOCOL_VERSION,
                 (float) config.getFloat("sim.fixed_dt"),
@@ -160,7 +162,7 @@ public record ServerHandshake(
                 (float) config.getFloat("physics.gravity"),
                 (int) config.getInt("net.snapshot_rate_hz"),
                 (int) config.getInt("net.interpolation_delay_ms"),
-                config.getBoolean("net.prediction"),
+                server.getBoolean("server.allow_client_prediction"),
                 config.getBoolean("deformation.enabled"),
                 DEFORM_QUANT_POLICY,
                 registry.definitionsHash(),

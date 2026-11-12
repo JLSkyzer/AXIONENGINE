@@ -6,6 +6,8 @@ import dev.axion.definition.Definition;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.diag.EntityMetrics;
 import dev.axion.net.AnimationLayers;
+import dev.axion.net.CorrectionMessage;
+import dev.axion.physics.AssemblyStateReport;
 import dev.axion.physics.BodyBounds;
 import dev.axion.physics.BodyLedger;
 import dev.axion.physics.BodyState;
@@ -34,6 +36,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
@@ -156,6 +159,18 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      */
     private final List<AxionEntity> awaiting = new ArrayList<>();
 
+    /** {@code server.allow_client_prediction} : sans elle, aucun état ne s'exporte, aucune correction ne part. */
+    private final boolean predictionAllowed;
+
+    /** Ce qui envoie la correction d'un conducteur (ADR-168 D4) : le canal, en fin de tick. */
+    private final BiConsumer<ServerPlayer, byte[]> corrections;
+
+    /** Les assemblies dont le natif exporte l'état complet, à chaque collecte (ADR-168 D1). */
+    private final Set<Integer> exporting = new HashSet<>();
+
+    /** Les véhicules qui ont avancé au dernier tick : le natif rapporte le motopropulseur des seuls éveillés. */
+    private final Set<Integer> advanced = new HashSet<>();
+
     private record Pending(
             boolean create,
             int index,
@@ -178,6 +193,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      * @param loadBudgetNs {@code persistence.max_load_ns_per_tick}, en nanosecondes
      * @param lastSubmitNs la durée de la dernière soumission native
      * @param controllerLimits le budget des contrôleurs de véhicule ({@code [vehicle]}, ADR-167 D9)
+     * @param predictionAllowed {@code server.allow_client_prediction} (ADR-168 D8)
+     * @param corrections ce qui envoie la correction d'un conducteur (ADR-168 D4)
      */
     public AssemblyRuntime(
             Supplier<DefinitionRegistry> definitions,
@@ -185,13 +202,17 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             boolean joints,
             long loadBudgetNs,
             LongSupplier lastSubmitNs,
-            dev.axion.entity.ControllerRunner.Limits controllerLimits) {
+            dev.axion.entity.ControllerRunner.Limits controllerLimits,
+            boolean predictionAllowed,
+            BiConsumer<ServerPlayer, byte[]> corrections) {
         this.definitions = definitions;
         this.compiled = compiled;
         this.joints = joints;
         this.loadBudgetNs = loadBudgetNs;
         this.lastSubmitNs = lastSubmitNs;
         this.controllers = new dev.axion.entity.ControllerRunner(controllerLimits, System::nanoTime);
+        this.predictionAllowed = predictionAllowed;
+        this.corrections = corrections;
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -410,13 +431,35 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             driveSent.remove(cmd.index());
             parametersSent.remove(cmd.index());
             torquesSent.remove(cmd.index());
+            // Le natif oublie l'export d'une assembly retirée ; une assembly créée part sans.
+            exporting.remove(cmd.index());
         }
         animate(stream);
         // ADR-167 D9 : les contrôleurs lisent l'état du début du tick, avant que les entrées partent au natif.
         control(stream);
         drive(stream);
         tune(stream, tick);
+        export(stream);
         return stream;
+    }
+
+    /**
+     * Demande au natif l'état complet de chaque véhicule qu'un joueur conduit (ADR-168 D1, D4), tant que le serveur
+     * permet la prédiction : sa correction en part à chaque tick. Le conducteur parti, l'export cesse.
+     */
+    private void export(SimCommandStream stream) {
+        ledger.forEachBody((index, assembly) -> {
+            boolean wanted = predictionAllowed && assembly.correctedDriver() != null;
+            if (wanted == exporting.contains(index)) {
+                return;
+            }
+            stream.setStateExport(index, GENERATION, wanted);
+            if (wanted) {
+                exporting.add(index);
+            } else {
+                exporting.remove(index);
+            }
+        });
     }
 
     /** {@return le coût mesuré de chaque contrôleur appelé pendant la session, et son état (ADR-167 D10)} */
@@ -557,6 +600,26 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         }
     }
 
+    /**
+     * L'état complet de chaque véhicule exporté (ADR-168 D4) : la correction de son conducteur, à chaque tick où il a
+     * avancé. Endormi, il ne change plus : la dernière correction le dit déjà.
+     */
+    @Override
+    public void applyAssemblyStates(long tick, List<AssemblyStateReport> exported) {
+        AuthoritativeThread.require();
+        for (AssemblyStateReport report : exported) {
+            if (report.handleGeneration() != GENERATION || !advanced.contains(report.handleIndex())) {
+                continue;
+            }
+            AxionEntity assembly = ledger.entity(report.handleIndex());
+            ServerPlayer driver = assembly == null ? null : assembly.correctedDriver();
+            if (driver != null) {
+                corrections.accept(driver, assembly.correction(tick,
+                        List.of(new CorrectionMessage.State(report.handleIndex(), report.state()))).encode());
+            }
+        }
+    }
+
     @Override
     public void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds, List<JointState> joints,
             List<WheelReport> wheels, List<VehicleReport> vehicles) {
@@ -579,10 +642,12 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             }
         }
         // ADR-163 D1 : le motopropulseur de chaque véhicule éveillé ; un véhicule endormi garde le sien.
+        advanced.clear();
         for (VehicleReport vehicle : vehicles) {
             AxionEntity entity = vehicle.handleGeneration() == GENERATION ? ledger.entity(vehicle.handleIndex()) : null;
             if (entity != null) {
                 entity.setVehicleState(vehicle);
+                advanced.add(vehicle.handleIndex());
             }
         }
         // ADR-120 : l'emprise de rang i est celle de l'état de rang i. Sans emprises (natif
@@ -698,5 +763,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         driveSent.clear();
         torquesSent.clear();
         parametersSent.clear();
+        exporting.clear();
+        advanced.clear();
     }
 }

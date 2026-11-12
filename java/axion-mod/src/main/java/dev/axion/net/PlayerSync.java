@@ -60,7 +60,7 @@ public final class PlayerSync {
     private final List<String> journal = new ArrayList<>();
 
     /**
-     * Octets de snapshot envoyés à chacun des vingt derniers ticks, en anneau : la consommation du budget
+     * Octets de snapshot et de correction envoyés à chacun des vingt derniers ticks, en anneau : la consommation du budget
      * « débit réseau par joueur » (25.2) est leur somme.
      */
     private final long[] lastSecond = new long[SnapshotSender.TICKS_PER_SECOND];
@@ -68,6 +68,12 @@ public final class PlayerSync {
     private long lastSecondBytes;
     private long lastTickBytes;
     private long lastTickDelayed;
+
+    /** La correction de ce tick, en attente de son envoi (ADR-168 D4). */
+    private byte[] correction;
+    private long correctionBytes;
+    private long correctionsSent;
+    private long correctionsHeld;
 
     /**
      * Une synchronisation sans limitation des trames du client.
@@ -115,6 +121,53 @@ public final class PlayerSync {
     }
 
     /**
+     * Pose la correction du véhicule que ce joueur conduit, calculée à ce tick (ADR-168 D4) : elle part en fin de tick,
+     * avant le snapshot ({@link #correctionFrames}).
+     *
+     * @param message le message {@code S2C_Correction}, genre compris
+     */
+    public void correct(byte[] message) {
+        correction = message;
+    }
+
+    /** {@return vrai si une correction attend son envoi} */
+    public boolean hasCorrection() {
+        return correction != null;
+    }
+
+    /**
+     * Les trames de la correction en attente, qui compte dans le débit du joueur (21.10). Sans débit, elle ne part pas :
+     * la suivante, plus fraîche, la remplace.
+     *
+     * @param sequence numéro du message pour sa fragmentation, positif ou nul
+     * @return ses trames ; vide si aucune n'attend, ou si le débit la retient
+     */
+    public List<byte[]> correctionFrames(int sequence) {
+        byte[] message = correction;
+        correction = null;
+        if (message == null) {
+            return List.of();
+        }
+        if (!sender.spend(message.length)) {
+            correctionsHeld++;
+            return List.of();
+        }
+        correctionsSent++;
+        correctionBytes += message.length;
+        return Fragments.split(message, sequence);
+    }
+
+    /** {@return les corrections parties depuis la connexion} */
+    public long correctionsSent() {
+        return correctionsSent;
+    }
+
+    /** {@return les corrections que le débit a retenues depuis la connexion} */
+    public long correctionsHeld() {
+        return correctionsHeld;
+    }
+
+    /**
      * Bâtit les trames du snapshot de ce tick.
      *
      * @param serverTick tick du serveur
@@ -138,7 +191,8 @@ public final class PlayerSync {
         long delayedBefore = sender.delayedEntries();
         byte[] message = sender.tick(serverTick, candidates);
         lastTickDelayed = sender.delayedEntries() - delayedBefore;
-        lastTickBytes = message == null ? 0 : message.length;
+        lastTickBytes = (message == null ? 0 : message.length) + correctionBytes;
+        correctionBytes = 0;
         slot = (slot + 1) % lastSecond.length;
         lastSecondBytes += lastTickBytes - lastSecond[slot];
         lastSecond[slot] = lastTickBytes;
@@ -169,14 +223,14 @@ public final class PlayerSync {
         return lastTickLimited;
     }
 
-    /** {@return les octets du snapshot du dernier tick, en-têtes de fragments exclus} */
+    /** {@return les octets du snapshot et de la correction du dernier tick, en-têtes de fragments exclus} */
     public long lastTickBytes() {
         return lastTickBytes;
     }
 
     /**
-     * {@return les octets de snapshot envoyés sur les vingt derniers ticks : la consommation du budget
-     * {@code net.max_bytes_per_second_per_player}}
+     * {@return les octets de snapshot et de correction envoyés sur les vingt derniers ticks : la consommation du
+     * budget {@code net.max_bytes_per_second_per_player}}
      */
     public long bytesLastSecond() {
         return lastSecondBytes;

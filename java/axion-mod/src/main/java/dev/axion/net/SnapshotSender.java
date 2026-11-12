@@ -108,6 +108,22 @@ public final class SnapshotSender {
         this.tokens = burst;
     }
 
+    /**
+     * Prélève sur le débit de ce joueur un message qui n'est pas un snapshot — la correction du conducteur, qui part
+     * avant (ADR-168 D4). Il passe tant qu'il reste du débit, quitte à creuser le seau comme la première entrée d'un
+     * snapshot ; sinon il ne part pas. Ce qu'il prend manque au snapshot qui le suit.
+     *
+     * @param bytes sa taille, en octets
+     * @return vrai s'il part
+     */
+    public boolean spend(int bytes) {
+        if (tokens <= 0) {
+            return false;
+        }
+        tokens -= bytes;
+        return true;
+    }
+
     /** Ce que l'émetteur sait d'une assembly. */
     private static final class Track {
         /** Entrées envoyées, de la plus ancienne à la plus récente. */
