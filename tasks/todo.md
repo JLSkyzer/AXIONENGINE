@@ -3807,10 +3807,22 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            par Java (`AxionRuntime.serverConfig()`), le handshake porte `server.allow_client_prediction`. À mesurer en
            6e : le coût des corrections envoyées à un client qui ne prédit pas (précisions 6b d'ADR-168).
      - [ ] 6c — client : monde prédit, tuiles du niveau client (découpage commun), proxies extrapolés, boucle prédite,
-           historique de 64, réconciliation, lissage, désactivation, rendu à la pose prédite.
+           historique de 64, réconciliation, lissage, désactivation, rendu à la pose prédite. Killian, 2026-11-13 :
+           T-415 et T-416 par un essai à deux processus (serveur dédié + vrai client, latence injectée), le natif en
+           Rust (deux mondes), la boucle Java en tests unitaires ; une connexion en mémoire ne prédit pas (un contexte
+           natif par processus, R-450). Étapes :
+           - [ ] A : le monde prédit du client distant et son cycle de vie — table des matériaux et familles de pneus
+                 tirées du registre reçu, véhicule créé à la première correction et restauré, tuiles du niveau du
+                 client par le découpage commun (`ForgeWorldCollisionSource` sur un `Level`).
+           - [ ] B : la boucle prédite — une entrée par tick appliquée au monde prédit, historique de 64, latence
+                 mesurée par l'acquittement, réconciliation (restauration, rejeu sous
+                 `net.prediction_replay_budget_ns`, défaut mesuré au banc), désactivation (D8).
+           - [ ] C : le rendu à la pose prédite, lissage de 200 ms et téléportation, proxies extrapolés des autres
+                 assemblies, recréation sur `IRRECONCILABLE`.
      - [ ] 6d — variables, paramètres et contrôleurs prédits, `VehicleControl.state()` au client, correspondances
            bloc → matériau dans le registre.
-     - [ ] 6e — T-415..T-417 sous latence injectée, défauts mesurés (`net.prediction_replay_budget_ns`,
+     - [ ] 6e — T-415..T-417 sous latence injectée (essai à deux processus, T-417 en GameTest), défauts mesurés
+           (`net.prediction_replay_budget_ns`,
            `net.prediction_max_corrections`), CDC (21.3, 21.4, 21.8, A.3), guide réseau, fusion.
   7. Le reste des capacités de M5 : caméra de véhicule (CAP-10), API (CAP-11), occupants (CAP-13), joueurs portés
      (CAP-14), énergie et démarrage (CAP-12), pneus et météo (CAP-20), rechargement à chaud (CAP-33), commandes
