@@ -3752,7 +3752,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            bouton « insérer le mannequin sur ce siège » de l'addon Blender en **M9** (C-75). Demander avant
            d'ouvrir Blender.
      - [x] 5c — `VehicleController`, `VehicleControl`, couple par roue (R-1082), paramètres d'addon, coût mesuré.
-           Reste Q7 (empreinte des contrôleurs dans le handshake), posée à Killian.
+           Q7 tranchée et mise en œuvre le 2026-11-12.
            **Q6 tranchée par Killian le 2026-11-12** : le paramètre d'un addon existe sur un véhicule dès qu'un
            contrôleur du même mod y est attaché (par la fiche ou par l'API), avec la base de son enregistrement.
            Rien n'est publié depuis la 5a (aucun tag) : protocole 8, descripteur 6 et persistance 5 s'étendent sans
@@ -3770,9 +3770,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  Au client, `vehicle().state()` attend la prédiction (tranche 6) : le noter à la tranche 6.
            - [x] D : sauvegarde (`axion:ctrls`), réseau (contrôleurs attachés dans `FLAG_PARAMETERS`), addon d'un
                  contrôleur exigé du client ; `/axion params` montre les contrôleurs, clés de traduction des
-                 paramètres (`Parameters.translationKey`). **Q7 en attente de Killian** : la forme de « registre des
-                 contrôleurs dans l'empreinte du handshake » (CAP-40) — proposé, la liste des contrôleurs nommés dans
-                 `S2C_Handshake`, un client à qui l'un manque refusé en les nommant (ADR-167, Q7).
+                 paramètres (`Parameters.translationKey`). **Q7 tranchée par Killian le 2026-11-12, comme proposé** :
+                 la liste des contrôleurs nommés dans `S2C_Handshake`, un client à qui l'un manque refusé en les
+                 nommant ; prouvé de bout en bout (`runServer` sous `AXION_ESSAI_CONTROLEUR_EXIGE`,
+                 `runEssaiClientAddons`).
            - [x] E : exemple compilé (témoin : limiteur de vitesse `example_addon:speed_limiter` et son paramètre
                  `max_speed`, GameTest avec contre-épreuve), guide « Régler » section 6, CDC (23.2, 23.3, R-1770,
                  23.4), précisions d'ADR-167, film `runFilmLimiteur` envoyé (8,6 m/s contre 21,1 m/s), fusion.

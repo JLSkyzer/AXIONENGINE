@@ -81,6 +81,22 @@ public record RequiredMod(String modId, String version) {
      * @param versions la version que le client a de chacun, dans le même ordre ; vide s'il ne l'a pas
      */
     public static List<Mismatch> mismatches(List<RequiredMod> required, List<String> versions) {
+        return mismatchesOf(required, versions);
+    }
+
+    /**
+     * {@return les contrôleurs annoncés que le client dit ne pas enregistrer, dans l'ordre du serveur (ADR-167 Q7)}
+     * Un nom que le serveur n'a pas annoncé est ignoré : seul ce qu'il exige compte.
+     *
+     * @param announced les contrôleurs que le serveur annonce
+     * @param missing ceux que le client dit lui manquer
+     */
+    public static List<String> missingControllers(List<String> announced, List<String> missing) {
+        java.util.Set<String> absent = new java.util.HashSet<>(missing);
+        return announced.stream().filter(absent::contains).toList();
+    }
+
+    private static List<Mismatch> mismatchesOf(List<RequiredMod> required, List<String> versions) {
         List<Mismatch> out = new ArrayList<>();
         for (int i = 0; i < required.size(); i++) {
             RequiredMod mod = required.get(i);

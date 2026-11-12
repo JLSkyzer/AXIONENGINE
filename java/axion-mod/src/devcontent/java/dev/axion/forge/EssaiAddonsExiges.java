@@ -31,6 +31,9 @@ import org.slf4j.LoggerFactory;
  *   <li>Le serveur ({@code runServer}), sous la variable d'environnement
  *       {@code AXION_ESSAI_ADDON_EXIGE=<modId>@<version>}, que Gradle transmet au jeu, ajoute cet addon à ceux qu'il
  *       exige, puis s'arrête seul au bout de {@link #DUREE_SERVEUR_S} secondes.</li>
+ *   <li>Sous {@code AXION_ESSAI_CONTROLEUR_EXIGE=1} (ADR-167 Q7), le serveur enregistre seul un contrôleur de
+ *       véhicule et une fiche qui le nomme ({@link ControleursDeTest}) : le client, qui ne l'a pas, est refusé en le
+ *       nommant. Le serveur s'arrête de même.</li>
  *   <li>Le client, sous {@code -Daxion.essai.deconnexion=true}, se connecte au serveur depuis l'écran titre, par le
  *       chemin de l'écran multijoueur ({@code --quickPlayMultiplayer} ouvre une connexion que Forge traite en vanilla,
  *       constaté le 2026-11-11), écrit au journal le texte de l'écran de déconnexion, tel que le joueur le lit, puis
@@ -87,7 +90,7 @@ public final class EssaiAddonsExiges {
 
         @SubscribeEvent
         public static void tick(TickEvent.ServerTickEvent event) {
-            if (EXIGE == null || event.phase != TickEvent.Phase.END) {
+            if ((EXIGE == null && ControleursDeTest.ESSAI_SERVEUR_SEUL == null) || event.phase != TickEvent.Phase.END) {
                 return;
             }
             MinecraftServer serveur = event.getServer();

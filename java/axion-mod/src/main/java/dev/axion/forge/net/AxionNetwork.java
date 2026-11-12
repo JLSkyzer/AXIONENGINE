@@ -144,7 +144,8 @@ public final class AxionNetwork {
 
     /**
      * ADR-165 D3 : à la réponse du client au handshake, refuse le client à qui manque un addon que le serveur exige,
-     * ou qui l'a dans une autre version. Le message nomme chaque addon en cause ; le serveur journalise le refus.
+     * ou qui l'a dans une autre version ; ADR-167 Q7 : ou à qui manque un contrôleur de véhicule que les definitions
+     * du serveur nomment. Le message nomme chaque addon et chaque contrôleur en cause ; le serveur journalise le refus.
      */
     private static void refuseMissingAddons(Connection connection, ServerPeer peer) {
         ClientHandshake client = peer.client().orElse(null);
@@ -155,15 +156,17 @@ public final class AxionNetwork {
         }
         List<RequiredMod.Mismatch> mismatches =
                 RequiredMod.mismatches(snapshot.handshake().requiredMods(), client.versions());
-        if (mismatches.isEmpty()) {
+        List<String> controllers = RequiredMod.missingControllers(snapshot.handshake().controllers(),
+                client.missingControllers());
+        if (mismatches.isEmpty() && controllers.isEmpty()) {
             return;
         }
         connection.channel().attr(REFUSED).set(Boolean.TRUE);
-        Component reason = RequiredAddons.refusal(mismatches);
+        Component reason = RequiredAddons.refusal(mismatches, controllers);
         String player = connection.getPacketListener() instanceof ServerLoginPacketListenerImpl login
                 ? login.getUserName() : connection.getRemoteAddress().toString();
-        LOGGER.warn("AXION : connexion de {} refusée, addons manquants ou d'une autre version : {}", player,
-                RequiredAddons.describe(mismatches));
+        LOGGER.warn("AXION : connexion de {} refusée, addons ou contrôleurs manquants : {}", player,
+                RequiredAddons.describe(mismatches, controllers));
         // Le paquet de déconnexion de la phase de connexion, puis plus rien ne se lit : aucune autre réponse ne fait
         // avancer la connexion. Le client ferme de lui-même en recevant le paquet ; le serveur ne ferme qu'après un
         // délai. Fermer aussitôt laissait des réponses non lues dans le tampon du serveur, et Windows coupait alors

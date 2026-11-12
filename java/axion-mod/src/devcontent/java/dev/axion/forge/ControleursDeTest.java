@@ -46,6 +46,13 @@ public final class ControleursDeTest {
         throw new IllegalStateException("contrôleur d'essai cassé exprès");
     };
 
+    /**
+     * ADR-167 Q7, essai de bout en bout ({@link EssaiAddonsExiges}) : sous cette variable d'environnement, le serveur
+     * enregistre seul un contrôleur, et une fiche qui le nomme ; le client de l'essai, qui ne l'a pas, doit être refusé
+     * en le nommant.
+     */
+    static final String ESSAI_SERVEUR_SEUL = System.getenv("AXION_ESSAI_CONTROLEUR_EXIGE");
+
     /** Fait sortir le couple du moteur de ses bornes : sa sortie est écartée à chaque tick. */
     static final VehicleController EXCESSIF = (vue, sortie) ->
             sortie.modify(Parameters.ENGINE_TORQUE, Modifier.Operation.MULTIPLY_TOTAL, -2);
@@ -67,6 +74,14 @@ public final class ControleursDeTest {
             registrar.registerController("test/casse", CASSE);
             registrar.registerController("test/excessif", EXCESSIF);
             registrar.registerParameter("test/gain", "", 1.0, new Parameters.Range(0, true, 10, true));
+            if (ESSAI_SERVEUR_SEUL != null) {
+                registrar.registerController("test/serveur_seul", PROPULSION);
+                registrar.register("test/vehicule_serveur_seul",
+                        dev.axion.api.content.DefinitionBuilder.vehicle("axion:models/example/buggy.glb")
+                                .wheel("roue_avant_gauche", roue -> roue.radius(0.3))
+                                .vehicle(vehicule -> vehicule.controllers("axion:test/serveur_seul"))
+                                .build());
+            }
         });
     }
 }

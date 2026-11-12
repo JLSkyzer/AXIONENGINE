@@ -26,6 +26,8 @@ import java.util.List;
  * @param materialsHash empreinte des matériaux physiques
  * @param det empreinte de configuration déterministe du serveur (5.12bis)
  * @param requiredMods les addons que le serveur exige du client, triés par identifiant (ADR-165 D1)
+ * @param controllers les contrôleurs de véhicule que les definitions du serveur nomment, triés : le client doit les
+ *     enregistrer (ADR-167 D8, Q7)
  */
 public record ServerHandshake(
         int protocolVersion,
@@ -41,11 +43,81 @@ public record ServerHandshake(
         long damageSourcesHash,
         long materialsHash,
         DetProfile det,
-        List<RequiredMod> requiredMods) {
+        List<RequiredMod> requiredMods,
+        List<String> controllers) {
 
-    /** Garde une copie figée de la liste. */
+    /** Contrôleurs annoncés, au plus : bien au-delà de ce que des definitions en nomment. */
+    public static final int MAX_CONTROLLERS = 4096;
+
+    /** Octets du texte d'un contrôleur, au plus : un identifiant de 256 caractères (ADR-167 D3). */
+    public static final int MAX_CONTROLLER_BYTES = 3 * 256;
+
+    /** La forme de l'identifiant d'un contrôleur. */
+    private static final java.util.regex.Pattern CONTROLLER = java.util.regex.Pattern.compile(
+            "[a-z0-9_.-]+:[a-z0-9/._-]+");
+
+    /**
+     * Garde des copies figées des listes.
+     *
+     * @throws IllegalArgumentException si les contrôleurs ne sont pas triés sans doublon, sont trop nombreux, ou si
+     *     l'un est mal formé
+     */
     public ServerHandshake {
         requiredMods = List.copyOf(requiredMods);
+        controllers = List.copyOf(controllers);
+        checkControllers(controllers, true);
+    }
+
+    /**
+     * Un handshake qui n'annonce aucun contrôleur.
+     *
+     * @param protocolVersion {@code protocol_version}
+     * @param fixedDt {@code sim.fixed_dt}
+     * @param maxSubsteps {@code sim.max_substeps}
+     * @param gravity {@code physics.gravity}
+     * @param snapshotRateHz {@code net.snapshot_rate_hz}
+     * @param interpolationDelayMs {@code net.interpolation_delay_ms}
+     * @param predictionEnabled {@code net.prediction}
+     * @param deformationEnabled {@code deformation.enabled}
+     * @param deformQuantPolicy politique de quantification de la déformation
+     * @param definitionsHash empreinte des definitions
+     * @param damageSourcesHash empreinte des sources de dégâts
+     * @param materialsHash empreinte des matériaux physiques
+     * @param det empreinte déterministe du serveur
+     * @param requiredMods les addons exigés
+     */
+    public ServerHandshake(int protocolVersion, float fixedDt, int maxSubsteps, float gravity, int snapshotRateHz,
+            int interpolationDelayMs, boolean predictionEnabled, boolean deformationEnabled, int deformQuantPolicy,
+            long definitionsHash, long damageSourcesHash, long materialsHash, DetProfile det,
+            List<RequiredMod> requiredMods) {
+        this(protocolVersion, fixedDt, maxSubsteps, gravity, snapshotRateHz, interpolationDelayMs, predictionEnabled,
+                deformationEnabled, deformQuantPolicy, definitionsHash, damageSourcesHash, materialsHash, det,
+                requiredMods, List.of());
+    }
+
+    /**
+     * Vérifie une liste de contrôleurs : au plus {@link #MAX_CONTROLLERS}, chacun bien formé et d'au plus
+     * {@link #MAX_CONTROLLER_BYTES} octets ; triée sans doublon si demandé.
+     *
+     * @param controllers les identifiants
+     * @param sorted vrai si la liste doit être triée, sans doublon
+     * @throws IllegalArgumentException sinon
+     */
+    static void checkControllers(List<String> controllers, boolean sorted) {
+        if (controllers.size() > MAX_CONTROLLERS) {
+            throw new IllegalArgumentException(controllers.size() + " contrôleurs, " + MAX_CONTROLLERS + " au plus");
+        }
+        for (int i = 0; i < controllers.size(); i++) {
+            String controller = controllers.get(i);
+            if (controller.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_CONTROLLER_BYTES
+                    || !CONTROLLER.matcher(controller).matches()) {
+                throw new IllegalArgumentException("contrôleur « " + controller + " » mal formé");
+            }
+            if (sorted && i > 0 && controllers.get(i - 1).compareTo(controller) >= 0) {
+                throw new IllegalArgumentException("contrôleurs non triés ou en double : " + controllers.get(i - 1)
+                        + ", " + controller);
+            }
+        }
     }
 
     /**
@@ -62,10 +134,25 @@ public record ServerHandshake(
      * @param registry registre qu'il envoie
      * @param det son empreinte déterministe
      * @param requiredMods les addons qu'il exige du client (ADR-165 D1)
+     * @return le handshake, qui n'annonce aucun contrôleur
+     */
+    public static ServerHandshake of(AxionConfig config, RegistryContent registry, DetProfile det,
+            List<RequiredMod> requiredMods) {
+        return of(config, registry, det, requiredMods, List.of());
+    }
+
+    /**
+     * Le handshake d'un serveur, avec les contrôleurs que ses definitions nomment (ADR-167 Q7).
+     *
+     * @param config configuration commune du serveur
+     * @param registry registre qu'il envoie
+     * @param det son empreinte déterministe
+     * @param requiredMods les addons qu'il exige du client (ADR-165 D1)
+     * @param controllers les contrôleurs que ses definitions nomment, triés
      * @return le handshake
      */
-    public static ServerHandshake of(
-            AxionConfig config, RegistryContent registry, DetProfile det, List<RequiredMod> requiredMods) {
+    public static ServerHandshake of(AxionConfig config, RegistryContent registry, DetProfile det,
+            List<RequiredMod> requiredMods, List<String> controllers) {
         return new ServerHandshake(
                 NetProtocol.PROTOCOL_VERSION,
                 (float) config.getFloat("sim.fixed_dt"),
@@ -81,7 +168,8 @@ public record ServerHandshake(
                 RegistryContent.EMPTY_DIGEST,
                 registry.materialsHash(),
                 det,
-                requiredMods);
+                requiredMods,
+                controllers);
     }
 
     /** {@return le message, genre compris} */
@@ -106,6 +194,11 @@ public record ServerHandshake(
                 .u16(requiredMods.size());
         for (RequiredMod mod : requiredMods) {
             writer.utf8(mod.modId()).utf8(mod.version());
+        }
+        // ADR-167 Q7 : les contrôleurs que les definitions nomment, que le client doit enregistrer.
+        writer.u16(controllers.size());
+        for (String controller : controllers) {
+            writer.utf8(controller);
         }
         return writer.toByteArray();
     }
@@ -165,9 +258,32 @@ public record ServerHandshake(
                 throw new MalformedPacketException("addon exigé invalide : " + invalid.getMessage());
             }
         }
+        List<String> controllers = readControllers(reader);
         reader.expectEnd();
-        return new ServerHandshake(protocol, fixedDt, maxSubsteps, gravity, rate, delay, prediction,
-                deformation, quantPolicy, definitions, damageSources, materials,
-                new DetProfile(profile, kernel, inMatrix), required);
+        try {
+            return new ServerHandshake(protocol, fixedDt, maxSubsteps, gravity, rate, delay, prediction,
+                    deformation, quantPolicy, definitions, damageSources, materials,
+                    new DetProfile(profile, kernel, inMatrix), required, controllers);
+        } catch (IllegalArgumentException invalid) {
+            throw new MalformedPacketException("contrôleurs annoncés : " + invalid.getMessage());
+        }
+    }
+
+    /**
+     * {@return une liste de contrôleurs lue du fil : un compte, puis chaque identifiant}
+     *
+     * @param reader le lecteur
+     * @throws MalformedPacketException si le compte dépasse {@link #MAX_CONTROLLERS} ou qu'un texte déborde
+     */
+    static List<String> readControllers(WireReader reader) throws MalformedPacketException {
+        int count = reader.u16();
+        if (count > MAX_CONTROLLERS) {
+            throw new MalformedPacketException(count + " contrôleurs, " + MAX_CONTROLLERS + " au plus");
+        }
+        List<String> controllers = new ArrayList<>(Math.min(count, reader.remaining()));
+        for (int i = 0; i < count; i++) {
+            controllers.add(reader.utf8(MAX_CONTROLLER_BYTES));
+        }
+        return controllers;
     }
 }

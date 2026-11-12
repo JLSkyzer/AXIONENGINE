@@ -54,9 +54,28 @@ class RequiredAddonsTest {
                         .getAsJsonObject();
             }
             for (String cle : List.of("axion.connection.required_addons", "axion.connection.addon_missing",
-                    "axion.connection.addon_version")) {
+                    "axion.connection.addon_version", "axion.connection.required_controllers",
+                    "axion.connection.controller_missing")) {
                 assertTrue(traductions.has(cle), langue + " : " + cle);
             }
         }
+    }
+
+    @Test
+    @DisplayName("ADR-167 Q7 : le refus nomme chaque contrôleur manquant, seul ou après les addons")
+    void leRefusNommeLesControleurs() {
+        Component seuls = RequiredAddons.refusal(List.of(), List.of("turbo:gestion"));
+        assertEquals("axion.connection.required_controllers", traduisible(seuls).getKey());
+        assertEquals("axion.connection.controller_missing", traduisible(seuls.getSiblings().get(1)).getKey());
+        assertArrayEquals(new Object[] {"turbo:gestion"}, traduisible(seuls.getSiblings().get(1)).getArgs());
+
+        Component ensemble = RequiredAddons.refusal(CAUSES, List.of("turbo:gestion", "abs:frein"));
+        assertEquals("axion.connection.required_addons", traduisible(ensemble).getKey());
+        List<Component> lignes = ensemble.getSiblings();
+        assertEquals(4 + 2 + 4, lignes.size(), "les addons, puis l'en-tête des contrôleurs, puis un par ligne");
+        assertEquals("axion.connection.required_controllers", traduisible(lignes.get(5)).getKey());
+        assertArrayEquals(new Object[] {"abs:frein"}, traduisible(lignes.get(9)).getArgs());
+        assertEquals("policemod 2.1.0 absent, tracteurs 1.4.0 (client : 1.3.2), contrôleur turbo:gestion absent,"
+                + " contrôleur abs:frein absent", RequiredAddons.describe(CAUSES, List.of("turbo:gestion", "abs:frein")));
     }
 }

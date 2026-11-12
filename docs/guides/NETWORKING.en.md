@@ -25,6 +25,14 @@ must have to join, what the server sends it, what can be tuned, and where to rea
    Why the exact version: a model or an extension can change from one version to the next without anything
    saying so. A client that **also** has an addon the server does not have gets in: the server is authoritative,
    and that content is not used.
+3. **Every vehicle controller the server's sheets name.** The mod registering it is required by point 2, but a mod
+   may register a controller only depending on its configuration: so the server announces the list of those its
+   sheets name (`vehicle.controllers`), and refuses a client lacking one, naming it:
+
+   ```text
+   AXION: this server uses vehicle controllers that your game does not register:
+     - turbo:gestion
+   ```
 
 In single player, the player and the integrated server share the same mods: there is nothing to refuse.
 

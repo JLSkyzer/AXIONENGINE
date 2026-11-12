@@ -56,6 +56,30 @@ public final class ServerSnapshot {
             DetProfile det,
             NetCompression compression,
             List<RequiredMod> requiredMods) {
+        return build(config, registry, excluded, det, compression, requiredMods, List.of());
+    }
+
+    /**
+     * Bâtit ce que le serveur envoie à chaque connexion, avec les contrôleurs que ses definitions nomment
+     * (ADR-167 Q7).
+     *
+     * @param config configuration commune du serveur
+     * @param registry registre qu'il envoie
+     * @param excluded les entrées tenues hors du registre, à dire au journal
+     * @param det son empreinte déterministe
+     * @param compression compression des charges utiles
+     * @param requiredMods les addons qu'il exige du client
+     * @param controllers les contrôleurs que ses definitions nomment, triés
+     * @return l'instantané
+     */
+    public static ServerSnapshot build(
+            AxionConfig config,
+            RegistryContent registry,
+            List<String> excluded,
+            DetProfile det,
+            NetCompression compression,
+            List<RequiredMod> requiredMods,
+            List<String> controllers) {
         List<String> notes = new ArrayList<>(excluded);
         byte[] message;
         try {
@@ -65,7 +89,8 @@ public final class ServerSnapshot {
             notes.add("registre réseau non construit : " + refused.getMessage()
                     + " ; les clients distants n'en recevront aucun");
         }
-        return new ServerSnapshot(ServerHandshake.of(config, registry, det, requiredMods), registry, message, notes);
+        return new ServerSnapshot(ServerHandshake.of(config, registry, det, requiredMods, controllers), registry,
+                message, notes);
     }
 
     /** {@return le handshake annoncé} */

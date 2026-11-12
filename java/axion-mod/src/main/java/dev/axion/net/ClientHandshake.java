@@ -15,12 +15,32 @@ import java.util.List;
  * @param det empreinte de configuration déterministe du client (5.12bis)
  * @param versions la version que le client a de chaque addon que le serveur exige, dans l'ordre du handshake du
  *     serveur ; vide pour un addon qu'il n'a pas (ADR-165 D2)
+ * @param missingControllers les contrôleurs annoncés par le serveur que le client n'enregistre pas, dans l'ordre du
+ *     handshake du serveur (ADR-167 Q7)
  */
-public record ClientHandshake(int protocolVersion, DetProfile det, List<String> versions) {
+public record ClientHandshake(int protocolVersion, DetProfile det, List<String> versions,
+        List<String> missingControllers) {
 
-    /** Garde une copie figée de la liste. */
+    /**
+     * Garde des copies figées des listes.
+     *
+     * @throws IllegalArgumentException si un contrôleur manquant est mal formé, ou s'ils sont trop nombreux
+     */
     public ClientHandshake {
         versions = List.copyOf(versions);
+        missingControllers = List.copyOf(missingControllers);
+        ServerHandshake.checkControllers(missingControllers, false);
+    }
+
+    /**
+     * Une réponse à qui ne manque aucun contrôleur.
+     *
+     * @param protocolVersion {@code protocol_version} du client
+     * @param det empreinte déterministe du client
+     * @param versions la version de chaque addon exigé
+     */
+    public ClientHandshake(int protocolVersion, DetProfile det, List<String> versions) {
+        this(protocolVersion, det, versions, List.of());
     }
 
     /** {@return le message, genre compris} */
@@ -34,6 +54,10 @@ public record ClientHandshake(int protocolVersion, DetProfile det, List<String> 
                 .u16(versions.size());
         for (String version : versions) {
             writer.utf8(version);
+        }
+        writer.u16(missingControllers.size());
+        for (String controller : missingControllers) {
+            writer.utf8(controller);
         }
         return writer.toByteArray();
     }
@@ -62,7 +86,12 @@ public record ClientHandshake(int protocolVersion, DetProfile det, List<String> 
         for (int i = 0; i < count; i++) {
             versions.add(reader.utf8(RequiredMod.MAX_VERSION_BYTES));
         }
+        List<String> missing = ServerHandshake.readControllers(reader);
         reader.expectEnd();
-        return new ClientHandshake(protocol, new DetProfile(profile, kernel, inMatrix), versions);
+        try {
+            return new ClientHandshake(protocol, new DetProfile(profile, kernel, inMatrix), versions, missing);
+        } catch (IllegalArgumentException invalid) {
+            throw new MalformedPacketException("contrôleurs manquants : " + invalid.getMessage());
+        }
     }
 }

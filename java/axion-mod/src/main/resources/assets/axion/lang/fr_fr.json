@@ -33,6 +33,8 @@
   "axion.connection.required_addons": "AXION : ce serveur exige des addons que votre jeu n'a pas, ou pas dans la même version :",
   "axion.connection.addon_missing": "  - %s %s : absent",
   "axion.connection.addon_version": "  - %s %s : vous avez la %s",
+  "axion.connection.required_controllers": "AXION : ce serveur utilise des contrôleurs de véhicule que votre jeu n'enregistre pas :",
+  "axion.connection.controller_missing": "  - %s",
   "axion.loading.api_too_old": "AXION : {2} exige l’API AXION {3}, mais AXION fournit {4}. Son contenu n’est pas chargé : mettez AXION à jour.",
   "axion.loading.api_malformed": "AXION : {2} déclare axion_api = {3}, qui n’est pas une version d’API (attendu \"1.0\", entre guillemets). Son contenu n’est pas chargé."
 }

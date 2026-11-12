@@ -582,11 +582,21 @@ public final class DefinitionRegistry {
      */
     public java.util.SortedSet<String> controllerOwners() {
         java.util.SortedSet<String> owners = new java.util.TreeSet<>();
-        for (Definition definition : definitions.values()) {
-            for (String controller : Tuning.controllers(definition.root())) {
-                extensions.controller(controller).ifPresent(found -> owners.add(found.owner()));
-            }
+        for (String controller : namedControllers()) {
+            extensions.controller(controller).ifPresent(found -> owners.add(found.owner()));
         }
         return owners;
+    }
+
+    /**
+     * {@return les contrôleurs que ces definitions nomment, triés, chacun une fois} (ADR-167 Q7) : le serveur les
+     * annonce au handshake, et refuse le client à qui l'un manque.
+     */
+    public java.util.SortedSet<String> namedControllers() {
+        java.util.SortedSet<String> named = new java.util.TreeSet<>();
+        for (Definition definition : definitions.values()) {
+            named.addAll(Tuning.controllers(definition.root()));
+        }
+        return named;
     }
 }

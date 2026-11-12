@@ -46,6 +46,9 @@ public final class ClientSession {
     private final RegistrySink sink;
     private final SnapshotSink snapshotSink;
     private final Function<String, String> installed;
+
+    /** Vrai si un mod de ce client enregistre ce contrôleur de véhicule (ADR-167 Q7). */
+    private final java.util.function.Predicate<String> registered;
     private final SnapshotReceiver snapshots = new SnapshotReceiver();
     private int nextInputSequence;
 
@@ -66,11 +69,27 @@ public final class ClientSession {
      */
     public ClientSession(NetCompression compression, DetProfile self, RegistrySink sink, SnapshotSink snapshotSink,
             Function<String, String> installed) {
+        this(compression, self, sink, snapshotSink, installed,
+                id -> dev.axion.definition.VehicleExtensions.current().controller(id).isPresent());
+    }
+
+    /**
+     * @param compression compression des charges utiles réseau, ou {@code null} si le runtime natif est inactif
+     * @param self empreinte déterministe de ce client
+     * @param sink application d'un registre reçu
+     * @param snapshotSink application des états reçus par un snapshot
+     * @param installed la version d'un mod installé chez ce client, ou {@code null} s'il ne l'est pas
+     * @param registered vrai si un mod de ce client enregistre ce contrôleur de véhicule : la réponse au handshake
+     *     nomme ceux que le serveur annonce et qui manquent (ADR-167 Q7)
+     */
+    public ClientSession(NetCompression compression, DetProfile self, RegistrySink sink, SnapshotSink snapshotSink,
+            Function<String, String> installed, java.util.function.Predicate<String> registered) {
         this.compression = compression;
         this.self = self;
         this.sink = sink;
         this.snapshotSink = snapshotSink;
         this.installed = installed;
+        this.registered = registered;
     }
 
     /**
@@ -97,7 +116,8 @@ public final class ClientSession {
             readHandshake(message);
             // L'empreinte de ce client est connue même quand le handshake du serveur est refusé, et le serveur
             // en a besoin pour choisir ; les versions d'addons, elles, répondent à la liste reçue.
-            return reply(new ClientHandshake(NetProtocol.PROTOCOL_VERSION, self, versions(server)).encode());
+            return reply(new ClientHandshake(NetProtocol.PROTOCOL_VERSION, self, versions(server),
+                    missingControllers(server)).encode());
         }
         if (kind == MessageKinds.REGISTRY) {
             return reply(applyRegistry(message, "registre de la connexion").encode());
@@ -180,6 +200,14 @@ public final class ClientSession {
      * absent} Une version trop longue pour le message s'écrit {@code ?} : elle diffère de toute façon de celle du
      * serveur, qui tient dans la limite.
      */
+    /** {@return les contrôleurs que le serveur annonce et qu'aucun mod de ce client n'enregistre, dans son ordre} */
+    private List<String> missingControllers(ServerHandshake received) {
+        if (received == null || registered == null) {
+            return List.of();
+        }
+        return received.controllers().stream().filter(id -> !registered.test(id)).toList();
+    }
+
     private List<String> versions(ServerHandshake received) {
         if (received == null) {
             return List.of();

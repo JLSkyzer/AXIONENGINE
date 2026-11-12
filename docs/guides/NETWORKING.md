@@ -25,6 +25,14 @@ doit avoir pour entrer, ce que le serveur lui envoie, ce qui se règle, et où l
    Pourquoi la version exacte : un modèle ou une extension peut changer d'une version à l'autre sans que rien ne le
    dise. Un client qui a **en plus** un addon que le serveur n'a pas entre : le serveur fait autorité, et ce contenu
    ne sert pas.
+3. **Chaque contrôleur de véhicule que les fiches du serveur nomment.** Le mod qui l'enregistre est exigé au point 2,
+   mais un mod peut n'enregistrer un contrôleur que selon sa configuration : le serveur annonce donc la liste de ceux
+   que ses fiches nomment (`vehicle.controllers`), et refuse le client à qui l'un manque, en le nommant :
+
+   ```text
+   AXION : ce serveur utilise des contrôleurs de véhicule que votre jeu n'enregistre pas :
+     - turbo:gestion
+   ```
 
 En solo, le joueur et le serveur intégré partagent les mêmes mods : il n'y a rien à refuser.
 
