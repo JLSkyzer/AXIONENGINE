@@ -5362,6 +5362,8 @@ T-884  réparation en cours reprise après rechargement
 - R-1753 : aucun type Rapier, glam ou handle natif brut n'est exposé.
 - R-1754 : chaque méthode documente effet, thread autorisé, coût et conditions d'échec.
 - R-1755 : toute méthode mutante vérifie le thread appelant et lève `IllegalStateException` hors du thread autoritatif.
+- R-1756 : un addon déclare la version minimale de l'API qu'il exige dans son `mods.toml`, `[modproperties.<modId>] axion_api = "1.0"`. Si l'API présente ne la satisfait pas (`ApiVersion.satisfies`), ou si la valeur est mal écrite, AXION ajoute un avertissement de chargement que Forge affiche à l'écran, nommant l'addon, la version exigée et la version présente ; le contenu de l'addon n'est pas enregistré, et le jeu démarre (ADR-166 D1, amendement A14).
+- R-1757 : un addon se vérifie sans lancer le jeu. Le JAR d'AXION porte `dev.axion.tools.ContentCheck`, qui fait tourner le moteur et sa bibliothèque native hors de Minecraft et applique au dossier `axion/` de l'addon exactement les règles du chargement en jeu, modèles compris ; le modèle d'addon le branche sur `./gradlew build` (`checkAxionContent`), qu'une faute fait échouer. En jeu, `AxionApi.content()` dit ce qu'AXION a fait d'une definition, et le paquet `dev.axion.api.testing` aide les GameTests d'un addon (ADR-166 D2 à D4, amendement A14).
 
 ## 23.2 Surface de l'API
 
@@ -5381,6 +5383,7 @@ public interface AxionApi {
     AssetService      assets();
     DefinitionService definitions();
     AssemblyService   assemblies();
+    ContentQuery      content();     // ADR-166 D2 : definitions chargées, causes des refus (amendement A14)
     PhysicsService    physics();
     DamageService     damage();
     DeformationService deformation();
@@ -7812,6 +7815,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A11 | 2026-11-11 | ADR-164, accepté par Killian | R-570 : le filtrage anisotrope des textures d'AXION suit `render.anisotropy` (16 par défaut, 1 l'éteint), et non un « réglage vanilla » que Minecraft n'offre pas ; ANNEXE A.3 : la clé. Inscrit avec A12 : l'inscription avait été oubliée à l'acceptation |
 | A12 | 2026-11-11 | ADR-165, accepté par Killian | 21.3 : protocole 7, les addons propriétaires de contenu et leurs versions dans `S2C_Handshake`, celles du client dans `C2S_Handshake` ; R-1640 : un addon absent ou d'une autre version refuse la connexion en le nommant ; ANNEXE A.3 : `axion-server-overrides.toml` (CAP-40, CAP-46, CAP-51) |
 | A13 | 2026-11-11 | ADR-162 D9, accepté par Killian | C-71 : `/axion dev reload`, qui rappelle l'enregistrement de chaque mod, relit son dossier depuis le disque quand il tourne depuis ses sources, et renvoie le registre aux clients ; ANNEXE A.3 : `content.dev_reload`, faux par défaut (CAP-50) |
+| A14 | 2026-11-12 | ADR-166, accepté par Killian | 23.1 : R-1756 (version d'API exigée dans le `mods.toml` d'un addon, avertissement et contenu non chargé) et R-1757 (validateur hors jeu, `AxionApi.content()`, aides aux GameTests) ; 23.2 : `ContentQuery content()` ; ANNEXE A.7 : CAP-42 tenue pour sa part de validation par le validateur Java (CAP-48, CAP-49) |
 
 ---
 
@@ -8235,7 +8239,7 @@ ses trouvailles s'ajoutent ici.
 | CAP-39 | Plusieurs causes sur une même valeur (definition, amélioration, dommage, usure, météo, variable, addon) : ordre et opération définis, chaque cause retirable seule, valeur et origines lisibles | M5 |
 | CAP-40 | Addons présents d'un seul côté : les registres d'extension entrent dans l'empreinte du handshake ; une extension qui touche la physique est déterministe et rembobinable pour la prédiction, ajoutée comme étage du modèle plutôt qu'en le remplaçant | M5 |
 | CAP-41 | Emporter une assembly avec tout son état (améliorations, dommage, données des mods) : item, copie, structure, transfert entre joueurs | M10 |
-| CAP-42 | Valider une definition contre son modèle sans lancer le jeu (`ax-cli`), et voir en jeu les definitions refusées et pourquoi (commande `/axion`) | M5 |
+| CAP-42 | Valider une definition contre son modèle sans lancer le jeu (le validateur Java `ContentCheck`, R-1757, amendement A14 ; `ax-cli` pour les seuls fichiers de modèle), et voir en jeu les definitions refusées et pourquoi (commande `/axion`) | M5 |
 | CAP-43 | Sources procédurales du monde (heure, lumière du ciel, pluie), lues de même au client et au serveur | M5 |
 | CAP-44 | Ouvrir l'API d'enregistrement du contenu dès M5, sans attendre que tous les services soient réels : la règle d'ADR-137 et d'ADR-143 (fournisseur seulement quand tous ses accesseurs sont réels) est amendée | M5 |
 | CAP-45 | Une phase d'enregistrement propre à AXION, séquentielle : tout est collecté puis résolu en une passe, extensions avant definitions, partie client à part, placée avant le gel des registres Forge si une definition a son item | M5 |

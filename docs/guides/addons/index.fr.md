@@ -15,6 +15,8 @@ lire le reste de la documentation sans te perdre.
 | [1. Comprendre AXION](comprendre.md) | Ce qu'est un mod, un addon, une definition — et comment ils s'emboîtent | 10 min |
 | [2. Installer tes outils](outils.md) | Java 17, un éditeur de code, Blender pour les modèles 3D | 20 min |
 | [3. Ton premier addon](premier-addon.md) | Déclarer une caisse en JSON puis en Java, et la recharger sans redémarrer | 30 min |
+| [4. Tester ton addon](tester.md) | Vérifier ton contenu sans lancer le jeu, puis dans un vrai serveur | 15 min |
+| [5. Versions](versions.md) | Dire quelle version d'AXION il te faut, et ce que voit un joueur qui ne l'a pas | 5 min |
 | [Glossaire](glossaire.md) | Les mots d'AXION, expliqués simplement | à garder sous la main |
 
 Les temps sont indicatifs : prends celui qu'il te faut.

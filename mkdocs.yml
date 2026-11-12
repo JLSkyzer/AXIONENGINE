@@ -65,6 +65,8 @@ plugins:
             Comprendre AXION: Understand AXION
             Installer tes outils: Install your tools
             Ton premier addon: Your first addon
+            Tester ton addon: Test your addon
+            Versions: Versions
             Glossaire: Glossary
             Jouer et héberger: Play and host
             Configuration: Configuration
@@ -81,6 +83,8 @@ nav:
       - Comprendre AXION: addons/comprendre.md
       - Installer tes outils: addons/outils.md
       - Ton premier addon: addons/premier-addon.md
+      - Tester ton addon: addons/tester.md
+      - Versions: addons/versions.md
       - Glossaire: addons/glossaire.md
   - Jouer et héberger:
       - Configuration: CONFIGURATION.md

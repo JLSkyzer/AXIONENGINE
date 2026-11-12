@@ -3767,7 +3767,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
         - [x] Nettoyage (2026-11-12, décision de Killian : garder les 10 dernières copies) : `tools/ci/nettoyer_snapshots.py`,
               lancé par la CI après chaque publication, avec le jeton qui publie ; tri testé
               (`test_nettoyer_snapshots.py`).
-        - [ ] ADR : version d'API exigée par un addon (D11), kit de test et validateur hors jeu (CAP-49).
+        - [x] ADR-166 (accepté le 2026-11-12, tout comme proposé) et son code : version d'API exigée dans le
+              `mods.toml` (avertissement Forge, contenu non chargé), `AxionApi.content()`, kit de GameTest
+              (`dev.axion.api.testing`), validateur hors jeu (`checkAxionContent`, sur `./gradlew build`) ; CDC
+              amendement A14 ; pages « Tester ton addon » et « Versions ». CAP-48 et CAP-49 tenues ; CAP-42 tenue
+              pour sa part de validation.
   - [x] Tranche 4 de C-33 (2026-11-11) : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
         variables par assembly). Trois sous-tranches, un film à chacune :
         - [x] 4a (2026-11-11) — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5,
