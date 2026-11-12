@@ -4,6 +4,8 @@ import dev.axion.api.assembly.Assembly;
 import dev.axion.api.assembly.Modifier;
 import dev.axion.api.assembly.Parameters;
 import dev.axion.api.testing.AxionGameTests;
+import dev.axion.api.vehicle.DriverInput;
+import dev.axion.api.vehicle.VehicleControl;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.phys.Vec3;
@@ -87,4 +89,45 @@ public final class ExampleAddonGameTests {
                 .thenSucceed();
     }
     // --8<-- [end:ballast]
+
+    // --8<-- [start:limiter]
+    /**
+     * The speed limiter on AXION's example buggy (loaded when {@code content.examples} is on, as on AXION's test
+     * server), driven flat out by this test: past the top speed, the engine is cut.
+     */
+    @GameTest(template = AxionGameTests.DALLE, timeoutTicks = 200)
+    public static void speedLimiterCapsTheBuggy(GameTestHelper helper) {
+        AxionGameTests.assertLoaded(helper, "axion:example/buggy");
+        // Its four wheels on the slab, room ahead (its front is -Z).
+        Assembly buggy = AxionGameTests.spawn(helper, "axion:example/buggy",
+                new Vec3(4.5, AxionGameTests.DESSUS_DALLE, 6.0));
+        double[] fastest = {0};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(buggy.parameters().has(Parameters.ENGINE_TORQUE),
+                        "not compiled yet"))
+                .thenExecute(() -> {
+                    helper.assertTrue(!buggy.parameters().has(ExampleSpeedLimiter.MAX_SPEED), "no limiter, no top speed");
+                    VehicleControl vehicle = buggy.vehicle().orElseThrow();
+                    vehicle.attach(ExampleSpeedLimiter.CONTROLLER);
+                    // Its parameter now exists on this buggy: 15 m/s, tuned down to 1 m/s, its lowest, so that the
+                    // slab is enough.
+                    buggy.parameters().modify(new Modifier(ExampleAddon.MOD_ID + ":slow_zone",
+                            ExampleSpeedLimiter.MAX_SPEED, Modifier.Operation.ADD, -14));
+                    // Flat out in first gear (the buggy's gearbox is manual), the parking brake released.
+                    vehicle.drive(new DriverInput(1, 0, 0, 0, 0, 1));
+                })
+                .thenExecuteFor(60, () -> fastest[0] = Math.max(fastest[0],
+                        buggy.vehicle().orElseThrow().state().speed()))
+                .thenExecute(() -> {
+                    var state = buggy.vehicle().orElseThrow().state();
+                    helper.assertTrue(fastest[0] > 0.8, "it drives: " + fastest[0] + " m/s, " + state.rpm() + " rpm,"
+                            + " gear " + state.gear() + ", " + state.input() + ", grounded "
+                            + state.wheels().stream().filter(wheel -> wheel.grounded()).count());
+                    // Without the limiter, it passes 3 m/s in these three seconds.
+                    helper.assertTrue(fastest[0] < 1.0 + 0.75, "capped near 1 m/s: " + fastest[0] + " m/s");
+                    buggy.vehicle().orElseThrow().drive(new DriverInput(0, 0, 0, 0, 1, 0)); // Handbrake on.
+                })
+                .thenSucceed();
+    }
+    // --8<-- [end:limiter]
 }

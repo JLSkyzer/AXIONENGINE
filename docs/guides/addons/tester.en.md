@@ -62,8 +62,8 @@ Run them:
 ./gradlew runGameTestServer
 ```
 
-The server starts, plays the tests, says `All 2 required tests passed :)` and stops. A failing test writes its reason
-to the log.
+The server starts, plays the tests, says `All 5 required tests passed :)` — the template's five — and stops. A failing
+test writes its reason to the log.
 
 !!! question "Where does the slab come from?"
     `AxionGameTests.DALLE` names a 9 × 9 slab that the addon template stores in

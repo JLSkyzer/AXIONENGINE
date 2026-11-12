@@ -161,7 +161,85 @@ retrait.
     trois paramètres — couple +30 %, limiteur +500 tr/min, adhérence +20 %. Sa fiche est dans le dépôt d'AXION,
     `content/examples/axion/definitions/example/buggy.json`.
 
-## 6. Le tester
+## 6. Un contrôleur de véhicule
+
+Un modificateur posé reste jusqu'à ce qu'on le retire. Un **contrôleur** décide à chaque tick : un limiteur de vitesse,
+un antipatinage, un mode hybride. C'est une fonction que ton mod enregistre ; à chaque tick, AXION lui donne l'état du
+véhicule au début du tick et prend ce qu'il écrit pour ce tick seulement.
+
+Le témoin en a un, un limiteur de vitesse. Ses identifiants :
+
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleSpeedLimiter.java:ids"
+```
+
+Le contrôleur lit la vitesse du véhicule et sa vitesse maximale, et au-delà coupe le couple du moteur :
+
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleSpeedLimiter.java:controller"
+```
+
+Ce qu'il **lit** (`VehicleView`) : la vitesse, le régime, le rapport, l'entrée du conducteur, chaque roue (contact,
+compression, rotation, braquage, glissements), les variables et les paramètres. Les paramètres y sont composés **sans**
+les sorties des contrôleurs : deux contrôleurs d'un même véhicule lisent la même valeur, quel que soit leur ordre.
+
+Ce qu'il **écrit** (`ControllerOutput`), pour ce tick seulement :
+
+| Méthode | Effet |
+|---|---|
+| `modify(paramètre, opération, quantité)` | un modificateur au nom du contrôleur, composé avec les autres ; s'il sortait le paramètre de ses bornes, il est écarté pour ce tick |
+| `wheelTorque(roue, couple)` | le couple d'une roue, en N·m : ajouté à celui du moteur, ou tout le couple d'un véhicule sans `powertrain` |
+| `variable(nom, valeur)` | une variable du véhicule, dans ses bornes : c'est là que vit l'état de ton contrôleur, sauvegardé et envoyé aux joueurs |
+
+Il s'enregistre avec le reste de ton contenu, avec le paramètre qu'il lit :
+
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleSpeedLimiter.java:register"
+```
+
+**Où il s'attache** — de deux façons :
+
+- **par la fiche**, pour tous les véhicules de ce modèle :
+
+    ```json
+    "vehicle": { "controllers": ["example_addon:speed_limiter"] }
+    ```
+
+    Une fiche qui nomme un contrôleur qu'aucun mod n'enregistre est refusée au chargement, comme une fiche sans roues
+    qui en nommerait un. Huit contrôleurs au plus par véhicule.
+
+- **par l'API**, sur un véhicule seulement : `assembly.vehicle().orElseThrow().attach("example_addon:speed_limiter")`,
+  et `detach` pour le retirer. Il est alors sauvegardé avec le véhicule et envoyé aux joueurs.
+
+**Le paramètre de ton mod** (`max_speed`) existe sur un véhicule dès qu'un de tes contrôleurs y est attaché, avec la
+base de l'enregistrement : il se règle, se borne et se compose comme ceux d'AXION. Retire le contrôleur, et le
+paramètre disparaît ; un modificateur posé dessus est gardé, inactif.
+
+**Son coût est mesuré**, appel par appel. Un appel qui dépasse le budget (`vehicle.controller_budget_ns`, 50 µs par
+défaut) ou qui lève une exception compte une faute ; un appel sain efface le compte. Au bout de
+`vehicle.controller_strikes` fautes de suite (20), le contrôleur est **désactivé pour la session**, sur tous les
+véhicules, et le journal le dit en nommant ton mod (`E-1011`) : les véhicules roulent alors sans lui. Une exception
+écarte aussi tout ce que l'appel avait écrit.
+
+**Ses règles** :
+
+- une fonction de ce qu'il lit, sans état caché : son état vit dans les variables du véhicule ;
+- il tourne sur le serveur, entre deux pas de la physique ; il tournera aussi chez le client quand la prédiction
+  viendra, d'où la règle précédente ;
+- le mod qui l'enregistre est exigé des joueurs dès qu'une fiche le nomme.
+
+Le GameTest du témoin attache le limiteur au buggy d'exemple, règle sa vitesse maximale et le conduit pied au
+plancher :
+
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:limiter"
+```
+
+`vehicle().drive(entrée)` conduit un véhicule que personne ne conduit — un pilote automatique, un test. Il relâche le
+frein de stationnement ; pour tenir le véhicule à l'arrêt, serre le frein à main. Si un joueur tient le volant,
+l'appel est refusé et le nomme.
+
+## 7. Le tester
 
 Un GameTest pose l'objet, le règle, et vérifie :
 
@@ -171,7 +249,7 @@ Un GameTest pose l'objet, le règle, et vérifie :
 
 Tu le lances comme les autres GameTests ([Tester ton addon](tester.md)).
 
-## 7. Voir et régler en jeu
+## 8. Voir et régler en jeu
 
 La commande `/axion params` montre les paramètres de l'objet que tu vises, et chaque modificateur avec son origine.
 Elle demande les droits d'opérateur (niveau 2) :
@@ -196,7 +274,19 @@ Ajoute un nom de paramètre pour voir aussi ses bornes. Pour essayer un réglage
 
 Chaque `set` et chaque `remove` est écrit dans le journal du serveur, avec qui l'a tapé.
 
-## 8. Sauvegarde, joueurs, mises à jour
+Sans paramètre précisé, `/axion params` liste aussi les contrôleurs du véhicule, avec leur mod, leur état et leur
+coût mesuré :
+
+```text
+  contrôleurs (1) :
+    example_addon:speed_limiter (mod example_addon) — actif, <appels> appel(s), moyenne <µs> µs, pire <µs> µs
+```
+
+Pour un écran d'améliorations, `Parameters.translationKey(nom)` donne la clé de traduction d'un paramètre :
+`axion.parameter.engine.torque`, traduite par AXION ; pour le tien, `example_addon.parameter.max_speed`, que ton mod
+traduit dans ses fichiers de langue.
+
+## 9. Sauvegarde, joueurs, mises à jour
 
 - **La sauvegarde** garde les modificateurs posés, dans leur ordre. Au rechargement, chacun se repose par les mêmes
   règles que `modify`.

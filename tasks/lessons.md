@@ -2361,7 +2361,10 @@ aux tests.
 compté et listé à plusieurs endroits.
 
 **Règle.** Avant de toucher au contenu du témoin, chercher ses identifiants (`heavy_crate`, `example_addon (`) dans les
-tests, les GameTests et les guides, et mettre à jour chaque attente dans le même changement.
+tests, les GameTests et les guides, et mettre à jour chaque attente dans le même changement. Un GameTest ajouté au
+témoin change aussi le nombre que cite le guide « Tester » (`All N required tests passed`) — resté à 2 de la 5a à la
+5c (corrigé le 2026-11-12) — et part dans le modèle téléchargeable, qui doit pouvoir le jouer seul (ce qu'il charge,
+comme le contenu de démonstration d'AXION, s'active dans `modele/build.gradle`).
 
 ## 2026-11-12 | Le buggy d'exemple ne se chargeait plus, et aucun test ne le voyait
 

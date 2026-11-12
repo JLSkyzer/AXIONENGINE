@@ -63,8 +63,8 @@ Lance-les :
 ./gradlew runGameTestServer
 ```
 
-Le serveur démarre, joue les tests, dit `All 2 required tests passed :)` et s'arrête. Un test qui échoue écrit sa
-cause au journal.
+Le serveur démarre, joue les tests, dit `All 5 required tests passed :)` — les cinq du modèle — et s'arrête. Un test
+qui échoue écrit sa cause au journal.
 
 !!! question "D'où vient la dalle ?"
     `AxionGameTests.DALLE` désigne une dalle de 9 × 9 blocs que le modèle d'addon range dans

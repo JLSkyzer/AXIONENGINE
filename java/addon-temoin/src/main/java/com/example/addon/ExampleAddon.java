@@ -40,6 +40,8 @@ public final class ExampleAddon {
                             DefinitionBuilder.rigidObject("example_addon:models/crate.gltf")
                                     .physics(physics -> physics.mass(400))
                                     .build());
+                    // A vehicle controller, and the parameter it reads.
+                    ExampleSpeedLimiter.register(registrar);
                 });
     }
     // --8<-- [end:provider]

@@ -3751,7 +3751,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            skin (pas celui de Mojang), généré par le moteur et vérifié par un test ; fichier et guide en **M5**,
            bouton « insérer le mannequin sur ce siège » de l'addon Blender en **M9** (C-75). Demander avant
            d'ouvrir Blender.
-     - [ ] 5c — `VehicleController`, `VehicleControl`, couple par roue (R-1082), paramètres d'addon, coût mesuré.
+     - [x] 5c — `VehicleController`, `VehicleControl`, couple par roue (R-1082), paramètres d'addon, coût mesuré.
+           Reste Q7 (empreinte des contrôleurs dans le handshake), posée à Killian.
            **Q6 tranchée par Killian le 2026-11-12** : le paramètre d'un addon existe sur un véhicule dès qu'un
            contrôleur du même mod y est attaché (par la fiche ou par l'API), avec la base de son enregistrement.
            Rien n'est publié depuis la 5a (aucun tag) : protocole 8, descripteur 6 et persistance 5 s'étendent sans
@@ -3772,8 +3773,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  paramètres (`Parameters.translationKey`). **Q7 en attente de Killian** : la forme de « registre des
                  contrôleurs dans l'empreinte du handshake » (CAP-40) — proposé, la liste des contrôleurs nommés dans
                  `S2C_Handshake`, un client à qui l'un manque refusé en les nommant (ADR-167, Q7).
-           - [ ] E : exemple compilé (témoin), guide, CDC (23.2, 23.3, A.1 `E-1011`, A.3), précisions d'ADR-167,
-                 budget mesuré au banc, film, fusion.
+           - [x] E : exemple compilé (témoin : limiteur de vitesse `example_addon:speed_limiter` et son paramètre
+                 `max_speed`, GameTest avec contre-épreuve), guide « Régler » section 6, CDC (23.2, 23.3, R-1770,
+                 23.4), précisions d'ADR-167, film `runFilmLimiteur` envoyé (8,6 m/s contre 21,1 m/s), fusion.
   6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37), contrôleurs de véhicule appelés
      chez le client et `VehicleControl.state()` lisible au client (ADR-167 D9, précisions de la 5c) ; le registre envoyé au client
      porte alors les correspondances bloc → matériau, surcharges de l'administrateur comprises (ADR-165, précision 3c).

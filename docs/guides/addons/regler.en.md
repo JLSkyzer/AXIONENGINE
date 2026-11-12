@@ -157,7 +157,82 @@ write of the variable that would take it out of its bounds — together with ano
     torque +30 %, rev limiter +500 rpm, grip +20 %. Its sheet is in AXION's repository,
     `content/examples/axion/definitions/example/buggy.json`.
 
-## 6. Test it
+## 6. A vehicle controller
+
+A modifier you add stays until it is removed. A **controller** decides every tick: a speed limiter, traction control,
+a hybrid mode. It is a function your mod registers; every tick, AXION hands it the vehicle as it was at the start of
+the tick and takes what it writes, for this tick only.
+
+The witness has one, a speed limiter. Its ids:
+
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleSpeedLimiter.java:ids"
+```
+
+The controller reads the vehicle's speed and its top speed, and past it cuts engine torque:
+
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleSpeedLimiter.java:controller"
+```
+
+What it **reads** (`VehicleView`): speed, engine speed, gear, the driver's input, each wheel (contact, compression,
+spin, steering, slips), the variables and the parameters. Parameters are composed **without** the controllers'
+outputs: two controllers of the same vehicle read the same value, whatever their order.
+
+What it **writes** (`ControllerOutput`), for this tick only:
+
+| Method | Effect |
+|---|---|
+| `modify(parameter, operation, amount)` | a modifier in the controller's name, composed with the others; if it would take the parameter out of its bounds, it is left out for this tick |
+| `wheelTorque(wheel, torque)` | a wheel's torque, in N·m: added to the engine's, or all the torque of a vehicle without `powertrain` |
+| `variable(name, value)` | a vehicle variable, within its bounds: that is where your controller's state lives, saved and sent to players |
+
+It registers with the rest of your content, along with the parameter it reads:
+
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleSpeedLimiter.java:register"
+```
+
+**Where it attaches** — two ways:
+
+- **in the sheet**, for every vehicle of that model:
+
+    ```json
+    "vehicle": { "controllers": ["example_addon:speed_limiter"] }
+    ```
+
+    A sheet naming a controller no mod registers is refused at load, as is a sheet without wheels that names one. At
+    most eight controllers per vehicle.
+
+- **through the API**, on one vehicle only: `assembly.vehicle().orElseThrow().attach("example_addon:speed_limiter")`,
+  and `detach` to take it off. It is then saved with the vehicle and sent to players.
+
+**Your mod's parameter** (`max_speed`) exists on a vehicle as soon as one of your controllers is attached to it, with
+the registered base: it is tuned, bounded and composed like AXION's own. Take the controller off and the parameter is
+gone; a modifier on it is kept, inactive.
+
+**Its cost is measured**, call by call. A call over budget (`vehicle.controller_budget_ns`, 50 µs by default) or one
+that throws counts a fault; a sound call clears the count. After `vehicle.controller_strikes` faults in a row (20), the
+controller is **disabled for the session**, on every vehicle, and the log says so, naming your mod (`E-1011`): the
+vehicles then drive without it. An exception also discards everything the call had written.
+
+**Its rules**:
+
+- a function of what it reads, with no hidden state: its state lives in the vehicle's variables;
+- it runs on the server, between two physics steps; it will also run on the client once prediction comes, hence the
+  previous rule;
+- the mod registering it is required from players as soon as a sheet names it.
+
+The witness's GameTest attaches the limiter to the example buggy, tunes its top speed and drives it flat out:
+
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:limiter"
+```
+
+`vehicle().drive(input)` drives a vehicle nobody drives — an autopilot, a test. It releases the parking brake; to hold
+the vehicle, apply the handbrake. If a player holds the wheel, the call is refused and names them.
+
+## 7. Test it
 
 A GameTest places the object, tunes it, and checks:
 
@@ -167,7 +242,7 @@ A GameTest places the object, tunes it, and checks:
 
 You run it like your other GameTests ([Test your addon](tester.md)).
 
-## 7. See and tune in game
+## 8. See and tune in game
 
 The `/axion params` command shows the parameters of the object you target, and each modifier with its origin. It needs
 operator rights (level 2):
@@ -192,7 +267,19 @@ Add a parameter name to see its bounds too. To try a tuning without writing code
 
 Every `set` and every `remove` is written to the server log, with who typed it.
 
-## 8. Saves, players, updates
+With no parameter given, `/axion params` also lists the vehicle's controllers, with their mod, their state and their
+measured cost (the command speaks French):
+
+```text
+  contrôleurs (1) :
+    example_addon:speed_limiter (mod example_addon) — actif, <appels> appel(s), moyenne <µs> µs, pire <µs> µs
+```
+
+For an upgrades screen, `Parameters.translationKey(name)` gives a parameter's translation key:
+`axion.parameter.engine.torque`, translated by AXION; for yours, `example_addon.parameter.max_speed`, which your mod
+translates in its language files.
+
+## 9. Saves, players, updates
 
 - **The save** keeps the modifiers in place, in their order. When the world loads, each one is added again by the same
   rules as `modify`.

@@ -44,6 +44,8 @@ minecraft {
         // Runs this addon's GameTests (src/main/java/.../ExampleAddonGameTests.java) in a game server, then stops.
         gameTestServer {
             property 'forge.enabledGameTestNamespaces', mod_id
+            // AXION's demonstration content, off by default: the speed limiter's test drives its example buggy.
+            property 'axion.content.examples', 'true'
         }
     }
 }

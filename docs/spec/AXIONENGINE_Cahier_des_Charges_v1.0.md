@@ -5429,7 +5429,8 @@ public interface Assembly {
     DeformationView deformation();
     SurfaceView surface();
 
-    Optional<VehicleControl> vehicle();
+    Optional<VehicleControl> vehicle();   // ADR-167 D9 : état du début du tick, contrôleurs, pilotage par un mod ;
+                                          // vide sans roues ; état et pilotage au serveur (amendement A15)
     AnimationControl animation();
     Collection<ParticleSetView> particleSets();
     Collection<AttachmentView> attachments();
@@ -5516,7 +5517,8 @@ public interface PartView {
 | Règle de réparation | JSON | `axion:repair_rule` |
 | Mappage de source de dégât | JSON | `axion:damage_source` |
 | Source procédurale | `ProceduralSourceProvider` | `axion:procedural_source` |
-| Contrôleur de véhicule | `VehicleController` | `axion:vehicle_controller` |
+| Contrôleur de véhicule | `VehicleController`, `ContentRegistrar.registerController` ; nommé par `vehicle.controllers` ou attaché par `VehicleControl.attach` (ADR-167 D9, amendement A15) | `axion:vehicle_controller` |
+| Paramètre d'addon | `ContentRegistrar.registerParameter` : il existe là où un contrôleur de son mod est attaché (ADR-167 D1, Q6) | — |
 | **Modèle de dommage** | `DamageDistributor` (remplace la répartition 13.3) | `axion:damage_distributor` |
 | **Noyau de déformation** | `DeformationKernel` (`@Experimental`, doit rester déterministe) | `axion:deformation_kernel` |
 | Hook de rendu | `AssemblyRenderHook` (client) | `axion:render_hook` |
@@ -5525,7 +5527,7 @@ public interface PartView {
 Un JSON n'est jamais lu dans un datapack : le mod qui le livre l'enregistre (ADR-162, amendement A8) ; chaque liste
 fermée du schéma s'étend par un registre de l'API (ADR-160 D5).
 
-- R-1770 : une extension tierce est **isolée** : son coût est mesuré séparément et son dépassement répété du budget la désactive avec un message la nommant.
+- R-1770 : une extension tierce est **isolée** : son coût est mesuré séparément et son dépassement répété du budget la désactive avec un message la nommant. Pour un contrôleur de véhicule : `vehicle.controller_budget_ns` par appel, `vehicle.controller_strikes` fautes consécutives — dépassements ou exceptions —, puis `E-1011` (ADR-167 D9, amendement A15).
 - R-1771 : les extensions Java ne s'exécutent jamais sur les workers natifs ; elles sont appelées sur le thread autoritatif entre deux pas, ou sur le render thread pour les hooks de rendu.
 - R-1772 : un `DeformationKernel` tiers **doit** respecter le contrat de déterminisme ; s'il ne le respecte pas, la reconstruction client échoue et le système bascule automatiquement sur l'envoi d'instantanés pour les assemblies concernées, avec un avertissement nommant le mod. Le jeu reste correct.
 
@@ -5613,6 +5615,8 @@ fermée du schéma s'étend par un registre de l'API (ADR-160 D5).
   "tuning": { "ranges": { "engine.torque": { "min": 200, "max": 420 },
                           "mass": { "min": 900 } } },
 
+  "vehicle": { "controllers": [ "mymod:traction_control" ] },
+
   "custom": { }
 }
 ```
@@ -5620,7 +5624,7 @@ fermée du schéma s'étend par un registre de l'API (ADR-160 D5).
 - R-1780 : `schema` obligatoire ; valeur inconnue → refus (`E-7003`).
 - R-1781 : tous les champs sauf `schema`, `asset` et `kind` sont optionnels avec des défauts documentés. **Un objet déformable et destructible fonctionne avec `asset` + `kind` seuls**, grâce aux générations automatiques de C-28.
 - R-1782 : les actions d'interaction et les actions de `on_part_stage` forment des **listes fermées** (13.4, PARTIE 24).
-- R-1783 : le schéma JSON complet est publié dans `docs/schema/definition-1.json` et validé en CI contre toutes les definitions du dépôt ; chaque version suivante l'est de même (`definition-2.json`, `definition-3.json`, amendement A10 ; `definition-4.json` et sa section `tuning` — `ranges`, dont chaque plage contient la base et s'exprime dans l'unité de son paramètre, et `modifiers` (R-1087) —, amendement A15).
+- R-1783 : le schéma JSON complet est publié dans `docs/schema/definition-1.json` et validé en CI contre toutes les definitions du dépôt ; chaque version suivante l'est de même (`definition-2.json`, `definition-3.json`, amendement A10 ; `definition-4.json` et sa section `tuning` — `ranges`, dont chaque plage contient la base et s'exprime dans l'unité de son paramètre, et `modifiers` (R-1087) —, puis `vehicle.controllers`, au plus huit contrôleurs qu'un mod enregistre, sur une definition qui a des roues, amendement A15).
 
 ## 23.5 Contenu de démonstration
 
@@ -7832,7 +7836,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A12 | 2026-11-11 | ADR-165, accepté par Killian | 21.3 : protocole 7, les addons propriétaires de contenu et leurs versions dans `S2C_Handshake`, celles du client dans `C2S_Handshake` ; R-1640 : un addon absent ou d'une autre version refuse la connexion en le nommant ; ANNEXE A.3 : `axion-server-overrides.toml` (CAP-40, CAP-46, CAP-51) |
 | A13 | 2026-11-11 | ADR-162 D9, accepté par Killian | C-71 : `/axion dev reload`, qui rappelle l'enregistrement de chaque mod, relit son dossier depuis le disque quand il tourne depuis ses sources, et renvoie le registre aux clients ; ANNEXE A.3 : `content.dev_reload`, faux par défaut (CAP-50) |
 | A14 | 2026-11-12 | ADR-166, accepté par Killian | 23.1 : R-1756 (version d'API exigée dans le `mods.toml` d'un addon, avertissement et contenu non chargé) et R-1757 (validateur hors jeu, `AxionApi.content()`, aides aux GameTests) ; 23.2 : `ContentQuery content()` ; ANNEXE A.7 : CAP-42 tenue pour sa part de validation par le validateur Java (CAP-48, CAP-49) |
-| A15 | 2026-11-12 | ADR-167, accepté par Killian (sous-tranche 5a ; 5b et 5c compléteront) | 12.5 : R-1084 (paramètres d'une instance, bornes, composition des causes), R-1085 (réglage à chaud), R-1086 (sauvegarde et réplication), R-1087 (une variable règle un paramètre, 5b) ; R-1171 précisée : ses contrôleurs déclaratifs sont les modificateurs déclarés ; 21.5 : descripteur 6 et protocole 8 ; 22.2 : `axion:v` 5 et `axion:params` ; 23.2 : `parameters()` ; 23.4 : `tuning.ranges` et `tuning.modifiers`, schéma de definition 4 ; A.1 : `E-7011`, un modificateur gardé inactif plutôt que perdu, et `E-7010`, une écriture de variable refusée (5b) ; A.7 : CAP-39 et la masse variable de CAP-34 tenues, CAP-03 tenue sauf la prédiction. 5c (étapes B et C) : A.1 : `E-1011`, un contrôleur de véhicule désactivé ; A.3 : `vehicle.controller_budget_ns` et `vehicle.controller_strikes`, défauts tirés d'une mesure au banc ; 5c (étape D) : R-1086, 21.5 et 22.2 : les contrôleurs attachés par l'API, sauvegardés (`axion:ctrls`) et répliqués ; A.1 : `E-7011` couvre un contrôleur relu sans son mod. Suivront : `vehicle()` et `VehicleController` en 23.2 et 23.3 (5c) |
+| A15 | 2026-11-12 | ADR-167, accepté par Killian (sous-tranches 5a, 5b et 5c) | 12.5 : R-1084 (paramètres d'une instance, bornes, composition des causes), R-1085 (réglage à chaud), R-1086 (sauvegarde et réplication), R-1087 (une variable règle un paramètre, 5b) ; R-1171 précisée : ses contrôleurs déclaratifs sont les modificateurs déclarés ; 21.5 : descripteur 6 et protocole 8 ; 22.2 : `axion:v` 5 et `axion:params` ; 23.2 : `parameters()` ; 23.4 : `tuning.ranges` et `tuning.modifiers`, schéma de definition 4 ; A.1 : `E-7011`, un modificateur gardé inactif plutôt que perdu, et `E-7010`, une écriture de variable refusée (5b) ; A.7 : CAP-39 et la masse variable de CAP-34 tenues, CAP-03 tenue sauf la prédiction. 5c (étapes B et C) : A.1 : `E-1011`, un contrôleur de véhicule désactivé ; A.3 : `vehicle.controller_budget_ns` et `vehicle.controller_strikes`, défauts tirés d'une mesure au banc ; 5c (étape D) : R-1086, 21.5 et 22.2 : les contrôleurs attachés par l'API, sauvegardés (`axion:ctrls`) et répliqués ; A.1 : `E-7011` couvre un contrôleur relu sans son mod. 5c (étape E) : 23.2 : `vehicle()` ; 23.3 : `VehicleController` et le paramètre d'addon, R-1770 précisée ; 23.4 : `vehicle.controllers` |
 
 ---
 

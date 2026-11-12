@@ -190,6 +190,20 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        filmLimiteur {
+            // ADR-167, sous-tranche 5c : le limiteur de vitesse de l'addon temoin, un controleur de vehicule attache
+            // par l'API, et sa vitesse maximale, un parametre d'addon (FilmDesParametres).
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-limiteur')
+            property 'axion.film', 'limiteur'
+            property 'axion.souris.libre', 'true'
+            def local = rootProject.file('local/contenu/axion/definitions/local/charger.json').exists()
+            property 'axion.film.definition', local ? 'axion:local/charger' : 'axion:example/buggy'
+            property 'axion.content.examples', 'true'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
         renderTest {
             // Banc de rendu client (ADR-126) : un client qui joue son scénario, écrit son rapport
             // et s'arrête seul. Un dossier à part, dont le monde est effacé avant chaque passage ;
@@ -461,7 +475,7 @@ tasks.matching { it.name == 'runFilmVehicule' }.configureEach {
     }
 }
 
-['runFilmParametres': 'parametres', 'runFilmSport': 'sport'].each { tache, scene ->
+['runFilmParametres': 'parametres', 'runFilmSport': 'sport', 'runFilmLimiteur': 'limiteur'].each { tache, scene ->
     tasks.matching { it.name == tache }.configureEach {
         standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
         doFirst {

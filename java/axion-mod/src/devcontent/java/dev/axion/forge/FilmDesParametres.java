@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Les films des paramètres d'instance (ADR-167) : deux buggys identiques côte à côte, l'un réglé, partent de l'arrêt
  * pied au plancher. Le client, qui reçoit les modificateurs et les variables et non les valeurs, lit les mêmes nombres
- * que le serveur, au bit près — le bandeau les montre. Deux scènes :
+ * que le serveur, au bit près — le bandeau les montre. Trois scènes :
  *
  * <ul>
  *   <li>{@code parametres} (5a) : le réglé l'est par {@code /axion params} — couple divisé par deux, 170 kg de
@@ -48,6 +48,9 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code sport} (5b) : un véhicule dont une commande liée bascule le mode sport — une variable qui règle couple,
  *       limiteur et adhérence — ; le réglé va plus loin. La definition vient de {@code axion.film.definition} : la
  *       Charger locale si elle est là, le buggy d'exemple sinon.</li>
+ *   <li>{@code limiteur} (5c) : le même véhicule, à qui l'API attache le limiteur de vitesse de l'addon témoin, un
+ *       contrôleur de véhicule, et règle sa vitesse maximale — un paramètre de l'addon ; le réglé plafonne, le témoin
+ *       continue.</li>
  * </ul>
  *
  * <p>Deux conducteurs factices tiennent les volants, et passent les rapports d'une boîte manuelle ; le joueur filme,
@@ -66,7 +69,8 @@ public final class FilmDesParametres {
                 "AXION ENGINE, ADR-167 5a"),
         SPORT("sport", "axion:example/buggy",
                 List.of(Parameters.ENGINE_TORQUE, Parameters.ENGINE_MAX_RPM, Parameters.TIRES_GRIP),
-                "AXION ENGINE, ADR-167 5b");
+                "AXION ENGINE, ADR-167 5b"),
+        LIMITEUR("limiteur", "axion:example/buggy", List.of(VITESSE_MAX), "AXION ENGINE, ADR-167 5c");
 
         final String cle;
         final String definition;
@@ -90,11 +94,20 @@ public final class FilmDesParametres {
         }
     }
 
+    /** Le limiteur de vitesse de l'addon témoin, et sa vitesse maximale : un contrôleur, un paramètre d'addon. */
+    private static final String LIMITEUR = "example_addon:speed_limiter";
+
+    private static final String VITESSE_MAX = "example_addon:max_speed";
+
+    /** La vitesse maximale que la scène {@code limiteur} règle, en m/s. */
+    private static final double LIMITE = 8.0;
+
     private static final Scene SCENE = Scene.de(System.getProperty("axion.film"));
     private static final boolean ACTIF = SCENE != null;
     private static final String MONDE = ACTIF ? "axion-film-" + SCENE.cle : "";
     private static final String DEFINITION = !ACTIF ? ""
-            : SCENE == Scene.SPORT ? System.getProperty("axion.film.definition", SCENE.definition) : SCENE.definition;
+            : SCENE != Scene.PARAMETRES ? System.getProperty("axion.film.definition", SCENE.definition)
+            : SCENE.definition;
 
     /** Le sol du monde plat : la première couche d'air. */
     private static final int SOL = -60;
@@ -164,6 +177,11 @@ public final class FilmDesParametres {
     private static volatile double vitesseTemoin;
     private static volatile double parcoursRegle;
     private static volatile double parcoursTemoin;
+
+    /** Les plus grandes vitesses pendant la course, en m/s. */
+    private static volatile double vitesseMaxRegle;
+
+    private static volatile double vitesseMaxTemoin;
     private static double[] precedentRegle;
     private static double[] precedentTemoin;
     /** Le rapport que chaque conducteur demande : 0 pour une boîte automatique, qui choisit seule. */
@@ -384,6 +402,18 @@ public final class FilmDesParametres {
                 throw new IllegalStateException("/axion params n'a pas posé les deux modificateurs : "
                         + (table == null ? "paramètres absents" : table.modifiers()));
             }
+        } else if (SCENE == Scene.LIMITEUR) {
+            // 5c : l'API attache le contrôleur d'un addon ; le paramètre de son mod existe dès lors, et se règle.
+            dev.axion.api.assembly.Assembly api = dev.axion.api.AxionApi.get().assemblies().byEntity(regleServeur)
+                    .orElseThrow();
+            api.vehicle().orElseThrow(() -> new IllegalStateException(DEFINITION + " n'est pas un véhicule"))
+                    .attach(LIMITEUR);
+            double base = api.parameters().base(VITESSE_MAX);
+            api.parameters().modify(new dev.axion.api.assembly.Modifier("film:limite", VITESSE_MAX,
+                    dev.axion.api.assembly.Modifier.Operation.ADD, LIMITE - base));
+            if (api.parameters().value(VITESSE_MAX) != LIMITE) {
+                throw new IllegalStateException("vitesse maximale réglée à " + api.parameters().value(VITESSE_MAX));
+            }
         } else {
             int siege = regleServeur.seatOf(piloteRegle);
             int variable = regleServeur.variables().declared().indexOf(VARIABLE_SPORT);
@@ -450,11 +480,17 @@ public final class FilmDesParametres {
         precedentTemoin = temoinXyz;
         parcoursRegle = regleXyz[2] - DEPART_REGLE.z;
         parcoursTemoin = temoinXyz[2] - DEPART_TEMOIN.z;
+        if (phase == Phase.TOURNAGE && etape == Etape.COURSE) {
+            vitesseMaxRegle = Math.max(vitesseMaxRegle, vitesseRegle);
+            vitesseMaxTemoin = Math.max(vitesseMaxTemoin, vitesseTemoin);
+        }
         AssemblyParameters table = regleIci.parameters();
         if (table != null) {
             long[] bits = new long[SCENE.montres.size()];
             for (int i = 0; i < bits.length; i++) {
-                bits[i] = Double.doubleToRawLongBits(table.value(table.tuning().indexOf(SCENE.montres.get(i))));
+                // Le paramètre d'un addon n'existe qu'une fois son contrôleur attaché (Q6).
+                int index = table.tuning().indexOf(SCENE.montres.get(i));
+                bits[i] = Double.doubleToRawLongBits(index < 0 ? Double.NaN : table.value(index));
             }
             bitsServeur = bits;
         }
@@ -541,24 +577,36 @@ public final class FilmDesParametres {
             return;
         }
         lireLeClient(minecraft);
-        String nom = SCENE == Scene.PARAMETRES ? "réglé" : "sport";
+        String nom = switch (SCENE) {
+            case PARAMETRES -> "réglé";
+            case SPORT -> "sport";
+            case LIMITEUR -> "limité";
+        };
         String legende = switch (etape) {
-            case ARRET -> SCENE == Scene.PARAMETRES
-                    ? "Deux buggys identiques ; au premier plan, réglé par /axion params"
-                    : "Deux véhicules identiques ; au premier plan, mode sport mis par sa touche (commande "
-                            + commandeSport + ")";
-            case COURSE -> SCENE == Scene.PARAMETRES
-                    ? "Pied au plancher depuis l'arrêt : seul le buggy réglé accélère moins"
-                    : "Pied au plancher depuis l'arrêt : le mode sport va plus loin";
-            case BILAN -> SCENE == Scene.PARAMETRES
-                    ? "Le client reçoit les modificateurs et compose : les valeurs du serveur, au bit près"
-                    : "Le client reçoit la variable et compose : les valeurs du serveur, au bit près";
+            case ARRET -> switch (SCENE) {
+                case PARAMETRES -> "Deux buggys identiques ; au premier plan, réglé par /axion params";
+                case SPORT -> "Deux véhicules identiques ; au premier plan, mode sport mis par sa touche (commande "
+                        + commandeSport + ")";
+                case LIMITEUR -> "Deux véhicules identiques ; au premier plan, le limiteur de vitesse d'un addon,"
+                        + " attaché par l'API";
+            };
+            case COURSE -> switch (SCENE) {
+                case PARAMETRES -> "Pied au plancher depuis l'arrêt : seul le buggy réglé accélère moins";
+                case SPORT -> "Pied au plancher depuis l'arrêt : le mode sport va plus loin";
+                case LIMITEUR -> String.format(Locale.ROOT, "Pied au plancher : au-delà de %.0f m/s, le contrôleur"
+                        + " coupe le couple du moteur ; le témoin continue", LIMITE);
+            };
+            case BILAN -> switch (SCENE) {
+                case PARAMETRES -> "Le client reçoit les modificateurs et compose : les valeurs du serveur, au bit près";
+                case SPORT -> "Le client reçoit la variable et compose : les valeurs du serveur, au bit près";
+                case LIMITEUR -> "Le client reçoit le contrôleur attaché et compose le paramètre de son addon, au bit"
+                        + " près";
+            };
         };
         String valeurs = etape == Etape.ARRET && SCENE == Scene.PARAMETRES
                 ? "/axion params … " + BRIDE + "     /axion params … " + CHARGE
-                // + 0.0 : un parcours de -0.0 à l'arrêt s'écrit 0.
-                : String.format(Locale.ROOT, "%s %.1f m/s, %.0f m    témoin %.1f m/s, %.0f m    au client : %s",
-                        nom, vitesseRegle, parcoursRegle + 0.0, vitesseTemoin, parcoursTemoin + 0.0, montres());
+                : String.format(Locale.ROOT, "%s %.1f m/s, %s m    témoin %.1f m/s, %s m    au client : %s",
+                        nom, vitesseRegle, metres(parcoursRegle), vitesseTemoin, metres(parcoursTemoin), montres());
         tournage.capturer(minecraft.getMainRenderTarget(), legende, valeurs,
                 String.format(Locale.ROOT, "%.1f s", secondes));
     }
@@ -586,9 +634,11 @@ public final class FilmDesParametres {
         long[] serveur = bitsServeur;
         for (int i = 0; i < n; i++) {
             int index = miroir.tuning().indexOf(SCENE.montres.get(i));
-            regles[i] = miroir.value(index);
-            bases[i] = miroir.tuning().get(index).base();
-            temoins[i] = miroirTemoin.value(miroirTemoin.tuning().indexOf(SCENE.montres.get(i)));
+            regles[i] = index < 0 ? Double.NaN : miroir.value(index);
+            bases[i] = index < 0 ? Double.NaN : miroir.tuning().get(index).base();
+            // Le témoin n'a pas le paramètre d'un addon dont il ne porte pas le contrôleur : NaN, « absent ».
+            int indexTemoin = miroirTemoin.tuning().indexOf(SCENE.montres.get(i));
+            temoins[i] = indexTemoin < 0 ? Double.NaN : miroirTemoin.value(indexTemoin);
             if (ecartMiroir == null && (serveur.length != n || Double.doubleToRawLongBits(regles[i]) != serveur[i])) {
                 ecartMiroir = "le client lit « " + SCENE.montres.get(i) + " » à " + regles[i] + ", le serveur à "
                         + (serveur.length == n ? Double.longBitsToDouble(serveur[i]) : "?");
@@ -601,7 +651,8 @@ public final class FilmDesParametres {
 
     /** {@return vrai si le client lit le réglage du serveur : au bit près, et autre que la base} */
     private static boolean reglageLu() {
-        return ecartMiroir == null && reglesClient.length > 0 && reglesClient[0] != basesClient[0];
+        return ecartMiroir == null && reglesClient.length > 0 && !Double.isNaN(reglesClient[0])
+                && reglesClient[0] != basesClient[0];
     }
 
     /** {@return les paramètres montrés du réglé, lus au client : de leur base à leur valeur} */
@@ -615,10 +666,19 @@ public final class FilmDesParametres {
                 case Parameters.MASS -> "masse " + base + " → " + valeur + " kg";
                 case Parameters.ENGINE_MAX_RPM -> "limiteur " + base + " → " + valeur + " tr/min";
                 case Parameters.TIRES_GRIP -> "adhérence ×" + base + " → ×" + valeur;
+                case VITESSE_MAX -> "vitesse max " + base + " → " + valeur + " m/s";
                 default -> SCENE.montres.get(i) + " " + base + " → " + valeur;
             });
         }
         return String.join(", ", parts);
+    }
+
+    /**
+     * {@return un parcours en mètres entiers} Posé, un véhicule recule de quelques centimètres sur ses ressorts : arrondi,
+     * ce recul s'écrirait « -0 ».
+     */
+    private static String metres(double parcours) {
+        return String.format(Locale.ROOT, "%.0f", Math.abs(parcours) < 0.5 ? 0.0 : parcours);
     }
 
     private static String nombre(double valeur) {
@@ -635,19 +695,25 @@ public final class FilmDesParametres {
         if (!(parcoursTemoin >= 5.0)) {
             return String.format(Locale.ROOT, "le témoin n'a parcouru que %.2f m", parcoursTemoin);
         }
-        boolean attendu = SCENE == Scene.PARAMETRES
-                ? parcoursRegle < 0.85 * parcoursTemoin
-                : parcoursRegle > 1.05 * parcoursTemoin;
+        boolean attendu = switch (SCENE) {
+            case PARAMETRES -> parcoursRegle < 0.85 * parcoursTemoin;
+            case SPORT -> parcoursRegle > 1.05 * parcoursTemoin;
+            case LIMITEUR -> parcoursRegle < parcoursTemoin;
+        };
         if (!attendu) {
             return String.format(Locale.ROOT, "le réglé a parcouru %.2f m contre %.2f m pour le témoin", parcoursRegle,
                     parcoursTemoin);
+        }
+        if (SCENE == Scene.LIMITEUR && !(vitesseMaxRegle < LIMITE + 1.5 && vitesseMaxTemoin > LIMITE + 3.0)) {
+            return String.format(Locale.ROOT, "vitesses maximales : %.2f m/s limité, %.2f m/s témoin, pour %.1f m/s",
+                    vitesseMaxRegle, vitesseMaxTemoin, LIMITE);
         }
         if (SCENE == Scene.PARAMETRES && !(reglesClient[0] == basesClient[0] * 0.5
                 && reglesClient[1] == basesClient[1] + 170.0)) {
             return "le client lit couple " + reglesClient[0] + " et masse " + reglesClient[1];
         }
         for (int i = 0; i < temoinsClient.length; i++) {
-            if (temoinsClient[i] != basesClient[i]) {
+            if (!Double.isNaN(temoinsClient[i]) && temoinsClient[i] != basesClient[i]) {
                 return "le témoin a « " + SCENE.montres.get(i) + " » à " + temoinsClient[i] + " au client : il n'est"
                         + " pas réglé";
             }
@@ -667,11 +733,11 @@ public final class FilmDesParametres {
         }
         String bilan = String.format(Locale.ROOT,
                 "{\"scene\": \"%s\", \"images\": %d, \"uniques\": %d, \"echec\": %s, \"parcours_regle\": %.2f,"
-                        + " \"parcours_temoin\": %.2f, \"regle_client\": \"%s\", \"capture_ms_mediane\": %.1f,"
-                        + " \"capture_ms_p90\": %.1f}%n",
+                        + " \"parcours_temoin\": %.2f, \"vitesse_max_regle\": %.2f, \"vitesse_max_temoin\": %.2f,"
+                        + " \"regle_client\": \"%s\", \"capture_ms_mediane\": %.1f, \"capture_ms_p90\": %.1f}%n",
                 SCENE.cle, tournage == null ? 0 : tournage.images(), tournage == null ? 0 : tournage.uniques(),
                 faute == null ? "null" : "\"" + faute.replace('"', '\'') + "\"", parcoursRegle, parcoursTemoin,
-                montres(), tournage == null ? 0.0 : tournage.quantileMs(0.5),
+                vitesseMaxRegle, vitesseMaxTemoin, montres(), tournage == null ? 0.0 : tournage.quantileMs(0.5),
                 tournage == null ? 0.0 : tournage.quantileMs(0.9));
         try {
             Files.createDirectories(dossier(minecraft));
