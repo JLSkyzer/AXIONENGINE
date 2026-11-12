@@ -411,6 +411,29 @@ class SimCommandStreamTest {
     }
 
     @Test
+    void encodeLeCoupleDesRoues() throws IOException {
+        // R-1082, ADR-167 D9 : SetWheelTorques, 12 octets — handle, nombre de couples — puis les couples.
+        byte[] bytes = new SimCommandStream().setWheelTorques(7, 3, new float[] {0f, 0f, 150f, -20f})
+                .removeAssembly(9, 1).toBytes();
+        assertEquals(8 + (8 + 32) + (8 + 8), bytes.length, "28 octets de payload, complétés à 32");
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_SET_WHEEL_TORQUES, b.getInt(8), "opcode");
+        assertEquals(12 + 4 * 4, b.getInt(12), "payload_len, couples compris");
+        assertEquals(7, b.getInt(16), "handle.index");
+        assertEquals(4, b.getShort(16 + 8), "count");
+        assertEquals(150f, b.getFloat(16 + 12 + 8), "troisième roue");
+        assertEquals(SimCommandStream.OP_REMOVE_ASSEMBLY, b.getInt(8 + 8 + 32), "commande suivante, alignée");
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().setWheelTorques(7, 3, new float[33]));
+
+        Path source = Path.of(System.getProperty("axion.crates.dir"), "ax-model", "src", "dm", "commands.rs");
+        String rust = Files.readString(source, StandardCharsets.UTF_8);
+        assertTrue(rust.contains("pub const SET_WHEEL_TORQUES: u32 = " + SimCommandStream.OP_SET_WHEEL_TORQUES + ";"));
+        Matcher taille = Pattern.compile("impl SetWheelTorques \\{[^}]*?pub const BYTES: usize = (\\d+);").matcher(rust);
+        assertTrue(taille.find(), "SetWheelTorques::BYTES dans commands.rs");
+        assertEquals(Integer.parseInt(taille.group(1)), SimCommandStream.SET_WHEEL_TORQUES_BYTES);
+    }
+
+    @Test
     void encodeLesParametresDUneInstance() throws IOException {
         // ADR-167 D6 : SetParameters, 72 octets — handle, quinze f32, nombre de rapports — puis les rapports.
         float[] valeurs = new float[SimCommandStream.PARAMETER_FIELDS.size()];

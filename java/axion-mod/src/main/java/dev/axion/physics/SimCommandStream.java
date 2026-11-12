@@ -208,6 +208,15 @@ public final class SimCommandStream {
             Parameters.SUSPENSION_DAMPING, Parameters.STEERING_MAX_ANGLE, Parameters.AERO_DRAG,
             Parameters.AERO_DOWNFORCE_FRONT, Parameters.AERO_DOWNFORCE_REAR);
 
+    /** Opcode {@code SET_WHEEL_TORQUES} : le couple posé sur chaque roue d'un véhicule (R-1082, ADR-167 D9). */
+    public static final int OP_SET_WHEEL_TORQUES = 19;
+
+    /** Taille de l'en-tête {@code SetWheelTorques}, en octets : le handle, le nombre de couples. */
+    public static final int SET_WHEEL_TORQUES_BYTES = 12;
+
+    /** Couples d'un véhicule, au plus : un par roue (R-1052). */
+    public static final int MAX_WHEEL_TORQUES = 32;
+
     /** Taille du payload {@code SetVehicleInput}, en octets : le handle, l'entrée de 12.8, les drapeaux. */
     public static final int SET_VEHICLE_INPUT_BYTES = 36;
 
@@ -925,6 +934,31 @@ public final class SimCommandStream {
         command.putShort((short) gears.length).putShort((short) 0);
         for (float gear : gears) {
             command.putFloat(gear);
+        }
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_WHEEL_TORQUES} (R-1082, ADR-167 D9) : le couple que les contrôleurs d'un véhicule
+     * posent sur chacune de ses roues, qui vaut jusqu'à la suivante. Il s'ajoute à celui du motopropulseur ; sans
+     * {@code powertrain}, c'est tout le couple de la roue.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param torques un couple par roue, dans l'ordre de la definition, en N·m, positif vers l'avant ; vide pour n'en
+     *     poser aucun
+     * @return {@code this}, pour chaîner
+     * @throws IllegalArgumentException au-delà de {@link #MAX_WHEEL_TORQUES} couples
+     */
+    public SimCommandStream setWheelTorques(int handleIndex, int handleGeneration, float[] torques) {
+        if (torques.length > MAX_WHEEL_TORQUES) {
+            throw new IllegalArgumentException(torques.length + " couples, au-delà de " + MAX_WHEEL_TORQUES + " roues");
+        }
+        ByteBuffer command = beginCommand(OP_SET_WHEEL_TORQUES, SET_WHEEL_TORQUES_BYTES + torques.length * 4);
+        command.putInt(handleIndex).putInt(handleGeneration).putShort((short) torques.length).putShort((short) 0);
+        for (float torque : torques) {
+            command.putFloat(torque);
         }
         commands.add(command.array());
         return this;

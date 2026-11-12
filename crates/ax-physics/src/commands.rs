@@ -13,8 +13,8 @@ use ax_model::dm::commands::{
     dimension_env_flags, entity_proxy_shape, opcode, vehicle_input_flags, ApplyForce, BreakJoint,
     CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly, RemoveWorldTile,
     SetDimensionEnv, SetEntityProxies, SetKinematic, SetObservers, SetParameters,
-    SetPhysicsMaterials, SetVehicleInput, SetWorldCollision, SetWorldFluid, SetWorldHeightfield,
-    SimCommandHeader,
+    SetPhysicsMaterials, SetVehicleInput, SetWheelTorques, SetWorldCollision, SetWorldFluid,
+    SetWorldHeightfield, SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::PhysicsMaterial;
@@ -271,6 +271,19 @@ fn apply_one(
         // ADR-167 D6 : les paramètres réglés d'une instance, NaN pour garder la base.
         opcode::SET_PARAMETERS => {
             apply_set_parameters(driver, payload)?;
+            outcome.applied += 1;
+        }
+        // R-1082, ADR-167 D9 : le couple que les contrôleurs posent sur chaque roue.
+        opcode::SET_WHEEL_TORQUES => {
+            if payload.len() < SetWheelTorques::BYTES {
+                return Err(CommandError::BadPayloadLength);
+            }
+            let count = usize::from(read_u16(payload, 8));
+            expect_len(payload, SetWheelTorques::BYTES + count * 4)?;
+            let torques: Vec<f32> = (0..count)
+                .map(|rank| read_f32(payload, SetWheelTorques::BYTES + 4 * rank))
+                .collect();
+            driver.apply_set_wheel_torques(read_handle(payload, 0), &torques);
             outcome.applied += 1;
         }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
@@ -1393,6 +1406,35 @@ mod tests {
         );
         assert_eq!(
             appliquer(&mut driver, opcode::SET_PARAMETERS, &payload[..40]),
+            Err(CommandError::BadPayloadLength)
+        );
+    }
+
+    #[test]
+    fn r1082_set_wheel_torques_se_lit_et_refuse_une_liste_tronquee() {
+        // ADR-167 D9 : le handle, le nombre de couples, puis les couples ; l'assembly inconnue ne change rien, une
+        // liste plus courte que son nombre refuse le flux.
+        let mut driver = SimDriver::new();
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&7u32.to_le_bytes());
+        payload.extend_from_slice(&1u32.to_le_bytes());
+        payload.extend_from_slice(&2u16.to_le_bytes());
+        payload.extend_from_slice(&0u16.to_le_bytes());
+        assert_eq!(payload.len(), SetWheelTorques::BYTES);
+        payload.extend_from_slice(&150f32.to_le_bytes());
+        payload.extend_from_slice(&(-150f32).to_le_bytes());
+        let outcome = appliquer(&mut driver, opcode::SET_WHEEL_TORQUES, &payload).unwrap();
+        assert_eq!(outcome.applied, 1);
+        assert_eq!(
+            appliquer(
+                &mut driver,
+                opcode::SET_WHEEL_TORQUES,
+                &payload[..SetWheelTorques::BYTES + 4]
+            ),
+            Err(CommandError::BadPayloadLength)
+        );
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_WHEEL_TORQUES, &payload[..6]),
             Err(CommandError::BadPayloadLength)
         );
     }

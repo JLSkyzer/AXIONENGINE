@@ -52,11 +52,15 @@ pub struct WheelReport {
     pub compression: f32,
     /// Angle de braquage, en radians.
     pub steer_angle: f32,
+    /// Glissement longitudinal du pneu (12.4), sans unité : ce qu'en lisent les contrôleurs (ADR-167 D9).
+    pub slip_long: f32,
+    /// Glissement latéral du pneu, en radians.
+    pub slip_lat: f32,
 }
 
 impl WheelReport {
-    /// Taille sur la frontière, en octets.
-    pub const BYTES: usize = 24;
+    /// Taille sur la frontière, en octets : 32 depuis les glissements (`SIM_OUT` schéma 5, ADR-167 D9).
+    pub const BYTES: usize = 32;
 
     /// Taille de l'en-tête de la section des roues dans `SIM_OUT` : leur nombre et 4 octets réservés,
     /// pour garder les enregistrements alignés sur 8.
@@ -68,7 +72,13 @@ impl WheelReport {
         out.extend_from_slice(&self.handle.generation.to_le_bytes());
         out.extend_from_slice(&self.index.to_le_bytes());
         out.extend_from_slice(&self.flags.to_le_bytes());
-        for value in [self.spin_speed, self.compression, self.steer_angle] {
+        for value in [
+            self.spin_speed,
+            self.compression,
+            self.steer_angle,
+            self.slip_long,
+            self.slip_lat,
+        ] {
             out.extend_from_slice(&value.to_le_bytes());
         }
     }
@@ -86,6 +96,8 @@ impl WheelReport {
             spin_speed: f32_at(12),
             compression: f32_at(16),
             steer_angle: f32_at(20),
+            slip_long: f32_at(24),
+            slip_lat: f32_at(28),
         })
     }
 
@@ -986,6 +998,8 @@ mod tests {
         assert_eq!(offset_of!(WheelReport, spin_speed), 12);
         assert_eq!(offset_of!(WheelReport, compression), 16);
         assert_eq!(offset_of!(WheelReport, steer_angle), 20);
+        assert_eq!(offset_of!(WheelReport, slip_long), 24);
+        assert_eq!(offset_of!(WheelReport, slip_lat), 28);
         let roue = WheelReport {
             handle: Handle::new(7, 3),
             index: 2,
@@ -993,6 +1007,8 @@ mod tests {
             spin_speed: -12.5,
             compression: 0.25,
             steer_angle: 0.5,
+            slip_long: 0.125,
+            slip_lat: -0.0625,
         };
         let mut octets = Vec::new();
         roue.write_le(&mut octets);
@@ -1000,7 +1016,8 @@ mod tests {
         assert_eq!(&octets[0..4], &7u32.to_le_bytes());
         assert_eq!(&octets[12..16], &(-12.5f32).to_le_bytes());
         assert_eq!(WheelReport::read_le(&octets), Some(roue));
-        assert_eq!(WheelReport::read_le(&octets[..23]), None);
+        assert_eq!(&octets[24..28], &0.125f32.to_le_bytes());
+        assert_eq!(WheelReport::read_le(&octets[..31]), None);
 
         let mut section = Vec::new();
         WheelReport::write_section(&[roue, roue], &mut section);

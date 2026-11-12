@@ -141,7 +141,10 @@ fn sim_out_porte_l_emprise_apres_les_etats() {
         unsafe { std::slice::from_raw_parts(out.ptr, usize::try_from(out.capacity).unwrap()) };
     let header = BufferHeader::read(out_view).expect("en-tête SIM_OUT lisible");
     assert_eq!(header.kind, BufferKind::SimOut);
-    assert_eq!(header.schema_version, 4, "schéma de SIM_OUT (ADR-163 D1)");
+    assert_eq!(
+        header.schema_version, 5,
+        "schéma de SIM_OUT (ADR-167 D9 : les glissements des roues)"
+    );
     let node = &out_view[HEADER_BYTES + 76..HEADER_BYTES + 80];
     assert_eq!(
         u32::from_le_bytes(node.try_into().unwrap()),

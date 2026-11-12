@@ -745,6 +745,72 @@ fn adr167_un_couple_regle_accelere_plus_et_la_base_le_rend() {
 }
 
 #[test]
+fn r1082_sans_moteur_le_couple_des_roues_fait_avancer_le_vehicule() {
+    // ADR-167 D9 : sans powertrain, le couple qu'un contrôleur pose sur chaque roue est tout son couple. Il vaut
+    // jusqu'au suivant ; une liste vide le retire ; une liste d'une autre longueur que les roues est refusée.
+    let (mut world, v) = sur_le_plat(description(4), [40.0, 2500.0], 1.0);
+    assert_eq!(
+        world.set_wheel_torques(ASSEMBLY, &[0.0, 0.0, 300.0, 300.0]),
+        Some(())
+    );
+    avancer(&mut world, 2.0);
+    let lance = vers_l_avant(&world, v);
+    assert!(
+        lance > 1.0,
+        "les roues arrière poussent le véhicule : {lance} m/s"
+    );
+    assert_eq!(
+        world.set_wheel_torques(ASSEMBLY, &[300.0, 300.0]),
+        None,
+        "deux couples pour quatre roues"
+    );
+    assert_eq!(world.set_wheel_torques(ASSEMBLY, &[]), Some(()));
+    // Les roues qui patinaient rendent d'abord leur inertie en rattrapant le sol ; ensuite, plus rien ne pousse.
+    avancer(&mut world, 0.5);
+    let rattrape = vers_l_avant(&world, v);
+    avancer(&mut world, 1.0);
+    let libre = vers_l_avant(&world, v);
+    assert!(
+        libre <= rattrape + 1e-3,
+        "sans couple, il n'accélère plus : {libre} m/s après {rattrape} m/s"
+    );
+    assert_eq!(
+        monde().set_wheel_torques(ASSEMBLY, &[]),
+        None,
+        "sans véhicule, rien"
+    );
+}
+
+#[test]
+fn r1082_le_couple_des_roues_s_ajoute_au_moteur() {
+    // ADR-167 D9 : avec un motopropulseur, le couple d'une roue s'ajoute à sa part de l'arbre ; un couple nul rend le
+    // véhicule d'origine, au bit près.
+    let vitesse = |couple: Option<f32>| {
+        let (mut world, v) = sur_le_plat(electrique(), [40.0, 2500.0], 1.0);
+        conduire(&mut world, entree(1.0, 0.0, 0.0));
+        if let Some(couple) = couple {
+            assert_eq!(
+                world.set_wheel_torques(ASSEMBLY, &[0.0, 0.0, couple, couple]),
+                Some(())
+            );
+        }
+        avancer(&mut world, 2.0);
+        vers_l_avant(&world, v)
+    };
+    let base = vitesse(None);
+    let pousse = vitesse(Some(600.0));
+    assert!(
+        pousse > base * 1.1,
+        "le couple des roues s'ajoute : {pousse} m/s contre {base} m/s"
+    );
+    assert_eq!(
+        vitesse(Some(0.0)).to_bits(),
+        base.to_bits(),
+        "un couple nul ne change rien"
+    );
+}
+
+#[test]
 fn adr167_la_masse_se_met_a_l_echelle_de_son_origine_centre_garde() {
     // D6, CAP-34 : masse et inertie multipliées, centre de masse gardé ; chaque réglage repart de l'origine.
     let mut world = monde();

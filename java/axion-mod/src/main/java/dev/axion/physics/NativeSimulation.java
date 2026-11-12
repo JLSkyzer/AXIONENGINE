@@ -224,10 +224,11 @@ public final class NativeSimulation {
                     joints = JointState.decodeSection(buffer, jointsAt);
                     if (schema >= WHEELS_SINCE_SCHEMA) {
                         int wheelsAt = jointsAt + JointState.SECTION_HEADER_BYTES + joints.size() * JointState.BYTES;
-                        wheels = WheelReport.decodeSection(buffer, wheelsAt);
+                        int wheelBytes = WheelReport.bytes(schema);
+                        wheels = WheelReport.decodeSection(buffer, wheelsAt, wheelBytes);
                         if (schema >= VEHICLES_SINCE_SCHEMA) {
                             vehicles = VehicleReport.decodeSection(buffer,
-                                    wheelsAt + WheelReport.SECTION_HEADER_BYTES + wheels.size() * WheelReport.BYTES);
+                                    wheelsAt + WheelReport.SECTION_HEADER_BYTES + wheels.size() * wheelBytes);
                         }
                     }
                 }

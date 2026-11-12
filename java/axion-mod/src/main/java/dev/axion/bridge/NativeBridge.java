@@ -31,7 +31,9 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}. 22 depuis les paramètres d'une instance (ADR-167 D6) : {@code SET_PARAMETERS}. 21 depuis
+     * {@code E-1002}. 23 depuis le couple posé sur chaque roue (R-1082, ADR-167 D9) : {@code SET_WHEEL_TORQUES}, et
+     * les glissements de chaque roue dans {@code SIM_OUT} (schéma 5). 22
+     * depuis les paramètres d'une instance (ADR-167 D6) : {@code SET_PARAMETERS}. 21 depuis
      * l'état du motopropulseur (ADR-163 D1) : la section des véhicules après celle des
      * roues, {@code SIM_OUT} au schéma 4. 20 depuis l'entrée du conducteur (ADR-159, tranche 3) : {@code SET_VEHICLE_INPUT}, {@code DEFN}
      * version 3. 13 depuis la sphère explicite du candidat de rendu (ADR-157 D2) : 64 octets, drapeau
@@ -48,7 +50,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 22;
+    public static final int EXPECTED_ABI_VERSION = 23;
 
     /** Succès. */
     public static final int OK = 0;

@@ -315,6 +315,33 @@ impl PhysicsWorld {
         });
     }
 
+    /// Pose le couple de chaque roue d'un véhicule (R-1082, ADR-167 D9), dans l'ordre de sa definition : il s'ajoute à
+    /// celui du motopropulseur au sous-pas suivant, et vaut jusqu'au prochain appel. Une liste vide n'en pose aucun ;
+    /// un couple non fini compte pour zéro. Un couple non nul réveille le véhicule. Rend `None` si l'assembly n'est pas
+    /// un véhicule, ou si la liste n'a pas autant de couples que de roues.
+    pub fn set_wheel_torques(&mut self, assembly: Handle, torques: &[f32]) -> Option<()> {
+        let bodies = &mut self.inner.bodies;
+        let vehicle = self
+            .vehicles
+            .iter_mut()
+            .find(|vehicle| handle_key(vehicle.assembly) == handle_key(assembly))?;
+        if !torques.is_empty() && torques.len() != vehicle.drives.len() {
+            return None;
+        }
+        for (rank, drive) in vehicle.drives.iter_mut().enumerate() {
+            let torque = torques.get(rank).copied().unwrap_or(0.0);
+            drive.torque = if torque.is_finite() { torque } else { 0.0 };
+        }
+        if vehicle.drives.iter().any(|drive| drive.torque != 0.0) {
+            for handle in &vehicle.bodies {
+                if let Some(body) = bodies.get_mut(*handle) {
+                    body.wake_up(true);
+                }
+            }
+        }
+        Some(())
+    }
+
     /// Règle les paramètres d'un véhicule (ADR-167 D6) : sa description effective se dérive de nouveau de sa base,
     /// sa traînée se reverse à son corps racine, et il est réveillé. Le véhicule n'est pas replacé : le réglage agit au
     /// sous-pas suivant, comme une force. Rend `None` si l'assembly n'est pas un véhicule.
@@ -436,6 +463,8 @@ impl PhysicsWorld {
                     spin_speed: state.spin_speed,
                     compression: state.compression.clamp(-1.0, 1.0) - vehicle.settled[index],
                     steer_angle: state.steer_angle,
+                    slip_long: state.slip_long,
+                    slip_lat: state.slip_lat,
                 });
             }
         }
@@ -522,7 +551,9 @@ impl PhysicsWorld {
         }
         let mut vehicles = std::mem::take(&mut self.vehicles);
         for vehicle in &mut vehicles {
-            if vehicle.driver && vehicle.input.moves() {
+            // Un couple posé sur une roue fait avancer le véhicule comme un conducteur qui accélère (R-1082).
+            let driven = vehicle.drives.iter().any(|drive| drive.torque != 0.0);
+            if (vehicle.driver && vehicle.input.moves()) || driven {
                 for handle in &vehicle.bodies {
                     if let Some(body) = self.inner.bodies.get_mut(*handle) {
                         body.wake_up(true);

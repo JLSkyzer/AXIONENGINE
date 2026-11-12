@@ -1419,6 +1419,13 @@ impl SimDriver {
         true
     }
 
+    /// Applique `SET_WHEEL_TORQUES` (R-1082, ADR-167 D9) : le couple de chaque roue d'un véhicule. Faux pour une
+    /// assembly inconnue, qui n'est pas un véhicule, ou dont le nombre de roues diffère.
+    pub fn apply_set_wheel_torques(&mut self, handle: Handle, torques: &[f32]) -> bool {
+        self.assembly_world(handle)
+            .is_some_and(|world| world.set_wheel_torques(handle, torques).is_some())
+    }
+
     /// Applique `BREAK_JOINT` (ADR-151 D5) : rompt le joint de rang `joint` de l'assembly. Faux
     /// pour une assembly ou un joint inconnus, ou déjà rompu.
     pub fn apply_break_joint(&mut self, handle: Handle, joint: u16) -> bool {

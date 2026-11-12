@@ -65,6 +65,9 @@ pub mod opcode {
     pub const SET_VEHICLE_INPUT: u32 = 17;
     /// Les paramètres réglés d'une instance ([`super::SetParameters`], puis `gear_count × f32`). ADR-167 D6.
     pub const SET_PARAMETERS: u32 = 18;
+    /// Le couple posé sur chaque roue d'un véhicule ([`super::SetWheelTorques`], puis `count × f32`). R-1082,
+    /// ADR-167 D9.
+    pub const SET_WHEEL_TORQUES: u32 = 19;
 }
 
 /// Drapeaux de [`SetVehicleInput`], champ `flags`.
@@ -144,6 +147,28 @@ pub struct SetParameters {
 impl SetParameters {
     /// Taille de l'en-tête sur la frontière, en octets.
     pub const BYTES: usize = 72;
+}
+
+/// En-tête de `SET_WHEEL_TORQUES` (R-1082, ADR-167 D9) : 12 octets, puis `count` couples en `f32`.
+///
+/// Le couple que les contrôleurs d'un véhicule posent sur chacune de ses roues, dans l'ordre de la definition, en N·m,
+/// positif vers l'avant. Il s'ajoute à celui du motopropulseur ; sans `powertrain`, c'est tout le couple de la roue.
+/// `count` vaut le nombre de roues du véhicule, ou 0 pour n'en poser aucun ; un autre nombre est ignoré. La commande
+/// vaut jusqu'à la suivante.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SetWheelTorques {
+    /// L'assembly du véhicule.
+    pub handle: Handle,
+    /// Nombre de couples qui suivent.
+    pub count: u16,
+    /// Réservé, à zéro.
+    pub _pad: u16,
+}
+
+impl SetWheelTorques {
+    /// Taille de l'en-tête sur la frontière, en octets.
+    pub const BYTES: usize = 12;
 }
 
 /// Payload de `JAM_JOINT` (ADR-151 D6, D7) : 16 octets.
@@ -956,6 +981,10 @@ mod tests {
     fn dm_parametres_d_instance_disposition_figee() {
         // ADR-167 D6 : opcode 18, le handle, quinze f32, le nombre de rapports ; les rapports suivent.
         assert_eq!(opcode::SET_PARAMETERS, 18);
+        assert_eq!(opcode::SET_WHEEL_TORQUES, 19);
+        assert_eq!(size_of::<SetWheelTorques>(), SetWheelTorques::BYTES);
+        assert_eq!(align_of::<SetWheelTorques>(), 4);
+        assert_eq!(offset_of!(SetWheelTorques, count), 8);
         assert_eq!(size_of::<SetParameters>(), SetParameters::BYTES);
         assert_eq!(align_of::<SetParameters>(), 4);
         assert_eq!(offset_of!(SetParameters, handle), 0);

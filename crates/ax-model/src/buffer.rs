@@ -157,7 +157,8 @@ impl BufferKind {
     /// comment lire ce qui suit. Elle change avec la disposition de la charge,
     /// et le lecteur refuse une version qu'il ne connaît pas (R-262, R-491).
     ///
-    /// - `SIM_OUT` = 4 (ADR-163 D1) : `BodyState[state_count]` puis
+    /// - `SIM_OUT` = 5 (ADR-167 D9 : chaque roue porte ses glissements, 32 octets ; 4 depuis ADR-163 D1) :
+    ///   `BodyState[state_count]` puis
     ///   `BodyBounds[state_count]`, dans le même ordre (ADR-120) ; chaque état porte le
     ///   node racine de son corps, une assembly en ayant plusieurs ; puis la section des
     ///   joints, leur nombre (`u32`), 4 octets réservés et `JointState[n]` (schéma 2,
@@ -180,7 +181,7 @@ impl BufferKind {
     pub const fn schema_version(self) -> u32 {
         match self {
             BufferKind::Debug | BufferKind::RenderDebug => 2,
-            BufferKind::SimOut => 4,
+            BufferKind::SimOut => 5,
             BufferKind::RenderIn => 3,
             BufferKind::RenderOut => 4,
             BufferKind::AssetOut => 1,
@@ -541,7 +542,7 @@ mod tests {
                 BufferKind::RenderOut => 4,
                 BufferKind::RenderIn => 3,
                 BufferKind::Debug | BufferKind::RenderDebug => 2,
-                BufferKind::SimOut => 4,
+                BufferKind::SimOut => 5,
                 BufferKind::AssetOut => 1,
                 _ => 0,
             };

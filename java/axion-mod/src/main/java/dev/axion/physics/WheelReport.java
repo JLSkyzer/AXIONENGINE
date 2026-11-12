@@ -25,10 +25,16 @@ import java.util.List;
  */
 public record WheelReport(
         int handleIndex, int handleGeneration, int index, int flags, float spinSpeed, float compression,
-        float steerAngle) {
+        float steerAngle, float slipLong, float slipLat) {
 
-    /** Taille de la structure sur la frontière, en octets. */
-    public static final int BYTES = 24;
+    /** Taille de la structure sur la frontière, en octets : 32 depuis les glissements ({@code SIM_OUT} schéma 5). */
+    public static final int BYTES = 32;
+
+    /** Sa taille avant les glissements ({@code SIM_OUT} schémas 3 et 4) ; ils y valent 0. */
+    public static final int BYTES_WITHOUT_SLIPS = 24;
+
+    /** Le schéma de {@code SIM_OUT} depuis lequel chaque roue porte ses glissements (ADR-167 D9). */
+    public static final int SLIPS_SINCE_SCHEMA = 5;
 
     /** Taille de l'en-tête de la section : le nombre de roues et 4 octets réservés. */
     public static final int SECTION_HEADER_BYTES = 8;
@@ -49,6 +55,11 @@ public record WheelReport(
      * @return l'état décodé
      */
     public static WheelReport decode(ByteBuffer buffer, int base) {
+        return decode(buffer, base, BYTES);
+    }
+
+    private static WheelReport decode(ByteBuffer buffer, int base, int bytes) {
+        boolean slips = bytes >= BYTES;
         return new WheelReport(
                 buffer.getInt(base),
                 buffer.getInt(base + 4),
@@ -56,7 +67,18 @@ public record WheelReport(
                 Short.toUnsignedInt(buffer.getShort(base + 10)),
                 buffer.getFloat(base + 12),
                 buffer.getFloat(base + 16),
-                buffer.getFloat(base + 20));
+                buffer.getFloat(base + 20),
+                slips ? buffer.getFloat(base + 24) : 0f,
+                slips ? buffer.getFloat(base + 28) : 0f);
+    }
+
+    /**
+     * {@return la taille d'un enregistrement dans un {@code SIM_OUT} de ce schéma}
+     *
+     * @param schema le schéma lu dans l'en-tête
+     */
+    public static int bytes(int schema) {
+        return schema >= SLIPS_SINCE_SCHEMA ? BYTES : BYTES_WITHOUT_SLIPS;
     }
 
     /**
@@ -70,17 +92,29 @@ public record WheelReport(
      * @return les états, dans l'ordre du natif ; vide si la section est tronquée
      */
     public static List<WheelReport> decodeSection(ByteBuffer buffer, int base) {
+        return decodeSection(buffer, base, BYTES);
+    }
+
+    /**
+     * Décode la section des roues, ses enregistrements de la taille donnée.
+     *
+     * @param buffer tampon en little-endian
+     * @param base offset de l'en-tête de la section
+     * @param bytes taille d'un enregistrement, voir {@link #bytes(int)}
+     * @return les roues, vide si la section dépasse le tampon
+     */
+    public static List<WheelReport> decodeSection(ByteBuffer buffer, int base, int bytes) {
         long records = (long) base + SECTION_HEADER_BYTES;
         if (base < 0 || records > buffer.capacity()) {
             return List.of();
         }
         long count = Integer.toUnsignedLong(buffer.getInt(base));
-        if (records + count * BYTES > buffer.capacity()) {
+        if (records + count * bytes > buffer.capacity()) {
             return List.of();
         }
         List<WheelReport> wheels = new ArrayList<>((int) count);
         for (int rank = 0; rank < count; rank++) {
-            wheels.add(decode(buffer, (int) records + rank * BYTES));
+            wheels.add(decode(buffer, (int) records + rank * bytes, bytes));
         }
         return wheels;
     }

@@ -79,6 +79,9 @@ pub struct WheelDrive {
     pub hold: f32,
     /// Part du couple de l'arbre, voir [`differential::shares`].
     pub share: f32,
+    /// Couple moteur posé sur la roue elle-même, en N·m, positif vers l'avant (R-1082, ADR-167 D9) : celui d'un
+    /// contrôleur de véhicule. Il s'ajoute à la part de l'arbre ; sans `powertrain`, c'est tout le couple de la roue.
+    pub torque: f32,
     /// Groupe de couplage du différentiel, voir [`differential::groups`].
     pub group: u16,
     /// Vitesse de rotation, en rad/s, positive en marche avant : l'état de la roue.
@@ -173,7 +176,7 @@ pub fn step(
         // Gauss-Seidel : chaque roue voit ce que les précédentes ont déjà fait à son corps.
         for (wheel, spec) in wheels.iter_mut().zip(&desc.wheels) {
             let body = usize::from(wheel.carrier).min(MAX_WHEELS - 1);
-            let drive = shaft * wheel.share;
+            let drive = shaft * wheel.share + wheel.torque;
             integrate(wheel, spec, drive, command.abs, h, &mut carried[body]);
         }
         if rate > 0.0 {

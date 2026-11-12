@@ -3752,6 +3752,24 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            bouton « insérer le mannequin sur ce siège » de l'addon Blender en **M9** (C-75). Demander avant
            d'ouvrir Blender.
      - [ ] 5c — `VehicleController`, `VehicleControl`, couple par roue (R-1082), paramètres d'addon, coût mesuré.
+           **Q6 tranchée par Killian le 2026-11-12** : le paramètre d'un addon existe sur un véhicule dès qu'un
+           contrôleur du même mod y est attaché (par la fiche ou par l'API), avec la base de son enregistrement.
+           Rien n'est publié depuis la 5a (aucun tag) : protocole 8, descripteur 6 et persistance 5 s'étendent sans
+           monter, comme A10 l'a fait. Branche `wip/tranche-5c`. Étapes :
+           - [x] A : natif — commande du couple par roue (ABI 23), ajouté au motopropulseur ou seul sans lui ; les
+                 glissements de chaque roue au rapport (`SIM_OUT` schéma 5) ; tests.
+           - [ ] B : API — `VehicleController`, `VehicleView` et ses roues, `ControllerOutput`, `VehicleControl`
+                 (`Assembly.vehicle()`), enregistrement d'un contrôleur et d'un paramètre d'addon par le
+                 `ContentRegistrar`.
+           - [ ] C : serveur — registre, contrôleurs d'une instance (fiche `vehicle.controllers` au schéma 4 et API),
+                 appel au tick sur l'état du début du tick, sorties (modificateurs du tick écartés hors bornes, couple
+                 par roue, variables bornées), coût mesuré et désactivation `E-1011`, options `[vehicle]` ;
+                 paramètres d'addon là où un contrôleur du mod est attaché.
+           - [ ] D : sauvegarde (`axion:ctrls`), réseau (contrôleurs attachés dans `FLAG_PARAMETERS`), addon d'un
+                 contrôleur exigé du client et registre dans l'empreinte (CAP-40) ; `/axion params` montre les
+                 contrôleurs, clés de traduction des paramètres.
+           - [ ] E : exemple compilé (témoin), guide, CDC (23.2, 23.3, A.1 `E-1011`, A.3), précisions d'ADR-167,
+                 budget mesuré au banc, film, fusion.
   6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37) ; le registre envoyé au client
      porte alors les correspondances bloc → matériau, surcharges de l'administrateur comprises (ADR-165, précision 3c).
   7. Le reste des capacités de M5 : caméra de véhicule (CAP-10), API (CAP-11), occupants (CAP-13), joueurs portés
