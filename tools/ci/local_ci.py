@@ -70,6 +70,7 @@ JOBS: list[tuple[str, list[tuple[str, list[str]]]]] = [
     ("build-and-test", [
         ("test-unit natif", ["cargo", "test", "--workspace", "--all-features"]),
         ("test-unit outils", [PYTHON, "-B", "tools/bench/test_bench.py"]),
+        ("test-unit nettoyage du depot Maven", [PYTHON, "-B", "tools/ci/test_nettoyer_snapshots.py"]),
         # `--rerun` sur les tests : ils lisent `crates/`, le CDC et les sources par
         # des propriétés système que Gradle ne compte pas parmi leurs entrées, et un
         # `UP-TO-DATE` laisserait passer une modification de ces fichiers sans les

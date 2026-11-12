@@ -231,7 +231,9 @@ jobs:
       # verification du schema 2, comparaison, archivage). Sans cette etape, ils
       # ne tournaient nulle part.
       - name: test-unit (outils)
-        run: python3 -B tools/bench/test_bench.py
+        run: |
+          python3 -B tools/bench/test_bench.py
+          python3 -B tools/ci/test_nettoyer_snapshots.py
 
       # `gradlew build` enchaine codegen (T-005, codegen-parity), la compilation
       # Java, la suite JUnit — dont T-007, T-014, T-020..T-023 et R-2392 —,
@@ -577,6 +579,19 @@ jobs:
             :addon-temoin:publishAllPublicationsToAxionRepository \
             -Paxion.targets=windows-x86_64,linux-x86_64,macos-aarch64,macos-x86_64 \
             -Paxion.prebuilt="$PWD/natifs" --no-daemon --stacktrace
+
+      # Decision de Killian (2026-11-12) : seules les 10 dernieres copies de chaque SNAPSHOT restent sur le depot
+      # (21,5 Mo par publication). Meme jeton que la publication : supprimer n'exige que l'ecriture sur le chemin.
+      - name: Ne garder que les 10 dernieres copies
+        env:
+          AXION_MAVEN_USERNAME: ${{ secrets.AXION_MAVEN_USERNAME }}
+          AXION_MAVEN_PASSWORD: ${{ secrets.AXION_MAVEN_PASSWORD }}
+        run: |
+          if [ -z "$AXION_MAVEN_USERNAME" ] || [ -z "$AXION_MAVEN_PASSWORD" ]; then
+            echo "::warning::secrets AXION_MAVEN_USERNAME / AXION_MAVEN_PASSWORD absents : rien n'est nettoye"
+            exit 0
+          fi
+          python3 -B tools/ci/nettoyer_snapshots.py
 
   # R-2250 : le sous-ensemble rapide des benchmarks dont le composant existe — B-02 et
   # B-09 ; B-01, B-07, B-11, B-18, B-19, B-21 et B-23 entrent avec le leur —, compare au
