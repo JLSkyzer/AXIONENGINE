@@ -53,7 +53,8 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 21 depuis l'état du motopropulseur
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 22 depuis les paramètres d'une instance
+/// (ADR-167 D6) : opcode `SET_PARAMETERS`. 21 depuis l'état du motopropulseur
 /// (ADR-163 D1) : section `VehicleReport` de `SIM_OUT` (schéma 4), après les roues. 20 depuis l'entrée du conducteur
 /// (ADR-159, tranche 3) : opcode `SET_VEHICLE_INPUT`, `DEFN` version 3 et ses correcteurs. 19 depuis l'état des roues
 /// (ADR-159 D9) : section `WheelReport` de `SIM_OUT` (schéma 3) et opcode `SET_POSE` d'`axion_render_animate`.
@@ -68,7 +69,7 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 21;
+pub const AXION_ABI_VERSION: u32 = 22;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;

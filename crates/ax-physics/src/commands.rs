@@ -12,12 +12,14 @@ use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::commands::{
     dimension_env_flags, entity_proxy_shape, opcode, vehicle_input_flags, ApplyForce, BreakJoint,
     CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly, RemoveWorldTile,
-    SetDimensionEnv, SetEntityProxies, SetKinematic, SetObservers, SetPhysicsMaterials,
-    SetVehicleInput, SetWorldCollision, SetWorldFluid, SetWorldHeightfield, SimCommandHeader,
+    SetDimensionEnv, SetEntityProxies, SetKinematic, SetObservers, SetParameters,
+    SetPhysicsMaterials, SetVehicleInput, SetWorldCollision, SetWorldFluid, SetWorldHeightfield,
+    SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::PhysicsMaterial;
 use ax_model::dm::vehicle::VehicleInput;
+use ax_vehicle::tuning::Tuning;
 
 /// Plafond de boîtes d'une tuile (collision ou fluide), donnée hostile bornée avant
 /// allocation (R-901, ADR-117). C'est le seuil de R-641 : au-delà, la collision passe en
@@ -266,6 +268,11 @@ fn apply_one(
             }
             outcome.applied += 1;
         }
+        // ADR-167 D6 : les paramètres réglés d'une instance, NaN pour garder la base.
+        opcode::SET_PARAMETERS => {
+            apply_set_parameters(driver, payload)?;
+            outcome.applied += 1;
+        }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
         // par la frontière (ax-ffi, `create_assembly_payloads`), qui seule décode
         // les colliders ; APPLY_FORCE continu attend la boucle de forces. Les deux
@@ -277,6 +284,37 @@ fn apply_one(
         // Inconnu : ignoré, comme les genres d'événements (ADR-113/114).
         _ => outcome.ignored += 1,
     }
+    Ok(())
+}
+
+/// Décode `SET_PARAMETERS` (ADR-167 D6) : l'en-tête, puis `gear_count` rapports.
+fn apply_set_parameters(driver: &mut SimDriver, payload: &[u8]) -> Result<(), CommandError> {
+    if payload.len() < SetParameters::BYTES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let gears = usize::from(read_u16(payload, 68));
+    expect_len(payload, SetParameters::BYTES + gears * 4)?;
+    let value = |rank: usize| read_f32(payload, 8 + 4 * rank);
+    let tuning = Tuning {
+        torque: value(1),
+        max_rpm: value(2),
+        final_drive: value(3),
+        shift_time: value(4),
+        brake_front: value(5),
+        brake_rear: value(6),
+        handbrake: value(7),
+        grip: value(8),
+        stiffness: value(9),
+        damping: value(10),
+        max_angle: value(11),
+        drag: value(12),
+        downforce_front: value(13),
+        downforce_rear: value(14),
+        gears: (0..gears)
+            .map(|rank| read_f32(payload, SetParameters::BYTES + 4 * rank))
+            .collect(),
+    };
+    driver.apply_set_parameters(read_handle(payload, 0), value(0), &tuning);
     Ok(())
 }
 
@@ -1323,6 +1361,38 @@ mod tests {
         assert_eq!((outcome.applied, outcome.sanitized), (1, 0));
         assert_eq!(
             appliquer(&mut driver, opcode::SET_VEHICLE_INPUT, &payload[..32]),
+            Err(CommandError::BadPayloadLength)
+        );
+    }
+
+    #[test]
+    fn adr167_set_parameters_se_lit_avec_ses_rapports_et_refuse_une_table_tronquee() {
+        // ADR-167 D6 : le handle, quinze f32, le nombre de rapports, puis les rapports ; l'assembly inconnue ne
+        // change rien, une table plus courte que son nombre refuse le flux.
+        let mut driver = SimDriver::new();
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&7u32.to_le_bytes());
+        payload.extend_from_slice(&1u32.to_le_bytes());
+        for _ in 0..15 {
+            payload.extend_from_slice(&f32::NAN.to_le_bytes());
+        }
+        payload.extend_from_slice(&2u16.to_le_bytes());
+        payload.extend_from_slice(&0u16.to_le_bytes());
+        assert_eq!(payload.len(), SetParameters::BYTES);
+        payload.extend_from_slice(&(-3.2f32).to_le_bytes());
+        payload.extend_from_slice(&0f32.to_le_bytes());
+        let outcome = appliquer(&mut driver, opcode::SET_PARAMETERS, &payload).unwrap();
+        assert_eq!(outcome.applied, 1);
+        assert_eq!(
+            appliquer(
+                &mut driver,
+                opcode::SET_PARAMETERS,
+                &payload[..SetParameters::BYTES + 4]
+            ),
+            Err(CommandError::BadPayloadLength)
+        );
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_PARAMETERS, &payload[..40]),
             Err(CommandError::BadPayloadLength)
         );
     }

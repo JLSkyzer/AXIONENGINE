@@ -120,6 +120,54 @@ public final class AssemblyParameters {
         return false;
     }
 
+    /**
+     * {@return la valeur effective de chaque paramètre nommé, en {@code f32} pour le natif, NaN pour un paramètre que
+     * l'assembly n'a pas : le natif garde alors sa base (ADR-167 D6)}
+     *
+     * @param names les paramètres, dans l'ordre de la commande
+     */
+    public float[] fields(List<String> names) {
+        float[] fields = new float[names.size()];
+        for (int i = 0; i < fields.length; i++) {
+            int index = tuning.indexOf(names.get(i));
+            fields[i] = index < 0 ? Float.NaN : (float) values[index];
+        }
+        return fields;
+    }
+
+    /**
+     * {@return la table entière des rapports, point mort compris, dans l'ordre de {@code gears} ; vide sans rapport
+     * réglable} Les rangs des rapports sont contigus autour du point mort : ceux sous zéro le précèdent.
+     */
+    public float[] gearTable() {
+        int lowest = 0;
+        int highest = 0;
+        for (int i = 0; i < tuning.size(); i++) {
+            Integer rank = gearRank(tuning.get(i).name());
+            if (rank != null) {
+                lowest = Math.min(lowest, rank);
+                highest = Math.max(highest, rank);
+            }
+        }
+        if (lowest == 0 && highest == 0) {
+            return new float[0];
+        }
+        float[] table = new float[highest - lowest + 1];
+        for (int i = 0; i < tuning.size(); i++) {
+            Integer rank = gearRank(tuning.get(i).name());
+            if (rank != null) {
+                table[rank - lowest] = (float) values[i];
+            }
+        }
+        return table;
+    }
+
+    /** {@return le rang d'un paramètre de rapport, {@code null} pour un autre paramètre} */
+    private static Integer gearRank(String name) {
+        String prefix = "transmission.gear.";
+        return name.startsWith(prefix) ? Integer.valueOf(name.substring(prefix.length())) : null;
+    }
+
     /** {@return tous les modificateurs posés, dans l'ordre de leur pose} */
     public List<Modifier> modifiers() {
         return entries.stream().map(entry -> entry.modifier).toList();

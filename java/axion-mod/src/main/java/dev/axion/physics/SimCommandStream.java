@@ -1,5 +1,6 @@
 package dev.axion.physics;
 
+import dev.axion.api.assembly.Parameters;
 import dev.axion.seat.VehicleInput;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -190,6 +191,22 @@ public final class SimCommandStream {
 
     /** Opcode {@code SET_VEHICLE_INPUT} (ADR-159, tranche 3). */
     public static final int OP_SET_VEHICLE_INPUT = 17;
+
+    /** Opcode {@code SET_PARAMETERS} (ADR-167 D6). */
+    public static final int OP_SET_PARAMETERS = 18;
+
+    /** Taille de l'en-tête {@code SetParameters}, en octets : le handle, quinze valeurs, le nombre de rapports. */
+    public static final int SET_PARAMETERS_BYTES = 72;
+
+    /**
+     * Les paramètres que porte l'en-tête de {@code SET_PARAMETERS}, dans son ordre (ADR-167 D6) ; les rapports
+     * suivent, en table.
+     */
+    public static final List<String> PARAMETER_FIELDS = List.of(Parameters.MASS, Parameters.ENGINE_TORQUE,
+            Parameters.ENGINE_MAX_RPM, Parameters.FINAL_DRIVE, Parameters.SHIFT_TIME, Parameters.BRAKES_FRONT,
+            Parameters.BRAKES_REAR, Parameters.BRAKES_HANDBRAKE, Parameters.TIRES_GRIP, Parameters.SUSPENSION_STIFFNESS,
+            Parameters.SUSPENSION_DAMPING, Parameters.STEERING_MAX_ANGLE, Parameters.AERO_DRAG,
+            Parameters.AERO_DOWNFORCE_FRONT, Parameters.AERO_DOWNFORCE_REAR);
 
     /** Taille du payload {@code SetVehicleInput}, en octets : le handle, l'entrée de 12.8, les drapeaux. */
     public static final int SET_VEHICLE_INPUT_BYTES = 36;
@@ -876,6 +893,39 @@ public final class SimCommandStream {
                 .putFloat(input.clutch()).putFloat(input.handbrake())
                 .put(input.gear()).put((byte) input.flags()).putShort((short) 0)
                 .putInt(driver ? VEHICLE_INPUT_DRIVER : 0);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_PARAMETERS} (ADR-167 D6) : la valeur effective de chaque paramètre natif d'une
+     * assembly, qui vaut jusqu'à la suivante. Le natif garde la base de sa definition et en dérive l'effective.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param fields une valeur par paramètre de {@link #PARAMETER_FIELDS}, dans son unité, NaN pour garder la base
+     * @param gears la table entière des rapports de la definition, point mort compris ; vide pour garder la sienne
+     * @return {@code this}, pour chaîner
+     * @throws IllegalArgumentException si {@code fields} n'a pas une valeur par paramètre, ou si la table des rapports
+     *     ne tient pas sur un {@code u16}
+     */
+    public SimCommandStream setParameters(int handleIndex, int handleGeneration, float[] fields, float[] gears) {
+        if (fields.length != PARAMETER_FIELDS.size()) {
+            throw new IllegalArgumentException("une valeur par paramètre de l'en-tête : " + PARAMETER_FIELDS.size()
+                    + " attendues, " + fields.length + " reçues");
+        }
+        if (gears.length > 0xFFFF) {
+            throw new IllegalArgumentException("le nombre de rapports tient sur un u16 : " + gears.length);
+        }
+        ByteBuffer command = beginCommand(OP_SET_PARAMETERS, SET_PARAMETERS_BYTES + gears.length * 4);
+        command.putInt(handleIndex).putInt(handleGeneration);
+        for (float field : fields) {
+            command.putFloat(field);
+        }
+        command.putShort((short) gears.length).putShort((short) 0);
+        for (float gear : gears) {
+            command.putFloat(gear);
+        }
         commands.add(command.array());
         return this;
     }

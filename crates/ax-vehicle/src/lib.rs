@@ -12,6 +12,7 @@ pub mod steering;
 pub mod suspension;
 pub mod tire;
 pub mod transmission;
+pub mod tuning;
 
 /// Le signe d'un nombre, nul en zéro : une force de frottement ne s'exerce pas sur ce qui est immobile.
 #[must_use]

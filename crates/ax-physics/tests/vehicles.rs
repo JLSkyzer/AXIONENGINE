@@ -708,6 +708,72 @@ fn t321_l_acceleration_est_croissante_monotone_et_plafonnee() {
     assert!(p.x.abs() < 0.01 * p.z.abs(), "tout droit : {p:?}");
 }
 
+#[test]
+fn adr167_un_couple_regle_accelere_plus_et_la_base_le_rend() {
+    // D6 : le couple effectif met la courbe à l'échelle, véhicule en marche ; le réglage de base rend le véhicule
+    // d'origine, au bit près de ce qu'il fait sans réglage.
+    let vitesse_apres = |reglage: Option<ax_vehicle::tuning::Tuning>| {
+        let (mut world, v) = sur_le_plat(electrique(), [40.0, 2500.0], 1.0);
+        conduire(&mut world, entree(1.0, 0.0, 0.0));
+        avancer(&mut world, 1.0);
+        if let Some(reglage) = reglage {
+            assert_eq!(world.set_vehicle_tuning(ASSEMBLY, &reglage), Some(()));
+        }
+        avancer(&mut world, 2.0);
+        vers_l_avant(&world, v)
+    };
+    let base = vitesse_apres(None);
+    let regle = vitesse_apres(Some(ax_vehicle::tuning::Tuning {
+        torque: 450.0,
+        ..ax_vehicle::tuning::Tuning::base()
+    }));
+    assert!(
+        regle > base * 1.15,
+        "le couple ×1,5 accélère plus : {regle} m/s contre {base} m/s"
+    );
+    let rendu = vitesse_apres(Some(ax_vehicle::tuning::Tuning::base()));
+    assert_eq!(
+        rendu.to_bits(),
+        base.to_bits(),
+        "la base rend le véhicule d'origine"
+    );
+    assert_eq!(
+        monde().set_vehicle_tuning(ASSEMBLY, &ax_vehicle::tuning::Tuning::base()),
+        None,
+        "sans véhicule, rien"
+    );
+}
+
+#[test]
+fn adr167_la_masse_se_met_a_l_echelle_de_son_origine_centre_garde() {
+    // D6, CAP-34 : masse et inertie multipliées, centre de masse gardé ; chaque réglage repart de l'origine.
+    let mut world = monde();
+    dalle(&mut world, 0.0, 0.0, 0.0, [10.0, 10.0], 1.0);
+    let v = vehicule(
+        &mut world,
+        Vec3::new(0.0, hauteur_equilibre(), 0.0),
+        Quat::IDENTITY,
+    );
+    let masse = world.body_mass(v).expect("masse");
+    let centre = world.body_center_of_mass(v).expect("centre");
+    world.scale_body_mass(v, 2.0);
+    assert!((world.body_mass(v).expect("masse") - 2.0 * masse).abs() < 1e-2 * masse);
+    assert!((world.body_center_of_mass(v).expect("centre") - centre).length() < 1e-4);
+    world.scale_body_mass(v, 0.5);
+    assert!(
+        (world.body_mass(v).expect("masse") - 0.5 * masse).abs() < 1e-2 * masse,
+        "0,5 de l'origine, pas de la masse doublée"
+    );
+    world.scale_body_mass(v, 1.0);
+    assert!((world.body_mass(v).expect("masse") - masse).abs() < 1e-3 * masse);
+    world.scale_body_mass(v, f32::NAN);
+    world.scale_body_mass(v, 0.0);
+    assert!(
+        (world.body_mass(v).expect("masse") - masse).abs() < 1e-3 * masse,
+        "un facteur non positif ou non fini ne change rien"
+    );
+}
+
 /// Lance une berline à 20 m/s puis freine à fond jusqu'à l'arrêt ; rend la vitesse au début du
 /// freinage et la distance parcourue.
 fn freiner(desc: VehicleDesc, friction: f32) -> (f32, f32) {

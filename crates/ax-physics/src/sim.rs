@@ -33,6 +33,7 @@ use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, BodyState, PhysicsEvent, PhysicsMaterial, NO_MATERIAL};
 use ax_model::dm::vehicle::{VehicleDesc, VehicleInput};
+use ax_vehicle::tuning::Tuning;
 use std::collections::BTreeMap;
 
 /// Un corps d'une assembly à créer (ADR-151 D2) : son node racine dans l'asset, sa pose dans
@@ -155,6 +156,9 @@ pub struct SimDriver {
     /// handle → (dimension, corps), le corps racine d'abord (ADR-151 D2). Consultée par
     /// clé, jamais itérée (R-1020).
     routes: BTreeMap<u64, (u64, Vec<BodyId>)>,
+    /// handle → masse déclarée de l'assembly (`physics.mass`), base du paramètre `mass` (ADR-167 D6). Consultée par
+    /// clé, jamais itérée (R-1020).
+    assembly_masses: BTreeMap<u64, f32>,
     /// (dimension, section 16³) → corps statique de la tuile de collision monde
     /// (C-38). Ordonnée : parcours déterministe (R-1020).
     tiles: BTreeMap<(u64, [i32; 3]), BodyId>,
@@ -210,6 +214,7 @@ impl SimDriver {
         Self {
             dimensions: BTreeMap::new(),
             routes: BTreeMap::new(),
+            assembly_masses: BTreeMap::new(),
             tiles: BTreeMap::new(),
             materials: MaterialTable::default(),
             settings,
@@ -1202,6 +1207,10 @@ impl SimDriver {
         if let Some(sim) = self.dimensions.get_mut(&dimension) {
             sim.world.seal_assembly(handle, self_collision);
         }
+        if assembly_mass > 0.0 {
+            self.assembly_masses
+                .insert(handle_key(handle), assembly_mass);
+        }
         Some(created)
     }
 
@@ -1386,6 +1395,30 @@ impl SimDriver {
             .set_vehicle_input(handle, input, driver)
     }
 
+    /// Applique `SET_PARAMETERS` (ADR-167 D6) : la masse effective de l'assembly — chaque corps mis à l'échelle de sa
+    /// masse d'origine, dans le rapport de la masse déclarée — puis, pour un véhicule, ses paramètres natifs. NaN garde
+    /// la base ; une masse sans masse déclarée n'a pas de base, et ne change rien. Faux pour une assembly inconnue.
+    pub fn apply_set_parameters(&mut self, handle: Handle, mass: f32, tuning: &Tuning) -> bool {
+        let key = handle_key(handle);
+        let Some((dimension, bodies)) = self.routes.get(&key) else {
+            return false;
+        };
+        let (dimension, bodies) = (*dimension, bodies.clone());
+        let declared = self.assembly_masses.get(&key).copied();
+        let Some(sim) = self.dimensions.get_mut(&dimension) else {
+            return false;
+        };
+        if let Some(declared) = declared {
+            if mass.is_finite() && mass > 0.0 {
+                for body in &bodies {
+                    sim.world.scale_body_mass(*body, mass / declared);
+                }
+            }
+        }
+        sim.world.set_vehicle_tuning(handle, tuning);
+        true
+    }
+
     /// Applique `BREAK_JOINT` (ADR-151 D5) : rompt le joint de rang `joint` de l'assembly. Faux
     /// pour une assembly ou un joint inconnus, ou déjà rompu.
     pub fn apply_break_joint(&mut self, handle: Handle, joint: u16) -> bool {
@@ -1408,6 +1441,7 @@ impl SimDriver {
     /// Applique `REMOVE_ASSEMBLY` : retire tous les corps de l'assembly et son routage.
     /// Rend vrai si l'un existait.
     pub fn apply_remove_assembly(&mut self, handle: Handle) -> bool {
+        self.assembly_masses.remove(&handle_key(handle));
         let Some((dimension, bodies)) = self.routes.remove(&handle_key(handle)) else {
             return false;
         };

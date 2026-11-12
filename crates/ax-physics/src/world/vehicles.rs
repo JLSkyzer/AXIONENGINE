@@ -22,6 +22,7 @@ use ax_model::dm::vehicle::{
 use ax_vehicle::powertrain::{self, DriveCommand, WheelDrive};
 use ax_vehicle::steering::{self, Geometry, Steering};
 use ax_vehicle::transmission::Gearbox;
+use ax_vehicle::tuning::Tuning;
 use ax_vehicle::{brakes, differential, engine, suspension, tire};
 use rapier3d::prelude::{
     Collider, ColliderHandle, QueryFilter as RapierQueryFilter, QueryFilterFlags, Ray,
@@ -107,7 +108,10 @@ struct Contact {
 #[derive(Debug)]
 pub(super) struct Vehicle {
     assembly: Handle,
+    /// La description que le pas lit : la base, réglée par les paramètres de l'instance (ADR-167 D6).
     desc: VehicleDesc,
+    /// La description de la definition, jamais touchée : chaque réglage repart d'elle.
+    base: VehicleDesc,
     /// Tous les corps de l'assembly : les rayons les ignorent (R-1051).
     bodies: Vec<RigidBodyHandle>,
     /// Le corps de chaque roue, et son rang de montage.
@@ -152,6 +156,16 @@ pub(super) struct Vehicle {
     /// La charge du moteur au dernier sous-pas : l'accélérateur qu'il reçoit, après l'antipatinage et la coupure
     /// d'un passage de rapport (ADR-163 D1).
     load: f32,
+}
+
+/// La traînée d'un véhicule sur son corps racine (12.7) : la sienne, plus celle de chaque surface portante.
+fn vehicle_drag(desc: &VehicleDesc) -> f32 {
+    desc.aero.drag_coefficient * desc.aero.frontal_area
+        + desc
+            .surfaces
+            .iter()
+            .map(|surface| surface.cd * surface.area)
+            .sum::<f32>()
 }
 
 impl PhysicsWorld {
@@ -296,19 +310,37 @@ impl PhysicsWorld {
             grounded: vec![false; count],
             traction_slip: 0.0,
             load: 0.0,
+            base: desc.clone(),
             desc,
         });
+    }
+
+    /// Règle les paramètres d'un véhicule (ADR-167 D6) : sa description effective se dérive de nouveau de sa base,
+    /// sa traînée se reverse à son corps racine, et il est réveillé. Le véhicule n'est pas replacé : le réglage agit au
+    /// sous-pas suivant, comme une force. Rend `None` si l'assembly n'est pas un véhicule.
+    pub fn set_vehicle_tuning(&mut self, assembly: Handle, tuning: &Tuning) -> Option<()> {
+        let vehicle = self
+            .vehicles
+            .iter_mut()
+            .find(|vehicle| handle_key(vehicle.assembly) == handle_key(assembly))?;
+        vehicle.desc = tuning.apply(&vehicle.base);
+        let drag = vehicle_drag(&vehicle.desc);
+        let bodies = vehicle.bodies.clone();
+        if let Some(&root) = bodies.first() {
+            self.set_drag(BodyId::from_handle(root), drag, 1.0);
+        }
+        for handle in bodies {
+            if let Some(body) = self.inner.bodies.get_mut(handle) {
+                body.wake_up(true);
+            }
+        }
+        Some(())
     }
 
     /// 12.7 : la traînée du véhicule sur son corps racine, ses surfaces portantes sur leurs corps ; la
     /// traînée propre de chaque surface s'ajoute à celle du véhicule.
     fn attach_aero(&mut self, bodies: &[BodyId], desc: &VehicleDesc, surfaces: &[SurfaceMount]) {
-        let drag = desc.aero.drag_coefficient * desc.aero.frontal_area
-            + desc
-                .surfaces
-                .iter()
-                .map(|surface| surface.cd * surface.area)
-                .sum::<f32>();
+        let drag = vehicle_drag(desc);
         if let Some(&root) = bodies.first() {
             if drag > 0.0 {
                 self.set_drag(root, drag, 1.0);

@@ -411,6 +411,53 @@ class SimCommandStreamTest {
     }
 
     @Test
+    void encodeLesParametresDUneInstance() throws IOException {
+        // ADR-167 D6 : SetParameters, 72 octets — handle, quinze f32, nombre de rapports — puis les rapports.
+        float[] valeurs = new float[SimCommandStream.PARAMETER_FIELDS.size()];
+        java.util.Arrays.fill(valeurs, Float.NaN);
+        valeurs[0] = 1100f;
+        valeurs[1] = 390f;
+        byte[] bytes = new SimCommandStream().setParameters(7, 3, valeurs, new float[] {-3.2f, 0f, 3.5f})
+                .removeAssembly(9, 1).toBytes();
+        assertEquals(8 + (8 + 88) + (8 + 8), bytes.length, "84 octets de payload, complétés à 88");
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_SET_PARAMETERS, b.getInt(8), "opcode");
+        assertEquals(72 + 3 * 4, b.getInt(12), "payload_len, rapports compris");
+        assertEquals(7, b.getInt(16), "handle.index");
+        assertEquals(1100f, b.getFloat(24), "mass");
+        assertEquals(390f, b.getFloat(28), "torque");
+        assertTrue(Float.isNaN(b.getFloat(32)), "max_rpm : la base");
+        assertEquals(3, b.getShort(16 + 68), "gear_count");
+        assertEquals(-3.2f, b.getFloat(16 + 72), "premier rapport");
+        assertEquals(3.5f, b.getFloat(16 + 80), "dernier rapport");
+        assertEquals(SimCommandStream.OP_REMOVE_ASSEMBLY, b.getInt(8 + 8 + 88), "commande suivante, alignée");
+        assertThrows(IllegalArgumentException.class,
+                () -> new SimCommandStream().setParameters(7, 3, new float[3], new float[0]));
+
+        Path source = Path.of(System.getProperty("axion.crates.dir"), "ax-model", "src", "dm", "commands.rs");
+        String rust = Files.readString(source, StandardCharsets.UTF_8);
+        assertTrue(rust.contains("pub const SET_PARAMETERS: u32 = " + SimCommandStream.OP_SET_PARAMETERS + ";"));
+        Matcher taille = Pattern.compile("impl SetParameters \\{[^}]*?pub const BYTES: usize = (\\d+);").matcher(rust);
+        assertTrue(taille.find(), "SetParameters::BYTES dans commands.rs");
+        assertEquals(Integer.parseInt(taille.group(1)), SimCommandStream.SET_PARAMETERS_BYTES);
+        // L'ordre des champs : celui de la struct Rust, nom pour nom.
+        Matcher struct = Pattern.compile("pub struct SetParameters \\{(.*?)\\R\\}", Pattern.DOTALL).matcher(rust);
+        assertTrue(struct.find());
+        Matcher champ = Pattern.compile("pub (\\w+): f32,").matcher(struct.group(1));
+        java.util.List<String> champs = new java.util.ArrayList<>();
+        while (champ.find()) {
+            champs.add(champ.group(1));
+        }
+        assertEquals(java.util.List.of("mass", "torque", "max_rpm", "final_drive", "shift_time", "brake_front",
+                "brake_rear", "handbrake", "grip", "stiffness", "damping", "max_angle", "drag", "downforce_front",
+                "downforce_rear"), champs);
+        assertEquals(java.util.List.of("mass", "engine.torque", "engine.max_rpm", "transmission.final_drive",
+                "transmission.shift_time", "brakes.front", "brakes.rear", "brakes.handbrake", "tires.grip",
+                "suspension.stiffness", "suspension.damping", "steering.max_angle", "aero.drag", "aero.downforce_front",
+                "aero.downforce_rear"), SimCommandStream.PARAMETER_FIELDS, "un paramètre par champ, dans le même ordre");
+    }
+
+    @Test
     void unRangDeJointHorsU16EstRefuse() {
         assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().jamJoint(1, 1, -1, 0.0f));
         assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().jamJoint(1, 1, 0x10000, 0.0f));

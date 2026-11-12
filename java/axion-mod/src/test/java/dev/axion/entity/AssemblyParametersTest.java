@@ -1,5 +1,6 @@
 package dev.axion.entity;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -155,6 +156,25 @@ class AssemblyParametersTest {
         parametres.modify(new Modifier("mod:c0", Parameters.MASS, Operation.ADD, 2), AssemblyParameters.API);
         assertEquals(1200 + 63 + 2, parametres.value(parametres.tuning().indexOf(Parameters.MASS)), 1e-9,
                 "remplacer reste possible au plafond");
+    }
+
+    @Test
+    @DisplayName("D6 : les valeurs du natif, NaN pour un paramètre absent, et la table des rapports autour du point mort")
+    void valeursDuNatif() {
+        Parameters.Range positif = new Parameters.Range(0, false, Double.POSITIVE_INFINITY, false);
+        Parameters.Range negatif = new Parameters.Range(Double.NEGATIVE_INFINITY, false, 0, false);
+        AssemblyParameters parametres = new AssemblyParameters(new Tuning(List.of(
+                new Tuning.Parameter(Parameters.ENGINE_TORQUE, "N·m", 260, positif, TOUT),
+                new Tuning.Parameter(Parameters.gear(-1), "", -3.2f, negatif, TOUT),
+                new Tuning.Parameter(Parameters.gear(1), "", 3.5f, positif, TOUT),
+                new Tuning.Parameter(Parameters.gear(2), "", 2.1f, positif, TOUT))));
+        parametres.modify(new Modifier("boite:courte", Parameters.gear(2), Operation.MULTIPLY_BASE, 0.5),
+                AssemblyParameters.API);
+        float[] champs = parametres.fields(List.of(Parameters.MASS, Parameters.ENGINE_TORQUE));
+        assertTrue(Float.isNaN(champs[0]), "sans masse déclarée, la base du natif");
+        assertEquals(260f, champs[1]);
+        assertArrayEquals(new float[] {-3.2f, 0f, 3.5f, (float) (2.1f * 1.5)}, parametres.gearTable());
+        assertEquals(0, new AssemblyParameters(tuning()).gearTable().length, "sans rapport, pas de table");
     }
 
     @Test

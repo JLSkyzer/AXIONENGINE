@@ -63,6 +63,8 @@ pub mod opcode {
     pub const ANIMATE_ASSEMBLY: u32 = 16;
     /// Les entrées du conducteur d'un véhicule ([`super::SetVehicleInput`]). ADR-159, tranche 3.
     pub const SET_VEHICLE_INPUT: u32 = 17;
+    /// Les paramètres réglés d'une instance ([`super::SetParameters`], puis `gear_count × f32`). ADR-167 D6.
+    pub const SET_PARAMETERS: u32 = 18;
 }
 
 /// Drapeaux de [`SetVehicleInput`], champ `flags`.
@@ -89,6 +91,59 @@ pub struct SetVehicleInput {
 impl SetVehicleInput {
     /// Taille sur la frontière, en octets.
     pub const BYTES: usize = 36;
+}
+
+/// En-tête de `SET_PARAMETERS` (ADR-167 D6) : 72 octets, puis `gear_count` rapports en `f32`.
+///
+/// Chaque champ porte la **valeur effective** d'un paramètre, dans l'unité de la definition, ou **NaN** pour garder
+/// la base : une assembly sans masse déclarée, un véhicule sans moteur, une assembly qui n'est pas un véhicule. Les
+/// facteurs (`grip`, `stiffness`, `damping`) valent 1 à la base. Les rapports, s'il y en a, sont la table entière de
+/// la definition, point mort compris ; `gear_count` vaut 0 pour garder la sienne. Le natif garde la description de
+/// base et en dérive l'effective à chaque réception ; la commande vaut jusqu'à la suivante.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SetParameters {
+    /// L'assembly.
+    pub handle: Handle,
+    /// `mass`, en kg : chaque corps est mis à l'échelle, centre de masse gardé.
+    pub mass: f32,
+    /// `engine.torque`, le pic de la courbe en N·m : la courbe est mise à l'échelle.
+    pub torque: f32,
+    /// `engine.max_rpm`, en tr/min ; les seuils de la boîte automatique suivent.
+    pub max_rpm: f32,
+    /// `transmission.final_drive`.
+    pub final_drive: f32,
+    /// `transmission.shift_time`, en secondes.
+    pub shift_time: f32,
+    /// `brakes.front`, en N·m.
+    pub brake_front: f32,
+    /// `brakes.rear`, en N·m.
+    pub brake_rear: f32,
+    /// `brakes.handbrake`, en N·m.
+    pub handbrake: f32,
+    /// `tires.grip`, facteur de `mu_long` et `mu_lat` de chaque roue.
+    pub grip: f32,
+    /// `suspension.stiffness`, facteur de la raideur de chaque roue.
+    pub stiffness: f32,
+    /// `suspension.damping`, facteur des amortissements de chaque roue.
+    pub damping: f32,
+    /// `steering.max_angle`, en radians.
+    pub max_angle: f32,
+    /// `aero.drag`, le coefficient de traînée.
+    pub drag: f32,
+    /// `aero.downforce_front`.
+    pub downforce_front: f32,
+    /// `aero.downforce_rear`.
+    pub downforce_rear: f32,
+    /// Nombre de rapports qui suivent : celui de la table de la definition, ou 0.
+    pub gear_count: u16,
+    /// Réservé, à zéro.
+    pub _pad: u16,
+}
+
+impl SetParameters {
+    /// Taille de l'en-tête sur la frontière, en octets.
+    pub const BYTES: usize = 72;
 }
 
 /// Payload de `JAM_JOINT` (ADR-151 D6, D7) : 16 octets.
@@ -895,6 +950,31 @@ mod tests {
         assert_eq!(offset_of!(EntityProxyDesc, entity), 48);
         assert_eq!(offset_of!(EntityProxyDesc, shape), 52);
         assert_eq!(offset_of!(EntityProxyDesc, _pad), 53);
+    }
+
+    #[test]
+    fn dm_parametres_d_instance_disposition_figee() {
+        // ADR-167 D6 : opcode 18, le handle, quinze f32, le nombre de rapports ; les rapports suivent.
+        assert_eq!(opcode::SET_PARAMETERS, 18);
+        assert_eq!(size_of::<SetParameters>(), SetParameters::BYTES);
+        assert_eq!(align_of::<SetParameters>(), 4);
+        assert_eq!(offset_of!(SetParameters, handle), 0);
+        assert_eq!(offset_of!(SetParameters, mass), 8);
+        assert_eq!(offset_of!(SetParameters, torque), 12);
+        assert_eq!(offset_of!(SetParameters, max_rpm), 16);
+        assert_eq!(offset_of!(SetParameters, final_drive), 20);
+        assert_eq!(offset_of!(SetParameters, shift_time), 24);
+        assert_eq!(offset_of!(SetParameters, brake_front), 28);
+        assert_eq!(offset_of!(SetParameters, brake_rear), 32);
+        assert_eq!(offset_of!(SetParameters, handbrake), 36);
+        assert_eq!(offset_of!(SetParameters, grip), 40);
+        assert_eq!(offset_of!(SetParameters, stiffness), 44);
+        assert_eq!(offset_of!(SetParameters, damping), 48);
+        assert_eq!(offset_of!(SetParameters, max_angle), 52);
+        assert_eq!(offset_of!(SetParameters, drag), 56);
+        assert_eq!(offset_of!(SetParameters, downforce_front), 60);
+        assert_eq!(offset_of!(SetParameters, downforce_rear), 64);
+        assert_eq!(offset_of!(SetParameters, gear_count), 68);
     }
 
     #[test]

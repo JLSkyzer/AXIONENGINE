@@ -380,6 +380,8 @@ pub struct PhysicsWorld {
     ccd_threshold: HashMap<BodyId, f32>,
     /// Corps dont la CCD est déclarée (definition, API) : toujours active, jamais basculée.
     ccd_declared: HashSet<BodyId>,
+    /// La masse d'origine des corps dont un réglage a mis la masse à l'échelle (ADR-167 D6).
+    mass_origins: HashMap<BodyId, MassProperties>,
     /// Rang du prochain corps créé.
     next_birth: u64,
     /// Mouvement des corps éveillés et non fixes juste avant le sous-pas en cours : la
@@ -570,6 +572,7 @@ impl PhysicsWorld {
             births: HashMap::new(),
             ccd_threshold: HashMap::new(),
             ccd_declared: HashSet::new(),
+            mass_origins: HashMap::new(),
             next_birth: 0,
             pre_step: HashMap::new(),
             solver_degraded: false,
@@ -748,6 +751,39 @@ impl PhysicsWorld {
         if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
             body.recompute_mass_properties_from_colliders(&self.inner.colliders);
         }
+    }
+
+    /// Met la masse d'un corps à l'échelle de sa masse d'origine (ADR-167 D6, `mass`) : masse et inertie multipliées
+    /// par `factor`, centre de masse gardé. La première fois, les propriétés du corps — densités de ses colliders et
+    /// masse déclarée — sont gardées comme origine et passent toutes en masse déclarée ; chaque appel repart d'elles,
+    /// si bien que `factor = 1` rend la masse d'origine. Le corps est réveillé. Sans effet sur un corps absent ou non
+    /// dynamique, ou pour un facteur qui n'est pas strictement positif et fini.
+    pub fn scale_body_mass(&mut self, id: BodyId, factor: f32) {
+        if !(factor > 0.0 && factor.is_finite()) {
+            return;
+        }
+        let handle = id.handle();
+        let colliders = match self.inner.bodies.get(handle) {
+            Some(body) if body.is_dynamic() => body.colliders().to_vec(),
+            _ => return,
+        };
+        let origin = *self
+            .mass_origins
+            .entry(id)
+            .or_insert_with(|| self.inner.bodies[handle].mass_properties().local_mprops);
+        for collider in &colliders {
+            if let Some(collider) = self.inner.colliders.get_mut(*collider) {
+                collider.set_density(0.0);
+            }
+        }
+        let scaled = MassProperties::with_inertia_matrix(
+            origin.local_com,
+            origin.mass() * factor,
+            origin.reconstruct_inertia_matrix() * factor,
+        );
+        let body = &mut self.inner.bodies[handle];
+        body.set_additional_mass_properties(scaled, true);
+        body.recompute_mass_properties_from_colliders(&self.inner.colliders);
     }
 
     /// {@return le centre de masse du corps, en repère monde, ou `None`}
@@ -2939,6 +2975,7 @@ impl PhysicsWorld {
         self.births.remove(&id);
         self.ccd_threshold.remove(&id);
         self.ccd_declared.remove(&id);
+        self.mass_origins.remove(&id);
         self.stack_watch.remove(&id);
         self.stack_damped.remove(&id);
         self.damping_backup.remove(&id);
