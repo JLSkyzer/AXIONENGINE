@@ -2349,3 +2349,16 @@ lues, pas du code ni d'une observation. Elle a servi de prémisse à une décisi
 
 **Règle.** Avant de présenter un problème à résoudre, le constater (publier deux fois, compter les fichiers) ou le lire
 dans le code de la version installée. Une absence dans la documentation ne prouve pas une absence de comportement.
+
+## 2026-11-12 | Une definition ajoutée au témoin a rougi deux tests que je n'avais pas relus
+
+**Ce qui s'est passé.** `upgradable_crate.json`, ajoutée à l'addon témoin pour le guide « Régler un véhicule », a fait
+échouer `ContentCheckTest.leTemoinPasse` (le compte des definitions) et le GameTest `listeEtDetail` (la ligne
+`example_addon (2) : crate, heavy_crate` de `/axion defs list`). J'avais pensé aux sorties du guide « Tester », pas
+aux tests.
+
+**Cause.** Le témoin est à la fois un exemple, le modèle de mod à télécharger et un appareil de test : son contenu est
+compté et listé à plusieurs endroits.
+
+**Règle.** Avant de toucher au contenu du témoin, chercher ses identifiants (`heavy_crate`, `example_addon (`) dans les
+tests, les GameTests et les guides, et mettre à jour chaque attente dans le même changement.

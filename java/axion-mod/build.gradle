@@ -163,6 +163,16 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        filmParametres {
+            // ADR-167, sous-tranche 5a : deux buggys identiques, l'un regle par /axion params (FilmDesParametres).
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-parametres')
+            property 'axion.film', 'parametres'
+            property 'axion.souris.libre', 'true'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
         renderTest {
             // Banc de rendu client (ADR-126) : un client qui joue son scénario, écrit son rapport
             // et s'arrête seul. Un dossier à part, dont le monde est effacé avant chaque passage ;
@@ -431,6 +441,16 @@ tasks.matching { it.name == 'runFilmVehicule' }.configureEach {
         // Le contenu, pas le dossier : un dossier ouvert ailleurs ne doit pas faire échouer le tournage.
         delete fileTree(rootProject.file('.runs/film/axion-film'))
         delete rootProject.file('.runs/film/axion/world')
+    }
+}
+
+tasks.matching { it.name == 'runFilmParametres' }.configureEach {
+    standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/film-parametres'))
+        delete rootProject.file('.runs/film-parametres/saves/axion-film-parametres')
+        delete fileTree(rootProject.file('.runs/film-parametres/axion-film'))
+        delete rootProject.file('.runs/film-parametres/axion/world')
     }
 }
 

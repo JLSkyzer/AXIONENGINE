@@ -1,6 +1,8 @@
 package com.example.addon;
 
 import dev.axion.api.assembly.Assembly;
+import dev.axion.api.assembly.Modifier;
+import dev.axion.api.assembly.Parameters;
 import dev.axion.api.testing.AxionGameTests;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -35,4 +37,32 @@ public final class ExampleAddonGameTests {
         AxionGameTests.assertLoaded(helper, "example_addon:heavy_crate");
         helper.succeed();
     }
+
+    // --8<-- [start:upgrade]
+    /** The stage 1 kit lightens the crate; another mod cannot take it out of its range; the kit comes off. */
+    @GameTest(template = AxionGameTests.DALLE, timeoutTicks = 100)
+    public static void stageOneKitFitsAndComesOff(GameTestHelper helper) {
+        AxionGameTests.assertLoaded(helper, "example_addon:upgradable_crate");
+        Assembly crate = AxionGameTests.spawn(helper, "example_addon:upgradable_crate",
+                new Vec3(4.5, AxionGameTests.DESSUS_DALLE + 1, 4.5));
+        Parameters parameters = crate.parameters();
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(parameters.has(Parameters.MASS), "not compiled yet"))
+                .thenExecute(() -> {
+                    ExampleUpgrades.fitStageOne(crate);
+                    helper.assertTrue(parameters.value(Parameters.MASS) == 150.0, "200 kg, 25 % lighter");
+                    try {
+                        // (200 - 100) x 0.75 = 75 kg: below the 100 kg the definition allows.
+                        parameters.modify(new Modifier("other_mod:hollow", Parameters.MASS,
+                                Modifier.Operation.ADD, -100));
+                        helper.fail("75 kg is out of the definition's range");
+                    } catch (IllegalArgumentException refused) {
+                        helper.assertTrue(parameters.value(Parameters.MASS) == 150.0, "refused, never clamped");
+                    }
+                    ExampleUpgrades.removeStageOne(crate);
+                    helper.assertTrue(parameters.value(Parameters.MASS) == 200.0, "back to the definition's mass");
+                })
+                .thenSucceed();
+    }
+    // --8<-- [end:upgrade]
 }

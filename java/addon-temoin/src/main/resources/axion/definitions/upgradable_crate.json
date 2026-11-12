@@ -1,0 +1,7 @@
+{
+  "schema": 4,
+  "asset": "example_addon:models/crate.gltf",
+  "kind": "rigid_object",
+  "physics": { "mass": 200 },
+  "tuning": { "ranges": { "mass": { "min": 100, "max": 300 } } }
+}

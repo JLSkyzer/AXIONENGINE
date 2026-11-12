@@ -3322,6 +3322,9 @@ cercle : si sqrt(F_long² + F_lat²) > mu * F_n -> mise à l'échelle des compos
 - R-1081 : différentiels `open`, `locked`, `limited_slip` ; la transmission intégrale s'obtient par un différentiel central déclaré.
 - R-1082 : la simulation du groupe motopropulseur est **optionnelle** : une definition peut piloter directement le couple par roue via l'API.
 - R-1083 : **couplage avec le dommage** : la part portant le moteur, la transmission ou le radiateur peut être `DISABLED` par le modèle de dommage ; l'effet (couple nul, régime plafonné, surchauffe) est **déclaratif** dans la definition (`"on_part_disabled": {"engine": {"torque_scale": 0.0}}`), jamais codé en dur.
+- R-1084 : **paramètres d'une instance** (ADR-167 D1 à D3, amendement A15). Une assembly règle, pour elle seule, des grandeurs de sa definition : `mass` si la definition déclare `physics.mass`, et pour un véhicule `engine.torque` (le pic de la courbe), `engine.max_rpm`, `transmission.final_drive`, `transmission.shift_time`, `transmission.gear.<rang>`, `brakes.front`, `brakes.rear`, `brakes.handbrake`, `tires.grip`, `suspension.stiffness`, `suspension.damping` (trois facteurs de chaque roue), `steering.max_angle`, `aero.drag`, `aero.downforce_front` et `aero.downforce_rear` — chacun seulement si la definition déclare ce qu'il règle. Chacun a une **base**, la valeur de la definition surcharges de l'administrateur comprises, et une **valeur effective** : `(base + Σ add) × (1 + Σ multiply_base) × Π (1 + multiply_total)`, chaque somme et chaque produit dans l'ordre des identifiants de cause, identique au bit près partout où elle se calcule. Une cause, identifiant à espace de noms (`axion` réservé au moteur), pose au plus un modificateur par paramètre et se retire seule ; 64 modificateurs au plus par assembly. La valeur effective reste dans la limite du schéma et dans la plage `tuning.ranges` de la definition (23.4), jugées sur la valeur que reçoit le cœur : un modificateur qui l'en ferait sortir est **refusé et nommé, jamais tronqué**. Un retrait réussit toujours ; un modificateur qu'il met hors bornes reste posé, inactif, avec sa raison, et redevient actif quand il y rentre.
+- R-1085 : **réglage à chaud** (ADR-167 D6). Le cœur garde la description de base de chaque véhicule et en dérive l'effective au sous-pas suivant, sans replacer le véhicule : courbe de couple mise à l'échelle de son pic, seuils de la boîte automatique emmenés par le limiteur, traînée reversée au corps. La masse de chaque corps et son inertie se mettent à l'échelle depuis leur valeur d'origine, centre de masse gardé. L'ancrage d'une suspension est un point du châssis : une raideur réglée relève ou abaisse le véhicule, comme un vrai.
+- R-1086 : **sauvegarde et réplication** (ADR-167 D7, D8). Les modificateurs posés se sauvegardent (22.2, `axion:params`) et partent aux joueurs qui suivent l'assembly, datés du tick où ils prennent effet (21.5) ; aucune valeur effective ne voyage : le client les rejoue sur la definition reçue et compose les mêmes valeurs, au bit près. Relu ou repris après une recompilation, un modificateur que la definition refuse désormais, ou qui vise un paramètre qu'elle n'a plus, est gardé inactif, nommé (`E-7011`), jamais jeté.
 
 ## 12.6 Direction et freinage
 
@@ -5072,6 +5075,9 @@ Entrée d'assembly dans un snapshot :
   rotation        u32  quaternion "smallest three" (3 x 10 bits + 2 bits)
   lin_vel/ang_vel 3 x i16 quantifiés (optionnels)
   états procéduraux selon un descripteur déclaré et versionné
+  modificateurs des paramètres (descripteur 6, protocole 8, amendement A15) : tick d'effet, puis
+                  chacun dans l'ordre de sa pose — cause, paramètre, opération, origine,
+                  quantité f64 bit pour bit (R-1086)
 ```
 
 - R-1660 : la quantification est **déclarée par champ**, jamais implicite.
@@ -5212,7 +5218,7 @@ T-829  100 impacts par seconde sur 20 assemblies : trafic mesuré et borné
 ## 22.2 Format NBT
 
 ```text
-axion:v         int      version du schéma (4 depuis l'amendement A10)
+axion:v         int      version du schéma (5 depuis l'amendement A15)
 axion:def       long
 axion:pos       [double] 3        axion:rot  [float] 4
 axion:lvel      [float]  3        axion:avel [float] 3
@@ -5230,6 +5236,8 @@ axion:repair    compound réparation en cours
 axion:power     compound
 axion:custom    byte[]   CBOR, optionnel
 axion:vars      compound valeur de chaque variable persist, par nom (amendement A10)
+axion:params    list     modificateurs posés sur les paramètres, dans l'ordre de leur pose :
+                         cause, paramètre, opération, quantité (R-1086, amendement A15)
 ```
 
 - R-1710 : le schéma est versionné ; une version **supérieure** rend l'assembly inerte **sans perte** (les octets sont conservés et réécrits tels quels). Une version inférieure est migrée par une fonction explicite et testée.
@@ -5422,6 +5430,7 @@ public interface Assembly {
     Collection<ParticleSetView> particleSets();
     Collection<AttachmentView> attachments();
     CustomData customData();
+    Parameters parameters();   // ADR-167 D5 : paramètres réglables de l'instance, lus au client (R-1084, amendement A15)
 
     boolean isValid(); void remove();
 }
@@ -5597,6 +5606,9 @@ fermée du schéma s'étend par un registre de l'API (ADR-160 D5).
 
   "repair_rule": "axion:default_vehicle",
 
+  "tuning": { "ranges": { "engine.torque": { "min": 200, "max": 420 },
+                          "mass": { "min": 900 } } },
+
   "custom": { }
 }
 ```
@@ -5604,7 +5616,7 @@ fermée du schéma s'étend par un registre de l'API (ADR-160 D5).
 - R-1780 : `schema` obligatoire ; valeur inconnue → refus (`E-7003`).
 - R-1781 : tous les champs sauf `schema`, `asset` et `kind` sont optionnels avec des défauts documentés. **Un objet déformable et destructible fonctionne avec `asset` + `kind` seuls**, grâce aux générations automatiques de C-28.
 - R-1782 : les actions d'interaction et les actions de `on_part_stage` forment des **listes fermées** (13.4, PARTIE 24).
-- R-1783 : le schéma JSON complet est publié dans `docs/schema/definition-1.json` et validé en CI contre toutes les definitions du dépôt ; chaque version suivante l'est de même (`definition-2.json`, `definition-3.json`, amendement A10).
+- R-1783 : le schéma JSON complet est publié dans `docs/schema/definition-1.json` et validé en CI contre toutes les definitions du dépôt ; chaque version suivante l'est de même (`definition-2.json`, `definition-3.json`, amendement A10 ; `definition-4.json` et sa section `tuning`, dont chaque plage contient la base et s'exprime dans l'unité de son paramètre, amendement A15).
 
 ## 23.5 Contenu de démonstration
 
@@ -7816,7 +7828,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A12 | 2026-11-11 | ADR-165, accepté par Killian | 21.3 : protocole 7, les addons propriétaires de contenu et leurs versions dans `S2C_Handshake`, celles du client dans `C2S_Handshake` ; R-1640 : un addon absent ou d'une autre version refuse la connexion en le nommant ; ANNEXE A.3 : `axion-server-overrides.toml` (CAP-40, CAP-46, CAP-51) |
 | A13 | 2026-11-11 | ADR-162 D9, accepté par Killian | C-71 : `/axion dev reload`, qui rappelle l'enregistrement de chaque mod, relit son dossier depuis le disque quand il tourne depuis ses sources, et renvoie le registre aux clients ; ANNEXE A.3 : `content.dev_reload`, faux par défaut (CAP-50) |
 | A14 | 2026-11-12 | ADR-166, accepté par Killian | 23.1 : R-1756 (version d'API exigée dans le `mods.toml` d'un addon, avertissement et contenu non chargé) et R-1757 (validateur hors jeu, `AxionApi.content()`, aides aux GameTests) ; 23.2 : `ContentQuery content()` ; ANNEXE A.7 : CAP-42 tenue pour sa part de validation par le validateur Java (CAP-48, CAP-49) |
-| A15 | 2026-11-12 | ADR-167, accepté par Killian (en cours, sous-tranche 5a) | A.1 : `E-7011`, un modificateur gardé inactif plutôt que perdu ; le reste de l'amendement (12.5, 12.6, 23.2, 23.4, PARTIES 21 et 22, A.3, A.7) suit la sous-tranche 5a |
+| A15 | 2026-11-12 | ADR-167, accepté par Killian (sous-tranche 5a ; 5b et 5c compléteront) | 12.5 : R-1084 (paramètres d'une instance, bornes, composition des causes), R-1085 (réglage à chaud), R-1086 (sauvegarde et réplication) ; 21.5 : descripteur 6 et protocole 8 ; 22.2 : `axion:v` 5 et `axion:params` ; 23.2 : `parameters()` ; 23.4 : `tuning.ranges`, schéma de definition 4 ; A.1 : `E-7011`, un modificateur gardé inactif plutôt que perdu ; A.7 : CAP-39 et la masse variable de CAP-34 tenues, CAP-03 en partie. Suivront : R-1087 et R-1171 (modificateurs déclarés, 5b), `E-7010`, `E-1011`, `vehicle()`, `VehicleController` et `[vehicle]` en A.3 (5c) |
 
 ---
 
@@ -8202,7 +8214,7 @@ ses trouvailles s'ajoutent ici.
 |---|---|---|
 | CAP-01 | Entrées libres vers un état : contrôles de siège ouverts, drapeaux de `VehicleInput`, touches déclarées par la definition (phares, klaxon, clignotants, sirène, contact) ; un jeu fixe de touches génériques réassignables, que la definition relie à ses actions, avec un libellé ; l'état basculé passe dans le flux d'entrées prédit ; débit plafonné par joueur | M5 |
 | CAP-02 | Variables et événements de contenu : le système derrière `set_variable` et `emit_event`, lisible comme source (`var.*`) et par l'API ; portée (véhicule ou siège), sauvegarde déclarée, envoi aux clients dès leur arrivée, droits d'écriture et débit par joueur ; événements portés aux clients | M5 |
-| CAP-03 | Une variable règle un paramètre physique (couple, régime, rapports, freinage, adhérence, masse). Par l'API Java d'abord, le JSON en option chargé par le mod (Q3, D9) ; la contradiction R-1083/R-1170/R-1171 se règle dans l'ADR de l'API. Le réglage vaut pour une instance, s'applique à chaud, se sauvegarde et se réplique, prédiction comprise (D6) ; plages réglables déclarées par la definition et limites du moteur ; valeurs dérivées recalculées à chaud ; réglage sauvegardé revalidé quand la definition change ; composition avec les autres causes (CAP-39) | M5 |
+| CAP-03 | Une variable règle un paramètre physique (couple, régime, rapports, freinage, adhérence, masse). Par l'API Java d'abord, le JSON en option chargé par le mod (Q3, D9) ; la contradiction R-1083/R-1170/R-1171 se règle dans l'ADR de l'API. Le réglage vaut pour une instance, s'applique à chaud, se sauvegarde et se réplique, prédiction comprise (D6) ; plages réglables déclarées par la definition et limites du moteur ; valeurs dérivées recalculées à chaud ; réglage sauvegardé revalidé quand la definition change ; composition avec les autres causes (CAP-39) — tenue en partie (R-1084 à R-1086, amendement A15) : réglage par l'API et la commande, à chaud, sauvegardé, répliqué ; reste le réglage par une variable (modificateurs déclarés) et la prédiction (tranche 6) | M5 |
 | CAP-04 | Canaux procéduraux de visibilité, d'intensité émissive et de couleur ; `set_material_param` piloté par une source ; les actions `swap_mesh`, `hide_node` et `show_node` exécutées, et pas seulement au schéma | M5 |
 | CAP-05 | Pistes dans le temps : cycles (clignotant, gyrophare), lissage et durées, poids pilotables, masque d'os, fondu, grammaire de `trigger` | M5 |
 | CAP-06 | Lumière qui éclaire le décor : sémantique du rôle `light` (phares, feux, gyrophare, éclairage intérieur) | M9 |
@@ -8233,12 +8245,12 @@ ses trouvailles s'ajoutent ici.
 | CAP-31 | Pilotage autonome et trajets | M10 |
 | CAP-32 | ~~Logique sans Java~~ : **retirée** par Killian le 2026-11-10 — tout passe par un mod Java et l'API (D9) | — |
 | CAP-33 | Rechargement à chaud des assemblies déjà au monde (elles gardent leur definition compilée, ADR-156) | M5 |
-| CAP-34 | Joints engrenage et crémaillère ; commandes d'administration (téléporter, échelle, renommer, figer) ; masse variable (aux garanties de D6) ; échelle par definition | M5 |
+| CAP-34 | Joints engrenage et crémaillère ; commandes d'administration (téléporter, échelle, renommer, figer) ; masse variable (aux garanties de D6 ; tenue par le paramètre `mass`, R-1084, amendement A15) ; échelle par definition | M5 |
 | CAP-35 | Chunks non chargés (traversée, chargement par un véhicule) et changement de dimension (R-023). un véhicule piloté charge les chunks de sa trajectoire dans un rayon borné, au budget du gouverneur (Q5, amendement A5) | M11 |
 | CAP-36 | Documentation créateur : les fichiers de la PARTIE 33, chaque jalon pour ce qu'il livre | chaque jalon, complète en M12 |
 | CAP-37 | Ensemble attaché et périmètre de la prédiction : un ensemble attaché (remorque, voiture remorquée) se prédit, se cadence, s'endort et se décharge comme un tout ; les rivaux proches sont avancés au temps prédit, ou leurs contacts ne sont pas prédits (R-1680 amendé, Q7, A5) | M5 |
 | CAP-38 | Le contenu évolue sous des assemblies sauvegardées : identités par nom (corps, joint, pièce, région), version de definition, migrations déclarées, restauration partielle et nommée plutôt que tout abandonner | M5 |
-| CAP-39 | Plusieurs causes sur une même valeur (definition, amélioration, dommage, usure, météo, variable, addon) : ordre et opération définis, chaque cause retirable seule, valeur et origines lisibles | M5 |
+| CAP-39 | Plusieurs causes sur une même valeur (definition, amélioration, dommage, usure, météo, variable, addon) : ordre et opération définis, chaque cause retirable seule, valeur et origines lisibles — tenue (R-1084, amendement A15) ; les causes du moteur (dommage, usure, météo, énergie) s'y brancheront avec leur composant | M5 |
 | CAP-40 | Addons présents d'un seul côté : les registres d'extension entrent dans l'empreinte du handshake ; une extension qui touche la physique est déterministe et rembobinable pour la prédiction, ajoutée comme étage du modèle plutôt qu'en le remplaçant | M5 |
 | CAP-41 | Emporter une assembly avec tout son état (améliorations, dommage, données des mods) : item, copie, structure, transfert entre joueurs | M10 |
 | CAP-42 | Valider une definition contre son modèle sans lancer le jeu (le validateur Java `ContentCheck`, R-1757, amendement A14 ; `ax-cli` pour les seuls fichiers de modèle), et voir en jeu les definitions refusées et pourquoi (commande `/axion`) | M5 |

@@ -67,6 +67,7 @@ plugins:
             Ton premier addon: Your first addon
             Tester ton addon: Test your addon
             Versions: Versions
+            Régler un véhicule: Tune a vehicle
             Glossaire: Glossary
             Jouer et héberger: Play and host
             Configuration: Configuration
@@ -85,6 +86,7 @@ nav:
       - Ton premier addon: addons/premier-addon.md
       - Tester ton addon: addons/tester.md
       - Versions: addons/versions.md
+      - Régler un véhicule: addons/regler.md
       - Glossaire: addons/glossaire.md
   - Jouer et héberger:
       - Configuration: CONFIGURATION.md

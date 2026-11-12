@@ -17,6 +17,7 @@ rest of the documentation without getting lost.
 | [3. Your first addon](premier-addon.md) | Declare a crate in JSON then in Java, and reload it without restarting | 30 min |
 | [4. Test your addon](tester.md) | Check your content without launching the game, then in a real server | 15 min |
 | [5. Versions](versions.md) | Say which AXION version you need, and what a player without it sees | 5 min |
+| [6. Tune a vehicle](regler.md) | Change the engine, the brakes or the weight of one vehicle, like an upgrade kit | 15 min |
 | [Glossary](glossaire.md) | AXION's words, explained simply | keep it at hand |
 
 Times are indicative: take the time you need.

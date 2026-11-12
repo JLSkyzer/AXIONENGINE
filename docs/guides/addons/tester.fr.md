@@ -17,7 +17,7 @@ bien :
 ```text
 AXION — vérification du contenu de example_addon (…/src/main/resources/axion)
   1 models
-  1 definitions
+  2 definitions
 Aucune faute : le contenu se charge comme en jeu.
 ```
 
@@ -82,9 +82,9 @@ Un objet qui n'apparaît pas ? Demande-le au jeu, sans quitter la partie (il fau
 Ici, avec une fiche `plume.json` dont la masse est négative :
 
 ```text
-AXION ENGINE — definitions : 2 chargée(s), 1 refusée(s)
+AXION ENGINE — definitions : 3 chargée(s), 1 refusée(s)
   refusée : E-7001 example_addon:axion/definitions/plume.json — $.physics.mass : -5 hors de [0.001, 1000000]
-  example_addon (2) : crate, heavy_crate
+  example_addon (3) : crate, heavy_crate, upgradable_crate
 ```
 
 Les refus viennent en premier : ce sont eux que tu cherches. Pour une fiche précise :

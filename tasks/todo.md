@@ -3694,10 +3694,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      - [x] [ADR-167](../docs/decisions/ADR-167.md) **accepté par Killian le 2026-11-12**, Q1 à Q4 comme proposé :
            paramètres d'instance (liste large), bornes du schéma et plage de la definition, composition des causes
            (opérations des attributs de Minecraft), modificateurs déclarés, contrôleurs et `VehicleControl` en 5c.
-     - [ ] 5a — paramètres, composition, natif (ABI 22), sauvegarde (persistance 5), réseau (protocole 8), API,
-           `/axion params` ; film de deux buggys, l'un réglé.
-           **En cours sur la branche `wip/tranche-5a`** (pas encore sur `master` : `Parameters` n'y entre qu'avec
-           son réseau, ADR-162 D1). Fait, CI locale verte à chaque étape :
+     - [x] 5a — paramètres, composition, natif (ABI 22), sauvegarde (persistance 5), réseau (protocole 8), API,
+           `/axion params` ; film de deux buggys, l'un réglé (2026-11-12, fusionnée dans `master` depuis
+           `wip/tranche-5a`). CI locale verte à chaque étape :
            - [x] A (`f8c2794`) : `Tuning` (bases aux défauts mêmes de la section DEFN, limites du schéma,
                  `tuning.ranges` au schéma 4 publié, builder régénéré), `AssemblyParameters` (composition,
                  bornes jugées sur le f32 envoyé, rejeu jusqu'à point fixe, reprise inactive et nommée).
@@ -3711,13 +3710,14 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            - [x] E : `FLAG_PARAMETERS` (1024), descripteur 6, protocole 8 (`AXION-8`) : liste posée datée du tick
                  du pas qui l'applique, f64 bit pour bit, refus à la lecture (R-1650) ; miroir au client rejoué par
                  la règle du serveur (mêmes valeurs au bit près, mêmes actifs) ; `parameters()` lisible au client,
-                 écriture refusée (R-1755) ; `Modifier` borné à 256 caractères ; 86 GameTests verts.
-                 **Reste pour F** : PARTIE 21 du CDC (format de l'entrée, protocole 8, descripteur 6).
-           - [ ] F : guide « Régler un véhicule » (fr, en), CDC A15 complet (12.5, 12.6 R-1084..R-1087, 23.2,
-                 23.4, PARTIES 21 et 22, A.3, A.7), précisions d'ADR-167 (à écrire : `mass` seulement si
-                 `physics.mass` est déclarée ; constantes dans `Parameters` et non `VehicleParameters` ; espace
-                 `axion` refusé tant qu'aucune cause du moteur n'existe ; rejeu jusqu'à point fixe ; bornes
-                 jugées sur le f32), film des deux buggys, puis fusion dans `master`.
+                 écriture refusée (R-1755) ; `Modifier` borné à 256 caractères ; 86 GameTests verts (`c2093f2`).
+           - [x] F : CDC A15 pour la 5a (12.5 R-1084 à R-1086, 21.5, 22.2, 23.2, 23.4, A.7 ; 38.9 dit ce que 5b
+                 et 5c complèteront : R-1087, R-1171, `E-7010`, `E-1011`, `vehicle()`, `VehicleController`,
+                 `[vehicle]` en A.3) ; précisions d'ADR-167 ; guide « Régler un véhicule » (fr, en) tiré de
+                 l'addon témoin (`ExampleUpgrades`, `upgradable_crate`, GameTest du kit) ; film
+                 `runFilmParametres` (`FilmDesParametres`, capture commune extraite dans `Tournage`) : réglé
+                 66,8 m contre 119,6 m en 12 s, miroir du client au bit près, jugé par le film ; film du
+                 véhicule rejoué sans faute après l'extraction.
      - [ ] 5b — modificateurs déclarés liés aux variables (schéma 4, builder), mode sport du buggy ; film.
      - [ ] **Après la 5a** : ajouter **CAP-56** à l'annexe A.7 (avec sa ligne 38.9), accepté par Killian le
            2026-11-12 — mannequin du joueur à l'échelle du jeu, articulé aux pivots du jeu, poses debout, accroupi

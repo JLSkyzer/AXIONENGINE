@@ -31,7 +31,7 @@ public final class DefinitionsCommandGameTests {
         List<String> liste = commande(serveur, "axion defs list");
         helper.assertTrue(!liste.isEmpty() && liste.get(0).startsWith("AXION ENGINE — definitions : "),
                 "en-tête de la liste : " + liste);
-        helper.assertTrue(liste.contains("  example_addon (2) : crate, heavy_crate"),
+        helper.assertTrue(liste.contains("  example_addon (3) : crate, heavy_crate, upgradable_crate"),
                 "le témoin manque à la liste : " + liste);
 
         List<String> detail = commande(serveur, "axion defs info example_addon:crate");

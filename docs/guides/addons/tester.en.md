@@ -17,7 +17,7 @@ fine:
 ```text
 AXION — vérification du contenu de example_addon (…/src/main/resources/axion)
   1 models
-  1 definitions
+  2 definitions
 Aucune faute : le contenu se charge comme en jeu.
 ```
 
@@ -81,9 +81,9 @@ An object that does not show up? Ask the game, without leaving your world (you n
 Here, with a `plume.json` sheet whose mass is negative:
 
 ```text
-AXION ENGINE — definitions : 2 chargée(s), 1 refusée(s)
+AXION ENGINE — definitions : 3 chargée(s), 1 refusée(s)
   refusée : E-7001 example_addon:axion/definitions/plume.json — $.physics.mass : -5 hors de [0.001, 1000000]
-  example_addon (2) : crate, heavy_crate
+  example_addon (3) : crate, heavy_crate, upgradable_crate
 ```
 
 Refusals come first: they are what you are looking for. For one sheet:
