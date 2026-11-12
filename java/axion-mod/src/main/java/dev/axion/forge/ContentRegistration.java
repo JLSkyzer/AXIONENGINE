@@ -154,6 +154,13 @@ final class ContentRegistration {
             LOGGER.info("AXION : contrôleurs de véhicule enregistrés : {}", extensions.controllers().stream()
                     .map(dev.axion.definition.VehicleExtensions.Controller::id).toList());
         }
+        // ADR-167 D8 : le mod d'un contrôleur qu'une definition nomme sera exigé du client, dans sa version.
+        Map<String, String> controllerOwners = new TreeMap<>();
+        extensions.controllers().forEach(controller -> {
+            String version = RequiredAddons.installed(controller.owner());
+            controllerOwners.put(controller.owner(), version == null ? "?" : version);
+        });
+        RegisteredContent.publishControllerOwners(controllerOwners);
         RegisteredContent.publish(resolved);
         // ADR-165 D1 : chaque mod propriétaire d'une entrée, remplacements compris, est exigé du client.
         Map<String, String> owners = new TreeMap<>();

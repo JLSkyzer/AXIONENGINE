@@ -24,6 +24,9 @@ public final class RegisteredContent {
 
     private static volatile Map<ContentKind, List<ContentRegistry.Entry>> current;
     private static volatile Map<String, String> owners = Map.of();
+
+    /** La version de chaque mod qui enregistre un contrôleur de véhicule (ADR-167 D8), vide avant l'enregistrement. */
+    private static volatile Map<String, String> controllerVersions = Map.of();
     private static final AtomicLong GENERATION = new AtomicLong();
 
     private RegisteredContent() {
@@ -107,6 +110,29 @@ public final class RegisteredContent {
     /** {@return la version de chaque mod propriétaire de contenu, vide avant l'enregistrement} */
     public static Map<String, String> owners() {
         return owners;
+    }
+
+    /**
+     * {@return les addons que le serveur exige du client (ADR-165 D1, ADR-167 D8)} : les propriétaires de contenu, et
+     * les mods dont une definition nomme un contrôleur, chacun dans sa version.
+     *
+     * @param controllerOwners les mods dont une definition chargée nomme un contrôleur
+     */
+    public static Map<String, String> required(java.util.Set<String> controllerOwners) {
+        Map<String, String> required = new java.util.TreeMap<>(owners);
+        for (String owner : controllerOwners) {
+            required.putIfAbsent(owner, controllerVersions.getOrDefault(owner, "?"));
+        }
+        return required;
+    }
+
+    /**
+     * Publie la version de chaque mod qui enregistre un contrôleur de véhicule (ADR-167 D8).
+     *
+     * @param versions la version de chacun, par identifiant
+     */
+    public static void publishControllerOwners(Map<String, String> versions) {
+        controllerVersions = Map.copyOf(versions);
     }
 
     /**

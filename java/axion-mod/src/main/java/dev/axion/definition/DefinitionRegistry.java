@@ -575,4 +575,18 @@ public final class DefinitionRegistry {
     public VehicleExtensions extensions() {
         return extensions;
     }
+
+    /**
+     * {@return les mods dont ces definitions nomment un contrôleur, triés} (ADR-167 D8) : le serveur les exige du client,
+     * comme les propriétaires de contenu (ADR-165).
+     */
+    public java.util.SortedSet<String> controllerOwners() {
+        java.util.SortedSet<String> owners = new java.util.TreeSet<>();
+        for (Definition definition : definitions.values()) {
+            for (String controller : Tuning.controllers(definition.root())) {
+                extensions.controller(controller).ifPresent(found -> owners.add(found.owner()));
+            }
+        }
+        return owners;
+    }
 }

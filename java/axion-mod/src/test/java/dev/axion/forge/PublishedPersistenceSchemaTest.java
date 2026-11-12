@@ -62,6 +62,7 @@ class PublishedPersistenceSchemaTest {
         AssemblyTags.putVariables(stored, java.util.Map.of("gyrophare", 1.0));
         AssemblyTags.putParameters(stored, List.of(new dev.axion.api.assembly.Modifier("upgrades:stage1", "mass",
                 dev.axion.api.assembly.Modifier.Operation.ADD, -80)));
+        AssemblyTags.putControllers(stored, List.of("turbo:gestion"));
 
         Set<String> publiees = new TreeSet<>();
         Matcher matcher = KEY_LINE.matcher(published());

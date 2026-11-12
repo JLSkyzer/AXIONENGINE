@@ -681,20 +681,56 @@ public record AssemblyState(
      * effet. Le client les rejoue sur la definition qu'il a reçue et compose les mêmes valeurs, au bit près : aucune
      * valeur effective ne voyage.
      *
+     * <p>Les contrôleurs de véhicule que l'API a attachés à l'instance l'accompagnent (D8, D9) : le client en tire les
+     * paramètres de leurs mods (Q6), et la prédiction les appellera.
+     *
      * @param tick le tick du serveur où la liste a pris effet — celui du premier pas simulé avec elle —, 0 pour une
      *     assembly jamais réglée
      * @param posed les modificateurs, dans l'ordre de leur pose ; copie
+     * @param controllers les contrôleurs attachés par l'API, dans l'ordre de l'attache ; copie
      */
-    public record Modifiers(long tick, List<Posed> posed) {
+    public record Modifiers(long tick, List<Posed> posed, List<String> controllers) {
 
         /** Modificateurs posés sur une assembly, au plus, actifs ou non (ADR-167 D3). */
         public static final int MAX_MODIFIERS = 64;
 
-        /** Aucun modificateur : une assembly jamais réglée. */
-        public static final Modifiers NONE = new Modifiers(0L, List.of());
+        /** Contrôleurs d'une assembly, au plus (ADR-167 D3). */
+        public static final int MAX_CONTROLLERS = 8;
 
-        /** Copie la liste ; refuse un tick négatif, une liste trop longue, une cause posée deux fois sur un paramètre. */
+        /** La forme de l'identifiant d'un contrôleur. */
+        private static final java.util.regex.Pattern CONTROLLER = java.util.regex.Pattern.compile(
+                "[a-z0-9_.-]+:[a-z0-9/._-]+");
+
+        /** Aucun modificateur : une assembly jamais réglée. */
+        public static final Modifiers NONE = new Modifiers(0L, List.of(), List.of());
+
+        /**
+         * Des modificateurs sans contrôleur attaché.
+         *
+         * @param tick le tick d'effet
+         * @param posed les modificateurs, dans l'ordre de leur pose
+         */
+        public Modifiers(long tick, List<Posed> posed) {
+            this(tick, posed, List.of());
+        }
+
+        /**
+         * Copie les listes ; refuse un tick négatif, une liste trop longue, une cause posée deux fois sur un paramètre,
+         * un contrôleur mal formé, de plus de {@link Modifier#MAX_LENGTH} caractères ou nommé deux fois.
+         */
         public Modifiers {
+            if (controllers.size() > MAX_CONTROLLERS) {
+                throw new IllegalArgumentException(controllers.size() + " contrôleurs, au-delà de " + MAX_CONTROLLERS);
+            }
+            if (new HashSet<>(controllers).size() != controllers.size()) {
+                throw new IllegalArgumentException("contrôleur attaché deux fois : " + controllers);
+            }
+            for (String controller : controllers) {
+                if (controller.length() > Modifier.MAX_LENGTH || !CONTROLLER.matcher(controller).matches()) {
+                    throw new IllegalArgumentException("contrôleur « " + controller + " » mal formé");
+                }
+            }
+            controllers = List.copyOf(controllers);
             if (tick < 0) {
                 throw new IllegalArgumentException("tick d'effet " + tick);
             }

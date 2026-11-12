@@ -42,4 +42,33 @@ class ParametersReportTest {
         assertEquals("  engine.torque = 260 N·m ; bornes [200, 420]", seul.get(1));
         assertEquals(3, seul.size());
     }
+
+    @Test
+    @DisplayName("D10 : les contrôleurs, avec leur mod, leur état et leur coût mesuré ; un contrôleur sans mod se dit")
+    void controleurs() {
+        dev.axion.definition.VehicleExtensions extensions = new dev.axion.definition.VehicleExtensions(java.util.Map.of(
+                "turbo:gestion", new dev.axion.definition.VehicleExtensions.Controller("turbo:gestion", "turbo",
+                        (vue, sortie) -> { }),
+                "abs:frein", new dev.axion.definition.VehicleExtensions.Controller("abs:frein", "abs",
+                        (vue, sortie) -> { }),
+                "neuf:x", new dev.axion.definition.VehicleExtensions.Controller("neuf:x", "neuf", (vue, sortie) -> { })),
+                java.util.Map.of());
+        List<dev.axion.entity.ControllerRunner.Cost> couts = List.of(
+                new dev.axion.entity.ControllerRunner.Cost("turbo:gestion", "turbo", 4, 12_000, 6_500, 2_000, 0, false,
+                        null),
+                new dev.axion.entity.ControllerRunner.Cost("abs:frein", "abs", 20, 2_000_000, 120_000, 100_000, 20,
+                        true, "20 faute(s) consécutive(s)"));
+        List<String> lignes = ParametersReport.lines("mymod:buggy", table(), null,
+                List.of("turbo:gestion", "abs:frein", "neuf:x", "parti:y"), couts, extensions);
+        int debut = lignes.indexOf("  contrôleurs (4) :");
+        assertTrue(debut > 0, lignes.toString());
+        assertEquals("    turbo:gestion (mod turbo) — actif, 4 appel(s), moyenne 3.0 µs, pire 6.5 µs",
+                lignes.get(debut + 1));
+        assertEquals("    abs:frein (mod abs) — désactivé (E-1011) : 20 faute(s) consécutive(s) ; 20 appel(s), moyenne"
+                + " 100.0 µs, pire 120.0 µs", lignes.get(debut + 2));
+        assertEquals("    neuf:x (mod neuf) — actif, pas encore appelé", lignes.get(debut + 3));
+        assertEquals("    parti:y — inactif : aucun mod ne l'enregistre", lignes.get(debut + 4));
+        assertTrue(ParametersReport.lines("mymod:buggy", table(), Parameters.MASS, List.of("turbo:gestion"), couts,
+                extensions).stream().noneMatch(ligne -> ligne.contains("contrôleurs")), "un paramètre précisé : sans");
+    }
 }

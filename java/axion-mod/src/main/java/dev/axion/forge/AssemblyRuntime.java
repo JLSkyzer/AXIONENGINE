@@ -129,7 +129,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     private final Map<Integer, ParametersSent> parametersSent = new HashMap<>();
 
     /** Une table de paramètres envoyée : elle-même, et sa version. */
-    private record ParametersSent(dev.axion.entity.AssemblyParameters table, long version, long controlVersion) {}
+    private record ParametersSent(dev.axion.entity.AssemblyParameters table, long version, long controlVersion,
+            long controllers) {}
 
     /**
      * Le couple de chaque roue que le natif a reçu des contrôleurs de chaque véhicule (ADR-167 D9) : il le garde d'un
@@ -479,17 +480,19 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 return;
             }
             ParametersSent sent = parametersSent.get(index);
-            boolean posed = sent == null || sent.table() != table || sent.version() != table.version();
+            boolean posed = sent == null || sent.table() != table || sent.version() != table.version()
+                    || sent.controllers() != assembly.controllersVersion();
             boolean changed = sent == null ? table.tuned() : posed || sent.controlVersion() != table.controlVersion();
             if (changed) {
                 stream.setParameters(index, GENERATION, table.fields(SimCommandStream.PARAMETER_FIELDS),
                         table.gearTable());
             }
             // Les sorties des contrôleurs ne partent pas aux joueurs (D9) : seule la liste posée se date.
-            if (sent == null ? !table.modifiers().isEmpty() : posed) {
+            if (sent == null ? !table.modifiers().isEmpty() || assembly.controllersVersion() != 0 : posed) {
                 assembly.parametersInEffect(tick);
             }
-            parametersSent.put(index, new ParametersSent(table, table.version(), table.controlVersion()));
+            parametersSent.put(index, new ParametersSent(table, table.version(), table.controlVersion(),
+                    assembly.controllersVersion()));
         });
     }
 

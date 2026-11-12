@@ -722,7 +722,39 @@ class SnapshotCodecTest {
         for (int i = 0; i < n; i++) {
             fil.utf8(cause).utf8(parametre).u8(operation).u8(origine).f64(quantite);
         }
+        return fil.varUInt(0).toByteArray();
+    }
+
+    private static byte[] controleursSurLeFil(String... controleurs) {
+        WireWriter fil = complete(SnapshotMessage.FLAG_PARAMETERS).varULong(40).varUInt(0).varUInt(controleurs.length);
+        for (String controleur : controleurs) {
+            fil.utf8(controleur);
+        }
         return fil.toByteArray();
+    }
+
+    @Test
+    @DisplayName("ADR-167 D8, D9 : les contrôleurs attachés par l'API font l'aller-retour avec les modificateurs ; mal"
+            + " formés, ils sont refusés (R-1650)")
+    void adr167Controleurs() throws MalformedPacketException {
+        AssemblyState etat = avecRoues(roues(0.5f, 10f)).withParameters(new AssemblyState.Modifiers(1234L,
+                modificateurs(1234L).posed(), List.of("turbo:gestion", "abs:antiblocage")));
+        SnapshotMessage.Entry complete = SnapshotMessage.Entry.full(5, etat);
+        byte[] octets = new SnapshotMessage(2, 1240L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(complete)).encode();
+        assertEquals(SnapshotMessage.headerSize(2, 1240L, 1) + SnapshotMessage.encodedSize(complete), octets.length);
+        AssemblyState lu = SnapshotMessage.decode(octets).entries().get(0).resolve(null);
+        assertEquals(List.of("turbo:gestion", "abs:antiblocage"), lu.parameters().controllers(), "dans leur ordre");
+        assertEquals(etat, lu);
+        AssemblyState retire = etat.withParameters(new AssemblyState.Modifiers(1300L, modificateurs(1234L).posed()));
+        assertEquals(retire.parameters(), SnapshotMessage.Entry.delta(5, 1, etat, retire).parameters(),
+                "un contrôleur retiré : la liste repart");
+
+        assertEquals(List.of("a:b"), lu(controleursSurLeFil("a:b")).entries().get(0).parameters().controllers());
+        assertRefuse(controleursSurLeFil("a:1", "a:2", "a:3", "a:4", "a:5", "a:6", "a:7", "a:8", "a:9"),
+                "plus de 8 contrôleurs");
+        assertRefuse(controleursSurLeFil("a:b", "a:b"), "un contrôleur deux fois");
+        assertRefuse(controleursSurLeFil("sansespace"), "sans espace de noms");
+        assertRefuse(controleursSurLeFil("a:" + "b".repeat(Modifier.MAX_LENGTH)), "plus long que Modifier.MAX_LENGTH");
     }
 
     @Test

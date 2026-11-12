@@ -479,7 +479,10 @@ final class AxionCommands {
                     + String.join(", ", table.tuning().names())));
             return 0;
         }
-        List<String> lines = dev.axion.diag.ParametersReport.lines(((AxionEntity) target).definitionId(), table, only);
+        AxionEntity assembly = (AxionEntity) target;
+        List<String> lines = dev.axion.diag.ParametersReport.lines(assembly.definitionId(), table, only,
+                assembly.controllers(), AxionEntities.controllerCosts(),
+                dev.axion.definition.VehicleExtensions.current());
         source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
         return table.tuning().size();
     }

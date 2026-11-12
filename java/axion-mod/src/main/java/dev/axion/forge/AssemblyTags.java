@@ -53,6 +53,16 @@ final class AssemblyTags {
      */
     static final String PARAMETERS = "axion:params";
 
+    /**
+     * Contrôleurs de véhicule attachés par l'API (ADR-167 D7, D9) : leurs identifiants, dans l'ordre de l'attache ;
+     * absente sans eux.
+     */
+    static final String CONTROLLERS = "axion:ctrls";
+
+    /** La forme de l'identifiant d'un contrôleur. */
+    private static final java.util.regex.Pattern CONTROLLER_ID =
+            java.util.regex.Pattern.compile("[a-z0-9_.-]+:[a-z0-9/._-]+");
+
     /** En deçà, un quaternion n'a pas de direction : il ne décrit aucune rotation. */
     private static final float MIN_QUATERNION_NORM_SQUARED = 1e-6f;
 
@@ -191,6 +201,45 @@ final class AssemblyTags {
             }
         }
         return saved;
+    }
+
+    /**
+     * {@return les contrôleurs attachés gardés, dans l'ordre de l'attache ; vide sans {@code axion:ctrls}} Une entrée
+     * illisible — pas un texte, un identifiant mal formé ou trop long, un doublon — est ignorée, et au-delà de
+     * {@link dev.axion.net.AssemblyState.Modifiers#MAX_CONTROLLERS} le reste aussi : un NBT ne fait pas foi (obligation 3.13).
+     */
+    static java.util.List<String> controllers(CompoundTag stored) {
+        java.util.List<String> saved = new java.util.ArrayList<>();
+        if (!stored.contains(CONTROLLERS, Tag.TAG_LIST)) {
+            return saved;
+        }
+        ListTag list = stored.getList(CONTROLLERS, Tag.TAG_STRING);
+        for (int i = 0; i < list.size() && saved.size() < dev.axion.net.AssemblyState.Modifiers.MAX_CONTROLLERS; i++) {
+            String id = list.getString(i);
+            if (id.length() <= dev.axion.api.assembly.Modifier.MAX_LENGTH && CONTROLLER_ID.matcher(id).matches()
+                    && !saved.contains(id)) {
+                saved.add(id);
+            }
+        }
+        return saved;
+    }
+
+    /**
+     * Écrit les contrôleurs attachés par l'API, dans l'ordre de l'attache ; sans aucun, la clé est retirée.
+     *
+     * @param stored les clés gardées
+     * @param controllers les identifiants des contrôleurs
+     */
+    static void putControllers(CompoundTag stored, java.util.List<String> controllers) {
+        if (controllers.isEmpty()) {
+            stored.remove(CONTROLLERS);
+            return;
+        }
+        ListTag list = new ListTag();
+        for (String id : controllers) {
+            list.add(net.minecraft.nbt.StringTag.valueOf(id));
+        }
+        stored.put(CONTROLLERS, list);
     }
 
     /**

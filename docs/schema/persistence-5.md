@@ -28,6 +28,7 @@ axion:joints  byte[]    8 octets par joint, dans l'ordre de la definition
 axion:custom  byte[]    table CBOR des données personnalisées, absente si elle est vide
 axion:vars    compound  valeur de chaque variable gardée, par nom, absente sans elles
 axion:params  list      modificateurs posés, dans l'ordre de leur pose, absente sans eux
+axion:ctrls   list      contrôleurs de véhicule attachés par l'API, dans l'ordre de l'attache, absente sans eux
 ```
 
 - **`axion:bodies`**, pour chaque corps autre que le corps racine : `node u32` (node racine du corps dans
@@ -62,6 +63,16 @@ les bornes de la definition refusent désormais, ou qui vise un paramètre qu'el
 se journalise (`E-7011`) ; il n'est pas jeté. Une entrée illisible — un champ manquant, une opération inconnue, une
 cause mal formée, une quantité non finie — est ignorée, et une cause de l'espace de noms `axion`, réservé au moteur,
 écartée.
+
+### `axion:ctrls`
+
+Les contrôleurs de véhicule que l'API a attachés à l'assembly (ADR-167 D7, D9), dans l'ordre de l'attache : une liste
+de textes, chacun l'identifiant d'un contrôleur (`<espace de noms>:<chemin>`), huit au plus. Ceux que sa definition
+nomme (`vehicle.controllers`) n'y sont pas : ils découlent d'elle.
+
+À la lecture, un contrôleur qu'aucun mod n'enregistre plus reste attaché mais inactif, et se journalise (`E-7011`) :
+son mod revenu, il reprend ; il n'est pas jeté (CAP-38). Une entrée illisible — pas un texte, un identifiant mal formé
+ou de plus de 256 caractères, un doublon — est ignorée, et au-delà de huit le reste aussi.
 
 ### `axion:custom`
 

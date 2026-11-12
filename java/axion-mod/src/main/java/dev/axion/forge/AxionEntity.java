@@ -167,8 +167,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Le débit des sorties de contrôleur écartées au journal (serveur) : une par seconde au plus. */
     private final dev.axion.entity.JournalThrottle controlJournal = new dev.axion.entity.JournalThrottle(20);
 
-    /** Les contrôleurs que l'API a attachés à cette instance (serveur, ADR-167 D9), dans l'ordre de l'attache. */
+    /**
+     * Les contrôleurs que l'API a attachés à cette instance (serveur, ADR-167 D9), dans l'ordre de l'attache : relus de
+     * {@code axion:ctrls}, sauvegardés, envoyés avec les modificateurs. Au client, voir {@link #attached()}.
+     */
     private final List<String> attachedControllers = new ArrayList<>();
+
+    /** Un numéro qui change à chaque attache ou retrait (serveur) : la liste repart alors aux joueurs. */
+    private long controllersVersion;
 
     /**
      * La table effective des paramètres : celle de la definition, avec ceux des mods des contrôleurs que l'API a
@@ -633,9 +639,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (compiled == null) {
             return null;
         }
-        if (compiled != tunedFrom || !attachedControllers.equals(tunedWith)) {
+        List<String> attached = attached();
+        if (compiled != tunedFrom || !attached.equals(tunedWith)) {
             tunedFrom = compiled;
-            tunedWith = List.copyOf(attachedControllers);
+            tunedWith = List.copyOf(attached);
             tuned = tunedWith.isEmpty() ? compiled
                     : compiled.with(dev.axion.definition.VehicleExtensions.current().parametersFor(tunedWith));
         }
@@ -668,8 +675,26 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return List.of();
         }
         List<String> all = new ArrayList<>(tuning.controllers());
-        all.addAll(attachedControllers);
+        for (String id : attached()) {
+            // Relu d'une sauvegarde, un contrôleur que la definition nomme désormais n'y figure qu'une fois.
+            if (!all.contains(id)) {
+                all.add(id);
+            }
+        }
         return List.copyOf(all);
+    }
+
+    /**
+     * {@return les contrôleurs attachés par l'API} : au serveur, ceux de l'instance ; au client, ceux du plus récent
+     * snapshot (ADR-167 D8).
+     */
+    private List<String> attached() {
+        return level().isClientSide() ? receivedParameters.controllers() : attachedControllers;
+    }
+
+    /** {@return un numéro qui change à chaque attache ou retrait d'un contrôleur par l'API (serveur)} */
+    long controllersVersion() {
+        return controllersVersion;
     }
 
     /**
@@ -697,6 +722,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     + dev.axion.definition.Tuning.MAX_CONTROLLERS + ", le plafond");
         }
         attachedControllers.add(id);
+        controllersVersion++;
     }
 
     /**
@@ -707,7 +733,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     public boolean detachController(String id) {
         AuthoritativeThread.require();
-        return attachedControllers.remove(id);
+        boolean removed = attachedControllers.remove(id);
+        if (removed) {
+            controllersVersion++;
+        }
+        return removed;
     }
 
     /** {@return ses contrôleurs que les mods enregistrent, dans leur ordre ; un contrôleur sans mod est passé} */
@@ -1791,7 +1821,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     void parametersInEffect(long tick) {
         dev.axion.entity.AssemblyParameters table = parameters();
-        netParameters = table == null ? AssemblyState.Modifiers.NONE : table.posed(tick);
+        netParameters = table == null ? AssemblyState.Modifiers.NONE : table.posed(tick, attachedControllers);
     }
 
     /**
@@ -2009,6 +2039,17 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         inertReason = binding.inertReason();
         definitionId = binding.bound().map(Definition::id).orElse(AssemblyTags.describe(stored));
         custom = AssemblyTags.custom(stored, AxionEntities::maxCustomBytes, inert);
+        // ADR-167 D7 : un contrôleur dont aucun mod ne s'enregistre plus reste attaché, inactif, et se dit (CAP-38).
+        attachedControllers.clear();
+        attachedControllers.addAll(AssemblyTags.controllers(stored));
+        // Relus, ils partent aux joueurs dès la création du corps, comme une attache.
+        controllersVersion = attachedControllers.isEmpty() ? 0 : 1;
+        for (String id : attachedControllers) {
+            if (dev.axion.definition.VehicleExtensions.current().controller(id).isEmpty()) {
+                LOGGER.warn("AXION : E-7011 assembly {} — contrôleur « {} » gardé inactif : aucun mod ne l'enregistre",
+                        getUUID(), id);
+            }
+        }
         custom.problem().ifPresent(problem ->
                 LOGGER.warn("AXION : assembly {}, données personnalisées — {}", getUUID(), problem));
         // §22.2 : le corps sera recréé avec l'orientation sauvegardée (identité si absente).
@@ -2075,6 +2116,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-167 D7 : les modificateurs posés, si l'assembly en a déjà une table ; sinon, ceux que son NBT portait.
         if (!inert && parameters != null) {
             AssemblyTags.putParameters(stored, parameters.modifiers());
+        }
+        // ADR-167 D7, D9 : les contrôleurs attachés par l'API, relus à la lecture.
+        if (!inert) {
+            AssemblyTags.putControllers(stored, attachedControllers);
         }
         AssemblyTags.restore(stored, tag);
         // 22.5.2 : chaque sauvegarde part aussi au journal latéral, filet de sécurité si vanilla perd l'entité.

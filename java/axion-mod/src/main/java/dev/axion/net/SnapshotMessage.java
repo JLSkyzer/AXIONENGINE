@@ -249,6 +249,10 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
         for (AssemblyState.Posed posed : parameters.posed()) {
             size += textSize(posed.modifier().cause()) + textSize(posed.modifier().parameter()) + 2 + Double.BYTES;
         }
+        size += varintSize(parameters.controllers().size());
+        for (String controller : parameters.controllers()) {
+            size += textSize(controller);
+        }
         return size;
     }
 
@@ -504,11 +508,17 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             writer.utf8(modifier.cause()).utf8(modifier.parameter()).u8(modifier.operation().ordinal())
                     .u8(posed.origin()).f64(modifier.amount());
         }
+        // ADR-167 D9 : les contrôleurs que l'API a attachés, dans l'ordre de l'attache.
+        writer.varUInt(parameters.controllers().size());
+        for (String controller : parameters.controllers()) {
+            writer.utf8(controller);
+        }
     }
 
     /**
      * Les modificateurs d'une entrée (ADR-167 D8) : au plus 64, textes bornés, opération et origine connues, cause bien
-     * formée, quantité finie, aucune cause posée deux fois sur un paramètre (R-1650).
+     * formée, quantité finie, aucune cause posée deux fois sur un paramètre ; puis les contrôleurs attachés, au plus 8,
+     * bien formés, chacun une fois (R-1650).
      */
     private static AssemblyState.Modifiers readParameters(WireReader reader, int handle)
             throws MalformedPacketException {
@@ -534,7 +544,16 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                 posed.add(new AssemblyState.Posed(
                         new Modifier(cause, parameter, operations[operation], amount), origin));
             }
-            return new AssemblyState.Modifiers(tick, posed);
+            int controllers = reader.varUInt();
+            if (controllers > AssemblyState.Modifiers.MAX_CONTROLLERS) {
+                throw new MalformedPacketException("entité " + handle + " : " + controllers + " contrôleurs, au-delà de "
+                        + AssemblyState.Modifiers.MAX_CONTROLLERS);
+            }
+            List<String> attached = new ArrayList<>(controllers);
+            for (int index = 0; index < controllers; index++) {
+                attached.add(reader.utf8(MAX_MODIFIER_TEXT_BYTES));
+            }
+            return new AssemblyState.Modifiers(tick, posed, attached);
         } catch (IllegalArgumentException refused) {
             throw new MalformedPacketException("entité " + handle + " : " + refused.getMessage());
         }

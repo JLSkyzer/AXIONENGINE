@@ -250,4 +250,83 @@ public final class ControleursGameTests {
                         "Q3 : sans conducteur, frein de stationnement serré, il est arrêté"))
                 .thenSucceed();
     }
+
+    /**
+     * D7, D8 : un contrôleur attaché par l'API se sauvegarde ({@code axion:ctrls}) et se relit avec ses modificateurs ;
+     * il part aux joueurs avec eux, et le client qui en tire les paramètres de son mod (Q6) compose les valeurs du
+     * serveur, au bit près — sans les sorties des contrôleurs, qui ne voyagent pas.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void unControleurAttacheSeRelitEtPart(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity entite = AssembliesDeTest.poser(helper, "axion:test/vehicule", new Vec3(4.5, DESSUS_DALLE, 4.5),
+                IDENTITE);
+        AxionEntity[] relue = new AxionEntity[1];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(entite.parameters() != null && entite.netState() != null,
+                        "l'assembly est simulée"))
+                .thenExecute(() -> {
+                    vehicule(entite).attach("axion:test/compteur");
+                    api(entite).parameters().modify(new Modifier("essai:gain", ControleursDeTest.GAIN,
+                            Modifier.Operation.ADD, 2));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(entite.netState().parameters().controllers()
+                        .equals(List.of("axion:test/compteur")), "le contrôleur part aux joueurs"))
+                .thenIdle(1)
+                .thenExecute(() -> {
+                    dev.axion.net.AssemblyState.Modifiers recus = relu(entite.netState());
+                    helper.assertTrue(recus.controllers().equals(List.of("axion:test/compteur")),
+                            "relu du fil : " + recus.controllers());
+                    // Ce que fait le client (AxionEntity.tuning) : la table reçue, et les paramètres des mods reçus.
+                    dev.axion.definition.Tuning duClient = AxionEntities.tuning("axion:test/vehicule").orElseThrow()
+                            .with(dev.axion.definition.VehicleExtensions.current().parametersFor(recus.controllers()));
+                    AssemblyParameters miroir = AssemblyParameters.mirror(duClient, recus, new double[0]);
+                    AssemblyParameters serveur = entite.parameters();
+                    helper.assertTrue(miroir.tuning().names().equals(serveur.tuning().names()), "mêmes paramètres : "
+                            + miroir.tuning().names());
+                    int gain = serveur.tuning().indexOf(ControleursDeTest.GAIN);
+                    helper.assertTrue(serveur.value(gain) == 4.0 && serveur.uncontrolled(gain) == 3.0,
+                            "au serveur, 1 + 2 posé + 1 du contrôleur : " + serveur.value(gain));
+                    for (int i = 0; i < serveur.tuning().size(); i++) {
+                        helper.assertTrue(Double.doubleToRawLongBits(miroir.value(i))
+                                        == Double.doubleToRawLongBits(serveur.uncontrolled(i)),
+                                serveur.tuning().get(i).name() + " : " + miroir.value(i) + " au client, "
+                                        + serveur.uncontrolled(i) + " au serveur sans les contrôleurs");
+                    }
+
+                    net.minecraft.nbt.CompoundTag sauvegarde = new net.minecraft.nbt.CompoundTag();
+                    helper.assertTrue(entite.save(sauvegarde), "sauvegarde refusée");
+                    helper.assertTrue(sauvegarde.getList(AssemblyTags.CONTROLLERS, 8).size() == 1,
+                            "axion:ctrls : " + sauvegarde.get(AssemblyTags.CONTROLLERS));
+                    entite.discard();
+                    net.minecraft.world.entity.Entity lue = net.minecraft.world.entity.EntityType.loadEntityRecursive(
+                            sauvegarde, helper.getLevel(), e -> e);
+                    helper.assertTrue(lue instanceof AxionEntity, "la sauvegarde ne rend pas une assembly");
+                    helper.assertTrue(helper.getLevel().addFreshEntity(lue), "l'assembly relue n'entre pas");
+                    relue[0] = (AxionEntity) lue;
+                })
+                .thenWaitUntil(() -> helper.assertTrue(relue[0].parameters() != null, "paramètres relus"))
+                .thenExecute(() -> {
+                    helper.assertTrue(relue[0].controllers().equals(List.of("axion:test/compteur")),
+                            "le contrôleur relu : " + relue[0].controllers());
+                    AssemblyParameters parametres = relue[0].parameters();
+                    int gain = parametres.tuning().indexOf(ControleursDeTest.GAIN);
+                    helper.assertTrue(gain >= 0 && parametres.uncontrolled(gain) == 3.0,
+                            "le paramètre de son mod, avec le modificateur relu : " + parametres.applied());
+                })
+                .thenWaitUntil(() -> helper.assertTrue(relue[0].netState() != null && relue[0].netState().parameters()
+                        .controllers().equals(List.of("axion:test/compteur")), "relu, il repart aux joueurs"))
+                .thenSucceed();
+    }
+
+    /** {@return les modificateurs qu'un joueur lit de cet état, après un aller-retour sur le fil} */
+    private static dev.axion.net.AssemblyState.Modifiers relu(dev.axion.net.AssemblyState etat) {
+        try {
+            byte[] fil = new dev.axion.net.SnapshotMessage(1, 1L, dev.axion.net.SnapshotMessage.DESCRIPTOR_VERSION,
+                    List.of(dev.axion.net.SnapshotMessage.Entry.full(1, etat))).encode();
+            return dev.axion.net.SnapshotMessage.decode(fil).entries().get(0).resolve(null).parameters();
+        } catch (dev.axion.net.MalformedPacketException refuse) {
+            throw new IllegalStateException("le snapshot se relit mal : " + refuse.getMessage(), refuse);
+        }
+    }
 }

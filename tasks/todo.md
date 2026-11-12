@@ -3767,9 +3767,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  mesurés : 50 µs, 20 fautes) ; paramètres d'addon là où un contrôleur du mod est attaché. Trouvé en
                  route : les journaux à débit limité (`E-7010` compris) se taisaient — corrigé (`JournalThrottle`).
                  Au client, `vehicle().state()` attend la prédiction (tranche 6) : le noter à la tranche 6.
-           - [ ] D : sauvegarde (`axion:ctrls`), réseau (contrôleurs attachés dans `FLAG_PARAMETERS`), addon d'un
-                 contrôleur exigé du client et registre dans l'empreinte (CAP-40) ; `/axion params` montre les
-                 contrôleurs, clés de traduction des paramètres.
+           - [x] D : sauvegarde (`axion:ctrls`), réseau (contrôleurs attachés dans `FLAG_PARAMETERS`), addon d'un
+                 contrôleur exigé du client ; `/axion params` montre les contrôleurs, clés de traduction des
+                 paramètres (`Parameters.translationKey`). **Q7 en attente de Killian** : la forme de « registre des
+                 contrôleurs dans l'empreinte du handshake » (CAP-40) — proposé, la liste des contrôleurs nommés dans
+                 `S2C_Handshake`, un client à qui l'un manque refusé en les nommant (ADR-167, Q7).
            - [ ] E : exemple compilé (témoin), guide, CDC (23.2, 23.3, A.1 `E-1011`, A.3), précisions d'ADR-167,
                  budget mesuré au banc, film, fusion.
   6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37), contrôleurs de véhicule appelés

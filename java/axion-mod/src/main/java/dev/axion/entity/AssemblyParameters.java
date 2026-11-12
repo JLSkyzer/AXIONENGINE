@@ -338,9 +338,20 @@ public final class AssemblyParameters {
      * @param tick le tick du serveur où cette liste a pris effet
      */
     public AssemblyState.Modifiers posed(long tick) {
+        return posed(tick, List.of());
+    }
+
+    /**
+     * {@return les modificateurs posés tels que les snapshots les portent, avec les contrôleurs que l'API a attachés
+     * (ADR-167 D8, D9)}
+     *
+     * @param tick le tick du serveur où cette liste a pris effet
+     * @param controllers les contrôleurs attachés par l'API, dans l'ordre de l'attache
+     */
+    public AssemblyState.Modifiers posed(long tick, List<String> controllers) {
         return new AssemblyState.Modifiers(tick, entries.stream()
                 .map(entry -> new AssemblyState.Posed(entry.modifier, ORIGINS.indexOf(entry.origin)))
-                .toList());
+                .toList(), controllers);
     }
 
     /**

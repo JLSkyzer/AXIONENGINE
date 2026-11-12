@@ -152,4 +152,26 @@ class AssemblyTagsTest {
         Quaternionf relue = AssemblyTags.rotation(gardees);
         assertEquals(1.0f, relue.lengthSquared(), 1e-6f);
     }
+
+    @Test
+    @DisplayName("ADR-167 D7, D9 : axion:ctrls garde les contrôleurs attachés dans leur ordre ; une entrée illisible est"
+            + " ignorée, la liste vide retire la clé")
+    void controleursAttaches() {
+        CompoundTag gardees = new CompoundTag();
+        AssemblyTags.putControllers(gardees, java.util.List.of("turbo:gestion", "abs:antiblocage"));
+        assertEquals(java.util.List.of("turbo:gestion", "abs:antiblocage"), AssemblyTags.controllers(gardees));
+
+        net.minecraft.nbt.ListTag liste = new net.minecraft.nbt.ListTag();
+        for (String id : new String[] {"a:un", "Mal:forme", "sansespace", "a:un", "a:" + "x".repeat(300), "a:deux",
+                "a:3", "a:4", "a:5", "a:6", "a:7", "a:8", "a:9"}) {
+            liste.add(net.minecraft.nbt.StringTag.valueOf(id));
+        }
+        gardees.put(AssemblyTags.CONTROLLERS, liste);
+        assertEquals(java.util.List.of("a:un", "a:deux", "a:3", "a:4", "a:5", "a:6", "a:7", "a:8"),
+                AssemblyTags.controllers(gardees), "mal formés et doublon ignorés, huit au plus");
+
+        AssemblyTags.putControllers(gardees, java.util.List.of());
+        assertFalse(gardees.contains(AssemblyTags.CONTROLLERS), "sans contrôleur, pas de clé");
+        assertEquals(java.util.List.of(), AssemblyTags.controllers(gardees));
+    }
 }

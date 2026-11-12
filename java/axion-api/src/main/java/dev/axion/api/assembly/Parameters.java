@@ -89,6 +89,27 @@ public interface Parameters {
     }
 
     /**
+     * {@return la clé de traduction du nom d'un paramètre (ADR-167 D10)}, pour l'écran d'un mod d'améliorations :
+     * <ul>
+     *   <li>{@code axion.parameter.<nom>} pour un paramètre d'AXION, traduit par AXION en français et en anglais
+     *       ({@code axion.parameter.engine.torque}) ;</li>
+     *   <li>{@code axion.parameter.transmission.gear} pour un rapport : son rang se passe en argument
+     *       ({@code Component.translatable(clé, rang)}) ;</li>
+     *   <li>{@code <espace de noms>.parameter.<chemin>} pour le paramètre d'un addon, que son mod traduit
+     *       ({@code turbo:boost_max} → {@code turbo.parameter.boost_max}).</li>
+     * </ul>
+     *
+     * @param name le nom du paramètre
+     */
+    static String translationKey(String name) {
+        int colon = name.indexOf(':');
+        if (colon >= 0) {
+            return name.substring(0, colon) + ".parameter." + name.substring(colon + 1);
+        }
+        return "axion.parameter." + (name.startsWith("transmission.gear.") ? "transmission.gear" : name);
+    }
+
+    /**
      * Les bornes d'un paramètre : l'intersection de la limite du schéma et de la plage de la definition.
      *
      * @param min la borne basse, {@link Double#NEGATIVE_INFINITY} sans
