@@ -3691,9 +3691,13 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
   4. C-33 tranche 4 : sources `vehicle.*`/`engine.*`, volant et aiguilles, touches libres (CAP-01), variables
      (CAP-02), visibilité, émissif et couleur pilotés (CAP-04), cycles (CAP-05) ; film du gyrophare de la Charger.
   5. C-33 tranche 5 : réplication et paramètres d'instance (D6 ; CAP-03, CAP-39) — les upgrades.
-     - [ ] [ADR-167](../docs/decisions/ADR-167.md) proposé le 2026-11-12 (Q1 à Q4) : paramètres d'instance, bornes,
-           composition des causes, modificateurs déclarés, contrôleurs de véhicule et `VehicleControl` ; sous-tranches
-           5a, 5b, 5c. Rien ne se code avant la réponse de Killian.
+     - [x] [ADR-167](../docs/decisions/ADR-167.md) **accepté par Killian le 2026-11-12**, Q1 à Q4 comme proposé :
+           paramètres d'instance (liste large), bornes du schéma et plage de la definition, composition des causes
+           (opérations des attributs de Minecraft), modificateurs déclarés, contrôleurs et `VehicleControl` en 5c.
+     - [ ] 5a — paramètres, composition, natif (ABI 22), sauvegarde (persistance 5), réseau (protocole 8), API,
+           `/axion params` ; film de deux buggys, l'un réglé.
+     - [ ] 5b — modificateurs déclarés liés aux variables (schéma 4, builder), mode sport du buggy ; film.
+     - [ ] 5c — `VehicleController`, `VehicleControl`, couple par roue (R-1082), paramètres d'addon, coût mesuré.
   6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37) ; le registre envoyé au client
      porte alors les correspondances bloc → matériau, surcharges de l'administrateur comprises (ADR-165, précision 3c).
   7. Le reste des capacités de M5 : caméra de véhicule (CAP-10), API (CAP-11), occupants (CAP-13), joueurs portés
