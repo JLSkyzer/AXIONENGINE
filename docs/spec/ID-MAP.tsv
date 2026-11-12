@@ -148,7 +148,7 @@ C-71	C	2454	365	7	5.58 C-71 : Commandes
 C-72	C	2479	365	6	5.59 C-72 : Benchmark Harness
 C-73	C	2483	366	5	5.60 C-73 : Overlay diagnostics
 C-74	C	2491	366	6	5.61 C-74 : CLI `axion-cli`
-C-75	C	2509	366	8	5.62 C-75 : Addon Blender
+C-75	C	2509	366	9	5.62 C-75 : Addon Blender
 C-76	C	2513	367	17	5.63 C-76 : Bridge RUSTFORGE-X
 C-77	C	2517	367	14	5.64 C-77 : Gouverneur de qualité
 C-80	C	2554	375	10	5.65 C-80 : Ombres AXION
@@ -210,6 +210,7 @@ CAP-52	CAP	8266	8266	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (A
 CAP-53	CAP	8267	8267	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-54	CAP	8268	8268	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-55	CAP	8269	8269	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-56	CAP	8270	8270	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 DM-01	DM	690	690	1	3.1 DM-01 : identifiants
 DM-02	DM	709	709	1	3.2 DM-02 : Transform
 DM-03	DM	719	719	1	3.3 DM-03 : Node

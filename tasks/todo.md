@@ -3719,7 +3719,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  66,8 m contre 119,6 m en 12 s, miroir du client au bit près, jugé par le film ; film du
                  véhicule rejoué sans faute après l'extraction.
      - [ ] 5b — modificateurs déclarés liés aux variables (schéma 4, builder), mode sport du buggy ; film.
-     - [ ] **Après la 5a** : ajouter **CAP-56** à l'annexe A.7 (avec sa ligne 38.9), accepté par Killian le
+     - [x] **CAP-56** inscrite à l'annexe A.7 et à ADR-160 (2026-11-12, après la 5a ; sans ligne 38.9, comme
+           CAP-53 à CAP-55 : l'annexe est hors du texte gelé et s'accroît par ADR-160 D8), accepté par Killian le
            2026-11-12 — mannequin du joueur à l'échelle du jeu, articulé aux pivots du jeu, poses debout, accroupi
            et assis tel qu'AXION l'assoit (node `SEAT` et décalage de monture), GLB à texture neutre au format d'un
            skin (pas celui de Mojang), généré par le moteur et vérifié par un test ; fichier et guide en **M5**,
