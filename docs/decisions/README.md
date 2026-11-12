@@ -145,3 +145,9 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 - |
 | [ADR-100](ADR-100.md) | Point d'entrée Forge séparé de la classe `AxionMod` | 2026-09-09 | accepté
 - |
+
+## À classer
+
+| ADR | Décision | Date | Statut |
+|---|---|---|---|
+| [ADR-166](ADR-166.md) | La version d'API qu'un addon exige, le kit de GameTest et le validateur hors jeu | 2026-11-12 | proposé |
