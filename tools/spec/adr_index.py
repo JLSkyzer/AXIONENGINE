@@ -15,7 +15,7 @@ DOSSIER = RACINE / "docs" / "decisions"
 SUJETS = [
     ("Capacités exigées et organisation", [160, 161]),
     ("Jalons et Definition of Done", [125, 128, 130, 137, 141, 144, 146]),
-    ("Sièges et véhicules", [158, 159, 163, 167]),
+    ("Sièges et véhicules", [158, 159, 163, 167, 168]),
     ("Definitions et contenu", [109, 132, 134, 145, 156]),
     ("Physique", [112, 113, 114, 117, 120, 123, 147, 149, 151, 152]),
     ("Rendu", [118, 121, 127, 129, 133, 154, 157, 164]),
