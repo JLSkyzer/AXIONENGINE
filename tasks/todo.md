@@ -3771,6 +3771,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
               (`dev.axion.api.testing`), validateur hors jeu (`checkAxionContent`, sur `./gradlew build`) ; CDC
               amendement A14 ; pages « Tester ton addon » et « Versions ». CAP-48 et CAP-49 tenues ; CAP-42 tenue
               pour sa part de validation.
+        - [x] CAP-42, seconde part (2026-11-12) : `/axion defs list | info` (C-71, déjà au CDC) — compte, refus
+              d'abord, definitions par mod ; détail ou cause du refus ; complétion des refusées. `DefinitionsReportTest`
+              (3), `DefinitionsCommandGameTests` dans les 82 GameTests ; section « En jeu » du guide « Tester ton
+              addon ». CAP-42 tenue.
   - [x] Tranche 4 de C-33 (2026-11-11) : **ADR-163 accepté le 2026-11-11** (8 commandes G H J K Y U B N, Blender à la 4c,
         variables par assembly). Trois sous-tranches, un film à chacune :
         - [x] 4a (2026-11-11) — état du véhicule répliqué et lu par les pistes (ABI 21, protocole 6, descripteur 5,

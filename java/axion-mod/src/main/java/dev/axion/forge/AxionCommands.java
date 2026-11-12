@@ -3,7 +3,10 @@ package dev.axion.forge;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.axion.bridge.NativeBridge;
+import dev.axion.api.content.ContentKind;
+import dev.axion.content.RegisteredContent;
 import dev.axion.diag.AssetsReport;
+import dev.axion.diag.DefinitionsReport;
 import dev.axion.diag.BenchRunner;
 import dev.axion.diag.BuildInfo;
 import dev.axion.diag.EntityMetrics;
@@ -100,6 +103,25 @@ final class AxionCommands {
                                                                         context, "chemin"))))))
                                 .then(Commands.literal("reload")
                                         .executes(context -> reloadAssets(context.getSource(), runtime))))
+                        // CAP-42 : voir en jeu les definitions chargées, et pourquoi une autre a été refusée.
+                        .then(Commands.literal("defs")
+                                .then(Commands.literal("list")
+                                        .executes(context -> send(
+                                                context.getSource(),
+                                                DefinitionsReport.list(runtime.definitions()))))
+                                .then(Commands.literal("info")
+                                        .then(Commands.argument("definition", ResourceLocationArgument.id())
+                                                .suggests((context, builder) -> SharedSuggestionProvider.suggest(
+                                                        definitionsEtRefus(runtime), builder))
+                                                .executes(context -> send(
+                                                        context.getSource(),
+                                                        DefinitionsReport.info(
+                                                                runtime.definitions(),
+                                                                ResourceLocationArgument.getId(context, "definition")
+                                                                        .toString(),
+                                                                cle -> RegisteredContent
+                                                                        .entry(ContentKind.DEFINITION, cle)
+                                                                        .map(entree -> entree.source())))))))
                         .then(Commands.literal("dev")
                                 .then(Commands.literal("reload")
                                         .executes(context -> devReload.run(context.getSource()))))
@@ -481,6 +503,13 @@ final class AxionCommands {
         source.sendSuccess(
                 () -> Component.literal("AXION : trace arrêtée, " + lines + " ligne(s) écrites"), true);
         return 1;
+    }
+
+    /** {@return les definitions chargées puis refusées, pour la suggestion de {@code /axion defs info}} */
+    private static List<String> definitionsEtRefus(AxionRuntime runtime) {
+        List<String> ids = new ArrayList<>(runtime.definitions().ids());
+        ids.addAll(runtime.definitions().refusedIds());
+        return ids;
     }
 
     private static int send(CommandSourceStack source, List<String> lines) {

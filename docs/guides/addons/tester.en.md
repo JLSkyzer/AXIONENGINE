@@ -2,7 +2,7 @@
 
 Two safety nets keep you from discovering a mistake while playing: the **validator**, which checks your content
 without launching the game, and **GameTests**, which bring it to life in a real server. The addon template already has
-both.
+both. And in game, a command tells you what is loaded, and why the rest is not.
 
 ## 1. The validator, without launching the game
 
@@ -69,3 +69,37 @@ to the log.
     `AxionGameTests.DALLE` names a 9 × 9 slab that the addon template stores in
     `src/main/resources/data/example_addon/structures/dalle.nbt`. Forge looks for a test's template in the namespace of
     the mod that holds it: if you rename your mod, rename this folder too.
+
+## 3. In game: what is loaded, and why the rest is not
+
+An object that does not show up? Ask the game, without leaving your world (you need to be an operator):
+
+```text
+/axion defs list
+```
+
+Here, with a `plume.json` sheet whose mass is negative:
+
+```text
+AXION ENGINE — definitions : 2 chargée(s), 1 refusée(s)
+  refusée : E-7001 example_addon:axion/definitions/plume.json — $.physics.mass : -5 hors de [0.001, 1000000]
+  example_addon (2) : crate, heavy_crate
+```
+
+Refusals come first: they are what you are looking for. For one sheet:
+
+```text
+/axion defs info example_addon:crate
+```
+
+```text
+AXION ENGINE — example_addon:crate
+  genre : RIGID_OBJECT
+  modèle : example_addon:axion/models/crate.gltf
+  schéma : 3
+  enregistrée par : example_addon — axion/definitions/crate.json
+  empreinte : …
+```
+
+For a refused sheet, the answer is its reason, the same as in the log and the validator. The Tab key completes names,
+refused sheets included.

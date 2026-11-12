@@ -1,7 +1,8 @@
 # Tester ton addon
 
 Deux filets t'évitent de découvrir une faute en jouant : le **validateur**, qui vérifie ton contenu sans lancer le
-jeu, et les **GameTests**, qui le font vivre dans un vrai serveur. Le modèle d'addon a déjà les deux.
+jeu, et les **GameTests**, qui le font vivre dans un vrai serveur. Le modèle d'addon a déjà les deux. Et en jeu,
+une commande te dit ce qui est chargé, et pourquoi le reste ne l'est pas.
 
 ## 1. Le validateur, sans lancer le jeu
 
@@ -69,3 +70,37 @@ cause au journal.
     `AxionGameTests.DALLE` désigne une dalle de 9 × 9 blocs que le modèle d'addon range dans
     `src/main/resources/data/example_addon/structures/dalle.nbt`. Forge cherche le gabarit d'un test dans l'espace de
     noms du mod qui le porte : si tu renommes ton mod, renomme aussi ce dossier.
+
+## 3. En jeu : ce qui est chargé, et pourquoi le reste ne l'est pas
+
+Un objet qui n'apparaît pas ? Demande-le au jeu, sans quitter la partie (il faut être opérateur) :
+
+```text
+/axion defs list
+```
+
+Ici, avec une fiche `plume.json` dont la masse est négative :
+
+```text
+AXION ENGINE — definitions : 2 chargée(s), 1 refusée(s)
+  refusée : E-7001 example_addon:axion/definitions/plume.json — $.physics.mass : -5 hors de [0.001, 1000000]
+  example_addon (2) : crate, heavy_crate
+```
+
+Les refus viennent en premier : ce sont eux que tu cherches. Pour une fiche précise :
+
+```text
+/axion defs info example_addon:crate
+```
+
+```text
+AXION ENGINE — example_addon:crate
+  genre : RIGID_OBJECT
+  modèle : example_addon:axion/models/crate.gltf
+  schéma : 3
+  enregistrée par : example_addon — axion/definitions/crate.json
+  empreinte : …
+```
+
+Pour une fiche refusée, la réponse est sa cause, la même que dans le journal et le validateur. La touche Tab complète
+les noms, ceux des fiches refusées compris.

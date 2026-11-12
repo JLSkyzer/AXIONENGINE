@@ -9,6 +9,7 @@ import dev.axion.api.content.ContentKind;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -106,6 +107,21 @@ public final class RegisteredContent {
     /** {@return la version de chaque mod propriétaire de contenu, vide avant l'enregistrement} */
     public static Map<String, String> owners() {
         return owners;
+    }
+
+    /**
+     * {@return l'entrée enregistrée sous cette clé, avec son propriétaire et sa source, ou vide} (CAP-42 :
+     * {@code /axion defs info})
+     *
+     * @param kind la famille
+     * @param key la clé, {@code <ns>:axion/<dossier>/<chemin>}
+     */
+    public static Optional<ContentRegistry.Entry> entry(ContentKind kind, String key) {
+        Map<ContentKind, List<ContentRegistry.Entry>> content = current;
+        if (content == null) {
+            return Optional.empty();
+        }
+        return content.getOrDefault(kind, List.of()).stream().filter(entry -> entry.key().equals(key)).findFirst();
     }
 
     /** {@return vrai si l'enregistrement a eu lieu} */

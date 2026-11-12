@@ -501,6 +501,11 @@ public final class DefinitionRegistry {
         return Optional.ofNullable(refusalById.get(id));
     }
 
+    /** {@return les identifiants des definitions refusées, triés (CAP-42 : {@code /axion defs})} */
+    public Set<String> refusedIds() {
+        return refusalById.keySet();
+    }
+
     /** Consigne un refus, et sous son identifiant quand la ressource en donne un. */
     private static void refuse(List<String> refusals, SortedMap<String, String> refusalById, String location,
             String line) {
