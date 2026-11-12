@@ -31,6 +31,10 @@ public record Modifier(String cause, String parameter, Operation operation, doub
     /**
      * Valide le modificateur.
      *
+     * @param cause qui modifie, {@code <espace de noms>:<chemin>}
+     * @param parameter le paramètre modifié
+     * @param operation l'opération
+     * @param amount la quantité, finie
      * @throws IllegalArgumentException si la cause n'est pas un identifiant à espace de noms, ou si la quantité
      *     n'est pas finie
      * @throws NullPointerException si un champ est nul

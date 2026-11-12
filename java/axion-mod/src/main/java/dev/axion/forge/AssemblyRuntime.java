@@ -125,6 +125,12 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      */
     private final Map<Integer, AxionEntity.DriverInput> driveSent = new HashMap<>();
 
+    /** La table de paramètres et sa version que le natif a reçues, par handle (ADR-167 D6). */
+    private final Map<Integer, ParametersSent> parametersSent = new HashMap<>();
+
+    /** Une table de paramètres envoyée : elle-même, et sa version. */
+    private record ParametersSent(dev.axion.entity.AssemblyParameters table, long version) {}
+
     /** Les créations en attente, avancées sous {@code persistence.max_load_ns_per_tick} (R-1730). */
     private final LoadQueue<AxionEntity> loading = new LoadQueue<>(System::nanoTime);
 
@@ -389,10 +395,33 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 animationSent.remove(cmd.index());
             }
             driveSent.remove(cmd.index());
+            parametersSent.remove(cmd.index());
         }
         animate(stream);
         drive(stream);
+        tune(stream);
         return stream;
+    }
+
+    /**
+     * Pousse au natif les paramètres réglés de chaque assembly dotée d'un corps, quand ils ont changé (ADR-167 D6) :
+     * le natif les garde d'un tick à l'autre, et repart de sa base à chaque création. Une assembly à sa base n'envoie
+     * rien à sa création.
+     */
+    private void tune(SimCommandStream stream) {
+        ledger.forEachBody((index, assembly) -> {
+            dev.axion.entity.AssemblyParameters table = assembly.parameters();
+            if (table == null) {
+                return;
+            }
+            ParametersSent sent = parametersSent.get(index);
+            boolean changed = sent == null ? table.tuned() : sent.table() != table || sent.version() != table.version();
+            if (changed) {
+                stream.setParameters(index, GENERATION, table.fields(SimCommandStream.PARAMETER_FIELDS),
+                        table.gearTable());
+            }
+            parametersSent.put(index, new ParametersSent(table, table.version()));
+        });
     }
 
     /**
@@ -595,5 +624,6 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         rootNodes.clear();
         animationSent.clear();
         driveSent.clear();
+        parametersSent.clear();
     }
 }

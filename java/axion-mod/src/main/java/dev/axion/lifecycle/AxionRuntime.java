@@ -1234,6 +1234,17 @@ public final class AxionRuntime {
     }
 
     /**
+     * {@return les paramètres réglables d'une definition compilée (ADR-167 D1)} Vide tant qu'elle attend son asset,
+     * ou si elle a été refusée.
+     *
+     * @param id identifiant de la definition
+     */
+    public Optional<dev.axion.definition.Tuning> tuning(String id) {
+        DefinitionCompilation compiling = compilation;
+        return compiling == null ? Optional.empty() : compiling.tuning(id);
+    }
+
+    /**
      * Lance un rayon contre les seuls colliders d'une assembly (ADR-158 D2), sur le fil du serveur.
      *
      * @param index index du handle de l'assembly

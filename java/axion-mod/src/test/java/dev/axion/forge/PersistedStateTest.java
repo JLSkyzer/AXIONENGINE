@@ -162,18 +162,55 @@ class PersistedStateTest {
     }
 
     @Test
-    @DisplayName("ADR-163 D2 : un NBT au schéma 3 se migre au 4, sans variable inventée ni clé perdue")
+    @DisplayName("ADR-163 D2, ADR-167 D7 : un NBT au schéma 3 se migre au 5, sans variable ni modificateur inventés")
     void migration3Vers4() {
         CompoundTag v3 = new CompoundTag();
         v3.putInt("axion:v", 3);
         v3.putLong("axion:def", 0x1234L);
         v3.putByteArray("axion:parts", new byte[] {4, 5});
-        CompoundTag v4 = AssemblyTags.migrate(v3);
-        assertEquals(4, AssemblyTags.version(v4).orElseThrow());
-        assertEquals(AssemblyBinding.NBT_SCHEMA, AssemblyTags.version(v4).orElseThrow());
-        assertArrayEquals(new byte[] {4, 5}, v4.getByteArray("axion:parts"), "une clé inconnue reste");
-        assertTrue(AssemblyTags.variables(v4).isEmpty(), "le schéma 3 n'avait pas de variables : rien d'inventé");
+        CompoundTag v5 = AssemblyTags.migrate(v3);
+        assertEquals(5, AssemblyTags.version(v5).orElseThrow());
+        assertEquals(AssemblyBinding.NBT_SCHEMA, AssemblyTags.version(v5).orElseThrow());
+        assertArrayEquals(new byte[] {4, 5}, v5.getByteArray("axion:parts"), "une clé inconnue reste");
+        assertTrue(AssemblyTags.variables(v5).isEmpty(), "le schéma 3 n'avait pas de variables : rien d'inventé");
+        assertTrue(AssemblyTags.parameters(v5).isEmpty(), "ni de modificateurs");
         assertEquals(3, v3.getInt("axion:v"), "l'original n'est pas touché");
+    }
+
+    @Test
+    @DisplayName("ADR-167 D7 : un NBT au schéma 4 se migre au 5, ses variables et toute clé gardées")
+    void migration4Vers5() {
+        CompoundTag v4 = new CompoundTag();
+        v4.putInt("axion:v", 4);
+        v4.putLong("axion:def", 0x1234L);
+        AssemblyTags.putVariables(v4, java.util.Map.of("gyrophare", 1.0));
+        CompoundTag v5 = AssemblyTags.migrate(v4);
+        assertEquals(5, AssemblyTags.version(v5).orElseThrow());
+        assertEquals(java.util.Map.of("gyrophare", 1.0), AssemblyTags.variables(v5));
+        assertTrue(AssemblyTags.parameters(v5).isEmpty());
+        assertEquals(4, v4.getInt("axion:v"), "l'original n'est pas touché");
+    }
+
+    @Test
+    @DisplayName("ADR-167 D7 : axion:params garde les modificateurs dans leur ordre ; une entrée illisible est ignorée")
+    void modificateursGardes() {
+        List<dev.axion.api.assembly.Modifier> poses = List.of(
+                new dev.axion.api.assembly.Modifier("upgrades:stage1", "engine.torque",
+                        dev.axion.api.assembly.Modifier.Operation.MULTIPLY_BASE, 0.25),
+                new dev.axion.api.assembly.Modifier("garage:allegement", "mass",
+                        dev.axion.api.assembly.Modifier.Operation.ADD, -80));
+        CompoundTag stored = new CompoundTag();
+        AssemblyTags.putParameters(stored, poses);
+        assertEquals(poses, AssemblyTags.parameters(stored));
+        CompoundTag illisible = new CompoundTag();
+        illisible.putString("cause", "upgrades:x");
+        illisible.putString("parameter", "mass");
+        illisible.putString("operation", "divide");
+        illisible.putDouble("amount", 2.0);
+        stored.getList("axion:params", 10).add(illisible);
+        assertEquals(poses, AssemblyTags.parameters(stored), "une opération inconnue ne décrit aucun modificateur");
+        AssemblyTags.putParameters(stored, List.of());
+        assertTrue(!stored.contains("axion:params"), "sans modificateur, pas de clé");
     }
 
     @Test
@@ -195,7 +232,7 @@ class PersistedStateTest {
     @Test
     @DisplayName("T-433 : un schéma postérieur, ou antérieur à 2, traverse la migration intact (R-1710)")
     void autresVersionsIntactes() {
-        for (int version : new int[] {1, 4, 5, 9}) {
+        for (int version : new int[] {1, 5, 6, 9}) {
             CompoundTag gardees = new CompoundTag();
             gardees.putInt("axion:v", version);
             gardees.putLong("axion:def", 77L);

@@ -3696,6 +3696,25 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            (opérations des attributs de Minecraft), modificateurs déclarés, contrôleurs et `VehicleControl` en 5c.
      - [ ] 5a — paramètres, composition, natif (ABI 22), sauvegarde (persistance 5), réseau (protocole 8), API,
            `/axion params` ; film de deux buggys, l'un réglé.
+           **En cours sur la branche `wip/tranche-5a`** (pas encore sur `master` : `Parameters` n'y entre qu'avec
+           son réseau, ADR-162 D1). Fait, CI locale verte à chaque étape :
+           - [x] A (`f8c2794`) : `Tuning` (bases aux défauts mêmes de la section DEFN, limites du schéma,
+                 `tuning.ranges` au schéma 4 publié, builder régénéré), `AssemblyParameters` (composition,
+                 bornes jugées sur le f32 envoyé, rejeu jusqu'à point fixe, reprise inactive et nommée).
+           - [x] B (`a5c488f`) : `SET_PARAMETERS` (opcode 18, ABI 22), `ax_vehicle::tuning`, base gardée par
+                 véhicule, `scale_body_mass` (masse et inertie depuis l'origine, centre gardé).
+           - [x] C+D : table par definition compilée, `AxionEntity.parameters()`, envoi au natif au changement,
+                 `Assembly.parameters()`, `/axion params` (voir, `set`, `remove`, journalisés R-810),
+                 `axion:params` au schéma NBT 5 (`persistence-5.md`, migration 4 → 5), `E-7011` en A.1
+                 (amendement A15 ouvert) ; trois GameTests (couple bridé qui ralentit le véhicule, relecture,
+                 commande), 85 GameTests verts.
+           - [ ] E : réseau (protocole 8, descripteur 6, `FLAG_PARAMETERS` daté du tick), miroir au client qui
+                 compose comme le serveur (test au bit près), lecture de `parameters()` côté client.
+           - [ ] F : guide « Régler un véhicule » (fr, en), CDC A15 complet (12.5, 12.6 R-1084..R-1087, 23.2,
+                 23.4, PARTIES 21 et 22, A.3, A.7), précisions d'ADR-167 (à écrire : `mass` seulement si
+                 `physics.mass` est déclarée ; constantes dans `Parameters` et non `VehicleParameters` ; espace
+                 `axion` refusé tant qu'aucune cause du moteur n'existe ; rejeu jusqu'à point fixe ; bornes
+                 jugées sur le f32), film des deux buggys, puis fusion dans `master`.
      - [ ] 5b — modificateurs déclarés liés aux variables (schéma 4, builder), mode sport du buggy ; film.
      - [ ] 5c — `VehicleController`, `VehicleControl`, couple par roue (R-1082), paramètres d'addon, coût mesuré.
   6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37) ; le registre envoyé au client

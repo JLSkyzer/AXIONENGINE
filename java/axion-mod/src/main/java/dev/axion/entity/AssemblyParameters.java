@@ -295,9 +295,26 @@ public final class AssemblyParameters {
      * @return une ligne par modificateur inactif ou écarté, à journaliser
      */
     public List<String> restore(List<Modifier> modifiers, String origin) {
+        return restore(modifiers, modifiers.stream().map(modifier -> origin).toList());
+    }
+
+    /**
+     * Reprend les modificateurs d'une table d'avant — la definition a été recompilée —, avec leur origine : comme
+     * {@link #restore(List, String)}.
+     *
+     * @param previous la table d'avant
+     * @return une ligne par modificateur inactif ou écarté, à journaliser
+     */
+    public List<String> adopt(AssemblyParameters previous) {
+        return restore(previous.modifiers(), previous.entries.stream().map(entry -> entry.origin).toList());
+    }
+
+    private List<String> restore(List<Modifier> modifiers, List<String> origins) {
         entries.clear();
         List<String> lines = new ArrayList<>();
-        for (Modifier modifier : modifiers) {
+        for (int i = 0; i < modifiers.size(); i++) {
+            Modifier modifier = modifiers.get(i);
+            String origin = origins.get(i);
             if (modifier.cause().startsWith(ENGINE_NAMESPACE)) {
                 // Une cause du moteur ne se relit pas d'une liste : le moteur la recalcule (obligation 3.13).
                 lines.add("modificateur de « " + modifier.cause() + " » écarté : l'espace de noms axion est réservé"

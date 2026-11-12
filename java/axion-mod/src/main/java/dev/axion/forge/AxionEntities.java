@@ -76,6 +76,9 @@ public final class AxionEntities {
     /** Les sièges et les interactions d'une definition compilée (ADR-158 D1), par identifiant. */
     private static volatile Function<String, Optional<Seating>> seatings = id -> Optional.empty();
 
+    /** Les paramètres réglables d'une definition compilée (ADR-167 D1), par identifiant. */
+    private static volatile Function<String, Optional<dev.axion.definition.Tuning>> tunings = id -> Optional.empty();
+
     /** Le rayon contre les colliders d'une assembly (ADR-158 D2) ; sans runtime, il ne touche rien. */
     private static volatile Rays rays = (index, generation, ray, out) -> -2001;
 
@@ -123,6 +126,7 @@ public final class AxionEntities {
         maxCustomBytes = runtime::maxCustomBytes;
         summaries = runtime::compiledDefinition;
         seatings = runtime::seating;
+        tunings = runtime::tuning;
         rays = runtime::raycastAssembly;
         boxes = runtime::boxTouchesAssembly;
         inputTimeoutMillis = runtime::inputTimeoutMillis;
@@ -154,6 +158,15 @@ public final class AxionEntities {
      */
     static Optional<Seating> seating(String id) {
         return seatings.apply(id);
+    }
+
+    /**
+     * {@return les paramètres réglables d'une definition compilée (ADR-167 D1), vide tant qu'elle l'attend}
+     *
+     * @param id identifiant de la definition
+     */
+    static Optional<dev.axion.definition.Tuning> tuning(String id) {
+        return tunings.apply(id);
     }
 
     /** {@return le délai au-delà duquel les entrées d'un siège ne valent plus, en millisecondes} */

@@ -47,6 +47,12 @@ final class AssemblyTags {
     /** Variables gardées (ADR-163 D2) : à chaque nom de variable {@code persist}, sa valeur ; absente sans elles. */
     static final String VARIABLES = "axion:vars";
 
+    /**
+     * Modificateurs posés (ADR-167 D7) : la liste, dans l'ordre de leur pose, de ceux que l'API ou la commande ont
+     * posés ; absente sans eux.
+     */
+    static final String PARAMETERS = "axion:params";
+
     /** En deçà, un quaternion n'a pas de direction : il ne décrit aucune rotation. */
     private static final float MIN_QUATERNION_NORM_SQUARED = 1e-6f;
 
@@ -144,7 +150,70 @@ final class AssemblyTags {
      */
     static CompoundTag migrate(CompoundTag stored) {
         CompoundTag migrated = version(stored).orElse(-1) == 2 ? migrate2To3(stored) : stored;
-        return version(migrated).orElse(-1) == 3 ? migrate3To4(migrated) : migrated;
+        migrated = version(migrated).orElse(-1) == 3 ? migrate3To4(migrated) : migrated;
+        return version(migrated).orElse(-1) == 4 ? migrate4To5(migrated) : migrated;
+    }
+
+    /**
+     * Le schéma 4 passe au 5 (ADR-167 D7) : il ne portait pas de modificateurs, et la migration n'en invente pas. Toute
+     * clé est gardée ; seule la version change.
+     */
+    private static CompoundTag migrate4To5(CompoundTag stored) {
+        CompoundTag migrated = stored.copy();
+        migrated.putInt(VERSION, 5);
+        return migrated;
+    }
+
+    /**
+     * {@return les modificateurs gardés, dans l'ordre de leur pose ; vide sans {@code axion:params}} Une entrée
+     * illisible — un champ manquant, une opération inconnue, une cause mal formée, une quantité non finie — est
+     * ignorée : un NBT ne fait pas foi (obligation 3.13).
+     */
+    static java.util.List<dev.axion.api.assembly.Modifier> parameters(CompoundTag stored) {
+        java.util.List<dev.axion.api.assembly.Modifier> saved = new java.util.ArrayList<>();
+        if (!stored.contains(PARAMETERS, Tag.TAG_LIST)) {
+            return saved;
+        }
+        ListTag list = stored.getList(PARAMETERS, Tag.TAG_COMPOUND);
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag entry = list.getCompound(i);
+            if (!entry.contains("cause", Tag.TAG_STRING) || !entry.contains("parameter", Tag.TAG_STRING)
+                    || !entry.contains("operation", Tag.TAG_STRING) || !entry.contains("amount", Tag.TAG_DOUBLE)) {
+                continue;
+            }
+            try {
+                saved.add(new dev.axion.api.assembly.Modifier(entry.getString("cause"), entry.getString("parameter"),
+                        dev.axion.api.assembly.Modifier.Operation.valueOf(
+                                entry.getString("operation").toUpperCase(java.util.Locale.ROOT)),
+                        entry.getDouble("amount")));
+            } catch (IllegalArgumentException illisible) {
+                // Ni cause ni opération reconnues : l'entrée ne décrit aucun modificateur.
+            }
+        }
+        return saved;
+    }
+
+    /**
+     * Écrit les modificateurs posés, dans l'ordre de leur pose ; sans aucun, la clé est retirée.
+     *
+     * @param stored les clés gardées
+     * @param modifiers les modificateurs, actifs ou non
+     */
+    static void putParameters(CompoundTag stored, java.util.List<dev.axion.api.assembly.Modifier> modifiers) {
+        if (modifiers.isEmpty()) {
+            stored.remove(PARAMETERS);
+            return;
+        }
+        ListTag list = new ListTag();
+        for (dev.axion.api.assembly.Modifier modifier : modifiers) {
+            CompoundTag entry = new CompoundTag();
+            entry.putString("cause", modifier.cause());
+            entry.putString("parameter", modifier.parameter());
+            entry.putString("operation", modifier.operation().key());
+            entry.putDouble("amount", modifier.amount());
+            list.add(entry);
+        }
+        stored.put(PARAMETERS, list);
     }
 
     /**

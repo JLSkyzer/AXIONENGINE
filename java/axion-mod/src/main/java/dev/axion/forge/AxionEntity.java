@@ -129,6 +129,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     private AssemblyVariables variables;
 
+    /**
+     * Les paramètres réglés de l'assembly (serveur, ADR-167) ; {@code null} tant que sa definition n'est pas compilée.
+     * Voir {@link #parameters()}.
+     */
+    private dev.axion.entity.AssemblyParameters parameters;
+
     /** La version des variables que {@link #netState} porte, et celles que seul le conducteur reçoit (serveur). */
     private long netVariablesVersion = -1L;
 
@@ -493,6 +499,33 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             variables = fresh;
         }
         return variables;
+    }
+
+    /**
+     * {@return les paramètres réglés de l'assembly (serveur, ADR-167), {@code null} si sa definition n'est pas encore
+     * compilée, ou au client} Créés à la première demande, à leur base, puis avec les modificateurs que la sauvegarde
+     * gardait ({@code axion:params}). Une definition recompilée les refait, en reprenant chaque modificateur : celui
+     * que ses nouvelles bornes refusent, ou qui vise un paramètre qu'elle n'a plus, reste posé mais inactif, et se dit
+     * ({@code E-7011}).
+     */
+    public dev.axion.entity.AssemblyParameters parameters() {
+        dev.axion.definition.Tuning tuning = level().isClientSide() || inert
+                ? null
+                : AxionEntities.tuning(definitionId).orElse(null);
+        if (tuning == null) {
+            return null;
+        }
+        if (parameters == null || parameters.tuning() != tuning) {
+            dev.axion.entity.AssemblyParameters fresh = new dev.axion.entity.AssemblyParameters(tuning);
+            List<String> lines = parameters != null
+                    ? fresh.adopt(parameters)
+                    : fresh.restore(AssemblyTags.parameters(stored), dev.axion.entity.AssemblyParameters.SAVE);
+            for (String line : lines) {
+                LOGGER.warn("AXION : E-7011 assembly {} — {}", getUUID(), line);
+            }
+            parameters = fresh;
+        }
+        return parameters;
     }
 
     /**
@@ -1674,6 +1707,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-163 D2 : les variables gardées, si l'assembly en a déjà ; sinon, celles que son NBT portait restent.
         if (!inert && variables != null) {
             AssemblyTags.putVariables(stored, variables.persisted());
+        }
+        // ADR-167 D7 : les modificateurs posés, si l'assembly en a déjà une table ; sinon, ceux que son NBT portait.
+        if (!inert && parameters != null) {
+            AssemblyTags.putParameters(stored, parameters.modifiers());
         }
         AssemblyTags.restore(stored, tag);
         // 22.5.2 : chaque sauvegarde part aussi au journal latéral, filet de sécurité si vanilla perd l'entité.

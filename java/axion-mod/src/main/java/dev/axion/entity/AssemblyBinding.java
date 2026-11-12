@@ -22,11 +22,12 @@ import java.util.OptionalLong;
 public record AssemblyBinding(Definition definition, String inertReason) {
 
     /**
-     * Version du schéma NBT d'une assembly (PARTIE 22.2, {@code axion:v}) : 4 depuis les variables gardées
+     * Version du schéma NBT d'une assembly (PARTIE 22.2, {@code axion:v}) : 5 depuis les modificateurs posés
+     * (ADR-167 D7, {@code axion:params}) ; 4 depuis les variables gardées
      * (ADR-163 D2, {@code axion:vars}) ; 3 depuis ADR-153, qui y ajoute vitesses, sommeil, corps secondaires et état
-     * des joints. Le 2 et le 3 se migrent avant d'arriver ici.
+     * des joints. Le 2, le 3 et le 4 se migrent avant d'arriver ici.
      */
-    public static final int NBT_SCHEMA = 4;
+    public static final int NBT_SCHEMA = 5;
 
     /**
      * Résout ce qu'une entité désigne depuis son NBT.

@@ -1,8 +1,9 @@
-# AXION ENGINE — persistance, schéma 4
+# AXION ENGINE — persistance, schéma 5
 
-Forme publiée de ce qu'AXION écrit sur le disque (PARTIE 22) : le NBT d'une assembly au schéma 4 et le
+Forme publiée de ce qu'AXION écrit sur le disque (PARTIE 22) : le NBT d'une assembly au schéma 5 et le
 journal latéral de récupération (22.5.2). Décidé par [ADR-153](../decisions/ADR-153.md), les variables gardées par
-[ADR-163](../decisions/ADR-163.md) D2 ; ce document en donne les octets. `PublishedPersistenceSchemaTest` et `PublishedJournalFormatTest` confrontent les
+[ADR-163](../decisions/ADR-163.md) D2, les modificateurs posés par [ADR-167](../decisions/ADR-167.md) D7 ; ce document
+en donne les octets. `PublishedPersistenceSchemaTest` et `PublishedJournalFormatTest` confrontent les
 valeurs ci-dessous au code : un changement de format qui n'y est pas reporté fait échouer le build.
 
 AXION n'écrit rien d'autre que le NBT de ses propres entités, l'unique `SavedData` `axion_registry` et
@@ -15,7 +16,7 @@ réécrit telles quelles : une clé qu'une version ultérieure aurait posée ne 
 version-ci ne la comprend pas (R-1710). Les nombres d'un `byte[]` sont en little-endian.
 
 ```text
-axion:v       int       4
+axion:v       int       5
 axion:def     long      identifiant 64 bits de la definition
 axion:pos     [double]  3, position monde du corps racine, en blocs
 axion:rot     [float]   4, orientation du corps racine, quaternion (x, y, z, w)
@@ -26,6 +27,7 @@ axion:bodies  byte[]    68 octets par corps secondaire
 axion:joints  byte[]    8 octets par joint, dans l'ordre de la definition
 axion:custom  byte[]    table CBOR des données personnalisées, absente si elle est vide
 axion:vars    compound  valeur de chaque variable gardée, par nom, absente sans elles
+axion:params  list      modificateurs posés, dans l'ordre de leur pose, absente sans eux
 ```
 
 - **`axion:bodies`**, pour chaque corps autre que le corps racine : `node u32` (node racine du corps dans
@@ -48,6 +50,19 @@ ou 1. À la lecture, une valeur que sa variable refuse désormais — la definit
 laisse la variable à son défaut, et se journalise ; jamais tronquée. Un nom que la definition ne déclare plus est
 gardé tel quel (R-1710). Une entrée qui n'est pas un `double` est ignorée.
 
+### `axion:params`
+
+Les modificateurs posés sur les paramètres de l'assembly par l'API ou par `/axion params` (ADR-167 D7), dans l'ordre
+de leur pose, actifs ou non : une liste de compounds `cause` (texte, `<espace de noms>:<chemin>`), `parameter`
+(texte, le nom du paramètre), `operation` (texte : `add`, `multiply_base` ou `multiply_total`) et `amount` (`double`).
+Les modificateurs qu'une definition déclare et ceux des contrôleurs ne sont pas gardés : ils se recalculent.
+
+À la lecture, chaque modificateur se repose dans son ordre, par la règle de l'API : un NBT ne fait pas foi. Celui que
+les bornes de la definition refusent désormais, ou qui vise un paramètre qu'elle n'a plus, reste posé mais inactif et
+se journalise (`E-7011`) ; il n'est pas jeté. Une entrée illisible — un champ manquant, une opération inconnue, une
+cause mal formée, une quantité non finie — est ignorée, et une cause de l'espace de noms `axion`, réservé au moteur,
+écartée.
+
 ### `axion:custom`
 
 Une map CBOR de longueur définie : à chaque espace de noms de mod (`[a-z0-9_.-]+`, chaîne de texte), une
@@ -63,9 +78,10 @@ illisible est gardée telle quelle, en lecture seule.
 |---|---|
 | absente, ou inférieure à 2 | entité inerte, octets intacts : aucune version d'AXION ne l'a écrite |
 | 2 | migrée en 3 (T-434) : `axion:v` passe à 3, `axion:def`, `axion:rot` et toute autre clé gardées ; aucun état inventé, l'assembly repart de sa pose de repos, à vitesse nulle, endormie ; puis en 4 |
-| 3 | migrée en 4 : `axion:v` passe à 4, toute clé gardée ; ses variables repartent de leur défaut |
-| 4 | lue |
-| supérieure à 4 | entité inerte, octets réécrits à l'identique (T-433) |
+| 3 | migrée en 4 : `axion:v` passe à 4, toute clé gardée ; ses variables repartent de leur défaut ; puis en 5 |
+| 4 | migrée en 5 : `axion:v` passe à 5, toute clé gardée ; aucun modificateur posé |
+| 5 | lue |
+| supérieure à 5 | entité inerte, octets réécrits à l'identique (T-433) |
 
 Le schéma 2 ne portait que `axion:v`, `axion:def` et `axion:rot`.
 

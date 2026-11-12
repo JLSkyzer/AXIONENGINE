@@ -19,7 +19,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * Le NBT publié dans {@code docs/schema/persistence-4.md} est celui qu'écrit le code (PARTIE 22.2,
+ * Le NBT publié dans {@code docs/schema/persistence-5.md} est celui qu'écrit le code (PARTIE 22.2,
  * ADR-153 D2) : une clé, une taille ou une version changée sans être reportée fait échouer le build.
  */
 class PublishedPersistenceSchemaTest {
@@ -60,6 +60,8 @@ class PublishedPersistenceSchemaTest {
         assertTrue(custom.put("demo", new byte[] {1, 2, 3}));
         AssemblyTags.putCustom(stored, custom);
         AssemblyTags.putVariables(stored, java.util.Map.of("gyrophare", 1.0));
+        AssemblyTags.putParameters(stored, List.of(new dev.axion.api.assembly.Modifier("upgrades:stage1", "mass",
+                dev.axion.api.assembly.Modifier.Operation.ADD, -80)));
 
         Set<String> publiees = new TreeSet<>();
         Matcher matcher = KEY_LINE.matcher(published());

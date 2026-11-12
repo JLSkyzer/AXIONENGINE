@@ -6,6 +6,8 @@ import dev.axion.api.assembly.Assembly;
 import dev.axion.api.assembly.AnimationControl;
 import dev.axion.api.assembly.AssemblyService;
 import dev.axion.api.assembly.CustomData;
+import dev.axion.api.assembly.Modifier;
+import dev.axion.api.assembly.Parameters;
 import dev.axion.api.assembly.Transform;
 import dev.axion.api.assembly.Variables;
 import dev.axion.api.content.ContentQuery;
@@ -189,6 +191,91 @@ public final class ForgeAxionApi implements AxionApi {
         }
     }
 
+    /**
+     * Les paramètres d'une assembly vus par l'API (ADR-167) : une fenêtre sur ceux de son entité, lus et écrits sur le
+     * thread autoritatif ; un modificateur posé se signe « api ».
+     */
+    private record ParametersView(AxionEntity entity) implements Parameters {
+
+        private dev.axion.entity.AssemblyParameters table() {
+            AuthoritativeThread.require();
+            return entity.parameters();
+        }
+
+        private dev.axion.definition.Tuning.Parameter parameter(String name) {
+            dev.axion.entity.AssemblyParameters table = table();
+            int index = table == null ? -1 : table.tuning().indexOf(name);
+            if (index < 0) {
+                throw new IllegalArgumentException("paramètre « " + name + " » que l'assembly de "
+                        + entity.definitionId() + " n'a pas" + (table == null ? ", ou pas encore compilée" : ""));
+            }
+            return table.tuning().get(index);
+        }
+
+        @Override
+        public java.util.List<String> names() {
+            dev.axion.entity.AssemblyParameters table = table();
+            return table == null ? java.util.List.of() : table.tuning().names();
+        }
+
+        @Override
+        public boolean has(String name) {
+            dev.axion.entity.AssemblyParameters table = table();
+            return table != null && table.tuning().indexOf(name) >= 0;
+        }
+
+        @Override
+        public double base(String name) {
+            return parameter(name).base();
+        }
+
+        @Override
+        public double value(String name) {
+            parameter(name);
+            dev.axion.entity.AssemblyParameters table = table();
+            return table.value(table.tuning().indexOf(name));
+        }
+
+        @Override
+        public Range range(String name) {
+            return parameter(name).bounds();
+        }
+
+        @Override
+        public String unit(String name) {
+            return parameter(name).unit();
+        }
+
+        @Override
+        public void modify(Modifier modifier) {
+            parameter(modifier.parameter());
+            table().modify(modifier, dev.axion.entity.AssemblyParameters.API);
+        }
+
+        @Override
+        public boolean remove(String cause) {
+            dev.axion.entity.AssemblyParameters table = table();
+            return table != null && table.remove(cause);
+        }
+
+        @Override
+        public boolean remove(String cause, String parameter) {
+            dev.axion.entity.AssemblyParameters table = table();
+            return table != null && table.remove(cause, parameter);
+        }
+
+        @Override
+        public java.util.List<Applied> modifiers() {
+            dev.axion.entity.AssemblyParameters table = table();
+            return table == null ? java.util.List.of() : table.applied();
+        }
+
+        @Override
+        public java.util.List<Applied> modifiers(String parameter) {
+            return modifiers().stream().filter(applied -> applied.modifier().parameter().equals(parameter)).toList();
+        }
+    }
+
     /** Une assembly vue par l'API : une fenêtre sur son entité, sans état propre. */
     private record View(AxionEntity entity) implements Assembly {
 
@@ -220,6 +307,11 @@ public final class ForgeAxionApi implements AxionApi {
         @Override
         public Variables variables() {
             return new VariablesView(entity);
+        }
+
+        @Override
+        public Parameters parameters() {
+            return new ParametersView(entity);
         }
 
         @Override

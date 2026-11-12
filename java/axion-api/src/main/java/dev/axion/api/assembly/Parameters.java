@@ -107,7 +107,15 @@ public interface Parameters {
 
         @Override
         public String toString() {
-            return (minInclusive ? "[" : "]") + min + ", " + max + (maxInclusive ? "]" : "[");
+            return (minInclusive ? "[" : "]") + bound(min) + ", " + bound(max) + (maxInclusive ? "]" : "[");
+        }
+
+        private static String bound(double value) {
+            if (Double.isInfinite(value)) {
+                return value > 0 ? "+∞" : "-∞";
+            }
+            return value == Math.rint(value) && Math.abs(value) < 1e15 ? Long.toString((long) value)
+                    : Double.toString(value);
         }
     }
 

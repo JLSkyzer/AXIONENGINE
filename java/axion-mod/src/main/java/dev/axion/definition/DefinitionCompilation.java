@@ -41,6 +41,7 @@ public final class DefinitionCompilation {
     private final SortedMap<String, Definition> pending = new TreeMap<>();
     private final Map<String, DefinitionCompiler.Summary> compiled = new HashMap<>();
     private final Map<String, Seating> seatings = new HashMap<>();
+    private final Map<String, Tuning> tunings = new HashMap<>();
     private final SortedMap<String, String> refused = new TreeMap<>();
 
     /** Les assets dont les avertissements sont déjà au journal depuis le dernier {@link #reset}. */
@@ -72,6 +73,7 @@ public final class DefinitionCompilation {
         }
         compiled.clear();
         seatings.clear();
+        tunings.clear();
         refused.clear();
         pending.clear();
         warnedAssets.clear();
@@ -168,6 +170,7 @@ public final class DefinitionCompilation {
             }
             compiled.put(definition.id(), result.summary());
             seatings.put(definition.id(), seating);
+            tunings.put(definition.id(), Tuning.of(definition.root()));
             for (String warning : result.summary().warnings()) {
                 journal.add("AXION : definition " + definition.id() + " : " + warning);
             }
@@ -210,6 +213,16 @@ public final class DefinitionCompilation {
      */
     public synchronized Optional<Seating> seating(String id) {
         return Optional.ofNullable(seatings.get(id));
+    }
+
+    /**
+     * {@return les paramètres réglables d'une definition compilée, ou vide si elle attend ou a été refusée (ADR-167
+     * D1)} Une même table tant que la definition n'est pas recompilée.
+     *
+     * @param id identifiant de la definition
+     */
+    public synchronized Optional<Tuning> tuning(String id) {
+        return Optional.ofNullable(tunings.get(id));
     }
 
     /** {@return vrai si aucune definition n'attend plus son asset} */

@@ -22,7 +22,8 @@ class PublishedJournalFormatTest {
     private static String published() throws IOException {
         String repo = System.getProperty("axion.repo.dir");
         assertTrue(repo != null && !repo.isBlank(), "axion.repo.dir non fourni par le build");
-        Path file = Path.of(repo, "docs", "schema", "persistence-4.md");
+        Path file = Path.of(repo, "docs", "schema",
+                "persistence-" + dev.axion.entity.AssemblyBinding.NBT_SCHEMA + ".md");
         assertTrue(Files.isReadable(file), () -> "schéma de persistance publié absent : " + file);
         return Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
     }

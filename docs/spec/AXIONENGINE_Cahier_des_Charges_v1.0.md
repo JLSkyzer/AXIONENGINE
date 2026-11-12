@@ -7816,6 +7816,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A12 | 2026-11-11 | ADR-165, accepté par Killian | 21.3 : protocole 7, les addons propriétaires de contenu et leurs versions dans `S2C_Handshake`, celles du client dans `C2S_Handshake` ; R-1640 : un addon absent ou d'une autre version refuse la connexion en le nommant ; ANNEXE A.3 : `axion-server-overrides.toml` (CAP-40, CAP-46, CAP-51) |
 | A13 | 2026-11-11 | ADR-162 D9, accepté par Killian | C-71 : `/axion dev reload`, qui rappelle l'enregistrement de chaque mod, relit son dossier depuis le disque quand il tourne depuis ses sources, et renvoie le registre aux clients ; ANNEXE A.3 : `content.dev_reload`, faux par défaut (CAP-50) |
 | A14 | 2026-11-12 | ADR-166, accepté par Killian | 23.1 : R-1756 (version d'API exigée dans le `mods.toml` d'un addon, avertissement et contenu non chargé) et R-1757 (validateur hors jeu, `AxionApi.content()`, aides aux GameTests) ; 23.2 : `ContentQuery content()` ; ANNEXE A.7 : CAP-42 tenue pour sa part de validation par le validateur Java (CAP-48, CAP-49) |
+| A15 | 2026-11-12 | ADR-167, accepté par Killian (en cours, sous-tranche 5a) | A.1 : `E-7011`, un modificateur gardé inactif plutôt que perdu ; le reste de l'amendement (12.5, 12.6, 23.2, 23.4, PARTIES 21 et 22, A.3, A.7) suit la sous-tranche 5a |
 
 ---
 
@@ -7861,6 +7862,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | `E-7001` | definitions | definition invalide | refusée | corriger le JSON |
 | `E-7002` | definitions | node physique sous parent animé | refusée | revoir la hiérarchie |
 | `E-7003` | definitions | schéma inconnu | refusée | mettre à jour |
+| `E-7011` | paramètres | modificateur relu ou repris que les bornes de la definition refusent, ou qui vise un paramètre qu'elle n'a plus (ADR-167 D7) | gardé posé mais inactif, journalisé | le retirer, ou élargir `tuning.ranges` |
 | `E-8001` | déformation | budget mémoire de déformation dépassé | nouvelle déformation refusée | augmenter le budget ou baisser la qualité |
 | `E-8010` | déformation | région dégénérée | asset refusé | corriger la région |
 | `E-8011` | structure | graphe structurel cyclique | asset refusé | corriger les liaisons |

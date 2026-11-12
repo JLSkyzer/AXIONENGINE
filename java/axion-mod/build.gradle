@@ -562,7 +562,7 @@ tasks.named('test', Test).configure {
     // Le schema 4 (ADR-167) : le reglage des parametres d'une instance.
     systemProperty 'axion.schema4.file', rootProject.file('docs/schema/definition-4.json').absolutePath
     systemProperty 'axion.repo.dir', rootProject.projectDir.absolutePath
-    // Les schemas publies (definition, persistence-4.md) sont lus par les tests : declares en
+    // Les schemas publies (definition, persistence-5.md) sont lus par les tests : declares en
     // entree, un document modifie seul relance les tests au lieu de les laisser a jour.
     inputs.files(rootProject.fileTree('docs/schema')).withPropertyName('axion.publishedSchemas')
     systemProperty 'axion.schema.update', System.getProperty('axion.schema.update', 'false')

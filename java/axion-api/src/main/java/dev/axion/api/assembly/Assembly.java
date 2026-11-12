@@ -46,6 +46,12 @@ public interface Assembly {
     /** {@return les variables de contenu de l'assembly (ADR-163 D2)}. Thread : autoritatif. */
     Variables variables();
 
+    /**
+     * {@return les paramètres réglables de l'assembly (ADR-167)} : sa masse, et pour un véhicule son moteur, sa boîte,
+     * ses freins, ses pneus… réglés pour elle seule. Thread : autoritatif.
+     */
+    Parameters parameters();
+
     /** {@return vrai tant que l'assembly existe côté runtime}. Thread : quelconque. */
     boolean isValid();
 

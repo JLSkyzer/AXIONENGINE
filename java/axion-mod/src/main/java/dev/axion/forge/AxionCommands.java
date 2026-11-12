@@ -1,6 +1,7 @@
 package dev.axion.forge;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.axion.bridge.NativeBridge;
 import dev.axion.api.content.ContentKind;
@@ -161,6 +162,62 @@ final class AxionCommands {
                                         .executes(context -> variables(
                                                 context.getSource(),
                                                 EntityArgument.getEntity(context, "cible")))))
+                        // ADR-167 D10 : voir, poser et retirer les modificateurs d'une instance.
+                        .then(Commands.literal("params")
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .executes(context -> params(
+                                                context.getSource(), EntityArgument.getEntity(context, "cible"), null))
+                                        .then(Commands.literal("set")
+                                                .then(Commands.argument("cause", ResourceLocationArgument.id())
+                                                        .then(Commands.argument("parametre", StringArgumentType.word())
+                                                                .suggests((context, builder) ->
+                                                                        SharedSuggestionProvider.suggest(
+                                                                                parameterNames(context), builder))
+                                                                .then(Commands.argument("operation",
+                                                                                StringArgumentType.word())
+                                                                        .suggests((context, builder) ->
+                                                                                SharedSuggestionProvider.suggest(
+                                                                                        OPERATIONS, builder))
+                                                                        .then(Commands.argument("quantite",
+                                                                                        DoubleArgumentType.doubleArg())
+                                                                                .executes(context -> paramsSet(
+                                                                                        context.getSource(),
+                                                                                        EntityArgument.getEntity(
+                                                                                                context, "cible"),
+                                                                                        ResourceLocationArgument.getId(
+                                                                                                context, "cause"),
+                                                                                        StringArgumentType.getString(
+                                                                                                context, "parametre"),
+                                                                                        StringArgumentType.getString(
+                                                                                                context, "operation"),
+                                                                                        DoubleArgumentType.getDouble(
+                                                                                                context,
+                                                                                                "quantite"))))))))
+                                        .then(Commands.literal("remove")
+                                                .then(Commands.argument("cause", ResourceLocationArgument.id())
+                                                        .executes(context -> paramsRemove(
+                                                                context.getSource(),
+                                                                EntityArgument.getEntity(context, "cible"),
+                                                                ResourceLocationArgument.getId(context, "cause"),
+                                                                null))
+                                                        .then(Commands.argument("parametre", StringArgumentType.word())
+                                                                .suggests((context, builder) ->
+                                                                        SharedSuggestionProvider.suggest(
+                                                                                parameterNames(context), builder))
+                                                                .executes(context -> paramsRemove(
+                                                                        context.getSource(),
+                                                                        EntityArgument.getEntity(context, "cible"),
+                                                                        ResourceLocationArgument.getId(
+                                                                                context, "cause"),
+                                                                        StringArgumentType.getString(
+                                                                                context, "parametre"))))))
+                                        .then(Commands.argument("parametre", StringArgumentType.word())
+                                                .suggests((context, builder) -> SharedSuggestionProvider.suggest(
+                                                        parameterNames(context), builder))
+                                                .executes(context -> params(
+                                                        context.getSource(),
+                                                        EntityArgument.getEntity(context, "cible"),
+                                                        StringArgumentType.getString(context, "parametre"))))))
                         .then(Commands.literal("debug")
                                 .then(Commands.literal("trace")
                                         .then(Commands.literal("on")
@@ -372,6 +429,117 @@ final class AxionCommands {
         List<String> lines = variableLines(assembly.definitionId(), held);
         source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
         return held.size();
+    }
+
+    /** Les opérations d'un modificateur, telles qu'une commande les écrit. */
+    private static final List<String> OPERATIONS = java.util.Arrays.stream(
+            dev.axion.api.assembly.Modifier.Operation.values()).map(dev.axion.api.assembly.Modifier.Operation::key)
+            .toList();
+
+    /** {@return les paramètres de la cible, pour la complétion ; aucun si elle n'en est pas une assembly compilée} */
+    private static List<String> parameterNames(
+            com.mojang.brigadier.context.CommandContext<CommandSourceStack> context) {
+        try {
+            if (EntityArgument.getEntity(context, "cible") instanceof AxionEntity assembly
+                    && assembly.parameters() != null) {
+                return assembly.parameters().tuning().names();
+            }
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException introuvable) {
+            // La cible n'est pas encore résolue : rien à proposer.
+        }
+        return List.of();
+    }
+
+    /** {@return les paramètres d'une cible, ou {@code null} après avoir dit pourquoi il n'y en a pas} */
+    private static dev.axion.entity.AssemblyParameters parametersOf(CommandSourceStack source, Entity target) {
+        if (!(target instanceof AxionEntity assembly)) {
+            source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));
+            return null;
+        }
+        dev.axion.entity.AssemblyParameters table = assembly.parameters();
+        if (table == null) {
+            source.sendFailure(Component.literal("AXION : definition " + assembly.definitionId()
+                    + " pas encore compilée"));
+        }
+        return table;
+    }
+
+    /**
+     * Montre les paramètres d'une assembly (C-71, ADR-167 D10) : valeur, base, et chaque modificateur avec son origine
+     * et, s'il est inactif, sa raison. Lecture seule.
+     */
+    private static int params(CommandSourceStack source, Entity target, String only) {
+        dev.axion.entity.AssemblyParameters table = parametersOf(source, target);
+        if (table == null) {
+            return 0;
+        }
+        if (only != null && table.tuning().indexOf(only) < 0
+                && table.applied().stream().noneMatch(entry -> entry.modifier().parameter().equals(only))) {
+            source.sendFailure(Component.literal("AXION : paramètre « " + only + " » inconnu de cette assembly ; elle a : "
+                    + String.join(", ", table.tuning().names())));
+            return 0;
+        }
+        List<String> lines = dev.axion.diag.ParametersReport.lines(((AxionEntity) target).definitionId(), table, only);
+        source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
+        return table.tuning().size();
+    }
+
+    /**
+     * Pose un modificateur sur une assembly (ADR-167 D10, CAP-34) : commande d'administration, mutante, journalisée
+     * avec son auteur et ses paramètres (R-810). Un modificateur hors bornes est refusé et nommé.
+     */
+    private static int paramsSet(CommandSourceStack source, Entity target, ResourceLocation cause, String parameter,
+            String operation, double amount) {
+        dev.axion.entity.AssemblyParameters table = parametersOf(source, target);
+        if (table == null) {
+            return 0;
+        }
+        dev.axion.api.assembly.Modifier.Operation op;
+        try {
+            op = dev.axion.api.assembly.Modifier.Operation.valueOf(operation.toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException inconnue) {
+            source.sendFailure(Component.literal("AXION : opération « " + operation + " » inconnue ; admises : "
+                    + String.join(", ", OPERATIONS)));
+            return 0;
+        }
+        try {
+            table.modify(new dev.axion.api.assembly.Modifier(cause.toString(), parameter, op, amount),
+                    dev.axion.entity.AssemblyParameters.COMMAND);
+        } catch (IllegalArgumentException refus) {
+            source.sendFailure(Component.literal("AXION : refusé — " + refus.getMessage()));
+            return 0;
+        }
+        LOGGER.info("AXION : /axion params set {} {} {} {} sur {} ({}) demandé par {}", cause, parameter,
+                op.key(), amount, target.getUUID(), ((AxionEntity) target).definitionId(), source.getTextName());
+        List<String> lines = dev.axion.diag.ParametersReport.lines(((AxionEntity) target).definitionId(), table,
+                parameter);
+        source.sendSuccess(() -> Component.literal(String.join("\n", lines)), true);
+        return 1;
+    }
+
+    /**
+     * Retire les modificateurs d'une cause, sur un paramètre ou sur tous (ADR-167 D10) : réussit toujours, journalisé
+     * avec son auteur (R-810).
+     */
+    private static int paramsRemove(CommandSourceStack source, Entity target, ResourceLocation cause,
+            String parameter) {
+        dev.axion.entity.AssemblyParameters table = parametersOf(source, target);
+        if (table == null) {
+            return 0;
+        }
+        boolean removed = parameter == null ? table.remove(cause.toString()) : table.remove(cause.toString(), parameter);
+        if (!removed) {
+            source.sendFailure(Component.literal("AXION : « " + cause + " » ne porte aucun modificateur"
+                    + (parameter == null ? "" : " sur « " + parameter + " »")));
+            return 0;
+        }
+        LOGGER.info("AXION : /axion params remove {} {} sur {} ({}) demandé par {}", cause,
+                parameter == null ? "(tous)" : parameter, target.getUUID(), ((AxionEntity) target).definitionId(),
+                source.getTextName());
+        List<String> lines = dev.axion.diag.ParametersReport.lines(((AxionEntity) target).definitionId(), table,
+                parameter);
+        source.sendSuccess(() -> Component.literal(String.join("\n", lines)), true);
+        return 1;
     }
 
     /** {@return les lignes de {@code /axion variables} : un en-tête, puis une ligne par variable} */
