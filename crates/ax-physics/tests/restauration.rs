@@ -377,3 +377,142 @@ fn adr153_d4_a_portee_d_un_joueur_elle_est_reveillee_par_la_gestion_d_activite()
     assert_eq!(rapport.slept_by_radius, 0);
     assert_eq!(etat(&driver, 0).lin_vel, gardes[0].linear.to_array());
 }
+
+/// Fait avancer le pilote d'un tick, un observateur au milieu de l'assembly : elle reste éveillée.
+fn tick(driver: &mut SimDriver) {
+    driver.set_observers(0, &[DVec3::new(0.0, 64.0, 0.0)]);
+    driver.manage_activity();
+    driver.advance_all(TICK);
+}
+
+#[test]
+fn adr168_d1_l_etat_complet_fait_l_aller_retour_au_bit_pres() {
+    let mut driver = pilote();
+    let corps_crees = creer(&mut driver);
+    driver.restore_assembly(0, ASSEMBLY, &corps_crees, &sauvegarde(), &[]);
+    for _ in 0..5 {
+        tick(&mut driver);
+    }
+    let exporte = driver
+        .export_assembly_state(ASSEMBLY)
+        .expect("assembly vivante");
+    assert_eq!(exporte.len() % 8, 0, "un bloc aligné sur 8");
+    let lu = ax_physics::state::AssemblyState::decode(&exporte).expect("un bloc lisible");
+    assert_eq!(lu.bodies.len(), 3);
+    assert_eq!(lu.joints, vec![false, false]);
+    assert!(lu.vehicle.is_none());
+    assert_eq!(lu.encode(), exporte, "relu puis réécrit : les mêmes octets");
+
+    // Restaurer l'état présent ne change rien ; restaurer un état d'avant rend chaque corps à sa pose d'alors.
+    driver
+        .import_assembly_state(ASSEMBLY, &exporte)
+        .expect("le même état");
+    assert_eq!(driver.export_assembly_state(ASSEMBLY).unwrap(), exporte);
+    for _ in 0..10 {
+        tick(&mut driver);
+    }
+    assert_ne!(
+        driver.export_assembly_state(ASSEMBLY).unwrap(),
+        exporte,
+        "les corps ont bougé"
+    );
+    driver
+        .import_assembly_state(ASSEMBLY, &exporte)
+        .expect("l'état d'avant");
+    assert_eq!(
+        driver.export_assembly_state(ASSEMBLY).unwrap(),
+        exporte,
+        "rendu au bit près"
+    );
+}
+
+#[test]
+fn adr168_d1_un_etat_qui_ne_convient_pas_est_refuse_sans_rien_changer() {
+    use ax_physics::state::StateError;
+    let mut driver = pilote();
+    let corps_crees = creer(&mut driver);
+    driver.restore_assembly(0, ASSEMBLY, &corps_crees, &sauvegarde(), &[]);
+    tick(&mut driver);
+    let exporte = driver.export_assembly_state(ASSEMBLY).unwrap();
+    let refus = |driver: &mut SimDriver, octets: &[u8]| {
+        driver.import_assembly_state(ASSEMBLY, octets).unwrap_err()
+    };
+
+    assert_eq!(
+        refus(&mut driver, &exporte[..exporte.len() - 8]),
+        StateError::Length
+    );
+    let mut version = exporte.clone();
+    version[0] = 9;
+    assert_eq!(refus(&mut driver, &version), StateError::Version(9));
+    let mut infini = exporte.clone();
+    infini[16..24].copy_from_slice(&f64::NAN.to_le_bytes());
+    assert_eq!(refus(&mut driver, &infini), StateError::NotFinite);
+    let mut tordu = exporte.clone();
+    tordu[40..44].copy_from_slice(&2.0f32.to_le_bytes());
+    assert_eq!(refus(&mut driver, &tordu), StateError::Rotation);
+    let mut deux = ax_physics::state::AssemblyState::decode(&exporte).unwrap();
+    deux.bodies.pop();
+    assert_eq!(refus(&mut driver, &deux.encode()), StateError::Mismatch);
+    assert_eq!(
+        driver
+            .import_assembly_state(
+                Handle {
+                    index: 99,
+                    generation: 1
+                },
+                &exporte
+            )
+            .unwrap_err(),
+        StateError::UnknownAssembly
+    );
+    assert_eq!(
+        driver.export_assembly_state(ASSEMBLY).unwrap(),
+        exporte,
+        "aucun refus n'a rien changé"
+    );
+}
+
+#[test]
+fn adr168_d1_un_joint_rompu_se_rompt_et_ne_se_recoud_pas() {
+    use ax_physics::state::StateError;
+    let mut driver = pilote();
+    let corps_crees = creer(&mut driver);
+    driver.restore_assembly(0, ASSEMBLY, &corps_crees, &sauvegarde(), &[]);
+    tick(&mut driver);
+    let intact = driver.export_assembly_state(ASSEMBLY).unwrap();
+    let mut rompu = ax_physics::state::AssemblyState::decode(&intact).unwrap();
+    rompu.joints[1] = true;
+    driver
+        .import_assembly_state(ASSEMBLY, &rompu.encode())
+        .expect("le serveur l'a rompu : il se rompt");
+    let lu =
+        ax_physics::state::AssemblyState::decode(&driver.export_assembly_state(ASSEMBLY).unwrap())
+            .unwrap();
+    assert_eq!(lu.joints, vec![false, true]);
+    assert_eq!(
+        driver.import_assembly_state(ASSEMBLY, &intact).unwrap_err(),
+        StateError::Irreconcilable,
+        "rompu ici, intact dans l'état : l'assembly doit se recréer"
+    );
+}
+
+#[test]
+fn adr168_d1_le_monde_predit_avance_le_client_qui_interpole_non() {
+    for (mode, avance) in [
+        (ax_physics::SimMode::ClientPredicted, true),
+        (ax_physics::SimMode::Client, false),
+    ] {
+        let mut driver = pilote();
+        driver.set_mode(mode);
+        let corps_crees = creer(&mut driver);
+        driver.restore_assembly(0, ASSEMBLY, &corps_crees, &sauvegarde(), &[]);
+        let avant = driver.export_assembly_state(ASSEMBLY).unwrap();
+        tick(&mut driver);
+        assert_eq!(
+            driver.export_assembly_state(ASSEMBLY).unwrap() != avant,
+            avance,
+            "{mode:?}"
+        );
+    }
+}

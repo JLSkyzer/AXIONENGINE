@@ -618,4 +618,71 @@ class SimCommandStreamTest {
         assertEquals(3, b.getInt(16 + SimCommandStream.ANIMATE_ASSEMBLY_BYTES));
         assertEquals(7, b.getInt(16 + SimCommandStream.ANIMATE_ASSEMBLY_BYTES + 4));
     }
+
+    @Test
+    void encodeLesCommandesDeLaPrediction() throws IOException {
+        // ADR-168 D1 : SetSimMode (4 octets), SetStateExport (12), SetAssemblyState (12, puis le bloc).
+        byte[] bloc = new byte[16];
+        bloc[0] = 1;
+        byte[] bytes = new SimCommandStream().setSimMode(SimCommandStream.SIM_MODE_CLIENT_PREDICTED)
+                .setStateExport(7, 3, true).setAssemblyState(7, 3, bloc).toBytes();
+        assertEquals(8 + (8 + 8) + (8 + 16) + (8 + 28 + 4), bytes.length, "chaque payload complété à 8");
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_SET_SIM_MODE, b.getInt(8));
+        assertEquals(4, b.getInt(12));
+        assertEquals(SimCommandStream.SIM_MODE_CLIENT_PREDICTED, b.getInt(16));
+        assertEquals(SimCommandStream.OP_SET_STATE_EXPORT, b.getInt(24));
+        assertEquals(12, b.getInt(28));
+        assertEquals(1, b.getInt(32 + 8), "exporter");
+        assertEquals(SimCommandStream.OP_SET_ASSEMBLY_STATE, b.getInt(48));
+        assertEquals(12 + 16, b.getInt(52), "payload_len, bloc compris");
+        assertEquals(16, b.getInt(56 + 8), "longueur du bloc");
+        assertEquals(1, b.get(56 + 12), "le bloc, tel quel");
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().setSimMode(3));
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().setAssemblyState(7, 3, new byte[12]),
+                "un bloc d'état est un multiple de 8 octets");
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().setAssemblyState(7, 3,
+                new byte[SimCommandStream.MAX_ASSEMBLY_STATE_BYTES + 8]));
+
+        Path crates = Path.of(System.getProperty("axion.crates.dir"));
+        String commandes = Files.readString(crates.resolve("ax-model/src/dm/commands.rs"), StandardCharsets.UTF_8);
+        assertTrue(commandes.contains("pub const SET_SIM_MODE: u32 = " + SimCommandStream.OP_SET_SIM_MODE + ";"));
+        assertTrue(commandes.contains("pub const SET_STATE_EXPORT: u32 = " + SimCommandStream.OP_SET_STATE_EXPORT + ";"));
+        assertTrue(commandes.contains("pub const SET_ASSEMBLY_STATE: u32 = " + SimCommandStream.OP_SET_ASSEMBLY_STATE
+                + ";"));
+        assertTrue(commandes.contains("pub const CLIENT_PREDICTED: u32 = " + SimCommandStream.SIM_MODE_CLIENT_PREDICTED
+                + ";"));
+        String etat = Files.readString(crates.resolve("ax-physics/src/world/state.rs"), StandardCharsets.UTF_8);
+        java.util.function.ToIntFunction<String> constante = nom -> {
+            Matcher m = Pattern.compile("pub const " + nom + ": usize = (\\d+);").matcher(etat);
+            assertTrue(m.find(), nom);
+            return Integer.parseInt(m.group(1));
+        };
+        assertEquals(constante.applyAsInt("HEADER_BYTES") + 64 * constante.applyAsInt("BODY_BYTES")
+                + 128 * constante.applyAsInt("JOINT_BYTES") + constante.applyAsInt("VEHICLE_BYTES")
+                + 32 * constante.applyAsInt("WHEEL_BYTES"), SimCommandStream.MAX_ASSEMBLY_STATE_BYTES,
+                "le plus grand bloc, miroir de world::state::MAX_STATE_BYTES");
+    }
+
+    @Test
+    void litLaSectionDesEtatsExportes() {
+        // ADR-168 D1 : le nombre d'entrées, puis chacune — handle, longueur, statut, bloc aligné sur 8.
+        ByteBuffer section = ByteBuffer.allocate(8 + 16 + 16 + 16 + 8).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        section.putInt(2).putInt(0);
+        section.putInt(7).putInt(1).putInt(16).putInt(AssemblyStateReport.OK);
+        for (int i = 0; i < 16; i++) {
+            section.put((byte) i);
+        }
+        section.putInt(9).putInt(2).putInt(3).putInt(AssemblyStateReport.IRRECONCILABLE).put(new byte[] {1, 2, 3, 0, 0,
+                0, 0, 0});
+        java.util.List<AssemblyStateReport> lus = AssemblyStateReport.decodeSection(section, 0);
+        assertEquals(2, lus.size());
+        assertEquals(7, lus.get(0).handleIndex());
+        assertEquals(16, lus.get(0).state().length);
+        assertEquals(AssemblyStateReport.IRRECONCILABLE, lus.get(1).status());
+        assertEquals(3, lus.get(1).state().length, "le bloc sans son bourrage");
+        ByteBuffer tronquee = ByteBuffer.allocate(8 + 16 + 8).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        tronquee.putInt(1).putInt(0).putInt(7).putInt(1).putInt(16).putInt(0);
+        assertEquals(java.util.List.of(), AssemblyStateReport.decodeSection(tronquee, 0), "tronquée : rien");
+    }
 }

@@ -125,6 +125,10 @@ pub enum SimMode {
     /// reçoit les états du serveur et interpole. Les étapes purement client (animation,
     /// déformation élastique, particules, scene graph) restent à leur charge.
     Client,
+    /// Client qui prédit le véhicule qu'il pilote (R-1680, ADR-168 D1) : le monde avance comme
+    /// au serveur, étapes 3 à 6, mais rien n'y fait foi — le serveur corrige, et la chaîne de
+    /// dommage n'y produira jamais de plastique (INV-17, R-1681).
+    ClientPredicted,
 }
 
 /// Durée mesurée de chaque étape sur le dernier tick, en nanosecondes (métrique de R-661).

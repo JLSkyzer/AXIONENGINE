@@ -471,6 +471,85 @@ impl PhysicsWorld {
         reports
     }
 
+    /// L'état interne d'un véhicule, d'un pas au suivant (ADR-168 D1) ; `None` si l'assembly n'en est pas un.
+    #[must_use]
+    pub fn vehicle_snapshot(&self, assembly: Handle) -> Option<super::state::VehicleSnapshot> {
+        let vehicle = self
+            .vehicles
+            .iter()
+            .find(|vehicle| handle_key(vehicle.assembly) == handle_key(assembly))?;
+        Some(super::state::VehicleSnapshot {
+            input: vehicle.input,
+            driver: vehicle.driver,
+            engine_speed: vehicle.engine_speed,
+            gearbox: vehicle.gearbox.parts(),
+            steering: vehicle.steering.position(),
+            traction_slip: vehicle.traction_slip,
+            load: vehicle.load,
+            wheels: vehicle
+                .wheels
+                .iter()
+                .zip(&vehicle.drives)
+                .map(|(wheel, drive)| super::state::WheelSnapshot {
+                    spin_speed: drive.spin,
+                    compression: wheel.compression,
+                    steer_angle: wheel.steer_angle,
+                    load: wheel.load,
+                    slip_long: wheel.slip_long,
+                    slip_lat: wheel.slip_lat,
+                    torque: drive.torque,
+                    on_ground: wheel.on_ground,
+                })
+                .collect(),
+        })
+    }
+
+    /// Rend à un véhicule son état interne (ADR-168 D1). Rend faux si l'assembly n'est pas un véhicule, ou si l'état n'a
+    /// pas une roue par roue du véhicule ; rien n'est changé alors.
+    pub fn restore_vehicle(
+        &mut self,
+        assembly: Handle,
+        snapshot: &super::state::VehicleSnapshot,
+    ) -> bool {
+        let Some(vehicle) = self
+            .vehicles
+            .iter_mut()
+            .find(|vehicle| handle_key(vehicle.assembly) == handle_key(assembly))
+        else {
+            return false;
+        };
+        if snapshot.wheels.len() != vehicle.wheels.len() {
+            return false;
+        }
+        vehicle.input = snapshot.input;
+        vehicle.driver = snapshot.driver;
+        vehicle.engine_speed = snapshot.engine_speed;
+        let (gear, target, shift_left, hold) = snapshot.gearbox;
+        vehicle.gearbox = Gearbox::from_parts(&vehicle.desc, gear, target, shift_left, hold);
+        vehicle.steering = Steering::at(snapshot.steering);
+        vehicle.traction_slip = snapshot.traction_slip;
+        vehicle.load = snapshot.load;
+        for ((wheel, drive), saved) in vehicle
+            .wheels
+            .iter_mut()
+            .zip(&mut vehicle.drives)
+            .zip(&snapshot.wheels)
+        {
+            wheel.spin_speed = saved.spin_speed;
+            wheel.compression = saved.compression;
+            wheel.steer_angle = saved.steer_angle;
+            wheel.load = saved.load;
+            wheel.slip_long = saved.slip_long;
+            wheel.slip_lat = saved.slip_lat;
+            wheel.on_ground = saved.on_ground;
+            // La rotation de la roue vit dans son entraînement : `spin_speed` n'en est que la copie publiée.
+            drive.spin = saved.spin_speed;
+            drive.slip_long = saved.slip_long;
+            drive.torque = saved.torque;
+        }
+        true
+    }
+
     /// L'état du motopropulseur de chaque véhicule éveillé, pour Java (ADR-163 D1).
     #[must_use]
     pub fn vehicle_reports(&self) -> Vec<VehicleReport> {

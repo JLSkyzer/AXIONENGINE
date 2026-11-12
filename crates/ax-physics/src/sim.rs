@@ -24,7 +24,7 @@ use crate::joint::JointSpec;
 use crate::materials::MaterialTable;
 use crate::proxies::EntityProxy;
 use crate::query::AssemblyRayHit;
-use crate::scheduler::Stage;
+use crate::scheduler::{SimMode, Stage};
 use crate::world::vehicles::{SurfaceMount, VehicleTelemetry, WheelMount, WheelState};
 use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
@@ -180,6 +180,11 @@ pub struct SimDriver {
     retired: WorldCounters,
     /// Gouverneur FM-21 : la dégradation de la simulation sous surcharge (§25.5, §25.6).
     governor: Governor,
+    /// Le rôle de tous les mondes, présents et à venir (R-662, ADR-168 D1), posé par `SET_SIM_MODE`.
+    mode: SimMode,
+    /// Les assemblies dont chaque collecte exporte l'état complet (ADR-168 D1, `SET_STATE_EXPORT`), avec le statut de
+    /// leur dernière restauration. Consultée par clé, parcourue dans l'ordre des clés (R-1020).
+    exports: BTreeMap<u64, (Handle, u32)>,
 }
 
 impl Default for SimDriver {
@@ -223,7 +228,82 @@ impl SimDriver {
             proxy_declarations: BTreeMap::new(),
             retired: WorldCounters::default(),
             governor: Governor::new(settings.sim_budget_ns),
+            mode: SimMode::Server,
+            exports: BTreeMap::new(),
         }
+    }
+
+    /// Applique `SET_STATE_EXPORT` (ADR-168 D1) : demande, ou cesse de demander, l'export de l'état complet d'une
+    /// assembly à chaque collecte.
+    pub fn apply_set_state_export(&mut self, handle: Handle, enabled: bool) {
+        if enabled {
+            self.exports
+                .entry(handle_key(handle))
+                .or_insert((handle, ax_model::dm::state::state_status::OK));
+        } else {
+            self.exports.remove(&handle_key(handle));
+        }
+    }
+
+    /// Applique `SET_ASSEMBLY_STATE` (ADR-168 D1, R-1682) : restaure l'état complet d'une assembly vivante. Un refus
+    /// ne change rien ; il se lit au statut de son export suivant, si elle est exportée.
+    pub fn apply_set_assembly_state(&mut self, handle: Handle, bytes: &[u8]) -> bool {
+        use crate::world::state::StateError;
+        use ax_model::dm::state::state_status;
+        let status = match self.import_assembly_state(handle, bytes) {
+            Ok(()) => return true,
+            Err(StateError::Length) => state_status::LENGTH,
+            Err(StateError::Version(_)) => state_status::VERSION,
+            Err(StateError::TooLarge) => state_status::TOO_LARGE,
+            Err(StateError::NotFinite) => state_status::NOT_FINITE,
+            Err(StateError::Rotation) => state_status::ROTATION,
+            Err(StateError::UnknownAssembly) => state_status::UNKNOWN_ASSEMBLY,
+            Err(StateError::Mismatch) => state_status::MISMATCH,
+            Err(StateError::Irreconcilable) => state_status::IRRECONCILABLE,
+        };
+        if let Some(entry) = self.exports.get_mut(&handle_key(handle)) {
+            entry.1 = status;
+        }
+        false
+    }
+
+    /// L'état complet de chaque assembly exportée (ADR-168 D1), dans l'ordre des clés, avec le statut de sa dernière
+    /// restauration, que la lecture remet à zéro. Une assembly qui n'existe plus est passée.
+    pub fn exported_states(&mut self) -> Vec<ax_model::dm::state::AssemblyStateReport> {
+        let handles: Vec<(u64, Handle, u32)> = self
+            .exports
+            .iter()
+            .map(|(key, (handle, status))| (*key, *handle, *status))
+            .collect();
+        let mut out = Vec::with_capacity(handles.len());
+        for (key, handle, status) in handles {
+            if let Some(bytes) = self.export_assembly_state(handle) {
+                out.push(ax_model::dm::state::AssemblyStateReport {
+                    handle,
+                    status,
+                    bytes,
+                });
+            }
+            if let Some(entry) = self.exports.get_mut(&key) {
+                entry.1 = ax_model::dm::state::state_status::OK;
+            }
+        }
+        out
+    }
+
+    /// Fixe le rôle de tous les mondes, ceux d'aujourd'hui et ceux qui naîtront (R-662, ADR-168
+    /// D1) : `ClientPredicted` pour le monde prédit d'un client.
+    pub fn set_mode(&mut self, mode: SimMode) {
+        self.mode = mode;
+        for sim in self.dimensions.values_mut() {
+            sim.world.set_mode(mode);
+        }
+    }
+
+    /// Le rôle des mondes (R-662).
+    #[must_use]
+    pub fn mode(&self) -> SimMode {
+        self.mode
     }
 
     /// Réglages dont naît tout monde.
@@ -236,6 +316,7 @@ impl SimDriver {
     /// la dimension s'il a été réglé — gravité de `physics.gravity` sinon (R-611).
     fn build_world(&self, dimension: u64) -> PhysicsWorld {
         let mut world = PhysicsWorld::new(self.settings.physics);
+        world.set_mode(self.mode);
         world.set_contact_event_threshold(self.settings.contact_event_threshold);
         world.set_max_events_per_tick(self.settings.max_events_per_tick);
         world.set_degraded_solver(self.governor.level() >= DegradationLevel::Degraded1);
@@ -272,12 +353,14 @@ impl SimDriver {
         config: PhysicsConfig,
         origin: FloatingOrigin,
     ) -> &mut PhysicsWorld {
+        let mode = self.mode;
         &mut self
             .dimensions
             .entry(dimension)
-            .or_insert_with(|| DimensionSim {
-                world: PhysicsWorld::new(config),
-                origin,
+            .or_insert_with(|| {
+                let mut world = PhysicsWorld::new(config);
+                world.set_mode(mode);
+                DimensionSim { world, origin }
             })
             .world
     }
@@ -1251,6 +1334,99 @@ impl SimDriver {
         true
     }
 
+    /// L'état complet d'une assembly vivante, dans le format de [`crate::world::state`] (ADR-168 D1) : ce que le
+    /// serveur exporte à chaque tick vers le client qui la pilote. `None` si elle n'existe pas.
+    #[must_use]
+    pub fn export_assembly_state(&self, handle: Handle) -> Option<Vec<u8>> {
+        let (dimension, bodies) = self.routes.get(&handle_key(handle))?;
+        let sim = self.dimensions.get(dimension)?;
+        let mut state = crate::world::state::AssemblyState {
+            bodies: Vec::with_capacity(bodies.len()),
+            joints: Vec::new(),
+            vehicle: sim.world.vehicle_snapshot(handle),
+        };
+        for id in bodies {
+            let (position, rotation, linvel, angvel) = sim.world.live_body(*id)?;
+            state.bodies.push(crate::world::state::LiveBody {
+                position: sim.origin.to_world(position),
+                rotation,
+                linvel,
+                angvel,
+            });
+        }
+        for index in 0..sim.world.assembly_joint_count(handle) {
+            state.joints.push(
+                sim.world
+                    .assembly_joint_broken(handle, index)
+                    .unwrap_or(true),
+            );
+        }
+        Some(state.encode())
+    }
+
+    /// Rend à une assembly vivante l'état qu'un serveur a exporté (ADR-168 D1, R-1682) : ses corps posés et réveillés,
+    /// ses joints rompus là où l'état les dit rompus, l'état interne de son véhicule. Rien n'est changé si l'état ne
+    /// convient pas.
+    ///
+    /// # Errors
+    ///
+    /// [`StateError`](crate::world::state::StateError) : un bloc illisible, une assembly inconnue, des comptes qui ne
+    /// sont pas les siens, ou un joint intact dans l'état mais rompu ici — l'assembly doit alors se recréer.
+    pub fn import_assembly_state(
+        &mut self,
+        handle: Handle,
+        bytes: &[u8],
+    ) -> Result<(), crate::world::state::StateError> {
+        use crate::world::state::{AssemblyState, StateError};
+        let state = AssemblyState::decode(bytes)?;
+        let (dimension, bodies) = self
+            .routes
+            .get(&handle_key(handle))
+            .cloned()
+            .ok_or(StateError::UnknownAssembly)?;
+        let sim = self
+            .dimensions
+            .get_mut(&dimension)
+            .ok_or(StateError::UnknownAssembly)?;
+        let joints = sim.world.assembly_joint_count(handle);
+        if state.bodies.len() != bodies.len()
+            || state.joints.len() != usize::from(joints)
+            || state.vehicle.is_some() != sim.world.vehicle_snapshot(handle).is_some()
+            || state.vehicle.as_ref().is_some_and(|vehicle| {
+                sim.world
+                    .vehicle_snapshot(handle)
+                    .is_some_and(|live| live.wheels.len() != vehicle.wheels.len())
+            })
+        {
+            return Err(StateError::Mismatch);
+        }
+        for (index, broken) in state.joints.iter().enumerate() {
+            let index = u16::try_from(index).map_err(|_| StateError::TooLarge)?;
+            if !broken && sim.world.assembly_joint_broken(handle, index) == Some(true) {
+                return Err(StateError::Irreconcilable);
+            }
+        }
+        for (id, body) in bodies.iter().zip(&state.bodies) {
+            let local = sim.origin.to_local(body.position);
+            sim.world
+                .set_live_body(*id, local, body.rotation, body.linvel, body.angvel);
+        }
+        for (index, broken) in state.joints.iter().enumerate() {
+            if *broken {
+                if let Some(id) = u16::try_from(index)
+                    .ok()
+                    .and_then(|index| sim.world.assembly_joint(handle, index))
+                {
+                    sim.world.restore_joint(id, true, 0.0);
+                }
+            }
+        }
+        if let Some(vehicle) = &state.vehicle {
+            sim.world.restore_vehicle(handle, vehicle);
+        }
+        Ok(())
+    }
+
     /// Endort une assembly tout juste créée, ses vitesses gelées, comme la gestion d'activité
     /// endort (22.4, ADR-153 D4) : cette gestion la réveillera à portée d'un joueur, et lui
     /// rendra ses vitesses. `body` est l'un de ses corps.
@@ -1449,6 +1625,7 @@ impl SimDriver {
     /// Rend vrai si l'un existait.
     pub fn apply_remove_assembly(&mut self, handle: Handle) -> bool {
         self.assembly_masses.remove(&handle_key(handle));
+        self.exports.remove(&handle_key(handle));
         let Some((dimension, bodies)) = self.routes.remove(&handle_key(handle)) else {
             return false;
         };

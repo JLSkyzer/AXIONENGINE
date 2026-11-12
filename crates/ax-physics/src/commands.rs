@@ -7,14 +7,15 @@
 
 use crate::forces::FluidEnvironment;
 use crate::proxies::{EntityProxy, ProxyShape};
+use crate::scheduler::SimMode;
 use crate::sim::SimDriver;
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::commands::{
-    dimension_env_flags, entity_proxy_shape, opcode, vehicle_input_flags, ApplyForce, BreakJoint,
-    CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly, RemoveWorldTile,
-    SetDimensionEnv, SetEntityProxies, SetKinematic, SetObservers, SetParameters,
-    SetPhysicsMaterials, SetVehicleInput, SetWheelTorques, SetWorldCollision, SetWorldFluid,
-    SetWorldHeightfield, SimCommandHeader,
+    dimension_env_flags, entity_proxy_shape, opcode, sim_mode, vehicle_input_flags, ApplyForce,
+    BreakJoint, CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly, RemoveWorldTile,
+    SetAssemblyState, SetDimensionEnv, SetEntityProxies, SetKinematic, SetObservers, SetParameters,
+    SetPhysicsMaterials, SetSimMode, SetStateExport, SetVehicleInput, SetWheelTorques,
+    SetWorldCollision, SetWorldFluid, SetWorldHeightfield, SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::PhysicsMaterial;
@@ -284,6 +285,43 @@ fn apply_one(
                 .map(|rank| read_f32(payload, SetWheelTorques::BYTES + 4 * rank))
                 .collect();
             driver.apply_set_wheel_torques(read_handle(payload, 0), &torques);
+            outcome.applied += 1;
+        }
+        // ADR-168 D1 : le rôle des mondes, l'export de l'état complet d'une assembly, sa restauration.
+        opcode::SET_SIM_MODE => {
+            expect_len(payload, SetSimMode::BYTES)?;
+            let mode = match read_u32(payload, 0) {
+                sim_mode::SERVER => Some(SimMode::Server),
+                sim_mode::CLIENT => Some(SimMode::Client),
+                sim_mode::CLIENT_PREDICTED => Some(SimMode::ClientPredicted),
+                _ => None,
+            };
+            match mode {
+                Some(mode) => {
+                    driver.set_mode(mode);
+                    outcome.applied += 1;
+                }
+                None => outcome.ignored += 1,
+            }
+        }
+        opcode::SET_STATE_EXPORT => {
+            expect_len(payload, SetStateExport::BYTES)?;
+            driver.apply_set_state_export(read_handle(payload, 0), read_u32(payload, 8) != 0);
+            outcome.applied += 1;
+        }
+        opcode::SET_ASSEMBLY_STATE => {
+            if payload.len() < SetAssemblyState::BYTES {
+                return Err(CommandError::BadPayloadLength);
+            }
+            let length = read_u32(payload, 8) as usize;
+            if length > crate::world::state::MAX_STATE_BYTES {
+                return Err(CommandError::BadPayloadLength);
+            }
+            expect_len(payload, SetAssemblyState::BYTES + length)?;
+            driver.apply_set_assembly_state(
+                read_handle(payload, 0),
+                &payload[SetAssemblyState::BYTES..],
+            );
             outcome.applied += 1;
         }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
@@ -1375,6 +1413,78 @@ mod tests {
         assert_eq!(
             appliquer(&mut driver, opcode::SET_VEHICLE_INPUT, &payload[..32]),
             Err(CommandError::BadPayloadLength)
+        );
+    }
+
+    #[test]
+    fn adr168_set_sim_mode_pose_le_role_de_tous_les_mondes() {
+        // ADR-168 D1 : le rôle vaut pour le pilote entier ; une valeur inconnue est ignorée, une longueur fausse
+        // refuse le flux.
+        let mut driver = SimDriver::new();
+        let outcome = appliquer(
+            &mut driver,
+            opcode::SET_SIM_MODE,
+            &sim_mode::CLIENT_PREDICTED.to_le_bytes(),
+        )
+        .unwrap();
+        assert_eq!(outcome.applied, 1);
+        assert_eq!(driver.mode(), SimMode::ClientPredicted);
+        let outcome = appliquer(&mut driver, opcode::SET_SIM_MODE, &9u32.to_le_bytes()).unwrap();
+        assert_eq!((outcome.applied, outcome.ignored), (0, 1));
+        assert_eq!(
+            driver.mode(),
+            SimMode::ClientPredicted,
+            "une valeur inconnue ne change rien"
+        );
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_SIM_MODE, &[0, 0]),
+            Err(CommandError::BadPayloadLength)
+        );
+    }
+
+    #[test]
+    fn adr168_set_state_export_et_set_assembly_state_se_lisent() {
+        // ADR-168 D1 : l'export se demande par handle ; la restauration porte sa longueur, bornée, et un bloc
+        // illisible ne change rien — son refus se lit au statut de l'export suivant.
+        let mut driver = SimDriver::new();
+        let mut export = Vec::new();
+        export.extend_from_slice(&7u32.to_le_bytes());
+        export.extend_from_slice(&1u32.to_le_bytes());
+        export.extend_from_slice(&1u32.to_le_bytes());
+        assert_eq!(export.len(), SetStateExport::BYTES);
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_STATE_EXPORT, &export)
+                .unwrap()
+                .applied,
+            1
+        );
+        assert!(
+            driver.exported_states().is_empty(),
+            "une assembly qui n'existe pas n'est pas exportée"
+        );
+
+        let mut etat = Vec::new();
+        etat.extend_from_slice(&7u32.to_le_bytes());
+        etat.extend_from_slice(&1u32.to_le_bytes());
+        etat.extend_from_slice(&8u32.to_le_bytes());
+        etat.extend_from_slice(&[0; 8]);
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_ASSEMBLY_STATE, &etat)
+                .unwrap()
+                .applied,
+            1
+        );
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_ASSEMBLY_STATE, &etat[..16]),
+            Err(CommandError::BadPayloadLength),
+            "plus court que sa longueur"
+        );
+        let mut demesure = etat[..12].to_vec();
+        demesure[8..12].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_ASSEMBLY_STATE, &demesure),
+            Err(CommandError::BadPayloadLength),
+            "une longueur au-delà du plus grand état"
         );
     }
 

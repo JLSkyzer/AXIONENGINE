@@ -78,6 +78,7 @@ pub use proxies::{EntityProxy, ProxyShape};
 pub use query::{AssemblyRayHit, RayHit, SensorMode, SpatialFilter, SweepHit};
 pub use scheduler::{check_order, SimMode, Stage, StageDurations, StageLog};
 pub use sim::{AssemblyBody, AssemblyJoint, SavedBody, SavedJoint, SimDriver, SimSettings};
+pub use world::state;
 pub use world::vehicles::{SurfaceMount, VehicleTelemetry, WheelMount, WheelState};
 pub use world::{BodyReports, PhysicsWorld, Pose, WorldCounters};
 

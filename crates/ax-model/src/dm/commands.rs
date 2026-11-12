@@ -68,6 +68,70 @@ pub mod opcode {
     /// Le couple posé sur chaque roue d'un véhicule ([`super::SetWheelTorques`], puis `count × f32`). R-1082,
     /// ADR-167 D9.
     pub const SET_WHEEL_TORQUES: u32 = 19;
+    /// Le rôle de tous les mondes de la simulation ([`super::SetSimMode`]). ADR-168 D1.
+    pub const SET_SIM_MODE: u32 = 20;
+    /// L'export, à chaque collecte, de l'état complet d'une assembly ([`super::SetStateExport`]). ADR-168 D1.
+    pub const SET_STATE_EXPORT: u32 = 21;
+    /// La restauration de l'état complet d'une assembly vivante ([`super::SetAssemblyState`], puis `length` octets).
+    /// ADR-168 D1, R-1682.
+    pub const SET_ASSEMBLY_STATE: u32 = 22;
+}
+
+/// Les valeurs de [`SetSimMode`], champ `mode`.
+pub mod sim_mode {
+    /// Le serveur : il fait foi.
+    pub const SERVER: u32 = 0;
+    /// Un client qui interpole : aucun sous-pas.
+    pub const CLIENT: u32 = 1;
+    /// Un client qui prédit le véhicule qu'il pilote (R-1680) : le monde avance, rien n'y fait foi.
+    pub const CLIENT_PREDICTED: u32 = 2;
+}
+
+/// Payload de `SET_SIM_MODE` (ADR-168 D1) : 4 octets. Le rôle vaut pour tous les mondes, présents et à venir ; une
+/// valeur inconnue est ignorée.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetSimMode {
+    /// Le rôle ([`sim_mode`]).
+    pub mode: u32,
+}
+
+impl SetSimMode {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 4;
+}
+
+/// Payload de `SET_STATE_EXPORT` (ADR-168 D1) : 12 octets. Tant qu'elle est demandée, chaque collecte écrit l'état
+/// complet de l'assembly dans la section des états de `SIM_OUT` ; le retrait de l'assembly l'arrête.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetStateExport {
+    /// L'assembly.
+    pub handle: Handle,
+    /// 1 pour exporter, 0 pour cesser.
+    pub enabled: u32,
+}
+
+impl SetStateExport {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 12;
+}
+
+/// En-tête de `SET_ASSEMBLY_STATE` (ADR-168 D1, R-1682) : 12 octets, puis `length` octets, le bloc d'état qu'une
+/// collecte a exporté. Un bloc illisible, ou qui ne convient pas à l'assembly vivante, ne change rien ; le statut de
+/// l'export suivant le dit.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetAssemblyState {
+    /// L'assembly.
+    pub handle: Handle,
+    /// Octets du bloc qui suit.
+    pub length: u32,
+}
+
+impl SetAssemblyState {
+    /// Taille de l'en-tête sur la frontière, en octets.
+    pub const BYTES: usize = 12;
 }
 
 /// Drapeaux de [`SetVehicleInput`], champ `flags`.

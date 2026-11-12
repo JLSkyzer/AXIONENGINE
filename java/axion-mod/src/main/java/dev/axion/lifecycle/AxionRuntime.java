@@ -585,6 +585,9 @@ public final class AxionRuntime {
         if (stateSink != null) {
             stateSink.applyStates(
                     tick, result.bodies(), result.bounds(), result.joints(), result.wheels(), result.vehicles());
+            if (!result.states().isEmpty()) {
+                stateSink.applyAssemblyStates(tick, result.states());
+            }
         }
         // R-1010 : les événements, sur ce thread, après les états — une entité liée est déjà à sa
         // place quand un effet la touche. Les faits qu'ils portent vont au journal d'abord : un

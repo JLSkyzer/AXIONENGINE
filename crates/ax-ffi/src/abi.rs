@@ -46,6 +46,7 @@ use ax_model::dm::handle::Handle;
 use ax_model::dm::joints::JointState;
 use ax_model::dm::physics::{BodyBounds, BodyState};
 use ax_model::dm::scene::NONE_U32;
+use ax_model::dm::state::AssemblyStateReport;
 use ax_model::dm::vehicle::{VehicleReport, WheelReport};
 use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSettings, Stage};
 
@@ -53,7 +54,9 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 23 depuis le couple posé sur chaque roue
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 24 depuis la prédiction (ADR-168 D1) : opcodes
+/// `SET_SIM_MODE`, `SET_STATE_EXPORT` et `SET_ASSEMBLY_STATE`, et l'état complet des assemblies exportées dans `SIM_OUT`
+/// (schéma 6), après les motopropulseurs. 23 depuis le couple posé sur chaque roue
 /// (R-1082, ADR-167 D9) : opcode `SET_WHEEL_TORQUES`, et les glissements de chaque roue dans `SIM_OUT` (schéma 5). 22 depuis les paramètres d'une instance
 /// (ADR-167 D6) : opcode `SET_PARAMETERS`. 21 depuis l'état du motopropulseur
 /// (ADR-163 D1) : section `VehicleReport` de `SIM_OUT` (schéma 4), après les roues. 20 depuis l'entrée du conducteur
@@ -70,7 +73,7 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 23;
+pub const AXION_ABI_VERSION: u32 = 24;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -2322,6 +2325,8 @@ pub unsafe extern "C" fn axion_sim_collect(
             // Étape 15 (C-40) : la récolte des états et des événements, écrits pour Java.
             let serialization = std::time::Instant::now();
             let reports = session.physics().collect_reports();
+            // ADR-168 D1 : l'état complet des assemblies exportées, avec le statut de leur dernière restauration.
+            let exported = session.physics().exported_states();
             let states = &reports.states;
             // Appariement garanti par construction (un même parcours) ; Java
             // lit les emprises au rang des états.
@@ -2340,7 +2345,14 @@ pub unsafe extern "C" fn axion_sim_collect(
                     + WheelReport::SECTION_HEADER_BYTES
                     + reports.wheels.len() * WheelReport::BYTES
                     + VehicleReport::SECTION_HEADER_BYTES
-                    + reports.vehicles.len() * VehicleReport::BYTES,
+                    + reports.vehicles.len() * VehicleReport::BYTES
+                    + AssemblyStateReport::SECTION_HEADER_BYTES
+                    + exported
+                        .iter()
+                        .map(|state| {
+                            AssemblyStateReport::ENTRY_HEADER_BYTES + state.bytes.len() + 8
+                        })
+                        .sum::<usize>(),
             );
             for state in states {
                 state.write_le(&mut sim_out_bytes);
@@ -2355,6 +2367,8 @@ pub unsafe extern "C" fn axion_sim_collect(
             WheelReport::write_section(&reports.wheels, &mut sim_out_bytes);
             // ADR-163 D1 : les motopropulseurs suivent les roues (schéma 4).
             VehicleReport::write_section(&reports.vehicles, &mut sim_out_bytes);
+            // ADR-168 D1 : les états complets exportés suivent (schéma 6).
+            AssemblyStateReport::write_section(&exported, &mut sim_out_bytes);
             let mut events_bytes = Vec::new();
             for event in &events {
                 event.write_le(&mut events_bytes);

@@ -2391,3 +2391,15 @@ Aucun test ne lisait le journal : les GameTests jugeaient l'effet (la variable g
 **Règle.** Pas de sentinelle extrême dans une soustraction de délai : un drapeau « déjà journalisé », ou une
 soustraction en `long` (`JournalThrottle`). Une ligne de journal promise par le CDC (code `E-xxxx`) se vérifie au moins
 une fois au journal d'un passage réel, pas seulement par l'effet qu'elle accompagne.
+
+## 2026-11-12 | Un rejeu divergeait : la rotation des roues vivait ailleurs
+
+**Ce qui s'est passé.** Restaurer l'état d'un véhicule puis rejouer 64 ticks s'écartait de 12,9 cm de la course
+d'origine. L'état exporté portait `WheelState.spin_speed`, que le pas réécrit depuis `WheelDrive.spin` : la vraie
+rotation, gardée par l'entraînement, n'était pas restaurée.
+
+**Cause.** Deux champs pour une même grandeur, l'un état, l'autre copie publiée ; l'export lisait la copie.
+
+**Règle.** Pour exporter ou restaurer l'état d'un sous-système natif, partir de ce que son pas **lit** au début du
+sous-pas, pas de ce qu'il publie. Une divergence de rejeu se localise par une restauration « à vide » (l'état présent
+reposé : rien ne doit changer), puis par la comparaison tick par tick jusqu'au premier champ qui diffère.

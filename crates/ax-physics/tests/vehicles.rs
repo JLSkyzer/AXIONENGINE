@@ -1534,3 +1534,94 @@ fn adr159_d8_le_conducteur_absent_serre_le_frein_et_present_le_relache() {
     );
     assert!(!world.vehicle_telemetry(ASSEMBLY).expect("véhicule").driver);
 }
+
+/// Les entrées d'une manœuvre : pied au plancher, la direction qui va et vient.
+fn manoeuvre(ticks: u32) -> Vec<VehicleInput> {
+    (0..ticks)
+        .map(|k| entree(1.0, 0.0, if (k / 10) % 2 == 0 { 0.6 } else { -0.6 }))
+        .collect()
+}
+
+/// Joue des entrées, une par tick, et rend la pose et la vitesse du châssis à la fin.
+fn jouer(world: &mut PhysicsWorld, v: BodyId, entrees: &[VehicleInput]) -> (Vec3, Quat, Vec3) {
+    for e in entrees {
+        conduire(world, *e);
+        world.advance(TICK);
+    }
+    let (position, rotation, vitesse, _) = world.live_body(v).expect("châssis");
+    (position, rotation, vitesse)
+}
+
+#[test]
+fn adr168_d1_l_etat_du_vehicule_se_relit_et_se_rend() {
+    let (mut world, _) = sur_le_plat(berline(), [40.0, 2500.0], 1.0);
+    conduire(&mut world, entree(1.0, 0.0, 0.4));
+    avancer(&mut world, 1.0);
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("un véhicule");
+    assert_eq!(etat.wheels.len(), 4);
+    assert!(
+        etat.engine_speed > 0.0 && etat.steering > 0.0,
+        "il roule, braqué : {etat:?}"
+    );
+    // Dans le bloc, puis relu : le même état.
+    let bloc = ax_physics::state::AssemblyState {
+        bodies: Vec::new(),
+        joints: Vec::new(),
+        vehicle: Some(etat.clone()),
+    };
+    let relu = ax_physics::state::AssemblyState::decode(&bloc.encode()).expect("lisible");
+    assert_eq!(relu.vehicle.as_ref(), Some(&etat));
+
+    avancer(&mut world, 0.5);
+    assert_ne!(
+        world.vehicle_snapshot(ASSEMBLY).as_ref(),
+        Some(&etat),
+        "le véhicule a changé"
+    );
+    assert!(world.restore_vehicle(ASSEMBLY, &etat));
+    assert_eq!(
+        world.vehicle_snapshot(ASSEMBLY),
+        Some(etat),
+        "rendu tel quel"
+    );
+    let mut trois = world.vehicle_snapshot(ASSEMBLY).unwrap();
+    trois.wheels.pop();
+    assert!(
+        !world.restore_vehicle(ASSEMBLY, &trois),
+        "trois roues pour quatre : refusé"
+    );
+    assert!(
+        !monde().restore_vehicle(ASSEMBLY, &trois),
+        "sans véhicule, rien"
+    );
+}
+
+#[test]
+fn adr168_d5_restaurer_puis_rejouer_redonne_la_course_d_origine() {
+    // R-1682 : le client restaure l'état du serveur puis rejoue ses entrées, un tick par entrée. Sur une même
+    // plateforme, l'état exporté suffit à refaire la même course au bit près : la rotation des roues, gardée par
+    // leur entraînement, comprise. Ici le châssis ne touche rien : l'état de contact que rapier garde d'un pas à
+    // l'autre, et que le bloc ne porte pas, n'entre pas en jeu.
+    let (mut world, v) = sur_le_plat(berline(), [40.0, 2500.0], 1.0);
+    conduire(&mut world, entree(1.0, 0.0, 0.0));
+    avancer(&mut world, 1.0);
+    let corps = world.live_body(v).expect("châssis");
+    let vehicule = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    let entrees = manoeuvre(64);
+    let origine = jouer(&mut world, v, &entrees);
+    let fin = world.vehicle_snapshot(ASSEMBLY);
+    assert!((origine.0 - corps.0).length() > 3.0, "la manœuvre a roulé");
+
+    world.set_live_body(v, corps.0, corps.1, corps.2, corps.3);
+    assert!(world.restore_vehicle(ASSEMBLY, &vehicule));
+    let rejeu = jouer(&mut world, v, &entrees);
+    assert_eq!(
+        rejeu, origine,
+        "le rejeu redonne la pose et la vitesse d'origine"
+    );
+    assert_eq!(
+        world.vehicle_snapshot(ASSEMBLY),
+        fin,
+        "et l'état du véhicule"
+    );
+}

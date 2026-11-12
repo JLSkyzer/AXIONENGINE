@@ -3782,8 +3782,24 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      porte alors les correspondances bloc → matériau, surcharges de l'administrateur comprises (ADR-165, précision 3c).
      - [x] [ADR-168](../docs/decisions/ADR-168.md) **accepté par Killian le 2026-11-12** : Q1 une entrée par tick au
            serveur, Q2 une correction à chaque tick, Q3 CAP-37 fermé avec C-48, Q4 pas de film. Branche `wip/tranche-6`.
-     - [ ] 6a — natif : mode `ClientPredicted`, export de l'état complet d'une assembly (`SIM_OUT`),
-           `SET_ASSEMBLY_STATE`, ABI 24 ; restaurer puis rejouer redonne le même état au bit près.
+     - [x] 6a — natif : mode `ClientPredicted`, export de l'état complet d'une assembly (`SIM_OUT`),
+           `SET_ASSEMBLY_STATE`, ABI 24 ; rejeu de 64 ticks au bit près mesuré. Dessin arrêté le 2026-11-12 :
+           - `SimMode::ClientPredicted` avance comme `Server` (le mode `Client` n'avance pas) ; posé pour tout le `Sim`,
+             dimensions à venir comprises, par une commande `SET_SIM_MODE` (opcode 20) ; M6 y coupera le plastique.
+           - `SET_STATE_EXPORT` (opcode 21, `{handle, enabled}`) : chaque collecte écrit l'état complet des assemblies
+             marquées dans une section neuve de `SIM_OUT` (schéma 6), après les motopropulseurs : compte, puis par
+             assembly `handle`, longueur, octets (alignés sur 8).
+           - `SET_ASSEMBLY_STATE` (opcode 22, `{handle, len}` + octets) : restaure l'état sur l'assembly vivante,
+             corps réveillés, colliders resynchronisés avant le pas suivant (rapier ne les déplace qu'au pas).
+           - L'état est un bloc opaque pour Java (le serveur l'envoie tel quel au client, qui le rend au natif),
+             versionné, petit-boutiste, codé dans `ax-physics` : corps dans l'ordre de l'assembly (node, pose monde
+             `f64`, rotation, vitesses), joints (rompu, désalignement), et pour un véhicule : entrée tenue, conducteur,
+             régime, boîte (rang, cible, minuteur, maintien), direction, patinage, charge, et par roue rotation,
+             compression, braquage, contact, charge, glissements, rayon, couple posé. Import validé : comptes égaux à
+             ceux de l'assembly vivante, valeurs finies, quaternions normés ; sinon refusé et compté.
+           - Preuve : export → import → export identique ; restaurer puis rejouer les mêmes entrées reste près de la
+             course d'origine — l'écart se mesure et s'inscrit à l'ADR (rapier garde un état de contact qui ne se
+             restaure pas : le bit près n'est pas promis), et deux rejeux d'une même restauration sont identiques.
      - [ ] 6b — serveur : file d'entrées, une par tick, séquence appliquée ; `S2C_Correction` à chaque tick.
      - [ ] 6c — client : monde prédit, tuiles du niveau client (découpage commun), proxies extrapolés, boucle prédite,
            historique de 64, réconciliation, lissage, désactivation, rendu à la pose prédite.

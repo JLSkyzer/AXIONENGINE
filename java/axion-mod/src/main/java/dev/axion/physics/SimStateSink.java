@@ -29,4 +29,13 @@ public interface SimStateSink {
      */
     void applyStates(long tick, List<BodyState> states, List<BodyBounds> bounds, List<JointState> joints,
             List<WheelReport> wheels, List<VehicleReport> vehicles);
+
+    /**
+     * Reçoit l'état complet des assemblies exportées au tick donné (ADR-168 D1), après {@link #applyStates} : celles
+     * dont l'export a été demandé, avec le statut de leur dernière restauration. Par défaut, rien.
+     *
+     * @param tick tick serveur du collect
+     * @param exported les états exportés, dans l'ordre du natif
+     */
+    default void applyAssemblyStates(long tick, List<AssemblyStateReport> exported) {}
 }

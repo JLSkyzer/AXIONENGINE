@@ -43,6 +43,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod joints;
+pub mod state;
 pub mod vehicles;
 
 /// Plafond par défaut d'événements par tick (§10.7, `physics.max_events_per_tick`).

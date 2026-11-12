@@ -15,6 +15,19 @@ pub struct Steering {
 }
 
 impl Steering {
+    /// Une direction à cette position : celle qu'un état restauré lui rend (ADR-168 D1). Bornée à [-1, 1], zéro si
+    /// elle n'est pas finie.
+    #[must_use]
+    pub fn at(position: f32) -> Self {
+        Self {
+            position: if position.is_finite() {
+                position.clamp(-1.0, 1.0)
+            } else {
+                0.0
+            },
+        }
+    }
+
     /// La position, dans [-1, 1], positive à droite.
     #[must_use]
     pub fn position(&self) -> f32 {

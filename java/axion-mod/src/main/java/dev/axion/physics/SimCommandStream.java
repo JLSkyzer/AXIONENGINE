@@ -217,6 +217,33 @@ public final class SimCommandStream {
     /** Couples d'un véhicule, au plus : un par roue (R-1052). */
     public static final int MAX_WHEEL_TORQUES = 32;
 
+    /** Opcode {@code SET_SIM_MODE} : le rôle de tous les mondes de la simulation (ADR-168 D1). */
+    public static final int OP_SET_SIM_MODE = 20;
+
+    /** Opcode {@code SET_STATE_EXPORT} : l'export de l'état complet d'une assembly à chaque collecte (ADR-168 D1). */
+    public static final int OP_SET_STATE_EXPORT = 21;
+
+    /** Opcode {@code SET_ASSEMBLY_STATE} : la restauration de l'état complet d'une assembly vivante (ADR-168 D1). */
+    public static final int OP_SET_ASSEMBLY_STATE = 22;
+
+    /** Le serveur : il fait foi. */
+    public static final int SIM_MODE_SERVER = 0;
+
+    /** Un client qui interpole : aucun sous-pas. */
+    public static final int SIM_MODE_CLIENT = 1;
+
+    /** Un client qui prédit le véhicule qu'il pilote (R-1680) : le monde avance, rien n'y fait foi. */
+    public static final int SIM_MODE_CLIENT_PREDICTED = 2;
+
+    /** Taille de l'en-tête {@code SetAssemblyState}, en octets : le handle, la longueur du bloc. */
+    public static final int SET_ASSEMBLY_STATE_BYTES = 12;
+
+    /**
+     * Le plus grand bloc d'état, en octets (miroir de {@code world::state::MAX_STATE_BYTES}) : 64 corps, 128 joints,
+     * un véhicule de 32 roues.
+     */
+    public static final int MAX_ASSEMBLY_STATE_BYTES = 16 + 64 * 64 + 128 * 8 + 56 + 32 * 32;
+
     /** Taille du payload {@code SetVehicleInput}, en octets : le handle, l'entrée de 12.8, les drapeaux. */
     public static final int SET_VEHICLE_INPUT_BYTES = 36;
 
@@ -935,6 +962,62 @@ public final class SimCommandStream {
         for (float gear : gears) {
             command.putFloat(gear);
         }
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_SIM_MODE} (ADR-168 D1) : le rôle de tous les mondes, présents et à venir.
+     *
+     * @param mode {@link #SIM_MODE_SERVER}, {@link #SIM_MODE_CLIENT} ou {@link #SIM_MODE_CLIENT_PREDICTED}
+     * @return {@code this}, pour chaîner
+     * @throws IllegalArgumentException pour un autre rôle
+     */
+    public SimCommandStream setSimMode(int mode) {
+        if (mode < SIM_MODE_SERVER || mode > SIM_MODE_CLIENT_PREDICTED) {
+            throw new IllegalArgumentException("rôle de simulation inconnu : " + mode);
+        }
+        ByteBuffer command = beginCommand(OP_SET_SIM_MODE, 4);
+        command.putInt(mode);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_STATE_EXPORT} (ADR-168 D1) : tant qu'il est demandé, chaque collecte rend l'état
+     * complet de l'assembly ({@link AssemblyStateReport}) ; son retrait l'arrête.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param enabled vrai pour exporter, faux pour cesser
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setStateExport(int handleIndex, int handleGeneration, boolean enabled) {
+        ByteBuffer command = beginCommand(OP_SET_STATE_EXPORT, 12);
+        command.putInt(handleIndex).putInt(handleGeneration).putInt(enabled ? 1 : 0);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_ASSEMBLY_STATE} (ADR-168 D1, R-1682) : rend à une assembly vivante l'état complet
+     * qu'une collecte a exporté — celui du serveur, chez le client qui la prédit. Un bloc qui ne lui convient pas ne
+     * change rien ; le statut de son export suivant le dit.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param state le bloc d'état, tel qu'exporté
+     * @return {@code this}, pour chaîner
+     * @throws IllegalArgumentException si le bloc dépasse {@link #MAX_ASSEMBLY_STATE_BYTES} ou n'est pas un multiple de
+     *     8 octets
+     */
+    public SimCommandStream setAssemblyState(int handleIndex, int handleGeneration, byte[] state) {
+        if (state.length > MAX_ASSEMBLY_STATE_BYTES || state.length % 8 != 0) {
+            throw new IllegalArgumentException("bloc d'état de " + state.length + " octets : un multiple de 8, au plus "
+                    + MAX_ASSEMBLY_STATE_BYTES);
+        }
+        ByteBuffer command = beginCommand(OP_SET_ASSEMBLY_STATE, SET_ASSEMBLY_STATE_BYTES + state.length);
+        command.putInt(handleIndex).putInt(handleGeneration).putInt(state.length).put(state);
         commands.add(command.array());
         return this;
     }

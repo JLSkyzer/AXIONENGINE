@@ -71,6 +71,44 @@ impl Gearbox {
         self.gear
     }
 
+    /// Son état entier : rang engagé, rang visé, temps restant au changement, maintien (ADR-168 D1).
+    #[must_use]
+    pub fn parts(&self) -> (i8, i8, f32, f32) {
+        (self.gear, self.target, self.shift_left, self.hold)
+    }
+
+    /// Une boîte dans cet état : celui qu'un état restauré lui rend (ADR-168 D1). Un rang hors de la table de `desc`
+    /// revient au point mort ; une durée négative ou non finie compte pour zéro.
+    #[must_use]
+    pub fn from_parts(
+        desc: &VehicleDesc,
+        gear: i8,
+        target: i8,
+        shift_left: f32,
+        hold: f32,
+    ) -> Self {
+        let rank = |rank: i8| {
+            if rank == 0 || ratio_of(desc, rank).is_some() {
+                rank
+            } else {
+                0
+            }
+        };
+        let duration = |value: f32| {
+            if value.is_finite() {
+                value.max(0.0)
+            } else {
+                0.0
+            }
+        };
+        Self {
+            gear: rank(gear),
+            target: rank(target),
+            shift_left: duration(shift_left),
+            hold: duration(hold),
+        }
+    }
+
     /// Vrai pendant un changement de rapport : le couple ne passe pas.
     #[must_use]
     pub fn shifting(&self) -> bool {
