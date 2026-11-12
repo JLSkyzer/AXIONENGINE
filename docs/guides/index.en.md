@@ -8,9 +8,6 @@ in Java or with JSON files the mod loads.
     AXION is at milestone **M5** (vehicles). The API is marked `@Experimental` until that milestone ends: it may still
     change. Nothing has been released for players yet.
 
-!!! info "Translation in progress"
-    Pages that are not translated yet are shown in French.
-
 ## Where to start
 
 <div class="grid cards" markdown>

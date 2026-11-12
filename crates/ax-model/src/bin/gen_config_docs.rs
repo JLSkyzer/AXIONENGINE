@@ -1,4 +1,5 @@
-//! Génère `CONFIGURATION.md` depuis la source unique de la configuration.
+//! Génère `CONFIGURATION.md` et sa traduction `CONFIGURATION.en.md` depuis la
+//! source unique de la configuration.
 //!
 //! R-430 : la documentation des options est générée, jamais écrite à la main,
 //! et une option non documentée casse le build (T-021). Le job `docs` de la CI
@@ -11,19 +12,21 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-fn main() -> ExitCode {
-    let target =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/guides/CONFIGURATION.md");
+use ax_model::config::{render_markdown, DocLanguage};
 
-    let rendered = ax_model::config::render_markdown();
-    match std::fs::write(&target, rendered) {
-        Ok(()) => {
-            println!("CONFIGURATION.md généré depuis crates/ax-model/src/config/defaults.rs");
-            ExitCode::SUCCESS
-        }
-        Err(err) => {
+fn main() -> ExitCode {
+    let guides = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/guides");
+
+    for language in DocLanguage::ALL {
+        let target = guides.join(language.file_name());
+        if let Err(err) = std::fs::write(&target, render_markdown(language)) {
             eprintln!("écriture de {} impossible : {err}", target.display());
-            ExitCode::FAILURE
+            return ExitCode::FAILURE;
         }
+        println!(
+            "{} généré depuis crates/ax-model/src/config/defaults.rs",
+            language.file_name()
+        );
     }
+    ExitCode::SUCCESS
 }

@@ -3760,7 +3760,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
               `AddonTemoinGameTests` (78 GameTests verts).
         - [x] Le parcours débutant (2026-11-11) : quatre pages et un glossaire à infobulles, en deux langues ; extraits
               tirés du témoin.
-        - [ ] Traduire en anglais les guides existants, et les descriptions de `CONFIGURATION.md` (générateur bilingue).
+        - [x] Guides existants traduits en anglais (2026-11-12) : `PHYSICS`, `RENDERING`, `MATERIALS`, `NETWORKING`
+              en `.en.md` à côté du français ; `CONFIGURATION.en.md` généré comme la page française, depuis la
+              description anglaise que chaque option du registre porte par `.en(...)`. Précisions dans ADR-101.
         - [x] Publication (2026-11-12) : Reposilite sur le mini PC (`maven.eriniumlab.com`), `axion-api`, le JAR
               complet d'AXION et le modèle d'addon publiés en `-SNAPSHOT` par la CI ; lien de téléchargement dans le
               guide. 21,5 Mo par publication.

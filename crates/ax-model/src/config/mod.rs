@@ -295,9 +295,20 @@ pub struct ConfigOption {
     pub server_authoritative: bool,
     /// Description, reprise telle quelle dans la documentation générée.
     pub description: &'static str,
+    /// La même description en anglais, pour la page anglaise de la
+    /// documentation générée (`CONFIGURATION.en.md`).
+    pub description_en: &'static str,
 }
 
 impl ConfigOption {
+    /// Donne à l'option sa description anglaise, écrite sous la française
+    /// dans le registre pour que l'une ne change pas sans l'autre.
+    #[must_use]
+    pub(crate) const fn en(mut self, description: &'static str) -> Self {
+        self.description_en = description;
+        self
+    }
+
     /// Section TOML de l'option, c'est-à-dire son chemin sans le dernier
     /// segment.
     #[must_use]
@@ -491,24 +502,112 @@ fn escape_pipes(text: &str) -> String {
     text.replace('|', "\\|")
 }
 
-/// Rend la documentation de référence de la configuration.
+/// Langue d'une page de la documentation générée.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocLanguage {
+    /// `CONFIGURATION.md`, la page de référence.
+    French,
+    /// `CONFIGURATION.en.md`, sa traduction.
+    English,
+}
+
+impl DocLanguage {
+    /// Toutes les langues, dans l'ordre où le générateur les écrit.
+    pub const ALL: [DocLanguage; 2] = [DocLanguage::French, DocLanguage::English];
+
+    /// Nom du fichier généré dans cette langue, sous `docs/guides/` : le
+    /// suffixe est celui qu'attend le site de la documentation (ADR-101).
+    #[must_use]
+    pub const fn file_name(self) -> &'static str {
+        match self {
+            DocLanguage::French => "CONFIGURATION.md",
+            DocLanguage::English => "CONFIGURATION.en.md",
+        }
+    }
+}
+
+/// Les textes fixes d'une page de la documentation générée.
+struct Wording {
+    intro: &'static str,
+    header: &'static str,
+    yes: &'static str,
+    no: &'static str,
+    server_overrides: &'static str,
+}
+
+impl Wording {
+    const fn of(language: DocLanguage) -> Self {
+        match language {
+            DocLanguage::French => Wording {
+                intro: "# Configuration\n\n\
+                     Ce fichier est **généré** par `ax-model` : ne pas le modifier à la main.\n\
+                     Toute option d'AXION est déclarée une seule fois, dans\n\
+                     `crates/ax-model/src/config/defaults.rs`, avec son défaut, son domaine\n\
+                     et sa description (R-430).\n\n\
+                     Une option se surcharge par la propriété système `-Daxion.<chemin>`.\n\
+                     La colonne « chaud » indique qu'elle est rechargeable par\n\
+                     `/axion config reload` (R-431) ; la colonne « serveur » qu'elle est\n\
+                     imposée par le serveur au handshake, la valeur locale du client étant\n\
+                     alors ignorée (R-1830).\n",
+                header: "| Option | Type | Défaut | Domaine | Chaud | Serveur | Description |",
+                yes: "oui",
+                no: "non",
+                server_overrides: SERVER_OVERRIDES_SECTION,
+            },
+            DocLanguage::English => Wording {
+                intro: "# Configuration\n\n\
+                     This file is **generated** by `ax-model`: do not edit it by hand.\n\
+                     Every AXION option is declared once, in\n\
+                     `crates/ax-model/src/config/defaults.rs`, with its default, its domain\n\
+                     and its description (R-430).\n\n\
+                     An option can be overridden with the system property `-Daxion.<path>`.\n\
+                     The \"hot\" column says it can be reloaded with\n\
+                     `/axion config reload` (R-431); the \"server\" column, that the server\n\
+                     imposes it at handshake, the client's local value then being\n\
+                     ignored (R-1830).\n",
+                header: "| Option | Type | Default | Domain | Hot | Server | Description |",
+                yes: "yes",
+                no: "no",
+                server_overrides: SERVER_OVERRIDES_SECTION_EN,
+            },
+        }
+    }
+}
+
+/// Le type d'une valeur, tel que la page de cette langue le nomme.
+const fn type_label(value: ConfigValue, language: DocLanguage) -> &'static str {
+    match language {
+        DocLanguage::French => value.type_name(),
+        DocLanguage::English => match value {
+            ConfigValue::Bool(_) => "boolean",
+            ConfigValue::Int(_) => "integer",
+            ConfigValue::Float(_) => "float",
+            ConfigValue::Str(_) => "string",
+        },
+    }
+}
+
+/// Le domaine d'une option, tel que la page de cette langue l'écrit : seuls
+/// deux domaines portent des mots, les autres ne sont que des valeurs.
+fn domain_label(domain: &ConfigDomain, language: DocLanguage) -> String {
+    match (language, domain) {
+        (DocLanguage::English, ConfigDomain::FreeText) => "free text".to_owned(),
+        (DocLanguage::English, ConfigDomain::KeywordOrCount(values)) => {
+            format!("{} | <integer>", values.join(" | "))
+        }
+        _ => domain.to_string(),
+    }
+}
+
+/// Rend la documentation de référence de la configuration, dans une langue.
 ///
 /// R-430 : `CONFIGURATION.md` est généré depuis cette source, et une option non
-/// documentée casse le build (T-021).
+/// documentée casse le build (T-021). Sa traduction, `CONFIGURATION.en.md`,
+/// l'est de même, depuis la description anglaise de chaque option.
 #[must_use]
-pub fn render_markdown() -> String {
-    let mut out = String::from(
-        "# Configuration\n\n\
-         Ce fichier est **généré** par `ax-model` : ne pas le modifier à la main.\n\
-         Toute option d'AXION est déclarée une seule fois, dans\n\
-         `crates/ax-model/src/config/defaults.rs`, avec son défaut, son domaine\n\
-         et sa description (R-430).\n\n\
-         Une option se surcharge par la propriété système `-Daxion.<chemin>`.\n\
-         La colonne « chaud » indique qu'elle est rechargeable par\n\
-         `/axion config reload` (R-431) ; la colonne « serveur » qu'elle est\n\
-         imposée par le serveur au handshake, la valeur locale du client étant\n\
-         alors ignorée (R-1830).\n",
-    );
+pub fn render_markdown(language: DocLanguage) -> String {
+    let wording = Wording::of(language);
+    let mut out = String::from(wording.intro);
 
     for scope in ConfigScope::ALL {
         out.push_str(&format!("\n## `{}`\n", scope.file_name()));
@@ -517,30 +616,32 @@ pub fn render_markdown() -> String {
             if option.section() != current_section {
                 current_section = option.section();
                 out.push_str(&format!(
-                    "\n### `[{current_section}]`\n\n\
-                     | Option | Type | Défaut | Domaine | Chaud | Serveur | Description |\n\
-                     |---|---|---|---|---|---|---|\n"
+                    "\n### `[{current_section}]`\n\n{}\n|---|---|---|---|---|---|---|\n",
+                    wording.header
                 ));
             }
             out.push_str(&format!(
                 "| `{}` | {} | `{}` | `{}` | {} | {} | {} |\n",
                 option.key(),
-                option.default.type_name(),
+                type_label(option.default, language),
                 escape_pipes(&option.default.to_toml()),
                 // Un domaine énuméré sépare ses valeurs par « | », qui
                 // couperait la cellule du tableau s'il n'était pas échappé.
-                escape_pipes(&option.domain.to_string()),
-                if option.hot { "oui" } else { "non" },
+                escape_pipes(&domain_label(&option.domain, language)),
+                if option.hot { wording.yes } else { wording.no },
                 if option.server_authoritative {
-                    "oui"
+                    wording.yes
                 } else {
-                    "non"
+                    wording.no
                 },
-                option.description,
+                match language {
+                    DocLanguage::French => option.description,
+                    DocLanguage::English => option.description_en,
+                },
             ));
         }
     }
-    out.push_str(SERVER_OVERRIDES_SECTION);
+    out.push_str(wording.server_overrides);
     out
 }
 
@@ -573,6 +674,32 @@ const SERVER_OVERRIDES_SECTION: &str = "\n## `axion-server-overrides.toml`\n\n\
      définition surchargée ne passe plus son schéma, ou si une correspondance de\n\
      blocs nomme un matériau qu'aucun mod ne déclare.\n";
 
+/// La même section, pour la page anglaise.
+const SERVER_OVERRIDES_SECTION_EN: &str = "\n## `axion-server-overrides.toml`\n\n\
+     The server administrator's overrides (ADR-162 D8, ADR-165 D4): bounded\n\
+     multipliers and block mappings, applied to the resolved content before it\n\
+     is validated; no new content. The server sends the overridden content to\n\
+     clients: they do not need this file.\n\n\
+     The server writes it on first startup, fully commented out — it then\n\
+     carries no override — and rereads it at startup and on every `/reload`.\n\
+     Each override, applied or refused with its reason, is written to the\n\
+     server log; `/axion status` gives the count.\n\n\
+     | Section | Key | Effect |\n\
+     |---|---|---|\n\
+     | `[physics_materials.\"<ns>:<material>\"]` | a numeric quantity of the material (DM-07) | multiplies it |\n\
+     | `[definitions.\"<ns>:<definition>\"]` | `mass` | multiplies every written mass: `physics.mass`, bodies, parts, wheels |\n\
+     | `[definitions.\"<ns>:<definition>\"]` | `engine_torque` | multiplies each torque of `powertrain.engine.torque_curve` |\n\
+     | `[definitions.\"<ns>:<definition>\"]` | `brake_torque` | multiplies `brakes.max_torque_front`, `max_torque_rear` and `handbrake_torque` |\n\
+     | `[tires.\"<ns>:<tire>\"]` | `grip` | multiplies `mu_long` and `mu_lat` |\n\
+     | `[block_materials]` | `\"<ns>:<block>\"` or `\"#<ns>:<tag>\"` | the material of a block or of a block tag, read after the mods' mappings |\n\n\
+     A multiplier ranges from 0.1 to 10 and only touches written values; the\n\
+     product is rounded to twelve significant digits. An override is refused,\n\
+     and logged with its reason, if its target does not exist, if its key is\n\
+     unknown, if its multiplier is out of bounds, if its target writes no value\n\
+     to multiply, if a multiplied value leaves its domain, if an overridden\n\
+     definition no longer passes its schema, or if a block mapping names a\n\
+     material that no mod declares.\n";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -586,6 +713,14 @@ mod tests {
             assert!(
                 !option.description.trim().is_empty(),
                 "{} : {} sans description",
+                scope.file_name(),
+                option.path
+            );
+            // La page anglaise se génère comme la française : une option sans
+            // traduction y laisserait une cellule vide.
+            assert!(
+                !option.description_en.trim().is_empty(),
+                "{} : {} sans description anglaise (`.en(...)`)",
                 scope.file_name(),
                 option.path
             );
@@ -720,12 +855,42 @@ mod tests {
     /// La documentation générée couvre toutes les options.
     #[test]
     fn documentation_generee_complete() {
-        let markdown = render_markdown();
+        for language in DocLanguage::ALL {
+            let markdown = render_markdown(language);
+            for (_, option) in all_options() {
+                assert!(
+                    markdown.contains(&format!("| `{}` |", option.key())),
+                    "{} absent de {}",
+                    option.path,
+                    language.file_name()
+                );
+            }
+        }
+    }
+
+    /// La page anglaise porte la description anglaise de chaque option, et
+    /// aucun mot français de la page de référence.
+    #[test]
+    fn page_anglaise_traduite() {
+        let markdown = render_markdown(DocLanguage::English);
         for (_, option) in all_options() {
             assert!(
-                markdown.contains(&format!("| `{}` |", option.key())),
-                "{} absent de la documentation générée",
+                markdown.contains(option.description_en),
+                "{} : description anglaise absente",
                 option.path
+            );
+        }
+        for french in [
+            "| Défaut |",
+            "| booléen |",
+            "| oui |",
+            "| non |",
+            "texte libre",
+            "<entier>",
+        ] {
+            assert!(
+                !markdown.contains(french),
+                "« {french} » dans la page anglaise"
             );
         }
     }

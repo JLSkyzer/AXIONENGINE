@@ -137,9 +137,9 @@ tasks.register('codegen') {
 
     doLast {
         // « echec si divergence » (34.1) : le test de parite compare la classe
-        // Java, les fichiers TOML de reference et CONFIGURATION.md au registre
-        // Rust qui les produit. Il echoue si l'un a ete modifie a la main ou
-        // n'a pas ete regenere.
+        // Java, les fichiers TOML de reference, CONFIGURATION.md et sa
+        // traduction CONFIGURATION.en.md au registre Rust qui les produit. Il
+        // echoue si l'un a ete modifie a la main ou n'a pas ete regenere.
         def output = new ByteArrayOutputStream()
         def result = exec {
             commandLine 'cargo', 'test', '-p', 'axion-codegen', '-p', 'ax-model', '--quiet'

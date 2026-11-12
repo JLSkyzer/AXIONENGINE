@@ -12,7 +12,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use ax_model::config::{self, ConfigScope, ConfigValue};
+use ax_model::config::{self, ConfigScope, ConfigValue, DocLanguage};
 
 /// Valeur telle qu'elle est écrite dans l'annexe, avant comparaison.
 #[derive(Debug, PartialEq)]
@@ -215,28 +215,34 @@ fn le_registre_ne_diverge_pas_de_l_annexe() {
 
 #[test]
 fn configuration_md_est_a_jour() {
-    // R-430 : `CONFIGURATION.md` est généré, jamais écrit à la main. Ce test
-    // est l'équivalent local du job `docs` de la CI : il échoue dès qu'une
-    // option est ajoutée, modifiée ou décrite autrement sans régénérer le
-    // fichier. Le remède tient en une commande, rappelée dans le message.
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/guides/CONFIGURATION.md");
-    let sur_disque = std::fs::read_to_string(&path).unwrap_or_else(|err| {
-        panic!(
-            "{} illisible ({err}) — le générer avec :\n  \
-             cargo run -p ax-model --bin gen_config_docs",
-            path.display()
-        )
-    });
+    // R-430 : `CONFIGURATION.md` est généré, jamais écrit à la main, et sa
+    // traduction `CONFIGURATION.en.md` de même. Ce test est l'équivalent local
+    // du job `docs` de la CI : il échoue dès qu'une option est ajoutée,
+    // modifiée ou décrite autrement sans régénérer les deux pages. Le remède
+    // tient en une commande, rappelée dans le message.
+    for language in DocLanguage::ALL {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/guides")
+            .join(language.file_name());
+        let sur_disque = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "{} illisible ({err}) — le générer avec :\n  \
+                 cargo run -p ax-model --bin gen_config_docs",
+                path.display()
+            )
+        });
 
-    // Les fins de ligne diffèrent selon la configuration git du poste ; seul
-    // le contenu nous intéresse.
-    let attendu = config::render_markdown().replace("\r\n", "\n");
-    assert_eq!(
-        sur_disque.replace("\r\n", "\n"),
-        attendu,
-        "CONFIGURATION.md a divergé de la source unique — le régénérer avec :\n  \
-         cargo run -p ax-model --bin gen_config_docs"
-    );
+        // Les fins de ligne diffèrent selon la configuration git du poste ;
+        // seul le contenu nous intéresse.
+        let attendu = config::render_markdown(language).replace("\r\n", "\n");
+        assert_eq!(
+            sur_disque.replace("\r\n", "\n"),
+            attendu,
+            "{} a divergé de la source unique — le régénérer avec :\n  \
+             cargo run -p ax-model --bin gen_config_docs",
+            language.file_name()
+        );
+    }
 }
 
 #[test]
