@@ -2,10 +2,15 @@ package dev.axion.definition;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.axion.api.assembly.Modifier;
 import dev.axion.api.assembly.Parameters;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Les paramètres réglables d'une definition (ADR-167 D1, D2) : pour chacun, sa base — la valeur de la definition,
@@ -16,19 +21,141 @@ import java.util.Map;
  * {@code physics.mass} — sans elle, la masse vient des densités des colliders, que seul le natif connaît —, ceux d'un
  * véhicule quand elle a des roues (voir {@link VehicleSpec#parameters}).
  *
+ * <p>Une variable de la definition peut régler un paramètre par un modificateur déclaré ({@code tuning.modifiers},
+ * ADR-167 D4) : voir {@link Declared}.
+ *
  * @param parameters les paramètres, dans l'ordre fixe de {@link Parameters}
+ * @param declared les modificateurs déclarés, dans l'ordre de la definition
  */
-public record Tuning(List<Parameter> parameters) {
+public record Tuning(List<Parameter> parameters, List<Declared> declared) {
 
     /** Aucun paramètre. */
-    public static final Tuning NONE = new Tuning(List.of());
+    public static final Tuning NONE = new Tuning(List.of(), List.of());
+
+    /** Modificateurs déclarés par une definition, au plus (ADR-167 D4). */
+    public static final int MAX_DECLARED = 64;
 
     /** La plus grande valeur qu'un {@code f32} du natif porte. */
     private static final double FLOAT_MAX = Float.MAX_VALUE;
 
-    /** Copie la liste : une table compilée ne change plus. */
+    /** Le nom d'un modificateur déclaré : il fait la cause {@code <id de la definition>/<nom>}. */
+    private static final Pattern DECLARED_NAME = Pattern.compile("[a-z0-9_.-]+");
+
+    /** L'ordre de composition : celui des identifiants de cause. */
+    private static final Comparator<Modifier> BY_CAUSE = Comparator.comparing(Modifier::cause);
+
+    /** Copie les listes : une table compilée ne change plus. */
     public Tuning {
         parameters = List.copyOf(parameters);
+        declared = List.copyOf(declared);
+    }
+
+    /**
+     * Les paramètres d'une definition sans modificateur déclaré.
+     *
+     * @param parameters les paramètres, dans l'ordre fixe de {@link Parameters}
+     */
+    public Tuning(List<Parameter> parameters) {
+        this(parameters, List.of());
+    }
+
+    /**
+     * Un modificateur déclaré (ADR-167 D4) : une variable de la definition règle un paramètre. Sa quantité suit la
+     * valeur de la variable <strong>arrondie en {@code f32}</strong> — celle que les joueurs reçoivent —, si bien que
+     * serveur et clients composent au bit près : {@code values[valeur - minimum]} pour une variable {@code int} ou
+     * {@code bool}, {@code scale × valeur} sinon.
+     *
+     * @param cause {@code <id de la definition>/<nom>}
+     * @param parameter le paramètre réglé
+     * @param operation l'opération
+     * @param variable le rang de la variable dans la definition
+     * @param values la quantité pour chaque valeur de la variable, depuis son minimum ; {@code null} avec {@code scale}
+     * @param scale la quantité par unité de la variable, sans {@code values}
+     * @param minimum la plus petite valeur de la variable, d'où {@code values} part
+     * @param initial la valeur par défaut de la variable
+     */
+    public record Declared(String cause, String parameter, Modifier.Operation operation, int variable, double[] values,
+            double scale, double minimum, double initial) {
+
+        /** Copie les quantités. */
+        public Declared {
+            values = values == null ? null : values.clone();
+        }
+
+        /**
+         * {@return la quantité pour cette valeur de la variable}
+         *
+         * @param value la valeur de la variable, telle que le serveur la tient
+         */
+        public double amount(double value) {
+            double sent = (float) value;
+            return values != null ? values[(int) Math.round(sent - minimum)] : scale * sent;
+        }
+
+        /**
+         * {@return le modificateur que cette valeur de la variable pose}
+         *
+         * @param value la valeur de la variable
+         */
+        public Modifier modifier(double value) {
+            return new Modifier(cause, parameter, operation, amount(value));
+        }
+
+        @Override
+        public double[] values() {
+            return values == null ? null : values.clone();
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof Declared that && cause.equals(that.cause) && parameter.equals(that.parameter)
+                    && operation == that.operation && variable == that.variable && Arrays.equals(values, that.values)
+                    && Double.compare(scale, that.scale) == 0 && Double.compare(minimum, that.minimum) == 0
+                    && Double.compare(initial, that.initial) == 0;
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * (31 * cause.hashCode() + parameter.hashCode()) + Arrays.hashCode(values);
+        }
+
+        @Override
+        public String toString() {
+            return "Declared[" + cause + " " + parameter + " " + operation.key() + " "
+                    + (values != null ? Arrays.toString(values) : "scale " + scale) + "]";
+        }
+    }
+
+    /**
+     * {@return la composition d'une base avec des modificateurs} (ADR-167 D3) : la seule fonction qui calcule une
+     * valeur effective, à la compilation, au serveur et chez le client. Chaque somme et chaque produit se calculent
+     * dans l'ordre des identifiants de cause.
+     *
+     * @param base la base
+     * @param modifiers les modificateurs actifs, dans un ordre quelconque
+     */
+    public static double compose(double base, List<Modifier> modifiers) {
+        List<Modifier> ordered = new ArrayList<>(modifiers);
+        ordered.sort(BY_CAUSE);
+        double added = 0.0;
+        double rate = 0.0;
+        double total = 1.0;
+        for (Modifier modifier : ordered) {
+            if (modifier.operation() == Modifier.Operation.ADD) {
+                added += modifier.amount();
+            }
+        }
+        for (Modifier modifier : ordered) {
+            if (modifier.operation() == Modifier.Operation.MULTIPLY_BASE) {
+                rate += modifier.amount();
+            }
+        }
+        for (Modifier modifier : ordered) {
+            if (modifier.operation() == Modifier.Operation.MULTIPLY_TOTAL) {
+                total *= 1.0 + modifier.amount();
+            }
+        }
+        return (base + added) * (1.0 + rate) * total;
     }
 
     /**
@@ -132,12 +259,14 @@ public record Tuning(List<Parameter> parameters) {
     }
 
     /**
-     * Lit les paramètres d'une definition acceptée : leurs bases, leurs limites, et la plage de {@code tuning.ranges}.
+     * Lit les paramètres d'une definition acceptée : leurs bases, leurs limites, la plage de {@code tuning.ranges}, et
+     * ses modificateurs déclarés.
      *
+     * @param id l'identifiant de la definition, qui préfixe la cause de ses modificateurs déclarés
      * @param root document de la definition
      * @return la table, {@link #NONE} sans paramètre
      */
-    public static Tuning of(JsonObject root) {
+    public static Tuning of(String id, JsonObject root) {
         List<Parameter> found = new ArrayList<>();
         if (root.get("physics") instanceof JsonObject physics && physics.get("mass") != null) {
             // DM-08 : la masse déclarée d'une assembly, dans [0,001 ; 10⁶] kg.
@@ -159,7 +288,43 @@ public record Tuning(List<Parameter> parameters) {
                             range(range))
                     : parameter);
         }
-        return new Tuning(bounded);
+        return new Tuning(bounded, declared(id, root));
+    }
+
+    /** {@return les modificateurs déclarés d'une definition acceptée, dans son ordre} */
+    private static List<Declared> declared(String id, JsonObject root) {
+        if (!(root.get("tuning") instanceof JsonObject tuning)
+                || !(tuning.get("modifiers") instanceof JsonObject modifiers)) {
+            return List.of();
+        }
+        Variables variables = Variables.of(root);
+        List<Declared> found = new ArrayList<>(modifiers.size());
+        for (Map.Entry<String, JsonElement> entry : modifiers.entrySet()) {
+            JsonObject modifier = entry.getValue().getAsJsonObject();
+            int rank = variables.indexOf(modifier.get("variable").getAsString());
+            Variables.Variable variable = variables.get(rank);
+            found.add(new Declared(id + "/" + entry.getKey(), modifier.get("parameter").getAsString(),
+                    operation(modifier), rank, values(modifier),
+                    modifier.has("scale") ? modifier.get("scale").getAsDouble() : Double.NaN,
+                    minimum(variable), variable.initial()));
+        }
+        return found;
+    }
+
+    private static Modifier.Operation operation(JsonObject modifier) {
+        return Modifier.Operation.valueOf(modifier.get("operation").getAsString().toUpperCase(Locale.ROOT));
+    }
+
+    private static double[] values(JsonObject modifier) {
+        if (!modifier.has("values")) {
+            return null;
+        }
+        return modifier.getAsJsonArray("values").asList().stream().mapToDouble(JsonElement::getAsDouble).toArray();
+    }
+
+    /** {@return la plus petite valeur d'une variable, d'où {@code values} part : 0 pour un booléen} */
+    private static double minimum(Variables.Variable variable) {
+        return variable.type() == Variables.Type.BOOL ? 0.0 : variable.min();
     }
 
     /** {@return la plage d'une entrée de {@code tuning.ranges} : ses bornes, admises} */
@@ -172,18 +337,27 @@ public record Tuning(List<Parameter> parameters) {
     }
 
     /**
-     * Vérifie {@code tuning.ranges} (schéma 4) : chaque clé nomme un paramètre de la definition, et sa plage contient
-     * sa base.
+     * Vérifie {@code tuning} (schéma 4) : chaque clé de {@code ranges} nomme un paramètre de la definition, et sa plage
+     * contient sa base ; puis chaque modificateur déclaré ({@link #checkDeclared}).
      *
      * @param root document de la definition, ses règles de forme déjà passées
      * @param fault reçoit le chemin et la cause de chaque faute
      */
     static void check(JsonObject root, java.util.function.BiConsumer<String, String> fault) {
-        if (!(root.get("tuning") instanceof JsonObject tuning)
-                || !(tuning.get("ranges") instanceof JsonObject ranges)) {
+        if (!(root.get("tuning") instanceof JsonObject tuning)) {
             return;
         }
-        Tuning table = of(root);
+        // L'identifiant ne sert qu'à nommer les causes ; la forme de la cause se juge sur le nom du modificateur.
+        Tuning table = of("axion:verification", root);
+        if (tuning.get("ranges") instanceof JsonObject ranges) {
+            checkRanges(ranges, table, fault);
+        }
+        if (tuning.get("modifiers") instanceof JsonObject modifiers) {
+            checkDeclared(root, modifiers, table, fault);
+        }
+    }
+
+    private static void checkRanges(JsonObject ranges, Tuning table, java.util.function.BiConsumer<String, String> fault) {
         for (Map.Entry<String, JsonElement> entry : ranges.entrySet()) {
             String at = "$.tuning.ranges." + entry.getKey();
             int index = table.indexOf(entry.getKey());
@@ -200,5 +374,98 @@ public record Tuning(List<Parameter> parameters) {
                 fault.accept(at, "la plage " + range + " doit contenir la base, " + parameter.base());
             }
         }
+    }
+
+    /**
+     * Vérifie {@code tuning.modifiers} (ADR-167 D4) : chaque modificateur nomme un paramètre de la definition et une
+     * variable {@code replicate: all} — chaque joueur compose ce paramètre (Q5, Killian, 2026-11-12) ; il donne sa
+     * quantité par {@code values} (une par valeur d'une variable {@code int} ou {@code bool}) ou par {@code scale}
+     * (variable bornée), pas les deux ; aucune quantité ne fait seule sortir le paramètre de ses bornes ; et aux
+     * valeurs par défaut des variables, les modificateurs déclarés d'un paramètre l'y laissent ensemble.
+     */
+    private static void checkDeclared(JsonObject root, JsonObject modifiers, Tuning table,
+            java.util.function.BiConsumer<String, String> fault) {
+        Variables variables = Variables.of(root);
+        boolean sound = true;
+        for (Map.Entry<String, JsonElement> entry : modifiers.entrySet()) {
+            String at = "$.tuning.modifiers." + entry.getKey();
+            JsonObject modifier = entry.getValue().getAsJsonObject();
+            String refusal = declaredRefusal(entry.getKey(), modifier, table, variables);
+            if (refusal != null) {
+                fault.accept(at, refusal);
+                sound = false;
+            }
+        }
+        if (!sound) {
+            return;
+        }
+        for (int i = 0; i < table.size(); i++) {
+            Parameter parameter = table.get(i);
+            List<Modifier> atRest = table.declared().stream()
+                    .filter(declared -> declared.parameter().equals(parameter.name()))
+                    .map(declared -> declared.modifier(declared.initial()))
+                    .toList();
+            String refusal = atRest.isEmpty() ? null : parameter.refusal(compose(parameter.base(), atRest));
+            if (refusal != null) {
+                fault.accept("$.tuning.modifiers", "aux valeurs par défaut des variables, les modificateurs déclarés"
+                        + " ensemble : " + refusal);
+            }
+        }
+    }
+
+    /** {@return pourquoi ce modificateur déclaré est refusé, {@code null} s'il convient} */
+    private static String declaredRefusal(String name, JsonObject modifier, Tuning table, Variables variables) {
+        if (!DECLARED_NAME.matcher(name).matches()) {
+            return "nom « " + name + " » : minuscules, chiffres, « _ », « . » et « - » seulement — il fait la cause"
+                    + " <id de la definition>/<nom>";
+        }
+        String parameterName = modifier.get("parameter").getAsString();
+        int index = table.indexOf(parameterName);
+        if (index < 0) {
+            return "paramètre « " + parameterName + " » inconnu de cette definition ; elle a : "
+                    + String.join(", ", table.names());
+        }
+        Variables.Variable variable = variables.get(variables.indexOf(modifier.get("variable").getAsString()));
+        if (variable.replicate() != Variables.Replicate.ALL) {
+            return "variable « " + variable.name() + " » en replicate: " + variable.replicate().name().toLowerCase(
+                    Locale.ROOT) + " : une variable qui règle un paramètre doit être replicate: all, pour que chaque"
+                    + " joueur le compose";
+        }
+        boolean hasValues = modifier.has("values");
+        boolean hasScale = modifier.has("scale");
+        if (hasValues == hasScale) {
+            return "values ou scale, l'un des deux";
+        }
+        double[] amounts;
+        if (hasValues) {
+            if (variable.type() == Variables.Type.FLOAT) {
+                return "values demande une variable int ou bool ; « " + variable.name() + " » est float : scale";
+            }
+            double count = variable.type() == Variables.Type.BOOL ? 2 : variable.max() - variable.min() + 1;
+            amounts = values(modifier);
+            if (amounts.length != count) {
+                return "values : " + amounts.length + " quantité(s) pour " + (long) count + " valeur(s) de « "
+                        + variable.name() + " »";
+            }
+        } else {
+            if (!Double.isFinite(variable.min()) || !Double.isFinite(variable.max())) {
+                return "scale demande une variable bornée ; « " + variable.name() + " » ne l'est pas";
+            }
+            double scale = modifier.get("scale").getAsDouble();
+            amounts = new double[] {scale * (float) variable.min(), scale * (float) variable.max()};
+        }
+        Parameter parameter = table.get(index);
+        Modifier.Operation operation = operation(modifier);
+        for (double amount : amounts) {
+            if (!Double.isFinite(amount)) {
+                return "quantité non finie";
+            }
+            String refusal = parameter.refusal(compose(parameter.base(),
+                    List.of(new Modifier("axion:verification/" + name, parameterName, operation, amount))));
+            if (refusal != null) {
+                return "avec la quantité " + amount + ", seule : " + refusal;
+            }
+        }
+        return null;
     }
 }

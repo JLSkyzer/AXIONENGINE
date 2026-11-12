@@ -1582,6 +1582,47 @@
             },
             "additionalProperties": false
           }
+        },
+        "modifiers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "parameter": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "add",
+                  "multiply_base",
+                  "multiply_total"
+                ]
+              },
+              "variable": {
+                "type": "string",
+                "pattern": "^[ -~]{1,64}$",
+                "x-axion-refers": "variable"
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "scale": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "parameter",
+              "operation",
+              "variable"
+            ],
+            "additionalProperties": false
+          },
+          "maxProperties": 64,
+          "x-axion-code": "E-3050"
         }
       },
       "additionalProperties": false

@@ -429,27 +429,7 @@ public final class AssemblyParameters {
      * @param modifiers les modificateurs actifs, dans un ordre quelconque
      */
     static double compose(double base, List<Modifier> modifiers) {
-        List<Modifier> ordered = new ArrayList<>(modifiers);
-        ordered.sort(BY_CAUSE);
-        double added = 0.0;
-        double rate = 0.0;
-        double total = 1.0;
-        for (Modifier modifier : ordered) {
-            if (modifier.operation() == Modifier.Operation.ADD) {
-                added += modifier.amount();
-            }
-        }
-        for (Modifier modifier : ordered) {
-            if (modifier.operation() == Modifier.Operation.MULTIPLY_BASE) {
-                rate += modifier.amount();
-            }
-        }
-        for (Modifier modifier : ordered) {
-            if (modifier.operation() == Modifier.Operation.MULTIPLY_TOTAL) {
-                total *= 1.0 + modifier.amount();
-            }
-        }
-        return (base + added) * (1.0 + rate) * total;
+        return Tuning.compose(base, modifiers);
     }
 
     private int find(String cause, String parameter) {

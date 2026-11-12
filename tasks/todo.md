@@ -3719,6 +3719,26 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  66,8 m contre 119,6 m en 12 s, miroir du client au bit près, jugé par le film ; film du
                  véhicule rejoué sans faute après l'extraction.
      - [ ] 5b — modificateurs déclarés liés aux variables (schéma 4, builder), mode sport du buggy ; film.
+           **Q5 tranchée par Killian le 2026-11-12** : une variable qui porte un modificateur déclaré doit être
+           `replicate: all` ; la compilation refuse `driver` et `none` en le nommant (l'exemple `turbo` d'ADR-167 D4,
+           en `driver`, se corrige par une précision). Branche `wip/tranche-5b`. Étapes :
+           - [x] A : `tuning.modifiers` au schéma 4 (pas encore publié dans une version : aucun tag), schéma publié
+                 et builder régénérés ; `Tuning.Declared` (cause `<id>/<nom>`, paramètre, opération, rang de la
+                 variable, `values` ou `scale`) ; refus à la compilation : paramètre absent, variable non `all`,
+                 `values` hors d'une variable `int` ou `bool` ou de mauvaise longueur, `values` et `scale` ensemble
+                 ou aucun, une quantité qui seule sort des bornes, les déclarés ensemble hors bornes aux valeurs par
+                 défaut.
+           - [ ] B : composition — les déclarés d'abord dans le rejeu, puis les posés ; quantité tirée de la valeur
+                 de la variable arrondie en `f32` (celle que le client reçoit), au bit près des deux côtés ;
+                 `modify` refuse la cause d'un déclaré ; une écriture explicite de variable qui sortirait un
+                 paramètre de ses bornes ou rendrait inactif un actif est refusée (`E-7010`), un retour automatique
+                 (`hold` relâché, fin de `press`) passe, comme un retrait.
+           - [ ] C : branchement — serveur (garde des variables, envoi au natif, journal `E-7010` à débit limité,
+                 `variables().set` qui lève), client (miroir avec les variables reçues), `/axion params` et l'API
+                 montrent les déclarés (origine « variable ») ; GameTests.
+           - [ ] D : mode sport du buggy (touche libre), exemple compilé du témoin pour le guide, CDC A15
+                 (R-1087, R-1171 précisée, `E-7010` en A.1, CAP-03 tenue sauf la prédiction), précisions d'ADR-167
+                 et Q5, guide « Régler un véhicule » (section variable), film, fusion.
      - [x] **CAP-56** inscrite à l'annexe A.7 et à ADR-160 (2026-11-12, après la 5a ; sans ligne 38.9, comme
            CAP-53 à CAP-55 : l'annexe est hors du texte gelé et s'accroît par ADR-160 D8), accepté par Killian le
            2026-11-12 — mannequin du joueur à l'échelle du jeu, articulé aux pivots du jeu, poses debout, accroupi

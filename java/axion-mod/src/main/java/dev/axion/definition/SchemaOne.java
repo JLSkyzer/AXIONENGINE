@@ -146,9 +146,18 @@ final class SchemaOne {
         if (version >= 4) {
             // ADR-167 D2 : la plage qu'un réglage peut donner à chaque paramètre, dans son unité. Le nom du paramètre et
             // la base que la plage doit contenir se vérifient avec la definition entière (Tuning.check).
+            // ADR-167 D4 : une variable règle un paramètre ; le paramètre, la variable replicate: all, values ou scale
+            // et les bornes se vérifient avec la definition entière (Tuning.check).
             root.opt("tuning", obj()
                     .opt("ranges", new Dict(new TextRule.Free(),
                             obj().opt("min", number()).opt("max", number()).build(), Integer.MAX_VALUE))
+                    .opt("modifiers", new Dict(new TextRule.Free(), obj()
+                            .req("parameter", text())
+                            .req("operation", oneOf("add", "multiply_base", "multiply_total"))
+                            .req("variable", refers(NameCategory.VARIABLE))
+                            .opt("values", list(number()))
+                            .opt("scale", number())
+                            .build(), Tuning.MAX_DECLARED))
                     .build());
         }
         return root.build();

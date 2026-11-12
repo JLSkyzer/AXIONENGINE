@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.axion.api.assembly.Modifier;
 import dev.axion.api.assembly.Parameters;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -15,7 +16,10 @@ import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** ADR-167 D1, D2 : les paramètres réglables d'une definition, leurs bases, leurs limites et leurs plages. */
+/**
+ * ADR-167 D1, D2, D4 : les paramètres réglables d'une definition, leurs bases, leurs limites, leurs plages, et les
+ * modificateurs que ses variables déclarent.
+ */
 class TuningTest {
 
     private static final String MODELE = "mymod:axion/models/pickup.glb";
@@ -44,7 +48,7 @@ class TuningTest {
     @Test
     @DisplayName("D1 : un paramètre par grandeur déclarée, dans l'ordre fixe, un rapport par rang hors du point mort")
     void parametresDUnVehicule() throws DefinitionException {
-        Tuning tuning = Tuning.of(lire(4, VEHICULE).root());
+        Tuning tuning = Tuning.of("mymod:essai", lire(4, VEHICULE).root());
         assertEquals(List.of(Parameters.MASS, Parameters.ENGINE_TORQUE, Parameters.ENGINE_MAX_RPM,
                 Parameters.FINAL_DRIVE, Parameters.SHIFT_TIME, Parameters.gear(-1), Parameters.gear(1),
                 Parameters.gear(2), Parameters.gear(3), Parameters.BRAKES_FRONT, Parameters.BRAKES_REAR,
@@ -62,23 +66,23 @@ class TuningTest {
     @Test
     @DisplayName("D1 : sans masse déclarée ni moteur, ni mass ni moteur ; une boîte directe n'a ni rapports ni passage")
     void ceQuiNExistePas() throws DefinitionException {
-        Tuning sansMoteur = Tuning.of(lire(4, "\"wheels\": [{\"node\": \"a\", \"radius\": 0.3}]").root());
+        Tuning sansMoteur = Tuning.of("mymod:essai", lire(4, "\"wheels\": [{\"node\": \"a\", \"radius\": 0.3}]").root());
         assertEquals(-1, sansMoteur.indexOf(Parameters.MASS));
         assertEquals(-1, sansMoteur.indexOf(Parameters.ENGINE_TORQUE));
         assertTrue(sansMoteur.indexOf(Parameters.BRAKES_FRONT) >= 0, "les freins ont leurs défauts");
-        Tuning direct = Tuning.of(lire(4, "\"wheels\": [{\"node\": \"a\", \"radius\": 0.3, \"powered\": true}],"
+        Tuning direct = Tuning.of("mymod:essai", lire(4, "\"wheels\": [{\"node\": \"a\", \"radius\": 0.3, \"powered\": true}],"
                 + " \"powertrain\": {\"engine\": {\"torque_curve\": [[0, 50], [1000, 80]]}}").root());
         assertEquals(1f, base(direct, Parameters.FINAL_DRIVE), "le pont d'une boîte directe vaut 1 par défaut");
         assertEquals(-1, direct.indexOf(Parameters.SHIFT_TIME));
         assertFalse(direct.names().stream().anyMatch(name -> name.startsWith("transmission.gear.")));
-        assertEquals(Tuning.NONE, Tuning.of(lire(4, "\"physics\": {}").root()));
+        assertEquals(Tuning.NONE, Tuning.of("mymod:essai", lire(4, "\"physics\": {}").root()));
     }
 
     @Test
     @DisplayName("D1 : les bases sont celles que la section DEFN du natif reçoit, défauts compris")
     void basesEgalesALaSectionEncodee() throws DefinitionException {
         Definition definition = lire(4, VEHICULE);
-        Tuning tuning = Tuning.of(definition.root());
+        Tuning tuning = Tuning.of("mymod:essai", definition.root());
         byte[] octets = DefinitionEncoder.encode(
                 definition, true, CollisionGroupRegistry.empty(), nom -> 0, TireProfiles.empty()).bytes();
         int debut = octets.length - VehicleSpec.size(definition.root());
@@ -101,7 +105,7 @@ class TuningTest {
     @Test
     @DisplayName("D2 : les limites du schéma, et la plage de la definition qui les resserre")
     void bornes() throws DefinitionException {
-        Tuning tuning = Tuning.of(lire(4, VEHICULE + ", \"tuning\": {\"ranges\": {\"engine.torque\": {\"min\": 200,"
+        Tuning tuning = Tuning.of("mymod:essai", lire(4, VEHICULE + ", \"tuning\": {\"ranges\": {\"engine.torque\": {\"min\": 200,"
                 + " \"max\": 420}}}").root());
         Tuning.Parameter couple = tuning.get(tuning.indexOf(Parameters.ENGINE_TORQUE));
         assertNull(couple.refusal(420));
@@ -130,6 +134,71 @@ class TuningTest {
         assertTrue(refus(4, VEHICULE + ", \"tuning\": {\"ranges\": {\"mass\": {\"min\": 1300, \"max\": 1100}}}")
                 .contains("min dépasse max"));
         assertTrue(refus(3, VEHICULE + ", \"tuning\": {}").startsWith("$.tuning"));
+    }
+
+    /** Quatre variables : un booléen, un entier de 0 à 2, un réel borné, et un booléen que seul le conducteur reçoit. */
+    private static final String VARIABLES = ", \"variables\": {"
+            + "\"sport\": {\"type\": \"bool\", \"default\": false, \"replicate\": \"all\"},"
+            + " \"lest\": {\"type\": \"int\", \"default\": 0, \"min\": 0, \"max\": 2, \"replicate\": \"all\"},"
+            + " \"pression\": {\"type\": \"float\", \"default\": 1, \"min\": 0.5, \"max\": 1.5,"
+            + " \"replicate\": \"all\"},"
+            + " \"secret\": {\"type\": \"bool\", \"default\": false, \"replicate\": \"driver\"}}";
+
+    private static String modificateur(String nom, String parametre, String operation, String variable, String quantite) {
+        return "\"" + nom + "\": {\"parameter\": \"" + parametre + "\", \"operation\": \"" + operation
+                + "\", \"variable\": \"" + variable + "\"" + quantite + "}";
+    }
+
+    private static String avec(String... modificateurs) {
+        return VEHICULE + VARIABLES + ", \"tuning\": {\"modifiers\": {" + String.join(", ", modificateurs) + "}}";
+    }
+
+    @Test
+    @DisplayName("D4 : une variable règle un paramètre ; cause <id>/<nom>, quantité tirée de la valeur arrondie en f32")
+    void modificateursDeclares() throws DefinitionException {
+        Tuning tuning = Tuning.of("mymod:pickup", lire(4, avec(
+                modificateur("sport", "engine.torque", "multiply_base", "sport", ", \"values\": [0, 0.3]"),
+                modificateur("lest", "mass", "add", "lest", ", \"values\": [0, 50, 100]"),
+                modificateur("pneus", "tires.grip", "multiply_total", "pression", ", \"scale\": 0.1"))).root());
+        assertEquals(3, tuning.declared().size());
+        Tuning.Declared sport = tuning.declared().get(0);
+        assertEquals("mymod:pickup/sport", sport.cause());
+        assertEquals(0.0, sport.amount(0.0));
+        assertEquals(0.3, sport.amount(1.0));
+        assertEquals(100.0, tuning.declared().get(1).amount(2.0), "values part du minimum de la variable");
+        assertEquals(new Modifier("mymod:pickup/lest", Parameters.MASS, Modifier.Operation.ADD, 50.0),
+                tuning.declared().get(1).modifier(1.0));
+        assertEquals(0.1 * (float) 1.1, tuning.declared().get(2).amount(1.1),
+                "la valeur arrondie en f32, celle que le client reçoit");
+        assertEquals(1.0, tuning.declared().get(2).initial(), "la valeur par défaut de la variable");
+    }
+
+    @Test
+    @DisplayName("D4, Q5 : refusés — paramètre absent, variable qui ne part pas à tous, values ou scale mal donnés,"
+            + " quantité qui sort seule des bornes, déclarés hors bornes ensemble à leurs valeurs par défaut")
+    void modificateursRefuses() {
+        assertTrue(refus(4, avec(modificateur("m", "engine.turbo", "add", "sport", ", \"values\": [0, 1]")))
+                .contains("inconnu de cette definition"));
+        String prive = refus(4, avec(modificateur("m", "mass", "add", "secret", ", \"values\": [0, 1]")));
+        assertTrue(prive.startsWith("$.tuning.modifiers.m") && prive.contains("replicate: all"), prive);
+        assertTrue(refus(4, avec(modificateur("m", "mass", "add", "sport", ""))).contains("values ou scale"));
+        assertTrue(refus(4, avec(modificateur("m", "mass", "add", "sport", ", \"values\": [0, 1], \"scale\": 2")))
+                .contains("values ou scale"));
+        assertTrue(refus(4, avec(modificateur("m", "mass", "add", "lest", ", \"values\": [0, 1]")))
+                .contains("2 quantité(s) pour 3"));
+        assertTrue(refus(4, avec(modificateur("m", "mass", "add", "pression", ", \"values\": [0, 1]")))
+                .contains("float"));
+        String seule = refus(4, avec(modificateur("m", "mass", "add", "sport", ", \"values\": [0, -1300]")));
+        assertTrue(seule.contains("seule") && seule.contains("mass"), seule);
+        assertTrue(refus(4, avec(modificateur("m", "mass", "add", "absente", ", \"values\": [0, 1]")))
+                .startsWith("$.tuning.modifiers.m.variable"), "une variable que la definition ne déclare pas");
+        assertTrue(refus(4, avec(modificateur("Turbo", "mass", "add", "sport", ", \"values\": [0, 1]")))
+                .contains("minuscules"));
+        // Seul, chacun laisse 500 kg ; ensemble, à la valeur par défaut de « lest », -200 kg.
+        String ensemble = refus(4, avec(
+                modificateur("a", "mass", "add", "lest", ", \"values\": [-700, 0, 0]"),
+                modificateur("b", "mass", "add", "lest", ", \"values\": [-700, 0, 0]")));
+        assertTrue(ensemble.contains("valeurs par défaut"), ensemble);
     }
 
     private static double base(Tuning tuning, String name) {

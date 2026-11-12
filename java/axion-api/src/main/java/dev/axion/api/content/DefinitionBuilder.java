@@ -4107,6 +4107,72 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code tuning.modifiers.*}. */
+    @Experimental
+    public static final class TuningModifier {
+
+        private final Map<String, Object> values;
+
+        private TuningModifier(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code tuning.modifiers.*.operation} : parmi {@code add}, {@code multiply_base}, {@code multiply_total}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public TuningModifier operation(String value) {
+            values.put("operation", Objects.requireNonNull(value, "operation"));
+            return this;
+        }
+
+        /**
+         * {@code tuning.modifiers.*.parameter}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public TuningModifier parameter(String value) {
+            values.put("parameter", Objects.requireNonNull(value, "parameter"));
+            return this;
+        }
+
+        /**
+         * {@code tuning.modifiers.*.scale}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public TuningModifier scale(double value) {
+            values.put("scale", value);
+            return this;
+        }
+
+        /**
+         * {@code tuning.modifiers.*.values}.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public TuningModifier values(double... items) {
+            values.put("values", doubles(items));
+            return this;
+        }
+
+        /**
+         * {@code tuning.modifiers.*.variable} : nom (variable) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public TuningModifier variable(String value) {
+            values.put("variable", Objects.requireNonNull(value, "variable"));
+            return this;
+        }
+    }
+
     /** {@code tuning.ranges.*}. */
     @Experimental
     public static final class TuningRange {
@@ -4148,6 +4214,38 @@ public final class DefinitionBuilder {
 
         private Tuning(Map<String, Object> values) {
             this.values = values;
+        }
+
+        /**
+         * {@code tuning.modifiers}.
+         *
+         * @param name clé de la table
+         * @param parameter le champ obligatoire {@code parameter}
+         * @param operation le champ obligatoire {@code operation}
+         * @param variable le champ obligatoire {@code variable}
+         * @param config règle l'élément ; rappelée avec les mêmes clés, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Tuning modifier(String name, String parameter, String operation, String variable, Consumer<TuningModifier> config) {
+            Map<String, Object> item = path(values, "modifiers", name);
+            item.put("parameter", Objects.requireNonNull(parameter, "parameter"));
+            item.put("operation", Objects.requireNonNull(operation, "operation"));
+            item.put("variable", Objects.requireNonNull(variable, "variable"));
+            Objects.requireNonNull(config, "config").accept(new TuningModifier(item));
+            return this;
+        }
+
+        /**
+         * {@code tuning.modifiers}.
+         *
+         * @param name clé de la table
+         * @param parameter le champ obligatoire {@code parameter}
+         * @param operation le champ obligatoire {@code operation}
+         * @param variable le champ obligatoire {@code variable}
+         * @return ce réglage, pour enchaîner
+         */
+        public Tuning modifier(String name, String parameter, String operation, String variable) {
+            return modifier(name, parameter, operation, variable, item -> { });
         }
 
         /**

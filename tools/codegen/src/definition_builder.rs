@@ -98,6 +98,7 @@ pub const SINGULARS: &[(&str, &str)] = &[
     ("collision_proxies", "collision_proxy"),
     ("damage_zones", "damage_zone"),
     ("joints", "joint"),
+    ("modifiers", "modifier"),
     ("morphs", "morph"),
     ("particles", "particle"),
     ("parts", "part"),
