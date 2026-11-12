@@ -3728,12 +3728,12 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  `values` hors d'une variable `int` ou `bool` ou de mauvaise longueur, `values` et `scale` ensemble
                  ou aucun, une quantité qui seule sort des bornes, les déclarés ensemble hors bornes aux valeurs par
                  défaut.
-           - [ ] B : composition — les déclarés d'abord dans le rejeu, puis les posés ; quantité tirée de la valeur
+           - [x] B : composition — les déclarés d'abord dans le rejeu, puis les posés ; quantité tirée de la valeur
                  de la variable arrondie en `f32` (celle que le client reçoit), au bit près des deux côtés ;
                  `modify` refuse la cause d'un déclaré ; une écriture explicite de variable qui sortirait un
                  paramètre de ses bornes ou rendrait inactif un actif est refusée (`E-7010`), un retour automatique
                  (`hold` relâché, fin de `press`) passe, comme un retrait.
-           - [ ] C : branchement — serveur (garde des variables, envoi au natif, journal `E-7010` à débit limité,
+           - [x] C : branchement — serveur (garde des variables, envoi au natif, journal `E-7010` à débit limité,
                  `variables().set` qui lève), client (miroir avec les variables reçues), `/axion params` et l'API
                  montrent les déclarés (origine « variable ») ; GameTests.
            - [ ] D : mode sport du buggy (touche libre), exemple compilé du témoin pour le guide, CDC A15

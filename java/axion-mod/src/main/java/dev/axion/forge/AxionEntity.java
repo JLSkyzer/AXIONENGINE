@@ -146,6 +146,21 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     private AssemblyState.Modifiers mirroredParameters;
 
+    /** Les variables du plus récent snapshot reçu (client), et celles dont le miroir est fait (ADR-167 D4). */
+    private AssemblyState.VariableValues receivedVariables = AssemblyState.VariableValues.NONE;
+
+    private AssemblyState.VariableValues mirroredVariables;
+
+    /** Les variables que les modificateurs déclarés suivent, et leur version (serveur, ADR-167 D4). */
+    private AssemblyVariables variedBy;
+
+    private long variedVersion = -1L;
+
+    /** Le dernier tick où un refus {@code E-7010} s'est journalisé, et ceux tus depuis (serveur). */
+    private int refusalLoggedTick = Integer.MIN_VALUE;
+
+    private int refusalsHushed;
+
     /** La version des variables que {@link #netState} porte, et celles que seul le conducteur reçoit (serveur). */
     private long netVariablesVersion = -1L;
 
@@ -450,7 +465,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             if (held == null) {
                 return false;
             }
-            held.set(interaction.variable(), interaction.value(), "interaction (" + player.getName().getString() + ")");
+            try {
+                held.set(interaction.variable(), interaction.value(),
+                        "interaction (" + player.getName().getString() + ")");
+            } catch (IllegalArgumentException refused) {
+                // ADR-167 D2 : ce que la variable règle sortirait de ses bornes ; rien ne change.
+                logRefusals(List.of(refused.getMessage() + " (interaction de " + player.getName().getString() + ")"));
+                return false;
+            }
             return true;
         }
         if (interaction.action() != Seating.Action.TOGGLE_ANIMATION
@@ -507,6 +529,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             for (String refusal : refusals) {
                 LOGGER.warn("AXION : assembly {} — {}", getUUID(), refusal);
             }
+            // ADR-167 D4 : une écriture explicite se juge avec ce que la variable règle.
+            fresh.guard((index, next) -> {
+                dev.axion.entity.AssemblyParameters table = parameters();
+                return table == null ? null : table.refusal(index, next);
+            });
             variables = fresh;
         }
         return variables;
@@ -520,8 +547,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * que ses nouvelles bornes refusent, ou qui vise un paramètre qu'elle n'a plus, reste posé mais inactif, et se dit
      * ({@code E-7011}).
      *
+     * <p>Les modificateurs déclarés suivent les variables (D4) : au serveur, à chaque lecture où elles ont changé.
+     *
      * <p>Au client, c'est leur miroir (D8) : les modificateurs du plus récent snapshot, rejoués sur la definition reçue
-     * — les valeurs du serveur, au bit près. Il se lit ; rien ne l'écrit que le snapshot suivant.
+     * avec les variables reçues — les valeurs du serveur, au bit près. Il se lit ; rien ne l'écrit que le snapshot
+     * suivant.
      */
     public dev.axion.entity.AssemblyParameters parameters() {
         dev.axion.definition.Tuning tuning = inert ? null : AxionEntities.tuning(definitionId).orElse(null);
@@ -529,14 +559,27 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return null;
         }
         if (level().isClientSide()) {
-            if (parameters == null || parameters.tuning() != tuning || mirroredParameters != receivedParameters) {
-                parameters = dev.axion.entity.AssemblyParameters.mirror(tuning, receivedParameters);
+            if (parameters == null || parameters.tuning() != tuning || mirroredParameters != receivedParameters
+                    || mirroredVariables != receivedVariables) {
+                double[] variables = new double[receivedVariables.count()];
+                for (int i = 0; i < variables.length; i++) {
+                    variables[i] = receivedVariables.value(i);
+                }
+                parameters = dev.axion.entity.AssemblyParameters.mirror(tuning, receivedParameters, variables);
                 mirroredParameters = receivedParameters;
+                mirroredVariables = receivedVariables;
             }
             return parameters;
         }
+        AssemblyVariables held = variables();
         if (parameters == null || parameters.tuning() != tuning) {
             dev.axion.entity.AssemblyParameters fresh = new dev.axion.entity.AssemblyParameters(tuning);
+            // Les déclarés d'abord, pour que le rejeu des modificateurs relus les compte.
+            if (held != null) {
+                fresh.vary(held.values());
+            }
+            variedBy = held;
+            variedVersion = held == null ? -1L : held.version();
             List<String> lines = parameters != null
                     ? fresh.adopt(parameters)
                     : fresh.restore(AssemblyTags.parameters(stored), dev.axion.entity.AssemblyParameters.SAVE);
@@ -544,8 +587,29 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 LOGGER.warn("AXION : E-7011 assembly {} — {}", getUUID(), line);
             }
             parameters = fresh;
+        } else if (held != null && (held != variedBy || held.version() != variedVersion)) {
+            parameters.vary(held.values());
+            variedBy = held;
+            variedVersion = held.version();
         }
         return parameters;
+    }
+
+    /**
+     * Journalise les écritures de variables refusées (serveur, ADR-167 D2, {@code E-7010}) : une par seconde au plus,
+     * les suivantes comptées et dites avec la prochaine.
+     */
+    private void logRefusals(List<String> refusals) {
+        for (String refusal : refusals) {
+            if (tickCount - refusalLoggedTick < 20) {
+                refusalsHushed++;
+                continue;
+            }
+            LOGGER.warn("AXION : E-7010 assembly {} — {}{}", getUUID(), refusal,
+                    refusalsHushed == 0 ? "" : " (" + refusalsHushed + " refus tus depuis le précédent)");
+            refusalLoggedTick = tickCount;
+            refusalsHushed = 0;
+        }
     }
 
     /**
@@ -569,8 +633,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-163 D2 : les commandes tenues, sur la séquence des entrées de ce siège.
         AssemblyVariables held = declared.bindings().isEmpty() ? null : variables();
         if (held != null) {
-            held.input(seat, declared.bindings(), sanitized.flags(),
-                    "siège " + declared.name() + " (" + sender.getName().getString() + ")");
+            logRefusals(held.input(seat, declared.bindings(), sanitized.flags(),
+                    "siège " + declared.name() + " (" + sender.getName().getString() + ")"));
         }
         return input.finite() ? null : "entrée non finie, comptée pour zéro (R-1110)";
     }
@@ -1544,8 +1608,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (serverTick >= receivedJointsTick) {
             receivedJoints = state.joints();
             receivedAnimation = state.animation();
-            // ADR-167 D8 : les modificateurs non plus ; le miroir se refait à la lecture suivante.
+            // ADR-167 D8 : les modificateurs non plus, ni les variables qui règlent les déclarés (D4) ; le miroir se
+            // refait à la lecture suivante.
             receivedParameters = state.parameters();
+            receivedVariables = state.variables();
             receivedJointsTick = serverTick;
         }
     }

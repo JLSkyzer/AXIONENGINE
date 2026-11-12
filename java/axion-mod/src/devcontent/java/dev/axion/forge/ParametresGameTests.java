@@ -180,7 +180,8 @@ public final class ParametresGameTests {
                             "daté du pas qui les applique : " + envoyes.tick() + " pour une pose au tick " + pose[0]);
                     AssemblyParameters table = assembly.parameters();
                     helper.assertTrue(envoyes.equals(table.posed(envoyes.tick())), "la liste posée : " + envoyes);
-                    AssemblyParameters miroir = AssemblyParameters.mirror(table.tuning(), relu(assembly.netState()));
+                    AssemblyParameters miroir = AssemblyParameters.mirror(table.tuning(), relu(assembly.netState()),
+                            new double[0]);
                     for (int i = 0; i < table.tuning().size(); i++) {
                         helper.assertTrue(Double.doubleToRawLongBits(table.value(i))
                                         == Double.doubleToRawLongBits(miroir.value(i)),
@@ -201,6 +202,85 @@ public final class ParametresGameTests {
                             "une liste vidée n'est pas une assembly vierge");
                 })
                 .thenSucceed();
+    }
+
+    /**
+     * D4 : une variable règle un paramètre. La commande 1 du siège bascule {@code bride}, qui divise le couple par deux :
+     * au serveur comme chez le client qui reçoit la variable. Une écriture qui sortirait le couple de sa plage
+     * ({@code tuning.ranges}, 20 à 80 N·m) est refusée — par la touche comme par l'API —, et la variable garde sa
+     * valeur.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void uneVariableRegleLeCouple(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(helper, "axion:test/vehicule_bride",
+                new Vec3(4.5, DESSUS_DALLE, 4.5), IDENTITE);
+        ServerPlayer conducteur = figurant(helper, "bride");
+        VehicleInput commande = new VehicleInput(0f, 0f, 0f, 0f, 0f, (byte) 0, 1);
+        int[] couple = new int[1];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.parameters() != null && assembly.netState() != null
+                        && assembly.seatingKnown(), "l'assembly est simulée"))
+                .thenExecute(() -> {
+                    helper.assertTrue(assembly.reseat(conducteur, "conducteur"), "le conducteur s'assoit");
+                    AssemblyParameters table = assembly.parameters();
+                    couple[0] = table.tuning().indexOf(Parameters.ENGINE_TORQUE);
+                    helper.assertTrue(table.value(couple[0]) == 60.0, "à la base : " + table.value(couple[0]));
+                    int siege = assembly.seatOf(conducteur);
+                    assembly.receiveInput(conducteur, siege, commande);
+                    helper.assertTrue(assembly.variables().get(0) == 1.0, "la commande 1 bascule la variable");
+                    helper.assertTrue(assembly.parameters().value(couple[0]) == 30.0,
+                            "couple bridé : " + assembly.parameters().value(couple[0]));
+                    Parameters.Applied declare = assembly.parameters().applied().get(0);
+                    helper.assertTrue(declare.origin().equals(AssemblyParameters.VARIABLE)
+                            && declare.modifier().cause().equals("axion:test/vehicule_bride/bride"), "déclaré : " + declare);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(assembly.netState().variables().has(0)
+                        && assembly.netState().variables().value(0) == 1f, "la variable part aux joueurs"))
+                .thenExecute(() -> {
+                    // D8 : le client compose avec ce qu'il lit du fil, variables comprises.
+                    AssemblyParameters miroir = AssemblyParameters.mirror(assembly.parameters().tuning(),
+                            relu(assembly.netState()), variablesRelues(assembly.netState()));
+                    helper.assertTrue(Double.doubleToRawLongBits(miroir.value(couple[0]))
+                            == Double.doubleToRawLongBits(assembly.parameters().value(couple[0])),
+                            "le client lit " + miroir.value(couple[0]));
+                    int siege = assembly.seatOf(conducteur);
+                    assembly.receiveInput(conducteur, siege, VehicleInput.NONE);
+                    assembly.receiveInput(conducteur, siege, commande);
+                    helper.assertTrue(assembly.variables().get(0) == 0.0, "second appui : débridé");
+                    // 60 - 25 = 35 N·m ; bridé, 17,5 N·m sortirait de la plage [20, 80].
+                    AxionApi.get().assemblies().byEntity(assembly).orElseThrow().parameters().modify(
+                            new Modifier("essai:lest", Parameters.ENGINE_TORQUE, Modifier.Operation.ADD, -25));
+                    assembly.receiveInput(conducteur, siege, VehicleInput.NONE);
+                    assembly.receiveInput(conducteur, siege, commande);
+                    helper.assertTrue(assembly.variables().get(0) == 0.0, "la touche est refusée");
+                    helper.assertTrue(assembly.parameters().value(couple[0]) == 35.0,
+                            "couple inchangé : " + assembly.parameters().value(couple[0]));
+                    try {
+                        AxionApi.get().assemblies().byEntity(assembly).orElseThrow().variables().set("bride", 1);
+                        helper.fail("l'API pose une variable qui sortirait le couple de sa plage");
+                    } catch (IllegalArgumentException refuse) {
+                        helper.assertTrue(refuse.getMessage().contains("engine.torque"), refuse.getMessage());
+                    }
+                    conducteur.stopRiding();
+                })
+                .thenSucceed();
+    }
+
+    /** {@return les variables qu'un joueur lit de cet état, après un aller-retour sur le fil} */
+    private static double[] variablesRelues(AssemblyState etat) {
+        try {
+            byte[] fil = new SnapshotMessage(1, 1L, SnapshotMessage.DESCRIPTOR_VERSION,
+                    List.of(SnapshotMessage.Entry.full(1, etat))).encode();
+            AssemblyState.VariableValues lues = SnapshotMessage.decode(fil).entries().get(0).resolve(null).variables();
+            double[] valeurs = new double[lues.count()];
+            for (int i = 0; i < valeurs.length; i++) {
+                valeurs[i] = lues.value(i);
+            }
+            return valeurs;
+        } catch (MalformedPacketException refuse) {
+            throw new IllegalStateException("le snapshot de l'assembly se relit mal : " + refuse.getMessage(), refuse);
+        }
     }
 
     /** {@return les modificateurs qu'un joueur lit de cet état, après un aller-retour sur le fil} */

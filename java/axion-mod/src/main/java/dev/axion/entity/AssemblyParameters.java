@@ -5,7 +5,7 @@ import dev.axion.api.assembly.Parameters;
 import dev.axion.definition.Tuning;
 import dev.axion.net.AssemblyState;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.BitSet;
 import java.util.List;
 import java.util.Objects;
 
@@ -24,6 +24,10 @@ import java.util.Objects;
  * ({@link Tuning.Parameter#refusal}), et le parcours recommence tant qu'il en active un. Un modificateur qui vise un
  * paramètre que la definition n'a pas reste inactif. Le rejeu ne dépend que de la liste et de la definition : le
  * client qui la reçoit retrouve les mêmes actifs.
+ *
+ * <p><strong>Les modificateurs déclarés</strong> (D4) suivent les variables de l'assembly ({@link #vary}) : ils
+ * passent les premiers au rejeu, dans l'ordre de la definition, avant les modificateurs posés. Ils ne se posent ni ne se
+ * retirent ; une écriture de variable qui les ferait sortir des bornes se refuse d'abord ({@link #refusal}).
  *
  * <ul>
  *   <li>{@link #modify} refuse, et ne change rien, un modificateur qui serait inactif, ou qui rendrait inactif un
@@ -48,16 +52,18 @@ public final class AssemblyParameters {
     /** Un modificateur relu de la sauvegarde. */
     public static final String SAVE = "sauvegarde";
 
+    /** Un modificateur que la definition déclare, et qu'une variable règle (D4). */
+    public static final String VARIABLE = "variable";
+
     /** Les origines, chacune au rang de son code sur le fil ({@link AssemblyState.Posed}). */
     static final List<String> ORIGINS = List.of(API, COMMAND, SAVE);
 
     /** L'espace de noms des causes du moteur, réservé (D2). */
     static final String ENGINE_NAMESPACE = "axion:";
 
-    /** L'ordre de composition : celui des identifiants de cause. */
-    private static final Comparator<Modifier> BY_CAUSE = Comparator.comparing(Modifier::cause);
-
     private final Tuning tuning;
+    /** Les modificateurs déclarés, un par entrée de {@code tuning.declared()}, à la valeur de leur variable. */
+    private final List<Entry> declared = new ArrayList<>();
     private final List<Entry> entries = new ArrayList<>();
     private final double[] values;
     private long version;
@@ -70,7 +76,7 @@ public final class AssemblyParameters {
         private String reason;
 
         private Entry(Modifier modifier, String origin) {
-            if (!ORIGINS.contains(origin)) {
+            if (!ORIGINS.contains(origin) && !VARIABLE.equals(origin)) {
                 throw new IllegalArgumentException("origine « " + origin + " » : " + ORIGINS + " attendue");
             }
             this.modifier = modifier;
@@ -86,7 +92,8 @@ public final class AssemblyParameters {
     }
 
     /**
-     * Les paramètres d'une assembly neuve, à leur base.
+     * Les paramètres d'une assembly neuve : à leur base, composée avec les modificateurs déclarés aux valeurs par défaut
+     * de leurs variables.
      *
      * @param tuning les paramètres que sa definition déclare
      */
@@ -96,6 +103,76 @@ public final class AssemblyParameters {
         for (int i = 0; i < values.length; i++) {
             values[i] = tuning.get(i).base();
         }
+        for (Tuning.Declared one : tuning.declared()) {
+            declared.add(new Entry(one.modifier(one.initial()), VARIABLE));
+        }
+        if (!declared.isEmpty()) {
+            for (int i = 0; i < values.length; i++) {
+                replay(i);
+            }
+        }
+    }
+
+    /** Une copie, pour juger une écriture sans rien changer. */
+    private AssemblyParameters(AssemblyParameters other) {
+        tuning = other.tuning;
+        values = other.values.clone();
+        version = other.version;
+        other.declared.forEach(entry -> declared.add(entry.copy()));
+        other.entries.forEach(entry -> entries.add(entry.copy()));
+    }
+
+    /**
+     * Suit les variables de l'assembly (D4) : chaque modificateur déclaré prend la quantité que la valeur de sa variable
+     * lui donne, et les paramètres qu'il règle se rejouent. Une valeur qui ne change aucune quantité ne change rien.
+     *
+     * @param variables la valeur de chaque variable de la definition, dans son ordre
+     * @return vrai si une quantité a changé
+     */
+    public boolean vary(double[] variables) {
+        BitSet touched = new BitSet();
+        for (int k = 0; k < declared.size(); k++) {
+            Tuning.Declared one = tuning.declared().get(k);
+            Modifier next = one.modifier(one.variable() < variables.length ? variables[one.variable()] : one.initial());
+            if (Double.compare(next.amount(), declared.get(k).modifier.amount()) != 0) {
+                declared.set(k, new Entry(next, VARIABLE));
+                touched.set(tuning.indexOf(one.parameter()));
+            }
+        }
+        if (touched.isEmpty()) {
+            return false;
+        }
+        touched.stream().forEach(this::replay);
+        version++;
+        return true;
+    }
+
+    /**
+     * {@return pourquoi ces valeurs de variables sont refusées, {@code null} si elles conviennent} (D2, D4) : une
+     * écriture de variable qui laisserait inactif un modificateur qu'elle déclare — sa valeur sortirait des bornes —, ou
+     * qui rendrait inactif un modificateur actif, est refusée comme une variable hors bornes. Rien n'est changé.
+     *
+     * @param variable le rang de la variable écrite
+     * @param variables la valeur de chaque variable après l'écriture
+     */
+    public String refusal(int variable, double[] variables) {
+        AssemblyParameters after = new AssemblyParameters(this);
+        if (!after.vary(variables)) {
+            return null;
+        }
+        for (int k = 0; k < declared.size(); k++) {
+            Entry now = after.declared.get(k);
+            if (!now.active && (tuning.declared().get(k).variable() == variable || declared.get(k).active)) {
+                return now.reason;
+            }
+        }
+        for (int i = 0; i < entries.size(); i++) {
+            if (entries.get(i).active && !after.entries.get(i).active) {
+                return "rendrait inactif le modificateur de « " + entries.get(i).modifier.cause() + " » : "
+                        + after.entries.get(i).reason;
+            }
+        }
+        return null;
     }
 
     /** {@return les paramètres déclarés} */
@@ -199,19 +276,29 @@ public final class AssemblyParameters {
      *
      * @param tuning les paramètres de la definition reçue
      * @param received les modificateurs du dernier snapshot
+     * @param variables les variables reçues avec lui, qui règlent les modificateurs déclarés
      */
-    public static AssemblyParameters mirror(Tuning tuning, AssemblyState.Modifiers received) {
+    public static AssemblyParameters mirror(Tuning tuning, AssemblyState.Modifiers received, double[] variables) {
         AssemblyParameters mirror = new AssemblyParameters(tuning);
+        mirror.vary(variables);
         mirror.restore(received.posed().stream().map(AssemblyState.Posed::modifier).toList(),
                 received.posed().stream().map(posed -> ORIGINS.get(posed.origin())).toList());
         return mirror;
     }
 
-    /** {@return tous les modificateurs posés, dans l'ordre de leur pose, avec leur origine et leur état} */
+    /**
+     * {@return tous les modificateurs, avec leur origine et leur état : les déclarés d'abord, dans l'ordre de la
+     * definition, puis les posés, dans l'ordre de leur pose}
+     */
     public List<Parameters.Applied> applied() {
-        return entries.stream()
-                .map(entry -> new Parameters.Applied(entry.modifier, entry.origin, entry.active, entry.reason))
-                .toList();
+        List<Parameters.Applied> applied = new ArrayList<>(declared.size() + entries.size());
+        for (Entry entry : declared) {
+            applied.add(new Parameters.Applied(entry.modifier, entry.origin, entry.active, entry.reason));
+        }
+        for (Entry entry : entries) {
+            applied.add(new Parameters.Applied(entry.modifier, entry.origin, entry.active, entry.reason));
+        }
+        return List.copyOf(applied);
     }
 
     /**
@@ -219,14 +306,20 @@ public final class AssemblyParameters {
      *
      * @param modifier le modificateur
      * @param origin d'où il vient, pour le diagnostic
-     * @throws IllegalArgumentException si la cause est réservée au moteur, si le paramètre n'existe pas, si le
-     *     plafond est atteint, ou si le rejeu le laisserait inactif ou rendrait inactif un modificateur actif ; rien
-     *     n'est changé
+     * @throws IllegalArgumentException si la cause est réservée au moteur ou à un modificateur déclaré, si le
+     *     paramètre n'existe pas, si le plafond est atteint, ou si le rejeu le laisserait inactif ou rendrait inactif un
+     *     modificateur actif ; rien n'est changé
      */
     public void modify(Modifier modifier, String origin) {
         if (modifier.cause().startsWith(ENGINE_NAMESPACE)) {
             throw new IllegalArgumentException("cause « " + modifier.cause()
                     + " » : l'espace de noms axion est réservé aux causes du moteur");
+        }
+        for (Tuning.Declared one : tuning.declared()) {
+            if (one.cause().equals(modifier.cause())) {
+                throw new IllegalArgumentException("cause « " + modifier.cause()
+                        + " » : celle d'un modificateur que la definition déclare ; il suit sa variable");
+            }
         }
         int index = tuning.indexOf(modifier.parameter());
         if (index < 0) {
@@ -386,7 +479,8 @@ public final class AssemblyParameters {
      */
     private void replay(int index) {
         Tuning.Parameter parameter = tuning.get(index);
-        List<Entry> mine = entries.stream()
+        // D4 : les déclarés d'abord, dans l'ordre de la definition, puis les posés, dans l'ordre de leur pose.
+        List<Entry> mine = java.util.stream.Stream.concat(declared.stream(), entries.stream())
                 .filter(entry -> entry.modifier.parameter().equals(parameter.name()))
                 .toList();
         List<Modifier> active = new ArrayList<>();

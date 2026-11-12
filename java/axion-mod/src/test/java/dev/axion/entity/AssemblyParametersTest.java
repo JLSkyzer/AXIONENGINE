@@ -3,13 +3,17 @@ package dev.axion.entity;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonParser;
 import dev.axion.api.assembly.Modifier;
 import dev.axion.api.assembly.Modifier.Operation;
 import dev.axion.api.assembly.Parameters;
+import dev.axion.definition.Seating;
 import dev.axion.definition.Tuning;
+import dev.axion.definition.Variables;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.MalformedPacketException;
 import dev.axion.net.SmallestThree;
@@ -205,14 +209,112 @@ class AssemblyParametersTest {
         AssemblyState.Modifiers recus = SnapshotMessage.decode(fil).entries().get(0).resolve(null).parameters();
         assertEquals(4321L, recus.tick(), "daté du tick où la liste a pris effet");
 
-        AssemblyParameters client = AssemblyParameters.mirror(tuning(), recus);
+        AssemblyParameters client = AssemblyParameters.mirror(tuning(), recus, new double[0]);
         for (int i = 0; i < serveur.tuning().size(); i++) {
             assertEquals(Double.doubleToRawLongBits(serveur.value(i)), Double.doubleToRawLongBits(client.value(i)),
                     serveur.tuning().get(i).name());
         }
         assertEquals(serveur.applied(), client.applied(), "mêmes causes, mêmes origines, mêmes actifs, mêmes raisons");
         assertEquals(serveur.posed(4321L), client.posed(4321L));
-        AssemblyParameters vierge = AssemblyParameters.mirror(tuning(), AssemblyState.Modifiers.NONE);
+        AssemblyParameters vierge = AssemblyParameters.mirror(tuning(), AssemblyState.Modifiers.NONE, new double[0]);
         assertEquals(260.0, vierge.value(vierge.tuning().indexOf(Parameters.ENGINE_TORQUE)), "rien reçu : la base");
+    }
+
+    /** Le couple de {@link #tuning()}, et un mode sport : la variable 0, un booléen, ajoute 30 % à sa base. */
+    private static Tuning sport() {
+        Tuning base = tuning();
+        return new Tuning(base.parameters(), List.of(new Tuning.Declared("mymod:buggy/sport", Parameters.ENGINE_TORQUE,
+                Operation.MULTIPLY_BASE, 0, new double[] {0, 0.3}, Double.NaN, 0, 0)));
+    }
+
+    @Test
+    @DisplayName("D4 : un modificateur déclaré suit sa variable, passe le premier, et ne se pose ni ne se retire")
+    void declaresSuiventLaVariable() {
+        AssemblyParameters parametres = new AssemblyParameters(sport());
+        int couple = parametres.tuning().indexOf(Parameters.ENGINE_TORQUE);
+        assertEquals(260, parametres.value(couple), "sport éteint : la base");
+        long avant = parametres.version();
+        assertTrue(parametres.vary(new double[] {1}));
+        assertEquals(Double.doubleToLongBits(Tuning.compose(260, List.of(couple("mymod:buggy/sport",
+                Operation.MULTIPLY_BASE, 0.3)))), Double.doubleToLongBits(parametres.value(couple)));
+        assertTrue(parametres.version() > avant, "le changement part au natif et aux joueurs");
+        assertFalse(parametres.vary(new double[] {1}), "même valeur : rien");
+        Parameters.Applied declare = parametres.applied().get(0);
+        assertEquals(AssemblyParameters.VARIABLE, declare.origin());
+        assertTrue(declare.active());
+        assertTrue(parametres.modifiers().isEmpty(), "rien de posé : un déclaré ne se sauvegarde pas");
+        assertFalse(parametres.remove("mymod:buggy/sport"), "un déclaré ne se retire pas");
+        IllegalArgumentException meme = assertThrows(IllegalArgumentException.class, () -> parametres.modify(
+                couple("mymod:buggy/sport", Operation.ADD, 1), AssemblyParameters.API));
+        assertTrue(meme.getMessage().contains("déclare"), meme.getMessage());
+    }
+
+    @Test
+    @DisplayName("D2, D4 : une écriture de variable qui rendrait inactif un actif est refusée ; le garde la bloque")
+    void ecritureRefusee() {
+        AssemblyParameters parametres = new AssemblyParameters(sport());
+        // 260 × 1.5 = 390 tient dans [200, 420] ; avec le mode sport, 260 × 1.8 = 468 n'y tient plus.
+        parametres.modify(couple("turbo:boost", Operation.MULTIPLY_BASE, 0.5), AssemblyParameters.API);
+        String refus = parametres.refusal(0, new double[] {1});
+        assertTrue(refus != null && refus.contains("turbo:boost"), refus);
+        assertNull(parametres.refusal(0, new double[] {0}), "rester éteint ne change rien");
+        assertEquals(390, parametres.value(parametres.tuning().indexOf(Parameters.ENGINE_TORQUE)), 1e-9,
+                "juger ne change rien");
+
+        Variables declarees = Variables.of(JsonParser.parseString(
+                "{\"variables\": {\"sport\": {\"type\": \"bool\", \"replicate\": \"all\"}}}").getAsJsonObject());
+        AssemblyVariables variables = new AssemblyVariables(declarees);
+        variables.guard(parametres::refusal);
+        List<Seating.Binding> bascule = List.of(
+                new Seating.Binding(1, "sport", 0, Seating.Mode.TOGGLE, new double[] {0, 1}));
+        List<String> refus2 = variables.input(0, bascule, 1, "conducteur");
+        assertEquals(1, refus2.size(), "la touche est refusée");
+        assertTrue(refus2.get(0).startsWith("variable « sport » à 1.0 : "), refus2.get(0));
+        assertEquals(0.0, variables.get(0), "la variable n'a pas changé");
+        IllegalArgumentException api = assertThrows(IllegalArgumentException.class, () -> variables.set(0, 1, "api"));
+        assertTrue(api.getMessage().contains("turbo:boost"), api.getMessage());
+
+        parametres.remove("turbo:boost");
+        assertTrue(variables.input(0, bascule, 0, "conducteur").isEmpty());
+        assertTrue(variables.input(0, bascule, 1, "conducteur").isEmpty(), "sans le turbo, le mode sport passe");
+        assertEquals(1.0, variables.get(0));
+    }
+
+    @Test
+    @DisplayName("D4 : relâcher un hold passe toujours, comme un retrait : ce qu'il met hors bornes devient inactif")
+    void retourAutomatique() {
+        // Le déclaré retire 60 N·m à l'arrêt (rang 0) et rien quand la commande est tenue (rang 1).
+        Tuning frein = new Tuning(tuning().parameters(), List.of(new Tuning.Declared("mymod:buggy/frein",
+                Parameters.ENGINE_TORQUE, Operation.ADD, 0, new double[] {-60, 0}, Double.NaN, 0, 1)));
+        AssemblyParameters parametres = new AssemblyParameters(frein);
+        int couple = parametres.tuning().indexOf(Parameters.ENGINE_TORQUE);
+        assertEquals(260, parametres.value(couple), "la variable vaut 1 par défaut : rien de retiré");
+        parametres.modify(couple("lest:moteur", Operation.ADD, -50), AssemblyParameters.API);
+        Variables declarees = Variables.of(JsonParser.parseString("{\"variables\": {\"frein\": {\"type\":"
+                + " \"bool\", \"default\": true, \"replicate\": \"all\"}}}").getAsJsonObject());
+        AssemblyVariables variables = new AssemblyVariables(declarees);
+        variables.guard(parametres::refusal);
+        List<Seating.Binding> tenue = List.of(new Seating.Binding(1, "frein", 0, Seating.Mode.HOLD, new double[] {0, 1}));
+        assertTrue(variables.input(0, tenue, 1, "c").isEmpty());
+        // Relâchée : la variable revient à 0, et 260 - 60 - 50 = 150 sort de [200, 420] : le lest devient inactif.
+        assertTrue(variables.input(0, tenue, 0, "c").isEmpty(), "un retour n'est jamais refusé");
+        parametres.vary(variables.values());
+        assertEquals(200, parametres.value(couple), 1e-9);
+        assertFalse(parametres.applied().get(1).active(), "le lest, posé, devient inactif avec sa raison");
+    }
+
+    @Test
+    @DisplayName("D4, D8 : le client compose les déclarés avec les variables reçues, au bit près")
+    void miroirAvecVariables() {
+        AssemblyParameters serveur = new AssemblyParameters(sport());
+        serveur.modify(couple("turbo:boost", Operation.MULTIPLY_TOTAL, 0.07), AssemblyParameters.API);
+        serveur.vary(new double[] {1});
+        // Ce que le client reçoit de la variable : son f32.
+        double recue = AssemblyState.VariableValues.of(new double[] {1}).value(0);
+        AssemblyParameters client = AssemblyParameters.mirror(sport(), serveur.posed(12L), new double[] {recue});
+        for (int i = 0; i < serveur.tuning().size(); i++) {
+            assertEquals(Double.doubleToRawLongBits(serveur.value(i)), Double.doubleToRawLongBits(client.value(i)));
+        }
+        assertEquals(serveur.applied(), client.applied());
     }
 }

@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Les variables d'une assembly (ADR-163 D2), par instance : leurs valeurs, ce qui les a posées en dernier, et les
@@ -28,6 +29,10 @@ import java.util.Map;
  *
  * <p>Plusieurs écrivains d'une même variable — deux commandes, l'API, une interaction — ne se composent pas : la
  * dernière écriture l'emporte.
+ *
+ * <p>Une variable peut régler un paramètre de l'assembly (ADR-167 D4) : son {@link Guard garde} juge alors chaque
+ * écriture explicite — l'API, une commande pressée — avec ce qu'elle règle, et la refuse si un paramètre sortirait de
+ * ses bornes. Un retour automatique — {@code hold} relâché, fin d'un {@code press} — passe toujours, comme un retrait.
  */
 public final class AssemblyVariables {
 
@@ -49,6 +54,19 @@ public final class AssemblyVariables {
     private final int[] pressTicks;
     private final double[] pressRest;
     private long version;
+    private Guard guard = (index, next) -> null;
+
+    /** Le garde des écritures (ADR-167 D4) : ce qu'une écriture de variable règle doit rester dans ses bornes. */
+    @FunctionalInterface
+    public interface Guard {
+        /**
+         * {@return pourquoi cette écriture est refusée, {@code null} si elle convient}
+         *
+         * @param index le rang de la variable écrite
+         * @param next la valeur de chaque variable après l'écriture
+         */
+        String refusal(int index, double[] next);
+    }
 
     /**
      * Les variables d'une assembly neuve, à leur valeur par défaut.
@@ -66,6 +84,15 @@ public final class AssemblyVariables {
             values[i] = declared.get(i).initial();
             writers[i] = DEFAULT;
         }
+    }
+
+    /**
+     * Pose le garde des écritures explicites (ADR-167 D4).
+     *
+     * @param guard le garde
+     */
+    public void guard(Guard guard) {
+        this.guard = Objects.requireNonNull(guard);
     }
 
     /** {@return les variables déclarées} */
@@ -112,14 +139,37 @@ public final class AssemblyVariables {
      * @param index son rang
      * @param value la valeur
      * @param writer ce qui la pose, pour le diagnostic
-     * @throws IllegalArgumentException si la variable refuse la valeur ; rien n'est changé
+     * @throws IllegalArgumentException si la variable refuse la valeur, ou si ce qu'elle règle sortirait de ses bornes
+     *     (ADR-167 D4) ; rien n'est changé
      */
     public void set(int index, double value, String writer) {
         String refusal = declared.get(index).refusal(value);
+        if (refusal == null) {
+            refusal = judged(index, value);
+        }
         if (refusal != null) {
             throw new IllegalArgumentException(refusal);
         }
         write(index, value, writer);
+    }
+
+    /** {@return pourquoi le garde refuse cette écriture, nommée par sa variable ; {@code null} s'il l'admet} */
+    private String judged(int index, double value) {
+        double[] next = values.clone();
+        next[index] = value == 0.0 ? 0.0 : value;
+        String refusal = guard.refusal(index, next);
+        return refusal == null ? null : "variable « " + declared.get(index).name() + " » à " + value + " : " + refusal;
+    }
+
+    /** Écrit si le garde l'admet ; sinon, rien, et le refus s'ajoute à la liste. */
+    private boolean guarded(int index, double value, String writer, List<String> refusals) {
+        String refusal = judged(index, value);
+        if (refusal != null) {
+            refusals.add(refusal + " (" + writer + ")");
+            return false;
+        }
+        write(index, value, writer);
+        return true;
     }
 
     private void write(int index, double value, String writer) {
@@ -141,8 +191,10 @@ public final class AssemblyVariables {
      * @param bindings les commandes que ce siège lie
      * @param mask les commandes tenues, un bit par commande (bit 0 : commande 1), déjà réduites à celles du siège
      * @param writer ce qui écrit, pour le diagnostic
+     * @return les écritures que le garde a refusées (ADR-167 D4), à journaliser ; vide d'ordinaire
      */
-    public void input(int seat, List<Seating.Binding> bindings, int mask, String writer) {
+    public List<String> input(int seat, List<Seating.Binding> bindings, int mask, String writer) {
+        List<String> refusals = new ArrayList<>();
         if (seat >= held.length) {
             held = Arrays.copyOf(held, seat + 1);
         }
@@ -160,18 +212,25 @@ public final class AssemblyVariables {
             switch (binding.mode()) {
                 case TOGGLE -> {
                     if (now) {
-                        write(variable, values[variable] == binding.value(1) ? binding.value(0) : binding.value(1), by);
+                        guarded(variable, values[variable] == binding.value(1) ? binding.value(0) : binding.value(1),
+                                by, refusals);
                     }
                 }
                 case CYCLE -> {
                     if (now) {
-                        write(variable, next(binding, values[variable]), by);
+                        guarded(variable, next(binding, values[variable]), by, refusals);
                     }
                 }
-                case HOLD -> write(variable, binding.value(now ? 1 : 0), by);
-                case PRESS -> {
+                case HOLD -> {
                     if (now) {
-                        write(variable, binding.value(1), by);
+                        guarded(variable, binding.value(1), by, refusals);
+                    } else {
+                        // Relâchée : un retour, qui passe toujours.
+                        write(variable, binding.value(0), by);
+                    }
+                }
+                case PRESS -> {
+                    if (now && guarded(variable, binding.value(1), by, refusals)) {
                         pressTicks[variable] = 2;
                         pressRest[variable] = binding.value(0);
                     }
@@ -179,6 +238,7 @@ public final class AssemblyVariables {
                 default -> throw new IllegalStateException();
             }
         }
+        return refusals;
     }
 
     private static double next(Seating.Binding binding, double current) {
