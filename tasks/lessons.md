@@ -2362,3 +2362,15 @@ compté et listé à plusieurs endroits.
 
 **Règle.** Avant de toucher au contenu du témoin, chercher ses identifiants (`heavy_crate`, `example_addon (`) dans les
 tests, les GameTests et les guides, et mettre à jour chaque attente dans le même changement.
+
+## 2026-11-12 | Le buggy d'exemple ne se chargeait plus, et aucun test ne le voyait
+
+**Ce qui s'est passé.** En tournant le film du mode sport, le buggy d'exemple a été refusé à la compilation
+(`E-7001`, « un corps sans collider ») : sa charnière fait du capot un second corps, et le modèle n'avait de collider
+que pour le châssis. Le défaut précédait la 5b : même refus avec la fiche de `master` et avec celle du schéma 3.
+
+**Cause.** Le contenu de démonstration est éteint par défaut (`content.examples`, R-1790) ; ni les GameTests ni la CI
+ne le chargeaient. Un contenu qu'aucun test ne charge peut se casser en silence.
+
+**Règle.** Tout contenu livré, même éteint par défaut, est chargé et vérifié par au moins un test : le serveur des
+GameTests active les exemples, et `ExemplesGameTests` exige que chacun se charge.

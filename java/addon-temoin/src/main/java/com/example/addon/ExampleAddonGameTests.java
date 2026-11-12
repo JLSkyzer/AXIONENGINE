@@ -65,4 +65,26 @@ public final class ExampleAddonGameTests {
                 .thenSucceed();
     }
     // --8<-- [end:upgrade]
+
+    // --8<-- [start:ballast]
+    /** A variable of the sheet tunes the mass: each ballast step adds 40 kg, and the kit composes with it. */
+    @GameTest(template = AxionGameTests.DALLE, timeoutTicks = 100)
+    public static void ballastTunesTheMass(GameTestHelper helper) {
+        Assembly crate = AxionGameTests.spawn(helper, "example_addon:upgradable_crate",
+                new Vec3(4.5, AxionGameTests.DESSUS_DALLE + 1, 4.5));
+        Parameters parameters = crate.parameters();
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(parameters.has(Parameters.MASS), "not compiled yet"))
+                .thenExecute(() -> {
+                    crate.variables().set("ballast", 2);
+                    helper.assertTrue(parameters.value(Parameters.MASS) == 280.0, "200 kg + 2 x 40 kg");
+                    ExampleUpgrades.fitStageOne(crate);
+                    helper.assertTrue(parameters.value(Parameters.MASS) == 210.0, "(200 + 80) x 0.75");
+                    ExampleUpgrades.removeStageOne(crate);
+                    crate.variables().set("ballast", 0);
+                    helper.assertTrue(parameters.value(Parameters.MASS) == 200.0, "back to the sheet's mass");
+                })
+                .thenSucceed();
+    }
+    // --8<-- [end:ballast]
 }

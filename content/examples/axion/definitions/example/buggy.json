@@ -86,11 +86,21 @@
       "exit_offsets": [[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]],
       "controls": ["throttle", "brake", "steer", "gear", "handbrake"],
       "bindings": [
-        { "command": 1, "label": "axion.example.buggy.attelage", "variable": "attelage_sorti", "mode": "toggle" } ] }
+        { "command": 1, "label": "axion.example.buggy.attelage", "variable": "attelage_sorti", "mode": "toggle" },
+        { "command": 2, "label": "axion.example.buggy.sport", "variable": "sport", "mode": "toggle" } ] }
   ],
 
   "variables": {
-    "attelage_sorti": { "type": "bool", "default": false, "persist": true, "replicate": "all", "write": "driver" }
+    "attelage_sorti": { "type": "bool", "default": false, "persist": true, "replicate": "all", "write": "driver" },
+    "sport": { "type": "bool", "default": false, "persist": true, "replicate": "all", "write": "driver" }
+  },
+
+  "tuning": {
+    "modifiers": {
+      "sport_couple": { "parameter": "engine.torque", "operation": "multiply_base", "variable": "sport", "values": [0, 0.3] },
+      "sport_regime": { "parameter": "engine.max_rpm", "operation": "add", "variable": "sport", "values": [0, 500] },
+      "sport_pneus": { "parameter": "tires.grip", "operation": "multiply_base", "variable": "sport", "values": [0, 0.2] }
+    }
   },
 
   "sockets": ["attelage"],

@@ -77,11 +77,13 @@ server-side Forge event is handled.
 Tuning stays within two limits:
 
 - **the engine's**: a value the sheet could have declared. A negative mass or an infinite torque are impossible;
-- **the sheet's**, if it gives one, in the `tuning` section:
+- **the sheet's**, if it gives one, in `tuning.ranges`:
 
 ```json
 --8<-- "java/addon-temoin/src/main/resources/axion/definitions/upgradable_crate.json"
 ```
+
+(The `ballast` variable and `tuning.modifiers` are explained in [section 5](#5-a-variable-of-the-sheet-tunes-a-parameter).)
 
 With the *builder*, that is `.tuning(tuning -> tuning.range(Parameters.MASS, range -> range.min(100).max(300)))`. A
 range is written in the parameter's unit, and must contain the base.
@@ -115,9 +117,47 @@ To read the state of a parameter:
 | `base(name)` | the sheet's value |
 | `range(name)` | the effective bounds |
 | `unit(name)` | the unit |
-| `modifiers(name)` | each modifier, in the order they were added: its cause, its origin (`api`, `commande` for the command, `sauvegarde` for the save), whether it is active, and if not, why |
+| `modifiers(name)` | each modifier: the sheet's first, then those added, in their order; its cause, its origin (`variable`, `api`, `commande` for the command, `sauvegarde` for the save), whether it is active, and if not, why |
 
-## 5. Test it
+## 5. A variable of the sheet tunes a parameter
+
+Tuning can also come from the sheet itself: a **variable** — toggled by a seat key, set by an interaction or by your
+code — tunes a parameter. That is the `tuning.modifiers` section. In the tunable crate above, each step of `ballast`
+adds 40 kg:
+
+```json
+"modifiers": {
+  "ballast": { "parameter": "mass", "operation": "add", "variable": "ballast", "values": [0, 40, 80] }
+}
+```
+
+- **The amount**: `values` gives one per value of an `int` variable (from its `min`) or a `bool` (`false`, then
+  `true`). For a `float` variable, `scale` makes it proportional: amount = `scale` × value.
+- **The operation** is one of the three of [section 2](#2-add-a-modifier); this modifier combines with the mods'.
+- **The cause** is `<sheet id>/<name>` — here `example_addon:upgradable_crate/ballast`. It is neither added nor
+  removed through the API: it follows its variable.
+- **The variable must be `"replicate": "all"`**: every player redoes the calculation and needs the value. The sheet is
+  refused otherwise.
+- **Nothing more is saved**: the variable is if it is `persist`, and the modifier follows from it.
+
+With the *builder*: `.tuning(tuning -> tuning.modifier("ballast", Parameters.MASS, "add", "ballast", m -> m.values(0,
+40, 80)))`.
+
+The sheet is refused when it loads if one amount, on its own, would take the parameter out of its bounds. In game, a
+write of the variable that would take it out of its bounds — together with another mod's modifiers, say — is
+**refused**: the key does nothing and the log says so (`E-7010`), `variables().set` throws an
+`IllegalArgumentException`. An automatic return, like a released `hold` command, always goes through, like a removal.
+
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:ballast"
+```
+
+!!! example "The example buggy's sport mode"
+    AXION's buggy has a sport mode on command 2 (H by default): a single variable, `sport`, tunes three parameters —
+    torque +30 %, rev limiter +500 rpm, grip +20 %. Its sheet is in AXION's repository,
+    `content/examples/axion/definitions/example/buggy.json`.
+
+## 6. Test it
 
 A GameTest places the object, tunes it, and checks:
 
@@ -127,7 +167,7 @@ A GameTest places the object, tunes it, and checks:
 
 You run it like your other GameTests ([Test your addon](tester.md)).
 
-## 6. See and tune in game
+## 7. See and tune in game
 
 The `/axion params` command shows the parameters of the object you target, and each modifier with its origin. It needs
 operator rights (level 2):
@@ -137,8 +177,9 @@ operator rights (level 2):
 ```
 
 ```text
-AXION ENGINE — example_addon:upgradable_crate : 1 paramètre(s), 1 modificateur(s)
+AXION ENGINE — example_addon:upgradable_crate : 1 paramètre(s), 2 modificateur(s)
   mass = 150 kg (base 200)
+    example_addon:upgradable_crate/ballast add 0 (variable)
     example_addon:stage_one multiply_total -0.25 (api)
 ```
 
@@ -151,12 +192,12 @@ Add a parameter name to see its bounds too. To try a tuning without writing code
 
 Every `set` and every `remove` is written to the server log, with who typed it.
 
-## 7. Saves, players, updates
+## 8. Saves, players, updates
 
 - **The save** keeps the modifiers in place, in their order. When the world loads, each one is added again by the same
   rules as `modify`.
-- **Players** receive the modifiers, not the values: each of them redoes the calculation with the same sheet and gets
-  exactly the same numbers. On the client, `parameters()` can be read; `modify` and `remove` throw
+- **Players** receive the modifiers and the variables, not the values: each of them redoes the calculation with the
+  same sheet and gets exactly the same numbers. On the client, `parameters()` can be read; `modify` and `remove` throw
   `IllegalStateException` there.
 - **When your sheet changes** — a narrower range, a gear removed —, a saved modifier that the new bounds refuse is not
   lost: it stays in place, inactive, and the log says so (`E-7011`). `/axion params` shows it, and it can be removed.

@@ -5,6 +5,7 @@ import dev.axion.AxionMod;
 import dev.axion.api.assembly.Parameters;
 import dev.axion.entity.AssemblyParameters;
 import dev.axion.physics.SimCommandStream;
+import dev.axion.seat.GearRange;
 import dev.axion.seat.VehicleInput;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -37,23 +38,63 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Le film de la sous-tranche 5a d'ADR-167 : deux buggys identiques côte à côte, l'un réglé par {@code /axion params}
- * (couple moteur divisé par deux, 170 kg de charge), partent de l'arrêt pied au plancher. Seul le réglé accélère
- * moins ; le client, qui reçoit les modificateurs et non les valeurs, lit les mêmes nombres que le serveur, au bit
- * près — le bandeau les montre.
+ * Les films des paramètres d'instance (ADR-167) : deux buggys identiques côte à côte, l'un réglé, partent de l'arrêt
+ * pied au plancher. Le client, qui reçoit les modificateurs et les variables et non les valeurs, lit les mêmes nombres
+ * que le serveur, au bit près — le bandeau les montre. Deux scènes :
  *
- * <p>Deux conducteurs factices tiennent les volants ; le joueur filme, hors du champ. Chaque étape s'enchaîne sur ce
- * que le serveur ou le client constate, et le film se juge lui-même avant de s'arrêter ({@code termine.json}). Inerte
- * sans {@code -Daxion.film=parametres} ; le lancement Gradle {@code runFilmParametres} la pose. Rien ici ne part dans
- * le mod livré.
+ * <ul>
+ *   <li>{@code parametres} (5a) : le réglé l'est par {@code /axion params} — couple divisé par deux, 170 kg de
+ *       charge — et accélère moins ;</li>
+ *   <li>{@code sport} (5b) : un véhicule dont une commande liée bascule le mode sport — une variable qui règle couple,
+ *       limiteur et adhérence — ; le réglé va plus loin. La definition vient de {@code axion.film.definition} : la
+ *       Charger locale si elle est là, le buggy d'exemple sinon.</li>
+ * </ul>
+ *
+ * <p>Deux conducteurs factices tiennent les volants, et passent les rapports d'une boîte manuelle ; le joueur filme,
+ * hors du champ. Chaque étape s'enchaîne sur ce que le serveur ou le client constate, et le film se juge lui-même avant
+ * de s'arrêter ({@code termine.json}). Inerte sans {@code -Daxion.film=parametres} ou {@code sport} ; les lancements
+ * Gradle {@code runFilmParametres} et {@code runFilmSport} la posent. Rien ici ne part dans le mod livré.
  */
 @Mod.EventBusSubscriber(modid = AxionMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class FilmDesParametres {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("AXION film");
-    private static final boolean ACTIF = "parametres".equals(System.getProperty("axion.film"));
-    private static final String MONDE = "axion-film-parametres";
-    private static final String DEFINITION = "axion:test/vehicule";
+
+    /** Les scènes : la definition filmée, ce que le bandeau montre du réglé, et la signature. */
+    private enum Scene {
+        PARAMETRES("parametres", "axion:test/vehicule", List.of(Parameters.ENGINE_TORQUE, Parameters.MASS),
+                "AXION ENGINE, ADR-167 5a"),
+        SPORT("sport", "axion:example/buggy",
+                List.of(Parameters.ENGINE_TORQUE, Parameters.ENGINE_MAX_RPM, Parameters.TIRES_GRIP),
+                "AXION ENGINE, ADR-167 5b");
+
+        final String cle;
+        final String definition;
+        final List<String> montres;
+        final String signature;
+
+        Scene(String cle, String definition, List<String> montres, String signature) {
+            this.cle = cle;
+            this.definition = definition;
+            this.montres = montres;
+            this.signature = signature;
+        }
+
+        static Scene de(String cle) {
+            for (Scene scene : values()) {
+                if (scene.cle.equals(cle)) {
+                    return scene;
+                }
+            }
+            return null;
+        }
+    }
+
+    private static final Scene SCENE = Scene.de(System.getProperty("axion.film"));
+    private static final boolean ACTIF = SCENE != null;
+    private static final String MONDE = ACTIF ? "axion-film-" + SCENE.cle : "";
+    private static final String DEFINITION = !ACTIF ? ""
+            : SCENE == Scene.SPORT ? System.getProperty("axion.film.definition", SCENE.definition) : SCENE.definition;
 
     /** Le sol du monde plat : la première couche d'air. */
     private static final int SOL = -60;
@@ -70,14 +111,19 @@ public final class FilmDesParametres {
 
     private static final float[] VERS_PLUS_Z = {0f, 1f, 0f, 0f};
 
-    /** Les deux réglages, par la commande, comme un administrateur les taperait. */
+    /** Les deux réglages de la scène {@code parametres}, par la commande, comme un administrateur les taperait. */
     private static final String BRIDE = "set film:bride engine.torque multiply_total -0.5";
 
     private static final String CHARGE = "set film:charge mass add 170";
 
-    private static final VehicleInput PLEIN = new VehicleInput(1f, 0f, 0f, 0f, 0f, (byte) 0, 0);
+    /** La variable du mode sport, dans la scène {@code sport} ; sa commande liée se lit au siège. */
+    private static final String VARIABLE_SPORT = "sport";
 
-    private static final VehicleInput FREIN_A_MAIN = new VehicleInput(0f, 0f, 0f, 0f, 1f, (byte) 0, 0);
+    /** La commande liée du mode sport, lue au siège du conducteur. */
+    private static volatile int commandeSport;
+
+    /** Le régime, en part du limiteur effectif, où un conducteur factice passe le rapport suivant. */
+    private static final double PASSAGE = 0.9;
 
     private static final long ATTENTE_MAX_NS = TimeUnit.SECONDS.toNanos(180);
 
@@ -120,16 +166,16 @@ public final class FilmDesParametres {
     private static volatile double parcoursTemoin;
     private static double[] precedentRegle;
     private static double[] precedentTemoin;
-    /** Les valeurs effectives au serveur, en bits, pour les comparer à celles du client. */
-    private static volatile long coupleServeur;
-    private static volatile long masseServeur;
+    /** Le rapport que chaque conducteur demande : 0 pour une boîte automatique, qui choisit seule. */
+    private static int rapportRegle;
+    private static int rapportTemoin;
+    /** Les valeurs effectives au serveur des paramètres montrés du réglé, en bits, pour les comparer au client. */
+    private static volatile long[] bitsServeur = new long[0];
 
-    // Le jugement.
-    private static double coupleClient = Double.NaN;
-    private static double masseClient = Double.NaN;
-    private static double baseCouple = Double.NaN;
-    private static double baseMasse = Double.NaN;
-    private static double coupleTemoinClient = Double.NaN;
+    // Le jugement : les valeurs que le client lit des paramètres montrés, du réglé et du témoin.
+    private static double[] reglesClient = new double[0];
+    private static double[] basesClient = new double[0];
+    private static double[] temoinsClient = new double[0];
     private static String ecartMiroir;
 
     private static final List<String> MESURES = new ArrayList<>();
@@ -225,6 +271,10 @@ public final class FilmDesParametres {
                 }
             }
             case VEHICULES -> {
+                // Une definition refusée ne viendra jamais : le film s'arrête et dit pourquoi, au lieu d'attendre.
+                if (System.nanoTime() - debutPhase > TimeUnit.SECONDS.toNanos(45)) {
+                    throw new IllegalStateException("definition " + DEFINITION + " indisponible : voir le journal");
+                }
                 minecraft.player.getAbilities().flying = true;
                 minecraft.getSingleplayerServer().execute(() -> poserLesVehicules(minecraft.getSingleplayerServer()));
                 if (idRegle >= 0 && idTemoin >= 0 && minecraft.level.getEntity(idRegle) != null
@@ -240,16 +290,20 @@ public final class FilmDesParametres {
                 }
             }
             case REGLAGE -> {
-                // D8 : le client a reçu les modificateurs et compose ; on ne filme qu'une fois qu'il les a.
-                if (regle && minecraft.level.getEntity(idRegle) instanceof AxionEntity client
-                        && client.parameters() != null && client.parameters().modifiers().size() == 2
-                        && depuis(1.0)) {
-                    camera = new ArmorStand(EntityType.ARMOR_STAND, minecraft.level);
-                    camera.setInvisible(true);
-                    minecraft.setCameraEntity(camera);
-                    placerLaCamera(minecraft, 0f);
-                    tournage = new Tournage(dossier(minecraft).resolve("images"), "AXION ENGINE, ADR-167");
-                    passer(Phase.TOURNAGE);
+                // D8 : le client a reçu les modificateurs et les variables, et compose ; on ne filme qu'une fois
+                // qu'il lit les valeurs du serveur.
+                if (regle && depuis(1.0)) {
+                    // Tant que le snapshot n'est pas arrivé, le client lit encore l'avant : on relit à chaque image.
+                    ecartMiroir = null;
+                    lireLeClient(minecraft);
+                    if (reglageLu()) {
+                        camera = new ArmorStand(EntityType.ARMOR_STAND, minecraft.level);
+                        camera.setInvisible(true);
+                        minecraft.setCameraEntity(camera);
+                        placerLaCamera(minecraft, 0f);
+                        tournage = new Tournage(dossier(minecraft).resolve("images"), SCENE.signature);
+                        passer(Phase.TOURNAGE);
+                    }
                 }
             }
             case TOURNAGE -> tourner(minecraft);
@@ -308,25 +362,65 @@ public final class FilmDesParametres {
     }
 
     private static ServerPlayer pilote(MinecraftServer serveur, String nom) {
-        UUID uuid = UUID.nameUUIDFromBytes(("axion-film-parametres:" + nom).getBytes(StandardCharsets.UTF_8));
+        UUID uuid = UUID.nameUUIDFromBytes(("axion-film-" + SCENE.cle + ":" + nom).getBytes(StandardCharsets.UTF_8));
         ServerPlayer pilote = FakePlayerFactory.get(serveur.overworld(), new GameProfile(uuid, nom));
         pilote.stopRiding();
         pilote.getPersistentData().remove(AxionEntity.REMEMBERED_SEAT);
         return pilote;
     }
 
-    /** ADR-167 D10 : le réglage passe par la vraie commande, avec les droits du serveur. */
+    /**
+     * Règle le premier buggy : par la vraie commande, avec les droits du serveur (5a, D10) ; ou par la commande liée du
+     * siège, comme la touche du conducteur, qui bascule la variable du mode sport (5b, D4).
+     */
     private static void regler(MinecraftServer serveur) {
-        String cible = "axion params " + regleServeur.getUUID() + " ";
-        for (String reglage : new String[] {BRIDE, CHARGE}) {
-            serveur.getCommands().performPrefixedCommand(serveur.createCommandSourceStack(), cible + reglage);
-        }
         AssemblyParameters table = regleServeur.parameters();
-        if (table == null || table.modifiers().size() != 2) {
-            throw new IllegalStateException("/axion params n'a pas posé les deux modificateurs : "
-                    + (table == null ? "paramètres absents" : table.modifiers()));
+        if (SCENE == Scene.PARAMETRES) {
+            String cible = "axion params " + regleServeur.getUUID() + " ";
+            for (String reglage : new String[] {BRIDE, CHARGE}) {
+                serveur.getCommands().performPrefixedCommand(serveur.createCommandSourceStack(), cible + reglage);
+            }
+            if (table == null || table.modifiers().size() != 2) {
+                throw new IllegalStateException("/axion params n'a pas posé les deux modificateurs : "
+                        + (table == null ? "paramètres absents" : table.modifiers()));
+            }
+        } else {
+            int siege = regleServeur.seatOf(piloteRegle);
+            int variable = regleServeur.variables().declared().indexOf(VARIABLE_SPORT);
+            commandeSport = regleServeur.seatBindings(siege).stream()
+                    .filter(binding -> binding.variable() == variable)
+                    .mapToInt(dev.axion.definition.Seating.Binding::command)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException(DEFINITION + " : aucune commande liée à la variable "
+                            + VARIABLE_SPORT));
+            regleServeur.receiveInput(piloteRegle, siege,
+                    new VehicleInput(0f, 0f, 0f, 0f, 1f, (byte) 0, 1 << (commandeSport - 1)));
+            table = regleServeur.parameters();
+            int couple = table.tuning().indexOf(Parameters.ENGINE_TORQUE);
+            if (!(table.value(couple) > table.tuning().get(couple).base())) {
+                throw new IllegalStateException("la commande " + commandeSport + " n'a pas mis le mode sport : "
+                        + table.applied());
+            }
         }
         regle = true;
+    }
+
+    /**
+     * {@return le rapport qu'un conducteur factice demande} Une boîte automatique choisit seule (0) ; dans une boîte
+     * manuelle, il part en première et passe le suivant près du limiteur effectif — celui du mode sport compris.
+     */
+    private static int rapport(AxionEntity vehicule, int demande) {
+        AssemblyParameters table = vehicule.parameters();
+        GearRange boite = vehicule.gearRange();
+        if (boite.max() <= 0 || table == null) {
+            return 0;
+        }
+        if (demande < 1) {
+            return 1;
+        }
+        int limiteur = table.tuning().indexOf(Parameters.ENGINE_MAX_RPM);
+        float regime = vehicule.netState() == null ? 0f : vehicule.netState().vehicle().rpm();
+        return demande < boite.max() && regime >= PASSAGE * table.value(limiteur) ? demande + 1 : demande;
     }
 
     /**
@@ -340,9 +434,11 @@ public final class FilmDesParametres {
             return new SimCommandStream();
         }
         if (assis) {
-            VehicleInput entree = phase == Phase.TOURNAGE && etape != Etape.ARRET ? PLEIN : FREIN_A_MAIN;
-            regleIci.receiveInput(piloteRegle, regleIci.seatOf(piloteRegle), entree);
-            temoinIci.receiveInput(piloteTemoin, temoinIci.seatOf(piloteTemoin), entree);
+            boolean roule = phase == Phase.TOURNAGE && etape != Etape.ARRET;
+            rapportRegle = roule ? rapport(regleIci, rapportRegle) : 0;
+            rapportTemoin = roule ? rapport(temoinIci, rapportTemoin) : 0;
+            regleIci.receiveInput(piloteRegle, regleIci.seatOf(piloteRegle), entree(roule, rapportRegle));
+            temoinIci.receiveInput(piloteTemoin, temoinIci.seatOf(piloteTemoin), entree(roule, rapportTemoin));
         }
         double[] regleXyz = {regleIci.getX(), regleIci.getY(), regleIci.getZ()};
         double[] temoinXyz = {temoinIci.getX(), temoinIci.getY(), temoinIci.getZ()};
@@ -356,17 +452,27 @@ public final class FilmDesParametres {
         parcoursTemoin = temoinXyz[2] - DEPART_TEMOIN.z;
         AssemblyParameters table = regleIci.parameters();
         if (table != null) {
-            coupleServeur = Double.doubleToRawLongBits(table.value(table.tuning().indexOf(Parameters.ENGINE_TORQUE)));
-            masseServeur = Double.doubleToRawLongBits(table.value(table.tuning().indexOf(Parameters.MASS)));
+            long[] bits = new long[SCENE.montres.size()];
+            for (int i = 0; i < bits.length; i++) {
+                bits[i] = Double.doubleToRawLongBits(table.value(table.tuning().indexOf(SCENE.montres.get(i))));
+            }
+            bitsServeur = bits;
         }
         if (phase == Phase.TOURNAGE && tournage != null) {
             synchronized (MESURES) {
-                MESURES.add(String.format(Locale.ROOT, "%.3f,%s,%.4f,%.3f,%.4f,%.3f",
-                        (System.nanoTime() - tournage.debut()) / 1e9, etape, parcoursRegle, vitesseRegle,
-                        parcoursTemoin, vitesseTemoin));
+                MESURES.add(String.format(Locale.ROOT, "%.3f,%s,%.4f,%.3f,%d,%.4f,%.3f,%d",
+                        (System.nanoTime() - tournage.debut()) / 1e9, etape, parcoursRegle, vitesseRegle, rapportRegle,
+                        parcoursTemoin, vitesseTemoin, rapportTemoin));
             }
         }
         return new SimCommandStream();
+    }
+
+    /** {@return l'entrée d'un conducteur : frein à main serré à l'arrêt, puis pied au plancher sur ce rapport} */
+    private static VehicleInput entree(boolean roule, int rapport) {
+        return roule
+                ? new VehicleInput(1f, 0f, 0f, 0f, 0f, (byte) rapport, 0)
+                : new VehicleInput(0f, 0f, 0f, 0f, 1f, (byte) 0, 0);
     }
 
     /**
@@ -435,24 +541,31 @@ public final class FilmDesParametres {
             return;
         }
         lireLeClient(minecraft);
+        String nom = SCENE == Scene.PARAMETRES ? "réglé" : "sport";
         String legende = switch (etape) {
-            case ARRET -> "Deux buggys identiques ; au premier plan, réglé par /axion params";
-            case COURSE -> "Pied au plancher depuis l'arrêt : seul le buggy réglé accélère moins";
-            case BILAN -> "Le client reçoit les modificateurs et compose : les valeurs du serveur, au bit près";
+            case ARRET -> SCENE == Scene.PARAMETRES
+                    ? "Deux buggys identiques ; au premier plan, réglé par /axion params"
+                    : "Deux véhicules identiques ; au premier plan, mode sport mis par sa touche (commande "
+                            + commandeSport + ")";
+            case COURSE -> SCENE == Scene.PARAMETRES
+                    ? "Pied au plancher depuis l'arrêt : seul le buggy réglé accélère moins"
+                    : "Pied au plancher depuis l'arrêt : le mode sport va plus loin";
+            case BILAN -> SCENE == Scene.PARAMETRES
+                    ? "Le client reçoit les modificateurs et compose : les valeurs du serveur, au bit près"
+                    : "Le client reçoit la variable et compose : les valeurs du serveur, au bit près";
         };
-        String valeurs = etape == Etape.ARRET
+        String valeurs = etape == Etape.ARRET && SCENE == Scene.PARAMETRES
                 ? "/axion params … " + BRIDE + "     /axion params … " + CHARGE
-                : String.format(Locale.ROOT, "réglé %.1f m/s, %.1f m    témoin %.1f m/s, %.1f m    lu au client,"
-                                + " réglé : couple %s N·m (base %s), masse %s kg (base %s)",
-                        vitesseRegle, parcoursRegle, vitesseTemoin, parcoursTemoin, nombre(coupleClient),
-                        nombre(baseCouple), nombre(masseClient), nombre(baseMasse));
+                // + 0.0 : un parcours de -0.0 à l'arrêt s'écrit 0.
+                : String.format(Locale.ROOT, "%s %.1f m/s, %.0f m    témoin %.1f m/s, %.0f m    au client : %s",
+                        nom, vitesseRegle, parcoursRegle + 0.0, vitesseTemoin, parcoursTemoin + 0.0, montres());
         tournage.capturer(minecraft.getMainRenderTarget(), legende, valeurs,
                 String.format(Locale.ROOT, "%.1f s", secondes));
     }
 
     /**
-     * Ce que le client lit de ses buggys, à chaque image : le miroir des paramètres du réglé, qui doit valoir au bit
-     * près les valeurs du serveur, et celui du témoin, qui reste à sa base.
+     * Ce que le client lit de ses buggys, à chaque image : le miroir des paramètres montrés du réglé, qui doit valoir au
+     * bit près les valeurs du serveur, et celui du témoin, qui reste à sa base.
      */
     private static void lireLeClient(Minecraft minecraft) {
         if (!(minecraft.level.getEntity(idRegle) instanceof AxionEntity regleClient)
@@ -466,25 +579,52 @@ public final class FilmDesParametres {
             ecartMiroir = "paramètres illisibles au client";
             return;
         }
-        int couple = miroir.tuning().indexOf(Parameters.ENGINE_TORQUE);
-        int masse = miroir.tuning().indexOf(Parameters.MASS);
-        coupleClient = miroir.value(couple);
-        masseClient = miroir.value(masse);
-        baseCouple = miroir.tuning().get(couple).base();
-        baseMasse = miroir.tuning().get(masse).base();
-        coupleTemoinClient = miroirTemoin.value(miroirTemoin.tuning().indexOf(Parameters.ENGINE_TORQUE));
-        if (ecartMiroir == null && (Double.doubleToRawLongBits(coupleClient) != coupleServeur
-                || Double.doubleToRawLongBits(masseClient) != masseServeur)) {
-            ecartMiroir = String.format(Locale.ROOT, "le client lit couple %s et masse %s, le serveur %s et %s",
-                    coupleClient, masseClient, Double.longBitsToDouble(coupleServeur),
-                    Double.longBitsToDouble(masseServeur));
+        int n = SCENE.montres.size();
+        double[] regles = new double[n];
+        double[] bases = new double[n];
+        double[] temoins = new double[n];
+        long[] serveur = bitsServeur;
+        for (int i = 0; i < n; i++) {
+            int index = miroir.tuning().indexOf(SCENE.montres.get(i));
+            regles[i] = miroir.value(index);
+            bases[i] = miroir.tuning().get(index).base();
+            temoins[i] = miroirTemoin.value(miroirTemoin.tuning().indexOf(SCENE.montres.get(i)));
+            if (ecartMiroir == null && (serveur.length != n || Double.doubleToRawLongBits(regles[i]) != serveur[i])) {
+                ecartMiroir = "le client lit « " + SCENE.montres.get(i) + " » à " + regles[i] + ", le serveur à "
+                        + (serveur.length == n ? Double.longBitsToDouble(serveur[i]) : "?");
+            }
         }
+        reglesClient = regles;
+        basesClient = bases;
+        temoinsClient = temoins;
+    }
+
+    /** {@return vrai si le client lit le réglage du serveur : au bit près, et autre que la base} */
+    private static boolean reglageLu() {
+        return ecartMiroir == null && reglesClient.length > 0 && reglesClient[0] != basesClient[0];
+    }
+
+    /** {@return les paramètres montrés du réglé, lus au client : de leur base à leur valeur} */
+    private static String montres() {
+        List<String> parts = new ArrayList<>();
+        for (int i = 0; i < reglesClient.length; i++) {
+            String base = nombre(basesClient[i]);
+            String valeur = nombre(reglesClient[i]);
+            parts.add(switch (SCENE.montres.get(i)) {
+                case Parameters.ENGINE_TORQUE -> "couple " + base + " → " + valeur + " N·m";
+                case Parameters.MASS -> "masse " + base + " → " + valeur + " kg";
+                case Parameters.ENGINE_MAX_RPM -> "limiteur " + base + " → " + valeur + " tr/min";
+                case Parameters.TIRES_GRIP -> "adhérence ×" + base + " → ×" + valeur;
+                default -> SCENE.montres.get(i) + " " + base + " → " + valeur;
+            });
+        }
+        return String.join(", ", parts);
     }
 
     private static String nombre(double valeur) {
         return Double.isNaN(valeur) ? "?" : valeur == Math.rint(valeur)
                 ? Long.toString((long) valeur)
-                : String.format(Locale.ROOT, "%.2f", valeur);
+                : String.format(Locale.ROOT, "%.1f", valeur);
     }
 
     /** {@return ce que le film prétend montrer et qui ne s'est pas produit, ou {@code null}} */
@@ -495,15 +635,22 @@ public final class FilmDesParametres {
         if (!(parcoursTemoin >= 5.0)) {
             return String.format(Locale.ROOT, "le témoin n'a parcouru que %.2f m", parcoursTemoin);
         }
-        if (!(parcoursRegle < 0.85 * parcoursTemoin)) {
+        boolean attendu = SCENE == Scene.PARAMETRES
+                ? parcoursRegle < 0.85 * parcoursTemoin
+                : parcoursRegle > 1.05 * parcoursTemoin;
+        if (!attendu) {
             return String.format(Locale.ROOT, "le réglé a parcouru %.2f m contre %.2f m pour le témoin", parcoursRegle,
                     parcoursTemoin);
         }
-        if (!(coupleClient == baseCouple * 0.5 && masseClient == baseMasse + 170.0)) {
-            return "le client lit couple " + coupleClient + " et masse " + masseClient;
+        if (SCENE == Scene.PARAMETRES && !(reglesClient[0] == basesClient[0] * 0.5
+                && reglesClient[1] == basesClient[1] + 170.0)) {
+            return "le client lit couple " + reglesClient[0] + " et masse " + reglesClient[1];
         }
-        if (coupleTemoinClient != baseCouple) {
-            return "le témoin a un couple de " + coupleTemoinClient + " au client : il n'est pas réglé";
+        for (int i = 0; i < temoinsClient.length; i++) {
+            if (temoinsClient[i] != basesClient[i]) {
+                return "le témoin a « " + SCENE.montres.get(i) + " » à " + temoinsClient[i] + " au client : il n'est"
+                        + " pas réglé";
+            }
         }
         return null;
     }
@@ -519,13 +666,13 @@ public final class FilmDesParametres {
             faute = ecriture != null ? ecriture : faute;
         }
         String bilan = String.format(Locale.ROOT,
-                "{\"images\": %d, \"uniques\": %d, \"echec\": %s, \"parcours_regle\": %.2f, \"parcours_temoin\": %.2f,"
-                        + " \"couple_client\": %s, \"masse_client\": %s, \"couple_temoin_client\": %s,"
-                        + " \"capture_ms_mediane\": %.1f, \"capture_ms_p90\": %.1f}%n",
-                tournage == null ? 0 : tournage.images(), tournage == null ? 0 : tournage.uniques(),
+                "{\"scene\": \"%s\", \"images\": %d, \"uniques\": %d, \"echec\": %s, \"parcours_regle\": %.2f,"
+                        + " \"parcours_temoin\": %.2f, \"regle_client\": \"%s\", \"capture_ms_mediane\": %.1f,"
+                        + " \"capture_ms_p90\": %.1f}%n",
+                SCENE.cle, tournage == null ? 0 : tournage.images(), tournage == null ? 0 : tournage.uniques(),
                 faute == null ? "null" : "\"" + faute.replace('"', '\'') + "\"", parcoursRegle, parcoursTemoin,
-                coupleClient, masseClient, coupleTemoinClient,
-                tournage == null ? 0.0 : tournage.quantileMs(0.5), tournage == null ? 0.0 : tournage.quantileMs(0.9));
+                montres(), tournage == null ? 0.0 : tournage.quantileMs(0.5),
+                tournage == null ? 0.0 : tournage.quantileMs(0.9));
         try {
             Files.createDirectories(dossier(minecraft));
             Files.writeString(dossier(minecraft).resolve("termine.json"), bilan, StandardCharsets.UTF_8);

@@ -79,11 +79,13 @@ Un réglage reste dans deux limites :
 
 - **celle du moteur** : une valeur que la fiche aurait pu déclarer. Une masse négative, un couple infini sont
   impossibles ;
-- **celle de la fiche**, si elle en donne une, dans la section `tuning` :
+- **celle de la fiche**, si elle en donne une, dans `tuning.ranges` :
 
 ```json
 --8<-- "java/addon-temoin/src/main/resources/axion/definitions/upgradable_crate.json"
 ```
+
+(La variable `ballast` et `tuning.modifiers` sont expliqués à la [section 5](#5-une-variable-de-la-fiche-règle-un-paramètre).)
 
 Avec le *builder*, c'est `.tuning(tuning -> tuning.range(Parameters.MASS, range -> range.min(100).max(300)))`. Une
 plage s'exprime dans l'unité du paramètre, et doit contenir la base.
@@ -117,9 +119,49 @@ Pour lire l'état d'un paramètre :
 | `base(nom)` | la valeur de la fiche |
 | `range(nom)` | les bornes effectives |
 | `unit(nom)` | l'unité |
-| `modifiers(nom)` | chaque modificateur, dans l'ordre de la pose : sa cause, son origine (`api`, `commande`, `sauvegarde`), s'il est actif, et sinon pourquoi |
+| `modifiers(nom)` | chaque modificateur : ceux de la fiche d'abord, puis les posés dans leur ordre ; sa cause, son origine (`variable`, `api`, `commande`, `sauvegarde`), s'il est actif, et sinon pourquoi |
 
-## 5. Le tester
+## 5. Une variable de la fiche règle un paramètre
+
+Un réglage peut aussi venir de la fiche elle-même : une **variable** — basculée par une touche du siège, posée par une
+interaction ou par ton code — règle un paramètre. C'est la section `tuning.modifiers`. Dans la caisse réglable plus
+haut, chaque cran de `ballast` ajoute 40 kg :
+
+```json
+"modifiers": {
+  "ballast": { "parameter": "mass", "operation": "add", "variable": "ballast", "values": [0, 40, 80] }
+}
+```
+
+- **La quantité** : `values` en donne une par valeur d'une variable `int` (depuis son `min`) ou `bool` (`false`, puis
+  `true`). Pour une variable `float`, `scale` la donne proportionnelle : quantité = `scale` × valeur.
+- **L'opération** est l'une des trois de la [section 2](#2-poser-un-modificateur) ; ce modificateur se compose avec
+  ceux des mods.
+- **La cause** est `<id de la fiche>/<nom>` — ici `example_addon:upgradable_crate/ballast`. Elle ne se pose ni ne se
+  retire par l'API : elle suit sa variable.
+- **La variable doit être `"replicate": "all"`** : chaque joueur refait le calcul, il lui faut la valeur. La fiche
+  est refusée sinon.
+- **Rien de plus n'est sauvegardé** : la variable l'est si elle est `persist`, et le modificateur en découle.
+
+Avec le *builder* : `.tuning(tuning -> tuning.modifier("ballast", Parameters.MASS, "add", "ballast", m -> m.values(0,
+40, 80)))`.
+
+La fiche est refusée au chargement si une quantité, à elle seule, sortait le paramètre de ses bornes. En jeu, une
+écriture de la variable qui le ferait sortir de ses bornes — avec les modificateurs d'un autre mod, par exemple — est
+**refusée** : la touche ne fait rien et le journal le dit (`E-7010`), `variables().set` lève une
+`IllegalArgumentException`. Un retour automatique, comme une commande `hold` relâchée, passe toujours, comme un
+retrait.
+
+```java
+--8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:ballast"
+```
+
+!!! example "Le mode sport du buggy d'exemple"
+    Le buggy d'AXION a un mode sport sur la commande 2 (touche H par défaut) : une seule variable, `sport`, règle
+    trois paramètres — couple +30 %, limiteur +500 tr/min, adhérence +20 %. Sa fiche est dans le dépôt d'AXION,
+    `content/examples/axion/definitions/example/buggy.json`.
+
+## 6. Le tester
 
 Un GameTest pose l'objet, le règle, et vérifie :
 
@@ -129,7 +171,7 @@ Un GameTest pose l'objet, le règle, et vérifie :
 
 Tu le lances comme les autres GameTests ([Tester ton addon](tester.md)).
 
-## 6. Voir et régler en jeu
+## 7. Voir et régler en jeu
 
 La commande `/axion params` montre les paramètres de l'objet que tu vises, et chaque modificateur avec son origine.
 Elle demande les droits d'opérateur (niveau 2) :
@@ -139,8 +181,9 @@ Elle demande les droits d'opérateur (niveau 2) :
 ```
 
 ```text
-AXION ENGINE — example_addon:upgradable_crate : 1 paramètre(s), 1 modificateur(s)
+AXION ENGINE — example_addon:upgradable_crate : 1 paramètre(s), 2 modificateur(s)
   mass = 150 kg (base 200)
+    example_addon:upgradable_crate/ballast add 0 (variable)
     example_addon:stage_one multiply_total -0.25 (api)
 ```
 
@@ -153,12 +196,12 @@ Ajoute un nom de paramètre pour voir aussi ses bornes. Pour essayer un réglage
 
 Chaque `set` et chaque `remove` est écrit dans le journal du serveur, avec qui l'a tapé.
 
-## 7. Sauvegarde, joueurs, mises à jour
+## 8. Sauvegarde, joueurs, mises à jour
 
 - **La sauvegarde** garde les modificateurs posés, dans leur ordre. Au rechargement, chacun se repose par les mêmes
   règles que `modify`.
-- **Les joueurs** reçoivent les modificateurs, pas les valeurs : chacun refait le calcul avec la même fiche et
-  obtient exactement les mêmes nombres. Côté client, `parameters()` se lit ; `modify` et `remove` y lèvent
+- **Les joueurs** reçoivent les modificateurs et les variables, pas les valeurs : chacun refait le calcul avec la même
+  fiche et obtient exactement les mêmes nombres. Côté client, `parameters()` se lit ; `modify` et `remove` y lèvent
   `IllegalStateException`.
 - **Quand ta fiche change** — une plage resserrée, un rapport retiré —, un modificateur sauvegardé que les nouvelles
   bornes refusent n'est pas perdu : il reste posé, inactif, et le journal le dit (`E-7011`). `/axion params` le

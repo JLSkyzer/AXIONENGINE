@@ -3718,7 +3718,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  `runFilmParametres` (`FilmDesParametres`, capture commune extraite dans `Tournage`) : réglé
                  66,8 m contre 119,6 m en 12 s, miroir du client au bit près, jugé par le film ; film du
                  véhicule rejoué sans faute après l'extraction.
-     - [ ] 5b — modificateurs déclarés liés aux variables (schéma 4, builder), mode sport du buggy ; film.
+     - [x] 5b — modificateurs déclarés liés aux variables (schéma 4, builder), mode sport du buggy ; film
+           (2026-11-12, fusionnée dans `master` depuis `wip/tranche-5b`).
            **Q5 tranchée par Killian le 2026-11-12** : une variable qui porte un modificateur déclaré doit être
            `replicate: all` ; la compilation refuse `driver` et `none` en le nommant (l'exemple `turbo` d'ADR-167 D4,
            en `driver`, se corrige par une précision). Branche `wip/tranche-5b`. Étapes :
@@ -3736,9 +3737,13 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            - [x] C : branchement — serveur (garde des variables, envoi au natif, journal `E-7010` à débit limité,
                  `variables().set` qui lève), client (miroir avec les variables reçues), `/axion params` et l'API
                  montrent les déclarés (origine « variable ») ; GameTests.
-           - [ ] D : mode sport du buggy (touche libre), exemple compilé du témoin pour le guide, CDC A15
-                 (R-1087, R-1171 précisée, `E-7010` en A.1, CAP-03 tenue sauf la prédiction), précisions d'ADR-167
-                 et Q5, guide « Régler un véhicule » (section variable), film, fusion.
+           - [x] D : mode sport du buggy (commande 2 : couple +30 %, limiteur +500 tr/min, adhérence +20 %),
+                 `ballast` du témoin et son GameTest pour le guide, CDC A15 (R-1087, R-1171 précisée, CAP-03 tenue
+                 sauf la prédiction), précisions d'ADR-167 et Q5, guide (section 5) ; film `runFilmSport` avec la
+                 Charger locale (mode sport ajouté hors dépôt, commande 4) : 161,0 m contre 133,6 m en 12 s, miroir
+                 au bit près. **Trouvé en route** : le buggy d'exemple refusé à la compilation depuis sa charnière de
+                 capot (corps sans collider) — `capot_collider` ajouté au modèle, exemples chargés par le serveur des
+                 GameTests, `ExemplesGameTests`.
      - [x] **CAP-56** inscrite à l'annexe A.7 et à ADR-160 (2026-11-12, après la 5a ; sans ligne 38.9, comme
            CAP-53 à CAP-55 : l'annexe est hors du texte gelé et s'accroît par ADR-160 D8), accepté par Killian le
            2026-11-12 — mannequin du joueur à l'échelle du jeu, articulé aux pivots du jeu, poses debout, accroupi

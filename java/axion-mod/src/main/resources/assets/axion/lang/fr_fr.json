@@ -13,6 +13,7 @@
   "key.axion.command_7": "AXION : commande 7",
   "key.axion.command_8": "AXION : commande 8",
   "axion.example.buggy.attelage": "Attelage (sortir/rentrer)",
+  "axion.example.buggy.sport": "Mode sport (activer/couper)",
   "axion.connection.required_addons": "AXION : ce serveur exige des addons que votre jeu n'a pas, ou pas dans la même version :",
   "axion.connection.addon_missing": "  - %s %s : absent",
   "axion.connection.addon_version": "  - %s %s : vous avez la %s",

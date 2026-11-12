@@ -3,5 +3,13 @@
   "asset": "example_addon:models/crate.gltf",
   "kind": "rigid_object",
   "physics": { "mass": 200 },
-  "tuning": { "ranges": { "mass": { "min": 100, "max": 300 } } }
+  "variables": {
+    "ballast": { "type": "int", "default": 0, "min": 0, "max": 2, "replicate": "all" }
+  },
+  "tuning": {
+    "ranges": { "mass": { "min": 100, "max": 300 } },
+    "modifiers": {
+      "ballast": { "parameter": "mass", "operation": "add", "variable": "ballast", "values": [0, 40, 80] }
+    }
+  }
 }

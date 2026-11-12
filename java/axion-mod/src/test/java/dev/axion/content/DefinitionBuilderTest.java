@@ -67,9 +67,15 @@ class DefinitionBuilderTest {
                 .seat("conducteur", s -> s.node("siege_conducteur").role("driver")
                         .exitOffsets(new double[] {1.0, 0.0, 0.0}, new double[] {-1.0, 0.0, 0.0})
                         .controls("throttle", "brake", "steer", "gear", "handbrake")
-                        .binding(1, "attelage_sorti", "toggle", b -> b.label("axion.example.buggy.attelage")))
+                        .binding(1, "attelage_sorti", "toggle", b -> b.label("axion.example.buggy.attelage"))
+                        .binding(2, "sport", "toggle", b -> b.label("axion.example.buggy.sport")))
                 .variable("attelage_sorti", "bool",
                         v -> v.default_(false).persist(true).replicate("all").write("driver"))
+                .variable("sport", "bool", v -> v.default_(false).persist(true).replicate("all").write("driver"))
+                .tuning(t -> t
+                        .modifier("sport_couple", "engine.torque", "multiply_base", "sport", m -> m.values(0, 0.3))
+                        .modifier("sport_regime", "engine.max_rpm", "add", "sport", m -> m.values(0, 500))
+                        .modifier("sport_pneus", "tires.grip", "multiply_base", "sport", m -> m.values(0, 0.2)))
                 .sockets("attelage")
                 .procedural("translation", "var.attelage_sorti", p -> p.node("attelage").axis("z").scale(0.2))
                 .procedural("rotation", "vehicle.steer", p -> p.node("volant").axis("y").scale(-3.0))

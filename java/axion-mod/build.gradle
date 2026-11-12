@@ -128,6 +128,8 @@ minecraft {
             // GameTest ajoute puis retire un fichier (RechargementDevGameTests).
             property 'axion.content.dev_reload', 'true'
             property 'axion.essai.devcontent', sourceSets.devcontent.output.resourcesDir.absolutePath
+            // R-1790 : le contenu de démonstration, éteint par défaut, se charge et se vérifie ici (ExemplesGameTests).
+            property 'axion.content.examples', 'true'
         }
 
         essaiRechargementDev {
@@ -169,6 +171,21 @@ minecraft {
             workingDirectory rootProject.file('.runs/film-parametres')
             property 'axion.film', 'parametres'
             property 'axion.souris.libre', 'true'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
+        filmSport {
+            // ADR-167, sous-tranche 5b : le mode sport du buggy d'exemple, mis par sa touche (FilmDesParametres).
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-sport')
+            property 'axion.film', 'sport'
+            property 'axion.souris.libre', 'true'
+            // La Charger locale de Killian, hors du depot, si elle est la ; le buggy d'exemple sinon, contenu de
+            // demonstration (R-1790) eteint par defaut.
+            def local = rootProject.file('local/contenu/axion/definitions/local/charger.json').exists()
+            property 'axion.film.definition', local ? 'axion:local/charger' : 'axion:example/buggy'
+            property 'axion.content.examples', 'true'
             jvmArgs '-Xmx4G'
             args '--width', '1920', '--height', '984'
         }
@@ -444,13 +461,15 @@ tasks.matching { it.name == 'runFilmVehicule' }.configureEach {
     }
 }
 
-tasks.matching { it.name == 'runFilmParametres' }.configureEach {
-    standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
-    doFirst {
-        clientSilencieux(rootProject.file('.runs/film-parametres'))
-        delete rootProject.file('.runs/film-parametres/saves/axion-film-parametres')
-        delete fileTree(rootProject.file('.runs/film-parametres/axion-film'))
-        delete rootProject.file('.runs/film-parametres/axion/world')
+['runFilmParametres': 'parametres', 'runFilmSport': 'sport'].each { tache, scene ->
+    tasks.matching { it.name == tache }.configureEach {
+        standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
+        doFirst {
+            clientSilencieux(rootProject.file(".runs/film-${scene}"))
+            delete rootProject.file(".runs/film-${scene}/saves/axion-film-${scene}")
+            delete fileTree(rootProject.file(".runs/film-${scene}/axion-film"))
+            delete rootProject.file(".runs/film-${scene}/axion/world")
+        }
     }
 }
 

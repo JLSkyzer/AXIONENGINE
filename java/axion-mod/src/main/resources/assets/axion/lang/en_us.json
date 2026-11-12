@@ -13,6 +13,7 @@
   "key.axion.command_7": "AXION command 7",
   "key.axion.command_8": "AXION command 8",
   "axion.example.buggy.attelage": "Tow hitch (extend/retract)",
+  "axion.example.buggy.sport": "Sport mode (on/off)",
   "axion.connection.required_addons": "AXION: this server requires add-ons that your game lacks, or has in another version:",
   "axion.connection.addon_missing": "  - %s %s: missing",
   "axion.connection.addon_version": "  - %s %s: you have %s",

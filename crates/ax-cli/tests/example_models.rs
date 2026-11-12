@@ -124,7 +124,12 @@ fn t630_crate_compile_et_se_charge() {
 #[test]
 fn t631_buggy_compile_et_se_charge() {
     let buggy = compile("buggy");
-    assert_eq!(buggy.colliders, 1);
+    // Le châssis, et le capot : sa charnière en fait un second corps, qui a besoin du sien.
+    assert_eq!(buggy.colliders, 2);
+    assert!(
+        !buggy.visible("capot_collider"),
+        "R-910 : un collider n'est pas rendu"
+    );
     assert_eq!(
         buggy.with(node_flags::WHEEL),
         [
