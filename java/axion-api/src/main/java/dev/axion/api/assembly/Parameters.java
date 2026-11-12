@@ -21,8 +21,10 @@ import java.util.List;
  * si elle déclare {@code physics.mass}, ceux d'un véhicule s'il a des roues, ceux de la boîte s'il a un groupe
  * motopropulseur, et un rapport par rang de {@code gears}. {@link #names()} les donne.
  *
- * <p>Le réglage est sauvegardé avec l'assembly, et part aux joueurs qui la suivent. Thread : autoritatif uniquement ;
- * ailleurs, {@link IllegalStateException} (R-1755).
+ * <p>Le réglage est sauvegardé avec l'assembly, et part aux joueurs qui la suivent : chacun le recompose sur la
+ * definition qu'il a reçue, si bien qu'au client les lectures donnent les valeurs du serveur, au bit près, à la
+ * fraîcheur du dernier snapshot. Thread : autoritatif ; au client, les lectures seulement. {@link #modify} et
+ * {@code remove} lèvent {@link IllegalStateException} au client et hors du thread autoritatif (R-1755).
  */
 @Experimental
 public interface Parameters {
@@ -181,6 +183,7 @@ public interface Parameters {
      * @throws IllegalArgumentException si l'assembly n'a pas ce paramètre, si la cause est dans l'espace de noms
      *     {@code axion}, si l'assembly porte déjà le nombre maximal de modificateurs, ou si la valeur sortirait de ses
      *     bornes ou rendrait inactif un autre modificateur ; rien n'est changé, et le message le nomme
+     * @throws IllegalStateException au client, ou hors du thread autoritatif (R-1755)
      */
     void modify(Modifier modifier);
 
@@ -190,6 +193,7 @@ public interface Parameters {
      *
      * @param cause l'identifiant de la cause
      * @return vrai si elle en portait
+     * @throws IllegalStateException au client, ou hors du thread autoritatif (R-1755)
      */
     boolean remove(String cause);
 
@@ -199,6 +203,7 @@ public interface Parameters {
      * @param cause l'identifiant de la cause
      * @param parameter le paramètre
      * @return vrai s'il existait
+     * @throws IllegalStateException au client, ou hors du thread autoritatif (R-1755)
      */
     boolean remove(String cause, String parameter);
 

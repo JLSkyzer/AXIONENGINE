@@ -3708,14 +3708,23 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  `axion:params` au schéma NBT 5 (`persistence-5.md`, migration 4 → 5), `E-7011` en A.1
                  (amendement A15 ouvert) ; trois GameTests (couple bridé qui ralentit le véhicule, relecture,
                  commande), 85 GameTests verts.
-           - [ ] E : réseau (protocole 8, descripteur 6, `FLAG_PARAMETERS` daté du tick), miroir au client qui
-                 compose comme le serveur (test au bit près), lecture de `parameters()` côté client.
+           - [x] E : `FLAG_PARAMETERS` (1024), descripteur 6, protocole 8 (`AXION-8`) : liste posée datée du tick
+                 du pas qui l'applique, f64 bit pour bit, refus à la lecture (R-1650) ; miroir au client rejoué par
+                 la règle du serveur (mêmes valeurs au bit près, mêmes actifs) ; `parameters()` lisible au client,
+                 écriture refusée (R-1755) ; `Modifier` borné à 256 caractères ; 86 GameTests verts.
+                 **Reste pour F** : PARTIE 21 du CDC (format de l'entrée, protocole 8, descripteur 6).
            - [ ] F : guide « Régler un véhicule » (fr, en), CDC A15 complet (12.5, 12.6 R-1084..R-1087, 23.2,
                  23.4, PARTIES 21 et 22, A.3, A.7), précisions d'ADR-167 (à écrire : `mass` seulement si
                  `physics.mass` est déclarée ; constantes dans `Parameters` et non `VehicleParameters` ; espace
                  `axion` refusé tant qu'aucune cause du moteur n'existe ; rejeu jusqu'à point fixe ; bornes
                  jugées sur le f32), film des deux buggys, puis fusion dans `master`.
      - [ ] 5b — modificateurs déclarés liés aux variables (schéma 4, builder), mode sport du buggy ; film.
+     - [ ] **Après la 5a** : ajouter **CAP-56** à l'annexe A.7 (avec sa ligne 38.9), accepté par Killian le
+           2026-11-12 — mannequin du joueur à l'échelle du jeu, articulé aux pivots du jeu, poses debout, accroupi
+           et assis tel qu'AXION l'assoit (node `SEAT` et décalage de monture), GLB à texture neutre au format d'un
+           skin (pas celui de Mojang), généré par le moteur et vérifié par un test ; fichier et guide en **M5**,
+           bouton « insérer le mannequin sur ce siège » de l'addon Blender en **M9** (C-75). Demander avant
+           d'ouvrir Blender.
      - [ ] 5c — `VehicleController`, `VehicleControl`, couple par roue (R-1082), paramètres d'addon, coût mesuré.
   6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37) ; le registre envoyé au client
      porte alors les correspondances bloc → matériau, surcharges de l'administrateur comprises (ADR-165, précision 3c).

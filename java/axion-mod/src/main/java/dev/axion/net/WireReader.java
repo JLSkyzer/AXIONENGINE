@@ -122,6 +122,15 @@ public final class WireReader {
     }
 
     /**
+     * @return un flottant IEEE 754 double lu bit pour bit ; {@code NaN} et les infinis passent, au lecteur de les
+     *     refuser là où ils n'ont pas de sens
+     * @throws MalformedPacketException si le message est épuisé
+     */
+    public double f64() throws MalformedPacketException {
+        return Double.longBitsToDouble(i64());
+    }
+
+    /**
      * @return un varint non signé, de 0 à {@link Integer#MAX_VALUE}
      * @throws MalformedPacketException si le message est épuisé, si le codage n'est pas minimal, ou
      *     si la valeur dépasse 31 bits

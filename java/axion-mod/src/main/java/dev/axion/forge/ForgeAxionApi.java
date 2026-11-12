@@ -197,9 +197,21 @@ public final class ForgeAxionApi implements AxionApi {
      */
     private record ParametersView(AxionEntity entity) implements Parameters {
 
+        /** Au serveur, sur le thread autoritatif ; au client, le miroir des snapshots (ADR-167 D8). */
         private dev.axion.entity.AssemblyParameters table() {
-            AuthoritativeThread.require();
+            if (!entity.level().isClientSide()) {
+                AuthoritativeThread.require();
+            }
             return entity.parameters();
+        }
+
+        /** Ce qui écrit : au serveur seulement, sur le thread autoritatif (R-1755). */
+        private dev.axion.entity.AssemblyParameters writable() {
+            if (entity.level().isClientSide()) {
+                throw new IllegalStateException("R-1755 : au client, les paramètres d'une assembly se lisent sans"
+                        + " s'écrire ; le serveur les règle");
+            }
+            return table();
         }
 
         private dev.axion.definition.Tuning.Parameter parameter(String name) {
@@ -248,19 +260,20 @@ public final class ForgeAxionApi implements AxionApi {
 
         @Override
         public void modify(Modifier modifier) {
+            writable();
             parameter(modifier.parameter());
             table().modify(modifier, dev.axion.entity.AssemblyParameters.API);
         }
 
         @Override
         public boolean remove(String cause) {
-            dev.axion.entity.AssemblyParameters table = table();
+            dev.axion.entity.AssemblyParameters table = writable();
             return table != null && table.remove(cause);
         }
 
         @Override
         public boolean remove(String cause, String parameter) {
-            dev.axion.entity.AssemblyParameters table = table();
+            dev.axion.entity.AssemblyParameters table = writable();
             return table != null && table.remove(cause, parameter);
         }
 

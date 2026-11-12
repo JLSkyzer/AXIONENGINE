@@ -1,8 +1,10 @@
 package dev.axion.net;
 
+import dev.axion.api.assembly.Modifier;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -25,6 +27,8 @@ import java.util.Set;
  * @param wheels l'état de chaque roue, dans l'ordre de la definition (ADR-159 D9, descripteur 4)
  * @param vehicle l'état du véhicule, {@link Vehicle#NONE} si l'assembly n'en est pas un (ADR-163 D1, descripteur 5)
  * @param variables les variables de contenu, {@link VariableValues#NONE} sans (ADR-163 D2, descripteur 5)
+ * @param parameters les modificateurs posés sur ses paramètres, {@link Modifiers#NONE} pour une assembly jamais
+ *     réglée (ADR-167 D8, descripteur 6)
  */
 public record AssemblyState(
         long x,
@@ -39,7 +43,8 @@ public record AssemblyState(
         AnimationLayers animation,
         Wheels wheels,
         Vehicle vehicle,
-        VariableValues variables) {
+        VariableValues variables,
+        Modifiers parameters) {
 
     /** Corps autres que le corps racine d'une assembly, au plus : elle en a 64 (R-190). */
     public static final int MAX_BODIES = 63;
@@ -671,16 +676,84 @@ public record AssemblyState(
     }
 
     /**
-     * Refuse une vitesse, des corps, des joints, une animation, des roues ou un véhicule absents, et des corps
-     * trop nombreux ou en double.
+     * Les modificateurs posés sur les paramètres d'une assembly (ADR-167 D8), tels que les snapshots les portent :
+     * dans l'ordre de leur pose, actifs ou non, chacun avec son origine, et le tick du serveur où cette liste a pris
+     * effet. Le client les rejoue sur la definition qu'il a reçue et compose les mêmes valeurs, au bit près : aucune
+     * valeur effective ne voyage.
+     *
+     * @param tick le tick du serveur où la liste a pris effet — celui du premier pas simulé avec elle —, 0 pour une
+     *     assembly jamais réglée
+     * @param posed les modificateurs, dans l'ordre de leur pose ; copie
+     */
+    public record Modifiers(long tick, List<Posed> posed) {
+
+        /** Modificateurs posés sur une assembly, au plus, actifs ou non (ADR-167 D3). */
+        public static final int MAX_MODIFIERS = 64;
+
+        /** Aucun modificateur : une assembly jamais réglée. */
+        public static final Modifiers NONE = new Modifiers(0L, List.of());
+
+        /** Copie la liste ; refuse un tick négatif, une liste trop longue, une cause posée deux fois sur un paramètre. */
+        public Modifiers {
+            if (tick < 0) {
+                throw new IllegalArgumentException("tick d'effet " + tick);
+            }
+            if (posed.size() > MAX_MODIFIERS) {
+                throw new IllegalArgumentException(posed.size() + " modificateurs, au-delà de " + MAX_MODIFIERS);
+            }
+            Set<List<String>> seen = new HashSet<>();
+            for (Posed one : posed) {
+                Modifier modifier = one.modifier();
+                if (!seen.add(List.of(modifier.cause(), modifier.parameter()))) {
+                    throw new IllegalArgumentException("cause « " + modifier.cause() + " » posée deux fois sur « "
+                            + modifier.parameter() + " »");
+                }
+            }
+            posed = List.copyOf(posed);
+        }
+    }
+
+    /**
+     * Un modificateur posé, et d'où il vient (ADR-167 D10).
+     *
+     * @param modifier le modificateur
+     * @param origin d'où il vient : {@link #API}, {@link #COMMAND} ou {@link #SAVE}
+     */
+    public record Posed(Modifier modifier, int origin) {
+
+        /** Posé par l'API. */
+        public static final int API = 0;
+
+        /** Posé par {@code /axion params}. */
+        public static final int COMMAND = 1;
+
+        /** Relu de la sauvegarde. */
+        public static final int SAVE = 2;
+
+        /** Le nombre d'origines. */
+        public static final int ORIGINS = 3;
+
+        /** Refuse un modificateur absent ou une origine inconnue. */
+        public Posed {
+            Objects.requireNonNull(modifier, "modifier");
+            if (origin < 0 || origin >= ORIGINS) {
+                throw new IllegalArgumentException("origine " + origin + " d'un modificateur");
+            }
+        }
+    }
+
+    /**
+     * Refuse une vitesse, des corps, des joints, une animation, des roues, un véhicule ou des modificateurs absents, et
+     * des corps trop nombreux ou en double.
      */
     public AssemblyState {
         if (velocity == null) {
             throw new IllegalArgumentException("vitesse absente");
         }
         if (bodies == null || joints == null || animation == null || wheels == null || vehicle == null
-                || variables == null) {
-            throw new IllegalArgumentException("corps, joints, animation, roues, véhicule ou variables absents");
+                || variables == null || parameters == null) {
+            throw new IllegalArgumentException(
+                    "corps, joints, animation, roues, véhicule, variables ou modificateurs absents");
         }
         if (bodies.size() > MAX_BODIES) {
             throw new IllegalArgumentException(bodies.size() + " corps secondaires, au-delà de " + MAX_BODIES);
@@ -793,13 +866,37 @@ public record AssemblyState(
     }
 
     /**
+     * L'état d'une assembly jamais réglée.
+     *
+     * @param x position x, au 1/1024 de bloc
+     * @param y position y, au 1/1024 de bloc
+     * @param z position z, au 1/1024 de bloc
+     * @param rotation rotation « smallest three »
+     * @param velocity vitesses quantifiées
+     * @param bounds emprise relative à la position, ou {@code null}
+     * @param sleeping le corps dort
+     * @param bodies les corps autres que le corps racine
+     * @param joints l'état de chaque joint
+     * @param animation l'état d'animation
+     * @param wheels l'état de chaque roue
+     * @param vehicle l'état du véhicule
+     * @param variables les variables de contenu
+     */
+    public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
+            List<Body> bodies, JointBits joints, AnimationLayers animation, Wheels wheels, Vehicle vehicle,
+            VariableValues variables) {
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, vehicle, variables,
+                Modifiers.NONE);
+    }
+
+    /**
      * @param otherBodies les corps autres que le corps racine, en poses relatives
      * @param jointBits l'état de chaque joint
      * @return cet état, avec ces corps et ces joints
      */
     public AssemblyState with(List<Body> otherBodies, JointBits jointBits) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation,
-                wheels, vehicle, variables);
+                wheels, vehicle, variables, parameters);
     }
 
     /**
@@ -807,8 +904,8 @@ public record AssemblyState(
      * @return cet état, avec cette animation
      */
     public AssemblyState withAnimation(AnimationLayers layers) {
-        return new AssemblyState(
-                x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers, wheels, vehicle, variables);
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers, wheels, vehicle,
+                variables, parameters);
     }
 
     /**
@@ -816,8 +913,8 @@ public record AssemblyState(
      * @return cet état, avec ces roues
      */
     public AssemblyState withWheels(Wheels states) {
-        return new AssemblyState(
-                x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, states, vehicle, variables);
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, states,
+                vehicle, variables, parameters);
     }
 
     /**
@@ -825,8 +922,8 @@ public record AssemblyState(
      * @return cet état, avec ce véhicule
      */
     public AssemblyState withVehicle(Vehicle state) {
-        return new AssemblyState(
-                x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, state, variables);
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
+                state, variables, parameters);
     }
 
     /**
@@ -834,8 +931,17 @@ public record AssemblyState(
      * @return cet état, avec ces variables
      */
     public AssemblyState withVariables(VariableValues values) {
-        return new AssemblyState(
-                x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, vehicle, values);
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
+                vehicle, values, parameters);
+    }
+
+    /**
+     * @param modifiers les modificateurs posés sur ses paramètres
+     * @return cet état, avec ces modificateurs
+     */
+    public AssemblyState withParameters(Modifiers modifiers) {
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
+                vehicle, variables, modifiers);
     }
 
     /**

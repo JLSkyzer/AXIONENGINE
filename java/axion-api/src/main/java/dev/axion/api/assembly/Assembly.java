@@ -48,7 +48,7 @@ public interface Assembly {
 
     /**
      * {@return les paramètres réglables de l'assembly (ADR-167)} : sa masse, et pour un véhicule son moteur, sa boîte,
-     * ses freins, ses pneus… réglés pour elle seule. Thread : autoritatif.
+     * ses freins, ses pneus… réglés pour elle seule. Thread : autoritatif ; au client, en lecture seulement.
      */
     Parameters parameters();
 

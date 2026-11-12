@@ -5,6 +5,9 @@ import dev.axion.api.AxionApi;
 import dev.axion.api.assembly.Modifier;
 import dev.axion.api.assembly.Parameters;
 import dev.axion.entity.AssemblyParameters;
+import dev.axion.net.AssemblyState;
+import dev.axion.net.MalformedPacketException;
+import dev.axion.net.SnapshotMessage;
 import dev.axion.seat.VehicleInput;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -26,8 +29,8 @@ import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 /**
  * ADR-167, sous-tranche 5a, sur un vrai serveur : un paramètre réglé par l'API agit sur le véhicule simulé, les
- * modificateurs posés se sauvegardent et se relisent, et {@code /axion params} pose, refuse et retire. Contenu de
- * développement, jamais empaqueté (R-1790).
+ * modificateurs posés se sauvegardent et se relisent, partent aux joueurs datés du tick où ils prennent effet, et
+ * {@code /axion params} pose, refuse et retire. Contenu de développement, jamais empaqueté (R-1790).
  */
 @GameTestHolder("axion")
 @PrefixGameTestTemplate(false)
@@ -143,6 +146,72 @@ public final class ParametresGameTests {
                             && poses.get(0).origin().equals(AssemblyParameters.SAVE), "ordre et origine : " + poses);
                 })
                 .thenSucceed();
+    }
+
+    /**
+     * D8 : l'état que les snapshots portent donne les modificateurs posés, datés du tick du pas qui les applique — celui
+     * de la pose ou le suivant —, et le client qui rejoue ce qu'il en lit sur la definition compose les valeurs du
+     * serveur, au bit près. Un retrait part aussi, daté.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void lesJoueursRecoiventLesModificateursDates(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(helper, VEHICULE, new Vec3(4.5, DESSUS_DALLE, 4.5), IDENTITE);
+        MinecraftServer serveur = helper.getLevel().getServer();
+        long[] pose = new long[2];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.parameters() != null && assembly.netState() != null,
+                        "l'assembly est simulée"))
+                .thenExecute(() -> {
+                    helper.assertTrue(assembly.netState().parameters().equals(AssemblyState.Modifiers.NONE),
+                            "jamais réglée : rien ne part");
+                    Parameters parametres = AxionApi.get().assemblies().byEntity(assembly).orElseThrow().parameters();
+                    parametres.modify(new Modifier("essai:bride", Parameters.ENGINE_TORQUE,
+                            Modifier.Operation.MULTIPLY_TOTAL, -0.3));
+                    parametres.modify(new Modifier("essai:allegement", Parameters.MASS, Modifier.Operation.ADD,
+                            -1.0 / 3.0));
+                    pose[0] = serveur.getTickCount();
+                })
+                .thenWaitUntil(() -> helper.assertTrue(assembly.netState().parameters().posed().size() == 2,
+                        "les modificateurs partent"))
+                .thenExecute(() -> {
+                    AssemblyState.Modifiers envoyes = assembly.netState().parameters();
+                    helper.assertTrue(envoyes.tick() == pose[0] || envoyes.tick() == pose[0] + 1,
+                            "daté du pas qui les applique : " + envoyes.tick() + " pour une pose au tick " + pose[0]);
+                    AssemblyParameters table = assembly.parameters();
+                    helper.assertTrue(envoyes.equals(table.posed(envoyes.tick())), "la liste posée : " + envoyes);
+                    AssemblyParameters miroir = AssemblyParameters.mirror(table.tuning(), relu(assembly.netState()));
+                    for (int i = 0; i < table.tuning().size(); i++) {
+                        helper.assertTrue(Double.doubleToRawLongBits(table.value(i))
+                                        == Double.doubleToRawLongBits(miroir.value(i)),
+                                table.tuning().get(i).name() + " : " + miroir.value(i) + " au client, " + table.value(i)
+                                        + " au serveur");
+                    }
+                    helper.assertTrue(miroir.applied().equals(table.applied()), "mêmes actifs : " + miroir.applied());
+                    AxionApi.get().assemblies().byEntity(assembly).orElseThrow().parameters().remove("essai:bride");
+                    AxionApi.get().assemblies().byEntity(assembly).orElseThrow().parameters().remove("essai:allegement");
+                    pose[1] = serveur.getTickCount();
+                })
+                .thenWaitUntil(() -> helper.assertTrue(assembly.netState().parameters().posed().isEmpty(),
+                        "le retrait part"))
+                .thenExecute(() -> {
+                    long tick = assembly.netState().parameters().tick();
+                    helper.assertTrue(tick == pose[1] || tick == pose[1] + 1, "retrait daté : " + tick);
+                    helper.assertTrue(!assembly.netState().parameters().equals(AssemblyState.Modifiers.NONE),
+                            "une liste vidée n'est pas une assembly vierge");
+                })
+                .thenSucceed();
+    }
+
+    /** {@return les modificateurs qu'un joueur lit de cet état, après un aller-retour sur le fil} */
+    private static AssemblyState.Modifiers relu(AssemblyState etat) {
+        try {
+            byte[] fil = new SnapshotMessage(1, 1L, SnapshotMessage.DESCRIPTOR_VERSION,
+                    List.of(SnapshotMessage.Entry.full(1, etat))).encode();
+            return SnapshotMessage.decode(fil).entries().get(0).resolve(null).parameters();
+        } catch (MalformedPacketException refuse) {
+            throw new IllegalStateException("le snapshot de l'assembly se relit mal : " + refuse.getMessage(), refuse);
+        }
     }
 
     /**

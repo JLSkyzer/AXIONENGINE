@@ -1,5 +1,6 @@
 package dev.axion.net;
 
+import dev.axion.api.assembly.Modifier;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -14,7 +15,7 @@ import java.util.Set;
  * genre u8 = 5 | séquence varuint | tick serveur varulong | descripteur u8 | n varuint | n entrées
  * entrée : handle varuint | drapeaux u16 | [base varuint] | position | rotation i32
  *          | [vitesses 6 × i16] | [emprise 6 × i16] | [corps] | [joints] | [animation] | [roues] | [véhicule]
- *          | [variables]
+ *          | [variables] | [paramètres]
  * position : 3 × i64 absolus (entrée complète) ou 3 × i32 de delta, au 1/1024 de bloc
  * corps : n varuint | n × (node varuint | position 3 × i32 au 1/1024 de bloc | rotation i32)
  * joints : n varuint | ⌈2n / 8⌉ octets, deux bits par joint
@@ -25,6 +26,8 @@ import java.util.Set;
  * véhicule : régime i16 | charge u8 | rapport i8 | drapeaux u8 | accélérateur u8 | frein u8 | direction i8
  *            | frein à main u8
  * variables : n varuint | ⌈n / 8⌉ octets, un bit par variable présente | f32 par variable présente, par rang
+ * paramètres : tick d'effet varulong | n varuint | n × (cause utf8 | paramètre utf8 | opération u8 | origine u8
+ *              | quantité f64)
  * </pre>
  *
  * <p>Une entrée en delta nomme la séquence du snapshot qui portait sa base : le client vérifie qu'il la
@@ -43,7 +46,9 @@ import java.util.Set;
  * <p>Les roues (descripteur 4, ADR-159 D9) aussi : entières quand elles ont changé depuis la base
  * ({@link AssemblyState.Wheels}). Et l'état du véhicule (descripteur 5, ADR-163 D1), dont l'entrée a fait passer
  * les drapeaux sur 16 bits ({@link AssemblyState.Vehicle}), puis les variables de contenu que ce joueur reçoit
- * (ADR-163 D2, {@link AssemblyState.VariableValues}).
+ * (ADR-163 D2, {@link AssemblyState.VariableValues}). Enfin les modificateurs posés sur les paramètres de l'assembly
+ * (descripteur 6, ADR-167 D8, {@link AssemblyState.Modifiers}) : dans l'ordre de leur pose, l'opération à son rang
+ * dans {@link Modifier.Operation}, l'origine à son code de {@link AssemblyState.Posed}, la quantité bit pour bit.
  *
  * @param sequence numéro du snapshot chez l'émetteur, à partir de 1
  * @param serverTick tick du serveur dont il porte les états
@@ -53,11 +58,17 @@ import java.util.Set;
 public record SnapshotMessage(int sequence, long serverTick, int descriptor, List<Entry> entries) {
 
     /**
-     * Le descripteur d'états procéduraux (ADR-150 D6) : 5 depuis l'état du véhicule et les drapeaux sur 16 bits
-     * (ADR-163 D1), après les roues (4, ADR-159 D9), l'animation (3, ADR-155), les corps autres que le corps
-     * racine et les joints (2, ADR-151 D8).
+     * Le descripteur d'états procéduraux (ADR-150 D6) : 6 depuis les modificateurs des paramètres (ADR-167 D8), après
+     * l'état du véhicule et les drapeaux sur 16 bits (5, ADR-163 D1), les roues (4, ADR-159 D9), l'animation (3,
+     * ADR-155), les corps autres que le corps racine et les joints (2, ADR-151 D8).
      */
-    public static final int DESCRIPTOR_VERSION = 5;
+    public static final int DESCRIPTOR_VERSION = 6;
+
+    /**
+     * La longueur maximale d'une cause ou d'un nom de paramètre sur le fil, en octets : {@link Modifier#MAX_LENGTH}
+     * caractères, trois octets au plus chacun en UTF-8.
+     */
+    static final int MAX_MODIFIER_TEXT_BYTES = 3 * Modifier.MAX_LENGTH;
 
     /** Nombre maximal d'entrées d'un snapshot (R-1691). */
     static final int MAX_ENTRIES = 8192;
@@ -72,8 +83,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
     static final int FLAG_WHEELS = 128;
     static final int FLAG_VEHICLE = 256;
     static final int FLAG_VARIABLES = 512;
+    static final int FLAG_PARAMETERS = 1024;
     private static final int KNOWN_FLAGS = FLAG_FULL | FLAG_VELOCITY | FLAG_BOUNDS | FLAG_SLEEPING | FLAG_BODIES
-            | FLAG_JOINTS | FLAG_ANIMATION | FLAG_WHEELS | FLAG_VEHICLE | FLAG_VARIABLES;
+            | FLAG_JOINTS | FLAG_ANIMATION | FLAG_WHEELS | FLAG_VEHICLE | FLAG_VARIABLES | FLAG_PARAMETERS;
 
     /** Copie les entrées. */
     public SnapshotMessage {
@@ -99,6 +111,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      * @param wheels état des roues, ou {@code null} : celui de la base, aucun pour une entrée complète
      * @param vehicle état du véhicule, ou {@code null} : celui de la base, aucun pour une entrée complète
      * @param variables variables de contenu, ou {@code null} : celles de la base, aucune pour une entrée complète
+     * @param parameters modificateurs des paramètres, ou {@code null} : ceux de la base, aucun pour une entrée
+     *     complète
      */
     public record Entry(
             int handle,
@@ -115,7 +129,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AnimationLayers animation,
             AssemblyState.Wheels wheels,
             AssemblyState.Vehicle vehicle,
-            AssemblyState.VariableValues variables) {
+            AssemblyState.VariableValues variables,
+            AssemblyState.Modifiers parameters) {
 
         /** Copie les corps. */
         public Entry {
@@ -141,7 +156,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     AnimationLayers.NONE.equals(state.animation()) ? null : state.animation(),
                     state.wheels().count() == 0 ? null : state.wheels(),
                     AssemblyState.Vehicle.NONE.equals(state.vehicle()) ? null : state.vehicle(),
-                    state.variables().count() == 0 ? null : state.variables());
+                    state.variables().count() == 0 ? null : state.variables(),
+                    AssemblyState.Modifiers.NONE.equals(state.parameters()) ? null : state.parameters());
         }
 
         /**
@@ -170,8 +186,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.Vehicle vehicle = state.vehicle().equals(base.vehicle()) ? null : state.vehicle();
             AssemblyState.VariableValues variables =
                     state.variables().equals(base.variables()) ? null : state.variables();
+            AssemblyState.Modifiers parameters = state.parameters().equals(base.parameters()) ? null : state.parameters();
             return new Entry(handle, baseSequence, dx, dy, dz, state.rotation(), velocity, bounds, state.sleeping(),
-                    bodies, joints, animation, wheels, vehicle, variables);
+                    bodies, joints, animation, wheels, vehicle, variables, parameters);
         }
 
         /**
@@ -186,13 +203,15 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                         animation == null ? AnimationLayers.NONE : animation,
                         wheels == null ? AssemblyState.Wheels.NONE : wheels,
                         vehicle == null ? AssemblyState.Vehicle.NONE : vehicle,
-                        variables == null ? AssemblyState.VariableValues.NONE : variables);
+                        variables == null ? AssemblyState.VariableValues.NONE : variables,
+                        parameters == null ? AssemblyState.Modifiers.NONE : parameters);
             }
             return new AssemblyState(base.x() + x, base.y() + y, base.z() + z, rotation,
                     velocity == null ? base.velocity() : velocity, bounds == null ? base.bounds() : bounds, sleeping,
                     bodies == null ? base.bodies() : bodies, joints == null ? base.joints() : joints,
                     animation == null ? base.animation() : animation, wheels == null ? base.wheels() : wheels,
-                    vehicle == null ? base.vehicle() : vehicle, variables == null ? base.variables() : variables);
+                    vehicle == null ? base.vehicle() : vehicle, variables == null ? base.variables() : variables,
+                    parameters == null ? base.parameters() : parameters);
         }
 
         private static boolean fitsInt(long value) {
@@ -221,7 +240,21 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                                 + AssemblyState.Wheels.packedLength(entry.wheels().count())
                         : 0)
                 + (entry.vehicle() != null ? AssemblyState.Vehicle.BYTES : 0)
-                + (entry.variables() != null ? variablesSize(entry.variables()) : 0);
+                + (entry.variables() != null ? variablesSize(entry.variables()) : 0)
+                + (entry.parameters() != null ? parametersSize(entry.parameters()) : 0);
+    }
+
+    private static int parametersSize(AssemblyState.Modifiers parameters) {
+        int size = varintSize(parameters.tick()) + varintSize(parameters.posed().size());
+        for (AssemblyState.Posed posed : parameters.posed()) {
+            size += textSize(posed.modifier().cause()) + textSize(posed.modifier().parameter()) + 2 + Double.BYTES;
+        }
+        return size;
+    }
+
+    private static int textSize(String text) {
+        int bytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        return varintSize(bytes) + bytes;
     }
 
     private static int variablesSize(AssemblyState.VariableValues variables) {
@@ -272,7 +305,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     | (entry.animation() != null ? FLAG_ANIMATION : 0)
                     | (entry.wheels() != null ? FLAG_WHEELS : 0)
                     | (entry.vehicle() != null ? FLAG_VEHICLE : 0)
-                    | (entry.variables() != null ? FLAG_VARIABLES : 0);
+                    | (entry.variables() != null ? FLAG_VARIABLES : 0)
+                    | (entry.parameters() != null ? FLAG_PARAMETERS : 0);
             writer.varUInt(entry.handle()).u16(flags);
             if (entry.full()) {
                 writer.i64(entry.x()).i64(entry.y()).i64(entry.z());
@@ -308,6 +342,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             }
             if (entry.variables() != null) {
                 writeVariables(writer, entry.variables());
+            }
+            if (entry.parameters() != null) {
+                writeParameters(writer, entry.parameters());
             }
         }
         return writer.toByteArray();
@@ -377,8 +414,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.Vehicle vehicle = (flags & FLAG_VEHICLE) == 0 ? null : readVehicle(reader, handle);
             AssemblyState.VariableValues variables =
                     (flags & FLAG_VARIABLES) == 0 ? null : readVariables(reader, handle);
+            AssemblyState.Modifiers parameters = (flags & FLAG_PARAMETERS) == 0 ? null : readParameters(reader, handle);
             entries.add(new Entry(handle, base, x, y, z, rotation, velocity, bounds, (flags & FLAG_SLEEPING) != 0,
-                    bodies, joints, animation, wheels, vehicle, variables));
+                    bodies, joints, animation, wheels, vehicle, variables, parameters));
         }
         reader.expectEnd();
         return new SnapshotMessage(sequence, serverTick, descriptor, entries);
@@ -454,6 +492,49 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
         }
         try {
             return new AssemblyState.VariableValues(count, mask, values);
+        } catch (IllegalArgumentException refused) {
+            throw new MalformedPacketException("entité " + handle + " : " + refused.getMessage());
+        }
+    }
+
+    private static void writeParameters(WireWriter writer, AssemblyState.Modifiers parameters) {
+        writer.varULong(parameters.tick()).varUInt(parameters.posed().size());
+        for (AssemblyState.Posed posed : parameters.posed()) {
+            Modifier modifier = posed.modifier();
+            writer.utf8(modifier.cause()).utf8(modifier.parameter()).u8(modifier.operation().ordinal())
+                    .u8(posed.origin()).f64(modifier.amount());
+        }
+    }
+
+    /**
+     * Les modificateurs d'une entrée (ADR-167 D8) : au plus 64, textes bornés, opération et origine connues, cause bien
+     * formée, quantité finie, aucune cause posée deux fois sur un paramètre (R-1650).
+     */
+    private static AssemblyState.Modifiers readParameters(WireReader reader, int handle)
+            throws MalformedPacketException {
+        long tick = reader.varULong();
+        int count = reader.varUInt();
+        if (count > AssemblyState.Modifiers.MAX_MODIFIERS) {
+            throw new MalformedPacketException("entité " + handle + " : " + count + " modificateurs, au-delà de "
+                    + AssemblyState.Modifiers.MAX_MODIFIERS);
+        }
+        Modifier.Operation[] operations = Modifier.Operation.values();
+        List<AssemblyState.Posed> posed = new ArrayList<>(count);
+        try {
+            for (int index = 0; index < count; index++) {
+                String cause = reader.utf8(MAX_MODIFIER_TEXT_BYTES);
+                String parameter = reader.utf8(MAX_MODIFIER_TEXT_BYTES);
+                int operation = reader.u8();
+                int origin = reader.u8();
+                double amount = reader.f64();
+                if (operation >= operations.length) {
+                    throw new MalformedPacketException("entité " + handle + " : opération " + operation
+                            + " d'un modificateur");
+                }
+                posed.add(new AssemblyState.Posed(
+                        new Modifier(cause, parameter, operations[operation], amount), origin));
+            }
+            return new AssemblyState.Modifiers(tick, posed);
         } catch (IllegalArgumentException refused) {
             throw new MalformedPacketException("entité " + handle + " : " + refused.getMessage());
         }

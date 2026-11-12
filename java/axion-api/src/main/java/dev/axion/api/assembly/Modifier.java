@@ -25,6 +25,12 @@ import java.util.regex.Pattern;
 @Experimental
 public record Modifier(String cause, String parameter, Operation operation, double amount) {
 
+    /**
+     * La longueur maximale d'une cause et d'un nom de paramètre, en caractères : un modificateur part aux joueurs qui
+     * suivent l'assembly, et le client refuse un champ plus long (R-1650).
+     */
+    public static final int MAX_LENGTH = 256;
+
     /** La forme d'un identifiant de cause. */
     private static final Pattern CAUSE = Pattern.compile("[a-z0-9_.-]+:[a-z0-9/._-]+");
 
@@ -35,14 +41,17 @@ public record Modifier(String cause, String parameter, Operation operation, doub
      * @param parameter le paramètre modifié
      * @param operation l'opération
      * @param amount la quantité, finie
-     * @throws IllegalArgumentException si la cause n'est pas un identifiant à espace de noms, ou si la quantité
-     *     n'est pas finie
+     * @throws IllegalArgumentException si la cause n'est pas un identifiant à espace de noms, si la cause ou le
+     *     paramètre dépassent {@link #MAX_LENGTH} caractères, ou si la quantité n'est pas finie
      * @throws NullPointerException si un champ est nul
      */
     public Modifier {
         Objects.requireNonNull(cause, "cause");
         Objects.requireNonNull(parameter, "parameter");
         Objects.requireNonNull(operation, "operation");
+        if (cause.length() > MAX_LENGTH || parameter.length() > MAX_LENGTH) {
+            throw new IllegalArgumentException("cause ou paramètre de plus de " + MAX_LENGTH + " caractères");
+        }
         if (!CAUSE.matcher(cause).matches()) {
             throw new IllegalArgumentException(
                     "cause « " + cause + " » : un identifiant <espace de noms>:<chemin> est attendu");

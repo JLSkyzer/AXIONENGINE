@@ -10,6 +10,10 @@ import dev.axion.api.assembly.Modifier;
 import dev.axion.api.assembly.Modifier.Operation;
 import dev.axion.api.assembly.Parameters;
 import dev.axion.definition.Tuning;
+import dev.axion.net.AssemblyState;
+import dev.axion.net.MalformedPacketException;
+import dev.axion.net.SmallestThree;
+import dev.axion.net.SnapshotMessage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -178,16 +182,37 @@ class AssemblyParametersTest {
     }
 
     @Test
-    @DisplayName("D8 : deux tables qui reprennent la même liste ont les mêmes actifs et les mêmes valeurs, au bit près")
-    void miroir() {
+    @DisplayName("D8 : le client qui rejoue ce que le snapshot porte compose comme le serveur, au bit près, mêmes actifs")
+    void miroir() throws MalformedPacketException {
         AssemblyParameters serveur = new AssemblyParameters(tuning());
-        serveur.modify(couple("b:deux", Operation.MULTIPLY_TOTAL, 0.07), AssemblyParameters.API);
-        serveur.modify(couple("a:un", Operation.ADD, 3.3), AssemblyParameters.API);
-        serveur.modify(new Modifier("a:un", Parameters.MASS, Operation.MULTIPLY_BASE, -0.15), AssemblyParameters.API);
-        AssemblyParameters client = new AssemblyParameters(tuning());
-        client.restore(serveur.modifiers(), AssemblyParameters.SAVE);
+        serveur.restore(List.of(
+                couple("b:deux", Operation.MULTIPLY_TOTAL, 0.07),
+                couple("a:un", Operation.ADD, 3.3),
+                new Modifier("a:un", Parameters.MASS, Operation.MULTIPLY_BASE, -0.15),
+                new Modifier("garage:rapport", Parameters.gear(6), Operation.ADD, 0.1)), AssemblyParameters.SAVE);
+        // (260 + 3.3 - 50) × 1.8 × 1.07 = 410.8 tient dans [200, 420] ; sans l'allègement, 507 n'y tient plus.
+        serveur.modify(couple("allegement:moteur", Operation.ADD, -50), AssemblyParameters.API);
+        serveur.modify(couple("turbo:boost", Operation.MULTIPLY_BASE, 0.8), AssemblyParameters.COMMAND);
+        serveur.remove("allegement:moteur");
+        serveur.modify(couple("c:trois", Operation.ADD, -1.0 / 3.0), AssemblyParameters.API);
+        assertEquals(2, serveur.applied().stream().filter(applied -> !applied.active()).count(),
+                "le turbo hors bornes et le rapport absent voyagent aussi, inactifs");
+
+        AssemblyState etat = new AssemblyState(1024L, 2048L, 0L, SmallestThree.encode(0f, 0f, 0f, 1f),
+                AssemblyState.Velocity.ZERO, null, false).withParameters(serveur.posed(4321L));
+        byte[] fil = new SnapshotMessage(1, 4321L, SnapshotMessage.DESCRIPTOR_VERSION,
+                List.of(SnapshotMessage.Entry.full(7, etat))).encode();
+        AssemblyState.Modifiers recus = SnapshotMessage.decode(fil).entries().get(0).resolve(null).parameters();
+        assertEquals(4321L, recus.tick(), "daté du tick où la liste a pris effet");
+
+        AssemblyParameters client = AssemblyParameters.mirror(tuning(), recus);
         for (int i = 0; i < serveur.tuning().size(); i++) {
-            assertEquals(Double.doubleToLongBits(serveur.value(i)), Double.doubleToLongBits(client.value(i)));
+            assertEquals(Double.doubleToRawLongBits(serveur.value(i)), Double.doubleToRawLongBits(client.value(i)),
+                    serveur.tuning().get(i).name());
         }
+        assertEquals(serveur.applied(), client.applied(), "mêmes causes, mêmes origines, mêmes actifs, mêmes raisons");
+        assertEquals(serveur.posed(4321L), client.posed(4321L));
+        AssemblyParameters vierge = AssemblyParameters.mirror(tuning(), AssemblyState.Modifiers.NONE);
+        assertEquals(260.0, vierge.value(vierge.tuning().indexOf(Parameters.ENGINE_TORQUE)), "rien reçu : la base");
     }
 }

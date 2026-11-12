@@ -399,16 +399,16 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         }
         animate(stream);
         drive(stream);
-        tune(stream);
+        tune(stream, tick);
         return stream;
     }
 
     /**
      * Pousse au natif les paramètres réglés de chaque assembly dotée d'un corps, quand ils ont changé (ADR-167 D6) :
      * le natif les garde d'un tick à l'autre, et repart de sa base à chaque création. Une assembly à sa base n'envoie
-     * rien à sa création.
+     * rien à sa création. La liste posée se date du tick où elle prend effet, pour les snapshots (D8).
      */
-    private void tune(SimCommandStream stream) {
+    private void tune(SimCommandStream stream, long tick) {
         ledger.forEachBody((index, assembly) -> {
             dev.axion.entity.AssemblyParameters table = assembly.parameters();
             if (table == null) {
@@ -419,6 +419,9 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             if (changed) {
                 stream.setParameters(index, GENERATION, table.fields(SimCommandStream.PARAMETER_FIELDS),
                         table.gearTable());
+            }
+            if (sent == null ? !table.modifiers().isEmpty() : changed) {
+                assembly.parametersInEffect(tick);
             }
             parametersSent.put(index, new ParametersSent(table, table.version()));
         });

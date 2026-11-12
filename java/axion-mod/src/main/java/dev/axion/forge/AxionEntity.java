@@ -130,10 +130,21 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     private AssemblyVariables variables;
 
     /**
-     * Les paramètres réglés de l'assembly (serveur, ADR-167) ; {@code null} tant que sa definition n'est pas compilée.
-     * Voir {@link #parameters()}.
+     * Les paramètres réglés de l'assembly (serveur, ADR-167), ou leur miroir chez le client (D8) ; {@code null} tant
+     * que sa definition n'est pas compilée. Voir {@link #parameters()}.
      */
     private dev.axion.entity.AssemblyParameters parameters;
+
+    /**
+     * Les modificateurs en vigueur au natif, datés du tick où ils ont pris effet (serveur, ADR-167 D8) : ceux que les
+     * snapshots portent. Voir {@link #parametersInEffect}.
+     */
+    private AssemblyState.Modifiers netParameters = AssemblyState.Modifiers.NONE;
+
+    /** Les modificateurs du plus récent snapshot reçu (client, ADR-167 D8), et ceux dont le miroir est fait. */
+    private AssemblyState.Modifiers receivedParameters = AssemblyState.Modifiers.NONE;
+
+    private AssemblyState.Modifiers mirroredParameters;
 
     /** La version des variables que {@link #netState} porte, et celles que seul le conducteur reçoit (serveur). */
     private long netVariablesVersion = -1L;
@@ -502,18 +513,27 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
-     * {@return les paramètres réglés de l'assembly (serveur, ADR-167), {@code null} si sa definition n'est pas encore
-     * compilée, ou au client} Créés à la première demande, à leur base, puis avec les modificateurs que la sauvegarde
+     * {@return les paramètres réglés de l'assembly (ADR-167), {@code null} si sa definition n'est pas encore compilée}
+     *
+     * <p>Au serveur, ils sont créés à la première demande, à leur base, puis avec les modificateurs que la sauvegarde
      * gardait ({@code axion:params}). Une definition recompilée les refait, en reprenant chaque modificateur : celui
      * que ses nouvelles bornes refusent, ou qui vise un paramètre qu'elle n'a plus, reste posé mais inactif, et se dit
      * ({@code E-7011}).
+     *
+     * <p>Au client, c'est leur miroir (D8) : les modificateurs du plus récent snapshot, rejoués sur la definition reçue
+     * — les valeurs du serveur, au bit près. Il se lit ; rien ne l'écrit que le snapshot suivant.
      */
     public dev.axion.entity.AssemblyParameters parameters() {
-        dev.axion.definition.Tuning tuning = level().isClientSide() || inert
-                ? null
-                : AxionEntities.tuning(definitionId).orElse(null);
+        dev.axion.definition.Tuning tuning = inert ? null : AxionEntities.tuning(definitionId).orElse(null);
         if (tuning == null) {
             return null;
+        }
+        if (level().isClientSide()) {
+            if (parameters == null || parameters.tuning() != tuning || mirroredParameters != receivedParameters) {
+                parameters = dev.axion.entity.AssemblyParameters.mirror(tuning, receivedParameters);
+                mirroredParameters = receivedParameters;
+            }
+            return parameters;
         }
         if (parameters == null || parameters.tuning() != tuning) {
             dev.axion.entity.AssemblyParameters fresh = new dev.axion.entity.AssemblyParameters(tuning);
@@ -1412,7 +1432,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     .withAnimation(animation.state())
                     .withWheels(wheelStates())
                     .withVehicle(vehicleState())
-                    .withVariables(replicatedVariables());
+                    .withVariables(replicatedVariables())
+                    .withParameters(netParameters);
         } catch (IllegalArgumentException notFinite) {
             // Le natif ramène lui-même un corps non fini dans un état valide (E-2030) ; l'état précédent
             // reste celui des snapshots d'ici là.
@@ -1431,7 +1452,22 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (netState != null && variables != null && variables.version() != netVariablesVersion) {
             netState = netState.withVariables(replicatedVariables());
         }
+        // ADR-167 D8 : de même un réglage d'une assembly endormie.
+        if (netState != null && netState.parameters() != netParameters) {
+            netState = netState.withParameters(netParameters);
+        }
         return netState;
+    }
+
+    /**
+     * Date les modificateurs que le natif applique désormais (serveur, ADR-167 D8) : appelé quand la liste posée part
+     * au natif, avec le tick du pas qui l'applique le premier. Les snapshots la portent ensuite, datée de ce tick.
+     *
+     * @param tick le tick du serveur où elle prend effet
+     */
+    void parametersInEffect(long tick) {
+        dev.axion.entity.AssemblyParameters table = parameters();
+        netParameters = table == null ? AssemblyState.Modifiers.NONE : table.posed(tick);
     }
 
     /**
@@ -1508,6 +1544,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (serverTick >= receivedJointsTick) {
             receivedJoints = state.joints();
             receivedAnimation = state.animation();
+            // ADR-167 D8 : les modificateurs non plus ; le miroir se refait à la lecture suivante.
+            receivedParameters = state.parameters();
             receivedJointsTick = serverTick;
         }
     }

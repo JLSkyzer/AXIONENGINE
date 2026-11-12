@@ -3,6 +3,7 @@ package dev.axion.entity;
 import dev.axion.api.assembly.Modifier;
 import dev.axion.api.assembly.Parameters;
 import dev.axion.definition.Tuning;
+import dev.axion.net.AssemblyState;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -35,8 +36,8 @@ import java.util.Objects;
  */
 public final class AssemblyParameters {
 
-    /** Modificateurs posés sur une assembly, au plus, actifs ou non (D3). */
-    public static final int MAX_MODIFIERS = 64;
+    /** Modificateurs posés sur une assembly, au plus, actifs ou non (D3) : autant que les snapshots en portent. */
+    public static final int MAX_MODIFIERS = AssemblyState.Modifiers.MAX_MODIFIERS;
 
     /** Un modificateur posé par l'API. */
     public static final String API = "api";
@@ -46,6 +47,9 @@ public final class AssemblyParameters {
 
     /** Un modificateur relu de la sauvegarde. */
     public static final String SAVE = "sauvegarde";
+
+    /** Les origines, chacune au rang de son code sur le fil ({@link AssemblyState.Posed}). */
+    static final List<String> ORIGINS = List.of(API, COMMAND, SAVE);
 
     /** L'espace de noms des causes du moteur, réservé (D2). */
     static final String ENGINE_NAMESPACE = "axion:";
@@ -66,6 +70,9 @@ public final class AssemblyParameters {
         private String reason;
 
         private Entry(Modifier modifier, String origin) {
+            if (!ORIGINS.contains(origin)) {
+                throw new IllegalArgumentException("origine « " + origin + " » : " + ORIGINS + " attendue");
+            }
             this.modifier = modifier;
             this.origin = origin;
         }
@@ -171,6 +178,33 @@ public final class AssemblyParameters {
     /** {@return tous les modificateurs posés, dans l'ordre de leur pose} */
     public List<Modifier> modifiers() {
         return entries.stream().map(entry -> entry.modifier).toList();
+    }
+
+    /**
+     * {@return les modificateurs posés tels que les snapshots les portent (ADR-167 D8) : dans l'ordre de leur pose,
+     * chacun avec son origine}
+     *
+     * @param tick le tick du serveur où cette liste a pris effet
+     */
+    public AssemblyState.Modifiers posed(long tick) {
+        return new AssemblyState.Modifiers(tick, entries.stream()
+                .map(entry -> new AssemblyState.Posed(entry.modifier, ORIGINS.indexOf(entry.origin)))
+                .toList());
+    }
+
+    /**
+     * {@return le miroir, chez le client, des paramètres d'une assembly (ADR-167 D8)} Les modificateurs reçus se
+     * rejouent dans leur ordre sur la definition que le client a reçue, par la règle du serveur : le client compose
+     * les mêmes valeurs, au bit près, et retrouve les mêmes actifs. Rien ne s'y journalise : le serveur l'a fait.
+     *
+     * @param tuning les paramètres de la definition reçue
+     * @param received les modificateurs du dernier snapshot
+     */
+    public static AssemblyParameters mirror(Tuning tuning, AssemblyState.Modifiers received) {
+        AssemblyParameters mirror = new AssemblyParameters(tuning);
+        mirror.restore(received.posed().stream().map(AssemblyState.Posed::modifier).toList(),
+                received.posed().stream().map(posed -> ORIGINS.get(posed.origin())).toList());
+        return mirror;
     }
 
     /** {@return tous les modificateurs posés, dans l'ordre de leur pose, avec leur origine et leur état} */

@@ -113,6 +113,14 @@ public final class WireWriter {
     }
 
     /**
+     * @param value flottant IEEE 754 double, écrit bit pour bit
+     * @return cet écrivain
+     */
+    public WireWriter f64(double value) {
+        return i64(Double.doubleToRawLongBits(value));
+    }
+
+    /**
      * Varint non signé : sept bits par octet, poids faibles d'abord, bit de poids fort pour « la
      * suite ». Codage minimal : aucun octet de poids fort nul en tête.
      *

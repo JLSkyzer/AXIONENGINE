@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.axion.api.assembly.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -213,7 +214,9 @@ class SnapshotCodecTest {
                 "descripteur 3, antérieur aux roues");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(4).varUInt(0).toByteArray(),
                 "descripteur 4, antérieur au véhicule");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(6).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(5).varUInt(0).toByteArray(),
+                "descripteur 5, antérieur aux modificateurs des paramètres");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(7).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
@@ -673,5 +676,78 @@ class SnapshotCodecTest {
                 "tronqué");
         assertThrows(IllegalArgumentException.class,
                 () -> new AssemblyState.VariableValues(1, 0L, new float[] {3f}), "absente mais non nulle");
+    }
+
+    private static AssemblyState.Modifiers modificateurs(long tick) {
+        return new AssemblyState.Modifiers(tick, List.of(
+                new AssemblyState.Posed(new Modifier("upgrades:stage1", "engine.torque",
+                        Modifier.Operation.MULTIPLY_BASE, 0.1), AssemblyState.Posed.API),
+                new AssemblyState.Posed(new Modifier("garage:allegement", "mass", Modifier.Operation.ADD, -0.0),
+                        AssemblyState.Posed.COMMAND),
+                new AssemblyState.Posed(new Modifier("boite:courte", "transmission.gear.-1",
+                        Modifier.Operation.MULTIPLY_TOTAL, Math.nextUp(0.3)), AssemblyState.Posed.SAVE)));
+    }
+
+    @Test
+    @DisplayName("ADR-167 D8 : les modificateurs font l'aller-retour, datés et au bit près ; un delta ne les porte que"
+            + " s'ils ont changé")
+    void adr167Modificateurs() throws MalformedPacketException {
+        AssemblyState sans = avecRoues(roues(0.5f, 10f));
+        assertNull(SnapshotMessage.Entry.full(5, sans).parameters(), "jamais réglée : rien");
+        AssemblyState etat = sans.withParameters(modificateurs(1234L));
+        SnapshotMessage.Entry complete = SnapshotMessage.Entry.full(5, etat);
+        byte[] octets = new SnapshotMessage(2, 1240L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(complete)).encode();
+        assertEquals(SnapshotMessage.headerSize(2, 1240L, 1) + SnapshotMessage.encodedSize(complete), octets.length);
+        SnapshotMessage.Entry lue = SnapshotMessage.decode(octets).entries().get(0);
+        assertEquals(etat, lue.resolve(null));
+        assertEquals(1234L, lue.parameters().tick());
+        assertEquals(Double.doubleToRawLongBits(-0.0),
+                Double.doubleToRawLongBits(lue.parameters().posed().get(1).modifier().amount()), "-0 reste -0");
+        assertEquals(Math.nextUp(0.3), lue.parameters().posed().get(2).modifier().amount(), "au bit près");
+
+        assertNull(SnapshotMessage.Entry.delta(5, 1, etat, etat).parameters(), "inchangés : tus");
+        AssemblyState retires = etat.withParameters(new AssemblyState.Modifiers(1300L, List.of()));
+        SnapshotMessage.Entry delta = SnapshotMessage.Entry.delta(5, 1, etat, retires);
+        assertEquals(retires.parameters(), delta.parameters(), "tous retirés : la liste vide part, datée");
+        byte[] enDelta = new SnapshotMessage(2, 1300L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(delta)).encode();
+        assertEquals(retires, SnapshotMessage.decode(enDelta).entries().get(0).resolve(etat));
+        SnapshotMessage.Entry vide = SnapshotMessage.Entry.full(5, retires);
+        assertEquals(retires, SnapshotMessage.decode(new SnapshotMessage(3, 1300L, SnapshotMessage.DESCRIPTOR_VERSION,
+                List.of(vide)).encode()).entries().get(0).resolve(null), "une liste vidée n'est pas une assembly vierge");
+    }
+
+    private static byte[] modificateursSurLeFil(int n, String cause, String parametre, int operation, int origine,
+            double quantite) {
+        WireWriter fil = complete(SnapshotMessage.FLAG_PARAMETERS).varULong(40).varUInt(n);
+        for (int i = 0; i < n; i++) {
+            fil.utf8(cause).utf8(parametre).u8(operation).u8(origine).f64(quantite);
+        }
+        return fil.toByteArray();
+    }
+
+    @Test
+    @DisplayName("ADR-167 D8 : des modificateurs mal formés sont refusés à la lecture (R-1650)")
+    void adr167ModificateursMalFormes() throws MalformedPacketException {
+        assertEquals(-80.0, lu(modificateursSurLeFil(1, "a:b", "mass", 0, 0, -80.0)).entries().get(0).parameters()
+                .posed().get(0).modifier().amount());
+        assertRefuse(complete(SnapshotMessage.FLAG_PARAMETERS).varULong(40).varUInt(65).toByteArray(),
+                "plus de 64 modificateurs");
+        assertRefuse(modificateursSurLeFil(2, "a:b", "mass", 0, 0, 1.0), "une cause posée deux fois sur un paramètre");
+        assertRefuse(modificateursSurLeFil(1, "a:b", "mass", 3, 0, 1.0), "opération inconnue");
+        assertRefuse(modificateursSurLeFil(1, "a:b", "mass", 0, 3, 1.0), "origine inconnue");
+        assertRefuse(modificateursSurLeFil(1, "a:b", "mass", 0, 0, Double.NaN), "quantité non finie");
+        assertRefuse(modificateursSurLeFil(1, "a:b", "mass", 0, 0, Double.NEGATIVE_INFINITY), "quantité infinie");
+        assertRefuse(modificateursSurLeFil(1, "ab", "mass", 0, 0, 1.0), "cause sans espace de noms");
+        assertRefuse(modificateursSurLeFil(1, "A:b", "mass", 0, 0, 1.0), "cause en majuscules");
+        assertRefuse(modificateursSurLeFil(1, "a:" + "b".repeat(SnapshotMessage.MAX_MODIFIER_TEXT_BYTES), "mass",
+                0, 0, 1.0), "texte au-delà de sa borne");
+        assertRefuse(modificateursSurLeFil(1, "a:b", "m".repeat(Modifier.MAX_LENGTH + 1), 0, 0, 1.0),
+                "paramètre plus long que Modifier.MAX_LENGTH");
+        byte[] sain = modificateursSurLeFil(1, "a:b", "mass", 0, 0, -80.0);
+        assertRefuse(Arrays.copyOf(sain, sain.length - 1), "tronqué");
+        assertThrows(IllegalArgumentException.class, () -> new AssemblyState.Modifiers(-1L, List.of()), "tick négatif");
+        assertThrows(IllegalArgumentException.class,
+                () -> new Modifier("a:" + "b".repeat(Modifier.MAX_LENGTH), "mass", Modifier.Operation.ADD, 1),
+                "cause trop longue refusée dès l'API");
     }
 }

@@ -22,7 +22,8 @@ class AxionChannelTest {
     @DisplayName("T-419 : seul un pair AXION-4 est accepté ; canal absent et client vanilla sont refusés")
     void t419_unClientSansAxionEstRefuse() {
         assertTrue(NetProtocol.accepts(NetProtocol.VERSION));
-        assertTrue(NetProtocol.accepts("AXION-7"), "ADR-165 D2 : les addons exigés montent le protocole");
+        assertTrue(NetProtocol.accepts("AXION-8"), "ADR-167 D8 : les modificateurs des paramètres montent le protocole");
+        assertFalse(NetProtocol.accepts("AXION-7"), "protocole des addons exigés, antérieur aux paramètres");
         assertFalse(NetProtocol.accepts("AXION-6"), "protocole du véhicule, antérieur aux addons exigés");
         assertFalse(NetProtocol.accepts("AXION-5"), "protocole des roues, antérieur au véhicule");
         assertFalse(NetProtocol.accepts(NetworkRegistry.ABSENT.version()), "canal absent");
