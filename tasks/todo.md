@@ -3780,6 +3780,17 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
   6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37), contrôleurs de véhicule appelés
      chez le client et `VehicleControl.state()` lisible au client (ADR-167 D9, précisions de la 5c) ; le registre envoyé au client
      porte alors les correspondances bloc → matériau, surcharges de l'administrateur comprises (ADR-165, précision 3c).
+     - [x] [ADR-168](../docs/decisions/ADR-168.md) **accepté par Killian le 2026-11-12** : Q1 une entrée par tick au
+           serveur, Q2 une correction à chaque tick, Q3 CAP-37 fermé avec C-48, Q4 pas de film. Branche `wip/tranche-6`.
+     - [ ] 6a — natif : mode `ClientPredicted`, export de l'état complet d'une assembly (`SIM_OUT`),
+           `SET_ASSEMBLY_STATE`, ABI 24 ; restaurer puis rejouer redonne le même état au bit près.
+     - [ ] 6b — serveur : file d'entrées, une par tick, séquence appliquée ; `S2C_Correction` à chaque tick.
+     - [ ] 6c — client : monde prédit, tuiles du niveau client (découpage commun), proxies extrapolés, boucle prédite,
+           historique de 64, réconciliation, lissage, désactivation, rendu à la pose prédite.
+     - [ ] 6d — variables, paramètres et contrôleurs prédits, `VehicleControl.state()` au client, correspondances
+           bloc → matériau dans le registre.
+     - [ ] 6e — T-415..T-417 sous latence injectée, défauts mesurés (`net.prediction_replay_budget_ns`,
+           `net.prediction_max_corrections`), CDC (21.3, 21.4, 21.8, A.3), guide réseau, fusion.
   7. Le reste des capacités de M5 : caméra de véhicule (CAP-10), API (CAP-11), occupants (CAP-13), joueurs portés
      (CAP-14), énergie et démarrage (CAP-12), pneus et météo (CAP-20), rechargement à chaud (CAP-33), commandes
      (CAP-34), contenu qui évolue (CAP-38), addons d'un seul côté (CAP-40), validation hors jeu (CAP-42 : une fiche
