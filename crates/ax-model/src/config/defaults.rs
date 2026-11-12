@@ -327,6 +327,11 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Time during which a vehicle ignores collisions with its own debris, in seconds."),
     fp("vehicle.max_suspension_misalignment", 0.15, "Désalignement maximal toléré d'une suspension déformée, en mètres, avant signalement.")
         .en("Maximum misalignment tolerated for a deformed suspension, in metres, before it is reported."),
+    // ADR-167 D9 : le coût de chaque contrôleur de véhicule est mesuré à chaque appel (R-1770).
+    i("vehicle.controller_budget_ns", 50000, 1000, 50000000, "Durée d'un appel de contrôleur de véhicule au-delà de laquelle il compte une faute, en nanosecondes.")
+        .en("Duration of a vehicle controller call beyond which it counts a fault, in nanoseconds."),
+    i("vehicle.controller_strikes", 20, 1, 1200, "Fautes consécutives d'un contrôleur de véhicule (dépassements du budget ou exceptions) qui le désactivent pour la session.")
+        .en("Consecutive faults of a vehicle controller (budget overruns or exceptions) that disable it for the session."),
 
     // [attachment]
     ip("attachment.max_chain", 8, "Longueur maximale d'une chaîne d'assemblies attachées.")

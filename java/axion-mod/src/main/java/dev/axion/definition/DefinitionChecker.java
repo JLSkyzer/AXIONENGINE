@@ -69,6 +69,16 @@ final class DefinitionChecker {
      *     ont déjà été vérifiés
      */
     static List<Issue> check(JsonObject root) {
+        return check(root, VehicleExtensions.NONE);
+    }
+
+    /**
+     * {@return les fautes d'une definition, dans l'ordre du document}
+     *
+     * @param root document, dont {@code schema}, {@code asset} et {@code kind} ont déjà été vérifiés
+     * @param extensions les contrôleurs et paramètres d'addon enregistrés : une plage peut nommer un paramètre d'addon
+     */
+    static List<Issue> check(JsonObject root, VehicleExtensions extensions) {
         DefinitionChecker checker = new DefinitionChecker();
         checker.version = versionOf(root);
         checker.walk(SchemaOne.rootOf(checker.version), root, "$");
@@ -87,7 +97,7 @@ final class DefinitionChecker {
             VehicleSpec.check(root, checker::invalid);
         }
         if (checker.version >= 4 && checker.issues.isEmpty()) {
-            Tuning.check(root, checker::invalid);
+            Tuning.check(root, extensions, checker::invalid);
         }
         return List.copyOf(checker.issues);
     }

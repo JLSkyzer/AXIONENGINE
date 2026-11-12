@@ -110,6 +110,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Contact au sol de chaque roue (serveur, ADR-159 D9). */
     private boolean[] wheelGround = new boolean[0];
 
+    /** Glissement longitudinal, puis latéral en radians, de chaque roue (serveur, ADR-167 D9) : ses contrôleurs le lisent. */
+    private float[] wheelSlipLong = new float[0];
+
+    private float[] wheelSlipLat = new float[0];
+
     /** L'angle de chaque roue, intégré au rendu (client, ADR-159 D9). */
     private final ProceduralTracks.Spin wheelVisualSpin = new ProceduralTracks.Spin();
 
@@ -156,10 +161,32 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     private long variedVersion = -1L;
 
-    /** Le dernier tick où un refus {@code E-7010} s'est journalisé, et ceux tus depuis (serveur). */
-    private int refusalLoggedTick = Integer.MIN_VALUE;
+    /** Le débit des refus {@code E-7010} au journal (serveur) : un par seconde au plus. */
+    private final dev.axion.entity.JournalThrottle refusalJournal = new dev.axion.entity.JournalThrottle(20);
 
-    private int refusalsHushed;
+    /** Le débit des sorties de contrôleur écartées au journal (serveur) : une par seconde au plus. */
+    private final dev.axion.entity.JournalThrottle controlJournal = new dev.axion.entity.JournalThrottle(20);
+
+    /** Les contrôleurs que l'API a attachés à cette instance (serveur, ADR-167 D9), dans l'ordre de l'attache. */
+    private final List<String> attachedControllers = new ArrayList<>();
+
+    /**
+     * La table effective des paramètres : celle de la definition, avec ceux des mods des contrôleurs que l'API a
+     * attachés (Q6) ; la table compilée et les contrôleurs qui l'ont faite.
+     */
+    private dev.axion.definition.Tuning tuned;
+
+    private dev.axion.definition.Tuning tunedFrom;
+
+    private List<String> tunedWith = List.of();
+
+    /** L'entrée qu'un mod pose au véhicule (serveur, ADR-167 D9), {@code null} sans ; un joueur au volant la fait tomber. */
+    private DriverInput modDrive;
+
+    /** Les nodes des roues de la definition, dans son ordre, et la definition qui les a donnés. */
+    private List<String> wheelNodes = List.of();
+
+    private Definition wheelsOf;
 
     /** La version des variables que {@link #netState} porte, et celles que seul le conducteur reçoit (serveur). */
     private long netVariablesVersion = -1L;
@@ -554,7 +581,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * suivant.
      */
     public dev.axion.entity.AssemblyParameters parameters() {
-        dev.axion.definition.Tuning tuning = inert ? null : AxionEntities.tuning(definitionId).orElse(null);
+        dev.axion.definition.Tuning tuning = tuning();
         if (tuning == null) {
             return null;
         }
@@ -596,19 +623,237 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * {@return la table des paramètres de l'assembly, {@code null} si sa definition n'est pas encore compilée} : celle
+     * de sa definition, avec les paramètres des mods des contrôleurs que l'API a attachés (ADR-167 D9, Q6). Elle ne se
+     * refait qu'au changement de l'une ou des autres ; une table refaite refait les paramètres, qui reprennent leurs
+     * modificateurs.
+     */
+    private dev.axion.definition.Tuning tuning() {
+        dev.axion.definition.Tuning compiled = inert ? null : AxionEntities.tuning(definitionId).orElse(null);
+        if (compiled == null) {
+            return null;
+        }
+        if (compiled != tunedFrom || !attachedControllers.equals(tunedWith)) {
+            tunedFrom = compiled;
+            tunedWith = List.copyOf(attachedControllers);
+            tuned = tunedWith.isEmpty() ? compiled
+                    : compiled.with(dev.axion.definition.VehicleExtensions.current().parametersFor(tunedWith));
+        }
+        return tuned;
+    }
+
+    /**
+     * {@return les nodes des roues de sa definition, dans son ordre ; vide si elle n'en a pas ou n'est pas chargée}
+     */
+    public List<String> wheelNodes() {
+        Definition definition = inert ? null : AxionEntities.definitions().get(definitionId).orElse(null);
+        if (definition != wheelsOf) {
+            wheelsOf = definition;
+            wheelNodes = definition == null || !(definition.root().get("wheels") instanceof com.google.gson.JsonArray
+                    wheels) ? List.of()
+                    : wheels.asList().stream()
+                            .map(wheel -> wheel.getAsJsonObject().get("node").getAsString())
+                            .toList();
+        }
+        return wheelNodes;
+    }
+
+    /**
+     * {@return ses contrôleurs (ADR-167 D9) : ceux de sa definition, puis ceux que l'API a attachés, dans l'ordre de
+     * l'attache ; vide tant que sa definition n'est pas compilée}
+     */
+    public List<String> controllers() {
+        dev.axion.definition.Tuning tuning = tuning();
+        if (tuning == null) {
+            return List.of();
+        }
+        List<String> all = new ArrayList<>(tuning.controllers());
+        all.addAll(attachedControllers);
+        return List.copyOf(all);
+    }
+
+    /**
+     * Attache un contrôleur à cette instance (serveur, ADR-167 D9) : les paramètres de son mod y existent dès lors.
+     *
+     * @param id l'identifiant du contrôleur
+     * @throws IllegalArgumentException si aucun mod ne l'enregistre, s'il est déjà là, si l'assembly n'a pas de roues
+     *     ou porte déjà le plafond de contrôleurs
+     */
+    public void attachController(String id) {
+        AuthoritativeThread.require();
+        if (dev.axion.definition.VehicleExtensions.current().controller(id).isEmpty()) {
+            throw new IllegalArgumentException("contrôleur « " + id + " » inconnu ; aucun mod ne l'enregistre");
+        }
+        if (wheelNodes().isEmpty()) {
+            throw new IllegalArgumentException("contrôleur « " + id + " » : l'assembly de " + definitionId
+                    + " n'est pas un véhicule");
+        }
+        List<String> present = controllers();
+        if (present.contains(id)) {
+            throw new IllegalArgumentException("contrôleur « " + id + " » déjà attaché à cette assembly");
+        }
+        if (present.size() >= dev.axion.definition.Tuning.MAX_CONTROLLERS) {
+            throw new IllegalArgumentException("contrôleur « " + id + " » : l'assembly en porte déjà "
+                    + dev.axion.definition.Tuning.MAX_CONTROLLERS + ", le plafond");
+        }
+        attachedControllers.add(id);
+    }
+
+    /**
+     * Retire un contrôleur que l'API avait attaché (serveur, ADR-167 D9) ; ceux de la definition restent.
+     *
+     * @param id l'identifiant du contrôleur
+     * @return vrai s'il était attaché par l'API
+     */
+    public boolean detachController(String id) {
+        AuthoritativeThread.require();
+        return attachedControllers.remove(id);
+    }
+
+    /** {@return ses contrôleurs que les mods enregistrent, dans leur ordre ; un contrôleur sans mod est passé} */
+    List<dev.axion.definition.VehicleExtensions.Controller> runnableControllers() {
+        dev.axion.definition.VehicleExtensions extensions = dev.axion.definition.VehicleExtensions.current();
+        List<dev.axion.definition.VehicleExtensions.Controller> found = new ArrayList<>();
+        for (String id : controllers()) {
+            extensions.controller(id).ifPresent(found::add);
+        }
+        return found;
+    }
+
+    /**
+     * {@return l'état du véhicule au début du tick (serveur, ADR-167 D9), {@code null} s'il n'a pas de roues ou que sa
+     * definition n'est pas compilée} Ses paramètres y sont composés sans les sorties des contrôleurs.
+     */
+    public dev.axion.entity.VehicleSnapshot vehicleSnapshot() {
+        List<String> nodes = wheelNodes();
+        dev.axion.entity.AssemblyParameters table = parameters();
+        if (nodes.isEmpty() || table == null) {
+            return null;
+        }
+        List<dev.axion.entity.VehicleSnapshot.Wheel> wheels = new ArrayList<>(nodes.size());
+        for (int i = 0; i < nodes.size(); i++) {
+            boolean known = i < wheelCompression.length;
+            wheels.add(new dev.axion.entity.VehicleSnapshot.Wheel(nodes.get(i), known && wheelGround[i],
+                    known ? wheelCompression[i] : 0.0, known ? wheelSpin[i] : 0.0, known ? wheelSteer[i] : 0.0,
+                    known ? wheelSlipLong[i] : 0.0, known ? wheelSlipLat[i] : 0.0));
+        }
+        AssemblyVariables held = variables();
+        List<String> variableNames = held == null ? List.of()
+                : held.declared().declared().stream().map(dev.axion.definition.Variables.Variable::name).toList();
+        double[] variableValues = held == null ? new double[0] : held.values();
+        double[] parameterValues = new double[table.tuning().size()];
+        for (int i = 0; i < parameterValues.length; i++) {
+            parameterValues[i] = table.uncontrolled(i);
+        }
+        Quaternionf q = orientation();
+        double speed = Interpolation.forwardSpeed(linearVelocity, new float[] {q.x, q.y, q.z, q.w});
+        DriverInput driver = driverInput();
+        dev.axion.api.vehicle.DriverInput input = driver == null || !driver.present()
+                ? dev.axion.api.vehicle.DriverInput.NONE
+                : new dev.axion.api.vehicle.DriverInput(driver.input().throttle(), driver.input().brake(),
+                        driver.input().steer(), driver.input().clutch(), driver.input().handbrake(),
+                        driver.input().gear());
+        return new dev.axion.entity.VehicleSnapshot(speed, vehicleReport == null ? 0.0 : vehicleReport.rpm(),
+                vehicleReport == null ? 0 : vehicleReport.gear(), input, wheels, variableNames, variableValues,
+                table.tuning().names(), parameterValues);
+    }
+
+    /**
+     * Applique les sorties des contrôleurs d'un tick (serveur, ADR-167 D9) : les modificateurs du tick, puis les
+     * écritures de variables, chacune jugée comme une écriture de l'API. Ce que les bornes écartent se journalise, à
+     * débit limité ; le couple des roues part au natif par le runtime.
+     *
+     * @param outcome les sorties assemblées
+     */
+    void applyControl(dev.axion.entity.ControllerRunner.Outcome outcome) {
+        AuthoritativeThread.require();
+        outcome.journal().forEach(line -> LOGGER.warn("AXION : {}", line));
+        dev.axion.entity.AssemblyParameters table = parameters();
+        List<String> lines = new ArrayList<>(table == null ? List.of() : table.control(outcome.modifiers()));
+        AssemblyVariables held = outcome.writes().isEmpty() ? null : variables();
+        for (dev.axion.entity.ControllerRunner.Write write : outcome.writes()) {
+            int index = held == null ? -1 : held.declared().indexOf(write.variable());
+            if (index < 0) {
+                continue;
+            }
+            try {
+                held.set(index, write.value(), "contrôleur " + write.controller());
+            } catch (IllegalArgumentException refused) {
+                lines.add("écriture du contrôleur « " + write.controller() + " » écartée : " + refused.getMessage());
+            }
+        }
+        for (String line : lines) {
+            int hushed = controlJournal.admit(tickCount);
+            if (hushed >= 0) {
+                LOGGER.warn("AXION : assembly {} — {}{}", getUUID(), line,
+                        hushed == 0 ? "" : " (" + hushed + " sortie(s) écartée(s) tue(s) depuis la précédente)");
+            }
+        }
+    }
+
+    /**
+     * {@return le nom du joueur qui tient le volant, {@code null} si le siège {@code driver} est libre ou que la
+     * definition n'en déclare pas}
+     */
+    String driverName() {
+        Seating seating = seating();
+        if (seating == null) {
+            return null;
+        }
+        for (int seat = 0; seat < seating.seats().size(); seat++) {
+            if (!seating.seats().get(seat).driver()) {
+                continue;
+            }
+            int occupant = occupancy(seating).occupant(seat);
+            if (occupant == SeatOccupancy.FREE || occupant == SeatOccupancy.LOST) {
+                return null;
+            }
+            for (Entity passenger : getPassengers()) {
+                if (passenger.getId() == occupant) {
+                    return passenger.getName().getString();
+                }
+            }
+            return "#" + occupant;
+        }
+        return null;
+    }
+
+    /**
+     * Conduit le véhicule à la place d'un joueur (serveur, ADR-167 D9) : l'entrée vaut jusqu'à la suivante, frein de
+     * stationnement relâché — le frein à main de l'entrée le remplace. Chaque valeur est bornée à sa plage, une valeur
+     * non finie compte pour zéro.
+     *
+     * @param input l'entrée
+     * @throws IllegalStateException si un joueur tient le volant
+     */
+    void drive(dev.axion.api.vehicle.DriverInput input) {
+        AuthoritativeThread.require();
+        String holder = driverName();
+        if (holder != null) {
+            throw new IllegalStateException("le joueur " + holder + " tient le volant de cette assembly : un mod ne la"
+                    + " conduit pas à sa place");
+        }
+        modDrive = new DriverInput(new VehicleInput(bounded(input.throttle(), 0f), bounded(input.brake(), 0f),
+                bounded(input.steer(), -1f), bounded(input.clutch(), 0f), bounded(input.handbrake(), 0f),
+                (byte) Math.max(Byte.MIN_VALUE, Math.min(Byte.MAX_VALUE, input.gear())), 0), true);
+    }
+
+    /** {@return une valeur bornée à {@code [low, 1]}, zéro si elle n'est pas finie} */
+    private static float bounded(double value, float low) {
+        return Double.isFinite(value) ? (float) Math.max(low, Math.min(1.0, value)) : 0f;
+    }
+
+    /**
      * Journalise les écritures de variables refusées (serveur, ADR-167 D2, {@code E-7010}) : une par seconde au plus,
      * les suivantes comptées et dites avec la prochaine.
      */
     private void logRefusals(List<String> refusals) {
         for (String refusal : refusals) {
-            if (tickCount - refusalLoggedTick < 20) {
-                refusalsHushed++;
-                continue;
+            int hushed = refusalJournal.admit(tickCount);
+            if (hushed >= 0) {
+                LOGGER.warn("AXION : E-7010 assembly {} — {}{}", getUUID(), refusal,
+                        hushed == 0 ? "" : " (" + hushed + " refus tus depuis le précédent)");
             }
-            LOGGER.warn("AXION : E-7010 assembly {} — {}{}", getUUID(), refusal,
-                    refusalsHushed == 0 ? "" : " (" + refusalsHushed + " refus tus depuis le précédent)");
-            refusalLoggedTick = tickCount;
-            refusalsHushed = 0;
         }
     }
 
@@ -697,6 +942,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /**
      * {@return l'entrée du siège {@code driver}, ou {@code null} si la definition n'en déclare pas} Seul ce siège
      * pilote ; les contrôles d'un passager restent lisibles par {@link #seatInput}, sans effet sur le véhicule (D8).
+     * Sans joueur au volant, l'entrée qu'un mod a posée le conduit (ADR-167 D9), siège {@code driver} ou non.
      */
     public DriverInput driverInput() {
         Seating seating = seating();
@@ -707,10 +953,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             if (seating.seats().get(seat).driver()) {
                 int occupant = occupancy(seating).occupant(seat);
                 boolean present = occupant != SeatOccupancy.FREE && occupant != SeatOccupancy.LOST;
-                return present ? new DriverInput(seatInput(seat), true) : DriverInput.ABSENT;
+                if (present) {
+                    return new DriverInput(seatInput(seat), true);
+                }
+                return modDrive != null ? modDrive : DriverInput.ABSENT;
             }
         }
-        return null;
+        return modDrive;
     }
 
     /** {@return les rangs de rapport que la boîte de ce véhicule accepte de son conducteur (ADR-159 D6)} */
@@ -898,6 +1147,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
         for (Entity passenger : unseated) {
             eject(passenger, SeatEjection.Cause.NO_SEAT);
+        }
+        if (modDrive != null && driverName() != null) {
+            // ADR-167 D9 : le joueur qui prend le volant reprend la conduite ; en sortant, il ne la rend pas au mod.
+            modDrive = null;
         }
         tickVariables(seating);
     }
@@ -1355,8 +1608,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param spin vitesse de rotation, en rad/s
      * @param compression compression relative au modèle posé, en fraction du débattement
      * @param steer braquage, en radians
+     * @param slipLong glissement longitudinal
+     * @param slipLat glissement latéral, en radians
      */
-    void setWheelState(int wheel, boolean grounded, float spin, float compression, float steer) {
+    void setWheelState(int wheel, boolean grounded, float spin, float compression, float steer, float slipLong,
+            float slipLat) {
         AuthoritativeThread.require();
         if (wheel < 0 || wheel >= AssemblyState.Wheels.MAX_WHEELS) {
             return;
@@ -1366,11 +1622,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             wheelSpin = Arrays.copyOf(wheelSpin, wheel + 1);
             wheelSteer = Arrays.copyOf(wheelSteer, wheel + 1);
             wheelGround = Arrays.copyOf(wheelGround, wheel + 1);
+            wheelSlipLong = Arrays.copyOf(wheelSlipLong, wheel + 1);
+            wheelSlipLat = Arrays.copyOf(wheelSlipLat, wheel + 1);
         }
         wheelCompression[wheel] = compression;
         wheelSpin[wheel] = spin;
         wheelSteer[wheel] = steer;
         wheelGround[wheel] = grounded;
+        wheelSlipLong[wheel] = slipLong;
+        wheelSlipLat[wheel] = slipLat;
     }
 
     /**

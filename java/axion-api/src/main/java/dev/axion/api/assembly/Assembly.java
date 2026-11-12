@@ -52,6 +52,13 @@ public interface Assembly {
      */
     Parameters parameters();
 
+    /**
+     * {@return son véhicule (ADR-159 D11, ADR-167 D9) : son état, ses contrôleurs, son pilotage par un mod ; vide si sa
+     * definition n'a pas de roues} Thread : quelconque ; voir {@link dev.axion.api.vehicle.VehicleControl} pour ses
+     * méthodes.
+     */
+    java.util.Optional<dev.axion.api.vehicle.VehicleControl> vehicle();
+
     /** {@return vrai tant que l'assembly existe côté runtime}. Thread : quelconque. */
     boolean isValid();
 

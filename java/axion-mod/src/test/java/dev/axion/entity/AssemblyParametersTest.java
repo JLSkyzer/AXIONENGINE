@@ -317,4 +317,50 @@ class AssemblyParametersTest {
         }
         assertEquals(serveur.applied(), client.applied());
     }
+
+    @Test
+    @DisplayName("D9 : les sorties d'un contrôleur valent un tick, après les causes posées, sans jamais en désactiver")
+    void sortiesDesControleurs() {
+        AssemblyParameters parametres = new AssemblyParameters(tuning());
+        int couple = parametres.tuning().indexOf(Parameters.ENGINE_TORQUE);
+        parametres.modify(couple("upgrades:stage1", Operation.ADD, 100), AssemblyParameters.API);
+        long posee = parametres.version();
+        assertEquals(List.of(), parametres.control(List.of(couple("turbo:gestion", Operation.ADD, 50))));
+        assertEquals(410, parametres.value(couple));
+        assertEquals(360, parametres.uncontrolled(couple), "ce que les contrôleurs lisent : sans leurs sorties");
+        assertEquals(posee, parametres.version(), "la liste posée n'a pas changé : rien ne part aux joueurs");
+        long sorties = parametres.controlVersion();
+        Parameters.Applied sortie = parametres.applied().get(parametres.applied().size() - 1);
+        assertEquals(AssemblyParameters.CONTROLLER, sortie.origin());
+        assertTrue(sortie.active());
+
+        // Hors des bornes (420) : écartée pour ce tick, la cause posée reste active.
+        List<String> ecartees = parametres.control(List.of(couple("turbo:gestion", Operation.ADD, 80)));
+        assertEquals(1, ecartees.size());
+        assertTrue(ecartees.get(0).contains("turbo:gestion") && ecartees.get(0).contains("écartée"), ecartees.get(0));
+        assertEquals(360, parametres.value(couple));
+        assertTrue(parametres.applied().stream()
+                .filter(applied -> applied.origin().equals(AssemblyParameters.API)).allMatch(Parameters.Applied::active));
+        assertTrue(parametres.controlVersion() != sorties, "la valeur effective a changé");
+
+        // Une sortie qui ne change rien ne compte pas ; le tick suivant sans sortie revient à la valeur posée.
+        long avant = parametres.controlVersion();
+        parametres.control(List.of(couple("turbo:gestion", Operation.ADD, 0)));
+        assertEquals(avant, parametres.controlVersion());
+        parametres.control(List.of());
+        assertEquals(360, parametres.value(couple));
+        assertEquals(1, parametres.applied().size(), "les sorties du tick précédent sont parties");
+
+        // Un paramètre que l'assembly n'a pas : écartée, nommée.
+        List<String> inconnu = parametres.control(List.of(new Modifier("turbo:gestion", "turbo:pression_max",
+                Operation.ADD, 1)));
+        assertTrue(inconnu.get(0).contains("inconnu"), inconnu.get(0));
+
+        // Un retrait de la cause posée la fait rejouer ; la sortie qui la remplace dans les bornes reste active.
+        parametres.control(List.of(couple("turbo:gestion", Operation.ADD, 150)));
+        assertEquals(360, parametres.value(couple), "écartée : 360 + 150 dépasserait 420");
+        parametres.remove("upgrades:stage1");
+        assertEquals(410, parametres.value(couple), "le retrait la fait entrer dans ses bornes : 260 + 150");
+        assertEquals(260, parametres.uncontrolled(couple));
+    }
 }

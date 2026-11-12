@@ -62,6 +62,9 @@ public final class ContentRegistry {
 
     private final long maxSiblingBytes;
     private final Map<ContentKind, Map<String, Entry>> entries = new EnumMap<>(ContentKind.class);
+    /** Les contrôleurs de véhicule et les paramètres d'addon enregistrés (ADR-167 D1, D9), par identifiant. */
+    private final Map<String, dev.axion.definition.VehicleExtensions.Controller> controllers = new TreeMap<>();
+    private final Map<String, dev.axion.definition.VehicleExtensions.Parameter> parameters = new TreeMap<>();
     private final List<Replacement> replacements = new ArrayList<>();
     private final List<String> errors = new ArrayList<>();
 
@@ -88,6 +91,11 @@ public final class ContentRegistry {
             throw new IllegalArgumentException("modId invalide comme espace de noms : " + modId);
         }
         return new Session(modId, jar);
+    }
+
+    /** {@return les contrôleurs et les paramètres d'addon enregistrés (ADR-167 D1, D9)} */
+    public dev.axion.definition.VehicleExtensions extensions() {
+        return new dev.axion.definition.VehicleExtensions(controllers, parameters);
     }
 
     /** {@return les erreurs consignées, dans leur ordre} */
@@ -340,6 +348,32 @@ public final class ContentRegistry {
             }
             replacements.add(new Replacement(ContentKind.DEFINITION, key, modId,
                     modId + " — builder, replace(\"" + target + "\")", canonicalBytes(definition)));
+        }
+
+        @Override
+        public void registerController(String name, dev.axion.api.vehicle.VehicleController controller) {
+            ensureOpen();
+            Objects.requireNonNull(controller, "controller");
+            String id = modId + ":" + checkedName(name);
+            if (controllers.containsKey(id)) {
+                errors.add("doublon refusé : le contrôleur " + id + " est déjà enregistré par " + modId);
+                return;
+            }
+            controllers.put(id, new dev.axion.definition.VehicleExtensions.Controller(id, modId, controller));
+        }
+
+        @Override
+        public void registerParameter(String name, String unit, double base,
+                dev.axion.api.assembly.Parameters.Range limit) {
+            ensureOpen();
+            String id = modId + ":" + checkedName(name);
+            dev.axion.definition.VehicleExtensions.Parameter parameter = new dev.axion.definition.VehicleExtensions.Parameter(
+                    id, modId, Objects.requireNonNull(unit, "unit"), base, Objects.requireNonNull(limit, "limit"));
+            if (parameters.containsKey(id)) {
+                errors.add("doublon refusé : le paramètre " + id + " est déjà enregistré par " + modId);
+                return;
+            }
+            parameters.put(id, parameter);
         }
 
         @Override

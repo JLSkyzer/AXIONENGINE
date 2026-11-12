@@ -289,6 +289,59 @@ public final class ForgeAxionApi implements AxionApi {
         }
     }
 
+    /**
+     * Le véhicule d'une assembly vu par l'API (ADR-159 D11, ADR-167 D9) : une fenêtre sur son entité. Au serveur, sur
+     * le thread autoritatif ; au client, ses contrôleurs se lisent, le reste attend la prédiction (C-33).
+     */
+    private record VehicleView(AxionEntity entity) implements dev.axion.api.vehicle.VehicleControl {
+
+        /** Ce qui lit l'état ou écrit : au serveur seulement, sur le thread autoritatif (R-1755). */
+        private void authoritative() {
+            if (entity.level().isClientSide()) {
+                throw new IllegalStateException("R-1755 : au client, l'état d'un véhicule ne se lit pas encore et ne"
+                        + " s'écrit pas ; le serveur le tient");
+            }
+            AuthoritativeThread.require();
+        }
+
+        @Override
+        public dev.axion.api.vehicle.VehicleView state() {
+            authoritative();
+            dev.axion.entity.VehicleSnapshot state = entity.vehicleSnapshot();
+            if (state == null) {
+                throw new IllegalStateException("l'assembly de " + entity.definitionId()
+                        + " n'est pas encore compilée");
+            }
+            return state;
+        }
+
+        @Override
+        public java.util.List<String> controllers() {
+            if (!entity.level().isClientSide()) {
+                AuthoritativeThread.require();
+            }
+            return entity.controllers();
+        }
+
+        @Override
+        public void attach(String controller) {
+            authoritative();
+            entity.attachController(java.util.Objects.requireNonNull(controller, "controller"));
+        }
+
+        @Override
+        public boolean detach(String controller) {
+            authoritative();
+            return entity.detachController(java.util.Objects.requireNonNull(controller, "controller"));
+        }
+
+        @Override
+        public void drive(dev.axion.api.vehicle.DriverInput input) {
+            authoritative();
+            entity.drive(java.util.Objects.requireNonNull(input, "input"));
+        }
+    }
+
     /** Une assembly vue par l'API : une fenêtre sur son entité, sans état propre. */
     private record View(AxionEntity entity) implements Assembly {
 
@@ -325,6 +378,11 @@ public final class ForgeAxionApi implements AxionApi {
         @Override
         public Parameters parameters() {
             return new ParametersView(entity);
+        }
+
+        @Override
+        public Optional<dev.axion.api.vehicle.VehicleControl> vehicle() {
+            return entity.wheelNodes().isEmpty() ? Optional.empty() : Optional.of(new VehicleView(entity));
         }
 
         @Override

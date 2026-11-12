@@ -170,7 +170,7 @@ public final class DefinitionCompilation {
             }
             compiled.put(definition.id(), result.summary());
             seatings.put(definition.id(), seating);
-            tunings.put(definition.id(), Tuning.of(definition.id(), definition.root()));
+            tunings.put(definition.id(), Tuning.of(definition.id(), definition.root(), loaded.extensions()));
             for (String warning : result.summary().warnings()) {
                 journal.add("AXION : definition " + definition.id() + " : " + warning);
             }

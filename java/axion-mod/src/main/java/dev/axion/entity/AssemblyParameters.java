@@ -29,6 +29,11 @@ import java.util.Objects;
  * passent les premiers au rejeu, dans l'ordre de la definition, avant les modificateurs posés. Ils ne se posent ni ne se
  * retirent ; une écriture de variable qui les ferait sortir des bornes se refuse d'abord ({@link #refusal}).
  *
+ * <p><strong>Les sorties des contrôleurs</strong> (D9) valent un tick ({@link #control}) : elles passent après les
+ * déclarés et les posés, chacune active si elle laisse le paramètre dans ses bornes, écartée sinon ; elles ne rendent
+ * jamais inactif un modificateur déclaré ou posé. La valeur composée sans elles ({@link #uncontrolled}) est celle que
+ * les contrôleurs lisent. Elles ne se sauvegardent ni ne partent aux joueurs : le contrôleur les recalcule.
+ *
  * <ul>
  *   <li>{@link #modify} refuse, et ne change rien, un modificateur qui serait inactif, ou qui rendrait inactif un
  *       modificateur actif ;</li>
@@ -55,6 +60,9 @@ public final class AssemblyParameters {
     /** Un modificateur que la definition déclare, et qu'une variable règle (D4). */
     public static final String VARIABLE = "variable";
 
+    /** Une sortie de contrôleur, pour un tick (D9). */
+    public static final String CONTROLLER = "contrôleur";
+
     /** Les origines, chacune au rang de son code sur le fil ({@link AssemblyState.Posed}). */
     static final List<String> ORIGINS = List.of(API, COMMAND, SAVE);
 
@@ -65,8 +73,13 @@ public final class AssemblyParameters {
     /** Les modificateurs déclarés, un par entrée de {@code tuning.declared()}, à la valeur de leur variable. */
     private final List<Entry> declared = new ArrayList<>();
     private final List<Entry> entries = new ArrayList<>();
+    /** Les sorties des contrôleurs pour ce tick, dans l'ordre des contrôleurs (D9). */
+    private final List<Entry> controlled = new ArrayList<>();
     private final double[] values;
+    /** La valeur de chaque paramètre sans les sorties des contrôleurs : celle qu'ils lisent. */
+    private final double[] uncontrolled;
     private long version;
+    private long controlVersion;
 
     /** Un modificateur posé, et son état au dernier rejeu. */
     private static final class Entry {
@@ -76,7 +89,7 @@ public final class AssemblyParameters {
         private String reason;
 
         private Entry(Modifier modifier, String origin) {
-            if (!ORIGINS.contains(origin) && !VARIABLE.equals(origin)) {
+            if (!ORIGINS.contains(origin) && !VARIABLE.equals(origin) && !CONTROLLER.equals(origin)) {
                 throw new IllegalArgumentException("origine « " + origin + " » : " + ORIGINS + " attendue");
             }
             this.modifier = modifier;
@@ -103,6 +116,7 @@ public final class AssemblyParameters {
         for (int i = 0; i < values.length; i++) {
             values[i] = tuning.get(i).base();
         }
+        uncontrolled = values.clone();
         for (Tuning.Declared one : tuning.declared()) {
             declared.add(new Entry(one.modifier(one.initial()), VARIABLE));
         }
@@ -117,9 +131,69 @@ public final class AssemblyParameters {
     private AssemblyParameters(AssemblyParameters other) {
         tuning = other.tuning;
         values = other.values.clone();
+        uncontrolled = other.uncontrolled.clone();
         version = other.version;
+        controlVersion = other.controlVersion;
         other.declared.forEach(entry -> declared.add(entry.copy()));
         other.entries.forEach(entry -> entries.add(entry.copy()));
+        other.controlled.forEach(entry -> controlled.add(entry.copy()));
+    }
+
+    /**
+     * Pose les sorties des contrôleurs pour ce tick (D9), à la place de celles du tick précédent. Chacune, dans
+     * l'ordre, s'active si le paramètre reste dans ses bornes ; sinon elle est écartée pour ce tick. Une sortie qui
+     * vise un paramètre que l'assembly n'a pas est écartée aussi.
+     *
+     * @param outputs les modificateurs du tick, dans l'ordre des contrôleurs ; leur cause est le contrôleur
+     * @return une ligne par sortie écartée, à journaliser
+     */
+    public List<String> control(List<Modifier> outputs) {
+        if (outputs.isEmpty() && controlled.isEmpty()) {
+            return List.of();
+        }
+        BitSet touched = new BitSet();
+        for (Entry entry : controlled) {
+            touched.set(tuning.indexOf(entry.modifier.parameter()));
+        }
+        controlled.clear();
+        List<String> lines = new ArrayList<>();
+        for (Modifier output : outputs) {
+            int index = tuning.indexOf(output.parameter());
+            if (index < 0) {
+                lines.add("sortie du contrôleur « " + output.cause() + " » écartée : paramètre « "
+                        + output.parameter() + " » inconnu de cette assembly");
+                continue;
+            }
+            controlled.add(new Entry(output, CONTROLLER));
+            touched.set(index);
+        }
+        double[] before = values.clone();
+        touched.stream().forEach(this::replay);
+        for (Entry entry : controlled) {
+            if (!entry.active) {
+                lines.add("sortie du contrôleur « " + entry.modifier.cause() + " » sur « " + entry.modifier.parameter()
+                        + " » écartée pour ce tick : " + entry.reason);
+            }
+        }
+        if (!java.util.Arrays.equals(before, values)) {
+            controlVersion++;
+        }
+        return lines;
+    }
+
+    /**
+     * {@return la valeur d'un paramètre composée sans les sorties des contrôleurs (D9)} : celle que chaque contrôleur
+     * lit, quel que soit leur ordre.
+     *
+     * @param index son rang dans {@link #tuning()}
+     */
+    public double uncontrolled(int index) {
+        return uncontrolled[index];
+    }
+
+    /** {@return un numéro qui change quand les sorties des contrôleurs changent une valeur effective} */
+    public long controlVersion() {
+        return controlVersion;
     }
 
     /**
@@ -288,15 +362,14 @@ public final class AssemblyParameters {
 
     /**
      * {@return tous les modificateurs, avec leur origine et leur état : les déclarés d'abord, dans l'ordre de la
-     * definition, puis les posés, dans l'ordre de leur pose}
+     * definition, puis les posés, dans l'ordre de leur pose, puis les sorties des contrôleurs de ce tick}
      */
     public List<Parameters.Applied> applied() {
-        List<Parameters.Applied> applied = new ArrayList<>(declared.size() + entries.size());
-        for (Entry entry : declared) {
-            applied.add(new Parameters.Applied(entry.modifier, entry.origin, entry.active, entry.reason));
-        }
-        for (Entry entry : entries) {
-            applied.add(new Parameters.Applied(entry.modifier, entry.origin, entry.active, entry.reason));
+        List<Parameters.Applied> applied = new ArrayList<>(declared.size() + entries.size() + controlled.size());
+        for (List<Entry> group : List.of(declared, entries, controlled)) {
+            for (Entry entry : group) {
+                applied.add(new Parameters.Applied(entry.modifier, entry.origin, entry.active, entry.reason));
+            }
         }
         return List.copyOf(applied);
     }
@@ -476,6 +549,7 @@ public final class AssemblyParameters {
      * Rejoue un paramètre : ses modificateurs, parcourus dans l'ordre de la pose, deviennent actifs un à un tant que la
      * valeur reste dans les bornes ; le parcours recommence tant qu'il en active un, si bien qu'un modificateur posé
      * avant celui qui le fait rentrer dans ses bornes s'active aussi. Puis sa valeur, et la raison de chaque inactif.
+     * Enfin les sorties des contrôleurs, en un parcours, sur ce que les autres causes ont laissé actif (D9).
      */
     private void replay(int index) {
         Tuning.Parameter parameter = tuning.get(index);
@@ -510,6 +584,18 @@ public final class AssemblyParameters {
                 List<Modifier> with = new ArrayList<>(active);
                 with.add(entry.modifier);
                 entry.reason = parameter.refusal(compose(parameter.base(), with));
+            }
+        }
+        uncontrolled[index] = compose(parameter.base(), active);
+        for (Entry entry : controlled) {
+            if (!entry.modifier.parameter().equals(parameter.name())) {
+                continue;
+            }
+            active.add(entry.modifier);
+            entry.reason = parameter.refusal(compose(parameter.base(), active));
+            entry.active = entry.reason == null;
+            if (!entry.active) {
+                active.remove(active.size() - 1);
             }
         }
         values[index] = compose(parameter.base(), active);

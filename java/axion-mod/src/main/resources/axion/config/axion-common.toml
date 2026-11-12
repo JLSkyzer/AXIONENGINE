@@ -104,6 +104,8 @@ tile_radius = 3                   # 1..8
 [vehicle]
 debris_ignore_s = 1.0             # 0.0..
 max_suspension_misalignment = 0.15# 0.0..
+controller_budget_ns = 50000      # 1000..50000000
+controller_strikes = 20           # 1..1200
 
 [attachment]
 max_chain = 8                     # 0..

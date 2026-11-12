@@ -1626,6 +1626,21 @@
         }
       },
       "additionalProperties": false
+    },
+    "vehicle": {
+      "type": "object",
+      "properties": {
+        "controllers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+          },
+          "maxItems": 8,
+          "x-axion-code": "E-3050"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": [

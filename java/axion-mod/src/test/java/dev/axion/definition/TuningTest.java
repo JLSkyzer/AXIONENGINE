@@ -201,6 +201,80 @@ class TuningTest {
         assertTrue(ensemble.contains("valeurs par défaut"), ensemble);
     }
 
+    /** Un mod « turbo » qui enregistre un contrôleur et deux paramètres ; un mod « autre », un contrôleur sans. */
+    private static final VehicleExtensions EXTENSIONS = new VehicleExtensions(
+            java.util.Map.of(
+                    "turbo:gestion", new VehicleExtensions.Controller("turbo:gestion", "turbo", (vue, sortie) -> { }),
+                    "autre:abs", new VehicleExtensions.Controller("autre:abs", "autre", (vue, sortie) -> { })),
+            java.util.Map.of(
+                    "turbo:pression_max", new VehicleExtensions.Parameter("turbo:pression_max", "turbo", "bar", 1.2,
+                            new Parameters.Range(0, true, 3, true)),
+                    "turbo:delai", new VehicleExtensions.Parameter("turbo:delai", "turbo", "s", 0.4,
+                            new Parameters.Range(0, true, 2, true))));
+
+    private static final DefinitionRules AVEC_CONTROLEURS = new DefinitionRules(true, Set.of(MODELE)::contains, false,
+            CollisionGroupRegistry.empty(), PhysicsMaterials.empty(), TireProfiles.empty(), EXTENSIONS);
+
+    private static Definition lireAvec(String corps) throws DefinitionException {
+        String json = "{\"schema\": 4, \"asset\": \"mymod:models/pickup.glb\", \"kind\": \"vehicle\", " + corps + "}";
+        return DefinitionRegistry.read(
+                "mymod:axion/definitions/pickup.json", json.getBytes(StandardCharsets.UTF_8), AVEC_CONTROLEURS);
+    }
+
+    private static String refusAvec(String corps) {
+        DefinitionException refus = assertThrows(DefinitionException.class, () -> lireAvec(corps));
+        return refus.path() + " : " + refus.getMessage();
+    }
+
+    @Test
+    @DisplayName("D9, Q6 : les contrôleurs de la fiche, et les paramètres de leurs mods après ceux d'AXION, triés")
+    void controleursDeLaFiche() throws DefinitionException {
+        Definition definition = lireAvec(VEHICULE + ", \"vehicle\": {\"controllers\": [\"turbo:gestion\","
+                + " \"autre:abs\"]}, \"tuning\": {\"ranges\": {\"turbo:pression_max\": {\"max\": 2}}}");
+        Tuning tuning = Tuning.of("mymod:pickup", definition.root(), EXTENSIONS);
+        assertEquals(List.of("turbo:gestion", "autre:abs"), tuning.controllers());
+        List<String> noms = tuning.names();
+        assertEquals(List.of("turbo:delai", "turbo:pression_max"), noms.subList(noms.size() - 2, noms.size()),
+                "après ceux d'AXION, triés par nom ; le mod « autre » n'en enregistre pas");
+        Tuning.Parameter pression = tuning.get(tuning.indexOf("turbo:pression_max"));
+        assertEquals(1.2, pression.base());
+        assertEquals(2.0, pression.bounds().max(), "la plage de la fiche borne aussi un paramètre d'addon");
+        assertTrue(pression.refusal(3.0) != null);
+        assertEquals(List.of(), Tuning.of("mymod:pickup", lire(4, VEHICULE).root(), EXTENSIONS).controllers());
+    }
+
+    @Test
+    @DisplayName("Q6 : un contrôleur attaché par l'API ajoute les paramètres de son mod, sans doubler ceux déjà là")
+    void parametresDUnControleurAttache() throws DefinitionException {
+        Tuning sans = Tuning.of("mymod:pickup", lire(4, VEHICULE).root(), EXTENSIONS);
+        Tuning avec = sans.with(EXTENSIONS.parametersFor(List.of("turbo:gestion")));
+        assertEquals(sans.size() + 2, avec.size());
+        assertEquals(sans.names(), avec.names().subList(0, sans.size()), "ceux d'AXION gardent leur rang");
+        assertTrue(avec == avec.with(EXTENSIONS.parametersFor(List.of("turbo:gestion"))), "rien de neuf : la même");
+        assertTrue(sans == sans.with(EXTENSIONS.parametersFor(List.of("autre:abs"))));
+        assertEquals(List.of(), EXTENSIONS.parametersFor(List.of("inconnu:x")));
+    }
+
+    @Test
+    @DisplayName("D9 : refusés — contrôleur qu'aucun mod n'enregistre, nommé deux fois, ou sans roues ; le paramètre"
+            + " d'un addon dont aucun contrôleur n'est nommé")
+    void controleursRefuses() {
+        String inconnu = refusAvec(VEHICULE + ", \"vehicle\": {\"controllers\": [\"turbo:gestion\", \"x:y\"]}");
+        assertTrue(inconnu.startsWith("$.vehicle.controllers[1]") && inconnu.contains("aucun mod"), inconnu);
+        String double_ = refusAvec(VEHICULE + ", \"vehicle\": {\"controllers\": [\"turbo:gestion\","
+                + " \"turbo:gestion\"]}");
+        assertTrue(double_.startsWith("$.vehicle.controllers[1]") && double_.contains("déjà nommé"), double_);
+        String sansRoues = refusAvec("\"physics\": {\"mass\": 10}, \"vehicle\": {\"controllers\":"
+                + " [\"turbo:gestion\"]}");
+        assertTrue(sansRoues.contains("des roues"), sansRoues);
+        String plage = refusAvec(VEHICULE + ", \"tuning\": {\"ranges\": {\"turbo:pression_max\": {\"max\": 2}}}");
+        assertTrue(plage.contains("inconnu de cette definition"), plage);
+        String sansRegistre = refus(4, VEHICULE + ", \"vehicle\": {\"controllers\": [\"turbo:gestion\"]}");
+        assertTrue(sansRegistre.contains("aucun mod"), "sans registre, tout contrôleur est inconnu : " + sansRegistre);
+        assertTrue(refus(3, VEHICULE + ", \"vehicle\": {\"controllers\": [\"turbo:gestion\"]}")
+                .startsWith("$.vehicle"), "le schéma 3 ne le connaît pas");
+    }
+
     private static double base(Tuning tuning, String name) {
         int index = tuning.indexOf(name);
         assertTrue(index >= 0, () -> name + " absent de " + tuning.names());

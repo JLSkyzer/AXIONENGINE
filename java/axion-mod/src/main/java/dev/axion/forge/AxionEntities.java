@@ -169,6 +169,24 @@ public final class AxionEntities {
         return tunings.apply(id);
     }
 
+    /** Le coût des contrôleurs de véhicule de la session (ADR-167 D10), que le point d'entrée relie au runtime. */
+    private static volatile Supplier<java.util.List<dev.axion.entity.ControllerRunner.Cost>> controllerCosts =
+            java.util.List::of;
+
+    /** {@return le coût mesuré de chaque contrôleur appelé pendant la session, et son état ; vide hors serveur} */
+    static java.util.List<dev.axion.entity.ControllerRunner.Cost> controllerCosts() {
+        return controllerCosts.get();
+    }
+
+    /**
+     * Relie le coût des contrôleurs au runtime des assemblies de la session, ou le délie.
+     *
+     * @param costs le fournisseur, {@code null} à l'arrêt
+     */
+    static void controllerCosts(Supplier<java.util.List<dev.axion.entity.ControllerRunner.Cost>> costs) {
+        controllerCosts = costs == null ? java.util.List::of : costs;
+    }
+
     /** {@return le délai au-delà duquel les entrées d'un siège ne valent plus, en millisecondes} */
     static long inputTimeoutMillis() {
         return inputTimeoutMillis.getAsLong();

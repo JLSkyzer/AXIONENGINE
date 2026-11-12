@@ -633,6 +633,18 @@ public final class DefinitionBuilder {
     }
 
     /**
+     * {@code vehicle}.
+     *
+     * @param config règle l'objet ; rappelée, elle complète le même
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder vehicle(Consumer<Vehicle> config) {
+        Map<String, Object> nested = object(values, "vehicle");
+        Objects.requireNonNull(config, "config").accept(new Vehicle(nested));
+        return this;
+    }
+
+    /**
      * {@code wear}.
      *
      * @param config règle l'objet ; rappelée, elle complète le même
@@ -4400,6 +4412,28 @@ public final class DefinitionBuilder {
          */
         public Variable write(String value) {
             values.put("write", Objects.requireNonNull(value, "write"));
+            return this;
+        }
+    }
+
+    /** {@code vehicle}. */
+    @Experimental
+    public static final class Vehicle {
+
+        private final Map<String, Object> values;
+
+        private Vehicle(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code vehicle.controllers} : au plus 8 éléments.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public Vehicle controllers(String... items) {
+            values.put("controllers", texts(items));
             return this;
         }
     }

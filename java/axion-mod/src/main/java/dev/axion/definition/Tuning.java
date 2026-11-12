@@ -24,13 +24,21 @@ import java.util.regex.Pattern;
  * <p>Une variable de la definition peut régler un paramètre par un modificateur déclaré ({@code tuning.modifiers},
  * ADR-167 D4) : voir {@link Declared}.
  *
- * @param parameters les paramètres, dans l'ordre fixe de {@link Parameters}
+ * <p>Une definition nomme aussi ses contrôleurs ({@code vehicle.controllers}, ADR-167 D9) : les paramètres que leurs
+ * mods ont enregistrés s'ajoutent à la table, après ceux d'AXION (Q6, Killian, 2026-11-12).
+ *
+ * @param parameters les paramètres : ceux d'AXION dans l'ordre fixe de {@link Parameters}, puis ceux des addons triés
+ *     par nom
  * @param declared les modificateurs déclarés, dans l'ordre de la definition
+ * @param controllers les contrôleurs que la definition nomme, dans son ordre
  */
-public record Tuning(List<Parameter> parameters, List<Declared> declared) {
+public record Tuning(List<Parameter> parameters, List<Declared> declared, List<String> controllers) {
 
     /** Aucun paramètre. */
-    public static final Tuning NONE = new Tuning(List.of(), List.of());
+    public static final Tuning NONE = new Tuning(List.of(), List.of(), List.of());
+
+    /** Contrôleurs qu'une definition nomme, au plus (ADR-167 D3). */
+    public static final int MAX_CONTROLLERS = 8;
 
     /** Modificateurs déclarés par une definition, au plus (ADR-167 D4). */
     public static final int MAX_DECLARED = 64;
@@ -48,15 +56,42 @@ public record Tuning(List<Parameter> parameters, List<Declared> declared) {
     public Tuning {
         parameters = List.copyOf(parameters);
         declared = List.copyOf(declared);
+        controllers = List.copyOf(controllers);
     }
 
     /**
-     * Les paramètres d'une definition sans modificateur déclaré.
+     * Les paramètres d'une definition sans modificateur déclaré ni contrôleur.
      *
      * @param parameters les paramètres, dans l'ordre fixe de {@link Parameters}
      */
     public Tuning(List<Parameter> parameters) {
-        this(parameters, List.of());
+        this(parameters, List.of(), List.of());
+    }
+
+    /**
+     * Les paramètres d'une definition sans contrôleur.
+     *
+     * @param parameters les paramètres, dans l'ordre fixe de {@link Parameters}
+     * @param declared les modificateurs déclarés
+     */
+    public Tuning(List<Parameter> parameters, List<Declared> declared) {
+        this(parameters, declared, List.of());
+    }
+
+    /**
+     * {@return cette table, avec les paramètres d'addon qui lui manquent} : ceux des mods des contrôleurs qu'une
+     * instance a attachés par l'API (Q6). Ceux qu'elle a déjà restent à leur place.
+     *
+     * @param extra les paramètres d'addon à ajouter
+     */
+    public Tuning with(List<VehicleExtensions.Parameter> extra) {
+        List<Parameter> all = new ArrayList<>(parameters);
+        for (VehicleExtensions.Parameter parameter : extra) {
+            if (indexOf(parameter.id()) < 0) {
+                all.add(parameter.tuning());
+            }
+        }
+        return all.size() == parameters.size() ? this : new Tuning(all, declared, controllers);
     }
 
     /**
@@ -267,6 +302,18 @@ public record Tuning(List<Parameter> parameters, List<Declared> declared) {
      * @return la table, {@link #NONE} sans paramètre
      */
     public static Tuning of(String id, JsonObject root) {
+        return of(id, root, VehicleExtensions.NONE);
+    }
+
+    /**
+     * Lit les paramètres d'une definition acceptée, ceux des mods de ses contrôleurs compris (ADR-167 D9, Q6).
+     *
+     * @param id l'identifiant de la definition
+     * @param root document de la definition
+     * @param extensions les contrôleurs et paramètres d'addon enregistrés
+     * @return la table, {@link #NONE} sans paramètre ni contrôleur
+     */
+    public static Tuning of(String id, JsonObject root, VehicleExtensions extensions) {
         List<Parameter> found = new ArrayList<>();
         if (root.get("physics") instanceof JsonObject physics && physics.get("mass") != null) {
             // DM-08 : la masse déclarée d'une assembly, dans [0,001 ; 10⁶] kg.
@@ -276,7 +323,11 @@ public record Tuning(List<Parameter> parameters, List<Declared> declared) {
         if (VehicleSpec.declared(root)) {
             VehicleSpec.parameters(root, found);
         }
-        if (found.isEmpty()) {
+        List<String> controllers = controllers(root);
+        for (VehicleExtensions.Parameter parameter : extensions.parametersFor(controllers)) {
+            found.add(parameter.tuning());
+        }
+        if (found.isEmpty() && controllers.isEmpty()) {
             return NONE;
         }
         JsonObject ranges = root.get("tuning") instanceof JsonObject tuning
@@ -288,7 +339,16 @@ public record Tuning(List<Parameter> parameters, List<Declared> declared) {
                             range(range))
                     : parameter);
         }
-        return new Tuning(bounded, declared(id, root));
+        return new Tuning(bounded, declared(id, root), controllers);
+    }
+
+    /** {@return les contrôleurs qu'une definition nomme ({@code vehicle.controllers}), dans son ordre} */
+    static List<String> controllers(JsonObject root) {
+        if (!(root.get("vehicle") instanceof JsonObject vehicle)
+                || !(vehicle.get("controllers") instanceof com.google.gson.JsonArray list)) {
+            return List.of();
+        }
+        return list.asList().stream().map(JsonElement::getAsString).toList();
     }
 
     /** {@return les modificateurs déclarés d'une definition acceptée, dans son ordre} */
@@ -343,12 +403,23 @@ public record Tuning(List<Parameter> parameters, List<Declared> declared) {
      * @param root document de la definition, ses règles de forme déjà passées
      * @param fault reçoit le chemin et la cause de chaque faute
      */
-    static void check(JsonObject root, java.util.function.BiConsumer<String, String> fault) {
+    static void check(JsonObject root, VehicleExtensions extensions,
+            java.util.function.BiConsumer<String, String> fault) {
+        List<String> controllers = controllers(root);
+        if (!controllers.isEmpty() && !VehicleSpec.declared(root)) {
+            fault.accept("$.vehicle.controllers", "des contrôleurs de véhicule demandent un véhicule : des roues");
+        }
+        for (int index = 0; index < controllers.size(); index++) {
+            if (controllers.indexOf(controllers.get(index)) != index) {
+                fault.accept("$.vehicle.controllers[" + index + "]", "contrôleur « " + controllers.get(index)
+                        + " » déjà nommé");
+            }
+        }
         if (!(root.get("tuning") instanceof JsonObject tuning)) {
             return;
         }
         // L'identifiant ne sert qu'à nommer les causes ; la forme de la cause se juge sur le nom du modificateur.
-        Tuning table = of("axion:verification", root);
+        Tuning table = of("axion:verification", root, extensions);
         if (tuning.get("ranges") instanceof JsonObject ranges) {
             checkRanges(ranges, table, fault);
         }

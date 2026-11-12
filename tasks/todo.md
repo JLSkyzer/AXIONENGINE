@@ -3758,23 +3758,28 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            monter, comme A10 l'a fait. Branche `wip/tranche-5c`. Étapes :
            - [x] A : natif — commande du couple par roue (ABI 23), ajouté au motopropulseur ou seul sans lui ; les
                  glissements de chaque roue au rapport (`SIM_OUT` schéma 5) ; tests.
-           - [ ] B : API — `VehicleController`, `VehicleView` et ses roues, `ControllerOutput`, `VehicleControl`
+           - [x] B : API — `VehicleController`, `VehicleView` et ses roues, `ControllerOutput`, `VehicleControl`
                  (`Assembly.vehicle()`), enregistrement d'un contrôleur et d'un paramètre d'addon par le
                  `ContentRegistrar`.
-           - [ ] C : serveur — registre, contrôleurs d'une instance (fiche `vehicle.controllers` au schéma 4 et API),
+           - [x] C : serveur — registre, contrôleurs d'une instance (fiche `vehicle.controllers` au schéma 4 et API),
                  appel au tick sur l'état du début du tick, sorties (modificateurs du tick écartés hors bornes, couple
-                 par roue, variables bornées), coût mesuré et désactivation `E-1011`, options `[vehicle]` ;
-                 paramètres d'addon là où un contrôleur du mod est attaché.
+                 par roue, variables bornées), coût mesuré et désactivation `E-1011`, options `[vehicle]` (défauts
+                 mesurés : 50 µs, 20 fautes) ; paramètres d'addon là où un contrôleur du mod est attaché. Trouvé en
+                 route : les journaux à débit limité (`E-7010` compris) se taisaient — corrigé (`JournalThrottle`).
+                 Au client, `vehicle().state()` attend la prédiction (tranche 6) : le noter à la tranche 6.
            - [ ] D : sauvegarde (`axion:ctrls`), réseau (contrôleurs attachés dans `FLAG_PARAMETERS`), addon d'un
                  contrôleur exigé du client et registre dans l'empreinte (CAP-40) ; `/axion params` montre les
                  contrôleurs, clés de traduction des paramètres.
            - [ ] E : exemple compilé (témoin), guide, CDC (23.2, 23.3, A.1 `E-1011`, A.3), précisions d'ADR-167,
                  budget mesuré au banc, film, fusion.
-  6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37) ; le registre envoyé au client
+  6. C-33 tranche 6 : prédiction, ensemble attaché compris (T-415..T-417, CAP-37), contrôleurs de véhicule appelés
+     chez le client et `VehicleControl.state()` lisible au client (ADR-167 D9, précisions de la 5c) ; le registre envoyé au client
      porte alors les correspondances bloc → matériau, surcharges de l'administrateur comprises (ADR-165, précision 3c).
   7. Le reste des capacités de M5 : caméra de véhicule (CAP-10), API (CAP-11), occupants (CAP-13), joueurs portés
      (CAP-14), énergie et démarrage (CAP-12), pneus et météo (CAP-20), rechargement à chaud (CAP-33), commandes
-     (CAP-34), contenu qui évolue (CAP-38), addons d'un seul côté (CAP-40), validation hors jeu (CAP-42), sources
+     (CAP-34), contenu qui évolue (CAP-38), addons d'un seul côté (CAP-40), validation hors jeu (CAP-42 : une fiche
+     qui nomme un contrôleur ne se juge pas sans le code de son mod — T-284 reçoit la liste des contrôleurs de test,
+     l'outil hors jeu devra dire lesquels il n'a pas pu vérifier), sources
      du monde (CAP-43) ; anti-roulis (R-1061).
   8. C-48 attaches : remorquage, ancrage au monde (CAP-15, CAP-16).
   9. C-77 gouverneur, C-73 overlay.

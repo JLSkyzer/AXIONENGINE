@@ -19,6 +19,7 @@ import dev.axion.definition.DefinitionRules;
 import dev.axion.definition.PhysicsMaterialTable;
 import dev.axion.definition.PhysicsMaterials;
 import dev.axion.definition.TireProfiles;
+import dev.axion.definition.VehicleExtensions;
 import dev.axion.physics.CollectResult;
 import dev.axion.physics.DegradationGauges;
 import dev.axion.physics.NativeSimulation;
@@ -1027,7 +1028,8 @@ public final class AxionRuntime {
                     outcome.config().getBoolean("content.examples"),
                     collisionGroups,
                     physicsMaterials,
-                    tires);
+                    tires,
+                    VehicleExtensions.current());
             long start = System.nanoTime();
             DefinitionRegistry loaded = DefinitionRegistry.load(source, rules);
             long nanos = System.nanoTime() - start;

@@ -147,6 +147,13 @@ final class ContentRegistration {
                 });
         Map<ContentKind, List<ContentRegistry.Entry>> resolved = registry.resolve();
         registry.errors().forEach(error -> LOGGER.warn("AXION : contenu — {}", error));
+        // ADR-167 D9 : les contrôleurs et les paramètres d'addon, avant les definitions qui les nomment.
+        dev.axion.definition.VehicleExtensions extensions = registry.extensions();
+        dev.axion.definition.VehicleExtensions.publish(extensions);
+        if (extensions.size() > 0) {
+            LOGGER.info("AXION : contrôleurs de véhicule enregistrés : {}", extensions.controllers().stream()
+                    .map(dev.axion.definition.VehicleExtensions.Controller::id).toList());
+        }
         RegisteredContent.publish(resolved);
         // ADR-165 D1 : chaque mod propriétaire d'une entrée, remplacements compris, est exigé du client.
         Map<String, String> owners = new TreeMap<>();

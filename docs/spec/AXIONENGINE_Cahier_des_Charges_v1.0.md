@@ -7829,7 +7829,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A12 | 2026-11-11 | ADR-165, accepté par Killian | 21.3 : protocole 7, les addons propriétaires de contenu et leurs versions dans `S2C_Handshake`, celles du client dans `C2S_Handshake` ; R-1640 : un addon absent ou d'une autre version refuse la connexion en le nommant ; ANNEXE A.3 : `axion-server-overrides.toml` (CAP-40, CAP-46, CAP-51) |
 | A13 | 2026-11-11 | ADR-162 D9, accepté par Killian | C-71 : `/axion dev reload`, qui rappelle l'enregistrement de chaque mod, relit son dossier depuis le disque quand il tourne depuis ses sources, et renvoie le registre aux clients ; ANNEXE A.3 : `content.dev_reload`, faux par défaut (CAP-50) |
 | A14 | 2026-11-12 | ADR-166, accepté par Killian | 23.1 : R-1756 (version d'API exigée dans le `mods.toml` d'un addon, avertissement et contenu non chargé) et R-1757 (validateur hors jeu, `AxionApi.content()`, aides aux GameTests) ; 23.2 : `ContentQuery content()` ; ANNEXE A.7 : CAP-42 tenue pour sa part de validation par le validateur Java (CAP-48, CAP-49) |
-| A15 | 2026-11-12 | ADR-167, accepté par Killian (sous-tranche 5a ; 5b et 5c compléteront) | 12.5 : R-1084 (paramètres d'une instance, bornes, composition des causes), R-1085 (réglage à chaud), R-1086 (sauvegarde et réplication), R-1087 (une variable règle un paramètre, 5b) ; R-1171 précisée : ses contrôleurs déclaratifs sont les modificateurs déclarés ; 21.5 : descripteur 6 et protocole 8 ; 22.2 : `axion:v` 5 et `axion:params` ; 23.2 : `parameters()` ; 23.4 : `tuning.ranges` et `tuning.modifiers`, schéma de definition 4 ; A.1 : `E-7011`, un modificateur gardé inactif plutôt que perdu, et `E-7010`, une écriture de variable refusée (5b) ; A.7 : CAP-39 et la masse variable de CAP-34 tenues, CAP-03 tenue sauf la prédiction. Suivront : `E-1011`, `vehicle()`, `VehicleController` et `[vehicle]` en A.3 (5c) |
+| A15 | 2026-11-12 | ADR-167, accepté par Killian (sous-tranche 5a ; 5b et 5c compléteront) | 12.5 : R-1084 (paramètres d'une instance, bornes, composition des causes), R-1085 (réglage à chaud), R-1086 (sauvegarde et réplication), R-1087 (une variable règle un paramètre, 5b) ; R-1171 précisée : ses contrôleurs déclaratifs sont les modificateurs déclarés ; 21.5 : descripteur 6 et protocole 8 ; 22.2 : `axion:v` 5 et `axion:params` ; 23.2 : `parameters()` ; 23.4 : `tuning.ranges` et `tuning.modifiers`, schéma de definition 4 ; A.1 : `E-7011`, un modificateur gardé inactif plutôt que perdu, et `E-7010`, une écriture de variable refusée (5b) ; A.7 : CAP-39 et la masse variable de CAP-34 tenues, CAP-03 tenue sauf la prédiction. 5c (étapes B et C) : A.1 : `E-1011`, un contrôleur de véhicule désactivé ; A.3 : `vehicle.controller_budget_ns` et `vehicle.controller_strikes`, défauts tirés d'une mesure au banc. Suivront : `vehicle()` et `VehicleController` en 23.2 et 23.3 (5c) |
 
 ---
 
@@ -7846,6 +7846,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | `E-1003` | natif | SHA-256 invalide | `DISABLED` | retélécharger |
 | `E-1004` | natif | double initialisation | refusé | défaut interne |
 | `E-1010` | forge | hook désactivé après 5 échecs | fonctionnalité réduite | consulter le log |
+| `E-1011` | véhicule | contrôleur de véhicule désactivé : `vehicle.controller_strikes` fautes consécutives, dépassements de `vehicle.controller_budget_ns` ou exceptions (ADR-167 D9) | désactivé pour la session sur tous les véhicules, qui roulent sans ses sorties ; le message le nomme ainsi que son mod | corriger le contrôleur, ou relever le budget |
 | `E-1050` | arrêt | thread non terminé | abandon | rapporter avec le dump |
 | `E-2000` | runtime | panic capturée | opération annulée | rapporter |
 | `E-2001` | runtime | handle invalide | refusé | défaut interne |
@@ -8019,6 +8020,8 @@ tile_radius = 3                   # 1..8
 [vehicle]
 debris_ignore_s = 1.0
 max_suspension_misalignment = 0.15
+controller_budget_ns = 50000
+controller_strikes = 20
 
 [attachment]
 max_chain = 8

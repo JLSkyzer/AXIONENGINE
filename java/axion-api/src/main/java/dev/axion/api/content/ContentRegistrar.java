@@ -73,4 +73,34 @@ public interface ContentRegistrar {
      * @throws IllegalStateException hors de la phase d'enregistrement
      */
     void replace(String target, DefinitionDocument definition);
+
+    /**
+     * Enregistre un contrôleur de véhicule (ADR-167 D9, registre {@code axion:vehicle_controller}) : le contrôleur
+     * {@code <modId>:<name>}, qu'une definition nomme ({@code vehicle.controllers}) ou que l'API attache à une
+     * instance. Il s'enregistre sur le serveur comme chez le client, avec le mod qui le livre : un joueur sans ce mod ne
+     * rejoint pas un serveur dont une definition le nomme (ADR-165). Un contrôleur de même nom déjà enregistré par ce
+     * mod est un doublon, refusé et consigné.
+     *
+     * @param name chemin du contrôleur dans l'espace de noms du mod, par exemple {@code "turbo"}
+     * @param controller le contrôleur
+     * @throws IllegalArgumentException si le nom est vide ou sort de {@code [a-z0-9_./-]}
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    void registerController(String name, dev.axion.api.vehicle.VehicleController controller);
+
+    /**
+     * Enregistre un paramètre propre à ce mod (ADR-167 D1) : {@code <modId>:<name>}, que ses contrôleurs lisent. Il
+     * existe sur un véhicule dès qu'un contrôleur de ce mod y est attaché — par sa definition ou par l'API —, à la base
+     * donnée (décision de Killian du 2026-11-12) ; il se règle et se compose comme ceux d'AXION, dans ses bornes, mais
+     * n'agit pas sur le moteur physique.
+     *
+     * @param name chemin du paramètre dans l'espace de noms du mod, par exemple {@code "boost_max"}
+     * @param unit son unité, vide pour un facteur ou un rapport
+     * @param base sa valeur sans réglage
+     * @param limit les valeurs qu'il peut prendre : un réglage qui en sortirait est refusé
+     * @throws IllegalArgumentException si le nom est vide ou sort de {@code [a-z0-9_./-]}, si la base n'est pas finie
+     *     ou sort de {@code limit}
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    void registerParameter(String name, String unit, double base, dev.axion.api.assembly.Parameters.Range limit);
 }

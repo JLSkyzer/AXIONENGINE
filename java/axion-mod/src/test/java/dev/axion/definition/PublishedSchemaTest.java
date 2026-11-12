@@ -35,6 +35,18 @@ class PublishedSchemaTest {
     /** L'espace de noms du contenu du dépôt : celui d'AXION, qui l'enregistre (ADR-162 D3). */
     private static final String NAMESPACE = "axion";
 
+    /**
+     * Les contrôleurs de véhicule que le contenu de développement enregistre ({@code ControleursDeTest}, ADR-167 D9) :
+     * du code, qu'aucun fichier ne déclare. Le serveur les tient de leur enregistrement ; ce parcours, qui ne lit que
+     * des fichiers, les reçoit d'ici. Une fiche du dépôt qui en nommerait un autre est refusée, comme en jeu.
+     */
+    private static final VehicleExtensions CONTROLEURS_DE_TEST = new VehicleExtensions(Map.of(
+            "axion:test/propulsion", new VehicleExtensions.Controller("axion:test/propulsion", NAMESPACE,
+                    (vue, sortie) -> { }),
+            "axion:test/compteur", new VehicleExtensions.Controller("axion:test/compteur", NAMESPACE,
+                    (vue, sortie) -> { })),
+            Map.of());
+
     /** Répertoires sans definition, dont le parcours ne ferait que coûter. */
     private static final Set<String> SKIPPED =
             Set.of(".git", ".gradle", ".idea", "build", "target", ".runs", "local", "node_modules");
@@ -345,7 +357,7 @@ class PublishedSchemaTest {
             DefinitionRules rules = new DefinitionRules(true, asset -> {
                 String path = asset.substring(asset.indexOf(':') + 1);
                 return racines.stream().anyMatch(r -> Files.isRegularFile(r.resolve(path)));
-            }, false, registre);
+            }, false, registre, PhysicsMaterials.empty(), TireProfiles.empty(), CONTROLEURS_DE_TEST);
             try {
                 DefinitionRegistry.read(location, Files.readAllBytes(file), rules);
             } catch (DefinitionException refusal) {

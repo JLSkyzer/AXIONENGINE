@@ -334,8 +334,13 @@ public final class Interpolation {
                 forwardSpeed(velocity, rotation));
     }
 
-    /** {@return la composante de la vitesse le long de {@code -Z} tourné par {@code rotation} : l'avant du véhicule} */
-    private static float forwardSpeed(float[] velocity, float[] q) {
+    /**
+     * {@return la composante de la vitesse le long de {@code -Z} tourné par {@code q} : l'avant du véhicule}
+     *
+     * @param velocity la vitesse monde, en m/s
+     * @param q l'orientation, {@code x, y, z, w}
+     */
+    public static float forwardSpeed(float[] velocity, float[] q) {
         float fx = -2f * (q[0] * q[2] + q[3] * q[1]);
         float fy = -2f * (q[1] * q[2] - q[3] * q[0]);
         float fz = -(1f - 2f * (q[0] * q[0] + q[1] * q[1]));

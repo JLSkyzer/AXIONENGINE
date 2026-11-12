@@ -159,6 +159,9 @@ final class SchemaOne {
                             .opt("scale", number())
                             .build(), Tuning.MAX_DECLARED))
                     .build());
+            // ADR-167 D9 : les contrôleurs du véhicule, enregistrés par des mods ; qu'ils existent se vérifie avec le
+            // registre (DefinitionRegistry), qu'il y ait des roues avec la definition entière (Tuning.check).
+            root.opt("vehicle", obj().opt("controllers", cap(id(), Tuning.MAX_CONTROLLERS)).build());
         }
         return root.build();
     }

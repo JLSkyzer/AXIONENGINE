@@ -778,6 +778,22 @@ public final class ConfigSchema {
                     false,
                     "Désalignement maximal toléré d'une suspension déformée, en mètres, avant signalement."),
             new Option(
+                    "vehicle.controller_budget_ns",
+                    Kind.INTEGER,
+                    50000L,
+                    new Domain(DomainKind.INT_RANGE, 1000.0, 50000000.0, List.of()),
+                    false,
+                    false,
+                    "Durée d'un appel de contrôleur de véhicule au-delà de laquelle il compte une faute, en nanosecondes."),
+            new Option(
+                    "vehicle.controller_strikes",
+                    Kind.INTEGER,
+                    20L,
+                    new Domain(DomainKind.INT_RANGE, 1.0, 1200.0, List.of()),
+                    false,
+                    false,
+                    "Fautes consécutives d'un contrôleur de véhicule (dépassements du budget ou exceptions) qui le désactivent pour la session."),
+            new Option(
                     "attachment.max_chain",
                     Kind.INTEGER,
                     8L,

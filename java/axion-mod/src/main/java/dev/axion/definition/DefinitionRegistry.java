@@ -77,6 +77,7 @@ public final class DefinitionRegistry {
     private final CollisionGroupRegistry collisionGroups;
     private final PhysicsMaterials physicsMaterials;
     private final TireProfiles tires;
+    private final VehicleExtensions extensions;
     private final List<String> warnings;
 
     private DefinitionRegistry(
@@ -87,6 +88,7 @@ public final class DefinitionRegistry {
             CollisionGroupRegistry collisionGroups,
             PhysicsMaterials physicsMaterials,
             TireProfiles tires,
+            VehicleExtensions extensions,
             List<String> warnings) {
         this.definitions = definitions;
         this.byHash = byHash;
@@ -96,6 +98,7 @@ public final class DefinitionRegistry {
         this.collisionGroups = collisionGroups;
         this.physicsMaterials = physicsMaterials;
         this.tires = tires;
+        this.extensions = extensions;
         this.warnings = List.copyOf(warnings);
     }
 
@@ -103,7 +106,7 @@ public final class DefinitionRegistry {
     public static DefinitionRegistry empty() {
         return new DefinitionRegistry(
                 new TreeMap<>(), new HashMap<>(), List.of(), new TreeMap<>(), CollisionGroupRegistry.empty(),
-                PhysicsMaterials.empty(), TireProfiles.empty(), List.of());
+                PhysicsMaterials.empty(), TireProfiles.empty(), VehicleExtensions.NONE, List.of());
     }
 
     /**
@@ -181,7 +184,7 @@ public final class DefinitionRegistry {
             tireWarnings(definition, rules.tires(), warnings);
         }
         return new DefinitionRegistry(accepted, byHash, refusals, refusalById, rules.collisionGroups(),
-                rules.physicsMaterials(), rules.tires(), warnings);
+                rules.physicsMaterials(), rules.tires(), rules.extensions(), warnings);
     }
 
     /**
@@ -245,11 +248,12 @@ public final class DefinitionRegistry {
         AssemblyKind kind = kindOf(root, rules);
 
         // Étapes 2 et 3 : structure du schéma et références internes.
-        List<DefinitionChecker.Issue> issues = DefinitionChecker.check(root);
+        List<DefinitionChecker.Issue> issues = DefinitionChecker.check(root, rules.extensions());
         if (!issues.isEmpty()) {
             throw DefinitionException.fromIssues(issues);
         }
         collisionGroupsOf(root, rules.collisionGroups());
+        controllersOf(root, rules.extensions());
 
         // ADR-162 D4 : l'empreinte porte sur la forme canonique, pas sur les octets du fichier.
         return new Definition(id, location, schema, asset, kind, root, CanonicalJson.sha256(root));
@@ -272,6 +276,17 @@ public final class DefinitionRegistry {
             String path = StrictJson.member(at, "collides_with");
             for (int index = 0; index < list.size(); index++) {
                 knownGroup(list.get(index).getAsString(), path + "[" + index + "]", groups);
+            }
+        }
+    }
+
+    /** ADR-167 D9 : chaque contrôleur nommé est enregistré par un mod. */
+    private static void controllersOf(JsonObject root, VehicleExtensions extensions) throws DefinitionException {
+        List<String> controllers = Tuning.controllers(root);
+        for (int index = 0; index < controllers.size(); index++) {
+            if (extensions.controller(controllers.get(index)).isEmpty()) {
+                throw DefinitionException.invalid("$.vehicle.controllers[" + index + "]", "contrôleur « "
+                        + controllers.get(index) + " » inconnu ; aucun mod ne l'enregistre (ADR-167 D9)");
             }
         }
     }
@@ -459,7 +474,8 @@ public final class DefinitionRegistry {
                 byId.put(refusal.getKey(), refusal.getValue());
             }
         }
-        return new DefinitionRegistry(kept, hashes, lines, byId, collisionGroups, physicsMaterials, tires, warnings);
+        return new DefinitionRegistry(kept, hashes, lines, byId, collisionGroups, physicsMaterials, tires, extensions,
+                warnings);
     }
 
     /**
@@ -550,5 +566,13 @@ public final class DefinitionRegistry {
     /** {@return les pneus contre lesquels ces definitions ont été validées (ADR-159 Q1)} */
     public TireProfiles tires() {
         return tires;
+    }
+
+    /**
+     * {@return les contrôleurs et paramètres d'addon contre lesquels ces definitions ont été validées (ADR-167 D9)}
+     * Leurs contrôleurs s'y résolvent tous.
+     */
+    public VehicleExtensions extensions() {
+        return extensions;
     }
 }

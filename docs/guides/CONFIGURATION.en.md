@@ -153,6 +153,8 @@ ignored (R-1830).
 |---|---|---|---|---|---|---|
 | `debris_ignore_s` | float | `1.0` | `0.0..` | no | no | Time during which a vehicle ignores collisions with its own debris, in seconds. |
 | `max_suspension_misalignment` | float | `0.15` | `0.0..` | no | no | Maximum misalignment tolerated for a deformed suspension, in metres, before it is reported. |
+| `controller_budget_ns` | integer | `50000` | `1000..50000000` | no | no | Duration of a vehicle controller call beyond which it counts a fault, in nanoseconds. |
+| `controller_strikes` | integer | `20` | `1..1200` | no | no | Consecutive faults of a vehicle controller (budget overruns or exceptions) that disable it for the session. |
 
 ### `[attachment]`
 

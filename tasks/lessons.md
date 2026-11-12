@@ -2374,3 +2374,17 @@ ne le chargeaient. Un contenu qu'aucun test ne charge peut se casser en silence.
 
 **Règle.** Tout contenu livré, même éteint par défaut, est chargé et vérifié par au moins un test : le serveur des
 GameTests active les exemples, et `ExemplesGameTests` exige que chacun se charge.
+
+## 2026-11-12 | Les journaux à débit limité ne journalisaient rien
+
+**Ce qui s'est passé.** En vérifiant au journal des GameTests qu'une sortie de contrôleur écartée se disait, aucune
+ligne n'apparaissait — ni aucun `E-7010`, alors qu'un GameTest de la 5b provoque un refus à la touche. Le défaut
+datait de la 5b (`393d449`).
+
+**Cause.** Le dernier tick journalisé partait de la sentinelle `Integer.MIN_VALUE`, et le test de débit faisait
+`tickCount - dernier < 20` : la soustraction déborde en négatif, et chaque ligne, la première comprise, était tue.
+Aucun test ne lisait le journal : les GameTests jugeaient l'effet (la variable gardait sa valeur), pas la ligne.
+
+**Règle.** Pas de sentinelle extrême dans une soustraction de délai : un drapeau « déjà journalisé », ou une
+soustraction en `long` (`JournalThrottle`). Une ligne de journal promise par le CDC (code `E-xxxx`) se vérifie au moins
+une fois au journal d'un passage réel, pas seulement par l'effet qu'elle accompagne.

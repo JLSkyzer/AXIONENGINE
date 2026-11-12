@@ -380,7 +380,10 @@ public final class AxionForgeEntrypoint {
                     runtime::compiledDefinition,
                     runtime.outcome().config().getBoolean("modules.joints"),
                     runtime.outcome().config().getInt("persistence.max_load_ns_per_tick"),
-                    runtime::lastSubmitNanos);
+                    runtime::lastSubmitNanos,
+                    new dev.axion.entity.ControllerRunner.Limits(
+                            runtime.outcome().config().getInt("vehicle.controller_budget_ns"),
+                            (int) runtime.outcome().config().getInt("vehicle.controller_strikes")));
             worldTileBridge =
                     new WorldTileBridge(
                             event.getServer(),
@@ -404,6 +407,7 @@ public final class AxionForgeEntrypoint {
                     runtime.outcome().config().getBoolean("physics.entity_push"),
                     runtime.outcome().config().getBoolean("physics.entity_damage")));
             runtime.setAssemblyDescriber(assemblyRuntime::describe);
+            AxionEntities.controllerCosts(assemblyRuntime::controllerCosts);
             // 22.5.2 : le journal latéral du monde, ni lu ni écrit s'il est coupé ou en mode DISABLED (cas 6).
             if (runtime.outcome().config().getBoolean("persistence.journal_enabled")) {
                 JournalBridge.start(
@@ -442,6 +446,7 @@ public final class AxionForgeEntrypoint {
         runtime.setStateSink(null);
         runtime.setEventSink(null);
         runtime.setAssemblyDescriber(null);
+        AxionEntities.controllerCosts(null);
         if (worldTileBridge != null) {
             worldTileBridge.close();
             worldTileBridge = null;

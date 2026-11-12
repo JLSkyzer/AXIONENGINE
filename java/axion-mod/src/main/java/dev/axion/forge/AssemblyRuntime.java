@@ -129,7 +129,16 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     private final Map<Integer, ParametersSent> parametersSent = new HashMap<>();
 
     /** Une table de paramètres envoyée : elle-même, et sa version. */
-    private record ParametersSent(dev.axion.entity.AssemblyParameters table, long version) {}
+    private record ParametersSent(dev.axion.entity.AssemblyParameters table, long version, long controlVersion) {}
+
+    /**
+     * Le couple de chaque roue que le natif a reçu des contrôleurs de chaque véhicule (ADR-167 D9) : il le garde d'un
+     * tick à l'autre, et repart de zéro à chaque création.
+     */
+    private final Map<Integer, float[]> torquesSent = new HashMap<>();
+
+    /** Fait tourner les contrôleurs de véhicule et mesure leur coût (ADR-167 D9, R-1770). */
+    private final dev.axion.entity.ControllerRunner controllers;
 
     /** Les créations en attente, avancées sous {@code persistence.max_load_ns_per_tick} (R-1730). */
     private final LoadQueue<AxionEntity> loading = new LoadQueue<>(System::nanoTime);
@@ -167,18 +176,21 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      * @param joints {@code modules.joints} : faux, les joints des definitions sont ignorés
      * @param loadBudgetNs {@code persistence.max_load_ns_per_tick}, en nanosecondes
      * @param lastSubmitNs la durée de la dernière soumission native
+     * @param controllerLimits le budget des contrôleurs de véhicule ({@code [vehicle]}, ADR-167 D9)
      */
     public AssemblyRuntime(
             Supplier<DefinitionRegistry> definitions,
             Function<String, Optional<DefinitionCompiler.Summary>> compiled,
             boolean joints,
             long loadBudgetNs,
-            LongSupplier lastSubmitNs) {
+            LongSupplier lastSubmitNs,
+            dev.axion.entity.ControllerRunner.Limits controllerLimits) {
         this.definitions = definitions;
         this.compiled = compiled;
         this.joints = joints;
         this.loadBudgetNs = loadBudgetNs;
         this.lastSubmitNs = lastSubmitNs;
+        this.controllers = new dev.axion.entity.ControllerRunner(controllerLimits, System::nanoTime);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -396,11 +408,63 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             }
             driveSent.remove(cmd.index());
             parametersSent.remove(cmd.index());
+            torquesSent.remove(cmd.index());
         }
         animate(stream);
+        // ADR-167 D9 : les contrôleurs lisent l'état du début du tick, avant que les entrées partent au natif.
+        control(stream);
         drive(stream);
         tune(stream, tick);
         return stream;
+    }
+
+    /** {@return le coût mesuré de chaque contrôleur appelé pendant la session, et son état (ADR-167 D10)} */
+    public List<dev.axion.entity.ControllerRunner.Cost> controllerCosts() {
+        return controllers.costs();
+    }
+
+    /**
+     * Fait tourner les contrôleurs de chaque véhicule doté d'un corps (ADR-167 D9) : leurs modificateurs et leurs
+     * écritures de variables s'appliquent à l'entité, le couple de chaque roue part au natif quand il a changé. Un
+     * véhicule dont on a retiré les contrôleurs repart sans leurs sorties.
+     */
+    private void control(SimCommandStream stream) {
+        ledger.forEachBody((index, assembly) -> {
+            List<dev.axion.definition.VehicleExtensions.Controller> attached = assembly.runnableControllers();
+            if (attached.isEmpty() && !torquesSent.containsKey(index)) {
+                dev.axion.entity.AssemblyParameters table = assembly.parameters();
+                if (table != null) {
+                    table.control(List.of());
+                }
+                return;
+            }
+            dev.axion.entity.VehicleSnapshot view = assembly.vehicleSnapshot();
+            if (view == null) {
+                return;
+            }
+            dev.axion.entity.ControllerRunner.Outcome outcome = controllers.run(attached, view);
+            assembly.applyControl(outcome);
+            float[] torques = outcome.torques();
+            float[] sent = torquesSent.get(index);
+            boolean silent = sent == null && allZero(torques);
+            if (!silent && (sent == null || !java.util.Arrays.equals(sent, torques))) {
+                stream.setWheelTorques(index, GENERATION, torques);
+            }
+            if (allZero(torques)) {
+                torquesSent.remove(index);
+            } else {
+                torquesSent.put(index, torques);
+            }
+        });
+    }
+
+    private static boolean allZero(float[] values) {
+        for (float value : values) {
+            if (value != 0f) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -415,15 +479,17 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 return;
             }
             ParametersSent sent = parametersSent.get(index);
-            boolean changed = sent == null ? table.tuned() : sent.table() != table || sent.version() != table.version();
+            boolean posed = sent == null || sent.table() != table || sent.version() != table.version();
+            boolean changed = sent == null ? table.tuned() : posed || sent.controlVersion() != table.controlVersion();
             if (changed) {
                 stream.setParameters(index, GENERATION, table.fields(SimCommandStream.PARAMETER_FIELDS),
                         table.gearTable());
             }
-            if (sent == null ? !table.modifiers().isEmpty() : changed) {
+            // Les sorties des contrôleurs ne partent pas aux joueurs (D9) : seule la liste posée se date.
+            if (sent == null ? !table.modifiers().isEmpty() : posed) {
                 assembly.parametersInEffect(tick);
             }
-            parametersSent.put(index, new ParametersSent(table, table.version()));
+            parametersSent.put(index, new ParametersSent(table, table.version(), table.controlVersion()));
         });
     }
 
@@ -506,7 +572,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             AxionEntity entity = wheel.handleGeneration() == GENERATION ? ledger.entity(wheel.handleIndex()) : null;
             if (entity != null) {
                 entity.setWheelState(wheel.index(), wheel.onGround(), wheel.spinSpeed(), wheel.compression(),
-                        wheel.steerAngle());
+                        wheel.steerAngle(), wheel.slipLong(), wheel.slipLat());
             }
         }
         // ADR-163 D1 : le motopropulseur de chaque véhicule éveillé ; un véhicule endormi garde le sien.
@@ -627,6 +693,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         rootNodes.clear();
         animationSent.clear();
         driveSent.clear();
+        torquesSent.clear();
         parametersSent.clear();
     }
 }

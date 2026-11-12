@@ -6,6 +6,7 @@ import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
 import dev.axion.definition.PhysicsMaterials;
 import dev.axion.definition.TireProfiles;
+import dev.axion.definition.VehicleExtensions;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,7 +53,9 @@ public final class RemoteRegistry {
         CollisionGroupRegistry groups =
                 CollisionGroupRegistry.load(source(registry.files(RegistryContent.Family.COLLISION_GROUPS)));
         TireProfiles tires = TireProfiles.load(source(registry.files(RegistryContent.Family.TIRES)));
-        DefinitionRules rules = new DefinitionRules(true, model -> true, true, groups, materials, tires);
+        // ADR-167 D9 : le client tient les mêmes contrôleurs que le serveur, le mod qui les enregistre est exigé.
+        DefinitionRules rules = new DefinitionRules(true, model -> true, true, groups, materials, tires,
+                VehicleExtensions.current());
         DefinitionRegistry definitions =
                 DefinitionRegistry.load(source(registry.files(RegistryContent.Family.DEFINITIONS)), rules);
 

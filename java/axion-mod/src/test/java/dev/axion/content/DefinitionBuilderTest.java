@@ -172,7 +172,7 @@ class DefinitionBuilderTest {
     @Test
     @DisplayName("R-581 : le builder refuse un texte nul là où le schéma n'admet pas null")
     void unTexteNulEstRefuse() {
-        assertThrows(NullPointerException.class, () -> DefinitionBuilder.vehicle(null));
+        assertThrows(NullPointerException.class, () -> DefinitionBuilder.vehicle((String) null));
         assertThrows(NullPointerException.class, () -> DefinitionBuilder.vehicle("m:a.glb").repairRule(null));
         assertEquals(java.util.Collections.singletonMap("intact", null), ((Map<?, ?>) ((List<?>) DefinitionBuilder
                 .vehicle("m:a.glb").part("p", p -> p.meshes(m -> m.intact(null))).build().root().get("parts"))

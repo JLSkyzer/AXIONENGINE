@@ -196,4 +196,31 @@ class ContentRegistryTest {
         assertTrue(source.ownerOf("mod:axion/definitions/a.json").startsWith("mod ("));
         assertThrows(IOException.class, () -> source.read("mod:axion/definitions/c.json"));
     }
+
+    @Test
+    @DisplayName("ADR-167 D1, D9 : un contrôleur et un paramètre s'enregistrent dans l'espace de noms du mod ; un doublon"
+            + " est consigné ; un nom ou une base invalides lèvent")
+    void controleursEtParametres() throws IOException {
+        ContentRegistry registry = new ContentRegistry(Long.MAX_VALUE);
+        dev.axion.api.vehicle.VehicleController rien = (vue, sortie) -> { };
+        dev.axion.api.assembly.Parameters.Range zeroATrois = new dev.axion.api.assembly.Parameters.Range(0, true, 3, true);
+        try (ContentRegistry.Session session = registry.open("turbo", jar("turbo", Map.of("p.json", "{}")))) {
+            session.registerController("gestion", rien);
+            session.registerController("gestion", (vue, sortie) -> { });
+            session.registerParameter("pression_max", "bar", 1.2, zeroATrois);
+            session.registerParameter("pression_max", "bar", 1.0, zeroATrois);
+            assertThrows(IllegalArgumentException.class, () -> session.registerController("Gestion", rien));
+            assertThrows(IllegalArgumentException.class, () -> session.registerParameter("p", "", 4, zeroATrois),
+                    "une base hors de sa limite");
+            assertThrows(IllegalArgumentException.class,
+                    () -> session.registerParameter("p", "", Double.NaN, zeroATrois));
+        }
+        dev.axion.definition.VehicleExtensions extensions = registry.extensions();
+        assertTrue(extensions.controller("turbo:gestion").orElseThrow().controller() == rien, "le premier reste");
+        assertEquals("turbo", extensions.controller("turbo:gestion").orElseThrow().owner());
+        assertEquals(List.of(1.2), extensions.parametersFor(List.of("turbo:gestion")).stream()
+                .map(dev.axion.definition.VehicleExtensions.Parameter::base).toList());
+        assertEquals(2, registry.errors().size(), "deux doublons consignés : " + registry.errors());
+        assertTrue(registry.errors().get(0).contains("turbo:gestion"));
+    }
 }

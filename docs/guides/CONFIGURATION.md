@@ -153,6 +153,8 @@ alors ignorée (R-1830).
 |---|---|---|---|---|---|---|
 | `debris_ignore_s` | flottant | `1.0` | `0.0..` | non | non | Durée pendant laquelle un véhicule ignore les collisions avec ses propres débris, en secondes. |
 | `max_suspension_misalignment` | flottant | `0.15` | `0.0..` | non | non | Désalignement maximal toléré d'une suspension déformée, en mètres, avant signalement. |
+| `controller_budget_ns` | entier | `50000` | `1000..50000000` | non | non | Durée d'un appel de contrôleur de véhicule au-delà de laquelle il compte une faute, en nanosecondes. |
+| `controller_strikes` | entier | `20` | `1..1200` | non | non | Fautes consécutives d'un contrôleur de véhicule (dépassements du budget ou exceptions) qui le désactivent pour la session. |
 
 ### `[attachment]`
 
