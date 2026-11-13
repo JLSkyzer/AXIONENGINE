@@ -2417,3 +2417,21 @@ compte un seul joueur synchronisé.
 **Règle.** Dans `AxionEntity`, un champ qui a un accesseur du même nom (`wheelNodes`, et les autres caches de la
 definition) se lit par l'accesseur. Quand un test qui compte les joueurs échoue après un autre échec, chercher d'abord un
 `JoueurSimule` resté connecté par le test qui a échoué avant lui.
+
+## 2026-11-13 | Trois lancements du jeu pour un client resté au menu
+
+**Ce qui s'est passé.** Le client de l'essai de la prédiction devait se connecter seul au serveur ; il restait au
+menu principal. Il a été relancé trois fois pour diagnostiquer, Killian le voyant chaque fois s'ouvrir pour rien.
+
+**Cause.** EventBus 6 nomme le gestionnaire qu'il génère d'après le paquet, le nom simple de la classe, la méthode et
+l'événement : `EssaiPrediction$Client.tick(ClientTickEvent)` prenait le nom de `EssaiAddonsExiges$Client.tick`, et
+n'était jamais appelé (note de la BDC du même jour). La cause se lisait dans le bytecode d'EventBus, sans rien lancer.
+
+**Règle.** Un essai qui ouvre le jeu et ne fait pas ce qu'il doit : l'arrêter, puis chercher la cause dans les
+journaux, le bytecode et les sources, et ne relancer qu'une fois la cause établie — jamais pour « voir ». Dans
+`dev.axion.forge`, une méthode `@SubscribeEvent` porte un nom à elle, pas `tick`. Avant de lancer un essai, le relire
+pour ce qui l'empêcherait d'aboutir (ici aussi : attendre la prédiction pour accélérer, alors qu'un véhicule endormi ne
+produit pas de correction).
+Et un client lancé par un agent ne doit jamais s'arrêter sur un menu de pause : `clientSilencieux` pose
+`pauseOnLostFocus:false` pour tous (SourisLibre dit la fenêtre inactive, et le menu de pause relâche les touches pressées
+par l'essai) ; Killian l'a vu avant moi.

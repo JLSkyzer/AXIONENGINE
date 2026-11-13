@@ -29,9 +29,11 @@ public final class RemoteRegistry {
      * Un registre relu.
      *
      * @param definitions definitions acceptées, avec les groupes et les matériaux qu'elles nomment
+     * @param materials les matériaux physiques du serveur : le monde prédit du client les tient comme lui
+     *     (ADR-168 D1)
      * @param journal ce qui est à journaliser : le bilan, puis chaque refus
      */
-    public record Loaded(DefinitionRegistry definitions, List<String> journal) {
+    public record Loaded(DefinitionRegistry definitions, PhysicsMaterials materials, List<String> journal) {
 
         /** Copie le journal. */
         public Loaded {
@@ -66,7 +68,7 @@ public final class RemoteRegistry {
         Stream.of(materials.refusals(), groups.refusals(), tires.refusals(), definitions.refusals())
                 .flatMap(List::stream)
                 .forEach(refusal -> journal.add("refusé chez le client : " + refusal));
-        return new Loaded(definitions, journal);
+        return new Loaded(definitions, materials, journal);
     }
 
     private static AssetSource source(SortedMap<String, byte[]> files) {

@@ -353,6 +353,10 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Enables client-side prediction for the assembly the player drives."),
     ip("net.prediction_max_ping", 400, "Latence maximale, en millisecondes, au-delà de laquelle la prédiction est désactivée.")
         .en("Maximum latency, in milliseconds, beyond which prediction is disabled."),
+    // ADR-168 D5, D10 : p99 mesuré d'un rejeu de 64 ticks, restauration comprise, au banc du vrai client (essai à deux
+    // processus, 2026-11-13 : p50 5,06 ms, p90 6,90 ms, p99 8,17 ms sur 100 mesures).
+    ip("net.prediction_replay_budget_ns", 8_200_000, "Durée maximale d'un rejeu de la prédiction, en nanosecondes ; au-delà, le client accepte l'état du serveur sans rejouer.")
+        .en("Maximum duration of a prediction replay, in nanoseconds; beyond it, the client accepts the server state without replaying."),
     ip("net.max_bytes_per_second_per_player", 32768, "Plafond de bande passante AXION par joueur, en octets par seconde.")
         .en("Cap on AXION bandwidth per player, in bytes per second."),
     ip("net.max_packets_per_second", 40, "Plafond de paquets AXION par seconde et par joueur.")

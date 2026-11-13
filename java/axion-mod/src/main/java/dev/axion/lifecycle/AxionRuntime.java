@@ -931,6 +931,20 @@ public final class AxionRuntime {
     }
 
     /**
+     * {@return la table des matériaux physiques, encodée pour le natif, si elle a changé depuis la dernière prise ;
+     * {@code null} sinon} Chez un client distant, son monde prédit la prend (ADR-168 D1) ; au serveur, le cycle de
+     * simulation.
+     */
+    public PhysicsMaterialTable.Encoded takePhysicsMaterialsIfChanged() {
+        return materialTable.takeIfChanged();
+    }
+
+    /** Marque la table des matériaux physiques à renvoyer : une session native neuve ne l'a pas reçue (ADR-149). */
+    public void markPhysicsMaterialsChanged() {
+        materialTable.markChanged();
+    }
+
+    /**
      * Charge les mappages bloc → matériau d'un rechargement de données (§11.4, R-643, ADR-145),
      * contre les matériaux physiques chargés juste avant. Les tuiles construites ensuite en
      * prennent le contact ; une tuile déjà construite garde le sien jusqu'à sa reconstruction.
@@ -1120,6 +1134,10 @@ public final class AxionRuntime {
     public List<String> applyRemoteRegistry(RegistryContent registry) {
         RemoteRegistry.Loaded loaded = RemoteRegistry.load(registry);
         remoteDefinitions = true;
+        // ADR-168 D1 : les matériaux du serveur, avant les definitions qui les indexent ; le monde prédit en reçoit
+        // la table.
+        physicsMaterials = loaded.materials();
+        materialTable.update(loaded.materials());
         loadedDefinitions = loaded.definitions();
         recompileDefinitions(loaded.definitions());
         return loaded.journal();
@@ -1133,6 +1151,8 @@ public final class AxionRuntime {
     public void onRemoteDisconnect() {
         if (remoteDefinitions) {
             remoteDefinitions = false;
+            physicsMaterials = PhysicsMaterials.empty();
+            materialTable.update(PhysicsMaterials.empty());
             loadedDefinitions = DefinitionRegistry.empty();
             recompileDefinitions(DefinitionRegistry.empty());
         }

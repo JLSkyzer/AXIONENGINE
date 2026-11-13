@@ -115,6 +115,16 @@ minecraft {
             property 'axion.souris.libre', 'true'
         }
 
+        essaiClientPrediction {
+            // ADR-168, essai à deux processus (EssaiPrediction, contenu de développement) : ce client se connecte au
+            // serveur de runServer, lancé sous AXION_ESSAI_PREDICTION=1, par un relais qui retarde chaque sens de
+            // -PessaiLatence millisecondes (100 par défaut) ; il conduit, mesure, écrit son rapport, puis s'arrête.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/essai-prediction')
+            property 'axion.essai.prediction', (project.findProperty('essaiLatence') ?: '100').toString()
+            property 'axion.souris.libre', 'true'
+        }
+
         gameTestServer {
             // Un dossier à part, dont le monde est effacé avant chaque passage : les GameTests
             // partent d'un monde neuf (R-2190) et ne laissent rien dans celui de développement.
@@ -422,10 +432,12 @@ tasks.matching { it.name.startsWith('prepareRun') }.configureEach {
     dependsOn ':addon-temoin:classes'
 }
 
-// Un client lancé par un agent : ni question du narrateur au premier lancement, ni son.
+// Un client lancé par un agent : ni question du narrateur au premier lancement, ni son, ni menu de pause quand sa
+// fenêtre perd le focus — SourisLibre la dit inactive à chaque tick, et un menu de pause relâche les touches qu'un
+// essai presse (essai de la prédiction, 2026-11-13).
 def clientSilencieux = { File dossier ->
     def options = new File(dossier, 'options.txt')
-    def regles = [onboardAccessibility: 'false', narrator: '0', soundCategory_master: '0.0']
+    def regles = [onboardAccessibility: 'false', narrator: '0', soundCategory_master: '0.0', pauseOnLostFocus: 'false']
     def lignes = options.exists() ? options.readLines('UTF-8').findAll { !regles.containsKey(it.split(':', 2)[0]) } : []
     regles.each { cle, valeur -> lignes << "${cle}:${valeur}" }
     dossier.mkdirs()
@@ -438,6 +450,14 @@ tasks.matching { it.name == 'runEssaiClientAddons' }.configureEach {
     standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
     doFirst {
         clientSilencieux(rootProject.file('.runs/essai-client'))
+    }
+}
+
+// ADR-168 : le client de l'essai de la prédiction, muet ; son serveur est runServer, sous AXION_ESSAI_PREDICTION=1.
+tasks.matching { it.name == 'runEssaiClientPrediction' }.configureEach {
+    standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/essai-prediction'))
     }
 }
 

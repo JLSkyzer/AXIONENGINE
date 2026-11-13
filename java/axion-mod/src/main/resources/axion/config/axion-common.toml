@@ -118,6 +118,7 @@ extrapolation_max_ms = 250        # 0..
 snap_threshold = 2.0              # 0.0..
 prediction = true
 prediction_max_ping = 400         # 0..
+prediction_replay_budget_ns = 8200000# 0..
 max_bytes_per_second_per_player = 32768# 0..
 max_packets_per_second = 40       # 0..
 max_impacts_per_packet = 64       # 0..

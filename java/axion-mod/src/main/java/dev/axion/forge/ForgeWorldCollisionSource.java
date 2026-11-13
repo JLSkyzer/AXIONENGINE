@@ -17,7 +17,7 @@ import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -49,7 +49,7 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
     /** Densité de l'eau douce, en kg/m³ (fluide par défaut d'une section). */
     private static final float WATER_DENSITY = 1000f;
 
-    private final LongFunction<ServerLevel> levelById;
+    private final LongFunction<? extends Level> levelById;
     private final Supplier<BlockMaterials> materials;
     /** Index d'un matériau dans la table de la session (ADR-149 D4). */
     private final ToIntFunction<String> materialIndex;
@@ -58,13 +58,13 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
     private final Set<SectionKey> heightfieldsWarned = new HashSet<>();
 
     /**
-     * @param levelById résout la clé de dimension ({@link dev.axion.world.DimensionId}) en
-     *     son {@code ServerLevel}, ou {@code null} si absent
+     * @param levelById résout la clé de dimension ({@link dev.axion.world.DimensionId}) en son niveau, ou
+     *     {@code null} si absent : celui du serveur, ou celui du client pour son monde prédit (ADR-168 D1)
      * @param materials mappage data-driven des matériaux (R-643, ADR-145), lu à chaque tuile : une
      *     tuile construite après un rechargement prend le mappage nouveau
      */
     public ForgeWorldCollisionSource(
-            LongFunction<ServerLevel> levelById,
+            LongFunction<? extends Level> levelById,
             Supplier<BlockMaterials> materials,
             ToIntFunction<String> materialIndex) {
         this.materialIndex = materialIndex;
@@ -74,7 +74,7 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
 
     @Override
     public SectionTile tileOf(long dimension, int sectionX, int sectionY, int sectionZ) {
-        ServerLevel level = levelById.apply(dimension);
+        Level level = levelById.apply(dimension);
         BlockMaterials mapping = materials.get();
         BlockMaterials.Material fallback = mapping.fallback();
         // R-640 : niveau inconnu ou chunk non chargé → plein et solide, sans charger le chunk.
@@ -211,7 +211,7 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
      * (échelle y = 1), échelle x/z = 16.
      */
     private CollisionShape.Heightfield heightfield(
-            ServerLevel level, int ox, int oy, int oz, BlockMaterials.Material material) {
+            Level level, int ox, int oy, int oz, BlockMaterials.Material material) {
         int verts = SIZE + 1; // 17 sommets pour 16 cellules
         float[] heights = new float[verts * verts];
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();

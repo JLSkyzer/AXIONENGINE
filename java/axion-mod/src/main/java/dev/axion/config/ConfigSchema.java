@@ -858,6 +858,14 @@ public final class ConfigSchema {
                     false,
                     "Latence maximale, en millisecondes, au-delà de laquelle la prédiction est désactivée."),
             new Option(
+                    "net.prediction_replay_budget_ns",
+                    Kind.INTEGER,
+                    8200000L,
+                    new Domain(DomainKind.INT_RANGE, 0.0, Double.MAX_VALUE, List.of()),
+                    false,
+                    false,
+                    "Durée maximale d'un rejeu de la prédiction, en nanosecondes ; au-delà, le client accepte l'état du serveur sans rejouer."),
+            new Option(
                     "net.max_bytes_per_second_per_player",
                     Kind.INTEGER,
                     32768L,

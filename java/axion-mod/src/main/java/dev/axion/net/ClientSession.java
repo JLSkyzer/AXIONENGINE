@@ -211,6 +211,11 @@ public final class ClientSession {
         return reply(new InputMessage(nextInputSequence++, entity, seat, input).encode());
     }
 
+    /** {@return la séquence des dernières entrées envoyées, non signée ; -1 avant les premières} */
+    public synchronized long lastInputSequence() {
+        return nextInputSequence == 0 ? -1 : Integer.toUnsignedLong(nextInputSequence - 1);
+    }
+
     private static byte[] present(byte[] frame) throws MalformedPacketException {
         if (frame == null) {
             throw new MalformedPacketException("trame de plus de " + NetProtocol.MAX_FRAME_BYTES + " octets");

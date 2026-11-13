@@ -173,6 +173,7 @@ ignored (R-1830).
 | `snap_threshold` | float | `2.0` | `0.0..` | no | no | Gap, in metres, beyond which the client snaps to position instead of interpolating. |
 | `prediction` | boolean | `true` | `true \| false` | no | no | Enables client-side prediction for the assembly the player drives. |
 | `prediction_max_ping` | integer | `400` | `0..` | no | no | Maximum latency, in milliseconds, beyond which prediction is disabled. |
+| `prediction_replay_budget_ns` | integer | `8200000` | `0..` | no | no | Maximum duration of a prediction replay, in nanoseconds; beyond it, the client accepts the server state without replaying. |
 | `max_bytes_per_second_per_player` | integer | `32768` | `0..` | no | no | Cap on AXION bandwidth per player, in bytes per second. |
 | `max_packets_per_second` | integer | `40` | `0..` | no | no | Cap on AXION packets per second per player. |
 | `max_impacts_per_packet` | integer | `64` | `0..` | no | no | Maximum number of impacts grouped in one packet. |

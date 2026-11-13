@@ -38,6 +38,8 @@ public final class AxionClientSetup {
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
         AxionNetwork.installClientSnapshots(ClientSnapshots::apply);
+        // ADR-168 D4 : les corrections du serveur, au véhicule que ce joueur conduit.
+        ClientPrediction.install();
         // ADR-162 D9 : en solo, /axion dev reload recompile aussi les modèles du client.
         DevReload.installClientRefresh(ClientModelReload::refresh);
     }

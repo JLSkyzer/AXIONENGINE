@@ -51,6 +51,7 @@ public final class ClientNetworkEvents {
     @SubscribeEvent
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         ClientSnapshots.reset();
+        ClientPrediction.reset();
         AxionRuntime runtime = RuntimeAccess.get();
         if (runtime != null) {
             runtime.onRemoteDisconnect();
@@ -70,6 +71,7 @@ public final class ClientNetworkEvents {
         if (event.phase != TickEvent.Phase.END || player == null || connection == null || minecraft.isPaused()) {
             return;
         }
+        ClientPrediction.tick(player);
         if (!(player.getVehicle() instanceof AxionEntity assembly)) {
             GEAR.reset();
             SeatCommands.forget();
@@ -79,9 +81,11 @@ public final class ClientNetworkEvents {
         byte gear = GEAR.select(assembly.getId(), VehicleKeys.presses(VehicleKeys.GEAR_UP),
                 VehicleKeys.presses(VehicleKeys.GEAR_DOWN), assembly.gearRange());
         if (assembly.seatTakesInput(seat)) {
-            AxionNetwork.sendInput(connection.getConnection(), assembly.getId(), seat, VehicleInput.ofKeys(
-                    player.input.forwardImpulse, player.input.leftImpulse, player.input.jumping, gear,
-                    VehicleKeys.heldCommands()));
+            VehicleInput input = VehicleInput.ofKeys(player.input.forwardImpulse, player.input.leftImpulse,
+                    player.input.jumping, gear, VehicleKeys.heldCommands());
+            long sequence = AxionNetwork.sendInput(connection.getConnection(), assembly.getId(), seat, input);
+            // ADR-168 D3 : l'entrée partie s'applique aussitôt au véhicule prédit.
+            ClientPrediction.onInputSent(connection.getConnection(), assembly, seat, input, sequence);
         }
         SeatCommands.show(player, assembly, seat);
     }

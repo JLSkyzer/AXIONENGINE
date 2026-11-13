@@ -78,6 +78,15 @@ public final class AxionNetwork {
         throw new IllegalStateException("aucun puits de snapshots installé chez ce client");
     };
 
+    /**
+     * Ce que le client fait d'une correction reçue (ADR-168 D4) : posé par le code du client à son démarrage, appelé
+     * sur le thread de Netty de la connexion.
+     */
+    private static volatile java.util.function.BiConsumer<Connection, dev.axion.net.CorrectionMessage>
+            clientCorrections = (connection, correction) -> {
+                throw new IllegalStateException("aucun puits de corrections installé chez ce client");
+            };
+
     private AxionNetwork() {
         throw new AssertionError("non instanciable");
     }
@@ -187,8 +196,12 @@ public final class AxionNetwork {
         context.setPacketHandled(true);
         try {
             ClientSession session = clientSession(context.getNetworkManager());
+            long corrections = session.corrections();
             byte[] ack = session.onPlayFrame(message.frame());
             journal("client", session.drainJournal());
+            if (session.corrections() != corrections) {
+                clientCorrections.accept(context.getNetworkManager(), session.lastCorrection());
+            }
             if (ack != null) {
                 AxionChannel.CHANNEL.sendTo(new ChannelFrames.PlayToServer(ack), context.getNetworkManager(),
                         NetworkDirection.PLAY_TO_SERVER);
@@ -252,13 +265,27 @@ public final class AxionNetwork {
      * @param entity identifiant réseau de l'assembly
      * @param seat rang du siège
      * @param input les entrées
+     * @return leur séquence, non signée, que la prédiction garde (ADR-168 D3) ; -1 sans session AXION, rien n'est
+     *     parti
      */
-    public static void sendInput(Connection connection, int entity, int seat, VehicleInput input) {
+    public static long sendInput(Connection connection, int entity, int seat, VehicleInput input) {
         ClientSession session = connection.channel().attr(CLIENT_SESSION).get();
-        if (session != null) {
-            AxionChannel.CHANNEL.sendTo(new ChannelFrames.PlayToServer(session.inputFrame(entity, seat, input)),
-                    connection, NetworkDirection.PLAY_TO_SERVER);
+        if (session == null) {
+            return -1;
         }
+        AxionChannel.CHANNEL.sendTo(new ChannelFrames.PlayToServer(session.inputFrame(entity, seat, input)),
+                connection, NetworkDirection.PLAY_TO_SERVER);
+        return session.lastInputSequence();
+    }
+
+    /**
+     * Pose ce que le client fait des corrections reçues (ADR-168 D4). Appelé par le code du client, à son démarrage.
+     *
+     * @param sink appelé sur le thread de Netty, avec la connexion et la correction
+     */
+    public static void installClientCorrections(
+            java.util.function.BiConsumer<Connection, dev.axion.net.CorrectionMessage> sink) {
+        clientCorrections = sink;
     }
 
     /**

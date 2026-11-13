@@ -150,7 +150,7 @@ public final class EssaiAddonsExiges {
         }
 
         /** {@return la raison qu'affiche l'écran} Elle n'a pas d'accesseur : le champ, lu par réflexion. */
-        private static Component raison(DisconnectedScreen ecran) {
+        static Component raison(DisconnectedScreen ecran) {
             try {
                 Field champ = DisconnectedScreen.class.getDeclaredField("reason");
                 champ.setAccessible(true);

@@ -557,6 +557,32 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * {@return vrai si ce passager tient le siège {@code driver} de ce véhicule : celui que son client prédit (ADR-168
+     * D1)} Une assembly sans roues n'est pas un véhicule.
+     *
+     * @param passenger le passager
+     */
+    public boolean drivenBy(Entity passenger) {
+        Seating seating = seating();
+        int seat = seatOf(passenger);
+        return seating != null && seat >= 0 && seat < seating.seats().size() && seating.seats().get(seat).driver()
+                && !wheelNodes().isEmpty();
+    }
+
+    /**
+     * {@return l'entrée telle que le serveur la retient de ce siège (R-1110)} Le monde prédit l'applique bornée de même
+     * (ADR-168 D3).
+     *
+     * @param seat le rang du siège
+     * @param input l'entrée envoyée
+     */
+    public VehicleInput sanitizedInput(int seat, VehicleInput input) {
+        Seating seating = seating();
+        return seating == null || seat < 0 || seat >= seating.seats().size() ? VehicleInput.NONE
+                : input.sanitized(seating.seats().get(seat));
+    }
+
+    /**
      * {@return les variables de l'assembly (serveur, ADR-163 D2), {@code null} si sa definition n'est pas encore
      * compilée, ou au client} Créées à la première demande, à leur défaut puis aux valeurs que la sauvegarde gardait
      * ({@code axion:vars}). Une definition recompilée les refait, en gardant la valeur de chaque variable qui existe
@@ -1861,7 +1887,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * {@return l'orientation du corps racine, copie} Au serveur, l'orientation autoritaire ; au client, celle que son
      * dernier tick a prise de l'interpolation.
      */
-    Quaternionf orientation() {
+    public Quaternionf orientation() {
         return new Quaternionf(level().isClientSide() ? rotation : bodyRotation);
     }
 
