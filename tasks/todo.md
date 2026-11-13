@@ -3811,13 +3811,18 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            T-415 et T-416 par un essai à deux processus (serveur dédié + vrai client, latence injectée), le natif en
            Rust (deux mondes), la boucle Java en tests unitaires ; une connexion en mémoire ne prédit pas (un contexte
            natif par processus, R-450). Étapes :
-           **État au 2026-11-13, 02:40 — rien de la 6c n'est commité, tout est sur le disque.** Écrit : `PredictedWorld`, `Prediction` (+ 5 tests verts), `ClientPrediction`, `ClientTiles`, `RemoteRegistry` → matériaux, `ForgeWorldCollisionSource` sur `Level`, `sendInput` rend la séquence, option `net.prediction_replay_budget_ns` (défaut mesuré 8 200 000 ns = p99 du banc, CDC A.3 et ligne A16 posés), essai `EssaiPrediction` + `RelaisLatence` + `EssaiReseau` (contenu de dev), `clientSilencieux` sans pause au focus perdu. Essai réel en connexion directe vert : monde prédit ouvert/fermé, corrections à chaque tick, latence 72 ms, banc 64 ticks p50 5,06 / p99 8,17 ms ; 9 égales, 45 rejouées, 95 acceptées (budget provisoire de 2 ms, trop petit : refaire l'essai avec 8,2 ms). À faire avant le commit : CI locale complète (sous le verrou `lancement-minecraft.txt`, le banc de GameTests est un lancement), précisions 6c d'ADR-168, retirer l'instrumentation [essai] superflue. Ouvert : (1) la connexion au serveur dédié a échoué 3 fois sur 5 en « Timed out » (client qui ne décode pas le 1er paquet de login) — vidages jstack dans le scratchpad perdus, à refaire si ça se reproduit hors des lancements concurrents ; (2) le relais de latence : avec lui, aucune connexion n'a abouti ; (3) beaucoup de corrections ≠ prédiction — à analyser (tuiles, matériaux bloc → 6d, paramètres).
+           **État au 2026-11-13, 21:40** : A et B commités. Ouvert : (1) une connexion directe au serveur dédié sur
+           deux expire (« Timed out », cause inconnue, ADR-168 précision 6c-B) ; l'essai se reconnecte jusqu'à trois
+           fois ; (2) le relais de latence : avec lui, aucune connexion n'a encore abouti (à reprendre en 6e) ; (3) une
+           fausse prédiction isolée de 0,48 m vue une fois, rejouée, non reproduite — à regarder en 6c-C.
            - [x] A (2026-11-14, CI locale verte) : le monde prédit du client distant et son cycle de vie — table des matériaux et familles de pneus
                  tirées du registre reçu, véhicule créé à la première correction et restauré, tuiles du niveau du
                  client par le découpage commun (`ForgeWorldCollisionSource` sur un `Level`).
-           - [ ] B : la boucle prédite — une entrée par tick appliquée au monde prédit, historique de 64, latence
+           - [x] B (2026-11-13) : la boucle prédite — une entrée par tick appliquée au monde prédit, historique de 64, latence
                  mesurée par l'acquittement, réconciliation (restauration, rejeu sous
                  `net.prediction_replay_budget_ns`, défaut mesuré au banc), désactivation (D8).
+                 Tolérance de D5 en trois options (1 cm, 5 mrad, 0,2 m/s), budget jugé dans le rejeu même ; essai :
+                 114 égales, 36 rejouées, 0 acceptée (ADR-168 précision 6c-B).
            - [ ] C : le rendu à la pose prédite, lissage de 200 ms et téléportation, proxies extrapolés des autres
                  assemblies, recréation sur `IRRECONCILABLE`.
      - [ ] 6d — variables, paramètres et contrôleurs prédits, `VehicleControl.state()` au client, correspondances

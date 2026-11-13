@@ -357,6 +357,16 @@ pub const COMMON: &[ConfigOption] = &[
     // processus, 2026-11-13 : p50 5,06 ms, p90 6,90 ms, p99 8,17 ms sur 100 mesures).
     ip("net.prediction_replay_budget_ns", 8_200_000, "Durée maximale d'un rejeu de la prédiction, en nanosecondes ; au-delà, le client accepte l'état du serveur sans rejouer.")
         .en("Maximum duration of a prediction replay, in nanoseconds; beyond it, the client accepts the server state without replaying."),
+    // ADR-168 D5, précision 6c-B : l'écart entre l'état prédit et celui du serveur en deçà duquel le client ne rejoue
+    // pas. Chaque seuil vaut au plus 1 cm de dérive en un tick, un sixième de pixel de bloc ; le bruit mesuré entre
+    // deux mondes natifs, essais du 2026-11-13 (151 comparaisons), reste dessous : position 6,3 mm, rotation
+    // 2,1 mrad, vitesse 9,2 cm/s au plus.
+    fp("net.prediction_tolerance_position_m", 0.01, "Écart de position, en mètres, en deçà duquel l'état prédit vaut celui du serveur.")
+        .en("Position gap, in metres, below which the predicted state counts as the server's."),
+    fp("net.prediction_tolerance_rotation_rad", 0.005, "Écart de rotation, en radians, en deçà duquel l'état prédit vaut celui du serveur.")
+        .en("Rotation gap, in radians, below which the predicted state counts as the server's."),
+    fp("net.prediction_tolerance_velocity_ms", 0.2, "Écart de vitesse, en mètres par seconde, en deçà duquel l'état prédit vaut celui du serveur.")
+        .en("Velocity gap, in metres per second, below which the predicted state counts as the server's."),
     ip("net.max_bytes_per_second_per_player", 32768, "Plafond de bande passante AXION par joueur, en octets par seconde.")
         .en("Cap on AXION bandwidth per player, in bytes per second."),
     ip("net.max_packets_per_second", 40, "Plafond de paquets AXION par seconde et par joueur.")

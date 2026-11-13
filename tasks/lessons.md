@@ -2435,3 +2435,10 @@ produit pas de correction).
 Et un client lancé par un agent ne doit jamais s'arrêter sur un menu de pause : `clientSilencieux` pose
 `pauseOnLostFocus:false` pour tous (SourisLibre dit la fenêtre inactive, et le menu de pause relâche les touches pressées
 par l'essai) ; Killian l'a vu avant moi.
+
+[2026-11-13] | Le budget de rejeu de la prédiction refusait tous les rejeux pendant 50 ticks (68 corrections sur 149
+acceptées sans rejeu) | l'estimation d'avance, un coût lissé des pas en direct, partait du premier pas d'un monde prédit
+(170 ms : tuiles, code froid) quand les suivants coûtent 1,2 ms ; nourrie des seuls rejeux, elle se serait figée, un rejeu
+refusé ne mesurant rien | une garde de budget se juge sur la mesure de l'opération en cours (coût moyen de ses propres
+pas), jamais sur une moyenne d'échantillons d'une autre nature ; et toute garde qui refuse doit garder un moyen de se
+remesurer. Le chiffre qui l'a montré : une colonne du coût lissé dans la trajectoire de l'essai, avant de toucher au code.

@@ -164,13 +164,37 @@ public final class EssaiPrediction {
         /** Ticks laissés, une fois en jeu, pour se retrouver au volant ; au-delà, l'essai échoue et s'arrête. */
         private static final int VOLANT_MAX = 1200;
 
+        /** Connexions tentées avant d'abandonner, quand elles expirent (défaut ouvert, voir {@link #deconnexion}). */
+        private static final int TENTATIVES_MAX = 3;
+
         private static RelaisLatence relais;
+        private static int tentatives;
         private static boolean annonce;
         private static boolean connecte;
         private static int enJeu;
         private static int tick = -1;
         private static boolean fini;
         private static final List<String> trajectoire = new ArrayList<>();
+        /** L'écart de chaque correction à la prédiction (position m, rotation rad, vitesse m/s), et les sans-prédiction. */
+        private static final List<double[]> ecarts = new ArrayList<>();
+        private static int sansPrediction;
+
+        static {
+            if (DELAI_MS >= 0) {
+                ClientPrediction.observe((predit, serveur) -> {
+                    if (predit == null) {
+                        sansPrediction++;
+                        return;
+                    }
+                    dev.axion.physics.AssemblyStateView.Errors e =
+                            dev.axion.physics.AssemblyStateView.errors(predit, serveur);
+                    if (e != null) {
+                        ecarts.add(new double[] {e.position(), e.rotation(), e.velocity(), tick,
+                                ClientPrediction.loop() == null ? -1 : ClientPrediction.loop().pending()});
+                    }
+                });
+            }
+        }
 
         private Client() {}
 
@@ -232,8 +256,36 @@ public final class EssaiPrediction {
             if (DELAI_MS < 0 || fini || !(event.getNewScreen() instanceof DisconnectedScreen ecran)) {
                 return;
             }
-            echec(Minecraft.getInstance(), "écran de déconnexion : " + ecran.getTitle().getString() + " — "
-                    + EssaiAddonsExiges.Client.raison(ecran).getString().replace('\n', '|'));
+            net.minecraft.network.chat.Component raison = EssaiAddonsExiges.Client.raison(ecran);
+            String texte = ecran.getTitle().getString() + " — " + raison.getString().replace('\n', '|');
+            // Le défaut ouvert de la connexion (ADR-168, précision 6c-B) : une fois sur deux environ, le client ne
+            // décode rien de la poignée de main FML que le serveur dit avoir envoyée, et la connexion expire. Tant
+            // qu'il n'est pas compris, l'essai se reconnecte, et son rapport dit combien de tentatives il a fallu.
+            if (tick < 0 && tentatives < TENTATIVES_MAX && expiree(raison)) {
+                LOGGER.warn("[essai] tentative de connexion {} expirée ({}), nouvelle tentative", tentatives, texte);
+                fermerRelais();
+                connecte = false;
+                event.setNewScreen(new TitleScreen());
+                return;
+            }
+            echec(Minecraft.getInstance(), "écran de déconnexion après " + tentatives + " tentative(s) : " + texte);
+        }
+
+        /** {@return vrai si la déconnexion est l'expiration de la connexion, quelle que soit la langue du client} */
+        private static boolean expiree(net.minecraft.network.chat.Component raison) {
+            return raison.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents cle
+                    && "disconnect.timeout".equals(cle.getKey());
+        }
+
+        private static void fermerRelais() {
+            if (relais != null) {
+                try {
+                    relais.close();
+                } catch (IOException ignoree) {
+                    // Le relais se ferme avec le processus.
+                }
+                relais = null;
+            }
         }
 
         private static void echec(Minecraft minecraft, String raison) {
@@ -245,13 +297,7 @@ public final class EssaiPrediction {
             } catch (IOException faute) {
                 LOGGER.error("[essai] rapport non écrit : {}", faute.toString());
             }
-            if (relais != null) {
-                try {
-                    relais.close();
-                } catch (IOException ignoree) {
-                    // Le relais se ferme avec le processus.
-                }
-            }
+            fermerRelais();
             minecraft.stop();
         }
 
@@ -260,6 +306,7 @@ public final class EssaiPrediction {
                 return;
             }
             connecte = true;
+            tentatives++;
             String adresse = HOTE + ":" + PORT;
             if (DELAI_MS > 0) {
                 try {
@@ -283,11 +330,11 @@ public final class EssaiPrediction {
                 return;
             }
             double[] predite = racine == null ? new double[] {Double.NaN, Double.NaN, Double.NaN} : racine.position();
-            trajectoire.add(String.format(Locale.ROOT, "%d;%d;%d;%d;%.4f;%.4f;%.4f;%.4f;%.4f;%.4f;%.1f;%d;%d;%d;%d",
+            trajectoire.add(String.format(Locale.ROOT, "%d;%d;%d;%d;%.4f;%.4f;%.4f;%.4f;%.4f;%.4f;%.1f;%d;%d;%d;%d;%.0f",
                     tick, avant ? 1 : 0, gauche ? 1 : 0, ClientPrediction.predicting() ? 1 : 0, predite[0], predite[1],
                     predite[2], assembly.getX(),
                     assembly.getY(), assembly.getZ(), boucle.latencyMillis(), boucle.pending(), boucle.matches(),
-                    boucle.replays(), boucle.accepted()));
+                    boucle.replays(), boucle.accepted(), boucle.stepNanos()));
         }
 
         private static void terminer(Minecraft minecraft) {
@@ -296,6 +343,7 @@ public final class EssaiPrediction {
             List<String> rapport = new ArrayList<>();
             Prediction boucle = ClientPrediction.loop();
             rapport.add(String.format(Locale.ROOT, "délai injecté par sens : %d ms", DELAI_MS));
+            rapport.add("tentatives de connexion : " + tentatives);
             if (boucle == null) {
                 rapport.add("aucune entrée partie : rien de prédit");
                 boucle = new Prediction(System::nanoTime, 1);
@@ -304,13 +352,20 @@ public final class EssaiPrediction {
                     boucle.latencyMillis()));
             rapport.add(String.format(Locale.ROOT, "corrections : %d égales, %d rejouées, %d acceptées sans rejeu",
                     boucle.matches(), boucle.replays(), boucle.accepted()));
-            rapport.add(String.format(Locale.ROOT, "coût lissé d'un pas prédit : %.0f ns", boucle.stepNanos()));
+            rapport.add(String.format(Locale.ROOT, "coût lissé d'un pas rejoué : %.0f ns", boucle.stepNanos()));
+            rapport.add(repartition("écart de position à l'acquittement (m)", 0));
+            rapport.add(repartition("écart de rotation à l'acquittement (rad)", 1));
+            rapport.add(repartition("écart de vitesse à l'acquittement (m/s)", 2));
+            rapport.add("corrections sans état prédit pour la séquence acquittée : " + sansPrediction);
+            ecarts.stream().sorted((x, y) -> Double.compare(y[0], x[0])).limit(5).forEach(e -> rapport.add(
+                    String.format(Locale.ROOT, "  pire écart de position : %.4f m (rotation %.4f rad, vitesse %.3f m/s)"
+                            + " au tick %d, %d en attente", e[0], e[1], e[2], (int) e[3], (int) e[4])));
             rapport.addAll(banc());
             Path dossier = minecraft.gameDirectory.toPath();
             try {
                 Files.write(dossier.resolve("rapport-prediction.txt"), rapport, StandardCharsets.UTF_8);
                 List<String> csv = new ArrayList<>();
-                csv.add("tick;avant;gauche;predit;px;py;pz;ix;iy;iz;latence_ms;en_attente;egales;rejouees;acceptees");
+                csv.add("tick;avant;gauche;predit;px;py;pz;ix;iy;iz;latence_ms;en_attente;egales;rejouees;acceptees;pas_lisse_ns");
                 csv.addAll(trajectoire);
                 Files.write(dossier.resolve("trajectoire-prediction.csv"), csv, StandardCharsets.UTF_8);
             } catch (IOException faute) {
@@ -320,14 +375,20 @@ public final class EssaiPrediction {
             if (minecraft.level != null) {
                 minecraft.level.disconnect();
             }
-            if (relais != null) {
-                try {
-                    relais.close();
-                } catch (IOException ignoree) {
-                    // Le relais se ferme avec le processus.
-                }
-            }
+            fermerRelais();
             minecraft.stop();
+        }
+
+        /** {@return la répartition d'un écart sur les corrections comparées : p50, p90, p99, max} */
+        private static String repartition(String nom, int rang) {
+            double[] valeurs = ecarts.stream().mapToDouble(e -> e[rang]).sorted().toArray();
+            if (valeurs.length == 0) {
+                return nom + " : aucune comparaison";
+            }
+            int n = valeurs.length;
+            return String.format(Locale.ROOT, "%s, %d comparaisons : p50 %.3e, p90 %.3e, p99 %.3e, max %.3e", nom, n,
+                    valeurs[n / 2], valeurs[Math.min(n - 1, n * 9 / 10)], valeurs[Math.min(n - 1, n * 99 / 100)],
+                    valeurs[n - 1]);
         }
 
         /**

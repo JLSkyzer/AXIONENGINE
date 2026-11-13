@@ -174,6 +174,9 @@ ignored (R-1830).
 | `prediction` | boolean | `true` | `true \| false` | no | no | Enables client-side prediction for the assembly the player drives. |
 | `prediction_max_ping` | integer | `400` | `0..` | no | no | Maximum latency, in milliseconds, beyond which prediction is disabled. |
 | `prediction_replay_budget_ns` | integer | `8200000` | `0..` | no | no | Maximum duration of a prediction replay, in nanoseconds; beyond it, the client accepts the server state without replaying. |
+| `prediction_tolerance_position_m` | float | `0.01` | `0.0..` | no | no | Position gap, in metres, below which the predicted state counts as the server's. |
+| `prediction_tolerance_rotation_rad` | float | `0.005` | `0.0..` | no | no | Rotation gap, in radians, below which the predicted state counts as the server's. |
+| `prediction_tolerance_velocity_ms` | float | `0.2` | `0.0..` | no | no | Velocity gap, in metres per second, below which the predicted state counts as the server's. |
 | `max_bytes_per_second_per_player` | integer | `32768` | `0..` | no | no | Cap on AXION bandwidth per player, in bytes per second. |
 | `max_packets_per_second` | integer | `40` | `0..` | no | no | Cap on AXION packets per second per player. |
 | `max_impacts_per_packet` | integer | `64` | `0..` | no | no | Maximum number of impacts grouped in one packet. |

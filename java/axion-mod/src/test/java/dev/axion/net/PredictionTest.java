@@ -108,23 +108,51 @@ class PredictionTest {
     }
 
     @Test
-    @DisplayName("R-1682 : un rejeu qui dépasserait son budget n'a pas lieu ; l'état du serveur est accepté tel quel")
+    @DisplayName("R-1682 : un rejeu s'arrête avant le pas qui dépasserait son budget ; l'état du serveur reste tel quel")
     void budgetEstime() {
         long[] clock = {0};
         Prediction prediction = new Prediction(() -> clock[0], 3 * MS);
         Mobile client = new Mobile(clock, MS);
         envoyer(prediction, client, clock, 0, 1f, 1f, 1f, 1f, 1f);
         byte[] etat = new Mobile(new long[1], 0).state();
-        int avant = client.steps;
         Prediction.Reconciliation bilan = prediction.reconcile(client, 1, 0, etat);
         assertEquals(Prediction.Outcome.ACCEPTED, bilan.outcome(), "quatre pas d'une milliseconde, budget de trois");
-        assertEquals(avant, client.steps, "aucun pas rejoué");
+        assertEquals(3 * MS, bilan.nanos(), "trois pas faits, le quatrième ne tenait plus");
         assertArrayEquals(etat, client.state(), "l'état du serveur, tel quel");
         assertEquals(1, prediction.accepted());
         // Les états gardés sont caducs : la correction suivante rejoue, trois pas tenant dans le budget.
         Prediction.Reconciliation suivante = prediction.reconcile(client, 2, 1, etat);
         assertEquals(Prediction.Outcome.REPLAYED, suivante.outcome());
         assertEquals(3, suivante.replayed());
+        assertEquals(MS, prediction.stepNanos(), 1e-9, "le coût d'un pas rejoué");
+    }
+
+    @Test
+    @DisplayName("R-1682 : un premier pas lent, à l'ouverture du monde prédit, n'empêche pas les rejeux qui suivent")
+    void premierPasLent() {
+        long[] clock = {0};
+        Prediction prediction = new Prediction(() -> clock[0], 8 * MS);
+        Mobile client = new Mobile(clock, MS);
+        // L'ouverture : tuiles découpées, code froid. Mesuré en jeu le 2026-11-13 : 170 ms, puis 1,2 ms par pas.
+        Prediction.World ouverture = new Prediction.World() {
+            @Override
+            public byte[] step(VehicleInput input) {
+                clock[0] += 170 * MS;
+                return client.step(input);
+            }
+
+            @Override
+            public void restore(byte[] state) {
+                client.restore(state);
+            }
+        };
+        prediction.sent(0, clock[0]);
+        prediction.advance(ouverture, 0, gaz(1f));
+        envoyer(prediction, client, clock, 1, 1f, 1f, 1f);
+        byte[] etat = new Mobile(new long[1], 0).state();
+        Prediction.Reconciliation bilan = prediction.reconcile(client, 1, 1, etat);
+        assertEquals(Prediction.Outcome.REPLAYED, bilan.outcome(), "deux pas d'une milliseconde, budget de huit");
+        assertEquals(2, bilan.replayed());
     }
 
     @Test

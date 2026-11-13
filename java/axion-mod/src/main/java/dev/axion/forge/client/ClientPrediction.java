@@ -12,6 +12,7 @@ import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.net.CorrectionMessage;
 import dev.axion.net.Prediction;
 import dev.axion.net.ServerHandshake;
+import dev.axion.physics.AssemblyStateView;
 import dev.axion.physics.BodyState;
 import dev.axion.physics.NativeSimulation;
 import dev.axion.physics.PredictedWorld;
@@ -68,6 +69,8 @@ public final class ClientPrediction {
     private static String refusal = "";
     /** L'état du véhicule de la dernière correction réconciliée. */
     private static byte[] lastServerState;
+    /** Qui regarde chaque comparaison de la boucle ; les essais y mesurent l'écart. */
+    private static java.util.function.BiConsumer<byte[], byte[]> observer = (predicted, server) -> {};
 
     /** Le monde prédit vu de la boucle : l'observateur à chaque pas, les tuiles au pas d'une entrée neuve. */
     private static final Prediction.World PORT = new Prediction.World() {
@@ -207,6 +210,18 @@ public final class ClientPrediction {
         }
     }
 
+    /**
+     * Pose qui regarde chaque comparaison d'une correction à la prédiction, pour la boucle courante et les suivantes.
+     *
+     * @param watcher appelé avec l'état prédit pour la séquence acquittée ({@code null} sans) et celui du serveur
+     */
+    public static void observe(java.util.function.BiConsumer<byte[], byte[]> watcher) {
+        observer = watcher;
+        if (loop != null) {
+            loop.observe(watcher);
+        }
+    }
+
     /** {@return la boucle de la connexion courante, {@code null} sans} Les essais y lisent latence et corrections. */
     public static Prediction loop() {
         return loop;
@@ -240,8 +255,17 @@ public final class ClientPrediction {
     private static Prediction loop(Connection connection) {
         if (loop == null) {
             AxionRuntime runtime = RuntimeAccess.get();
-            loop = new Prediction(System::nanoTime,
-                    runtime.outcome().config().getInt("net.prediction_replay_budget_ns"));
+            AxionConfig config = runtime.outcome().config();
+            double position = config.getFloat("net.prediction_tolerance_position_m");
+            double rotation = config.getFloat("net.prediction_tolerance_rotation_rad");
+            double velocity = config.getFloat("net.prediction_tolerance_velocity_ms");
+            // D5 : deux mondes natifs ne calculent pas au bit près ; un bloc d'état illisible ne vaut jamais l'autre.
+            loop = new Prediction(System::nanoTime, config.getInt("net.prediction_replay_budget_ns"),
+                    (predicted, server) -> {
+                        AssemblyStateView.Errors errors = AssemblyStateView.errors(predicted, server);
+                        return errors != null && errors.within(position, rotation, velocity);
+                    });
+            loop.observe(observer);
         }
         return loop;
     }

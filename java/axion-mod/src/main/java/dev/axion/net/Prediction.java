@@ -12,11 +12,12 @@ import java.util.function.LongSupplier;
  * {@value #HISTORY} ; chaque correction du serveur se compare à l'état prédit pour la séquence qu'elle acquitte.
  *
  * <ul>
- *   <li>Égal au bit près : la prédiction était juste, rien ne bouge.</li>
+ *   <li>Assez proche ({@link Tolerance}) : la prédiction était juste, rien ne bouge.</li>
  *   <li>Différent : le monde prédit reprend l'état du serveur et rejoue, un pas par entrée, celles envoyées
  *       après.</li>
- *   <li>Un rejeu qui dépasserait son budget n'a pas lieu, ou s'interrompt : l'état du serveur est accepté tel quel
- *       (R-1682). Les états prédits gardés deviennent caducs, et la correction suivante rejoue.</li>
+ *   <li>Un rejeu s'arrête avant le pas qui dépasserait son budget, jugé sur le coût moyen de ses propres pas : l'état
+ *       du serveur est accepté tel quel (R-1682). Les états prédits gardés deviennent caducs, et la correction
+ *       suivante rejoue.</li>
  * </ul>
  *
  * <p>La latence se mesure par l'acquittement : la correction rend la séquence de la dernière entrée appliquée, dont le
@@ -52,9 +53,27 @@ public final class Prediction {
         void restore(byte[] state);
     }
 
+    /**
+     * Ce qui rend un état prédit assez proche de celui du serveur pour ne pas rejouer (D5). Deux mondes natifs distincts
+     * ne calculent pas au bit près : leurs origines flottantes et l'état de contact non restauré les séparent.
+     */
+    @FunctionalInterface
+    public interface Tolerance {
+
+        /** L'égalité au bit près. */
+        Tolerance EXACT = Arrays::equals;
+
+        /**
+         * @param predicted l'état prédit pour la séquence acquittée
+         * @param server l'état du serveur
+         * @return vrai s'ils sont assez proches pour ne pas rejouer
+         */
+        boolean close(byte[] predicted, byte[] server);
+    }
+
     /** Ce qu'une correction a fait. */
     public enum Outcome {
-        /** L'état prédit pour la séquence acquittée était celui du serveur, au bit près. */
+        /** L'état prédit pour la séquence acquittée était celui du serveur, à la tolérance près. */
         MATCH,
         /** L'état du serveur repris, les entrées postérieures rejouées. */
         REPLAYED,
@@ -93,6 +112,9 @@ public final class Prediction {
     private final ArrayDeque<long[]> sent = new ArrayDeque<>(HISTORY);
     private final LongSupplier clock;
     private final long replayBudgetNanos;
+    private final Tolerance tolerance;
+    /** Qui regarde chaque comparaison : l'état prédit pour la séquence acquittée, puis celui du serveur. */
+    private java.util.function.BiConsumer<byte[], byte[]> observer = (predicted, server) -> {};
     private double latencyMillis = -1;
     private double stepNanos = -1;
     private long lastServerTick = -1;
@@ -105,11 +127,30 @@ public final class Prediction {
      * @param replayBudgetNanos {@code net.prediction_replay_budget_ns} : la durée qu'un rejeu ne dépasse pas
      */
     public Prediction(LongSupplier clock, long replayBudgetNanos) {
+        this(clock, replayBudgetNanos, Tolerance.EXACT);
+    }
+
+    /**
+     * @param clock l'horloge, en nanosecondes
+     * @param replayBudgetNanos {@code net.prediction_replay_budget_ns} : la durée qu'un rejeu ne dépasse pas
+     * @param tolerance ce qui est assez proche pour ne pas rejouer
+     */
+    public Prediction(LongSupplier clock, long replayBudgetNanos, Tolerance tolerance) {
         if (replayBudgetNanos <= 0) {
             throw new IllegalArgumentException("budget de rejeu " + replayBudgetNanos);
         }
         this.clock = clock;
         this.replayBudgetNanos = replayBudgetNanos;
+        this.tolerance = tolerance;
+    }
+
+    /**
+     * Pose qui regarde chaque comparaison d'une correction à la prédiction : les essais y mesurent l'écart.
+     *
+     * @param observer appelé avec l'état prédit pour la séquence acquittée ({@code null} sans) et celui du serveur
+     */
+    public void observe(java.util.function.BiConsumer<byte[], byte[]> observer) {
+        this.observer = observer;
     }
 
     /**
@@ -135,8 +176,6 @@ public final class Prediction {
     public void advance(World world, long sequence, VehicleInput input) {
         long start = clock.getAsLong();
         byte[] predicted = world.step(input);
-        long cost = clock.getAsLong() - start;
-        stepNanos = stepNanos < 0 ? cost : stepNanos + SMOOTHING * (cost - stepNanos);
         long sentNanos = sentAt(sequence);
         history.addLast(new Entry(sequence, input, sentNanos < 0 ? start : sentNanos, predicted));
         while (history.size() > HISTORY) {
@@ -172,25 +211,33 @@ public final class Prediction {
             }
             it.remove();
         }
+        observer.accept(acknowledged == null ? null : acknowledged.predicted, serverState);
         if (acknowledged != null && acknowledged.predicted != null
-                && Arrays.equals(acknowledged.predicted, serverState)) {
+                && tolerance.close(acknowledged.predicted, serverState)) {
             matches++;
             return new Reconciliation(Outcome.MATCH, 0, clock.getAsLong() - start);
         }
         world.restore(serverState);
-        int pending = history.size();
-        if (pending > 0 && stepNanos >= 0 && stepNanos * pending > replayBudgetNanos) {
-            return acceptWithoutReplay(start);
-        }
+        // Le coût d'un pas se juge sur ce rejeu-ci, pas sur une moyenne passée : le premier pas d'un monde prédit,
+        // tuiles découpées et code froid, en coûte cent fois plus que les suivants (170 ms contre 1,2 ms, mesuré en
+        // jeu le 2026-11-13), et une estimation qu'il gonfle refuserait des rejeux qui tiennent.
         int replayed = 0;
+        long stepping = 0;
         for (Entry entry : history) {
-            entry.predicted = world.step(entry.input);
-            replayed++;
-            if (clock.getAsLong() - start > replayBudgetNanos && replayed < pending) {
-                // Interrompu : le monde reprend l'état du serveur, et rien de ce qui a été rejoué ne compte.
-                world.restore(serverState);
+            long elapsed = clock.getAsLong() - start;
+            if (elapsed > replayBudgetNanos || (replayed > 0 && elapsed + stepping / replayed > replayBudgetNanos)) {
+                // Le pas suivant ne tiendrait pas : le monde reprend l'état du serveur, rien du rejeu ne compte.
+                if (replayed > 0) {
+                    world.restore(serverState);
+                }
                 return acceptWithoutReplay(start);
             }
+            long before = clock.getAsLong();
+            entry.predicted = world.step(entry.input);
+            long cost = clock.getAsLong() - before;
+            stepping += cost;
+            stepNanos = stepNanos < 0 ? cost : stepNanos + SMOOTHING * (cost - stepNanos);
+            replayed++;
         }
         replays++;
         return new Reconciliation(Outcome.REPLAYED, replayed, clock.getAsLong() - start);
@@ -243,7 +290,10 @@ public final class Prediction {
         return latencyMillis;
     }
 
-    /** {@return le coût lissé d'un pas du monde prédit, en nanosecondes ; -1 avant le premier} */
+    /**
+     * {@return le coût lissé d'un pas rejoué, en nanosecondes ; -1 avant le premier} Les pas en direct n'y comptent
+     * pas : ils paient aussi les tuiles et les matériaux, qu'un rejeu ne touche pas.
+     */
     public double stepNanos() {
         return stepNanos;
     }
