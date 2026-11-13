@@ -28,7 +28,7 @@ class PredictionTest {
         }
 
         @Override
-        public byte[] step(VehicleInput input) {
+        public byte[] step(long sequence, VehicleInput input) {
             clock[0] += stepCost;
             steps++;
             speed += input.throttle() * 0.05;
@@ -70,8 +70,8 @@ class PredictionTest {
         Mobile serveur = new Mobile(new long[1], 0);
         envoyer(prediction, client, clock, 0, 1f, 1f, 0.5f, 0f);
         // Le serveur a appliqué les deux premières ; la correction arrive 150 ms après l'envoi de la seconde.
-        serveur.step(gaz(1f));
-        byte[] etat = serveur.step(gaz(1f));
+        serveur.step(0, gaz(1f));
+        byte[] etat = serveur.step(0, gaz(1f));
         Prediction.Reconciliation bilan = prediction.reconcile(client, 7, 1, etat);
         assertEquals(Prediction.Outcome.MATCH, bilan.outcome());
         assertEquals(4, client.steps, "aucun pas rejoué");
@@ -88,22 +88,22 @@ class PredictionTest {
         envoyer(prediction, client, clock, 10, 1f, 1f, 1f, 0.5f, 0.25f);
         // Le serveur a rejoué la première deux fois (file vide), puis appliqué la deuxième : l'état diffère.
         Mobile serveur = new Mobile(new long[1], 0);
-        serveur.step(gaz(1f));
-        serveur.step(gaz(1f));
-        byte[] etat = serveur.step(gaz(1f));
+        serveur.step(0, gaz(1f));
+        serveur.step(0, gaz(1f));
+        byte[] etat = serveur.step(0, gaz(1f));
         Prediction.Reconciliation bilan = prediction.reconcile(client, 3, 11, etat);
         assertEquals(Prediction.Outcome.REPLAYED, bilan.outcome());
         assertEquals(3, bilan.replayed(), "les séquences 12, 13 et 14");
         // Ce que le client doit tenir : l'état du serveur, puis ses trois entrées non acquittées.
         Mobile attendu = new Mobile(new long[1], 0);
         attendu.restore(etat);
-        attendu.step(gaz(1f));
-        attendu.step(gaz(0.5f));
-        assertArrayEquals(attendu.step(gaz(0.25f)), client.state());
+        attendu.step(0, gaz(1f));
+        attendu.step(0, gaz(0.5f));
+        assertArrayEquals(attendu.step(0, gaz(0.25f)), client.state());
         // Et une correction suivante qui suit ce rejeu tombe juste.
         Mobile suite = new Mobile(new long[1], 0);
         suite.restore(etat);
-        byte[] apres12 = suite.step(gaz(1f));
+        byte[] apres12 = suite.step(0, gaz(1f));
         assertEquals(Prediction.Outcome.MATCH, prediction.reconcile(client, 4, 12, apres12).outcome());
     }
 
@@ -136,9 +136,9 @@ class PredictionTest {
         // L'ouverture : tuiles découpées, code froid. Mesuré en jeu le 2026-11-13 : 170 ms, puis 1,2 ms par pas.
         Prediction.World ouverture = new Prediction.World() {
             @Override
-            public byte[] step(VehicleInput input) {
+            public byte[] step(long sequence, VehicleInput input) {
                 clock[0] += 170 * MS;
-                return client.step(input);
+                return client.step(sequence, input);
             }
 
             @Override
@@ -165,9 +165,9 @@ class PredictionTest {
         // Les pas deviennent lents après coup : l'estimation dit oui, la mesure dit non.
         Prediction.World lent = new Prediction.World() {
             @Override
-            public byte[] step(VehicleInput input) {
+            public byte[] step(long sequence, VehicleInput input) {
                 clock[0] += 2 * MS;
-                return client.step(input);
+                return client.step(sequence, input);
             }
 
             @Override

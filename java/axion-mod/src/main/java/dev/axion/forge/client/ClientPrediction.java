@@ -9,9 +9,14 @@ import dev.axion.forge.AxionEntity;
 import dev.axion.forge.RuntimeAccess;
 import dev.axion.forge.net.AxionNetwork;
 import dev.axion.lifecycle.AxionRuntime;
+import dev.axion.net.AssemblyState;
 import dev.axion.net.CorrectionMessage;
+import dev.axion.net.Interpolation;
+import dev.axion.net.PredictedStates;
+import dev.axion.net.PredictedTrack;
 import dev.axion.net.Prediction;
 import dev.axion.net.ServerHandshake;
+import dev.axion.physics.AssemblyStateReport;
 import dev.axion.physics.AssemblyStateView;
 import dev.axion.physics.BodyState;
 import dev.axion.physics.NativeSimulation;
@@ -65,6 +70,10 @@ public final class ClientPrediction {
     private static BodyState lastRoot;
     /** Vrai pendant le pas d'une entrée neuve : il porte les tuiles ; un pas rejoué, non. */
     private static boolean liveStep;
+    /** La piste prédite du véhicule, que son entité affiche (ADR-168 D2). */
+    private static PredictedTrack track;
+    /** Vrai quand une restauration n'a pu recoudre un joint : le monde prédit se recrée à la correction suivante. */
+    private static boolean irreconcilable;
     /** La dernière cause journalisée d'une prédiction coupée ; vide si elle ne l'est pas. */
     private static String refusal = "";
     /** L'état du véhicule de la dernière correction réconciliée. */
@@ -75,7 +84,7 @@ public final class ClientPrediction {
     /** Le monde prédit vu de la boucle : l'observateur à chaque pas, les tuiles au pas d'une entrée neuve. */
     private static final Prediction.World PORT = new Prediction.World() {
         @Override
-        public byte[] step(VehicleInput input) {
+        public byte[] step(long sequence, VehicleInput input) {
             double[] at = predictedPosition();
             SimCommandStream around = new SimCommandStream()
                     .setObservers(world.dimension(), new double[][] {at});
@@ -93,6 +102,21 @@ public final class ClientPrediction {
                         && state.node() == rootNode) {
                     lastRoot = state;
                 }
+            }
+            // ADR-168 D2 : la pose de ce pas, au tick de son entrée ; un pas rejoué réécrit le sien.
+            AssemblyState pose = PredictedStates.of(lastStep.result(), world.handle(), PredictedWorld.GENERATION,
+                    rootNode, input, vehicle.receivedVariables());
+            if (pose != null) {
+                double now = vehicle.localMillis(System.nanoTime());
+                if (liveStep) {
+                    track.advance(sequence, pose, now);
+                } else {
+                    track.replay(sequence, pose, now);
+                }
+            }
+            // Un joint rompu ici, intact au serveur, ne se recoud pas : le monde prédit se recrée (6a, IRRECONCILABLE).
+            if (lastStep.state() != null && lastStep.state().status() == AssemblyStateReport.IRRECONCILABLE) {
+                irreconcilable = true;
             }
             return lastStep.state() == null ? null : lastStep.state().state();
         }
@@ -146,6 +170,16 @@ public final class ClientPrediction {
         }
         lastServerState = correction.states().get(0).bytes();
         prediction.reconcile(PORT, correction.serverTick(), correction.appliedSequence(), lastServerState);
+        recreateIfIrreconcilable();
+    }
+
+    /** Un joint que la restauration n'a pu recoudre : le monde prédit se ferme, et se rouvre à la correction suivante. */
+    private static void recreateIfIrreconcilable() {
+        if (irreconcilable) {
+            LOGGER.info("AXION : prédiction : l'état du serveur ne se restaure pas sur le monde prédit (joint rompu ici,"
+                    + " intact au serveur) : monde prédit recréé");
+            close();
+        }
     }
 
     /**
@@ -176,6 +210,7 @@ public final class ClientPrediction {
         liveStep = true;
         try {
             prediction.advance(PORT, sequence, assembly.sanitizedInput(seat, input));
+            recreateIfIrreconcilable();
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.error("AXION : prédiction : pas non fait — {}", failure.toString());
             close();
@@ -334,6 +369,9 @@ public final class ClientPrediction {
         rootNode = summary.rootNode();
         lastStep = null;
         lastRoot = null;
+        irreconcilable = false;
+        track = new PredictedTrack(Interpolation.of(runtime.outcome().config()));
+        assembly.predictWith(track);
         loop.reset();
         LOGGER.info("AXION : prédiction : monde prédit ouvert pour {} (entité {})", definition.id(), assembly.getId());
         return true;
@@ -347,7 +385,12 @@ public final class ClientPrediction {
         ClientTiles released = tiles;
         world = null;
         tiles = null;
+        if (vehicle != null) {
+            vehicle.predictWith(null);
+        }
         vehicle = null;
+        track = null;
+        irreconcilable = false;
         lastStep = null;
         lastRoot = null;
         if (loop != null) {

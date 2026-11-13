@@ -178,6 +178,13 @@ public final class EssaiPrediction {
         /** L'écart de chaque correction à la prédiction (position m, rotation rad, vitesse m/s), et les sans-prédiction. */
         private static final List<double[]> ecarts = new ArrayList<>();
         private static int sansPrediction;
+        /**
+         * À chaque image prédite : l'heure en nanosecondes, le tick de rendu (ticks du client + fraction de l'image), la
+         * pose dessinée du véhicule (x, z), et le dernier pas prédit.
+         */
+        private static final List<double[]> images = new ArrayList<>();
+        /** Les ticks du client depuis le début de l'essai. */
+        private static long ticksClient;
 
         static {
             if (DELAI_MS >= 0) {
@@ -208,6 +215,7 @@ public final class EssaiPrediction {
             if (DELAI_MS < 0 || fini || event.phase != TickEvent.Phase.START) {
                 return;
             }
+            ticksClient++;
             Minecraft minecraft = Minecraft.getInstance();
             if (!annonce) {
                 annonce = true;
@@ -244,6 +252,23 @@ public final class EssaiPrediction {
             if (tick == ATTENTE + ACCELERE + BRAQUE + RELACHE) {
                 fini = true;
                 terminer(minecraft);
+            }
+        }
+
+        /**
+         * Chaque image, après son rendu : la pose dessinée du véhicule prédit, pour juger de sa fluidité image par
+         * image (ADR-168, 6c-C). Son nom est à elle (voir {@link #conduire}).
+         */
+        @SubscribeEvent
+        public static void image(TickEvent.RenderTickEvent event) {
+            if (DELAI_MS < 0 || fini || event.phase != TickEvent.Phase.END || !ClientPrediction.predicting()) {
+                return;
+            }
+            AxionEntity vehicule = ClientPrediction.vehicle();
+            if (vehicule != null) {
+                AxionEntity.RenderPose pose = vehicule.renderPose(event.renderTickTime);
+                images.add(new double[] {System.nanoTime(), ticksClient + event.renderTickTime, pose.x(), pose.z(),
+                    ClientPrediction.loop() == null ? -1 : ClientPrediction.loop().pending()});
             }
         }
 
@@ -360,6 +385,7 @@ public final class EssaiPrediction {
             ecarts.stream().sorted((x, y) -> Double.compare(y[0], x[0])).limit(5).forEach(e -> rapport.add(
                     String.format(Locale.ROOT, "  pire écart de position : %.4f m (rotation %.4f rad, vitesse %.3f m/s)"
                             + " au tick %d, %d en attente", e[0], e[1], e[2], (int) e[3], (int) e[4])));
+            rapport.add(fluidite());
             rapport.addAll(banc());
             Path dossier = minecraft.gameDirectory.toPath();
             try {
@@ -368,6 +394,12 @@ public final class EssaiPrediction {
                 csv.add("tick;avant;gauche;predit;px;py;pz;ix;iy;iz;latence_ms;en_attente;egales;rejouees;acceptees;pas_lisse_ns");
                 csv.addAll(trajectoire);
                 Files.write(dossier.resolve("trajectoire-prediction.csv"), csv, StandardCharsets.UTF_8);
+                List<String> lignes = new ArrayList<>();
+                lignes.add("nanos;tick_rendu;x;z;en_attente");
+                for (double[] i : images) {
+                    lignes.add(String.format(Locale.ROOT, "%.0f;%.5f;%.5f;%.5f;%.0f", i[0], i[1], i[2], i[3], i[4]));
+                }
+                Files.write(dossier.resolve("images-prediction.csv"), lignes, StandardCharsets.UTF_8);
             } catch (IOException faute) {
                 LOGGER.error("[essai] rapport non écrit : {}", faute.toString());
             }
@@ -377,6 +409,37 @@ public final class EssaiPrediction {
             }
             fermerRelais();
             minecraft.stop();
+        }
+
+        /**
+         * {@return la fluidité du véhicule dessiné : d'une image à la suivante, la variation de sa vitesse horizontale}
+         * Une pose qui avance régulièrement la garde petite ; un saut d'image la fait bondir.
+         */
+        private static String fluidite() {
+            List<Double> variations = new ArrayList<>();
+            double vitesse = Double.NaN;
+            for (int i = 1; i < images.size(); i++) {
+                double[] a = images.get(i - 1);
+                double[] b = images.get(i);
+                // Par tick de rendu, pas par seconde : la durée d'une image n'y entre pas, seul ce qu'elle montre.
+                double dt = (b[1] - a[1]) * dev.axion.net.ServerClock.TICK_MILLIS / 1000.0;
+                if (dt <= 1e-6) {
+                    continue;
+                }
+                double v = Math.hypot(b[2] - a[2], b[3] - a[3]) / dt;
+                if (!Double.isNaN(vitesse)) {
+                    variations.add(Math.abs(v - vitesse));
+                }
+                vitesse = v;
+            }
+            if (variations.isEmpty()) {
+                return "fluidité : aucune image prédite";
+            }
+            double[] d = variations.stream().mapToDouble(Double::doubleValue).sorted().toArray();
+            int n = d.length;
+            return String.format(Locale.ROOT, "fluidité, %d images : variation de vitesse d'une image à l'autre p50 %.3f,"
+                    + " p90 %.3f, p99 %.3f, max %.3f m/s", n + 2, d[n / 2], d[Math.min(n - 1, n * 9 / 10)],
+                    d[Math.min(n - 1, n * 99 / 100)], d[n - 1]);
         }
 
         /** {@return la répartition d'un écart sur les corrections comparées : p50, p90, p99, max} */

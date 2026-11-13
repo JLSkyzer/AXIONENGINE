@@ -3825,6 +3825,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  114 égales, 36 rejouées, 0 acceptée (ADR-168 précision 6c-B).
            - [ ] C : le rendu à la pose prédite, lissage de 200 ms et téléportation, proxies extrapolés des autres
                  assemblies, recréation sur `IRRECONCILABLE`.
+                 - [x] C1 (2026-11-13) : piste prédite lue à `partialTick`, rejeux et bascules lissés en 200 ms,
+                       recréation sur `IRRECONCILABLE` ; essai : vitesse dessinée qui varie de 0,35 m/s au plus d'une
+                       image à l'autre (ADR-168 précision 6c-C1).
+                 - [ ] C2 : proxies cinématiques des autres assemblies, à leur pose extrapolée — touche l'ABI
+                       (`CREATE_ASSEMBLY` cinématique, pose de chaque corps) : forme à proposer à Killian avant le code.
      - [ ] 6d — variables, paramètres et contrôleurs prédits, `VehicleControl.state()` au client, correspondances
            bloc → matériau dans le registre.
      - [ ] 6e — T-415..T-417 sous latence injectée (essai à deux processus, T-417 en GameTest), défauts mesurés

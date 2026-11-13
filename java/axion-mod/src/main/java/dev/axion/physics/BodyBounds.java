@@ -55,6 +55,36 @@ public record BodyBounds(float[] min, float[] max) {
     }
 
     /**
+     * L'emprise d'une assembly (ADR-151 D8) : l'union de celles de ses corps, relative à la position de son corps
+     * racine. Chaque emprise est relative à la translation de son corps. Le serveur et le monde prédit du client
+     * (ADR-168) la calculent ainsi tous deux.
+     *
+     * @param states les états rapportés
+     * @param bounds leurs emprises, au même rang
+     * @param ranks les rangs des corps de l'assembly
+     * @param root la position de son corps racine
+     * @return l'union ; l'emprise du corps seul si elle n'en a qu'un
+     */
+    public static BodyBounds union(java.util.List<BodyState> states, java.util.List<BodyBounds> bounds,
+            java.util.List<Integer> ranks, double[] root) {
+        if (ranks.size() == 1) {
+            return bounds.get(ranks.get(0));
+        }
+        float[] min = {Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY};
+        float[] max = {Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY};
+        for (int rank : ranks) {
+            double[] at = states.get(rank).position();
+            BodyBounds own = bounds.get(rank);
+            for (int axis = 0; axis < 3; axis++) {
+                float offset = (float) (at[axis] - root[axis]);
+                min[axis] = Math.min(min[axis], offset + own.min()[axis]);
+                max[axis] = Math.max(max[axis], offset + own.max()[axis]);
+            }
+        }
+        return new BodyBounds(min, max);
+    }
+
+    /**
      * Décode une emprise depuis un tampon little-endian, à l'octet {@code base}.
      *
      * <p>Lecture absolue, comme {@link BodyState#decode} : la position du tampon n'est pas

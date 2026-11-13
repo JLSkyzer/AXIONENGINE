@@ -40,10 +40,11 @@ public final class Prediction {
         /**
          * Fait un pas, l'entrée appliquée.
          *
+         * @param sequence la séquence de l'entrée : le tick prédit du pas
          * @param input l'entrée du pas
          * @return l'état complet exporté après le pas ; {@code null} si le natif n'en a pas rendu
          */
-        byte[] step(VehicleInput input);
+        byte[] step(long sequence, VehicleInput input);
 
         /**
          * Reprend l'état du serveur, avant le pas suivant.
@@ -175,7 +176,7 @@ public final class Prediction {
      */
     public void advance(World world, long sequence, VehicleInput input) {
         long start = clock.getAsLong();
-        byte[] predicted = world.step(input);
+        byte[] predicted = world.step(sequence, input);
         long sentNanos = sentAt(sequence);
         history.addLast(new Entry(sequence, input, sentNanos < 0 ? start : sentNanos, predicted));
         while (history.size() > HISTORY) {
@@ -233,7 +234,7 @@ public final class Prediction {
                 return acceptWithoutReplay(start);
             }
             long before = clock.getAsLong();
-            entry.predicted = world.step(entry.input);
+            entry.predicted = world.step(entry.sequence, entry.input);
             long cost = clock.getAsLong() - before;
             stepping += cost;
             stepNanos = stepNanos < 0 ? cost : stepNanos + SMOOTHING * (cost - stepNanos);

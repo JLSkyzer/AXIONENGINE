@@ -701,7 +701,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             float[] v = state.linearVelocity();
             speeds.put(state.handleIndex(), Math.sqrt((double) v[0] * v[0] + (double) v[1] * v[1] + (double) v[2] * v[2]));
             if (withBounds) {
-                applyBounds(entity, unionOf(states, bounds, own, p));
+                applyBounds(entity, BodyBounds.union(states, bounds, own, p));
             }
             // ADR-150 D6 : l'état que les snapshots portent, une fois position, orientation et emprise
             // posées.
@@ -710,28 +710,6 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         }
         // R-500 : la durée de l'application des états, côté entité.
         EntityMetrics.GLOBAL.applied(System.nanoTime() - start);
-    }
-
-    /**
-     * L'emprise d'une assembly (ADR-151 D8) : l'union de celles de ses corps, relative à la position
-     * de son corps racine. Chaque emprise est relative à la translation de son corps.
-     */
-    private static BodyBounds unionOf(List<BodyState> states, List<BodyBounds> bounds, List<Integer> ranks, double[] root) {
-        if (ranks.size() == 1) {
-            return bounds.get(ranks.get(0));
-        }
-        float[] min = {Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY};
-        float[] max = {Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY};
-        for (int rank : ranks) {
-            double[] at = states.get(rank).position();
-            BodyBounds own = bounds.get(rank);
-            for (int axis = 0; axis < 3; axis++) {
-                float offset = (float) (at[axis] - root[axis]);
-                min[axis] = Math.min(min[axis], offset + own.min()[axis]);
-                max[axis] = Math.max(max[axis], offset + own.max()[axis]);
-            }
-        }
-        return new BodyBounds(min, max);
     }
 
     /**

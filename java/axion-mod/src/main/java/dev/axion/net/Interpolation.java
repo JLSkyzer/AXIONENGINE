@@ -177,20 +177,105 @@ public final class Interpolation {
         // Ce qui s'afficherait à cet instant sans ce snapshot, et ce qui doit s'afficher avec : comparés au
         // même temps de rendu, l'écart ne contient que ce que le snapshot apprend.
         Pose shown = samples.isEmpty() ? null : corrected(compute(renderMillis), nowMillis);
-        List<BodyPose> bodies = new ArrayList<>(state.bodies().size());
-        for (AssemblyState.Body body : state.bodies()) {
-            bodies.add(new BodyPose(body.node(), body.offsetBlocks(), body.quaternion()));
-        }
-        samples.addLast(new Sample(millis, state.positionBlocks(), state.linearVelocity(), state.quaternion(),
-                state.angularVelocity(), state.boundsMin(), state.boundsMax(), List.copyOf(bodies), wheels(state),
-                state.vehicle(), state.variables()));
+        samples.addLast(sample(millis, state));
         while (samples.size() > MAX_SAMPLES) {
             samples.removeFirst();
         }
         if (shown == null) {
             return;
         }
+        correctFrom(shown, compute(renderMillis), nowMillis);
+    }
+
+    /**
+     * Pose l'état d'un tick, qu'il soit neuf ou qu'il remplace celui du même tick : la piste prédite du véhicule piloté
+     * (ADR-168, 6c-C), dont un rejeu réécrit les ticks. Un tick plus ancien que tout ce qui est gardé est ignoré.
+     * L'écart que le remplacement fait à l'écran se résorbe en {@link #CORRECTION_MILLIS}, ou d'un coup au-delà de
+     * {@code net.snap_threshold} ; un état qui ne change pas ce qui s'affiche ne relance pas la correction en cours.
+     *
+     * @param tick le tick, dans l'unité de {@link ServerClock#TICK_MILLIS}
+     * @param state l'état
+     * @param renderMillis temps de rendu courant, dans la même unité
+     * @param nowMillis temps local, en millisecondes
+     */
+    public void put(long tick, AssemblyState state, double renderMillis, double nowMillis) {
+        double millis = tick * ServerClock.TICK_MILLIS;
+        Sample sample = sample(millis, state);
+        if (samples.isEmpty() || millis > samples.peekLast().millis()) {
+            Pose shown = samples.isEmpty() ? null : corrected(compute(renderMillis), nowMillis);
+            Pose before = samples.isEmpty() ? null : compute(renderMillis);
+            samples.addLast(sample);
+            while (samples.size() > MAX_SAMPLES) {
+                samples.removeFirst();
+            }
+            if (shown != null && changed(before, compute(renderMillis))) {
+                correctFrom(shown, compute(renderMillis), nowMillis);
+            }
+            return;
+        }
+        List<Sample> kept = new ArrayList<>(samples);
+        int at = -1;
+        for (int i = 0; i < kept.size(); i++) {
+            if (kept.get(i).millis() == millis) {
+                at = i;
+                break;
+            }
+        }
+        if (at < 0) {
+            return;
+        }
+        Pose shown = corrected(compute(renderMillis), nowMillis);
+        Pose before = compute(renderMillis);
+        kept.set(at, sample);
+        samples.clear();
+        samples.addAll(kept);
+        Pose after = compute(renderMillis);
+        if (changed(before, after)) {
+            correctFrom(shown, after, nowMillis);
+        }
+    }
+
+    /**
+     * Part d'une pose affichée par ailleurs : l'écart entre elle et ce que le tampon donne se résorbe en
+     * {@link #CORRECTION_MILLIS}, ou d'un coup au-delà de {@code net.snap_threshold}. Le véhicule piloté passe ainsi de
+     * l'interpolation à sa pose prédite, et retour, sans saut (ADR-168, 6c-C).
+     *
+     * @param shown la pose affichée jusque-là ; {@code null} : rien à résorber
+     * @param renderMillis temps de rendu courant
+     * @param nowMillis temps local, en millisecondes
+     */
+    public void blend(Pose shown, double renderMillis, double nowMillis) {
         Pose raw = compute(renderMillis);
+        if (shown == null || raw == null) {
+            return;
+        }
+        correctFrom(shown, raw, nowMillis);
+    }
+
+    private Sample sample(double millis, AssemblyState state) {
+        List<BodyPose> bodies = new ArrayList<>(state.bodies().size());
+        for (AssemblyState.Body body : state.bodies()) {
+            bodies.add(new BodyPose(body.node(), body.offsetBlocks(), body.quaternion()));
+        }
+        return new Sample(millis, state.positionBlocks(), state.linearVelocity(), state.quaternion(),
+                state.angularVelocity(), state.boundsMin(), state.boundsMax(), List.copyOf(bodies), wheels(state),
+                state.vehicle(), state.variables());
+    }
+
+    /** {@return vrai si les deux poses ne s'affichent pas au même endroit} */
+    private static boolean changed(Pose before, Pose after) {
+        if (before == null || after == null) {
+            return before != after;
+        }
+        double dx = before.x() - after.x();
+        double dy = before.y() - after.y();
+        double dz = before.z() - after.z();
+        float[] turn = Quaternions.multiply(before.rotation(), Quaternions.conjugate(after.rotation()));
+        return Math.sqrt(dx * dx + dy * dy + dz * dz) > EPSILON || 1.0 - Math.abs(turn[3]) > EPSILON;
+    }
+
+    /** L'écart entre la pose affichée et celle du tampon : une correction douce, ou rien au-delà du seuil. */
+    private void correctFrom(Pose shown, Pose raw, double nowMillis) {
         double dx = shown.x() - raw.x();
         double dy = shown.y() - raw.y();
         double dz = shown.z() - raw.z();

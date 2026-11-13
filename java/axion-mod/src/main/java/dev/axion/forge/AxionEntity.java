@@ -268,6 +268,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * date : posées au premier snapshot reçu ; {@code null} avant, et côté serveur.
      */
     private Interpolation interpolation;
+    /** La piste prédite du véhicule que le joueur local pilote et prédit (ADR-168 D2) ; {@code null} sinon. */
+    private dev.axion.net.PredictedTrack predicted;
+    /** Vrai tant que la pose affichée est celle de la piste prédite : le retour à l'interpolation se lisse. */
+    private boolean showingPredicted;
+    /** La dernière pose prédite affichée, d'où part le retour à l'interpolation. */
+    private Interpolation.Pose lastPredictedPose;
 
     private RenderClock clock;
 
@@ -2020,6 +2026,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return AssemblyState.VariableValues.of(variables.values()).only(sent);
     }
 
+    /**
+     * {@return les variables de contenu du plus récent snapshot reçu (client, ADR-163 D2)} La pose prédite les porte
+     * telles quelles jusqu'à ce qu'elles se prédisent (ADR-168 D6, 6d).
+     */
+    public AssemblyState.VariableValues receivedVariables() {
+        return receivedVariables;
+    }
+
     /** {@return vrai si l'interpolation de 21.7 a commencé : un snapshot au moins est arrivé (client)} */
     public boolean interpolating() {
         return interpolation != null;
@@ -2094,11 +2108,60 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     Mth.lerp(partialTick, zo, getZ()), rotationO.slerp(rotation, partialTick, new Quaternionf()),
                     null, List.of(), List.of(), Interpolation.VehiclePose.NONE, AssemblyState.VariableValues.NONE);
         }
-        long frame = clock.frameNanos();
-        Interpolation.Pose pose = interpolation.sample(clock.renderMillis(frame), clock.localMillis(frame));
+        Interpolation.Pose pose = shownPose(clock.frameNanos(), partialTick);
         float[] q = pose.rotation();
         return new RenderPose(pose.x(), pose.y(), pose.z(), new Quaternionf(q[0], q[1], q[2], q[3]), pose.mode(),
                 pose.bodies(), pose.wheels(), pose.vehicle(), pose.variables());
+    }
+
+    /**
+     * La pose affichée à cet instant (client) : celle de la piste prédite pour le véhicule que le joueur local pilote et
+     * prédit (ADR-168 D2), celle de l'interpolation de 21.7 sinon. Le passage de l'une à l'autre, dans les deux sens,
+     * se résorbe en 200 ms, ou se téléporte au-delà de {@code net.snap_threshold}.
+     *
+     * @param nanos l'heure locale de l'image ou du tick
+     * @param fraction la fraction de tick de l'image ; 1 au tick, où l'entité se pose à son dernier tick prédit
+     */
+    private Interpolation.Pose shownPose(long nanos, double fraction) {
+        double local = localMillis(nanos);
+        Interpolation.Pose interpolated = interpolation.sample(clock.renderMillis(nanos), local);
+        if (predicted != null && predicted.started()) {
+            if (!showingPredicted) {
+                predicted.blendFrom(interpolated, fraction, local);
+                showingPredicted = true;
+            }
+            Interpolation.Pose pose = predicted.sample(fraction, local);
+            if (pose != null) {
+                lastPredictedPose = pose;
+                return pose;
+            }
+        }
+        if (showingPredicted) {
+            interpolation.blend(lastPredictedPose, clock.renderMillis(nanos), local);
+            showingPredicted = false;
+            interpolated = interpolation.sample(clock.renderMillis(nanos), local);
+        }
+        return interpolated;
+    }
+
+    /**
+     * Rend la pose de l'assembly à une piste prédite, ou la rend à l'interpolation (client, ADR-168 D2) : seul le
+     * véhicule que le joueur local pilote et prédit en a une.
+     *
+     * @param track la piste ; {@code null} : retour à l'interpolation de 21.7
+     */
+    public void predictWith(dev.axion.net.PredictedTrack track) {
+        predicted = track;
+    }
+
+    /**
+     * {@return le temps local de l'entité, pauses exclues, en millisecondes (client)} Celui de son horloge de rendu, sur
+     * lequel sa piste prédite se date aussi.
+     *
+     * @param nanos l'heure locale, en nanosecondes
+     */
+    public double localMillis(long nanos) {
+        return clock == null ? nanos / 1e6 : clock.localMillis(nanos);
     }
 
     /**
@@ -2151,8 +2214,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (interpolation == null) {
             return;
         }
-        long now = System.nanoTime();
-        Interpolation.Pose pose = interpolation.sample(clock.renderMillis(now), clock.localMillis(now));
+        Interpolation.Pose pose = shownPose(System.nanoTime(), 1.0);
         float[] q = pose.rotation();
         rotation.set(q[0], q[1], q[2], q[3]);
         tickBodies = pose.bodies();
