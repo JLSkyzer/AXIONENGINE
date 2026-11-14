@@ -5043,6 +5043,7 @@ C2S_Handshake (ADR-150 D4) :
 ```
 
 - R-1640 : si un hash diffère, le serveur envoie les données correspondantes (definitions, matériaux, sources de dégâts) compressées avant l'entrée en jeu. Les **assets** ne transitent jamais par le réseau : ils viennent des mods installés chez le client, qui les enregistrent ; un resource pack n'en remplace que l'apparence (ADR-162 D5, amendement A8). Le serveur exige donc du client chaque mod propriétaire d'une entrée de son contenu, dans la même version : un addon absent, ou d'une autre version, refuse la connexion avant l'entrée en jeu, par un message qui nomme chaque addon en cause, la version attendue et celle du client (ADR-165 D1 à D3, amendement A12). De même, un contrôleur de véhicule que les definitions du serveur nomment et que le client n'enregistre pas refuse la connexion en le nommant (ADR-167 Q7, amendement A15). Un asset manquant d'un addon présent produit l'asset de secours et un avertissement, jamais une déconnexion.
+- R-1642 : `prediction_enabled` porte `server.allow_client_prediction` : un client ne prédit que si le serveur le permet (ADR-168, amendement A19).
 - R-1641 : `deform_quant_policy` garantit que les deux côtés quantifient identiquement. Une divergence de politique désactive la reconstruction et bascule sur les instantanés (mode dégradé, journalisé).
 
 ## 21.4 Paquets
@@ -5060,8 +5061,8 @@ C2S_Handshake (ADR-150 D4) :
 | `S2C_DeformSnapshot` | S→C | resynchronisation | champ plastique quantifié d'une région, zstd |
 | `S2C_Repair` | S→C | à l'occurrence | part, niveau, quantité |
 | `S2C_Attachment` | S→C | à l'occurrence | création, rupture d'attache |
-| `S2C_Correction` | S→C | divergence | état autoritatif complet du véhicule prédit |
-| `C2S_Input` | C→S | ≤ 20 Hz | entrées + numéro de séquence |
+| `S2C_Correction` | S→C | à chaque tick où le véhicule piloté avance, au seul conducteur (ADR-168 D4) | état autoritatif complet de l'ensemble prédit, séquence appliquée, profondeur de la file des entrées, variables |
+| `C2S_Input` | C→S | une par tick, deux après une file trouvée vide, aucune pour en retenir une (ADR-168 D3) | entrées + numéro de séquence + octet de cadence |
 | `C2S_Interact` | C→S | action | montée, descente, interaction, réparation demandée |
 | `C2S_Ack` | C→S | par snapshot | dernier snapshot reçu, **empreintes de champ des assemblies proches** |
 
@@ -5144,8 +5145,9 @@ seq          varint
 
 - R-1680 : la prédiction porte sur le **véhicule piloté et l'ensemble qui lui est attaché** ; les autres assemblies proches sont extrapolées au temps prédit, et leurs contacts sont corrigés par le serveur (amendement A5, CAP-37).
 - R-1681 : le client prédit le mouvement, **jamais la déformation plastique** (INV-17). Un choc pendant la prédiction produit chez le client une déformation **élastique** provisoire ; le plastique n'apparaît qu'à la réception de l'impact autoritatif. L'écart est imperceptible (une frame ou deux) et cette règle supprime toute possibilité de dommage fantôme.
-- R-1682 : réconciliation : historique de 64 entrées, rejeu depuis l'état serveur ; si le rejeu dépasse son budget, le client accepte l'état serveur sans rejeu.
-- R-1683 : la prédiction est désactivable et automatiquement désactivée au-delà de `net.prediction_max_ping` (400 ms) ou si le taux de corrections dépasse un seuil.
+- R-1682 : réconciliation : historique de 64 entrées, rejeu depuis l'état serveur ; si le rejeu dépasse son budget (`net.prediction_replay_budget_ns`), le client accepte l'état serveur sans rejeu. La reprise se lisse à l'écran en 200 ms, ou se téléporte au-delà de `net.snap_threshold` (ADR-168 D5).
+- R-1683 : la prédiction est désactivable et automatiquement désactivée au-delà de `net.prediction_max_ping` (400 ms) ou si la part des 100 dernières corrections qui l'ont démentie (rejouées, ou acceptées sans rejeu) dépasse `net.prediction_max_corrections`. Coupée par sa latence, elle se rétablit sous `net.prediction_reenable_ratio` × `net.prediction_max_ping` ; coupée par son taux, elle se retente 100 corrections plus tard (ADR-168 D8, amendements A18 et A19).
+- R-1684 : le serveur applique une entrée par tick et par siège, dans l'ordre des séquences ; la file d'un client qui la règle (octet de cadence) ne rattrape qu'au-delà de 10 entrées, celle d'un autre au-delà de 2 ; immobile, une file rattrape aussi les entrées égales à celle qu'elle applique (ADR-168 D3, précision 6e).
 
 ## 21.9 Sécurité réseau
 
@@ -7842,6 +7844,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A16 | 2026-11-13 | ADR-168, accepté par Killian (sous-tranche 6c) | ANNEXE A.3 : `net.prediction_replay_budget_ns`, la durée qu'un rejeu de la prédiction ne dépasse pas (R-1682), son défaut mesuré au banc (ADR-168 D10) ; `net.prediction_tolerance_position_m`, `_rotation_rad`, `_velocity_ms`, l'écart en deçà duquel le client ne rejoue pas (D5, précision 6c-B) ; `net.prediction_proxy_radius`, le rayon des proxies du monde prédit (précision 6c-C2) |
 | A17 | 2026-11-14 | ADR-169, accepté par Killian | ANNEXE A.3 : `net.connection_read_rescue`, le rattrapage côté client de la course de connexion de Forge 47 |
 | A18 | 2026-11-14 | ADR-168 précision 6e, décisions de Killian | R-1683 : une prédiction coupée par sa latence se rétablit sous `net.prediction_reenable_ratio` × `net.prediction_max_ping` ; ANNEXE A.3 : `net.prediction_reenable_ratio` (0,9) ; 21.4 : protocole 10, la cadence des entrées réglée par le client (D3 révisé) |
+| A19 | 2026-11-14 | ADR-168 précision 6e (preuves) | R-1642 : `prediction_enabled` du handshake ; 21.4 : la fréquence et le contenu de `S2C_Correction` et de `C2S_Input` tels que livrés ; R-1682 : le lissage de la reprise ; R-1683 : le taux de corrections sur 100 et son nouvel essai ; R-1684 : la file des entrées au serveur ; ANNEXE A.3 : `net.prediction_max_corrections`, son défaut tiré d'une mesure (D10) |
 
 ---
 
@@ -8048,6 +8051,7 @@ connection_read_rescue = true
 prediction = true
 prediction_max_ping = 400
 prediction_reenable_ratio = 0.9
+prediction_max_corrections = 0.5
 prediction_replay_budget_ns = 8200000
 prediction_tolerance_position_m = 0.01
 prediction_tolerance_rotation_rad = 0.005

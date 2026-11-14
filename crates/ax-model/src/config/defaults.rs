@@ -362,6 +362,12 @@ pub const COMMON: &[ConfigOption] = &[
     // suite au seuil (essai à deux processus de la Charger : coupée à 404 ms, rouverte, recoupée à 401 ms).
     f("net.prediction_reenable_ratio", 0.9, 0.0, 1.0, "Part de net.prediction_max_ping sous laquelle une prédiction coupée par sa latence se rétablit.")
         .en("Share of net.prediction_max_ping below which a prediction cut off by its latency comes back."),
+    // ADR-168 D8, D10, R-1683 : le pire taux de corrections démenties sur 100 corrections glissantes, mesuré par la
+    // campagne à deux processus du 2026-11-14 (tools/campagne/prediction.py), sessions saines : 19 à 27 % pour le
+    // véhicule de test (50 et 100 ms par sens, gigue de 20 ms), 16 à 20 % pour la Charger (50 ms). Le seuil en garde deux
+    // fois la marge : au-delà, la prédiction est démentie une correction sur deux et ne fait plus que se reprendre.
+    f("net.prediction_max_corrections", 0.5, 0.0, 1.0, "Part des corrections, sur les 100 dernières, qui démentent la prédiction (rejouées ou acceptées sans rejeu) au-delà de laquelle elle est désactivée ; 1 ne la désactive jamais.")
+        .en("Share of corrections, over the last 100, that contradict prediction (replayed or accepted without replay) beyond which it is disabled; 1 never disables it."),
     // ADR-168 D5, D10 : p99 mesuré d'un rejeu de 64 ticks, restauration comprise, au banc du vrai client (essai à deux
     // processus, 2026-11-13 : p50 5,06 ms, p90 6,90 ms, p99 8,17 ms sur 100 mesures).
     ip("net.prediction_replay_budget_ns", 8_200_000, "Durée maximale d'un rejeu de la prédiction, en nanosecondes ; au-delà, le client accepte l'état du serveur sans rejouer.")

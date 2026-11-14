@@ -11,6 +11,7 @@ import dev.axion.forge.net.AxionNetwork;
 import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.CorrectionMessage;
+import dev.axion.net.CorrectionRate;
 import dev.axion.net.Interpolation;
 import dev.axion.net.PredictedStates;
 import dev.axion.net.PredictedTrack;
@@ -75,6 +76,9 @@ public final class ClientPrediction {
     private static boolean liveStep;
     /** La piste prédite du véhicule, que son entité affiche (ADR-168 D2). */
     private static PredictedTrack track;
+    /** Ce que les pistes fermées ont téléporté et lissé de plus grand, depuis la connexion. */
+    private static long trackSnaps;
+    private static double trackLargestCorrection;
     /** Les variables prédites du véhicule (ADR-168 D6) ; {@code null} s'il n'en déclare pas. */
     private static dev.axion.entity.PredictedVariables variables;
     /** Le siège d'où part l'entrée du conducteur, -1 avant la première. */
@@ -125,6 +129,8 @@ public final class ClientPrediction {
     private static final long LATE_GAP_NANOS = 75_000_000L;
     /** Le début de la cause d'une coupure pour latence (D8) : son retour se juge sous une marge. */
     private static final String PING_REFUSAL = "latence de ";
+    /** D8 : le taux de corrections qui démentent la prédiction, sur une fenêtre glissante ; un par connexion. */
+    private static CorrectionRate correctionRate = new CorrectionRate();
     /** Vrai quand une restauration n'a pu recoudre un joint : le monde prédit se recrée à la correction suivante. */
     private static boolean irreconcilable;
     /** La dernière cause journalisée d'une prédiction coupée ; vide si elle ne l'est pas. */
@@ -235,9 +241,11 @@ public final class ClientPrediction {
 
     /** Sur le thread de Netty : la correction passe au thread du client. */
     private static void onCorrection(Connection connection, CorrectionMessage correction) {
+        // Précision 6e : datée à sa réception, sur ce fil ; le thread du client peut être figé.
+        long received = System.nanoTime();
         Minecraft.getInstance().execute(() -> {
             try {
-                correct(connection, correction);
+                correct(connection, correction, received);
             } catch (RuntimeException | LinkageError failure) {
                 LOGGER.error("AXION : prédiction : correction non traitée — {}", failure.toString());
                 close();
@@ -245,7 +253,7 @@ public final class ClientPrediction {
         });
     }
 
-    private static void correct(Connection connection, CorrectionMessage correction) {
+    private static void correct(Connection connection, CorrectionMessage correction, long received) {
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
         ClientLevel level = minecraft.level;
@@ -254,7 +262,7 @@ public final class ClientPrediction {
         }
         Prediction prediction = loop(connection);
         // D8 : la latence se mesure avant tout, même prédiction coupée : c'est elle qui dit quand la rétablir.
-        prediction.acknowledged(correction.serverTick(), correction.appliedSequence());
+        prediction.acknowledged(correction.serverTick(), correction.appliedSequence(), received);
         AxionEntity assembly = level.getEntity(correction.entity()) instanceof AxionEntity found ? found : null;
         if (assembly == null || player.getVehicle() != assembly || !assembly.drivenBy(player)) {
             close();
@@ -263,6 +271,7 @@ public final class ClientPrediction {
         String why = refusal(connection, prediction);
         report(why);
         if (!why.isEmpty()) {
+            correctionRate.whileCut();
             close();
             return;
         }
@@ -288,7 +297,12 @@ public final class ClientPrediction {
         if (variables != null) {
             variables.correction(correction.variables().values(), correction.variables().mask());
         }
+        long divergedBefore = prediction.replays() + prediction.accepted();
+        long reconciledBefore = divergedBefore + prediction.matches();
         prediction.reconcile(PORT, correction.serverTick(), correction.appliedSequence(), lastServerState);
+        if (prediction.replays() + prediction.accepted() + prediction.matches() > reconciledBefore) {
+            correctionRate.record(prediction.replays() + prediction.accepted() > divergedBefore);
+        }
         recreateIfIrreconcilable();
     }
 
@@ -406,6 +420,7 @@ public final class ClientPrediction {
         close();
         loop = null;
         refusal = "";
+        correctionRate = new CorrectionRate();
         lastSent = null;
         lastSentSequence = -1;
         lastSendNanos = 0;
@@ -413,6 +428,8 @@ public final class ClientPrediction {
         lastQueued = -1;
         pacingAdded = 0;
         pacingWithheld = 0;
+        trackSnaps = 0;
+        trackLargestCorrection = 0;
     }
 
     /** Une colonne se charge chez le client : les tuiles qui la couvrent se recoupent. */
@@ -522,6 +539,13 @@ public final class ClientPrediction {
                             ? "net.prediction_reenable_ratio × net.prediction_max_ping" : "net.prediction_max_ping",
                     limit);
         }
+        double maxCorrections = config.getFloat("net.prediction_max_corrections");
+        if (correctionRate.cut(maxCorrections)) {
+            return String.format(java.util.Locale.ROOT, "%.0f %% des %d dernières corrections ont démenti la"
+                    + " prédiction, au-delà de net.prediction_max_corrections (%.0f %%) ; elle se retente dans %d"
+                    + " corrections", correctionRate.cutRate() * 100, CorrectionRate.WINDOW, maxCorrections * 100,
+                    CorrectionRate.WINDOW);
+        }
         return "";
     }
 
@@ -604,6 +628,10 @@ public final class ClientPrediction {
             vehicle.predictView(null);
         }
         vehicle = null;
+        if (track != null) {
+            trackSnaps += track.snaps();
+            trackLargestCorrection = Math.max(trackLargestCorrection, track.largestCorrection());
+        }
         track = null;
         pacing = null;
         variables = null;
@@ -777,6 +805,16 @@ public final class ClientPrediction {
      */
     public static long[] pacingAdjustments() {
         return new long[] {pacingAdded, pacingWithheld};
+    }
+
+    /**
+     * {@return ce que la piste prédite a fait de ses écarts depuis la connexion (D5) : les téléportations au-delà de
+     * {@code net.snap_threshold}, puis le plus grand écart lissé, en blocs}
+     */
+    public static double[] trackCorrections() {
+        long snaps = trackSnaps + (track == null ? 0 : track.snaps());
+        double largest = Math.max(trackLargestCorrection, track == null ? 0 : track.largestCorrection());
+        return new double[] {snaps, largest};
     }
 
     /** {@return les variables prédites du véhicule prédit, {@code null} sans} */

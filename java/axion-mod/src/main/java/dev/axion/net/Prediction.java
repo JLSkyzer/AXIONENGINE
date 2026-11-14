@@ -288,11 +288,25 @@ public final class Prediction {
      * @param appliedSequence la séquence acquittée, -1 sans entrée appliquée
      */
     public void acknowledged(long serverTick, long appliedSequence) {
+        acknowledged(serverTick, appliedSequence, clock.getAsLong());
+    }
+
+    /**
+     * Une correction acquitte une entrée, reçue à l'heure donnée (précision 6e) : la latence est celle du réseau et du
+     * serveur, de l'envoi à la réception. Un client figé — un modèle lourd qui se prépare — ne traite la correction
+     * qu'après son gel ; datée à son traitement, elle comptait ce gel dans la latence, et coupait la prédiction (D8)
+     * sans que le lien y soit pour rien.
+     *
+     * @param serverTick le tick de la correction
+     * @param appliedSequence la séquence acquittée, -1 sans entrée appliquée
+     * @param receivedNanos l'heure de sa réception, à l'horloge de cette boucle
+     */
+    public void acknowledged(long serverTick, long appliedSequence, long receivedNanos) {
         if (serverTick <= lastMeasuredTick) {
             return;
         }
         lastMeasuredTick = serverTick;
-        measureLatency(appliedSequence, clock.getAsLong());
+        measureLatency(appliedSequence, receivedNanos);
     }
 
     private void measureLatency(long appliedSequence, long now) {

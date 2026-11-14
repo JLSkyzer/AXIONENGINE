@@ -2477,3 +2477,9 @@ tard, pendant le film d'une autre session que Killian avait demandé de laisser 
 bash de premier niveau mais pas ses enfants, et le pkill de Git Bash ne voit pas les processus Windows | arrêter un
 lanceur, c'est lister ses processus par Get-CimInstance (ligne de commande contenant le script), les arrêter tous par
 Stop-Process, puis relister quelques secondes plus tard avant d'annoncer que rien ne tourne.
+
+[2026-11-14] | La file des entrées d'un véhicule garé restait à dix entrées pendant 135 ticks, et la prédiction se coupait au premier appui (618 ms) ; puis le client n'ouvrait son monde prédit qu'au premier appui | le serveur n'envoyait aucune correction à un véhicule endormi : le client n'avait ni acquittement, ni latence, ni profondeur de file — la leçon précédente notait le symptôme sans que la cause ait été traitée | un régulateur ou une mesure qui vit d'un retour (correction, acquittement) doit recevoir ce retour dans tous les états du système, repos compris ; vérifier, dans le journal du serveur, que le retour continue pendant que rien ne bouge.
+
+[2026-11-14] | Le juge de T-416 (5 cm par image) échouait sur des corrections que D5 lisse légitimement | le seuil était choisi à l'œil, pas tiré des paramètres de la décision (200 ms, net.snap_threshold) | le critère d'un test se dérive de la règle qu'il vérifie et de ses paramètres ; un nombre choisi à l'œil juge autre chose que la spécification.
+
+[2026-11-14] | Le client d'un essai à deux processus est resté quatre minutes sans démon Gradle pendant qu'une compilation tournait à côté | cause non établie : seule coïncidence observée, la compilation lancée en parallèle | pendant un essai qui lance Gradle, ne lancer aucun autre build du dépôt ; compiler avant de prendre le verrou.

@@ -602,17 +602,21 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
 
     /**
      * L'état complet de chaque véhicule exporté (ADR-168 D4) : la correction de son conducteur, à chaque tick où il a
-     * avancé. Endormi, il ne change plus : la dernière correction le dit déjà.
+     * avancé. Endormi, il ne change plus, mais son conducteur attend encore de lui l'acquittement de ses entrées : une
+     * correction par seconde ({@link AxionEntity#SLEEPING_CORRECTION_TICKS}, précision 6e).
      */
     @Override
     public void applyAssemblyStates(long tick, List<AssemblyStateReport> exported) {
         AuthoritativeThread.require();
         for (AssemblyStateReport report : exported) {
-            if (report.handleGeneration() != GENERATION || !advanced.contains(report.handleIndex())) {
+            if (report.handleGeneration() != GENERATION) {
                 continue;
             }
             AxionEntity assembly = ledger.entity(report.handleIndex());
-            ServerPlayer driver = assembly == null ? null : assembly.correctedDriver();
+            if (assembly == null || (!advanced.contains(report.handleIndex()) && !assembly.sleepingCorrectionDue(tick))) {
+                continue;
+            }
+            ServerPlayer driver = assembly.correctedDriver();
             if (driver != null) {
                 corrections.accept(driver, assembly.correction(tick,
                         List.of(new CorrectionMessage.State(report.handleIndex(), report.state()))).encode());

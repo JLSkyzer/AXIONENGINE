@@ -175,6 +175,7 @@ alors ignorée (R-1830).
 | `prediction` | booléen | `true` | `true \| false` | non | non | Active la prédiction côté client pour l'assembly pilotée par le joueur. |
 | `prediction_max_ping` | entier | `400` | `0..` | non | non | Latence maximale, en millisecondes, au-delà de laquelle la prédiction est désactivée. |
 | `prediction_reenable_ratio` | flottant | `0.9` | `0.0..1.0` | non | non | Part de net.prediction_max_ping sous laquelle une prédiction coupée par sa latence se rétablit. |
+| `prediction_max_corrections` | flottant | `0.5` | `0.0..1.0` | non | non | Part des corrections, sur les 100 dernières, qui démentent la prédiction (rejouées ou acceptées sans rejeu) au-delà de laquelle elle est désactivée ; 1 ne la désactive jamais. |
 | `prediction_replay_budget_ns` | entier | `8200000` | `0..` | non | non | Durée maximale d'un rejeu de la prédiction, en nanosecondes ; au-delà, le client accepte l'état du serveur sans rejouer. |
 | `prediction_tolerance_position_m` | flottant | `0.01` | `0.0..` | non | non | Écart de position, en mètres, en deçà duquel l'état prédit vaut celui du serveur. |
 | `prediction_tolerance_rotation_rad` | flottant | `0.005` | `0.0..` | non | non | Écart de rotation, en radians, en deçà duquel l'état prédit vaut celui du serveur. |

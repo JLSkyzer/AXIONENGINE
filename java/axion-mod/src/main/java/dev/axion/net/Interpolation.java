@@ -141,6 +141,8 @@ public final class Interpolation {
     private double[] errorPosition;
     private float[] errorRotation;
     private double correctionStart;
+    private long snaps;
+    private double largestCorrection;
 
     /**
      * @param extrapolationMaxMillis {@code net.extrapolation_max_ms}
@@ -285,7 +287,9 @@ public final class Interpolation {
         if (distance > snapThreshold) {
             errorPosition = null;
             errorRotation = null;
+            snaps++;
         } else if (distance > EPSILON || rotated) {
+            largestCorrection = Math.max(largestCorrection, distance);
             errorPosition = new double[] {dx, dy, dz};
             errorRotation = rotationError;
             correctionStart = nowMillis;
@@ -319,6 +323,16 @@ public final class Interpolation {
             errorRotation = null;
         }
         return corrected(raw, nowMillis);
+    }
+
+    /** {@return les écarts téléportés, au-delà de {@code net.snap_threshold}, depuis la création} */
+    public long snaps() {
+        return snaps;
+    }
+
+    /** {@return le plus grand écart lissé depuis la création, en blocs} */
+    public double largestCorrection() {
+        return largestCorrection;
     }
 
     /** {@return la pose du tampon, avec ce qui reste de la correction en cours} */

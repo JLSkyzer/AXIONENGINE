@@ -18,6 +18,8 @@ import java.util.List;
  *   <li>Une file réglée par son client (ADR-168 D3, révisé le 2026-11-14 : le client qui prédit tient lui-même la
  *       profondeur, en envoyant deux entrées dans un tick ou en en retenant une) ne rattrape qu'au-delà de
  *       {@link #MAX_PACED} : sauter une entrée décalerait d'un tick le monde que ce client prédit.</li>
+ *   <li>Sauf quand ce qu'elle commande ne bouge pas (précision 6e) : elle rattrape alors aussi les entrées égales à celle
+ *       qu'elle applique, que personne d'autre ne réglerait ({@link #next(boolean)}).</li>
  * </ul>
  *
  * <p>Logique pure, sans Forge. Non synchronisée : l'entité qui la tient ne la touche que sur son fil.
@@ -60,6 +62,7 @@ public final class InputQueue<T> {
     private final ArrayDeque<Pending<T>> pending = new ArrayDeque<>();
     private long lastOffered = -1;
     private long lastApplied = -1;
+    private T lastItem;
     private long skippedTotal;
     private long starvedTotal;
     private boolean paced;
@@ -105,6 +108,20 @@ public final class InputQueue<T> {
 
     /** {@return l'entrée de ce tick, après le rattrapage d'une file qui déborde ; {@code null} si la file est vide} */
     public Step<T> next() {
+        return next(false);
+    }
+
+    /**
+     * {@return l'entrée de ce tick, après le rattrapage d'une file qui déborde ; {@code null} si la file est vide}
+     *
+     * <p>Précision 6e d'ADR-168 D3 : une file réglée par son client rattrape aussi, jusqu'à {@link #MAX_PENDING}, les
+     * entrées égales à celle qu'elle applique quand ce qu'elles commandent ne bouge pas — un véhicule endormi. Les
+     * appliquer ou les sauter y revient au même, et rien d'autre ne les retirerait : un véhicule endormi n'envoie pas
+     * de correction, son client ne voit pas sa file et ne peut pas la régler.
+     *
+     * @param still vrai si ce que la file commande ne bouge pas à ce tick
+     */
+    public Step<T> next(boolean still) {
         if (lastOffered >= 0) {
             depths[Math.min(pending.size(), DEPTHS - 1)]++;
             lastDepth = pending.size();
@@ -120,9 +137,13 @@ public final class InputQueue<T> {
         while (pending.size() > bound) {
             skipped.add(pending.removeFirst().item());
         }
+        while (still && pending.size() > MAX_PENDING && lastItem != null && lastItem.equals(pending.getFirst().item())) {
+            skipped.add(pending.removeFirst().item());
+        }
         skippedTotal += skipped.size();
         Pending<T> taken = pending.removeFirst();
         lastApplied = taken.sequence();
+        lastItem = taken.item();
         return new Step<>(skipped, taken.sequence(), taken.item());
     }
 

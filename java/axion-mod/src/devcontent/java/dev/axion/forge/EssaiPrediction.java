@@ -2,6 +2,7 @@ package dev.axion.forge;
 
 import dev.axion.AxionMod;
 import dev.axion.forge.client.ClientPrediction;
+import dev.axion.net.Interpolation;
 import dev.axion.net.Prediction;
 import dev.axion.physics.BodyState;
 import dev.axion.physics.PredictedWorld;
@@ -292,6 +293,40 @@ public final class EssaiPrediction {
          * pose dessinée du véhicule (x, z), et le dernier pas prédit.
          */
         private static final List<double[]> images = new ArrayList<>();
+        /**
+         * T-415 : la pose prédite au tick de l'appui, le premier tick d'après où elle en a bougé d'un millimètre, et si
+         * la prédiction tournait de l'appui jusqu'à une seconde après.
+         */
+        /** Les corps dont la vitesse prédite s'écarte de plus de 1 m/s de celle du serveur : leurs deux vitesses. */
+        private static final List<String> corpsDivergents = new ArrayList<>();
+
+        /** {@return chaque corps de deux états exportés dont la vitesse diffère de plus de 1 m/s, prédite puis serveur} */
+        private static String corpsDivergents(int tick, byte[] predit, byte[] serveur) {
+            java.nio.ByteBuffer a = java.nio.ByteBuffer.wrap(predit).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            java.nio.ByteBuffer b = java.nio.ByteBuffer.wrap(serveur).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            StringBuilder ligne = new StringBuilder("  corps divergents au tick " + tick + " :");
+            for (int i = 0; 16 + (i + 1) * 64 <= Math.min(predit.length, serveur.length); i++) {
+                int at = 16 + i * 64;
+                float[] va = {a.getFloat(at + 40), a.getFloat(at + 44), a.getFloat(at + 48)};
+                float[] vb = {b.getFloat(at + 40), b.getFloat(at + 44), b.getFloat(at + 48)};
+                double d = Math.sqrt(Math.pow(va[0] - vb[0], 2) + Math.pow(va[1] - vb[1], 2) + Math.pow(va[2] - vb[2], 2));
+                if (d > 1.0) {
+                    ligne.append(String.format(Locale.ROOT, " corps %d prédit (%.2f, %.2f, %.2f) serveur (%.2f, %.2f,"
+                            + " %.2f) ;", i, va[0], va[1], va[2], vb[0], vb[1], vb[2]));
+                }
+            }
+            return ligne.toString();
+        }
+
+        /** À chaque tick prédit, les corrections réconciliées jusque-là : confirmées, démenties (D8). */
+        private static final List<long[]> cumuls = new ArrayList<>();
+        private static double[] poseAppui;
+        private static int reponsePredite = -1;
+        private static boolean predictionTenueApresAppui = true;
+        /** T-415 : la réponse prédite attendue, en ticks après l'appui — le pas même de l'appui, visible au suivant. */
+        private static final int REPONSE_MAX = 1;
+        /** Une paire d'images qui couvre plus d'un tick — un gel, une coupure — ne se compare pas. */
+        private static final double IMAGE_MAX_TICKS = 1.0;
         /** Le plus de proxies posés en un tick : assemblies, entités vanilla. */
         private static int proxiesAssemblies;
         private static int proxiesEntites;
@@ -416,6 +451,9 @@ public final class EssaiPrediction {
                     }
                     dev.axion.physics.AssemblyStateView.Errors e =
                             dev.axion.physics.AssemblyStateView.errors(predit, serveur);
+                    if (e != null && e.velocity() > 1.0 && corpsDivergents.size() < 12) {
+                        corpsDivergents.add(corpsDivergents(tick, predit, serveur));
+                    }
                     if (e != null) {
                         ecarts.add(new double[] {e.position(), e.rotation(), e.velocity(), tick,
                                 ClientPrediction.loop() == null ? -1 : ClientPrediction.loop().pending()});
@@ -747,6 +785,18 @@ public final class EssaiPrediction {
                 return;
             }
             double[] predite = racine == null ? new double[] {Double.NaN, Double.NaN, Double.NaN} : racine.position();
+            cumuls.add(new long[] {boucle.matches(), boucle.replays() + boucle.accepted()});
+            if (tick == ATTENTE && racine != null && ClientPrediction.predicting()) {
+                poseAppui = predite.clone();
+            }
+            if (tick > ATTENTE && tick <= ATTENTE + 20 && !ClientPrediction.predicting()) {
+                predictionTenueApresAppui = false;
+            }
+            if (tick > ATTENTE && poseAppui != null && reponsePredite < 0 && racine != null
+                    && Math.hypot(Math.hypot(predite[0] - poseAppui[0], predite[1] - poseAppui[1]),
+                            predite[2] - poseAppui[2]) >= 0.001) {
+                reponsePredite = tick - ATTENTE;
+            }
             trajectoire.add(String.format(Locale.ROOT, "%d;%d;%d;%d;%.4f;%.4f;%.4f;%.4f;%.4f;%.4f;%.1f;%d;%d;%d;%d;%.0f;%d;%d;%d",
                     tick, avant ? 1 : 0, gauche ? 1 : 0, ClientPrediction.predicting() ? 1 : 0, predite[0], predite[1],
                     predite[2], assembly.getX(),
@@ -782,6 +832,10 @@ public final class EssaiPrediction {
                     String.format(Locale.ROOT, "  pire écart de position : %.4f m (rotation %.4f rad, vitesse %.3f m/s)"
                             + " au tick %d, %d en attente", e[0], e[1], e[2], (int) e[3], (int) e[4])));
             rapport.add(fluidite());
+            rapport.addAll(corpsDivergents);
+            rapport.add(tauxGlissant());
+            rapport.add(t415(boucle));
+            rapport.add(t416(boucle));
             rapport.add(vueAuClient);
             long[] reglage = ClientPrediction.pacingAdjustments();
             rapport.add("cadence réglée par le client : " + reglage[0] + " tick(s) à deux entrées, " + reglage[1]
@@ -867,6 +921,95 @@ public final class EssaiPrediction {
             return String.format(Locale.ROOT, "fluidité, %d images : variation de vitesse d'une image à l'autre p50 %.3f,"
                     + " p90 %.3f, p99 %.3f, max %.3f m/s", n + 2, d[n / 2], d[Math.min(n - 1, n * 9 / 10)],
                     d[Math.min(n - 1, n * 99 / 100)], d[n - 1]);
+        }
+
+        /**
+         * {@return le pire taux de corrections démenties sur {@link dev.axion.net.CorrectionRate#WINDOW} corrections
+         * glissantes (D8, la mesure du défaut de {@code net.prediction_max_corrections})}
+         */
+        private static String tauxGlissant() {
+            int fenetre = dev.axion.net.CorrectionRate.WINDOW;
+            double pire = -1;
+            int debut = 0;
+            for (int fin = 0; fin < cumuls.size(); fin++) {
+                long[] b = cumuls.get(fin);
+                while (debut < fin && (b[0] + b[1]) - (cumuls.get(debut + 1)[0] + cumuls.get(debut + 1)[1]) >= fenetre) {
+                    debut++;
+                }
+                long[] a = cumuls.get(debut);
+                long corrections = (b[0] + b[1]) - (a[0] + a[1]);
+                if (corrections >= fenetre) {
+                    pire = Math.max(pire, (b[1] - a[1]) / (double) corrections);
+                }
+            }
+            return pire < 0 ? "taux de corrections démenties : moins de " + fenetre + " corrections, rien de mesuré"
+                    : String.format(Locale.ROOT, "taux de corrections démenties, le pire sur %d corrections glissantes :"
+                            + " %.1f %%", fenetre, pire * 100);
+        }
+
+        /**
+         * {@return le verdict de T-415, « prédiction : réponse immédiate du véhicule piloté » (ADR-168, 6e)} Le véhicule
+         * prédit bouge au plus {@link #REPONSE_MAX} tick après l'appui, sans attendre l'aller-retour du serveur, et la
+         * prédiction tient de l'appui jusqu'à une seconde après.
+         */
+        private static String t415(Prediction boucle) {
+            boolean reussi = poseAppui != null && reponsePredite >= 0 && reponsePredite <= REPONSE_MAX
+                    && predictionTenueApresAppui;
+            String detail = poseAppui == null ? "la prédiction ne tournait pas à l'appui"
+                    : String.format(Locale.ROOT, "le véhicule prédit bouge %s après l'appui ; sans prédiction, il"
+                            + " attendrait l'aller-retour mesuré de %.0f ms, soit %.1f ticks ; prédiction %s pendant la"
+                            + " seconde qui suit", reponsePredite < 0 ? "jamais" : reponsePredite + " tick(s)",
+                            boucle.latencyMillis(), boucle.latencyMillis() / dev.axion.net.ServerClock.TICK_MILLIS,
+                            predictionTenueApresAppui ? "tenue" : "coupée");
+            return "T-415 : " + (reussi ? "réussi" : "ÉCHOUÉ") + " — " + detail;
+        }
+
+        /**
+         * {@return le verdict de T-416, « réconciliation : correction douce » (ADR-168 D5, 6e)} Des corrections ont été
+         * rejouées, aucune n'a été téléportée, et aucune image n'a dessiné le véhicule plus loin de son trajet que D5 ne
+         * le permet : un écart de {@code net.snap_threshold} au plus, résorbé en {@link Interpolation#CORRECTION_MILLIS},
+         * déplace l'image d'au plus {@code net.snap_threshold} × sa durée / 200 ms au-delà du trajet que sa vitesse
+         * explique (la médiane, composante par composante, des vitesses de treize images autour).
+         */
+        private static String t416(Prediction boucle) {
+            double seuil = RuntimeAccess.get().outcome().config().getFloat("net.snap_threshold");
+            List<double[]> paires = new ArrayList<>();
+            int ecartees = 0;
+            for (int i = 1; i < images.size(); i++) {
+                double[] a = images.get(i - 1);
+                double[] b = images.get(i);
+                double ticks = b[1] - a[1];
+                if (ticks <= 1e-6 || ticks > IMAGE_MAX_TICKS) {
+                    ecartees++;
+                    continue;
+                }
+                // Déplacement x et z, durée en ticks, durée réelle en ms, rang de l'image.
+                paires.add(new double[] {b[2] - a[2], b[3] - a[3], ticks, (b[0] - a[0]) / 1e6, i});
+            }
+            double pire = 0;
+            double pireCm = 0;
+            int image = -1;
+            for (int k = 0; k < paires.size(); k++) {
+                List<double[]> autour = paires.subList(Math.max(0, k - 6), Math.min(paires.size(), k + 7));
+                double[] vx = autour.stream().mapToDouble(p -> p[0] / p[2]).sorted().toArray();
+                double[] vz = autour.stream().mapToDouble(p -> p[1] / p[2]).sorted().toArray();
+                double[] p = paires.get(k);
+                double ecart = Math.hypot(p[0] - vx[vx.length / 2] * p[2], p[1] - vz[vz.length / 2] * p[2]);
+                double permis = seuil * p[3] / Interpolation.CORRECTION_MILLIS + 0.01;
+                if (ecart / permis > pire) {
+                    pire = ecart / permis;
+                    pireCm = ecart * 100;
+                    image = (int) p[4];
+                }
+            }
+            double[] piste = ClientPrediction.trackCorrections();
+            boolean reussi = boucle.replays() > 0 && !paires.isEmpty() && pire <= 1.0 && piste[0] == 0;
+            String detail = boucle.replays() == 0 ? "aucune correction rejouée : rien d'éprouvé"
+                    : String.format(Locale.ROOT, "%d correction(s) rejouée(s), %d téléportée(s), plus grand écart lissé"
+                            + " %.2f m ; sur %d paires d'images (%d écartées, plus d'un tick), le pire écart au trajet est"
+                            + " de %.1f cm (image %d), %.0f %% de ce que D5 permet", boucle.replays(), (long) piste[0],
+                            piste[1], paires.size(), ecartees, pireCm, image, pire * 100);
+            return "T-416 : " + (reussi ? "réussi" : "ÉCHOUÉ") + " — " + detail;
         }
 
         /** {@return la répartition d'un écart sur les corrections comparées : p50, p90, p99, max} */

@@ -46,9 +46,39 @@ Models and textures never travel: they come from the addons installed on the cli
 requirement above. An asset that an installed addon does not provide, or that does not compile, is shown with the
 fallback asset (`axion:builtin/missing`): the missing part is visible, and nothing stops.
 
-Block → material mappings do not travel either: only the server uses them today, for vehicle contact with the
-ground. When the client predicts the vehicle it drives, they will travel with the registry
-([ADR-165](../decisions/ADR-165.md), clarification 3c).
+Block → material mappings travel with the registry: a client that predicts its vehicle needs them for contact with
+the ground ([ADR-168](../decisions/ADR-168.md), clarification 6d-1).
+
+## Prediction of the driven vehicle
+
+A player who drives a vehicle on a remote server sees it answer their keys at once: their client simulates that vehicle
+in a world of its own, while the server, the only judge, simulates the real one ([ADR-168](../decisions/ADR-168.md)).
+On every tick where the vehicle moves, the server sends the driver the authoritative state (`S2C_Correction`); the
+client compares it with what it predicted, and replays its inputs from that state when they differ. The catch-up is
+smoothed on screen over 200 ms instead of jumping. The client only sends its inputs, never a state: it cannot impose
+anything on the server (INV-02).
+
+Prediction does not run:
+
+- in single player, nor for the host of an open world: latency is zero there, there is nothing to predict;
+- if the player turns it off (`net.prediction`), or if the server does not allow it (`server.allow_client_prediction`);
+- beyond `net.prediction_max_ping` (400 ms) of latency: it comes back below 90 % of that threshold
+  (`net.prediction_reenable_ratio`), so that it does not flip back and forth at the threshold itself;
+- if more than `net.prediction_max_corrections` of the last 100 corrections contradicted it: it tries again by itself
+  100 corrections later.
+
+When it is off, the vehicle is shown like the others, interpolated; switching from one display to the other is smoothed
+too. The client paces its own input queue on the server (protocol 10): it keeps it as short as it can, one input per
+tick, so as to add no latency.
+
+The client log says so, once per change:
+
+| Line (AXION's logs are in French) | When |
+|---|---|
+| `AXION : prédiction : monde prédit ouvert pour <véhicule> (entité <n>)` | the player takes the wheel of a predicted vehicle |
+| `AXION : prédiction coupée — <cause>` | it turns off, or its cause changes: latency, correction rate, a setting |
+| `AXION : prédiction rétablie` | the cause has gone |
+| `AXION : prédiction : monde prédit fermé` | the player gets out, or prediction turns off |
 
 ## What can be tuned
 

@@ -3855,6 +3855,14 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      - [ ] 6e — T-415..T-417 sous latence injectée (essai à deux processus, T-417 en GameTest), défauts mesurés
            (`net.prediction_replay_budget_ns`,
            `net.prediction_max_corrections`), CDC (21.3, 21.4, 21.8, A.3), guide réseau, fusion.
+           - [x] 6e-5 (2026-11-14) : campagne `tools/campagne/prediction.py` (T-415, T-416 jugés par l'essai), T-417 en
+                 GameTest, `CorrectionRate` et `net.prediction_max_corrections` = 0,5 (mesuré), CDC (R-1642, 21.4, R-1682
+                 à R-1684, A.3, A19), guide réseau. Trouvé et corrigé : file d'un véhicule garé, monde prédit ouvert au
+                 premier appui seulement (battement d'une correction par seconde), latence datée au traitement. Mesuré :
+                 T-415 réussi partout, T-416 réussi pour le véhicule de test à 50 et 100 ms (ADR-168 précision 6e, preuves).
+           - [ ] Ouvert : T-416 de la Charger à 101 % — une correction acceptée sans rejeu recule la piste sans lissage
+                 (reprendre le dernier tick par l'état du serveur) ; pourquoi le budget saute sur six pas de 2 ms.
+           - [ ] Fusion dans `master`, CI GitHub.
   7. Le reste des capacités de M5 : caméra de véhicule (CAP-10), API (CAP-11), occupants (CAP-13), joueurs portés
      (CAP-14), énergie et démarrage (CAP-12), pneus et météo (CAP-20), rechargement à chaud (CAP-33), commandes
      (CAP-34), contenu qui évolue (CAP-38), addons d'un seul côté (CAP-40), validation hors jeu (CAP-42 : une fiche

@@ -138,4 +138,98 @@ public final class PredictionGameTests {
                 })
                 .thenSucceed();
     }
+
+    /** Entrées d'une rafale réglée, toutes posées dans un même tick : au-delà de {@link InputQueue#MAX_PACED}. */
+    private static final int RAFALE_REGLEE = InputQueue.MAX_PACED + 5;
+
+    private static byte[] trameReglee(int sequence, AxionEntity vehicule, int siege, VehicleInput entree) {
+        return Fragments.split(new InputMessage(sequence, vehicule.getId(), siege, entree, true).encode(), 0).get(0);
+    }
+
+    /**
+     * T-417 (ADR-168 D9, INV-02) : sous la prédiction, une entrée falsifiée est ignorée. Le conducteur ne commande
+     * rien ; un passager, puis un joueur à pied, envoient l'accélérateur à fond pour le siège du conducteur, en se
+     * disant réglés ; le passager renvoie au serveur une correction reçue — un état, que seul le serveur écrit. Rien ne
+     * part, rien ne bouge, l'acquittement du conducteur suit ses seules entrées. Puis une rafale réglée au-delà de
+     * {@link InputQueue#MAX_PACED} : la file rattrape, elle ne s'allonge pas sans fin.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 400)
+    public static void t417_uneEntreeFalsifieeEstIgnoree(GameTestHelper helper) {
+        Vec3 depart = new Vec3(8.0, DESSUS_DALLE, 12.5);
+        ObservateursDeTest.declarer(helper, depart);
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule", depart, IDENTITE);
+        JoueurSimule conducteur = JoueurSimule.rejoindre(
+                helper.getLevel(), "t417_conducteur", helper.absoluteVec(new Vec3(2.0, DESSUS_DALLE, 12.5)));
+        JoueurSimule passager = JoueurSimule.rejoindre(
+                helper.getLevel(), "t417_passager", helper.absoluteVec(new Vec3(14.0, DESSUS_DALLE, 12.5)));
+        JoueurSimule pieton = JoueurSimule.rejoindre(
+                helper.getLevel(), "t417_pieton", helper.absoluteVec(new Vec3(14.0, DESSUS_DALLE, 4.0)));
+        boolean[] falsifier = {false};
+        int[] sequences = {0, 0, 0};
+        List<CorrectionMessage> recues = new ArrayList<>();
+        Vec3[] avant = new Vec3[1];
+        helper.onEachTick(() -> {
+            conducteur.tick();
+            passager.tick();
+            pieton.tick();
+            recues.addAll(conducteur.drainCorrections());
+            if (!falsifier[0]) {
+                return;
+            }
+            int siege = vehicule.seatOf(conducteur.joueur());
+            conducteur.envoyer(trameReglee(++sequences[0], vehicule, siege, VehicleInput.NONE));
+            passager.envoyer(trameReglee(++sequences[1], vehicule, siege, PLEIN));
+            pieton.envoyer(trameReglee(++sequences[2], vehicule, siege, PLEIN));
+            if (!recues.isEmpty()) {
+                // Un état renvoyé : celui que le serveur vient d'écrire, ce qu'un client falsifié a de plus crédible.
+                passager.envoyer(Fragments.split(recues.get(recues.size() - 1).encode(), 0).get(0));
+            }
+        });
+        long[] sauteesAvant = new long[1];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds(), "le véhicule est simulé"))
+                .thenIdle(30)
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.reseat(conducteur.joueur(), "conducteur"), "au volant");
+                    helper.assertTrue(vehicule.reseat(passager.joueur(), "passager"), "le passager");
+                    avant[0] = vehicule.position();
+                    falsifier[0] = true;
+                })
+                .thenIdle(20)
+                .thenExecute(() -> falsifier[0] = false)
+                .thenExecuteAfter(1, () -> {
+                    int siege = vehicule.seatOf(conducteur.joueur());
+                    helper.assertTrue(VehicleInput.NONE.equals(vehicule.seatInput(siege)),
+                            "le siège du conducteur n'applique que ses entrées : " + vehicule.seatInput(siege));
+                    helper.assertTrue(vehicule.driverSequence() == sequences[0],
+                            "l'acquittement suit les seules entrées du conducteur : " + vehicule.driverSequence()
+                                    + ", " + sequences[0]);
+                    helper.assertTrue(vehicule.position().distanceTo(avant[0]) < 0.01,
+                            "INV-02 : ni les entrées d'autrui ni l'état renvoyé n'ont déplacé le véhicule : "
+                                    + vehicule.position().distanceTo(avant[0]) + " m");
+                    helper.assertTrue(passager.drainCorrections().isEmpty() && pieton.drainCorrections().isEmpty(),
+                            "D4 : seul le conducteur reçoit des corrections");
+                })
+                // Une seconde de silence : le débit de R-1690 se rouvre, la rafale passe entière.
+                .thenIdle(25)
+                .thenExecute(() -> {
+                    int siege = vehicule.seatOf(conducteur.joueur());
+                    sauteesAvant[0] = vehicule.seatCadence(siege)[1];
+                    for (int i = 0; i < RAFALE_REGLEE; i++) {
+                        conducteur.envoyer(trameReglee(++sequences[0], vehicule, siege, PLEIN));
+                    }
+                })
+                .thenExecuteAfter(3, () -> {
+                    long sautees = vehicule.seatCadence(vehicule.seatOf(conducteur.joueur()))[1] - sauteesAvant[0];
+                    helper.assertTrue(sautees == RAFALE_REGLEE - InputQueue.MAX_PACED,
+                            "D9 : la rafale réglée rattrape aux " + InputQueue.MAX_PACED + " plus récentes : "
+                                    + sautees + " sautée(s)");
+                    helper.assertTrue(vehicule.driverQueueDepth() <= InputQueue.MAX_PACED,
+                            "la file ne s'allonge pas : " + vehicule.driverQueueDepth());
+                    conducteur.quitter();
+                    passager.quitter();
+                    pieton.quitter();
+                })
+                .thenSucceed();
+    }
 }

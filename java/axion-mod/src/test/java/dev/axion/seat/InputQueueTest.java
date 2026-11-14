@@ -102,4 +102,41 @@ class InputQueueTest {
         queue.next();
         assertEquals(1, queue.depths()[InputQueue.DEPTHS - 1], "les plus profondes au dernier indice");
     }
+
+    @Test
+    @DisplayName("D3, précision 6e : immobile, une file réglée rattrape les entrées égales à celle qu'elle applique")
+    void immobileRattrapeLesEgales() {
+        InputQueue<String> queue = new InputQueue<>();
+        queue.offer(1, "repos", true);
+        assertEquals("repos", queue.next(true).applied());
+        // Une rafale de dix entrées égales à celle appliquée, puis un appui : rien ne la règle, aucune correction ne
+        // part d'un véhicule endormi.
+        for (int sequence = 2; sequence <= 11; sequence++) {
+            queue.offer(sequence, "repos", true);
+        }
+        queue.offer(12, "appui", true);
+        InputQueue.Step<String> step = queue.next(true);
+        assertEquals(9, step.skipped().size(), "les égales sautées, jusqu'à deux en attente");
+        assertEquals(11, step.sequence());
+        assertEquals("repos", step.applied());
+        assertEquals("appui", queue.next(true).applied(), "l'appui part au tick suivant");
+
+        // En mouvement, la même rafale n'est pas sautée : le monde prédit en serait décalé d'autant de ticks.
+        InputQueue<String> moving = new InputQueue<>();
+        moving.offer(1, "repos", true);
+        moving.next(false);
+        for (int sequence = 2; sequence <= 11; sequence++) {
+            moving.offer(sequence, "repos", true);
+        }
+        assertTrue(moving.next(false).skipped().isEmpty());
+
+        // Immobile, une entrée qui diffère de l'appliquée n'est jamais sautée : elle change l'état.
+        InputQueue<String> different = new InputQueue<>();
+        different.offer(1, "repos", true);
+        different.next(true);
+        for (int sequence = 2; sequence <= 11; sequence++) {
+            different.offer(sequence, "appui" + sequence, true);
+        }
+        assertTrue(different.next(true).skipped().isEmpty());
+    }
 }

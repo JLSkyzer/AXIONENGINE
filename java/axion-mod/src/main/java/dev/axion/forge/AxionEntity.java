@@ -977,10 +977,31 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param states l'état complet exporté de chaque assembly de l'ensemble, celui-ci d'abord
      */
     public dev.axion.net.CorrectionMessage correction(long tick, List<dev.axion.net.CorrectionMessage.State> states) {
+        lastCorrectionTick = tick;
         long applied = driverSequence();
         int queued = applied < 0 ? -1 : Math.max(0, Math.min(255, driverQueueDepth()));
         return new dev.axion.net.CorrectionMessage(tick, applied, queued, getId(), netParameters.tick(),
                 correctionVariables(), states);
+    }
+
+    /**
+     * Ticks entre deux corrections d'un véhicule endormi (ADR-168 D4, précision 6e) : une par seconde. Sans elles, le
+     * conducteur d'un véhicule garé n'avait aucun acquittement : son client n'ouvrait son monde prédit qu'au premier
+     * appui, un aller-retour trop tard (T-415), et ne voyait pas sa file d'entrées (D3).
+     */
+    public static final int SLEEPING_CORRECTION_TICKS = 20;
+
+    /** Le tick du serveur de la dernière correction de ce véhicule. */
+    private long lastCorrectionTick = Long.MIN_VALUE / 2;
+
+    /**
+     * {@return vrai si ce véhicule, endormi, doit à son conducteur une correction à ce tick : la précédente date d'au
+     * moins {@link #SLEEPING_CORRECTION_TICKS}}
+     *
+     * @param tick le tick du serveur
+     */
+    public boolean sleepingCorrectionDue(long tick) {
+        return tick - lastCorrectionTick >= SLEEPING_CORRECTION_TICKS;
     }
 
     /** {@return les variables que le conducteur reçoit : toutes, sauf {@code replicate: none} (ADR-163 D2)} */
@@ -1104,7 +1125,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 continue;
             }
             SeatInputs inputs = entry.getValue();
-            dev.axion.seat.InputQueue.Step<QueuedInput> step = inputs.queue.next();
+            // Précision 6e : un véhicule endormi n'envoie pas de correction ; sa file rattrape ce qui ne le change pas.
+            dev.axion.seat.InputQueue.Step<QueuedInput> step = inputs.queue.next(sleeping);
             if (step == null) {
                 continue;
             }

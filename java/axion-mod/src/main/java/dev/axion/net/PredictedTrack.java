@@ -112,6 +112,16 @@ public final class PredictedTrack {
         return started && !Double.isNaN(lastFrameMillis) ? poses.sample(lastFrameMillis, nowMillis) : null;
     }
 
+    /** {@return les écarts de la piste téléportés au-delà de {@code net.snap_threshold}} */
+    public long snaps() {
+        return poses.snaps();
+    }
+
+    /** {@return le plus grand écart de la piste lissé, en blocs} */
+    public double largestCorrection() {
+        return poses.largestCorrection();
+    }
+
     /** {@return vrai si un pas au moins y est posé} */
     public boolean started() {
         return started;

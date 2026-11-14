@@ -46,9 +46,39 @@ Les modèles et les textures ne voyagent jamais : ils viennent des addons instal
 l'exigence des addons ci-dessus. Un asset qu'un addon présent ne fournit pas, ou qui ne se compile pas, s'affiche par
 l'asset de secours (`axion:builtin/missing`) : la pièce manquante se voit, et rien ne s'arrête.
 
-Les correspondances bloc → matériau ne voyagent pas non plus : seul le serveur s'en sert aujourd'hui, pour le
-contact des véhicules avec le terrain. Quand le client prédira le véhicule qu'il conduit, elles voyageront avec le
-registre ([ADR-165](../decisions/ADR-165.md), précision 3c).
+Les correspondances bloc → matériau voyagent avec le registre : le client qui prédit son véhicule en a besoin pour
+le contact avec le terrain ([ADR-168](../decisions/ADR-168.md), précision 6d-1).
+
+## La prédiction du véhicule piloté
+
+Un joueur qui conduit un véhicule, sur un serveur distant, le voit répondre à ses touches tout de suite : son client
+simule ce véhicule dans un monde à lui, pendant que le serveur, seul juge, simule le vrai
+([ADR-168](../decisions/ADR-168.md)). À chaque tick où le véhicule avance, le serveur renvoie au conducteur l'état qui
+fait foi (`S2C_Correction`) ; le client le compare à ce qu'il avait prédit, et rejoue ses entrées depuis cet état
+quand ils diffèrent. La reprise se lisse à l'écran en 200 ms, au lieu de sauter. Le client n'envoie que ses entrées,
+jamais un état : il ne peut rien imposer au serveur (INV-02).
+
+La prédiction ne tourne pas :
+
+- en solo, ni chez l'hôte d'un monde ouvert : la latence y est nulle, rien à prédire ;
+- si le joueur la coupe (`net.prediction`), ou si le serveur ne la permet pas (`server.allow_client_prediction`) ;
+- au-delà de `net.prediction_max_ping` (400 ms) de latence : elle revient sous 90 % de ce seuil
+  (`net.prediction_reenable_ratio`), pour ne pas basculer d'un état à l'autre au seuil même ;
+- si plus de `net.prediction_max_corrections` des 100 dernières corrections l'ont démentie : elle se retente d'elle-même
+  100 corrections plus tard.
+
+Coupée, le véhicule s'affiche comme les autres, interpolé ; le passage d'un affichage à l'autre se lisse aussi. Le
+client règle lui-même la file de ses entrées au serveur (protocole 10) : il la tient au plus juste, une entrée par tick,
+pour n'ajouter aucune latence.
+
+Le journal du client le dit, une fois par changement :
+
+| Ligne | Quand |
+|---|---|
+| `AXION : prédiction : monde prédit ouvert pour <véhicule> (entité <n>)` | le joueur prend le volant d'un véhicule prédit |
+| `AXION : prédiction coupée — <cause>` | elle se coupe, ou sa cause change : la latence, le taux de corrections, un réglage |
+| `AXION : prédiction rétablie` | la cause a cessé |
+| `AXION : prédiction : monde prédit fermé` | le joueur descend, ou la prédiction se coupe |
 
 ## Ce qui se règle
 

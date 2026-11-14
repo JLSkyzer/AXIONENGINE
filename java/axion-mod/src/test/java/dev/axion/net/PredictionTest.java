@@ -79,6 +79,19 @@ class PredictionTest {
     }
 
     @Test
+    @DisplayName("D8, précision 6e : la latence se date à la réception, pas au traitement d'un client figé")
+    void latenceDateeALaReception() {
+        long[] clock = {0};
+        Prediction prediction = new Prediction(() -> clock[0], 10 * MS);
+        prediction.sent(0, clock[0]);
+        long recue = clock[0] + 120 * MS;
+        // Le client, figé 800 ms, ne traite la correction qu'ensuite.
+        clock[0] += 900 * MS;
+        prediction.acknowledged(3, 0, recue);
+        assertEquals(120.0, prediction.latencyMillis(), 1e-9, "le gel du client ne compte pas");
+    }
+
+    @Test
     @DisplayName("D5 : une correction égale à la prédiction ne change rien ; la latence se mesure par l'acquittement")
     void predictionJuste() {
         long[] clock = {0};

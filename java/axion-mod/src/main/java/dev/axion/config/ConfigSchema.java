@@ -874,6 +874,14 @@ public final class ConfigSchema {
                     false,
                     "Part de net.prediction_max_ping sous laquelle une prédiction coupée par sa latence se rétablit."),
             new Option(
+                    "net.prediction_max_corrections",
+                    Kind.FLOAT,
+                    0.5,
+                    new Domain(DomainKind.FLOAT_RANGE, 0.0, 1.0, List.of()),
+                    false,
+                    false,
+                    "Part des corrections, sur les 100 dernières, qui démentent la prédiction (rejouées ou acceptées sans rejeu) au-delà de laquelle elle est désactivée ; 1 ne la désactive jamais."),
+            new Option(
                     "net.prediction_replay_budget_ns",
                     Kind.INTEGER,
                     8200000L,
