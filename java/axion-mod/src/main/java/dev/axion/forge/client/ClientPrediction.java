@@ -74,6 +74,10 @@ public final class ClientPrediction {
     private static boolean liveStep;
     /** La piste prédite du véhicule, que son entité affiche (ADR-168 D2). */
     private static PredictedTrack track;
+    /** Les variables prédites du véhicule (ADR-168 D6) ; {@code null} s'il n'en déclare pas. */
+    private static dev.axion.entity.PredictedVariables variables;
+    /** Le siège d'où part l'entrée du conducteur, -1 avant la première. */
+    private static int drivingSeat = -1;
     /** Vrai quand une restauration n'a pu recoudre un joint : le monde prédit se recrée à la correction suivante. */
     private static boolean irreconcilable;
     /** La dernière cause journalisée d'une prédiction coupée ; vide si elle ne l'est pas. */
@@ -103,6 +107,14 @@ public final class ClientPrediction {
                             runtime.outcome().config().getFloat("net.prediction_proxy_radius")));
                 }
             }
+            // ADR-168 D6 : les commandes du siège basculent les variables prédites au pas même, avant la physique,
+            // dans l'ordre du serveur (ses entrées, puis ses variables).
+            if (variables != null && drivingSeat >= 0) {
+                dev.axion.definition.Seating seating = vehicle.declaredSeating();
+                if (seating != null && drivingSeat < seating.seats().size()) {
+                    variables.step(sequence, drivingSeat, seating.seats().get(drivingSeat).bindings(), input.flags());
+                }
+            }
             // Les proxies au tick du serveur où s'applique l'entrée de ce pas, rejeu compris.
             long stepTick = loop.serverTickOf(sequence);
             if (stepTick >= 0) {
@@ -117,7 +129,8 @@ public final class ClientPrediction {
             }
             // ADR-168 D2 : la pose de ce pas, au tick de son entrée ; un pas rejoué réécrit le sien.
             AssemblyState pose = PredictedStates.of(lastStep.result(), world.handle(), PredictedWorld.GENERATION,
-                    rootNode, input, vehicle.receivedVariables());
+                    rootNode, input, variables == null ? vehicle.receivedVariables()
+                            : AssemblyState.VariableValues.of(variables.values()));
             if (pose != null) {
                 double now = vehicle.localMillis(System.nanoTime());
                 if (liveStep) {
@@ -134,8 +147,16 @@ public final class ClientPrediction {
         }
 
         @Override
-        public void restore(byte[] state) {
+        public void restore(long sequence, byte[] state) {
             world.restore(state);
+            if (variables != null) {
+                variables.restore(sequence);
+            }
+        }
+
+        @Override
+        public boolean agrees(long sequence) {
+            return variables == null || variables.agrees(sequence);
         }
     };
 
@@ -181,6 +202,9 @@ public final class ClientPrediction {
             return;
         }
         lastServerState = correction.states().get(0).bytes();
+        if (variables != null) {
+            variables.correction(correction.variables().values(), correction.variables().mask());
+        }
         prediction.reconcile(PORT, correction.serverTick(), correction.appliedSequence(), lastServerState);
         recreateIfIrreconcilable();
     }
@@ -220,6 +244,7 @@ public final class ClientPrediction {
             return;
         }
         liveStep = true;
+        drivingSeat = seat;
         try {
             prediction.advance(PORT, sequence, assembly.sanitizedInput(seat, input));
             recreateIfIrreconcilable();
@@ -389,6 +414,7 @@ public final class ClientPrediction {
         lastRoot = null;
         irreconcilable = false;
         track = new PredictedTrack(Interpolation.of(runtime.outcome().config()));
+        variables = predictedVariables(assembly);
         assembly.predictWith(track);
         loop.reset();
         LOGGER.info("AXION : prédiction : monde prédit ouvert pour {} (entité {})", definition.id(), assembly.getId());
@@ -410,6 +436,7 @@ public final class ClientPrediction {
         }
         vehicle = null;
         track = null;
+        variables = null;
         irreconcilable = false;
         lastStep = null;
         lastRoot = null;
@@ -422,6 +449,32 @@ public final class ClientPrediction {
             LOGGER.error("AXION : prédiction : monde prédit mal fermé — {}", failure.toString());
         }
         LOGGER.info("AXION : prédiction : monde prédit fermé");
+    }
+
+    /**
+     * {@return les variables prédites d'un véhicule, parties de celles que son dernier snapshot porte ; {@code null} s'il
+     * n'en déclare pas}
+     */
+    private static dev.axion.entity.PredictedVariables predictedVariables(AxionEntity assembly) {
+        dev.axion.definition.Seating seating = assembly.declaredSeating();
+        if (seating == null || seating.variables().size() == 0) {
+            return null;
+        }
+        AssemblyState.VariableValues received = assembly.receivedVariables();
+        double[] values = new double[seating.variables().size()];
+        long mask = 0L;
+        if (received.count() == values.length) {
+            for (int i = 0; i < values.length; i++) {
+                values[i] = received.value(i);
+            }
+            mask = received.mask();
+        }
+        return new dev.axion.entity.PredictedVariables(seating.variables(), values, mask);
+    }
+
+    /** {@return les variables prédites du véhicule prédit, {@code null} sans} */
+    public static dev.axion.entity.PredictedVariables predictedVariables() {
+        return variables;
     }
 
     /** {@return l'état prédit du corps racine du véhicule, {@code null} avant le premier pas qui l'a rapporté} */

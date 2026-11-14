@@ -174,4 +174,48 @@ class AssemblyVariablesTest {
         variables.set(PHARES, 1, "API");
         assertEquals(debut + 1, variables.version());
     }
+    @Test
+    @DisplayName("ADR-168 D6 : l'état gardé, puis repris, rejoue les mêmes bascules — commandes tenues et press compris")
+    void etatRepris() {
+        AssemblyVariables variables = new AssemblyVariables(DECLAREES);
+        variables.input(0, COMMANDES, bits(1, 2), "c");
+        variables.input(0, COMMANDES, bits(1, 2, 4), "c");
+        AssemblyVariables.State garde = variables.state();
+        // La suite, une première fois.
+        variables.tick();
+        variables.input(0, COMMANDES, bits(2), "c");
+        variables.tick();
+        double[] premiere = variables.values();
+        // Retour à l'état gardé, et la même suite : les mêmes valeurs.
+        variables.resume(garde);
+        assertEquals(1.0, variables.get(BIP), "le press en cours est repris");
+        variables.tick();
+        variables.input(0, COMMANDES, bits(2), "c");
+        variables.tick();
+        assertEquals(java.util.Arrays.toString(premiere), java.util.Arrays.toString(variables.values()));
+        assertEquals(0.0, variables.get(BIP), "le press est revenu au bon tick");
+        assertEquals(1.0, variables.get(GYROPHARE), "commande 1 tenue dans l'état gardé : pas de nouveau front");
+        assertThrows(IllegalArgumentException.class,
+                () -> new AssemblyVariables(Variables.of(JsonParser.parseString("{}").getAsJsonObject()))
+                        .resume(garde));
+    }
+
+    @Test
+    @DisplayName("ADR-168 D6 : le recalage prend les valeurs du serveur sous son masque, sans garde, et garde les tenues")
+    void recalage() {
+        AssemblyVariables variables = new AssemblyVariables(DECLAREES);
+        variables.input(0, COMMANDES, bits(1, 4), "c");
+        double[] serveur = {0.0, 1.0, 2.0, 0.0};
+        long masque = 0b0111;
+        assertTrue(!variables.agrees(serveur, masque));
+        assertTrue(variables.rebase(serveur, masque, "serveur"));
+        assertEquals(0.0, variables.get(GYROPHARE));
+        assertEquals(2.0, variables.get(PHARES));
+        assertEquals("serveur", variables.writer(PHARES));
+        assertEquals(1.0, variables.get(BIP), "hors du masque : la valeur prédite reste");
+        assertTrue(variables.agrees(serveur, masque));
+        assertTrue(!variables.rebase(serveur, masque, "serveur"), "rien à changer");
+        variables.input(0, COMMANDES, bits(1, 4), "c");
+        assertEquals(0.0, variables.get(GYROPHARE), "commande 1 toujours tenue : pas de front après le recalage");
+    }
 }

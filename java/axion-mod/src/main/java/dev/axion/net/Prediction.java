@@ -49,9 +49,22 @@ public final class Prediction {
         /**
          * Reprend l'état du serveur, avant le pas suivant.
          *
+         * @param sequence la séquence que la correction acquitte, -1 sans entrée appliquée : ce qui accompagne l'état
+         *     physique — les variables prédites — y revient aussi
          * @param state le bloc d'état exporté par le serveur
          */
-        void restore(byte[] state);
+        void restore(long sequence, byte[] state);
+
+        /**
+         * {@return vrai si ce qui accompagne l'état physique prédit pour cette séquence — les variables prédites (ADR-168
+         * D6) — vaut ce que la correction en cours dit du serveur} Une correction dont la physique est dans la tolérance,
+         * mais pas les variables, se rejoue.
+         *
+         * @param sequence la séquence acquittée
+         */
+        default boolean agrees(long sequence) {
+            return true;
+        }
     }
 
     /**
@@ -216,11 +229,11 @@ public final class Prediction {
         }
         observer.accept(acknowledged == null ? null : acknowledged.predicted, serverState);
         if (acknowledged != null && acknowledged.predicted != null
-                && tolerance.close(acknowledged.predicted, serverState)) {
+                && tolerance.close(acknowledged.predicted, serverState) && world.agrees(appliedSequence)) {
             matches++;
             return new Reconciliation(Outcome.MATCH, 0, clock.getAsLong() - start);
         }
-        world.restore(serverState);
+        world.restore(appliedSequence, serverState);
         // Le coût d'un pas se juge sur ce rejeu-ci, pas sur une moyenne passée : le premier pas d'un monde prédit,
         // tuiles découpées et code froid, en coûte cent fois plus que les suivants (170 ms contre 1,2 ms, mesuré en
         // jeu le 2026-11-13), et une estimation qu'il gonfle refuserait des rejeux qui tiennent.
@@ -231,7 +244,7 @@ public final class Prediction {
             if (elapsed > replayBudgetNanos || (replayed > 0 && elapsed + stepping / replayed > replayBudgetNanos)) {
                 // Le pas suivant ne tiendrait pas : le monde reprend l'état du serveur, rien du rejeu ne compte.
                 if (replayed > 0) {
-                    world.restore(serverState);
+                    world.restore(appliedSequence, serverState);
                 }
                 return acceptWithoutReplay(start);
             }

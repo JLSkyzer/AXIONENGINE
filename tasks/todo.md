@@ -3838,7 +3838,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            Découpée le 2026-11-14, chaque étape commitée verte :
            - [x] 6d-1 (2026-11-14) : correspondances bloc → matériau dans le registre (famille neuve, surcharges comprises), lues par
                  le client distant pour ses tuiles ; protocole AXION-9 ; oubliées à la déconnexion.
-           - [ ] 6d-2 : variables prédites — `AssemblyVariables` au client, basculée par ses entrées ; l'état caché des
+           - [x] 6d-2 (2026-11-14) : variables prédites — `AssemblyVariables` au client, basculée par ses entrées ; l'état caché des
                  bascules gardé par tick de l'historique ; la correction rend les valeurs du serveur, le rejeu rebascule.
            - [ ] 6d-3 : paramètres composés sur les variables prédites (`AssemblyParameters.mirror`), poussés au monde
                  prédit quand ils changent.

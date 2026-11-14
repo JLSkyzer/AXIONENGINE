@@ -37,7 +37,7 @@ class PredictionTest {
         }
 
         @Override
-        public void restore(byte[] state) {
+        public void restore(long sequence, byte[] state) {
             ByteBuffer buffer = ByteBuffer.wrap(state);
             position = buffer.getDouble();
             speed = buffer.getDouble();
@@ -96,13 +96,13 @@ class PredictionTest {
         assertEquals(3, bilan.replayed(), "les séquences 12, 13 et 14");
         // Ce que le client doit tenir : l'état du serveur, puis ses trois entrées non acquittées.
         Mobile attendu = new Mobile(new long[1], 0);
-        attendu.restore(etat);
+        attendu.restore(-1, etat);
         attendu.step(0, gaz(1f));
         attendu.step(0, gaz(0.5f));
         assertArrayEquals(attendu.step(0, gaz(0.25f)), client.state());
         // Et une correction suivante qui suit ce rejeu tombe juste.
         Mobile suite = new Mobile(new long[1], 0);
-        suite.restore(etat);
+        suite.restore(-1, etat);
         byte[] apres12 = suite.step(0, gaz(1f));
         assertEquals(Prediction.Outcome.MATCH, prediction.reconcile(client, 4, 12, apres12).outcome());
     }
@@ -142,8 +142,8 @@ class PredictionTest {
             }
 
             @Override
-            public void restore(byte[] state) {
-                client.restore(state);
+            public void restore(long sequence, byte[] state) {
+                client.restore(sequence, state);
             }
         };
         prediction.sent(0, clock[0]);
@@ -171,8 +171,8 @@ class PredictionTest {
             }
 
             @Override
-            public void restore(byte[] state) {
-                client.restore(state);
+            public void restore(long sequence, byte[] state) {
+                client.restore(sequence, state);
             }
         };
         byte[] etat = new Mobile(new long[1], 0).state();
@@ -197,5 +197,43 @@ class PredictionTest {
         assertEquals(Prediction.Outcome.STALE, prediction.reconcile(client, 1, -1, client.state()).outcome(),
                 "une correction d'un tick déjà traité");
         assertThrows(IllegalArgumentException.class, () -> new Prediction(() -> 0, 0));
+    }
+    @Test
+    @DisplayName("ADR-168 D6 : une physique juste mais des variables fausses se rejouent ; la séquence acquittée suit")
+    void variablesEnDesaccord() {
+        long[] clock = {0};
+        Prediction prediction = new Prediction(() -> clock[0], 10 * MS);
+        Mobile client = new Mobile(clock, 0);
+        long[] restauree = {Long.MIN_VALUE};
+        boolean[] accord = {false};
+        Prediction.World monde = new Prediction.World() {
+            @Override
+            public byte[] step(long sequence, VehicleInput input) {
+                return client.step(sequence, input);
+            }
+
+            @Override
+            public void restore(long sequence, byte[] state) {
+                restauree[0] = sequence;
+                client.restore(sequence, state);
+            }
+
+            @Override
+            public boolean agrees(long sequence) {
+                return accord[0];
+            }
+        };
+        prediction.sent(0, clock[0]);
+        prediction.advance(monde, 0, gaz(1f));
+        prediction.sent(1, clock[0]);
+        prediction.advance(monde, 1, gaz(1f));
+        Mobile serveur = new Mobile(new long[1], 0);
+        byte[] etat = serveur.step(0, gaz(1f));
+        assertEquals(Prediction.Outcome.REPLAYED, prediction.reconcile(monde, 1, 0, etat).outcome(),
+                "la physique colle, les variables non : rejoué");
+        assertEquals(0, restauree[0], "la séquence acquittée accompagne l'état du serveur");
+        accord[0] = true;
+        byte[] etat1 = serveur.step(0, gaz(1f));
+        assertEquals(Prediction.Outcome.MATCH, prediction.reconcile(monde, 2, 1, etat1).outcome());
     }
 }

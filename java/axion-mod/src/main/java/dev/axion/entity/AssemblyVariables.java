@@ -276,6 +276,94 @@ public final class AssemblyVariables {
         }
     }
 
+    /**
+     * L'état complet des variables à un instant, ce qui se cache compris : un client qui prédit le garde à chaque tick
+     * de son historique, et y revient avant de rejouer (ADR-168 D6). Copie figée.
+     *
+     * @param values les valeurs
+     * @param writers ce qui a posé chacune
+     * @param held les commandes tenues de chaque siège, à sa dernière entrée
+     * @param pressTicks pour chaque variable, les débuts de tick avant le retour d'un {@code press}
+     * @param pressRest la valeur de retour de chaque {@code press} en cours
+     * @param version le numéro d'écriture
+     */
+    public record State(double[] values, String[] writers, int[] held, int[] pressTicks, double[] pressRest,
+            long version) {
+
+        /** Copie les tableaux. */
+        public State {
+            values = values.clone();
+            writers = writers.clone();
+            held = held.clone();
+            pressTicks = pressTicks.clone();
+            pressRest = pressRest.clone();
+        }
+
+        @Override
+        public double[] values() {
+            return values.clone();
+        }
+    }
+
+    /** {@return l'état complet, copie} */
+    public State state() {
+        return new State(values, writers, held, pressTicks, pressRest, version);
+    }
+
+    /**
+     * Revient à un état gardé par {@link #state()} sur les mêmes variables.
+     *
+     * @param state l'état
+     * @throws IllegalArgumentException s'il n'a pas le nombre de variables de cette table
+     */
+    public void resume(State state) {
+        if (state.values.length != values.length) {
+            throw new IllegalArgumentException(state.values.length + " valeurs pour " + values.length + " variables");
+        }
+        System.arraycopy(state.values, 0, values, 0, values.length);
+        System.arraycopy(state.writers, 0, writers, 0, writers.length);
+        System.arraycopy(state.pressTicks, 0, pressTicks, 0, pressTicks.length);
+        System.arraycopy(state.pressRest, 0, pressRest, 0, pressRest.length);
+        held = state.held.clone();
+        version = state.version;
+    }
+
+    /**
+     * Prend les valeurs que le serveur fait foi (ADR-168 D6) : chaque variable du masque qui en diffère la reçoit, sans
+     * garde — le serveur l'a déjà jugée —, et un {@code press} en cours sur elle s'arrête. Les commandes tenues restent :
+     * elles sont celles du client.
+     *
+     * @param serverValues les valeurs du serveur, une par variable déclarée
+     * @param mask les variables qu'il a envoyées, un bit par rang
+     * @param writer ce qui écrit, pour le diagnostic
+     * @return vrai si une valeur a changé
+     */
+    public boolean rebase(double[] serverValues, long mask, String writer) {
+        boolean changed = false;
+        for (int i = 0; i < Math.min(values.length, serverValues.length) && i < Long.SIZE; i++) {
+            if ((mask & 1L << i) != 0 && Double.compare(values[i], serverValues[i] == 0.0 ? 0.0 : serverValues[i]) != 0) {
+                write(i, serverValues[i], writer);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * {@return vrai si chaque variable du masque vaut celle du serveur}
+     *
+     * @param serverValues les valeurs du serveur, une par variable déclarée
+     * @param mask les variables qu'il a envoyées, un bit par rang
+     */
+    public boolean agrees(double[] serverValues, long mask) {
+        for (int i = 0; i < Math.min(values.length, serverValues.length) && i < Long.SIZE; i++) {
+            if ((mask & 1L << i) != 0 && Double.compare(values[i], serverValues[i] == 0.0 ? 0.0 : serverValues[i]) != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** {@return les valeurs des variables {@code persist}, par nom, dans l'ordre de la definition} */
     public Map<String, Double> persisted() {
         Map<String, Double> saved = new LinkedHashMap<>();

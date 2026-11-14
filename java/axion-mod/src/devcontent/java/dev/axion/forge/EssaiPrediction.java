@@ -81,7 +81,13 @@ public final class EssaiPrediction {
     private static final int SOL_LONGUEUR = 176;
 
     /** Le véhicule de l'essai : il avance vers son -Z, de l'extrémité du sol. */
-    private static final String VEHICULE = "axion:test/vehicule";
+    private static final String VEHICULE = System.getenv().getOrDefault("AXION_ESSAI_VEHICULE", "axion:test/vehicule");
+
+    /**
+     * La variable que le client bascule par sa commande liée, au tick {@link Client#BASCULE} (ADR-168 D6, 6d-2) : le
+     * rapport dit au bout de combien de ticks la prédiction l'a vue, puis le serveur. Vide : aucune bascule.
+     */
+    private static final String BASCULER = System.getProperty("axion.essai.basculer", "");
 
     /** La distance de l'obstacle devant le véhicule, en blocs : atteint en virant, vers le tick 127. */
     private static final double OBSTACLE = 23.0;
@@ -207,6 +213,9 @@ public final class EssaiPrediction {
 
         /** Les phases de la conduite, en ticks du client. */
         private static final int ATTENTE = 40;
+
+        /** Le tick où la commande liée à {@link EssaiPrediction#BASCULER} s'enfonce, un tick, en pleine accélération. */
+        static final int BASCULE = 60;
         private static final int ACCELERE = 80;
         private static final int BRAQUE = 30;
         private static final int RELACHE = 40;
@@ -236,6 +245,50 @@ public final class EssaiPrediction {
         /** Le plus de proxies posés en un tick : assemblies, entités vanilla. */
         private static int proxiesAssemblies;
         private static int proxiesEntites;
+        /** Le tick où la variable basculée a changé dans la prédiction, puis dans ce que le serveur a envoyé ; -1 avant. */
+        private static int basculePredite = -1;
+        private static int basculeRecue = -1;
+        private static double avantPredite = Double.NaN;
+        private static double avantRecue = Double.NaN;
+
+        /**
+         * Enfonce, au tick {@link #BASCULE} et pendant un tick, la commande que le siège lie à {@link #BASCULER}, puis
+         * guette le changement de la variable : prédite d'abord, reçue ensuite.
+         */
+        private static void basculer(AxionEntity assembly) {
+            if (BASCULER.isEmpty() || assembly.declaredSeating() == null) {
+                return;
+            }
+            dev.axion.definition.Seating seating = assembly.declaredSeating();
+            int variable = seating.variables().indexOf(BASCULER);
+            int seat = assembly.seatOf(Minecraft.getInstance().player);
+            if (variable < 0 || seat < 0) {
+                return;
+            }
+            int commande = -1;
+            for (dev.axion.definition.Seating.Binding binding : seating.seats().get(seat).bindings()) {
+                if (binding.variable() == variable) {
+                    commande = binding.command();
+                }
+            }
+            if (commande > 0 && commande <= dev.axion.forge.client.VehicleKeys.COMMANDS.size()) {
+                dev.axion.forge.client.VehicleKeys.COMMANDS.get(commande - 1).setDown(tick == BASCULE);
+            }
+            dev.axion.entity.PredictedVariables predites = ClientPrediction.predictedVariables();
+            double predite = predites == null ? Double.NaN : predites.values()[variable];
+            double recue = assembly.receivedVariables().value(variable);
+            if (tick == BASCULE - 1) {
+                avantPredite = predite;
+                avantRecue = recue;
+            }
+            if (tick >= BASCULE && basculePredite < 0 && Double.compare(predite, avantPredite) != 0) {
+                basculePredite = tick;
+            }
+            if (tick >= BASCULE && basculeRecue < 0 && Double.compare(recue, avantRecue) != 0) {
+                basculeRecue = tick;
+            }
+        }
+
         /** Les ticks du client depuis le début de l'essai. */
         private static long ticksClient;
 
@@ -308,6 +361,7 @@ public final class EssaiPrediction {
             boolean gauche = tick >= ATTENTE + ACCELERE && tick < ATTENTE + ACCELERE + BRAQUE;
             minecraft.options.keyUp.setDown(avant);
             minecraft.options.keyLeft.setDown(gauche);
+            basculer(assembly);
             noter(assembly, avant, gauche);
             int[] proxies = ClientPrediction.proxyCounts();
             proxiesAssemblies = Math.max(proxiesAssemblies, proxies[0]);
@@ -488,6 +542,10 @@ public final class EssaiPrediction {
                     String.format(Locale.ROOT, "  pire écart de position : %.4f m (rotation %.4f rad, vitesse %.3f m/s)"
                             + " au tick %d, %d en attente", e[0], e[1], e[2], (int) e[3], (int) e[4])));
             rapport.add(fluidite());
+            if (!BASCULER.isEmpty()) {
+                rapport.add(String.format(Locale.ROOT, "variable %s basculée au tick %d : vue par la prédiction au tick"
+                        + " %d, reçue du serveur au tick %d", BASCULER, BASCULE, basculePredite, basculeRecue));
+            }
             rapport.add("proxies posés au plus : " + proxiesAssemblies + " assembly(s), " + proxiesEntites
                     + " entité(s) vanilla");
             rapport.addAll(banc());

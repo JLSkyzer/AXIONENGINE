@@ -431,6 +431,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         entityData.define(SEATS, new CompoundTag());
     }
 
+    /**
+     * {@return les sièges, les commandes liées et les variables que la definition déclare, des deux côtés ; {@code null}
+     * : inerte, ou pas encore compilée} Le client qui prédit y lit les commandes de son siège (ADR-168 D6).
+     */
+    public Seating declaredSeating() {
+        return seating();
+    }
+
     /** {@return les sièges et les interactions de la definition, ou {@code null} : inerte, ou pas encore compilée} */
     private Seating seating() {
         return inert ? null : AxionEntities.seating(definitionId).orElse(null);
