@@ -977,7 +977,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param states l'état complet exporté de chaque assembly de l'ensemble, celui-ci d'abord
      */
     public dev.axion.net.CorrectionMessage correction(long tick, List<dev.axion.net.CorrectionMessage.State> states) {
-        return new dev.axion.net.CorrectionMessage(tick, driverSequence(), getId(), netParameters.tick(),
+        long applied = driverSequence();
+        int queued = applied < 0 ? -1 : Math.max(0, Math.min(255, driverQueueDepth()));
+        return new dev.axion.net.CorrectionMessage(tick, applied, queued, getId(), netParameters.tick(),
                 correctionVariables(), states);
     }
 
@@ -1060,6 +1062,20 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @return la faute à journaliser, {@code null} sans ; une valeur non finie compte pour zéro, et se journalise
      */
     public String receiveInput(Entity sender, int seat, long sequence, VehicleInput input) {
+        return receiveInput(sender, seat, sequence, input, false);
+    }
+
+    /**
+     * Reçoit les entrées d'un passager, dont le client dit s'il règle la file de son siège (ADR-168 D3).
+     *
+     * @param sender le passager qui les envoie
+     * @param seat rang du siège annoncé
+     * @param sequence leur séquence, non signée : celle du canal
+     * @param input les entrées, telles que reçues
+     * @param paced vrai si son client règle la profondeur de la file
+     * @return la faute à journaliser, {@code null} sans
+     */
+    public String receiveInput(Entity sender, int seat, long sequence, VehicleInput input, boolean paced) {
         Seating seating = seating();
         if (seating == null || seat < 0 || seat >= seating.seats().size()
                 || sender.getVehicle() != this || seatOf(sender) != seat) {
@@ -1068,7 +1084,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         Seating.Seat declared = seating.seats().get(seat);
         QueuedInput queued = new QueuedInput(input.sanitized(declared),
                 "siège " + declared.name() + " (" + sender.getName().getString() + ")");
-        if (!seatInputs.computeIfAbsent(seat, key -> new SeatInputs()).queue.offer(sequence, queued)) {
+        if (!seatInputs.computeIfAbsent(seat, key -> new SeatInputs()).queue.offer(sequence, queued, paced)) {
             return "séquence d'entrées qui ne croît pas";
         }
         return input.finite() ? null : "entrée non finie, comptée pour zéro (R-1110)";
@@ -1145,6 +1161,24 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         cadence[1] = inputs.queue.skippedTotal();
         System.arraycopy(depths, 0, cadence, 2, depths.length);
         return cadence;
+    }
+
+    /**
+     * {@return les entrées que la file du siège {@code driver} tenait à ce tick, avant d'en prendre une (ADR-168 D3,
+     * révisé le 2026-11-14) ; -1 sans} La correction la rend au conducteur, qui règle sur elle la cadence de ses envois.
+     */
+    public int driverQueueDepth() {
+        Seating seating = seating();
+        if (seating == null) {
+            return -1;
+        }
+        for (int seat = 0; seat < seating.seats().size(); seat++) {
+            if (seating.seats().get(seat).driver()) {
+                SeatInputs inputs = seatInputs.get(seat);
+                return inputs == null ? -1 : inputs.queue.lastDepth();
+            }
+        }
+        return -1;
     }
 
     /**

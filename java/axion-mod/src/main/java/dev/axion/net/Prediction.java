@@ -32,7 +32,7 @@ public final class Prediction {
     public static final int HISTORY = 64;
 
     /** Poids d'une mesure neuve dans la moyenne de la latence et du coût d'un pas. */
-    private static final double SMOOTHING = 0.125;
+    static final double SMOOTHING = 0.125;
 
     /** Le monde prédit, vu de la boucle. */
     public interface World {
@@ -132,6 +132,8 @@ public final class Prediction {
     private double latencyMillis = -1;
     private double stepNanos = -1;
     private long lastServerTick = -1;
+    /** Le tick du serveur de la dernière latence mesurée : une correction ne compte qu'une fois. */
+    private long lastMeasuredTick = -1;
     private long lastAppliedSequence = -1;
     private long matches;
     private long replays;
@@ -214,7 +216,7 @@ public final class Prediction {
         }
         lastServerTick = serverTick;
         lastAppliedSequence = appliedSequence;
-        measureLatency(appliedSequence, start);
+        acknowledged(serverTick, appliedSequence);
         // Les entrées que le serveur a appliquées sortent de l'historique ; celle qu'il acquitte se compare.
         Entry acknowledged = null;
         for (Iterator<Entry> it = history.iterator(); it.hasNext(); ) {
@@ -275,6 +277,22 @@ public final class Prediction {
             }
         }
         return -1;
+    }
+
+    /**
+     * Une correction acquitte une entrée : la latence se mesure, que le monde prédit tourne ou non (D8 : une
+     * prédiction coupée pour sa latence se rétablit quand elle redescend, et seule cette mesure le dit). Une fois par
+     * tick du serveur.
+     *
+     * @param serverTick le tick de la correction
+     * @param appliedSequence la séquence acquittée, -1 sans entrée appliquée
+     */
+    public void acknowledged(long serverTick, long appliedSequence) {
+        if (serverTick <= lastMeasuredTick) {
+            return;
+        }
+        lastMeasuredTick = serverTick;
+        measureLatency(appliedSequence, clock.getAsLong());
     }
 
     private void measureLatency(long appliedSequence, long now) {

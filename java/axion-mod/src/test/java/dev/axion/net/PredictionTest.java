@@ -62,6 +62,23 @@ class PredictionTest {
     }
 
     @Test
+    @DisplayName("D8 : prédiction coupée, la latence se mesure encore, et la coupure peut cesser")
+    void latenceSansPrediction() {
+        long[] clock = {0};
+        Prediction prediction = new Prediction(() -> clock[0], 10 * MS);
+        prediction.sent(0, clock[0]);
+        clock[0] += 600 * MS;
+        prediction.acknowledged(3, 0);
+        assertEquals(600.0, prediction.latencyMillis(), 1e-9, "acquittée sans monde prédit");
+        prediction.sent(1, clock[0]);
+        clock[0] += 100 * MS;
+        prediction.acknowledged(4, 1);
+        prediction.acknowledged(4, 1);
+        assertEquals(600.0 + Prediction.SMOOTHING * (100.0 - 600.0), prediction.latencyMillis(), 1e-9,
+                "une fois par tick du serveur, la descente se voit");
+    }
+
+    @Test
     @DisplayName("D5 : une correction égale à la prédiction ne change rien ; la latence se mesure par l'acquittement")
     void predictionJuste() {
         long[] clock = {0};

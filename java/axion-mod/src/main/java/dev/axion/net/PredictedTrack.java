@@ -12,7 +12,9 @@ package dev.axion.net;
  *       l'avant-dernier.</li>
  *   <li>Un pas rejoué ({@link #replay}) réécrit son tick : l'écart à l'écran se résorbe en 200 ms d'heure locale, ou se
  *       téléporte au-delà de {@code net.snap_threshold} (21.7, D5).</li>
- *   <li>Le passage de l'interpolation à la prédiction, et retour, se lisse de même ({@link #blendFrom}).</li>
+ *   <li>Le passage de l'interpolation à la prédiction, et retour, se lisse de même ({@link #blendFrom}) ; et le tick
+ *       où le client règle la cadence de ses entrées, qui fait deux pas ou aucun (ADR-168 D3, révisé le
+ *       2026-11-14) : la pose de la dernière image ({@link #lastShown}) s'y résorbe.</li>
  * </ul>
  *
  * <p>Logique pure, sans Forge ni natif. Thread du client seul.
@@ -99,6 +101,15 @@ public final class PredictedTrack {
      */
     public Interpolation.Pose pose(double fraction, double nowMillis) {
         return started ? poses.sample(renderMillis(fraction), nowMillis) : null;
+    }
+
+    /**
+     * {@return la pose de la dernière image dessinée, telle qu'elle s'est affichée ; {@code null} avant}
+     *
+     * @param nowMillis le temps local, en millisecondes
+     */
+    public Interpolation.Pose lastShown(double nowMillis) {
+        return started && !Double.isNaN(lastFrameMillis) ? poses.sample(lastFrameMillis, nowMillis) : null;
     }
 
     /** {@return vrai si un pas au moins y est posé} */

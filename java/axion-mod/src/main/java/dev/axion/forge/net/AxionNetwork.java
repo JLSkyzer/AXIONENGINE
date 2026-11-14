@@ -237,7 +237,8 @@ public final class AxionNetwork {
      */
     private static void applyInput(ServerPlayer player, PlayerSync sync, InputMessage input) {
         String fault = player.serverLevel().getEntity(input.entity()) instanceof AxionEntity assembly
-                ? assembly.receiveInput(player, input.seat(), Integer.toUnsignedLong(input.sequence()), input.input())
+                ? assembly.receiveInput(player, input.seat(), Integer.toUnsignedLong(input.sequence()), input.input(),
+                        input.paced())
                 : "entrées pour une entité qui n'est pas une assembly";
         if (fault != null) {
             sync.reportInput(fault);
@@ -269,11 +270,25 @@ public final class AxionNetwork {
      *     parti
      */
     public static long sendInput(Connection connection, int entity, int seat, VehicleInput input) {
+        return sendInput(connection, entity, seat, input, false);
+    }
+
+    /**
+     * Chez le client : envoie une entrée, et dit si le client règle la file de son siège (ADR-168 D3).
+     *
+     * @param connection connexion du client
+     * @param entity identifiant réseau de l'assembly
+     * @param seat rang du siège
+     * @param input les entrées
+     * @param paced vrai si le client règle la profondeur de la file
+     * @return sa séquence, non signée ; -1 sans session AXION
+     */
+    public static long sendInput(Connection connection, int entity, int seat, VehicleInput input, boolean paced) {
         ClientSession session = connection.channel().attr(CLIENT_SESSION).get();
         if (session == null) {
             return -1;
         }
-        AxionChannel.CHANNEL.sendTo(new ChannelFrames.PlayToServer(session.inputFrame(entity, seat, input)),
+        AxionChannel.CHANNEL.sendTo(new ChannelFrames.PlayToServer(session.inputFrame(entity, seat, input, paced)),
                 connection, NetworkDirection.PLAY_TO_SERVER);
         return session.lastInputSequence();
     }

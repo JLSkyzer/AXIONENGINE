@@ -49,7 +49,7 @@ ADR-143	ADR		8280	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-
 ADR-150	ADR		5035	2	21.3 Handshake
 ADR-156	ADR		8269	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 ADR-159	ADR		785	3	3.4 DM-04 : Mesh et vertex
-ADR-160	ADR		146	15	0.4 Identifiants normatifs
+ADR-160	ADR		146	16	0.4 Identifiants normatifs
 ADR-161	ADR		7833	1	38.9 Registre des amendements postérieurs au gel
 ADR-162	ADR		898	10	3.7 DM-07 : PhysicsMaterial — modèle de matière étendu
 ADR-163	ADR		7835	3	38.9 Registre des amendements postérieurs au gel
@@ -102,7 +102,7 @@ C-14	C	1609	400	7	5.10 C-14 : FFI Bridge
 C-15	C	1617	400	10	5.11 C-15 : Telemetry natif
 C-16	C	1625	401	17	5.12 C-16 : Noyau déterministe
 C-20	C	1727	393	7	5.13 C-20 : Asset Orchestrator
-C-21	C	1753	393	10	5.14 C-21 : Importers
+C-21	C	1753	393	11	5.14 C-21 : Importers
 C-22	C	1778	393	15	5.15 C-22 : Asset Validator
 C-23	C	1806	394	10	5.16 C-23 : Asset Optimizer
 C-24	C	1830	394	9	5.17 C-24 : Conteneur A3D
@@ -134,7 +134,7 @@ C-51	C	2285	379	10	5.42 C-51 : Network Sync
 C-52	C	2291	379	9	5.43 C-52 : Persistance
 C-53	C	2297	380	6	5.44 C-53 : Interaction & Sièges
 C-54	C	2315	380	7	5.45 C-54 : Bloc & BlockEntity 3D
-C-55	C	2323	380	7	5.46 C-55 : Item 3D
+C-55	C	2323	380	9	5.46 C-55 : Item 3D
 C-60	C	2331	370	10	5.47 C-60 : Backend NATIVE_GL
 C-61	C	2337	167	8	5.48 C-61 : Backend VANILLA_CONSUMER
 C-62	C	2353	371	5	5.49 C-62 : GPU Resource Manager
@@ -150,7 +150,7 @@ C-71	C	2454	365	7	5.58 C-71 : Commandes
 C-72	C	2479	365	6	5.59 C-72 : Benchmark Harness
 C-73	C	2483	366	5	5.60 C-73 : Overlay diagnostics
 C-74	C	2491	366	6	5.61 C-74 : CLI `axion-cli`
-C-75	C	2509	366	9	5.62 C-75 : Addon Blender
+C-75	C	2509	366	10	5.62 C-75 : Addon Blender
 C-76	C	2513	367	17	5.63 C-76 : Bridge RUSTFORGE-X
 C-77	C	2517	367	14	5.64 C-77 : Gouverneur de qualité
 C-80	C	2554	375	10	5.65 C-80 : Ombres AXION
@@ -212,7 +212,10 @@ CAP-52	CAP	8288	8288	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (A
 CAP-53	CAP	8289	8289	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-54	CAP	8290	8290	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-55	CAP	8291	8291	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-56	CAP	8292	8292	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-56	CAP	8292	8292	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-57	CAP	8293	8293	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-58	CAP	8294	8294	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-59	CAP	8295	8295	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 DM-01	DM	690	690	1	3.1 DM-01 : identifiants
 DM-02	DM	709	709	1	3.2 DM-02 : Transform
 DM-03	DM	719	719	1	3.3 DM-03 : Node
@@ -572,7 +575,7 @@ R-721	R	2318	2318	2	5.45 C-54 : Bloc & BlockEntity 3D
 R-722	R	2319	2319	2	5.45 C-54 : Bloc & BlockEntity 3D
 R-730	R	2325	2325	1	5.46 C-55 : Item 3D
 R-731	R	2326	2326	1	5.46 C-55 : Item 3D
-R-732	R	2327	2327	2	5.46 C-55 : Item 3D
+R-732	R	2327	2327	3	5.46 C-55 : Item 3D
 R-740	R	2341	2341	2	5.48 C-61 : Backend VANILLA_CONSUMER
 R-741	R	2344	2344	1	5.48 C-61 : Backend VANILLA_CONSUMER
 R-742	R	2345	2345	1	5.48 C-61 : Backend VANILLA_CONSUMER

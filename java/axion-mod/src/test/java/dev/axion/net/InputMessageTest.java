@@ -34,9 +34,12 @@ class InputMessageTest {
     void allerRetour() throws MalformedPacketException {
         InputMessage message = new InputMessage(0xFFFF_FFFE, 300, 15, ENTREE);
         byte[] octets = message.encode();
-        assertEquals(1 + 4 + 2 + 1 + 5 * 4 + 1 + 1, octets.length, "genre, séquence, entité, siège, 22 octets d'entrées");
+        assertEquals(1 + 4 + 2 + 1 + 5 * 4 + 1 + 1 + 1, octets.length,
+                "genre, séquence, entité, siège, 22 octets d'entrées, cadence");
         assertEquals(MessageKinds.INPUT, octets[0]);
         assertEquals(message, InputMessage.decode(octets));
+        InputMessage regle = new InputMessage(7, 300, 15, ENTREE, true);
+        assertEquals(regle, InputMessage.decode(regle.encode()), "ADR-168 D3 : le client qui règle sa file le dit");
     }
 
     @Test
@@ -48,6 +51,9 @@ class InputMessageTest {
         byte[] genre = octets.clone();
         genre[0] = (byte) MessageKinds.ACK;
         assertThrows(MalformedPacketException.class, () -> InputMessage.decode(genre));
+        byte[] cadence = octets.clone();
+        cadence[cadence.length - 1] = 2;
+        assertThrows(MalformedPacketException.class, () -> InputMessage.decode(cadence), "bit de cadence inconnu");
     }
 
     @Test

@@ -103,6 +103,26 @@ public final class ClientPrediction {
     private static long lastCorrectionSequence = -1;
     private static long starvedTicks;
     private static long skippedInputs;
+    /**
+     * La cadence que le client tient au serveur (ADR-168 D3, révisé le 2026-11-14) ; {@code null} sans véhicule prédit.
+     * Ses ajustements comptent depuis la connexion.
+     */
+    private static dev.axion.net.InputPacing pacing;
+    private static long pacingAdded;
+    private static long pacingWithheld;
+    /** La dernière entrée partie, et sa séquence : la prochaine se dit tranquille si elle lui est égale. */
+    private static VehicleInput lastSent;
+    private static long lastSentSequence = -1;
+    /** L'heure du dernier tick qui a envoyé, et les envois encore à marquer en retard après un à-coup du client. */
+    private static long lastSendNanos;
+    private static int lateSends;
+    /** La profondeur de la file au serveur, lue dans la dernière correction ; -1 sans. */
+    private static int lastQueued = -1;
+    /**
+     * Un tick du client parti plus d'un tick et demi après le précédent : le client a tardé — une image lente — et
+     * Minecraft rattrape les ticks manqués d'un coup.
+     */
+    private static final long LATE_GAP_NANOS = 75_000_000L;
     /** Vrai quand une restauration n'a pu recoudre un joint : le monde prédit se recrée à la correction suivante. */
     private static boolean irreconcilable;
     /** La dernière cause journalisée d'une prédiction coupée ; vide si elle ne l'est pas. */
@@ -231,6 +251,8 @@ public final class ClientPrediction {
             return;
         }
         Prediction prediction = loop(connection);
+        // D8 : la latence se mesure avant tout, même prédiction coupée : c'est elle qui dit quand la rétablir.
+        prediction.acknowledged(correction.serverTick(), correction.appliedSequence());
         AxionEntity assembly = level.getEntity(correction.entity()) instanceof AxionEntity found ? found : null;
         if (assembly == null || player.getVehicle() != assembly || !assembly.drivenBy(player)) {
             close();
@@ -246,6 +268,10 @@ public final class ClientPrediction {
             return;
         }
         lastServerState = correction.states().get(0).bytes();
+        lastQueued = correction.queued();
+        if (pacing != null) {
+            pacing.onCorrection(correction.appliedSequence(), correction.queued());
+        }
         if (lastCorrectionTick >= 0 && correction.appliedSequence() >= 0 && lastCorrectionSequence >= 0) {
             long ticks = correction.serverTick() - lastCorrectionTick;
             long inputs = correction.appliedSequence() - lastCorrectionSequence;
@@ -270,6 +296,57 @@ public final class ClientPrediction {
             LOGGER.info("AXION : prédiction : l'état du serveur ne se restaure pas sur le monde prédit (joint rompu ici,"
                     + " intact au serveur) : monde prédit recréé");
             close();
+        }
+    }
+
+    /**
+     * Les entrées d'un tick partent (ADR-168 D3) : une d'ordinaire. Pour le véhicule prédit, le client tient la
+     * profondeur de la file de son siège au serveur ({@link dev.axion.net.InputPacing}) : il en envoie deux, et fait
+     * deux pas prédits, quand la file s'est trouvée vide ; aucune, et aucun pas, quand elle a tenu une entrée de trop.
+     * Le saut d'un tick que cela fait à l'écran se résorbe comme une correction.
+     *
+     * @param connection la connexion
+     * @param assembly le véhicule
+     * @param seat le siège d'où elles partent
+     * @param input l'entrée du tick
+     */
+    static void sendInputs(Connection connection, AxionEntity assembly, int seat, VehicleInput input) {
+        boolean paced = pacing != null && world != null && vehicle == assembly;
+        int count = 1;
+        Interpolation.Pose shown = null;
+        if (paced) {
+            count = pacing.inputsThisTick(lastSentSequence + 1, input.equals(lastSent));
+            if (count != 1 && track != null) {
+                shown = track.lastShown(assembly.localMillis(System.nanoTime()));
+                if (count > 1) {
+                    pacingAdded++;
+                } else {
+                    pacingWithheld++;
+                }
+            }
+        }
+        lastSent = input;
+        long now = System.nanoTime();
+        if (lastSendNanos != 0 && now - lastSendNanos > LATE_GAP_NANOS) {
+            // Ce tick, et ceux que Minecraft rattrape juste après, partent en retard.
+            lateSends = (int) Math.min(64, Math.round((now - lastSendNanos) / (dev.axion.net.ServerClock.TICK_MILLIS * 1e6)));
+        }
+        lastSendNanos = now;
+        for (int i = 0; i < count; i++) {
+            long sequence = AxionNetwork.sendInput(connection, assembly.getId(), seat, input, paced);
+            if (sequence >= 0) {
+                lastSentSequence = sequence;
+                if (lateSends > 0 && pacing != null) {
+                    pacing.sentLate(sequence);
+                }
+            }
+            onInputSent(connection, assembly, seat, input, sequence);
+        }
+        if (lateSends > 0) {
+            lateSends--;
+        }
+        if (shown != null && track != null) {
+            track.blendFrom(shown, 0.0, assembly.localMillis(System.nanoTime()));
         }
     }
 
@@ -327,6 +404,13 @@ public final class ClientPrediction {
         close();
         loop = null;
         refusal = "";
+        lastSent = null;
+        lastSentSequence = -1;
+        lastSendNanos = 0;
+        lateSends = 0;
+        lastQueued = -1;
+        pacingAdded = 0;
+        pacingWithheld = 0;
     }
 
     /** Une colonne se charge chez le client : les tuiles qui la couvrent se recoupent. */
@@ -469,6 +553,7 @@ public final class ClientPrediction {
         lastRoot = null;
         irreconcilable = false;
         track = new PredictedTrack(Interpolation.of(runtime.outcome().config()));
+        pacing = new dev.axion.net.InputPacing();
         variables = predictedVariables(assembly);
         sentFields = null;
         sentGears = null;
@@ -512,6 +597,7 @@ public final class ClientPrediction {
         }
         vehicle = null;
         track = null;
+        pacing = null;
         variables = null;
         control = null;
         stateBefore = null;
@@ -670,6 +756,19 @@ public final class ClientPrediction {
      */
     public static long[] inputCadence() {
         return new long[] {starvedTicks, skippedInputs};
+    }
+
+    /** {@return la profondeur de la file au serveur, lue dans la dernière correction ; -1 sans} */
+    public static int lastQueued() {
+        return lastQueued;
+    }
+
+    /**
+     * {@return les ajustements de la cadence depuis la connexion (ADR-168 D3, révisé le 2026-11-14) : les ticks à deux
+     * entrées, puis ceux à aucune}
+     */
+    public static long[] pacingAdjustments() {
+        return new long[] {pacingAdded, pacingWithheld};
     }
 
     /** {@return les variables prédites du véhicule prédit, {@code null} sans} */

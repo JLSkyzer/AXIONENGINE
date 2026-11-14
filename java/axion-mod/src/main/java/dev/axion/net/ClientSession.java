@@ -208,7 +208,20 @@ public final class ClientSession {
      * @param input les entrées
      */
     public synchronized byte[] inputFrame(int entity, int seat, VehicleInput input) {
-        return reply(new InputMessage(nextInputSequence++, entity, seat, input).encode());
+        return inputFrame(entity, seat, input, false);
+    }
+
+    /**
+     * {@return la trame des entrées de ce tick, sa séquence prise} Le client qui règle la file de son siège le dit
+     * (ADR-168 D3).
+     *
+     * @param entity identifiant réseau de l'assembly
+     * @param seat rang du siège
+     * @param input les entrées
+     * @param paced vrai si le client règle la profondeur de la file
+     */
+    public synchronized byte[] inputFrame(int entity, int seat, VehicleInput input, boolean paced) {
+        return reply(new InputMessage(nextInputSequence++, entity, seat, input, paced).encode());
     }
 
     /** {@return la séquence des dernières entrées envoyées, non signée ; -1 avant les premières} */

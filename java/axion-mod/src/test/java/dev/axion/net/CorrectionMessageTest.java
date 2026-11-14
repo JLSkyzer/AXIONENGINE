@@ -24,7 +24,7 @@ class CorrectionMessageTest {
 
     private static CorrectionMessage exemple() {
         double[] valeurs = {1.0, 0.0, 0.1, 42.5};
-        return new CorrectionMessage(123_456L, 0xFFFF_FFF0L, 300, 120_000L,
+        return new CorrectionMessage(123_456L, 0xFFFF_FFF0L, 3, 300, 120_000L,
                 CorrectionMessage.Variables.of(valeurs, 0b1101L),
                 List.of(new CorrectionMessage.State(300, bloc(264, 3)), new CorrectionMessage.State(301, bloc(80, 9))));
     }
@@ -40,13 +40,14 @@ class CorrectionMessageTest {
         assertEquals(0.1, relu.variables().value(2), "un f64 : 0,1 n'est pas arrondi en f32");
         assertFalse(relu.variables().has(1), "absente du masque");
         assertEquals(0xFFFF_FFF0L, relu.appliedSequence(), "séquence non signée");
+        assertEquals(3, relu.queued(), "ADR-168 D3 : la profondeur de la file, que le client règle");
         assertTrue(Arrays.equals(bloc(264, 3), relu.states().get(0).bytes()));
     }
 
     @Test
     @DisplayName("D4 : sans entrée appliquée, la séquence est absente du fil")
     void sansEntree() throws MalformedPacketException {
-        CorrectionMessage message = new CorrectionMessage(5L, -1L, 7, 0L, CorrectionMessage.Variables.NONE,
+        CorrectionMessage message = new CorrectionMessage(5L, -1L, -1, 7, 0L, CorrectionMessage.Variables.NONE,
                 List.of(new CorrectionMessage.State(7, bloc(16, 1))));
         byte[] octets = message.encode();
         assertEquals(1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 16, octets.length,
@@ -79,6 +80,13 @@ class CorrectionMessageTest {
 
         byte[] enTrop = Arrays.copyOf(sain, sain.length + 1);
         assertThrows(MalformedPacketException.class, () -> CorrectionMessage.decode(enTrop));
+
+        assertThrows(IllegalArgumentException.class, () -> new CorrectionMessage(5L, 4L, 256, 7, 0L,
+                CorrectionMessage.Variables.NONE, List.of(new CorrectionMessage.State(7, bloc(16, 1)))),
+                "une profondeur tient dans un octet");
+        assertThrows(IllegalArgumentException.class, () -> new CorrectionMessage(5L, -1L, 0, 7, 0L,
+                CorrectionMessage.Variables.NONE, List.of(new CorrectionMessage.State(7, bloc(16, 1)))),
+                "pas de profondeur sans entrée appliquée");
 
         byte[] sansEtat = new WireWriter(32).u8(MessageKinds.CORRECTION).varULong(1).u8(0).varUInt(7).varULong(0)
                 .varUInt(0).varUInt(0).toByteArray();

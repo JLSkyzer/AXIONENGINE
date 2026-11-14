@@ -2466,3 +2466,14 @@ la 6d-2, commencé entre-temps dans le même arbre | une vérification en attent
 part, pas tel qu'il était quand on l'a lancée | tant qu'une vérification de l'arbre attend ou tourne, ne pas le modifier :
 mettre le travail suivant de côté (`git stash -u` sur ses fichiers) ou attendre ; et ne commiter qu'un arbre dont chaque
 job a vu l'état exact.
+
+[2026-11-14] | Une régulation de la file des entrées, essayée d'emblée en jeu, a creusé la file au lieu de la tenir |
+elle ne voyait pas la file pendant que le véhicule dormait, et prenait les à-coups du client pour un lien qui tremble |
+un régulateur se simule d'abord tick à tick avec les perturbations qu'on sait réelles — file pleine au départ, à-coups
+du client, gigue du lien — et ne va en jeu qu'une fois ces simulations vertes.
+
+[2026-11-14] | Un lanceur en file arrêté par TaskStop, puis par pkill, a relancé un essai Minecraft cinq minutes plus
+tard, pendant le film d'une autre session que Killian avait demandé de laisser tourner | sous Windows, TaskStop tue le
+bash de premier niveau mais pas ses enfants, et le pkill de Git Bash ne voit pas les processus Windows | arrêter un
+lanceur, c'est lister ses processus par Get-CimInstance (ligne de commande contenant le script), les arrêter tous par
+Stop-Process, puis relister quelques secondes plus tard avant d'annoncer que rien ne tourne.

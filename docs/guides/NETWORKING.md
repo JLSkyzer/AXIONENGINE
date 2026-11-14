@@ -7,7 +7,7 @@ doit avoir pour entrer, ce que le serveur lui envoie, ce qui se règle, et où l
 
 ## Ce qu'un client doit avoir pour entrer
 
-1. **AXION, dans la même version de protocole.** Forge compare la version du canal pendant la connexion (`AXION-9`
+1. **AXION, dans la même version de protocole.** Forge compare la version du canal pendant la connexion (`AXION-10`
    aujourd'hui). Un client sans AXION, ou d'une autre version de protocole, est refusé par Forge, avec le message de
    Forge (R-1630). La version du protocole ne suit pas celle du mod : elle ne monte que lorsque le format change.
 2. **Chaque addon de contenu du serveur, dans la même version.** Le serveur exige du client chaque mod propriétaire

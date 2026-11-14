@@ -15,6 +15,9 @@ import java.util.List;
  *   <li>Une file qui déborde rattrape : avant de prendre, elle saute aux {@link #MAX_PENDING} plus récentes. Une
  *       entrée n'attend ainsi qu'un tick au plus. Celles qu'elle saute sont rendues, dans l'ordre, pour que les
  *       commandes tenues gardent leurs fronts (ADR-163 D2).</li>
+ *   <li>Une file réglée par son client (ADR-168 D3, révisé le 2026-11-14 : le client qui prédit tient lui-même la
+ *       profondeur, en envoyant deux entrées dans un tick ou en en retenant une) ne rattrape qu'au-delà de
+ *       {@link #MAX_PACED} : sauter une entrée décalerait d'un tick le monde que ce client prédit.</li>
  * </ul>
  *
  * <p>Logique pure, sans Forge. Non synchronisée : l'entité qui la tient ne la touche que sur son fil.
@@ -28,6 +31,12 @@ public final class InputQueue<T> {
      * d'arrivée en amène deux dans un tick et aucune dans le suivant ; au-delà, la file a pris du retard.
      */
     public static final int MAX_PENDING = 2;
+
+    /**
+     * Entrées en attente au plus dans une file réglée par son client : une demi-seconde. Au-delà, le client ne la
+     * règle plus — gelé, ou qui triche — et la file rattrape comme une autre (R-1110).
+     */
+    public static final int MAX_PACED = 10;
 
     /**
      * Ce qu'un tick applique.
@@ -53,6 +62,8 @@ public final class InputQueue<T> {
     private long lastApplied = -1;
     private long skippedTotal;
     private long starvedTotal;
+    private boolean paced;
+    private int lastDepth = -1;
     private final long[] depths = new long[DEPTHS];
 
     /** Profondeurs distinguées par {@link #depths()} ; la dernière compte aussi les plus profondes. */
@@ -67,6 +78,19 @@ public final class InputQueue<T> {
      * @throws IllegalArgumentException pour une séquence négative
      */
     public boolean offer(long sequence, T item) {
+        return offer(sequence, item, false);
+    }
+
+    /**
+     * Met une entrée en file ; la dernière acceptée dit si son client règle la file.
+     *
+     * @param sequence sa séquence, positive ou nulle
+     * @param item ce qu'elle porte
+     * @param paced vrai si son client règle la profondeur de la file
+     * @return faux si la séquence ne croît pas : l'entrée est écartée
+     * @throws IllegalArgumentException pour une séquence négative
+     */
+    public boolean offer(long sequence, T item, boolean paced) {
         if (sequence < 0) {
             throw new IllegalArgumentException("séquence négative : " + sequence);
         }
@@ -74,6 +98,7 @@ public final class InputQueue<T> {
             return false;
         }
         lastOffered = sequence;
+        this.paced = paced;
         pending.addLast(new Pending<>(sequence, item));
         return true;
     }
@@ -82,6 +107,7 @@ public final class InputQueue<T> {
     public Step<T> next() {
         if (lastOffered >= 0) {
             depths[Math.min(pending.size(), DEPTHS - 1)]++;
+            lastDepth = pending.size();
         }
         if (pending.isEmpty()) {
             if (lastOffered >= 0) {
@@ -90,7 +116,8 @@ public final class InputQueue<T> {
             return null;
         }
         List<T> skipped = new ArrayList<>();
-        while (pending.size() > MAX_PENDING) {
+        int bound = paced ? MAX_PACED : MAX_PENDING;
+        while (pending.size() > bound) {
             skipped.add(pending.removeFirst().item());
         }
         skippedTotal += skipped.size();
@@ -107,6 +134,19 @@ public final class InputQueue<T> {
     /** {@return la séquence de la dernière entrée appliquée, -1 avant la première} */
     public long lastApplied() {
         return lastApplied;
+    }
+
+    /**
+     * {@return les entrées que la file tenait au dernier tick, avant d'en prendre une : 0 si elle était vide ; -1 avant
+     * le premier tick qui a suivi la première entrée}
+     */
+    public int lastDepth() {
+        return lastDepth;
+    }
+
+    /** {@return vrai si la dernière entrée acceptée vient d'un client qui règle la file} */
+    public boolean paced() {
+        return paced;
     }
 
     /** {@return les entrées en attente} */

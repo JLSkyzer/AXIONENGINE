@@ -7,7 +7,7 @@ must have to join, what the server sends it, what can be tuned, and where to rea
 
 ## What a client must have to join
 
-1. **AXION, with the same protocol version.** Forge compares the channel version during login (`AXION-9`
+1. **AXION, with the same protocol version.** Forge compares the channel version during login (`AXION-10`
    today). A client without AXION, or with another protocol version, is refused by Forge, with Forge's message
    (R-1630). The protocol version does not follow the mod's: it only goes up when the format changes.
 2. **Each of the server's content addons, in the same version.** The server requires from the client every mod

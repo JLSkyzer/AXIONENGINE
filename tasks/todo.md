@@ -3844,9 +3844,13 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  prédit quand ils changent.
            - [x] 6d-4 (2026-11-14) : contrôleurs au client, à chaque tick prédit et rejoué, sur l'état du début du tick du monde
                  prédit ; sorties au monde prédit et aux variables prédites ; `VehicleControl.state()` au client.
-     - [ ] 6e — **d'abord** : la cadence des entrées au serveur (ADR-168 précision 6d-4) — 4 ticks sans entrée
-           neuve et 10 entrées passées d'un coup en 9 s, chacun décale le monde prédit d'un tick ; marge d'avance (D2)
-           et politique de la file (D3, Q1) à revoir avec Killian.
+     - [ ] 6e — **d'abord** : la cadence des entrées au serveur (ADR-168 précision 6e). Killian, 2026-11-14 : le
+           client règle sa file.
+           - [x] 6e-1 (1eb8939) : cadence relevée dans la file du serveur, gigue du relais, essai prolongé ; le relais
+                 de latence connecte (ADR-169) ; clients lancés par un agent sur l'écran secondaire.
+           - [ ] 6e-2 : AXION-10, `InputPacing` (seconde version, simulée verte), film de la Charger (`-PessaiFilm`).
+                 Reste : la série en jeu (`serie_cadence.sh`) puis le film, quand OneForAllSurvival aura fini le sien
+                 (Killian, 19:20 : ne rien lancer avant son signal) ; CI locale ; commit avec CAP-57 à CAP-59.
      - [ ] 6e — T-415..T-417 sous latence injectée (essai à deux processus, T-417 en GameTest), défauts mesurés
            (`net.prediction_replay_budget_ns`,
            `net.prediction_max_corrections`), CDC (21.3, 21.4, 21.8, A.3), guide réseau, fusion.
@@ -4080,8 +4084,17 @@ Fiches complètes : `sed -n '7180,7319p' docs/spec/AXIONENGINE_Cahier_des_Charge
 - [ ] **M7** Structure, rupture, détachement, réparation — C-43, C-44, C-46
 - [ ] **M8** Particules unifiées — C-36
 - [ ] **M9** Rendu avancé — C-69, C-80..C-83, C-75, C-47
+      · **CAP-59** : l'addon Blender (C-75) naît pilotable par un agent via un plugin MCP (BlenderMCP ou autre) —
+        chaque action une opération Python documentée, sans clic ni fenêtre modale, testée sans interface
 - [ ] **M10** Blocs, items, bout en bout — C-54, C-55, T-970/T-971
+      · **CAP-57** armure à modèle AXION, GLB obligatoire, aux os du porteur (mannequin CAP-56), à la place du rendu
+        de l'armure vanilla ; **CAP-58** rendu HD des items et armures existants (Minecraft, autres mods) par
+        données — outils, armes, armures, en main, inventaire, sol, cadre (Killian, 2026-11-14) ; **CAP-59** dans
+        l'addon Blender, réglage et aperçu de ces affichages à la façon de Blockbench (main, inventaire, tête, sol,
+        cadre), exportés dans le GLB
 - [ ] **M11** Compatibilité, coexistence, durcissement — C-76, testmod, fuzzing
+      · CAP-57 et CAP-58 face aux autres mods : rendus d'armure ou du joueur tiers, items déjà rendus par leur mod,
+        deux addons qui remplacent le même objet, packs de ressources, shaderpacks — dans la matrice
 - [ ] **M12** Release 1.0.0 — documentation, benchmarks B-01..B-30, SBOM, packaging
 
 Règles de jalon (R-2390..R-2393) : chaque jalon se termine par un **JAR

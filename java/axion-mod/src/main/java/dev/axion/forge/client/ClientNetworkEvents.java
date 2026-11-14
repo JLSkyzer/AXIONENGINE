@@ -83,9 +83,8 @@ public final class ClientNetworkEvents {
         if (assembly.seatTakesInput(seat)) {
             VehicleInput input = VehicleInput.ofKeys(player.input.forwardImpulse, player.input.leftImpulse,
                     player.input.jumping, gear, VehicleKeys.heldCommands());
-            long sequence = AxionNetwork.sendInput(connection.getConnection(), assembly.getId(), seat, input);
-            // ADR-168 D3 : l'entrée partie s'applique aussitôt au véhicule prédit.
-            ClientPrediction.onInputSent(connection.getConnection(), assembly, seat, input, sequence);
+            // ADR-168 D3 : l'entrée partie s'applique aussitôt au véhicule prédit, qui règle aussi leur cadence.
+            ClientPrediction.sendInputs(connection.getConnection(), assembly, seat, input);
         }
         SeatCommands.show(player, assembly, seat);
     }

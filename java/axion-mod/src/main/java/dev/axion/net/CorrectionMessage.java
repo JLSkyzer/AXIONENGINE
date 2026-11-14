@@ -11,7 +11,8 @@ import java.util.List;
  * prédit, et rejoue ce qu'il a envoyé après la séquence acquittée (D5).
  *
  * <pre>
- * genre u8 = 8 | tick varulong | drapeaux u8 | [séquence appliquée u32] | entité varuint | tick des paramètres varulong
+ * genre u8 = 8 | tick varulong | drapeaux u8 | [séquence appliquée u32 | profondeur u8] | entité varuint
+ *   | tick des paramètres varulong
  *   | variables : n varuint | ⌈n / 8⌉ octets, un bit par variable présente | f64 par variable présente, par rang
  *   | états : m varuint, puis par assembly : entité varuint | octets préfixés de leur longueur
  * </pre>
@@ -29,12 +30,14 @@ import java.util.List;
  *
  * @param serverTick le tick du serveur dont l'état est le résultat
  * @param appliedSequence la séquence de la dernière entrée appliquée du conducteur, non signée ; -1 sans
+ * @param queued les entrées que la file du conducteur tenait à ce tick, avant d'en prendre une — 0 : aucune neuve,
+ *     le siège a gardé la sienne (ADR-168 D3, révisé le 2026-11-14) ; bornée à 255, -1 sans entrée appliquée
  * @param entity identifiant réseau du véhicule
  * @param parametersTick le tick des modificateurs de paramètres en vigueur, 0 sans
  * @param variables les variables du véhicule
  * @param states l'état complet de chaque assembly de l'ensemble, le véhicule d'abord
  */
-public record CorrectionMessage(long serverTick, long appliedSequence, int entity, long parametersTick,
+public record CorrectionMessage(long serverTick, long appliedSequence, int queued, int entity, long parametersTick,
         Variables variables, List<State> states) {
 
     /** Drapeau : une entrée du conducteur a été appliquée, sa séquence suit. */
@@ -53,6 +56,9 @@ public record CorrectionMessage(long serverTick, long appliedSequence, int entit
         }
         if (entity < 0) {
             throw new IllegalArgumentException("entité " + entity);
+        }
+        if (appliedSequence < 0 ? queued != -1 : queued < 0 || queued > 255) {
+            throw new IllegalArgumentException("profondeur " + queued + " pour la séquence " + appliedSequence);
         }
         if (states.isEmpty()) {
             throw new IllegalArgumentException("aucun état : le véhicule au moins");
@@ -197,7 +203,7 @@ public record CorrectionMessage(long serverTick, long appliedSequence, int entit
                 .varULong(serverTick)
                 .u8(applied() ? FLAG_APPLIED : 0);
         if (applied()) {
-            writer.i32((int) appliedSequence);
+            writer.i32((int) appliedSequence).u8(queued);
         }
         writer.varUInt(entity).varULong(parametersTick);
         int count = variables.count();
@@ -231,6 +237,7 @@ public record CorrectionMessage(long serverTick, long appliedSequence, int entit
             throw new MalformedPacketException("correction : drapeaux inconnus " + flags);
         }
         long applied = (flags & FLAG_APPLIED) != 0 ? Integer.toUnsignedLong(reader.i32()) : -1;
+        int queued = applied >= 0 ? reader.u8() : -1;
         int entity = reader.varUInt();
         long parametersTick = reader.varULong();
         int count = reader.varUInt();
@@ -265,7 +272,7 @@ public record CorrectionMessage(long serverTick, long appliedSequence, int entit
         }
         reader.expectEnd();
         try {
-            return new CorrectionMessage(serverTick, applied, entity, parametersTick,
+            return new CorrectionMessage(serverTick, applied, queued, entity, parametersTick,
                     new Variables(count, mask, values), states);
         } catch (IllegalArgumentException refused) {
             throw new MalformedPacketException("correction : " + refused.getMessage());

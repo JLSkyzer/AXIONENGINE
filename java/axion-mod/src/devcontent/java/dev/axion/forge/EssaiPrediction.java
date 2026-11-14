@@ -101,6 +101,12 @@ public final class EssaiPrediction {
     /** Les secondes où le conducteur reste assis après la conduite : la cadence des entrées sur la durée (6e). */
     private static final int PROLONGER_S = Integer.getInteger("axion.essai.prolonger", 0);
 
+    /**
+     * Vrai pour filmer l'essai (recette de {@code D:\BDC}, {@link Tournage}) : le véhicule prédit vu de derrière, à 60
+     * images par seconde, les compteurs de la prédiction au bandeau ; {@code tools/film/encoder.py} assemble le MP4.
+     */
+    private static final boolean FILM = Boolean.getBoolean("axion.essai.film");
+
     /** La distance de l'obstacle devant le véhicule, en blocs : atteint en virant, vers le tick 127. */
     private static final double OBSTACLE = 23.0;
 
@@ -251,6 +257,7 @@ public final class EssaiPrediction {
         private static final int TENTATIVES_MAX = 3;
 
         private static RelaisLatence relais;
+        private static Tournage tournage;
         private static int tentatives;
         private static boolean annonce;
         private static boolean connecte;
@@ -415,6 +422,9 @@ public final class EssaiPrediction {
             if (!annonce) {
                 annonce = true;
                 LOGGER.info("[essai] client de la prédiction : {} ms par sens", DELAI_MS);
+                if (FILM) {
+                    Tournage.reglerLesOptions(minecraft);
+                }
             }
             if (!connecte) {
                 connecter(minecraft);
@@ -446,10 +456,18 @@ public final class EssaiPrediction {
                 return;
             }
             tick++;
+            if (FILM && tournage == null) {
+                minecraft.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_BACK);
+                tournage = new Tournage(minecraft.gameDirectory.toPath().resolve("axion-film").resolve("images"),
+                        "AXION ENGINE, C-33");
+            }
             boolean avant = tick >= ATTENTE && tick < ATTENTE + ACCELERE + BRAQUE;
             boolean gauche = tick >= ATTENTE + ACCELERE && tick < ATTENTE + ACCELERE + BRAQUE;
             minecraft.options.keyUp.setDown(avant);
             minecraft.options.keyLeft.setDown(gauche);
+            // Prolongé, l'essai freine après le virage : sans quoi le véhicule sort du sol, tombe, et sa culbute
+            // brouille la mesure de la cadence.
+            minecraft.options.keyDown.setDown(PROLONGER_S > 0 && tick >= ATTENTE + ACCELERE + BRAQUE);
             if (tick == ATTENTE - 2) {
                 for (int i = 0; i < RAPPORTS; i++) {
                     net.minecraft.client.KeyMapping.click(dev.axion.forge.client.VehicleKeys.GEAR_UP.getKey());
@@ -483,6 +501,45 @@ public final class EssaiPrediction {
          * Chaque image, avant son rendu : les capteurs se branchent sur la connexion en cours, dès l'écran de connexion
          * (défaut ouvert de la connexion, ADR-168 précision 6c-B). Son nom est à elle (voir {@link #conduire}).
          */
+        /** Chaque image rendue, pendant la conduite : une image du film, à 60 par seconde. */
+        @SubscribeEvent
+        public static void filmer(TickEvent.RenderTickEvent event) {
+            if (!FILM || tournage == null || fini || event.phase != TickEvent.Phase.END
+                    || !tournage.imageAttendue()) {
+                return;
+            }
+            Prediction boucle = ClientPrediction.loop();
+            long[] reglage = ClientPrediction.pacingAdjustments();
+            String legende = String.format(Locale.ROOT, "Prédiction du véhicule piloté, %d ms par sens, gigue de 0 à %d ms",
+                    DELAI_MS, GIGUE_MS);
+            String valeurs = boucle == null ? "" : String.format(Locale.ROOT,
+                    "latence %.0f ms   corrections égales %d, rejouées %d   cadence : %d tick(s) à deux entrées, %d à"
+                            + " aucune", boucle.latencyMillis(), boucle.matches(), boucle.replays(), reglage[0],
+                    reglage[1]);
+            double secondes = (System.nanoTime() - tournage.debut()) / 1e9;
+            tournage.capturer(Minecraft.getInstance().getMainRenderTarget(), legende, valeurs,
+                    String.format(Locale.ROOT, "%.1f s", secondes));
+        }
+
+        /** Ferme le film, et écrit son bilan à côté des images, pour l'encodeur. */
+        private static void fermerLeFilm(Minecraft minecraft, String motif) {
+            if (tournage == null) {
+                return;
+            }
+            String faute = tournage.fermer();
+            faute = faute != null ? faute : motif;
+            String bilan = String.format(Locale.ROOT, "{\"images\": %d, \"uniques\": %d, \"echec\": %s}%n",
+                    tournage.images(), tournage.uniques(),
+                    faute == null ? "null" : "\"" + faute.replace('"', '\'') + "\"");
+            tournage = null;
+            try {
+                Files.writeString(minecraft.gameDirectory.toPath().resolve("axion-film").resolve("termine.json"), bilan,
+                        StandardCharsets.UTF_8);
+            } catch (IOException faute2) {
+                LOGGER.error("[essai] bilan du film non écrit : {}", faute2.toString());
+            }
+        }
+
         @SubscribeEvent
         public static void capteursClient(TickEvent.RenderTickEvent event) {
             if (DELAI_MS < 0 || fini || event.phase != TickEvent.Phase.START) {
@@ -611,16 +668,19 @@ public final class EssaiPrediction {
                 return;
             }
             double[] predite = racine == null ? new double[] {Double.NaN, Double.NaN, Double.NaN} : racine.position();
-            trajectoire.add(String.format(Locale.ROOT, "%d;%d;%d;%d;%.4f;%.4f;%.4f;%.4f;%.4f;%.4f;%.1f;%d;%d;%d;%d;%.0f",
+            trajectoire.add(String.format(Locale.ROOT, "%d;%d;%d;%d;%.4f;%.4f;%.4f;%.4f;%.4f;%.4f;%.1f;%d;%d;%d;%d;%.0f;%d;%d;%d",
                     tick, avant ? 1 : 0, gauche ? 1 : 0, ClientPrediction.predicting() ? 1 : 0, predite[0], predite[1],
                     predite[2], assembly.getX(),
                     assembly.getY(), assembly.getZ(), boucle.latencyMillis(), boucle.pending(), boucle.matches(),
-                    boucle.replays(), boucle.accepted(), boucle.stepNanos()));
+                    boucle.replays(), boucle.accepted(), boucle.stepNanos(), ClientPrediction.lastQueued(),
+                    ClientPrediction.pacingAdjustments()[0], ClientPrediction.pacingAdjustments()[1]));
         }
 
         private static void terminer(Minecraft minecraft) {
             minecraft.options.keyUp.setDown(false);
             minecraft.options.keyLeft.setDown(false);
+            fermerLeFilm(minecraft, null);
+            minecraft.options.keyDown.setDown(false);
             List<String> rapport = new ArrayList<>();
             Prediction boucle = ClientPrediction.loop();
             rapport.add(String.format(Locale.ROOT, "délai injecté par sens : %d ms, gigue de 0 à %d ms, %d s"
@@ -644,6 +704,9 @@ public final class EssaiPrediction {
                             + " au tick %d, %d en attente", e[0], e[1], e[2], (int) e[3], (int) e[4])));
             rapport.add(fluidite());
             rapport.add(vueAuClient);
+            long[] reglage = ClientPrediction.pacingAdjustments();
+            rapport.add("cadence réglée par le client : " + reglage[0] + " tick(s) à deux entrées, " + reglage[1]
+                    + " à aucune");
             long[] cadence = ClientPrediction.inputCadence();
             rapport.add("cadence des entrées au serveur : " + cadence[0] + " tick(s) avancé(s) sans entrée neuve, "
                     + cadence[1] + " entrée(s) passée(s) d'un coup");
@@ -676,7 +739,7 @@ public final class EssaiPrediction {
             try {
                 Files.write(dossier.resolve("rapport-prediction.txt"), rapport, StandardCharsets.UTF_8);
                 List<String> csv = new ArrayList<>();
-                csv.add("tick;avant;gauche;predit;px;py;pz;ix;iy;iz;latence_ms;en_attente;egales;rejouees;acceptees;pas_lisse_ns");
+                csv.add("tick;avant;gauche;predit;px;py;pz;ix;iy;iz;latence_ms;en_attente;egales;rejouees;acceptees;pas_lisse_ns;file;deux;aucune");
                 csv.addAll(trajectoire);
                 Files.write(dossier.resolve("trajectoire-prediction.csv"), csv, StandardCharsets.UTF_8);
                 List<String> lignes = new ArrayList<>();

@@ -145,6 +145,8 @@ minecraft {
             property 'axion.essai.gigue', (project.findProperty('essaiGigue') ?: '0').toString()
             // -PessaiProlonger=<s> : après la conduite, le conducteur reste assis <s> secondes, pour la cadence (6e).
             property 'axion.essai.prolonger', (project.findProperty('essaiProlonger') ?: '0').toString()
+            // -PessaiFilm : l'essai se filme (Tournage), en 1920 x 984 ; tools/film/encoder.py fait le MP4.
+            property 'axion.essai.film', project.hasProperty('essaiFilm').toString()
             // La course de connexion de Forge 47 : le mod la rattrape lui-même (ADR-169) ; -PessaiRelance ajoute la relance
             // de l'essai, l'expérience qui en a confirmé la cause.
             property 'axion.essai.relance_lecture', project.hasProperty('essaiRelance').toString()
