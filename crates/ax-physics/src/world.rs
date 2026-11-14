@@ -1871,6 +1871,21 @@ impl PhysicsWorld {
         true
     }
 
+    /// Le node que porte un corps d'assembly, `None` pour un corps sans identité.
+    #[must_use]
+    pub fn body_node(&self, id: BodyId) -> Option<u32> {
+        self.identity.get(&id).map(|identity| identity.node)
+    }
+
+    /// Vrai si le corps existe et est cinématique.
+    #[must_use]
+    pub fn is_kinematic(&self, id: BodyId) -> bool {
+        self.inner
+            .bodies
+            .get(id.handle())
+            .is_some_and(rapier3d::dynamics::RigidBody::is_kinematic)
+    }
+
     /// Impose la pose d'un corps cinématique pour le prochain pas (§10.2).
     ///
     /// Sans effet si le corps n'existe pas. Sur un corps non cinématique,

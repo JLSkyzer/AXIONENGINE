@@ -22,6 +22,8 @@ public final class PredictedTrack {
     private final Interpolation poses;
     private long latest;
     private boolean started;
+    /** Le temps de rendu de la dernière image dessinée : là où un rejeu mesure ce qu'il fait à l'écran. */
+    private double lastFrameMillis = Double.NaN;
 
     /**
      * @param poses l'interpolation qui garde les états, réglée par la configuration du client
@@ -54,7 +56,10 @@ public final class PredictedTrack {
      */
     public void replay(long sequence, AssemblyState state, double nowMillis) {
         if (started) {
-            poses.put(sequence, state, latest * ServerClock.TICK_MILLIS, nowMillis);
+            // L'écart se mesure là où l'image se dessine : un rejeu qui réécrit l'avant-dernier tick change l'image
+            // dessinée entre deux ticks, pas la pose du dernier.
+            double shown = Double.isNaN(lastFrameMillis) ? latest * ServerClock.TICK_MILLIS : lastFrameMillis;
+            poses.put(sequence, state, shown, nowMillis);
         }
     }
 
@@ -74,10 +79,25 @@ public final class PredictedTrack {
     /**
      * {@return la pose à afficher, {@code null} avant le premier pas}
      *
-     * @param fraction la fraction de tick de l'image, dans [0, 1] ; 1 pour la pose de l'entité à son tick
+     * @param fraction la fraction de tick de l'image, dans [0, 1]
      * @param nowMillis le temps local, en millisecondes : il fait décroître une correction en cours
      */
     public Interpolation.Pose sample(double fraction, double nowMillis) {
+        if (!started) {
+            return null;
+        }
+        lastFrameMillis = renderMillis(fraction);
+        return poses.sample(lastFrameMillis, nowMillis);
+    }
+
+    /**
+     * {@return la pose à une fraction de tick, sans qu'elle compte comme une image dessinée ; {@code null} avant le
+     * premier pas} L'entité s'y pose à son tick (fraction 1), pour sa hitbox.
+     *
+     * @param fraction la fraction de tick, dans [0, 1]
+     * @param nowMillis le temps local, en millisecondes
+     */
+    public Interpolation.Pose pose(double fraction, double nowMillis) {
         return started ? poses.sample(renderMillis(fraction), nowMillis) : null;
     }
 

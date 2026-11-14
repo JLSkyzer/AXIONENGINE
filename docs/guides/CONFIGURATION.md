@@ -177,6 +177,7 @@ alors ignorée (R-1830).
 | `prediction_tolerance_position_m` | flottant | `0.01` | `0.0..` | non | non | Écart de position, en mètres, en deçà duquel l'état prédit vaut celui du serveur. |
 | `prediction_tolerance_rotation_rad` | flottant | `0.005` | `0.0..` | non | non | Écart de rotation, en radians, en deçà duquel l'état prédit vaut celui du serveur. |
 | `prediction_tolerance_velocity_ms` | flottant | `0.2` | `0.0..` | non | non | Écart de vitesse, en mètres par seconde, en deçà duquel l'état prédit vaut celui du serveur. |
+| `prediction_proxy_radius` | flottant | `32.0` | `0.0..` | non | non | Distance, en blocs, autour du véhicule prédit, jusqu'à laquelle les autres assemblies et les entités sont posées en proxies dans le monde prédit. |
 | `max_bytes_per_second_per_player` | entier | `32768` | `0..` | non | non | Plafond de bande passante AXION par joueur, en octets par seconde. |
 | `max_packets_per_second` | entier | `40` | `0..` | non | non | Plafond de paquets AXION par seconde et par joueur. |
 | `max_impacts_per_packet` | entier | `64` | `0..` | non | non | Nombre maximal d'impacts groupés dans un paquet. |

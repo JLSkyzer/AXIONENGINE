@@ -48,13 +48,17 @@ use ax_model::dm::physics::{BodyBounds, BodyState};
 use ax_model::dm::scene::NONE_U32;
 use ax_model::dm::state::AssemblyStateReport;
 use ax_model::dm::vehicle::{VehicleReport, WheelReport};
-use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSettings, Stage};
+use ax_physics::{
+    BodyKind, DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSettings, Stage,
+};
 
 /// Version de l'ABI.
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 24 depuis la prédiction (ADR-168 D1) : opcodes
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 25 depuis les proxies du monde prédit (ADR-168,
+/// précision 6c-C2) : drapeau `KINEMATIC` de `CREATE_ASSEMBLY` et opcode `SET_ASSEMBLY_POSE`. 24 depuis la prédiction
+/// (ADR-168 D1) : opcodes
 /// `SET_SIM_MODE`, `SET_STATE_EXPORT` et `SET_ASSEMBLY_STATE`, et l'état complet des assemblies exportées dans `SIM_OUT`
 /// (schéma 6), après les motopropulseurs. 23 depuis le couple posé sur chaque roue
 /// (R-1082, ADR-167 D9) : opcode `SET_WHEEL_TORQUES`, et les glissements de chaque roue dans `SIM_OUT` (schéma 5). 22 depuis les paramètres d'une instance
@@ -73,7 +77,7 @@ use ax_physics::{DegradationLevel, PhysicsConfig, SavedBody, SavedJoint, SimSett
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 24;
+pub const AXION_ABI_VERSION: u32 = 25;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -2081,13 +2085,38 @@ fn apply_create_assembly(session: &mut context::Session, payload: &[u8]) {
         };
         Some(restored)
     };
-    let bodies = compiled.bodies.clone();
-    let joints = compiled.joints.clone();
+    // ADR-168, précision 6c-C2 : un proxy du monde prédit d'un client — ses corps cinématiques, posés à chaque pas
+    // par SET_ASSEMBLY_POSE ; ni joint, ni masse partagée, ni véhicule, ni animation, ni état restauré.
+    let kinematic = header.flags & create_assembly_flags::KINEMATIC != 0;
+    let mut bodies = compiled.bodies.clone();
+    if kinematic {
+        for body in &mut bodies {
+            body.kind = BodyKind::Kinematic;
+        }
+    }
+    let joints = if kinematic {
+        Vec::new()
+    } else {
+        compiled.joints.clone()
+    };
     let groups = compiled.groups;
-    let assembly_mass = compiled.assembly_mass;
+    let assembly_mass = if kinematic {
+        0.0
+    } else {
+        compiled.assembly_mass
+    };
     let self_collision = compiled.self_collision;
-    let animation = compiled.animation.clone();
-    let vehicle = compiled.vehicle.clone();
+    let animation = if kinematic {
+        None
+    } else {
+        compiled.animation.clone()
+    };
+    let vehicle = if kinematic {
+        None
+    } else {
+        compiled.vehicle.clone()
+    };
+    let restored = if kinematic { None } else { restored };
     let physics = session.physics();
     let Some(created) = physics.create_assembly_bodies(
         header.dimension,
@@ -2144,7 +2173,7 @@ fn apply_create_assembly(session: &mut context::Session, payload: &[u8]) {
         );
     }
     // 22.4, ADR-153 D4 : une assembly chargée naît endormie, ses vitesses gelées.
-    if header.flags & create_assembly_flags::ASLEEP != 0 {
+    if header.flags & create_assembly_flags::ASLEEP != 0 && !kinematic {
         physics.suspend_assembly(header.dimension, created[0]);
     }
     // R-1430 : le serveur ne joue l'animation que si un collider en dépend.

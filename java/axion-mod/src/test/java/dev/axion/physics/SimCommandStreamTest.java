@@ -665,6 +665,49 @@ class SimCommandStreamTest {
     }
 
     @Test
+    void ecritLesProxiesDuMondePredit() throws Exception {
+        // ADR-168, précision 6c-C2 : CREATE_ASSEMBLY porte KINEMATIC ; SET_ASSEMBLY_POSE, l'en-tête puis 48 octets par
+        // corps — node, réservé, position f64×3, rotation f32×4.
+        byte[] bytes = new SimCommandStream()
+                .createKinematicAssembly(7, 3, 0L, new double[] {1, 2, 3}, new float[] {0f, 0f, 0f, 1f}, 0xABCDL)
+                .createAssembly(8, 1, 0L, new double[] {0, 0, 0}, new float[] {0f, 0f, 0f, 1f}, 0xABCDL)
+                .setAssemblyPose(7, 3, java.util.List.of(new SimCommandStream.KinematicPose(5,
+                        new double[] {10.5, 64, -2}, new float[] {0f, 0.5f, 0f, 0.8660254f})))
+                .toBytes();
+        ByteBuffer b = ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        int creation = 8;
+        assertEquals(SimCommandStream.OP_CREATE_ASSEMBLY, b.getInt(creation));
+        assertEquals(SimCommandStream.CREATE_ASSEMBLY_KINEMATIC, b.get(creation + 8 + 64) & 0xFF, "le proxy");
+        int suivante = creation + 8 + b.getInt(creation + 4);
+        assertEquals(SimCommandStream.OP_CREATE_ASSEMBLY, b.getInt(suivante));
+        assertEquals(0, b.get(suivante + 8 + 64), "le drapeau ne déborde pas sur la création suivante");
+        int pose = suivante + 8 + b.getInt(suivante + 4);
+        assertEquals(SimCommandStream.OP_SET_ASSEMBLY_POSE, b.getInt(pose));
+        assertEquals(SimCommandStream.SET_ASSEMBLY_POSE_BYTES + SimCommandStream.ASSEMBLY_BODY_POSE_BYTES,
+                b.getInt(pose + 4));
+        int p = pose + 8;
+        assertEquals(7, b.getInt(p));
+        assertEquals(3, b.getInt(p + 4));
+        assertEquals(1, b.getInt(p + 8));
+        assertEquals(5, b.getInt(p + 16), "node");
+        assertEquals(10.5, b.getDouble(p + 24));
+        assertEquals(-2.0, b.getDouble(p + 40));
+        assertEquals(0.8660254f, b.getFloat(p + 60));
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream().setAssemblyPose(7, 3,
+                java.util.Collections.nCopies(SimCommandStream.MAX_ASSEMBLY_BODIES + 1,
+                        new SimCommandStream.KinematicPose(0, new double[3], new float[] {0f, 0f, 0f, 1f}))));
+
+        Path crates = Path.of(System.getProperty("axion.crates.dir"));
+        String commandes = Files.readString(crates.resolve("ax-model/src/dm/commands.rs"), StandardCharsets.UTF_8);
+        assertTrue(commandes.contains("pub const SET_ASSEMBLY_POSE: u32 = " + SimCommandStream.OP_SET_ASSEMBLY_POSE
+                + ";"));
+        assertTrue(commandes.contains("pub const KINEMATIC: u8 = 1 << 4;")
+                && SimCommandStream.CREATE_ASSEMBLY_KINEMATIC == 1 << 4);
+        assertTrue(commandes.contains("pub const MAX_ASSEMBLY_BODIES: usize = " + SimCommandStream.MAX_ASSEMBLY_BODIES
+                + ";"));
+    }
+
+    @Test
     void litLaSectionDesEtatsExportes() {
         // ADR-168 D1 : le nombre d'entrées, puis chacune — handle, longueur, statut, bloc aligné sur 8.
         ByteBuffer section = ByteBuffer.allocate(8 + 16 + 16 + 16 + 8).order(java.nio.ByteOrder.LITTLE_ENDIAN);

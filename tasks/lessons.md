@@ -2442,3 +2442,15 @@ acceptées sans rejeu) | l'estimation d'avance, un coût lissé des pas en direc
 refusé ne mesurant rien | une garde de budget se juge sur la mesure de l'opération en cours (coût moyen de ses propres
 pas), jamais sur une moyenne d'échantillons d'une autre nature ; et toute garde qui refuse doit garder un moyen de se
 remesurer. Le chiffre qui l'a montré : une colonne du coût lissé dans la trajectoire de l'essai, avant de toucher au code.
+
+[2026-11-14] | Une fausse prédiction de 0,48 m (6c-B), puis deux proxies au lieu d'un : le monde de l'essai gardait les
+véhicules des essais précédents, garés sur la piste ; effacer leurs entités ne suffisait pas, le journal latéral les
+rendait (22.5.2) | un essai qui pose du contenu dans un monde persistant le retrouve au lancement suivant | un essai en jeu
+tourne dans son propre monde et retire lui-même, par le jeu, tout ce qui n'est pas à lui ; et un compte qui surprend (2
+proxies pour 1 obstacle) se comprend avant de continuer.
+
+[2026-11-14] | Un rejeu faisait sauter de 28 cm l'image du véhicule prédit (35 m/s d'une image à l'autre) | l'écart se
+mesurait à la pose du dernier tick, alors que l'image se dessine entre les deux derniers ; un rejeu de l'avant-dernier
+tick seul ne s'y voyait pas | l'écart qu'une correction lisse se mesure au temps exact de ce qui est affiché, pas à un
+instant voisin ; et la fluidité se mesure image par image, datée par le tick de rendu (une mesure datée par l'heure de fin
+d'image donnait 25 m/s de bruit).

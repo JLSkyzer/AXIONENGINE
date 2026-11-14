@@ -1651,6 +1651,36 @@ impl SimDriver {
         }
     }
 
+    /// Applique `SET_ASSEMBLY_POSE` (ADR-168, précision 6c-C2) : chaque corps **cinématique** de l'assembly dont
+    /// le node figure reçoit sa pose monde pour le pas suivant, ramenée au repère local par l'origine flottante. Un corps
+    /// simulé n'est jamais déplacé ; une pose non finie, un node absent sont ignorés.
+    pub fn apply_assembly_pose(&mut self, handle: Handle, poses: &[(u32, DVec3, Quat)]) {
+        let Some((dimension, bodies)) = self.routes.get(&handle_key(handle)) else {
+            return;
+        };
+        let Some(sim) = self.dimensions.get_mut(dimension) else {
+            return;
+        };
+        for &(node, position, rotation) in poses {
+            if !position.is_finite()
+                || !rotation.is_finite()
+                || rotation.length_squared() <= f32::EPSILON
+            {
+                continue;
+            }
+            let rotation = rotation.normalize();
+            if let Some(&body) = bodies
+                .iter()
+                .find(|&&body| sim.world.body_node(body) == Some(node))
+            {
+                if sim.world.is_kinematic(body) {
+                    let local = sim.origin.to_local(position);
+                    sim.world.set_kinematic_pose(body, local, rotation);
+                }
+            }
+        }
+    }
+
     /// Applique `APPLY_IMPULSE`.
     pub fn apply_impulse(&mut self, handle: Handle, impulse: Vec3, point: Vec3, at_point: bool) {
         if let Some((dimension, body)) = self.assembly_body(handle) {
@@ -2137,6 +2167,108 @@ mod tests {
         driver.advance_all(1.0 / 60.0);
         let apres = driver.collect_states();
         assert!(apres[0].lin_vel[0] > 0.0, "l'impulsion a bien été routée");
+    }
+
+    /// Une bille de rayon 0,5 d'un type donné, sur la route du handle `index`.
+    fn proxy_bille(driver: &mut SimDriver, index: u32, kind: BodyKind, x: f64) {
+        driver
+            .create_assembly(
+                0,
+                Handle::new(index, 1),
+                WorldTransform {
+                    position: [x, 5.0, 0.0],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                },
+                kind,
+                &[BodyCollider {
+                    shape: Shape::Ball { radius: 0.5 },
+                    density: 1000.0,
+                    material: ContactMaterial::default(),
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                }],
+            )
+            .expect("bille créée");
+    }
+
+    fn position_de(driver: &mut SimDriver, index: u32) -> [f64; 3] {
+        driver
+            .collect_states()
+            .into_iter()
+            .find(|state| state.handle == Handle::new(index, 1))
+            .expect("corps rapporté")
+            .position
+    }
+
+    #[test]
+    fn adr168_set_assembly_pose_pose_les_corps_cinematiques_seuls() {
+        // ADR-168, précision 6c-C2 : un proxy cinématique va où on le pose ; un corps simulé ne se laisse pas
+        // déplacer ; un node absent, une pose non finie ne changent rien.
+        let mut driver = SimDriver::new();
+        proxy_bille(&mut driver, 1, BodyKind::Kinematic, 0.0);
+        proxy_bille(&mut driver, 2, BodyKind::Dynamic, 40.0);
+        driver.apply_assembly_pose(
+            Handle::new(1, 1),
+            &[(0, DVec3::new(10.0, 5.0, 2.0), Quat::from_rotation_y(0.5))],
+        );
+        driver.apply_assembly_pose(
+            Handle::new(2, 1),
+            &[(0, DVec3::new(-30.0, 5.0, 0.0), Quat::IDENTITY)],
+        );
+        driver.advance_all(1.0 / 20.0);
+        let proxy = position_de(&mut driver, 1);
+        assert!(
+            (proxy[0] - 10.0).abs() < 1.0e-4 && (proxy[2] - 2.0).abs() < 1.0e-4,
+            "{proxy:?}"
+        );
+        assert!(
+            position_de(&mut driver, 2)[0] > 39.0,
+            "un corps simulé ne se téléporte pas"
+        );
+
+        driver.apply_assembly_pose(
+            Handle::new(1, 1),
+            &[(7, DVec3::new(0.0, 0.0, 0.0), Quat::IDENTITY)],
+        );
+        driver.apply_assembly_pose(
+            Handle::new(1, 1),
+            &[(0, DVec3::new(f64::NAN, 0.0, 0.0), Quat::IDENTITY)],
+        );
+        driver.apply_assembly_pose(
+            Handle::new(1, 1),
+            &[(0, DVec3::ZERO, Quat::from_xyzw(0.0, 0.0, 0.0, 0.0))],
+        );
+        driver.advance_all(1.0 / 20.0);
+        let reste = position_de(&mut driver, 1);
+        assert!(
+            (reste[0] - 10.0).abs() < 1.0e-4,
+            "node absent, pose non finie, rotation nulle : rien ne bouge"
+        );
+    }
+
+    #[test]
+    fn adr168_un_proxy_cinematique_pousse_un_corps_simule() {
+        // ADR-168 D1 : les contacts avec les autres assemblies se prédisent — le proxy, posé pas à pas, pousse.
+        let mut driver = SimDriver::new();
+        driver.apply_dimension_env(0, Vec3::ZERO, Vec3::ZERO, None);
+        proxy_bille(&mut driver, 1, BodyKind::Kinematic, 0.0);
+        proxy_bille(&mut driver, 2, BodyKind::Dynamic, 1.2);
+        for pas in 1..=10 {
+            driver.apply_assembly_pose(
+                Handle::new(1, 1),
+                &[(
+                    0,
+                    DVec3::new(0.1 * f64::from(pas), 5.0, 0.0),
+                    Quat::IDENTITY,
+                )],
+            );
+            driver.advance_all(1.0 / 20.0);
+        }
+        let poussee = position_de(&mut driver, 2);
+        assert!(
+            poussee[0] > 1.5,
+            "la bille simulée a été poussée : {poussee:?}"
+        );
     }
 
     #[test]

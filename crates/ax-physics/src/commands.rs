@@ -12,10 +12,11 @@ use crate::sim::SimDriver;
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::commands::{
     dimension_env_flags, entity_proxy_shape, opcode, sim_mode, vehicle_input_flags, ApplyForce,
-    BreakJoint, CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly, RemoveWorldTile,
-    SetAssemblyState, SetDimensionEnv, SetEntityProxies, SetKinematic, SetObservers, SetParameters,
-    SetPhysicsMaterials, SetSimMode, SetStateExport, SetVehicleInput, SetWheelTorques,
-    SetWorldCollision, SetWorldFluid, SetWorldHeightfield, SimCommandHeader,
+    AssemblyBodyPose, BreakJoint, CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly,
+    RemoveWorldTile, SetAssemblyPose, SetAssemblyState, SetDimensionEnv, SetEntityProxies,
+    SetKinematic, SetObservers, SetParameters, SetPhysicsMaterials, SetSimMode, SetStateExport,
+    SetVehicleInput, SetWheelTorques, SetWorldCollision, SetWorldFluid, SetWorldHeightfield,
+    SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::PhysicsMaterial;
@@ -322,6 +323,40 @@ fn apply_one(
                 read_handle(payload, 0),
                 &payload[SetAssemblyState::BYTES..],
             );
+            outcome.applied += 1;
+        }
+        opcode::SET_ASSEMBLY_POSE => {
+            if payload.len() < SetAssemblyPose::BYTES {
+                return Err(CommandError::BadPayloadLength);
+            }
+            let count = read_u32(payload, 8) as usize;
+            if count > ax_model::dm::commands::MAX_ASSEMBLY_BODIES {
+                return Err(CommandError::BadPayloadLength);
+            }
+            expect_len(
+                payload,
+                SetAssemblyPose::BYTES + count * AssemblyBodyPose::BYTES,
+            )?;
+            let poses: Vec<(u32, DVec3, Quat)> = (0..count)
+                .map(|rank| {
+                    let at = SetAssemblyPose::BYTES + rank * AssemblyBodyPose::BYTES;
+                    (
+                        read_u32(payload, at),
+                        DVec3::new(
+                            read_f64(payload, at + 8),
+                            read_f64(payload, at + 16),
+                            read_f64(payload, at + 24),
+                        ),
+                        Quat::from_xyzw(
+                            read_f32(payload, at + 32),
+                            read_f32(payload, at + 36),
+                            read_f32(payload, at + 40),
+                            read_f32(payload, at + 44),
+                        ),
+                    )
+                })
+                .collect();
+            driver.apply_assembly_pose(read_handle(payload, 0), &poses);
             outcome.applied += 1;
         }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
@@ -1438,6 +1473,53 @@ mod tests {
         );
         assert_eq!(
             appliquer(&mut driver, opcode::SET_SIM_MODE, &[0, 0]),
+            Err(CommandError::BadPayloadLength)
+        );
+    }
+
+    #[test]
+    fn adr168_set_assembly_pose_se_lit_et_se_borne() {
+        // ADR-168, précision 6c-C2 : l'en-tête, puis `count` poses de 48 octets ; un compte au-delà du plafond de
+        // corps ou une longueur fausse refusent le flux ; une assembly inconnue ne change rien.
+        let mut driver = SimDriver::new();
+        let pose = |count: u32, bodies: usize| {
+            let mut payload = Vec::new();
+            payload.extend_from_slice(&7u32.to_le_bytes());
+            payload.extend_from_slice(&1u32.to_le_bytes());
+            payload.extend_from_slice(&count.to_le_bytes());
+            payload.extend_from_slice(&0u32.to_le_bytes());
+            for _ in 0..bodies {
+                payload.extend_from_slice(&3u32.to_le_bytes());
+                payload.extend_from_slice(&0u32.to_le_bytes());
+                for coordinate in [1.0f64, 2.0, 3.0] {
+                    payload.extend_from_slice(&coordinate.to_le_bytes());
+                }
+                for component in [0.0f32, 0.0, 0.0, 1.0] {
+                    payload.extend_from_slice(&component.to_le_bytes());
+                }
+            }
+            payload
+        };
+        assert_eq!(
+            pose(1, 1).len(),
+            SetAssemblyPose::BYTES + AssemblyBodyPose::BYTES
+        );
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_ASSEMBLY_POSE, &pose(1, 1))
+                .unwrap()
+                .applied,
+            1
+        );
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_ASSEMBLY_POSE, &pose(2, 1)),
+            Err(CommandError::BadPayloadLength)
+        );
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_ASSEMBLY_POSE, &pose(65, 0)),
+            Err(CommandError::BadPayloadLength)
+        );
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_ASSEMBLY_POSE, &pose(0, 0)[..12]),
             Err(CommandError::BadPayloadLength)
         );
     }

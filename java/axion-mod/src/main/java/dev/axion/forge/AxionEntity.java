@@ -2108,7 +2108,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     Mth.lerp(partialTick, zo, getZ()), rotationO.slerp(rotation, partialTick, new Quaternionf()),
                     null, List.of(), List.of(), Interpolation.VehiclePose.NONE, AssemblyState.VariableValues.NONE);
         }
-        Interpolation.Pose pose = shownPose(clock.frameNanos(), partialTick);
+        Interpolation.Pose pose = shownPose(clock.frameNanos(), partialTick, true);
         float[] q = pose.rotation();
         return new RenderPose(pose.x(), pose.y(), pose.z(), new Quaternionf(q[0], q[1], q[2], q[3]), pose.mode(),
                 pose.bodies(), pose.wheels(), pose.vehicle(), pose.variables());
@@ -2121,8 +2121,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      *
      * @param nanos l'heure locale de l'image ou du tick
      * @param fraction la fraction de tick de l'image ; 1 au tick, où l'entité se pose à son dernier tick prédit
+     * @param frame vrai pour une image dessinée, faux pour le tick de l'entité
      */
-    private Interpolation.Pose shownPose(long nanos, double fraction) {
+    private Interpolation.Pose shownPose(long nanos, double fraction, boolean frame) {
         double local = localMillis(nanos);
         Interpolation.Pose interpolated = interpolation.sample(clock.renderMillis(nanos), local);
         if (predicted != null && predicted.started()) {
@@ -2130,7 +2131,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 predicted.blendFrom(interpolated, fraction, local);
                 showingPredicted = true;
             }
-            Interpolation.Pose pose = predicted.sample(fraction, local);
+            // Le tick de l'entité (fraction 1) n'est pas une image dessinée : un rejeu mesure son écart à l'écran.
+            Interpolation.Pose pose = frame ? predicted.sample(fraction, local) : predicted.pose(fraction, local);
             if (pose != null) {
                 lastPredictedPose = pose;
                 return pose;
@@ -2152,6 +2154,17 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     public void predictWith(dev.axion.net.PredictedTrack track) {
         predicted = track;
+    }
+
+    /**
+     * {@return la pose de l'assembly à un temps du serveur, telle que ses snapshots la donnent (client) ; {@code null}
+     * avant le premier} Interpolée, ou extrapolée au plus de {@code net.extrapolation_max_ms} : un proxy du monde
+     * prédit s'y pose (ADR-168, précision 6c-C2).
+     *
+     * @param serverMillis le temps, en millisecondes du serveur
+     */
+    public Interpolation.Pose poseAt(double serverMillis) {
+        return interpolation == null ? null : interpolation.at(serverMillis);
     }
 
     /**
@@ -2214,7 +2227,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (interpolation == null) {
             return;
         }
-        Interpolation.Pose pose = shownPose(System.nanoTime(), 1.0);
+        Interpolation.Pose pose = shownPose(System.nanoTime(), 1.0, false);
         float[] q = pose.rotation();
         rotation.set(q[0], q[1], q[2], q[3]);
         tickBodies = pose.bodies();

@@ -101,6 +101,11 @@ minecraft {
             workingDirectory rootProject.file('.runs/server')
             property 'forge.enabledGameTestNamespaces', mod_id
             args '--nogui'
+            // ADR-168, essai de la prédiction : son propre monde, le monde de runServer reste intact. Les véhicules d'un
+            // essai précédent, que le journal latéral garde, l'essai les retire lui-même de sa piste.
+            if (System.getenv('AXION_ESSAI_PREDICTION') == '1') {
+                args '--world', 'essai-prediction'
+            }
             // ADR-162 D9 : /axion dev reload, en développement.
             property 'axion.content.dev_reload', 'true'
         }

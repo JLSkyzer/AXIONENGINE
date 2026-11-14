@@ -77,6 +77,12 @@ public final class EssaiPrediction {
     /** Le véhicule de l'essai : il avance vers son -Z, de l'extrémité du sol. */
     private static final String VEHICULE = "axion:test/vehicule";
 
+    /** La distance de l'obstacle devant le véhicule, en blocs : atteint en virant, vers le tick 127. */
+    private static final double OBSTACLE = 23.0;
+
+    /** Le premier handle des proxies du banc : loin de tout id d'entité de l'essai. */
+    private static final int PROXY_BANC = 1_000_000;
+
     /** Rejeux mesurés au banc, après dix d'échauffement. */
     private static final int REJEUX = 100;
 
@@ -91,6 +97,7 @@ public final class EssaiPrediction {
         private static long debut;
         private static ServerPlayer conducteur;
         private static AxionEntity vehicule;
+        private static AxionEntity obstacle;
         private static boolean assis;
 
         private Serveur() {}
@@ -132,9 +139,27 @@ public final class EssaiPrediction {
                     serveur.halt(false);
                     return;
                 }
-                LOGGER.info("[essai] sol posé, véhicule {} posé pour {}", VEHICULE,
-                        conducteur.getGameProfile().getName());
+                // ADR-168, précision 6c-C2 : un second véhicule garé sur la trajectoire, que le premier heurte en
+                // virant ; au client, il est un proxy du monde prédit.
+                try {
+                    obstacle = AssembliesDeTest.poser(monde, VEHICULE, new Vec3(8.5, SOL_Y + 1.0,
+                            SOL_LONGUEUR - 12.0 - OBSTACLE),
+                            new float[] {0f, 0f, 0f, 1f});
+                } catch (IllegalStateException refus) {
+                    LOGGER.error("[essai] ÉCHEC : obstacle non posé — {}", refus.getMessage());
+                }
+                LOGGER.info("[essai] sol posé, véhicule {} posé pour {}, obstacle à {} blocs", VEHICULE,
+                        conducteur.getGameProfile().getName(), OBSTACLE);
                 return;
+            }
+            // Les véhicules d'un essai précédent, que le journal latéral garde et rend (22.5.2), quittent la piste : seuls
+            // ceux de cet essai y roulent. Leurs colonnes se chargent quand le joueur arrive : le ménage dure tout
+            // l'essai.
+            for (AxionEntity ancien : monde.getEntitiesOfClass(AxionEntity.class,
+                    new net.minecraft.world.phys.AABB(-32, SOL_Y - 32, -32, 48, SOL_Y + 32, SOL_LONGUEUR + 32),
+                    ancien -> ancien != vehicule && ancien != obstacle)) {
+                LOGGER.info("[essai] véhicule d'un essai précédent retiré de la piste : {}", ancien.getUUID());
+                ancien.discard();
             }
             if (!assis && vehicule.hasPhysicalBounds() && vehicule.reseat(conducteur, "conducteur")) {
                 assis = true;
@@ -183,6 +208,9 @@ public final class EssaiPrediction {
          * pose dessinée du véhicule (x, z), et le dernier pas prédit.
          */
         private static final List<double[]> images = new ArrayList<>();
+        /** Le plus de proxies posés en un tick : assemblies, entités vanilla. */
+        private static int proxiesAssemblies;
+        private static int proxiesEntites;
         /** Les ticks du client depuis le début de l'essai. */
         private static long ticksClient;
 
@@ -242,6 +270,9 @@ public final class EssaiPrediction {
             minecraft.options.keyUp.setDown(avant);
             minecraft.options.keyLeft.setDown(gauche);
             noter(assembly, avant, gauche);
+            int[] proxies = ClientPrediction.proxyCounts();
+            proxiesAssemblies = Math.max(proxiesAssemblies, proxies[0]);
+            proxiesEntites = Math.max(proxiesEntites, proxies[1]);
             if (tick % 20 == 0) {
                 LOGGER.info(String.format(Locale.ROOT, "[essai] client : tick %d, avant %b, forwardImpulse %.2f,"
                         + " corrections reçues %d, interpolation %b, prédit %b", tick, avant,
@@ -386,6 +417,8 @@ public final class EssaiPrediction {
                     String.format(Locale.ROOT, "  pire écart de position : %.4f m (rotation %.4f rad, vitesse %.3f m/s)"
                             + " au tick %d, %d en attente", e[0], e[1], e[2], (int) e[3], (int) e[4])));
             rapport.add(fluidite());
+            rapport.add("proxies posés au plus : " + proxiesAssemblies + " assembly(s), " + proxiesEntites
+                    + " entité(s) vanilla");
             rapport.addAll(banc());
             Path dossier = minecraft.gameDirectory.toPath();
             try {
@@ -461,30 +494,75 @@ public final class EssaiPrediction {
         private static List<String> banc() {
             PredictedWorld monde = ClientPrediction.world();
             byte[] etat = ClientPrediction.lastServerState();
-            if (monde == null || etat == null) {
+            AxionEntity vehicule = ClientPrediction.vehicle();
+            if (monde == null || etat == null || vehicule == null) {
                 return List.of("banc du rejeu : aucun monde prédit, rien de mesuré");
             }
             BodyState racine = ClientPrediction.predictedRoot();
             double[] observateur = racine == null ? new double[] {8.0, SOL_Y + 1.0, 0.0} : racine.position();
-            VehicleInput plein = new VehicleInput(1f, 0f, 0f, 0f, 0f, (byte) 0, 0);
-            long[] durees = new long[REJEUX];
-            for (int essai = -10; essai < REJEUX; essai++) {
-                long debut = System.nanoTime();
-                monde.restore(etat);
-                for (int pas = 0; pas < Prediction.HISTORY; pas++) {
-                    monde.step(plein, new SimCommandStream().setObservers(monde.dimension(),
-                            new double[][] {observateur}));
+            dev.axion.lifecycle.AxionRuntime runtime = RuntimeAccess.get();
+            dev.axion.definition.Definition definition =
+                    runtime.definitions().get(vehicule.definitionId()).orElse(null);
+            dev.axion.asset.DefinitionCompiler.Summary resume = definition == null ? null
+                    : runtime.compiledDefinition(definition.id().toString()).orElse(null);
+            List<String> lignes = new ArrayList<>();
+            double[] p50 = new double[4];
+            int[] tailles = {0, 8, 16, 32};
+            for (int rang = 0; rang < tailles.length; rang++) {
+                int n = resume == null ? 0 : tailles[rang];
+                // ADR-168, précision 6c-C2 : n proxies du véhicule de test, en couronne autour du véhicule prédit,
+                // posés à chaque pas comme le client les pose.
+                SimCommandStream creation = new SimCommandStream();
+                List<double[]> places = new ArrayList<>();
+                for (int i = 0; i < n; i++) {
+                    double angle = 2 * Math.PI * i / n;
+                    double r = 8 + (i % 4) * 4;
+                    double[] place = {observateur[0] + r * Math.cos(angle), observateur[1], observateur[2]
+                            + r * Math.sin(angle)};
+                    places.add(place);
+                    creation.createKinematicAssembly(PROXY_BANC + i, PredictedWorld.GENERATION, monde.dimension(), place,
+                            new float[] {0f, 0f, 0f, 1f}, definition.hash());
                 }
-                if (essai >= 0) {
-                    durees[essai] = System.nanoTime() - debut;
+                VehicleInput plein = new VehicleInput(1f, 0f, 0f, 0f, 0f, (byte) 0, 0);
+                monde.step(VehicleInput.NONE, creation.setObservers(monde.dimension(), new double[][] {observateur}));
+                long[] durees = new long[REJEUX];
+                for (int essai = -10; essai < REJEUX; essai++) {
+                    long debut = System.nanoTime();
+                    monde.restore(etat);
+                    for (int pas = 0; pas < Prediction.HISTORY; pas++) {
+                        SimCommandStream commandes = new SimCommandStream().setObservers(monde.dimension(),
+                                new double[][] {observateur});
+                        for (int i = 0; i < n; i++) {
+                            commandes.setAssemblyPose(PROXY_BANC + i, PredictedWorld.GENERATION, List.of(
+                                    new SimCommandStream.KinematicPose(resume.rootNode(), places.get(i),
+                                            new float[] {0f, 0f, 0f, 1f})));
+                        }
+                        monde.step(plein, commandes);
+                    }
+                    if (essai >= 0) {
+                        durees[essai] = System.nanoTime() - debut;
+                    }
                 }
+                SimCommandStream retrait = new SimCommandStream();
+                for (int i = 0; i < n; i++) {
+                    retrait.removeAssembly(PROXY_BANC + i, PredictedWorld.GENERATION);
+                }
+                monde.step(VehicleInput.NONE, retrait);
+                Arrays.sort(durees);
+                p50[rang] = durees[REJEUX / 2] / 1e6;
+                lignes.add(String.format(Locale.ROOT,
+                        "banc du rejeu de %d ticks (restauration comprise), %d proxies, %d mesures : p50 %.3f ms,"
+                                + " p90 %.3f ms, p99 %.3f ms, max %.3f ms",
+                        Prediction.HISTORY, n, REJEUX, p50[rang], durees[REJEUX * 9 / 10] / 1e6,
+                        durees[REJEUX * 99 / 100] / 1e6, durees[REJEUX - 1] / 1e6));
             }
-            Arrays.sort(durees);
-            return List.of(String.format(Locale.ROOT,
-                    "banc du rejeu de %d ticks (restauration comprise), %d mesures : p50 %.3f ms, p90 %.3f ms, "
-                            + "p99 %.3f ms, max %.3f ms",
-                    Prediction.HISTORY, REJEUX, durees[REJEUX / 2] / 1e6, durees[REJEUX * 9 / 10] / 1e6,
-                    durees[REJEUX * 99 / 100] / 1e6, durees[REJEUX - 1] / 1e6));
+            if (resume != null) {
+                lignes.add(String.format(Locale.ROOT, "coût d'un proxy par pas, d'après les p50 : %.1f µs (8), %.1f µs"
+                        + " (16), %.1f µs (32)", (p50[1] - p50[0]) * 1000 / 8 / Prediction.HISTORY,
+                        (p50[2] - p50[0]) * 1000 / 16 / Prediction.HISTORY,
+                        (p50[3] - p50[0]) * 1000 / 32 / Prediction.HISTORY));
+            }
+            return lignes;
         }
     }
 }

@@ -367,6 +367,13 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Rotation gap, in radians, below which the predicted state counts as the server's."),
     fp("net.prediction_tolerance_velocity_ms", 0.2, "Écart de vitesse, en mètres par seconde, en deçà duquel l'état prédit vaut celui du serveur.")
         .en("Velocity gap, in metres per second, below which the predicted state counts as the server's."),
+    // ADR-168, précision 6c-C2 : autour du véhicule prédit, la distance jusqu'à laquelle les autres assemblies et les
+    // entités vanilla y sont posées en proxies. L'horizon la fixe : deux véhicules à 40 m/s qui se rapprochent pendant
+    // net.prediction_max_ping (400 ms) se rejoignent de 32 blocs. Le coût ne la borne pas : un proxy coûte de 0,4 à
+    // 0,7 µs par pas au banc du vrai client (essai à deux processus du 2026-11-14, 100 rejeux de 64 ticks par
+    // compte de proxies) ; 32 proxies ajoutent 1,3 ms à un rejeu de 64 ticks.
+    fp("net.prediction_proxy_radius", 32.0, "Distance, en blocs, autour du véhicule prédit, jusqu'à laquelle les autres assemblies et les entités sont posées en proxies dans le monde prédit.")
+        .en("Distance, in blocks, around the predicted vehicle, up to which other assemblies and entities are placed as proxies in the predicted world."),
     ip("net.max_bytes_per_second_per_player", 32768, "Plafond de bande passante AXION par joueur, en octets par seconde.")
         .en("Cap on AXION bandwidth per player, in bytes per second."),
     ip("net.max_packets_per_second", 40, "Plafond de paquets AXION par seconde et par joueur.")

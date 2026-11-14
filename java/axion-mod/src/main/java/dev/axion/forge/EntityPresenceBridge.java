@@ -131,9 +131,12 @@ public final class EntityPresenceBridge implements SimCommandProvider {
 
     /**
      * {@return vrai pour une entité que la physique doit voir : vanilla la tient pour solide ou
-     * poussable, elle est vivante, ni spectatrice, ni une assembly, ni passagère d'une assembly}
+     * poussable, elle est vivante, ni spectatrice, ni une assembly, ni passagère d'une assembly} Le monde prédit du
+     * client la juge de même (ADR-168, précision 6c-C2).
+     *
+     * @param entity l'entité
      */
-    private static boolean eligible(Entity entity) {
+    public static boolean eligible(Entity entity) {
         return !(entity instanceof AxionEntity)
                 && entity.isAlive()
                 && !entity.isSpectator()
@@ -141,7 +144,13 @@ public final class EntityPresenceBridge implements SimCommandProvider {
                 && !(entity.getVehicle() instanceof AxionEntity);
     }
 
-    private static EntityProxySelector.Candidate candidateOf(Entity entity) {
+    /**
+     * {@return l'entité en candidate : sa boîte, sa vitesse du dernier tick, vivante ou non} Le monde prédit du client la
+     * relève de même (ADR-168, précision 6c-C2).
+     *
+     * @param entity l'entité
+     */
+    public static EntityProxySelector.Candidate candidateOf(Entity entity) {
         double[] velocity = {
             (entity.getX() - entity.xo) * TICKS_PER_SECOND,
             (entity.getY() - entity.yo) * TICKS_PER_SECOND,
@@ -151,7 +160,12 @@ public final class EntityPresenceBridge implements SimCommandProvider {
                 entity.getId(), boxOf(entity.getBoundingBox()), velocity, entity instanceof LivingEntity);
     }
 
-    private static EntityProxySelector.Box boxOf(AABB box) {
+    /**
+     * {@return la boîte de Minecraft en boîte du sélecteur}
+     *
+     * @param box la boîte
+     */
+    public static EntityProxySelector.Box boxOf(AABB box) {
         return new EntityProxySelector.Box(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 }

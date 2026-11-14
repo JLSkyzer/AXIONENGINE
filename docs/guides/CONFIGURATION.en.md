@@ -177,6 +177,7 @@ ignored (R-1830).
 | `prediction_tolerance_position_m` | float | `0.01` | `0.0..` | no | no | Position gap, in metres, below which the predicted state counts as the server's. |
 | `prediction_tolerance_rotation_rad` | float | `0.005` | `0.0..` | no | no | Rotation gap, in radians, below which the predicted state counts as the server's. |
 | `prediction_tolerance_velocity_ms` | float | `0.2` | `0.0..` | no | no | Velocity gap, in metres per second, below which the predicted state counts as the server's. |
+| `prediction_proxy_radius` | float | `32.0` | `0.0..` | no | no | Distance, in blocks, around the predicted vehicle, up to which other assemblies and entities are placed as proxies in the predicted world. |
 | `max_bytes_per_second_per_player` | integer | `32768` | `0..` | no | no | Cap on AXION bandwidth per player, in bytes per second. |
 | `max_packets_per_second` | integer | `40` | `0..` | no | no | Cap on AXION packets per second per player. |
 | `max_impacts_per_packet` | integer | `64` | `0..` | no | no | Maximum number of impacts grouped in one packet. |

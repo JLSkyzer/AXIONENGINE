@@ -119,6 +119,7 @@ public final class Prediction {
     private double latencyMillis = -1;
     private double stepNanos = -1;
     private long lastServerTick = -1;
+    private long lastAppliedSequence = -1;
     private long matches;
     private long replays;
     private long accepted;
@@ -199,6 +200,7 @@ public final class Prediction {
             return new Reconciliation(Outcome.STALE, 0, 0);
         }
         lastServerTick = serverTick;
+        lastAppliedSequence = appliedSequence;
         measureLatency(appliedSequence, start);
         // Les entrées que le serveur a appliquées sortent de l'historique ; celle qu'il acquitte se compare.
         Entry acknowledged = null;
@@ -281,6 +283,7 @@ public final class Prediction {
     public void reset() {
         history.clear();
         lastServerTick = -1;
+        lastAppliedSequence = -1;
     }
 
     /**
@@ -302,6 +305,21 @@ public final class Prediction {
     /** {@return les entrées gardées, appliquées mais pas encore acquittées} */
     public int pending() {
         return history.size();
+    }
+
+    /**
+     * {@return le tick du serveur où s'applique l'entrée de cette séquence, estimé par la dernière correction : son tick
+     * plus l'écart des séquences, une entrée par tick (D3) ; -1 avant toute correction qui acquitte une entrée}
+     *
+     * @param sequence la séquence d'une entrée
+     */
+    public long serverTickOf(long sequence) {
+        return lastServerTick < 0 || lastAppliedSequence < 0 ? -1 : lastServerTick + (sequence - lastAppliedSequence);
+    }
+
+    /** {@return le tick du serveur de la dernière correction traitée, -1 avant} */
+    public long lastServerTick() {
+        return lastServerTick;
     }
 
     /** {@return les corrections égales à la prédiction, depuis la création} */

@@ -3811,10 +3811,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            T-415 et T-416 par un essai à deux processus (serveur dédié + vrai client, latence injectée), le natif en
            Rust (deux mondes), la boucle Java en tests unitaires ; une connexion en mémoire ne prédit pas (un contexte
            natif par processus, R-450). Étapes :
-           **État au 2026-11-13, 21:40** : A et B commités. Ouvert : (1) une connexion directe au serveur dédié sur
+           **État au 2026-11-14** : A, B, C commités. Ouvert : (1) une connexion directe au serveur dédié sur
            deux expire (« Timed out », cause inconnue, ADR-168 précision 6c-B) ; l'essai se reconnecte jusqu'à trois
-           fois ; (2) le relais de latence : avec lui, aucune connexion n'a encore abouti (à reprendre en 6e) ; (3) une
-           fausse prédiction isolée de 0,48 m vue une fois, rejouée, non reproduite — à regarder en 6c-C.
+           fois ; (2) le relais de latence : avec lui, aucune connexion n'a encore abouti (à reprendre en 6e). La
+           fausse prédiction de 0,48 m de la 6c-B : probablement un véhicule d'un essai précédent resté sur la piste
+           (précision 6c-C2), l'essai a désormais son monde et sa piste nette.
            - [x] A (2026-11-14, CI locale verte) : le monde prédit du client distant et son cycle de vie — table des matériaux et familles de pneus
                  tirées du registre reçu, véhicule créé à la première correction et restauré, tuiles du niveau du
                  client par le découpage commun (`ForgeWorldCollisionSource` sur un `Level`).
@@ -3823,13 +3824,15 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  `net.prediction_replay_budget_ns`, défaut mesuré au banc), désactivation (D8).
                  Tolérance de D5 en trois options (1 cm, 5 mrad, 0,2 m/s), budget jugé dans le rejeu même ; essai :
                  114 égales, 36 rejouées, 0 acceptée (ADR-168 précision 6c-B).
-           - [ ] C : le rendu à la pose prédite, lissage de 200 ms et téléportation, proxies extrapolés des autres
+           - [x] C : le rendu à la pose prédite, lissage de 200 ms et téléportation, proxies extrapolés des autres
                  assemblies, recréation sur `IRRECONCILABLE`.
                  - [x] C1 (2026-11-13) : piste prédite lue à `partialTick`, rejeux et bascules lissés en 200 ms,
                        recréation sur `IRRECONCILABLE` ; essai : vitesse dessinée qui varie de 0,35 m/s au plus d'une
                        image à l'autre (ADR-168 précision 6c-C1).
-                 - [ ] C2 : proxies cinématiques des autres assemblies, à leur pose extrapolée — touche l'ABI
-                       (`CREATE_ASSEMBLY` cinématique, pose de chaque corps) : forme à proposer à Killian avant le code.
+                 - [x] C2 (2026-11-14, décisions de Killian : vrais colliders, entités vanilla, rayon mesuré) :
+                       ABI 25 (`KINEMATIC`, `SET_ASSEMBLY_POSE`), `ClientProxies`, `net.prediction_proxy_radius` = 32
+                       (horizon ; un proxy coûte 0,4 à 0,9 µs par pas). Essai : choc prédit contre l'obstacle, corrigé
+                       en deux ticks (ADR-168 précision 6c-C2).
      - [ ] 6d — variables, paramètres et contrôleurs prédits, `VehicleControl.state()` au client, correspondances
            bloc → matériau dans le registre.
      - [ ] 6e — T-415..T-417 sous latence injectée (essai à deux processus, T-417 en GameTest), défauts mesurés

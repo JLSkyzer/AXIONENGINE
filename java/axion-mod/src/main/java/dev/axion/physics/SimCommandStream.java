@@ -74,6 +74,41 @@ public final class SimCommandStream {
     /** Drapeau {@code ASLEEP} de {@code CreateAssembly} : l'assembly naît endormie (22.4, ADR-153 D4). */
     public static final int CREATE_ASSEMBLY_ASLEEP = 4;
 
+    /**
+     * Drapeau {@code KINEMATIC} de {@code CreateAssembly} (ADR-168, précision 6c-C2) : un proxy du monde prédit, ses corps
+     * cinématiques, sans joint, sans véhicule, sans animation, posés par {@link #setAssemblyPose}.
+     */
+    public static final int CREATE_ASSEMBLY_KINEMATIC = 16;
+
+    /** Opcode {@code SET_ASSEMBLY_POSE} (ADR-168, précision 6c-C2). */
+    public static final int OP_SET_ASSEMBLY_POSE = 23;
+
+    /** Taille de l'en-tête {@code SetAssemblyPose}, en octets. */
+    public static final int SET_ASSEMBLY_POSE_BYTES = 16;
+
+    /** Taille d'un {@code AssemblyBodyPose}, en octets. */
+    public static final int ASSEMBLY_BODY_POSE_BYTES = 48;
+
+    /** Plafond de corps par assembly ({@code MAX_ASSEMBLY_BODIES}, R-190) : celui des poses d'un {@code SET_ASSEMBLY_POSE}. */
+    public static final int MAX_ASSEMBLY_BODIES = 64;
+
+    /**
+     * La pose monde d'un corps d'un proxy, pour le pas suivant.
+     *
+     * @param node node racine du corps dans l'asset
+     * @param position position monde absolue, en blocs
+     * @param rotation quaternion {@code (x, y, z, w)}
+     */
+    public record KinematicPose(int node, double[] position, float[] rotation) {
+
+        /** Vérifie les tailles. */
+        public KinematicPose {
+            if (position.length != 3 || rotation.length != 4) {
+                throw new IllegalArgumentException("une pose : position à 3 composantes, quaternion à 4");
+            }
+        }
+    }
+
     /** Taille de l'état restauré d'un corps ({@code RestoredBody}), en octets. */
     public static final int RESTORED_BODY_BYTES = 64;
 
@@ -308,6 +343,8 @@ public final class SimCommandStream {
     }
 
     private final List<byte[]> commands = new ArrayList<>();
+    /** Vrai le temps d'écrire la création d'un proxy cinématique ({@link #createKinematicAssembly}). */
+    private boolean kinematicNext;
 
     /**
      * Ajoute une commande {@code SET_DIMENSION_ENV} (§10.6).
@@ -426,7 +463,8 @@ public final class SimCommandStream {
         command.putFloat(rotation[3]);
         command.putLong(definition);
         command.put((byte) ((restored != null ? CREATE_ASSEMBLY_RESTORED : 0)
-                | (asleep ? CREATE_ASSEMBLY_ASLEEP : 0)));
+                | (asleep ? CREATE_ASSEMBLY_ASLEEP : 0) | (kinematicNext ? CREATE_ASSEMBLY_KINEMATIC : 0)));
+        kinematicNext = false;
         command.position(COMMAND_HEADER_BYTES + CREATE_ASSEMBLY_HEADER_BYTES);
         if (restored != null) {
             for (RestoredBody body : restored.bodies()) {
@@ -1012,6 +1050,59 @@ public final class SimCommandStream {
      *     8 octets
      */
     public SimCommandStream setAssemblyState(int handleIndex, int handleGeneration, byte[] state) {
+        return setAssemblyStateChecked(handleIndex, handleGeneration, state);
+    }
+
+    /**
+     * Ajoute une commande {@code CREATE_ASSEMBLY} pour un proxy du monde prédit (ADR-168, précision 6c-C2) : les corps de
+     * la definition naissent cinématiques, sans joint, sans véhicule, sans animation, et ne bougent que par
+     * {@link #setAssemblyPose}.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param dimension dimension d'accueil
+     * @param position position monde de spawn
+     * @param rotation quaternion de spawn
+     * @param definition empreinte de la definition compilée
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream createKinematicAssembly(int handleIndex, int handleGeneration, long dimension,
+            double[] position, float[] rotation, long definition) {
+        kinematicNext = true;
+        return createAssembly(handleIndex, handleGeneration, dimension, position, rotation, definition, null, false);
+    }
+
+    /**
+     * Ajoute une commande {@code SET_ASSEMBLY_POSE} (ADR-168, précision 6c-C2) : la pose de chaque corps d'un proxy pour
+     * le pas suivant. Le natif ne déplace que des corps cinématiques ; un node que l'assembly n'a pas, une pose non
+     * finie sont ignorés.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param poses la pose de chaque corps, au plus {@link #MAX_ASSEMBLY_BODIES}
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setAssemblyPose(int handleIndex, int handleGeneration, List<KinematicPose> poses) {
+        if (poses.size() > MAX_ASSEMBLY_BODIES) {
+            throw new IllegalArgumentException("au plus " + MAX_ASSEMBLY_BODIES + " corps par assembly (R-190)");
+        }
+        ByteBuffer command = beginCommand(OP_SET_ASSEMBLY_POSE,
+                SET_ASSEMBLY_POSE_BYTES + poses.size() * ASSEMBLY_BODY_POSE_BYTES);
+        command.putInt(handleIndex).putInt(handleGeneration).putInt(poses.size()).putInt(0);
+        for (KinematicPose pose : poses) {
+            command.putInt(pose.node()).putInt(0);
+            for (double value : pose.position()) {
+                command.putDouble(value);
+            }
+            for (float value : pose.rotation()) {
+                command.putFloat(value);
+            }
+        }
+        commands.add(command.array());
+        return this;
+    }
+
+    private SimCommandStream setAssemblyStateChecked(int handleIndex, int handleGeneration, byte[] state) {
         if (state.length > MAX_ASSEMBLY_STATE_BYTES || state.length % 8 != 0) {
             throw new IllegalArgumentException("bloc d'état de " + state.length + " octets : un multiple de 8, au plus "
                     + MAX_ASSEMBLY_STATE_BYTES);

@@ -75,6 +75,9 @@ pub mod opcode {
     /// La restauration de l'état complet d'une assembly vivante ([`super::SetAssemblyState`], puis `length` octets).
     /// ADR-168 D1, R-1682.
     pub const SET_ASSEMBLY_STATE: u32 = 22;
+    /// La pose de chaque corps cinématique d'une assembly pour le pas suivant ([`super::SetAssemblyPose`], puis
+    /// `count` [`super::AssemblyBodyPose`]). ADR-168, précision 6c-C2.
+    pub const SET_ASSEMBLY_POSE: u32 = 23;
 }
 
 /// Les valeurs de [`SetSimMode`], champ `mode`.
@@ -132,6 +135,43 @@ pub struct SetAssemblyState {
 impl SetAssemblyState {
     /// Taille de l'en-tête sur la frontière, en octets.
     pub const BYTES: usize = 12;
+}
+
+/// En-tête de `SET_ASSEMBLY_POSE` (ADR-168, précision 6c-C2) : 16 octets, puis `count` [`AssemblyBodyPose`]. Les
+/// proxies du monde prédit d'un client — les autres assemblies, nées [`create_assembly_flags::KINEMATIC`] — y
+/// reçoivent à chaque pas leur pose extrapolée. Un corps qui n'est pas cinématique n'est pas déplacé ; un node que
+/// l'assembly n'a pas est ignoré.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetAssemblyPose {
+    /// L'assembly.
+    pub handle: Handle,
+    /// Corps posés à la suite, au plus [`MAX_ASSEMBLY_BODIES`].
+    pub count: u32,
+    /// Réservé, à zéro.
+    pub _pad: u32,
+}
+
+impl SetAssemblyPose {
+    /// Taille de l'en-tête sur la frontière, en octets.
+    pub const BYTES: usize = 16;
+}
+
+/// La pose d'un corps dans `SET_ASSEMBLY_POSE` : 48 octets.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AssemblyBodyPose {
+    /// Node racine du corps dans l'asset, celui que ses `BodyState` rapportent.
+    pub node: u32,
+    /// Réservé, à zéro.
+    pub _pad: u32,
+    /// Pose monde du corps, en coordonnées absolues.
+    pub transform: WorldTransform,
+}
+
+impl AssemblyBodyPose {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 48;
 }
 
 /// Drapeaux de [`SetVehicleInput`], champ `flags`.
@@ -438,9 +478,12 @@ pub mod create_assembly_flags {
     /// L'assembly naît endormie, comme la gestion d'activité endort : ses vitesses gelées,
     /// rendues au réveil (22.4, ADR-153 D4).
     pub const ASLEEP: u8 = 1 << 2;
+    /// L'assembly est un proxy du monde prédit d'un client (ADR-168, précision 6c-C2) : ses corps naissent
+    /// cinématiques, sans joint, sans véhicule, sans animation, et se posent par `SET_ASSEMBLY_POSE`.
+    pub const KINEMATIC: u8 = 1 << 4;
     /// Tous les drapeaux connus. Le bit 0 (autocollision) et le bit 3 (section `ANIM`) d'avant
-    /// ADR-156 viennent désormais de la definition compilée.
-    pub const ALL: u8 = RESTORED | ASLEEP;
+    /// ADR-156 viennent désormais de la definition compilée ; ils ne reprennent pas de sens.
+    pub const ALL: u8 = RESTORED | ASLEEP | KINEMATIC;
 }
 
 /// Plafond de corps par assembly (R-190, `E-3050`).
@@ -868,6 +911,14 @@ mod tests {
     #[test]
     fn dm_command_payloads_disposition_figee() {
         assert_eq!(size_of::<RemoveAssembly>(), RemoveAssembly::BYTES);
+
+        assert_eq!(size_of::<SetAssemblyPose>(), SetAssemblyPose::BYTES);
+        assert_eq!(offset_of!(SetAssemblyPose, handle), 0);
+        assert_eq!(offset_of!(SetAssemblyPose, count), 8);
+        assert_eq!(size_of::<AssemblyBodyPose>(), AssemblyBodyPose::BYTES);
+        assert_eq!(align_of::<AssemblyBodyPose>(), 8);
+        assert_eq!(offset_of!(AssemblyBodyPose, node), 0);
+        assert_eq!(offset_of!(AssemblyBodyPose, transform), 8);
 
         assert_eq!(size_of::<SetKinematic>(), SetKinematic::BYTES);
         assert_eq!(align_of::<SetKinematic>(), 8);

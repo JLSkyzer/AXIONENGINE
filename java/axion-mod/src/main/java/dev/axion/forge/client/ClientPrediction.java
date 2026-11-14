@@ -62,6 +62,8 @@ public final class ClientPrediction {
     private static Prediction loop;
     private static PredictedWorld world;
     private static ClientTiles tiles;
+    /** Les autres assemblies et les entités vanilla proches, en proxies (ADR-168, précision 6c-C2). */
+    private static ClientProxies proxies;
     private static AxionEntity vehicle;
     private static int rootNode;
     /** Le dernier pas du monde prédit. */
@@ -95,6 +97,16 @@ public final class ClientPrediction {
                     world.materials(materials);
                 }
                 around.merge(tiles.tick(vehicle, at[0], at[1], at[2], predictedSpeed()));
+                ClientLevel level = Minecraft.getInstance().level;
+                if (level != null) {
+                    around.merge(proxies.select(level, vehicle, predictedSpeed(),
+                            runtime.outcome().config().getFloat("net.prediction_proxy_radius")));
+                }
+            }
+            // Les proxies au tick du serveur où s'applique l'entrée de ce pas, rejeu compris.
+            long stepTick = loop.serverTickOf(sequence);
+            if (stepTick >= 0) {
+                around.merge(proxies.poses(stepTick, loop.lastServerTick()));
             }
             lastStep = world.step(input, around);
             for (BodyState state : lastStep.result().bodies()) {
@@ -272,6 +284,11 @@ public final class ClientPrediction {
         return lastStep;
     }
 
+    /** {@return le nombre de proxies posés : assemblies, puis entités vanilla ; zéros sans monde prédit} */
+    public static int[] proxyCounts() {
+        return proxies == null ? new int[2] : new int[] {proxies.assemblyCount(), proxies.entityCount()};
+    }
+
     /** {@return le véhicule prédit, {@code null} sans} */
     public static AxionEntity vehicle() {
         return vehicle;
@@ -360,6 +377,7 @@ public final class ClientPrediction {
         }
         runtime.markPhysicsMaterialsChanged();
         tiles = new ClientTiles(level, runtime);
+        proxies = new ClientProxies(runtime, tiles.dimension());
         Quaternionf rotation = assembly.orientation();
         world = PredictedWorld.open(new NativeSimulation(runtime.outcome().context()),
                 runtime.takePhysicsMaterialsIfChanged(), assembly.getId(), tiles.dimension(),
@@ -383,8 +401,10 @@ public final class ClientPrediction {
         }
         PredictedWorld closing = world;
         ClientTiles released = tiles;
+        ClientProxies releasedProxies = proxies;
         world = null;
         tiles = null;
+        proxies = null;
         if (vehicle != null) {
             vehicle.predictWith(null);
         }
@@ -397,7 +417,7 @@ public final class ClientPrediction {
             loop.reset();
         }
         try {
-            closing.close(released.releaseAll());
+            closing.close(released.releaseAll().merge(releasedProxies.releaseAll()));
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.error("AXION : prédiction : monde prédit mal fermé — {}", failure.toString());
         }

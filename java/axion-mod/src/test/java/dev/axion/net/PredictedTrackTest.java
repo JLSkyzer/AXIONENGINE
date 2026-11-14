@@ -53,6 +53,21 @@ class PredictedTrackTest {
     }
 
     @Test
+    @DisplayName("D5 : un rejeu qui réécrit l'avant-dernier tick ne fait pas sauter l'image en cours, dessinée entre deux")
+    void rejeuEntreDeuxTicks() {
+        PredictedTrack piste = piste(5);
+        // L'image dessinée à mi-chemin du tick 4 au tick 5 ; le tick posé par l'entité, lui, ne compte pas.
+        double image = piste.sample(0.5, 1000).x();
+        piste.pose(1.0, 1000);
+        // Le serveur corrige le tick 4 seul (le choc d'un proxy) : le 5 est réécrit à l'identique.
+        piste.replay(4, a(3.4), 1000);
+        piste.replay(5, a(5), 1000);
+        assertEquals(image, piste.sample(0.5, 1000).x(), 1e-3, "l'image suivante part de là où l'autre était");
+        assertEquals(4.2, piste.sample(0.5, 1000 + Interpolation.CORRECTION_MILLIS).x(), 1e-3,
+                "puis rejoint la pose rejouée");
+    }
+
+    @Test
     @DisplayName("21.7 : un écart au-delà de net.snap_threshold se téléporte")
     void teleportation() {
         PredictedTrack piste = piste(3);

@@ -348,6 +348,17 @@ public final class Interpolation {
         return last == null ? null : pose(last, last.position(), last.rotation(), Mode.HELD);
     }
 
+    /**
+     * {@return la pose du tampon à un temps du serveur, sans correction : interpolée, ou extrapolée au plus de
+     * {@code net.extrapolation_max_ms} puis tenue ; {@code null} avant tout snapshot} Les proxies du monde prédit s'y
+     * posent au tick prédit de chaque pas (ADR-168, précision 6c-C2).
+     *
+     * @param serverMillis le temps, en millisecondes du serveur
+     */
+    public Pose at(double serverMillis) {
+        return compute(serverMillis);
+    }
+
     /** {@return le nombre de snapshots gardés, borné par {@link #MAX_SAMPLES}} */
     int buffered() {
         return samples.size();

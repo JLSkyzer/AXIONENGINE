@@ -890,6 +890,14 @@ public final class ConfigSchema {
                     false,
                     "Écart de vitesse, en mètres par seconde, en deçà duquel l'état prédit vaut celui du serveur."),
             new Option(
+                    "net.prediction_proxy_radius",
+                    Kind.FLOAT,
+                    32.0,
+                    new Domain(DomainKind.FLOAT_RANGE, 0.0, Double.MAX_VALUE, List.of()),
+                    false,
+                    false,
+                    "Distance, en blocs, autour du véhicule prédit, jusqu'à laquelle les autres assemblies et les entités sont posées en proxies dans le monde prédit."),
+            new Option(
                     "net.max_bytes_per_second_per_player",
                     Kind.INTEGER,
                     32768L,
