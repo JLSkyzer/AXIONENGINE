@@ -59,6 +59,9 @@ minecraft {
     // distance en plein écran, le poste resterait enfermé dans la fenêtre du jeu. Le film et les bancs, toujours ;
     // runClient, quand un agent le lance (CLAUDECODE) ou sous -Paxion.sourisLibre=true.
     def sourisLibre = (findProperty('axion.sourisLibre') ?: (System.getenv('CLAUDECODE') == '1')).toString()
+    // Un client lancé par un agent s'ouvre sur l'écran secondaire (`EcranSecondaire`, contenu de développement) :
+    // l'écran principal reste à Killian. Tous les lancements qui héritent de `client`, ou -Paxion.ecranSecondaire=true.
+    def ecranSecondaire = (findProperty('axion.ecranSecondaire') ?: (System.getenv('CLAUDECODE') == '1')).toString()
 
     runs {
         configureEach {
@@ -90,6 +93,7 @@ minecraft {
             // production (R-2270).
             property 'axion.dev', 'true'
             property 'axion.souris.libre', sourisLibre
+            property 'axion.ecran.secondaire', ecranSecondaire
             // ADR-162 D9 : /axion dev reload, en développement.
             property 'axion.content.dev_reload', 'true'
         }
@@ -137,6 +141,10 @@ minecraft {
             property 'axion.essai.basculer', (project.findProperty('essaiBasculer') ?: '').toString()
             // -PessaiRapports=<n> : rapports passés avant d'accélérer (la première d'une boîte manuelle).
             property 'axion.essai.rapports', (project.findProperty('essaiRapports') ?: '0').toString()
+            // -PessaiGigue=<ms> : le relais retarde chaque morceau de 0 à <ms> de plus, au hasard, l'ordre gardé.
+            property 'axion.essai.gigue', (project.findProperty('essaiGigue') ?: '0').toString()
+            // -PessaiProlonger=<s> : après la conduite, le conducteur reste assis <s> secondes, pour la cadence (6e).
+            property 'axion.essai.prolonger', (project.findProperty('essaiProlonger') ?: '0').toString()
             // La course de connexion de Forge 47 : le mod la rattrape lui-même (ADR-169) ; -PessaiRelance ajoute la relance
             // de l'essai, l'expérience qui en a confirmé la cause.
             property 'axion.essai.relance_lecture', project.hasProperty('essaiRelance').toString()

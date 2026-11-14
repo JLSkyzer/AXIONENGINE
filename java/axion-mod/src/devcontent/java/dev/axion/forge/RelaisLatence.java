@@ -28,6 +28,9 @@ final class RelaisLatence implements AutoCloseable {
     private final String hote;
     private final int port;
     private final long delaiNanos;
+    private final long gigueNanos;
+    /** Graine fixe : deux essais de même réglage subissent la même suite de retards. */
+    private final java.util.Random hasard = new java.util.Random(168L);
     private volatile boolean ferme;
 
     /**
@@ -37,18 +40,22 @@ final class RelaisLatence implements AutoCloseable {
      * @param hote l'hôte du serveur
      * @param port son port
      * @param delaiMs le délai d'un sens, en millisecondes : l'aller-retour en ajoute le double
+     * @param gigueMs la gigue : chaque morceau attend de 0 à tant de millisecondes de plus, au hasard ; un morceau ne
+     *     part jamais avant celui d'avant, comme sur TCP, où un retard retient ce qui suit
      * @throws IOException si le port local est pris
      */
-    RelaisLatence(int portLocal, String hote, int port, long delaiMs) throws IOException {
+    RelaisLatence(int portLocal, String hote, int port, long delaiMs, long gigueMs) throws IOException {
         // L'adresse IPv4 explicite : getLoopbackAddress() rend ::1 dans le jeu, où le client se connecte en IPv4.
         this.ecoute = new ServerSocket(portLocal, 4, InetAddress.getByName("127.0.0.1"));
         this.hote = hote;
         this.port = port;
         this.delaiNanos = delaiMs * 1_000_000L;
+        this.gigueNanos = gigueMs * 1_000_000L;
         Thread accepte = new Thread(this::accepter, "axion-relais-latence");
         accepte.setDaemon(true);
         accepte.start();
-        LOGGER.info("[essai] relais de latence : 127.0.0.1:{} → {}:{}, {} ms par sens", portLocal, hote, port, delaiMs);
+        LOGGER.info("[essai] relais de latence : 127.0.0.1:{} → {}:{}, {} ms par sens, gigue de 0 à {} ms", portLocal,
+                hote, port, delaiMs, gigueMs);
     }
 
     private void accepter() {
@@ -75,6 +82,7 @@ final class RelaisLatence implements AutoCloseable {
         // à se connecter dit ainsi si les octets ont passé.
         long[] lus = {0};
         long[] ecrits = {0};
+        long[] dernierDepart = {0};
         Thread lit = new Thread(() -> {
             byte[] tampon = new byte[16384];
             String fin = "fin du flux";
@@ -85,7 +93,10 @@ final class RelaisLatence implements AutoCloseable {
                         LOGGER.info("[essai] relais {} : premier morceau lu, {} octets", sens, n);
                     }
                     lus[0] += n;
-                    file.put(new Morceau(System.nanoTime() + delaiNanos, Arrays.copyOf(tampon, n)));
+                    long depart = System.nanoTime() + delaiNanos + gigue();
+                    depart = Math.max(depart, dernierDepart[0]);
+                    dernierDepart[0] = depart;
+                    file.put(new Morceau(depart, Arrays.copyOf(tampon, n)));
                 }
             } catch (IOException | InterruptedException faute) {
                 fin = faute.toString();
@@ -119,6 +130,16 @@ final class RelaisLatence implements AutoCloseable {
         ecrit.setDaemon(true);
         lit.start();
         ecrit.start();
+    }
+
+    /** {@return un retard de plus, de 0 à la gigue, en nanosecondes} Tiré par les deux sens. */
+    private long gigue() {
+        if (gigueNanos <= 0) {
+            return 0;
+        }
+        synchronized (hasard) {
+            return (long) (hasard.nextDouble() * gigueNanos);
+        }
     }
 
     private static void fermer(Socket a, Socket b) {

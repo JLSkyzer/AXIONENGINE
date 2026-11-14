@@ -1128,6 +1128,26 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * {@return la cadence des entrées d'un siège au serveur (ADR-168 D3) : ses ticks sur une file vide, ses entrées
+     * sautées pour rattraper, puis la profondeur trouvée à chaque tick ({@link dev.axion.seat.InputQueue#depths}) ;
+     * {@code null} si le siège n'a jamais reçu d'entrée}
+     *
+     * @param seat le rang du siège
+     */
+    public long[] seatCadence(int seat) {
+        SeatInputs inputs = seatInputs.get(seat);
+        if (inputs == null) {
+            return null;
+        }
+        long[] depths = inputs.queue.depths();
+        long[] cadence = new long[2 + depths.length];
+        cadence[0] = inputs.queue.starvedTotal();
+        cadence[1] = inputs.queue.skippedTotal();
+        System.arraycopy(depths, 0, cadence, 2, depths.length);
+        return cadence;
+    }
+
+    /**
      * {@return la séquence de la dernière entrée que le siège {@code driver} a appliquée (ADR-168 D3), -1 sans} La
      * correction la rend au conducteur : ce qu'il a envoyé après, il le rejoue.
      */

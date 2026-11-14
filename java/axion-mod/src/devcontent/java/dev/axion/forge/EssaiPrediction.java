@@ -95,6 +95,12 @@ public final class EssaiPrediction {
     /** Les rapports passés avant d'accélérer : la première d'une boîte manuelle, qui part au neutre. */
     private static final int RAPPORTS = Integer.getInteger("axion.essai.rapports", 0);
 
+    /** La gigue du relais : de 0 à tant de millisecondes de plus par morceau, au hasard (ADR-168, 6e). */
+    private static final long GIGUE_MS = Long.getLong("axion.essai.gigue", 0L);
+
+    /** Les secondes où le conducteur reste assis après la conduite : la cadence des entrées sur la durée (6e). */
+    private static final int PROLONGER_S = Integer.getInteger("axion.essai.prolonger", 0);
+
     /** La distance de l'obstacle devant le véhicule, en blocs : atteint en virant, vers le tick 127. */
     private static final double OBSTACLE = 23.0;
 
@@ -213,6 +219,14 @@ public final class EssaiPrediction {
                         + " accélérateur %.2f, corrections parties %d (retenues %d)", vehicule.getX(), vehicule.getZ(),
                         vehicule.driverSequence(), siege < 0 ? -1f : vehicule.seatInput(siege).throttle(),
                         corrections[0], corrections[1]));
+                long[] cadence = siege < 0 ? null : vehicule.seatCadence(siege);
+                if (cadence != null) {
+                    // ADR-168 D3, 6e : la cadence des entrées, relevée dans la file même ; la profondeur trouvée à
+                    // chaque tick, de 0 à 7 et plus.
+                    LOGGER.info("[essai] serveur : cadence : {} tick(s) sur une file vide, {} entrée(s) sautée(s),"
+                            + " profondeurs {}", cadence[0], cadence[1],
+                            java.util.Arrays.toString(java.util.Arrays.copyOfRange(cadence, 2, cadence.length)));
+                }
             }
         }
     }
@@ -459,7 +473,7 @@ public final class EssaiPrediction {
                         dev.axion.forge.net.EssaiReseau.correctionsRecues(minecraft.getConnection().getConnection()),
                         assembly.interpolating(), ClientPrediction.predicting()));
             }
-            if (tick == ATTENTE + ACCELERE + BRAQUE + RELACHE) {
+            if (tick == ATTENTE + ACCELERE + BRAQUE + RELACHE + PROLONGER_S * 20) {
                 fini = true;
                 terminer(minecraft);
             }
@@ -577,7 +591,7 @@ public final class EssaiPrediction {
             String adresse = HOTE + ":" + PORT;
             if (DELAI_MS > 0) {
                 try {
-                    relais = new RelaisLatence(PORT_RELAIS, HOTE, PORT, DELAI_MS);
+                    relais = new RelaisLatence(PORT_RELAIS, HOTE, PORT, DELAI_MS, GIGUE_MS);
                     adresse = HOTE + ":" + PORT_RELAIS;
                 } catch (IOException faute) {
                     LOGGER.error("[essai] relais de latence impossible : {}", faute.toString());
@@ -609,7 +623,8 @@ public final class EssaiPrediction {
             minecraft.options.keyLeft.setDown(false);
             List<String> rapport = new ArrayList<>();
             Prediction boucle = ClientPrediction.loop();
-            rapport.add(String.format(Locale.ROOT, "délai injecté par sens : %d ms", DELAI_MS));
+            rapport.add(String.format(Locale.ROOT, "délai injecté par sens : %d ms, gigue de 0 à %d ms, %d s"
+                    + " prolongées", DELAI_MS, GIGUE_MS, PROLONGER_S));
             rapport.add("tentatives de connexion : " + tentatives);
             if (boucle == null) {
                 rapport.add("aucune entrée partie : rien de prédit");
@@ -632,7 +647,8 @@ public final class EssaiPrediction {
             long[] cadence = ClientPrediction.inputCadence();
             rapport.add("cadence des entrées au serveur : " + cadence[0] + " tick(s) avancé(s) sans entrée neuve, "
                     + cadence[1] + " entrée(s) passée(s) d'un coup");
-            if (!ecartsDecodage.isEmpty()) {
+            // Sans contrôleur au serveur, le régulateur rejoué n'a rien à quoi se comparer : la ligne mentirait.
+            if (!ecartsDecodage.isEmpty() && coupleServeurMax > 0) {
                 double[] d = ecartsDecodage.stream().mapToDouble(Double::doubleValue).sorted().toArray();
                 long nuls = java.util.Arrays.stream(d).filter(x -> x == 0.0).count();
                 rapport.add(String.format(Locale.ROOT, "régulateur rejoué au client sur le bloc du serveur du tick"

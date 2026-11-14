@@ -52,6 +52,11 @@ public final class InputQueue<T> {
     private long lastOffered = -1;
     private long lastApplied = -1;
     private long skippedTotal;
+    private long starvedTotal;
+    private final long[] depths = new long[DEPTHS];
+
+    /** Profondeurs distinguées par {@link #depths()} ; la dernière compte aussi les plus profondes. */
+    public static final int DEPTHS = 8;
 
     /**
      * Met une entrée en file.
@@ -75,7 +80,13 @@ public final class InputQueue<T> {
 
     /** {@return l'entrée de ce tick, après le rattrapage d'une file qui déborde ; {@code null} si la file est vide} */
     public Step<T> next() {
+        if (lastOffered >= 0) {
+            depths[Math.min(pending.size(), DEPTHS - 1)]++;
+        }
         if (pending.isEmpty()) {
+            if (lastOffered >= 0) {
+                starvedTotal++;
+            }
             return null;
         }
         List<T> skipped = new ArrayList<>();
@@ -106,5 +117,20 @@ public final class InputQueue<T> {
     /** {@return les entrées sautées pour rattraper, depuis la création de la file} */
     public long skippedTotal() {
         return skippedTotal;
+    }
+
+    /**
+     * {@return les ticks passés sur une file vide depuis la première entrée : le siège y a gardé son entrée d'avant}
+     */
+    public long starvedTotal() {
+        return starvedTotal;
+    }
+
+    /**
+     * {@return combien de ticks, depuis la première entrée, ont trouvé la file à chaque profondeur avant de prendre :
+     * l'indice est le nombre d'entrées en attente, le dernier compte aussi les plus profondes} Une copie.
+     */
+    public long[] depths() {
+        return depths.clone();
     }
 }

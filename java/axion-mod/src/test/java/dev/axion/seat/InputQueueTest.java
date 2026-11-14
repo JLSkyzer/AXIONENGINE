@@ -78,4 +78,28 @@ class InputQueueTest {
         assertEquals(sequence, applied, "chacune appliquée à son tick");
         assertEquals(sequence, queue.lastApplied());
     }
+
+    @Test
+    @DisplayName("la cadence se relève : ticks sur une file vide, profondeur trouvée à chaque tick, rien avant la première")
+    void cadence() {
+        InputQueue<String> queue = new InputQueue<>();
+        queue.next();
+        assertEquals(0, queue.starvedTotal(), "avant la première entrée, rien ne compte");
+        assertEquals(0, java.util.Arrays.stream(queue.depths()).sum());
+        queue.offer(1, "a");
+        queue.offer(2, "b");
+        queue.next();
+        queue.next();
+        queue.next();
+        assertEquals(1, queue.starvedTotal(), "le troisième tick n'a rien trouvé");
+        long[] depths = queue.depths();
+        assertEquals(1, depths[0]);
+        assertEquals(1, depths[1]);
+        assertEquals(1, depths[2]);
+        for (int sequence = 3; sequence < 3 + 20; sequence++) {
+            queue.offer(sequence, "x");
+        }
+        queue.next();
+        assertEquals(1, queue.depths()[InputQueue.DEPTHS - 1], "les plus profondes au dernier indice");
+    }
 }
