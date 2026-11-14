@@ -10,18 +10,19 @@ import java.util.List;
  * <p>Le couple d'une roue ne se pose que par un contrôleur, jamais par un appel ponctuel : un appel ne se rejouerait
  * pas chez le client qui prédit.
  *
- * <p>Thread : autoritatif. Au client, {@link #controllers()} se lit ; l'état et le pilotage lèvent
- * {@link IllegalStateException} (R-1755) : le client n'en tiendra l'état qu'avec la prédiction, qui y fera aussi tourner
- * les contrôleurs.
+ * <p>Thread : autoritatif. Au client, {@link #controllers()} se lit ; {@link #state()} se lit pour le véhicule que le
+ * joueur conduit et prédit, dont les contrôleurs tournent aussi au client à chaque tick prédit et rejoué (ADR-168 D6) ;
+ * l'état des autres véhicules et le pilotage y lèvent {@link IllegalStateException} (R-1755).
  */
 @Experimental
 public interface VehicleControl {
 
     /**
-     * {@return son état au début du tick}
+     * {@return son état au début du tick} Au client, celui du véhicule que le joueur prédit, au début de son dernier tick
+     * prédit.
      *
-     * @throws IllegalStateException au client, hors du thread autoritatif, ou tant que sa definition n'est pas
-     *     compilée
+     * @throws IllegalStateException au client pour un véhicule que le joueur ne prédit pas, hors du thread autoritatif,
+     *     ou tant que sa definition n'est pas compilée
      */
     VehicleView state();
 

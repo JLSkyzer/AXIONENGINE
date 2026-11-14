@@ -23,6 +23,7 @@ import dev.axion.physics.NativeSimulation;
 import dev.axion.physics.PredictedWorld;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.seat.VehicleInput;
+import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -81,6 +82,27 @@ public final class ClientPrediction {
     /** Les derniers paramètres envoyés au monde prédit (ADR-168 D6) ; {@code null} avant le premier envoi. */
     private static float[] sentFields;
     private static float[] sentGears;
+    /** Les contrôleurs du véhicule prédit (ADR-168 D6, CAP-40). */
+    private static dev.axion.entity.PredictedControl control;
+    /** Le bloc d'état de la fin du tick précédent : celui du dernier pas, ou celui du serveur juste restauré. */
+    private static byte[] stateBefore;
+    /** La collecte du tick précédent, quand il a été un pas prédit ; {@code null} juste après une restauration. */
+    private static dev.axion.physics.CollectResult resultBefore;
+    /** La compression de repos de chaque roue, relevée sur les pas prédits ; {@code null} avant le premier. */
+    private static float[] settled;
+    /** Les derniers couples de roue envoyés au monde prédit ; {@code null} : aucun, ou tous nuls. */
+    private static float[] sentTorques;
+    /** Vrai après une restauration : le natif tient les couples du serveur, les prochains partent quoi qu'ils vaillent. */
+    private static boolean torquesUnknown;
+    /**
+     * La cadence des entrées au serveur, lue dans les corrections : ses ticks qui ont avancé sans entrée neuve, et les
+     * entrées qu'il a passées d'un coup. Le monde prédit fait un pas par entrée ; chacun de ces écarts le décale d'un
+     * tick.
+     */
+    private static long lastCorrectionTick = -1;
+    private static long lastCorrectionSequence = -1;
+    private static long starvedTicks;
+    private static long skippedInputs;
     /** Vrai quand une restauration n'a pu recoudre un joint : le monde prédit se recrée à la correction suivante. */
     private static boolean irreconcilable;
     /** La dernière cause journalisée d'une prédiction coupée ; vide si elle ne l'est pas. */
@@ -118,6 +140,9 @@ public final class ClientPrediction {
                     variables.step(sequence, drivingSeat, seating.seats().get(drivingSeat).bindings(), input.flags());
                 }
             }
+            // ADR-168 D6 : les contrôleurs, sur l'état du début de ce tick, avant les paramètres — leurs écritures de
+            // variables et leurs modificateurs en font partie, comme au serveur.
+            around.merge(control(input));
             // ADR-168 D6 : les paramètres que le serveur composerait avec les variables de ce pas — un mode basculé
             // règle le couple au pas même. L'état restauré ne les porte pas : le natif garde les derniers envoyés.
             around.merge(parameters());
@@ -145,6 +170,15 @@ public final class ClientPrediction {
                     track.replay(sequence, pose, now);
                 }
             }
+            if (lastStep.state() != null) {
+                stateBefore = lastStep.state().state();
+                float[] rest = dev.axion.entity.PredictedControl.settled(stateBefore, lastStep.result(), world.handle(),
+                        PredictedWorld.GENERATION);
+                if (rest != null) {
+                    settled = rest;
+                }
+            }
+            resultBefore = lastStep.result();
             // Un joint rompu ici, intact au serveur, ne se recoud pas : le monde prédit se recrée (6a, IRRECONCILABLE).
             if (lastStep.state() != null && lastStep.state().status() == AssemblyStateReport.IRRECONCILABLE) {
                 irreconcilable = true;
@@ -155,6 +189,10 @@ public final class ClientPrediction {
         @Override
         public void restore(long sequence, byte[] state) {
             world.restore(state);
+            // Le premier pas rejoué voit l'état du serveur ; le natif reprend aussi ses couples de roue.
+            stateBefore = state.clone();
+            resultBefore = null;
+            torquesUnknown = true;
             if (variables != null) {
                 variables.restore(sequence);
             }
@@ -208,6 +246,17 @@ public final class ClientPrediction {
             return;
         }
         lastServerState = correction.states().get(0).bytes();
+        if (lastCorrectionTick >= 0 && correction.appliedSequence() >= 0 && lastCorrectionSequence >= 0) {
+            long ticks = correction.serverTick() - lastCorrectionTick;
+            long inputs = correction.appliedSequence() - lastCorrectionSequence;
+            if (ticks > inputs) {
+                starvedTicks += ticks - inputs;
+            } else if (inputs > ticks) {
+                skippedInputs += inputs - ticks;
+            }
+        }
+        lastCorrectionTick = correction.serverTick();
+        lastCorrectionSequence = correction.appliedSequence();
         if (variables != null) {
             variables.correction(correction.variables().values(), correction.variables().mask());
         }
@@ -423,6 +472,15 @@ public final class ClientPrediction {
         variables = predictedVariables(assembly);
         sentFields = null;
         sentGears = null;
+        stateBefore = null;
+        resultBefore = null;
+        settled = null;
+        sentTorques = null;
+        torquesUnknown = false;
+        AxionConfig config = runtime.outcome().config();
+        control = new dev.axion.entity.PredictedControl(new dev.axion.entity.ControllerRunner.Limits(
+                config.getInt("vehicle.controller_budget_ns"), (int) config.getInt("vehicle.controller_strikes")),
+                System::nanoTime);
         if (variables != null) {
             // Le garde du serveur (ADR-167 D4) : une bascule qui sortirait un paramètre de ses bornes est refusée.
             variables.variables().guard((index, next) -> {
@@ -449,9 +507,17 @@ public final class ClientPrediction {
         if (vehicle != null) {
             vehicle.predictWith(null);
         }
+        if (vehicle != null) {
+            vehicle.predictView(null);
+        }
         vehicle = null;
         track = null;
         variables = null;
+        control = null;
+        stateBefore = null;
+        resultBefore = null;
+        settled = null;
+        sentTorques = null;
         irreconcilable = false;
         lastStep = null;
         lastRoot = null;
@@ -487,22 +553,93 @@ public final class ClientPrediction {
         return new dev.axion.entity.PredictedVariables(seating.variables(), values, mask);
     }
 
+    /** {@return les variables du tick : prédites, ou reçues pour un véhicule qui n'en prédit pas} */
+    private static double[] tickVariables() {
+        if (variables != null) {
+            return variables.values();
+        }
+        AssemblyState.VariableValues received = vehicle.receivedVariables();
+        double[] values = new double[received.count()];
+        for (int i = 0; i < values.length; i++) {
+            values[i] = received.value(i);
+        }
+        return values;
+    }
+
+    /**
+     * Les contrôleurs du véhicule prédit, pour un tick (ADR-168 D6, ADR-167 D9) : sur l'état du début du tick, après
+     * l'entrée ; leurs écritures vont aux variables prédites, leurs modificateurs aux paramètres prédits, leurs couples
+     * au monde prédit. La vue est aussi celle que {@code VehicleControl.state()} rend au client.
+     *
+     * @param input l'entrée du tick
+     * @return l'envoi des couples de roue, s'ils ont changé ; vide sinon
+     */
+    private static SimCommandStream control(VehicleInput input) {
+        SimCommandStream out = new SimCommandStream();
+        double[] values = tickVariables();
+        dev.axion.entity.AssemblyParameters table = vehicle.predictedParameters(values);
+        if (table == null) {
+            return out;
+        }
+        List<dev.axion.definition.VehicleExtensions.Controller> attached = vehicle.runnableControllers();
+        if (attached.isEmpty() && sentTorques == null && !torquesUnknown) {
+            table.control(List.of());
+            return out;
+        }
+        // Après un pas prédit, sa collecte, comme au serveur ; après une restauration, le bloc du serveur.
+        dev.axion.entity.VehicleSnapshot view = resultBefore != null
+                ? dev.axion.entity.PredictedControl.view(resultBefore, world.handle(), PredictedWorld.GENERATION,
+                        rootNode, vehicle.wheelNodes(), variableNames(), values, table, input)
+                : stateBefore == null ? null
+                        : dev.axion.entity.PredictedControl.view(stateBefore, settled, vehicle.wheelNodes(),
+                                variableNames(), values, table, input);
+        if (view == null) {
+            return out;
+        }
+        vehicle.predictView(view);
+        dev.axion.entity.ControllerRunner.Outcome outcome = control.run(attached, view);
+        if (variables != null) {
+            for (dev.axion.entity.ControllerRunner.Write write : outcome.writes()) {
+                int index = variables.variables().declared().indexOf(write.variable());
+                if (index >= 0) {
+                    try {
+                        variables.variables().set(index, write.value(), "contrôleur " + write.controller());
+                    } catch (IllegalArgumentException refused) {
+                        // Le serveur l'écarte de même, et le dit : rien à journaliser ici.
+                    }
+                }
+            }
+            table = vehicle.predictedParameters(variables.values());
+        }
+        table.control(outcome.modifiers());
+        float[] torques = outcome.torques();
+        boolean zero = true;
+        for (float torque : torques) {
+            zero &= torque == 0f;
+        }
+        boolean silent = sentTorques == null && zero && !torquesUnknown;
+        if (!silent && (sentTorques == null || torquesUnknown || !java.util.Arrays.equals(sentTorques, torques))) {
+            out.setWheelTorques(world.handle(), PredictedWorld.GENERATION, torques);
+        }
+        sentTorques = zero ? null : torques;
+        torquesUnknown = false;
+        return out;
+    }
+
+    /** {@return les noms des variables du véhicule prédit, dans l'ordre de sa definition} */
+    private static List<String> variableNames() {
+        dev.axion.definition.Seating seating = vehicle.declaredSeating();
+        return seating == null ? List.of() : seating.variables().declared().stream()
+                .map(dev.axion.definition.Variables.Variable::name).toList();
+    }
+
     /**
      * {@return l'envoi au monde prédit des paramètres de ce pas, s'ils ont changé depuis le dernier ; vide sinon} Composés
      * sur les variables prédites, ou sur celles reçues pour un véhicule qui n'en prédit pas.
      */
     private static SimCommandStream parameters() {
         SimCommandStream out = new SimCommandStream();
-        double[] values;
-        if (variables != null) {
-            values = variables.values();
-        } else {
-            AssemblyState.VariableValues received = vehicle.receivedVariables();
-            values = new double[received.count()];
-            for (int i = 0; i < values.length; i++) {
-                values[i] = received.value(i);
-            }
-        }
+        double[] values = tickVariables();
         dev.axion.entity.AssemblyParameters table = vehicle.predictedParameters(values);
         if (table == null) {
             return out;
@@ -520,6 +657,19 @@ public final class ClientPrediction {
     /** {@return les paramètres envoyés au monde prédit en dernier, copie ; {@code null} avant} Les essais les lisent. */
     public static float[] sentParameters() {
         return sentFields == null ? null : sentFields.clone();
+    }
+
+    /** {@return la compression de repos de chaque roue du véhicule prédit, relevée ; {@code null} avant} */
+    public static float[] settled() {
+        return settled == null ? null : settled.clone();
+    }
+
+    /**
+     * {@return la cadence des entrées au serveur depuis la connexion : ses ticks avancés sans entrée neuve, puis les
+     * entrées qu'il a passées d'un coup}
+     */
+    public static long[] inputCadence() {
+        return new long[] {starvedTicks, skippedInputs};
     }
 
     /** {@return les variables prédites du véhicule prédit, {@code null} sans} */

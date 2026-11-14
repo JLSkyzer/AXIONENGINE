@@ -820,7 +820,26 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /** {@return ses contrôleurs que les mods enregistrent, dans leur ordre ; un contrôleur sans mod est passé} */
-    List<dev.axion.definition.VehicleExtensions.Controller> runnableControllers() {
+    /** La vue du véhicule prédit au début de son dernier tick (client, ADR-168 D6) ; {@code null} hors prédiction. */
+    private dev.axion.entity.VehicleSnapshot predictedView;
+
+    /**
+     * Pose la vue du véhicule prédit au début de son dernier tick (client, ADR-168 D6) : {@code VehicleControl.state()}
+     * la rend.
+     *
+     * @param view la vue ; {@code null} quand la prédiction se ferme
+     */
+    public void predictView(dev.axion.entity.VehicleSnapshot view) {
+        predictedView = view;
+    }
+
+    /** {@return la vue du véhicule prédit au début de son dernier tick (client), {@code null} hors prédiction} */
+    public dev.axion.entity.VehicleSnapshot predictedView() {
+        return predictedView;
+    }
+
+    /** {@return les contrôleurs de l'instance que des mods enregistrent, dans leur ordre ; au client aussi} */
+    public List<dev.axion.definition.VehicleExtensions.Controller> runnableControllers() {
         dev.axion.definition.VehicleExtensions extensions = dev.axion.definition.VehicleExtensions.current();
         List<dev.axion.definition.VehicleExtensions.Controller> found = new ArrayList<>();
         for (String id : controllers()) {

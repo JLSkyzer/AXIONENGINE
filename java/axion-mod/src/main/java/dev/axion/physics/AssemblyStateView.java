@@ -4,19 +4,114 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * Une lecture seule des corps d'un bloc d'état exporté (ADR-168 D1, format de {@code world::state}) : de quoi mesurer
- * l'écart entre l'état que le client a prédit et celui du serveur (D5). Le reste du bloc demeure opaque pour Java.
+ * Une lecture seule d'un bloc d'état exporté (ADR-168 D1, format de {@code world::state}) : ses corps, pour mesurer
+ * l'écart entre l'état que le client a prédit et celui du serveur (D5) ; son véhicule et ses roues, pour que les
+ * contrôleurs du client lisent l'état du début du tick que le serveur a lu (D6). Le reste demeure opaque pour Java.
  *
  * <pre>
- * en-tête 16 o : version u16 | drapeaux u16 | corps u16 | …
- * corps   64 o : position monde f64×3 | rotation f32×4 | vitesse f32×3 | vitesse angulaire f32×3
+ * en-tête   16 o : version u16 | drapeaux u16 (1 : véhicule) | corps u16 | joints u16 | roues u16 | 6 o à zéro
+ * corps     64 o : position monde f64×3 | rotation f32×4 | vitesse f32×3 | vitesse angulaire f32×3
+ * joint      8 o : rompu u8 | 7 o à zéro
+ * véhicule  56 o : entrée f32×5 | rapport demandé i8 | drapeaux u8 | conducteur u8 | 1 o | moteur rad/s f32
+ *                  | rapport engagé i8 | visé i8 | 2 o | changement f32 | maintien f32 | direction f32 | patinage f32
+ *                  | charge f32 | 4 o
+ * roue      32 o : rotation f32 | compression f32 | braquage f32 | charge f32 | glissement long f32 | latéral f32
+ *                  | couple posé f32 | au sol u8 | 3 o
  * </pre>
  */
 public final class AssemblyStateView {
 
     private static final int HEADER_BYTES = 16;
     private static final int BODY_BYTES = 64;
+    private static final int JOINT_BYTES = 8;
+    private static final int VEHICLE_BYTES = 56;
+    private static final int WHEEL_BYTES = 32;
+    private static final int FLAGS_OFFSET = 2;
     private static final int BODIES_OFFSET = 4;
+    private static final int JOINTS_OFFSET = 6;
+    private static final int WHEELS_OFFSET = 8;
+    private static final int FLAG_VEHICLE = 1;
+
+    /** {@code ax_vehicle::engine::RPM_PER_RAD_S} : le natif rapporte le régime ainsi, en {@code f32}. */
+    private static final float RPM_PER_RAD_S = 60.0f / 6.2831855f;
+
+    /**
+     * Le corps racine d'un bloc : sa vitesse et son orientation.
+     *
+     * @param linear sa vitesse monde, en m/s
+     * @param rotation son orientation {@code (x, y, z, w)}
+     */
+    public record Root(float[] linear, float[] rotation) {}
+
+    /**
+     * L'état d'une roue, tel que le bloc le porte.
+     *
+     * @param spin vitesse de rotation, en rad/s
+     * @param compression compression, de 0 à 1
+     * @param steer braquage, en radians
+     * @param slipLong glissement longitudinal
+     * @param slipLat glissement latéral, en radians
+     * @param torque couple posé par les contrôleurs (R-1082), en N·m
+     * @param onGround le rayon touchait le sol
+     */
+    public record Wheel(float spin, float compression, float steer, float slipLong, float slipLat, float torque,
+            boolean onGround) {}
+
+    /**
+     * Le véhicule d'un bloc.
+     *
+     * @param rpm régime du moteur, en tr/min, calculé comme le natif le rapporte
+     * @param gear rapport engagé
+     * @param wheels ses roues, dans l'ordre de la definition
+     */
+    public record Vehicle(float rpm, int gear, java.util.List<Wheel> wheels) {}
+
+    /**
+     * {@return le corps racine d'un bloc, {@code null} s'il est tronqué ou sans corps}
+     *
+     * @param state le bloc
+     */
+    public static Root root(byte[] state) {
+        if (bodies(state) <= 0) {
+            return null;
+        }
+        ByteBuffer b = ByteBuffer.wrap(state).order(ByteOrder.LITTLE_ENDIAN);
+        int at = HEADER_BYTES;
+        float[] rotation = {b.getFloat(at + 24), b.getFloat(at + 28), b.getFloat(at + 32), b.getFloat(at + 36)};
+        float[] linear = {b.getFloat(at + 40), b.getFloat(at + 44), b.getFloat(at + 48)};
+        return new Root(linear, rotation);
+    }
+
+    /**
+     * {@return le véhicule d'un bloc, {@code null} si l'assembly n'en est pas un, ou si le bloc est tronqué}
+     *
+     * @param state le bloc
+     */
+    public static Vehicle vehicle(byte[] state) {
+        int bodies = bodies(state);
+        if (bodies < 0) {
+            return null;
+        }
+        ByteBuffer b = ByteBuffer.wrap(state).order(ByteOrder.LITTLE_ENDIAN);
+        if ((b.getShort(FLAGS_OFFSET) & FLAG_VEHICLE) == 0) {
+            return null;
+        }
+        int joints = b.getShort(JOINTS_OFFSET) & 0xFFFF;
+        int wheels = b.getShort(WHEELS_OFFSET) & 0xFFFF;
+        int at = HEADER_BYTES + bodies * BODY_BYTES + joints * JOINT_BYTES;
+        if (state.length < at + VEHICLE_BYTES + wheels * WHEEL_BYTES) {
+            return null;
+        }
+        float rpm = b.getFloat(at + 24) * RPM_PER_RAD_S;
+        int gear = b.get(at + 28);
+        java.util.List<Wheel> list = new java.util.ArrayList<>(wheels);
+        for (int i = 0; i < wheels; i++) {
+            int w = at + VEHICLE_BYTES + i * WHEEL_BYTES;
+            list.add(new Wheel(b.getFloat(w), b.getFloat(w + 4), b.getFloat(w + 8), b.getFloat(w + 16),
+                    b.getFloat(w + 20), b.getFloat(w + 24), b.get(w + 28) != 0));
+        }
+        return new Vehicle(rpm, gear, java.util.List.copyOf(list));
+    }
 
     /**
      * L'écart entre deux états, au pire des corps.

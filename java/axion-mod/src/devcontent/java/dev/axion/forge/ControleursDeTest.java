@@ -41,6 +41,21 @@ public final class ControleursDeTest {
         sortie.modify(GAIN, Modifier.Operation.ADD, 1);
     };
 
+    /**
+     * Lit tout ce que la vue expose — vitesse, régime, rapport, chaque roue — et en tire le couple de chaque roue (ADR-168
+     * D6) : au client qui prédit, la moindre lecture différente de celle du serveur donnerait d'autres couples, et la
+     * prédiction divergerait à chaque tick.
+     */
+    static final VehicleController REGULATEUR = (vue, sortie) -> {
+        double ecart = 6.0 - vue.speed();
+        double charge = vue.rpm() / 1000.0 + vue.gear();
+        for (int roue = 0; roue < vue.wheels().size(); roue++) {
+            dev.axion.api.vehicle.WheelView w = vue.wheels().get(roue);
+            double glisse = Math.abs(w.slipLong()) + Math.abs(w.slipLat()) + w.compression() + (w.grounded() ? 0 : 1);
+            sortie.wheelTorque(roue, 40 * ecart - 5 * glisse + charge + 0.1 * w.spin() + w.steer());
+        }
+    };
+
     /** Lève à chaque appel : désactivé au nombre de fautes consécutives toléré (E-1011). */
     static final VehicleController CASSE = (vue, sortie) -> {
         throw new IllegalStateException("contrôleur d'essai cassé exprès");
@@ -73,6 +88,7 @@ public final class ControleursDeTest {
             registrar.registerController("test/compteur", COMPTEUR);
             registrar.registerController("test/casse", CASSE);
             registrar.registerController("test/excessif", EXCESSIF);
+            registrar.registerController("test/regulateur", REGULATEUR);
             registrar.registerParameter("test/gain", "", 1.0, new Parameters.Range(0, true, 10, true));
             if (ESSAI_SERVEUR_SEUL != null) {
                 registrar.registerController("test/serveur_seul", PROPULSION);

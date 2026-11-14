@@ -89,6 +89,9 @@ public final class EssaiPrediction {
      */
     private static final String BASCULER = System.getProperty("axion.essai.basculer", "");
 
+    /** Le contrôleur que le serveur attache au véhicule de l'essai (ADR-168 D6, 6d-4) ; vide : aucun. */
+    private static final String CONTROLEUR = System.getenv().getOrDefault("AXION_ESSAI_CONTROLEUR", "");
+
     /** Les rapports passés avant d'accélérer : la première d'une boîte manuelle, qui part au neutre. */
     private static final int RAPPORTS = Integer.getInteger("axion.essai.rapports", 0);
 
@@ -181,6 +184,10 @@ public final class EssaiPrediction {
                             new float[] {0f, 0f, 0f, 1f});
                 } catch (IllegalStateException refus) {
                     LOGGER.error("[essai] ÉCHEC : obstacle non posé — {}", refus.getMessage());
+                }
+                if (!CONTROLEUR.isEmpty()) {
+                    vehicule.attachController(CONTROLEUR);
+                    LOGGER.info("[essai] contrôleur {} attaché au véhicule", CONTROLEUR);
                 }
                 LOGGER.info("[essai] sol posé, véhicule {} posé pour {}, obstacle à {} blocs", VEHICULE,
                         conducteur.getGameProfile().getName(), OBSTACLE);
@@ -304,6 +311,47 @@ public final class EssaiPrediction {
             }
         }
 
+        /** À chaque comparaison, le plus grand écart de couple posé par les contrôleurs entre prédit et serveur. */
+        private static final List<Double> ecartsCouple = new ArrayList<>();
+        private static double coupleServeurMax;
+
+        /** Le bloc du serveur de la correction précédente : l'état du début du tick de la suivante. */
+        private static byte[] serveurPrecedent;
+        /** Écarts entre le régulateur rejoué au client sur le bloc du serveur et le couple que le serveur a posé. */
+        private static final List<Double> ecartsDecodage = new ArrayList<>();
+
+        /**
+         * ADR-168 D6 : le décodage du bloc, seul. Le régulateur ne lit que le bloc — vitesse, régime, rapport, roues — :
+         * rejoué au client sur le bloc du serveur du tick précédent, il doit rendre au bit près le couple que le serveur a
+         * posé. La comparaison se fait au moment où la correction suivante arrive.
+         */
+        private static void rejouerSurLeServeur(dev.axion.physics.AssemblyStateView.Vehicle serveur) {
+            byte[] precedent = serveurPrecedent;
+            serveurPrecedent = ClientPrediction.lastServerState();
+            AxionEntity vehicule = ClientPrediction.vehicle();
+            if (precedent == null || vehicule == null) {
+                return;
+            }
+            dev.axion.entity.VehicleSnapshot vue = dev.axion.entity.PredictedControl.view(precedent,
+                    ClientPrediction.settled(), vehicule.wheelNodes(), List.of(), new double[0],
+                    vehicule.predictedParameters(new double[0]), VehicleInput.NONE);
+            if (vue == null) {
+                return;
+            }
+            float[] rejoue = new dev.axion.entity.PredictedControl(
+                    new dev.axion.entity.ControllerRunner.Limits(1_000_000_000L, 3), System::nanoTime)
+                    .run(List.of(new dev.axion.definition.VehicleExtensions.Controller("axion:test/regulateur", "axion",
+                            ControleursDeTest.REGULATEUR)), vue).torques();
+            double pire = 0;
+            for (int r = 0; r < Math.min(rejoue.length, serveur.wheels().size()); r++) {
+                pire = Math.max(pire, Math.abs(rejoue[r] - serveur.wheels().get(r).torque()));
+            }
+            ecartsDecodage.add(pire);
+        }
+
+        /** Ce que {@code VehicleControl.state()} a rendu au client, au tick 100. */
+        private static String vueAuClient = "état non lu au client : aucune vue prédite";
+
         /** Les ticks du client depuis le début de l'essai. */
         private static long ticksClient;
 
@@ -313,6 +361,18 @@ public final class EssaiPrediction {
                     if (predit == null) {
                         sansPrediction++;
                         return;
+                    }
+                    dev.axion.physics.AssemblyStateView.Vehicle vp = dev.axion.physics.AssemblyStateView.vehicle(predit);
+                    dev.axion.physics.AssemblyStateView.Vehicle vs = dev.axion.physics.AssemblyStateView.vehicle(serveur);
+                    if (vp != null && vs != null && vp.wheels().size() == vs.wheels().size()) {
+                        double pire = 0;
+                        for (int r = 0; r < vp.wheels().size(); r++) {
+                            pire = Math.max(pire, Math.abs(vp.wheels().get(r).torque() - vs.wheels().get(r).torque()));
+                        }
+                        ecartsCouple.add(pire);
+                        rejouerSurLeServeur(vs);
+                        coupleServeurMax = Math.max(coupleServeurMax, vs.wheels().stream()
+                                .mapToDouble(w -> Math.abs(w.torque())).max().orElse(0));
                     }
                     dev.axion.physics.AssemblyStateView.Errors e =
                             dev.axion.physics.AssemblyStateView.errors(predit, serveur);
@@ -386,6 +446,12 @@ public final class EssaiPrediction {
             int[] proxies = ClientPrediction.proxyCounts();
             proxiesAssemblies = Math.max(proxiesAssemblies, proxies[0]);
             proxiesEntites = Math.max(proxiesEntites, proxies[1]);
+            if (tick == 100 && assembly.predictedView() != null) {
+                // ADR-168 D6 : VehicleControl.state() se lit au client pour le véhicule prédit.
+                dev.axion.api.vehicle.VehicleView etat = assembly.predictedView();
+                vueAuClient = String.format(Locale.ROOT, "état lu au client au tick 100 : %.2f m/s, %.0f tr/min, rapport"
+                        + " %d, %d roue(s)", etat.speed(), etat.rpm(), etat.gear(), etat.wheels().size());
+            }
             if (tick % 20 == 0) {
                 LOGGER.info(String.format(Locale.ROOT, "[essai] client : tick %d, avant %b, forwardImpulse %.2f,"
                         + " corrections reçues %d, interpolation %b, prédit %b", tick, avant,
@@ -562,6 +628,25 @@ public final class EssaiPrediction {
                     String.format(Locale.ROOT, "  pire écart de position : %.4f m (rotation %.4f rad, vitesse %.3f m/s)"
                             + " au tick %d, %d en attente", e[0], e[1], e[2], (int) e[3], (int) e[4])));
             rapport.add(fluidite());
+            rapport.add(vueAuClient);
+            long[] cadence = ClientPrediction.inputCadence();
+            rapport.add("cadence des entrées au serveur : " + cadence[0] + " tick(s) avancé(s) sans entrée neuve, "
+                    + cadence[1] + " entrée(s) passée(s) d'un coup");
+            if (!ecartsDecodage.isEmpty()) {
+                double[] d = ecartsDecodage.stream().mapToDouble(Double::doubleValue).sorted().toArray();
+                long nuls = java.util.Arrays.stream(d).filter(x -> x == 0.0).count();
+                rapport.add(String.format(Locale.ROOT, "régulateur rejoué au client sur le bloc du serveur du tick"
+                        + " précédent, contre le couple posé par le serveur, %d comparaisons : %d au bit près, écart p50"
+                        + " %.3e, p90 %.3e, max %.3e N·m", d.length, nuls, d[d.length / 2],
+                        d[Math.min(d.length - 1, d.length * 9 / 10)], d[d.length - 1]));
+            }
+            if (!ecartsCouple.isEmpty()) {
+                double[] c = ecartsCouple.stream().mapToDouble(Double::doubleValue).sorted().toArray();
+                int n = c.length;
+                rapport.add(String.format(Locale.ROOT, "couple posé par les contrôleurs, prédit contre serveur, %d"
+                        + " comparaisons : écart p50 %.3e, p90 %.3e, max %.3e N·m (couple du serveur jusqu'à %.1f N·m)",
+                        n, c[n / 2], c[Math.min(n - 1, n * 9 / 10)], c[n - 1], coupleServeurMax));
+            }
             if (!BASCULER.isEmpty()) {
                 rapport.add(String.format(Locale.ROOT, "variable %s basculée au tick %d : vue par la prédiction au tick"
                         + " %d, reçue du serveur au tick %d ; paramètres du monde prédit changés au tick %d ; %d"

@@ -306,6 +306,15 @@ public final class ForgeAxionApi implements AxionApi {
 
         @Override
         public dev.axion.api.vehicle.VehicleView state() {
+            if (entity.level().isClientSide()) {
+                // ADR-168 D6 : au client, l'état du véhicule que le joueur conduit et prédit, au début de son tick.
+                dev.axion.entity.VehicleSnapshot predicted = entity.predictedView();
+                if (predicted == null) {
+                    throw new IllegalStateException("R-1755 : au client, seul l'état du véhicule que le joueur conduit"
+                            + " et prédit se lit ; le serveur tient celui des autres");
+                }
+                return predicted;
+            }
             authoritative();
             dev.axion.entity.VehicleSnapshot state = entity.vehicleSnapshot();
             if (state == null) {

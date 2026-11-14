@@ -3833,7 +3833,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                        ABI 25 (`KINEMATIC`, `SET_ASSEMBLY_POSE`), `ClientProxies`, `net.prediction_proxy_radius` = 32
                        (horizon ; un proxy coûte 0,4 à 0,9 µs par pas). Essai : choc prédit contre l'obstacle, corrigé
                        en deux ticks (ADR-168 précision 6c-C2).
-     - [ ] 6d — variables, paramètres et contrôleurs prédits, `VehicleControl.state()` au client, correspondances
+     - [x] 6d — variables, paramètres et contrôleurs prédits, `VehicleControl.state()` au client, correspondances
            bloc → matériau dans le registre.
            Découpée le 2026-11-14, chaque étape commitée verte :
            - [x] 6d-1 (2026-11-14) : correspondances bloc → matériau dans le registre (famille neuve, surcharges comprises), lues par
@@ -3842,8 +3842,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  bascules gardé par tick de l'historique ; la correction rend les valeurs du serveur, le rejeu rebascule.
            - [x] 6d-3 (2026-11-14) : paramètres composés sur les variables prédites (`AssemblyParameters.mirror`), poussés au monde
                  prédit quand ils changent.
-           - [ ] 6d-4 : contrôleurs au client, à chaque tick prédit et rejoué, sur l'état du début du tick du monde
+           - [x] 6d-4 (2026-11-14) : contrôleurs au client, à chaque tick prédit et rejoué, sur l'état du début du tick du monde
                  prédit ; sorties au monde prédit et aux variables prédites ; `VehicleControl.state()` au client.
+     - [ ] 6e — **d'abord** : la cadence des entrées au serveur (ADR-168 précision 6d-4) — 4 ticks sans entrée
+           neuve et 10 entrées passées d'un coup en 9 s, chacun décale le monde prédit d'un tick ; marge d'avance (D2)
+           et politique de la file (D3, Q1) à revoir avec Killian.
      - [ ] 6e — T-415..T-417 sous latence injectée (essai à deux processus, T-417 en GameTest), défauts mesurés
            (`net.prediction_replay_budget_ns`,
            `net.prediction_max_corrections`), CDC (21.3, 21.4, 21.8, A.3), guide réseau, fusion.
