@@ -78,6 +78,9 @@ public final class ClientPrediction {
     private static dev.axion.entity.PredictedVariables variables;
     /** Le siège d'où part l'entrée du conducteur, -1 avant la première. */
     private static int drivingSeat = -1;
+    /** Les derniers paramètres envoyés au monde prédit (ADR-168 D6) ; {@code null} avant le premier envoi. */
+    private static float[] sentFields;
+    private static float[] sentGears;
     /** Vrai quand une restauration n'a pu recoudre un joint : le monde prédit se recrée à la correction suivante. */
     private static boolean irreconcilable;
     /** La dernière cause journalisée d'une prédiction coupée ; vide si elle ne l'est pas. */
@@ -115,6 +118,9 @@ public final class ClientPrediction {
                     variables.step(sequence, drivingSeat, seating.seats().get(drivingSeat).bindings(), input.flags());
                 }
             }
+            // ADR-168 D6 : les paramètres que le serveur composerait avec les variables de ce pas — un mode basculé
+            // règle le couple au pas même. L'état restauré ne les porte pas : le natif garde les derniers envoyés.
+            around.merge(parameters());
             // Les proxies au tick du serveur où s'applique l'entrée de ce pas, rejeu compris.
             long stepTick = loop.serverTickOf(sequence);
             if (stepTick >= 0) {
@@ -415,6 +421,15 @@ public final class ClientPrediction {
         irreconcilable = false;
         track = new PredictedTrack(Interpolation.of(runtime.outcome().config()));
         variables = predictedVariables(assembly);
+        sentFields = null;
+        sentGears = null;
+        if (variables != null) {
+            // Le garde du serveur (ADR-167 D4) : une bascule qui sortirait un paramètre de ses bornes est refusée.
+            variables.variables().guard((index, next) -> {
+                dev.axion.entity.AssemblyParameters table = assembly.predictedParameters(variables.values());
+                return table == null ? null : table.refusal(index, next);
+            });
+        }
         assembly.predictWith(track);
         loop.reset();
         LOGGER.info("AXION : prédiction : monde prédit ouvert pour {} (entité {})", definition.id(), assembly.getId());
@@ -470,6 +485,41 @@ public final class ClientPrediction {
             mask = received.mask();
         }
         return new dev.axion.entity.PredictedVariables(seating.variables(), values, mask);
+    }
+
+    /**
+     * {@return l'envoi au monde prédit des paramètres de ce pas, s'ils ont changé depuis le dernier ; vide sinon} Composés
+     * sur les variables prédites, ou sur celles reçues pour un véhicule qui n'en prédit pas.
+     */
+    private static SimCommandStream parameters() {
+        SimCommandStream out = new SimCommandStream();
+        double[] values;
+        if (variables != null) {
+            values = variables.values();
+        } else {
+            AssemblyState.VariableValues received = vehicle.receivedVariables();
+            values = new double[received.count()];
+            for (int i = 0; i < values.length; i++) {
+                values[i] = received.value(i);
+            }
+        }
+        dev.axion.entity.AssemblyParameters table = vehicle.predictedParameters(values);
+        if (table == null) {
+            return out;
+        }
+        float[] fields = table.fields(SimCommandStream.PARAMETER_FIELDS);
+        float[] gears = table.gearTable();
+        if (!java.util.Arrays.equals(fields, sentFields) || !java.util.Arrays.equals(gears, sentGears)) {
+            out.setParameters(world.handle(), PredictedWorld.GENERATION, fields, gears);
+            sentFields = fields;
+            sentGears = gears;
+        }
+        return out;
+    }
+
+    /** {@return les paramètres envoyés au monde prédit en dernier, copie ; {@code null} avant} Les essais les lisent. */
+    public static float[] sentParameters() {
+        return sentFields == null ? null : sentFields.clone();
     }
 
     /** {@return les variables prédites du véhicule prédit, {@code null} sans} */

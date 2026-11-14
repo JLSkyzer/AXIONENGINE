@@ -135,6 +135,8 @@ minecraft {
             property 'axion.essai.connexion_seule', project.hasProperty('essaiConnexionSeule').toString()
             // -PessaiBasculer=<variable> : la commande liée à cette variable s'enfonce un tick (ADR-168 D6, 6d-2).
             property 'axion.essai.basculer', (project.findProperty('essaiBasculer') ?: '').toString()
+            // -PessaiRapports=<n> : rapports passés avant d'accélérer (la première d'une boîte manuelle).
+            property 'axion.essai.rapports', (project.findProperty('essaiRapports') ?: '0').toString()
             // La course de connexion de Forge 47 : le mod la rattrape lui-même (ADR-169) ; -PessaiRelance ajoute la relance
             // de l'essai, l'expérience qui en a confirmé la cause.
             property 'axion.essai.relance_lecture', project.hasProperty('essaiRelance').toString()

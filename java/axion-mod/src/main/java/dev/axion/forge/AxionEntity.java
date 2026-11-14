@@ -685,6 +685,34 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * refait qu'au changement de l'une ou des autres ; une table refaite refait les paramètres, qui reprennent leurs
      * modificateurs.
      */
+    /** Le dernier miroir composé sur des variables prédites, et ce sur quoi il l'a été. */
+    private dev.axion.entity.AssemblyParameters predictedParameters;
+    private AssemblyState.Modifiers predictedModifiers;
+    private double[] predictedVariables;
+
+    /**
+     * {@return les paramètres que le serveur composerait avec ces variables (client, ADR-168 D6) ; {@code null} si la
+     * definition n'est pas encore compilée} Le miroir de {@link #parameters()} — les modificateurs reçus rejoués par la
+     * règle du serveur — mais sur les variables prédites : un mode basculé par le conducteur règle son couple au pas
+     * même, dans le monde prédit. Recomposé seulement quand la definition, les modificateurs reçus ou les variables
+     * changent.
+     *
+     * @param variables les variables prédites, une par variable déclarée
+     */
+    public dev.axion.entity.AssemblyParameters predictedParameters(double[] variables) {
+        dev.axion.definition.Tuning tuning = tuning();
+        if (tuning == null) {
+            return null;
+        }
+        if (predictedParameters == null || predictedParameters.tuning() != tuning
+                || predictedModifiers != receivedParameters || !Arrays.equals(predictedVariables, variables)) {
+            predictedParameters = dev.axion.entity.AssemblyParameters.mirror(tuning, receivedParameters, variables);
+            predictedModifiers = receivedParameters;
+            predictedVariables = variables.clone();
+        }
+        return predictedParameters;
+    }
+
     private dev.axion.definition.Tuning tuning() {
         dev.axion.definition.Tuning compiled = inert ? null : AxionEntities.tuning(definitionId).orElse(null);
         if (compiled == null) {

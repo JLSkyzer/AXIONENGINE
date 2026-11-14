@@ -3840,7 +3840,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  le client distant pour ses tuiles ; protocole AXION-9 ; oubliées à la déconnexion.
            - [x] 6d-2 (2026-11-14) : variables prédites — `AssemblyVariables` au client, basculée par ses entrées ; l'état caché des
                  bascules gardé par tick de l'historique ; la correction rend les valeurs du serveur, le rejeu rebascule.
-           - [ ] 6d-3 : paramètres composés sur les variables prédites (`AssemblyParameters.mirror`), poussés au monde
+           - [x] 6d-3 (2026-11-14) : paramètres composés sur les variables prédites (`AssemblyParameters.mirror`), poussés au monde
                  prédit quand ils changent.
            - [ ] 6d-4 : contrôleurs au client, à chaque tick prédit et rejoué, sur l'état du début du tick du monde
                  prédit ; sorties au monde prédit et aux variables prédites ; `VehicleControl.state()` au client.
