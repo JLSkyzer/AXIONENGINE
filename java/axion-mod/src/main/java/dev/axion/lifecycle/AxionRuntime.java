@@ -128,6 +128,8 @@ public final class AxionRuntime {
     /** Les pneus du dernier rechargement (ADR-159 Q1), et leurs textes pour le registre réseau. */
     private volatile TireProfiles tires = TireProfiles.empty();
     private SortedMap<String, byte[]> tireTexts = new TreeMap<>();
+    /** Les textes des correspondances bloc → matériau lues : le registre les envoie aux clients (ADR-168 D6). */
+    private SortedMap<String, byte[]> blockMaterialTexts = new TreeMap<>();
     /**
      * Ce que le serveur envoie à chaque connexion (ADR-150 D4, D5), rebâti après chaque rechargement
      * des definitions ; {@code null} sans runtime natif ou hors d'un serveur. {@code volatile} : Forge
@@ -958,6 +960,7 @@ public final class AxionRuntime {
         guard("blockMaterialReload").run(() -> {
             BlockMaterialMappings.Result loaded = BlockMaterialMappings.load(source, physicsMaterials);
             blockMaterials = loaded.mapping();
+            blockMaterialTexts = ServerRegistry.read(source);
             transitions.add("mappage bloc → matériau chargé, " + loaded.refusals().size()
                     + " entrée(s) refusée(s), " + loaded.notes().size() + " remplacée(s)");
             loaded.refusals().forEach(transitions::add);
@@ -1080,7 +1083,8 @@ public final class AxionRuntime {
     private void rebuildNetSnapshot(DefinitionRegistry loaded, SortedMap<String, byte[]> definitionTexts) {
         try {
             RegistryContent.Builder registry =
-                    ServerRegistry.collect(materialTexts, groupTexts, tireTexts, loaded, definitionTexts);
+                    ServerRegistry.collect(materialTexts, groupTexts, tireTexts, blockMaterialTexts, loaded,
+                            definitionTexts);
             ServerSnapshot snapshot = ServerSnapshot.build(outcome.config(), serverConfig(), registry.build(),
                     registry.excluded(),
                     DetProfile.ofThisBinary(), new NativeNetCompression(outcome.context()),
@@ -1138,6 +1142,8 @@ public final class AxionRuntime {
         // la table.
         physicsMaterials = loaded.materials();
         materialTable.update(loaded.materials());
+        // ADR-168 D6 : les correspondances bloc → matériau du serveur, pour les tuiles du monde prédit.
+        blockMaterials = loaded.blockMaterials();
         loadedDefinitions = loaded.definitions();
         recompileDefinitions(loaded.definitions());
         return loaded.journal();
@@ -1153,6 +1159,7 @@ public final class AxionRuntime {
             remoteDefinitions = false;
             physicsMaterials = PhysicsMaterials.empty();
             materialTable.update(PhysicsMaterials.empty());
+            blockMaterials = BlockMaterials.empty();
             loadedDefinitions = DefinitionRegistry.empty();
             recompileDefinitions(DefinitionRegistry.empty());
         }

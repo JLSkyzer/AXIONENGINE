@@ -33,7 +33,12 @@ public final class RegistryContent {
         /** Definitions (C-27). */
         DEFINITIONS(3, "axion/definitions/"),
         /** Pneus (ADR-159 Q1). */
-        TIRES(4, "axion/tires/");
+        TIRES(4, "axion/tires/"),
+        /**
+         * Correspondances bloc → matériau, celle de l'administrateur comprise (ADR-165, ADR-168 D6) : les tuiles du monde
+         * prédit d'un client distant prennent les matériaux du serveur.
+         */
+        BLOCK_MATERIALS(5, "axion/block_materials/");
 
         final int code;
         final String prefix;
@@ -91,6 +96,7 @@ public final class RegistryContent {
         files.put(Family.COLLISION_GROUPS, family(Family.COLLISION_GROUPS, groups));
         files.put(Family.DEFINITIONS, family(Family.DEFINITIONS, definitions));
         files.put(Family.TIRES, new TreeMap<>());
+        files.put(Family.BLOCK_MATERIALS, new TreeMap<>());
         return new RegistryContent(files);
     }
 
@@ -189,9 +195,12 @@ public final class RegistryContent {
         return digest(EMPTY_DIGEST, Family.COLLISION_GROUPS, Family.TIRES, Family.DEFINITIONS);
     }
 
-    /** {@return l'empreinte des matériaux physiques (21.3 {@code materials_hash})} */
+    /**
+     * {@return l'empreinte des matériaux physiques et des correspondances bloc → matériau (21.3 {@code materials_hash})}
+     * Un registre sans correspondance garde l'empreinte qu'il avait avant elles.
+     */
     public long materialsHash() {
-        return digest(EMPTY_DIGEST, Family.PHYSICS_MATERIALS);
+        return digest(EMPTY_DIGEST, Family.PHYSICS_MATERIALS, Family.BLOCK_MATERIALS);
     }
 
     private long digest(long seed, Family... families) {

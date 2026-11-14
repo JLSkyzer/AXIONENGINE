@@ -2460,3 +2460,9 @@ de connexion, que la base de connaissances décrivait déjà, mécanisme et rem�
 cherché dans D:\BDC qu'au moment d'y écrire, pas au moment de diagnostiquer | avant de diagnostiquer un défaut d'outil, de
 plateforme ou de jeu (Minecraft, Forge, Netty, JDK, Gradle), chercher dans D:\BDC ses mots-clés et sa signature
 (`grep -rli` sur le message d'erreur et les noms en jeu) ; une autre session du même PC a pu le résoudre.
+
+[2026-11-14] | Les GameTests de la 6d-1, en file derrière une autre session, ont échoué à la compilation sur le début de
+la 6d-2, commencé entre-temps dans le même arbre | une vérification en attente vérifie l'arbre tel qu'il est quand elle
+part, pas tel qu'il était quand on l'a lancée | tant qu'une vérification de l'arbre attend ou tourne, ne pas le modifier :
+mettre le travail suivant de côté (`git stash -u` sur ses fichiers) ou attendre ; et ne commiter qu'un arbre dont chaque
+job a vu l'état exact.

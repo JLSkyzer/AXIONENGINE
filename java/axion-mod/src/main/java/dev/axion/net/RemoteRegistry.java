@@ -31,9 +31,12 @@ public final class RemoteRegistry {
      * @param definitions definitions acceptées, avec les groupes et les matériaux qu'elles nomment
      * @param materials les matériaux physiques du serveur : le monde prédit du client les tient comme lui
      *     (ADR-168 D1)
+     * @param blockMaterials les correspondances bloc → matériau du serveur : les tuiles du monde prédit prennent ses
+     *     matériaux (ADR-168 D6)
      * @param journal ce qui est à journaliser : le bilan, puis chaque refus
      */
-    public record Loaded(DefinitionRegistry definitions, PhysicsMaterials materials, List<String> journal) {
+    public record Loaded(DefinitionRegistry definitions, PhysicsMaterials materials,
+            dev.axion.world.BlockMaterials blockMaterials, List<String> journal) {
 
         /** Copie le journal. */
         public Loaded {
@@ -60,15 +63,19 @@ public final class RemoteRegistry {
                 VehicleExtensions.current());
         DefinitionRegistry definitions =
                 DefinitionRegistry.load(source(registry.files(RegistryContent.Family.DEFINITIONS)), rules);
+        dev.axion.definition.BlockMaterialMappings.Result blocks = dev.axion.definition.BlockMaterialMappings.load(
+                source(registry.files(RegistryContent.Family.BLOCK_MATERIALS)), materials);
 
         List<String> journal = new ArrayList<>();
         journal.add("registre du serveur appliqué : " + definitions.size() + " definition(s), "
                 + materials.ids().size() + " matériau(x) physique(s), "
-                + groups.ids().size() + " groupe(s) de collision");
-        Stream.of(materials.refusals(), groups.refusals(), tires.refusals(), definitions.refusals())
+                + groups.ids().size() + " groupe(s) de collision, "
+                + registry.files(RegistryContent.Family.BLOCK_MATERIALS).size() + " fichier(s) de correspondances"
+                + " bloc → matériau");
+        Stream.of(materials.refusals(), groups.refusals(), tires.refusals(), definitions.refusals(), blocks.refusals())
                 .flatMap(List::stream)
                 .forEach(refusal -> journal.add("refusé chez le client : " + refusal));
-        return new Loaded(definitions, materials, journal);
+        return new Loaded(definitions, materials, blocks.mapping(), journal);
     }
 
     private static AssetSource source(SortedMap<String, byte[]> files) {

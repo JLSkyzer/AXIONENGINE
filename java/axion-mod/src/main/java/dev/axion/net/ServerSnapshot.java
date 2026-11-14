@@ -150,6 +150,8 @@ public final class ServerSnapshot {
         return "registre réseau : "
                 + registry.files(RegistryContent.Family.PHYSICS_MATERIALS).size() + " matériau(x) physique(s), "
                 + registry.files(RegistryContent.Family.COLLISION_GROUPS).size() + " groupe(s) de collision, "
+                + registry.files(RegistryContent.Family.BLOCK_MATERIALS).size()
+                + " fichier(s) de correspondances bloc → matériau, "
                 + registry.files(RegistryContent.Family.DEFINITIONS).size() + " definition(s) ; " + sent;
     }
 }

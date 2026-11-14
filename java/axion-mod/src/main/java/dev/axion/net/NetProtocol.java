@@ -20,12 +20,13 @@ public final class NetProtocol {
      * {@code C2S_Input} (ADR-158 D4), 4 avec la famille des pneus du registre (ADR-159 Q1), 5 avec le
      * descripteur d'états 4, les roues (ADR-159 D9), 6 avec le descripteur d'états 5, l'état du véhicule et
      * les drapeaux d'entrée sur 16 bits (ADR-163 D1), 7 avec les addons exigés du handshake (ADR-165 D2), 8 avec le
-     * descripteur d'états 6, les modificateurs des paramètres d'une assembly (ADR-167 D8).
+     * descripteur d'états 6, les modificateurs des paramètres d'une assembly (ADR-167 D8), 9 avec la famille des
+     * correspondances bloc → matériau du registre (ADR-168 D6).
      */
-    public static final String VERSION = "AXION-8";
+    public static final String VERSION = "AXION-9";
 
     /** {@code protocol_version} du handshake (21.3) : le numéro de {@link #VERSION}. */
-    public static final int PROTOCOL_VERSION = 8;
+    public static final int PROTOCOL_VERSION = 9;
 
     /**
      * Taille maximale d'une trame AXION, en-tête de fragment compris, dans les deux sens.

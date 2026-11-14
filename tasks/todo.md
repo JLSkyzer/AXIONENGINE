@@ -3835,6 +3835,15 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                        en deux ticks (ADR-168 précision 6c-C2).
      - [ ] 6d — variables, paramètres et contrôleurs prédits, `VehicleControl.state()` au client, correspondances
            bloc → matériau dans le registre.
+           Découpée le 2026-11-14, chaque étape commitée verte :
+           - [x] 6d-1 (2026-11-14) : correspondances bloc → matériau dans le registre (famille neuve, surcharges comprises), lues par
+                 le client distant pour ses tuiles ; protocole AXION-9 ; oubliées à la déconnexion.
+           - [ ] 6d-2 : variables prédites — `AssemblyVariables` au client, basculée par ses entrées ; l'état caché des
+                 bascules gardé par tick de l'historique ; la correction rend les valeurs du serveur, le rejeu rebascule.
+           - [ ] 6d-3 : paramètres composés sur les variables prédites (`AssemblyParameters.mirror`), poussés au monde
+                 prédit quand ils changent.
+           - [ ] 6d-4 : contrôleurs au client, à chaque tick prédit et rejoué, sur l'état du début du tick du monde
+                 prédit ; sorties au monde prédit et aux variables prédites ; `VehicleControl.state()` au client.
      - [ ] 6e — T-415..T-417 sous latence injectée (essai à deux processus, T-417 en GameTest), défauts mesurés
            (`net.prediction_replay_budget_ns`,
            `net.prediction_max_corrections`), CDC (21.3, 21.4, 21.8, A.3), guide réseau, fusion.
