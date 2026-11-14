@@ -107,6 +107,9 @@ public final class EssaiPrediction {
      */
     private static final boolean FILM = Boolean.getBoolean("axion.essai.film");
 
+    /** Vrai pour le serveur d'un essai filmé : par temps clair ({@code AXION_ESSAI_FILM=1}). */
+    private static final boolean FILM_SERVEUR = "1".equals(System.getenv("AXION_ESSAI_FILM"));
+
     /** La distance de l'obstacle devant le véhicule, en blocs : atteint en virant, vers le tick 127. */
     private static final double OBSTACLE = 23.0;
 
@@ -172,6 +175,10 @@ public final class EssaiPrediction {
             if (conducteur == null) {
                 if (serveur.getPlayerList().getPlayers().isEmpty()) {
                     return;
+                }
+                if (FILM_SERVEUR) {
+                    // Le film se tourne par temps clair : la pluie cache le véhicule.
+                    serveur.overworld().setWeatherParameters(20 * 60 * 20, 0, false, false);
                 }
                 conducteur = serveur.getPlayerList().getPlayers().get(0);
                 for (int x = 0; x < 16; x++) {
@@ -263,6 +270,18 @@ public final class EssaiPrediction {
         private static boolean connecte;
         private static int enJeu;
         private static int tick = -1;
+        /**
+         * Filmé, la conduite attend une prédiction qui tient depuis tant de ticks : cinq secondes, le temps qu'un
+         * modèle lourd s'affiche chez le client et que la file des entrées se règle (Charger, 2026-11-14 : le cube
+         * provisoire se voyait encore deux secondes après une prédiction ouverte).
+         */
+        private static final int PREDICTION_STABLE = 100;
+        private static int predictionTenue;
+        /** La caméra du film, qui suit le véhicule de derrière ; sa position et la direction qu'elle suit. */
+        private static net.minecraft.world.entity.Entity camera;
+        private static Vec3 oeil;
+        private static double dirX;
+        private static double dirZ = -1;
         private static boolean fini;
         private static final List<String> trajectoire = new ArrayList<>();
         /** L'écart de chaque correction à la prédiction (position m, rotation rad, vitesse m/s), et les sans-prédiction. */
@@ -455,9 +474,23 @@ public final class EssaiPrediction {
                 }
                 return;
             }
+            if (FILM && tick < 0) {
+                // Un modèle lourd se prépare d'abord chez le client, et la file des entrées se règle : le film part
+                // sur une prédiction qui tient.
+                predictionTenue = ClientPrediction.predicting() ? predictionTenue + 1 : 0;
+                if (++enJeu > VOLANT_MAX) {
+                    echec(minecraft, "prédiction jamais stable en " + VOLANT_MAX / 20 + " s");
+                }
+                if (predictionTenue < PREDICTION_STABLE) {
+                    return;
+                }
+            }
             tick++;
             if (FILM && tournage == null) {
-                minecraft.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_BACK);
+                camera = new net.minecraft.world.entity.decoration.ArmorStand(
+                        net.minecraft.world.entity.EntityType.ARMOR_STAND, minecraft.level);
+                camera.setInvisible(true);
+                minecraft.setCameraEntity(camera);
                 tournage = new Tournage(minecraft.gameDirectory.toPath().resolve("axion-film").resolve("images"),
                         "AXION ENGINE, C-33");
             }
@@ -501,6 +534,52 @@ public final class EssaiPrediction {
          * Chaque image, avant son rendu : les capteurs se branchent sur la connexion en cours, dès l'écran de connexion
          * (défaut ouvert de la connexion, ADR-168 précision 6c-B). Son nom est à elle (voir {@link #conduire}).
          */
+        /**
+         * Avant chaque image filmée : la caméra suit le véhicule de derrière, dans le sens de sa vitesse, à une distance
+         * faite à sa taille, sans à-coup.
+         */
+        @SubscribeEvent
+        public static void cadrer(TickEvent.RenderTickEvent event) {
+            if (!FILM || camera == null || fini || event.phase != TickEvent.Phase.START) {
+                return;
+            }
+            Minecraft minecraft = Minecraft.getInstance();
+            if (!(minecraft.player != null && minecraft.player.getVehicle() instanceof AxionEntity vehicule)) {
+                return;
+            }
+            Vec3 cible = vehicule.getPosition(event.renderTickTime);
+            Vec3 vitesse = vehicule.getDeltaMovement();
+            double v = Math.hypot(vitesse.x, vitesse.z);
+            if (v > 0.02) {
+                dirX += (vitesse.x / v - dirX) * 0.05;
+                dirZ += (vitesse.z / v - dirZ) * 0.05;
+                double n = Math.hypot(dirX, dirZ);
+                dirX /= n;
+                dirZ /= n;
+            }
+            net.minecraft.world.phys.AABB boite = vehicule.getBoundingBox();
+            double taille = Math.max(boite.getXsize(), boite.getZsize());
+            double recul = 2.0 + 1.1 * taille;
+            Vec3 voulu = new Vec3(cible.x - dirX * recul, cible.y + 0.8 + 0.3 * taille, cible.z - dirZ * recul);
+            oeil = oeil == null ? voulu : oeil.add(voulu.subtract(oeil).scale(0.15));
+            double piedsY = oeil.y - camera.getEyeHeight();
+            camera.setPos(oeil.x, piedsY, oeil.z);
+            camera.xo = camera.xOld = oeil.x;
+            camera.yo = camera.yOld = piedsY;
+            camera.zo = camera.zOld = oeil.z;
+            Vec3 vise = cible.add(0, 0.6, 0).subtract(oeil);
+            float lacet = (float) Math.toDegrees(Math.atan2(-vise.x, vise.z));
+            float tangage = (float) -Math.toDegrees(Math.atan2(vise.y, Math.hypot(vise.x, vise.z)));
+            camera.setYRot(lacet);
+            camera.setXRot(tangage);
+            camera.yRotO = lacet;
+            camera.xRotO = tangage;
+            if (camera instanceof net.minecraft.world.entity.LivingEntity vivante) {
+                vivante.yHeadRot = lacet;
+                vivante.yHeadRotO = lacet;
+            }
+        }
+
         /** Chaque image rendue, pendant la conduite : une image du film, à 60 par seconde. */
         @SubscribeEvent
         public static void filmer(TickEvent.RenderTickEvent event) {
