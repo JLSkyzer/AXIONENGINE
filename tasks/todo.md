@@ -3848,9 +3848,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            client règle sa file.
            - [x] 6e-1 (1eb8939) : cadence relevée dans la file du serveur, gigue du relais, essai prolongé ; le relais
                  de latence connecte (ADR-169) ; clients lancés par un agent sur l'écran secondaire.
-           - [ ] 6e-2 : AXION-10, `InputPacing` (seconde version, simulée verte), film de la Charger (`-PessaiFilm`).
-                 Reste : la série en jeu (`serie_cadence.sh`) puis le film, quand OneForAllSurvival aura fini le sien
-                 (Killian, 19:20 : ne rien lancer avant son signal) ; CI locale ; commit avec CAP-57 à CAP-59.
+           - [x] 6e-2 (b902b58) : AXION-10, `InputPacing` (21 ms en local au lieu de 98), retenue rapide d'une
+                 rafale, D8 qui se rétablit (la latence se mesure à chaque correction) ; CAP-57 à CAP-59.
+           - [x] 6e-3 (9dd431e) : `net.prediction_reenable_ratio` = 0,9 (Killian), amendement A18.
+           - [x] 6e-4 (fc00445) : film de la prédiction avec la Charger — envoyé à Killian le 2026-11-14.
      - [ ] 6e — T-415..T-417 sous latence injectée (essai à deux processus, T-417 en GameTest), défauts mesurés
            (`net.prediction_replay_budget_ns`,
            `net.prediction_max_corrections`), CDC (21.3, 21.4, 21.8, A.3), guide réseau, fusion.
