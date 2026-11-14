@@ -60,6 +60,12 @@ public final class EssaiPrediction {
     /** Le délai d'un sens du relais, en millisecondes, pour le client de l'essai ; -1 hors de l'essai. */
     private static final long DELAI_MS = Long.getLong("axion.essai.prediction", -1L);
 
+    /**
+     * Vrai pour la connexion seule : le client se connecte, dit en combien de tentatives, et s'arrête dès qu'il est en
+     * jeu — l'échantillon du défaut ouvert de la connexion (ADR-168, précision 6c-B), en une minute et demie.
+     */
+    private static final boolean CONNEXION_SEULE = Boolean.getBoolean("axion.essai.connexion_seule");
+
     /** Le temps laissé à l'essai, au-delà duquel le serveur s'arrête. */
     static final int DUREE_SERVEUR_S = 300;
 
@@ -101,6 +107,25 @@ public final class EssaiPrediction {
         private static boolean assis;
 
         private Serveur() {}
+
+        /**
+         * Au début de chaque tick du serveur, avant celui des connexions où partent les paquets de la poignée de main :
+         * les capteurs se branchent sur toute connexion neuve (défaut ouvert de la connexion, ADR-168 précision 6c-B).
+         * Son nom est à elle (voir {@link Client#conduire}).
+         */
+        @SubscribeEvent
+        public static void capteursServeur(TickEvent.ServerTickEvent event) {
+            if (!SERVEUR || event.phase != TickEvent.Phase.START || event.getServer().getConnection() == null) {
+                return;
+            }
+            List<net.minecraft.network.Connection> connexions = event.getServer().getConnection().getConnections();
+            synchronized (connexions) {
+                for (net.minecraft.network.Connection connexion : connexions) {
+                    dev.axion.forge.net.CapteurReseau.brancher(connexion, "serveur");
+                    dev.axion.forge.net.CapteurReseau.sonder(connexion);
+                }
+            }
+        }
 
         /** Chaque tick du serveur ; son nom est à elle (voir {@link Client#conduire}). */
         @SubscribeEvent
@@ -258,6 +283,20 @@ public final class EssaiPrediction {
             if (minecraft.player == null) {
                 return;
             }
+            if (CONNEXION_SEULE) {
+                fini = true;
+                LOGGER.info("[essai] connexion seule : en jeu en {} tentative(s)", tentatives);
+                try {
+                    Files.write(minecraft.gameDirectory.toPath().resolve("rapport-prediction.txt"),
+                            List.of("connexion seule : en jeu en " + tentatives + " tentative(s)"), StandardCharsets.UTF_8);
+                } catch (IOException faute) {
+                    LOGGER.error("[essai] rapport non écrit : {}", faute.toString());
+                }
+                minecraft.level.disconnect();
+                fermerRelais();
+                minecraft.stop();
+                return;
+            }
             if (!(minecraft.player.getVehicle() instanceof AxionEntity assembly) || !assembly.drivenBy(minecraft.player)) {
                 if (tick < 0 && ++enJeu > VOLANT_MAX) {
                     echec(minecraft, "jamais au volant en " + VOLANT_MAX / 20 + " s");
@@ -283,6 +322,38 @@ public final class EssaiPrediction {
             if (tick == ATTENTE + ACCELERE + BRAQUE + RELACHE) {
                 fini = true;
                 terminer(minecraft);
+            }
+        }
+
+        /**
+         * Chaque image, avant son rendu : les capteurs se branchent sur la connexion en cours, dès l'écran de connexion
+         * (défaut ouvert de la connexion, ADR-168 précision 6c-B). Son nom est à elle (voir {@link #conduire}).
+         */
+        @SubscribeEvent
+        public static void capteursClient(TickEvent.RenderTickEvent event) {
+            if (DELAI_MS < 0 || fini || event.phase != TickEvent.Phase.START) {
+                return;
+            }
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.screen instanceof ConnectScreen ecran) {
+                for (java.lang.reflect.Field champ : ConnectScreen.class.getDeclaredFields()) {
+                    if (champ.getType() == net.minecraft.network.Connection.class) {
+                        try {
+                            champ.setAccessible(true);
+                            Object connexion = champ.get(ecran);
+                            if (connexion != null) {
+                                dev.axion.forge.net.CapteurReseau.brancher((net.minecraft.network.Connection) connexion,
+                                        "client");
+                                dev.axion.forge.net.CapteurReseau.sonder((net.minecraft.network.Connection) connexion);
+                            }
+                        } catch (ReflectiveOperationException faute) {
+                            LOGGER.warn("[capteur] connexion de l'écran illisible : {}", faute.toString());
+                        }
+                    }
+                }
+            }
+            if (minecraft.getConnection() != null) {
+                dev.axion.forge.net.CapteurReseau.brancher(minecraft.getConnection().getConnection(), "client");
             }
         }
 

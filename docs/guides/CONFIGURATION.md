@@ -171,6 +171,7 @@ alors ignorée (R-1830).
 | `interpolation_delay_ms` | entier | `100` | `0..65535` | non | non | Retard d'interpolation appliqué côté client, en millisecondes. |
 | `extrapolation_max_ms` | entier | `250` | `0..` | non | non | Durée maximale d'extrapolation en l'absence de snapshot, en millisecondes. |
 | `snap_threshold` | flottant | `2.0` | `0.0..` | non | non | Écart, en mètres, au-delà duquel le client repositionne brutalement plutôt qu'interpoler. |
+| `connection_read_rescue` | booléen | `true` | `true \| false` | non | non | Rattrape la course de connexion de Forge 47 : une lecture du client restée coupée à la connexion se redemande. |
 | `prediction` | booléen | `true` | `true \| false` | non | non | Active la prédiction côté client pour l'assembly pilotée par le joueur. |
 | `prediction_max_ping` | entier | `400` | `0..` | non | non | Latence maximale, en millisecondes, au-delà de laquelle la prédiction est désactivée. |
 | `prediction_replay_budget_ns` | entier | `8200000` | `0..` | non | non | Durée maximale d'un rejeu de la prédiction, en nanosecondes ; au-delà, le client accepte l'état du serveur sans rejouer. |

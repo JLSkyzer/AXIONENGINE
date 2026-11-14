@@ -116,6 +116,7 @@ sync_radius = 96.0                # 0.0..
 interpolation_delay_ms = 100      # 0..65535
 extrapolation_max_ms = 250        # 0..
 snap_threshold = 2.0              # 0.0..
+connection_read_rescue = true
 prediction = true
 prediction_max_ping = 400         # 0..
 prediction_replay_budget_ns = 8200000# 0..

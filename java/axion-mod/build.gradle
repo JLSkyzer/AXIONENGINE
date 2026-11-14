@@ -105,6 +105,8 @@ minecraft {
             // essai précédent, que le journal latéral garde, l'essai les retire lui-même de sa piste.
             if (System.getenv('AXION_ESSAI_PREDICTION') == '1') {
                 args '--world', 'essai-prediction'
+                // Le défaut ouvert de sa connexion (précision 6c-B) : chaque lecture et écriture de socket du serveur.
+                jvmArg "-XX:StartFlightRecording=filename=${rootProject.file('.runs/server/essai-reseau.jfr')},settings=${rootProject.file('tools/ci/essai_reseau.jfc')},dumponexit=true"
             }
             // ADR-162 D9 : /axion dev reload, en développement.
             property 'axion.content.dev_reload', 'true'
@@ -127,7 +129,14 @@ minecraft {
             parent minecraft.runs.client
             workingDirectory rootProject.file('.runs/essai-prediction')
             property 'axion.essai.prediction', (project.findProperty('essaiLatence') ?: '100').toString()
+            // -PessaiConnexionSeule : se connecter, dire en combien de tentatives, s'arrêter (défaut de connexion, 6c-B).
+            property 'axion.essai.connexion_seule', project.hasProperty('essaiConnexionSeule').toString()
+            // La course de connexion de Forge 47 : le mod la rattrape lui-même (ADR-169) ; -PessaiRelance ajoute la relance
+            // de l'essai, l'expérience qui en a confirmé la cause.
+            property 'axion.essai.relance_lecture', project.hasProperty('essaiRelance').toString()
             property 'axion.souris.libre', 'true'
+            // Le défaut ouvert de sa connexion (ADR-168, précision 6c-B) : chaque lecture et écriture de socket du client.
+            jvmArg "-XX:StartFlightRecording=filename=${rootProject.file('.runs/essai-prediction/essai-reseau.jfr')},settings=${rootProject.file('tools/ci/essai_reseau.jfc')},dumponexit=true"
         }
 
         gameTestServer {

@@ -3811,9 +3811,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            T-415 et T-416 par un essai à deux processus (serveur dédié + vrai client, latence injectée), le natif en
            Rust (deux mondes), la boucle Java en tests unitaires ; une connexion en mémoire ne prédit pas (un contexte
            natif par processus, R-450). Étapes :
-           **État au 2026-11-14** : A, B, C commités. Ouvert : (1) une connexion directe au serveur dédié sur
-           deux expire (« Timed out », cause inconnue, ADR-168 précision 6c-B) ; l'essai se reconnecte jusqu'à trois
-           fois ; (2) le relais de latence : avec lui, aucune connexion n'a encore abouti (à reprendre en 6e). La
+           **État au 2026-11-14** : A, B, C commités. Le « Timed out » des premières connexions est expliqué : la
+           course de connexion de Forge 47 (ADR-168 précision 6c-B, note de D:\BDC) ; le mod la rattrape chez le
+           joueur (ADR-169, `net.connection_read_rescue`). Ouvert : (2) le relais de latence : avec lui, aucune connexion n'a encore abouti (à reprendre en 6e). La
            fausse prédiction de 0,48 m de la 6c-B : probablement un véhicule d'un essai précédent resté sur la piste
            (précision 6c-C2), l'essai a désormais son monde et sa piste nette.
            - [x] A (2026-11-14, CI locale verte) : le monde prédit du client distant et son cycle de vie — table des matériaux et familles de pneus

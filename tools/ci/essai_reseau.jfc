@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ADR-168, défaut ouvert de la connexion de l'essai de la prédiction (précision 6c-B) : chaque lecture et chaque écriture
+  de socket de la JVM, NIO compris, quelle que soit leur durée — ce qui passe vraiment la frontière du système, sans
+  dépendre de Netty. Lu après coup par la commande jfr print, sur les événements jdk.SocketRead et
+  jdk.SocketWrite. (Un commentaire XML ne peut pas contenir deux tirets de suite.)
+-->
+<configuration version="2.0" label="AXION essai reseau" description="Lectures et ecritures de socket, pour l essai de la prediction">
+  <event name="jdk.SocketRead">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.SocketWrite">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+</configuration>

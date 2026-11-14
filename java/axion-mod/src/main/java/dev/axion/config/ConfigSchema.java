@@ -842,6 +842,14 @@ public final class ConfigSchema {
                     false,
                     "Écart, en mètres, au-delà duquel le client repositionne brutalement plutôt qu'interpoler."),
             new Option(
+                    "net.connection_read_rescue",
+                    Kind.BOOLEAN,
+                    true,
+                    new Domain(DomainKind.BOOLEAN, 0.0, 0.0, List.of()),
+                    false,
+                    false,
+                    "Rattrape la course de connexion de Forge 47 : une lecture du client restée coupée à la connexion se redemande."),
+            new Option(
                     "net.prediction",
                     Kind.BOOLEAN,
                     true,

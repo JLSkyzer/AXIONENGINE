@@ -30,6 +30,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
+| [ADR-169](ADR-169.md) | Le rattrapage de la course de connexion de Forge 47, chez le joueur | 2026-11-14 | accepté |
 | [ADR-168](ADR-168.md) | La prédiction du véhicule piloté : monde prédit, corrections, rejeu | 2026-11-12 | accepté |
 | [ADR-167](ADR-167.md) | Les paramètres d'une instance : réglage à chaud, causes composées, contrôleurs de véhicule | 2026-11-12 | accepté |
 | [ADR-163](ADR-163.md) | Ce qui s'allume et bouge : état du véhicule, variables, touches libres, canaux pilotés | 2026-11-11 | accepté |

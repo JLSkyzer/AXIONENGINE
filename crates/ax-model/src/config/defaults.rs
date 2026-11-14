@@ -349,6 +349,10 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Maximum extrapolation time when no snapshot arrives, in milliseconds."),
     fp("net.snap_threshold", 2.0, "Écart, en mètres, au-delà duquel le client repositionne brutalement plutôt qu'interpoler.")
         .en("Gap, in metres, beyond which the client snaps to position instead of interpolating."),
+    // ADR-169 : le rattrapage de la course de connexion de Forge 47 — une lecture du client restée désinscrite à la
+    // connexion se redemande. Un autre mod qui la corrige ne le gêne pas ; coupé, la connexion bloquée expire en 30 s.
+    b("net.connection_read_rescue", true, "Rattrape la course de connexion de Forge 47 : une lecture du client restée coupée à la connexion se redemande.")
+        .en("Recovers from the Forge 47 connection race: a client read left disabled while connecting is requested again."),
     b("net.prediction", true, "Active la prédiction côté client pour l'assembly pilotée par le joueur.")
         .en("Enables client-side prediction for the assembly the player drives."),
     ip("net.prediction_max_ping", 400, "Latence maximale, en millisecondes, au-delà de laquelle la prédiction est désactivée.")

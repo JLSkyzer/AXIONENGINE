@@ -171,6 +171,7 @@ ignored (R-1830).
 | `interpolation_delay_ms` | integer | `100` | `0..65535` | no | no | Interpolation delay applied on the client, in milliseconds. |
 | `extrapolation_max_ms` | integer | `250` | `0..` | no | no | Maximum extrapolation time when no snapshot arrives, in milliseconds. |
 | `snap_threshold` | float | `2.0` | `0.0..` | no | no | Gap, in metres, beyond which the client snaps to position instead of interpolating. |
+| `connection_read_rescue` | boolean | `true` | `true \| false` | no | no | Recovers from the Forge 47 connection race: a client read left disabled while connecting is requested again. |
 | `prediction` | boolean | `true` | `true \| false` | no | no | Enables client-side prediction for the assembly the player drives. |
 | `prediction_max_ping` | integer | `400` | `0..` | no | no | Maximum latency, in milliseconds, beyond which prediction is disabled. |
 | `prediction_replay_budget_ns` | integer | `8200000` | `0..` | no | no | Maximum duration of a prediction replay, in nanoseconds; beyond it, the client accepts the server state without replaying. |

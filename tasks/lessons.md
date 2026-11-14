@@ -2454,3 +2454,9 @@ mesurait à la pose du dernier tick, alors que l'image se dessine entre les deux
 tick seul ne s'y voyait pas | l'écart qu'une correction lisse se mesure au temps exact de ce qui est affiché, pas à un
 instant voisin ; et la fluidité se mesure image par image, datée par le tick de rendu (une mesure datée par l'heure de fin
 d'image donnait 25 m/s de bruit).
+
+[2026-11-14] | Des heures de capteurs (Netty, JFR, sonde de la clé, banc isolé) pour trouver la cause d'un « Timed out »
+de connexion, que la base de connaissances décrivait déjà, mécanisme et remède compris, depuis le 2026-11-06 | je n'ai
+cherché dans D:\BDC qu'au moment d'y écrire, pas au moment de diagnostiquer | avant de diagnostiquer un défaut d'outil, de
+plateforme ou de jeu (Minecraft, Forge, Netty, JDK, Gradle), chercher dans D:\BDC ses mots-clés et sa signature
+(`grep -rli` sur le message d'erreur et les noms en jeu) ; une autre session du même PC a pu le résoudre.
