@@ -174,6 +174,7 @@ alors ignorée (R-1830).
 | `connection_read_rescue` | booléen | `true` | `true \| false` | non | non | Rattrape la course de connexion de Forge 47 : une lecture du client restée coupée à la connexion se redemande. |
 | `prediction` | booléen | `true` | `true \| false` | non | non | Active la prédiction côté client pour l'assembly pilotée par le joueur. |
 | `prediction_max_ping` | entier | `400` | `0..` | non | non | Latence maximale, en millisecondes, au-delà de laquelle la prédiction est désactivée. |
+| `prediction_reenable_ratio` | flottant | `0.9` | `0.0..1.0` | non | non | Part de net.prediction_max_ping sous laquelle une prédiction coupée par sa latence se rétablit. |
 | `prediction_replay_budget_ns` | entier | `8200000` | `0..` | non | non | Durée maximale d'un rejeu de la prédiction, en nanosecondes ; au-delà, le client accepte l'état du serveur sans rejouer. |
 | `prediction_tolerance_position_m` | flottant | `0.01` | `0.0..` | non | non | Écart de position, en mètres, en deçà duquel l'état prédit vaut celui du serveur. |
 | `prediction_tolerance_rotation_rad` | flottant | `0.005` | `0.0..` | non | non | Écart de rotation, en radians, en deçà duquel l'état prédit vaut celui du serveur. |

@@ -866,6 +866,14 @@ public final class ConfigSchema {
                     false,
                     "Latence maximale, en millisecondes, au-delà de laquelle la prédiction est désactivée."),
             new Option(
+                    "net.prediction_reenable_ratio",
+                    Kind.FLOAT,
+                    0.9,
+                    new Domain(DomainKind.FLOAT_RANGE, 0.0, 1.0, List.of()),
+                    false,
+                    false,
+                    "Part de net.prediction_max_ping sous laquelle une prédiction coupée par sa latence se rétablit."),
+            new Option(
                     "net.prediction_replay_budget_ns",
                     Kind.INTEGER,
                     8200000L,

@@ -174,6 +174,7 @@ ignored (R-1830).
 | `connection_read_rescue` | boolean | `true` | `true \| false` | no | no | Recovers from the Forge 47 connection race: a client read left disabled while connecting is requested again. |
 | `prediction` | boolean | `true` | `true \| false` | no | no | Enables client-side prediction for the assembly the player drives. |
 | `prediction_max_ping` | integer | `400` | `0..` | no | no | Maximum latency, in milliseconds, beyond which prediction is disabled. |
+| `prediction_reenable_ratio` | float | `0.9` | `0.0..1.0` | no | no | Share of net.prediction_max_ping below which a prediction cut off by its latency comes back. |
 | `prediction_replay_budget_ns` | integer | `8200000` | `0..` | no | no | Maximum duration of a prediction replay, in nanoseconds; beyond it, the client accepts the server state without replaying. |
 | `prediction_tolerance_position_m` | float | `0.01` | `0.0..` | no | no | Position gap, in metres, below which the predicted state counts as the server's. |
 | `prediction_tolerance_rotation_rad` | float | `0.005` | `0.0..` | no | no | Rotation gap, in radians, below which the predicted state counts as the server's. |

@@ -123,6 +123,8 @@ public final class ClientPrediction {
      * Minecraft rattrape les ticks manqués d'un coup.
      */
     private static final long LATE_GAP_NANOS = 75_000_000L;
+    /** Le début de la cause d'une coupure pour latence (D8) : son retour se juge sous une marge. */
+    private static final String PING_REFUSAL = "latence de ";
     /** Vrai quand une restauration n'a pu recoudre un joint : le monde prédit se recrée à la correction suivante. */
     private static boolean irreconcilable;
     /** La dernière cause journalisée d'une prédiction coupée ; vide si elle ne l'est pas. */
@@ -510,9 +512,15 @@ public final class ClientPrediction {
                     + ", sim.max_substeps " + server.maxSubsteps() + ", physics.gravity " + server.gravity() + ")";
         }
         long maxPing = config.getInt("net.prediction_max_ping");
-        if (prediction.latencyMillis() > maxPing) {
-            return String.format(java.util.Locale.ROOT, "latence de %.0f ms, au-delà de net.prediction_max_ping (%d ms)",
-                    prediction.latencyMillis(), maxPing);
+        // D8, précision 6e : coupée par sa latence, la prédiction ne se rouvre que sous une part du seuil — sans
+        // marge, elle se coupait et se rouvrait au seuil même.
+        boolean cutByPing = refusal.startsWith(PING_REFUSAL);
+        double limit = cutByPing ? maxPing * config.getFloat("net.prediction_reenable_ratio") : maxPing;
+        if (prediction.latencyMillis() > limit) {
+            return String.format(java.util.Locale.ROOT, PING_REFUSAL + "%.0f ms, au-delà de %s (%.0f ms)",
+                    prediction.latencyMillis(), cutByPing
+                            ? "net.prediction_reenable_ratio × net.prediction_max_ping" : "net.prediction_max_ping",
+                    limit);
         }
         return "";
     }

@@ -357,6 +357,11 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Enables client-side prediction for the assembly the player drives."),
     ip("net.prediction_max_ping", 400, "Latence maximale, en millisecondes, au-delà de laquelle la prédiction est désactivée.")
         .en("Maximum latency, in milliseconds, beyond which prediction is disabled."),
+    // ADR-168 D8, précision 6e, décision de Killian du 2026-11-14 : une prédiction coupée par sa latence ne se rouvre
+    // que sous cette part de net.prediction_max_ping. Sans marge, elle se coupait et se rouvrait plusieurs fois de
+    // suite au seuil (essai à deux processus de la Charger : coupée à 404 ms, rouverte, recoupée à 401 ms).
+    f("net.prediction_reenable_ratio", 0.9, 0.0, 1.0, "Part de net.prediction_max_ping sous laquelle une prédiction coupée par sa latence se rétablit.")
+        .en("Share of net.prediction_max_ping below which a prediction cut off by its latency comes back."),
     // ADR-168 D5, D10 : p99 mesuré d'un rejeu de 64 ticks, restauration comprise, au banc du vrai client (essai à deux
     // processus, 2026-11-13 : p50 5,06 ms, p90 6,90 ms, p99 8,17 ms sur 100 mesures).
     ip("net.prediction_replay_budget_ns", 8_200_000, "Durée maximale d'un rejeu de la prédiction, en nanosecondes ; au-delà, le client accepte l'état du serveur sans rejouer.")

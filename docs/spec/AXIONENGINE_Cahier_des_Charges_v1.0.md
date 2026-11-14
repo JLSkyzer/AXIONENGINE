@@ -7841,6 +7841,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A15 | 2026-11-12 | ADR-167, accepté par Killian (sous-tranches 5a, 5b et 5c) | 12.5 : R-1084 (paramètres d'une instance, bornes, composition des causes), R-1085 (réglage à chaud), R-1086 (sauvegarde et réplication), R-1087 (une variable règle un paramètre, 5b) ; R-1171 précisée : ses contrôleurs déclaratifs sont les modificateurs déclarés ; 21.5 : descripteur 6 et protocole 8 ; 22.2 : `axion:v` 5 et `axion:params` ; 23.2 : `parameters()` ; 23.4 : `tuning.ranges` et `tuning.modifiers`, schéma de definition 4 ; A.1 : `E-7011`, un modificateur gardé inactif plutôt que perdu, et `E-7010`, une écriture de variable refusée (5b) ; A.7 : CAP-39 et la masse variable de CAP-34 tenues, CAP-03 tenue sauf la prédiction. 5c (étapes B et C) : A.1 : `E-1011`, un contrôleur de véhicule désactivé ; A.3 : `vehicle.controller_budget_ns` et `vehicle.controller_strikes`, défauts tirés d'une mesure au banc ; 5c (étape D) : R-1086, 21.5 et 22.2 : les contrôleurs attachés par l'API, sauvegardés (`axion:ctrls`) et répliqués ; A.1 : `E-7011` couvre un contrôleur relu sans son mod. 5c (étape E) : 23.2 : `vehicle()` ; 23.3 : `VehicleController` et le paramètre d'addon, R-1770 précisée ; 23.4 : `vehicle.controllers` ; 5c (Q7, Killian, 2026-11-12) : 21.3 et R-1640 : les contrôleurs nommés annoncés au handshake, un client à qui l'un manque refusé en le nommant |
 | A16 | 2026-11-13 | ADR-168, accepté par Killian (sous-tranche 6c) | ANNEXE A.3 : `net.prediction_replay_budget_ns`, la durée qu'un rejeu de la prédiction ne dépasse pas (R-1682), son défaut mesuré au banc (ADR-168 D10) ; `net.prediction_tolerance_position_m`, `_rotation_rad`, `_velocity_ms`, l'écart en deçà duquel le client ne rejoue pas (D5, précision 6c-B) ; `net.prediction_proxy_radius`, le rayon des proxies du monde prédit (précision 6c-C2) |
 | A17 | 2026-11-14 | ADR-169, accepté par Killian | ANNEXE A.3 : `net.connection_read_rescue`, le rattrapage côté client de la course de connexion de Forge 47 |
+| A18 | 2026-11-14 | ADR-168 précision 6e, décisions de Killian | R-1683 : une prédiction coupée par sa latence se rétablit sous `net.prediction_reenable_ratio` × `net.prediction_max_ping` ; ANNEXE A.3 : `net.prediction_reenable_ratio` (0,9) ; 21.4 : protocole 10, la cadence des entrées réglée par le client (D3 révisé) |
 
 ---
 
@@ -8046,6 +8047,7 @@ snap_threshold = 2.0
 connection_read_rescue = true
 prediction = true
 prediction_max_ping = 400
+prediction_reenable_ratio = 0.9
 prediction_replay_budget_ns = 8200000
 prediction_tolerance_position_m = 0.01
 prediction_tolerance_rotation_rad = 0.005
