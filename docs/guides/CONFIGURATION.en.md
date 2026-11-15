@@ -313,6 +313,7 @@ ignored (R-1830).
 | `dashboard` | boolean | `true` | `true \| false` | yes | no | Shows the dashboard of the driven vehicle: the default one and the gauges its definition declares. |
 | `dashboard_scale` | float | `1.0` | `0.5..2.0` | yes | no | Scale of the dashboard, relative to the Minecraft interface. |
 | `speed_unit` | string | `"kmh"` | `kmh \| mph` | yes | no | Unit of the speed shown by the dashboard. |
+| `widget_budget_ns` | integer | `200000` | `10000..5000000` | yes | no | Time a dashboard widget may take each frame, in nanoseconds; twenty overruns or exceptions in a row disable it for the session. |
 
 ### `[debug]`
 

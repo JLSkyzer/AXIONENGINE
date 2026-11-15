@@ -739,6 +739,18 @@ pub const CLIENT: &[ConfigOption] = &[
         "Unité de la vitesse affichée par le tableau de bord.",
     ))
     .en("Unit of the speed shown by the dashboard."),
+    // ADR-170 D6 : comme le budget d'un contrôleur de véhicule (vehicle.controller_budget_ns), un widget d'addon a le
+    // sien à chaque image ; vingt fautes de suite le désactivent pour la session. Mesuré le 2026-11-15 sur le
+    // compte-tours de l'addon témoin (film des vues, 3 010 images) : p50 72 µs, p99 274 µs, pire 619 µs. 200 µs laisse
+    // passer un widget de ce genre ; ses pointes isolées ne font pas vingt fautes de suite.
+    hot(i(
+        "hud.widget_budget_ns",
+        200_000,
+        10_000,
+        5_000_000,
+        "Temps qu'un widget du tableau de bord peut prendre à chaque image, en nanosecondes ; vingt dépassements ou exceptions de suite le désactivent pour la session.",
+    ))
+    .en("Time a dashboard widget may take each frame, in nanoseconds; twenty overruns or exceptions in a row disable it for the session."),
     // [debug]
     hot(b(
         "debug.gl",

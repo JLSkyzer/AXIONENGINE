@@ -46,8 +46,18 @@ public final class Dashboard {
      *
      * @param standard celle du défaut, {@code null} s'il ne s'affiche pas
      * @param gauges celle de chaque jauge, dans l'ordre de la definition
+     * @param widgets celle de chaque widget, dans l'ordre de la definition
      */
-    public record Layout(Box standard, List<Box> gauges) {}
+    public record Layout(Box standard, List<Box> gauges, List<Box> widgets) {}
+
+    /**
+     * Ce qu'un widget d'addon demande (ADR-170 D6).
+     *
+     * @param anchor son ancre
+     * @param width sa largeur
+     * @param height sa hauteur
+     */
+    public record Slot(VehicleDashboard.Anchor anchor, int width, int height) {}
 
     private Dashboard() {}
 
@@ -61,6 +71,19 @@ public final class Dashboard {
      * @param screenHeight sa hauteur
      */
     public static Layout layout(VehicleDashboard dashboard, int screenWidth, int screenHeight) {
+        return layout(dashboard, List.of(), screenWidth, screenHeight);
+    }
+
+    /**
+     * {@return la place du défaut, de chaque jauge, puis de chaque widget} Un widget s'empile sur son ancre après les
+     * jauges, comme elles.
+     *
+     * @param dashboard le tableau de bord
+     * @param widgets ce que demande chaque widget, dans l'ordre de la definition
+     * @param screenWidth la largeur de l'écran, en pixels de l'interface, échelle du joueur comprise
+     * @param screenHeight sa hauteur
+     */
+    public static Layout layout(VehicleDashboard dashboard, List<Slot> widgets, int screenWidth, int screenHeight) {
         Map<VehicleDashboard.Anchor, Integer> pile = new EnumMap<>(VehicleDashboard.Anchor.class);
         Box standard = null;
         if (dashboard.showDefault()) {
@@ -82,7 +105,14 @@ public final class Dashboard {
             gauges.add(place(anchor, 0, dy, size[0], size[1], screenWidth, screenHeight));
             pile.put(anchor, done + size[1] + GAP);
         }
-        return new Layout(standard, gauges);
+        List<Box> placed = new ArrayList<>();
+        for (Slot slot : widgets) {
+            int done = pile.getOrDefault(slot.anchor(), 0);
+            double dy = slot.anchor().row() > 0 ? -done : done;
+            placed.add(place(slot.anchor(), 0, dy, slot.width(), slot.height(), screenWidth, screenHeight));
+            pile.put(slot.anchor(), done + slot.height() + GAP);
+        }
+        return new Layout(standard, gauges, placed);
     }
 
     /** {@return la largeur et la hauteur d'une jauge, libellé compris} */

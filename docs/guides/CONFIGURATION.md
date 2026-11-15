@@ -313,6 +313,7 @@ alors ignorée (R-1830).
 | `dashboard` | booléen | `true` | `true \| false` | oui | non | Affiche le tableau de bord du véhicule conduit : le défaut et les jauges que sa definition déclare. |
 | `dashboard_scale` | flottant | `1.0` | `0.5..2.0` | oui | non | Échelle du tableau de bord, par rapport à l'interface de Minecraft. |
 | `speed_unit` | chaîne | `"kmh"` | `kmh \| mph` | oui | non | Unité de la vitesse affichée par le tableau de bord. |
+| `widget_budget_ns` | entier | `200000` | `10000..5000000` | oui | non | Temps qu'un widget du tableau de bord peut prendre à chaque image, en nanosecondes ; vingt dépassements ou exceptions de suite le désactivent pour la session. |
 
 ### `[debug]`
 

@@ -103,4 +103,17 @@ public interface ContentRegistrar {
      * @throws IllegalStateException hors de la phase d'enregistrement
      */
     void registerParameter(String name, String unit, double base, dev.axion.api.assembly.Parameters.Range limit);
+
+    /**
+     * Enregistre un widget du tableau de bord (ADR-170 D6) : le widget {@code <modId>:<name>}, qu'une definition nomme
+     * ({@code dashboard.widgets}). Il s'enregistre sur le serveur comme chez le client, avec le mod qui le livre ; seul
+     * le client l'appelle. Un joueur sans ce mod ne rejoint pas un serveur dont une definition le nomme (ADR-165). Un
+     * widget de même nom déjà enregistré par ce mod est un doublon, refusé et consigné.
+     *
+     * @param name chemin du widget dans l'espace de noms du mod, par exemple {@code "compte_tours"}
+     * @param widget le widget
+     * @throws IllegalArgumentException si le nom est vide ou sort de {@code [a-z0-9_./-]}
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    void registerDashboardWidget(String name, dev.axion.api.hud.DashboardWidget widget);
 }

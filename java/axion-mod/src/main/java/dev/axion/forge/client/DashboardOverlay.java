@@ -65,6 +65,14 @@ public final class DashboardOverlay {
         event.registerAbove(VanillaGuiOverlay.HOTBAR.id(), "dashboard", DashboardOverlay::render);
     }
 
+    /** Les fautes de suite de chaque widget, et ceux que vingt fautes ont désactivés pour la session (D6). */
+    private static final Map<String, Integer> faults = new HashMap<>();
+    private static final java.util.Set<String> disabled = new java.util.HashSet<>();
+    private static final int STRIKES = 20;
+    /** Le temps de dessin de chaque widget, en nanosecondes, image par image : la mesure du budget (D6, D10). */
+    private static final Map<String, java.util.List<Long>> costs = new HashMap<>();
+    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(DashboardOverlay.class);
+
     private static void render(ForgeGui gui, GuiGraphics graphics, float partialTick, int width, int height) {
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
@@ -83,11 +91,36 @@ public final class DashboardOverlay {
             return;
         }
         float scale = (float) config.getFloat("hud.dashboard_scale");
-        Dashboard.Layout layout = Dashboard.layout(dashboard, Math.round(width / scale), Math.round(height / scale));
+        List<dev.axion.definition.VehicleExtensions.Widget> widgets = widgets(dashboard);
+        List<Dashboard.Slot> slots = new java.util.ArrayList<>();
+        for (dev.axion.definition.VehicleExtensions.Widget widget : widgets) {
+            slots.add(new Dashboard.Slot(VehicleDashboard.Anchor.valueOf(widget.widget().anchor().name()),
+                    Math.max(1, widget.widget().width()), Math.max(1, widget.widget().height())));
+        }
+        Dashboard.Layout layout = Dashboard.layout(dashboard, slots, Math.round(width / scale),
+                Math.round(height / scale));
         AxionEntity.RenderPose shown = assembly.renderPose(partialTick);
         Font font = minecraft.font;
         graphics.pose().pushPose();
         graphics.pose().scale(scale, scale, 1f);
+        graphics.drawManaged(() -> drawOwn(graphics, font, layout, dashboard, shown, runtime, assembly, config,
+                partialTick));
+        if (!widgets.isEmpty()) {
+            dev.axion.api.vehicle.VehicleView view = view(runtime, assembly, shown);
+            long budget = config.getInt("hud.widget_budget_ns");
+            for (int i = 0; i < widgets.size(); i++) {
+                Dashboard.Box box = layout.widgets().get(i);
+                draw(widgets.get(i), new GuiDashboardCanvas(graphics, font, box.x(), box.y(), box.width(),
+                        box.height(), scale), view, budget);
+            }
+        }
+        graphics.pose().popPose();
+    }
+
+    /** Le défaut et les jauges, dessinés d'un bloc : un seul vidage du tampon. */
+    private static void drawOwn(GuiGraphics graphics, Font font, Dashboard.Layout layout, VehicleDashboard dashboard,
+            AxionEntity.RenderPose shown, AxionRuntime runtime, AxionEntity assembly, AxionConfig config,
+            float partialTick) {
         if (layout.standard() != null) {
             standard(graphics, font, layout.standard(), shown.vehicle(), config.getString("hud.speed_unit"));
         }
@@ -99,7 +132,126 @@ public final class DashboardOverlay {
                 gauge(graphics, font, layout.gauges().get(i), dashboard.gauges().get(i), value);
             }
         }
-        graphics.pose().popPose();
+    }
+
+    /**
+     * {@return le temps de dessin de chaque widget depuis le lancement : images, médiane, p99 et pire, en microsecondes}
+     * La mesure du budget d'un widget (D6, D10) ; un film ou un essai l'écrit à son bilan.
+     */
+    public static String widgetCosts() {
+        StringBuilder text = new StringBuilder();
+        for (Map.Entry<String, java.util.List<Long>> entry : new java.util.TreeMap<>(costs).entrySet()) {
+            long[] sorted = entry.getValue().stream().mapToLong(Long::longValue).sorted().toArray();
+            if (sorted.length == 0) {
+                continue;
+            }
+            text.append(String.format(java.util.Locale.ROOT, "%s%s : %d images, p50 %.1f µs, p99 %.1f µs, pire %.1f µs",
+                    text.length() == 0 ? "" : " ; ", entry.getKey(), sorted.length, sorted[sorted.length / 2] / 1e3,
+                    sorted[Math.min(sorted.length - 1, sorted.length * 99 / 100)] / 1e3,
+                    sorted[sorted.length - 1] / 1e3));
+        }
+        return text.length() == 0 ? "aucun widget dessiné" : text.toString();
+    }
+
+    /** {@return les widgets nommés par le tableau de bord, enregistrés et pas désactivés, dans son ordre} */
+    private static List<dev.axion.definition.VehicleExtensions.Widget> widgets(VehicleDashboard dashboard) {
+        List<dev.axion.definition.VehicleExtensions.Widget> found = new java.util.ArrayList<>();
+        for (String id : dashboard.widgets()) {
+            if (!disabled.contains(id)) {
+                dev.axion.definition.VehicleExtensions.current().widget(id).ifPresent(found::add);
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Dessine un widget sous son budget (D6) : une exception ou un dépassement compte une faute, vingt de suite le
+     * désactivent pour la session, avec son mod nommé ({@code E-1011}).
+     */
+    private static void draw(dev.axion.definition.VehicleExtensions.Widget widget, GuiDashboardCanvas canvas,
+            dev.axion.api.vehicle.VehicleView view, long budget) {
+        Throwable[] failed = new Throwable[1];
+        canvas.begin();
+        long start = System.nanoTime();
+        try {
+            // Un seul vidage du tampon à la fin : sans lui, chaque rectangle est un appel de dessin. Rien ne sort du
+            // bloc, pour que le mode groupé de GuiGraphics se referme toujours.
+            canvas.graphics().drawManaged(() -> {
+                try {
+                    widget.widget().draw(canvas, view);
+                } catch (RuntimeException | LinkageError failure) {
+                    failed[0] = failure;
+                }
+            });
+        } finally {
+            canvas.end();
+        }
+        long spent = System.nanoTime() - start;
+        String fault = failed[0] == null ? null : "exception " + failed[0];
+        java.util.List<Long> measured = costs.computeIfAbsent(widget.id(), id -> new java.util.ArrayList<>());
+        if (measured.size() < 100_000) {
+            measured.add(spent);
+        }
+        if (fault == null && spent > budget) {
+            fault = "dépassement : " + spent + " ns pour un budget de " + budget + " ns";
+        }
+        if (fault == null) {
+            faults.remove(widget.id());
+            return;
+        }
+        int strikes = faults.merge(widget.id(), 1, Integer::sum);
+        if (strikes >= STRIKES) {
+            disabled.add(widget.id());
+            faults.remove(widget.id());
+            LOGGER.warn("AXION : E-1011 widget {} (mod {}) désactivé pour la session : {} faute(s) consécutive(s), la"
+                    + " dernière : {}", widget.id(), widget.owner(), strikes, fault);
+        }
+    }
+
+    /**
+     * {@return le véhicule tel que le joueur le voit à cette image} Prédit pour le conducteur (ADR-168 D6) ; sinon tiré
+     * de la pose dessinée : vitesse, régime, rapport, entrée, roues, variables et paramètres de l'instance.
+     */
+    private static dev.axion.api.vehicle.VehicleView view(AxionRuntime runtime, AxionEntity assembly,
+            AxionEntity.RenderPose shown) {
+        if (assembly.predictedView() != null) {
+            return assembly.predictedView();
+        }
+        Interpolation.VehiclePose vehicle = shown.vehicle();
+        Definition definition = runtime.definitions().get(assembly.definitionId()).orElse(null);
+        List<dev.axion.entity.VehicleSnapshot.Wheel> wheels = new java.util.ArrayList<>();
+        List<String> variableNames = new java.util.ArrayList<>();
+        double[] variableValues = new double[0];
+        if (definition != null) {
+            if (definition.root().get("wheels") instanceof com.google.gson.JsonArray declared) {
+                for (int i = 0; i < declared.size() && i < shown.wheels().size(); i++) {
+                    Interpolation.WheelPose wheel = shown.wheels().get(i);
+                    wheels.add(new dev.axion.entity.VehicleSnapshot.Wheel(
+                            declared.get(i).getAsJsonObject().get("node").getAsString(), wheel.onGround(),
+                            wheel.compression(), wheel.spin(), wheel.steer(), 0, 0));
+                }
+            }
+            dev.axion.definition.Variables variables = dev.axion.definition.Variables.of(definition.root());
+            variableValues = new double[variables.size()];
+            for (int i = 0; i < variables.size(); i++) {
+                variableNames.add(variables.get(i).name());
+                variableValues[i] = shown.variables().has(i) ? shown.variables().value(i) : variables.get(i).initial();
+            }
+        }
+        List<String> parameterNames = List.of();
+        double[] parameterValues = new double[0];
+        dev.axion.entity.AssemblyParameters table = assembly.parameters();
+        if (table != null) {
+            parameterNames = table.tuning().names();
+            parameterValues = new double[parameterNames.size()];
+            for (int i = 0; i < parameterValues.length; i++) {
+                parameterValues[i] = table.uncontrolled(i);
+            }
+        }
+        dev.axion.api.vehicle.DriverInput input = new dev.axion.api.vehicle.DriverInput(vehicle.throttle(),
+                vehicle.brake(), vehicle.steer(), 0, vehicle.handbrake(), vehicle.gear());
+        return new dev.axion.entity.VehicleSnapshot(vehicle.forwardSpeed(), vehicle.rpm(), vehicle.gear(), input,
+                wheels, variableNames, variableValues, parameterNames, parameterValues);
     }
 
     /** Le défaut : la vitesse en grand, le rapport à côté, le régime dessous. */

@@ -257,6 +257,7 @@ public final class DefinitionRegistry {
         }
         collisionGroupsOf(root, rules.collisionGroups());
         controllersOf(root, rules.extensions());
+        widgetsOf(root, rules.extensions());
 
         // ADR-162 D4 : l'empreinte porte sur la forme canonique, pas sur les octets du fichier.
         return new Definition(id, location, schema, asset, kind, root, CanonicalJson.sha256(root));
@@ -292,6 +293,26 @@ public final class DefinitionRegistry {
                         + controllers.get(index) + " » inconnu ; aucun mod ne l'enregistre (ADR-167 D9)");
             }
         }
+    }
+
+    /** ADR-170 D6 : chaque widget nommé par le tableau de bord est enregistré par un mod. */
+    private static void widgetsOf(JsonObject root, VehicleExtensions extensions) throws DefinitionException {
+        List<String> widgets = widgets(root);
+        for (int index = 0; index < widgets.size(); index++) {
+            if (extensions.widget(widgets.get(index)).isEmpty()) {
+                throw DefinitionException.invalid("$.dashboard.widgets[" + index + "]", "widget « "
+                        + widgets.get(index) + " » inconnu ; aucun mod ne l'enregistre (ADR-170 D6)");
+            }
+        }
+    }
+
+    /** {@return les widgets que le tableau de bord d'une definition nomme, dans son ordre} */
+    private static List<String> widgets(JsonObject root) {
+        List<String> found = new ArrayList<>();
+        if (root.get("dashboard") instanceof JsonObject dashboard && dashboard.get("widgets") instanceof JsonArray list) {
+            list.forEach(widget -> found.add(widget.getAsString()));
+        }
+        return found;
     }
 
     private static void knownGroup(String name, String path, CollisionGroupRegistry groups)
@@ -582,13 +603,19 @@ public final class DefinitionRegistry {
     }
 
     /**
-     * {@return les mods dont ces definitions nomment un contrôleur, triés} (ADR-167 D8) : le serveur les exige du client,
-     * comme les propriétaires de contenu (ADR-165).
+     * {@return les mods dont ces definitions nomment un contrôleur ou un widget, triés} (ADR-167 D8, ADR-170 D6) : le
+     * serveur les exige du client, comme les propriétaires de contenu (ADR-165).
      */
     public java.util.SortedSet<String> controllerOwners() {
         java.util.SortedSet<String> owners = new java.util.TreeSet<>();
         for (String controller : namedControllers()) {
             extensions.controller(controller).ifPresent(found -> owners.add(found.owner()));
+        }
+        // ADR-170 D6 : de même les mods des widgets que les tableaux de bord nomment.
+        for (Definition definition : definitions.values()) {
+            for (String widget : widgets(definition.root())) {
+                extensions.widget(widget).ifPresent(found -> owners.add(found.owner()));
+            }
         }
         return owners;
     }

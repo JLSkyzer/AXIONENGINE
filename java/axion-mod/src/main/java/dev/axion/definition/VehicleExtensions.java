@@ -70,16 +70,53 @@ public final class VehicleExtensions {
         }
     }
 
+    /**
+     * Un widget du tableau de bord enregistré (ADR-170 D6).
+     *
+     * @param id son identifiant, {@code <modId>:<chemin>}
+     * @param owner le mod qui l'a enregistré
+     * @param widget le widget
+     */
+    public record Widget(String id, String owner, dev.axion.api.hud.DashboardWidget widget) {
+        /** Refuse un champ absent. */
+        public Widget {
+            Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(owner, "owner");
+            Objects.requireNonNull(widget, "widget");
+        }
+    }
+
     private final Map<String, Controller> controllers;
     private final Map<String, Parameter> parameters;
+    private final Map<String, Widget> widgets;
 
     /**
      * @param controllers les contrôleurs, par identifiant
      * @param parameters les paramètres d'addon, par nom
      */
     public VehicleExtensions(Map<String, Controller> controllers, Map<String, Parameter> parameters) {
+        this(controllers, parameters, Map.of());
+    }
+
+    /**
+     * @param controllers les contrôleurs, par identifiant
+     * @param parameters les paramètres d'addon, par nom
+     * @param widgets les widgets du tableau de bord, par identifiant (ADR-170 D6)
+     */
+    public VehicleExtensions(Map<String, Controller> controllers, Map<String, Parameter> parameters,
+            Map<String, Widget> widgets) {
         this.controllers = Map.copyOf(controllers);
         this.parameters = Map.copyOf(parameters);
+        this.widgets = Map.copyOf(widgets);
+    }
+
+    /**
+     * {@return un widget enregistré}
+     *
+     * @param id son identifiant
+     */
+    public Optional<Widget> widget(String id) {
+        return Optional.ofNullable(widgets.get(id));
     }
 
     /** {@return celles que l'enregistrement a publiées en dernier, {@link #NONE} avant} */
@@ -132,8 +169,8 @@ public final class VehicleExtensions {
         return found;
     }
 
-    /** {@return le nombre de contrôleurs et de paramètres enregistrés} */
+    /** {@return le nombre de contrôleurs, de paramètres et de widgets enregistrés} */
     public int size() {
-        return controllers.size() + parameters.size();
+        return controllers.size() + parameters.size() + widgets.size();
     }
 }

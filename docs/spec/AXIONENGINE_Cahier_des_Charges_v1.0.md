@@ -8143,6 +8143,7 @@ key = "unbound"
 dashboard = true                  # le tableau de bord du véhicule conduit (ADR-170 D4)
 dashboard_scale = 1.0             # 0.5..2.0
 speed_unit = "kmh"                # kmh | mph
+widget_budget_ns = 200000         # 10000..5000000 ; budget d'un widget d'addon par image (ADR-170 D6)
 
 [debug]
 gl = false

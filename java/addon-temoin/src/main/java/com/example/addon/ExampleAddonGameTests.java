@@ -130,4 +130,45 @@ public final class ExampleAddonGameTests {
                 .thenSucceed();
     }
     // --8<-- [end:limiter]
+
+    // --8<-- [start:tachometer]
+    /**
+     * The tachometer drawn on a canvas that records what it is asked: at 3500 rpm, the needle points straight up and the
+     * engine speed is written. A dashboard widget needs no screen to be tested.
+     */
+    @GameTest(template = AxionGameTests.DALLE)
+    public static void tachometerDrawsTheEngine(GameTestHelper helper) {
+        java.util.List<String> drawn = new java.util.ArrayList<>();
+        dev.axion.api.hud.DashboardCanvas canvas = new dev.axion.api.hud.DashboardCanvas() {
+            @Override public int width() { return 72; }
+            @Override public int height() { return 56; }
+            @Override public void fill(int x, int y, int w, int h, int argb) { drawn.add("fill"); }
+            @Override public void line(double x1, double y1, double x2, double y2, int argb) {
+                if (argb == 0xFFFFB000) {
+                    drawn.add(String.format(java.util.Locale.ROOT, "needle %.1f %.1f", x2 - x1, y2 - y1));
+                }
+            }
+            @Override public void text(String text, int x, int y, int argb) { drawn.add("text " + text); }
+            @Override public void translated(String key, int x, int y, int argb, Object... arguments) { }
+            @Override public int textWidth(String text) { return 6 * text.length(); }
+            @Override public int lineHeight() { return 9; }
+            @Override public void texture(String location, int x, int y, int w, int h) { }
+        };
+        dev.axion.api.vehicle.VehicleView engine = new dev.axion.api.vehicle.VehicleView() {
+            @Override public double speed() { return 12; }
+            @Override public double rpm() { return 3500; }
+            @Override public int gear() { return 2; }
+            @Override public DriverInput input() { return DriverInput.NONE; }
+            @Override public java.util.List<dev.axion.api.vehicle.WheelView> wheels() { return java.util.List.of(); }
+            @Override public double variable(String name) { return 0; }
+            @Override public double parameter(String name) { return 0; }
+            @Override public boolean hasParameter(String name) { return false; }
+        };
+        ExampleTachometer.TACHOMETER.draw(canvas, engine);
+        helper.assertTrue(drawn.contains("text 3500"), "the engine speed is written: " + drawn);
+        String needle = drawn.stream().filter(line -> line.startsWith("needle")).findFirst().orElse("none");
+        helper.assertTrue(needle.startsWith("needle 0.0 -"), "half the red line points straight up: " + needle);
+        helper.succeed();
+    }
+    // --8<-- [end:tachometer]
 }

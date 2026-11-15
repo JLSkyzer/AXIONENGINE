@@ -3880,7 +3880,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            - [x] 7b (2026-11-15) — les vues (cockpit, poursuite, fixe), F5, repli ; film avec la Charger
                  (`runFilmVues`), envoyé à Killian.
            - [x] 7c (2026-11-15) — le tableau de bord par défaut et les jauges, options du client (`[hud]`).
-           - [ ] 7d — `DashboardWidget`, `DashboardCanvas`, `registerDashboardWidget`, budget ; addon témoin.
+           - [x] 7d (2026-11-15) — `DashboardWidget`, `DashboardCanvas`, `registerDashboardWidget`, budget mesuré
+                 (p50 72 µs) ; compte-tours de l'addon témoin, GameTest en CI.
            - [ ] 7e — guide créateur, CDC (rôle `camera` en R-910, section de C-33, A.3, amendement), traductions.
   8. C-48 attaches : remorquage, ancrage au monde (CAP-15, CAP-16).
   9. C-77 gouverneur, C-73 overlay.

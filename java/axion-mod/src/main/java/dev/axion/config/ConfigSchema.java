@@ -1525,6 +1525,14 @@ public final class ConfigSchema {
                     false,
                     "Unité de la vitesse affichée par le tableau de bord."),
             new Option(
+                    "hud.widget_budget_ns",
+                    Kind.INTEGER,
+                    200000L,
+                    new Domain(DomainKind.INT_RANGE, 10000.0, 5000000.0, List.of()),
+                    true,
+                    false,
+                    "Temps qu'un widget du tableau de bord peut prendre à chaque image, en nanosecondes ; vingt dépassements ou exceptions de suite le désactivent pour la session."),
+            new Option(
                     "debug.gl",
                     Kind.BOOLEAN,
                     false,

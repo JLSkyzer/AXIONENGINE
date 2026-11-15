@@ -905,6 +905,7 @@ public final class FilmDuVehicule {
             return;
         }
         passer(Phase.FIN);
+        LOGGER.info("[film] widgets du tableau de bord : {}", dev.axion.forge.client.DashboardOverlay.widgetCosts());
         String faute = motif;
         if (tournage != null) {
             String ecriture = tournage.fermer();

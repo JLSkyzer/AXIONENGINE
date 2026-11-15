@@ -223,4 +223,23 @@ class ContentRegistryTest {
         assertEquals(2, registry.errors().size(), "deux doublons consignés : " + registry.errors());
         assertTrue(registry.errors().get(0).contains("turbo:gestion"));
     }
+
+    @Test
+    @DisplayName("ADR-170 D6 : un widget s'enregistre dans l'espace de noms du mod ; un doublon est consigné ; un nom"
+            + " invalide lève")
+    void widgets() throws IOException {
+        ContentRegistry registry = new ContentRegistry(Long.MAX_VALUE);
+        dev.axion.api.hud.DashboardWidget rien = (toile, vue) -> { };
+        try (ContentRegistry.Session session = registry.open("cadrans", jar("cadrans", Map.of("p.json", "{}")))) {
+            session.registerDashboardWidget("compte_tours", rien);
+            session.registerDashboardWidget("compte_tours", (toile, vue) -> { });
+            assertThrows(IllegalArgumentException.class, () -> session.registerDashboardWidget("Compte", rien));
+        }
+        dev.axion.definition.VehicleExtensions.Widget widget =
+                registry.extensions().widget("cadrans:compte_tours").orElseThrow();
+        assertTrue(widget.widget() == rien, "le premier reste");
+        assertEquals("cadrans", widget.owner());
+        assertEquals(1, registry.errors().size(), "un doublon consigné : " + registry.errors());
+        assertTrue(registry.errors().get(0).contains("cadrans:compte_tours"));
+    }
 }

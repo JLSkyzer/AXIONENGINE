@@ -42,6 +42,8 @@ public final class ExampleAddon {
                                     .build());
                     // A vehicle controller, and the parameter it reads.
                     ExampleSpeedLimiter.register(registrar);
+                    // A dashboard widget, drawn on the client.
+                    ExampleTachometer.register(registrar);
                 });
     }
     // --8<-- [end:provider]

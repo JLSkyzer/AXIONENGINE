@@ -13,7 +13,13 @@ import org.junit.jupiter.api.Test;
 class CamerasTest {
 
     private static final String MODELE = "mymod:axion/models/pickup.glb";
-    private static final DefinitionRules REGLES = new DefinitionRules(true, Set.of(MODELE)::contains);
+    /** Le widget que le tableau de bord complet nomme, enregistré par « mymod » (ADR-170 D6). */
+    private static final VehicleExtensions EXTENSIONS = new VehicleExtensions(java.util.Map.of(), java.util.Map.of(),
+            java.util.Map.of("mymod:compte_tours", new VehicleExtensions.Widget("mymod:compte_tours", "mymod",
+                    (toile, vue) -> { })));
+
+    private static final DefinitionRules REGLES = new DefinitionRules(true, Set.of(MODELE)::contains, false,
+            CollisionGroupRegistry.empty(), PhysicsMaterials.empty(), TireProfiles.empty(), EXTENSIONS);
 
     private static final String SIEGES = "\"seats\": [{\"name\": \"conducteur\", \"node\": \"siege\", \"role\":"
             + " \"driver\"}, {\"name\": \"passager\", \"node\": \"siege_p\"}]";

@@ -64,6 +64,7 @@ public final class ContentRegistry {
     private final Map<ContentKind, Map<String, Entry>> entries = new EnumMap<>(ContentKind.class);
     /** Les contrôleurs de véhicule et les paramètres d'addon enregistrés (ADR-167 D1, D9), par identifiant. */
     private final Map<String, dev.axion.definition.VehicleExtensions.Controller> controllers = new TreeMap<>();
+    private final Map<String, dev.axion.definition.VehicleExtensions.Widget> widgets = new TreeMap<>();
     private final Map<String, dev.axion.definition.VehicleExtensions.Parameter> parameters = new TreeMap<>();
     private final List<Replacement> replacements = new ArrayList<>();
     private final List<String> errors = new ArrayList<>();
@@ -95,7 +96,7 @@ public final class ContentRegistry {
 
     /** {@return les contrôleurs et les paramètres d'addon enregistrés (ADR-167 D1, D9)} */
     public dev.axion.definition.VehicleExtensions extensions() {
-        return new dev.axion.definition.VehicleExtensions(controllers, parameters);
+        return new dev.axion.definition.VehicleExtensions(controllers, parameters, widgets);
     }
 
     /** {@return les erreurs consignées, dans leur ordre} */
@@ -360,6 +361,18 @@ public final class ContentRegistry {
                 return;
             }
             controllers.put(id, new dev.axion.definition.VehicleExtensions.Controller(id, modId, controller));
+        }
+
+        @Override
+        public void registerDashboardWidget(String name, dev.axion.api.hud.DashboardWidget widget) {
+            ensureOpen();
+            Objects.requireNonNull(widget, "widget");
+            String id = modId + ":" + checkedName(name);
+            if (widgets.containsKey(id)) {
+                errors.add("doublon refusé : le widget " + id + " est déjà enregistré par " + modId);
+                return;
+            }
+            widgets.put(id, new dev.axion.definition.VehicleExtensions.Widget(id, modId, widget));
         }
 
         @Override

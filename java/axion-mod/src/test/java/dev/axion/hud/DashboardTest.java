@@ -51,6 +51,19 @@ class DashboardTest {
     }
 
     @Test
+    @DisplayName("D6 : un widget s'empile sur son ancre après les jauges, à la taille qu'il demande")
+    void widgets() {
+        VehicleDashboard tableau = new VehicleDashboard(true, 1, List.of(
+                jauge(VehicleDashboard.Kind.TEXT, VehicleDashboard.Anchor.BOTTOM_LEFT, Double.NaN, Double.NaN, 20,
+                        null)), List.of("m:w"));
+        Dashboard.Layout layout = Dashboard.layout(tableau, List.of(
+                new Dashboard.Slot(VehicleDashboard.Anchor.BOTTOM_LEFT, 70, 30)), 480, 270);
+        Dashboard.Box jauge = layout.gauges().get(0);
+        assertEquals(new Dashboard.Box(Dashboard.MARGIN, jauge.y() - Dashboard.GAP - 30, 70, 30),
+                layout.widgets().get(0), "au-dessus de la jauge de la même ancre");
+    }
+
+    @Test
     @DisplayName("D4 : la vitesse dans l'unité du joueur, le rapport, le régime, une valeur et son unité")
     void formats() {
         assertEquals("72 km/h", Dashboard.speed(20, "kmh"));
