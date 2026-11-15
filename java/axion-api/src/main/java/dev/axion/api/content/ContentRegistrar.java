@@ -116,4 +116,13 @@ public interface ContentRegistrar {
      * @throws IllegalStateException hors de la phase d'enregistrement
      */
     void registerDashboardWidget(String name, dev.axion.api.hud.DashboardWidget widget);
+
+    /**
+     * Enregistre un écouteur des attaches (ADR-171 D4, CAP-16) : il suit chaque attache posée ou défaite sur le serveur,
+     * et peut en refuser. Les écouteurs sont appelés dans l'ordre des mods, puis de leur enregistrement.
+     *
+     * @param listener l'écouteur
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    void registerAttachmentListener(dev.axion.api.attach.AttachmentListener listener);
 }

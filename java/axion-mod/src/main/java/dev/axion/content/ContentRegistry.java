@@ -66,6 +66,16 @@ public final class ContentRegistry {
     private final Map<String, dev.axion.definition.VehicleExtensions.Controller> controllers = new TreeMap<>();
     private final Map<String, dev.axion.definition.VehicleExtensions.Widget> widgets = new TreeMap<>();
     private final Map<String, dev.axion.definition.VehicleExtensions.Parameter> parameters = new TreeMap<>();
+    /** Les écouteurs des attaches (ADR-171 D4), avec leur mod, dans l'ordre d'enregistrement. */
+    private final List<AttachmentListenerEntry> attachmentListeners = new ArrayList<>();
+
+    /**
+     * Un écouteur des attaches et le mod qui l'a enregistré.
+     *
+     * @param modId le mod
+     * @param listener l'écouteur
+     */
+    public record AttachmentListenerEntry(String modId, dev.axion.api.attach.AttachmentListener listener) {}
     private final List<Replacement> replacements = new ArrayList<>();
     private final List<String> errors = new ArrayList<>();
 
@@ -92,6 +102,11 @@ public final class ContentRegistry {
             throw new IllegalArgumentException("modId invalide comme espace de noms : " + modId);
         }
         return new Session(modId, jar);
+    }
+
+    /** {@return les écouteurs des attaches enregistrés, dans l'ordre (ADR-171 D4)} */
+    public List<AttachmentListenerEntry> attachmentListeners() {
+        return List.copyOf(attachmentListeners);
     }
 
     /** {@return les contrôleurs et les paramètres d'addon enregistrés (ADR-167 D1, D9)} */
@@ -361,6 +376,12 @@ public final class ContentRegistry {
                 return;
             }
             controllers.put(id, new dev.axion.definition.VehicleExtensions.Controller(id, modId, controller));
+        }
+
+        @Override
+        public void registerAttachmentListener(dev.axion.api.attach.AttachmentListener listener) {
+            ensureOpen();
+            attachmentListeners.add(new AttachmentListenerEntry(modId, Objects.requireNonNull(listener, "listener")));
         }
 
         @Override

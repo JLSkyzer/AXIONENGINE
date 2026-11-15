@@ -206,6 +206,9 @@ public final class AxionRuntime {
      * vanilla (R-614, ADR-123 §7). Absent → les événements ne touchent aucune entité.
      */
     private SimEventSink eventSink;
+    /** Ce qui lit le résultat entier d'un tick, après les états et les événements : les attaches (ADR-171 D6). */
+    private final List<java.util.function.Consumer<CollectResult>> collectListeners =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
     /**
      * Faits de simulation du tick (FM-20, R-180, FM-21, FM-22, R-1880, R-281), que la couche
      * Forge journalise après chaque tick ({@link #drainSimulationJournal()}). Il survit aux
@@ -605,6 +608,9 @@ public final class AxionRuntime {
                 eventSink.applyEvents(tick, result.events());
             }
         }
+        for (java.util.function.Consumer<CollectResult> listener : collectListeners) {
+            listener.accept(result);
+        }
         if (result.ok()) {
             simulationJournal.recordCycle(
                     tick, cycleNs, simBudgetNs, () -> StepBreakdown.parse(nativeMetrics()));
@@ -696,6 +702,25 @@ public final class AxionRuntime {
      */
     public void setStateSink(SimStateSink sink) {
         this.stateSink = sink;
+    }
+
+    /**
+     * Ajoute un lecteur du résultat entier de chaque tick, appelé après les états et les événements, sur le thread
+     * autoritatif : les attaches y lisent leurs rapports et leurs événements (ADR-171 D6).
+     *
+     * @param listener le lecteur
+     */
+    public void addCollectListener(java.util.function.Consumer<CollectResult> listener) {
+        collectListeners.add(java.util.Objects.requireNonNull(listener, "listener"));
+    }
+
+    /**
+     * Retire un lecteur ajouté par {@link #addCollectListener}.
+     *
+     * @param listener le lecteur
+     */
+    public void removeCollectListener(java.util.function.Consumer<CollectResult> listener) {
+        collectListeners.remove(listener);
     }
 
     /**

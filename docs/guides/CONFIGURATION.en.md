@@ -161,6 +161,7 @@ ignored (R-1830).
 | Option | Type | Default | Domain | Hot | Server | Description |
 |---|---|---|---|---|---|---|
 | `max_chain` | integer | `8` | `0..` | no | no | Maximum length of a chain of attached assemblies. |
+| `snap_distance` | float | `2.0` | `0.1..16.0` | no | no | Distance within which the attach interaction looks for another assembly's socket, in blocks, when it does not declare its own. |
 
 ### `[net]`
 

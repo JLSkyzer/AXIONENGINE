@@ -164,11 +164,11 @@ class SeatingTest {
         assertEquals(2, porte.layer(), "et sa couche");
         assertEquals(-1, porte.seat());
 
-        // Q4 : l'action sans système compile, avec un avertissement qui dit ce qu'elle attend.
-        assertFalse(seating.interactions().get(2).action().effective());
+        // ADR-171 D4 : attach a son effet, mais avant le schéma 6 il ne nomme aucun socket — un avertissement le dit.
+        assertTrue(seating.interactions().get(2).action().effective());
         assertEquals(1, seating.warnings().size());
         assertTrue(seating.warnings().get(0).startsWith("$.interaction[2]"), seating.warnings().get(0));
-        assertTrue(seating.warnings().get(0).contains("C-48"), seating.warnings().get(0));
+        assertTrue(seating.warnings().get(0).contains("schéma 6"), seating.warnings().get(0));
     }
 
     @Test

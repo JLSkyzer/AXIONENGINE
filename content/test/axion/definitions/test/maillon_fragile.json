@@ -1,0 +1,10 @@
+{
+  "schema": 6,
+  "asset": "axion:models/test/maillon.gltf",
+  "kind": "rigid_object",
+  "physics": { "mass": 20.0 },
+  "sockets": [
+    { "name": "avant", "accepts": ["rope"], "anchor": true, "max_force": 50.0, "rope": { "length": 2.0 } },
+    { "name": "arriere", "accepts": ["rope"], "anchor": true, "max_force": 50.0 }
+  ]
+}

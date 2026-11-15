@@ -59,6 +59,12 @@ public interface Assembly {
      */
     java.util.Optional<dev.axion.api.vehicle.VehicleControl> vehicle();
 
+    /**
+     * {@return ses attaches (ADR-171 D4) : poser, ancrer et défaire celles de ses sockets, les lire, piloter un treuil}
+     * Thread : voir {@link dev.axion.api.attach.Attachments}.
+     */
+    dev.axion.api.attach.Attachments attachments();
+
     /** {@return vrai tant que l'assembly existe côté runtime}. Thread : quelconque. */
     boolean isValid();
 

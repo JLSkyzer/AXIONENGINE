@@ -37,5 +37,17 @@
   "axion.connection.controller_missing": "  - %s",
   "axion.loading.api_too_old": "AXION : {2} exige l’API AXION {3}, mais AXION fournit {4}. Son contenu n’est pas chargé : mettez AXION à jour.",
   "axion.loading.api_malformed": "AXION : {2} déclare axion_api = {3}, qui n’est pas une version d’API (attendu \"1.0\", entre guillemets). Son contenu n’est pas chargé.",
-  "axion.hud.rpm": "tr/min"
+  "axion.hud.rpm": "tr/min",
+  "axion.attach.attached": "Attaché (%s)",
+  "axion.attach.detached": "Détaché (%s)",
+  "axion.attach.none_held": "Rien n'est attaché à %s",
+  "axion.attach.unknown_socket": "Socket inconnu : %s",
+  "axion.attach.incompatible": "Aucun socket compatible et libre à portée de %s",
+  "axion.attach.socket_busy": "Un des sockets est déjà attaché (%s)",
+  "axion.attach.cycle": "Ces deux assemblies sont déjà reliées (%s)",
+  "axion.attach.chain": "La chaîne d'attaches serait trop longue (%s)",
+  "axion.attach.unreachable": "Impossible d'attacher ici (%s)",
+  "axion.attach.not_anchorable": "%s ne s'accroche pas au monde",
+  "axion.attach.magnet_off": "L'aimant est éteint (%s)",
+  "axion.attach.refused": "Attache refusée (%s)"
 }

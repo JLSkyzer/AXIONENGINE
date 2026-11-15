@@ -161,6 +161,7 @@ alors ignorée (R-1830).
 | Option | Type | Défaut | Domaine | Chaud | Serveur | Description |
 |---|---|---|---|---|---|---|
 | `max_chain` | entier | `8` | `0..` | non | non | Longueur maximale d'une chaîne d'assemblies attachées. |
+| `snap_distance` | flottant | `2.0` | `0.1..16.0` | non | non | Distance à laquelle l'interaction attach cherche le socket d'une autre assembly, en blocs, quand elle ne déclare pas la sienne. |
 
 ### `[net]`
 

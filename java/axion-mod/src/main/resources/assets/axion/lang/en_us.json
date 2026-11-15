@@ -37,5 +37,17 @@
   "axion.connection.addon_version": "  - %s %s: you have %s",
   "axion.loading.api_too_old": "AXION: {2} requires AXION API {3}, but AXION provides {4}. Its content is not loaded: update AXION.",
   "axion.loading.api_malformed": "AXION: {2} declares axion_api = {3}, which is not an API version (expected \"1.0\", in quotes). Its content is not loaded.",
-  "axion.hud.rpm": "rpm"
+  "axion.hud.rpm": "rpm",
+  "axion.attach.attached": "Attached (%s)",
+  "axion.attach.detached": "Detached (%s)",
+  "axion.attach.none_held": "Nothing is attached to %s",
+  "axion.attach.unknown_socket": "Unknown socket: %s",
+  "axion.attach.incompatible": "No free compatible socket within reach of %s",
+  "axion.attach.socket_busy": "One of the sockets is already attached (%s)",
+  "axion.attach.cycle": "These two assemblies are already linked (%s)",
+  "axion.attach.chain": "The attachment chain would be too long (%s)",
+  "axion.attach.unreachable": "Cannot attach here (%s)",
+  "axion.attach.not_anchorable": "%s does not hook onto the world",
+  "axion.attach.magnet_off": "The magnet is off (%s)",
+  "axion.attach.refused": "Attachment refused (%s)"
 }

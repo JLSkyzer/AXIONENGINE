@@ -352,6 +352,71 @@ public final class ForgeAxionApi implements AxionApi {
     }
 
     /** Une assembly vue par l'API : une fenêtre sur son entité, sans état propre. */
+    /**
+     * {@return la vue de l'API sur une assembly} Celle que reçoivent les écouteurs des attaches (ADR-171 D4).
+     *
+     * @param entity l'entité de l'assembly
+     */
+    static Assembly view(AxionEntity entity) {
+        return new View(entity);
+    }
+
+    /** Les attaches d'une assembly (ADR-171 D4) : au serveur, sur le thread autoritatif. */
+    private record AttachmentsView(AxionEntity entity) implements dev.axion.api.attach.Attachments {
+
+        private AttachmentRuntime runtime() {
+            if (entity.level().isClientSide()) {
+                throw new IllegalStateException("R-1755 : les attaches se posent et se lisent au serveur");
+            }
+            AuthoritativeThread.require();
+            AttachmentRuntime runtime = AttachmentRuntime.current();
+            if (runtime == null) {
+                throw new IllegalStateException("aucun serveur AXION ne tourne");
+            }
+            return runtime;
+        }
+
+        private static AxionEntity entityOf(Assembly other) {
+            if (other.entity() instanceof AxionEntity found) {
+                return found;
+            }
+            throw new IllegalArgumentException("l'assembly " + other.id() + " n'est pas une AxionEntity");
+        }
+
+        @Override
+        public dev.axion.api.attach.AttachResult attach(String socket, Assembly other, String otherSocket,
+                String kind) {
+            java.util.Set<String> allowed = kind == null ? java.util.Set.of() : java.util.Set.of(kind);
+            return runtime().attach(entity, socket, entityOf(other), otherSocket, allowed, ownerOf());
+        }
+
+        @Override
+        public dev.axion.api.attach.AttachResult anchor(String socket, int x, int y, int z) {
+            return runtime().anchor(entity, socket, new net.minecraft.core.BlockPos(x, y, z), java.util.Set.of(),
+                    ownerOf());
+        }
+
+        @Override
+        public boolean detach(String socket) {
+            return runtime().detach(entity, socket, "detached");
+        }
+
+        @Override
+        public java.util.List<dev.axion.api.attach.Attachments.Attachment> list() {
+            return runtime().list(entity);
+        }
+
+        @Override
+        public boolean setWinchLength(String socket, double length) {
+            return runtime().setWinchLength(entity, socket, length);
+        }
+
+        /** Le mod qui appelle n'est pas connu de l'API : « api », distinct d'un geste du joueur. */
+        private static String ownerOf() {
+            return "api";
+        }
+    }
+
     private record View(AxionEntity entity) implements Assembly {
 
         @Override
@@ -392,6 +457,11 @@ public final class ForgeAxionApi implements AxionApi {
         @Override
         public Optional<dev.axion.api.vehicle.VehicleControl> vehicle() {
             return entity.wheelNodes().isEmpty() ? Optional.empty() : Optional.of(new VehicleView(entity));
+        }
+
+        @Override
+        public dev.axion.api.attach.Attachments attachments() {
+            return new AttachmentsView(entity);
         }
 
         @Override

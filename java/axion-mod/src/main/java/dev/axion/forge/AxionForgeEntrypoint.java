@@ -83,6 +83,8 @@ public final class AxionForgeEntrypoint {
 
     /** Runtime des assemblies (boucle C-40 ↔ C-50), vivant le temps d'un serveur. */
     private AssemblyRuntime assemblyRuntime;
+    /** Les attaches du serveur (ADR-171), le temps qu'il tourne. */
+    private AttachmentRuntime attachmentRuntime;
 
     /**
      * Construit le mod et abonne AXION aux événements de la plateforme.
@@ -398,6 +400,13 @@ public final class AxionForgeEntrypoint {
             runtime.addCommandProvider(worldTileBridge);
             runtime.addCommandProvider(assemblyRuntime);
             runtime.setStateSink(assemblyRuntime);
+            // ADR-171 : les attaches, après les assemblies du tick — une attache peut viser une assembly que ce même
+            // flux crée — ; elles lisent le résultat entier du tick, rapports et événements.
+            attachmentRuntime = new AttachmentRuntime((int) runtime.outcome().config().getInt("attachment.max_chain"),
+                    runtime.outcome().config().getFloat("attachment.snap_distance"));
+            AttachmentRuntime.install(attachmentRuntime);
+            runtime.addCommandProvider(attachmentRuntime);
+            runtime.addCollectListener(attachmentRuntime);
             // ADR-123 : chaque tick, les joueurs (rayon de simulation, plafond, R-610) et les
             // entités vanilla qu'une assembly peut heurter (R-614).
             runtime.addCommandProvider(new EntityPresenceBridge(event.getServer(), assemblyRuntime));
@@ -452,6 +461,11 @@ public final class AxionForgeEntrypoint {
         if (worldTileBridge != null) {
             worldTileBridge.close();
             worldTileBridge = null;
+        }
+        if (attachmentRuntime != null) {
+            runtime.removeCollectListener(attachmentRuntime);
+            attachmentRuntime.clear();
+            attachmentRuntime = null;
         }
         if (assemblyRuntime != null) {
             assemblyRuntime.close();

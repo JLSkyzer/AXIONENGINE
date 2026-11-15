@@ -150,6 +150,8 @@ final class ContentRegistration {
         // ADR-167 D9 : les contrôleurs et les paramètres d'addon, avant les definitions qui les nomment.
         dev.axion.definition.VehicleExtensions extensions = registry.extensions();
         dev.axion.definition.VehicleExtensions.publish(extensions);
+        // ADR-171 D4 : les écouteurs des attaches.
+        AttachmentRuntime.publishListeners(registry.attachmentListeners());
         if (extensions.size() > 0) {
             LOGGER.info("AXION : contrôleurs de véhicule enregistrés : {}", extensions.controllers().stream()
                     .map(dev.axion.definition.VehicleExtensions.Controller::id).toList());

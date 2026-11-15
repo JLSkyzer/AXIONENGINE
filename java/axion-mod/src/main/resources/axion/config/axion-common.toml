@@ -109,6 +109,7 @@ controller_strikes = 20           # 1..1200
 
 [attachment]
 max_chain = 8                     # 0..
+snap_distance = 2.0               # 0.1..16.0
 
 [net]
 snapshot_rate_hz = 10             # 2..20

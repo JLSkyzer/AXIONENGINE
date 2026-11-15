@@ -4,10 +4,6 @@ An **attachment** links two assemblies: a trailer to its car, a car towed on a r
 winch hooked to a tree. It is made and undone in game; your definition only declares **where** your model can attach,
 and **how**. These points are called **sockets**.
 
-!!! info "A growing page"
-    This page first describes how to declare sockets (schema 6). The in-game gestures, the Java API, the winch and the
-    power take-off are added as the attachment work proceeds.
-
 ## 1. The kinds of attachment
 
 | Kind | What it does | Example |
@@ -114,5 +110,94 @@ A player attaches and detaches by clicking a node of your model. The interaction
 | `kinds` | `attach` | the kinds this gesture allows, among those the socket accepts; all without it |
 | `distance` | `attach` | how far to look for the other socket, in metres (0.1 to 16) |
 
-In game, `attach` will take the nearest free compatible socket of another assembly, or the targeted block for a socket
-that anchors to the world: this gesture comes with the rest of the attachment work, and this page will detail it.
+When a player clicks, `attach` takes the **nearest free compatible** socket of another assembly, within `distance`
+blocks of yours (`attachment.snap_distance`, 2 by default). If it finds none and your socket anchors to the world, it
+hooks onto the **block the player is looking at**. The player reads at the bottom of the screen what was done, or why
+nothing was. `detach` undoes the socket's attachment.
+
+The kind chosen is the first both sockets accept, in the order `rigid`, `hitch`, `rope`, `winch`, `magnet`.
+
+## 5. What is decided when attaching
+
+| Quantity | Where it comes from |
+|---|---|
+| a rope's length | `rope.length` of one socket, the one the attachment starts from first; without it, the distance between both sockets when attaching |
+| a winch's starting length | the distance between both sockets, brought within its bounds |
+| a winch's bounds and speed | `winch.*`; without them: 0.5 to 30 blocks, 1 block/s |
+| a hitch's angle | `hitch.cone`; without it: 45° |
+| breaking | the weaker of both `max_force`, both `max_torque`, both `misalignment` |
+
+A `rigid`, `hitch` or `magnet` attachment whose sockets drift apart by more than `misalignment` for one second breaks. A
+rope drifts apart by nature: only its force breaks it.
+
+## 6. The winch, the magnet, the power take-off
+
+- **The winch** follows its variable (`winch.variable`): **negative**, it reels in down to its shortest length;
+  **positive**, it reels out up to the longest; **zero**, it keeps the length it has. Bind the variable to a seat
+  command (see [Tune a vehicle](regler.md)) and the player drives the winch.
+- **The magnet** only exists while its variable (`magnet.variable`) is true: switched off, it lets go; it cannot be
+  attached while off.
+- **The power take-off** copies, every tick, each variable of `transfer.power` into the named variable of the other
+  assembly. A tractor whose `pdf` turns drives the implement that reads `pto_in`, in its animations or controllers.
+
+## 7. Through the Java API
+
+`assembly.attachments()` makes, anchors, undoes and reads an assembly's attachments, on the server:
+
+```java
+AttachResult result = tower.attachments().attach("attelage", trailer, "timon");
+if (!result.attached()) {
+    LOGGER.info("no hitch: {} — {}", result.status(), result.message());
+}
+tower.attachments().anchor("treuil", 120, 64, -35);   // to a block
+tower.attachments().setWinchLength("treuil", 4.0);    // the winch's target length
+tower.attachments().detach("attelage");
+```
+
+`attach` takes a fourth argument to impose the kind (`"rope"`). The result says why an attachment is refused:
+
+| Status | Why |
+|---|---|
+| `UNKNOWN_SOCKET` | a named socket does not exist |
+| `INCOMPATIBLE` | no common kind, or a shape the other does not mate with |
+| `SOCKET_BUSY` | one of the two sockets is already attached |
+| `CYCLE` | both assemblies are already linked, directly or through a chain (`E-8030`) |
+| `CHAIN` | the chain would exceed `attachment.max_chain` attachments end to end (8) |
+| `UNREACHABLE` | two dimensions, the same assembly, or a definition not compiled yet |
+| `NOT_ANCHORABLE` | the socket does not declare `anchor` |
+| `MAGNET_OFF` | a magnet switched off |
+| `REFUSED` | a listener refused it |
+
+`list()` returns each attachment: the other end or the block, the kind, the length, the gap and the tension of the last
+tick.
+
+**Following and refusing**: a mod registers a listener with the rest of its content,
+
+```java
+registrar.registerAttachmentListener(new AttachmentListener() {
+    @Override
+    public boolean allow(Assembly assembly, String socket, Optional<Assembly> other, String otherSocket, String kind) {
+        return !"magnet".equals(kind) || isAllowed(assembly);
+    }
+
+    @Override
+    public void detached(Assembly assembly, String socket, Optional<Assembly> other, String otherSocket, String cause) {
+        // cause: detached, broken, misaligned, magnet_off or removed
+    }
+});
+```
+
+It sees every attachment of the server, a player's as well as another mod's.
+
+## 8. Commands
+
+| Command | Effect |
+|---|---|
+| `/axion attach <target> <socket> <other> <other_socket>` | attaches two assemblies |
+| `/axion anchor <target> <socket> <x y z>` | anchors a socket to a block |
+| `/axion detach <target> <socket>` | undoes a socket's attachment |
+| `/axion attaches <target>` | lists an assembly's attachments, their length, gap and tension |
+
+!!! info "Still to come"
+    Attachments are not saved yet: they come undone when the server stops. Players do not see ropes yet, and the
+    `attach.*` and `socket.*` animation sources wait for attachments to reach the client.

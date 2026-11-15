@@ -802,6 +802,14 @@ public final class ConfigSchema {
                     false,
                     "Longueur maximale d'une chaîne d'assemblies attachées."),
             new Option(
+                    "attachment.snap_distance",
+                    Kind.FLOAT,
+                    2.0,
+                    new Domain(DomainKind.FLOAT_RANGE, 0.1, 16.0, List.of()),
+                    false,
+                    false,
+                    "Distance à laquelle l'interaction attach cherche le socket d'une autre assembly, en blocs, quand elle ne déclare pas la sienne."),
+            new Option(
                     "net.snapshot_rate_hz",
                     Kind.INTEGER,
                     10L,

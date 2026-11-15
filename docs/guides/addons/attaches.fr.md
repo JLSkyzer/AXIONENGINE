@@ -4,10 +4,6 @@ Une **attache** relie deux assemblies : une remorque à sa voiture, une voiture 
 machine, un treuil accroché à un arbre. Elle se pose en jeu et se défait ; ta fiche déclare seulement **où** ton modèle
 peut s'attacher, et **comment**. Ces points s'appellent des **sockets**.
 
-!!! info "Une page qui grandit"
-    Cette page décrit d'abord la déclaration des sockets (schéma 6). Les gestes en jeu, l'API Java, le treuil et la
-    prise de force s'y ajoutent au fil du chantier des attaches.
-
 ## 1. Les sortes d'attache
 
 | Type | Ce qu'il fait | Exemple |
@@ -114,5 +110,94 @@ Un joueur attache et détache en cliquant un node de ton modèle. L'interaction 
 | `kinds` | `attach` | les types permis par ce geste, parmi ceux que le socket accepte ; tous sans |
 | `distance` | `attach` | à quelle distance chercher l'autre socket, en mètres (0,1 à 16) |
 
-En jeu, `attach` prendra le socket compatible et libre le plus proche d'une autre assembly, ou le bloc visé pour un
-socket qui s'ancre au monde : ce geste arrive avec la suite du chantier, et cette page le détaillera.
+Quand un joueur clique, `attach` prend le socket **compatible et libre le plus proche** d'une autre assembly, dans
+`distance` blocs autour du tien (`attachment.snap_distance`, 2 par défaut). S'il n'en trouve pas et que ton socket
+s'ancre au monde, il s'accroche au **bloc que vise le joueur**. Le joueur lit en bas de l'écran ce qui a été fait, ou
+pourquoi rien ne l'a été. `detach` défait l'attache du socket.
+
+Le type retenu est le premier que les deux sockets acceptent, dans l'ordre `rigid`, `hitch`, `rope`, `winch`, `magnet`.
+
+## 5. Ce qui se décide à l'attache
+
+| Grandeur | D'où elle vient |
+|---|---|
+| la longueur d'une corde | `rope.length` d'un des sockets, celui d'où part l'attache d'abord ; sans, la distance entre les deux sockets au moment de l'attache |
+| la longueur d'un treuil au départ | la distance entre les deux sockets, ramenée dans ses bornes |
+| les bornes et la vitesse d'un treuil | `winch.*` ; sans : 0,5 à 30 blocs, 1 bloc/s |
+| l'angle d'une rotule | `hitch.cone` ; sans : 45° |
+| la rupture | la plus faible des deux `max_force`, des deux `max_torque`, des deux `misalignment` |
+
+Une attache `rigid`, `hitch` ou `magnet` dont les sockets s'écartent de plus que `misalignment` pendant une seconde
+rompt. Une corde s'écarte par nature : seule sa force la rompt.
+
+## 6. Le treuil, l'aimant, la prise de force
+
+- **Le treuil** suit sa variable (`winch.variable`) : **négative**, il enroule jusqu'à sa plus courte longueur ;
+  **positive**, il déroule jusqu'à la plus longue ; **nulle**, il garde la longueur qu'il a. Lie la variable à une
+  commande d'un siège (voir [Régler un véhicule](regler.md)) et le joueur pilote le treuil.
+- **L'aimant** n'existe que tant que sa variable (`magnet.variable`) est vraie : éteint, il lâche ; on ne l'attache pas
+  éteint.
+- **La prise de force** recopie, à chaque tick, chaque variable de `transfer.power` dans la variable nommée de l'autre
+  assembly. Un tracteur dont `pdf` tourne entraîne l'outil qui lit `pto_in`, dans ses animations ou ses contrôleurs.
+
+## 7. Par l'API Java
+
+`assembly.attachments()` pose, ancre, défait et lit les attaches d'une assembly, sur le serveur :
+
+```java
+AttachResult resultat = remorqueuse.attachments().attach("attelage", remorque, "timon");
+if (!resultat.attached()) {
+    LOGGER.info("pas d'attelage : {} — {}", resultat.status(), resultat.message());
+}
+remorqueuse.attachments().anchor("treuil", 120, 64, -35);   // au bloc
+remorqueuse.attachments().setWinchLength("treuil", 4.0);    // la longueur cible du treuil
+remorqueuse.attachments().detach("attelage");
+```
+
+`attach` prend un quatrième argument pour imposer le type (`"rope"`). Le résultat dit pourquoi une attache est refusée :
+
+| Statut | Pourquoi |
+|---|---|
+| `UNKNOWN_SOCKET` | un socket nommé n'existe pas |
+| `INCOMPATIBLE` | aucun type commun, ou une forme que l'autre n'épouse pas |
+| `SOCKET_BUSY` | un des deux sockets est déjà attaché |
+| `CYCLE` | les deux assemblies sont déjà reliées, directement ou par une chaîne (`E-8030`) |
+| `CHAIN` | la chaîne dépasserait `attachment.max_chain` attaches de bout en bout (8) |
+| `UNREACHABLE` | deux dimensions, la même assembly, ou une definition pas encore compilée |
+| `NOT_ANCHORABLE` | le socket ne déclare pas `anchor` |
+| `MAGNET_OFF` | un aimant éteint |
+| `REFUSED` | un écouteur l'a refusée |
+
+`list()` rend chaque attache : l'autre extrémité ou le bloc, le type, la longueur, l'écart et la tension du dernier tick.
+
+**Suivre et refuser** : un mod enregistre un écouteur avec le reste de son contenu,
+
+```java
+registrar.registerAttachmentListener(new AttachmentListener() {
+    @Override
+    public boolean allow(Assembly assembly, String socket, Optional<Assembly> other, String otherSocket, String kind) {
+        return !"magnet".equals(kind) || estAutorise(assembly);
+    }
+
+    @Override
+    public void detached(Assembly assembly, String socket, Optional<Assembly> other, String otherSocket, String cause) {
+        // cause : detached, broken, misaligned, magnet_off ou removed
+    }
+});
+```
+
+Il voit chaque attache du serveur, celles d'un joueur comme celles d'un autre mod.
+
+## 8. Les commandes
+
+| Commande | Effet |
+|---|---|
+| `/axion attach <cible> <socket> <autre> <socket_autre>` | attache deux assemblies |
+| `/axion anchor <cible> <socket> <x y z>` | ancre un socket à un bloc |
+| `/axion detach <cible> <socket>` | défait l'attache d'un socket |
+| `/axion attaches <cible>` | liste les attaches d'une assembly, leur longueur, leur écart, leur tension |
+
+!!! info "Encore à venir"
+    Les attaches ne se sauvegardent pas encore : elles se défont quand le serveur s'arrête. Le joueur ne voit pas
+    encore les cordes, et les sources `attach.*` et `socket.*` des animations attendent que les attaches parviennent
+    au client.

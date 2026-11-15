@@ -26,7 +26,7 @@ import java.util.Map;
  * @param dashboard son tableau de bord (ADR-170 D4)
  */
 public record Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings, Variables variables,
-        VehicleViews views, VehicleDashboard dashboard) {
+        VehicleViews views, VehicleDashboard dashboard, SocketTable sockets) {
 
     /** Aucun siège, aucune interaction, aucune variable. */
     public static final Seating NONE = new Seating(List.of(), List.of(), List.of(), Variables.NONE);
@@ -58,7 +58,22 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      * @param variables les variables
      */
     public Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings, Variables variables) {
-        this(seats, interactions, warnings, variables, VehicleViews.NONE, VehicleDashboard.NONE);
+        this(seats, interactions, warnings, variables, VehicleViews.NONE, VehicleDashboard.NONE, SocketTable.NONE);
+    }
+
+    /**
+     * Une table sans socket (ADR-170).
+     *
+     * @param seats les sièges
+     * @param interactions les interactions
+     * @param warnings les actions sans effet
+     * @param variables les variables
+     * @param views les vues
+     * @param dashboard le tableau de bord
+     */
+    public Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings, Variables variables,
+            VehicleViews views, VehicleDashboard dashboard) {
+        this(seats, interactions, warnings, variables, views, dashboard, SocketTable.NONE);
     }
 
     /** Les contrôles qu'un siège peut autoriser, ceux de {@code VehicleInput} (12.8), en bits. */
@@ -243,10 +258,10 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         SET_VARIABLE("set_variable", null),
         /** Réparer. */
         REPAIR("repair", "le dommage (M6)"),
-        /** Attacher. */
-        ATTACH("attach", "les attaches (C-48)"),
-        /** Détacher. */
-        DETACH("detach", "les attaches (C-48)");
+        /** Attacher un socket au socket le plus proche d'une autre assembly, ou au bloc visé (ADR-171 D4). */
+        ATTACH("attach", null),
+        /** Défaire l'attache d'un socket (ADR-171 D4). */
+        DETACH("detach", null);
 
         private final String key;
         private final String awaits;
@@ -297,9 +312,34 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      * @param seat l'index du siège où elle assoit, {@code -1} sans
      * @param variable le rang de la variable que {@code set_variable} pose, {@code -1} sans
      * @param value la valeur qu'elle pose
+     * @param socket le socket qu'{@code attach} ou {@code detach} vise, {@code null} sans (ADR-171 D4)
+     * @param kinds les types qu'{@code attach} permet ; vide : ceux du socket
+     * @param distance où {@code attach} cherche l'autre socket, en blocs ; {@code NaN} : la distance du serveur
      */
     public record Interaction(int node, Action action, String animation, String clip, int layer, int seat,
-            int variable, double value) {
+            int variable, double value, String socket, java.util.Set<String> kinds, double distance) {
+
+        /** Copie les types. */
+        public Interaction {
+            kinds = kinds == null ? java.util.Set.of() : java.util.Set.copyOf(kinds);
+        }
+
+        /**
+         * Une interaction qui ne vise pas de socket.
+         *
+         * @param node l'index de son node
+         * @param action ce qu'elle fait
+         * @param animation l'animation jouée
+         * @param clip son clip
+         * @param layer sa couche
+         * @param seat le siège où elle assoit
+         * @param variable la variable qu'elle pose
+         * @param value la valeur posée
+         */
+        public Interaction(int node, Action action, String animation, String clip, int layer, int seat, int variable,
+                double value) {
+            this(node, action, animation, clip, layer, seat, variable, value, null, java.util.Set.of(), Double.NaN);
+        }
 
         /**
          * Une interaction qui ne pose pas de variable.
@@ -437,14 +477,28 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                     && animations.get(animation) instanceof JsonObject declared ? declared : null;
             String clip = played != null && text(played, "clip") != null ? text(played, "clip") : animation;
             int layer = played != null && played.has("layer") ? played.get("layer").getAsInt() : 0;
+            if ((action == Action.ATTACH || action == Action.DETACH) && text(interaction, "socket") == null) {
+                // Avant le schéma 6, attach et detach ne nomment pas de socket : sans effet.
+                warnings.add(path + " : l'action « " + action.key() + " » ne vise aucun socket avant le schéma 6"
+                        + " (ADR-171 D4)");
+            }
+            java.util.Set<String> kinds = new java.util.LinkedHashSet<>();
+            if (interaction.get("kinds") instanceof JsonArray declared) {
+                for (JsonElement kind : declared) {
+                    kinds.add(kind.getAsString());
+                }
+            }
             interactions.add(new Interaction(node(byPath, path + ".node"), action, animation, clip, layer,
                     seat == null ? -1 : seatRanks.getOrDefault(seat, -1), variable,
-                    variable >= 0 && interaction.get("value") != null ? Variables.value(interaction.get("value")) : 0.0));
+                    variable >= 0 && interaction.get("value") != null ? Variables.value(interaction.get("value")) : 0.0,
+                    text(interaction, "socket"), kinds,
+                    interaction.has("distance") ? interaction.get("distance").getAsDouble() : Double.NaN));
         }
-        return seats.isEmpty() && interactions.isEmpty() && variables.size() == 0
+        SocketTable sockets = SocketTable.of(root, byPath);
+        return seats.isEmpty() && interactions.isEmpty() && variables.size() == 0 && sockets.isEmpty()
                 ? NONE
                 : new Seating(seats, interactions, warnings, variables, VehicleViews.of(root, byPath, seatRanks),
-                        VehicleDashboard.of(root, seatRanks, drivers(seats)));
+                        VehicleDashboard.of(root, seatRanks, drivers(seats)), sockets);
     }
 
     /** {@return les sièges conducteurs, un bit par rang} */

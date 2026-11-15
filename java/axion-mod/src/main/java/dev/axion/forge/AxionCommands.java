@@ -157,6 +157,41 @@ final class AxionCommands {
                                         .executes(context -> remove(
                                                 context.getSource(),
                                                 EntityArgument.getEntities(context, "cibles")))))
+                        // ADR-171 D4 : poser, ancrer, défaire et lister les attaches d'une assembly.
+                        .then(Commands.literal("attach")
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .then(Commands.argument("socket", StringArgumentType.word())
+                                                .then(Commands.argument("autre", EntityArgument.entity())
+                                                        .then(Commands.argument("socket_autre",
+                                                                        StringArgumentType.word())
+                                                                .executes(context -> attach(context.getSource(),
+                                                                        EntityArgument.getEntity(context, "cible"),
+                                                                        StringArgumentType.getString(context, "socket"),
+                                                                        EntityArgument.getEntity(context, "autre"),
+                                                                        StringArgumentType.getString(context,
+                                                                                "socket_autre"))))))))
+                        .then(Commands.literal("anchor")
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .then(Commands.argument("socket", StringArgumentType.word())
+                                                .then(Commands.argument("bloc",
+                                                                net.minecraft.commands.arguments.coordinates
+                                                                        .BlockPosArgument.blockPos())
+                                                        .executes(context -> anchor(context.getSource(),
+                                                                EntityArgument.getEntity(context, "cible"),
+                                                                StringArgumentType.getString(context, "socket"),
+                                                                net.minecraft.commands.arguments.coordinates
+                                                                        .BlockPosArgument.getLoadedBlockPos(context,
+                                                                                "bloc")))))))
+                        .then(Commands.literal("detach")
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .then(Commands.argument("socket", StringArgumentType.word())
+                                                .executes(context -> detach(context.getSource(),
+                                                        EntityArgument.getEntity(context, "cible"),
+                                                        StringArgumentType.getString(context, "socket"))))))
+                        .then(Commands.literal("attaches")
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .executes(context -> attaches(context.getSource(),
+                                                EntityArgument.getEntity(context, "cible")))))
                         .then(Commands.literal("variables")
                                 .then(Commands.argument("cible", EntityArgument.entity())
                                         .executes(context -> variables(
@@ -415,6 +450,69 @@ final class AxionCommands {
      * Montre les variables d'une assembly (C-71, ADR-163 D2) : pour chacune, sa valeur, son type et ses bornes, ses
      * règles, et ce qui l'a posée en dernier. Lecture seule.
      */
+    private static int attach(CommandSourceStack source, Entity target, String socket, Entity other,
+            String otherSocket) {
+        AttachmentRuntime runtime = AttachmentRuntime.current();
+        if (!(target instanceof AxionEntity a) || !(other instanceof AxionEntity b) || runtime == null) {
+            source.sendFailure(Component.literal("AXION : les deux cibles ne sont pas des assemblies"));
+            return 0;
+        }
+        return report(source, runtime.attach(a, socket, b, otherSocket, java.util.Set.of(), "axion"));
+    }
+
+    private static int anchor(CommandSourceStack source, Entity target, String socket,
+            net.minecraft.core.BlockPos block) {
+        AttachmentRuntime runtime = AttachmentRuntime.current();
+        if (!(target instanceof AxionEntity a) || runtime == null) {
+            source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));
+            return 0;
+        }
+        return report(source, runtime.anchor(a, socket, block, java.util.Set.of(), "axion"));
+    }
+
+    private static int report(CommandSourceStack source, dev.axion.api.attach.AttachResult result) {
+        if (result.attached()) {
+            source.sendSuccess(() -> Component.literal("AXION : attache posée"), true);
+            return 1;
+        }
+        source.sendFailure(Component.literal("AXION : attache refusée — " + result.status() + " : " + result.message()));
+        return 0;
+    }
+
+    private static int detach(CommandSourceStack source, Entity target, String socket) {
+        AttachmentRuntime runtime = AttachmentRuntime.current();
+        if (!(target instanceof AxionEntity a) || runtime == null) {
+            source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));
+            return 0;
+        }
+        if (!runtime.detach(a, socket, "detached")) {
+            source.sendFailure(Component.literal("AXION : rien n'est attaché au socket " + socket));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("AXION : socket " + socket + " détaché"), true);
+        return 1;
+    }
+
+    private static int attaches(CommandSourceStack source, Entity target) {
+        AttachmentRuntime runtime = AttachmentRuntime.current();
+        if (!(target instanceof AxionEntity a) || runtime == null) {
+            source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));
+            return 0;
+        }
+        List<dev.axion.api.attach.Attachments.Attachment> list = runtime.list(a);
+        List<String> lines = new ArrayList<>();
+        lines.add("AXION ENGINE — attaches de " + a.definitionId() + " : " + list.size());
+        for (dev.axion.api.attach.Attachments.Attachment attachment : list) {
+            String other = attachment.anchor().map(p -> "bloc " + p[0] + " " + p[1] + " " + p[2])
+                    .orElse(attachment.other().map(id -> id + " « " + attachment.otherSocket() + " »").orElse("?"));
+            lines.add(String.format(java.util.Locale.ROOT, "  %s → %s : %s, longueur %.2f, écart %.3f, tension %.0f N"
+                    + " (%s)", attachment.socket(), other, attachment.kind(), attachment.length(), attachment.distance(),
+                    attachment.tension(), attachment.owner()));
+        }
+        source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
+        return list.size();
+    }
+
     private static int variables(CommandSourceStack source, Entity target) {
         if (!(target instanceof AxionEntity assembly)) {
             source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));

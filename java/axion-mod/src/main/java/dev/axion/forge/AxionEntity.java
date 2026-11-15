@@ -517,6 +517,38 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * {@return vrai si l'interaction a eu son effet : son clip joué, ou sa variable posée (ADR-163 D2)} Un clip
      * refusé — R-200 — se journalise.
      */
+    /**
+     * Les interactions {@code attach} et {@code detach} d'un socket (ADR-171 D4). {@code attach} prend le socket
+     * compatible et libre le plus proche d'une autre assembly, ou le bloc que vise le joueur pour un socket qui s'ancre ;
+     * le joueur lit ce qui a été fait, ou pourquoi rien ne l'a été.
+     */
+    private boolean attachOrDetach(Seating.Interaction interaction, Player player) {
+        AttachmentRuntime runtime = AttachmentRuntime.current();
+        if (runtime == null) {
+            return false;
+        }
+        if (interaction.action() == Seating.Action.DETACH) {
+            boolean detached = runtime.detach(this, interaction.socket(), "detached");
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                    detached ? "axion.attach.detached" : "axion.attach.none_held", interaction.socket()), true);
+            return detached;
+        }
+        net.minecraft.core.BlockPos target = null;
+        if (player.pick(player.getBlockReach(), 1f, false) instanceof net.minecraft.world.phys.BlockHitResult hit
+                && hit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+            target = hit.getBlockPos();
+        }
+        dev.axion.api.attach.AttachResult result = runtime.interact(this, interaction.socket(), interaction.kinds(),
+                interaction.distance(), target);
+        player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                "axion.attach." + result.status().name().toLowerCase(java.util.Locale.ROOT), interaction.socket()),
+                true);
+        if (!result.attached()) {
+            LOGGER.debug("AXION : assembly {}, attache refusée — {}", getUUID(), result.message());
+        }
+        return result.attached();
+    }
+
     private boolean play(Seating.Interaction interaction, Player player) {
         if (interaction.action() == Seating.Action.SET_VARIABLE) {
             AssemblyVariables held = interaction.variable() < 0 ? null : variables();
@@ -532,6 +564,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 return false;
             }
             return true;
+        }
+        if ((interaction.action() == Seating.Action.ATTACH || interaction.action() == Seating.Action.DETACH)
+                && interaction.socket() != null) {
+            return attachOrDetach(interaction, player);
         }
         if (interaction.action() != Seating.Action.TOGGLE_ANIMATION
                 && interaction.action() != Seating.Action.PLAY_ANIMATION) {
@@ -1711,6 +1747,48 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return null;
         }
         return SeatPlacement.place(summary.anatomy(), seating.seats().get(seat).node(), bodyPoses(summary));
+    }
+
+    /** {@return les sockets d'attache de sa definition (ADR-171 D2) ; vide sans definition compilée} */
+    public dev.axion.definition.SocketTable sockets() {
+        Seating seating = seating();
+        return seating == null ? dev.axion.definition.SocketTable.NONE : seating.sockets();
+    }
+
+    /**
+     * {@return le repère d'un socket dans son corps, pour {@code ATTACH} (ADR-171 D6) : le node racine du corps, puis la
+     * position {@code x, y, z} et la rotation {@code x, y, z, w} du socket dans ce corps ; {@code null} si la definition
+     * n'est pas compilée ou si le node n'a pas de corps}
+     *
+     * @param node le node du socket
+     */
+    public float[] socketFrame(int node) {
+        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        if (summary == null || node < 0 || node >= summary.anatomy().size()) {
+            return null;
+        }
+        dev.axion.asset.Anatomy anatomy = summary.anatomy();
+        int body = anatomy.body(node);
+        if (body < 0 || body >= summary.roots().length) {
+            return null;
+        }
+        float[] t = anatomy.translation(node);
+        float[] r = anatomy.rotation(node);
+        return new float[] {summary.roots()[body], t[0], t[1], t[2], r[0], r[1], r[2], r[3]};
+    }
+
+    /**
+     * {@return la pose monde d'un node au dernier tick (serveur), ou {@code null}} Celle d'un socket, que l'interaction
+     * {@code attach} rapproche d'un autre (ADR-171 D4).
+     *
+     * @param node l'index du node dans l'asset
+     */
+    public SeatPlacement.Pose nodePose(int node) {
+        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        if (summary == null || node < 0 || node >= summary.anatomy().size()) {
+            return null;
+        }
+        return SeatPlacement.place(summary.anatomy(), node, bodyPoses(summary));
     }
 
     /**

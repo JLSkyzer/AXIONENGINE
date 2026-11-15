@@ -336,6 +336,9 @@ pub const COMMON: &[ConfigOption] = &[
     // [attachment]
     ip("attachment.max_chain", 8, "Longueur maximale d'une chaîne d'assemblies attachées.")
         .en("Maximum length of a chain of attached assemblies."),
+    // ADR-171 D4 : où l'interaction `attach` cherche l'autre socket, quand elle ne le dit pas.
+    f("attachment.snap_distance", 2.0, 0.1, 16.0, "Distance à laquelle l'interaction attach cherche le socket d'une autre assembly, en blocs, quand elle ne déclare pas la sienne.")
+        .en("Distance within which the attach interaction looks for another assembly's socket, in blocks, when it does not declare its own."),
 
     // [net]
     i("net.snapshot_rate_hz", 10, 2, 20, "Fréquence d'émission des snapshots d'état, en hertz.")
