@@ -61,9 +61,10 @@ public final class SchemaExport {
     /**
      * {@return le schéma de definition {@code version} publié, en JSON indenté} Le schéma 2
      * (ADR-151 D3) se publie dans {@code docs/schema/definition-2.json}, le schéma 3 (ADR-163 D2) dans
-     * {@code docs/schema/definition-3.json}, le schéma 4 (ADR-167) dans {@code docs/schema/definition-4.json}.
+     * {@code docs/schema/definition-3.json}, le schéma 4 (ADR-167) dans {@code docs/schema/definition-4.json}, le
+     * schéma 5 (ADR-170) dans {@code docs/schema/definition-5.json}.
      *
-     * @param version 1, 2, 3 ou 4
+     * @param version 1, 2, 3, 4 ou 5
      */
     public static String render(int version) {
         return new GsonBuilder()
@@ -88,7 +89,8 @@ public final class SchemaExport {
                         + "validateur d'AXION et lue selon l'ADR-109"
                         + (version == 2 ? " et l'ADR-151 D3"
                                 : version == 3 ? ", l'ADR-151 D3 et l'ADR-163 D2"
-                                : version == 4 ? ", l'ADR-151 D3, l'ADR-163 D2 et l'ADR-167" : "")
+                                : version == 4 ? ", l'ADR-151 D3, l'ADR-163 D2 et l'ADR-167"
+                                : version == 5 ? ", l'ADR-151 D3, l'ADR-163 D2, l'ADR-167 et l'ADR-170" : "")
                         + ". AXION vérifie en plus, au chargement, "
                         + "ce que JSON Schema n'exprime pas : unicité des noms par catégorie "
                         + "(x-axion-declares), résolution des références internes "

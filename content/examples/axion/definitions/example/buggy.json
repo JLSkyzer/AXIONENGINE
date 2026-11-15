@@ -1,5 +1,5 @@
 {
-  "schema": 4,
+  "schema": 5,
   "asset": "axion:models/example/buggy.glb",
   "kind": "vehicle",
 
@@ -125,6 +125,19 @@
   "interaction": [
     { "node": "siege_conducteur", "action": "sit", "seat": "conducteur" }
   ],
+
+  "cameras": [
+    { "name": "pilote", "kind": "cockpit" },
+    { "name": "poursuite", "kind": "follow", "distance": 7, "height": 2.2, "smoothing_ms": 200, "recenter_ms": 1500 }
+  ],
+
+  "dashboard": {
+    "default": true,
+    "gauges": [
+      { "name": "sport", "kind": "light", "source": "var.sport", "label": "axion.example.buggy.sport",
+        "anchor": "bottom_right", "offset": [-150, -30], "size": 12 }
+    ]
+  },
 
   "render": { "shadow": "map" }
 }

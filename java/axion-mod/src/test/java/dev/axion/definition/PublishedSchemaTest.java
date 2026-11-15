@@ -135,6 +135,36 @@ class PublishedSchemaTest {
     }
 
     @Test
+    @DisplayName("T-284 : docs/schema/definition-5.json est le rendu exact du schéma 5 (ADR-170)")
+    void schemaCinqPublieAJour() throws IOException {
+        Path file = property("axion.schema5.file");
+        String rendu = SchemaExport.render(5);
+
+        if (Boolean.getBoolean("axion.schema.update")) {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, rendu, StandardCharsets.UTF_8);
+        }
+
+        assertTrue(Files.isReadable(file), () -> "schéma publié absent : " + file);
+        String publie = Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        assertEquals(rendu, publie,
+                "le schéma 5 publié a divergé du validateur ; le régénérer avec :\n"
+                        + "  ./gradlew :axion-mod:test --tests dev.axion.definition.PublishedSchemaTest"
+                        + " -Daxion.schema.update=true");
+    }
+
+    @Test
+    @DisplayName("ADR-170 D3 : le schéma 5 porte les vues et le tableau de bord ; le schéma 4 ne les porte pas")
+    void contraintesDuSchemaCinq() {
+        JsonObject cinq = JsonParser.parseString(SchemaExport.render(5)).getAsJsonObject()
+                .getAsJsonObject("properties");
+        JsonObject quatre = JsonParser.parseString(SchemaExport.render(4)).getAsJsonObject()
+                .getAsJsonObject("properties");
+        assertTrue(cinq.has("cameras") && cinq.has("dashboard"), "le schéma 5 déclare cameras et dashboard");
+        assertTrue(!quatre.has("cameras") && !quatre.has("dashboard"), "le schéma 4 ne les connaît pas");
+    }
+
+    @Test
     @DisplayName("ADR-167 D2 : le schéma 4 porte les plages du réglage ; le schéma 3 ne les porte pas")
     void contraintesDuSchemaQuatre() {
         JsonObject properties = JsonParser.parseString(SchemaExport.render(4)).getAsJsonObject()

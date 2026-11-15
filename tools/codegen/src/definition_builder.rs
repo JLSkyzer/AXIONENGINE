@@ -94,9 +94,11 @@ pub const SINGULARS: &[(&str, &str)] = &[
     ("bindings", "binding"),
     ("bodies", "body"),
     ("bones", "bone"),
+    ("cameras", "camera"),
     ("collider_variants", "collider_variant"),
     ("collision_proxies", "collision_proxy"),
     ("damage_zones", "damage_zone"),
+    ("gauges", "gauge"),
     ("joints", "joint"),
     ("modifiers", "modifier"),
     ("morphs", "morph"),
@@ -108,6 +110,7 @@ pub const SINGULARS: &[(&str, &str)] = &[
     ("surfaces", "surface"),
     ("variables", "variable"),
     ("wheels", "wheel"),
+    ("widgets", "widget"),
 ];
 
 /// Le nom des clés d'une table, dans l'ordre de ses niveaux ; `name` par défaut.

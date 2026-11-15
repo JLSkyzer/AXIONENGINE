@@ -90,6 +90,11 @@ class DefinitionBuilderTest {
                 .procedural("rotation", "wheel.roue_arriere_droite.spin_angle",
                         p -> p.node("roue_arriere_droite").axis("x"))
                 .interaction("sit", i -> i.node("siege_conducteur").seat("conducteur"))
+                .camera("pilote", "cockpit")
+                .camera("poursuite", "follow",
+                        c -> c.distance(7.0).height(2.2).smoothingMs(200.0).recenterMs(1500.0))
+                .dashboard(d -> d.default_(true).gauge("sport", "light", "var.sport", g -> g
+                        .label("axion.example.buggy.sport").anchor("bottom_right").offset(-150.0, -30.0).size(12.0)))
                 .render(r -> r.shadow("map"))
                 .build();
     }
@@ -165,8 +170,8 @@ class DefinitionBuilderTest {
         assertEquals(Map.of("hide_node", "capot", "set_variable", Map.of("x", 1.0)),
                 ((Map<?, ?>) ((Map<?, ?>) racine.get("on_part_stage")).get("capot")).get("destroyed"));
         assertEquals(Map.of("monmod:reglage", 3.5), racine.get("custom"));
-        assertEquals(4L, racine.get("schema"));
-        assertEquals(4, DefinitionBuilder.SCHEMA);
+        assertEquals(5L, racine.get("schema"));
+        assertEquals(5, DefinitionBuilder.SCHEMA);
     }
 
     @Test

@@ -99,6 +99,9 @@ final class DefinitionChecker {
         if (checker.version >= 4 && checker.issues.isEmpty()) {
             Tuning.check(root, extensions, checker::invalid);
         }
+        if (checker.version >= 5 && checker.issues.isEmpty()) {
+            Cameras.check(root, checker::invalid);
+        }
         return List.copyOf(checker.issues);
     }
 
@@ -330,6 +333,9 @@ final class DefinitionChecker {
     private static int versionOf(JsonObject root) {
         if (root.get("schema") instanceof JsonPrimitive schema && schema.isNumber()) {
             double number = schema.getAsDouble();
+            if (number == 5) {
+                return 5;
+            }
             if (number == 4) {
                 return 4;
             }

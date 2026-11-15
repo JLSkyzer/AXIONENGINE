@@ -1,5 +1,5 @@
 // Fichier généré par `cargo run -p axion-codegen --bin gen_definition_builder` depuis
-// docs/schema/definition-4.json (ADR-162 D4) : ne pas le modifier à la main. Le test de parité
+// docs/schema/definition-5.json (ADR-162 D4) : ne pas le modifier à la main. Le test de parité
 // parite_builder échoue s'il diverge du schéma.
 package dev.axion.api.content;
 
@@ -13,7 +13,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Le builder d'une definition (ADR-162 D3, D4) : une méthode par champ du schéma 4, dont il est généré.
+ * Le builder d'une definition (ADR-162 D3, D4) : une méthode par champ du schéma 5, dont il est généré.
  *
  * <p>Il produit le même document qu'un fichier JSON : {@link #build()} rend un {@link DefinitionDocument}
  * que {@link ContentRegistrar#register} enregistre, que le même schéma valide au chargement et dont
@@ -35,7 +35,7 @@ import java.util.function.Consumer;
 public final class DefinitionBuilder {
 
     /** La version du schéma que ce builder écrit dans le champ {@code schema}. */
-    public static final int SCHEMA = 4;
+    public static final int SCHEMA = 5;
 
     private final Map<String, Object> values = new LinkedHashMap<>();
 
@@ -214,6 +214,34 @@ public final class DefinitionBuilder {
     }
 
     /**
+     * {@code cameras} : au plus 16 éléments.
+     *
+     * @param name le champ obligatoire {@code name}
+     * @param kind le champ obligatoire {@code kind}
+     * @param config règle l'élément, ajouté à la suite des précédents
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder camera(String name, String kind, Consumer<Camera> config) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("name", Objects.requireNonNull(name, "name"));
+        item.put("kind", Objects.requireNonNull(kind, "kind"));
+        Objects.requireNonNull(config, "config").accept(new Camera(item));
+        list(values, "cameras").add(item);
+        return this;
+    }
+
+    /**
+     * {@code cameras} : au plus 16 éléments.
+     *
+     * @param name le champ obligatoire {@code name}
+     * @param kind le champ obligatoire {@code kind}
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder camera(String name, String kind) {
+        return camera(name, kind, item -> { });
+    }
+
+    /**
      * {@code custom}.
      *
      * @param key clé de la table
@@ -284,6 +312,18 @@ public final class DefinitionBuilder {
      */
     public DefinitionBuilder damageZone(String name) {
         return damageZone(name, item -> { });
+    }
+
+    /**
+     * {@code dashboard}.
+     *
+     * @param config règle l'objet ; rappelée, elle complète le même
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder dashboard(Consumer<Dashboard> config) {
+        Map<String, Object> nested = object(values, "dashboard");
+        Objects.requireNonNull(config, "config").accept(new Dashboard(nested));
+        return this;
     }
 
     /**
@@ -1117,6 +1157,172 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code cameras[].look}. */
+    @Experimental
+    public static final class CameraLook {
+
+        private final Map<String, Object> values;
+
+        private CameraLook(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code cameras[].look.pitch} : au moins 0 ; au plus 180.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public CameraLook pitch(double value) {
+            values.put("pitch", value);
+            return this;
+        }
+
+        /**
+         * {@code cameras[].look.yaw} : au moins 0 ; au plus 180.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public CameraLook yaw(double value) {
+            values.put("yaw", value);
+            return this;
+        }
+    }
+
+    /** {@code cameras[]}. */
+    @Experimental
+    public static final class Camera {
+
+        private final Map<String, Object> values;
+
+        private Camera(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code cameras[].distance} : au moins 0.5 ; au plus 64.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Camera distance(double value) {
+            values.put("distance", value);
+            return this;
+        }
+
+        /**
+         * {@code cameras[].eye} : 3 éléments.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public Camera eye(double... items) {
+            values.put("eye", doubles(items));
+            return this;
+        }
+
+        /**
+         * {@code cameras[].fov} : au moins 30 ; au plus 110.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Camera fov(double value) {
+            values.put("fov", value);
+            return this;
+        }
+
+        /**
+         * {@code cameras[].height} : au moins -8 ; au plus 32.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Camera height(double value) {
+            values.put("height", value);
+            return this;
+        }
+
+        /**
+         * {@code cameras[].kind} : parmi {@code cockpit}, {@code follow}, {@code fixed}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Camera kind(String value) {
+            values.put("kind", Objects.requireNonNull(value, "kind"));
+            return this;
+        }
+
+        /**
+         * {@code cameras[].look}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Camera look(Consumer<CameraLook> config) {
+            Map<String, Object> nested = object(values, "look");
+            Objects.requireNonNull(config, "config").accept(new CameraLook(nested));
+            return this;
+        }
+
+        /**
+         * {@code cameras[].name} : déclare un nom (camera).
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Camera name(String value) {
+            values.put("name", Objects.requireNonNull(value, "name"));
+            return this;
+        }
+
+        /**
+         * {@code cameras[].node} : nom (node) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Camera node(String value) {
+            values.put("node", Objects.requireNonNull(value, "node"));
+            return this;
+        }
+
+        /**
+         * {@code cameras[].recenter_ms} : au moins 0 ; au plus 5000.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Camera recenterMs(double value) {
+            values.put("recenter_ms", value);
+            return this;
+        }
+
+        /**
+         * {@code cameras[].seats} : nom (seat) dans le modèle.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public Camera seats(String... items) {
+            values.put("seats", texts(items));
+            return this;
+        }
+
+        /**
+         * {@code cameras[].smoothing_ms} : au moins 0 ; au plus 5000.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Camera smoothingMs(double value) {
+            values.put("smoothing_ms", value);
+            return this;
+        }
+    }
+
     /** {@code damage_zones[]}. */
     @Experimental
     public static final class DamageZone {
@@ -1201,6 +1407,203 @@ public final class DefinitionBuilder {
          */
         public DamageZone region(String value) {
             values.put("region", Objects.requireNonNull(value, "region"));
+            return this;
+        }
+    }
+
+    /** {@code dashboard.gauges[]}. */
+    @Experimental
+    public static final class DashboardGauge {
+
+        private final Map<String, Object> values;
+
+        private DashboardGauge(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code dashboard.gauges[].anchor} : parmi {@code top_left}, {@code top}, {@code top_right}, {@code left},
+         * {@code center}, {@code right}, {@code bottom_left}, {@code bottom}, {@code bottom_right}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public DashboardGauge anchor(String value) {
+            values.put("anchor", Objects.requireNonNull(value, "anchor"));
+            return this;
+        }
+
+        /**
+         * {@code dashboard.gauges[].kind} : parmi {@code dial}, {@code bar}, {@code text}, {@code light}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public DashboardGauge kind(String value) {
+            values.put("kind", Objects.requireNonNull(value, "kind"));
+            return this;
+        }
+
+        /**
+         * {@code dashboard.gauges[].label}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public DashboardGauge label(String value) {
+            values.put("label", Objects.requireNonNull(value, "label"));
+            return this;
+        }
+
+        /**
+         * {@code dashboard.gauges[].max}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public DashboardGauge max(double value) {
+            values.put("max", value);
+            return this;
+        }
+
+        /**
+         * {@code dashboard.gauges[].min}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public DashboardGauge min(double value) {
+            values.put("min", value);
+            return this;
+        }
+
+        /**
+         * {@code dashboard.gauges[].name} : déclare un nom (gauge).
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public DashboardGauge name(String value) {
+            values.put("name", Objects.requireNonNull(value, "name"));
+            return this;
+        }
+
+        /**
+         * {@code dashboard.gauges[].offset} : 2 éléments.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public DashboardGauge offset(double... items) {
+            values.put("offset", doubles(items));
+            return this;
+        }
+
+        /**
+         * {@code dashboard.gauges[].size} : au moins 8 ; au plus 512.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public DashboardGauge size(double value) {
+            values.put("size", value);
+            return this;
+        }
+
+        /**
+         * {@code dashboard.gauges[].source}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public DashboardGauge source(String value) {
+            values.put("source", Objects.requireNonNull(value, "source"));
+            return this;
+        }
+
+        /**
+         * {@code dashboard.gauges[].unit}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public DashboardGauge unit(String value) {
+            values.put("unit", Objects.requireNonNull(value, "unit"));
+            return this;
+        }
+    }
+
+    /** {@code dashboard}. */
+    @Experimental
+    public static final class Dashboard {
+
+        private final Map<String, Object> values;
+
+        private Dashboard(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code dashboard.default}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Dashboard default_(boolean value) {
+            values.put("default", value);
+            return this;
+        }
+
+        /**
+         * {@code dashboard.gauges} : au plus 32 éléments.
+         *
+         * @param name le champ obligatoire {@code name}
+         * @param kind le champ obligatoire {@code kind}
+         * @param source le champ obligatoire {@code source}
+         * @param config règle l'élément, ajouté à la suite des précédents
+         * @return ce réglage, pour enchaîner
+         */
+        public Dashboard gauge(String name, String kind, String source, Consumer<DashboardGauge> config) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", Objects.requireNonNull(name, "name"));
+            item.put("kind", Objects.requireNonNull(kind, "kind"));
+            item.put("source", Objects.requireNonNull(source, "source"));
+            Objects.requireNonNull(config, "config").accept(new DashboardGauge(item));
+            list(values, "gauges").add(item);
+            return this;
+        }
+
+        /**
+         * {@code dashboard.gauges} : au plus 32 éléments.
+         *
+         * @param name le champ obligatoire {@code name}
+         * @param kind le champ obligatoire {@code kind}
+         * @param source le champ obligatoire {@code source}
+         * @return ce réglage, pour enchaîner
+         */
+        public Dashboard gauge(String name, String kind, String source) {
+            return gauge(name, kind, source, item -> { });
+        }
+
+        /**
+         * {@code dashboard.seats} : nom (seat) dans le modèle.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public Dashboard seats(String... items) {
+            values.put("seats", texts(items));
+            return this;
+        }
+
+        /**
+         * {@code dashboard.widgets} : au plus 16 éléments.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public Dashboard widgets(String... items) {
+            values.put("widgets", texts(items));
             return this;
         }
     }

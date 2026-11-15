@@ -45,6 +45,8 @@ pub enum NodeRole {
     Internal,
     /// Node non rendu.
     Hidden,
+    /// Point de vue d'une vue fixe du véhicule (ADR-170 D3) : jamais rendu.
+    Camera,
 }
 
 impl NodeRole {
@@ -69,6 +71,7 @@ impl NodeRole {
             "particle_set" => NodeRole::ParticleSet,
             "internal" => NodeRole::Internal,
             "hidden" => NodeRole::Hidden,
+            "camera" => NodeRole::Camera,
             _ => return None,
         })
     }
@@ -90,6 +93,7 @@ impl NodeRole {
             NodeRole::ParticleSet => "particle_set",
             NodeRole::Internal => "internal",
             NodeRole::Hidden => "hidden",
+            NodeRole::Camera => "camera",
         }
     }
 
@@ -108,6 +112,7 @@ impl NodeRole {
                 | NodeRole::DeformRegion
                 | NodeRole::ClothAnchor
                 | NodeRole::Hidden
+                | NodeRole::Camera
         )
     }
 }
@@ -444,6 +449,7 @@ mod tests {
             NodeRole::DeformRegion,
             NodeRole::ClothAnchor,
             NodeRole::Hidden,
+            NodeRole::Camera,
         ] {
             assert!(!role.is_rendered(), "{role} rendu à tort");
         }
@@ -476,12 +482,13 @@ mod tests {
             "particle_set",
             "internal",
             "hidden",
+            "camera",
         ];
         for nom in attendus {
             let role = NodeRole::parse(nom).unwrap_or_else(|| panic!("{nom} non reconnu"));
             assert_eq!(role.name(), nom);
         }
-        assert_eq!(attendus.len(), 13);
+        assert_eq!(attendus.len(), 14);
     }
 
     #[test]

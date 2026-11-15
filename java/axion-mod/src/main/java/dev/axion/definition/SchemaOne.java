@@ -73,6 +73,15 @@ final class SchemaOne {
             fixed("world", "time", "sky_light", "rain"),
             new SourceFamily("var", true, null, Set.of()));
 
+    /** ADR-170 D3 : les vues au plus, et les jauges et widgets d'un tableau de bord. */
+    static final int MAX_CAMERAS = 16;
+    static final int MAX_GAUGES = 32;
+    static final int MAX_WIDGETS = 16;
+
+    /** ADR-170 D4 : les ancres d'une jauge sur l'écran. */
+    static final Set<String> ANCHORS = ordered("top_left", "top", "top_right", "left", "center", "right",
+            "bottom_left", "bottom", "bottom_right");
+
     /** Racine du schéma 1. */
     static final SchemaNode ROOT = root(1);
 
@@ -85,15 +94,20 @@ final class SchemaOne {
     /** Racine du schéma 4 (ADR-167) : le schéma 3, et le réglage des paramètres d'une instance. */
     static final SchemaNode ROOT_FOUR = root(4);
 
+    /** Racine du schéma 5 (ADR-170) : le schéma 4, les vues du véhicule et son tableau de bord. */
+    static final SchemaNode ROOT_FIVE = root(5);
+
+
     private SchemaOne() {}
 
     /**
      * {@return la racine du schéma {@code version}}
      *
-     * @param version 1, 2, 3 ou 4
+     * @param version 1, 2, 3, 4 ou 5
      */
     static SchemaNode rootOf(int version) {
         return switch (version) {
+            case 5 -> ROOT_FIVE;
             case 4 -> ROOT_FOUR;
             case 3 -> ROOT_THREE;
             case 2 -> ROOT_TWO;
@@ -162,6 +176,45 @@ final class SchemaOne {
             // ADR-167 D9 : les contrôleurs du véhicule, enregistrés par des mods ; qu'ils existent se vérifie avec le
             // registre (DefinitionRegistry), qu'il y ait des roues avec la definition entière (Tuning.check).
             root.opt("vehicle", obj().opt("controllers", cap(id(), Tuning.MAX_CONTROLLERS)).build());
+        }
+        if (version >= 5) {
+            // ADR-170 D3 : les vues ; ce que chaque sorte admet, et l'œil dans ±4 m, se vérifient avec la vue entière
+            // (Cameras.check).
+            root.opt("cameras", cap(obj()
+                    .req("name", declares(NameCategory.CAMERA))
+                    .req("kind", oneOf("cockpit", "follow", "fixed"))
+                    .opt("node", refers(NameCategory.NODE))
+                    .opt("seats", list(refers(NameCategory.SEAT)))
+                    .opt("eye", vec3())
+                    .opt("distance", new Num(0.5, 64, false, false))
+                    .opt("height", new Num(-8, 32, false, false))
+                    .opt("fov", new Num(30, 110, false, false))
+                    .opt("smoothing_ms", new Num(0, 5000, false, false))
+                    .opt("recenter_ms", new Num(0, 5000, false, false))
+                    .opt("look", obj()
+                            .opt("yaw", new Num(0, 180, false, false))
+                            .opt("pitch", new Num(0, 180, false, false))
+                            .build())
+                    .build(), MAX_CAMERAS));
+            // ADR-170 D4 : le tableau de bord ; une jauge lit une source de l'ANNEXE A.4, ses bornes se jugent ensemble
+            // (Cameras.check).
+            root.opt("dashboard", obj()
+                    .opt("default", bool())
+                    .opt("seats", list(refers(NameCategory.SEAT)))
+                    .opt("gauges", cap(obj()
+                            .req("name", declares(NameCategory.GAUGE))
+                            .req("kind", oneOf("dial", "bar", "text", "light"))
+                            .req("source", new Text(new TextRule.Source()))
+                            .opt("min", number())
+                            .opt("max", number())
+                            .opt("label", text())
+                            .opt("unit", text())
+                            .opt("anchor", new Text(new TextRule.OneOf(ANCHORS)))
+                            .opt("offset", new Arr(new Num(-4096, 4096, false, false), 2, 2, false))
+                            .opt("size", new Num(8, 512, false, false))
+                            .build(), MAX_GAUGES))
+                    .opt("widgets", cap(id(), MAX_WIDGETS))
+                    .build());
         }
         return root.build();
     }

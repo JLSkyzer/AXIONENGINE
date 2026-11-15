@@ -34,6 +34,10 @@ enum NameCategory {
     PARTICLES("ensemble de particules", true),
     /** Variable de contenu, clé de {@code variables} (schéma 3, ADR-163 D2). */
     VARIABLE("variable", true),
+    /** Vue de véhicule, {@code cameras[].name} (ADR-170). */
+    CAMERA("vue", true),
+    /** Jauge du tableau de bord, {@code dashboard.gauges[].name} (ADR-170). */
+    GAUGE("jauge", true),
     /** Node de l'asset. */
     NODE("node", false),
     /** Mesh de l'asset. */

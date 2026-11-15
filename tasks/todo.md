@@ -3873,6 +3873,14 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      qui nomme un contrôleur ne se juge pas sans le code de son mod — T-284 reçoit la liste des contrôleurs de test,
      l'outil hors jeu devra dire lesquels il n'a pas pu vérifier), sources
      du monde (CAP-43) ; anti-roulis (R-1061).
+     - [ ] CAP-10, caméra de véhicule et tableau de bord : **ADR-170 accepté par Killian le 2026-11-15** (F5 fait
+           défiler les vues, vues et nodes `camera` déclarés, tableau de bord par défaut + jauges + widgets d'API ;
+           sans Mixin). Branche `wip/cap-10`.
+           - [x] 7a (2026-11-15) — schéma 5 (`cameras`, `dashboard`), rôle `camera`, `Cameras.check`, builder, exemple `buggy`.
+           - [ ] 7b — les vues (cockpit, poursuite, fixe), F5, repli ; film avec la Charger.
+           - [ ] 7c — le tableau de bord par défaut et les jauges, options du client.
+           - [ ] 7d — `DashboardWidget`, `DashboardCanvas`, `registerDashboardWidget`, budget ; addon témoin.
+           - [ ] 7e — guide créateur, CDC (rôle `camera` en R-910, section de C-33, A.3, amendement), traductions.
   8. C-48 attaches : remorquage, ancrage au monde (CAP-15, CAP-16).
   9. C-77 gouverneur, C-73 overlay.
   10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).
