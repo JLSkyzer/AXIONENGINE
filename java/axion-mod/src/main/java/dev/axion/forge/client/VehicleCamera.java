@@ -84,7 +84,8 @@ public final class VehicleCamera {
         }
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
-        Seat seat = player == null ? null : seat(player);
+        // La vue d'une autre entité (spectateur, caméra d'un mod ou d'un film) n'est pas celle du conducteur.
+        Seat seat = player == null || minecraft.getCameraEntity() != player ? null : seat(player);
         if (seat == null || overridden) {
             leave(minecraft);
             return;
@@ -116,7 +117,8 @@ public final class VehicleCamera {
         VehicleViews.View view = active;
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
-        if (view == null || player == null || !(player.getVehicle() instanceof AxionEntity assembly)) {
+        if (view == null || player == null || event.getCamera().getEntity() != player
+                || !(player.getVehicle() instanceof AxionEntity assembly)) {
             return;
         }
         float partialTick = (float) event.getPartialTick();
@@ -187,7 +189,8 @@ public final class VehicleCamera {
     @SubscribeEvent
     public static void onFov(ViewportEvent.ComputeFov event) {
         VehicleViews.View view = active;
-        if (view != null && event.usedConfiguredFov() && !Double.isNaN(view.fov()) && !overridden) {
+        if (view != null && event.usedConfiguredFov() && !Double.isNaN(view.fov()) && !overridden
+                && event.getCamera().getEntity() == Minecraft.getInstance().player) {
             event.setFOV(view.fov());
         }
     }

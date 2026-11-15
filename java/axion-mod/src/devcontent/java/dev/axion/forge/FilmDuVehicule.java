@@ -54,6 +54,8 @@ public final class FilmDuVehicule {
      * la marche arrière.
      */
     private static final boolean VUES = Boolean.getBoolean("axion.film.vues");
+    /** Le plan des roues ({@code -Daxion.film.roues=true}) : la caméra suit le véhicule de côté, à hauteur de roue. */
+    private static final boolean ROUES = Boolean.getBoolean("axion.film.roues");
     /** L'étape dont la vue a été choisie, pour presser F5 une fois à chaque changement voulu. */
     private static Etape etapeDeLaVue;
     private static final String MONDE = "axion-film";
@@ -427,10 +429,21 @@ public final class FilmDuVehicule {
             return;
         }
         Vec3 cible = vehicule.getPosition(partiel).add(0, 0.9, 0);
+        if (ROUES) {
+            // Au flanc gauche, sans retard : la roue reste au même endroit de l'image, seule sa rotation se voit.
+            Vec3 pres = vehicule.getPosition(partiel);
+            viser(new Vec3(pres.x - 4.5, SOL + 0.7, pres.z), new Vec3(pres.x, SOL + 0.55, pres.z));
+            return;
+        }
         xCamera = Double.isNaN(xCamera) ? cible.x : xCamera + (cible.x - xCamera) * 0.05;
         zCamera = Double.isNaN(zCamera) ? cible.z : zCamera + (cible.z - zCamera) * 0.06;
         Vec3 oeil = new Vec3(Math.max(xCamera - 9.0, -DEMI_LARGEUR + 1.0), SOL + 2.6,
                 Math.min(zCamera + 5.5, MUR - 8.0));
+        viser(oeil, cible);
+    }
+
+    /** La caméra du film à {@code oeil}, tournée vers {@code cible}. */
+    private static void viser(Vec3 oeil, Vec3 cible) {
         double piedsY = oeil.y - camera.getEyeHeight();
         camera.setPos(oeil.x, piedsY, oeil.z);
         camera.xo = camera.xOld = oeil.x;
@@ -540,6 +553,13 @@ public final class FilmDuVehicule {
      * caméra qui suit le véhicule de côté.
      */
     private static void choisirLaVue(Minecraft minecraft) {
+        if (ROUES) {
+            vueConducteur = false;
+            if (camera != null && minecraft.getCameraEntity() != camera) {
+                minecraft.setCameraEntity(camera);
+            }
+            return;
+        }
         if (VUES) {
             // La caméra de véhicule : le joueur reste l'entité de la vue, F5 change de vue aux étapes voulues.
             if (etape != etapeDeLaVue) {

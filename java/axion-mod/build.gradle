@@ -218,6 +218,19 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        filmRoues {
+            // Le plan des roues : la scene du film du vehicule, filmee de cote a hauteur de roue.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-roues')
+            property 'axion.film', 'vehicule'
+            property 'axion.film.roues', 'true'
+            property 'axion.souris.libre', 'true'
+            def local = rootProject.file('local/contenu/axion/definitions/local/charger.json').exists()
+            property 'axion.film.definition', local ? 'axion:local/charger' : 'axion:test/vehicule'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
         filmParametres {
             // ADR-167, sous-tranche 5a : deux buggys identiques, l'un regle par /axion params (FilmDesParametres).
             parent minecraft.runs.client
@@ -535,6 +548,17 @@ tasks.matching { it.name == 'runFilmVehicule' }.configureEach {
         // Le contenu, pas le dossier : un dossier ouvert ailleurs ne doit pas faire échouer le tournage.
         delete fileTree(rootProject.file('.runs/film/axion-film'))
         delete rootProject.file('.runs/film/axion/world')
+    }
+}
+
+// Le plan des roues, de meme.
+tasks.matching { it.name == 'runFilmRoues' }.configureEach {
+    standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/film-roues'))
+        delete rootProject.file('.runs/film-roues/saves/axion-film')
+        delete fileTree(rootProject.file('.runs/film-roues/axion-film'))
+        delete rootProject.file('.runs/film-roues/axion/world')
     }
 }
 
