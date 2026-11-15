@@ -833,6 +833,11 @@ public final class EssaiPrediction {
                             + " au tick %d, %d en attente", e[0], e[1], e[2], (int) e[3], (int) e[4])));
             rapport.add(fluidite());
             rapport.addAll(corpsDivergents);
+            for (long[] acceptee : ClientPrediction.acceptances()) {
+                rapport.add(String.format(Locale.ROOT, "  acceptée sans rejeu : réconciliation de %.2f ms, %d pas en"
+                        + " attente (budget %.2f ms)", acceptee[0] / 1e6, acceptee[1],
+                        RuntimeAccess.get().outcome().config().getInt("net.prediction_replay_budget_ns") / 1e6));
+            }
             rapport.add(tauxGlissant());
             rapport.add(t415(boucle));
             rapport.add(t416(boucle));

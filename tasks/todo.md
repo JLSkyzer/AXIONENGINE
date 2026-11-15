@@ -3860,9 +3860,13 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  à R-1684, A.3, A19), guide réseau. Trouvé et corrigé : file d'un véhicule garé, monde prédit ouvert au
                  premier appui seulement (battement d'une correction par seconde), latence datée au traitement. Mesuré :
                  T-415 réussi partout, T-416 réussi pour le véhicule de test à 50 et 100 ms (ADR-168 précision 6e, preuves).
-           - [ ] Ouvert : T-416 de la Charger à 101 % — une correction acceptée sans rejeu recule la piste sans lissage
-                 (reprendre le dernier tick par l'état du serveur) ; pourquoi le budget saute sur six pas de 2 ms.
-           - [ ] Fusion dans `master`, CI GitHub.
+           - [x] Fusion dans `master` (9be59df, 2026-11-15) : CI GitHub verte, quatre plateformes.
+           - [x] 6e-6 (2026-11-15) : la Charger — un `axion-common.toml` généré le 2026-11-13 gardait un budget de rejeu
+                 de 2 ms ; la campagne efface désormais les configurations générées. Une correction acceptée sans rejeu
+                 reprend le dernier tick de la piste (`PredictedTrack.advanceAfterAcceptance`). Campagne aux défauts :
+                 T-415 et T-416 réussis aux trois réglages, Charger comprise (47 % de ce que D5 permet).
+           - [ ] Ouvert, hors 6e : le choc prédit contre un proxy cinématique rebondit plus fort qu'au serveur (masse
+                 infinie) ; un proxy de masse finie serait une décision à part.
   7. Le reste des capacités de M5 : caméra de véhicule (CAP-10), API (CAP-11), occupants (CAP-13), joueurs portés
      (CAP-14), énergie et démarrage (CAP-12), pneus et météo (CAP-20), rechargement à chaud (CAP-33), commandes
      (CAP-34), contenu qui évolue (CAP-38), addons d'un seul côté (CAP-40), validation hors jeu (CAP-42 : une fiche

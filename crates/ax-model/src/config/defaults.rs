@@ -363,8 +363,8 @@ pub const COMMON: &[ConfigOption] = &[
     f("net.prediction_reenable_ratio", 0.9, 0.0, 1.0, "Part de net.prediction_max_ping sous laquelle une prédiction coupée par sa latence se rétablit.")
         .en("Share of net.prediction_max_ping below which a prediction cut off by its latency comes back."),
     // ADR-168 D8, D10, R-1683 : le pire taux de corrections démenties sur 100 corrections glissantes, mesuré par la
-    // campagne à deux processus du 2026-11-14 (tools/campagne/prediction.py), sessions saines : 19 à 27 % pour le
-    // véhicule de test (50 et 100 ms par sens, gigue de 20 ms), 16 à 20 % pour la Charger (50 ms). Le seuil en garde deux
+    // campagne à deux processus du 2026-11-15 (tools/campagne/prediction.py), sessions saines : 20 à 27 % pour le
+    // véhicule de test (50 et 100 ms par sens, gigue de 20 ms), 15 % pour la Charger (50 ms). Le seuil en garde deux
     // fois la marge : au-delà, la prédiction est démentie une correction sur deux et ne fait plus que se reprendre.
     f("net.prediction_max_corrections", 0.5, 0.0, 1.0, "Part des corrections, sur les 100 dernières, qui démentent la prédiction (rejouées ou acceptées sans rejeu) au-delà de laquelle elle est désactivée ; 1 ne la désactive jamais.")
         .en("Share of corrections, over the last 100, that contradict prediction (replayed or accepted without replay) beyond which it is disabled; 1 never disables it."),

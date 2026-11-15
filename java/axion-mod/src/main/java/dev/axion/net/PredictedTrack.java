@@ -66,6 +66,23 @@ public final class PredictedTrack {
     }
 
     /**
+     * Le premier pas après une correction acceptée sans rejeu (R-1682, précision 6e d'ADR-168) : le monde prédit est
+     * reparti de l'état du serveur, en retard de la latence, mais la piste garde ses ticks prédits d'avant. Le dernier
+     * prend la pose de ce pas, comme un rejeu — l'écart à l'écran se résorbe en 200 ms —, puis ce pas avance la piste.
+     * Sans cela, l'image reculait d'un coup entre le dernier tick prédit d'avant et ce pas.
+     *
+     * @param sequence la séquence de l'entrée du pas
+     * @param state l'état qu'il a produit
+     * @param nowMillis le temps local, en millisecondes
+     */
+    public void advanceAfterAcceptance(long sequence, AssemblyState state, double nowMillis) {
+        if (started) {
+            replay(latest, state, nowMillis);
+        }
+        advance(sequence, state, nowMillis);
+    }
+
+    /**
      * Part d'une pose affichée jusque-là, celle de l'interpolation : l'écart se résorbe.
      *
      * @param shown la pose affichée ; {@code null} : rien à résorber

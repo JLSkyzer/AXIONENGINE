@@ -59,6 +59,11 @@ def essai(latence: int, gigue: int) -> dict[str, str]:
     nom = f"{vehicule}-{latence}-{gigue}"
     for fichier in (JOURNAL_SERVEUR, RAPPORT):
         fichier.unlink(missing_ok=True)
+    # Les défauts du dépôt, pas une configuration générée par un lancement d'avant : un budget de rejeu de 2 ms, resté
+    # d'un fichier du 2026-11-13, a faussé une campagne entière. Chaque côté régénère les siens au démarrage.
+    for dossier in (RACINE / ".runs/server/config", ESSAI / "config"):
+        for fichier in ("axion-common.toml", "axion-client.toml", "axion-server.toml"):
+            (dossier / fichier).unlink(missing_ok=True)
     environnement = dict(os.environ, AXION_ESSAI_PREDICTION="1")
     with open(SORTIES / f"serveur-{nom}.log", "w", encoding="utf-8") as sortie:
         serveur = subprocess.Popen([str(GRADLE), ":axion-mod:runServer"], cwd=RACINE, env=environnement,

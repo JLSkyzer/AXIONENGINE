@@ -68,6 +68,19 @@ class PredictedTrackTest {
     }
 
     @Test
+    @DisplayName("R-1682, D5 : après une correction acceptée sans rejeu, la piste qui recule se résorbe, sans saut")
+    void acceptationLissee() {
+        PredictedTrack piste = piste(5);
+        double image = piste.sample(0.5, 1000).x();
+        // Acceptée sans rejeu : le monde prédit repart de l'état du serveur, en retard ; son premier pas arrive un
+        // bloc et demi derrière là où la piste en était.
+        piste.advanceAfterAcceptance(6, a(4.0), 1000);
+        assertEquals(image, piste.sample(0.0, 1000).x(), 1e-3, "l'image suivante part de là où l'autre était");
+        assertEquals(4.25, piste.sample(0.0, 1100).x(), 1e-3, "l'écart se résorbe en 200 ms");
+        assertEquals(4.0, piste.sample(0.0, 1000 + Interpolation.CORRECTION_MILLIS).x(), 1e-3);
+    }
+
+    @Test
     @DisplayName("21.7 : un écart au-delà de net.snap_threshold se téléporte")
     void teleportation() {
         PredictedTrack piste = piste(3);

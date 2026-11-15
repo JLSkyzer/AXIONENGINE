@@ -131,6 +131,10 @@ public final class ClientPrediction {
     private static final String PING_REFUSAL = "latence de ";
     /** D8 : le taux de corrections qui démentent la prédiction, sur une fenêtre glissante ; un par connexion. */
     private static CorrectionRate correctionRate = new CorrectionRate();
+    /** Une correction acceptée sans rejeu depuis le dernier pas : le pas suivant reprend la piste (R-1682, 6e). */
+    private static boolean acceptedSinceStep;
+    /** Les corrections acceptées sans rejeu depuis la connexion : la durée de leur réconciliation, les pas en attente. */
+    private static final java.util.List<long[]> acceptances = new java.util.ArrayList<>();
     /** Vrai quand une restauration n'a pu recoudre un joint : le monde prédit se recrée à la correction suivante. */
     private static boolean irreconcilable;
     /** La dernière cause journalisée d'une prédiction coupée ; vide si elle ne l'est pas. */
@@ -192,7 +196,10 @@ public final class ClientPrediction {
                             : AssemblyState.VariableValues.of(variables.values()));
             if (pose != null) {
                 double now = vehicle.localMillis(System.nanoTime());
-                if (liveStep) {
+                if (liveStep && acceptedSinceStep) {
+                    track.advanceAfterAcceptance(sequence, pose, now);
+                    acceptedSinceStep = false;
+                } else if (liveStep) {
                     track.advance(sequence, pose, now);
                 } else {
                     track.replay(sequence, pose, now);
@@ -299,7 +306,15 @@ public final class ClientPrediction {
         }
         long divergedBefore = prediction.replays() + prediction.accepted();
         long reconciledBefore = divergedBefore + prediction.matches();
-        prediction.reconcile(PORT, correction.serverTick(), correction.appliedSequence(), lastServerState);
+        Prediction.Reconciliation done =
+                prediction.reconcile(PORT, correction.serverTick(), correction.appliedSequence(), lastServerState);
+        // R-1682, précision 6e : acceptée sans rejeu, le monde prédit repart en retard ; son pas suivant se lisse.
+        if (done.outcome() == Prediction.Outcome.ACCEPTED) {
+            acceptedSinceStep = true;
+            if (acceptances.size() < 32) {
+                acceptances.add(new long[] {done.nanos(), prediction.pending()});
+            }
+        }
         if (prediction.replays() + prediction.accepted() + prediction.matches() > reconciledBefore) {
             correctionRate.record(prediction.replays() + prediction.accepted() > divergedBefore);
         }
@@ -430,6 +445,7 @@ public final class ClientPrediction {
         pacingWithheld = 0;
         trackSnaps = 0;
         trackLargestCorrection = 0;
+        acceptances.clear();
     }
 
     /** Une colonne se charge chez le client : les tuiles qui la couvrent se recoupent. */
@@ -628,6 +644,7 @@ public final class ClientPrediction {
             vehicle.predictView(null);
         }
         vehicle = null;
+        acceptedSinceStep = false;
         if (track != null) {
             trackSnaps += track.snaps();
             trackLargestCorrection = Math.max(trackLargestCorrection, track.largestCorrection());
@@ -805,6 +822,14 @@ public final class ClientPrediction {
      */
     public static long[] pacingAdjustments() {
         return new long[] {pacingAdded, pacingWithheld};
+    }
+
+    /**
+     * {@return les 32 premières corrections acceptées sans rejeu depuis la connexion (R-1682) : la durée de leur
+     * réconciliation en nanosecondes, puis les pas en attente} Une copie.
+     */
+    public static java.util.List<long[]> acceptances() {
+        return java.util.List.copyOf(acceptances);
     }
 
     /**
