@@ -1155,7 +1155,7 @@ pub struct ParticleSetDesc {
 ```rust
 #[repr(C)]
 pub struct AttachmentDesc {
-    pub kind:      u8,    // RIGID | HITCH | ROPE | WINCH | MAGNET | SEATED
+    pub kind:      u8,    // RIGID | HITCH | ROPE | WINCH | MAGNET (SEATED retiré, ADR-171 Q1, amendement A21)
     pub flags:     u8,    // AUTO_DETACH_ON_BREAK, TRANSFER_DAMAGE, TRANSFER_POWER
     pub _pad:      u16,
     pub a_assembly: AssemblyHandle, pub a_socket: u64,
@@ -2250,10 +2250,12 @@ Spécifié intégralement en **PARTIE 16**.
 
 **Purpose.** Lier deux assemblies entre elles de façon générique : remorquage, attelage, treuil, montage d'un module sur une machine, objet posé et fixé, personnage portant un équipement physique.
 
-**Modèle.** `AttachmentDesc` (DM-17) reliant deux sockets. Types : `RIGID` (joint fixe), `HITCH` (rotule limitée, attelage), `ROPE` (contrainte de distance), `WINCH` (corde à longueur variable pilotée), `MAGNET` (contrainte activable), `SEATED` (occupant).
+**Modèle.** `AttachmentDesc` (DM-17) reliant deux sockets. Types : `RIGID` (joint fixe), `HITCH` (rotule limitée, attelage), `ROPE` (contrainte de distance), `WINCH` (corde à longueur variable pilotée), `MAGNET` (contrainte activable). `SEATED` est retiré : une entité monte par les sièges (C-33), une assembly portée s'attache en `RIGID` (ADR-171 Q1, amendement A21).
 
 ```text
-- création : API publique, definition, ou interaction déclarative
+- création : API publique ou interaction déclarative ; la definition déclare ses sockets (schéma 6 : types
+  acceptés, forme et formes épousées, seuils de rupture, paramètres de chaque type, prise de force, ancrage au
+  monde ; ADR-171 D2, amendement A21)
 - le joint physique correspondant est créé par C-34
 - la rupture du joint détruit l'attache et émet un événement
 - TRANSFER_DAMAGE : une fraction déclarée de l'énergie d'impact traverse l'attache
@@ -2267,7 +2269,7 @@ Spécifié intégralement en **PARTIE 16**.
 
 **Budget.** Négligeable ; comptabilisé dans la physique.
 
-**Tests.** T-890 (remorquage : la remorque suit), T-891 (rupture au-delà de la force maximale), T-892 (cycle refusé), T-893 (chaîne de 8, stable), T-894 (persistance et rétablissement), T-895 (transfert de dommage à travers une attache).
+**Tests.** T-890 (remorquage : la remorque suit), T-891 (rupture au-delà de la force maximale), T-892 (cycle refusé), T-893 (chaîne de 8, stable), T-894 (persistance et rétablissement), T-895 (transfert de dommage à travers une attache, en M6 avec l'énergie d'impact de C-41 : ADR-171 Q3, amendement A21).
 
 ## 5.41 C-50 : Axion Entity
 
@@ -5677,7 +5679,7 @@ fermée du schéma s'étend par un registre de l'API (ADR-160 D5).
 - R-1780 : `schema` obligatoire ; valeur inconnue → refus (`E-7003`).
 - R-1781 : tous les champs sauf `schema`, `asset` et `kind` sont optionnels avec des défauts documentés. **Un objet déformable et destructible fonctionne avec `asset` + `kind` seuls**, grâce aux générations automatiques de C-28.
 - R-1782 : les actions d'interaction et les actions de `on_part_stage` forment des **listes fermées** (13.4, PARTIE 24).
-- R-1783 : le schéma JSON complet est publié dans `docs/schema/definition-1.json` et validé en CI contre toutes les definitions du dépôt ; chaque version suivante l'est de même (`definition-2.json`, `definition-3.json`, amendement A10 ; `definition-4.json` et sa section `tuning` — `ranges`, dont chaque plage contient la base et s'exprime dans l'unité de son paramètre, et `modifiers` (R-1087) —, puis `vehicle.controllers`, au plus huit contrôleurs qu'un mod enregistre, sur une definition qui a des roues, amendement A15 ; `definition-5.json`, ses `cameras` et son `dashboard`, R-1112, R-1114 et R-1115, amendement A20).
+- R-1783 : le schéma JSON complet est publié dans `docs/schema/definition-1.json` et validé en CI contre toutes les definitions du dépôt ; chaque version suivante l'est de même (`definition-2.json`, `definition-3.json`, amendement A10 ; `definition-4.json` et sa section `tuning` — `ranges`, dont chaque plage contient la base et s'exprime dans l'unité de son paramètre, et `modifiers` (R-1087) —, puis `vehicle.controllers`, au plus huit contrôleurs qu'un mod enregistre, sur une definition qui a des roues, amendement A15 ; `definition-5.json`, ses `cameras` et son `dashboard`, R-1112, R-1114 et R-1115, amendement A20 ; `definition-6.json` et ses sockets en objets, ADR-171 D2, amendement A21).
 
 ## 23.5 Contenu de démonstration
 
@@ -7336,7 +7338,7 @@ Livrable : véhicule pilotable en multijoueur avec prédiction ; remorquage.
 Acceptance : 10 tests véhicules ; montée/descente sûres ; entrées validées ;
              attaches persistées ; gouverneur baisse et remonte les niveaux avec
              cause affichée.
-Tests : T-320..T-329, T-415..T-417, T-440..T-444, T-570, T-890..T-895,
+Tests : T-320..T-329, T-415..T-417, T-440..T-444, T-570, T-890..T-894,
         T-980..T-984
 Et les capacités de l'ANNEXE A.7 affectées à M5 (R-2394).
 ```
@@ -7367,7 +7369,7 @@ Acceptance :
   - Q-0 à Q-4 tous fonctionnels et benchmarkés séparément (B-19)
   - refit budgété, collision cohérente à l'écart déclaré, jamais de trimesh
   - axion-cli deform identique au jeu
-Tests : T-800..T-819, T-830..T-849, T-851..T-858, B-18, B-19, B-21
+Tests : T-800..T-819, T-895, T-830..T-849, T-851..T-858, B-18, B-19, B-21
 ```
 
 ### M7 — Structure, rupture, détachement, réparation
@@ -7895,6 +7897,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A18 | 2026-11-14 | ADR-168 précision 6e, décisions de Killian | R-1683 : une prédiction coupée par sa latence se rétablit sous `net.prediction_reenable_ratio` × `net.prediction_max_ping` ; ANNEXE A.3 : `net.prediction_reenable_ratio` (0,9) ; 21.4 : protocole 10, la cadence des entrées réglée par le client (D3 révisé) |
 | A19 | 2026-11-14 | ADR-168 précision 6e (preuves) | R-1642 : `prediction_enabled` du handshake ; 21.4 : la fréquence et le contenu de `S2C_Correction` et de `C2S_Input` tels que livrés ; R-1682 : le lissage de la reprise ; R-1683 : le taux de corrections sur 100 et son nouvel essai ; R-1684 : la file des entrées au serveur ; ANNEXE A.3 : `net.prediction_max_corrections`, son défaut tiré d'une mesure (D10) |
 | A20 | 2026-11-15 | ADR-170, accepté par Killian | 12.10 : R-1111 à R-1115, les vues du véhicule, le tableau de bord et ses widgets ; R-910 : le rôle `camera` ; 5.25 : renvoi de C-33 ; R-1640 : le mod d'un widget nommé exigé des clients ; R-1770 : le budget d'un widget ; 23.3 : le widget du tableau de bord ; 23.4 : schéma de definition 5, `cameras` et `dashboard`, R-1783 ; A.1 : `E-1011` couvre un widget ; A.3 : section `[hud]` ; A.7 : CAP-10 tenue, CAP-11 tenue pour les widgets du tableau de bord ; CAP-37 : le cadrage de l'ensemble par la poursuite ; C-71 : `/axion defs info` dit les vues et le tableau de bord |
+| A21 | 2026-11-15 | ADR-171, accepté par Killian (en cours, tranche par tranche) | 5.40 et DM-17 : `SEATED` retiré ; la definition déclare ses sockets au schéma 6 ; R-1783 : `definition-6.json` ; T-895 passe en M6 (8a) |
 
 ---
 

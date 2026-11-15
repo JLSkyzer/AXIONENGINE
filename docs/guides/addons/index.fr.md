@@ -19,6 +19,7 @@ lire le reste de la documentation sans te perdre.
 | [5. Versions](versions.md) | Dire quelle version d'AXION il te faut, et ce que voit un joueur qui ne l'a pas | 5 min |
 | [6. Régler un véhicule](regler.md) | Changer le moteur, les freins ou le poids d'un seul véhicule, comme un kit d'amélioration | 15 min |
 | [7. Caméras et tableau de bord](cameras.md) | Les vues du véhicule, une caméra posée dans Blender, des jauges, un cadran dessiné en Java | 20 min |
+| [8. Attaches](attaches.md) | Les sockets de ton modèle : où il s'attelle, se remorque, s'ancre | 15 min |
 | [Glossaire](glossaire.md) | Les mots d'AXION, expliqués simplement | à garder sous la main |
 
 Les temps sont indicatifs : prends celui qu'il te faut.

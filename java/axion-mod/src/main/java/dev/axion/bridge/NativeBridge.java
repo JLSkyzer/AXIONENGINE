@@ -53,7 +53,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 25;
+    public static final int EXPECTED_ABI_VERSION = 26;
 
     /** Succès. */
     public static final int OK = 0;

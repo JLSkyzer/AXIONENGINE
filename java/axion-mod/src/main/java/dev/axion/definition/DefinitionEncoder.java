@@ -74,6 +74,9 @@ public final class DefinitionEncoder {
     /** Catégorie d'une référence à un os. */
     static final int CATEGORY_BONE = 2;
 
+    /** Catégorie d'une référence : un node de rôle socket (ADR-171 D2), {@code reference_category::SOCKET}. */
+    static final int CATEGORY_SOCKET = 3;
+
     /** Aucun rang, sur 32 bits : la racine de l'asset pour le corps racine. */
     private static final int NONE_U32 = -1;
 
@@ -264,6 +267,7 @@ public final class DefinitionEncoder {
             out.putLong(DefinitionIds.hash(reference.name()));
             out.put((byte) switch (reference.category()) {
                 case NODE -> CATEGORY_NODE;
+                case SOCKET_NODE -> CATEGORY_SOCKET;
                 case CLIP -> CATEGORY_CLIP;
                 default -> CATEGORY_BONE;
             });

@@ -22,7 +22,7 @@ use ax_model::dm::definition::{
 };
 use ax_model::dm::joints::JointDesc;
 use ax_model::dm::physics::{collider_flags, ColliderDesc, ColliderShape};
-use ax_model::dm::scene::{NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
+use ax_model::dm::scene::{node_flags, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 use ax_model::dm::vehicle::VehicleDesc;
 use ax_physics::{AssemblyBody, AssemblyJoint, CollisionGroups, SurfaceMount, WheelMount};
 
@@ -533,6 +533,19 @@ fn resolve(
                 .position(|node| node.name_hash == hash)
                 .map(|index| Some(index as u32)),
             reference_category::CLIP => clips.contains(&hash).then_some(None),
+            reference_category::SOCKET => {
+                match asset.nodes.iter().position(|node| node.name_hash == hash) {
+                    // ADR-171 D2 : le node d'un socket porte le rôle `socket` (R-912) ; un autre rôle se refuse en
+                    // le disant, plutôt que de laisser croire à un nom absent.
+                    Some(index) if asset.nodes[index].flags & node_flags::SOCKET == 0 => {
+                        return Err(Refusal::invalid(
+                            Some(rank),
+                            "ce node n'a pas le rôle socket (annotation axion.role = \"socket\")",
+                        ));
+                    }
+                    found => found.map(|index| Some(index as u32)),
+                }
+            }
             _ => asset
                 .bones
                 .iter()
@@ -541,7 +554,7 @@ fn resolve(
         };
         let Some(node) = found else {
             let table = match reference.category {
-                reference_category::NODE => "node",
+                reference_category::NODE | reference_category::SOCKET => "node",
                 reference_category::CLIP => "clip d'animation",
                 _ => "os",
             };
@@ -1066,6 +1079,35 @@ mod tests {
             },
         ]);
         assert!(compile(&definition, &view).is_ok());
+    }
+
+    #[test]
+    fn adr171_d2_le_node_d_un_socket_porte_le_role_socket() {
+        let mut nodes = chaine();
+        nodes[2].flags |= node_flags::SOCKET;
+        let colliders = [boite(), boite(), boite()];
+        let socket = |name: &str| DefinitionRef {
+            name_hash: name_hash(name),
+            category: reference_category::SOCKET,
+        };
+        let view = asset(&nodes, &colliders);
+        assert_eq!(
+            resolve(&[socket("porte")], &view, &[]).unwrap(),
+            [Some(2)],
+            "le socket se résout en son node"
+        );
+        let sans_role = resolve(&[nommer("base"), socket("caisse")], &view, &[]).unwrap_err();
+        assert_eq!(
+            (sans_role.code, sans_role.reference),
+            (E_DEFINITION_INVALID, Some(1))
+        );
+        assert!(
+            sans_role.message.contains("rôle socket"),
+            "{}",
+            sans_role.message
+        );
+        let absent = resolve(&[socket("attelage")], &view, &[]).unwrap_err();
+        assert!(absent.message.contains("aucun node"), "{}", absent.message);
     }
 
     #[test]

@@ -97,16 +97,20 @@ final class SchemaOne {
     /** Racine du schéma 5 (ADR-170) : le schéma 4, les vues du véhicule et son tableau de bord. */
     static final SchemaNode ROOT_FIVE = root(5);
 
+    /** Racine du schéma 6 (ADR-171) : le schéma 5, et les sockets d'attache en objets. */
+    static final SchemaNode ROOT_SIX = root(6);
+
 
     private SchemaOne() {}
 
     /**
      * {@return la racine du schéma {@code version}}
      *
-     * @param version 1, 2, 3, 4 ou 5
+     * @param version 1, 2, 3, 4, 5 ou 6
      */
     static SchemaNode rootOf(int version) {
         return switch (version) {
+            case 6 -> ROOT_SIX;
             case 5 -> ROOT_FIVE;
             case 4 -> ROOT_FOUR;
             case 3 -> ROOT_THREE;
@@ -215,6 +219,12 @@ final class SchemaOne {
                             .build(), MAX_GAUGES))
                     .opt("widgets", cap(id(), MAX_WIDGETS))
                     .build());
+        }
+        if (version >= 6) {
+            // ADR-171 D2 : un socket devient un objet ; son node, ou son nom sans node, se résout contre le modèle et
+            // porte le rôle socket (natif). Ce que JSON Schema n'exprime pas — un bloc de paramètres pour un type que
+            // le socket n'accepte pas, le treuil borné, les noms simples — se juge avec le socket (Sockets.check).
+            root.opt("sockets", cap(socket(), Sockets.MAX));
         }
         return root.build();
     }
@@ -649,7 +659,43 @@ final class SchemaOne {
         if (version >= 3) {
             interaction.opt("variable", refers(NameCategory.VARIABLE)).opt("value", any());
         }
+        if (version >= 6) {
+            // ADR-171 D4, CAP-16 : le socket qu'attach et detach visent, les types qu'attach permet, la distance où il
+            // cherche l'autre socket (attachment.snap_distance sans) ; jugés ensemble par Sockets.check.
+            interaction.opt("socket", refers(NameCategory.SOCKET))
+                    .opt("kinds", new Arr(oneOf(Sockets.KINDS.toArray(String[]::new)), 1, Sockets.KINDS.size(), true))
+                    .opt("distance", new Num(0.1, 16, false, false));
+        }
         return interaction.build();
+    }
+
+    /** ADR-171 D2 : un socket d'attache, au schéma 6. */
+    private static SchemaNode socket() {
+        SchemaNode length = new Num(0.1, 256, false, false);
+        return obj()
+                .req("name", declares(NameCategory.SOCKET))
+                .opt("node", refers(NameCategory.SOCKET_NODE))
+                .req("accepts", new Arr(oneOf(Sockets.KINDS.toArray(String[]::new)), 1, Sockets.KINDS.size(), true))
+                .opt("tag", text())
+                .opt("mates", cap(text(), 16))
+                .opt("max_force", positive())
+                .opt("max_torque", positive())
+                .opt("misalignment", new Num(0.001, 16, false, false))
+                .opt("anchor", bool())
+                .opt("hitch", obj().opt("cone", new Num(0, 180, false, false)).build())
+                .opt("rope", obj().opt("length", length).build())
+                .opt("winch", obj()
+                        .opt("speed", new Num(0, 20, false, false))
+                        .opt("min_length", length)
+                        .opt("max_length", length)
+                        .opt("variable", refers(NameCategory.VARIABLE))
+                        .build())
+                .opt("magnet", obj().opt("variable", refers(NameCategory.VARIABLE)).build())
+                .opt("transfer", obj()
+                        .opt("power", new Dict(new TextRule.Refers(NameCategory.VARIABLE), text(), 16))
+                        .opt("damage", new Num(0, 1, false, false))
+                        .build())
+                .build();
     }
 
     // Construction de l'arbre.

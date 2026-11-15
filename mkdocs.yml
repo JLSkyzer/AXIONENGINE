@@ -69,6 +69,7 @@ plugins:
             Versions: Versions
             Régler un véhicule: Tune a vehicle
             Caméras et tableau de bord: Vehicle cameras and dashboard
+            Attaches: Attachments
             Glossaire: Glossary
             Jouer et héberger: Play and host
             Configuration: Configuration
@@ -89,6 +90,7 @@ nav:
       - Versions: addons/versions.md
       - Régler un véhicule: addons/regler.md
       - Caméras et tableau de bord: addons/cameras.md
+      - Attaches: addons/attaches.md
       - Glossaire: addons/glossaire.md
   - Jouer et héberger:
       - Configuration: CONFIGURATION.md

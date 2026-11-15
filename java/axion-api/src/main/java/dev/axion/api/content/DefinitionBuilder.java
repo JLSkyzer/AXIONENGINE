@@ -1,5 +1,5 @@
 // Fichier généré par `cargo run -p axion-codegen --bin gen_definition_builder` depuis
-// docs/schema/definition-5.json (ADR-162 D4) : ne pas le modifier à la main. Le test de parité
+// docs/schema/definition-6.json (ADR-162 D4) : ne pas le modifier à la main. Le test de parité
 // parite_builder échoue s'il diverge du schéma.
 package dev.axion.api.content;
 
@@ -13,7 +13,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Le builder d'une definition (ADR-162 D3, D4) : une méthode par champ du schéma 5, dont il est généré.
+ * Le builder d'une definition (ADR-162 D3, D4) : une méthode par champ du schéma 6, dont il est généré.
  *
  * <p>Il produit le même document qu'un fichier JSON : {@link #build()} rend un {@link DefinitionDocument}
  * que {@link ContentRegistrar#register} enregistre, que le même schéma valide au chargement et dont
@@ -35,7 +35,7 @@ import java.util.function.Consumer;
 public final class DefinitionBuilder {
 
     /** La version du schéma que ce builder écrit dans le champ {@code schema}. */
-    public static final int SCHEMA = 5;
+    public static final int SCHEMA = 6;
 
     private final Map<String, Object> values = new LinkedHashMap<>();
 
@@ -587,14 +587,31 @@ public final class DefinitionBuilder {
     }
 
     /**
-     * {@code sockets} : déclare un nom (socket).
+     * {@code sockets} : au plus 32 éléments.
      *
-     * @param items les valeurs, dans l'ordre
+     * @param name le champ obligatoire {@code name}
+     * @param accepts le champ obligatoire {@code accepts}
+     * @param config règle l'élément, ajouté à la suite des précédents
      * @return ce réglage, pour enchaîner
      */
-    public DefinitionBuilder sockets(String... items) {
-        values.put("sockets", texts(items));
+    public DefinitionBuilder socket(String name, String[] accepts, Consumer<Socket> config) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("name", Objects.requireNonNull(name, "name"));
+        item.put("accepts", texts(Objects.requireNonNull(accepts, "accepts")));
+        Objects.requireNonNull(config, "config").accept(new Socket(item));
+        list(values, "sockets").add(item);
         return this;
+    }
+
+    /**
+     * {@code sockets} : au plus 32 éléments.
+     *
+     * @param name le champ obligatoire {@code name}
+     * @param accepts le champ obligatoire {@code accepts}
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder socket(String name, String[] accepts) {
+        return socket(name, accepts, item -> { });
     }
 
     /**
@@ -1836,6 +1853,28 @@ public final class DefinitionBuilder {
         }
 
         /**
+         * {@code interaction[].distance} : au moins 0.1 ; au plus 16.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Interaction distance(double value) {
+            values.put("distance", value);
+            return this;
+        }
+
+        /**
+         * {@code interaction[].kinds} : au moins 1 élément ; au plus 5 éléments.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public Interaction kinds(String... items) {
+            values.put("kinds", texts(items));
+            return this;
+        }
+
+        /**
          * {@code interaction[].node} : nom (node) dans le modèle.
          *
          * @param value la valeur
@@ -1854,6 +1893,17 @@ public final class DefinitionBuilder {
          */
         public Interaction seat(String value) {
             values.put("seat", Objects.requireNonNull(value, "seat"));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].socket} : nom (socket) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Interaction socket(String value) {
+            values.put("socket", Objects.requireNonNull(value, "socket"));
             return this;
         }
 
@@ -4308,6 +4358,332 @@ public final class DefinitionBuilder {
          */
         public Seat role(String value) {
             values.put("role", Objects.requireNonNull(value, "role"));
+            return this;
+        }
+    }
+
+    /** {@code sockets[].hitch}. */
+    @Experimental
+    public static final class SocketHitch {
+
+        private final Map<String, Object> values;
+
+        private SocketHitch(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code sockets[].hitch.cone} : au moins 0 ; au plus 180.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public SocketHitch cone(double value) {
+            values.put("cone", value);
+            return this;
+        }
+    }
+
+    /** {@code sockets[].magnet}. */
+    @Experimental
+    public static final class SocketMagnet {
+
+        private final Map<String, Object> values;
+
+        private SocketMagnet(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code sockets[].magnet.variable} : nom (variable) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public SocketMagnet variable(String value) {
+            values.put("variable", Objects.requireNonNull(value, "variable"));
+            return this;
+        }
+    }
+
+    /** {@code sockets[].rope}. */
+    @Experimental
+    public static final class SocketRope {
+
+        private final Map<String, Object> values;
+
+        private SocketRope(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code sockets[].rope.length} : au moins 0.1 ; au plus 256.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public SocketRope length(double value) {
+            values.put("length", value);
+            return this;
+        }
+    }
+
+    /** {@code sockets[].transfer}. */
+    @Experimental
+    public static final class SocketTransfer {
+
+        private final Map<String, Object> values;
+
+        private SocketTransfer(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code sockets[].transfer.damage} : au moins 0 ; au plus 1.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public SocketTransfer damage(double value) {
+            values.put("damage", value);
+            return this;
+        }
+
+        /**
+         * {@code sockets[].transfer.power}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public SocketTransfer power(String name, String value) {
+            Map<String, Object> table = object(values, "power");
+            table.put(Objects.requireNonNull(name, "name"), Objects.requireNonNull(value, "power"));
+            return this;
+        }
+    }
+
+    /** {@code sockets[].winch}. */
+    @Experimental
+    public static final class SocketWinch {
+
+        private final Map<String, Object> values;
+
+        private SocketWinch(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code sockets[].winch.max_length} : au moins 0.1 ; au plus 256.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public SocketWinch maxLength(double value) {
+            values.put("max_length", value);
+            return this;
+        }
+
+        /**
+         * {@code sockets[].winch.min_length} : au moins 0.1 ; au plus 256.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public SocketWinch minLength(double value) {
+            values.put("min_length", value);
+            return this;
+        }
+
+        /**
+         * {@code sockets[].winch.speed} : au moins 0 ; au plus 20.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public SocketWinch speed(double value) {
+            values.put("speed", value);
+            return this;
+        }
+
+        /**
+         * {@code sockets[].winch.variable} : nom (variable) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public SocketWinch variable(String value) {
+            values.put("variable", Objects.requireNonNull(value, "variable"));
+            return this;
+        }
+    }
+
+    /** {@code sockets[]}. */
+    @Experimental
+    public static final class Socket {
+
+        private final Map<String, Object> values;
+
+        private Socket(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code sockets[].accepts} : au moins 1 élément ; au plus 5 éléments.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket accepts(String... items) {
+            values.put("accepts", texts(items));
+            return this;
+        }
+
+        /**
+         * {@code sockets[].anchor}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket anchor(boolean value) {
+            values.put("anchor", value);
+            return this;
+        }
+
+        /**
+         * {@code sockets[].hitch}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket hitch(Consumer<SocketHitch> config) {
+            Map<String, Object> nested = object(values, "hitch");
+            Objects.requireNonNull(config, "config").accept(new SocketHitch(nested));
+            return this;
+        }
+
+        /**
+         * {@code sockets[].magnet}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket magnet(Consumer<SocketMagnet> config) {
+            Map<String, Object> nested = object(values, "magnet");
+            Objects.requireNonNull(config, "config").accept(new SocketMagnet(nested));
+            return this;
+        }
+
+        /**
+         * {@code sockets[].mates} : au plus 16 éléments.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket mates(String... items) {
+            values.put("mates", texts(items));
+            return this;
+        }
+
+        /**
+         * {@code sockets[].max_force} : plus de 0.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket maxForce(double value) {
+            values.put("max_force", value);
+            return this;
+        }
+
+        /**
+         * {@code sockets[].max_torque} : plus de 0.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket maxTorque(double value) {
+            values.put("max_torque", value);
+            return this;
+        }
+
+        /**
+         * {@code sockets[].misalignment} : au moins 0.001 ; au plus 16.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket misalignment(double value) {
+            values.put("misalignment", value);
+            return this;
+        }
+
+        /**
+         * {@code sockets[].name} : déclare un nom (socket).
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket name(String value) {
+            values.put("name", Objects.requireNonNull(value, "name"));
+            return this;
+        }
+
+        /**
+         * {@code sockets[].node} : nom (socket_node) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket node(String value) {
+            values.put("node", Objects.requireNonNull(value, "node"));
+            return this;
+        }
+
+        /**
+         * {@code sockets[].rope}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket rope(Consumer<SocketRope> config) {
+            Map<String, Object> nested = object(values, "rope");
+            Objects.requireNonNull(config, "config").accept(new SocketRope(nested));
+            return this;
+        }
+
+        /**
+         * {@code sockets[].tag}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket tag(String value) {
+            values.put("tag", Objects.requireNonNull(value, "tag"));
+            return this;
+        }
+
+        /**
+         * {@code sockets[].transfer}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket transfer(Consumer<SocketTransfer> config) {
+            Map<String, Object> nested = object(values, "transfer");
+            Objects.requireNonNull(config, "config").accept(new SocketTransfer(nested));
+            return this;
+        }
+
+        /**
+         * {@code sockets[].winch}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Socket winch(Consumer<SocketWinch> config) {
+            Map<String, Object> nested = object(values, "winch");
+            Objects.requireNonNull(config, "config").accept(new SocketWinch(nested));
             return this;
         }
     }

@@ -1,5 +1,5 @@
 {
-  "schema": 5,
+  "schema": 6,
   "asset": "axion:models/example/buggy.glb",
   "kind": "vehicle",
 
@@ -103,7 +103,10 @@
     }
   },
 
-  "sockets": ["attelage"],
+  "sockets": [
+    { "name": "attelage", "accepts": ["hitch", "rope"], "tag": "ball_50", "max_force": 40000.0,
+      "hitch": { "cone": 40.0 } }
+  ],
 
   "procedural": [
     { "node": "attelage", "channel": "translation", "axis": "z",

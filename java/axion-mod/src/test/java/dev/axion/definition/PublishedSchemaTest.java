@@ -154,6 +154,38 @@ class PublishedSchemaTest {
     }
 
     @Test
+    @DisplayName("T-284 : docs/schema/definition-6.json est le rendu exact du schéma 6 (ADR-171)")
+    void schemaSixPublieAJour() throws IOException {
+        Path file = property("axion.schema6.file");
+        String rendu = SchemaExport.render(6);
+
+        if (Boolean.getBoolean("axion.schema.update")) {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, rendu, StandardCharsets.UTF_8);
+        }
+
+        assertTrue(Files.isReadable(file), () -> "schéma publié absent : " + file);
+        String publie = Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        assertEquals(rendu, publie,
+                "le schéma 6 publié a divergé du validateur ; le régénérer avec :\n"
+                        + "  ./gradlew :axion-mod:test --tests dev.axion.definition.PublishedSchemaTest"
+                        + " -Daxion.schema.update=true");
+    }
+
+    @Test
+    @DisplayName("ADR-171 D2 : au schéma 6 un socket est un objet qui nomme ses types ; au schéma 5, un nom")
+    void contraintesDuSchemaSix() {
+        JsonObject six = JsonParser.parseString(SchemaExport.render(6)).getAsJsonObject()
+                .getAsJsonObject("properties");
+        JsonObject cinq = JsonParser.parseString(SchemaExport.render(5)).getAsJsonObject()
+                .getAsJsonObject("properties");
+        JsonObject socket = six.getAsJsonObject("sockets").getAsJsonObject("items");
+        assertEquals("object", socket.get("type").getAsString());
+        assertTrue(socket.getAsJsonArray("required").toString().contains("accepts"), socket::toString);
+        assertEquals("string", cinq.getAsJsonObject("sockets").getAsJsonObject("items").get("type").getAsString());
+    }
+
+    @Test
     @DisplayName("ADR-170 D3 : le schéma 5 porte les vues et le tableau de bord ; le schéma 4 ne les porte pas")
     void contraintesDuSchemaCinq() {
         JsonObject cinq = JsonParser.parseString(SchemaExport.render(5)).getAsJsonObject()

@@ -66,6 +66,9 @@ public final class DefinitionRegistry {
     /** Schéma de definition 5 (ADR-170) : les vues du véhicule ({@code cameras}) et son tableau de bord. */
     public static final int SCHEMA_FIVE = 5;
 
+    /** Schéma de definition 6 (ADR-171) : les sockets d'attache en objets, et les paramètres d'attach et detach. */
+    public static final int SCHEMA_SIX = 6;
+
     /** Espace de noms d'une {@code ResourceLocation}. */
     static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]+");
 
@@ -368,11 +371,12 @@ public final class DefinitionRegistry {
                 && number.compareTo(BigDecimal.valueOf(SCHEMA_TWO)) != 0
                 && number.compareTo(BigDecimal.valueOf(SCHEMA_THREE)) != 0
                 && number.compareTo(BigDecimal.valueOf(SCHEMA_FOUR)) != 0
-                && number.compareTo(BigDecimal.valueOf(SCHEMA_FIVE)) != 0) {
+                && number.compareTo(BigDecimal.valueOf(SCHEMA_FIVE)) != 0
+                && number.compareTo(BigDecimal.valueOf(SCHEMA_SIX)) != 0) {
             throw DefinitionException.unknownSchema(
                     "$.schema", "version " + number.toPlainString() + " inconnue, seules "
-                            + SCHEMA + ", " + SCHEMA_TWO + ", " + SCHEMA_THREE + ", " + SCHEMA_FOUR + " et " + SCHEMA_FIVE
-                            + " sont lues");
+                            + SCHEMA + ", " + SCHEMA_TWO + ", " + SCHEMA_THREE + ", " + SCHEMA_FOUR + ", " + SCHEMA_FIVE
+                            + " et " + SCHEMA_SIX + " sont lues");
         }
         return number.intValueExact();
     }

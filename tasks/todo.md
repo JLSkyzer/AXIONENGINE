@@ -3885,7 +3885,15 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            - [x] 7e (2026-11-15) — guide « Caméras et tableau de bord » (FR, EN), CDC amendement A20 (12.10,
                  R-1111..R-1115, R-910), `/axion defs info` dit les vues ; CAP-10 tenue. Reste : confirmer par un
                  export Blender réel l'axe de regard d'un empty (flèche Y), puis fusionner `wip/cap-10`.
-  8. C-48 attaches : remorquage, ancrage au monde (CAP-15, CAP-16).
+  8. C-48 attaches : remorquage, ancrage au monde (CAP-15, CAP-16), et l'ensemble attaché (CAP-37) —
+     **ADR-171 accepté le 2026-11-15**, branche `wip/c-48`, doc dans chaque commit :
+     - [x] 8a (2026-11-15) — schéma 6 : sockets en objets (types, forme, seuils, treuil, aimant, prise de
+           force, ancrage), `attach`/`detach` paramétrés, rôle socket vérifié au natif (ABI 26), builder.
+     - [ ] 8b — physique : joints entre deux assemblies et vers le monde, commandes, rapports, rupture.
+     - [ ] 8c — serveur et API : graphe (E-8030, max_chain), `Attachments`, interaction, treuil, prise de force,
+           sources attach.* et socket.*, ancrage ; GameTests T-890 à T-893.
+     - [ ] 8d — sauvegarde, réseau, rendu : `axion:atts`, suspension (T-894), protocole 11, cordes ; film.
+     - [ ] 8e — l'ensemble (CAP-37) : prédiction, sommeil et déchargement communs, poursuite.
   9. C-77 gouverneur, C-73 overlay.
   10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).
 - **Suite décidée par Killian, dans cet ordre** :

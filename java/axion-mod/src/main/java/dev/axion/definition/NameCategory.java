@@ -40,6 +40,8 @@ enum NameCategory {
     GAUGE("jauge", true),
     /** Node de l'asset. */
     NODE("node", false),
+    /** Node de l'asset qui porte le rôle {@code socket} (ADR-171 D2) : le natif l'exige à la résolution. */
+    SOCKET_NODE("node de rôle socket", false),
     /** Mesh de l'asset. */
     MESH("mesh", false),
     /** Région de déformation, déclarée par l'asset ou générée par C-28. */

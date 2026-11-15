@@ -106,6 +106,7 @@ pub const SINGULARS: &[(&str, &str)] = &[
     ("parts", "part"),
     ("ranges", "range"),
     ("seats", "seat"),
+    ("sockets", "socket"),
     ("structural_links", "structural_link"),
     ("surfaces", "surface"),
     ("variables", "variable"),
@@ -738,15 +739,23 @@ fn required(obj: &Value, path: &str) -> Result<Vec<Param>, String> {
         let prop = obj
             .pointer(&format!("/properties/{key}"))
             .ok_or_else(|| format!("{path} : {key} requis mais absent des propriétés"))?;
-        let Shape::Scalar(s) = shape(prop, &format!("{path}.{key}"))? else {
-            return Err(format!(
-                "{path}.{key} : champ obligatoire qui n'est pas un scalaire"
-            ));
-        };
         let param = camel(key);
+        // Un scalaire, ou une liste de scalaires (ADR-171 D2 : les types qu'un socket accepte), passée en tableau.
+        let (java, stored) = match shape(prop, &format!("{path}.{key}"))? {
+            Shape::Scalar(s) => (s.java(), s.stored(&param, key)),
+            Shape::ScalarArray(s) => (
+                array_java(s),
+                format!("{}(Objects.requireNonNull({param}, \"{key}\"))", array_helper(s)),
+            ),
+            _ => {
+                return Err(format!(
+                    "{path}.{key} : champ obligatoire qui n'est ni un scalaire ni une liste de scalaires"
+                ))
+            }
+        };
         params.push(Param {
-            java: s.java(),
-            stored: s.stored(&param, key),
+            java,
+            stored,
             name: param,
             key: key.to_owned(),
         });
@@ -933,6 +942,16 @@ fn path_call(key: &str, keys: &[String]) -> String {
         format!("object(values, \"{key}\")")
     } else {
         format!("path(values, \"{key}\", {})", keys.join(", "))
+    }
+}
+
+/// Le type Java d'un champ obligatoire qui est une liste de scalaires.
+fn array_java(s: Scalar) -> &'static str {
+    match s {
+        Scalar::Number => "double[]",
+        Scalar::Integer => "long[]",
+        Scalar::Boolean => "boolean[]",
+        Scalar::Text | Scalar::NullableText => "String[]",
     }
 }
 

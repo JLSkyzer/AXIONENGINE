@@ -59,8 +59,11 @@ pub mod reference_category {
     pub const CLIP: u8 = 1;
     /// Un os du squelette (DM-10), par `BoneDesc::name_hash`.
     pub const BONE: u8 = 2;
+    /// Un node de rôle `socket` (DM-03, `node_flags::SOCKET`), par `NodeDesc::name_hash` : le node d'un socket
+    /// d'attache (ADR-171 D2). Un node du même nom sans ce rôle est refusé.
+    pub const SOCKET: u8 = 3;
     /// La dernière catégorie connue.
-    pub const LAST: u8 = BONE;
+    pub const LAST: u8 = SOCKET;
 }
 
 /// Drapeaux de [`DefinitionPart`], champ `flags`.

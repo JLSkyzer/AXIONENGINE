@@ -102,6 +102,9 @@ final class DefinitionChecker {
         if (checker.version >= 5 && checker.issues.isEmpty()) {
             Cameras.check(root, checker::invalid);
         }
+        if (checker.version >= 6 && checker.issues.isEmpty()) {
+            Sockets.check(root, checker::invalid);
+        }
         return List.copyOf(checker.issues);
     }
 
@@ -129,8 +132,18 @@ final class DefinitionChecker {
         List<AssetReference> found = new ArrayList<>();
         for (Reference reference : checker.references) {
             NameCategory category = reference.category();
-            if (category == NameCategory.NODE || category == NameCategory.CLIP || category == NameCategory.BONE) {
+            if (category == NameCategory.NODE || category == NameCategory.SOCKET_NODE
+                    || category == NameCategory.CLIP || category == NameCategory.BONE) {
                 found.add(new AssetReference(category, reference.name(), reference.path()));
+            }
+        }
+        // ADR-171 D2 : au schéma 6, un socket sans node porte le nom de son node, qui a le rôle socket.
+        if (checker.version >= 6 && root.get("sockets") instanceof JsonArray sockets) {
+            for (int i = 0; i < sockets.size(); i++) {
+                if (sockets.get(i) instanceof JsonObject socket && string(socket, "node") == null) {
+                    found.add(new AssetReference(NameCategory.SOCKET_NODE, string(socket, "name"),
+                            "$.sockets[" + i + "].name"));
+                }
             }
         }
         // ADR-159 : une roue déclare son nom, qui est celui d'un node de l'asset.
@@ -333,6 +346,9 @@ final class DefinitionChecker {
     private static int versionOf(JsonObject root) {
         if (root.get("schema") instanceof JsonPrimitive schema && schema.isNumber()) {
             double number = schema.getAsDouble();
+            if (number == 6) {
+                return 6;
+            }
             if (number == 5) {
                 return 5;
             }

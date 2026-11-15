@@ -56,7 +56,8 @@ use ax_physics::{
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 25 depuis les proxies du monde prédit (ADR-168,
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 26 depuis le socket d'attache résolu contre le
+/// modèle (ADR-171 D2) : catégorie de référence `SOCKET` de `DEFN`. 25 depuis les proxies du monde prédit (ADR-168,
 /// précision 6c-C2) : drapeau `KINEMATIC` de `CREATE_ASSEMBLY` et opcode `SET_ASSEMBLY_POSE`. 24 depuis la prédiction
 /// (ADR-168 D1) : opcodes
 /// `SET_SIM_MODE`, `SET_STATE_EXPORT` et `SET_ASSEMBLY_STATE`, et l'état complet des assemblies exportées dans `SIM_OUT`
@@ -77,7 +78,7 @@ use ax_physics::{
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 25;
+pub const AXION_ABI_VERSION: u32 = 26;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;

@@ -76,7 +76,8 @@ class DefinitionBuilderTest {
                         .modifier("sport_couple", "engine.torque", "multiply_base", "sport", m -> m.values(0, 0.3))
                         .modifier("sport_regime", "engine.max_rpm", "add", "sport", m -> m.values(0, 500))
                         .modifier("sport_pneus", "tires.grip", "multiply_base", "sport", m -> m.values(0, 0.2)))
-                .sockets("attelage")
+                .socket("attelage", new String[] {"hitch", "rope"}, s -> s.tag("ball_50").maxForce(40000.0)
+                        .hitch(h -> h.cone(40.0)))
                 .procedural("translation", "var.attelage_sorti", p -> p.node("attelage").axis("z").scale(0.2))
                 .procedural("rotation", "vehicle.steer", p -> p.node("volant").axis("y").scale(-3.0))
                 .procedural("emissive", "world.time", p -> p.node("phares")
@@ -156,7 +157,7 @@ class DefinitionBuilderTest {
                 .physics(p -> p.ccd(true))
                 .variable("v", "bool", v -> v.persist(true))
                 .variable("v", "bool", v -> v.default_(true))
-                .sockets("a")
+                .socket("a", new String[] {"rigid"})
                 .body("b1")
                 .body("b2")
                 .onPartStage("capot", "destroyed", a -> a.hideNode("capot").setVariable("x", 1.0))
@@ -170,8 +171,8 @@ class DefinitionBuilderTest {
         assertEquals(Map.of("hide_node", "capot", "set_variable", Map.of("x", 1.0)),
                 ((Map<?, ?>) ((Map<?, ?>) racine.get("on_part_stage")).get("capot")).get("destroyed"));
         assertEquals(Map.of("monmod:reglage", 3.5), racine.get("custom"));
-        assertEquals(5L, racine.get("schema"));
-        assertEquals(5, DefinitionBuilder.SCHEMA);
+        assertEquals(6L, racine.get("schema"));
+        assertEquals(6, DefinitionBuilder.SCHEMA);
     }
 
     @Test
