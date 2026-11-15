@@ -3882,7 +3882,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            - [x] 7c (2026-11-15) — le tableau de bord par défaut et les jauges, options du client (`[hud]`).
            - [x] 7d (2026-11-15) — `DashboardWidget`, `DashboardCanvas`, `registerDashboardWidget`, budget mesuré
                  (p50 72 µs) ; compte-tours de l'addon témoin, GameTest en CI.
-           - [ ] 7e — guide créateur, CDC (rôle `camera` en R-910, section de C-33, A.3, amendement), traductions.
+           - [x] 7e (2026-11-15) — guide « Caméras et tableau de bord » (FR, EN), CDC amendement A20 (12.10,
+                 R-1111..R-1115, R-910), `/axion defs info` dit les vues ; CAP-10 tenue. Reste : confirmer par un
+                 export Blender réel l'axe de regard d'un empty (flèche Y), puis fusionner `wip/cap-10`.
   8. C-48 attaches : remorquage, ancrage au monde (CAP-15, CAP-16).
   9. C-77 gouverneur, C-73 overlay.
   10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).

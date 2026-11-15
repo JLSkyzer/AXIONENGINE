@@ -2031,7 +2031,7 @@ Sources de collider par priorité : extras du node → definition → générati
 
 ## 5.25 C-33 : Vehicle System
 
-Spécifié en **PARTIE 12**.
+Spécifié en **PARTIE 12** ; ses vues et son tableau de bord en 12.10 (ADR-170, amendement A20).
 
 **Tests.** T-320..T-329.
 
@@ -2830,7 +2830,7 @@ mesh (défaut) | collider | wheel | seat | socket | light | part_root |
 damage_zone | deform_region | cloth_anchor | particle_set | internal | hidden
 ```
 
-- R-910 : un node de rôle `collider`, `socket`, `damage_zone`, `deform_region`, `cloth_anchor` n'est jamais rendu.
+- R-910 : un node de rôle `collider`, `socket`, `damage_zone`, `deform_region`, `cloth_anchor` ou `camera` n'est jamais rendu ; un node `camera` n'a pas non plus de collision (ADR-170 D3, amendement A20).
 - R-911 : un extras inconnu est **conservé** en section `EXTR` et exposé à l'API, jamais interprété.
 - R-912 : un extras invalide produit un avertissement et le défaut, sauf s'il rend l'asset incohérent (`E-3009`).
 - R-913 : **aucune annotation n'est obligatoire.** Un GLB brut produit un asset complet grâce aux générations automatiques de C-28. Les annotations contrôlent, elles n'activent pas.
@@ -3381,6 +3381,48 @@ T-961  passage de roue enfoncé -> décalage d'ancrage borné puis JAMMED
 T-962  pneu endommagé -> adhérence et rayon réduits selon la definition
 T-963  déformation -> augmentation bornée de la traînée
 ```
+
+## 12.10 Vues et tableau de bord
+
+Ce que voit l'occupant d'un véhicule : ses vues et son tableau de bord (ADR-170, CAP-10, CAP-11 ; amendement A20).
+Tout se passe chez le client : rien ne se réplique ni ne se sauvegarde, le serveur n'en sait rien.
+
+- R-1111 : **les vues.** Chaque siège a des vues que la touche de perspective du joueur (F5, telle qu'il l'a assignée)
+  fait défiler, dans l'ordre de la definition ; à pied, elle reste celle de Minecraft, et en descendant la perspective
+  d'avant la montée revient. La vue choisie se garde, chez le client, par definition et par siège, le temps de la
+  session. Trois sortes : `cockpit` (l'œil de l'occupant, ou le node du siège décalé de `eye`), `follow` (derrière le
+  véhicule, dans le sens de sa vitesse quand il roule et de son cap à l'arrêt ou en marche arrière, lissée sur
+  `smoothing_ms`, orbitée à la souris et recentrée après `recenter_ms` sans mouvement, rapprochée par un bloc entre le
+  véhicule et elle) et `fixed` (un node du modèle, qui regarde le long de son −Z, son haut sur +Y). Sans `cameras`,
+  chaque siège a `cockpit` et une poursuite de recul 3 + 1,6 × la plus grande dimension horizontale de l'emprise,
+  hauteur 1 + 0,45 × la même.
+- R-1112 : **la déclaration** (schéma de definition 5, 23.4) : `cameras` remplace les vues par défaut ; 16 vues au plus,
+  noms uniques ; `distance` 0,5 à 64 m, `height` -8 à 32 m, `fov` 30 à 110°, `smoothing_ms` et `recenter_ms` 0 à 5 000,
+  `look.yaw` et `look.pitch` 0 à 180°, `eye` dans ±4 m. Un champ d'une autre sorte (`eye` hors `cockpit`, `node` hors
+  `fixed`, recul ou lissage hors `follow`) est refusé et nommé, jamais ignoré ; une vue `fixed` nomme un node du modèle.
+  Sans `look`, le regard est libre au cockpit et figé sur une vue fixe.
+- R-1113 : **sans Mixin** (R-1910, R-1920) : la position de la caméra se pose dans `ViewportEvent.ComputeCameraAngles` par
+  `Camera.setPosition(double, double, double)` (SRG `m_90584_`), appelée par réflexion, le champ de vision dans
+  `ComputeFov`, à la pose dessinée de l'image ; seulement pour la vue du joueur lui-même. Si la méthode manque, `follow`
+  et `fixed` se replient sur la troisième personne de Minecraft orientée par AXION, et le journal le dit une fois. Un
+  autre mod qui pose la caméra après AXION l'emporte : les vues s'effacent pour la session, et le journal le dit une fois
+  (R-1912).
+- R-1114 : **le tableau de bord.** Le défaut (vitesse dans l'unité du joueur, régime, rapport) s'affiche au conducteur
+  seul, sauf `dashboard.seats` ; `dashboard.default: false` le retire. Les jauges déclarées (`dial`, `bar`, `text`,
+  `light`, 32 au plus) lisent une source de la grammaire des sources procédurales (ANNEXE A.4) ; `dial` et `bar` exigent
+  `min` < `max` ; un voyant s'allume à `min`, 0,5 sans ; le libellé est une clé de traduction. Sans `offset`, les
+  éléments d'une même ancre s'empilent sans recouvrir la barre d'objets. Les valeurs sont celles que voit le client :
+  prédites pour le conducteur (R-1680), interpolées pour un passager. Le joueur le masque, le met à l'échelle et choisit
+  l'unité de vitesse (ANNEXE A.3, `[hud]`) ; F1 le masque avec le reste de l'interface.
+- R-1115 : **les widgets** (CAP-11) : un mod enregistre un `DashboardWidget` (`ContentRegistrar.registerDashboardWidget`,
+  23.3), qui dessine à chaque image sur une `DashboardCanvas` — rectangles, segments, texte, texte traduit, textures du
+  mod —, sans classe cliente de Minecraft, à partir de la `VehicleView` que voit le joueur. Une definition le nomme dans
+  `dashboard.widgets` (16 au plus) ; un widget qu'aucun mod n'enregistre la refuse, et son mod est exigé des clients
+  (R-1640). Son coût est isolé (R-1770) : `hud.widget_budget_ns` par image, vingt fautes consécutives — dépassements ou
+  exceptions — le désactivent pour la session (`E-1011`).
+
+**Tests.** `CamerasTest`, `ViewRigTest`, `DashboardTest`, `DashboardWidgetsTest`, `DefinitionBuilderTest` (schéma 5) ;
+GameTest `tachometerDrawsTheEngine` de l'addon témoin ; en jeu, le film des vues (`runFilmVues`).
 
 ---
 # PARTIE 13 : IMPACTS, ÉNERGIE ET MODÈLE DE DOMMAGE
@@ -5042,7 +5084,7 @@ C2S_Handshake (ADR-150 D4) :
   missing_controllers u16 | missing_controllers × controller_id str  (ceux qu'il n'enregistre pas)
 ```
 
-- R-1640 : si un hash diffère, le serveur envoie les données correspondantes (definitions, matériaux, sources de dégâts) compressées avant l'entrée en jeu. Les **assets** ne transitent jamais par le réseau : ils viennent des mods installés chez le client, qui les enregistrent ; un resource pack n'en remplace que l'apparence (ADR-162 D5, amendement A8). Le serveur exige donc du client chaque mod propriétaire d'une entrée de son contenu, dans la même version : un addon absent, ou d'une autre version, refuse la connexion avant l'entrée en jeu, par un message qui nomme chaque addon en cause, la version attendue et celle du client (ADR-165 D1 à D3, amendement A12). De même, un contrôleur de véhicule que les definitions du serveur nomment et que le client n'enregistre pas refuse la connexion en le nommant (ADR-167 Q7, amendement A15). Un asset manquant d'un addon présent produit l'asset de secours et un avertissement, jamais une déconnexion.
+- R-1640 : si un hash diffère, le serveur envoie les données correspondantes (definitions, matériaux, sources de dégâts) compressées avant l'entrée en jeu. Les **assets** ne transitent jamais par le réseau : ils viennent des mods installés chez le client, qui les enregistrent ; un resource pack n'en remplace que l'apparence (ADR-162 D5, amendement A8). Le serveur exige donc du client chaque mod propriétaire d'une entrée de son contenu, dans la même version : un addon absent, ou d'une autre version, refuse la connexion avant l'entrée en jeu, par un message qui nomme chaque addon en cause, la version attendue et celle du client (ADR-165 D1 à D3, amendement A12). De même, un contrôleur de véhicule que les definitions du serveur nomment et que le client n'enregistre pas refuse la connexion en le nommant (ADR-167 Q7, amendement A15) ; le mod d'un widget du tableau de bord qu'elles nomment est exigé comme propriétaire de leur contenu (ADR-170 D6, amendement A20). Un asset manquant d'un addon présent produit l'asset de secours et un avertissement, jamais une déconnexion.
 - R-1642 : `prediction_enabled` porte `server.allow_client_prediction` : un client ne prédit que si le serveur le permet (ADR-168, amendement A19).
 - R-1641 : `deform_quant_policy` garantit que les deux côtés quantifient identiquement. Une divergence de politique désactive la reconstruction et bascule sur les instantanés (mode dégradé, journalisé).
 
@@ -5523,6 +5565,7 @@ public interface PartView {
 | Source procédurale | `ProceduralSourceProvider` | `axion:procedural_source` |
 | Contrôleur de véhicule | `VehicleController`, `ContentRegistrar.registerController` ; nommé par `vehicle.controllers` ou attaché par `VehicleControl.attach` (ADR-167 D9, amendement A15) | `axion:vehicle_controller` |
 | Paramètre d'addon | `ContentRegistrar.registerParameter` : il existe là où un contrôleur de son mod est attaché (ADR-167 D1, Q6) | — |
+| Widget du tableau de bord | `DashboardWidget`, `ContentRegistrar.registerDashboardWidget` ; nommé par `dashboard.widgets` (R-1115, ADR-170 D6, amendement A20) | `axion:dashboard_widget` |
 | **Modèle de dommage** | `DamageDistributor` (remplace la répartition 13.3) | `axion:damage_distributor` |
 | **Noyau de déformation** | `DeformationKernel` (`@Experimental`, doit rester déterministe) | `axion:deformation_kernel` |
 | Hook de rendu | `AssemblyRenderHook` (client) | `axion:render_hook` |
@@ -5531,7 +5574,7 @@ public interface PartView {
 Un JSON n'est jamais lu dans un datapack : le mod qui le livre l'enregistre (ADR-162, amendement A8) ; chaque liste
 fermée du schéma s'étend par un registre de l'API (ADR-160 D5).
 
-- R-1770 : une extension tierce est **isolée** : son coût est mesuré séparément et son dépassement répété du budget la désactive avec un message la nommant. Pour un contrôleur de véhicule : `vehicle.controller_budget_ns` par appel, `vehicle.controller_strikes` fautes consécutives — dépassements ou exceptions —, puis `E-1011` (ADR-167 D9, amendement A15).
+- R-1770 : une extension tierce est **isolée** : son coût est mesuré séparément et son dépassement répété du budget la désactive avec un message la nommant. Pour un contrôleur de véhicule : `vehicle.controller_budget_ns` par appel, `vehicle.controller_strikes` fautes consécutives — dépassements ou exceptions —, puis `E-1011` (ADR-167 D9, amendement A15). Pour un widget du tableau de bord : `hud.widget_budget_ns` par image, vingt fautes consécutives (ADR-170 D6, amendement A20).
 - R-1771 : les extensions Java ne s'exécutent jamais sur les workers natifs ; elles sont appelées sur le thread autoritatif entre deux pas, ou sur le render thread pour les hooks de rendu.
 - R-1772 : un `DeformationKernel` tiers **doit** respecter le contrat de déterminisme ; s'il ne le respecte pas, la reconstruction client échoue et le système bascule automatiquement sur l'envoi d'instantanés pour les assemblies concernées, avec un avertissement nommant le mod. Le jeu reste correct.
 
@@ -5621,6 +5664,12 @@ fermée du schéma s'étend par un registre de l'API (ADR-160 D5).
 
   "vehicle": { "controllers": [ "mymod:traction_control" ] },
 
+  "cameras": [ { "name": "capot", "kind": "fixed", "node": "cam_hood", "fov": 80 },
+               { "name": "loin", "kind": "follow", "distance": 9, "height": 2.5 } ],
+  "dashboard": { "gauges": [ { "name": "turbo", "kind": "dial", "source": "var.boost",
+                               "min": 0, "max": 2, "label": "gauge.mymod.turbo" } ],
+                 "widgets": [ "mymod:tachometer" ] },
+
   "custom": { }
 }
 ```
@@ -5628,7 +5677,7 @@ fermée du schéma s'étend par un registre de l'API (ADR-160 D5).
 - R-1780 : `schema` obligatoire ; valeur inconnue → refus (`E-7003`).
 - R-1781 : tous les champs sauf `schema`, `asset` et `kind` sont optionnels avec des défauts documentés. **Un objet déformable et destructible fonctionne avec `asset` + `kind` seuls**, grâce aux générations automatiques de C-28.
 - R-1782 : les actions d'interaction et les actions de `on_part_stage` forment des **listes fermées** (13.4, PARTIE 24).
-- R-1783 : le schéma JSON complet est publié dans `docs/schema/definition-1.json` et validé en CI contre toutes les definitions du dépôt ; chaque version suivante l'est de même (`definition-2.json`, `definition-3.json`, amendement A10 ; `definition-4.json` et sa section `tuning` — `ranges`, dont chaque plage contient la base et s'exprime dans l'unité de son paramètre, et `modifiers` (R-1087) —, puis `vehicle.controllers`, au plus huit contrôleurs qu'un mod enregistre, sur une definition qui a des roues, amendement A15).
+- R-1783 : le schéma JSON complet est publié dans `docs/schema/definition-1.json` et validé en CI contre toutes les definitions du dépôt ; chaque version suivante l'est de même (`definition-2.json`, `definition-3.json`, amendement A10 ; `definition-4.json` et sa section `tuning` — `ranges`, dont chaque plage contient la base et s'exprime dans l'unité de son paramètre, et `modifiers` (R-1087) —, puis `vehicle.controllers`, au plus huit contrôleurs qu'un mod enregistre, sur une definition qui a des roues, amendement A15 ; `definition-5.json`, ses `cameras` et son `dashboard`, R-1112, R-1114 et R-1115, amendement A20).
 
 ## 23.5 Contenu de démonstration
 
@@ -7845,6 +7894,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A17 | 2026-11-14 | ADR-169, accepté par Killian | ANNEXE A.3 : `net.connection_read_rescue`, le rattrapage côté client de la course de connexion de Forge 47 |
 | A18 | 2026-11-14 | ADR-168 précision 6e, décisions de Killian | R-1683 : une prédiction coupée par sa latence se rétablit sous `net.prediction_reenable_ratio` × `net.prediction_max_ping` ; ANNEXE A.3 : `net.prediction_reenable_ratio` (0,9) ; 21.4 : protocole 10, la cadence des entrées réglée par le client (D3 révisé) |
 | A19 | 2026-11-14 | ADR-168 précision 6e (preuves) | R-1642 : `prediction_enabled` du handshake ; 21.4 : la fréquence et le contenu de `S2C_Correction` et de `C2S_Input` tels que livrés ; R-1682 : le lissage de la reprise ; R-1683 : le taux de corrections sur 100 et son nouvel essai ; R-1684 : la file des entrées au serveur ; ANNEXE A.3 : `net.prediction_max_corrections`, son défaut tiré d'une mesure (D10) |
+| A20 | 2026-11-15 | ADR-170, accepté par Killian | 12.10 : R-1111 à R-1115, les vues du véhicule, le tableau de bord et ses widgets ; R-910 : le rôle `camera` ; 5.25 : renvoi de C-33 ; R-1640 : le mod d'un widget nommé exigé des clients ; R-1770 : le budget d'un widget ; 23.3 : le widget du tableau de bord ; 23.4 : schéma de definition 5, `cameras` et `dashboard`, R-1783 ; A.1 : `E-1011` couvre un widget ; A.3 : section `[hud]` ; A.7 : CAP-10 tenue, CAP-11 tenue pour les widgets du tableau de bord ; CAP-37 : le cadrage de l'ensemble par la poursuite ; C-71 : `/axion defs info` dit les vues et le tableau de bord |
 
 ---
 
@@ -7861,7 +7911,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | `E-1003` | natif | SHA-256 invalide | `DISABLED` | retélécharger |
 | `E-1004` | natif | double initialisation | refusé | défaut interne |
 | `E-1010` | forge | hook désactivé après 5 échecs | fonctionnalité réduite | consulter le log |
-| `E-1011` | véhicule | contrôleur de véhicule désactivé : `vehicle.controller_strikes` fautes consécutives, dépassements de `vehicle.controller_budget_ns` ou exceptions (ADR-167 D9) | désactivé pour la session sur tous les véhicules, qui roulent sans ses sorties ; le message le nomme ainsi que son mod | corriger le contrôleur, ou relever le budget |
+| `E-1011` | véhicule | contrôleur de véhicule désactivé : `vehicle.controller_strikes` fautes consécutives, dépassements de `vehicle.controller_budget_ns` ou exceptions (ADR-167 D9) ; de même un widget du tableau de bord, vingt fautes au-delà de `hud.widget_budget_ns` (ADR-170 D6) | désactivé pour la session sur tous les véhicules, qui roulent sans ses sorties ou s'affichent sans lui ; le message le nomme ainsi que son mod | corriger le contrôleur ou le widget, ou relever le budget |
 | `E-1050` | arrêt | thread non terminé | abandon | rapporter avec le dump |
 | `E-2000` | runtime | panic capturée | opération annulée | rapporter |
 | `E-2001` | runtime | handle invalide | refusé | défaut interne |
@@ -8255,7 +8305,7 @@ ses trouvailles s'ajoutent ici.
 | CAP-07 | Son : sous-système data-driven (moteur selon régime et charge, contacts et roulement par matériau, klaxon, sirène, sons continus paramétrés, son 3D, Doppler) ; sons ponctuels entendus des autres joueurs | M8 |
 | CAP-08 | Particules d'effet : échappement, poussière, éclaboussures, étincelles, fumée | M8 |
 | CAP-09 | Traces au sol : décalques posés sur le monde (pneus, freinage) | M9 |
-| CAP-10 | Caméra de véhicule (qui suit, cockpit) et tableau de bord à l'écran | M5 |
+| CAP-10 | Caméra de véhicule (qui suit, cockpit) et tableau de bord à l'écran — tenue (12.10, R-1111 à R-1115, amendement A20) | M5 |
 | CAP-11 | API d'addons utilisable et sans limite (D5) : fournisseur enregistré, `EventBus`, accesseurs des événements, contrats des interfaces que 23.2 nomme sans les spécifier ; tout ce qu'une definition déclare se fait aussi par l'API, et inversement ; chaque liste fermée du schéma (sources procédurales, actions, contrôles de siège, canaux, types d'interaction, de son et de lumière) s'étend par un registre de l'API ; événements refusables (siège, interaction, attache, réparation) ; données des mods (`CustomData`) envoyables aux clients ; sections JSON d'extension validées au niveau de la pièce | M5, puis chaque jalon pour ses services |
 | CAP-12 | Énergie (carburant, batterie, panne) et démarrage du moteur (`engine.running` produit) | M5 |
 | CAP-13 | Pose et échelle des occupants, par siège, caméra à la première personne comprise ; les deux conventions restent possibles : agrandir le modèle, ou régler l'échelle des occupants (décision de Killian) | M5 |
@@ -8282,7 +8332,7 @@ ses trouvailles s'ajoutent ici.
 | CAP-34 | Joints engrenage et crémaillère ; commandes d'administration (téléporter, échelle, renommer, figer) ; masse variable (aux garanties de D6 ; tenue par le paramètre `mass`, R-1084, amendement A15) ; échelle par definition | M5 |
 | CAP-35 | Chunks non chargés (traversée, chargement par un véhicule) et changement de dimension (R-023). un véhicule piloté charge les chunks de sa trajectoire dans un rayon borné, au budget du gouverneur (Q5, amendement A5) | M11 |
 | CAP-36 | Documentation créateur : les fichiers de la PARTIE 33, chaque jalon pour ce qu'il livre | chaque jalon, complète en M12 |
-| CAP-37 | Ensemble attaché et périmètre de la prédiction : un ensemble attaché (remorque, voiture remorquée) se prédit, se cadence, s'endort et se décharge comme un tout ; les rivaux proches sont avancés au temps prédit, ou leurs contacts ne sont pas prédits (R-1680 amendé, Q7, A5) | M5 |
+| CAP-37 | Ensemble attaché et périmètre de la prédiction : un ensemble attaché (remorque, voiture remorquée) se prédit, se cadence, s'endort et se décharge comme un tout ; les rivaux proches sont avancés au temps prédit, ou leurs contacts ne sont pas prédits (R-1680 amendé, Q7, A5) ; la vue de poursuite cadre l'emprise de l'ensemble, pas du seul véhicule (ADR-170 D1, amendement A20) | M5 |
 | CAP-38 | Le contenu évolue sous des assemblies sauvegardées : identités par nom (corps, joint, pièce, région), version de definition, migrations déclarées, restauration partielle et nommée plutôt que tout abandonner | M5 |
 | CAP-39 | Plusieurs causes sur une même valeur (definition, amélioration, dommage, usure, météo, variable, addon) : ordre et opération définis, chaque cause retirable seule, valeur et origines lisibles — tenue (R-1084, amendement A15) ; les causes du moteur (dommage, usure, météo, énergie) s'y brancheront avec leur composant | M5 |
 | CAP-40 | Addons présents d'un seul côté : les registres d'extension entrent dans l'empreinte du handshake ; une extension qui touche la physique est déterministe et rembobinable pour la prédiction, ajoutée comme étage du modèle plutôt qu'en le remplaçant | M5 |

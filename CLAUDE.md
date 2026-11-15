@@ -34,6 +34,13 @@ Lire la fiche du composant en PARTIE 5 **avant** de coder. Builder et tester
 **après chaque** implémentation. Ne jamais empiler plusieurs composants non
 testés. Un travail n'est terminé que quand sa Definition of Done est cochée.
 
+**DOCUMENT, c'est dans le même commit.** Chaque tranche met à jour ce qu'elle
+change : le guide (`docs/guides/`, en français **et** en anglais), le CDC (règle,
+schéma, A.3, registre des amendements), l'ADR et ses précisions, `index.md`.
+Jamais une tranche « documentation » qui rattrape les précédentes : ADR-170 a dû
+écrire en 7e le guide de quatre tranches, et ce qu'on sait au moment du code
+s'y perd.
+
 ## Règles absolues
 
 - Aucun `TODO`, `FIXME`, `todo!()`, `unimplemented!()`, stub ni implémentation

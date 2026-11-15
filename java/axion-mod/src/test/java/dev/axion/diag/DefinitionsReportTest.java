@@ -3,6 +3,8 @@ package dev.axion.diag;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import dev.axion.asset.AssetSource;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.DefinitionRules;
@@ -61,6 +63,28 @@ class DefinitionsReportTest {
         assertTrue(lignes.contains("  genre : RIGID_OBJECT"), lignes::toString);
         assertTrue(lignes.contains("  modèle : " + CAISSE), lignes::toString);
         assertTrue(lignes.stream().anyMatch(ligne -> ligne.startsWith("  enregistrée par : mymod — ")), lignes::toString);
+    }
+
+    @Test
+    @DisplayName("ADR-170 : le détail d'un véhicule dit ses vues et son tableau de bord, déclarés ou par défaut")
+    void vuesEtTableau() {
+        String siege = "\"seats\": [{\"name\": \"pilote\", \"node\": \"n\", \"role\": \"driver\"}]";
+        JsonObject parDefaut = JsonParser.parseString("{" + siege + "}").getAsJsonObject();
+        List<String> lignes = new java.util.ArrayList<>();
+        DefinitionsReport.seated(parDefaut, lignes);
+        assertEquals(List.of("  vues : cockpit et poursuite, par défaut", "  tableau de bord : défaut ; conducteur seul"),
+                lignes);
+        JsonObject declare = JsonParser.parseString("{" + siege + ", \"cameras\": [{\"name\": \"capot\", \"kind\":"
+                + " \"fixed\", \"node\": \"cam\"}], \"dashboard\": {\"default\": false, \"seats\": [\"pilote\"],"
+                + " \"gauges\": [{\"name\": \"turbo\", \"kind\": \"text\", \"source\": \"var.boost\"}],"
+                + " \"widgets\": [\"mymod:compte_tours\"]}}").getAsJsonObject();
+        lignes.clear();
+        DefinitionsReport.seated(declare, lignes);
+        assertEquals(List.of("  vues : capot (fixed)",
+                "  tableau de bord : jauges turbo ; widgets mymod:compte_tours ; sièges pilote"), lignes);
+        lignes.clear();
+        DefinitionsReport.seated(JsonParser.parseString("{}").getAsJsonObject(), lignes);
+        assertTrue(lignes.isEmpty(), "sans siège, rien : " + lignes);
     }
 
     @Test

@@ -68,6 +68,7 @@ plugins:
             Tester ton addon: Test your addon
             Versions: Versions
             Régler un véhicule: Tune a vehicle
+            Caméras et tableau de bord: Vehicle cameras and dashboard
             Glossaire: Glossary
             Jouer et héberger: Play and host
             Configuration: Configuration
@@ -87,6 +88,7 @@ nav:
       - Tester ton addon: addons/tester.md
       - Versions: addons/versions.md
       - Régler un véhicule: addons/regler.md
+      - Caméras et tableau de bord: addons/cameras.md
       - Glossaire: addons/glossaire.md
   - Jouer et héberger:
       - Configuration: CONFIGURATION.md
