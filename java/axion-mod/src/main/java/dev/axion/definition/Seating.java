@@ -22,8 +22,10 @@ import java.util.Map;
  * @param interactions les interactions, dans l'ordre de la definition
  * @param warnings les actions déclarées qui restent sans effet jusqu'à leur chantier (ADR-158 D6)
  * @param variables les variables que les commandes liées, les interactions et l'API écrivent (ADR-163 D2)
+ * @param views les vues de ses sièges (ADR-170)
  */
-public record Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings, Variables variables) {
+public record Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings, Variables variables,
+        VehicleViews views) {
 
     /** Aucun siège, aucune interaction, aucune variable. */
     public static final Seating NONE = new Seating(List.of(), List.of(), List.of(), Variables.NONE);
@@ -44,6 +46,18 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      */
     public Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings) {
         this(seats, interactions, warnings, Variables.NONE);
+    }
+
+    /**
+     * Une table sans vue déclarée ni par défaut.
+     *
+     * @param seats les sièges
+     * @param interactions les interactions
+     * @param warnings les actions sans effet
+     * @param variables les variables
+     */
+    public Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings, Variables variables) {
+        this(seats, interactions, warnings, variables, VehicleViews.NONE);
     }
 
     /** Les contrôles qu'un siège peut autoriser, ceux de {@code VehicleInput} (12.8), en bits. */
@@ -428,7 +442,7 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         }
         return seats.isEmpty() && interactions.isEmpty() && variables.size() == 0
                 ? NONE
-                : new Seating(seats, interactions, warnings, variables);
+                : new Seating(seats, interactions, warnings, variables, VehicleViews.of(root, byPath, seatRanks));
     }
 
     private static int node(Map<String, Integer> byPath, String path) {

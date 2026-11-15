@@ -3877,7 +3877,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            défiler les vues, vues et nodes `camera` déclarés, tableau de bord par défaut + jauges + widgets d'API ;
            sans Mixin). Branche `wip/cap-10`.
            - [x] 7a (2026-11-15) — schéma 5 (`cameras`, `dashboard`), rôle `camera`, `Cameras.check`, builder, exemple `buggy`.
-           - [ ] 7b — les vues (cockpit, poursuite, fixe), F5, repli ; film avec la Charger.
+           - [x] 7b (2026-11-15) — les vues (cockpit, poursuite, fixe), F5, repli ; film avec la Charger
+                 (`runFilmVues`), envoyé à Killian.
            - [ ] 7c — le tableau de bord par défaut et les jauges, options du client.
            - [ ] 7d — `DashboardWidget`, `DashboardCanvas`, `registerDashboardWidget`, budget ; addon témoin.
            - [ ] 7e — guide créateur, CDC (rôle `camera` en R-910, section de C-33, A.3, amendement), traductions.

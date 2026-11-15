@@ -48,6 +48,14 @@ public final class FilmDuVehicule {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("AXION film");
     private static final boolean ACTIF = "vehicule".equals(System.getProperty("axion.film"));
+    /**
+     * ADR-170, tranche 7b : le film montre la caméra de véhicule elle-même ({@code -Daxion.film.vues=true}) — pas
+     * d'entité caméra ; la touche de perspective (F5) fait passer du cockpit à la poursuite au slalom, et de nouveau à
+     * la marche arrière.
+     */
+    private static final boolean VUES = Boolean.getBoolean("axion.film.vues");
+    /** L'étape dont la vue a été choisie, pour presser F5 une fois à chaque changement voulu. */
+    private static Etape etapeDeLaVue;
     private static final String MONDE = "axion-film";
 
     /** Le sol du monde plat : la première couche d'air. */
@@ -60,6 +68,9 @@ public final class FilmDuVehicule {
     private static final int DEMI_LARGEUR = 26;
 
     private static final int MUR = 200;
+
+    /** À tant de blocs du mur, le redressement laisse place au freinage, quelle que soit la vitesse. */
+    private static final double FREINAGE_AVANT_LE_MUR = 45.0;
 
     /** Le départ du véhicule, son avant (-Z du modèle) tourné vers +Z. */
     private static final Vec3 DEPART = new Vec3(0.5, SOL + 0.5, 10.5);
@@ -293,9 +304,11 @@ public final class FilmDuVehicule {
                 garde();
                 if (assis && minecraft.player.getVehicle() instanceof AxionEntity
                         && System.nanoTime() - debutPhase > TimeUnit.SECONDS.toNanos(2)) {
-                    camera = new ArmorStand(EntityType.ARMOR_STAND, minecraft.level);
-                    camera.setInvisible(true);
-                    minecraft.setCameraEntity(camera);
+                    if (!VUES) {
+                        camera = new ArmorStand(EntityType.ARMOR_STAND, minecraft.level);
+                        camera.setInvisible(true);
+                        minecraft.setCameraEntity(camera);
+                    }
                     regarderDevant(minecraft);
                     demarrerLeFilm(minecraft);
                     passer(Phase.TOURNAGE);
@@ -450,7 +463,7 @@ public final class FilmDuVehicule {
             return;
         }
         Camera vue = minecraft.gameRenderer.getMainCamera();
-        Entity attendue = vueConducteur ? minecraft.player : camera;
+        Entity attendue = vueConducteur || VUES ? minecraft.player : camera;
         if (vue.getEntity() != attendue) {
             cameraEgaree = String.format(Locale.ROOT, "à %.1f s, la vue est celle de %s, pas de %s",
                     secondes, vue.getEntity(), attendue);
@@ -516,7 +529,7 @@ public final class FilmDuVehicule {
         if (minecraft.mouseHandler.isMouseGrabbed()) {
             minecraft.mouseHandler.releaseMouse();
         }
-        if (minecraft.options.getCameraType() != CameraType.FIRST_PERSON) {
+        if (!VUES && minecraft.options.getCameraType() != CameraType.FIRST_PERSON) {
             minecraft.options.setCameraType(CameraType.FIRST_PERSON);
         }
         minecraft.options.hideGui = true;
@@ -527,6 +540,21 @@ public final class FilmDuVehicule {
      * caméra qui suit le véhicule de côté.
      */
     private static void choisirLaVue(Minecraft minecraft) {
+        if (VUES) {
+            // La caméra de véhicule : le joueur reste l'entité de la vue, F5 change de vue aux étapes voulues.
+            if (etape != etapeDeLaVue) {
+                if (etape == Etape.SLALOM_GAUCHE || etape == Etape.RECUL) {
+                    net.minecraft.client.KeyMapping.click(minecraft.options.keyTogglePerspective.getKey());
+                }
+                etapeDeLaVue = etape;
+            }
+            if (minecraft.getCameraEntity() != minecraft.player) {
+                minecraft.setCameraEntity(minecraft.player);
+            }
+            dev.axion.definition.VehicleViews.View active = dev.axion.forge.client.VehicleCamera.active();
+            vueConducteur = active != null && active.kind() == dev.axion.definition.VehicleViews.Kind.COCKPIT;
+            return;
+        }
         vueConducteur = etape == Etape.LIGNE || etape == Etape.SLALOM_GAUCHE || etape == Etape.SLALOM_DROITE;
         Entity voulue = vueConducteur ? minecraft.player : camera;
         if (voulue != null && minecraft.getCameraEntity() != voulue) {
@@ -652,7 +680,10 @@ public final class FilmDuVehicule {
                 } else if (Double.isNaN(capStableDepuis)) {
                     capStableDepuis = secondes;
                 }
-                suivante = !Double.isNaN(capStableDepuis) && secondes - capStableDepuis >= 0.6 ? Etape.FREIN : null;
+                // Le mur approche — un véhicule rapide, ou un redressement long — : le freinage commence, pour qu'il se
+                // voie au lieu de finir contre les briques (film des vues, 2026-11-15).
+                suivante = (!Double.isNaN(capStableDepuis) && secondes - capStableDepuis >= 0.6)
+                        || zServeur > MUR - FREINAGE_AVANT_LE_MUR ? Etape.FREIN : null;
             }
             case FREIN -> {
                 touches(minecraft, false, true, false, false, false);
@@ -760,6 +791,10 @@ public final class FilmDuVehicule {
                 vueConducteur ? "vue du conducteur   " : "", vitesse, Math.toDegrees(cap), parcouru, recu.steer(),
                 recu.rpm(), recu.gear(), variablesRecues(variables));
         String legende = legende();
+        if (VUES) {
+            dev.axion.definition.VehicleViews.View active = dev.axion.forge.client.VehicleCamera.active();
+            legende = "Vue « " + (active == null ? "Minecraft" : active.name()) + " » (F5) — " + legende;
+        }
         String temps = String.format(Locale.ROOT, "%.1f s", secondes);
         tournage.capturer(minecraft.getMainRenderTarget(), legende, valeurs, temps);
     }

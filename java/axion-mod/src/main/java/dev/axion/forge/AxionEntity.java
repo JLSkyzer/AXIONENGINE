@@ -1724,11 +1724,25 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     public SeatPlacement.Pose seatPoseAt(int seat, RenderPose shown) {
         Seating seating = seating();
-        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
-        if (seating == null || summary == null || seat < 0 || seat >= seating.seats().size()) {
+        if (seating == null || seat < 0 || seat >= seating.seats().size()) {
             return null;
         }
-        return SeatPlacement.place(summary.anatomy(), seating.seats().get(seat).node(),
+        return nodePoseAt(seating.seats().get(seat).node(), shown);
+    }
+
+    /**
+     * {@return la pose monde d'un node à une image (client), ou {@code null} : definition pas encore compilée, node
+     * inconnu, ou corps dont la pose n'est pas connue} Celle d'une vue fixe (ADR-170 D1).
+     *
+     * @param node l'index du node dans l'asset
+     * @param shown la pose dessinée à cette image ({@link #renderPose})
+     */
+    public SeatPlacement.Pose nodePoseAt(int node, RenderPose shown) {
+        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        if (summary == null || node < 0 || node >= summary.anatomy().size()) {
+            return null;
+        }
+        return SeatPlacement.place(summary.anatomy(), node,
                 relativePoses(summary, shown.x(), shown.y(), shown.z(), shown.rotation(), shown.bodies()));
     }
 
