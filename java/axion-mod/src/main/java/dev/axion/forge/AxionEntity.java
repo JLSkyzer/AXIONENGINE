@@ -1125,8 +1125,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 continue;
             }
             SeatInputs inputs = entry.getValue();
-            // Précision 6e : un véhicule endormi n'envoie pas de correction ; sa file rattrape ce qui ne le change pas.
-            dev.axion.seat.InputQueue.Step<QueuedInput> step = inputs.queue.next(sleeping);
+            // Précision 6e : un véhicule endormi n'envoie pas de correction ; sa file rattrape ce qui ne le change pas —
+            // tant que l'entrée appliquée vaut encore : muette au-delà de net.extrapolation_max_ms, elle ne vaut plus rien,
+            // et des entrées qui lui sont égales changeraient l'état.
+            dev.axion.seat.InputQueue.Step<QueuedInput> step = inputs.queue.next(sleeping && !inputSilent(seat));
             if (step == null) {
                 continue;
             }

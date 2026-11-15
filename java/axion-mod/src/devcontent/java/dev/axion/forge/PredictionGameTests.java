@@ -31,8 +31,11 @@ public final class PredictionGameTests {
     /** L'accélérateur à fond : le véhicule de test roule tout droit. */
     private static final VehicleInput PLEIN = new VehicleInput(1f, 0f, 0f, 0f, 0f, (byte) 0, 0);
 
-    /** Ticks pendant lesquels le conducteur envoie une entrée par tick. */
-    private static final int REGULIERS = 20;
+    /**
+     * Ticks pendant lesquels le conducteur envoie une entrée par tick : moins d'une seconde, car avec ses acquittements
+     * (un par snapshot), vingt entrées toucheraient la limite de R-1690, 40 trames par seconde.
+     */
+    private static final int REGULIERS = 12;
 
     /** Entrées d'une rafale, toutes posées dans un même tick : au-delà de {@link InputQueue#MAX_PENDING}. */
     private static final int RAFALE = 5;
@@ -106,7 +109,9 @@ public final class PredictionGameTests {
                     helper.assertTrue(vehicule.driverSequence() == sequence[0],
                             "la dernière envoyée est appliquée : " + vehicule.driverSequence() + ", " + sequence[0]);
                 })
-                .thenIdle(2)
+                // Une seconde neuve : vingt entrées et vingt acquittements par seconde touchent déjà la limite de R-1690
+                // (40 trames), et la rafale, tombée dans la même seconde, y perdait ses dernières (CI, 2026-11-15).
+                .thenIdle(20)
                 .thenExecute(() -> {
                     // La rafale : plus que la file n'en garde, toutes dans ce tick.
                     avantRafale[0] = sequence[0];
@@ -195,7 +200,9 @@ public final class PredictionGameTests {
                     avant[0] = vehicule.position();
                     falsifier[0] = true;
                 })
-                .thenIdle(20)
+                // Dix ticks : le conducteur envoie une entrée par tick et acquitte chaque snapshot ; vingt de chaque
+                // toucheraient la limite de R-1690, qui jetterait ses propres entrées.
+                .thenIdle(10)
                 .thenExecute(() -> falsifier[0] = false)
                 .thenExecuteAfter(1, () -> {
                     int siege = vehicule.seatOf(conducteur.joueur());
