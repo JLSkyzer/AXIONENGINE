@@ -57,8 +57,11 @@ public final class FilmDuVehicule {
     /** Le plan des roues ({@code -Daxion.film.roues=true}) : la caméra suit le véhicule de côté, à hauteur de roue. */
     private static final boolean ROUES = Boolean.getBoolean("axion.film.roues");
     /**
-     * ADR-171, tranche 8d : le remorquage ({@code -Daxion.film.remorque=true}) — un maillon pend à une corde attachée au
-     * socket {@code attelage} du véhicule ; tendue quand il tire, pendante quand il recule. Vu de dehors.
+     * ADR-171, tranche 8d : le remorquage ({@code -Daxion.film.remorque=true}) — une remorque, le buggy sans moteur,
+     * frein relâché, est tirée à la corde, attelage contre attelage ; la corde se tend quand le véhicule tire, pend quand
+     * il recule. Vu de dehors. Un cube traîné sur sa face accrochait le bord d'un tapis à 40 km/h et rompait la corde
+     * (52 866 N, journal) ; un buggy en boîte automatique, tiré à reculons, gardait sa première et freinait de son
+     * moteur : une remorque roule libre.
      */
     private static final boolean REMORQUE = Boolean.getBoolean("axion.film.remorque");
     /** Le maillon remorqué, et si la corde est posée. */
@@ -371,8 +374,8 @@ public final class FilmDuVehicule {
             AxionEntity vehicule = AssembliesDeTest.poser(level, DEFINITION, DEPART, new float[] {0f, 1f, 0f, 0f});
             if (REMORQUE) {
                 // Le véhicule regarde vers le mur (+z) : le maillon l'attend derrière, à six blocs.
-                remorque = AssembliesDeTest.poser(level, "axion:test/maillon", DEPART.add(0.0, 0.2, -6.0),
-                        new float[] {0f, -0.70710677f, 0f, 0.70710677f});
+                remorque = AssembliesDeTest.poser(level, "axion:test/remorque", DEPART.add(0.0, 0.0, -7.0),
+                        new float[] {0f, 0f, 0f, 1f});
             }
             vehiculeServeur = vehicule;
             idVehicule = vehicule.getId();
@@ -401,10 +404,20 @@ public final class FilmDuVehicule {
         if (REMORQUE && !cordePosee && cible != null && remorque != null && AttachmentRuntime.current() != null) {
             // Dès que les deux definitions sont compilées : la corde, de la longueur qui les sépare.
             dev.axion.api.attach.AttachResult corde = AttachmentRuntime.current().attach(cible, "attelage", remorque,
-                    "avant", java.util.Set.of("rope"), "axion");
+                    "attelage", java.util.Set.of("rope"), "axion");
             cordePosee = corde.attached();
             if (cordePosee) {
-                LOGGER.info("[film] corde posée entre l'attelage et le maillon");
+                // Sans conducteur, son frein de stationnement est serré (ADR-159 D8) : piloter « rien » le relâche.
+                ForgeAxionApi.view(remorque).vehicle().orElseThrow()
+                        .drive(dev.axion.api.vehicle.DriverInput.NONE);
+                LOGGER.info("[film] corde posée entre les deux attelages");
+            }
+        } else if (REMORQUE && cordePosee && cible != null && AttachmentRuntime.current() != null) {
+            // La corde à chaque tick : longueur, écart des ancrages, tension, et la hauteur du maillon.
+            for (dev.axion.api.attach.Attachments.Attachment corde : AttachmentRuntime.current().list(cible)) {
+                LOGGER.info(String.format(java.util.Locale.ROOT,
+                        "[film] corde tick %d : longueur %.2f, écart %.2f, tension %.0f N, remorque à y %.2f", tick,
+                        corde.length(), corde.distance(), corde.tension(), remorque.getY()));
             }
         }
         if (cible != null) {

@@ -552,6 +552,11 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
             attached.lastDistance = report.distance();
             attached.lastTension = report.force();
             if (report.broken()) {
+                // ADR-171 D7, grille : le journal dit chaque rupture, sa force et son seuil.
+                LOGGER.warn("AXION : attache {} rompue — {} « {} » de {} → {} : {} N et {} N·m au dernier sous-pas,"
+                        + " seuils {} N et {} N·m", report.id(), attached.kind, attached.aSocket.name(),
+                        attached.a.definitionId(), describeOther(attached), Math.round(report.force()),
+                        Math.round(report.torque()), threshold(attached, true), threshold(attached, false));
                 drop(report.id(), "broken", false);
                 continue;
             }
@@ -559,6 +564,10 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
             boolean held = !"rope".equals(attached.kind) && !"winch".equals(attached.kind);
             if (held && report.distance() > attached.misalignment) {
                 if (++attached.misalignedTicks >= MISALIGNED_TICKS) {
+                    LOGGER.warn("AXION : attache {} désalignée — {} « {} » de {} : écart {} bloc(s) au-delà de {}"
+                            + " pendant {} ticks", report.id(), attached.kind, attached.aSocket.name(),
+                            attached.a.definitionId(), String.format(java.util.Locale.ROOT, "%.3f", report.distance()),
+                            attached.misalignment, MISALIGNED_TICKS);
                     drop(report.id(), "misaligned", true);
                 }
             } else {
@@ -638,6 +647,21 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
     }
 
     // Aides.
+
+    /** L'autre extrémité d'une attache, pour le journal. */
+    private static String describeOther(Live attached) {
+        return attached.b == null ? "le bloc " + attached.anchor.toShortString()
+                : "« " + attached.bSocket.name() + " » de " + attached.b.definitionId();
+    }
+
+    /** Le seuil de rupture d'une attache, en force ou en couple, pour le journal ; « aucun » à l'infini. */
+    private static String threshold(Live attached, boolean force) {
+        double a = force ? attached.aSocket.maxForce() : attached.aSocket.maxTorque();
+        double b = attached.bSocket == null ? Double.POSITIVE_INFINITY
+                : force ? attached.bSocket.maxForce() : attached.bSocket.maxTorque();
+        double weakest = Math.min(a, b);
+        return Double.isInfinite(weakest) ? "aucun" : String.valueOf(Math.round(weakest));
+    }
 
     private static boolean magnetOn(AxionEntity a, Spec sa, AxionEntity b, Spec sb) {
         if (sa.magnetVariable() != null) {

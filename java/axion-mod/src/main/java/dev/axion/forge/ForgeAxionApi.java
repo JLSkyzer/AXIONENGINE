@@ -351,7 +351,6 @@ public final class ForgeAxionApi implements AxionApi {
         }
     }
 
-    /** Une assembly vue par l'API : une fenêtre sur son entité, sans état propre. */
     /**
      * {@return la vue de l'API sur une assembly} Celle que reçoivent les écouteurs des attaches (ADR-171 D4).
      *
@@ -417,6 +416,7 @@ public final class ForgeAxionApi implements AxionApi {
         }
     }
 
+    /** Une assembly vue par l'API : une fenêtre sur son entité, sans état propre. */
     private record View(AxionEntity entity) implements Assembly {
 
         @Override
