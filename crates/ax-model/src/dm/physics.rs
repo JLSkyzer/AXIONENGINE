@@ -457,9 +457,9 @@ pub mod event_kind {
     pub const CLAMPED: u32 = 9;
     /// Retour à un état valide.
     pub const RECOVERED: u32 = 10;
-    /// Attache d'un élément.
+    /// Une attache créée (ADR-171 D6) : `data` porte son identifiant.
     pub const ATTACH: u32 = 11;
-    /// Détachement d'un attachement.
+    /// Une attache défaite par le natif (ADR-171 D6) : `data` porte son identifiant, `node_a` sa cause.
     pub const DETACH_ATTACHMENT: u32 = 12;
 }
 
@@ -484,6 +484,10 @@ pub mod event_data {
     /// `CLAMPED` : le corps s'agitait sur place dans un empilement (FM-22) — amorti, puis
     /// endormi s'il ne se calme pas.
     pub const CLAMPED_STACKING: u32 = 3;
+    /// `DETACH_ATTACHMENT`, dans `node_a` : l'attache a rompu (ADR-171 D6).
+    pub const DETACH_BROKEN: u32 = 1;
+    /// `DETACH_ATTACHMENT`, dans `node_a` : le natif a refusé de la créer (ADR-171 D6).
+    pub const DETACH_REFUSED: u32 = 2;
 }
 
 /// Événement physique produit en natif (§10.7, DM).

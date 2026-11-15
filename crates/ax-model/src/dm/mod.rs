@@ -22,6 +22,7 @@
 //! ne s'en serve, ce qui est exactement la décision qu'on ne peut plus défaire.
 
 pub mod animation;
+pub mod attachments;
 pub mod commands;
 pub mod debug;
 pub mod definition;

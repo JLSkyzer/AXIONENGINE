@@ -30,7 +30,7 @@ class PredictedStatesTest {
     private static CollectResult collecte(List<BodyState> corps, List<BodyBounds> emprises, List<WheelReport> roues,
             List<VehicleReport> vehicules) {
         return new CollectResult(0, corps.size(), 0, 0, 0, 0, 0, 0, corps, emprises, List.of(), roues, vehicules,
-                List.of(), List.of());
+                List.of(), List.of(), List.of());
     }
 
     @Test

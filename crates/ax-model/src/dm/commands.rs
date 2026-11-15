@@ -78,6 +78,13 @@ pub mod opcode {
     /// La pose de chaque corps cinématique d'une assembly pour le pas suivant ([`super::SetAssemblyPose`], puis
     /// `count` [`super::AssemblyBodyPose`]). ADR-168, précision 6c-C2.
     pub const SET_ASSEMBLY_POSE: u32 = 23;
+    /// Créer une attache entre deux assemblies, ou d'une assembly au monde
+    /// ([`super::super::attachments::Attach`]). ADR-171 D6.
+    pub const ATTACH: u32 = 24;
+    /// Défaire une attache ([`super::super::attachments::Detach`]). ADR-171 D6.
+    pub const DETACH: u32 = 25;
+    /// La longueur cible d'un treuil ([`super::super::attachments::SetAttachmentLength`]). ADR-171 D5.
+    pub const SET_ATTACHMENT_LENGTH: u32 = 26;
 }
 
 /// Les valeurs de [`SetSimMode`], champ `mode`.

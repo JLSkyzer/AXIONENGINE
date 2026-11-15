@@ -3889,7 +3889,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      **ADR-171 accepté le 2026-11-15**, branche `wip/c-48`, doc dans chaque commit :
      - [x] 8a (2026-11-15) — schéma 6 : sockets en objets (types, forme, seuils, treuil, aimant, prise de
            force, ancrage), `attach`/`detach` paramétrés, rôle socket vérifié au natif (ABI 26), builder.
-     - [ ] 8b — physique : joints entre deux assemblies et vers le monde, commandes, rapports, rupture.
+     - [x] 8b (2026-11-15) — physique : joint d'attache dans la table de C-34, ancrage au monde, ATTACH/DETACH/
+           SET_ATTACHMENT_LENGTH, rapports (SIM_OUT 7), rupture ; ABI 27 ; T-890, T-891, T-893, déterminisme.
      - [ ] 8c — serveur et API : graphe (E-8030, max_chain), `Attachments`, interaction, treuil, prise de force,
            sources attach.* et socket.*, ancrage ; GameTests T-890 à T-893.
      - [ ] 8d — sauvegarde, réseau, rendu : `axion:atts`, suspension (T-894), protocole 11, cordes ; film.

@@ -42,6 +42,8 @@ use ax_model::dm::vehicle::{VehicleReport, WheelReport};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+pub(crate) mod attachments;
+pub use attachments::{AttachEnd, AttachError, AttachmentSpec};
 mod joints;
 pub mod state;
 pub mod vehicles;
@@ -302,6 +304,8 @@ pub struct PhysicsWorld {
     joints: BTreeMap<u64, joints::JointEntry>,
     /// Rang du prochain joint créé.
     next_joint: u64,
+    /// Attaches du monde (C-48, ADR-171 D6), par identifiant : l'ordre de leurs rapports (R-1020).
+    attachments: BTreeMap<u32, attachments::AttachmentEntry>,
     /// Joints résolus au dernier sous-pas (R-631).
     joints_solved: usize,
     /// Ruptures de joints depuis la création du monde.
@@ -463,6 +467,8 @@ pub struct BodyReports {
     pub wheels: Vec<WheelReport>,
     /// États des motopropulseurs des véhicules éveillés, après les roues dans `SIM_OUT` (ADR-163 D1).
     pub vehicles: Vec<VehicleReport>,
+    /// États des attaches, après les états complets exportés dans `SIM_OUT` (ADR-171 D6, schéma 7).
+    pub attachments: Vec<ax_model::dm::attachments::AttachmentReport>,
 }
 
 impl BodyReports {
@@ -474,6 +480,7 @@ impl BodyReports {
         self.joints.append(&mut other.joints);
         self.wheels.append(&mut other.wheels);
         self.vehicles.append(&mut other.vehicles);
+        self.attachments.append(&mut other.attachments);
     }
 }
 
@@ -547,6 +554,7 @@ impl PhysicsWorld {
             members: BTreeMap::new(),
             joints: BTreeMap::new(),
             next_joint: 0,
+            attachments: BTreeMap::new(),
             joints_solved: 0,
             joints_broken: 0,
             joints_restored: BTreeSet::new(),
@@ -825,6 +833,8 @@ impl PhysicsWorld {
         // nouveau. On repart donc de zéro à chaque `advance`, même à 0 sous-pas.
         self.guard_flags.clear();
         self.start_joint_tick();
+        // ADR-171 D6 : une attache rompue a été rapportée une dernière fois ; elle part.
+        self.purge_broken_attachments();
         let mut substeps = 0;
         while self.accumulator >= full_step {
             self.sim_clock += f64::from(dt);
@@ -840,6 +850,8 @@ impl PhysicsWorld {
             }
 
             let integration_start = Instant::now();
+            // ADR-171 D5 : chaque treuil rejoint sa longueur cible, à sa vitesse.
+            self.advance_winches(dt);
             self.apply_aero_forces();
             self.update_automatic_ccd(dt);
             self.record_pre_step_motion();
@@ -2393,6 +2405,7 @@ impl PhysicsWorld {
                 }));
         }
         reports.joints = self.joint_states();
+        reports.attachments = self.attachment_reports();
         reports.wheels = self.wheel_reports();
         reports.vehicles = self.vehicle_reports();
         reports

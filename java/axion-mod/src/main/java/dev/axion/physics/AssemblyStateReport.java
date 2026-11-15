@@ -48,6 +48,21 @@ public record AssemblyStateReport(int handleIndex, int handleGeneration, int sta
      * @param at le début de la section
      * @return les états, dans l'ordre du natif
      */
+    /**
+     * {@return la place qu'occupe dans {@code SIM_OUT} la section de ces états, en-tête compris} Chaque bloc est complété
+     * à un multiple de 8 ; c'est l'offset de la section qui suit (ADR-171 D6).
+     *
+     * @param states les états décodés de la section
+     */
+    public static int sectionBytes(List<AssemblyStateReport> states) {
+        int bytes = SECTION_HEADER_BYTES;
+        for (AssemblyStateReport state : states) {
+            int length = state.state().length;
+            bytes += ENTRY_HEADER_BYTES + length + (8 - length % 8) % 8;
+        }
+        return bytes;
+    }
+
     public static List<AssemblyStateReport> decodeSection(ByteBuffer buffer, int at) {
         if (at < 0 || (long) at + SECTION_HEADER_BYTES > buffer.capacity()) {
             return List.of();

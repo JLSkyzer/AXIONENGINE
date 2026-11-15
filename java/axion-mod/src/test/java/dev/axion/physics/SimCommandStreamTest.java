@@ -348,6 +348,65 @@ class SimCommandStreamTest {
     }
 
     @Test
+    void encodeLesCommandesDAttache() {
+        // ADR-171 D6 : Attach, 152 octets, dans la disposition figée d'ax-model ; Detach et SetAttachmentLength, 8.
+        float[] a = {1, 2, 3, 0, 0, 0, 1};
+        float[] b = {4, 5, 6, 0, 0, 0, 1};
+        byte[] bytes = new SimCommandStream()
+                .attach(new SimCommandStream.AttachRequest(7, 3, 11, 2, 5, a, 12, 4, 6, b,
+                        new double[] {10.5, 64.0, -3.25}, 1000f, 2000f, 0.5f, 6f, 1f, 20f, 0.8f))
+                .detach(7)
+                .setAttachmentLength(7, 2.5f)
+                .toBytes();
+        assertEquals(8 + (8 + 152) + (8 + 8) + (8 + 8), bytes.length);
+        ByteBuffer c = wrap(bytes);
+        assertEquals(24, SimCommandStream.OP_ATTACH, "opcode::ATTACH du natif");
+        assertEquals(24, c.getInt(8));
+        assertEquals(152, c.getInt(12));
+        int p = 16;
+        assertEquals(7, c.getInt(p), "id");
+        assertEquals(3, c.get(p + 4), "type : winch");
+        assertEquals(11, c.getInt(p + 8));
+        assertEquals(2, c.getInt(p + 12));
+        assertEquals(5, c.getInt(p + 16), "a_node");
+        assertEquals(6, c.getInt(p + 20), "b_node");
+        assertEquals(12, c.getInt(p + 24));
+        assertEquals(4, c.getInt(p + 28));
+        assertEquals(1f, c.getFloat(p + 32), "a_frame");
+        assertEquals(1f, c.getFloat(p + 56), "rotation w de a");
+        assertEquals(4f, c.getFloat(p + 64), "b_frame");
+        assertEquals(10.5, c.getDouble(p + 96), "world");
+        assertEquals(-3.25, c.getDouble(p + 112));
+        assertEquals(1000f, c.getFloat(p + 120), "max_force");
+        assertEquals(0.5f, c.getFloat(p + 128), "cone");
+        assertEquals(6f, c.getFloat(p + 132), "length");
+        assertEquals(0.8f, c.getFloat(p + 144), "speed");
+        int detach = 16 + 152;
+        assertEquals(SimCommandStream.OP_DETACH, c.getInt(detach));
+        assertEquals(25, SimCommandStream.OP_DETACH);
+        assertEquals(7, c.getInt(detach + 8));
+        int longueur = detach + 16;
+        assertEquals(26, c.getInt(longueur));
+        assertEquals(2.5f, c.getFloat(longueur + 12));
+        assertThrows(IllegalArgumentException.class, () -> new SimCommandStream.AttachRequest(1, 5, 0, 0, 0, a, 0, 0, 0,
+                b, new double[3], 1, 1, 0, 0, 0, 0, 0), "SEATED n'existe plus");
+    }
+
+    @Test
+    void decodeLaSectionDesAttaches() {
+        ByteBuffer section = ByteBuffer.allocate(8 + 2 * 24).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        section.putInt(2).putInt(0);
+        section.putInt(3).putInt(0).putFloat(6f).putFloat(5.5f).putFloat(1200f).putFloat(0f);
+        section.putInt(9).putInt(AttachmentReport.BROKEN).putFloat(0f).putFloat(0.02f).putFloat(9e4f).putFloat(15f);
+        java.util.List<AttachmentReport> lus = AttachmentReport.decodeSection(section, 0);
+        assertEquals(java.util.List.of(new AttachmentReport(3, 0, 6f, 5.5f, 1200f, 0f),
+                new AttachmentReport(9, 1, 0f, 0.02f, 9e4f, 15f)), lus);
+        assertTrue(lus.get(1).broken());
+        assertEquals(java.util.List.of(), AttachmentReport.decodeSection(section.limit(20).slice()
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN), 0), "tronquée");
+    }
+
+    @Test
     void encodeUnJamJoint() {
         // ADR-151 D7 : JamJoint, 16 octets — handle, rang u16, 2 octets réservés, désalignement.
         byte[] bytes = new SimCommandStream().jamJoint(7, 3, 0xFFFF, 0.25f).toBytes();

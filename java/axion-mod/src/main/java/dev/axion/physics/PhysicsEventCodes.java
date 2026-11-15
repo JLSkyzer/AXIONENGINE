@@ -58,10 +58,10 @@ public final class PhysicsEventCodes {
         /** Retour à un état valide. */
         public static final int RECOVERED = 10;
 
-        /** Attache d'un élément. */
+        /** Une attache créée (ADR-171 D6) : {@code data} porte son identifiant. */
         public static final int ATTACH = 11;
 
-        /** Détachement d'un attachement. */
+        /** Une attache défaite par le natif (ADR-171 D6) : {@code data} porte son identifiant, {@code node_a} sa cause. */
         public static final int DETACH_ATTACHMENT = 12;
     }
 
@@ -86,5 +86,11 @@ public final class PhysicsEventCodes {
 
         /** {@code CLAMPED} : empilement agité sur place, amorti puis endormi (FM-22). */
         public static final int CLAMPED_STACKING = 3;
+
+        /** {@code DETACH_ATTACHMENT}, dans {@code node_a} : l'attache a rompu (ADR-171 D6). */
+        public static final int DETACH_BROKEN = 1;
+
+        /** {@code DETACH_ATTACHMENT}, dans {@code node_a} : le natif a refusé de la créer (ADR-171 D6). */
+        public static final int DETACH_REFUSED = 2;
     }
 }

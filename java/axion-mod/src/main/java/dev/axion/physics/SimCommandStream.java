@@ -89,6 +89,63 @@ public final class SimCommandStream {
     /** Taille d'un {@code AssemblyBodyPose}, en octets. */
     public static final int ASSEMBLY_BODY_POSE_BYTES = 48;
 
+    /** Opcode {@code ATTACH} (ADR-171 D6) : une attache entre deux assemblies, ou d'une assembly au monde. */
+    public static final int OP_ATTACH = 24;
+
+    /** Taille du payload {@code Attach}, en octets. */
+    public static final int ATTACH_BYTES = 152;
+
+    /** Opcode {@code DETACH} (ADR-171 D6). */
+    public static final int OP_DETACH = 25;
+
+    /** Opcode {@code SET_ATTACHMENT_LENGTH} (ADR-171 D5) : la longueur cible d'un treuil. */
+    public static final int OP_SET_ATTACHMENT_LENGTH = 26;
+
+    /** Taille des payloads {@code Detach} et {@code SetAttachmentLength}, en octets. */
+    public static final int ATTACHMENT_ID_BYTES = 8;
+
+    /** Les types d'attache ({@code attachment_kind}, ADR-171 D1), dans l'ordre de leur rang. */
+    public static final java.util.List<String> ATTACHMENT_KINDS = java.util.List.of("rigid", "hitch", "rope", "winch",
+            "magnet");
+
+    /**
+     * Une attache à créer (ADR-171 D6) : chaque extrémité par le node racine de son corps et le repère de son socket
+     * dans ce corps, ou un point du monde pour un ancrage ; le type, les seuils et les longueurs.
+     *
+     * @param id l'identifiant de l'attache, unique dans la session
+     * @param kind son rang dans {@link #ATTACHMENT_KINDS}
+     * @param aIndex rang du handle de l'assembly {@code a}
+     * @param aGeneration génération du handle de {@code a}
+     * @param aNode node racine du corps de {@code a} qui porte le socket
+     * @param aFrame repère du socket dans ce corps : {@code x, y, z} puis la rotation {@code x, y, z, w}
+     * @param bIndex rang du handle de {@code b} ; 0 avec une génération 0 pour un ancrage au monde
+     * @param bGeneration génération du handle de {@code b}
+     * @param bNode node racine du corps de {@code b}
+     * @param bFrame repère du socket de {@code b} dans son corps
+     * @param world point d'ancrage au monde, en coordonnées absolues ; ignoré entre deux assemblies
+     * @param maxForce force de rupture, en newtons ; l'infini pour jamais
+     * @param maxTorque couple de rupture, en newtons-mètres
+     * @param cone {@code hitch} : le balancement permis sur chaque axe, en radians
+     * @param length {@code rope}, {@code winch} : la longueur au départ, en blocs
+     * @param minLength {@code winch} : la plus courte
+     * @param maxLength {@code winch} : la plus longue
+     * @param speed {@code winch} : la vitesse d'enroulement, en blocs par seconde
+     */
+    public record AttachRequest(int id, int kind, int aIndex, int aGeneration, int aNode, float[] aFrame, int bIndex,
+            int bGeneration, int bNode, float[] bFrame, double[] world, float maxForce, float maxTorque, float cone,
+            float length, float minLength, float maxLength, float speed) {
+
+        /** Vérifie les tailles et le type. */
+        public AttachRequest {
+            if (aFrame.length != 7 || bFrame.length != 7 || world.length != 3) {
+                throw new IllegalArgumentException("un repère a 7 valeurs, un point du monde 3");
+            }
+            if (kind < 0 || kind >= ATTACHMENT_KINDS.size()) {
+                throw new IllegalArgumentException("type d'attache inconnu : " + kind);
+            }
+        }
+    }
+
     /** Plafond de corps par assembly ({@code MAX_ASSEMBLY_BODIES}, R-190) : celui des poses d'un {@code SET_ASSEMBLY_POSE}. */
     public static final int MAX_ASSEMBLY_BODIES = 64;
 
@@ -1098,6 +1155,67 @@ public final class SimCommandStream {
                 command.putFloat(value);
             }
         }
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code ATTACH} (ADR-171 D6). Le natif crée le joint de l'attache et émet {@code ATTACH} ; s'il
+     * la refuse — une extrémité inconnue, deux dimensions, un réglage invalide —, il émet {@code DETACH_ATTACHMENT} de
+     * cause « refusée ».
+     *
+     * @param request l'attache
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream attach(AttachRequest request) {
+        ByteBuffer command = beginCommand(OP_ATTACH, ATTACH_BYTES);
+        command.putInt(request.id()).put((byte) request.kind()).put(new byte[3]);
+        command.putInt(request.aIndex()).putInt(request.aGeneration());
+        command.putInt(request.aNode()).putInt(request.bNode());
+        command.putInt(request.bIndex()).putInt(request.bGeneration());
+        for (float value : request.aFrame()) {
+            command.putFloat(value);
+        }
+        command.putInt(0);
+        for (float value : request.bFrame()) {
+            command.putFloat(value);
+        }
+        command.putInt(0);
+        for (double value : request.world()) {
+            command.putDouble(value);
+        }
+        command.putFloat(request.maxForce()).putFloat(request.maxTorque()).putFloat(request.cone())
+                .putFloat(request.length()).putFloat(request.minLength()).putFloat(request.maxLength())
+                .putFloat(request.speed()).putInt(0);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code DETACH} (ADR-171 D6) : défait une attache, sans événement. Un identifiant inconnu est
+     * ignoré.
+     *
+     * @param id l'identifiant de l'attache
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream detach(int id) {
+        ByteBuffer command = beginCommand(OP_DETACH, ATTACHMENT_ID_BYTES);
+        command.putInt(id).putInt(0);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_ATTACHMENT_LENGTH} (ADR-171 D5) : la longueur cible d'un treuil, que sa corde
+     * rejoint à sa vitesse, dans ses bornes.
+     *
+     * @param id l'identifiant de l'attache
+     * @param target la longueur cible, en blocs
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setAttachmentLength(int id, float target) {
+        ByteBuffer command = beginCommand(OP_SET_ATTACHMENT_LENGTH, ATTACHMENT_ID_BYTES);
+        command.putInt(id).putFloat(target);
         commands.add(command.array());
         return this;
     }

@@ -32,6 +32,8 @@ import java.util.List;
  *     si le {@code SIM_OUT} du natif précède le schéma 4
  * @param states états complets des assemblies exportées (ADR-168 D1), dans l'ordre du natif ; liste vide si le
  *     {@code SIM_OUT} du natif précède le schéma 6
+ * @param attachments états des attaches (ADR-171 D6), dans l'ordre de leurs identifiants ; liste vide si le
+ *     {@code SIM_OUT} du natif précède le schéma 7
  * @param events événements décodés, dans l'ordre d'émission
  */
 public record CollectResult(
@@ -49,13 +51,14 @@ public record CollectResult(
         List<WheelReport> wheels,
         List<VehicleReport> vehicles,
         List<AssemblyStateReport> states,
+        List<AttachmentReport> attachments,
         List<PhysicsEvent> events) {
 
     /** Résultat d'un collect en échec (code négatif), sans donnée. */
     static CollectResult failed(int code) {
         return new CollectResult(
                 code, 0, 0, 0, 0, 0, 0, 0, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of());
+                List.of(), List.of());
     }
 
     /** {@return vrai si le collect a abouti} */

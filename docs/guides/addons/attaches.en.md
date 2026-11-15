@@ -67,7 +67,7 @@ Without `node`, the socket sits on the node that bears its name. A fuller exampl
 | `max_force`, `max_torque` | beyond them the attachment breaks, in N and N·m | positive |
 | `misalignment` | the gap between both sockets, in metres, beyond which the attachment breaks | 0.001 to 16 |
 | `anchor` | the socket can hook onto a block of the world | — |
-| `hitch.cone` | the ball joint's angle, in degrees | 0 to 180 |
+| `hitch.cone` | how far the ball joint swings to each side, in degrees, on its two swing axes; it twists freely | 0 to 180 |
 | `rope.length` | the rope's length, in metres | 0.1 to 256 |
 | `winch.speed` | the reeling speed, in m/s | 0 to 20 |
 | `winch.min_length`, `winch.max_length` | the cable's extreme lengths | 0.1 to 256 |

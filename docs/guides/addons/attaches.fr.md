@@ -67,7 +67,7 @@ Sans `node`, le socket se pose sur le node qui porte son nom. Un exemple plus co
 | `max_force`, `max_torque` | au-delà, l'attache rompt, en N et N·m | positifs |
 | `misalignment` | l'écart entre les deux sockets, en mètres, au-delà duquel l'attache rompt | 0,001 à 16 |
 | `anchor` | le socket peut s'accrocher à un bloc du monde | — |
-| `hitch.cone` | l'angle de la rotule, en degrés | 0 à 180 |
+| `hitch.cone` | de combien la rotule balance de chaque côté, en degrés, sur ses deux axes de balancement ; elle tourne librement sur elle-même | 0 à 180 |
 | `rope.length` | la longueur de la corde, en mètres | 0,1 à 256 |
 | `winch.speed` | la vitesse d'enroulement, en m/s | 0 à 20 |
 | `winch.min_length`, `winch.max_length` | les longueurs extrêmes du câble | 0,1 à 256 |

@@ -25,9 +25,11 @@ use crate::materials::MaterialTable;
 use crate::proxies::EntityProxy;
 use crate::query::AssemblyRayHit;
 use crate::scheduler::{SimMode, Stage};
+use crate::world::attachments::attachment_refused;
 use crate::world::vehicles::{SurfaceMount, VehicleTelemetry, WheelMount, WheelState};
-use crate::world::{BodyReports, PhysicsWorld, WorldCounters};
+use crate::world::{AttachEnd, AttachmentSpec, BodyReports, PhysicsWorld, WorldCounters};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
+use ax_model::dm::attachments::Attach;
 use ax_model::dm::debug::overlay;
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
@@ -1610,6 +1612,105 @@ impl SimDriver {
                 .assembly_joint(handle, joint)
                 .is_some_and(|id| world.break_joint(id))
         })
+    }
+
+    /// Applique `ATTACH` (ADR-171 D6) : l'attache entre le corps de node racine `a_node` de `a` et
+    /// celui de `b`, ou un point du monde quand `b` est absent. Les deux assemblies vivent dans la
+    /// même dimension. Refusée — une extrémité inconnue, deux dimensions, un réglage invalide —, elle
+    /// émet un `DETACH_ATTACHMENT` de cause `REFUSED`, pour que Java ne la croie pas posée. Vrai si
+    /// elle est créée.
+    pub fn apply_attach(&mut self, attach: &Attach) -> bool {
+        let refused = |driver: &mut Self| {
+            let other = (!attach.b.is_absent()).then_some(attach.b);
+            if let Some((dimension, _)) = driver.routes.get(&handle_key(attach.a)) {
+                let dimension = *dimension;
+                if let Some(sim) = driver.dimensions.get_mut(&dimension) {
+                    sim.world
+                        .push_attachment_event(attachment_refused(attach.a, other, attach.id));
+                }
+            }
+            false
+        };
+        let frame = |values: [f32; 7]| {
+            (
+                Vec3::new(values[0], values[1], values[2]),
+                Quat::from_xyzw(values[3], values[4], values[5], values[6]),
+            )
+        };
+        let Some((dimension, bodies)) = self.routes.get(&handle_key(attach.a)) else {
+            return refused(self);
+        };
+        let dimension = *dimension;
+        let bodies = bodies.clone();
+        let other = if attach.b.is_absent() {
+            None
+        } else {
+            match self.routes.get(&handle_key(attach.b)) {
+                Some((other_dimension, other_bodies)) if *other_dimension == dimension => {
+                    Some(other_bodies.clone())
+                }
+                _ => return refused(self),
+            }
+        };
+        let Some(sim) = self.dimensions.get_mut(&dimension) else {
+            return refused(self);
+        };
+        let body_of = |world: &PhysicsWorld, list: &[BodyId], node: u32| {
+            list.iter()
+                .copied()
+                .find(|body| world.body_node(*body) == Some(node))
+        };
+        let Some(body) = body_of(&sim.world, &bodies, attach.a_node) else {
+            return refused(self);
+        };
+        let end = match other {
+            None => AttachEnd::World(sim.origin.to_local(DVec3::new(
+                attach.world[0],
+                attach.world[1],
+                attach.world[2],
+            ))),
+            Some(list) => match body_of(&sim.world, &list, attach.b_node) {
+                Some(other_body) => AttachEnd::Body {
+                    assembly: attach.b,
+                    body: other_body,
+                    frame: frame(attach.b_frame),
+                },
+                None => return refused(self),
+            },
+        };
+        let spec = AttachmentSpec {
+            kind: attach.kind,
+            frame_a: frame(attach.a_frame),
+            max_force: attach.max_force,
+            max_torque: attach.max_torque,
+            cone: attach.cone,
+            length: attach.length,
+            min_length: attach.min_length,
+            max_length: attach.max_length,
+            speed: attach.speed,
+        };
+        if sim
+            .world
+            .attach(attach.id, attach.a, body, end, &spec)
+            .is_ok()
+        {
+            true
+        } else {
+            refused(self)
+        }
+    }
+
+    /// Applique `DETACH` : défait l'attache `id`, où qu'elle vive. Faux si elle est inconnue.
+    pub fn apply_detach(&mut self, id: u32) -> bool {
+        self.dimensions.values_mut().any(|sim| sim.world.detach(id))
+    }
+
+    /// Applique `SET_ATTACHMENT_LENGTH` (ADR-171 D5) : la longueur cible du treuil `id`. Faux pour une
+    /// attache inconnue ou qui n'est pas un treuil.
+    pub fn apply_set_attachment_length(&mut self, id: u32, target: f32) -> bool {
+        self.dimensions
+            .values_mut()
+            .any(|sim| sim.world.set_attachment_target(id, target))
     }
 
     /// Le monde de la dimension où vit une assembly.

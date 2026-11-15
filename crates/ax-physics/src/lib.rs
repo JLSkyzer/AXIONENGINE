@@ -80,7 +80,9 @@ pub use scheduler::{check_order, SimMode, Stage, StageDurations, StageLog};
 pub use sim::{AssemblyBody, AssemblyJoint, SavedBody, SavedJoint, SimDriver, SimSettings};
 pub use world::state;
 pub use world::vehicles::{SurfaceMount, VehicleTelemetry, WheelMount, WheelState};
-pub use world::{BodyReports, PhysicsWorld, Pose, WorldCounters};
+pub use world::{
+    AttachEnd, AttachError, AttachmentSpec, BodyReports, PhysicsWorld, Pose, WorldCounters,
+};
 
 // §10.7 : les événements sont une structure DM figée dans `ax-model` ; on les
 // réexporte pour que l'API du monde physique soit autonome.

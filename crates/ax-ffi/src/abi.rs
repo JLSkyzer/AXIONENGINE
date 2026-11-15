@@ -37,6 +37,7 @@ use ax_jobs::{CpuShare, JobBudgets, JobKind, Side, WorkerPolicy};
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::budgets::Budget;
 use ax_model::dm::animation::AnimCommand;
+use ax_model::dm::attachments::AttachmentReport;
 use ax_model::dm::commands::{
     create_assembly_flags, opcode, restored_joint_flags, AnimateAssembly, CreateAssembly,
 };
@@ -56,7 +57,9 @@ use ax_physics::{
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 26 depuis le socket d'attache résolu contre le
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 27 depuis les attaches entre assemblies (ADR-171
+/// D6) : opcodes `ATTACH`, `DETACH`, `SET_ATTACHMENT_LENGTH`, et la section `AttachmentReport` de `SIM_OUT` (schéma 7).
+/// 26 depuis le socket d'attache résolu contre le
 /// modèle (ADR-171 D2) : catégorie de référence `SOCKET` de `DEFN`. 25 depuis les proxies du monde prédit (ADR-168,
 /// précision 6c-C2) : drapeau `KINEMATIC` de `CREATE_ASSEMBLY` et opcode `SET_ASSEMBLY_POSE`. 24 depuis la prédiction
 /// (ADR-168 D1) : opcodes
@@ -78,7 +81,7 @@ use ax_physics::{
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 26;
+pub const AXION_ABI_VERSION: u32 = 27;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -2382,7 +2385,9 @@ pub unsafe extern "C" fn axion_sim_collect(
                         .map(|state| {
                             AssemblyStateReport::ENTRY_HEADER_BYTES + state.bytes.len() + 8
                         })
-                        .sum::<usize>(),
+                        .sum::<usize>()
+                    + AttachmentReport::SECTION_HEADER_BYTES
+                    + reports.attachments.len() * AttachmentReport::BYTES,
             );
             for state in states {
                 state.write_le(&mut sim_out_bytes);
@@ -2399,6 +2404,8 @@ pub unsafe extern "C" fn axion_sim_collect(
             VehicleReport::write_section(&reports.vehicles, &mut sim_out_bytes);
             // ADR-168 D1 : les états complets exportés suivent (schéma 6).
             AssemblyStateReport::write_section(&exported, &mut sim_out_bytes);
+            // ADR-171 D6 : les attaches suivent (schéma 7).
+            AttachmentReport::write_section(&reports.attachments, &mut sim_out_bytes);
             let mut events_bytes = Vec::new();
             for event in &events {
                 event.write_le(&mut events_bytes);

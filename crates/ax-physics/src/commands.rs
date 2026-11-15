@@ -10,6 +10,7 @@ use crate::proxies::{EntityProxy, ProxyShape};
 use crate::scheduler::SimMode;
 use crate::sim::SimDriver;
 use ax_math::{DVec3, Quat, Vec3};
+use ax_model::dm::attachments::{Attach, Detach, SetAttachmentLength};
 use ax_model::dm::commands::{
     dimension_env_flags, entity_proxy_shape, opcode, sim_mode, vehicle_input_flags, ApplyForce,
     AssemblyBodyPose, BreakJoint, CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly,
@@ -359,6 +360,22 @@ fn apply_one(
             driver.apply_assembly_pose(read_handle(payload, 0), &poses);
             outcome.applied += 1;
         }
+        // ADR-171 D6 : les attaches entre assemblies, et vers le monde.
+        opcode::ATTACH => {
+            expect_len(payload, Attach::BYTES)?;
+            driver.apply_attach(&read_attach(payload));
+            outcome.applied += 1;
+        }
+        opcode::DETACH => {
+            expect_len(payload, Detach::BYTES)?;
+            driver.apply_detach(read_u32(payload, 0));
+            outcome.applied += 1;
+        }
+        opcode::SET_ATTACHMENT_LENGTH => {
+            expect_len(payload, SetAttachmentLength::BYTES)?;
+            driver.apply_set_attachment_length(read_u32(payload, 0), read_f32(payload, 4));
+            outcome.applied += 1;
+        }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
         // par la frontière (ax-ffi, `create_assembly_payloads`), qui seule décode
         // les colliders ; APPLY_FORCE continu attend la boucle de forces. Les deux
@@ -601,6 +618,43 @@ fn read_boxes(
         ]);
     }
     Ok(boxes)
+}
+
+/// Lit le payload d'`ATTACH` (ADR-171 D6), champ à champ, dans sa disposition figée.
+fn read_attach(payload: &[u8]) -> Attach {
+    let frame = |at: usize| {
+        let mut values = [0.0f32; 7];
+        for (rank, value) in values.iter_mut().enumerate() {
+            *value = read_f32(payload, at + 4 * rank);
+        }
+        values
+    };
+    Attach {
+        id: read_u32(payload, 0),
+        kind: payload[4],
+        _pad0: [0; 3],
+        a: read_handle(payload, 8),
+        a_node: read_u32(payload, 16),
+        b_node: read_u32(payload, 20),
+        b: read_handle(payload, 24),
+        a_frame: frame(32),
+        _pad1: 0,
+        b_frame: frame(64),
+        _pad2: 0,
+        world: [
+            read_f64(payload, 96),
+            read_f64(payload, 104),
+            read_f64(payload, 112),
+        ],
+        max_force: read_f32(payload, 120),
+        max_torque: read_f32(payload, 124),
+        cone: read_f32(payload, 128),
+        length: read_f32(payload, 132),
+        min_length: read_f32(payload, 136),
+        max_length: read_f32(payload, 140),
+        speed: read_f32(payload, 144),
+        _pad3: 0,
+    }
 }
 
 fn expect_len(payload: &[u8], expected: usize) -> Result<(), CommandError> {

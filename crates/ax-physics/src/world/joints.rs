@@ -32,12 +32,19 @@ const AXES: [JointAxis; 6] = [
     JointAxis::AngZ,
 ];
 
+/// Le rang, dans la table des joints, du joint d'une attache (ADR-171 D6) : aucune definition n'en
+/// déclare autant, il ne se confond avec aucun joint d'assembly.
+pub(super) const ATTACHMENT_INDEX: u16 = u16::MAX;
+
 /// Un joint du monde : son joint rapier, ses seuils et ce que l'étape 5 en a lu.
 #[derive(Debug, Clone)]
 pub(super) struct JointEntry {
     /// Son assembly et son rang dans la definition, pour ses événements.
     pub(super) assembly: Handle,
     pub(super) index: u16,
+    /// Le joint d'une attache (ADR-171 D6) : son identifiant et l'assembly de l'autre extrémité,
+    /// `None` pour un ancrage au monde. Il ne paraît pas dans les états des joints d'assembly.
+    pub(super) attachment: Option<(u32, Option<Handle>)>,
     /// Le joint, absent une fois rompu.
     pub(super) joint: Option<ImpulseJointHandle>,
     /// Ses deux corps, gardés après la rupture : l'overlay `joints` trace encore ses ancrages.
@@ -99,6 +106,7 @@ impl PhysicsWorld {
             JointEntry {
                 assembly,
                 index,
+                attachment: None,
                 joint: Some(joint),
                 bodies: [body_a, body_b],
                 spec: spec.clone(),
@@ -115,12 +123,14 @@ impl PhysicsWorld {
         Ok(id)
     }
 
-    /// Oublie les joints d'une assembly et retire de rapier ceux qui y sont encore.
+    /// Oublie les joints d'une assembly et retire de rapier ceux qui y sont encore ; ses attaches
+    /// partent avec elle (ADR-171 D6).
     pub fn remove_assembly_joints(&mut self, assembly: Handle) {
+        self.remove_assembly_attachments(assembly);
         let gone: Vec<u64> = self
             .joints
             .iter()
-            .filter(|(_, entry)| entry.assembly == assembly)
+            .filter(|(_, entry)| entry.assembly == assembly && entry.attachment.is_none())
             .map(|(key, _)| *key)
             .collect();
         for key in gone {
@@ -128,6 +138,55 @@ impl PhysicsWorld {
                 self.inner.impulse_joints.remove(handle, true);
             }
         }
+    }
+
+    /// Marque le joint `key` comme celui de l'attache `id`, dont l'autre extrémité est `other`.
+    pub(super) fn mark_attachment_joint(&mut self, key: u64, id: u32, other: Option<Handle>) {
+        if let Some(entry) = self.joints.get_mut(&key) {
+            entry.attachment = Some((id, other));
+        }
+    }
+
+    /// Oublie le joint `key` et le retire de rapier s'il y est encore, en réveillant ses corps.
+    pub(super) fn remove_joint_entry(&mut self, key: u64) {
+        if let Some(handle) = self.joints.remove(&key).and_then(|entry| entry.joint) {
+            self.inner.impulse_joints.remove(handle, true);
+        }
+    }
+
+    /// Change la longueur de la corde `key` (un treuil, ADR-171 D5) ; ses corps se réveillent.
+    pub(super) fn set_rope_length(&mut self, key: u64, length: f32) {
+        let Some(entry) = self.joints.get_mut(&key) else {
+            return;
+        };
+        entry.spec.max_length = length;
+        let rope = super::attachments::rope_of(&entry.spec, length);
+        if let Some(handle) = entry.joint {
+            if let Some(joint) = self.inner.impulse_joints.get_mut(handle, true) {
+                joint.data = rope;
+            }
+        }
+    }
+
+    /// Ce que l'étape 5 a lu du joint d'une attache, et la distance entre ses deux ancrages, en
+    /// blocs ; `None` pour un joint inconnu. Rompu, la distance se lit encore entre ses corps.
+    pub(super) fn attachment_joint_report(&self, key: u64) -> Option<(JointReport, f32)> {
+        let entry = self.joints.get(&key)?;
+        let [body_a, body_b] = entry.bodies;
+        let distance = match (
+            self.inner.bodies.get(body_a.handle()),
+            self.inner.bodies.get(body_b.handle()),
+        ) {
+            (Some(a), Some(b)) => {
+                let anchor_a =
+                    a.position().translation + a.position().rotation * entry.spec.frame_a.0;
+                let anchor_b =
+                    b.position().translation + b.position().rotation * entry.spec.frame_b.0;
+                anchor_a.distance(anchor_b)
+            }
+            _ => 0.0,
+        };
+        Some((entry.report, distance))
     }
 
     /// Ce que l'étape 5 a lu d'un joint au dernier sous-pas ; `None` pour un joint inconnu.
@@ -172,6 +231,7 @@ impl PhysicsWorld {
     pub fn joint_states(&self) -> Vec<JointState> {
         self.joints
             .values()
+            .filter(|entry| entry.attachment.is_none())
             .filter(|entry| {
                 self.joints_reported_once
                     .contains(&handle_key(entry.assembly))
@@ -312,6 +372,20 @@ impl PhysicsWorld {
         impulse: f32,
     ) -> Option<PhysicsEvent> {
         let entry = self.joints.get(&key)?;
+        // ADR-171 D6 : la rupture d'une attache est son détachement, son identifiant dans `data`.
+        if let Some((id, other)) = entry.attachment {
+            return Some(super::attachments::attachment_event(
+                event_kind::DETACH_ATTACHMENT,
+                entry.assembly,
+                other,
+                id,
+                ax_model::dm::attachments::detach_cause::BROKEN,
+            ))
+            .map(|mut event| {
+                event.impulse = impulse;
+                event
+            });
+        }
         let (assembly, index) = (entry.assembly, entry.index);
         let mut event = PhysicsEvent {
             kind,

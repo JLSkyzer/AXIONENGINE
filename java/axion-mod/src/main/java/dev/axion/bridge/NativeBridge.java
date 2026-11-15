@@ -31,7 +31,10 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}. 25 depuis les proxies du monde prédit (ADR-168, précision 6c-C2) : drapeau {@code KINEMATIC} de
+     * {@code E-1002}. 27 depuis les attaches entre assemblies (ADR-171 D6) : {@code ATTACH}, {@code DETACH},
+     * {@code SET_ATTACHMENT_LENGTH}, et la section des attaches de {@code SIM_OUT} (schéma 7). 26 depuis le socket
+     * d'attache résolu contre le modèle (ADR-171 D2), catégorie de référence {@code SOCKET}. 25 depuis les proxies du
+     * monde prédit (ADR-168, précision 6c-C2) : drapeau {@code KINEMATIC} de
      * {@code CREATE_ASSEMBLY} et {@code SET_ASSEMBLY_POSE}. 24 depuis la prédiction (ADR-168 D1) : {@code SET_SIM_MODE},
      * {@code SET_STATE_EXPORT}, {@code SET_ASSEMBLY_STATE}, et l'état des assemblies exportées dans {@code SIM_OUT}
      * (schéma 6). 23 depuis le couple posé sur chaque roue (R-1082, ADR-167 D9) : {@code SET_WHEEL_TORQUES}, et
@@ -53,7 +56,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 26;
+    public static final int EXPECTED_ABI_VERSION = 27;
 
     /** Succès. */
     public static final int OK = 0;

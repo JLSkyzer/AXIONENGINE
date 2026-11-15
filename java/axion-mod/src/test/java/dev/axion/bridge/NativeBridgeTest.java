@@ -1006,6 +1006,42 @@ class NativeBridgeTest {
                         && evenement.data() == 0),
                 () -> "JOINT_BROKEN attendu : " + rompu.events());
 
+        // ADR-171 D6 : une attache entre deux assemblies, par la vraie JNI — ATTACH, la section des attaches de
+        // SIM_OUT (schéma 7), le refus d'une extrémité inconnue, DETACH.
+        float[] socket = {0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+        dev.axion.physics.CollectResult attachee = simulation.tick(
+                204L,
+                new dev.axion.physics.SimCommandStream()
+                        .createAssembly(3, 1, 5L, new double[] {0.0, 101.0, 0.0},
+                                new float[] {0.0f, 0.0f, 0.0f, 1.0f}, charniereDeclaree.hash())
+                        .attach(new dev.axion.physics.SimCommandStream.AttachRequest(42, 0, 2, 1, charniere.roots()[0],
+                                socket, 3, 1, charniere.roots()[0], new float[] {0, -0.5f, 0, 0, 0, 0, 1},
+                                new double[3], Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, 0f, 0f, 0f, 0f, 0f))
+                        .attach(new dev.axion.physics.SimCommandStream.AttachRequest(43, 2, 2, 1, charniere.roots()[0],
+                                socket, 77, 1, 0, socket, new double[3], 1000f, 1000f, 0f, 3f, 0f, 0f, 0f))
+                        .setObservers(5L, joueurPresDeLaCharniere),
+                0L);
+        assertTrue(attachee.ok(), () -> "collect après ATTACH refusé, code " + attachee.code());
+        assertEquals(1, attachee.attachments().size(), () -> "une attache vivante : " + attachee.attachments());
+        assertEquals(42, attachee.attachments().get(0).id());
+        assertFalse(attachee.attachments().get(0).broken());
+        assertTrue(attachee.events().stream().anyMatch(evenement -> evenement.kind()
+                        == dev.axion.physics.PhysicsEventCodes.Kind.ATTACH && evenement.data() == 42
+                        && evenement.assemblyBIndex() == 3),
+                () -> "ATTACH attendu : " + attachee.events());
+        assertTrue(attachee.events().stream().anyMatch(evenement -> evenement.kind()
+                        == dev.axion.physics.PhysicsEventCodes.Kind.DETACH_ATTACHMENT && evenement.data() == 43
+                        && evenement.nodeA() == dev.axion.physics.PhysicsEventCodes.Data.DETACH_REFUSED),
+                () -> "le refus d'une extrémité inconnue part en DETACH_ATTACHMENT : " + attachee.events());
+        dev.axion.physics.CollectResult defaite = simulation.tick(
+                205L,
+                new dev.axion.physics.SimCommandStream()
+                        .detach(42)
+                        .removeAssembly(3, 1)
+                        .setObservers(5L, joueurPresDeLaCharniere),
+                0L);
+        assertTrue(defaite.attachments().isEmpty(), () -> "défaite : " + defaite.attachments());
+
         // ADR-151 D7 : les overlays joints et limits, par la vraie JNI. La charnière rompue reste tracée, ses
         // ancrages marqués rompus, et n'a plus de plage.
         dev.axion.debug.NativeDebugLoader.Fetched joints = debug.fetch(

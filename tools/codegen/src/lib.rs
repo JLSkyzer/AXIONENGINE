@@ -189,17 +189,21 @@ pub const EVENT_KINDS: [(&str, u32, &str); 13] = [
         event_kind::RECOVERED,
         "Retour à un état valide.",
     ),
-    ("ATTACH", event_kind::ATTACH, "Attache d'un élément."),
+    (
+        "ATTACH",
+        event_kind::ATTACH,
+        "Une attache créée (ADR-171 D6) : {@code data} porte son identifiant.",
+    ),
     (
         "DETACH_ATTACHMENT",
         event_kind::DETACH_ATTACHMENT,
-        "Détachement d'un attachement.",
+        "Une attache défaite par le natif (ADR-171 D6) : {@code data} porte son identifiant, {@code node_a} sa cause.",
     ),
 ];
 
 /// Sens du champ `data` d'un `PhysicsEvent` selon son genre (ADR-123) : nom, valeur,
 /// description.
-pub const EVENT_DATA: [(&str, u32, &str); 5] = [
+pub const EVENT_DATA: [(&str, u32, &str); 7] = [
     (
         "CONTACT_OTHER_ENTITY",
         event_data::CONTACT_OTHER_ENTITY,
@@ -224,6 +228,16 @@ pub const EVENT_DATA: [(&str, u32, &str); 5] = [
         "CLAMPED_STACKING",
         event_data::CLAMPED_STACKING,
         "{@code CLAMPED} : empilement agité sur place, amorti puis endormi (FM-22).",
+    ),
+    (
+        "DETACH_BROKEN",
+        event_data::DETACH_BROKEN,
+        "{@code DETACH_ATTACHMENT}, dans {@code node_a} : l'attache a rompu (ADR-171 D6).",
+    ),
+    (
+        "DETACH_REFUSED",
+        event_data::DETACH_REFUSED,
+        "{@code DETACH_ATTACHMENT}, dans {@code node_a} : le natif a refusé de la créer (ADR-171 D6).",
     ),
 ];
 
