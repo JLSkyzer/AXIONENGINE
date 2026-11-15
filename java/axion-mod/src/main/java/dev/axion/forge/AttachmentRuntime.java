@@ -5,6 +5,7 @@ import dev.axion.api.attach.AttachResult;
 import dev.axion.api.attach.AttachResult.Status;
 import dev.axion.api.attach.Attachments;
 import dev.axion.attach.AttachmentGraph;
+import dev.axion.attach.AttachmentRecord;
 import dev.axion.content.ContentRegistry;
 import dev.axion.definition.SocketTable;
 import dev.axion.definition.SocketTable.Spec;
@@ -75,6 +76,8 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         double winchCommand = Double.NaN;
         int misalignedTicks;
         AttachmentReport last;
+        /** La longueur de la corde au dernier tick, gardée à la sauvegarde ; NaN avant le premier rapport. */
+        double lastLength = Double.NaN;
 
         Live(int id, AxionEntity a, Spec aSocket, AxionEntity b, Spec bSocket, BlockPos anchor, String kind,
                 String owner, double misalignment, double winchMin, double winchMax) {
@@ -112,6 +115,15 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
     private record PendingLength(int id, float target) implements Pending {}
 
     private final List<Pending> pending = new ArrayList<>();
+
+    /** La cause d'une attache dont une extrémité est déchargée : gardée, rétablie à son retour (D7). */
+    static final String SUSPENDED = "suspended";
+
+    /** Les assemblies dont une attache gardée attend d'être rétablie (D7, R-692), dans l'ordre d'arrivée. */
+    private final java.util.Set<AxionEntity> restoring = new java.util.LinkedHashSet<>();
+
+    /** Les attaches gardées qu'on ne peut plus rétablir, déjà dites au journal : une fois chacune. */
+    private final java.util.Set<String> unrestorable = new java.util.HashSet<>();
     private final int maxChain;
     private final double snapDistance;
     private int nextId = 1;
@@ -193,7 +205,7 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         if (kind == null) {
             return refused(Status.INCOMPATIBLE, "aucun type que « " + aName + " » et « " + bName + " » acceptent");
         }
-        return place(a, sa, b, sb, null, kind, owner);
+        return place(a, sa, b, sb, null, kind, owner, Double.NaN, false);
     }
 
     /**
@@ -225,11 +237,15 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         if (kind == null) {
             return refused(Status.INCOMPATIBLE, "aucun type permis que « " + aName + " » accepte");
         }
-        return place(a, socket.get(), null, null, pos.immutable(), kind, owner);
+        return place(a, socket.get(), null, null, pos.immutable(), kind, owner, Double.NaN, false);
     }
 
+    /**
+     * Pose une attache. {@code restoring} : elle est rétablie depuis la sauvegarde (D7) — les écouteurs l'ont déjà jugée
+     * et suivie, sa longueur gardée vaut, et l'assembly la tient déjà.
+     */
     private AttachResult place(AxionEntity a, Spec sa, AxionEntity b, Spec sb, BlockPos anchor, String kind,
-            String owner) {
+            String owner, double savedLength, boolean restoring) {
         if ("magnet".equals(kind) && !magnetOn(a, sa, b, sb)) {
             return refused(Status.MAGNET_OFF, "l'aimant est éteint : sa variable de commande est fausse");
         }
@@ -252,7 +268,8 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         }
         Assembly aView = ForgeAxionApi.view(a);
         Optional<Assembly> bView = b == null ? Optional.empty() : Optional.of(ForgeAxionApi.view(b));
-        for (ContentRegistry.AttachmentListenerEntry entry : listeners) {
+        for (ContentRegistry.AttachmentListenerEntry entry : restoring ? List.<ContentRegistry.AttachmentListenerEntry>of()
+                : listeners) {
             try {
                 if (!entry.listener().allow(aView, sa.name(), bView, sb == null ? null : sb.name(), kind)) {
                     return refused(Status.REFUSED, "refusée par " + entry.modId());
@@ -275,11 +292,18 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
                 : new double[] {anchor.getX() + 0.5, anchor.getY() + 0.5, anchor.getZ() + 0.5};
         double distance = currentDistance(a, sa, b, sb, world);
         double length = switch (kind) {
-            case "rope" -> Math.max(0.1, first(sa.ropeLength(), sb == null ? Double.NaN : sb.ropeLength(),
-                    distance));
-            case "winch" -> Math.max(winchMin, Math.min(winchMax, distance));
+            case "rope" -> Math.max(0.1, Double.isFinite(savedLength) ? savedLength
+                    : first(sa.ropeLength(), sb == null ? Double.NaN : sb.ropeLength(), distance));
+            case "winch" -> Math.max(winchMin, Math.min(winchMax, Double.isFinite(savedLength) ? savedLength
+                    : distance));
             default -> 0.0;
         };
+        if (!restoring) {
+            a.attachmentRecords().add(new AttachmentRecord(sa.name(), b == null ? null : b.getUUID(),
+                    sb == null ? null : sb.name(),
+                    anchor == null ? null : new int[] {anchor.getX(), anchor.getY(), anchor.getZ()}, kind,
+                    "rope".equals(kind) || "winch".equals(kind) ? length : Double.NaN, owner));
+        }
         float maxForce = (float) Math.min(sa.maxForce(), sb == null ? Double.POSITIVE_INFINITY : sb.maxForce());
         float maxTorque = (float) Math.min(sa.maxTorque(), sb == null ? Double.POSITIVE_INFINITY : sb.maxTorque());
         double cone = first(sa.cone(), sb == null ? Double.NaN : sb.cone(), DEFAULT_CONE);
@@ -288,7 +312,8 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
                 (int) aFrame[0], tail(aFrame), b == null ? -1 : AssemblyRuntime.handleIndexOf(b), (int) bFrame[0],
                 tail(bFrame), world, maxForce, maxTorque, (float) Math.toRadians(cone), (float) length,
                 (float) winchMin, (float) winchMax, (float) speed));
-        for (ContentRegistry.AttachmentListenerEntry entry : listeners) {
+        for (ContentRegistry.AttachmentListenerEntry entry : restoring ? List.<ContentRegistry.AttachmentListenerEntry>of()
+                : listeners) {
             try {
                 entry.listener().attached(aView, sa.name(), bView, sb == null ? null : sb.name(), kind);
             } catch (RuntimeException | LinkageError failure) {
@@ -315,7 +340,11 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         return link.isPresent();
     }
 
-    /** Retire une attache du graphe ; {@code native} demande au natif de défaire son joint. */
+    /**
+     * Retire une attache du graphe ; {@code native} demande au natif de défaire son joint. {@code suspended} : une
+     * extrémité est déchargée (D7, R-692) — l'assembly d'où elle part la garde, et la rétablira ; les écouteurs n'en
+     * savent rien. Sinon elle est oubliée, et les écouteurs l'apprennent avec sa cause.
+     */
     private void drop(int id, String cause, boolean nativeToo) {
         graph.remove(id);
         Live gone = live.remove(id);
@@ -325,6 +354,13 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         if (nativeToo) {
             pending.add(new PendingDetach(id));
         }
+        if (SUSPENDED.equals(cause)) {
+            if (!gone.a.isRemoved()) {
+                restoring.add(gone.a);
+            }
+            return;
+        }
+        gone.a.attachmentRecords().removeIf(record -> record.socket().equals(gone.aSocket.name()));
         Assembly aView = ForgeAxionApi.view(gone.a);
         Optional<Assembly> bView = gone.b == null || gone.b.isRemoved() ? Optional.empty()
                 : Optional.of(ForgeAxionApi.view(gone.b));
@@ -400,9 +436,14 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
     public SimCommandStream commandsForTick(long tick) {
         SimCommandStream stream = new SimCommandStream();
         for (Live attached : List.copyOf(live.values())) {
-            if (attached.a.isRemoved() || (attached.b != null
-                    && (attached.b.isRemoved() || attached.b.level() != attached.a.level()))) {
-                drop(attached.id, "removed", true);
+            if (attached.a.isRemoved()) {
+                drop(attached.id, unloaded(attached.a) ? SUSPENDED : "removed", true);
+                continue;
+            }
+            if (attached.b != null && (attached.b.isRemoved() || attached.b.level() != attached.a.level())) {
+                // Déchargée, ou partie dans une autre dimension : l'attache attend son retour.
+                boolean destroyed = attached.b.isRemoved() && !unloaded(attached.b);
+                drop(attached.id, destroyed ? "removed" : SUSPENDED, true);
                 continue;
             }
             if ("magnet".equals(attached.kind)
@@ -418,6 +459,7 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
                 transferPower(attached.b, attached.bSocket, attached.a);
             }
         }
+        restore();
         for (Pending command : pending) {
             if (command instanceof PendingAttach at) {
                 stream.attach(new SimCommandStream.AttachRequest(at.id(), at.kind(), at.aIndex(),
@@ -503,6 +545,7 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
                 continue;
             }
             attached.last = report;
+            attached.lastLength = report.length();
             if (report.broken()) {
                 drop(report.id(), "broken", false);
                 continue;
@@ -664,10 +707,130 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         return graph;
     }
 
+    // La sauvegarde (ADR-171 D7, R-692).
+
+    /**
+     * Une assembly entre au monde avec des attaches gardées : elles se rétablissent dès que leurs deux extrémités sont
+     * là, compilées ; d'ici là, suspendues.
+     *
+     * @param assembly l'assembly
+     */
+    public void restoreLater(AxionEntity assembly) {
+        restoring.add(assembly);
+    }
+
+    /**
+     * {@return les attaches qu'une assembly a posées et qui attendent d'être rétablies}
+     *
+     * @param assembly l'assembly
+     */
+    public int suspended(AxionEntity assembly) {
+        int count = 0;
+        for (AttachmentRecord record : assembly.attachmentRecords()) {
+            if (graph.socketLink(assembly.getUUID(), record.socket()).isEmpty()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Garde dans les attaches d'une assembly la longueur de leur dernier tick, avant qu'elle se sauvegarde : un treuil
+     * rétabli reprend où il était.
+     *
+     * @param assembly l'assembly
+     */
+    public void refreshLengths(AxionEntity assembly) {
+        List<AttachmentRecord> records = assembly.attachmentRecords();
+        for (int i = 0; i < records.size(); i++) {
+            AttachmentRecord record = records.get(i);
+            Optional<AttachmentGraph.Link> link = graph.socketLink(assembly.getUUID(), record.socket());
+            Live attached = link.map(found -> live.get(found.id())).orElse(null);
+            if (attached != null && Double.isFinite(attached.lastLength) && Double.isFinite(record.length())) {
+                records.set(i, record.withLength(attached.lastLength));
+            }
+        }
+    }
+
+    /** Rétablit les attaches gardées dont les deux extrémités sont là ; les autres attendent (D7). */
+    private void restore() {
+        for (AxionEntity assembly : List.copyOf(restoring)) {
+            if (assembly.isRemoved()) {
+                restoring.remove(assembly);
+                continue;
+            }
+            boolean waiting = false;
+            for (AttachmentRecord record : List.copyOf(assembly.attachmentRecords())) {
+                if (graph.socketLink(assembly.getUUID(), record.socket()).isPresent()) {
+                    continue;
+                }
+                Optional<Spec> socket = assembly.sockets().named(record.socket());
+                if (assembly.sockets().isEmpty()) {
+                    waiting = true;
+                    continue;
+                }
+                if (socket.isEmpty()) {
+                    unrestorableOnce(assembly, record, "le socket « " + record.socket() + " » n'existe plus");
+                    continue;
+                }
+                AttachResult result;
+                if (record.anchored()) {
+                    BlockPos pos = new BlockPos(record.anchor()[0], record.anchor()[1], record.anchor()[2]);
+                    if (!assembly.level().isLoaded(pos)) {
+                        waiting = true;
+                        continue;
+                    }
+                    result = place(assembly, socket.get(), null, null, pos, record.kind(), record.owner(),
+                            record.length(), true);
+                } else {
+                    net.minecraft.world.entity.Entity found =
+                            ((net.minecraft.server.level.ServerLevel) assembly.level()).getEntity(record.other());
+                    if (!(found instanceof AxionEntity other) || other.sockets().isEmpty()) {
+                        waiting = true;
+                        continue;
+                    }
+                    Optional<Spec> otherSocket = other.sockets().named(record.otherSocket());
+                    if (otherSocket.isEmpty()) {
+                        unrestorableOnce(assembly, record, "le socket « " + record.otherSocket()
+                                + " » de l'autre assembly n'existe plus");
+                        continue;
+                    }
+                    result = place(assembly, socket.get(), other, otherSocket.get(), null, record.kind(),
+                            record.owner(), record.length(), true);
+                }
+                if (!result.attached()) {
+                    waiting = true;
+                    if (result.status() == Status.CYCLE || result.status() == Status.CHAIN
+                            || result.status() == Status.INCOMPATIBLE) {
+                        unrestorableOnce(assembly, record, result.message());
+                    }
+                }
+            }
+            if (!waiting) {
+                restoring.remove(assembly);
+            }
+        }
+    }
+
+    /** CAP-38 : une attache gardée qu'on ne peut plus rétablir reste gardée, nommée une fois au journal. */
+    private void unrestorableOnce(AxionEntity assembly, AttachmentRecord record, String why) {
+        if (unrestorable.add(assembly.getUUID() + "/" + record.socket())) {
+            LOGGER.warn("AXION : l'attache gardée « {} » de {} reste suspendue — {}", record.socket(),
+                    assembly.definitionId(), why);
+        }
+    }
+
+    /** {@return vrai si l'entité a quitté le monde sans être détruite : chunk déchargé, joueur parti} */
+    private static boolean unloaded(AxionEntity assembly) {
+        net.minecraft.world.entity.Entity.RemovalReason reason = assembly.getRemovalReason();
+        return reason != null && !reason.shouldDestroy();
+    }
+
     /** Oublie tout : le serveur s'arrête. */
     public void clear() {
         live.clear();
         pending.clear();
+        restoring.clear();
         for (AttachmentGraph.Link link : graph.all()) {
             graph.remove(link.id());
         }

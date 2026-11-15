@@ -174,6 +174,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     private final List<String> attachedControllers = new ArrayList<>();
 
+    /**
+     * Les attaches que cette assembly a posées (ADR-171 D7, R-692), vivantes ou suspendues : ce qui se sauvegarde et se
+     * rétablit. Tenues par {@link AttachmentRuntime}, sur le thread autoritatif.
+     */
+    private final List<dev.axion.attach.AttachmentRecord> attachmentRecords = new ArrayList<>();
+
     /** Un numéro qui change à chaque attache ou retrait (serveur) : la liste repart alors aux joueurs. */
     private long controllersVersion;
 
@@ -1749,6 +1755,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return SeatPlacement.place(summary.anatomy(), seating.seats().get(seat).node(), bodyPoses(summary));
     }
 
+    /** {@return les attaches qu'elle a posées, vivantes ou suspendues (ADR-171 D7) : la table que le serveur tient} */
+    List<dev.axion.attach.AttachmentRecord> attachmentRecords() {
+        return attachmentRecords;
+    }
+
     /** {@return les sockets d'attache de sa definition (ADR-171 D2) ; vide sans definition compilée} */
     public dev.axion.definition.SocketTable sockets() {
         Seating seating = seating();
@@ -2496,6 +2507,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-167 D7 : un contrôleur dont aucun mod ne s'enregistre plus reste attaché, inactif, et se dit (CAP-38).
         attachedControllers.clear();
         attachedControllers.addAll(AssemblyTags.controllers(stored));
+        // ADR-171 D7 : les attaches posées, rétablies quand l'assembly entre au monde (onAddedToWorld).
+        attachmentRecords.clear();
+        attachmentRecords.addAll(AssemblyTags.attachments(stored));
         // Relus, ils partent aux joueurs dès la création du corps, comme une attache.
         controllersVersion = attachedControllers.isEmpty() ? 0 : 1;
         for (String id : attachedControllers) {
@@ -2527,6 +2541,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (!level().isClientSide()) {
             // R-1745 : présente dans le monde, son NBT fait foi ; le journal ne la recrée pas.
             JournalBridge.seen(getUUID());
+            // ADR-171 D7 : ses attaches gardées se rétablissent, ou attendent l'autre extrémité.
+            AttachmentRuntime attachments = AttachmentRuntime.current();
+            if (attachments != null && !attachmentRecords.isEmpty()) {
+                attachments.restoreLater(this);
+            }
         }
     }
 
@@ -2574,6 +2593,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-167 D7, D9 : les contrôleurs attachés par l'API, relus à la lecture.
         if (!inert) {
             AssemblyTags.putControllers(stored, attachedControllers);
+        }
+        // ADR-171 D7 : les attaches posées, vivantes ou suspendues, avec la longueur de leur dernier tick.
+        if (!inert) {
+            AttachmentRuntime attachments = AttachmentRuntime.current();
+            if (attachments != null) {
+                attachments.refreshLengths(this);
+            }
+            AssemblyTags.putAttachments(stored, attachmentRecords);
         }
         AssemblyTags.restore(stored, tag);
         // 22.5.2 : chaque sauvegarde part aussi au journal latéral, filet de sécurité si vanilla perd l'entité.

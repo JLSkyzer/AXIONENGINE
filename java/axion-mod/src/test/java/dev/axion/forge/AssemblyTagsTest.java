@@ -21,6 +21,42 @@ import org.junit.jupiter.api.Test;
 class AssemblyTagsTest {
 
     @Test
+    @DisplayName("ADR-171 D7, R-692 : les attaches posées se gardent dans axion:atts et se relisent ; un NBT ne fait pas foi")
+    void attachesGardees() {
+        java.util.UUID autre = new java.util.UUID(7, 9);
+        java.util.List<dev.axion.attach.AttachmentRecord> posees = java.util.List.of(
+                new dev.axion.attach.AttachmentRecord("attelage", autre, "timon", null, "hitch", Double.NaN, "axion"),
+                new dev.axion.attach.AttachmentRecord("treuil", null, null, new int[] {12, 64, -3}, "winch", 4.5,
+                        "monaddon"));
+        CompoundTag stored = new CompoundTag();
+        AssemblyTags.putAttachments(stored, posees);
+        java.util.List<dev.axion.attach.AttachmentRecord> relues = AssemblyTags.attachments(stored);
+        assertEquals(2, relues.size());
+        assertEquals("attelage", relues.get(0).socket());
+        assertEquals(autre, relues.get(0).other());
+        assertEquals("timon", relues.get(0).otherSocket());
+        assertTrue(Double.isNaN(relues.get(0).length()), "une rotule n'a pas de longueur");
+        assertTrue(relues.get(1).anchored());
+        assertEquals(java.util.List.of(12, 64, -3), java.util.Arrays.stream(relues.get(1).anchor()).boxed().toList());
+        assertEquals(4.5, relues.get(1).length());
+        assertEquals("monaddon", relues.get(1).owner());
+
+        // Une entrée sans autre extrémité ni bloc, ou au socket vide, est ignorée ; sans attache, la clé part.
+        ListTag liste = stored.getList(AssemblyTags.ATTACHMENTS, Tag.TAG_COMPOUND);
+        CompoundTag boiteuse = new CompoundTag();
+        boiteuse.putString("socket", "x");
+        boiteuse.putString("kind", "rope");
+        boiteuse.putString("owner", "axion");
+        liste.add(boiteuse);
+        CompoundTag sansSocket = liste.getCompound(0).copy();
+        sansSocket.putString("socket", "");
+        liste.add(sansSocket);
+        assertEquals(2, AssemblyTags.attachments(stored).size());
+        AssemblyTags.putAttachments(stored, java.util.List.of());
+        assertFalse(stored.contains(AssemblyTags.ATTACHMENTS));
+    }
+
+    @Test
     @DisplayName("T-403 : axion:v et axion:def s'écrivent, les autres clés d'AXION survivent")
     void nbtSansPerte() {
         CompoundTag charge = new CompoundTag();

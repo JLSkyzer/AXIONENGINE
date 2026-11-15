@@ -2271,7 +2271,7 @@ Spécifié intégralement en **PARTIE 16**.
 
 - R-690 : le graphe d'attaches est acyclique ; une tentative de cycle est refusée (`E-8030`).
 - R-691 : profondeur maximale de chaîne d'attaches `attachment.max_chain` (défaut 8) ; au-delà, refus. Elle se compte sur le plus long chemin d'un ensemble, en attaches ; le monde n'est pas un nœud (ADR-171 D3, amendement A21).
-- R-692 : les attaches sont persistées par identifiant d'assembly ; une attache dont l'autre extrémité n'est pas chargée est **suspendue**, pas supprimée, et rétablie au chargement.
+- R-692 : les attaches sont persistées par identifiant d'assembly ; une attache dont l'autre extrémité n'est pas chargée est **suspendue**, pas supprimée, et rétablie au chargement. L'assembly d'où part l'attache la garde (`axion:atts`) et la rétablit dès que les deux extrémités sont là ; une suspension n'est pas un détachement (ADR-171 D7, amendement A21).
 
 **Budget.** Négligeable ; comptabilisé dans la physique.
 
@@ -5295,6 +5295,8 @@ axion:vars      compound valeur de chaque variable persist, par nom (amendement 
 axion:params    list     modificateurs posés sur les paramètres, dans l'ordre de leur pose :
                          cause, paramètre, opération, quantité (R-1086, amendement A15)
 axion:ctrls     list     contrôleurs de véhicule attachés par l'API, dans l'ordre de l'attache
+axion:atts      list     attaches que l'assembly a posées : socket, autre assembly (UUID) et son socket, ou
+                         bloc d'ancrage ; type, longueur, mod (ADR-171 D7, R-692, amendement A21)
                          (R-1086, amendement A15)
 ```
 
@@ -7905,7 +7907,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A18 | 2026-11-14 | ADR-168 précision 6e, décisions de Killian | R-1683 : une prédiction coupée par sa latence se rétablit sous `net.prediction_reenable_ratio` × `net.prediction_max_ping` ; ANNEXE A.3 : `net.prediction_reenable_ratio` (0,9) ; 21.4 : protocole 10, la cadence des entrées réglée par le client (D3 révisé) |
 | A19 | 2026-11-14 | ADR-168 précision 6e (preuves) | R-1642 : `prediction_enabled` du handshake ; 21.4 : la fréquence et le contenu de `S2C_Correction` et de `C2S_Input` tels que livrés ; R-1682 : le lissage de la reprise ; R-1683 : le taux de corrections sur 100 et son nouvel essai ; R-1684 : la file des entrées au serveur ; ANNEXE A.3 : `net.prediction_max_corrections`, son défaut tiré d'une mesure (D10) |
 | A20 | 2026-11-15 | ADR-170, accepté par Killian | 12.10 : R-1111 à R-1115, les vues du véhicule, le tableau de bord et ses widgets ; R-910 : le rôle `camera` ; 5.25 : renvoi de C-33 ; R-1640 : le mod d'un widget nommé exigé des clients ; R-1770 : le budget d'un widget ; 23.3 : le widget du tableau de bord ; 23.4 : schéma de definition 5, `cameras` et `dashboard`, R-1783 ; A.1 : `E-1011` couvre un widget ; A.3 : section `[hud]` ; A.7 : CAP-10 tenue, CAP-11 tenue pour les widgets du tableau de bord ; CAP-37 : le cadrage de l'ensemble par la poursuite ; C-71 : `/axion defs info` dit les vues et le tableau de bord |
-| A21 | 2026-11-15 | ADR-171, accepté par Killian (en cours, tranche par tranche) | 5.40 et DM-17 : `SEATED` retiré ; la definition déclare ses sockets au schéma 6 ; R-1783 : `definition-6.json` ; T-895 passe en M6 (8a) ; DM-17 : la commande `ATTACH`, `DETACH`, `SET_ATTACHMENT_LENGTH`, la section `AttachmentReport` de `SIM_OUT` (schéma 7) et les causes de `DETACH_ATTACHMENT` (8b) ; R-691 : le plus long chemin ; 23.2 : `Attachments attachments()` ; 23.3 : l'écouteur des attaches ; ANNEXE A.3 : `attachment.snap_distance` (8c) |
+| A21 | 2026-11-15 | ADR-171, accepté par Killian (en cours, tranche par tranche) | 5.40 et DM-17 : `SEATED` retiré ; la definition déclare ses sockets au schéma 6 ; R-1783 : `definition-6.json` ; T-895 passe en M6 (8a) ; DM-17 : la commande `ATTACH`, `DETACH`, `SET_ATTACHMENT_LENGTH`, la section `AttachmentReport` de `SIM_OUT` (schéma 7) et les causes de `DETACH_ATTACHMENT` (8b) ; R-691 : le plus long chemin ; 23.2 : `Attachments attachments()` ; 23.3 : l'écouteur des attaches ; ANNEXE A.3 : `attachment.snap_distance` (8c) ; 22.2 : `axion:atts` ; R-692 précisée (8d) |
 
 ---
 

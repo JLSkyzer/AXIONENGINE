@@ -3893,8 +3893,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            SET_ATTACHMENT_LENGTH, rapports (SIM_OUT 7), rupture ; ABI 27 ; T-890, T-891, T-893, déterminisme.
      - [x] 8c (2026-11-15) — graphe (E-8030, max_chain), `Attachments` et l'écouteur, interaction, commandes,
            treuil, aimant, prise de force, ancrage ; GameTests T-890 à T-893. Sources attach.*/socket.* → 8d.
-     - [ ] 8d — sauvegarde, réseau, rendu : `axion:atts`, suspension (T-894), protocole 11, cordes, sources
-           attach.* et socket.* ; film.
+     - [x] 8d1 (2026-11-15) — sauvegarde : `axion:atts`, suspension et rétablissement (T-894, T-890b).
+     - [ ] 8d2 — réseau et rendu : protocole 11, cordes dessinées, sources attach.* et socket.* ; film.
      - [ ] 8e — l'ensemble (CAP-37) : prédiction, sommeil et déchargement communs, poursuite.
   9. C-77 gouverneur, C-73 overlay.
   10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).

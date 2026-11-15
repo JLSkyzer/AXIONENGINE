@@ -197,7 +197,13 @@ Il voit chaque attache du serveur, celles d'un joueur comme celles d'un autre mo
 | `/axion detach <cible> <socket>` | défait l'attache d'un socket |
 | `/axion attaches <cible>` | liste les attaches d'une assembly, leur longueur, leur écart, leur tension |
 
+## 9. Sauvegarde et chunks
+
+Une attache se sauvegarde avec l'assembly d'où elle part. Si l'autre extrémité est déchargée — son chunk, le joueur
+parti — ou passe dans une autre dimension, l'attache est **suspendue**, pas supprimée : elle revient quand l'autre
+revient. Au redémarrage du serveur, chaque attache se rétablit dès que ses deux extrémités sont chargées. Seule la
+destruction d'une extrémité la défait pour de bon.
+
 !!! info "Encore à venir"
-    Les attaches ne se sauvegardent pas encore : elles se défont quand le serveur s'arrête. Le joueur ne voit pas
-    encore les cordes, et les sources `attach.*` et `socket.*` des animations attendent que les attaches parviennent
-    au client.
+    Le joueur ne voit pas encore les cordes, et les sources `attach.*` et `socket.*` des animations attendent que les
+    attaches parviennent au client.

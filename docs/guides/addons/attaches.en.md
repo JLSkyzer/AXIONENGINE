@@ -198,6 +198,13 @@ It sees every attachment of the server, a player's as well as another mod's.
 | `/axion detach <target> <socket>` | undoes a socket's attachment |
 | `/axion attaches <target>` | lists an assembly's attachments, their length, gap and tension |
 
+## 9. Saving and chunks
+
+An attachment is saved with the assembly it starts from. If the other end is unloaded — its chunk, the player gone —
+or moves to another dimension, the attachment is **suspended**, not deleted: it comes back when the other end does.
+When the server restarts, each attachment is restored as soon as both its ends are loaded. Only destroying an end
+undoes it for good.
+
 !!! info "Still to come"
-    Attachments are not saved yet: they come undone when the server stops. Players do not see ropes yet, and the
-    `attach.*` and `socket.*` animation sources wait for attachments to reach the client.
+    Players do not see ropes yet, and the `attach.*` and `socket.*` animation sources wait for attachments to reach the
+    client.

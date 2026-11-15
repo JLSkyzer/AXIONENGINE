@@ -108,6 +108,62 @@ public final class AttachesGameTests {
         });
     }
 
+    /** Sauvegarde une assembly, la décharge comme un chunk le ferait, et rend sa sauvegarde. */
+    private static net.minecraft.nbt.CompoundTag decharger(GameTestHelper helper, AxionEntity entite) {
+        net.minecraft.nbt.CompoundTag sauvegarde = new net.minecraft.nbt.CompoundTag();
+        helper.assertTrue(entite.save(sauvegarde), "sauvegarde refusée");
+        entite.remove(net.minecraft.world.entity.Entity.RemovalReason.UNLOADED_TO_CHUNK);
+        return sauvegarde;
+    }
+
+    /** Recharge une assembly depuis sa sauvegarde, comme son chunk revenu. */
+    private static AxionEntity recharger(GameTestHelper helper, net.minecraft.nbt.CompoundTag sauvegarde) {
+        net.minecraft.world.entity.Entity lue = net.minecraft.world.entity.EntityType.loadEntityRecursive(
+                sauvegarde, helper.getLevel(), e -> e);
+        helper.assertTrue(lue instanceof AxionEntity, "la sauvegarde ne rend pas une assembly");
+        helper.assertTrue(helper.getLevel().addFreshEntity(lue), "l'assembly relue n'entre pas");
+        return (AxionEntity) lue;
+    }
+
+    /**
+     * T-890b, T-894 (R-692) : l'autre extrémité déchargée, l'attache est suspendue, pas supprimée, et revient avec
+     * elle ; l'assembly qui l'a posée, déchargée puis rechargée, la rétablit depuis sa sauvegarde ({@code axion:atts}).
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 300)
+    public static void t894_UneAttacheSeGardeEtSeRetablit(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity a = AssembliesDeTest.poser(helper, MAILLON, new Vec3(6.0, DESSUS_DALLE + 0.05, 8.0), DROIT);
+        AxionEntity[] b = {AssembliesDeTest.poser(helper, MAILLON, new Vec3(7.2, DESSUS_DALLE + 0.05, 8.0), DROIT)};
+        AxionEntity[] relue = new AxionEntity[1];
+        net.minecraft.nbt.CompoundTag[] sauvegarde = new net.minecraft.nbt.CompoundTag[1];
+        helper.startSequence()
+                .thenIdle(20)
+                .thenExecute(() -> attendu(helper, vue(a).attachments().attach("avant", vue(b[0]), "arriere", "rope"),
+                        AttachResult.Status.ATTACHED))
+                .thenIdle(5)
+                .thenExecute(() -> sauvegarde[0] = decharger(helper, b[0]))
+                .thenWaitUntil(() -> {
+                    helper.assertTrue(vue(a).attachments().list().isEmpty(), "l'autre partie, l'attache se défait");
+                    helper.assertTrue(AttachmentRuntime.current().suspended(a) == 1, "suspendue, pas supprimée");
+                })
+                .thenExecute(() -> b[0] = recharger(helper, sauvegarde[0]))
+                .thenWaitUntil(() -> helper.assertTrue(vue(a).attachments().list().size() == 1,
+                        "T-890b : l'autre revenue, l'attache est rétablie"))
+                .thenExecute(() -> {
+                    net.minecraft.nbt.CompoundTag gardee = decharger(helper, a);
+                    helper.assertTrue(gardee.getList(AssemblyTags.ATTACHMENTS, 10).size() == 1,
+                            "axion:atts : " + gardee.get(AssemblyTags.ATTACHMENTS));
+                    relue[0] = recharger(helper, gardee);
+                })
+                .thenWaitUntil(() -> {
+                    List<dev.axion.api.attach.Attachments.Attachment> liste = vue(relue[0]).attachments().list();
+                    helper.assertTrue(liste.size() == 1, "T-894 : relue, l'assembly rétablit son attache");
+                    helper.assertTrue("rope".equals(liste.get(0).kind()) && liste.get(0).other().isPresent()
+                            && liste.get(0).other().get().equals(b[0].getUUID()), "la même : " + liste.get(0));
+                })
+                .thenSucceed();
+    }
+
     /**
      * T-893 : neuf maillons attachés en rotule de proche en proche — huit attaches, la chaîne la plus longue permise ;
      * une neuvième est refusée, et les huit tiennent leurs sockets ensemble.

@@ -59,6 +59,15 @@ final class AssemblyTags {
      */
     static final String CONTROLLERS = "axion:ctrls";
 
+    /**
+     * Attaches que l'assembly a posées (ADR-171 D7, R-692) : socket, autre extrémité ou bloc, type, longueur, mod ;
+     * absente sans elles.
+     */
+    static final String ATTACHMENTS = "axion:atts";
+
+    /** Un nom de socket ou de type gardé : la forme d'un nom de la definition, borné. */
+    private static final java.util.regex.Pattern ATTACHMENT_NAME = java.util.regex.Pattern.compile("[ -~]{1,64}");
+
     /** La forme de l'identifiant d'un contrôleur. */
     private static final java.util.regex.Pattern CONTROLLER_ID =
             java.util.regex.Pattern.compile("[a-z0-9_.-]+:[a-z0-9/._-]+");
@@ -222,6 +231,72 @@ final class AssemblyTags {
             }
         }
         return saved;
+    }
+
+    /**
+     * {@return les attaches gardées, dans l'ordre où elles ont été posées ; vide sans {@code axion:atts}} Une entrée
+     * illisible — un socket, un type ou un mod absents ou mal formés, ni autre assembly ni bloc — est ignorée, et au-delà
+     * de {@link dev.axion.attach.AttachmentRecord#MAX} le reste aussi : un NBT ne fait pas foi (obligation 3.13).
+     */
+    static java.util.List<dev.axion.attach.AttachmentRecord> attachments(CompoundTag stored) {
+        java.util.List<dev.axion.attach.AttachmentRecord> saved = new java.util.ArrayList<>();
+        if (!stored.contains(ATTACHMENTS, Tag.TAG_LIST)) {
+            return saved;
+        }
+        ListTag list = stored.getList(ATTACHMENTS, Tag.TAG_COMPOUND);
+        for (int i = 0; i < list.size() && saved.size() < dev.axion.attach.AttachmentRecord.MAX; i++) {
+            CompoundTag entry = list.getCompound(i);
+            String socket = entry.getString("socket");
+            String kind = entry.getString("kind");
+            String owner = entry.getString("owner");
+            if (!ATTACHMENT_NAME.matcher(socket).matches() || !ATTACHMENT_NAME.matcher(kind).matches()
+                    || !ATTACHMENT_NAME.matcher(owner).matches()) {
+                continue;
+            }
+            double length = entry.contains("length", Tag.TAG_DOUBLE) ? entry.getDouble("length") : Double.NaN;
+            if (entry.hasUUID("other")) {
+                String otherSocket = entry.getString("other_socket");
+                if (ATTACHMENT_NAME.matcher(otherSocket).matches()) {
+                    saved.add(new dev.axion.attach.AttachmentRecord(socket, entry.getUUID("other"), otherSocket, null,
+                            kind, length, owner));
+                }
+            } else if (entry.contains("anchor", Tag.TAG_INT_ARRAY) && entry.getIntArray("anchor").length == 3) {
+                saved.add(new dev.axion.attach.AttachmentRecord(socket, null, null, entry.getIntArray("anchor"), kind,
+                        length, owner));
+            }
+        }
+        return saved;
+    }
+
+    /**
+     * Écrit les attaches posées par l'assembly, dans l'ordre ; sans aucune, la clé est retirée.
+     *
+     * @param stored les clés gardées
+     * @param records les attaches
+     */
+    static void putAttachments(CompoundTag stored, java.util.List<dev.axion.attach.AttachmentRecord> records) {
+        if (records.isEmpty()) {
+            stored.remove(ATTACHMENTS);
+            return;
+        }
+        ListTag list = new ListTag();
+        for (dev.axion.attach.AttachmentRecord record : records) {
+            CompoundTag entry = new CompoundTag();
+            entry.putString("socket", record.socket());
+            if (record.anchored()) {
+                entry.putIntArray("anchor", record.anchor());
+            } else {
+                entry.putUUID("other", record.other());
+                entry.putString("other_socket", record.otherSocket());
+            }
+            entry.putString("kind", record.kind());
+            if (Double.isFinite(record.length())) {
+                entry.putDouble("length", record.length());
+            }
+            entry.putString("owner", record.owner());
+            list.add(entry);
+        }
+        stored.put(ATTACHMENTS, list);
     }
 
     /**
