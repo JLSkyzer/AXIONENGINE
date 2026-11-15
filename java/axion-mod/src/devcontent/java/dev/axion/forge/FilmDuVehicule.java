@@ -545,7 +545,8 @@ public final class FilmDuVehicule {
         if (!VUES && minecraft.options.getCameraType() != CameraType.FIRST_PERSON) {
             minecraft.options.setCameraType(CameraType.FIRST_PERSON);
         }
-        minecraft.options.hideGui = true;
+        // Le film des vues montre aussi le tableau de bord (ADR-170 D4), qui fait partie de l'interface.
+        minecraft.options.hideGui = !VUES;
     }
 
     /**

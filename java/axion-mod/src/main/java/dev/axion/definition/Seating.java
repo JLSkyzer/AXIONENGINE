@@ -23,9 +23,10 @@ import java.util.Map;
  * @param warnings les actions déclarées qui restent sans effet jusqu'à leur chantier (ADR-158 D6)
  * @param variables les variables que les commandes liées, les interactions et l'API écrivent (ADR-163 D2)
  * @param views les vues de ses sièges (ADR-170)
+ * @param dashboard son tableau de bord (ADR-170 D4)
  */
 public record Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings, Variables variables,
-        VehicleViews views) {
+        VehicleViews views, VehicleDashboard dashboard) {
 
     /** Aucun siège, aucune interaction, aucune variable. */
     public static final Seating NONE = new Seating(List.of(), List.of(), List.of(), Variables.NONE);
@@ -57,7 +58,7 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      * @param variables les variables
      */
     public Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings, Variables variables) {
-        this(seats, interactions, warnings, variables, VehicleViews.NONE);
+        this(seats, interactions, warnings, variables, VehicleViews.NONE, VehicleDashboard.NONE);
     }
 
     /** Les contrôles qu'un siège peut autoriser, ceux de {@code VehicleInput} (12.8), en bits. */
@@ -442,7 +443,19 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         }
         return seats.isEmpty() && interactions.isEmpty() && variables.size() == 0
                 ? NONE
-                : new Seating(seats, interactions, warnings, variables, VehicleViews.of(root, byPath, seatRanks));
+                : new Seating(seats, interactions, warnings, variables, VehicleViews.of(root, byPath, seatRanks),
+                        VehicleDashboard.of(root, seatRanks, drivers(seats)));
+    }
+
+    /** {@return les sièges conducteurs, un bit par rang} */
+    private static long drivers(List<Seat> seats) {
+        long drivers = 0;
+        for (int rank = 0; rank < seats.size() && rank < Long.SIZE; rank++) {
+            if (seats.get(rank).driver()) {
+                drivers |= 1L << rank;
+            }
+        }
+        return drivers;
     }
 
     private static int node(Map<String, Integer> byPath, String path) {

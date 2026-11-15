@@ -42,5 +42,10 @@ parallax = "auto"                 # auto | off | low | medium | high | ultra
 enabled = false
 key = "unbound"                   # texte libre
 
+[hud]
+dashboard = true
+dashboard_scale = 1.0             # 0.5..2.0
+speed_unit = "kmh"                # kmh | mph
+
 [debug]
 gl = false

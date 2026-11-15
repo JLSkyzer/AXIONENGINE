@@ -75,6 +75,34 @@ class VehicleViewsTest {
     }
 
     @Test
+    @DisplayName("D4 et Q2 : sans dashboard, le défaut au seul conducteur ; déclaré, ses jauges, ses sièges, ses défauts")
+    void tableauDeBord() {
+        VehicleDashboard defaut = compiler("{\"schema\": 4, \"asset\": \"m:a.glb\", \"kind\": \"rigid_object\", "
+                + SIEGES + "}").dashboard();
+        assertTrue(defaut.showDefault());
+        assertTrue(defaut.serves(0) && !defaut.serves(1), "le conducteur seul");
+
+        VehicleDashboard declare = compiler("{\"schema\": 5, \"asset\": \"m:a.glb\", \"kind\": \"rigid_object\", "
+                + SIEGES + ", \"variables\": {\"phares\": {\"type\": \"bool\"}}, \"dashboard\": {\"default\": false,"
+                + " \"seats\": [\"conducteur\", \"passager\"], \"gauges\": [{\"name\": \"phares\", \"kind\": \"light\","
+                + " \"source\": \"var.phares\"}, {\"name\": \"v\", \"kind\": \"bar\", \"source\": \"vehicle.speed\","
+                + " \"min\": 0, \"max\": 50, \"anchor\": \"top_left\", \"offset\": [4, 6]}],"
+                + " \"widgets\": [\"mymod:compte_tours\"]}}").dashboard();
+        assertTrue(!declare.showDefault() && declare.serves(0) && declare.serves(1));
+        VehicleDashboard.Gauge phares = declare.gauges().get(0);
+        assertEquals(VehicleDashboard.Kind.LIGHT, phares.kind());
+        assertEquals(0.5, phares.min(), "un voyant s'allume à 0,5 par défaut");
+        assertEquals(VehicleDashboard.Anchor.BOTTOM_RIGHT, phares.anchor());
+        assertTrue(Double.isNaN(phares.offsetX()), "sans décalage : rangée à la suite");
+        assertEquals(VehicleDashboard.DEFAULT_SIZE, phares.size());
+        VehicleDashboard.Gauge vitesse = declare.gauges().get(1);
+        assertEquals(VehicleDashboard.Anchor.TOP_LEFT, vitesse.anchor());
+        assertEquals(4, vitesse.offsetX());
+        assertEquals(50, vitesse.max());
+        assertEquals(List.of("mymod:compte_tours"), declare.widgets());
+    }
+
+    @Test
     @DisplayName("D1 : une vue fixe sans bornes de regard est figée")
     void fixeFigee() {
         VehicleViews views = compiler("{\"schema\": 5, \"asset\": \"m:a.glb\", \"kind\": \"rigid_object\", " + SIEGES

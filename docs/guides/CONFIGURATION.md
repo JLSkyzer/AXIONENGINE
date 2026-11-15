@@ -306,6 +306,14 @@ alors ignorée (R-1830).
 | `enabled` | booléen | `false` | `true \| false` | oui | non | Affiche l'overlay de diagnostic. |
 | `key` | chaîne | `"unbound"` | `texte libre` | oui | non | Touche d'activation de l'overlay. unbound laisse l'overlay sans raccourci. |
 
+### `[hud]`
+
+| Option | Type | Défaut | Domaine | Chaud | Serveur | Description |
+|---|---|---|---|---|---|---|
+| `dashboard` | booléen | `true` | `true \| false` | oui | non | Affiche le tableau de bord du véhicule conduit : le défaut et les jauges que sa definition déclare. |
+| `dashboard_scale` | flottant | `1.0` | `0.5..2.0` | oui | non | Échelle du tableau de bord, par rapport à l'interface de Minecraft. |
+| `speed_unit` | chaîne | `"kmh"` | `kmh \| mph` | oui | non | Unité de la vitesse affichée par le tableau de bord. |
+
 ### `[debug]`
 
 | Option | Type | Défaut | Domaine | Chaud | Serveur | Description |

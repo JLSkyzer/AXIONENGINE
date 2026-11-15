@@ -306,6 +306,14 @@ ignored (R-1830).
 | `enabled` | boolean | `false` | `true \| false` | yes | no | Shows the diagnostic overlay. |
 | `key` | string | `"unbound"` | `free text` | yes | no | Key that toggles the overlay. unbound leaves the overlay without a shortcut. |
 
+### `[hud]`
+
+| Option | Type | Default | Domain | Hot | Server | Description |
+|---|---|---|---|---|---|---|
+| `dashboard` | boolean | `true` | `true \| false` | yes | no | Shows the dashboard of the driven vehicle: the default one and the gauges its definition declares. |
+| `dashboard_scale` | float | `1.0` | `0.5..2.0` | yes | no | Scale of the dashboard, relative to the Minecraft interface. |
+| `speed_unit` | string | `"kmh"` | `kmh \| mph` | yes | no | Unit of the speed shown by the dashboard. |
+
 ### `[debug]`
 
 | Option | Type | Default | Domain | Hot | Server | Description |

@@ -8139,6 +8139,11 @@ reflections = "auto" ; parallax  = "auto"
 enabled = false
 key = "unbound"
 
+[hud]
+dashboard = true                  # le tableau de bord du véhicule conduit (ADR-170 D4)
+dashboard_scale = 1.0             # 0.5..2.0
+speed_unit = "kmh"                # kmh | mph
+
 [debug]
 gl = false
 ```

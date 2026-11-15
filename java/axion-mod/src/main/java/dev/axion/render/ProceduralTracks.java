@@ -274,6 +274,50 @@ public final class ProceduralTracks {
                 tracks.toArray(new Track[0]), slots.keySet().stream().mapToInt(Integer::intValue).toArray(), defaults);
     }
 
+    /**
+     * Une source de l'ANNEXE A.4 lue hors d'une piste : la jauge d'un tableau de bord (ADR-170 D4). Elle lit la trame
+     * d'une image comme une piste la lit, sans courbe, bornes ni lissage.
+     */
+    public static final class Probe {
+
+        private final ProceduralTracks reader;
+        private final Reading reading;
+
+        private Probe(ProceduralTracks reader, Reading reading) {
+            this.reader = reader;
+            this.reading = reading;
+        }
+
+        /**
+         * {@return la valeur de la source à cette image ; NaN si sa roue ou son siège manque}
+         *
+         * @param frame la trame de l'image
+         */
+        public double read(Frame frame) {
+            Double value = reader.raw(reading, frame);
+            return value == null ? Double.NaN : value;
+        }
+    }
+
+    /**
+     * {@return la sonde d'une source pour cette definition ; {@code null} si ce jeu ne la prend pas en charge}
+     *
+     * @param root document de la definition
+     * @param source la source, de l'ANNEXE A.4
+     */
+    public static Probe probe(JsonObject root, String source) {
+        Variables variables = Variables.of(root);
+        Reading reading = reading(source, ranks(root, "wheels", "node"), ranks(root, "seats", "name"), variables);
+        if (reading == null) {
+            return null;
+        }
+        double[] defaults = new double[variables.size()];
+        for (int i = 0; i < defaults.length; i++) {
+            defaults[i] = variables.get(i).initial();
+        }
+        return new Probe(new ProceduralTracks(new Track[0], new int[0], defaults), reading);
+    }
+
     /** Le rang de chaque élément d'une liste de la definition, par la clé qui le nomme. */
     private static Map<String, Integer> ranks(JsonObject root, String list, String key) {
         Map<String, Integer> ranks = new HashMap<>();

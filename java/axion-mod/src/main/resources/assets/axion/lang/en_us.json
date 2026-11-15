@@ -36,5 +36,6 @@
   "axion.connection.controller_missing": "  - %s",
   "axion.connection.addon_version": "  - %s %s: you have %s",
   "axion.loading.api_too_old": "AXION: {2} requires AXION API {3}, but AXION provides {4}. Its content is not loaded: update AXION.",
-  "axion.loading.api_malformed": "AXION: {2} declares axion_api = {3}, which is not an API version (expected \"1.0\", in quotes). Its content is not loaded."
+  "axion.loading.api_malformed": "AXION: {2} declares axion_api = {3}, which is not an API version (expected \"1.0\", in quotes). Its content is not loaded.",
+  "axion.hud.rpm": "rpm"
 }

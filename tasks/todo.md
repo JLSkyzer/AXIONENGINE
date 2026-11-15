@@ -3879,7 +3879,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            - [x] 7a (2026-11-15) — schéma 5 (`cameras`, `dashboard`), rôle `camera`, `Cameras.check`, builder, exemple `buggy`.
            - [x] 7b (2026-11-15) — les vues (cockpit, poursuite, fixe), F5, repli ; film avec la Charger
                  (`runFilmVues`), envoyé à Killian.
-           - [ ] 7c — le tableau de bord par défaut et les jauges, options du client.
+           - [x] 7c (2026-11-15) — le tableau de bord par défaut et les jauges, options du client (`[hud]`).
            - [ ] 7d — `DashboardWidget`, `DashboardCanvas`, `registerDashboardWidget`, budget ; addon témoin.
            - [ ] 7e — guide créateur, CDC (rôle `camera` en R-910, section de C-33, A.3, amendement), traductions.
   8. C-48 attaches : remorquage, ancrage au monde (CAP-15, CAP-16).

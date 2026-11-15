@@ -717,6 +717,28 @@ pub const CLIENT: &[ConfigOption] = &[
         "Touche d'activation de l'overlay. unbound laisse l'overlay sans raccourci.",
     ))
     .en("Key that toggles the overlay. unbound leaves the overlay without a shortcut."),
+    // [hud] — ADR-170 D4 : le tableau de bord du véhicule, au réglage du joueur.
+    hot(b(
+        "hud.dashboard",
+        true,
+        "Affiche le tableau de bord du véhicule conduit : le défaut et les jauges que sa definition déclare.",
+    ))
+    .en("Shows the dashboard of the driven vehicle: the default one and the gauges its definition declares."),
+    hot(f(
+        "hud.dashboard_scale",
+        1.0,
+        0.5,
+        2.0,
+        "Échelle du tableau de bord, par rapport à l'interface de Minecraft.",
+    ))
+    .en("Scale of the dashboard, relative to the Minecraft interface."),
+    hot(e(
+        "hud.speed_unit",
+        "kmh",
+        &["kmh", "mph"],
+        "Unité de la vitesse affichée par le tableau de bord.",
+    ))
+    .en("Unit of the speed shown by the dashboard."),
     // [debug]
     hot(b(
         "debug.gl",
