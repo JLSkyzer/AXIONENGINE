@@ -361,6 +361,39 @@ fn adr151_la_masse_de_l_assembly_se_repartit_au_prorata_des_densites() {
 }
 
 #[test]
+fn adr151_un_centre_de_masse_declare_n_empeche_pas_la_repartition() {
+    // Le centre de masse déclaré seul fait passer la masse des densités en masse déclarée (R-622) : la
+    // part de l'assembly doit la mettre à l'échelle elle aussi. Au film du remorquage (ADR-171, 8d),
+    // une remorque de 340 kg en pesait 1954, son volume à 1000 kg/m³.
+    let mut driver = pilote(128.0, 2048);
+    let mut deux = [corps(0, Vec3::ZERO), corps(1, Vec3::new(3.0, 0.0, 0.0))];
+    deux[0].desc.center_of_mass = [0.0, 0.2, 0.0];
+    let ids = driver
+        .create_assembly_bodies(
+            0,
+            ASSEMBLY,
+            spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
+            &deux,
+            &[],
+            CollisionGroups::ALL,
+            100.0,
+            false,
+        )
+        .unwrap();
+    let world = driver.world_mut(0).unwrap();
+    let masses: Vec<f32> = ids.iter().map(|id| world.body_mass(*id).unwrap()).collect();
+    assert!(
+        (masses[0] - 50.0).abs() < 1e-3 && (masses[1] - 50.0).abs() < 1e-3,
+        "100 kg partagés au prorata : {masses:?}"
+    );
+    let centre = world.body_center_of_mass(ids[0]).unwrap() - Vec3::new(0.0, 64.0, 0.0);
+    assert!(
+        (centre - Vec3::new(0.0, 0.2, 0.0)).length() < 1e-3,
+        "le centre déclaré reste : {centre}"
+    );
+}
+
+#[test]
 fn adr151_une_forme_refusee_n_en_laisse_aucun() {
     let mut driver = pilote(128.0, 2048);
     let mut fautif = corps(1, Vec3::new(3.0, 0.0, 0.0));

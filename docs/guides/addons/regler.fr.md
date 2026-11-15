@@ -228,8 +228,9 @@ véhicules, et le journal le dit en nommant ton mod (`E-1011`) : les véhicules 
   viendra, d'où la règle précédente ;
 - le mod qui l'enregistre est exigé des joueurs dès qu'une fiche le nomme.
 
-Le GameTest du témoin attache le limiteur au buggy d'exemple, règle sa vitesse maximale et le conduit pied au
-plancher :
+Le GameTest du témoin attache le limiteur au buggy d'exemple, règle sa vitesse maximale et le conduit au tiers des gaz.
+Pied au plancher, ses roues arrière patineraient, et le moteur coupé, elles le pousseraient encore jusqu'à rattraper la
+vitesse du sol : un limiteur coupe le moteur, pas l'élan des roues :
 
 ```java
 --8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:limiter"

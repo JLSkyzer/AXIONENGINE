@@ -93,7 +93,9 @@ public final class ExampleAddonGameTests {
     // --8<-- [start:limiter]
     /**
      * The speed limiter on AXION's example buggy (loaded when {@code content.examples} is on, as on AXION's test
-     * server), driven flat out by this test: past the top speed, the engine is cut.
+     * server), driven at a third throttle by this test: past the top speed, the engine is cut. Flat out, its rear wheels
+     * would spin, and once the engine is cut they would keep pushing it until they meet the ground's speed: a limiter
+     * cuts the engine, not the wheels' momentum.
      */
     @GameTest(template = AxionGameTests.DALLE, timeoutTicks = 200)
     public static void speedLimiterCapsTheBuggy(GameTestHelper helper) {
@@ -113,8 +115,9 @@ public final class ExampleAddonGameTests {
                     // slab is enough.
                     buggy.parameters().modify(new Modifier(ExampleAddon.MOD_ID + ":slow_zone",
                             ExampleSpeedLimiter.MAX_SPEED, Modifier.Operation.ADD, -14));
-                    // Flat out in first gear (the buggy's gearbox is manual), the parking brake released.
-                    vehicle.drive(new DriverInput(1, 0, 0, 0, 0, 1));
+                    // A third throttle in first gear (the buggy's gearbox is manual), below the point where its rear
+                    // wheels spin, the parking brake released.
+                    vehicle.drive(new DriverInput(0.3, 0, 0, 0, 0, 1));
                 })
                 .thenExecuteFor(60, () -> fastest[0] = Math.max(fastest[0],
                         buggy.vehicle().orElseThrow().state().speed()))

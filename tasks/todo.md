@@ -3896,9 +3896,12 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      - [x] 8d1 (2026-11-15) — sauvegarde : `axion:atts`, suspension et rétablissement (T-894, T-890b).
      - [x] 8d2 (2026-11-15) — réseau et rendu : descripteur 7 / protocole 11, cordes dessinées, sources
            attach.* et socket.* ; film runFilmRemorque.
-     - [ ] 8d3 — le remorquage au film (ADR-171, « ce que le film a montré ») : traînée de 3,3 kN d'une remorque
-           libre en ligne droite, cause à établir ; à-coups de 40 à 60 kN au slalom, corde élastique (rope seule)
-           à mesurer au film ; point mort à la demande d'une boîte automatique, absent.
+     - [x] 8d3 (2026-11-15) — le remorquage au film : la traînée et les ruptures venaient d'une masse fausse
+           (centre de masse déclaré → physics.mass non répartie, 1954 kg au lieu de 340 ; correctif de D2
+           d'ADR-151). Test du limiteur au tiers des gaz ; remorqueuse avec antipatinage ; film en remorquage
+           plafonné à la vitesse du slalom. Reste : point mort à la demande d'une boîte automatique, absent ; les
+           autres films (vehicule, vues, roues, paramètres, sport, limiteur) à rejouer au buggy allégé ; au film
+           du remorquage, le joueur dessiné s'écarte de 0,030 bloc (> 0,02, ADR-159 tranche 3) sous les à-coups.
      - [ ] 8e — l'ensemble (CAP-37) : prédiction, sommeil et déchargement communs, poursuite.
   9. C-77 gouverneur, C-73 overlay.
   10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).

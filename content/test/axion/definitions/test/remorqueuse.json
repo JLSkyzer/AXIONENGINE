@@ -46,7 +46,8 @@
                       "auto_shift_up_rpm": 5800, "auto_shift_down_rpm": 2200,
                       "efficiency": 0.9 },
     "differential": { "type": "open" },
-    "drive_wheels": ["roue_arriere_gauche", "roue_arriere_droite"]
+    "drive_wheels": ["roue_arriere_gauche", "roue_arriere_droite"],
+    "traction_control": { "enabled": true, "slip_threshold": 0.15 }
   },
 
   "steering": { "max_angle": 0.6, "speed": 3.0, "return_speed": 4.0,

@@ -101,8 +101,11 @@ public final class FilmDuVehicule {
 
     /** L'horizon auquel le pilote du film juge le cap, en secondes. */
     private static final double ANTICIPATION_S = 0.4;
-    /** Vitesse tenue pendant le slalom, en m/s. */
-    private static final double VITESSE_SLALOM = 9.0;
+    /**
+     * Vitesse tenue pendant le slalom, en m/s : 6 en remorquage. À 9 m/s, plein braquage au clavier, le véhicule de
+     * 340 kg du film part en tête-à-queue au redressement, la corde molle (ADR-171, 8d).
+     */
+    private static final double VITESSE_SLALOM = REMORQUE ? 6.0 : 9.0;
 
     /** L'écart toléré entre l'axe de la vue et le véhicule : au-delà, il sort de l'image ou s'y colle au bord. */
     private static final double CHAMP_TOLERE_DEG = 20.0;
@@ -419,6 +422,18 @@ public final class FilmDuVehicule {
                         "[film] corde tick %d : longueur %.2f, écart %.2f, tension %.0f N, remorque à y %.2f", tick,
                         corde.length(), corde.distance(), corde.tension(), remorque.getY()));
             }
+            // La remorque : sa vitesse, et pour chaque roue sa rotation, ses glissements et son contact.
+            if (tick % 10 == 0) {
+                dev.axion.api.vehicle.VehicleView etat = ForgeAxionApi.view(remorque).vehicle().orElseThrow().state();
+                StringBuilder roues = new StringBuilder();
+                for (dev.axion.api.vehicle.WheelView roue : etat.wheels()) {
+                    roues.append(String.format(java.util.Locale.ROOT, " [spin %.1f, long %.2f, lat %.2f, %s]",
+                            roue.spin(), roue.slipLong(), roue.slipLat(), roue.grounded() ? "sol" : "air"));
+                }
+                LOGGER.info(String.format(java.util.Locale.ROOT, "[film] remorque tick %d : vitesse %.2f, frein à main"
+                        + " %.2f, freins %.2f%s", tick, etat.speed(), etat.input().handbrake(), etat.input().brake(),
+                        roues));
+            }
         }
         if (cible != null) {
             double[] ici = {cible.getX(), cible.getY(), cible.getZ()};
@@ -714,7 +729,9 @@ public final class FilmDuVehicule {
                     zDebutLigne = zServeur;
                 }
                 boolean[] braque = versLeCap(0.0, Math.toRadians(2.0));
-                touches(minecraft, true, false, braque[0], braque[1], false);
+                // En remorquage, la ligne droite ne dépasse pas la vitesse du slalom : un conducteur qui tracte
+                // n'aborde pas un virage lancé (ADR-171, 8d).
+                touches(minecraft, !REMORQUE || vitesse < VITESSE_SLALOM, false, braque[0], braque[1], false);
                 if (zServeur - zDebutLigne >= LIGNE_DROITE) {
                     distanceAvant = zServeur - zDebutLigne;
                     suivante = Etape.SLALOM_GAUCHE;

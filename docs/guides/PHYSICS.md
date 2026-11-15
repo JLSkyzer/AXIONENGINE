@@ -55,7 +55,7 @@ et blesse une entité vivante comme une chute de même vitesse (`physics.entity_
 | Champ | Sans déclaration | Effet |
 |---|---|---|
 | `mass` | calculée : densité × volume de chaque collider | masse du corps, en kg (0,001 à 10⁶) ; l'inertie suit, à la même répartition |
-| `center_of_mass` | calculé depuis les colliders | centre de masse en repère du modèle ; l'inertie y est transportée |
+| `center_of_mass` | calculé depuis les colliders | centre de masse en repère du modèle ; l'inertie y est transportée. Il ne change pas la masse : celle de `mass` s'applique avec lui, répartie entre les corps de l'assembly |
 | `linear_damping`, `angular_damping` | ceux de `rapier` | amortissements, positifs ou nuls |
 | `ccd` | automatique (voir plus bas) | détection continue toujours active |
 | `collision_group` | `assembly` | groupe dont le corps est membre |

@@ -52,7 +52,7 @@ the same speed (`physics.entity_damage`).
 | Field | If not declared | Effect |
 |---|---|---|
 | `mass` | computed: density × volume of each collider | the body's mass, in kg (0.001 to 10⁶); the inertia follows, with the same distribution |
-| `center_of_mass` | computed from the colliders | centre of mass in the model's frame; the inertia is moved to it |
+| `center_of_mass` | computed from the colliders | centre of mass in the model's frame; the inertia is moved to it. It does not change the mass: `mass` applies with it, shared between the assembly's bodies |
 | `linear_damping`, `angular_damping` | `rapier`'s | damping, positive or zero |
 | `ccd` | automatic (see below) | continuous detection always on |
 | `collision_group` | `assembly` | group the body is a member of |

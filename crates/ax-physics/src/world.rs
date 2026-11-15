@@ -1,6 +1,7 @@
 //! Le monde physique d'une dimension (C-31, fiche 5.23).
 
 use ax_math::{DVec3, FloatingOrigin, Mat3, Quat, Vec3};
+use rapier3d::dynamics::RigidBodyAdditionalMassProps;
 use rapier3d::parry::mass_properties::MassProperties;
 use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::parry::utils::Array2;
@@ -744,9 +745,12 @@ impl PhysicsWorld {
         self.inner.bodies.get(id.handle()).map(RigidBody::mass)
     }
 
-    /// Multiplie la densité de chaque collider d'un corps par `factor` et recalcule sa
-    /// masse : la masse d'une assembly se répartit ainsi entre ses corps (ADR-151 D2), centre
-    /// de masse et forme de l'inertie gardés. Sans effet sur un corps absent.
+    /// Multiplie la densité de chaque collider d'un corps par `factor`, et la masse déclarée
+    /// qui les remplace s'il en porte une, puis recalcule sa masse : la masse d'une assembly se
+    /// répartit ainsi entre ses corps (ADR-151 D2), centre de masse et forme de l'inertie
+    /// gardés. Un centre de masse déclaré seul fait passer la masse des densités en masse
+    /// déclarée ([`Self::apply_body_desc`], R-622) : sans elle, la part de l'assembly ne
+    /// l'atteignait pas. Sans effet sur un corps absent.
     pub fn scale_density(&mut self, id: BodyId, factor: f32) {
         let colliders = match self.inner.bodies.get(id.handle()) {
             Some(body) => body.colliders().to_vec(),
@@ -758,6 +762,27 @@ impl PhysicsWorld {
             }
         }
         if let Some(body) = self.inner.bodies.get_mut(id.handle()) {
+            match body
+                .mass_properties()
+                .additional_local_mprops
+                .as_deref()
+                .copied()
+            {
+                Some(RigidBodyAdditionalMassProps::MassProps(declared)) => {
+                    body.set_additional_mass_properties(
+                        MassProperties::with_inertia_matrix(
+                            declared.local_com,
+                            declared.mass() * factor,
+                            declared.reconstruct_inertia_matrix() * factor,
+                        ),
+                        true,
+                    );
+                }
+                Some(RigidBodyAdditionalMassProps::Mass(declared)) => {
+                    body.set_additional_mass(declared * factor, true);
+                }
+                None => {}
+            }
             body.recompute_mass_properties_from_colliders(&self.inner.colliders);
         }
     }

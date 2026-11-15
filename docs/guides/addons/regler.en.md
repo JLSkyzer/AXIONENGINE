@@ -223,7 +223,9 @@ vehicles then drive without it. An exception also discards everything the call h
   previous rule;
 - the mod registering it is required from players as soon as a sheet names it.
 
-The witness's GameTest attaches the limiter to the example buggy, tunes its top speed and drives it flat out:
+The witness's GameTest attaches the limiter to the example buggy, tunes its top speed and drives it at a third throttle.
+Flat out, its rear wheels would spin, and once the engine is cut they would keep pushing it until they meet the
+ground's speed: a limiter cuts the engine, not the momentum of the wheels:
 
 ```java
 --8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:limiter"
