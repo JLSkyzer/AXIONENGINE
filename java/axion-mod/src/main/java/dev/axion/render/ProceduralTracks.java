@@ -88,6 +88,7 @@ public final class ProceduralTracks {
         RPM, LOAD, RUNNING,
         GEAR, SHIFTING,
         SEAT_OCCUPIED,
+        ATTACH_LENGTH, ATTACH_TENSION, ATTACHED, SOCKET_MISALIGNMENT,
         SECONDS,
         VARIABLE,
         WORLD_TIME, SKY_LIGHT, RAIN
@@ -156,10 +157,34 @@ public final class ProceduralTracks {
      * @param worldTime heure du jour, 0 à minuit, 0,5 à midi
      * @param skyLight lumière du ciel au bloc de l'assembly, de 0 à 15
      * @param rain pluie, de 0 à 1
+     * @param sockets pour chaque socket, dans l'ordre de la definition, {@link #SOCKET_READINGS} valeurs : attaché
+     *     (0 ou 1), longueur de la corde en blocs, tension en newtons, désalignement en blocs (ADR-171 D7)
      */
     public record Frame(List<Interpolation.WheelPose> wheels, double[] spinAngles, Interpolation.VehiclePose vehicle,
             AssemblyState.VariableValues variables, boolean[] seats, double seconds, float worldTime, float skyLight,
-            float rain) {
+            float rain, double[] sockets) {
+
+        /** Les lectures d'un socket dans {@link #sockets} : attaché, longueur, tension, désalignement. */
+        public static final int SOCKET_READINGS = 4;
+
+        /**
+         * Un cadre sans attache.
+         *
+         * @param wheels état de chaque roue
+         * @param spinAngles angle de chaque roue
+         * @param vehicle état du véhicule
+         * @param variables variables reçues
+         * @param seats occupation de chaque siège
+         * @param seconds temps du serveur, en secondes
+         * @param worldTime heure du jour
+         * @param skyLight lumière du ciel
+         * @param rain pluie
+         */
+        public Frame(List<Interpolation.WheelPose> wheels, double[] spinAngles, Interpolation.VehiclePose vehicle,
+                AssemblyState.VariableValues variables, boolean[] seats, double seconds, float worldTime,
+                float skyLight, float rain) {
+            this(wheels, spinAngles, vehicle, variables, seats, seconds, worldTime, skyLight, rain, new double[0]);
+        }
 
         /**
          * {@return un cadre où seules les roues ont un état} Le reste vaut zéro.
@@ -253,13 +278,14 @@ public final class ProceduralTracks {
         }
         Map<String, Integer> wheels = ranks(root, "wheels", "node");
         Map<String, Integer> seats = ranks(root, "seats", "name");
+        Map<String, Integer> sockets = ranks(root, "sockets", "name");
         Variables variables = Variables.of(root);
         Map<Integer, Integer> slots = new LinkedHashMap<>();
         List<Track> tracks = new ArrayList<>();
         Set<String> notes = new LinkedHashSet<>();
         for (JsonElement entry : entries) {
             if (entry instanceof JsonObject track) {
-                read(track, wheels, seats, variables, nodeNames, slots, tracks, notes);
+                read(track, wheels, seats, sockets, variables, nodeNames, slots, tracks, notes);
             }
         }
         notes.forEach(journal);
@@ -307,7 +333,8 @@ public final class ProceduralTracks {
      */
     public static Probe probe(JsonObject root, String source) {
         Variables variables = Variables.of(root);
-        Reading reading = reading(source, ranks(root, "wheels", "node"), ranks(root, "seats", "name"), variables);
+        Reading reading = reading(source, ranks(root, "wheels", "node"), ranks(root, "seats", "name"),
+                ranks(root, "sockets", "name"), variables);
         if (reading == null) {
             return null;
         }
@@ -332,18 +359,18 @@ public final class ProceduralTracks {
     }
 
     private static void read(JsonObject entry, Map<String, Integer> wheels, Map<String, Integer> seats,
-            Variables variables, List<String> names, Map<Integer, Integer> slots, List<Track> tracks,
-            Set<String> notes) {
+            Map<String, Integer> sockets, Variables variables, List<String> names, Map<Integer, Integer> slots,
+            List<Track> tracks, Set<String> notes) {
         String source = text(entry, "source");
         String name = text(entry, "node") != null ? text(entry, "node") : text(entry, "bone");
-        Reading reading = reading(source, wheels, seats, variables);
+        Reading reading = reading(source, wheels, seats, sockets, variables);
         if (reading == null) {
             notes.add("piste procédurale ignorée : source « " + source + " » non prise en charge");
             return;
         }
         Reading gate = null;
         if (entry.has("gate")) {
-            gate = reading(text(entry, "gate"), wheels, seats, variables);
+            gate = reading(text(entry, "gate"), wheels, seats, sockets, variables);
             if (gate == null) {
                 notes.add("piste procédurale ignorée : gate « " + text(entry, "gate") + " » non prise en charge");
                 return;
@@ -380,9 +407,9 @@ public final class ProceduralTracks {
 
     /** {@return ce que lit une source, ou {@code null} si ce jeu ne la prend pas en charge ou que son élément manque} */
     private static Reading reading(String source, Map<String, Integer> wheels, Map<String, Integer> seats,
-            Variables variables) {
+            Map<String, Integer> sockets, Variables variables) {
         Source kind = kind(source);
-        Integer index = kind == null ? null : index(kind, source, wheels, seats, variables);
+        Integer index = kind == null ? null : index(kind, source, wheels, seats, sockets, variables);
         return kind == null || index == null ? null : new Reading(kind, index);
     }
 
@@ -433,6 +460,14 @@ public final class ProceduralTracks {
                 default -> null;
             };
             case "seat" -> named && "occupied".equals(field) ? Source.SEAT_OCCUPIED : null;
+            // ADR-171 D7 : le nom est celui d'un socket de la definition.
+            case "attach" -> !named ? null : switch (field) {
+                case "length" -> Source.ATTACH_LENGTH;
+                case "tension" -> Source.ATTACH_TENSION;
+                case "attached" -> Source.ATTACHED;
+                default -> null;
+            };
+            case "socket" -> named && "misalignment".equals(field) ? Source.SOCKET_MISALIGNMENT : null;
             case "vehicle" -> named ? null : switch (field) {
                 case "speed" -> Source.SPEED;
                 case "forward_speed" -> Source.FORWARD_SPEED;
@@ -468,10 +503,11 @@ public final class ProceduralTracks {
 
     /** {@return le rang de la roue ou du siège qu'une source nomme, 0 pour une autre, {@code null} s'il manque} */
     private static Integer index(Source kind, String source, Map<String, Integer> wheels, Map<String, Integer> seats,
-            Variables variables) {
+            Map<String, Integer> sockets, Variables variables) {
         return switch (kind) {
             case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND -> wheels.get(element(source));
             case SEAT_OCCUPIED -> seats.get(element(source));
+            case ATTACH_LENGTH, ATTACH_TENSION, ATTACHED, SOCKET_MISALIGNMENT -> sockets.get(element(source));
             case VARIABLE -> {
                 int rank = variables.indexOf(source.substring(source.indexOf('.') + 1));
                 yield rank < 0 ? null : rank;
@@ -604,6 +640,10 @@ public final class ProceduralTracks {
         return switch (track.source()) {
             case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND -> wheel(track, frame);
             case SEAT_OCCUPIED -> track.index() < frame.seats().length ? flag(frame.seats()[track.index()]) : null;
+            case ATTACHED -> socket(frame, track.index(), 0);
+            case ATTACH_LENGTH -> socket(frame, track.index(), 1);
+            case ATTACH_TENSION -> socket(frame, track.index(), 2);
+            case SOCKET_MISALIGNMENT -> socket(frame, track.index(), 3);
             case SPEED -> (double) vehicle.speed();
             case FORWARD_SPEED -> (double) vehicle.forwardSpeed();
             case THROTTLE -> (double) vehicle.throttle();
@@ -623,6 +663,12 @@ public final class ProceduralTracks {
             case SKY_LIGHT -> (double) frame.skyLight();
             case RAIN -> (double) frame.rain();
         };
+    }
+
+    /** Une lecture d'un socket ; 0 pour un socket sans attache, que le cadre ne connaît pas. */
+    private static Double socket(Frame frame, int socket, int reading) {
+        int at = socket * Frame.SOCKET_READINGS + reading;
+        return at < frame.sockets().length ? frame.sockets()[at] : 0.0;
     }
 
     private static Double wheel(Reading track, Frame frame) {

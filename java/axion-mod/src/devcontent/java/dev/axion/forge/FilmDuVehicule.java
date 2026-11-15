@@ -56,6 +56,14 @@ public final class FilmDuVehicule {
     private static final boolean VUES = Boolean.getBoolean("axion.film.vues");
     /** Le plan des roues ({@code -Daxion.film.roues=true}) : la caméra suit le véhicule de côté, à hauteur de roue. */
     private static final boolean ROUES = Boolean.getBoolean("axion.film.roues");
+    /**
+     * ADR-171, tranche 8d : le remorquage ({@code -Daxion.film.remorque=true}) — un maillon pend à une corde attachée au
+     * socket {@code attelage} du véhicule ; tendue quand il tire, pendante quand il recule. Vu de dehors.
+     */
+    private static final boolean REMORQUE = Boolean.getBoolean("axion.film.remorque");
+    /** Le maillon remorqué, et si la corde est posée. */
+    private static AxionEntity remorque;
+    private static boolean cordePosee;
     /** L'étape dont la vue a été choisie, pour presser F5 une fois à chaque changement voulu. */
     private static Etape etapeDeLaVue;
     private static final String MONDE = "axion-film";
@@ -361,6 +369,11 @@ public final class FilmDuVehicule {
         ServerLevel level = minecraft.getSingleplayerServer().overworld();
         try {
             AxionEntity vehicule = AssembliesDeTest.poser(level, DEFINITION, DEPART, new float[] {0f, 1f, 0f, 0f});
+            if (REMORQUE) {
+                // Le véhicule regarde vers le mur (+z) : le maillon l'attend derrière, à six blocs.
+                remorque = AssembliesDeTest.poser(level, "axion:test/maillon", DEPART.add(0.0, 0.2, -6.0),
+                        new float[] {0f, -0.70710677f, 0f, 0.70710677f});
+            }
             vehiculeServeur = vehicule;
             idVehicule = vehicule.getId();
             RuntimeAccess.get().addCommandProvider(FilmDuVehicule::mesurerAuServeur);
@@ -385,6 +398,15 @@ public final class FilmDuVehicule {
      */
     private static SimCommandStream mesurerAuServeur(long tick) {
         AxionEntity cible = vehiculeServeur;
+        if (REMORQUE && !cordePosee && cible != null && remorque != null && AttachmentRuntime.current() != null) {
+            // Dès que les deux definitions sont compilées : la corde, de la longueur qui les sépare.
+            dev.axion.api.attach.AttachResult corde = AttachmentRuntime.current().attach(cible, "attelage", remorque,
+                    "avant", java.util.Set.of("rope"), "axion");
+            cordePosee = corde.attached();
+            if (cordePosee) {
+                LOGGER.info("[film] corde posée entre l'attelage et le maillon");
+            }
+        }
         if (cible != null) {
             double[] ici = {cible.getX(), cible.getY(), cible.getZ()};
             Vector3f avant = cible.bodyRotation().transform(new Vector3f(0f, 0f, -1f));
@@ -554,7 +576,7 @@ public final class FilmDuVehicule {
      * caméra qui suit le véhicule de côté.
      */
     private static void choisirLaVue(Minecraft minecraft) {
-        if (ROUES) {
+        if (ROUES || REMORQUE) {
             vueConducteur = false;
             if (camera != null && minecraft.getCameraEntity() != camera) {
                 minecraft.setCameraEntity(camera);

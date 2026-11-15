@@ -78,6 +78,9 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         AttachmentReport last;
         /** La longueur de la corde au dernier tick, gardée à la sauvegarde ; NaN avant le premier rapport. */
         double lastLength = Double.NaN;
+        /** L'écart des ancrages et la tension au dernier tick, pour les joueurs (D7). */
+        double lastDistance;
+        double lastTension;
 
         Live(int id, AxionEntity a, Spec aSocket, AxionEntity b, Spec bSocket, BlockPos anchor, String kind,
                 String owner, double misalignment, double winchMin, double winchMax) {
@@ -546,6 +549,8 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
             }
             attached.last = report;
             attached.lastLength = report.length();
+            attached.lastDistance = report.distance();
+            attached.lastTension = report.force();
             if (report.broken()) {
                 drop(report.id(), "broken", false);
                 continue;
@@ -705,6 +710,44 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
     /** Le graphe, pour les tests et les commandes. */
     AttachmentGraph graph() {
         return graph;
+    }
+
+    // La réplication (ADR-171 D7).
+
+    /**
+     * {@return les attaches vivantes qu'une assembly a posées, telles qu'elles partent aux joueurs qui la suivent :
+     * rangées par socket, longueur et écart au millième de bloc, tension au newton}
+     *
+     * @param assembly l'assembly
+     */
+    public dev.axion.net.AssemblyState.Links netLinks(AxionEntity assembly) {
+        List<dev.axion.net.AssemblyState.Link> links = new ArrayList<>();
+        List<Spec> mine = assembly.sockets().sockets();
+        for (AttachmentGraph.Link link : graph.linksOf(assembly.getUUID())) {
+            Live attached = live.get(link.id());
+            if (attached == null || attached.a != assembly) {
+                continue;
+            }
+            int socket = mine.indexOf(attached.aSocket);
+            int otherSocket = attached.b == null ? -1 : attached.b.sockets().sockets().indexOf(attached.bSocket);
+            if (socket < 0 || (attached.b != null && otherSocket < 0)) {
+                continue;
+            }
+            links.add(new dev.axion.net.AssemblyState.Link(socket, SocketTable.KINDS.indexOf(attached.kind),
+                    attached.b == null ? -1 : attached.b.getId(), otherSocket,
+                    attached.anchor == null ? 0 : attached.anchor.getX() + 0.5,
+                    attached.anchor == null ? 0 : attached.anchor.getY() + 0.5,
+                    attached.anchor == null ? 0 : attached.anchor.getZ() + 0.5,
+                    milli(attached.lastLength), milli(attached.lastDistance),
+                    (int) Math.min(Integer.MAX_VALUE, Math.max(0, Math.round(attached.lastTension)))));
+        }
+        links.sort(java.util.Comparator.comparingInt(dev.axion.net.AssemblyState.Link::socket));
+        return links.isEmpty() ? dev.axion.net.AssemblyState.Links.NONE : new dev.axion.net.AssemblyState.Links(links);
+    }
+
+    private static int milli(double value) {
+        return Double.isFinite(value) ? (int) Math.min(Integer.MAX_VALUE, Math.max(0, Math.round(value * 1000)))
+                : 0;
     }
 
     // La sauvegarde (ADR-171 D7, R-692).

@@ -3894,7 +3894,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      - [x] 8c (2026-11-15) — graphe (E-8030, max_chain), `Attachments` et l'écouteur, interaction, commandes,
            treuil, aimant, prise de force, ancrage ; GameTests T-890 à T-893. Sources attach.*/socket.* → 8d.
      - [x] 8d1 (2026-11-15) — sauvegarde : `axion:atts`, suspension et rétablissement (T-894, T-890b).
-     - [ ] 8d2 — réseau et rendu : protocole 11, cordes dessinées, sources attach.* et socket.* ; film.
+     - [x] 8d2 (2026-11-15) — réseau et rendu : descripteur 7 / protocole 11, cordes dessinées, sources
+           attach.* et socket.* ; film runFilmRemorque.
      - [ ] 8e — l'ensemble (CAP-37) : prédiction, sommeil et déchargement communs, poursuite.
   9. C-77 gouverneur, C-73 overlay.
   10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).

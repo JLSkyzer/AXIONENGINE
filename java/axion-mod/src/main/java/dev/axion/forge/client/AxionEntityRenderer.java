@@ -38,6 +38,8 @@ final class AxionEntityRenderer extends EntityRenderer<AxionEntity> {
             MultiBufferSource buffers,
             int packedLight) {
         super.render(entity, yaw, partialTick, pose, buffers, packedLight);
+        // ADR-171 D7 : les cordes et les câbles que l'assembly a posés.
+        AttachmentRopes.draw(entity, partialTick, pose, buffers, packedLight);
         if (entityRenderDispatcher.shouldRenderHitBoxes() && !entity.isInvisible()) {
             Component label = entity.debugLabel();
             // La ligne « Targeted Entity » de F3 ne montre que les entités vivantes et les
@@ -48,6 +50,13 @@ final class AxionEntityRenderer extends EntityRenderer<AxionEntity> {
             }
             renderNameTag(entity, label, pose, buffers, packedLight);
         }
+    }
+
+    @Override
+    public boolean shouldRender(AxionEntity entity, net.minecraft.client.renderer.culling.Frustum frustum, double x,
+            double y, double z) {
+        // Une corde se voit même quand l'assembly qui l'a posée sort du champ.
+        return AttachmentRopes.hasRopes(entity) || super.shouldRender(entity, frustum, x, y, z);
     }
 
     @Override

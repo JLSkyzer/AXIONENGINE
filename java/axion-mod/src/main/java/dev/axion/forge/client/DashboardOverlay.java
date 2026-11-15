@@ -357,7 +357,7 @@ public final class DashboardOverlay {
         return new ProceduralTracks.Frame(shown.wheels(), assembly.wheelSpin().angles(), shown.vehicle(),
                 shown.variables(), assembly.seatsOccupied(), renderTick * ServerClock.TICK_MILLIS / 1000.0,
                 ProceduralTracks.worldTime(level.getDayTime()), level.getBrightness(LightLayer.SKY, at),
-                level.getRainLevel(partialTick));
+                level.getRainLevel(partialTick), assembly.socketReadings());
     }
 
     private static ProceduralTracks.Probe[] probes(AxionRuntime runtime, AxionEntity assembly,

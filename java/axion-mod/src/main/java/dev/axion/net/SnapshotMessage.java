@@ -58,11 +58,12 @@ import java.util.Set;
 public record SnapshotMessage(int sequence, long serverTick, int descriptor, List<Entry> entries) {
 
     /**
-     * Le descripteur d'états procéduraux (ADR-150 D6) : 6 depuis les modificateurs des paramètres (ADR-167 D8), après
+     * Le descripteur d'états procéduraux (ADR-150 D6) : 7 depuis les attaches (ADR-171 D7) ; 6 depuis les
+     * modificateurs des paramètres (ADR-167 D8), après
      * l'état du véhicule et les drapeaux sur 16 bits (5, ADR-163 D1), les roues (4, ADR-159 D9), l'animation (3,
      * ADR-155), les corps autres que le corps racine et les joints (2, ADR-151 D8).
      */
-    public static final int DESCRIPTOR_VERSION = 6;
+    public static final int DESCRIPTOR_VERSION = 7;
 
     /**
      * La longueur maximale d'une cause ou d'un nom de paramètre sur le fil, en octets : {@link Modifier#MAX_LENGTH}
@@ -84,8 +85,10 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
     static final int FLAG_VEHICLE = 256;
     static final int FLAG_VARIABLES = 512;
     static final int FLAG_PARAMETERS = 1024;
+    static final int FLAG_LINKS = 2048;
     private static final int KNOWN_FLAGS = FLAG_FULL | FLAG_VELOCITY | FLAG_BOUNDS | FLAG_SLEEPING | FLAG_BODIES
-            | FLAG_JOINTS | FLAG_ANIMATION | FLAG_WHEELS | FLAG_VEHICLE | FLAG_VARIABLES | FLAG_PARAMETERS;
+            | FLAG_JOINTS | FLAG_ANIMATION | FLAG_WHEELS | FLAG_VEHICLE | FLAG_VARIABLES | FLAG_PARAMETERS
+            | FLAG_LINKS;
 
     /** Copie les entrées. */
     public SnapshotMessage {
@@ -113,6 +116,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      * @param variables variables de contenu, ou {@code null} : celles de la base, aucune pour une entrée complète
      * @param parameters modificateurs des paramètres, ou {@code null} : ceux de la base, aucun pour une entrée
      *     complète
+     * @param links attaches posées, ou {@code null} : celles de la base, aucune pour une entrée complète (ADR-171 D7)
      */
     public record Entry(
             int handle,
@@ -130,11 +134,41 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.Wheels wheels,
             AssemblyState.Vehicle vehicle,
             AssemblyState.VariableValues variables,
-            AssemblyState.Modifiers parameters) {
+            AssemblyState.Modifiers parameters,
+            AssemblyState.Links links) {
 
         /** Copie les corps. */
         public Entry {
             bodies = bodies == null ? null : List.copyOf(bodies);
+        }
+
+        /**
+         * Une entrée sans attache dite : celles de la base, aucune pour une entrée complète.
+         *
+         * @param handle identifiant réseau de l'entité
+         * @param base séquence de la base, 0 pour une entrée complète
+         * @param x position x absolue ou delta
+         * @param y position y absolue ou delta
+         * @param z position z absolue ou delta
+         * @param rotation rotation « smallest three »
+         * @param velocity vitesses, ou {@code null}
+         * @param bounds emprise, ou {@code null}
+         * @param sleeping le corps dort
+         * @param bodies corps autres que le corps racine, ou {@code null}
+         * @param joints bits des joints, ou {@code null}
+         * @param animation état d'animation, ou {@code null}
+         * @param wheels état des roues, ou {@code null}
+         * @param vehicle état du véhicule, ou {@code null}
+         * @param variables variables de contenu, ou {@code null}
+         * @param parameters modificateurs des paramètres, ou {@code null}
+         */
+        public Entry(int handle, int base, long x, long y, long z, int rotation, AssemblyState.Velocity velocity,
+                AssemblyState.Bounds bounds, boolean sleeping, List<AssemblyState.Body> bodies,
+                AssemblyState.JointBits joints, AnimationLayers animation, AssemblyState.Wheels wheels,
+                AssemblyState.Vehicle vehicle, AssemblyState.VariableValues variables,
+                AssemblyState.Modifiers parameters) {
+            this(handle, base, x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
+                    vehicle, variables, parameters, null);
         }
 
         /** {@return vrai pour une entrée complète} */
@@ -157,7 +191,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     state.wheels().count() == 0 ? null : state.wheels(),
                     AssemblyState.Vehicle.NONE.equals(state.vehicle()) ? null : state.vehicle(),
                     state.variables().count() == 0 ? null : state.variables(),
-                    AssemblyState.Modifiers.NONE.equals(state.parameters()) ? null : state.parameters());
+                    AssemblyState.Modifiers.NONE.equals(state.parameters()) ? null : state.parameters(),
+                    AssemblyState.Links.NONE.equals(state.links()) ? null : state.links());
         }
 
         /**
@@ -187,8 +222,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.VariableValues variables =
                     state.variables().equals(base.variables()) ? null : state.variables();
             AssemblyState.Modifiers parameters = state.parameters().equals(base.parameters()) ? null : state.parameters();
+            AssemblyState.Links links = state.links().equals(base.links()) ? null : state.links();
             return new Entry(handle, baseSequence, dx, dy, dz, state.rotation(), velocity, bounds, state.sleeping(),
-                    bodies, joints, animation, wheels, vehicle, variables, parameters);
+                    bodies, joints, animation, wheels, vehicle, variables, parameters, links);
         }
 
         /**
@@ -204,14 +240,16 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                         wheels == null ? AssemblyState.Wheels.NONE : wheels,
                         vehicle == null ? AssemblyState.Vehicle.NONE : vehicle,
                         variables == null ? AssemblyState.VariableValues.NONE : variables,
-                        parameters == null ? AssemblyState.Modifiers.NONE : parameters);
+                        parameters == null ? AssemblyState.Modifiers.NONE : parameters,
+                        links == null ? AssemblyState.Links.NONE : links);
             }
             return new AssemblyState(base.x() + x, base.y() + y, base.z() + z, rotation,
                     velocity == null ? base.velocity() : velocity, bounds == null ? base.bounds() : bounds, sleeping,
                     bodies == null ? base.bodies() : bodies, joints == null ? base.joints() : joints,
                     animation == null ? base.animation() : animation, wheels == null ? base.wheels() : wheels,
                     vehicle == null ? base.vehicle() : vehicle, variables == null ? base.variables() : variables,
-                    parameters == null ? base.parameters() : parameters);
+                    parameters == null ? base.parameters() : parameters,
+                    links == null ? base.links() : links);
         }
 
         private static boolean fitsInt(long value) {
@@ -241,7 +279,17 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                         : 0)
                 + (entry.vehicle() != null ? AssemblyState.Vehicle.BYTES : 0)
                 + (entry.variables() != null ? variablesSize(entry.variables()) : 0)
-                + (entry.parameters() != null ? parametersSize(entry.parameters()) : 0);
+                + (entry.parameters() != null ? parametersSize(entry.parameters()) : 0)
+                + (entry.links() != null ? linksSize(entry.links()) : 0);
+    }
+
+    private static int linksSize(AssemblyState.Links links) {
+        int size = varintSize(links.links().size());
+        for (AssemblyState.Link link : links.links()) {
+            size += 2 + varintSize(link.other() + 1) + 1 + (link.anchored() ? 3 * Double.BYTES : 0)
+                    + varintSize(link.length()) + varintSize(link.distance()) + varintSize(link.tension());
+        }
+        return size;
     }
 
     private static int parametersSize(AssemblyState.Modifiers parameters) {
@@ -310,7 +358,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     | (entry.wheels() != null ? FLAG_WHEELS : 0)
                     | (entry.vehicle() != null ? FLAG_VEHICLE : 0)
                     | (entry.variables() != null ? FLAG_VARIABLES : 0)
-                    | (entry.parameters() != null ? FLAG_PARAMETERS : 0);
+                    | (entry.parameters() != null ? FLAG_PARAMETERS : 0)
+                    | (entry.links() != null ? FLAG_LINKS : 0);
             writer.varUInt(entry.handle()).u16(flags);
             if (entry.full()) {
                 writer.i64(entry.x()).i64(entry.y()).i64(entry.z());
@@ -349,6 +398,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             }
             if (entry.parameters() != null) {
                 writeParameters(writer, entry.parameters());
+            }
+            if (entry.links() != null) {
+                writeLinks(writer, entry.links());
             }
         }
         return writer.toByteArray();
@@ -419,8 +471,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.VariableValues variables =
                     (flags & FLAG_VARIABLES) == 0 ? null : readVariables(reader, handle);
             AssemblyState.Modifiers parameters = (flags & FLAG_PARAMETERS) == 0 ? null : readParameters(reader, handle);
+            AssemblyState.Links links = (flags & FLAG_LINKS) == 0 ? null : readLinks(reader, handle);
             entries.add(new Entry(handle, base, x, y, z, rotation, velocity, bounds, (flags & FLAG_SLEEPING) != 0,
-                    bodies, joints, animation, wheels, vehicle, variables, parameters));
+                    bodies, joints, animation, wheels, vehicle, variables, parameters, links));
         }
         reader.expectEnd();
         return new SnapshotMessage(sequence, serverTick, descriptor, entries);
@@ -520,6 +573,56 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      * formée, quantité finie, aucune cause posée deux fois sur un paramètre ; puis les contrôleurs attachés, au plus 8,
      * bien formés, chacun une fois (R-1650).
      */
+    /**
+     * Les attaches (ADR-171 D7) : leur nombre, puis pour chacune le rang de son socket et de son type, l'autre assembly
+     * (son identifiant plus un, 0 pour un ancrage), le rang de son socket (255 sans), le point d'ancrage s'il y en a un,
+     * puis longueur, écart et tension, entiers.
+     */
+    private static void writeLinks(WireWriter writer, AssemblyState.Links links) {
+        writer.varUInt(links.links().size());
+        for (AssemblyState.Link link : links.links()) {
+            writer.u8(link.socket()).u8(link.kind()).varUInt(link.other() + 1)
+                    .u8(link.otherSocket() < 0 ? 255 : link.otherSocket());
+            if (link.anchored()) {
+                writer.f64(link.anchorX()).f64(link.anchorY()).f64(link.anchorZ());
+            }
+            writer.varUInt(link.length()).varUInt(link.distance()).varUInt(link.tension());
+        }
+    }
+
+    /** Les attaches d'une entrée : au plus {@link AssemblyState.Links#MAX}, un type connu, un ancrage fini (R-1650). */
+    private static AssemblyState.Links readLinks(WireReader reader, int handle) throws MalformedPacketException {
+        int count = reader.varUInt();
+        if (count > AssemblyState.Links.MAX) {
+            throw new MalformedPacketException("entité " + handle + " : " + count + " attaches, au-delà de "
+                    + AssemblyState.Links.MAX);
+        }
+        List<AssemblyState.Link> links = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            int socket = reader.u8();
+            int kind = reader.u8();
+            if (kind > 4) {
+                throw new MalformedPacketException("entité " + handle + " : type d'attache " + kind + " inconnu");
+            }
+            int other = reader.varUInt() - 1;
+            int otherSocket = reader.u8();
+            double ax = 0;
+            double ay = 0;
+            double az = 0;
+            if (other < 0) {
+                ax = reader.f64();
+                ay = reader.f64();
+                az = reader.f64();
+                if (!Double.isFinite(ax) || !Double.isFinite(ay) || !Double.isFinite(az)) {
+                    throw new MalformedPacketException("entité " + handle + " : ancrage non fini");
+                }
+            }
+            links.add(new AssemblyState.Link(socket, kind, other, otherSocket == 255 ? -1 : otherSocket, ax, ay, az,
+                    reader.varUInt(), reader.varUInt(), reader.varUInt()));
+        }
+        return new AssemblyState.Links(links);
+    }
+
     private static AssemblyState.Modifiers readParameters(WireReader reader, int handle)
             throws MalformedPacketException {
         long tick = reader.varULong();

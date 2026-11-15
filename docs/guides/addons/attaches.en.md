@@ -205,6 +205,22 @@ or moves to another dimension, the attachment is **suspended**, not deleted: it 
 When the server restarts, each attachment is restored as soon as both its ends are loaded. Only destroying an end
 undoes it for good.
 
-!!! info "Still to come"
-    Players do not see ropes yet, and the `attach.*` and `socket.*` animation sources wait for attachments to reach the
-    client.
+## 10. What the player sees
+
+A rope or a winch cable is drawn between both sockets, or down to the anchor block: **taut**, straight; **with slack**,
+it sags accordingly. A rigid attachment, a hitch or a magnet has nothing to draw: both sockets touch.
+
+Your procedural animations read attachments, like wheels or variables:
+
+| Source | What it reads |
+|---|---|
+| `attach.<socket>.attached` | 1 if the socket is attached, 0 otherwise |
+| `attach.<socket>.length` | its rope's length, in blocks |
+| `attach.<socket>.tension` | the force it transmits, in newtons |
+| `socket.<socket>.misalignment` | the gap between both sockets of a rigid attachment, a hitch or a magnet, in blocks |
+
+A winch drum that turns with the cable's length:
+
+```json
+{ "node": "tambour", "channel": "rotation", "axis": "x", "source": "attach.treuil.length", "scale": -12.5 }
+```

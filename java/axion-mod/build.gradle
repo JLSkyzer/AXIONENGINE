@@ -218,6 +218,21 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        filmRemorque {
+            // ADR-171, tranche 8d : le remorquage a la corde, la scene du film du vehicule vue de dehors.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-remorque')
+            property 'axion.film', 'vehicule'
+            property 'axion.film.remorque', 'true'
+            property 'axion.souris.libre', 'true'
+            // Le buggy est un exemple embarque (R-1790) : sans cette propriete, il ne se charge pas.
+            property 'axion.content.examples', 'true'
+            // Le buggy d'exemple et son attelage, en boite automatique : la scene ne passe pas les rapports.
+            property 'axion.film.definition', 'axion:test/remorqueuse'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
         filmRoues {
             // Le plan des roues : la scene du film du vehicule, filmee de cote a hauteur de roue.
             parent minecraft.runs.client
@@ -552,6 +567,16 @@ tasks.matching { it.name == 'runFilmVehicule' }.configureEach {
 }
 
 // Le plan des roues, de meme.
+tasks.matching { it.name == 'runFilmRemorque' }.configureEach {
+    standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/film-remorque'))
+        delete rootProject.file('.runs/film-remorque/saves/axion-film')
+        delete fileTree(rootProject.file('.runs/film-remorque/axion-film'))
+        delete rootProject.file('.runs/film-remorque/axion/world')
+    }
+}
+
 tasks.matching { it.name == 'runFilmRoues' }.configureEach {
     standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
     doFirst {

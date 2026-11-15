@@ -149,6 +149,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** Les modificateurs du plus récent snapshot reçu (client, ADR-167 D8), et ceux dont le miroir est fait. */
     private AssemblyState.Modifiers receivedParameters = AssemblyState.Modifiers.NONE;
+    /** Les attaches qu'elle a posées, reçues du serveur (client, ADR-171 D7). */
+    private AssemblyState.Links receivedLinks = AssemblyState.Links.NONE;
+
+    /**
+     * Les attaches reçues au client, par identifiant réseau de l'assembly qui les a posées (ADR-171 D7) : une assembly y
+     * trouve celles que d'autres ont posées vers elle, pour ses sources {@code attach.*} et {@code socket.*}.
+     */
+    private static final Map<Integer, AssemblyState.Links> RECEIVED_LINKS =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     private AssemblyState.Modifiers mirroredParameters;
 
@@ -1760,6 +1769,51 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return attachmentRecords;
     }
 
+    /** {@return les attaches qu'elle a posées, telles que le client les a reçues (ADR-171 D7)} */
+    public AssemblyState.Links receivedLinks() {
+        return receivedLinks;
+    }
+
+    /**
+     * {@return ce que lisent ses sources {@code attach.*} et {@code socket.*} à cette image (client, ADR-171 D7)} Pour
+     * chaque socket, dans l'ordre de la definition : attaché, longueur de la corde, tension, désalignement — celles
+     * qu'elle a posées et celles que d'autres ont posées vers elle.
+     */
+    public double[] socketReadings() {
+        int count = sockets().sockets().size();
+        double[] readings = new double[count * dev.axion.render.ProceduralTracks.Frame.SOCKET_READINGS];
+        if (count == 0) {
+            return readings;
+        }
+        for (AssemblyState.Link link : receivedLinks.links()) {
+            read(readings, link.socket(), link);
+        }
+        for (Map.Entry<Integer, AssemblyState.Links> origin : RECEIVED_LINKS.entrySet()) {
+            if (origin.getKey() == getId()) {
+                continue;
+            }
+            for (AssemblyState.Link link : origin.getValue().links()) {
+                if (link.other() == getId()) {
+                    read(readings, link.otherSocket(), link);
+                }
+            }
+        }
+        return readings;
+    }
+
+    private static void read(double[] readings, int socket, AssemblyState.Link link) {
+        int at = socket * dev.axion.render.ProceduralTracks.Frame.SOCKET_READINGS;
+        if (socket < 0 || at + 3 >= readings.length) {
+            return;
+        }
+        readings[at] = 1.0;
+        readings[at + 1] = link.length() / 1000.0;
+        readings[at + 2] = link.tension();
+        // Le désalignement n'a de sens que pour ce qui tient deux sockets ensemble : rigid, hitch, magnet.
+        boolean held = link.kind() != 2 && link.kind() != 3;
+        readings[at + 3] = held ? link.distance() / 1000.0 : 0.0;
+    }
+
     /** {@return les sockets d'attache de sa definition (ADR-171 D2) ; vide sans definition compilée} */
     public dev.axion.definition.SocketTable sockets() {
         Seating seating = seating();
@@ -2206,6 +2260,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (netState != null && netState.parameters() != netParameters) {
             netState = netState.withParameters(netParameters);
         }
+        // ADR-171 D7 : les attaches qu'elle a posées, vivantes, avec leur longueur, leur écart et leur tension.
+        if (netState != null && !level().isClientSide()) {
+            AttachmentRuntime attachments = AttachmentRuntime.current();
+            AssemblyState.Links links = attachments == null ? AssemblyState.Links.NONE : attachments.netLinks(this);
+            if (!links.equals(netState.links())) {
+                netState = netState.withLinks(links);
+            }
+        }
         return netState;
     }
 
@@ -2306,6 +2368,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             // refait à la lecture suivante.
             receivedParameters = state.parameters();
             receivedVariables = state.variables();
+            // ADR-171 D7 : les attaches qu'elle a posées, telles que le serveur les a vues ; les cordes et les sources
+            // attach.* les lisent.
+            receivedLinks = state.links();
+            if (receivedLinks.links().isEmpty()) {
+                RECEIVED_LINKS.remove(getId());
+            } else {
+                RECEIVED_LINKS.put(getId(), receivedLinks);
+            }
             receivedJointsTick = serverTick;
         }
     }
@@ -2566,6 +2636,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             }
         }
         super.remove(reason);
+        if (level().isClientSide()) {
+            // ADR-171 D7 : ses attaches reçues ne valent plus pour les autres.
+            RECEIVED_LINKS.remove(getId());
+        }
         if (!level().isClientSide() && reason.shouldDestroy()) {
             JournalBridge.removed(getUUID());
         }

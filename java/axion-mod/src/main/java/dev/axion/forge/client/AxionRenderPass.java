@@ -1156,7 +1156,7 @@ public final class AxionRenderPass {
         return known.tracks().evaluate(new ProceduralTracks.Frame(wheels, entity.wheelSpin().advance(renderTick, wheels),
                 pose.vehicle(), pose.variables(), entity.seatsOccupied(), renderTick * ServerClock.TICK_MILLIS / 1000.0,
                 ProceduralTracks.worldTime(level.getDayTime()), level.getBrightness(LightLayer.SKY, at),
-                level.getRainLevel(partialTick)), entity.trackState());
+                level.getRainLevel(partialTick), entity.socketReadings()), entity.trackState());
     }
 
     /**

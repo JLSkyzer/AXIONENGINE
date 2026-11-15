@@ -234,6 +234,40 @@ class ProceduralTracksTest {
         assertEquals(1f, pistes.evaluate(filtre).deltas()[0], 1e-6f, "retirée pour ce joueur : son défaut");
     }
 
+    @Test
+    @DisplayName("ADR-171 D7 : attach.<socket>.length|tension|attached et socket.<socket>.misalignment lisent le cadre")
+    void attaches() {
+        JsonObject racine = JsonParser.parseString("{\"sockets\":[{\"name\":\"treuil\",\"accepts\":[\"winch\"]},"
+                + "{\"name\":\"boule\",\"accepts\":[\"hitch\"]}],\"procedural\":["
+                + "{\"node\":\"caisse\",\"channel\":\"rotation\",\"axis\":\"x\",\"source\":\"attach.treuil.length\","
+                + "\"scale\":-2},"
+                + "{\"node\":\"caisse\",\"channel\":\"translation\",\"axis\":\"x\",\"source\":\"attach.treuil.tension\","
+                + "\"scale\":0.001},"
+                + "{\"node\":\"caisse\",\"channel\":\"translation\",\"axis\":\"y\",\"source\":\"attach.boule.attached\"},"
+                + "{\"node\":\"caisse\",\"channel\":\"translation\",\"axis\":\"z\","
+                + "\"source\":\"socket.boule.misalignment\"}]}").getAsJsonObject();
+        List<String> journal = new ArrayList<>();
+        ProceduralTracks pistes = ProceduralTracks.of(racine, NOMS, journal::add);
+        assertTrue(journal.isEmpty(), journal.toString());
+        ProceduralTracks.Frame libre = new ProceduralTracks.Frame(List.of(), new double[0],
+                Interpolation.VehiclePose.NONE, AssemblyState.VariableValues.NONE, new boolean[0], 0.0, 0f, 0f, 0f);
+        assertArrayEquals(new float[] {0f, 0f, 0f}, java.util.Arrays.copyOf(pistes.evaluate(libre).deltas(), 3), 1e-6f,
+                "sans attache : zéro");
+        ProceduralTracks.Frame attache = new ProceduralTracks.Frame(List.of(), new double[0],
+                Interpolation.VehiclePose.NONE, AssemblyState.VariableValues.NONE, new boolean[0], 0.0, 0f, 0f, 0f,
+                new double[] {1, 4.5, 2600, 0, 1, 0, 0, 0.02});
+        float[] d = pistes.evaluate(attache).deltas();
+        assertEquals(2.6f, d[0], 1e-5f, "la tension du treuil");
+        assertEquals(1f, d[1], 1e-6f, "la boule est attachée");
+        assertEquals(0.02f, d[2], 1e-6f, "son désalignement");
+        assertTrue(Math.abs(d[3]) + Math.abs(d[4]) + Math.abs(d[5]) > 0f, "le tambour tourne de la longueur");
+        List<String> inconnu = new ArrayList<>();
+        ProceduralTracks.of(JsonParser.parseString("{\"procedural\":[{\"node\":\"caisse\",\"channel\":\"translation\","
+                + "\"axis\":\"x\",\"source\":\"attach.cable.length\"}]}").getAsJsonObject(), NOMS, inconnu::add);
+        assertTrue(inconnu.stream().anyMatch(note -> note.contains("attach.cable.length")),
+                "un socket que la definition ne déclare pas : la piste est ignorée et le dit");
+    }
+
     /** Une definition à variables et pistes données, sur les nodes de {@link #NOMS}. */
     private static ProceduralTracks apparence(String pistes, List<String> journal) {
         JsonObject racine = JsonParser.parseString("{\"variables\":{\"gyrophare\":{\"type\":\"bool\"}},"

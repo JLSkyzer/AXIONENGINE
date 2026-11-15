@@ -204,6 +204,23 @@ parti — ou passe dans une autre dimension, l'attache est **suspendue**, pas su
 revient. Au redémarrage du serveur, chaque attache se rétablit dès que ses deux extrémités sont chargées. Seule la
 destruction d'une extrémité la défait pour de bon.
 
-!!! info "Encore à venir"
-    Le joueur ne voit pas encore les cordes, et les sources `attach.*` et `socket.*` des animations attendent que les
-    attaches parviennent au client.
+## 10. Ce que voit le joueur
+
+Une corde ou un câble de treuil se dessine entre les deux sockets, ou jusqu'au bloc d'ancrage : **tendu**, droit ;
+**avec du mou**, il pend d'autant. Une attache rigide, une rotule ou un aimant n'ont rien à dessiner : les deux sockets
+se touchent.
+
+Tes animations procédurales lisent les attaches, comme les roues ou les variables :
+
+| Source | Ce qu'elle lit |
+|---|---|
+| `attach.<socket>.attached` | 1 si le socket est attaché, 0 sinon |
+| `attach.<socket>.length` | la longueur de sa corde, en blocs |
+| `attach.<socket>.tension` | la force qu'elle transmet, en newtons |
+| `socket.<socket>.misalignment` | l'écart entre les deux sockets d'une attache rigide, d'une rotule ou d'un aimant, en blocs |
+
+Le tambour d'un treuil qui tourne avec la longueur du câble :
+
+```json
+{ "node": "tambour", "channel": "rotation", "axis": "x", "source": "attach.treuil.length", "scale": -12.5 }
+```

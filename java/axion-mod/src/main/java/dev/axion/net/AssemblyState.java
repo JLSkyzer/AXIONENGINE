@@ -29,6 +29,7 @@ import java.util.Set;
  * @param variables les variables de contenu, {@link VariableValues#NONE} sans (ADR-163 D2, descripteur 5)
  * @param parameters les modificateurs posés sur ses paramètres, {@link Modifiers#NONE} pour une assembly jamais
  *     réglée (ADR-167 D8, descripteur 6)
+ * @param links les attaches vivantes qu'elle a posées, {@link Links#NONE} sans (ADR-171 D7, descripteur 7)
  */
 public record AssemblyState(
         long x,
@@ -44,7 +45,8 @@ public record AssemblyState(
         Wheels wheels,
         Vehicle vehicle,
         VariableValues variables,
-        Modifiers parameters) {
+        Modifiers parameters,
+        Links links) {
 
     /** Corps autres que le corps racine d'une assembly, au plus : elle en a 64 (R-190). */
     public static final int MAX_BODIES = 63;
@@ -926,13 +928,92 @@ public record AssemblyState(
     }
 
     /**
+     * L'état d'une assembly qui n'a posé aucune attache.
+     *
+     * @param x position x, au 1/1024 de bloc
+     * @param y position y, au 1/1024 de bloc
+     * @param z position z, au 1/1024 de bloc
+     * @param rotation rotation « smallest three »
+     * @param velocity vitesses quantifiées
+     * @param bounds emprise relative à la position, ou {@code null}
+     * @param sleeping le corps dort
+     * @param bodies les corps autres que le corps racine
+     * @param joints l'état de chaque joint
+     * @param animation l'état d'animation
+     * @param wheels l'état de chaque roue
+     * @param vehicle l'état du véhicule
+     * @param variables les variables de contenu
+     * @param parameters les modificateurs posés
+     */
+    public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
+            List<Body> bodies, JointBits joints, AnimationLayers animation, Wheels wheels, Vehicle vehicle,
+            VariableValues variables, Modifiers parameters) {
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, vehicle, variables,
+                parameters, Links.NONE);
+    }
+
+    /**
+     * @param attached les attaches vivantes qu'elle a posées
+     * @return cet état, avec ces attaches
+     */
+    public AssemblyState withLinks(Links attached) {
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
+                vehicle, variables, parameters, attached);
+    }
+
+    /**
+     * Les attaches vivantes qu'une assembly a posées (ADR-171 D7, descripteur 7) : ce que le client dessine — les cordes —
+     * et ce que lisent les sources {@code attach.*} et {@code socket.*}. Rangées par socket ; au plus
+     * {@link #MAX}.
+     *
+     * @param links les attaches ; copie
+     */
+    public record Links(List<Link> links) {
+
+        /** Attaches d'une assembly, au plus : ses sockets (ADR-171 D2). */
+        public static final int MAX = 32;
+
+        /** Aucune attache. */
+        public static final Links NONE = new Links(List.of());
+
+        /** Copie la liste. */
+        public Links {
+            links = List.copyOf(links);
+        }
+    }
+
+    /**
+     * Une attache, telle qu'elle part aux joueurs. Longueur et écart au millième de bloc, tension au newton : un
+     * changement plus fin ne renvoie rien.
+     *
+     * @param socket rang de son socket dans la table de l'assembly
+     * @param kind rang de son type (rigid, hitch, rope, winch, magnet)
+     * @param other identifiant réseau de l'autre assembly, {@code -1} pour un ancrage au monde
+     * @param otherSocket rang du socket de l'autre, {@code -1} pour un ancrage
+     * @param anchorX point d'ancrage absolu, x ; 0 entre deux assemblies
+     * @param anchorY y
+     * @param anchorZ z
+     * @param length longueur de la corde, au millième de bloc ; 0 sinon
+     * @param distance écart entre les deux ancrages, au millième de bloc
+     * @param tension force transmise, en newtons
+     */
+    public record Link(int socket, int kind, int other, int otherSocket, double anchorX, double anchorY,
+            double anchorZ, int length, int distance, int tension) {
+
+        /** {@return vrai pour un ancrage au monde} */
+        public boolean anchored() {
+            return other < 0;
+        }
+    }
+
+    /**
      * @param otherBodies les corps autres que le corps racine, en poses relatives
      * @param jointBits l'état de chaque joint
      * @return cet état, avec ces corps et ces joints
      */
     public AssemblyState with(List<Body> otherBodies, JointBits jointBits) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation,
-                wheels, vehicle, variables, parameters);
+                wheels, vehicle, variables, parameters, links);
     }
 
     /**
@@ -941,7 +1022,7 @@ public record AssemblyState(
      */
     public AssemblyState withAnimation(AnimationLayers layers) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers, wheels, vehicle,
-                variables, parameters);
+                variables, parameters, links);
     }
 
     /**
@@ -950,7 +1031,7 @@ public record AssemblyState(
      */
     public AssemblyState withWheels(Wheels states) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, states,
-                vehicle, variables, parameters);
+                vehicle, variables, parameters, links);
     }
 
     /**
@@ -959,7 +1040,7 @@ public record AssemblyState(
      */
     public AssemblyState withVehicle(Vehicle state) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                state, variables, parameters);
+                state, variables, parameters, links);
     }
 
     /**
@@ -968,7 +1049,7 @@ public record AssemblyState(
      */
     public AssemblyState withVariables(VariableValues values) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, values, parameters);
+                vehicle, values, parameters, links);
     }
 
     /**
@@ -977,7 +1058,7 @@ public record AssemblyState(
      */
     public AssemblyState withParameters(Modifiers modifiers) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, variables, modifiers);
+                vehicle, variables, modifiers, links);
     }
 
     /**
