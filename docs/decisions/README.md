@@ -30,6 +30,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
+| [ADR-171](ADR-171.md) | Les attaches entre assemblies et l'ensemble attaché (C-48, CAP-15, CAP-37) | 2026-11-15 | proposé |
 | [ADR-170](ADR-170.md) | La caméra de véhicule et le tableau de bord (CAP-10) | 2026-11-15 | accepté |
 | [ADR-168](ADR-168.md) | La prédiction du véhicule piloté : monde prédit, corrections, rejeu | 2026-11-12 | accepté |
 | [ADR-167](ADR-167.md) | Les paramètres d'une instance : réglage à chaud, causes composées, contrôleurs de véhicule | 2026-11-12 | accepté |
