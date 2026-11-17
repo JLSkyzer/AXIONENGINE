@@ -11,12 +11,18 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 
 /**
  * Les cordes et les câbles des attaches (ADR-171 D7) : une corde ({@code rope}) ou un treuil ({@code winch}) se dessine
  * du socket de l'assembly qui l'a posée au socket d'en face, ou à son point d'ancrage ; tendue, droite ; avec du mou, elle
- * pend d'autant. Les attaches qui tiennent deux sockets ensemble ne se dessinent pas : elles n'ont pas de longueur.
+ * pend d'autant, et se pose sur le sol qu'elle rencontre au lieu de le traverser. Les attaches qui tiennent deux sockets
+ * ensemble ne se dessinent pas : elles n'ont pas de longueur.
  *
  * <p>Le ruban est celui des laisses de Minecraft ({@link RenderType#leash()}) : deux bandes croisées, éclairées comme
  * l'assembly.
@@ -95,25 +101,61 @@ final class AttachmentRopes {
                 endZ = end.z();
             }
             float[] color = link.kind() == WINCH ? new float[] {0.36f, 0.36f, 0.4f} : new float[] {0.55f, 0.4f, 0.24f};
+            float[] drops = drops(entity.level(), start.x(), start.y(), start.z(), endX, endY, endZ,
+                    link.length() / 1000.0);
+            if (drops == null) {
+                continue;
+            }
             strip(buffers.getBuffer(RenderType.leash()), pose.last().pose(),
                     (float) (start.x() - originX), (float) (start.y() - originY), (float) (start.z() - originZ),
-                    (float) (endX - originX), (float) (endY - originY), (float) (endZ - originZ),
-                    link.length() / 1000.0, color, light);
+                    (float) (endX - originX), (float) (endY - originY), (float) (endZ - originZ), drops, color, light);
         }
     }
 
-    /** Un ruban croisé de {@code (ax, ay, az)} à {@code (bx, by, bz)}, qui pend du mou que laisse {@code length}. */
+    /**
+     * {@return de combien chaque point de la corde descend sous la droite de ses deux extrémités, en blocs, ou
+     * {@code null} pour une corde sans portée} Une parabole dont la flèche vient de l'excès de longueur : à longueur égale
+     * à la portée, la corde est droite. Là où la parabole passerait sous un bloc, la corde se pose dessus : un rayon, de
+     * la droite vers la parabole, s'arrête au premier bloc qu'il touche.
+     */
+    private static float[] drops(Level level, double ax, double ay, double az, double bx, double by, double bz,
+            double length) {
+        double dx = bx - ax;
+        double dy = by - ay;
+        double dz = bz - az;
+        double span = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (span < 1e-4) {
+            return null;
+        }
+        double sag = 0.5 * Math.sqrt(Math.max(0.0, length * length - span * span));
+        float[] drops = new float[SEGMENTS + 1];
+        if (sag <= 0.0) {
+            return drops;
+        }
+        for (int i = 0; i <= SEGMENTS; i++) {
+            double t = i / (double) SEGMENTS;
+            double drop = 4.0 * sag * t * (1.0 - t);
+            if (drop <= 0.0) {
+                continue;
+            }
+            Vec3 straight = new Vec3(ax + dx * t, ay + dy * t, az + dz * t);
+            Vec3 hanging = straight.add(0.0, -drop, 0.0);
+            BlockHitResult hit = level.clip(new ClipContext(straight, hanging, ClipContext.Block.COLLIDER,
+                    ClipContext.Fluid.NONE, null));
+            if (hit.getType() == HitResult.Type.BLOCK) {
+                drop = Math.max(0.0, straight.y - hit.getLocation().y - HALF_WIDTH);
+            }
+            drops[i] = (float) drop;
+        }
+        return drops;
+    }
+
+    /** Un ruban croisé de {@code (ax, ay, az)} à {@code (bx, by, bz)}, chaque point descendu de {@code drops}. */
     private static void strip(VertexConsumer out, Matrix4f matrix, float ax, float ay, float az, float bx, float by,
-            float bz, double length, float[] color, int light) {
+            float bz, float[] drops, float[] color, int light) {
         float dx = bx - ax;
         float dy = by - ay;
         float dz = bz - az;
-        double span = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (span < 1e-4) {
-            return;
-        }
-        // Une parabole dont la flèche vient de l'excès de longueur : à longueur égale à la portée, la corde est droite.
-        float sag = (float) (0.5 * Math.sqrt(Math.max(0.0, length * length - span * span)));
         // Le côté d'une bande : horizontal, perpendiculaire à la corde ; celui de l'autre bande, vertical.
         float sideX = -dz;
         float sideZ = dx;
@@ -126,19 +168,19 @@ final class AttachmentRopes {
         sideX = sideX / horizontal * HALF_WIDTH;
         sideZ = sideZ / horizontal * HALF_WIDTH;
         for (int i = 0; i <= SEGMENTS; i++) {
-            vertexPair(out, matrix, ax, ay, az, dx, dy, dz, sag, i, sideX, 0f, sideZ, color, light);
+            vertexPair(out, matrix, ax, ay, az, dx, dy, dz, drops[i], i, sideX, 0f, sideZ, color, light);
         }
         for (int i = SEGMENTS; i >= 0; i--) {
-            vertexPair(out, matrix, ax, ay, az, dx, dy, dz, sag, i, 0f, HALF_WIDTH, 0f, color, light);
+            vertexPair(out, matrix, ax, ay, az, dx, dy, dz, drops[i], i, 0f, HALF_WIDTH, 0f, color, light);
         }
     }
 
     private static void vertexPair(VertexConsumer out, Matrix4f matrix, float ax, float ay, float az, float dx,
-            float dy, float dz, float sag, int segment, float offsetX, float offsetY, float offsetZ, float[] color,
+            float dy, float dz, float drop, int segment, float offsetX, float offsetY, float offsetZ, float[] color,
             int light) {
         float t = segment / (float) SEGMENTS;
         float x = ax + dx * t;
-        float y = ay + dy * t - 4f * sag * t * (1f - t);
+        float y = ay + dy * t - drop;
         float z = az + dz * t;
         // Une teinte qui alterne d'un segment à l'autre, comme une laisse : la torsion se lit.
         float shade = segment % 2 == 0 ? 1f : 0.82f;

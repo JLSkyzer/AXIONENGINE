@@ -154,6 +154,15 @@ impl PhysicsWorld {
         }
     }
 
+    /// Rend souple la corde `key` (ADR-171, précision 8d) : elle s'étire au lieu de claquer.
+    pub(super) fn soften_rope(&mut self, key: u64) {
+        if let Some(handle) = self.joints.get(&key).and_then(|entry| entry.joint) {
+            if let Some(joint) = self.inner.impulse_joints.get_mut(handle, false) {
+                let _ = joint.data.set_softness(super::attachments::rope_softness());
+            }
+        }
+    }
+
     /// Change la longueur de la corde `key` (un treuil, ADR-171 D5) ; ses corps se réveillent.
     pub(super) fn set_rope_length(&mut self, key: u64, length: f32) {
         let Some(entry) = self.joints.get_mut(&key) else {
@@ -163,7 +172,10 @@ impl PhysicsWorld {
         let rope = super::attachments::rope_of(&entry.spec, length);
         if let Some(handle) = entry.joint {
             if let Some(joint) = self.inner.impulse_joints.get_mut(handle, true) {
+                // La souplesse d'une corde survit à sa nouvelle longueur.
+                let softness = joint.data.softness;
                 joint.data = rope;
+                let _ = joint.data.set_softness(softness);
             }
         }
     }

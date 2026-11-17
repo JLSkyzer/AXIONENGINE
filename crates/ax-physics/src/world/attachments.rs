@@ -13,7 +13,20 @@ use ax_math::{Quat, Vec3};
 use ax_model::dm::attachments::{attachment_kind, attachment_report_flags, AttachmentReport};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{event_kind, PhysicsEvent, NO_MATERIAL};
-use rapier3d::prelude::{RigidBodyBuilder, RopeJointBuilder};
+use rapier3d::prelude::{RigidBodyBuilder, RopeJointBuilder, SpringCoefficients};
+
+/// La fréquence propre d'une corde (`ROPE`) tendue, en hertz (ADR-171, précision 8d) : elle s'étire comme une sangle de
+/// remorquage au lieu de se tendre d'un coup. Rigide (le défaut d'un joint, 10⁶ Hz), une corde qui se retend après
+/// avoir molli est un choc inélastique : au film du remorquage, conduit au clavier, de 9 à 17 kN entre deux véhicules
+/// de 400 kg, assez pour faire partir la voiture en tête-à-queue au slalom ; à 3 Hz, 3,5 kN au plus. Une sangle de
+/// nylon de 4 m, 20 % d'allongement à la rupture, tourne autour de 2,5 Hz pour cette masse réduite (estimation). Un
+/// câble de treuil reste rigide : souple, il traîne derrière sa longueur cible.
+pub(super) const ROPE_FREQUENCY_HZ: f32 = 3.0;
+
+/// La souplesse que reçoit une corde : amortie critique, elle ne rebondit pas.
+pub(super) fn rope_softness() -> SpringCoefficients<f32> {
+    SpringCoefficients::new(ROPE_FREQUENCY_HZ, 1.0)
+}
 
 /// L'autre extrémité d'une attache.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -157,6 +170,9 @@ impl PhysicsWorld {
             }
         };
         self.mark_attachment_joint(joint.0, id, other);
+        if spec.kind == attachment_kind::ROPE {
+            self.soften_rope(joint.0);
+        }
         self.attachments.insert(
             id,
             AttachmentEntry {

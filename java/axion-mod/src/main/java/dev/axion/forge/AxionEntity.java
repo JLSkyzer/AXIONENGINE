@@ -2200,6 +2200,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param sleeping l'assembly dort
      * @param suspended le corps racine dort, endormi par la gestion d'activité ({@code SUSPENDED})
      */
+    /** {@return vrai dès que le natif a rapporté son état depuis sa création ou sa lecture : ses corps existent} */
+    boolean simulated() {
+        return simulated;
+    }
+
     /** {@return vrai si la physique a endormi l'assembly} */
     boolean netSleeping() {
         return sleeping;

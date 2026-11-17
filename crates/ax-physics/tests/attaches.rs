@@ -372,3 +372,53 @@ fn r1020_deux_mondes_identiques_tirent_la_meme_remorque_au_bit_pres() {
     };
     assert_eq!(rejouer(), rejouer());
 }
+
+#[test]
+fn adr171_une_corde_qui_se_retend_s_etire_au_lieu_de_claquer() {
+    // ADR-171, précision 8d : une corde molle qui se retend est un choc. Deux caisses de 200 kg, l'une s'éloignant à
+    // 3 m/s : rigide, la corde transmet ce choc en un sous-pas et une corde de 10 kN rompt ; elle s'étire, tient, et
+    // retient la caisse. La rupture se juge à chaque sous-pas ; le rapport ne dit que le dernier d'un tick.
+    let mut world = monde(false);
+    let demi = Vec3::new(0.5, 0.5, 0.2);
+    let voiture = caisse(&mut world, Vec3::ZERO, demi);
+    let remorque = caisse(&mut world, Vec3::new(-3.0, 0.0, 0.0), demi);
+    assert!((world.body_mass(remorque).unwrap() - 200.0).abs() < 1.0);
+    let mut corde = attache(attachment_kind::ROPE, Vec3::new(-0.5, 0.0, 0.0));
+    corde.length = 4.0;
+    corde.max_force = 10_000.0;
+    world
+        .attach(
+            5,
+            assembly(1),
+            voiture,
+            AttachEnd::Body {
+                assembly: assembly(2),
+                body: remorque,
+                frame: (Vec3::new(0.5, 0.0, 0.0), Quat::IDENTITY),
+            },
+            &corde,
+        )
+        .unwrap();
+    // Molle de 2 m ; la voiture part à 3 m/s.
+    world.apply_impulse(voiture, Vec3::new(600.0, 0.0, 0.0), Vec3::ZERO, false);
+    world.drain_events();
+    let mut pic: f32 = 0.0;
+    for _ in 0..60 {
+        world.advance(TICK);
+        assert!(
+            !world
+                .drain_events()
+                .iter()
+                .any(|e| e.kind == event_kind::DETACH_ATTACHMENT),
+            "la corde de 10 kN a rompu au choc"
+        );
+        pic = pic.max(world.attachment_reports()[0].force);
+    }
+    assert!(pic > 1000.0, "la corde s'est tendue : {pic} N");
+    let ecart = ancrage(&world, voiture, Vec3::new(-0.5, 0.0, 0.0)).distance(ancrage(
+        &world,
+        remorque,
+        Vec3::new(0.5, 0.0, 0.0),
+    ));
+    assert!(ecart < 4.2, "la corde retient la remorque : {ecart} m");
+}

@@ -130,6 +130,11 @@ Le type retenu est le premier que les deux sockets acceptent, dans l'ordre `rigi
 Une attache `rigid`, `hitch` ou `magnet` dont les sockets s'écartent de plus que `misalignment` pendant une seconde
 rompt. Une corde s'écarte par nature : seule sa force la rompt.
 
+Une corde `rope` tendue s'étire comme une sangle de remorquage, quelques centimètres sous l'effort : molle puis
+retendue d'un coup, elle amortit le choc au lieu de le transmettre en un instant. Un câble de treuil reste raide, pour
+suivre sa longueur. Une corde tient donc mieux qu'un attelage rigide aux à-coups d'une conduite au clavier ; elle ne
+pousse jamais : un véhicule remorqué qui ne freine pas rattrape celui qui le tire.
+
 ## 6. Le treuil, l'aimant, la prise de force
 
 - **Le treuil** suit sa variable (`winch.variable`) : **négative**, il enroule jusqu'à sa plus courte longueur ;
@@ -207,7 +212,7 @@ destruction d'une extrémité la défait pour de bon.
 ## 10. Ce que voit le joueur
 
 Une corde ou un câble de treuil se dessine entre les deux sockets, ou jusqu'au bloc d'ancrage : **tendu**, droit ;
-**avec du mou**, il pend d'autant. Une attache rigide, une rotule ou un aimant n'ont rien à dessiner : les deux sockets
+**avec du mou**, il pend d'autant, et se pose sur le sol qu'il rencontre. Une attache rigide, une rotule ou un aimant n'ont rien à dessiner : les deux sockets
 se touchent.
 
 Tes animations procédurales lisent les attaches, comme les roues ou les variables :

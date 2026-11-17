@@ -3900,8 +3900,12 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            (centre de masse déclaré → physics.mass non répartie, 1954 kg au lieu de 340 ; correctif de D2
            d'ADR-151). Test du limiteur au tiers des gaz ; remorqueuse avec antipatinage ; film en remorquage
            plafonné à la vitesse du slalom. Reste : point mort à la demande d'une boîte automatique, absent ; les
-           autres films (vehicule, vues, roues, paramètres, sport, limiteur) à rejouer au buggy allégé ; au film
-           du remorquage, le joueur dessiné s'écarte de 0,030 bloc (> 0,02, ADR-159 tranche 3) sous les à-coups.
+           autres films (vehicule, vues, roues, paramètres, sport, limiteur) à rejouer au buggy allégé.
+           2026-11-17 : corde `rope` élastique à 3 Hz (choc de retension 9-17 kN → 3,5 kN au film ; treuil rigide) ;
+           passager mesuré à son point d'assise (le décalage de monture glissait au tangage : 0,030 → 0,0000) ;
+           remorque qui freine avec la voiture ; corde molle posée sur le sol ; rétablissement d'une attache
+           après que le natif a créé ses deux extrémités (course révélée par T-894) ; redressement en
+           remorquage en 12 s.
      - [ ] 8e — l'ensemble (CAP-37) : prédiction, sommeil et déchargement communs, poursuite.
   9. C-77 gouverneur, C-73 overlay.
   10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).

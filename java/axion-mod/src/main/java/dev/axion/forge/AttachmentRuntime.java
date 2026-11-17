@@ -832,7 +832,9 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
                     continue;
                 }
                 Optional<Spec> socket = assembly.sockets().named(record.socket());
-                if (assembly.sockets().isEmpty()) {
+                // Ses corps natifs d'abord : avant eux, le natif refuserait l'attache d'une extrémité inconnue, et
+                // un refus l'oublie (ADR-171, 8d).
+                if (assembly.sockets().isEmpty() || !assembly.simulated()) {
                     waiting = true;
                     continue;
                 }
@@ -852,7 +854,7 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
                 } else {
                     net.minecraft.world.entity.Entity found =
                             ((net.minecraft.server.level.ServerLevel) assembly.level()).getEntity(record.other());
-                    if (!(found instanceof AxionEntity other) || other.sockets().isEmpty()) {
+                    if (!(found instanceof AxionEntity other) || other.sockets().isEmpty() || !other.simulated()) {
                         waiting = true;
                         continue;
                     }

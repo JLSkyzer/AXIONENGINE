@@ -130,6 +130,11 @@ The kind chosen is the first both sockets accept, in the order `rigid`, `hitch`,
 A `rigid`, `hitch` or `magnet` attachment whose sockets drift apart by more than `misalignment` for one second breaks. A
 rope drifts apart by nature: only its force breaks it.
 
+A taut `rope` stretches like a tow strap, a few centimetres under load: slack then pulled tight at once, it cushions the
+jolt instead of passing it on in an instant. A winch cable stays stiff, to follow its length. A rope therefore takes the
+jerks of keyboard driving better than a rigid link; it never pushes: a towed vehicle that does not brake catches up
+with the one pulling it.
+
 ## 6. The winch, the magnet, the power take-off
 
 - **The winch** follows its variable (`winch.variable`): **negative**, it reels in down to its shortest length;
@@ -208,7 +213,7 @@ undoes it for good.
 ## 10. What the player sees
 
 A rope or a winch cable is drawn between both sockets, or down to the anchor block: **taut**, straight; **with slack**,
-it sags accordingly. A rigid attachment, a hitch or a magnet has nothing to draw: both sockets touch.
+it sags accordingly, and lies on the ground it meets. A rigid attachment, a hitch or a magnet has nothing to draw: both sockets touch.
 
 Your procedural animations read attachments, like wheels or variables:
 

@@ -66,6 +66,8 @@ public final class FilmDuVehicule {
     private static final boolean REMORQUE = Boolean.getBoolean("axion.film.remorque");
     /** Le maillon remorqué, et si la corde est posée. */
     private static AxionEntity remorque;
+    /** Le conducteur de la remorque freine-t-il ? */
+    private static boolean remorqueFreine;
     private static boolean cordePosee;
     /** L'étape dont la vue a été choisie, pour presser F5 une fois à chaque changement voulu. */
     private static Etape etapeDeLaVue;
@@ -416,6 +418,14 @@ public final class FilmDuVehicule {
                 LOGGER.info("[film] corde posée entre les deux attelages");
             }
         } else if (REMORQUE && cordePosee && cible != null && AttachmentRuntime.current() != null) {
+            // Remorqué à la corde, un véhicule freine avec celui qui le tire : sans quoi, la corde molle, il le rattrape
+            // et le pousse (ADR-171, 8d). Le film tient ce conducteur pendant le freinage et l'arrêt.
+            boolean freine = etape == Etape.FREIN || etape == Etape.ARRET;
+            if (freine != remorqueFreine) {
+                remorqueFreine = freine;
+                ForgeAxionApi.view(remorque).vehicle().orElseThrow()
+                        .drive(new dev.axion.api.vehicle.DriverInput(0, freine ? 1 : 0, 0, 0, 0, 0));
+            }
             // La corde à chaque tick : longueur, écart des ancrages, tension, et la hauteur du maillon.
             for (dev.axion.api.attach.Attachments.Attachment corde : AttachmentRuntime.current().list(cible)) {
                 LOGGER.info(String.format(java.util.Locale.ROOT,
@@ -557,7 +567,10 @@ public final class FilmDuVehicule {
     /**
      * Le joueur assis suit-il sa place ? Sa position et son regard tels que Minecraft va les dessiner, entre ses
      * positions ancienne et courante, exprimés dans le repère de la carrosserie telle qu'elle est dessinée à cette
-     * image : sans mouvement de souris, ils ne doivent pas changer, quelle que soit la vitesse.
+     * image : sans mouvement de souris, ils ne doivent pas changer, quelle que soit la vitesse. La position mesurée est
+     * celle de son point d'assise : son décalage de monture, que Minecraft compte selon l'axe Y du monde, est retiré.
+     * Gardé, il glisse dans le repère de la carrosserie quand elle tangue — 0,35·sin θ, 3 cm à 5° —, sans que le
+     * joueur ait quitté son siège (ADR-171, 8d).
      */
     private static void mesurerLePassager(Minecraft minecraft, AxionEntity vehicule) {
         LocalPlayer joueur = minecraft.player;
@@ -568,7 +581,7 @@ public final class FilmDuVehicule {
         AxionEntity.RenderPose dessinee = vehicule.renderPose(partiel);
         Vector3f relatif = new Vector3f(
                 (float) (Mth.lerp(partiel, joueur.xOld, joueur.getX()) - dessinee.x()),
-                (float) (Mth.lerp(partiel, joueur.yOld, joueur.getY()) - dessinee.y()),
+                (float) (Mth.lerp(partiel, joueur.yOld, joueur.getY()) - joueur.getMyRidingOffset() - dessinee.y()),
                 (float) (Mth.lerp(partiel, joueur.zOld, joueur.getZ()) - dessinee.z()));
         dessinee.rotation().conjugate(new Quaternionf()).transform(relatif);
         Vector3f avant = dessinee.rotation().transform(new Vector3f(0f, 0f, -1f));
@@ -798,9 +811,12 @@ public final class FilmDuVehicule {
             capMin = Math.min(capMin, cap);
             capMax = Math.max(capMax, cap);
         }
-        if (suivante == null && dansLEtape > etape.duree && etape != Etape.ASSIS && etape != Etape.ARRET
+        // En remorquage, le redressement a le double : le pilote au clavier, tout-ou-rien, fait louvoyer l'attelage de
+        // ±15° en 2 s avant qu'il ne tienne son cap (ADR-171, 8d).
+        double duree = REMORQUE && etape == Etape.REDRESSE ? 2.0 * etape.duree : etape.duree;
+        if (suivante == null && dansLEtape > duree && etape != Etape.ASSIS && etape != Etape.ARRET
                 && etape != Etape.RECUL) {
-            throw new IllegalStateException("l'étape " + etape + " ne s'achève pas en " + etape.duree + " s");
+            throw new IllegalStateException("l'étape " + etape + " ne s'achève pas en " + duree + " s");
         }
         if (suivante != null) {
             LOGGER.info("[film] {} -> {} à {} s", etape, suivante, String.format(Locale.ROOT, "%.2f", secondes));
