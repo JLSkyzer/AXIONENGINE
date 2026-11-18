@@ -29,7 +29,7 @@ import java.util.Set;
  * @param variables les variables de contenu, {@link VariableValues#NONE} sans (ADR-163 D2, descripteur 5)
  * @param parameters les modificateurs posés sur ses paramètres, {@link Modifiers#NONE} pour une assembly jamais
  *     réglée (ADR-167 D8, descripteur 6)
- * @param links les attaches vivantes qu'elle a posées, {@link Links#NONE} sans (ADR-171 D7, descripteur 7)
+ * @param links les attaches vivantes qu'elle a posées, {@link Links#NONE} sans (ADR-171 D7, descripteur 8)
  */
 public record AssemblyState(
         long x,
@@ -962,7 +962,7 @@ public record AssemblyState(
     }
 
     /**
-     * Les attaches vivantes qu'une assembly a posées (ADR-171 D7, descripteur 7) : ce que le client dessine — les cordes —
+     * Les attaches vivantes qu'une assembly a posées (ADR-171 D7, descripteur 8) : ce que le client dessine — les cordes —
      * et ce que lisent les sources {@code attach.*} et {@code socket.*}. Rangées par socket ; au plus
      * {@link #MAX}.
      *
@@ -996,14 +996,37 @@ public record AssemblyState(
      * @param length longueur de la corde, au millième de bloc ; 0 sinon
      * @param distance écart entre les deux ancrages, au millième de bloc
      * @param tension force transmise, en newtons
+     * @param setting ses réglages en pleine précision, pour que le client recrée le même joint (ADR-171 Q8,
+     *     descripteur 8)
      */
     public record Link(int socket, int kind, int other, int otherSocket, double anchorX, double anchorY,
-            double anchorZ, int length, int distance, int tension) {
+            double anchorZ, int length, int distance, int tension, Setting setting) {
 
         /** {@return vrai pour un ancrage au monde} */
         public boolean anchored() {
             return other < 0;
         }
+    }
+
+    /**
+     * Les réglages d'une attache, ceux de sa commande {@code ATTACH} (ADR-171 Q8) : le client prédit les recrée à
+     * l'identique — le même identifiant, qui fixe l'ordre des attaches (D6), les mêmes seuils, le même cône, la même
+     * longueur. Une attache posée par l'API, aux réglages forcés, est donc prédite juste.
+     *
+     * @param id identifiant de l'attache au serveur
+     * @param maxForce seuil de rupture en force, en newtons ; infini sans seuil
+     * @param maxTorque seuil de rupture en couple, en N·m ; infini sans seuil
+     * @param cone demi-angle d'une rotule, en radians
+     * @param length longueur courante d'une corde ou d'un treuil, en blocs ; 0 sinon
+     * @param minLength plus courte longueur d'un treuil, en blocs
+     * @param maxLength plus longue longueur d'un treuil, en blocs
+     * @param speed vitesse d'un treuil, en blocs par seconde
+     */
+    public record Setting(int id, float maxForce, float maxTorque, float cone, float length, float minLength,
+            float maxLength, float speed) {
+
+        /** Aucun réglage connu. */
+        public static final Setting NONE = new Setting(0, 0f, 0f, 0f, 0f, 0f, 0f, 0f);
     }
 
     /**

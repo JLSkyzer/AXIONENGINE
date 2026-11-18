@@ -3910,7 +3910,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
        - [x] 8e1 (2026-11-18) — activité native par ensemble : sommeil, réveil, relevé et plafond sur la composante d'attaches.
        - [x] 8e2 (2026-11-18) — déchargement commun : ticket de chunk sur les chunks de tout l'ensemble.
        - [x] 8e3 (2026-11-18) — la poursuite cadre l'emprise de l'ensemble (graphe client des attaches répliquées).
-       - [ ] 8e4 — protocole 12 : réglages complets des attaches répliqués, correction à un état par membre.
+       - [x] 8e4 (2026-11-18) — protocole 12 : réglages complets des attaches répliqués, correction à un état par membre.
        - [ ] 8e5 — prédiction client de l'ensemble : monde prédit à plusieurs assemblies et leurs attaches,
              rejeu de l'ensemble, proxies sans les membres ; essai à deux processus.
   9. C-77 gouverneur, C-73 overlay.

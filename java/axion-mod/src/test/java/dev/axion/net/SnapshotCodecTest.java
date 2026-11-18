@@ -218,7 +218,9 @@ class SnapshotCodecTest {
                 "descripteur 5, antérieur aux modificateurs des paramètres");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(6).varUInt(0).toByteArray(),
                 "descripteur 6, antérieur aux attaches");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(8).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(7).varUInt(0).toByteArray(),
+                "descripteur 7, antérieur aux réglages des attaches");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(9).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
@@ -314,8 +316,10 @@ class SnapshotCodecTest {
             + " changé ; un type inconnu est refusé")
     void lesAttachesFontLAllerRetour() throws MalformedPacketException {
         AssemblyState.Links attaches = new AssemblyState.Links(List.of(
-                new AssemblyState.Link(0, 1, 42, 3, 0, 0, 0, 0, 12, 840),
-                new AssemblyState.Link(2, 3, -1, -1, 120.5, 64.5, -34.5, 4500, 4498, 2600)));
+                new AssemblyState.Link(0, 1, 42, 3, 0, 0, 0, 0, 12, 840,
+                        new AssemblyState.Setting(7, 40000f, Float.POSITIVE_INFINITY, 0.6f, 0f, 0f, 0f, 0f)),
+                new AssemblyState.Link(2, 3, -1, -1, 120.5, 64.5, -34.5, 4500, 4498, 2600,
+                        new AssemblyState.Setting(9, 12000f, 800f, 0f, 4.5f, 0.5f, 30f, 1.25f))));
         AssemblyState base = etat(1, 2, 3, 4f, false).withLinks(attaches);
         SnapshotMessage.Entry complete = SnapshotMessage.Entry.full(5, base);
         assertEquals(attaches, complete.links());
@@ -332,7 +336,7 @@ class SnapshotCodecTest {
         // Elle avance, ses attaches restent : tues ; la tension change : elles partent entières.
         assertNull(SnapshotMessage.Entry.delta(5, 1, tenu, etat(2, 2, 3, 4f, false).withLinks(attaches)).links());
         AssemblyState tendue = etat(2, 2, 3, 4f, false).withLinks(new AssemblyState.Links(List.of(
-                new AssemblyState.Link(0, 1, 42, 3, 0, 0, 0, 0, 12, 900))));
+                new AssemblyState.Link(0, 1, 42, 3, 0, 0, 0, 0, 12, 900, AssemblyState.Setting.NONE))));
         SnapshotMessage.Entry change = SnapshotMessage.Entry.delta(5, 1, tenu, tendue);
         assertEquals(tendue, relire(change).resolve(tenu));
         // Détachée de tout : une liste vide, pas un silence.
@@ -343,7 +347,7 @@ class SnapshotCodecTest {
         // Un type d'attache au-delà de magnet ne se lit pas (R-1650).
         byte[] fautif = new SnapshotMessage(1, 10, SnapshotMessage.DESCRIPTOR_VERSION, List.of(SnapshotMessage.Entry.full(
                 5, etat(1, 2, 3, 4f, false).withLinks(new AssemblyState.Links(List.of(
-                        new AssemblyState.Link(0, 9, 42, 3, 0, 0, 0, 0, 0, 0))))))).encode();
+                        new AssemblyState.Link(0, 9, 42, 3, 0, 0, 0, 0, 0, 0, AssemblyState.Setting.NONE))))))).encode();
         assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(fautif));
     }
 

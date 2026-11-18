@@ -468,8 +468,20 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      * permet la prédiction : sa correction en part à chaque tick. Le conducteur parti, l'export cesse.
      */
     private void export(SimCommandStream stream) {
+        // ADR-171 D7 : l'ensemble du véhicule conduit est prédit avec lui ; l'état de chacun de ses membres part dans
+        // la même correction.
+        Set<Integer> members = new HashSet<>();
+        if (predictionAllowed) {
+            ledger.forEachBody((index, assembly) -> {
+                if (assembly.correctedDriver() != null) {
+                    for (AxionEntity member : ensembleMembers(assembly)) {
+                        members.add(handleIndexOf(member));
+                    }
+                }
+            });
+        }
         ledger.forEachBody((index, assembly) -> {
-            boolean wanted = predictionAllowed && assembly.correctedDriver() != null;
+            boolean wanted = predictionAllowed && (assembly.correctedDriver() != null || members.contains(index));
             if (wanted == exporting.contains(index)) {
                 return;
             }
@@ -628,6 +640,12 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     @Override
     public void applyAssemblyStates(long tick, List<AssemblyStateReport> exported) {
         AuthoritativeThread.require();
+        Map<Integer, byte[]> states = new HashMap<>();
+        for (AssemblyStateReport report : exported) {
+            if (report.handleGeneration() == GENERATION) {
+                states.put(report.handleIndex(), report.state());
+            }
+        }
         for (AssemblyStateReport report : exported) {
             if (report.handleGeneration() != GENERATION) {
                 continue;
@@ -638,10 +656,38 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             }
             ServerPlayer driver = assembly.correctedDriver();
             if (driver != null) {
-                corrections.accept(driver, assembly.correction(tick,
-                        List.of(new CorrectionMessage.State(report.handleIndex(), report.state()))).encode());
+                // Le véhicule d'abord, puis chaque membre de son ensemble dont l'état est là (ADR-168 D7, ADR-171 D7).
+                List<CorrectionMessage.State> correction = new ArrayList<>();
+                correction.add(new CorrectionMessage.State(report.handleIndex(), report.state()));
+                for (AxionEntity member : ensembleMembers(assembly)) {
+                    byte[] state = states.get(handleIndexOf(member));
+                    if (state != null) {
+                        correction.add(new CorrectionMessage.State(handleIndexOf(member), state));
+                    }
+                }
+                corrections.accept(driver, assembly.correction(tick, correction).encode());
             }
         }
+    }
+
+    /**
+     * {@return les autres membres de l'ensemble d'une assembly (ADR-171 D7) : celles que des attaches lui relient, de
+     * proche en proche, dotées d'un corps, en ordre d'identifiant ; vide sans attache}
+     */
+    private List<AxionEntity> ensembleMembers(AxionEntity assembly) {
+        AttachmentRuntime attachments = AttachmentRuntime.current();
+        if (attachments == null || !(assembly.level() instanceof net.minecraft.server.level.ServerLevel level)) {
+            return List.of();
+        }
+        List<AxionEntity> members = new ArrayList<>();
+        for (java.util.UUID uuid : attachments.ensemble(assembly)) {
+            if (!uuid.equals(assembly.getUUID()) && level.getEntity(uuid) instanceof AxionEntity member
+                    && ledger.hasBody(handleIndexOf(member))) {
+                members.add(member);
+            }
+        }
+        members.sort(java.util.Comparator.comparingInt(AssemblyRuntime::handleIndexOf));
+        return members;
     }
 
     @Override

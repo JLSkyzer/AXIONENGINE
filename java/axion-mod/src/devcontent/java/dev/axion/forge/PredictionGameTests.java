@@ -144,6 +144,58 @@ public final class PredictionGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-171 D7, Q8 (CAP-37) : la correction du conducteur porte l'état de tout l'ensemble de son véhicule — le
+     * véhicule d'abord, puis la remorque qu'il tire à la corde.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 300)
+    public static void adr171_LaCorrectionPorteLEnsembleDuVehicule(GameTestHelper helper) {
+        Vec3 depart = new Vec3(8.0, DESSUS_DALLE + 0.3, 6.0);
+        ObservateursDeTest.declarer(helper, depart);
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/remorqueuse", depart, IDENTITE);
+        AxionEntity remorque = AssembliesDeTest.poser(helper, "axion:test/remorque",
+                new Vec3(8.0, DESSUS_DALLE + 0.3, 11.0), IDENTITE);
+        JoueurSimule conducteur = JoueurSimule.rejoindre(
+                helper.getLevel(), "ensemble_conducteur", helper.absoluteVec(new Vec3(2.0, DESSUS_DALLE, 6.0)));
+        boolean[] regulier = {false};
+        int[] sequence = {0};
+        List<CorrectionMessage> recues = new ArrayList<>();
+        helper.onEachTick(() -> {
+            conducteur.tick();
+            recues.addAll(conducteur.drainCorrections());
+            int siege = vehicule.seatOf(conducteur.joueur());
+            if (regulier[0] && siege >= 0) {
+                conducteur.envoyer(trame(++sequence[0], vehicule, siege, VehicleInput.NONE));
+            }
+        });
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.simulated() && remorque.simulated(), "simulés"))
+                .thenExecute(() -> {
+                    dev.axion.api.attach.AttachResult corde = ForgeAxionApi.view(vehicule).attachments().attach(
+                            "attelage", ForgeAxionApi.view(remorque), "attelage", "rope");
+                    helper.assertTrue(corde.attached(), "la corde : " + corde.message());
+                    helper.assertTrue(vehicule.reseat(conducteur.joueur(), "conducteur"), "au volant");
+                    recues.clear();
+                    regulier[0] = true;
+                })
+                .thenIdle(REGULIERS)
+                .thenExecute(() -> {
+                    regulier[0] = false;
+                    List<CorrectionMessage> deux = recues.stream().filter(c -> c.states().size() == 2).toList();
+                    helper.assertTrue(!deux.isEmpty(), "des corrections portent deux états : "
+                            + recues.stream().map(c -> c.states().size()).toList());
+                    for (CorrectionMessage correction : deux) {
+                        helper.assertTrue(correction.states().get(0).entity() == vehicule.getId()
+                                        && correction.states().get(1).entity() == remorque.getId(),
+                                "le véhicule d'abord, puis sa remorque : " + correction.states().stream()
+                                        .map(CorrectionMessage.State::entity).toList());
+                    }
+                    conducteur.joueur().stopRiding();
+                    conducteur.quitter();
+                })
+                .thenSucceed();
+    }
+
     /** Entrées d'une rafale réglée, toutes posées dans un même tick : au-delà de {@link InputQueue#MAX_PACED}. */
     private static final int RAFALE_REGLEE = InputQueue.MAX_PACED + 5;
 

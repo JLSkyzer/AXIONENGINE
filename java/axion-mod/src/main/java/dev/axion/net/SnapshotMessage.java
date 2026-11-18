@@ -63,7 +63,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      * l'état du véhicule et les drapeaux sur 16 bits (5, ADR-163 D1), les roues (4, ADR-159 D9), l'animation (3,
      * ADR-155), les corps autres que le corps racine et les joints (2, ADR-151 D8).
      */
-    public static final int DESCRIPTOR_VERSION = 7;
+    public static final int DESCRIPTOR_VERSION = 8;
 
     /**
      * La longueur maximale d'une cause ou d'un nom de paramètre sur le fil, en octets : {@link Modifier#MAX_LENGTH}
@@ -287,7 +287,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
         int size = varintSize(links.links().size());
         for (AssemblyState.Link link : links.links()) {
             size += 2 + varintSize(link.other() + 1) + 1 + (link.anchored() ? 3 * Double.BYTES : 0)
-                    + varintSize(link.length()) + varintSize(link.distance()) + varintSize(link.tension());
+                    + varintSize(link.length()) + varintSize(link.distance()) + varintSize(link.tension())
+                    + varintSize(link.setting().id()) + 7 * Float.BYTES;
         }
         return size;
     }
@@ -576,7 +577,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
     /**
      * Les attaches (ADR-171 D7) : leur nombre, puis pour chacune le rang de son socket et de son type, l'autre assembly
      * (son identifiant plus un, 0 pour un ancrage), le rang de son socket (255 sans), le point d'ancrage s'il y en a un,
-     * puis longueur, écart et tension, entiers.
+     * puis longueur, écart et tension, entiers ; enfin ses réglages (descripteur 8, ADR-171 Q8) : son identifiant, puis
+     * seuil de force, seuil de couple, cône, longueur, bornes et vitesse du treuil, en {@code f32}.
      */
     private static void writeLinks(WireWriter writer, AssemblyState.Links links) {
         writer.varUInt(links.links().size());
@@ -587,6 +589,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                 writer.f64(link.anchorX()).f64(link.anchorY()).f64(link.anchorZ());
             }
             writer.varUInt(link.length()).varUInt(link.distance()).varUInt(link.tension());
+            AssemblyState.Setting setting = link.setting();
+            writer.varUInt(setting.id()).f32(setting.maxForce()).f32(setting.maxTorque()).f32(setting.cone())
+                    .f32(setting.length()).f32(setting.minLength()).f32(setting.maxLength()).f32(setting.speed());
         }
     }
 
@@ -617,8 +622,21 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     throw new MalformedPacketException("entité " + handle + " : ancrage non fini");
                 }
             }
+            int length = reader.varUInt();
+            int distance = reader.varUInt();
+            int tension = reader.varUInt();
+            AssemblyState.Setting setting = new AssemblyState.Setting(reader.varUInt(), reader.f32(), reader.f32(),
+                    reader.f32(), reader.f32(), reader.f32(), reader.f32(), reader.f32());
+            float[] values = {setting.maxForce(), setting.maxTorque(), setting.cone(), setting.length(),
+                    setting.minLength(), setting.maxLength(), setting.speed()};
+            for (float value : values) {
+                if (Float.isNaN(value) || value < 0f) {
+                    throw new MalformedPacketException("entité " + handle + " : réglage d'attache " + value
+                            + ", négatif ou non défini");
+                }
+            }
             links.add(new AssemblyState.Link(socket, kind, other, otherSocket == 255 ? -1 : otherSocket, ax, ay, az,
-                    reader.varUInt(), reader.varUInt(), reader.varUInt()));
+                    length, distance, tension, setting));
         }
         return new AssemblyState.Links(links);
     }

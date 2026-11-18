@@ -88,6 +88,8 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         /** L'écart des ancrages et la tension au dernier tick, pour les joueurs (D7). */
         double lastDistance;
         double lastTension;
+        /** La commande qui l'a posée : ses réglages partent aux joueurs (ADR-171 Q8). */
+        PendingAttach command;
 
         Live(int id, AxionEntity a, Spec aSocket, AxionEntity b, Spec bSocket, BlockPos anchor, String kind,
                 String owner, double misalignment, double winchMin, double winchMax) {
@@ -337,10 +339,13 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         float maxTorque = (float) Math.min(sa.maxTorque(), sb == null ? Double.POSITIVE_INFINITY : sb.maxTorque());
         double cone = first(sa.cone(), sb == null ? Double.NaN : sb.cone(), DEFAULT_CONE);
         double speed = first(sa.winchSpeed(), sb == null ? Double.NaN : sb.winchSpeed(), DEFAULT_WINCH_SPEED);
-        pending.add(new PendingAttach(id, SocketTable.KINDS.indexOf(kind), AssemblyRuntime.handleIndexOf(a),
-                (int) aFrame[0], tail(aFrame), b == null ? -1 : AssemblyRuntime.handleIndexOf(b), (int) bFrame[0],
-                tail(bFrame), world, maxForce, maxTorque, (float) Math.toRadians(cone), (float) length,
-                (float) winchMin, (float) winchMax, (float) speed));
+        PendingAttach command = new PendingAttach(id, SocketTable.KINDS.indexOf(kind),
+                AssemblyRuntime.handleIndexOf(a), (int) aFrame[0], tail(aFrame),
+                b == null ? -1 : AssemblyRuntime.handleIndexOf(b), (int) bFrame[0], tail(bFrame), world, maxForce,
+                maxTorque, (float) Math.toRadians(cone), (float) length, (float) winchMin, (float) winchMax,
+                (float) speed);
+        attached.command = command;
+        pending.add(command);
         for (ContentRegistry.AttachmentListenerEntry entry : restoring ? List.<ContentRegistry.AttachmentListenerEntry>of()
                 : listeners) {
             try {
@@ -816,10 +821,22 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
                     attached.anchor == null ? 0 : attached.anchor.getY() + 0.5,
                     attached.anchor == null ? 0 : attached.anchor.getZ() + 0.5,
                     milli(attached.lastLength), milli(attached.lastDistance),
-                    (int) Math.min(Integer.MAX_VALUE, Math.max(0, Math.round(attached.lastTension)))));
+                    (int) Math.min(Integer.MAX_VALUE, Math.max(0, Math.round(attached.lastTension))),
+                    setting(attached)));
         }
         links.sort(java.util.Comparator.comparingInt(dev.axion.net.AssemblyState.Link::socket));
         return links.isEmpty() ? dev.axion.net.AssemblyState.Links.NONE : new dev.axion.net.AssemblyState.Links(links);
+    }
+
+    /** {@return les réglages d'une attache tels qu'ils partent aux joueurs : ceux de sa commande, longueur courante} */
+    private static dev.axion.net.AssemblyState.Setting setting(Live attached) {
+        PendingAttach command = attached.command;
+        if (command == null) {
+            return dev.axion.net.AssemblyState.Setting.NONE;
+        }
+        float length = Double.isFinite(attached.lastLength) ? (float) attached.lastLength : command.length();
+        return new dev.axion.net.AssemblyState.Setting(attached.id, command.maxForce(), command.maxTorque(),
+                command.cone(), length, command.minLength(), command.maxLength(), command.speed());
     }
 
     private static int milli(double value) {

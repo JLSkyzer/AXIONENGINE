@@ -25,10 +25,10 @@ public final class NetProtocol {
      * profondeur de la file dans {@code S2C_Correction} (ADR-168 D3, révisé le 2026-11-14), 11 avec le descripteur
      * d'états 7, les attaches d'une assembly (ADR-171 D7).
      */
-    public static final String VERSION = "AXION-11";
+    public static final String VERSION = "AXION-12";
 
     /** {@code protocol_version} du handshake (21.3) : le numéro de {@link #VERSION}. */
-    public static final int PROTOCOL_VERSION = 11;
+    public static final int PROTOCOL_VERSION = 12;
 
     /**
      * Taille maximale d'une trame AXION, en-tête de fragment compris, dans les deux sens.
