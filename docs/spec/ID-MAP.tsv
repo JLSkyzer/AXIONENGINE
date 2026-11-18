@@ -60,7 +60,7 @@ ADR-167	ADR		3333	16	12.5 Groupe motopropulseur
 ADR-168	ADR		5096	10	21.3 Handshake
 ADR-169	ADR		7910	1	38.9 Registre des amendements postérieurs au gel
 ADR-170	ADR		2040	11	5.25 C-33 : Vehicle System
-ADR-171	ADR		1156	15	3.17 DM-17 : Attache entre assemblies
+ADR-171	ADR		1156	16	3.17 DM-17 : Attache entre assemblies
 B-01	B	6540	5908	9	30.2 Ce qui est mesuré
 B-02	B	6541	6541	3	30.2 Ce qui est mesuré
 B-03	B	6542	6542	1	30.2 Ce qui est mesuré
@@ -195,7 +195,7 @@ CAP-33	CAP	8349	8349	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (A
 CAP-34	CAP	8350	7908	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-35	CAP	8351	2086	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-36	CAP	8352	8352	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-37	CAP	8353	2019	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-37	CAP	8353	2019	5	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-38	CAP	8354	8354	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-39	CAP	8355	7908	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-40	CAP	8356	7905	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
@@ -562,7 +562,7 @@ R-681	R	2244	2244	2	5.39 C-47 : Surface State & Wear
 R-682	R	2245	2245	1	5.39 C-47 : Surface State & Wear
 R-690	R	2272	2272	1	5.40 C-48 : Attachment System
 R-691	R	2273	2273	2	5.40 C-48 : Attachment System
-R-692	R	2274	2274	3	5.40 C-48 : Attachment System
+R-692	R	2274	2274	4	5.40 C-48 : Attachment System
 R-700	R	2284	2284	1	5.41 C-50 : Axion Entity
 R-701	R	2285	2285	2	5.41 C-50 : Axion Entity
 R-702	R	2286	2286	1	5.41 C-50 : Axion Entity
