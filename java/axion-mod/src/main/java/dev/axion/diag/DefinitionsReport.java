@@ -77,12 +77,51 @@ public final class DefinitionsReport {
             lines.add("  enregistrée par : " + source.apply(definition.location()).orElse(definition.location()));
             lines.add("  empreinte : " + definition.sha256().substring(0, 16));
             seated(definition.root(), lines);
+            sockets(definition.root(), lines);
             return List.copyOf(lines);
         }
         return registry.refusal(id)
                 .map(refusal -> List.of("AXION : " + id + " refusée — " + refusal))
                 .orElse(List.of("AXION : aucune definition « " + id + " », ni chargée ni refusée : aucun mod ne "
                         + "l'enregistre (vérifier le modId et le chemin)"));
+    }
+
+    /**
+     * Les sockets d'une definition (ADR-171, axe Diagnostic) : pour chacun, son nom, les types d'attache qu'il accepte, et
+     * ce qu'il déclare de ses réglages — étiquette et partenaires, seuils, désalignement, cône, corde, treuil, aimant,
+     * transferts. Ce qu'il ne déclare pas prend le défaut d'ADR-171 D2, que le rapport ne répète pas.
+     */
+    static void sockets(JsonObject root, List<String> lines) {
+        if (!(root.get("sockets") instanceof JsonArray sockets) || sockets.isEmpty()) {
+            return;
+        }
+        for (JsonElement element : sockets) {
+            if (!(element instanceof JsonObject socket) || !socket.has("name")) {
+                continue;
+            }
+            List<String> parts = new ArrayList<>();
+            if (socket.get("accepts") instanceof JsonArray accepts) {
+                parts.add("accepte " + String.join(", ", accepts.asList().stream().map(JsonElement::getAsString)
+                        .toList()));
+            }
+            for (String key : List.of("tag", "max_force", "max_torque", "misalignment", "anchor")) {
+                if (socket.has(key)) {
+                    parts.add(key + " " + socket.get(key).getAsString());
+                }
+            }
+            if (socket.get("mates") instanceof JsonArray mates) {
+                parts.add("mates " + String.join(", ", mates.asList().stream().map(JsonElement::getAsString)
+                        .toList()));
+            }
+            for (String block : List.of("hitch", "rope", "winch", "magnet", "transfer")) {
+                if (socket.get(block) instanceof JsonObject declared) {
+                    List<String> fields = new ArrayList<>();
+                    declared.entrySet().forEach(entry -> fields.add(entry.getKey() + " " + entry.getValue()));
+                    parts.add(block + " (" + String.join(", ", fields) + ")");
+                }
+            }
+            lines.add("  socket " + socket.get("name").getAsString() + " : " + String.join(" ; ", parts));
+        }
     }
 
     /**

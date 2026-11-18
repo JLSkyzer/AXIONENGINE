@@ -45,6 +45,11 @@ public final class DebugOverlays {
         NODES("nodes", NativeBridge.OVERLAY_NODES, Source.RENDER),
         /** L'origine de chaque node animé, autour de laquelle il tourne (ADR-155, tranche 6b). Rang 12. */
         PIVOTS("pivots", NativeBridge.OVERLAY_PIVOTS, Source.RENDER),
+        /**
+         * Le repère de chaque socket, à la pose dessinée de son assembly (ADR-171, axe Diagnostic). Rang 13. En Java
+         * seul : le client connaît la pose dessinée et le repère de chaque socket, que la definition déclare.
+         */
+        SOCKETS("sockets", 1L << 13, Source.JAVA),
         /** Les tuiles de collision du monde (C-38, A1). Rang 30. */
         WORLD_TILES("world_tiles", NativeBridge.OVERLAY_WORLD_TILES, Source.PHYSICS),
         /** Le centre de masse de chaque corps (A1). Rang 31. */

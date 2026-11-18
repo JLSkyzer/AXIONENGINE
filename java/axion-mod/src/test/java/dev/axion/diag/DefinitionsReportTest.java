@@ -97,4 +97,18 @@ class DefinitionsReportTest {
         List<String> inconnue = DefinitionsReport.info(registre(), "mymod:fantome", cle -> Optional.empty());
         assertTrue(inconnue.get(0).contains("ni chargée ni refusée"), inconnue.get(0));
     }
+
+    @Test
+    @org.junit.jupiter.api.DisplayName("ADR-171, axe Diagnostic : les sockets d'une definition et ce qu'ils déclarent")
+    void lesSocketsSontDits() {
+        List<String> lignes = new java.util.ArrayList<>();
+        DefinitionsReport.sockets(JsonParser.parseString("{\"sockets\": [{\"name\": \"attelage\", \"accepts\": "
+                + "[\"hitch\", \"rope\"], \"tag\": \"ball_50\", \"max_force\": 40000.0, \"hitch\": {\"cone\": 40.0}},"
+                + " {\"name\": \"avant\", \"accepts\": [\"rope\"]}]}").getAsJsonObject(), lignes);
+        assertEquals(List.of("  socket attelage : accepte hitch, rope ; tag ball_50 ; max_force 40000.0 ; hitch (cone 40.0)",
+                "  socket avant : accepte rope"), lignes);
+        lignes.clear();
+        DefinitionsReport.sockets(JsonParser.parseString("{}").getAsJsonObject(), lignes);
+        assertEquals(List.of(), lignes, "sans socket, rien");
+    }
 }

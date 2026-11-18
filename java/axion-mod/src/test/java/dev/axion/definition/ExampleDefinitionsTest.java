@@ -226,7 +226,7 @@ class ExampleDefinitionsTest {
     }
 
     @Test
-    @DisplayName("T-634 : axion:example/winch_rope — embarquée, chargée si content.examples, schéma 1 sans faute")
+    @DisplayName("T-634 : axion:example/winch_rope — embarquée, chargée si content.examples, schéma 6 sans faute")
     void t634Treuil() throws IOException, DefinitionException {
         verifie("winch_rope", AssemblyKind.MACHINE);
     }

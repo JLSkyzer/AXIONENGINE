@@ -202,6 +202,8 @@ It sees every attachment of the server, a player's as well as another mod's.
 | `/axion anchor <target> <socket> <x y z>` | anchors a socket to a block |
 | `/axion detach <target> <socket>` | undoes a socket's attachment |
 | `/axion attaches <target>` | lists an assembly's attachments, their length, gap and tension |
+| `/axion defs info <definition>` | among the rest, tells each socket of a sheet: the kinds it accepts and what it declares |
+| `/axion debug sockets on` | draws each socket's frame in game (red x, green y, blue z): where an attachment takes hold |
 
 ## 9. Saving and chunks
 

@@ -266,8 +266,9 @@ final class DebugOverlayRenderer {
         boolean network = overlays.isOn(DebugOverlays.Overlay.NETWORK);
         boolean lod = overlays.isOn(DebugOverlays.Overlay.LOD);
         boolean culled = overlays.isOn(DebugOverlays.Overlay.CULLING);
-        if (overlays.mask() == 0L
-                || (geometry.ranges().isEmpty() && animation.ranges().isEmpty() && !network && !lod && !culled)) {
+        boolean sockets = overlays.isOn(DebugOverlays.Overlay.SOCKETS);
+        if (overlays.mask() == 0L || (geometry.ranges().isEmpty() && animation.ranges().isEmpty() && !network && !lod
+                && !culled && !sockets)) {
             return;
         }
         RenderType type = RenderType.lines();
@@ -313,6 +314,9 @@ final class DebugOverlayRenderer {
         if (lod || culled) {
             out = drawCulling(frame, out, type, scratch, lod, culled);
         }
+        if (sockets) {
+            out = drawSockets(frame, out, type, scratch);
+        }
         if (out != null) {
             frame.buffers().endBatch(type);
         }
@@ -355,6 +359,69 @@ final class DebugOverlayRenderer {
             networkDrawn++;
         }
         return out;
+    }
+
+    /** Longueur des axes du repère d'un socket, en blocs. */
+    static final float SOCKET_AXIS = 0.3f;
+
+    /**
+     * {@code sockets} (31.4) : le repère de chaque socket de chaque assembly, à sa pose dessinée — là où une attache se
+     * prend (ADR-171, axe Diagnostic).
+     *
+     * @return le tampon, ouvert s'il a fallu dessiner
+     */
+    private VertexConsumer drawSockets(RenderBackend.Frame frame, VertexConsumer out, RenderType type,
+            Vector3f scratch) {
+        Vec3 eye = frame.camera();
+        PoseStack.Pose last = frame.pose().last();
+        for (RenderBackend.Assembly assembly : frame.assemblies()) {
+            AxionEntity entity = assembly.entity();
+            List<dev.axion.definition.SocketTable.Spec> specs = entity.sockets().sockets();
+            if (specs.isEmpty()) {
+                continue;
+            }
+            AxionEntity.RenderPose shown = entity.renderPose(frame.partialTick());
+            for (dev.axion.definition.SocketTable.Spec spec : specs) {
+                dev.axion.seat.SeatPlacement.Pose at = entity.nodePoseAt(spec.node(), shown);
+                if (at == null) {
+                    continue;
+                }
+                if (out == null) {
+                    out = frame.buffers().getBuffer(type);
+                }
+                float[][] axes = socketAxes(at, eye.x, eye.y, eye.z);
+                for (int axis = 0; axis < 3; axis++) {
+                    emit(out, last.pose(), last.normal(), scratch, axes[axis], AXIS_COLORS[axis]);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * {@return les trois axes du repère d'un socket, relatifs à la caméra : x, y, puis z, chacun un segment de
+     * {@link #SOCKET_AXIS} depuis son origine, tournés comme lui}
+     *
+     * @param at la pose monde du socket
+     * @param cameraX position de la caméra
+     * @param cameraY position de la caméra
+     * @param cameraZ position de la caméra
+     */
+    static float[][] socketAxes(dev.axion.seat.SeatPlacement.Pose at, double cameraX, double cameraY,
+            double cameraZ) {
+        float[] q = at.rotation();
+        org.joml.Quaternionf rotation = new org.joml.Quaternionf(q[0], q[1], q[2], q[3]);
+        float ox = (float) (at.x() - cameraX);
+        float oy = (float) (at.y() - cameraY);
+        float oz = (float) (at.z() - cameraZ);
+        float[][] axes = new float[3][];
+        for (int axis = 0; axis < 3; axis++) {
+            Vector3f tip = new Vector3f(axis == 0 ? SOCKET_AXIS : 0, axis == 1 ? SOCKET_AXIS : 0,
+                    axis == 2 ? SOCKET_AXIS : 0);
+            rotation.transform(tip);
+            axes[axis] = new float[] {ox, oy, oz, ox + tip.x, oy + tip.y, oz + tip.z};
+        }
+        return axes;
     }
 
     /**
@@ -518,6 +585,7 @@ final class DebugOverlayRenderer {
             case BONES -> BONE_COLOR;
             case NODES -> AXIS_COLORS[0];
             case PIVOTS -> PIVOT_COLOR;
+            case SOCKETS -> AXIS_COLORS[0];
             case WORLD_TILES -> TILE_COLOR;
             case CENTER_OF_MASS -> MASS_COLOR;
             case NETWORK -> NETWORK_RECEIVED;
@@ -562,6 +630,7 @@ final class DebugOverlayRenderer {
             case BONES -> "or : chaque os d'une instance animée, de son os parent à lui, vu à travers la peau";
             case NODES -> "axes de chaque node d'une instance animée : rouge x, vert y, bleu z";
             case PIVOTS -> "rose : l'origine de chaque node animé, autour de laquelle il tourne";
+            case SOCKETS -> "axes de chaque socket, là où une attache se prend : rouge x, vert y, bleu z";
             case WORLD_TILES -> "gris : les colliders des tuiles du monde";
             case CENTER_OF_MASS -> "blanc : le centre de masse de chaque corps";
             case NETWORK -> "violet : l'emprise à la pose dessinée, interpolée ; orange : au dernier état reçu du"

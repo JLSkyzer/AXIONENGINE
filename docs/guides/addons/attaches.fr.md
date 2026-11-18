@@ -201,6 +201,8 @@ Il voit chaque attache du serveur, celles d'un joueur comme celles d'un autre mo
 | `/axion anchor <cible> <socket> <x y z>` | ancre un socket à un bloc |
 | `/axion detach <cible> <socket>` | défait l'attache d'un socket |
 | `/axion attaches <cible>` | liste les attaches d'une assembly, leur longueur, leur écart, leur tension |
+| `/axion defs info <definition>` | dit, parmi le reste, chaque socket d'une fiche : les types qu'il accepte et ce qu'il déclare |
+| `/axion debug sockets on` | dessine le repère de chaque socket en jeu (rouge x, vert y, bleu z) : là où une attache se prend |
 
 ## 9. Sauvegarde et chunks
 

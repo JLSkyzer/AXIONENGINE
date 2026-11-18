@@ -3919,12 +3919,15 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                prédite par membre (la remorque dessinée au même instant que la voiture).
          - [x] 8e5d (2026-11-18) — essai à deux processus et film : T-415 et T-416 réussis avec la remorque ;
                672 octets d'états par correction, 13,4 Kio/s, sous 21.10.
-     - [ ] Clôture de C-48 — la grille d'ADR-171 relue le 2026-11-18 ; trois promesses à tenir avant de la cocher :
-       - [ ] `/axion defs info` dit les sockets d'une definition (nom, types acceptés, réglages) — axe Diagnostic ;
-       - [ ] l'overlay `sockets` : le repère de chaque socket dessiné en jeu — axe Diagnostic ;
-       - [ ] les exemples créateur : `winch_rope` au schéma 6 (ses actions attach/detach visent un socket ; le journal
-             le signale à chaque démarrage), et le buggy et sa remorque parmi les exemples — axe Créateur ;
-       - [ ] puis la grille vérifiée axe par axe, CAP-15 et CAP-37 cochées en A.7, `wip/c-48` fusionnée.
+     - [x] Clôture de C-48 (2026-11-18) — la grille d'ADR-171 relue ; trois promesses tenues avant de la cocher :
+       - [x] `/axion defs info` dit les sockets d'une definition (nom, types acceptés, réglages) — axe Diagnostic ;
+       - [x] l'overlay `sockets` (rang 13) : le repère de chaque socket dessiné en jeu — axe Diagnostic ;
+       - [x] les exemples créateur : `winch_rope` au schéma 6 (socket `sortie_cable`, treuil piloté par la variable
+             `treuil`) ; le buggy (socket `attelage`) — axe Créateur. Une remorque d'exemple avec son propre modèle
+             reste à proposer à Killian (Blender) ; la remorque du contenu de test en tient lieu ;
+       - [x] la grille vérifiée axe par axe ; CAP-15 (sauf le transfert de dommage, M6) et CAP-37 tenues en A.7 ;
+             C-71 corrigé (les commandes des attaches telles qu'elles sont) ;
+       - [x] `wip/c-48` fusionnée dans master (avance rapide), la CI GitHub y rejoue tout.
   9. C-77 gouverneur, C-73 overlay.
   10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).
 - **Suite décidée par Killian, dans cet ordre** :

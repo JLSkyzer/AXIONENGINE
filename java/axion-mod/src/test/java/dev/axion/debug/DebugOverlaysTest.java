@@ -77,10 +77,12 @@ class DebugOverlaysTest {
         assertEquals(List.of(Overlay.BONES, Overlay.NODES, Overlay.PIVOTS), java.util.Arrays.stream(Overlay.values())
                         .filter(overlay -> overlay.source() == DebugOverlays.Source.RENDER).toList(),
                 "bones, nodes et pivots, du contexte de rendu (ADR-155, tranche 6b)");
-        assertEquals(List.of(Overlay.NETWORK, Overlay.LOD, Overlay.CULLING), java.util.Arrays.stream(Overlay.values())
+        assertEquals(List.of(Overlay.SOCKETS, Overlay.NETWORK, Overlay.LOD, Overlay.CULLING),
+                java.util.Arrays.stream(Overlay.values())
                         .filter(overlay -> overlay.source() == DebugOverlays.Source.JAVA).toList(),
-                "network, lod et culling, en Java seul, venus en M4 avec C-51 et C-64 (ADR-146 §1, ADR-154)");
-        assertEquals(18, Overlay.values().length);
+                "sockets (ADR-171), network, lod et culling, en Java seul, venus en M4 avec C-51 et C-64 (ADR-146 §1,"
+                        + " ADR-154)");
+        assertEquals(19, Overlay.values().length);
         for (Overlay overlay : Overlay.values()) {
             assertEquals(overlay, Overlay.ofRank(overlay.rank()), overlay.commandName());
         }
@@ -88,7 +90,7 @@ class DebugOverlaysTest {
         assertEquals(Overlay.LIMITS, Overlay.ofRank(6));
         assertEquals(Overlay.BONES, Overlay.ofRank(10));
         assertEquals(Overlay.RAYCASTS, Overlay.ofRank(7));
-        assertEquals(null, Overlay.ofRank(13), "sockets n'est pas implémenté");
+        assertEquals(Overlay.SOCKETS, Overlay.ofRank(13), "sockets, rang 13 au 31.4 (ADR-171)");
     }
 
     @Test

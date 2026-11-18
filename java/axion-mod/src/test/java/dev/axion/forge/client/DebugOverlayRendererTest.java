@@ -321,7 +321,7 @@ class DebugOverlayRendererTest {
                 new Matrix4f(),
                 new Matrix3f(),
                 new Vector3f(),
-                new DebugGeometry.Range(1, 1, 13, DebugGeometry.FRAME_BODY, 0, new float[] {0, 0, 0, 1, 0, 0}));
+                new DebugGeometry.Range(1, 1, 14, DebugGeometry.FRAME_BODY, 0, new float[] {0, 0, 0, 1, 0, 0}));
         assertEquals(0, emis);
         assertEquals(0, out.termines);
     }
@@ -355,5 +355,19 @@ class DebugOverlayRendererTest {
                     + (aretes[i + 2] != aretes[i + 5] ? 1 : 0);
             assertEquals(1, differents, "une arête suit un seul axe");
         }
+    }
+
+    @Test
+    @org.junit.jupiter.api.DisplayName("sockets (ADR-171) : les trois axes du repère d'un socket, tournés comme lui, relatifs à la caméra")
+    void lesAxesDUnSocket() {
+        // Un quart de tour autour de y : x du socket vise -z du monde.
+        float s = (float) Math.sqrt(0.5);
+        dev.axion.seat.SeatPlacement.Pose socket = new dev.axion.seat.SeatPlacement.Pose(10.0, 64.0, -3.0,
+                new float[] {0f, s, 0f, s});
+        float[][] axes = DebugOverlayRenderer.socketAxes(socket, 10.0, 60.0, -3.0);
+        float l = DebugOverlayRenderer.SOCKET_AXIS;
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, 0f, 4f, -l}, axes[0], 1e-5f);
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, 0f, 4f + l, 0f}, axes[1], 1e-5f);
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, l, 4f, 0f}, axes[2], 1e-5f);
     }
 }

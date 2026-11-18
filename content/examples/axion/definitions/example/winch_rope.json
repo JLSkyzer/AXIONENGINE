@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 6,
   "asset": "axion:models/example/winch_rope.glb",
   "kind": "machine",
 
@@ -21,7 +21,14 @@
       "flags": ["no_deform"] }
   ],
 
-  "sockets": ["sortie_cable"],
+  "variables": {
+    "treuil": { "type": "int", "default": 0, "min": -1, "max": 1, "persist": true, "write": "none" }
+  },
+
+  "sockets": [
+    { "name": "sortie_cable", "accepts": ["winch", "rope"], "anchor": true, "max_force": 15000.0,
+      "winch": { "speed": 0.8, "min_length": 0.5, "max_length": 12.0, "variable": "treuil" } }
+  ],
 
   "particles": [
     { "name": "cable", "kind": "rope", "authority": "server_simple",
@@ -34,12 +41,15 @@
 
   "procedural": [
     { "node": "tambour", "channel": "rotation", "axis": "x",
-      "source": "attach.cable.length", "scale": -12.5 }
+      "source": "attach.sortie_cable.length", "scale": -12.5 }
   ],
 
   "interaction": [
-    { "node": "crochet", "action": "attach" },
-    { "node": "crochet", "action": "detach" }
+    { "node": "crochet", "action": "attach", "socket": "sortie_cable", "kinds": ["winch"] },
+    { "node": "crochet", "action": "detach", "socket": "sortie_cable" },
+    { "node": "manivelle", "action": "set_variable", "variable": "treuil", "value": -1 },
+    { "node": "tambour", "action": "set_variable", "variable": "treuil", "value": 0 },
+    { "node": "socle", "action": "set_variable", "variable": "treuil", "value": 1 }
   ],
 
   "deformation": { "enabled": true, "min_quality": "low" }
