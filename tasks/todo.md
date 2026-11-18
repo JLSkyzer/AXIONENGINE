@@ -3908,7 +3908,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            remorquage en 12 s.
      - [ ] 8e — l'ensemble (CAP-37), décidé le 2026-11-18 (ADR-171 Q8 protocole 12, Q9 ticket de chunk) :
        - [x] 8e1 (2026-11-18) — activité native par ensemble : sommeil, réveil, relevé et plafond sur la composante d'attaches.
-       - [ ] 8e2 — déchargement commun : ticket de chunk sur les chunks de tout l'ensemble.
+       - [x] 8e2 (2026-11-18) — déchargement commun : ticket de chunk sur les chunks de tout l'ensemble.
        - [ ] 8e3 — la poursuite cadre l'emprise de l'ensemble (graphe client des attaches répliquées).
        - [ ] 8e4 — protocole 12 : réglages complets des attaches répliqués, correction à un état par membre.
        - [ ] 8e5 — prédiction client de l'ensemble : monde prédit à plusieurs assemblies et leurs attaches,

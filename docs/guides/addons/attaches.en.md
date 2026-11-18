@@ -210,6 +210,10 @@ or moves to another dimension, the attachment is **suspended**, not deleted: it 
 When the server restarts, each attachment is restored as soon as both its ends are loaded. Only destroying an end
 undoes it for good.
 
+Attached assemblies form an **ensemble**, which loads and unloads as a whole: while one of its members is within a
+player's simulation distance, the chunks of all its members stay loaded. A trailer is not left alone at the edge of a
+chunk while its car drives on; once no member is within reach, the whole ensemble unloads, two seconds later.
+
 ## 10. What the player sees
 
 A rope or a winch cable is drawn between both sockets, or down to the anchor block: **taut**, straight; **with slack**,

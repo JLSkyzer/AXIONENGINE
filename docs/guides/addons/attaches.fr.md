@@ -209,6 +209,11 @@ parti — ou passe dans une autre dimension, l'attache est **suspendue**, pas su
 revient. Au redémarrage du serveur, chaque attache se rétablit dès que ses deux extrémités sont chargées. Seule la
 destruction d'une extrémité la défait pour de bon.
 
+Des assemblies attachées forment un **ensemble**, qui se charge et se décharge comme un tout : tant qu'un de ses membres
+est à portée de simulation d'un joueur, les chunks de tous ses membres restent chargés. Une remorque ne reste pas
+seule au bord d'un chunk pendant que sa voiture roule ; quand plus aucun membre n'est à portée, l'ensemble se décharge
+entier, deux secondes plus tard.
+
 ## 10. Ce que voit le joueur
 
 Une corde ou un câble de treuil se dessine entre les deux sockets, ou jusqu'au bloc d'ancrage : **tendu**, droit ;

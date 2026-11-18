@@ -6,6 +6,7 @@ import dev.axion.api.attach.AttachResult.Status;
 import dev.axion.api.attach.Attachments;
 import dev.axion.attach.AttachmentGraph;
 import dev.axion.attach.AttachmentRecord;
+import dev.axion.attach.EnsembleHold;
 import dev.axion.content.ContentRegistry;
 import dev.axion.definition.SocketTable;
 import dev.axion.definition.SocketTable.Spec;
@@ -18,6 +19,9 @@ import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.seat.SeatPlacement;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +30,9 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Consumer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.AABB;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -100,6 +107,25 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
 
     private final AttachmentGraph graph = new AttachmentGraph();
     private final Map<Integer, Live> live = new TreeMap<>();
+
+    /**
+     * La durée de vie d'un ticket d'ensemble, en ticks (ADR-171 Q9) : renouvelé à chaque tick tant que l'ensemble est
+     * tenu, il expire deux secondes après — tous ceux d'un ensemble au même tick, et ses chunks se déchargent ensemble.
+     */
+    private static final int ENSEMBLE_TICKET_TICKS = 40;
+
+    /** Le ticket qui garde chargés les chunks d'un ensemble tenu (ADR-171 Q9, CAP-37). */
+    private static final TicketType<ChunkPos> ENSEMBLE_TICKET =
+            TicketType.create("axion_ensemble", Comparator.comparingLong(ChunkPos::toLong), ENSEMBLE_TICKET_TICKS);
+
+    /**
+     * Le rayon du ticket : 2, pour que le chunk du membre soit au niveau où ses entités tournent (31 = 33 − 2), comme
+     * sous un joueur.
+     */
+    private static final int ENSEMBLE_TICKET_RADIUS = 2;
+
+    /** Les chunks que des ensembles ont tenus au dernier tick, pour les essais. */
+    private final List<ChunkPos> heldChunks = new ArrayList<>();
     /**
      * Ce que le prochain flux de commandes portera, en données : la demande d'un geste ne touche pas la simulation, que
      * seul le lot du tick pilote (R-701).
@@ -463,6 +489,7 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
             }
         }
         restore();
+        holdEnsembles();
         for (Pending command : pending) {
             if (command instanceof PendingAttach at) {
                 stream.attach(new SimCommandStream.AttachRequest(at.id(), at.kind(), at.aIndex(),
@@ -817,6 +844,78 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
                 records.set(i, record.withLength(attached.lastLength));
             }
         }
+    }
+
+    /**
+     * Garde chargés les chunks de chaque ensemble tenu (ADR-171 D7, Q9) : un ensemble dont un membre est à portée de
+     * simulation d'un joueur renouvelle un ticket sur le chunk de chacun de ses membres. Une remorque ne reste pas seule
+     * au bord d'un chunk ; plus tenu, l'ensemble laisse ses tickets expirer ensemble.
+     */
+    private void holdEnsembles() {
+        AuthoritativeThread.require();
+        heldChunks.clear();
+        // Les attaches entre deux assemblies présentes du même niveau, dans l'ordre de leurs identifiants.
+        List<Live> links = new ArrayList<>();
+        for (Live attached : live.values()) {
+            if (attached.b != null && !attached.a.isRemoved() && !attached.b.isRemoved()
+                    && attached.a.level() == attached.b.level()) {
+                links.add(attached);
+            }
+        }
+        Map<AxionEntity, AxionEntity> parent = new IdentityHashMap<>();
+        for (Live attached : links) {
+            AxionEntity a = root(parent, attached.a);
+            AxionEntity b = root(parent, attached.b);
+            if (a != b) {
+                parent.put(a, b);
+            }
+        }
+        Map<AxionEntity, List<AxionEntity>> ensembles = new LinkedHashMap<>();
+        for (Live attached : links) {
+            for (AxionEntity member : List.of(attached.a, attached.b)) {
+                List<AxionEntity> list = ensembles.computeIfAbsent(root(parent, member), k -> new ArrayList<>());
+                if (!list.contains(member)) {
+                    list.add(member);
+                }
+            }
+        }
+        for (List<AxionEntity> members : ensembles.values()) {
+            if (members.size() < 2 || !(members.get(0).level() instanceof ServerLevel level)) {
+                continue;
+            }
+            List<EnsembleHold.Chunk> chunks = new ArrayList<>(members.size());
+            for (AxionEntity member : members) {
+                ChunkPos pos = member.chunkPosition();
+                chunks.add(new EnsembleHold.Chunk(pos.x, pos.z));
+            }
+            List<EnsembleHold.Chunk> players = new ArrayList<>();
+            for (net.minecraft.server.level.ServerPlayer player : level.players()) {
+                ChunkPos pos = player.chunkPosition();
+                players.add(new EnsembleHold.Chunk(pos.x, pos.z));
+            }
+            int simulation = level.getServer().getPlayerList().getSimulationDistance();
+            for (EnsembleHold.Chunk chunk : EnsembleHold.chunksToHold(chunks, players, simulation)) {
+                ChunkPos pos = new ChunkPos(chunk.x(), chunk.z());
+                level.getChunkSource().addRegionTicket(ENSEMBLE_TICKET, pos, ENSEMBLE_TICKET_RADIUS, pos);
+                heldChunks.add(pos);
+            }
+        }
+    }
+
+    /** {@return la racine d'un membre dans la forêt des ensembles} */
+    private static AxionEntity root(Map<AxionEntity, AxionEntity> parent, AxionEntity member) {
+        AxionEntity current = member;
+        AxionEntity next = parent.get(current);
+        while (next != null) {
+            current = next;
+            next = parent.get(current);
+        }
+        return current;
+    }
+
+    /** {@return les chunks que des ensembles ont tenus au dernier tick (essais)} */
+    public List<ChunkPos> heldChunks() {
+        return List.copyOf(heldChunks);
     }
 
     /** Rétablit les attaches gardées dont les deux extrémités sont là ; les autres attendent (D7). */

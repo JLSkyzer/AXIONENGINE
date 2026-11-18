@@ -86,6 +86,36 @@ public final class AttachesGameTests {
         }));
     }
 
+    /**
+     * ADR-171 Q9 (CAP-37) : un ensemble à portée d'un joueur garde chargés les chunks de tous ses membres — une remorque
+     * ne reste pas seule au bord d'un chunk.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 200)
+    public static void adr171_UnEnsembleTenuGardeLesChunksDeSesMembres(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity a = AssembliesDeTest.poser(helper, MAILLON, new Vec3(3.0, DESSUS_DALLE + 0.05, 8.0), DROIT);
+        AxionEntity b = AssembliesDeTest.poser(helper, MAILLON, new Vec3(13.0, DESSUS_DALLE + 0.05, 8.0), DROIT);
+        dev.axion.forge.net.JoueurSimule[] joueur = new dev.axion.forge.net.JoueurSimule[1];
+        helper.runAfterDelay(20, () -> {
+            attendu(helper, vue(a).attachments().attach("avant", vue(b), "arriere", "rope"),
+                    AttachResult.Status.ATTACHED);
+            joueur[0] = dev.axion.forge.net.JoueurSimule.rejoindre(helper.getLevel(), "ensemble",
+                    helper.absoluteVec(new Vec3(3.0, DESSUS_DALLE, 6.0)));
+        });
+        helper.onEachTick(() -> {
+            if (joueur[0] != null) {
+                joueur[0].tick();
+            }
+        });
+        helper.runAfterDelay(25, () -> helper.succeedWhen(() -> {
+            List<net.minecraft.world.level.ChunkPos> tenus = AttachmentRuntime.current().heldChunks();
+            helper.assertTrue(tenus.contains(a.chunkPosition()) && tenus.contains(b.chunkPosition()),
+                    "les chunks des deux maillons sont tenus : " + tenus + " ; " + a.chunkPosition() + ", "
+                            + b.chunkPosition());
+            joueur[0].quitter();
+        }));
+    }
+
     /** T-892 : trois maillons en chaîne ne se referment pas en boucle — E-8030. */
     @GameTest(template = "test/plancher_16", timeoutTicks = 100)
     public static void t892_UnCycleEstRefuse(GameTestHelper helper) {
