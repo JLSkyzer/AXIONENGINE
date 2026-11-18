@@ -92,7 +92,9 @@ public final class SchemaExport {
                                 : version == 3 ? ", l'ADR-151 D3 et l'ADR-163 D2"
                                 : version == 4 ? ", l'ADR-151 D3, l'ADR-163 D2 et l'ADR-167"
                                 : version == 5 ? ", l'ADR-151 D3, l'ADR-163 D2, l'ADR-167 et l'ADR-170"
-                                : version == 6 ? ", l'ADR-151 D3, l'ADR-163 D2, l'ADR-167, l'ADR-170 et l'ADR-171" : "")
+                                : version == 6 ? ", l'ADR-151 D3, l'ADR-163 D2, l'ADR-167, l'ADR-170 et l'ADR-171"
+                                : version == 7 ? ", l'ADR-151 D3, l'ADR-163 D2, l'ADR-167, l'ADR-170, l'ADR-171 et l'ADR-174"
+                                : "")
                         + ". AXION vérifie en plus, au chargement, "
                         + "ce que JSON Schema n'exprime pas : unicité des noms par catégorie "
                         + "(x-axion-declares), résolution des références internes "

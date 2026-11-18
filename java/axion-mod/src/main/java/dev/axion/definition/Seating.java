@@ -261,7 +261,9 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         /** Attacher un socket au socket le plus proche d'une autre assembly, ou au bloc visé (ADR-171 D4). */
         ATTACH("attach", null),
         /** Défaire l'attache d'un socket (ADR-171 D4). */
-        DETACH("detach", null);
+        DETACH("detach", null),
+        /** Ne jouer que la liste des actions de l'interaction (ADR-174 D3, schéma 7). */
+        ACTIONS("actions", null);
 
         private final String key;
         private final String awaits;
@@ -317,11 +319,33 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      * @param distance où {@code attach} cherche l'autre socket, en blocs ; {@code NaN} : la distance du serveur
      */
     public record Interaction(int node, Action action, String animation, String clip, int layer, int seat,
-            int variable, double value, String socket, java.util.Set<String> kinds, double distance) {
+            int variable, double value, String socket, java.util.Set<String> kinds, double distance,
+            List<NodeAction> actions) {
 
-        /** Copie les types. */
+        /** Copie les types et les actions. */
         public Interaction {
             kinds = kinds == null ? java.util.Set.of() : java.util.Set.copyOf(kinds);
+            actions = actions == null ? List.of() : List.copyOf(actions);
+        }
+
+        /**
+         * Une interaction sans liste d'actions (avant le schéma 7).
+         *
+         * @param node l'index de son node
+         * @param action ce qu'elle fait
+         * @param animation l'animation jouée
+         * @param clip son clip
+         * @param layer sa couche
+         * @param seat le siège où elle assoit
+         * @param variable la variable qu'elle pose
+         * @param value la valeur posée
+         * @param socket le socket visé
+         * @param kinds les types permis
+         * @param distance la distance de recherche
+         */
+        public Interaction(int node, Action action, String animation, String clip, int layer, int seat,
+                int variable, double value, String socket, java.util.Set<String> kinds, double distance) {
+            this(node, action, animation, clip, layer, seat, variable, value, socket, kinds, distance, List.of());
         }
 
         /**
@@ -354,6 +378,36 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         public Interaction(int node, Action action, String animation, String clip, int layer, int seat) {
             this(node, action, animation, clip, layer, seat, -1, 0.0);
         }
+    }
+
+    /**
+     * Une action sur l'état d'un node (ADR-174 D3), compilée : ce qu'elle fait, le node qu'elle vise par son index et par
+     * son nom — l'état se sauvegarde par nom —, et ce qu'elle pose.
+     *
+     * @param kind ce qu'elle fait
+     * @param node l'index du node visé
+     * @param name le nom de ce node dans la definition
+     * @param emissive l'émission posée par {@code set_material_param}, {@code NaN} sans
+     * @param color la teinte posée par {@code set_material_param}, {@code null} sans
+     */
+    public record NodeAction(NodeActionKind kind, int node, String name, float emissive, float[] color) {
+
+        /** Copie la teinte. */
+        public NodeAction {
+            java.util.Objects.requireNonNull(kind, "kind");
+            java.util.Objects.requireNonNull(name, "name");
+            color = color == null ? null : color.clone();
+        }
+    }
+
+    /** Ce qu'une action fait à un node (ADR-174 D3). */
+    public enum NodeActionKind {
+        /** Le cacher, quel que soit son canal {@code visibility}. */
+        HIDE,
+        /** Lever le masque d'un {@code hide_node}. */
+        SHOW,
+        /** Poser son émission ou sa teinte. */
+        MATERIAL
     }
 
     /**
@@ -404,6 +458,53 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
             }
         }
         return -1;
+    }
+
+    /**
+     * {@return l'index de chaque node que les actions de la definition nomment, par son nom (ADR-174 D3)} : ce que
+     * l'état sauvegardé par nom ({@code axion:nodes}) retrouve à la lecture.
+     */
+    public Map<String, Integer> actionNodes() {
+        Map<String, Integer> named = new java.util.LinkedHashMap<>();
+        for (Interaction interaction : interactions) {
+            for (NodeAction action : interaction.actions()) {
+                named.putIfAbsent(action.name(), action.node());
+            }
+        }
+        return named;
+    }
+
+    /**
+     * {@return les actions d'une interaction, dans leur ordre (ADR-174 D3)} Le node de chacune est celui que le natif a
+     * résolu pour sa référence.
+     */
+    private static List<NodeAction> nodeActions(JsonObject interaction, String path, Map<String, Integer> byPath) {
+        if (!(interaction.get("actions") instanceof JsonArray declared)) {
+            return List.of();
+        }
+        List<NodeAction> actions = new ArrayList<>(declared.size());
+        for (int k = 0; k < declared.size(); k++) {
+            JsonObject step = declared.get(k).getAsJsonObject();
+            String at = path + ".actions[" + k + "]";
+            if (step.get("hide_node") != null) {
+                actions.add(new NodeAction(NodeActionKind.HIDE, node(byPath, at + ".hide_node"),
+                        step.get("hide_node").getAsString(), Float.NaN, null));
+            } else if (step.get("show_node") != null) {
+                actions.add(new NodeAction(NodeActionKind.SHOW, node(byPath, at + ".show_node"),
+                        step.get("show_node").getAsString(), Float.NaN, null));
+            } else if (step.get("set_material_param") instanceof JsonObject param) {
+                JsonElement value = param.get("value");
+                boolean emissive = "emissive".equals(param.get("param").getAsString());
+                float[] color = null;
+                if (!emissive) {
+                    JsonArray rgb = value.getAsJsonArray();
+                    color = new float[] {rgb.get(0).getAsFloat(), rgb.get(1).getAsFloat(), rgb.get(2).getAsFloat()};
+                }
+                actions.add(new NodeAction(NodeActionKind.MATERIAL, node(byPath, at + ".set_material_param.node"),
+                        param.get("node").getAsString(), emissive ? value.getAsFloat() : Float.NaN, color));
+            }
+        }
+        return actions;
     }
 
     /**
@@ -492,7 +593,8 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                     seat == null ? -1 : seatRanks.getOrDefault(seat, -1), variable,
                     variable >= 0 && interaction.get("value") != null ? Variables.value(interaction.get("value")) : 0.0,
                     text(interaction, "socket"), kinds,
-                    interaction.has("distance") ? interaction.get("distance").getAsDouble() : Double.NaN));
+                    interaction.has("distance") ? interaction.get("distance").getAsDouble() : Double.NaN,
+                    nodeActions(interaction, path, byPath)));
         }
         SocketTable sockets = SocketTable.of(root, byPath);
         return seats.isEmpty() && interactions.isEmpty() && variables.size() == 0 && sockets.isEmpty()

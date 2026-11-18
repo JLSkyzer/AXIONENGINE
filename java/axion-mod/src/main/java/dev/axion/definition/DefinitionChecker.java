@@ -346,6 +346,9 @@ final class DefinitionChecker {
     private static int versionOf(JsonObject root) {
         if (root.get("schema") instanceof JsonPrimitive schema && schema.isNumber()) {
             double number = schema.getAsDouble();
+            if (number == 7) {
+                return 7;
+            }
             if (number == 6) {
                 return 6;
             }
@@ -506,6 +509,56 @@ final class DefinitionChecker {
             if (("toggle_animation".equals(action) || "play_animation".equals(action))
                     && interaction.get("animation") == null) {
                 invalid(path, "l'action « " + action + " » nomme le clip qu'elle joue");
+            }
+            if ("actions".equals(action) && interaction.get("actions") == null) {
+                invalid(path, "l'action « actions » joue la liste « actions », qu'elle déclare (ADR-174 D3)");
+            }
+            if (interaction.get("actions") instanceof JsonArray actions) {
+                for (int k = 0; k < actions.size(); k++) {
+                    if (actions.get(k) instanceof JsonObject step) {
+                        checkNodeAction(step, path + ".actions[" + k + "]");
+                    }
+                }
+            }
+        }
+    }
+
+    /** Bornes de l'émission qu'une action pose (ADR-174 D3) : de 0 à 16 fois celle du matériau. */
+    static final double MAX_EMISSIVE = 16.0;
+
+    /** Bornes d'une composante de la teinte qu'une action pose (ADR-174 D3) : de 0 à 4. */
+    static final double MAX_TINT = 4.0;
+
+    /**
+     * ADR-174 D3 : une action est un objet à une seule clé, pour que la liste garde son ordre ; {@code
+     * set_material_param} pose une émission (un nombre) ou une teinte (trois nombres), dans leurs bornes.
+     */
+    private void checkNodeAction(JsonObject step, String path) {
+        if (step.size() != 1) {
+            invalid(path, "une action est un objet à une seule clé — hide_node, show_node ou set_material_param —, pour"
+                    + " que la liste garde son ordre ; " + step.size() + " clés ici");
+            return;
+        }
+        if (!(step.get("set_material_param") instanceof JsonObject param)) {
+            return;
+        }
+        String at = path + ".set_material_param.value";
+        JsonElement value = param.get("value");
+        if ("emissive".equals(string(param, "param"))) {
+            if (!(value instanceof JsonPrimitive number) || !number.isNumber()
+                    || !(number.getAsDouble() >= 0.0 && number.getAsDouble() <= MAX_EMISSIVE)) {
+                invalid(at, "l'émission est un nombre de 0 à " + MAX_EMISSIVE);
+            }
+        } else if ("color".equals(string(param, "param"))) {
+            boolean sound = value instanceof JsonArray rgb && rgb.size() == 3;
+            if (sound) {
+                for (JsonElement channel : (JsonArray) value) {
+                    sound &= channel instanceof JsonPrimitive number && number.isNumber()
+                            && number.getAsDouble() >= 0.0 && number.getAsDouble() <= MAX_TINT;
+                }
+            }
+            if (!sound) {
+                invalid(at, "la teinte est trois nombres [r, g, b], chacun de 0 à " + MAX_TINT);
             }
         }
     }

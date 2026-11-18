@@ -69,6 +69,9 @@ public final class DefinitionRegistry {
     /** Schéma de definition 6 (ADR-171) : les sockets d'attache en objets, et les paramètres d'attach et detach. */
     public static final int SCHEMA_SIX = 6;
 
+    /** Schéma de definition 7 (ADR-174) : la liste ordonnée des actions d'une interaction, sur l'état des nodes. */
+    public static final int SCHEMA_SEVEN = 7;
+
     /** Espace de noms d'une {@code ResourceLocation}. */
     static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]+");
 
@@ -410,11 +413,12 @@ public final class DefinitionRegistry {
                 && number.compareTo(BigDecimal.valueOf(SCHEMA_THREE)) != 0
                 && number.compareTo(BigDecimal.valueOf(SCHEMA_FOUR)) != 0
                 && number.compareTo(BigDecimal.valueOf(SCHEMA_FIVE)) != 0
-                && number.compareTo(BigDecimal.valueOf(SCHEMA_SIX)) != 0) {
+                && number.compareTo(BigDecimal.valueOf(SCHEMA_SIX)) != 0
+                && number.compareTo(BigDecimal.valueOf(SCHEMA_SEVEN)) != 0) {
             throw DefinitionException.unknownSchema(
                     "$.schema", "version " + number.toPlainString() + " inconnue, seules "
                             + SCHEMA + ", " + SCHEMA_TWO + ", " + SCHEMA_THREE + ", " + SCHEMA_FOUR + ", " + SCHEMA_FIVE
-                            + " et " + SCHEMA_SIX + " sont lues");
+                            + ", " + SCHEMA_SIX + " et " + SCHEMA_SEVEN + " sont lues");
         }
         return number.intValueExact();
     }

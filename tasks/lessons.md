@@ -2539,3 +2539,15 @@ tâche de fond ne tue pas forcément le `bash.exe` qu'elle a lancé sous Windows
 **Règle.** Toute tâche d'un film confiée au serveur passe par `auServeur`, qui relaie sa faute au client et termine le
 film. Un script qui enchaîne des lancements sous le verrou porte un délai par lancement (`timeout`), et pour l'arrêter
 on vérifie ensuite qu'aucun `bash.exe` ni `java.exe` du projet ne reste (`Win32_Process`), et que le verrou est vide.
+
+## 2026-11-18 | Une `TickTask` à « tick + 1 » ne garantit pas qu'un tick passe
+
+**Ce qui a mal tourné.** Pour attendre que la file des entrées joue une commande, le film sport se reprogrammait
+vingt fois par `server.tell(new TickTask(server.getTickCount() + 1, …))` : les vingt vérifications ont pu tourner avant
+le moindre tick, et le film a échoué en croyant avoir attendu vingt ticks.
+
+**Cause.** `MinecraftServer.shouldRun(TickTask)` exécute une tâche dès que `tick + 3 < tickCount` **ou** que le serveur
+a du temps libre (`haveTime()`) : entre deux ticks, une tâche « du tick suivant » part tout de suite.
+
+**Règle.** Une attente en ticks se compte sur `server.getTickCount()` (ou un événement de tick), jamais sur le nombre
+de `TickTask` enchaînées.

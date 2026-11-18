@@ -93,6 +93,33 @@ bones per vertex, and is placed at the assembly's root:
 
 Continuous deformation, which adds to this, comes with M6.
 
+## Hiding a node, setting its emission or its tint
+
+From schema 7, an interaction can play a list of actions on the state of its nodes
+([ADR-174](../decisions/ADR-174.md)): hide them, show them, set their emission or their tint. The actions run on the
+server, in their order, in the same tick; the state is saved by name (`axion:nodes`) and sent to every player with the
+snapshot.
+
+```json
+"interaction": [
+  { "node": "switch", "action": "actions", "actions": [
+      { "hide_node": "lampshade" },
+      { "set_material_param": { "node": "bulb", "param": "emissive", "value": 4 } },
+      { "set_material_param": { "node": "bulb", "param": "color", "value": [1.0, 0.8, 0.5] } }
+  ] },
+  { "node": "lampshade_floor", "action": "actions", "actions": [ { "show_node": "lampshade" } ] }
+]
+```
+
+- **`action: "actions"`** only plays the list; with another action (`set_variable`, `attach`…), the list follows it,
+  if it had its effect. Sixteen actions at most per interaction, each an object with a single key.
+- **An action wins over the channel** of its node (`visibility`, `emissive`, `color`): a node hidden by `hide_node` is
+  hidden whatever its channel, and a set emission or tint replaces the track's. Its children inherit it, as from a
+  channel. `show_node` lifts the mask; the channel takes over again.
+- **Bounds**: an emission from 0 to 16, a tint of three components from 0 to 4. Out of bounds, the definition is
+  refused and the log gives the path.
+- `swap_mesh` (a node draws another node's meshes) comes next, in its own slice.
+
 ## GPU resources
 
 - **Meshes** sub-allocated in shared 16 MiB arenas (VBO, EBO), a common instance buffer, release deferred

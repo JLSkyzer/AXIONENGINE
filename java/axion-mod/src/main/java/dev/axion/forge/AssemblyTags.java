@@ -350,6 +350,84 @@ final class AssemblyTags {
         return migrated;
     }
 
+    /** L'état des nodes que les actions ont changé, par nom (ADR-174 D3). */
+    static final String NODES = "axion:nodes";
+
+    /**
+     * L'état d'un node tel que le NBT le garde (ADR-174 D3).
+     *
+     * @param hidden caché
+     * @param emissive émission posée, {@code NaN} sans
+     * @param color teinte posée, {@code null} sans
+     */
+    record SavedNode(boolean hidden, float emissive, float[] color) {}
+
+    /**
+     * {@return l'état gardé de chaque node, par nom ; vide sans {@code axion:nodes}} Une entrée mal formée est ignorée.
+     *
+     * @param stored les clés gardées
+     */
+    static Map<String, SavedNode> nodes(CompoundTag stored) {
+        Map<String, SavedNode> saved = new LinkedHashMap<>();
+        if (stored.contains(NODES, Tag.TAG_COMPOUND)) {
+            CompoundTag nodes = stored.getCompound(NODES);
+            for (String name : nodes.getAllKeys()) {
+                if (!nodes.contains(name, Tag.TAG_COMPOUND)) {
+                    continue;
+                }
+                CompoundTag node = nodes.getCompound(name);
+                float emissive = node.contains("emissive", Tag.TAG_FLOAT) ? node.getFloat("emissive") : Float.NaN;
+                float[] color = null;
+                if (node.contains("color", Tag.TAG_LIST)) {
+                    net.minecraft.nbt.ListTag rgb = node.getList("color", Tag.TAG_FLOAT);
+                    if (rgb.size() == 3) {
+                        color = new float[] {rgb.getFloat(0), rgb.getFloat(1), rgb.getFloat(2)};
+                    }
+                }
+                if (Float.isFinite(emissive) || Float.isNaN(emissive)) {
+                    saved.put(name, new SavedNode(node.getBoolean("hidden"), emissive, color));
+                }
+            }
+        }
+        return saved;
+    }
+
+    /**
+     * Écrit l'état des nodes. Un node que la definition ne nomme plus garde l'état lu (R-1710) ; un node connu revenu
+     * à son état de départ est retiré ; sans aucun, la clé est retirée.
+     *
+     * @param stored les clés gardées
+     * @param current l'état de chaque node connu qui n'est pas à son état de départ, par nom
+     * @param known les nodes que la definition nomme
+     */
+    static void putNodes(CompoundTag stored, Map<String, SavedNode> current, java.util.Set<String> known) {
+        CompoundTag nodes = stored.contains(NODES, Tag.TAG_COMPOUND) ? stored.getCompound(NODES).copy()
+                : new CompoundTag();
+        for (String name : known) {
+            nodes.remove(name);
+        }
+        current.forEach((name, state) -> {
+            CompoundTag node = new CompoundTag();
+            node.putBoolean("hidden", state.hidden());
+            if (!Float.isNaN(state.emissive())) {
+                node.putFloat("emissive", state.emissive());
+            }
+            if (state.color() != null) {
+                net.minecraft.nbt.ListTag rgb = new net.minecraft.nbt.ListTag();
+                for (float channel : state.color()) {
+                    rgb.add(net.minecraft.nbt.FloatTag.valueOf(channel));
+                }
+                node.put("color", rgb);
+            }
+            nodes.put(name, node);
+        });
+        if (nodes.isEmpty()) {
+            stored.remove(NODES);
+        } else {
+            stored.put(NODES, nodes);
+        }
+    }
+
     /**
      * {@return les variables gardées, par nom ; vide sans {@code axion:vars}} Une entrée qui n'est pas un
      * {@code double} est ignorée.

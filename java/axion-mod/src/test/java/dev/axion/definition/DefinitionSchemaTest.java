@@ -458,14 +458,14 @@ class DefinitionSchemaTest {
     }
 
     @Test
-    @DisplayName("ADR-151 D3 : le schéma 1 reste lu comme avant, sans les champs du schéma 2 ; le 7 est inconnu")
+    @DisplayName("ADR-151 D3 : le schéma 1 reste lu comme avant, sans les champs du schéma 2 ; le 8 est inconnu")
     void schemaUnInchange() {
         DefinitionException friction = refus(root -> at(root, "joints", "0").addProperty("friction", 4.0));
         assertEquals("$.joints[0].friction", friction.path());
         assertTrue(friction.getMessage().contains("clé inconnue du schéma 1"), friction.getMessage());
         assertEquals("$.bodies[0].mass",
                 refus(root -> at(root, "bodies", "0").addProperty("mass", 10.0)).path());
-        DefinitionException quatre = refus(root -> root.addProperty("schema", 7));
+        DefinitionException quatre = refus(root -> root.addProperty("schema", 8));
         assertEquals(DefinitionException.UNKNOWN_SCHEMA, quatre.code());
         assertEquals("$.variables", refus(root -> root.add("variables", new JsonObject())).path(),
                 "les variables n'existent qu'au schéma 3");
@@ -669,5 +669,41 @@ class DefinitionSchemaTest {
         }).path(), "au schéma 3, le canal est obligatoire");
         assertEquals("$.procedural[1].period", refus(r -> at(r, "procedural", "1").addProperty("period", 1.0)).path(),
                 "la période n'existe qu'au schéma 3");
+    }
+
+    /** Une definition minimale au schéma 7 (ADR-174 D3), dont l'interaction joue {@code actions}. */
+    private static JsonObject septAvec(String actions, String action) {
+        return JsonParser.parseString("{\"schema\": 7, \"asset\": \"mymod:models/pickup.glb\", \"kind\":"
+                + " \"rigid_object\", \"interaction\": [{\"node\": \"door\", \"action\": \"" + action + "\""
+                + (actions == null ? "" : ", \"actions\": " + actions) + "}]}").getAsJsonObject();
+    }
+
+    @Test
+    @DisplayName("ADR-174 D3 : au schéma 7, une interaction joue une liste ordonnée d'actions sur l'état des nodes")
+    void lesActionsDuSchemaSept() {
+        assertDoesNotThrow(() -> read(septAvec("[{\"hide_node\": \"lamp\"}, {\"show_node\": \"lamp\"},"
+                + " {\"set_material_param\": {\"node\": \"lamp\", \"param\": \"emissive\", \"value\": 3}},"
+                + " {\"set_material_param\": {\"node\": \"lamp\", \"param\": \"color\", \"value\": [1, 0.5, 0]}}]",
+                "actions")));
+    }
+
+    @Test
+    @DisplayName("ADR-174 D3 : une action à deux clés, une émission ou une teinte hors bornes, une liste absente : refusées")
+    void lesActionsMalFormeesSontRefusees() {
+        DefinitionException deuxCles = assertThrows(DefinitionException.class, () -> read(septAvec(
+                "[{\"hide_node\": \"lamp\", \"show_node\": \"lamp\"}]", "actions")));
+        assertEquals("$.interaction[0].actions[0]", deuxCles.path());
+        assertTrue(deuxCles.getMessage().contains("une seule clé"), deuxCles.getMessage());
+        assertEquals("$.interaction[0].actions[0].set_material_param.value", assertThrows(DefinitionException.class,
+                () -> read(septAvec("[{\"set_material_param\": {\"node\": \"lamp\", \"param\": \"emissive\","
+                        + " \"value\": 17}}]", "actions"))).path());
+        assertEquals("$.interaction[0].actions[0].set_material_param.value", assertThrows(DefinitionException.class,
+                () -> read(septAvec("[{\"set_material_param\": {\"node\": \"lamp\", \"param\": \"color\","
+                        + " \"value\": [1, 1]}}]", "actions"))).path());
+        assertEquals("$.interaction[0]", assertThrows(DefinitionException.class,
+                () -> read(septAvec(null, "actions"))).path(), "actions sans liste");
+        JsonObject six = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");
+        six.addProperty("schema", 6);
+        assertThrows(DefinitionException.class, () -> read(six), "la liste n'existe qu'au schéma 7");
     }
 }

@@ -56,17 +56,53 @@ public final class NodeLooks {
      * @param drawNodes le nœud qui porte chaque dessin
      */
     public static float[] ofDraws(int[] parents, ProceduralTracks.Pose pose, List<Integer> drawNodes) {
-        if (pose == null || pose.looks() == null || parents == null) {
+        return ofDraws(parents, pose, dev.axion.net.NodeStates.NONE, drawNodes);
+    }
+
+    /**
+     * {@return l'apparence de chaque dessin, pistes et état des nodes composés (ADR-174 D3) ; {@code null} si ni les
+     * pistes ni les actions n'en donnent, ou sans table de parents}
+     *
+     * <p>Une action prime sur le canal de son node : un node caché par {@code hide_node} l'est quel que soit son canal
+     * {@code visibility} ; l'émission et la teinte posées par {@code set_material_param} remplacent celles des pistes.
+     * Ses enfants en héritent comme d'un canal.
+     *
+     * @param parents le parent de chaque nœud, voir {@link #parents}
+     * @param pose la pose des pistes, ou {@code null}
+     * @param states l'état des nodes que les actions ont changé
+     * @param drawNodes le nœud qui porte chaque dessin
+     */
+    public static float[] ofDraws(int[] parents, ProceduralTracks.Pose pose, dev.axion.net.NodeStates states,
+            List<Integer> drawNodes) {
+        boolean tracked = pose != null && pose.looks() != null;
+        if (parents == null || (!tracked && states.states().isEmpty())) {
             return null;
         }
         int width = ProceduralTracks.LOOK_FLOATS;
         float[] nodes = new float[parents.length * width];
         java.util.Arrays.fill(nodes, 1f);
-        int[] posed = pose.nodes();
-        float[] own = pose.looks();
-        for (int slot = 0; slot < posed.length; slot++) {
-            if (posed[slot] >= 0 && posed[slot] < parents.length) {
-                System.arraycopy(own, slot * width, nodes, posed[slot] * width, width);
+        if (tracked) {
+            int[] posed = pose.nodes();
+            float[] own = pose.looks();
+            for (int slot = 0; slot < posed.length; slot++) {
+                if (posed[slot] >= 0 && posed[slot] < parents.length) {
+                    System.arraycopy(own, slot * width, nodes, posed[slot] * width, width);
+                }
+            }
+        }
+        for (dev.axion.net.NodeStates.State state : states.states()) {
+            int at = state.node() * width;
+            if (state.node() >= parents.length) {
+                continue;
+            }
+            if (state.hidden()) {
+                nodes[at] = 0f;
+            }
+            if (!Float.isNaN(state.emissive())) {
+                nodes[at + 1] = state.emissive();
+            }
+            if (state.color() != null) {
+                System.arraycopy(state.color(), 0, nodes, at + 2, 3);
             }
         }
         // Un parent précède son enfant : un seul passage porte l'apparence de chaque ancêtre.

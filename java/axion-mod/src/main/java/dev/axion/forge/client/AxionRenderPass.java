@@ -853,8 +853,11 @@ public final class AxionRenderPass {
         FRAME_DECISIONS.clear();
         DEBUG.forgetAnimation();
         NativeCulling active = culling;
-        if (active == null || all.isEmpty()) {
+        if (all.isEmpty()) {
             return all;
+        }
+        if (active == null) {
+            return looked(all, event.getPartialTick());
         }
         int[] candidates = new int[all.size()];
         int count = 0;
@@ -865,7 +868,7 @@ public final class AxionRenderPass {
             }
         }
         if (count == 0) {
-            return all;
+            return looked(all, event.getPartialTick());
         }
         double renderTick = ClientSnapshots.renderTick();
         float partialTick = event.getPartialTick();
@@ -938,7 +941,14 @@ public final class AxionRenderPass {
         if (outcome.code() != 0) {
             culling = null;
             LOGGER.warn("AXION : culling natif coupé après le code {}, tout est dessiné", outcome.code());
-            return all;
+            List<RenderBackend.Assembly> drawn = new ArrayList<>(all.size());
+            for (int rank = 0; rank < all.size(); rank++) {
+                drawn.add(all.get(rank));
+            }
+            for (int rank = 0; rank < count; rank++) {
+                drawn.set(candidates[rank], all.get(candidates[rank]).withLooks(looks[rank]));
+            }
+            return drawn;
         }
         // Chaque assembly retenue dessine le mesh du niveau que le natif a choisi (ADR-154, tranche 2b).
         RenderBackend.Assembly[] kept = all.toArray(new RenderBackend.Assembly[0]);
@@ -1164,11 +1174,29 @@ public final class AxionRenderPass {
     }
 
     /**
-     * {@return l'apparence de chaque dessin d'une assembly à cette image (ADR-163 D3), ou {@code null} si aucune piste
-     * ne la pilote} Chaque dessin hérite du nœud qui le porte et de ses ancêtres.
+     * {@return les assemblies, chacune avec l'apparence de ses dessins} : le chemin sans culling natif, où ni les pistes
+     * ni les actions (ADR-174 D3) ne doivent perdre leur effet. Les pistes s'y évaluent à l'image, sans être poussées
+     * au natif.
+     */
+    private static List<RenderBackend.Assembly> looked(List<RenderBackend.Assembly> all, float partialTick) {
+        AxionRuntime runtime = RuntimeAccess.get();
+        double renderTick = ClientSnapshots.renderTick();
+        List<RenderBackend.Assembly> drawn = new ArrayList<>(all.size());
+        for (RenderBackend.Assembly assembly : all) {
+            float[] looks = runtime == null ? null
+                    : drawLooks(runtime, assembly, proceduralPose(runtime, assembly.entity(), partialTick, renderTick));
+            drawn.add(looks == null ? assembly : assembly.withLooks(looks));
+        }
+        return drawn;
+    }
+
+    /**
+     * {@return l'apparence de chaque dessin d'une assembly à cette image (ADR-163 D3, ADR-174 D3), ou {@code null} si
+     * ni ses pistes ni ses actions ne la changent} Chaque dessin hérite du nœud qui le porte et de ses ancêtres.
      */
     private static float[] drawLooks(AxionRuntime runtime, RenderBackend.Assembly assembly, ProceduralTracks.Pose pose) {
-        if (pose == null || pose.looks() == null || runtime == null) {
+        dev.axion.net.NodeStates states = assembly.entity().nodeStates();
+        if (runtime == null || ((pose == null || pose.looks() == null) && states.states().isEmpty())) {
             return null;
         }
         Rig known = known(runtime, assembly.entity());
@@ -1179,7 +1207,7 @@ public final class AxionRenderPass {
         for (dev.axion.asset.GeometryTransfer.Draw draw : assembly.draws()) {
             nodes.add(draw.node());
         }
-        return NodeLooks.ofDraws(known.parents(), pose, nodes);
+        return NodeLooks.ofDraws(known.parents(), pose, states, nodes);
     }
 
     /**

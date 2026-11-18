@@ -60,4 +60,27 @@ class NodeLooksTest {
         assertEquals(0x80FFC000, NodeLooks.tinted(0x80FF8080, looks, 0, true), "× 3 en émission, saturé");
         assertEquals(0x12345678, NodeLooks.tinted(0x12345678, null, 0, true), "sans apparence, inchangée");
     }
+
+    @Test
+    @DisplayName("ADR-174 D3 : une action prime sur le canal de son node, et ses enfants en héritent")
+    void lEtatDesNodesPrimeSurLesPistes() {
+        int[] parents = {-1, 0, 1, 0};
+        // La piste montre le nœud 1 (visibilité 1), émission 2, teinte rouge ; une action le cache, et pose
+        // l'émission 0,5 et la teinte verte au nœud 3.
+        ProceduralTracks.Pose pose = new ProceduralTracks.Pose(new int[] {1}, new float[7],
+                new float[] {1f, 2f, 1f, 0.5f, 0.5f});
+        dev.axion.net.NodeStates etats = new dev.axion.net.NodeStates(List.of(
+                new dev.axion.net.NodeStates.State(1, true, Float.NaN, null),
+                new dev.axion.net.NodeStates.State(3, false, 0.5f, new float[] {0f, 1f, 0f})));
+        float[] looks = NodeLooks.ofDraws(parents, pose, etats, List.of(0, 1, 2, 3));
+        assertFalse(NodeLooks.hidden(looks, 0));
+        assertTrue(NodeLooks.hidden(looks, 1), "caché par l'action, malgré la piste");
+        assertTrue(NodeLooks.hidden(looks, 2), "son enfant aussi");
+        assertArrayEquals(new float[] {0f, 0.5f, 0f, 1f}, NodeLooks.tint(looks, 3, true), "émission et teinte posées");
+        assertArrayEquals(new float[] {0f, 1f, 0f, 1f}, NodeLooks.tint(looks, 3, false));
+        float[] seules = NodeLooks.ofDraws(parents, null, etats, List.of(1, 3));
+        assertTrue(NodeLooks.hidden(seules, 0), "sans piste, l'action vaut seule");
+        assertNull(NodeLooks.ofDraws(parents, null, dev.axion.net.NodeStates.NONE, List.of(0)),
+                "ni piste ni action : rien");
+    }
 }

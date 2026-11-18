@@ -171,8 +171,8 @@ class DefinitionBuilderTest {
         assertEquals(Map.of("hide_node", "capot", "set_variable", Map.of("x", 1.0)),
                 ((Map<?, ?>) ((Map<?, ?>) racine.get("on_part_stage")).get("capot")).get("destroyed"));
         assertEquals(Map.of("monmod:reglage", 3.5), racine.get("custom"));
-        assertEquals(6L, racine.get("schema"));
-        assertEquals(6, DefinitionBuilder.SCHEMA);
+        assertEquals(7L, racine.get("schema"), "le builder écrit le dernier schéma publié (ADR-174)");
+        assertEquals(7, DefinitionBuilder.SCHEMA);
     }
 
     @Test

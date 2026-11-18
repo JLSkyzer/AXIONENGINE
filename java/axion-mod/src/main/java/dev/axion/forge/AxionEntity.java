@@ -564,7 +564,86 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return result.attached();
     }
 
+    /**
+     * Joue une interaction (serveur) : son action, puis sa liste d'actions, dans l'ordre, au même tick (ADR-174 D3).
+     * La liste ne suit qu'une action qui a eu son effet ; {@code actions} n'en a pas d'autre.
+     */
     private boolean play(Seating.Interaction interaction, Player player) {
+        boolean done = interaction.action() == Seating.Action.ACTIONS || playAction(interaction, player);
+        if (done && !interaction.actions().isEmpty()) {
+            runActions(interaction.actions(), "interaction (" + player.getName().getString() + ")");
+        }
+        return done;
+    }
+
+    /** L'état des nodes que les actions ont changé (serveur : l'autorité ; client : ce que le snapshot a porté). */
+    private dev.axion.net.NodeStates nodeStates = dev.axion.net.NodeStates.NONE;
+    /** Vrai une fois l'état gardé par nom relu contre la definition compilée (serveur). */
+    private boolean nodesRestored;
+
+    /**
+     * {@return l'état des nodes que les actions de l'assembly ont changé (ADR-174 D3)} Au serveur, l'état que son NBT
+     * gardait est relu, par nom, dès que sa definition est compilée ; au client, celui du dernier snapshot.
+     */
+    public dev.axion.net.NodeStates nodeStates() {
+        if (!nodesRestored && !level().isClientSide()) {
+            Seating seating = seating();
+            if (seating != null) {
+                nodesRestored = true;
+                java.util.Map<String, Integer> named = seating.actionNodes();
+                dev.axion.net.NodeStates restored = dev.axion.net.NodeStates.NONE;
+                for (java.util.Map.Entry<String, AssemblyTags.SavedNode> saved : AssemblyTags.nodes(stored).entrySet()) {
+                    Integer node = named.get(saved.getKey());
+                    if (node != null) {
+                        AssemblyTags.SavedNode state = saved.getValue();
+                        restored = restored.with(new dev.axion.net.NodeStates.State(node, state.hidden(),
+                                state.emissive(), state.color()));
+                    }
+                }
+                nodeStates = restored;
+            }
+        }
+        return nodeStates;
+    }
+
+    /**
+     * Exécute des actions sur l'état des nodes (serveur, ADR-174 D3) : dans leur ordre, toutes au même tick ; l'état
+     * part aux joueurs avec le snapshot suivant, et se sauvegarde.
+     *
+     * @param actions les actions
+     * @param writer qui les joue, pour le journal
+     */
+    void runActions(List<Seating.NodeAction> actions, String writer) {
+        dev.axion.net.NodeStates next = nodeStates();
+        try {
+            for (Seating.NodeAction action : actions) {
+                dev.axion.net.NodeStates.State current = next.of(action.node());
+                boolean hidden = current != null && current.hidden();
+                float emissive = current == null ? Float.NaN : current.emissive();
+                float[] color = current == null ? null : current.color();
+                switch (action.kind()) {
+                    case HIDE -> hidden = true;
+                    case SHOW -> hidden = false;
+                    case MATERIAL -> {
+                        if (!Float.isNaN(action.emissive())) {
+                            emissive = action.emissive();
+                        }
+                        if (action.color() != null) {
+                            color = action.color();
+                        }
+                    }
+                }
+                next = next.with(new dev.axion.net.NodeStates.State(action.node(), hidden, emissive, color));
+            }
+        } catch (IllegalArgumentException refused) {
+            // Plus de nodes touchés que le snapshot n'en porte : rien ne change, et le journal le dit.
+            logRefusals(List.of("actions de " + writer + " refusées — " + refused.getMessage()));
+            return;
+        }
+        nodeStates = next;
+    }
+
+    private boolean playAction(Seating.Interaction interaction, Player player) {
         if (interaction.action() == Seating.Action.SET_VARIABLE) {
             AssemblyVariables held = interaction.variable() < 0 ? null : variables();
             if (held == null) {
@@ -2365,6 +2444,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (netState != null && netState.parameters() != netParameters) {
             netState = netState.withParameters(netParameters);
         }
+        // ADR-174 D3 : l'état des nodes, qui part aussi pour une assembly endormie.
+        if (netState != null && !level().isClientSide() && !netState.nodes().equals(nodeStates())) {
+            netState = netState.withNodes(nodeStates());
+        }
         // ADR-171 D7 : les attaches qu'elle a posées, vivantes, avec leur longueur, leur écart et leur tension.
         if (netState != null && !level().isClientSide()) {
             AttachmentRuntime attachments = AttachmentRuntime.current();
@@ -2476,6 +2559,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             // ADR-171 D7 : les attaches qu'elle a posées, telles que le serveur les a vues ; les cordes et les sources
             // attach.* les lisent.
             receivedLinks = state.links();
+            // ADR-174 D3 : l'état des nodes que ses actions ont changé, tel quel ; le rendu le compose aux pistes.
+            nodeStates = state.nodes();
             if (receivedLinks.links().isEmpty()) {
                 RECEIVED_LINKS.remove(getId());
             } else {
@@ -2772,6 +2857,21 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-167 D7, D9 : les contrôleurs attachés par l'API, relus à la lecture.
         if (!inert) {
             AssemblyTags.putControllers(stored, attachedControllers);
+        }
+        // ADR-174 D3 : l'état des nodes, par nom, une fois relu ; sinon, celui que son NBT portait reste.
+        if (!inert && nodesRestored) {
+            Seating seating = seating();
+            if (seating != null) {
+                java.util.Map<String, Integer> named = seating.actionNodes();
+                java.util.Map<String, AssemblyTags.SavedNode> current = new java.util.LinkedHashMap<>();
+                named.forEach((name, node) -> {
+                    dev.axion.net.NodeStates.State state = nodeStates.of(node);
+                    if (state != null) {
+                        current.put(name, new AssemblyTags.SavedNode(state.hidden(), state.emissive(), state.color()));
+                    }
+                });
+                AssemblyTags.putNodes(stored, current, named.keySet());
+            }
         }
         // ADR-171 D7 : les attaches posées, vivantes ou suspendues, avec la longueur de leur dernier tick.
         if (!inert) {

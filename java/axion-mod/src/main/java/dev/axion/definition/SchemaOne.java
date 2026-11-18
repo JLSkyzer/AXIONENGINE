@@ -100,16 +100,20 @@ final class SchemaOne {
     /** Racine du schéma 6 (ADR-171) : le schéma 5, et les sockets d'attache en objets. */
     static final SchemaNode ROOT_SIX = root(6);
 
+    /** Racine du schéma 7 (ADR-174) : le schéma 6, et la liste ordonnée des actions d'une interaction. */
+    static final SchemaNode ROOT_SEVEN = root(7);
+
 
     private SchemaOne() {}
 
     /**
      * {@return la racine du schéma {@code version}}
      *
-     * @param version 1, 2, 3, 4, 5 ou 6
+     * @param version 1, 2, 3, 4, 5, 6 ou 7
      */
     static SchemaNode rootOf(int version) {
         return switch (version) {
+            case 7 -> ROOT_SEVEN;
             case 6 -> ROOT_SIX;
             case 5 -> ROOT_FIVE;
             case 4 -> ROOT_FOUR;
@@ -649,11 +653,15 @@ final class SchemaOne {
 
     /** C-53 : actions d'interaction, liste fermée (R-1782) ; au schéma 3, la variable et la valeur qu'elle pose. */
     private static SchemaNode interaction(int version) {
+        java.util.List<String> kinds = new java.util.ArrayList<>(java.util.List.of("sit", "toggle_animation",
+                "play_animation", "open_container", "emit_event", "set_variable", "repair", "attach", "detach"));
+        if (version >= 7) {
+            // ADR-174 D3 : une interaction qui ne fait que jouer sa liste d'actions.
+            kinds.add("actions");
+        }
         ObjBuilder interaction = obj()
                 .opt("node", refers(NameCategory.NODE))
-                .req("action", oneOf("sit", "toggle_animation", "play_animation",
-                        "open_container", "emit_event", "set_variable", "repair", "attach",
-                        "detach"))
+                .req("action", oneOf(kinds.toArray(String[]::new)))
                 .opt("animation", refers(NameCategory.ANIMATION))
                 .opt("seat", refers(NameCategory.SEAT));
         if (version >= 3) {
@@ -666,7 +674,30 @@ final class SchemaOne {
                     .opt("kinds", new Arr(oneOf(Sockets.KINDS.toArray(String[]::new)), 1, Sockets.KINDS.size(), true))
                     .opt("distance", new Num(0.1, 16, false, false));
         }
+        if (version >= 7) {
+            // ADR-174 D3 : ce que l'interaction fait ensuite, dans l'ordre, au même tick.
+            interaction.opt("actions", new Arr(nodeAction(), 1, MAX_ACTIONS, true));
+        }
         return interaction.build();
+    }
+
+    /** Actions d'une interaction, au plus (ADR-174 D3). */
+    static final int MAX_ACTIONS = 16;
+
+    /**
+     * ADR-174 D3 : une action sur l'état d'un node, au schéma 7 — un objet à une seule clé, pour que la liste garde son
+     * ordre. {@code swap_mesh} viendra avec la tranche 9a2.
+     */
+    private static SchemaNode nodeAction() {
+        return obj()
+                .opt("hide_node", refers(NameCategory.NODE))
+                .opt("show_node", refers(NameCategory.NODE))
+                .opt("set_material_param", obj()
+                        .req("node", refers(NameCategory.NODE))
+                        .req("param", oneOf("emissive", "color"))
+                        .req("value", any())
+                        .build())
+                .build();
     }
 
     /** ADR-171 D2 : un socket d'attache, au schéma 6. */

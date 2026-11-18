@@ -766,6 +766,8 @@ tasks.named('test', Test).configure {
     systemProperty 'axion.schema5.file', rootProject.file('docs/schema/definition-5.json').absolutePath
     // Le schema 6 (ADR-171) : les sockets d'attache.
     systemProperty 'axion.schema6.file', rootProject.file('docs/schema/definition-6.json').absolutePath
+    // Le schema 7 (ADR-174) : les actions d'une interaction.
+    systemProperty 'axion.schema7.file', rootProject.file('docs/schema/definition-7.json').absolutePath
     systemProperty 'axion.repo.dir', rootProject.projectDir.absolutePath
     // Les schemas publies (definition, persistence-5.md) sont lus par les tests : declares en
     // entree, un document modifie seul relance les tests au lieu de les laisser a jour.

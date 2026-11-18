@@ -58,12 +58,13 @@ import java.util.Set;
 public record SnapshotMessage(int sequence, long serverTick, int descriptor, List<Entry> entries) {
 
     /**
-     * Le descripteur d'états procéduraux (ADR-150 D6) : 7 depuis les attaches (ADR-171 D7) ; 6 depuis les
+     * Le descripteur d'états procéduraux (ADR-150 D6) : 9 depuis l'état des nodes (ADR-174 D3) ; 8 depuis les réglages
+     * des attaches ; 7 depuis les attaches (ADR-171 D7) ; 6 depuis les
      * modificateurs des paramètres (ADR-167 D8), après
      * l'état du véhicule et les drapeaux sur 16 bits (5, ADR-163 D1), les roues (4, ADR-159 D9), l'animation (3,
      * ADR-155), les corps autres que le corps racine et les joints (2, ADR-151 D8).
      */
-    public static final int DESCRIPTOR_VERSION = 8;
+    public static final int DESCRIPTOR_VERSION = 9;
 
     /**
      * La longueur maximale d'une cause ou d'un nom de paramètre sur le fil, en octets : {@link Modifier#MAX_LENGTH}
@@ -86,9 +87,10 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
     static final int FLAG_VARIABLES = 512;
     static final int FLAG_PARAMETERS = 1024;
     static final int FLAG_LINKS = 2048;
+    static final int FLAG_NODES = 4096;
     private static final int KNOWN_FLAGS = FLAG_FULL | FLAG_VELOCITY | FLAG_BOUNDS | FLAG_SLEEPING | FLAG_BODIES
             | FLAG_JOINTS | FLAG_ANIMATION | FLAG_WHEELS | FLAG_VEHICLE | FLAG_VARIABLES | FLAG_PARAMETERS
-            | FLAG_LINKS;
+            | FLAG_LINKS | FLAG_NODES;
 
     /** Copie les entrées. */
     public SnapshotMessage {
@@ -117,6 +119,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      * @param parameters modificateurs des paramètres, ou {@code null} : ceux de la base, aucun pour une entrée
      *     complète
      * @param links attaches posées, ou {@code null} : celles de la base, aucune pour une entrée complète (ADR-171 D7)
+     * @param nodes état des nodes, ou {@code null} : celui de la base, aucun pour une entrée complète (ADR-174 D3)
      */
     public record Entry(
             int handle,
@@ -135,11 +138,42 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.Vehicle vehicle,
             AssemblyState.VariableValues variables,
             AssemblyState.Modifiers parameters,
-            AssemblyState.Links links) {
+            AssemblyState.Links links,
+            NodeStates nodes) {
 
         /** Copie les corps. */
         public Entry {
             bodies = bodies == null ? null : List.copyOf(bodies);
+        }
+
+        /**
+         * Une entrée sans état de node dit : celui de la base, aucun pour une entrée complète.
+         *
+         * @param handle identifiant réseau de l'entité
+         * @param base séquence de la base, 0 pour une entrée complète
+         * @param x position x absolue ou delta
+         * @param y position y absolue ou delta
+         * @param z position z absolue ou delta
+         * @param rotation rotation « smallest three »
+         * @param velocity vitesses, ou {@code null}
+         * @param bounds emprise, ou {@code null}
+         * @param sleeping le corps dort
+         * @param bodies corps autres que le corps racine, ou {@code null}
+         * @param joints bits des joints, ou {@code null}
+         * @param animation état d'animation, ou {@code null}
+         * @param wheels état des roues, ou {@code null}
+         * @param vehicle état du véhicule, ou {@code null}
+         * @param variables variables de contenu, ou {@code null}
+         * @param parameters modificateurs des paramètres, ou {@code null}
+         * @param links attaches posées, ou {@code null}
+         */
+        public Entry(int handle, int base, long x, long y, long z, int rotation, AssemblyState.Velocity velocity,
+                AssemblyState.Bounds bounds, boolean sleeping, List<AssemblyState.Body> bodies,
+                AssemblyState.JointBits joints, AnimationLayers animation, AssemblyState.Wheels wheels,
+                AssemblyState.Vehicle vehicle, AssemblyState.VariableValues variables,
+                AssemblyState.Modifiers parameters, AssemblyState.Links links) {
+            this(handle, base, x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
+                    vehicle, variables, parameters, links, null);
         }
 
         /**
@@ -192,7 +226,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     AssemblyState.Vehicle.NONE.equals(state.vehicle()) ? null : state.vehicle(),
                     state.variables().count() == 0 ? null : state.variables(),
                     AssemblyState.Modifiers.NONE.equals(state.parameters()) ? null : state.parameters(),
-                    AssemblyState.Links.NONE.equals(state.links()) ? null : state.links());
+                    AssemblyState.Links.NONE.equals(state.links()) ? null : state.links(),
+                    NodeStates.NONE.equals(state.nodes()) ? null : state.nodes());
         }
 
         /**
@@ -223,8 +258,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     state.variables().equals(base.variables()) ? null : state.variables();
             AssemblyState.Modifiers parameters = state.parameters().equals(base.parameters()) ? null : state.parameters();
             AssemblyState.Links links = state.links().equals(base.links()) ? null : state.links();
+            NodeStates nodes = state.nodes().equals(base.nodes()) ? null : state.nodes();
             return new Entry(handle, baseSequence, dx, dy, dz, state.rotation(), velocity, bounds, state.sleeping(),
-                    bodies, joints, animation, wheels, vehicle, variables, parameters, links);
+                    bodies, joints, animation, wheels, vehicle, variables, parameters, links, nodes);
         }
 
         /**
@@ -241,7 +277,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                         vehicle == null ? AssemblyState.Vehicle.NONE : vehicle,
                         variables == null ? AssemblyState.VariableValues.NONE : variables,
                         parameters == null ? AssemblyState.Modifiers.NONE : parameters,
-                        links == null ? AssemblyState.Links.NONE : links);
+                        links == null ? AssemblyState.Links.NONE : links,
+                        nodes == null ? NodeStates.NONE : nodes);
             }
             return new AssemblyState(base.x() + x, base.y() + y, base.z() + z, rotation,
                     velocity == null ? base.velocity() : velocity, bounds == null ? base.bounds() : bounds, sleeping,
@@ -249,7 +286,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     animation == null ? base.animation() : animation, wheels == null ? base.wheels() : wheels,
                     vehicle == null ? base.vehicle() : vehicle, variables == null ? base.variables() : variables,
                     parameters == null ? base.parameters() : parameters,
-                    links == null ? base.links() : links);
+                    links == null ? base.links() : links, nodes == null ? base.nodes() : nodes);
         }
 
         private static boolean fitsInt(long value) {
@@ -280,7 +317,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                 + (entry.vehicle() != null ? AssemblyState.Vehicle.BYTES : 0)
                 + (entry.variables() != null ? variablesSize(entry.variables()) : 0)
                 + (entry.parameters() != null ? parametersSize(entry.parameters()) : 0)
-                + (entry.links() != null ? linksSize(entry.links()) : 0);
+                + (entry.links() != null ? linksSize(entry.links()) : 0)
+                + (entry.nodes() != null ? entry.nodes().encodedSize() : 0);
     }
 
     private static int linksSize(AssemblyState.Links links) {
@@ -360,7 +398,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     | (entry.vehicle() != null ? FLAG_VEHICLE : 0)
                     | (entry.variables() != null ? FLAG_VARIABLES : 0)
                     | (entry.parameters() != null ? FLAG_PARAMETERS : 0)
-                    | (entry.links() != null ? FLAG_LINKS : 0);
+                    | (entry.links() != null ? FLAG_LINKS : 0)
+                    | (entry.nodes() != null ? FLAG_NODES : 0);
             writer.varUInt(entry.handle()).u16(flags);
             if (entry.full()) {
                 writer.i64(entry.x()).i64(entry.y()).i64(entry.z());
@@ -402,6 +441,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             }
             if (entry.links() != null) {
                 writeLinks(writer, entry.links());
+            }
+            if (entry.nodes() != null) {
+                entry.nodes().write(writer);
             }
         }
         return writer.toByteArray();
@@ -473,8 +515,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     (flags & FLAG_VARIABLES) == 0 ? null : readVariables(reader, handle);
             AssemblyState.Modifiers parameters = (flags & FLAG_PARAMETERS) == 0 ? null : readParameters(reader, handle);
             AssemblyState.Links links = (flags & FLAG_LINKS) == 0 ? null : readLinks(reader, handle);
+            NodeStates nodes = (flags & FLAG_NODES) == 0 ? null : NodeStates.read(reader, handle);
             entries.add(new Entry(handle, base, x, y, z, rotation, velocity, bounds, (flags & FLAG_SLEEPING) != 0,
-                    bodies, joints, animation, wheels, vehicle, variables, parameters, links));
+                    bodies, joints, animation, wheels, vehicle, variables, parameters, links, nodes));
         }
         reader.expectEnd();
         return new SnapshotMessage(sequence, serverTick, descriptor, entries);

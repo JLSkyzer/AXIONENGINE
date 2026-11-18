@@ -30,6 +30,7 @@ import java.util.Set;
  * @param parameters les modificateurs posés sur ses paramètres, {@link Modifiers#NONE} pour une assembly jamais
  *     réglée (ADR-167 D8, descripteur 6)
  * @param links les attaches vivantes qu'elle a posées, {@link Links#NONE} sans (ADR-171 D7, descripteur 8)
+ * @param nodes l'état des nodes que ses actions ont changé, {@link NodeStates#NONE} sans (ADR-174 D3, descripteur 9)
  */
 public record AssemblyState(
         long x,
@@ -46,7 +47,8 @@ public record AssemblyState(
         Vehicle vehicle,
         VariableValues variables,
         Modifiers parameters,
-        Links links) {
+        Links links,
+        NodeStates nodes) {
 
     /** Corps autres que le corps racine d'une assembly, au plus : elle en a 64 (R-190). */
     public static final int MAX_BODIES = 63;
@@ -789,16 +791,16 @@ public record AssemblyState(
             throw new IllegalArgumentException("vitesse absente");
         }
         if (bodies == null || joints == null || animation == null || wheels == null || vehicle == null
-                || variables == null || parameters == null) {
+                || variables == null || parameters == null || links == null || nodes == null) {
             throw new IllegalArgumentException(
-                    "corps, joints, animation, roues, véhicule, variables ou modificateurs absents");
+                    "corps, joints, animation, roues, véhicule, variables, modificateurs, attaches ou nodes absents");
         }
         if (bodies.size() > MAX_BODIES) {
             throw new IllegalArgumentException(bodies.size() + " corps secondaires, au-delà de " + MAX_BODIES);
         }
-        Set<Integer> nodes = new HashSet<>();
+        Set<Integer> bodyNodes = new HashSet<>();
         for (Body body : bodies) {
-            if (!nodes.add(body.node())) {
+            if (!bodyNodes.add(body.node())) {
                 throw new IllegalArgumentException("node " + body.node() + " de deux corps");
             }
         }
@@ -953,12 +955,38 @@ public record AssemblyState(
     }
 
     /**
+     * L'état d'une assembly dont aucune action n'a changé de node.
+     *
+     * @param x position x, au 1/1024 de bloc
+     * @param y position y, au 1/1024 de bloc
+     * @param z position z, au 1/1024 de bloc
+     * @param rotation rotation « smallest three »
+     * @param velocity vitesses quantifiées
+     * @param bounds emprise relative à la position, ou {@code null}
+     * @param sleeping le corps dort
+     * @param bodies les corps autres que le corps racine
+     * @param joints l'état de chaque joint
+     * @param animation l'état d'animation
+     * @param wheels l'état de chaque roue
+     * @param vehicle l'état du véhicule
+     * @param variables les variables de contenu
+     * @param parameters les modificateurs posés
+     * @param links les attaches vivantes
+     */
+    public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
+            List<Body> bodies, JointBits joints, AnimationLayers animation, Wheels wheels, Vehicle vehicle,
+            VariableValues variables, Modifiers parameters, Links links) {
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, vehicle, variables,
+                parameters, links, NodeStates.NONE);
+    }
+
+    /**
      * @param attached les attaches vivantes qu'elle a posées
      * @return cet état, avec ces attaches
      */
     public AssemblyState withLinks(Links attached) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, variables, parameters, attached);
+                vehicle, variables, parameters, attached, nodes);
     }
 
     /**
@@ -1036,7 +1064,7 @@ public record AssemblyState(
      */
     public AssemblyState with(List<Body> otherBodies, JointBits jointBits) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation,
-                wheels, vehicle, variables, parameters, links);
+                wheels, vehicle, variables, parameters, links, nodes);
     }
 
     /**
@@ -1045,7 +1073,7 @@ public record AssemblyState(
      */
     public AssemblyState withAnimation(AnimationLayers layers) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers, wheels, vehicle,
-                variables, parameters, links);
+                variables, parameters, links, nodes);
     }
 
     /**
@@ -1054,7 +1082,7 @@ public record AssemblyState(
      */
     public AssemblyState withWheels(Wheels states) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, states,
-                vehicle, variables, parameters, links);
+                vehicle, variables, parameters, links, nodes);
     }
 
     /**
@@ -1063,7 +1091,7 @@ public record AssemblyState(
      */
     public AssemblyState withVehicle(Vehicle state) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                state, variables, parameters, links);
+                state, variables, parameters, links, nodes);
     }
 
     /**
@@ -1072,7 +1100,16 @@ public record AssemblyState(
      */
     public AssemblyState withVariables(VariableValues values) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, values, parameters, links);
+                vehicle, values, parameters, links, nodes);
+    }
+
+    /**
+     * @param states l'état des nodes que ses actions ont changé (ADR-174 D3)
+     * @return cet état, avec ces nodes
+     */
+    public AssemblyState withNodes(NodeStates states) {
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
+                vehicle, variables, parameters, links, states);
     }
 
     /**
@@ -1081,7 +1118,7 @@ public record AssemblyState(
      */
     public AssemblyState withParameters(Modifiers modifiers) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, variables, modifiers, links);
+                vehicle, variables, modifiers, links, nodes);
     }
 
     /**

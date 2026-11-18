@@ -89,6 +89,7 @@ const JAVA_KEYWORDS: &[&str] = &[
 
 /// Le singulier des tableaux et des tables d'objets, qui nomme leur méthode d'ajout et leur classe.
 pub const SINGULARS: &[(&str, &str)] = &[
+    ("actions", "action"),
     ("animations", "animation"),
     ("axes", "axis"),
     ("bindings", "binding"),

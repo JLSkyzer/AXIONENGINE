@@ -94,6 +94,33 @@ par sommet, et se pose à la racine de l'assembly :
 
 La déformation continue, qui s'y ajoute, vient avec la M6.
 
+## Cacher un node, poser son émission ou sa teinte
+
+Une interaction peut, au schéma 7, jouer une liste d'actions sur l'état de ses nodes
+([ADR-174](../decisions/ADR-174.md)) : les cacher, les montrer, poser leur émission ou leur teinte. Les actions
+s'exécutent au serveur, dans leur ordre, au même tick ; l'état se sauvegarde par nom (`axion:nodes`) et part à chaque
+joueur avec le snapshot.
+
+```json
+"interaction": [
+  { "node": "interrupteur", "action": "actions", "actions": [
+      { "hide_node": "abat_jour" },
+      { "set_material_param": { "node": "ampoule", "param": "emissive", "value": 4 } },
+      { "set_material_param": { "node": "ampoule", "param": "color", "value": [1.0, 0.8, 0.5] } }
+  ] },
+  { "node": "abat_jour_sol", "action": "actions", "actions": [ { "show_node": "abat_jour" } ] }
+]
+```
+
+- **`action: "actions"`** ne fait que jouer la liste ; avec une autre action (`set_variable`, `attach`…), la liste
+  la suit, si elle a eu son effet. Seize actions au plus par interaction, chacune un objet à une seule clé.
+- **Une action prime sur le canal** de son node (`visibility`, `emissive`, `color`) : un node caché par `hide_node`
+  l'est quel que soit son canal, et une émission ou une teinte posée remplace celle de la piste. Ses enfants en
+  héritent, comme d'un canal. `show_node` lève le masque ; le canal reprend la main.
+- **Les bornes** : une émission de 0 à 16, une teinte de trois composantes de 0 à 4. Hors bornes, la definition est
+  refusée et le journal dit le chemin.
+- `swap_mesh` (un node dessine les maillages d'un autre) vient ensuite, avec sa propre tranche.
+
 ## Ressources GPU
 
 - **Maillages** sous-alloués dans des arènes de 16 Mio partagées (VBO, EBO), tampon d'instances

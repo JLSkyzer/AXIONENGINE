@@ -1,5 +1,5 @@
 // Fichier généré par `cargo run -p axion-codegen --bin gen_definition_builder` depuis
-// docs/schema/definition-6.json (ADR-162 D4) : ne pas le modifier à la main. Le test de parité
+// docs/schema/definition-7.json (ADR-162 D4) : ne pas le modifier à la main. Le test de parité
 // parite_builder échoue s'il diverge du schéma.
 package dev.axion.api.content;
 
@@ -13,7 +13,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Le builder d'une definition (ADR-162 D3, D4) : une méthode par champ du schéma 6, dont il est généré.
+ * Le builder d'une definition (ADR-162 D3, D4) : une méthode par champ du schéma 7, dont il est généré.
  *
  * <p>Il produit le même document qu'un fichier JSON : {@link #build()} rend un {@link DefinitionDocument}
  * que {@link ContentRegistrar#register} enregistre, que le même schéma valide au chargement et dont
@@ -35,7 +35,7 @@ import java.util.function.Consumer;
 public final class DefinitionBuilder {
 
     /** La version du schéma que ce builder écrit dans le champ {@code schema}. */
-    public static final int SCHEMA = 6;
+    public static final int SCHEMA = 7;
 
     private final Map<String, Object> values = new LinkedHashMap<>();
 
@@ -1818,6 +1818,129 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code interaction[].actions[].set_material_param}. */
+    @Experimental
+    public static final class InteractionActionSetMaterialParam {
+
+        private final Map<String, Object> values;
+
+        private InteractionActionSetMaterialParam(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code interaction[].actions[].set_material_param.node} : nom (node) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionSetMaterialParam node(String value) {
+            values.put("node", Objects.requireNonNull(value, "node"));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].set_material_param.param} : parmi {@code emissive}, {@code color}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionSetMaterialParam param(String value) {
+            values.put("param", Objects.requireNonNull(value, "param"));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].set_material_param.value}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionSetMaterialParam value(boolean value) {
+            values.put("value", value);
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].set_material_param.value}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionSetMaterialParam value(double value) {
+            values.put("value", value);
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].set_material_param.value}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionSetMaterialParam value(String value) {
+            values.put("value", value);
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].set_material_param.value}. Toute valeur de JSON, vérifiée par
+         * {@link DefinitionDocument}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionSetMaterialParam value(Object value) {
+            values.put("value", value);
+            return this;
+        }
+    }
+
+    /** {@code interaction[].actions[]}. */
+    @Experimental
+    public static final class InteractionAction {
+
+        private final Map<String, Object> values;
+
+        private InteractionAction(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code interaction[].actions[].hide_node} : nom (node) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionAction hideNode(String value) {
+            values.put("hide_node", Objects.requireNonNull(value, "hide_node"));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].set_material_param}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionAction setMaterialParam(Consumer<InteractionActionSetMaterialParam> config) {
+            Map<String, Object> nested = object(values, "set_material_param");
+            Objects.requireNonNull(config, "config").accept(new InteractionActionSetMaterialParam(nested));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].show_node} : nom (node) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionAction showNode(String value) {
+            values.put("show_node", Objects.requireNonNull(value, "show_node"));
+            return this;
+        }
+    }
+
     /** {@code interaction[]}. */
     @Experimental
     public static final class Interaction {
@@ -1831,13 +1954,26 @@ public final class DefinitionBuilder {
         /**
          * {@code interaction[].action} : parmi {@code sit}, {@code toggle_animation}, {@code play_animation},
          * {@code open_container}, {@code emit_event}, {@code set_variable}, {@code repair}, {@code attach},
-         * {@code detach}.
+         * {@code detach}, {@code actions}.
          *
          * @param value la valeur
          * @return ce réglage, pour enchaîner
          */
         public Interaction action(String value) {
             values.put("action", Objects.requireNonNull(value, "action"));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions} : au moins 1 élément ; au plus 16 éléments.
+         *
+         * @param config règle l'élément, ajouté à la suite des précédents
+         * @return ce réglage, pour enchaîner
+         */
+        public Interaction action(Consumer<InteractionAction> config) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            Objects.requireNonNull(config, "config").accept(new InteractionAction(item));
+            list(values, "actions").add(item);
             return this;
         }
 

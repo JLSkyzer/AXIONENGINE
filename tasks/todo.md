@@ -3882,6 +3882,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            C-77 ; 52 au gel de l'API.
      - [x] CAP-42 (2026-11-18) : `ContentCheck` dit non vérifiés, sans les refuser, les contrôleurs, widgets et
            paramètres d'addon dont le code ne se charge pas hors jeu (`VehicleExtensions.withoutCode()`).
+     - [ ] ADR-174, tranche 9a1 (2026-11-18) : schéma 7, `actions` d'une interaction (`hide_node`, `show_node`,
+           `set_material_param`), état des nodes sauvegardé (`axion:nodes`) et répliqué (descripteur 9). Suite :
+           9a2 `swap_mesh` par node (décision de Killian), puis 9b à 9g.
      - [x] ADR-173 tenu (2026-11-18) : `source(String)` sur `VehicleView` et `Assembly`, des deux côtés ; CAP-43 et
            CAP-45 tenues. Films : le harnais relaie les fautes du serveur (`auServeur`), le film sport attend que la
            file joue la commande, le film véhicule que la bascule revienne.
