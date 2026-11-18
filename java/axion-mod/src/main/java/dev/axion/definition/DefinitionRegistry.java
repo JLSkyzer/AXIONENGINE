@@ -188,6 +188,7 @@ public final class DefinitionRegistry {
         for (Definition definition : accepted.values()) {
             materialWarnings(definition, rules.physicsMaterials(), warnings);
             tireWarnings(definition, rules.tires(), warnings);
+            unjudgedWarnings(definition, rules.extensions(), warnings);
         }
         return new DefinitionRegistry(accepted, byHash, refusals, refusalById, rules.collisionGroups(),
                 rules.physicsMaterials(), rules.tires(), rules.extensions(), warnings);
@@ -212,6 +213,37 @@ public final class DefinitionRegistry {
                             + "].material : matériau « " + named.getAsString() + " » non déclaré ;"
                             + " l'acier générique en tient lieu (R-1032)");
                 }
+            }
+        }
+    }
+
+    /**
+     * CAP-42 : hors jeu, le code des mods n'est pas chargé. Ce qui en dépend — contrôleur, widget, paramètre d'addon
+     * borné par {@code tuning} — n'a pas été jugé, et la vérification le dit plutôt que de le taire ou de le refuser.
+     */
+    private static void unjudgedWarnings(Definition definition, VehicleExtensions extensions, List<String> warnings) {
+        if (!extensions.codeAbsent()) {
+            return;
+        }
+        String cause = " non vérifié : le code de son mod ne se charge pas hors jeu ; il se juge au chargement en jeu";
+        List<String> controllers = Tuning.controllers(definition.root());
+        for (int index = 0; index < controllers.size(); index++) {
+            if (extensions.controller(controllers.get(index)).isEmpty()) {
+                warnings.add(definition.location() + " — $.vehicle.controllers[" + index + "] : contrôleur « "
+                        + controllers.get(index) + " »" + cause);
+            }
+        }
+        List<String> widgets = widgets(definition.root());
+        for (int index = 0; index < widgets.size(); index++) {
+            if (extensions.widget(widgets.get(index)).isEmpty()) {
+                warnings.add(definition.location() + " — $.dashboard.widgets[" + index + "] : widget « "
+                        + widgets.get(index) + " »" + cause);
+            }
+        }
+        Tuning table = Tuning.of(definition.id(), definition.root(), extensions);
+        for (String name : Tuning.namedParameters(definition.root())) {
+            if (table.indexOf(name) < 0) {
+                warnings.add(definition.location() + " — $.tuning : paramètre « " + name + " »" + cause);
             }
         }
     }
@@ -289,6 +321,9 @@ public final class DefinitionRegistry {
 
     /** ADR-167 D9 : chaque contrôleur nommé est enregistré par un mod. */
     private static void controllersOf(JsonObject root, VehicleExtensions extensions) throws DefinitionException {
+        if (extensions.codeAbsent()) {
+            return;
+        }
         List<String> controllers = Tuning.controllers(root);
         for (int index = 0; index < controllers.size(); index++) {
             if (extensions.controller(controllers.get(index)).isEmpty()) {
@@ -300,6 +335,9 @@ public final class DefinitionRegistry {
 
     /** ADR-170 D6 : chaque widget nommé par le tableau de bord est enregistré par un mod. */
     private static void widgetsOf(JsonObject root, VehicleExtensions extensions) throws DefinitionException {
+        if (extensions.codeAbsent()) {
+            return;
+        }
         List<String> widgets = widgets(root);
         for (int index = 0; index < widgets.size(); index++) {
             if (extensions.widget(widgets.get(index)).isEmpty()) {

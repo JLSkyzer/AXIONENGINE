@@ -1,6 +1,7 @@
 package dev.axion.tools;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.axion.api.content.ContentKind;
@@ -77,5 +78,32 @@ class ContentCheckTest {
         assertTrue(fautes.contains("fautif:axion/models/casse.glb"), fautes);
         assertTrue(report.faults().stream().noneMatch(faute -> faute.startsWith("fautif:crate ")),
                 "la definition saine passe : " + fautes);
+    }
+
+    @Test
+    @DisplayName("CAP-42 : un contrôleur, un widget et un paramètre d'addon ne se jugent pas hors jeu — dits non vérifiés,"
+            + " pas refusés")
+    void leCodeDeLAddonNEstPasJuge() throws IOException {
+        // Le véhicule de test, ses contrôleurs remplacés par celui de l'addon, dont le code ne se charge pas ici.
+        String vehicule = Files.readString(Path.of("../../content/test/axion/definitions/test/vehicule_controle.json"),
+                        StandardCharsets.UTF_8)
+                .replace("\"schema\": 4", "\"schema\": 5")
+                .replace("[\"axion:test/propulsion\", \"axion:test/compteur\"]", "[\"addon:regulateur\"]")
+                .replace("\"vehicle\":", "\"tuning\": {\"ranges\": {\"addon_gain\": {\"min\": 0, \"max\": 2}}},"
+                        + " \"dashboard\": {\"widgets\": [\"addon:altimetre\"]}, \"vehicle\":");
+        ecrire("axion/definitions/regule.json", vehicule);
+        dev.axion.definition.VehicleExtensions avant = dev.axion.definition.VehicleExtensions.current();
+
+        ContentCheck.Report report = ContentCheck.check("addon", temp.resolve("ressources"), TRAVAIL);
+
+        assertEquals(List.of(), report.faults(), () -> String.join("\n", report.faults()));
+        String avertissements = String.join("\n", report.warnings());
+        report.warnings().forEach(ligne -> System.out.println("AVERTISSEMENT : " + ligne));
+        assertTrue(avertissements.contains("contrôleur « addon:regulateur » non vérifié"), avertissements);
+        assertTrue(avertissements.contains("widget « addon:altimetre » non vérifié"), avertissements);
+        assertTrue(avertissements.contains("paramètre « addon_gain » non vérifié"), avertissements);
+        assertEquals(Map.of(ContentKind.DEFINITION, 1), report.counts());
+        assertSame(avant, dev.axion.definition.VehicleExtensions.current(),
+                "les extensions enregistrées sont rendues après la vérification");
     }
 }

@@ -125,6 +125,20 @@ public final class ContentCheck {
         registry.errors().stream().filter(line -> line.contains(prefixe) || line.startsWith(modId + " "))
                 .forEach(faults::add);
 
+        // CAP-42 : le code de l'addon ne se charge pas ici. Ses contrôleurs, widgets et paramètres ne se jugent pas :
+        // la validation les dit en avertissement au lieu de refuser la definition qui les nomme.
+        dev.axion.definition.VehicleExtensions enregistrees = dev.axion.definition.VehicleExtensions.current();
+        dev.axion.definition.VehicleExtensions.publish(dev.axion.definition.VehicleExtensions.withoutCode());
+        try {
+            return verifier(modId, runtime, resolved, prefixe, faults, warnings);
+        } finally {
+            dev.axion.definition.VehicleExtensions.publish(enregistrees);
+        }
+    }
+
+    private static Report verifier(String modId, AxionRuntime runtime,
+            Map<ContentKind, List<ContentRegistry.Entry>> resolved, String prefixe, List<String> faults,
+            List<String> warnings) {
         // Chaque famille, dans l'ordre du démarrage d'un serveur, puis sa barrière.
         int avant = runtime.transitions().size();
         runtime.onAssetReload(RegisteredContent.source(ContentKind.MODEL));

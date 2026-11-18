@@ -41,6 +41,14 @@ Sinon, chaque faute est nommée, dans les mots du journal du jeu :
     Une fiche écrite en Java avec le *builder* n'existe qu'au lancement de ton mod. Les GameTests, ci-dessous, la
     couvrent.
 
+    Ton code Java ne se charge pas non plus. Une definition qui nomme un de tes contrôleurs, un de tes widgets ou un
+    paramètre qu'ils ajoutent n'est donc pas refusée : le validateur dit qu'il ne l'a pas vérifié, et c'est au
+    chargement en jeu — ou dans un GameTest — qu'il se juge.
+
+    ```text
+      avertissement : example_addon:axion/definitions/regule.json — $.vehicle.controllers[0] : contrôleur « example_addon:regulateur » non vérifié : le code de son mod ne se charge pas hors jeu ; il se juge au chargement en jeu
+    ```
+
 ## 2. Les GameTests, dans un vrai serveur
 
 Un GameTest pose une scène dans un monde, attend, et vérifie. AXION te donne les aides, dans

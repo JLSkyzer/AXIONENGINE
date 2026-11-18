@@ -40,6 +40,14 @@ Otherwise, each fault is named, in the words of the game log (AXION's logs are i
 !!! info "What it does not see"
     A sheet written in Java with the *builder* only exists when your mod runs. The GameTests below cover it.
 
+    Your Java code is not loaded either. A definition that names one of your controllers, one of your widgets or a
+    parameter they add is therefore not refused: the validator says it did not check it, and it is judged when the
+    game loads it — or in a GameTest.
+
+    ```text
+      avertissement : example_addon:axion/definitions/regule.json — $.vehicle.controllers[0] : contrôleur « example_addon:regulateur » non vérifié : le code de son mod ne se charge pas hors jeu ; il se juge au chargement en jeu
+    ```
+
 ## 2. GameTests, in a real server
 
 A GameTest sets up a scene in a world, waits, and checks. AXION gives you the helpers, in

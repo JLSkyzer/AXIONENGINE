@@ -3876,10 +3876,12 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      - [x] Audit de M5 (2026-11-18, amendement A23) : CAP-01, 40, 44, 46 à 51 tenues (preuves au code). Restent :
            partielles CAP-02 (`emit_event`, portée siège), 04 (actions exécutées), 05 (poids pilotés, masque d'os,
            `trigger`), 11 (EventBus, refus, registres), 16 (`emit_event`, `open_container`, `repair`, capteurs),
-           38 (corps par nom, migrations), 42 (`ContentCheck` et le code d'addon), 43 (lecture au serveur), 45 (phase
+           38 (corps par nom, migrations), 43 (lecture au serveur), 45 (phase
            client) ; ouvertes CAP-12, 13, 14, 20, 33, 52, 53, 56. Ordre proposé : petites (43, 42, 45) ; un ADR
            « événements et déclencheurs » (02, 16, 11, 05, 04) ; 38 puis 33 ; 12 puis 20 ; 13, 56 puis 14 ; 53 avec
            C-77 ; 52 au gel de l'API.
+     - [x] CAP-42 (2026-11-18) : `ContentCheck` dit non vérifiés, sans les refuser, les contrôleurs, widgets et
+           paramètres d'addon dont le code ne se charge pas hors jeu (`VehicleExtensions.withoutCode()`).
      - [ ] CAP-10, caméra de véhicule et tableau de bord : **ADR-170 accepté par Killian le 2026-11-15** (F5 fait
            défiler les vues, vues et nodes `camera` déclarés, tableau de bord par défaut + jauges + widgets d'API ;
            sans Mixin). Branche `wip/cap-10`.

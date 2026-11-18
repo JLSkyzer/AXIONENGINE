@@ -201,7 +201,7 @@ CAP-38	CAP	8386	8386	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (A
 CAP-39	CAP	8387	7938	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-40	CAP	8388	7935	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-41	CAP	8389	8389	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-42	CAP	8390	7937	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-42	CAP	8390	5441	5	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-43	CAP	8391	7932	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-44	CAP	8392	7946	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-45	CAP	8393	8393	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
@@ -901,7 +901,7 @@ R-1753	R	5437	5437	1	23.1 Principes
 R-1754	R	5438	5438	1	23.1 Principes
 R-1755	R	5439	5439	1	23.1 Principes
 R-1756	R	5440	5440	2	23.1 Principes
-R-1757	R	5441	5441	3	23.1 Principes
+R-1757	R	5441	5441	5	23.1 Principes
 R-1760	R	5570	5570	1	23.2 Surface de l'API
 R-1761	R	5571	5571	1	23.2 Surface de l'API
 R-1762	R	5572	5572	1	23.2 Surface de l'API

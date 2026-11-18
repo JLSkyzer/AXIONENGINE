@@ -89,6 +89,7 @@ public final class VehicleExtensions {
     private final Map<String, Controller> controllers;
     private final Map<String, Parameter> parameters;
     private final Map<String, Widget> widgets;
+    private final boolean codeAbsent;
 
     /**
      * @param controllers les contrôleurs, par identifiant
@@ -105,9 +106,29 @@ public final class VehicleExtensions {
      */
     public VehicleExtensions(Map<String, Controller> controllers, Map<String, Parameter> parameters,
             Map<String, Widget> widgets) {
+        this(controllers, parameters, widgets, false);
+    }
+
+    private VehicleExtensions(Map<String, Controller> controllers, Map<String, Parameter> parameters,
+            Map<String, Widget> widgets, boolean codeAbsent) {
         this.controllers = Map.copyOf(controllers);
         this.parameters = Map.copyOf(parameters);
         this.widgets = Map.copyOf(widgets);
+        this.codeAbsent = codeAbsent;
+    }
+
+    /**
+     * {@return des extensions vides, dont le code n'est pas chargé} : celles de la vérification hors jeu (CAP-42,
+     * R-1757). Un contrôleur, un widget ou un paramètre d'addon que rien n'enregistre n'y refuse pas la definition :
+     * il n'a pas pu être jugé, et la validation le dit en avertissement. En jeu, le code est là et il se juge.
+     */
+    public static VehicleExtensions withoutCode() {
+        return new VehicleExtensions(Map.of(), Map.of(), Map.of(), true);
+    }
+
+    /** {@return vrai hors jeu : le code des mods n'est pas chargé, leurs extensions ne se jugent pas} */
+    public boolean codeAbsent() {
+        return codeAbsent;
     }
 
     /**

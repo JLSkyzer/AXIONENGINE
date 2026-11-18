@@ -351,6 +351,28 @@ public record Tuning(List<Parameter> parameters, List<Declared> declared, List<S
         return list.asList().stream().map(JsonElement::getAsString).toList();
     }
 
+    /**
+     * {@return les paramètres que {@code tuning} nomme — clés de {@code ranges}, puis {@code parameter} de chaque
+     * modificateur déclaré —, chacun une fois, dans leur ordre}
+     */
+    static List<String> namedParameters(JsonObject root) {
+        if (!(root.get("tuning") instanceof JsonObject tuning)) {
+            return List.of();
+        }
+        java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
+        if (tuning.get("ranges") instanceof JsonObject ranges) {
+            names.addAll(ranges.keySet());
+        }
+        if (tuning.get("modifiers") instanceof JsonObject modifiers) {
+            for (Map.Entry<String, JsonElement> entry : modifiers.entrySet()) {
+                if (entry.getValue() instanceof JsonObject modifier && modifier.has("parameter")) {
+                    names.add(modifier.get("parameter").getAsString());
+                }
+            }
+        }
+        return List.copyOf(names);
+    }
+
     /** {@return les modificateurs déclarés d'une definition acceptée, dans son ordre} */
     private static List<Declared> declared(String id, JsonObject root) {
         if (!(root.get("tuning") instanceof JsonObject tuning)
@@ -420,18 +442,26 @@ public record Tuning(List<Parameter> parameters, List<Declared> declared, List<S
         }
         // L'identifiant ne sert qu'à nommer les causes ; la forme de la cause se juge sur le nom du modificateur.
         Tuning table = of("axion:verification", root, extensions);
+        // CAP-42 : hors jeu, un paramètre inconnu peut être celui d'un contrôleur dont le code n'est pas chargé ; il
+        // n'est pas jugé, et la validation l'avertit (DefinitionRegistry).
+        boolean unjudged = extensions.codeAbsent()
+                && controllers.stream().anyMatch(controller -> extensions.controller(controller).isEmpty());
         if (tuning.get("ranges") instanceof JsonObject ranges) {
-            checkRanges(ranges, table, fault);
+            checkRanges(ranges, table, unjudged, fault);
         }
         if (tuning.get("modifiers") instanceof JsonObject modifiers) {
-            checkDeclared(root, modifiers, table, fault);
+            checkDeclared(root, modifiers, table, unjudged, fault);
         }
     }
 
-    private static void checkRanges(JsonObject ranges, Tuning table, java.util.function.BiConsumer<String, String> fault) {
+    private static void checkRanges(JsonObject ranges, Tuning table, boolean unjudged,
+            java.util.function.BiConsumer<String, String> fault) {
         for (Map.Entry<String, JsonElement> entry : ranges.entrySet()) {
             String at = "$.tuning.ranges." + entry.getKey();
             int index = table.indexOf(entry.getKey());
+            if (index < 0 && unjudged) {
+                continue;
+            }
             if (index < 0) {
                 fault.accept(at, "paramètre « " + entry.getKey() + " » inconnu de cette definition ; elle a : "
                         + String.join(", ", table.names()));
@@ -454,13 +484,16 @@ public record Tuning(List<Parameter> parameters, List<Declared> declared, List<S
      * (variable bornée), pas les deux ; aucune quantité ne fait seule sortir le paramètre de ses bornes ; et aux
      * valeurs par défaut des variables, les modificateurs déclarés d'un paramètre l'y laissent ensemble.
      */
-    private static void checkDeclared(JsonObject root, JsonObject modifiers, Tuning table,
+    private static void checkDeclared(JsonObject root, JsonObject modifiers, Tuning table, boolean unjudged,
             java.util.function.BiConsumer<String, String> fault) {
         Variables variables = Variables.of(root);
         boolean sound = true;
         for (Map.Entry<String, JsonElement> entry : modifiers.entrySet()) {
             String at = "$.tuning.modifiers." + entry.getKey();
             JsonObject modifier = entry.getValue().getAsJsonObject();
+            if (unjudged && table.indexOf(modifier.get("parameter").getAsString()) < 0) {
+                continue;
+            }
             String refusal = declaredRefusal(entry.getKey(), modifier, table, variables);
             if (refusal != null) {
                 fault.accept(at, refusal);
