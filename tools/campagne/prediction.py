@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -52,7 +53,7 @@ def arreter(processus: subprocess.Popen) -> None:
     processus.wait(timeout=60)
 
 
-def essai(latence: int, gigue: int) -> dict[str, str]:
+def essai(latence: int, gigue: int, film: bool = False) -> dict[str, str]:
     """Joue un essai à deux processus ; rend le verdict de chaque test, ou lève RuntimeError."""
     SORTIES.mkdir(parents=True, exist_ok=True)
     vehicule = os.environ.get("AXION_ESSAI_VEHICULE", "axion:test/vehicule").rsplit("/", 1)[-1]
@@ -65,6 +66,12 @@ def essai(latence: int, gigue: int) -> dict[str, str]:
         for fichier in ("axion-common.toml", "axion-client.toml", "axion-server.toml"):
             (dossier / fichier).unlink(missing_ok=True)
     environnement = dict(os.environ, AXION_ESSAI_PREDICTION="1")
+    if film:
+        # Le serveur d'un essai filmé met le temps au clair ; le client filme (Tournage, tools/film/encoder.py).
+        environnement["AXION_ESSAI_FILM"] = "1"
+        # Les images d'un film d'avant : le renommage des images en double s'y heurtait, et le client, ralenti, perdait
+        # sa prédiction (2026-11-18).
+        shutil.rmtree(ESSAI / "axion-film", ignore_errors=True)
     with open(SORTIES / f"serveur-{nom}.log", "w", encoding="utf-8") as sortie:
         serveur = subprocess.Popen([str(GRADLE), ":axion-mod:runServer"], cwd=RACINE, env=environnement,
                                    stdout=sortie, stderr=subprocess.STDOUT)
@@ -75,8 +82,9 @@ def essai(latence: int, gigue: int) -> dict[str, str]:
                 raise RuntimeError(f"serveur pas prêt (voir {SORTIES / f'serveur-{nom}.log'})")
             time.sleep(1)
         with open(SORTIES / f"client-{nom}.log", "w", encoding="utf-8") as sortie:
-            client = subprocess.run([str(GRADLE), ":axion-mod:runEssaiClientPrediction", f"-PessaiLatence={latence}",
-                                     f"-PessaiGigue={gigue}"], cwd=RACINE, stdout=sortie, stderr=subprocess.STDOUT,
+            commande = [str(GRADLE), ":axion-mod:runEssaiClientPrediction", f"-PessaiLatence={latence}",
+                        f"-PessaiGigue={gigue}"] + (["-PessaiFilm"] if film else [])
+            client = subprocess.run(commande, cwd=RACINE, stdout=sortie, stderr=subprocess.STDOUT,
                                     timeout=CLIENT_MAX_S)
         if client.returncode != 0:
             raise RuntimeError(f"client sorti en {client.returncode} (voir {SORTIES / f'client-{nom}.log'})")
@@ -107,12 +115,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--reglage", action="append", metavar="LATENCE:GIGUE",
                         help="délai d'un sens et gigue du relais, en millisecondes (répétable)")
-    reglages = [tuple(int(x) for x in r.split(":")) for r in (parser.parse_args().reglage or ["100:20", "50:20"])]
+    parser.add_argument("--film", action="store_true",
+                        help="filmer l'essai : le client tourne, tools/film/encoder.py fait le MP4")
+    arguments = parser.parse_args()
+    reglages = [tuple(int(x) for x in r.split(":")) for r in (arguments.reglage or ["100:20", "50:20"])]
     echecs = 0
     for latence, gigue in reglages:
         print(f"--- {latence} ms par sens, gigue de 0 à {gigue} ms", flush=True)
         try:
-            verdicts = essai(latence, gigue)
+            verdicts = essai(latence, gigue, arguments.film)
         except RuntimeError as faute:
             print(f"ÉCHEC : {faute}")
             echecs += 1

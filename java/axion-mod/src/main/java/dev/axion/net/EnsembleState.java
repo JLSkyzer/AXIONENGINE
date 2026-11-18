@@ -73,6 +73,9 @@ public final class EnsembleState {
      */
     public static Prediction.Tolerance tolerance(Prediction.Tolerance member) {
         return (predicted, server) -> {
+            if (predicted == null || server == null) {
+                return false;
+            }
             List<Member> mine;
             List<Member> theirs;
             try {

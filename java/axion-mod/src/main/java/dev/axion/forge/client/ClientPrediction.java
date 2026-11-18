@@ -12,6 +12,7 @@ import dev.axion.lifecycle.AxionRuntime;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.CorrectionMessage;
 import dev.axion.net.CorrectionRate;
+import dev.axion.net.EnsembleState;
 import dev.axion.net.Interpolation;
 import dev.axion.net.PredictedStates;
 import dev.axion.net.PredictedTrack;
@@ -76,6 +77,26 @@ public final class ClientPrediction {
     private static boolean liveStep;
     /** La piste prédite du véhicule, que son entité affiche (ADR-168 D2). */
     private static PredictedTrack track;
+    /**
+     * Les membres de l'ensemble du véhicule prédits avec lui (ADR-171 D7) : leur piste dessinée et le node racine de leur
+     * corps racine, par identifiant réseau.
+     */
+    private static final java.util.Map<Integer, Member> members = new java.util.TreeMap<>();
+    /** Les assemblies exclues des proxies : les membres, et ceux qui viennent de quitter l'ensemble, un pas de plus. */
+    private static final java.util.Set<Integer> notProxies = new java.util.HashSet<>();
+    private static final java.util.Set<Integer> leaving = new java.util.HashSet<>();
+    /** Les attaches posées dans le monde prédit, par identifiant au serveur. */
+    private static final java.util.Set<Integer> attached = new java.util.HashSet<>();
+
+    /** Ce que les corrections ont porté de l'ensemble, pour les essais. */
+    private static long ensembleCorrections;
+    private static long ensembleMulti;
+    private static long ensembleBytes;
+    private static long ensembleMaxBytes;
+    private static long ensembleMaxMembers;
+
+    /** Un membre prédit : son entité, sa piste, le node racine de son corps racine. */
+    private record Member(AxionEntity entity, PredictedTrack track, int rootNode) {}
     /** Ce que les pistes fermées ont téléporté et lissé de plus grand, depuis la connexion. */
     private static long trackSnaps;
     private static double trackLargestCorrection;
@@ -161,7 +182,7 @@ public final class ClientPrediction {
                 ClientLevel level = Minecraft.getInstance().level;
                 if (level != null) {
                     around.merge(proxies.select(level, vehicle, predictedSpeed(),
-                            runtime.outcome().config().getFloat("net.prediction_proxy_radius")));
+                            runtime.outcome().config().getFloat("net.prediction_proxy_radius"), notProxies));
                 }
             }
             // ADR-168 D6 : les commandes du siège basculent les variables prédites au pas même, avant la physique,
@@ -194,16 +215,23 @@ public final class ClientPrediction {
             AssemblyState pose = PredictedStates.of(lastStep.result(), world.handle(), PredictedWorld.GENERATION,
                     rootNode, input, variables == null ? vehicle.receivedVariables()
                             : AssemblyState.VariableValues.of(variables.values()));
+            boolean afterAcceptance = liveStep && acceptedSinceStep;
+            double now = vehicle.localMillis(System.nanoTime());
             if (pose != null) {
-                double now = vehicle.localMillis(System.nanoTime());
-                if (liveStep && acceptedSinceStep) {
-                    track.advanceAfterAcceptance(sequence, pose, now);
-                    acceptedSinceStep = false;
-                } else if (liveStep) {
-                    track.advance(sequence, pose, now);
-                } else {
-                    track.replay(sequence, pose, now);
+                advance(track, sequence, pose, now, afterAcceptance);
+            }
+            // ADR-171 D7 : chaque membre de l'ensemble a sa piste, au même tick que le véhicule.
+            for (java.util.Map.Entry<Integer, Member> entry : members.entrySet()) {
+                Member member = entry.getValue();
+                AssemblyState memberPose = PredictedStates.of(lastStep.result(), entry.getKey(),
+                        PredictedWorld.GENERATION, member.rootNode(), VehicleInput.NONE,
+                        member.entity().receivedVariables());
+                if (memberPose != null) {
+                    advance(member.track(), sequence, memberPose, now, afterAcceptance);
                 }
+            }
+            if (afterAcceptance) {
+                acceptedSinceStep = false;
             }
             if (lastStep.state() != null) {
                 stateBefore = lastStep.state().state();
@@ -218,12 +246,39 @@ public final class ClientPrediction {
             if (lastStep.state() != null && lastStep.state().status() == AssemblyStateReport.IRRECONCILABLE) {
                 irreconcilable = true;
             }
-            return lastStep.state() == null ? null : lastStep.state().state();
+            if (lastStep.state() == null) {
+                return null;
+            }
+            // L'état de l'ensemble : le véhicule, puis chaque membre dans l'ordre de la correction (ADR-171 D7).
+            List<EnsembleState.Member> ensemble = new java.util.ArrayList<>();
+            ensemble.add(new EnsembleState.Member(world.handle(), lastStep.state().state()));
+            for (Integer member : members.keySet()) {
+                AssemblyStateReport report = lastStep.members().get(member);
+                if (report != null) {
+                    ensemble.add(new EnsembleState.Member(member, report.state()));
+                }
+            }
+            return EnsembleState.encode(ensemble);
         }
 
         @Override
-        public void restore(long sequence, byte[] state) {
+        public void restore(long sequence, byte[] ensembleState) {
+            List<EnsembleState.Member> ensemble;
+            try {
+                ensemble = EnsembleState.decode(ensembleState);
+            } catch (dev.axion.net.MalformedPacketException malformed) {
+                return;
+            }
+            if (ensemble.isEmpty()) {
+                return;
+            }
+            byte[] state = ensemble.get(0).state();
             world.restore(state);
+            for (EnsembleState.Member member : ensemble.subList(1, ensemble.size())) {
+                if (members.containsKey(member.entity())) {
+                    world.restore(member.entity(), member.state());
+                }
+            }
             // Le premier pas rejoué voit l'état du serveur ; le natif reprend aussi ses couples de roue.
             stateBefore = state.clone();
             resultBefore = null;
@@ -286,6 +341,20 @@ public final class ClientPrediction {
             return;
         }
         lastServerState = correction.states().get(0).bytes();
+        followEnsemble(level, correction);
+        List<EnsembleState.Member> serverEnsemble = new java.util.ArrayList<>();
+        long bytes = 0;
+        for (CorrectionMessage.State state : correction.states()) {
+            serverEnsemble.add(new EnsembleState.Member(state.entity(), state.bytes()));
+            bytes += state.bytes().length;
+        }
+        ensembleCorrections++;
+        ensembleBytes += bytes;
+        ensembleMaxBytes = Math.max(ensembleMaxBytes, bytes);
+        ensembleMaxMembers = Math.max(ensembleMaxMembers, members.size());
+        if (correction.states().size() > 1) {
+            ensembleMulti++;
+        }
         lastQueued = correction.queued();
         if (pacing != null) {
             pacing.onCorrection(correction.appliedSequence(), correction.queued());
@@ -307,7 +376,8 @@ public final class ClientPrediction {
         long divergedBefore = prediction.replays() + prediction.accepted();
         long reconciledBefore = divergedBefore + prediction.matches();
         Prediction.Reconciliation done =
-                prediction.reconcile(PORT, correction.serverTick(), correction.appliedSequence(), lastServerState);
+                prediction.reconcile(PORT, correction.serverTick(), correction.appliedSequence(),
+                        EnsembleState.encode(serverEnsemble));
         // R-1682, précision 6e : acceptée sans rejeu, le monde prédit repart en retard ; son pas suivant se lisse.
         if (done.outcome() == Prediction.Outcome.ACCEPTED) {
             acceptedSinceStep = true;
@@ -493,6 +563,14 @@ public final class ClientPrediction {
         return vehicle;
     }
 
+    /**
+     * {@return ce que les corrections ont porté de l'ensemble (ADR-171 D7), pour les essais : corrections reçues,
+     * corrections à plusieurs états, octets d'états au total et au plus dans une correction, membres prédits au plus}
+     */
+    public static long[] ensembleStats() {
+        return new long[] {ensembleCorrections, ensembleMulti, ensembleBytes, ensembleMaxBytes, ensembleMaxMembers};
+    }
+
     /** {@return l'état du véhicule de la dernière correction réconciliée, copie ; {@code null} sans} */
     public static byte[] lastServerState() {
         return lastServerState == null ? null : lastServerState.clone();
@@ -511,12 +589,14 @@ public final class ClientPrediction {
             double rotation = config.getFloat("net.prediction_tolerance_rotation_rad");
             double velocity = config.getFloat("net.prediction_tolerance_velocity_ms");
             // D5 : deux mondes natifs ne calculent pas au bit près ; un bloc d'état illisible ne vaut jamais l'autre.
+            // ADR-171 D7 : l'état comparé est celui de l'ensemble, membre à membre ; l'observateur des essais voit le
+            // véhicule seul, comme avant.
             loop = new Prediction(System::nanoTime, config.getInt("net.prediction_replay_budget_ns"),
-                    (predicted, server) -> {
+                    EnsembleState.tolerance((predicted, server) -> {
                         AssemblyStateView.Errors errors = AssemblyStateView.errors(predicted, server);
                         return errors != null && errors.within(position, rotation, velocity);
-                    });
-            loop.observe(observer);
+                    }));
+            loop.observe((predicted, server) -> observer.accept(vehicleOf(predicted), vehicleOf(server)));
         }
         return loop;
     }
@@ -576,6 +656,138 @@ public final class ClientPrediction {
             LOGGER.info("AXION : prédiction coupée — {}", why);
         }
         refusal = why;
+    }
+
+    /** Une piste avance d'un pas : le pas d'une entrée neuve, le premier après une acceptation, ou un pas rejoué. */
+    private static void advance(PredictedTrack track, long sequence, AssemblyState pose, double now,
+            boolean afterAcceptance) {
+        if (afterAcceptance) {
+            track.advanceAfterAcceptance(sequence, pose, now);
+        } else if (liveStep) {
+            track.advance(sequence, pose, now);
+        } else {
+            track.replay(sequence, pose, now);
+        }
+    }
+
+    /** {@return l'état du véhicule dans l'état d'un ensemble ; l'état tel quel s'il est illisible} */
+    private static byte[] vehicleOf(byte[] ensembleState) {
+        if (ensembleState == null) {
+            return null;
+        }
+        try {
+            List<EnsembleState.Member> ensemble = EnsembleState.decode(ensembleState);
+            return ensemble.isEmpty() ? ensembleState : ensemble.get(0).state();
+        } catch (dev.axion.net.MalformedPacketException malformed) {
+            return ensembleState;
+        }
+    }
+
+    /**
+     * Le monde prédit suit l'ensemble que porte la correction (ADR-171 D7) : un membre qui y entre est exclu des proxies,
+     * puis créé dynamique au pas où son proxy est parti ; un membre qui en sort est retiré, et reste exclu des proxies un
+     * pas encore. Les attaches entre ses assemblies y sont posées avec les réglages que le serveur a répliqués (Q8), et
+     * défaites quand elles ne le sont plus.
+     */
+    private static void followEnsemble(ClientLevel level, CorrectionMessage correction) {
+        notProxies.removeAll(leaving);
+        leaving.clear();
+        java.util.Set<Integer> wanted = new java.util.TreeSet<>();
+        for (CorrectionMessage.State state : correction.states().subList(1, correction.states().size())) {
+            wanted.add(state.entity());
+        }
+        for (Integer gone : new java.util.ArrayList<>(members.keySet())) {
+            if (!wanted.contains(gone)) {
+                world.removeMember(gone);
+                members.remove(gone).entity().predictWith(null);
+                leaving.add(gone);
+            }
+        }
+        AxionRuntime runtime = RuntimeAccess.get();
+        for (int id : wanted) {
+            notProxies.add(id);
+            if (members.containsKey(id) || proxies.holds(id)
+                    || !(level.getEntity(id) instanceof AxionEntity entity)) {
+                continue;
+            }
+            Definition definition = runtime.definitions().get(entity.definitionId()).orElse(null);
+            DefinitionCompiler.Summary summary = definition == null ? null
+                    : runtime.compiledDefinition(definition.id().toString()).orElse(null);
+            if (summary == null) {
+                continue;
+            }
+            Quaternionf rotation = entity.orientation();
+            world.addMember(id, new double[] {entity.getX(), entity.getY(), entity.getZ()},
+                    new float[] {rotation.x(), rotation.y(), rotation.z(), rotation.w()}, definition.hash());
+            PredictedTrack memberTrack = new PredictedTrack(Interpolation.of(runtime.outcome().config()));
+            members.put(id, new Member(entity, memberTrack, summary.rootNode()));
+            entity.predictWith(memberTrack);
+        }
+        // Les attaches entre le véhicule et ses membres prédits, et celles d'un membre au monde.
+        java.util.Set<Integer> present = new java.util.HashSet<>(members.keySet());
+        present.add(vehicle.getId());
+        java.util.Set<Integer> still = new java.util.HashSet<>();
+        for (int id : present) {
+            AxionEntity from = id == vehicle.getId() ? vehicle : members.get(id).entity();
+            for (AssemblyState.Link link : from.receivedLinks().links()) {
+                if (!link.anchored() && !present.contains(link.other()) || link.setting().id() == 0) {
+                    continue;
+                }
+                still.add(link.setting().id());
+                if (attached.contains(link.setting().id())) {
+                    continue;
+                }
+                SimCommandStream.AttachRequest request = request(from, link, level);
+                if (request != null) {
+                    world.attach(request);
+                    attached.add(link.setting().id());
+                }
+            }
+        }
+        for (Integer gone : new java.util.ArrayList<>(attached)) {
+            if (!still.contains(gone)) {
+                world.detach(gone);
+                attached.remove(gone);
+            }
+        }
+    }
+
+    /** {@return la commande qui pose dans le monde prédit l'attache répliquée {@code link} ; {@code null} sans repère} */
+    private static SimCommandStream.AttachRequest request(AxionEntity from, AssemblyState.Link link, ClientLevel level) {
+        List<dev.axion.definition.SocketTable.Spec> sockets = from.sockets().sockets();
+        if (link.socket() >= sockets.size()) {
+            return null;
+        }
+        float[] aFrame = from.socketFrame(sockets.get(link.socket()).node());
+        if (aFrame == null) {
+            return null;
+        }
+        int bIndex = 0;
+        int bGeneration = 0;
+        int bNode = 0;
+        float[] bFrame = new float[7];
+        double[] anchor = new double[3];
+        if (link.anchored()) {
+            anchor = new double[] {link.anchorX(), link.anchorY(), link.anchorZ()};
+        } else {
+            if (!(level.getEntity(link.other()) instanceof AxionEntity other)
+                    || link.otherSocket() >= other.sockets().sockets().size()) {
+                return null;
+            }
+            float[] frame = other.socketFrame(other.sockets().sockets().get(link.otherSocket()).node());
+            if (frame == null) {
+                return null;
+            }
+            bIndex = other.getId();
+            bGeneration = PredictedWorld.GENERATION;
+            bNode = (int) frame[0];
+            bFrame = java.util.Arrays.copyOfRange(frame, 1, 8);
+        }
+        AssemblyState.Setting setting = link.setting();
+        return new SimCommandStream.AttachRequest(setting.id(), link.kind(), from.getId(), PredictedWorld.GENERATION,
+                (int) aFrame[0], java.util.Arrays.copyOfRange(aFrame, 1, 8), bIndex, bGeneration, bNode, bFrame,
+                anchor, setting.maxForce(), setting.maxTorque(), setting.cone(), setting.length(),
+                setting.minLength(), setting.maxLength(), setting.speed());
     }
 
     private static boolean open(AxionEntity assembly, ClientLevel level) {
@@ -643,6 +855,13 @@ public final class ClientPrediction {
         if (vehicle != null) {
             vehicle.predictView(null);
         }
+        for (Member member : members.values()) {
+            member.entity().predictWith(null);
+        }
+        members.clear();
+        notProxies.clear();
+        leaving.clear();
+        attached.clear();
         vehicle = null;
         acceptedSinceStep = false;
         if (track != null) {

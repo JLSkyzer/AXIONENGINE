@@ -55,7 +55,8 @@ A player who drives a vehicle on a remote server sees it answer their keys at on
 in a world of its own, while the server, the only judge, simulates the real one ([ADR-168](../decisions/ADR-168.md)).
 On every tick where the vehicle moves, the server sends the driver the authoritative state (`S2C_Correction`); the
 client compares it with what it predicted, and replays its inputs from that state when they differ. The
-correction also carries the state of what is attached to the vehicle, a trailer towed on a rope for instance
+correction also carries the state of what is attached to the vehicle, a trailer towed on a rope for instance, which the
+client predicts along with it: the trailer responds at once, and is drawn at the same instant as the car
 ([ADR-171](../decisions/ADR-171.md)). The catch-up is
 smoothed on screen over 200 ms instead of jumping. The client only sends its inputs, never a state: it cannot impose
 anything on the server (INV-02).

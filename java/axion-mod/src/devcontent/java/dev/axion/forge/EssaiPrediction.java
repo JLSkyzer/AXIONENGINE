@@ -93,6 +93,14 @@ public final class EssaiPrediction {
     /** Le contrôleur que le serveur attache au véhicule de l'essai (ADR-168 D6, 6d-4) ; vide : aucun. */
     private static final String CONTROLEUR = System.getenv().getOrDefault("AXION_ESSAI_CONTROLEUR", "");
 
+    /**
+     * ADR-171, 8e5 : sous {@code AXION_ESSAI_REMORQUE=1}, le serveur attelle à la corde une remorque derrière le
+     * véhicule ({@code axion:test/remorque}, socket {@code attelage} des deux côtés) ; le client prédit l'ensemble, et son
+     * rapport dit ce que les corrections en ont porté. Le véhicule doit alors avoir un socket {@code attelage} :
+     * {@code AXION_ESSAI_VEHICULE=axion:test/remorqueuse}.
+     */
+    private static final boolean REMORQUE = "1".equals(System.getenv("AXION_ESSAI_REMORQUE"));
+
     /** Les rapports passés avant d'accélérer : la première d'une boîte manuelle, qui part au neutre. */
     private static final int RAPPORTS = Integer.getInteger("axion.essai.rapports", 0);
 
@@ -132,6 +140,8 @@ public final class EssaiPrediction {
         private static ServerPlayer conducteur;
         private static AxionEntity vehicule;
         private static AxionEntity obstacle;
+        private static AxionEntity remorque;
+        private static boolean cordePosee;
         private static boolean assis;
 
         private Serveur() {}
@@ -205,6 +215,14 @@ public final class EssaiPrediction {
                 } catch (IllegalStateException refus) {
                     LOGGER.error("[essai] ÉCHEC : obstacle non posé — {}", refus.getMessage());
                 }
+                if (REMORQUE) {
+                    try {
+                        remorque = AssembliesDeTest.poser(monde, "axion:test/remorque",
+                                new Vec3(8.5, SOL_Y + 1.0, SOL_LONGUEUR - 12.0 + 5.0), new float[] {0f, 0f, 0f, 1f});
+                    } catch (IllegalStateException refus) {
+                        LOGGER.error("[essai] ÉCHEC : remorque non posée — {}", refus.getMessage());
+                    }
+                }
                 if (!CONTROLEUR.isEmpty()) {
                     vehicule.attachController(CONTROLEUR);
                     LOGGER.info("[essai] contrôleur {} attaché au véhicule", CONTROLEUR);
@@ -213,12 +231,25 @@ public final class EssaiPrediction {
                         conducteur.getGameProfile().getName(), OBSTACLE);
                 return;
             }
+            // ADR-171, 8e5 : la corde, une fois, entre les attelages ; sans conducteur, le frein de la remorque est
+            // relâché, comme dans le film du remorquage.
+            if (REMORQUE && !cordePosee && remorque != null && vehicule != null
+                    && AttachmentRuntime.current() != null) {
+                dev.axion.api.attach.AttachResult corde = AttachmentRuntime.current().attach(vehicule, "attelage",
+                        remorque, "attelage", java.util.Set.of("rope"), "axion");
+                cordePosee = true;
+                LOGGER.info("[essai] corde vers la remorque : {}", corde.attached() ? "posée" : corde.message());
+                if (corde.attached()) {
+                    ForgeAxionApi.view(remorque).vehicle().orElseThrow()
+                            .drive(dev.axion.api.vehicle.DriverInput.NONE);
+                }
+            }
             // Les véhicules d'un essai précédent, que le journal latéral garde et rend (22.5.2), quittent la piste : seuls
             // ceux de cet essai y roulent. Leurs colonnes se chargent quand le joueur arrive : le ménage dure tout
             // l'essai.
             for (AxionEntity ancien : monde.getEntitiesOfClass(AxionEntity.class,
                     new net.minecraft.world.phys.AABB(-32, SOL_Y - 32, -32, 48, SOL_Y + 32, SOL_LONGUEUR + 32),
-                    ancien -> ancien != vehicule && ancien != obstacle)) {
+                    ancien -> ancien != vehicule && ancien != obstacle && ancien != remorque)) {
                 LOGGER.info("[essai] véhicule d'un essai précédent retiré de la piste : {}", ancien.getUUID());
                 ancien.discard();
             }
@@ -870,6 +901,11 @@ public final class EssaiPrediction {
                         + " correction(s) rejouée(s) depuis la bascule", BASCULER, BASCULE, basculePredite, basculeRecue,
                         basculeParametres, rejeuxAvant < 0 ? -1 : boucle.replays() - rejeuxAvant));
             }
+            long[] ensemble = dev.axion.forge.client.ClientPrediction.ensembleStats();
+            rapport.add(String.format(Locale.ROOT, "ensemble : %d correction(s), dont %d à plusieurs états ; %d membre(s)"
+                    + " prédit(s) au plus ; octets d'états %.0f en moyenne, %d au plus par correction",
+                    ensemble[0], ensemble[1], ensemble[4], ensemble[0] == 0 ? 0.0 : (double) ensemble[2] / ensemble[0],
+                    ensemble[3]));
             rapport.add("proxies posés au plus : " + proxiesAssemblies + " assembly(s), " + proxiesEntites
                     + " entité(s) vanilla");
             rapport.addAll(banc());

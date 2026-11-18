@@ -56,6 +56,17 @@ final class ClientProxies {
     }
 
     /**
+     * {@return vrai si cette assembly est posée en proxy} Un membre de l'ensemble n'entre au monde prédit qu'une fois son
+     * proxy retiré : la frontière applique les créations d'un flux avant ses retraits (ADR-171, 8e), et le même rang
+     * créé puis retiré dans un pas y serait perdu.
+     *
+     * @param id l'identifiant réseau de l'assembly
+     */
+    boolean holds(int id) {
+        return assemblies.containsKey(id);
+    }
+
+    /**
      * Refait le choix des proxies, au pas d'une entrée neuve : les assemblies entrées dans le rayon naissent proxies, celles
      * qui en sortent ou disparaissent sont retirées ; les entités vanilla sont relevées.
      *
@@ -63,14 +74,18 @@ final class ClientProxies {
      * @param vehicle le véhicule prédit, posé à sa pose prédite
      * @param speed sa vitesse prédite, en m/s
      * @param radius {@code net.prediction_proxy_radius}, en blocs
+     * @param excluded les assemblies prédites avec le véhicule, ou qui viennent de l'être (ADR-171 D7) : jamais proxies
      * @return les créations et retraits à soumettre
      */
-    SimCommandStream select(ClientLevel level, AxionEntity vehicle, double speed, double radius) {
+    SimCommandStream select(ClientLevel level, AxionEntity vehicle, double speed, double radius,
+            java.util.Set<Integer> excluded) {
         SimCommandStream out = new SimCommandStream();
         AABB around = vehicle.getBoundingBox().inflate(radius);
         Map<Integer, AxionEntity> wanted = new LinkedHashMap<>();
+        // ADR-171 D7 : les membres de l'ensemble du véhicule sont prédits, pas posés en proxies.
         for (AxionEntity other : level.getEntitiesOfClass(AxionEntity.class, around,
-                other -> other != vehicle && other.isAlive() && other.interpolating())) {
+                other -> other != vehicle && !excluded.contains(other.getId()) && other.isAlive()
+                        && other.interpolating())) {
             wanted.put(other.getId(), other);
         }
         for (Iterator<Map.Entry<Integer, Proxy>> it = assemblies.entrySet().iterator(); it.hasNext(); ) {

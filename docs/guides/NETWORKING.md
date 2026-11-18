@@ -56,7 +56,8 @@ simule ce véhicule dans un monde à lui, pendant que le serveur, seul juge, sim
 ([ADR-168](../decisions/ADR-168.md)). À chaque tick où le véhicule avance, le serveur renvoie au conducteur l'état qui
 fait foi (`S2C_Correction`) ; le client le compare à ce qu'il avait prédit, et rejoue ses entrées depuis cet état
 quand ils diffèrent. La correction porte aussi l'état de ce qui est attaché au véhicule, une remorque tirée à la corde
-par exemple ([ADR-171](../decisions/ADR-171.md)). La reprise se lisse à l'écran en 200 ms, au lieu de sauter. Le client n'envoie que ses entrées,
+par exemple, que le client prédit avec lui : la remorque répond tout de suite, et se dessine au même instant que la
+voiture ([ADR-171](../decisions/ADR-171.md)). La reprise se lisse à l'écran en 200 ms, au lieu de sauter. Le client n'envoie que ses entrées,
 jamais un état : il ne peut rien imposer au serveur (INV-02).
 
 La prédiction ne tourne pas :

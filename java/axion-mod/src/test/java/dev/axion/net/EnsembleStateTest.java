@@ -62,5 +62,7 @@ class EnsembleStateTest {
         assertFalse(ensemble.close(predit, EnsembleState.encode(List.of(membre(40, 5), membre(12, 1, 2)))),
                 "un autre ordre");
         assertFalse(ensemble.close(predit, new byte[] {9}), "un état illisible");
+        assertFalse(ensemble.close(null, predit), "rien de prédit encore pour cette séquence");
+        assertFalse(ensemble.close(predit, null), "rien du serveur");
     }
 }

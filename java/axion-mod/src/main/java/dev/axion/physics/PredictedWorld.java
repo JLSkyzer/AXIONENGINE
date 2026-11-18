@@ -25,12 +25,16 @@ public final class PredictedWorld implements AutoCloseable {
      * @param result le résultat du {@code collect} : états des corps, emprises, roues, véhicule
      * @param state l'état complet exporté du véhicule, avec le statut de sa dernière restauration ; {@code null} si le
      *     natif n'en a pas rendu
+     * @param members l'état complet exporté de chaque membre de son ensemble, par rang (ADR-171 D7) ; un membre dont le
+     *     natif n'a rien rendu en est absent
      */
-    public record Step(CollectResult result, AssemblyStateReport state) {}
+    public record Step(CollectResult result, AssemblyStateReport state, java.util.Map<Integer, AssemblyStateReport> members) {}
 
     private final NativeSimulation simulation;
     private final int handle;
     private final long dimension;
+    /** Les membres de l'ensemble du véhicule, prédits avec lui (ADR-171 D7), dans l'ordre où ils sont entrés. */
+    private final java.util.Set<Integer> members = new java.util.LinkedHashSet<>();
     private SimCommandStream pending = new SimCommandStream();
     private long tick;
     private boolean closed;
@@ -75,6 +79,68 @@ public final class PredictedWorld implements AutoCloseable {
         return dimension;
     }
 
+    /** {@return les rangs des membres de son ensemble, prédits avec lui} */
+    public java.util.Set<Integer> members() {
+        return java.util.Collections.unmodifiableSet(members);
+    }
+
+    /**
+     * Fait entrer un membre de l'ensemble du véhicule dans le monde prédit, avant le pas suivant (ADR-171 D7) : une
+     * assembly dynamique, comme au serveur, dont l'état complet s'exporte. Sans effet s'il y est déjà.
+     *
+     * @param member son rang : son identifiant réseau
+     * @param position sa position monde, en blocs
+     * @param rotation sa rotation, quaternion {@code x, y, z, w}
+     * @param definition l'empreinte de sa definition compilée
+     */
+    public void addMember(int member, double[] position, float[] rotation, long definition) {
+        if (member == handle || !members.add(member)) {
+            return;
+        }
+        pending.createAssembly(member, GENERATION, dimension, position, rotation, definition)
+                .setStateExport(member, GENERATION, true);
+    }
+
+    /**
+     * Retire un membre, avant le pas suivant ; ses attaches partent avec lui. Sans effet s'il n'y est pas.
+     *
+     * @param member son rang
+     */
+    public void removeMember(int member) {
+        if (members.remove(member)) {
+            pending.removeAssembly(member, GENERATION);
+        }
+    }
+
+    /**
+     * Pose une attache entre deux assemblies du monde prédit, avant le pas suivant, avec les réglages que le serveur a
+     * répliqués (ADR-171 Q8) : le même joint qu'au serveur.
+     *
+     * @param request la commande, ses deux extrémités au rang et à la génération de ce monde
+     */
+    public void attach(SimCommandStream.AttachRequest request) {
+        pending.attach(request);
+    }
+
+    /**
+     * Défait une attache du monde prédit, avant le pas suivant.
+     *
+     * @param id son identifiant
+     */
+    public void detach(int id) {
+        pending.detach(id);
+    }
+
+    /**
+     * Rend à un membre l'état complet calculé par le serveur, avant le pas suivant.
+     *
+     * @param member son rang
+     * @param state son bloc d'état, tel que le serveur l'a exporté
+     */
+    public void restore(int member, byte[] state) {
+        pending.setAssemblyState(member, GENERATION, state);
+    }
+
     /** {@return les pas déjà faits} */
     public long ticks() {
         return tick;
@@ -116,12 +182,18 @@ public final class PredictedWorld implements AutoCloseable {
         commands.merge(world).setVehicleInput(handle, GENERATION, input, true);
         CollectResult result = simulation.tick(++tick, commands, 0L);
         AssemblyStateReport state = null;
+        java.util.Map<Integer, AssemblyStateReport> exported = new java.util.LinkedHashMap<>();
         for (AssemblyStateReport report : result.states()) {
-            if (report.handleIndex() == handle && report.handleGeneration() == GENERATION) {
+            if (report.handleGeneration() != GENERATION) {
+                continue;
+            }
+            if (report.handleIndex() == handle) {
                 state = report;
+            } else if (members.contains(report.handleIndex())) {
+                exported.put(report.handleIndex(), report);
             }
         }
-        return new Step(result, state);
+        return new Step(result, state, exported);
     }
 
     /** Retire le véhicule et rend au pilote son mode de serveur. Sans effet la seconde fois. */
@@ -141,9 +213,12 @@ public final class PredictedWorld implements AutoCloseable {
             return;
         }
         closed = true;
-        SimCommandStream commands = world
-                .removeAssembly(handle, GENERATION)
-                .setSimMode(SimCommandStream.SIM_MODE_SERVER);
+        SimCommandStream commands = world.removeAssembly(handle, GENERATION);
+        for (int member : members) {
+            commands.removeAssembly(member, GENERATION);
+        }
+        members.clear();
+        commands.setSimMode(SimCommandStream.SIM_MODE_SERVER);
         simulation.tick(++tick, commands, 0L);
     }
 }
