@@ -163,22 +163,26 @@ public final class AttachesGameTests {
     @GameTest(template = "test/plancher_16", timeoutTicks = 100)
     public static void adr171_UneAttachePoseeALApparitionAttendSesCorps(GameTestHelper helper) {
         ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
-        AxionEntity a = AssembliesDeTest.poser(helper, MAILLON, new Vec3(6.0, DESSUS_DALLE + 0.05, 8.0), DROIT);
-        AxionEntity b = AssembliesDeTest.poser(helper, MAILLON, new Vec3(7.2, DESSUS_DALLE + 0.05, 8.0), DROIT);
-        // Au premier tick où leurs sockets sont connus, avant que le natif ne les ait créés : le cas à prouver.
-        boolean[] posee = new boolean[1];
+        // Les sockets sont ceux de la definition compilée. Une fois qu'elle l'est, les deux maillons sont posés et
+        // attachés dans le même appel, avant tout pas de simulation : leurs corps natifs n'existent pas encore, à
+        // coup sûr. Attendre le premier tick où leurs sockets sont connus laissait la charge du serveur décider si le
+        // natif les avait déjà créés (CI locale du 2026-11-18).
+        AxionEntity[] maillons = new AxionEntity[2];
         boolean[] avantLeurCorps = new boolean[1];
         helper.onEachTick(() -> {
-            if (!posee[0] && !a.sockets().sockets().isEmpty() && !b.sockets().sockets().isEmpty()) {
-                avantLeurCorps[0] = !a.simulated() && !b.simulated();
-                attendu(helper, vue(a).attachments().attach("avant", vue(b), "arriere", "rope"),
-                        AttachResult.Status.ATTACHED);
-                posee[0] = true;
+            if (maillons[0] != null || AxionEntities.seating(MAILLON).isEmpty()) {
+                return;
             }
+            maillons[0] = AssembliesDeTest.poser(helper, MAILLON, new Vec3(6.0, DESSUS_DALLE + 0.05, 8.0), DROIT);
+            maillons[1] = AssembliesDeTest.poser(helper, MAILLON, new Vec3(7.2, DESSUS_DALLE + 0.05, 8.0), DROIT);
+            avantLeurCorps[0] = !maillons[0].simulated() && !maillons[1].simulated();
+            attendu(helper, vue(maillons[0]).attachments().attach("avant", vue(maillons[1]), "arriere", "rope"),
+                    AttachResult.Status.ATTACHED);
         });
         helper.succeedWhen(() -> {
-            helper.assertTrue(posee[0], "posée");
+            helper.assertTrue(maillons[0] != null, "posée");
             helper.assertTrue(avantLeurCorps[0], "posée avant que le natif ne crée les maillons, comme voulu");
+            AxionEntity a = maillons[0];
             List<dev.axion.api.attach.Attachments.Attachment> liste = vue(a).attachments().list();
             helper.assertTrue(liste.size() == 1 && liste.get(0).length() > 0,
                     "l'attache tient, et le natif la rapporte : " + liste);
